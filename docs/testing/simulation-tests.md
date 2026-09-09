@@ -512,6 +512,12 @@ cd services/game-server; go test -race -count=1 ./internal/game/simulation
 cd services/game-server; go test -run TestVerticalSliceMovimiento ./internal/game/simulation
 ```
 
+**`-race` necesita un compilador de C.** El detector de carreras se apoya en cgo, así que sin gcc en el
+`PATH` el primer comando aborta con `-race requires cgo` en lugar de ejecutar nada. En Windows hay que
+instalar una cadena de herramientas (MinGW-w64, por ejemplo) o dejar que lo ejecute la CI, que corre
+sobre Linux. Quitar `-race` deja los tests pasando —y deja de comprobar lo único que este paquete
+promete sobre concurrencia—, de modo que si lo quitas, que sea a sabiendas.
+
 Sin Docker y sin `EO_INTEGRATION=1`. La suite completa debe terminar en menos de 30 s: incluso los
 escenarios de miles de ticks son aritmética entera sobre estructuras en memoria y no esperan nada. Si
 algún test de este nivel empieza a tardar segundos, o bien está haciendo I/O que no debería, o bien

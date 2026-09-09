@@ -394,10 +394,18 @@ Versiones fijadas en el workflow: `GO_VERSION: '1.23'`, `NODE_VERSION: '22'`, `P
 | | Build | `go build ./...` | — | El módulo no compila. |
 | | **Tests** | `go test -race -count=1 ./...` | — | Falla cualquier test de `unit`, `contract` (lado Go) o `simulation`, o salta el detector de carreras. |
 | | Cobertura | `go test -count=1 -coverprofile=coverage.out ./...` + `go tool cover -func` | — | Informativo: publica el total, no impone umbral. |
-| **integration** | Tests de integración | `go test -race -count=1 -tags=integration ./...` con `EO_INTEGRATION=1`, `EO_TEST_POSTGRES_URL=postgres://empires:empires_ci_password@localhost:5432/empires_test?sslmode=disable` y `EO_TEST_REDIS_URL=redis://localhost:6379/1` | `postgres:16-alpine` (usuario `empires`, base `empires_test`) y `redis:7-alpine` (índice **1**), ambos con healthcheck | Falla cualquier test de integración. **Hoy este job no ejecuta ningún test**, porque todavía no existe ningún fichero con la etiqueta `integration`. |
+| **integration** | Tests de integración | `go test -race -count=1 -tags=integration ./...` con `EO_INTEGRATION=1`, `EO_TEST_POSTGRES_URL=postgres://empires:empires_ci_password@localhost:5432/empires_test?sslmode=disable` y `EO_TEST_REDIS_URL=redis://localhost:6379/1` | `postgres:16-alpine` (usuario `empires`, base `empires_test`) y `redis:7-alpine` (índice **1**), ambos con healthcheck | Falla cualquier test de integración. La etiqueta `integration` cubre hoy tres ficheros: `internal/persistence/postgres/integration_test.go` y su `testenv_integration_test.go` (12 tests, verificados en verde contra PostgreSQL real) e `internal/persistence/redis/redis_integration_test.go`, que **no se ha ejecutado nunca** —ver la nota bajo esta tabla—. |
 | **docker** | Imagen | `docker/build-push-action` sobre `infra/docker/game-server.Dockerfile` | — | La imagen del Game Server no se construye. |
 
 **Todas son obligatorias.** Un pull request con cualquier check en rojo no es válido, independientemente de la urgencia (canon §19).
+
+> **Tres comprobaciones de esta tabla no se han ejecutado todavía en ninguna parte**, y conviene saber cuáles antes de leer el resto del documento como si describiera algo ya probado:
+>
+> 1. **El detector de carreras.** `-race` requiere cgo y, por tanto, un compilador de C. En la máquina de desarrollo actual (Windows, sin gcc en el `PATH`) `go test -race` aborta con `-race requires cgo`; la suite local corre **sin** detector. Es el hueco más importante, porque el aislamiento del bucle de juego —un solo escritor, sin mutexes, por diseño— es precisamente lo que `-race` valida. En el runner de Linux de la CI el compilador existe y `-race` sí corre.
+> 2. **Los tests de integración de Redis.** No hay Redis en la máquina de desarrollo; el estado caliente se ejerce hoy con la implementación en proceso (`internal/persistence/memory`), que tiene sus propios tests unitarios. Los contratos coinciden, pero *coincidir* no es *haberse ejecutado*.
+> 3. **La construcción de la imagen del contenedor.** El daemon de Docker no arranca en esta máquina (ver [local-development.md](../operations/local-development.md)).
+>
+> Las tres corren en la CI. Mientras la CI no se haya ejecutado ni una vez, las tres siguen siendo afirmaciones sin evidencia.
 
 **Lo que la CI todavía no hace, y hay que añadir cuando exista lo que verifica:** no hay paso de `lint`/ESLint (`pnpm run lint` requiere que cada paquete declare su script), no hay paso de `web:build` pese a que `apps/web` ya existe, y no existe todavía el pipeline nocturno de §8.2. La comprobación de enlaces rotos **sí** existe ya, en el job `docs`. Documentar lo pendiente como pendiente es preferible a describir una CI que no está.
 
