@@ -1,0 +1,23 @@
+# Empires Online se desarrolla en Windows y se ejecuta en Linux (CI y
+# contenedores). Con `core.autocrlf=true` —el valor por defecto de Git para
+# Windows— el checkout escribe CRLF en el working tree, y entonces
+# `gofmt -l .` lista TODOS los archivos .go. El error es desconcertante
+# porque no tiene nada que ver con el formato del código: es el final de
+# línea. Lo mismo le ocurre a Prettier y a los scripts de shell.
+#
+# Regla: el repositorio guarda LF y el working tree también, en toda
+# plataforma. Esto anula core.autocrlf para este repositorio.
+
+* text=auto eol=lf
+
+# Binarios: Git no debe tocar nunca su contenido.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
