@@ -1,0 +1,53 @@
+# --- Secretos: NUNCA se versionan ---
+.env
+.env.*
+!.env.example
+
+# --- Node / pnpm ---
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+dist/
+build/
+coverage/
+
+# --- Next.js ---
+.next/
+out/
+.vercel/
+
+# --- Go ---
+services/game-server/bin/
+services/game-server/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# --- Docker / datos locales ---
+.docker-data/
+
+# --- Cluster de PostgreSQL local, alternativa a Docker ---
+# Lo crea scripts/pg-local.mjs en la máquina del desarrollador. Son datos, no
+# fuente: se puede borrar entero y recrear.
+.pgdata/
+.pglogs/
+
+# --- Editores y SO ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.recommended.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Artefactos de test/observabilidad locales ---
+*.prof
+*.pprof
+*.log

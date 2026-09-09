@@ -1,0 +1,42 @@
+{
+  "name": "@empires-online/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fuente única de verdad del protocolo WebSocket de Empires Online. Los esquemas Zod definen el contrato; el JSON Schema exportado lo consume el Game Server (Go) en sus contract tests.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./v1": {
+      "types": "./dist/v1/index.d.ts",
+      "import": "./dist/v1/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && pnpm run schema:export",
+    "schema:export": "tsx src/scripts/export-schema.ts",
+    "schema:check": "tsx src/scripts/export-schema.ts --check",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "zod-to-json-schema": "^3.24.1"
+  }
+}

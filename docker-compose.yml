@@ -1,0 +1,55 @@
+# Infraestructura de desarrollo local para Empires Online.
+#
+# Levanta únicamente las dependencias con estado (PostgreSQL y Redis).
+# El Game Server (Go) y el frontend (Next.js) se ejecutan en la máquina anfitriona
+# durante el desarrollo — ver docs/operations/local-development.md.
+#
+#   pnpm run db:up      # levantar
+#   pnpm run db:down    # detener
+#   pnpm run db:reset   # detener y BORRAR los volúmenes (destructivo)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: empires-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: empires
+      POSTGRES_PASSWORD: empires_dev_password
+      POSTGRES_DB: empires
+      # Colación determinista: evita que el orden de texto dependa del locale del host.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U empires -d empires']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: empires-redis
+    restart: unless-stopped
+    # appendonly sólo para comodidad en desarrollo. Redis NO es fuente de verdad:
+    # su pérdida total debe ser recuperable — ver docs/decisions/ADR-004-redis-hot-state.md.
+    command: ['redis-server', '--appendonly', 'yes', '--save', '']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres_data:
+    name: empires_postgres_data
+  redis_data:
+    name: empires_redis_data

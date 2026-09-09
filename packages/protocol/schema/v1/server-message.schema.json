@@ -1,0 +1,1116 @@
+{
+  "$ref": "#/definitions/ServerMessage",
+  "definitions": {
+    "ServerMessage": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "number",
+              "const": 1
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ts": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "requestId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": {
+              "type": "string",
+              "const": "session.welcome"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                },
+                "playerId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                },
+                "serverTimeMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                },
+                "tickDurationMs": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "heartbeatIntervalMs": {
+                  "type": "integer",
+                  "minimum": 1000
+                },
+                "world": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "chunkSize": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "width",
+                    "height",
+                    "chunkSize"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "sessionId",
+                "playerId",
+                "serverTimeMs",
+                "tickDurationMs",
+                "heartbeatIntervalMs",
+                "world"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "session.pong"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "clientTimeMs": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "serverTimeMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                }
+              },
+              "required": [
+                "clientTimeMs",
+                "serverTimeMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "system.error"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "UNAUTHORIZED",
+                    "FORBIDDEN",
+                    "INVALID_MESSAGE",
+                    "UNSUPPORTED_VERSION",
+                    "RATE_LIMITED",
+                    "MESSAGE_TOO_LARGE",
+                    "UNIT_NOT_FOUND",
+                    "UNIT_NOT_OWNED",
+                    "UNIT_NOT_MOVABLE",
+                    "UNIT_DEAD",
+                    "UNIT_GARRISONED",
+                    "INVALID_TARGET",
+                    "TARGET_OUT_OF_BOUNDS",
+                    "TARGET_NOT_WALKABLE",
+                    "PATH_NOT_FOUND",
+                    "PATH_TOO_LONG",
+                    "CITY_NOT_FOUND",
+                    "CITY_PROTECTED",
+                    "TREATY_REQUIRED",
+                    "POPULATION_LIMIT_REACHED",
+                    "INTERNAL_ERROR",
+                    "NOT_IMPLEMENTED"
+                  ]
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                "details": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "world.snapshot"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "serverTimeMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                },
+                "tick": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "chunks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "cx": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "cy": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "cx",
+                      "cy"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "terrain": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "cx": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "cy": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 256
+                      },
+                      "terrain": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "cx",
+                      "cy",
+                      "size",
+                      "terrain"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "units": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "playerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "cityId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "unitType": {
+                        "type": "string",
+                        "enum": [
+                          "VILLAGER"
+                        ]
+                      },
+                      "x": {
+                        "type": "integer",
+                        "minimum": -2147483648,
+                        "maximum": 2147483647
+                      },
+                      "y": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "hp": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "maxHp": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "IDLE",
+                          "MOVING",
+                          "GARRISONED",
+                          "HIDDEN",
+                          "DEAD"
+                        ]
+                      },
+                      "movement": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "movementId": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "x": {
+                                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                                    },
+                                    "y": {
+                                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                                    },
+                                    "tMs": {
+                                      "type": "integer",
+                                      "minimum": 0
+                                    }
+                                  },
+                                  "required": [
+                                    "x",
+                                    "y",
+                                    "tMs"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1
+                              },
+                              "startTimeMs": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                              },
+                              "arrivalTimeMs": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                              },
+                              "target": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                                  },
+                                  "y": {
+                                    "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "movementId",
+                              "path",
+                              "startTimeMs",
+                              "arrivalTimeMs",
+                              "target"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "playerId",
+                      "cityId",
+                      "unitType",
+                      "x",
+                      "y",
+                      "hp",
+                      "maxHp",
+                      "status",
+                      "movement"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "cities": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "ownerPlayerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "centerX": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "centerY": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "era": {
+                        "type": "string",
+                        "enum": [
+                          "STONE_AGE",
+                          "BRONZE_AGE",
+                          "IRON_AGE",
+                          "CASTLE_AGE"
+                        ]
+                      },
+                      "population": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "populationLimit": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "presenceState": {
+                        "type": "string",
+                        "enum": [
+                          "ONLINE",
+                          "OFFLINE_PENDING",
+                          "PROTECTED"
+                        ]
+                      },
+                      "protectionUntilMs": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "ownerPlayerId",
+                      "name",
+                      "centerX",
+                      "centerY",
+                      "era",
+                      "population",
+                      "populationLimit",
+                      "presenceState",
+                      "protectionUntilMs"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "territories": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "minX": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "minY": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "maxX": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "maxY": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "ownerType": {
+                        "type": "string",
+                        "enum": [
+                          "NONE",
+                          "PLAYER",
+                          "CLAN",
+                          "FACTION"
+                        ]
+                      },
+                      "ownerId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "contested": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "minX",
+                      "minY",
+                      "maxX",
+                      "maxY",
+                      "ownerType",
+                      "ownerId",
+                      "contested"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "serverTimeMs",
+                "tick",
+                "chunks",
+                "terrain",
+                "units",
+                "cities",
+                "territories"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "entity.spawn"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unit": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items"
+                }
+              },
+              "required": [
+                "unit"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "entity.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "x": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                },
+                "y": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                },
+                "hp": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "status": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/status"
+                },
+                "cityId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "movement": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/movement/anyOf/0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "entity.despawn"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "OUT_OF_INTEREST",
+                    "DEAD",
+                    "GARRISONED",
+                    "HIDDEN",
+                    "REMOVED"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "city.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "population": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "populationLimit": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "presenceState": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/presenceState"
+                },
+                "protectionUntilMs": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "territory.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "territory": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/territories/items"
+                }
+              },
+              "required": [
+                "territory"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "unit.move.accepted"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "movementId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                }
+              },
+              "required": [
+                "unitId",
+                "movementId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "unit.move.rejected"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "code": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/2/properties/payload/properties/code"
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 512
+                }
+              },
+              "required": [
+                "unitId",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "unit.movement.started"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "movement": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/movement/anyOf/0"
+                }
+              },
+              "required": [
+                "unitId",
+                "movement"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "unit.movement.completed"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "movementId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "finalPosition": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/movement/anyOf/0/properties/target"
+                }
+              },
+              "required": [
+                "unitId",
+                "movementId",
+                "finalPosition"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "unit.movement.cancelled"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "movementId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "stoppedAt": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/movement/anyOf/0/properties/target"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "REPLACED",
+                    "CANCELLED_BY_PLAYER",
+                    "PATH_BLOCKED",
+                    "UNIT_DEAD",
+                    "SERVER"
+                  ]
+                }
+              },
+              "required": [
+                "unitId",
+                "movementId",
+                "stoppedAt",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

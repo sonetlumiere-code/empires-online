@@ -1,0 +1,29 @@
+{
+  "name": "@empires-online/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cliente de Empires Online: Next.js + React + PixiJS. Renderiza el mundo isométrico y envía intenciones al Game Server. Nunca es autoridad sobre el estado.",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@empires-online/protocol": "workspace:*",
+    "next": "^15.1.3",
+    "pixi.js": "^8.6.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

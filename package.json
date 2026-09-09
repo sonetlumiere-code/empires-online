@@ -1,0 +1,50 @@
+{
+  "name": "empires-online",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MMORTS persistente 24/7 con servidor autoritativo. Monorepo: Next.js + PixiJS (cliente) y Go (game server).",
+  "packageManager": "pnpm@10.25.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d postgres redis",
+    "db:logs": "docker compose logs -f postgres redis",
+    "db:psql": "docker compose exec postgres psql -U empires -d empires",
+    "db:redis": "docker compose exec redis redis-cli",
+    "db:migrate": "cd services/game-server && go run ./cmd/migrate",
+    "db:version": "cd services/game-server && go run ./cmd/migrate -version",
+    "pg:init": "node scripts/pg-local.mjs init",
+    "pg:start": "node scripts/pg-local.mjs start",
+    "pg:stop": "node scripts/pg-local.mjs stop",
+    "pg:status": "node scripts/pg-local.mjs status",
+    "pg:destroy": "node scripts/pg-local.mjs destroy",
+    "protocol:build": "pnpm --filter @empires-online/protocol run build",
+    "protocol:test": "pnpm --filter @empires-online/protocol run test",
+    "protocol:check": "pnpm --filter @empires-online/protocol run schema:check",
+    "server:tidy": "cd services/game-server && go mod tidy",
+    "server:build": "cd services/game-server && go build -o bin/empires-server ./cmd/server",
+    "server:run": "cd services/game-server && go run ./cmd/server",
+    "server:test": "cd services/game-server && go test ./...",
+    "server:test:integration": "cd services/game-server && go test -tags=integration ./...",
+    "server:vet": "cd services/game-server && go vet ./...",
+    "server:fmt": "cd services/game-server && gofmt -l -w .",
+    "server:fmt:check": "cd services/game-server && gofmt -l .",
+    "web:dev": "pnpm --filter @empires-online/web run dev",
+    "web:build": "pnpm --filter @empires-online/web run build",
+    "docs:check": "node scripts/check-docs.mjs",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "verify": "pnpm run protocol:build && pnpm run docs:check && pnpm run typecheck && pnpm run test && pnpm run server:fmt:check && pnpm run server:vet && pnpm run server:test"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
