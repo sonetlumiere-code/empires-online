@@ -85,15 +85,31 @@ Lo que hay hoy en el árbol, con nombre de archivo. Nada de esta tabla es aspira
 
 | Nivel | Archivos reales | Estado |
 |---|---|---|
-| **unit** | `internal/game/world/world_test.go`, `internal/pathfinding/astar_test.go`, `internal/domain/movement/path_test.go`, `internal/domain/city/city_test.go`, `internal/auth/ticket_test.go`, `internal/config/config_test.go` | **En verde** (`pnpm run server:test`) |
+| **unit** | `internal/game/world/world_test.go`, `internal/pathfinding/astar_test.go`, `internal/domain/movement/path_test.go`, `internal/domain/city/city_test.go`, `internal/auth/ticket_test.go`, `internal/config/config_test.go`, `internal/config/dotenv_test.go`, `internal/persistence/memory/memory_test.go` | **En verde** (`pnpm run server:test`) |
 | **contract** | `internal/protocol/contract_test.go` (Go) y `packages/protocol/src/v1/protocol.test.ts` (18 tests Vitest) | **En verde** (`pnpm run server:test` + `pnpm run protocol:test`) |
-| **simulation** | `internal/game/simulation/simulation_test.go` (incluye el vertical slice, presencia/protección y los tres casos de recuperación en RAM sobre `simulation.Hydrate`) | **En verde** |
-| **integration** | Ninguno todavía: se compilarán bajo la etiqueta `integration` y el gate `EO_INTEGRATION=1` (§4, R8) | **Diseñado, NO ejecutado**: el daemon de Docker no arrancó en esta máquina |
-| **recovery** | La parte en RAM vive hoy en `simulation_test.go`; la parte durable (crash con PostgreSQL real) es parte del nivel `integration` | **Parcial**: RAM en verde; durable **NO ejecutado** |
+| **simulation** | `internal/game/simulation/simulation_test.go` (17 tests: el vertical slice, presencia/protección y los casos de recuperación en RAM sobre `simulation.Hydrate`) | **En verde** |
+| **e2e de transporte** | `internal/websocket/e2e_test.go` (11 tests): el vertical slice sobre un WebSocket real, con dobles en memoria de PostgreSQL y del estado caliente | **En verde**. Es el nivel que encontró que `r.Context()` mataba la sesión tras el primer mensaje |
+| **integration** | `internal/persistence/postgres/integration_test.go` (12) + su `testenv_integration_test.go`, y `internal/persistence/redis/redis_integration_test.go` (9). Etiqueta `integration` + gate `EO_INTEGRATION=1` (§4, R8) | **En verde, 21 tests**, ejecutados con `-race` |
+| **recovery** | RAM en `simulation_test.go`; durable en `TestRecuperacionCompletaTrasReinicio` (nivel `integration`) | **En verde**, ambas partes |
+| **frontend** | `apps/web/src/{net/client,render/iso,state/interpolation,state/world}.test.ts` | **En verde**, 58 tests Vitest |
+| **humo de despliegue** | [`scripts/smoke.mjs`](../../scripts/smoke.mjs) | **Ejecutado.** No es un nivel de la pirámide: ver abajo |
 | **load** | Ninguno | **Fuera de MVP** |
 
-**Consecuencia honesta:** ningún documento de esta carpeta puede afirmar que los tests de integración
-pasan. Están escritos como diseño y así se etiquetan en [integration-tests.md](./integration-tests.md).
+**El humo no es un test, y la distinción importa.** Los niveles de arriba verifican el *código*: corren en
+CI, sobre dobles o sobre servicios efímeros, y responden a «¿está bien escrito esto?». `scripts/smoke.mjs`
+verifica un *despliegue*: se ejecuta contra un servidor ya arrancado y responde a «¿este binario, contra
+esta base, con esta configuración, hace lo que promete?». Un cambio de configuración no rompe ningún test
+y sí rompe el humo — que es exactamente para lo que está.
+
+Recorre el vertical slice completo por la red, incluida la parte que ninguna sonda HTTP puede comprobar:
+cierra la conexión a mitad de movimiento, espera sin cliente conectado más allá de la hora de llegada y
+reconecta para verificar que la unidad llegó igualmente. Su sitio en el procedimiento es el Paso 5 de
+[deployment.md](../operations/deployment.md), y también sirve para validar una máquina de desarrollo
+recién montada.
+
+```bash
+node scripts/smoke.mjs --url http://localhost:8080
+```
 
 ---
 

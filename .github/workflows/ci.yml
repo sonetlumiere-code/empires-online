@@ -40,6 +40,12 @@ jobs:
       - name: Verificar integridad de docs/
         run: node scripts/check-docs.mjs
 
+      # Los scripts de utilidad no tienen dependencias: corren con el runner de
+      # tests integrado de Node, sin `pnpm install`. Por eso viven en este job y
+      # no en el de protocolo.
+      - name: Tests de los scripts
+        run: node --test "scripts/*.test.mjs"
+
   # ─────────────────────────────────────────────────────────────
   # Protocolo: formato, tipos, tests y —lo más importante— que el
   # JSON Schema exportado no haya derivado de los esquemas Zod.

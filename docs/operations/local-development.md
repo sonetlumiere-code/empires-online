@@ -353,6 +353,33 @@ produce un `connection refused` que parece un problema de PostgreSQL y no lo es.
 `redis:7-alpine`. Los comandos que ejercen estos tests son muy anteriores a ambas versiones, pero la
 diferencia existe.
 
+**Para usar ese Redis también en el servidor**, y no sólo en los tests, pon en el `.env`:
+
+```
+EO_REDIS_URL=redis://localhost:6379/0
+```
+
+Con eso el arranque registra `"msg":"estado caliente en Redis"` en lugar del aviso de estado en proceso.
+Se puede confirmar que la rama está viva mirando las claves que escribe —presencia con TTL, `jti` de
+tickets consumidos e idempotencia de comandos, que son los tres usos que ADR-004 le asigna—:
+
+```bash
+wsl -d Ubuntu -e bash -lc 'for k in $(redis-cli -n 0 --scan); do echo "$k ttl=$(redis-cli -n 0 ttl $k)"; done'
+```
+
+### 3-bis.8 Comprobar el montaje de extremo a extremo
+
+Con el servidor arrancado, esto recorre el vertical slice completo y dice si la máquina quedó bien montada:
+
+```bash
+pnpm run smoke
+```
+
+Es la misma comprobación que cierra un despliegue ([deployment.md](./deployment.md) §6, Paso 5). Verifica
+`/health` y `/ready`, da de alta un jugador, hace el handshake, recibe el snapshot, ordena un movimiento y
+**cierra la conexión a mitad de trayecto para reconectar después y comprobar que la unidad llegó igualmente**.
+Falla con código distinto de cero y explica en qué paso.
+
 ---
 
 ## 4. Infraestructura local: `docker-compose.yml`

@@ -78,14 +78,14 @@ Las posiciones de unidades en movimiento ya persistido no se pierden en absoluto
 1. **Comprueba si ya se recuperó solo.** `restart: unless-stopped` o la unidad systemd deberían haberlo
    reiniciado.
    ```bash
-   docker ps --filter name=eo-game-server
+   docker ps --filter name=empires-game-server
    curl -fsS http://127.0.0.1:8080/ready
    ```
 2. **Captura la causa antes de que la rotación de logs se la lleve.**
    ```bash
-   docker logs eo-game-server --since 15m > /tmp/eo-crash-$(date -u +%Y%m%dT%H%M%SZ).log
+   docker logs empires-game-server --since 15m > /tmp/eo-crash-$(date -u +%Y%m%dT%H%M%SZ).log
    ```
-   Busca `panic:`, la traza de goroutines, o un OOM (`docker inspect eo-game-server | grep -i oom`).
+   Busca `panic:`, la traza de goroutines, o un OOM (`docker inspect empires-game-server | grep -i oom`).
 3. **Si está en bucle de reinicio, párala.** Un bucle no es una recuperación: cada ciclo recarga el mundo y
    reprocesa movimientos vencidos.
    ```bash

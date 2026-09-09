@@ -2,20 +2,23 @@
 
 Cómo se verifica la capa de persistencia contra PostgreSQL y Redis **reales**: montaje del entorno, base de datos dedicada, limpieza entre tests, el gate `EO_INTEGRATION=1`, y la lista enumerada de casos obligatorios incluido el test de recuperación tras caída del servidor.
 
-> **Estado real: DISEÑADO, NO EJECUTADO.** Hoy **no existe ni un solo fichero** con la etiqueta de
-> compilación `integration` en `services/game-server`, y por tanto **ningún test de este documento se
-> ha ejecutado nunca**. La causa es concreta y verificada: el CLI de Docker y Compose están
-> instalados en la máquina de desarrollo, pero **el daemon de Docker Desktop no arrancó**, así que no
-> hay PostgreSQL ni Redis reales contra los que correr. El job `integration` de la CI existe y levanta
-> los servicios, pero hoy no ejecuta ningún test porque no hay ficheros con esa etiqueta.
+> **Estado real: EJECUTADO Y EN VERDE.** Tres ficheros llevan la etiqueta de compilación `integration`
+> en `services/game-server`:
 >
-> Nada de este documento debe leerse como «pasa»: todo lo que sigue es **el diseño** del nivel, con
-> nombres de test propuestos. Cuando un test se implemente y se ejecute, se marcará ✔ como en
-> [unit-tests.md](./unit-tests.md) y [simulation-tests.md](./simulation-tests.md), que sí describen
-> tests reales en verde. Ubicación y convenciones en [strategy.md](./strategy.md) §5.
+> | Fichero | Tests | Contra qué |
+> |---|---|---|
+> | `internal/persistence/postgres/integration_test.go` | 12 | PostgreSQL 16 real |
+> | `internal/persistence/postgres/testenv_integration_test.go` | — | montaje y limpieza |
+> | `internal/persistence/redis/redis_integration_test.go` | 9 | Redis real |
 >
-> Lo que **sí** está verificado hoy es la mitad en RAM de la recuperación: `simulation.Hydrate` y sus
-> tres tests en `simulation_test.go` ([simulation-tests.md](./simulation-tests.md) §4.5).
+> Los 21 pasan con el detector de carreras activo. **No se ejecutan con Docker**: la máquina de
+> desarrollo lo tiene descartado (provoca pantallazos azules por consumo de RAM). PostgreSQL es un
+> cluster propio en `.pgdata/` puerto 5433, y Redis vive en WSL. El procedimiento exacto está en
+> [local-development.md](../operations/local-development.md) §3-bis. El job `integration` de la CI sí
+> usa contenedores, pero la CI todavía no ha llegado a ejecutarse ni una vez.
+>
+> Donde este documento describa un test que **no** existe todavía, lo dice en su propia fila. Ubicación
+> y convenciones en [strategy.md](./strategy.md) §5.
 
 ---
 
@@ -53,7 +56,15 @@ pnpm run db:up          # docker compose up -d postgres redis
 | `postgres` | `postgres:16-alpine` | 5432 | Base de datos **dedicada** de test, no la de desarrollo |
 | `redis` | `redis:7-alpine` | 6379 | Índice de base de datos **dedicado**, no el de desarrollo |
 
-Ambos servicios llevan healthcheck declarado en `docker-compose.yml`. El daemon de Docker **no arranca solo** en la máquina de desarrollo y, de hecho, **no llegó a arrancar**: por eso este nivel está diseñado y no ejecutado. Quien no lo tenga levantado no debe ver la suite en rojo: ver el gate en §3.
+Ambos servicios llevan healthcheck declarado en `docker-compose.yml`, y así es como los levanta la CI.
+
+**En la máquina de desarrollo no se usa ninguno de los dos**, porque Docker está descartado ahí. El
+equivalente verificado es un cluster PostgreSQL propio (`pnpm run pg:start`, puerto **5433**) y un
+`redis-server` dentro de WSL, con las URLs correspondientes en `EO_TEST_POSTGRES_URL` y
+`EO_TEST_REDIS_URL`. El procedimiento completo está en
+[local-development.md](../operations/local-development.md) §3-bis.7.
+
+Quien no tenga ninguna de las dos cosas levantadas no debe ver la suite en rojo: ver el gate en §3.
 
 ### 2.2 Aislamiento por base de datos y por índice de Redis
 
@@ -93,7 +104,8 @@ func mustBeTestDatabase(t *testing.T, pgURL, redisURL string) {
 
 La base de datos de test se crea una vez y se migra al arrancar la suite, no en cada test.
 
-**No existe un script `db:migrate`.** Las migraciones son **SQL embebido con `go:embed`** y las aplica
+**El script `db:migrate` existe** (`go run ./cmd/migrate`) y sirve para migrar a mano, pero **el harness de
+integración no lo usa**. Las migraciones son **SQL embebido con `go:embed`** y las aplica
 **golang-migrate desde el propio proceso** al arrancar (`internal/persistence/postgres/migrate.go`,
 que además reescribe la URL al esquema `pgx5`). El harness de integración llama a ese mismo migrador,
 no a un `schema.sql` paralelo: un esquema de test generado por otro camino deja de representar la

@@ -25,7 +25,7 @@ Procedimiento completo de despliegue de Empires Online: frontend Next.js en Verc
                              │  └──────────┬───────────────────┘   │
                              │             │ HTTP :8080 (loopback) │
                              │  ┌──────────▼───────────────────┐   │
-                             │  │ eo-game-server (contenedor)  │   │
+                             │  │ empires-game-server          │   │
                              │  │  /ws  /health  /ready        │   │
                              │  │  :9090 /metrics (privado)    │   │
                              │  └──────────┬───────────────────┘   │
@@ -100,9 +100,10 @@ Cada PR genera un despliegue *preview* con URL propia. Reglas:
 
 ### 2.3 Build y despliegue
 
-> **`apps/web/` ya existe en el repositorio** (Next.js 15 + React 19 + PixiJS 8, 58 tests en verde y `next build` correcto). Los scripts `web:dev` y `web:build` están declarados
-> en `package.json`, pero no hay paquete que construir. Todo el §2 describe el despliegue objetivo del
-> frontend, no uno existente.
+> **`apps/web/` existe y construye** (Next.js 15 + React 19 + PixiJS 8, 58 tests en verde, `next build`
+> correcto), y los scripts `web:dev` y `web:build` están declarados en `package.json`. Lo que **no** existe
+> es ningún despliegue: nunca se ha subido a Vercel ni a ningún otro sitio. Todo el §2 describe el
+> despliegue objetivo, no uno existente. La CI tampoco ejecuta `web:build` todavía.
 
 - Build command: `pnpm run web:build` desde la raíz del monorepo; `apps/web` como directorio de la app.
 - El paquete `@empires-online/protocol` se construye como dependencia del workspace: los esquemas Zod deben
@@ -119,90 +120,53 @@ Cada PR genera un despliegue *preview* con URL propia. Reglas:
 
 ### 3.1 Imagen Docker multi-stage
 
-Build estático de Go, imagen final mínima y usuario no root. **Sin healthcheck en la imagen**: el binario no
-tiene subcomando para consultarse a sí mismo y `distroless` no trae shell ni `curl` (ver la nota al final de
-esta sección).
+Build estático de Go, imagen final mínima y usuario no root.
 
-> **Estado: propuesta.** No existe todavía `infra/docker/game-server.Dockerfile` en el repositorio. Lo que
-> sigue es la especificación del primer Dockerfile, escrita contra la estructura real del módulo Go.
+> **El Dockerfile vive en [`infra/docker/game-server.Dockerfile`](../../infra/docker/game-server.Dockerfile)
+> y este documento NO lo reproduce.** Una copia en la documentación diverge del original en cuanto alguien
+> toca uno de los dos, y eso ya pasó aquí: durante un tiempo esta sección describió una imagen `distroless`
+> sin healthcheck y un binario llamado `eo-game-server`, mientras el archivo real usaba `alpine`, traía
+> healthcheck y llamaba al binario `empires-server`. Lo que sigue explica **por qué** es como es; el
+> **qué** se lee en el archivo.
 
-```dockerfile
-# infra/docker/game-server.Dockerfile
-# ─── Etapa 1: build ─────────────────────────────────────────────────────────
-FROM golang:1.27-alpine AS build
-WORKDIR /src
-
-# Caché de dependencias: capa estable mientras no cambien go.mod/go.sum
-COPY services/game-server/go.mod services/game-server/go.sum ./
-RUN go mod download
-
-# Basta con copiar el módulo: los JSON Schema que el servidor embebe con go:embed
-# viven DENTRO de él, en internal/protocol/schema/v1/, versionados como espejo de
-# packages/protocol. Regenerarlos es tarea de `pnpm run protocol:build`, no del build de la imagen.
-COPY services/game-server/ ./
-
-ARG VERSION=dev
-ARG COMMIT=unknown
-# CGO_ENABLED=0 → binario estático, sin dependencias de libc en la imagen final
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
-      -o /out/eo-game-server ./cmd/server
-
-# ─── Etapa 2: imagen final ──────────────────────────────────────────────────
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/eo-game-server /eo-game-server
-
-# Usuario no root (uid 65532, provisto por la variante :nonroot)
-USER nonroot:nonroot
-
-EXPOSE 8080 9090
-
-# Sin HEALTHCHECK: ver la nota de abajo.
-ENTRYPOINT ["/eo-game-server"]
-```
-
-Por qué cada decisión:
+Las decisiones que contiene, y su motivo:
 
 | Decisión | Motivo |
 |---|---|
-| `CGO_ENABLED=0` | Binario estático; permite una imagen final sin libc y elimina la clase de fallos por versión de glibc. |
-| `distroless/static-debian12` | Sin shell, sin gestor de paquetes, sin utilidades: superficie de ataque mínima. Una RCE en el proceso no encuentra herramientas con las que pivotar. |
-| `:nonroot` + `USER nonroot` | El proceso no corre como root. No necesita privilegios: no abre puertos < 1024 ni escribe fuera de su propio espacio. |
-| `-trimpath -ldflags="-s -w"` | Builds reproducibles y binario más pequeño; no se filtran rutas de la máquina de build. |
-| Copiar solo `services/game-server/` | El espejo de los JSON Schema ya está versionado dentro del módulo. Copiar además `packages/protocol/schema/` a otra ruta crearía una segunda copia que `go:embed` no mira. |
+| `CGO_ENABLED=0` | Binario estático; imagen final sin libc y sin la clase de fallos por versión de glibc. |
+| Base final `alpine:3.20` | Se eligió sobre `distroless` porque trae `wget`, y con él la imagen puede declarar su propio `HEALTHCHECK`. El coste es más superficie de ataque —hay shell— y el beneficio es que `docker compose up -d --wait` tiene algo a lo que esperar. Es un intercambio consciente, no un descuido. |
+| Usuario `empires` (uid 10001), `USER empires:empires` | El proceso no corre como root. No lo necesita: no abre puertos < 1024 ni escribe fuera de su espacio. |
+| `-trimpath -ldflags="-w -s"` | Builds reproducibles, binario más pequeño, sin rutas de la máquina de build. |
+| Copiar sólo `services/game-server/` | El espejo de los JSON Schema ya está versionado dentro del módulo (`internal/protocol/schema/v1/`). Copiar además `packages/protocol/schema/` a otra ruta crearía una segunda copia que `go:embed` no mira. |
+| **Dos binarios en la misma imagen** | Además de `empires-server` se compila `migrate` y ambos viajan juntos. A propósito: así es imposible migrar con una versión del esquema distinta de la que espera el binario que arranca después. |
+| `HEALTHCHECK` contra `/health`, no `/ready` | `/health` no toca dependencias externas. La readiness la consulta el balanceador; confundirlas provoca reinicios en cadena justo cuando la base de datos va lenta —que es el peor momento posible para reiniciar—. |
 
-**El problema del healthcheck, dicho con claridad.** El binario **no tiene subcomando `healthcheck`** —de
-hecho no tiene subcomandos: arranca el servidor y nada más—, y `distroless` no trae `curl` ni shell con la
-que emularlo. Es decir: hoy **no se puede declarar un `HEALTHCHECK` dentro de esta imagen**, y con ello
-`docker compose up -d --wait` no tiene nada a lo que esperar. Las salidas honestas son tres:
+**Sobre el healthcheck y `--wait`.** Como la imagen es `alpine` y declara `HEALTHCHECK`, el contenedor sí
+reporta estado y `docker compose up -d --wait` funciona. La sonda desde fuera del contenedor
+(`curl -fsS http://127.0.0.1:8080/ready`, Paso 5 de §6) sigue siendo necesaria y **no es redundante**:
+comprueba cosa distinta —que las dependencias respondan— y desde donde importa, que es la red del host.
 
-1. **Sondear desde fuera del contenedor**, que es lo que ya hacen el Paso 5 de §6 y la monitorización:
-   `curl -fsS http://127.0.0.1:8080/ready` desde el host. Es suficiente para desplegar y verificar.
-2. Usar una imagen base con un cliente HTTP mínimo, aceptando algo más de superficie.
-3. Añadir el subcomando `healthcheck` al binario, que es la opción limpia y la que devuelve el `--wait`.
-   **TBD (fuera de MVP).**
-
-Mientras se elija una, ni el Dockerfile ni el compose deben declarar un `HEALTHCHECK` que no existe: un
-healthcheck que apunta a un comando inexistente marca el contenedor como *unhealthy* para siempre.
-
-Igual de importante: **`version` y `commit` inyectados por `-ldflags` no se registran ni se exponen hoy**.
+Igual de importante: **`version` y `commit` no se inyectan hoy.** El Dockerfile real no declara los `ARG`
+ni pasa `-X main.version=...`, así que el binario no conoce su propia versión.
 El servidor no imprime su versión al arrancar ni la publica en `/health`. Saber qué SHA corre durante un
 incidente sale del registro de despliegues y de la etiqueta de la imagen (§3.2), no del proceso. Cablearlos
 al log de arranque y al cuerpo de `/health` es trabajo pendiente: **TBD (fuera de MVP)**.
 
 Build y publicación:
 
+Desde la **raíz** del repositorio, porque el contexto de build incluye `services/game-server/`:
+
 ```bash
-docker build \
-  -f infra/docker/game-server.Dockerfile \
-  --build-arg VERSION="$(git describe --tags --always)" \
-  --build-arg COMMIT="$(git rev-parse --short HEAD)" \
-  -t <registry>/eo-game-server:"$(git rev-parse --short HEAD)" \
-  -t <registry>/eo-game-server:latest \
-  .
-docker push <registry>/eo-game-server:"$(git rev-parse --short HEAD)"
+docker build -f infra/docker/game-server.Dockerfile -t <registry>/empires-online/game-server:"$(git rev-parse --short HEAD)" -t <registry>/empires-online/game-server:latest .
 ```
+
+```bash
+docker push <registry>/empires-online/game-server:"$(git rev-parse --short HEAD)"
+```
+
+Sin `--build-arg VERSION` ni `COMMIT`: el Dockerfile no los declara, y pasarlos sólo produce un aviso de
+argumento no usado. Cuando se cablee la versión al binario habrá que añadir ambos en los dos sitios a la
+vez.
 
 **Las etiquetas de despliegue son inmutables y por commit.** `latest` existe por comodidad; el
 `docker-compose` de producción referencia **siempre** el SHA, porque un rollback necesita una etiqueta que
@@ -216,8 +180,8 @@ name: empires-online
 
 services:
   game-server:
-    image: <registry>/eo-game-server:${EO_IMAGE_TAG}
-    container_name: eo-game-server
+    image: <registry>/empires-online/game-server:${EO_IMAGE_TAG}
+    container_name: empires-game-server
     env_file: /etc/empires-online/game-server.env   # permisos 0600, propietario root
     ports:
       - "127.0.0.1:8080:8080"    # solo loopback: el proxy es el único que entra
@@ -515,9 +479,9 @@ sleep 5
 curl -fsS http://127.0.0.1:9090/metrics | grep '^eo_game_tick_duration_seconds_count'
 
 # Las migraciones se aplicaron y el mundo se rehidrató sin sorpresas
-docker logs eo-game-server 2>&1 | grep -E '"msg":"(migraciones aplicadas|esquema ya al día)"' | tail -1
-docker logs eo-game-server 2>&1 | grep '"msg":"mundo rehidratado"' | tail -1
-docker logs eo-game-server 2>&1 | grep '"msg":"arrancando Empires Online game server"' | tail -1
+docker logs empires-game-server 2>&1 | grep -E '"msg":"(migraciones aplicadas|esquema ya al día)"' | tail -1
+docker logs empires-game-server 2>&1 | grep '"msg":"mundo rehidratado"' | tail -1
+docker logs empires-game-server 2>&1 | grep '"msg":"arrancando Empires Online game server"' | tail -1
 
 # TLS y WSS desde fuera
 curl -fsSI https://game.<dominio>/ | head -1
@@ -528,10 +492,26 @@ La línea `mundo rehidratado` es la más informativa del arranque: trae `units`,
 cero significa polilíneas inválidas en la base y merece investigación, aunque el servidor haya arrancado
 bien. El SHA que corre **no** sale de los logs (§3.1): sale de `.image-tag` y del registro de despliegues.
 
-Cierre de la verificación: **una conexión real de un jugador**. Abrir el cliente, comprobar
-`session.hello → session.welcome`, recibir `world.snapshot`, emitir un `unit.move` y ver
-`unit.move.accepted` seguido de `unit.movement.started` y, al llegar, `unit.movement.completed`. Un
-despliegue no está verificado hasta que un movimiento se ha completado de extremo a extremo.
+Cierre de la verificación: **una conexión real de un jugador**. Un despliegue no está verificado hasta que
+un movimiento se ha completado de extremo a extremo, y eso está automatizado:
+
+```bash
+node scripts/smoke.mjs --url https://game.<dominio>
+```
+
+El script recorre el vertical slice completo contra el despliegue: `/health`, `/ready`, alta o login,
+`session.hello → session.welcome`, `world.snapshot`, un `unit.move` con su `unit.movement.started`, y
+—esto es lo que ninguna sonda HTTP puede comprobar— **cierra la conexión a mitad de trayecto, espera sin
+cliente conectado más allá de la hora de llegada, y reconecta para verificar que la unidad llegó**. Si el
+mundo sólo simulara mientras hay alguien mirando, es aquí donde se vería.
+
+Sale con código distinto de cero al primer fallo, así que sirve tal cual como puerta en un script de
+despliegue. Necesita Node 22 o superior y no tiene dependencias. Con `--verbose` imprime cada mensaje del
+protocolo, que es lo que se quiere cuando falla.
+
+Crea un jugador `smoke_runner` con su ciudad la primera vez y lo reutiliza después; en producción conviene
+darle un nombre propio con `EO_SMOKE_USER` y `EO_SMOKE_PASSWORD`, y tener presente que **funda una ciudad
+real en el mundo real**. No es un jugador de mentira: el sistema no tiene ninguna noción de eso.
 
 ### Paso 6 — Observar 15 minutos
 

@@ -89,6 +89,16 @@ Sin `EO_REDIS_URL`, el servidor usa **estado caliente en proceso**: da las
 mismas garantías que Redis mientras haya una sola instancia, y la configuración
 lo rechaza en producción. Aplica el esquema con `pnpm run db:migrate`.
 
+Si quieres un Redis de verdad sin Docker y tienes WSL, basta con
+`sudo apt-get install -y redis-server` dentro de la distro y arrancarlo con
+`redis-server --daemonize yes`. Desde Windows se alcanza en `localhost:6379`,
+así que `EO_REDIS_URL=redis://localhost:6379/0` funciona tal cual. Es también
+lo que hace falta para ejecutar `-race` y los tests de integración de Redis:
+ver [`docs/operations/local-development.md`](docs/operations/local-development.md) §3-bis.7.
+
+Con Docker descartado, la consola de la base se abre con `pnpm run pg:psql`
+(los scripts `db:psql` y `db:redis` entran al contenedor y aquí no sirven).
+
 Si en cambio prefieres usar un PostgreSQL que ya administras, `psql -U postgres
 -f scripts/setup-local-db.sql` crea el rol y las bases en él.
 
@@ -129,6 +139,19 @@ pnpm run web:dev         # http://localhost:3000
 Pulsa **Fundar imperio** para crear un jugador con su ciudad y sus tres aldeanos.
 Haz clic en un aldeano para seleccionarlo y en el mapa para ordenarle moverse.
 
+### 6. Comprobar que todo funciona
+
+```bash
+pnpm run smoke
+```
+
+Recorre el flujo completo contra el servidor que acabas de arrancar: alta,
+handshake, snapshot, una orden de movimiento y —lo que ninguna sonda HTTP puede
+comprobar— **cierra la conexión a mitad de trayecto, espera sin cliente
+conectado, y reconecta para verificar que la unidad llegó igualmente**. Si eso
+pasa, el sistema hace lo que promete. Sale con código distinto de cero al primer
+fallo, así que sirve como puerta en un script de despliegue.
+
 ---
 
 ## Comandos
@@ -138,6 +161,8 @@ Haz clic en un aldeano para seleccionarlo y en el mapa para ordenarle moverse.
 | `pnpm run db:up` / `db:down` / `db:reset` | Infraestructura en Docker (`db:reset` **borra los datos**) |
 | `pnpm run db:psql` / `db:redis` | Consola de PostgreSQL o Redis dentro del contenedor |
 | `pnpm run pg:init` / `pg:start` / `pg:stop` / `pg:status` | Cluster de PostgreSQL propio, sin Docker ni administrador |
+| `pnpm run pg:psql` | Consola de PostgreSQL contra ese cluster (acepta argumentos tras `--`) |
+| `pnpm run smoke` | Vertical slice completo contra un servidor vivo. `--url` para apuntar a otro despliegue |
 | `pnpm run db:migrate` / `db:version` | Aplica el esquema / muestra la versión aplicada |
 | `pnpm run docs:check` | Verifica enlaces, invariantes registrados y ADR citados |
 | `pnpm run protocol:build` | Regenera el JSON Schema desde los esquemas Zod |
