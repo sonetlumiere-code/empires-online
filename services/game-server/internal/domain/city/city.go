@@ -134,3 +134,38 @@ func ShouldEngageProtection(state PresenceState, lastOfflineAt *time.Time, coold
 	}
 	return !now.Before(lastOfflineAt.Add(cooldown))
 }
+
+// UrbanRadius es el radio de la zona urbana amurallada, en tiles.
+//
+// Con radio 1 el Centro Urbano ocupa un cuadrado de 3×3 alrededor del centro.
+// Vive aquí y no en `founding` porque no es una regla de la fundación sino una
+// propiedad de la ciudad: la usan también la ocupación del mundo y las
+// condiciones de entrada en guarnición, y tenerla en tres sitios garantizaba que
+// un día dejaran de coincidir.
+const UrbanRadius int32 = 1
+
+// UrbanBounds devuelve el rectángulo, inclusivo, que ocupa la zona urbana.
+func (c *City) UrbanBounds() (minX, minY, maxX, maxY int32) {
+	return c.CenterX - UrbanRadius, c.CenterY - UrbanRadius,
+		c.CenterX + UrbanRadius, c.CenterY + UrbanRadius
+}
+
+// Occupies indica si el tile cae dentro de la zona urbana.
+func (c *City) Occupies(x, y int32) bool {
+	minX, minY, maxX, maxY := c.UrbanBounds()
+	return x >= minX && x <= maxX && y >= minY && y <= maxY
+}
+
+// IsAdjacent indica si el tile toca la zona urbana en cualquiera de las ocho
+// direcciones, sin estar dentro de ella.
+//
+// Es la misma noción de vecindad que usa el movimiento (canon §4): las diagonales
+// cuentan. Un tile DENTRO de la zona no es adyacente — además de que la zona está
+// bloqueada y ninguna unidad puede estar ahí.
+func (c *City) IsAdjacent(x, y int32) bool {
+	if c.Occupies(x, y) {
+		return false
+	}
+	minX, minY, maxX, maxY := c.UrbanBounds()
+	return x >= minX-1 && x <= maxX+1 && y >= minY-1 && y <= maxY+1
+}

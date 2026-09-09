@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
@@ -24,8 +25,10 @@ type Site struct {
 
 // Parámetros del asentamiento inicial.
 const (
-	// townCenterRadius: el Centro Urbano ocupa un cuadrado de 3x3 (radio 1).
-	townCenterRadius int32 = 1
+	// townCenterRadius: el radio de la zona urbana. NO se define aquí: es una
+	// propiedad de la ciudad y vive en su dominio, para que la fundación, la capa
+	// de ocupación y las condiciones de guarnición no puedan discrepar.
+	townCenterRadius = city.UrbanRadius
 	// clearRadius: alrededor debe haber terreno despejado para la zona amurallada.
 	clearRadius int32 = 3
 	// spawnRadius: distancia a la que nacen los aldeanos, justo fuera de la muralla.

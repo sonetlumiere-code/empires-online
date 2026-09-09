@@ -35,7 +35,10 @@ type Deps struct {
 	Broadcaster Broadcaster
 	Persister   Persister
 	Repos       Repositories
-	Log         *slog.Logger
+	// Treaties caduca los tratados vencidos. Opcional: sin él, la caducidad
+	// simplemente no se evalúa, que es lo que ocurre en los tests de simulación.
+	Treaties TreatyExpirer
+	Log      *slog.Logger
 
 	// ProtectionCooldown es el tiempo desde la desconexión hasta PROTECTED.
 	ProtectionCooldown time.Duration
@@ -61,6 +64,10 @@ type Simulation struct {
 	// disconnectedAt registra cuándo se quedó sin sesiones un jugador, para
 	// aplicar el margen de reconexión antes de degradar su ciudad.
 	disconnectedAt map[uuid.UUID]time.Time
+
+	// lastTreatySweep es cuándo se buscaron tratados vencidos por última vez.
+	// Sólo lo toca la goroutine del game loop.
+	lastTreatySweep time.Time
 
 	// Contadores de observabilidad del último tick.
 	LastPathfindingCalls int
@@ -379,7 +386,10 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 		delete(s.disconnectedAt, playerID)
 	}
 
-	// 2. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
+	// 2. Caducidad de tratados. Se encola, no se ejecuta: el tick no hace I/O.
+	s.sweepTreaties(now)
+
+	// 3. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
 	s.state.EachCity(func(c *city.City) bool {
 		if city.ShouldEngageProtection(c.PresenceState, c.LastOfflineAt, s.deps.ProtectionCooldown, now) {
 			s.applyPresence(c, city.PresenceProtected, now)

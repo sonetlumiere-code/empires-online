@@ -3,7 +3,7 @@
 Cómo se verifica Empires Online: los seis niveles de test del canon, qué garantiza cada uno, las reglas duras que ningún cambio puede saltarse, las convenciones de nombres y fixtures, los objetivos de cobertura y el pipeline de CI que decide si un pull request es válido.
 
 > **Estado real.** Todos los niveles del MVP **se ejecutan y pasan hoy** (§2.2): `unit`, `contract`,
-> `simulation`, `e2e de transporte`, `integration` —30 tests contra PostgreSQL y Redis reales— y
+> `simulation`, `e2e de transporte`, `integration` —44 tests contra PostgreSQL y Redis reales— y
 > `recovery`, en sus dos mitades. El detector de carreras corre sobre toda la suite. `load` sigue fuera
 > del MVP.
 >
@@ -88,7 +88,7 @@ Lo que hay hoy en el árbol, con nombre de archivo. Nada de esta tabla es aspira
 
 | Nivel | Archivos reales | Estado |
 |---|---|---|
-| **unit** | `internal/game/world/world_test.go`, `internal/pathfinding/astar_test.go`, `internal/domain/movement/path_test.go`, `internal/domain/city/city_test.go`, `internal/domain/territory/{territory,seed}_test.go` (30), `internal/auth/ticket_test.go`, `internal/config/config_test.go`, `internal/config/dotenv_test.go`, `internal/persistence/memory/memory_test.go` | **En verde** (`pnpm run server:test`) |
+| **unit** | `internal/game/world/world_test.go`, `internal/pathfinding/astar_test.go`, `internal/domain/movement/path_test.go`, `internal/domain/city/city_test.go`, `internal/domain/territory/{territory,seed}_test.go` (30), `internal/domain/diplomacy/treaty_test.go` (19), `internal/domain/garrison/garrison_test.go` (22), `internal/auth/ticket_test.go`, `internal/config/config_test.go`, `internal/config/dotenv_test.go`, `internal/persistence/memory/memory_test.go` | **En verde** (`pnpm run server:test`) |
 | **contract** | `internal/protocol/contract_test.go` (Go) y `packages/protocol/src/v1/protocol.test.ts` (18 tests Vitest) | **En verde** (`pnpm run server:test` + `pnpm run protocol:test`) |
 | **simulation** | `internal/game/simulation/simulation_test.go` (17 tests: el vertical slice, presencia/protección y los casos de recuperación en RAM sobre `simulation.Hydrate`) | **En verde** |
 | **e2e de transporte** | `internal/websocket/e2e_test.go` (11 tests): el vertical slice sobre un WebSocket real, con dobles en memoria de PostgreSQL y del estado caliente. `internal/websocket/hub_test.go` (6) cubre el reparto por chunks y su deduplicación por sesión | **En verde**. Es el nivel que encontró que `r.Context()` mataba la sesión tras el primer mensaje |

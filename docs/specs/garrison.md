@@ -19,11 +19,15 @@ Guarnecer es meter una unidad **dentro** de una ciudad: la unidad abandona el ta
 visible y deja de ser ordenable hasta que salga. Es la primera pieza de juego que depende de la
 diplomacia, porque alojar unidades de otro jugador exige un `Treaty` vigente entre ambos.
 
-En el MVP las **tablas `garrisons` y `treaties` existen** (migración `000001_initial_schema`), el
-estado `GARRISONED` existe en el dominio y en el protocolo, pero **la lógica de guarnición está
-diferida**: ningún proceso del servidor escribe hoy una fila de `garrisons`. El valor de escribir
-esta spec ahora es cerrar el modelo de ownership, visibilidad y autorización cruzada antes de que
-existan más sistemas apoyados sobre él.
+**Estado: reglas implementadas, sin puerta de entrada desde el cliente.** El dominio decide
+(`internal/domain/garrison`), la persistencia ejecuta de forma transaccional
+(`postgres.GarrisonRepo`) y ambas cosas están probadas contra PostgreSQL real. Lo que no existe es un
+comando de red que lo dispare: el protocolo v1 no define `unit.garrison`, y esta spec no lo inventa
+(§2). Hoy la guarnición se alcanza por vía administrativa y desde los tests.
+
+Esa asimetría es deliberada. Añadir dos mensajes al protocolo es barato; decidir cómo se juega con
+ellos no lo es. El modelo de ownership, visibilidad y autorización cruzada queda cerrado y verificado
+antes de que existan más sistemas apoyados sobre él, que es de lo que se trataba.
 
 ## 2. Scope
 
@@ -39,11 +43,15 @@ existan más sistemas apoyados sobre él.
 
 **Fuera de MVP**
 
-- **El servicio de dominio de entrada y salida de guarnición: `TBD (fuera de MVP)`.** Las reglas de
-  §6 describen el diseño objetivo; no hay código que las ejecute todavía.
 - Comandos de red `unit.garrison` / `unit.ungarrison`: **TBD (fuera de MVP)**. El protocolo v1 fija
   cinco comandos cliente→servidor (`session.hello`, `session.ping`, `session.view`, `unit.move`,
   `unit.cancel_move`) y ninguno guarnece.
+
+  **Consecuencia, dicha con claridad:** las reglas de §6.1 y §6.3 están implementadas y probadas
+  (`internal/domain/garrison`, y su ejecución transaccional en `postgres.GarrisonRepo`), pero **ningún
+  jugador puede alcanzarlas todavía**. Se invocan por vía administrativa y desde los tests. Añadir los
+  dos comandos es una decisión de protocolo que esta spec no toma por su cuenta; cuando se tome, el
+  dominio ya está debajo.
 - Diplomacia completa: proponer, aceptar, rechazar, renegociar o romper tratados desde el cliente;
   caducidad automática; notificaciones de diplomacia.
 - **Expulsión diferida por ruptura de tratado: `TBD (fuera de MVP)`.** La decisión está tomada (§6.4)

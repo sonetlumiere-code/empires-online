@@ -29,8 +29,8 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 | `territories` | MVP: **activa** | Sembrada al primer arranque por el Game Server, no por una migración: la geometría debe caber en un mundo cuyas dimensiones son configuración |
 | `territory_control` | MVP: **activa** | Write-through transaccional en la fundación de la ciudad, con concurrencia optimista sobre `version` |
 | `safe_zones` | MVP: creada con lógica diferida | — |
-| `treaties` | MVP: creada con lógica diferida | — |
-| `garrisons` | MVP: creada con lógica diferida | — |
+| `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
+| `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. Sin comando de red todavía |
 | `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |

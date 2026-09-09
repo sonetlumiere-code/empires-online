@@ -891,11 +891,18 @@ write-through para cambios de ownership.
 
 ## M7 — Diplomacy foundation
 
-**Estado: PENDIENTE.** Las tablas `treaties` y `garrisons` existen desde la migración
-`000001_initial_schema` —con el CHECK de par canónico `player_a_id < player_b_id`, el CHECK
-`player_a_id <> player_b_id`, el índice `treaties_one_active_per_pair_and_type` y `garrisons_city_idx`— y
-los códigos `TREATY_REQUIRED` y `UNIT_GARRISONED` están en el catálogo. **No hay dominio de diplomacia**:
-`internal/domain/diplomacy` no existe todavía.
+**Estado: las reglas están implementadas y verificadas; falta la puerta de entrada.** Existen
+`internal/domain/diplomacy` (ciclo de vida del tratado) e `internal/domain/garrison` (condiciones de
+entrada y salida), su ejecución transaccional en `postgres.TreatyRepo` y `postgres.GarrisonRepo`, y el
+barrido de caducidad enganchado a la fase 5 del tick. Todo con tests contra PostgreSQL real.
+
+**Lo que no existe es un comando de red que lo dispare.** El protocolo v1 define cinco mensajes
+cliente→servidor y ninguno guarnece; la [spec de guarnición](../specs/garrison.md) lo declara fuera de
+MVP y dice explícitamente que no se inventa aquí. Hoy la guarnición se alcanza por vía administrativa y
+desde los tests, que es exactamente lo que este milestone se propuso validar: *«los treaties se crean
+por vía administrativa o de seed, y lo que se valida es su efecto sobre el dominio»*.
+
+Los entregables 6 y el test de contrato dependen de ese comando y quedan pendientes con él.
 
 **Objetivo.** Persistir treaties y garrisons y hacer que condicionen de forma efectiva qué puede
 hacer un jugador con las unidades de otro y en la ciudad de otro.
@@ -915,38 +922,71 @@ efecto sobre el dominio.
    un tratado activo por par y tipo (`treaties_one_active_per_pair_and_type`).
 2. **HECHO** — Migración de `garrisons`, que registra qué unidad está guarnecida en qué ciudad y desde
    cuándo, con `garrisons_city_idx`.
-3. **PENDIENTE** — `internal/domain/diplomacy`: ciclo de vida del treaty y regla dura de que **solo un
+3. **HECHO** — `internal/domain/diplomacy`: ciclo de vida del treaty y regla dura de que **solo un
    treaty `ACTIVE`** habilita garrison. Un treaty `PROPOSED`, `EXPIRED` o `BROKEN` nunca habilita nada.
-4. **PENDIENTE** — Regla de garrison: una unidad puede guarnecerse en una ciudad ajena si y solo si existe
+4. **HECHO** — Regla de garrison: una unidad puede guarnecerse en una ciudad ajena si y solo si existe
    un treaty `ACTIVE` entre ambos jugadores con `allows_garrison` verdadero. En caso contrario,
    `TREATY_REQUIRED`.
-5. **PARCIAL** — Transición de estado de la unidad a `GARRISONED`: el valor existe en el enum, en el
-   `CHECK` y en la validación de `unit.move`, que ya rechaza con `UNIT_GARRISONED`. **Falta** el resto:
-   guarnecer una unidad y cancelar en la misma transacción su movimiento `ACTIVE`, respetando
-   `EJE-MOVE`.
-6. **PENDIENTE** — Efecto en el interest management: una unidad que entra en garrison genera
-   `entity.despawn` con `reason: GARRISONED` para los observadores que dejan de verla, y su ciudad emite
-   `city.update`. El valor `GARRISONED` de `entity.despawn.payload.reason` ya está en el protocolo.
-7. **PENDIENTE** — Persistencia transaccional de treaties y garrisons, y registro de los cambios en
+5. **HECHO** — Transición de estado de la unidad a `GARRISONED`, con la cancelación de su movimiento
+   `ACTIVE` en la **misma transacción** (`postgres.GarrisonRepo.Enter`), respetando `EJE-MOVE`. Una
+   unidad `GARRISONED` con un movimiento vivo sería un estado que ninguna regla sabe interpretar: el
+   bucle la seguiría moviendo mientras el resto del sistema la cree dentro de una ciudad. `unit.move`
+   sobre una guarnecida ya rechazaba con `UNIT_GARRISONED`.
+6. **BLOQUEADO por el entregable que no existe** — Efecto en el interest management: una unidad que
+   entra en garrison genera `entity.despawn` con `reason: GARRISONED` para los observadores que dejan
+   de verla, y su ciudad emite `city.update`. El valor `GARRISONED` de `entity.despawn.payload.reason`
+   ya está en el protocolo.
+
+   No se implementa porque **no hay ningún disparador en vivo**: sin un comando de red que guarnezca,
+   la entrada sólo ocurre por vía administrativa, fuera del game loop y sin sesiones a las que
+   notificar. Escribir el emisor ahora sería código muerto que nadie ejecuta y que envejecería sin que
+   ningún test lo protegiera. Se implementa a la vez que el comando.
+7. **HECHO** — Persistencia transaccional de treaties y garrisons, y registro de los cambios en
    `world_events`.
-8. **PENDIENTE** — Expiración de treaties evaluada en la fase 5 del tick, con transición
-   `ACTIVE → EXPIRED` y la consecuencia sobre los garrisons vigentes que la spec determine.
-9. **PENDIENTE** — Verificación de que `CITY_PROTECTED` y `TREATY_REQUIRED` se aplican en el orden
-   correcto cuando ambos podrían aplicar.
+8. **HECHO en su parte implementable** — Expiración de treaties evaluada en la fase 5 del tick, con
+   transición `ACTIVE → EXPIRED`.
+
+   El tick **no** consulta la base: encola el barrido en la cola de persistencia y lo hace **muestreado
+   a una vez por segundo**, no en cada tick. A 10 Hz serían diez consultas por segundo para descartar
+   casi siempre cero filas; un tratado que caduca un segundo tarde no cambia nada del juego, ese
+   tráfico sí. Cada tratado caduca en su propia transacción: uno que falle porque otra vía ya lo
+   terminó no debe impedir que caduquen los demás.
+
+   **La consecuencia sobre los garrisons vigentes NO se implementa**, y no es un olvido: la spec de
+   guarnición elige *expulsión diferida con periodo de gracia* (§6.4) y a continuación explica por qué
+   está fuera de MVP —`garrisons` no tiene dónde persistir el vencimiento de la gracia, y la duración
+   exigiría una variable `EO_` que el canon no define y que la spec se niega a inventar—. Habilitarla
+   pide una migración aditiva y una decisión de configuración.
+9. **HECHO por construcción** — `CITY_PROTECTED` y `TREATY_REQUIRED` no compiten: RN-GARR-009 establece
+   que la protección offline del anfitrión **no** bloquea la guarnición, porque la protección es contra
+   agresión y no contra logística. `CanEnter` no consulta el estado de presencia de la ciudad en ningún
+   punto, y un test lo fija (`TestLaProteccionOfflineDelAnfitrionNoBloqueaLaEntrada`). No hay orden que
+   verificar porque no hay concurrencia entre ambos códigos.
 
 ### Tests
 
-- *unit*: la máquina de estados del treaty acepta `PROPOSED → ACTIVE`, `ACTIVE → EXPIRED` y
-  `ACTIVE → BROKEN`, y rechaza el resto.
-- *unit*: `allows_garrison` verdadero con estado distinto de `ACTIVE` no habilita garrison.
-- *integration*: garrison sin treaty devuelve `TREATY_REQUIRED`; con treaty `ACTIVE` y
-  `allows_garrison` la unidad queda `GARRISONED` y persistida.
-- *integration*: `unit.move` sobre una unidad `GARRISONED` devuelve `UNIT_GARRISONED`.
-- *integration*: guarnecer una unidad en movimiento cancela su movimiento a `CANCELLED` en la misma
-  transacción.
-- *integration*: la expiración de un treaty se detecta en el tick y transiciona a `EXPIRED`.
-- *recovery*: un reinicio conserva treaties y garrisons y no resucita movimientos cancelados.
-- *contract*: los `entity.despawn` y `city.update` derivados validan contra el JSON Schema.
+55 tests nuevos: 19 en `internal/domain/diplomacy`, 22 en `internal/domain/garrison`, 14 de integración
+contra PostgreSQL real y 2 de simulación sobre el muestreo del barrido.
+
+- ✔ *unit*: la máquina de estados acepta `PROPOSED → ACTIVE`, `ACTIVE → EXPIRED` y `ACTIVE → BROKEN`, y
+  rechaza el resto. El test **enumera los dieciséis pares posibles** y rechaza los trece restantes, en
+  lugar de escribir a mano una lista negra que dejaría fuera justo los casos que a nadie se le ocurren.
+- ✔ *unit*: `allows_garrison` verdadero con estado distinto de `ACTIVE` no habilita garrison, para los
+  cuatro estados y los tres tipos de tratado.
+- ✔ *integration*: garrison sin treaty devuelve el rechazo por tratado y **no escribe nada** —la
+  transacción revierte entera—; con treaty `ACTIVE` y `allows_garrison` la unidad queda `GARRISONED`,
+  releída de la base y no del objeto en memoria.
+- ✔ *integration*: guarnecer una unidad en movimiento lo deja en `CANCELLED` y sin ninguno `ACTIVE`, en
+  la misma transacción.
+- ✔ *integration*: un tratado vencido se detecta y transiciona a `EXPIRED`, conservando `expires_at`
+  como prueba de cuándo *debía* caducar y no de cuándo se detectó.
+- ✔ *integration*: el índice único parcial impide un segundo tratado activo del mismo tipo entre el
+  mismo par, y admite otro de tipo distinto.
+- ✔ *recovery*: un reinicio conserva treaties y garrisons y no resucita movimientos cancelados.
+- ✔ *simulation*: el barrido de caducidad se **muestrea** y no ocurre en cada tick.
+- ✔ *unit*: `unit.move` sobre una unidad `GARRISONED` devuelve `UNIT_GARRISONED` (ya existía).
+- ○ *contract*: los `entity.despawn` y `city.update` derivados. **Pendiente junto al entregable 6**: no
+  hay disparador que los emita, así que no hay nada que validar todavía.
 
 ### Documentación actualizada al cerrar
 

@@ -115,6 +115,7 @@ func run() error {
 	movementRepo := postgres.NewMovementRepo(store)
 	worldRepo := postgres.NewWorldRepo(store)
 	territoryRepo := postgres.NewTerritoryRepo(store)
+	treatyRepo := postgres.NewTreatyRepo(store)
 	bootstrapper := postgres.NewBootstrapper(store, playerRepo, cityRepo, unitRepo, territoryRepo)
 
 	sysClock := clock.NewSystemClock()
@@ -185,6 +186,7 @@ func run() error {
 		Broadcaster:        hub,
 		Persister:          queue,
 		Repos:              gameStore,
+		Treaties:           treatyRepo,
 		Log:                log,
 		ProtectionCooldown: cfg.CityOfflineProtectionCooldwn,
 		DisconnectGrace:    cfg.PresenceTTL,
