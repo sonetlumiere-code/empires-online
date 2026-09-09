@@ -21,6 +21,7 @@
     "pg:start": "node scripts/pg-local.mjs start",
     "pg:stop": "node scripts/pg-local.mjs stop",
     "pg:status": "node scripts/pg-local.mjs status",
+    "pg:psql": "node scripts/pg-local.mjs psql",
     "pg:destroy": "node scripts/pg-local.mjs destroy",
     "protocol:build": "pnpm --filter @empires-online/protocol run build",
     "protocol:test": "pnpm --filter @empires-online/protocol run test",

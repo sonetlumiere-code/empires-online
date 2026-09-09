@@ -5,8 +5,8 @@ Arquitectura interna del proceso autoritativo `services/game-server`: paquetes y
 > Estado: **implementado**. El servicio compila (`go build ./...`), pasa `go vet` y su suite de tests
 > unitarios está en verde. Lo que aquí se describe es el código que existe; lo que todavía no existe se
 > marca explícitamente como **fuera de MVP** o **TBD**. Los tests de integración contra PostgreSQL y
-> Redis reales están escritos; los de **PostgreSQL están ejecutados y en verde** (12 tests) contra un
-> cluster local, y los de **Redis siguen sin ejecutarse** porque no hay Redis en la máquina (§8).
+> Redis reales están escritos y **ambos ejecutados y en verde**: 12 tests contra un cluster PostgreSQL
+> local y 9 contra un Redis real en WSL, todos con el detector de carreras activo (§8).
 > Documentos relacionados: [game-loop.md](./game-loop.md) · [pathfinding.md](./pathfinding.md) ·
 > [specs funcionales](../specs/README.md) · [esquema de base de datos](../database/schema.md) ·
 > [invariantes](../invariants/README.md) · [estrategia de tests](../testing/strategy.md) ·
@@ -581,16 +581,27 @@ veces seguidas para descubrir tres variables mal puestas es una pérdida de tiem
 ## 8. Entorno de desarrollo
 
 - Windows 10, **Node v22.17.1**, **pnpm 10.25.0**, **git 2.38.1**. Task runner: **pnpm scripts**
-  (`pnpm run db:up`, `pnpm run server:test`). **No hay Makefile**: `make` no está instalado.
+  (`pnpm run pg:start`, `pnpm run server:test`). **No hay Makefile**: `make` no está instalado.
 - **Go 1.27.0 instalado** en `C:\Program Files\Go` (vía `winget install --id GoLang.Go`). `go.mod`
-  declara `go 1.23` como versión mínima del lenguaje, no como toolchain.
-- Docker CLI 20.10.22 + Compose v2.15.1 instalados, pero el **daemon de Docker Desktop no arrancó** en
-  esta máquina. Consecuencia honesta: los tests de integración contra PostgreSQL y Redis reales
-  (`internal/persistence/postgres/integration_test.go`,
-  `internal/persistence/redis/redis_integration_test.go`) están **escritos pero no ejecutados**. La
-  suite unitaria sí está en verde.
-- `psql`, `redis-cli` y `gh` no están instalados: el acceso a las bases se hace vía
-  `docker compose exec`. Ver [../operations/local-development.md](../operations/local-development.md).
+  declara **`go 1.25.11`**, y no por elección: lo imponen las dependencias —`pgx/v5` y
+  `prometheus/client_golang` declaran `go 1.25.0`— de modo que bajar la directiva a mano no funciona,
+  `go mod tidy` la restaura. Por eso la CI lee la versión con `go-version-file` en lugar de fijarla:
+  duplicar ese número en dos sitios garantiza que un día diverjan, y ya ocurrió una vez.
+- **Docker no se usa** en esta máquina: produce pantallazos azules por consumo de RAM (y el daemon
+  tampoco llegó a arrancar). La infraestructura local es un cluster PostgreSQL propio en `.pgdata/`
+  (puerto 5433) y Redis dentro de WSL.
+- **WSL: Ubuntu 22.04.1 (WSL 1)** con `gcc 11.4.0` y Go 1.27.0 en `$HOME/golang`. Es donde se ejecutan
+  las dos comprobaciones que Windows no puede hacer: el detector de carreras —`-race` necesita cgo— y
+  los tests de integración contra un Redis real. Desde WSL 1 `localhost:5433` alcanza el PostgreSQL de
+  Windows, así que la suite completa corre desde allí.
+- **Los tests de integración están ejecutados y en verde**: 12 contra PostgreSQL
+  (`internal/persistence/postgres/integration_test.go`) y 9 contra Redis
+  (`internal/persistence/redis/redis_integration_test.go`), todos con `-race`.
+- `psql`, `initdb` y `pg_ctl` están en `C:\Program Files\PostgreSQL\16\bin`, fuera del `PATH`;
+  `pnpm run pg:psql` los localiza y abre una sesión contra el cluster local. Ojo con la distinción:
+  los scripts **`db:*`** pasan todos por `docker compose exec` y aquí no sirven; los **`pg:*`** operan
+  el cluster propio. `redis-cli` vive en WSL. `gh` 2.100.0 está instalado pero **sin sesión iniciada**.
+  Ver [../operations/local-development.md](../operations/local-development.md).
 
 ---
 

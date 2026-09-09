@@ -174,11 +174,42 @@ function destroy() {
   console.log('Cluster borrado. Recréalo con "init".');
 }
 
-const commands = { init, start, stop, status, destroy };
+// Abre una sesión interactiva contra este cluster. Existe porque los scripts
+// `db:*` del package.json pasan todos por `docker compose exec`, y en una
+// máquina sin Docker no había ninguna forma corta de llegar a la base.
+function psql() {
+  if (!existsSync(dataDir)) {
+    fail('No hay cluster local. Créalo con: node scripts/pg-local.mjs init');
+  }
+  if (!isRunning()) {
+    fail('El cluster está detenido. Arráncalo con: node scripts/pg-local.mjs start');
+  }
+
+  // Lo que venga después del comando se pasa tal cual a psql, lo que permite
+  //   pnpm run pg:psql -- -d empires_test -c "select count(*) from units"
+  //
+  // El `--` separador lo consume pnpm en Unix pero lo reenvía literal en
+  // Windows; si llegara hasta psql, éste trataría todo lo siguiente como
+  // argumentos posicionales y los ignoraría con una advertencia confusa.
+  const extra = process.argv.slice(3);
+  if (extra[0] === '--') extra.shift();
+  const traeBase = extra.some((a) => a === '-d' || a === '--dbname' || a.startsWith('--dbname='));
+
+  const result = run('psql', [
+    '-h', 'localhost',
+    '-p', String(PORT),
+    '-U', ROLE,
+    ...(traeBase ? [] : ['-d', DATABASES[0]]),
+    ...extra,
+  ]);
+  process.exit(result.status ?? 0);
+}
+
+const commands = { init, start, stop, status, destroy, psql };
 const command = process.argv[2];
 
 if (!command || !(command in commands)) {
-  console.log('Uso: node scripts/pg-local.mjs <init|start|stop|status|destroy>');
+  console.log('Uso: node scripts/pg-local.mjs <init|start|stop|status|destroy|psql>');
   process.exit(command ? 1 : 0);
 }
 commands[command]();

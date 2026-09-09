@@ -25,23 +25,33 @@ Lo siguiente son hechos verificados en esta máquina, no supuestos. Cualquier de
 | Go | **OK, instalado** | 1.27.0 en `C:\Program Files\Go` | — (§2.1) |
 | Docker CLI | OK | 20.10.22 | — |
 | Docker Compose | OK | v2.15.1 (plugin `docker compose`) | — |
-| Docker daemon | **NO ARRANCA** | — | Su servicio está en *Manual* y exige elevación. Ver §3, o el camino sin Docker de §3-bis |
+| Docker daemon | **NO SE USA** | — | Decisión, no limitación: esta máquina produce pantallazos azules por consumo de RAM y Docker consume demasiada. Tampoco llegó nunca a arrancar (servicio en *Manual*, exige elevación). El camino real es §3-bis |
 | PostgreSQL 16 | **OK, instalado** | servicio `postgresql-x64-16` en el puerto 5432 | No se usa: su contraseña de superusuario se desconoce. §3-bis crea un cluster propio |
 | `psql`, `initdb`, `pg_ctl` | **OK** | `C:\Program Files\PostgreSQL\16\bin` | Disponibles; no están en el `PATH` por defecto |
-| Redis | NO INSTALADO | — | No hace falta: sin `EO_REDIS_URL` se usa estado caliente en proceso (§3-bis.2) |
+| WSL | **OK** | Ubuntu 22.04.1 LTS, **WSL 1** | Es el Linux donde corren `-race` y Redis (§3-bis.7) |
+| gcc | **sólo en WSL** | 11.4.0 (ausente en Windows) | Sin él `-race` aborta con `-race requires cgo` |
+| Go dentro de WSL | **OK** | 1.27.0 en `$HOME/golang` | Instalado por tarball; el `apt` de Ubuntu 22.04 trae 1.18 y `go.mod` exige 1.25.11 |
+| Redis | **OK, en WSL** | 6.0.16 (la CI usa `redis:7-alpine`) | En Windows no hay; sin `EO_REDIS_URL` se usa estado caliente en proceso (§3-bis.2) |
 | `make` | NO INSTALADO | — | No se usará: task runner = pnpm scripts |
-| `gh` | NO INSTALADO | — | Opcional; CI se opera desde la web de GitHub |
+| `gh` | **OK, instalado** | 2.100.0 (ámbito de usuario) | **Sin sesión iniciada**: `git push` usa Git Credential Manager, que es independiente |
 
 Consecuencias directas, que conviene interiorizar antes de empezar:
 
-- **Hay dos caminos para la infraestructura, y ambos funcionan.** Con Docker (§3 y §4) o sin él (§3-bis).
-  El segundo es el que se ha ejercitado de verdad en esta máquina.
+- **El camino con Docker (§3 y §4) no es una opción en esta máquina.** No está ahí como alternativa
+  equivalente sino como referencia para otros entornos. El camino real es §3-bis.
 - **Los tests de integración de PostgreSQL están ejecutados y en verde** (12 tests) por el camino de
-  §3-bis. Los de **Redis** siguen sin ejecutarse, porque no hay Redis instalado; sus contratos están
-  cubiertos de forma equivalente por los tests de `internal/persistence/memory`, que además usan un reloj
-  falso y comprueban los TTL de forma determinista.
-- **La CI nunca se ha visto en verde**: está escrita (`.github/workflows/ci.yml`) pero no se ha ejecutado
-  ningún push contra GitHub. La documentación no debe presentarla como validada.
+  §3-bis, tanto desde Windows como desde WSL contra el mismo cluster.
+- **Los tests de integración de Redis también** (9 tests, §3-bis.7), ejecutados de verdad y no saltados.
+  Los contratos de `internal/persistence/memory` siguen cubriendo lo mismo de forma determinista con un
+  reloj falso, que es lo que permite trabajar sin arrancar WSL.
+- **El detector de carreras pasa** sobre los 10 paquetes con tests, desde WSL. Es lo que respalda la
+  afirmación de que el bucle de juego está aislado por diseño y no necesita mutexes; en Windows no puede
+  ejecutarse.
+- **La CI nunca ha llegado a ejecutarse.** El repositorio está en GitHub y los workflows se disparan,
+  pero los jobs se rechazan antes de arrancar por facturación de la cuenta. No es un fallo del código:
+  es que no ha corrido nada. La documentación no debe presentarla como validada.
+- **La construcción de la imagen del contenedor no tiene sustituto local** y sólo puede verificarse en la
+  CI. Es hoy lo único del proyecto sin ninguna evidencia detrás.
 - **No existe `make`.** Si un documento, script o hilo de CI referencia `make <target>`, es un error: el
   equivalente es `pnpm run <script>`.
 
@@ -115,15 +125,21 @@ corepack prepare pnpm@10.25.0 --activate
 
 ### 2.3 Docker Desktop
 
-Docker Desktop **está instalado** (CLI 20.10.22, Compose v2.15.1), pero en esta máquina **el daemon no
-arrancó**. Es el único prerrequisito realmente pendiente. Ver §3.
+Docker Desktop **está instalado** (CLI 20.10.22, Compose v2.15.1), pero en esta máquina **no se usa**:
+produce pantallazos azules por consumo de RAM. Tampoco llegó a arrancar el daemon. No es un
+prerrequisito pendiente: es una vía descartada. El camino que funciona aquí es §3-bis.
 
 ---
 
 ## 3. Arrancar el daemon de Docker y comprobar que está vivo
 
-Este es el fallo número uno del entorno local, y el estado actual de esta máquina. La CLI responde aunque el
-daemon esté apagado, así que `docker --version` **no** es una comprobación válida.
+> **Esta sección no aplica a la máquina de desarrollo actual.** Docker está descartado aquí (§1 y §2.3).
+> Se conserva porque el `docker-compose.yml` y el `Dockerfile` del repositorio siguen siendo válidos en
+> otros entornos y en la CI, y porque el diagnóstico de abajo es el correcto cuando alguien se encuentre
+> el daemon apagado. Si estás trabajando en esta máquina, salta a **§3-bis**.
+
+Este es el fallo número uno del entorno local. La CLI responde aunque el daemon esté apagado, así que
+`docker --version` **no** es una comprobación válida.
 
 ### 3.1 Arrancar Docker Desktop (Windows)
 
@@ -195,7 +211,13 @@ superusuario del cluster que crea**. No hay ninguna contraseña previa que averi
 | `pnpm run pg:init` | Crea el cluster y las bases. Falla sin destruir nada si ya existe. |
 | `pnpm run pg:start` / `pg:stop` | Arranca / detiene (`stop` usa modo `fast`: cierra conexiones y hace checkpoint). |
 | `pnpm run pg:status` | Dice si está en marcha y en qué puerto. |
+| `pnpm run pg:psql` | Abre `psql` contra el cluster. Acepta argumentos: `pnpm run pg:psql -- -d empires_test -c "select 1"`. |
 | `pnpm run pg:destroy` | **Borra el cluster entero.** Los datos no son fuente de nada: se recrean con `init`. |
+
+> **`db:*` y `pg:*` no son sinónimos.** Los scripts `db:up`, `db:psql`, `db:redis`, `db:reset` y
+> `db:logs` operan sobre **`docker compose`**, así que en una máquina sin Docker no funcionan ninguno.
+> Los `pg:*` operan el cluster propio de esta sección. Las excepciones son `db:migrate` y `db:version`,
+> que invocan el binario de Go y sirven en ambos caminos.
 
 El script vive en [`scripts/pg-local.mjs`](../../scripts/pg-local.mjs). En Windows localiza los
 binarios en `C:\Program Files\PostgreSQL\<versión>`; en Linux y macOS los espera en el `PATH`. Con
@@ -279,9 +301,57 @@ EO_TEST_POSTGRES_URL="postgres://empires:empires_dev_password@localhost:5433/emp
 go test -count=1 -tags=integration ./internal/persistence/postgres/...
 ```
 
-Los tests de integración de Redis (`internal/persistence/redis`) sí necesitan un Redis real; por este
-camino se quedan sin ejecutar. Sus contratos están cubiertos, de forma equivalente y determinista,
-por los tests de `internal/persistence/memory`.
+Faltan aquí dos cosas: los tests de integración de **Redis** (`internal/persistence/redis`), que
+necesitan un Redis real, y el **detector de carreras**, porque `-race` se apoya en cgo y aborta con
+`-race requires cgo` si no hay un compilador de C en el `PATH` —el caso de Windows—. Ambas se
+resuelven en §3-bis.7.
+
+### 3-bis.7 Detector de carreras y Redis: desde WSL
+
+Dos comprobaciones exigen Linux y no tienen equivalente en Windows: `-race`, que necesita un
+compilador de C, y los tests de integración de Redis, que necesitan un Redis real. **WSL las cubre
+sin Docker y sin permisos de administrador.** Es el camino verificado.
+
+**Requisito:** una distribución instalada. `wsl -l -v` la lista.
+
+**Paso 1 — compilador y Redis** (pide tu contraseña de la distro, no la de Windows):
+
+```bash
+wsl -d Ubuntu -- bash -c "sudo apt-get update && sudo apt-get install -y build-essential redis-server"
+```
+
+**Paso 2 — Go dentro de WSL.** El Go de Windows no sirve: son binarios de otro sistema operativo. Y
+**no uses `apt install golang-go`**: Ubuntu 22.04 trae Go 1.18 y `go.mod` exige 1.25.11, así que
+fallaría con un error sobre la directiva `go` que no sugiere en absoluto que el problema sea la
+versión del paquete. El tarball oficial va a la carpeta personal y no necesita `sudo`:
+
+```bash
+wsl -d Ubuntu -- bash -lc 'cd "$HOME" && curl -sSL -o go.tgz https://go.dev/dl/go1.27.0.linux-amd64.tar.gz && mkdir -p golang && tar -C golang --strip-components=1 -xzf go.tgz && rm go.tgz && golang/bin/go version'
+```
+
+**Paso 3 — arrancar Redis.** Escucha en 6379 y no requiere privilegios; `--save ""` evita que escriba
+volcados en disco, que para tests no aportan nada:
+
+```bash
+wsl -d Ubuntu -- bash -lc 'redis-server --daemonize yes --port 6379 --save "" --appendonly no; sleep 1; redis-cli ping'
+```
+
+**Paso 4 — la suite completa con `-race`,** que es exactamente lo que ejecuta el job `integration` de
+la CI. Ajusta la ruta `/mnt/...` a donde tengas el repositorio:
+
+```bash
+wsl -d Ubuntu -- bash -lc 'export PATH="$HOME/golang/bin:$PATH"; cd /mnt/d/Desktop/dev/empires-online/services/game-server && EO_INTEGRATION=1 EO_TEST_POSTGRES_URL="postgres://empires:empires_dev_password@localhost:5433/empires_test?sslmode=disable" EO_TEST_REDIS_URL="redis://localhost:6379/1" go test -race -count=1 -tags=integration ./...'
+```
+
+**Por qué `localhost:5433` alcanza el PostgreSQL de Windows desde Linux:** porque la distro es
+**WSL 1**, que comparte la pila de red con Windows. En **WSL 2** no es así —tiene su propio espacio
+de red— y hay que apuntar a la IP del host de Windows, o activar el modo de red *mirrored* en
+Windows 11. Comprueba cuál tienes con `wsl -l -v`: la columna `VERSION` lo dice. Confundir las dos
+produce un `connection refused` que parece un problema de PostgreSQL y no lo es.
+
+**Nota de versión:** aquí Redis es el que traiga la distro (6.0.16 en Ubuntu 22.04) y la CI usa
+`redis:7-alpine`. Los comandos que ejercen estos tests son muy anteriores a ambas versiones, pero la
+diferencia existe.
 
 ---
 
@@ -628,8 +698,18 @@ enviando `session.hello` como **primer** mensaje.
 
 ## 6. Conectarse a Postgres y a Redis sin `psql` ni `redis-cli`
 
-Ninguno de los dos clientes está instalado en el host, y **no hace falta instalarlos**: las imágenes
-`postgres:16-alpine` y `redis:7-alpine` los traen dentro.
+Las imágenes `postgres:16-alpine` y `redis:7-alpine` traen los clientes dentro, así que por el camino
+de Docker no hace falta instalarlos en el host.
+
+> **Por el camino de §3-bis los comandos son otros**, y esta sección entera no aplica:
+>
+> | | Docker (esta sección) | Sin Docker (§3-bis) |
+> |---|---|---|
+> | Postgres | `docker compose exec postgres psql …` | `pnpm run pg:psql` — el `psql` del host, en `C:\Program Files\PostgreSQL\16\bin` |
+> | Redis | `docker compose exec redis redis-cli` | `wsl -d Ubuntu -- redis-cli` |
+>
+> `pnpm run pg:psql` acepta argumentos igual que `psql`:
+> `pnpm run pg:psql -- -d empires_test -c "SELECT version, dirty FROM schema_migrations;"`
 
 ### 6.1 Postgres
 

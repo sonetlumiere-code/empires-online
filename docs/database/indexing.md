@@ -391,7 +391,7 @@ La métrica `eo_database_latency_seconds` (histogram, ver [../operations/monitor
 | Lote de flush de persistencia | < 50 ms | < 200 ms | p95 > 400 ms durante 10 min | p95 > 1 s, o `eo_persistence_queue_depth` creciendo de forma sostenida |
 | Bootstrap completo (§2.3 + carga de mapa) | — | — | > 5 s | > 15 s (retrasa `/ready`) |
 
-Estos son objetivos de diseño para el MVP con un mundo de 512 × 512 y un puñado de jugadores, **no cifras medidas**: los tests de integración contra PostgreSQL y Redis reales están escritos pero todavía no se han ejecutado, porque el daemon de Docker no arrancó en la máquina de desarrollo. Se revisan con datos reales en cuanto haya un entorno con carga.
+Estos son objetivos de diseño para el MVP con un mundo de 512 × 512 y un puñado de jugadores, **no cifras medidas**. Los tests de integración contra PostgreSQL y Redis reales sí se ejecutan y están en verde, pero comprueban *corrección*, no latencia: no miden ninguno de los umbrales de esta tabla. Se revisan con datos reales en cuanto haya un entorno con carga.
 
 **Correlación obligatoria.** Una alerta de `eo_database_latency_seconds` se interpreta junto a `eo_persistence_queue_depth` y `eo_game_tick_duration_seconds`. Si la latencia de base sube pero el tick no se degrada, el problema está contenido en el camino asíncrono (que es exactamente lo que el diseño pretende). Si sube el tick a la vez, hay que buscar I/O síncrona colada en el loop: eso es un bug de arquitectura, no un problema de índices.
 
