@@ -2,14 +2,19 @@
 /**
  * Verificador de integridad de la documentación.
  *
- * Comprueba tres cosas que se rompen solas conforme crece un proyecto y que
+ * Comprueba cinco cosas que se rompen solas conforme crece un proyecto y que
  * nadie detecta leyendo:
  *
  *   1. Todo enlace relativo a un .md apunta a un archivo que existe.
- *   2. Toda ancla `#fragmento` de esos enlaces resuelve a un destino real.
- *   3. Todo ID `INV-*` citado en cualquier documento está DEFINIDO en
+ *   2. Ese archivo se escribe con la MISMA caja que en el disco. Windows no
+ *      distingue mayúsculas y Linux sí, de modo que `../Decisions/adr.md`
+ *      funciona en la máquina de desarrollo y rompe en la CI. Es la única
+ *      comprobación de esta lista que sólo sirve de algo en Windows: en Linux
+ *      no hay nada que detectar porque el enlace ya ha fallado.
+ *   3. Toda ancla `#fragmento` de esos enlaces resuelve a un destino real.
+ *   4. Todo ID `INV-*` citado en cualquier documento está DEFINIDO en
  *      docs/invariants/, y ninguno designa dos invariantes distintos.
- *   4. Todo ADR citado existe con ese nombre de archivo exacto.
+ *   5. Todo ADR citado existe con ese nombre de archivo exacto.
  *
  * Uso:
  *   node scripts/check-docs.mjs
@@ -33,6 +38,37 @@ function walk(dir) {
 
 const problems = [];
 const rel = (p) => relative(repoRoot, p).replace(/\\/g, '/');
+
+// `existsSync` pregunta al sistema de archivos, y en Windows el sistema de
+// archivos no distingue mayúsculas: `docs/Decisions/ADR-001.md` "existe"
+// aunque el directorio se llame `decisions`. Para saber cómo se llama de
+// verdad hay que listar el directorio padre y comparar. Se cachea por
+// directorio porque si no serían miles de `readdirSync` sobre las mismas
+// carpetas.
+const dirEntriesCache = new Map();
+function entriesOf(dir) {
+  let entries = dirEntriesCache.get(dir);
+  if (!entries) {
+    entries = readdirSync(dir);
+    dirEntriesCache.set(dir, entries);
+  }
+  return entries;
+}
+
+/** Devuelve la ruta con la caja real del disco, o null si algún segmento no existe. */
+function realCaseWithin(absPath) {
+  const relPath = relative(repoRoot, absPath).replace(/\\/g, '/');
+  // Un `..` de más saldría del repositorio; ahí no comprobamos nada.
+  if (relPath.startsWith('..')) return absPath;
+
+  let current = repoRoot;
+  for (const segment of relPath.split('/')) {
+    const match = entriesOf(current).find((e) => e.toLowerCase() === segment.toLowerCase());
+    if (!match) return null;
+    current = join(current, match);
+  }
+  return current;
+}
 
 if (!existsSync(docsRoot)) {
   console.error('No existe el directorio docs/.');
@@ -99,6 +135,16 @@ for (const file of markdownFiles) {
       problems.push(`enlace roto   ${rel(file)}  ->  ${match[1]}`);
       continue;
     }
+
+    const real = realCaseWithin(target);
+    if (real && rel(real) !== rel(target)) {
+      problems.push(
+        `caja incorrecta   ${rel(file)}  ->  ${match[1]}\n` +
+          `                    en disco: ${rel(real)}  (funciona en Windows, rompe en Linux)`,
+      );
+      continue;
+    }
+
     const fragment = match[3];
     if (!fragment) continue;
 
