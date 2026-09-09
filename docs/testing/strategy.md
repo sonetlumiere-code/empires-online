@@ -2,11 +2,14 @@
 
 Cómo se verifica Empires Online: los seis niveles de test del canon, qué garantiza cada uno, las reglas duras que ningún cambio puede saltarse, las convenciones de nombres y fixtures, los objetivos de cobertura y el pipeline de CI que decide si un pull request es válido.
 
-> **Estado real.** El Game Server (Go) y `packages/protocol` (TypeScript) existen, compilan
-> (`go build ./...`), pasan `go vet` y tienen suite en verde. Los niveles `unit`, `contract` y
-> `simulation` **se ejecutan y pasan hoy** (§2.2). Los niveles `integration` y `recovery` están
-> **diseñados pero NO ejecutados**: requieren PostgreSQL y Redis reales y el daemon de Docker no
-> arrancó en la máquina de desarrollo. `load` está fuera del MVP.
+> **Estado real.** Todos los niveles del MVP **se ejecutan y pasan hoy** (§2.2): `unit`, `contract`,
+> `simulation`, `e2e de transporte`, `integration` —30 tests contra PostgreSQL y Redis reales— y
+> `recovery`, en sus dos mitades. El detector de carreras corre sobre toda la suite. `load` sigue fuera
+> del MVP.
+>
+> La infraestructura de `integration` **no es Docker**: está descartado en la máquina de desarrollo. Es
+> un cluster PostgreSQL propio y un Redis en WSL; el procedimiento está en
+> [../operations/local-development.md](../operations/local-development.md) §3-bis.
 > Este documento distingue en todo momento lo que pasa hoy de lo que está previsto.
 
 ---
@@ -85,12 +88,12 @@ Lo que hay hoy en el árbol, con nombre de archivo. Nada de esta tabla es aspira
 
 | Nivel | Archivos reales | Estado |
 |---|---|---|
-| **unit** | `internal/game/world/world_test.go`, `internal/pathfinding/astar_test.go`, `internal/domain/movement/path_test.go`, `internal/domain/city/city_test.go`, `internal/auth/ticket_test.go`, `internal/config/config_test.go`, `internal/config/dotenv_test.go`, `internal/persistence/memory/memory_test.go` | **En verde** (`pnpm run server:test`) |
+| **unit** | `internal/game/world/world_test.go`, `internal/pathfinding/astar_test.go`, `internal/domain/movement/path_test.go`, `internal/domain/city/city_test.go`, `internal/domain/territory/{territory,seed}_test.go` (30), `internal/auth/ticket_test.go`, `internal/config/config_test.go`, `internal/config/dotenv_test.go`, `internal/persistence/memory/memory_test.go` | **En verde** (`pnpm run server:test`) |
 | **contract** | `internal/protocol/contract_test.go` (Go) y `packages/protocol/src/v1/protocol.test.ts` (18 tests Vitest) | **En verde** (`pnpm run server:test` + `pnpm run protocol:test`) |
 | **simulation** | `internal/game/simulation/simulation_test.go` (17 tests: el vertical slice, presencia/protección y los casos de recuperación en RAM sobre `simulation.Hydrate`) | **En verde** |
-| **e2e de transporte** | `internal/websocket/e2e_test.go` (11 tests): el vertical slice sobre un WebSocket real, con dobles en memoria de PostgreSQL y del estado caliente | **En verde**. Es el nivel que encontró que `r.Context()` mataba la sesión tras el primer mensaje |
-| **integration** | `internal/persistence/postgres/integration_test.go` (12) + su `testenv_integration_test.go`, y `internal/persistence/redis/redis_integration_test.go` (9). Etiqueta `integration` + gate `EO_INTEGRATION=1` (§4, R8) | **En verde, 21 tests**, ejecutados con `-race` |
-| **recovery** | RAM en `simulation_test.go`; durable en `TestRecuperacionCompletaTrasReinicio` (nivel `integration`) | **En verde**, ambas partes |
+| **e2e de transporte** | `internal/websocket/e2e_test.go` (11 tests): el vertical slice sobre un WebSocket real, con dobles en memoria de PostgreSQL y del estado caliente. `internal/websocket/hub_test.go` (6) cubre el reparto por chunks y su deduplicación por sesión | **En verde**. Es el nivel que encontró que `r.Context()` mataba la sesión tras el primer mensaje |
+| **integration** | `internal/persistence/postgres/integration_test.go` (12), `territories_integration_test.go` (9) y `internal/persistence/redis/redis_integration_test.go` (9), más el harness `testenv_integration_test.go`. Etiqueta `integration` + gate `EO_INTEGRATION=1` (§4, R8) | **En verde, 30 tests**, ejecutados con `-race` |
+| **recovery** | RAM en `simulation_test.go`; durable en `TestRecuperacionCompletaTrasReinicio` y, para el ownership, `TestElOwnershipSobreviveAUnReinicio` (nivel `integration`) | **En verde**, ambas partes |
 | **frontend** | `apps/web/src/{net/client,render/iso,state/interpolation,state/world}.test.ts` | **En verde**, 58 tests Vitest |
 | **humo de despliegue** | [`scripts/smoke.mjs`](../../scripts/smoke.mjs) | **Ejecutado.** No es un nivel de la pirámide: ver abajo |
 | **load** | Ninguno | **Fuera de MVP** |

@@ -32,6 +32,7 @@
     "server:test": "cd services/game-server && go test ./...",
     "server:test:integration": "cd services/game-server && go test -tags=integration ./...",
     "server:vet": "cd services/game-server && go vet ./...",
+    "server:vet:integration": "cd services/game-server && go vet -tags=integration ./...",
     "server:fmt": "cd services/game-server && gofmt -l -w .",
     "server:fmt:check": "cd services/game-server && gofmt -l .",
     "web:dev": "pnpm --filter @empires-online/web run dev",
@@ -42,12 +43,14 @@
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
-    "verify": "pnpm run protocol:build && pnpm run docs:check && pnpm run typecheck && pnpm run test && pnpm run scripts:test && pnpm run server:fmt:check && pnpm run server:vet && pnpm run server:test"
+    "verify": "pnpm run protocol:build && pnpm run docs:check && pnpm run typecheck && pnpm run test && pnpm run scripts:test && pnpm run server:fmt:check && pnpm run server:vet && pnpm run server:vet:integration && pnpm run server:test"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

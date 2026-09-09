@@ -120,6 +120,13 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # Los ficheros con la etiqueta `integration` NO los mira `go vet ./...`:
+      # quedan fuera de la compilación por defecto. Sin este paso, un cambio de
+      # firma puede romperlos y no enterarse nadie hasta el job de integración,
+      # que además necesita servicios y tarda mucho más en fallar. Ya pasó.
+      - name: go vet (etiqueta integration)
+        run: go vet -tags=integration ./...
+
       - name: Build
         run: go build ./...
 

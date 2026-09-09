@@ -54,7 +54,8 @@ func newRepos(s *postgres.Store) (*postgres.PlayerRepo, *postgres.CityRepo, *pos
 	c := postgres.NewCityRepo(s)
 	u := postgres.NewUnitRepo(s, 32)
 	m := postgres.NewMovementRepo(s)
-	return p, c, u, m, postgres.NewBootstrapper(s, p, c, u)
+	tr := postgres.NewTerritoryRepo(s)
+	return p, c, u, m, postgres.NewBootstrapper(s, p, c, u, tr)
 }
 
 func bootstrapRequest(username string, center world.Tile) postgres.BootstrapRequest {

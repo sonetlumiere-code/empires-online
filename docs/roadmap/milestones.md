@@ -785,9 +785,13 @@ Redis/PostgreSQL: la presencia es transitoria, el `presence_state` es durable.
 
 ## M6 — Territories
 
-**Estado: COMPLETO salvo el entregable 8**, que está bloqueado por diseño y no por implementación —ver
-su entrada—. El circuito completo funciona y está verificado de extremo a extremo: geometría sembrada,
-índice en RAM, cambio de dueño transaccional, evento de dominio, delta de red y overlay en el cliente.
+**Estado: COMPLETO salvo el entregable 8.** El circuito funciona y está verificado de extremo a extremo:
+geometría sembrada, índice en RAM, cambio de dueño transaccional, evento de dominio, delta de red y
+overlay en el cliente. Todos los tests de la sección correspondiente existen y pasan.
+
+El **entregable 8** no está hecho y no lo estará hasta que alguien tome una decisión de diseño que
+ningún documento ha tomado; su entrada explica por qué implementarlo hoy sería inventar una regla de
+juego. Ese es el único motivo por el que este milestone no se marca cerrado.
 
 **Objetivo.** Introducir territorios rectangulares y el control sobre ellos, de modo que el espacio
 del mundo tenga significado político persistente.
@@ -836,15 +840,31 @@ por combate, que son parte de Sieges, fuera del MVP.
 
 ### Tests
 
-- *unit*: pertenencia de tile a rectángulo incluyendo los cuatro bordes y las cuatro esquinas.
-- *unit*: un territorio que cruza fronteras de chunk se mapea a todos los chunks solapados.
-- *unit*: territorios solapados resuelven un único controlador de forma determinista según la regla
-  de la spec.
-- *integration*: un cambio de ownership se persiste y sobrevive a un reinicio.
-- *integration*: dos cambios concurrentes sobre el mismo territorio: uno gana, el otro falla por
-  `version` y reintenta; no se pierde ninguno silenciosamente.
-- *integration*: `territory.update` llega solo a las conexiones suscritas a chunks solapados.
-- *contract*: `territory.update` valida contra el JSON Schema.
+Todos existen y pasan salvo el marcado como pendiente.
+
+- ✔ *unit*: pertenencia de tile a rectángulo incluyendo los cuatro bordes y las cuatro esquinas
+  (`TestPertenenciaIncluyeLosCuatroBordes`, `TestPertenenciaIncluyeLasCuatroEsquinas`,
+  `TestPertenenciaExcluyeElTileSiguienteACadaBorde`).
+- ✔ *unit*: un territorio que cruza fronteras de chunk se mapea a todos los chunks solapados
+  (`TestUnTerritorioQueCruzaFronterasDeChunkMapeaATodosLosSolapados`), con un caso de `chunkSize` 10
+  para que un desplazamiento de bits no pueda colarse en lugar de la división entera.
+- ✔ *unit*: territorios solapados resuelven un único controlador de forma determinista
+  (`TestDosTerritoriosSolapadosResuelvenElIDMenorYSeReportan`, `TestElReporteDeSolapamientosEsDeterminista`).
+- ✔ *integration*: un cambio de ownership se persiste y sobrevive a un reinicio
+  (`TestElOwnershipSobreviveAUnReinicio`).
+- ✔ *integration*: dos cambios concurrentes sobre el mismo territorio: uno gana y el resto falla de
+  forma explícita (`TestDosReclamacionesConcurrentesSoloUnaGana`), más el caso puro de versión
+  desactualizada sobre un territorio libre (`TestUnaVersionDesactualizadaSobreUnTerritorioLibreSeRechaza`),
+  verificado por mutación: anular la comprobación de `version` lo pone en rojo.
+- ✔ *integration*: fundar en territorio ajeno no lo cambia de manos ni hace fallar el alta
+  (`TestFundarEnTerritorioAjenoNoLoCambiaDeManosNiFalla`), y el evento de dominio se escribe en la
+  misma transacción (`TestFundarReclamaElTerritorioDelCentroYRegistraElEvento`).
+- ✔ *unit de transporte*: `territory.update` llega **solo** a las conexiones suscritas a chunks
+  solapados, y **una sola vez** a quien mira varios chunks del mismo territorio
+  (`internal/websocket/hub_test.go`). Incluye un control negativo,
+  `TestBroadcastChunkEnBucleSiDuplicaria`, que demuestra que el problema es real: si alguien sustituye
+  `BroadcastChunks` por un bucle, ese test explica por qué no.
+- ✔ *contract*: `territory.update` valida contra el JSON Schema (`contract_test.go`, ya existente).
 
 ### Documentación actualizada al cerrar
 

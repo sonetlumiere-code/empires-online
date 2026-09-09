@@ -8,10 +8,11 @@ Cómo se verifica la capa de persistencia contra PostgreSQL y Redis **reales**: 
 > | Fichero | Tests | Contra qué |
 > |---|---|---|
 > | `internal/persistence/postgres/integration_test.go` | 12 | PostgreSQL 16 real |
+> | `internal/persistence/postgres/territories_integration_test.go` | 9 | PostgreSQL 16 real |
 > | `internal/persistence/postgres/testenv_integration_test.go` | — | montaje y limpieza |
 > | `internal/persistence/redis/redis_integration_test.go` | 9 | Redis real |
 >
-> Los 21 pasan con el detector de carreras activo. **No se ejecutan con Docker**: la máquina de
+> Los 30 pasan con el detector de carreras activo. **No se ejecutan con Docker**: la máquina de
 > desarrollo lo tiene descartado (provoca pantallazos azules por consumo de RAM). PostgreSQL es un
 > cluster propio en `.pgdata/` puerto 5433, y Redis vive en WSL. El procedimiento exacto está en
 > [local-development.md](../operations/local-development.md) §3-bis. El job `integration` de la CI sí
