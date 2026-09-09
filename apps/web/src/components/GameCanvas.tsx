@@ -14,7 +14,13 @@
  */
 import { useEffect, useRef, useState } from 'react';
 
-import { IsoScene, type SceneCity, type SceneData, type SceneUnit } from '../render/scene';
+import {
+  IsoScene,
+  type SceneCity,
+  type SceneData,
+  type SceneTerritory,
+  type SceneUnit,
+} from '../render/scene';
 import { cameraAt, type Tile } from '../render/iso';
 import { terrainAt, useWorldStore } from '../state/world';
 
@@ -62,12 +68,29 @@ function toSceneData(
     });
   }
 
+  // `isOwn` se decide comparando el `ownerId` que envió el servidor con el
+  // jugador de esta sesión. Es lo único que el cliente calcula sobre territorio,
+  // y no es ownership: es a quién pintar de verde.
+  const territories: SceneTerritory[] = [];
+  for (const t of state.territories.values()) {
+    territories.push({
+      id: t.id,
+      minX: t.minX,
+      minY: t.minY,
+      maxX: t.maxX,
+      maxY: t.maxY,
+      ownerType: t.ownerType,
+      isOwn: t.ownerType === 'PLAYER' && t.ownerId === ownId,
+    });
+  }
+
   const chunkSize = state.world.chunkSize;
   const terrainSnapshot = state.terrain;
 
   return {
     units,
     cities,
+    territories,
     terrainAt: (x, y) => terrainAt(terrainSnapshot, chunkSize, x, y),
     // Se pasa la FUNCIÓN, no el valor: la escena necesita el instante de cada
     // frame para interpolar. Congelarlo aquí dejaría las unidades quietas entre

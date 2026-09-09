@@ -26,12 +26,12 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 | `sessions` | MVP: creada; **el servidor aún no la escribe** | La sesión viva está en RAM y en Redis (`presence:player:{playerId}`) |
 | `idempotency_keys` | MVP: creada; **el servidor aún no la escribe** | La deduplicación del MVP es Redis (`idem:{playerId}:{requestId}`, `SETNX`) |
 | `schema_migrations` | MVP: activa (infraestructura) | golang-migrate |
-| `territories` | MVP: creada con lógica diferida | — |
-| `territory_control` | MVP: creada con lógica diferida | — |
+| `territories` | MVP: **activa** | Sembrada al primer arranque por el Game Server, no por una migración: la geometría debe caber en un mundo cuyas dimensiones son configuración |
+| `territory_control` | MVP: **activa** | Write-through transaccional en la fundación de la ciudad, con concurrencia optimista sobre `version` |
 | `safe_zones` | MVP: creada con lógica diferida | — |
 | `treaties` | MVP: creada con lógica diferida | — |
 | `garrisons` | MVP: creada con lógica diferida | — |
-| `world_events` | MVP: creada con lógica diferida | Append-only, escritura mínima |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
@@ -779,6 +779,8 @@ CREATE TABLE territory_control (
     control_points integer     NOT NULL DEFAULT 0 CHECK (control_points >= 0),
     contested      boolean     NOT NULL DEFAULT false,
     captured_at    timestamptz,
+    -- Concurrencia optimista. Añadida por la migración 000003, NO por 000001.
+    version        integer     NOT NULL DEFAULT 0,
     updated_at     timestamptz NOT NULL DEFAULT now(),
 
     CONSTRAINT territory_control_owner_type_valid
@@ -801,6 +803,12 @@ CREATE TRIGGER territory_control_set_updated_at
 | `control_points` | Progreso de captura, CHECK `>= 0`. Regla de acumulación: **TBD (fuera de MVP)** |
 | `contested` | Marca de territorio disputado |
 | `captured_at` | Instante de la última captura |
+| `version` | Concurrencia optimista, igual que en `cities`. Todo cambio de dueño lleva `WHERE version = $esperada`, así que dos fundaciones simultáneas sobre el mismo territorio no pueden ganar las dos |
+
+**El bloque de arriba es el estado ACTUAL de la tabla, no el de la migración 000001.** `version` la añade
+[`000003_territory_control_version`](../../services/game-server/migrations/000003_territory_control_version.up.sql):
+la spec de territorio la exigía desde el principio y `000001` la omitió. Una migración publicada no se
+reescribe, así que la corrección va en una migración nueva.
 
 La contrapartida de que `owner_id` sea `text` es que **no hay clave foránea hacia `players`**: la integridad referencial del dueño la sostiene el dominio, no la base. Es el precio consciente del polimorfismo.
 

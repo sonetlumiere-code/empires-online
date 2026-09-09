@@ -70,6 +70,10 @@ func (PlayerDisconnected) commandType() string { return "player.disconnected" }
 type Broadcaster interface {
 	// BroadcastChunk entrega el mensaje a toda sesión suscrita a ese chunk.
 	BroadcastChunk(cx, cy int32, msgType string, payload any)
+	// BroadcastChunks entrega el mensaje UNA vez a cada sesión suscrita a alguno
+	// de esos chunks. Para entidades que abarcan varios, como los territorios:
+	// llamar a BroadcastChunk en bucle duplicaría el mensaje.
+	BroadcastChunks(chunks []world.ChunkCoord, msgType string, payload any)
 	// SendToPlayer entrega el mensaje a todas las sesiones de un jugador.
 	SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any)
 }
@@ -98,8 +102,9 @@ type Persister interface {
 // NoopBroadcaster descarta todo. Útil en tests de simulación pura.
 type NoopBroadcaster struct{}
 
-func (NoopBroadcaster) BroadcastChunk(int32, int32, string, any)    {}
-func (NoopBroadcaster) SendToPlayer(uuid.UUID, string, string, any) {}
+func (NoopBroadcaster) BroadcastChunk(int32, int32, string, any)        {}
+func (NoopBroadcaster) BroadcastChunks([]world.ChunkCoord, string, any) {}
+func (NoopBroadcaster) SendToPlayer(uuid.UUID, string, string, any)     {}
 
 // NoopPersister descarta las escrituras. Útil en tests de simulación pura.
 type NoopPersister struct{}

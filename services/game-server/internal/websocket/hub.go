@@ -139,6 +139,33 @@ func (h *Hub) BroadcastChunk(cx, cy int32, msgType string, payload any) {
 	}
 }
 
+// BroadcastChunks entrega el mensaje UNA sola vez a cada sesión suscrita a
+// alguno de esos chunks.
+//
+// No es azúcar sobre BroadcastChunk en bucle: una entidad que abarca varios
+// chunks —un territorio, por ejemplo— haría que quien esté suscrito a más de
+// uno recibiera el mismo mensaje repetido, con `seq` distinto cada vez y sin
+// forma de saber que era el mismo hecho. La deduplicación es por sesión, que es
+// la unidad a la que el protocolo promete entregar.
+func (h *Hub) BroadcastChunks(chunks []world.ChunkCoord, msgType string, payload any) {
+	if len(chunks) == 0 {
+		return
+	}
+
+	h.mu.RLock()
+	targets := make(map[uuid.UUID]*Session)
+	for _, c := range chunks {
+		for id, s := range h.byChunk[makeChunkKey(c.CX, c.CY)] {
+			targets[id] = s
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, s := range targets {
+		s.Send(msgType, "", payload)
+	}
+}
+
 // SendToPlayer entrega un mensaje a todas las sesiones de un jugador.
 func (h *Hub) SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any) {
 	h.mu.RLock()

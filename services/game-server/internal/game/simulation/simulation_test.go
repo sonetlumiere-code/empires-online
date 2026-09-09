@@ -35,6 +35,7 @@ type capturedMessage struct {
 	Type     string
 	PlayerID uuid.UUID
 	CX, CY   int32
+	Chunks   []world.ChunkCoord
 	Payload  any
 }
 
@@ -48,6 +49,17 @@ func (r *recorder) BroadcastChunk(cx, cy int32, msgType string, payload any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.messages = append(r.messages, capturedMessage{Kind: "chunk", Type: msgType, CX: cx, CY: cy, Payload: payload})
+}
+
+func (r *recorder) BroadcastChunks(chunks []world.ChunkCoord, msgType string, payload any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Se guarda como UN mensaje con la lista de chunks, no como uno por chunk:
+	// así un test puede afirmar «se emitió exactamente una vez» y detectaría la
+	// duplicación que este método existe para evitar.
+	r.messages = append(r.messages, capturedMessage{
+		Kind: "chunks", Type: msgType, Chunks: chunks, Payload: payload,
+	})
 }
 
 func (r *recorder) SendToPlayer(playerID uuid.UUID, msgType, _ string, payload any) {

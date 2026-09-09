@@ -13,6 +13,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
@@ -39,6 +40,12 @@ type State struct {
 	cities       map[int64]*city.City
 	cityByOwner  map[uuid.UUID]int64
 	unitsByChunk map[chunkKey]map[int64]struct{}
+
+	// La geometría de los territorios es inmutable en runtime; sólo cambia el
+	// control. Por eso van separados: `territories` se instala una vez y
+	// `control` se actualiza tile a tile. Ver docs/specs/territory.md §6.2.
+	territories *territory.Set
+	control     map[int64]territory.Control
 
 	tick uint64
 }

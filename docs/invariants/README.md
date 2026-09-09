@@ -314,14 +314,14 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-TERR-001 | El rectángulo de un territorio está ordenado y contenido en el mundo | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_TERR_001_TerritoryBoundsValid` |
-| INV-TERR-002 | Dos territorios no comparten ningún tile | ALTO | DOMAIN, TEST | ○ | `Test_INV_TERR_002_TerritoriesDoNotOverlap` |
+| INV-TERR-001 | El rectángulo de un territorio está ordenado y contenido en el mundo | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnTerritorioFueraDelMundoNoSePuedeConstruir`, `TestUnRectanguloDesordenadoNoSePuedeConstruir` |
+| INV-TERR-002 | Dos territorios no comparten ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestDosTerritoriosSolapadosResuelvenElIDMenorYSeReportan`, `TestLaRejillaCubreElMundoSinHuecosNiSolapes` |
 | INV-TERR-003 | Un territorio tiene como máximo una fila de control, y toda fila referencia un territorio | ALTO | DB, TEST | ○ | `Test_INV_TERR_003_OneControlRowPerTerritory` |
-| INV-TERR-004 | `owner_type = 'NONE'` si y sólo si `owner_id IS NULL` | CRITICO | DB, TEST | ○ | `Test_INV_TERR_004_OwnerTypeIdConsistency` |
+| INV-TERR-004 | `owner_type = 'NONE'` si y sólo si `owner_id IS NULL` | CRITICO | DB, TEST | ✓ | `TestUnDueñoExigeIdentificadorYFechaDeCaptura` |
 | INV-TERR-005 | `owner_type = 'PLAYER'` implica que `owner_id` es un `players.id` existente | ALTO | DOMAIN, TEST | ○ | `Test_INV_TERR_005_PlayerOwnerExists` |
 | INV-TERR-006 | En MVP, `control_points = 0` y `contested = false` en toda fila de control | MEDIO | TEST | ○ | `Test_INV_TERR_006_NoCaptureProgressInMVP` |
-| INV-TERR-007 | `owner_type <> 'NONE'` implica `captured_at IS NOT NULL` | MEDIO | DOMAIN, TEST | ○ | `Test_INV_TERR_007_OwnedTerritoryHasCapturedAt` |
-| INV-TERR-008 | El índice `territoryOfTile` es función pura de `territories` | MEDIO | TEST | ○ | `Test_INV_TERR_008_TerritoryIndexIsDeterministic` |
+| INV-TERR-007 | `owner_type <> 'NONE'` implica `captured_at IS NOT NULL` | MEDIO | DOMAIN, TEST | ✓ | `TestUnDueñoExigeIdentificadorYFechaDeCaptura` |
+| INV-TERR-008 | El índice `territoryOfTile` es función pura de `territories` | MEDIO | TEST | ✓ | `TestElIndiceEsFuncionPuraDeLosTerritorios` |
 | INV-TERR-009 | Todo cambio de control emite `territory.update` a la huella de chunks | ALTO | BOUNDARY, TEST | ○ | `Test_INV_TERR_009_ControlChangeEmitsTerritoryUpdate` |
 
 ### SAFE ZONES — [territory.md](territory.md)
@@ -380,10 +380,16 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 36 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 41 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 15 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 39 | Diseñado y no ejecutado, o todavía inexistente |
+| ○ Sin cobertura | 34 | Diseñado y no ejecutado, o todavía inexistente |
 | **Total** | **90** | |
+
+> **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
+> pero **no** fila en esta tabla: es un ID **reservado** —apartado para que nadie lo reutilice— cuyo
+> enunciado todavía no se puede verificar, porque la gracia de expulsión que describiría no tiene dónde
+> vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
+> Si algún recuento automático señala la discrepancia, esta es la explicación.
 
 Los 39 sin cobertura se concentran donde cabe esperar, y por dos causas distintas que no conviene mezclar:
 

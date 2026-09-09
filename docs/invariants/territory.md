@@ -94,15 +94,18 @@ La propiedad es geométrica y no política: **también** se prohíbe el solape e
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — la validación de carga comprobará el solape por pares antes de construir el índice. Con rectángulos alineados a los ejes es una comparación de cuatro enteros por par: `a.min_x <= b.max_x && b.min_x <= a.max_x && a.min_y <= b.max_y && b.min_y <= a.max_y`.
-- `DOMAIN` — el índice `territoryOfTile` se construye escribiendo cada tile una sola vez; una segunda escritura sobre un tile ya asignado **es** la detección del solape, y aborta en lugar de sobrescribir.
+- `DOMAIN` — el índice `territoryOfTile` se construye escribiendo cada tile una sola vez, en orden ascendente de `id`; una segunda escritura sobre un tile ya asignado **es** la detección del solape. `territory.BuildSet` no sobrescribe: el `id` menor conserva el tile y el conflicto se devuelve al llamante con el primer tile afectado y el total de tiles compartidos.
+- No hace falta además una comparación por pares: pintar el índice ya recorre todos los tiles, y comparar rectángulos sería trabajo duplicado que puede divergir del resultado real del índice.
 - `DB` — **no hay garantía en la base de datos**. PostgreSQL puede expresar exclusión de rangos con `EXCLUDE USING gist`, pero la migración `000001` **no** la declara: la tabla `territories` sólo tiene `territories_bounds_ordered`. Añadirla exigiría la extensión `btree_gist` y una migración: **TBD (fuera de MVP)**.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_002_TerritoriesDoNotOverlap` (unit) — sobre el conjunto cargado, ningún par de rectángulos se solapa; el caso de aristas adyacentes se acepta explícitamente como control negativo.
+- `TestDosTerritoriosSolapadosResuelvenElIDMenorYSeReportan` y `TestElReporteDeSolapamientosEsDeterminista` (unit, `internal/domain/territory/territory_test.go`): el solape se detecta, gana el `id` menor, se cuentan los tiles compartidos, y el informe no depende del orden de entrada.
+- `TestLaRejillaCubreElMundoSinHuecosNiSolapes` (unit): la rejilla que siembra el mundo no se solapa consigo misma, que es el único productor de geometría del MVP.
 
-**Violación en runtime.** Detección en la validación de carga y en la segunda escritura sobre un tile del índice. Log `invariant_violation` con `inv_id=INV-TERR-002`, los dos `territory_id` y el tile en conflicto. Política `FAIL_FAST` del arranque: un mapa político ambiguo no debe servirse.
+**Violación en runtime.** Log de nivel `error` por cada par en conflicto, con los dos `territory_id`, el primer tile afectado y el total de tiles compartidos, y **el servidor arranca igualmente** con el estado marcado como inconsistente.
+
+**Esto NO es `FAIL_FAST`, y es deliberado.** Una versión anterior de este documento pedía abortar el arranque. Se descartó: negarse a arrancar por unos rectángulos sembrados mal deja el mundo entero inaccesible para todos los jugadores, mientras que el modo degradado es *determinista* —gana siempre el `id` menor, el mismo en cada arranque— y afecta sólo a los tiles en conflicto. Un mapa político ambiguo es peor que uno correcto y mucho mejor que ninguno. La regla vinculante es `RN-TERR-004` de [../specs/territory.md](../specs/territory.md).
 
 ---
 

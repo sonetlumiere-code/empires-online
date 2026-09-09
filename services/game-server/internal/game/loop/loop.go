@@ -8,6 +8,7 @@ package loop
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
@@ -40,7 +41,10 @@ type Loop struct {
 	health   *observability.Health
 	log      *slog.Logger
 
-	tick uint64
+	// tick es atómico porque lo LEE código fuera del loop —el alta de jugador
+	// fecha su evento de dominio con él— mientras el loop lo incrementa. Con un
+	// uint64 normal eso es una carrera, y el detector la señalaría con razón.
+	tick atomic.Uint64
 }
 
 // New crea el loop.
@@ -62,14 +66,14 @@ func New(
 	l := &Loop{
 		sim: sim, clk: clk, commands: commands, cfg: cfg,
 		metrics: metrics, health: health, log: log,
-		tick: cfg.StartTick,
 	}
+	l.tick.Store(cfg.StartTick)
 	sim.State().SetTick(cfg.StartTick)
 	return l
 }
 
 // Tick devuelve el número de tick actual.
-func (l *Loop) Tick() uint64 { return l.tick }
+func (l *Loop) Tick() uint64 { return l.tick.Load() }
 
 // Run ejecuta el loop hasta que se cancele el contexto.
 //
@@ -83,7 +87,7 @@ func (l *Loop) Run(ctx context.Context) error {
 	start := l.clk.Now()
 	l.log.Info("game loop iniciado",
 		"tick_duration_ms", period.Milliseconds(),
-		"start_tick", l.tick,
+		"start_tick", l.tick.Load(),
 		"flush_interval_ticks", l.cfg.FlushIntervalTicks)
 
 	timer := time.NewTimer(period)
@@ -94,7 +98,7 @@ func (l *Loop) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			l.log.Info("game loop detenido", "tick", l.tick)
+			l.log.Info("game loop detenido", "tick", l.tick.Load())
 			return ctx.Err()
 		case <-timer.C:
 		}
@@ -111,7 +115,7 @@ func (l *Loop) Run(ctx context.Context) error {
 			missed := int64(elapsed/period) - scheduled + 1
 			if missed > 0 {
 				scheduled += missed
-				l.log.Warn("ticks perdidos descartados", "missed", missed, "tick", l.tick)
+				l.log.Warn("ticks perdidos descartados", "missed", missed, "tick", l.tick.Load())
 			}
 			next = time.Duration(scheduled) * period
 			if next <= elapsed {
@@ -131,8 +135,8 @@ func (l *Loop) Run(ctx context.Context) error {
 func (l *Loop) Step(nowMs int64) {
 	started := time.Now()
 
-	l.tick++
-	l.sim.State().SetTick(l.tick)
+	l.tick.Add(1)
+	l.sim.State().SetTick(l.tick.Load())
 
 	// Fase 1-2: consumir y aplicar comandos.
 	l.drainCommands()
@@ -149,7 +153,7 @@ func (l *Loop) Step(nowMs int64) {
 	// fases anteriores, según ocurrían los hechos.
 
 	// Fase 8: encolar persistencia. Nunca I/O síncrono aquí.
-	if l.cfg.FlushIntervalTicks > 0 && l.tick%uint64(l.cfg.FlushIntervalTicks) == 0 {
+	if l.cfg.FlushIntervalTicks > 0 && l.tick.Load()%uint64(l.cfg.FlushIntervalTicks) == 0 {
 		l.sim.FlushDirty()
 	}
 
@@ -170,7 +174,7 @@ func (l *Loop) drainCommands() {
 		}
 	}
 	l.log.Warn("límite de comandos por tick alcanzado; el resto espera al siguiente",
-		"limit", l.cfg.MaxCommandsPerTick, "tick", l.tick)
+		"limit", l.cfg.MaxCommandsPerTick, "tick", l.tick.Load())
 }
 
 // applyCommand aísla el pánico de un comando concreto.
@@ -181,7 +185,7 @@ func (l *Loop) applyCommand(cmd simulation.Command) {
 	defer func() {
 		if p := recover(); p != nil {
 			l.log.Error("pánico al aplicar un comando",
-				"panic", p, "tick", l.tick)
+				"panic", p, "tick", l.tick.Load())
 			if l.metrics != nil {
 				l.metrics.CommandsTotal.WithLabelValues("unknown", observability.ResultFailed).Inc()
 			}

@@ -27,7 +27,7 @@
     "protocol:test": "pnpm --filter @empires-online/protocol run test",
     "protocol:check": "pnpm --filter @empires-online/protocol run schema:check",
     "server:tidy": "cd services/game-server && go mod tidy",
-    "server:build": "cd services/game-server && go build -o bin/empires-server ./cmd/server",
+    "server:build": "node scripts/build-server.mjs",
     "server:run": "cd services/game-server && go run ./cmd/server",
     "server:test": "cd services/game-server && go test ./...",
     "server:test:integration": "cd services/game-server && go test -tags=integration ./...",

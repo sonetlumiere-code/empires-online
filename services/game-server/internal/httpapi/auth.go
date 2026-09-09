@@ -20,6 +20,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -39,6 +40,8 @@ type AuthAPI struct {
 	defaultEra   city.Era
 	defaultCap   int32
 	villagers    int
+	territories  *territory.Set
+	tick         func() uint64
 	civilization int32
 	faction      int32
 }
@@ -50,7 +53,14 @@ type Options struct {
 	// InitialVillagers es cuántos aldeanos recibe un jugador nuevo (3 en el MVP).
 	InitialVillagers int
 	CivilizationID   int32
-	FactionID        int32
+	// Territories es la geometría de los territorios. Es INMUTABLE tras la
+	// hidratación, así que leerla desde una goroutine de HTTP no compite con el
+	// game loop; el control, que sí muta, no se lee aquí.
+	Territories *territory.Set
+	// Tick devuelve el tick actual del game loop. Es seguro llamarlo desde
+	// cualquier goroutine: el contador del loop es atómico.
+	Tick      func() uint64
+	FactionID int32
 }
 
 // NewAuthAPI construye la API.
@@ -73,6 +83,8 @@ func NewAuthAPI(
 		defaultEra: opts.DefaultEra, defaultCap: opts.PopulationCap,
 		villagers:    opts.InitialVillagers,
 		civilization: opts.CivilizationID, faction: opts.FactionID,
+		territories: opts.Territories,
+		tick:        opts.Tick,
 	}
 }
 
@@ -149,6 +161,8 @@ func (a *AuthAPI) Register() http.HandlerFunc {
 			CityCenter:     site.Center,
 			Era:            a.defaultEra,
 			PopulationCap:  a.defaultCap,
+			TerritoryID:    a.territoryAt(site.Center),
+			Tick:           a.currentTick(),
 			VillagerSpawns: site.Spawns,
 		})
 		if err != nil {
@@ -168,6 +182,7 @@ func (a *AuthAPI) Register() http.HandlerFunc {
 			Units:       result.Units,
 			BlockedMinX: site.MinX, BlockedMinY: site.MinY,
 			BlockedMaxX: site.MaxX, BlockedMaxY: site.MaxY,
+			TerritoryControl: result.TerritoryControl,
 		})
 
 		ticket, err := a.issuer.Issue(result.Player.ID)
@@ -278,4 +293,29 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorBody{Code: code, Message: message})
+}
+
+// territoryAt resuelve qué territorio contiene el tile, o 0 si ninguno.
+//
+// Consulta sólo la GEOMETRÍA, que es inmutable desde la hidratación: por eso se
+// puede leer desde la goroutine de HTTP sin competir con el game loop. El
+// control, que sí muta cada vez que alguien funda, no se lee aquí — lo resuelve
+// la propia transacción de alta, que es quien puede hacerlo sin carreras.
+func (a *AuthAPI) territoryAt(center world.Tile) int64 {
+	if a.territories == nil {
+		return 0
+	}
+	t, ok := a.territories.TerritoryAt(center.X, center.Y)
+	if !ok {
+		return 0
+	}
+	return t.ID
+}
+
+// currentTick devuelve el tick del loop, o 0 si no se configuró la fuente.
+func (a *AuthAPI) currentTick() uint64 {
+	if a.tick == nil {
+		return 0
+	}
+	return a.tick()
 }

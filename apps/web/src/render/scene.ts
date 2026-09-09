@@ -41,9 +41,21 @@ export interface SceneCity {
   readonly isOwn: boolean;
 }
 
+export interface SceneTerritory {
+  readonly id: number;
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+  /** Tal cual lo envió el servidor. El cliente NO deduce ownership. */
+  readonly ownerType: string;
+  readonly isOwn: boolean;
+}
+
 export interface SceneData {
   readonly units: readonly SceneUnit[];
   readonly cities: readonly SceneCity[];
+  readonly territories: readonly SceneTerritory[];
   /** Devuelve el terreno de un tile, o undefined si su chunk no está cargado. */
   readonly terrainAt: (x: number, y: number) => number | undefined;
   /** Instante del SERVIDOR, ya corregido por el desfase de reloj. */
@@ -62,10 +74,14 @@ export class IsoScene {
   private app: Application | null = null;
   private readonly root = new Container();
   private readonly terrainLayer = new Container();
+  private readonly territoryLayer = new Container();
   private readonly entityLayer = new Container();
   private readonly terrainCache = new Map<string, Graphics>();
   private readonly unitSprites = new Map<number, Container>();
   private readonly citySprites = new Map<number, Container>();
+  // La clave incluye el dueño: cambiar de dueño obliga a redibujar, y comparar
+  // la firma es más barato que reconstruir el gráfico en cada frame.
+  private readonly territoryShapes = new Map<number, { signature: string; graphic: Graphics }>();
   private data: SceneData | null = null;
 
   constructor(private readonly callbacks: SceneCallbacks = {}) {}
@@ -85,6 +101,9 @@ export class IsoScene {
 
     this.app = app;
     this.root.addChild(this.terrainLayer);
+    // Entre el terreno y las entidades: el overlay tiñe el suelo sin tapar
+    // unidades ni ciudades, que es lo que el jugador necesita poder pulsar.
+    this.root.addChild(this.territoryLayer);
     this.root.addChild(this.entityLayer);
     app.stage.addChild(this.root);
 
@@ -118,6 +137,7 @@ export class IsoScene {
     this.terrainCache.clear();
     this.unitSprites.clear();
     this.citySprites.clear();
+    this.territoryShapes.clear();
   }
 
   resize(width: number, height: number): void {
@@ -144,6 +164,7 @@ export class IsoScene {
     this.root.scale.set(camera.zoom);
 
     this.drawTerrain(data);
+    this.drawTerritories(data);
     this.drawCities(data);
     this.drawUnits(data);
 
@@ -197,6 +218,59 @@ export class IsoScene {
       this.terrainLayer.removeChild(graphic);
       graphic.destroy();
       this.terrainCache.delete(key);
+    }
+  }
+
+  /**
+   * Overlay de territorios: el contorno del rectángulo, proyectado.
+   *
+   * Un rectángulo del mundo se ve como un ROMBO en isométrico, no como un
+   * rectángulo. Sus cuatro vértices son los extremos de las cuatro esquinas del
+   * área, no los centros de esos tiles: por eso cada uno lleva el desplazamiento
+   * de medio tile que lo lleva al borde de su diamante.
+   *
+   * El color sale ÚNICAMENTE de `ownerType` y de si el dueño es el jugador de
+   * esta sesión, ambos enviados por el servidor. El cliente no deduce ownership
+   * de ninguna otra cosa (ADR-002).
+   */
+  private drawTerritories(data: SceneData): void {
+    const seen = new Set<number>();
+
+    for (const t of data.territories) {
+      seen.add(t.id);
+      const signature = `${t.ownerType}:${t.isOwn}:${t.minX},${t.minY},${t.maxX},${t.maxY}`;
+      const cached = this.territoryShapes.get(t.id);
+      if (cached && cached.signature === signature) continue;
+
+      if (cached) {
+        this.territoryLayer.removeChild(cached.graphic);
+        cached.graphic.destroy();
+      }
+
+      const north = worldToIso(t.minX, t.minY);
+      const east = worldToIso(t.maxX, t.minY);
+      const south = worldToIso(t.maxX, t.maxY);
+      const west = worldToIso(t.minX, t.maxY);
+
+      const { color, alpha } = territoryStyle(t);
+      const g = new Graphics();
+      g.moveTo(north.x, north.y - TILE_H / 2)
+        .lineTo(east.x + TILE_W / 2, east.y)
+        .lineTo(south.x, south.y + TILE_H / 2)
+        .lineTo(west.x - TILE_W / 2, west.y)
+        .closePath()
+        .fill({ color, alpha })
+        .stroke({ color, width: 2, alpha: Math.min(1, alpha * 6) });
+
+      this.territoryLayer.addChild(g);
+      this.territoryShapes.set(t.id, { signature, graphic: g });
+    }
+
+    for (const [id, entry] of this.territoryShapes) {
+      if (seen.has(id)) continue;
+      this.territoryLayer.removeChild(entry.graphic);
+      entry.graphic.destroy();
+      this.territoryShapes.delete(id);
     }
   }
 
@@ -296,4 +370,17 @@ export class IsoScene {
       map.delete(id);
     }
   }
+}
+
+/**
+ * Color y opacidad del overlay según el dueño.
+ *
+ * Sin dueño se pinta muy tenue: la frontera tiene que leerse sin competir con el
+ * terreno, porque en el MVP la mayoría del mapa está sin reclamar y un overlay
+ * saturado convertiría el mundo en una rejilla ilegible.
+ */
+function territoryStyle(t: SceneTerritory): { color: number; alpha: number } {
+  if (t.ownerType === 'NONE') return { color: 0x8a8a8a, alpha: 0.05 };
+  if (t.isOwn) return { color: 0x4ec27a, alpha: 0.13 };
+  return { color: 0xc2544e, alpha: 0.13 };
 }

@@ -785,10 +785,9 @@ Redis/PostgreSQL: la presencia es transitoria, el `presence_state` es durable.
 
 ## M6 — Territories
 
-**Estado: PENDIENTE.** Las tablas `territories` y `territory_control` existen desde la migración
-`000001_initial_schema` —con el CHECK de consistencia `owner_type='NONE'` ⟺ `owner_id IS NULL`— y el
-mensaje `territory.update` está declarado en el protocolo v1. **No hay lógica de dominio de territorio**:
-todos los entregables siguientes están sin empezar salvo el 1.
+**Estado: COMPLETO salvo el entregable 8**, que está bloqueado por diseño y no por implementación —ver
+su entrada—. El circuito completo funciona y está verificado de extremo a extremo: geometría sembrada,
+índice en RAM, cambio de dueño transaccional, evento de dominio, delta de red y overlay en el cliente.
 
 **Objetivo.** Introducir territorios rectangulares y el control sobre ellos, de modo que el espacio
 del mundo tenga significado político persistente.
@@ -804,19 +803,36 @@ por combate, que son parte de Sieges, fuera del MVP.
    desde cuándo, con CHECK de consistencia `owner_type='NONE'` ⟺ `owner_id IS NULL` y trigger
    `set_updated_at()`. La separación entre ambas es deliberada: la geometría es estable, el control
    cambia.
-2. **PENDIENTE** — `internal/domain/territory`: pertenencia de un tile a un territorio, consulta inversa
+2. **HECHO** — `internal/domain/territory`: pertenencia de un tile a un territorio, consulta inversa
    territorio→chunks solapados, y resolución del controlador vigente.
-3. **PENDIENTE** — Índice espacial suficiente para el MVP: con geometría rectangular y un mundo de
+3. **HECHO** — Índice espacial suficiente para el MVP: con geometría rectangular y un mundo de
    512×512, una consulta por rango sobre `min_x/max_x/min_y/max_y` es adecuada. No se introduce PostGIS.
-4. **PENDIENTE** — Persistencia transaccional de todo cambio de ownership, con concurrencia optimista
+4. **HECHO** — Persistencia transaccional de todo cambio de ownership, con concurrencia optimista
    sobre `version` para evitar sobrescrituras perdidas.
-5. **PARCIAL** — Mensaje servidor→cliente `territory.update`: **declarado en el protocolo v1 y validado
-   por los contract tests**, pero el servidor todavía no lo emite con contenido real.
-6. **PENDIENTE** — Registro del cambio de control como evento de dominio en `world_events`.
-7. **PENDIENTE** — Renderizado del territorio en el cliente como overlay isométrico, derivado
+5. **HECHO** — Mensaje servidor→cliente `territory.update`, emitido con contenido real a las sesiones
+   cuya área de interés intersecta la huella de chunks del territorio. Se emite **una vez por sesión**
+   aunque la huella abarque varios chunks: para eso se añadió `BroadcastChunks` al hub, porque llamar a
+   `BroadcastChunk` en bucle habría entregado el mismo hecho repetido y con `seq` distinto cada vez.
+6. **HECHO** — Registro del cambio de control como evento de dominio en `world_events`, en la misma
+   transacción que el cambio. El `tick` es el real del game loop: su contador se hizo atómico para
+   poder leerlo desde la goroutine del alta sin provocar una carrera.
+7. **HECHO** — Renderizado del territorio en el cliente como overlay isométrico, derivado
    exclusivamente de `territory.update`. El cliente no calcula ownership. Requiere `apps/web/`.
-8. **PENDIENTE** — Uso de `FORBIDDEN` para acciones no permitidas dentro de territorio ajeno, con la
-   superficie de acciones restringidas que defina la spec de territorio.
+8. **BLOQUEADO POR DISEÑO, no por implementación** — Uso de `FORBIDDEN` para acciones no permitidas
+   dentro de territorio ajeno, con la superficie de acciones restringidas que defina la spec de
+   territorio.
+
+   Este entregable se remite a una superficie que **la spec declina definir**, y lo dice de forma
+   explícita: [«no hay superficie de error de usuario»](../specs/territory.md) porque en MVP no existe
+   ningún comando de cliente dirigido a un territorio, y «comandos cliente→servidor sobre territorios:
+   no existen en el protocolo v1 y **no se inventan aquí**». Además, `FORBIDDEN` significa en el resto
+   del sistema *operar sobre entidades de otro jugador* ([city.md](../specs/city.md),
+   [player.md](../specs/player.md)), no *estar dentro de su territorio*.
+
+   Implementarlo hoy significaría inventar una regla de juego —previsiblemente «no puedes mover unidades
+   dentro del territorio de otro»— que ningún documento especifica y que cambia cómo se juega. Eso es
+   una decisión de diseño, no una tarea de programación. Queda pendiente de que alguien la tome y la
+   escriba en la spec; entonces el código son unas pocas líneas en el manejador de `unit.move`.
 
 ### Tests
 

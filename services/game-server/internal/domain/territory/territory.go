@@ -27,6 +27,14 @@ import (
 // 512 × 512.
 const MaxTerritories = 65535
 
+// EventControlChanged es el `event_type` con el que el cambio de control se
+// registra en `world_events`.
+//
+// Va en pasado porque es un hecho consumado, no una orden ni una intención: la
+// fila se escribe en la misma transacción que el cambio, cuando ya ocurrió
+// (spec §11).
+const EventControlChanged = "TerritoryControlChanged"
+
 var (
 	// ErrRectanguloInvalido lo devuelve la construcción cuando un territorio no
 	// cumple INV-TERR-001.

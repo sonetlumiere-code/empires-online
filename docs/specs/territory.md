@@ -19,11 +19,12 @@ Un `Territory` es una región nombrada y estable del mapa. `TerritoryControl` es
 este momento. Son dos cosas distintas con ciclos de vida distintos y esta spec insiste en no
 mezclarlas: la geometría es del mundo, el control es de la partida.
 
-En el MVP las **tablas `territories` y `territory_control` existen** (migración
-`000001_initial_schema`) y el mensaje `territory.update` existe en el protocolo v1, pero **la lógica
-está diferida**: ninguna migración siembra geometría —`000002_seed_catalogs` solo puebla
-`civilizations`, `factions` y `eras`— y ningún proceso escribe control. En consecuencia, hoy
-`world.snapshot` viaja siempre con `territories: []`.
+**Estado: implementado.** El mundo se siembra con una rejilla de territorios al primer arranque, la
+fundación de la ciudad inicial cambia el dueño del territorio que la contiene, el cambio se persiste
+transaccionalmente y viaja a las sesiones interesadas, y el cliente lo pinta.
+
+Lo que sigue fuera de MVP es la **mecánica de conquista**: no hay forma de ganar ni perder un
+territorio salvo fundando en uno sin dueño. La lista completa está en §2.
 
 ## 2. Scope
 
@@ -34,14 +35,17 @@ está diferida**: ninguna migración siembra geometría —`000002_seed_catalogs
 - Geometría rectangular `min_x`, `min_y`, `max_x`, `max_y` (canon §10), inclusiva, con
   `CHECK territories_bounds_ordered`.
 - El mensaje `territory.update` y el campo `world.snapshot.payload.territories[]`, ambos ya definidos
-  en `packages/protocol` con la forma `TerritoryView`.
+  en `packages/protocol` con la forma `TerritoryView`, y **emitidos con contenido real**.
+- **Siembra de la geometría**: una rejilla que cubre el mundo entero, generada al primer arranque por
+  `territory.SeedGrid` y persistida en una transacción. No la hace una migración: la geometría tiene
+  que caber en el mundo y las dimensiones del mundo son configuración (`EO_WORLD_WIDTH`,
+  `EO_WORLD_HEIGHT`), que ninguna migración conoce.
+- **Ownership al fundar la ciudad inicial** (§6.4), dentro de la misma transacción que la fundación y
+  con concurrencia optimista sobre `territory_control.version`.
+- **Overlay del territorio en el cliente**, derivado exclusivamente de lo que emite el servidor.
 
 **Fuera de MVP**
 
-- **Siembra de la geometría de los territorios: `TBD (fuera de MVP)`.** Sin filas en `territories`,
-  el índice de §6.2 es todo ceros y no hay nada que emitir.
-- **Ownership al fundar la ciudad inicial: `TBD (fuera de MVP)`.** Las reglas de §6.4 describen el
-  diseño objetivo; `internal/game/founding` no toca hoy `territory_control`.
 - Captura por combate, asedio o presencia militar: no hay combate (canon §21).
 - Mecánica de `control_points`: la columna existe y se persiste, pero **ningún proceso la modifica**.
   Su valor es siempre `0`. Nótese que **no viaja en `territory.update`**: `TerritoryView` no la
@@ -64,7 +68,7 @@ está diferida**: ninguna migración siembra geometría —`000002_seed_catalogs
 
 | Actor | Rol |
 |---|---|
-| Semillas / generador de mundo | Definirían la geometría de forma determinista y escribirían `territories`. `TBD (fuera de MVP)`. |
+| Generador de mundo | Define la geometría de forma determinista (`territory.SeedGrid`) y escribe `territories` y sus filas de control en el primer arranque. |
 | Game Server | Único autor de `territory_control`. Resuelve tiles y emite `territory.update`. |
 | Player | Observa. En MVP no ejecuta ninguna acción dirigida a un territorio. |
 
@@ -75,12 +79,12 @@ servidor.
 
 | Input | Origen | Tipo | Nota |
 |---|---|---|---|
-| Filas de `territories` | PostgreSQL, al arrancar | `(id, name, min_x, min_y, max_x, max_y, type, resource_modifiers)` | Vacío en MVP. |
-| Filas de `territory_control` | PostgreSQL, al arrancar | `(territory_id, owner_type, owner_id, control_points, contested, captured_at)` | Vacío en MVP. |
+| Filas de `territories` | PostgreSQL, al arrancar | `(id, name, min_x, min_y, max_x, max_y, type, resource_modifiers)` | Sembradas al primer arranque; 64 con el mundo por defecto. |
+| Filas de `territory_control` | PostgreSQL, al arrancar | `(territory_id, owner_type, owner_id, control_points, contested, captured_at, version)` | Una por territorio, garantizada por la PK. |
 | `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` | `internal/config` | `int32`, por defecto `512` cada uno | Dimensionan el índice denso. |
 | `EO_CHUNK_SIZE` | `internal/config` | `int32`, por defecto `32` | Divide la geometría en la huella de chunks. |
 | `EO_INTEREST_RADIUS_CHUNKS` | `internal/config` | `int32`, por defecto `2` | Decide qué sesiones reciben `territory.update`. |
-| Fundación de una ciudad | `internal/game/founding` | evento de dominio | Único productor de cambio de dueño del diseño objetivo (§6.4). `TBD (fuera de MVP)`. |
+| Fundación de una ciudad | `internal/httpapi` -> `postgres.Bootstrapper` | transacción | **Único productor de cambio de dueño** (§6.4, RN-TERR-007). |
 | `tickTime` | `Clock` inyectado | `int64` epoch ms | Sella `captured_at` y los envelopes de salida. |
 
 ## 5. Outputs
@@ -89,7 +93,7 @@ servidor.
 |---|---|---|
 | Fila de `territory_control` (`owner_type`, `owner_id`, `captured_at`) | PostgreSQL | Cambio de dueño. |
 | `territory.update { territory }` | Sesiones cuya área de interés intersecta la huella del territorio | Cambio de dueño, entrada en el área de interés, `session.view` |
-| `world.snapshot.payload.territories[]` | Sesión que acaba de conectar o de recentrar la vista | Snapshot. Vacío en MVP. |
+| `world.snapshot.payload.territories[]` | Sesión que acaba de conectar o de recentrar la vista | Snapshot: los territorios que intersectan el área de interés. |
 | Índice `territoryOfTile` y huella de chunks por territorio | RAM | Al arrancar. |
 | Evento de dominio `TerritoryControlChanged` | Bus interno | Cambio de dueño. |
 | Log `error` + contador de violación de invariantes | Logs y métricas | Solape entre rectángulos (`INV-TERR-002`). |
@@ -125,6 +129,7 @@ juego. En MVP es de facto inmutable tras el arranque.
 | `control_points` | `integer NOT NULL DEFAULT 0` + `CHECK (control_points >= 0)` | Progreso de captura. Siempre `0` en MVP. |
 | `contested` | `boolean NOT NULL DEFAULT false` | Disputa activa. Siempre `false` en MVP. |
 | `captured_at` | `timestamptz` NULL | Momento del último cambio de dueño. |
+| `version` | `integer NOT NULL DEFAULT 0` | Concurrencia optimista. La añade la migración `000003`, no la `000001`: la spec la exigía y el esquema inicial la omitió. |
 | `updated_at` | `timestamptz NOT NULL DEFAULT now()` | Mantenido por el trigger `territory_control_set_updated_at`. |
 
 `CHECK territory_control_owner_consistency`:
@@ -242,8 +247,7 @@ constante.
 
 ### 6.4 Mecánica mínima de ownership
 
-Ownership simple y nada más. **Todo este apartado es `TBD (fuera de MVP)`**: describe el diseño
-objetivo, no código existente.
+Ownership simple y nada más. **Todo este apartado está implementado.**
 
 | ID | Regla |
 |---|---|
@@ -322,8 +326,8 @@ Respuesta a las cuatro preguntas del canon §12.
 
 | Dato | Autoritativo en | Estrategia |
 |---|---|---|
-| `territories` (geometría, `type`, `resource_modifiers`) | PostgreSQL | Sembrado por migración; **sin escritor en MVP**, la tabla está vacía. Inmutable en runtime. |
-| `territory_control` (`owner_type`, `owner_id`, `captured_at`) | PostgreSQL | **Write-through transaccional**: el canon §12 clasifica los cambios de ownership como escritura inmediata. Va en la misma transacción que el hecho que lo provoca (la fundación de la ciudad), y esa transacción se encola en la cola de persistencia y la ejecuta un worker fuera del tick: el tick nunca hace I/O contra PostgreSQL. |
+| `territories` (geometría, `type`, `resource_modifiers`) | PostgreSQL | Sembrada por el Game Server en el primer arranque, en una transacción. Inmutable en runtime. |
+| `territory_control` (`owner_type`, `owner_id`, `captured_at`, `version`) | PostgreSQL | **Write-through transaccional**: el canon §12 clasifica los cambios de ownership como escritura inmediata. Va en la misma transacción que el hecho que lo provoca —la fundación de la ciudad—, que se ejecuta en la goroutine del alta HTTP, **no** en la cola de persistencia ni en el tick. La cola existe para escrituras diferidas de la simulación; esto no lo es: si la transacción falla, el alta entera falla, y no hay nada que reintentar en segundo plano. El tick sigue sin hacer I/O contra PostgreSQL. El mundo en RAM se entera **después** del commit, por el mismo comando que incorpora al jugador. |
 | `control_points`, `contested` | PostgreSQL | Sin productor en MVP. Cuando exista captura serán candidatos naturales a **dirty-flag + flush**, por ser magnitudes que cambian cada tick y toleran perder unos segundos tras un crash. |
 | Índice `territoryOfTile` | RAM | **Reconstruible** al arrancar. Nunca se persiste. |
 | Huella de chunks por territorio | RAM | **Reconstruible**, derivada de la geometría. Nunca se persiste. |
@@ -336,8 +340,13 @@ todo lo mutable se escribe de inmediato.
 ## 11. Eventos
 
 Evento de dominio: `TerritoryControlChanged` (hecho consumado, en pasado). Es el origen del delta y
-el candidato natural a fila en `world_events` (`event_type`, `tick`, `player_id`, `payload jsonb`).
-Su escritura efectiva es **TBD (fuera de MVP)**.
+**se escribe** como fila de `world_events` (`event_type`, `tick`, `player_id`, `payload jsonb`), en la
+**misma transacción** que el cambio de control: un evento que puede faltar cuando el hecho ocurrió no
+sirve para reconstruir nada.
+
+El `payload` lleva `territoryId`, `ownerType`, `ownerId` y `version`. El `tick` es el del game loop en
+el instante del alta; el contador del loop es atómico precisamente para poder leerlo desde la goroutine
+de HTTP que atiende el alta sin provocar una carrera.
 
 ## 12. Contratos de red
 
@@ -385,9 +394,9 @@ Reglas de emisión:
 
 | ID | Regla |
 |---|---|
-| `RN-TERR-011` | **Al conectar**: los territorios cuya huella de chunks intersecta el área de interés inicial (radio `EO_INTEREST_RADIUS_CHUNKS = 2`) viajan dentro de `world.snapshot.payload.territories[]`, que es un array de `TerritoryView`. En MVP ese array va siempre vacío. |
+| `RN-TERR-011` | **Al conectar**: los territorios cuya huella de chunks intersecta el área de interés inicial (radio `EO_INTEREST_RADIUS_CHUNKS = 2`) viajan dentro de `world.snapshot.payload.territories[]`, que es un array de `TerritoryView`. Con la rejilla sembrada, un área de interés de radio 2 sobre territorios de 64 tiles de lado intersecta típicamente entre 1 y 4 territorios. |
 | `RN-TERR-012` | **Al cambiar el control**: se emite un `territory.update` a todas las sesiones cuya área de interés intersecta la huella del territorio. |
-| `RN-TERR-013` | **Al mover la vista** (`session.view`): se emite un `territory.update` por cada territorio que entra en el área nueva. |
+| `RN-TERR-013` | **Al mover la vista** (`session.view`): el servidor responde con un `world.snapshot` completo del área nueva, y los territorios viajan dentro de él por RN-TERR-011. **No se emiten además `territory.update` sueltos**: sería repetir en N mensajes lo que ya va en uno, y el cliente tendría que reconciliar dos fuentes para el mismo hecho. La regla se cumple —el cliente conoce todo territorio de su área nueva— por una vía distinta de la que se escribió aquí originalmente. |
 | `RN-TERR-014` | La geometría se incluye en cada mensaje. Es redundante pero pequeña y constante, y evita al cliente mantener un catálogo aparte con su propio problema de invalidación. |
 | `RN-TERR-015` | `contested` viaja desde el primer día aunque sea constante: así el cliente no necesita un cambio de esquema cuando la mecánica exista. |
 
@@ -395,9 +404,14 @@ Detalle del protocolo en [websocket-protocol.md](websocket-protocol.md).
 
 ## 13. Tests esperados
 
-Todos los tests de esta sección están **pendientes**: describen el diseño objetivo, no una suite
-existente. Los tests de integración exigen PostgreSQL y Redis reales (`EO_INTEGRATION=1`) y hoy no se
-ejecutan porque el daemon de Docker no está disponible en la máquina de desarrollo.
+Los tests **unit** de esta sección existen y están en verde:
+[`internal/domain/territory/territory_test.go`](../../services/game-server/internal/domain/territory/territory_test.go)
+y su `seed_test.go`, 30 tests que cubren los cuatro bordes y las cuatro esquinas por separado, el
+territorio que cruza fronteras de chunk, el solapamiento resuelto de forma determinista y el ejemplo
+dibujado en §6.3 comprobado tile a tile.
+
+Los tests de **integración** exigen PostgreSQL real (`EO_INTEGRATION=1`); el procedimiento sin Docker
+está en [../operations/local-development.md](../operations/local-development.md) §3-bis.
 
 **Unit (dominio puro)**
 

@@ -26,6 +26,25 @@ export interface UnitView {
   movement: ActiveMovement | null;
 }
 
+/**
+ * Territorio tal y como lo ve el cliente.
+ *
+ * El cliente NO calcula ownership: `ownerType` y `ownerId` llegan tal cual del
+ * servidor y no se derivan de nada local. La geometría viaja en cada mensaje, así
+ * que tampoco hay que mantener un catálogo aparte que invalidar.
+ */
+export interface TerritoryView {
+  id: number;
+  name: string;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  ownerType: string;
+  ownerId: string | null;
+  contested: boolean;
+}
+
 export interface CityView {
   id: number;
   ownerPlayerId: string;
@@ -61,6 +80,7 @@ interface WorldState {
 
   units: Map<number, UnitView>;
   cities: Map<number, CityView>;
+  territories: Map<number, TerritoryView>;
   terrain: Map<string, ChunkTerrain>;
 
   selectedUnitId: number | null;
@@ -90,6 +110,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   tick: 0,
   units: new Map(),
   cities: new Map(),
+  territories: new Map(),
   terrain: new Map(),
   selectedUnitId: null,
   lastError: null,
@@ -128,6 +149,9 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       });
     }
 
+    const territories = new Map<number, TerritoryView>();
+    for (const t of payload.territories) territories.set(t.id, { ...t });
+
     const cities = new Map<number, CityView>();
     for (const c of payload.cities) cities.set(c.id, { ...c });
 
@@ -145,6 +169,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     set({
       units,
       cities,
+      territories,
       terrain,
       tick: payload.tick,
       // Si la unidad seleccionada ya no está en el área de interés, se deselecciona.
@@ -217,6 +242,20 @@ export const useWorldStore = create<WorldState>((set, get) => ({
             units,
             selectedUnitId: s.selectedUnitId === id ? null : s.selectedUnitId,
           };
+        });
+        break;
+      }
+
+      case 'territory.update': {
+        // A diferencia de `entity.update`, esto NO es un delta parcial: el
+        // mensaje trae el `TerritoryView` completo, geometría incluida
+        // (RN-TERR-014). Por eso un territorio desconocido se añade en lugar de
+        // ignorarse — no hay campos que quedaran sin rellenar.
+        const t = message.payload.territory;
+        set((s) => {
+          const territories = new Map(s.territories);
+          territories.set(t.id, { ...t });
+          return { territories };
         });
         break;
       }
@@ -313,6 +352,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       tick: 0,
       units: new Map(),
       cities: new Map(),
+      territories: new Map(),
       terrain: new Map(),
       selectedUnitId: null,
       lastError: null,

@@ -20,6 +20,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loop"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -113,7 +114,8 @@ func run() error {
 	unitRepo := postgres.NewUnitRepo(store, cfg.ChunkSize)
 	movementRepo := postgres.NewMovementRepo(store)
 	worldRepo := postgres.NewWorldRepo(store)
-	bootstrapper := postgres.NewBootstrapper(store, playerRepo, cityRepo, unitRepo)
+	territoryRepo := postgres.NewTerritoryRepo(store)
+	bootstrapper := postgres.NewBootstrapper(store, playerRepo, cityRepo, unitRepo, territoryRepo)
 
 	sysClock := clock.NewSystemClock()
 
@@ -137,7 +139,13 @@ func run() error {
 		return fmt.Errorf("cargar movimientos activos: %w", err)
 	}
 
+	territories, controls, err := loadTerritories(rootCtx, territoryRepo, gameWorld, log)
+	if err != nil {
+		return err
+	}
+
 	state := simulation.NewState(gameWorld)
+	state.SetTerritories(territories, controls)
 	recovery := simulation.Hydrate(state, units, cities, movements, sysClock.NowMs(), log)
 	log.Info("mundo rehidratado",
 		"units", recovery.Units, "cities", recovery.Cities,
@@ -231,6 +239,8 @@ func run() error {
 			InitialVillagers: 3,
 			CivilizationID:   1,
 			FactionID:        3, // NEUTRAL
+			Territories:      territories,
+			Tick:             gameLoop.Tick,
 		}, log)
 
 	mux := http.NewServeMux()
@@ -362,4 +372,65 @@ func withCORS(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// loadTerritories siembra la geometría la primera vez y devuelve el índice y el
+// control vigente.
+//
+// La siembra vive aquí y NO en una migración porque la geometría tiene que caber
+// en el mundo, y las dimensiones del mundo son configuración
+// (EO_WORLD_WIDTH / EO_WORLD_HEIGHT). Sembrar en el esquema fijaría un tamaño de
+// mundo y rompería cualquier despliegue que lo cambiara.
+//
+// El índice es un derivado puro de la tabla: nunca se persiste y se reconstruye
+// en cada arranque (INV-TERR-008).
+func loadTerritories(
+	ctx context.Context,
+	repo *postgres.TerritoryRepo,
+	w *world.World,
+	log *slog.Logger,
+) (*territory.Set, []territory.Control, error) {
+	n, err := repo.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if n == 0 {
+		seeds, err := territory.SeedGrid(w.Width(), w.Height(), territory.DefaultSeedSize)
+		if err != nil {
+			return nil, nil, fmt.Errorf("generar la rejilla de territorios: %w", err)
+		}
+		// Toda la siembra en UNA transacción: una rejilla a medias dejaría tiles
+		// sin territorio sin que nada lo indicase.
+		if err := repo.SeedInTx(ctx, seeds); err != nil {
+			return nil, nil, err
+		}
+		log.Info("territorios sembrados", "count", len(seeds), "side", territory.DefaultSeedSize)
+	}
+
+	geometry, err := repo.LoadAll(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	controls, err := repo.LoadControls(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	set, overlaps, err := territory.BuildSet(geometry, w.Width(), w.Height(), w.ChunkSize())
+	if err != nil {
+		return nil, nil, fmt.Errorf("construir el índice de territorios: %w", err)
+	}
+
+	// RN-TERR-004: un solapamiento no impide arrancar, pero deja el estado
+	// marcado como inconsistente y tiene que verse en los logs.
+	for _, o := range overlaps {
+		log.Error("territorios solapados: INV-TERR-002 violado",
+			"kept", o.Kept, "discarded", o.Discarded,
+			"first_tile_x", o.X, "first_tile_y", o.Y, "tiles", o.Tiles)
+	}
+
+	log.Info("territorios cargados",
+		"count", set.Len(), "controls", len(controls), "overlaps", len(overlaps))
+	return set, controls, nil
 }

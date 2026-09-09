@@ -27,7 +27,10 @@ func (s *Simulation) BuildSnapshot(chunks []world.ChunkCoord, nowMs int64, inclu
 		Terrain:      make([]protocol.ChunkTerrain, 0, len(chunks)),
 		Units:        make([]protocol.UnitView, 0, 32),
 		Cities:       make([]protocol.CityView, 0, 4),
-		Territories:  make([]protocol.TerritoryView, 0),
+		// RN-TERR-011: los territorios cuya huella intersecta el área de interés
+		// viajan en el snapshot inicial, para que el cliente pinte el overlay sin
+		// esperar a que algo cambie.
+		Territories: s.state.TerritoryViews(chunks),
 	}
 
 	for _, ch := range chunks {

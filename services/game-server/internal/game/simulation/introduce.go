@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
@@ -18,6 +19,14 @@ type IntroducePlayer struct {
 	// BlockedMin/Max es la zona urbana amurallada que pasa a ser intransitable.
 	BlockedMinX, BlockedMinY int32
 	BlockedMaxX, BlockedMaxY int32
+	// TerritoryControl es el control que la fundación acaba de cambiar de manos,
+	// o nil si el tile central no pertenecía a ningún territorio o el territorio
+	// ya tenía dueño (RN-TERR-008: no existe la pérdida de control).
+	//
+	// Viaja con la incorporación del jugador y no como comando aparte porque es
+	// parte del MISMO hecho: se escribió en la misma transacción y no hay ningún
+	// instante en que uno sea cierto y el otro no.
+	TerritoryControl *territory.Control
 }
 
 func (IntroducePlayer) commandType() string { return "player.introduce" }
@@ -50,8 +59,42 @@ func (s *Simulation) handleIntroducePlayer(cmd IntroducePlayer) {
 			protocol.EntitySpawnPayload{Unit: s.UnitView(u, nowMs)})
 	}
 
+	if cmd.TerritoryControl != nil {
+		s.applyTerritoryControl(*cmd.TerritoryControl)
+	}
+
 	s.deps.Log.Info("jugador incorporado al mundo",
 		"city_id", cityIDOf(cmd.City), "units", len(cmd.Units))
+}
+
+// applyTerritoryControl alinea la copia en RAM y difunde el cambio.
+//
+// INV-TERR-009: ningún cambio de control ocurre sin emitir territory.update a la
+// huella de chunks del territorio. Por eso las dos cosas viven en la misma
+// función y no en dos sitios que alguien pueda desincronizar.
+func (s *Simulation) applyTerritoryControl(c territory.Control) {
+	s.state.ApplyTerritoryControl(c)
+
+	t, ok := s.state.territories.ByID(c.TerritoryID)
+	if !ok {
+		// El control referencia un territorio que el índice no conoce: es
+		// INV-TERR-003 roto. No se difunde nada porque no hay huella que usar.
+		s.deps.Log.Error("control de un territorio inexistente",
+			"territory_id", c.TerritoryID)
+		return
+	}
+
+	// Una sola emisión por sesión, aunque la huella abarque varios chunks
+	// (RN-TERR-012).
+	s.deps.Broadcaster.BroadcastChunks(
+		s.state.TerritoryFootprint(c.TerritoryID),
+		protocol.TypeTerritoryUpdate,
+		protocol.TerritoryUpdatePayload{Territory: s.state.TerritoryView(t)},
+	)
+
+	s.deps.Log.Info("control de territorio cambiado",
+		"territory_id", c.TerritoryID, "name", t.Name,
+		"owner_type", string(c.OwnerType), "version", c.Version)
 }
 
 func cityIDOf(c *city.City) int64 {
