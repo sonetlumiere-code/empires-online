@@ -25,18 +25,19 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 
 | Bloque | Situación |
 |---|---|
-| M0 (EO-001 … EO-019) | Completado **salvo `EO-016` (CI)**, que no está empezado. |
+| M0 (EO-001 … EO-019) | **Completado.** `EO-016` (CI) cerrado: los cinco jobs pasan. Queda `EO-017` (lint), P1. |
 | M1 (EO-020 … EO-028) | Completado salvo `EO-028` (volcado del mundo a fichero, `P2`). |
 | M2 (EO-030 … EO-039) | Completado. `EO-038` se resolvió con `internal/game/founding`. |
 | M3 (EO-040 … EO-057) | Servidor completado. Abiertos: **`EO-041`** (ticket desde Next.js) y **`EO-055`** (cliente PixiJS). |
 | M4 (EO-060 … EO-078) | Servidor completado. Abierto: **`EO-075`** (interpolación en el cliente). |
 | M5 (EO-080 … EO-089) | Presencia y protección completadas. Abiertos: `EO-084`, `EO-085`, `EO-086` (safe zones y `HIDDEN`). |
-| M6 (EO-090 … EO-097) | Sólo `EO-090` (migración). El resto sin empezar. |
-| M7 (EO-100 … EO-108) | Sólo `EO-100` (migración). El resto sin empezar. |
-| Transversales | `EO-110` y `EO-112` hechos. Abiertos: `EO-111`, `EO-113`, `EO-114`, `EO-115`, `EO-116`. |
+| M6 (EO-090 … EO-097) | **Completo salvo el entregable 8** (restricciones en territorio ajeno), bloqueado por una decisión de juego. |
+| M7 (EO-100 … EO-108) | **Dominio, persistencia y caducidad hechos y verificados.** Falta la puerta de entrada: el protocolo v1 no tiene comandos de guarnición. |
+| Transversales | `EO-110`, `EO-112` y `EO-113` hechos. Abiertos: `EO-111`, `EO-114`, `EO-115`, `EO-116` y el nuevo `EO-117` (autenticación). |
 
-Y un recordatorio que atraviesa todo lo anterior: **los tests de integración están escritos pero no
-ejecutados** (`DEBT-19`), así que ningún item que sólo verifique la integración puede darse por cerrado.
+Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los 44 tests de integración se
+ejecutan** contra PostgreSQL y Redis reales, en local y en remoto. `DEBT-19` está cerrada. Lo que sigue
+sin evidencia local es la imagen del contenedor, que sólo se construye en la CI.
 
 ---
 
@@ -44,7 +45,7 @@ ejecutados** (`DEBT-19`), así que ningún item que sólo verifique la integraci
 
 | ID | Título | Milestone | Prioridad | Tamaño | Dependencias | Criterio de aceptación |
 |---|---|---|---|---|---|---|
-| EO-001 | Instalar Go y documentar prerrequisitos del entorno | M0 | P0 | S | — | `go version` reporta 1.23 o superior y el procedimiento (`winget install --id GoLang.Go`) queda escrito en la guía de arranque. **Cerrado**: hay Go 1.27.0 instalado; `go.mod` declara `go 1.23` como mínimo. |
+| EO-001 | Instalar Go y documentar prerrequisitos del entorno | M0 | P0 | S | — | `go version` reporta 1.23 o superior y el procedimiento (`winget install --id GoLang.Go`) queda escrito en la guía de arranque. **Cerrado**: hay Go 1.27.0 instalado; `go.mod` declara `go 1.25.11`, mínimo impuesto por `pgx/v5` y `prometheus/client_golang`. |
 | EO-002 | Crear la estructura del monorepo | M0 | P0 | S | — | El árbol de directorios coincide exactamente con el declarado en el canon, incluidos `infra/docker/`, `scripts/` y `docs/`. |
 | EO-003 | `pnpm-workspace.yaml` y scripts de tarea en la raíz | M0 | P0 | S | EO-002 | `pnpm install` completa y `pnpm run` lista `db:up`, `db:psql`, `server:run`, `server:test`, `protocol:build`, `lint`, `typecheck`, `test` y `verify`. |
 | EO-004 | `docker-compose.yml` con Postgres y Redis | M0 | P0 | M | EO-002 | `pnpm run db:up` deja ambos servicios en estado *healthy* según `docker compose ps`. |
@@ -59,10 +60,10 @@ ejecutados** (`DEBT-19`), así que ningún item que sólo verifique la integraci
 | EO-013 | `@empires-online/protocol`: envelopes Zod y códigos de error | M0 | P0 | M | EO-003 | Los esquemas aceptan los envelopes canónicos y rechazan `v` distinto de 1 y `requestId` no UUIDv4. |
 | EO-014 | Exportación de JSON Schema en el build del protocolo | M0 | P0 | S | EO-013 | `pnpm run protocol:build` regenera `packages/protocol/schema/v1/*.json` sin diferencias respecto a lo commiteado, y `pnpm run protocol:check` detecta la deriva. |
 | EO-015 | `go:embed` de los JSON Schema en el Game Server | M0 | P0 | S | EO-005, EO-014 | El binario embebe los esquemas y los expone a los contract tests sin leer del disco. |
-| EO-016 | CI en GitHub Actions con la secuencia completa | M0 | P0 | L | EO-004, EO-005, EO-013 | **Abierto y bloqueante.** Único entregable de M0 sin empezar. El workflow debe ejecutar `format → lint → typecheck → unit → integration → build → docker build` y fallar el PR si cualquier check está en rojo. Es además la vía más rápida para cerrar `DEBT-19`, porque levanta Postgres y Redis como *services*. |
+| EO-016 | CI en GitHub Actions con la secuencia completa | M0 | P0 | L | EO-004, EO-005, EO-013 | **HECHO.** Cinco jobs en verde: documentación y tests de scripts, TypeScript (typecheck, protocolo, deriva del JSON Schema y `next build`), Game Server con `-race`, integración con Postgres y Redis como *services*, e imagen del contenedor. Sus dos primeras ejecuciones reales encontraron dos fallos que ninguna verificación local podía ver. Falta `lint`, que espera a `EO-017`. |
 | EO-017 | Lint que prohíbe `time.Now()` y `rand` en el dominio | M0 | P1 | S | EO-005, EO-010 | Un uso directo de `time.Now()` dentro de `internal/domain` hace fallar `pnpm run lint`. |
 | EO-018 | Guía de arranque con el entorno real documentado | M0 | P0 | S | EO-002 | La guía nombra Windows 10, Node v22.17.1, pnpm 10.25.0, git 2.38.1, Docker CLI 20.10.22 con Compose v2.15.1, Go 1.27.0 instalado, y la ausencia de `psql`, `redis-cli`, `make` y `gh`. |
-| EO-019 | Acceso a Postgres y Redis vía `docker compose exec` documentado | M0 | P1 | S | EO-004 | `pnpm run db:psql` y `pnpm run db:redis` abren una sesión contra el contenedor sin requerir `psql` ni `redis-cli` en el host. |
+| EO-019 | Acceso a Postgres y Redis vía `docker compose exec` documentado | M0 | P1 | S | EO-004 | `pnpm run db:psql` y `pnpm run db:redis` abren una sesión contra el contenedor sin requerir `psql` ni `redis-cli` en el host. **Con Docker descartado en la máquina de desarrollo, el equivalente es `pnpm run pg:psql` contra el cluster propio y `wsl -d Ubuntu -- redis-cli`.** |
 
 ## M1 — World
 
@@ -189,10 +190,48 @@ ejecutados** (`DEBT-19`), así que ningún item que sólo verifique la integraci
 | EO-110 | Registro único de invariantes con IDs estables | Transversal | P0 | M | EO-018 | `docs/invariants/` es el **único** registro: cada `INV-*` tiene enunciado formal, milestone que lo cubre y test que lo verifica, y ningún ID se reutiliza con otro significado. |
 | EO-111 | Runbook de operación 24/7 | Transversal | P1 | M | EO-009 | **Abierto.** Describe arranque, parada, migración con estado vivo, lectura de métricas y diagnóstico de overruns. |
 | EO-112 | ADRs de las decisiones estructurales | Transversal | P1 | S | EO-018 | Existen los doce ADR de `docs/decisions/`, de `ADR-001-game-server-language.md` a `ADR-012-database-migrations.md`. Todo enlace debe usar esos nombres exactos. |
-| EO-113 | Cliente WS de pruebas end-to-end | Transversal | P1 | M | EO-044 | **Abierto.** Un cliente en Node ejecuta el recorrido completo de conexión, snapshot y movimiento en CI. Bloqueado por `EO-016` y por `DEBT-19`. |
+| EO-113 | Cliente WS de pruebas end-to-end | Transversal | P1 | M | EO-044 | **HECHO** — `scripts/smoke.mjs`. Un cliente en Node ejecuta el recorrido completo de conexión, snapshot y movimiento en CI. Bloqueado por `EO-016` y por `DEBT-19`. |
 | EO-114 | Seeds de datos de desarrollo | Transversal | P2 | S | EO-036 | Un script deja un mundo con varios jugadores listos para pruebas manuales reproducibles. |
 | EO-115 | Escenario de simulación reproducible para regresión | Transversal | P2 | M | EO-077 | Un escenario fijo con `FakeClock` produce el mismo estado final en cada ejecución y se compara contra un *golden file*. |
 | EO-116 | Tests de carga con k6 | Transversal | P3 | L | EO-113 | Diferido: no forma parte del MVP y no bloquea ningún milestone. |
+| EO-117 | Sacar la autenticación del Game Server | Transversal | P1 | L | DEBT-18 | **Planificado, no empezado.** Plan por pasos en la sección «Plan: sacar la autenticación del Game Server» de este documento. El paso 1 es un ADR, no código. |
+
+---
+
+## Plan: sacar la autenticación del Game Server
+
+Cierra `DEBT-18` y desbloquea el entregable 2 de M3. **No empezar por el código.** Cada paso depende
+del anterior y el primero es una decisión, no una tarea.
+
+### Por qué existe este plan
+
+`DEBT-18` es irrealizable tal como está enunciada: [migrations.md](../database/migrations.md) fija
+**como regla de arquitectura** que `apps/web` no tendrá credenciales de PostgreSQL ni cliente SQL, y
+[frontend.md](../architecture/frontend.md) que Next.js sólo toca `EO_AUTH_JWT_SECRET`. Si Next.js no
+puede leer la base, no puede verificar una contraseña, y bcrypt tiene que vivir donde vive
+`password_hash`.
+
+La salida no es saltarse la regla sino **precisarla**. Su justificación real (ADR-012) es que *el
+esquema del juego tenga un único dueño y el frontend no pueda asumir su forma*. Un almacén de
+identidad **separado** no viola eso en absoluto. La regla está escrita más ancha que su propio motivo.
+
+### Pasos, en orden
+
+| # | Paso | Nota |
+|---|---|---|
+| 1 | **ADR nuevo que supersede la parte correspondiente de ADR-012 y de `frontend.md`.** Enuncia la regla precisa: *Next.js nunca toca el esquema del juego*, y puede tener su propio almacén de identidad. | Es una decisión, no código. Sin esto, todo lo demás contradice la documentación vigente. |
+| 2 | **ADR que supersede ADR-010 con firma asimétrica** (RS256 o EdDSA). La clave privada se queda en el emisor; el Game Server recibe sólo la pública y **pierde la capacidad de fabricar tickets**. | ADR-010 §4.2 ya lo anticipa: «la migración a firma asimétrica es la evolución natural de este ADR». Con el emisor fuera pasa a ser casi gratis; hacerlo por separado no tiene sentido. |
+| 3 | **Elegir la librería.** `better-auth` es la candidata: TypeScript-first, esquema propio, plugins para OAuth y magic link, que es justo el «mecanismo definitivo TBD» de [system-context.md](../architecture/system-context.md). Comparar con Auth.js. | **Comprobar madurez antes de comprometerse**: en autenticación la juventud de una librería se paga tarde y cara. |
+| 4 | **Endpoint interno del Game Server para el alta del mundo.** Recibe una identidad ya autenticada y funda jugador, ciudad, aldeanos y territorio **en una transacción** (`INV-PLAYER-003`). Autenticado con secreto compartido entre servicios. | El alta del mundo NO puede moverse a Next.js: toca el mundo, el índice de territorios y la simulación. Sólo se mueve la identidad. |
+| 5 | **Migración: partir `players`.** La identidad (`username`, `password_hash`) sale hacia el almacén de la librería; los datos de juego (`civilization_id`, `faction_id`, `last_seen_at`) se quedan. `password_hash` **desaparece del esquema del juego**, que es el objetivo real de DEBT-18. | Coste de datos: cero. Hoy hay 6 cuentas y todas son de los tests de humo. |
+| 6 | **Retirar `internal/httpapi` y el `Issuer` de producción.** `Verifier` y `Authenticator` **se quedan**: el WebSocket conecta directo al Game Server y éste no puede fiarse de que otro ya comprobó nada (ADR-002). El `Issuer` sobrevive como ayudante de tests, que necesitan acuñar tickets válidos. | Con `httpapi` se va también `IPLimiter`, cuya vida útil está atada a esos endpoints. |
+| 7 | **Pooler de conexiones para el despliegue.** [deployment.md](../operations/deployment.md) pone Next.js en Vercel; funciones efímeras contra PostgreSQL agotan conexiones sin un pooler delante. | Infraestructura nueva que hoy no está en el documento. |
+
+### Cuándo
+
+**No antes de la primera exposición pública con usuarios reales.** El filo de la deuda ya está quitado
+—ambos endpoints tienen límite de tasa— y hacerlo ahora compromete el proyecto a un segundo almacén,
+un segundo sistema de migraciones y un pooler, para un juego que todavía no tiene combate.
 
 ---
 
