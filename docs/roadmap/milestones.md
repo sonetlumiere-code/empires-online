@@ -55,9 +55,16 @@ suyo crearía dos significados para el mismo identificador, que es exactamente l
 
 ## M0 — Foundation
 
-**Estado: PARCIAL.** Todo lo esencial está construido y en verde —monorepo, módulo Go, configuración,
-observabilidad, migraciones, protocolo compartido y esquemas embebidos—. Falta **la CI** (entregable 13) y
-el directorio `apps/web/` (parte del entregable 1). Mientras no exista la CI, M0 no está cerrado.
+**Estado: CERRADO.** Monorepo, módulo Go, configuración, observabilidad, migraciones, protocolo
+compartido, esquemas embebidos y `apps/web/`, todo en verde. Los dos bloqueantes que quedaban han
+caído: `apps/web/` existe (entregable 1) y **la CI se ejecuta y pasa entera** (entregable 13) desde
+que el repositorio es público, con los cinco jobs verdes — documentación, TypeScript, Game Server con
+`-race`, integración contra PostgreSQL y Redis reales, y la construcción de la imagen del contenedor.
+
+Sus dos primeras ejecuciones reales encontraron dos fallos que ninguna verificación local podía ver, y
+ese es exactamente el motivo por el que M0 no se daba por cerrado antes: la versión de pnpm declarada
+en dos sitios, y un typecheck que en un checkout limpio no encuentra los tipos de
+`@empires-online/protocol` porque `dist/` no existe todavía. Ambos arreglados.
 
 **Objetivo.** Dejar el repositorio en un estado en el que cualquier ingeniero pueda clonar, arrancar
 la infraestructura local, ejecutar el servidor, correr los tests y recibir verificación automática
@@ -144,10 +151,16 @@ Actions. **No entra**: lógica de dominio, mundo, jugadores, WebSocket ni mensaj
     JSON Schema a `packages/protocol/schema/v1/*.json`.
 12. **HECHO — Embebido de esquemas en Go** con `go:embed` del espejo generado en
     `internal/protocol/schema/v1/*.json`, ya consumido por los contract tests.
-13. **PENDIENTE — CI en `.github/workflows/ci.yml`** con la secuencia `format → lint → typecheck → unit →
-    integration (services postgres/redis) → build → docker build`. El job de integración levanta
-    Postgres y Redis como *services* y exporta `EO_INTEGRATION=1`. Cualquier check obligatorio en
-    rojo invalida el PR. **Es el único entregable de M0 sin empezar, y el que impide cerrarlo.**
+13. **HECHO — CI en `.github/workflows/ci.yml`**, con cinco jobs verdes: integridad documental y tests
+    de los scripts, TypeScript (typecheck, tests del protocolo, deriva del JSON Schema y `next build`),
+    Game Server (`gofmt`, `go mod tidy` sin cambios, `go vet` con y sin la etiqueta `integration`,
+    build, tests con `-race` y cobertura), integración con Postgres y Redis como *services* y
+    `EO_INTEGRATION=1`, y la construcción de la imagen del contenedor. Cualquier check obligatorio en
+    rojo invalida el PR.
+
+    **Falta `lint`/ESLint** de la secuencia original: `pnpm run lint` exige que cada paquete declare
+    su script y ninguno lo hace todavía. Añadir el paso antes que los scripts sólo produciría un job
+    rojo que no verifica nada.
 14. **HECHO — `docs/`** inicializado con la estructura de grupos y la guía de arranque que describe el
     entorno real: Windows 10, Node v22.17.1, pnpm 10.25.0, git 2.38.1, Docker CLI 20.10.22 con
     Compose v2.15.1, Go 1.27.0 instalado, y ausencia de `psql`, `redis-cli`, `make` y `gh`.
