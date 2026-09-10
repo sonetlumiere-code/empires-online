@@ -8,6 +8,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Disparador manual desde la pestaña Actions. Hace falta más de lo que parece:
+  # sin él, la única forma de reejecutar la CI tras un cambio que NO toca el
+  # repositorio —arreglar la facturación, cambiar la visibilidad, restablecer un
+  # servicio externo— es empujar un commit vacío, que ensucia el historial para
+  # decir «vuelve a intentarlo».
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
