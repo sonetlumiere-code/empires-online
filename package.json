@@ -41,7 +41,7 @@
     "smoke": "node scripts/smoke.mjs",
     "scripts:test": "node --test \"scripts/*.test.mjs\"",
     "lint": "pnpm -r run lint",
-    "typecheck": "pnpm -r run typecheck",
+    "typecheck": "pnpm run protocol:build && pnpm -r run typecheck",
     "test": "pnpm -r run test",
     "verify": "pnpm run protocol:build && pnpm run docs:check && pnpm run typecheck && pnpm run test && pnpm run scripts:test && pnpm run server:fmt:check && pnpm run server:vet && pnpm run server:vet:integration && pnpm run server:test"
   },

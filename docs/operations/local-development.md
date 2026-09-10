@@ -47,11 +47,15 @@ Consecuencias directas, que conviene interiorizar antes de empezar:
 - **El detector de carreras pasa** sobre los 10 paquetes con tests, desde WSL. Es lo que respalda la
   afirmación de que el bucle de juego está aislado por diseño y no necesita mutexes; en Windows no puede
   ejecutarse.
-- **La CI nunca ha llegado a ejecutarse.** El repositorio está en GitHub y los workflows se disparan,
-  pero los jobs se rechazan antes de arrancar por facturación de la cuenta. No es un fallo del código:
-  es que no ha corrido nada. La documentación no debe presentarla como validada.
-- **La construcción de la imagen del contenedor no tiene sustituto local** y sólo puede verificarse en la
-  CI. Es hoy lo único del proyecto sin ninguna evidencia detrás.
+- **La CI se ejecuta.** El repositorio es público en
+  [sonetlumiere-code/empires-online](https://github.com/sonetlumiere-code/empires-online) y Actions
+  corre sobre cada push a `main`. Estuvo un tiempo bloqueada por facturación mientras el repositorio
+  era privado: los jobs se rechazaban **antes de arrancar**, lo cual no era un fallo del código sino
+  la ausencia de cualquier ejecución.
+- **La construcción de la imagen del contenedor sólo se verifica en la CI**, porque no tiene sustituto
+  local: construir una imagen exige un daemon y Docker está descartado en esta máquina. Ya no es una
+  afirmación sin evidencia — el job la construye—, pero sigue siendo lo único del proyecto que nadie
+  puede comprobar desde aquí.
 - **No existe `make`.** Si un documento, script o hilo de CI referencia `make <target>`, es un error: el
   equivalente es `pnpm run <script>`.
 

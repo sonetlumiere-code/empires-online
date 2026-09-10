@@ -17,7 +17,8 @@ Cómo se verifica la capa de persistencia contra PostgreSQL y Redis **reales**: 
 > desarrollo lo tiene descartado (provoca pantallazos azules por consumo de RAM). PostgreSQL es un
 > cluster propio en `.pgdata/` puerto 5433, y Redis vive en WSL. El procedimiento exacto está en
 > [local-development.md](../operations/local-development.md) §3-bis. El job `integration` de la CI sí
-> usa contenedores, pero la CI todavía no ha llegado a ejecutarse ni una vez.
+> usa contenedores, y desde que el repositorio es público esos 44 tests **también pasan allí**, con
+> `-race`, contra `postgres:16-alpine` y `redis:7-alpine`.
 >
 > Donde este documento describa un test que **no** existe todavía, lo dice en su propia fila. Ubicación
 > y convenciones en [strategy.md](./strategy.md) §5.

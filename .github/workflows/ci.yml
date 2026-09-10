@@ -78,8 +78,14 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
 
+      # `pnpm run typecheck` (script raíz), NO `pnpm -r run typecheck`. El script
+      # raíz construye antes `packages/protocol`, y eso no es opcional: `apps/web`
+      # importa sus TIPOS desde `dist/`, que en un checkout limpio no existe
+      # todavía. En una máquina de desarrollo el fallo no se ve porque `dist/`
+      # sobrevive de compilaciones anteriores — es exactamente la clase de error
+      # que sólo aparece en un entorno limpio, y por la que existe este workflow.
       - name: Typecheck
-        run: pnpm -r run typecheck
+        run: pnpm run typecheck
 
       - name: Tests del protocolo
         run: pnpm run protocol:test
