@@ -404,8 +404,9 @@ Versiones fijadas en el workflow: `GO_VERSION: '1.23'`, `NODE_VERSION: '22'`, `P
 | Job | Paso | Comando | Servicios | Falla si… |
 |---|---|---|---|---|
 | **docs** | Integridad documental | `node scripts/check-docs.mjs` | — | Hay enlaces relativos rotos, ADR citados que no existen o `INV-*` citados y no registrados. Es el paso más barato del pipeline y el que impide que esta carpeta vuelva a divergir del árbol. |
-| **protocol** | Typecheck | `pnpm -r run typecheck` | — | El TypeScript no compila. |
+| **protocol** | Typecheck | `pnpm run typecheck` —script RAÍZ, que construye antes `packages/protocol`— | — | El TypeScript no compila. Usar `pnpm -r run typecheck` aquí fallaría en un checkout limpio: `apps/web` importa tipos de `dist/`. |
 | | Tests del protocolo | `pnpm run protocol:test` | — | Falla cualquiera de los 18 tests de Vitest. |
+| | Build del cliente | `pnpm run web:build` | — | `next build` falla. No lo cubre el typecheck: comprobar tipos no es construir. |
 | | **Deriva de schema** | `pnpm run protocol:build` + `pnpm run protocol:check` + `git diff --exit-code -- packages/protocol/schema services/game-server/internal/protocol/schema` | — | El JSON Schema versionado no coincide con el generado desde Zod, **en cualquiera de las dos copias** (§6 de [contract-tests.md](./contract-tests.md)). |
 | **game-server** | Formato | `gofmt -l .` (falla si la lista no está vacía) | — | Hay ficheros sin formatear. |
 | | Dependencias limpias | `go mod tidy` + `git diff --exit-code -- go.mod go.sum` | — | `go.mod`/`go.sum` no están al día. |
@@ -424,7 +425,7 @@ Versiones fijadas en el workflow: `GO_VERSION: '1.23'`, `NODE_VERSION: '22'`, `P
 > 2. **Los tests de integración de Redis: verificados.** 9 tests contra un Redis real en WSL, con `-race`, ejecutados y en verde (no saltados: `t.Skip` sólo actúa sin `EO_TEST_REDIS_URL`). Nota de versión: en WSL es Redis **6.0.16** y la CI usa **7-alpine**. Los comandos que ejercen estos tests (`SET NX`, `EVAL`, TTL) son muy anteriores a ambas, pero la diferencia existe y no está cubierta.
 > 3. **La construcción de la imagen del contenedor: verificada, pero sólo en la CI.** No es que Docker no esté instalado: es que **no se va a usar en esta máquina**, porque produce pantallazos azules por consumo de RAM. No hay sustituto local —construir una imagen exige un daemon—, así que el job `docker` es la única prueba que existe de que el artefacto desplegable se construye. Pasa; lo que no se puede es reproducirlo desde aquí.
 
-**Lo que la CI todavía no hace, y hay que añadir cuando exista lo que verifica:** no hay paso de `lint`/ESLint (`pnpm run lint` requiere que cada paquete declare su script), no hay paso de `web:build` pese a que `apps/web` ya existe, y no existe todavía el pipeline nocturno de §8.2. La comprobación de enlaces rotos **sí** existe ya, en el job `docs`. Documentar lo pendiente como pendiente es preferible a describir una CI que no está.
+**Lo que la CI todavía no hace, y hay que añadir cuando exista lo que verifica:** no hay paso de `lint`/ESLint (`pnpm run lint` requiere que cada paquete declare su script) y no existe todavía el pipeline nocturno de §8.2. La comprobación de enlaces rotos **sí** existe ya, en el job `docs`, y el **build del cliente** también: `tsc --noEmit` comprueba tipos pero no construye, y un fallo de *bundling* o un componente de servidor usando algo del navegador pasan el typecheck y revientan `next build`. Documentar lo pendiente como pendiente es preferible a describir una CI que no está.
 
 En CI el gate `EO_INTEGRATION=1` **estará siempre activo** en su job, porque los servicios están garantizados. En local es opcional: quien no tenga el daemon de Docker arrancado ejecuta `pnpm run server:test` sin ruido, porque la etiqueta `integration` excluye esos ficheros de la compilación (regla R8).
 

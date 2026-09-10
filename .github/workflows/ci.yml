@@ -59,7 +59,7 @@ jobs:
   # JSON Schema exportado no haya derivado de los esquemas Zod.
   # ─────────────────────────────────────────────────────────────
   protocol:
-    name: Protocolo (TypeScript)
+    name: TypeScript (protocolo y cliente)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,6 +101,14 @@ jobs:
             echo "::error::Los esquemas generados no están al día. Ejecuta 'pnpm run protocol:build' y versiona el resultado."
             exit 1
           fi
+
+      # `tsc --noEmit` NO es esto. Comprueba tipos, no construye: un fallo de
+      # bundling, una importación que sólo el compilador de Next resuelve, o un
+      # componente de servidor usando algo del navegador pasan el typecheck y
+      # revientan el build. Es barato y cubre el único artefacto desplegable del
+      # frontend.
+      - name: Build del cliente
+        run: pnpm run web:build
 
   # ─────────────────────────────────────────────────────────────
   # Game Server: formato, vet, build y tests unitarios (sin infraestructura).
