@@ -24,8 +24,10 @@ env:
   # `services/game-server/go.mod` con `go-version-file`. Duplicarla en dos sitios
   # garantiza que un día diverjan —ya ocurrió: go.mod pedía 1.25.11 mientras aquí
   # decía 1.23, y la CI no habría compilado—.
+  # La de pnpm tampoco: sale del campo `packageManager` de package.json, por el
+  # mismo motivo. Cada versión de herramienta se declara UNA vez, en el sitio
+  # donde el proyecto ya la necesitaba.
   NODE_VERSION: '22'
-  PNPM_VERSION: '10'
 
 jobs:
   # ─────────────────────────────────────────────────────────────
@@ -62,9 +64,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Sin `version`: la lee del campo `packageManager` de package.json.
+      # Declararla también aquí hace que la acción falle con «Multiple versions
+      # of pnpm specified» en lugar de elegir una, y de paso fija 10.25.0 exacto
+      # en vez de flotar sobre 10.x.
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
