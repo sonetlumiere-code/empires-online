@@ -242,7 +242,9 @@ func run() error {
 			CivilizationID:   1,
 			FactionID:        3, // NEUTRAL
 			Territories:      territories,
-			Tick:             gameLoop.Tick,
+			Limiter: httpapi.NewIPLimiter(
+				cfg.AuthRateLimitPerMin, cfg.AuthRateLimitBurst, cfg.TrustProxyHeaders),
+			Tick: gameLoop.Tick,
 		}, log)
 
 	mux := http.NewServeMux()

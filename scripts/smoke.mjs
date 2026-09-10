@@ -224,6 +224,15 @@ async function obtenerTicket({ silencioso = false } = {}) {
   const cabeceras = { 'content-type': 'application/json' };
 
   const alta = await pedir('/api/auth/register', { method: 'POST', headers: cabeceras, body: cuerpo });
+  if (alta.status === 429) {
+    fallar(
+      'el servidor está limitando por tasa las peticiones de esta máquina',
+      'Cada ejecución gasta 2 o 3 peticiones de `/api/auth/*`, y el límite por defecto son 10 por\n' +
+        'minuto (EO_AUTH_RATE_LIMIT_PER_MINUTE). Espera un minuto y reintenta.\n\n' +
+        'NO es un fallo del despliegue: el límite existe porque el alta ejecuta bcrypt sin\n' +
+        'autenticación previa y sin él sería un amplificador de denegación de servicio.',
+    );
+  }
   if (alta.status === 201 || alta.status === 200) {
     if (!silencioso) ok('alta del jugador de humo', `${USUARIO}`);
     return alta.cuerpo;

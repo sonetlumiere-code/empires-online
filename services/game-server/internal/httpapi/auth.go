@@ -41,6 +41,7 @@ type AuthAPI struct {
 	defaultCap   int32
 	villagers    int
 	territories  *territory.Set
+	limiter      *IPLimiter
 	tick         func() uint64
 	civilization int32
 	faction      int32
@@ -57,6 +58,9 @@ type Options struct {
 	// hidratación, así que leerla desde una goroutine de HTTP no compite con el
 	// game loop; el control, que sí muta, no se lee aquí.
 	Territories *territory.Set
+	// Limiter acota alta y login por dirección de origen. Si es nil no se limita
+	// nada, lo cual sólo es aceptable en tests.
+	Limiter *IPLimiter
 	// Tick devuelve el tick actual del game loop. Es seguro llamarlo desde
 	// cualquier goroutine: el contador del loop es atómico.
 	Tick      func() uint64
@@ -85,6 +89,7 @@ func NewAuthAPI(
 		civilization: opts.CivilizationID, faction: opts.FactionID,
 		territories: opts.Territories,
 		tick:        opts.Tick,
+		limiter:     opts.Limiter,
 	}
 }
 
@@ -113,6 +118,9 @@ func (a *AuthAPI) Register() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "usa POST")
+			return
+		}
+		if a.rateLimited(w, r, "register") {
 			return
 		}
 		var creds credentials
@@ -209,6 +217,9 @@ func (a *AuthAPI) Login() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "usa POST")
+			return
+		}
+		if a.rateLimited(w, r, "login") {
 			return
 		}
 		var creds credentials
@@ -318,4 +329,24 @@ func (a *AuthAPI) currentTick() uint64 {
 		return 0
 	}
 	return a.tick()
+}
+
+// rateLimited responde 429 y devuelve true si la petición debe cortarse aquí.
+//
+// Se comprueba ANTES de leer el cuerpo y muy antes de bcrypt: el objetivo es
+// justamente no gastar ese trabajo. Se registra el rechazo, porque una ráfaga de
+// 429 desde una misma dirección es la señal de que alguien está probando
+// contraseñas (ADR-010 §4.3).
+func (a *AuthAPI) rateLimited(w http.ResponseWriter, r *http.Request, endpoint string) bool {
+	if a.limiter == nil {
+		return false
+	}
+	if a.limiter.Allow(r, time.Now()) {
+		return false
+	}
+	a.log.Warn("petición rechazada por límite de tasa",
+		"endpoint", endpoint, "remote_addr", r.RemoteAddr)
+	writeError(w, http.StatusTooManyRequests, "RATE_LIMITED",
+		"demasiados intentos; espera unos segundos")
+	return true
 }

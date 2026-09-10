@@ -411,13 +411,25 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
 
 1. **HECHO** — Migración de `sessions` e `idempotency_keys`, con `sessions_player_idx` e
    `idempotency_keys_expiry_idx`.
-2. **PENDIENTE — Emisión del game ticket desde una API route de Next.js en `apps/web`**: JWT HS256
-   firmado con `EO_AUTH_JWT_SECRET`, TTL 60 s, claims
+2. **BLOQUEADO por una decisión que el proyecto aplazó** — Emisión del game ticket desde una API route
+   de Next.js en `apps/web`: JWT HS256 firmado con `EO_AUTH_JWT_SECRET`, TTL 60 s, claims
    `{ sub: playerId, jti, iat, exp, aud: "game-server" }`. **Hoy lo emite el propio game server** desde
-   `POST /api/auth/register` y `POST /api/auth/login` (`internal/httpapi`, con bcrypt), lo cual es
-   explícitamente provisional. La arquitectura objetivo la fija
-   [../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md);
-   el traslado está registrado como `DEBT-18` en [backlog.md](backlog.md).
+   `POST /api/auth/register` y `POST /api/auth/login` (`internal/httpapi`, con bcrypt). La arquitectura
+   objetivo la fija
+   [../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md).
+
+   Al intentar cerrarlo apareció una contradicción entre reglas propias.
+   [migrations.md](../database/migrations.md) establece **como regla de arquitectura** que `apps/web`
+   no tendrá credenciales de PostgreSQL ni importará ningún cliente SQL, y
+   [frontend.md](../architecture/frontend.md) que Next.js sólo toca `EO_AUTH_JWT_SECRET`. Si Next.js no
+   puede leer la base, **no puede verificar una contraseña**: bcrypt tiene que vivir donde vive
+   `password_hash`. Y el flujo de ADR-010 arranca con «sesión web ya autenticada», cuyo mecanismo
+   [system-context.md](../architecture/system-context.md) marca **TBD (fuera de MVP)**.
+
+   Es decir: no es trabajo pendiente, es una decisión pendiente. Detalle completo y las dos salidas
+   posibles en `DEBT-18` de [backlog.md](backlog.md). Lo que **sí** se ha hecho es quitarle el filo:
+   ambos endpoints tienen ya límite de tasa por dirección de origen, porque bcrypt sin autenticación
+   previa y sin límite era un amplificador de denegación de servicio contra el proceso del game loop.
 3. **HECHO** — `internal/auth`: `Verifier`, `Authenticator`, `Issuer` y `Claims`. Verificación de firma,
    `exp` y `aud`, y consumo del `jti` en Redis con `SETNX` sobre `ticket:jti:{jti}` y TTL 120 s para
    impedir replay. Un `jti` ya consumido cierra con `4401`. El comportamiento es *fail-closed*.
