@@ -222,6 +222,9 @@ func TestFundarReclamaElTerritorioDelCentroYRegistraElEvento(t *testing.T) {
 	require.NotNil(t, control.CapturedAt, "INV-TERR-007")
 	assert.True(t, control.CapturedAt.Equal(instanteDeAlta),
 		"captured_at lo sella el reloj del llamante, no el del sistema: %s", control.CapturedAt)
+	// INV-TERR-006: reclamar no toca la mecánica de captura, que no existe en MVP.
+	assert.EqualValues(t, 0, control.ControlPoints)
+	assert.False(t, control.Contested)
 
 	// INV-TERR-009 por el lado durable: el evento de dominio existe y va en la
 	// misma transacción, con el tick que le pasó el llamante.
@@ -329,4 +332,56 @@ func TestElIndiceReconstruidoDesdeLaBaseCubreElMundoEntero(t *testing.T) {
 	otro, _, err := territory.BuildSet(geometria, 64, 64, 32)
 	require.NoError(t, err)
 	assert.Equal(t, uno.All(), otro.All(), "reconstruirlo da lo mismo")
+}
+
+// La mitad DB de INV-TERR-001, INV-TERR-003 e INV-TERR-004: cada fila inválida
+// la rechaza el motor, con el nombre exacto de la restricción, y no deja rastro.
+func TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas(t *testing.T) {
+	store, ctx := newTestStore(t)
+	_, sembrados := seedTerritories(t, ctx, store)
+	db := store.Pool()
+	id := sembrados[0].ID
+
+	// INV-TERR-001: un rectángulo invertido no puede existir en disco.
+	_, err := db.Exec(ctx,
+		`INSERT INTO territories (name, min_x, min_y, max_x, max_y) VALUES ('al revés', 5, 0, 2, 1)`)
+	assert.Equal(t, "territories_bounds_ordered", constraintDe(t, err))
+
+	// INV-TERR-003: como mucho una fila de control por territorio…
+	_, err = db.Exec(ctx, `INSERT INTO territory_control (territory_id) VALUES ($1)`, id)
+	assert.Equal(t, "territory_control_pkey", constraintDe(t, err))
+	// …y nunca sin territorio.
+	_, err = db.Exec(ctx, `INSERT INTO territory_control (territory_id) VALUES (999999)`)
+	assert.Equal(t, "territory_control_territory_id_fkey", constraintDe(t, err))
+
+	// INV-TERR-004: las dos combinaciones incoherentes, y un tipo inventado.
+	jugador := uuid.NewString()
+	_, err = db.Exec(ctx,
+		`UPDATE territory_control SET owner_type = 'NONE', owner_id = $2 WHERE territory_id = $1`, id, jugador)
+	assert.Equal(t, "territory_control_owner_consistency", constraintDe(t, err))
+	_, err = db.Exec(ctx,
+		`UPDATE territory_control SET owner_type = 'PLAYER', owner_id = NULL WHERE territory_id = $1`, id)
+	assert.Equal(t, "territory_control_owner_consistency", constraintDe(t, err))
+	_, err = db.Exec(ctx,
+		`UPDATE territory_control SET owner_type = 'EMPIRE', owner_id = $2 WHERE territory_id = $1`, id, jugador)
+	assert.Equal(t, "territory_control_owner_type_valid", constraintDe(t, err))
+
+	var territorios, controles int
+	require.NoError(t, db.QueryRow(ctx, `SELECT count(*) FROM territories`).Scan(&territorios))
+	require.NoError(t, db.QueryRow(ctx, `SELECT count(*) FROM territory_control`).Scan(&controles))
+	assert.Equal(t, len(sembrados), territorios, "las filas rechazadas no dejan rastro")
+	assert.Equal(t, len(sembrados), controles)
+
+	repo := postgres.NewTerritoryRepo(store)
+	control, err := repo.GetControl(ctx, db, id)
+	require.NoError(t, err)
+	assert.Equal(t, territory.OwnerNone, control.OwnerType, "ningún UPDATE rechazado cambió el control")
+
+	// INV-TERR-003, ON DELETE CASCADE: borrar el territorio borra su control,
+	// así que no puede quedar una fila huérfana.
+	_, err = db.Exec(ctx, `DELETE FROM territories WHERE id = $1`, id)
+	require.NoError(t, err)
+	require.NoError(t, db.QueryRow(ctx,
+		`SELECT count(*) FROM territory_control WHERE territory_id = $1`, id).Scan(&controles))
+	assert.Zero(t, controles)
 }

@@ -924,7 +924,14 @@ Todos existen y pasan salvo el marcado como pendiente.
   (`internal/websocket/hub_test.go`). Incluye un control negativo,
   `TestBroadcastChunkEnBucleSiDuplicaria`, que demuestra que el problema es real: si alguien sustituye
   `BroadcastChunks` por un bucle, ese test explica por qué no.
-- ✔ *contract*: `territory.update` valida contra el JSON Schema (`contract_test.go`, ya existente).
+- ✔ *simulation*: un cambio de control se aplica en la RAM y se emite una sola vez a la huella
+  completa, y sin cambio no se emite nada (`internal/game/simulation/territory_test.go`).
+- ✔ *integration*: las restricciones del esquema rechazan cada fila inválida con su nombre exacto
+  (`TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas`).
+- ✔ *contract*: `territory.update` serializa exactamente la vista del esquema exportado, con
+  `ownerId: null` explícito, y los tipos de dueño coinciden con su enum
+  (`internal/protocol/territory_contract_test.go`). Hasta `EO-118` esta línea afirmaba que lo validaba
+  `contract_test.go`, que sólo comprueba que el nombre del tipo aparece en el esquema.
 
 ### Documentación actualizada al cerrar
 

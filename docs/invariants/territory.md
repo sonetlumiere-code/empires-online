@@ -15,7 +15,7 @@ refleja de forma desigual:
 | Familia | Código | Estado de las fichas |
 |---|---|---|
 | `INV-SAFE-*` | `internal/domain/safezone`, `internal/game/simulation/safezones.go`, `postgres.SafeZoneRepo` (M5) | **Reconciliadas con la suite.** Cada fila `Cobertura` nombra tests que existen y pasan. |
-| `INV-TERR-*` | `internal/domain/territory`, `internal/game/simulation/territory.go`, `postgres.TerritoryRepo` (M6) | **Sin reconciliar.** El código y sus tests existen desde M6, pero las fichas siguen diciendo «no existe todavía», y la tabla de [README.md](README.md) §7 ya marca cinco como cubiertas. Corregirlas es parte de `EO-118` en [../roadmap/backlog.md](../roadmap/backlog.md), una por una contra la suite. Hasta entonces, la verdad sobre M6 está en [../roadmap/milestones.md](../roadmap/milestones.md). |
+| `INV-TERR-*` | `internal/domain/territory`, `internal/game/simulation/territory.go` e `introduce.go`, `postgres.TerritoryRepo` y `postgres.Bootstrapper` (M6) | **Reconciliadas con la suite** (`EO-118`). Dos fichas siguen parciales porque su validación de carga no existe: [INV-TERR-005](#inv-terr-005) e [INV-TERR-007](#inv-terr-007), registradas como `EO-119`. |
 
 Cada ficha declara en su fila `Cobertura` qué parte está viva y qué parte es diseño. Un invariante cuya única garantía vigente es `DB` se declara así, no como si el dominio ya lo sostuviera.
 
@@ -47,9 +47,9 @@ Las dos familias se documentan juntas porque comparten geometría, índice deriv
 |---|---|
 | Severidad | ALTO |
 | Aplicación | DB, DOMAIN, TEST |
-| Milestone | M7 |
-| Política ante violación | FAIL_FAST en la carga |
-| Cobertura | **Parcial**: la mitad `DB` está vigente (`territories_bounds_ordered` aplicada en la migración); **no existe todavía** ningún test |
+| Milestone | M6 |
+| Política ante violación | FAIL_FAST: el servidor no arranca |
+| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas` (integration); `DOMAIN` por `TestUnTerritorioFueraDelMundoNoSePuedeConstruir`, `TestUnRectanguloDesordenadoNoSePuedeConstruir` y `TestUnIDQueNoCabeEnElIndiceSeRechazaAlConstruir` (`internal/domain/territory/territory_test.go`) |
 
 **Enunciado.** El rectángulo de un territorio cumple `min_x <= max_x` y `min_y <= max_y` (`CHECK territories_bounds_ordered`) y está contenido en `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)`.
 
@@ -59,15 +59,17 @@ La segunda mitad —contención en el mundo— tiene el modo de fallo contrario.
 
 **Cómo se garantiza.**
 
-- `DB` — `CONSTRAINT territories_bounds_ordered CHECK (min_x <= max_x AND min_y <= max_y)` en `000001_initial_schema.up.sql`. Es la garantía **vigente hoy**: un rectángulo invertido no puede existir en disco.
-- `DOMAIN` — la contención en el mundo **no** es expresable como `CHECK`, por la misma razón que en [INV-WORLD-001](world.md#inv-world-001): `EO_WORLD_WIDTH` y `EO_WORLD_HEIGHT` son configuración, no esquema. Se validará al cargar los territorios en el arranque, comparando contra las dimensiones del mundo ya construido.
-- `DOMAIN` — la validación de carga ocurre **antes** de construir el índice tile → territorio, para que el índice nunca se construya sobre una geometría que no cabe.
+- `DB` — `CONSTRAINT territories_bounds_ordered CHECK (min_x <= max_x AND min_y <= max_y)` en `000001_initial_schema.up.sql`: un rectángulo invertido no puede existir en disco.
+- `DOMAIN` — la contención en el mundo **no** es expresable como `CHECK`, por la misma razón que en [INV-WORLD-001](world.md#inv-world-001): `EO_WORLD_WIDTH` y `EO_WORLD_HEIGHT` son configuración, no esquema. `territory.BuildSet` valida cada rectángulo contra las dimensiones del mundo ya construido —orden, contención, id en `[1, 65 535]` e id no repetido— **antes** de pintar el índice, que por tanto nunca se construye sobre una geometría que no cabe.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_001_TerritoryBoundsValid` (integration) — un `INSERT` con `min_x > max_x` falla por `territories_bounds_ordered`; un territorio que se sale del mundo es rechazado por la carga, no por la base de datos.
+- `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas` (integration) — un `INSERT` con `min_x > max_x` falla por `territories_bounds_ordered`, con ese nombre exacto, y no deja fila.
+- `TestUnTerritorioFueraDelMundoNoSePuedeConstruir`, `TestUnRectanguloDesordenadoNoSePuedeConstruir` y `TestUnIDQueNoCabeEnElIndiceSeRechazaAlConstruir` (unit) — la mitad que la base de datos no puede ver: `BuildSet` devuelve `ErrRectanguloInvalido` o `ErrIDFueraDeRango` y no construye nada.
 
-**Violación en runtime.** Detección en el error de constraint y en la validación de carga. Log `invariant_violation` con `inv_id=INV-TERR-001`, `territory_id` y el rectángulo. Política `FAIL_FAST` de la carga de ese territorio: no se incorpora al índice. No se recorta el rectángulo al mundo: un territorio recortado en silencio cambia el mapa político sin que nadie lo decida.
+**Violación en runtime.** Sólo puede llegar por la carga, y en la práctica por un cambio de `EO_WORLD_WIDTH` o `EO_WORLD_HEIGHT` sobre una base ya sembrada. `BuildSet` devuelve el error con el `territory_id` y el rectángulo, `cmd/server` lo propaga y **el servidor no arranca**. No se descarta el territorio ni se recorta al mundo: cualquiera de las dos cosas cambiaría el mapa político sin que nadie lo decidiera, y un mundo con la configuración equivocada es un error del operador, no un estado degradado que convenga servir.
+
+Una versión anterior de esta ficha pedía descartar sólo el territorio afectado y arrancar. El código aborta el arranque, por la misma razón que esta ficha ya daba contra recortar. Si alguna vez se prefiere arrancar degradado, el modelo es [INV-TERR-002](#inv-terr-002), y exige cambiar `BuildSet`.
 
 ---
 
@@ -78,9 +80,9 @@ La segunda mitad —contención en el mundo— tiene el modo de fallo contrario.
 |---|---|
 | Severidad | ALTO |
 | Aplicación | DOMAIN, TEST |
-| Milestone | M7 |
+| Milestone | M6 |
 | Política ante violación | REPAIR: gana el `id` menor; log `invariant_violation`; arranque degradado, **no** `FAIL_FAST` (ver «Violación en runtime»). La métrica está pendiente de ADR ([README.md](README.md) §5.1) |
-| Cobertura | **Sin cobertura**: la comprobación de solape es diseño pendiente; **no existe todavía** el índice ni el test |
+| Cobertura | **Cubierto** por `TestDosTerritoriosSolapadosResuelvenElIDMenorYSeReportan`, `TestElReporteDeSolapamientosEsDeterminista` y `TestLaRejillaCubreElMundoSinHuecosNiSolapes` (`internal/domain/territory`), y `TestElIndiceReconstruidoDesdeLaBaseCubreElMundoEntero` (integration). La señal de `cmd/server` no tiene test propio |
 
 **Enunciado.** Dos territorios no comparten ningún tile.
 
@@ -114,9 +116,9 @@ La propiedad es geométrica y no política: **también** se prohíbe el solape e
 |---|---|
 | Severidad | ALTO |
 | Aplicación | DB, TEST |
-| Milestone | M7 |
-| Política ante violación | FAIL_FAST (constraint) |
-| Cobertura | **Parcial**: la mitad `DB` está vigente (PK y FK de `territory_control` aplicadas); **no existe todavía** ningún test |
+| Milestone | M6 |
+| Política ante violación | FAIL_FAST (constraint); en la RAM, el control no se incorpora |
+| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas` y `TestLaSiembraCreaUnaFilaDeControlPorTerritorio` (integration); la RAM por `TestUnControlDeTerritorioInexistenteNoEmiteNada` (`internal/game/simulation/territory_test.go`) |
 
 **Enunciado.** Todo territorio tiene como máximo una fila en `territory_control` y toda fila de control referencia un territorio existente (`territory_id` es `PRIMARY KEY` y `FOREIGN KEY ON DELETE CASCADE`).
 
@@ -127,19 +129,22 @@ El precio de esa separación es que ahora hay dos tablas que pueden desincroniza
 - **Dos filas de control para un territorio** haría ambigua la pregunta «¿quién lo controla?», exactamente como el solape de [INV-TERR-002](#inv-terr-002) hace ambigua «¿de qué territorio es este tile?».
 - **Una fila de control huérfana** —sin territorio— es control sobre una región que no existe: no tiene tiles, no se puede emitir a ningún chunk y nadie puede disputarla. Se acumularía en silencio cada vez que se borrara un territorio.
 
-Que la relación sea 0..1 y no 1..1 es intencional: un territorio recién creado y nunca disputado **no necesita** fila de control. La ausencia de fila y `owner_type = 'NONE'` significan lo mismo, y no tener que insertar una fila vacía por cada territorio del mapa es un ahorro real.
+El esquema admite una relación 0..1, pero el código la usa como 1..1: la siembra crea una fila de control por territorio en la misma transacción que la geometría (`RN-TERR-006` de [../specs/territory.md](../specs/territory.md)), y la reclamación de la fundación actualiza esa fila con control optimista sobre `version`. Un territorio sin fila no se puede reclamar. La `PRIMARY KEY` sigue siendo lo que impide la segunda fila.
 
 **Cómo se garantiza.**
 
 - `DB` — `territory_control.territory_id bigint PRIMARY KEY REFERENCES territories (id) ON DELETE CASCADE`. Una sola columna hace las dos mitades: la `PRIMARY KEY` impone «como máximo una fila por territorio» y la `FOREIGN KEY` impone «siempre con territorio». Es la garantía **vigente hoy**.
 - `DB` — `ON DELETE CASCADE` es lo que impide las filas huérfanas sin necesidad de ninguna limpieza periódica: borrar el territorio borra su control.
 - `DB` — el trigger `territory_control_set_updated_at` mantiene `updated_at`, de modo que un cambio de control es auditable en el tiempo sin código adicional.
+- `DOMAIN` — `Simulation.applyTerritoryControl` comprueba que el índice conoce el territorio **antes** de incorporar el control a la RAM.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_003_OneControlRowPerTerritory` (integration) — un segundo `INSERT` para el mismo `territory_id` falla por clave primaria; un `INSERT` con un `territory_id` inexistente falla por clave foránea; borrar el territorio borra su fila de control.
+- `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas` (integration) — un segundo `INSERT` para el mismo `territory_id` falla por `territory_control_pkey`; uno con un `territory_id` inexistente, por `territory_control_territory_id_fkey`; borrar el territorio borra su fila de control.
+- `TestLaSiembraCreaUnaFilaDeControlPorTerritorio` (integration) — la siembra deja exactamente una fila por territorio.
+- `TestUnControlDeTerritorioInexistenteNoEmiteNada` (simulation) — un control que el índice no conoce no entra en la RAM ni se difunde.
 
-**Violación en runtime.** Imposible en escritura: PostgreSQL rechaza ambos casos. En lectura, una fila de control cuyo territorio no se pudo cargar produce log `invariant_violation` con `inv_id=INV-TERR-003` y `territory_id`. Política `FAIL_FAST` de la carga de ese control: no se incorpora al índice.
+**Violación en runtime.** Imposible en disco: PostgreSQL rechaza ambos casos. Lo único que puede llegar a la simulación es un control con un `territory_id` que el índice no conoce, y sólo si la geometría y el control se desincronizan entre la carga y el alta. `applyTerritoryControl` emite `invariant_violation` con `inv_id=INV-TERR-003`, `entity=territory:<id>` y `policy=FAIL_FAST`, y descarta ese control: no hay geometría que controlar ni huella a la que emitir. La carga del arranque no hace esta comprobación porque la clave foránea la hace innecesaria.
 
 ---
 
@@ -149,10 +154,10 @@ Que la relación sea 0..1 y no 1..1 es intencional: un territorio recién creado
 | Campo | Valor |
 |---|---|
 | Severidad | CRITICO |
-| Aplicación | DB, TEST |
-| Milestone | M7 |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | M6 |
 | Política ante violación | FAIL_FAST (constraint) |
-| Cobertura | **Parcial**: la mitad `DB` está vigente (`territory_control_owner_consistency` aplicada); **no existe todavía** ningún test |
+| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas` (integration); `DOMAIN` por `TestUnDueñoExigeIdentificadorYFechaDeCaptura`, `TestControlSinDueñoEsValidoSinIDNiFecha` y `TestUnOwnerTypeDesconocidoSeRechaza` (`internal/domain/territory/territory_test.go`) |
 
 **Enunciado.** `(owner_type = 'NONE') = (owner_id IS NULL)`, garantizado por `CHECK territory_control_owner_consistency`.
 
@@ -168,12 +173,14 @@ La severidad es `CRITICO` y no `ALTO` porque el control de territorio es, en cua
 - `DB` — `CONSTRAINT territory_control_owner_consistency CHECK ((owner_type = 'NONE' AND owner_id IS NULL) OR (owner_type <> 'NONE' AND owner_id IS NOT NULL))`. La bicondicional está escrita como la disyunción de sus dos casos, que es la forma expresable en SQL. Es la garantía **vigente hoy**.
 - `DB` — `CONSTRAINT territory_control_owner_type_valid CHECK (owner_type IN ('NONE', 'PLAYER', 'CLAN', 'FACTION'))` cierra el dominio del discriminador, en línea con la convención de `text` + `CHECK` del canon §11. Sin esa segunda constraint, un `owner_type` inventado pasaría por la rama «distinto de NONE» y exigiría un `owner_id` sin que nada supiera interpretarlo.
 - `DB` — `owner_type text NOT NULL DEFAULT 'NONE'`: una fila de control recién creada nace sin dueño y consistente, sin que el código tenga que acordarse de inicializar nada.
+- `DOMAIN` — `territory.Control.Validate` repite la comprobación, y el `Bootstrapper` la ejecuta sobre el control que acaba de reclamar antes de dar la transacción por buena.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_004_OwnerTypeIdConsistency` (integration) — las cuatro combinaciones: `('NONE', NULL)` y `('PLAYER', id)` se aceptan; `('NONE', id)` y `('PLAYER', NULL)` fallan por `territory_control_owner_consistency`.
+- `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas` (integration) — `('NONE', id)` y `('PLAYER', NULL)` fallan por `territory_control_owner_consistency`, un `owner_type` inventado falla por `territory_control_owner_type_valid`, y ningún `UPDATE` rechazado cambia el control.
+- `TestUnDueñoExigeIdentificadorYFechaDeCaptura`, `TestControlSinDueñoEsValidoSinIDNiFecha` y `TestUnOwnerTypeDesconocidoSeRechaza` (unit) — las mismas combinaciones contra `Validate`.
 
-**Violación en runtime.** Imposible en escritura. En lectura, una combinación incoherente sólo puede venir de una migración mal hecha: log `invariant_violation` con `inv_id=INV-TERR-004`, `territory_id`, `owner_type` y `owner_id`. Política `FAIL_FAST` de la carga: el territorio se incorpora **sin** control, nunca con un dueño adivinado.
+**Violación en runtime.** Imposible en disco mientras exista el `CHECK`. La carga del arranque no valida los controles leídos y no lo necesita: lo que la base de datos rechaza no puede estar en ella.
 
 ---
 
@@ -184,9 +191,9 @@ La severidad es `CRITICO` y no `ALTO` porque el control de territorio es, en cua
 |---|---|
 | Severidad | ALTO |
 | Aplicación | DOMAIN, TEST |
-| Milestone | M7 |
-| Política ante violación | REPAIR (liberar el territorio) |
-| Cobertura | **Sin cobertura**: no hay clave foránea que lo garantice ni validación de carga todavía |
+| Milestone | M6 |
+| Política ante violación | REPAIR (liberar el territorio), **sin implementar** |
+| Cobertura | **Parcial**: el único escritor lo cumple por construcción y `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration) lo comprueba; **no existe** la validación de carga que sustituye a la clave foránea (`EO-119`) |
 
 **Enunciado.** Si `owner_type = 'PLAYER'`, `owner_id` es un `players.id` existente. No hay clave foránea: `owner_id` es `text` polimórfico.
 
@@ -196,15 +203,16 @@ La consecuencia es concreta: si un jugador se borra, sus territorios quedan apun
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — la validación de carga resolverá cada `owner_id` de tipo `PLAYER` contra los jugadores ya cargados. Es el sustituto de la clave foránea, y tiene que ser explícito precisamente porque la base de datos no lo hace.
-- `DOMAIN` — el cambio de control escribirá `owner_id` a partir del `playerId` de la sesión, que proviene del ticket verificado ([INV-PLAYER-004](player.md#inv-player-004)) y por tanto existe: no de un valor del payload.
-- `DOMAIN` — el borrado de un jugador deberá liberar sus territorios (`owner_type = 'NONE'`, `owner_id = NULL`) en la misma transacción. Mientras esa ruta no exista, la validación de carga es la única defensa.
+- `DOMAIN` — **vigente**: el único escritor de `owner_id` es la reclamación de la fundación, en `postgres.Bootstrapper`, y escribe el `players.id` que esa misma transacción acaba de insertar. Si el jugador no llega a existir, la transacción entera se deshace y el control con él. Ningún valor del payload llega a `owner_id`.
+- `DOMAIN` — **vigente por ausencia**: no existe ninguna ruta que borre jugadores. El `ON DELETE CASCADE` de `players` alcanza a `cities` y `units` pero no a `territory_control`, así que el día que exista esa ruta tendrá que liberar sus territorios en la misma transacción.
+- `DOMAIN` — **no existe todavía**: la validación de carga que resuelva cada `owner_id` de tipo `PLAYER` contra `players`. Es el sustituto de la clave foránea y la única defensa contra un borrado manual o una migración. Registrada como `EO-119`.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_005_PlayerOwnerExists` (integration) — barrido: todo `owner_id` con `owner_type = 'PLAYER'` resuelve en `players`; borrar un jugador con territorios y recargar deja esos territorios sin dueño, no con un dueño fantasma.
+- `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration) — tras fundar, `owner_id` es el id del jugador recién creado.
+- Pendiente con `EO-119`: un barrido que compruebe que todo `owner_id` de tipo `PLAYER` resuelve en `players`, y que un dueño borrado a mano se libera al recargar.
 
-**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-TERR-005`, `territory_id` y el `owner_id` irresoluble. Política `REPAIR`: el territorio se libera (`owner_type = 'NONE'`, `owner_id = NULL`) y se registra un `world_events` de auditoría. Liberar es la reparación correcta porque devuelve el territorio al juego; conservar un dueño inexistente lo saca de él para siempre.
+**Violación en runtime.** Hoy **no se detecta**: un dueño fantasma se cargaría en la RAM y viajaría a los clientes como `ownerId`. La política prevista es `REPAIR`: log `invariant_violation` con `inv_id=INV-TERR-005`, `territory_id` y el `owner_id` irresoluble; el territorio se libera (`owner_type = 'NONE'`, `owner_id = NULL`) y se registra un `world_events` de auditoría. Liberar es la reparación correcta porque devuelve el territorio al juego; conservar un dueño inexistente lo saca de él para siempre.
 
 ---
 
@@ -215,9 +223,9 @@ La consecuencia es concreta: si un jugador se borra, sus territorios quedan apun
 |---|---|
 | Severidad | MEDIO |
 | Aplicación | TEST |
-| Milestone | M7 |
+| Milestone | M6 |
 | Política ante violación | Log `error`; sin reparación |
-| Cobertura | **Sin cobertura**: se cumple trivialmente porque nada escribe `territory_control`; **no existe todavía** el test que lo fije |
+| Cobertura | **Cubierto** por `TestLaSiembraCreaUnaFilaDeControlPorTerritorio` y `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration): los dos únicos escritores de `territory_control` dejan `control_points = 0` y `contested = false` |
 
 **Enunciado.** En MVP, `control_points = 0` y `contested = false` para toda fila de `territory_control`.
 
@@ -231,13 +239,15 @@ Su única garantía es `TEST`, y así se declara: es un invariante frágil por d
 
 - `TEST` — un barrido de integración comprueba el estado de las dos columnas. No hay ninguna otra defensa, y no debe haberla: poner un `CHECK (control_points = 0)` obligaría a una migración el día que se implemente la captura, para eliminar una constraint que sólo existía para documentar.
 - `DB` — lo que sí está garantizado es el rango: `control_points integer NOT NULL DEFAULT 0 CHECK (control_points >= 0)`. Un progreso de captura negativo es imposible incluso cuando la mecánica exista.
-- `DOMAIN` — ninguna ruta de código escribe `territory_control` en MVP, así que la propiedad se cumple trivialmente. Ésa es la razón de que la ficha declare `MEDIO` y no algo más alto.
+- `DOMAIN` — sólo dos rutas escriben `territory_control`: la siembra, que inserta con los `DEFAULT` del DDL, y la reclamación de la fundación, cuyo `UPDATE` sólo toca `owner_type`, `owner_id`, `captured_at` y `version`. Ninguna toca las dos columnas dormidas. Ésa es la razón de que la ficha declare `MEDIO` y no algo más alto.
+- `DOMAIN` — `territory.Control.Validate` rechaza un `control_points` negativo, el mismo límite que el `CHECK`.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_006_NoCaptureProgressInMVP` (integration) — barrido sobre `territory_control`: `control_points = 0` y `contested = false` en todas las filas.
+- `TestLaSiembraCreaUnaFilaDeControlPorTerritorio` (integration) — tras sembrar, todas las filas tienen `control_points = 0` y `contested = false`.
+- `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration) — reclamar un territorio no cambia ninguna de las dos.
 
-**Violación en runtime.** Detección en el test de integración. Log `invariant_violation` con `inv_id=INV-TERR-006` y `territory_id`. Sin reparación automática: el valor se conserva y se investiga de dónde salió. Cuando exista la mecánica de captura, este invariante se marcará `DEROGADO` con su ADR, y su número quedará quemado según la convención de [README.md](README.md) §2.
+**Violación en runtime.** No hay detección en runtime: el servidor no lee esas columnas para nada. Sólo el test la detecta, y la detectaría si una ruta nueva empezara a escribirlas. Sin reparación automática: el valor se conserva y se investiga de dónde salió. Cuando exista la mecánica de captura, este invariante se marcará `DEROGADO` con su ADR, y su número quedará quemado según la convención de [README.md](README.md) §2.
 
 ---
 
@@ -248,9 +258,9 @@ Su única garantía es `TEST`, y así se declara: es un invariante frágil por d
 |---|---|
 | Severidad | MEDIO |
 | Aplicación | DOMAIN, TEST |
-| Milestone | M7 |
-| Política ante violación | REPAIR (fijar `captured_at`) |
-| Cobertura | **Sin cobertura**: no hay ruta que escriba `territory_control` todavía |
+| Milestone | M6 |
+| Política ante violación | REPAIR (fijar `captured_at`), **sin implementar** |
+| Cobertura | **Parcial**: la escritura está cubierta por `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` y `TestElOwnershipSobreviveAUnReinicio` (integration) y por `TestUnDueñoExigeIdentificadorYFechaDeCaptura` (unit); **no existe** la validación de carga (`EO-119`) |
 
 **Enunciado.** `owner_type <> 'NONE'` implica `captured_at IS NOT NULL`.
 
@@ -262,15 +272,18 @@ La implicación es deliberadamente **en un solo sentido**. Un territorio liberad
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — el cambio de control escribirá `owner_type`, `owner_id` y `captured_at` en la misma sentencia, con el `now` del `Clock` inyectado. No habrá ninguna ruta que fije el dueño sin la fecha.
-- `DOMAIN` — la validación de carga comprobará la implicación antes de incorporar el control al índice.
+- `DOMAIN` — **vigente**: `TerritoryRepo.ClaimForPlayer` escribe `owner_type`, `owner_id` y `captured_at` en la misma sentencia. El instante es `BootstrapRequest.Now`, que la API de alta toma de su `Clock` inyectado y que el `Bootstrapper` exige no nulo; nunca el reloj del sistema leído dentro del repositorio. Después, `Control.Validate` comprueba la implicación sobre la fila devuelta antes de confirmar la transacción.
+- `DOMAIN` — **no existe todavía**: la validación de carga que compruebe la implicación antes de incorporar el control a la RAM (`EO-119`).
 - `DB` — **no hay `CHECK`** que lo imponga, aunque sería expresable. La migración `000001` no lo declara, y esta ficha no lo inventa: la garantía es de dominio y de test.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_007_OwnedTerritoryHasCapturedAt` (integration) — barrido: ninguna fila con `owner_type <> 'NONE'` tiene `captured_at IS NULL`; una fila liberada con `captured_at` no nulo se acepta como control negativo.
+- `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration) — tras fundar, `captured_at` es exactamente el instante del reloj de la suite, no el del sistema.
+- `TestElOwnershipSobreviveAUnReinicio` (integration) — la fecha sobrevive a la recarga.
+- `TestUnDueñoExigeIdentificadorYFechaDeCaptura` (unit) — `Validate` rechaza un dueño sin fecha.
+- `TestUnAltaSinInstanteSeRechazaSinEscribirNada` (integration) — un alta sin instante no llega a escribir nada.
 
-**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-TERR-007` y `territory_id`. Política `REPAIR`: se fija `captured_at` al instante de la detección y se registra un `world_events`. Es una reparación conservadora —hace la posesión más reciente de lo que fue, nunca más antigua—, que es el lado seguro si alguna regla futura premia la antigüedad.
+**Violación en runtime.** Hoy **no se detecta en la carga**: sólo una escritura manual podría producirla. La política prevista con `EO-119` es `REPAIR`: log `invariant_violation` con `inv_id=INV-TERR-007` y `territory_id`; se fija `captured_at` al instante de la detección y se registra un `world_events`. Es una reparación conservadora —hace la posesión más reciente de lo que fue, nunca más antigua—, que es el lado seguro si alguna regla futura premia la antigüedad.
 
 ---
 
@@ -281,9 +294,9 @@ La implicación es deliberadamente **en un solo sentido**. Un territorio liberad
 |---|---|
 | Severidad | MEDIO |
 | Aplicación | TEST |
-| Milestone | M7 |
-| Política ante violación | Log `error` + métrica |
-| Cobertura | **Sin cobertura**: el índice no existe todavía |
+| Milestone | M6 |
+| Política ante violación | Sin detección en runtime; la garantía es estructural y de test |
+| Cobertura | **Cubierto** por `TestElIndiceEsFuncionPuraDeLosTerritorios`, `TestBuildSetNoReordenaElSliceDelLlamante` y `TestElReporteDeSolapamientosEsDeterminista` (`internal/domain/territory`), y `TestElIndiceReconstruidoDesdeLaBaseCubreElMundoEntero` (integration) |
 
 **Enunciado.** El índice `territoryOfTile` es función pura de `territories`: reconstruirlo produce el mismo resultado byte a byte.
 
@@ -295,15 +308,18 @@ Con [INV-TERR-002](#inv-terr-002) vigente —sin solapes— el determinismo es c
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — la construcción recorrerá los territorios en orden explícito de `id` y, dentro de cada uno, el rectángulo en doble bucle `y` externo, `x` interno. Nunca una iteración de `map` ni una goroutine por territorio.
-- `DOMAIN` — la consulta de carga llevará `ORDER BY id` explícito: el orden que devuelve PostgreSQL sin cláusula de orden no está garantizado.
-- `DOMAIN` — el índice es un array plano indexado por `y*width + x`, la misma disposición fila-mayor que el terreno: sin estructuras cuyo recorrido dependa de hashes.
+- `DOMAIN` — `territory.BuildSet` ordena una copia de la entrada por `id` y pinta cada rectángulo en doble bucle, `y` externo y `x` interno. No itera ningún `map` para construir y no usa goroutines. Los solapes, que sí se acumulan en un `map`, se ordenan antes de devolverse.
+- `DOMAIN` — `TerritoryRepo.LoadAll` y `LoadControls` llevan `ORDER BY` explícito: el orden que devuelve PostgreSQL sin cláusula de orden no está garantizado.
+- `DOMAIN` — el índice es un `[]uint16` indexado por `y*width + x`, la misma disposición fila-mayor que el terreno.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_008_TerritoryIndexIsDeterministic` (unit) — construir el índice dos veces desde el mismo conjunto de territorios y comparar con `bytes.Equal`; repetir barajando el orden de entrada para comprobar que el resultado no depende de él.
+- `TestElIndiceEsFuncionPuraDeLosTerritorios` (unit) — el índice construido con la entrada en orden inverso es idéntico byte a byte, y la iteración da el mismo orden.
+- `TestBuildSetNoReordenaElSliceDelLlamante` (unit) — construir no reordena la entrada como efecto colateral.
+- `TestElReporteDeSolapamientosEsDeterminista` (unit) — el informe de solapes tampoco depende del orden.
+- `TestElIndiceReconstruidoDesdeLaBaseCubreElMundoEntero` (integration) — el índice reconstruido desde la base cubre el mundo sin huecos.
 
-**Violación en runtime.** Detección en el test de reconstrucción. Log `invariant_violation` con `inv_id=INV-TERR-008`. Sin reparación: se conserva el índice existente y se investiga. Un índice no determinista no corrompe estado durable, pero invalida cualquier test que compare huellas.
+**Violación en runtime.** No hay detección en runtime: el servidor construye el índice una vez por arranque y no tiene con qué compararlo. La detección es el test. Un índice no determinista no corrompe estado durable, pero invalida cualquier test que compare huellas.
 
 ---
 
@@ -314,9 +330,9 @@ Con [INV-TERR-002](#inv-terr-002) vigente —sin solapes— el determinismo es c
 |---|---|
 | Severidad | ALTO |
 | Aplicación | BOUNDARY, TEST |
-| Milestone | M7 |
-| Política ante violación | REPAIR (reemitir) |
-| Cobertura | **Parcial**: `territory.update` existe en el catálogo de mensajes servidor→cliente y `world.snapshot` transporta `territories[]`; **nada los emite todavía** |
+| Milestone | M6 |
+| Política ante violación | Sin detección en runtime; la garantía es estructural |
+| Cobertura | **Cubierto**: la emisión por `TestUnCambioDeControlSeAplicaYSeEmiteUnaVezALaHuella` y `TestUnaFundacionSinCambioDeControlNoEmiteTerritoryUpdate` (`internal/game/simulation/territory_test.go`); la entrega por chunk por `TestBroadcastChunksEntregaUnaSolaVezAQuienEstaSuscritoAVarios`, `TestBroadcastChunksNoAlcanzaASesionesNoSuscritas` y `TestUnaSesionQueDejaDeMirarUnChunkYaNoRecibeSuTerritorio` (`internal/websocket/hub_test.go`) |
 
 **Enunciado.** Ningún cambio de `territory_control` ocurre sin emitir `territory.update` a la huella de chunks del territorio.
 
@@ -326,16 +342,19 @@ La cualificación «a la huella de chunks del territorio» es la parte con conte
 
 **Cómo se garantiza.**
 
-- `BOUNDARY` — el cambio de control y la emisión ocurrirán en el mismo punto de código, no en dos pasos que alguien pueda separar en un refactor. El patrón es el mismo que ya usa `Simulation.applyPresence` para `city.update`: mutar, encolar la escritura y emitir el delta, las tres cosas juntas.
-- `BOUNDARY` — `territory.update` es uno de los 14 mensajes servidor→cliente de la v1, y `world.snapshot.payload` ya transporta `territories[]`: el contrato existe y no hay que ampliarlo, sólo emitirlo.
-- `BOUNDARY` — la huella se calculará con `World.ChunkOf` sobre las dos esquinas del rectángulo, y el broadcast irá a cada chunk de ese rango. Reutilizar la única implementación de la conversión es lo que evita que la huella diverja del criterio de suscripción.
+- `BOUNDARY` — el único cambio de control en runtime llega con `IntroducePlayer`, y `Simulation.applyTerritoryControl` hace en la misma función las dos cosas: alinea la RAM con lo que la base ya confirmó y emite `territory.update`. No hay dos pasos que un refactor pueda separar.
+- `BOUNDARY` — la huella se precalcula al construir el índice (`territory.ChunkFootprint`, con división entera por `EO_CHUNK_SIZE`) y se emite con `Hub.BroadcastChunks`, que entrega **una** vez a cada sesión suscrita a cualquier chunk de la huella aunque mire varios.
+- `BOUNDARY` — `world.snapshot.payload.territories[]` lleva los territorios del área con su control vigente (`RN-TERR-011`); quien se suscribe después del cambio lo recibe por ahí.
 - `BOUNDARY` — los esquemas servidor→cliente **no** son estrictos, así que añadir campos opcionales a `territory.update` en el futuro no romperá clientes antiguos.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_TERR_009_ControlChangeEmitsTerritoryUpdate` (integration) — un observador suscrito a cada chunk de la huella recibe exactamente un `territory.update` por cambio de control; un observador suscrito a un chunk fuera de la huella no recibe ninguno.
+- `TestUnCambioDeControlSeAplicaYSeEmiteUnaVezALaHuella` (simulation) — un cambio de control produce exactamente una emisión, a los cuatro chunks de la huella y sólo a ellos, con el control nuevo en el payload y en la RAM. Verificado por mutación: emitir a otra huella o no aplicar el control en la RAM lo hace fallar.
+- `TestUnaFundacionSinCambioDeControlNoEmiteTerritoryUpdate` (simulation) — sin cambio, ninguna emisión.
+- `TestElSnapshotLlevaLosTerritoriosDelAreaYSuControl` (simulation) — el snapshot lleva el control vigente.
+- `TestBroadcastChunksEntregaUnaSolaVezAQuienEstaSuscritoAVarios`, `TestBroadcastChunksNoAlcanzaASesionesNoSuscritas` y `TestUnaSesionQueDejaDeMirarUnChunkYaNoRecibeSuTerritorio` (`internal/websocket`) — la entrega por chunk.
 
-**Violación en runtime.** Detección en una aserción posterior al cambio de control que compara el número de broadcasts con el tamaño de la huella. Log `invariant_violation` con `inv_id=INV-TERR-009`, `territory_id` y los chunks omitidos. Política `REPAIR`: se reemite a los chunks que faltaban. La reemisión es segura porque `territory.update` transporta el estado completo del control, no un incremento: recibirlo dos veces es idempotente.
+**Violación en runtime.** No hay detección en runtime ni reemisión: la garantía es que mutar y emitir son la misma función. Si una sesión pierde el mensaje —por ejemplo, porque su cola de salida estaba llena—, el control correcto le llega en el siguiente `world.snapshot`. Reemitir `territory.update` sería seguro, porque transporta el estado completo del control y no un incremento.
 
 ---
 
@@ -580,14 +599,14 @@ Enumerar las dos entradas en el enunciado no es pedantería: dice exactamente qu
 
 | Invariante | Componente propietario | Relacionado con |
 |---|---|---|
-| INV-TERR-001 | `migrations/`, `internal/game/world` | [INV-WORLD-001](world.md#inv-world-001) |
-| INV-TERR-002 | `internal/game/world` | [INV-WORLD-006](world.md#inv-world-006) |
-| INV-TERR-003 | `migrations/` | [../database/schema.md](../database/schema.md) |
-| INV-TERR-004 | `migrations/` | [../database/schema.md](../database/schema.md) |
+| INV-TERR-001 | `migrations/`, `internal/domain/territory` | [INV-WORLD-001](world.md#inv-world-001) |
+| INV-TERR-002 | `internal/domain/territory`, `cmd/server` | [INV-WORLD-006](world.md#inv-world-006) |
+| INV-TERR-003 | `migrations/`, `internal/game/simulation` | [../database/schema.md](../database/schema.md) |
+| INV-TERR-004 | `migrations/`, `internal/domain/territory` | [../database/schema.md](../database/schema.md) |
 | INV-TERR-005 | `internal/persistence/postgres` | [INV-PLAYER-005](player.md#inv-player-005) |
-| INV-TERR-006 | `migrations/` | [../specs/territory.md](../specs/territory.md) |
-| INV-TERR-007 | `internal/game/simulation` | [INV-CITY-011](city.md#inv-city-011) |
-| INV-TERR-008 | `internal/game/world` | [INV-WORLD-005](world.md#inv-world-005) |
+| INV-TERR-006 | `migrations/`, `internal/persistence/postgres` | [../specs/territory.md](../specs/territory.md) |
+| INV-TERR-007 | `internal/persistence/postgres`, `internal/domain/territory` | [INV-CITY-011](city.md#inv-city-011) |
+| INV-TERR-008 | `internal/domain/territory` | [INV-WORLD-005](world.md#inv-world-005) |
 | INV-TERR-009 | `internal/websocket`, `internal/game/simulation` | [INV-WORLD-006](world.md#inv-world-006) |
 | INV-SAFE-001 | `internal/domain/safezone`, `cmd/server` | [INV-TERR-002](#inv-terr-002) |
 | INV-SAFE-002 | `internal/domain/safezone`, `internal/game/simulation` | [INV-WORLD-003](world.md#inv-world-003) |

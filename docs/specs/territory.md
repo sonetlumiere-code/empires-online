@@ -404,67 +404,86 @@ Detalle del protocolo en [websocket-protocol.md](websocket-protocol.md).
 
 ## 13. Tests esperados
 
-Los tests **unit** de esta sección existen y están en verde:
-[`internal/domain/territory/territory_test.go`](../../services/game-server/internal/domain/territory/territory_test.go)
-y su `seed_test.go`, 30 tests que cubren los cuatro bordes y las cuatro esquinas por separado, el
-territorio que cruza fronteras de chunk, el solapamiento resuelto de forma determinista y el ejemplo
-dibujado en §6.3 comprobado tile a tile.
+Inventario de la suite real, reconciliado con `EO-118`. Todo lo listado existe y pasa; lo que falta se
+dice al final. Los tests de **integración** exigen PostgreSQL real (`EO_INTEGRATION=1`); el
+procedimiento sin Docker está en [../operations/local-development.md](../operations/local-development.md)
+§3-bis.
 
-Los tests de **integración** exigen PostgreSQL real (`EO_INTEGRATION=1`); el procedimiento sin Docker
-está en [../operations/local-development.md](../operations/local-development.md) §3-bis.
+**Unit (dominio puro)** — `internal/domain/territory`
 
-**Unit (dominio puro)**
+- Contención inclusiva (`RN-TERR-001`): `TestPertenenciaIncluyeLosCuatroBordes`,
+  `TestPertenenciaIncluyeLasCuatroEsquinas`, `TestPertenenciaExcluyeElTileSiguienteACadaBorde` y
+  `TestUnTerritorioDeUnSoloTileEsValido`.
+- El ejemplo dibujado en §6.3, tile a tile: `TestElIndiceResuelveElEjemploDeLaSpec`.
+- Tierra de nadie frente a `owner_type = 'NONE'` (`RN-TERR-002`): `TestTierraDeNadieNoEsLoMismoQueDueñoNONE`.
+- Consulta fuera del mundo sin pánico (`RN-TERR-005`): `TestConsultaFueraDelMundoNoEntraEnPanico`.
+- Solape resuelto por el `id` menor e informe determinista (`RN-TERR-004`, `INV-TERR-002`):
+  `TestDosTerritoriosSolapadosResuelvenElIDMenorYSeReportan` y `TestElReporteDeSolapamientosEsDeterminista`.
+- Huella de chunks, con `EO_CHUNK_SIZE` distinto de 32: `TestUnTerritorioQueCruzaFronterasDeChunkMapeaATodosLosSolapados`,
+  `TestUnTerritorioDentroDeUnSoloChunkTieneHuellaDeUno`, `TestLaHuellaUsaDivisionEnteraYNoDesplazamientoDeBits`,
+  `TestInChunksDevuelveSoloLosTerritoriosQueIntersectan` y `TestInChunksDevuelveEnOrdenAscendenteDeID`.
+- Determinismo (`INV-TERR-008`): `TestElIndiceEsFuncionPuraDeLosTerritorios` y `TestBuildSetNoReordenaElSliceDelLlamante`.
+- Geometría que no se puede representar (`INV-TERR-001`): `TestUnTerritorioFueraDelMundoNoSePuedeConstruir`,
+  `TestUnRectanguloDesordenadoNoSePuedeConstruir`, `TestUnIDQueNoCabeEnElIndiceSeRechazaAlConstruir` y `TestElIDMaximoSiCabe`.
+- Consistencia del control (`INV-TERR-004`, `INV-TERR-007`): `TestControlSinDueñoEsValidoSinIDNiFecha`,
+  `TestUnDueñoExigeIdentificadorYFechaDeCaptura` y `TestUnOwnerTypeDesconocidoSeRechaza`.
+- La rejilla de siembra (`seed_test.go`): cubre el mundo sin huecos ni solapes, estrecha la última
+  columna y fila en vez de desbordar, da 64 territorios en el mundo por defecto, es determinista y
+  rechaza parámetros inválidos.
 
-- Contención inclusiva: los cuatro vértices y los cuatro bordes del rectángulo pertenecen al
-  territorio; los tiles inmediatamente exteriores, no (`RN-TERR-001`).
-- Territorio de un solo tile (`min == max`) se resuelve correctamente.
-- Consulta fuera de los límites del mundo devuelve "ningún territorio" y no entra en pánico
-  (`RN-TERR-005`).
-- Tile en tierra de nadie devuelve "ningún territorio", que es distinto de "territorio con
-  `owner_type = 'NONE'`" (`RN-TERR-002`).
-- Solape: dos rectángulos que comparten tiles ⟹ gana el `id` menor y se contabiliza la violación
-  (`RN-TERR-004`).
-- Huella de chunks: un territorio que cruza un borde de chunk produce la huella completa, con
-  `EO_CHUNK_SIZE` distinto de 32 incluido.
-- Determinismo: dos construcciones del índice sobre la misma entrada son idénticas (`INV-TERR-008`).
-- Consistencia de dueño: `owner_type = 'NONE'` con `owner_id` no nulo es rechazado, y viceversa
-  (`INV-TERR-004`).
+**Integration (PostgreSQL real)** — `internal/persistence/postgres/territories_integration_test.go`
 
-**Integration (PostgreSQL + Redis reales, `EO_INTEGRATION=1`)**
+- Restricciones del esquema, con el nombre exacto de cada una (`INV-TERR-001`, `003`, `004`):
+  `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas`. Incluye `territories_bounds_ordered`, la
+  clave primaria y la foránea de `territory_control`, `territory_control_owner_consistency`,
+  `territory_control_owner_type_valid` y el `ON DELETE CASCADE`.
+- Siembra: una fila de control por territorio con los `DEFAULT` del DDL (`RN-TERR-006`, `INV-TERR-003`,
+  `INV-TERR-006`): `TestLaSiembraCreaUnaFilaDeControlPorTerritorio`.
+- Fundar en territorio libre lo reclama, con `captured_at` sellado por el reloj del llamante y el
+  evento de dominio en la misma transacción (`RN-TERR-007`, `INV-TERR-007`):
+  `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento`. Un alta sin instante se rechaza sin
+  escribir nada: `TestUnAltaSinInstanteSeRechazaSinEscribirNada`.
+- Fundar en territorio ajeno no lo cambia de manos ni falla (`RN-TERR-008`):
+  `TestFundarEnTerritorioAjenoNoLoCambiaDeManosNiFalla`. Fundar fuera de todo territorio tampoco rompe
+  nada: `TestFundarFueraDeTodoTerritorioNoRompeNada`.
+- Concurrencia optimista sobre `version`: `TestUnaReclamacionConVersionDesactualizadaSeRechaza`,
+  `TestUnaVersionDesactualizadaSobreUnTerritorioLibreSeRechaza` y `TestDosReclamacionesConcurrentesSoloUnaGana`.
+- Reinicio: el ownership persistido se conserva y el índice reconstruido resuelve igual
+  (`TestElOwnershipSobreviveAUnReinicio`, `TestElIndiceReconstruidoDesdeLaBaseCubreElMundoEntero`).
 
-- Datos cargados: ningún par de territorios se solapa (`INV-TERR-002`); cada fila de control
-  referencia un territorio existente y no hay dos para el mismo (`INV-TERR-003`).
-- `CHECK territories_bounds_ordered`: insertar `max_x < min_x` es rechazado (`INV-TERR-001`).
-- `CHECK territory_control_owner_type_valid`: insertar `owner_type = 'player'` en minúsculas es
-  rechazado.
-- `CHECK territory_control_owner_consistency`: `('NONE', 'algo')` y `('PLAYER', NULL)` son rechazados
-  (`INV-TERR-004`).
-- Fundar la ciudad inicial dentro de un territorio `'NONE'` ⟹ `owner_type = 'PLAYER'`, `owner_id` = el
-  fundador, `captured_at` sellado (`INV-TERR-007`), todo en la misma transacción que la ciudad
-  (`RN-TERR-007`).
-- Fundar dentro de un territorio ya poseído por otro jugador ⟹ el control **no** cambia
-  (`RN-TERR-008`).
-- `control_points = 0` y `contested = false` en todas las filas tras una partida simulada
-  (`INV-TERR-006`).
-- `ON DELETE CASCADE`: borrar el territorio elimina su fila de control.
+**Contract** — `internal/protocol/territory_contract_test.go`
 
-**Contract**
+- `territory.update` serializa exactamente las claves de la vista del esquema exportado, con
+  `ownerId: null` explícito cuando no hay dueño: `TestTerritoryUpdateSerializaExactamenteLaVistaDelContrato`.
+- Los cuatro tipos de dueño del dominio son exactamente el enum del esquema:
+  `TestLosTiposDeDuenoDelDominioSonLosDelEsquema`.
+- `world.snapshot.territories[]` usa la misma vista y es obligatorio: `TestElSnapshotUsaLaMismaVistaDeTerritorio`.
 
-- `territory.update` valida contra el JSON Schema exportado por `packages/protocol`, incluidos
-  `ownerType = "NONE"` con `ownerId: null`.
-- `world.snapshot` con `territories: []` valida (caso del MVP).
+**Simulation (loop determinista con `FakeClock`)** — `internal/game/simulation/territory_test.go`
 
-**Simulation (loop determinista con `FakeClock`)**
+- Un cambio de control se aplica en la RAM y se emite **una** vez a la huella completa
+  (`INV-TERR-009`, `RN-TERR-012`): `TestUnCambioDeControlSeAplicaYSeEmiteUnaVezALaHuella`.
+- Sin cambio de control no hay emisión: `TestUnaFundacionSinCambioDeControlNoEmiteTerritoryUpdate`.
+- Un control de un territorio que el índice no conoce no entra en la RAM (`INV-TERR-003`):
+  `TestUnControlDeTerritorioInexistenteNoEmiteNada`.
+- El snapshot lleva los territorios del área con su control vigente, y una lista vacía y no nula si no
+  hay ninguno (`RN-TERR-011`): `TestElSnapshotLlevaLosTerritoriosDelAreaYSuControl`.
 
-- Una sesión suscrita a los chunks del territorio recibe exactamente un `territory.update` por
-  cambio de control, y ninguno cuando no hay cambio (`INV-TERR-009`).
-- Una sesión cuya área de interés no intersecta la huella no recibe nada.
-- `session.view` que desplaza el centro hacia el territorio produce el `territory.update`
-  correspondiente (`RN-TERR-013`).
+**Transporte** — `internal/websocket/hub_test.go`
 
-**Recovery**
+- Una sola entrega a quien mira varios chunks de la huella, ninguna a quien no mira ninguno, y ninguna
+  tras dejar de mirar: `TestBroadcastChunksEntregaUnaSolaVezAQuienEstaSuscritoAVarios`,
+  `TestBroadcastChunksNoAlcanzaASesionesNoSuscritas`, `TestBroadcastChunksAlcanzaATodasLasSesionesSolapadas`,
+  `TestBroadcastChunksConHuellaVaciaNoHaceNada` y `TestUnaSesionQueDejaDeMirarUnChunkYaNoRecibeSuTerritorio`.
+  `TestBroadcastChunkEnBucleSiDuplicaria` es el control negativo que demuestra por qué existe `BroadcastChunks`.
 
-- Reinicio: el índice reconstruido es idéntico al previo y el ownership persistido se conserva.
+**Lo que falta**
+
+- La validación de carga de `INV-TERR-005` (todo dueño `PLAYER` existe) y de `INV-TERR-007` (todo dueño
+  tiene fecha), con sus barridos de integración: `EO-119` en [../roadmap/backlog.md](../roadmap/backlog.md).
+- Una versión anterior de esta sección pedía un test de que `session.view` produce `territory.update`.
+  No existe ni debe existir: `RN-TERR-013` dice que al mover la vista los territorios llegan dentro del
+  `world.snapshot` y que **no** se emiten `territory.update` sueltos.
 
 ## 14. Documentos relacionados
 

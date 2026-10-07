@@ -314,15 +314,15 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-TERR-001 | El rectángulo de un territorio está ordenado y contenido en el mundo | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnTerritorioFueraDelMundoNoSePuedeConstruir`, `TestUnRectanguloDesordenadoNoSePuedeConstruir` |
+| INV-TERR-001 | El rectángulo de un territorio está ordenado y contenido en el mundo | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas`, `TestUnTerritorioFueraDelMundoNoSePuedeConstruir`, `TestUnRectanguloDesordenadoNoSePuedeConstruir` |
 | INV-TERR-002 | Dos territorios no comparten ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestDosTerritoriosSolapadosResuelvenElIDMenorYSeReportan`, `TestLaRejillaCubreElMundoSinHuecosNiSolapes` |
-| INV-TERR-003 | Un territorio tiene como máximo una fila de control, y toda fila referencia un territorio | ALTO | DB, TEST | ○ | `Test_INV_TERR_003_OneControlRowPerTerritory` |
-| INV-TERR-004 | `owner_type = 'NONE'` si y sólo si `owner_id IS NULL` | CRITICO | DB, TEST | ✓ | `TestUnDueñoExigeIdentificadorYFechaDeCaptura` |
-| INV-TERR-005 | `owner_type = 'PLAYER'` implica que `owner_id` es un `players.id` existente | ALTO | DOMAIN, TEST | ○ | `Test_INV_TERR_005_PlayerOwnerExists` |
-| INV-TERR-006 | En MVP, `control_points = 0` y `contested = false` en toda fila de control | MEDIO | TEST | ○ | `Test_INV_TERR_006_NoCaptureProgressInMVP` |
-| INV-TERR-007 | `owner_type <> 'NONE'` implica `captured_at IS NOT NULL` | MEDIO | DOMAIN, TEST | ✓ | `TestUnDueñoExigeIdentificadorYFechaDeCaptura` |
+| INV-TERR-003 | Un territorio tiene como máximo una fila de control, y toda fila referencia un territorio | ALTO | DB, TEST | ✓ | `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas`, `TestLaSiembraCreaUnaFilaDeControlPorTerritorio`, `TestUnControlDeTerritorioInexistenteNoEmiteNada` |
+| INV-TERR-004 | `owner_type = 'NONE'` si y sólo si `owner_id IS NULL` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas`, `TestUnDueñoExigeIdentificadorYFechaDeCaptura` |
+| INV-TERR-005 | `owner_type = 'PLAYER'` implica que `owner_id` es un `players.id` existente | ALTO | DOMAIN, TEST | ~ | `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento`; falta la validación de carga (`EO-119`) |
+| INV-TERR-006 | En MVP, `control_points = 0` y `contested = false` en toda fila de control | MEDIO | TEST | ✓ | `TestLaSiembraCreaUnaFilaDeControlPorTerritorio`, `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` |
+| INV-TERR-007 | `owner_type <> 'NONE'` implica `captured_at IS NOT NULL` | MEDIO | DOMAIN, TEST | ~ | `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento`, `TestUnDueñoExigeIdentificadorYFechaDeCaptura`; falta la validación de carga (`EO-119`) |
 | INV-TERR-008 | El índice `territoryOfTile` es función pura de `territories` | MEDIO | TEST | ✓ | `TestElIndiceEsFuncionPuraDeLosTerritorios` |
-| INV-TERR-009 | Todo cambio de control emite `territory.update` a la huella de chunks | ALTO | BOUNDARY, TEST | ○ | `Test_INV_TERR_009_ControlChangeEmitsTerritoryUpdate` |
+| INV-TERR-009 | Todo cambio de control emite `territory.update` a la huella de chunks | ALTO | BOUNDARY, TEST | ✓ | `TestUnCambioDeControlSeAplicaYSeEmiteUnaVezALaHuella`, `TestBroadcastChunksEntregaUnaSolaVezAQuienEstaSuscritoAVarios` |
 
 ### SAFE ZONES — [territory.md](territory.md)
 
@@ -380,9 +380,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 49 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 15 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 26 | Test inexistente, o fila sin reconciliar con la suite |
+| ✓ Cubierto | 51 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 17 | Hay test real para parte del enunciado |
+| ○ Sin cobertura | 22 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
 > **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
@@ -391,13 +391,13 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Los 26 sin cobertura se deben a tres causas distintas que no conviene mezclar:
+Los 22 sin cobertura se deben a tres causas distintas que no conviene mezclar:
 
 1. **Marcas sin reconciliar.** `INV-PLAYER-002/003`, `INV-CITY-001/007` e `INV-PERSIST-003` citan tests que existen y pasan —los de integración se ejecutan en la CI y en local desde que se cerró `DEBT-19`—, pero nadie ha comprobado todavía que cubran el enunciado entero. Es trabajo de `EO-118` en [../roadmap/backlog.md](../roadmap/backlog.md), fila por fila.
 2. **Nombres de test que nunca existieron.** Muchas filas citan un `Test_INV_*` que no está en la suite. Es el nombre previsto cuando se escribió la ficha, no un test. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 3. **Mecánica sin disparador.** Parte de `INV-GARR` describe efectos de una guarnición que ningún comando de red puede producir todavía (M7, entregable 6).
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones; sus filas nombran los tests reales. Las fichas `INV-TERR` de [territory.md](territory.md) siguen diciendo «Sin cobertura» aunque esta tabla ya marca cinco de ellas como cubiertas: tabla y fichas no coinciden, y reconciliarlas es parte de `EO-118`.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. La familia `INV-TERR` se reconcilió ficha por ficha con `EO-118`: siete filas están cubiertas y dos son parciales (`005` y `007`), porque la validación de carga que sus fichas prometen no existe todavía (`EO-119`). En las dos familias, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 

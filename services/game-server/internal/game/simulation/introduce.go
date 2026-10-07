@@ -1,6 +1,8 @@
 package simulation
 
 import (
+	"fmt"
+
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -75,16 +77,18 @@ func (s *Simulation) handleIntroducePlayer(cmd IntroducePlayer) {
 // huella de chunks del territorio. Por eso las dos cosas viven en la misma
 // función y no en dos sitios que alguien pueda desincronizar.
 func (s *Simulation) applyTerritoryControl(c territory.Control) {
-	s.state.ApplyTerritoryControl(c)
-
 	t, ok := s.state.territories.ByID(c.TerritoryID)
 	if !ok {
 		// El control referencia un territorio que el índice no conoce: es
-		// INV-TERR-003 roto. No se difunde nada porque no hay huella que usar.
-		s.deps.Log.Error("control de un territorio inexistente",
-			"territory_id", c.TerritoryID)
+		// INV-TERR-003 roto. No se incorpora a la RAM ni se difunde, porque no
+		// hay geometría que controlar ni huella a la que emitir.
+		s.deps.Log.Error("invariant_violation",
+			"inv_id", "INV-TERR-003", "severity", "ALTO", "policy", "FAIL_FAST",
+			"entity", fmt.Sprintf("territory:%d", c.TerritoryID), "tick", s.state.Tick(),
+			"detail", "control de un territorio que el índice no conoce: no se incorpora")
 		return
 	}
+	s.state.ApplyTerritoryControl(c)
 
 	// Una sola emisión por sesión, aunque la huella abarque varios chunks
 	// (RN-TERR-012).
