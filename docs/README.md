@@ -114,7 +114,7 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 | Documento | Contenido |
 |---|---|
 | [operations/deployment.md](operations/deployment.md) | Artefactos, imágenes, orden de arranque y comprobaciones de salud. |
-| [operations/local-development.md](operations/local-development.md) | Puesta en marcha en Windows 10 con pnpm scripts y Docker Compose (sin Makefile). |
+| [operations/local-development.md](operations/local-development.md) | Puesta en marcha en Windows 10 con pnpm scripts, con o sin Docker; siembra de desarrollo (sin Makefile). |
 | [operations/configuration.md](operations/configuration.md) | Todas las variables `EO_*`, su valor por defecto y su efecto. |
 | [operations/backups.md](operations/backups.md) | Copias de PostgreSQL, política de retención y prueba de restauración. |
 | [operations/monitoring.md](operations/monitoring.md) | Métricas Prometheus `eo_*`, logging estructurado y endpoints `/health` y `/ready`. |
@@ -126,7 +126,7 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 |---|---|
 | [testing/strategy.md](testing/strategy.md) | Pirámide de tests, gates de CI y criterio de "listo para merge". |
 | [testing/unit-tests.md](testing/unit-tests.md) | Dominio puro con `Clock` y `RandomSource` falsos. |
-| [testing/integration-tests.md](testing/integration-tests.md) | PostgreSQL y Redis reales vía Docker Compose, activados con `EO_INTEGRATION=1`. |
+| [testing/integration-tests.md](testing/integration-tests.md) | PostgreSQL y Redis reales, activados con `EO_INTEGRATION=1` y sólo contra una base `*_test`. |
 | [testing/contract-tests.md](testing/contract-tests.md) | Validación de mensajes contra el JSON Schema exportado por `@empires-online/protocol`. |
 | [testing/simulation-tests.md](testing/simulation-tests.md) | Loop determinista con `FakeClock`: avanzar N segundos y asertar estado exacto. |
 | [testing/load-tests.md](testing/load-tests.md) | Carga con k6. **Diferido**: no bloquea el MVP. |
@@ -226,7 +226,7 @@ flowchart LR
 | **Architecture** | Componentes afectados, ubicación del estado, y ADR si la decisión es estructural o difícil de revertir. | `architecture/*.md`, `decisions/ADR-*.md` |
 | **Implementation** | Código en `services/game-server`, `apps/web` o `packages/protocol` que respeta lo anterior. | Repositorio |
 | **Unit** | Tests de dominio puro, con `Clock` y `RandomSource` inyectados; sin red ni base de datos. | `testing/unit-tests.md` |
-| **Integration** | Tests contra PostgreSQL y Redis reales vía Docker Compose (`EO_INTEGRATION=1`). | `testing/integration-tests.md` |
+| **Integration** | Tests contra PostgreSQL y Redis reales (`EO_INTEGRATION=1`), con o sin Docker. | `testing/integration-tests.md` |
 | **Contract** | Mensajes validados contra el JSON Schema exportado desde los esquemas Zod del protocolo. | `testing/contract-tests.md` |
 | **Documentation** | Actualización de la spec, del glosario y de los invariantes afectados. | `docs/` |
 | **Review** | Revisión humana contra la Definition of Done. Los hallazgos vuelven a *Specification*, no al código directamente. | Pull request |
@@ -259,44 +259,45 @@ Un pull request con cualquier check obligatorio en rojo no es válido, independi
 ## 5. Estado actual del proyecto
 
 Esta sección existe para que nadie confunda una spec con un hecho. Se actualiza cuando cambia el
-código, no cuando cambia la intención. Fecha de la última verificación: **2026-09-09**.
+código, no cuando cambia la intención. Fecha de la última verificación: **2026-10-07**, ejecutando la
+suite completa —unit, integration con `-race`, contract— y la comprobación de humo contra un servidor
+vivo.
 
 ### 5.1 Implementado y con tests en verde
 
-Verificado ejecutando las suites, no por lectura del código.
-
 | Área | Qué hay | Verificación |
 |---|---|---|
-| `packages/protocol` | Esquemas Zod del protocolo v1, exportación a JSON Schema (`schema/v1/`) y catálogo de códigos de error. | 18 tests Vitest en verde. |
-| `services/game-server` — mundo y pathfinding | `internal/game/world` (grid, chunks, costes de terreno, overlay de ocupación, generador determinista) y `internal/pathfinding` (A\* de 8 direcciones sin corner cutting). | `go test ./...` en verde. |
-| `services/game-server` — dominio | `internal/domain/movement` (polilínea temporizada, `PositionAt`), `internal/domain/city` (autómata de presencia y protección). | `go test ./...` en verde. |
-| `services/game-server` — bordes | `internal/auth` (game ticket), `internal/config` (validaciones cruzadas), `internal/protocol` (contract tests Go ↔ TypeScript), `internal/websocket`, `internal/persistence/memory`. | `go test ./...` en verde. |
-| `services/game-server` — simulación | `internal/game/simulation`: vertical slice completo, reemplazo y cancelación de órdenes, rechazos, presencia y protección, recuperación tras caída, reproducibilidad, snapshots. | `go test ./...` en verde. |
-| Esquema de datos | Migraciones `000001_initial_schema` y `000002_seed_catalogs`, embebidas con `go:embed` y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Compila y embebe; su aplicación real depende de PostgreSQL (ver 5.2). |
-| `apps/web` | Cliente Next.js 15 + React 19 + PixiJS 8: proyección isométrica, interpolación visual, estado del mundo y cliente WebSocket. | 58 tests Vitest en verde. |
+| `packages/protocol` | Esquemas Zod del protocolo v1, exportación a JSON Schema y catálogo de códigos de error. | Vitest; la CI comprueba además que el esquema exportado no ha derivado. |
+| Mundo y pathfinding | `internal/game/world` (grid, chunks, terreno, ocupación, generador determinista) e `internal/pathfinding` (A\* de 8 direcciones sin corner cutting). | `go test` |
+| Dominio | `movement`, `city` (presencia y protección), `territory`, `safezone`, `diplomacy` y `garrison`, en `internal/domain`. | `go test` |
+| Simulación | `internal/game/simulation`: vertical slice, órdenes, presencia, recuperación, territorios, ocultamiento en Safe Zones, caducidad de tratados. | `go test` |
+| Bordes | `internal/auth`, `internal/config`, `internal/protocol` (contract), `internal/websocket` (incluido un e2e de transporte con servidor real), `internal/httpapi`, `internal/persistence/memory`. | `go test` |
+| Persistencia | `internal/persistence/postgres` e `internal/persistence/redis`, contra PostgreSQL 16 y Redis reales. | Integración con `-race`: en la CI y en local sin Docker ([operations/local-development.md](operations/local-development.md) §3-bis). |
+| Esquema | Migraciones `000001` a `000003`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
+| `apps/web` | Cliente Next.js 15 + React 19 + PixiJS 8: proyección isométrica, interpolación, estado del mundo, cliente WebSocket, overlay de territorios. | Vitest y `next build` en la CI. |
+| Despliegue de punta a punta | Alta, handshake, snapshot, movimiento, desconexión y reconexión contra un servidor vivo. | `pnpm run smoke`. |
 
-`go build ./...` y `go vet ./...` están limpios sobre `services/game-server`. El toolchain instalado
-es Go 1.27.0; `go.mod` declara `go 1.23` como versión **mínima**.
+El estado por milestone, entregable a entregable, está en [roadmap/milestones.md](roadmap/milestones.md).
+`go.mod` declara `go 1.25.11` como versión **mínima**, impuesta por las dependencias; el toolchain de la
+máquina de desarrollo es Go 1.27.0.
 
-Dos matices que conviene no maquillar:
+Matices que conviene no maquillar:
 
 - **El alta de jugador la sirve hoy el game server.** `POST /api/auth/register` y `POST /api/auth/login`
-  viven en `internal/httpapi` con bcrypt. Es provisional y explícitamente contrario a la arquitectura
-  objetivo de [ADR-010](decisions/ADR-010-authentication-game-ticket.md), que los traslada a Next.js.
+  viven en `internal/httpapi` con bcrypt. Es provisional y contrario a la arquitectura objetivo de
+  [ADR-010](decisions/ADR-010-authentication-game-ticket.md); el plan para cambiarlo es `EO-117` en
+  [roadmap/backlog.md](roadmap/backlog.md).
 - **Hay paquetes sin test propio**: `internal/clock`, `internal/domain/player`, `internal/domain/unit`,
-  `internal/game/founding`, `internal/game/loop`, `internal/httpapi` y `internal/observability`.
-  Están ejercitados indirectamente desde `internal/game/simulation`, pero eso no es lo mismo que
-  estar cubiertos. `internal/persistence/postgres` e `internal/persistence/redis` sí tienen tests,
-  pero todos detrás de la etiqueta de compilación `integration` (ver 5.2).
+  `internal/game/founding`, `internal/game/loop` e `internal/observability`. Están ejercitados
+  indirectamente desde `internal/game/simulation`, pero eso no es lo mismo que estar cubiertos.
 
-### 5.2 Diseñado y escrito, pero no ejecutado
+### 5.2 Lo que no se puede verificar desde la máquina de desarrollo
 
-| Área | Qué falta para poder afirmarlo |
+| Área | Por qué |
 |---|---|
-| Tests de integración (`//go:build integration`) contra PostgreSQL y Redis reales | El daemon de Docker Desktop no arrancó en esta máquina. Los tests existen en `internal/persistence/postgres` y `internal/persistence/redis`; **no se han ejecutado nunca**. Ver [testing/integration-tests.md](testing/integration-tests.md). |
-| Aplicación real de las migraciones y del bootstrap de jugador | Depende de lo anterior: sin PostgreSQL en marcha no hay prueba de que el DDL y la transacción de alta funcionen contra el motor. |
-| Recorrido end-to-end cliente ↔ servidor | `apps/web` y `services/game-server` están probados por separado; nadie ha conectado el uno al otro con un mundo vivo detrás. |
-| CI | `.github/workflows/ci.yml` está escrito (docs, protocolo, Go, integración) y `scripts/check-docs.mjs` existe, pero el repositorio no tiene todavía una ejecución observada en verde. |
+| Imagen del contenedor | Construirla exige un daemon de Docker, descartado en esa máquina. Sólo la construye la CI. |
+| Despliegue real | Nunca se ha desplegado en Vercel ni en un VPS: [operations/deployment.md](operations/deployment.md) describe el diseño. |
+| Carga | Los tests de k6 están fuera de MVP. |
 
 ### 5.3 Entidades creadas en la migración 000001 y su mecánica
 
@@ -320,19 +321,17 @@ del catálogo, y los tests de carga con k6 de [testing/load-tests.md](testing/lo
 
 ## 6. Entorno de trabajo asumido
 
-La documentación operativa asume el entorno real de desarrollo, no uno ideal:
+La documentación operativa asume el entorno real de la máquina de desarrollo de referencia:
 
 | Elemento | Estado |
 |---|---|
-| Sistema operativo | Windows 10 Pro, PowerShell + Git Bash |
-| Node.js | v22.17.1 |
-| pnpm | 10.25.0 |
-| git | 2.38.1 |
-| Docker CLI / Compose | 20.10.22 / v2.15.1 (el daemon debe iniciarse manualmente; hoy **no arranca**) |
-| Go | **1.27.0 instalado** en `C:\Program Files\Go`. `go.mod` declara `go 1.23` como versión mínima |
-| psql, redis-cli, make, gh | **No instalados** |
-| Task runner | **pnpm scripts** (`pnpm run db:up`, `pnpm run server:test`…). No hay Makefile |
+| Sistema operativo | Windows 10 Pro, PowerShell + Git Bash; WSL 1 con Ubuntu 22.04 |
+| Node.js / pnpm / git | v22.17.1 / 10.25.0 / 2.38.1 |
+| Go | 1.27.0 en Windows y en WSL. `go.mod` declara `go 1.25.11` como versión mínima |
+| PostgreSQL | Cluster propio en `.pgdata/`, puerto 5433, con `pnpm run pg:*`. Hay otro PostgreSQL en el 5432 que no es del proyecto |
+| Redis | En WSL, puerto 6379. Opcional en desarrollo |
+| Docker | **Descartado**: su consumo de memoria provoca pantallazos azules en esa máquina |
+| Task runner | **pnpm scripts**. No hay Makefile |
 
-Consecuencia práctica: el acceso a PostgreSQL y Redis en local se hace mediante
-`docker compose exec`, y los tests de integración exigen Docker Desktop iniciado.
-Los detalles están en [operations/local-development.md](operations/local-development.md).
+En otra máquina con Docker funcionando, el camino de `docker compose` sigue siendo válido. Los dos
+caminos están en [operations/local-development.md](operations/local-development.md).

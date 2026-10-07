@@ -39,12 +39,13 @@ Consecuencias directas, que conviene interiorizar antes de empezar:
 
 - **El camino con Docker (§3 y §4) no es una opción en esta máquina.** No está ahí como alternativa
   equivalente sino como referencia para otros entornos. El camino real es §3-bis.
-- **Los tests de integración de PostgreSQL están ejecutados y en verde** (12 tests) por el camino de
-  §3-bis, tanto desde Windows como desde WSL contra el mismo cluster.
-- **Los tests de integración de Redis también** (9 tests, §3-bis.7), ejecutados de verdad y no saltados.
+- **Los tests de integración de PostgreSQL se ejecutan y están en verde** por el camino de §3-bis, tanto
+  desde Windows como desde WSL contra el mismo cluster. No se dan cifras aquí a propósito: cambian con
+  cada milestone y la salida de `go test` es la única cuenta fiable.
+- **Los tests de integración de Redis también** (§3-bis.7), ejecutados de verdad y no saltados.
   Los contratos de `internal/persistence/memory` siguen cubriendo lo mismo de forma determinista con un
   reloj falso, que es lo que permite trabajar sin arrancar WSL.
-- **El detector de carreras pasa** sobre los 10 paquetes con tests, desde WSL. Es lo que respalda la
+- **El detector de carreras pasa** sobre todos los paquetes con tests, desde WSL. Es lo que respalda la
   afirmación de que el bucle de juego está aislado por diseño y no necesita mutexes; en Windows no puede
   ejecutarse.
 - **La CI se ejecuta.** El repositorio es público en
@@ -499,7 +500,7 @@ cd D:\Desktop\dev\empires-online
 pnpm install
 ```
 
-`pnpm install` resuelve el workspace (`packages/protocol` hoy; `apps/web` cuando exista). Las dependencias de
+`pnpm install` resuelve el workspace: `packages/protocol` y `apps/web`. Las dependencias de
 Go se resuelven aparte, **desde `services/game-server`**:
 
 ```powershell
@@ -511,86 +512,30 @@ cd ..\..
 ### 5.2 Crear el `.env` a partir de `.env.example`
 
 `.env.example` está versionado y **no contiene secretos reales**. `.env` está en `.gitignore` y nunca se
-sube. Contenido de `.env.example`:
-
-```dotenv
-# Empires Online — plantilla de configuración.
-#
-# Copia este archivo a `.env` y ajusta los valores. `.env` está en .gitignore:
-# NUNCA se versionan secretos. Referencia completa: docs/operations/configuration.md
-#
-#   Windows PowerShell:  Copy-Item .env.example .env
-#   Bash:                cp .env.example .env
-
-# ─────────────────────────────────────────────────────────────
-# Entorno y observabilidad
-# ─────────────────────────────────────────────────────────────
-EO_ENV=development
-EO_LOG_LEVEL=debug
-EO_HTTP_ADDR=:8080
-EO_METRICS_ADDR=:9090
-
-# ─────────────────────────────────────────────────────────────
-# Infraestructura (SECRETOS en producción)
-# ─────────────────────────────────────────────────────────────
-EO_POSTGRES_URL=postgres://empires:empires_dev_password@localhost:5432/empires?sslmode=disable
-EO_REDIS_URL=redis://localhost:6379/0
-
-# Secreto compartido entre Next.js (emisor del game ticket) y el Game Server (verificador).
-# Genera uno propio con: openssl rand -base64 48
-EO_AUTH_JWT_SECRET=dev-only-insecure-secret-change-me-before-any-deployment
-
-# ─────────────────────────────────────────────────────────────
-# Simulación
-# ─────────────────────────────────────────────────────────────
-EO_TICK_RATE_HZ=10
-EO_WORLD_WIDTH=512
-EO_WORLD_HEIGHT=512
-EO_WORLD_SEED=20260909
-EO_CHUNK_SIZE=32
-EO_INTEREST_RADIUS_CHUNKS=2
-
-# ─────────────────────────────────────────────────────────────
-# Presencia y protección offline (valores de gameplay: nunca hardcodear)
-# ─────────────────────────────────────────────────────────────
-EO_PRESENCE_TTL_SECONDS=30
-EO_PRESENCE_HEARTBEAT_SECONDS=10
-EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS=300
-
-# ─────────────────────────────────────────────────────────────
-# Persistencia
-# ─────────────────────────────────────────────────────────────
-EO_PERSISTENCE_FLUSH_INTERVAL_TICKS=50
-
-# ─────────────────────────────────────────────────────────────
-# Pathfinding
-# ─────────────────────────────────────────────────────────────
-EO_PATHFINDING_MAX_NODES=20000
-EO_PATHFINDING_MAX_DISTANCE=256
-
-# ─────────────────────────────────────────────────────────────
-# WebSocket
-# ─────────────────────────────────────────────────────────────
-EO_WS_MAX_MESSAGE_BYTES=16384
-EO_WS_RATE_LIMIT_PER_SECOND=20
-EO_WS_RATE_LIMIT_BURST=40
-
-# ─────────────────────────────────────────────────────────────
-# Frontend (Next.js) — las variables NEXT_PUBLIC_* son visibles en el navegador.
-# Jamás pongas aquí credenciales de PostgreSQL, Redis ni el secreto JWT.
-# ─────────────────────────────────────────────────────────────
-NEXT_PUBLIC_GAME_SERVER_WS_URL=ws://localhost:8080/ws
-```
-
-`.env.example` **no incluye** `EO_WS_OUTBOUND_QUEUE_SIZE`: existe, la lee `internal/config` y su valor por
-defecto es 256 (rango 8–65536). Solo hace falta declararla si quieres apartarte del default. Ver
-[configuration.md](./configuration.md#38-websocket).
-
-Derivación del `.env` real:
+sube. **El fichero real es la referencia**: esta guía no lo transcribe, porque la copia que contenía
+envejeció y le faltaban `EO_MIGRATE_ON_START`, `EO_AUTH_RATE_LIMIT_PER_MINUTE`,
+`EO_AUTH_RATE_LIMIT_BURST` y `EO_TRUST_PROXY_HEADERS`. El significado de cada variable está en
+[configuration.md](./configuration.md).
 
 ```powershell
 Copy-Item .env.example .env
-# Generar un secreto local aleatorio de 32 bytes en base64 (el mínimo son 32 caracteres):
+```
+
+```bash
+cp .env.example .env
+```
+
+Lo que hay que ajustar según el camino:
+
+| Variable | Con Docker (§4) | Sin Docker (§3-bis) |
+|---|---|---|
+| `EO_POSTGRES_URL` | La de la plantilla, puerto **5432** | Puerto **5433**, el del cluster propio |
+| `EO_REDIS_URL` | La de la plantilla | Vacía (estado en proceso) o `redis://localhost:6379/0` si arrancaste Redis en WSL |
+
+El secreto JWT de la plantilla contiene literalmente `dev-only`, y esa cadena es **rechazada al
+arrancar** si `EO_ENV=production`. En local funciona; regenerarlo cuesta dos líneas y evita el hábito:
+
+```powershell
 $bytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
 $secret = [Convert]::ToBase64String($bytes)
@@ -598,17 +543,17 @@ $secret = [Convert]::ToBase64String($bytes)
 ```
 
 ```bash
-# Linux/macOS
-cp .env.example .env
 sed -i "s|^EO_AUTH_JWT_SECRET=.*|EO_AUTH_JWT_SECRET=$(openssl rand -base64 48)|" .env
 ```
 
-El secreto de la plantilla contiene literalmente `dev-only`, y esa cadena es **rechazada al arrancar** si
-`EO_ENV=production`. En local funciona, pero regenerarlo cuesta dos líneas y evita el hábito.
-
-El significado, rango y criticidad de cada variable está en [configuration.md](./configuration.md).
+El servidor **carga el `.env` por sí solo** buscándolo hacia arriba desde el directorio actual, y nunca
+pisa una variable ya definida en el entorno (§3-bis.3).
 
 ### 5.3 Levantar la infraestructura
+
+> **Sin Docker**, que es el caso de la máquina de desarrollo de referencia, este paso es `pnpm run pg:init`
+> la primera vez y `pnpm run pg:start` después, más Redis en WSL si lo usas: §3-bis. Lo que sigue en esta
+> sección es el camino con Docker.
 
 ```powershell
 pnpm run db:up
@@ -647,41 +592,40 @@ pnpm run db:reset   # docker compose down -v && docker compose up -d postgres re
 `db:reset` es destructivo y solo tiene sentido en local. En cualquier otro entorno, ver
 [backups.md](./backups.md).
 
-### 5.4 Migraciones: las aplica el propio servidor al arrancar
+### 5.4 Migraciones
 
-**No hay ningún script `db:migrate`, y no hace falta.** Las migraciones viven en
-`services/game-server/migrations/` con el patrón `NNNNNN_nombre.up.sql` / `NNNNNN_nombre.down.sql`, están
-**embebidas en el binario** con `go:embed`, y el servidor las aplica automáticamente al arrancar
-(`postgres.Migrate`, sobre **golang-migrate**, que reescribe la URL al esquema `pgx5`). El estado aplicado se
-registra en la tabla `schema_migrations`, que golang-migrate mantiene con dos columnas: `version` y `dirty`.
+Las migraciones viven en `services/game-server/migrations/` con el patrón
+`NNNNNN_nombre.up.sql` / `NNNNNN_nombre.down.sql`, están **embebidas en el binario** con `go:embed` y se
+aplican con **golang-migrate**, que registra el estado en `schema_migrations` (`version`, `dirty`). Hay
+dos formas de aplicarlas, y las dos usan el mismo código (`postgres.Migrate`):
+
+- **Al arrancar el servidor**, si `EO_MIGRATE_ON_START` es verdadera, que es el valor por defecto fuera
+  de producción. Es lo habitual en desarrollo: no hay que hacer nada.
+- **Con el binario `migrate`** (`cmd/migrate`): `pnpm run db:migrate` aplica las pendientes y
+  `pnpm run db:version` muestra la versión y si quedó `dirty`. Es lo que se usa en producción, donde
+  la migración al arrancar está desactivada ([ADR-012](../decisions/ADR-012-database-migrations.md)).
 
 Migraciones existentes hoy:
 
 | Archivo | Contenido |
 |---|---|
-| `000001_initial_schema.up.sql` / `.down.sql` | Esquema completo: `civilizations`, `factions`, `eras`, `players`, `world_state`, `world_chunks`, `cities`, `units`, `unit_movements`, `sessions`, `idempotency_keys`, `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events` |
-| `000002_seed_catalogs.up.sql` / `.down.sql` | Semillas de catálogo: civilizaciones ROMAN/BYZANTINE/PERSIAN/NORSE, facciones ORDER/CHAOS/NEUTRAL, eras STONE_AGE(20)/BRONZE_AGE(50)/IRON_AGE(100)/CASTLE_AGE(150) |
+| `000001_initial_schema` | Esquema completo: `civilizations`, `factions`, `eras`, `players`, `world_state`, `world_chunks`, `cities`, `units`, `unit_movements`, `sessions`, `idempotency_keys`, `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events` |
+| `000002_seed_catalogs` | Catálogos: civilizaciones ROMAN/BYZANTINE/PERSIAN/NORSE, facciones ORDER/CHAOS/NEUTRAL, eras STONE_AGE(20)/BRONZE_AGE(50)/IRON_AGE(100)/CASTLE_AGE(150) |
+| `000003_territory_control_version` | Columna `version` de `territory_control`, para la concurrencia optimista del cambio de dueño |
 
-Consultar el estado desde el contenedor:
-
-```powershell
-docker compose exec postgres psql -U empires -d empires -c "SELECT version, dirty FROM schema_migrations;"
-```
-
-Si una migración falla a medias, golang-migrate marca el esquema como **`dirty`** y el servidor **se niega a
-arrancar**, con un mensaje que nombra la versión afectada. Es deliberado: continuar sería adivinar. Ver §10.3.
-Detalles del esquema en [../database/schema.md](../database/schema.md) y del diseño de migraciones en
+Si una migración falla a medias, golang-migrate marca el esquema como **`dirty`** y el servidor **se
+niega a arrancar**, con un mensaje que nombra la versión afectada. Es deliberado: continuar sería
+adivinar. Ver §10.3. Detalles en [../database/schema.md](../database/schema.md) y
 [../database/migrations.md](../database/migrations.md).
 
-### 5.5 Datos iniciales: catálogos y alta de jugador
+### 5.5 Datos iniciales
 
-**Tampoco existe un script `db:seed`.** Los datos iniciales llegan por dos vías distintas:
+Llegan por cuatro vías distintas:
 
-1. **Catálogos** (`civilizations`, `factions`, `eras`): los siembra la migración `000002_seed_catalogs`, así
-   que están en cuanto el servidor arranca por primera vez.
-2. **Mundo** (`world_state` con su `epoch_ms`, y los 256 chunks de `world_chunks` — 512×512 tiles con chunks
-   de 32×32): los crea el servidor la primera vez que arranca contra una base vacía.
-3. **Jugadores y ciudades**: se crean dándose de alta por la API, no con una semilla:
+1. **Catálogos** (`civilizations`, `factions`, `eras`): los siembra la migración `000002`.
+2. **Mundo**: el primer arranque contra una base vacía crea `world_state` con su `epoch_ms`, guarda los
+   256 chunks de `world_chunks` y siembra la rejilla de 64 territorios con su fila de control.
+3. **Jugadores y ciudades**, uno a uno, por la API de alta:
 
    ```powershell
    curl.exe -X POST http://localhost:8080/api/auth/register `
@@ -689,23 +633,18 @@ Detalles del esquema en [../database/schema.md](../database/schema.md) y del dis
      -d '{\"username\":\"tester\",\"password\":\"un-password-largo\"}'
    ```
 
-   El alta ejecuta primero una transacción atómica en PostgreSQL (jugador + ciudad + 3 `VILLAGER`) y solo
-   después incorpora al jugador al mundo en RAM. El emplazamiento de la ciudad es **determinista**: búsqueda
-   en espiral desde una semilla derivada del nombre de usuario, exigiendo un entorno despejado de radio 3 y
-   una separación mínima de 24 tiles entre centros de ciudad; la muralla es un rectángulo 3×3 bloqueado
-   alrededor del centro y los 3 aldeanos nacen a radio 2. `username` debe casar con
-   `^[A-Za-z0-9_-]{3,24}$`.
+   El alta ejecuta primero una transacción atómica en PostgreSQL —jugador, ciudad, 3 `VILLAGER` y, si
+   el territorio del centro está libre, su control— y sólo después incorpora al jugador al mundo en RAM.
+   El emplazamiento es **determinista**: búsqueda en espiral desde una semilla derivada del nombre, con
+   entorno despejado de radio 3 y 24 tiles de separación entre centros. `username` debe casar con
+   `^[A-Za-z0-9_-]{3,24}$`. Hoy lo sirve el propio Game Server (`internal/httpapi`, con bcrypt); es
+   provisional, ver `DEBT-18` y `EO-117` en [../roadmap/backlog.md](../roadmap/backlog.md).
+4. **Un mundo de prueba completo**, con varios jugadores y safe zones: `pnpm run dev:seed`, con el
+   servidor parado (§3-bis.8).
 
-   > `/api/auth/register` y `/api/auth/login` los sirve **hoy el propio Game Server**
-   > (`internal/httpapi`, con bcrypt). Es explícitamente provisional: la arquitectura objetivo
-   > ([ADR-010](../decisions/ADR-010-authentication-game-ticket.md)) los traslada a Next.js.
-
-**El terreno se regenera desde la semilla en cada arranque.** `world_chunks` guarda una copia para auditoría
-y para permitir mapas editados en el futuro, pero **no es la fuente primaria**: regenerar es más barato que
-leer 256 filas y garantiza que semilla y mapa nunca divergen. La consecuencia práctica es buena:
-`db:reset` + arrancar el servidor reconstruye **el mismo mundo byte a byte** mientras `EO_WORLD_SEED` no
-cambie. Eso es una propiedad, no una casualidad: es lo que permite que los tests de simulación sean
-reproducibles.
+**El terreno se regenera desde la semilla en cada arranque.** `world_chunks` guarda una copia para
+auditoría y para permitir mapas editados en el futuro, pero **no es la fuente primaria**. Destruir la
+base y volver a arrancar reconstruye **el mismo mundo byte a byte** mientras `EO_WORLD_SEED` no cambie.
 
 ### 5.6 Arrancar el Game Server
 
@@ -732,31 +671,33 @@ curl.exe http://localhost:9090/metrics  # exposición Prometheus
 
 La semántica exacta de `/health` y `/ready` está en [monitoring.md](./monitoring.md#3-endpoints-de-salud).
 
-### 5.7 Arrancar el frontend — *pendiente del milestone de frontend*
-
-**`apps/web/` ya existe en el repositorio**, así que `pnpm run web:dev` sí tiene algo que
-arrancar. Lo que sigue describe el objetivo, para que el `.env.local` se cree bien desde el primer día.
+### 5.7 Arrancar el cliente
 
 ```powershell
-pnpm run web:dev     # cuando exista apps/web
+pnpm run web:dev     # http://localhost:3000
 ```
 
-Con `apps/web/.env.local`:
+No necesita `.env.local`. El cliente lee dos variables públicas cuyos valores por defecto, fijados en
+`apps/web/next.config.mjs`, ya apuntan al servidor local:
 
-```dotenv
-NEXT_PUBLIC_GAME_SERVER_WS_URL=ws://localhost:8080/ws
-EO_AUTH_JWT_SECRET=<el mismo valor que el .env del Game Server>
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `NEXT_PUBLIC_GAME_SERVER_WS_URL` | `ws://localhost:8080/ws` | WebSocket del juego |
+| `NEXT_PUBLIC_GAME_SERVER_HTTP_URL` | `http://localhost:8080` | Alta e inicio de sesión |
+
+**Hoy el cliente no emite el game ticket.** Pide alta o inicio de sesión al propio Game Server
+(`/api/auth/register`, `/api/auth/login`), que responde con el ticket, y con él abre el WebSocket. Por
+eso `apps/web` **no necesita `EO_AUTH_JWT_SECRET`**: la API route de Next.js que lo emitiría es el
+diseño objetivo de [ADR-010](../decisions/ADR-010-authentication-game-ticket.md), todavía sin construir
+(`EO-041`, `DEBT-18`).
+
+Si el puerto 3000 está ocupado por otra aplicación, el script `dev` lo fija y fallará con
+`EADDRINUSE`. Arranca Next.js en otro puerto directamente; el Game Server acepta peticiones de cualquier
+origen en desarrollo:
+
+```powershell
+pnpm --filter @empires-online/web exec next dev --port 3001
 ```
-
-El frontend quedará en `http://localhost:3000`. La API route de Next emitirá el *game ticket* (JWT HS256,
-TTL 60 s, `aud: "game-server"`) firmado con `EO_AUTH_JWT_SECRET`; **si el secreto del frontend y el del Game
-Server no coinciden, el handshake se cierra con `4401`**. Es el error de configuración local más frecuente.
-
-Mientras tanto, el flujo completo se puede ejercitar sin frontend: `POST /api/auth/register` o
-`POST /api/auth/login` devuelven el ticket, y con él se abre el WebSocket contra `ws://localhost:8080/ws`
-enviando `session.hello` como **primer** mensaje.
-
----
 
 ## 6. Conectarse a Postgres y a Redis sin `psql` ni `redis-cli`
 
@@ -820,36 +761,35 @@ Atajo: `pnpm run db:redis`.
 
 ## 7. Flujo de trabajo diario
 
-```powershell
-# 1. Arrancar Docker Desktop si hace falta y comprobarlo (§3)
-docker info
+```bash
+# 1. Infraestructura. Sin Docker (§3-bis):
+pnpm run pg:start
+wsl -d Ubuntu -- bash -lc 'redis-cli ping || redis-server --daemonize yes --save "" --appendonly no'   # sólo si usas Redis
+#    Con Docker (otros entornos):  pnpm run db:up
 
-# 2. Arrancar infraestructura (idempotente: si ya corre, no hace nada)
-pnpm run db:up
-
-# 3. Sincronizar. Las migraciones nuevas del equipo se aplican solas
-#    la próxima vez que arranques el servidor.
+# 2. Sincronizar. Las migraciones nuevas se aplican solas en el siguiente arranque.
 git pull
 pnpm install
 
-# 4. Terminal de trabajo
+# 3. Servidor, y cliente si hace falta
 pnpm run server:run
+pnpm run web:dev
 
-# 5. Antes de abrir PR: la verificación completa en un solo comando
+# 4. Antes de empujar: la verificación completa, con los servidores PARADOS (§1)
 pnpm run verify
 ```
 
-`pnpm run verify` encadena exactamente esto, y en este orden:
+`pnpm run verify` encadena exactamente esto, en este orden:
 
 ```
-protocol:build  →  docs:check  →  typecheck  →  test  →  server:fmt:check  →  server:vet  →  server:test
+protocol:build → docs:check → typecheck → test → scripts:test
+  → server:fmt:check → server:vet → server:vet:integration → server:test
 ```
 
-Es decir: regenera el JSON Schema, verifica la integridad de `docs/` (enlaces relativos, IDs `INV-*`
-definidos y nombres de ADR existentes, con `node scripts/check-docs.mjs`), comprueba tipos de TypeScript,
-ejecuta los tests de Vitest, comprueba el formato de Go con `gofmt -l .`, pasa `go vet ./...` y ejecuta
-`go test ./...`. Si `verify` está en verde, el PR tiene la base cubierta — **salvo los tests de integración**,
-que `verify` no ejecuta (§9).
+Regenera el JSON Schema, verifica la integridad de `docs/`, comprueba tipos, ejecuta los tests de
+Vitest y los de los scripts de Node, comprueba el formato de Go, pasa `go vet` con y sin la etiqueta
+`integration` y ejecuta `go test ./...`. **No ejecuta los tests de integración ni el detector de
+carreras**: eso es §9, y en la CI lo cubren los jobs `integration` y `game-server`.
 
 Si tocas `packages/protocol`, **regenera el JSON Schema antes de compilar Go**: los esquemas Zod son la
 fuente de verdad, el build exporta `packages/protocol/schema/v1/*.json` **y su espejo en
@@ -867,71 +807,78 @@ Orden ritual tras cambiar el protocolo: `protocol:build → protocol:test → se
 
 ## 8. Tabla de scripts pnpm
 
-Contrato de tareas del monorepo, tal y como está hoy en `package.json`. Cualquier tarea que un documento
-mencione debe existir aquí; si no está en esta tabla, no existe.
+Contrato de tareas del monorepo, tal y como está en `package.json`. Si un documento menciona una tarea
+que no está aquí, no existe.
 
 | Script | Qué hace |
 |---|---|
-| `pnpm run db:up` | `docker compose up -d postgres redis` |
-| `pnpm run db:down` | `docker compose down` (conserva volúmenes) |
-| `pnpm run db:reset` | `docker compose down -v && docker compose up -d postgres redis` (**destruye** volúmenes) |
-| `pnpm run db:logs` | `docker compose logs -f postgres redis` |
-| `pnpm run db:psql` | `docker compose exec postgres psql -U empires -d empires` |
-| `pnpm run db:redis` | `docker compose exec redis redis-cli` |
-| `pnpm run protocol:build` | Compila el paquete y exporta Zod → JSON Schema (`packages/protocol/schema/v1/` + espejo en Go) |
-| `pnpm run protocol:test` | Tests de Vitest del paquete de protocolo |
-| `pnpm run protocol:check` | Comprueba que el JSON Schema exportado no ha derivado; no escribe |
-| `pnpm run server:tidy` | `go mod tidy` en `services/game-server` |
-| `pnpm run server:build` | `go build -o bin/empires-server ./cmd/server` |
-| `pnpm run server:run` | `go run ./cmd/server` |
-| `pnpm run server:test` | `go test ./...` |
-| `pnpm run server:test:integration` | `go test -tags=integration ./...` (requiere Docker, §9) |
-| `pnpm run server:vet` | `go vet ./...` |
-| `pnpm run server:fmt` | `gofmt -l -w .` (reescribe) |
-| `pnpm run server:fmt:check` | `gofmt -l .` (solo lista; apto para CI) |
-| `pnpm run web:dev` / `web:build` | Next.js en `apps/web` — desarrollo en `http://localhost:3000` / build de producción |
-| `pnpm run docs:check` | `node scripts/check-docs.mjs`: enlaces relativos rotos, IDs `INV-*` citados pero no definidos en `docs/invariants/`, y nombres de ADR inexistentes |
-| `pnpm run lint` / `typecheck` / `test` | Recursivos sobre los paquetes del workspace (`pnpm -r run …`) |
-| `pnpm run verify` | `protocol:build → docs:check → typecheck → test → server:fmt:check → server:vet → server:test` |
+| `db:up` / `db:down` / `db:reset` / `db:logs` | PostgreSQL y Redis en `docker compose`. `db:reset` **destruye** los volúmenes |
+| `db:psql` / `db:redis` | Consola dentro de los contenedores. Sin Docker no sirven: usa `pg:psql` y `wsl -d Ubuntu -- redis-cli` |
+| `db:migrate` / `db:version` | Binario `cmd/migrate`: aplica las migraciones pendientes / muestra la versión y si está `dirty`. Sirven con y sin Docker |
+| `pg:init` / `pg:start` / `pg:stop` / `pg:status` / `pg:destroy` | Cluster propio de PostgreSQL en `.pgdata/`, puerto 5433 (§3-bis.1) |
+| `pg:psql` | `psql` contra ese cluster; acepta argumentos tras `--` |
+| `dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado (§3-bis.8) |
+| `protocol:build` / `protocol:test` / `protocol:check` | JSON Schema desde Zod / tests del protocolo / deriva del esquema sin escribir |
+| `server:tidy` | `go mod tidy` |
+| `server:build` | `node scripts/build-server.mjs`: compila el binario del servidor |
+| `server:run` | `go run ./cmd/server` |
+| `server:test` | `go test ./...` |
+| `server:test:integration` | `go test -tags=integration ./...`; necesita además `EO_INTEGRATION=1` (§9) |
+| `server:vet` / `server:vet:integration` | `go vet`, sin y con la etiqueta `integration` |
+| `server:fmt` / `server:fmt:check` | `gofmt -l -w .` / sólo lista |
+| `web:dev` / `web:build` | Cliente Next.js en desarrollo / build de producción |
+| `smoke` | Vertical slice completo contra un servidor vivo (§3-bis.9) |
+| `docs:check` | Enlaces, anclas, mayúsculas de rutas, invariantes citados y ADR existentes |
+| `scripts:test` | Tests de los scripts de `scripts/`, con el runner de Node |
+| `lint` / `typecheck` / `test` | Recursivos sobre el workspace. `lint` no hace nada todavía: ningún paquete declara el script (`EO-017`) |
+| `verify` | La cadena completa de §7 |
 
-Todos los scripts `server:*` hacen `cd services/game-server` por ti: es ahí donde vive el `go.mod`.
+Todos los scripts `server:*`, `db:migrate`, `db:version` y `dev:seed` hacen `cd services/game-server`
+por ti: es ahí donde vive el `go.mod`.
 
 ---
 
 ## 9. Ejecutar los tests
 
-Los niveles y su intención están definidos en [../testing/strategy.md](../testing/strategy.md). Aquí solo la
-mecánica local. **No existen scripts `test:unit`, `test:contract`, `test:simulation` ni `test:recovery`**:
-todo el conjunto de Go va por `server:test`, y lo separan los paquetes, no los comandos.
+Los niveles y su intención están en [../testing/strategy.md](../testing/strategy.md). Aquí sólo la
+mecánica local. No hay scripts `test:unit`, `test:contract` ni `test:simulation`: todo el Go va por
+`server:test`, y lo separan los paquetes, no los comandos.
 
-| Qué | Comando | Requiere Docker | Notas |
-|---|---|---|---|
-| Protocolo (TypeScript) | `pnpm run protocol:test` | No | 18 tests de Vitest: envelopes, versión no soportada, coordenadas no enteras, rechazo de campos extra, catálogo de errores, JSON Schema válido y sin deriva. **En verde.** |
-| Deriva del JSON Schema | `pnpm run protocol:check` | No | Falla si el espejo embebido en Go difiere de lo que exportan los esquemas Zod. |
-| Go: dominio, mundo, pathfinding, config, auth, protocolo y simulación | `pnpm run server:test` | No | `go test ./...`. Dominio puro con `FakeClock` y `RandomSource` inyectados; incluye los contract tests Go ↔ TypeScript, el *vertical slice* de simulación y los 3 tests de recuperación. **En verde.** |
-| Análisis estático | `pnpm run server:vet` | No | `go vet ./...`. **En verde.** |
-| Integración (PostgreSQL + Redis reales) | `pnpm run server:test:integration` | **Sí** | `go test -tags=integration ./...`, y además exige `EO_INTEGRATION=1`. Ver aviso más abajo. |
-| Carga (k6) | — | — | **Fuera de MVP.** |
+| Qué | Comando | Necesita |
+|---|---|---|
+| Protocolo (TypeScript) | `pnpm run protocol:test` | Nada |
+| Cliente (TypeScript) | `pnpm --filter @empires-online/web test` | Nada |
+| Deriva del JSON Schema | `pnpm run protocol:check` | Nada |
+| Go: unit, contract, simulation y e2e de transporte | `pnpm run server:test` | Nada |
+| Go con detector de carreras | `go test -race ./...` | Compilador de C: en Windows, desde WSL (§3-bis.7) |
+| Integración (PostgreSQL + Redis reales) | Ver abajo | La base **`empires_test`**, Redis y `EO_INTEGRATION=1` |
+| Carga (k6) | — | **Fuera de MVP** |
 
 Los tests de integración tienen **dos** puertas, y hacen falta las dos: la etiqueta de compilación
-`integration` (la pone el script) y la variable `EO_INTEGRATION=1`.
+`integration` y la variable `EO_INTEGRATION=1`. Sin la variable **se saltan** (`t.Skip`) en lugar de
+fallar; comprueba la salida por `--- SKIP`. Además vacían todas las tablas al empezar cada test, así
+que **se niegan a ejecutarse** si la base no termina en `_test` o si Redis apunta al índice 0
+([../testing/integration-tests.md](../testing/integration-tests.md) §2.2).
+
+Sin Docker, contra el cluster propio, que `pg:init` ya creó con la base `empires_test`:
 
 ```powershell
-$env:EO_INTEGRATION = "1"; pnpm run server:test:integration
+$env:EO_INTEGRATION = "1"
+$env:EO_TEST_POSTGRES_URL = "postgres://empires:empires_dev_password@localhost:5433/empires_test?sslmode=disable"
+$env:EO_TEST_REDIS_URL = "redis://localhost:6379/1"
+pnpm run server:test:integration
 ```
 
+Con Docker hay que crear la base de tests una vez; después basta con `EO_INTEGRATION=1`, porque los
+valores por defecto apuntan a `localhost:5432/empires_test` y a `localhost:6379/1`:
+
 ```bash
+docker compose exec -T postgres psql -U empires -d postgres -c "CREATE DATABASE empires_test OWNER empires;"
 EO_INTEGRATION=1 pnpm run server:test:integration
 ```
 
-Sin la variable, esos tests **se saltan** (`t.Skip`) en lugar de fallar. Es deliberado: permite
-`pnpm run server:test` en una máquina sin daemon, y a la vez CI los ejecuta siempre porque allí la variable
-está puesta. Un test de integración que "pasa" en verde sin Docker es un test que no se ejecutó: comprueba
-la salida por `--- SKIP`.
-
-> **Estado real:** los tests de integración están **diseñados pero NO ejecutados** en esta máquina, porque el
-> daemon de Docker no arrancó (§1, §3). No están en rojo ni en verde: están sin correr, y así hay que
-> contarlo hasta que alguien los ejecute con el daemon vivo.
+Para la suite completa con `-race`, que es lo que ejecuta el job `integration` de la CI, ver §3-bis.7.
+**Estado:** en verde, en local por los dos caminos y en la CI.
 
 ---
 
@@ -1047,21 +994,19 @@ hacen `cd` por ti, así que prefiérelos a invocar `go` a mano.
 
 Marcado explícitamente para que nadie lo busque:
 
-- **`apps/web/`**: el frontend Next.js **aún no existe** en el repositorio. `web:dev` y `web:build` están
-  declarados en `package.json` pero todavía no tienen paquete que ejecutar.
-- **Scripts `db:migrate*`, `db:seed`, `db:dump`, `db:nuke`, `server:dev`, `redis:cli`, `format`, `test:unit`,
-  `test:integration`, `test:contract`, `test:simulation`, `test:recovery`**: no existen. Los equivalentes
-  reales están en la tabla de §8.
-- **Subcomandos del binario** (`migrate up`, `migrate status`, `healthcheck`): no existen. El binario hace
-  una sola cosa: arrancar el servidor, aplicando antes las migraciones embebidas.
+- **Scripts `db:seed`, `db:dump`, `db:nuke`, `server:dev`, `redis:cli`, `format`, `test:unit`,
+  `test:integration`, `test:contract`, `test:simulation`, `test:recovery`**: no existen. Los reales
+  están en §8; la siembra de desarrollo es `dev:seed`.
+- **Subcomandos del binario del servidor**: no existen. `empires-server` hace una sola cosa, arrancar.
+  Las migraciones explícitas tienen su propio binario, `cmd/migrate` (§5.4).
+- **Emisión del game ticket desde Next.js**: no existe todavía; la hace el Game Server (§5.7).
+- **Lint**: `pnpm run lint` no comprueba nada hasta que exista `EO-017`.
 - **Combate, economía, tecnologías, comercio, clanes, chat, ranking**: fuera del primer vertical slice.
 - **Tests de carga (k6)**: fuera de MVP.
-- **Hot reload de configuración**: cambiar una variable `EO_` exige reiniciar el proceso.
-- **Hot reload de código Go**: tampoco; `server:run` no observa cambios.
+- **Hot reload de configuración o de código Go**: cambiar una variable `EO_` o el código exige reiniciar
+  el proceso.
 - **TLS en local**: intencionalmente ausente (§10.4).
 - **Makefile**: no existe y no se creará; `make` no está instalado.
-
----
 
 ## Referencias
 

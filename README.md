@@ -45,10 +45,10 @@ empires-online/
 
 | Herramienta | Versión | Comprobar |
 |---|---|---|
-| Go | 1.23 o superior | `go version` |
+| Go | 1.25.11 o superior (lo fija `services/game-server/go.mod`) | `go version` |
 | Node.js | 22 o superior | `node --version` |
 | pnpm | 10 o superior | `pnpm --version` |
-| Docker Desktop | con el daemon **arrancado** | `docker info` |
+| Docker Desktop | con el daemon **arrancado**, o la alternativa sin Docker de abajo | `docker info` |
 
 En Windows, Go se instala con `winget install --id GoLang.Go`.
 
@@ -91,8 +91,9 @@ lo rechaza en producción. Aplica el esquema con `pnpm run db:migrate`.
 
 Si quieres un Redis de verdad sin Docker y tienes WSL, basta con
 `sudo apt-get install -y redis-server` dentro de la distro y arrancarlo con
-`redis-server --daemonize yes`. Desde Windows se alcanza en `localhost:6379`,
-así que `EO_REDIS_URL=redis://localhost:6379/0` funciona tal cual. Es también
+`redis-server --daemonize yes`. Con **WSL 1** se alcanza desde Windows en `localhost:6379`,
+así que `EO_REDIS_URL=redis://localhost:6379/0` funciona tal cual; con WSL 2 hay que usar
+la IP de la distro o el modo de red *mirrored*. Es también
 lo que hace falta para ejecutar `-race` y los tests de integración de Redis:
 ver [`docs/operations/local-development.md`](docs/operations/local-development.md) §3-bis.7.
 
@@ -139,7 +140,20 @@ pnpm run web:dev         # http://localhost:3000
 Pulsa **Fundar imperio** para crear un jugador con su ciudad y sus tres aldeanos.
 Haz clic en un aldeano para seleccionarlo y en el mapa para ordenarle moverse.
 
-### 6. Comprobar que todo funciona
+### 6. Poblar el mundo (opcional)
+
+Un mundo recién creado está vacío. Para probar a mano con varios jugadores y con safe zones:
+
+```bash
+# con el servidor PARADO (el mundo vive en su RAM)
+pnpm run dev:seed
+```
+
+Crea `dev_norte`, `dev_sur`, `dev_este` y `dev_oeste`, con la contraseña
+`semilla-de-desarrollo`, en ciudades vecinas, y un bosque seguro junto a cada una. Sólo en una base
+de desarrollo: se niega si `EO_ENV` no es `development`. Vuelve a arrancar el servidor después.
+
+### 7. Comprobar que todo funciona
 
 ```bash
 pnpm run smoke
@@ -164,11 +178,12 @@ fallo, así que sirve como puerta en un script de despliegue.
 | `pnpm run pg:psql` | Consola de PostgreSQL contra ese cluster (acepta argumentos tras `--`) |
 | `pnpm run smoke` | Vertical slice completo contra un servidor vivo. `--url` para apuntar a otro despliegue |
 | `pnpm run db:migrate` / `db:version` | Aplica el esquema / muestra la versión aplicada |
+| `pnpm run dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado |
 | `pnpm run docs:check` | Verifica enlaces, invariantes registrados y ADR citados |
 | `pnpm run protocol:build` | Regenera el JSON Schema desde los esquemas Zod |
 | `pnpm run protocol:check` | Falla si el JSON Schema ha derivado (lo mismo que hace la CI) |
 | `pnpm run server:test` | Tests unitarios del Game Server |
-| `pnpm run server:test:integration` | Tests contra PostgreSQL y Redis reales |
+| `pnpm run server:test:integration` | Tests contra PostgreSQL y Redis reales (necesita `EO_INTEGRATION=1` y la base `empires_test`) |
 | `pnpm run web:dev` / `web:build` | Cliente en desarrollo / build de producción |
 | `pnpm run verify` | Todo lo anterior de una vez: la comprobación previa a una PR |
 
@@ -185,14 +200,21 @@ pnpm --filter @empires-online/web test    # coordenadas, interpolación, store, 
 cd services/game-server && go test ./...  # dominio, pathfinding, simulación, auth, config
 ```
 
-Los tests de integración necesitan la infraestructura arrancada y se activan
-explícitamente:
+Los tests de integración necesitan la infraestructura arrancada, una base **`empires_test`**
+propia y se activan explícitamente. Vacían todas las tablas antes de cada test, así que se niegan a
+ejecutarse contra una base cuyo nombre no termine en `_test`.
 
 ```bash
+# Con Docker: crear la base de tests una vez
 pnpm run db:up
+docker compose exec -T postgres psql -U empires -d postgres -c "CREATE DATABASE empires_test OWNER empires;"
 cd services/game-server
 EO_INTEGRATION=1 go test -tags=integration ./...
 ```
+
+Sin Docker, `pnpm run pg:init` ya crea `empires_test`; basta con apuntar
+`EO_TEST_POSTGRES_URL` al puerto 5433. El detalle está en
+[`docs/operations/local-development.md`](docs/operations/local-development.md) §3-bis.6.
 
 Sin `EO_INTEGRATION=1` se **saltan** en lugar de fallar: un test que no puede
 ejecutarse debe decirlo, no fingir que el código está roto.
