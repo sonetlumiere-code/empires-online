@@ -32,6 +32,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
 	"github.com/empires-online/empires-online/services/game-server/internal/devseed"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
@@ -161,6 +162,7 @@ func run() error {
 			PopulationCap:  eras[0].PopulationCap,
 			TerritoryID:    territorioID,
 			Tick:           state.CurrentTick,
+			Now:            clock.NewSystemClock().Now(),
 			VillagerSpawns: site.Spawns,
 		}); err != nil {
 			return fmt.Errorf("crear %s: %w", nombre, err)

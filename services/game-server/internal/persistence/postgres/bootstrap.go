@@ -33,6 +33,11 @@ type BootstrapRequest struct {
 	// Tick es el tick del game loop en el que ocurre el alta. Fecha los eventos
 	// de dominio. Lo aporta el llamante porque el Bootstrapper no conoce el loop.
 	Tick uint64
+	// Now es el instante del alta según el Clock inyectado del llamante. Sella
+	// captured_at si la fundación reclama el territorio (INV-TERR-007). Es
+	// obligatorio: el Bootstrapper no lee el reloj del sistema, por la misma razón
+	// que no conoce el tick.
+	Now time.Time
 	// VillagerSpawns son los tiles donde nacen los aldeanos iniciales.
 	VillagerSpawns []world.Tile
 }
@@ -69,6 +74,9 @@ func NewBootstrapper(s *Store, p *PlayerRepo, c *CityRepo, u *UnitRepo, t *Terri
 func (b *Bootstrapper) Create(ctx context.Context, req BootstrapRequest) (*BootstrapResult, error) {
 	if err := player.ValidateUsername(req.Username); err != nil {
 		return nil, err
+	}
+	if req.Now.IsZero() {
+		return nil, fmt.Errorf("el alta necesita el instante del reloj inyectado")
 	}
 	if len(req.VillagerSpawns) == 0 {
 		return nil, fmt.Errorf("un jugador nuevo necesita al menos un aldeano")
@@ -136,7 +144,7 @@ func (b *Bootstrapper) Create(ctx context.Context, req BootstrapRequest) (*Boots
 		// ownership es write-through (spec §10): o se funda la ciudad Y cambia el
 		// territorio, o no ocurre ninguna de las dos cosas.
 		if req.TerritoryID != 0 {
-			control, err := b.claimTerritory(ctx, tx, req.TerritoryID, p.ID, req.Tick)
+			control, err := b.claimTerritory(ctx, tx, req.TerritoryID, p.ID, req.Tick, req.Now)
 			if err != nil {
 				return err
 			}
@@ -145,6 +153,7 @@ func (b *Bootstrapper) Create(ctx context.Context, req BootstrapRequest) (*Boots
 
 		if err := appendEvent(ctx, tx, worldEvent{
 			EventType: "PlayerBootstrapped",
+			Tick:      req.Tick,
 			PlayerID:  &p.ID,
 			Payload: map[string]any{
 				"cityId":    c.ID,
@@ -176,7 +185,7 @@ func (b *Bootstrapper) Create(ctx context.Context, req BootstrapRequest) (*Boots
 // ya no se cumple. Reintentar es cosa de quien vuelva a intentar el alta, no de
 // esta transacción, que debe fallar entera para no dejar medio mundo escrito.
 func (b *Bootstrapper) claimTerritory(
-	ctx context.Context, tx pgx.Tx, territoryID int64, playerID uuid.UUID, tick uint64,
+	ctx context.Context, tx pgx.Tx, territoryID int64, playerID uuid.UUID, tick uint64, now time.Time,
 ) (*territory.Control, error) {
 	actual, err := b.territories.GetControl(ctx, tx, territoryID)
 	if err != nil {
@@ -186,8 +195,7 @@ func (b *Bootstrapper) claimTerritory(
 		return nil, nil
 	}
 
-	capturedAt := time.Now().UTC()
-	control, err := b.territories.ClaimForPlayer(ctx, tx, territoryID, playerID, capturedAt, actual.Version)
+	control, err := b.territories.ClaimForPlayer(ctx, tx, territoryID, playerID, now.UTC(), actual.Version)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyOwned) {
 			// Alguien lo reclamó entre nuestra lectura y nuestra escritura. No es

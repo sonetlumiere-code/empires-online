@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
+	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
@@ -43,6 +44,7 @@ type AuthAPI struct {
 	territories  *territory.Set
 	limiter      *IPLimiter
 	tick         func() uint64
+	clock        clock.Clock
 	civilization int32
 	faction      int32
 }
@@ -65,6 +67,9 @@ type Options struct {
 	// cualquier goroutine: el contador del loop es atómico.
 	Tick      func() uint64
 	FactionID int32
+	// Clock fecha el alta (captured_at del territorio reclamado). Si es nil se
+	// usa el reloj del sistema, que es lo que hace producción.
+	Clock clock.Clock
 }
 
 // NewAuthAPI construye la API.
@@ -81,6 +86,9 @@ func NewAuthAPI(
 	if opts.InitialVillagers <= 0 {
 		opts.InitialVillagers = 3
 	}
+	if opts.Clock == nil {
+		opts.Clock = clock.NewSystemClock()
+	}
 	return &AuthAPI{
 		players: players, cities: cities, bootstrapper: bootstrapper,
 		issuer: issuer, world: w, commands: commands, log: log,
@@ -89,6 +97,7 @@ func NewAuthAPI(
 		civilization: opts.CivilizationID, faction: opts.FactionID,
 		territories: opts.Territories,
 		tick:        opts.Tick,
+		clock:       opts.Clock,
 		limiter:     opts.Limiter,
 	}
 }
@@ -171,6 +180,7 @@ func (a *AuthAPI) Register() http.HandlerFunc {
 			PopulationCap:  a.defaultCap,
 			TerritoryID:    a.territoryAt(site.Center),
 			Tick:           a.currentTick(),
+			Now:            a.clock.Now(),
 			VillagerSpawns: site.Spawns,
 		})
 		if err != nil {

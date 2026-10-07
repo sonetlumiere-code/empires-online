@@ -219,6 +219,9 @@ func TestFundarReclamaElTerritorioDelCentroYRegistraElEvento(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, control.OwnerID)
 	assert.Equal(t, result.Player.ID.String(), *control.OwnerID)
+	require.NotNil(t, control.CapturedAt, "INV-TERR-007")
+	assert.True(t, control.CapturedAt.Equal(instanteDeAlta),
+		"captured_at lo sella el reloj del llamante, no el del sistema: %s", control.CapturedAt)
 
 	// INV-TERR-009 por el lado durable: el evento de dominio existe y va en la
 	// misma transacción, con el tick que le pasó el llamante.
@@ -232,6 +235,26 @@ func TestFundarReclamaElTerritorioDelCentroYRegistraElEvento(t *testing.T) {
 	require.NoError(t, err, "debe existir exactamente un TerritoryControlChanged de este jugador")
 	assert.EqualValues(t, 4242, tick)
 	assert.Equal(t, "PLAYER", ownerType)
+
+	err = store.Pool().QueryRow(ctx,
+		`SELECT tick FROM world_events WHERE event_type = 'PlayerBootstrapped' AND player_id = $1`,
+		result.Player.ID,
+	).Scan(&tick)
+	require.NoError(t, err)
+	assert.EqualValues(t, 4242, tick, "el alta también va fechada con el tick del llamante")
+}
+
+func TestUnAltaSinInstanteSeRechazaSinEscribirNada(t *testing.T) {
+	store, ctx := newTestStore(t)
+	players, _, _, _, bootstrapper := newRepos(store)
+
+	req := bootstrapRequest("sinreloj", world.Tile{X: 10, Y: 10})
+	req.Now = time.Time{}
+	_, err := bootstrapper.Create(ctx, req)
+	require.Error(t, err)
+
+	_, _, err = players.GetByUsername(ctx, "sinreloj")
+	assert.Error(t, err, "un alta rechazada no deja jugador")
 }
 
 func TestFundarEnTerritorioAjenoNoLoCambiaDeManosNiFalla(t *testing.T) {

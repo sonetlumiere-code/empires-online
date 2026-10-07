@@ -58,6 +58,10 @@ func newRepos(s *postgres.Store) (*postgres.PlayerRepo, *postgres.CityRepo, *pos
 	return p, c, u, m, postgres.NewBootstrapper(s, p, c, u, tr)
 }
 
+// instanteDeAlta es el reloj de los tests: fijo, para poder comparar captured_at
+// con igualdad exacta.
+var instanteDeAlta = time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+
 func bootstrapRequest(username string, center world.Tile) postgres.BootstrapRequest {
 	return postgres.BootstrapRequest{
 		Username:       username,
@@ -68,6 +72,7 @@ func bootstrapRequest(username string, center world.Tile) postgres.BootstrapRequ
 		CityCenter:     center,
 		Era:            city.EraStone,
 		PopulationCap:  20,
+		Now:            instanteDeAlta,
 		VillagerSpawns: []world.Tile{
 			{X: center.X + 2, Y: center.Y},
 			{X: center.X - 2, Y: center.Y},

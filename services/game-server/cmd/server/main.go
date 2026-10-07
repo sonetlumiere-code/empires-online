@@ -255,7 +255,8 @@ func run() error {
 			Territories:      territories,
 			Limiter: httpapi.NewIPLimiter(
 				cfg.AuthRateLimitPerMin, cfg.AuthRateLimitBurst, cfg.TrustProxyHeaders),
-			Tick: gameLoop.Tick,
+			Tick:  gameLoop.Tick,
+			Clock: sysClock,
 		}, log)
 
 	mux := http.NewServeMux()
