@@ -3,6 +3,8 @@ package simulation
 import (
 	"encoding/base64"
 
+	"github.com/google/uuid"
+
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -15,9 +17,14 @@ import (
 // permite que el coste por jugador no crezca con el tamaño del mundo ni con el
 // número total de jugadores. Ver ../../../../docs/architecture/networking.md
 //
+// `viewer` es el jugador que recibirá el snapshot. Un snapshot es un delta
+// completo, y por eso aplica el mismo filtro de visibilidad que los deltas: una
+// unidad oculta ajena que reapareciera al reconectar sería la misma fuga por
+// otra puerta (INV-SAFE-004).
+//
 // `includeTerrain` permite omitir el terreno cuando el cliente ya lo tiene
 // cacheado: el terreno es inmutable, así que sólo hace falta enviarlo una vez.
-func (s *Simulation) BuildSnapshot(chunks []world.ChunkCoord, nowMs int64, includeTerrain bool) protocol.WorldSnapshotPayload {
+func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, nowMs int64, includeTerrain bool) protocol.WorldSnapshotPayload {
 	w := s.state.World()
 
 	payload := protocol.WorldSnapshotPayload{
@@ -48,6 +55,9 @@ func (s *Simulation) BuildSnapshot(chunks []world.ChunkCoord, nowMs int64, inclu
 		}
 
 		for _, u := range s.state.UnitsInChunk(ch.CX, ch.CY) {
+			if !VisibleTo(u, viewer) {
+				continue
+			}
 			payload.Units = append(payload.Units, s.UnitView(u, nowMs))
 		}
 		for _, c := range s.state.CitiesInChunk(ch.CX, ch.CY) {
@@ -99,4 +109,14 @@ func CityView(c *city.City) protocol.CityView {
 		view.ProtectionUntilMs = &ms
 	}
 	return view
+}
+
+// VisibleTo decide si una unidad viaja hacia un jugador concreto.
+//
+// Una unidad HIDDEN sólo la ve su propietario (INV-SAFE-004). Es la única regla
+// de visibilidad por observador que existe en el MVP; el resto la decide el
+// chunk. Una unidad GARRISONED no está aquí porque no la produce ningún
+// comando de red todavía (M7, entregable 6).
+func VisibleTo(u *unit.Unit, viewer uuid.UUID) bool {
+	return u.Status != unit.StatusHidden || u.PlayerID == viewer
 }

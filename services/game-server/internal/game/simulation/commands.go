@@ -74,6 +74,11 @@ type Broadcaster interface {
 	// de esos chunks. Para entidades que abarcan varios, como los territorios:
 	// llamar a BroadcastChunk en bucle duplicaría el mensaje.
 	BroadcastChunks(chunks []world.ChunkCoord, msgType string, payload any)
+	// BroadcastChunkExcept entrega el mensaje a toda sesión suscrita al chunk
+	// cuyo jugador NO sea `except`. Es el canal de los terceros en el
+	// ocultamiento: el propietario recibe otro mensaje por SendToPlayer
+	// (docs/specs/safe-zones.md §12, INV-SAFE-004).
+	BroadcastChunkExcept(cx, cy int32, except uuid.UUID, msgType string, payload any)
 	// SendToPlayer entrega el mensaje a todas las sesiones de un jugador.
 	SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any)
 }
@@ -102,9 +107,10 @@ type Persister interface {
 // NoopBroadcaster descarta todo. Útil en tests de simulación pura.
 type NoopBroadcaster struct{}
 
-func (NoopBroadcaster) BroadcastChunk(int32, int32, string, any)        {}
-func (NoopBroadcaster) BroadcastChunks([]world.ChunkCoord, string, any) {}
-func (NoopBroadcaster) SendToPlayer(uuid.UUID, string, string, any)     {}
+func (NoopBroadcaster) BroadcastChunk(int32, int32, string, any)                  {}
+func (NoopBroadcaster) BroadcastChunks([]world.ChunkCoord, string, any)           {}
+func (NoopBroadcaster) BroadcastChunkExcept(int32, int32, uuid.UUID, string, any) {}
+func (NoopBroadcaster) SendToPlayer(uuid.UUID, string, string, any)               {}
 
 // NoopPersister descarta las escrituras. Útil en tests de simulación pura.
 type NoopPersister struct{}

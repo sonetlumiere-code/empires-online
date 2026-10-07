@@ -712,17 +712,22 @@ tres categorías: write-through, dirty-flag y reconstruible.
 
 ## M5 — Offline protection & Safe Zones
 
-**Estado: PARCIAL.** La presencia en Redis, el autómata completo de `presence_state` y el cooldown de
-protección están implementados y con tests en verde (`internal/domain/city`, `internal/game/simulation`).
-**Falta** toda la parte de Safe Zones más allá de la tabla: el cálculo de `DENSE_FOREST` y `CAVERN` y el
-uso efectivo de `HIDDEN` están pendientes.
+**Estado: HECHO a falta de una ejecución verde de la CI sobre el commit que lo cierra.** Presencia y
+protección offline están implementadas desde el principio. Las Safe Zones se implementaron después:
+índice tile → zona, ocultamiento en la fase 5 y filtrado por destinatario, verificados nivel por
+nivel según [../specs/safe-zones.md](../specs/safe-zones.md) §13. Todos los criterios de aceptación se
+cumplen.
+
+Una precisión que no bloquea el cierre: **el mundo canónico no tiene ninguna safe zone**. Su siembra
+es una decisión de diseño de mundo que la spec declara `TBD (fuera de MVP)`. El mecanismo funciona en
+cuanto `safe_zones` tenga filas, y los tests lo demuestran con zonas sintéticas.
 
 **Objetivo.** Modelar la presencia del jugador, la transición a protección tras el cooldown y las
 zonas seguras, todo calculado y validado por el servidor.
 
 **Alcance.** Presencia en Redis, máquina de estados de `presence_state`, `protection_until`,
 `safe_zones` y el estado `HIDDEN`. **No entra**: consecuencias de combate de la protección, que
-llegan con Combat, fuera del MVP.
+llegan con Combat, fuera del MVP; ni la geometría de las zonas del mundo canónico.
 
 ### Entregables
 
@@ -748,13 +753,18 @@ llegan con Combat, fuera del MVP.
    hardcodeado.
 5. **HECHO** — `protection_until` a NULL mientras el jugador siga offline —la protección es indefinida en
    el MVP— y limpiado al reconectar. El campo queda previsto para límites futuros (`DEBT-02`).
-6. **PARCIAL** — Migración de `safe_zones` con los tipos `DENSE_FOREST` y `CAVERN`: **la tabla existe, la
-   lógica no**. El cálculo (`DENSE_FOREST` apoyado en terreno `FOREST`, `CAVERN` en adyacencia a
-   `MOUNTAIN`) está **pendiente**. Cuando exista, la seguridad la calculará y validará siempre el
-   servidor: el cliente nunca puede declararse a salvo.
-7. **PENDIENTE** — Uso del estado `HIDDEN` de `units.status` para unidades dentro de una safe zone, con su
-   consecuencia en el interest management: una unidad `HIDDEN` no se difunde a otros jugadores. El valor
-   existe en el enum y en el `CHECK`; la mecánica no.
+6. **HECHO** — Cálculo de safe zones en `internal/domain/safezone`: predicados `DENSE_FOREST` (tile
+   `FOREST`) y `CAVERN` (tile transitable con un vecino `MOUNTAIN` en las 8 direcciones), índice denso
+   tile → zona de 1 MiB en un mundo de 512 × 512, construcción determinista por `id` ascendente y
+   resolución de solapes a favor del `id` menor. `postgres.SafeZoneRepo` lee la tabla al arrancar, y
+   `cmd/server` construye el índice después de marcar las murallas, que quedan fuera de toda zona. La
+   seguridad la calcula y la valida siempre el servidor: ningún mensaje del cliente menciona zonas.
+7. **HECHO** — Uso del estado `HIDDEN`: la fase 5 oculta a las unidades `IDLE` en reposo dentro de una
+   zona y revela a las que dejan de estarlo; `unit.move` sobre una unidad oculta la revela en el mismo
+   tick. Interest management: el propietario recibe `entity.update` con el estado; los terceros,
+   `entity.despawn { reason: "HIDDEN" }` o `entity.spawn` por `Hub.BroadcastChunkExcept`; y
+   `world.snapshot` filtra las unidades ocultas ajenas por destinatario. Cero mensajes nuevos en el
+   protocolo. El estado se persiste por dirty-flag; el tick no hace I/O.
 8. **HECHO** — Emisión de `city.update` con `presence_state` y `protection_until` en cada transición, y
    evento de dominio `CityProtectionEngaged` registrado en `world_events`.
 9. **HECHO** — Código de error `CITY_PROTECTED` definido y devuelto por las acciones que la protección
@@ -768,43 +778,68 @@ llegan con Combat, fuera del MVP.
 - **HECHO** *unit*: la máquina de estados acepta exactamente las cuatro transiciones válidas y rechaza el
   resto, por ejemplo `ONLINE → PROTECTED` directo; `ShouldEngageProtection` cubre sus casos límite.
 - **HECHO** *simulation*: con `FakeClock`, tras `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` la ciudad
-  pasa a `PROTECTED` y ni un tick antes; y con varias sesiones abiertas no baja de `ONLINE`.
-- **PENDIENTE** *unit*: cálculo de safe zone sobre `FOREST` y sobre adyacencia a `MOUNTAIN`. No hay
-  lógica que testear todavía.
-- **PARCIAL** *integration*: agotar el margen de reconexión con la conexión ya cerrada lleva a
-  `OFFLINE_PENDING`; reconectar antes del cooldown vuelve a `ONLINE` y no llega a `PROTECTED`. Cubierto en
-  simulación; el test contra Redis real está escrito, **no ejecutado**.
-- **PARCIAL** *integration*: reconectar desde `PROTECTED` deja `presence_state = 'ONLINE'` y
-  `protection_until = NULL`. Escrito, **no ejecutado**.
-- **PENDIENTE** *integration*: una unidad `HIDDEN` no aparece en el `world.snapshot` de otro jugador cuyo
-  área de interés la contiene. Depende del entregable 7.
-- **PARCIAL** *recovery*: un reinicio del servidor no pierde el `presence_state` persistido ni reinicia el
-  cooldown desde cero. Escrito, **no ejecutado**.
+  pasa a `PROTECTED` y ni un tick antes, y reconectar dentro del margen no degrada la ciudad
+  (`TestCicloDePresenciaYProteccion`, `TestReconexionDentroDelMargenNoDegradaLaCiudad`,
+  `TestVariasSesionesDelMismoJugador`).
+- **HECHO** *integration* (Redis real): la clave de presencia se registra con TTL, el latido la renueva y
+  sólo la sesión propietaria la retira (`TestPresenciaSeRegistraYExpira`, `TestLatidoRenuevaLaPresencia`,
+  `TestSoloLaSesionPropietariaRetiraLaPresencia`). La transición a `OFFLINE_PENDING` no se prueba
+  contra Redis porque, por diseño, Redis no la decide: la cubre el nivel *simulation*.
+- **HECHO** *integration* (PostgreSQL real): `OFFLINE_PENDING`, `PROTECTED` y la vuelta a `ONLINE` se
+  persisten, y volver a `ONLINE` deja `protection_until = NULL` (`TestTransicionesDePresenciaSePersisten`).
+- **HECHO** *unit* (safe zones): los dos ejemplos resueltos de la spec reproducidos literalmente, las 8
+  direcciones de `CAVERN`, bordes inclusivos, solapes, recorte por terreno y por murallas, zonas
+  inválidas y determinismo del índice. Catorce tests en `internal/domain/safezone`.
+- **HECHO** *simulation* (safe zones): diez tests en `internal/game/simulation/safezones_test.go`, que
+  además comprueban `INV-SAFE-003` sobre todo el mundo tras cada tick. Verificados por mutación: cuatro
+  fallos introducidos a propósito —despawn a todo el chunk, snapshot sin filtro, mover sin revelar,
+  ocultar en tránsito— ponen alguno en rojo.
+- **HECHO** *e2e de transporte*: una unidad `HIDDEN` no aparece en el `world.snapshot` ni en los deltas de
+  otro jugador cuya área de interés la contiene, y su dueño sí la ve
+  (`TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno`). Vive en `internal/websocket` y no en
+  integración: a qué conexión llega cada mensaje no depende de PostgreSQL.
+- **HECHO** *integration* (safe zones): los `CHECK` de `safe_zones`, el orden de carga, la persistencia
+  de `HIDDEN` a través de flush y reinicio, y el recorte por una ciudad creada por el alta real. Cuatro
+  tests en `safezones_integration_test.go`, que aloja también el de recuperación de la presencia.
+- **HECHO** *contract*: `entity.despawn` admite `reason: "HIDDEN"` y `entity.update` y `world.snapshot`
+  admiten `status: "HIDDEN"`, leídos del JSON Schema exportado.
+- **HECHO** *recovery*: un reinicio no pierde el `presence_state` persistido ni reinicia el cooldown.
+  `TestUnReinicioNoReiniciaElCooldownDeProteccion` rearranca la simulación desde PostgreSQL 200 s después
+  de la desconexión: la ciudad sigue en `OFFLINE_PENDING` a los 299 s y pasa a `PROTECTED` a los 300 s,
+  contados desde la desconexión y no desde el arranque. El equivalente para `HIDDEN` es
+  `TestHiddenSePersisteSobreviveAlReinicioYSeRevierteSiLaZonaDesaparece`.
 
 ### Documentación actualizada al cerrar
 
 [../specs/presence.md](../specs/presence.md),
-[../specs/safe-zones.md](../specs/safe-zones.md),
+[../specs/safe-zones.md](../specs/safe-zones.md) (estado `Implemented`),
+[../invariants/territory.md](../invariants/territory.md) (fichas `INV-SAFE-*`),
+[../invariants/units.md](../invariants/units.md) (`INV-UNIT-008`),
 [../architecture/game-loop.md](../architecture/game-loop.md) (fase 5),
+[../architecture/networking.md](../architecture/networking.md) (filtro por destinatario),
 [../database/schema.md](../database/schema.md).
 
 ### Invariantes cubiertos
 
 `EJE-CITY` completo. `EJE-UNIT` en la parte de `HIDDEN`. `EJE-PERSIST` en la separación
-Redis/PostgreSQL: la presencia es transitoria, el `presence_state` es durable.
+Redis/PostgreSQL: la presencia es transitoria, el `presence_state` es durable. Del registro:
+`INV-SAFE-001` a `INV-SAFE-007` e `INV-UNIT-008`.
 
 ### Aceptación
 
-1. Cerrar la última conexión y dejar vencer el margen de reconexión (30 s) lleva la ciudad a
-   `OFFLINE_PENDING`.
-2. Reconectar durante el grace mantiene `ONLINE` sin pasar por `OFFLINE_PENDING`; tener otra sesión
-   abierta también lo mantiene.
-3. Transcurrido el cooldown, la ciudad está en `PROTECTED` y se emitió un `city.update`.
-4. Reconectar desde `PROTECTED` devuelve a `ONLINE` y deja `protection_until` a NULL.
-5. Cambiar `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` a 10 hace que la transición ocurra a los 10
-   segundos, sin cambios de código.
-6. Una unidad dentro de una safe zone tiene `status = 'HIDDEN'` y no es visible para terceros.
-7. Un reinicio del servidor conserva el estado de presencia de todas las ciudades.
+1. **Cumplido.** Cerrar la última conexión y dejar vencer el margen de reconexión (30 s) lleva la ciudad
+   a `OFFLINE_PENDING`.
+2. **Cumplido.** Reconectar durante el grace mantiene `ONLINE` sin pasar por `OFFLINE_PENDING`; tener
+   otra sesión abierta también lo mantiene.
+3. **Cumplido.** Transcurrido el cooldown, la ciudad está en `PROTECTED` y se emitió un `city.update`.
+4. **Cumplido.** Reconectar desde `PROTECTED` devuelve a `ONLINE` y deja `protection_until` a NULL.
+5. **Cumplido por construcción.** Cambiar `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` a 10 hace que la
+   transición ocurra a los 10 segundos, sin cambios de código: `cmd/server` pasa el valor a
+   `simulation.Deps.ProtectionCooldown`. Ningún test lo ejecuta con 10; los tests usan 300.
+6. **Cumplido con zonas sintéticas.** Una unidad dentro de una safe zone tiene `status = 'HIDDEN'` y no
+   es visible para terceros. En el mundo canónico no hay zonas que pisar hasta que se decida su siembra.
+7. **Cumplido.** Un reinicio del servidor conserva el estado de presencia de todas las ciudades y no
+   reinicia el cooldown (`TestUnReinicioNoReiniciaElCooldownDeProteccion`).
 
 ---
 

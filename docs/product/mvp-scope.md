@@ -330,7 +330,7 @@ entregable por entregable está en [../roadmap/milestones.md](../roadmap/milesto
 | **M2** Player & City | `players`, `cities`, `units` iniciales | Dentro | **Hecho** del lado servidor (alta vía `POST /api/auth/register`) |
 | **M3** Realtime | WebSocket, auth, snapshot, deltas, reconexión | Dentro | **Parcial**: servidor hecho; falta el cliente |
 | **M4** Movement | A\*, loop, persistencia del movimiento, interpolación | Dentro | **Parcial**: servidor hecho; falta la interpolación del cliente |
-| **M5** Offline protection & Safe Zones | Presencia y protección **sí**; Safe Zones con lógica mínima | Parcial | **Parcial**: presencia y protección hechas; `safe_zones` sólo tabla |
+| **M5** Offline protection & Safe Zones | Presencia y protección **sí**; Safe Zones con lógica mínima | Parcial | **Hecho**: presencia, protección y Safe Zones con ocultamiento y filtrado por destinatario. El mundo canónico no tiene zonas sembradas (`TBD`) |
 | **M6** Territories | Tablas creadas, lógica diferida | Fundamento | Tablas creadas; lógica diferida |
 | **M7** Diplomacy foundation | `treaties` y `garrisons` creados, lógica diferida | Fundamento | Tablas creadas; lógica diferida |
 

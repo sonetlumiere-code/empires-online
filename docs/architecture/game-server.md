@@ -97,11 +97,10 @@ Tres ausencias que conviene declarar, porque diseños anteriores las daban por h
 - **No hay `internal/events`.** Los hechos no se modelan como structs de evento intermedios: la
   simulación emite directamente mensajes de protocolo por el `Broadcaster`, y lo que se persiste como
   historial va a la tabla `world_events` desde `persistence/postgres/events.go`.
-- **No hay `internal/presence` ni `internal/domain/territory` / `internal/domain/diplomacy`.** La
-  máquina de presencia vive en `internal/domain/city` (`PresenceState`, `CanTransition`,
-  `ShouldEngageProtection`) y la conduce el game loop; territorio y diplomacia existen hoy solo como
-  tablas (`territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`), sin paquete de
-  dominio. Ver §9.
+- **No hay `internal/presence`.** La máquina de presencia vive en `internal/domain/city`
+  (`PresenceState`, `CanTransition`, `ShouldEngageProtection`) y la conduce el game loop. Territorios,
+  safe zones, tratados y guarniciones sí tienen paquete de dominio: `internal/domain/territory`,
+  `internal/domain/safezone`, `internal/domain/diplomacy` e `internal/domain/garrison`. Ver §9.
 - **No hay directorio `testdata/`.** Los tests construyen sus mundos en el propio fichero de test
   (mapas ASCII en `pathfinding`, mundos sintéticos en `simulation`), sin ficheros externos.
 
@@ -129,6 +128,7 @@ revisión de código, no por un test de arquitectura automático — añadirlo e
 | `internal/domain/player` | Identidad del jugador, `Civilization` con sus `Traits`, `Faction`. | — | `game/*`, `persistence/*`, `websocket`, `pathfinding` |
 | `internal/domain/city` | Ciudad, `PresenceState` y su autómata (`CanTransition`), `ShouldEngageProtection`, límite de población. | — | ídem |
 | `internal/domain/unit` | Entidad unidad, `Status` (`IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`), `Type`, `Definition` y el catálogo con `VILLAGER` (`baseMsPerTile` 600). | — | ídem |
+| `internal/domain/safezone` | Zonas seguras: predicados `DENSE_FOREST` y `CAVERN`, índice denso tile → zona (`Index`, `BuildIndex`, `ZoneAt`, `Exclude`) y la regla de ocultamiento `NextStatus`. Ver [../specs/safe-zones.md](../specs/safe-zones.md). | `world`, `unit` | `game/simulation`, `persistence/postgres`, `cmd/server` |
 | `internal/domain/movement` | Polilínea temporizada: `Waypoint`, `TimedPath`, `BuildTimedPath`, `StepDurationMs`, `PositionAt`, `IndexAt`, `Validate`, y el ciclo `ACTIVE`/`COMPLETED`/`CANCELLED`/`FAILED`. | `world` | ídem |
 | `internal/pathfinding` | A\* octile con costes `u×1000` / `u×1414`, heurística ponderada por `MinTerrainCostUnits`, desempate `(f, h, y, x)` y límites `EO_PATHFINDING_MAX_NODES` / `EO_PATHFINDING_MAX_DISTANCE`. Ver [pathfinding.md](./pathfinding.md). | `world` | `domain/*`, `game/loop`, `simulation`, `persistence/*`, `websocket`, `observability` |
 | `internal/auth` | `Verifier` del game ticket HS256 (`exp`, `aud`), `Claims`, `Authenticator` (verifica y consume el `jti` contra Redis) e `Issuer` para el alta provisional. | `clock` | `domain/*`, `game/*`, `persistence/*` |
@@ -611,9 +611,9 @@ Se documenta para que nadie lo implemente por inercia ni lo asuma existente:
 
 - **Combate** (fase 4 del tick): el paquete `simulation` existe y está lleno, pero la resolución de
   combate no está implementada; la fase 4 no hace nada.
-- **Territorio y diplomacia como lógica de dominio.** Las tablas `territories`, `territory_control`,
-  `safe_zones`, `treaties` y `garrisons` existen en la migración 000001, pero no hay paquete
-  `domain/territory` ni `domain/diplomacy` ni reglas que las consuman.
+- **Comandos de red de guarnición y diplomacia.** `domain/diplomacy` y `domain/garrison` existen y
+  sus reglas se ejecutan contra PostgreSQL, pero el protocolo v1 no tiene ningún comando que las
+  dispare (M7). Tampoco hay siembra de safe zones en el mundo canónico: el índice existe y está vacío.
 - **Emisión del ticket desde Next.js** (ADR-010): hoy la sirve `internal/httpapi`. Ver §1.
 - Sharding del mundo entre varios procesos: el MVP es **un único proceso** dueño del mundo entero.
 - Paralelización interna del tick (A\* en pool de workers, fases concurrentes).

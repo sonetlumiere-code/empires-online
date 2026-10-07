@@ -30,7 +30,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | M2 (EO-030 … EO-039) | Completado. `EO-038` se resolvió con `internal/game/founding`. |
 | M3 (EO-040 … EO-057) | Servidor completado. Abiertos: **`EO-041`** (ticket desde Next.js) y **`EO-055`** (cliente PixiJS). |
 | M4 (EO-060 … EO-078) | Servidor completado. Abierto: **`EO-075`** (interpolación en el cliente). |
-| M5 (EO-080 … EO-089) | Presencia y protección completadas. Abiertos: `EO-084`, `EO-085`, `EO-086` (safe zones y `HIDDEN`). |
+| M5 (EO-080 … EO-089) | **Completado.** `EO-084`, `EO-085` y `EO-086` cerrados: safe zones, `HIDDEN` y su filtrado por destinatario. La geometría de las zonas del mundo canónico es una decisión de diseño pendiente, no un item de este bloque. |
 | M6 (EO-090 … EO-097) | **Completo salvo el entregable 8** (restricciones en territorio ajeno), bloqueado por una decisión de juego. |
 | M7 (EO-100 … EO-108) | **Dominio, persistencia y caducidad hechos y verificados.** Falta la puerta de entrada: el protocolo v1 no tiene comandos de guarnición. |
 | Transversales | `EO-110`, `EO-112` y `EO-113` hechos. Abiertos: `EO-111`, `EO-114`, `EO-115`, `EO-116`, `EO-117` (autenticación) y `EO-118` (reconciliar las docs con la ejecución real). |
@@ -149,9 +149,9 @@ sin evidencia local es la imagen del contenedor, que sólo se construye en la CI
 | EO-081 | Máquina de estados de `presence_state` | M5 | P0 | M | EO-034, EO-080 | Solo se aceptan las cuatro transiciones canónicas; `ONLINE → PROTECTED` directo es rechazado. La transición a `OFFLINE_PENDING` la decide el game loop en RAM contra `DisconnectGrace` (= `EO_PRESENCE_TTL_SECONDS`), no la expiración de la clave de Redis. |
 | EO-082 | Cooldown de protección evaluado en la fase 5 del tick | M5 | P0 | M | EO-066, EO-081 | Con el cooldown a 10 segundos la transición ocurre a los 10 segundos, sin cambios de código. |
 | EO-083 | `protection_until` a NULL y limpieza al reconectar | M5 | P1 | S | EO-082 | Reconectar desde `PROTECTED` deja `presence_state = 'ONLINE'` y `protection_until = NULL`. |
-| EO-084 | Migración de `safe_zones` | M5 | P1 | S | EO-011 | La tabla admite `DENSE_FOREST` y `CAVERN` y rechaza cualquier otro tipo. |
-| EO-085 | Cálculo de safe zones por el servidor | M5 | P1 | M | EO-020, EO-084 | `DENSE_FOREST` se apoya en `FOREST` y `CAVERN` en adyacencia a `MOUNTAIN`, siempre validado en servidor. |
-| EO-086 | Estado `HIDDEN` y su efecto en el interest management | M5 | P1 | M | EO-048, EO-085 | Una unidad `HIDDEN` no aparece en el snapshot de otro jugador cuya área de interés la contiene. |
+| EO-084 | Migración de `safe_zones` | M5 | P1 | S | EO-011 | **Cerrado.** La tabla admite `DENSE_FOREST` y `CAVERN` y rechaza cualquier otro tipo: `TestLosCheckDeSafeZonesRechazanTipoYLimitesInvalidos`. |
+| EO-085 | Cálculo de safe zones por el servidor | M5 | P1 | M | EO-020, EO-084 | **Cerrado.** `DENSE_FOREST` se apoya en `FOREST` y `CAVERN` en adyacencia a `MOUNTAIN`, siempre validado en servidor: `internal/domain/safezone`, catorce tests de unidad. |
+| EO-086 | Estado `HIDDEN` y su efecto en el interest management | M5 | P1 | M | EO-048, EO-085 | **Cerrado.** Una unidad `HIDDEN` no aparece en el snapshot ni en los deltas de otro jugador cuya área de interés la contiene: `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno`. |
 | EO-087 | `city.update` de presencia y evento `CityProtectionEngaged` | M5 | P1 | S | EO-051, EO-081 | Cada transición emite `city.update` y registra el evento en `world_events`. |
 | EO-088 | Error `CITY_PROTECTED` | M5 | P2 | S | EO-082 | El código está definido, se devuelve en las acciones bloqueadas y tiene test. |
 | EO-089 | Persistencia transaccional de las transiciones de presencia | M5 | P0 | S | EO-081 | Un reinicio conserva el `presence_state` de todas las ciudades y no reinicia el cooldown. |
@@ -191,7 +191,7 @@ sin evidencia local es la imagen del contenedor, que sólo se construye en la CI
 | EO-111 | Runbook de operación 24/7 | Transversal | P1 | M | EO-009 | **Abierto.** Describe arranque, parada, migración con estado vivo, lectura de métricas y diagnóstico de overruns. |
 | EO-112 | ADRs de las decisiones estructurales | Transversal | P1 | S | EO-018 | Existen los doce ADR de `docs/decisions/`, de `ADR-001-game-server-language.md` a `ADR-012-database-migrations.md`. Todo enlace debe usar esos nombres exactos. |
 | EO-113 | Cliente WS de pruebas end-to-end | Transversal | P1 | M | EO-044 | **HECHO** — `scripts/smoke.mjs`. Un cliente en Node ejecuta el recorrido completo de conexión, snapshot y movimiento en CI. Bloqueado por `EO-016` y por `DEBT-19`. |
-| EO-114 | Seeds de datos de desarrollo | Transversal | P2 | S | EO-036 | Un script deja un mundo con varios jugadores listos para pruebas manuales reproducibles. |
+| EO-114 | Seeds de datos de desarrollo | Transversal | P2 | S | EO-036 | Un script deja un mundo con varios jugadores listos para pruebas manuales reproducibles, y opcionalmente safe zones sintéticas en la base de desarrollo —nunca en una migración ni en el mundo canónico—. Con M5 cerrado es la única forma de ver el ocultamiento con un cliente real: `SafeZoneRepo.Insert` ya existe. |
 | EO-115 | Escenario de simulación reproducible para regresión | Transversal | P2 | M | EO-077 | Un escenario fijo con `FakeClock` produce el mismo estado final en cada ejecución y se compara contra un *golden file*. |
 | EO-116 | Tests de carga con k6 | Transversal | P3 | L | EO-113 | Diferido: no forma parte del MVP y no bloquea ningún milestone. |
 | EO-117 | Sacar la autenticación del Game Server | Transversal | P1 | L | DEBT-18 | **Planificado, no empezado.** Plan por pasos en la sección «Plan: sacar la autenticación del Game Server» de este documento. El paso 1 es un ADR, no código. |

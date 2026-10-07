@@ -139,6 +139,29 @@ func (h *Hub) BroadcastChunk(cx, cy int32, msgType string, payload any) {
 	}
 }
 
+// BroadcastChunkExcept entrega un mensaje a las sesiones suscritas a un chunk
+// cuyo jugador no sea `except`.
+//
+// Existe para el ocultamiento en Safe Zones: cuando una unidad se oculta, su
+// propietario debe seguir viéndola y los demás no (INV-SAFE-004). El filtro se
+// aplica aquí, por sesión de destino, porque es el único punto que sabe a qué
+// jugador pertenece cada conexión.
+func (h *Hub) BroadcastChunkExcept(cx, cy int32, except uuid.UUID, msgType string, payload any) {
+	h.mu.RLock()
+	set := h.byChunk[makeChunkKey(cx, cy)]
+	targets := make([]*Session, 0, len(set))
+	for _, s := range set {
+		if s.PlayerID != except {
+			targets = append(targets, s)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, s := range targets {
+		s.Send(msgType, "", payload)
+	}
+}
+
 // BroadcastChunks entrega el mensaje UNA sola vez a cada sesión suscrita a
 // alguno de esos chunks.
 //

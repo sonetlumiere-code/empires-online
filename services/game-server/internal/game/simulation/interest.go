@@ -58,7 +58,7 @@ func (s *Simulation) handleRequestSnapshot(cmd RequestSnapshot) {
 
 	chunks := w.ChunksInRadius(center, cmd.RadiusChunks)
 	result := SnapshotResult{
-		Payload: s.BuildSnapshot(chunks, nowMs, cmd.IncludeTerrain),
+		Payload: s.BuildSnapshot(cmd.PlayerID, chunks, nowMs, cmd.IncludeTerrain),
 		Chunks:  chunks,
 		Found:   found,
 	}

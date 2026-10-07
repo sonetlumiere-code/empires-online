@@ -45,7 +45,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Presence & Protection | [presence.md](presence.md) | M5 Offline protection & Safe Zones | Draft | Presencia de jugador en Redis, `presence_state` durable de la ciudad, cooldown de protección |
 | Unit | [unit.md](unit.md) | M2 / M4 | Draft | `units`, estados `IDLE`/`MOVING`/`GARRISONED`/`HIDDEN`/`DEAD`, `VILLAGER` |
 | Movement | [movement.md](movement.md) | M4 Movement | Draft | `unit.move`, A\*, polilínea temporizada, recuperación tras crash |
-| Safe Zones | [safe-zones.md](safe-zones.md) | M5 Offline protection & Safe Zones | Draft | Geometría de `safe_zones`, pertenencia de tiles y estado `HIDDEN` |
+| Safe Zones | [safe-zones.md](safe-zones.md) | M5 Offline protection & Safe Zones | Implemented | Geometría de `safe_zones`, pertenencia de tiles y estado `HIDDEN` |
 | Territory | [territory.md](territory.md) | M6 Territories | Draft | `territories` y `territory_control`, resolución tile → territorio |
 | Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Draft | `garrisons`, entrada y salida, tratados con `allows_garrison` |
 | WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Draft | Envelopes, los 5 mensajes cliente→servidor y los 14 servidor→cliente, límites e idempotencia |

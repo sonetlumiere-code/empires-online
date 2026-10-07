@@ -559,7 +559,7 @@ Las cinco razones son las constantes `protocol.DespawnOutOfInterest`, `DespawnDe
 | `HIDDEN` | Se ocultó (Safe Zone). Sin efectos de destrucción. |
 | `REMOVED` | Desapareció del mundo por otra causa (corrección administrativa, recovery). Sin efectos de destrucción. |
 
-El tipo está definido en ambos lados del contrato, pero **ninguna ruta del servidor lo emite todavía**: es el correlato pendiente del spawn por interés descrito en 7.3, y de las specs de [./safe-zones.md](./safe-zones.md) y [./garrison.md](./garrison.md).
+El servidor lo emite **sólo con `reason: HIDDEN`**, cuando una unidad se oculta en una Safe Zone, y sólo a los terceros del chunk: el propietario recibe en su lugar un `entity.update` con el estado ([./safe-zones.md](./safe-zones.md) §12). Las demás razones están en el contrato y ninguna ruta las emite todavía: `OUT_OF_INTEREST` es el correlato pendiente del spawn por interés descrito en 7.3, y `GARRISONED` espera al comando de guarnición de [./garrison.md](./garrison.md).
 
 ### 8.8 `city.update`
 

@@ -150,6 +150,7 @@ type e2e struct {
 	loop     *loop.Loop
 	clk      *clock.FakeClock
 	issuer   *auth.Issuer
+	state    *simulation.State
 	playerID uuid.UUID
 	unitIDs  []int64
 	stop     func()
@@ -157,10 +158,20 @@ type e2e struct {
 
 func newE2E(t *testing.T) *e2e {
 	t.Helper()
+	return newE2EConTerreno(t, nil)
+}
+
+// newE2EConTerreno permite pintar terreno sobre la hierba antes de construir el
+// mundo de 128 × 128 (slice fila-mayor).
+func newE2EConTerreno(t *testing.T, pintar func(terrain []byte)) *e2e {
+	t.Helper()
 
 	terrain := make([]byte, 128*128)
 	for i := range terrain {
 		terrain[i] = byte(world.Grassland)
+	}
+	if pintar != nil {
+		pintar(terrain)
 	}
 	gameWorld, err := world.New(128, 128, 32, 1, terrain)
 	require.NoError(t, err)
@@ -236,6 +247,7 @@ func newE2E(t *testing.T) *e2e {
 	env := &e2e{
 		t: t, server: httpServer, loop: gameLoop, clk: clk,
 		issuer:   auth.NewIssuer(testSecret, 60*time.Second, clk),
+		state:    state,
 		playerID: playerID, unitIDs: unitIDs,
 	}
 	env.stop = func() { httpServer.Close() }

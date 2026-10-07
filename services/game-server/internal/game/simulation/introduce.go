@@ -41,6 +41,8 @@ func (s *Simulation) handleIntroducePlayer(cmd IntroducePlayer) {
 		// el terreno de debajo sigue siendo lo que era, y demoler la ciudad algún
 		// día devolverá el tile a su estado original sin inventar nada.
 		w.SetBlocked(cmd.BlockedMinX, cmd.BlockedMinY, cmd.BlockedMaxX, cmd.BlockedMaxY, true)
+		// Lo que acaba de quedar amurallado deja de ser refugio (INV-SAFE-002).
+		s.excludeFromSafeZones(cmd.BlockedMinX, cmd.BlockedMinY, cmd.BlockedMaxX, cmd.BlockedMaxY, cmd.City.ID)
 
 		cx, cy := w.ChunkOf(cmd.City.CenterX, cmd.City.CenterY)
 		s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeCityUpdate,

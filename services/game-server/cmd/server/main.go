@@ -20,6 +20,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loop"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
@@ -159,6 +160,16 @@ func run() error {
 	for _, c := range cities {
 		gameWorld.SetBlocked(c.CenterX-1, c.CenterY-1, c.CenterX+1, c.CenterY+1, true)
 	}
+
+	// Las zonas seguras se indexan DESPUÉS de las murallas: el índice excluye
+	// los tiles ocupados (INV-SAFE-002), y construirlo antes dejaría dentro
+	// tiles que ninguna unidad puede pisar. Las unidades ya hidratadas se
+	// evalúan en la primera fase 5, que restablece HIDDEN desde la geometría.
+	safeZones, err := loadSafeZones(rootCtx, postgres.NewSafeZoneRepo(store), gameWorld, log)
+	if err != nil {
+		return err
+	}
+	state.SetSafeZones(safeZones)
 
 	gameStore := persistence.NewGameStore(store, unitRepo, cityRepo, movementRepo)
 	if len(recovery.FinishedMovements) > 0 {
@@ -437,4 +448,58 @@ func loadTerritories(
 	log.Info("territorios cargados",
 		"count", set.Len(), "controls", len(controls), "overlaps", len(overlaps))
 	return set, controls, nil
+}
+
+// loadSafeZones lee `safe_zones` y construye el índice tile → zona.
+//
+// Ninguna anomalía de los datos impide arrancar (RN-SAFE-007): un solape se
+// resuelve a favor del id menor, una zona inválida se descarta entera y una
+// zona sobre una ciudad pierde los tiles amurallados. Cada caso emite la señal
+// obligatoria de docs/invariants/README.md §5.1, para que el estado degradado
+// sea visible y filtrable en los logs.
+//
+// Con la tabla vacía —el caso del mundo canónico mientras su siembra sea TBD—
+// el índice existe y no contiene ninguna zona.
+func loadSafeZones(
+	ctx context.Context,
+	repo *postgres.SafeZoneRepo,
+	w *world.World,
+	log *slog.Logger,
+) (*safezone.Index, error) {
+	zones, err := repo.LoadAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	idx, report, err := safezone.BuildIndex(zones, w)
+	if err != nil {
+		return nil, fmt.Errorf("construir el índice de zonas seguras: %w", err)
+	}
+
+	for _, r := range report.Rejected {
+		log.Error("invariant_violation",
+			"inv_id", "INV-SAFE-005", "severity", "ALTO", "policy", "FAIL_FAST",
+			"entity", fmt.Sprintf("safe_zone:%d", r.ZoneID),
+			"detail", "zona descartada: "+r.Reason)
+	}
+	for _, o := range report.Overlaps {
+		log.Error("invariant_violation",
+			"inv_id", "INV-SAFE-001", "severity", "ALTO", "policy", "REPAIR",
+			"entity", fmt.Sprintf("safe_zone:%d", o.Discarded),
+			"kept", o.Kept, "discarded", o.Discarded,
+			"first_tile_x", o.X, "first_tile_y", o.Y, "tiles", o.Tiles,
+			"detail", "zonas solapadas: gana el id menor")
+	}
+	for _, u := range report.Urban {
+		log.Error("invariant_violation",
+			"inv_id", "INV-SAFE-006", "severity", "MEDIO", "policy", "REPAIR",
+			"entity", fmt.Sprintf("safe_zone:%d", u.ZoneID),
+			"first_tile_x", u.X, "first_tile_y", u.Y, "tiles", u.Tiles,
+			"detail", "la zona se solapa con una zona urbana; esos tiles quedan fuera")
+	}
+
+	log.Info("zonas seguras cargadas",
+		"rows", len(zones), "indexed", idx.Len(),
+		"rejected", len(report.Rejected), "overlaps", len(report.Overlaps), "urban", len(report.Urban))
+	return idx, nil
 }

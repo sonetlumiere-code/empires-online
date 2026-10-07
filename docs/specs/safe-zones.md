@@ -6,8 +6,9 @@ estado `HIDDEN`, autoridad del servidor e interacción con la presencia y la pro
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-SAFE-ZONES` |
-| Estado | Draft |
+| Estado | Implemented |
 | Milestone | M5 Offline protection & Safe Zones |
+| Código | `internal/domain/safezone`, `internal/game/simulation/safezones.go`, `postgres.SafeZoneRepo`, `Hub.BroadcastChunkExcept` |
 | Canon | §5, §10, §11, §12, §13 |
 | Depende de | [unit.md](unit.md), [movement.md](movement.md), [presence.md](presence.md) |
 | Reemplaza a | — |
@@ -18,34 +19,41 @@ Una Safe Zone es una región del mapa donde una unidad en reposo queda **oculta*
 visible para terceros. Es el equivalente en campo abierto de la protección offline de ciudades: da al
 jugador un lugar donde dejar unidades sin que sean triviales de localizar.
 
-En el MVP la Safe Zone es **estructura, geometría y estado**, no mecánica de combate. La tabla
-`safe_zones` existe (migración `000001_initial_schema`) y el estado `HIDDEN` existe en el dominio y
-en el protocolo, pero **la lógica está diferida**: la migración de semillas `000002_seed_catalogs`
-solo siembra `civilizations`, `factions` y `eras`, de modo que en el MVP **`safe_zones` está vacía**
-y ninguna unidad llega a `HIDDEN`. El valor de escribirlo ahora es que el modelo de visibilidad, la
-persistencia y el protocolo ya contemplan unidades ocultas, de modo que cuando llegue el combate no
-haya que rediseñar la emisión de deltas.
+En el MVP la Safe Zone es **geometría, estado y visibilidad**, no mecánica de combate. La lógica
+está **implementada**: el servidor construye al arrancar el índice tile → zona a partir de las filas
+de `safe_zones` y del terreno, evalúa el ocultamiento en la fase 5 del tick y filtra a las unidades
+ocultas de todo lo que reciben los terceros.
+
+Lo que sigue sin decidir es **qué zonas existen en el mundo canónico**. Ninguna migración inserta
+filas en `safe_zones` y el generador de mundo no las produce, así que en un despliegue recién creado
+la tabla está vacía, el índice no contiene ninguna zona y ninguna unidad llega a `HIDDEN`. Todo el
+comportamiento descrito aquí está verificado con zonas sintéticas en los tests (§13). En cuanto la
+tabla tenga filas, el mecanismo funciona sin cambiar código.
 
 ## 2. Scope
 
 **Dentro de MVP**
 
-- Tabla `safe_zones` creada por la migración `000001_initial_schema` (canon §11: entidad creada en el
-  MVP con la lógica diferida).
+- Tabla `safe_zones` creada por la migración `000001_initial_schema`, leída al arrancar por
+  `postgres.SafeZoneRepo.LoadAll`.
 - Tipos `DENSE_FOREST` y `CAVERN`, fijados por el `CHECK safe_zones_type_valid` (canon §10).
 - Geometría rectangular `min_x`, `min_y`, `max_x`, `max_y`, inclusiva, con
   `CHECK safe_zones_bounds_ordered`.
+- Predicados de pertenencia (§6.2) e índice denso en RAM (§6.3), en `internal/domain/safezone`.
+- Evaluación del ocultamiento en la fase 5 del tick (§6.4) y revelado al moverse (`RN-SAFE-013`).
+- Filtrado de las unidades ocultas en todo lo que reciben los terceros: deltas y `world.snapshot`
+  (§12, `INV-SAFE-004`).
 - El valor `HIDDEN` del dominio de `units.status` (`CHECK units_status_valid`) y del enum
   `UnitStatus` de `packages/protocol`.
 - El valor `HIDDEN` de `entity.despawn.payload.reason`, ya presente en el protocolo v1.
 
 **Fuera de MVP**
 
-- **Siembra de la geometría de las zonas: `TBD (fuera de MVP)`.** Ninguna migración inserta filas en
-  `safe_zones`, y el generador de mundo no las produce. Con la tabla vacía, el índice de §6.3 es todo
-  ceros y el predicado de §6.2 nunca se satisface.
-- **Evaluación de `HIDDEN` en la fase 5 del tick: `TBD (fuera de MVP)`.** Las reglas de §6 describen
-  el diseño objetivo; no hay código que las ejecute todavía.
+- **Siembra de la geometría de las zonas en el mundo canónico: `TBD (fuera de MVP)`.** Es una
+  decisión de diseño de mundo, no de implementación. Ninguna migración inserta filas en
+  `safe_zones` y el generador de mundo no las produce. Con la tabla vacía el índice existe y no
+  contiene ninguna zona, y el predicado de §6.2 nunca se satisface. `SafeZoneRepo.Insert` existe y
+  lo usan los tests; una siembra de desarrollo (`EO-114`) podría usarlo sin tocar el mundo canónico.
 - **Desactivación de una zona sin borrarla: `TBD (fuera de MVP)`.** `safe_zones` **no tiene** columna
   `active` en la migración `000001`; añadirla exige una migración aditiva. En el MVP el conjunto de
   zonas es inmutable tras el arranque y una zona solo deja de existir borrando su fila.
@@ -89,7 +97,7 @@ ningún input** en este subsistema (`RN-SAFE-008`). Los inputs son todos interno
 | `entity.update { id, status }` | Propietario | Al ocultarse y al revelarse. |
 | `entity.despawn { id, reason: "HIDDEN" }` | Terceros del chunk | Al ocultarse. |
 | `entity.spawn { unit }` | Terceros del chunk | Al revelarse. |
-| Índice `safeZoneOfTile` | RAM | Al arrancar y ante cualquier cambio de `safe_zones` o de terreno. |
+| Índice `safeZoneOfTile` | RAM | Al arrancar, después de marcar las murallas de las ciudades existentes. La fundación de una ciudad retira después los tiles de su muralla (§6.3). |
 | Log `error` + contador de violación de invariantes | Logs y métricas | Solape entre zonas (`INV-SAFE-001`). |
 
 El servidor **no** produce ningún output dirigido a terceros que mencione una unidad oculta, ni
@@ -156,41 +164,54 @@ Leyenda: M = MOUNTAIN (no walkable), G = GRASSLAND, # = tile perteneciente a la 
       x=40 41 42 43
 y=20   M  M  G  G      ->  .  .  #  .    (42,20) es adyacente a M(41,20)
 y=21   M  G  G  G      ->  .  #  #  .    (41,21) y (42,21) adyacentes a montaña
-y=22   G  G  G  G      ->  #  .  .  .    (40,22) adyacente a M(40,21)
+y=22   G  G  G  G      ->  #  #  .  .    (40,22) adyacente a M(40,21); (41,22) en diagonal a M(40,21)
 
 Los tiles MOUNTAIN nunca pertenecen a la zona: no son transitables (INV-SAFE-002).
 ```
 
+> **Corrección del ejemplo.** Una versión anterior de este diagrama marcaba (41,22) como fuera de la
+> zona. Su vecino diagonal (40,21) es `MOUNTAIN`, y `RN-SAFE-002` cuenta las 8 direcciones, así que
+> pertenece. Lo detectó el test que reproduce este ejemplo literalmente,
+> `TestCavernEjemploResueltoDeLaSpec`. El terreno fuera del rectángulo se asume `GRASSLAND`.
+
 ### 6.3 Índice en RAM
 
 Evaluar el predicado en cada consulta sería estable pero innecesariamente caro dentro del tick. Al
-arrancar, tras generar el terreno desde la semilla, se materializa un índice denso:
+arrancar, tras generar el terreno desde la semilla y marcar las murallas de las ciudades existentes,
+se materializa un índice denso. Es `safezone.Index` en `internal/domain/safezone`:
 
 ```go
-// safeZoneOfTile[y*worldWidth + x] = id de la zona, o 0 si el tile no pertenece a ninguna.
+// tiles[y*width + x] = safe_zones.id, o 0 si el tile no pertenece a ninguna.
 // Mundo MVP 512 x 512 (EO_WORLD_WIDTH/HEIGHT por defecto) -> 262144 entradas uint32 = 1 MiB.
 // Coste aceptable y O(1) por consulta.
-type SafeZoneIndex struct {
+type Index struct {
     width, height int32
     tiles         []uint32
+    byID          map[int64]Zone
+    ordered       []Zone
 }
 
-func (i *SafeZoneIndex) ZoneAt(x, y int32) (uint32, bool) {
-    if x < 0 || y < 0 || x >= i.width || y >= i.height {
-        return 0, false
-    }
-    id := i.tiles[y*i.width+x]
-    return id, id != 0
-}
+func (i *Index) ZoneAt(x, y int32) (Zone, bool) // fuera del mundo o índice nil: (Zone{}, false)
 ```
+
+`uint32` limita el id a 4 294 967 295. Como `safe_zones.id` es `bigint`, el límite no lo puede
+expresar el esquema y se comprueba al construir: una zona con un id mayor se descarta como
+cualquier otra zona inválida (`INV-SAFE-005`).
 
 | ID | Regla |
 |---|---|
 | `RN-SAFE-006` | Construcción determinista: las zonas se recorren en **orden ascendente de `id`** y solo se escriben los tiles que satisfacen el predicado. Iterar un mapa de Go sin ordenar está prohibido (canon §8). |
-| `RN-SAFE-007` | Si dos zonas se solapan (violación de `INV-SAFE-001`), gana la de `id` menor, se registra un log de nivel `error` y se incrementa el contador de violación de invariantes. El servidor no aborta, pero el estado queda marcado como inconsistente. |
+| `RN-SAFE-007` | Si dos zonas se solapan (violación de `INV-SAFE-001`), gana la de `id` menor y se registra un log `invariant_violation` de nivel `error` con `inv_id=INV-SAFE-001`. El servidor no aborta y el resto de las zonas funciona. La métrica de violaciones de invariantes **no existe**: está pendiente de ADR, ver [../invariants/README.md](../invariants/README.md) §5.1. |
+| `RN-SAFE-017` | Un tile entra en el índice solo si satisface el predicado **y no está ocupado por una construcción**. Así todo tile del índice es transitable (`INV-SAFE-002`) y una zona sobre una ciudad queda recortada en lugar de rota (`INV-SAFE-006`). Por eso el índice se construye **después** de marcar las murallas. |
+| `RN-SAFE-018` | Fundar una ciudad tras el arranque retira del índice los tiles de su muralla y apunta a revisión las unidades de ese rectángulo. Una unidad que estuviera oculta allí se revela en la fase 5 del mismo tick (transición T8). |
 
-El índice se reconstruye ante cualquier cambio en `safe_zones` o en el terreno. En MVP ambos son
-inmutables tras el arranque, de modo que se construye una sola vez —y sobre una tabla vacía.
+Fuera de la fundación, el índice es inmutable en runtime: `safe_zones` y el terreno no cambian tras
+el arranque. Un cambio en la tabla se recoge en el siguiente arranque.
+
+> **Lo que la fundación no hace.** `internal/game/founding` no evita las safe zones al elegir el
+> emplazamiento de una ciudad. Si debe evitarlas es una regla de juego que esta spec no fija: hoy una
+> ciudad puede fundarse sobre una zona y la deja recortada, con un log `invariant_violation` de
+> `INV-SAFE-006`. Con la tabla vacía del mundo canónico el caso no se da.
 
 ### 6.4 Condiciones de ocultamiento
 
@@ -208,10 +229,16 @@ entra_en_HIDDEN(u) :=
 | ID | Regla |
 |---|---|
 | `RN-SAFE-010` | El ocultamiento se evalúa **solo sobre unidades `IDLE`**, nunca sobre `MOVING`: es un estado de reposo. Esto es lo que hace coherente la transición prohibida `MOVING → HIDDEN` de [unit.md](unit.md) y evita recalcular pertenencia en cada waypoint de una polilínea. |
-| `RN-SAFE-011` | Para no barrer todas las unidades del mundo cada tick, la fase 5 solo evalúa las unidades que cambiaron de tile o de estado en el tick actual. El resultado es idéntico a un barrido completo; la diferencia es únicamente de coste. |
+| `RN-SAFE-011` | Para no barrer todas las unidades del mundo cada tick, la fase 5 solo evalúa las unidades que cambiaron de tile o de estado desde la evaluación anterior. El resultado es idéntico a un barrido completo; la diferencia es únicamente de coste. **Implementación:** `State.MarkDirty`, por donde pasa todo cambio de tile o de estado, apunta además la unidad como candidata; `State.AddUnit` también, para que una unidad hidratada tras un reinicio o recién fundada se evalúe en la primera fase 5. |
 | `RN-SAFE-012` | El ocultamiento **no expira por tiempo** y no tiene coste: no hay temporizador, ni cooldown de reentrada, ni penalización por entrar y salir repetidamente. Cualquiera de esas mecánicas pertenece al diseño de combate y está fuera de MVP. |
 | `RN-SAFE-013` | Iniciar un movimiento revela la unidad de forma **inmediata y completa**: en el mismo tick en que el movimiento pasa a `ACTIVE`, los observadores de los chunks afectados reciben `entity.spawn` con la unidad ya en `MOVING`. No existe revelado progresivo ni ventana en la que la unidad se mueva todavía oculta; eso sería un privilegio de información imposible de auditar. |
-| `RN-SAFE-014` | La unidad oculta **sigue ocupando su tile** en la capa de ocupación. El pathfinder la trata igual que a cualquier otra unidad. Ocultar no es desmaterializar: filtrar la información por el canal de visibilidad y no por el de simulación evita divergencias entre lo que el servidor simula y lo que cree cada cliente. |
+| `RN-SAFE-014` | Ocultar **no altera la simulación**: ni la capa de ocupación, ni la transitabilidad, ni el índice espacial de unidades por chunk. Las rutas que calcula el pathfinder son idénticas antes y después de que una unidad se oculte. Ocultar no es desmaterializar: filtrar la información por el canal de visibilidad y no por el de simulación evita divergencias entre lo que el servidor simula y lo que cree cada cliente. |
+
+> **Por qué cambió `RN-SAFE-014`.** La redacción anterior decía que la unidad oculta «sigue ocupando
+> su tile en la capa de ocupación» y que el pathfinder «la trata igual que a cualquier otra unidad».
+> La premisa era falsa: en el MVP **ninguna** unidad bloquea tiles. La capa de ocupación solo la
+> escriben las murallas de las ciudades, y el pathfinder ignora a las unidades. La regla quería decir
+> que ocultar no cambia nada de la simulación, y así queda escrita y verificada.
 
 ### 6.5 Autoridad del servidor
 
@@ -279,11 +306,24 @@ cerrado es `IDLE | MOVING | GARRISONED | HIDDEN | DEAD` (`CHECK units_status_val
 |---|---|---|---|
 | `IDLE` | `HIDDEN` | La unidad está en reposo sobre un tile que satisface el predicado de su zona (`RN-SAFE-010`) | Fase 5 (timers) |
 | `HIDDEN` | `MOVING` | `unit.move` aceptado sobre la unidad; revelado inmediato (`RN-SAFE-013`) | Fase 2 (comandos) |
-| `HIDDEN` | `IDLE` | El tile deja de satisfacer el predicado: solo puede ocurrir si cambian `safe_zones` o el terreno, ambos inmutables tras el arranque en MVP | Fase 5 (timers) |
+| `HIDDEN` | `IDLE` | El tile deja de pertenecer a una zona. En runtime solo ocurre si una ciudad se funda encima (`RN-SAFE-018`); al arrancar, si la zona ya no existe en `safe_zones` | Fase 5 (timers) |
 | `HIDDEN` | `DEAD` | Muerte. **Sin productor en MVP** | — |
 
 Transiciones prohibidas: `MOVING → HIDDEN` (`RN-SAFE-010`), `HIDDEN → GARRISONED` y
 `GARRISONED → HIDDEN` (`INV-SAFE-006`). La máquina completa vive en [unit.md](unit.md).
+
+**Llegar a una zona oculta en el mismo tick.** La fase 3 completa el movimiento y deja la unidad en
+`IDLE`; la fase 5 de ese mismo tick la evalúa y la oculta. El orden de los mensajes es
+`unit.movement.completed`, luego el `entity.update` a `HIDDEN` del propietario y el `entity.despawn`
+de los terceros. `MOVING → HIDDEN` no ocurre nunca como transición: la unidad pasa siempre por `IDLE`,
+aunque ningún tick termine con ella en ese estado. Una versión anterior de §13 esperaba el
+ocultamiento «en el tick siguiente»; contradecía `RN-SAFE-011`, que evalúa lo que cambió en el tick
+actual.
+
+**Reparación.** Una unidad `HIDDEN` con un movimiento `ACTIVE` viola `INV-SAFE-003`. Si la fase 5 la
+encuentra, la repara a `MOVING` —el estado que su movimiento implica, `INV-UNIT-005`— y no a `IDLE`,
+que mentiría sobre el movimiento. Emite un log `invariant_violation`. Ningún camino de código
+conocido produce ese estado.
 
 ## 8. Errores
 
@@ -295,27 +335,26 @@ dirigido a una zona ni al ocultamiento, luego **no hay superficie de error de us
 |---|---|---|
 | El jugador intenta ocultar o revelar una unidad | — | Imposible: no existe el comando (`RN-SAFE-008`). |
 | `unit.move` sobre una unidad `HIDDEN` | ninguno | Es una operación **válida**: revela la unidad y la pone en `MOVING` (`RN-SAFE-013`). |
-| Índice inconsistente o solape de zonas | `INTERNAL_ERROR` | Solo si impide servir la petición; el caso normal es log `error` + métrica, sin abortar (`RN-SAFE-007`). |
+| Índice inconsistente o solape de zonas | ninguno | Nunca llega al cliente. Se resuelve al construir el índice con un log `invariant_violation`, sin abortar (`RN-SAFE-007`). |
 
 Los códigos para una futura mecánica de detección o de ocultamiento activo son
 **TBD (fuera de MVP)**.
 
 ## 9. Invariantes
 
-Familia `INV-SAFE-xxx`, **nueva**. Rango que ocupa esta spec: `INV-SAFE-001..007`. El registro
-consolidado de la familia es [../invariants/territory.md](../invariants/territory.md), compartido con
-`INV-TERR-*` (fichero en redacción junto con esta spec; hasta que exista, esta tabla es la
-referencia).
+Familia `INV-SAFE-xxx`. Rango que ocupa esta spec: `INV-SAFE-001..007`. El registro consolidado
+de la familia es [../invariants/territory.md](../invariants/territory.md), compartido con
+`INV-TERR-*`; las fichas de allí mandan sobre esta tabla.
 
 | ID | Invariante | Dónde se verifica |
 |---|---|---|
-| `INV-SAFE-001` | Dos Safe Zones no comparten ningún tile. | Construcción del índice (`RN-SAFE-007`) + test de integración sobre los datos cargados |
-| `INV-SAFE-002` | Ningún tile perteneciente a una Safe Zone es intransitable. | Construcción del índice + unit test del predicado |
-| `INV-SAFE-003` | `units.status = 'HIDDEN'` ⟹ `SafeZoneIndex.ZoneAt(x,y)` devuelve una zona y la unidad no tiene movimiento `ACTIVE`. | Test de simulación tras cada tick |
-| `INV-SAFE-004` | Ninguna unidad `HIDDEN` aparece en un delta dirigido a un jugador distinto de su propietario. | Test de integración de visibilidad |
-| `INV-SAFE-005` | El rectángulo es válido: `min_x <= max_x` y `min_y <= max_y` (garantizado por `CHECK safe_zones_bounds_ordered`) y está contenido en `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)`. | `CHECK` para el orden; validación al cargar para la contención, porque las dimensiones del mundo son configuración y no pueden expresarse en un `CHECK` |
-| `INV-SAFE-006` | Ninguna Safe Zone se solapa con la zona urbana de una ciudad. | Test de integración sobre los datos cargados |
-| `INV-SAFE-007` | El índice en RAM es función pura de (`safe_zones`, terreno): reconstruirlo produce el mismo resultado byte a byte. | Test de determinismo |
+| `INV-SAFE-001` | Dos Safe Zones no comparten ningún tile. | Construcción del índice (`RN-SAFE-007`); `TestDosZonasSolapadasResuelvenElIDMenorYSeReportan` |
+| `INV-SAFE-002` | Ningún tile perteneciente a una Safe Zone es intransitable. | Construcción del índice (`RN-SAFE-017`) y fundación (`RN-SAFE-018`); `TestTodoTileDelIndiceEsTransitable`, `TestExcluirRetiraLosTilesYDiceDeQueZona` |
+| `INV-SAFE-003` | `units.status = 'HIDDEN'` ⟹ `SafeZoneIndex.ZoneAt(x,y)` devuelve una zona y la unidad no tiene movimiento `ACTIVE`. | Fase 5; comprobado sobre todo el mundo tras cada tick en los tests de simulación (`verificarOcultamiento`) |
+| `INV-SAFE-004` | Ninguna unidad `HIDDEN` aparece en un delta dirigido a un jugador distinto de su propietario. | `Hub.BroadcastChunkExcept` y `simulation.VisibleTo`; `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno` (e2e de transporte) |
+| `INV-SAFE-005` | El rectángulo es válido: `min_x <= max_x` y `min_y <= max_y` (garantizado por `CHECK safe_zones_bounds_ordered`) y está contenido en `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)`. | `CHECK` para el orden; validación al construir el índice para la contención; `TestLosCheckDeSafeZonesRechazanTipoYLimitesInvalidos`, `TestZonasInvalidasSeRechazanSinArrastrarALasDemas` |
+| `INV-SAFE-006` | Ninguna Safe Zone se solapa con la zona urbana de una ciudad. | Construcción del índice y fundación; `TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla` |
+| `INV-SAFE-007` | El índice en RAM es función pura de (`safe_zones`, terreno): reconstruirlo produce el mismo resultado byte a byte. | `TestElIndiceEsDeterminista` |
 
 `INV-SAFE-006` es lo que hace innecesaria la transición `HIDDEN → GARRISONED`: una unidad oculta
 nunca está dentro de una zona urbana, y llegar a ella exige moverse, lo que la revela.
@@ -326,8 +365,8 @@ Respuesta a las cuatro preguntas del canon §12.
 
 | Dato | Autoritativo en | Estrategia |
 |---|---|---|
-| Filas de `safe_zones` | PostgreSQL | **Write-through**, pero sin escritor en MVP: la tabla está vacía y su siembra es `TBD (fuera de MVP)`. Inmutable en runtime. |
-| Índice `safeZoneOfTile` | RAM | **Reconstruible**: se calcula al arrancar desde el terreno regenerado y `safe_zones`. Nunca se persiste. |
+| Filas de `safe_zones` | PostgreSQL | **Write-through**, pero sin escritor en runtime: su siembra en el mundo canónico es `TBD (fuera de MVP)`. Se leen una vez, al arrancar, con `ORDER BY id`. |
+| Índice `safeZoneOfTile` | RAM | **Reconstruible**: se calcula al arrancar desde el terreno regenerado, las murallas y `safe_zones`. Nunca se persiste. |
 | `units.status = 'HIDDEN'` | RAM (loop) | **Dirty-flag + flush** cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50 ticks). Ver [unit.md](unit.md). |
 | Pertenencia tile → zona | — | **No se persiste**: es un derivado puro de geometría y terreno (`RN-SAFE-016`). |
 
@@ -370,58 +409,99 @@ Precisiones que el protocolo v1 impone y esta spec acata:
 - El propietario ve `x`, `y` y `hp` reales de su unidad oculta a través de `entity.update`, cuyos
   campos son todos opcionales salvo `id`: solo se transmite lo que cambió.
 
-## 13. Tests esperados
+**Cómo se aplica la asimetría.** El filtro es **por destinatario**, nunca al construir un delta
+compartido:
 
-Todos los tests de esta sección están **pendientes**: describen el diseño objetivo, no una suite
-existente. Los tests de integración exigen PostgreSQL y Redis reales (`EO_INTEGRATION=1`) y hoy no se
-ejecutan porque el daemon de Docker no está disponible en la máquina de desarrollo.
+- Propietario: `Broadcaster.SendToPlayer`, que llega a todas sus sesiones. Si una de ellas no tiene
+  el chunk a la vista, el cliente ignora el `entity.update` de una entidad que no conoce.
+- Terceros: `Broadcaster.BroadcastChunkExcept`, que entrega a las sesiones suscritas al chunk cuyo
+  jugador no es el propietario, incluidas todas sus pestañas.
+- `world.snapshot`: `BuildSnapshot` recibe el jugador destinatario y descarta las unidades `HIDDEN`
+  ajenas con `simulation.VisibleTo`. Un snapshot es un delta completo; sin este filtro, reconectar o
+  mover la cámara devolvería la unidad oculta.
 
-**Unit (dominio puro)**
+Ningún otro punto del servidor emite unidades en estado `HIDDEN`: los deltas de posición solo los
+producen unidades en `MOVING`. **No existe** la aserción en tiempo de ejecución por destinatario que
+proponía la ficha de `INV-SAFE-004`: la garantía es estructural y la sostienen los tests de §13.
 
-- Predicado `DENSE_FOREST`: tile `FOREST` dentro del rectángulo ⟹ pertenece; tile `GRASSLAND` dentro
-  del rectángulo ⟹ no pertenece; tile `FOREST` fuera del rectángulo ⟹ no pertenece (`RN-SAFE-001`).
-- Predicado `CAVERN`: tile walkable con un vecino `MOUNTAIN`, un caso por cada una de las 8
-  direcciones posibles de ese vecino (8 casos) ⟹ pertenece en los 8; sin ningún vecino `MOUNTAIN` ⟹
-  no pertenece; tile `MOUNTAIN` ⟹ nunca pertenece (`RN-SAFE-002`, `RN-SAFE-004`).
-- Bordes inclusivos: los cuatro vértices del rectángulo se evalúan; `max_x`/`max_y` están dentro
-  (`RN-SAFE-003`).
-- Índice: consulta fuera de los límites del mundo devuelve "sin zona" y no entra en pánico
-  (`RN-SAFE-005`).
-- Solape: dos zonas que comparten tiles ⟹ gana el `id` menor y se contabiliza la violación
-  (`RN-SAFE-007`).
-- Determinismo: dos construcciones del índice sobre la misma entrada son idénticas (`INV-SAFE-007`).
+## 13. Tests
 
-**Simulation (loop determinista con `FakeClock`)**
+Todos existen y pasan. Los de los niveles unit, simulation, e2e de transporte y contract corren con
+`pnpm run server:test` y en el job `game-server` de la CI, con `-race`. Los de integración necesitan
+PostgreSQL real y `EO_INTEGRATION=1`. Corren en el job `integration` de la CI y, en la máquina de
+desarrollo, contra el clúster propio de [../operations/local-development.md](../operations/local-development.md)
+§3-bis: sin Docker.
 
-- Unidad `IDLE` colocada en un tile de la zona: tras un tick, `HIDDEN` (`INV-SAFE-003`).
-- Unidad que atraviesa la zona sin detenerse: en ningún tick intermedio su estado es `HIDDEN`
-  (`RN-SAFE-010`).
-- Unidad que termina su movimiento dentro de la zona: `MOVING → IDLE` y en el tick siguiente
-  `IDLE → HIDDEN`.
-- Unidad `HIDDEN` que recibe `unit.move`: pasa a `MOVING` en el mismo tick, sin paso por `IDLE`
-  observable en los deltas (`RN-SAFE-013`).
-- La unidad oculta sigue bloqueando su tile para el pathfinder (`RN-SAFE-014`).
+**Unit — `internal/domain/safezone/safezone_test.go`**
 
-**Integration (PostgreSQL + Redis reales, `EO_INTEGRATION=1`)**
+| Test | Qué fija |
+|---|---|
+| `TestDenseForestEjemploResueltoDeLaSpec` | El primer ejemplo de §6.2, literalmente: 15 tiles de una caja de 20 (`RN-SAFE-001`). |
+| `TestCavernEjemploResueltoDeLaSpec` | El segundo ejemplo de §6.2. Fue este test el que destapó el error del diagrama (`RN-SAFE-002`). |
+| `TestCavernReconoceLaMontanaEnLasOchoDirecciones` | Un subtest por dirección del vecino `MOUNTAIN`. |
+| `TestCavernSinMontanaVecinaNoPertenece` | Distancia 2 no es vecindad. |
+| `TestMontanaYAguaNuncaPertenecen` | `RN-SAFE-004`, para los dos tipos. |
+| `TestBordesInclusivos` | Las cuatro esquinas dentro; el tile siguiente a cada borde, fuera (`RN-SAFE-003`). |
+| `TestConsultaFueraDelMundoNoEntraEnPanico` | `RN-SAFE-005`, también con índice nil. |
+| `TestDosZonasSolapadasResuelvenElIDMenorYSeReportan` | `INV-SAFE-001` y `RN-SAFE-007`; zonas adyacentes como control negativo. |
+| `TestTodoTileDelIndiceEsTransitable` | `INV-SAFE-002`: una caja con agua produce un índice recortado, no un error. |
+| `TestZonasInvalidasSeRechazanSinArrastrarALasDemas` | `INV-SAFE-005`, mitad de dominio: fuera del mundo, límites desordenados, tipo desconocido e id fuera de `uint32`. |
+| `TestUnaZonaSobreUnaCiudadSeRecortaYSeInforma` | `INV-SAFE-006` y `RN-SAFE-017`. |
+| `TestExcluirRetiraLosTilesYDiceDeQueZona` | `RN-SAFE-018`. |
+| `TestElIndiceEsDeterminista` | `INV-SAFE-007`: 20 construcciones con la entrada barajada, idénticas byte a byte. |
+| `TestReglaDeOcultamiento` | La tabla de transiciones completa de `safezone.NextStatus`, incluidas las prohibidas. |
 
-- Visibilidad: dos sesiones, jugadores distintos, mismo chunk. Al ocultarse la unidad de A, la sesión
-  de B recibe `entity.despawn { reason: "HIDDEN" }` y ningún mensaje posterior menciona esa unidad
-  (`INV-SAFE-004`).
-- La sesión de A sigue recibiendo su propia unidad con `status = "HIDDEN"`.
-- Datos cargados: no hay solape entre zonas (`INV-SAFE-001`) ni con zonas urbanas (`INV-SAFE-006`).
-- `CHECK safe_zones_type_valid`: insertar un `zone_type` fuera de `{DENSE_FOREST, CAVERN}` es
-  rechazado por la base de datos.
-- `CHECK safe_zones_bounds_ordered`: insertar `max_x < min_x` es rechazado (`INV-SAFE-005`).
+**Simulation — `internal/game/simulation/safezones_test.go`**, loop determinista con `FakeClock`.
+Cada uno comprueba además `INV-SAFE-003` sobre todo el mundo tras cada tick.
 
-**Contract**
+| Test | Qué fija |
+|---|---|
+| `TestUnaUnidadEnReposoDentroDeLaZonaSeOcultaTrasUnTick` | `IDLE → HIDDEN`; el propietario recibe `entity.update` y los terceros un `entity.despawn` que excluye al propietario. |
+| `TestAtravesarLaZonaSinDetenerseNoOcultaNunca` | `RN-SAFE-010`: en ningún tick del tránsito. |
+| `TestTerminarElMovimientoDentroDeLaZonaPasaPorIdleYLaOculta` | El orden de mensajes de §7. |
+| `TestUnaUnidadOcultaQueRecibeUnMoveSeRevelaEnElMismoTick` | `RN-SAFE-013`: sin `IDLE` observable; los terceros reciben la unidad ya en `MOVING` y con su polilínea. |
+| `TestOcultarNoAlteraLaTransitabilidadNiLasRutas` | `RN-SAFE-014` en su redacción actual. |
+| `TestElSnapshotDeUnTerceroNoIncluyeUnidadesOcultas` | `INV-SAFE-004` en el snapshot. |
+| `TestTrasUnReinicioLaPrimeraFase5RestableceElOcultamiento` | Recovery en RAM: `IDLE` en zona pasa a `HIDDEN`; `HIDDEN` fuera de zona vuelve a `IDLE`; lo que ya estaba bien no genera tráfico. |
+| `TestGuarnecidasYSinVidaNoSeOcultan` | `GARRISONED`, `DEAD` y `hp = 0` no se ocultan. |
+| `TestFundarSobreLaZonaRetiraLaMurallaYRevelaLoQueQuedaDentro` | `RN-SAFE-018` y la transición T8 en runtime. |
+| `TestSinZonasNadieSeOculta` | El caso del mundo canónico, con la tabla vacía. |
 
-- `entity.despawn` con `reason = "HIDDEN"` valida contra el JSON Schema exportado por
-  `packages/protocol`.
+Se verificó que estos tests detectan los fallos que dicen detectar: enviar el `entity.despawn` a todo
+el chunk, quitar el filtro del snapshot, no revelar al moverse u ocultar en tránsito pone en rojo al
+menos uno de ellos.
 
-**Recovery**
+**E2e de transporte — `internal/websocket/`**
 
-- Reinicio con una unidad `HIDDEN` cuyo estado no llegó a persistirse: tras el arranque, el primer
-  tick la devuelve a `HIDDEN` a partir de la geometría.
+- `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno`: servidor WebSocket, hub, loop y
+  simulación reales, dos jugadores mirando el mismo chunk. El tercero recibe
+  `entity.despawn { reason: "HIDDEN" }`, ningún mensaje posterior menciona la unidad y su siguiente
+  snapshot no la trae. El dueño no recibe el despawn y su snapshot la trae con `status = "HIDDEN"`.
+  Al moverla, el tercero recibe `entity.spawn` en `MOVING` y después `unit.movement.started`.
+- `TestBroadcastChunkExceptExcluyeTodasLasSesionesDelJugador` (`hub_test.go`): el canal de terceros
+  excluye todas las pestañas del propietario.
+
+Este nivel sustituye al test «de integración de visibilidad» que preveía una versión anterior de
+esta sección: a qué conexión llega cada mensaje no depende de PostgreSQL ni de Redis.
+
+**Integration — `internal/persistence/postgres/safezones_integration_test.go`**
+
+| Test | Qué fija |
+|---|---|
+| `TestLosCheckDeSafeZonesRechazanTipoYLimitesInvalidos` | `safe_zones_type_valid` y `safe_zones_bounds_ordered`, por nombre de restricción. |
+| `TestLasZonasSeCarganEnOrdenDeIDYSinPerderCampos` | `RN-SAFE-006` en la carga. |
+| `TestHiddenSePersisteSobreviveAlReinicioYSeRevierteSiLaZonaDesaparece` | Recovery durable: el tick no escribe; el flush sí; tras reiniciar sigue oculta; si la fila de la zona desaparece, vuelve a `IDLE` y se persiste. |
+| `TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla` | `INV-SAFE-006` sobre una ciudad creada por el alta real. |
+
+**Contract — `internal/protocol/safezones_contract_test.go`**
+
+Leen los enums del JSON Schema exportado por `packages/protocol`, no de una copia en Go:
+
+- `TestEntityDespawnAdmiteElMotivoHidden`: `reason` admite `HIDDEN` y el payload emitido tiene
+  exactamente las claves del esquema.
+- `TestEntityUpdateYUnitViewAdmitenElEstadoHidden`: `status` admite `HIDDEN` en `entity.update` y en
+  las unidades de `world.snapshot`.
+- `TestNingunComandoDelClienteMencionaZonasNiOcultamiento`: `RN-SAFE-008`.
 
 ## 14. Documentos relacionados
 

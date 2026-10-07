@@ -28,7 +28,7 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 | `schema_migrations` | MVP: activa (infraestructura) | golang-migrate |
 | `territories` | MVP: **activa** | Sembrada al primer arranque por el Game Server, no por una migración: la geometría debe caber en un mundo cuyas dimensiones son configuración |
 | `territory_control` | MVP: **activa** | Write-through transaccional en la fundación de la ciudad, con concurrencia optimista sobre `version` |
-| `safe_zones` | MVP: creada con lógica diferida | — |
+| `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. Sin comando de red todavía |
 | `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` |
@@ -830,7 +830,7 @@ CREATE TABLE safe_zones (
 );
 ```
 
-`DENSE_FOREST` se ancla sobre terreno FOREST y `CAVERN` sobre terreno adyacente a MOUNTAIN, pero esa coherencia **no** se impone con un `CHECK` (requeriría leer `world_chunks`): la valida el servidor al crear la zona. La seguridad efectiva de un tile la calcula y valida siempre el servidor.
+`DENSE_FOREST` se ancla sobre terreno FOREST y `CAVERN` sobre terreno adyacente a MOUNTAIN, pero esa coherencia **no** se impone con un `CHECK` (requeriría leer `world_chunks`). La aplica el servidor tile a tile al construir el índice en RAM: el rectángulo es sólo una caja, y la zona real es la parte de la caja que cumple el predicado de su tipo. La contención en el mundo tampoco es un `CHECK`, porque las dimensiones son configuración: una zona que se sale del mundo se descarta al cargar. La seguridad efectiva de un tile la calcula y valida siempre el servidor.
 
 ### 15.4 `treaties`
 

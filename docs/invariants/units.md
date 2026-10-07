@@ -286,9 +286,9 @@ Es la misma clase de fallo que [INV-UNIT-005](#inv-unit-005) —un estado que af
 |---|---|
 | Severidad | MEDIO |
 | Aplicación | DOMAIN, TEST |
-| Milestone | M7 |
-| Política ante violación | REPAIR (volver a `IDLE`) |
-| Cobertura | **Sin cobertura**: las Safe Zones existen como tabla pero su índice y sus efectos están diferidos |
+| Milestone | M5 |
+| Política ante violación | REPAIR: fuera de zona vuelve a `IDLE`; con movimiento `ACTIVE` pasa a `MOVING` |
+| Cobertura | **Cubierto** por `TestReglaDeOcultamiento` (`internal/domain/safezone`) y por los tests de `internal/game/simulation/safezones_test.go`, que lo comprueban sobre todo el mundo tras cada tick |
 
 **Enunciado.** `status = HIDDEN` implica que la unidad pertenece a una Safe Zone activa; el ocultamiento se evalúa sólo en reposo, y una unidad `HIDDEN` que recibe una orden de movimiento pasa a `MOVING` y deja de estar oculta.
 
@@ -298,16 +298,16 @@ La cualificación «sólo en reposo» es lo que hace el invariante barato de sos
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — la transición a `HIDDEN` se evaluará al llegar la unidad a reposo (`IDLE`), consultando el índice de safe zones para su tile ([INV-SAFE-003](territory.md#inv-safe-003)).
+- `DOMAIN` — la transición a `HIDDEN` se evalúa en la fase 5, sólo sobre unidades en reposo (`IDLE`),, consultando el índice de safe zones para su tile ([INV-SAFE-003](territory.md#inv-safe-003)).
 - `DOMAIN` — aceptar una orden de movimiento pone `status = MOVING` en el mismo paso, de modo que `HIDDEN` y `MOVING` son mutuamente excluyentes por construcción: `units_status_valid` es un enum de un solo valor por fila.
 - `DOMAIN` — una unidad `HIDDEN` **sí acepta órdenes** (a diferencia de `GARRISONED` y `DEAD`): el ocultamiento no inmoviliza, sólo oculta.
 - `DOMAIN` — la exclusión de los deltas dirigidos a terceros la garantiza [INV-SAFE-004](territory.md#inv-safe-004), no esta ficha.
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_UNIT_008_HiddenImpliesActiveSafeZone` (unit) — ninguna unidad `HIDDEN` cae fuera de una safe zone, y una orden de movimiento sobre una unidad `HIDDEN` la deja `MOVING`.
+- `TestReglaDeOcultamiento` (unit) — la tabla completa de `safezone.NextStatus`. `TestUnaUnidadOcultaQueRecibeUnMoveSeRevelaEnElMismoTick` (simulation) — una orden de movimiento sobre una unidad `HIDDEN` la deja `MOVING` en el mismo tick. Todos los tests de `internal/game/simulation/safezones_test.go` comprueban tras cada tick que ninguna unidad `HIDDEN` cae fuera de una zona.
 
-**Violación en runtime.** Detección en la reconciliación periódica que compara `status` con el índice de safe zones. Log `invariant_violation` con `inv_id=INV-UNIT-008`, `unitId` y su tile. Política `REPAIR`: la unidad vuelve a `IDLE` y se emite `entity.spawn` a los suscriptores del chunk. Revelar una unidad que no debía estar oculta es preferible a ocultar una que no cumple la condición.
+**Violación en runtime.** Detección en la fase 5, sobre las unidades que cambiaron. No hay reconciliación periódica de todo el mundo. Una unidad `HIDDEN` fuera de zona vuelve a `IDLE` y los terceros reciben `entity.spawn`; con movimiento `ACTIVE` pasa a `MOVING` y se registra `invariant_violation` con `inv_id=INV-SAFE-003`, la formulación precisa de esta ficha. Revelar una unidad que no debía estar oculta es preferible a ocultar una que no cumple la condición.
 
 ---
 
@@ -436,7 +436,7 @@ Los invariantes de unidad son consecuencia de los de movimiento durante el trán
 | INV-UNIT-005 | `internal/domain/unit`, `internal/domain/movement` | [INV-MOVE-001](movement.md#inv-move-001), [INV-PERSIST-002](persistence.md#inv-persist-002) |
 | INV-UNIT-006 | `internal/domain/unit` | [INV-PLAYER-001](player.md#inv-player-001) |
 | INV-UNIT-007 | `internal/domain/unit` | [INV-GARR-002](diplomacy.md#inv-garr-002), [INV-UNIT-003](#inv-unit-003) |
-| INV-UNIT-008 | `internal/domain/unit` | [INV-SAFE-003](territory.md#inv-safe-003) |
+| INV-UNIT-008 | `internal/domain/safezone`, `internal/game/simulation` | [INV-SAFE-003](territory.md#inv-safe-003) |
 | INV-UNIT-009 | `internal/domain/unit` | [../specs/unit.md](../specs/unit.md) |
 | INV-UNIT-010 | `internal/domain/unit` | [INV-UNIT-006](#inv-unit-006) |
 | INV-UNIT-011 | `internal/persistence/postgres`, `internal/game/world` | [INV-WORLD-006](world.md#inv-world-006) |

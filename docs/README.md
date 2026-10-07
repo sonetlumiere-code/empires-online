@@ -298,15 +298,20 @@ Dos matices que conviene no maquillar:
 | Recorrido end-to-end cliente ↔ servidor | `apps/web` y `services/game-server` están probados por separado; nadie ha conectado el uno al otro con un mundo vivo detrás. |
 | CI | `.github/workflows/ci.yml` está escrito (docs, protocolo, Go, integración) y `scripts/check-docs.mjs` existe, pero el repositorio no tiene todavía una ejecución observada en verde. |
 
-### 5.3 Entidades creadas y mecánica diferida
+### 5.3 Entidades creadas en la migración 000001 y su mecánica
 
-Las tablas `territories`, `territory_control`, `safe_zones`, `treaties` y `garrisons` existen desde la
-migración `000001`, con sus constraints aplicadas, pero **ninguna ruta de código Go las lee ni las
-escribe**. Es deliberado: crear la entidad ahora y diferir la mecánica evita una migración destructiva
-más adelante. En el protocolo, `territory.update` y el campo `territories[]` de `world.snapshot` están
-declarados y nada los emite todavía. La única parte viva es el estado `GARRISONED` de `units.status`,
-que rechaza órdenes de movimiento con `UNIT_GARRISONED`. El detalle, invariante por invariante, está en
-[invariants/territory.md](invariants/territory.md) y [invariants/diplomacy.md](invariants/diplomacy.md).
+Las tablas `territories`, `territory_control`, `safe_zones`, `treaties` y `garrisons` existen desde
+la migración `000001`. Su mecánica se escribió después y hoy está viva:
+
+| Tablas | Código | Lo que todavía no existe |
+|---|---|---|
+| `territories`, `territory_control` | `internal/domain/territory` (M6): índice en RAM, cambio de dueño transaccional, `territory.update` | Restricciones en territorio ajeno: decisión de diseño pendiente |
+| `safe_zones` | `internal/domain/safezone` (M5): índice en RAM, ocultamiento en la fase 5 y filtrado por destinatario | Las zonas del mundo canónico: la tabla está vacía y su siembra es `TBD` |
+| `treaties`, `garrisons` | `internal/domain/diplomacy` e `internal/domain/garrison` (M7), caducidad en la fase 5 | Comandos de red que las disparen: el protocolo v1 no los tiene |
+
+El detalle, invariante por invariante, está en [invariants/territory.md](invariants/territory.md) e
+[invariants/diplomacy.md](invariants/diplomacy.md). Las fichas `INV-SAFE-*` están reconciliadas con la
+suite; las `INV-TERR-*` y `INV-GARR-*` todavía no (`EO-118`).
 
 Fuera de MVP y sin código: combate, recursos, construcción, progresión de eras más allá de las semillas
 del catálogo, y los tests de carga con k6 de [testing/load-tests.md](testing/load-tests.md).

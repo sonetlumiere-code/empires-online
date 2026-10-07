@@ -148,3 +148,32 @@ func TestUnaSesionQueDejaDeMirarUnChunkYaNoRecibeSuTerritorio(t *testing.T) {
 
 	assert.Empty(t, recibidos(sesion))
 }
+
+// BroadcastChunkExcept es el canal de terceros del ocultamiento (INV-SAFE-004):
+// llega a todas las sesiones del chunk salvo a las del jugador excluido, también
+// cuando ese jugador tiene varias pestañas abiertas.
+func TestBroadcastChunkExceptExcluyeTodasLasSesionesDelJugador(t *testing.T) {
+	hub := NewHub(nil, quietLogger())
+	dueno := uuid.New()
+
+	pestana1 := newSession(uuid.New(), dueno, nil, 16, time.Second, nil, quietLogger())
+	pestana2 := newSession(uuid.New(), dueno, nil, 16, time.Second, nil, quietLogger())
+	tercero := nuevaSesionDePrueba(t)
+	lejano := nuevaSesionDePrueba(t)
+
+	chunk := []world.ChunkCoord{{CX: 1, CY: 1}}
+	for _, s := range []*Session{pestana1, pestana2, tercero} {
+		hub.Register(s)
+		hub.Subscribe(s, chunk)
+	}
+	hub.Register(lejano)
+	hub.Subscribe(lejano, []world.ChunkCoord{{CX: 5, CY: 5}})
+
+	hub.BroadcastChunkExcept(1, 1, dueno, protocol.TypeEntityDespawn,
+		protocol.EntityDespawnPayload{ID: 7, Reason: protocol.DespawnHidden})
+
+	assert.Empty(t, recibidos(pestana1))
+	assert.Empty(t, recibidos(pestana2))
+	assert.Equal(t, []string{protocol.TypeEntityDespawn}, recibidos(tercero))
+	assert.Empty(t, recibidos(lejano), "fuera del chunk no llega nada")
+}

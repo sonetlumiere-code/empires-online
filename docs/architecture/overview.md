@@ -184,7 +184,7 @@ empires-online/
 └── .github/workflows/ci.yml
 ```
 
-No existen (todavía) `internal/presence`, `internal/events`, `internal/domain/territory` ni `internal/domain/diplomacy`: la presencia vive en `internal/game/simulation` (fase 5 del tick) y en `internal/persistence/redis`, y los eventos de dominio se emiten directamente como mensajes de protocolo desde la simulación. Territorio y diplomacia existen sólo como tablas (`territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`) y como vistas del protocolo, sin lógica de dominio en el MVP.
+No existen `internal/presence` ni `internal/events`: la presencia vive en `internal/game/simulation` (fase 5 del tick) y en `internal/persistence/redis`, y los eventos de dominio se emiten directamente como mensajes de protocolo desde la simulación. Territorios, safe zones, tratados y guarniciones **sí** tienen lógica de dominio: `internal/domain/territory` (M6), `internal/domain/safezone` (M5), `internal/domain/diplomacy` e `internal/domain/garrison` (M7).
 
 | Ruta | Propósito |
 |---|---|

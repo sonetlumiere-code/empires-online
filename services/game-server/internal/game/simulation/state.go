@@ -13,6 +13,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -47,6 +48,14 @@ type State struct {
 	territories *territory.Set
 	control     map[int64]territory.Control
 
+	// safeZones es el índice tile → zona segura. Inmutable tras el arranque,
+	// salvo porque la fundación de una ciudad retira los tiles de su muralla.
+	safeZones *safezone.Index
+	// concealCandidates son las unidades que cambiaron de tile o de estado
+	// desde la última evaluación de ocultamiento (RN-SAFE-011). La fase 5 sólo
+	// mira éstas, no el mundo entero.
+	concealCandidates map[int64]struct{}
+
 	tick uint64
 }
 
@@ -60,6 +69,8 @@ func NewState(w *world.World) *State {
 		cities:       make(map[int64]*city.City),
 		cityByOwner:  make(map[uuid.UUID]int64),
 		unitsByChunk: make(map[chunkKey]map[int64]struct{}),
+
+		concealCandidates: make(map[int64]struct{}),
 	}
 }
 
@@ -83,6 +94,10 @@ func (s *State) AddUnit(u *unit.Unit) {
 	}
 	s.units[u.ID] = u
 	s.indexUnit(u)
+	// Una unidad recién incorporada —hidratada tras un reinicio o recién
+	// fundada— puede estar ya en una zona, o venir HIDDEN de la base sin
+	// estarlo: la primera fase 5 lo resuelve (spec §10, RN-SAFE-016).
+	s.concealCandidates[u.ID] = struct{}{}
 }
 
 // RemoveUnit saca una unidad del mundo.
@@ -95,6 +110,7 @@ func (s *State) RemoveUnit(id int64) {
 	delete(s.units, id)
 	delete(s.movements, id)
 	delete(s.unitDirty, id)
+	delete(s.concealCandidates, id)
 	s.unitIDs = removeSorted(s.unitIDs, id)
 }
 
@@ -195,7 +211,14 @@ func (s *State) removeFromChunk(cx, cy int32, id int64) {
 // ─────────────────────────────────────────────────────────────
 
 // MarkDirty señala una unidad cuya posición o estado debe volcarse.
-func (s *State) MarkDirty(id int64) { s.unitDirty[id] = struct{}{} }
+//
+// Todo cambio de tile o de estado pasa por aquí, y por eso es también el punto
+// en que la unidad se apunta a la siguiente evaluación de ocultamiento: no hay
+// un segundo sitio que alguien pueda olvidarse de llamar.
+func (s *State) MarkDirty(id int64) {
+	s.unitDirty[id] = struct{}{}
+	s.concealCandidates[id] = struct{}{}
+}
 
 // DrainDirty devuelve las unidades sucias y limpia el conjunto.
 //

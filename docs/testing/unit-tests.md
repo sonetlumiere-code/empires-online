@@ -476,7 +476,7 @@ Referencia: canon §16, [../specs/unit.md](../specs/unit.md) §8 y [../specs/web
 | **E2** | ✔ | Unidad existente de otro `playerId` | `UNIT_NOT_OWNED` | `TestRechazosDeMovimiento/unidad ajena` |
 | **E3** | ✔ | Unidad propia en `DEAD` | `UNIT_DEAD` | `TestRechazosDeMovimiento/unidad muerta` |
 | **E4** | ✔ | Unidad propia en `GARRISONED` | `UNIT_GARRISONED` | `TestRechazosDeMovimiento/unidad guarnecida` |
-| **E5** | ○ | Estado que no admite la acción (`HIDDEN`) | `UNIT_NOT_MOVABLE` | pendiente |
+| **E5** | ✔ | Unidad propia en `HIDDEN` | **Ninguno**: se acepta y la revela en el mismo tick (`RN-SAFE-013`). Una versión anterior de esta fila esperaba `UNIT_NOT_MOVABLE`, en contra de [../specs/unit.md](../specs/unit.md) y [../specs/safe-zones.md](../specs/safe-zones.md); mandan las specs | `TestUnaUnidadOcultaQueRecibeUnMoveSeRevelaEnElMismoTick` |
 | **E6** | ✔ | `target = (500,500)` en un mundo 64×64 | `TARGET_OUT_OF_BOUNDS` | `TestRechazosDeMovimiento/destino fuera del mundo` |
 | **E7** | ✔ (parcial) | `target` = posición actual de la unidad | Hoy **se acepta** sin crear polilínea: `unit.move.accepted` y **ningún** `unit.movement.started`, «no se crea una polilínea degenerada de un solo punto» | `TestMoverseAlSitioDondeYaEstas` |
 | **E8** | ✔ | `target` sobre un tile del *blocked overlay* | `TARGET_NOT_WALKABLE` | `TestRechazosDeMovimiento/destino intransitable` |

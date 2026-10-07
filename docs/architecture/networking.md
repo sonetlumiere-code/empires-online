@@ -211,14 +211,23 @@ hecho de la simulación  --(mapeo)-->  tipo de mensaje v1  --(chunk o jugador)--
 | Movimiento completado / cancelado | `unit.movement.completed` / `.cancelled` | Chunk del tile final |
 | Transición de presencia de la ciudad | `city.update` (con `presenceState`) | Chunk del centro de la ciudad |
 | Entidad entra o sale del área de interés | `entity.spawn` / `entity.despawn` | La sesión afectada |
+| Una unidad se oculta en una Safe Zone | `entity.update` (con `status`) al propietario; `entity.despawn` con `reason: HIDDEN` a los demás | Propietario por `SendToPlayer`; terceros por `BroadcastChunkExcept` |
+| Una unidad oculta se revela | `entity.update` al propietario; `entity.spawn` a los demás | Ídem |
 
 **Orden de emisión dentro de un tick.** Es fijo y determinista, y se deriva del orden de las fases, no de una regla de ordenación aparte:
 
 1. Respuestas a comandos (fase 2): `unit.move.accepted` / `unit.move.rejected`, y el `unit.movement.cancelled` del movimiento reemplazado, que se emite **antes** que el `accepted` porque la cancelación ocurre antes en el código.
 2. Deltas de movimiento (fase 3): `entity.update` de cada avance y `unit.movement.completed` de las llegadas.
-3. Temporizadores (fase 5): `city.update` de las transiciones de presencia.
+3. Temporizadores (fase 5): `city.update` de las transiciones de presencia y, después, los cambios de ocultamiento de Safe Zones.
 
 **Sin coalescencia y sin batching en v1.** Cada hecho produce su mensaje: una unidad que cambia de tile en un tick genera exactamente un `entity.update`, y no se fusionan varios cambios de la misma entidad ni se agrupan mensajes de un mismo tick en un solo frame. Es la consecuencia de emitir en el punto del hecho, y es aceptable a 10 Hz con movimiento por tiles: una unidad de `VILLAGER` cambia de tile como mucho cada 360 ms. Coalescencia por entidad y un mensaje contenedor de deltas son **decisiones futuras, fuera de MVP** (§6.1).
+
+**Visibilidad por destinatario.** Hasta las Safe Zones, el destino de un delta era siempre un chunk o un jugador, y todos los suscriptores de un chunk veían lo mismo. Una unidad `HIDDEN` rompe esa simetría: su propietario la sigue viendo y los demás no (`INV-SAFE-004`). El filtro se aplica **por sesión de destino**, nunca al construir un delta compartido:
+
+- `Hub.BroadcastChunkExcept(cx, cy, except, …)` entrega a las sesiones del chunk cuyo jugador no es `except`, incluidas todas sus pestañas.
+- `BuildSnapshot` recibe el jugador destinatario y descarta las unidades `HIDDEN` ajenas (`simulation.VisibleTo`). Es necesario porque cada `session.view` reenvía un snapshot completo: sin filtro, mover la cámara devolvería la unidad oculta.
+
+Es la única regla de visibilidad por observador del MVP. Cualquier mecánica futura de sigilo o detección tendrá que pasar por los mismos dos puntos. Ver [../specs/safe-zones.md](../specs/safe-zones.md) §12.
 
 **Ticks silenciosos**: si en el chunk de una sesión no ocurrió ningún hecho, no se emite ningún mensaje. A 10 Hz, la mayoría de los ticks de una sesión típica son silenciosos. El keepalive lo aporta el ping de control (§8.3), no un delta vacío.
 

@@ -44,7 +44,9 @@ El single-threading del loop **no es una limitación accidental, es un requisito
 | `terrain` (`[]byte`, un `TerrainType` uint8 por tile) | `W*H` bytes | **256 KiB** | Coincide con `world_chunks`: 256 chunks × 1024 B |
 | `blocked overlay` (`[]bool`, **1 byte/tile**, no un bitset) | `W*H` bytes | **256 KiB** | Capa de ocupación separada del terreno, bajo `sync.RWMutex`. Fundar una ciudad no muta el terreno de debajo |
 | Índice de chunks (256 entradas, metadatos + listas de entidades) | `chunks * ~256 B` | **64 KiB** | |
-| **Total estático** | | **≈ 576 KiB** | Irrelevante |
+| Índice tile → territorio (`[]uint16`) | `W*H*2` bytes | **512 KiB** | Limita el mundo a **65 535 territorios**: el id se guarda en 16 bits y `territories.id` es `bigint`, así que el límite lo comprueba el código al construir (`territory.MaxTerritories`), no el esquema |
+| Índice tile → safe zone (`[]uint32`) | `W*H*4` bytes | **1 MiB** | Limita los ids de zona a 4 294 967 295 (`safezone.MaxZoneID`). Existe aunque `safe_zones` esté vacía |
+| **Total estático** | | **≈ 2 MiB** | Irrelevante a 512 × 512. Crece con el área: a 4096 × 4096 serían unos 128 MiB, dominados por los dos índices densos |
 
 El `blocked overlay` es un `[]bool` y no un bitset a propósito: 224 KiB de más a cambio de indexación directa sin desplazamientos de bits en el camino caliente de `IsWalkable`. Comprimirlo a bitset es una optimización disponible, no una necesidad.
 

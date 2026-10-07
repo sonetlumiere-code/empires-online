@@ -264,7 +264,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-UNIT-005 | `status = MOVING` si y sólo si existe un movimiento `ACTIVE` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestVerticalSliceMovimiento` |
 | INV-UNIT-006 | Una unidad pertenece a un único jugador | CRITICO | DB, TYPE, TEST | ~ | `TestNoSePuedeComandarUnaUnidadAjena` |
 | INV-UNIT-007 | `GARRISONED` implica `city_id IS NOT NULL` y fila en `garrisons` | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_UNIT_007_GarrisonedHasCityAndGarrisonRow` |
-| INV-UNIT-008 | `HIDDEN` implica Safe Zone activa y reposo; moverse deja de ocultar | MEDIO | DOMAIN, TEST | ○ | `Test_INV_UNIT_008_HiddenImpliesActiveSafeZone` |
+| INV-UNIT-008 | `HIDDEN` implica Safe Zone activa y reposo; moverse deja de ocultar | MEDIO | DOMAIN, TEST | ✓ | `TestReglaDeOcultamiento`, `TestUnaUnidadOcultaQueRecibeUnMoveSeRevelaEnElMismoTick` |
 | INV-UNIT-009 | Todo `unit_type` persistido resuelve en el catálogo de `unit.Lookup` | ALTO | DOMAIN, TEST | ~ | `TestVerticalSliceMovimiento` |
 | INV-UNIT-010 | `player_id` y `unit_type` son inmutables tras la creación en MVP | MEDIO | DOMAIN, TEST | ○ | `Test_INV_UNIT_010_OwnerAndTypeAreImmutable` |
 | INV-UNIT-011 | `chunk_x` y `chunk_y` son siempre el chunk de `(x, y)` | ALTO | DOMAIN, TEST | ~ | `TestFlushPositionsEscribeElLoteYMantieneElChunk` |
@@ -328,13 +328,13 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-SAFE-001 | Dos Safe Zones no comparten ningún tile | ALTO | DOMAIN, TEST | ○ | `Test_INV_SAFE_001_SafeZonesDoNotOverlap` |
-| INV-SAFE-002 | Ningún tile de una Safe Zone es intransitable | ALTO | DOMAIN, TEST | ○ | `Test_INV_SAFE_002_SafeZoneTilesAreWalkable` |
-| INV-SAFE-003 | `HIDDEN` implica estar en una zona y sin movimiento `ACTIVE` | CRITICO | DOMAIN, TEST | ○ | `Test_INV_SAFE_003_HiddenImpliesInZoneAndAtRest` |
-| INV-SAFE-004 | Ninguna unidad `HIDDEN` aparece en un delta dirigido a un tercero | CRITICO | BOUNDARY, TEST | ○ | `Test_INV_SAFE_004_HiddenInvisibleToThirdParties` |
-| INV-SAFE-005 | El rectángulo de una Safe Zone está ordenado y contenido en el mundo | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_SAFE_005_SafeZoneBoundsValid` |
-| INV-SAFE-006 | Ninguna Safe Zone se solapa con la zona urbana de una ciudad | MEDIO | TEST | ○ | `Test_INV_SAFE_006_SafeZonesDoNotOverlapCities` |
-| INV-SAFE-007 | El índice `safeZoneOfTile` es función pura de `(safe_zones, terreno)` | MEDIO | TEST | ○ | `Test_INV_SAFE_007_SafeZoneIndexIsDeterministic` |
+| INV-SAFE-001 | Dos Safe Zones no comparten ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestDosZonasSolapadasResuelvenElIDMenorYSeReportan` |
+| INV-SAFE-002 | Ningún tile de una Safe Zone es intransitable | ALTO | DOMAIN, TEST | ✓ | `TestTodoTileDelIndiceEsTransitable`, `TestExcluirRetiraLosTilesYDiceDeQueZona` |
+| INV-SAFE-003 | `HIDDEN` implica estar en una zona y sin movimiento `ACTIVE` | CRITICO | DOMAIN, TEST | ✓ | `TestUnaUnidadEnReposoDentroDeLaZonaSeOcultaTrasUnTick` y el barrido tras cada tick de `safezones_test.go` |
+| INV-SAFE-004 | Ninguna unidad `HIDDEN` aparece en un delta dirigido a un tercero | CRITICO | BOUNDARY, TEST | ✓ | `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno`, `TestElSnapshotDeUnTerceroNoIncluyeUnidadesOcultas` |
+| INV-SAFE-005 | El rectángulo de una Safe Zone está ordenado y contenido en el mundo | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosCheckDeSafeZonesRechazanTipoYLimitesInvalidos`, `TestZonasInvalidasSeRechazanSinArrastrarALasDemas` |
+| INV-SAFE-006 | Ninguna Safe Zone se solapa con la zona urbana de una ciudad | MEDIO | TEST | ✓ | `TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla`, `TestUnaZonaSobreUnaCiudadSeRecortaYSeInforma` |
+| INV-SAFE-007 | El índice `safeZoneOfTile` es función pura de `(safe_zones, terreno)` | MEDIO | TEST | ✓ | `TestElIndiceEsDeterminista` |
 
 ### GARRISON — [diplomacy.md](diplomacy.md)
 
@@ -380,9 +380,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 41 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 49 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 15 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 34 | Diseñado y no ejecutado, o todavía inexistente |
+| ○ Sin cobertura | 26 | Diseñado y no ejecutado, o todavía inexistente |
 | **Total** | **90** | |
 
 > **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
@@ -391,10 +391,13 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Los 39 sin cobertura se concentran donde cabe esperar, y por dos causas distintas que no conviene mezclar:
+Los 26 sin cobertura se deben a tres causas distintas que no conviene mezclar:
 
-1. **Tests de integración diseñados pero no ejecutados.** Requieren PostgreSQL y Redis reales vía `docker compose`, y el daemon de Docker no arrancó en la máquina de desarrollo. Están escritos; no están verificados. Afecta sobre todo a `INV-PLAYER-002/003`, `INV-CITY-001/003/007` y `INV-PERSIST-003/005`.
-2. **Mecánica todavía no implementada.** Las familias `INV-TERR`, `INV-SAFE` y `INV-GARR` describen propiedades de entidades que existen en el esquema desde la migración `000001` pero cuya lógica está diferida (canon §11). Sus garantías `DB` **sí** están vigentes; sus garantías `DOMAIN` son diseño.
+1. **Marcas sin reconciliar.** `INV-PLAYER-002/003`, `INV-CITY-001/007` e `INV-PERSIST-003` citan tests que existen y pasan —los de integración se ejecutan en la CI y en local desde que se cerró `DEBT-19`—, pero nadie ha comprobado todavía que cubran el enunciado entero. Es trabajo de `EO-118` en [../roadmap/backlog.md](../roadmap/backlog.md), fila por fila.
+2. **Nombres de test que nunca existieron.** Muchas filas citan un `Test_INV_*` que no está en la suite. Es el nombre previsto cuando se escribió la ficha, no un test. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
+3. **Mecánica sin disparador.** Parte de `INV-GARR` describe efectos de una guarnición que ningún comando de red puede producir todavía (M7, entregable 6).
+
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones; sus filas nombran los tests reales. Las fichas `INV-TERR` de [territory.md](territory.md) siguen diciendo «Sin cobertura» aunque esta tabla ya marca cinco de ellas como cubiertas: tabla y fichas no coinciden, y reconciliarlas es parte de `EO-118`.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 

@@ -62,6 +62,16 @@ func (r *recorder) BroadcastChunks(chunks []world.ChunkCoord, msgType string, pa
 	})
 }
 
+func (r *recorder) BroadcastChunkExcept(cx, cy int32, except uuid.UUID, msgType string, payload any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Se registra a quién se EXCLUYÓ: es lo que un test de visibilidad necesita
+	// afirmar —que el propietario no recibe el despawn de su propia unidad—.
+	r.messages = append(r.messages, capturedMessage{
+		Kind: "chunk-except", Type: msgType, CX: cx, CY: cy, PlayerID: except, Payload: payload,
+	})
+}
+
 func (r *recorder) SendToPlayer(playerID uuid.UUID, msgType, _ string, payload any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -183,10 +193,21 @@ type harness struct {
 // su ciudad y tres aldeanos.
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessConTerreno(t, nil)
+}
+
+// newHarnessConTerreno es newHarness con la posibilidad de pintar terreno
+// encima de la hierba antes de construir el mundo. `pintar` recibe el slice
+// fila-mayor de 64 × 64 bytes.
+func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
+	t.Helper()
 
 	terrain := make([]byte, 64*64)
 	for i := range terrain {
 		terrain[i] = byte(world.Grassland)
+	}
+	if pintar != nil {
+		pintar(terrain)
 	}
 	w, err := world.New(64, 64, 32, 1, terrain)
 	require.NoError(t, err)
@@ -767,7 +788,7 @@ func TestSnapshotDelAreaDeInteres(t *testing.T) {
 	h := newHarness(t)
 
 	chunks := h.state.World().ChunksInRadius(world.Tile{X: 10, Y: 10}, 2)
-	snap := h.sim.BuildSnapshot(chunks, h.clk.NowMs(), true)
+	snap := h.sim.BuildSnapshot(h.playerID, chunks, h.clk.NowMs(), true)
 
 	require.Equal(t, h.clk.NowMs(), snap.ServerTimeMs)
 	require.Len(t, snap.Units, 3, "los tres aldeanos están en el área de interés")
@@ -780,7 +801,7 @@ func TestSnapshotDelAreaDeInteres(t *testing.T) {
 
 	// Un área lejana no ve nada de este jugador.
 	lejos := h.state.World().ChunksInRadius(world.Tile{X: 60, Y: 60}, 0)
-	vacio := h.sim.BuildSnapshot(lejos, h.clk.NowMs(), false)
+	vacio := h.sim.BuildSnapshot(h.playerID, lejos, h.clk.NowMs(), false)
 	require.Empty(t, vacio.Units)
 	require.Empty(t, vacio.Cities)
 }
@@ -794,7 +815,7 @@ func TestSnapshotIncluyeElMovimientoEnCurso(t *testing.T) {
 	h.advance(1200 * time.Millisecond)
 
 	chunks := h.state.World().ChunksInRadius(world.Tile{X: 14, Y: 10}, 1)
-	snap := h.sim.BuildSnapshot(chunks, h.clk.NowMs(), false)
+	snap := h.sim.BuildSnapshot(h.playerID, chunks, h.clk.NowMs(), false)
 
 	var found *protocol.UnitView
 	for i := range snap.Units {

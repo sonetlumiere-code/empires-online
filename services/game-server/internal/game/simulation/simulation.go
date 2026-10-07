@@ -195,6 +195,11 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 	// ningún instante existan dos movimientos activos de la misma unidad.
 	s.cancelActiveMovement(u, movement.ReasonReplaced, nowMs)
 
+	// Moverse revela (RN-SAFE-013). Se anota ANTES de cambiar el estado: es lo
+	// que decide si los terceros necesitan un entity.spawn para enterarse de que
+	// la unidad existe antes de verla moverse.
+	wasHidden := u.Status == unit.StatusHidden
+
 	m := movement.New(u.ID, path, cmd.Target, nowMs)
 	s.state.SetMovement(m)
 	u.Status = unit.StatusMoving
@@ -216,6 +221,13 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 		protocol.UnitMoveAcceptedPayload{UnitID: u.ID, MovementID: m.ID})
 
 	cx, cy := w.ChunkOf(origin.X, origin.Y)
+	if wasHidden {
+		// Revelado inmediato y completo, en el mismo tick: los terceros reciben
+		// la unidad ya en MOVING y con su polilínea. No hay paso por IDLE
+		// observable ni ventana en la que se mueva todavía oculta.
+		s.deps.Broadcaster.BroadcastChunkExcept(cx, cy, u.PlayerID, protocol.TypeEntitySpawn,
+			protocol.EntitySpawnPayload{Unit: s.UnitView(u, nowMs)})
+	}
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeUnitMovementStarted,
 		protocol.UnitMovementStartedPayload{UnitID: u.ID, Movement: toActiveMovement(m)})
 }
@@ -396,6 +408,11 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 		}
 		return true
 	})
+
+	// 4. Ocultamiento en Safe Zones (docs/specs/safe-zones.md §6.4). Va después
+	// de la fase 3 del mismo tick, así que una unidad que llega a una zona pasa
+	// por IDLE y se oculta en este mismo tick: MOVING → HIDDEN no ocurre nunca.
+	s.evaluateConcealment()
 }
 
 func (s *Simulation) setPresence(playerID uuid.UUID, state city.PresenceState) {
