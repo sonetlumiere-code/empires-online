@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
 	redisstore "github.com/empires-online/empires-online/services/game-server/internal/persistence/redis"
@@ -34,6 +35,14 @@ func newTestClient(t *testing.T) (*redisstore.Client, context.Context) {
 	url := os.Getenv("EO_TEST_REDIS_URL")
 	if url == "" {
 		url = defaultTestRedisURL
+	}
+
+	// Estos tests vacían la base con FLUSHDB. La 0 es la que usa el servidor de
+	// desarrollo (EO_REDIS_URL): nunca se vacía desde aquí.
+	opts, err := goredis.ParseURL(url)
+	require.NoError(t, err, "EO_TEST_REDIS_URL no es una URL de Redis válida")
+	if opts.DB == 0 {
+		t.Fatalf("EO_TEST_REDIS_URL apunta a la base 0, la de desarrollo: estos tests la vaciarían. Usa otra, como redis://localhost:6379/1")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

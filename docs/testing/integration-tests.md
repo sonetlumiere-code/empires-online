@@ -89,19 +89,19 @@ EO_TEST_POSTGRES_URL=postgres://empires:empires_ci_password@localhost:5432/empir
 EO_TEST_REDIS_URL=redis://localhost:6379/1
 ```
 
-**Salvaguarda obligatoria.** Además de usar variables distintas, el harness inspecciona la URL antes de tocar nada y aborta si detecta la base de datos o el índice de desarrollo. Es una comprobación de tres líneas que evita el accidente más caro y más fácil de cometer: un `TRUNCATE` sobre el mundo de desarrollo.
+**Salvaguarda obligatoria.** Además de usar variables distintas, el harness inspecciona la URL antes de
+conectar y aborta el test si no apunta a una base de tests. Es lo que evita el accidente más caro y más
+fácil de cometer: un `TRUNCATE` sobre el mundo de desarrollo.
 
-```go
-func mustBeTestDatabase(t *testing.T, pgURL, redisURL string) {
-	t.Helper()
-	require.Contains(t, pgURL, "empires_test",
-		"EO_TEST_POSTGRES_URL debe apuntar a la base de datos de test; abortando para no destruir datos de desarrollo")
-	require.NotContains(t, pgURL, "/empires?",
-		"EO_TEST_POSTGRES_URL apunta a la base de datos de DESARROLLO")
-	require.True(t, strings.HasSuffix(redisURL, "/1"),
-		"EO_TEST_REDIS_URL debe usar el índice 1 en tests")
-}
-```
+| Dónde | Regla | Mensaje si falla |
+|---|---|---|
+| `requireTestDatabase`, en `postgres/testenv_integration_test.go` | El nombre de la base, leído con `pgx.ParseConfig`, **termina en `_test`** | «la base "empires" no termina en _test…» |
+| `newTestClient`, en `redis/redis_integration_test.go` | El índice de Redis, leído con `ParseURL`, **no es el 0**, que es el que usa `EO_REDIS_URL` | «EO_TEST_REDIS_URL apunta a la base 0…» |
+
+El valor por defecto de `EO_TEST_POSTGRES_URL` es `…/empires_test`. Hasta octubre de 2026 era
+`…/empires`, la base de **desarrollo**, y esta sección describía una guarda que no existía: un
+`go test -tags=integration` con `EO_INTEGRATION=1` y sin la variable, contra un PostgreSQL en 5432, habría
+vaciado el mundo de desarrollo.
 
 ### 2.3 Creación de la base de datos y migraciones
 
@@ -247,24 +247,21 @@ RESTART IDENTITY CASCADE;
 - **`RESTART IDENTITY`** reinicia las secuencias de `bigint GENERATED ALWAYS AS IDENTITY`: los ids vuelven a empezar en 1 en cada test, lo que permite aserciones legibles y estables.
 - **`CASCADE`** cubre las dependencias declaradas; el orden de la lista se mantiene igualmente de hijo a padre para que el fallo sea comprensible si alguien añade una tabla y olvida actualizarla.
 - **No se truncan** `civilizations`, `factions`, `eras` ni `schema_migrations`.
-- Se ejecuta en el `t.Cleanup`, **no** al principio del test: así, cuando un test falla, el estado que lo hizo fallar sigue en la base para inspeccionarlo con `pnpm run db:psql` (que apunta a la base de desarrollo: para la de test se usa el comando de §6). El siguiente test lo limpia. Un flag `EO_TEST_KEEP_DATA=1` que desactive el truncado del último test para depurar está ○ previsto, no implementado.
+- Se ejecuta **al principio** de cada test, en `newTestStore`, no en su `t.Cleanup`: así, cuando un test falla, el estado que lo hizo fallar sigue en la base para inspeccionarlo con `pnpm run pg:psql -- -d empires_test`. El siguiente test lo limpia antes de empezar. Un flag `EO_TEST_KEEP_DATA=1` está ○ previsto, no implementado; con el truncado al principio apenas hace falta.
 
 ### 4.3 Redis
 
-`FLUSHDB` sobre el índice 1 en el `t.Cleanup`. Nunca `FLUSHALL`: destruiría también el índice 0 de desarrollo.
-
-```go
-func NewTestRedis(t *testing.T) *redis.Client {
-	t.Helper()
-	c := connectToTestIndex(t)  // índice 1
-	t.Cleanup(func() { _ = c.FlushDB(context.Background()).Err() })
-	return c
-}
-```
+`FLUSHDB` sobre el índice de tests —el 1 por defecto— **al principio** de cada test, en `newTestClient`, después de comprobar que no es el 0. Nunca `FLUSHALL`: destruiría también el índice 0 de desarrollo.
 
 ### 4.4 Paralelismo
 
-La suite de integración se ejecuta **serializada a nivel de paquete** (`go test -p 1`) y ningún test del mecanismo B llama a `t.Parallel()`. Truncar tablas compartidas mientras otro test escribe produce fallos irreproducibles, exactamente la clase de *flaky* que la regla R7 prohíbe tolerar. El coste es aceptable: el objetivo de duración de toda la suite es inferior a 90 s.
+Ningún test del mecanismo B llama a `t.Parallel()`, así que dentro de un paquete los tests van uno detrás de otro. Entre **procesos** no bastaba: dos ejecuciones a la vez contra la misma base —una desde Windows y otra desde WSL, por ejemplo— se pisaban el `TRUNCATE` y PostgreSQL abortaba una con `deadlock detected (SQLSTATE 40P01)`.
+
+Por eso `newTestStore` toma, antes de migrar y de truncar, un **advisory lock** de sesión (`pg_advisory_lock`, clave `integrationLockKey`) en una conexión propia, y lo suelta en su `t.Cleanup`, que se ejecuta el último. Dos procesos se turnan test a test en lugar de chocar. La CI ejecuta `go test -race -count=1 -tags=integration ./...` sin `-p 1`: sólo el paquete `postgres` usa la base, así que no compite con nadie.
+
+> En la máquina de desarrollo, que el lock lo permita no significa que convenga: dos suites completas a
+> la vez, una de ellas con `-race`, consumen memoria suficiente para tirar el equipo. Ver
+> [../operations/local-development.md](../operations/local-development.md) §1.
 
 ---
 

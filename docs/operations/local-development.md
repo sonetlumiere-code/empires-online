@@ -58,6 +58,10 @@ Consecuencias directas, que conviene interiorizar antes de empezar:
   puede comprobar desde aquí.
 - **No existe `make`.** Si un documento, script o hilo de CI referencia `make <target>`, es un error: el
   equivalente es `pnpm run <script>`.
+- **Una carga pesada cada vez.** La misma restricción de memoria que descarta Docker se aplica a todo:
+  nunca dos suites de Go a la vez —por ejemplo, una desde Windows y otra con `-race` desde WSL—, y nunca
+  con el Game Server o `next dev` en marcha. Esa combinación tiró la máquina el 2026-10-07. Ejecuta las
+  suites en serie y para los servidores en cuanto termines de usarlos.
 
 ---
 
