@@ -158,9 +158,9 @@ Actions. **No entra**: lógica de dominio, mundo, jugadores, WebSocket ni mensaj
     `EO_INTEGRATION=1`, y la construcción de la imagen del contenedor. Cualquier check obligatorio en
     rojo invalida el PR.
 
-    **Falta `lint`/ESLint** de la secuencia original: `pnpm run lint` exige que cada paquete declare
-    su script y ninguno lo hace todavía. Añadir el paso antes que los scripts sólo produciría un job
-    rojo que no verifica nada.
+    El **lint de determinismo** (`EO-017`) corre en el job `docs`: `node scripts/lint-determinism.mjs` falla si el núcleo
+    determinista lee el reloj real o el azar global. **ESLint sigue sin existir**: `pnpm run lint`
+    ejecuta además el script `lint` de cada paquete que lo declare, y ninguno lo declara todavía.
 14. **HECHO — `docs/`** inicializado con la estructura de grupos y la guía de arranque que describe el
     entorno real: Windows 10, Node v22.17.1, pnpm 10.25.0, git 2.38.1, Docker CLI 20.10.22 con
     Compose v2.15.1, Go 1.27.0 instalado, y ausencia de `psql`, `redis-cli`, `make` y `gh`.

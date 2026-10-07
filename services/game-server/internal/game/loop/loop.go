@@ -133,7 +133,7 @@ func (l *Loop) Run(ctx context.Context) error {
 // depender de temporizadores reales ni de la velocidad de la máquina.
 // Ver ../../../../docs/testing/simulation-tests.md
 func (l *Loop) Step(nowMs int64) {
-	started := time.Now()
+	started := time.Now() //lint:reloj-real mide la duración real del tick para la métrica y los overruns
 
 	l.tick.Add(1)
 	l.sim.State().SetTick(l.tick.Load())
@@ -198,7 +198,7 @@ func (l *Loop) applyCommand(cmd simulation.Command) {
 }
 
 func (l *Loop) observe(started time.Time, nowMs int64) {
-	elapsed := time.Since(started)
+	elapsed := time.Since(started) //lint:reloj-real ídem: duración real, no tiempo de juego
 
 	if l.health != nil {
 		l.health.BeatLoop(nowMs)

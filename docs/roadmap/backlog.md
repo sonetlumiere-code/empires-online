@@ -25,7 +25,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 
 | Bloque | Situación |
 |---|---|
-| M0 (EO-001 … EO-019) | **Completado.** `EO-016` (CI) cerrado: los cinco jobs pasan. Queda `EO-017` (lint), P1. |
+| M0 (EO-001 … EO-019) | **Completado.** `EO-016` (CI) y `EO-017` (lint de determinismo) cerrados. |
 | M1 (EO-020 … EO-028) | Completado salvo `EO-028` (volcado del mundo a fichero, `P2`). |
 | M2 (EO-030 … EO-039) | Completado. `EO-038` se resolvió con `internal/game/founding`. |
 | M3 (EO-040 … EO-057) | Servidor completado. Abiertos: **`EO-041`** (ticket desde Next.js) y **`EO-055`** (cliente PixiJS). |
@@ -61,7 +61,7 @@ sin evidencia local es la imagen del contenedor, que sólo se construye en la CI
 | EO-014 | Exportación de JSON Schema en el build del protocolo | M0 | P0 | S | EO-013 | `pnpm run protocol:build` regenera `packages/protocol/schema/v1/*.json` sin diferencias respecto a lo commiteado, y `pnpm run protocol:check` detecta la deriva. |
 | EO-015 | `go:embed` de los JSON Schema en el Game Server | M0 | P0 | S | EO-005, EO-014 | El binario embebe los esquemas y los expone a los contract tests sin leer del disco. |
 | EO-016 | CI en GitHub Actions con la secuencia completa | M0 | P0 | L | EO-004, EO-005, EO-013 | **HECHO.** Cinco jobs en verde: documentación y tests de scripts, TypeScript (typecheck, protocolo, deriva del JSON Schema y `next build`), Game Server con `-race`, integración con Postgres y Redis como *services*, e imagen del contenedor. Sus dos primeras ejecuciones reales encontraron dos fallos que ninguna verificación local podía ver. Falta `lint`, que espera a `EO-017`. |
-| EO-017 | Lint que prohíbe `time.Now()` y `rand` en el dominio | M0 | P1 | S | EO-005, EO-010 | Un uso directo de `time.Now()` dentro de `internal/domain` hace fallar `pnpm run lint`. |
+| EO-017 | Lint que prohíbe `time.Now()` y `rand` en el dominio | M0 | P1 | S | EO-005, EO-010 | **Cerrado.** Un uso directo de `time.Now()` dentro de `internal/domain` hace fallar `pnpm run lint`. `node scripts/lint-determinism.mjs` vigila además `game/world`, `game/simulation`, `game/loop`, `game/founding` y `pathfinding`, también `time.Since`, `time.Until` y `math/rand`. Medir una duración para una métrica se permite marcando la línea con `//lint:reloj-real <motivo>`; hay cuatro, en el bucle y en la medición del A*. Corre en `verify` y en el job `docs` de la CI, con tests en `scripts/lint-determinism.test.mjs`. |
 | EO-018 | Guía de arranque con el entorno real documentado | M0 | P0 | S | EO-002 | La guía nombra Windows 10, Node v22.17.1, pnpm 10.25.0, git 2.38.1, Docker CLI 20.10.22 con Compose v2.15.1, Go 1.27.0 instalado, y la ausencia de `psql`, `redis-cli`, `make` y `gh`. |
 | EO-019 | Acceso a Postgres y Redis vía `docker compose exec` documentado | M0 | P1 | S | EO-004 | `pnpm run db:psql` y `pnpm run db:redis` abren una sesión contra el contenedor sin requerir `psql` ni `redis-cli` en el host. **Con Docker descartado en la máquina de desarrollo, el equivalente es `pnpm run pg:psql` contra el cluster propio y `wsl -d Ubuntu -- redis-cli`.** |
 

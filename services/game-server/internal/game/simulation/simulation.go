@@ -171,13 +171,13 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 		return
 	}
 
-	start := time.Now()
+	start := time.Now() //lint:reloj-real mide la duración del A* para la métrica; no afecta al resultado
 	tiles, err := s.deps.Pathfinder.FindPath(context.Background(), w, origin, cmd.Target, pathfinding.Options{
 		MaxNodes:    s.deps.PathMaxNodes,
 		MaxDistance: s.deps.PathMaxDistance,
 	})
 	s.LastPathfindingCalls++
-	s.LastPathfindingTime += time.Since(start)
+	s.LastPathfindingTime += time.Since(start) //lint:reloj-real ídem
 
 	if err != nil {
 		s.rejectMove(cmd, pathErrorCode(err), err.Error())

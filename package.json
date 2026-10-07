@@ -41,10 +41,10 @@
     "docs:check": "node scripts/check-docs.mjs",
     "smoke": "node scripts/smoke.mjs",
     "scripts:test": "node --test \"scripts/*.test.mjs\"",
-    "lint": "pnpm -r run lint",
+    "lint": "node scripts/lint-determinism.mjs && pnpm -r --if-present run lint",
     "typecheck": "pnpm run protocol:build && pnpm -r run typecheck",
     "test": "pnpm -r run test",
-    "verify": "pnpm run protocol:build && pnpm run docs:check && pnpm run typecheck && pnpm run test && pnpm run scripts:test && pnpm run server:fmt:check && pnpm run server:vet && pnpm run server:vet:integration && pnpm run server:test"
+    "verify": "pnpm run protocol:build && pnpm run docs:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run scripts:test && pnpm run server:fmt:check && pnpm run server:vet && pnpm run server:vet:integration && pnpm run server:test"
   },
   "devDependencies": {
     "typescript": "^5.7.2"

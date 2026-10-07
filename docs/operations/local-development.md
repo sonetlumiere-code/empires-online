@@ -782,11 +782,11 @@ pnpm run verify
 `pnpm run verify` encadena exactamente esto, en este orden:
 
 ```
-protocol:build → docs:check → typecheck → test → scripts:test
+protocol:build → docs:check → lint → typecheck → test → scripts:test
   → server:fmt:check → server:vet → server:vet:integration → server:test
 ```
 
-Regenera el JSON Schema, verifica la integridad de `docs/`, comprueba tipos, ejecuta los tests de
+Regenera el JSON Schema, verifica la integridad de `docs/`, pasa el lint de determinismo, comprueba tipos, ejecuta los tests de
 Vitest y los de los scripts de Node, comprueba el formato de Go, pasa `go vet` con y sin la etiqueta
 `integration` y ejecuta `go test ./...`. **No ejecuta los tests de integración ni el detector de
 carreras**: eso es §9, y en la CI lo cubren los jobs `integration` y `game-server`.
@@ -830,7 +830,8 @@ que no está aquí, no existe.
 | `smoke` | Vertical slice completo contra un servidor vivo (§3-bis.9) |
 | `docs:check` | Enlaces, anclas, mayúsculas de rutas, invariantes citados y ADR existentes |
 | `scripts:test` | Tests de los scripts de `scripts/`, con el runner de Node |
-| `lint` / `typecheck` / `test` | Recursivos sobre el workspace. `lint` no hace nada todavía: ningún paquete declara el script (`EO-017`) |
+| `lint` | `node scripts/lint-determinism.mjs`: el núcleo determinista no lee el reloj real ni el azar global (`EO-017`). Después, el `lint` de cada paquete que lo declare; ninguno lo hace todavía |
+| `typecheck` / `test` | Recursivos sobre el workspace |
 | `verify` | La cadena completa de §7 |
 
 Todos los scripts `server:*`, `db:migrate`, `db:version` y `dev:seed` hacen `cd services/game-server`
@@ -1000,7 +1001,7 @@ Marcado explícitamente para que nadie lo busque:
 - **Subcomandos del binario del servidor**: no existen. `empires-server` hace una sola cosa, arrancar.
   Las migraciones explícitas tienen su propio binario, `cmd/migrate` (§5.4).
 - **Emisión del game ticket desde Next.js**: no existe todavía; la hace el Game Server (§5.7).
-- **Lint**: `pnpm run lint` no comprueba nada hasta que exista `EO-017`.
+- **ESLint**: no hay. `pnpm run lint` sólo ejecuta el lint de determinismo de Go.
 - **Combate, economía, tecnologías, comercio, clanes, chat, ranking**: fuera del primer vertical slice.
 - **Tests de carga (k6)**: fuera de MVP.
 - **Hot reload de configuración o de código Go**: cambiar una variable `EO_` o el código exige reiniciar

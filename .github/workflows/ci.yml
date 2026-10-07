@@ -48,6 +48,12 @@ jobs:
       - name: Verificar integridad de docs/
         run: node scripts/check-docs.mjs
 
+      # El núcleo determinista no lee el reloj real ni el azar global: lo que
+      # hace reproducibles la simulación y el mundo (EO-017). Es un script de
+      # Node sin dependencias, por eso vive aquí y no en el job de Go.
+      - name: Lint de determinismo
+        run: node scripts/lint-determinism.mjs
+
       # Los scripts de utilidad no tienen dependencias: corren con el runner de
       # tests integrado de Node, sin `pnpm install`. Por eso viven en este job y
       # no en el de protocolo.
