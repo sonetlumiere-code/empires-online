@@ -236,22 +236,22 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-CITY-001 | Una ciudad tiene exactamente un owner | CRITICO | DB, TYPE, TEST | ○ | `TestBootstrapCreaMundoCompletoDelJugador` |
-| INV-CITY-002 | `population` nunca supera `population_limit` | ALTO | DB, DOMAIN, TEST | ✓ | `TestLimiteDePoblacion` |
-| INV-CITY-003 | `population_limit` deriva de la era vigente | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_CITY_003_PopulationLimitDerivesFromEra` |
-| INV-CITY-004 | `presence_state` sólo toma `ONLINE`, `OFFLINE_PENDING` o `PROTECTED` | CRITICO | DB, TYPE, TEST | ✓ | `TestEstadosDePresenciaValidos` |
-| INV-CITY-005 | Toda transición de `presence_state` pertenece al conjunto permitido | ALTO | DOMAIN, TEST | ✓ | `TestAutomataDePresencia` |
+| INV-CITY-001 | Una ciudad tiene exactamente un owner | CRITICO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestBootstrapCreaMundoCompletoDelJugador` |
+| INV-CITY-002 | `population` nunca supera `population_limit` | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestLimiteDePoblacion` |
+| INV-CITY-003 | `population_limit` deriva de la era vigente | ALTO | DB, DOMAIN, TEST | ~ | `TestElAltaTomaElLimiteDePoblacionDeSuEra`; falta la recomputación al cargar (`EO-119`) |
+| INV-CITY-004 | `presence_state` sólo toma `ONLINE`, `OFFLINE_PENDING` o `PROTECTED` | CRITICO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestEstadosDePresenciaValidos`, `TestLosEstadosDePresenciaDelDominioSonLosDelEsquema` |
+| INV-CITY-005 | Toda transición de `presence_state` pertenece al conjunto permitido | ALTO | DOMAIN, TEST | ✓ | `TestAutomataDePresencia`, `TestLasCiudadesQueDegradanEnElMismoTickSalenEnOrden` |
 | INV-CITY-006 | Una ciudad `PROTECTED` no recibe acciones prohibidas por la protección | CRITICO | DOMAIN, TEST | ~ | `TestIsProtected` |
-| INV-CITY-007 | El centro de la ciudad está sobre un tile válido y transitable | ALTO | DOMAIN, TEST | ○ | `TestBootstrapCreaMundoCompletoDelJugador` |
-| INV-CITY-008 | Las zonas urbanas de dos ciudades nunca comparten tile (centro único, 24 tiles de separación) | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_CITY_008_UrbanAreasDoNotOverlap` |
-| INV-CITY-009 | `population` es el recuento de `units` de la ciudad con `status <> 'DEAD'` | ALTO | DOMAIN, TEST | ○ | `Test_INV_CITY_009_PopulationMatchesLiveUnitCount` |
-| INV-CITY-010 | Fundar una ciudad no muta el `TerrainType` de ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestCapaDeOcupacionNoMutaElTerreno` |
-| INV-CITY-011 | `presence_state <> 'ONLINE'` implica `last_offline_at IS NOT NULL` | ALTO | DOMAIN, TEST | ~ | `TestCicloDePresenciaYProteccion` |
-| INV-CITY-012 | `presence_state = 'ONLINE'` implica `protection_until IS NULL` | ALTO | DOMAIN, TEST | ~ | `TestCicloDePresenciaYProteccion` |
+| INV-CITY-007 | El centro de la ciudad está sobre un tile válido y transitable | ALTO | DOMAIN, TEST | ~ | `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestSinTerrenoTransitableNoHaySitio`; falta la revalidación al arrancar (`EO-119`) |
+| INV-CITY-008 | Las zonas urbanas de dos ciudades nunca comparten tile (centro único, 24 tiles de separación) | ALTO | DB, DOMAIN, TEST | ✓ | `TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan`, `TestAltasSimultaneasGuardanLaDistanciaMinima`, `TestDosCiudadesNoPuedenCompartirCentro` |
+| INV-CITY-009 | `population` es el recuento de `units` de la ciudad con `status <> 'DEAD'` | ALTO | DOMAIN, TEST | ~ | `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal`; falta el recuento al cargar (`EO-119`) |
+| INV-CITY-010 | Fundar una ciudad no muta el `TerrainType` de ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestCapaDeOcupacionNoMutaElTerreno`, `TestMundoPersistidoCoincideByteAByteConLaSemilla` |
+| INV-CITY-011 | `presence_state <> 'ONLINE'` implica `last_offline_at IS NOT NULL` | ALTO | DOMAIN, TEST | ~ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`; falta la reparación al cargar (`EO-119`) |
+| INV-CITY-012 | `presence_state = 'ONLINE'` implica `protection_until IS NULL` | ALTO | DOMAIN, TEST | ~ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`, `TestTransicionesDePresenciaSePersisten`; falta la reparación al cargar (`EO-119`) |
 | INV-CITY-013 | La protección nunca se concede antes de vencer el cooldown completo | CRITICO | DOMAIN, TEST | ✓ | `TestShouldEngageProtection` |
 | INV-CITY-014 | Ninguna ciudad sigue protegida mientras su dueño tenga una sesión viva | CRITICO | DOMAIN, TEST | ✓ | `TestCicloDePresenciaYProteccion` |
-| INV-CITY-015 | `last_online_at` y `last_offline_at` son monótonos no decrecientes en una ejecución | MEDIO | DOMAIN, TEST | ○ | `Test_INV_CITY_015_PresenceTimestampsAreMonotonic` |
-| INV-CITY-016 | `simulation.Hydrate` no escribe `cities`: es idempotente para la presencia | MEDIO | TEST | ○ | `Test_INV_CITY_016_HydrateIsIdempotentForPresence` |
+| INV-CITY-015 | `last_online_at` y `last_offline_at` son monótonos no decrecientes en una ejecución | MEDIO | DOMAIN, TEST | ✓ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` |
+| INV-CITY-016 | `simulation.Hydrate` no escribe `cities`: es idempotente para la presencia | MEDIO | TEST | ✓ | `TestRehidratarDosVecesNoEscribePresencia` |
 
 ### UNIT — [units.md](units.md)
 
@@ -380,9 +380,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 51 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 17 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 22 | Test inexistente, o fila sin reconciliar con la suite |
+| ✓ Cubierto | 55 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 20 | Hay test real para parte del enunciado |
+| ○ Sin cobertura | 15 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
 > **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
@@ -391,13 +391,13 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Los 22 sin cobertura se deben a tres causas distintas que no conviene mezclar:
+Los 15 sin cobertura se deben a tres causas distintas que no conviene mezclar:
 
-1. **Marcas sin reconciliar.** `INV-PLAYER-002/003`, `INV-CITY-001/007` e `INV-PERSIST-003` citan tests que existen y pasan —los de integración se ejecutan en la CI y en local desde que se cerró `DEBT-19`—, pero nadie ha comprobado todavía que cubran el enunciado entero. Es trabajo de `EO-118` en [../roadmap/backlog.md](../roadmap/backlog.md), fila por fila.
+1. **Marcas sin reconciliar.** `INV-PLAYER-002/003` e `INV-PERSIST-003` citan tests que existen y pasan —los de integración se ejecutan en la CI y en local desde que se cerró `DEBT-19`—, pero nadie ha comprobado todavía que cubran el enunciado entero. Es trabajo de `EO-118` en [../roadmap/backlog.md](../roadmap/backlog.md), fila por fila.
 2. **Nombres de test que nunca existieron.** Muchas filas citan un `Test_INV_*` que no está en la suite. Es el nombre previsto cuando se escribió la ficha, no un test. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 3. **Mecánica sin disparador.** Parte de `INV-GARR` describe efectos de una guarnición que ningún comando de red puede producir todavía (M7, entregable 6).
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. La familia `INV-TERR` se reconcilió ficha por ficha con `EO-118`: siete filas están cubiertas y dos son parciales (`005` y `007`), porque la validación de carga que sus fichas prometen no existe todavía (`EO-119`). En las dos familias, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR` e `INV-CITY` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las tres familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 
