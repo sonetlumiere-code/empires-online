@@ -712,7 +712,7 @@ tres categorías: write-through, dirty-flag y reconstruible.
 
 ## M5 — Offline protection & Safe Zones
 
-**Estado: HECHO a falta de una ejecución verde de la CI sobre el commit que lo cierra.** Presencia y
+**Estado: CERRADO.** La CI pasó entera sobre el commit que lo cierra (`5f692d5`). Presencia y
 protección offline están implementadas desde el principio. Las Safe Zones se implementaron después:
 índice tile → zona, ocultamiento en la fase 5 y filtrado por destinatario, verificados nivel por
 nivel según [../specs/safe-zones.md](../specs/safe-zones.md) §13. Todos los criterios de aceptación se

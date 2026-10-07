@@ -33,7 +33,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | M5 (EO-080 … EO-089) | **Completado.** `EO-084`, `EO-085` y `EO-086` cerrados: safe zones, `HIDDEN` y su filtrado por destinatario. La geometría de las zonas del mundo canónico es una decisión de diseño pendiente, no un item de este bloque. |
 | M6 (EO-090 … EO-097) | **Completo salvo el entregable 8** (restricciones en territorio ajeno), bloqueado por una decisión de juego. |
 | M7 (EO-100 … EO-108) | **Dominio, persistencia y caducidad hechos y verificados.** Falta la puerta de entrada: el protocolo v1 no tiene comandos de guarnición. |
-| Transversales | `EO-110`, `EO-112` y `EO-113` hechos. Abiertos: `EO-111`, `EO-114`, `EO-115`, `EO-116`, `EO-117` (autenticación) y `EO-118` (reconciliar las docs con la ejecución real). |
+| Transversales | `EO-110`, `EO-112`, `EO-113` y `EO-114` hechos. Abiertos: `EO-111`, `EO-115`, `EO-116`, `EO-117` (autenticación) y `EO-118` (reconciliar las docs con la ejecución real). |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los 44 tests de integración se
 ejecutan** contra PostgreSQL y Redis reales, en local y en remoto. `DEBT-19` está cerrada. Lo que sigue
@@ -191,7 +191,7 @@ sin evidencia local es la imagen del contenedor, que sólo se construye en la CI
 | EO-111 | Runbook de operación 24/7 | Transversal | P1 | M | EO-009 | **Abierto.** Describe arranque, parada, migración con estado vivo, lectura de métricas y diagnóstico de overruns. |
 | EO-112 | ADRs de las decisiones estructurales | Transversal | P1 | S | EO-018 | Existen los doce ADR de `docs/decisions/`, de `ADR-001-game-server-language.md` a `ADR-012-database-migrations.md`. Todo enlace debe usar esos nombres exactos. |
 | EO-113 | Cliente WS de pruebas end-to-end | Transversal | P1 | M | EO-044 | **HECHO** — `scripts/smoke.mjs`. Un cliente en Node ejecuta el recorrido completo de conexión, snapshot y movimiento en CI. Bloqueado por `EO-016` y por `DEBT-19`. |
-| EO-114 | Seeds de datos de desarrollo | Transversal | P2 | S | EO-036 | Un script deja un mundo con varios jugadores listos para pruebas manuales reproducibles, y opcionalmente safe zones sintéticas en la base de desarrollo —nunca en una migración ni en el mundo canónico—. Con M5 cerrado es la única forma de ver el ocultamiento con un cliente real: `SafeZoneRepo.Insert` ya existe. |
+| EO-114 | Seeds de datos de desarrollo | Transversal | P2 | S | EO-036 | **Cerrado.** `pnpm run dev:seed` (`cmd/devseed`) crea cuatro jugadores juntos y un `DENSE_FOREST` junto a cada ciudad en la base de desarrollo, nunca en una migración ni en el mundo canónico. Idempotente, y se niega con el servidor en marcha o fuera de `EO_ENV=development`. La colocación es lógica pura en `internal/devseed`, con tests sobre el mundo canónico. Ver [../operations/local-development.md](../operations/local-development.md) §3-bis.8. |
 | EO-115 | Escenario de simulación reproducible para regresión | Transversal | P2 | M | EO-077 | Un escenario fijo con `FakeClock` produce el mismo estado final en cada ejecución y se compara contra un *golden file*. |
 | EO-116 | Tests de carga con k6 | Transversal | P3 | L | EO-113 | Diferido: no forma parte del MVP y no bloquea ningún milestone. |
 | EO-117 | Sacar la autenticación del Game Server | Transversal | P1 | L | DEBT-18 | **Planificado, no empezado.** Plan por pasos en la sección «Plan: sacar la autenticación del Game Server» de este documento. El paso 1 es un ADR, no código. |
@@ -307,6 +307,7 @@ implícita en el código.
 | Q-14 | ¿El mundo es eterno o habrá temporadas con reinicio? | Condiciona la estrategia de migraciones, de archivado y de operación 24/7. | Cualquier despliegue con jugadores reales. |
 | Q-15 | ¿Cuál es el objetivo de jugadores concurrentes y de unidades activas simultáneas? | Sin una cifra objetivo no se pueden dimensionar el tick, el interest management ni los tests de carga. | Diseñar los tests de carga (EO-116). |
 | Q-16 | ¿Qué comunicación entre jugadores existirá y con qué moderación? | El chat avanzado está fuera del MVP, pero la diplomacia sin comunicación es poco jugable. | La fase Clans. |
+| Q-17 | ¿Debe el mundo canónico tener montaña suficiente para que existan zonas `CAVERN`, y qué zonas siembra? | Con `EO_WORLD_SEED=20260909` el generador produce **24 tiles `MOUNTAIN` de 262 144** (un 0,01 %; bosque 19 %, agua 0,9 %): su umbral, `e > 58000` sobre un ruido promediado de 0 a 65 535, casi nunca se alcanza. Hay por tanto unos 24 tiles en todo el mapa donde podría haber una caverna, y la montaña apenas existe como obstáculo. Cambiar el umbral cambia el mundo canónico byte a byte. La medición la fija `TestLaSiembraProduceZonasValidasSobreElMundoCanonico`. | Sembrar las safe zones del mundo canónico. |
 
 ---
 

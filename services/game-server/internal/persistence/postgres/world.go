@@ -25,6 +25,21 @@ type State struct {
 	CurrentTick uint64
 }
 
+// Load devuelve el estado del mundo sin crearlo. Devuelve ErrNotFound si el
+// servidor no ha arrancado nunca contra esta base: quien sólo necesita leer el
+// mundo —la siembra de desarrollo— no debe crear un world_state a medias, sin
+// los chunks que el primer arranque del servidor escribe a continuación.
+func (r *WorldRepo) Load(ctx context.Context) (State, error) {
+	var got State
+	err := r.store.pool.QueryRow(ctx,
+		`SELECT seed, width, height, chunk_size, epoch_ms, current_tick FROM world_state WHERE id = 1`,
+	).Scan(&got.Seed, &got.Width, &got.Height, &got.ChunkSize, &got.EpochMs, &got.CurrentTick)
+	if err != nil {
+		return State{}, normalize(err)
+	}
+	return got, nil
+}
+
 // LoadOrInit devuelve el estado del mundo, creándolo la primera vez.
 //
 // Si ya existe y sus parámetros NO coinciden con la configuración actual, falla en

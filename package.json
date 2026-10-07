@@ -17,6 +17,7 @@
     "db:redis": "docker compose exec redis redis-cli",
     "db:migrate": "cd services/game-server && go run ./cmd/migrate",
     "db:version": "cd services/game-server && go run ./cmd/migrate -version",
+    "dev:seed": "cd services/game-server && go run ./cmd/devseed",
     "pg:init": "node scripts/pg-local.mjs init",
     "pg:start": "node scripts/pg-local.mjs start",
     "pg:stop": "node scripts/pg-local.mjs stop",

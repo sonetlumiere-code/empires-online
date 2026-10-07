@@ -371,7 +371,34 @@ tickets consumidos e idempotencia de comandos, que son los tres usos que ADR-004
 wsl -d Ubuntu -e bash -lc 'for k in $(redis-cli -n 0 --scan); do echo "$k ttl=$(redis-cli -n 0 ttl $k)"; done'
 ```
 
-### 3-bis.8 Comprobar el montaje de extremo a extremo
+### 3-bis.8 Sembrar un mundo de desarrollo
+
+Un mundo recién creado no tiene jugadores ni safe zones. Para probar a mano —por ejemplo, ver cómo
+una unidad se oculta para un jugador y no para su dueño— hace falta poblarlo:
+
+```bash
+# 1. El servidor tiene que haber arrancado una vez: es él quien crea el mundo y los territorios.
+# 2. Y tiene que estar PARADO al sembrar: el mundo vive en su RAM.
+pnpm run dev:seed
+# 3. Arrancarlo otra vez para que cargue lo sembrado.
+pnpm run server:run
+```
+
+Crea cuatro jugadores —`dev_norte`, `dev_sur`, `dev_este` y `dev_oeste`, con la contraseña
+`semilla-de-desarrollo`— por el mismo camino que el alta, y una zona `DENSE_FOREST` junto a cada
+ciudad. Las ciudades nacen juntas, a la separación mínima, así que cada jugador ve a los demás. Es
+idempotente: volver a ejecutarlo no duplica nada.
+
+Se niega a ejecutarse si `EO_ENV` no es `development`, si el servidor está escuchando en
+`EO_HTTP_ADDR` o si la base no tiene mundo todavía. Escribe sólo en la base de `EO_POSTGRES_URL`:
+**no forma parte del mundo canónico**, cuyas zonas son una decisión de diseño pendiente
+([../specs/safe-zones.md](../specs/safe-zones.md) §2).
+
+No siembra ninguna `CAVERN`, y no es un fallo de la siembra: el mundo de la semilla canónica tiene
+24 tiles de montaña en 512 × 512, y ninguno cerca de estas ciudades. Ver `Q-17` en
+[../roadmap/backlog.md](../roadmap/backlog.md).
+
+### 3-bis.9 Comprobar el montaje de extremo a extremo
 
 Con el servidor arrancado, esto recorre el vertical slice completo y dice si la máquina quedó bien montada:
 

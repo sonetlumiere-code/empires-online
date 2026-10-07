@@ -366,3 +366,12 @@ func NextStatus(status unit.Status, hp int32, moving, inZone bool) unit.Status {
 	}
 	return status
 }
+
+// Member indica si un tile pertenecería a una zona de ese tipo: cumple el
+// predicado de terreno y no está ocupado por una construcción. Es la misma
+// condición que aplica BuildIndex, expuesta para quien necesita evaluar un
+// tile suelto sin construir un índice de 1 MiB —la siembra de desarrollo, por
+// ejemplo—.
+func Member(g Grid, t Type, x, y int32) bool {
+	return satisfiesTerrain(g, t, x, y) && !g.IsBlocked(x, y)
+}

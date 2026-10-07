@@ -53,7 +53,10 @@ tabla tenga filas, el mecanismo funciona sin cambiar código.
   decisión de diseño de mundo, no de implementación. Ninguna migración inserta filas en
   `safe_zones` y el generador de mundo no las produce. Con la tabla vacía el índice existe y no
   contiene ninguna zona, y el predicado de §6.2 nunca se satisface. `SafeZoneRepo.Insert` existe y
-  lo usan los tests; una siembra de desarrollo (`EO-114`) podría usarlo sin tocar el mundo canónico.
+  lo usan los tests y la siembra de desarrollo (`pnpm run dev:seed`, `EO-114`), que escribe sólo en la
+  base de desarrollo. Antes de decidir la siembra canónica conviene leer `Q-17` en
+  [../roadmap/backlog.md](../roadmap/backlog.md): el mundo canónico casi no tiene montaña, así que
+  `CAVERN` apenas puede existir en él.
 - **Desactivación de una zona sin borrarla: `TBD (fuera de MVP)`.** `safe_zones` **no tiene** columna
   `active` en la migración `000001`; añadirla exige una migración aditiva. En el MVP el conjunto de
   zonas es inmutable tras el arranque y una zona solo deja de existir borrando su fila.
