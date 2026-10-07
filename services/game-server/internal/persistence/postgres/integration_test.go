@@ -71,7 +71,6 @@ func bootstrapRequest(username string, center world.Tile) postgres.BootstrapRequ
 		CityName:       username + "polis",
 		CityCenter:     center,
 		Era:            city.EraStone,
-		PopulationCap:  20,
 		Now:            instanteDeAlta,
 		VillagerSpawns: []world.Tile{
 			{X: center.X + 2, Y: center.Y},

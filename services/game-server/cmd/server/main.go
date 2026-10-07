@@ -248,7 +248,6 @@ func run() error {
 		auth.NewIssuer(cfg.AuthJWTSecret, ticketTTL, sysClock),
 		gameWorld, commands, httpapi.Options{
 			DefaultEra:       firstEra.Code,
-			PopulationCap:    firstEra.PopulationCap,
 			InitialVillagers: 3,
 			CivilizationID:   1,
 			FactionID:        3, // NEUTRAL

@@ -8,7 +8,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -39,7 +38,6 @@ type AuthAPI struct {
 	log          *slog.Logger
 
 	defaultEra   city.Era
-	defaultCap   int32
 	villagers    int
 	territories  *territory.Set
 	limiter      *IPLimiter
@@ -51,8 +49,7 @@ type AuthAPI struct {
 
 // Options configura la API.
 type Options struct {
-	DefaultEra    city.Era
-	PopulationCap int32
+	DefaultEra city.Era
 	// InitialVillagers es cuántos aldeanos recibe un jugador nuevo (3 en el MVP).
 	InitialVillagers int
 	CivilizationID   int32
@@ -92,7 +89,7 @@ func NewAuthAPI(
 	return &AuthAPI{
 		players: players, cities: cities, bootstrapper: bootstrapper,
 		issuer: issuer, world: w, commands: commands, log: log,
-		defaultEra: opts.DefaultEra, defaultCap: opts.PopulationCap,
+		defaultEra:   opts.DefaultEra,
 		villagers:    opts.InitialVillagers,
 		civilization: opts.CivilizationID, faction: opts.FactionID,
 		territories: opts.Territories,
@@ -155,35 +152,43 @@ func (a *AuthAPI) Register() http.HandlerFunc {
 			return
 		}
 
-		// Emplazamiento determinista: derivado del nombre de usuario, para que dos
-		// altas simultáneas no compitan por el mismo tile.
-		existing, err := a.existingCityCenters(ctx)
-		if err != nil {
-			a.log.Error("no se pudieron leer las ciudades existentes", "err", err)
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "error interno")
-			return
-		}
-		site, err := founding.FindSite(a.world, existing, hashSeed(creds.Username), a.villagers)
-		if err != nil {
-			writeError(w, http.StatusConflict, "NO_SITE_AVAILABLE", "no queda sitio para una ciudad nueva")
-			return
-		}
-
+		// Emplazamiento determinista, derivado del nombre de usuario. Se busca
+		// fuera de la transacción (RN-PLAYER-014) y se vuelve a comprobar dentro,
+		// bajo el cerrojo de fundación: sin esa segunda comprobación, dos altas
+		// simultáneas podían fundar a menos de la distancia mínima (INV-CITY-008).
+		var site founding.Site
 		result, err := a.bootstrapper.Create(ctx, postgres.BootstrapRequest{
 			Username:       creds.Username,
 			PasswordHash:   string(hash),
 			CivilizationID: a.civilization,
 			FactionID:      a.faction,
 			CityName:       creds.Username + "polis",
-			CityCenter:     site.Center,
 			Era:            a.defaultEra,
-			PopulationCap:  a.defaultCap,
-			TerritoryID:    a.territoryAt(site.Center),
 			Tick:           a.currentTick(),
 			Now:            a.clock.Now(),
-			VillagerSpawns: site.Spawns,
+			Place: func(existing []world.Tile) (postgres.Placement, error) {
+				s, err := founding.FindSite(a.world, existing, hashSeed(creds.Username), a.villagers)
+				if err != nil {
+					return postgres.Placement{}, err
+				}
+				site = s
+				return postgres.Placement{
+					Center: s.Center, Spawns: s.Spawns, TerritoryID: a.territoryAt(s.Center),
+				}, nil
+			},
+			Verify: founding.FarEnough,
 		})
 		if err != nil {
+			if errors.Is(err, founding.ErrNoSite) {
+				writeError(w, http.StatusConflict, "NO_SITE_AVAILABLE", "no queda sitio para una ciudad nueva")
+				return
+			}
+			if errors.Is(err, postgres.ErrPlacementContended) {
+				a.log.Error("alta sin emplazamiento estable tras varios intentos",
+					"err", err, "username", creds.Username)
+				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "no se pudo crear el jugador")
+				return
+			}
 			if errors.Is(err, player.ErrUsernameTaken) {
 				writeError(w, http.StatusConflict, "USERNAME_TAKEN", "ese nombre ya está en uso")
 				return
@@ -265,18 +270,6 @@ func (a *AuthAPI) Login() http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}
-}
-
-func (a *AuthAPI) existingCityCenters(ctx context.Context) ([]world.Tile, error) {
-	cities, err := a.cities.ListAll(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]world.Tile, 0, len(cities))
-	for _, c := range cities {
-		out = append(out, world.Tile{X: c.CenterX, Y: c.CenterY})
-	}
-	return out, nil
 }
 
 func (a *AuthAPI) dispatch(cmd simulation.Command) {

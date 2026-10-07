@@ -68,7 +68,7 @@ comando `city.found` en el protocolo v1 (canon §13).
 |---|---|---|
 | `ownerPlayerId` | `uuid` | Transacción de bootstrap (`internal/persistence/postgres/bootstrap.go`). |
 | `name` | `text` | Hoy se deriva del `username`: `username + "polis"` (`internal/httpapi/auth.go`). Que el jugador proponga el nombre es `Fuera de MVP`. Validación en `RN-CITY-011`. |
-| Semilla de emplazamiento | `hashSeed(username) uint64` | Elección determinista del sitio: dos altas simultáneas no compiten por el mismo tile. **No** deriva de `EO_WORLD_SEED`, que gobierna el terreno, no el emplazamiento. |
+| Semilla de emplazamiento | `hashSeed(username) uint64` | Elección determinista del sitio, que hace raro que dos altas simultáneas busquen en la misma región; cuando ocurre, la comprobación bajo cerrojo de `RN-PLAYER-014` lo resuelve. **No** deriva de `EO_WORLD_SEED`, que gobierna el terreno, no el emplazamiento. |
 
 ### 4.2 Del mundo
 

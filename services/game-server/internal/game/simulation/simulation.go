@@ -3,7 +3,9 @@ package simulation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -386,6 +388,14 @@ func (s *Simulation) handlePlayerDisconnected(cmd PlayerDisconnected) {
 // las ciudades ya están cargadas y sus marcas temporales también.
 func (s *Simulation) ProcessTimers(now time.Time) {
 	// 1. Margen de reconexión agotado: ONLINE -> OFFLINE_PENDING.
+	//
+	// disconnectedAt es un map, y el orden de iteración de un map de Go es
+	// aleatorio por diseño. Por eso primero se decide quién degrada y después se
+	// aplica en orden ascendente de ciudad: si dos jugadores agotan el margen en
+	// el mismo tick, sus city.update y sus escrituras salen siempre en el mismo
+	// orden (canon §8). La marca es el `now` del tick, el mismo reloj con el que
+	// el paso 3 evalúa el cooldown.
+	var degradan []*city.City
 	for playerID, since := range s.disconnectedAt {
 		if s.sessions[playerID] > 0 {
 			delete(s.disconnectedAt, playerID)
@@ -394,8 +404,14 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 		if now.Sub(since) < s.deps.DisconnectGrace {
 			continue
 		}
-		s.setPresence(playerID, city.PresenceOfflinePending)
 		delete(s.disconnectedAt, playerID)
+		if c, ok := s.state.CityOf(playerID); ok {
+			degradan = append(degradan, c)
+		}
+	}
+	sort.Slice(degradan, func(i, j int) bool { return degradan[i].ID < degradan[j].ID })
+	for _, c := range degradan {
+		s.applyPresence(c, city.PresenceOfflinePending, now)
 	}
 
 	// 2. Caducidad de tratados. Se encola, no se ejecuta: el tick no hace I/O.
@@ -428,8 +444,12 @@ func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now t
 		return
 	}
 	if !city.CanTransition(c.PresenceState, state) {
-		s.deps.Log.Warn("transición de presencia rechazada",
-			"city_id", c.ID, "from", c.PresenceState, "to", state)
+		// Ningún llamante pide una arista prohibida a propósito: llegar aquí es
+		// un defecto, y se señala como tal (INV-CITY-005).
+		s.deps.Log.Error("invariant_violation",
+			"inv_id", "INV-CITY-005", "severity", "ALTO", "policy", "REJECT",
+			"entity", fmt.Sprintf("city:%d", c.ID), "tick", s.state.Tick(),
+			"detail", fmt.Sprintf("transición %s → %s no permitida: se conserva el estado", c.PresenceState, state))
 		return
 	}
 

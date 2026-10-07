@@ -89,6 +89,14 @@ func isViable(w *world.World, center world.Tile, existing []world.Tile) bool {
 			}
 		}
 	}
+	return FarEnough(center, existing)
+}
+
+// FarEnough indica si un centro guarda la separación mínima con todos los
+// centros existentes (INV-CITY-008). Es la comprobación barata que el alta
+// repite dentro de su transacción, bajo el cerrojo de fundación, contra las
+// ciudades confirmadas mientras se buscaba el sitio.
+func FarEnough(center world.Tile, existing []world.Tile) bool {
 	for _, other := range existing {
 		if chebyshev(center, other) < minCityDistance {
 			return false

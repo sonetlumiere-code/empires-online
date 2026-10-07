@@ -159,7 +159,6 @@ func run() error {
 			CityName:       nombre + "polis",
 			CityCenter:     site.Center,
 			Era:            eras[0].Code,
-			PopulationCap:  eras[0].PopulationCap,
 			TerritoryID:    territorioID,
 			Tick:           state.CurrentTick,
 			Now:            clock.NewSystemClock().Now(),

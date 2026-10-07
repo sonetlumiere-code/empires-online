@@ -89,9 +89,13 @@ func TestLasZonasSeCarganEnOrdenDeIDYSinPerderCampos(t *testing.T) {
 
 // inmediato ejecuta las escrituras durables al instante, para que el test no
 // dependa de los tiempos de los workers.
-type inmediato struct{ errs []error }
+type inmediato struct {
+	errs []error
+	jobs []string
+}
 
 func (p *inmediato) Submit(job simulation.Job) {
+	p.jobs = append(p.jobs, job.Name)
 	if err := job.Run(context.Background()); err != nil {
 		p.errs = append(p.errs, err)
 	}

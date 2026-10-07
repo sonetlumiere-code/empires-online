@@ -131,7 +131,7 @@ Constante no configurable por entorno, fijada en código: el TTL del ticket, **6
 timeouts de lectura (45 s) y escritura (10 s) del WebSocket.
 
 La semilla del emplazamiento **no** es `EO_WORLD_SEED`: es un FNV-1a de 64 bits del propio `username`
-(`hashSeed`). Así dos altas simultáneas no compiten por el mismo tile y el mismo nombre obtiene siempre el
+(`hashSeed`). Así es raro que dos altas simultáneas busquen en la misma región, y el mismo nombre obtiene siempre el
 mismo punto de partida, lo que hace el alta reproducible en tests y depurable en producción.
 
 ## 5. Outputs
@@ -171,7 +171,7 @@ Dominio de reglas: `RN-PLAYER`.
 | `RN-PLAYER-011` | En MVP un jugador posee **exactamente una** ciudad. El área de interés inicial se centra en `cities.center_x` / `cities.center_y` de esa ciudad, con radio `EO_INTEREST_RADIUS_CHUNKS` (canon §13). Multi-ciudad es `Fuera de MVP`. |
 | `RN-PLAYER-012` | Los rasgos de civilización no se consultan con condicionales por código de civilización. Toda lectura pasa por `Civilization.Trait(key, def)` (§6.3). |
 | `RN-PLAYER-013` | La facción no restringe ninguna acción del MVP. Es un atributo persistido; su efecto sobre reglas es `Fuera de MVP`. |
-| `RN-PLAYER-014` | El emplazamiento de la ciudad inicial se elige **antes** de abrir la transacción, con `founding.FindSite`: espiral determinista desde `hashSeed(username)`, entorno despejado de radio 3, separación mínima de 24 tiles con cualquier centro de ciudad existente, y 3 aldeanos a radio 2 sobre tiles transitables. Si no hay sitio, el alta responde `NO_SITE_AVAILABLE` (409) y **no** se coloca al jugador «donde sea». |
+| `RN-PLAYER-014` | El emplazamiento de la ciudad inicial se elige **antes** de abrir la transacción, con `founding.FindSite`: espiral determinista desde `hashSeed(username)`, entorno despejado de radio 3, separación mínima de 24 tiles con cualquier centro de ciudad existente, y 3 aldeanos a radio 2 sobre tiles transitables. Si no hay sitio, el alta responde `NO_SITE_AVAILABLE` (409) y **no** se coloca al jugador «donde sea». Dentro de la transacción, bajo un `pg_advisory_xact_lock` que serializa las altas, el centro elegido se vuelve a comprobar con `founding.FarEnough` contra los centros ya confirmados; si otra alta se adelantó, la búsqueda se repite hasta tres veces y, agotadas, el alta responde `INTERNAL_ERROR` (500) sin escribir nada (`INV-CITY-008`). |
 
 ### 6.1 Ortogonalidad Civilization × Global Faction
 
@@ -493,9 +493,11 @@ Notas de diseño:
   `Fuera de MVP`. Ver [city.md](city.md) §6.
 - La elección del emplazamiento y de los tres tiles de los aldeanos ocurre **en memoria y antes** de abrir la
   transacción (`founding.FindSite`, `RN-PLAYER-014`): la transacción no ejecuta búsquedas costosas con locks
-  abiertos.
-- `population_limit` se toma de `eras.population_cap` de `STONE_AGE` (20). Nunca se escribe el literal 20 en
-  el código: el valor viaja desde el catálogo como `Options.PopulationCap`.
+  abiertos. Lo único que hace dentro es la comprobación barata de la distancia contra los centros ya
+  confirmados.
+- `population_limit` se toma de `eras.population_cap` de la era inicial, `STONE_AGE` (20). Nunca se escribe el
+  literal 20 en el código: el `Bootstrapper` lo lee de `eras` dentro de la misma transacción que crea la
+  ciudad, y la petición de alta lleva la era y no el límite (`INV-CITY-003`).
 - `hp` y `max_hp` de los aldeanos salen de `unit.Lookup(VILLAGER).MaxHP` (40), no de un literal.
 - La transacción **no** corre dentro del tick (canon §6: el tick jamás hace I/O bloqueante contra Postgres).
   Corre en la goroutine de la petición HTTP; el loop recibe el jugador ya creado a través del comando

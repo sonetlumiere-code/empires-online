@@ -2,12 +2,15 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
 // CityRepo persiste ciudades y su estado de presencia.
@@ -51,15 +54,22 @@ func (r *CityRepo) ListAll(ctx context.Context) ([]*city.City, error) {
 }
 
 // Create inserta una ciudad y devuelve su identificador asignado.
+//
+// last_online_at lo aporta el llamante desde su Clock inyectado; el `now()` del
+// servidor de base de datos es otro reloj, y la presencia se evalúa contra el
+// del game loop.
 func (r *CityRepo) Create(ctx context.Context, db DB, c *city.City) (int64, error) {
+	if c.LastOnlineAt == nil {
+		return 0, fmt.Errorf("insertar ciudad: falta last_online_at")
+	}
 	var id int64
 	err := db.QueryRow(ctx,
 		`INSERT INTO cities (owner_player_id, name, center_x, center_y, era,
 		                     population, population_limit, presence_state, last_online_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id`,
 		c.OwnerPlayerID, c.Name, c.CenterX, c.CenterY, string(c.Era),
-		c.Population, c.PopulationLimit, string(c.PresenceState),
+		c.Population, c.PopulationLimit, string(c.PresenceState), c.LastOnlineAt.UTC(),
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insertar ciudad: %w", normalize(err))
@@ -156,6 +166,40 @@ func (r *CityRepo) UpdatePopulation(ctx context.Context, db DB, cityID int64) (i
 		return 0, fmt.Errorf("recalcular población de la ciudad %d: %w", cityID, normalize(err))
 	}
 	return population, nil
+}
+
+// ListCenters devuelve los centros de todas las ciudades, en orden de id.
+func (r *CityRepo) ListCenters(ctx context.Context, db DB) ([]world.Tile, error) {
+	rows, err := db.Query(ctx, `SELECT center_x, center_y FROM cities ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("leer los centros de las ciudades: %w", err)
+	}
+	defer rows.Close()
+	var out []world.Tile
+	for rows.Next() {
+		var c world.Tile
+		if err := rows.Scan(&c.X, &c.Y); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// PopulationCapOf devuelve el population_cap de una era del catálogo.
+//
+// Es la única fuente del límite de población de una ciudad nueva
+// (INV-CITY-003): ningún literal del código ni ningún campo de la petición.
+func (r *CityRepo) PopulationCapOf(ctx context.Context, db DB, era city.Era) (int32, error) {
+	var populationCap int32
+	err := db.QueryRow(ctx, `SELECT population_cap FROM eras WHERE code = $1`, string(era)).Scan(&populationCap)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, fmt.Errorf("la era %q no existe en el catálogo: %w", era, ErrNotFound)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("leer el population_cap de %q: %w", era, err)
+	}
+	return populationCap, nil
 }
 
 // ListEras carga el catálogo de eras.
