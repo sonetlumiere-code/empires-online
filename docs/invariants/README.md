@@ -81,12 +81,12 @@ La fila `Cobertura` responde a una sola pregunta —**¿hay hoy un test real que
 |---|---|
 | **Cubierto** | Existe al menos un test que **está escrito y pasa** en la suite actual. Se cita su nombre real y su paquete. |
 | **Parcial** | Hay tests reales que cubren una parte del enunciado, y se dice explícitamente qué parte queda fuera. |
-| **Sin cobertura** | No hay ningún test en verde. O el test está **diseñado pero no ejecutado** (los de integración, que requieren Docker Desktop arrancado), o directamente no existe todavía. |
+| **Sin cobertura** | No hay ningún test en verde que cubra el enunciado: o el test no existe todavía, o existe pero nadie ha comprobado que cubra el enunciado entero y la fila sigue sin reconciliar (`EO-118`). |
 
 La misma disciplina se aplica dentro de **Cómo se verifica**, donde cada línea lleva su marca:
 
 - `TestX` (unit, `internal/...`) — **existe y pasa**.
-- `TestY` (integration, `internal/...`) — **diseñado, aún no ejecutado**: el daemon de Docker no arrancó en la máquina de desarrollo, así que la suite de integración está escrita pero no verificada.
+- `TestY` (integration, `internal/...`) — los de integración se ejecutan en la CI y en local contra PostgreSQL y Redis reales: cuentan como cobertura igual que los demás niveles.
 - Test previsto: `Test_INV_...` — no existe todavía; el nombre fija la convención de §6 para cuando se escriba.
 
 Esta distinción no es burocracia. Un catálogo que enumera nombres de test sin decir cuáles existen da una falsa sensación de cobertura, y esa falsa sensación es exactamente lo que un catálogo de invariantes no puede permitirse. Los nombres reales de los tests del proyecto están en español (`TestEjemploNumericoCanonico`, `TestAutomataDePresencia`); los `Test_INV_*` que aparecen en las fichas son, salvo indicación en contra, nombres **previstos**.
@@ -190,7 +190,7 @@ describe('INV-SEC-005 message size limit', () => { ... })
 
 Niveles de test según canon §19: `unit`, `integration`, `contract`, `simulation` (con `FakeClock`), `recovery` y `load` (diferido).
 
-Los de **integración** están doblemente cerrados en el repositorio real: llevan `//go:build integration` y además comprueban `os.Getenv("EO_INTEGRATION") == "1"`, saltándose con un mensaje que remite a `pnpm run db:up`. Se ejecutan con `EO_INTEGRATION=1 go test -tags=integration ./...` y requieren PostgreSQL y Redis reales vía `docker compose`. Como el daemon de Docker no arrancó en la máquina de desarrollo, esa suite está **escrita pero no verificada**, y este catálogo la etiqueta siempre como «diseñado, aún no ejecutado» en lugar de contarla como cobertura.
+Los de **integración** están doblemente cerrados en el repositorio real: llevan `//go:build integration` y además comprueban `os.Getenv("EO_INTEGRATION") == "1"`, saltándose con un mensaje si falta. Se ejecutan con `EO_INTEGRATION=1 go test -tags=integration ./...` contra PostgreSQL y Redis reales —con Docker o sin él, ver [../operations/local-development.md](../operations/local-development.md) §9— y la CI los ejecuta en cada push. Hasta septiembre de 2026 no se habían ejecutado nunca y este catálogo los etiquetaba como «diseñado, aún no ejecutado»; algunas filas conservan todavía esa marca sin reconciliar.
 
 Los tests **que ya existen** en el repositorio están escritos en español y **no** contienen el ID en su nombre: `TestEjemploNumericoCanonico`, `TestAutomataDePresencia`, `TestNuevaOrdenReemplazaLaAnterior`. Esa es la realidad del árbol hoy y este catálogo la refleja tal cual: cada ficha cita el nombre real del test que la cubre. La convención `Test_INV_*` se aplica a los tests **nuevos** que se escriban específicamente para cerrar un invariante sin cobertura.
 
@@ -204,7 +204,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 |---|---|
 | ✓ | **Cubierto** por al menos un test que existe y pasa hoy |
 | ~ | **Parcial**: hay test real para una parte del enunciado |
-| ○ | **Sin cobertura** en verde: diseñado y no ejecutado, o todavía inexistente |
+| ○ | **Sin cobertura** en verde: el test no existe, o la fila no se ha reconciliado con la suite |
 
 La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** cuando no. Cada ficha lo detalla.
 
@@ -382,7 +382,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 |---|---|---|
 | ✓ Cubierto | 49 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 15 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 26 | Diseñado y no ejecutado, o todavía inexistente |
+| ○ Sin cobertura | 26 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
 > **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
