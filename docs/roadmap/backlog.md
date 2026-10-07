@@ -33,7 +33,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | M5 (EO-080 … EO-089) | Presencia y protección completadas. Abiertos: `EO-084`, `EO-085`, `EO-086` (safe zones y `HIDDEN`). |
 | M6 (EO-090 … EO-097) | **Completo salvo el entregable 8** (restricciones en territorio ajeno), bloqueado por una decisión de juego. |
 | M7 (EO-100 … EO-108) | **Dominio, persistencia y caducidad hechos y verificados.** Falta la puerta de entrada: el protocolo v1 no tiene comandos de guarnición. |
-| Transversales | `EO-110`, `EO-112` y `EO-113` hechos. Abiertos: `EO-111`, `EO-114`, `EO-115`, `EO-116` y el nuevo `EO-117` (autenticación). |
+| Transversales | `EO-110`, `EO-112` y `EO-113` hechos. Abiertos: `EO-111`, `EO-114`, `EO-115`, `EO-116`, `EO-117` (autenticación) y `EO-118` (reconciliar las docs con la ejecución real). |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los 44 tests de integración se
 ejecutan** contra PostgreSQL y Redis reales, en local y en remoto. `DEBT-19` está cerrada. Lo que sigue
@@ -195,6 +195,22 @@ sin evidencia local es la imagen del contenedor, que sólo se construye en la CI
 | EO-115 | Escenario de simulación reproducible para regresión | Transversal | P2 | M | EO-077 | Un escenario fijo con `FakeClock` produce el mismo estado final en cada ejecución y se compara contra un *golden file*. |
 | EO-116 | Tests de carga con k6 | Transversal | P3 | L | EO-113 | Diferido: no forma parte del MVP y no bloquea ningún milestone. |
 | EO-117 | Sacar la autenticación del Game Server | Transversal | P1 | L | DEBT-18 | **Planificado, no empezado.** Plan por pasos en la sección «Plan: sacar la autenticación del Game Server» de este documento. El paso 1 es un ADR, no código. |
+| EO-118 | Reconciliar la documentación con el estado de ejecución real | Transversal | P1 | M | EO-016 | **Abierto.** Ninguna afirmación de `docs/` sobre tests ejecutados o CI inexistente contradice la realidad. Alcance medido: **117 líneas en 33 archivos** afirman «escrito, no ejecutado» o «el daemon de Docker no arrancó», falso desde que la CI ejecuta la suite de integración contra PostgreSQL y Redis reales. Incluye las marcas de cobertura `○`/`✔` de `docs/invariants/` y el recuento de [README.md](../invariants/README.md) («○ Sin cobertura: 34»), que hay que verificar una por una contra la suite real, no reemplazar en bloque. Ver la nota de método más abajo. |
+
+### Nota de método para `EO-118`
+
+Tres advertencias que vienen de haberlo intentado mal:
+
+1. **Un `sed` global es la forma equivocada de hacerlo.** Ya rompió una vez la alineación de un
+   diagrama ASCII y reescribió una frase histórica que describía correctamente el pasado. Muchas de
+   esas 117 líneas no son la misma afirmación: unas dicen «este test no se ha ejecutado» (hoy falso),
+   otras «este test no existe» (a menudo sigue siendo verdad) y otras narran cómo era el entorno en
+   su momento (y deben quedarse).
+2. **`pnpm run docs:check` no ayuda aquí.** Verifica enlaces, anclas y mayúsculas de las rutas; no
+   puede detectar una afirmación que envejeció. Eso sigue siendo trabajo de quien lee.
+3. **El criterio es el resultado de la suite, no la memoria.** Para cada marca de cobertura, la
+   pregunta es si existe hoy un test con ese nombre y si pasó en la última ejecución; ambas cosas se
+   comprueban, no se recuerdan.
 
 ---
 

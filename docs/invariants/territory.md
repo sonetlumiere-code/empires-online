@@ -81,7 +81,7 @@ La segunda mitad —contención en el mundo— tiene el modo de fallo contrario.
 | Severidad | ALTO |
 | Aplicación | DOMAIN, TEST |
 | Milestone | M7 |
-| Política ante violación | FAIL_FAST en la carga |
+| Política ante violación | Log `error` + métrica; arranque degradado, **no** `FAIL_FAST` (ver «Violación en runtime») |
 | Cobertura | **Sin cobertura**: la comprobación de solape es diseño pendiente; **no existe todavía** el índice ni el test |
 
 **Enunciado.** Dos territorios no comparten ningún tile.
@@ -349,7 +349,7 @@ La cualificación «a la huella de chunks del territorio» es la parte con conte
 | Severidad | ALTO |
 | Aplicación | DOMAIN, TEST |
 | Milestone | M7 |
-| Política ante violación | FAIL_FAST en la carga |
+| Política ante violación | Log `error` + métrica; arranque degradado, **no** `FAIL_FAST` (ver «Violación en runtime») |
 | Cobertura | **Sin cobertura**: la comprobación de solape es diseño pendiente |
 
 **Enunciado.** Dos Safe Zones no comparten ningún tile.
@@ -360,15 +360,17 @@ Aquí la ambigüedad tiene una consecuencia adicional que el territorio no tiene
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — la validación de carga comprobará el solape por pares antes de construir el índice, con la misma comparación de cuatro enteros que los territorios.
-- `DOMAIN` — el índice `safeZoneOfTile` se construye escribiendo cada tile una sola vez; una segunda escritura sobre un tile ya asignado es la detección del solape.
+- `DOMAIN` — el índice `safeZoneOfTile` se construye escribiendo cada tile una sola vez, en orden ascendente de `id` (`RN-SAFE-006`); una segunda escritura sobre un tile ya asignado **es** la detección del solape.
+- No hace falta además una comparación por pares, por la misma razón que en [INV-TERR-002](#inv-terr-002): pintar el índice ya recorre todos los tiles, y comparar rectángulos aparte sería trabajo duplicado que puede divergir del resultado real del índice.
 - `DB` — **no hay garantía en la base de datos**: `safe_zones` sólo declara `safe_zones_type_valid` y `safe_zones_bounds_ordered`. Una exclusión de rangos exigiría `btree_gist` y una migración: **TBD (fuera de MVP)**.
 
 **Cómo se verifica.**
 
 - Test previsto: `Test_INV_SAFE_001_SafeZonesDoNotOverlap` (unit) — sobre el conjunto cargado, ningún par de rectángulos se solapa; zonas con aristas adyacentes se aceptan como control negativo.
 
-**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-SAFE-001`, los dos `id` de zona y el tile en conflicto. Política `FAIL_FAST` del arranque.
+**Violación en runtime.** Log de nivel `error` por cada par en conflicto, con los dos `id` de zona, el tile afectado y el total de tiles compartidos, y **el servidor arranca igualmente** con el estado marcado como inconsistente. Gana siempre la zona de `id` menor.
+
+**Esto NO es `FAIL_FAST`, y es deliberado**, igual que en [INV-TERR-002](#inv-terr-002). La regla vinculante es `RN-SAFE-007` de [../specs/safe-zones.md](../specs/safe-zones.md), que dice literalmente que *el servidor no aborta*. Negarse a arrancar por unos rectángulos sembrados mal dejaría el mundo entero inaccesible para todos los jugadores; el modo degradado es *determinista* —gana el `id` menor, el mismo en cada arranque— y afecta sólo a los tiles en conflicto. Una versión anterior de esta ficha pedía abortar el arranque, en contradicción con su propia spec.
 
 ---
 
