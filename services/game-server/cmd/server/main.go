@@ -440,9 +440,14 @@ func loadTerritories(
 	// RN-TERR-004: un solapamiento no impide arrancar, pero deja el estado
 	// marcado como inconsistente y tiene que verse en los logs.
 	for _, o := range overlaps {
-		log.Error("territorios solapados: INV-TERR-002 violado",
+		// Señal obligatoria de docs/invariants/README.md §5.1: msg fijo e
+		// inv_id, para que las violaciones se puedan filtrar en los logs.
+		log.Error("invariant_violation",
+			"inv_id", "INV-TERR-002", "severity", "ALTO", "policy", "REPAIR",
+			"entity", fmt.Sprintf("territory:%d", o.Discarded),
 			"kept", o.Kept, "discarded", o.Discarded,
-			"first_tile_x", o.X, "first_tile_y", o.Y, "tiles", o.Tiles)
+			"first_tile_x", o.X, "first_tile_y", o.Y, "tiles", o.Tiles,
+			"detail", "territorios solapados: gana el id menor")
 	}
 
 	log.Info("territorios cargados",

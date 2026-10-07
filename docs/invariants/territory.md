@@ -79,7 +79,7 @@ La segunda mitad —contención en el mundo— tiene el modo de fallo contrario.
 | Severidad | ALTO |
 | Aplicación | DOMAIN, TEST |
 | Milestone | M7 |
-| Política ante violación | Log `error` + métrica; arranque degradado, **no** `FAIL_FAST` (ver «Violación en runtime») |
+| Política ante violación | REPAIR: gana el `id` menor; log `invariant_violation`; arranque degradado, **no** `FAIL_FAST` (ver «Violación en runtime»). La métrica está pendiente de ADR ([README.md](README.md) §5.1) |
 | Cobertura | **Sin cobertura**: la comprobación de solape es diseño pendiente; **no existe todavía** el índice ni el test |
 
 **Enunciado.** Dos territorios no comparten ningún tile.
@@ -101,7 +101,7 @@ La propiedad es geométrica y no política: **también** se prohíbe el solape e
 - `TestDosTerritoriosSolapadosResuelvenElIDMenorYSeReportan` y `TestElReporteDeSolapamientosEsDeterminista` (unit, `internal/domain/territory/territory_test.go`): el solape se detecta, gana el `id` menor, se cuentan los tiles compartidos, y el informe no depende del orden de entrada.
 - `TestLaRejillaCubreElMundoSinHuecosNiSolapes` (unit): la rejilla que siembra el mundo no se solapa consigo misma, que es el único productor de geometría del MVP.
 
-**Violación en runtime.** Log de nivel `error` por cada par en conflicto, con los dos `territory_id`, el primer tile afectado y el total de tiles compartidos, y **el servidor arranca igualmente** con el estado marcado como inconsistente.
+**Violación en runtime.** `cmd/server` registra un log `invariant_violation` con `inv_id=INV-TERR-002` por cada par en conflicto, con los dos `territory_id`, el primer tile afectado y el total de tiles compartidos, y **el servidor arranca igualmente** con el estado marcado como inconsistente.
 
 **Esto NO es `FAIL_FAST`, y es deliberado.** Una versión anterior de este documento pedía abortar el arranque. Se descartó: negarse a arrancar por unos rectángulos sembrados mal deja el mundo entero inaccesible para todos los jugadores, mientras que el modo degradado es *determinista* —gana siempre el `id` menor, el mismo en cada arranque— y afecta sólo a los tiles en conflicto. Un mapa político ambiguo es peor que uno correcto y mucho mejor que ninguno. La regla vinculante es `RN-TERR-004` de [../specs/territory.md](../specs/territory.md).
 
