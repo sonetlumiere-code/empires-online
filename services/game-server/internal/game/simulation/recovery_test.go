@@ -103,6 +103,12 @@ func TestElTickEsEstrictamenteCreciente(t *testing.T) {
 // sus A* en el mismo tick—, ningún tick supera su período y
 // eo_game_tick_overruns_total sigue a cero.
 func TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick(t *testing.T) {
+	if conDetectorDeCarreras {
+		// Con -race el primer tick, el de los diez A*, ya pasa de 100 ms: se
+		// mediría el detector, no la simulación. El criterio se mide en las
+		// ejecuciones sin -race: el paso «Cobertura» de la CI y la suite local.
+		t.Skip("un presupuesto de tiempo de pared no se mide con el detector de carreras")
+	}
 	h := newHarness(t)
 	for i := int64(0); i < 7; i++ {
 		h.ponerUnidad(10+i, h.playerID, world.Tile{X: int32(4 + i), Y: 20}, unit.StatusIdle, 40)

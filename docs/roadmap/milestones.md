@@ -753,7 +753,9 @@ grupo ni recolección.
   cancelación, los siete rechazos —sin que ninguno llegue a invocar el A\*—, el movimiento con el jugador
   desconectado, el volcado por lotes y la orden hacia el tile propio en tránsito.
 - **HECHO** *simulation*: diez unidades moviéndose a la vez, con sus diez A\* en el mismo tick, no producen
-  ningún overrun (`TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick`).
+  ningún overrun (`TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick`). Es un presupuesto de tiempo de
+  pared: se salta con `-race`, que multiplica el coste de CPU, y se mide en las ejecuciones sin él (el paso
+  «Cobertura» de la CI y la suite local).
 - **HECHO** *unit*: la posición derivada nunca adelanta al reloj, como propiedad sobre polilíneas generadas
   con semilla fija (`TestLaPosicionNuncaAdelantaAlReloj`).
 - **HECHO** *integration*: una nueva orden sobre una unidad en movimiento cancela la anterior a
@@ -805,7 +807,8 @@ tres categorías: write-through, dirty-flag y reconstruible.
 8. **Cumplido.** Matar y rearrancar el servidor a mitad de trayecto no pierde el movimiento
    (`TestRecuperacionMovimientoEnCurso`, `TestRecuperacionCompletaTrasReinicio`).
 9. **Cumplido.** `eo_game_tick_overruns_total` permanece en cero durante un escenario de 10 unidades
-   moviéndose a la vez (`TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick`).
+   moviéndose a la vez (`TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick`, medido sin `-race`: con el
+   detector de carreras el primer tick ya pasa de 100 ms, y eso rompió la CI de `86878d5`).
 10. **Parcial.** En el cliente la unidad se dibuja de forma continua entre waypoints (`renderPosition`); la
     corrección suave al llegar un delta no está conectada (`EO-075`). No se ha verificado a la vista en
     esta reconciliación.
