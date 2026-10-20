@@ -635,8 +635,9 @@ y la unidad se queda en su última posición consolidada. Es un RPO conocido, no
    - si no: se reanuda desde la polilínea, calculando la posición actual con la regla de §8.2;
    - si la polilínea es inválida: el movimiento pasa a `FAILED` y la unidad se queda donde estaba. **Nunca se
      teletransporta a nadie por un dato dudoso.**
-   Las murallas de las ciudades existentes vuelven a bloquear su rectángulo 3×3: la capa de ocupación no se
-   persiste, se deriva.
+   Las murallas de las ciudades existentes vuelven a bloquear su rectángulo 3×3 —la capa de ocupación no se
+   persiste, se deriva—, y lo que una caída haya dejado dentro de una muralla, o en marcha a través de ella, se
+   aparta o se detiene como en el tick del alta (`RN-CITY-022` en [../specs/city.md](../specs/city.md)).
 6. Arrancan el servidor HTTP, el de métricas y el game loop; `/ready` empieza a devolver 200.
 7. Los jugadores reconectan (con *backoff*), obtienen ticket nuevo, envían `session.hello`, reciben
    `session.welcome` y un `world.snapshot` del área de interés (por defecto 5×5 chunks), y a partir de ahí

@@ -45,6 +45,10 @@ func (s *Simulation) handleIntroducePlayer(cmd IntroducePlayer) {
 		w.SetBlocked(cmd.BlockedMinX, cmd.BlockedMinY, cmd.BlockedMaxX, cmd.BlockedMaxY, true)
 		// Lo que acaba de quedar amurallado deja de ser refugio (INV-SAFE-002).
 		s.excludeFromSafeZones(cmd.BlockedMinX, cmd.BlockedMinY, cmd.BlockedMaxX, cmd.BlockedMaxY, cmd.City.ID)
+		// Y nadie se queda dentro ni la atraviesa (RN-CITY-022).
+		s.clearFootprint(footprint{
+			minX: cmd.BlockedMinX, minY: cmd.BlockedMinY, maxX: cmd.BlockedMaxX, maxY: cmd.BlockedMaxY,
+		}, cmd.City.ID, nowMs)
 
 		cx, cy := w.ChunkOf(cmd.City.CenterX, cmd.City.CenterY)
 		s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeCityUpdate,

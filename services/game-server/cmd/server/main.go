@@ -166,8 +166,14 @@ func run() error {
 	// Las murallas de las ciudades existentes vuelven a bloquear su tile: la capa
 	// de ocupación no se persiste, se deriva del mundo.
 	for _, c := range cities {
-		gameWorld.SetBlocked(c.CenterX-1, c.CenterY-1, c.CenterX+1, c.CenterY+1, true)
+		minX, minY, maxX, maxY := c.UrbanBounds()
+		gameWorld.SetBlocked(minX, minY, maxX, maxY, true)
 	}
+	// Una caída entre un alta y el volcado siguiente deja en disco unidades
+	// dentro de la muralla nueva, o en marcha a través de ella: se apartan y se
+	// detienen igual que en el tick del alta (RN-CITY-022).
+	recovery.FinishedMovements = append(recovery.FinishedMovements,
+		simulation.ClearFootprints(state, cities, sysClock.NowMs(), log)...)
 
 	// Las zonas seguras se indexan DESPUÉS de las murallas: el índice excluye
 	// los tiles ocupados (INV-SAFE-002), y construirlo antes dejaría dentro

@@ -392,10 +392,14 @@ distinto de cero. Nunca se arranca a medias.
                     movimiento en curso                 -> se reanuda desde la polilínea;
                     polilínea inválida                  -> FAILED y la unidad se queda donde
                                                            estaba (nunca se teletransporta a
-                                                           nadie por un dato dudoso).
+                                                           nadie por un dato dudoso);
+                    unidad GARRISONED con movimiento    -> FAILED y la unidad sigue guarnecida;
+                    unidad MOVING sin movimiento        -> IDLE donde estaba.
                   Después se rebloquean las murallas 3x3 de las ciudades existentes: la capa de
-                  ocupación no se persiste, se deriva. Y se cierran en base de datos los
-                  movimientos recuperados como COMPLETED.
+                  ocupación no se persiste, se deriva. simulation.ClearFootprints aparta lo que
+                  una caída haya dejado dentro de una muralla y detiene las rutas que la cruzan
+                  (RN-CITY-022). Y se cierran en base de datos los movimientos recuperados:
+                  COMPLETED, FAILED o CANCELLED, cada uno con la posición final de su unidad.
  5. simulación    persistence.NewQueue + queue.Start(rootCtx, 4); observability.NewHealth con
                   umbral de 5 s y los checkers de postgres y redis; ws.NewHub; el canal de
                   comandos (8192); simulation.New(...) y loop.New(...).

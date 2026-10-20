@@ -400,7 +400,7 @@ Aquí la ambigüedad tiene una consecuencia adicional que el territorio no tiene
 | Aplicación | DOMAIN, TEST |
 | Milestone | M5 |
 | Política ante violación | REPAIR (excluir el tile de la zona) |
-| Cobertura | **Cubierto** por `TestTodoTileDelIndiceEsTransitable` y `TestExcluirRetiraLosTilesYDiceDeQueZona` (`internal/domain/safezone/safezone_test.go`), y `TestFundarSobreLaZonaRetiraLaMurallaYRevelaLoQueQuedaDentro` (`internal/game/simulation/safezones_test.go`) |
+| Cobertura | **Cubierto** por `TestTodoTileDelIndiceEsTransitable` y `TestExcluirRetiraLosTilesYDiceDeQueZona` (`internal/domain/safezone/safezone_test.go`), y `TestFundarSobreLaZonaRetiraLaMurallaYApartaLoQueQuedaDentro` (`internal/game/simulation/safezones_test.go`) |
 
 **Enunciado.** Ningún tile perteneciente a una Safe Zone es intransitable.
 
@@ -419,7 +419,7 @@ Nótese qué **no** exige el enunciado: no exige que la zona sea conexa, ni que 
 
 **Cómo se verifica.**
 
-- `TestTodoTileDelIndiceEsTransitable` (unit) — una caja con agua y montaña produce un índice recortado, no un error ni una zona rechazada, y todo tile del índice es transitable. `TestExcluirRetiraLosTilesYDiceDeQueZona` y `TestFundarSobreLaZonaRetiraLaMurallaYRevelaLoQueQuedaDentro` cubren la fundación en runtime.
+- `TestTodoTileDelIndiceEsTransitable` (unit) — una caja con agua y montaña produce un índice recortado, no un error ni una zona rechazada, y todo tile del índice es transitable. `TestExcluirRetiraLosTilesYDiceDeQueZona` y `TestFundarSobreLaZonaRetiraLaMurallaYApartaLoQueQuedaDentro` cubren la fundación en runtime.
 
 **Violación en runtime.** Por construcción no puede producirse al construir el índice: un tile intransitable nunca se escribe. Excluir tiles que no cumplen el predicado es lo normal en los bordes y no se registra. Lo que sí se registra es la exclusión por murallas, como violación de [INV-SAFE-006](#inv-safe-006). Política `REPAIR`: el tile se excluye.
 
@@ -537,7 +537,7 @@ Y como el ocultamiento es una ventaja de información, un rectángulo mal formad
 | Aplicación | TEST |
 | Milestone | M5 |
 | Política ante violación | REPAIR: los tiles amurallados quedan fuera de la zona; log `invariant_violation` |
-| Cobertura | **Cubierto** por `TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla` (integration), `TestUnaZonaSobreUnaCiudadSeRecortaYSeInforma` (`internal/domain/safezone/safezone_test.go`) y `TestFundarSobreLaZonaRetiraLaMurallaYRevelaLoQueQuedaDentro` (`internal/game/simulation/safezones_test.go`) |
+| Cobertura | **Cubierto** por `TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla` (integration), `TestUnaZonaSobreUnaCiudadSeRecortaYSeInforma` (`internal/domain/safezone/safezone_test.go`) y `TestFundarSobreLaZonaRetiraLaMurallaYApartaLoQueQuedaDentro` (`internal/game/simulation/safezones_test.go`) |
 
 **Enunciado.** Ninguna Safe Zone se solapa con la zona urbana de una ciudad.
 

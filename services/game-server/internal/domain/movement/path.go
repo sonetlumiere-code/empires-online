@@ -31,6 +31,9 @@ var (
 	ErrPathNotWalkable = errors.New("la polilínea atraviesa un tile intransitable")
 	// ErrInvalidOrigin indica que el primer waypoint no tiene tMs == 0.
 	ErrInvalidOrigin = errors.New("el primer waypoint debe tener tMs = 0")
+	// ErrPathCutsCorner indica un paso diagonal con alguno de sus dos tiles
+	// ortogonales intransitable (ADR-008: sin corner cutting).
+	ErrPathCutsCorner = errors.New("la polilínea ataja una esquina")
 )
 
 // Waypoint es un tile de la ruta junto al instante, relativo al inicio del
@@ -185,10 +188,12 @@ func BuildTimedPath(tiles []world.Tile, grid CostGrid, baseMsPerTile int64) (Tim
 	return path, nil
 }
 
-// Validate comprueba los invariantes estructurales de una polilínea (INV-MOVE-002).
+// Validate comprueba los invariantes estructurales de una polilínea
+// (INV-MOVE-002, INV-MOVE-003 e INV-MOVE-004).
 //
-// Se ejecuta al construirla y también al REHIDRATARLA desde la base de datos: un
-// movimiento corrupto en disco no debe poder teletransportar una unidad al arrancar.
+// Se ejecuta al REHIDRATARLA desde la base de datos: un movimiento corrupto en
+// disco no debe poder teletransportar una unidad al arrancar. Al construirla no
+// hace falta: el A* ya sólo devuelve rutas que cumplen todo esto.
 func Validate(p TimedPath, grid CostGrid) error {
 	if len(p) == 0 {
 		return ErrEmptyPath
@@ -209,6 +214,52 @@ func Validate(p TimedPath, grid CostGrid) error {
 		if !p[i-1].Tile().IsAdjacent(p[i].Tile()) {
 			return fmt.Errorf("%w: waypoint %d %s -> %s", ErrPathNotContiguous, i, p[i-1].Tile(), p[i].Tile())
 		}
+		if err := checkCorner(p, i, grid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateFrom comprueba que el tramo de la polilínea que empieza en el waypoint
+// `from` sigue siendo transitable en `grid` (INV-MOVE-004): todos sus tiles, y
+// los dos ortogonales de cada paso diagonal posterior.
+//
+// Es la parte de Validate que depende del mundo y no de la propia polilínea.
+// Existe por separado porque el mundo puede cambiar bajo un movimiento ya en
+// curso —una ciudad recién fundada amuralla tiles (RN-CITY-022)— y entonces sólo
+// importa lo que falta por recorrer, no lo ya recorrido.
+func (p TimedPath) ValidateFrom(from int, grid CostGrid) error {
+	if from < 0 {
+		from = 0
+	}
+	for i := from; i < len(p); i++ {
+		if !grid.IsWalkable(p[i].X, p[i].Y) {
+			return fmt.Errorf("%w: waypoint %d en (%d,%d)", ErrPathNotWalkable, i, p[i].X, p[i].Y)
+		}
+		if i == from {
+			continue
+		}
+		if err := checkCorner(p, i, grid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkCorner rechaza el paso diagonal que llega al waypoint i si alguno de sus
+// dos tiles ortogonales es intransitable: la misma regla que aplica el A*
+// (ADR-008). Con grid nil no comprueba nada.
+func checkCorner(p TimedPath, i int, grid CostGrid) error {
+	if grid == nil {
+		return nil
+	}
+	prev, cur := p[i-1], p[i]
+	if prev.X == cur.X || prev.Y == cur.Y {
+		return nil
+	}
+	if !grid.IsWalkable(prev.X, cur.Y) || !grid.IsWalkable(cur.X, prev.Y) {
+		return fmt.Errorf("%w: waypoint %d %s -> %s", ErrPathCutsCorner, i, prev.Tile(), cur.Tile())
 	}
 	return nil
 }

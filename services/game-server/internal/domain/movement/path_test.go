@@ -184,6 +184,38 @@ func TestValidateComprobaciones(t *testing.T) {
 		w.SetBlocked(1, 0, 1, 0, true)
 		require.ErrorIs(t, movement.Validate(path, w), movement.ErrPathNotWalkable)
 	})
+
+	t.Run("ataja una esquina", func(t *testing.T) {
+		// INV-MOVE-004: el A* nunca produce este paso, pero una fila de la base
+		// de datos sí puede traerlo. Los dos extremos son transitables; lo que
+		// falla es el ortogonal (1,0).
+		w := testGrid(t)
+		path, err := movement.BuildTimedPath(
+			[]world.Tile{{X: 0, Y: 0}, {X: 1, Y: 1}}, w, villagerMsPerTile)
+		require.NoError(t, err)
+		require.NoError(t, movement.Validate(path, w))
+
+		w.SetBlocked(1, 0, 1, 0, true)
+		require.ErrorIs(t, movement.Validate(path, w), movement.ErrPathCutsCorner)
+	})
+}
+
+func TestValidateFromSoloMiraElTramoPendiente(t *testing.T) {
+	w := testGrid(t)
+	path, err := movement.BuildTimedPath(
+		[]world.Tile{{X: 0, Y: 0}, {X: 1, Y: 0}, {X: 2, Y: 0}, {X: 3, Y: 1}}, w, villagerMsPerTile)
+	require.NoError(t, err)
+
+	// Se bloquea un tile ya recorrido: lo pendiente desde el waypoint 2 sigue
+	// siendo válido, la polilínea entera no.
+	w.SetBlocked(1, 0, 1, 0, true)
+	require.NoError(t, path.ValidateFrom(2, w))
+	require.ErrorIs(t, path.ValidateFrom(0, w), movement.ErrPathNotWalkable)
+
+	// El ortogonal (3,0) del último paso diagonal invalida el tramo pendiente.
+	w.SetBlocked(3, 0, 3, 0, true)
+	require.ErrorIs(t, path.ValidateFrom(2, w), movement.ErrPathCutsCorner)
+	require.NoError(t, path.ValidateFrom(3, w), "desde el destino ya no queda ningún paso")
 }
 
 func TestMovementCicloDeVida(t *testing.T) {

@@ -206,7 +206,7 @@ cualquier otra zona inválida (`INV-SAFE-005`).
 | `RN-SAFE-006` | Construcción determinista: las zonas se recorren en **orden ascendente de `id`** y solo se escriben los tiles que satisfacen el predicado. Iterar un mapa de Go sin ordenar está prohibido (canon §8). |
 | `RN-SAFE-007` | Si dos zonas se solapan (violación de `INV-SAFE-001`), gana la de `id` menor y se registra un log `invariant_violation` de nivel `error` con `inv_id=INV-SAFE-001`. El servidor no aborta y el resto de las zonas funciona. La métrica de violaciones de invariantes **no existe**: está pendiente de ADR, ver [../invariants/README.md](../invariants/README.md) §5.1. |
 | `RN-SAFE-017` | Un tile entra en el índice solo si satisface el predicado **y no está ocupado por una construcción**. Así todo tile del índice es transitable (`INV-SAFE-002`) y una zona sobre una ciudad queda recortada en lugar de rota (`INV-SAFE-006`). Por eso el índice se construye **después** de marcar las murallas. |
-| `RN-SAFE-018` | Fundar una ciudad tras el arranque retira del índice los tiles de su muralla y apunta a revisión las unidades de ese rectángulo. Una unidad que estuviera oculta allí se revela en la fase 5 del mismo tick (transición T8). |
+| `RN-SAFE-018` | Fundar una ciudad tras el arranque retira del índice los tiles de su muralla y apunta a revisión las unidades de ese rectángulo. Ninguna se queda dentro: la fundación las aparta antes al tile libre más cercano ([RN-CITY-022](city.md)), y la fase 5 del mismo tick las evalúa en su tile nuevo. Una unidad oculta que acaba fuera de la zona se revela (transición T8); una que acaba dentro sigue oculta, y su desplazamiento sólo se envía a su dueño. |
 
 Fuera de la fundación, el índice es inmutable en runtime: `safe_zones` y el terreno no cambian tras
 el arranque. Un cambio en la tabla se recoge en el siguiente arranque.
@@ -467,7 +467,7 @@ Cada uno comprueba además `INV-SAFE-003` sobre todo el mundo tras cada tick.
 | `TestElSnapshotDeUnTerceroNoIncluyeUnidadesOcultas` | `INV-SAFE-004` en el snapshot. |
 | `TestTrasUnReinicioLaPrimeraFase5RestableceElOcultamiento` | Recovery en RAM: `IDLE` en zona pasa a `HIDDEN`; `HIDDEN` fuera de zona vuelve a `IDLE`; lo que ya estaba bien no genera tráfico. |
 | `TestGuarnecidasYSinVidaNoSeOcultan` | `GARRISONED`, `DEAD` y `hp = 0` no se ocultan. |
-| `TestFundarSobreLaZonaRetiraLaMurallaYRevelaLoQueQuedaDentro` | `RN-SAFE-018` y la transición T8 en runtime. |
+| `TestFundarSobreLaZonaRetiraLaMurallaYApartaLoQueQuedaDentro` | `RN-SAFE-018` con `RN-CITY-022`: la transición T8 en runtime, y la unidad que sigue oculta tras apartarse. |
 | `TestSinZonasNadieSeOculta` | El caso del mundo canónico, con la tabla vacía. |
 
 Se verificó que estos tests detectan los fallos que dicen detectar: enviar el `entity.despawn` a todo

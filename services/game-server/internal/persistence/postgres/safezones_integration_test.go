@@ -119,6 +119,9 @@ func arrancar(t *testing.T, ctx context.Context, store *postgres.Store, w *world
 	for _, c := range ciudades {
 		w.SetBlocked(c.CenterX-1, c.CenterY-1, c.CenterX+1, c.CenterY+1, true)
 	}
+	// Como cmd/server: lo que haya quedado dentro de una muralla se aparta
+	// (RN-CITY-022). Sin movimientos cargados no hay nada que cerrar.
+	require.Empty(t, simulation.ClearFootprints(state, ciudades, clk.NowMs(), discardLogger()))
 
 	zonas, err := postgres.NewSafeZoneRepo(store).LoadAll(ctx)
 	require.NoError(t, err)

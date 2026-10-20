@@ -91,6 +91,21 @@ func Hydrate(
 		}
 		state.SetMovementIDFloor(m.ID)
 
+		if u.Status == unit.StatusGarrisoned {
+			// Entrar en guarnición cancela el movimiento en la misma transacción
+			// (GarrisonRepo.Enter): un ACTIVE aquí es una fila corrupta. Manda la
+			// guarnición, que es la tabla del hecho (INV-UNIT-007); reanudar el
+			// movimiento sacaría la unidad de la ciudad sin pasar por la salida.
+			res.FinishedMovements = append(res.FinishedMovements,
+				FinishedMovement{MovementID: m.ID, Status: movement.StatusFailed})
+			res.Failed++
+			log.Error("invariant_violation",
+				"inv_id", "INV-UNIT-005", "severity", "CRITICO", "policy", "REPAIR",
+				"entity", fmt.Sprintf("unit:%d", u.ID),
+				"detail", fmt.Sprintf("movimiento %d ACTIVE de una unidad GARRISONED al rehidratar: se cierra FAILED y la unidad sigue guarnecida", m.ID))
+			continue
+		}
+
 		if err := movement.Validate(m.Path, w); err != nil {
 			log.Warn("polilínea inválida al rehidratar; el movimiento se descarta",
 				"movement_id", m.ID, "unit_id", m.UnitID, "err", err)
@@ -136,7 +151,7 @@ func Hydrate(
 		state.MarkDirty(u.ID)
 		res.Reconciled++
 		log.Error("invariant_violation",
-			"inv_id", "INV-UNIT-005", "severity", "ALTO", "policy", "REPAIR",
+			"inv_id", "INV-UNIT-005", "severity", "CRITICO", "policy", "REPAIR",
 			"entity", fmt.Sprintf("unit:%d", u.ID),
 			"detail", "MOVING sin movimiento ACTIVE al rehidratar: queda IDLE en su última posición consolidada")
 		return true

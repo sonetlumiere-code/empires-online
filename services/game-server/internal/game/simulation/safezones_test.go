@@ -335,13 +335,19 @@ func TestGuarnecidasYSinVidaNoSeOcultan(t *testing.T) {
 }
 
 // Fundar una ciudad sobre la zona: su muralla deja de ser refugio
-// (INV-SAFE-002 en runtime) y una unidad oculta en un tile amurallado se revela
-// en la fase 5 de ese mismo tick.
-func TestFundarSobreLaZonaRetiraLaMurallaYRevelaLoQueQuedaDentro(t *testing.T) {
+// (INV-SAFE-002 en runtime).
+//
+// La muralla cubre exactamente el ancho de la franja (x 20..22). RN-CITY-022
+// aparta antes lo que queda dentro, y la fase 5 del mismo tick decide en el tile
+// nuevo: la unidad que acaba fuera del bosque se revela (T8), la que acaba en el
+// bosque sigue oculta y su desplazamiento sólo lo ve su dueño.
+func TestFundarSobreLaZonaRetiraLaMurallaYApartaLoQueQuedaDentro(t *testing.T) {
 	h := newHarnessConZona(t)
-	atrapada := h.ponerUnidad(40, otroJugador, world.Tile{X: 21, Y: 51}, unit.StatusIdle, 40)
+	aLaHierba := h.ponerUnidad(40, otroJugador, world.Tile{X: 20, Y: 50}, unit.StatusIdle, 40)
+	alBosque := h.ponerUnidad(41, otroJugador, world.Tile{X: 21, Y: 51}, unit.StatusIdle, 40)
 	h.loop.Step(h.clk.NowMs())
-	require.Equal(t, unit.StatusHidden, atrapada.Status)
+	require.Equal(t, unit.StatusHidden, aLaHierba.Status)
+	require.Equal(t, unit.StatusHidden, alBosque.Status)
 	h.rec.reset()
 
 	h.send(simulation.IntroducePlayer{
@@ -362,7 +368,18 @@ func TestFundarSobreLaZonaRetiraLaMurallaYRevelaLoQueQuedaDentro(t *testing.T) {
 	_, sigue := h.state.SafeZoneAt(21, 40)
 	assert.True(t, sigue, "el resto de la zona sigue funcionando")
 
-	assert.Equal(t, unit.StatusIdle, atrapada.Status)
+	assert.Equal(t, world.Tile{X: 19, Y: 49}, aLaHierba.Tile(), "el tile libre más cercano, fuera del bosque")
+	assert.Equal(t, unit.StatusIdle, aLaHierba.Status, "fuera de la zona se revela")
+	assert.Equal(t, world.Tile{X: 20, Y: 52}, alBosque.Tile(), "el tile libre más cercano, dentro del bosque")
+	assert.Equal(t, unit.StatusHidden, alBosque.Status, "dentro de la zona sigue oculta")
+
+	for _, m := range h.rec.byType(protocol.TypeEntityUpdate) {
+		p := m.Payload.(protocol.EntityUpdatePayload)
+		if p.ID == alBosque.ID {
+			assert.Equal(t, "player", m.Kind, "INV-SAFE-004: el desplazamiento de una oculta no va al chunk")
+			assert.Equal(t, otroJugador, m.PlayerID)
+		}
+	}
 	h.verificarOcultamiento()
 }
 
