@@ -169,7 +169,7 @@ antes que estado). El orden que sigue es exactamente el de `handleMoveUnit`.
 | RN-MOVE-002 | Tasa | Token bucket `EO_WS_RATE_LIMIT_PER_SECOND` (20/s, burst 40) | `RATE_LIMITED` | `system.error` y cierre inmediato `4429` |
 | RN-MOVE-003 | Envelope | JSON parseable, `v == 1`, `type` en el catálogo cerrado de comandos | `INVALID_MESSAGE` / `UNSUPPORTED_VERSION` | `system.error`; la conexión sigue abierta |
 | RN-MOVE-004 | Payload | `payload` decodifica a `{unitId, target:{x,y}}` y `requestId` no está vacío | `INVALID_MESSAGE` | `system.error` |
-| RN-MOVE-005 | Idempotencia | `SETNX idem:{playerId}:{requestId}` (TTL 300 s) en Redis | — | Si la clave ya existía, el comando se **descarta en silencio**: no se re-ejecuta y **no se reenvía** la respuesta original (ver la nota al final de §12). Si Redis no responde, el comando **se ejecuta igualmente**: se prefiere jugar a bloquear al jugador |
+| RN-MOVE-005 | Idempotencia | `SETNX idem:{playerId}:{requestId}` (TTL 300 s) en Redis | — | Si la clave ya existía, el comando **no se re-ejecuta**; el duplicado recibe la respuesta original si la hubo (I-5 de [websocket-protocol.md](websocket-protocol.md)), y nada si el original sigue en curso. Si Redis no responde, el comando **se ejecuta igualmente**: se prefiere jugar a bloquear al jugador |
 
 La autenticación no aparece como paso por mensaje: el handshake `session.hello` ocurre **antes** del bucle de
 lectura, así que toda orden que llega a este punto pertenece a una sesión ya autenticada (cierre `4401` en caso
@@ -905,10 +905,9 @@ llama `id`, no `unitId`.
 
 **Idempotencia.** `unit.move` y `unit.cancel_move` son comandos durables: el `requestId` se reserva en Redis
 con `SETNX` sobre `idem:{playerId}:{requestId}` (TTL 300 s) antes de despachar el comando. Un reintento tras un
-corte de red **no** crea un segundo movimiento. Nota honesta sobre el estado actual: el almacén de idempotencia
-sabe guardar la respuesta original (`Complete`) y devolverla, pero el camino de `unit.move` todavía **no la
-guarda**; hoy un duplicado se descarta en silencio y el cliente no recibe respuesta. Cerrar ese hueco es
-trabajo pendiente. Si Redis no responde, el comando se ejecuta igualmente: se prefiere jugar a bloquear al
+corte de red **no** crea un segundo movimiento, y recibe la respuesta original —`unit.move.accepted` o
+`unit.move.rejected` con el mismo payload— si el original ya la tuvo; si el original sigue en curso, no recibe
+nada. Un comando que la cola del loop no admite responde `INTERNAL_ERROR` y libera su `requestId`. Si Redis no responde, el comando se ejecuta igualmente: se prefiere jugar a bloquear al
 jugador, y así está decidido.
 
 ---

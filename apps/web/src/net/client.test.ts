@@ -146,6 +146,17 @@ describe('comandos', () => {
     expect(JSON.stringify(sent)).not.toContain('tMs');
   });
 
+  it('un tile con propiedades de más sale sólo con x e y (el servidor es estricto)', async () => {
+    const { client, socket } = await ready();
+    const tileDelRenderer = { x: 7, y: 9, terrain: 'FOREST', screenX: 320 };
+    client.moveUnit(42, tileDelRenderer);
+    client.setView(tileDelRenderer);
+
+    const [move, view] = socket.parsedSent();
+    expect(move!.payload).toEqual({ unitId: 42, target: { x: 7, y: 9 } });
+    expect(view!.payload).toEqual({ center: { x: 7, y: 9 } });
+  });
+
   it('cada comando lleva un requestId distinto', async () => {
     const { client, socket } = await ready();
     client.moveUnit(1, { x: 1, y: 1 });

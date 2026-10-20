@@ -34,7 +34,6 @@ Tampoco entran en v1:
 - **Compresión** (`permessage-deflate`), binario/CBOR, batching de múltiples envelopes por frame: `TBD (fuera de MVP)`. v1 es JSON UTF-8, un envelope por frame de texto.
 - Entidades de tipo edificio: en MVP no existe tabla `buildings`; el `TOWN_CENTER` se describe dentro de `city.update`. Un *kind* de entidad `BUILDING` es `TBD (fuera de MVP)`.
 - **Cota máxima de waypoints** de una polilínea: `TBD (fuera de MVP)`. Ver la nota de la ficha 8.12.
-- **Reproducción de la respuesta original ante un `requestId` duplicado**: hoy el duplicado se descarta en silencio. Ver sección 10.
 
 ## 3. Versionado y política de compatibilidad
 
@@ -799,11 +798,12 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 | I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`). `session.hello`, `session.ping` y `session.view` no reservan clave: no crean efectos durables. |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
-| I-5 | Un `requestId` repetido dentro de la ventana **no re-ejecuta** el comando: hoy se **descarta en silencio** y el cliente no recibe ninguna respuesta. Guardar la respuesta original y reproducirla (`IdempotencyStore.Complete` ya existe, sin usar) es `TBD (fuera de MVP)`. |
+| I-5 | Un `requestId` repetido dentro de la ventana **no re-ejecuta** el comando. Si el original ya tuvo respuesta directa —`unit.move.accepted`, `unit.move.rejected` o un `system.error` con ese `requestId`—, el duplicado **recibe esa misma respuesta** otra vez, con el mismo payload: es lo que necesita el cliente que reintenta tras perder la conexión justo cuando el servidor contestaba. La respuesta se guarda en la clave `idem:{playerId}:{requestId}` en sustitución del marcador `"pending"`, sin bloquear el game loop, y conserva el TTL de 300 s. Un duplicado que llega mientras el original sigue en curso, o de un comando que no tiene respuesta directa (un `unit.cancel_move` que sale bien sólo produce el `unit.movement.cancelled` del chunk), no recibe nada. |
 | I-6 | Un `requestId` reutilizado con un **payload distinto** dentro de la ventana se descarta igual: es un bug del cliente, no una vía para reordenar intención. |
 | I-7 | Pasados los 300 s, el mismo `requestId` se trata como comando nuevo. El cliente **debe** generar un UUID por intención, no reutilizarlos. |
-| I-8 | Los reintentos tras reconexión son seguros: reenviar `unit.move` con el mismo `requestId` no crea un segundo movimiento. Es el mecanismo previsto para redes inestables. Como el duplicado no responde (I-5), el cliente debe converger con el `world.snapshot` de la reconexión, no esperando un ack. |
+| I-8 | Los reintentos tras reconexión son seguros: reenviar `unit.move` con el mismo `requestId` no crea un segundo movimiento. Es el mecanismo previsto para redes inestables. El duplicado recibe la respuesta original cuando la hubo (I-5); el estado del mundo lo da en cualquier caso el `world.snapshot` de la reconexión. |
 | I-9 | **Si Redis no responde, el comando se ejecuta igualmente.** Se prefiere dejar jugar a bloquear al jugador por una caída de la caché. El fallo se registra con nivel `warn`. Es una decisión consciente: durante una indisponibilidad de Redis la garantía de I-5 queda suspendida y un reintento puede duplicar el efecto. |
+| I-10 | Un comando que la cola del game loop no admite (saturación) **no se ejecutó**: se responde `system.error INTERNAL_ERROR` con su `requestId` y la reserva se libera, de modo que el reintento con el mismo `requestId` sí se ejecuta. Sin liberarla, el reintento se descartaría como duplicado de algo que nunca ocurrió. |
 
 **No hay variante durable, por diseño** ([ADR-014](../decisions/ADR-014-command-idempotency.md)): la deduplicación es sólo Redis, y se pierde si Redis se vacía. La tabla `idempotency_keys`, que la preveía y nunca se escribió, se eliminó en `000004`. Un comando futuro con efectos durables no repetibles guardará su `requestId` en la fila de su efecto, con `UNIQUE`. Lo mismo vale para la tabla `sessions`: existe en el esquema, pero la sesión vive en RAM y en la clave `presence:player:{playerId}` de Redis.
 
@@ -881,7 +881,7 @@ apps/web (tipos + validación, pendiente)   validación manual en Go (runtime, p
 
 ## 14. Tests esperados del protocolo
 
-Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pendientes; ninguno de los de nivel `integration` puede ejecutarse hasta que el daemon de Docker arranque (PostgreSQL y Redis reales).
+Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pendientes. Los de nivel `e2e` levantan el servidor WebSocket real sobre `httptest` con el game loop conducido a mano (`internal/websocket`); no necesitan PostgreSQL ni Redis.
 
 | Nivel | Test | Criterio de aceptación | Estado |
 |---|---|---|---|
@@ -891,7 +891,8 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | contract | `requestId` se **omite** cuando no aplica | La cadena `requestId` no aparece en el JSON | **EN VERDE** |
 | contract | `entity.update` es un delta: los campos sin cambios no viajan | Sólo `id` y lo modificado | **EN VERDE** |
 | contract | `unit.movement.started` lleva la polilínea completa y sobrevive al round-trip | `path` íntegro, `tMs` preservados | **EN VERDE** |
-| contract | `unit.move` no admite que el cliente aporte una ruta | La estructura no tiene dónde guardarla | **EN VERDE** |
+| contract | `unit.move` no admite que el cliente aporte una ruta | `DecodeStrict` la rechaza | **EN VERDE** (`TestElComandoDeMovimientoNoAdmiteRuta`) |
+| contract | El decodificador Go es tan estricto como el JSON Schema (S-7) | El esquema declara `additionalProperties: false` en todo objeto cliente→servidor, y una propiedad de más en el envelope, el payload o un objeto anidado se rechaza en los cinco mensajes | **EN VERDE** (`TestElDecodificadorEsTanEstrictoComoElEsquema`) |
 | contract | Sólo `session.hello` es pre-auth; el catálogo de comandos es cerrado (5) | Los otros cuatro rechazados como pre-auth | **EN VERDE** |
 | contract | Los seis códigos de cierre están en el rango privado 4000–4999 | Verificado | **EN VERDE** |
 | unit (TS) | Envelope cliente→servidor: tipo desconocido, versión no soportada, `requestId` no UUID, coordenadas no enteras, campo extra rechazado | Cada caso con su fallo esperado | **EN VERDE** |
@@ -901,13 +902,15 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | unit | Rechazo de `unit.move` / `unit.cancel_move` sin `requestId` | `INVALID_MESSAGE`, sin ejecución | Pendiente |
 | unit | Tabla completa de las validaciones de `unit.move`, una por código | El `code` exacto esperado, y **sin** mutación de estado | **EN VERDE** (6 rechazos en `internal/game/simulation`) |
 | unit | `seq` estrictamente creciente sin huecos en 10 000 mensajes | Monotonía verificada | Pendiente |
-| integration | Handshake sin `session.hello` durante 5 s | Cierre `4408` | Pendiente (Docker) |
-| integration | Ticket con `jti` reutilizado | Cierre `4401`, sin `system.error` previo | Pendiente (Docker) |
-| integration | Ticket expirado (TTL 60 s) | Cierre `4401` | Pendiente (Docker) |
-| integration | 60 mensajes en 1 s | `system.error RATE_LIMITED` y cierre `4429` inmediato | Pendiente (Docker) |
-| integration | `unit.move` duplicado con el mismo `requestId` | Un solo movimiento creado; el duplicado sin respuesta | Pendiente (Docker) |
-| integration | Redis caído durante un `unit.move` | El comando se ejecuta igualmente y se registra `warn` | Pendiente (Docker) |
-| integration | `session.view` que desplaza el área 2 chunks | Nuevo `world.snapshot` con el `requestId` del comando y terreno **sólo** de los chunks nuevos | Pendiente (Docker) |
+| e2e | Handshake sin `session.hello` dentro del plazo | Cierre `4408` | **EN VERDE** (`TestSinHandshakeEnPlazoSeCierraCon4408`) |
+| e2e | Ticket con `jti` reutilizado | Cierre `4401`, sin sesión | **EN VERDE** (`TestTicketNoSePuedeReutilizarEnOtraConexion`) |
+| unit | Ticket expirado (TTL 60 s) | La verificación lo rechaza; el cierre `4401` es el mismo camino que el de un ticket inválido | **EN VERDE** (`TestTicketCaducado` en `internal/auth`, `TestTicketInvalidoCierraLaConexion`) |
+| e2e | 60 mensajes en ráfaga | `system.error RATE_LIMITED` y, después, cierre `4429` | **EN VERDE** (`TestUnaRafagaPorEncimaDelBurstCierraCon4429`) |
+| e2e | Un frame por encima de `EO_WS_MAX_MESSAGE_BYTES`, antes y después del handshake | Cierre `1009` sin leer el frame | **EN VERDE** (`TestUnMensajeDemasiadoGrandeCierraCon1009`) |
+| e2e | `unit.move` duplicado con el mismo `requestId`, en la misma sesión y tras reconectar | Un solo movimiento; el duplicado recibe la respuesta original cuando la hubo (I-5) | **EN VERDE** (`TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal`) |
+| e2e | `unit.move` con la cola del loop llena | `system.error INTERNAL_ERROR` con su `requestId`, y el reintento con el mismo `requestId` se ejecuta (I-10) | **EN VERDE** (`TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`) |
+| e2e | Redis caído durante un `unit.move` | El comando se ejecuta igualmente y se registra `warn` | Pendiente |
+| e2e | `session.view` que desplaza el área 2 chunks | Nuevo `world.snapshot` con el `requestId` del comando y terreno **sólo** de los chunks nuevos | Pendiente |
 | simulation | `unit.move` con `FakeClock` sobre el trayecto canónico | `path` exacto `[0, 600, 1449, 2409, 2769]`, `arrivalTimeMs` exacto | **EN VERDE** |
 | simulation | Reconstrucción de la posición desde la polilínea (`PositionAt`) | Coincide con la posición autoritativa del servidor | **EN VERDE** |
 | simulation | Segunda orden sobre una unidad en movimiento | `unit.movement.cancelled(REPLACED)` antes de `unit.move.accepted` y `unit.movement.started` | **EN VERDE** |

@@ -32,6 +32,8 @@ type Session struct {
 	closed   atomic.Bool
 	closeOne sync.Once
 	done     chan struct{}
+	// pendingClose es el cierre que writePump ejecutará al llegar a closeMarker.
+	pendingClose atomic.Pointer[closeRequest]
 
 	// chunks son las suscripciones de esta sesión. Sólo el Hub las toca, siempre
 	// con su propio lock tomado.
@@ -118,9 +120,69 @@ func (s *Session) CloseWith(code int, reason string) {
 		deadline := time.Now().Add(2 * time.Second)
 		_ = s.conn.WriteControl(gws.CloseMessage,
 			gws.FormatCloseMessage(code, reason), deadline)
-		_ = s.conn.Close()
+		// El socket NO se cierra aquí. Cerrarlo con datos del cliente aún sin
+		// leer hace que el sistema responda con un RST, y el cliente pierde el
+		// frame de cierre que acabamos de enviar: un 4429 llegaba como «conexión
+		// reiniciada». Lo cierra quien lee (drainAndClose, al terminar serve), y
+		// este plazo garantiza que el lector despierte aunque el cliente calle.
+		_ = s.conn.SetReadDeadline(time.Now().Add(closeGrace))
 		close(s.done)
 	})
+}
+
+// closeGrace es lo que se espera a que el cliente conteste a un cierre antes de
+// soltar el socket.
+const closeGrace = time.Second
+
+// drainAndClose lee y descarta lo que el cliente siga enviando hasta que
+// responda al cierre o venza closeGrace, y suelta el socket. Sólo puede
+// llamarla quien lee: gorilla admite un único lector.
+func (s *Session) drainAndClose() {
+	_ = s.conn.SetReadDeadline(time.Now().Add(closeGrace))
+	for {
+		if _, _, err := s.conn.ReadMessage(); err != nil {
+			break
+		}
+	}
+	_ = s.conn.Close()
+}
+
+// closeMarker es un elemento de la cola de salida que no se envía: le dice a
+// writePump que cierre la conexión DESPUÉS de escribir lo encolado antes.
+const closeMarker = "\x00close"
+
+type closeRequest struct {
+	code   int
+	reason string
+}
+
+// CloseAfterFlush cierra con un código de aplicación cuando writePump haya
+// escrito lo que ya estaba en la cola. Es lo que permite que un system.error
+// llegue al cliente antes del cierre que explica: con CloseWith directo, el
+// cierre adelanta al mensaje y el cliente sólo ve el código. Si la cola está
+// llena, cierra en el acto.
+func (s *Session) CloseAfterFlush(code int, reason string) {
+	if s.closed.Load() {
+		return
+	}
+	s.pendingClose.Store(&closeRequest{code: code, reason: reason})
+	select {
+	case s.out <- protocol.Outbound{Type: closeMarker}:
+	default:
+		s.CloseWith(code, reason)
+	}
+}
+
+// awaitPendingClose espera, como mucho `limit`, a que writePump ejecute un
+// CloseAfterFlush pendiente. Sin cierre pendiente vuelve en el acto.
+func (s *Session) awaitPendingClose(limit time.Duration) {
+	if s.pendingClose.Load() == nil {
+		return
+	}
+	select {
+	case <-s.done:
+	case <-time.After(limit):
+	}
 }
 
 // Done se cierra cuando la sesión termina.
@@ -137,6 +199,11 @@ func (s *Session) writePump(pingInterval time.Duration) {
 			return
 
 		case msg := <-s.out:
+			if msg.Type == closeMarker {
+				req := s.pendingClose.Load()
+				s.CloseWith(req.code, req.reason)
+				return
+			}
 			_ = s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 			data, err := json.Marshal(msg)
 			if err != nil {

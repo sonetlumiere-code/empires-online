@@ -8,6 +8,7 @@ package websocket
 import (
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -35,7 +36,19 @@ type Hub struct {
 
 	metrics *observability.Metrics
 	log     *slog.Logger
+
+	// onReply ve pasar toda respuesta directa a un comando (las que llevan
+	// requestId) para que el servidor pueda reproducirla ante un duplicado
+	// (INV-SEC-007). Atómico: lo instala NewServer y lo lee el game loop.
+	onReply atomic.Pointer[ReplyRecorder]
 }
+
+// ReplyRecorder recibe una respuesta directa a un comando. Corre en la goroutine
+// de quien envía —el game loop—, así que no puede bloquear.
+type ReplyRecorder func(playerID uuid.UUID, requestID, msgType string, payload any)
+
+// RecordReplies instala el ReplyRecorder.
+func (h *Hub) RecordReplies(fn ReplyRecorder) { h.onReply.Store(&fn) }
 
 // NewHub crea el hub.
 func NewHub(metrics *observability.Metrics, log *slog.Logger) *Hub {
@@ -191,6 +204,9 @@ func (h *Hub) BroadcastChunks(chunks []world.ChunkCoord, msgType string, payload
 
 // SendToPlayer entrega un mensaje a todas las sesiones de un jugador.
 func (h *Hub) SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any) {
+	if fn := h.onReply.Load(); fn != nil && requestID != "" {
+		(*fn)(playerID, requestID, msgType, payload)
+	}
 	h.mu.RLock()
 	set := h.byPlayer[playerID]
 	targets := make([]*Session, 0, len(set))

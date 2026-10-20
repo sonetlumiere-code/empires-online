@@ -2,6 +2,8 @@ package protocol_test
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -148,13 +150,77 @@ func TestMovementStartedLlevaLaPolilineaCompleta(t *testing.T) {
 func TestElComandoDeMovimientoNoAdmiteRuta(t *testing.T) {
 	raw := []byte(`{"unitId":42,"target":{"x":1,"y":2},"path":[{"x":0,"y":0,"tMs":0}]}`)
 
+	// La estructura no tiene dónde guardar una ruta del cliente, y el boundary
+	// no se conforma con eso: la rechaza (S-7, INV-SEC-001).
 	var payload protocol.UnitMovePayload
-	require.NoError(t, json.Unmarshal(raw, &payload))
+	require.Error(t, protocol.DecodeStrict(raw, &payload))
 
+	require.NoError(t, protocol.DecodeStrict([]byte(`{"unitId":42,"target":{"x":1,"y":2}}`), &payload))
 	require.EqualValues(t, 42, payload.UnitID)
 	require.Equal(t, protocol.Tile{X: 1, Y: 2}, payload.Target)
-	// La estructura simplemente no tiene dónde guardar una ruta del cliente.
-	// La validación estricta contra el JSON Schema la rechaza en el boundary.
+}
+
+// S-7: el decodificador Go es tan estricto como el JSON Schema exportado. Dos
+// mitades: el esquema declara `additionalProperties: false` en TODO objeto de un
+// mensaje cliente → servidor, y DecodeStrict rechaza una propiedad de más en el
+// envelope, en el payload y en un objeto anidado de cada uno de los cinco.
+func TestElDecodificadorEsTanEstrictoComoElEsquema(t *testing.T) {
+	data, err := protocol.SchemaFile("client-message.schema.json")
+	require.NoError(t, err)
+	var schema any
+	require.NoError(t, json.Unmarshal(data, &schema))
+	objetos := 0
+	var recorrer func(any, string)
+	recorrer = func(n any, ruta string) {
+		switch v := n.(type) {
+		case map[string]any:
+			if v["type"] == "object" {
+				objetos++
+				require.Equal(t, false, v["additionalProperties"], "%s debe ser estricto", ruta)
+			}
+			for k, hijo := range v {
+				recorrer(hijo, ruta+"/"+k)
+			}
+		case []any:
+			for i, hijo := range v {
+				recorrer(hijo, fmt.Sprintf("%s/%d", ruta, i))
+			}
+		}
+	}
+	recorrer(schema, "")
+	require.GreaterOrEqual(t, objetos, 11, "cinco envelopes, cinco payloads y el centro de session.view")
+
+	casos := []struct {
+		tipo    string
+		payload string
+		destino any
+		anidado string // el mismo payload con una propiedad de más en un objeto interior; "" si no hay
+	}{
+		{protocol.TypeSessionHello, `{"ticket":"t","clientVersion":"1"}`, &protocol.SessionHelloPayload{}, ""},
+		{protocol.TypeSessionPing, `{"clientTimeMs":5}`, &protocol.SessionPingPayload{}, ""},
+		{protocol.TypeSessionView, `{"center":{"x":1,"y":2}}`, &protocol.SessionViewPayload{}, `{"center":{"x":1,"y":2,"z":0}}`},
+		{protocol.TypeUnitMove, `{"unitId":1,"target":{"x":1,"y":2}}`, &protocol.UnitMovePayload{}, `{"unitId":1,"target":{"x":1,"y":2,"tMs":0}}`},
+		{protocol.TypeUnitCancelMove, `{"unitId":1}`, &protocol.UnitCancelMovePayload{}, ""},
+	}
+	for _, c := range casos {
+		t.Run(c.tipo, func(t *testing.T) {
+			sobre := fmt.Sprintf(`{"v":1,"type":%q,"requestId":"r","payload":%s}`, c.tipo, c.payload)
+			var msg protocol.Inbound
+			require.NoError(t, protocol.DecodeStrict([]byte(sobre), &msg))
+			require.NoError(t, protocol.DecodeStrict(msg.Payload, c.destino))
+
+			conDeMas := strings.Replace(sobre, `"v":1`, `"v":1,"seq":3`, 1)
+			require.Error(t, protocol.DecodeStrict([]byte(conDeMas), &msg), "propiedad de más en el envelope")
+
+			payloadDeMas := strings.Replace(c.payload, "{", `{"hp":1,`, 1)
+			require.Error(t, protocol.DecodeStrict([]byte(payloadDeMas), c.destino), "propiedad de más en el payload")
+
+			if c.anidado != "" {
+				require.Error(t, protocol.DecodeStrict([]byte(c.anidado), c.destino), "propiedad de más en un objeto interior")
+			}
+			require.Error(t, protocol.DecodeStrict([]byte(c.payload+` {}`), c.destino), "datos tras el valor")
+		})
+	}
 }
 
 func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {

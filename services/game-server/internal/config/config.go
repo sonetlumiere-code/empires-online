@@ -25,9 +25,9 @@ type Config struct {
 	HTTPAddr    string
 	MetricsAddr string
 
-	PostgresURL   string
-	RedisURL      string
-	AuthJWTSecret string
+	PostgresURL   Secret
+	RedisURL      Secret
+	AuthJWTSecret Secret
 
 	TickRateHz          int
 	WorldWidth          int32
@@ -85,7 +85,7 @@ func (c Config) IsProduction() bool { return c.Env == "production" }
 
 // UsesInProcessHotState indica si el estado caliente vive en el proceso en lugar
 // de en Redis. Sólo puede ocurrir fuera de producción.
-func (c Config) UsesInProcessHotState() bool { return c.RedisURL == "" }
+func (c Config) UsesInProcessHotState() bool { return c.RedisURL.IsZero() }
 
 // Load lee la configuración del entorno, aplica los valores por defecto y valida.
 // Devuelve un error agregado con TODOS los problemas encontrados, no sólo el primero:
@@ -99,9 +99,9 @@ func Load() (Config, error) {
 		HTTPAddr:    v.str("EO_HTTP_ADDR", ":8080"),
 		MetricsAddr: v.str("EO_METRICS_ADDR", ":9090"),
 
-		PostgresURL:   v.str("EO_POSTGRES_URL", ""),
-		RedisURL:      v.str("EO_REDIS_URL", ""),
-		AuthJWTSecret: v.str("EO_AUTH_JWT_SECRET", ""),
+		PostgresURL:   NewSecret(v.str("EO_POSTGRES_URL", "")),
+		RedisURL:      NewSecret(v.str("EO_REDIS_URL", "")),
+		AuthJWTSecret: NewSecret(v.str("EO_AUTH_JWT_SECRET", "")),
 
 		TickRateHz:          v.intRange("EO_TICK_RATE_HZ", 10, 1, 1000),
 		WorldWidth:          int32(v.intRange("EO_WORLD_WIDTH", 512, 16, 65536)),
@@ -139,22 +139,22 @@ func Load() (Config, error) {
 
 	// --- Validaciones cruzadas: las que un rango por sí solo no puede expresar ---
 
-	if cfg.PostgresURL == "" {
+	if cfg.PostgresURL.IsZero() {
 		v.fail("EO_POSTGRES_URL es obligatoria")
 	}
 	// EO_REDIS_URL es opcional en desarrollo: sin ella se usa el estado caliente
 	// en proceso (internal/persistence/memory). En producción NO se admite,
 	// porque un almacén en proceso no se comparte entre instancias y el
 	// anti-replay de tickets dejaría de valer en cuanto hubiera dos.
-	if cfg.RedisURL == "" && cfg.IsProduction() {
+	if cfg.RedisURL.IsZero() && cfg.IsProduction() {
 		v.fail("EO_REDIS_URL es obligatoria en producción: el estado caliente en memoria no se comparte entre instancias")
 	}
-	if cfg.AuthJWTSecret == "" {
+	if cfg.AuthJWTSecret.IsZero() {
 		v.fail("EO_AUTH_JWT_SECRET es obligatoria")
-	} else if len(cfg.AuthJWTSecret) < 32 {
+	} else if len(cfg.AuthJWTSecret.Reveal()) < 32 {
 		v.fail("EO_AUTH_JWT_SECRET debe tener al menos 32 caracteres")
 	}
-	if cfg.IsProduction() && strings.Contains(cfg.AuthJWTSecret, "dev-only") {
+	if cfg.IsProduction() && strings.Contains(cfg.AuthJWTSecret.Reveal(), "dev-only") {
 		v.fail("EO_AUTH_JWT_SECRET tiene el valor de desarrollo en un entorno de producción")
 	}
 	if 1000%cfg.TickRateHz != 0 {

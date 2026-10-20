@@ -234,7 +234,7 @@ Una *trust boundary* es una línea que un dato cruza cambiando de nivel de confi
 1. **`INV-SEC-001`**: ninguna credencial de PostgreSQL o Redis alcanza jamás el navegador. Los secretos viajan por variables de entorno y nunca al repositorio.
 2. La autorización se resuelve **siempre** en el servidor y **siempre** contra el `playerId` del claim `sub` de la sesión, nunca contra un identificador enviado en el payload.
 3. La lógica de control —cliente y servidor— usa el `code` estable de `system.error` (`{ code, message, requestId?, details? }`), jamás el texto humano.
-4. Un `requestId` repetido **no se re-ejecuta**: `IdempotencyStore.Claim` lo reserva en Redis con `SETNX` (`idem:{playerId}:{requestId}`, TTL 300 s) antes de ejecutar, y un duplicado se descarta en silencio con un `level=debug`; hoy **no se reemite la respuesta original**. La doble entrega de la red no puede convertirse en doble efecto.
+4. Un `requestId` repetido **no se re-ejecuta**: `IdempotencyStore.Claim` lo reserva en Redis con `SETNX` (`idem:{playerId}:{requestId}`, TTL 300 s) antes de ejecutar, y un duplicado no se ejecuta: recibe la respuesta original si el comando ya la tuvo, y nada si sigue en curso. La doble entrega de la red no puede convertirse en doble efecto.
 5. El servidor no maneja píxeles: cualquier coordenada que llegue en píxeles es, por definición, un mensaje inválido.
 
 ---

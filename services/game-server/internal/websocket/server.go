@@ -25,10 +25,29 @@ type PresenceTracker interface {
 	ClearIfSession(ctx context.Context, playerID, sessionID uuid.UUID) (bool, error)
 }
 
-// Deduper deduplica comandos por requestId.
+// Deduper deduplica comandos por requestId (INV-SEC-007, ADR-014).
 type Deduper interface {
+	// Claim reserva el requestId. Si ya estaba reservado devuelve false y lo
+	// guardado: el marcador "pending" o la respuesta original.
 	Claim(ctx context.Context, playerID uuid.UUID, requestID string) (bool, string, error)
+	// Complete sustituye la reserva por la respuesta original.
+	Complete(ctx context.Context, playerID uuid.UUID, requestID, response string) error
+	// Release borra la reserva de un comando que no llegó a ejecutarse.
+	Release(ctx context.Context, playerID uuid.UUID, requestID string) error
 }
+
+// pendingReply es el marcador que Claim escribe antes de ejecutar.
+const pendingReply = "pending"
+
+// storedReply es la respuesta original de un comando, tal como se guarda para
+// reproducirla ante un duplicado (I-5 de docs/specs/websocket-protocol.md).
+type storedReply struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+// replyStoreTimeout acota la escritura de una respuesta en el almacén.
+const replyStoreTimeout = 2 * time.Second
 
 // Config parametriza el servidor de WebSocket.
 type Config struct {
@@ -81,6 +100,9 @@ func NewServer(
 	s := &Server{
 		cfg: cfg, hub: hub, auth: authenticator, presence: presence,
 		dedupe: dedupe, commands: commands, metrics: metrics, log: log,
+	}
+	if dedupe != nil {
+		hub.RecordReplies(s.recordReply)
 	}
 	s.upgrader = gws.Upgrader{
 		HandshakeTimeout: cfg.HandshakeTimeout,
@@ -172,7 +194,10 @@ func (s *Server) serve(ctx context.Context, conn *gws.Conn, remote string) {
 
 	defer func() {
 		s.hub.Unregister(session)
+		// Un cierre ya pedido (4429 tras su RATE_LIMITED) manda sobre el normal.
+		session.awaitPendingClose(s.cfg.WriteTimeout)
 		session.CloseWith(gws.CloseNormalClosure, "sesión finalizada")
+		session.drainAndClose()
 		if _, err := s.presence.ClearIfSession(context.WithoutCancel(ctx), session.PlayerID, session.ID); err != nil {
 			log.Warn("no se pudo retirar la presencia caliente", "err", err)
 		}
@@ -192,11 +217,14 @@ func (s *Server) handshake(ctx context.Context, conn *gws.Conn) (auth.Claims, st
 
 	_, data, err := conn.ReadMessage()
 	if err != nil {
+		if errors.Is(err, gws.ErrReadLimit) {
+			return auth.Claims{}, "", errMessageTooLarge
+		}
 		return auth.Claims{}, "", errHandshakeTimeout
 	}
 
 	var msg protocol.Inbound
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := protocol.DecodeStrict(data, &msg); err != nil {
 		return auth.Claims{}, "", errInvalidMessage
 	}
 	if msg.V != protocol.Version {
@@ -207,7 +235,7 @@ func (s *Server) handshake(ctx context.Context, conn *gws.Conn) (auth.Claims, st
 	}
 
 	var payload protocol.SessionHelloPayload
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil || payload.Ticket == "" {
+	if err := protocol.DecodeStrict(msg.Payload, &payload); err != nil || payload.Ticket == "" {
 		return auth.Claims{}, "", errInvalidMessage
 	}
 
@@ -230,6 +258,12 @@ func (s *Server) readPump(ctx context.Context, session *Session, log *slog.Logge
 	for {
 		_, data, err := session.conn.ReadMessage()
 		if err != nil {
+			if errors.Is(err, gws.ErrReadLimit) {
+				// gorilla ya cerró con 1009 sin leer el frame (INV-SEC-005).
+				log.Info("mensaje por encima del límite de tamaño; se cierra la sesión",
+					"limit_bytes", s.cfg.MaxMessageBytes)
+				return
+			}
 			if gws.IsUnexpectedCloseError(err, gws.CloseNormalClosure, gws.CloseGoingAway) {
 				log.Debug("lectura interrumpida", "err", err)
 			}
@@ -240,12 +274,12 @@ func (s *Server) readPump(ctx context.Context, session *Session, log *slog.Logge
 		if !limiter.allow(time.Now()) {
 			log.Warn("límite de tasa superado; se cierra la sesión")
 			session.SendError("", protocol.CodeRateLimited, "demasiados mensajes")
-			session.CloseWith(protocol.CloseRateLimited, "rate limited")
+			session.CloseAfterFlush(protocol.CloseRateLimited, "rate limited")
 			return
 		}
 
 		var msg protocol.Inbound
-		if err := json.Unmarshal(data, &msg); err != nil {
+		if err := protocol.DecodeStrict(data, &msg); err != nil {
 			session.SendError("", protocol.CodeInvalidMessage, "mensaje malformado")
 			continue
 		}
@@ -278,7 +312,7 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 	switch msg.Type {
 	case protocol.TypeSessionPing:
 		var p protocol.SessionPingPayload
-		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
 			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
 			return
 		}
@@ -292,7 +326,7 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 
 	case protocol.TypeSessionView:
 		var p protocol.SessionViewPayload
-		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
 			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
 			return
 		}
@@ -301,14 +335,14 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 
 	case protocol.TypeUnitMove:
 		var p protocol.UnitMovePayload
-		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
 			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
 			return
 		}
 		if !s.claimRequest(ctx, session, msg.RequestID) {
 			return
 		}
-		s.dispatch(simulation.MoveUnit{
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.MoveUnit{
 			PlayerID:  session.PlayerID,
 			SessionID: session.ID,
 			RequestID: msg.RequestID,
@@ -318,20 +352,62 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 
 	case protocol.TypeUnitCancelMove:
 		var p protocol.UnitCancelMovePayload
-		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
 			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
 			return
 		}
 		if !s.claimRequest(ctx, session, msg.RequestID) {
 			return
 		}
-		s.dispatch(simulation.CancelMovement{
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.CancelMovement{
 			PlayerID:  session.PlayerID,
 			SessionID: session.ID,
 			RequestID: msg.RequestID,
 			UnitID:    p.UnitID,
 		})
 	}
+}
+
+// dispatchClaimed encola un comando cuyo requestId ya se reservó. Si la cola del
+// loop está llena, el comando no se ejecutó: se dice al cliente y se libera la
+// reserva, o el reintento con el mismo requestId se descartaría como duplicado
+// de algo que nunca ocurrió (I-10).
+func (s *Server) dispatchClaimed(ctx context.Context, session *Session, requestID string, cmd simulation.Command) {
+	if s.dispatch(cmd) {
+		return
+	}
+	if s.dedupe != nil {
+		if err := s.dedupe.Release(context.WithoutCancel(ctx), session.PlayerID, requestID); err != nil {
+			s.log.Warn("no se pudo liberar la reserva de un comando descartado",
+				observability.FieldRequestID, requestID, "err", err)
+		}
+	}
+	session.SendError(requestID, protocol.CodeInternalError, "el servidor está saturado; reintenta")
+}
+
+// recordReply guarda la respuesta directa a un comando para reproducirla ante
+// un duplicado (I-5). La llama el Hub desde el game loop, así que la escritura
+// en el almacén va en su propia goroutine: el tick nunca espera a Redis. Un
+// duplicado que llegue antes de que termine verá todavía "pending" y no
+// recibirá nada, igual que si el original siguiera en curso.
+func (s *Server) recordReply(playerID uuid.UUID, requestID, msgType string, payload any) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		s.log.Error("no se pudo serializar una respuesta para la idempotencia", "type", msgType, "err", err)
+		return
+	}
+	stored, err := json.Marshal(storedReply{Type: msgType, Payload: raw})
+	if err != nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), replyStoreTimeout)
+		defer cancel()
+		if err := s.dedupe.Complete(ctx, playerID, requestID, string(stored)); err != nil {
+			s.log.Debug("no se pudo guardar la respuesta de un comando",
+				observability.FieldRequestID, requestID, "err", err)
+		}
+	}()
 }
 
 // claimRequest aplica la idempotencia por requestId.
@@ -346,7 +422,7 @@ func (s *Server) claimRequest(ctx context.Context, session *Session, requestID s
 	if s.dedupe == nil {
 		return true
 	}
-	fresh, _, err := s.dedupe.Claim(ctx, session.PlayerID, requestID)
+	fresh, prev, err := s.dedupe.Claim(ctx, session.PlayerID, requestID)
 	if err != nil {
 		// Si Redis no responde no se bloquea el juego: se prefiere ejecutar el
 		// comando a dejar al jugador sin poder jugar. La decisión está documentada
@@ -354,13 +430,24 @@ func (s *Server) claimRequest(ctx context.Context, session *Session, requestID s
 		s.log.Warn("no se pudo verificar la idempotencia; se ejecuta igualmente", "err", err)
 		return true
 	}
-	if !fresh {
-		s.log.Debug("comando duplicado ignorado",
+	if fresh {
+		return true
+	}
+
+	// Duplicado: nunca se reejecuta. Si el original ya tuvo respuesta, se
+	// reproduce tal cual (I-5); si sigue en curso, no se dice nada.
+	var reply storedReply
+	if prev != pendingReply && json.Unmarshal([]byte(prev), &reply) == nil && reply.Type != "" {
+		session.Send(reply.Type, requestID, reply.Payload)
+		s.log.Debug("comando duplicado; se reproduce la respuesta original",
 			observability.FieldRequestID, requestID,
-			observability.FieldPlayerID, session.PlayerID)
+			observability.FieldPlayerID, session.PlayerID, "type", reply.Type)
 		return false
 	}
-	return true
+	s.log.Debug("comando duplicado ignorado",
+		observability.FieldRequestID, requestID,
+		observability.FieldPlayerID, session.PlayerID)
+	return false
 }
 
 // sendSnapshot pide el estado del área de interés al game loop y lo envía.
@@ -425,6 +512,7 @@ func (s *Server) dispatch(cmd simulation.Command) bool {
 // MISMO código de cierre: distinguirlos ayudaría a afinar un ataque.
 var (
 	errHandshakeTimeout   = errors.New("handshake no completado a tiempo")
+	errMessageTooLarge    = errors.New("mensaje por encima del límite de tamaño")
 	errInvalidMessage     = errors.New("mensaje de handshake inválido")
 	errUnsupportedVersion = errors.New("versión de protocolo no soportada")
 	errUnauthenticated    = errors.New("autenticación fallida")
@@ -434,6 +522,10 @@ func handshakeCloseCode(err error) (int, string) {
 	switch {
 	case errors.Is(err, errHandshakeTimeout):
 		return protocol.CloseHandshakeTimeout, "handshake timeout"
+	case errors.Is(err, errMessageTooLarge):
+		// gorilla ya envió este mismo cierre al cortar la lectura; repetirlo
+		// falla sin consecuencias, y el log dice la causa verdadera.
+		return gws.CloseMessageTooBig, "message too big"
 	case errors.Is(err, errInvalidMessage):
 		return protocol.CloseInvalidMessage, "invalid message"
 	case errors.Is(err, errUnsupportedVersion):

@@ -48,7 +48,7 @@ func newHotState(ctx context.Context, cfg config.Config, log *slog.Logger) (hotS
 		}, nil
 	}
 
-	client, err := redisstore.New(ctx, cfg.RedisURL)
+	client, err := redisstore.New(ctx, cfg.RedisURL.Reveal())
 	if err != nil {
 		return nil, err
 	}

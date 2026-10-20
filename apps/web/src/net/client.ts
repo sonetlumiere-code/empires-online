@@ -244,7 +244,9 @@ export class GameClient {
 
   /** Ordena mover una unidad. El servidor decide la ruta, el tiempo y si se puede. */
   moveUnit(unitId: number, target: { x: number; y: number }): string {
-    return this.send('unit.move', { unitId, target });
+    // Sólo x e y: el servidor rechaza cualquier propiedad que el contrato no
+    // declare (S-7), y un tile del renderer suele llevar más.
+    return this.send('unit.move', { unitId, target: { x: target.x, y: target.y } });
   }
 
   /** Cancela el movimiento activo de una unidad. */
@@ -254,7 +256,7 @@ export class GameClient {
 
   /** Recentra el área de interés (la cámara). */
   setView(center: { x: number; y: number }): string {
-    return this.send('session.view', { center });
+    return this.send('session.view', { center: { x: center.x, y: center.y } });
   }
 
   private send(type: string, payload: unknown): string {

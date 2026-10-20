@@ -84,7 +84,7 @@ func run() error {
 	// vez competirían por el mismo esquema. Allí se ejecuta `cmd/migrate` como
 	// paso previo del despliegue. Ver docs/operations/deployment.md y ADR-012.
 	if cfg.MigrateOnStart {
-		if err := postgres.Migrate(cfg.PostgresURL, log); err != nil {
+		if err := postgres.Migrate(cfg.PostgresURL.Reveal(), log); err != nil {
 			return fmt.Errorf("migraciones: %w", err)
 		}
 	} else {
@@ -93,7 +93,7 @@ func run() error {
 	}
 
 	// ── 2. Dependencias con estado ──────────────────────────────
-	store, err := postgres.New(rootCtx, cfg.PostgresURL)
+	store, err := postgres.New(rootCtx, cfg.PostgresURL.Reveal())
 	if err != nil {
 		return err
 	}
@@ -246,7 +246,7 @@ func run() error {
 
 	// ── 6. Transporte ───────────────────────────────────────────
 	authenticator := auth.NewAuthenticator(
-		auth.NewVerifier(cfg.AuthJWTSecret, sysClock),
+		auth.NewVerifier(cfg.AuthJWTSecret.Reveal(), sysClock),
 		hot.Tickets(),
 	)
 	presence := hot.Presence()
@@ -276,7 +276,7 @@ func run() error {
 	firstEra := eras[0]
 
 	authAPI := httpapi.NewAuthAPI(playerRepo, cityRepo, bootstrapper,
-		auth.NewIssuer(cfg.AuthJWTSecret, ticketTTL, sysClock),
+		auth.NewIssuer(cfg.AuthJWTSecret.Reveal(), ticketTTL, sysClock),
 		gameWorld, commands, httpapi.Options{
 			DefaultEra:     firstEra.Code,
 			CivilizationID: 1,

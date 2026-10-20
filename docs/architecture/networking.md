@@ -541,9 +541,10 @@ Una reconexión o un reintento no deben ejecutar dos veces la misma orden. El me
 
 1. `unit.move` y `unit.cancel_move` llevan `requestId` UUIDv4 **generado por el cliente**. Sin él, el servidor responde `system.error{INVALID_MESSAGE}` y no ejecuta nada.
 2. Al recibirlo, el servidor **reserva** `idem:{playerId}:{requestId}` en Redis con `SETNX` y TTL **300 s**, **antes** de encolar el comando. Si dos copias del mismo comando llegan a la vez, sólo una gana la reserva.
-3. Si la clave **ya existía**, el comando **no se re-ejecuta**: se descarta silenciosamente, sin respuesta nueva. El cliente reconcilia con el siguiente `world.snapshot` o con los deltas que ya recibió del intento original.
+3. Si la clave **ya existía**, el comando **no se re-ejecuta**. Si el original ya tuvo respuesta directa (`unit.move.accepted`, `unit.move.rejected` o un `system.error` con su `requestId`), el duplicado recibe esa misma respuesta: el `Hub` la ve pasar al enviarla y el servidor la guarda en la misma clave, en una goroutine aparte para no frenar el tick. Si el original sigue en curso, no recibe nada. En cualquier caso, el estado del mundo lo da el `world.snapshot` de la reconexión.
 4. Si **Redis no responde**, el comando **se ejecuta igualmente** y se registra un `warn`. Es una elección explícita de fail-open en esta puerta concreta: se prefiere arriesgar un duplicado a dejar al jugador sin poder jugar. Contrasta a propósito con el handshake, que es fail-closed (§3.2): una identidad no verificable es un riesgo de seguridad; un movimiento duplicado, no.
 5. El `requestId` está **namespaced por `playerId`**: un jugador no puede colisionar ni sondear los requestId de otro.
+6. Si la cola de comandos del game loop está llena, el comando **no se ejecutó**: se responde `system.error{INTERNAL_ERROR}` con su `requestId` y la reserva se **libera**, para que el reintento con el mismo `requestId` sí se ejecute.
 
 ```
 cliente ──unit.move{requestId=R}──> servidor

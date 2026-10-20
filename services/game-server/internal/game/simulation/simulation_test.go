@@ -125,6 +125,27 @@ func (p *syncPersister) names() []string {
 	return append([]string(nil), p.jobs...)
 }
 
+// contarRutas envuelve el A* real y cuenta sus llamadas: un rechazo de ownership
+// o de estado no puede llegar a gastar presupuesto de pathfinding (INV-SEC-004).
+type contarRutas struct {
+	inner pathfinding.Pathfinder
+	mu    sync.Mutex
+	calls int
+}
+
+func (c *contarRutas) FindPath(ctx context.Context, grid pathfinding.Grid, from, to world.Tile, opts pathfinding.Options) ([]world.Tile, error) {
+	c.mu.Lock()
+	c.calls++
+	c.mu.Unlock()
+	return c.inner.FindPath(ctx, grid, from, to, opts)
+}
+
+func (c *contarRutas) llamadas() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls
+}
+
 // fakeRepos registra las escrituras durables sin tocar ninguna base de datos.
 type fakeRepos struct {
 	mu               sync.Mutex
@@ -191,6 +212,7 @@ type harness struct {
 	playerID uuid.UUID
 	cityID   int64
 	units    []*unit.Unit
+	rutas    *contarRutas
 }
 
 // newHarness monta un mundo determinista de 64x64 de hierba con un jugador,
@@ -221,9 +243,10 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	repos := newFakeRepos()
 	state := simulation.NewState(w)
 
+	rutas := &contarRutas{inner: pathfinding.NewAStar(20000, 256)}
 	sim := simulation.New(state, simulation.Deps{
 		Clock:              clk,
-		Pathfinder:         pathfinding.NewAStar(20000, 256),
+		Pathfinder:         rutas,
 		Broadcaster:        rec,
 		Persister:          &syncPersister{},
 		Repos:              repos,
@@ -244,7 +267,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 
 	h := &harness{
 		t: t, clk: clk, state: state, sim: sim, loop: gameLoop,
-		rec: rec, repos: repos, commands: commands,
+		rec: rec, repos: repos, commands: commands, rutas: rutas,
 		playerID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
 		cityID:   1,
 	}
@@ -498,6 +521,8 @@ func TestRechazosDeMovimiento(t *testing.T) {
 
 			require.Empty(t, h.rec.byType(protocol.TypeUnitMovementStarted),
 				"un comando rechazado no puede producir ningún movimiento")
+			require.Zero(t, h.rutas.llamadas(),
+				"INV-SEC-004: todos estos rechazos ocurren antes del A*, sin gastar su presupuesto")
 		})
 	}
 }

@@ -6,7 +6,12 @@
 // Ver ../../../../docs/decisions/ADR-009-shared-protocol-package.md
 package protocol
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+)
 
 // Version es la versión de protocolo que habla este servidor.
 const Version = 1
@@ -67,6 +72,29 @@ type Inbound struct {
 	Type      string          `json:"type"`
 	RequestID string          `json:"requestId"`
 	Payload   json.RawMessage `json:"payload"`
+}
+
+// DecodeStrict decodifica un mensaje cliente → servidor —el envelope o su
+// payload— rechazando toda propiedad que el contrato no declare, a cualquier
+// profundidad, y cualquier dato tras el valor JSON.
+//
+// Es la mitad Go de S-7 (docs/specs/websocket-protocol.md): los esquemas
+// cliente → servidor son estrictos (`additionalProperties: false`). Un
+// `json.Unmarshal` corriente descartaría en silencio un `path` o un `hp`
+// colados en `unit.move`; descartarlos no rompe hoy nada, porque ningún struct
+// tiene dónde guardarlos, pero un refactor que añadiera el campo los aceptaría
+// sin que nadie lo decidiera (INV-SEC-001). Los mensajes servidor → cliente no
+// pasan por aquí: hacia fuera el contrato es tolerante a propósito.
+func DecodeStrict(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("datos tras el valor JSON")
+	}
+	return nil
 }
 
 // Outbound es el envelope servidor → cliente.

@@ -3,6 +3,7 @@ package websocket_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -106,20 +107,40 @@ func (m *memoryPresence) ClearIfSession(_ context.Context, playerID, sessionID u
 
 type memoryDeduper struct {
 	mu   sync.Mutex
-	seen map[string]bool
+	seen map[string]string
 }
 
-func newMemoryDeduper() *memoryDeduper { return &memoryDeduper{seen: map[string]bool{}} }
+func newMemoryDeduper() *memoryDeduper { return &memoryDeduper{seen: map[string]string{}} }
 
 func (m *memoryDeduper) Claim(_ context.Context, playerID uuid.UUID, requestID string) (bool, string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := playerID.String() + ":" + requestID
-	if m.seen[key] {
-		return false, "", nil
+	if prev, ok := m.seen[key]; ok {
+		return false, prev, nil
 	}
-	m.seen[key] = true
+	m.seen[key] = "pending"
 	return true, "", nil
+}
+
+func (m *memoryDeduper) Complete(_ context.Context, playerID uuid.UUID, requestID, response string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.seen[playerID.String()+":"+requestID] = response
+	return nil
+}
+
+func (m *memoryDeduper) Release(_ context.Context, playerID uuid.UUID, requestID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.seen, playerID.String()+":"+requestID)
+	return nil
+}
+
+func (m *memoryDeduper) stored(playerID uuid.UUID, requestID string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.seen[playerID.String()+":"+requestID]
 }
 
 type memoryRepos struct{ mu sync.Mutex }
@@ -149,6 +170,10 @@ type e2e struct {
 	playerID uuid.UUID
 	unitIDs  []int64
 	stop     func()
+	// dedupe y commands se exponen para los tests de idempotencia y de
+	// saturación de la cola.
+	dedupe   *memoryDeduper
+	commands chan simulation.Command
 }
 
 func newE2E(t *testing.T) *e2e {
@@ -159,6 +184,13 @@ func newE2E(t *testing.T) *e2e {
 // newE2EConTerreno permite pintar terreno sobre la hierba antes de construir el
 // mundo de 128 × 128 (slice fila-mayor).
 func newE2EConTerreno(t *testing.T, pintar func(terrain []byte)) *e2e {
+	t.Helper()
+	return newE2ECon(t, pintar, nil)
+}
+
+// newE2ECon es el constructor completo: `ajustar`, si no es nil, retoca la
+// configuración del servidor WebSocket antes de construirlo.
+func newE2ECon(t *testing.T, pintar func(terrain []byte), ajustar func(*ws.Config)) *e2e {
 	t.Helper()
 
 	terrain := make([]byte, 128*128)
@@ -207,6 +239,7 @@ func newE2EConTerreno(t *testing.T, pintar func(terrain []byte)) *e2e {
 	}
 
 	commands := make(chan simulation.Command, 256)
+	dedupe := newMemoryDeduper()
 	gameLoop := loop.New(sim, clk, commands, loop.Config{
 		TickDuration:       100 * time.Millisecond,
 		FlushIntervalTicks: 50,
@@ -216,7 +249,7 @@ func newE2EConTerreno(t *testing.T, pintar func(terrain []byte)) *e2e {
 
 	authenticator := auth.NewAuthenticator(auth.NewVerifier(testSecret, clk), newMemoryTickets())
 
-	wsServer := ws.NewServer(ws.Config{
+	wsCfg := ws.Config{
 		MaxMessageBytes:      16384,
 		RateLimitPerSec:      20,
 		RateLimitBurst:       40,
@@ -231,7 +264,11 @@ func newE2EConTerreno(t *testing.T, pintar func(terrain []byte)) *e2e {
 		WorldWidth:           128,
 		WorldHeight:          128,
 		ChunkSize:            32,
-	}, hub, authenticator, newMemoryPresence(), newMemoryDeduper(), commands, nil, log)
+	}
+	if ajustar != nil {
+		ajustar(&wsCfg)
+	}
+	wsServer := ws.NewServer(wsCfg, hub, authenticator, newMemoryPresence(), dedupe, commands, nil, log)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", wsServer.Handler(context.Background()))
@@ -244,6 +281,7 @@ func newE2EConTerreno(t *testing.T, pintar func(terrain []byte)) *e2e {
 		issuer:   auth.NewIssuer(testSecret, 60*time.Second, clk),
 		state:    state,
 		playerID: playerID, unitIDs: unitIDs,
+		dedupe: dedupe, commands: commands,
 	}
 	env.stop = func() { httpServer.Close() }
 	t.Cleanup(env.stop)
@@ -615,24 +653,34 @@ func TestComandoDuplicadoSeIgnora(t *testing.T) {
 	require.NoError(t, c.c.WriteMessage(gws.TextMessage, raw))
 	env.pump()
 
-	c.await(protocol.TypeUnitMoveAccepted, 3*time.Second)
+	primera := decode[protocol.UnitMoveAcceptedPayload](t, c.await(protocol.TypeUnitMoveAccepted, 3*time.Second).Payload)
 
-	// No debe haber una segunda aceptación.
+	// INV-SEC-007 prohíbe un segundo EFECTO, no un segundo mensaje: si el
+	// duplicado se lee cuando el original ya tiene respuesta, la recibe otra vez
+	// (I-5), con el mismo movementId. Lo que no puede haber es un segundo
+	// movimiento.
+	env.pump()
 	_ = c.c.SetReadDeadline(time.Now().Add(700 * time.Millisecond))
-	second := false
-	_ = second
+	iniciados := 0
 	for {
 		_, data, err := c.c.ReadMessage()
 		if err != nil {
 			break
 		}
 		var env2 envelope
-		if json.Unmarshal(data, &env2) == nil && env2.Type == protocol.TypeUnitMoveAccepted {
-			second = true
-			break
+		require.NoError(t, json.Unmarshal(data, &env2))
+		switch env2.Type {
+		case protocol.TypeUnitMovementStarted:
+			iniciados++
+		case protocol.TypeUnitMoveAccepted:
+			require.Equal(t, primera, decode[protocol.UnitMoveAcceptedPayload](t, env2.Payload),
+				"un duplicado sólo puede recibir la respuesta original")
 		}
 	}
-	require.False(t, second, "el comando duplicado no puede aceptarse dos veces")
+	require.Equal(t, 1, iniciados, "el comando duplicado no puede iniciar un segundo movimiento")
+	m, ok := env.state.Movement(env.unitIDs[0])
+	require.True(t, ok)
+	require.Equal(t, primera.MovementID, m.ID)
 }
 
 // El cliente no puede colar campos que no existen en el contrato.
@@ -648,14 +696,44 @@ func TestPayloadConCamposExtraNoAportaEstado(t *testing.T) {
 	env.pump()
 	c.await(protocol.TypeWorldSnapshot, 3*time.Second)
 
-	// Se intenta enviar una ruta y un HP fabricados junto al comando legítimo.
-	c.send(protocol.TypeUnitMove, map[string]any{
+	// S-7 / INV-SEC-001: el esquema cliente → servidor es estricto a cualquier
+	// profundidad. Una ruta y un HP fabricados junto al comando legítimo, una
+	// propiedad de más en el destino o en el envelope: los tres se rechazan con
+	// INVALID_MESSAGE sin ejecutarse, y la sesión sigue.
+	conRuta := c.send(protocol.TypeUnitMove, map[string]any{
 		"unitId": env.unitIDs[0],
 		"target": map[string]int{"x": 44, "y": 40},
 		"path":   []map[string]int{{"x": 99, "y": 99, "tMs": 0}},
 		"hp":     9999,
 	})
 	env.pump()
+	rechazo := c.await(protocol.TypeSystemError, 3*time.Second)
+	require.Equal(t, conRuta, rechazo.RequestID)
+	require.Equal(t, protocol.CodeInvalidMessage, decode[protocol.SystemErrorPayload](t, rechazo.Payload).Code)
+
+	c.send(protocol.TypeUnitMove, map[string]any{
+		"unitId": env.unitIDs[0],
+		"target": map[string]int{"x": 44, "y": 40, "z": 1},
+	})
+	env.pump()
+	rechazo = c.await(protocol.TypeSystemError, 3*time.Second)
+	require.Equal(t, protocol.CodeInvalidMessage, decode[protocol.SystemErrorPayload](t, rechazo.Payload).Code)
+
+	require.NoError(t, c.c.WriteMessage(gws.TextMessage, []byte(fmt.Sprintf(
+		`{"v":1,"type":"unit.move","requestId":%q,"seq":7,"payload":{"unitId":%d,"target":{"x":44,"y":40}}}`,
+		uuid.NewString(), env.unitIDs[0]))))
+	env.pump()
+	rechazo = c.await(protocol.TypeSystemError, 3*time.Second)
+	require.Equal(t, protocol.CodeInvalidMessage, decode[protocol.SystemErrorPayload](t, rechazo.Payload).Code)
+
+	// El comando limpio sí se ejecuta, y es el PRIMERO que se acepta: ninguno
+	// de los anteriores llegó a la simulación.
+	limpio := c.send(protocol.TypeUnitMove, map[string]any{
+		"unitId": env.unitIDs[0],
+		"target": map[string]int{"x": 44, "y": 40},
+	})
+	env.pump()
+	require.Equal(t, limpio, c.await(protocol.TypeUnitMoveAccepted, 3*time.Second).RequestID)
 
 	started := decode[protocol.UnitMovementStartedPayload](t, c.await(protocol.TypeUnitMovementStarted, 3*time.Second).Payload)
 
@@ -686,4 +764,89 @@ func TestPingPongDevuelveElRelojDelServidor(t *testing.T) {
 
 	require.EqualValues(t, 12345, pong.ClientTimeMs, "el eco debe ser exacto para estimar el RTT")
 	require.Greater(t, pong.ServerTimeMs, int64(0))
+}
+
+// sendID envía un mensaje con un requestId elegido: lo que hace un cliente que
+// reintenta.
+func (c *conn) sendID(requestID, msgType string, payload any) {
+	c.t.Helper()
+	data, err := json.Marshal(map[string]any{
+		"v": 1, "type": msgType, "requestId": requestID, "payload": payload,
+	})
+	require.NoError(c.t, err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.NoError(c.t, c.c.WriteMessage(gws.TextMessage, data))
+}
+
+// conectar abre una sesión autenticada y consume el welcome y el snapshot.
+func (e *e2e) conectar() *conn {
+	e.t.Helper()
+	ticket, err := e.issuer.Issue(e.playerID)
+	require.NoError(e.t, err)
+	c := e.dial()
+	c.send(protocol.TypeSessionHello, map[string]any{"ticket": ticket})
+	c.await(protocol.TypeSessionWelcome, 3*time.Second)
+	e.pump()
+	c.await(protocol.TypeWorldSnapshot, 3*time.Second)
+	return c
+}
+
+// INV-SEC-007 / I-5: el cliente pierde la conexión justo cuando el servidor
+// contesta y reintenta con el mismo requestId desde una sesión nueva. No hay
+// segundo efecto, y recibe la respuesta original: el mismo movementId.
+func TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal(t *testing.T) {
+	env := newE2E(t)
+	a := env.conectar()
+
+	orden := uuid.NewString()
+	a.sendID(orden, protocol.TypeUnitMove, map[string]any{
+		"unitId": env.unitIDs[0], "target": map[string]int{"x": 50, "y": 40},
+	})
+	env.pump()
+	original := decode[protocol.UnitMoveAcceptedPayload](t, a.await(protocol.TypeUnitMoveAccepted, 3*time.Second).Payload)
+	require.NotZero(t, original.MovementID)
+	require.Eventually(t, func() bool { return env.dedupe.stored(env.playerID, orden) != "pending" },
+		2*time.Second, 10*time.Millisecond, "la respuesta se guarda fuera del loop")
+	require.NoError(t, a.c.Close())
+
+	b := env.conectar()
+	b.sendID(orden, protocol.TypeUnitMove, map[string]any{
+		"unitId": env.unitIDs[0], "target": map[string]int{"x": 50, "y": 40},
+	})
+	env.pump()
+	repetida := b.await(protocol.TypeUnitMoveAccepted, 3*time.Second)
+	require.Equal(t, orden, repetida.RequestID)
+	require.Equal(t, original, decode[protocol.UnitMoveAcceptedPayload](t, repetida.Payload))
+
+	m, ok := env.state.Movement(env.unitIDs[0])
+	require.True(t, ok)
+	require.Equal(t, original.MovementID, m.ID, "el duplicado no creó un segundo movimiento")
+}
+
+// I-10: un comando que la cola del loop no admite no se ejecutó. El cliente
+// recibe INTERNAL_ERROR con su requestId y el reintento con ese mismo
+// requestId se ejecuta, en lugar de descartarse como duplicado.
+func TestConLaColaLlenaElComandoRespondeYSePuedeReintentar(t *testing.T) {
+	env := newE2E(t)
+	c := env.conectar()
+
+	for len(env.commands) < cap(env.commands) {
+		env.commands <- simulation.CancelMovement{PlayerID: env.playerID, UnitID: 9999}
+	}
+
+	orden := uuid.NewString()
+	c.sendID(orden, protocol.TypeUnitMove, map[string]any{
+		"unitId": env.unitIDs[0], "target": map[string]int{"x": 50, "y": 40},
+	})
+	saturado := c.await(protocol.TypeSystemError, 3*time.Second)
+	require.Equal(t, orden, saturado.RequestID)
+	require.Equal(t, protocol.CodeInternalError, decode[protocol.SystemErrorPayload](t, saturado.Payload).Code)
+
+	env.pump() // vacía la cola
+	c.sendID(orden, protocol.TypeUnitMove, map[string]any{
+		"unitId": env.unitIDs[0], "target": map[string]int{"x": 50, "y": 40},
+	})
+	env.pump()
+	require.Equal(t, orden, c.await(protocol.TypeUnitMoveAccepted, 3*time.Second).RequestID)
 }

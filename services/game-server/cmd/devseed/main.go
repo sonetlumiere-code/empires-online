@@ -67,7 +67,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	store, err := postgres.New(ctx, cfg.PostgresURL)
+	store, err := postgres.New(ctx, cfg.PostgresURL.Reveal())
 	if err != nil {
 		return err
 	}
