@@ -114,3 +114,38 @@ func chunkCoherente(t *testing.T, ctx context.Context, store *postgres.Store) {
 		`SELECT count(*) FROM units WHERE chunk_x <> x / 32 OR chunk_y <> y / 32`).Scan(&descuadradas))
 	assert.Zero(t, descuadradas, "INV-UNIT-011: chunk_x/chunk_y son el chunk de (x, y)")
 }
+
+// La mitad DB de INV-MOVE-002, INV-MOVE-005 e INV-MOVE-007: una polilínea
+// vacía o que no es un array, una llegada anterior a la salida y un estado
+// fuera del dominio los rechaza el motor con el nombre exacto de la
+// restricción.
+func TestLasRestriccionesDeMovimientosRechazanFilasInvalidas(t *testing.T) {
+	store, ctx := newTestStore(t)
+	_, _, _, _, bootstrapper := newRepos(store)
+	db := store.Pool()
+
+	alta, err := bootstrapper.Create(ctx, bootstrapRequest("andarina", world.Tile{X: 20, Y: 20}))
+	require.NoError(t, err)
+	unidad := alta.Units[0].ID
+
+	insertar := func(path string, start, arrival int64, status string) error {
+		_, err := db.Exec(ctx,
+			`INSERT INTO unit_movements (unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
+			 VALUES ($1, $2::jsonb, 23, 20, $3, $4, $5)`,
+			unidad, path, start, arrival, status)
+		return err
+	}
+	const valido = `[{"x":22,"y":20,"tMs":0},{"x":23,"y":20,"tMs":600}]`
+
+	assert.Equal(t, "unit_movements_path_is_array", constraintDe(t, insertar(`[]`, 1000, 1600, "COMPLETED")))
+	assert.Equal(t, "unit_movements_path_is_array", constraintDe(t, insertar(`{"x":1}`, 1000, 1600, "COMPLETED")))
+	assert.Equal(t, "unit_movements_time_ordered", constraintDe(t, insertar(valido, 1000, 999, "COMPLETED")))
+	for _, invalido := range []string{"active", "", "PAUSED"} {
+		assert.Equal(t, "unit_movements_status_valid", constraintDe(t, insertar(valido, 1000, 1600, invalido)), "%q", invalido)
+	}
+	require.NoError(t, insertar(valido, 1000, 1000, "COMPLETED"), "el esquema admite duración cero; el dominio nunca la crea")
+
+	var filas int
+	require.NoError(t, db.QueryRow(ctx, `SELECT count(*) FROM unit_movements`).Scan(&filas))
+	assert.Equal(t, 1, filas, "las filas rechazadas no dejan rastro")
+}

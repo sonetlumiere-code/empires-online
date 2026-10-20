@@ -51,7 +51,7 @@ Código de referencia: `internal/domain/movement/{path.go,movement.go}` (dominio
 |---|---|
 | Movimiento de grupo / formaciones | Fuera de MVP |
 | Colisión entre unidades (dos unidades pueden ocupar el mismo tile) | Fuera de MVP |
-| Recálculo automático de ruta si el terreno se bloquea durante el trayecto | Fuera de MVP |
+| Recálculo automático de ruta si el terreno se bloquea durante el trayecto | Fuera de MVP. Lo que sí existe es la detención: si una ciudad recién fundada amuralla un tile de la ruta pendiente, el movimiento se detiene con `PATH_BLOCKED` ([RN-CITY-022](city.md)) y el jugador decide la ruta nueva |
 | Órdenes encoladas (waypoints múltiples, patrullas) | Fuera de MVP |
 | Movimiento naval sobre WATER | Fuera de MVP (canon §5) |
 | Interrupción del movimiento por combate | Fuera de MVP (canon §6 fase 4 reservada) |
@@ -463,7 +463,10 @@ Garantías:
   y `unit.movement.started` del nuevo.
 - `reason` es un discriminante de payload, **no** un código de error. Sus valores son
   `REPLACED | CANCELLED_BY_PLAYER | PATH_BLOCKED | UNIT_DEAD | SERVER` (`movement.CancelReason`).
-  En MVP el movimiento sólo produce `REPLACED` y `CANCELLED_BY_PLAYER`.
+  En MVP se producen cuatro: `REPLACED` y `CANCELLED_BY_PLAYER` por orden del jugador, `PATH_BLOCKED` cuando
+  una ciudad recién fundada amuralla un tile de la ruta pendiente ([RN-CITY-022](city.md)) y `SERVER` cuando el
+  inicio del movimiento no llega a disco ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.4). `UNIT_DEAD`
+  espera al combate.
 - `units.status` pasa de `MOVING` a `MOVING` sin pasar por `IDLE` desde el punto de vista del cliente: la
   cancelación y la creación ocurren en la misma aplicación de comando.
 
@@ -594,7 +597,7 @@ resumen de [../invariants/README.md](../invariants/README.md).
 | `INV-MOVE-001` | A lo sumo un movimiento `ACTIVE` por unidad | Índice único parcial `unit_movements_one_active_per_unit` + cancelación previa en `handleMoveUnit` |
 | `INV-MOVE-002` | La polilínea es no vacía y empieza en el origen con `tMs = 0` | `BuildTimedPath` + `Validate` (también al rehidratar) |
 | `INV-MOVE-003` | Los `tMs` son estrictamente crecientes | `Validate`; `StepDurationMs` nunca devuelve 0 |
-| `INV-MOVE-004` | Waypoints transitables y contiguos en 8-vecindad | `BuildTimedPath` + `Validate`; el pathfinder prohíbe cortar esquinas |
+| `INV-MOVE-004` | Waypoints transitables y contiguos en 8-vecindad, sin cortar esquinas | El A* lo garantiza al buscar; `Validate` lo recomprueba al rehidratar, esquinas incluidas; `ValidateFrom` revalida la ruta pendiente cuando una muralla nueva cambia el mundo |
 | `INV-MOVE-005` | `arrival_time_ms` es coherente con la polilínea | `movement.New` (`StartTimeMs + Path.DurationMs()`) + `CHECK unit_movements_time_ordered` |
 | `INV-MOVE-006` | La posición derivada nunca adelanta al reloj del servidor | `PositionAt` acota por `arrival_time_ms`; la llegada se detecta con `nowMs >= arrival_time_ms` |
 | `INV-MOVE-007` | Un movimiento terminado nunca vuelve a `ACTIVE` | `MovementRepo.Finish` actúa sólo `WHERE status = 'ACTIVE'` |
@@ -926,7 +929,7 @@ Los tests marcados **(existe)** están escritos y en verde; el resto están dise
 | MV-U-004 | `PositionAt` en fronteras y fuera de rango | Antes del inicio → origen; después de la llegada → destino | `TestPositionAt` **(existe)** |
 | MV-U-005 | `IndexAt` | Índice del waypoint alcanzado, monótono | `TestIndexAt` **(existe)** |
 | MV-U-006 | `BuildTimedPath` rechaza entradas inválidas | Ruta vacía, no contigua, tile intransitable, `baseMsPerTile ≤ 0` | `TestBuildTimedPathRechazaEntradasInvalidas` **(existe)** |
-| MV-U-007 | `Validate` (`INV-MOVE-002/003/004`) | Origen con `tMs != 0`, `tMs` no creciente, waypoints no adyacentes, tile intransitable | `TestValidateComprobaciones` **(existe)** |
+| MV-U-007 | `Validate` (`INV-MOVE-002/003/004`) | Origen con `tMs != 0`, `tMs` no creciente, waypoints no adyacentes, tile intransitable, esquina atajada | `TestValidateComprobaciones` **(existe)**; el tramo pendiente, `TestValidateFromSoloMiraElTramoPendiente` **(existe)** |
 | MV-U-008 | Ciclo de vida del movimiento | `New`, `HasArrived`, `RemainingMs`, `Destination` (`INV-MOVE-005`) | `TestMovementCicloDeVida` **(existe)** |
 | MV-U-009 | Dominio cerrado de `Status` | `Valid()` sobre los cuatro estados y sobre uno inventado | `TestEstadosDeMovimiento` **(existe)** |
 

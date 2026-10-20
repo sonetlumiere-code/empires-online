@@ -117,6 +117,20 @@ func Hydrate(
 			continue
 		}
 
+		// INV-MOVE-005: arrival_time_ms y el destino están desnormalizados en la
+		// fila; la fuente es la polilínea. Una fila que no cuadra con ella haría
+		// llegar la unidad antes de tiempo, o nunca, o anunciar al cliente un
+		// destino que la ruta no alcanza. Se corrige en memoria desde la
+		// polilínea, que ya se validó arriba.
+		if want := m.StartTimeMs + m.Path.DurationMs(); m.ArrivalTimeMs != want || m.Target != m.Destination() {
+			log.Error("invariant_violation",
+				"inv_id", "INV-MOVE-005", "severity", "ALTO", "policy", "REPAIR",
+				"entity", fmt.Sprintf("movement:%d", m.ID),
+				"detail", fmt.Sprintf("la fila dice llegada %d y destino %s; la polilínea, %d y %s: manda la polilínea",
+					m.ArrivalTimeMs, m.Target, want, m.Destination()))
+			m.ArrivalTimeMs, m.Target = want, m.Destination()
+		}
+
 		if m.HasArrived(nowMs) {
 			dest := m.Destination()
 			state.MoveUnitTo(u, dest)

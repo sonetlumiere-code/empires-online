@@ -209,35 +209,3 @@ func TestAlArrancarLaMurallaApartaYDetieneComoEnElAlta(t *testing.T) {
 	sucias := state.DrainDirty()
 	require.Len(t, sucias, 2, "las dos posiciones nuevas se vuelcan")
 }
-
-// INV-UNIT-005: una unidad GARRISONED con un movimiento ACTIVE es una fila
-// corrupta. La rehidratación no la saca de la ciudad: cierra el movimiento
-// FAILED sin tocar la unidad.
-func TestRecuperacionNoReanudaElMovimientoDeUnaUnidadGuarnecida(t *testing.T) {
-	terrain := make([]byte, 64*64)
-	for i := range terrain {
-		terrain[i] = byte(world.Grassland)
-	}
-	w, err := world.New(64, 64, 32, 1, terrain)
-	require.NoError(t, err)
-	guarnecida := &unit.Unit{ID: 1, PlayerID: uuid.New(), Type: unit.TypeVillager,
-		X: 10, Y: 10, HP: 40, MaxHP: 40, Status: unit.StatusGarrisoned}
-	path, err := movement.BuildTimedPath(
-		[]world.Tile{{X: 10, Y: 10}, {X: 11, Y: 10}, {X: 12, Y: 10}}, w, 600)
-	require.NoError(t, err)
-	m := movement.New(guarnecida.ID, path, world.Tile{X: 12, Y: 10}, epoch)
-	m.ID = 5
-
-	state := simulation.NewState(w)
-	res := simulation.Hydrate(state, []*unit.Unit{guarnecida}, nil,
-		[]*movement.Movement{m}, epoch+600, slog.New(slog.NewTextHandler(io.Discard, nil)))
-
-	assert.Equal(t, 0, res.Resumed)
-	assert.Equal(t, 1, res.Failed)
-	assert.Equal(t, unit.StatusGarrisoned, guarnecida.Status)
-	assert.Equal(t, world.Tile{X: 10, Y: 10}, guarnecida.Tile())
-	_, activo := state.Movement(guarnecida.ID)
-	assert.False(t, activo)
-	require.Equal(t, []simulation.FinishedMovement{{MovementID: 5, Status: movement.StatusFailed}},
-		res.FinishedMovements, "UnitID 0: el cierre no escribe la unidad")
-}

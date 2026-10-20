@@ -559,6 +559,41 @@ func TestMoverseAlSitioDondeYaEstas(t *testing.T) {
 	require.Equal(t, unit.StatusIdle, u.Status)
 }
 
+// INV-MOVE-014, la mitad con gameplay: una unidad en tránsito que recibe una
+// orden hacia el tile que ocupa en ese instante se detiene allí. La razón es
+// CANCELLED_BY_PLAYER y no REPLACED: no hay movimiento nuevo que reemplace al
+// anterior.
+func TestMoverseAlTileQueOcupaEnTransitoLaDetiene(t *testing.T) {
+	h := newHarness(t)
+	u := h.units[0]
+	h.send(simulation.MoveUnit{
+		PlayerID: h.playerID, RequestID: uuid.NewString(),
+		UnitID: u.ID, Target: world.Tile{X: 30, Y: 10},
+	})
+	h.advance(2 * time.Second)
+	aqui := h.unitTile(u.ID)
+	require.NotEqual(t, world.Tile{X: 12, Y: 10}, aqui, "ya ha salido")
+	h.rec.reset()
+
+	h.send(simulation.MoveUnit{
+		PlayerID: h.playerID, RequestID: uuid.NewString(),
+		UnitID: u.ID, Target: aqui,
+	})
+
+	accepted := h.rec.byType(protocol.TypeUnitMoveAccepted)
+	require.Len(t, accepted, 1)
+	require.Zero(t, accepted[0].Payload.(protocol.UnitMoveAcceptedPayload).MovementID)
+	require.Empty(t, h.rec.byType(protocol.TypeUnitMovementStarted))
+	cancelled := h.rec.byType(protocol.TypeUnitMovementCancelled)
+	require.Len(t, cancelled, 1)
+	require.Equal(t, string(movement.ReasonCancelledByPlayer),
+		cancelled[0].Payload.(protocol.UnitMovementCancelledPayload).Reason)
+	require.Equal(t, unit.StatusIdle, u.Status)
+	require.Equal(t, aqui, u.Tile())
+	_, sigue := h.state.Movement(u.ID)
+	require.False(t, sigue)
+}
+
 // ─────────────────────────────────────────────────────────────
 // Presencia y protección offline
 // ─────────────────────────────────────────────────────────────

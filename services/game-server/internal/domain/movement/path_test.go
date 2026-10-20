@@ -1,6 +1,7 @@
 package movement_test
 
 import (
+	"math/rand/v2"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -251,4 +252,38 @@ func TestEstadosDeMovimiento(t *testing.T) {
 	require.True(t, movement.StatusCancelled.Valid())
 	require.True(t, movement.StatusFailed.Valid())
 	require.False(t, movement.Status("PAUSED").Valid())
+}
+
+// INV-MOVE-006 como propiedad: sobre polilíneas y tiempos generados con una
+// semilla fija, la posición derivada es siempre el último waypoint alcanzado y
+// nunca uno posterior; antes del inicio es el origen y después de la llegada
+// el destino, sin extrapolar.
+func TestLaPosicionNuncaAdelantaAlReloj(t *testing.T) {
+	rng := rand.New(rand.NewPCG(20261020, 1))
+	for caso := 0; caso < 2000; caso++ {
+		n := 1 + rng.IntN(40)
+		path := make(movement.TimedPath, n)
+		var tMs int64
+		for i := range path {
+			if i > 0 {
+				tMs += 1 + rng.Int64N(1600)
+			}
+			path[i] = movement.Waypoint{X: int32(i), Y: 0, TMs: tMs}
+		}
+		for k := 0; k < 10; k++ {
+			elapsed := rng.Int64N(tMs+2000) - 1000
+			i := path.IndexAt(elapsed)
+			got := path.PositionAt(elapsed)
+			require.Equal(t, path[i].Tile(), got, "PositionAt e IndexAt dicen lo mismo")
+			switch {
+			case elapsed <= 0:
+				require.Equal(t, 0, i, "antes del inicio, el origen")
+			default:
+				require.LessOrEqual(t, path[i].TMs, elapsed, "nunca un waypoint aún no alcanzado")
+				if i+1 < n {
+					require.Greater(t, path[i+1].TMs, elapsed, "y siempre el último alcanzado")
+				}
+			}
+		}
+	}
 }
