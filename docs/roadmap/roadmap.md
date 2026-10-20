@@ -21,7 +21,6 @@ Lo que falta, y que este roadmap no debe dar por hecho:
 | **Corrección gradual en el cliente** (`EO-075`) | El cliente dibuja el movimiento de forma continua; la corrección hacia la verdad del servidor al llegar un delta está escrita y no conectada. Impide cerrar M4. |
 | **Acciones en territorio ajeno** (M6, entregable 8) | Sin regla de juego que las defina. |
 | **Comandos de guarnición** (M7, entregable 6) | Las reglas y la persistencia existen; ningún comando de red las invoca. |
-| **Validación de carga** (`EO-119`) | El arranque no comprueba que el estado durable de territorios, ciudades y unidades cumpla sus invariantes. |
 
 Ningún milestone se considera **cerrado** hasta que su documentación refleje lo implementado y la CI
 esté en verde.

@@ -15,7 +15,7 @@ refleja de forma desigual:
 | Familia | Código | Estado de las fichas |
 |---|---|---|
 | `INV-SAFE-*` | `internal/domain/safezone`, `internal/game/simulation/safezones.go`, `postgres.SafeZoneRepo` (M5) | **Reconciliadas con la suite.** Cada fila `Cobertura` nombra tests que existen y pasan. |
-| `INV-TERR-*` | `internal/domain/territory`, `internal/game/simulation/territory.go` e `introduce.go`, `postgres.TerritoryRepo` y `postgres.Bootstrapper` (M6) | **Reconciliadas con la suite** (`EO-118`). Dos fichas siguen parciales porque su validación de carga no existe: [INV-TERR-005](#inv-terr-005) e [INV-TERR-007](#inv-terr-007), registradas como `EO-119`. |
+| `INV-TERR-*` | `internal/domain/territory`, `internal/game/simulation/territory.go` e `introduce.go`, `postgres.TerritoryRepo` y `postgres.Bootstrapper` (M6) | **Reconciliadas con la suite** (`EO-118`). La validación de carga de [INV-TERR-005](#inv-terr-005) e [INV-TERR-007](#inv-terr-007) la hace `internal/game/loadcheck` desde `EO-119`. |
 
 Cada ficha declara en su fila `Cobertura` qué parte está viva y qué parte es diseño. Un invariante cuya única garantía vigente es `DB` se declara así, no como si el dominio ya lo sostuviera.
 
@@ -192,8 +192,8 @@ La severidad es `CRITICO` y no `ALTO` porque el control de territorio es, en cua
 | Severidad | ALTO |
 | Aplicación | DOMAIN, TEST |
 | Milestone | M6 |
-| Política ante violación | REPAIR (liberar el territorio), **sin implementar** |
-| Cobertura | **Parcial**: el único escritor lo cumple por construcción y `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration) lo comprueba; **no existe** la validación de carga que sustituye a la clave foránea (`EO-119`) |
+| Política ante violación | REPAIR (liberar el territorio) |
+| Cobertura | **Cubierto**: el único escritor lo cumple por construcción y `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration) lo comprueba; la validación de carga que sustituye a la clave foránea, `TestLosControlesSeReparan` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) |
 
 **Enunciado.** Si `owner_type = 'PLAYER'`, `owner_id` es un `players.id` existente. No hay clave foránea: `owner_id` es `text` polimórfico.
 
@@ -205,14 +205,15 @@ La consecuencia es concreta: si un jugador se borra, sus territorios quedan apun
 
 - `DOMAIN` — **vigente**: el único escritor de `owner_id` es la reclamación de la fundación, en `postgres.Bootstrapper`, y escribe el `players.id` que esa misma transacción acaba de insertar. Si el jugador no llega a existir, la transacción entera se deshace y el control con él. Ningún valor del payload llega a `owner_id`.
 - `DOMAIN` — **vigente por ausencia**: no existe ninguna ruta que borre jugadores. El `ON DELETE CASCADE` de `players` alcanza a `cities` y `units` pero no a `territory_control`, así que el día que exista esa ruta tendrá que liberar sus territorios en la misma transacción.
-- `DOMAIN` — **no existe todavía**: la validación de carga que resuelva cada `owner_id` de tipo `PLAYER` contra `players`. Es el sustituto de la clave foránea y la única defensa contra un borrado manual o una migración. Registrada como `EO-119`.
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) resuelve cada `owner_id` de tipo `PLAYER` contra el conjunto de `players.id` que lee `LoadCheckRepo.PlayerIDs`. Un `owner_id` que no es un `uuid`, o que no está en `players`, libera el territorio. Es el sustituto de la clave foránea y la única defensa contra un borrado manual o una migración.
 
 **Cómo se verifica.**
 
 - `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration) — tras fundar, `owner_id` es el id del jugador recién creado.
-- Pendiente con `EO-119`: un barrido que compruebe que todo `owner_id` de tipo `PLAYER` resuelve en `players`, y que un dueño borrado a mano se libera al recargar.
+- `TestLosControlesSeReparan` (unit, `internal/game/loadcheck`) — un dueño `PLAYER` que no está en `players` se libera: `NONE`, sin `owner_id` ni `captured_at`, el control resultante pasa `Validate` y su `version` sube en uno.
+- `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — lo mismo en la base, con su `InvariantRepaired`, y el arranque siguiente ya no lo encuentra.
 
-**Violación en runtime.** Hoy **no se detecta**: un dueño fantasma se cargaría en la RAM y viajaría a los clientes como `ownerId`. La política prevista es `REPAIR`: log `invariant_violation` con `inv_id=INV-TERR-005`, `territory_id` y el `owner_id` irresoluble; el territorio se libera (`owner_type = 'NONE'`, `owner_id = NULL`) y se registra un `world_events` de auditoría. Liberar es la reparación correcta porque devuelve el territorio al juego; conservar un dueño inexistente lo saca de él para siempre.
+**Violación en runtime.** Detección en la validación de carga, antes de que el control llegue a la RAM. Log `invariant_violation` con `inv_id=INV-TERR-005`, `entity=territory:<id>` y el `owner_id` irresoluble en `detail`. Política `REPAIR`: el territorio se libera (`owner_type = 'NONE'`, `owner_id = NULL`, `captured_at = NULL`), con `version + 1` y condicionado a la versión leída, y se registra un `InvariantRepaired` de auditoría. Liberar es la reparación correcta porque devuelve el territorio al juego; conservar un dueño inexistente lo saca de él para siempre.
 
 ---
 
@@ -259,8 +260,8 @@ Su única garantía es `TEST`, y así se declara: es un invariante frágil por d
 | Severidad | MEDIO |
 | Aplicación | DOMAIN, TEST |
 | Milestone | M6 |
-| Política ante violación | REPAIR (fijar `captured_at`), **sin implementar** |
-| Cobertura | **Parcial**: la escritura está cubierta por `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` y `TestElOwnershipSobreviveAUnReinicio` (integration) y por `TestUnDueñoExigeIdentificadorYFechaDeCaptura` (unit); **no existe** la validación de carga (`EO-119`) |
+| Política ante violación | REPAIR (fijar `captured_at`) |
+| Cobertura | **Cubierto**: la escritura por `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` y `TestElOwnershipSobreviveAUnReinicio` (integration) y por `TestUnDueñoExigeIdentificadorYFechaDeCaptura` (unit); la validación de carga, `TestLosControlesSeReparan` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) |
 
 **Enunciado.** `owner_type <> 'NONE'` implica `captured_at IS NOT NULL`.
 
@@ -273,7 +274,7 @@ La implicación es deliberadamente **en un solo sentido**. Un territorio liberad
 **Cómo se garantiza.**
 
 - `DOMAIN` — **vigente**: `TerritoryRepo.ClaimForPlayer` escribe `owner_type`, `owner_id` y `captured_at` en la misma sentencia. El instante es `BootstrapRequest.Now`, que la API de alta toma de su `Clock` inyectado y que el `Bootstrapper` exige no nulo; nunca el reloj del sistema leído dentro del repositorio. Después, `Control.Validate` comprueba la implicación sobre la fila devuelta antes de confirmar la transacción.
-- `DOMAIN` — **no existe todavía**: la validación de carga que compruebe la implicación antes de incorporar el control a la RAM (`EO-119`).
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) comprueba la implicación antes de incorporar el control a la RAM.
 - `DB` — **no hay `CHECK`** que lo imponga, aunque sería expresable. La migración `000001` no lo declara, y esta ficha no lo inventa: la garantía es de dominio y de test.
 
 **Cómo se verifica.**
@@ -282,8 +283,9 @@ La implicación es deliberadamente **en un solo sentido**. Un territorio liberad
 - `TestElOwnershipSobreviveAUnReinicio` (integration) — la fecha sobrevive a la recarga.
 - `TestUnDueñoExigeIdentificadorYFechaDeCaptura` (unit) — `Validate` rechaza un dueño sin fecha.
 - `TestUnAltaSinInstanteSeRechazaSinEscribirNada` (integration) — un alta sin instante no llega a escribir nada.
+- `TestLosControlesSeReparan` (unit, `internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — un dueño `CLAN` sin fecha la recibe con el instante del arranque, en memoria y en la base.
 
-**Violación en runtime.** Hoy **no se detecta en la carga**: sólo una escritura manual podría producirla. La política prevista con `EO-119` es `REPAIR`: log `invariant_violation` con `inv_id=INV-TERR-007` y `territory_id`; se fija `captured_at` al instante de la detección y se registra un `world_events`. Es una reparación conservadora —hace la posesión más reciente de lo que fue, nunca más antigua—, que es el lado seguro si alguna regla futura premia la antigüedad.
+**Violación en runtime.** Sólo una escritura manual podría producirla. Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-TERR-007` y `entity=territory:<id>`. Política `REPAIR`: se fija `captured_at` al instante de la detección, con `version + 1`, y se registra un `InvariantRepaired`. Es una reparación conservadora —hace la posesión más reciente de lo que fue, nunca más antigua—, que es el lado seguro si alguna regla futura premia la antigüedad.
 
 ---
 

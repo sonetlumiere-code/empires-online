@@ -195,6 +195,7 @@ No existen `internal/presence` ni `internal/events`: la presencia vive en `inter
 | `internal/game/world` | Grid, chunks (`EO_CHUNK_SIZE=32`), capa de ocupación (`blocked overlay`) y generación determinista desde `EO_WORLD_SEED`. |
 | `internal/game/simulation` | Estado en RAM, comandos, avance de movimiento, temporizadores, snapshots, interest management e hidratación tras reinicio. |
 | `internal/game/founding` | `FindSite`: emplazamiento determinista de la ciudad inicial (espiral desde una semilla derivada del nombre de usuario). |
+| `internal/game/loadcheck` | Validación de carga del estado durable antes de rehidratar (`EO-119`): lo que se repara, lo que se excluye y lo que aborta el arranque. |
 | `internal/domain/player` | Identidad del jugador, `Civilization` (con `Traits`) y `Faction` como ejes ortogonales. |
 | `internal/domain/city` | `City`, `PresenceState`, `CanTransition`, `ShouldEngageProtection`, era y `population_limit`. |
 | `internal/domain/unit` | `Unit`, `Status` (`IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`), `Type`, `Definition` y catálogo. |

@@ -22,6 +22,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
+	"github.com/empires-online/empires-online/services/game-server/internal/game/loadcheck"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loop"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -127,6 +128,19 @@ func run() error {
 		return err
 	}
 
+	// El tick se reancla al reloj (ADR-015): world_state.current_tick sólo se
+	// guarda en el apagado ordenado, y retomarlo tras una caída repetiría
+	// números de tick ya emitidos. Se calcula aquí porque las reparaciones de
+	// carga se auditan con él.
+	startTick, clockBehind := loop.ResumeTick(worldState.CurrentTick, worldState.EpochMs,
+		sysClock.NowMs(), cfg.TickDuration())
+	if clockBehind {
+		log.Error("invariant_violation",
+			"inv_id", "INV-WORLD-004", "severity", "CRITICO", "policy", "REPAIR",
+			"entity", "world_state", "tick", startTick,
+			"detail", "el reloj va por detrás del último tick guardado: se arranca desde lo guardado")
+	}
+
 	// ── 4. Hidratación y recuperación ───────────────────────────
 	units, err := unitRepo.ListAlive(rootCtx)
 	if err != nil {
@@ -148,6 +162,26 @@ func run() error {
 	}
 
 	territories, controls, err := loadTerritories(rootCtx, territoryRepo, gameWorld, log)
+	if err != nil {
+		return err
+	}
+
+	eras, err := cityRepo.ListEras(rootCtx)
+	if err != nil || len(eras) == 0 {
+		return fmt.Errorf("catálogo de eras vacío o ilegible: %w", err)
+	}
+
+	// Validación de carga (EO-119): lo que el esquema no garantiza se comprueba
+	// sobre lo recién leído, antes de construir la RAM. Un fatal aborta sin
+	// escribir nada; lo reparable se corrige en una transacción auditada.
+	units, controls, err = checkLoadedState(rootCtx, postgres.NewLoadCheckRepo(store), loadcheck.Input{
+		World:    gameWorld,
+		EraCaps:  postgres.EraCaps(eras),
+		Cities:   cities,
+		Units:    units,
+		Controls: controls,
+		Now:      sysClock.Now(),
+	}, startTick, log)
 	if err != nil {
 		return err
 	}
@@ -236,18 +270,6 @@ func run() error {
 		PathMaxDistance:    cfg.PathfindingMaxDistance,
 	})
 
-	// El tick se reancla al reloj (ADR-015): world_state.current_tick sólo se
-	// guarda en el apagado ordenado, y retomarlo tras una caída repetiría
-	// números de tick ya emitidos.
-	startTick, clockBehind := loop.ResumeTick(worldState.CurrentTick, worldState.EpochMs,
-		sysClock.NowMs(), cfg.TickDuration())
-	if clockBehind {
-		log.Error("invariant_violation",
-			"inv_id", "INV-WORLD-004", "severity", "CRITICO", "policy", "REPAIR",
-			"entity", "world_state", "tick", startTick,
-			"detail", "el reloj va por detrás del último tick guardado: se arranca desde lo guardado")
-	}
-
 	gameLoop := loop.New(sim, sysClock, commands, loop.Config{
 		TickDuration:       cfg.TickDuration(),
 		FlushIntervalTicks: cfg.PersistenceFlushIntervalTicks,
@@ -281,10 +303,6 @@ func run() error {
 		ChunkSize:            cfg.ChunkSize,
 	}, hub, authenticator, presence, dedupe, commands, metrics, log)
 
-	eras, err := cityRepo.ListEras(rootCtx)
-	if err != nil || len(eras) == 0 {
-		return fmt.Errorf("catálogo de eras vacío o ilegible: %w", err)
-	}
 	firstEra := eras[0]
 
 	authAPI := httpapi.NewAuthAPI(playerRepo, cityRepo, bootstrapper,

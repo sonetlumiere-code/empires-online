@@ -30,7 +30,7 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 | `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. Sin comando de red todavía |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, e `InvariantRepaired` en la validación de carga del arranque |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
@@ -893,7 +893,7 @@ CREATE INDEX world_events_player_idx     ON world_events (player_id, occurred_at
 | `player_id` | Actor, cuando lo hay. `SET NULL` para no perder el evento al borrar un jugador. El índice por jugador es parcial, porque los eventos sin actor no se consultan por esta vía |
 | `payload` | Cuerpo del evento, `{}` por defecto. `jsonb` y no columnas tipadas porque cada evento tiene forma propia |
 
-**Append-only** significa: sin `UPDATE`, sin `DELETE`, sin trigger `updated_at`. Sólo la retención por antigüedad puede borrar filas, y es una operación de mantenimiento explícita. En MVP se escribe un solo tipo de evento de verdad, `PlayerBootstrapped`, dentro de la transacción de alta; el volumen se controla antes de convertir esta tabla en el bus principal.
+**Append-only** significa: sin `UPDATE`, sin `DELETE`, sin trigger `updated_at`. Sólo la retención por antigüedad puede borrar filas, y es una operación de mantenimiento explícita. En MVP la escriben tres tipos de evento alcanzables: `PlayerBootstrapped` y `TerritoryControlChanged`, dentro de la transacción de alta, e `InvariantRepaired`, uno por cada corrección de la validación de carga del arranque (`EO-119`), con `{inv_id, severity, entity, detail}` en el `payload` y el tick de arranque. Los repositorios de diplomacia escriben además `UnitGarrisoned`, `UnitUngarrisoned` y `TreatyExpired`, pero ningún comando de red los invoca todavía (M7). El volumen se controla antes de convertir esta tabla en el bus principal.
 
 ---
 

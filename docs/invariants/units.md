@@ -35,7 +35,7 @@ El combate está **fuera de MVP** (canon §21). Las unidades no pierden `hp` en 
 | Aplicación | DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Parcial**: `TestRechazosDeMovimiento`, `TestVerticalSliceMovimiento`, `TestFundarApartaLaUnidadQueQuedaDentroDeLaMuralla`, `TestUnaUnidadQueSeDetieneDentroDeLaMurallaSeAparta` y `TestAlArrancarLaMurallaApartaYDetieneComoEnElAlta` (`internal/game/simulation`), más `TestFueraDeLimitesEsIntransitable` (`internal/game/world`). Falta la validación de carga de las posiciones (`EO-119`) |
+| Cobertura | **Cubierto**: `TestRechazosDeMovimiento`, `TestVerticalSliceMovimiento`, `TestFundarApartaLaUnidadQueQuedaDentroDeLaMuralla`, `TestUnaUnidadQueSeDetieneDentroDeLaMurallaSeAparta` y `TestAlArrancarLaMurallaApartaYDetieneComoEnElAlta` (`internal/game/simulation`), más `TestFueraDeLimitesEsIntransitable` (`internal/game/world`); la validación de carga de las posiciones, `TestLasUnidadesSeExcluyenSeReparanOAbortan` (`internal/game/loadcheck`) y `TestUnFatalAbortaLaCargaSinEscribirNada` (integration) |
 
 **Enunciado.** Para toda unidad cuyo estado implica presencia en el mundo (`IDLE`, `MOVING`, `HIDDEN`), su posición `(x, y)` cumple [INV-WORLD-001](world.md#inv-world-001) y el tile correspondiente es transitable: terreno con `walkable = sí` y sin marca en la capa de ocupación.
 
@@ -51,7 +51,7 @@ La excepción de `GARRISONED` y `DEAD` es deliberada y se detalla en [INV-UNIT-0
 - `DOMAIN` — durante el movimiento la posición no se escribe libremente: se **deriva** de la polilínea (canon §7), cuyos waypoints son todos transitables por [INV-MOVE-004](movement.md#inv-move-004) y [INV-WORLD-003](world.md#inv-world-003). Mientras el movimiento sea válido, la posición derivada lo es por construcción.
 - `DOMAIN` — al completar o cancelar un movimiento se hace *snap* a un waypoint de la polilínea, nunca a una posición interpolada ni a un tile calculado aparte ([INV-MOVE-008](movement.md#inv-move-008)).
 - `DOMAIN` — **la única forma de que un tile se vuelva intransitable con el servidor en marcha es fundar una ciudad**, y la fundación despeja su huella ([RN-CITY-022](../specs/city.md)): en el mismo tick, los movimientos cuya ruta pendiente atraviesa la muralla se detienen con `PATH_BLOCKED` y las unidades que quedan dentro se apartan al tile libre más cercano. El arranque aplica la misma regla tras reconstruir las murallas (`simulation.ClearFootprints`), porque una caída antes del volcado deja en disco la posición vieja. Hasta `EO-118` no existía: la búsqueda de emplazamiento no mira las unidades, y una ciudad nueva podía emparedar un aldeano ajeno sin remedio.
-- **Lo que no existe:** una validación de carga que compruebe que cada unidad leída de `units` está dentro del mundo y sobre terreno transitable. `ListAlive` las incorpora tal como vienen. Ninguna ruta del código puede escribir una posición así; sólo una escritura manual o una migración. Queda en `EO-119`.
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) comprueba que cada unidad leída de `units` que no está `GARRISONED` cae dentro del mundo y sobre terreno transitable. Mira el terreno y no la capa de ocupación: al cargar, las murallas aún no están puestas, y lo que quede dentro de una lo aparta después `ClearFootprints`. Ninguna ruta del código puede escribir una posición así; sólo una escritura manual, una migración o un cambio del generador.
 
 > **No hay garantía `DB`.** La tabla `units` de `000001_initial_schema.up.sql` declara `x integer NOT NULL` e `y integer NOT NULL` **sin ningún `CHECK`**: ni de límite inferior ni superior. El límite superior es `EO_WORLD_WIDTH`/`EO_WORLD_HEIGHT`, que es configuración y no puede empotrarse como literal en una migración; la transitabilidad tampoco es expresable como `CHECK`, porque el terreno vive en `world_chunks` como `bytea`. Un `INSERT` directo con `x = 99999` **es aceptado por PostgreSQL**. Todo el invariante se garantiza en `DOMAIN` y `TEST`, y la ficha lo declara así en lugar de prometer una constraint inexistente.
 
@@ -64,9 +64,10 @@ La excepción de `GARRISONED` y `DEAD` es deliberada y se detalla en [INV-UNIT-0
 - `TestAlArrancarLaMurallaApartaYDetieneComoEnElAlta` (recovery) — la misma regla al arrancar, con el cierre del movimiento devuelto para la base de datos.
 - `TestFueraDeLimitesEsIntransitable` (unit, `internal/game/world`) — los bordes del mundo se comportan como un muro.
 - Las cinco piezas de la regla de la fundación se verificaron por mutación: quitar cualquiera hace fallar su test.
-- Test previsto (`EO-119`): una unidad persistida sobre `WATER` o fuera del mundo se detecta al cargar.
+- `TestLasUnidadesSeExcluyenSeReparanOAbortan` (unit, `internal/game/loadcheck`) — una unidad persistida sobre `WATER` produce el hallazgo `FAIL_FAST`; `TestLaGuarnicionSeDerivaDeSuTabla`, que una guarnecida en la misma posición no lo produce.
+- `TestUnFatalAbortaLaCargaSinEscribirNada` (integration) — esa unidad aborta la carga y nada se escribe, tampoco lo reparable.
 
-**Violación en runtime.** Si al despejar una huella no hay ningún tile transitable en ocho anillos alrededor, la unidad se queda donde está y se emite `invariant_violation` con `inv_id=INV-UNIT-001`, `severity=CRITICO` y la unidad; con el entorno despejado de radio 3 que exige la fundación no puede ocurrir. Apartar una unidad **no** es una reparación de este invariante: es la regla de juego de [RN-CITY-022](../specs/city.md), con su tile elegido de forma determinista. Lo que sigue sin hacerse es mover la unidad de un jugador por un dato corrupto: cuando exista la validación de carga, una unidad sobre terreno imposible abortará el arranque en lugar de recolocarse.
+**Violación en runtime.** Si al despejar una huella no hay ningún tile transitable en ocho anillos alrededor, la unidad se queda donde está y se emite `invariant_violation` con `inv_id=INV-UNIT-001`, `severity=CRITICO` y la unidad; con el entorno despejado de radio 3 que exige la fundación no puede ocurrir. Apartar una unidad **no** es una reparación de este invariante: es la regla de juego de [RN-CITY-022](../specs/city.md), con su tile elegido de forma determinista. Lo que no se hace es mover la unidad de un jugador por un dato corrupto: al cargar, una unidad fuera del mundo o sobre terreno imposible emite `invariant_violation` con `inv_id=INV-UNIT-001` y política `FAIL_FAST`, y el arranque aborta sin escribir nada en lugar de recolocarla.
 
 ---
 
@@ -153,8 +154,8 @@ La excepción de `GARRISONED` y `DEAD` es deliberada y se detalla en [INV-UNIT-0
 | Severidad | ALTO |
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M2 |
-| Política ante violación | REJECT + clamp en el cálculo |
-| Cobertura | **Parcial**: `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas` (integration, `internal/persistence/postgres`) cubre las tres restricciones, y `TestIsAliveExigeEstadoYVida` (`internal/domain/unit`) la lectura de la vida. Falta comprobar al cargar que `max_hp` es el del catálogo (`EO-119`); el punto único de modificación no existe porque nada modifica `hp` |
+| Política ante violación | REJECT + clamp en el cálculo; REPAIR al cargar |
+| Cobertura | **Cubierto**: `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas` (integration, `internal/persistence/postgres`) cubre las tres restricciones, `TestIsAliveExigeEstadoYVida` (`internal/domain/unit`) la lectura de la vida, y `TestLasUnidadesSeExcluyenSeReparanOAbortan` (`internal/game/loadcheck`) con `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) que al cargar `max_hp` es el del catálogo. El punto único de modificación no existe porque nada modifica `hp` |
 
 **Enunciado.** Para toda unidad, `0 <= hp <= max_hp`, donde `max_hp` es el valor del `unit_type` correspondiente (`VILLAGER` = 40).
 
@@ -166,7 +167,7 @@ La disciplina que este invariante impone es concreta: **el clamp se aplica en el
 
 - `DB` — la migración `000001` declara **tres** constraints complementarias sobre `units`: `hp integer NOT NULL CHECK (hp >= 0)`, `max_hp integer NOT NULL CHECK (max_hp > 0)` y `CONSTRAINT units_hp_within_max CHECK (hp <= max_hp)`. Juntas cubren el enunciado; ésos son sus nombres reales.
 - `DOMAIN` — cuando exista combate, toda modificación pasará por un punto único que haga el clamp a `[0, max_hp]` como parte del cálculo y devuelva el valor final. Ningún handler asignará `hp` directamente. **Hoy ese punto único no existe porque ninguna ruta modifica `hp`.**
-- `DOMAIN` — `max_hp` proviene del catálogo de `internal/domain/unit` (`unit.Lookup`), no de literales dispersos (canon §17): el alta escribe `hp = max_hp = def.MaxHP`. El `40` de `VILLAGER` aparece en un único lugar. Al cargar, en cambio, `max_hp` se lee de la fila y no se compara con el catálogo (`EO-119`).
+- `DOMAIN` — `max_hp` proviene del catálogo de `internal/domain/unit` (`unit.Lookup`), no de literales dispersos (canon §17): el alta escribe `hp = max_hp = def.MaxHP`. El `40` de `VILLAGER` aparece en un único lugar. Al cargar, la validación de carga (`internal/game/loadcheck`, `EO-119`) compara `max_hp` con el del catálogo y recorta `hp` a `[0, max_hp]`.
 - `DOMAIN` — `Unit.IsAlive()` es `Status != DEAD && HP > 0`: la conjunción impide tratar como viva a una unidad con cero vida aunque su `status` se quedara atrás. `garrison.CanEnter` la usa.
 - `DOMAIN` — **ninguna escritura posterior al alta toca `hp` ni `max_hp`**: el volcado por lotes escribe posición, chunk y estado, y nada más. No existe un volcado de `hp`.
 
@@ -174,9 +175,10 @@ La disciplina que este invariante impone es concreta: **el clamp se aplica en el
 
 - `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas` (integration, `internal/persistence/postgres`) — `hp = -1` lo rechaza `units_hp_check`, `hp = max_hp + 1` `units_hp_within_max` y `max_hp = 0` `units_max_hp_check`; los extremos `0` y `max_hp` se aceptan.
 - `TestIsAliveExigeEstadoYVida` (unit, `internal/domain/unit`) — sin vida no está viva aunque el estado diga `IDLE`, y `DEAD` no lo está aunque conserve vida.
+- `TestLasUnidadesSeExcluyenSeReparanOAbortan` (unit, `internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — un aldeano con `hp 55/60` queda en `40/40`, en memoria y en la base.
 - Test previsto, para cuando exista el combate: tabla de daño y curación sobre el punto único (daño mayor que `hp` deja `hp = 0` y `DEAD`; curación mayor que el déficit deja `max_hp`).
 
-**Violación en runtime.** Un valor fuera de rango no llega a disco: el `CHECK` rechaza la transacción y el worker lo registra como escritura fallida. No hay log `invariant_violation` específico, porque no hay ningún cálculo de `hp` donde detectarlo antes.
+**Violación en runtime.** Un valor fuera de rango no llega a disco: el `CHECK` rechaza la transacción y el worker lo registra como escritura fallida. Lo que el `CHECK` sí admite es un `max_hp` distinto del catálogo: la validación de carga lo detecta con `invariant_violation` (`inv_id=INV-UNIT-004`, `entity=unit:<id>`) y política `REPAIR`: escribe el `max_hp` del catálogo y el `hp` recortado, con un `InvariantRepaired` de auditoría.
 
 > El combate está **fuera de MVP**: en MVP `hp` es constante e igual a `max_hp` para todo `VILLAGER`. El invariante fija el contrato por adelantado.
 
@@ -268,7 +270,7 @@ Además, sin `player_id` la unidad no cuenta en la `population` de ninguna ciuda
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M7 |
 | Política ante violación | REPAIR (derivar desde `garrisons`) |
-| Cobertura | **Parcial**: `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`, `TestSalirDeLaGuarnicionDevuelveLaUnidadAlMapaYBorraLaFila` y `TestTratadosYGuarnicionesSobrevivenAUnReinicio` (integration, `internal/persistence/postgres`) cubren estado y fila juntos. Falta decidir qué es `units.city_id` de una unidad guarnecida (M7, entregable 6) y la reconciliación de carga (`EO-119`) |
+| Cobertura | **Parcial**: `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`, `TestSalirDeLaGuarnicionDevuelveLaUnidadAlMapaYBorraLaFila` y `TestTratadosYGuarnicionesSobrevivenAUnReinicio` (integration, `internal/persistence/postgres`) cubren estado y fila juntos; la reconciliación de carga, `TestLaGuarnicionSeDerivaDeSuTabla` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration). Falta decidir qué es `units.city_id` de una unidad guarnecida (M7, entregable 6) |
 
 **Enunciado.** `status = GARRISONED` implica `city_id IS NOT NULL` y la existencia de una fila de `garrisons` para esa unidad.
 
@@ -281,7 +283,7 @@ Es la misma clase de fallo que [INV-UNIT-005](#inv-unit-005) —un estado que af
 - `DB` — `garrisons.unit_id bigint PRIMARY KEY REFERENCES units (id) ON DELETE CASCADE` y `garrisons.city_id bigint NOT NULL REFERENCES cities (id) ON DELETE CASCADE`: una fila de guarnición siempre nombra una ciudad existente, y una unidad tiene como máximo una ([INV-GARR-001](diplomacy.md#inv-garr-001)).
 - `DOMAIN` — `GarrisonRepo.Enter` pone `status = GARRISONED` y escribe la fila de `garrisons` en la **misma transacción**, junto con la cancelación del movimiento activo y el evento `UnitGarrisoned`; `GarrisonRepo.Leave` borra la fila y deja la unidad `IDLE` en su tile de salida en otra. Ningún comando de red las invoca todavía (M7, entregable 6).
 - `DOMAIN` — `units.city_id` **no lo toca ninguna de las dos**. Para las unidades del MVP la mitad «`city_id IS NOT NULL`» se cumple igualmente, porque el alta crea los aldeanos con la ciudad de su dueño. Pero la spec de guarnición dice que la entrada fija `units.city_id` a la ciudad anfitriona, y [INV-GARR-003](diplomacy.md#inv-garr-003) exige que coincida con `garrisons.city_id`; mientras que [RN-CITY-012](../specs/city.md) cuenta la población de una ciudad por `units.city_id`. Las dos cosas no pueden ser ciertas a la vez para una unidad guarnecida en una ciudad aliada: o la población viaja con ella, o `city_id` no es la ciudad de la guarnición. Es una decisión de diseño pendiente y se toma con los comandos de guarnición.
-- **Lo que no existe:** la reconciliación de arranque. `Hydrate` no lee `garrisons`: una unidad `GARRISONED` sin fila, o una fila con la unidad en otro estado, se carga tal cual (`EO-119`).
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) lee todas las filas de `garrisons` (`LoadCheckRepo.Garrisons`) y deriva el estado de ellas, en los dos sentidos: una unidad `GARRISONED` sin fila vuelve a `IDLE` en su última posición, y una unidad viva con fila pasa a `GARRISONED`. Una fila de una unidad que no está viva se borra: no guarnece nada.
 - `DB` — `units_city_idx` hace barata la consulta de reconciliación por ciudad.
 
 **Cómo se verifica.**
@@ -289,9 +291,10 @@ Es la misma clase de fallo que [INV-UNIT-005](#inv-unit-005) —un estado que af
 - `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida` (integration) — tras entrar, la fila existe con la ciudad anfitriona y la unidad releída de la base está `GARRISONED`.
 - `TestSalirDeLaGuarnicionDevuelveLaUnidadAlMapaYBorraLaFila` (integration) — tras salir, la fila ya no existe y la unidad está `IDLE` en el tile de salida.
 - `TestTratadosYGuarnicionesSobrevivenAUnReinicio` (integration) — la fila sobrevive a un reinicio.
-- Test previsto (`EO-119`): barrido de carga sobre `units` y `garrisons`.
+- `TestLaGuarnicionSeDerivaDeSuTabla` (unit, `internal/game/loadcheck`) — los tres casos, y que la posición histórica de una unidad que pasa a `GARRISONED` no aborta la carga.
+- `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — lo mismo en la base: los estados corregidos, la fila de la unidad `DEAD` borrada y un `InvariantRepaired` por caso.
 
-**Violación en runtime.** No hay detección: la reconciliación que la ficha preveía no existe todavía.
+**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-UNIT-007` y `entity=unit:<id>`. Política `REPAIR`: prevalece `garrisons`, que es la fuente; se escribe el estado derivado o se borra la fila huérfana, y se registra un `InvariantRepaired`. La mitad «`city_id IS NOT NULL`» no se repara: depende de la decisión pendiente sobre `units.city_id`.
 
 ---
 
@@ -335,8 +338,8 @@ La cualificación «sólo en reposo» es lo que hace el invariante barato de sos
 | Severidad | ALTO |
 | Aplicación | DOMAIN, TEST |
 | Milestone | M2 |
-| Política ante violación | FAIL_FAST en la carga de esa unidad |
-| Cobertura | **Parcial**: `TestLookupSoloConoceElCatalogo` (`internal/domain/unit`) y el pipeline de movimiento de `internal/game/simulation`, que depende de `unit.Lookup`. Falta la comprobación de carga (`EO-119`) |
+| Política ante violación | EXCLUDE (la unidad no entra en la simulación) |
+| Cobertura | **Cubierto**: `TestLookupSoloConoceElCatalogo` (`internal/domain/unit`), el pipeline de movimiento de `internal/game/simulation`, que depende de `unit.Lookup`, y la comprobación de carga, `TestLasUnidadesSeExcluyenSeReparanOAbortan` (`internal/game/loadcheck`) |
 
 **Enunciado.** Para toda fila de `units`, `unit.Lookup(unit_type)` resuelve: el `unit_type` pertenece al catálogo cargado. No hay `CHECK` en la base porque el catálogo vive en código.
 
@@ -349,15 +352,15 @@ La ausencia de `CHECK` es deliberada y merece decirse en voz alta: `units.unit_t
 - `DOMAIN` — `unit.Lookup(t Type) (Definition, error)` es el **único** acceso al catálogo y devuelve `ErrUnknownType` para un tipo ausente. No hay ningún `switch` sobre `unit_type` disperso por el código.
 - `DOMAIN` — la creación de unidades sólo usa tipos del catálogo: el alta escribe `VILLAGER`, que es la única entrada del MVP.
 - `DOMAIN` — `handleMoveUnit` llama a `Lookup` antes del A\* y responde `INTERNAL_ERROR` si falla, en lugar de asumir una velocidad por defecto.
-- **Lo que no existe:** la comprobación al cargar. `scanUnit` convierte el texto en `unit.Type` sin consultar el catálogo, y una unidad de tipo desconocido entra en la simulación; sólo se nota cuando su dueño intenta moverla (`EO-119`).
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) consulta el catálogo para cada unidad leída: `scanUnit` convierte el texto en `unit.Type` sin mirarlo, y una unidad de tipo desconocido ya no llega a la simulación.
 
 **Cómo se verifica.**
 
 - `TestLookupSoloConoceElCatalogo` (unit, `internal/domain/unit`) — `VILLAGER` resuelve con sus cuatro estadísticas; un tipo en minúsculas, vacío, `TOWN_CENTER` o inventado devuelve `ErrUnknownType`, nunca una definición por defecto.
 - `TestVerticalSliceMovimiento` y `TestRechazosDeMovimiento` (simulation) — todo el pipeline de movimiento depende de que `Lookup` resuelva.
-- Test previsto (`EO-119`): una unidad con `unit_type` fuera del catálogo se detecta al cargar.
+- `TestLasUnidadesSeExcluyenSeReparanOAbortan` (unit, `internal/game/loadcheck`) — una unidad `KNIGHT` no entra en el resultado y su ciudad la sigue contando en la población.
 
-**Violación en runtime.** Hoy, sólo al moverla: `handleMoveUnit` responde `INTERNAL_ERROR` sin log de invariante. Cuando exista la validación de carga, la unidad no se incorporará a la simulación y se emitirá `invariant_violation` con `inv_id=INV-UNIT-009`. No se sustituye por `VILLAGER`: asignar estadísticas ajenas a una unidad es cambiar el juego sin decirlo.
+**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-UNIT-009`, `entity=unit:<id>` y el tipo en `detail`. Política `EXCLUDE`: la unidad no se incorpora a la simulación y su fila no se toca, de modo que un despliegue que vuelva a conocer el tipo la recupera intacta; si tenía un movimiento `ACTIVE`, la recuperación lo cierra como huérfano. No aborta el arranque: una fila mala no deja sin servicio al resto del mundo. No se sustituye por `VILLAGER`: asignar estadísticas ajenas a una unidad es cambiar el juego sin decirlo.
 
 ---
 

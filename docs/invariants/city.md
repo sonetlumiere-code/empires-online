@@ -35,7 +35,7 @@ Parámetros canónicos que gobiernan la máquina:
 
 **El servidor es el único que decide el estado.** El cliente lo observa vía `city.update`. No existe ningún mensaje cliente→servidor v1 que altere `presence_state`.
 
-> **Estado de estas fichas.** Reconciliadas con la suite por `EO-118`: cada fila `Cobertura` nombra tests que existen y pasan. Varias fichas prometen además una detección o una reparación **al arrancar** que el código no hace: `simulation.Hydrate` incorpora las ciudades tal como vienen de la base, sin recalcular nada. Esas partes se declaran como pendientes en cada ficha y están registradas en `EO-119` de [../roadmap/backlog.md](../roadmap/backlog.md).
+> **Estado de estas fichas.** Reconciliadas con la suite por `EO-118`: cada fila `Cobertura` nombra tests que existen y pasan. La detección y la reparación **al arrancar** que prometen varias fichas las hace la validación de carga de `EO-119`: el paquete puro `internal/game/loadcheck` comprueba lo recién leído antes de `simulation.Hydrate`, y `postgres.LoadCheckRepo.CheckAndRepair` escribe lo reparable en una sola transacción, con un evento `InvariantRepaired` de auditoría por hallazgo. Un hallazgo `FAIL_FAST` aborta el arranque **sin escribir nada**, tampoco lo reparable. No se emite `city.update`: en el arranque no hay nadie conectado, y el snapshot de la primera conexión ya lleva el valor corregido.
 
 ---
 
@@ -83,7 +83,7 @@ El caso «durante una transferencia» merece énfasis: los cambios de ownership 
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration); el predicado por `TestLimiteDePoblacion` (`internal/domain/city`) |
+| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration); el predicado por `TestLimiteDePoblacion` (`internal/domain/city`); la carga por `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` (`internal/game/loadcheck`) |
 
 **Enunciado.** Para toda ciudad y en todo instante, `0 <= population <= population_limit`.
 
@@ -103,9 +103,10 @@ El fallo típico no es un olvido de comprobar, sino un **TOCTOU**: dos comandos 
 
 - `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration) — `population > population_limit` falla por `cities_population_within_limit` y `population = -1` por `cities_population_check`, el nombre que PostgreSQL da al `CHECK` de columna.
 - `TestLimiteDePoblacion` (unit, `internal/domain/city`) — `HasPopulationRoom` deja de admitir unidades exactamente en el límite.
+- `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` (unit, `internal/game/loadcheck`) — con más unidades vivas que el `population_cap` de su era, ninguna se excluye, el límite queda en el recuento y `HasPopulationRoom(1)` es falso.
 - El test de concurrencia de la última plaza llegará con la primera ruta que cree unidades; hoy no hay nada que hacer competir.
 
-**Violación en runtime.** Imposible en disco: los dos `CHECK` la rechazan, y en el alta eso aborta la transacción entera. Bajar un `population_cap` en `eras` no cambia las ciudades ya fundadas, y una ciudad que quedase por encima de su nuevo límite no se detecta: es parte de `EO-119`. La política prevista es no destruir unidades, bloquear nuevas creaciones hasta volver bajo el límite y registrar un `world_events` de auditoría.
+**Violación en runtime.** Imposible en disco: los dos `CHECK` la rechazan, y en el alta eso aborta la transacción entera. Lo que sí puede ocurrir es que el recuento de unidades vivas supere el `population_cap` de la era —bajar un `population_cap` en `eras`, o una fila editada a mano—. La validación de carga lo detecta (log `invariant_violation` con `inv_id=INV-CITY-002`, política `REPAIR`): no destruye unidades, deja `population_limit` en el recuento —el `CHECK` se sigue cumpliendo— y ninguna creación cabe hasta volver bajo el límite. Va acompañado del hallazgo `INV-CITY-003`, porque el límite escrito deja de ser el de la era, y de un `InvariantRepaired` de auditoría por cada uno.
 
 ---
 
@@ -118,7 +119,7 @@ El fallo típico no es un olvido de comprobar, sino un **TOCTOU**: dos comandos 
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | REPAIR |
-| Cobertura | **Parcial**: el único escritor lo cumple por construcción y lo comprueban `TestElAltaTomaElLimiteDePoblacionDeSuEra`, `TestUnAltaConUnaEraInexistenteNoEscribeNada` y `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration); **no existe** la recomputación al cargar (`EO-119`) |
+| Cobertura | **Cubierto**: el único escritor lo cumple por construcción y lo comprueban `TestElAltaTomaElLimiteDePoblacionDeSuEra`, `TestUnAltaConUnaEraInexistenteNoEscribeNada` y `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration); la recomputación al cargar, `TestLasCiudadesSeReparanDesdeSusFuentes` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) |
 
 **Enunciado.** Para toda ciudad, `population_limit = era.population_cap + modificadores de edificios`, donde `era` es la era vigente de la ciudad y el conjunto de modificadores es **vacío en MVP**; por tanto en MVP `population_limit == era.population_cap` exactamente.
 
@@ -141,16 +142,18 @@ Eras del MVP, definidas en la tabla `eras`, **no en código** (canon §10):
 - `DOMAIN` — **vigente**: el único escritor de `population_limit` es el alta, y el `Bootstrapper` lo lee con `CityRepo.PopulationCapOf` de la tabla `eras`, dentro de la misma transacción que crea la ciudad. La petición de alta lleva la era y **no** el límite, así que ningún llamante puede pasar uno incoherente. Una era que no está en el catálogo hace fallar el alta entera con `ErrNotFound`. En MVP no hay modificadores de edificios, así que la derivación es la identidad.
 - `DOMAIN` — cuando existan modificadores, el cálculo vivirá en un punto único y `population_limit` se escribirá **sólo** con su resultado.
 - `DOMAIN` — ninguna ruta cambia `cities.era`: el avance de era está **fuera del alcance implementado hoy**. Cuando exista, tendrá que recomputar `population_limit` en la misma transacción y emitir `city.update` (canon §13).
-- `DOMAIN` — **no existe todavía**: la recomputación al cargar, que compare el límite persistido con el de su era y repare la divergencia (`EO-119`).
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) compara cada `population_limit` con el `population_cap` de su era, leído con `CityRepo.ListEras`, y escribe el de la era. La única excepción es [INV-CITY-002](#inv-city-002): si las unidades vivas ya superan ese valor, el límite queda en el recuento.
 
 **Cómo se verifica.**
 
 - `TestElAltaTomaElLimiteDePoblacionDeSuEra` (integration) — para cada una de las cuatro eras sembradas por `000002_seed_catalogs`, una ciudad fundada en ella nace con su `population_cap` exacto, en la base y en la RAM.
 - `TestUnAltaConUnaEraInexistenteNoEscribeNada` (integration) — una era fuera del catálogo hace fallar el alta y no deja ni el jugador.
 - `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration) — la mitad `DB`: `cities_era_fkey` y `cities_population_limit_check`.
-- Pendientes con su mecánica: el cambio de era (no existe) y la reparación al cargar (`EO-119`).
+- `TestLasCiudadesSeReparanDesdeSusFuentes` (unit, `internal/game/loadcheck`) — un límite de 99 en `STONE_AGE` vuelve a 20, con una sola escritura por ciudad aunque haya varios hallazgos.
+- `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — el valor corregido queda en la base con su evento de auditoría, y el arranque siguiente ya no encuentra nada.
+- Pendiente con su mecánica: el cambio de era, que no existe.
 
-**Violación en runtime.** Hoy **no se detecta**: un `population_limit` manipulado a mano se cargaría tal cual. La política prevista con `EO-119` es ésta. Detección en la carga de ciudad. Log `invariant_violation` con `inv_id=INV-CITY-003`, `city_id`, límite persistido y límite recomputado. Política `REPAIR`: se escribe el valor recomputado, se registra un `world_events` de auditoría y se emite `city.update`. La reparación es segura porque el valor correcto es una función determinista del estado; ver la excepción de [INV-CITY-002](#inv-city-002) si la reparación deja la ciudad por encima del límite.
+**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-CITY-003`, `entity=city:<id>` y, en `detail`, el límite persistido y el de la era. Política `REPAIR`: se escribe el valor recomputado con `version + 1` y se registra un `InvariantRepaired` de auditoría con el tick del arranque. No se emite `city.update`: no hay nadie conectado. La reparación es segura porque el valor correcto es una función determinista del estado; ver la excepción de [INV-CITY-002](#inv-city-002) si la reparación deja la ciudad por encima del límite.
 
 ---
 
@@ -278,7 +281,7 @@ Distinción con diplomacia: el `garrison` de unidades ajenas requiere un `treati
 | Aplicación | DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST en creación |
-| Cobertura | **Parcial**: la creación por `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestSinTerrenoTransitableNoHaySitio`, `TestUnCandidatoJuntoAlBordeSeDescarta` y `TestUnObstaculoEnElEntornoDescartaElCandidato` (`internal/game/founding`); **no existe** la revalidación al arrancar (`EO-119`) |
+| Cobertura | **Cubierto**: la creación por `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestSinTerrenoTransitableNoHaySitio`, `TestUnCandidatoJuntoAlBordeSeDescarta` y `TestUnObstaculoEnElEntornoDescartaElCandidato` (`internal/game/founding`); la revalidación al arrancar por `TestUnCentroSobreAguaAbortaElArranque` (`internal/game/loadcheck`) y, sin escribir nada, `TestUnFatalAbortaLaCargaSinEscribirNada` (integration) |
 
 **Enunciado.** Las coordenadas del centro de toda ciudad cumplen [INV-WORLD-001](world.md#inv-world-001) (dentro de `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)`) y el tile correspondiente tiene un terreno con `walkable = sí` según el canon §5.
 
@@ -291,16 +294,17 @@ Distinción importante: se exige terreno **transitable**, no ausencia de ocupaci
 - `DOMAIN` — `founding.FindSite` sólo considera candidatos cuyo entorno de radio 3 entero pasa `World.IsWalkable` —dentro del mundo, terreno transitable y sin ocupar—, lo que incluye el rectángulo 3 × 3 de la zona urbana amurallada, con una separación mínima de 24 tiles respecto de cualquier otro centro. Si no encuentra candidato devuelve `ErrNoSite`, la API responde `NO_SITE_AVAILABLE` y el alta no escribe nada ([INV-PLAYER-003](player.md#inv-player-003)): no se coloca la ciudad en un sitio inválido.
 - `DOMAIN` — la búsqueda ocurre antes de abrir la transacción del alta (`RN-PLAYER-014` de [../specs/player.md](../specs/player.md)), contra el mundo ya cargado y validado por [INV-WORLD-002](world.md#inv-world-002).
 - `DOMAIN` — el rango de coordenadas **no** lo verifica ninguna constraint: la migración `000001` declara `center_x integer NOT NULL` y `center_y integer NOT NULL` sin `CHECK` de límites, porque el límite superior es `EO_WORLD_WIDTH`/`EO_WORLD_HEIGHT` y eso es configuración, no esquema. La transitabilidad tampoco es verificable con un `CHECK`, porque el terreno vive en `world_chunks` como `bytea`. Ambas mitades del invariante se garantizan en dominio y test, y así se declara explícitamente: la ficha declara `DOMAIN` y `TEST`, no `DB`.
-- `DOMAIN` — **no existe todavía**: la revalidación al arrancar de cada centro contra el terreno regenerado. Como el terreno se regenera siempre desde la semilla ([INV-WORLD-005](world.md#inv-world-005)), una divergencia sólo puede venir de un cambio del generador o de una fila editada a mano; hoy pasaría inadvertida (`EO-119`).
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) revalida cada centro contra el terreno regenerado: dentro del mundo y sobre terreno transitable. Mira el terreno, no la capa de ocupación, que en ese momento aún no tiene las murallas. Como el terreno se regenera siempre desde la semilla ([INV-WORLD-005](world.md#inv-world-005)), una divergencia sólo puede venir de un cambio del generador o de una fila editada a mano.
 
 **Cómo se verifica.**
 
 - `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable` (unit, `internal/game/founding`) — sobre el generador real y seis semillas, el centro cae dentro del mundo, todo su entorno de radio 3 es transitable, la zona urbana es exactamente el 3 × 3 y los aldeanos nacen fuera de la muralla sobre terreno transitable.
 - `TestSinTerrenoTransitableNoHaySitio` (unit) — en un mundo de agua, `FindSite` devuelve `ErrNoSite` en lugar de colocar la ciudad.
 - `TestUnCandidatoJuntoAlBordeSeDescarta` y `TestUnObstaculoEnElEntornoDescartaElCandidato` (unit) — un entorno que se sale del mundo o que tiene un solo tile intransitable descarta el candidato. Verificado por mutación: comprobar sólo el centro hace fallar los tres tests.
-- Pendiente con `EO-119`: que el arranque detecte una ciudad sobre terreno intransitable.
+- `TestUnCentroSobreAguaAbortaElArranque` (unit, `internal/game/loadcheck`) — un centro sobre `WATER` produce el hallazgo `FAIL_FAST`.
+- `TestUnFatalAbortaLaCargaSinEscribirNada` (integration) — con un hallazgo `FAIL_FAST`, ni siquiera lo reparable llega a la base. Verificado por mutación: sin el aborto, el test falla.
 
-**Violación en runtime.** En la colocación, `FindSite` no devuelve un sitio inválido. La detección al arrancar no existe; la prevista con `EO-119` es ésta. Log `invariant_violation` con `inv_id=INV-CITY-007`, `city_id`, coordenadas y terreno encontrado. Política `FAIL_FAST`: en creación, rollback; en arranque, aborta antes de aceptar conexiones. Reubicar automáticamente una ciudad existente está prohibido: mover la ciudad de un jugador sin su conocimiento es un efecto de gameplay mayor que el problema que resolvería.
+**Violación en runtime.** En la colocación, `FindSite` no devuelve un sitio inválido. Al arrancar, la validación de carga emite `invariant_violation` con `inv_id=INV-CITY-007`, `entity=city:<id>` y las coordenadas en `detail`. Política `FAIL_FAST`: en creación, rollback; en arranque, aborta antes de aceptar conexiones y sin escribir ninguna otra reparación. Reubicar automáticamente una ciudad existente está prohibido: mover la ciudad de un jugador sin su conocimiento es un efecto de gameplay mayor que el problema que resolvería.
 
 ---
 
@@ -349,7 +353,7 @@ El margen es deliberadamente enorme. Cada zona urbana es un rectángulo 3 × 3 (
 | Aplicación | DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | REPAIR (recontar desde `units`) |
-| Cobertura | **Parcial**: el único escritor recuenta y `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal` y `TestBootstrapCreaMundoCompletoDelJugador` (integration) lo comprueban; **no existe** el recuento al cargar (`EO-119`) |
+| Cobertura | **Cubierto**: el único escritor recuenta y `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal` y `TestBootstrapCreaMundoCompletoDelJugador` (integration) lo comprueban; el recuento al cargar, `TestLasCiudadesSeReparanDesdeSusFuentes` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) |
 
 **Enunciado.** Para toda ciudad, `cities.population` es igual al número de filas de `units` con `city_id` de esa ciudad y `status <> 'DEAD'`, tras cada transacción confirmada.
 
@@ -365,15 +369,17 @@ La cualificación «tras cada transacción confirmada» es la que hace el enunci
 - `DOMAIN` — **vigente**: `population` no se incrementa ni se decrementa a mano. `CityRepo.UpdatePopulation` la fija con un `count(*)` de las unidades vivas de la ciudad, y el alta lo llama en la misma transacción que inserta los aldeanos. Es el único escritor: no existe ninguna ruta que cree unidades después del alta ni que pase una a `DEAD`.
 - `DOMAIN` — cuando existan esas rutas, deberán recontar igual, en la misma transacción que el cambio en `units`. El estado `DEAD` es terminal ([INV-UNIT-002](units.md#inv-unit-002)).
 - `DB` — `units_city_idx` (índice parcial sobre `city_id WHERE city_id IS NOT NULL`) hace barato el recuento: recontar no es una operación que haya que evitar por coste.
-- `DOMAIN` — **no existe todavía**: el recuento al cargar que compare con el valor persistido y repare la divergencia (`EO-119`).
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) recuenta las unidades vivas que `UnitRepo.ListAlive` acaba de leer y compara con el contador. Cuenta también las que excluye por [INV-UNIT-009](units.md#inv-unit-009): no entran en la simulación, pero existen y ocupan plaza.
 
 **Cómo se verifica.**
 
 - `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal` (integration) — tras el alta, `cities.population` es exactamente `count(*)` de sus unidades con `status <> 'DEAD'`.
 - `TestBootstrapCreaMundoCompletoDelJugador` (integration) — la ciudad nace con población 3, la de sus tres aldeanos.
-- El escenario que crea y mata unidades llegará con esas rutas; la reparación al cargar, con `EO-119`.
+- `TestLasCiudadesSeReparanDesdeSusFuentes` (unit, `internal/game/loadcheck`) — un contador de 9 con tres aldeanos vuelve a 3.
+- `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — el recuento corregido queda en la base, con su `InvariantRepaired`; la unidad `DEAD` no cuenta.
+- El escenario que crea y mata unidades llegará con esas rutas.
 
-**Violación en runtime.** Hoy **no se detecta**: un contador editado a mano se cargaría tal cual. La política prevista con `EO-119` es ésta. Detección en la reconciliación de arranque. Log `invariant_violation` con `inv_id=INV-CITY-009`, `city_id`, contador persistido y recuento real. Política `REPAIR`: prevalece el recuento sobre `units`, que es la fuente, y se registra un `world_events` de auditoría. La reparación es segura porque el valor correcto es una función pura de datos que sí son autoritativos.
+**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-CITY-009`, `entity=city:<id>` y, en `detail`, el contador persistido y el recuento real. Política `REPAIR`: prevalece el recuento sobre `units`, que es la fuente, y se registra un `InvariantRepaired` de auditoría. La reparación es segura porque el valor correcto es una función pura de datos que sí son autoritativos.
 
 ---
 
@@ -418,7 +424,7 @@ La consecuencia práctica es que el terreno bajo una ciudad **sigue siendo el qu
 | Aplicación | DOMAIN, TEST |
 | Milestone | M5 |
 | Política ante violación | REPAIR |
-| Cobertura | **Parcial**: la escritura por `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` (tras cada tick de un ciclo largo) y `TestCicloDePresenciaYProteccion` (`internal/game/simulation`); **no existe** la reparación al cargar (`EO-119`) |
+| Cobertura | **Cubierto**: la escritura por `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` (tras cada tick de un ciclo largo) y `TestCicloDePresenciaYProteccion` (`internal/game/simulation`); la reparación al cargar, `TestLasCiudadesSeReparanDesdeSusFuentes` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) |
 
 **Enunciado.** Si `cities.presence_state` es distinto de `'ONLINE'`, entonces `cities.last_offline_at IS NOT NULL`.
 
@@ -434,9 +440,9 @@ La consecuencia práctica es que el terreno bajo una ciudad **sigue siendo el qu
 
 - `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` (simulation, `presence_test.go`) — tras **cada** tick de un ciclo de cinco conexiones y desconexiones, con cortes dentro y fuera del margen y protecciones concedidas y levantadas, ningún estado distinto de `ONLINE` carece de marca.
 - `TestCicloDePresenciaYProteccion` (simulation) — al degradar a `OFFLINE_PENDING` la marca deja de ser nula.
-- Pendiente con `EO-119`: el barrido de carga sobre `cities`.
+- `TestLasCiudadesSeReparanDesdeSusFuentes` (unit, `internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — una ciudad `OFFLINE_PENDING` sin marca la recibe con el instante del arranque, en memoria y en la base.
 
-**Violación en runtime.** Hoy **no se detecta**: sólo una fila editada a mano podría producirla, y se cargaría tal cual, con la ciudad atascada en `OFFLINE_PENDING`. La política prevista con `EO-119` es ésta. Detección en la reconciliación de arranque. Log `invariant_violation` con `inv_id=INV-CITY-011` y `city_id`. Política `REPAIR`: se fija `last_offline_at` al instante de la detección y se registra un `world_events`. Es una reparación conservadora —retrasa la protección, nunca la adelanta—, que es el lado seguro del error.
+**Violación en runtime.** Sólo una fila editada a mano podría producirla. Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-CITY-011` y `entity=city:<id>`. Política `REPAIR`: se fija `last_offline_at` al instante de la detección y se registra un `InvariantRepaired`. Es una reparación conservadora —retrasa la protección, nunca la adelanta—, que es el lado seguro del error.
 
 ---
 
@@ -449,7 +455,7 @@ La consecuencia práctica es que el terreno bajo una ciudad **sigue siendo el qu
 | Aplicación | DOMAIN, TEST |
 | Milestone | M5 |
 | Política ante violación | REPAIR (limpiar el campo) |
-| Cobertura | **Parcial**: la escritura por `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` y `TestCicloDePresenciaYProteccion` (`internal/game/simulation`) y por `TestTransicionesDePresenciaSePersisten` (integration); **no existe** la reparación al cargar (`EO-119`) |
+| Cobertura | **Cubierto**: la escritura por `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` y `TestCicloDePresenciaYProteccion` (`internal/game/simulation`) y por `TestTransicionesDePresenciaSePersisten` (integration); la reparación al cargar, `TestLasCiudadesSeReparanDesdeSusFuentes` (`internal/game/loadcheck`) |
 
 **Enunciado.** Si `cities.presence_state = 'ONLINE'`, entonces `cities.protection_until IS NULL`.
 
@@ -468,9 +474,9 @@ El peligro no es del MVP sino del futuro inmediato. En cuanto exista una comprob
 - `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` (simulation) — tras cada tick del ciclo, ninguna ciudad `ONLINE` tiene `ProtectionUntil`.
 - `TestCicloDePresenciaYProteccion` (simulation) — volver de `PROTECTED` a `ONLINE` deja el campo nulo.
 - `TestTransicionesDePresenciaSePersisten` (integration) — en la base, la vuelta a `ONLINE` escribe `protection_until = NULL`.
-- Pendiente con `EO-119`: el barrido de carga sobre `cities`.
+- `TestLasCiudadesSeReparanDesdeSusFuentes` (unit, `internal/game/loadcheck`) — una ciudad `ONLINE` con `protection_until` lo pierde al cargar.
 
-**Violación en runtime.** Hoy **no se detecta**: sólo una fila editada a mano podría producirla. La política prevista con `EO-119` es ésta. Detección en la reconciliación de arranque. Log `invariant_violation` con `inv_id=INV-CITY-012` y `city_id`. Política `REPAIR`: se pone el campo a `NULL` y se emite `city.update`. La reparación es segura porque en MVP el valor correcto es siempre `NULL`.
+**Violación en runtime.** Sólo una fila editada a mano podría producirla. Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-CITY-012` y `entity=city:<id>`. Política `REPAIR`: se pone el campo a `NULL` y se registra un `InvariantRepaired`; no hay `city.update` porque en el arranque no hay nadie conectado. La reparación es segura porque en MVP el valor correcto es siempre `NULL`.
 
 ---
 

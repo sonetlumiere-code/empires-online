@@ -627,8 +627,9 @@ y la unidad se queda en su última posición consolidada. Es un RPO conocido, no
 2. **Se aplican las migraciones embebidas** (§6, Paso 3). Un esquema `dirty` aborta el arranque aquí.
 3. Se conecta a Postgres y a Redis.
 4. **Se carga el mundo:** se lee `world_state` (semilla, dimensiones, `epoch_ms`, tick) y **se regenera el
-   terreno desde la semilla**. La copia de `world_chunks` solo se escribe la primera vez, como registro de
-   auditoría; en los arranques siguientes no se lee.
+   terreno desde la semilla**. La copia de `world_chunks` solo se escribe la primera vez; en los arranques
+   siguientes se compara byte a byte con lo regenerado (`VerifyTerrain`), y una diferencia aborta el arranque
+   (`INV-WORLD-005`). El tick de arranque se reancla al reloj (ADR-015).
 5. Se cargan las entidades vivas y **los movimientos con `status = 'ACTIVE'`**, y se rehidrata la simulación:
    - si `arrival_time_ms <= now`: el movimiento se completa inmediatamente, la unidad hace *snap* al tile
      final y el movimiento pasa a `COMPLETED`;
@@ -637,6 +638,12 @@ y la unidad se queda en su última posición consolidada. Es un RPO conocido, no
      teletransporta a nadie por un dato dudoso.**
    Las murallas de las ciudades existentes vuelven a bloquear su rectángulo 3×3 —la capa de ocupación no se
    persiste, se deriva—, y lo que una caída haya dejado dentro de una muralla, o en marcha a través de ella, se
+   Antes de rehidratar, la **validación de carga** (`EO-119`) comprueba lo que el esquema no garantiza —población,
+   límite de era, marcas de presencia, posición y tipo de cada unidad, guarniciones y dueños de territorio— y
+   emite un `invariant_violation` por hallazgo. Si alguno es `FAIL_FAST` (una unidad o un centro de ciudad fuera
+   del mundo o sobre terreno intransitable), **el arranque aborta sin escribir nada** y hay que corregir el dato a
+   mano antes de volver a arrancar. Lo demás se repara en una sola transacción, con un evento `InvariantRepaired`
+   en `world_events` por cada corrección.
    aparta o se detiene como en el tick del alta (`RN-CITY-022` en [../specs/city.md](../specs/city.md)).
 6. Arrancan el servidor HTTP, el de métricas y el game loop; `/ready` empieza a devolver 200.
 7. Los jugadores reconectan (con *backoff*), obtienen ticket nuevo, envían `session.hello`, reciben
@@ -653,8 +660,8 @@ y la unidad se queda en su última posición consolidada. Es un RPO conocido, no
 | **Total percibido por el jugador** | **~15–60 s** |
 
 **El terreno se regenera desde `EO_WORLD_SEED` en cada arranque**, y eso está bien: para un mundo de 512×512
-es trabajo de CPU pura, más barato que leer 256 filas de `world_chunks`, y garantiza que semilla y mapa nunca
-divergen. Lo que sí es señal de bug es un arranque que tarde minutos: apunta a la carga de entidades o a la
+es trabajo de CPU pura, y garantiza que semilla y mapa nunca divergen; `world_chunks` se lee sólo para
+comprobarlo. Lo que sí es señal de bug es un arranque que tarde minutos: apunta a la carga de entidades o a la
 base de datos, no al generador.
 
 Qué ve el jugador: la conexión se cierra, el cliente muestra "reconectando", y al volver todo está donde

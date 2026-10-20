@@ -43,6 +43,7 @@ export const DETERMINISTIC_ROOTS = [
   'internal/game/simulation',
   'internal/game/loop',
   'internal/game/founding',
+  'internal/game/loadcheck',
   'internal/pathfinding',
 ];
 

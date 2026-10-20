@@ -59,7 +59,7 @@ Cada invariante se documenta con exactamente esta estructura. No se admiten fich
 | Severidad | CRITICO \| ALTO \| MEDIO |
 | Aplicación | DB, TYPE, BOUNDARY, DOMAIN, TEST |
 | Milestone | M1 |
-| Política ante violación | FAIL_FAST \| REJECT \| REPAIR |
+| Política ante violación | FAIL_FAST \| REJECT \| REPAIR \| EXCLUDE |
 | Cobertura | **Cubierto** por `TestX` (paquete) \| **Parcial**: … \| **Sin cobertura**: … |
 
 **Enunciado.** Una frase precisa y verificable, sin adverbios ni condicionales.
@@ -212,7 +212,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-WORLD-001 | Toda coordenada válida cae en `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)` | CRITICO | TYPE, BOUNDARY, DOMAIN, TEST | ~ | `TestLimitesDelMundo`, `TestRechazosDeMovimiento`; falta la validación de carga (`EO-119`) |
+| INV-WORLD-001 | Toda coordenada válida cae en `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)` | CRITICO | TYPE, BOUNDARY, DOMAIN, TEST | ✓ | `TestLimitesDelMundo`, `TestRechazosDeMovimiento`, `TestUnaEntidadFueraDelMundoAbortaElArranque` |
 | INV-WORLD-002 | Todo tile referenciado existe en el mundo cargado | CRITICO | DOMAIN, TEST | ✓ | `TestNewRechazaDimensionesIncoherentes`, `TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla` |
 | INV-WORLD-003 | Ningún waypoint de un path es un tile bloqueado | CRITICO | DOMAIN, TEST | ✓ | `TestRodeaElObstaculo`, `TestUnaRutaQueCruzaLaMurallaNuevaSeDetieneConPathBlocked` |
 | INV-WORLD-004 | `tickNumber` es estrictamente monótono creciente | CRITICO | TYPE, DOMAIN, TEST | ✓ | `TestElTickSeReanclaAlRelojAlArrancar`, `TestElTickEsEstrictamenteCreciente` |
@@ -237,17 +237,17 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
 | INV-CITY-001 | Una ciudad tiene exactamente un owner | CRITICO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestBootstrapCreaMundoCompletoDelJugador` |
-| INV-CITY-002 | `population` nunca supera `population_limit` | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestLimiteDePoblacion` |
-| INV-CITY-003 | `population_limit` deriva de la era vigente | ALTO | DB, DOMAIN, TEST | ~ | `TestElAltaTomaElLimiteDePoblacionDeSuEra`; falta la recomputación al cargar (`EO-119`) |
+| INV-CITY-002 | `population` nunca supera `population_limit` | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestLimiteDePoblacion`, `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` |
+| INV-CITY-003 | `population_limit` deriva de la era vigente | ALTO | DB, DOMAIN, TEST | ✓ | `TestElAltaTomaElLimiteDePoblacionDeSuEra`, `TestLasCiudadesSeReparanDesdeSusFuentes`, `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` |
 | INV-CITY-004 | `presence_state` sólo toma `ONLINE`, `OFFLINE_PENDING` o `PROTECTED` | CRITICO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestEstadosDePresenciaValidos`, `TestLosEstadosDePresenciaDelDominioSonLosDelEsquema` |
 | INV-CITY-005 | Toda transición de `presence_state` pertenece al conjunto permitido | ALTO | DOMAIN, TEST | ✓ | `TestAutomataDePresencia`, `TestLasCiudadesQueDegradanEnElMismoTickSalenEnOrden` |
 | INV-CITY-006 | Una ciudad `PROTECTED` no recibe acciones prohibidas por la protección | CRITICO | DOMAIN, TEST | ~ | `TestIsProtected` |
-| INV-CITY-007 | El centro de la ciudad está sobre un tile válido y transitable | ALTO | DOMAIN, TEST | ~ | `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestSinTerrenoTransitableNoHaySitio`; falta la revalidación al arrancar (`EO-119`) |
+| INV-CITY-007 | El centro de la ciudad está sobre un tile válido y transitable | ALTO | DOMAIN, TEST | ✓ | `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestSinTerrenoTransitableNoHaySitio`, `TestUnCentroSobreAguaAbortaElArranque` |
 | INV-CITY-008 | Las zonas urbanas de dos ciudades nunca comparten tile (centro único, 24 tiles de separación) | ALTO | DB, DOMAIN, TEST | ✓ | `TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan`, `TestAltasSimultaneasGuardanLaDistanciaMinima`, `TestDosCiudadesNoPuedenCompartirCentro` |
-| INV-CITY-009 | `population` es el recuento de `units` de la ciudad con `status <> 'DEAD'` | ALTO | DOMAIN, TEST | ~ | `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal`; falta el recuento al cargar (`EO-119`) |
+| INV-CITY-009 | `population` es el recuento de `units` de la ciudad con `status <> 'DEAD'` | ALTO | DOMAIN, TEST | ✓ | `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal`, `TestLasCiudadesSeReparanDesdeSusFuentes`, `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` |
 | INV-CITY-010 | Fundar una ciudad no muta el `TerrainType` de ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestCapaDeOcupacionNoMutaElTerreno`, `TestMundoPersistidoCoincideByteAByteConLaSemilla` |
-| INV-CITY-011 | `presence_state <> 'ONLINE'` implica `last_offline_at IS NOT NULL` | ALTO | DOMAIN, TEST | ~ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`; falta la reparación al cargar (`EO-119`) |
-| INV-CITY-012 | `presence_state = 'ONLINE'` implica `protection_until IS NULL` | ALTO | DOMAIN, TEST | ~ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`, `TestTransicionesDePresenciaSePersisten`; falta la reparación al cargar (`EO-119`) |
+| INV-CITY-011 | `presence_state <> 'ONLINE'` implica `last_offline_at IS NOT NULL` | ALTO | DOMAIN, TEST | ✓ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`, `TestLasCiudadesSeReparanDesdeSusFuentes` |
+| INV-CITY-012 | `presence_state = 'ONLINE'` implica `protection_until IS NULL` | ALTO | DOMAIN, TEST | ✓ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`, `TestTransicionesDePresenciaSePersisten`, `TestLasCiudadesSeReparanDesdeSusFuentes` |
 | INV-CITY-013 | La protección nunca se concede antes de vencer el cooldown completo | CRITICO | DOMAIN, TEST | ✓ | `TestShouldEngageProtection` |
 | INV-CITY-014 | Ninguna ciudad sigue protegida mientras su dueño tenga una sesión viva | CRITICO | DOMAIN, TEST | ✓ | `TestCicloDePresenciaYProteccion` |
 | INV-CITY-015 | `last_online_at` y `last_offline_at` son monótonos no decrecientes en una ejecución | MEDIO | DOMAIN, TEST | ✓ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` |
@@ -257,15 +257,15 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-UNIT-001 | La posición de una unidad referencia un tile válido y transitable | CRITICO | DOMAIN, TEST | ~ | `TestRechazosDeMovimiento`, `TestFundarApartaLaUnidadQueQuedaDentroDeLaMuralla`; falta la validación de carga (`EO-119`) |
+| INV-UNIT-001 | La posición de una unidad referencia un tile válido y transitable | CRITICO | DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento`, `TestFundarApartaLaUnidadQueQuedaDentroDeLaMuralla`, `TestLasUnidadesSeExcluyenSeReparanOAbortan` |
 | INV-UNIT-002 | Una unidad `DEAD` no acepta órdenes | ALTO | DB, DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento`, `TestEnsureCanMoveDecidePorEstado` |
 | INV-UNIT-003 | Una unidad `GARRISONED` no ocupa tile del mundo | ALTO | DOMAIN, TEST | ~ | `TestRechazosDeMovimiento`, `TestGuarnecidasYSinVidaNoSeOcultan`; todavía sale en el snapshot (M7, entregable 6) |
-| INV-UNIT-004 | `hp` está en `[0, max_hp]` | ALTO | DB, DOMAIN, TEST | ~ | `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`, `TestIsAliveExigeEstadoYVida`; falta `max_hp` contra el catálogo al cargar (`EO-119`) |
+| INV-UNIT-004 | `hp` está en `[0, max_hp]` | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`, `TestIsAliveExigeEstadoYVida`, `TestLasUnidadesSeExcluyenSeReparanOAbortan` |
 | INV-UNIT-005 | `status = MOVING` si y sólo si existe un movimiento `ACTIVE` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento`, `TestRecuperacionNoReanudaElMovimientoDeUnaUnidadGuarnecida`, `TestVerticalSliceMovimiento` |
 | INV-UNIT-006 | Una unidad pertenece a un único jugador | CRITICO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`, `TestNoSePuedeComandarUnaUnidadAjena` |
-| INV-UNIT-007 | `GARRISONED` implica `city_id IS NOT NULL` y fila en `garrisons` | ALTO | DB, DOMAIN, TEST | ~ | `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`; falta decidir `city_id` (M7) y la carga (`EO-119`) |
+| INV-UNIT-007 | `GARRISONED` implica `city_id IS NOT NULL` y fila en `garrisons` | ALTO | DB, DOMAIN, TEST | ~ | `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`, `TestLaGuarnicionSeDerivaDeSuTabla`; falta decidir `city_id` (M7) |
 | INV-UNIT-008 | `HIDDEN` implica Safe Zone activa y reposo; moverse deja de ocultar | MEDIO | DOMAIN, TEST | ✓ | `TestReglaDeOcultamiento`, `TestUnaUnidadOcultaQueRecibeUnMoveSeRevelaEnElMismoTick` |
-| INV-UNIT-009 | Todo `unit_type` persistido resuelve en el catálogo de `unit.Lookup` | ALTO | DOMAIN, TEST | ~ | `TestLookupSoloConoceElCatalogo`; falta la comprobación de carga (`EO-119`) |
+| INV-UNIT-009 | Todo `unit_type` persistido resuelve en el catálogo de `unit.Lookup` | ALTO | DOMAIN, TEST | ✓ | `TestLookupSoloConoceElCatalogo`, `TestLasUnidadesSeExcluyenSeReparanOAbortan` |
 | INV-UNIT-010 | `player_id` y `unit_type` son inmutables tras la creación en MVP | MEDIO | DOMAIN, TEST | ✓ | `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
 | INV-UNIT-011 | `chunk_x` y `chunk_y` son siempre el chunk de `(x, y)` | ALTO | DOMAIN, TEST | ✓ | `TestFlushPositionsEscribeElLoteYMantieneElChunk`, `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
 
@@ -318,9 +318,9 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-TERR-002 | Dos territorios no comparten ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestDosTerritoriosSolapadosResuelvenElIDMenorYSeReportan`, `TestLaRejillaCubreElMundoSinHuecosNiSolapes` |
 | INV-TERR-003 | Un territorio tiene como máximo una fila de control, y toda fila referencia un territorio | ALTO | DB, TEST | ✓ | `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas`, `TestLaSiembraCreaUnaFilaDeControlPorTerritorio`, `TestUnControlDeTerritorioInexistenteNoEmiteNada` |
 | INV-TERR-004 | `owner_type = 'NONE'` si y sólo si `owner_id IS NULL` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestLasRestriccionesDeTerritoriosRechazanFilasInvalidas`, `TestUnDueñoExigeIdentificadorYFechaDeCaptura` |
-| INV-TERR-005 | `owner_type = 'PLAYER'` implica que `owner_id` es un `players.id` existente | ALTO | DOMAIN, TEST | ~ | `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento`; falta la validación de carga (`EO-119`) |
+| INV-TERR-005 | `owner_type = 'PLAYER'` implica que `owner_id` es un `players.id` existente | ALTO | DOMAIN, TEST | ✓ | `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento`, `TestLosControlesSeReparan` |
 | INV-TERR-006 | En MVP, `control_points = 0` y `contested = false` en toda fila de control | MEDIO | TEST | ✓ | `TestLaSiembraCreaUnaFilaDeControlPorTerritorio`, `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` |
-| INV-TERR-007 | `owner_type <> 'NONE'` implica `captured_at IS NOT NULL` | MEDIO | DOMAIN, TEST | ~ | `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento`, `TestUnDueñoExigeIdentificadorYFechaDeCaptura`; falta la validación de carga (`EO-119`) |
+| INV-TERR-007 | `owner_type <> 'NONE'` implica `captured_at IS NOT NULL` | MEDIO | DOMAIN, TEST | ✓ | `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento`, `TestUnDueñoExigeIdentificadorYFechaDeCaptura`, `TestLosControlesSeReparan` |
 | INV-TERR-008 | El índice `territoryOfTile` es función pura de `territories` | MEDIO | TEST | ✓ | `TestElIndiceEsFuncionPuraDeLosTerritorios` |
 | INV-TERR-009 | Todo cambio de control emite `territory.update` a la huella de chunks | ALTO | BOUNDARY, TEST | ✓ | `TestUnCambioDeControlSeAplicaYSeEmiteUnaVezALaHuella`, `TestBroadcastChunksEntregaUnaSolaVezAQuienEstaSuscritoAVarios` |
 
@@ -380,8 +380,8 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 67 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 18 | Hay test real para parte del enunciado |
+| ✓ Cubierto | 78 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 7 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 5 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
@@ -393,7 +393,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 Los 5 sin cobertura son todos de `INV-GARR`, la única familia que `EO-118` no ha reconciliado todavía: describen efectos de una guarnición que ningún comando de red puede producir (M7, entregable 6), y sus filas citan nombres `Test_INV_*` previstos que no están en la suite. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`: todas salvo `INV-GARR`, que se reconciliará con los comandos de guarnición. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`: todas salvo `INV-GARR`, que se reconciliará con los comandos de guarnición. La detección y la reparación al arrancar que prometían once de sus fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`), y esas filas pasaron de ~ a ✓. Las siete parciales que quedan esperan otra cosa: los comandos de guarnición de M7 (`INV-UNIT-003`, `INV-UNIT-007`, `INV-GARR-002`, `INV-GARR-004`), la autenticación del handshake (`INV-PLAYER-007`), la regla de protección sobre acciones ajenas de M6 (`INV-CITY-006`) y el escaneo de secretos del repositorio y del bundle (`INV-SEC-006`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 

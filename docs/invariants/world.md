@@ -50,7 +50,7 @@ Dos conceptos distintos que estos invariantes tratan por separado:
 | Aplicación | TYPE, BOUNDARY, DOMAIN, TEST |
 | Milestone | M1 |
 | Política ante violación | FAIL_FAST en el dominio · REJECT en el borde |
-| Cobertura | **Parcial**: `TestLimitesDelMundo`, `TestFueraDeLimitesEsIntransitable` y `TestChunksEnRadioSeRecortanYVanOrdenados` (`internal/game/world`), `TestDestinoFueraDeLimites` (`internal/pathfinding`) y `TestRechazosDeMovimiento` (`internal/game/simulation`) cubren lo que entra por la red; falta la validación de carga de las coordenadas persistidas (`EO-119`) |
+| Cobertura | **Cubierto**: `TestLimitesDelMundo`, `TestFueraDeLimitesEsIntransitable` y `TestChunksEnRadioSeRecortanYVanOrdenados` (`internal/game/world`), `TestDestinoFueraDeLimites` (`internal/pathfinding`) y `TestRechazosDeMovimiento` (`internal/game/simulation`) cubren lo que entra por la red; `TestUnaEntidadFueraDelMundoAbortaElArranque` (`internal/game/loadcheck`), las coordenadas persistidas |
 
 **Enunciado.** Toda coordenada `(x, y)` que el sistema acepte, almacene, derive o emita cumple `0 <= x < EO_WORLD_WIDTH` y `0 <= y < EO_WORLD_HEIGHT`, con `x, y` de tipo `int32`.
 
@@ -63,6 +63,7 @@ La implementación elige explícitamente **no entrar en pánico**: `World.Terrai
 - `BOUNDARY` — el manejador de `unit.move` valida el destino con `World.TileInBounds` **antes** de cualquier trabajo caro; fuera de rango se rechaza con `TARGET_OUT_OF_BOUNDS` (canon §16). El centro de `session.view` **no** se rechaza: `World.ChunksInRadius` recorta el área de interés al mundo, de modo que un centro fuera de rango produce un snapshot de los chunks válidos más cercanos y nunca un chunk inexistente.
 - `TYPE` — el dominio no pasea `int32` sueltos: usa el tipo `world.Tile` (`{X, Y int32}`) como unidad de coordenada, de modo que ninguna firma puede confundir el orden de los ejes ni mezclar tiles con píxeles. El tipo **no** valida por construcción: la validación de rango es responsabilidad de `World`, que es quien conoce las dimensiones.
 - `DOMAIN` — todo acceso al terreno pasa por `World.TerrainAt(x, y)` / `World.IsWalkable(x, y)`, que comprueban `InBounds` antes de indexar y devuelven `WATER` / `false` fuera de rango. No existe ninguna ruta que indexe el array de terreno sin ese chequeo.
+- `DOMAIN` — al arrancar, la validación de carga (`internal/game/loadcheck`, `EO-119`) comprueba con `World.InBounds` las coordenadas persistidas que la base no limita: la posición de toda unidad viva no guarnecida y el centro de toda ciudad ([INV-UNIT-001](units.md#inv-unit-001), [INV-CITY-007](city.md#inv-city-007)).
 - `TYPE` — el protocolo (`packages/protocol/src/v1/`) declara las coordenadas como enteros con `Zod`, y el servidor las decodifica en `int32` con `protocol.DecodeStrict`: un flotante, un `NaN` o un valor fuera de `int32` no decodifica y se responde `INVALID_MESSAGE`.
 
 > **No hay garantía `DB`.** La migración `000001_initial_schema.up.sql` **no** declara ningún `CHECK` de rango sobre `units.x`, `units.y`, `cities.center_x` ni `cities.center_y`. El límite superior es `EO_WORLD_WIDTH`/`EO_WORLD_HEIGHT`, que es configuración y no puede empotrarse como literal en una migración sin congelarla; el inferior tampoco está declarado. Un `INSERT` directo con `x = 99999` **es aceptado por PostgreSQL**: el rango se garantiza en `BOUNDARY`, `DOMAIN` y `TEST`, y así se declara aquí en lugar de prometer una constraint inexistente.
@@ -74,9 +75,9 @@ La implementación elige explícitamente **no entrar en pánico**: `World.Terrai
 - `TestDestinoFueraDeLimites` (unit, `internal/pathfinding`) — el pathfinder devuelve `ErrTargetOutOfBounds`.
 - `TestRechazosDeMovimiento` (simulation, `internal/game/simulation`) — un `unit.move` fuera de límites se responde con `TARGET_OUT_OF_BOUNDS`.
 - `TestChunksEnRadioSeRecortanYVanOrdenados` (unit, `internal/game/world`) — el área de interés se recorta al mundo.
-- Test previsto (`EO-119`): una entidad persistida fuera del mundo se detecta al cargar.
+- `TestUnaEntidadFueraDelMundoAbortaElArranque` (unit, `internal/game/loadcheck`) — una unidad en `x = -1` y un centro en `y = height` producen dos hallazgos `FAIL_FAST`.
 
-**Violación en runtime.** En el borde, una coordenada fuera de rango es la regla de negocio, no una violación: `REJECT` con `TARGET_OUT_OF_BOUNDS`, o `INVALID_MESSAGE` si el tipo es incorrecto, sin log de invariante. Una coordenada fuera de rango **persistida** —lo que la base de datos no impide— hoy no se detecta: `ListAlive` y `ListAll` la cargan tal cual, y los bordes del mundo la tratan como un muro (`IsWalkable` falso). Detectarla al cargar es `EO-119`.
+**Violación en runtime.** En el borde, una coordenada fuera de rango es la regla de negocio, no una violación: `REJECT` con `TARGET_OUT_OF_BOUNDS`, o `INVALID_MESSAGE` si el tipo es incorrecto, sin log de invariante. Una coordenada fuera de rango **persistida** —lo que la base de datos no impide— la detecta la validación de carga: log `invariant_violation` con el `inv_id` de la entidad (`INV-UNIT-001` o `INV-CITY-007`) y política `FAIL_FAST`; el arranque aborta sin escribir nada.
 
 ---
 

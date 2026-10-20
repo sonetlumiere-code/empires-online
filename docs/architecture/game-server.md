@@ -74,6 +74,7 @@ services/game-server/
     │   └── unit/unit.go            # Unit, Status, Type, Definition y catálogo
     ├── game/
     │   ├── founding/site.go        # FindSite: emplazamiento determinista de ciudad
+    │   ├── loadcheck/loadcheck.go  # validación de carga del estado durable (EO-119)
     │   ├── loop/loop.go            # Loop.Run + Loop.Step (8 fases)
     │   ├── simulation/             # state, simulation, commands, recovery,
     │   │                           # snapshot, interest, introduce
@@ -85,7 +86,7 @@ services/game-server/
     ├── persistence/memory/memory.go # estado caliente en proceso: alternativa a Redis
     │                               # SÓLO en desarrollo (ver ADR-004)
     ├── persistence/postgres/       # store, db, migrate, players, cities, units,
-    │                               # movements, world, bootstrap, events
+    │                               # movements, world, bootstrap, events, loadcheck
     ├── persistence/redis/{redis.go,presence.go,idempotency.go}
     ├── protocol/{protocol.go,codes.go,schema.go}
     │   └── schema/v1/*.json        # espejo generado por `pnpm run protocol:build` (go:embed)
@@ -125,6 +126,7 @@ revisión de código, no por un test de arquitectura automático — añadirlo e
 | `internal/game/loop` | El tick: `Run` (calendario absoluto, descarte de ticks perdidos) y `Step` (las 8 fases). Drena la cola de comandos, aísla pánicos por comando y vuelca métricas. Recibe sus parámetros en un `loop.Config` propio, **no** importa `internal/config`. | `simulation`, `clock`, `observability` | `config`, `persistence/*`, `websocket` |
 | `internal/game/simulation` | **El corazón del MVP**, no un reservado: estado del mundo (`state.go`), aplicación de comandos (`commands.go`, `simulation.go`), hidratación y recuperación (`recovery.go`), snapshots (`snapshot.go`), interest management (`interest.go`) y alta de jugador en caliente (`introduce.go`). La resolución de combate (fase 4) sí sigue fuera de MVP. | `world`, `domain/*`, `pathfinding`, `protocol`, `clock`, `observability` | `persistence/postgres`, `persistence/redis`, `websocket` |
 | `internal/game/founding` | `FindSite`: emplazamiento determinista de una ciudad nueva por búsqueda en espiral desde una semilla derivada del nombre de usuario. | `world` | `domain/*`, `persistence/*`, `websocket` |
+| `internal/game/loadcheck` | Validación de carga (`EO-119`): `Check` recibe el estado durable recién leído y devuelve los hallazgos (`REPAIR`, `EXCLUDE`, `FAIL_FAST`), las correcciones aplicadas en memoria y las filas que hay que reescribir. Dominio puro: sin reloj, sin I/O, en orden de id. | `world`, `domain/*` | `persistence/*`, `simulation`, `websocket` |
 | `internal/domain/player` | Identidad del jugador, `Civilization` con sus `Traits`, `Faction`. | — | `game/*`, `persistence/*`, `websocket`, `pathfinding` |
 | `internal/domain/city` | Ciudad, `PresenceState` y su autómata (`CanTransition`), `ShouldEngageProtection`, límite de población. | — | ídem |
 | `internal/domain/unit` | Entidad unidad, `Status` (`IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`), `Type`, `Definition` y el catálogo con `VILLAGER` (`baseMsPerTile` 600). | — | ídem |
@@ -135,7 +137,7 @@ revisión de código, no por un test de arquitectura automático — añadirlo e
 | `internal/httpapi` | `POST /api/auth/register` y `POST /api/auth/login`: bcrypt, alta transaccional del jugador y emisión del ticket. **Provisional**, ver §1. | `auth`, `founding`, `persistence/postgres`, `simulation`, `world` | `websocket` |
 | `internal/websocket` | `Hub` (registro de sesiones e índices por jugador y por chunk), `Session` (writer único, `seq`, cola de salida, memoria de terreno enviado) y `Server` (upgrade, handshake, rate limit, traducción mensaje→comando). Declara sus propios puertos `PresenceTracker` y `Deduper`, que Redis satisface sin ser importado. | `auth`, `protocol`, `simulation`, `world`, `observability` | `persistence/*`, `pathfinding` |
 | `internal/persistence` | Contratos y mecanismos transversales: `GameStore` (fachada de repositorios), `Queue` (cola de escrituras durables con workers y reintentos) y `pgxalias`. | `simulation`, `persistence/postgres`, `observability` | `websocket`, `loop` |
-| `internal/persistence/postgres` | Pool `pgx`, migraciones embebidas con golang-migrate, repositorios (`players`, `cities`, `units`, `movements`, `world`, `events`) y el `Bootstrapper` del alta atómica. | `domain/*`, `world`, `migrations`, `observability` | `loop`, `simulation`, `websocket`, `pathfinding` |
+| `internal/persistence/postgres` | Pool `pgx`, migraciones embebidas con golang-migrate, repositorios (`players`, `cities`, `units`, `movements`, `world`, `events`), el `Bootstrapper` del alta atómica y `LoadCheckRepo`, que escribe las reparaciones de carga en una transacción auditada. | `domain/*`, `world`, `game/loadcheck`, `migrations`, `observability` | `loop`, `simulation`, `websocket`, `pathfinding` |
 | `internal/persistence/redis` | Presencia, idempotencia (`Claim` con `SETNX`) y consumo de `jti` de tickets. | `observability` | `loop`, `simulation`, `websocket` |
 
 ### 2.2 Regla de dependencias (una sola dirección)
@@ -386,8 +388,16 @@ distinto de cero. Nunca se arranca a medias.
                   copia de auditoría, no la fuente primaria. Si el mundo es nuevo, se
                   persisten sus chunks; si no, VerifyTerrain los compara byte a byte con lo
                   regenerado y aborta el arranque si difieren (INV-WORLD-005).
- 4. hidratación   Se cargan unidades vivas, ciudades y movimientos ACTIVE, y simulation.Hydrate
-                  reconstruye el estado:
+                  El tick de arranque se calcula aquí con loop.ResumeTick (ADR-015): las
+                  reparaciones del paso 4 se auditan con él.
+ 4. hidratación   Se cargan unidades vivas, ciudades, movimientos ACTIVE, territorios y el catálogo
+                  de eras. Antes de construir la RAM, la validación de carga (EO-119,
+                  internal/game/loadcheck) comprueba lo que el esquema no garantiza: población,
+                  límite de era, marcas de presencia, posición y tipo de cada unidad, guarniciones
+                  y dueños de territorio. Un hallazgo FAIL_FAST aborta el arranque sin escribir
+                  nada; lo reparable se escribe en una transacción con un InvariantRepaired de
+                  auditoría por hallazgo, y una unidad de tipo desconocido se queda fuera.
+                  Después simulation.Hydrate reconstruye el estado:
                     movimiento vencido durante la caída -> la unidad aparece en el destino y el
                                                            movimiento se cierra como COMPLETED;
                     movimiento en curso                 -> se reanuda desde la polilínea;
@@ -405,14 +415,13 @@ distinto de cero. Nunca se arranca a medias.
                   umbral de 5 s y los checkers de postgres y redis; ws.NewHub; el canal de
                   comandos (8192); simulation.New(...) y loop.New(...).
  6. transporte    auth.NewAuthenticator (verifier + ticket store de Redis), presence store,
-                  idempotency store, ws.NewServer, httpapi.NewAuthAPI (que lee el catálogo de
-                  eras y toma la primera como era inicial) y el mux HTTP:
+                  idempotency store, ws.NewServer, httpapi.NewAuthAPI (que toma como era inicial
+                  la primera del catálogo leído en el paso 4) y el mux HTTP:
                   /health, /ready, /ws, /api/auth/register, /api/auth/login.
  7. arranque      Tres goroutines: servidor de juego en EO_HTTP_ADDR, servidor de métricas en
-                  EO_METRICS_ADDR y gameLoop.Run(rootCtx). El primer tick sigue a
-                  loop.ResumeTick: el máximo entre el CurrentTick guardado y los ticks
-                  transcurridos desde EpochMs, para que ninguno se repita tras una caída
-                  (ADR-015). El instante de cada tick lo da el Clock.
+                  EO_METRICS_ADDR y gameLoop.Run(rootCtx). El primer tick es el del paso 3:
+                  el máximo entre el CurrentTick guardado y los ticks transcurridos desde
+                  EpochMs, para que ninguno se repita tras una caída (ADR-015). El instante de cada tick lo da el Clock.
 ```
 
 Cada paso falla rápido: si un paso no puede completarse, `run()` devuelve el error, `main` lo escribe

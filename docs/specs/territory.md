@@ -332,7 +332,9 @@ Respuesta a las cuatro preguntas del canon §12.
 | Índice `territoryOfTile` | RAM | **Reconstruible** al arrancar. Nunca se persiste. |
 | Huella de chunks por territorio | RAM | **Reconstruible**, derivada de la geometría. Nunca se persiste. |
 
-Recuperación tras reinicio: se recargan `territories` y `territory_control`, se reconstruyen índice y
+Recuperación tras reinicio: se recargan `territories` y `territory_control`; la validación de carga
+(`EO-119`) libera los territorios cuyo dueño `PLAYER` no existe (`INV-TERR-005`) y fecha los que tienen
+dueño sin `captured_at` (`INV-TERR-007`), en una transacción auditada; se reconstruyen índice y
 huellas, y el estado de control de los territorios del área de interés viaja en el primer
 `world.snapshot` de cada sesión. No hay estado de territorio que pueda perderse entre flushes, porque
 todo lo mutable se escribe de inmediato.
@@ -477,10 +479,14 @@ procedimiento sin Docker está en [../operations/local-development.md](../operat
   `TestBroadcastChunksConHuellaVaciaNoHaceNada` y `TestUnaSesionQueDejaDeMirarUnChunkYaNoRecibeSuTerritorio`.
   `TestBroadcastChunkEnBucleSiDuplicaria` es el control negativo que demuestra por qué existe `BroadcastChunks`.
 
+**Carga** — `internal/game/loadcheck` y `internal/persistence/postgres`
+
+- Un dueño `PLAYER` inexistente se libera y un dueño sin fecha la recibe, con `version + 1`, en orden de
+  territorio: `TestLosControlesSeReparan`. En la base, con su `InvariantRepaired` y sin nada que reparar
+  en el arranque siguiente: `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration).
+
 **Lo que falta**
 
-- La validación de carga de `INV-TERR-005` (todo dueño `PLAYER` existe) y de `INV-TERR-007` (todo dueño
-  tiene fecha), con sus barridos de integración: `EO-119` en [../roadmap/backlog.md](../roadmap/backlog.md).
 - Una versión anterior de esta sección pedía un test de que `session.view` produce `territory.update`.
   No existe ni debe existir: `RN-TERR-013` dice que al mover la vista los territorios llegan dentro del
   `world.snapshot` y que **no** se emiten `territory.update` sueltos.
