@@ -212,12 +212,12 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-WORLD-001 | Toda coordenada válida cae en `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)` | CRITICO | TYPE, BOUNDARY, DOMAIN, TEST | ✓ | `TestLimitesDelMundo` |
-| INV-WORLD-002 | Todo tile referenciado existe en el mundo cargado | CRITICO | DOMAIN, TEST | ~ | `TestNewRechazaDimensionesIncoherentes` |
-| INV-WORLD-003 | Ningún waypoint de un path es un tile bloqueado | CRITICO | DOMAIN, TEST | ✓ | `TestRodeaElObstaculo` |
-| INV-WORLD-004 | `tickNumber` es estrictamente monótono creciente | CRITICO | TYPE, DOMAIN, TEST | ~ | `TestTickDebeDividirAMil` |
-| INV-WORLD-005 | El mapa generado desde un mismo seed es idéntico byte a byte | ALTO | DOMAIN, TEST | ✓ | `TestGeneracionEsDeterminista` |
-| INV-WORLD-006 | Cada tile pertenece a exactamente un chunk | ALTO | TYPE, DOMAIN, TEST | ✓ | `TestConversionTileChunk` |
+| INV-WORLD-001 | Toda coordenada válida cae en `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)` | CRITICO | TYPE, BOUNDARY, DOMAIN, TEST | ~ | `TestLimitesDelMundo`, `TestRechazosDeMovimiento`; falta la validación de carga (`EO-119`) |
+| INV-WORLD-002 | Todo tile referenciado existe en el mundo cargado | CRITICO | DOMAIN, TEST | ✓ | `TestNewRechazaDimensionesIncoherentes`, `TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla` |
+| INV-WORLD-003 | Ningún waypoint de un path es un tile bloqueado | CRITICO | DOMAIN, TEST | ✓ | `TestRodeaElObstaculo`, `TestUnaRutaQueCruzaLaMurallaNuevaSeDetieneConPathBlocked` |
+| INV-WORLD-004 | `tickNumber` es estrictamente monótono creciente | CRITICO | TYPE, DOMAIN, TEST | ✓ | `TestElTickSeReanclaAlRelojAlArrancar`, `TestElTickEsEstrictamenteCreciente` |
+| INV-WORLD-005 | El mapa generado desde un mismo seed es idéntico byte a byte | ALTO | DOMAIN, TEST | ✓ | `TestGeneracionEsDeterminista`, `TestElMundoCanonicoConservaSuHuella`, `TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla` |
+| INV-WORLD-006 | Cada tile pertenece a exactamente un chunk | ALTO | DOMAIN, TEST | ✓ | `TestConversionTileChunk` |
 
 ### PLAYER — [player.md](player.md)
 
@@ -380,8 +380,8 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 66 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 19 | Hay test real para parte del enunciado |
+| ✓ Cubierto | 67 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 18 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 5 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
@@ -393,7 +393,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 Los 5 sin cobertura son todos de `INV-GARR`, la única familia que `EO-118` no ha reconciliado todavía: describen efectos de una guarnición que ningún comando de red puede producir (M7, entregable 6), y sus filas citan nombres `Test_INV_*` previstos que no están en la suite. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC` e `INV-MOVE` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`: todas salvo `INV-GARR`, que se reconciliará con los comandos de guarnición. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 

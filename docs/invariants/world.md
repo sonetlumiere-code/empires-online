@@ -50,7 +50,7 @@ Dos conceptos distintos que estos invariantes tratan por separado:
 | Aplicación | TYPE, BOUNDARY, DOMAIN, TEST |
 | Milestone | M1 |
 | Política ante violación | FAIL_FAST en el dominio · REJECT en el borde |
-| Cobertura | **Cubierto** por `TestLimitesDelMundo` y `TestFueraDeLimitesEsIntransitable` (`internal/game/world`), `TestDestinoFueraDeLimites` (`internal/pathfinding`) y `TestRechazosDeMovimiento` (`internal/game/simulation`) |
+| Cobertura | **Parcial**: `TestLimitesDelMundo`, `TestFueraDeLimitesEsIntransitable` y `TestChunksEnRadioSeRecortanYVanOrdenados` (`internal/game/world`), `TestDestinoFueraDeLimites` (`internal/pathfinding`) y `TestRechazosDeMovimiento` (`internal/game/simulation`) cubren lo que entra por la red; falta la validación de carga de las coordenadas persistidas (`EO-119`) |
 
 **Enunciado.** Toda coordenada `(x, y)` que el sistema acepte, almacene, derive o emita cumple `0 <= x < EO_WORLD_WIDTH` y `0 <= y < EO_WORLD_HEIGHT`, con `x, y` de tipo `int32`.
 
@@ -60,21 +60,23 @@ La implementación elige explícitamente **no entrar en pánico**: `World.Terrai
 
 **Cómo se garantiza.**
 
-- `BOUNDARY` — el manejador de `unit.move` valida el destino con `World.TileInBounds` **antes** de cualquier trabajo caro; fuera de rango se rechaza con `TARGET_OUT_OF_BOUNDS` (canon §16). Lo mismo aplica al centro de vista de `session.view`.
+- `BOUNDARY` — el manejador de `unit.move` valida el destino con `World.TileInBounds` **antes** de cualquier trabajo caro; fuera de rango se rechaza con `TARGET_OUT_OF_BOUNDS` (canon §16). El centro de `session.view` **no** se rechaza: `World.ChunksInRadius` recorta el área de interés al mundo, de modo que un centro fuera de rango produce un snapshot de los chunks válidos más cercanos y nunca un chunk inexistente.
 - `TYPE` — el dominio no pasea `int32` sueltos: usa el tipo `world.Tile` (`{X, Y int32}`) como unidad de coordenada, de modo que ninguna firma puede confundir el orden de los ejes ni mezclar tiles con píxeles. El tipo **no** valida por construcción: la validación de rango es responsabilidad de `World`, que es quien conoce las dimensiones.
 - `DOMAIN` — todo acceso al terreno pasa por `World.TerrainAt(x, y)` / `World.IsWalkable(x, y)`, que comprueban `InBounds` antes de indexar y devuelven `WATER` / `false` fuera de rango. No existe ninguna ruta que indexe el array de terreno sin ese chequeo.
-- `TYPE` — el protocolo (`packages/protocol/src/v1/`) declara las coordenadas como enteros con `Zod`, lo que descarta flotantes y `NaN` antes de llegar a Go.
+- `TYPE` — el protocolo (`packages/protocol/src/v1/`) declara las coordenadas como enteros con `Zod`, y el servidor las decodifica en `int32` con `protocol.DecodeStrict`: un flotante, un `NaN` o un valor fuera de `int32` no decodifica y se responde `INVALID_MESSAGE`.
 
 > **No hay garantía `DB`.** La migración `000001_initial_schema.up.sql` **no** declara ningún `CHECK` de rango sobre `units.x`, `units.y`, `cities.center_x` ni `cities.center_y`. El límite superior es `EO_WORLD_WIDTH`/`EO_WORLD_HEIGHT`, que es configuración y no puede empotrarse como literal en una migración sin congelarla; el inferior tampoco está declarado. Un `INSERT` directo con `x = 99999` **es aceptado por PostgreSQL**: el rango se garantiza en `BOUNDARY`, `DOMAIN` y `TEST`, y así se declara aquí en lugar de prometer una constraint inexistente.
 
 **Cómo se verifica.**
 
-- `TestLimitesDelMundo` (unit, `internal/game/world`) — **existe y pasa**: `InBounds` rechaza `(-1,0)`, `(0,-1)`, `(width,0)` y `(0,height)`.
-- `TestFueraDeLimitesEsIntransitable` (unit, `internal/game/world`) — **existe y pasa**: fuera de límites `TerrainAt` devuelve `WATER` e `IsWalkable` devuelve `false`, sin pánico.
-- `TestDestinoFueraDeLimites` (unit, `internal/pathfinding`) — **existe y pasa**: el pathfinder devuelve `ErrTargetOutOfBounds`.
-- `TestRechazosDeMovimiento` (simulation, `internal/game/simulation`) — **existe y pasa**: un `unit.move` fuera de límites se responde con `TARGET_OUT_OF_BOUNDS`.
+- `TestLimitesDelMundo` (unit, `internal/game/world`) — `InBounds` rechaza `(-1,0)`, `(0,-1)`, `(width,0)` y `(0,height)`.
+- `TestFueraDeLimitesEsIntransitable` (unit, `internal/game/world`) — fuera de límites `TerrainAt` devuelve `WATER` e `IsWalkable` devuelve `false`, sin pánico.
+- `TestDestinoFueraDeLimites` (unit, `internal/pathfinding`) — el pathfinder devuelve `ErrTargetOutOfBounds`.
+- `TestRechazosDeMovimiento` (simulation, `internal/game/simulation`) — un `unit.move` fuera de límites se responde con `TARGET_OUT_OF_BOUNDS`.
+- `TestChunksEnRadioSeRecortanYVanOrdenados` (unit, `internal/game/world`) — el área de interés se recorta al mundo.
+- Test previsto (`EO-119`): una entidad persistida fuera del mundo se detecta al cargar.
 
-**Violación en runtime.** Detección en `World.InBounds` y en el handler de comandos. Log `invariant_violation` con `inv_id=INV-WORLD-001` y la coordenada ofensiva. En el borde: `REJECT` con `TARGET_OUT_OF_BOUNDS` (regla de negocio) o `INVALID_MESSAGE` si el tipo es incorrecto. Si una coordenada fuera de rango aparece **persistida** —lo que la base de datos no impide—, la política es `FAIL_FAST` de la carga de esa entidad: no se incorpora a la simulación.
+**Violación en runtime.** En el borde, una coordenada fuera de rango es la regla de negocio, no una violación: `REJECT` con `TARGET_OUT_OF_BOUNDS`, o `INVALID_MESSAGE` si el tipo es incorrecto, sin log de invariante. Una coordenada fuera de rango **persistida** —lo que la base de datos no impide— hoy no se detecta: `ListAlive` y `ListAll` la cargan tal cual, y los bordes del mundo la tratan como un muro (`IsWalkable` falso). Detectarla al cargar es `EO-119`.
 
 ---
 
@@ -87,7 +89,7 @@ La implementación elige explícitamente **no entrar en pánico**: `World.Terrai
 | Aplicación | DOMAIN, TEST |
 | Milestone | M1 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Parcial**: `TestNewRechazaDimensionesIncoherentes` y `TestChunkTerrainRespetaLaDisposicionFilaMayor` (`internal/game/world`) cubren la materialización en RAM; `TestMundoPersistidoCoincideByteAByteConLaSemilla` (integration) está **diseñado pero no ejecutado** (el daemon de Docker no arrancó) |
+| Cobertura | **Cubierto** por `TestNewRechazaDimensionesIncoherentes` y `TestChunkTerrainRespetaLaDisposicionFilaMayor` (`internal/game/world`) y por `TestMundoPersistidoCoincideByteAByteConLaSemilla` y `TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** Todo tile referenciado por cualquier entidad (posición de unidad, centro de ciudad, waypoint de movimiento, rectángulo de territorio, safe zone) tiene una entrada de terreno cargada en memoria y un chunk persistido en `world_chunks`.
 
@@ -96,18 +98,18 @@ La implementación elige explícitamente **no entrar en pánico**: `World.Terrai
 **Cómo se garantiza.**
 
 - `DOMAIN` — el mundo se **regenera desde `EO_WORLD_SEED` en cada arranque**: el array de terreno se aloja de una vez con tamaño `EO_WORLD_WIDTH * EO_WORLD_HEIGHT` y se rellena por completo, de modo que no puede haber huecos por construcción. No existe carga perezosa de chunks en MVP.
-- `DOMAIN` — `world_chunks` guarda una copia del terreno para auditoría y para permitir mapas editados en el futuro, pero **no es la fuente primaria**. Su validación de arranque comprueba que existen exactamente `chunksPerRow * chunksPerColumn` = 256 filas y que cada `bytea` mide exactamente **1024 bytes** (32 × 32 tiles a 1 byte por tile, canon §5); una desviación aborta el arranque antes de abrir el puerto de `EO_HTTP_ADDR`.
+- `DOMAIN` — `world_chunks` guarda una copia del terreno para auditoría y para permitir mapas editados en el futuro, pero **no es la fuente primaria**. En cada arranque posterior al primero, `WorldRepo.VerifyTerrain` la lee entera y comprueba que hay exactamente `chunksPerRow * chunksPerColumn` = 256 filas, que cada `bytea` mide exactamente **1024 bytes** (32 × 32 tiles a 1 byte por tile, canon §5) y que coincide byte a byte con el terreno regenerado ([INV-WORLD-005](#inv-world-005)); una desviación aborta el arranque antes de abrir el puerto de `EO_HTTP_ADDR`. Hasta `EO-118` esa comprobación sólo existía en un test: el arranque no leía `world_chunks`.
 - `DOMAIN` — `world.New` rechaza dimensiones incoherentes (mundo no múltiplo del chunk, `chunkSize` no positivo, longitud del terreno distinta de `width*height`), de modo que un mundo mal dimensionado no llega a existir.
-- `DOMAIN` — `GET /ready` (canon §18) no responde `200` hasta que el mundo está completamente cargado y validado.
+- `DOMAIN` — el servidor HTTP, que sirve `GET /ready` (canon §18) y el WebSocket, sólo arranca cuando el mundo está cargado y verificado.
 
 **Cómo se verifica.**
 
-- `TestNewRechazaDimensionesIncoherentes` (unit, `internal/game/world`) — **existe y pasa**: un mundo cuyo terreno no mide `width*height`, o cuyas dimensiones no son múltiplos del chunk, no se construye.
-- `TestChunkTerrainRespetaLaDisposicionFilaMayor` (unit, `internal/game/world`) — **existe y pasa**: el terreno de un chunk son exactamente `chunkSize*chunkSize` bytes en orden fila-mayor.
-- `TestMundoPersistidoCoincideByteAByteConLaSemilla` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: las 256 filas de `world_chunks` coinciden byte a byte con el mundo regenerado desde la semilla.
-- Test previsto: `Test_INV_WORLD_002_LoaderRejectsShortChunk` (integration) — un chunk de 1023 bytes debe abortar el arranque.
+- `TestNewRechazaDimensionesIncoherentes` (unit, `internal/game/world`) — un mundo cuyo terreno no mide `width*height`, o cuyas dimensiones no son múltiplos del chunk, no se construye.
+- `TestChunkTerrainRespetaLaDisposicionFilaMayor` (unit, `internal/game/world`) — el terreno de un chunk son exactamente `chunkSize*chunkSize` bytes en orden fila-mayor.
+- `TestMundoPersistidoCoincideByteAByteConLaSemilla` (integration, `internal/persistence/postgres`) — lo que se guarda la primera vez coincide byte a byte con el mundo regenerado desde la semilla.
+- `TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla` (integration) — un byte alterado, un chunk de 1023 bytes y un chunk que falta hacen fallar `VerifyTerrain`, y el error nombra el chunk. Verificado por mutación. Verificado además en vivo contra la base de desarrollo: «mundo existente cargado y verificado».
 
-**Violación en runtime.** Detección en el cargador y en `World.TerrainAt` mediante un chequeo de longitud del slice. Log `invariant_violation` con `inv_id=INV-WORLD-002` y el `chunkId` afectado. Política `FAIL_FAST`: el proceso no debe servir un mundo incompleto, porque las decisiones que tome sobre terreno fantasma se persistirán como hechos.
+**Violación en runtime.** Detección en `VerifyTerrain`, al arrancar. Log `invariant_violation` (con `inv_id=INV-WORLD-005`, que es la comprobación que la contiene) y el chunk afectado. Política `FAIL_FAST`: el proceso no arranca, porque las decisiones que tome sobre terreno fantasma se persistirían como hechos. En RAM no hay huecos que detectar: el terreno se aloja entero de una vez.
 
 ---
 
@@ -131,20 +133,21 @@ Este invariante es la contraparte estructural de la regla de negocio `TARGET_NOT
 **Cómo se garantiza.**
 
 - `DOMAIN` — el expansor de vecinos del A\* consulta `World.IsWalkable(Tile)`, que combina terreno y capa de ocupación. Un tile no transitable jamás entra en la open list, por lo que no puede aparecer en el path reconstruido.
-- `DOMAIN` — validación de salida obligatoria: `movement.Validate(p TimedPath, grid CostGrid) error` recorre la polilínea completa y reverifica cada waypoint contra `IsWalkable` antes de persistir el movimiento, y **también al rehidratarla desde la base de datos**. Esta doble verificación es deliberada: protege contra un bug del pathfinder, que es el componente con más aristas, y contra una polilínea corrupta en disco.
+- `DOMAIN` — `movement.BuildTimedPath` rechaza un tile intransitable al construir la polilínea, y `movement.Validate` recorre la polilínea completa al **rehidratarla** desde la base de datos y reverifica cada waypoint contra `IsWalkable`, y cada diagonal contra sus dos ortogonales. Protege contra un bug del pathfinder, que es el componente con más aristas, y contra una polilínea corrupta en disco.
+- `DOMAIN` — la capa de ocupación sólo cambia con el servidor en marcha cuando se funda una ciudad, y en ese tick `TimedPath.ValidateFrom` revalida la ruta pendiente de todo movimiento activo: la que la muralla nueva corta se detiene con `PATH_BLOCKED` ([RN-CITY-022](../specs/city.md)). Así ningún waypoint **por recorrer** queda sobre un tile bloqueado; los ya recorridos no importan.
 - El pathfinder no depende del tipo concreto de mundo (`Pathfinder` es una interfaz estable, canon §8), así que la comprobación de salida es el único punto que no se puede sustituir al cambiar a Hierarchical A\*.
 
 **Cómo se verifica.**
 
-- `TestRodeaElObstaculo` (unit, `internal/pathfinding`) — **existe y pasa**: con un muro intransitable y una única abertura, el path la rodea y ningún waypoint es intransitable.
-- `TestConstruccionesBloqueanLaRuta` (unit, `internal/pathfinding`) — **existe y pasa**: un rectángulo marcado en la capa de ocupación (no en el terreno) desvía la ruta.
-- `TestProhibidoAtajarEsquinas` (unit, `internal/pathfinding`) — **existe y pasa**: no se atraviesa la esquina entre dos obstáculos ortogonales.
-- `TestSinRutaPosible` (unit, `internal/pathfinding`) — **existe y pasa**: sin camino, `ErrPathNotFound`; no se devuelve una ruta parcial.
-- `TestValidateComprobaciones` (unit, `internal/domain/movement`) — **existe y pasa**: `Validate` rechaza una polilínea con un waypoint intransitable.
+- `TestRodeaElObstaculo` (unit, `internal/pathfinding`) — con un muro intransitable y una única abertura, el path la rodea y ningún waypoint es intransitable.
+- `TestConstruccionesBloqueanLaRuta` (unit, `internal/pathfinding`) — un rectángulo marcado en la capa de ocupación (no en el terreno) desvía la ruta.
+- `TestProhibidoAtajarEsquinas` (unit, `internal/pathfinding`) — no se atraviesa la esquina entre dos obstáculos ortogonales.
+- `TestSinRutaPosible` (unit, `internal/pathfinding`) — sin camino, `ErrPathNotFound`; no se devuelve una ruta parcial.
+- `TestValidateComprobaciones` (unit, `internal/domain/movement`) — `Validate` rechaza una polilínea con un waypoint intransitable o una esquina atajada.
+- `TestUnaRutaQueCruzaLaMurallaNuevaSeDetieneConPathBlocked` (simulation, `internal/game/simulation`) — la ruta pendiente que una muralla nueva corta se detiene.
 
-**Violación en runtime.** Detección en `movement.Validate`. Log `invariant_violation` con `inv_id=INV-WORLD-003`, el `unitId` y el waypoint ofensivo. Política: el movimiento **no se crea**, la unidad permanece `IDLE` en su posición actual y el comando se responde con `unit.move.rejected` + `INTERNAL_ERROR`. No se intenta reparar el path: un pathfinder que devuelve rutas inválidas es un bug que debe verse, no absorberse.
+**Violación en runtime.** Al crear, un tile intransitable en la ruta hace fallar `BuildTimedPath`: se registra un `error`, el movimiento **no se crea** y el comando se responde con `unit.move.rejected` + `INTERNAL_ERROR`. Al rehidratar, `Validate` cierra el movimiento `FAILED` con un `warn` y la unidad queda donde estaba. No se intenta reparar el path: un pathfinder que devuelve rutas inválidas es un bug que debe verse, no absorberse.
 
-> **Fuera de MVP.** La revalidación de paths ya activos cuando la capa de ocupación cambia bajo ellos (por ejemplo, una construcción nueva sobre el camino de una unidad en tránsito). En MVP la ocupación solo se altera en la creación de la ciudad inicial, que ocurre sobre terreno donde no hay movimientos activos. La política definitiva es **TBD (fuera de MVP)**.
 
 ---
 
@@ -156,32 +159,32 @@ Este invariante es la contraparte estructural de la regla de negocio `TARGET_NOT
 | Severidad | CRITICO |
 | Aplicación | TYPE, DOMAIN, TEST |
 | Milestone | M1 |
-| Política ante violación | FAIL_FAST |
-| Cobertura | **Parcial**: `TestTickDebeDividirAMil` (`internal/config`) y `TestVolcadoPeriodicoNoOcurreEnCadaTick` (`internal/game/simulation`) ejercitan el calendario del loop; **no existe todavía** un test dedicado a la monotonía del contador |
+| Política ante violación | REPAIR (arrancar desde el último tick guardado) |
+| Cobertura | **Cubierto** por `TestElTickSeReanclaAlRelojAlArrancar` (`internal/game/loop`) y `TestElTickEsEstrictamenteCreciente` (`internal/game/simulation`) |
 
-**Enunciado.** Para dos observaciones sucesivas del loop, `tickNumber(n+1) > tickNumber(n)`, con `tickNumber` de tipo `uint64` contado desde `world_state.epoch_ms`; el valor nunca decrece ni se repite, tampoco a través de un reinicio del proceso.
+**Enunciado.** Para dos observaciones sucesivas del loop, `tickNumber(n+1) > tickNumber(n)`, con `tickNumber` de tipo `uint64`; el valor nunca decrece ni se repite, tampoco a través de un reinicio del proceso, sea un apagado ordenado o una caída.
 
-**Razón.** `tickNumber` es el reloj lógico de toda la simulación: ordena los eventos de dominio, sella los deltas de red y es el campo `tick` de todo log estructurado (canon §18). Si retrocede, dos eventos distintos comparten sello temporal y el orden causal se pierde: un `UnitMovementCompleted` puede quedar ordenado antes de su `UnitMovementStarted`, y la reconstrucción de estado desde `world_events` deja de ser posible.
+**Razón.** `tickNumber` es la etiqueta lógica de la simulación: sella el campo `tick` de los logs estructurados (canon §18), el de `world.snapshot` y la columna `tick` de `world_events`, que es durable. Si retrocede, dos eventos distintos comparten sello y el orden causal se pierde: un evento posterior a una caída puede quedar ordenado antes que uno anterior, y la reconstrucción de estado desde `world_events` deja de ser posible.
 
-El riesgo real no es el contador en memoria, que es un `++`. Es el **reinicio**: `tickTime = epoch_ms + tickNumber * tickDurationMs` implica que al arrancar el tick se recalcula desde el reloj de pared. Un ajuste NTP hacia atrás, una máquina virtual restaurada de un snapshot o un `epoch_ms` mal leído producen un `tickNumber` inicial inferior al último emitido antes del corte.
+El riesgo real no es el contador en memoria, que es un `++`. Es el **reinicio**. Hasta `EO-118` el loop retomaba el contador de `world_state.current_tick`, que sólo se escribe en el apagado ordenado: tras una caída volvía al valor del último apagado ordenado, que podía ser de horas antes, y repetía números ya emitidos.
 
 **Cómo se garantiza.**
 
 - `DOMAIN` — el loop incrementa el contador en un único punto, al inicio del tick, antes de la fase 1 (`drain commands`). Ninguna otra parte del sistema escribe `tickNumber`.
-- `DOMAIN` — el calendario del loop es de **tiempo absoluto**: los ticks perdidos se descartan y jamás se ejecutan en ráfaga para «ponerse al día». Un catch-up en ráfaga sería la vía más directa a repetir sellos temporales.
-- `DOMAIN` — en arranque se calcula `startTick = (Clock.NowMs() - world_state.epoch_ms) / tickDurationMs` y se compara con el último tick persistido en `world_state`. Si `startTick <= lastPersistedTick`, el arranque **aborta**: es un skew de reloj y continuar corrompería el orden.
-- `TYPE` — el contador es `uint64` y solo se expone por lectura; el tipo descarta valores negativos por construcción.
-- `DOMAIN` — el `Clock` inyectado (canon §1.5) es la única fuente de tiempo; el dominio no llama a `time.Now()`, lo que hace el comportamiento reproducible con `FakeClock`.
+- `DOMAIN` — el calendario del loop es de **tiempo absoluto**: los ticks perdidos se descartan, no se cuentan y jamás se ejecutan en ráfaga para «ponerse al día». De ahí sale la cota que sostiene todo lo demás: el loop nunca ejecuta más de un tick por período, así que en todo momento `tick <= (ahora − epoch_ms) / tickDurationMs`.
+- `DOMAIN` — **al arrancar, el tick se reancla al reloj** ([ADR-015](../decisions/ADR-015-tick-continuity.md)): `loop.ResumeTick` devuelve `max(world_state.current_tick, (ahora − epoch_ms) / tickDurationMs)`. Por la cota anterior, el valor derivado del reloj supera todo tick emitido antes, se apagara el proceso como se apagara. `world_state.current_tick`, que se sigue guardando en el apagado ordenado, queda como suelo frente a un reloj que va hacia atrás.
+- `TYPE` — el contador es `uint64` y sólo se expone por lectura; el tipo descarta valores negativos por construcción.
+- `DOMAIN` — el `Clock` inyectado (canon §1.5) es la única fuente de tiempo; `ResumeTick` es una función pura que recibe el instante como argumento.
 
 **Cómo se verifica.**
 
-- `TestTickDebeDividirAMil` (unit, `internal/config`) — **existe y pasa**: `EO_TICK_RATE_HZ` debe dividir exactamente a 1000, de modo que `tickDurationMs` sea entero y `tickTime` no acumule deriva.
-- `TestVolcadoPeriodicoNoOcurreEnCadaTick` (simulation, `internal/game/simulation`) — **existe y pasa**: el calendario por número de tick se respeta y no se ejecuta trabajo de más.
-- Test previsto: `Test_INV_WORLD_004_TickNumberStrictlyIncreases` (simulation) — con `FakeClock`, avanzar 10 s a 10 Hz y comprobar que la secuencia observada es exactamente `n, n+1, …, n+100` sin huecos ni repeticiones.
-- Test previsto: `Test_INV_WORLD_004_StartupRejectsClockGoingBackwards` (unit) — `FakeClock` posicionado antes del último tick persistido; el arranque devuelve error.
-- Test previsto: `Test_INV_WORLD_004_OverrunDoesNotSkipCounter` (simulation) — un tick que tarda más que su período incrementa el contador una sola vez y eleva `eo_game_tick_overruns_total`.
+- `TestElTickSeReanclaAlRelojAlArrancar` (unit, `internal/game/loop`) — tras una caída con el último guardado muy atrasado arranca en el valor del reloj; con el reloj por detrás de lo guardado arranca en lo guardado y lo señala; un mundo recién creado arranca en cero; y la cota se sostiene: el arranque siguiente queda por encima de todo lo ejecutado.
+- `TestElTickEsEstrictamenteCreciente` (simulation, `internal/game/simulation`) — el contador avanza en exactamente uno por tick ejecutado, con el reloj quieto o dando saltos de una hora.
+- `TestVolcadoPeriodicoNoOcurreEnCadaTick` (simulation) — el calendario por número de tick se respeta.
+- `TestTickDebeDividirAMil` (unit, `internal/config`) — `EO_TICK_RATE_HZ` divide exactamente a 1000, de modo que `tickDurationMs` es entero.
+- Verificado en vivo contra la base de desarrollo, con `world_state.current_tick = 22`: el primer arranque empezó en el tick 35 619 858; tras matar el proceso sin apagado ordenado, el segundo empezó en 35 620 115. Con el código anterior los dos habrían empezado en 22.
 
-**Violación en runtime.** Detección en el arranque (comparación con `world_state`) y en una aserción defensiva del loop (`next != current+1`). Log `invariant_violation` con `inv_id=INV-WORLD-004`, `tick` actual y esperado. Política `FAIL_FAST`: mejor un servidor caído y visible que una línea temporal corrupta que se persiste en silencio.
+**Violación en runtime.** Si el reloj va por detrás del último tick guardado —un ajuste NTP hacia atrás, una máquina virtual restaurada de un snapshot—, el arranque no aborta: empieza desde el valor guardado, que preserva la monotonía frente a todo lo que se guardó, y emite `invariant_violation` con `inv_id=INV-WORLD-004`. El riesgo residual es un doble fallo: que el reloj retroceda más allá del último guardado **y** que el proceso hubiera caído después de él; entonces podrían repetirse los ticks de ese intervalo. Abortar convertiría un ajuste de reloj en una caída de servicio sin proteger nada: el tick es una etiqueta, y el tiempo de juego lo da el reloj.
 
 ---
 
@@ -194,31 +197,32 @@ El riesgo real no es el contador en memoria, que es un `++`. Es el **reinicio**:
 | Aplicación | DOMAIN, TEST |
 | Milestone | M1 |
 | Política ante violación | FAIL_FAST en arranque |
-| Cobertura | **Cubierto** por `TestGeneracionEsDeterminista` y `TestGeneracionProduceTerrenoValidoYVariado` (`internal/game/world`); `TestMundoPersistidoCoincideByteAByteConLaSemilla` (integration) está **diseñado pero no ejecutado** |
+| Cobertura | **Cubierto** por `TestGeneracionEsDeterminista`, `TestElMundoCanonicoConservaSuHuella` y `TestGeneracionProduceTerrenoValidoYVariado` (`internal/game/world`) y por `TestMundoPersistidoCoincideByteAByteConLaSemilla` y `TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla` (integration) |
 
 **Enunciado.** Dos ejecuciones del generador de mundo con el mismo `EO_WORLD_SEED` (por defecto `20260909`) y las mismas dimensiones producen exactamente los mismos 256 chunks de 1024 bytes, byte a byte, en cualquier máquina y con cualquier versión de Go que compile el proyecto.
 
 **Razón.** Sin esta propiedad no se puede: reproducir un bug de pathfinding a partir de un reporte, escribir un test de simulación con posiciones esperadas exactas, ni regenerar un entorno de desarrollo equivalente al de otro ingeniero. Es la manifestación concreta del principio de determinismo (canon §1.5) en la capa de mundo.
 
-Las fuentes habituales de no-determinismo que este invariante prohíbe: iteración de `map` de Go sin orden (canon §8 lo prohíbe explícitamente), `rand` global sin semilla inyectada, concurrencia con orden de escritura no determinista, y aritmética de punto flotante cuyo redondeo varía. El generador usa la abstracción `RandomSource` inyectada, sembrada con `EO_WORLD_SEED`.
+Las fuentes habituales de no-determinismo que este invariante prohíbe: iteración de `map` de Go sin orden (canon §8 lo prohíbe explícitamente), `rand` global sin semilla inyectada, concurrencia con orden de escritura no determinista, y aritmética de punto flotante cuyo redondeo varía. El generador no usa azar alguno: `world.Generate` construye ruido de valor a partir de un hash entero de la semilla y de las coordenadas, en aritmética entera.
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — el generador recibe `RandomSource` por inyección; no existe acceso a `math/rand` global desde `internal/game/world`.
+- `DOMAIN` — `world.Generate(width, height, seed)` es una función pura de sus argumentos: ruido de valor por hash entero de la semilla, sin `RandomSource`, sin `math/rand` y sin punto flotante. El lint de determinismo (`scripts/lint-determinism.mjs`) prohíbe el reloj real y el azar global en `internal/game/world`.
 - `DOMAIN` — el recorrido de generación es un doble bucle `for y { for x { … } }` en orden creciente, nunca una iteración de mapa ni un `errgroup` con escrituras concurrentes al mismo buffer.
 - `DOMAIN` — el resultado se serializa a `world_chunks` como `bytea` de 1024 bytes con el terreno como `uint8` según los códigos del canon §5 (`GRASSLAND=0` … `ROAD=5`), sin padding ni cabeceras variables.
-- `DOMAIN` — el mundo se regenera desde la semilla en cada arranque y `world_chunks` conserva la copia escrita la primera vez. La comparación de arranque es **contra esa copia**, chunk a chunk: si el terreno regenerado no coincide con el persistido, el generador cambió sin migración de mundo y el arranque aborta.
+- `DOMAIN` — el mundo se regenera desde la semilla en cada arranque y `world_chunks` conserva la copia escrita la primera vez. `WorldRepo.VerifyTerrain` compara **contra esa copia**, chunk a chunk: si el terreno regenerado no coincide con el persistido, el generador cambió sin migración de mundo y el arranque aborta. Hasta `EO-118` esa comparación sólo existía en un test, y un generador cambiado habría arrancado en silencio sobre un mapa distinto.
 
-> **Precisión sobre el mecanismo.** `world_state` (migración `000001`) tiene exactamente las columnas `id`, `seed`, `width`, `height`, `chunk_size`, `epoch_ms`, `current_tick`, `created_at` y `updated_at`: **no existe ninguna columna de hash del mundo**. Cualquier redacción que cite un `world_hash` almacenado describe un mecanismo que no está implementado. La detección de deriva se apoya en la comparación byte a byte contra `world_chunks` y en el golden test previsto más abajo; añadir una columna de hash sería un cambio de esquema y exigiría ADR y migración: **TBD (fuera de MVP)**.
+> **Precisión sobre el mecanismo.** `world_state` (migración `000001`) tiene exactamente las columnas `id`, `seed`, `width`, `height`, `chunk_size`, `epoch_ms`, `current_tick`, `created_at` y `updated_at`: **no existe ninguna columna de hash del mundo**. Cualquier redacción que cite un `world_hash` almacenado describe un mecanismo que no está implementado. La detección de deriva se apoya en la comparación byte a byte contra `world_chunks` y en el golden test de más abajo; añadir una columna de hash sería un cambio de esquema y exigiría ADR y migración: **TBD (fuera de MVP)**.
 
 **Cómo se verifica.**
 
-- `TestGeneracionEsDeterminista` (unit, `internal/game/world`) — **existe y pasa**: dos generaciones con el mismo seed coinciden byte a byte, y un seed distinto produce un mapa distinto (control negativo incluido).
-- `TestGeneracionProduceTerrenoValidoYVariado` (unit, `internal/game/world`) — **existe y pasa**: todo byte generado corresponde a un `TerrainType` conocido.
-- `TestMundoPersistidoCoincideByteAByteConLaSemilla` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: la copia de `world_chunks` coincide con el mundo regenerado.
-- Test previsto: `Test_INV_WORLD_005_GoldenHashMatches` (unit) — SHA-256 de la concatenación de los 256 chunks contra un golden file en `services/game-server/testdata/`. Falla intencionadamente cuando alguien cambia el generador: la respuesta correcta es un ADR y un golden nuevo, no editar el fixture sin pensar.
+- `TestGeneracionEsDeterminista` (unit, `internal/game/world`) — dos generaciones con el mismo seed coinciden byte a byte, y un seed distinto produce un mapa distinto (control negativo incluido).
+- `TestGeneracionProduceTerrenoValidoYVariado` (unit, `internal/game/world`) — todo byte generado corresponde a un `TerrainType` conocido.
+- `TestMundoPersistidoCoincideByteAByteConLaSemilla` (integration, `internal/persistence/postgres`) — la copia de `world_chunks` coincide con el mundo regenerado.
+- `TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla` (integration) — la comprobación de arranque rechaza un byte alterado, un chunk corto y un chunk que falta.
+- `TestElMundoCanonicoConservaSuHuella` (unit, `internal/game/world`) — SHA-256 del terreno de `EO_WORLD_SEED = 20260909` sobre 512 × 512 contra una constante. Falla intencionadamente cuando alguien cambia el generador: la respuesta correcta es un ADR y una migración de mundo, no actualizar la constante.
 
-**Violación en runtime.** Detección en arranque por comparación del terreno regenerado contra `world_chunks`. Log `invariant_violation` con `inv_id=INV-WORLD-005`, seed y el `chunkId` divergente. Política `FAIL_FAST`: arrancar sobre un mundo distinto al que las entidades persistidas asumen colocaría ciudades sobre agua.
+**Violación en runtime.** Detección en el arranque, en `VerifyTerrain`. Log `invariant_violation` con `inv_id=INV-WORLD-005`, la semilla y el chunk divergente. Política `FAIL_FAST`: el proceso no arranca, porque arrancar sobre un mundo distinto al que las entidades persistidas asumen colocaría ciudades sobre agua.
 
 ---
 
@@ -228,7 +232,7 @@ Las fuentes habituales de no-determinismo que este invariante prohíbe: iteraci�
 | Campo | Valor |
 |---|---|
 | Severidad | ALTO |
-| Aplicación | TYPE, DOMAIN, TEST |
+| Aplicación | DOMAIN, TEST |
 | Milestone | M1 |
 | Política ante violación | FAIL_FAST |
 | Cobertura | **Cubierto** por `TestConversionTileChunk` y `TestChunksEnRadioSeRecortanYVanOrdenados` (`internal/game/world`) y `TestMundoDebeSerMultiploDelChunk` (`internal/config`) |
@@ -240,17 +244,18 @@ Las fuentes habituales de no-determinismo que este invariante prohíbe: iteraci�
 **Cómo se garantiza.**
 
 - `DOMAIN` — la partición es exacta **solo si** el mundo es múltiplo del chunk. `config.Load` valida que `EO_WORLD_WIDTH % EO_CHUNK_SIZE == 0` y `EO_WORLD_HEIGHT % EO_CHUNK_SIZE == 0`, y `world.New` lo revalida; si no se cumple, el arranque aborta. Un mundo de 500 de ancho dejaría una columna de tiles en un chunk truncado. La implementación usa **división entera** (`x / chunkSize`), no un desplazamiento de bits, de modo que no exige que `EO_CHUNK_SIZE` sea potencia de dos.
-- `TYPE` — existe una única implementación, `World.ChunkOf` / `World.ChunkIndex`, exportada desde `internal/game/world`. Está prohibido recalcular `x/32` a mano en otro paquete; la revisión de PR lo trata como defecto.
+- `DOMAIN` — la referencia es `World.ChunkOf` / `World.ChunkIndex`, exportada desde `internal/game/world`, y es la que usa la simulación para su índice por chunk, el reparto de deltas y el snapshot. **No es la única**: `UnitRepo` divide por el tamaño de chunk con el que se construye para las columnas desnormalizadas de `units` ([INV-UNIT-011](units.md#inv-unit-011)) y la huella de un territorio calcula sus chunks con su propia división entera (`TestLaHuellaUsaDivisionEnteraYNoDesplazamientoDeBits`). Las tres usan la misma aritmética y el mismo `EO_CHUNK_SIZE`, y sus tests comprueban el resultado; que no diverjan es responsabilidad de la revisión.
 - `DOMAIN` — la operación es aritmética pura sobre una coordenada ya validada por [INV-WORLD-001](#inv-world-001), por lo que no puede producir un id fuera de `[0, chunksPerRow * chunksPerColumn)`.
 
 **Cómo se verifica.**
 
-- `TestConversionTileChunk` (unit, `internal/game/world`) — **existe y pasa**: cada tile cae en un único chunk, y `(31,31)` y `(32,32)` caen en chunks distintos.
-- `TestChunksEnRadioSeRecortanYVanOrdenados` (unit, `internal/game/world`) — **existe y pasa**: el conjunto de chunks del radio de interés se recorta al mundo y sale en orden estable, sin repeticiones.
-- `TestMundoDebeSerMultiploDelChunk` (unit, `internal/config`) — **existe y pasa**: `EO_WORLD_WIDTH = 500` con `EO_CHUNK_SIZE = 32` aborta la configuración.
-- Test previsto: `Test_INV_WORLD_006_ChunkBoundaryEntitiesEmittedOnce` (integration) — una unidad en `(31,31)` y otra en `(32,32)` producen exactamente un `entity.spawn` cada una para un observador que cubre ambos chunks.
+- `TestConversionTileChunk` (unit, `internal/game/world`) — cada tile cae en un único chunk, y `(31,31)` y `(32,32)` caen en chunks distintos.
+- `TestChunksEnRadioSeRecortanYVanOrdenados` (unit, `internal/game/world`) — el conjunto de chunks del radio de interés se recorta al mundo y sale en orden estable, sin repeticiones.
+- `TestMundoDebeSerMultiploDelChunk` (unit, `internal/config`) — `EO_WORLD_WIDTH = 500` con `EO_CHUNK_SIZE = 32` aborta la configuración.
+- `TestBroadcastChunksEntregaUnaSolaVezAQuienEstaSuscritoAVarios` (unit, `internal/websocket`) — un mensaje dirigido a varios chunks llega una sola vez a quien está suscrito a más de uno.
+- Test previsto: una unidad en `(31,31)` y otra en `(32,32)` aparecen exactamente una vez cada una en el snapshot de un observador que cubre ambos chunks.
 
-**Violación en runtime.** Detección en la validación de configuración de arranque y en una aserción del emisor de deltas que comprueba `chunkId < chunkCount`. Log `invariant_violation` con `inv_id=INV-WORLD-006`. Política `FAIL_FAST` en arranque; en el emisor, se omite el broadcast del chunk inválido y se escala, para no derribar el loop por un fallo de visibilidad.
+**Violación en runtime.** Detección en la validación de configuración de arranque: un mundo que no es múltiplo del chunk no arranca (`FAIL_FAST`). Con la configuración válida, la partición es aritmética y no hay una aserción en el emisor de deltas que la vigile.
 
 ---
 
