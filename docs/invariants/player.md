@@ -19,7 +19,9 @@ Que sean ortogonales significa que cualquier combinación es válida: un `Norse`
 
 `players.id` es `uuid` —la única excepción a la convención de claves `bigint GENERATED ALWAYS AS IDENTITY` (canon §11)—, porque el identificador de jugador se emite en el claim `sub` del game ticket y viaja fuera del servidor de juego.
 
-> **Nota sobre nombres de constraint.** La migración `000001_initial_schema.up.sql` declara las claves foráneas **en línea** (`REFERENCES players (id) ON DELETE CASCADE`), sin nombrarlas: PostgreSQL les asigna el nombre generado `<tabla>_<columna>_fkey`. Las únicas constraints con nombre explícito relacionadas con `players` son `players_username_format` (`CHECK (username ~ '^[A-Za-z0-9_-]{3,24}$')`) y la unicidad inline de `username`. Este documento cita los mecanismos reales, no nombres de convención que la DDL no usa.
+> **Nota sobre nombres de constraint.** La migración `000001_initial_schema.up.sql` declara las claves foráneas **en línea** (`REFERENCES players (id) ON DELETE CASCADE`), sin nombrarlas: PostgreSQL les asigna el nombre generado `<tabla>_<columna>_fkey`. Las únicas constraints con nombre explícito relacionadas con `players` son `players_username_format` (`CHECK (username ~ '^[A-Za-z0-9_-]{3,24}$')`) y la unicidad inline de `username`, que PostgreSQL llama `players_username_key`. Este documento cita los mecanismos reales, no nombres de convención que la DDL no usa.
+
+> **Estado de estas fichas.** Reconciliadas con la suite por `EO-118`: cada fila `Cobertura` nombra tests que existen y pasan. Los tests del alta HTTP viven en `internal/persistence/postgres/alta_http_integration_test.go` y no en `internal/httpapi`, porque reutilizan el arnés de integración protegido.
 
 ---
 
@@ -51,10 +53,10 @@ Nótese la relación con [INV-SEC-004](security.md#inv-sec-004): aquel invariant
 
 - `TestNoSePuedeComandarUnaUnidadAjena` (e2e, `internal/websocket`) — **existe y pasa**: una sesión autenticada como otro jugador envía `unit.move` sobre una unidad ajena y recibe `unit.move.rejected` con `UNIT_NOT_OWNED`.
 - `TestRechazosDeMovimiento` (simulation, `internal/game/simulation`) — **existe y pasa**: cubre los seis rechazos del pipeline, `UNIT_NOT_OWNED` entre ellos, y comprueba que la unidad no cambia de estado.
-- Test previsto: `Test_INV_PLAYER_001_OwnershipCheckedBeforeUnitState` — jugador A intenta mover una unidad `DEAD` de B: el error debe ser `UNIT_NOT_OWNED`, no `UNIT_DEAD`. Un error de estado revelaría información sobre una unidad ajena.
-- Test previsto: `Test_INV_PLAYER_001_ConcurrentOrdersDoNotCrossOwnership` (integration) — dos sesiones enviando órdenes simultáneas sobre unidades propias; ninguna afecta a las del otro.
+- El caso «unidad ajena y muerta» de `TestRechazosDeMovimiento` comprueba el orden: el jugador A que intenta mover una unidad `DEAD` de B recibe `UNIT_NOT_OWNED`, no `UNIT_DEAD`. Un error de estado revelaría información sobre una unidad ajena.
+- No hay test de órdenes concurrentes que crucen la propiedad: todas las órdenes pasan por la cola de comandos de un único game loop, que las aplica de una en una.
 
-**Violación en runtime.** Detección en `unit.EnsureOwnedBy`. Log `invariant_violation` con `inv_id=INV-PLAYER-001`, `player_id` de la sesión, `unitId` y el `player_id` real de la unidad. Política `REJECT`: se responde `unit.move.rejected` con `UNIT_NOT_OWNED` y no se muta nada. Una violación **detectada tras** el efecto (es decir, que se aplicó un cambio a una unidad ajena) escala a incidente de seguridad, no a bug ordinario.
+**Violación en runtime.** Una orden sobre una unidad ajena no es una violación: es el invariante aplicándose. `unit.EnsureOwnedBy` la rechaza y se responde `unit.move.rejected` (o `system.error` en `unit.cancel_move`) con `UNIT_NOT_OWNED`, sin mutar nada. Una violación de verdad sería un cambio **aplicado** a una unidad ajena, y no hay aserción posterior que lo detecte; si apareciera, escalaría a incidente de seguridad, no a bug ordinario.
 
 ---
 
@@ -67,7 +69,7 @@ Nótese la relación con [INV-SEC-004](security.md#inv-sec-004): aquel invariant
 | Aplicación | DB, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST en escritura (constraint) |
-| Cobertura | **Sin cobertura ejecutada**: `TestBootstrapCreaMundoCompletoDelJugador` (integration, `internal/persistence/postgres`) lo ejercita pero está **diseñado y no ejecutado** porque el daemon de Docker no arrancó |
+| Cobertura | **Cubierto** por `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon` y `TestLosDosEjesSonOrtogonales` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** Toda fila de `players` tiene `civilization_id` no nulo referenciando una fila existente de `civilizations`, y `faction_id` no nulo referenciando una fila existente de `factions`; ninguna de las dos columnas admite valores múltiples ni nulos.
 
@@ -83,12 +85,11 @@ Que sean ejes ortogonales (canon §0) implica una consecuencia concreta: **no ex
 
 **Cómo se verifica.**
 
-- `TestBootstrapCreaMundoCompletoDelJugador` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: el jugador creado tiene ambas referencias resueltas.
-- Test previsto: `Test_INV_PLAYER_002_UnknownReferenceRejected` (integration) — `INSERT` con un `faction_id` inexistente falla por clave foránea.
-- Test previsto: `Test_INV_PLAYER_002_FactionCatalogIsExactlyThree` (integration) — `SELECT count(*) FROM factions` devuelve 3 y el conjunto de códigos es exactamente `{ORDER, CHAOS, NEUTRAL}`.
-- Test previsto: `Test_INV_PLAYER_002_AxesAreOrthogonal` (integration) — para cada civilización, es posible crear jugadores con las tres facciones. El test falla si alguien introduce un acoplamiento entre ejes.
+- `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas` (integration) — una civilización o una facción inexistente falla por `players_civilization_id_fkey` o `players_faction_id_fkey`, y una nula por `NOT NULL` (SQLSTATE `23502`).
+- `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon` (integration) — las civilizaciones son exactamente `{BYZANTINE, NORSE, PERSIAN, ROMAN}` y las facciones `{CHAOS, NEUTRAL, ORDER}`.
+- `TestLosDosEjesSonOrtogonales` (integration) — las doce combinaciones civilización × facción dan de alta un jugador. Falla si alguien acopla los ejes.
 
-**Violación en runtime.** Imposible por construcción en escritura: PostgreSQL rechaza la fila. La detección relevante es en **lectura**: si el cargador de jugador encuentra una referencia irresoluble (por un borrado manual en `civilizations`), log `invariant_violation` con `inv_id=INV-PLAYER-002` y política `REJECT` de la sesión con `INTERNAL_ERROR`. No se asigna una civilización por defecto: eso convertiría un problema de datos visible en un cambio silencioso de gameplay.
+**Violación en runtime.** Imposible en disco: las claves foráneas impiden incluso borrar una civilización o una facción que algún jugador use. Por eso no hay validación al cargar ni al hacer login. No se asigna nunca una civilización por defecto: eso convertiría un problema de datos visible en un cambio silencioso de gameplay.
 
 > **Cambio de civilización o facción.** El MVP no ofrece ninguna vía para cambiarlas después de la creación. Las reglas, costes y cooldowns de un eventual cambio son **TBD (fuera de MVP)**.
 
@@ -103,7 +104,7 @@ Que sean ejes ortogonales (canon §0) implica una consecuencia concreta: **no ex
 | Aplicación | DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST (rollback de la transacción) |
-| Cobertura | **Sin cobertura ejecutada**: `TestBootstrapCreaMundoCompletoDelJugador` y `TestBootstrapFallidoNoDejaNadaAMedias` (integration, `internal/persistence/postgres`) están **diseñados y no ejecutados** (Docker) |
+| Cobertura | **Cubierto** por `TestBootstrapCreaMundoCompletoDelJugador`, `TestBootstrapFallidoNoDejaNadaAMedias`, `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir` y `TestSinSitioElAltaResponde409YNoEscribe` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** Al completarse la creación de un jugador existen, atómicamente y de forma indivisible: exactamente una fila en `cities` con `owner` igual a ese jugador (con su `TOWN_CENTER` y su zona urbana amurallada inicial), y exactamente tres filas en `units` con `unit_type = VILLAGER` pertenecientes a ese jugador.
 
@@ -112,26 +113,27 @@ Que sean ejes ortogonales (canon §0) implica una consecuencia concreta: **no ex
 - **Creación parcial** (jugador sin ciudad, o con uno o dos aldeanos): el jugador no puede jugar, y al conectar el servidor no tiene dónde centrar la vista, porque `session.view` se inicializa en la ciudad del jugador (canon §13).
 - **Creación duplicada** (dos ciudades o seis aldeanos por un reintento): ventaja material sobre el resto de jugadores, obtenida sin acción de gameplay.
 
-El segundo modo es el que hace que este invariante necesite idempotencia real y no solo una transacción: un reintento del cliente sobre una creación que sí se completó pero cuya respuesta se perdió debe devolver el resultado original, nunca crear un segundo lote. Ver [INV-SEC-007](security.md#inv-sec-007).
+El segundo modo lo cierra hoy la unicidad del nombre de usuario: un reintento del cliente sobre un alta que sí se completó, pero cuya respuesta se perdió, recibe `USERNAME_TAKEN` (409) y nunca crea un segundo lote. Lo que **no** hace es devolver el resultado original: el cliente tiene que iniciar sesión con las credenciales que ya envió. Devolver el resultado original exigiría idempotencia por `requestId` en la API HTTP, que no existe. Ver [INV-SEC-007](security.md#inv-sec-007).
 
 **Cómo se garantiza.**
 
 - `DOMAIN` — la creación de jugador es un caso de **write-through inmediato y transaccional** (canon §12): una única transacción de PostgreSQL inserta `players`, `cities` y las tres filas de `units`. No hay creación por pasos ni compensaciones.
 - `DOMAIN` — el límite de **una ciudad por jugador** en MVP es una regla del dominio, no una constraint: la migración `000001` crea `cities_owner_idx` como índice **no único** sobre `owner_player_id`, y la única unicidad declarada sobre `cities` es `cities_unique_center UNIQUE (center_x, center_y)`. Un `INSERT` directo de una segunda ciudad para el mismo jugador **no lo impide la base de datos**; lo impide que el único punto de alta sea la transacción de bootstrap. Convertirlo en `UNIQUE` requeriría migración y es **TBD (fuera de MVP)**.
-- `DOMAIN` — la cantidad `3` y el tipo `VILLAGER` provienen del emplazamiento determinista de `internal/game/founding` (tres aldeanos a `spawnRadius = 2` alrededor del centro), no de literales dispersos (canon §17: ningún valor de gameplay se hardcodea en más de un lugar).
+- `DOMAIN` — la cantidad es `player.InitialVillagers`, el único sitio del código donde vive el `3` (canon §17: ningún valor de gameplay se hardcodea en más de un lugar). La API de alta y la siembra de desarrollo se la pasan a `founding.FindSite`, que coloca los aldeanos a `spawnRadius = 2` del centro, y el `Bootstrapper` rechaza cualquier alta que no traiga exactamente esa cantidad. Hasta `EO-118` el `3` estaba escrito en tres sitios. El tipo `VILLAGER` lo fija el `Bootstrapper`.
 - `DOMAIN` — el `TOWN_CENTER` es un *building*, no una unidad (canon §10): no cuenta como cuarta unidad y no aparece en `units`.
-- `DOMAIN` — la colocación respeta [INV-CITY-007](city.md#inv-city-007) y [INV-UNIT-001](units.md#inv-unit-001): centro y aldeanos sobre tiles válidos y transitables. `founding.FindSite` busca en espiral desde una semilla derivada del nombre de usuario, exige un entorno despejado de radio 3 y una separación mínima de 24 tiles respecto de cualquier otro centro de ciudad. Si no encuentra sitio válido, la transacción hace rollback y la creación falla con `INTERNAL_ERROR`; no se coloca «donde sea».
+- `DOMAIN` — la colocación respeta [INV-CITY-007](city.md#inv-city-007) y [INV-UNIT-001](units.md#inv-unit-001): centro y aldeanos sobre tiles válidos y transitables. `founding.FindSite` busca en espiral desde una semilla derivada del nombre de usuario, exige un entorno despejado de radio 3 y una separación mínima de 24 tiles respecto de cualquier otro centro de ciudad. Si no encuentra sitio válido, el alta responde `NO_SITE_AVAILABLE` (409) antes de abrir la transacción, sin escribir nada; no se coloca «donde sea».
 - `DOMAIN` — el orden es estricto: **primero** la transacción de PostgreSQL (jugador + ciudad + 3 aldeanos, atómica) y **sólo después** el comando `IntroducePlayer` que incorpora al jugador al mundo en RAM ([INV-PLAYER-008](#inv-player-008)).
 
 **Cómo se verifica.**
 
-- `TestBootstrapCreaMundoCompletoDelJugador` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: tras crear un jugador hay exactamente una ciudad y tres `VILLAGER`, todos con el owner correcto.
-- `TestBootstrapFallidoNoDejaNadaAMedias` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: un fallo a mitad del alta no deja ni jugador, ni ciudad, ni aldeanos.
-- `TestDosCiudadesNoPuedenCompartirCentro` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: `cities_unique_center` rechaza dos ciudades en el mismo centro.
-- Test previsto: `Test_INV_PLAYER_003_RetryDoesNotDuplicate` (integration) — dos ejecuciones con el mismo `requestId` producen un solo jugador con una ciudad y tres aldeanos.
-- Test previsto: `Test_INV_PLAYER_003_InitialUnitsOnWalkableTiles` (integration) — los tres aldeanos están sobre tiles transitables y dentro de límites.
+- `TestBootstrapCreaMundoCompletoDelJugador` (integration) — tras crear un jugador hay exactamente una ciudad y tres `VILLAGER`, todos con el owner correcto.
+- `TestBootstrapFallidoNoDejaNadaAMedias` (integration) — un alta que falla a mitad no deja ni jugador, ni ciudad, ni aldeanos.
+- `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir` (integration) — un alta con 0, 2 o 4 aldeanos se rechaza sin dejar jugador.
+- `TestSinSitioElAltaResponde409YNoEscribe` (integration) — en un mundo sin sitio, `NO_SITE_AVAILABLE` y nada escrito.
+- `TestUnAltaRechazadaNoIntroduceNada` (integration) — repetir el alta de un nombre existente da `USERNAME_TAKEN` y no crea un segundo lote.
+- Que los aldeanos nazcan sobre tiles transitables lo cubre `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable` (`internal/game/founding`), bajo [INV-CITY-007](city.md#inv-city-007).
 
-**Violación en runtime.** Detección en un chequeo posterior a la transacción (recuento inmediato dentro de la misma unidad de trabajo) y en el arranque de sesión, que verifica que el jugador tiene ciudad antes de emitir `session.welcome`. Log `invariant_violation` con `inv_id=INV-PLAYER-003`, `player_id` y los recuentos observados. Política `FAIL_FAST` durante la creación (rollback). Un jugador ya persistido con estado inicial incompleto no se repara automáticamente: se marca en `world_events` y se escala, porque cualquier reparación automática es indistinguible de una duplicación.
+**Violación en runtime.** Durante el alta, cualquier fallo deshace la transacción entera (`FAIL_FAST`). No hay más detección: ni un recuento posterior al commit ni una comprobación en el handshake de que el jugador tenga ciudad antes de `session.welcome`. Con el único escritor exigiendo el estado inicial completo, un jugador incompleto sólo podría venir de una escritura manual. Si apareciera, no se repararía automáticamente, porque cualquier reparación automática es indistinguible de una duplicación.
 
 ---
 
@@ -144,7 +146,7 @@ El segundo modo es el que hace que este invariante necesite idempotencia real y 
 | Aplicación | TYPE, BOUNDARY, TEST |
 | Milestone | M3 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Cubierto** por `TestTicketValidoSeVerifica`, `TestTicketCaducado`, `TestTicketFirmadoConOtroSecreto`, `TestAlgoritmoNoneSeRechaza`, `TestAudienciaIncorrecta`, `TestClaimsIncompletos`, `TestTicketSoloSeConsumeUnaVez` y `TestFalloDelRegistroDeTicketsFallaCerrado` (`internal/auth`), más `TestTicketInvalidoCierraLaConexion` y `TestPayloadConCamposExtraNoAportaEstado` (`internal/websocket`) |
+| Cobertura | **Cubierto** por `TestTicketValidoSeVerifica`, `TestTicketCaducado`, `TestTicketFirmadoConOtroSecreto`, `TestAlgoritmoNoneSeRechaza`, `TestAudienciaIncorrecta`, `TestClaimsIncompletos`, `TestTicketNoSePuedeReutilizar` y `TestFalloDelRegistroDeTicketsFallaCerrado` (`internal/auth`), `TestTicketSoloSeConsumeUnaVez` (`internal/persistence/memory` y `redis`), y `TestTicketInvalidoCierraLaConexion` y `TestPayloadConCamposExtraNoAportaEstado` (`internal/websocket`) |
 
 **Enunciado.** El `playerId` asociado a una conexión WebSocket se obtiene exclusivamente del claim `sub` de un game ticket cuya firma HS256, `exp` y `aud = "game-server"` fueron verificados y cuyo `jti` fue consumido; ningún otro campo de ningún mensaje del cliente puede establecerlo ni modificarlo durante la vida de la conexión.
 
@@ -154,19 +156,19 @@ El segundo modo es el que hace que este invariante necesite idempotencia real y 
 
 - `BOUNDARY` — el flujo del canon §14 es estricto: se emite un ticket JWT HS256 firmado con `EO_AUTH_JWT_SECRET` y TTL 60 s (`auth.Issuer`, con `sub`, `jti`, `aud` y `exp`); el cliente envía `session.hello { ticket }` como **primer** mensaje antes de 5 s (`WSHandshakeTimeout`, constante de código, no configurable) o se cierra con `4408`; el servidor verifica firma, `exp` y `aud = "game-server"` (`auth.Audience`), consume el `jti` en `ticket:jti:{jti}` (Redis, `SETNX` con TTL 120 s) y sólo entonces crea la sesión.
 - `BOUNDARY` — **quién emite el ticket hoy**: lo emite el propio Game Server desde `internal/httpapi` (`POST /api/auth/register` y `POST /api/auth/login`, con bcrypt), cableado en `cmd/server/main.go` con `auth.NewIssuer(cfg.AuthJWTSecret, 60s, clock)`. Es explícitamente provisional: la arquitectura objetivo de [../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md) traslada la emisión a Next.js. El invariante no depende de quién emita: depende de que el `playerId` salga del claim `sub` verificado y de ningún otro sitio.
-- `TYPE` — el `playerId` vive en la estructura de sesión del servidor, escrita **una sola vez** en el handshake. La estructura no expone un setter; el resto del código lo recibe por lectura. El estado inválido «sesión con playerId mutable» no es representable.
+- `BOUNDARY` — el `playerId` vive en `websocket.Session.PlayerID`, que sólo escribe `newSession` con el `sub` de los claims verificados. **No es inmutable por tipo**: es un campo del paquete `websocket`, y nada fuera de él tiene acceso a la sesión. La garantía es que ningún código del paquete lo reasigna después, algo que cualquier revisión comprueba buscando asignaciones al campo.
 - `TYPE` — el esquema Zod de `session.hello` en `packages/protocol/src/v1/` declara el payload como `{ ticket }` y nada más. Los esquemas cliente→servidor son **estrictos** (`additionalProperties: false`), de modo que un campo extra se rechaza en lugar de ignorarse. Ningún mensaje cliente→servidor de v1 (`session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`) contiene un campo de identidad de jugador, y los tests de `packages/protocol` verifican que un payload con un campo extra tipo `playerId` no valida.
 - `BOUNDARY` — el `playerId` se propaga como campo `player_id` de todo log estructurado (canon §18), lo que hace auditable qué identidad ejecutó qué.
 
 **Cómo se verifica.**
 
 - `TestTicketValidoSeVerifica`, `TestTicketCaducado`, `TestTicketFirmadoConOtroSecreto`, `TestAlgoritmoNoneSeRechaza`, `TestAudienciaIncorrecta`, `TestClaimsIncompletos`, `TestTicketBasuraSeRechaza` (unit, `internal/auth`) — **existen y pasan**: la tabla completa de tickets inválidos no produce claims.
-- `TestTicketSoloSeConsumeUnaVez` y `TestFalloDelRegistroDeTicketsFallaCerrado` (unit, `internal/auth`) — **existen y pasan**: consumo único del `jti` y fail-closed si el registro no responde.
+- `TestTicketNoSePuedeReutilizar` y `TestFalloDelRegistroDeTicketsFallaCerrado` (unit, `internal/auth`) y `TestTicketSoloSeConsumeUnaVez` (`internal/persistence/memory`, y contra Redis real en `internal/persistence/redis`) — **existen y pasan**: consumo único del `jti` y fail-closed si el registro no responde.
 - `TestTicketInvalidoCierraLaConexion` y `TestTicketNoSePuedeReutilizarEnOtraConexion` (e2e, `internal/websocket`) — **existen y pasan**: no se crea sesión y se cierra con `4401`.
 - `TestPayloadConCamposExtraNoAportaEstado` (e2e, `internal/websocket`) — **existe y pasa**: un payload con campos extra no altera la identidad ni el estado.
-- Test previsto: `Test_INV_PLAYER_004_SessionPlayerIdIsImmutable` (unit) — ningún camino de código muta el `playerId` de una sesión ya establecida.
+- No hay test de que el `playerId` de una sesión no cambie: no existe ninguna ruta que lo intente.
 
-**Violación en runtime.** Detección en el verificador de tickets y en una aserción del creador de sesión (`playerId` ya establecido al intentar establecerlo de nuevo). Log `invariant_violation` con `inv_id=INV-PLAYER-004`, `session_id` y el motivo del rechazo, **sin registrar el ticket completo**. Política `FAIL_FAST` sobre la conexión: cierre inmediato con `4401` (no autenticado) o `4403` (no autorizado) según el caso, sin procesar nada más de esa conexión. Este es el punto donde una violación implica ataque activo más probablemente que bug.
+**Violación en runtime.** Un ticket inválido no es una violación sino el borde haciendo su trabajo: el verificador lo rechaza, el servidor registra `handshake rechazado` con el motivo y el código de cierre, **sin el ticket**, y cierra la conexión con el código de `handshakeCloseCode` (`4401` para un ticket inválido o ya usado, `4408` si no llega a tiempo, `4400` si el primer mensaje no es un `session.hello` válido) sin crear sesión ni procesar nada más. Una violación de verdad sería una sesión cuya identidad no viene del ticket, y no hay ninguna aserción que la detecte; si apareciera, implicaría un ataque activo más probablemente que un bug.
 
 ---
 
@@ -179,7 +181,7 @@ El segundo modo es el que hace que este invariante necesite idempotencia real y 
 | Aplicación | DB, TYPE, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST (constraint) |
-| Cobertura | **Sin cobertura ejecutada**: cubierto por la PK de la migración y ejercitado por `TestBootstrapCreaMundoCompletoDelJugador` (integration), **diseñado y no ejecutado** |
+| Cobertura | **Cubierto** por `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas` y `TestBootstrapCreaMundoCompletoDelJugador` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** `players.id` es `uuid` y único: no existen dos filas de `players` con el mismo id, y ningún otro mecanismo (correlativo, índice posicional) identifica a un jugador.
 
@@ -196,10 +198,10 @@ Que sea `uuid` y no `bigint GENERATED ALWAYS AS IDENTITY` es la única excepció
 
 **Cómo se verifica.**
 
-- `TestBootstrapCreaMundoCompletoDelJugador` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: el jugador insertado se recupera por su `uuid`.
-- Test previsto: `Test_INV_PLAYER_005_PlayerIdIsUniqueUuid` (integration) — un segundo `INSERT` con el mismo `uuid` falla por clave primaria, y ninguna tabla identifica al jugador por otro medio.
+- `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas` (integration) — un segundo `INSERT` con el mismo `uuid` falla por `players_pkey`.
+- `TestBootstrapCreaMundoCompletoDelJugador` (integration) — el jugador creado tiene un `uuid` no nulo y sus entidades lo referencian.
 
-**Violación en runtime.** Imposible en escritura: PostgreSQL rechaza el duplicado. En lectura, un `player_id` irresoluble produce log `invariant_violation` con `inv_id=INV-PLAYER-005`. Política `FAIL_FAST` de la carga de esa entidad.
+**Violación en runtime.** Imposible en disco: la clave primaria rechaza el duplicado y las claves foráneas impiden referencias a un jugador inexistente. Por eso no hay validación al cargar.
 
 ---
 
@@ -212,7 +214,7 @@ Que sea `uuid` y no `bigint GENERATED ALWAYS AS IDENTITY` es la única excepció
 | Aplicación | DB, BOUNDARY, TEST |
 | Milestone | M2 |
 | Política ante violación | REJECT en el borde · FAIL_FAST en escritura |
-| Cobertura | **Sin cobertura ejecutada**: `player.ValidateUsername` está implementada y usada en `internal/httpapi`, pero **no existe todavía** un test dedicado; el `CHECK` sólo se ejercita en integración, aún no ejecutada |
+| Cobertura | **Cubierto** por `TestValidateUsernameAplicaLaReglaDelEsquema` (`internal/domain/player`), `TestValidateUsernameYElCheckDicenLoMismo` y `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas` (integration) |
 
 **Enunciado.** `players.username` es único y cumple `^[A-Za-z0-9_-]{3,24}$`; la misma regla se aplica en el boundary (`player.ValidateUsername`) y en el `CHECK players_username_format` de PostgreSQL.
 
@@ -231,9 +233,11 @@ La regla se declara **dos veces a propósito**: el boundary la aplica para devol
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_PLAYER_006_UsernameFormatAndUniqueness` (integration) — la tabla de nombres inválidos (menos de 3, más de 24, caracteres fuera de la clase) es rechazada por `ValidateUsername` **y** por el `CHECK`; un segundo `INSERT` con el mismo `username` falla por unicidad.
+- `TestValidateUsernameAplicaLaReglaDelEsquema` (unit) — longitudes límite, los caracteres permitidos y una tabla de rechazos: espacios, puntuación, letras acentuadas, emoji, tabulador y espacio de anchura cero.
+- `TestValidateUsernameYElCheckDicenLoMismo` (integration) — para cada nombre de una tabla de válidos e inválidos, `ValidateUsername` lo acepta **si y sólo si** `players_username_format` lo acepta. Si alguien cambia una de las dos reglas sin la otra, falla.
+- `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas` (integration) — un segundo jugador con el mismo nombre falla por `players_username_key`.
 
-**Violación en runtime.** Detección en `ValidateUsername` y en el error de constraint. Log `invariant_violation` con `inv_id=INV-PLAYER-006` y el motivo, **sin registrar credenciales**. Política `REJECT` del alta.
+**Violación en runtime.** Un nombre inválido no es una violación sino el borde aplicando la regla: la API responde `INVALID_USERNAME` (400) sin tocar la base de datos, y un nombre repetido, `USERNAME_TAKEN` (409). Ninguna de las dos rutas registra credenciales.
 
 ---
 
@@ -246,7 +250,7 @@ La regla se declara **dos veces a propósito**: el boundary la aplica para devol
 | Aplicación | DB, BOUNDARY, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Sin cobertura ejecutada**: `TestSecretoDemasiadoCorto` y `TestSecretoDeDesarrolloEnProduccion` (`internal/config`) cubren el arranque; **no existe todavía** un test que recorra el esquema y los logs |
+| Cobertura | **Parcial**: el esquema por `TestLaUnicaColumnaDeCredencialEsElHash` y los logs del alta y del login por `TestLosLogsDeAltaYLoginNoContienenSecretos` (integration); el arranque por `TestSecretoDemasiadoCorto` y `TestSecretoDeDesarrolloEnProduccion` (`internal/config`). **Ningún test** captura los logs del handshake WebSocket ni del resto del servidor |
 
 **Enunciado.** Ninguna tabla guarda una contraseña en claro y ningún log estructurado contiene contraseña, `password_hash`, ticket completo ni `EO_AUTH_JWT_SECRET`; `password_hash` sólo sale de `PlayerRepo.GetByUsername` hacia el verificador de credenciales.
 
@@ -261,14 +265,17 @@ El punto de fuga concreto en este proyecto es el volcado de estructuras: `slog` 
 - `BOUNDARY` — `password_hash` se lee exclusivamente en `PlayerRepo.GetByUsername` y se consume en el verificador de credenciales; no viaja a ningún DTO, mensaje o log.
 - `BOUNDARY` — los logs de autenticación registran el `username` y el motivo del fallo, nunca la contraseña, el hash ni el ticket. Del ticket sólo puede registrarse el `jti`, que ya está consumido.
 - `BOUNDARY` — `config.Load` exige `EO_AUTH_JWT_SECRET` de al menos 32 caracteres y rechaza el valor de desarrollo (`dev-only`) cuando `EO_ENV=production`, de modo que el proceso nunca arranca con un secreto de ejemplo.
+- `BOUNDARY` — el login con un usuario inexistente ejecuta igualmente una comparación bcrypt contra un hash fijo y responde el mismo `UNAUTHORIZED` que una contraseña equivocada: no revela qué nombres existen.
 
 **Cómo se verifica.**
 
 - `TestSecretoDemasiadoCorto` y `TestSecretoDeDesarrolloEnProduccion` (unit, `internal/config`) — **existen y pasan**: el arranque falla en ambos casos.
 - `TestObligatoriasAusentes` (unit, `internal/config`) — **existe y pasa**: sin `EO_AUTH_JWT_SECRET` el arranque no continúa.
-- Test previsto: `Test_INV_PLAYER_007_NoSecretsInSchemaOrLogs` (contract + integration) — se recorre la DDL buscando columnas de contraseña en claro y se ejercita el flujo de login capturando la salida de `slog` para comprobar que no contiene ni contraseña, ni hash, ni ticket, ni secreto.
+- `TestLaUnicaColumnaDeCredencialEsElHash` (integration) — en todo el esquema `public`, la única columna cuyo nombre sugiere una contraseña, un secreto, un ticket, un token o una credencial es `players.password_hash`.
+- `TestLosLogsDeAltaYLoginNoContienenSecretos` (integration) — captura el `slog` de un alta correcta, un login correcto, uno con contraseña equivocada, otro con usuario inexistente y un alta que falla dentro de la transacción y registra el error. Ninguna línea contiene la contraseña, un hash bcrypt, los tickets emitidos ni el secreto JWT. Verificado por mutación: registrar la contraseña lo hace fallar.
+- Pendiente: la misma captura sobre el handshake WebSocket, que registra el motivo del rechazo de un ticket.
 
-**Violación en runtime.** Detección en el escaneo de CI y en el test de captura de logs. Log `invariant_violation` con `inv_id=INV-PLAYER-007` y el nombre del campo ofensivo, **jamás su valor**. Política `FAIL_FAST`. Una fuga confirmada de `EO_AUTH_JWT_SECRET` exige rotación inmediata: corregir el código no basta.
+**Violación en runtime.** No hay detección en runtime: la detecta el test. Si una fuga apareciera, el tratamiento es `FAIL_FAST` sobre el cambio que la introdujo, y nunca se registra el valor filtrado, sólo el nombre del campo. Una fuga confirmada de `EO_AUTH_JWT_SECRET` exige rotación inmediata: corregir el código no basta.
 
 ---
 
@@ -281,7 +288,7 @@ El punto de fuga concreto en este proyecto es el volcado de estructuras: `slog` 
 | Aplicación | DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST (el jugador no se introduce) |
-| Cobertura | **Sin cobertura ejecutada**: `TestBootstrapFallidoNoDejaNadaAMedias` (integration) cubre el rollback pero está **diseñado y no ejecutado**; el orden lo fija `internal/httpapi` |
+| Cobertura | **Cubierto** por `TestElAltaHTTPIntroduceAlJugadorDespuesDelCommit`, `TestUnAltaRechazadaNoIntroduceNada` y `TestBootstrapFallidoNoDejaNadaAMedias` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** El comando `IntroducePlayer` que incorpora al jugador al mundo en RAM se emite después del `COMMIT` del bootstrap; no existe ningún instante en que el mundo en RAM conozca a un jugador que PostgreSQL no conoce.
 
@@ -298,10 +305,11 @@ Con el orden correcto, el modo de fallo es benigno y observable: si el `COMMIT` 
 
 **Cómo se verifica.**
 
-- `TestBootstrapFallidoNoDejaNadaAMedias` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: un fallo del bootstrap no deja rastro en disco.
-- Test previsto: `Test_INV_PLAYER_008_WorldLearnsPlayerOnlyAfterCommit` (integration) — con un `Persister` instrumentado, se comprueba que `IntroducePlayer` no se emite si la transacción no confirmó, y que cuando se emite lleva los ids definitivos.
+- `TestElAltaHTTPIntroduceAlJugadorDespuesDelCommit` (integration) — el handler de alta escribe en un canal de comandos sin buffer, así que queda bloqueado hasta que el test recibe `IntroducePlayer`. En ese instante, desde otra conexión, el jugador, su ciudad y sus aldeanos ya están confirmados, y los ids del comando son los de disco. Verificado por mutación: emitir un `IntroducePlayer` antes de la transacción lo hace fallar.
+- `TestUnAltaRechazadaNoIntroduceNada` (integration) — un alta rechazada no envía ningún comando.
+- `TestBootstrapFallidoNoDejaNadaAMedias` (integration) — un fallo del bootstrap no deja rastro en disco.
 
-**Violación en runtime.** Detección en una aserción de `IntroducePlayer` que exige identificadores no nulos y una ciudad resoluble. Log `invariant_violation` con `inv_id=INV-PLAYER-008` y `player_id`. Política `FAIL_FAST` del comando: el jugador no se introduce en el mundo y se escala; entrará por rehidratación en el siguiente arranque.
+**Violación en runtime.** No hay detección en runtime: `handleIntroducePlayer` no valida los ids que recibe, porque su único emisor ya los recibió de PostgreSQL. La garantía es el orden del handler. Si el `COMMIT` tiene éxito y el comando no llega —por ejemplo, porque la cola está saturada más de 2 s—, el jugador existe en disco y entra en el mundo en el siguiente arranque por rehidratación.
 
 ---
 

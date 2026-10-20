@@ -223,14 +223,14 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-PLAYER-001 | Un jugador sólo puede comandar unidades que le pertenecen | CRITICO | DB, BOUNDARY, DOMAIN, TEST | ✓ | `TestNoSePuedeComandarUnaUnidadAjena` |
-| INV-PLAYER-002 | Todo jugador tiene exactamente una civilization y exactamente una faction | ALTO | DB, TEST | ○ | `TestBootstrapCreaMundoCompletoDelJugador` |
-| INV-PLAYER-003 | Un jugador recién creado tiene exactamente una ciudad y exactamente 3 `VILLAGER` | ALTO | DOMAIN, TEST | ○ | `TestBootstrapCreaMundoCompletoDelJugador` |
+| INV-PLAYER-001 | Un jugador sólo puede comandar unidades que le pertenecen | CRITICO | DB, BOUNDARY, DOMAIN, TEST | ✓ | `TestNoSePuedeComandarUnaUnidadAjena`, `TestRechazosDeMovimiento` |
+| INV-PLAYER-002 | Todo jugador tiene exactamente una civilization y exactamente una faction | ALTO | DB, TEST | ✓ | `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosDosEjesSonOrtogonales` |
+| INV-PLAYER-003 | Un jugador recién creado tiene exactamente una ciudad y exactamente 3 `VILLAGER` | ALTO | DOMAIN, TEST | ✓ | `TestBootstrapCreaMundoCompletoDelJugador`, `TestBootstrapFallidoNoDejaNadaAMedias`, `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir` |
 | INV-PLAYER-004 | La identidad del jugador de una sesión proviene del ticket verificado | CRITICO | TYPE, BOUNDARY, TEST | ✓ | `TestTicketValidoSeVerifica` |
-| INV-PLAYER-005 | `players.id` es `uuid` y único; ningún otro mecanismo identifica a un jugador | ALTO | DB, TYPE, TEST | ○ | `Test_INV_PLAYER_005_PlayerIdIsUniqueUuid` |
-| INV-PLAYER-006 | `username` es único y cumple `^[A-Za-z0-9_-]{3,24}$` en boundary y en `CHECK` | ALTO | DB, BOUNDARY, TEST | ○ | `Test_INV_PLAYER_006_UsernameFormatAndUniqueness` |
-| INV-PLAYER-007 | Ninguna tabla ni log contiene contraseña, hash, ticket completo ni `EO_AUTH_JWT_SECRET` | CRITICO | DB, BOUNDARY, TEST | ~ | `TestSecretoDemasiadoCorto` |
-| INV-PLAYER-008 | El mundo en RAM sólo conoce jugadores ya confirmados en PostgreSQL | ALTO | DOMAIN, TEST | ○ | `Test_INV_PLAYER_008_WorldLearnsPlayerOnlyAfterCommit` |
+| INV-PLAYER-005 | `players.id` es `uuid` y único; ningún otro mecanismo identifica a un jugador | ALTO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas` |
+| INV-PLAYER-006 | `username` es único y cumple `^[A-Za-z0-9_-]{3,24}$` en boundary y en `CHECK` | ALTO | DB, BOUNDARY, TEST | ✓ | `TestValidateUsernameAplicaLaReglaDelEsquema`, `TestValidateUsernameYElCheckDicenLoMismo` |
+| INV-PLAYER-007 | Ninguna tabla ni log contiene contraseña, hash, ticket completo ni `EO_AUTH_JWT_SECRET` | CRITICO | DB, BOUNDARY, TEST | ~ | `TestLaUnicaColumnaDeCredencialEsElHash`, `TestLosLogsDeAltaYLoginNoContienenSecretos`; falta el handshake |
+| INV-PLAYER-008 | El mundo en RAM sólo conoce jugadores ya confirmados en PostgreSQL | ALTO | DOMAIN, TEST | ✓ | `TestElAltaHTTPIntroduceAlJugadorDespuesDelCommit`, `TestUnAltaRechazadaNoIntroduceNada` |
 
 ### CITY — [city.md](city.md)
 
@@ -380,9 +380,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 55 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 60 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 20 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 15 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 10 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
 > **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
@@ -391,13 +391,13 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Los 15 sin cobertura se deben a tres causas distintas que no conviene mezclar:
+Los 10 sin cobertura se deben a tres causas distintas que no conviene mezclar:
 
-1. **Marcas sin reconciliar.** `INV-PLAYER-002/003` e `INV-PERSIST-003` citan tests que existen y pasan —los de integración se ejecutan en la CI y en local desde que se cerró `DEBT-19`—, pero nadie ha comprobado todavía que cubran el enunciado entero. Es trabajo de `EO-118` en [../roadmap/backlog.md](../roadmap/backlog.md), fila por fila.
+1. **Marcas sin reconciliar.** `INV-PERSIST-003` cita tests que existen y pasan —los de integración se ejecutan en la CI y en local desde que se cerró `DEBT-19`—, pero nadie ha comprobado todavía que cubran el enunciado entero. Es trabajo de `EO-118` en [../roadmap/backlog.md](../roadmap/backlog.md), fila por fila.
 2. **Nombres de test que nunca existieron.** Muchas filas citan un `Test_INV_*` que no está en la suite. Es el nombre previsto cuando se escribió la ficha, no un test. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 3. **Mecánica sin disparador.** Parte de `INV-GARR` describe efectos de una guarnición que ningún comando de red puede producir todavía (M7, entregable 6).
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR` e `INV-CITY` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las tres familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY` e `INV-PLAYER` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las cuatro familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 
