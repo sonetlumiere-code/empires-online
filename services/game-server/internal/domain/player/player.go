@@ -55,6 +55,11 @@ type Faction struct {
 	Name string
 }
 
+// InitialVillagers es cuántos aldeanos recibe un jugador nuevo (canon §10,
+// INV-PLAYER-003). Es el único sitio del código donde vive el número: la API de
+// alta, la siembra de desarrollo y el Bootstrapper lo leen de aquí.
+const InitialVillagers = 3
+
 // Códigos de facción del MVP.
 const (
 	FactionOrder   = "ORDER"

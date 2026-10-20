@@ -143,7 +143,7 @@ func run() error {
 			return fmt.Errorf("buscar %s: %w", nombre, err)
 		}
 
-		site, err := founding.FindSite(w, centros, devseed.AnchorSeed, 3)
+		site, err := founding.FindSite(w, centros, devseed.AnchorSeed, player.InitialVillagers)
 		if err != nil {
 			return fmt.Errorf("no hay sitio para %s: %w", nombre, err)
 		}

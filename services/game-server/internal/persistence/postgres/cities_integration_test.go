@@ -263,7 +263,7 @@ func TestUnSitioQueOtraAltaOcupoSeVuelveABuscar(t *testing.T) {
 		if len(vistos) > 1 {
 			centro = world.Tile{X: 50, Y: 50}
 		}
-		return postgres.Placement{Center: centro, Spawns: []world.Tile{{X: centro.X + 2, Y: centro.Y}}}, nil
+		return postgres.Placement{Center: centro, Spawns: []world.Tile{{X: centro.X + 2, Y: centro.Y}, {X: centro.X - 2, Y: centro.Y}, {X: centro.X, Y: centro.Y + 2}}}, nil
 	}
 	req.Verify = founding.FarEnough
 
@@ -291,7 +291,7 @@ func TestUnSitioSiempreOcupadoAgotaLosIntentosSinEscribir(t *testing.T) {
 	req := bootstrapRequest("insistente", world.Tile{})
 	req.Place = func([]world.Tile) (postgres.Placement, error) {
 		llamadas++
-		return postgres.Placement{Center: world.Tile{X: 22, Y: 22}, Spawns: []world.Tile{{X: 24, Y: 22}}}, nil
+		return postgres.Placement{Center: world.Tile{X: 22, Y: 22}, Spawns: []world.Tile{{X: 22 + 2, Y: 22}, {X: 22 - 2, Y: 22}, {X: 22, Y: 22 + 2}}}, nil
 	}
 	req.Verify = founding.FarEnough
 

@@ -129,8 +129,8 @@ func (b *Bootstrapper) Create(ctx context.Context, req BootstrapRequest) (*Boots
 	if req.Now.IsZero() {
 		return nil, fmt.Errorf("el alta necesita el instante del reloj inyectado")
 	}
-	if req.Place == nil && len(req.VillagerSpawns) == 0 {
-		return nil, fmt.Errorf("un jugador nuevo necesita al menos un aldeano")
+	if req.Place == nil && len(req.VillagerSpawns) != player.InitialVillagers {
+		return nil, errAldeanos(len(req.VillagerSpawns))
 	}
 	def, err := unit.Lookup(unit.TypeVillager)
 	if err != nil {
@@ -149,8 +149,8 @@ func (b *Bootstrapper) Create(ctx context.Context, req BootstrapRequest) (*Boots
 		if err != nil {
 			return nil, err
 		}
-		if len(placement.Spawns) == 0 {
-			return nil, fmt.Errorf("un jugador nuevo necesita al menos un aldeano")
+		if len(placement.Spawns) != player.InitialVillagers {
+			return nil, errAldeanos(len(placement.Spawns))
 		}
 		elegido := req
 		elegido.CityCenter, elegido.VillagerSpawns, elegido.TerritoryID =
@@ -162,6 +162,14 @@ func (b *Bootstrapper) Create(ctx context.Context, req BootstrapRequest) (*Boots
 		}
 	}
 	return nil, ErrPlacementContended
+}
+
+// errAldeanos rechaza un alta que no trae exactamente player.InitialVillagers
+// tiles de nacimiento. El Bootstrapper es el único que crea unidades iniciales,
+// así que es aquí donde «exactamente tres» deja de depender del llamante
+// (INV-PLAYER-003).
+func errAldeanos(n int) error {
+	return fmt.Errorf("un jugador nuevo nace con exactamente %d aldeanos, no %d", player.InitialVillagers, n)
 }
 
 // create es una transacción de alta con el emplazamiento ya decidido.

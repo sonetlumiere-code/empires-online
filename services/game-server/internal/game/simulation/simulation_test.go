@@ -435,6 +435,18 @@ func TestRechazosDeMovimiento(t *testing.T) {
 			wantCode: protocol.CodeUnitNotOwned,
 		},
 		{
+			// INV-PLAYER-001: la propiedad se comprueba ANTES que el estado. Una
+			// unidad ajena y muerta responde UNIT_NOT_OWNED; UNIT_DEAD revelaría
+			// el estado de una unidad que no es tuya.
+			name: "unidad ajena y muerta",
+			build: func(h *harness) simulation.MoveUnit {
+				h.units[0].Status = unit.StatusDead
+				h.units[0].HP = 0
+				return simulation.MoveUnit{PlayerID: otro, UnitID: h.units[0].ID, Target: world.Tile{X: 20, Y: 20}}
+			},
+			wantCode: protocol.CodeUnitNotOwned,
+		},
+		{
 			name: "destino fuera del mundo",
 			build: func(h *harness) simulation.MoveUnit {
 				return simulation.MoveUnit{PlayerID: h.playerID, UnitID: h.units[0].ID, Target: world.Tile{X: 500, Y: 500}}

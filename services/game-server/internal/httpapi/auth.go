@@ -38,7 +38,6 @@ type AuthAPI struct {
 	log          *slog.Logger
 
 	defaultEra   city.Era
-	villagers    int
 	territories  *territory.Set
 	limiter      *IPLimiter
 	tick         func() uint64
@@ -49,10 +48,8 @@ type AuthAPI struct {
 
 // Options configura la API.
 type Options struct {
-	DefaultEra city.Era
-	// InitialVillagers es cuántos aldeanos recibe un jugador nuevo (3 en el MVP).
-	InitialVillagers int
-	CivilizationID   int32
+	DefaultEra     city.Era
+	CivilizationID int32
 	// Territories es la geometría de los territorios. Es INMUTABLE tras la
 	// hidratación, así que leerla desde una goroutine de HTTP no compite con el
 	// game loop; el control, que sí muta, no se lee aquí.
@@ -80,9 +77,6 @@ func NewAuthAPI(
 	opts Options,
 	log *slog.Logger,
 ) *AuthAPI {
-	if opts.InitialVillagers <= 0 {
-		opts.InitialVillagers = 3
-	}
 	if opts.Clock == nil {
 		opts.Clock = clock.NewSystemClock()
 	}
@@ -90,7 +84,6 @@ func NewAuthAPI(
 		players: players, cities: cities, bootstrapper: bootstrapper,
 		issuer: issuer, world: w, commands: commands, log: log,
 		defaultEra:   opts.DefaultEra,
-		villagers:    opts.InitialVillagers,
 		civilization: opts.CivilizationID, faction: opts.FactionID,
 		territories: opts.Territories,
 		tick:        opts.Tick,
@@ -167,7 +160,7 @@ func (a *AuthAPI) Register() http.HandlerFunc {
 			Tick:           a.currentTick(),
 			Now:            a.clock.Now(),
 			Place: func(existing []world.Tile) (postgres.Placement, error) {
-				s, err := founding.FindSite(a.world, existing, hashSeed(creds.Username), a.villagers)
+				s, err := founding.FindSite(a.world, existing, hashSeed(creds.Username), player.InitialVillagers)
 				if err != nil {
 					return postgres.Placement{}, err
 				}

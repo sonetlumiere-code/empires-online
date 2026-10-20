@@ -247,11 +247,10 @@ func run() error {
 	authAPI := httpapi.NewAuthAPI(playerRepo, cityRepo, bootstrapper,
 		auth.NewIssuer(cfg.AuthJWTSecret, ticketTTL, sysClock),
 		gameWorld, commands, httpapi.Options{
-			DefaultEra:       firstEra.Code,
-			InitialVillagers: 3,
-			CivilizationID:   1,
-			FactionID:        3, // NEUTRAL
-			Territories:      territories,
+			DefaultEra:     firstEra.Code,
+			CivilizationID: 1,
+			FactionID:      3, // NEUTRAL
+			Territories:    territories,
 			Limiter: httpapi.NewIPLimiter(
 				cfg.AuthRateLimitPerMin, cfg.AuthRateLimitBurst, cfg.TrustProxyHeaders),
 			Tick:  gameLoop.Tick,
