@@ -236,12 +236,24 @@ func run() error {
 		PathMaxDistance:    cfg.PathfindingMaxDistance,
 	})
 
+	// El tick se reancla al reloj (ADR-015): world_state.current_tick sólo se
+	// guarda en el apagado ordenado, y retomarlo tras una caída repetiría
+	// números de tick ya emitidos.
+	startTick, clockBehind := loop.ResumeTick(worldState.CurrentTick, worldState.EpochMs,
+		sysClock.NowMs(), cfg.TickDuration())
+	if clockBehind {
+		log.Error("invariant_violation",
+			"inv_id", "INV-WORLD-004", "severity", "CRITICO", "policy", "REPAIR",
+			"entity", "world_state", "tick", startTick,
+			"detail", "el reloj va por detrás del último tick guardado: se arranca desde lo guardado")
+	}
+
 	gameLoop := loop.New(sim, sysClock, commands, loop.Config{
 		TickDuration:       cfg.TickDuration(),
 		FlushIntervalTicks: cfg.PersistenceFlushIntervalTicks,
 		MaxCommandsPerTick: 1024,
 		EpochMs:            worldState.EpochMs,
-		StartTick:          worldState.CurrentTick,
+		StartTick:          startTick,
 	}, metrics, health, log)
 
 	// ── 6. Transporte ───────────────────────────────────────────
@@ -435,7 +447,16 @@ func loadWorld(
 		log.Info("mundo generado y persistido",
 			"seed", state.Seed, "chunks", int(gameWorld.ChunksPerRow())*int(gameWorld.ChunksPerColumn()))
 	} else {
-		log.Info("mundo existente cargado",
+		// INV-WORLD-002 e INV-WORLD-005: el terreno regenerado debe ser el que
+		// se persistió la primera vez. Si el generador cambió sin una migración
+		// de mundo, las entidades persistidas estarían sobre otro mapa.
+		if err := repo.VerifyTerrain(ctx, gameWorld); err != nil {
+			log.Error("invariant_violation",
+				"inv_id", "INV-WORLD-005", "severity", "ALTO", "policy", "FAIL_FAST",
+				"entity", "world_chunks", "seed", state.Seed, "detail", err.Error())
+			return nil, postgres.State{}, fmt.Errorf("verificar el terreno persistido: %w", err)
+		}
+		log.Info("mundo existente cargado y verificado",
 			"seed", state.Seed, "tick", state.CurrentTick, "epoch_ms", state.EpochMs)
 	}
 	return gameWorld, state, nil

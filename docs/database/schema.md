@@ -631,7 +631,7 @@ CREATE TRIGGER world_state_set_updated_at
 | `width`, `height` | `integer` CHECK `> 0` | Valores efectivos de `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` (512 × 512 en MVP) |
 | `chunk_size` | `integer` CHECK `> 0` | Valor efectivo de `EO_CHUNK_SIZE` (32). Con 512/32 resultan 16 chunks por fila y 256 chunks totales |
 | `epoch_ms` | `bigint` | Origen del reloj de simulación. `tickTime = epoch_ms + tickNumber * tickDurationMs`. Se fija una sola vez, en el bootstrap del mundo, y **nunca se modifica**: cambiarlo reinterpretaría todo `unit_movements` |
-| `current_tick` | `bigint` DEFAULT 0, CHECK `>= 0` | Último tick persistido. Lo escribe `WorldRepo.SaveTick` **una sola vez, en el apagado ordenado**, nunca dentro del tick, y al arrancar es el `StartTick` desde el que el loop reanuda su contador. Tras una caída abrupta el contador se reanuda desde el último valor guardado, y eso es inocuo: ninguna regla de gameplay depende de él, porque las posiciones y los plazos se calculan con instantes en epoch ms (`start_time_ms`, `arrival_time_ms`, `Clock.NowMs()`), no con el número de tick |
+| `current_tick` | `bigint` DEFAULT 0, CHECK `>= 0` | Último tick persistido. Lo escribe `WorldRepo.SaveTick` **una sola vez, en el apagado ordenado**, nunca dentro del tick, y al arrancar es sólo un suelo: el contador se reancla al reloj, `max(current_tick, (ahora − epoch_ms) / período)` ([ADR-015](../decisions/ADR-015-tick-continuity.md)), así que una caída no lo hace retroceder. Ninguna regla de gameplay depende del número de tick: las posiciones y los plazos se calculan con instantes en epoch ms (`start_time_ms`, `arrival_time_ms`, `Clock.NowMs()`) |
 
 **La alineación mundo/chunk no es un `CHECK`.** Que `width` y `height` sean múltiplos exactos de `chunk_size` lo valida `Config.Load()` al arrancar, junto al resto de validaciones cruzadas (`EO_TICK_RATE_HZ` divide a 1000, `EO_PRESENCE_HEARTBEAT_SECONDS < EO_PRESENCE_TTL_SECONDS`, …), y el proceso no arranca si falla. Ponerlo también en el esquema duplicaría la regla en dos sitios; la configuración tiene un solo dueño.
 
@@ -946,7 +946,7 @@ Respuesta explícita a las cuatro preguntas del canon §12 para el esquema del M
 | `cities.population` | Sí | Sí, recalculado con `count(*)` en la transacción de alta | — | **Sí**, desde `units` |
 | Presencia del jugador | RAM (decide) + Redis (publica) | No (Redis, TTL 30 s) | — | **Sí**, derivada |
 | Conjuntos de interés / suscripciones | Sí | No | No | **Sí** |
-| `world_state.current_tick` | Sí | **Sí**, un `SaveTick` en el apagado ordenado | — | Parcialmente: tras una caída abrupta se reanuda desde el último valor guardado |
+| `world_state.current_tick` | Sí | **Sí**, un `SaveTick` en el apagado ordenado | — | No hace falta: el contador se reancla al reloj al arrancar (ADR-015) |
 | Terreno | Sí (mapa regenerado desde la semilla) | Una vez, `COPY` en el bootstrap | — | **Sí**, desde `seed` |
 | `world_events` | No | Sí, junto al hecho que lo origina | — | No |
 | `sessions` | Sí / Redis | **Todavía no se escribe** (§13) | — | — |

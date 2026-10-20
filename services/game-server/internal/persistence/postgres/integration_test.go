@@ -512,3 +512,39 @@ func TestMundoConParametrosDistintosFalla(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "no coincide con la configuración")
 }
+
+// INV-WORLD-002 e INV-WORLD-005, la comprobación de arranque: el terreno que
+// genera la semilla se compara chunk a chunk con world_chunks. Un byte
+// alterado, un chunk corto o un chunk que falta la hacen fallar, y el error
+// nombra el chunk.
+func TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla(t *testing.T) {
+	store, ctx := newTestStore(t)
+	worldRepo := postgres.NewWorldRepo(store)
+	_, _, err := worldRepo.LoadOrInit(ctx, postgres.State{Seed: 20260909, Width: 64, Height: 64, ChunkSize: 32, EpochMs: testEpoch})
+	require.NoError(t, err)
+	w, err := world.New(64, 64, 32, 20260909, world.Generate(64, 64, 20260909))
+	require.NoError(t, err)
+	require.NoError(t, worldRepo.SaveChunks(ctx, w))
+	require.NoError(t, worldRepo.VerifyTerrain(ctx, w), "recién guardado coincide")
+	db := store.Pool()
+
+	// Un byte distinto en el chunk (1,0).
+	_, err = db.Exec(ctx, `UPDATE world_chunks
+	                          SET terrain = set_byte(terrain, 100, (get_byte(terrain, 100) + 1) % 6)
+	                        WHERE chunk_x = 1 AND chunk_y = 0`)
+	require.NoError(t, err)
+	err = worldRepo.VerifyTerrain(ctx, w)
+	require.ErrorIs(t, err, postgres.ErrTerrainMismatch)
+	require.Contains(t, err.Error(), "(1,0)")
+
+	// Un chunk de 1023 bytes.
+	_, err = db.Exec(ctx, `UPDATE world_chunks SET terrain = substring(terrain from 1 for 1023)
+	                        WHERE chunk_x = 1 AND chunk_y = 0`)
+	require.NoError(t, err)
+	require.ErrorIs(t, worldRepo.VerifyTerrain(ctx, w), postgres.ErrTerrainMismatch)
+
+	// Un chunk que falta.
+	_, err = db.Exec(ctx, `DELETE FROM world_chunks WHERE chunk_x = 1 AND chunk_y = 0`)
+	require.NoError(t, err)
+	require.ErrorIs(t, worldRepo.VerifyTerrain(ctx, w), postgres.ErrTerrainMismatch)
+}

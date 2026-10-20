@@ -94,8 +94,8 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Catorce decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
-**2026-09-09**; ADR-013 y ADR-014 salieron de la reconciliación de `EO-118`, con fecha **2026-10-20**.
+Quince decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+**2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, con fecha **2026-10-20**.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`.
 
 | ADR | Título | Estado | Resumen |
@@ -114,13 +114,14 @@ Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos es
 | [012](ADR-012-database-migrations.md) | Migraciones SQL versionadas con golang-migrate embebidas en el binario | Aceptado | El esquema evoluciona con ficheros SQL versionados gestionados por golang-migrate y embebidos con `go:embed`; el game server es el único propietario del esquema. |
 | [013](ADR-013-persistence-pipeline.md) | La simulación asigna la identidad de los movimientos y la cola de persistencia ordena por entidad | Aceptado | El loop asigna el id de cada movimiento; la cola envía cada trabajo al worker de su clave; el inicio y el cierre de un movimiento escriben la unidad en su transacción y el volcado no escribe unidades en marcha; un fallo definitivo vuelve al loop como comando. |
 | [014](ADR-014-command-idempotency.md) | La deduplicación de comandos es de corto plazo; los efectos durables son idempotentes por construcción | Aceptado | La deduplicación vive sólo en Redis (300 s); un comando con efectos no repetibles guarda su `requestId` con `UNIQUE` en la fila de su efecto; `idempotency_keys` se elimina. Sustituye la garantía durable de ADR-004. |
+| [015](ADR-015-tick-continuity.md) | El tick se reancla al reloj en cada arranque | Aceptado | Al arrancar, el tick parte de `max(world_state.current_tick, (ahora − epoch_ms) / período)`: ningún número de tick se repite tras una caída; con el reloj por detrás de lo guardado se arranca desde lo guardado y se registra, sin abortar. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y
 `RandomSource` (canon §1.5), el *interest management* por suscripción a chunks (canon §13) y la
 elección de A\* con heurística octile tras la interfaz `Pathfinder`
 ([../architecture/pathfinding.md](../architecture/pathfinding.md)). Si alguna de ellas necesita
-registrarse, toma el siguiente número libre —**013** en adelante—, nunca un número ya asignado.
+registrarse, toma el siguiente número libre —**016** en adelante—, nunca un número ya asignado.
 
 ## 6. Cómo se propone un ADR nuevo
 

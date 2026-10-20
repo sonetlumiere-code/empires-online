@@ -1,7 +1,9 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -162,4 +164,38 @@ func (r *WorldRepo) CountChunks(ctx context.Context) (int64, error) {
 	var n int64
 	err := r.store.pool.QueryRow(ctx, `SELECT count(*) FROM world_chunks`).Scan(&n)
 	return n, err
+}
+
+// ErrTerrainMismatch indica que el terreno persistido no es el que genera la
+// semilla: el generador cambió sin una migración de mundo, o world_chunks se
+// alteró a mano (INV-WORLD-005).
+var ErrTerrainMismatch = errors.New("el terreno de world_chunks no coincide con el que genera la semilla")
+
+// VerifyTerrain compara, chunk a chunk, el terreno de `w` —el que acaba de
+// generar la semilla— con la copia de world_chunks. Es la comprobación de
+// arranque de INV-WORLD-002 e INV-WORLD-005: falla si falta o sobra un chunk,
+// si alguno no mide chunkSize² bytes, o si alguno difiere en un solo byte, y
+// el error nombra el primero que difiere. Arrancar sobre un terreno distinto
+// del que las entidades persistidas asumen colocaría ciudades sobre agua.
+func (r *WorldRepo) VerifyTerrain(ctx context.Context, w *world.World) error {
+	stored, err := r.LoadTerrain(ctx, w.Width(), w.Height(), w.ChunkSize())
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrTerrainMismatch, err)
+	}
+	size := w.ChunkSize()
+	for cy := int32(0); cy < w.ChunksPerColumn(); cy++ {
+		for cx := int32(0); cx < w.ChunksPerRow(); cx++ {
+			generated, err := w.ChunkTerrain(cx, cy)
+			if err != nil {
+				return err
+			}
+			for row := int32(0); row < size; row++ {
+				from := int(cy*size+row)*int(w.Width()) + int(cx*size)
+				if !bytes.Equal(stored[from:from+int(size)], generated[int(row*size):int((row+1)*size)]) {
+					return fmt.Errorf("%w: el chunk (%d,%d) difiere", ErrTerrainMismatch, cx, cy)
+				}
+			}
+		}
+	}
+	return nil
 }

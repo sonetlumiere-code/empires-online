@@ -384,7 +384,8 @@ distinto de cero. Nunca se arranca a medias.
  3. world         loadWorld: world_state se lee o se inicializa (LoadOrInit). El terreno se
                   GENERA SIEMPRE desde la semilla con world.Generate; world_chunks es una
                   copia de auditoría, no la fuente primaria. Si el mundo es nuevo, se
-                  persisten sus chunks.
+                  persisten sus chunks; si no, VerifyTerrain los compara byte a byte con lo
+                  regenerado y aborta el arranque si difieren (INV-WORLD-005).
  4. hidratación   Se cargan unidades vivas, ciudades y movimientos ACTIVE, y simulation.Hydrate
                   reconstruye el estado:
                     movimiento vencido durante la caída -> la unidad aparece en el destino y el
@@ -408,8 +409,10 @@ distinto de cero. Nunca se arranca a medias.
                   eras y toma la primera como era inicial) y el mux HTTP:
                   /health, /ready, /ws, /api/auth/register, /api/auth/login.
  7. arranque      Tres goroutines: servidor de juego en EO_HTTP_ADDR, servidor de métricas en
-                  EO_METRICS_ADDR y gameLoop.Run(rootCtx). El primer tick continúa el
-                  CurrentTick cargado de world_state y el tiempo se ancla a EpochMs.
+                  EO_METRICS_ADDR y gameLoop.Run(rootCtx). El primer tick sigue a
+                  loop.ResumeTick: el máximo entre el CurrentTick guardado y los ticks
+                  transcurridos desde EpochMs, para que ninguno se repita tras una caída
+                  (ADR-015). El instante de cada tick lo da el Clock.
 ```
 
 Cada paso falla rápido: si un paso no puede completarse, `run()` devuelve el error, `main` lo escribe

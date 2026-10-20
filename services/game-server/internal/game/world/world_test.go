@@ -1,6 +1,8 @@
 package world_test
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -219,4 +221,14 @@ func TestAdyacenciaYDiagonal(t *testing.T) {
 
 	require.False(t, origin.IsDiagonalTo(world.Tile{X: 11, Y: 10}))
 	require.True(t, origin.IsDiagonalTo(world.Tile{X: 11, Y: 11}))
+}
+
+// INV-WORLD-005, el golden del mundo canónico: la huella SHA-256 del terreno
+// que genera EO_WORLD_SEED = 20260909 sobre 512 × 512. Si falla, el generador
+// cambió y con él el mapa de todo mundo ya creado, que el arranque rechazará
+// (VerifyTerrain). La respuesta correcta es un ADR y una migración de mundo,
+// no actualizar la constante.
+func TestElMundoCanonicoConservaSuHuella(t *testing.T) {
+	const huella = "15c841c2afc357cbd188700a803cb7cd8da4a3d34dce105eec29900ca79c5e40"
+	require.Equal(t, huella, fmt.Sprintf("%x", sha256.Sum256(world.Generate(512, 512, 20260909))))
 }

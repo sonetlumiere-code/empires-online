@@ -121,7 +121,7 @@ Regla operativa: **un dato pertenece a la capa más barata que preserve su garan
 | Grid del mundo cargado para consultas | RAM | Estructura de chunks del `world` | No se persiste | Recargable desde `world_chunks` |
 | Capa de ocupación (`blocked overlay`) | RAM | Derivada de `cities` y edificios | No se persiste (no muta el terreno base) | Recomputable al arrancar |
 | `epoch_ms`, semilla y dimensiones del mundo | PostgreSQL | `world_state` (`epoch_ms`, `seed`, `width`, `height`, `chunk_size`, `current_tick`) | Escrito en el bootstrap del mundo | Se pierde el origen temporal del mundo: crítico |
-| `tickNumber` actual | RAM | `Loop.tick`, contador monótono | Se reanuda desde `world_state.current_tick` al arrancar y avanza en **exactamente 1 por tick ejecutado** | Se reanuda desde `world_state.current_tick` |
+| `tickNumber` actual | RAM | `Loop.tick`, contador estrictamente creciente | Al arrancar se reancla al reloj, por encima de todo tick emitido antes ([ADR-015](../decisions/ADR-015-tick-continuity.md)), y avanza en **exactamente 1 por tick ejecutado** | `max(world_state.current_tick, (ahora − epoch_ms) / período)` |
 | Jugadores, civilizaciones, facciones, eras | PostgreSQL | `players`, `civilizations`, `factions`, `eras` | Write-through en creación | Pérdida inaceptable |
 | Ciudades y su `presence_state` / `protection_until` | PostgreSQL | `cities` | Write-through en cada transición de presencia | Pérdida inaceptable |
 | Unidades: ownership, tipo, `status` | PostgreSQL | `units` | Write-through en creación y en cambios de ownership/estado relevantes | Pérdida inaceptable |

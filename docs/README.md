@@ -154,6 +154,9 @@ elección de A\*: son decisiones del canon y de `architecture/`, no del registro
 | [decisions/ADR-010-authentication-game-ticket.md](decisions/ADR-010-authentication-game-ticket.md) | Autenticación por *game ticket* JWT de 60 s consumible una sola vez mediante `jti` en Redis. |
 | [decisions/ADR-011-movement-timed-polyline.md](decisions/ADR-011-movement-timed-polyline.md) | Movimiento persistido como polilínea temporizada en lugar de replay de ticks. |
 | [decisions/ADR-012-database-migrations.md](decisions/ADR-012-database-migrations.md) | Migraciones SQL versionadas con golang-migrate, embebidas en el binario del game server. |
+| [decisions/ADR-013-persistence-pipeline.md](decisions/ADR-013-persistence-pipeline.md) | La simulación asigna los ids de movimiento; la cola de persistencia ordena por entidad; el inicio y el cierre de un movimiento escriben la unidad en su transacción. |
+| [decisions/ADR-014-command-idempotency.md](decisions/ADR-014-command-idempotency.md) | La deduplicación de comandos vive sólo en Redis; un efecto durable no repetible lleva su `requestId` con `UNIQUE` en su propia fila. |
+| [decisions/ADR-015-tick-continuity.md](decisions/ADR-015-tick-continuity.md) | El tick se reancla al reloj en cada arranque: ningún número de tick se repite tras una caída. |
 
 ### 2.9 `roadmap/` — Plan
 
@@ -273,7 +276,7 @@ vivo.
 | Simulación | `internal/game/simulation`: vertical slice, órdenes, presencia, recuperación, territorios, ocultamiento en Safe Zones, caducidad de tratados. | `go test` |
 | Bordes | `internal/auth`, `internal/config`, `internal/protocol` (contract), `internal/websocket` (incluido un e2e de transporte con servidor real), `internal/httpapi`, `internal/persistence/memory`. | `go test` |
 | Persistencia | `internal/persistence/postgres` e `internal/persistence/redis`, contra PostgreSQL 16 y Redis reales. | Integración con `-race`: en la CI y en local sin Docker ([operations/local-development.md](operations/local-development.md) §3-bis). |
-| Esquema | Migraciones `000001` a `000003`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
+| Esquema | Migraciones `000001` a `000004`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
 | `apps/web` | Cliente Next.js 15 + React 19 + PixiJS 8: proyección isométrica, interpolación, estado del mundo, cliente WebSocket, overlay de territorios. | Vitest y `next build` en la CI. |
 | Despliegue de punta a punta | Alta, handshake, snapshot, movimiento, desconexión y reconexión contra un servidor vivo. | `pnpm run smoke`. |
 

@@ -40,7 +40,7 @@ El loop es la **única** goroutine autorizada a mutar el estado del mundo (ver
 | `EO_TICK_RATE_HZ` | 10 Hz por defecto; debe **dividir exactamente a 1000** (lo valida el arranque) | Configuración |
 | `tickDurationMs` | `1000 / EO_TICK_RATE_HZ` = **100 ms** | Derivado (`Config.TickDuration`) |
 | `epoch_ms` | Instante (epoch milliseconds) en que nació el mundo | `world_state.epoch_ms` → `loop.Config.EpochMs` |
-| `tickNumber` | `uint64` monótono; se **reanuda** desde `world_state.current_tick` (`loop.Config.StartTick`) y avanza en exactamente 1 por tick ejecutado | `Loop.tick` |
+| `tickNumber` | `uint64` estrictamente creciente; al arrancar se **reancla al reloj**, `loop.ResumeTick` = `max(world_state.current_tick, (ahora − epoch_ms) / tickDurationMs)` ([ADR-015](../decisions/ADR-015-tick-continuity.md)), y después avanza en exactamente 1 por tick ejecutado | `Loop.tick` |
 | `tickTime` | El instante `nowMs` con el que se ejecuta el tick: `Run` lo lee **una sola vez** del `Clock` inyectado (`l.clk.NowMs()`) y se lo pasa a `Step(nowMs)` | `Clock` |
 
 `tickTime` es **la noción de "ahora" que recorre el tick**. Todos los instantes durables
@@ -68,8 +68,8 @@ contador de ticks y el instante de simulación son dos cosas distintas y a prop�
   atrasara permanentemente el reloj del mundo.
 - El contador `tickNumber` es una etiqueta monótona para logs, métricas, snapshots (`world.snapshot.tick`)
   y continuidad tras un reinicio; no es un ancla temporal.
-- Tras una caída, el loop **no reproduce** los ticks perdidos: reanuda el contador desde
-  `world_state.current_tick` y el estado se reconstruye analíticamente desde `unit_movements`
+- Tras una caída, el loop **no reproduce** los ticks perdidos: reancla el contador al reloj, por encima
+  de todo tick emitido antes (ADR-015), y el estado se reconstruye analíticamente desde `unit_movements`
   (la posición es el último waypoint con `tMs <= T - start_time_ms`). Recuperar mil ticks de bucle
   sería inútil y peligroso; recalcular una polilínea es exacto y O(log n).
 

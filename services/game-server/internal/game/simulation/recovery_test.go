@@ -77,3 +77,19 @@ func TestRecuperacionRecomputaLaLlegadaDeUnaFilaQueNoCuadra(t *testing.T) {
 	assert.Equal(t, world.Tile{X: 11, Y: 10}, u.Tile())
 	assert.Equal(t, unit.StatusMoving, u.Status)
 }
+
+// INV-WORLD-004 / ADR-015: dentro de una ejecución el contador avanza en
+// exactamente uno por tick ejecutado, con el reloj quieto o dando saltos. Los
+// ticks que el loop descarta por ir por detrás no se cuentan, y ninguno se
+// repite.
+func TestElTickEsEstrictamenteCreciente(t *testing.T) {
+	h := newHarness(t)
+	anterior := h.state.Tick()
+	for i, salto := range []int64{0, 0, 100, 100, 5_000, 0, 100, 3_600_000, 100} {
+		h.clk.AdvanceMs(salto)
+		h.loop.Step(h.clk.NowMs())
+		require.Equal(t, anterior+1, h.state.Tick(), "paso %d (salto de %d ms)", i, salto)
+		require.Equal(t, h.state.Tick(), h.loop.Tick())
+		anterior = h.state.Tick()
+	}
+}
