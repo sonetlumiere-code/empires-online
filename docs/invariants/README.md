@@ -292,11 +292,11 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-PERSIST-001 | Una transacción durable confirmada no se pierde por una desconexión de WebSocket | CRITICO | DB, DOMAIN, TEST | ✓ | `TestElMovimientoContinuaConElJugadorDesconectado` |
-| INV-PERSIST-002 | Tras reinicio el estado reconstruido es consistente con lo confirmado antes del corte | CRITICO | DOMAIN, TEST | ✓ | `TestRecuperacionCompletaTrasReinicio` |
-| INV-PERSIST-003 | Ningún dato durable existe únicamente en Redis | CRITICO | DOMAIN, TEST | ○ | `TestPresenciaSeRegistraYExpira` |
-| INV-PERSIST-004 | El flush periódico nunca escribe una posición que contradiga un movimiento `ACTIVE` | ALTO | DOMAIN, TEST | ~ | `TestVolcadoPeriodicoNoOcurreEnCadaTick` |
-| INV-PERSIST-005 | Las migraciones son ordenadas, idempotentes en su aplicación e inmutables tras publicarse | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_PERSIST_005_MigrationsOrderedIdempotentImmutable` |
+| INV-PERSIST-001 | Una transacción durable confirmada no se pierde por una desconexión de WebSocket | CRITICO | DB, DOMAIN, TEST | ✓ | `TestElMovimientoContinuaConElJugadorDesconectado`, `TestCancelarElProcesoNoCancelaUnaEscrituraEnVuelo`, `TestAlPararElLoopVuelcaLoQueQuedabaSucio` |
+| INV-PERSIST-002 | Tras reinicio el estado reconstruido es consistente con lo confirmado antes del corte | CRITICO | DOMAIN, TEST | ✓ | `TestRecuperacionCompletaTrasReinicio`, `TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento` |
+| INV-PERSIST-003 | Ningún dato durable existe únicamente en Redis | CRITICO | DOMAIN, TEST | ~ | `TestNingunaClaveDelServidorQuedaSinCaducidad`; la idempotencia sigue sólo en Redis |
+| INV-PERSIST-004 | El flush periódico nunca escribe una posición que contradiga un movimiento `ACTIVE` | ALTO | DOMAIN, TEST | ○ | No se cumple: contradice SPEC-MOVEMENT (`Q-18`) |
+| INV-PERSIST-005 | Las migraciones son ordenadas, idempotentes en su aplicación e inmutables tras publicarse | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasMigracionesSonCorrelativasYCompletas`, `TestElMigradorEsIdempotente`, `TestUnEsquemaDirtyAbortaElMigrador` |
 
 ### SECURITY — [security.md](security.md)
 
@@ -380,9 +380,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 60 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 61 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 20 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 10 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 9 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
 > **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
@@ -391,13 +391,13 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Los 10 sin cobertura se deben a tres causas distintas que no conviene mezclar:
+Los 9 sin cobertura se deben a tres causas distintas que no conviene mezclar:
 
-1. **Marcas sin reconciliar.** `INV-PERSIST-003` cita tests que existen y pasan —los de integración se ejecutan en la CI y en local desde que se cerró `DEBT-19`—, pero nadie ha comprobado todavía que cubran el enunciado entero. Es trabajo de `EO-118` en [../roadmap/backlog.md](../roadmap/backlog.md), fila por fila.
+1. **Un invariante que el código no cumple.** `INV-PERSIST-004` contradice a [SPEC-MOVEMENT](../specs/movement.md), que prescribe volcar la posición en tránsito. Hasta que `Q-18` decida cuál de los dos manda, la fila queda en ○.
 2. **Nombres de test que nunca existieron.** Muchas filas citan un `Test_INV_*` que no está en la suite. Es el nombre previsto cuando se escribió la ficha, no un test. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 3. **Mecánica sin disparador.** Parte de `INV-GARR` describe efectos de una guarnición que ningún comando de red puede producir todavía (M7, entregable 6).
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY` e `INV-PLAYER` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las cuatro familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER` e `INV-PERSIST` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las cinco familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 
