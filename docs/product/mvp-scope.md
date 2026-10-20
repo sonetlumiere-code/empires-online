@@ -38,7 +38,7 @@ lugar de completar una capa entera. Ver [glossary.md](glossary.md) → *Vertical
 | IN-07 | **Unit `VILLAGER`** | hp 40, `baseMsPerTile` 600; estados `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`. | Un solo tipo de unidad basta para ejercitar todo el pipeline de movimiento. |
 | IN-08 | **Autenticación por game ticket** | JWT HS256, TTL 60 s, `aud: "game-server"`, `jti` consumido en Redis (`ticket:jti:{jti}`, TTL 120 s). Hoy lo emiten `POST /api/auth/register` y `POST /api/auth/login` del propio game server (`internal/httpapi`); trasladarlos a Next.js es el objetivo de ADR-010. | Sin identidad verificada no hay ownership, y sin ownership no hay autoridad del servidor. |
 | IN-09 | **Protocolo WebSocket v1** | C→S: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`. S→C: `session.welcome`, `session.pong`, `system.error`, `world.snapshot`, `entity.spawn`, `entity.update`, `entity.despawn`, `city.update`, `territory.update`, `unit.move.accepted`, `unit.move.rejected`, `unit.movement.started`, `unit.movement.completed`, `unit.movement.cancelled`. | Es la superficie mínima que cubre el flujo completo; cada mensaje extra es superficie de ataque y de mantenimiento. |
-| IN-10 | **Idempotencia** | `requestId` UUIDv4 obligatorio; Redis `idem:{playerId}:{requestId}` TTL 300 s + tabla `idempotency_keys` para comandos durables. | La reconexión implica reintentos; sin idempotencia el slice produce estado duplicado justo en el escenario que quiere demostrar. |
+| IN-10 | **Idempotencia** | `requestId` UUIDv4 obligatorio; Redis `idem:{playerId}:{requestId}` TTL 300 s ([ADR-014](../decisions/ADR-014-command-idempotency.md)). | La reconexión implica reintentos; sin idempotencia el slice produce estado duplicado justo en el escenario que quiere demostrar. |
 | IN-11 | **Interest management por chunk** | Radio `EO_INTEREST_RADIUS_CHUNKS` = 2; centro inicial en la ciudad; actualizable con `session.view` (rate-limited). | Es lo que hace que `world.snapshot` sea acotado y que el cliente no reciba el mundo entero. |
 | IN-12 | **Game loop 10 Hz** | Ocho fases en orden fijo; sin I/O bloqueante de PostgreSQL dentro del tick; métricas `eo_game_tick_duration_seconds` y `eo_game_tick_overruns_total`. | Es el pilar 1 hecho código. |
 | IN-13 | **A\* con heurística octile** | 8 direcciones, sin *corner cutting*, escalas enteras `costScaleOrtho = 1000` / `costScaleDiag = 1414`, heurística ponderada por `MinTerrainCostUnits = 6` (`ROAD`), desempate `(f, h, y, x)`, límites `EO_PATHFINDING_MAX_NODES` (20000) y `EO_PATHFINDING_MAX_DISTANCE` (256). La ruta devuelta incluye el tile de origen. | El pathfinding autoritativo es la única forma de que el cliente no aporte caminos. |
@@ -225,9 +225,9 @@ arrancó en la máquina de desarrollo. Los criterios `[manual]` (AC-32 a AC-34) 
 - **AC-09** `[integration]` El campo `seq` es estrictamente monótono creciente dentro de una conexión.
 - **AC-10** `[integration]` Un mensaje mayor que `EO_WS_MAX_MESSAGE_BYTES` (16384) produce
   `MESSAGE_TOO_LARGE`; superar 20 msg/s con burst 40 produce `RATE_LIMITED` y, si persiste, cierre `4429`.
-- **AC-11** `[integration]` Reenviar un `unit.move` con el mismo `requestId` devuelve **la respuesta
-  original** y **no** crea un segundo movimiento; se comprueba en Redis (`idem:{playerId}:{requestId}`) y
-  en `idempotency_keys`.
+- **AC-11** `[integration]` Reenviar un `unit.move` con el mismo `requestId` **no** crea un segundo
+  movimiento; se comprueba en Redis (`idem:{playerId}:{requestId}`). Reenviar **la respuesta original** al
+  duplicado está pendiente: hoy se descarta sin respuesta ([INV-SEC-007](../invariants/security.md#inv-sec-007)).
 
 ### 4.3 Interés y sincronización
 

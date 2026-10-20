@@ -411,7 +411,8 @@ Precisiones que el protocolo v1 impone y esta spec acata:
 
 Los comandos cliente→servidor de guarnición son **TBD (fuera de MVP)**; cuando se añadan, entrarán
 por el mismo camino de validación e idempotencia que `unit.move` (`requestId` reservado con `SETNX`
-en Redis bajo la clave `idem:{playerId}:{requestId}` y respaldado por la tabla `idempotency_keys`).
+en Redis bajo la clave `idem:{playerId}:{requestId}`). Si su efecto durable no se puede repetir sin
+daño, guardarán además su `requestId` en la fila de `garrisons`, con `UNIQUE` ([ADR-014](../decisions/ADR-014-command-idempotency.md)).
 Detalle en [websocket-protocol.md](websocket-protocol.md).
 
 ## 13. Tests esperados

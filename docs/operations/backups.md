@@ -20,10 +20,11 @@ Política de respaldo de Empires Online: qué se respalda y qué no, backups com
 | Secretos (`EO_AUTH_JWT_SECRET`, DSN) | Sí, en el gestor de secretos, **nunca junto a los backups** | Un backup cifrado y su clave en el mismo sitio no está cifrado |
 | Frontend en Vercel | No | Vercel conserva los despliegues; reconstruible desde el repositorio |
 
-Dentro de PostgreSQL, el respaldo es **completo**: las 17 tablas que crea la migración `000001`
-(`civilizations`, `factions`, `eras`, `players`, `world_state`, `world_chunks`, `cities`, `units`,
-`unit_movements`, `sessions`, `idempotency_keys`, `territories`, `territory_control`, `safe_zones`,
-`treaties`, `garrisons`, `world_events`) más la tabla `schema_migrations` que mantiene golang-migrate. No se
+Dentro de PostgreSQL, el respaldo es **completo**: las 16 tablas del esquema (`civilizations`, `factions`,
+`eras`, `players`, `world_state`, `world_chunks`, `cities`, `units`, `unit_movements`, `sessions`,
+`territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events`) más la tabla
+`schema_migrations` que mantiene golang-migrate. La migración `000001` creaba también `idempotency_keys`, que
+`000004` eliminó ([ADR-014](../decisions/ADR-014-command-idempotency.md)). No se
 excluye ninguna tabla "para ahorrar espacio": una restauración parcial produce un mundo inconsistente, que es
 peor que no tener mundo. Y `schema_migrations` menos que ninguna: sin ella, el binario no sabe en qué versión
 está el esquema restaurado.
@@ -46,7 +47,7 @@ Redis contiene, y solo contiene, estado que el sistema sabe reconstruir o del qu
 | Contenido | Clave | TTL | Qué pasa si desaparece |
 |---|---|---|---|
 | Presencia del jugador | `presence:player:{playerId}` | 30 s (`EO_PRESENCE_TTL_SECONDS`) | El heartbeat (cada 10 s) la reescribe. Y nadie pasa a `OFFLINE_PENDING` por perderla: esa transición la decide el game loop en RAM contra su propio `DisconnectGrace`, no leyendo la expiración de la clave. Redis mantiene la presencia para observadores externos y para el futuro multiproceso |
-| Idempotencia de comandos | `idem:{playerId}:{requestId}` | 300 s | Se pierde la deduplicación en memoria de los últimos 5 minutos. Los comandos **durables** siguen protegidos por la tabla `idempotency_keys` en Postgres |
+| Idempotencia de comandos | `idem:{playerId}:{requestId}` | 300 s | Se pierde la deduplicación de los últimos 5 minutos. No hay respaldo en PostgreSQL ([ADR-014](../decisions/ADR-014-command-idempotency.md)): con los comandos actuales, una reejecución deja el mundo igual |
 | Anti-replay del ticket | `ticket:jti:{jti}` | 120 s | Un ticket interceptado podría reutilizarse dentro de su TTL de 60 s. Riesgo acotado y temporal |
 | Sesiones, locks, cooldowns, caché | varias | varios | Se recalculan o se repueblan por uso |
 

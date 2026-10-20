@@ -165,19 +165,12 @@ CREATE INDEX cities_offline_pending_idx
 
 El cooldown **no está materializado** en una columna `protection_eligible_at_ms`: el corte se calcula en la aplicación (`now - EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`) y se pasa como parámetro. Así el valor de configuración vive en un solo sitio y no queda congelado dentro de una columna ni de un índice sobre expresión.
 
-### 2.6 Retención de claves de idempotencia — `idempotency_keys_expiry_idx`
+### 2.6 Retención de claves de idempotencia (eliminado)
 
-```sql
-DELETE FROM idempotency_keys WHERE expires_at < now();
-```
-
-```sql
-CREATE INDEX idempotency_keys_expiry_idx ON idempotency_keys (expires_at);
-```
-
-Sirve al barrido de retención: sin él, la limpieza escanearía la tabla entera cada vez. Ese barrido **todavía no está implementado**, coherentemente con que la tabla aún no tenga escritor. La búsqueda por clave (`WHERE player_id = $1 AND request_id = $2`) no necesita índice propio: **la clave primaria compuesta `(player_id, request_id)` ya lo es**, y además impide físicamente insertar dos veces la misma clave — dos ejecuciones concurrentes del mismo comando colisionan con `23505` en vez de duplicar el efecto. El prefijo `player_id` agrupa las claves del mismo jugador en páginas contiguas, lo que ayuda a la localidad de caché en una sesión activa.
-
-Recuérdese (§14 de [schema.md](./schema.md)) que **el MVP todavía no escribe esta tabla**: la deduplicación vigente es `idem:{playerId}:{requestId}` en Redis con `SETNX` y TTL 300 s. El índice existe para cuando el respaldo durable entre en servicio.
+La tabla `idempotency_keys` y su índice `idempotency_keys_expiry_idx` los eliminó la migración
+`000004_drop_idempotency_keys` ([ADR-014](../decisions/ADR-014-command-idempotency.md)): nunca tuvieron
+escritor. La deduplicación de comandos vive sólo en Redis, con TTL de 300 s, y no necesita índice ni barrido.
+El número de sección se conserva para no romper las referencias.
 
 ### 2.7 Leer el terreno — PK `(chunk_x, chunk_y)`
 
@@ -236,8 +229,6 @@ Inventario completo, con los nombres reales de la migración `000001`:
 | `cities_owner_idx` | `cities` | B-tree | §2.4 ciudad por owner |
 | `cities_offline_pending_idx` | `cities` | B-tree parcial | §2.5 cooldown de protección |
 | `cities_unique_center` | `cities` | B-tree único (constraint `UNIQUE`) | Un tile, una ciudad |
-| PK `(player_id, request_id)` | `idempotency_keys` | B-tree único compuesto | §2.6 deduplicación durable |
-| `idempotency_keys_expiry_idx` | `idempotency_keys` | B-tree | §2.6 retención |
 | PK `(chunk_x, chunk_y)` | `world_chunks` | B-tree único compuesto | §2.7 lectura del terreno |
 | `sessions_player_idx` | `sessions` | B-tree compuesto | §2.9 historial de conexiones |
 | `treaties_one_active_per_pair_and_type` | `treaties` | B-tree único parcial | Invariante de tratado |
@@ -246,7 +237,7 @@ Inventario completo, con los nombres reales de la migración `000001`:
 | `world_events_player_idx` | `world_events` | B-tree compuesto parcial | §2.9 auditoría por jugador |
 | `players_username_key`, `civilizations_code_key`, `factions_code_key`, `eras_code_key`, `eras_ordinal_key` | catálogos y `players` | B-tree único | Unicidad de identificadores naturales (índices implícitos de los `UNIQUE`) |
 
-Todos son B-tree. No hay GIN, GiST, BRIN ni hash en el MVP. Los `jsonb` (`unit_movements.path`, `world_events.payload`, `idempotency_keys.response`, `civilizations.traits`, `territories.resource_modifiers`) **no están indexados**: nunca se consultan por su contenido, sólo se leen enteros por la clave de su fila. Indexar un `jsonb` con GIN sin una consulta que lo aproveche es pagar el coste de escritura más caro del catálogo a cambio de nada.
+Todos son B-tree. No hay GIN, GiST, BRIN ni hash en el MVP. Los `jsonb` (`unit_movements.path`, `world_events.payload`, `civilizations.traits`, `territories.resource_modifiers`) **no están indexados**: nunca se consultan por su contenido, sólo se leen enteros por la clave de su fila. Indexar un `jsonb` con GIN sin una consulta que lo aproveche es pagar el coste de escritura más caro del catálogo a cambio de nada.
 
 ---
 
@@ -364,7 +355,8 @@ SELECT id, player_id, city_id, unit_type, x, y, hp, max_hp, status
 
 ```sql
 BEGIN;
-EXPLAIN (ANALYZE, BUFFERS) DELETE FROM idempotency_keys WHERE expires_at < now();
+EXPLAIN (ANALYZE, BUFFERS) DELETE FROM unit_movements
+ WHERE status <> 'ACTIVE' AND finished_at < now() - interval '7 days';
 ROLLBACK;
 ```
 

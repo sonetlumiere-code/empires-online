@@ -138,7 +138,7 @@ Las fichas de este catálogo citan **los nombres que la migración `000001_initi
 > - **No hay índice único sobre `cities.owner_player_id`**: `cities_owner_idx` es un índice normal. «Una ciudad por jugador» es una regla de dominio, no una constraint.
 > - **No existe `units.version`**: sólo `cities` tiene columna de concurrencia optimista.
 > - **`schema_migrations` no guarda checksums**: `golang-migrate` registra versión y estado `dirty`. La inmutabilidad de una migración publicada es convención de revisión, no comprobación automática.
-> - **`idempotency_keys` existe pero ninguna ruta escribe en ella**: la idempotencia vigente es la de Redis.
+> - **No hay idempotencia durable**: la deduplicación de comandos es sólo Redis, y `idempotency_keys` se eliminó en `000004` ([ADR-014](../decisions/ADR-014-command-idempotency.md)).
 >
 > Ninguna ficha de este catálogo debe declarar `DB` para una propiedad de esta lista.
 
@@ -294,7 +294,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 |---|---|---|---|---|---|
 | INV-PERSIST-001 | Una transacción durable confirmada no se pierde por una desconexión de WebSocket | CRITICO | DB, DOMAIN, TEST | ✓ | `TestElMovimientoContinuaConElJugadorDesconectado`, `TestCancelarElProcesoNoCancelaUnaEscrituraEnVuelo`, `TestAlPararElLoopVuelcaLoQueQuedabaSucio` |
 | INV-PERSIST-002 | Tras reinicio el estado reconstruido es consistente con lo confirmado antes del corte | CRITICO | DOMAIN, TEST | ✓ | `TestRecuperacionCompletaTrasReinicio`, `TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento` |
-| INV-PERSIST-003 | Ningún dato durable existe únicamente en Redis | CRITICO | DOMAIN, TEST | ~ | `TestNingunaClaveDelServidorQuedaSinCaducidad`; la idempotencia sigue sólo en Redis |
+| INV-PERSIST-003 | Ningún dato durable existe únicamente en Redis | CRITICO | DOMAIN, TEST | ✓ | `TestNingunaClaveDelServidorQuedaSinCaducidad`, `TestUnAlmacenSinTTLNoSeConstruye` |
 | INV-PERSIST-004 | El flush periódico nunca escribe una posición que contradiga un movimiento `ACTIVE` | ALTO | DOMAIN, TEST | ✓ | `TestUnaUnidadEnMarchaNoSeVuelca`, `TestConLaColaRealElMovimientoLlevaSuIdYCierraConSuPosicion` |
 | INV-PERSIST-005 | Las migraciones son ordenadas, idempotentes en su aplicación e inmutables tras publicarse | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasMigracionesSonCorrelativasYCompletas`, `TestElMigradorEsIdempotente`, `TestUnEsquemaDirtyAbortaElMigrador` |
 
@@ -380,8 +380,8 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 62 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 20 | Hay test real para parte del enunciado |
+| ✓ Cubierto | 63 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 19 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 8 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 

@@ -410,7 +410,8 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
 ### Entregables
 
 1. **HECHO** — Migración de `sessions` e `idempotency_keys`, con `sessions_player_idx` e
-   `idempotency_keys_expiry_idx`.
+   `idempotency_keys_expiry_idx`. `idempotency_keys` nunca tuvo escritor y la eliminó `000004`
+   ([ADR-014](../decisions/ADR-014-command-idempotency.md)).
 2. **BLOQUEADO por una decisión que el proyecto aplazó** — Emisión del game ticket desde una API route
    de Next.js en `apps/web`: JWT HS256 firmado con `EO_AUTH_JWT_SECRET`, TTL 60 s, claims
    `{ sub: playerId, jti, iat, exp, aud: "game-server" }`. **Hoy lo emite el propio game server** desde
@@ -463,11 +464,13 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
    lectura de 45 s y de escritura de 10 s. **Contrapresión explícita**: cola de comandos llena → el
    comando se descarta y se responde `INTERNAL_ERROR`; cola de salida de la sesión llena
    (`EO_WS_OUTBOUND_QUEUE_SIZE`, 256) → cierre `4500` y el cliente reconecta con un snapshot limpio.
-10. **HECHO** — **Idempotencia**: `Claim` reserva el `requestId` en Redis con `SETNX` sobre
-    `idem:{playerId}:{requestId}` y TTL 300 s antes de ejecutar, y en `idempotency_keys` para comandos
-    durables. Un `requestId` repetido devuelve la respuesta original sin re-ejecutar. Si Redis no
-    responde, el comando **se ejecuta igualmente**: se prefiere dejar jugar a bloquear al jugador, y es
-    una decisión consciente.
+10. **HECHO, con dos correcciones de `EO-118`** — **Idempotencia**: `Claim` reserva el `requestId` en
+    Redis con `SETNX` sobre `idem:{playerId}:{requestId}` y TTL 300 s antes de ejecutar, y un `requestId`
+    repetido no se re-ejecuta. Si Redis no responde, el comando **se ejecuta igualmente**: se prefiere
+    dejar jugar a bloquear al jugador, y es una decisión consciente. Este entregable decía además que el
+    registro iba también a `idempotency_keys` y que el duplicado recibía la respuesta original. Ninguna de
+    las dos cosas se implementó: la primera la descartó [ADR-014](../decisions/ADR-014-command-idempotency.md), y la segunda sigue pendiente —el
+    duplicado se descarta sin respuesta ([INV-SEC-007](../invariants/security.md#inv-sec-007))—.
 11. **HECHO** — **Códigos de error activos en M3**: `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_MESSAGE`,
     `UNSUPPORTED_VERSION`, `RATE_LIMITED`, `MESSAGE_TOO_LARGE`, `INTERNAL_ERROR`, y
     `NOT_IMPLEMENTED` para tipos declarados en el protocolo pero aún no implementados.

@@ -177,9 +177,13 @@ func (a *AuthAPI) Register() http.HandlerFunc {
 				return
 			}
 			if errors.Is(err, postgres.ErrPlacementContended) {
-				a.log.Error("alta sin emplazamiento estable tras varios intentos",
+				// Otras altas simultáneas ocuparon cada sitio elegido. No es un fallo del
+				// servidor ni falta de sitio: reintentar en un momento lo resuelve.
+				a.log.Warn("alta sin emplazamiento estable tras varios intentos",
 					"err", err, "username", creds.Username)
-				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "no se pudo crear el jugador")
+				w.Header().Set("Retry-After", "1")
+				writeError(w, http.StatusServiceUnavailable, "SITE_CONTENDED",
+					"otras altas simultáneas ocuparon el sitio; vuelve a intentarlo")
 				return
 			}
 			if errors.Is(err, player.ErrUsernameTaken) {

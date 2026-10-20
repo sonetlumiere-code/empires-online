@@ -609,7 +609,7 @@ Migraciones existentes hoy:
 
 | Archivo | Contenido |
 |---|---|
-| `000001_initial_schema` | Esquema completo: `civilizations`, `factions`, `eras`, `players`, `world_state`, `world_chunks`, `cities`, `units`, `unit_movements`, `sessions`, `idempotency_keys`, `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events` |
+| `000001_initial_schema` | Esquema completo: `civilizations`, `factions`, `eras`, `players`, `world_state`, `world_chunks`, `cities`, `units`, `unit_movements`, `sessions`, `idempotency_keys` (eliminada en `000004`), `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events` |
 | `000002_seed_catalogs` | Catálogos: civilizaciones ROMAN/BYZANTINE/PERSIAN/NORSE, facciones ORDER/CHAOS/NEUTRAL, eras STONE_AGE(20)/BRONZE_AGE(50)/IRON_AGE(100)/CASTLE_AGE(150) |
 | `000003_territory_control_version` | Columna `version` de `territory_control`, para la concurrencia optimista del cambio de dueño |
 

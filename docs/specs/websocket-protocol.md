@@ -805,7 +805,7 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 | I-8 | Los reintentos tras reconexión son seguros: reenviar `unit.move` con el mismo `requestId` no crea un segundo movimiento. Es el mecanismo previsto para redes inestables. Como el duplicado no responde (I-5), el cliente debe converger con el `world.snapshot` de la reconexión, no esperando un ack. |
 | I-9 | **Si Redis no responde, el comando se ejecuta igualmente.** Se prefiere dejar jugar a bloquear al jugador por una caída de la caché. El fallo se registra con nivel `warn`. Es una decisión consciente: durante una indisponibilidad de Redis la garantía de I-5 queda suspendida y un reintento puede duplicar el efecto. |
 
-La tabla `idempotency_keys` existe en la migración `000001` (con su índice `idempotency_keys_expiry_idx` sobre `expires_at`) y es la sede prevista de la variante durable, pero **el servidor no escribe en ella todavía**: la deduplicación es hoy Redis-only, y por tanto se pierde si Redis se vacía. Lo mismo vale para la tabla `sessions`: existe en el esquema, pero la sesión vive en RAM y en la clave `presence:player:{playerId}` de Redis.
+**No hay variante durable, por diseño** ([ADR-014](../decisions/ADR-014-command-idempotency.md)): la deduplicación es sólo Redis, y se pierde si Redis se vacía. La tabla `idempotency_keys`, que la preveía y nunca se escribió, se eliminó en `000004`. Un comando futuro con efectos durables no repetibles guardará su `requestId` en la fila de su efecto, con `UNIQUE`. Lo mismo vale para la tabla `sessions`: existe en el esquema, pero la sesión vive en RAM y en la clave `presence:player:{playerId}` de Redis.
 
 ## 11. Ordenamiento y entrega
 

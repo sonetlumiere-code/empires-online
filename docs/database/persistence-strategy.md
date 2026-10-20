@@ -42,7 +42,7 @@ Leyenda de la columna **Clase**:
 | `ticket:jti:{jti}` | no | — | — | — (TTL 120 s) | TR |
 | Interest sets / suscripciones por chunk | sí | — | — | sí, desde `session.hello` y `session.view` | RC |
 | `world_events` | no | sí, junto al hecho que lo origina | — | — | TX |
-| `sessions`, `idempotency_keys` | RAM / Redis | **todavía no se escriben** (tablas creadas sin escritor) | — | — | — |
+| `sessions` | RAM / Redis | **todavía no se escribe** (tabla creada sin escritor) | — | — | — |
 | `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons` | — | cuando su lógica se active | — | — | — |
 
 **Consecuencia clave:** la posición de una unidad en movimiento **no se escribe por tick** —eso es lo que el diseño prohíbe—, pero sí converge en el lote de flush cada 50 ticks, porque avanzar de waypoint marca la unidad como sucia. No es una contradicción con la reconstruibilidad: mientras exista un `unit_movements` `ACTIVE`, la posición autoritativa es la derivada de la polilínea (`PositionAt`), y la recuperación la usa **en lugar** de `units.x/y`. La columna es un denormalizado de convergencia, no una segunda fuente de verdad, y por eso una posición de flush de hace 4,9 s nunca gana a la derivación.
@@ -309,7 +309,7 @@ RPO = cantidad máxima de trabajo confirmado que puede perderse ante un crash de
 | Ownership de ciudad (`cities.owner_player_id`) | **0** | Se escribe en esa misma transacción de alta y después no cambia en el MVP. Dato con el mayor coste de inconsistencia percibida: "me robaron la ciudad" es irreparable socialmente. |
 | Transiciones de presencia y protección | **≈ ventana de cola** (unas decenas de ms) | El objetivo de diseño es 0 —determinan si una ciudad es atacable—, pero el `UPDATE` va encolado: si el proceso muere antes del `COMMIT`, la transición se pierde y al rearrancar la ciudad vuelve a evaluarse desde su `last_offline_at`, que es la reconciliación que contiene el daño. |
 | Inicio / cancelación / finalización de movimiento | **≈ ventana de cola** (unas decenas de ms) | Es la ventana honesta del modelo, no un descuido: ver el recuadro que sigue a esta tabla. |
-| `idempotency_keys` de comandos durables | **n/a en MVP** | La tabla existe pero **no tiene escritor**: la deduplicación vigente es `idem:{playerId}:{requestId}` en Redis, con el RPO de la fila correspondiente más abajo. |
+| Deduplicación de comandos | **n/a** | Sólo Redis (`idem:{playerId}:{requestId}`, 300 s), con el RPO de la fila correspondiente más abajo. La tabla `idempotency_keys` se eliminó en `000004` ([ADR-014](../decisions/ADR-014-command-idempotency.md)). |
 | Posición de unidad en movimiento | **0 efectivo** | No se persiste por tick, pero es reconstruible de la polilínea ya persistida. La derivación es exacta, no aproximada. |
 | Posición consolidada de unidad en reposo (`units.x/y`) | **≤ 5 s** (50 ticks) + latencia de cola | Es un denormalizado de convergencia. En el peor caso se recupera del último `unit_movements`, por lo que la pérdida real observable tiende a cero. |
 | `units.hp` | **≤ 5 s** + latencia de cola | Sin combate en MVP el HP prácticamente no cambia; 5 s es holgadamente suficiente. Se revisará al entrar combate. |

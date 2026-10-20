@@ -98,14 +98,14 @@ sin evidencia local es la imagen del contenedor, que sólo se construye en la CI
 
 | ID | Título | Milestone | Prioridad | Tamaño | Dependencias | Criterio de aceptación |
 |---|---|---|---|---|---|---|
-| EO-040 | Migración de `sessions` e `idempotency_keys` | M3 | P0 | S | EO-011 | Ambas tablas existen y una clave de idempotencia duplicada es rechazada por restricción. |
+| EO-040 | Migración de `sessions` e `idempotency_keys` | M3 | P0 | S | EO-011 | Ambas tablas existen y una clave de idempotencia duplicada es rechazada por restricción. `idempotency_keys` la eliminó `000004` ([ADR-014](../decisions/ADR-014-command-idempotency.md)). |
 | EO-041 | API route de Next.js que emite el game ticket | M3 | P0 | M | EO-003, EO-055 | **Abierto.** Devuelve un JWT HS256 con TTL 60 s y claims `sub`, `jti`, `iat`, `exp` y `aud: "game-server"`. Hoy lo emite el game server desde `POST /api/auth/register` y `POST /api/auth/login`: ver `DEBT-18`. |
 | EO-042 | Verificación del ticket y consumo del `jti` en Redis | M3 | P0 | M | EO-006, EO-041 | Un `jti` reutilizado dentro de los 120 s de TTL cierra la conexión con `4401`. |
 | EO-043 | Endpoint `/ws` y handshake `session.hello` | M3 | P0 | M | EO-042 | No enviar `session.hello` en 5 segundos produce cierre `4408`. |
 | EO-044 | Envelopes del protocolo con `seq` monótono y `ts` del servidor | M3 | P0 | M | EO-013, EO-043 | `seq` es estrictamente creciente en toda la vida de una conexión. |
 | EO-045 | `session.ping` / `session.pong` y keepalive | M3 | P1 | S | EO-044 | El servidor envía ping cada 15 s y cierra la conexión tras 45 s sin lectura. |
 | EO-046 | Rate limiting y límite de tamaño de mensaje | M3 | P0 | M | EO-044 | Un mensaje de 16385 bytes produce `MESSAGE_TOO_LARGE` y una ráfaga por encima del burst produce `RATE_LIMITED`. |
-| EO-047 | Idempotencia por `requestId` en Redis y en `idempotency_keys` | M3 | P0 | M | EO-040, EO-044 | Repetir un `requestId` devuelve la respuesta original y no produce un segundo efecto. |
+| EO-047 | Idempotencia por `requestId` en Redis y en `idempotency_keys` | M3 | P0 | M | EO-040, EO-044 | Repetir un `requestId` devuelve la respuesta original y no produce un segundo efecto. **Hecho a medias**: no hay segundo efecto, pero el duplicado no recibe la respuesta original, y el registro en `idempotency_keys` lo descartó [ADR-014](../decisions/ADR-014-command-idempotency.md). |
 | EO-048 | Interest management por chunks con radio configurable | M3 | P0 | L | EO-021, EO-044 | El conjunto suscrito es el área de 5×5 chunks alrededor del centro, correctamente recortada en los bordes del mundo. |
 | EO-049 | `world.snapshot` al conectar centrado en la ciudad | M3 | P0 | M | EO-036, EO-048 | El snapshot inicial contiene la ciudad del jugador y sus tres aldeanos, y nada fuera del área de interés. |
 | EO-050 | `entity.spawn`, `entity.update` y `entity.despawn` | M3 | P0 | M | EO-048 | Un cambio de suscripción produce exactamente los spawns y despawns esperados, sin duplicados ni huecos. |

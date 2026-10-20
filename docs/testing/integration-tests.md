@@ -240,7 +240,7 @@ Para todo lo anterior. Se confirman las transacciones de verdad y, al terminar, 
 TRUNCATE TABLE
     unit_movements, units, garrisons, territory_control, territories,
     safe_zones, treaties, world_events, cities, sessions,
-    idempotency_keys, players, world_chunks, world_state
+    players, world_chunks, world_state
 RESTART IDENTITY CASCADE;
 ```
 
@@ -388,18 +388,18 @@ I25 es el test que hace cumplir el principio del canon §1.4: **Redis nunca sust
 
 ### 5.5 Idempotencia de un `requestId` repetido
 
-Canon §13: `requestId` se registra en Redis (`idem:{playerId}:{requestId}`, TTL 300 s) y, para comandos durables, también en `idempotency_keys` (`UNIQUE (player_id, request_id)`). Un `requestId` repetido **devuelve la respuesta original, no re-ejecuta**.
+Canon §13 y [ADR-014](../decisions/ADR-014-command-idempotency.md): `requestId` se registra en Redis (`idem:{playerId}:{requestId}`, TTL 300 s), sin respaldo durable. Un `requestId` repetido dentro de esa ventana **no se re-ejecuta**; hoy además se descarta sin respuesta, y reenviar la respuesta original está pendiente.
 
 | # | Test | Escenario | Aserciones |
 |---|---|---|---|
 | **I27** | `Test_INV_SEC_007_RepeatedRequestIdIsIdempotent` | Mismo `unit.move` con el mismo `requestId`, dos veces | Exactamente **1** fila en `unit_movements`; ambas respuestas tienen el mismo `payload` (el `seq` difiere, porque es por conexión) |
 | **I28** | `TestIdempotency_RedisKeyIsWrittenWithCorrectTtl` | Comando aceptado | Existe `idem:{playerId}:{requestId}` con TTL ≈ 300 s |
-| **I29** | `TestIdempotency_DurableTableSurvivesRedisFlush` | Ejecutar, `FLUSHDB`, repetir el comando | Sigue siendo idempotente: la fila de `idempotency_keys` es la segunda línea de defensa. **1** sola fila en `unit_movements` |
+| **I29** | `TestIdempotency_RedisFlushAllowsReexecution` | Ejecutar, `FLUSHDB`, repetir el comando | Se re-ejecuta: no hay respaldo durable (ADR-014). Con `unit.move`, el segundo cancela el primero con `REPLACED` y el mundo acaba igual |
 | **I30** | `TestIdempotency_ConcurrentDuplicateExecutesOnce` | Dos frames idénticos procesados en el mismo tick | Una sola ejecución; dos respuestas con idéntico `payload` |
 | **I31** | `TestIdempotency_DifferentRequestIdExecutesAgain` | Mismo comando, `requestId` distinto | **2** movimientos: el primero queda `CANCELLED` (el mensaje lleva `reason: "REPLACED"`, que no se persiste), el segundo `ACTIVE` |
 | **I32** | `TestIdempotency_ScopedByPlayer` | Mismo `requestId` de dos jugadores distintos | Ambos se ejecutan: la clave es `(player_id, request_id)`, no `request_id` solo |
 | **I33** | `TestIdempotency_RejectedCommandIsNotCached` | Comando rechazado con `TARGET_NOT_WALKABLE`, reintentado con el mismo `requestId` tras desbloquear el destino | Decisión de MVP: los rechazos **no** consumen la clave de idempotencia; el reintento se evalúa de nuevo. Se documenta explícitamente para que el comportamiento sea deliberado |
-| **I34** | `TestIdempotency_ExpiredKeyAllowsReexecution` | Clave vencida (TTL corto inyectado) y fila de `idempotency_keys` purgada | El comando se ejecuta de nuevo. Es correcto: pasados 300 s el cliente ya no está reintentando |
+| **I34** | `TestIdempotency_ExpiredKeyAllowsReexecution` | Clave vencida (TTL corto inyectado) | El comando se ejecuta de nuevo. Es correcto: pasados 300 s el cliente ya no está reintentando |
 
 ### 5.6 Recuperación tras caída del servidor
 

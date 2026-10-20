@@ -313,7 +313,7 @@ El repositorio importa tanto como el runtime: un secreto commiteado sigue en el 
 > **Alcance real hoy, y la parte que falta.** La deduplicación implementada es la de Redis: `IdempotencyStore.Claim` reserva `idem:{playerId}:{requestId}` con `SETNX` y TTL 300 s antes de ejecutar, y un duplicado **se ignora en silencio** (log `debug`, sin respuesta al cliente). Dos piezas del diseño **no están implementadas todavía** y no deben darse por hechas:
 >
 > 1. **La respuesta original no se reemite.** `IdempotencyStore.Complete` existe para guardarla, pero el borde no la devuelve: el segundo envío no recibe nada. El cliente que reintenta tras perder la respuesta sigue sin recibirla; lo que sí obtiene es la garantía de que no habrá un segundo efecto.
-> 2. **`idempotency_keys` no se escribe.** La tabla existe en `000001_initial_schema.up.sql` con `PRIMARY KEY (player_id, request_id)`, pero **ninguna ruta de código inserta en ella**. El respaldo durable de la idempotencia es diseño pendiente, no garantía vigente. Por eso esta ficha declara `BOUNDARY, TEST` y no `DB, DOMAIN`.
+> 2. **No hay respaldo durable, por diseño.** [ADR-014](../decisions/ADR-014-command-idempotency.md) decidió que la deduplicación es de corto plazo y vive sólo en Redis; la tabla `idempotency_keys`, que nunca se escribió, se eliminó en `000004`. Un comando futuro con efectos no repetibles guardará su `requestId` en la fila de su efecto, con `UNIQUE`. Por eso esta ficha declara `BOUNDARY, TEST` y no `DB, DOMAIN`.
 
 **Razón.** Es lo que hace segura la reconexión. El `requestId` es un UUIDv4 obligatorio en todo comando (canon §13), y el cliente reintenta cuando pierde la conexión sin haber recibido respuesta —que es exactamente el caso en que **no sabe** si el comando se ejecutó. Sin idempotencia, la única opción segura para el cliente sería no reintentar nunca, lo que haría que cada corte de red perdiera comandos.
 
@@ -340,7 +340,6 @@ Los efectos de una reejecución no son simétricos:
 - `TestReleaseLiberaLaReserva` (integration, `internal/persistence/redis`) — **diseñado, aún no ejecutado**: liberar permite reintentar con el mismo `requestId`.
 - `packages/protocol` (Vitest) — **existe y pasa**: «exige requestId con formato UUID».
 - Test previsto: `Test_INV_SEC_007_IdempotencyAcrossReconnect` (integration) — comando enviado, socket cortado antes de la respuesta, reconexión y reenvío con el mismo `requestId`: un solo efecto.
-- Test previsto: `Test_INV_SEC_007_DurableCommandsRecordedInPostgres` (integration) — **para cuando se implemente**: todo comando durable deja su fila en `idempotency_keys`.
 
 **Violación en runtime.** Detección en una aserción posterior que compara el recuento de efectos con el número de `requestId` distintos. Log `invariant_violation` con `inv_id=INV-SEC-007`, `player_id` y `request_id`. Política `REJECT`: el comando duplicado no se ejecuta. Un segundo efecto **consumado** no se revierte automáticamente —revertir un efecto de gameplay es en sí un efecto de gameplay—: se registra en `world_events` y se escala.
 
@@ -361,7 +360,7 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | Fuga de credenciales | [INV-SEC-006](#inv-sec-006) |
 | Evasión de la protección por desconexión | [INV-CITY-005](city.md#inv-city-005), [INV-CITY-006](city.md#inv-city-006) |
 
-**Fuera de MVP**, sin invariante asignado y **TBD**: cifrado en reposo de la base de datos, rotación automatizada de secretos, auditoría de acciones administrativas, detección de bots y automatización de cliente, protección anti-DDoS a nivel de red, moderación y anti-abuso de chat (no hay chat en MVP, canon §21), rate limiting agregado por jugador a través de múltiples conexiones simultáneas, sub-límite de tasa dedicado para `session.view`, token bucket durante el handshake, y respaldo durable de la idempotencia en `idempotency_keys`.
+**Fuera de MVP**, sin invariante asignado y **TBD**: cifrado en reposo de la base de datos, rotación automatizada de secretos, auditoría de acciones administrativas, detección de bots y automatización de cliente, protección anti-DDoS a nivel de red, moderación y anti-abuso de chat (no hay chat en MVP, canon §21), rate limiting agregado por jugador a través de múltiples conexiones simultáneas, sub-límite de tasa dedicado para `session.view`, y token bucket durante el handshake. El respaldo durable de la idempotencia no es una carencia sino una decisión: [ADR-014](../decisions/ADR-014-command-idempotency.md).
 
 ## Trazabilidad
 

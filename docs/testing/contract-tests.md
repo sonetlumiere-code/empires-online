@@ -236,7 +236,7 @@ Canon §14: el cliente abre la conexión y envía `session.hello { ticket }` **c
 
 **El enum de `reason` es `REPLACED | CANCELLED_BY_PLAYER | PATH_BLOCKED | UNIT_DEAD | SERVER`** (`movement.CancelReason`, transmitido como cadena en `unit.movement.cancelled.payload.reason`). Un test que espere `SUPERSEDED` o `PLAYER_REQUEST` está escrito contra un contrato que no existe: el reemplazo es `REPLACED` y la cancelación explícita del jugador es `CANCELLED_BY_PLAYER`.
 
-**Nota sobre la idempotencia.** La reserva del `requestId` se hace con `SETNX` en Redis antes de ejecutar (`Claim`), y si Redis no responde **el comando se ejecuta igualmente**: se prefiere jugar a bloquear al jugador. Un test de este nivel no puede verificar la garantía durable; la variante con `idempotency_keys` y el TTL de la clave vive en [integration-tests.md](./integration-tests.md) §5.5.
+**Nota sobre la idempotencia.** La reserva del `requestId` se hace con `SETNX` en Redis antes de ejecutar (`Claim`), y si Redis no responde **el comando se ejecuta igualmente**: se prefiere jugar a bloquear al jugador. Un test de este nivel no puede verificar el TTL de la clave; eso vive en [integration-tests.md](./integration-tests.md) §5.5.
 
 ### 5.8 Límites de tamaño y de tasa
 

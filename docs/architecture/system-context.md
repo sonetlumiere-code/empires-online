@@ -81,7 +81,7 @@ flowchart TB
         GS["<b>services/game-server</b> — IMPLEMENTADO<br/>Go (go.mod: go 1.23 mínimo) · binario único<br/>HTTP/WS en EO_HTTP_ADDR :8080<br/>métricas en EO_METRICS_ADDR :9090<br/>loop 10 Hz · simulación en RAM<br/>migraciones embebidas (go:embed)<br/>hoy también /api/auth/register y /login"]
     end
 
-    PG[("<b>PostgreSQL gestionado</b><br/>civilizations, factions, eras,<br/>players, world_state, world_chunks,<br/>cities, units, unit_movements,<br/>sessions, idempotency_keys,<br/>territories, territory_control, safe_zones,<br/>treaties, garrisons, world_events")]
+    PG[("<b>PostgreSQL gestionado</b><br/>civilizations, factions, eras,<br/>players, world_state, world_chunks,<br/>cities, units, unit_movements,<br/>sessions,<br/>territories, territory_control, safe_zones,<br/>treaties, garrisons, world_events")]
     RD[("<b>Redis gestionado</b><br/>presence:player:{playerId}<br/>ticket:jti:{jti}<br/>idem:{playerId}:{requestId}")]
     REG["Registro de contenedores"]
     OBS["Stack de observabilidad"]
@@ -170,7 +170,7 @@ La frontera crítica del sistema: es la única superficie por la que entra inten
 | **Dirección** | Game server → Redis. |
 | **Autenticación** | Credenciales en `EO_REDIS_URL`, por variable de entorno. Acceso restringido por red. |
 | **Datos que cruzan** | `presence:player:{playerId}` (TTL 30 s, heartbeat cada 10 s), `ticket:jti:{jti}` (TTL 120 s, anti-replay), `idem:{playerId}:{requestId}` (TTL 300 s), locks y cooldowns operativos, caché. |
-| **Si cae** | No se pueden **consumir** `jti`: se pierde la garantía anti-replay, de modo que se rechazan handshakes nuevos (`UNAUTHORIZED`, cierre `4401`) en vez de aceptar tickets sin protección. Las sesiones ya establecidas continúan. La idempotencia **queda sin red**: `claimRequest` registra un `level=warn` y **ejecuta el comando igualmente**, porque se prefiere jugar a bloquear al jugador. La tabla `idempotency_keys` existe en la migración 000001, pero **hoy ningún código la escribe**: la deduplicación es exclusivamente Redis. La presencia deja de expirar por TTL, lo cual no afecta a la simulación: la transición a `OFFLINE_PENDING` la decide el game loop en RAM contra `DisconnectGrace`, no leyendo la expiración de la clave. **Nada durable se pierde: Redis nunca sustituye a PostgreSQL (P4).** |
+| **Si cae** | No se pueden **consumir** `jti`: se pierde la garantía anti-replay, de modo que se rechazan handshakes nuevos (`UNAUTHORIZED`, cierre `4401`) en vez de aceptar tickets sin protección. Las sesiones ya establecidas continúan. La idempotencia **queda sin red**: `claimRequest` registra un `level=warn` y **ejecuta el comando igualmente**, porque se prefiere jugar a bloquear al jugador. La deduplicación es exclusivamente Redis, sin respaldo durable ([ADR-014](../decisions/ADR-014-command-idempotency.md)). La presencia deja de expirar por TTL, lo cual no afecta a la simulación: la transición a `OFFLINE_PENDING` la decide el game loop en RAM contra `DisconnectGrace`, no leyendo la expiración de la clave. **Nada durable se pierde: Redis nunca sustituye a PostgreSQL (P4).** |
 
 ### B7 · Registro de contenedores → VPS
 

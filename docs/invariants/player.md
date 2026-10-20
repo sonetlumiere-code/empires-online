@@ -194,7 +194,7 @@ Que sea `uuid` y no `bigint GENERATED ALWAYS AS IDENTITY` es la única excepció
 - `DB` — `players.id uuid PRIMARY KEY` en `000001_initial_schema.up.sql`. La unicidad es estructural.
 - `TYPE` — en Go el identificador es `uuid.UUID`, no `string` ni `int64`: un identificador mal formado no es representable, y no puede confundirse con el `bigint` de `units.id` o `cities.id` en una firma.
 - `DOMAIN` — el `uuid` lo genera el servidor en el alta, nunca el cliente. Ningún payload cliente→servidor de v1 transporta un identificador de jugador ([INV-PLAYER-004](#inv-player-004)).
-- `DB` — toda referencia a un jugador (`cities.owner_player_id`, `units.player_id`, `sessions.player_id`, `idempotency_keys.player_id`, `treaties.player_a_id`/`player_b_id`, `world_events.player_id`) es `uuid` con clave foránea hacia `players (id)`: no hay ninguna vía alternativa de identificación.
+- `DB` — toda referencia a un jugador (`cities.owner_player_id`, `units.player_id`, `sessions.player_id`, `treaties.player_a_id`/`player_b_id`, `world_events.player_id`) es `uuid` con clave foránea hacia `players (id)`: no hay ninguna vía alternativa de identificación.
 
 **Cómo se verifica.**
 

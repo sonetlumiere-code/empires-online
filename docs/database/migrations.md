@@ -318,16 +318,18 @@ services/game-server/migrations/
 
 ## 6. Migraciones del MVP
 
-Son **dos**, y ambas están escritas y embebidas. Cada una materializa lo descrito en [schema.md](./schema.md).
+Son **cuatro**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
 
 | # | Fichero | Contenido |
 |---|---|---|
 | `000001` | `initial_schema` | Todo el esquema, dentro de un único `BEGIN ... COMMIT`: la función `set_updated_at()`; los catálogos `civilizations`, `factions`, `eras`; `players`; `world_state` y `world_chunks`; `cities`, `units`, `unit_movements`; `sessions` e `idempotency_keys`; `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`; `world_events`. Además los seis triggers de `updated_at` y **todos** los índices, cada uno junto a su tabla (§4.4). `down`: `DROP TABLE` de las diecisiete tablas en orden inverso de dependencias más `DROP FUNCTION set_updated_at()` |
 | `000002` | `seed_catalogs` | Semilla idempotente con `id` explícito: 4 civilizaciones (`ROMAN`, `BYZANTINE`, `PERSIAN`, `NORSE`, con sus `traits`), 3 facciones (`ORDER`, `CHAOS`, `NEUTRAL`), 4 eras (`STONE_AGE` 20, `BRONZE_AGE` 50, `IRON_AGE` 100, `CASTLE_AGE` 150, con `ordinal` 1–4). Separada de `000001` porque estructura y datos tienen ciclos de vida distintos: el esquema se corrige con una migración de esquema, el catálogo con una de datos. `down`: `DELETE` de esas filas por su `code` |
+| `000003` | `territory_control_version` | Añade `version` a `territory_control` para la concurrencia optimista del cambio de dueño. |
+| `000004` | `drop_idempotency_keys` | Elimina `idempotency_keys`, que nunca tuvo escritor ([ADR-014](../decisions/ADR-014-command-idempotency.md)). Su `.down.sql` la recrea. |
 
 Por qué el esquema entero cabe en una sola migración y no en catorce: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido catorce oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
 
-A partir de `000003`, cada cambio irá en su propio fichero con un único propósito (§2.5).
+A partir de `000003`, cada cambio va en su propio fichero con un único propósito (§2.5).
 
 **Extensiones de PostgreSQL: ninguna.** Los `uuid` los genera la aplicación, no `gen_random_uuid()`, así que no se necesita ni `pgcrypto` ni ninguna función de núcleo concreta; y el "índice espacial" del MVP es un B-tree sobre `(chunk_x, chunk_y)`, así que no se necesita PostGIS. Cero extensiones significa que la imagen `postgres:16-alpine` del `docker-compose.yml` sirve tal cual y que un `pg_dump` restaura en cualquier instancia estándar.
 
@@ -391,7 +393,7 @@ Relación con las tablas del esquema:
 |---|---|---|
 | `world_chunks`, `world_state` | Baja | **Sí**, regenerable desde `seed` — el mapa se regenera desde la semilla en cada arranque, y `world_chunks` es la copia de auditoría |
 | `civilizations`, `factions`, `eras` | Baja | **Sí**, desde la migración `000002` |
-| `sessions`, `idempotency_keys` | Baja | No, pero son efímeras por diseño (`expires_at`) y hoy ni siquiera se escriben |
+| `sessions` | Baja | No, pero es efímera por diseño y hoy ni siquiera se escribe |
 | `players`, `cities`, `units` | **Crítica** | No |
 | `unit_movements` (`ACTIVE`) | Alta | No; se pierden órdenes en curso |
 | `world_events` | Media | No; es un log de auditoría |
@@ -424,7 +426,6 @@ Cuatro tablas crecen sin límite natural y necesitan una política. Ninguno de e
 
 | Tabla | Criterio | Mecanismo |
 |---|---|---|
-| `idempotency_keys` | `expires_at < now()` | Barrido periódico del servidor, **pendiente** —como la propia tabla, que aún no tiene escritor—. TTL 300 s, alineado con la clave `idem:{playerId}:{requestId}` de Redis |
 | `sessions` | Antigüedad; `remote_addr` es dato personal | Borrado o anonimización por antigüedad. Plazo concreto: **TBD (fuera de MVP)** |
 | `unit_movements` terminales | `status <> 'ACTIVE'` y antigüedad | Borrado por lotes. No afecta al índice único parcial, que sólo contiene filas `ACTIVE` |
 | `world_events` | Antigüedad | Borrado por lotes o particionado por rango de `occurred_at`. El particionado es **TBD (fuera de MVP)**: se decide cuando el volumen lo justifique, y hacerlo entonces es una migración de expand sobre una tabla ya grande, que exige la secuencia de §3 |

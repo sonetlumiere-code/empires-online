@@ -56,7 +56,7 @@ transacción, un jugador jugable con ciudad y unidades.
 | Jugador humano | Origen de toda intención. Todos los jugadores son humanos; la variedad viene de `Civilization`, no de razas (canon §0). |
 | Emisor del ticket | Firma el *game ticket* JWT HS256 con `EO_AUTH_JWT_SECRET`, `aud = "game-server"` y TTL 60 s. **Hoy es `services/game-server/internal/httpapi`** (`auth.Issuer`); en la arquitectura objetivo será `apps/web` (Next.js), que aún no existe. Nunca escribe estado de simulación. |
 | `services/game-server` (Go) | Único autoritativo. Verifica el ticket, consume el `jti`, crea la sesión, ejecuta el bootstrap y responde. |
-| PostgreSQL | *Durable source of truth*: `players`, `civilizations`, `factions`, `eras`, `cities`, `units`, `sessions`, `idempotency_keys`, `world_events`. |
+| PostgreSQL | *Durable source of truth*: `players`, `civilizations`, `factions`, `eras`, `cities`, `units`, `sessions`, `world_events`. |
 | Redis | *Hot state*: `ticket:jti:{jti}`, `presence:player:{playerId}`, idempotencia de comandos del protocolo. Nunca sustituye a PostgreSQL. |
 
 ## 4. Inputs
@@ -100,7 +100,7 @@ Respuesta de ambos endpoints (`201 Created` en el alta, `200 OK` en el login):
 ```
 
 Errores del alta, con su código HTTP: `INVALID_MESSAGE` (400), `INVALID_USERNAME` (400), `WEAK_PASSWORD`
-(400), `USERNAME_TAKEN` (409), `NO_SITE_AVAILABLE` (409), `INTERNAL_ERROR` (500). El login responde
+(400), `USERNAME_TAKEN` (409), `NO_SITE_AVAILABLE` (409), `SITE_CONTENDED` (503, con `Retry-After: 1`: otras altas simultáneas ocuparon cada sitio elegido y basta con reintentar), `INTERNAL_ERROR` (500). El login responde
 `UNAUTHORIZED` (401) tanto si el usuario no existe como si la contraseña no coincide, tras comparar
 igualmente contra un hash inválido para no revelar por tiempo qué nombres existen. **Estos códigos son
 del transporte HTTP provisional y no pertenecen al catálogo de 22 códigos del protocolo v1** (canon §16):
@@ -163,7 +163,7 @@ Dominio de reglas: `RN-PLAYER`.
 | `RN-PLAYER-003` | El nombre de cuenta es la columna **`players.username`**, no `display_name`: la tabla no tiene una columna de nombre visible separada. Es único (`UNIQUE` en la columna) y su formato se valida en **dos** niveles con la misma regla: `player.ValidateUsername` en el boundary y el `CHECK` `players_username_format` (`username ~ '^[A-Za-z0-9_-]{3,24}$'`) en PostgreSQL. Longitud 3..24 y únicamente `A-Z`, `a-z`, `0-9`, `_` y `-`. **No hay normalización NFKC ni recorte de espacios**, precisamente porque el alfabeto permitido es ASCII cerrado: normalizar sería resolver un problema que el `CHECK` ya impide. La lista de nombres reservados es `TBD (fuera de MVP)`. |
 | `RN-PLAYER-004` | Todo jugador tiene exactamente una `Civilization` y exactamente una `Global Faction`, ambas `NOT NULL` con FK. No hay valor nulo ni "sin asignar". |
 | `RN-PLAYER-005` | `Civilization` y `Global Faction` son **ejes ortogonales**: cualquier combinación del producto cartesiano es válida. No existe ninguna restricción, tabla de compatibilidad ni valor por defecto derivado del otro eje. |
-| `RN-PLAYER-006` | El alta HTTP **no** es idempotente por `requestId`. La defensa contra el alta duplicada es el `UNIQUE` de `players.username`, que traduce a `USERNAME_TAKEN` (409); un reintento con el mismo nombre no crea un segundo jugador. La tabla `idempotency_keys` existe y sirve a los **comandos del protocolo v1**, no a este endpoint. Dar idempotencia por `requestId` al alta es `TBD (fuera de MVP)` y llegará con `apps/web`. |
+| `RN-PLAYER-006` | El alta HTTP **no** es idempotente por `requestId`. La defensa contra el alta duplicada es el `UNIQUE` de `players.username`, que traduce a `USERNAME_TAKEN` (409); un reintento con el mismo nombre no crea un segundo jugador. La deduplicación por `requestId` sirve a los **comandos del protocolo v1**, no a este endpoint. Dar idempotencia por `requestId` al alta es `TBD (fuera de MVP)` y llegará con `apps/web`. |
 | `RN-PLAYER-007` | El alta es **atómica**: `players` + `cities` + 3 `units` + el `world_events` de auditoría se escriben en una sola transacción (`Bootstrapper.Create` sobre `Store.InTx`). Un fallo en cualquier paso deja la base de datos sin rastro del jugador. No existe estado intermedio "jugador sin ciudad" ni "ciudad sin aldeanos". |
 | `RN-PLAYER-008` | El game server nunca almacena ni registra contraseñas en claro: solo el `password_hash` de bcrypt, que se lee exclusivamente en `PlayerRepo.GetByUsername` y no viaja a ninguna otra capa ni a ningún log. Mientras el alta viva aquí (§4.1), la contraseña sí atraviesa el proceso el tiempo justo de derivar el hash; cuando el alta se mueva a `apps/web`, la única entrada de autenticación del game server será el ticket firmado. |
 | `RN-PLAYER-009` | El ticket se verifica en firma HS256, `exp` y `aud == "game-server"`, y su `jti` se consume una sola vez en Redis (`ticket:jti:{jti}`). Un ticket sin `jti` se rechaza: sin él no se puede impedir el replay. Un `jti` ya consumido se rechaza con `UNAUTHORIZED` y cierre `4401`. |
@@ -171,7 +171,7 @@ Dominio de reglas: `RN-PLAYER`.
 | `RN-PLAYER-011` | En MVP un jugador posee **exactamente una** ciudad. El área de interés inicial se centra en `cities.center_x` / `cities.center_y` de esa ciudad, con radio `EO_INTEREST_RADIUS_CHUNKS` (canon §13). Multi-ciudad es `Fuera de MVP`. |
 | `RN-PLAYER-012` | Los rasgos de civilización no se consultan con condicionales por código de civilización. Toda lectura pasa por `Civilization.Trait(key, def)` (§6.3). |
 | `RN-PLAYER-013` | La facción no restringe ninguna acción del MVP. Es un atributo persistido; su efecto sobre reglas es `Fuera de MVP`. |
-| `RN-PLAYER-014` | El emplazamiento de la ciudad inicial se elige **antes** de abrir la transacción, con `founding.FindSite`: espiral determinista desde `hashSeed(username)`, entorno despejado de radio 3, separación mínima de 24 tiles con cualquier centro de ciudad existente, y 3 aldeanos a radio 2 sobre tiles transitables. Si no hay sitio, el alta responde `NO_SITE_AVAILABLE` (409) y **no** se coloca al jugador «donde sea». Dentro de la transacción, bajo un `pg_advisory_xact_lock` que serializa las altas, el centro elegido se vuelve a comprobar con `founding.FarEnough` contra los centros ya confirmados; si otra alta se adelantó, la búsqueda se repite hasta tres veces y, agotadas, el alta responde `INTERNAL_ERROR` (500) sin escribir nada (`INV-CITY-008`). |
+| `RN-PLAYER-014` | El emplazamiento de la ciudad inicial se elige **antes** de abrir la transacción, con `founding.FindSite`: espiral determinista desde `hashSeed(username)`, entorno despejado de radio 3, separación mínima de 24 tiles con cualquier centro de ciudad existente, y 3 aldeanos a radio 2 sobre tiles transitables. Si no hay sitio, el alta responde `NO_SITE_AVAILABLE` (409) y **no** se coloca al jugador «donde sea». Dentro de la transacción, bajo un `pg_advisory_xact_lock` que serializa las altas, el centro elegido se vuelve a comprobar con `founding.FarEnough` contra los centros ya confirmados; si otra alta se adelantó, la búsqueda se repite hasta tres veces y, agotadas, el alta responde `SITE_CONTENDED` (503, `Retry-After: 1`) sin escribir nada (`INV-CITY-008`). |
 
 ### 6.1 Ortogonalidad Civilization × Global Faction
 
@@ -420,8 +420,6 @@ Respuesta a las cuatro preguntas del canon §12.
 - Creación de `players`, `cities` y `units` (el bootstrap completo, en una sola transacción), más la fila
   de auditoría en `world_events`.
 - Fila de `sessions` al aceptar el handshake y su cierre al desconectar.
-- `idempotency_keys` para el `requestId` de los **comandos del protocolo v1**, no para el alta HTTP
-  (`RN-PLAYER-006`).
 
 **3. Dirty-flag + flush periódico (`EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50`, 5 s)**
 

@@ -225,7 +225,7 @@ Los nueve códigos anteriores pertenecen al catálogo cerrado de 22 del protocol
 (`internal/protocol/codes.go`, verificado contra `@empires-online/protocol` por un contract test). El alta de
 jugador, en cambio, la sirve hoy `POST /api/auth/register` sobre HTTP y usa códigos **propios de esa API**, que
 no están en el catálogo y no deben confundirse con él: `NO_SITE_AVAILABLE` (409, `RN-CITY-006`),
-`USERNAME_TAKEN` (409), `INVALID_USERNAME` (400), `WEAK_PASSWORD` (400) e `INTERNAL_ERROR` (500).
+`USERNAME_TAKEN` (409), `INVALID_USERNAME` (400), `WEAK_PASSWORD` (400), `SITE_CONTENDED` (503) e `INTERNAL_ERROR` (500).
 
 ## 9. Invariantes (con ID)
 

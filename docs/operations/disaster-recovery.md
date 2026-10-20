@@ -305,7 +305,7 @@ la única copia de un hecho del mundo.
 | Contenido | Clave | TTL | Qué pasa al desaparecer |
 |---|---|---|---|
 | Presencia del jugador | `presence:player:{playerId}` | 30 s | El heartbeat cada 10 s la reescribe. Se restablece sola en ≤ 10 s. **No gobierna la transición a `OFFLINE_PENDING`**: eso lo decide el loop en RAM |
-| Idempotencia de comandos | `idem:{playerId}:{requestId}` | 300 s | Se pierde la deduplicación de los últimos 5 min. Los comandos **durables** siguen protegidos por `idempotency_keys` en Postgres. Además, si Redis no responde el comando **se ejecuta igualmente**: se prefiere jugar a bloquear al jugador |
+| Idempotencia de comandos | `idem:{playerId}:{requestId}` | 300 s | Se pierde la deduplicación de los últimos 5 min; no hay respaldo en PostgreSQL ([ADR-014](../decisions/ADR-014-command-idempotency.md)). Además, si Redis no responde el comando **se ejecuta igualmente**: se prefiere jugar a bloquear al jugador |
 | Anti-replay del ticket | `ticket:jti:{jti}` | 120 s | Un ticket interceptado podría reutilizarse dentro de su TTL de 60 s. Ventana estrecha y transitoria |
 | Sesiones, locks, cooldowns, caché | varias | varios | Se recalculan desde Postgres o se repueblan por uso |
 
@@ -327,8 +327,8 @@ Durante los segundos u horas que Redis esté vacío o ausente:
 2. **Idempotencia.** Un `requestId` repetido en la ventana de 5 minutos podría re-ejecutarse. La reserva se
    hace con `SETNX` en Redis **antes** de ejecutar, pero si Redis no responde el comando se ejecuta de todos
    modos: es una decisión consciente —se prefiere jugar a bloquear al jugador— y por eso Redis caído degrada
-   la deduplicación en vez de detener el juego. Para comandos durables la protección real está en
-   `idempotency_keys` (Postgres), así que el daño se limita a comandos no durables. Además, el invariante de
+   la deduplicación en vez de detener el juego. No hay respaldo durable ([ADR-014](../decisions/ADR-014-command-idempotency.md)): con los comandos
+   actuales, mover y cancelar, una reejecución deja el mundo igual. Además, el invariante de
    movimiento contiene el efecto: **una unidad tiene como máximo un movimiento `ACTIVE`**, garantizado por un
    índice único parcial en la base, y una orden nueva cancela la anterior en la misma transacción. Un
    `unit.move` duplicado produce, en el peor caso, un movimiento cancelado (`reason: REPLACED`) y otro

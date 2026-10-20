@@ -370,7 +370,7 @@ Redis es *hot/transient state*, **nunca** sustituto de PostgreSQL (canon §4). E
 |---|---|---|
 | Presencia de jugador | `presence:player:{playerId}`, TTL 30 s (`EO_PRESENCE_TTL_SECONDS`), heartbeat 10 s (`EO_PRESENCE_HEARTBEAT_SECONDS`) | TTL nativo; sobrevive al reinicio del proceso. **La transición a `OFFLINE_PENDING` NO la decide esta clave**: la decide el game loop en RAM comparando contra `DisconnectGrace`. Redis mantiene la presencia para observadores externos y para el futuro multiproceso |
 | Anti-replay de tickets | `ticket:jti:{jti}`, TTL 120 s | Se compartirá con `apps/web` cuando exista; **hoy lo escribe y lo consume el mismo proceso**, porque el ticket lo emite `internal/httpapi` |
-| Idempotencia de comandos | `idem:{playerId}:{requestId}`, TTL 300 s, reservado con `SETNX` antes de ejecutar | Expiración automática. La tabla `idempotency_keys` existe en la migración 000001 pero **hoy ningún código la escribe**: la deduplicación es solo Redis, y si Redis no responde el comando **se ejecuta igualmente** |
+| Idempotencia de comandos | `idem:{playerId}:{requestId}`, TTL 300 s, reservado con `SETNX` antes de ejecutar | Expiración automática. Sin respaldo durable ([ADR-014](../decisions/ADR-014-command-idempotency.md), la tabla `idempotency_keys` se eliminó en `000004`); si Redis no responde el comando **se ejecuta igualmente** |
 
 Con **un solo** proceso de simulación, toda la coordinación interna la da el runtime de Go: canales, mutexes y el propio orden de fases del tick. Pedirle a Redis lo que un canal resuelve en nanosegundos sería introducir una dependencia de red en el camino crítico a cambio de nada.
 

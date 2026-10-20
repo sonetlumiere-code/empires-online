@@ -96,7 +96,7 @@ sequenceDiagram
 | Request body | `{ "username": string, "password": string }` | `{ "username": string, "password": string }` |
 | Validación | `username` de 3 a 24 caracteres `[A-Za-z0-9_-]`; `password` de 8 o más | — |
 | Response 200/201 | `201` `{ playerId, ticket, expiresInSeconds: 60, city: { id, name, centerX, centerY } }` | `200` con el mismo cuerpo; `city` sólo si el jugador ya la tiene |
-| Errores | `400 INVALID_MESSAGE` / `INVALID_USERNAME` / `WEAK_PASSWORD`, `409 USERNAME_TAKEN` / `NO_SITE_AVAILABLE`, `405 METHOD_NOT_ALLOWED`, `500 INTERNAL_ERROR` | `400 INVALID_MESSAGE`, `401 UNAUTHORIZED` (mismo error y mismo coste aproximado para usuario inexistente y contraseña incorrecta), `405`, `500` |
+| Errores | `400 INVALID_MESSAGE` / `INVALID_USERNAME` / `WEAK_PASSWORD`, `409 USERNAME_TAKEN` / `NO_SITE_AVAILABLE`, `405 METHOD_NOT_ALLOWED`, `503 SITE_CONTENDED` (con `Retry-After: 1`), `500 INTERNAL_ERROR` | `400 INVALID_MESSAGE`, `401 UNAUTHORIZED` (mismo error y mismo coste aproximado para usuario inexistente y contraseña incorrecta), `405`, `500` |
 
 Es **explícitamente provisional**: la arquitectura objetivo de [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) traslada la emisión del ticket a `apps/web` (Next.js), que todavía no existe. El contrato del ticket —JWT HS256, `aud = "game-server"`, TTL 60 s, `jti` de un solo uso— no cambia con el traslado.
 
@@ -555,7 +555,7 @@ cliente ──unit.move{requestId=R}──> servidor
               y sin respuesta nueva          (validación, mutación, deltas)
 ```
 
-**Estado real de la doble barrera.** El diseño objetivo duplica el registro en la tabla `idempotency_keys` de PostgreSQL, dentro de la misma transacción que el efecto, para que un vaciado de Redis no abra una ventana de doble ejecución. La tabla existe en el esquema pero **todavía no se escribe**: hoy la deduplicación es exclusivamente de Redis. Cerrar esa brecha es trabajo pendiente y así debe leerse este documento.
+**No hay doble barrera, y es deliberado** ([ADR-014](../decisions/ADR-014-command-idempotency.md)). La deduplicación es exclusivamente de Redis y de corto plazo. Un registro durable aparte no podría ir en la misma transacción que el efecto —éste se aplica en RAM y su escritura va a la cola— y consultarlo antes de ejecutar pondría PostgreSQL en la ruta de cada comando. Un comando futuro cuyo efecto no se pueda repetir sin daño guardará su `requestId` en la fila de ese efecto, con `UNIQUE`. La tabla `idempotency_keys`, que nunca se escribió, se eliminó en `000004`.
 
 Dos matices sobre lo que el código hace y el diseño objetivo no:
 
@@ -632,5 +632,5 @@ Y, por separado, lo que **está diseñado y todavía no implementado** (distinto
 
 - `entity.spawn` / `entity.despawn` incrementales a partir del diff que ya devuelve `Hub.Subscribe`, en lugar de un `world.snapshot` completo por cada `session.view`.
 - Escritura de la fila de `sessions` en PostgreSQL.
-- Registro de idempotencia en `idempotency_keys` y reenvío de la respuesta original ante un `requestId` duplicado.
+- Reenvío de la respuesta original ante un `requestId` duplicado: hoy el duplicado se descarta sin respuesta.
 - Refresco de la presencia desde el servidor, sin depender de que el cliente envíe `session.ping`.

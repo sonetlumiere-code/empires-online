@@ -82,3 +82,13 @@ func TestUnEsquemaDirtyAbortaElMigrador(t *testing.T) {
 	assert.Contains(t, err.Error(), "dirty")
 	assert.Contains(t, err.Error(), "intervención manual")
 }
+
+// ADR-014: la migración 000004 elimina idempotency_keys, que nunca tuvo
+// escritor. La deduplicación de comandos vive sólo en Redis.
+func TestIdempotencyKeysYaNoExiste(t *testing.T) {
+	store, ctx := newTestStore(t)
+	var existe bool
+	require.NoError(t, store.Pool().QueryRow(ctx,
+		`SELECT to_regclass('public.idempotency_keys') IS NOT NULL`).Scan(&existe))
+	assert.False(t, existe)
+}

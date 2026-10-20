@@ -141,7 +141,7 @@ Este diseño es posible precisamente porque la posición es **analíticamente re
 | Aplicación | DOMAIN, TEST |
 | Milestone | M3 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Parcial**: `TestNingunaClaveDelServidorQuedaSinCaducidad`, `TestUnAlmacenSinTTLNoSeConstruye`, `TestPresenciaSeRegistraYExpira` y `TestLatidoRenuevaLaPresencia` (integration, `internal/persistence/redis`). La excepción de la idempotencia sigue abierta: su garantía vive sólo en Redis |
+| Cobertura | **Cubierto** por `TestNingunaClaveDelServidorQuedaSinCaducidad`, `TestUnAlmacenSinTTLNoSeConstruye`, `TestPresenciaSeRegistraYExpira` y `TestLatidoRenuevaLaPresencia` (integration, `internal/persistence/redis`). La deduplicación de comandos no es estado durable ([ADR-014](../decisions/ADR-014-command-idempotency.md)) |
 
 **Enunciado.** Todo dato clasificado como durable tiene su representación autoritativa en PostgreSQL. Redis contiene exclusivamente estado *hot/transient*: presencia, sesiones, locks, cooldowns, caché e idempotencia de corto plazo; vaciar Redis por completo no debe producir ninguna pérdida de estado durable.
 
@@ -157,9 +157,7 @@ Este diseño es posible precisamente porque la posición es **analíticamente re
 
 Si un dato durable viviera solo aquí, se perdería por expiración, por evicción bajo presión de memoria o por un reinicio de Redis, y lo haría **en silencio**: no hay error, simplemente el dato deja de estar. La prueba de fuego del invariante es directa: `FLUSHALL` no debe costar nada más que reconexiones y un recálculo de presencia.
 
-El caso límite que merece nombrarse es la idempotencia, y hoy es la **excepción reconocida** a este invariante. `idem:{playerId}:{requestId}` vive en Redis por velocidad, y el diseño prevé que para comandos durables el registro vaya **también** a `idempotency_keys` en PostgreSQL (canon §13), precisamente porque perder la clave de Redis permitiría reejecutar un comando durable. Esa segunda mitad **no está implementada**: la tabla existe y ninguna ruta escribe en ella ([INV-SEC-007](security.md#inv-sec-007)).
-
-La consecuencia honesta es que la garantía de idempotencia **sí** se pierde con un `FLUSHALL`, a diferencia de todo lo demás. No es estado de juego —no se pierde ninguna unidad, ninguna ciudad ni ningún movimiento—, pero sí es una garantía que el invariante promete y que hoy descansa sólo en Redis. Cerrar ese hueco es trabajo pendiente, y está listado como tal en [INV-SEC-007](security.md#inv-sec-007).
+El caso límite que merece nombrarse es la idempotencia. `idem:{playerId}:{requestId}` vive sólo en Redis, y un `FLUSHALL` borra la deduplicación de los últimos 300 s. [ADR-014](../decisions/ADR-014-command-idempotency.md) decidió que **no es estado durable**: es una protección de corto plazo contra reintentos, y con los comandos actuales —mover y cancelar— una reejecución deja el mundo igual. El diseño anterior preveía un respaldo en la tabla `idempotency_keys`, que nunca se escribió y se eliminó en `000004`. Un comando futuro cuyo efecto durable no se pueda repetir sin daño tendrá que ser idempotente por construcción: su `requestId` irá en la fila de su efecto, con `UNIQUE`, y entonces sí será estado durable en PostgreSQL ([INV-SEC-007](security.md#inv-sec-007)).
 
 **Cómo se garantiza.**
 
@@ -175,7 +173,7 @@ La consecuencia honesta es que la garantía de idempotencia **sí** se pierde co
 - `TestPresenciaSeRegistraYExpira`, `TestLatidoRenuevaLaPresencia`, `TestLatidoSobreClaveExpiradaDevuelveFalse` y `TestSoloLaSesionPropietariaRetiraLaPresencia` (integration) — la presencia nace con TTL, el latido la renueva y una sesión no borra la de otra.
 - Que vaciar Redis no pierde estado de juego es estructural: la rehidratación del arranque sólo lee PostgreSQL, y los tests de recuperación (`arrancar` en la suite de integración) arrancan sin Redis.
 
-**Violación en runtime.** Un almacén sin TTL no llega a construirse: el arranque aborta (`FAIL_FAST`). La pérdida de la idempotencia con un `FLUSHALL` es la excepción conocida, no una violación detectable.
+**Violación en runtime.** Un almacén sin TTL no llega a construirse: el arranque aborta (`FAIL_FAST`). Perder la deduplicación con un `FLUSHALL` no viola el invariante: no es estado durable.
 
 ---
 

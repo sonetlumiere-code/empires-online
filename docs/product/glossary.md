@@ -292,8 +292,9 @@ Ver: [../specs/presence.md](../specs/presence.md).
 ### Idempotency
 
 Garantía de que ejecutar el mismo comando dos veces produce el mismo efecto que ejecutarlo una vez. Se
-implementa registrando el *Request Id* en Redis (`idem:{playerId}:{requestId}`, **TTL 300 s**) y, para
-comandos durables, también en la tabla `idempotency_keys`.
+implementa registrando el *Request Id* en Redis (`idem:{playerId}:{requestId}`, **TTL 300 s**); un
+comando con efectos durables no repetibles lo guarda además en la fila de su efecto, con `UNIQUE`
+([ADR-014](../decisions/ADR-014-command-idempotency.md)).
 
 Regla canónica: **un `requestId` repetido devuelve la respuesta original, no re-ejecuta el comando**. Es
 lo que hace segura la reconexión y el reintento del cliente. La reserva se hace con `SETNX` antes de

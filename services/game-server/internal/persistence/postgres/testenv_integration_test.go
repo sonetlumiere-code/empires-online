@@ -143,7 +143,7 @@ func truncateAll(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	_, err := pool.Exec(ctx, `
 		TRUNCATE TABLE
 			world_events, garrisons, treaties, safe_zones,
-			territory_control, territories, idempotency_keys, sessions,
+			territory_control, territories, sessions,
 			unit_movements, units, cities, world_chunks, world_state, players
 		RESTART IDENTITY CASCADE`)
 	require.NoError(t, err, "no se pudo limpiar la base de pruebas")

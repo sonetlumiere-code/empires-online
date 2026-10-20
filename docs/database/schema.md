@@ -24,7 +24,6 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 | `world_state` | MVP: activa (fila única) | `WorldRepo.LoadOrInit` en el bootstrap + `SaveTick` de `current_tick` en el apagado ordenado |
 | `world_chunks` | MVP: activa | Generación determinista del mundo (`COPY`, una sola vez) |
 | `sessions` | MVP: creada; **el servidor aún no la escribe** | La sesión viva está en RAM y en Redis (`presence:player:{playerId}`) |
-| `idempotency_keys` | MVP: creada; **el servidor aún no la escribe** | La deduplicación del MVP es Redis (`idem:{playerId}:{requestId}`, `SETNX`) |
 | `schema_migrations` | MVP: activa (infraestructura) | golang-migrate |
 | `territories` | MVP: **activa** | Sembrada al primer arranque por el Game Server, no por una migración: la geometría debe caber en un mundo cuyas dimensiones son configuración |
 | `territory_control` | MVP: **activa** | Write-through transaccional en la fundación de la ciudad, con concurrencia optimista sobre `version` |
@@ -53,7 +52,6 @@ erDiagram
     players       ||--o{ cities : posee
     players       ||--o{ units : posee
     players       ||--o{ sessions : abre
-    players       ||--o{ idempotency_keys : deduplica
     eras          ||--o{ cities : "define population_cap"
     cities        ||--o{ units : "hogar / guarnición"
     units         ||--o{ unit_movements : "historial de movimiento"
@@ -148,13 +146,6 @@ erDiagram
         text remote_addr
         text client_version
     }
-    idempotency_keys {
-        uuid player_id PK
-        uuid request_id PK
-        text message_type
-        jsonb response
-        timestamptz expires_at
-    }
     world_events {
         bigint id PK
         text event_type
@@ -174,13 +165,13 @@ Estas reglas aplican a **todas** las tablas y no se repiten en cada ficha:
    - `players.id` y `sessions.id` son `uuid` (identificadores expuestos al cliente y a los JWT como claim `sub`; el `uuid` lo genera la aplicación, no la base);
    - los catálogos `civilizations`, `factions` y `eras` usan `integer` con **id explícito**, porque sus filas las fija la migración de semilla `000002` y esos números son estables entre entornos;
    - `world_state.id` es `smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1)`: el singleton no necesita una secuencia;
-   - las tablas cuya clave es natural o heredada: `world_chunks (chunk_x, chunk_y)`, `idempotency_keys (player_id, request_id)`, `territory_control (territory_id)` y `garrisons (unit_id)`.
+   - las tablas cuya clave es natural o heredada: `world_chunks (chunk_x, chunk_y)`, `territory_control (territory_id)` y `garrisons (unit_id)`.
 2. **Timestamps**: `timestamptz` siempre. Los instantes que la simulación compara con aritmética entera se guardan además como `bigint` en epoch milliseconds con sufijo `_time_ms` / `_ms` (ver §5). No todas las marcas humanas tienen contrapartida en milisegundos: sólo las que el dominio evalúa.
-3. **`created_at timestamptz NOT NULL DEFAULT now()`** en toda tabla. **`updated_at`** existe y lo mantiene un trigger, nunca la aplicación, sólo en las seis tablas que se actualizan de verdad: `players`, `world_state`, `cities`, `units`, `unit_movements` y `territory_control`. Las tablas de una sola escritura (`civilizations`, `factions`, `eras`, `world_chunks`, `safe_zones`, `territories`, `garrisons`, `idempotency_keys`) y las append-only (`world_events`) no la llevan.
+3. **`created_at timestamptz NOT NULL DEFAULT now()`** en toda tabla. **`updated_at`** existe y lo mantiene un trigger, nunca la aplicación, sólo en las seis tablas que se actualizan de verdad: `players`, `world_state`, `cities`, `units`, `unit_movements` y `territory_control`. Las tablas de una sola escritura (`civilizations`, `factions`, `eras`, `world_chunks`, `safe_zones`, `territories`, `garrisons`) y las append-only (`world_events`) no la llevan.
 4. **Enums de dominio como `text` + `CHECK`**, nunca tipos `ENUM` de PostgreSQL: añadir un valor a un `CHECK` es un `ALTER TABLE ... ADD CONSTRAINT ... NOT VALID` seguido de `VALIDATE`, sin lock exclusivo prolongado ni el problema de `ALTER TYPE ... ADD VALUE` dentro de transacción.
 5. **Concurrencia optimista**: `version integer NOT NULL DEFAULT 0` **sólo en `cities`**, que es la única entidad mutable desde dos caminos de escritura (la máquina de presencia y el recálculo de población). `units` **no** tiene `version`: su única escritura concurrente es el lote de flush, que es de un solo escritor. Añadir `version` a `units` sería pagar una columna y un conflicto que hoy nadie puede producir.
 6. **Sin bounds de mundo hardcodeados**: ningún `CHECK` de coordenadas de entidad fija un límite superior. `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` son configuración y el dominio los valida contra `world_state`. Poner `512` en un `CHECK` congelaría un valor de gameplay dentro del esquema y contradiría la regla de configuración única.
-7. **`ON DELETE`**: se elige explícitamente donde importa. `CASCADE` desde el agregado raíz hacia sus hijos estrictos (`players` → `cities`, `units`, `sessions`, `idempotency_keys`, `treaties`; `units` → `unit_movements`, `garrisons`; `cities` → `garrisons`; `territories` → `territory_control`), `SET NULL` en referencias opcionales (`units.city_id`, `world_events.player_id`) y **sin cláusula** —es decir `NO ACTION`— hacia los catálogos (`players.civilization_id`, `players.faction_id`, `cities.era`): borrar una civilización que tiene jugadores debe fallar, y `NO ACTION` ya lo impide.
+7. **`ON DELETE`**: se elige explícitamente donde importa. `CASCADE` desde el agregado raíz hacia sus hijos estrictos (`players` → `cities`, `units`, `sessions`, `treaties`; `units` → `unit_movements`, `garrisons`; `cities` → `garrisons`; `territories` → `territory_control`), `SET NULL` en referencias opcionales (`units.city_id`, `world_events.player_id`) y **sin cláusula** —es decir `NO ACTION`— hacia los catálogos (`players.civilization_id`, `players.faction_id`, `cities.era`): borrar una civilización que tiene jugadores debe fallar, y `NO ACTION` ya lo impide.
 
 ### 3.1 Función de trigger compartida
 
@@ -711,33 +702,16 @@ Ninguna decisión de gameplay lee esta tabla. La transición `ONLINE → OFFLINE
 
 ---
 
-## 14. `idempotency_keys`
+## 14. `idempotency_keys` (eliminada)
 
-**MVP: creada, todavía sin escritor.** Deduplicación durable de comandos, pensada como respaldo del registro efímero de Redis. **Hoy la deduplicación del MVP es sólo Redis**: `IdempotencyStore.Claim` reserva `idem:{playerId}:{requestId}` con `SETNX` y TTL 300 s antes de ejecutar, y si Redis no responde el comando **se ejecuta igualmente** — se prefiere dejar jugar a bloquear al jugador. Esta tabla existe para cuando ese compromiso deje de ser aceptable.
+**Eliminada por la migración `000004_drop_idempotency_keys`** ([ADR-014](../decisions/ADR-014-command-idempotency.md)). La creaba `000001` como
+deduplicación durable de comandos, respaldo del registro de Redis, y ninguna ruta llegó a escribirla.
 
-```sql
-CREATE TABLE idempotency_keys (
-    player_id   uuid        NOT NULL REFERENCES players (id) ON DELETE CASCADE,
-    request_id  uuid        NOT NULL,
-    message_type text       NOT NULL,
-    response    jsonb,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    expires_at  timestamptz NOT NULL,
-    PRIMARY KEY (player_id, request_id)
-);
-
-CREATE INDEX idempotency_keys_expiry_idx ON idempotency_keys (expires_at);
-```
-
-| Columna | Tipo | Semántica |
-|---|---|---|
-| `player_id` | `uuid` FK CASCADE | Ámbito de la deduplicación y primera columna de la PK. El `requestId` es único por jugador, no globalmente |
-| `request_id` | `uuid` | `requestId` (UUIDv4) del envelope cliente→servidor. Obligatorio en comandos |
-| `message_type` | `text` | Tipo del mensaje original (`unit.move`, `unit.cancel_move`). Si llega el mismo `requestId` con otro tipo, es un error del cliente y se rechaza con `INVALID_MESSAGE`, no se devuelve la respuesta cacheada |
-| `response` | `jsonb` **anulable** | Envelope servidor→cliente completo de la primera ejecución. Es anulable a propósito: la clave se reserva **antes** de ejecutar (fase de *claim*) y la respuesta se rellena después. Un `requestId` repetido con `response` no nulo devuelve esa respuesta en vez de re-ejecutar |
-| `expires_at` | `timestamptz` | `created_at + 300 s`, alineado con el TTL de Redis. El barrido periódico borra lo vencido apoyándose en `idempotency_keys_expiry_idx` |
-
-La clave primaria compuesta `(player_id, request_id)` **es** la restricción de unicidad: no hay una `id` sustituta ni un `UNIQUE` adicional. Y no hay `updated_at` porque una fila de idempotencia sólo se completa una vez.
+La deduplicación vigente es `idem:{playerId}:{requestId}` en Redis, con TTL de 300 s, reservada con `SETNX`
+antes de ejecutar; si Redis no responde, el comando se ejecuta igualmente. Un comando futuro cuyo efecto
+durable no se pueda repetir sin daño guardará su `requestId` **en la fila de su efecto**, con una restricción
+`UNIQUE` y en la misma transacción: la idempotencia queda atada al dato que protege. El `.down.sql` de
+`000004` recrea la tabla tal como estaba.
 
 ---
 
@@ -975,7 +949,7 @@ Respuesta explícita a las cuatro preguntas del canon §12 para el esquema del M
 | `world_state.current_tick` | Sí | **Sí**, un `SaveTick` en el apagado ordenado | — | Parcialmente: tras una caída abrupta se reanuda desde el último valor guardado |
 | Terreno | Sí (mapa regenerado desde la semilla) | Una vez, `COPY` en el bootstrap | — | **Sí**, desde `seed` |
 | `world_events` | No | Sí, junto al hecho que lo origina | — | No |
-| `sessions`, `idempotency_keys` | Sí / Redis | **Todavía no se escriben** (§13, §14) | — | — |
+| `sessions` | Sí / Redis | **Todavía no se escribe** (§13) | — | — |
 
 ---
 

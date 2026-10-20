@@ -98,8 +98,9 @@ comercio— exige que nadie pueda afirmar unilateralmente un hecho del mundo.
   Redis (`ticket:jti:{jti}`, TTL 120 s) para impedir replay. Códigos de cierre estables `4400`, `4401`,
   `4403`, `4408`, `4429`, `4500`.
 - **Idempotencia obligatoria**: `requestId` (UUIDv4) en todo comando, registrado en Redis
-  (`idem:{playerId}:{requestId}`, TTL 300 s) y en `idempotency_keys` para comandos durables. Un
-  `requestId` repetido devuelve la respuesta original, no re-ejecuta.
+  (`idem:{playerId}:{requestId}`, TTL 300 s). Un `requestId` repetido dentro de esa ventana no se
+  re-ejecuta. Un comando con efectos durables no repetibles guarda además su `requestId` en la fila de su
+  efecto ([ADR-014](../decisions/ADR-014-command-idempotency.md)).
 - **Límites duros por conexión**: mensaje ≤ 16 KiB (`EO_WS_MAX_MESSAGE_BYTES=16384`), 20 msg/s con burst
   40 (`EO_WS_RATE_LIMIT_PER_SECOND`, `EO_WS_RATE_LIMIT_BURST`) y cola de salida de
   `EO_WS_OUTBOUND_QUEUE_SIZE` (256). Si esa cola se llena, la conexión se cierra con `4500` y el cliente
