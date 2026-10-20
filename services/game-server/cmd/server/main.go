@@ -153,7 +153,8 @@ func run() error {
 		"units", recovery.Units, "cities", recovery.Cities,
 		"movements_resumed", recovery.Resumed,
 		"movements_arrived_while_down", recovery.Arrived,
-		"movements_failed", recovery.Failed)
+		"movements_failed", recovery.Failed,
+		"units_reconciled", recovery.Reconciled)
 
 	// Las murallas de las ciudades existentes vuelven a bloquear su tile: la capa
 	// de ocupación no se persiste, se deriva del mundo.
@@ -182,7 +183,14 @@ func run() error {
 	// ── 5. Simulación y game loop ───────────────────────────────
 	queue := persistence.NewQueue(persistence.DefaultQueueConfig(), log, metrics)
 	queue.Start(rootCtx, 4)
-	defer queue.Close()
+	// La cola se cierra al salir salvo que el loop siga vivo: cerrarla con el
+	// loop encolando sería un panic (send on closed channel).
+	closeQueue := true
+	defer func() {
+		if closeQueue {
+			queue.Close()
+		}
+	}()
 
 	health := observability.NewHealth(5*time.Second, sysClock.Now)
 	health.Register("postgres", store)
@@ -293,7 +301,9 @@ func run() error {
 			errCh <- fmt.Errorf("servidor de métricas: %w", err)
 		}
 	}()
+	loopDone := make(chan struct{})
 	go func() {
+		defer close(loopDone)
 		if err := gameLoop.Run(rootCtx); err != nil && !errors.Is(err, context.Canceled) {
 			errCh <- fmt.Errorf("game loop: %w", err)
 		}
@@ -306,6 +316,13 @@ func run() error {
 	case err := <-errCh:
 		log.Error("fallo de un subsistema", "err", err)
 		stop()
+		// También aquí se espera al loop y se vacía la cola: un subsistema caído
+		// no es motivo para perder las escrituras ya aceptadas.
+		if loopStopped(loopDone, loopStopTimeout, log) {
+			queue.Close()
+		} else {
+			closeQueue = false
+		}
 		return err
 	}
 
@@ -319,15 +336,42 @@ func run() error {
 	_ = metricsHTTP.Shutdown(shutdownCtx)
 	hub.CloseAll(1001, "servidor en mantenimiento")
 
+	// El loop tiene que haber parado ANTES de cerrar la cola: un Submit sobre la
+	// cola cerrada sería un panic, y su volcado final es lo último que encola.
+	if !loopStopped(loopDone, loopStopTimeout, log) {
+		// Con el loop vivo no se puede cerrar la cola sin arriesgar un panic.
+		// Lo que quede encolado se pierde: es el RPO de un apagado abrupto.
+		closeQueue = false
+		return nil
+	}
 	if drained := queue.Drain(15 * time.Second); !drained {
 		log.Error("la cola de persistencia no se vació a tiempo", "pending", queue.Depth())
 	}
+	// Close espera además a los trabajos que un worker ya estaba ejecutando, que
+	// Drain no ve porque ya salieron del canal.
+	queue.Close()
 	if err := worldRepo.SaveTick(shutdownCtx, gameLoop.Tick()); err != nil {
 		log.Warn("no se pudo guardar el tick final", "err", err)
 	}
 
 	log.Info("apagado completado", "tick", gameLoop.Tick())
 	return nil
+}
+
+// loopStopTimeout acota la espera a que el game loop termine su último tick.
+// Un tick dura 100 ms; si en 5 s no ha parado, está atascado, y el apagado no
+// puede quedarse colgado esperándolo.
+const loopStopTimeout = 5 * time.Second
+
+// loopStopped espera a que el game loop termine, como mucho `timeout`.
+func loopStopped(done <-chan struct{}, timeout time.Duration, log *slog.Logger) bool {
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		log.Error("el game loop no se detuvo a tiempo: se sale sin vaciar la cola", "timeout", timeout)
+		return false
+	}
 }
 
 // loadWorld obtiene el mundo: lo genera la primera vez y lo verifica después.

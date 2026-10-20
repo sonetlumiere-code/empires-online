@@ -207,14 +207,16 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 	u.Status = unit.StatusMoving
 	s.state.MarkDirty(u.ID)
 
-	// Escritura durable diferida. Si acaba fallando de forma permanente, la
-	// compensación detiene la unidad: el mundo no puede quedarse con un movimiento
-	// que la base de datos nunca conoció.
+	// Escritura durable diferida. Si falla de forma permanente, hoy sólo se
+	// registra: la unidad sigue su movimiento en RAM y su posición llega a disco
+	// con el volcado periódico, pero la fila de unit_movements no existe. Detener
+	// la unidad exigiría devolver un comando al loop desde el worker, porque
+	// OnPermanentFailure corre en la goroutine de la cola (EO-120).
 	s.deps.Persister.Submit(Job{
 		Name: "movement.start",
 		Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementStart(ctx, m) },
 		OnPermanentFailure: func(err error) {
-			s.deps.Log.Error("no se pudo persistir el inicio del movimiento; se detiene la unidad",
+			s.deps.Log.Error("no se pudo persistir el inicio del movimiento; la unidad sigue en RAM",
 				"err", err, "unit_id", m.UnitID)
 		},
 	})

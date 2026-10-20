@@ -437,12 +437,20 @@ durables** y dejar el mundo en un estado reanudable.
                         y conexiones nuevas.
  4. cierre de sesiones  hub.CloseAll(1001, "servidor en mantenimiento"). Se usa el código
                         estándar 1001 ("going away"); los 44xx quedan reservados a errores.
- 5. flush de persistencia queue.Drain(15 s): se espera a que la cola se vacíe. Si no se vacía a
-                        tiempo se registra level=error con la profundidad pendiente.
- 6. tick final          worldRepo.SaveTick(gameLoop.Tick()) persiste el tick alcanzado en
+ 5. parada del loop     se espera a que gameLoop.Run termine, como mucho 5 s (loopStopTimeout).
+                        Al ver el contexto cancelado, el loop encola un VOLCADO FINAL de las
+                        unidades sucias. Si no para a tiempo, se registra level=error y se sale
+                        sin cerrar la cola: cerrarla con el loop encolando sería un panic.
+ 6. flush de persistencia queue.Drain(15 s) espera a que el canal se vacíe y queue.Close espera
+                        además a los trabajos que un worker ya estaba ejecutando. Si la cola no
+                        se vacía a tiempo se registra level=error con la profundidad pendiente.
+ 7. tick final          worldRepo.SaveTick(gameLoop.Tick()) persiste el tick alcanzado en
                         world_state. Si falla se registra level=warn: es una molestia, no una
                         pérdida de datos.
 ```
+
+Si el apagado lo provoca la caída de un subsistema en lugar de una señal, se hacen los pasos 5 y 6
+igualmente: un servidor HTTP caído no es motivo para perder escrituras ya aceptadas.
 
 Presupuesto: 25 s de techo total y 15 s para vaciar la cola de persistencia, ambos constantes de
 `cmd/server/main.go`, no variables `EO_*`. El techo absoluto de reloj de pared lo impone además el
@@ -450,14 +458,18 @@ orquestador (`stop_grace_period`) y es un parámetro de despliegue: **TBD (fuera
 agota su límite se registra y se continúa con la siguiente; el proceso **nunca** se queda colgado
 esperando.
 
-Nótese lo que **no** hay, para no prometerlo: no existe un "drenaje de comandos" con ticks extra ni un
-tick final que fuerce el flush de los *dirty flags*. El loop simplemente para cuando su contexto se
-cancela. Esto es aceptable porque la propiedad de recuperación no depende del apagado ordenado: un
-movimiento `ACTIVE` en Postgres con su polilínea completa siempre puede reanudarse tras el reinicio
-(§5.1 paso 4), incluso si el apagado fue abrupto (`SIGKILL`). El shutdown ordenado es una optimización
-de limpieza, no un requisito de corrección. Lo que sí se pierde en un apagado abrupto son las
-posiciones consolidadas desde el último flush y las escrituras encoladas sin COMMIT, que es el RPO
-documentado en §3.4. Ver [../testing/integration-tests.md](../testing/integration-tests.md).
+Nótese lo que **no** hay, para no prometerlo: no existe un "drenaje de comandos" con ticks extra. Los
+comandos que quedaran en el canal al parar no se aplican.
+
+Hasta `EO-118` tampoco había volcado final, y este documento lo justificaba con que un movimiento
+`ACTIVE` siempre puede reanudarse tras el reinicio. El argumento olvidaba los movimientos que **ya**
+terminaron: el cierre en `unit_movements` se escribe al instante, pero la posición final de la unidad
+sólo llega a disco con el volcado periódico. Sin volcado final, un apagado ordenado dentro de esos 5 s
+dejaba la unidad, tras reiniciar, en una posición intermedia y sin movimiento que la respaldara. Ahora
+el apagado ordenado no pierde nada aceptado. Lo que sí se pierde en un apagado **abrupto** (`SIGKILL`,
+caída) son las posiciones consolidadas desde el último volcado y las escrituras encoladas sin COMMIT,
+que es el RPO documentado en §3.4; la rehidratación reconcilia la unidad que quedara `MOVING` sin
+movimiento. Ver [../testing/integration-tests.md](../testing/integration-tests.md).
 
 ---
 

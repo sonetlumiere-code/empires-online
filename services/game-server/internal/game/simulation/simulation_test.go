@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
@@ -839,4 +840,36 @@ func TestSnapshotIncluyeElMovimientoEnCurso(t *testing.T) {
 	require.NotNil(t, found.Movement, "y debe traer su polilínea para que el cliente interpole")
 	require.Equal(t, protocol.Tile{X: 20, Y: 10}, found.Movement.Target)
 	require.EqualValues(t, 14, found.X, "la posición del snapshot es la autoritativa de ahora mismo")
+}
+
+// INV-UNIT-005 tras una caída: una unidad que llega MOVING sin ningún
+// movimiento ACTIVE que la respalde se queda donde está e IDLE, y se vuelca.
+// Una que sí tiene movimiento se reanuda como siempre.
+func TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento(t *testing.T) {
+	terrain := make([]byte, 64*64)
+	for i := range terrain {
+		terrain[i] = byte(world.Grassland)
+	}
+	w, _ := world.New(64, 64, 32, 1, terrain)
+	playerID := uuid.New()
+	huerfana := &unit.Unit{ID: 1, PlayerID: playerID, Type: unit.TypeVillager,
+		X: 14, Y: 10, HP: 40, MaxHP: 40, Status: unit.StatusMoving}
+	enCamino := &unit.Unit{ID: 2, PlayerID: playerID, Type: unit.TypeVillager,
+		X: 10, Y: 20, HP: 40, MaxHP: 40, Status: unit.StatusMoving}
+	path, _ := movement.BuildTimedPath(
+		[]world.Tile{{X: 10, Y: 20}, {X: 11, Y: 20}, {X: 12, Y: 20}}, w, 600)
+	m := movement.New(enCamino.ID, path, world.Tile{X: 12, Y: 20}, epoch)
+
+	state := simulation.NewState(w)
+	res := simulation.Hydrate(state, []*unit.Unit{huerfana, enCamino}, nil,
+		[]*movement.Movement{m}, epoch+600, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	assert.Equal(t, 1, res.Reconciled)
+	assert.Equal(t, unit.StatusIdle, huerfana.Status)
+	assert.Equal(t, world.Tile{X: 14, Y: 10}, huerfana.Tile(), "no se teletransporta a ningún sitio")
+	assert.Equal(t, unit.StatusMoving, enCamino.Status, "la que tiene movimiento se reanuda")
+
+	sucias := state.DrainDirty()
+	require.Len(t, sucias, 1)
+	assert.Equal(t, huerfana.ID, sucias[0].ID, "la reconciliada se vuelca")
 }

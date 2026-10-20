@@ -1,6 +1,7 @@
 package simulation_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -9,7 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
+	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
 
@@ -116,4 +119,23 @@ func TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden(t *testing.T) {
 	}
 	require.Equal(t, city.PresenceProtected, c.PresenceState, "el ciclo termina protegido")
 	require.NotNil(t, c.LastOnlineAt)
+}
+
+// Al parar, el loop vuelca lo que quedaba sucio. Una unidad que llegó a su
+// destino entre dos volcados periódicos no puede perder esa posición por un
+// apagado ordenado: tras reiniciar volvería a donde estaba antes.
+func TestAlPararElLoopVuelcaLoQueQuedabaSucio(t *testing.T) {
+	h := newHarness(t)
+	u := h.units[0]
+	h.send(simulation.MoveUnit{PlayerID: h.playerID, RequestID: uuid.NewString(),
+		UnitID: u.ID, Target: world.Tile{X: u.X + 2, Y: u.Y}})
+	h.advance(1500 * time.Millisecond) // llega, y faltan muchos ticks para el volcado
+	require.Equal(t, unit.StatusIdle, u.Status)
+	antes := h.repos.unitsFlushed
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, h.loop.Run(ctx), context.Canceled)
+
+	assert.Greater(t, h.repos.unitsFlushed, antes, "el volcado final escribe la unidad que llegó")
 }

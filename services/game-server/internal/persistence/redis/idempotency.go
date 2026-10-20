@@ -22,6 +22,7 @@ type TicketStore struct {
 
 // NewTicketStore crea el almacén de tickets consumidos.
 func NewTicketStore(c *Client, ttl time.Duration) *TicketStore {
+	requireTTL("ticket:jti", ttl)
 	return &TicketStore{client: c, ttl: ttl}
 }
 
@@ -47,6 +48,7 @@ type IdempotencyStore struct {
 
 // NewIdempotencyStore crea el almacén de idempotencia.
 func NewIdempotencyStore(c *Client, ttl time.Duration) *IdempotencyStore {
+	requireTTL("idem", ttl)
 	return &IdempotencyStore{client: c, ttl: ttl}
 }
 

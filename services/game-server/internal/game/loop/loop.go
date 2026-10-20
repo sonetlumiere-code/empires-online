@@ -98,7 +98,12 @@ func (l *Loop) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			l.log.Info("game loop detenido", "tick", l.tick.Load())
+			// Volcado final: sin él, las posiciones que cambiaron desde el último
+			// volcado periódico —hasta FlushIntervalTicks ticks— se perderían en
+			// cada apagado ordenado. Se encola como cualquier otro volcado; quien
+			// apaga el proceso espera a que Run termine y después drena la cola.
+			flushed := l.sim.FlushDirty()
+			l.log.Info("game loop detenido", "tick", l.tick.Load(), "units_flushed", flushed)
 			return ctx.Err()
 		case <-timer.C:
 		}

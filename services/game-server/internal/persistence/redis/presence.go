@@ -24,6 +24,7 @@ type PresenceStore struct {
 
 // NewPresenceStore crea el almacén de presencia.
 func NewPresenceStore(c *Client, ttl, heartbeat time.Duration) *PresenceStore {
+	requireTTL("presence:player", ttl)
 	return &PresenceStore{client: c, ttl: ttl, heartbeat: heartbeat}
 }
 

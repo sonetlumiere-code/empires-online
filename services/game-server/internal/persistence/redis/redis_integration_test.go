@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	redisstore "github.com/empires-online/empires-online/services/game-server/internal/persistence/redis"
@@ -250,4 +251,42 @@ func TestReleaseLiberaLaReserva(t *testing.T) {
 func TestPingYCierre(t *testing.T) {
 	client, ctx := newTestClient(t)
 	require.NoError(t, client.Ping(ctx))
+}
+
+// INV-PERSIST-003: toda clave que escribe el servidor caduca. Se ejercitan
+// todas las operaciones de escritura de los tres almacenes y se recorre la base
+// entera: ninguna clave puede tener TTL -1 («para siempre»).
+func TestNingunaClaveDelServidorQuedaSinCaducidad(t *testing.T) {
+	client, ctx := newTestClient(t)
+	presencia := redisstore.NewPresenceStore(client, 30*time.Second, 10*time.Second)
+	tickets := redisstore.NewTicketStore(client, 120*time.Second)
+	idem := redisstore.NewIdempotencyStore(client, 300*time.Second)
+
+	jugador, sesion := uuid.New(), uuid.New()
+	require.NoError(t, presencia.MarkOnline(ctx, jugador, sesion))
+	_, err := presencia.Heartbeat(ctx, jugador)
+	require.NoError(t, err)
+	_, err = tickets.Consume(ctx, "jti-de-prueba")
+	require.NoError(t, err)
+	_, _, err = idem.Claim(ctx, jugador, "11111111-1111-4111-8111-111111111111")
+	require.NoError(t, err)
+	require.NoError(t, idem.Complete(ctx, jugador, "22222222-2222-4222-8222-222222222222", "{}"))
+
+	claves, err := client.Raw().Keys(ctx, "*").Result()
+	require.NoError(t, err)
+	require.Len(t, claves, 4, "presencia, ticket y dos de idempotencia")
+	for _, k := range claves {
+		ttl, err := client.Raw().TTL(ctx, k).Result()
+		require.NoError(t, err)
+		assert.Greater(t, ttl, time.Duration(0), "la clave %q no caduca", k)
+	}
+}
+
+// Un almacén sin TTL no llega a construirse: con expiración 0, go-redis
+// escribiría claves para siempre.
+func TestUnAlmacenSinTTLNoSeConstruye(t *testing.T) {
+	client, _ := newTestClient(t)
+	assert.Panics(t, func() { redisstore.NewPresenceStore(client, 0, time.Second) })
+	assert.Panics(t, func() { redisstore.NewTicketStore(client, 0) })
+	assert.Panics(t, func() { redisstore.NewIdempotencyStore(client, -time.Second) })
 }

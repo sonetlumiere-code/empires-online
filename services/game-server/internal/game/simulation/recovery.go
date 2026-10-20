@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
@@ -15,6 +16,9 @@ type RecoveryResult struct {
 	Resumed int
 	Arrived int
 	Failed  int
+	// Reconciled son las unidades que llegaron MOVING sin un movimiento ACTIVE
+	// que lo respalde y se dejaron IDLE (INV-UNIT-005).
+	Reconciled int
 	// FinishedMovements son los movimientos que hay que cerrar en la base de datos:
 	// terminaron mientras el proceso estaba caído, o su ruta ya no es válida.
 	FinishedMovements []FinishedMovement
@@ -100,6 +104,28 @@ func Hydrate(
 		state.SetMovement(m)
 		res.Resumed++
 	}
+
+	// Una unidad puede llegar MOVING sin movimiento que la respalde: el volcado
+	// periódico la escribió MOVING a mitad de trayecto, el movimiento se cerró y
+	// el proceso cayó antes del siguiente volcado. Sin reconciliar, quedaría
+	// MOVING en RAM hasta su próxima orden. Se queda donde está —la última
+	// posición consolidada— e IDLE, y se vuelca en el primer volcado.
+	state.EachUnit(func(u *unit.Unit) bool {
+		if u.Status != unit.StatusMoving {
+			return true
+		}
+		if _, ok := state.Movement(u.ID); ok {
+			return true
+		}
+		u.Status = unit.StatusIdle
+		state.MarkDirty(u.ID)
+		res.Reconciled++
+		log.Error("invariant_violation",
+			"inv_id", "INV-UNIT-005", "severity", "ALTO", "policy", "REPAIR",
+			"entity", fmt.Sprintf("unit:%d", u.ID),
+			"detail", "MOVING sin movimiento ACTIVE al rehidratar: queda IDLE en su última posición consolidada")
+		return true
+	})
 
 	return res
 }
