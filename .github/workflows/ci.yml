@@ -96,6 +96,11 @@ jobs:
       - name: Tests del protocolo
         run: pnpm run protocol:test
 
+      # El cliente tiene su propia suite (transporte, interpolación, estado del
+      # mundo, proyección isométrica) y hasta ahora sólo se ejecutaba a mano.
+      - name: Tests del cliente
+        run: pnpm --filter @empires-online/web run test
+
       - name: Verificar que el JSON Schema no ha derivado de Zod
         # Si esto falla, alguien cambió los esquemas Zod sin regenerar los
         # artefactos que consume el Game Server. El contrato se habría roto en

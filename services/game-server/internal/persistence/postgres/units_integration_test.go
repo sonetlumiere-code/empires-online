@@ -5,6 +5,7 @@ package postgres_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -148,4 +149,61 @@ func TestLasRestriccionesDeMovimientosRechazanFilasInvalidas(t *testing.T) {
 	var filas int
 	require.NoError(t, db.QueryRow(ctx, `SELECT count(*) FROM unit_movements`).Scan(&filas))
 	assert.Equal(t, 1, filas, "las filas rechazadas no dejan rastro")
+}
+
+// Criterios 1 y 2 de M2: el alta deja un único evento agregado
+// PlayerBootstrapped con la ciudad y los tres aldeanos, y repetirla con el
+// mismo nombre falla sin duplicar nada (UNIQUE de players.username).
+func TestElAltaRegistraUnEventoYNoSeDuplica(t *testing.T) {
+	store, ctx := newTestStore(t)
+	_, _, _, _, bootstrapper := newRepos(store)
+	db := store.Pool()
+
+	alta, err := bootstrapper.Create(ctx, bootstrapRequest("unica", world.Tile{X: 20, Y: 20}))
+	require.NoError(t, err)
+
+	var tipo string
+	var aldeanos int
+	require.NoError(t, db.QueryRow(ctx,
+		`SELECT event_type, (payload->>'villagers')::int FROM world_events WHERE player_id = $1`,
+		alta.Player.ID).Scan(&tipo, &aldeanos), "un único evento para el jugador")
+	assert.Equal(t, "PlayerBootstrapped", tipo)
+	assert.Equal(t, 3, aldeanos)
+
+	_, err = bootstrapper.Create(ctx, bootstrapRequest("unica", world.Tile{X: 60, Y: 60}))
+	require.Error(t, err, "el mismo nombre no da de alta a un segundo jugador")
+
+	var jugadores, ciudades, unidades, eventos int
+	require.NoError(t, db.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM players), (SELECT count(*) FROM cities),
+		(SELECT count(*) FROM units), (SELECT count(*) FROM world_events)`).
+		Scan(&jugadores, &ciudades, &unidades, &eventos))
+	assert.Equal(t, [4]int{1, 1, 3, 1}, [4]int{jugadores, ciudades, unidades, eventos})
+}
+
+// El trigger set_updated_at() sella updated_at en cada UPDATE, aunque la
+// sentencia intente escribir otro valor.
+func TestElTriggerSellaUpdatedAtEnCadaUpdate(t *testing.T) {
+	store, ctx := newTestStore(t)
+	_, _, _, _, bootstrapper := newRepos(store)
+	db := store.Pool()
+
+	alta, err := bootstrapper.Create(ctx, bootstrapRequest("sellada", world.Tile{X: 20, Y: 20}))
+	require.NoError(t, err)
+
+	for _, tabla := range []string{"units", "cities"} {
+		var id int64
+		if tabla == "units" {
+			id = alta.Units[0].ID
+		} else {
+			id = alta.City.ID
+		}
+		var antes, despues, ahora time.Time
+		require.NoError(t, db.QueryRow(ctx, `SELECT updated_at, now() FROM `+tabla+` WHERE id = $1`, id).Scan(&antes, &ahora))
+		_, err := db.Exec(ctx, `UPDATE `+tabla+` SET updated_at = '2000-01-01' WHERE id = $1`, id)
+		require.NoError(t, err)
+		require.NoError(t, db.QueryRow(ctx, `SELECT updated_at FROM `+tabla+` WHERE id = $1`, id).Scan(&despues))
+		assert.True(t, despues.Year() > 2000, "%s: el trigger impone now(), no el valor de la sentencia", tabla)
+		assert.False(t, despues.Before(antes), "%s: updated_at no retrocede", tabla)
+	}
 }

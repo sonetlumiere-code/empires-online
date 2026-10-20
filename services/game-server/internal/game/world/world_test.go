@@ -90,6 +90,14 @@ func TestConversionTileChunk(t *testing.T) {
 	require.EqualValues(t, 0, w.ChunkIndex(0, 0))
 	require.EqualValues(t, 5, w.ChunkIndex(1, 1))
 	require.EqualValues(t, 15, w.ChunkIndex(3, 3))
+
+	// El mundo canónico: 512 × 512 en chunks de 32. El último tile cae en el
+	// último chunk, (15,15), de id 255 (criterio 4 de M1).
+	canonico := newTestWorld(t, 512, 512, 32, world.Grassland)
+	cx, cy := canonico.ChunkOf(511, 511)
+	require.Equal(t, [2]int32{15, 15}, [2]int32{cx, cy})
+	require.EqualValues(t, 255, canonico.ChunkIndex(cx, cy))
+	require.EqualValues(t, 256, int(canonico.ChunksPerRow())*int(canonico.ChunksPerColumn()))
 }
 
 func TestCostesDeTerreno(t *testing.T) {

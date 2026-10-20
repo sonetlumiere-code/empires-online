@@ -301,3 +301,20 @@ func TestUnSitioSiempreOcupadoAgotaLosIntentosSinEscribir(t *testing.T) {
 	_, _, err = players.GetByUsername(ctx, "insistente")
 	assert.Error(t, err, "ni rastro del jugador")
 }
+
+// Criterio 4 de M2 y RN-CITY-015: el catálogo de eras sembrado por la
+// migración 000002 es exactamente el del canon, con sus límites de población.
+func TestLasErasDelCatalogoSonLasDelCanon(t *testing.T) {
+	store, ctx := newTestStore(t)
+	_, cities, _, _, _ := newRepos(store)
+
+	eras, err := cities.ListEras(ctx)
+	require.NoError(t, err)
+	got := make(map[string]int32, len(eras))
+	for _, e := range eras {
+		got[string(e.Code)] = e.PopulationCap
+	}
+	assert.Equal(t, map[string]int32{
+		"STONE_AGE": 20, "BRONZE_AGE": 50, "IRON_AGE": 100, "CASTLE_AGE": 150,
+	}, got)
+}

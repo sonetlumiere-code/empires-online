@@ -4,15 +4,20 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
+	"github.com/empires-online/empires-online/services/game-server/internal/game/loop"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
+	"github.com/empires-online/empires-online/services/game-server/internal/observability"
+	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
 
 // INV-UNIT-005: una unidad GARRISONED con un movimiento ACTIVE es una fila
@@ -92,4 +97,60 @@ func TestElTickEsEstrictamenteCreciente(t *testing.T) {
 		require.Equal(t, h.state.Tick(), h.loop.Tick())
 		anterior = h.state.Tick()
 	}
+}
+
+// Criterio 9 de M4: con diez unidades moviéndose a la vez —las diez órdenes y
+// sus A* en el mismo tick—, ningún tick supera su período y
+// eo_game_tick_overruns_total sigue a cero.
+func TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick(t *testing.T) {
+	h := newHarness(t)
+	for i := int64(0); i < 7; i++ {
+		h.ponerUnidad(10+i, h.playerID, world.Tile{X: int32(4 + i), Y: 20}, unit.StatusIdle, 40)
+	}
+	metrics := observability.NewMetrics()
+	l := loop.New(h.sim, h.clk, h.commands, loop.Config{
+		TickDuration: 100 * time.Millisecond, FlushIntervalTicks: 50,
+		MaxCommandsPerTick: 256, EpochMs: epoch,
+	}, metrics, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	var moviendo int
+	h.state.EachUnit(func(u *unit.Unit) bool {
+		h.commands <- simulation.MoveUnit{PlayerID: h.playerID, RequestID: uuid.NewString(),
+			UnitID: u.ID, Target: world.Tile{X: 60 - int32(moviendo), Y: 55}}
+		moviendo++
+		return true
+	})
+	require.Equal(t, 10, moviendo)
+	l.Step(h.clk.NowMs())
+	require.Equal(t, 10, h.state.MovementCount(), "las diez en marcha")
+
+	for i := 0; i < 600; i++ { // 60 s de simulación
+		h.clk.AdvanceMs(100)
+		l.Step(h.clk.NowMs())
+	}
+	assert.Zero(t, testutil.ToFloat64(metrics.TickOverruns))
+	assert.Zero(t, h.state.MovementCount(), "y todas han llegado")
+}
+
+// T-CITY-C-002: city.update sólo sale cuando algo cambia. Conectado y quieto,
+// ninguno; al desconectarse, uno al degradar a OFFLINE_PENDING y otro al pasar
+// a PROTECTED, y nada entre medias ni después.
+func TestCityUpdateSoloSeEmiteAnteUnCambio(t *testing.T) {
+	h := newHarness(t)
+	sesion := uuid.New()
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: sesion})
+	h.rec.reset()
+
+	h.advance(60 * time.Second)
+	assert.Empty(t, h.rec.byType(protocol.TypeCityUpdate), "nada cambia, nada se emite")
+
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: sesion})
+	h.advance(31 * time.Second) // margen de desconexión: 30 s
+	require.Len(t, h.rec.byType(protocol.TypeCityUpdate), 1, "OFFLINE_PENDING")
+
+	h.advance(300 * time.Second) // cooldown de protección
+	require.Len(t, h.rec.byType(protocol.TypeCityUpdate), 2, "PROTECTED")
+
+	h.advance(120 * time.Second)
+	assert.Len(t, h.rec.byType(protocol.TypeCityUpdate), 2, "y nada más mientras no cambie")
 }

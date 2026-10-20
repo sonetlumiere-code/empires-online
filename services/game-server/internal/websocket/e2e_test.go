@@ -320,7 +320,12 @@ type conn struct {
 	t  *testing.T
 	c  *gws.Conn
 	mu sync.Mutex
+	// recibidos guarda todo lo que ha leído await, también lo que descartó.
+	recibidos []envelope
 }
+
+// historial devuelve, en orden de llegada, todo lo leído hasta ahora.
+func (c *conn) historial() []envelope { return append([]envelope(nil), c.recibidos...) }
 
 func (e *e2e) dial() *conn {
 	e.t.Helper()
@@ -374,6 +379,7 @@ func (c *conn) await(msgType string, timeout time.Duration) envelope {
 		}
 		var env envelope
 		require.NoError(c.t, json.Unmarshal(data, &env))
+		c.recibidos = append(c.recibidos, env)
 		seen = append(seen, env.Type)
 		if env.Type == msgType {
 			return env

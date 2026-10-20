@@ -1,6 +1,7 @@
 package websocket_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -99,4 +100,40 @@ func uuidN(i int) string {
 		s[p] = byte('0' + n%10)
 	}
 	return string(s)
+}
+
+// Criterio 5 de M3: seq es estrictamente creciente, sin huecos, en todos los
+// mensajes de una conexión —respuestas, errores y deltas del loop—.
+func TestElSeqCreceDeUnoEnUnoEnUnaConexion(t *testing.T) {
+	env := newE2E(t)
+	c := env.conectar()
+
+	for i := 0; i < 5; i++ {
+		c.send(protocol.TypeSessionPing, map[string]any{"clientTimeMs": 1})
+	}
+	c.send(protocol.TypeUnitMove, map[string]any{"unitId": env.unitIDs[0], "target": map[string]int{"x": 50, "y": 40}})
+	require.NoError(t, c.c.WriteMessage(gws.TextMessage, []byte("{roto")))
+	env.pump()
+	c.await(protocol.TypeUnitMovementStarted, 3*time.Second)
+	env.pump()
+
+	// Todo lo recibido desde el welcome, en orden de llegada.
+	require.NoError(t, c.c.SetReadDeadline(time.Now().Add(500*time.Millisecond)))
+	var seqs []uint64
+	for _, m := range c.historial() {
+		seqs = append(seqs, m.Seq)
+	}
+	for {
+		_, data, err := c.c.ReadMessage()
+		if err != nil {
+			break
+		}
+		var m envelope
+		require.NoError(t, json.Unmarshal(data, &m))
+		seqs = append(seqs, m.Seq)
+	}
+	require.GreaterOrEqual(t, len(seqs), 10)
+	for i := 1; i < len(seqs); i++ {
+		require.Equal(t, seqs[i-1]+1, seqs[i], "seq %d tras %d", seqs[i], seqs[i-1])
+	}
 }
