@@ -215,7 +215,7 @@ No existen `internal/presence` ni `internal/events`: la presencia vive en `inter
 | `infra/docker/` | Dockerfiles e imágenes de servicio. |
 | `scripts/` | Tareas invocadas por pnpm scripts (arranque de dependencias, migraciones, generación de esquemas, utilidades de desarrollo). |
 | `docs/` | Esta documentación. |
-| `docker-compose.yml` | PostgreSQL y Redis locales para desarrollo e integración. Requiere Docker Desktop iniciado. |
+| `docker-compose.yml` | PostgreSQL y Redis locales para desarrollo e integración en entornos con Docker. En la máquina de desarrollo Docker está descartado y se usa un cluster propio de PostgreSQL y Redis en WSL ([../operations/local-development.md](../operations/local-development.md) §3-bis). |
 | `pnpm-workspace.yaml` | Declaración del workspace (`apps/*`, `packages/*`). |
 | `.github/workflows/ci.yml` | Pipeline `format → lint → typecheck → unit → integration → build → docker build`. |
 

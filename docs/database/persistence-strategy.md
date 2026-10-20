@@ -295,7 +295,7 @@ Precondición: PostgreSQL contiene las escrituras durables cuyo `COMMIT` alcanz�
 
 ### 5.3 Cobertura de tests
 
-El nivel de test `recovery` del canon §19 cubre exactamente esto: rehidratar con `simulation.Hydrate` un mundo con un movimiento `ACTIVE` y assertar el estado resultante. Los **tres tests de recuperación** que existen hoy en `internal/game/simulation` están en verde y cubren: (a) crash con `arrival_time_ms` futuro ⇒ el movimiento se reanuda desde la polilínea y llega al mismo tile en el mismo instante de mundo; (b) crash con `arrival_time_ms` pasado ⇒ snap al tile final y cierre como `COMPLETED`; (c) polilínea inválida ⇒ `FAILED` y la unidad no se mueve. El caso "crash entre flushes con el proceso real reiniciado" pertenece a la suite de integración, que está escrita pero **todavía no se ha ejecutado** porque el daemon de Docker no arrancó en la máquina de desarrollo. Ver [../testing/strategy.md](../testing/strategy.md).
+El nivel de test `recovery` del canon §19 cubre exactamente esto: rehidratar con `simulation.Hydrate` un mundo con un movimiento `ACTIVE` y assertar el estado resultante. Los **tres tests de recuperación** que existen hoy en `internal/game/simulation` están en verde y cubren: (a) crash con `arrival_time_ms` futuro ⇒ el movimiento se reanuda desde la polilínea y llega al mismo tile en el mismo instante de mundo; (b) crash con `arrival_time_ms` pasado ⇒ snap al tile final y cierre como `COMPLETED`; (c) polilínea inválida ⇒ `FAILED` y la unidad no se mueve. El caso "crash entre flushes con el proceso real reiniciado" pertenece a la suite de integración, que se ejecuta en la CI y en local (`TestRecuperacionCompletaTrasReinicio`). Ver [../testing/strategy.md](../testing/strategy.md).
 
 ---
 

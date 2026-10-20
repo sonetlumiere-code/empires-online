@@ -383,8 +383,8 @@ El registro **único** de invariantes es [../invariants/player.md](../invariants
 | [`INV-PLAYER-004`](../invariants/player.md#inv-player-004) | La identidad de la sesión proviene exclusivamente del claim `sub` de un ticket verificado y con `jti` consumido. | `RN-PLAYER-009`, `RN-PLAYER-010`, §7 |
 
 Nótese que `INV-PLAYER-001` designa el **ownership de comandos**, no la unicidad del `uuid`, y que
-`INV-PLAYER-003` cubre de una vez la ciudad y los tres aldeanos. El test de integración que ya existe se
-llama `Test_INV_PLAYER_003_NewPlayerHasOneCityAndThreeVillagers`, con ese significado.
+`INV-PLAYER-003` cubre de una vez la ciudad y los tres aldeanos. El test de integración que lo cubre se
+llama `TestBootstrapCreaMundoCompletoDelJugador`; el nombre `Test_INV_PLAYER_003_…` que citaba esta spec nunca existió.
 
 ### 9.2 Invariantes que esta spec asigna
 
@@ -582,26 +582,26 @@ Reglas del contrato:
 
 | ID | Nivel | Descripción | Cubre |
 |---|---|---|---|
-| `T-PLAYER-U-001` | unit | `Civilization.Trait` sobre una clave ausente devuelve el valor por defecto; sobre `Traits == nil` también. | `RN-PLAYER-012` |
-| `T-PLAYER-U-002` | unit | `Civilization.Trait` sobre una clave presente devuelve su multiplicador exacto, sin depender del orden de iteración del mapa. | `RN-PLAYER-012` |
-| `T-PLAYER-U-003` | unit | `player.ValidateUsername`: tabla de casos con 2, 3, 24 y 25 caracteres, y con espacios, acentos, punto y `@`. Solo `[A-Za-z0-9_-]{3,24}` pasa. | `RN-PLAYER-003`, `INV-PLAYER-006` |
-| `T-PLAYER-U-004` | unit | Verificación del ticket con `FakeClock`: válido, `exp` vencido, `aud` incorrecto, firma alterada, `alg=none`, `jti` ausente, claims incompletos. | `RN-PLAYER-009`, `INV-PLAYER-004` |
-| `T-PLAYER-U-005` | unit | `founding.FindSite` con la misma semilla devuelve el mismo emplazamiento; con ciudades existentes respeta la separación de 24 tiles; sin sitio devuelve `ErrNoSite`. | `RN-PLAYER-014` |
-| `T-PLAYER-I-001` | integration | Bootstrap completo: 1 fila en `players`, 1 en `cities`, 3 en `units` con `hp = max_hp = 40` y `status='IDLE'`, `cities.population = 3`. | `RN-PLAYER-007`, `INV-PLAYER-003` |
-| `T-PLAYER-I-002` | integration | Fallo inyectado en el `INSERT` del tercer aldeano: no queda ninguna fila en `players`, `cities` ni `units`. | `RN-PLAYER-007`, `INV-PLAYER-003` |
-| `T-PLAYER-I-003` | integration | Alta repetida con el mismo `username`: la segunda falla con `USERNAME_TAKEN` (409) y no crea ninguna fila adicional. | `RN-PLAYER-006`, `INV-PLAYER-006` |
-| `T-PLAYER-I-004` | integration | Alta de un jugador por cada combinación (civilización × facción): las doce tienen éxito. Falla si alguien acopla los ejes. | `RN-PLAYER-005`, `INV-PLAYER-002` |
-| `T-PLAYER-I-005` | integration | `jti` reutilizado: segundo handshake rechazado con `UNAUTHORIZED` y cierre `4401`. | `RN-PLAYER-009`, `INV-PLAYER-004` |
-| `T-PLAYER-I-006` | integration | `INSERT` directo con `username` de 2 caracteres o con `@`: rechazado por `players_username_format`. | `INV-PLAYER-006` |
-| `T-PLAYER-I-007` | integration | `INSERT` con `civilization_id` o `faction_id` nulo o inexistente: rechazado por `NOT NULL` / FK. | `INV-PLAYER-002` |
-| `T-PLAYER-C-001` | contract | `session.hello` y `session.welcome` validan contra el JSON Schema exportado por `@empires-online/protocol`, con los campos exactos de §12. | §12 |
-| `T-PLAYER-C-002` | contract | `session.hello` con un campo extra (`playerId`, por ejemplo) **no** valida: los mensajes cliente→servidor son estrictos. | `INV-PLAYER-004` |
-| `T-PLAYER-C-003` | contract | `system.error` de handshake usa únicamente códigos del catálogo de 22 del canon §16. | §8 |
-| `T-PLAYER-E-001` | e2e | Conexión sin `session.hello` durante 5 s → cierre `4408`. | `RN-PLAYER-010` |
-| `T-PLAYER-E-002` | e2e | Handshake correcto → `session.welcome` seguido de `world.snapshot` centrado en la ciudad. | `RN-PLAYER-011` |
-| `T-PLAYER-E-003` | e2e | Alta → el mundo en RAM no conoce al jugador hasta después del COMMIT; con la transacción abortada, ningún `entity.spawn` llega a ningún observador. | `INV-PLAYER-008` |
+| `T-PLAYER-U-001` | unit | `Civilization.Trait` sobre una clave ausente devuelve el valor por defecto; sobre `Traits == nil` también. Escrito: `TestTraitDevuelveElValorODelPorDefecto`. | `RN-PLAYER-012` |
+| `T-PLAYER-U-002` | unit | `Civilization.Trait` sobre una clave presente devuelve su multiplicador exacto, sin depender del orden de iteración del mapa. Escrito: `TestTraitDevuelveElValorODelPorDefecto`. | `RN-PLAYER-012` |
+| `T-PLAYER-U-003` | unit | `player.ValidateUsername`: tabla de casos con 2, 3, 24 y 25 caracteres, y con espacios, acentos, punto y `@`. Solo `[A-Za-z0-9_-]{3,24}` pasa. Escritos: `TestValidateUsernameAplicaLaReglaDelEsquema`, `TestUnNombreConCaracteresMultibyteNoPasaPorLongitud`. | `RN-PLAYER-003`, `INV-PLAYER-006` |
+| `T-PLAYER-U-004` | unit | Verificación del ticket con `FakeClock`: válido, `exp` vencido, `aud` incorrecto, firma alterada, `alg=none`, `jti` ausente, claims incompletos. Escritos en `internal/auth`: `TestTicketValidoSeVerifica`, `TestTicketCaducado`, `TestAudienciaIncorrecta`, `TestTicketFirmadoConOtroSecreto`, `TestAlgoritmoNoneSeRechaza`, `TestClaimsIncompletos`. | `RN-PLAYER-009`, `INV-PLAYER-004` |
+| `T-PLAYER-U-005` | unit | `founding.FindSite` con la misma semilla devuelve el mismo emplazamiento; con ciudades existentes respeta la separación de 24 tiles; sin sitio devuelve `ErrNoSite`. Escritos: `TestLaBusquedaEsDeterminista`, `TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan`, `TestSinTerrenoTransitableNoHaySitio`. | `RN-PLAYER-014` |
+| `T-PLAYER-I-001` | integration | Bootstrap completo: 1 fila en `players`, 1 en `cities`, 3 en `units` con `hp = max_hp = 40` y `status='IDLE'`, `cities.population = 3`. Escrito: `TestBootstrapCreaMundoCompletoDelJugador`. | `RN-PLAYER-007`, `INV-PLAYER-003` |
+| `T-PLAYER-I-002` | integration | Un fallo a mitad del alta no deja ninguna fila en `players`, `cities` ni `units`. Escritos: `TestBootstrapFallidoNoDejaNadaAMedias`, `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir`. | `RN-PLAYER-007`, `INV-PLAYER-003` |
+| `T-PLAYER-I-003` | integration | Alta repetida con el mismo `username`: la segunda falla con `USERNAME_TAKEN` (409) y no crea ninguna fila adicional. Escritos: `TestUnAltaRechazadaNoIntroduceNada` (por HTTP), `TestElAltaRegistraUnEventoYNoSeDuplica`. | `RN-PLAYER-006`, `INV-PLAYER-006` |
+| `T-PLAYER-I-004` | integration | Alta de un jugador por cada combinación (civilización × facción): las doce tienen éxito. Falla si alguien acopla los ejes. Escrito: `TestLosDosEjesSonOrtogonales`. | `RN-PLAYER-005`, `INV-PLAYER-002` |
+| `T-PLAYER-I-005` | e2e | `jti` reutilizado: el segundo handshake se rechaza con el cierre `4401`, sin `system.error` previo (el handshake se comunica sólo con códigos de cierre). Escrito: `TestTicketNoSePuedeReutilizarEnOtraConexion`. | `RN-PLAYER-009`, `INV-PLAYER-004` |
+| `T-PLAYER-I-006` | integration | `INSERT` directo con `username` de 2 caracteres o con `@`: rechazado por `players_username_format`. Escritos: `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestValidateUsernameYElCheckDicenLoMismo`. | `INV-PLAYER-006` |
+| `T-PLAYER-I-007` | integration | `INSERT` con `civilization_id` o `faction_id` nulo o inexistente: rechazado por `NOT NULL` / FK. Escrito: `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`. | `INV-PLAYER-002` |
+| `T-PLAYER-C-001` | contract | `session.hello` y `session.welcome` existen en el JSON Schema exportado por `@empires-online/protocol`. Escrito: `TestTiposDeMensajePresentesEnElEsquema`. **Parcial**: no se valida el `session.welcome` emitido contra su esquema. | §12 |
+| `T-PLAYER-C-002` | contract | `session.hello` con un campo extra (`playerId`, por ejemplo) **no** valida: los mensajes cliente→servidor son estrictos, también en el decodificador Go. Escrito: `TestElDecodificadorEsTanEstrictoComoElEsquema`. | `INV-PLAYER-004` |
+| `T-PLAYER-C-003` | contract | El handshake no emite `system.error`: sus rechazos son códigos de cierre del rango privado. Escrito: `TestCodigosDeCierreSonDelRangoPrivado`. | §8 |
+| `T-PLAYER-E-001` | e2e | Conexión sin `session.hello` dentro del plazo → cierre `4408`. Escrito: `TestSinHandshakeEnPlazoSeCierraCon4408`. | `RN-PLAYER-010` |
+| `T-PLAYER-E-002` | e2e | Handshake correcto → `session.welcome` seguido de `world.snapshot` centrado en la ciudad. Escrito: `TestVerticalSliceEndToEnd`. | `RN-PLAYER-011` |
+| `T-PLAYER-E-003` | integration | Alta → el mundo en RAM no conoce al jugador hasta después del COMMIT; con la transacción abortada, no se introduce nada. Escritos: `TestElAltaHTTPIntroduceAlJugadorDespuesDelCommit`, `TestUnAltaRechazadaNoIntroduceNada`. | `INV-PLAYER-008` |
 
-Los tests de integración requieren Docker Desktop **arrancado** y están gated por `EO_INTEGRATION=1`
-(canon §3, §19). En la máquina de desarrollo actual el daemon de Docker no arranca, de modo que estos
-tests están **diseñados pero no ejecutados**: no se pueden dar por verdes. El acceso a PostgreSQL y Redis
-se hace vía `docker compose exec`, porque `psql` y `redis-cli` no están instalados.
+Los tests de integración necesitan PostgreSQL y Redis reales y están gated por `EO_INTEGRATION=1` (canon §3,
+§19). La CI los ejecuta en cada push; en la máquina de desarrollo se ejecutan contra el cluster propio de
+PostgreSQL en el puerto 5433 y Redis en WSL, porque Docker está descartado
+([../operations/local-development.md](../operations/local-development.md) §3-bis).

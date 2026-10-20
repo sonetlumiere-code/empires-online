@@ -416,7 +416,7 @@ La suite necesita **las dos condiciones**: la etiqueta de compilación `integrat
 
 Esos tests aplican las migraciones sobre una base limpia antes de ejercitar los repositorios, de modo que un `up` roto se detecta ahí. El ciclo completo **`up` → `down` hasta 0 → `up`**, que es el que detecta `down` mal escritos y órdenes de `DROP` incorrectos respecto a las claves foráneas, todavía **no** está en el pipeline: añadirlo es trabajo pendiente y sería barato.
 
-Aviso honesto: estos tests de integración están escritos pero **no se han ejecutado todavía en la máquina de desarrollo**, porque el daemon de Docker no arrancó. Lo verde hoy es la suite unitaria; la de integración está pendiente de un entorno con Docker en marcha.
+Estos tests de integración se ejecutan en la CI en cada push y en local contra el cluster propio de PostgreSQL ([../operations/local-development.md](../operations/local-development.md) §3-bis). Además, `TestLasMigracionesSonCorrelativasYCompletas` (`migrations`) comprueba que los nombres son correlativos y que cada `.up.sql` tiene su `.down.sql`, y `TestElMigradorEsIdempotente` y `TestUnEsquemaDirtyAbortaElMigrador` (integración) que aplicar dos veces no cambia nada y que un esquema `dirty` aborta.
 
 ---
 

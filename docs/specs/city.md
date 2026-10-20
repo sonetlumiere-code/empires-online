@@ -175,7 +175,7 @@ y su byte en `world_chunks`. Ver [movement.md](movement.md) y
 | `RN-CITY-015` | `eras.population_cap` se lee de la tabla `eras`, **nunca** de una constante en código: `STONE_AGE`=20, `BRONZE_AGE`=50, `IRON_AGE`=100, `CASTLE_AGE`=150 (canon §10). El código no contiene esos literales; la tabla se siembra por migración. |
 | `RN-CITY-016` | `population_limit` se materializa como columna de `cities` (lectura barata para `city.update`) y se recalcula en cada transacción que pueda alterarlo: creación de la ciudad y cambio de era (`Fuera de MVP`). Es un caché derivado, y [`INV-CITY-003`](../invariants/city.md#inv-city-003) lo verifica. |
 | `RN-CITY-017` | Toda operación que incremente la población valida **antes de escribir** que `population + coste <= population_limit` (guard de dominio `City.HasPopulationRoom(n)`). Si no cabe, la operación se rechaza entera con `POPULATION_LIMIT_REACHED` y no se escribe nada. La validación ocurre dentro de la misma transacción que la escritura, para que no haya carrera entre dos comandos concurrentes; `cities.version` da la concurrencia optimista y el `CHECK cities_population_within_limit` es la última línea de defensa. |
-| `RN-CITY-018` | En MVP la única operación que incrementa la población es el bootstrap (3 aldeanos contra un cap de 20), de modo que `POPULATION_LIMIT_REACHED` **no es alcanzable en juego normal**. La regla y su código existen igualmente y se testean con un fixture que baja el límite artificialmente. El entrenamiento de unidades es `Fuera de MVP`. |
+| `RN-CITY-018` | En MVP la única operación que incrementa la población es el bootstrap (3 aldeanos contra un cap de 20), de modo que `POPULATION_LIMIT_REACHED` **no es alcanzable en juego normal**. Lo que existe es el predicado `City.HasPopulationRoom`, con su test (`TestLimiteDePoblacion`), y el `CHECK cities_population_within_limit`, que es la guarda real (`TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`). **Ninguna operación llama al predicado** ni emite el código: el bootstrap no lo necesita, porque tres aldeanos caben en el cap de cualquier era. Lo usará la primera operación que añada población; el entrenamiento de unidades es `Fuera de MVP`. |
 
 ### 6.4 Ownership
 
@@ -426,29 +426,27 @@ Reglas de difusión:
 
 | ID | Nivel | Descripción | Cubre |
 |---|---|---|---|
-| `T-CITY-U-001` | unit | Validación de emplazamiento: rechaza `MOUNTAIN`, `WATER`, fuera de límites y tiles ya ocupados. | `RN-CITY-001..003` |
-| `T-CITY-U-002` | unit | Distancia Chebyshev a ciudades existentes por debajo del mínimo → candidato rechazado. | `RN-CITY-004` |
-| `T-CITY-U-003` | unit | La búsqueda en espiral con la misma semilla y el mismo mundo devuelve siempre el mismo tile (10 ejecuciones). | `RN-CITY-005` |
-| `T-CITY-U-004` | unit | Mundo enteramente `WATER`: `FindSite` devuelve `ErrNoSite` en lugar de colocar la ciudad. | `RN-CITY-006` |
-| `T-CITY-U-005` | unit | La fundación marca el 3×3 completo en el overlay, coloca los 3 aldeanos a distancia 2 y no toca el `TerrainType`. | `RN-CITY-007..009` |
-| `T-CITY-U-006` | unit | `population_limit` se calcula desde la fila de `eras` inyectada; no hay literal 20 en el paquete de dominio. | `RN-CITY-014`, `RN-CITY-015` |
-| `T-CITY-U-007` | unit | Con `population_limit` forzado a 3, un cuarto aldeano produce `POPULATION_LIMIT_REACHED` y no escribe nada. | `RN-CITY-017`, `RN-CITY-018` |
-| `T-CITY-I-001` | integration | Bootstrap: fila de `cities` con `population = 3`, `population_limit = 20`, `presence_state = 'ONLINE'`. | `INV-CITY-002`, `INV-CITY-003`, `INV-CITY-009` |
-| `T-CITY-I-002` | integration | `INSERT` sin `owner_player_id` o con uuid inexistente falla. | `INV-CITY-001` |
-| `T-CITY-I-003` | integration | Una segunda ciudad con el mismo `(center_x, center_y)` falla por `cities_unique_center`. | `INV-CITY-008` |
-| `T-CITY-I-004` | integration | `presence_state` con un valor no canónico falla por `cities_presence_state_valid`. | `INV-CITY-004` |
-| `T-CITY-I-005` | integration | 50 altas consecutivas: ningún par de zonas urbanas comparte tile y todos los centros distan `>= 24`. | `INV-CITY-008`, `RN-CITY-004` |
-| `T-CITY-S-001` | simulation | Con el mismo mundo y los mismos nombres de usuario, 200 altas producen exactamente el mismo conjunto de centros en dos ejecuciones. | `RN-CITY-005` |
+| `T-CITY-U-001` | unit | Validación de emplazamiento: rechaza `MOUNTAIN`, `WATER`, fuera de límites y tiles ya ocupados. Escritos: `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestUnObstaculoEnElEntornoDescartaElCandidato`, `TestUnCandidatoJuntoAlBordeSeDescarta`. | `RN-CITY-001..003` |
+| `T-CITY-U-002` | unit | Distancia Chebyshev a ciudades existentes por debajo del mínimo → candidato rechazado. Escritos: `TestFarEnoughEsLaSeparacionDeLaSpec`, `TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan`. | `RN-CITY-004` |
+| `T-CITY-U-003` | unit | La búsqueda en espiral con la misma semilla y el mismo mundo devuelve siempre el mismo tile. Escrito: `TestLaBusquedaEsDeterminista`. | `RN-CITY-005` |
+| `T-CITY-U-004` | unit | Sin terreno transitable: `FindSite` devuelve `ErrNoSite` en lugar de colocar la ciudad. Escrito: `TestSinTerrenoTransitableNoHaySitio`. | `RN-CITY-006` |
+| `T-CITY-U-005` | unit | La fundación marca el 3×3 completo en el overlay, coloca los 3 aldeanos a distancia 2 y no toca el `TerrainType`. Escritos: `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable` (aldeanos a distancia 2), `TestCapaDeOcupacionNoMutaElTerreno`. | `RN-CITY-007..009` |
+| `T-CITY-U-006` | unit | `population_limit` se calcula desde la fila de `eras`; no hay literal 20 en el dominio. Escritos: `TestElAltaTomaElLimiteDePoblacionDeSuEra`, `TestLasErasDelCatalogoSonLasDelCanon` (integration). | `RN-CITY-014`, `RN-CITY-015` |
+| `T-CITY-U-007` | unit | Con `population_limit` forzado a 3, un cuarto aldeano produce `POPULATION_LIMIT_REACHED` y no escribe nada. **Pendiente**: ninguna operación añade población más allá del alta (`RN-CITY-018`). Lo que hay es el predicado (`TestLimiteDePoblacion`) y el `CHECK` (`TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`). | `RN-CITY-017`, `RN-CITY-018` |
+| `T-CITY-I-001` | integration | Bootstrap: fila de `cities` con `population = 3`, `population_limit = 20`, `presence_state = 'ONLINE'`. Escritos: `TestBootstrapCreaMundoCompletoDelJugador`, `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal`. | `INV-CITY-002`, `INV-CITY-003`, `INV-CITY-009` |
+| `T-CITY-I-002` | integration | `INSERT` sin `owner_player_id` o con uuid inexistente falla. Escrito: `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`. | `INV-CITY-001` |
+| `T-CITY-I-003` | integration | Una segunda ciudad con el mismo `(center_x, center_y)` falla por `cities_unique_center`. Escritos: `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestDosCiudadesNoPuedenCompartirCentro`. | `INV-CITY-008` |
+| `T-CITY-I-004` | integration | `presence_state` con un valor no canónico falla por `cities_presence_state_valid`. Escrito: `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`. | `INV-CITY-004` |
+| `T-CITY-I-005` | integration | Muchas altas, también simultáneas: ningún par de zonas urbanas comparte tile y todos los centros distan `>= 24`. Escritos: `TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan` (unit), `TestAltasSimultaneasGuardanLaDistanciaMinima`. | `INV-CITY-008`, `RN-CITY-004` |
+| `T-CITY-S-001` | simulation | Con el mismo mundo y los mismos nombres de usuario, las altas producen exactamente el mismo conjunto de centros en dos ejecuciones. **Parcial**: `TestLaBusquedaEsDeterminista` lo comprueba para una búsqueda, no para una secuencia de 200 altas. | `RN-CITY-005` |
 | `T-CITY-S-002` | simulation | Una unidad dentro del 3×3 recién fundado se aparta al tile libre más cercano, en orden `(y, x)` a igual distancia, y puede volver a moverse. Escrito: `TestFundarApartaLaUnidadQueQuedaDentroDeLaMuralla`. | `RN-CITY-022` |
 | `T-CITY-S-003` | simulation | Una ruta pendiente que atraviesa la muralla nueva se detiene en el tile actual con `PATH_BLOCKED` y el cierre se persiste con esa posición; una que no la toca sigue; una unidad que se detiene dentro se aparta; una guarnecida no se toca. Escritos: `TestUnaRutaQueCruzaLaMurallaNuevaSeDetieneConPathBlocked`, `TestUnaRutaAjenaALaMurallaNuevaSigueSuCurso`, `TestUnaUnidadQueSeDetieneDentroDeLaMurallaSeAparta`, `TestLaMurallaNuevaNoTocaUnidadesGuarnecidas`. | `RN-CITY-022` |
-| `T-CITY-R-003` | recovery | El arranque aplica la misma regla tras reconstruir las murallas, y devuelve los movimientos que detiene para cerrarlos en la base. Escrito: `TestAlArrancarLaMurallaApartaYDetieneComoEnElAlta`. | `RN-CITY-022` |
-| `T-CITY-R-001` | recovery | Reinicio del servidor: el overlay de ocupación reconstruido desde `cities` es idéntico al previo (hash por chunk). | `RN-CITY-010`, §10 |
-| `T-CITY-R-002` | recovery | Hash de `world_chunks` idéntico antes y después de fundar ciudades. | `INV-CITY-010` |
-| `T-CITY-C-001` | contract | `city.update` valida contra el JSON Schema exportado por `@empires-online/protocol`. | §12 |
-| `T-CITY-C-002` | contract | `city.update` se emite solo ante cambio real de campos, no periódicamente. | §12 |
+| `T-CITY-R-001` | recovery | Reinicio del servidor: el overlay de ocupación se reconstruye desde `cities`. Escrito: `TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla` (integration). **Parcial**: no compara el overlay entero antes y después por hash. | `RN-CITY-010`, §10 |
+| `T-CITY-R-002` | recovery | `world_chunks` idéntico antes y después de fundar ciudades. Escritos: `TestMundoPersistidoCoincideByteAByteConLaSemilla`, `TestCapaDeOcupacionNoMutaElTerreno`. | `INV-CITY-010` |
+| `T-CITY-R-003` | recovery | El arranque aplica la regla de la fundación tras reconstruir las murallas, y devuelve los movimientos que detiene para cerrarlos en la base. Escrito: `TestAlArrancarLaMurallaApartaYDetieneComoEnElAlta`. | `RN-CITY-022` |
+| `T-CITY-C-001` | contract | `city.update` existe en el JSON Schema y sus estados de presencia son los del dominio. Escrito: `TestLosEstadosDePresenciaDelDominioSonLosDelEsquema`. **Parcial**: no se valida el payload emitido contra el esquema. | §12 |
+| `T-CITY-C-002` | simulation | `city.update` se emite sólo ante cambio real de campos, no periódicamente. Escrito: `TestCityUpdateSoloSeEmiteAnteUnCambio`. | §12 |
 
-Los tests de integración y recovery requieren Docker Desktop iniciado y `EO_INTEGRATION=1` (canon §3, §19).
-A día de hoy están **diseñados pero no ejecutados**: el daemon de Docker no arranca en la máquina de
-desarrollo, así que no se afirma que pasen. Los de nivel unit y simulation del paquete
-`internal/domain/city` sí están escritos y en verde (autómata de presencia completo,
-`ShouldEngageProtection` con sus bordes y límite de población).
+Los tests de integración necesitan PostgreSQL y Redis reales y `EO_INTEGRATION=1` (canon §3, §19). La CI
+los ejecuta en cada push; en la máquina de desarrollo, contra el cluster propio de PostgreSQL en el puerto
+5433 y Redis en WSL ([../operations/local-development.md](../operations/local-development.md) §3-bis).

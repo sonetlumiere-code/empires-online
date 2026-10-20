@@ -46,7 +46,7 @@ lugar de completar una capa entera. Ver [glossary.md](glossary.md) → *Vertical
 | IN-15 | **Recuperación tras crash** | `simulation.Hydrate` carga los movimientos `ACTIVE`: si el movimiento venció durante la caída, la unidad aparece en el destino y el movimiento se cierra `COMPLETED`; si sigue en curso, se reanuda desde la polilínea; si la polilínea es inválida, queda `FAILED` y la unidad se queda donde estaba —nunca se teletransporta a nadie por un dato dudoso—. | Es la prueba de que ningún estado durable depende de un WebSocket ni de un proceso vivo. |
 | IN-16 | **Presencia y protección offline** | Redis `presence:player:{playerId}` TTL 30 s, heartbeat 10 s; máquina `ONLINE → OFFLINE_PENDING → PROTECTED` con cooldown 300 s, evaluada por el game loop en RAM contra `DisconnectGrace` (= `EO_PRESENCE_TTL_SECONDS`). | Pilar 3; además es lo que da sentido de juego a la desconexión del flujo end-to-end. |
 | IN-17 | **Persistencia por capas** | Transacción propia para lo crítico, **encolada** hacia workers (hasta 3 intentos con backoff y compensación `OnPermanentFailure`) porque el tick no hace I/O de PostgreSQL; dirty-flag + flush cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50 ticks = 5 s) para posiciones consolidadas y HP. | Define y valida el contrato "qué es durable, qué es eventual, qué es reconstruible". |
-| IN-18 | **Cliente isométrico mínimo** — *pendiente* | Next.js 15 + React 19 + PixiJS 8: render del terreno del AoI, selección de unidad, orden de movimiento por clic, interpolación sub-tile puramente visual. **`apps/web/` ya existe y el slice se ha ejecutado de extremo a extremo** en el navegador. | Sin cliente no hay vertical slice: el flujo debe ser observable por un humano, no solo por un test. |
+| IN-18 | **Cliente isométrico mínimo** | Next.js 15 + React 19 + PixiJS 8: render del terreno del AoI, selección de unidad, orden de movimiento por clic, interpolación sub-tile puramente visual. **`apps/web/` ya existe y el slice se ha ejecutado de extremo a extremo** en el navegador. | Sin cliente no hay vertical slice: el flujo debe ser observable por un humano, no solo por un test. |
 | IN-19 | **Observabilidad base** | Logging JSON con `log/slog` (`ts`, `level`, `msg`, `player_id`, `session_id`, `request_id`, `tick`); métricas `eo_*` en `EO_METRICS_ADDR/metrics`; `GET /health` y `GET /ready`. | Un mundo persistente sin observabilidad no es depurable, y sus bugs son permanentes. |
 | IN-20 | **Tablas creadas con lógica mínima o diferida** | `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events`. | Se crean ahora porque su ausencia condicionaría el diseño del esquema; su lógica se difiere. |
 
@@ -93,7 +93,7 @@ login -> world -> city -> 3 villagers -> select -> move -> A* -> game loop
 ```mermaid
 sequenceDiagram
     participant U as Jugador
-    participant W as apps/web (Next.js + PixiJS) — pendiente
+    participant W as apps/web (Next.js + PixiJS)
     participant G as game-server (Go)
     participant R as Redis
     participant P as PostgreSQL
@@ -194,19 +194,19 @@ Numerados, verificables y con el nivel de test que los cubre. El MVP está termi
 en CI. `[unit]`, `[integration]`, `[contract]`, `[simulation]`, `[recovery]` y `[manual]` indican el nivel
 que los verifica.
 
-**Estado real a fecha de hoy.** Los criterios cubiertos por `[unit]`, `[contract]`, `[simulation]` y
-`[recovery]` están implementados y su suite está **en verde** (`go build ./...`, `go vet` y `go test` del
-game server; 18 tests de Vitest en `packages/protocol`). Los criterios `[integration]` están **escritos
-pero no ejecutados**: requieren PostgreSQL y Redis reales vía Docker Compose y el daemon de Docker no
-arrancó en la máquina de desarrollo. Los criterios `[manual]` (AC-32 a AC-34) están **pendientes** porque
-`apps/web/` ya existe y el flujo se ejecutó de extremo a extremo. Lo que sigue sin ejecutarse es la CI.
+**Estado real a fecha de hoy.** Los criterios `[unit]`, `[contract]`, `[simulation]`, `[recovery]` e
+`[integration]` tienen tests en verde que la CI ejecuta en cada push; los de transporte, además, como *e2e*
+sobre un WebSocket real. Los `[manual]` (AC-32 a AC-34) se recorrieron en el navegador al construir el
+cliente; no tienen registro automatizado y no se repitieron en la reconciliación de `EO-118`. Varios
+criterios se reescribieron en esa reconciliación para describir el comportamiento que fijan las specs —se
+señala en cada uno—, y los que se cumplen sólo en parte lo dicen.
 
 ### 4.1 Mundo y determinismo
 
 - **AC-01** `[integration]` Con `EO_WORLD_SEED=20260909`, dos generaciones independientes del mundo
   producen `world_chunks` **byte a byte idénticos** para los 256 chunks.
-- **AC-02** `[unit]` Para todo tile válido, `chunkX = x >> 5`, `chunkY = y >> 5` y
-  `chunkId = chunkY*chunksPerRow + chunkX` coinciden con la partición de 16 × 16 chunks.
+- **AC-02** `[unit]` Para todo tile válido, `chunkX = x / 32`, `chunkY = y / 32` (división entera de
+  `EO_CHUNK_SIZE`) y `chunkId = chunkY*chunksPerRow + chunkX` coinciden con la partición de 16 × 16 chunks.
 - **AC-03** `[unit]` Un destino con `x < 0`, `y < 0`, `x >= 512` o `y >= 512` produce
   `TARGET_OUT_OF_BOUNDS`.
 - **AC-04** `[unit]` Un destino sobre `MOUNTAIN` o `WATER` produce `TARGET_NOT_WALKABLE`; el servidor
@@ -221,13 +221,15 @@ arrancó en la máquina de desarrollo. Los criterios `[manual]` (AC-32 a AC-34) 
 - **AC-07** `[integration]` Una conexión que no envía `session.hello` en 5 s se cierra con código `4408`.
 - **AC-08** `[contract]` Todo mensaje emitido por el servidor valida contra el JSON Schema exportado por
   `@empires-online/protocol` para su tipo, incluido el envelope `{ v, type, seq, ts, requestId?, payload }`
-  con `v = 1`.
+  con `v = 1`. **Parcial**: los tipos y campos están cubiertos por contract tests, pero ningún test valida cada
+  mensaje emitido contra su esquema; lo hace el cliente, con Zod, al recibirlo.
 - **AC-09** `[integration]` El campo `seq` es estrictamente monótono creciente dentro de una conexión.
-- **AC-10** `[integration]` Un mensaje mayor que `EO_WS_MAX_MESSAGE_BYTES` (16384) produce
-  `MESSAGE_TOO_LARGE`; superar 20 msg/s con burst 40 produce `RATE_LIMITED` y, si persiste, cierre `4429`.
+- **AC-10** `[integration]` Un mensaje mayor que `EO_WS_MAX_MESSAGE_BYTES` (16384) lo corta el transporte con
+  el cierre estándar `1009`, sin leerlo; superar 20 msg/s con burst 40 produce `RATE_LIMITED` y el cierre
+  `4429` (spec del protocolo §6.1; antes decía `MESSAGE_TOO_LARGE`, que queda reservado).
 - **AC-11** `[integration]` Reenviar un `unit.move` con el mismo `requestId` **no** crea un segundo
-  movimiento; se comprueba en Redis (`idem:{playerId}:{requestId}`). Reenviar **la respuesta original** al
-  duplicado está pendiente: hoy se descarta sin respuesta ([INV-SEC-007](../invariants/security.md#inv-sec-007)).
+  movimiento; se comprueba en Redis (`idem:{playerId}:{requestId}`). Si el original ya tuvo respuesta, el
+  duplicado la recibe otra vez, también tras reconectar ([INV-SEC-007](../invariants/security.md#inv-sec-007)).
 
 ### 4.3 Interés y sincronización
 
@@ -235,8 +237,9 @@ arrancó en la máquina de desarrollo. Los criterios `[manual]` (AC-32 a AC-34) 
   dentro de `EO_INTEREST_RADIUS_CHUNKS = 2` alrededor de la ciudad del jugador, y ninguna de fuera.
 - **AC-13** `[integration]` Tras el snapshot inicial, el servidor no vuelve a enviar el mundo completo:
   toda actualización llega como `entity.spawn` / `entity.update` / `entity.despawn`.
-- **AC-14** `[integration]` Un `session.view` que desplaza el centro provoca `entity.spawn` de las
-  entidades que entran en el AoI y `entity.despawn` de las que salen.
+- **AC-14** `[integration]` Un `session.view` que desplaza el centro produce un `world.snapshot` nuevo del
+  área, con el `requestId` del comando y el terreno sólo de los chunks que la sesión aún no tenía (spec del
+  protocolo §7.3; antes pedía `entity.spawn` y `entity.despawn` por chunk). **Sin test de extremo a extremo**.
 
 ### 4.4 Movimiento y pathfinding
 
@@ -305,13 +308,16 @@ arrancó en la máquina de desarrollo. Los criterios `[manual]` (AC-32 a AC-34) 
 - **AC-35** `[integration]` `GET /health` responde sin consultar dependencias; `GET /ready` responde
   correctamente solo si PostgreSQL, Redis y el game loop están vivos.
 - **AC-36** `[integration]` Las catorce métricas `eo_*` declaradas están expuestas en
-  `EO_METRICS_ADDR/metrics` (`:9090`) y los logs incluyen `player_id`, `session_id`, `request_id` y `tick`
+  `EO_METRICS_ADDR/metrics` (`:9090`) —las cuatro con etiquetas, desde su primera observación— y los logs incluyen `player_id`, `session_id`, `request_id` y `tick`
   cuando aplican.
 - **AC-37** Cada uno de los **22 códigos de error** del catálogo alcanzable en el MVP tiene al menos un
   test que lo provoca y comprueba el campo `code` de `system.error` (nunca el texto humano). Un contract
   test en Go verifica además que el catálogo coincide con el exportado por `@empires-online/protocol`.
-- **AC-38** El pipeline de CI ejecuta `format → lint → typecheck → unit → integration → build → docker build`
-  y está en verde. **Pendiente**: la CI todavía no existe en el repositorio.
+  **Parcial**: los rechazos de `unit.move` llevan su código en `unit.move.rejected`, y `PATH_TOO_LONG` se
+  comprueba en el pathfinder (`ErrPathTooLong`) pero no hasta el mensaje.
+- **AC-38** La CI ejecuta formato, lint de determinismo, typecheck, tests unitarios y de integración, build y
+  la imagen del contenedor, y está en verde. No es una cadena lineal sino cinco jobs
+  ([../testing/strategy.md](../testing/strategy.md) §8.1); ESLint no existe todavía.
 
 ---
 
@@ -325,14 +331,14 @@ entregable por entregable está en [../roadmap/milestones.md](../roadmap/milesto
 
 | Milestone | Contenido | Estado en el MVP | Estado real |
 |---|---|---|---|
-| **M0** Foundation | Monorepo, configuración, Docker Compose, migraciones, protocolo | Dentro | **Hecho** salvo la CI, que falta |
-| **M1** World | Grid, tiles, chunks, generación determinista | Dentro | **Hecho**, con tests en verde |
-| **M2** Player & City | `players`, `cities`, `units` iniciales | Dentro | **Hecho** del lado servidor (alta vía `POST /api/auth/register`) |
-| **M3** Realtime | WebSocket, auth, snapshot, deltas, reconexión | Dentro | **Parcial**: servidor hecho; falta el cliente |
-| **M4** Movement | A\*, loop, persistencia del movimiento, interpolación | Dentro | **Parcial**: servidor hecho; falta la interpolación del cliente |
+| **M0** Foundation | Monorepo, configuración, Docker Compose, migraciones, protocolo | Dentro | **Cerrado**, con la CI en verde |
+| **M1** World | Grid, tiles, chunks, generación determinista | Dentro | **Cerrado** |
+| **M2** Player & City | `players`, `cities`, `units` iniciales | Dentro | **Cerrado** (alta vía `POST /api/auth/register`) |
+| **M3** Realtime | WebSocket, auth, snapshot, deltas, reconexión | Dentro | **Parcial**: servidor y cliente hechos; la emisión del ticket desde Next.js está bloqueada por una decisión (`DEBT-18`) |
+| **M4** Movement | A\*, loop, persistencia del movimiento, interpolación | Dentro | **Parcial**: servidor hecho y el cliente interpola; falta conectar la corrección gradual (`EO-075`) |
 | **M5** Offline protection & Safe Zones | Presencia y protección **sí**; Safe Zones con lógica mínima | Parcial | **Hecho**: presencia, protección y Safe Zones con ocultamiento y filtrado por destinatario. El mundo canónico no tiene zonas sembradas (`TBD`) |
-| **M6** Territories | Tablas creadas, lógica diferida | Fundamento | Tablas creadas; lógica diferida |
-| **M7** Diplomacy foundation | `treaties` y `garrisons` creados, lógica diferida | Fundamento | Tablas creadas; lógica diferida |
+| **M6** Territories | Tablas creadas, lógica diferida | Fundamento | **Hecho** salvo el entregable 8: territorios, control, reclamación al fundar y `territory.update`; las acciones en territorio ajeno no tienen regla |
+| **M7** Diplomacy foundation | `treaties` y `garrisons` creados, lógica diferida | Fundamento | Reglas y persistencia de tratados y guarnición implementadas; ningún comando de red las expone |
 
 Ver [../roadmap/milestones.md](../roadmap/milestones.md) para el criterio de salida de cada uno.
 

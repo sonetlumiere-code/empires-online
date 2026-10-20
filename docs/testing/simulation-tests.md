@@ -535,7 +535,7 @@ verificable y ahí es donde se verifica.
 
 - [strategy.md](./strategy.md) — reglas duras, sobre todo R3 (nada de `time.Now()`) y R4 (nada de iterar mapas).
 - [unit-tests.md](./unit-tests.md) — las funciones puras que este nivel encadena, incluido el ejemplo numérico canónico `[0, 600, 1449, 2409, 2769]`.
-- [integration-tests.md](./integration-tests.md) — persistencia y recuperación durable tras crash, **diseñada y no ejecutada**.
+- [integration-tests.md](./integration-tests.md) — persistencia y recuperación durable tras crash, ejecutada en la CI contra PostgreSQL y Redis reales.
 - [contract-tests.md](./contract-tests.md) — forma de los mensajes que aquí se cuentan y se ordenan.
 - [../architecture/game-loop.md](../architecture/game-loop.md) — las ocho fases del tick y su orden fijo.
 - [../architecture/game-server.md](../architecture/game-server.md) — `Clock`, `RandomSource` y el resto de puertos inyectados.

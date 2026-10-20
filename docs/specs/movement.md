@@ -11,10 +11,9 @@ Define de forma completa y verificable cómo una unidad se desplaza por el mundo
 | Depende de | [unit.md](unit.md), [player.md](player.md), [websocket-protocol.md](websocket-protocol.md) |
 | Reemplaza a | — |
 
-> **Nota de estado.** El código existe en `services/game-server` y sus tests unitarios, de simulación
-> y de contrato están en verde. Los tests de **integración** (PostgreSQL + Redis reales) están
-> diseñados pero **no ejecutados**: el daemon de Docker no arranca en la máquina de desarrollo actual.
-> Ver [../operations/local-development.md](../operations/local-development.md).
+> **Nota de estado.** El código existe en `services/game-server` y sus tests unitarios, de simulación, de
+> contrato, *e2e* y de **integración** (PostgreSQL y Redis reales) están en verde; la CI los ejecuta en cada
+> push. Ver [../operations/local-development.md](../operations/local-development.md).
 
 Documentos relacionados: [../architecture/pathfinding.md](../architecture/pathfinding.md) · [../architecture/game-loop.md](../architecture/game-loop.md) · [../architecture/persistence.md](../architecture/persistence.md) · [websocket-protocol.md](websocket-protocol.md) · [../database/schema.md](../database/schema.md) · [../decisions/ADR-011-movement-timed-polyline.md](../decisions/ADR-011-movement-timed-polyline.md) · [../invariants/movement.md](../invariants/movement.md)
 
@@ -977,23 +976,23 @@ Los tests marcados **(existe)** están escritos y en verde; el resto están dise
 | MV-C-002 | `INV-MOVE-011` | Ningún esquema cliente→servidor de v1 contiene posición, ruta, `tMs`, velocidad ni instante de llegada |
 | MV-C-003 | Catálogo de errores Go ↔ TypeScript | Los 22 códigos coinciden exactamente **(existe, `internal/protocol`)** |
 
-### Integration (`Docker Compose` con PostgreSQL y Redis)
+### Integration (PostgreSQL y Redis reales)
 
-**Diseñados, no ejecutados**: el daemon de Docker no arranca en la máquina de desarrollo actual.
+Se ejecutan en la CI y en local, contra el cluster propio de PostgreSQL y Redis en WSL.
 
 | ID | Caso | Aserción |
 |---|---|---|
-| MV-I-001 | Índice único parcial | Un `INSERT` de un segundo `ACTIVE` para la misma unidad viola `unit_movements_one_active_per_unit` (`23505`) |
-| MV-I-002 | Atomicidad de la sustitución | Fallo inyectado entre el `UPDATE` de cancelación y el `INSERT` ⇒ rollback: el movimiento previo sigue `ACTIVE` |
-| MV-I-003 | Inmutabilidad (`INV-MOVE-007`) | `Finish` sobre un movimiento ya cerrado no lo reabre y no falla |
-| MV-I-004 | Idempotencia | `unit.move` repetido con el mismo `requestId` ⇒ un solo movimiento |
-| MV-I-005 | Volcado periódico | Tras 50 ticks, `units.(x,y)` refleja la posición consolidada |
-| MV-I-006 | Rehidratación desde base de datos | `ListActive` + `Hydrate` reconstruyen el mundo con las tres clasificaciones de §10.4 |
+| MV-I-001 | Índice único parcial | Un `INSERT` de un segundo `ACTIVE` para la misma unidad viola `unit_movements_one_active_per_unit` (`23505`) **(existe, `TestIndiceUnicoImpideDosMovimientosActivos`)** |
+| MV-I-002 | Atomicidad de la sustitución | Fallo inyectado entre el `UPDATE` de cancelación y el `INSERT` ⇒ rollback: el movimiento previo sigue `ACTIVE` **(pendiente: la transacción es una, pero ningún test inyecta el fallo)** |
+| MV-I-003 | Inmutabilidad (`INV-MOVE-007`) | `Finish` sobre un movimiento ya cerrado no lo reabre y no falla **(existe, `TestFinishEsIdempotente`)** |
+| MV-I-004 | Idempotencia | `unit.move` repetido con el mismo `requestId` ⇒ un solo movimiento **(existe como e2e: `TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal`)** |
+| MV-I-005 | Volcado periódico | Tras 50 ticks, `units.(x,y)` refleja la posición consolidada **(existe: `TestVolcadoPeriodicoNoOcurreEnCadaTick` en simulación, `TestFlushPositionsEscribeElLoteYMantieneElChunk` en integración)** |
+| MV-I-006 | Rehidratación desde base de datos | `ListActive` + `Hydrate` reconstruyen el mundo con las tres clasificaciones de §10.4 **(existe, `TestRecuperacionCompletaTrasReinicio`)** |
 
 ### E2E
 
 | ID | Caso | Aserción |
 |---|---|---|
-| MV-E-001 | Cliente WS real: conectar, mover, llegar | Recibe `accepted`, `started`, `entity.update`, `completed` en ese orden |
-| MV-E-002 | Desconexión a mitad de trayecto | Al reconectar, `world.snapshot` muestra la unidad avanzada y con su `movement` |
-| MV-E-003 | Dos clientes en el mismo chunk | El observador recibe los mismos eventos de movimiento que el propietario |
+| MV-E-001 | Cliente WS real: conectar, mover, llegar | Recibe `accepted`, `started`, `entity.update`, `completed` en ese orden **(existe, `TestVerticalSliceEndToEnd`)** |
+| MV-E-002 | Desconexión a mitad de trayecto | Al reconectar, `world.snapshot` muestra la unidad avanzada y con su `movement` **(en simulación: `TestElMovimientoContinuaConElJugadorDesconectado`, `TestSnapshotIncluyeElMovimientoEnCurso`; sin e2e)** |
+| MV-E-003 | Dos clientes en el mismo chunk | El observador recibe los mismos eventos de movimiento que el propietario **(pendiente como e2e; el reparto por chunk lo cubren los tests del `Hub`)** |

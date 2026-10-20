@@ -4,30 +4,33 @@ Visión temporal de Empires Online: qué se construye, en qué orden, por qué e
 
 ## 1. Estado del proyecto
 
-El proyecto **ya no es greenfield**. El lado servidor del vertical slice está construido: el módulo Go
-de `services/game-server` compila (`go build ./...`), pasa `go vet` y su suite de tests unitarios, de
-contrato, de simulación y de recuperación está **en verde**, igual que los 18 tests de Vitest de
-`packages/protocol`. M0 está prácticamente cerrado y buena parte de M1 a M5 está implementada del lado
-servidor.
+El proyecto **ya no es greenfield**. El vertical slice está construido de punta a punta: el Game Server
+de `services/game-server`, el protocolo de `packages/protocol` y el cliente de `apps/web`. La CI se
+ejecuta sobre cada push a `main` y está en verde: documentación y lint de determinismo, TypeScript (tipos,
+tests del protocolo y del cliente, deriva del JSON Schema y `next build`), Game Server con `-race`,
+integración contra PostgreSQL y Redis reales, e imagen del contenedor.
+
+Estado por milestone, tal como lo fija [milestones.md](milestones.md): **M0, M1, M2 y M5 cerrados**; M6
+completo salvo su entregable 8; **M3 y M4 parciales** y M7 con las reglas hechas y sin puerta de entrada.
 
 Lo que falta, y que este roadmap no debe dar por hecho:
 
 | Pendiente | Situación |
 |---|---|
-| **Cliente `apps/web/`** | No existe todavía. Es el entregable que impide cerrar M3 y M4 y ejecutar el flujo end-to-end delante de un humano. |
-| **Tests de integración** | Escritos y diseñados, pero **no ejecutados**: requieren PostgreSQL y Redis reales por Docker Compose y el daemon de Docker no arrancó en la máquina de desarrollo. |
-| **CI en GitHub Actions** | Todavía no montada. Hasta que exista, ningún milestone puede declararse cerrado con la Definition of Done completa. |
-| **Alta de jugador en Next.js** | `POST /api/auth/register` y `POST /api/auth/login` los sirve hoy el propio game server (`internal/httpapi`, con bcrypt). ADR-010 los sitúa en Next.js; el traslado está pendiente y registrado como deuda. |
+| **Emisión del ticket desde Next.js** (`EO-041`) | Bloqueada por una decisión, no por trabajo: `DEBT-18` en [backlog.md](backlog.md). Hoy el alta y el login los sirve el propio Game Server (`internal/httpapi`, con bcrypt y límite de tasa por origen). Impide cerrar M3. |
+| **Corrección gradual en el cliente** (`EO-075`) | El cliente dibuja el movimiento de forma continua; la corrección hacia la verdad del servidor al llegar un delta está escrita y no conectada. Impide cerrar M4. |
+| **Acciones en territorio ajeno** (M6, entregable 8) | Sin regla de juego que las defina. |
+| **Comandos de guarnición** (M7, entregable 6) | Las reglas y la persistencia existen; ningún comando de red las invoca. |
+| **Validación de carga** (`EO-119`) | El arranque no comprueba que el estado durable de territorios, ciudades y unidades cumpla sus invariantes. |
 
 Ningún milestone se considera **cerrado** hasta que su documentación refleje lo implementado y la CI
 esté en verde.
 
-El entorno de desarrollo real sobre el que se planifica es Windows 10 Pro con Node v22.17.1,
-pnpm 10.25.0, git 2.38.1 y Docker CLI 20.10.22 con Compose v2.15.1 (daemon **no arrancado**). **Go 1.27.0
-está instalado** en `C:\Program Files\Go` (`winget install --id GoLang.Go`); el `go.mod` declara `go 1.23`
-como versión mínima. `psql`, `redis-cli`, `make` y `gh` no están instalados: el task runner del
-repositorio son **pnpm scripts**, no un Makefile, y el acceso a Postgres y Redis se hace mediante
-`docker compose exec`.
+El entorno de desarrollo real sobre el que se planifica está descrito herramienta por herramienta en
+[../operations/local-development.md](../operations/local-development.md) §1: Windows 10 Pro, Node 22,
+pnpm 10, Go 1.27.0 (el `go.mod` exige 1.25.11 como mínimo), un cluster propio de PostgreSQL en el puerto
+5433 y Redis y `-race` en WSL. **Docker está descartado** en esta máquina —provoca pantallazos azules por
+consumo de RAM—, y no hay `make`: el task runner son **pnpm scripts**.
 
 ## 2. Estrategia: vertical slice antes que profundidad
 
@@ -215,16 +218,17 @@ Server. Es el disparador natural de la mayoría de las deudas técnicas registra
 |---|---|---|
 | Complejidad del estado persistente | Tres capas —PostgreSQL durable, Redis caliente, RAM del Game Server— con reglas distintas. Es fácil que una capa mienta y que el mundo divergira tras un reinicio. | Regla de clasificación obligatoria en todo documento relevante: qué es autoritativo en RAM, qué se persiste inmediatamente, qué eventualmente y qué es reconstruible. Write-through transaccional para eventos irreversibles, dirty-flag con flush cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50 ticks, 5 s) para estado consolidable, y posición durante un movimiento activo derivada de `unit_movements` en vez de escrita. Tests de nivel *recovery* obligatorios desde M4. |
 | Coste del interest management | La suscripción por chunk con radio 2 crea un área de 5×5 chunks, es decir 160×160 tiles por jugador. El coste de recalcular conjuntos y difundir deltas crece con jugadores × entidades visibles, y hoy no hay compresión ni agregación. | Radio configurable (`EO_INTEREST_RADIUS_CHUNKS`), difusión por chunk y no por entidad, snapshot solo al conectar y deltas incrementales después, rate limit de `session.view`, y métricas desde M3 (`eo_ws_messages_total`, `eo_connected_websockets`) para medir antes de optimizar. La compresión y la agregación quedan como deuda con disparador explícito. |
-| Deriva del protocolo | Zod define el contrato en TypeScript, pero el Game Server valida a mano en Go por rendimiento. Dos implementaciones de la misma verdad divergen siempre, y una divergencia silenciosa rompe clientes en producción. | Fuente única en `packages/protocol/src/v1/`, exportación de JSON Schema en el build, `go:embed` de esos esquemas en el servidor y **contract tests** obligatorios que validan cada mensaje emitido contra el esquema. Versionado explícito `"v": 1` en cada mensaje y código `UNSUPPORTED_VERSION` para rechazos limpios. Los contract tests ya existen y están en verde: un test en Go verifica que los 22 códigos de error coinciden con los exportados por `packages/protocol`. Falta el eslabón de CI que bloquee el PR ante deriva del JSON Schema. |
+| Deriva del protocolo | Zod define el contrato en TypeScript, pero el Game Server valida a mano en Go por rendimiento. Dos implementaciones de la misma verdad divergen siempre, y una divergencia silenciosa rompe clientes en producción. | Fuente única en `packages/protocol/src/v1/`, exportación de JSON Schema en el build, `go:embed` de esos esquemas en el servidor y **contract tests**: el decodificador Go es tan estricto como el esquema cliente→servidor, los 22 códigos de error coinciden con los exportados por `packages/protocol` y la CI falla si el JSON Schema versionado deriva del que genera Zod. Versionado explícito `"v": 1` en cada mensaje y código `UNSUPPORTED_VERSION` para rechazos limpios. Lo que no hay es validación de cada mensaje **saliente** contra su esquema en Go: la hace el cliente, con Zod, al recibirlo. |
 | Equilibrio del juego | Ningún valor de gameplay puede quedar disperso por el código o el balanceo se vuelve imposible de razonar y de reproducir. | Todo valor de gameplay pasa por `internal/config` con prefijo `EO_`, y los catálogos (`eras`, `civilizations`, `factions`) viven en tablas, no en código. Determinismo forzado por `Clock` y `RandomSource` inyectados, de modo que un escenario de balance se puede repetir exactamente. El equilibrio real solo se aborda a partir de Combat y Economy: en el MVP no hay nada que equilibrar y no se pretende lo contrario. |
 | Operación 24/7 | El mundo evoluciona sin jugadores conectados; un despliegue, un crash o una migración ocurren siempre con estado vivo. Ningún estado durable puede depender de un WebSocket vivo. | `GET /health` sin dependencias y `GET /ready` que comprueba Postgres, Redis y el loop vivo; logging estructurado JSON con `ts`, `level`, `msg`, `player_id`, `session_id`, `request_id`, `tick`; métricas Prometheus incluyendo `eo_game_tick_overruns_total` y `eo_persistence_queue_depth`; prohibición absoluta de I/O bloqueante contra Postgres dentro del tick; y recuperación de movimientos `ACTIVE` al arrancar, validada por tests desde M4. Migraciones con `.up.sql`/`.down.sql` para poder revertir. |
 
-Riesgo de entorno, específico de esta máquina: **el daemon de Docker Desktop no ha arrancado**, y no hay
-`psql`, `redis-cli`, `make` ni `gh`. Consecuencia concreta y honesta: los tests de integración están
-escritos pero **no ejecutados**, y así debe decirlo toda la documentación mientras siga siendo cierto.
-Go ya está resuelto: 1.27.0 instalado. Mitigación: los tests de integración están *gated* por
-`EO_INTEGRATION=1` para que la suite unitaria siga siendo ejecutable sin Docker —y de hecho lo es, en
-verde—, y el acceso a las bases se hace siempre vía `docker compose exec`.
+Riesgo de entorno, específico de esta máquina: **la memoria**. Docker la agotaba hasta provocar
+pantallazos azules y está descartado; la misma causa obliga a ejecutar **una carga pesada cada vez** —nunca
+dos suites a la vez, ni una suite con el servidor en marcha—, y esa combinación ya tiró la máquina una vez.
+Mitigación: PostgreSQL propio y Redis en WSL en lugar de contenedores, tests de integración *gated* por
+`EO_INTEGRATION=1` para que la suite unitaria se ejecute sin ellos, y la CI como verificación completa en
+cada push. Lo único que no puede comprobarse desde aquí es la construcción de la imagen del contenedor, que
+sólo verifica la CI.
 
 ## 7. Documentos relacionados
 

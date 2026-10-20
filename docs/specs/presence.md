@@ -587,7 +587,6 @@ El paquete `internal/game/simulation` ya tiene tests en verde para la presencia 
 de varias sesiones y para el movimiento con el jugador desconectado; `internal/domain/city` cubre el autómata
 completo y los bordes de `ShouldEngageProtection`.
 
-Los tests de integración y recovery requieren Docker Desktop iniciado y `EO_INTEGRATION=1`; el acceso a
-PostgreSQL y Redis se hace vía `docker compose exec`, porque `psql` y `redis-cli` no están instalados en la
-máquina de desarrollo (canon §3). **Están diseñados pero no ejecutados**: el daemon de Docker no arranca en
-esta máquina, así que no se afirma que pasen.
+Los tests de integración necesitan PostgreSQL y Redis reales y `EO_INTEGRATION=1` (canon §3). Se ejecutan
+en la CI en cada push y en local contra el cluster propio de PostgreSQL y Redis en WSL
+([../operations/local-development.md](../operations/local-development.md) §3-bis).

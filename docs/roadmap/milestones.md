@@ -23,17 +23,23 @@ estricto:
 
 | Marca | Significado |
 |---|---|
-| **HECHO** | Implementado en el repositorio y cubierto por tests que se han ejecutado y están en verde. |
-| **PARCIAL** | Implementado sólo en parte, o implementado pero verificado únicamente por tests que aún no se han ejecutado. |
+| **HECHO** | Implementado en el repositorio y cubierto por tests que se ejecutan en la CI y están en verde. |
+| **PARCIAL** | Implementado sólo en parte, o implementado sin un test que lo cubra entero. |
 | **PENDIENTE** | No existe código todavía. |
 
-Tres hechos condicionan todas las marcas y conviene tenerlos presentes al leer:
+Tres hechos condicionan las marcas y conviene tenerlos presentes al leer:
 
-1. **`apps/web/` ya existe.** Los entregables de cliente del vertical slice están HECHOS; lo que falta es la CI en verde y la emisión.
-2. **Los tests de integración están escritos pero no ejecutados**, porque el daemon de Docker no arrancó
-   en la máquina de desarrollo. Nada que dependa exclusivamente de ellos puede marcarse HECHO.
-3. **La CI no existe todavía.** Por tanto **ningún milestone está formalmente cerrado**, por muchos
-   entregables HECHO que acumule: la Definition of Done exige CI en verde.
+1. **La CI se ejecuta y está en verde** sobre `main`
+   ([../operations/local-development.md](../operations/local-development.md) §1): documentación y lint de
+   determinismo, TypeScript, Game Server con `-race`, integración contra PostgreSQL y Redis reales, e
+   imagen del contenedor. Un milestone puede cerrarse; que esté cerrado depende de sus criterios.
+2. **Los tests de integración se ejecutan**, en la CI y en local. En la máquina de desarrollo Docker está
+   descartado —provoca pantallazos azules por consumo de RAM—, y el camino real es un cluster propio de
+   PostgreSQL en el puerto 5433 y Redis en WSL (§3-bis de la misma guía). Los criterios escritos en
+   términos de `docker compose` se verifican por ese camino, y así se dice en cada uno.
+3. **Algunas marcas de esta página las fijó la reconciliación de `EO-118`**, ficha por ficha contra la
+   suite y, donde un criterio pedía un comportamiento observable, arrancando el servidor real. Lo que se
+   verificó así lo dice expresamente.
 
 Nomenclatura usada aquí. Un hito no se cierra contra un invariante suelto, sino contra un **eje**:
 un objetivo grueso que agrupa varios invariantes del registro. Por eso estos identificadores llevan el
@@ -77,9 +83,9 @@ Actions. **No entra**: lógica de dominio, mundo, jugadores, WebSocket ni mensaj
 
 ### Entregables
 
-1. **PARCIAL — Estructura del monorepo**: existen `services/game-server/` (con `cmd/server/`,
-   `internal/`, `migrations/`), `packages/protocol/`, `docs/`, `docker-compose.yml` y
-   `pnpm-workspace.yaml`. **Faltan `apps/web/` y `.github/workflows/ci.yml`.**
+1. **HECHO — Estructura del monorepo**: existen `services/game-server/` (con `cmd/server/`, `cmd/migrate/`,
+   `cmd/devseed/`, `internal/`, `migrations/`), `packages/protocol/`, `apps/web/`, `docs/`,
+   `docker-compose.yml`, `pnpm-workspace.yaml` y `.github/workflows/ci.yml`.
 2. **HECHO — `pnpm-workspace.yaml`** declarando `apps/*` y `packages/*`, y `package.json` raíz
    con los scripts de tarea. El task runner son pnpm scripts: **no se crea Makefile** porque `make`
    no está instalado en la máquina de desarrollo Windows. Scripts reales: `db:up`, `db:down`,
@@ -90,12 +96,12 @@ Actions. **No entra**: lógica de dominio, mundo, jugadores, WebSocket ni mensaj
    propio servidor al arrancar (ver entregable 10).
 3. **HECHO — `docker-compose.yml`** con dos servicios, `postgres:16-alpine` y `redis:7-alpine`, con
    volúmenes nombrados, healthchecks y puertos publicados en localhost.
-   Documentado que el daemon de Docker Desktop debe estar arrancado y que el acceso a las bases se
-   hace con `docker compose exec` porque `psql` y `redis-cli` no están instalados en el host. Nota de
-   estado: **ese daemon no ha arrancado en esta máquina**, de ahí que los tests de integración sigan sin
-   ejecutarse.
+   Sirve a otros entornos. En la máquina de desarrollo **Docker está descartado** —provoca pantallazos
+   azules por consumo de RAM— y el camino real es un cluster propio de PostgreSQL en el puerto 5433 y
+   Redis en WSL ([../operations/local-development.md](../operations/local-development.md) §3-bis). La CI
+   no usa este fichero: declara PostgreSQL y Redis como *services* del job.
 4. **HECHO — Instalación de Go**: `winget install --id GoLang.Go`, verificado con `go version`.
-   Instalado **Go 1.27.0**; el `go.mod` declara `go 1.23` como versión **mínima**.
+   Instalado **Go 1.27.0**; el `go.mod` declara `go 1.25.11` como versión **mínima**. ([ADR-001](../decisions/ADR-001-game-server-language.md) eligió Go 1.23; las dependencias subieron el mínimo después.)
 5. **HECHO — Módulo Go** inicializado con path
    `github.com/empires-online/empires-online/services/game-server` y el árbol `internal/` poblado:
    `game/{loop,world,simulation,founding}`, `domain/{player,city,unit,movement}`,
@@ -137,10 +143,12 @@ Actions. **No entra**: lógica de dominio, mundo, jugadores, WebSocket ni mensaj
    el uso directo de `time.Now()` o `rand` dentro del dominio.
 10. **HECHO — Mecanismo de migraciones** en `services/game-server/migrations/` con nomenclatura
     `NNNN_nombre.up.sql` / `NNNN_nombre.down.sql` y `embed.go` (`//go:embed *.sql`), aplicadas con
-    **golang-migrate** embebido reescribiendo la URL al esquema `pgx5`. Se aplican **en el arranque del
-    servidor**, de forma idempotente; no hay script `db:migrate` separado, porque el binario lleva los
-    `.sql` dentro. Las migraciones existentes son `000001_initial_schema` (esquema completo,
-    incluido el trigger `set_updated_at()` y `world_state` con `epoch_ms`) y `000002_seed_catalogs`.
+    **golang-migrate** embebido reescribiendo la URL al esquema `pgx5`. Fuera de producción las aplica **el
+    arranque del servidor** (`EO_MIGRATE_ON_START`, verdadero salvo con `EO_ENV=production`); en producción,
+    el binario `cmd/migrate`, antes de desplegar. En los dos casos de forma idempotente, y abortando ante un
+    esquema `dirty`. Las migraciones existentes son `000001_initial_schema` (esquema completo, incluido el
+    trigger `set_updated_at()` y `world_state` con `epoch_ms`), `000002_seed_catalogs`,
+    `000003_territory_control_version` y `000004_drop_idempotency_keys`.
     El DDL exacto lo define [../database/schema.md](../database/schema.md).
 11. **HECHO — `packages/protocol`** publicado en el workspace como `@empires-online/protocol`: esquemas
     Zod en `src/v1/{common,errors,client,server,index}.ts` para los envelopes cliente→servidor
@@ -172,13 +180,16 @@ Actions. **No entra**: lógica de dominio, mundo, jugadores, WebSocket ni mensaj
   avanza determinísticamente.
 - **HECHO** *unit* (Vitest): 18 tests. Los esquemas Zod aceptan envelopes válidos y rechazan `v` distinto
   de 1, `type` desconocido, coordenadas no enteras y **campos extra** en mensajes cliente→servidor.
-- **PARCIAL** *integration*: el arranque aplica todas las migraciones embebidas sobre una base limpia, es
-  idempotente al repetirse, y cada `.down.sql` revierte su `.up.sql`. Escrito, **no ejecutado**.
-- **PARCIAL** *integration*: `GET /ready` devuelve 200 con Postgres y Redis arriba, y no-200 con
-  cualquiera de los dos caído. Escrito, **no ejecutado**.
-- **HECHO** *contract*: el JSON Schema exportado por el build coincide con el commiteado y el catálogo de
-  códigos de error de Go coincide con el de TypeScript. Falta el eslabón de CI que bloquee el PR ante
-  deriva.
+- **PARCIAL** *integration*: las migraciones embebidas se aplican sobre una base limpia, el migrador es
+  idempotente al repetirse y un esquema `dirty` lo aborta (`TestElMigradorEsIdempotente`,
+  `TestUnEsquemaDirtyAbortaElMigrador`); los nombres son correlativos y cada `.up.sql` tiene su `.down.sql`
+  (`TestLasMigracionesSonCorrelativasYCompletas`). **No hay test** de que cada `.down.sql` revierta su
+  `.up.sql`.
+- **PARCIAL** `GET /ready`: devuelve 200 con PostgreSQL y Redis arriba, 503 al parar Redis y 200 al
+  volver. **Verificado a mano** contra el servidor real el 2026-10-20; no hay test automático.
+- **HECHO** *contract*: el JSON Schema exportado por el build coincide con el commiteado —la CI lo
+  comprueba en el job de TypeScript y falla ante la deriva— y el catálogo de códigos de error de Go
+  coincide con el de TypeScript (`TestCatalogoDeErroresCoincideConElExportado`).
 
 ### Documentación actualizada al cerrar
 
@@ -199,30 +210,40 @@ repositorio.
 ### Aceptación
 
 1. **Cumplido.** `pnpm install` completa sin errores en Windows con pnpm 10.25.0.
-2. **Cumplido.** `go version` reporta Go 1.23 o superior: hay 1.27.0 instalado.
-3. **Bloqueado.** `pnpm run db:up` debe dejar `postgres` y `redis` en estado *healthy* según
-   `docker compose ps`. No verificable mientras el daemon de Docker no arranque.
-4. **Bloqueado.** El arranque del servidor aplica las migraciones embebidas y un segundo arranque no
-   produce cambios. Depende del punto 3.
+2. **Cumplido.** `go version` reporta una versión igual o superior a la que exige `go.mod` (1.25.11): hay
+   1.27.0 instalado.
+3. **Cumplido por otro camino.** El criterio original —`pnpm run db:up` deja `postgres` y `redis` en
+   estado *healthy*— presupone Docker, que en esta máquina está descartado. La infraestructura local es
+   el cluster propio de PostgreSQL (`node scripts/pg-local.mjs start`, puerto 5433) y Redis en WSL; la CI
+   levanta los dos como *services* y ejecuta contra ellos la suite de integración entera.
+4. **Cumplido.** El arranque del servidor aplica las migraciones embebidas y un segundo arranque no produce
+   cambios (`TestElMigradorEsIdempotente`). Comprobado además en vivo el 2026-10-20: un arranque contra la
+   base de desarrollo aplicó `000004` («migraciones aplicadas, from 3, to 4») y los siguientes no
+   aplicaron nada.
 5. **Cumplido.** `pnpm run server:run` arranca el proceso y `GET /health` responde 200 en menos de un
    segundo.
-6. **Bloqueado.** `GET /ready` responde 200 con la infraestructura arriba y no-200 al parar Redis.
-   Depende del punto 3.
-7. **Cumplido.** `GET /metrics` en `EO_METRICS_ADDR` expone las catorce métricas declaradas.
+6. **Cumplido, verificado a mano.** `GET /ready` respondió 200 con la infraestructura arriba, 503 con
+   `hot_state` en error al parar Redis, y 200 al volver a arrancarlo (2026-10-20). No hay test automático.
+7. **Cumplido con una precisión.** `GET /metrics` en `EO_METRICS_ADDR` expone desde el arranque las diez
+   métricas sin etiquetas o con histograma; las cuatro con etiquetas (`eo_commands_total`,
+   `eo_ws_messages_total`, `eo_protocol_errors_total`, `eo_pathfinding_requests_total`) aparecen con su
+   primera observación, que es como el cliente de Prometheus trata un vector sin series. Las catorce están
+   registradas.
 8. **Cumplido.** Arrancar sin `EO_AUTH_JWT_SECRET` aborta el proceso con un mensaje que nombra la
    variable, junto al resto de errores de configuración detectados.
 9. **Cumplido.** `pnpm run protocol:build` regenera `packages/protocol/schema/v1/*.json` sin diferencias
-   respecto a lo commiteado.
-10. **Pendiente.** El workflow de GitHub Actions termina en verde sobre la rama principal. No existe
-    todavía.
+   respecto a lo commiteado, y la CI lo comprueba en cada push.
+10. **Cumplido.** El workflow de GitHub Actions termina en verde sobre la rama principal.
 
 ---
 
 ## M1 — World
 
-**Estado: HECHO** del lado servidor. `internal/game/world` está implementado y su suite de tests
-(límites, chunks, costes de terreno, overlay de ocupación, disposición fila-mayor, determinismo del
-generador) está en verde. Sólo queda ejecutar los tests de integración contra PostgreSQL.
+**Estado: CERRADO.** `internal/game/world` está implementado y su suite (límites, chunks, costes de
+terreno, overlay de ocupación, disposición fila-mayor, determinismo y golden del generador) está en verde, y
+la integración contra PostgreSQL también. La reconciliación de `EO-118` añadió lo que faltaba para que el
+criterio 3 se cumpla en el arranque y no sólo en un test: el servidor compara el terreno regenerado con
+`world_chunks` y aborta si difiere.
 
 **Objetivo.** Generar el mundo de 512×512 tiles determinísticamente desde `EO_WORLD_SEED`,
 representarlo en chunks de 32×32 y persistirlo en `world_chunks` para auditoría y edición futura.
@@ -238,11 +259,13 @@ más allá de la reserva del *blocked overlay*, ni difusión por red.
    `costUnits` en décimas del coste base (`world.CostBase = 10`): 10, 16, 18, —, —, 6. La constante
    derivada `MinTerrainCostUnits` vale **6** y es la que mantiene admisible la heurística de A\*.
 2. **HECHO** — Generador determinista parametrizado por `EO_WORLD_SEED` (20260909 por defecto),
-   `EO_WORLD_WIDTH` y `EO_WORLD_HEIGHT`, que usa `RandomSource` inyectado y nunca `rand` global.
+   `EO_WORLD_WIDTH` y `EO_WORLD_HEIGHT`: ruido de valor por hash entero de la semilla, sin `RandomSource`,
+   sin `rand` y sin punto flotante. El lint de determinismo prohíbe el reloj real y el azar global en el paquete.
 3. **HECHO** — Representación en memoria del mundo por chunks de `EO_CHUNK_SIZE` (32) tiles de lado:
    16×16 = 256 chunks en el MVP.
-4. **HECHO** — Transformaciones de coordenadas: `chunkX = x >> 5`, `chunkY = y >> 5`, ID de chunk
-   `chunkY*chunksPerRow + chunkX` como uint32, y las inversas. Coordenadas lógicas `x`, `y` int32
+4. **HECHO** — Transformaciones de coordenadas: `chunkX = x / EO_CHUNK_SIZE`, `chunkY = y / EO_CHUNK_SIZE`
+   (división entera, no desplazamiento: el tamaño de chunk no tiene por qué ser potencia de dos), ID de
+   chunk `chunkY*chunksPerRow + chunkX` como uint32, y las inversas. Coordenadas lógicas `x`, `y` int32
    con origen (0,0) arriba-izquierda, X al este, Y al sur.
 5. **HECHO** — Capa de ocupación (`blocked overlay`) separada del terreno base
    (`SetBlocked(minX, minY, maxX, maxY, bool)`), para que edificios y ciudades bloqueen tiles sin mutar
@@ -255,8 +278,9 @@ más allá de la reserva del *blocked overlay*, ni difusión por red.
    bytes, un byte por tile en orden fila-mayor).
 8. **HECHO** — Bootstrap del mundo al arrancar: el mapa se **regenera desde la semilla en cada arranque**.
    `world_chunks` guarda una copia para auditoría y para permitir mapas editados en el futuro, pero **no
-   es la fuente primaria** y el arranque no depende de ella. El mundo no cambia entre reinicios porque la
-   semilla no cambia, no porque se lea de disco.
+   es la fuente primaria**: el mundo no cambia entre reinicios porque la semilla no cambia. En cada
+   arranque posterior al primero, `WorldRepo.VerifyTerrain` compara esa copia byte a byte con lo
+   regenerado y aborta si difieren: es la forma de detectar un generador que cambió sin migración de mundo.
 9. **HECHO** — Validación de límites: cualquier coordenada fuera de
    `[0, EO_WORLD_WIDTH)` × `[0, EO_WORLD_HEIGHT)` es un error de dominio que más adelante se mapea a
    `TARGET_OUT_OF_BOUNDS`.
@@ -271,8 +295,10 @@ más allá de la reserva del *blocked overlay*, ni difusión por red.
 - **HECHO** *unit*: la diagonal entre dos tiles transitables se rechaza si cualquiera de los dos
   ortogonales adyacentes está bloqueado.
 - **HECHO** *unit*: el `blocked overlay` bloquea sin alterar el `TerrainType` subyacente.
-- **PARCIAL** *integration*: generar, persistir, reiniciar y regenerar produce un mundo idéntico; los 256
-  chunks ocupan 1024 bytes cada uno. Escrito, **no ejecutado**.
+- **HECHO** *integration*: generar, persistir, reiniciar y regenerar produce un mundo idéntico
+  (`TestMundoPersistidoCoincideByteAByteConLaSemilla`); un byte alterado, un chunk de 1023 bytes o un chunk
+  que falta hacen fallar la comprobación de arranque (`TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla`).
+- **HECHO** *unit*: la huella SHA-256 del mundo canónico no cambia (`TestElMundoCanonicoConservaSuHuella`).
 
 ### Documentación actualizada al cerrar
 
@@ -287,23 +313,28 @@ desde la seed, no depende de ninguna conexión.
 
 ### Aceptación
 
-1. Dos ejecuciones del generador con `EO_WORLD_SEED=20260909` producen los 256 chunks con el mismo
-   hash.
-2. `SELECT count(*) FROM world_chunks` devuelve 256 y toda fila tiene `length(data) = 1024`.
-3. Un reinicio del servidor produce exactamente el mismo mundo, porque se regenera desde la misma
-   semilla; la copia de `world_chunks` sigue coincidiendo byte a byte con lo regenerado.
-4. La conversión de (511, 511) da chunk (15, 15) e ID 255.
-5. Una consulta de transitabilidad sobre un tile `WATER` devuelve falso.
-6. Un movimiento diagonal con un ortogonal bloqueado se declara no transitable.
-7. Coordenadas negativas o ≥ 512 se rechazan como fuera de límites.
+1. **Cumplido.** Dos ejecuciones del generador con `EO_WORLD_SEED=20260909` producen los 256 chunks con el
+   mismo hash (`TestGeneracionEsDeterminista`, `TestElMundoCanonicoConservaSuHuella`).
+2. **Cumplido.** `SELECT count(*) FROM world_chunks` devuelve 256 y toda fila tiene
+   `length(terrain) = 1024`. Lo comprueba `VerifyTerrain` en cada arranque.
+3. **Cumplido.** Un reinicio del servidor produce exactamente el mismo mundo, porque se regenera desde la
+   misma semilla, y el arranque comprueba que la copia de `world_chunks` coincide byte a byte con lo
+   regenerado. Verificado en vivo contra la base de desarrollo («mundo existente cargado y verificado»).
+4. **Cumplido.** La conversión de (511, 511) da chunk (15, 15) e ID 255 (`TestConversionTileChunk`).
+5. **Cumplido.** Una consulta de transitabilidad sobre un tile `WATER` devuelve falso
+   (`TestCostesDeTerreno`, `TestFueraDeLimitesEsIntransitable`).
+6. **Cumplido.** Un movimiento diagonal con un ortogonal bloqueado se declara no transitable: el A\* no lo
+   genera (`TestProhibidoAtajarEsquinas`) y `Validate` lo rechaza (`TestValidateComprobaciones`).
+7. **Cumplido.** Coordenadas negativas o ≥ 512 se rechazan como fuera de límites (`TestLimitesDelMundo`).
 
 ---
 
 ## M2 — Player & City
 
-**Estado: HECHO** del lado servidor. El esquema, los catálogos sembrados, el dominio de jugador, ciudad y
-unidad, el emplazamiento determinista de `internal/game/founding` y el bootstrap atómico existen y
-funcionan; el alta se expone en `POST /api/auth/register`. Falta ejecutar los tests de integración.
+**Estado: CERRADO.** El esquema, los catálogos sembrados, el dominio de jugador, ciudad y unidad, el
+emplazamiento determinista de `internal/game/founding` y el bootstrap atómico existen y tienen tests
+unitarios y de integración en verde; el alta se expone en `POST /api/auth/register`. El criterio 1 se
+reescribió para describir el evento que el alta escribe de verdad.
 
 **Objetivo.** Crear un jugador con su ciudad inicial y sus tres aldeanos en una única transacción
 atómica, con los catálogos de civilizaciones, facciones y eras cargados desde base.
@@ -335,8 +366,9 @@ eventos de dominio en `world_events`. **No entra**: presencia (M5), movimiento (
    `PopulationCost` 1; `units.status` con los valores `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`,
    inicializado a `IDLE`. `TOWN_CENTER` se modela como *building* de la ciudad, no como unidad.
 6. **HECHO** — **Bootstrap atómico del jugador**: una sola transacción crea el jugador, su ciudad con 1
-   `TOWN_CENTER` y 1 zona urbana amurallada inicial, y 3 unidades `VILLAGER`, más los eventos
-   `UnitSpawned` correspondientes en `world_events`. Si cualquier paso falla, no queda nada. **Orden
+   `TOWN_CENTER` y 1 zona urbana amurallada inicial, y 3 unidades `VILLAGER`, más **un** evento agregado
+   `PlayerBootstrapped` en `world_events` con la ciudad, el centro y el número de aldeanos (y, si el centro
+   cae en un territorio libre, el cambio de control de M6). Si cualquier paso falla, no queda nada. **Orden
    obligatorio**: primero la transacción de PostgreSQL commitea y sólo **después** se despacha el comando
    `IntroducePlayer`, que incorpora al jugador al mundo en RAM. Nunca al revés.
 7. **HECHO** — Cálculo de `population_limit` = `era.population_cap` + modificadores de edificios, con cero
@@ -348,23 +380,27 @@ eventos de dominio en `world_events`. **No entra**: presencia (M5), movimiento (
    separación mínima de **24 tiles** entre centros de ciudad, muralla como rectángulo **3 × 3** marcado en
    el `blocked overlay` de M1 alrededor del centro, y los 3 aldeanos naciendo a **radio 2**. Esto resuelve
    en la práctica la pregunta Q-01 de [backlog.md](backlog.md), que queda cerrada.
-9. **HECHO** — Error `CITY_NOT_FOUND` definido y devuelto por las consultas de ciudad inexistente.
+9. **HECHO** — Error `CITY_NOT_FOUND` definido en el catálogo de códigos. Ninguna ruta lo emite todavía: en el
+   MVP no hay comandos de red sobre una ciudad. La guarnición (M7, entregable 6) será la primera.
 
 ### Tests
 
 - **HECHO** *unit*: `population_limit` por era; un jugador con 3 aldeanos en `STONE_AGE` tiene población 3
   sobre 20.
 - **HECHO** *unit*: Civilization y Faction son independientes: cualquier combinación válida se acepta.
-- **PARCIAL** *integration*: el bootstrap crea exactamente 1 `players`, 1 `cities` y 3 `units`. Escrito,
-  **no ejecutado**.
-- **PARCIAL** *integration*: un fallo inyectado a mitad del bootstrap deja la base sin filas nuevas en
-  ninguna de las tres tablas. Escrito, **no ejecutado**.
-- **PARCIAL** *integration*: los `CHECK` rechazan un `units.status` fuera del enum y una faction fuera de
-  `{ORDER, CHAOS, NEUTRAL}`. Escrito, **no ejecutado**.
-- **PARCIAL** *integration*: el trigger `set_updated_at()` actualiza la columna en un `UPDATE`. Escrito,
-  **no ejecutado**.
-- **PARCIAL** *integration*: los tiles ocupados por la ciudad quedan bloqueados en el overlay sin cambiar
-  su `TerrainType`. Escrito, **no ejecutado**.
+- **HECHO** *integration*: el bootstrap crea exactamente 1 `players`, 1 `cities` y 3 `units`
+  (`TestBootstrapCreaMundoCompletoDelJugador`), con un único evento `PlayerBootstrapped`, y repetirlo con el
+  mismo nombre no duplica nada (`TestElAltaRegistraUnEventoYNoSeDuplica`).
+- **HECHO** *integration*: un fallo inyectado a mitad del bootstrap deja la base sin filas nuevas en
+  ninguna de las tres tablas (`TestBootstrapFallidoNoDejaNadaAMedias`).
+- **HECHO** *integration*: los `CHECK` rechazan un `units.status` fuera del dominio
+  (`TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`) y una faction fuera del catálogo
+  (`TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon`).
+- **HECHO** *integration*: el trigger `set_updated_at()` sella la columna en cada `UPDATE`
+  (`TestElTriggerSellaUpdatedAtEnCadaUpdate`).
+- **HECHO** *unit*: los tiles de la ciudad quedan bloqueados en el overlay sin cambiar su `TerrainType`
+  (`TestCapaDeOcupacionNoMutaElTerreno`), y el arranque los rebloquea desde `cities`
+  (`TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla`, integration).
 
 ### Documentación actualizada al cerrar
 
@@ -381,24 +417,30 @@ player/city/unit.
 
 ### Aceptación
 
-1. Ejecutar el bootstrap sobre una base limpia deja 1 jugador, 1 ciudad, 3 aldeanos y 4 eventos
-   de creación en `world_events`.
-2. Ejecutar el bootstrap dos veces para el mismo jugador no duplica ciudad ni unidades.
-3. Un fallo forzado antes del commit deja las tres tablas exactamente como estaban.
-4. `SELECT population_cap FROM eras` devuelve 20, 50, 100 y 150 para las cuatro eras.
-5. Las tres facciones existen y no hay una cuarta.
-6. Un `INSERT` de `units.status = 'FLYING'` es rechazado por el `CHECK`.
-7. Los aldeanos nacen con `status = 'IDLE'` y hp 40.
+1. **Cumplido.** Ejecutar el bootstrap sobre una base limpia deja 1 jugador, 1 ciudad, 3 aldeanos y un
+   evento `PlayerBootstrapped` en `world_events` (`TestBootstrapCreaMundoCompletoDelJugador`,
+   `TestElAltaRegistraUnEventoYNoSeDuplica`). El criterio original pedía «4 eventos de creación»; el alta
+   escribe uno agregado, que es lo que se decidió al implementarla, y el criterio se corrigió en `EO-118`.
+2. **Cumplido.** Ejecutar el bootstrap dos veces para el mismo jugador no duplica ciudad ni unidades
+   (`TestElAltaRegistraUnEventoYNoSeDuplica`).
+3. **Cumplido.** Un fallo forzado antes del commit deja las tres tablas exactamente como estaban
+   (`TestBootstrapFallidoNoDejaNadaAMedias`).
+4. **Cumplido.** `SELECT population_cap FROM eras` devuelve 20, 50, 100 y 150 para las cuatro eras
+   (`TestLasErasDelCatalogoSonLasDelCanon`), y el alta toma el límite de su era (`TestElAltaTomaElLimiteDePoblacionDeSuEra`).
+5. **Cumplido.** Las tres facciones existen y no hay una cuarta (`TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon`).
+6. **Cumplido.** Un `INSERT` de `units.status = 'FLYING'` es rechazado por el `CHECK`; el test usa
+   `WALKING` (`TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`).
+7. **Cumplido.** Los aldeanos nacen con `status = 'IDLE'` y hp 40 (`TestBootstrapCreaMundoCompletoDelJugador`).
 
 ---
 
 ## M3 — Realtime
 
-**Estado: PARCIAL.** Todo el lado servidor está implementado —`internal/auth`, `internal/websocket`
+**Estado: PARCIAL.** El lado servidor está implementado —`internal/auth`, `internal/websocket`
 (`hub`, `session`, `server`), idempotencia y presencia en Redis, snapshot e interest management en
-`internal/game/simulation`— y sus tests de unidad, contrato y simulación están en verde. **Falta el
-cliente**: `apps/web/` ya existe, de modo que los entregables 2 y 13 están hechos y los tests *e2e*
-no se pueden ejecutar.
+`internal/game/simulation`— con tests de unidad, contrato, simulación y *e2e* en verde, y el cliente de
+`apps/web/` existe (entregable 13). Lo que impide cerrarlo es el entregable 2, bloqueado por una decisión
+(`DEBT-18`), y dos criterios de aceptación que sólo se cumplen en parte (6 y 10).
 
 **Objetivo.** Conectar cliente y servidor por WebSocket con autenticación por ticket, sesión,
 snapshot inicial, deltas incrementales, interest management por chunks y reconexión.
@@ -458,27 +500,31 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
    completo: snapshot al conectar y deltas después. La goroutine de la conexión **no lee el estado del
    mundo**: envía `RequestSnapshot` por el canal de comandos con un canal de respuesta con buffer y el
    loop responde; eso es lo que impide la carrera de datos.
-9. **HECHO** — **Límites y protección**: mensaje ≤ 16384 bytes (`EO_WS_MAX_MESSAGE_BYTES`) o
-   `MESSAGE_TOO_LARGE`; rate limit de 20 msg/s con burst 40 (`EO_WS_RATE_LIMIT_PER_SECOND`,
-   `EO_WS_RATE_LIMIT_BURST`) o `RATE_LIMITED` y, si persiste, cierre `4429`; ping cada 15 s, timeout de
+9. **HECHO** — **Límites y protección**: un frame de más de 16384 bytes (`EO_WS_MAX_MESSAGE_BYTES`) lo
+   corta el transporte con el cierre estándar `1009` sin leerlo (`MESSAGE_TOO_LARGE` queda reservado);
+   rate limit de 20 msg/s con burst 40 (`EO_WS_RATE_LIMIT_PER_SECOND`, `EO_WS_RATE_LIMIT_BURST`): agotado,
+   `RATE_LIMITED` y cierre `4429` en el acto; ping cada 15 s, timeout de
    lectura de 45 s y de escritura de 10 s. **Contrapresión explícita**: cola de comandos llena → el
-   comando se descarta y se responde `INTERNAL_ERROR`; cola de salida de la sesión llena
+   comando no se ejecuta, se responde `INTERNAL_ERROR` con su `requestId` y se libera su reserva de
+   idempotencia para que el reintento sí entre; cola de salida de la sesión llena
    (`EO_WS_OUTBOUND_QUEUE_SIZE`, 256) → cierre `4500` y el cliente reconecta con un snapshot limpio.
-10. **HECHO, con dos correcciones de `EO-118`** — **Idempotencia**: `Claim` reserva el `requestId` en
-    Redis con `SETNX` sobre `idem:{playerId}:{requestId}` y TTL 300 s antes de ejecutar, y un `requestId`
-    repetido no se re-ejecuta. Si Redis no responde, el comando **se ejecuta igualmente**: se prefiere
-    dejar jugar a bloquear al jugador, y es una decisión consciente. Este entregable decía además que el
-    registro iba también a `idempotency_keys` y que el duplicado recibía la respuesta original. Ninguna de
-    las dos cosas se implementó: la primera la descartó [ADR-014](../decisions/ADR-014-command-idempotency.md), y la segunda sigue pendiente —el
-    duplicado se descarta sin respuesta ([INV-SEC-007](../invariants/security.md#inv-sec-007))—.
-11. **HECHO** — **Códigos de error activos en M3**: `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_MESSAGE`,
-    `UNSUPPORTED_VERSION`, `RATE_LIMITED`, `MESSAGE_TOO_LARGE`, `INTERNAL_ERROR`, y
-    `NOT_IMPLEMENTED` para tipos declarados en el protocolo pero aún no implementados.
+10. **HECHO, con una corrección de `EO-118`** — **Idempotencia**: `Claim` reserva el `requestId` en Redis
+    con `SETNX` sobre `idem:{playerId}:{requestId}` y TTL 300 s antes de ejecutar; un `requestId` repetido
+    no se re-ejecuta, y si el original ya tuvo respuesta directa el duplicado la recibe otra vez (I-5 de
+    [../specs/websocket-protocol.md](../specs/websocket-protocol.md)). Si Redis no responde, el comando
+    **se ejecuta igualmente**: se prefiere dejar jugar a bloquear al jugador, y es una decisión consciente.
+    Este entregable decía además que el registro iba también a `idempotency_keys`; eso no se implementó y
+    lo descartó [ADR-014](../decisions/ADR-014-command-idempotency.md).
+11. **HECHO** — **Códigos de error de M3**. Los que el servidor emite como `system.error` son
+    `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `RATE_LIMITED` e `INTERNAL_ERROR`. `UNAUTHORIZED` y `FORBIDDEN`
+    no viajan como mensaje: el handshake fallido se comunica sólo con el cierre `4401`, y `FORBIDDEN`
+    está reservado. `MESSAGE_TOO_LARGE` también está reservado (el exceso lo corta el transporte con `1009`),
+    y `NOT_IMPLEMENTED` no lo emite ninguna ruta: un tipo desconocido es `INVALID_MESSAGE`.
     Cierres WS: `4400` invalid, `4401` unauthenticated, `4403` forbidden, `4408` handshake timeout,
     `4429` rate limited, `4500` internal.
 12. **HECHO** — **Reconexión**: al reconectar se emite un `world.snapshot` nuevo. No hay buffer de deltas
     ni reanudación por `seq`; esto es deuda técnica aceptada y registrada (`DEBT-08`).
-13. **PENDIENTE — Cliente en `apps/web`**: capa de transporte que abre la conexión, envía
+13. **HECHO — Cliente en `apps/web`** (`EO-055`): capa de transporte que abre la conexión, envía
     `session.hello`, mantiene el ping, aplica snapshot y deltas a un store local, y renderiza en
     isométrico con PixiJS usando `screenX = (x - y) * 32` y `screenY = (x + y) * 16`
     (`TILE_W = 64`, `TILE_H = 32`). El servidor no maneja píxeles en ningún caso.
@@ -489,28 +535,42 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
 
 ### Tests
 
-- **HECHO** *unit*: parseo y validación de envelopes; rechazo de `v` distinto de 1, de `type` desconocido,
-  de coordenadas no enteras y de campos extra; `seq` estrictamente creciente por conexión.
+- **HECHO** *contract*: el decodificador Go rechaza `v` distinto de 1, `type` desconocido y propiedades fuera
+  del contrato a cualquier profundidad (`TestElDecodificadorEsTanEstrictoComoElEsquema`,
+  `TestVersionNoSoportada`, `TestTipoDeMensajeDesconocidoSeRechaza`); en TypeScript, además, las
+  coordenadas no enteras (Vitest de `packages/protocol`).
+- **HECHO** *e2e*: `seq` crece de uno en uno en todos los mensajes de una conexión
+  (`TestElSeqCreceDeUnoEnUnoEnUnaConexion`).
 - **HECHO** *unit*: cálculo del conjunto de chunks para un centro dado, incluidos centros pegados al borde
-  del mundo donde el área 5×5 se recorta.
+  del mundo donde el área 5×5 se recorta (`TestChunksEnRadioSeRecortanYVanOrdenados`).
 - **HECHO** *unit* (`internal/auth`): ticket válido, caducado, firmado con otra clave, `alg=none`,
   audiencia incorrecta, claims incompletos, no reutilizable y comportamiento *fail-closed*.
-- **HECHO** *unit*: token bucket del rate limit con `FakeClock`.
+- **HECHO** *e2e*: el token bucket deja pasar el burst y, agotado, responde `RATE_LIMITED` y cierra con
+  `4429` (`TestUnaRafagaPorEncimaDelBurstCierraCon4429`). No tiene test unitario propio: el del
+  `httpapi` es otro limitador.
 - **HECHO** *simulation*: varias sesiones del mismo jugador, snapshots y deltas parciales sobre el estado
   en RAM.
-- **PARCIAL** *integration*: handshake completo feliz; ticket expirado → `4401`; `aud` incorrecto →
-  `4401`; `jti` reutilizado → `4401`; ausencia de `session.hello` en 5 s → `4408`. Escrito, **no
-  ejecutado**.
-- **PARCIAL** *integration*: mensaje de 16385 bytes → `MESSAGE_TOO_LARGE`; ráfaga por encima del burst →
-  `RATE_LIMITED`. Escrito, **no ejecutado**.
-- **PARCIAL** *integration*: `requestId` repetido devuelve la respuesta original y no genera un segundo
-  efecto. Escrito, **no ejecutado**.
-- **PARCIAL** *integration*: `session.view` que desplaza el centro produce exactamente los `entity.spawn`
-  y `entity.despawn` esperados, sin duplicados ni huecos. Escrito, **no ejecutado**.
+- **HECHO** *e2e*: handshake completo feliz (`TestVerticalSliceEndToEnd`); ticket inválido → `4401`
+  (`TestTicketInvalidoCierraLaConexion`); `jti` reutilizado → `4401`
+  (`TestTicketNoSePuedeReutilizarEnOtraConexion`); ningún mensaje dentro del plazo → `4408`
+  (`TestSinHandshakeEnPlazoSeCierraCon4408`). El ticket expirado y el `aud` incorrecto los rechaza la
+  verificación (`TestTicketCaducado`, `TestAudienciaIncorrecta`) y siguen el mismo camino de cierre.
+- **HECHO** *e2e*: un frame por encima del límite → cierre `1009`, antes y después del handshake
+  (`TestUnMensajeDemasiadoGrandeCierraCon1009`).
+- **HECHO** *e2e*: un `requestId` repetido no genera un segundo efecto y, si el original ya tuvo respuesta,
+  la recibe (`TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal`); con
+  la cola llena, `INTERNAL_ERROR` y reintento posible (`TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`).
+- **PENDIENTE** *e2e*: `session.view` que desplaza el centro. El servidor responde con un `world.snapshot`
+  nuevo del área (`TestSnapshotDelAreaDeInteres` cubre el snapshot en la simulación); no emite
+  `entity.spawn` ni `entity.despawn` por los chunks que entran o salen, como preveía este punto, y no hay
+  test de extremo a extremo.
 - **HECHO** *contract*: los esquemas embebidos y el catálogo de 22 códigos de error de Go coinciden con
-  los exportados por `@empires-online/protocol`, y los deltas parciales validan contra su JSON Schema.
-- **PENDIENTE** *e2e*: un cliente WS en Node se autentica, recibe `world.snapshot` con su ciudad y sus
-  tres aldeanos, y responde a los pings. Requiere Docker arrancado.
+  los exportados por `@empires-online/protocol`, y un delta parcial serializa sólo los campos que cambian
+  (`TestEntityUpdateEsUnDeltaDeVerdad`). **Ningún test Go valida los mensajes emitidos contra el JSON Schema**
+  servidor→cliente: lo hace el cliente, con Zod, al recibirlos.
+- **HECHO** *e2e*: un cliente WS se autentica, recibe `world.snapshot` con su ciudad y sus tres aldeanos,
+  y responde a los pings (`TestVerticalSliceEndToEnd`, `TestPingPongDevuelveElRelojDelServidor`), contra
+  el servidor real sobre `httptest`, sin Docker.
 
 ### Documentación actualizada al cerrar
 
@@ -527,17 +587,30 @@ conexión viva.
 
 ### Aceptación
 
-1. Un cliente con ticket válido recibe `session.welcome` y a continuación `world.snapshot`.
-2. El mismo ticket usado por segunda vez es rechazado con cierre `4401`.
-3. Un ticket con `aud` distinto de `"game-server"` es rechazado.
-4. Conectar y no enviar nada durante 6 segundos produce cierre `4408`.
-5. `seq` es estrictamente creciente en todos los mensajes de una conexión.
-6. El `world.snapshot` inicial contiene solo entidades dentro del área de 5×5 chunks centrada en la
-   ciudad del jugador.
-7. Enviar 100 mensajes en un segundo produce `RATE_LIMITED`.
-8. Un mensaje de 20 KiB produce `MESSAGE_TOO_LARGE` y no tumba la conexión con `4500`.
-9. Reconectar tras una caída devuelve un snapshot coherente sin intervención manual.
-10. Todos los mensajes emitidos pasan los contract tests contra el JSON Schema.
+1. **Cumplido.** Un cliente con ticket válido recibe `session.welcome` y a continuación `world.snapshot`
+   (`TestVerticalSliceEndToEnd`).
+2. **Cumplido.** El mismo ticket usado por segunda vez es rechazado con cierre `4401`
+   (`TestTicketNoSePuedeReutilizarEnOtraConexion`).
+3. **Cumplido.** Un ticket con `aud` distinto de `"game-server"` es rechazado (`TestAudienciaIncorrecta`).
+4. **Cumplido.** Conectar y no enviar nada durante el plazo de handshake produce cierre `4408`
+   (`TestSinHandshakeEnPlazoSeCierraCon4408`, con el plazo acortado; en producción son 5 s).
+5. **Cumplido.** `seq` es estrictamente creciente en todos los mensajes de una conexión
+   (`TestElSeqCreceDeUnoEnUnoEnUnaConexion`).
+6. **Parcial.** El `world.snapshot` inicial contiene sólo entidades dentro del área de 5×5 chunks centrada
+   en la ciudad del jugador (`TestSnapshotDelAreaDeInteres`), con una excepción conocida: una unidad
+   `GARRISONED` sigue en el índice por chunk y saldría en él
+   ([INV-UNIT-003](../invariants/units.md#inv-unit-003)). Hoy nada la produce; se corrige con M7,
+   entregable 6.
+7. **Cumplido.** Enviar más mensajes que el burst en un segundo produce `RATE_LIMITED` y el cierre `4429`
+   (`TestUnaRafagaPorEncimaDelBurstCierraCon4429`).
+8. **Cumplido tras corregir el criterio.** Decía que un mensaje de 20 KiB produce `MESSAGE_TOO_LARGE` sin
+   cerrar con `4500`. Lo que se decidió —y fija la spec del protocolo, §6.1— es que el transporte lo corta
+   con el cierre estándar `1009` sin leerlo: ni `MESSAGE_TOO_LARGE` ni `4500`
+   (`TestUnMensajeDemasiadoGrandeCierraCon1009`).
+9. **Cumplido.** Reconectar tras una caída devuelve un snapshot coherente sin intervención manual
+   (`TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal` reconecta y recibe el snapshot).
+10. **Parcial.** Los mensajes que tienen contract test coinciden con el contrato, pero ningún test valida
+    todos los mensajes emitidos contra el JSON Schema servidor→cliente.
 
 ---
 
@@ -545,9 +618,10 @@ conexión viva.
 
 **Estado: PARCIAL.** El lado servidor está completo y es la parte mejor cubierta por tests del proyecto:
 `internal/pathfinding`, `internal/domain/movement`, `internal/game/loop` y el *vertical slice* de
-`internal/game/simulation` —con reemplazo de orden, cancelación, los seis rechazos, tres tests de
-recuperación, reproducibilidad y volcado por lotes— están **en verde**. **Falta** la interpolación visual
-del cliente (entregable 15), que ya está implementado en `apps/web/`.
+`internal/game/simulation` —con reemplazo de orden, cancelación, los siete rechazos, los tests de
+recuperación, reproducibilidad y volcado por lotes— están **en verde**. El cliente dibuja el movimiento
+de forma continua; lo que impide cerrar es la otra mitad del entregable 15, la corrección gradual hacia
+la verdad del servidor (`EO-075`), que existe en `apps/web` y no está conectada.
 
 **Objetivo.** Implementar el primer verbo del juego: mover una unidad con A\*, polilínea temporizada
 persistida, game loop a 10 Hz, recuperación tras reinicio e interpolación visual en el cliente.
@@ -602,21 +676,25 @@ grupo ni recolección.
    después del último `tMs`, el destino. La interpolación sub-tile es exclusivamente visual: el servidor
    razona en tiles enteros.
 7. **HECHO** — `internal/game/loop`: `Loop.Run` y `Loop.Step` a `EO_TICK_RATE_HZ` (10 Hz, período 100 ms)
-   con `tickNumber` uint64 monótono desde `world_state.epoch_ms` y
-   `tickTime = epoch_ms + tickNumber*tickDurationMs`. Orden fijo de fases: 1 `drain commands`,
+   con `tickNumber` uint64 estrictamente creciente —al arrancar se reancla al reloj, `max(current_tick,
+   (ahora − epoch_ms) / período)`, para no repetir números tras una caída
+   ([ADR-015](../decisions/ADR-015-tick-continuity.md))— y el instante de cada tick leído una vez del
+   `Clock` (no `epoch_ms + tickNumber × período`). Orden fijo de fases: 1 `drain commands`,
    2 `validate & apply commands`, 3 `advance movement`, 4 `resolve simulation` (reservado para combate,
    vacío en MVP), 5 `process timers/scheduled events`, 6 `update world state / interest sets`,
    7 `emit deltas`, 8 `enqueue persistence`. El **catch-up** usa calendario en tiempo absoluto: los ticks
    perdidos se descartan, jamás se ejecutan en ráfaga. `applyCommand` **aísla los pánicos** de un comando
    concreto para que un bug en una regla no tumbe la simulación entera.
 8. **HECHO** — **Prohibición de I/O bloqueante contra Postgres dentro del tick**: la persistencia va por
-   canal a workers, con hasta **3 intentos con backoff** y compensación `OnPermanentFailure` si se
-   agotan. Métrica `eo_persistence_queue_depth` y `eo_game_tick_overruns_total` incrementada cuando
+   canal a workers ordenados por entidad, con hasta **3 intentos con backoff**; si se agotan,
+   `OnPermanentFailure` devuelve un comando al loop, que compensa en el mundo —un inicio de movimiento que
+   no llegó a disco detiene la unidad— ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)). Métrica `eo_persistence_queue_depth` y `eo_game_tick_overruns_total` incrementada cuando
    un tick supera su período.
 9. **HECHO** — Flujo de validación del comando en el orden canónico: ownership → estado de unidad →
    destino → A\* → creación del movimiento → simulación → notificación. Errores asociados:
    `UNIT_NOT_FOUND`, `UNIT_NOT_OWNED`, `UNIT_NOT_MOVABLE`, `UNIT_DEAD`, `UNIT_GARRISONED`,
-   `INVALID_TARGET`, `TARGET_OUT_OF_BOUNDS`, `TARGET_NOT_WALKABLE`, `PATH_NOT_FOUND`, `PATH_TOO_LONG`.
+   `TARGET_OUT_OF_BOUNDS`, `TARGET_NOT_WALKABLE`, `PATH_NOT_FOUND`, `PATH_TOO_LONG` e `INTERNAL_ERROR`.
+   `INVALID_TARGET` está en el catálogo y ninguna ruta lo emite: el destino lo validan los dos `TARGET_*`.
 10. **HECHO** — **Mensajes cliente→servidor de M4**: `unit.move { unitId, target:{x,y} }` y
     `unit.cancel_move`. El cliente nunca envía secuencias de posiciones.
 11. **HECHO** — **Mensajes servidor→cliente de M4**: `unit.move.accepted`, `unit.move.rejected`,
@@ -625,24 +703,28 @@ grupo ni recolección.
     `{unitId, movement:{movementId, path[], startTimeMs, arrivalTimeMs, target}}` y
     `unit.movement.cancelled.payload.reason` pertenece a
     `REPLACED | CANCELLED_BY_PLAYER | PATH_BLOCKED | UNIT_DEAD | SERVER`.
-12. **HECHO** — **Eventos de dominio** `UnitMovementStarted` y `UnitMovementCompleted` como base de los
-    deltas de red y de las filas de `world_events`, siguiendo la separación Command / Event / State:
-    `MoveUnit` y `CancelMovement` son comandos, los anteriores son eventos, y
-    `Unit.status = MOVING` es estado.
+12. **PARCIAL** — **Separación Command / Event / State**: `MoveUnit` y `CancelMovement` son comandos,
+    `Unit.status = MOVING` es estado, y los hechos de movimiento se comunican como deltas de red
+    (`unit.movement.started`, `unit.movement.completed`, `unit.movement.cancelled`). **No se escriben en
+    `world_events`**: el movimiento no deja rastro en el registro de eventos; su historial es la propia
+    tabla `unit_movements`.
 13. **HECHO** — **Recuperación tras crash** (`simulation.Hydrate`): al arrancar se cargan los movimientos
     `ACTIVE`. Si el movimiento venció durante la caída, la unidad aparece en el destino y el movimiento se
     cierra `COMPLETED`; si sigue en curso, se reanuda desde la polilínea; si la polilínea es inválida,
     queda `FAILED` y la unidad se queda donde estaba, porque nunca se teletransporta a nadie por un dato
     dudoso.
 14. **HECHO** — **Persistencia diferenciada**: transacción propia para inicio y finalización de
-    movimiento, aplicada primero en RAM y **encolada** hacia los workers, porque el tick no puede hacer
-    I/O de PostgreSQL; dirty-flag con flush cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50 ticks, 5 s)
-    para posiciones consolidadas y HP; posición durante un movimiento activo **no se persiste**, se deriva
+    movimiento, que escribe también la unidad —`MOVING` en su origen, `IDLE` en su tile final— y se
+    aplica primero en RAM y se **encola** hacia los workers, porque el tick no puede hacer I/O de
+    PostgreSQL ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)); dirty-flag con flush cada
+    `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50 ticks, 5 s) para las posiciones consolidadas de unidades en
+    reposo (`hp` no se vuelca: nada lo modifica en el MVP); posición durante un movimiento activo **no se persiste**, se deriva
     de `unit_movements`. La ventana entre la aceptación y el `COMMIT` es un RPO documentado: ver
     `DEBT-17` en [backlog.md](backlog.md).
-15. **PENDIENTE — Cliente**: interpolación visual entre waypoints en PixiJS, con corrección hacia la
-    verdad del servidor cuando llega un delta. El cliente nunca decide la posición final ni el ETA.
-    Requiere `apps/web/`, que ya existe.
+15. **PARCIAL — Cliente** (`EO-075`): la interpolación visual entre waypoints existe y se usa
+    (`renderPosition` en la escena PixiJS, con sus tests en `apps/web/src/state/interpolation.test.ts`). La
+    corrección gradual hacia la verdad del servidor cuando llega un delta (`reconcile`) está escrita y
+    probada, pero **la escena no la llama**. El cliente nunca decide la posición final ni el ETA.
 16. **HECHO** — **Métricas activas**: `eo_pathfinding_requests_total{result}`,
     `eo_pathfinding_duration_seconds`, `eo_game_tick_duration_seconds`, `eo_game_tick_overruns_total`,
     `eo_active_units`, `eo_active_movements`, `eo_persistence_queue_depth`,
@@ -668,17 +750,25 @@ grupo ni recolección.
   `TARGET_OUT_OF_BOUNDS`.
 - **HECHO** *simulation*: con `FakeClock`, avanzar 10 segundos deja a la unidad en el tile exacto
   esperado, de forma reproducible; incluye el *vertical slice* completo, el reemplazo de orden, la
-  cancelación, los seis rechazos, el movimiento con el jugador desconectado y el volcado por lotes.
-- **PARCIAL** *integration*: una nueva orden sobre una unidad en movimiento cancela la anterior a
-  `CANCELLED` y crea la nueva `ACTIVE` en la misma transacción; nunca coexisten dos `ACTIVE`. La regla
-  está verificada a nivel de simulación y garantizada en base por el índice único parcial; el test contra
-  PostgreSQL real está escrito pero **no ejecutado**.
-- **PARCIAL** *integration*: mover una unidad de otro jugador devuelve `UNIT_NOT_OWNED`. Cubierto en
-  simulación; el test de integración está escrito, **no ejecutado**.
-- **HECHO** *recovery*: tres tests sobre `simulation.Hydrate` cubren el movimiento vencido durante la
+  cancelación, los siete rechazos —sin que ninguno llegue a invocar el A\*—, el movimiento con el jugador
+  desconectado, el volcado por lotes y la orden hacia el tile propio en tránsito.
+- **HECHO** *simulation*: diez unidades moviéndose a la vez, con sus diez A\* en el mismo tick, no producen
+  ningún overrun (`TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick`).
+- **HECHO** *unit*: la posición derivada nunca adelanta al reloj, como propiedad sobre polilíneas generadas
+  con semilla fija (`TestLaPosicionNuncaAdelantaAlReloj`).
+- **HECHO** *integration*: una nueva orden sobre una unidad en movimiento cancela la anterior a
+  `CANCELLED` y crea la nueva `ACTIVE` en la misma transacción, y el índice único parcial rechaza un
+  segundo `ACTIVE` insertado a mano (`TestIndiceUnicoImpideDosMovimientosActivos`).
+- **HECHO** *e2e*: mover una unidad de otro jugador devuelve `UNIT_NOT_OWNED`
+  (`TestNoSePuedeComandarUnaUnidadAjena`).
+- **HECHO** *recovery*: los tests sobre `simulation.Hydrate` cubren el movimiento vencido durante la
   caída (unidad en el destino, movimiento `COMPLETED`), el movimiento en curso (se reanuda desde la
-  polilínea) y la polilínea inválida (`FAILED`, unidad donde estaba).
-- **HECHO** *contract*: los cinco mensajes de movimiento validan contra el JSON Schema.
+  polilínea), la polilínea inválida (`FAILED`, unidad donde estaba), la llegada de la fila que no cuadra
+  con su polilínea y la unidad guarnecida con un movimiento; y, contra PostgreSQL,
+  `TestRecuperacionCompletaTrasReinicio`.
+- **HECHO** *contract*: los cinco mensajes de movimiento existen en el JSON Schema embebido y
+  `unit.movement.started` lleva la polilínea completa (`TestTiposDeMensajePresentesEnElEsquema`,
+  `TestMovementStartedLlevaLaPolilineaCompleta`). No se validan contra el esquema.
 
 ### Documentación actualizada al cerrar
 
@@ -696,20 +786,29 @@ tres categorías: write-through, dirty-flag y reconstruible.
 
 ### Aceptación
 
-1. `unit.move` a un tile alcanzable devuelve `unit.move.accepted` seguido de `unit.movement.started`.
-2. La unidad llega al tile destino con una desviación máxima de un tick respecto al
-   `arrival_time_ms` calculado.
-3. Ordenar un segundo movimiento deja exactamente un `unit_movements` con estado `ACTIVE` para esa
-   unidad.
-4. `unit.cancel_move` deja el movimiento en `CANCELLED` y la unidad en `IDLE` en el último waypoint
-   alcanzado.
-5. Mover una unidad ajena devuelve `unit.move.rejected` con `UNIT_NOT_OWNED`.
-6. Un destino sobre `WATER` devuelve `TARGET_NOT_WALKABLE`.
-7. Un destino a más de 256 tiles devuelve `PATH_TOO_LONG`.
-8. Matar y rearrancar el servidor a mitad de trayecto no pierde el movimiento.
-9. `eo_game_tick_overruns_total` permanece en cero durante un escenario de 10 unidades moviéndose a
-   la vez.
-10. En el cliente, la unidad se desplaza de forma continua y no a saltos de tile.
+1. **Cumplido.** `unit.move` a un tile alcanzable devuelve `unit.move.accepted` seguido de
+   `unit.movement.started` (`TestVerticalSliceMovimiento`, `TestVerticalSliceEndToEnd`).
+2. **Cumplido.** La unidad llega al tile destino en el tick de su `arrival_time_ms` exacto
+   (`TestVerticalSliceMovimiento`: llegada calculada a los 3000 ms y completada en ese tick).
+3. **Cumplido.** Ordenar un segundo movimiento deja exactamente un movimiento `ACTIVE` para esa unidad, en
+   RAM (`TestNuevaOrdenReemplazaLaAnterior`) y en disco (`TestIndiceUnicoImpideDosMovimientosActivos`).
+4. **Cumplido.** `unit.cancel_move` deja el movimiento en `CANCELLED` y la unidad en `IDLE` en el último
+   waypoint alcanzado (`TestCancelacionExplicita`), y el cierre lleva esa posición a disco
+   (`TestElCierreDelMovimientoLlevaLaPosicionFinal`).
+5. **Cumplido.** Mover una unidad ajena devuelve `unit.move.rejected` con `UNIT_NOT_OWNED`
+   (`TestRechazosDeMovimiento`, `TestNoSePuedeComandarUnaUnidadAjena`).
+6. **Cumplido.** Un destino intransitable por terreno devuelve `TARGET_NOT_WALKABLE`
+   (`TestDestinoIntransitableSeRechaza` con montaña; `WATER` es igual de intransitable,
+   `TestCostesDeTerreno`).
+7. **Cumplido.** Un destino más allá de `EO_PATHFINDING_MAX_DISTANCE` devuelve `PATH_TOO_LONG`
+   (`TestLimiteDeDistanciaSeAplica`).
+8. **Cumplido.** Matar y rearrancar el servidor a mitad de trayecto no pierde el movimiento
+   (`TestRecuperacionMovimientoEnCurso`, `TestRecuperacionCompletaTrasReinicio`).
+9. **Cumplido.** `eo_game_tick_overruns_total` permanece en cero durante un escenario de 10 unidades
+   moviéndose a la vez (`TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick`).
+10. **Parcial.** En el cliente la unidad se dibuja de forma continua entre waypoints (`renderPosition`); la
+    corrección suave al llegar un delta no está conectada (`EO-075`). No se ha verificado a la vista en
+    esta reconciliación.
 
 ---
 
