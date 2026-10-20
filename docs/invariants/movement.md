@@ -93,7 +93,7 @@ Estados de movimiento: `ACTIVE`, `COMPLETED`, `CANCELLED`, `FAILED`. Los tres ú
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | FAIL_FAST (constraint) |
-| Cobertura | **Cubierto** por `TestNuevaOrdenReemplazaLaAnterior` y `TestVerticalSliceMovimiento` (`internal/game/simulation`); la constraint la cubre `TestIndiceUnicoImpideDosMovimientosActivos` (integration, **diseñado y no ejecutado**) |
+| Cobertura | **Cubierto** por `TestNuevaOrdenReemplazaLaAnterior` y `TestVerticalSliceMovimiento` (`internal/game/simulation`) y, en disco, por `TestIndiceUnicoImpideDosMovimientosActivos` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** En todo instante existe como máximo una fila en `unit_movements` con `status = ACTIVE` para una unidad dada. Una nueva orden cancela la anterior (`CANCELLED`, con `reason = REPLACED`) **antes** de registrar la nueva.
 
@@ -108,16 +108,17 @@ Es también un vector de abuso: si dos órdenes concurrentes crean dos movimient
 - `DOMAIN` — en memoria, `State` indexa los movimientos **por unidad** (`State.Movement(unitID)`), no por movimiento: la estructura de datos no admite dos entradas para la misma unidad. Ésa es la garantía primaria, porque el orden de las escrituras durables lo decide después la cola de persistencia.
 - `DOMAIN` — el borde aplica idempotencia por `requestId` ([INV-SEC-007](security.md#inv-sec-007)): un reintento de la misma orden no llega siquiera a la simulación.
 
-> **Precisión sobre la transaccionalidad.** La escritura durable **no** ocurre dentro del tick: `handleMoveUnit` aplica el cambio en RAM y **encola** el trabajo `movement.start` en la cola de persistencia, que ejecutan workers fuera del tick (hasta 3 intentos con backoff, y `OnPermanentFailure` si se agotan). El tick nunca hace I/O de PostgreSQL. La consecuencia honesta es una ventana de riesgo de típicamente unas decenas de milisegundos: si el proceso muere entre la aceptación y el `COMMIT`, ese movimiento se pierde y la unidad queda en su última posición consolidada. Es un RPO documentado, no un descuido; el índice parcial sigue garantizando que nunca haya dos activos en disco.
+> **Precisión sobre la transaccionalidad.** La escritura durable **no** ocurre dentro del tick: `handleMoveUnit` aplica el cambio en RAM y **encola** el trabajo `movement.start` en la cola de persistencia, que ejecutan workers fuera del tick, ordenados por unidad ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)). Ese trabajo cancela el activo anterior e inserta el nuevo en **una** transacción (`GameStore.PersistMovementStart`). Si agota sus tres intentos, `OnPermanentFailure` devuelve al loop un `MovementPersistFailed`, y el loop detiene la unidad con `reason = SERVER`: el mundo no se queda con un movimiento que la base de datos nunca conoció. El tick nunca hace I/O de PostgreSQL. La consecuencia honesta es una ventana de riesgo de típicamente unas decenas de milisegundos: si el proceso muere entre la aceptación y el `COMMIT`, ese movimiento se pierde y la unidad queda en su última posición consolidada. Es un RPO documentado, no un descuido; el índice parcial sigue garantizando que nunca haya dos activos en disco.
 
 **Cómo se verifica.**
 
-- `TestNuevaOrdenReemplazaLaAnterior` (simulation, `internal/game/simulation`) — **existe y pasa**: la segunda orden deja la primera en `CANCELLED` con `reason = REPLACED` y emite `unit.movement.cancelled` seguido de `unit.movement.started`; queda un único movimiento activo.
-- `TestVerticalSliceMovimiento` (simulation) — **existe y pasa**: el ciclo completo deja exactamente un activo en cada instante.
-- `TestIndiceUnicoImpideDosMovimientosActivos` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: el `INSERT` directo de un segundo `ACTIVE` falla por `unit_movements_one_active_per_unit`.
-- Test previsto: `Test_INV_MOVE_001_ConcurrentOrdersProduceOneActive` (integration) — dos órdenes simultáneas sobre la misma unidad: una prevalece, la otra falla; nunca quedan dos activos.
+- `TestNuevaOrdenReemplazaLaAnterior` (simulation, `internal/game/simulation`) — la segunda orden deja la primera en `CANCELLED` con `reason = REPLACED` y emite `unit.movement.cancelled` seguido de `unit.movement.started`; queda un único movimiento activo.
+- `TestVerticalSliceMovimiento` (simulation) — el ciclo completo deja exactamente un activo en cada instante.
+- `TestUnInicioQueNoSePersisteDetieneLaUnidad` (simulation) — un inicio que no llega a disco detiene la unidad en el loop.
+- `TestIndiceUnicoImpideDosMovimientosActivos` (integration, `internal/persistence/postgres`) — el `INSERT` directo de un segundo `ACTIVE` falla por `unit_movements_one_active_per_unit`.
+- No hace falta un test de órdenes concurrentes: no las hay. Todas pasan por el canal de comandos y el loop las aplica de una en una; y los trabajos de una misma unidad los ejecuta un único worker en orden (`TestLaColaOrdenaPorClaveYNoBloqueaOtrasClaves`, `internal/persistence`).
 
-**Violación en runtime.** Detección en el error de índice único (en el worker de persistencia) y en una aserción del loop al indexar movimientos activos. Log `invariant_violation` con `inv_id=INV-MOVE-001`, `unitId` y los ids de ambos movimientos. Política `FAIL_FAST`: la nueva orden se rechaza con `INTERNAL_ERROR` y el estado previo se conserva intacto; si el fallo es del worker, `OnPermanentFailure` compensa deteniendo la unidad.
+**Violación en runtime.** En memoria no puede ocurrir: el índice por unidad no admite dos entradas. En disco, el índice parcial único rechaza la transacción del worker; agotados los reintentos, `OnPermanentFailure` detiene la unidad en el loop (`reason = SERVER`) y el error queda registrado con el nombre del trabajo. No hay un log `invariant_violation` propio.
 
 ---
 
@@ -130,7 +131,7 @@ Es también un vector de abuso: si dos órdenes concurrentes crean dos movimient
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | FAIL_FAST (el movimiento no se crea) |
-| Cobertura | **Cubierto** por `TestBuildTimedPathRechazaEntradasInvalidas`, `TestValidateComprobaciones` y `TestPositionAt` (`internal/domain/movement`) y por `TestMoverseAlSitioDondeYaEstas` (`internal/game/simulation`) |
+| Cobertura | **Cubierto** por `TestBuildTimedPathRechazaEntradasInvalidas`, `TestValidateComprobaciones` y `TestPositionAt` (`internal/domain/movement`), `TestMoverseAlSitioDondeYaEstas` (`internal/game/simulation`) y `TestLasRestriccionesDeMovimientosRechazanFilasInvalidas` (integration) |
 
 **Enunciado.** Toda polilínea persistida es no vacía y su waypoint de índice 0 coincide exactamente con la posición autoritativa de la unidad en el instante `start_time_ms`, con `tMs = 0`. Toda polilínea de un movimiento **registrado** tiene además al menos dos waypoints: una orden hacia el tile que la unidad ya ocupa no crea movimiento ([INV-MOVE-014](#inv-move-014)).
 
@@ -146,19 +147,20 @@ Distinción importante entre las dos comprobaciones: `movement.Validate` exige p
 
 - `DOMAIN` — la polilínea se construye con `movement.BuildTimedPath(tiles []world.Tile, grid CostGrid, baseMsPerTile int64) (TimedPath, error)`, que fija el waypoint 0 con `tMs = 0` a partir del primer tile de la ruta. El llamador no puede omitirlo ni falsearlo, y `BuildTimedPath` rechaza entradas inválidas en lugar de producir una polilínea degenerada.
 - `DOMAIN` — el origen que recibe el constructor es la **posición autoritativa** de la unidad (`Simulation.authoritativePosition(u, nowMs)`), no la posición consolidada en `units`, que puede ir por detrás. Si la unidad venía de otro movimiento, el origen es el tile que ocupa en ese instante según su polilínea ([INV-MOVE-008](#inv-move-008)), no el destino original. El pathfinder devuelve rutas que **incluyen el tile de origen** como primer elemento, lo que hace que el ancla sea correcta por construcción.
-- `DOMAIN` — `movement.Validate(p, grid)` verifica `len(p) >= 1` y `p[0].TMs == 0` antes de persistir y también al rehidratar; una polilínea vacía devuelve `ErrEmptyPath` y un `tMs[0]` distinto de cero devuelve `ErrInvalidOrigin`.
+- `DOMAIN` — `movement.Validate(p, grid)` verifica `len(p) >= 1` y `p[0].TMs == 0` al **rehidratar**: una polilínea vacía devuelve `ErrEmptyPath` y un `tMs[0]` distinto de cero devuelve `ErrInvalidOrigin`. Al crear el movimiento no hace falta: `BuildTimedPath` fija el ancla por construcción.
 - `DB` — `CONSTRAINT unit_movements_path_is_array CHECK (jsonb_typeof(path) = 'array' AND jsonb_array_length(path) >= 1)`: PostgreSQL rechaza una polilínea vacía o que no sea un array, aunque el dominio fallara.
 - `TYPE` — el esquema Zod de `unit.movement.started` en `packages/protocol` declara la polilínea como un array no vacío de `{x, y, tMs}` enteros, y los tests de contrato lo verifican contra el JSON Schema exportado.
 
 **Cómo se verifica.**
 
-- `TestBuildTimedPathRechazaEntradasInvalidas` (unit, `internal/domain/movement`) — **existe y pasa**: una lista de tiles vacía o incoherente no produce polilínea.
-- `TestValidateComprobaciones` (unit, `internal/domain/movement`) — **existe y pasa**: `Validate` rechaza polilínea vacía (`ErrEmptyPath`) y `tMs[0] != 0` (`ErrInvalidOrigin`).
-- `TestPositionAt` (unit, `internal/domain/movement`) — **existe y pasa**: evaluar en `elapsedMs = 0` devuelve el origen exacto.
-- `TestMovementStartedLlevaLaPolilineaCompleta` (contract, `internal/protocol`) — **existe y pasa**: `unit.movement.started` transporta la polilínea entera, con su waypoint 0.
-- `TestMoverseAlSitioDondeYaEstas` (simulation, `internal/game/simulation`) — **existe y pasa**: no se crea una polilínea degenerada de un solo punto.
+- `TestBuildTimedPathRechazaEntradasInvalidas` (unit, `internal/domain/movement`) — una lista de tiles vacía o incoherente no produce polilínea.
+- `TestValidateComprobaciones` (unit, `internal/domain/movement`) — `Validate` rechaza polilínea vacía (`ErrEmptyPath`) y `tMs[0] != 0` (`ErrInvalidOrigin`).
+- `TestLasRestriccionesDeMovimientosRechazanFilasInvalidas` (integration, `internal/persistence/postgres`) — un `path` vacío o que no es un array lo rechaza `unit_movements_path_is_array`.
+- `TestPositionAt` (unit, `internal/domain/movement`) — evaluar en `elapsedMs = 0` devuelve el origen exacto.
+- `TestMovementStartedLlevaLaPolilineaCompleta` (contract, `internal/protocol`) — `unit.movement.started` transporta la polilínea entera, con su waypoint 0.
+- `TestMoverseAlSitioDondeYaEstas` (simulation, `internal/game/simulation`) — no se crea una polilínea degenerada de un solo punto.
 
-**Violación en runtime.** Detección en `movement.Validate`. Log `invariant_violation` con `inv_id=INV-MOVE-002`, `unitId` y el detalle del defecto. Política `FAIL_FAST` del comando: el movimiento no se persiste, la unidad se queda donde está y se responde `unit.move.rejected` con `INTERNAL_ERROR`.
+**Violación en runtime.** Al crear: si `BuildTimedPath` falla, se registra «no se pudo construir la polilínea» a nivel `error`, el movimiento no se crea, la unidad se queda donde está y se responde `unit.move.rejected` con `INTERNAL_ERROR`. Al rehidratar: `Validate` falla, se registra un `warn` con el motivo, el movimiento se cierra `FAILED` y la unidad queda `IDLE` donde estaba. Ninguno de los dos caminos emite `invariant_violation`.
 
 ---
 
@@ -184,16 +186,16 @@ Un `tMs` igual al anterior significaría además velocidad infinita en ese segme
 - `DOMAIN` — el coste de segmento lo calcula `StepDurationMs`. Con `baseMsPerTile = 600` (`VILLAGER`) y el coste mínimo del catálogo de terreno (`ROAD` = 6 unidades), el segmento más barato posible es **360 ms** ortogonal y **509 ms** diagonal, muy lejos de cero. El acumulador es `int64` y estrictamente creciente por construcción.
 - `DOMAIN` — `StepDurationMs` tiene una guarda final explícita, `if ms < 1 { ms = 1 }`: ningún paso puede durar cero milisegundos, ni siquiera para un `unit_type` futuro tan rápido que el redondeo lo llevara a cero. La guarda vive en el punto único de cálculo, no repartida por los llamadores.
 - `DOMAIN` — **no se usa punto flotante en ninguna parte del cálculo**: el factor diagonal es la fracción entera `1414214/1000000` y el redondeo es `(x*num + den/2) / den`. No hay una operación en coma flotante que pudiera producir dos resultados distintos en dos plataformas.
-- `DOMAIN` — `movement.Validate` recorre la secuencia y devuelve `ErrPathNotMonotonic` si algún `tMs[i]` no supera al anterior, antes de persistir y también al rehidratar.
+- `DOMAIN` — `movement.Validate` recorre la secuencia y devuelve `ErrPathNotMonotonic` si algún `tMs[i]` no supera al anterior. Se ejecuta al rehidratar; al crear, la monotonía la da `BuildTimedPath` por construcción.
 
 **Cómo se verifica.**
 
-- `TestNingunPasoEsInstantaneo` (unit, `internal/domain/movement`) — **existe y pasa**: ninguna combinación de terreno transitable × (ortogonal, diagonal) produce un paso de 0 ms.
-- `TestDuracionDeUnPaso` (unit, `internal/domain/movement`) — **existe y pasa**: la tabla completa de duraciones (600/849, 960/1358, 1080/1527, 360/509) es exacta.
-- `TestEjemploNumericoCanonico` (unit, `internal/domain/movement`) — **existe y pasa**: golden test sobre el ejemplo documentado arriba; los `tMs` son exactamente `0, 600, 1449, 2409, 2769`. Fija el redondeo y detecta cualquier cambio accidental en la aritmética.
-- `TestValidateComprobaciones` (unit, `internal/domain/movement`) — **existe y pasa**: polilíneas con `tMs` repetidos o decrecientes devuelven `ErrPathNotMonotonic`.
+- `TestNingunPasoEsInstantaneo` (unit, `internal/domain/movement`) — ninguna combinación de terreno transitable × (ortogonal, diagonal) produce un paso de 0 ms.
+- `TestDuracionDeUnPaso` (unit, `internal/domain/movement`) — la tabla completa de duraciones (600/849, 960/1358, 1080/1527, 360/509) es exacta.
+- `TestEjemploNumericoCanonico` (unit, `internal/domain/movement`) — golden test sobre el ejemplo documentado arriba; los `tMs` son exactamente `0, 600, 1449, 2409, 2769`. Fija el redondeo y detecta cualquier cambio accidental en la aritmética.
+- `TestValidateComprobaciones` (unit, `internal/domain/movement`) — polilíneas con `tMs` repetidos o decrecientes devuelven `ErrPathNotMonotonic`.
 
-**Violación en runtime.** Detección en `movement.Validate` y en la guarda de `StepDurationMs`. Log `invariant_violation` con `inv_id=INV-MOVE-003`, `unitId`, índice y los dos `tMs` implicados. Política `FAIL_FAST`: el movimiento no se crea. Nunca se «corrige» sumando 1 ms al empate: eso enmascararía un error de cálculo de coste que se manifestaría en otra parte.
+**Violación en runtime.** Al crear no puede ocurrir: la guarda `ms < 1` de `StepDurationMs` lo impide. Al rehidratar, `Validate` lo detecta y el movimiento se cierra `FAILED` con un `warn` (ver [INV-MOVE-002](#inv-move-002)). Nunca se «corrige» sumando 1 ms al empate: eso enmascararía un error de cálculo de coste que se manifestaría en otra parte.
 
 ---
 
@@ -206,7 +208,7 @@ Un `tMs` igual al anterior significaría además velocidad infinita en ese segme
 | Aplicación | DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | FAIL_FAST (el movimiento no se crea) |
-| Cobertura | **Cubierto** por `TestValidateComprobaciones` (`internal/domain/movement`), `TestAdyacenciaYDiagonal` (`internal/game/world`) y `TestProhibidoAtajarEsquinas` (`internal/pathfinding`) |
+| Cobertura | **Cubierto** por `TestValidateComprobaciones` y `TestValidateFromSoloMiraElTramoPendiente` (`internal/domain/movement`), `TestAdyacenciaYDiagonal` (`internal/game/world`), `TestProhibidoAtajarEsquinas` (`internal/pathfinding`) y `TestUnaRutaQueCruzaLaMurallaNuevaSeDetieneConPathBlocked` (`internal/game/simulation`) |
 
 **Enunciado.** Para todo par de waypoints consecutivos `(a, b)` de una polilínea: `b` es transitable (terreno `walkable` y sin ocupación), `max(|b.x - a.x|, |b.y - a.y|) == 1` (contigüidad en 8-vecindad, sin saltos ni repeticiones) y, si el paso es diagonal, ambos tiles ortogonales adyacentes —`(a.x, b.y)` y `(b.x, a.y)`— son transitables.
 
@@ -230,20 +232,20 @@ Un `tMs` igual al anterior significaría además velocidad infinita en ese segme
 
 - `DOMAIN` — el expansor de vecinos del A\* genera exactamente las 8 direcciones y, para las 4 diagonales, exige que ambos ortogonales sean transitables antes de considerar el vecino. Un vecino que no cumple no entra en la open list.
 - `DOMAIN` — el path reconstruido desde el mapa de predecesores es contiguo por construcción, ya que cada arista del grafo de búsqueda es un paso de 8-vecindad.
-- `DOMAIN` — reverificación en `movement.Validate`: **transitabilidad** (`grid.IsWalkable` sobre cada waypoint, `ErrPathNotWalkable`) y **contigüidad** en 8-vecindad (`Tile.IsAdjacent`, `ErrPathNotContiguous`) sobre cada par consecutivo, antes de persistir y también al rehidratar. `IsAdjacent` exige `dx <= 1 && dy <= 1` y descarta el par idéntico, de modo que un salto o una repetición son rechazados.
+- `DOMAIN` — reverificación en `movement.Validate`, al rehidratar, de las tres propiedades: **transitabilidad** (`grid.IsWalkable` sobre cada waypoint, `ErrPathNotWalkable`), **contigüidad** en 8-vecindad (`Tile.IsAdjacent`, `ErrPathNotContiguous`) y **ausencia de corner cutting** (los dos ortogonales de cada paso diagonal, `ErrPathCutsCorner`). `IsAdjacent` exige `dx <= 1 && dy <= 1` y descarta el par idéntico, de modo que un salto o una repetición son rechazados. Hasta `EO-118` la tercera no se comprobaba: una fila de disco que atajara una esquina se reanudaba sin más.
+- `DOMAIN` — el mundo puede cambiar bajo un movimiento ya en curso, y sólo de una forma: una ciudad recién fundada amuralla su 3×3. En ese mismo tick, `TimedPath.ValidateFrom` revalida **lo que le falta por recorrer** a cada movimiento activo —el tile actual y los waypoints pendientes, con sus esquinas—, y el que ya no es transitable se detiene con `reason = PATH_BLOCKED` ([RN-CITY-022](../specs/city.md)). El arranque hace lo mismo tras reconstruir las murallas. Hasta `EO-118` nada lo comprobaba y una unidad atravesaba la muralla nueva.
 - `DOMAIN` — el desempate del A\* es determinista y estable por `(f, h, y, x)`, lo que hace que el mismo par origen-destino produzca siempre la misma polilínea y, por tanto, el mismo resultado de validación.
-
-> **Alcance real de la reverificación.** `movement.Validate` **no** comprueba hoy la ausencia de corner cutting: esa tercera propiedad la garantiza únicamente el expansor de vecinos del A\*, que no admite la diagonal si alguno de los dos ortogonales está bloqueado. La reverificación de salida cubre las otras dos propiedades del enunciado. Es una asimetría deliberada de coste —comprobar el corner cutting exige dos consultas extra al grid por waypoint diagonal— y una limitación honesta: si el canon §8 sustituye A\* por Hierarchical A\*, la ausencia de corner cutting queda apoyada sólo en el pathfinder nuevo. Añadir esa comprobación a `Validate` es trabajo pendiente y está anotado aquí, no dado por hecho.
 
 **Cómo se verifica.**
 
-- `TestValidateComprobaciones` (unit, `internal/domain/movement`) — **existe y pasa**: un waypoint intransitable devuelve `ErrPathNotWalkable`; un salto o una repetición devuelven `ErrPathNotContiguous`.
-- `TestAdyacenciaYDiagonal` (unit, `internal/game/world`) — **existe y pasa**: `IsAdjacent` rechaza la distancia 0 y la distancia 2, y `IsDiagonalTo` clasifica correctamente el paso.
-- `TestProhibidoAtajarEsquinas` (unit, `internal/pathfinding`) — **existe y pasa**: el path rodea la esquina en lugar de cruzarla.
-- `TestRutaEsDeterminista` (unit, `internal/pathfinding`) — **existe y pasa**: el mismo par origen-destino produce siempre la misma ruta.
-- Test previsto: `Test_INV_MOVE_004_ValidateRejectsCornerCut` (unit) — polilínea construida a mano que atraviesa una esquina entre dos obstáculos ortogonales: `Validate` debe rechazarla. **Hoy no la rechaza**; el test acompañará a esa comprobación cuando se añada.
+- `TestValidateComprobaciones` (unit, `internal/domain/movement`) — un waypoint intransitable devuelve `ErrPathNotWalkable`; un salto o una repetición, `ErrPathNotContiguous`; una diagonal con un ortogonal bloqueado, `ErrPathCutsCorner`.
+- `TestValidateFromSoloMiraElTramoPendiente` (unit) — un tile ya recorrido que se bloquea no invalida lo pendiente; uno pendiente, o una esquina pendiente, sí.
+- `TestUnaRutaQueCruzaLaMurallaNuevaSeDetieneConPathBlocked` y `TestUnaRutaAjenaALaMurallaNuevaSigueSuCurso` (simulation, `internal/game/simulation`) — la ruta que atraviesa la muralla nueva se detiene; la que no la toca, sigue.
+- `TestAdyacenciaYDiagonal` (unit, `internal/game/world`) — `IsAdjacent` rechaza la distancia 0 y la distancia 2, y `IsDiagonalTo` clasifica correctamente el paso.
+- `TestProhibidoAtajarEsquinas` (unit, `internal/pathfinding`) — el path rodea la esquina en lugar de cruzarla.
+- `TestRutaEsDeterminista` (unit, `internal/pathfinding`) — el mismo par origen-destino produce siempre la misma ruta.
 
-**Violación en runtime.** Detección en `movement.Validate`. Log `invariant_violation` con `inv_id=INV-MOVE-004`, `unitId`, índice del par y el motivo (`blocked`, `not_contiguous`, `corner_cut`). Política `FAIL_FAST`: el movimiento no se crea, la unidad permanece `IDLE`, el comando se responde `unit.move.rejected` con `INTERNAL_ERROR`. No se recorta el path hasta el último waypoint válido: entregar un movimiento parcial que el jugador no pidió es peor que rechazar.
+**Violación en runtime.** Al crear no puede ocurrir: la ruta sale del A\*. Al rehidratar, una polilínea que no valida se cierra `FAILED` con un `warn` y la unidad queda donde estaba. Con el servidor en marcha, una ruta que una muralla nueva invalida no es una violación sino la regla de juego de la fundación: se detiene con `PATH_BLOCKED`. No se recorta el path hasta el último waypoint válido ni se recalcula: entregar un movimiento que el jugador no pidió es peor que detenerlo.
 
 ---
 
@@ -256,7 +258,7 @@ Un `tMs` igual al anterior significaría además velocidad infinita en ese segme
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | REPAIR (recomputar desde la polilínea) |
-| Cobertura | **Cubierto** por `TestMovementCicloDeVida` y `TestEjemploNumericoCanonico` (`internal/domain/movement`) y por `TestSnapshotIncluyeElMovimientoEnCurso` (`internal/game/simulation`) |
+| Cobertura | **Cubierto** por `TestMovementCicloDeVida` y `TestEjemploNumericoCanonico` (`internal/domain/movement`), `TestSnapshotIncluyeElMovimientoEnCurso` y `TestRecuperacionRecomputaLaLlegadaDeUnaFilaQueNoCuadra` (`internal/game/simulation`) y `TestLasRestriccionesDeMovimientosRechazanFilasInvalidas` (integration) |
 
 **Enunciado.** Para todo movimiento, `arrival_time_ms = start_time_ms + tMs` del último waypoint de su polilínea, y el último waypoint es el tile de destino aceptado.
 
@@ -269,18 +271,18 @@ Un `tMs` igual al anterior significaría además velocidad infinita en ese segme
 
 - `DOMAIN` — `arrival_time_ms` se calcula en un único punto, `movement.New`, como `startTimeMs + path.DurationMs()`, a partir de la polilínea ya validada. Ningún handler lo asigna por su cuenta.
 - `DOMAIN` — la polilínea y `arrival_time_ms` se escriben en la misma fila y en la misma sentencia; no pueden desincronizarse por una escritura parcial.
-- `DOMAIN` — la rehidratación de arranque (`simulation.Hydrate`) revalida la polilínea antes de reanudar y usa `Movement.HasArrived(nowMs)` —que se apoya en `ArrivalTimeMs`— para decidir si completar el movimiento; una polilínea que no valida cierra el movimiento como `FAILED` en lugar de teletransportar la unidad.
+- `DOMAIN` — la rehidratación de arranque (`simulation.Hydrate`) revalida la polilínea y, si valida, **contrasta con ella** la llegada y el destino de la fila: si `arrival_time_ms` no es `start_time_ms` más la duración de la polilínea, o el destino no es su último waypoint, los recomputa desde la polilínea antes de usar `Movement.HasArrived(nowMs)`. Una polilínea que no valida cierra el movimiento como `FAILED` en lugar de teletransportar la unidad. Hasta `EO-118` la fila se creía sin más: una llegada adelantada hacía aparecer la unidad en su destino al arrancar.
 - `DB` — `CONSTRAINT unit_movements_time_ordered CHECK (arrival_time_ms >= start_time_ms)`. Ése es su nombre y su formulación reales: la comparación es **`>=`**, no `>`, porque el esquema no prohíbe un movimiento de duración cero aunque el dominio nunca lo cree ([INV-MOVE-003](#inv-move-003)). La igualdad exacta con el último `tMs` no es expresable en un `CHECK` sobre la polilínea serializada; se declara así explícitamente y se cubre en dominio y test.
 
 **Cómo se verifica.**
 
-- `TestMovementCicloDeVida` (unit, `internal/domain/movement`) — **existe y pasa**: `ArrivalTimeMs` se deriva de la polilínea y `HasArrived` cambia exactamente en ese instante.
-- `TestEjemploNumericoCanonico` (unit, `internal/domain/movement`) — **existe y pasa**: `DurationMs()` del ejemplo canónico es exactamente 2769.
-- `TestSnapshotIncluyeElMovimientoEnCurso` (simulation, `internal/game/simulation`) — **existe y pasa**: el snapshot emite `startTimeMs` y `arrivalTimeMs` coherentes con la polilínea que transporta.
-- Test previsto: `Test_INV_MOVE_005_RecoveryRecomputesArrival` (recovery) — un `arrival_time_ms` manipulado se recomputa al arrancar y se registra la reparación.
-- Test previsto: `Test_INV_MOVE_005_DatabaseRejectsArrivalBeforeStart` (integration) — `INSERT` con `arrival_time_ms < start_time_ms` falla por `unit_movements_time_ordered`.
+- `TestMovementCicloDeVida` (unit, `internal/domain/movement`) — `ArrivalTimeMs` se deriva de la polilínea y `HasArrived` cambia exactamente en ese instante.
+- `TestEjemploNumericoCanonico` (unit, `internal/domain/movement`) — `DurationMs()` del ejemplo canónico es exactamente 2769.
+- `TestSnapshotIncluyeElMovimientoEnCurso` (simulation, `internal/game/simulation`) — el snapshot emite `startTimeMs` y `arrivalTimeMs` coherentes con la polilínea que transporta.
+- `TestRecuperacionRecomputaLaLlegadaDeUnaFilaQueNoCuadra` (recovery, `internal/game/simulation`) — una fila con la llegada adelantada y otro destino se reanuda con los valores de la polilínea: la unidad sigue en camino donde le toca. Verificado por mutación.
+- `TestLasRestriccionesDeMovimientosRechazanFilasInvalidas` (integration, `internal/persistence/postgres`) — una llegada anterior a la salida la rechaza `unit_movements_time_ordered`, y la duración cero se admite.
 
-**Violación en runtime.** Detección en la recuperación de arranque y en una aserción previa a persistir. Log `invariant_violation` con `inv_id=INV-MOVE-005`, `movementId`, valor persistido y recomputado. Política `REPAIR`: prevalece la polilínea, que es la fuente, y se reescribe `arrival_time_ms`. La reparación es segura porque el valor correcto es una función pura de un dato que sí es autoritativo.
+**Violación en runtime.** Detección en la rehidratación. Log `invariant_violation` con `inv_id=INV-MOVE-005`, `severity=ALTO`, `policy=REPAIR`, el movimiento y los valores de la fila y de la polilínea. Prevalece la polilínea, que es la fuente. La reparación es en memoria: la fila conserva el valor erróneo hasta que el movimiento se cierra, y un arranque anterior a eso la repara y la registra de nuevo. Es segura porque el valor correcto es una función pura de un dato que sí es autoritativo.
 
 ---
 
@@ -293,7 +295,7 @@ Un `tMs` igual al anterior significaría además velocidad infinita en ese segme
 | Aplicación | DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Cubierto** por `TestPositionAt` e `TestIndexAt` (`internal/domain/movement`) y por `TestVerticalSliceMovimiento` y `TestSimulacionEsReproducible` (`internal/game/simulation`) |
+| Cobertura | **Cubierto** por `TestPositionAt`, `TestIndexAt` y `TestLaPosicionNuncaAdelantaAlReloj` (`internal/domain/movement`) y por `TestVerticalSliceMovimiento` y `TestSimulacionEsReproducible` (`internal/game/simulation`) |
 
 **Enunciado.** Para todo instante `T` del servidor y todo movimiento, la posición derivada es el waypoint de mayor `tMs` que cumple `tMs <= (T - start_time_ms)`. Nunca se devuelve un waypoint cuyo `tMs` supere el tiempo transcurrido, y para `T < start_time_ms` la función devuelve el origen.
 
@@ -306,21 +308,21 @@ El riesgo real está en el redondeo del tiempo de tick. Con `EO_TICK_RATE_HZ = 1
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — existe un **único** punto de derivación: `Movement.PositionAt(nowMs int64) world.Tile`, que delega en `TimedPath.PositionAt(elapsedMs int64)`. Ambas son puras y sin acceso al reloj; reciben el instante como argumento. Todo el sistema las usa a través de `Simulation.authoritativePosition`: el emisor de deltas, el manejador de nueva orden (para calcular el origen), la cancelación y la persistencia. No hay una segunda implementación «rápida» en ningún sitio.
+- `DOMAIN` — existe un **único** punto de derivación: `Movement.PositionAt(nowMs int64) world.Tile`, que delega en `TimedPath.PositionAt(elapsedMs int64)`. Ambas son puras y sin acceso al reloj; reciben el instante como argumento. La usan el avance de la fase 3, `Simulation.authoritativePosition` (origen de una orden nueva), la cancelación, el snapshot y la rehidratación. No hay una segunda implementación «rápida» en ningún sitio.
 - `DOMAIN` — la búsqueda es binaria sobre la secuencia ordenada de `tMs` (`TimedPath.IndexAt`), con la comparación `tMs <= elapsed` y `elapsed = nowMs - start_time_ms`, en aritmética entera de `int64`. Sin flotantes, sin redondeo hacia arriba.
-- `DOMAIN` — `nowMs` proviene siempre del `Clock` inyectado (canon §1.5); durante el tick es `tickTime = epoch_ms + tickNumber * tickDurationMs`, que es el tiempo del tick **en curso**, nunca el del siguiente.
+- `DOMAIN` — `nowMs` proviene siempre del `Clock` inyectado (canon §1.5): `Loop.Run` lee el reloj **una vez** al empezar cada tick y pasa ese instante a todas las fases, de modo que dentro de un tick todo se evalúa en el mismo momento y nunca en el del tick siguiente. No es `epoch + tick × duración`: cuando el loop va por detrás descarta ticks en lugar de recuperarlos, y el instante de un tick es el del reloj, no el de un calendario ideal.
 - `DOMAIN` — `elapsed < 0` (evaluación anterior al inicio) devuelve el origen, no un error ni un índice negativo.
 - `DOMAIN` — si `elapsed >= arrival_time_ms - start_time_ms`, la función devuelve el último waypoint: la posición se satura en el destino y nunca extrapola más allá.
 
 **Cómo se verifica.**
 
-- `TestPositionAt` (unit, `internal/domain/movement`) — **existe y pasa**: cubre el borde exacto (`elapsed == tMs[i]` devuelve el waypoint `i`), `elapsed < 0` (devuelve el origen) y `elapsed` muy posterior a la llegada (satura en el destino, sin extrapolar).
-- `TestIndexAt` (unit, `internal/domain/movement`) — **existe y pasa**: la búsqueda binaria devuelve el índice correcto en todos los bordes.
-- `TestVerticalSliceMovimiento` (simulation, `internal/game/simulation`) — **existe y pasa**: la secuencia de posiciones emitidas por el loop a 10 Hz coincide con la derivación analítica; el loop no introduce su propio redondeo.
-- `TestSimulacionEsReproducible` (simulation, `internal/game/simulation`) — **existe y pasa**: dos ejecuciones con el mismo `FakeClock` producen la misma secuencia de posiciones.
-- Test previsto: `Test_INV_MOVE_006_DerivedPositionNeverAheadOfClock` (unit) — property test: para 10 000 pares (movimiento, `T`) aleatorios, el waypoint devuelto cumple `tMs <= T - start_time_ms`.
+- `TestPositionAt` (unit, `internal/domain/movement`) — cubre el borde exacto (`elapsed == tMs[i]` devuelve el waypoint `i`), `elapsed < 0` (devuelve el origen) y `elapsed` muy posterior a la llegada (satura en el destino, sin extrapolar).
+- `TestIndexAt` (unit, `internal/domain/movement`) — la búsqueda binaria devuelve el índice correcto en todos los bordes.
+- `TestVerticalSliceMovimiento` (simulation, `internal/game/simulation`) — la secuencia de posiciones emitidas por el loop a 10 Hz coincide con la derivación analítica; el loop no introduce su propio redondeo.
+- `TestSimulacionEsReproducible` (simulation, `internal/game/simulation`) — dos ejecuciones con el mismo `FakeClock` producen la misma secuencia de posiciones.
+- `TestLaPosicionNuncaAdelantaAlReloj` (unit, `internal/domain/movement`) — propiedad sobre 20 000 pares (polilínea, instante) generados con semilla fija: el waypoint devuelto es siempre el último alcanzado y nunca uno posterior, el origen antes del inicio y el destino después de la llegada.
 
-**Violación en runtime.** Detección en una aserción interna de `TimedPath.IndexAt` (waypoint elegido con `tMs > elapsed`) y en el comparador del test de simulación. Log `invariant_violation` con `inv_id=INV-MOVE-006`, `movementId`, `elapsed` y el `tMs` devuelto. Política `FAIL_FAST` del tick: es un defecto de la función más crítica del sistema y no debe absorberse, porque el efecto acumulado es imperceptible por evento y decisivo en agregado.
+**Violación en runtime.** No hay detección en runtime: la función es pura y su corrección se demuestra en los tests, no se vigila en cada llamada. Un defecto aquí no debe absorberse, porque el efecto acumulado es imperceptible por evento y decisivo en agregado.
 
 ---
 
@@ -333,7 +335,7 @@ El riesgo real está en el redondeo del tiempo de tick. Con `EO_TICK_RATE_HZ = 1
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | REJECT (la transición no se aplica) |
-| Cobertura | **Cubierto** por `TestEstadosDeMovimiento` y `TestMovementCicloDeVida` (`internal/domain/movement`) y por los tres tests de recuperación (`internal/game/simulation`); `TestFinishEsIdempotente` (integration) está **diseñado y no ejecutado** |
+| Cobertura | **Cubierto** por `TestEstadosDeMovimiento` y `TestMovementCicloDeVida` (`internal/domain/movement`), los tests de recuperación (`internal/game/simulation`) y `TestFinishEsIdempotente` y `TestLasRestriccionesDeMovimientosRechazanFilasInvalidas` (integration) |
 
 **Enunciado.** `COMPLETED`, `CANCELLED` y `FAILED` son estados terminales de `unit_movements`: ninguna transición sale de ellos, y en particular ninguna vuelve a `ACTIVE`.
 
@@ -341,8 +343,8 @@ El riesgo real está en el redondeo del tiempo de tick. Con `EO_TICK_RATE_HZ = 1
 stateDiagram-v2
     [*] --> ACTIVE: unit.move aceptado
     ACTIVE --> COMPLETED: elapsed >= arrival - start
-    ACTIVE --> CANCELLED: unit.cancel_move, nueva orden, muerte de la unidad
-    ACTIVE --> FAILED: error irrecuperable durante la simulación
+    ACTIVE --> CANCELLED: cancelación, nueva orden, muralla nueva, guarnición, inicio no persistido
+    ACTIVE --> FAILED: rehidratación de una fila inválida
     COMPLETED --> [*]
     CANCELLED --> [*]
     FAILED --> [*]
@@ -363,17 +365,19 @@ Este último caso es el peligro concreto de la recuperación tras crash: al carg
 - `DB` — el `UPDATE` de cierre lleva siempre `WHERE id = $1 AND status = 'ACTIVE'`: la guarda está en la sentencia, no en una lectura previa. Nunca se hace un `UPDATE` incondicional por id.
 - `DOMAIN` — cero filas afectadas se trata como **éxito idempotente**, no como error, y así está comentado en el código: la finalización puede llegar por el tick y por la recuperación, y no debe fallar por eso. La idempotencia es lo que hace segura la reanudación tras un crash.
 - `DOMAIN` — la carga de recuperación consulta explícitamente `WHERE status = 'ACTIVE'`; los terminales no se cargan en memoria.
-- `DOMAIN` — el cierre del movimiento y la actualización de `units.status` se aplican juntos en RAM y se encolan como un único trabajo de persistencia ([INV-UNIT-005](units.md#inv-unit-005)).
+- `DOMAIN` — el cierre del movimiento y la unidad `IDLE` en su tile final se aplican juntos en RAM y se escriben en **una** transacción (`GameStore.PersistMovementFinish`, [ADR-013](../decisions/ADR-013-persistence-pipeline.md); [INV-UNIT-005](units.md#inv-unit-005)).
+- `DOMAIN` — `FAILED` no se alcanza con el servidor en marcha: su única fuente es la rehidratación, ante una polilínea inválida, un movimiento huérfano o el de una unidad guarnecida.
 
 **Cómo se verifica.**
 
-- `TestEstadosDeMovimiento` (unit, `internal/domain/movement`) — **existe y pasa**: el conjunto de estados es cerrado y los tres terminales están identificados.
-- `TestMovementCicloDeVida` (unit, `internal/domain/movement`) — **existe y pasa**: el ciclo de vida no admite volver a `ACTIVE`.
-- `TestRecuperacionMovimientoEnCurso`, `TestRecuperacionMovimientoVencidoDuranteLaCaida` y `TestRecuperacionConPolilineaInvalida` (recovery, `internal/game/simulation`) — **existen y pasan**: el arranque sólo reanuda `ACTIVE`, cierra como `COMPLETED` lo vencido y como `FAILED` lo corrupto.
-- `TestVerticalSliceMovimiento` (simulation) — **existe y pasa**: un movimiento completado emite exactamente un `unit.movement.completed`.
-- `TestFinishEsIdempotente` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: cerrar dos veces el mismo movimiento no cambia nada y no falla.
+- `TestEstadosDeMovimiento` (unit, `internal/domain/movement`) — el conjunto de estados es cerrado y los tres terminales están identificados.
+- `TestMovementCicloDeVida` (unit, `internal/domain/movement`) — el ciclo de vida no admite volver a `ACTIVE`.
+- `TestRecuperacionMovimientoEnCurso`, `TestRecuperacionMovimientoVencidoDuranteLaCaida` y `TestRecuperacionConPolilineaInvalida` (recovery, `internal/game/simulation`) — el arranque sólo reanuda `ACTIVE`, cierra como `COMPLETED` lo vencido y como `FAILED` lo corrupto.
+- `TestVerticalSliceMovimiento` (simulation) — un movimiento completado emite exactamente un `unit.movement.completed`.
+- `TestFinishEsIdempotente` (integration, `internal/persistence/postgres`) — cerrar dos veces el mismo movimiento no cambia nada y no falla.
+- `TestLasRestriccionesDeMovimientosRechazanFilasInvalidas` (integration) — un estado fuera del dominio lo rechaza `unit_movements_status_valid`.
 
-**Violación en runtime.** Detección en `MovementRepo.Finish` (intento de cierre con `ACTIVE`). Log `invariant_violation` con `inv_id=INV-MOVE-007`, `movementId`, estado actual y estado destino. Política `REJECT`: la transición no se aplica y el movimiento conserva su estado terminal.
+**Violación en runtime.** `MovementRepo.Finish` devuelve un error si se le pide `ACTIVE` como estado de cierre, y el `WHERE status = 'ACTIVE'` hace que cerrar un terminal no cambie nada. Ninguna de las dos cosas emite `invariant_violation`: la primera es un error de programación que el worker registra como escritura fallida, y la segunda es la idempotencia buscada.
 
 ---
 
@@ -386,7 +390,7 @@ Este último caso es el peligro concreto de la recuperación tras crash: al carg
 | Aplicación | DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | REPAIR (snap al waypoint correcto) |
-| Cobertura | **Cubierto** por `TestCancelacionExplicita` y `TestNuevaOrdenReemplazaLaAnterior` (`internal/game/simulation`) y por `TestPositionAt` (`internal/domain/movement`) |
+| Cobertura | **Cubierto** por `TestCancelacionExplicita`, `TestNuevaOrdenReemplazaLaAnterior` y `TestElCierreDelMovimientoLlevaLaPosicionFinal` (`internal/game/simulation`) y por `TestPositionAt` (`internal/domain/movement`) |
 
 **Enunciado.** Al cancelar un movimiento en el instante `T`, la posición persistida de la unidad es exactamente `Movement.PositionAt(T)`: el último waypoint efectivamente alcanzado. La unidad jamás queda entre dos tiles, ni retrocede al origen, ni avanza al destino.
 
@@ -405,18 +409,18 @@ La cancelación no es un caso raro: ocurre en **cada nueva orden**, porque una o
 **Cómo se garantiza.**
 
 - `DOMAIN` — `Simulation.cancelActiveMovement` usa el mismo `Movement.PositionAt` que todo lo demás, evaluado en el `nowMs` del tick en curso. No hay un cálculo alternativo de «dónde estaba»; el propio código lo documenta: «La unidad queda SIEMPRE sobre el último tile alcanzado, nunca entre dos».
-- `DOMAIN` — la posición resultante se fija en RAM (`Unit.SetTile`), la unidad se marca como *dirty* y el cierre del movimiento se encola como trabajo de persistencia. La posición de una unidad en movimiento normalmente no se persiste (es reconstruible), pero al cancelar deja de serlo y debe escribirse.
+- `DOMAIN` — la posición resultante se fija en RAM y el cierre se encola con ella: `PersistMovementFinish` cierra la fila `CANCELLED` y escribe la unidad `IDLE` en ese tile **en la misma transacción** ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.3). La posición de una unidad en movimiento no se persiste (es reconstruible), pero al cancelar deja de serlo y no puede esperar al volcado periódico.
 - `DOMAIN` — el waypoint devuelto pertenece a la polilínea, que ya fue validada por [INV-MOVE-004](#inv-move-004), luego es transitable: la unidad no puede quedar sobre un tile bloqueado, y [INV-UNIT-001](units.md#inv-unit-001) se preserva.
 - `DOMAIN` — se emite `unit.movement.cancelled` con la posición final y con la `reason` que corresponde (`CANCELLED_BY_PLAYER`, `REPLACED`, `PATH_BLOCKED`, `UNIT_DEAD` o `SERVER`), para que el cliente detenga su interpolación en el mismo tile que el servidor y no en el que su animación hubiera alcanzado.
 
 **Cómo se verifica.**
 
-- `TestCancelacionExplicita` (simulation, `internal/game/simulation`) — **existe y pasa**: con `FakeClock`, cancelar a mitad de trayecto deja la unidad exactamente sobre el último waypoint alcanzado, y el movimiento en `CANCELLED`.
-- `TestNuevaOrdenReemplazaLaAnterior` (simulation) — **existe y pasa**: la segunda orden arranca desde la posición donde quedó la primera, no desde su origen ni desde su destino.
-- `TestPositionAt` (unit, `internal/domain/movement`) — **existe y pasa**: cancelar antes de completar el primer segmento devolvería el origen; en el borde exacto devuelve ese waypoint.
-- `TestMovimientoSobreviveAlCicloDePersistencia` (integration, `internal/persistence/postgres`) — **diseñado, aún no ejecutado**: la posición tras cancelar sobrevive a un reinicio.
+- `TestCancelacionExplicita` (simulation, `internal/game/simulation`) — con `FakeClock`, cancelar a mitad de trayecto deja la unidad exactamente sobre el último waypoint alcanzado, y el movimiento en `CANCELLED`.
+- `TestNuevaOrdenReemplazaLaAnterior` (simulation) — la segunda orden arranca desde la posición donde quedó la primera, no desde su origen ni desde su destino.
+- `TestPositionAt` (unit, `internal/domain/movement`) — cancelar antes de completar el primer segmento devolvería el origen; en el borde exacto devuelve ese waypoint.
+- `TestElCierreDelMovimientoLlevaLaPosicionFinal` (simulation, `internal/game/simulation`) — el cierre de una cancelación lleva el tile donde la unidad se detuvo, y el de una llegada el destino; los dos van al trabajo de cierre, no al volcado.
 
-**Violación en runtime.** Detección en una aserción posterior a la cancelación que comprueba que la posición persistida pertenece a la polilínea del movimiento cancelado. Log `invariant_violation` con `inv_id=INV-MOVE-008`, `unitId`, `movementId`, posición escrita y esperada. Política `REPAIR`: se reescribe la posición al waypoint correcto y se emite un `entity.update` corrector. La reparación es segura porque el valor correcto es determinista y la polilínea sigue disponible.
+**Violación en runtime.** No hay detección en runtime: la posición sale de `PositionAt` en el único punto de cancelación (`cancelActiveMovement`) y no hay un segundo camino que vigilar. Una caída antes del `COMMIT` del cierre deja en disco el movimiento `ACTIVE`, y la rehidratación lo resuelve desde la polilínea ([INV-PERSIST-002](persistence.md#inv-persist-002)): la unidad aparece donde el tiempo dice, no donde se canceló. Es el RPO documentado.
 
 ---
 
@@ -445,16 +449,16 @@ La palabra **pura** es la carga del enunciado: la función no lee el reloj, no l
 
 - `DOMAIN` — `TimedPath.PositionAt(elapsedMs int64) world.Tile` y `TimedPath.IndexAt(elapsedMs int64) int` son funciones sobre el valor de la polilínea, sin receptor mutable ni acceso al exterior. `Movement.PositionAt(nowMs)` sólo resta `StartTimeMs` y delega.
 - `DOMAIN` — la búsqueda es **binaria** sobre la secuencia de `tMs`, que es estrictamente creciente por [INV-MOVE-003](#inv-move-003). La monotonía no es un detalle de eficiencia: es la precondición que hace correcta la búsqueda binaria.
-- `DOMAIN` — el loop no acumula posición: en cada tick evalúa la función para las unidades en movimiento y emite el delta si el tile cambió. No hay ningún estado intermedio que pudiera divergir entre dos ejecuciones.
+- `DOMAIN` — el loop no acumula posición: en cada tick evalúa la función para las unidades en movimiento, copia el resultado en la unidad en RAM y emite el delta si el tile cambió. Esa copia es un caché del valor de la función, no un estado propio: no se persiste y se recalcula desde cero en el tick siguiente.
 - `DOMAIN` — el tiempo entra siempre por el `Clock` inyectado y se pasa como argumento; el dominio no llama a `time.Now()`.
 
 **Cómo se verifica.**
 
-- `TestSimulacionEsReproducible` (simulation, `internal/game/simulation`) — **existe y pasa**: dos ejecuciones con el mismo `FakeClock` y las mismas órdenes producen exactamente la misma secuencia de estados.
-- `TestPositionAt` e `TestIndexAt` (unit, `internal/domain/movement`) — **existen y pasan**: la evaluación en instantes arbitrarios no depende de la historia previa.
-- `TestRecuperacionCompletaTrasReinicio` (recovery, `internal/game/simulation`) — **existe y pasa**: el estado reconstruido sin replay coincide con el esperado.
+- `TestSimulacionEsReproducible` (simulation, `internal/game/simulation`) — dos ejecuciones con el mismo `FakeClock` y las mismas órdenes producen exactamente la misma secuencia de estados.
+- `TestPositionAt` e `TestIndexAt` (unit, `internal/domain/movement`) — la evaluación en instantes arbitrarios no depende de la historia previa.
+- `TestRecuperacionCompletaTrasReinicio` (integration, `internal/persistence/postgres`) — un movimiento escrito en PostgreSQL se reconstruye a mitad de trayecto, sin replay, en el tile que le toca.
 
-**Violación en runtime.** Detección en el comparador del test de reproducibilidad y en cualquier aserción que evalúe la función dos veces con los mismos argumentos y obtenga resultados distintos. Log `invariant_violation` con `inv_id=INV-MOVE-009` y `movementId`. Política `FAIL_FAST`: una función de posición impura invalida la recuperación, que es la garantía más cara de recuperar una vez perdida.
+**Violación en runtime.** No hay detección en runtime: la pureza es una propiedad del código, que la vigilan el test de reproducibilidad y el lint de determinismo (`scripts/lint-determinism.mjs`, que prohíbe el reloj real y el azar global en el núcleo). Una función de posición impura invalidaría la recuperación, que es la garantía más cara de recuperar una vez perdida.
 
 ---
 
@@ -480,19 +484,19 @@ La formulación en dos mitades es deliberada, porque son dos fallos distintos:
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — durante un movimiento activo la posición **no se escribe**: se deriva ([INV-MOVE-009](#inv-move-009)). Las únicas escrituras de `Unit.SetTile` ocurren al completar o cancelar, y ambas usan un waypoint devuelto por `PositionAt`.
+- `DOMAIN` — durante un movimiento activo la posición **no se escribe en disco**: se deriva ([INV-MOVE-009](#inv-move-009)). En RAM, la posición de la unidad sólo la cambia `State.MoveUnitTo`, y con un movimiento activo sólo se llama con un waypoint devuelto por `PositionAt`: en el avance de cada tick, al completar, al cancelar y al rehidratar. Las demás llamadas —la salida de guarnición, el apartado de una muralla nueva— ocurren con la unidad ya sin movimiento.
 - `DOMAIN` — el pipeline de `unit.move` sólo acepta del cliente `unitId` y `target`; el origen lo calcula el servidor con `authoritativePosition`, y la ruta la calcula el A\*.
-- `BOUNDARY` — el payload de `unit.move` es exactamente `{ unitId, target: {x, y} }` y el esquema es estricto: un campo extra se rechaza con `INVALID_MESSAGE` ([INV-MOVE-011](#inv-move-011)).
+- `BOUNDARY` — el payload de `unit.move` es exactamente `{ unitId, target: {x, y} }` y el servidor lo decodifica de forma estricta: un campo extra se rechaza con `INVALID_MESSAGE` ([INV-MOVE-011](#inv-move-011)).
 - `DOMAIN` — el flush periódico excluye las unidades con movimiento activo ([INV-PERSIST-004](persistence.md#inv-persist-004)), de modo que ni siquiera la persistencia puede escribir una posición intermedia.
 
 **Cómo se verifica.**
 
-- `TestVerticalSliceMovimiento` (simulation, `internal/game/simulation`) — **existe y pasa**: todas las posiciones observadas durante el trayecto son waypoints de la polilínea.
-- `TestPayloadConCamposExtraNoAportaEstado` (e2e, `internal/websocket`) — **existe y pasa**: un payload con campos extra no cambia la posición de la unidad.
-- `TestElComandoDeMovimientoNoAdmiteRuta` (contract, `internal/protocol`) — **existe y pasa**: el esquema de `unit.move` no admite una ruta enviada por el cliente.
-- `TestRechazosDeMovimiento` (simulation) — **existe y pasa**: un comando rechazado no produce ningún cambio de posición.
+- `TestVerticalSliceMovimiento` (simulation, `internal/game/simulation`) — todas las posiciones observadas durante el trayecto son waypoints de la polilínea.
+- `TestPayloadConCamposExtraNoAportaEstado` (e2e, `internal/websocket`) — un `unit.move` con una ruta y un HP colados se rechaza, y el comando limpio arranca desde la posición que calcula el servidor.
+- `TestElComandoDeMovimientoNoAdmiteRuta` (contract, `internal/protocol`) — el decodificador rechaza una ruta enviada por el cliente.
+- `TestRechazosDeMovimiento` (simulation) — un comando rechazado no produce ningún cambio de posición.
 
-**Violación en runtime.** Detección en una aserción posterior a toda escritura de posición, que comprueba que el tile escrito pertenece a la polilínea del movimiento en curso. Log `invariant_violation` con `inv_id=INV-MOVE-010`, `unitId`, `movementId` y el tile escrito. Política `FAIL_FAST` del tick. Una escritura consumada desde datos del cliente es un incidente de seguridad, no un bug ordinario.
+**Violación en runtime.** No hay una aserción posterior a cada escritura de posición: la garantía es estructural —ningún struct de entrada tiene dónde llevar una posición y `MoveUnitTo` sólo recibe tiles calculados por el servidor— y la vigilan los tests y la revisión. Una escritura consumada desde datos del cliente sería un incidente de seguridad, no un bug ordinario.
 
 ---
 
@@ -505,7 +509,7 @@ La formulación en dos mitades es deliberada, porque son dos fallos distintos:
 | Aplicación | TYPE, BOUNDARY, TEST |
 | Milestone | M3 |
 | Política ante violación | REJECT con `INVALID_MESSAGE` |
-| Cobertura | **Cubierto** por los tests de `packages/protocol` (18 en verde, entre ellos «rechaza un payload que intente aportar estado autoritativo desconocido» y «unit.move no admite que el cliente envíe una ruta») y por `TestElComandoDeMovimientoNoAdmiteRuta` (`internal/protocol`) |
+| Cobertura | **Cubierto** por los tests de `packages/protocol` (entre ellos «rechaza un payload que intente aportar estado autoritativo desconocido» y «unit.move no admite que el cliente envíe una ruta»), por `TestElDecodificadorEsTanEstrictoComoElEsquema` y `TestElComandoDeMovimientoNoAdmiteRuta` (`internal/protocol`) y por `TestPayloadConCamposExtraNoAportaEstado` (`internal/websocket`) |
 
 **Enunciado.** Ningún mensaje cliente→servidor de la v1 transporta posición, ruta, `tMs`, velocidad ni instante de llegada; los esquemas cliente→servidor son estrictos y rechazan cualquier campo extra.
 
@@ -519,16 +523,16 @@ La forma en que este invariante se rompe en la práctica no es un ataque, sino u
 
 - `TYPE` — los esquemas Zod de `packages/protocol/src/v1/client.ts` son la fuente de verdad del protocolo. Los cinco mensajes cliente→servidor son `session.hello`, `session.ping`, `session.view`, `unit.move` y `unit.cancel_move`, y ninguno declara campos de estado derivado. `unit.move` es exactamente `{ unitId, target: {x, y} }`.
 - `BOUNDARY` — los esquemas cliente→servidor se exportan a JSON Schema con `additionalProperties: false`. Un campo desconocido **falla la validación** en lugar de ignorarse silenciosamente; un descarte silencioso podría convertirse en aceptación tras un refactor.
-- `BOUNDARY` — el decodificador de Go valida a mano por rendimiento, pero los tests de contrato de `internal/protocol` lo verifican contra el JSON Schema embebido (`go:embed` del espejo generado por `pnpm run protocol:build`): la implementación rápida no puede divergir del esquema.
+- `BOUNDARY` — el servidor Go decodifica envelope y payload con `protocol.DecodeStrict`, que rechaza toda propiedad no declarada a cualquier profundidad. Un contract test comprueba que el JSON Schema embebido (`go:embed` del espejo de `pnpm run protocol:build`) declara `additionalProperties: false` en todo objeto cliente→servidor y que el decodificador rechaza lo mismo. Hasta `EO-118` el servidor usaba `json.Unmarshal`, que descartaba los campos de más en silencio y ejecutaba el comando.
 - `TYPE` — las coordenadas se declaran como enteros, lo que descarta flotantes y `NaN` antes de llegar a Go.
 
 **Cómo se verifica.**
 
-- `packages/protocol` (Vitest, 18 tests en verde) — **existen y pasan**: «rechaza un payload que intente aportar estado autoritativo desconocido», «unit.move no admite que el cliente envíe una ruta», «rechaza coordenadas no enteras: el mundo es un grid de tiles» y «no ha derivado respecto de los esquemas Zod (misma comprobación que la CI)».
-- `TestElComandoDeMovimientoNoAdmiteRuta` (contract, `internal/protocol`) — **existe y pasa**: el espejo embebido en Go coincide.
-- `TestPayloadConCamposExtraNoAportaEstado` (e2e, `internal/websocket`) — **existe y pasa**: el rechazo llega hasta el borde real.
+- `packages/protocol` (Vitest) — «rechaza un payload que intente aportar estado autoritativo desconocido», «unit.move no admite que el cliente envíe una ruta», «rechaza coordenadas no enteras: el mundo es un grid de tiles» y «no ha derivado respecto de los esquemas Zod (misma comprobación que la CI)».
+- `TestElDecodificadorEsTanEstrictoComoElEsquema` y `TestElComandoDeMovimientoNoAdmiteRuta` (contract, `internal/protocol`) — el decodificador Go es tan estricto como el esquema, y una ruta en `unit.move` no pasa.
+- `TestPayloadConCamposExtraNoAportaEstado` (e2e, `internal/websocket`) — el rechazo llega hasta el borde real: `INVALID_MESSAGE` con el `requestId`, y el comando no se ejecuta.
 
-**Violación en runtime.** Detección en la validación del esquema y en el decodificador. Log `invariant_violation` con `inv_id=INV-MOVE-011`, `session_id` y el campo ofensivo. Política `REJECT` con `INVALID_MESSAGE`; no se procesa nada del mensaje. Un PR que añada un campo de estado a un payload cliente→servidor debe bloquearse en revisión aunque los tests pasen.
+**Violación en runtime.** Un campo de más no es una violación sino la regla: `REJECT` con `INVALID_MESSAGE`, sin procesar nada del mensaje, contado en `eo_protocol_errors_total{code}`. Lo que el código no puede impedir es que un PR añada el campo al esquema y al struct a la vez: eso debe bloquearse en revisión aunque los tests pasen.
 
 ---
 
@@ -556,17 +560,17 @@ En ambos casos el jugador prefiere un error inmediato y accionable a una obedien
 
 - `DOMAIN` — `handleMoveUnit` valida el destino **antes** del A\*: fuera de límites responde `TARGET_OUT_OF_BOUNDS`, intransitable responde `TARGET_NOT_WALKABLE`. No hay ninguna rama que sustituya el destino por otro.
 - `DOMAIN` — `pathfinding.FindPath` devuelve `ErrPathNotFound` si no hay ruta completa, y `ErrPathTooLong` / el límite de nodos si excede su presupuesto. **Nunca devuelve una ruta parcial**, y la simulación traduce el error a `PATH_NOT_FOUND` o `PATH_TOO_LONG`.
-- `DOMAIN` — `movement.New(unitID, path, target, startTimeMs)` recibe el `target` del comando y `TimedPath.Destination()` devuelve el último waypoint; ambos coinciden porque la ruta viene del A\* hacia ese mismo destino.
+- `DOMAIN` — `movement.New(unitID, path, target, startTimeMs)` recibe el `target` del comando y `TimedPath.Destination()` devuelve el último waypoint; ambos coinciden porque la ruta viene del A\* hacia ese mismo destino. Al rehidratar, una fila cuyo destino no sea el último waypoint se corrige desde la polilínea ([INV-MOVE-005](#inv-move-005)).
 - `DOMAIN` — la ruta devuelta por el pathfinder **incluye el tile de origen** como primer elemento, de modo que el primer y el último waypoint son, respectivamente, el origen autoritativo y el destino pedido.
 
 **Cómo se verifica.**
 
-- `TestVerticalSliceMovimiento` (simulation, `internal/game/simulation`) — **existe y pasa**: la unidad termina exactamente en el tile pedido.
-- `TestRutaTrivialEnLineaRecta` y `TestOrigenIgualADestino` (unit, `internal/pathfinding`) — **existen y pasan**: la ruta empieza en el origen y termina en el destino; `from == to` devuelve una ruta de un solo tile, sin error.
-- `TestSinRutaPosibleSeRechaza` (simulation) — **existe y pasa**: sin camino se responde `PATH_NOT_FOUND` y no se crea ningún movimiento parcial.
-- `TestDestinoIntransitableSeRechaza` (unit, `internal/pathfinding`) y el caso «destino intransitable» de `TestRechazosDeMovimiento` — **existen y pasan**: no se reubica el destino.
+- `TestVerticalSliceMovimiento` (simulation, `internal/game/simulation`) — la unidad termina exactamente en el tile pedido.
+- `TestRutaTrivialEnLineaRecta` y `TestOrigenIgualADestino` (unit, `internal/pathfinding`) — la ruta empieza en el origen y termina en el destino; `from == to` devuelve una ruta de un solo tile, sin error.
+- `TestSinRutaPosibleSeRechaza` (simulation) — sin camino se responde `PATH_NOT_FOUND` y no se crea ningún movimiento parcial.
+- `TestDestinoIntransitableSeRechaza` (unit, `internal/pathfinding`) y el caso «destino intransitable» de `TestRechazosDeMovimiento` — no se reubica el destino.
 
-**Violación en runtime.** Detección en una aserción previa a registrar el movimiento, que compara `path.Destination()` con el `target` del comando. Log `invariant_violation` con `inv_id=INV-MOVE-012`, `unitId`, destino pedido y último waypoint. Política `FAIL_FAST`: el movimiento no se crea y se responde `INTERNAL_ERROR`. Entregar un movimiento que el jugador no pidió es peor que rechazar.
+**Violación en runtime.** No hay una aserción previa a registrar el movimiento: la coincidencia la da el A\*, que nunca devuelve una ruta parcial, y la cubren sus tests. Entregar un movimiento que el jugador no pidió es peor que rechazar, y por eso no existe ninguna rama que lo haga.
 
 ---
 
@@ -600,12 +604,12 @@ El orden importa tanto como los tipos: **primero se redondea el segmento, despu�
 
 **Cómo se verifica.**
 
-- `TestEjemploNumericoCanonico` (unit, `internal/domain/movement`) — **existe y pasa**: el ejemplo canónico produce exactamente `0, 600, 1449, 2409, 2769`. Es el golden test que fija el redondeo.
-- `TestDuracionDeUnPaso` (unit, `internal/domain/movement`) — **existe y pasa**: la tabla completa de duraciones ortogonales y diagonales es exacta para los cuatro terrenos transitables.
-- `TestNingunPasoEsInstantaneo` (unit, `internal/domain/movement`) — **existe y pasa**: la guarda `ms < 1` funciona.
-- `TestSimulacionEsReproducible` (simulation, `internal/game/simulation`) — **existe y pasa**: la reproducibilidad de extremo a extremo descansa sobre esta aritmética.
+- `TestEjemploNumericoCanonico` (unit, `internal/domain/movement`) — el ejemplo canónico produce exactamente `0, 600, 1449, 2409, 2769`. Es el golden test que fija el redondeo.
+- `TestDuracionDeUnPaso` (unit, `internal/domain/movement`) — la tabla completa de duraciones ortogonales y diagonales es exacta para los cuatro terrenos transitables.
+- `TestNingunPasoEsInstantaneo` (unit, `internal/domain/movement`) — la guarda `ms < 1` funciona.
+- `TestSimulacionEsReproducible` (simulation, `internal/game/simulation`) — la reproducibilidad de extremo a extremo descansa sobre esta aritmética.
 
-**Violación en runtime.** Detección en el golden test de CI, que es preventiva: cualquier cambio en la aritmética lo rompe. Log `invariant_violation` con `inv_id=INV-MOVE-013` y los valores esperado y obtenido. Política `FAIL_FAST`. La respuesta correcta a un golden roto es entender por qué cambió la aritmética, no actualizar el fixture.
+**Violación en runtime.** No hay detección en runtime: la detección es el golden test de la CI, que es preventiva —cualquier cambio en la aritmética lo rompe—. La respuesta correcta a un golden roto es entender por qué cambió la aritmética, no actualizar el fixture.
 
 ---
 
@@ -618,7 +622,7 @@ El orden importa tanto como los tipos: **primero se redondea el segmento, despu�
 | Aplicación | DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestMoverseAlSitioDondeYaEstas` (`internal/game/simulation`) |
+| Cobertura | **Cubierto** por `TestMoverseAlSitioDondeYaEstas` y `TestMoverseAlTileQueOcupaEnTransitoLaDetiene` (`internal/game/simulation`) |
 
 **Enunciado.** Un `unit.move` cuyo destino coincide con la posición autoritativa de la unidad se **acepta** sin crear fila en `unit_movements` y sin emitir `unit.movement.started`; si había movimiento activo, se cancela con `reason = CANCELLED_BY_PLAYER`.
 
@@ -633,16 +637,16 @@ La segunda mitad del enunciado es la parte con significado de gameplay: si la un
 **Cómo se garantiza.**
 
 - `DOMAIN` — `handleMoveUnit` compara `origin == cmd.Target` **después** de calcular la posición autoritativa y **antes** de invocar el A\*: el caso degenerado no consume presupuesto de pathfinding.
-- `DOMAIN` — en esa rama se llama a `cancelActiveMovement(u, ReasonCancelledByPlayer, nowMs)` y se responde `unit.move.accepted` con `movementId = 0`. El `0` es el marcador de «no se creó movimiento», coherente con que los ids de `unit_movements` son `bigint GENERATED ALWAYS AS IDENTITY` y empiezan en 1.
+- `DOMAIN` — en esa rama se llama a `cancelActiveMovement(u, ReasonCancelledByPlayer, nowMs)` y se responde `unit.move.accepted` con `movementId = 0`. El `0` es el marcador de «no se creó movimiento»: los ids de `unit_movements` los asigna la simulación a partir del máximo de la tabla, empezando en 1 ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.1), y nunca valen 0.
 - `DOMAIN` — el orden de las validaciones previas se conserva: ownership → estado de unidad → límites → transitabilidad del destino → **caso degenerado** → A\*. Una unidad ajena o muerta se rechaza antes de llegar aquí.
 - `BOUNDARY` — la respuesta es `unit.move.accepted`, no `unit.movement.started`: el cliente no recibe ninguna polilínea que interpolar.
 
 **Cómo se verifica.**
 
-- `TestMoverseAlSitioDondeYaEstas` (simulation, `internal/game/simulation`) — **existe y pasa**: se emite exactamente un `unit.move.accepted`, ningún `unit.movement.started`, y la unidad queda `IDLE`. El propio test documenta la razón: «no se crea una polilínea degenerada de un solo punto».
-- Test previsto: `Test_INV_MOVE_014_SelfMoveCancelsActiveWithPlayerReason` (simulation) — una unidad en tránsito que recibe una orden hacia el tile que ocupa en ese instante emite `unit.movement.cancelled` con `reason = CANCELLED_BY_PLAYER`.
+- `TestMoverseAlSitioDondeYaEstas` (simulation, `internal/game/simulation`) — se emite exactamente un `unit.move.accepted`, ningún `unit.movement.started`, y la unidad queda `IDLE`. El propio test documenta la razón: «no se crea una polilínea degenerada de un solo punto».
+- `TestMoverseAlTileQueOcupaEnTransitoLaDetiene` (simulation) — una unidad en tránsito que recibe una orden hacia el tile que ocupa en ese instante se detiene allí: `unit.move.accepted` con `movementId = 0`, ningún `unit.movement.started` y `unit.movement.cancelled` con `reason = CANCELLED_BY_PLAYER`. Verificado por mutación: con `REPLACED` falla.
 
-**Violación en runtime.** Detección en una aserción posterior que comprueba que no se registró movimiento cuando origen y destino coinciden. Log `invariant_violation` con `inv_id=INV-MOVE-014`, `unitId` y el tile. Política `REJECT`: el movimiento espurio no se registra.
+**Violación en runtime.** No hay detección en runtime: la rama del caso degenerado retorna antes de construir ninguna polilínea, y no hay un camino que registre un movimiento de un solo punto.
 
 ---
 

@@ -276,17 +276,17 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-MOVE-001 | Una unidad tiene como máximo un movimiento `ACTIVE` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestNuevaOrdenReemplazaLaAnterior` |
 | INV-MOVE-002 | La polilínea es no vacía y su primer waypoint es el origen con `tMs = 0` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestValidateComprobaciones` |
 | INV-MOVE-003 | Los `tMs` de la polilínea son estrictamente crecientes | CRITICO | DOMAIN, TEST | ✓ | `TestNingunPasoEsInstantaneo` |
-| INV-MOVE-004 | Waypoints transitables y contiguos en 8-vecindad, sin corner cutting | CRITICO | DOMAIN, TEST | ✓ | `TestValidateComprobaciones` |
-| INV-MOVE-005 | `arrival_time_ms = start_time_ms + tMs` del último waypoint | ALTO | DB, DOMAIN, TEST | ✓ | `TestMovementCicloDeVida` |
-| INV-MOVE-006 | La posición autoritativa derivada nunca adelanta al tiempo del servidor | CRITICO | DOMAIN, TEST | ✓ | `TestPositionAt` |
+| INV-MOVE-004 | Waypoints transitables y contiguos en 8-vecindad, sin corner cutting | CRITICO | DOMAIN, TEST | ✓ | `TestValidateComprobaciones`, `TestUnaRutaQueCruzaLaMurallaNuevaSeDetieneConPathBlocked` |
+| INV-MOVE-005 | `arrival_time_ms = start_time_ms + tMs` del último waypoint | ALTO | DB, DOMAIN, TEST | ✓ | `TestMovementCicloDeVida`, `TestRecuperacionRecomputaLaLlegadaDeUnaFilaQueNoCuadra` |
+| INV-MOVE-006 | La posición autoritativa derivada nunca adelanta al tiempo del servidor | CRITICO | DOMAIN, TEST | ✓ | `TestPositionAt`, `TestLaPosicionNuncaAdelantaAlReloj` |
 | INV-MOVE-007 | Un movimiento terminado nunca vuelve a `ACTIVE` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestEstadosDeMovimiento` |
 | INV-MOVE-008 | Cancelar deja la unidad exactamente en el último tile alcanzado | ALTO | DOMAIN, TEST | ✓ | `TestCancelacionExplicita` |
 | INV-MOVE-009 | La posición es función pura de `(path, start_time_ms, T)`, sin replay de ticks | ALTO | DOMAIN, TEST | ✓ | `TestSimulacionEsReproducible` |
 | INV-MOVE-010 | La posición sólo cambia a tiles de la propia polilínea, nunca desde datos del cliente | CRITICO | DOMAIN, TEST | ✓ | `TestVerticalSliceMovimiento` |
-| INV-MOVE-011 | Ningún mensaje cliente→servidor transporta posición, ruta, `tMs`, velocidad ni llegada | CRITICO | TYPE, BOUNDARY, TEST | ✓ | `TestElComandoDeMovimientoNoAdmiteRuta` |
+| INV-MOVE-011 | Ningún mensaje cliente→servidor transporta posición, ruta, `tMs`, velocidad ni llegada | CRITICO | TYPE, BOUNDARY, TEST | ✓ | `TestElComandoDeMovimientoNoAdmiteRuta`, `TestElDecodificadorEsTanEstrictoComoElEsquema` |
 | INV-MOVE-012 | El último waypoint es exactamente el destino pedido; no hay rutas parciales | MEDIO | DOMAIN, TEST | ✓ | `TestVerticalSliceMovimiento` |
 | INV-MOVE-013 | Redondeo por segmento con aritmética entera pura; resultado idéntico en toda plataforma | ALTO | DOMAIN, TEST | ✓ | `TestEjemploNumericoCanonico` |
-| INV-MOVE-014 | Moverse al tile propio se acepta sin crear movimiento y cancela el activo | MEDIO | DOMAIN, TEST | ✓ | `TestMoverseAlSitioDondeYaEstas` |
+| INV-MOVE-014 | Moverse al tile propio se acepta sin crear movimiento y cancela el activo | MEDIO | DOMAIN, TEST | ✓ | `TestMoverseAlSitioDondeYaEstas`, `TestMoverseAlTileQueOcupaEnTransitoLaDetiene` |
 
 ### PERSISTENCE — [persistence.md](persistence.md)
 
@@ -393,7 +393,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 Los 5 sin cobertura son todos de `INV-GARR`, la única familia que `EO-118` no ha reconciliado todavía: describen efectos de una guarnición que ningún comando de red puede producir (M7, entregable 6), y sus filas citan nombres `Test_INV_*` previstos que no están en la suite. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT` e `INV-SEC` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC` e `INV-MOVE` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 
