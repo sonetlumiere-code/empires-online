@@ -257,17 +257,17 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-UNIT-001 | La posición de una unidad referencia un tile válido y transitable | CRITICO | DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento` |
-| INV-UNIT-002 | Una unidad `DEAD` no acepta órdenes | ALTO | DB, DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento` |
-| INV-UNIT-003 | Una unidad `GARRISONED` no ocupa tile del mundo | ALTO | DOMAIN, TEST | ~ | `TestRechazosDeMovimiento` |
-| INV-UNIT-004 | `hp` está en `[0, max_hp]` | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_UNIT_004_HpWithinRange` |
-| INV-UNIT-005 | `status = MOVING` si y sólo si existe un movimiento `ACTIVE` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestVerticalSliceMovimiento` |
-| INV-UNIT-006 | Una unidad pertenece a un único jugador | CRITICO | DB, TYPE, TEST | ~ | `TestNoSePuedeComandarUnaUnidadAjena` |
-| INV-UNIT-007 | `GARRISONED` implica `city_id IS NOT NULL` y fila en `garrisons` | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_UNIT_007_GarrisonedHasCityAndGarrisonRow` |
+| INV-UNIT-001 | La posición de una unidad referencia un tile válido y transitable | CRITICO | DOMAIN, TEST | ~ | `TestRechazosDeMovimiento`, `TestFundarApartaLaUnidadQueQuedaDentroDeLaMuralla`; falta la validación de carga (`EO-119`) |
+| INV-UNIT-002 | Una unidad `DEAD` no acepta órdenes | ALTO | DB, DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento`, `TestEnsureCanMoveDecidePorEstado` |
+| INV-UNIT-003 | Una unidad `GARRISONED` no ocupa tile del mundo | ALTO | DOMAIN, TEST | ~ | `TestRechazosDeMovimiento`, `TestGuarnecidasYSinVidaNoSeOcultan`; todavía sale en el snapshot (M7, entregable 6) |
+| INV-UNIT-004 | `hp` está en `[0, max_hp]` | ALTO | DB, DOMAIN, TEST | ~ | `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`, `TestIsAliveExigeEstadoYVida`; falta `max_hp` contra el catálogo al cargar (`EO-119`) |
+| INV-UNIT-005 | `status = MOVING` si y sólo si existe un movimiento `ACTIVE` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento`, `TestRecuperacionNoReanudaElMovimientoDeUnaUnidadGuarnecida`, `TestVerticalSliceMovimiento` |
+| INV-UNIT-006 | Una unidad pertenece a un único jugador | CRITICO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`, `TestNoSePuedeComandarUnaUnidadAjena` |
+| INV-UNIT-007 | `GARRISONED` implica `city_id IS NOT NULL` y fila en `garrisons` | ALTO | DB, DOMAIN, TEST | ~ | `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`; falta decidir `city_id` (M7) y la carga (`EO-119`) |
 | INV-UNIT-008 | `HIDDEN` implica Safe Zone activa y reposo; moverse deja de ocultar | MEDIO | DOMAIN, TEST | ✓ | `TestReglaDeOcultamiento`, `TestUnaUnidadOcultaQueRecibeUnMoveSeRevelaEnElMismoTick` |
-| INV-UNIT-009 | Todo `unit_type` persistido resuelve en el catálogo de `unit.Lookup` | ALTO | DOMAIN, TEST | ~ | `TestVerticalSliceMovimiento` |
-| INV-UNIT-010 | `player_id` y `unit_type` son inmutables tras la creación en MVP | MEDIO | DOMAIN, TEST | ○ | `Test_INV_UNIT_010_OwnerAndTypeAreImmutable` |
-| INV-UNIT-011 | `chunk_x` y `chunk_y` son siempre el chunk de `(x, y)` | ALTO | DOMAIN, TEST | ~ | `TestFlushPositionsEscribeElLoteYMantieneElChunk` |
+| INV-UNIT-009 | Todo `unit_type` persistido resuelve en el catálogo de `unit.Lookup` | ALTO | DOMAIN, TEST | ~ | `TestLookupSoloConoceElCatalogo`; falta la comprobación de carga (`EO-119`) |
+| INV-UNIT-010 | `player_id` y `unit_type` son inmutables tras la creación en MVP | MEDIO | DOMAIN, TEST | ✓ | `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
+| INV-UNIT-011 | `chunk_x` y `chunk_y` son siempre el chunk de `(x, y)` | ALTO | DOMAIN, TEST | ✓ | `TestFlushPositionsEscribeElLoteYMantieneElChunk`, `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
 
 ### MOVEMENT — [movement.md](movement.md)
 
@@ -380,9 +380,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 63 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 19 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 8 | Test inexistente, o fila sin reconciliar con la suite |
+| ✓ Cubierto | 65 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 20 | Hay test real para parte del enunciado |
+| ○ Sin cobertura | 5 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
 > **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
@@ -391,12 +391,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Los 8 sin cobertura se deben a dos causas distintas que no conviene mezclar:
+Los 5 sin cobertura son todos de `INV-GARR`, la única familia que `EO-118` no ha reconciliado todavía: describen efectos de una guarnición que ningún comando de red puede producir (M7, entregable 6), y sus filas citan nombres `Test_INV_*` previstos que no están en la suite. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 
-1. **Nombres de test que nunca existieron.** Muchas filas citan un `Test_INV_*` que no está en la suite. Es el nombre previsto cuando se escribió la ficha, no un test. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
-2. **Mecánica sin disparador.** Parte de `INV-GARR` describe efectos de una guarnición que ningún comando de red puede producir todavía (M7, entregable 6).
-
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER` e `INV-PERSIST` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las cinco familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST` e `INV-UNIT` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 
