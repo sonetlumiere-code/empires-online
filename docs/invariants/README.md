@@ -302,13 +302,13 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-SEC-001 | El estado provisto por el cliente jamás muta directamente el estado autoritativo | CRITICO | TYPE, BOUNDARY, TEST | ✓ | `TestPayloadConCamposExtraNoAportaEstado` |
-| INV-SEC-002 | Toda conexión WebSocket está autenticada antes de aceptar cualquier comando | CRITICO | TYPE, BOUNDARY, TEST | ✓ | `TestPreAuthSoloAdmiteElHandshake` |
-| INV-SEC-003 | Un ticket sólo puede canjearse una vez | CRITICO | BOUNDARY, TEST | ✓ | `TestTicketSoloSeConsumeUnaVez` |
+| INV-SEC-001 | El estado provisto por el cliente jamás muta directamente el estado autoritativo | CRITICO | TYPE, BOUNDARY, TEST | ✓ | `TestElDecodificadorEsTanEstrictoComoElEsquema`, `TestPayloadConCamposExtraNoAportaEstado` |
+| INV-SEC-002 | Toda conexión WebSocket está autenticada antes de aceptar cualquier comando | CRITICO | BOUNDARY, TEST | ✓ | `TestNoSeAceptanComandosSinAutenticar`, `TestSinHandshakeEnPlazoSeCierraCon4408` |
+| INV-SEC-003 | Un ticket sólo puede canjearse una vez | CRITICO | BOUNDARY, TEST | ✓ | `TestTicketSoloSeConsumeUnaVez`, `TestFalloDelRegistroDeTicketsFallaCerrado` |
 | INV-SEC-004 | Todo comando valida ownership antes de ejecutarse | CRITICO | DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento` |
-| INV-SEC-005 | Los mensajes que superan el límite de tamaño o de tasa se rechazan sin procesarse | ALTO | BOUNDARY, TEST | ~ | `TestValoresPorDefectoDelCanon` |
-| INV-SEC-006 | Las credenciales de infraestructura nunca llegan al cliente ni al repositorio | CRITICO | BOUNDARY, TEST | ~ | `TestObligatoriasAusentes` |
-| INV-SEC-007 | Un `requestId` repetido nunca produce un segundo efecto | CRITICO | BOUNDARY, TEST | ✓ | `TestComandoDuplicadoSeIgnora` |
+| INV-SEC-005 | Los mensajes que superan el límite de tamaño o de tasa se rechazan sin procesarse | ALTO | BOUNDARY, TEST | ✓ | `TestUnMensajeDemasiadoGrandeCierraCon1009`, `TestUnaRafagaPorEncimaDelBurstCierraCon4429` |
+| INV-SEC-006 | Las credenciales de infraestructura nunca llegan al cliente ni al repositorio | CRITICO | BOUNDARY, TEST | ~ | `TestLosSecretosNoSeImprimenPorNingunaVia`, `TestObligatoriasAusentes`; falta el escaneo del repositorio y del bundle |
+| INV-SEC-007 | Un `requestId` repetido nunca produce un segundo efecto | CRITICO | BOUNDARY, TEST | ✓ | `TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal` |
 
 ### TERRITORY — [territory.md](territory.md)
 
@@ -380,8 +380,8 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 65 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 20 | Hay test real para parte del enunciado |
+| ✓ Cubierto | 66 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 19 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 5 | Test inexistente, o fila sin reconciliar con la suite |
 | **Total** | **90** | |
 
@@ -393,7 +393,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 Los 5 sin cobertura son todos de `INV-GARR`, la única familia que `EO-118` no ha reconciliado todavía: describen efectos de una guarnición que ningún comando de red puede producir (M7, entregable 6), y sus filas citan nombres `Test_INV_*` previstos que no están en la suite. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST` e `INV-UNIT` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT` e `INV-SEC` se reconciliaron ficha por ficha con `EO-118`. Sus filas parciales lo son casi todas por la misma razón: la ficha promete una detección o una reparación al arrancar que `Hydrate` no hace (`EO-119`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 
