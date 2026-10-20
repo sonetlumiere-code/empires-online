@@ -7,6 +7,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
+	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
 // RecoveryResult resume lo que ocurrió al rehidratar el mundo.
@@ -28,6 +29,19 @@ type RecoveryResult struct {
 type FinishedMovement struct {
 	MovementID int64
 	Status     movement.Status
+	// UnitID y At son la unidad y el tile donde queda, para escribirlos en la
+	// misma transacción que el cierre (ADR-013 §2.3). UnitID 0: no hay unidad.
+	UnitID int64
+	At     world.Tile
+}
+
+// MovementFinish es el cierre durable de un movimiento: la fila de
+// unit_movements y la posición final de su unidad, IDLE, en una transacción.
+type MovementFinish struct {
+	MovementID int64
+	Status     movement.Status
+	UnitID     int64
+	At         world.Tile
 }
 
 // Hydrate reconstruye el mundo en memoria tras un arranque o un reinicio.
@@ -75,6 +89,7 @@ func Hydrate(
 			res.Failed++
 			continue
 		}
+		state.SetMovementIDFloor(m.ID)
 
 		if err := movement.Validate(m.Path, w); err != nil {
 			log.Warn("polilínea inválida al rehidratar; el movimiento se descarta",
@@ -82,7 +97,7 @@ func Hydrate(
 			u.Status = unit.StatusIdle
 			state.MarkDirty(u.ID)
 			res.FinishedMovements = append(res.FinishedMovements,
-				FinishedMovement{MovementID: m.ID, Status: movement.StatusFailed})
+				FinishedMovement{MovementID: m.ID, Status: movement.StatusFailed, UnitID: u.ID, At: u.Tile()})
 			res.Failed++
 			continue
 		}
@@ -93,7 +108,7 @@ func Hydrate(
 			u.Status = unit.StatusIdle
 			state.MarkDirty(u.ID)
 			res.FinishedMovements = append(res.FinishedMovements,
-				FinishedMovement{MovementID: m.ID, Status: movement.StatusCompleted})
+				FinishedMovement{MovementID: m.ID, Status: movement.StatusCompleted, UnitID: u.ID, At: dest})
 			res.Arrived++
 			continue
 		}

@@ -100,7 +100,8 @@ func (p *inmediato) Submit(job simulation.Job) {
 		p.errs = append(p.errs, err)
 	}
 }
-func (p *inmediato) Depth() int { return 0 }
+func (p *inmediato) Depth() int      { return 0 }
+func (p *inmediato) Partitions() int { return 1 }
 
 // arrancar reproduce el orden de arranque de cmd/server: hidratar desde la
 // base, amurallar las ciudades y SÓLO después construir el índice de zonas.
@@ -124,6 +125,9 @@ func arrancar(t *testing.T, ctx context.Context, store *postgres.Store, w *world
 	idx, _, err := safezone.BuildIndex(zonas, w)
 	require.NoError(t, err)
 	state.SetSafeZones(idx)
+	maxID, err := movements.MaxID(ctx)
+	require.NoError(t, err)
+	state.SetMovementIDFloor(maxID)
 
 	p := &inmediato{}
 	sim := simulation.New(state, simulation.Deps{

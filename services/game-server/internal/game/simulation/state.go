@@ -30,6 +30,10 @@ func makeChunkKey(cx, cy int32) chunkKey {
 type State struct {
 	world *world.World
 
+	// lastMovementID es el último id de movimiento asignado. Lo asigna el loop,
+	// no PostgreSQL (ADR-013 §2.1); al arrancar se fija en el máximo de disco.
+	lastMovementID int64
+
 	units     map[int64]*unit.Unit
 	unitIDs   []int64 // ordenado: garantiza recorridos deterministas
 	unitDirty map[int64]struct{}
@@ -76,6 +80,20 @@ func NewState(w *world.World) *State {
 
 // World devuelve el mapa.
 func (s *State) World() *world.World { return s.world }
+
+// NewMovementID asigna el id del siguiente movimiento.
+func (s *State) NewMovementID() int64 {
+	s.lastMovementID++
+	return s.lastMovementID
+}
+
+// SetMovementIDFloor garantiza que los ids nuevos superen a id. Se llama al
+// arrancar con el máximo de unit_movements, y con cada movimiento rehidratado.
+func (s *State) SetMovementIDFloor(id int64) {
+	if id > s.lastMovementID {
+		s.lastMovementID = id
+	}
+}
 
 // Tick devuelve el tick actual.
 func (s *State) Tick() uint64 { return s.tick }

@@ -25,6 +25,9 @@ const movementColumns = `id, unit_id, path, target_x, target_y, start_time_ms, a
 //
 // Devuelve el id del movimiento creado y el id del cancelado (0 si no había).
 func (r *MovementRepo) Start(ctx context.Context, db DB, m *movement.Movement) (newID int64, cancelledID int64, err error) {
+	if m.ID <= 0 {
+		return 0, 0, fmt.Errorf("el movimiento de la unidad %d no trae id: lo asigna la simulación", m.UnitID)
+	}
 	pathJSON, err := json.Marshal(m.Path)
 	if err != nil {
 		return 0, 0, fmt.Errorf("serializar la polilínea: %w", err)
@@ -43,19 +46,19 @@ func (r *MovementRepo) Start(ctx context.Context, db DB, m *movement.Movement) (
 		cancelledID = 0 // no había movimiento previo: caso normal
 	}
 
-	// 2. Insertar el nuevo.
-	err = db.QueryRow(ctx,
-		`INSERT INTO unit_movements (unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE')
-		 RETURNING id`,
-		m.UnitID, pathJSON, m.Target.X, m.Target.Y, m.StartTimeMs, m.ArrivalTimeMs,
-	).Scan(&newID)
+	// 2. Insertar el nuevo, con el id que asignó la simulación (ADR-013 §2.1).
+	// OVERRIDING SYSTEM VALUE es lo que permite escribirlo en una columna
+	// GENERATED ALWAYS; la secuencia de identidad no se usa.
+	_, err = db.Exec(ctx,
+		`INSERT INTO unit_movements (id, unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
+		 OVERRIDING SYSTEM VALUE
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE')`,
+		m.ID, m.UnitID, pathJSON, m.Target.X, m.Target.Y, m.StartTimeMs, m.ArrivalTimeMs,
+	)
 	if err != nil {
-		return 0, 0, fmt.Errorf("insertar movimiento de la unidad %d: %w", m.UnitID, normalize(err))
+		return 0, 0, fmt.Errorf("insertar movimiento %d de la unidad %d: %w", m.ID, m.UnitID, normalize(err))
 	}
-
-	m.ID = newID
-	return newID, cancelledID, nil
+	return m.ID, cancelledID, nil
 }
 
 // ListActive carga todos los movimientos ACTIVE.
@@ -105,6 +108,17 @@ func (r *MovementRepo) Finish(ctx context.Context, db DB, movementID int64, stat
 		return nil
 	}
 	return nil
+}
+
+// MaxID devuelve el mayor id de unit_movements, o 0 si no hay ninguno. Es el
+// suelo del contador de ids de la simulación al arrancar.
+func (r *MovementRepo) MaxID(ctx context.Context) (int64, error) {
+	var id int64
+	err := r.store.pool.QueryRow(ctx, `SELECT COALESCE(max(id), 0) FROM unit_movements`).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("leer el máximo id de movimiento: %w", err)
+	}
+	return id, nil
 }
 
 // CancelActiveByUnit cancela el movimiento activo de una unidad, si lo hay.

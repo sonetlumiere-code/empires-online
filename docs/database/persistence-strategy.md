@@ -154,18 +154,19 @@ Nunca: alta o baja de entidades, ownership, transiciones de presencia, movimient
 ### 4.1 Topología
 
 ```
-   game loop (goroutine única)                4 workers de persistencia
+   game loop (goroutine única)                4 workers, uno por partición
    ───────────────────────────                ──────────────────────────────────────
-   fases 2, 3, 5 y 8: Submit(Job)
-        │  envío NO bloqueante
+   fases 2, 3, 5 y 8: Submit(Job{Key})
+        │  envío NO bloqueante, a la partición PartitionOf(Key, 4)
         ▼
    ┌───────────────────────────┐   consume    ┌──────────────────────────────┐
-   │  chan simulation.Job       │ ───────────► │ job.Run(ctx)                 │
-   │  (capacidad 4096)          │              │ 3 intentos, backoff creciente│
+   │  4 × chan simulation.Job   │ ───────────► │ job.Run(ctx)                 │
+   │  (1024 cada uno)           │  en orden    │ 3 intentos, backoff creciente│
    └───────────────────────────┘              └──────────────────────────────┘
         │                                                    │ se agotan
         └── métrica: eo_persistence_queue_depth               ▼
-            (gauge, len(chan))                    job.OnPermanentFailure(err)
+            (gauge, suma de las 4)              job.OnPermanentFailure(err)
+                                                 → Deps.Inbox → comando al loop
 ```
 
 Parámetros reales, fijados como constantes en `persistence.DefaultQueueConfig()` — **no** hay variables `EO_` para ellos, y añadirlas exigiría pasar antes por el canon §17:

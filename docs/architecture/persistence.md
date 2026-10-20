@@ -121,8 +121,8 @@ La interfaz de persistencia **se declara donde se consume**, no donde se impleme
 ```go
 // internal/game/simulation/simulation.go
 type Repositories interface {
-    PersistMovementStart(ctx context.Context, m *movement.Movement) error
-    PersistMovementFinish(ctx context.Context, movementID int64, status movement.Status) error
+    PersistMovementStart(ctx context.Context, m movement.Movement, origin world.Tile) error
+    PersistMovementFinish(ctx context.Context, f MovementFinish) error
     PersistUnitPositions(ctx context.Context, units []*unit.Unit) error
     PersistCityPresence(ctx context.Context, cityID int64, state city.PresenceState, at time.Time) error
 }
@@ -205,16 +205,19 @@ BEGIN;
    WHERE unit_id = $1 AND status = 'ACTIVE'
    RETURNING id;                                              -- 0 o 1 filas
   INSERT INTO unit_movements
-         (unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
-       VALUES ($1, $2::jsonb, $3, $4, $5, $6, 'ACTIVE')
-   RETURNING id;
+         (id, unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
+         OVERRIDING SYSTEM VALUE                              -- el id lo asignó la simulación
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, 'ACTIVE');
+  UPDATE units SET x = …, y = …, chunk_x = …, chunk_y = …, status = 'MOVING'
+   WHERE id = $2;                                             -- la unidad, en su origen
 COMMIT;
 ```
 
 Tres precisiones que el código fija:
 
-- **La transacción toca `unit_movements` y sólo `unit_movements`.** El `snap` de la unidad a su posición derivada en el instante de la cancelación, y su `status = 'MOVING'`, se aplican en RAM y se consolidan con el volcado por lotes del *dirty-set* (§4), no dentro de esta transacción.
-- **`units` no tiene columna `version`**: no hay concurrencia optimista aquí, ni hace falta, porque el único escritor lógico del estado de simulación es el game loop (§5.2). La única tabla con `version` en el esquema real es `cities`.
+- **La transacción toca también `units`** ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.3): deja la unidad `MOVING` en su origen. El cierre del movimiento, simétrico, cierra la fila y deja la unidad `IDLE` en su tile final en otra transacción. Hasta `EO-120` la unidad sólo llegaba a disco con el volcado por lotes, y una caída entre el cierre y el volcado dejaba el movimiento cerrado y la unidad a medio camino.
+- **El id lo asigna la simulación**, por encima del máximo leído al arrancar, porque `unit.move.accepted` lo lleva en el mismo tick y el `COMMIT` todavía no existe. La secuencia de identidad de la columna no se usa.
+- **`units` no tiene columna `version`**: no hay concurrencia optimista aquí, ni hace falta, porque el único escritor lógico del estado de simulación es el game loop (§5.2), y la cola ejecuta en orden las escrituras de una misma unidad.
 - El `INSERT` se apoya en `unit_movements_one_active_per_unit` como red de seguridad **física**: dos inserciones concurrentes para la misma unidad hacen fallar la segunda con `23505`, que la cola reintenta y, agotados los intentos, registra como error.
 
 ### 6.3 Catálogo de unidades de trabajo atómicas del MVP

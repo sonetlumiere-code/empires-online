@@ -116,7 +116,8 @@ func (p *syncPersister) Submit(job simulation.Job) {
 	}
 }
 
-func (p *syncPersister) Depth() int { return 0 }
+func (p *syncPersister) Depth() int      { return 0 }
+func (p *syncPersister) Partitions() int { return 1 }
 
 func (p *syncPersister) names() []string {
 	p.mu.Lock()
@@ -127,8 +128,10 @@ func (p *syncPersister) names() []string {
 // fakeRepos registra las escrituras durables sin tocar ninguna base de datos.
 type fakeRepos struct {
 	mu               sync.Mutex
-	movementsStarted []*movement.Movement
+	movementsStarted []movement.Movement
+	startOrigins     []world.Tile
 	movementsFinish  map[int64]movement.Status
+	finishes         []simulation.MovementFinish
 	presence         map[int64]city.PresenceState
 	positionFlushes  int
 	unitsFlushed     int
@@ -141,19 +144,19 @@ func newFakeRepos() *fakeRepos {
 	}
 }
 
-func (f *fakeRepos) PersistMovementStart(_ context.Context, m *movement.Movement) error {
+func (f *fakeRepos) PersistMovementStart(_ context.Context, m movement.Movement, origin world.Tile) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// Emula el identificador que asignaría PostgreSQL.
-	m.ID = int64(len(f.movementsStarted) + 1)
 	f.movementsStarted = append(f.movementsStarted, m)
+	f.startOrigins = append(f.startOrigins, origin)
 	return nil
 }
 
-func (f *fakeRepos) PersistMovementFinish(_ context.Context, id int64, status movement.Status) error {
+func (f *fakeRepos) PersistMovementFinish(_ context.Context, fin simulation.MovementFinish) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.movementsFinish[id] = status
+	f.movementsFinish[fin.MovementID] = fin.Status
+	f.finishes = append(f.finishes, fin)
 	return nil
 }
 
@@ -780,8 +783,11 @@ func TestVolcadoPeriodicoNoOcurreEnCadaTick(t *testing.T) {
 		MaxCommandsPerTick: 256, EpochMs: epoch,
 	}, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
+	// Un movimiento corto, que termina antes del primer volcado: la unidad que
+	// llega queda sucia y se vuelca. Una que siguiera en marcha no se volcaría
+	// (INV-PERSIST-004).
 	h.send(simulation.MoveUnit{PlayerID: h.playerID, RequestID: uuid.NewString(),
-		UnitID: h.units[0].ID, Target: world.Tile{X: 22, Y: 10}})
+		UnitID: h.units[0].ID, Target: world.Tile{X: 14, Y: 10}})
 
 	// 60 ticks: con un volcado cada 50 ticks debe haber exactamente uno.
 	h.advance(6 * time.Second)

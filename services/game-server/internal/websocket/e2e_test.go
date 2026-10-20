@@ -124,15 +124,10 @@ func (m *memoryDeduper) Claim(_ context.Context, playerID uuid.UUID, requestID s
 
 type memoryRepos struct{ mu sync.Mutex }
 
-func (r *memoryRepos) PersistMovementStart(_ context.Context, m *movement.Movement) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if m.ID == 0 {
-		m.ID = 1
-	}
+func (r *memoryRepos) PersistMovementStart(context.Context, movement.Movement, world.Tile) error {
 	return nil
 }
-func (r *memoryRepos) PersistMovementFinish(context.Context, int64, movement.Status) error {
+func (r *memoryRepos) PersistMovementFinish(context.Context, simulation.MovementFinish) error {
 	return nil
 }
 func (r *memoryRepos) PersistUnitPositions(context.Context, []*unit.Unit) error { return nil }
@@ -259,6 +254,7 @@ type syncPersister struct{}
 
 func (syncPersister) Submit(job simulation.Job) { _ = job.Run(context.Background()) }
 func (syncPersister) Depth() int                { return 0 }
+func (syncPersister) Partitions() int           { return 1 }
 
 // tick ejecuta N ticks del loop avanzando el reloj falso.
 func (e *e2e) tick(n int) {

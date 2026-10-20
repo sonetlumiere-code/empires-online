@@ -187,13 +187,11 @@ de un tick de 100 ms. El caso está resuelto en RAM y acotado —no ignorado— 
 - **En RAM no hay ambigüedad.** La fase 1 drena los dos comandos y la fase 2 los aplica en secuencia
   dentro de la misma goroutine. El segundo cancela el primero (`cancelActiveMovement` con razón
   `REPLACED`) antes de registrarse. En ningún instante existen dos movimientos activos de la unidad.
-- **En disco el orden no está garantizado.** `persistence.Queue` corre con **4 workers** y no
-  particiona por `unit_id`, así que las dos transacciones encoladas pueden ejecutarse concurrentemente.
-  La red de seguridad es el índice único parcial `unit_movements_one_active_per_unit`: la segunda
-  inserción falla con `23505`, el trabajo se reintenta hasta 3 veces con backoff (`RetryDelay` de
-  200 ms multiplicado por el número de intento) y, si se agota, se registra como error y se invoca
-  `OnPermanentFailure` si el trabajo declaró uno. Hoy sólo `movement.start` lo declara, y **su
-  callback se limita a registrar**: detener realmente la unidad en RAM es trabajo pendiente.
+- **En disco, el mismo orden.** `persistence.Queue` envía cada trabajo al worker de su clave, y las dos
+  transacciones llevan la clave de la unidad: se ejecutan en el orden en que se encolaron, reintentos
+  incluidos ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)). El índice único parcial `unit_movements_one_active_per_unit` sigue siendo la red
+  de seguridad física. Si un inicio de movimiento agota sus 3 intentos, el worker devuelve
+  `MovementPersistFailed` al loop por su buzón y el loop detiene la unidad con `reason = SERVER`.
 - **Mitigación pendiente**, para que el orden durable coincida siempre con el orden de RAM: un único
   worker, o particionado de la cola por `unit_id`. Hoy no está implementado y así debe leerse este
   documento.

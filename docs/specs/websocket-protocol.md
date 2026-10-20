@@ -320,8 +320,8 @@ El cliente **nunca** envía una secuencia de posiciones ni un path: la estructur
 
 1. Si la unidad tenía un movimiento activo, se cancela **antes** de registrar el nuevo —en ningún instante existen dos movimientos activos de la misma unidad (INV-MOVE-001)— y se emite `unit.movement.cancelled` con `reason: "REPLACED"`.
 2. Se registra el movimiento nuevo en el estado del mundo con su polilínea temporizada completa, `startTimeMs` y `arrivalTimeMs`.
-3. `unit.status = MOVING` y la unidad se marca sucia.
-4. La escritura durable se **encola** en la cola de persistencia (`Job{Name: "movement.start"}`) y la ejecutan los workers fuera del tick: 4 workers, hasta **3 intentos** con backoff lineal y compensación `OnPermanentFailure` si se agotan. **El tick nunca ejecuta I/O de PostgreSQL** (canon §6, [../architecture/persistence.md](../architecture/persistence.md)).
+3. `unit.status = MOVING`, y el movimiento recibe su id, que asigna el servidor en ese instante.
+4. La escritura durable se **encola** en la cola de persistencia (`Job{Name: "movement.start"}`, con la clave de la unidad) y la ejecuta fuera del tick el worker de esa unidad: hasta **3 intentos** con backoff lineal y, si se agotan, el movimiento se cancela con `reason: "SERVER"` ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)). **El tick nunca ejecuta I/O de PostgreSQL** (canon §6, [../architecture/persistence.md](../architecture/persistence.md)).
 5. Se emite `unit.move.accepted` **al jugador solicitante** (a todas sus sesiones, con el `requestId`) y `unit.movement.started` **a los suscriptores del chunk de origen**, incluido el solicitante.
 
 > **Ventana de riesgo documentada.** La confirmación al cliente ocurre antes del COMMIT. Si el proceso muere entre la aceptación y la escritura —típicamente pocas decenas de milisegundos—, ese movimiento se pierde y la unidad queda en su última posición consolidada. Es un RPO conocido y aceptado, no un descuido: el precio de que el tick no bloquee.

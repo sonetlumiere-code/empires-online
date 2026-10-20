@@ -588,16 +588,21 @@ UPDATE unit_movements
  WHERE unit_id = $1 AND status = 'ACTIVE'
  RETURNING id;
 
--- 2. Insertar el nuevo.
+-- 2. Insertar el nuevo, con el id que asignó la simulación.
 INSERT INTO unit_movements
-    (unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
-VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE')
-RETURNING id;
+    (id, unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
+OVERRIDING SYSTEM VALUE
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE');
+
+-- 3. La unidad queda MOVING en su origen.
+UPDATE units SET x = …, y = …, chunk_x = …, chunk_y = …, status = 'MOVING' WHERE id = $2;
 
 COMMIT;
 ```
 
-Las dos operaciones van juntas **por necesidad**: si se hicieran por separado, entre una y otra la unidad tendría dos movimientos `ACTIVE`. La transacción **no toca `units`**: el cambio de `status` a `MOVING` se aplica en RAM y llega a la base por el dirty-set. Ésa es la razón de que `units` no necesite `version`: no hay dos escritores compitiendo por esa fila.
+Las operaciones van juntas **por necesidad**: si se hicieran por separado, entre una y otra la unidad tendría dos movimientos `ACTIVE`, o estaría `MOVING` sin movimiento que la respalde. El cierre es simétrico: cierra la fila y deja la unidad `IDLE` en su tile final, en una transacción ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)). `units` no necesita `version`: el único escritor es el game loop, y la cola ejecuta en orden las escrituras de una misma unidad.
+
+> **`unit_movements.id` lo asigna la simulación.** La columna sigue siendo `GENERATED ALWAYS AS IDENTITY`, pero el Game Server inserta siempre con `OVERRIDING SYSTEM VALUE` y un id propio, por encima del máximo leído al arrancar. Su secuencia queda desfasada y no se usa: un `INSERT` manual sin id chocaría con ids ya asignados.
 
 Si dos transacciones concurrentes intentan esto, la segunda bloquea en el índice único y termina abortando con `23505` (`unique_violation`) o con un conflicto de serialización. El trabajo se reintenta hasta **3 veces**, con una espera creciente de 200 ms por número de intento, en la cola de persistencia; si se agotan, se ejecuta la compensación `OnPermanentFailure` del trabajo. Hoy esa compensación **sólo registra el fallo a `level=error`**: detener la unidad exigiría volver a entrar en el loop por el canal de comandos —el worker no puede mutar el mundo desde otra goroutine sin provocar una carrera— y es trabajo pendiente. Nunca se resuelve borrando el índice.
 

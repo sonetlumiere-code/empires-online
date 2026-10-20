@@ -192,6 +192,8 @@ func TestIndiceUnicoImpideDosMovimientosActivos(t *testing.T) {
 
 	// La vía correcta —Start, que cancela el anterior en la misma transacción— sí funciona.
 	m3 := movement.New(u.ID, path, world.Tile{X: u.X + 1, Y: u.Y}, testEpoch+2000)
+	// El id lo asigna quien inserta (ADR-013): aquí, el propio test.
+	m3.ID = 1003
 	newID, cancelledID, err := movements.Start(ctx, store.Pool(), m3)
 	require.NoError(t, err)
 	require.NotZero(t, newID)
@@ -233,6 +235,8 @@ func TestMovimientoSobreviveAlCicloDePersistencia(t *testing.T) {
 	require.NoError(t, err)
 
 	original := movement.New(u.ID, path, tiles[3], testEpoch)
+	// El id lo asigna quien inserta (ADR-013): aquí, el propio test.
+	original.ID = 1001
 	_, _, err = movements.Start(ctx, store.Pool(), original)
 	require.NoError(t, err)
 
@@ -265,6 +269,8 @@ func TestFinishEsIdempotente(t *testing.T) {
 
 	path, _ := movement.BuildTimedPath([]world.Tile{{X: u.X, Y: u.Y}, {X: u.X + 1, Y: u.Y}}, w, 600)
 	m := movement.New(u.ID, path, world.Tile{X: u.X + 1, Y: u.Y}, testEpoch)
+	// El id lo asigna quien inserta (ADR-013): aquí, el propio test.
+	m.ID = 1001
 	_, _, err = movements.Start(ctx, store.Pool(), m)
 	require.NoError(t, err)
 
@@ -303,6 +309,8 @@ func TestRecuperacionCompletaTrasReinicio(t *testing.T) {
 	require.NoError(t, err)
 
 	m := movement.New(u.ID, path, tiles[4], testEpoch)
+	// El id lo asigna quien inserta (ADR-013): aquí, el propio test.
+	m.ID = 1001
 	_, _, err = movements.Start(ctx, store.Pool(), m)
 	require.NoError(t, err)
 	require.NoError(t, units.SetStatus(ctx, store.Pool(), u.ID, unit.StatusMoving))

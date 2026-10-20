@@ -189,7 +189,7 @@ contrario).
 | RN-MOVE-013 | Ruta | `Pathfinder.FindPath` con `MaxNodes` y `MaxDistance` | `TARGET_OUT_OF_BOUNDS` / `TARGET_NOT_WALKABLE` / `PATH_TOO_LONG` / `PATH_NOT_FOUND` / `INTERNAL_ERROR` |
 | RN-MOVE-014 | Polilínea | `BuildTimedPath(tiles, world, baseMsPerTile)` valida contigüidad y transitabilidad | `INTERNAL_ERROR` |
 | RN-MOVE-015 | Sustitución | Se cancela el movimiento anterior (`REPLACED`) **antes** de registrar el nuevo | — |
-| RN-MOVE-016 | Creación | Se crea el movimiento en RAM, `units.status = MOVING`, se marca *dirty* y se **encola** la escritura durable | — |
+| RN-MOVE-016 | Creación | Se crea el movimiento en RAM con el id que asigna el loop, `units.status = MOVING`, y se **encola** la escritura durable, que deja también la unidad `MOVING` en su origen ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)) | — |
 
 Notas de diseño sobre reglas concretas:
 
@@ -389,14 +389,18 @@ func (m *Movement) PositionAt(nowMs int64) world.Tile {
 ```
 pos := m.PositionAt(nowMs)
 si pos != posición actual de la unidad:
-    mover la unidad en RAM, recalcular su chunk, marcar dirty
+    mover la unidad en RAM, recalcular su chunk          // SIN marcar dirty
     emitir entity.update {id, x, y} al chunk de destino
 si m.HasArrived(nowMs):            // nowMs >= arrival_time_ms
     limpiar el movimiento del estado
     units.status -> IDLE
     emitir unit.movement.completed al chunk de llegada
-    encolar PersistMovementFinish(movementID, COMPLETED)
+    encolar PersistMovementFinish{movementID, COMPLETED, unidad, tile final}
 ```
+
+La posición en tránsito **no se persiste**: se deriva de la polilínea, y el volcado periódico excluye toda
+unidad con un movimiento activo (`INV-PERSIST-004`). El cierre escribe la posición final y `units.status =
+IDLE` en la misma transacción que cierra la fila de `unit_movements` ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.3).
 
 El avance **nunca extrapola dirección ni velocidad**: siempre se resuelve leyendo la polilínea. Un tick que se
 retrasa (overrun) o un salto de varios ticks no produce desviación: la posición sigue siendo
@@ -438,11 +442,14 @@ UPDATE unit_movements
  WHERE unit_id = $1 AND status = 'ACTIVE'
  RETURNING id;
 
--- 2. Insertar el nuevo.
+-- 2. Insertar el nuevo, con el id que asignó la simulación (ADR-013 §2.1).
 INSERT INTO unit_movements
-       (unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
-VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE')
- RETURNING id;
+       (id, unit_id, path, target_x, target_y, start_time_ms, arrival_time_ms, status)
+OVERRIDING SYSTEM VALUE
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE');
+
+-- 3. La unidad queda MOVING en su origen (FlushPositions con una sola fila).
+UPDATE units SET x = $o_x, y = $o_y, chunk_x = …, chunk_y = …, status = 'MOVING' WHERE id = $2;
 
 COMMIT;
 ```
@@ -608,13 +615,14 @@ Respuesta a las cuatro preguntas obligatorias del canon §12:
 | Pregunta | Respuesta para movimiento |
 |---|---|
 | ¿Qué es autoritativo en RAM? | El movimiento activo, el waypoint alcanzado, la pertenencia a chunk y los interest sets |
-| ¿Qué se persiste de forma transaccional? | Creación del movimiento (con cancelación del anterior en la misma transacción) y su cierre `COMPLETED`/`CANCELLED`/`FAILED` |
-| ¿Qué se persiste eventualmente (dirty-flag)? | La posición consolidada `units.(x,y)`, con volcado cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50` (5 s a 10 Hz) |
+| ¿Qué se persiste de forma transaccional? | Creación del movimiento, con cancelación del anterior y `units.status = MOVING` en su origen, en la misma transacción; y su cierre `COMPLETED`/`CANCELLED`/`FAILED` con la posición final y `units.status = IDLE`, también en una |
+| ¿Qué se persiste eventualmente (dirty-flag)? | Los cambios de una unidad **parada** que no vienen de un movimiento, como pasar a `HIDDEN`, con volcado cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50` (5 s a 10 Hz). Una unidad en marcha nunca se vuelca |
 | ¿Qué es reconstruible y NO se persiste por tick? | La posición durante un movimiento activo: es `PositionAt(T)` sobre `unit_movements` |
 
 **El tick nunca hace I/O de PostgreSQL.** Cada transacción se **encola** en la cola de persistencia
-(`Persister.Submit`) y la ejecuta un worker: hasta 3 intentos con *backoff*, y compensación
-`OnPermanentFailure` si se agotan.
+(`Persister.Submit`) con la clave de su unidad y la ejecuta el worker de esa clave, en orden con las demás
+escrituras de la misma unidad: hasta 3 intentos con *backoff*, y compensación si se agotan
+([ADR-013](../decisions/ADR-013-persistence-pipeline.md)).
 
 ### 10.1 Ventana de riesgo de la escritura durable diferida
 
@@ -629,13 +637,12 @@ Consecuencias:
    de milisegundos— ese movimiento se pierde y la unidad queda en su **última posición consolidada**. Al
    rehidratar no habrá ninguna fila `ACTIVE` de la que reconstruirlo. Es un RPO documentado, no un descuido: el
    precio de no bloquear el tick con I/O.
-2. **Si la escritura falla de forma permanente**, `OnPermanentFailure` compensa deteniendo la unidad: el mundo
-   no puede quedarse con un movimiento que la base de datos nunca conoció.
-3. **El `movementId` anunciado puede ser `0`.** `unit_movements.id` lo asigna PostgreSQL en el `INSERT`, que
-   ocurre en el worker; en el instante en que se emiten `unit.move.accepted` y `unit.movement.started` el
-   identificador puede no estar todavía asignado. El cliente debe tratar `movementId` como opaco y correlacionar
-   por `unitId` y `requestId`. Cerrar esta ventana (reservar el id antes de responder, o retrasar la
-   confirmación hasta el `COMMIT`) es trabajo pendiente y **no** está resuelto en MVP.
+2. **Si la escritura falla de forma permanente**, el worker devuelve `MovementPersistFailed` al loop por su
+   buzón, y el loop cancela el movimiento con `reason = SERVER` si sigue siendo el activo: el mundo no puede
+   quedarse con un movimiento que la base de datos nunca conoció.
+3. **El `movementId` anunciado es el definitivo.** Lo asigna el loop al aceptar la orden, por encima del
+   máximo de `unit_movements` leído al arrancar, y es el mismo que acabará en disco. Hasta `EO-120` lo
+   asignaba PostgreSQL en el worker y el cliente recibía `0`.
 
 Quien necesite RPO 0 para el inicio de movimiento debe cambiar el modelo, no la documentación.
 
@@ -715,7 +722,8 @@ si la unidad del movimiento ya no existe:
 
 si movement.Validate(path, world) falla:            <-- polilínea inválida
     FAILED
-    la unidad se queda en su ÚLTIMA POSICIÓN CONSOLIDADA; units.status = IDLE
+    la unidad se queda en su ÚLTIMA POSICIÓN CONSOLIDADA —el origen que escribió
+    el inicio del movimiento—; units.status = IDLE
     (nunca se teletransporta a nadie por un dato dudoso)
 
 si movimiento.HasArrived(now):                      <-- caso "llegada vencida"
@@ -725,7 +733,13 @@ si movimiento.HasArrived(now):                      <-- caso "llegada vencida"
 si no:
     units.(x,y) = PositionAt(now) ; units.status = MOVING
     el movimiento continúa en la fase 3 del primer tick
+
+después, toda unidad que siga MOVING sin movimiento ACTIVE:
+    se queda en su última posición consolidada ; units.status = IDLE   (INV-UNIT-005)
 ```
+
+Los cierres de la recuperación escriben, como los del tick, la fila de `unit_movements` y la posición final de
+la unidad en una misma transacción.
 
 Los movimientos así clasificados vuelven en `RecoveryResult.FinishedMovements` y se cierran en la base de
 datos con `PersistMovementFinish`, que es idempotente.
@@ -753,7 +767,7 @@ Los eventos son hechos consumados (canon §15) y son la base de los deltas de re
 | Evento de dominio | Disparador | Mensaje WS derivado | Persistencia |
 |---|---|---|---|
 | `UnitMovementStarted` | Movimiento creado (fase 2) | `unit.movement.started` | `INSERT` en `unit_movements` (encolado) |
-| `UnitMovementAdvanced` | El waypoint alcanzado cambia (fase 3) | `entity.update` | Ninguna inmediata: `units.(x,y)` va por dirty-flag |
+| `UnitMovementAdvanced` | El waypoint alcanzado cambia (fase 3) | `entity.update` | Ninguna: la posición en tránsito se deriva de la polilínea y no se persiste |
 | `UnitMovementCompleted` | `nowMs ≥ arrival_time_ms` (fase 3) o llegada vencida al rehidratar | `unit.movement.completed` | `UPDATE status='COMPLETED', finished_at=now()` (encolado) |
 | `UnitMovementCancelled` | Cancelación explícita, supersesión o destino == posición | `unit.movement.cancelled` | `UPDATE status='CANCELLED', finished_at=now()` (encolado) |
 | `UnitMovementFailed` | Recuperación con polilínea inválida o unidad ausente | — (no hay cliente conectado) | `UPDATE status='FAILED'` |

@@ -94,8 +94,9 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Doce decisiones registradas para el primer vertical slice. Los doce ficheros viven en este mismo
-directorio, `docs/decisions/`, y todos están en estado `Aceptado` con fecha **2026-09-09**.
+Catorce decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+**2026-09-09**; ADR-013 y ADR-014 salieron de la reconciliación de `EO-118`, con fecha **2026-10-20**.
+Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`.
 
 | ADR | Título | Estado | Resumen |
 |---|---|---|---|
@@ -111,6 +112,8 @@ directorio, `docs/decisions/`, y todos están en estado `Aceptado` con fecha **2
 | [010](ADR-010-authentication-game-ticket.md) | Autenticación mediante game ticket efímero de un solo uso | Aceptado | Next.js autentica al usuario y emite un JWT HS256 de 60 s con `jti` consumible una sola vez en Redis; el game server lo verifica en `session.hello` y nunca gestiona contraseñas. |
 | [011](ADR-011-movement-timed-polyline.md) | Movimiento persistido como polilínea temporizada | Aceptado | El camino se persiste una sola vez como array de waypoints `{x, y, tMs}`, de modo que la posición autoritativa es una función pura de `(polilínea, tiempo)` sin replay de ticks. |
 | [012](ADR-012-database-migrations.md) | Migraciones SQL versionadas con golang-migrate embebidas en el binario | Aceptado | El esquema evoluciona con ficheros SQL versionados gestionados por golang-migrate y embebidos con `go:embed`; el game server es el único propietario del esquema. |
+| [013](ADR-013-persistence-pipeline.md) | La simulación asigna la identidad de los movimientos y la cola de persistencia ordena por entidad | Aceptado | El loop asigna el id de cada movimiento; la cola envía cada trabajo al worker de su clave; el inicio y el cierre de un movimiento escriben la unidad en su transacción y el volcado no escribe unidades en marcha; un fallo definitivo vuelve al loop como comando. |
+| [014](ADR-014-command-idempotency.md) | La deduplicación de comandos es de corto plazo; los efectos durables son idempotentes por construcción | Aceptado | La deduplicación vive sólo en Redis (300 s); un comando con efectos no repetibles guarda su `requestId` con `UNIQUE` en la fila de su efecto; `idempotency_keys` se elimina. Sustituye la garantía durable de ADR-004. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y

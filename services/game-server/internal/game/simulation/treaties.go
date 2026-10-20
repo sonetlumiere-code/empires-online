@@ -41,6 +41,9 @@ func (s *Simulation) sweepTreaties(now time.Time) {
 
 	s.deps.Persister.Submit(Job{
 		Name: "treaty.expire",
+		// Un barrido recorre todos los tratados: la clave fija lo ordena
+		// respecto a los barridos anteriores, que es lo único que importa.
+		Key: "treaties:sweep",
 		Run: func(ctx context.Context) error {
 			caducados, err := expirer.ExpireDue(ctx, now, tick)
 			if err != nil {

@@ -140,6 +140,12 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("cargar movimientos activos: %w", err)
 	}
+	// Los ids de movimiento los asigna la simulación (ADR-013 §2.1): el contador
+	// arranca por encima de todo lo que ya existe, terminado o no.
+	maxMovementID, err := movementRepo.MaxID(rootCtx)
+	if err != nil {
+		return err
+	}
 
 	territories, controls, err := loadTerritories(rootCtx, territoryRepo, gameWorld, log)
 	if err != nil {
@@ -148,6 +154,7 @@ func run() error {
 
 	state := simulation.NewState(gameWorld)
 	state.SetTerritories(territories, controls)
+	state.SetMovementIDFloor(maxMovementID)
 	recovery := simulation.Hydrate(state, units, cities, movements, sysClock.NowMs(), log)
 	log.Info("mundo rehidratado",
 		"units", recovery.Units, "cities", recovery.Cities,
@@ -182,7 +189,7 @@ func run() error {
 
 	// ── 5. Simulación y game loop ───────────────────────────────
 	queue := persistence.NewQueue(persistence.DefaultQueueConfig(), log, metrics)
-	queue.Start(rootCtx, 4)
+	queue.Start(rootCtx)
 	// La cola se cierra al salir salvo que el loop siga vivo: cerrarla con el
 	// loop encolando sería un panic (send on closed channel).
 	closeQueue := true
@@ -200,12 +207,22 @@ func run() error {
 	commands := make(chan simulation.Command, commandQueueSize)
 
 	sim := simulation.New(state, simulation.Deps{
-		Clock:              sysClock,
-		Pathfinder:         pathfinding.NewAStar(cfg.PathfindingMaxNodes, cfg.PathfindingMaxDistance),
-		Broadcaster:        hub,
-		Persister:          queue,
-		Repos:              gameStore,
-		Treaties:           treatyRepo,
+		Clock:       sysClock,
+		Pathfinder:  pathfinding.NewAStar(cfg.PathfindingMaxNodes, cfg.PathfindingMaxDistance),
+		Broadcaster: hub,
+		Persister:   queue,
+		Repos:       gameStore,
+		Treaties:    treatyRepo,
+		// Las compensaciones de la cola vuelven al loop por el mismo canal que
+		// los comandos de los jugadores, sin bloquear al worker (ADR-013 §2.4).
+		Inbox: func(c simulation.Command) bool {
+			select {
+			case commands <- c:
+				return true
+			default:
+				return false
+			}
+		},
 		Log:                log,
 		ProtectionCooldown: cfg.CityOfflineProtectionCooldwn,
 		DisconnectGrace:    cfg.PresenceTTL,

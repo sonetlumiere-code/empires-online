@@ -28,9 +28,9 @@ Todo documento de diseño debe poder responder a las cuatro preguntas; aquí est
 | **Dirty-flag + flush periódico** | Posiciones consolidadas de unidades, `hp` | Cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50` ticks, es decir 5 s a 10 Hz |
 | **Reconstruible (no se persiste)** | Posición durante un movimiento activo, conjuntos de interés y suscripciones, presencia derivada | Derivación analítica desde `unit_movements` / recálculo |
 
-El tick **nunca** ejecuta I/O bloqueante contra PostgreSQL (canon §6): la persistencia se encola (fase 8, `enqueue persistence`) y la ejecutan cuatro workers fuera del tick, con hasta **3 intentos** y backoff, y un callback `OnPermanentFailure` si se agotan. La profundidad de esa cola es `eo_persistence_queue_depth`.
+El tick **nunca** ejecuta I/O bloqueante contra PostgreSQL (canon §6): la persistencia se encola (fase 8, `enqueue persistence`) y la ejecutan cuatro workers fuera del tick, uno por partición, con hasta **3 intentos** y backoff. La profundidad de la cola es `eo_persistence_queue_depth`.
 
-> **Lo que la cola todavía no garantiza** (`EO-120` en [../roadmap/backlog.md](../roadmap/backlog.md)). Tres huecos que la reconciliación de `EO-118` encontró y que esta documentación no esconde. (1) El id de un movimiento lo asigna PostgreSQL en el worker, pero el loop lo lee al aceptar la orden: con la cola real, `unit.move.accepted` y `unit.movement.started` salen con `movementId: 0`, y la lectura y la escritura de `m.ID` ocurren en goroutines distintas sin sincronizar. (2) Los cuatro workers no ordenan los trabajos de una misma entidad: el cierre de un movimiento, o un volcado viejo que se reintenta, puede ejecutarse después que uno más reciente. (3) Ningún `OnPermanentFailure` compensa todavía en el mundo: el único que existe, el del inicio de movimiento, sólo registra el error.
+> **Cómo se ordena y se compensa** ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)). Cada trabajo lleva la clave de su entidad y va al worker de esa clave, así que las escrituras de una misma unidad o ciudad se ejecutan en el orden en que se encolaron. El id de un movimiento lo asigna el loop al aceptar la orden. Si un trabajo agota sus intentos, su `OnPermanentFailure` —que corre en el worker y no toca el mundo— devuelve un comando al loop por `Deps.Inbox`. Hasta `EO-120` nada de esto era así: el id llegaba a los clientes como `0`, el cierre de un movimiento podía adelantar a su inicio y ninguna compensación hacía nada.
 
 > **Ventana de riesgo, dicha en voz alta.** Que la escritura sea diferida tiene un coste que esta documentación no oculta: si el proceso muere entre la aceptación de un comando y su `COMMIT` —típicamente unas decenas de milisegundos—, ese efecto se pierde y la entidad queda en su último estado consolidado. Para las posiciones, la ventana es el intervalo de volcado: hasta 5 s. Es un **RPO documentado**, no un descuido, y es la contrapartida de que el tick no bloquee. Lo que el diseño sí garantiza es que cada trabajo de la cola es una unidad atómica. En un apagado **ordenado** la ventana se cierra: el loop vuelca lo sucio al parar y la cola se vacía antes de salir.
 
@@ -188,9 +188,9 @@ La consecuencia honesta es que la garantía de idempotencia **sí** se pierde co
 | Aplicación | DOMAIN, TEST |
 | Milestone | M4 |
 | Política ante violación | REPAIR (omitir la escritura) |
-| Cobertura | **No se cumple**: el código hace lo que prescribe [SPEC-MOVEMENT](../specs/movement.md) y vuelca la posición de las unidades en tránsito. Ficha y spec se contradicen; decisión pendiente en `Q-18` de [../roadmap/backlog.md](../roadmap/backlog.md) |
+| Cobertura | **Cubierto** por `TestUnaUnidadEnMarchaNoSeVuelca` y `TestElCierreDelMovimientoLlevaLaPosicionFinal` (`internal/game/simulation`) y `TestConLaColaRealElMovimientoLlevaSuIdYCierraConSuPosicion` (integration) |
 
-> **Contradicción abierta.** `AdvanceMovements` marca la unidad como sucia en cada paso de su trayecto, y el volcado periódico escribe su posición intermedia y su estado `MOVING`. Es exactamente lo que dice [../specs/movement.md](../specs/movement.md): «`units.(x,y)` va por dirty-flag» durante el movimiento. Esta ficha dice lo contrario. El daño que su razón describe —dos respuestas a «¿dónde está esta unidad?»— no se produce en el arranque, porque la recuperación deriva la posición de la polilínea y descarta la de `units` mientras haya movimiento `ACTIVE`. Lo que sí produce el volcado en tránsito es una unidad `MOVING` en disco tras una caída, que la rehidratación ahora reconcilia. Hasta que `Q-18` decida, el texto de abajo describe el diseño de la ficha, **no** el código.
+> **Decisión.** `Q-18` se resolvió a favor de esta ficha con [ADR-013](../decisions/ADR-013-persistence-pipeline.md): la posición en tránsito no se persiste, y [SPEC-MOVEMENT](../specs/movement.md) se corrigió en consecuencia. Hasta entonces la spec prescribía volcarla y el código lo hacía.
 
 **Enunciado.** El flush periódico de posiciones (`EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50`, es decir cada 5 s a 10 Hz) nunca escribe en `units` una posición para una unidad que tenga un movimiento `ACTIVE`.
 
@@ -202,22 +202,23 @@ Hay un caso donde escribir la posición **sí** es correcto y no viola nada: cua
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — la marca de *dirty* para posición se pone únicamente al **finalizar** un movimiento o al mutar la posición fuera de un movimiento. Una unidad en tránsito no se marca como dirty por su desplazamiento.
-- `DOMAIN` — el flush filtra explícitamente: excluye toda unidad con movimiento `ACTIVE`, consultando el índice en memoria de movimientos activos, que es la misma estructura que usa el loop. No es una consulta separada que pueda desincronizarse.
+- `DOMAIN` — `AdvanceMovements` mueve la unidad en RAM sin marcarla como sucia. La marca se pone al **finalizar** un movimiento o al cambiar la unidad fuera de un movimiento, por ejemplo al ocultarse.
+- `DOMAIN` — `FlushDirty` filtra explícitamente: excluye toda unidad con movimiento `ACTIVE`, consultando el índice en memoria de movimientos activos, que es la misma estructura que usa el loop. No es una consulta separada que pueda desincronizarse.
+- `DOMAIN` — el inicio y el cierre del movimiento escriben la unidad en su propia transacción: `MOVING` en el origen y `IDLE` en el tile final. Así la posición durable de una unidad parada nunca depende del volcado.
 - `DOMAIN` — el volcado escribe posición y chunk en el **mismo lote y la misma sentencia** ([INV-UNIT-011](units.md#inv-unit-011)), de modo que no puede dejar una unidad con la posición nueva y el chunk viejo.
 - `DOMAIN` — `hp` sí se persiste por flush con normalidad: no está relacionado con el movimiento y no tiene una segunda fuente derivable. En MVP, además, `hp` es constante.
-- `DOMAIN` — la persistencia se encola en la fase 8 del tick (`enqueue persistence`) y la ejecutan workers; el tick nunca hace I/O bloqueante (canon §6). Eso significa que entre el encolado y la escritura pasa tiempo, y ése es el intervalo que una guarda en SQL contra la existencia de un movimiento activo debería cubrir. **Esa guarda es trabajo pendiente**: hoy la exclusión la da únicamente el filtro en memoria, que es correcto pero no defensivo.
+- `DOMAIN` — entre el encolado y la escritura pasa tiempo, pero la cola ejecuta en orden las escrituras de una misma unidad (ADR-013 §2.2): un volcado encolado antes de un inicio de movimiento se escribe antes que él, y nunca lo pisa. No hay guarda en SQL contra la existencia de un movimiento activo; el orden por clave la hace innecesaria.
 - `DOMAIN` — un lote vacío no genera ninguna sentencia: el volcado no toca la base de datos si no hay nada sucio.
 
 **Cómo se verifica.**
 
-- `TestVolcadoPeriodicoNoOcurreEnCadaTick` (simulation) — el volcado respeta su calendario de 50 ticks.
-- `TestFlushPositionsEscribeElLoteYMantieneElChunk` y `TestFlushVacioNoHaceNada` (integration) — el lote escribe posición y chunk coherentes, y vacío no emite sentencia.
-- Ningún test comprueba la exclusión de las unidades en tránsito, porque el código no la hace.
-- Test previsto: `Test_INV_PERSIST_004_FlushSkipsUnitsWithActiveMovement` (integration) — con `FakeClock`, iniciar un movimiento largo, avanzar más de 50 ticks y comprobar que la posición en `units` no ha cambiado durante el trayecto.
-- Test previsto: `Test_INV_PERSIST_004_SqlGuardBlocksLateWrite` (integration) — **para cuando exista la guarda**: se encola una escritura de posición y se activa un movimiento antes de que el worker la ejecute.
+- `TestUnaUnidadEnMarchaNoSeVuelca` (simulation) — dos volcados con una unidad en marcha no la escriben, y su inicio la deja `MOVING` en el origen.
+- `TestElCierreDelMovimientoLlevaLaPosicionFinal` (simulation) — la llegada y la cancelación llevan el tile final al cierre durable.
+- `TestConLaColaRealElMovimientoLlevaSuIdYCierraConSuPosicion` (integration) — con la cola real, la posición final está en `units` nada más cerrarse el movimiento, sin ningún volcado, y un reinicio deja la unidad donde llegó. Verificado por mutación.
+- `TestElVolcadoSeParteEnUnTrabajoPorParticion` (simulation) y `TestLaColaOrdenaPorClaveYNoBloqueaOtrasClaves` (`internal/persistence`) — el orden por entidad.
+- `TestVolcadoPeriodicoNoOcurreEnCadaTick` (simulation), `TestFlushPositionsEscribeElLoteYMantieneElChunk` y `TestFlushVacioNoHaceNada` (integration) — el calendario y el lote.
 
-**Violación en runtime.** Detección en la guarda del `UPDATE` (cero filas afectadas cuando se esperaba una) y en la reconciliación de arranque, si la posición de `units` no coincide con el waypoint derivado. Log `invariant_violation` con `inv_id=INV-PERSIST-004`, `unitId` y ambas posiciones. Política `REPAIR`: la escritura se omite y prevalece la derivación desde `unit_movements`, que es la fuente autoritativa mientras el movimiento esté activo.
+**Violación en runtime.** No hay detección en runtime: la exclusión es estructural, en `FlushDirty`. Si una posición en tránsito llegara a disco, no haría daño en el arranque, porque la recuperación deriva la posición de la polilínea mientras el movimiento esté `ACTIVE` y descarta la de `units`.
 
 ---
 
@@ -277,7 +278,7 @@ Resumen consolidado que responde a las cuatro preguntas obligatorias del canon �
 | Ciudad: `population` | PostgreSQL | Write-through | Sí, recontando `units` ([INV-CITY-009](city.md#inv-city-009)) |
 | Presencia del jugador | RAM del loop (`disconnectedAt`, contador de sesiones) + Redis como observable | No durable | Sí, converge al reconectar |
 | Unidad: owner, tipo | PostgreSQL | Write-through | No |
-| Unidad: posición **sin** movimiento activo | RAM + PostgreSQL | Dirty-flag + flush cada 50 ticks | No |
+| Unidad: posición **sin** movimiento activo | RAM + PostgreSQL | Write-through al cerrar el movimiento que la dejó ahí; dirty-flag + flush cada 50 ticks para el resto | No |
 | Unidad: posición **con** movimiento activo | Derivada de `unit_movements` | **No se persiste** | Sí, `PositionAt` |
 | Unidad: `hp` | RAM + PostgreSQL | Dirty-flag + flush | No |
 | Movimiento: polilínea, tiempos, estado | PostgreSQL | Write-through al iniciar y al terminar | No |
@@ -285,8 +286,8 @@ Resumen consolidado que responde a las cuatro preguntas obligatorias del canon �
 | Conjuntos de interés y suscripciones | RAM | No | Sí, desde `session.view` |
 | Terreno | PostgreSQL (`world_chunks`) | Generado y persistido una vez | Sí, desde `EO_WORLD_SEED` |
 | Unidad: `chunk_x`, `chunk_y` | Derivadas de `(x, y)` | Se escriben con la posición, en la misma sentencia | Sí, con `World.ChunkOf` |
-| Idempotencia de comandos | Redis (`idem:{playerId}:{requestId}`) | **Sólo Redis hoy**; `idempotency_keys` existe pero no se escribe | No |
-| Unidad: `status` | RAM + PostgreSQL | Dirty-flag + flush, también en tránsito (`Q-18`) | Sí al arrancar: `MOVING` sin movimiento se reconcilia a `IDLE` |
+| Idempotencia de comandos | Redis (`idem:{playerId}:{requestId}`) | Sólo Redis, 300 s ([ADR-014](../decisions/ADR-014-command-idempotency.md)) | No |
+| Unidad: `status` | RAM + PostgreSQL | Write-through en el inicio y el cierre de cada movimiento; dirty-flag + flush para el resto (por ejemplo `HIDDEN`) | Sí al arrancar: `MOVING` sin movimiento se reconcilia a `IDLE` |
 
 ## Trazabilidad
 

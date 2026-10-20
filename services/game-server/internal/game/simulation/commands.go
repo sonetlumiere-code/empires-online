@@ -2,6 +2,8 @@ package simulation
 
 import (
 	"context"
+	"hash/fnv"
+	"strconv"
 
 	"github.com/google/uuid"
 
@@ -63,6 +65,17 @@ type PlayerDisconnected struct {
 
 func (PlayerDisconnected) commandType() string { return "player.disconnected" }
 
+// MovementPersistFailed lo devuelve la cola de persistencia cuando el inicio de
+// un movimiento no se pudo escribir tras agotar los reintentos (ADR-013 §2.4).
+// No es una orden de un jugador: es la compensación, que tiene que aplicarse en
+// la goroutine del loop como cualquier otro cambio del mundo.
+type MovementPersistFailed struct {
+	UnitID     int64
+	MovementID int64
+}
+
+func (MovementPersistFailed) commandType() string { return "movement.persist_failed" }
+
 // Broadcaster entrega mensajes a las sesiones conectadas.
 //
 // La simulación no sabe qué es un WebSocket: sólo sabe emitir hechos hacia un
@@ -87,10 +100,16 @@ type Broadcaster interface {
 type Job struct {
 	// Name identifica el trabajo en logs y métricas.
 	Name string
+	// Key es la entidad que escribe, por ejemplo UnitKey(42). Los trabajos con
+	// la misma clave se ejecutan en el orden en que se encolaron, reintentos
+	// incluidos (ADR-013 §2.2). Vacía, el trabajo no tiene orden respecto a
+	// ningún otro.
+	Key string
 	// Run ejecuta la escritura. Debe ser idempotente: puede reintentarse.
 	Run func(ctx context.Context) error
-	// OnPermanentFailure compensa el fallo definitivo tras agotar los reintentos.
-	// Es lo que permite deshacer en el mundo lo que no se pudo escribir en disco.
+	// OnPermanentFailure se llama tras agotar los reintentos. Corre en la
+	// goroutine del worker: NO puede tocar el estado del mundo. Para compensar,
+	// devuelve un comando al loop por Deps.Inbox.
 	OnPermanentFailure func(err error)
 }
 
@@ -102,7 +121,28 @@ type Persister interface {
 	Submit(job Job)
 	// Depth es la profundidad actual de la cola (métrica y contrapresión).
 	Depth() int
+	// Partitions es cuántas particiones ordenadas tiene. La simulación la usa
+	// para partir un lote —el volcado periódico— en un trabajo por partición,
+	// de modo que cada unidad siga en orden con sus demás escrituras.
+	Partitions() int
 }
+
+// PartitionOf es la partición de una clave entre n. La cola y la simulación
+// usan esta misma función: por eso un lote agrupado aquí cae entero en la
+// partición de cualquiera de sus claves.
+func PartitionOf(key string, n int) int {
+	if n <= 1 {
+		return 0
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(key))
+	return int(h.Sum32() % uint32(n))
+}
+
+// UnitKey, CityKey y TreatyKey son las claves de partición de cada entidad.
+func UnitKey(id int64) string   { return "unit:" + strconv.FormatInt(id, 10) }
+func CityKey(id int64) string   { return "city:" + strconv.FormatInt(id, 10) }
+func TreatyKey(id int64) string { return "treaty:" + strconv.FormatInt(id, 10) }
 
 // NoopBroadcaster descarta todo. Útil en tests de simulación pura.
 type NoopBroadcaster struct{}
@@ -115,5 +155,6 @@ func (NoopBroadcaster) SendToPlayer(uuid.UUID, string, string, any)             
 // NoopPersister descarta las escrituras. Útil en tests de simulación pura.
 type NoopPersister struct{}
 
-func (NoopPersister) Submit(Job) {}
-func (NoopPersister) Depth() int { return 0 }
+func (NoopPersister) Submit(Job)      {}
+func (NoopPersister) Depth() int      { return 0 }
+func (NoopPersister) Partitions() int { return 1 }

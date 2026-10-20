@@ -310,6 +310,8 @@ func TestGuarnecerUnaUnidadEnMovimientoCancelaSuMovimiento(t *testing.T) {
 		[]world.Tile{{X: u.X, Y: u.Y}, {X: u.X, Y: u.Y + 1}}, w, 600)
 	require.NoError(t, err)
 	m := movement.New(u.ID, path, world.Tile{X: u.X, Y: u.Y + 1}, testEpoch)
+	// El id lo asigna quien inserta (ADR-013): aquí, el propio test.
+	m.ID = 1001
 	_, _, err = e.movements.Start(ctx, store.Pool(), m)
 	require.NoError(t, err)
 

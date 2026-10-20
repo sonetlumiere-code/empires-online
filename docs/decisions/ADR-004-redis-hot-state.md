@@ -198,4 +198,10 @@ Requisito de pruebas: existe un test de nivel *integration* que arranca el siste
 
 **Aceptado** el 2026-09-09.
 
+> **Sustitución parcial.** La garantía durable de idempotencia —«`idempotency_keys` en PostgreSQL es la
+> garantía»— nunca se implementó y queda **sustituida por [ADR-014](ADR-014-command-idempotency.md)**: la
+> deduplicación es de corto plazo y vive sólo en Redis, y los comandos con efectos durables no repetibles
+> deben ser idempotentes por construcción. El resto de este ADR sigue vigente. El texto anterior se conserva
+> íntegro como registro de la decisión original.
+
 Se reevaluaría si `eo_redis_latency_seconds` mostrase que el round-trip a Redis consume una fracción significativa del procesamiento de comandos, o si la operación de un almacén adicional resultase desproporcionada frente a su beneficio en un despliegue de instancia única. En ese caso la alternativa a estudiar sería una caché en proceso **por delante** de Redis, no la eliminación de Redis: la coordinación multi-proceso y el anti-replay de tickets no tienen sustituto en memoria local.

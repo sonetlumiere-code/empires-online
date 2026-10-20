@@ -276,21 +276,21 @@ terreno es inmutable y reenviarlo en cada movimiento de cámara sería malgastar
 ### 3.4 Cola de persistencia
 
 Hay **una sola cola** (`persistence.Queue`), no dos carriles, con `DefaultQueueConfig()`: capacidad
-4096, **4 workers**, hasta **3 intentos** por trabajo y 200 ms de espera entre reintentos. Los workers
-se arrancan con `queue.Start(ctx, 4)`.
+4096 repartida entre **4 workers**, hasta **3 intentos** por trabajo y 200 ms de espera entre reintentos.
+Cada worker tiene su propio canal y se arrancan con `queue.Start(ctx)` ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)).
 
 | Vía | Contenido | Semántica |
 |---|---|---|
 | `Queue.Submit(Job)` | Alta de jugador/ciudad/unidades, inicio, fin y cancelación de movimiento, transiciones de presencia, `world_events` | Escritura durable diferida, cada trabajo en su propia transacción |
-| `simulation.FlushDirty()` | Posiciones consolidadas de unidades marcadas *dirty* | Lote cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50 ticks = 5 s), encolado también como `Job` |
+| `simulation.FlushDirty()` | Unidades paradas marcadas *dirty*; nunca una con movimiento activo | Cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50 ticks = 5 s), un `Job` por partición de la cola |
 
 "Escritura durable **diferida**" significa *fuera del tick, en su propia transacción*: el tick jamás
 ejecuta I/O de Postgres.
 
-- **No hay sharding por entidad.** Los cuatro workers consumen el mismo canal, así que entre trabajos
-  de la misma unidad no hay garantía de orden más allá del orden de encolado y de que cada trabajo es
-  atómico. En el MVP los trabajos de una unidad son escasos y autocontenidos; si eso deja de ser
-  cierto, el sharding por `hash(entityID) % N` es la evolución natural.
+- **Orden por entidad.** Cada `Job` declara una `Key` (`unit:42`, `city:7`) y va al worker
+  `simulation.PartitionOf(Key, 4)`: los trabajos de una misma entidad se ejecutan en el orden en que se
+  encolaron, reintentos incluidos, y los de entidades distintas en paralelo. Hasta `EO-120` los cuatro
+  workers consumían un mismo canal y el cierre de un movimiento podía adelantar a su inicio.
 - **Orden real: se muta en RAM y DESPUÉS se encola.** `applyMove` aplica el movimiento al estado y
   luego llama a `Persister.Submit`. La ventana de riesgo es honesta y hay que documentarla como tal:
   si el proceso muere entre la aceptación y el COMMIT (típicamente pocas decenas de ms), ese
@@ -300,8 +300,9 @@ ejecuta I/O de Postgres.
   capacidad, y se invoca su `OnPermanentFailure` como compensación. Es una condición crítica, no un
   caso normal; el síntoma se ve en `eo_persistence_queue_depth`.
 - **Fallo del worker**: hasta 3 intentos con espera entre ellos; agotados, se registra `level=error` y
-  se ejecuta `OnPermanentFailure` (por ejemplo, detener la unidad cuyo movimiento la base de datos
-  nunca conoció).
+  se ejecuta `OnPermanentFailure`. Ese callback corre en la goroutine del worker y no toca el mundo:
+  devuelve un comando al loop por `Deps.Inbox`. El de `movement.start` envía `MovementPersistFailed` y
+  el loop detiene la unidad cuyo movimiento la base de datos nunca conoció.
 - **El contexto de la escritura no hereda la cancelación del proceso** (`context.WithoutCancel` más un
   timeout de 10 s): si el servidor se está apagando, una escritura ya empezada debe terminar, no
   abortarse a medias.
@@ -504,11 +505,12 @@ type Broadcaster interface {
 type Persister interface {
 	Submit(job Job) // NUNCA bloquea
 	Depth() int
+	Partitions() int
 }
 
 type Repositories interface {
-	PersistMovementStart(ctx context.Context, m *movement.Movement) error
-	PersistMovementFinish(ctx context.Context, movementID int64, status movement.Status) error
+	PersistMovementStart(ctx context.Context, m movement.Movement, origin world.Tile) error
+	PersistMovementFinish(ctx context.Context, f MovementFinish) error
 	PersistUnitPositions(ctx context.Context, units []*unit.Unit) error
 	PersistCityPresence(ctx context.Context, cityID int64, state city.PresenceState, at time.Time) error
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,7 +26,7 @@ func colaDePrueba(capacidad, intentos int) *Queue {
 // compensación no se ejecuta.
 func TestUnFalloTransitorioSeReintenta(t *testing.T) {
 	q := colaDePrueba(8, 3)
-	q.Start(context.Background(), 1)
+	q.Start(context.Background())
 
 	var intentos atomic.Int32
 	compensado := false
@@ -48,7 +50,7 @@ func TestUnFalloTransitorioSeReintenta(t *testing.T) {
 // sola vez.
 func TestAgotadosLosIntentosSeCompensaUnaVez(t *testing.T) {
 	q := colaDePrueba(8, 3)
-	q.Start(context.Background(), 1)
+	q.Start(context.Background())
 
 	var intentos atomic.Int32
 	var compensaciones []error
@@ -94,7 +96,7 @@ func TestConLaColaLlenaSubmitNoBloqueaYCompensa(t *testing.T) {
 // eso el apagado llama a Close después de Drain.
 func TestCloseEsperaAlTrabajoEnVueloYALosPendientes(t *testing.T) {
 	q := colaDePrueba(8, 1)
-	q.Start(context.Background(), 1)
+	q.Start(context.Background())
 
 	empezado := make(chan struct{})
 	soltar := make(chan struct{})
@@ -124,7 +126,7 @@ func TestCloseEsperaAlTrabajoEnVueloYALosPendientes(t *testing.T) {
 func TestCancelarElProcesoNoCancelaUnaEscrituraEnVuelo(t *testing.T) {
 	q := colaDePrueba(8, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	q.Start(ctx, 1)
+	q.Start(ctx)
 
 	empezado := make(chan struct{})
 	var errDeLaEscritura error
@@ -139,4 +141,49 @@ func TestCancelarElProcesoNoCancelaUnaEscrituraEnVuelo(t *testing.T) {
 	q.Close()
 
 	assert.NoError(t, errDeLaEscritura, "el contexto de la escritura no hereda la cancelación")
+}
+
+// ADR-013 §2.2: los trabajos de una misma clave se ejecutan en el orden en que
+// se encolaron aunque el primero tenga que reintentarse, y una clave de otra
+// partición no espera a ese reintento.
+func TestLaColaOrdenaPorClaveYNoBloqueaOtrasClaves(t *testing.T) {
+	q := NewQueue(QueueConfig{Capacity: 64, Workers: 4, MaxAttempts: 3, RetryDelay: 30 * time.Millisecond},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	q.Start(context.Background())
+
+	clave := "unit:1"
+	otra := ""
+	for i := 2; i < 100 && otra == ""; i++ {
+		k := "unit:" + strconv.Itoa(i)
+		if simulation.PartitionOf(k, 4) != simulation.PartitionOf(clave, 4) {
+			otra = k
+		}
+	}
+	require.NotEmpty(t, otra)
+
+	var mu sync.Mutex
+	var orden []string
+	anotar := func(s string) { mu.Lock(); orden = append(orden, s); mu.Unlock() }
+
+	var intentos atomic.Int32
+	q.Submit(simulation.Job{Name: "inicio", Key: clave, Run: func(context.Context) error {
+		if intentos.Add(1) < 3 {
+			return errors.New("transitorio")
+		}
+		anotar("inicio")
+		return nil
+	}})
+	q.Submit(simulation.Job{Name: "cierre", Key: clave, Run: func(context.Context) error {
+		anotar("cierre")
+		return nil
+	}})
+	q.Submit(simulation.Job{Name: "ajeno", Key: otra, Run: func(context.Context) error {
+		anotar("ajeno")
+		return nil
+	}})
+	q.Close()
+
+	require.Len(t, orden, 3)
+	assert.Equal(t, "ajeno", orden[0], "la otra partición no espera a los reintentos")
+	assert.Equal(t, []string{"inicio", "cierre"}, orden[1:], "la misma clave, en orden")
 }

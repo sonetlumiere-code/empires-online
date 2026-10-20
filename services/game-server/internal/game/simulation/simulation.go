@@ -24,8 +24,13 @@ import (
 // Se declaran como interfaz AQUÍ, en el consumidor, no en el paquete de
 // PostgreSQL: el dominio define lo que necesita y la infraestructura se adapta.
 type Repositories interface {
-	PersistMovementStart(ctx context.Context, m *movement.Movement) error
-	PersistMovementFinish(ctx context.Context, movementID int64, status movement.Status) error
+	// PersistMovementStart cancela el movimiento activo anterior de la unidad,
+	// inserta el nuevo con el id que ya trae, y deja la unidad MOVING en
+	// origin, todo en una transacción (ADR-013 §2.3).
+	PersistMovementStart(ctx context.Context, m movement.Movement, origin world.Tile) error
+	// PersistMovementFinish cierra el movimiento y deja la unidad IDLE en su
+	// posición final, en una transacción. Con MovementID 0 sólo escribe la unidad.
+	PersistMovementFinish(ctx context.Context, f MovementFinish) error
 	PersistUnitPositions(ctx context.Context, units []*unit.Unit) error
 	PersistCityPresence(ctx context.Context, cityID int64, state city.PresenceState, at time.Time) error
 }
@@ -40,7 +45,11 @@ type Deps struct {
 	// Treaties caduca los tratados vencidos. Opcional: sin él, la caducidad
 	// simplemente no se evalúa, que es lo que ocurre en los tests de simulación.
 	Treaties TreatyExpirer
-	Log      *slog.Logger
+	// Inbox devuelve un comando al loop desde otra goroutine sin bloquear, y
+	// dice si cupo. Lo usan las compensaciones de la cola de persistencia.
+	// Opcional: sin él, la compensación sólo se registra.
+	Inbox func(Command) bool
+	Log   *slog.Logger
 
 	// ProtectionCooldown es el tiempo desde la desconexión hasta PROTECTED.
 	ProtectionCooldown time.Duration
@@ -113,6 +122,8 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleRequestSnapshot(c)
 	case IntroducePlayer:
 		s.handleIntroducePlayer(c)
+	case MovementPersistFailed:
+		s.handleMovementPersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -203,21 +214,28 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 	wasHidden := u.Status == unit.StatusHidden
 
 	m := movement.New(u.ID, path, cmd.Target, nowMs)
+	// El id lo asigna el loop, no PostgreSQL: los mensajes de este mismo tick
+	// lo necesitan, y el COMMIT todavía no existe (ADR-013 §2.1).
+	m.ID = s.state.NewMovementID()
 	s.state.SetMovement(m)
 	u.Status = unit.StatusMoving
 	s.state.MarkDirty(u.ID)
 
-	// Escritura durable diferida. Si falla de forma permanente, hoy sólo se
-	// registra: la unidad sigue su movimiento en RAM y su posición llega a disco
-	// con el volcado periódico, pero la fila de unit_movements no existe. Detener
-	// la unidad exigiría devolver un comando al loop desde el worker, porque
-	// OnPermanentFailure corre en la goroutine de la cola (EO-120).
+	// Escritura durable diferida. El worker recibe una COPIA: el movimiento de
+	// la RAM es del loop. Si falla de forma permanente, la compensación vuelve
+	// al loop como comando y detiene la unidad (ADR-013 §2.4): el mundo no puede
+	// quedarse con un movimiento que la base de datos nunca conoció.
+	copia, unitID, movementID := *m, u.ID, m.ID
 	s.deps.Persister.Submit(Job{
 		Name: "movement.start",
-		Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementStart(ctx, m) },
+		Key:  UnitKey(unitID),
+		Run: func(ctx context.Context) error {
+			return s.deps.Repos.PersistMovementStart(ctx, copia, origin)
+		},
 		OnPermanentFailure: func(err error) {
-			s.deps.Log.Error("no se pudo persistir el inicio del movimiento; la unidad sigue en RAM",
-				"err", err, "unit_id", m.UnitID)
+			s.deps.Log.Error("no se pudo persistir el inicio del movimiento; se detendrá la unidad",
+				"err", err, "unit_id", unitID, "movement_id", movementID)
+			s.reinject(MovementPersistFailed{UnitID: unitID, MovementID: movementID})
 		},
 	})
 
@@ -268,13 +286,13 @@ func (s *Simulation) cancelActiveMovement(u *unit.Unit, reason movement.CancelRe
 	u.Status = unit.StatusIdle
 	s.state.MarkDirty(u.ID)
 
-	movementID := m.ID
+	finish := MovementFinish{MovementID: m.ID, Status: movement.StatusCancelled, UnitID: u.ID, At: stoppedAt}
 	s.deps.Persister.Submit(Job{
 		Name: "movement.cancel",
-		Run: func(ctx context.Context) error {
-			return s.deps.Repos.PersistMovementFinish(ctx, movementID, movement.StatusCancelled)
-		},
+		Key:  UnitKey(u.ID),
+		Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementFinish(ctx, finish) },
 	})
+	movementID := m.ID
 
 	cx, cy := s.state.World().ChunkOf(stoppedAt.X, stoppedAt.Y)
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeUnitMovementCancelled,
@@ -308,8 +326,9 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 
 		pos := m.PositionAt(nowMs)
 		if pos != u.Tile() {
+			// Sin MarkDirty: la posición en tránsito no se persiste, se deriva de
+			// la polilínea (INV-PERSIST-004). La final la escribe el cierre.
 			s.state.MoveUnitTo(u, pos)
-			s.state.MarkDirty(u.ID)
 
 			cx, cy := s.state.World().ChunkOf(pos.X, pos.Y)
 			x, y := pos.X, pos.Y
@@ -339,12 +358,14 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 				})
 		}
 
-		movementID := a.movementID
+		finish := MovementFinish{MovementID: a.movementID, Status: movement.StatusCompleted}
+		if _, ok := s.state.Unit(a.unitID); ok {
+			finish.UnitID, finish.At = a.unitID, a.at
+		}
 		s.deps.Persister.Submit(Job{
 			Name: "movement.complete",
-			Run: func(ctx context.Context) error {
-				return s.deps.Repos.PersistMovementFinish(ctx, movementID, movement.StatusCompleted)
-			},
+			Key:  UnitKey(a.unitID),
+			Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementFinish(ctx, finish) },
 		})
 	}
 }
@@ -469,6 +490,7 @@ func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now t
 	cityID, at := c.ID, now
 	s.deps.Persister.Submit(Job{
 		Name: "city.presence",
+		Key:  CityKey(cityID),
 		Run: func(ctx context.Context) error {
 			return s.deps.Repos.PersistCityPresence(ctx, cityID, state, at)
 		},
@@ -485,24 +507,70 @@ func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now t
 // ─────────────────────────────────────────────────────────────
 
 // FlushDirty encola el volcado de las unidades marcadas como sucias.
+//
+// Excluye toda unidad con un movimiento activo: su posición se deriva de la
+// polilínea y la escriben el inicio y el cierre del movimiento (INV-PERSIST-004).
+// El lote se parte en un trabajo por partición de la cola, para que cada unidad
+// siga en orden con sus otras escrituras (ADR-013 §2.2).
 func (s *Simulation) FlushDirty() int {
 	dirty := s.state.DrainDirty()
 	if len(dirty) == 0 {
 		return 0
 	}
+	n := s.deps.Persister.Partitions()
+	if n < 1 {
+		n = 1
+	}
 	// Se copia el estado relevante: los punteros del mundo siguen mutando en el
 	// loop mientras el worker escribe, y escribir desde otra goroutine sobre esos
 	// objetos sería una carrera de datos.
-	snapshot := make([]*unit.Unit, len(dirty))
-	for i, u := range dirty {
+	lotes := make([][]*unit.Unit, n)
+	total := 0
+	for _, u := range dirty {
+		if _, enMarcha := s.state.Movement(u.ID); enMarcha {
+			continue
+		}
 		cp := *u
-		snapshot[i] = &cp
+		p := PartitionOf(UnitKey(u.ID), n)
+		lotes[p] = append(lotes[p], &cp)
+		total++
 	}
-	s.deps.Persister.Submit(Job{
-		Name: "units.flush",
-		Run:  func(ctx context.Context) error { return s.deps.Repos.PersistUnitPositions(ctx, snapshot) },
-	})
-	return len(snapshot)
+	for _, lote := range lotes {
+		if len(lote) == 0 {
+			continue
+		}
+		lote := lote
+		s.deps.Persister.Submit(Job{
+			Name: "units.flush",
+			Key:  UnitKey(lote[0].ID),
+			Run:  func(ctx context.Context) error { return s.deps.Repos.PersistUnitPositions(ctx, lote) },
+		})
+	}
+	return total
+}
+
+// reinject devuelve un comando al loop desde la goroutine de un worker.
+func (s *Simulation) reinject(cmd Command) {
+	if s.deps.Inbox == nil || !s.deps.Inbox(cmd) {
+		s.deps.Log.Error("no se pudo devolver la compensación al loop; se resolverá al rearrancar",
+			"command", cmd.commandType())
+	}
+}
+
+// handleMovementPersistFailed detiene la unidad cuyo movimiento no se pudo
+// persistir, si ese movimiento sigue siendo el activo. Si ya terminó o lo
+// sustituyó otro, no hay nada que compensar: el cierre o el nuevo inicio ya
+// dejaron la unidad en un estado que la base de datos conoce.
+func (s *Simulation) handleMovementPersistFailed(cmd MovementPersistFailed) {
+	m, ok := s.state.Movement(cmd.UnitID)
+	if !ok || m.ID != cmd.MovementID {
+		return
+	}
+	u, ok := s.state.Unit(cmd.UnitID)
+	if !ok {
+		return
+	}
+	s.cancelActiveMovement(u, movement.ReasonServer, s.deps.Clock.NowMs())
 }
 
 // ─────────────────────────────────────────────────────────────
