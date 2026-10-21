@@ -157,6 +157,8 @@ elección de A\*: son decisiones del canon y de `architecture/`, no del registro
 | [decisions/ADR-013-persistence-pipeline.md](decisions/ADR-013-persistence-pipeline.md) | La simulación asigna los ids de movimiento; la cola de persistencia ordena por entidad; el inicio y el cierre de un movimiento escriben la unidad en su transacción. |
 | [decisions/ADR-014-command-idempotency.md](decisions/ADR-014-command-idempotency.md) | La deduplicación de comandos vive sólo en Redis; un efecto durable no repetible lleva su `requestId` con `UNIQUE` en su propia fila. |
 | [decisions/ADR-015-tick-continuity.md](decisions/ADR-015-tick-continuity.md) | El tick se reancla al reloj en cada arranque: ningún número de tick se repite tras una caída. |
+| [decisions/ADR-016-foreign-territory-actions.md](decisions/ADR-016-foreign-territory-actions.md) | El territorio ajeno no restringe ninguna acción del MVP; toda acción de mundo se clasifica y un test exige clasificar cada comando nuevo. |
+| [decisions/ADR-017-garrison-commands.md](decisions/ADR-017-garrison-commands.md) | `unit.garrison` y `unit.ungarrison`: el tick valida, la transacción decide el tratado; `units.city_id` no cambia; la unidad guarnecida sólo la ve su dueño. |
 
 ### 2.9 `roadmap/` — Plan
 

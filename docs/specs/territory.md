@@ -63,6 +63,11 @@ territorio salvo fundando en uno sin dueño. La lista completa está en §2.
   `territory.update`.
 - Geometría no rectangular, territorios anidados, territorios superpuestos.
 - Comandos cliente→servidor sobre territorios: no existen en el protocolo v1 y no se inventan aquí.
+- Restricciones de acción por territorio: **ninguna** en el MVP, por decisión
+  ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). Moverse, cancelar, guarnecer y salir de
+  una guarnición se permiten en territorio propio, ajeno o libre; lo que limita guarnecer en una ciudad
+  ajena es el tratado, no el suelo. Cada acción futura —recolectar, construir, combatir— se clasificará al
+  nacer, y un test lo exige.
 
 ## 3. Actores
 
@@ -296,6 +301,7 @@ cliente dirigido a un territorio, luego **no hay superficie de error de usuario*
 | Situación | Código | Nota |
 |---|---|---|
 | El jugador intenta reclamar o atacar un territorio | — | Imposible: no existe el comando. |
+| El jugador se mueve o guarnece dentro de territorio ajeno | — | Permitido ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)): `FORBIDDEN` no se usa para el territorio. |
 | Índice inconsistente (solape de rectángulos) | ninguno | Log `error` + métrica, sin abortar (`RN-TERR-004`). |
 | Fila de control ausente o transacción de captura fallida | `INTERNAL_ERROR` | Registrado en logs y métricas. |
 
