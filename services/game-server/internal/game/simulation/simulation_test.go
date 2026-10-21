@@ -32,12 +32,13 @@ const epoch int64 = 1_757_376_000_000
 // ─────────────────────────────────────────────────────────────
 
 type capturedMessage struct {
-	Kind     string // "chunk" o "player"
-	Type     string
-	PlayerID uuid.UUID
-	CX, CY   int32
-	Chunks   []world.ChunkCoord
-	Payload  any
+	Kind      string // "chunk" o "player"
+	Type      string
+	RequestID string
+	PlayerID  uuid.UUID
+	CX, CY    int32
+	Chunks    []world.ChunkCoord
+	Payload   any
 }
 
 // recorder captura todo lo que la simulación emite hacia la red.
@@ -73,10 +74,11 @@ func (r *recorder) BroadcastChunkExcept(cx, cy int32, except uuid.UUID, msgType 
 	})
 }
 
-func (r *recorder) SendToPlayer(playerID uuid.UUID, msgType, _ string, payload any) {
+func (r *recorder) SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.messages = append(r.messages, capturedMessage{Kind: "player", Type: msgType, PlayerID: playerID, Payload: payload})
+	r.messages = append(r.messages, capturedMessage{Kind: "player", Type: msgType, PlayerID: playerID,
+		RequestID: requestID, Payload: payload})
 }
 
 func (r *recorder) byType(msgType string) []capturedMessage {
@@ -103,6 +105,9 @@ type syncPersister struct {
 	mu   sync.Mutex
 	jobs []string
 	errs []error
+	// permanent: un trabajo que falla agota sus reintentos al instante y llama a
+	// su OnPermanentFailure, como haría la cola real al rendirse.
+	permanent bool
 }
 
 func (p *syncPersister) Submit(job simulation.Job) {
@@ -113,6 +118,9 @@ func (p *syncPersister) Submit(job simulation.Job) {
 		p.mu.Lock()
 		p.errs = append(p.errs, err)
 		p.mu.Unlock()
+		if p.permanent && job.OnPermanentFailure != nil {
+			job.OnPermanentFailure(err)
+		}
 	}
 }
 
@@ -201,18 +209,20 @@ func (f *fakeRepos) PersistCityPresence(_ context.Context, cityID int64, state c
 // ─────────────────────────────────────────────────────────────
 
 type harness struct {
-	t        *testing.T
-	clk      *clock.FakeClock
-	state    *simulation.State
-	sim      *simulation.Simulation
-	loop     *loop.Loop
-	rec      *recorder
-	repos    *fakeRepos
-	commands chan simulation.Command
-	playerID uuid.UUID
-	cityID   int64
-	units    []*unit.Unit
-	rutas    *contarRutas
+	t         *testing.T
+	clk       *clock.FakeClock
+	state     *simulation.State
+	sim       *simulation.Simulation
+	loop      *loop.Loop
+	rec       *recorder
+	repos     *fakeRepos
+	commands  chan simulation.Command
+	playerID  uuid.UUID
+	cityID    int64
+	units     []*unit.Unit
+	rutas     *contarRutas
+	persister *syncPersister
+	garrisons *fakeGarrisons
 }
 
 // newHarness monta un mundo determinista de 64x64 de hierba con un jugador,
@@ -244,12 +254,26 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	state := simulation.NewState(w)
 
 	rutas := &contarRutas{inner: pathfinding.NewAStar(20000, 256)}
+	persister := &syncPersister{}
+	garrisons := &fakeGarrisons{}
+	commands := make(chan simulation.Command, 256)
 	sim := simulation.New(state, simulation.Deps{
-		Clock:              clk,
-		Pathfinder:         rutas,
-		Broadcaster:        rec,
-		Persister:          &syncPersister{},
-		Repos:              repos,
+		Clock:       clk,
+		Pathfinder:  rutas,
+		Broadcaster: rec,
+		Persister:   persister,
+		Repos:       repos,
+		Garrisons:   garrisons,
+		// Las respuestas de la cola vuelven al loop por el mismo canal, como en
+		// cmd/server.
+		Inbox: func(c simulation.Command) bool {
+			select {
+			case commands <- c:
+				return true
+			default:
+				return false
+			}
+		},
 		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
@@ -257,7 +281,6 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 		PathMaxDistance:    256,
 	})
 
-	commands := make(chan simulation.Command, 256)
 	gameLoop := loop.New(sim, clk, commands, loop.Config{
 		TickDuration:       100 * time.Millisecond,
 		FlushIntervalTicks: 50,
@@ -268,6 +291,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	h := &harness{
 		t: t, clk: clk, state: state, sim: sim, loop: gameLoop,
 		rec: rec, repos: repos, commands: commands, rutas: rutas,
+		persister: persister, garrisons: garrisons,
 		playerID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
 		cityID:   1,
 	}

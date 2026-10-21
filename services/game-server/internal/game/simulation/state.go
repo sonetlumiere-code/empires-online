@@ -60,6 +60,17 @@ type State struct {
 	// mira éstas, no el mundo entero.
 	concealCandidates map[int64]struct{}
 
+	// garrisonedIn es la ciudad que aloja a cada unidad GARRISONED. Se
+	// reconstruye al arrancar desde `garrisons`; units.city_id es la ciudad de
+	// origen y no cambia al guarnecer (ADR-017 §2.4).
+	garrisonedIn map[int64]int64
+	// entering son las unidades cuya entrada espera el resultado de su
+	// transacción (RN-GARR-020). Volátil: no sobrevive a un reinicio.
+	entering map[int64]struct{}
+	// pendingExits son las salidas que no encontraron tile de reentrada y se
+	// reintentan en la fase 5 (RN-GARR-014).
+	pendingExits map[int64]exitRequest
+
 	tick uint64
 }
 
@@ -75,6 +86,9 @@ func NewState(w *world.World) *State {
 		unitsByChunk: make(map[chunkKey]map[int64]struct{}),
 
 		concealCandidates: make(map[int64]struct{}),
+		garrisonedIn:      make(map[int64]int64),
+		entering:          make(map[int64]struct{}),
+		pendingExits:      make(map[int64]exitRequest),
 	}
 }
 

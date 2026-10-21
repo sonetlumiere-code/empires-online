@@ -88,6 +88,33 @@ describe('envelope cliente → servidor', () => {
   });
 });
 
+describe('comandos de guarnición', () => {
+  it('acepta unit.garrison con unidad y ciudad', () => {
+    const result = parseClientMessage({
+      v: 1, type: 'unit.garrison', requestId: uuid, payload: { unitId: 42, cityId: 7 },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('unit.garrison exige la ciudad: no hay ciudad por defecto', () => {
+    const result = parseClientMessage({
+      v: 1, type: 'unit.garrison', requestId: uuid, payload: { unitId: 42 },
+    });
+    expect(result).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
+  it('unit.ungarrison no admite que el cliente elija el tile de salida', () => {
+    const ok = parseClientMessage({
+      v: 1, type: 'unit.ungarrison', requestId: uuid, payload: { unitId: 42 },
+    });
+    expect(ok.ok).toBe(true);
+    const conTile = parseClientMessage({
+      v: 1, type: 'unit.ungarrison', requestId: uuid, payload: { unitId: 42, x: 3, y: 4 },
+    });
+    expect(conTile.ok).toBe(false);
+  });
+});
+
 describe('envelope servidor → cliente', () => {
   it('acepta unit.movement.started con la polilínea temporizada completa', () => {
     const result = parseServerMessage({

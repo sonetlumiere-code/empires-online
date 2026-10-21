@@ -82,6 +82,9 @@ func (s *Simulation) UnitView(u *unit.Unit, nowMs int64) protocol.UnitView {
 		MaxHP:    u.MaxHP,
 		Status:   string(u.Status),
 	}
+	if cityID, ok := s.state.GarrisonCity(u.ID); ok {
+		view.GarrisonCityID = &cityID
+	}
 	if m, ok := s.state.Movement(u.ID); ok {
 		pos := m.PositionAt(nowMs)
 		view.X, view.Y = pos.X, pos.Y
@@ -113,10 +116,12 @@ func CityView(c *city.City) protocol.CityView {
 
 // VisibleTo decide si una unidad viaja hacia un jugador concreto.
 //
-// Una unidad HIDDEN sólo la ve su propietario (INV-SAFE-004). Es la única regla
-// de visibilidad por observador que existe en el MVP; el resto la decide el
-// chunk. Una unidad GARRISONED no está aquí porque no la produce ningún
-// comando de red todavía (M7, entregable 6).
+// Una unidad HIDDEN o GARRISONED sólo la ve su propietario (INV-SAFE-004,
+// INV-GARR-006). Son las únicas reglas de visibilidad por observador del MVP;
+// el resto la decide el chunk.
 func VisibleTo(u *unit.Unit, viewer uuid.UUID) bool {
-	return u.Status != unit.StatusHidden || u.PlayerID == viewer
+	if u.PlayerID == viewer {
+		return true
+	}
+	return u.Status != unit.StatusHidden && u.Status != unit.StatusGarrisoned
 }

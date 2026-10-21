@@ -163,7 +163,7 @@ func TestElComandoDeMovimientoNoAdmiteRuta(t *testing.T) {
 // S-7: el decodificador Go es tan estricto como el JSON Schema exportado. Dos
 // mitades: el esquema declara `additionalProperties: false` en TODO objeto de un
 // mensaje cliente → servidor, y DecodeStrict rechaza una propiedad de más en el
-// envelope, en el payload y en un objeto anidado de cada uno de los cinco.
+// envelope, en el payload y en un objeto anidado de cada uno de los siete.
 func TestElDecodificadorEsTanEstrictoComoElEsquema(t *testing.T) {
 	data, err := protocol.SchemaFile("client-message.schema.json")
 	require.NoError(t, err)
@@ -188,7 +188,7 @@ func TestElDecodificadorEsTanEstrictoComoElEsquema(t *testing.T) {
 		}
 	}
 	recorrer(schema, "")
-	require.GreaterOrEqual(t, objetos, 11, "cinco envelopes, cinco payloads y el centro de session.view")
+	require.GreaterOrEqual(t, objetos, 15, "siete envelopes, siete payloads y el centro de session.view")
 
 	casos := []struct {
 		tipo    string
@@ -201,6 +201,8 @@ func TestElDecodificadorEsTanEstrictoComoElEsquema(t *testing.T) {
 		{protocol.TypeSessionView, `{"center":{"x":1,"y":2}}`, &protocol.SessionViewPayload{}, `{"center":{"x":1,"y":2,"z":0}}`},
 		{protocol.TypeUnitMove, `{"unitId":1,"target":{"x":1,"y":2}}`, &protocol.UnitMovePayload{}, `{"unitId":1,"target":{"x":1,"y":2,"tMs":0}}`},
 		{protocol.TypeUnitCancelMove, `{"unitId":1}`, &protocol.UnitCancelMovePayload{}, ""},
+		{protocol.TypeUnitGarrison, `{"unitId":1,"cityId":2}`, &protocol.UnitGarrisonPayload{}, ""},
+		{protocol.TypeUnitUngarrison, `{"unitId":1}`, &protocol.UnitUngarrisonPayload{}, ""},
 	}
 	for _, c := range casos {
 		t.Run(c.tipo, func(t *testing.T) {
@@ -227,6 +229,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 	require.True(t, protocol.IsPreAuth(protocol.TypeSessionHello))
 	for _, msgType := range []string{
 		protocol.TypeUnitMove, protocol.TypeUnitCancelMove,
+		protocol.TypeUnitGarrison, protocol.TypeUnitUngarrison,
 		protocol.TypeSessionPing, protocol.TypeSessionView,
 	} {
 		require.False(t, protocol.IsPreAuth(msgType),
@@ -235,7 +238,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 }
 
 func TestCatalogoDeComandosEsCerrado(t *testing.T) {
-	require.Len(t, protocol.ClientMessageTypes, 5)
+	require.Len(t, protocol.ClientMessageTypes, 7)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)

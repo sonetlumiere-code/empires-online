@@ -27,6 +27,8 @@ const (
 	TypeSessionView    = "session.view"
 	TypeUnitMove       = "unit.move"
 	TypeUnitCancelMove = "unit.cancel_move"
+	TypeUnitGarrison   = "unit.garrison"
+	TypeUnitUngarrison = "unit.ungarrison"
 )
 
 // Mensajes servidor → cliente.
@@ -54,6 +56,8 @@ var ClientMessageTypes = map[string]bool{
 	TypeSessionView:    true,
 	TypeUnitMove:       true,
 	TypeUnitCancelMove: true,
+	TypeUnitGarrison:   true,
+	TypeUnitUngarrison: true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -167,6 +171,9 @@ type UnitView struct {
 	MaxHP    int32           `json:"maxHp"`
 	Status   string          `json:"status"`
 	Movement *ActiveMovement `json:"movement"`
+	// GarrisonCityID es la ciudad que aloja a la unidad, o nil fuera de una
+	// guarnición. CityID es siempre la de origen (ADR-017 §2.4).
+	GarrisonCityID *int64 `json:"garrisonCityId"`
 }
 
 // CityView es el estado observable de una ciudad.
@@ -224,6 +231,18 @@ type UnitCancelMovePayload struct {
 	UnitID int64 `json:"unitId"`
 }
 
+// UnitGarrisonPayload pide guarnecer una unidad en una ciudad (ADR-017).
+type UnitGarrisonPayload struct {
+	UnitID int64 `json:"unitId"`
+	CityID int64 `json:"cityId"`
+}
+
+// UnitUngarrisonPayload pide sacar una unidad de su guarnición. El tile de
+// salida lo elige el servidor.
+type UnitUngarrisonPayload struct {
+	UnitID int64 `json:"unitId"`
+}
+
 // ─────────────────────────────────────────────────────────────
 // Payloads servidor → cliente
 // ─────────────────────────────────────────────────────────────
@@ -278,6 +297,9 @@ type EntityUpdatePayload struct {
 	Status   *string         `json:"status,omitempty"`
 	CityID   **int64         `json:"cityId,omitempty"`
 	Movement *ActiveMovement `json:"movement,omitempty"`
+	// GarrisonCityID: nil si no cambia; apuntando a nil, la unidad sale de la
+	// guarnición; apuntando a un id, entra en esa ciudad.
+	GarrisonCityID **int64 `json:"garrisonCityId,omitempty"`
 }
 
 type EntityDespawnPayload struct {

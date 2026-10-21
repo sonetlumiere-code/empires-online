@@ -365,6 +365,39 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			RequestID: msg.RequestID,
 			UnitID:    p.UnitID,
 		})
+
+	case protocol.TypeUnitGarrison:
+		var p protocol.UnitGarrisonPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.GarrisonUnit{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+			CityID:    p.CityID,
+		})
+
+	case protocol.TypeUnitUngarrison:
+		var p protocol.UnitUngarrisonPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.UngarrisonUnit{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+		})
 	}
 }
 

@@ -134,6 +134,7 @@ export const EntityUpdate = z.object({
     status: UnitStatus.optional(),
     cityId: EntityId.nullable().optional(),
     movement: ActiveMovement.nullable().optional(),
+    garrisonCityId: EntityId.nullable().optional(),
   }),
 });
 

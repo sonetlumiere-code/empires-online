@@ -203,12 +203,29 @@ func NewGarrisonRepo(s *Store, u *UnitRepo, m *MovementRepo, t *TreatyRepo) *Gar
 // La autorización se recalcula aquí contra el estado ACTUAL de `treaties`
 // (RN-GARR-018), no contra lo que el llamante creyera saber: entre su lectura y
 // esta transacción el tratado pudo romperse.
+//
+// Es idempotente por construcción (ADR-017 §2.2): si la unidad ya tiene su fila
+// en ESA ciudad, la entrada ya está escrita —un reintento tras perder la
+// confirmación del COMMIT— y se devuelve éxito sin un segundo evento. Una fila
+// en otra ciudad es ErrAlreadyGarrisoned.
 func (r *GarrisonRepo) Enter(
 	ctx context.Context, u *unit.Unit, c *city.City, requester uuid.UUID, tick uint64,
 ) (int64, error) {
 	var cancelado int64
 
 	err := r.store.InTx(ctx, func(tx pgx.Tx) error {
+		var existente int64
+		switch err := tx.QueryRow(ctx,
+			`SELECT city_id FROM garrisons WHERE unit_id = $1 FOR UPDATE`, u.ID).Scan(&existente); {
+		case err == nil:
+			if c != nil && existente == c.ID {
+				return nil
+			}
+			return garrison.ErrAlreadyGarrisoned
+		case !errors.Is(normalize(err), ErrNotFound):
+			return fmt.Errorf("leer la guarnición de la unidad %d: %w", u.ID, normalize(err))
+		}
+
 		tratados, err := r.autorizantes(ctx, tx, u, c)
 		if err != nil {
 			return err
@@ -233,15 +250,22 @@ func (r *GarrisonRepo) Enter(
 			return fmt.Errorf("registrar la guarnición de la unidad %d: %w", u.ID, normalize(err))
 		}
 
+		payload := map[string]any{
+			"unitId":            u.ID,
+			"cityId":            c.ID,
+			"cancelledMovement": cancelado,
+		}
+		// INV-GARR-004: el tratado que autorizó la entrada queda en el evento, que es
+		// lo que hace auditable «en el instante de la entrada». En ciudad propia no
+		// hay ninguno.
+		if len(tratados) > 0 {
+			payload["treatyId"] = tratados[0].ID
+		}
 		return appendEvent(ctx, tx, worldEvent{
 			EventType: "UnitGarrisoned",
 			Tick:      tick,
 			PlayerID:  &u.PlayerID,
-			Payload: map[string]any{
-				"unitId":            u.ID,
-				"cityId":            c.ID,
-				"cancelledMovement": cancelado,
-			},
+			Payload:   payload,
 		})
 	})
 	if err != nil {
@@ -284,8 +308,14 @@ func (r *GarrisonRepo) Leave(
 
 		// RN-GARR-013: la fila se BORRA. La tabla del MVP no tiene columna de
 		// cierre; sólo modela guarniciones abiertas.
-		if _, err := tx.Exec(ctx, `DELETE FROM garrisons WHERE unit_id = $1`, u.ID); err != nil {
+		tag, err := tx.Exec(ctx, `DELETE FROM garrisons WHERE unit_id = $1`, u.ID)
+		if err != nil {
 			return fmt.Errorf("cerrar la guarnición de la unidad %d: %w", u.ID, normalize(err))
+		}
+		if tag.RowsAffected() == 0 {
+			// Ya estaba fuera: un reintento de una salida escrita. Idempotente,
+			// sin un segundo evento (ADR-017 §2.3).
+			return nil
 		}
 
 		return appendEvent(ctx, tx, worldEvent{

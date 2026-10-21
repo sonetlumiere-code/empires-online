@@ -254,6 +254,16 @@ export class GameClient {
     return this.send('unit.cancel_move', { unitId });
   }
 
+  /** Guarnece una unidad en una ciudad. El servidor decide si puede: adyacencia, estado y tratado. */
+  garrisonUnit(unitId: number, cityId: number): string {
+    return this.send('unit.garrison', { unitId, cityId });
+  }
+
+  /** Saca una unidad de su guarnición. El tile de salida lo elige el servidor. */
+  ungarrisonUnit(unitId: number): string {
+    return this.send('unit.ungarrison', { unitId });
+  }
+
   /** Recentra el área de interés (la cámara). */
   setView(center: { x: number; y: number }): string {
     return this.send('session.view', { center: { x: center.x, y: center.y } });

@@ -79,6 +79,35 @@ export const UnitCancelMove = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * Guarnece una unidad propia en una ciudad: la propia, o la de un jugador con el
+ * que haya un tratado ACTIVE que lo permita. La unidad tiene que estar IDLE y
+ * junto a la zona urbana; el servidor decide si se puede.
+ * Ver ../../../docs/specs/garrison.md
+ */
+export const UnitGarrison = z.object({
+  v: V,
+  type: z.literal('unit.garrison'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+    cityId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
+ * Saca una unidad propia de la ciudad en la que está guarnecida. El tile de
+ * salida lo elige el servidor.
+ */
+export const UnitUngarrison = z.object({
+  v: V,
+  type: z.literal('unit.ungarrison'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+  }).strict(),
+}).strict();
+
 /** Unión discriminada de todos los mensajes cliente → servidor de la v1. */
 export const ClientMessage = z.discriminatedUnion('type', [
   SessionHello,
@@ -86,6 +115,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
   SessionView,
   UnitMove,
   UnitCancelMove,
+  UnitGarrison,
+  UnitUngarrison,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -94,6 +125,8 @@ export type SessionPing = z.infer<typeof SessionPing>;
 export type SessionView = z.infer<typeof SessionView>;
 export type UnitMove = z.infer<typeof UnitMove>;
 export type UnitCancelMove = z.infer<typeof UnitCancelMove>;
+export type UnitGarrison = z.infer<typeof UnitGarrison>;
+export type UnitUngarrison = z.infer<typeof UnitUngarrison>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -101,6 +134,8 @@ export const CLIENT_MESSAGE_TYPES = [
   'session.view',
   'unit.move',
   'unit.cancel_move',
+  'unit.garrison',
+  'unit.ungarrison',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

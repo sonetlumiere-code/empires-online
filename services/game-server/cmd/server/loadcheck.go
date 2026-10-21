@@ -11,8 +11,8 @@ import (
 )
 
 // checkLoadedState valida el estado durable recién leído (EO-119) y devuelve
-// las unidades y los controles con los que se hidrata la simulación. Las
-// ciudades de in.Cities quedan corregidas en el sitio.
+// las unidades, los controles y las guarniciones con los que se hidrata la
+// simulación. Las ciudades de in.Cities quedan corregidas en el sitio.
 //
 // Cada hallazgo emite la señal obligatoria de docs/invariants/README.md §5.1,
 // también cuando el arranque aborta: es lo único que dice por qué.
@@ -22,7 +22,7 @@ func checkLoadedState(
 	in loadcheck.Input,
 	tick uint64,
 	log *slog.Logger,
-) ([]*unit.Unit, []territory.Control, error) {
+) ([]*unit.Unit, []territory.Control, map[int64]int64, error) {
 	res, err := repo.CheckAndRepair(ctx, in, tick)
 	for _, f := range res.Findings {
 		log.Error("invariant_violation",
@@ -30,7 +30,7 @@ func checkLoadedState(
 			"entity", f.Entity, "detail", f.Detail)
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(res.Findings) > 0 {
 		log.Info("validación de carga",
@@ -39,5 +39,5 @@ func checkLoadedState(
 			"controls_repaired", len(res.ControlRepairs), "garrisons_deleted", len(res.GarrisonDeletes),
 			"units_excluded", len(in.Units)-len(res.Units))
 	}
-	return res.Units, res.Controls, nil
+	return res.Units, res.Controls, res.Garrisons, nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/garrison"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loop"
@@ -152,6 +153,23 @@ func (r *memoryRepos) PersistMovementFinish(context.Context, simulation.Movement
 	return nil
 }
 func (r *memoryRepos) PersistUnitPositions(context.Context, []*unit.Unit) error { return nil }
+
+// memoryGarrisons hace de postgres.GarrisonRepo sin base: acepta toda entrada
+// en ciudad propia y deja la copia como la dejaría la transacción.
+type memoryGarrisons struct{}
+
+func (memoryGarrisons) Enter(_ context.Context, u *unit.Unit, c *city.City, requester uuid.UUID, _ uint64) (int64, error) {
+	if c.OwnerPlayerID != requester {
+		return 0, garrison.ErrTreatyRequired
+	}
+	u.Status = unit.StatusGarrisoned
+	return 0, nil
+}
+
+func (memoryGarrisons) Leave(_ context.Context, u *unit.Unit, x, y, _, _ int32, _ uint64) error {
+	u.X, u.Y, u.Status = x, y, unit.StatusIdle
+	return nil
+}
 func (r *memoryRepos) PersistCityPresence(context.Context, int64, city.PresenceState, time.Time) error {
 	return nil
 }
@@ -207,13 +225,23 @@ func newE2ECon(t *testing.T, pintar func(terrain []byte), ajustar func(*ws.Confi
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	state := simulation.NewState(gameWorld)
 	hub := ws.NewHub(nil, log)
+	commands := make(chan simulation.Command, 256)
 
 	sim := simulation.New(state, simulation.Deps{
-		Clock:              clk,
-		Pathfinder:         pathfinding.NewAStar(20000, 256),
-		Broadcaster:        hub,
-		Persister:          syncPersister{},
-		Repos:              &memoryRepos{},
+		Clock:       clk,
+		Pathfinder:  pathfinding.NewAStar(20000, 256),
+		Broadcaster: hub,
+		Persister:   syncPersister{},
+		Repos:       &memoryRepos{},
+		Garrisons:   memoryGarrisons{},
+		Inbox: func(c simulation.Command) bool {
+			select {
+			case commands <- c:
+				return true
+			default:
+				return false
+			}
+		},
 		Log:                log,
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
@@ -238,7 +266,6 @@ func newE2ECon(t *testing.T, pintar func(terrain []byte), ajustar func(*ws.Confi
 		unitIDs = append(unitIDs, u.ID)
 	}
 
-	commands := make(chan simulation.Command, 256)
 	dedupe := newMemoryDeduper()
 	gameLoop := loop.New(sim, clk, commands, loop.Config{
 		TickDuration:       100 * time.Millisecond,

@@ -43,6 +43,9 @@ function toSceneData(
 
   const units: SceneUnit[] = [];
   for (const u of state.units.values()) {
+    // Una unidad guarnecida está dentro de su ciudad, no en el mapa: sólo la
+    // recibe su dueño, y se ofrece en el HUD para sacarla.
+    if (u.garrisonCityId !== null) continue;
     units.push({
       id: u.id,
       x: u.x,

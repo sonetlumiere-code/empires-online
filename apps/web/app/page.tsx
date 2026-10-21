@@ -71,11 +71,22 @@ export default function Page() {
     (tile: Tile) => {
       const client = clientRef.current;
       if (!client || selectedUnitId === null) return;
+      // Un clic sobre la zona urbana de una ciudad (su 3 × 3) es la orden de
+      // entrar en ella, como un clic sobre un edificio en la referencia. El
+      // cliente sólo elige el objetivo; si se puede lo decide el servidor.
+      const ciudad = [...useWorldStore.getState().cities.values()].find(
+        (c) => Math.abs(tile.x - c.centerX) <= 1 && Math.abs(tile.y - c.centerY) <= 1,
+      );
+      if (ciudad) {
+        client.garrisonUnit(selectedUnitId, ciudad.id);
+        selectUnit(null);
+        return;
+      }
       // Sólo se envía la INTENCIÓN. La ruta, el tiempo y la validez los decide
       // el servidor; el cliente ni siquiera intenta adivinarlos.
       client.moveUnit(selectedUnitId, tile);
     },
-    [selectedUnitId],
+    [selectedUnitId, selectUnit],
   );
 
   const handleUnitClick = useCallback(
@@ -138,6 +149,7 @@ export default function Page() {
   }
 
   const ownUnits = [...units.values()].filter((u) => u.playerId === playerId);
+  const garrisoned = ownUnits.filter((u) => u.garrisonCityId !== null);
   const ownCity = [...cities.values()].find((c) => c.ownerPlayerId === playerId);
 
   return (
@@ -158,9 +170,19 @@ export default function Page() {
             <span style={{ color: 'var(--muted)' }}>Presencia: {ownCity.presenceState}</span>
           </>
         )}
+        {garrisoned.map((u) => (
+          <button
+            key={u.id}
+            className="secondary"
+            onClick={() => clientRef.current?.ungarrisonUnit(u.id)}
+            title={`Guarnecida en la ciudad ${u.garrisonCityId}`}
+          >
+            Sacar unidad {u.id}
+          </button>
+        ))}
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
           {selectedUnitId !== null
-            ? `Unidad ${selectedUnitId} seleccionada — clic en el mapa para moverla`
+            ? `Unidad ${selectedUnitId} seleccionada — clic en el mapa para moverla, en una ciudad para guarnecerla`
             : `${ownUnits.length} unidades — clic en una para seleccionarla`}
         </span>
       </header>

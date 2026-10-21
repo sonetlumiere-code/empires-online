@@ -81,6 +81,9 @@ type Result struct {
 	ControlRepairs  []int64
 	GarrisonDeletes []int64
 	Controls        []territory.Control
+	// Garrisons son las filas de garrisons que siguen vigentes: las de Input
+	// menos las borradas. Es el índice unidad → anfitriona de la simulación.
+	Garrisons map[int64]int64
 }
 
 // Fatal indica si algún hallazgo exige abortar el arranque.
@@ -208,6 +211,13 @@ func (c *checker) units() {
 		c.res.GarrisonDeletes = append(c.res.GarrisonDeletes, id)
 		c.find("INV-UNIT-007", "ALTO", PolicyRepair, fmt.Sprintf("unit:%d", id),
 			"fila de garrisons de una unidad que no está viva: se borra")
+	}
+
+	c.res.Garrisons = make(map[int64]int64, len(c.in.Garrisons))
+	for unitID, cityID := range c.in.Garrisons {
+		if alive[unitID] {
+			c.res.Garrisons[unitID] = cityID
+		}
 	}
 }
 

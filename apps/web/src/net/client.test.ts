@@ -157,6 +157,18 @@ describe('comandos', () => {
     expect(view!.payload).toEqual({ center: { x: 7, y: 9 } });
   });
 
+  it('unit.garrison y unit.ungarrison envían sólo lo que declara el contrato', async () => {
+    const { client, socket } = await ready();
+    client.garrisonUnit(42, 7);
+    client.ungarrisonUnit(42);
+
+    const [entrar, salir] = socket.parsedSent();
+    expect(entrar!.type).toBe('unit.garrison');
+    expect(entrar!.payload).toEqual({ unitId: 42, cityId: 7 });
+    expect(salir!.type).toBe('unit.ungarrison');
+    expect(salir!.payload, 'el tile de salida lo elige el servidor').toEqual({ unitId: 42 });
+  });
+
   it('cada comando lleva un requestId distinto', async () => {
     const { client, socket } = await ready();
     client.moveUnit(1, { x: 1, y: 1 });

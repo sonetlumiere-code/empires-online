@@ -174,7 +174,7 @@ func run() error {
 	// Validación de carga (EO-119): lo que el esquema no garantiza se comprueba
 	// sobre lo recién leído, antes de construir la RAM. Un fatal aborta sin
 	// escribir nada; lo reparable se corrige en una transacción auditada.
-	units, controls, err = checkLoadedState(rootCtx, postgres.NewLoadCheckRepo(store), loadcheck.Input{
+	units, controls, garrisons, err := checkLoadedState(rootCtx, postgres.NewLoadCheckRepo(store), loadcheck.Input{
 		World:    gameWorld,
 		EraCaps:  postgres.EraCaps(eras),
 		Cities:   cities,
@@ -189,6 +189,7 @@ func run() error {
 	state := simulation.NewState(gameWorld)
 	state.SetTerritories(territories, controls)
 	state.SetMovementIDFloor(maxMovementID)
+	state.SetGarrisons(garrisons)
 	recovery := simulation.Hydrate(state, units, cities, movements, sysClock.NowMs(), log)
 	log.Info("mundo rehidratado",
 		"units", recovery.Units, "cities", recovery.Cities,
@@ -253,6 +254,7 @@ func run() error {
 		Persister:   queue,
 		Repos:       gameStore,
 		Treaties:    treatyRepo,
+		Garrisons:   postgres.NewGarrisonRepo(store, unitRepo, movementRepo, treatyRepo),
 		// Las compensaciones de la cola vuelven al loop por el mismo canal que
 		// los comandos de los jugadores, sin bloquear al worker (ADR-013 §2.4).
 		Inbox: func(c simulation.Command) bool {

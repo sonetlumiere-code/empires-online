@@ -18,6 +18,7 @@ function unitView(over: Partial<v1.UnitView> = {}): v1.UnitView {
     maxHp: 40,
     status: 'IDLE',
     movement: null,
+    garrisonCityId: null,
     ...over,
   } as v1.UnitView;
 }
@@ -131,6 +132,30 @@ describe('deltas de entidad', () => {
     const unit = useWorldStore.getState().units.get(7)!;
     expect(unit.playerId).toBe(OTHER);
     expect(unit.x).toBe(20);
+  });
+
+  it('entity.update lleva la unidad a su guarnición y la saca con null explícito', () => {
+    const { applyServerMessage } = useWorldStore.getState();
+    applyServerMessage(server('entity.update', 6, { id: 1, status: 'GARRISONED', garrisonCityId: 10 }));
+    let unit = useWorldStore.getState().units.get(1)!;
+    expect(unit.status).toBe('GARRISONED');
+    expect(unit.garrisonCityId).toBe(10);
+    expect(unit.cityId, 'la ciudad de origen no cambia').toBe(10);
+
+    applyServerMessage(server('entity.update', 7, { id: 1, x: 4, y: 4 }));
+    expect(useWorldStore.getState().units.get(1)!.garrisonCityId, 'sin la clave, no cambia').toBe(10);
+
+    applyServerMessage(server('entity.update', 8, { id: 1, status: 'IDLE', x: 4, y: 4, garrisonCityId: null }));
+    unit = useWorldStore.getState().units.get(1)!;
+    expect(unit.status).toBe('IDLE');
+    expect(unit.garrisonCityId).toBeNull();
+  });
+
+  it('el snapshot trae la ciudad anfitriona de las unidades propias guarnecidas', () => {
+    useWorldStore.getState().applySnapshot(
+      snapshot({ units: [unitView({ status: 'GARRISONED', garrisonCityId: 10 })] }),
+    );
+    expect(useWorldStore.getState().units.get(1)!.garrisonCityId).toBe(10);
   });
 
   it('entity.despawn la retira y la deselecciona', () => {

@@ -24,6 +24,8 @@ export interface UnitView {
   maxHp: number;
   status: string;
   movement: ActiveMovement | null;
+  /** Ciudad que la aloja si está GARRISONED; `null` en el mapa. `cityId` es la de origen. */
+  garrisonCityId: number | null;
 }
 
 /**
@@ -146,6 +148,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         maxHp: u.maxHp,
         status: u.status,
         movement: u.movement ?? null,
+        garrisonCityId: u.garrisonCityId ?? null,
       });
     }
 
@@ -202,6 +205,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
             maxHp: u.maxHp,
             status: u.status,
             movement: u.movement ?? null,
+            garrisonCityId: u.garrisonCityId ?? null,
           });
           return { units };
         });
@@ -226,6 +230,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
             ...(p.status !== undefined ? { status: p.status } : {}),
             ...(p.cityId !== undefined ? { cityId: p.cityId } : {}),
             ...(p.movement !== undefined ? { movement: p.movement } : {}),
+            ...(p.garrisonCityId !== undefined ? { garrisonCityId: p.garrisonCityId } : {}),
           });
           return { units };
         });

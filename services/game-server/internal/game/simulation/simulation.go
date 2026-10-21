@@ -45,6 +45,9 @@ type Deps struct {
 	// Treaties caduca los tratados vencidos. Opcional: sin él, la caducidad
 	// simplemente no se evalúa, que es lo que ocurre en los tests de simulación.
 	Treaties TreatyExpirer
+	// Garrisons escribe la entrada y la salida de las guarniciones. Opcional:
+	// sin él, unit.garrison responde INTERNAL_ERROR.
+	Garrisons GarrisonStore
 	// Inbox devuelve un comando al loop desde otra goroutine sin bloquear, y
 	// dice si cupo. Lo usan las compensaciones de la cola de persistencia.
 	// Opcional: sin él, la compensación sólo se registra.
@@ -124,6 +127,14 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleIntroducePlayer(c)
 	case MovementPersistFailed:
 		s.handleMovementPersistFailed(c)
+	case GarrisonUnit:
+		s.handleGarrisonUnit(c)
+	case UngarrisonUnit:
+		s.handleUngarrisonUnit(c)
+	case GarrisonEntryResolved:
+		s.handleGarrisonEntryResolved(c)
+	case GarrisonExitFailed:
+		s.handleGarrisonExitFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -152,6 +163,12 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 	}
 	if err := u.EnsureCanMove(); err != nil {
 		s.rejectMove(cmd, moveErrorCode(err), err.Error())
+		return
+	}
+	if s.state.IsEntering(u.ID) {
+		// RN-GARR-020: su entrada espera la transacción; moverla ahora dejaría
+		// la RAM y la base contando historias distintas.
+		s.rejectMove(cmd, protocol.CodeUnitNotMovable, "la unidad está entrando en una ciudad")
 		return
 	}
 
@@ -448,7 +465,12 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 		return true
 	})
 
-	// 4. Ocultamiento en Safe Zones (docs/specs/safe-zones.md §6.4). Va después
+	// 4. Salidas de guarnición que esperaban tile (RN-GARR-014). Antes del
+	// ocultamiento: una unidad que sale a una zona segura se oculta en este
+	// mismo tick.
+	s.retryPendingExits()
+
+	// 5. Ocultamiento en Safe Zones (docs/specs/safe-zones.md §6.4). Va después
 	// de la fase 3 del mismo tick, así que una unidad que llega a una zona pasa
 	// por IDLE y se oculta en este mismo tick: MOVING → HIDDEN no ocurre nunca.
 	s.evaluateConcealment()
@@ -528,6 +550,12 @@ func (s *Simulation) FlushDirty() int {
 	total := 0
 	for _, u := range dirty {
 		if _, enMarcha := s.state.Movement(u.ID); enMarcha {
+			continue
+		}
+		if s.state.IsEntering(u.ID) {
+			// Volcaría IDLE encima del GARRISONED que su transacción está a punto
+			// de confirmar (RN-GARR-020). Se aplaza al siguiente volcado.
+			s.state.keepDirty(u.ID)
 			continue
 		}
 		cp := *u

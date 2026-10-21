@@ -102,6 +102,8 @@ export const UnitView = z.object({
   maxHp: z.number().int().min(1),
   status: UnitStatus,
   movement: ActiveMovement.nullable(),
+  /** Ciudad que aloja a la unidad mientras está GARRISONED; `null` fuera de una guarnición. `cityId` es siempre la de origen. */
+  garrisonCityId: EntityId.nullable(),
 });
 export type UnitView = z.infer<typeof UnitView>;
 

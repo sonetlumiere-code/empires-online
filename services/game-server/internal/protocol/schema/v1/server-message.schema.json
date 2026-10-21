@@ -415,6 +415,16 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "garrisonCityId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     },
                     "required": [
@@ -427,7 +437,8 @@
                       "hp",
                       "maxHp",
                       "status",
-                      "movement"
+                      "movement",
+                      "garrisonCityId"
                     ],
                     "additionalProperties": false
                   }
@@ -678,6 +689,16 @@
                   "anyOf": [
                     {
                       "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/movement/anyOf/0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "garrisonCityId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
                     },
                     {
                       "type": "null"
