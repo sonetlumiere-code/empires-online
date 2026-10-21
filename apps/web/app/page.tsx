@@ -13,8 +13,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameCanvas } from '../src/components/GameCanvas';
 import { GameClient, type ConnectionState } from '../src/net/client';
 import { login, register, ticketProvider, AuthError } from '../src/net/auth';
+import type { v1 } from '@empires-online/protocol';
+
 import { useWorldStore } from '../src/state/world';
-import type { Tile } from '../src/render/iso';
+import { ViewSync } from '../src/state/viewSync';
+import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
 
@@ -26,6 +29,8 @@ export default function Page() {
   const [connection, setConnection] = useState<ConnectionState>('idle');
 
   const clientRef = useRef<GameClient | null>(null);
+  // Cuándo decirle al servidor dónde mira la cámara (frontend.md §7.4.1).
+  const viewSyncRef = useRef(new ViewSync());
 
   const applyServerMessage = useWorldStore((s) => s.applyServerMessage);
   const selectUnit = useWorldStore((s) => s.selectUnit);
@@ -52,8 +57,15 @@ export default function Page() {
         const client = new GameClient({
           url: WS_URL,
           fetchTicket: ticketProvider(ticket),
-          onMessage: applyServerMessage,
-          onStateChange: setConnection,
+          onMessage: (message) => {
+            applyServerMessage(message);
+            trackSession(viewSyncRef.current, message);
+          },
+          onStateChange: (state) => {
+            // Fuera de una sesión lista no se envía session.view.
+            if (state !== 'ready') viewSyncRef.current.suspend();
+            setConnection(state);
+          },
           onError: (code, message) => setAuthError(`${code}: ${message}`),
         });
         clientRef.current = client;
@@ -68,6 +80,12 @@ export default function Page() {
   );
 
   const serverTimeMs = useCallback(() => clientRef.current?.serverTimeMs() ?? Date.now(), []);
+
+  // Cada frame: si la cámara cruzó de chunk, el servidor tiene que saberlo.
+  const handleCameraCenter = useCallback((center: Point) => {
+    const tile = viewSyncRef.current.update(center, performance.now());
+    if (tile) clientRef.current?.setView(tile);
+  }, []);
 
   const handleTileClick = useCallback(
     (tile: Tile) => {
@@ -185,7 +203,7 @@ export default function Page() {
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
           {selectedUnitId !== null
             ? `Unidad ${selectedUnitId} seleccionada — clic en el mapa para moverla, en una ciudad para guarnecerla`
-            : `${ownUnits.length} unidades — clic en una para seleccionarla`}
+            : `${ownUnits.length} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H vuelve a la ciudad`}
         </span>
       </header>
 
@@ -194,6 +212,7 @@ export default function Page() {
           serverTimeMs={serverTimeMs}
           onTileClick={handleTileClick}
           onUnitClick={handleUnitClick}
+          onCameraCenter={handleCameraCenter}
         />
       </div>
 
@@ -206,6 +225,26 @@ export default function Page() {
       )}
     </main>
   );
+}
+
+/**
+ * Lleva a ViewSync el principio de cada sesión: el welcome la abre y el primer
+ * snapshot le dice dónde centró el servidor la vista (la ciudad propia, o el
+ * centro del mundo si el jugador no la tiene).
+ */
+function trackSession(sync: ViewSync, message: v1.ServerMessage): void {
+  if (message.type === 'session.welcome') {
+    sync.onWelcome(message.payload.world);
+    return;
+  }
+  if (message.type === 'world.snapshot' && sync.isAwaitingSnapshot()) {
+    const { playerId, world } = useWorldStore.getState();
+    const own = message.payload.cities.find((c) => c.ownerPlayerId === playerId);
+    const center = own
+      ? { x: own.centerX, y: own.centerY }
+      : { x: Math.floor((world?.width ?? 0) / 2), y: Math.floor((world?.height ?? 0) / 2) };
+    sync.onInitialSnapshot(center);
+  }
 }
 
 const styles = {

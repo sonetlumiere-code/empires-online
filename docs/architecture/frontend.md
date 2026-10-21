@@ -13,6 +13,7 @@ Propósito: definir el diseño objetivo del cliente de **Empires Online** —Nex
 > | `src/state/interpolation.ts` | Posición autoritativa e interpolada de una polilínea (§5.1, §5.2) |
 > | `src/render/reconciler.ts` | Corrección gradual de las discontinuidades (§5.3) |
 > | `src/render/iso.ts`, `src/render/scene.ts`, `src/components/GameCanvas.tsx` | Capa 3: proyección, escena PixiJS y su montaje en React |
+> | `src/render/camera.ts`, `src/state/viewSync.ts` | Cámara desplazable y cuándo enviar `session.view` (§7.4.1) |
 > | `app/api/auth/*/route.ts`, `src/server/*`, `identity/*`, `instrumentation.ts` | Servidor de Next.js: alta, login, sesión web, emisión del ticket y almacén de identidad ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) |
 >
 > Cada sección empieza con una línea **Estado** que dice qué parte es código y qué parte es diseño objetivo,
@@ -29,6 +30,7 @@ Propósito: definir el diseño objetivo del cliente de **Empires Online** —Nex
 > | §5 Posición autoritativa y de render | **Ajustada al código.** |
 > | §6 Coordenadas | Las fórmulas existen; el anclaje del rombo y el acotado del clic difieren (§6.2, §6.4). |
 > | §7.1–§7.2, §7.4–§7.6 Escena, profundidad, culling, picking, presupuesto | **Objetivo**, con lo que existe dicho en cada una. |
+> | §7.4.1 Cámara desplazable y `session.view` | **Ajustada al código** (`EO-122`). |
 > | §7.3 Bucle de frame | **Ajustada al código.** |
 > | §8 React frente a PixiJS | El reparto existe; minimapa, paneles y `next/dynamic` no. |
 > | §9 React Query | **No existe**: el cliente no tiene esa dependencia. |
@@ -46,8 +48,8 @@ Documentos relacionados: [`./game-loop.md`](./game-loop.md) · [`./overview.md`]
 
 > **Estado: se cumple.** El cliente sólo envía intenciones y dibuja lo que replica. Las que hoy emite la
 > interfaz son `unit.move`, `unit.garrison` (clic sobre la zona urbana de una ciudad con una unidad
-> seleccionada) y `unit.ungarrison` (botón del HUD); `GameClient` tiene también `cancelMove` y `setView`, que
-> ninguna parte de la interfaz llama.
+> seleccionada), `unit.ungarrison` (botón del HUD) y `session.view` (al desplazar la cámara a otro chunk,
+> §7.4.1); `GameClient` tiene también `cancelMove`, que ninguna parte de la interfaz llama.
 
 El cliente es un **terminal de observación e intención**. Envía intenciones (`unit.move`, `unit.cancel_move`, `session.view`) y renderiza una réplica de solo lectura de la verdad que emite el Game Server en Go. No calcula posiciones finales, ni HP, ni recursos, ni resultados de combate, ni ETAs, ni paths: *client sends intent, server determines truth*.
 
@@ -558,8 +560,8 @@ El picking (§7.5) usa la posición **dibujada**, la que el jugador ve.
 > `worldToIso`, `isoToWorld`, `isoToTile`, `worldToScreen` y `screenToTile` con las fórmulas de §6.2–§6.4, y
 > la cámara se aplica como `position` + `scale` del contenedor raíz. Tres diferencias con lo que sigue: el
 > rombo de un tile se dibuja **centrado** en `worldToIso(x, y)` —no colgado de su vértice superior—, por eso
-> `isoToTile` redondea (`floor(w + 0.5)`) en lugar de truncar; el zoom está fijo en 1 y la cámara centrada
-> en la ciudad propia (§7.4); y el tile pulsado **no** se acota al mundo antes de enviarlo. §6.5 se cumple.
+> `isoToTile` redondea (`floor(w + 0.5)`) en lugar de truncar; el zoom está fijo en 1 y la cámara la mueve el
+> `CameraController` de §7.4.1, con su centro en tiles; y el tile pulsado **no** se acota al mundo antes de enviarlo. §6.5 se cumple.
 > Tests: `src/render/iso.test.ts` (fórmulas, inversa, redondeo, picking con zoom), sin el recorrido
 > exhaustivo de 512×512 de §12.1.
 
@@ -735,16 +737,16 @@ frame; lo que sí se evalúa en cada frame es el reloj, a través de la función
 recibe en lugar de un valor.
 
 Diseño objetivo que el bucle real **todavía no** hace: el terreno compuesto por chunk en una `RenderTexture`
-(hoy es un `Graphics` por tile visible), el `depthIndex` con *bias* de capa de §7.2, el seguimiento de cámara
-con inercia y el envío de `session.view` al cruzar de chunk —`GameClient.setView` existe y tiene test, pero la
-escena no lo llama y la vista queda centrada en la ciudad propia—. Tampoco evita asignar un `{ x, y }` por
-unidad y frame; con las decenas de unidades de un área de interés del MVP no se ha medido que importe.
+(hoy es un `Graphics` por tile visible), el `depthIndex` con *bias* de capa de §7.2 y el seguimiento de cámara
+con inercia. Lo que sí hace, desde `EO-122`, es avanzar la cámara con el `deltaMS` del *ticker* al principio de
+cada frame (`CameraController.step`) y entregar su centro a la página (`onCameraFrame`), que decide si envía
+`session.view` (§7.4.1). Tampoco evita asignar un `{ x, y }` por unidad y frame; con las decenas de unidades de un área de interés del MVP no se ha medido que importe.
 
 ### 7.4 Área de interés, culling y `session.view`
 
-> **Estado: objetivo.** El cliente no envía `session.view`: la cámara se centra en la ciudad propia en cada
-> actualización del store y no se mueve. El culling existe sólo para el terreno: en cada frame se recorre el
-> cuadrado de tiles que cubre el viewport, con un margen de 4, y se crean o retiran sus gráficos. Las
+> **Estado:** la cámara desplazable y el envío de `session.view` están **implementados** tal como dice §7.4.1
+> (`EO-122`). El culling sigue siendo objetivo: hoy existe sólo para el terreno —en cada frame se recorre el
+> cuadrado de tiles que cubre el viewport, con un margen de 4, y se crean o retiran sus gráficos— y las
 > entidades no se descartan por visibilidad.
 
 El servidor ya limita lo que envía: suscripción **por chunk**, radio por defecto **2 chunks** (`EO_INTEREST_RADIUS_CHUNKS = 2`), es decir 5×5 chunks = 160×160 tiles alrededor del centro de vista. Eso no basta como culling de render: a zoom 1 en un viewport de 1920×1080 son visibles del orden de 30×34 tiles (unos 1000 tiles), frente a los 25 600 del área de interés. El cliente hace por tanto **su propio culling**:
@@ -755,14 +757,68 @@ El servidor ya limita lo que envía: suscripción **por chunk**, radio por defec
 
 `session.view` está sujeto a rate limit en el servidor. El cliente lo emite **solo cuando el centro de la cámara cruza a otro chunk**, y como máximo una vez por segundo (muy por debajo de los 20 msg/s permitidos). El centro se envía en tiles enteros. Al conectar no se envía nada: el servidor centra la vista en la ciudad del jugador.
 
+#### 7.4.1 Cámara desplazable (`EO-122`)
+
+Especificación de la cámara y del envío de `session.view`, decidida el 2026-10-21 antes de implementarla y
+**ajustada al código** que la implementa (`src/render/camera.ts`, `src/state/viewSync.ts`, `GameCanvas.tsx`,
+`app/page.tsx`). Las referencias de mecánica son las del RTS clásico: desplazar con el teclado o arrastrando, y
+una tecla que vuelve al centro urbano.
+
+**Estado de la cámara.** Un `CameraController` (`src/render/camera.ts`, sin Pixi ni DOM) guarda el **centro en
+coordenadas de mundo continuas** (tiles fraccionarios), no en píxeles: así el recorte a los límites del mundo y
+el cálculo del chunk son aritmética de tiles. El zoom sigue fijo en 1. La cámara se construye a partir de ese
+centro en cada frame (`worldToIso`), y el picking usa la misma cámara del frame.
+
+| Regla | Valor |
+|---|---|
+| Posición inicial | La **primera vez** que el store conoce la ciudad propia, la cámara se centra en ella. Después nada la recentra sola: ni un snapshot, ni una reconexión, ni un `city.update` |
+| Teclado | Flechas y `W`/`A`/`S`/`D` desplazan la cámara **en pantalla** (arriba es arriba en la pantalla, no `-y` del mundo) a `CAMERA_PAN_PX_PER_S` = 900 px/s a zoom 1, mientras la tecla esté pulsada. El desplazamiento usa el `deltaMS` del *ticker*, así que no depende de los FPS |
+| Arrastre | Botón **derecho** o **central** sobre el lienzo: el mapa sigue al cursor (la cámara se mueve en sentido contrario al arrastre). El botón izquierdo conserva seleccionar y ordenar; el menú contextual del navegador se suprime sobre el lienzo |
+| Recentrar | `H` vuelve a centrar la cámara en la ciudad propia (en la referencia, la tecla del centro urbano). La cámara **recuerda** la ciudad desde la primera vez que la ve: lejos de casa, el snapshot del área ya no la trae y el store no la tiene |
+| Límites | El centro se recorta a `[0, width − 1] × [0, height − 1]` en tiles, con las dimensiones del `session.welcome` |
+| Foco | El teclado se ignora si el foco está en un `input`, `textarea` o `select`, o con `Ctrl`/`Meta`/`Alt` pulsados: no se roban los atajos del navegador |
+
+**Envío de `session.view`.** Lo decide un `ViewSync` (`src/state/viewSync.ts`, puro), que la página consulta en
+cada frame con el centro de la cámara y el reloj monótono local, y que devuelve el tile que hay que enviar o
+nada. La página llama a `GameClient.setView` con ese tile; la escena nunca envía nada.
+
+| Regla | Detalle |
+|---|---|
+| Qué se envía | El centro de la cámara redondeado hacia abajo a tile entero y recortado al mundo: `{ x, y }` enteros, nunca píxeles |
+| Cuándo | Sólo cuando el **chunk** de ese tile (`floor(x / chunkSize)`, `floor(y / chunkSize)`) es distinto del chunk del último centro que conoce el servidor |
+| Cadencia | Como mucho uno cada `VIEW_MIN_INTERVAL_MS` = 1000 ms. Si la cámara cruza de chunk antes de que pase el segundo, se envía al cumplirse, con el centro de ese momento (y nada si para entonces ha vuelto al chunk ya conocido) |
+| Qué cuenta como «conocido por el servidor» | Al empezar una sesión, el centro en que el servidor sirvió el snapshot inicial: la ciudad propia, o el centro del mundo si el jugador no la tiene. Después, el último centro enviado |
+| Sesión | Entre un `session.welcome` y su snapshot inicial no se envía nada; tras un cierre, nada hasta la siguiente sesión. Así una reconexión **restaura la vista**: si la cámara estaba lejos de la ciudad, el primer frame después del snapshot inicial envía su centro |
+| Respuesta | El servidor responde con un `world.snapshot` del área nueva con el `requestId` del comando, que reemplaza unidades, ciudades y territorios del store y conserva el terreno ya recibido (§4.3). La unidad seleccionada que queda fuera del área se deselecciona |
+
+Una cámara que el jugador arrastra deprisa cruza varios chunks por segundo; con la cadencia de 1 s se envía a
+lo sumo un `session.view` por segundo, y cada uno lleva el centro más reciente. El coste en el servidor es un
+`RequestSnapshot` por segundo y jugador en el peor caso, muy por debajo del *token bucket* de 20/s.
+
+Lo que esta sección **no** hace, a propósito: zoom, desplazamiento por el borde de la pantalla, minimapa, y
+`entity.spawn` / `entity.despawn` incrementales al cambiar de área (el servidor responde con un snapshot,
+[../specs/websocket-protocol.md](../specs/websocket-protocol.md) §7.3). Consecuencia visible: lejos de casa, el
+HUD cuenta sólo las unidades propias que hay en el área, porque el store sólo replica el área; y una unidad que
+entra en el área ya observada no aparece hasta el siguiente snapshot, porque el servidor todavía no emite
+`entity.spawn` por cruce de frontera ([networking.md](./networking.md) §4.3).
+
+**Tests.** `src/render/camera.test.ts` (dirección en pantalla, independencia de los FPS, arrastre, recorte, ciudad
+recordada, teclas) y `src/state/viewSync.test.ts` (sin envíos fuera de sesión ni antes del snapshot inicial,
+cambio de chunk, cadencia de 1 s con el centro más reciente, recorte, restauración tras reconectar); quince
+mutaciones de sus guardas, todas muertas. Verificado en el navegador contra un servidor vivo sobre
+`empires_test`: el arrastre envía un `session.view` con el centro en tiles enteros y el servidor responde con el
+snapshot del área nueva (con el `requestId` y terreno sólo de los chunks nuevos); el centro se recorta al borde
+del mundo; y una reconexión forzada restaura la vista sin esperar.
+
 ### 7.5 Picking
 
-> **Estado: objetivo; existe una versión por tile.** Un único `pointerdown` en el `stage` traduce el punto a
-> tile (`screenToTile`); si alguna unidad se **dibuja** en ese tile (su posición del reconciliador,
+> **Estado: objetivo; existe una versión por tile.** Un único `pointerdown` **del botón izquierdo** en el
+> `stage` traduce el punto a tile (`screenToTile`) con la cámara del frame —el derecho y el central arrastran la
+> cámara, §7.4.1—; si alguna unidad se **dibuja** en ese tile (su posición del reconciliador,
 > redondeada), es un clic sobre ella —la página sólo selecciona unidades propias—; si no, es un clic sobre el
 > tile. Con una unidad seleccionada, un clic sobre el 3 × 3 de una ciudad es `unit.garrison` y cualquier otro
-> tile es `unit.move`. No hay `hitArea` por sprite, ni clic derecho, ni tecla de cancelación, ni resaltado del
-> tile bajo el cursor.
+> tile es `unit.move`. No hay `hitArea` por sprite, ni orden con clic derecho (el derecho arrastra la cámara), ni
+> tecla de cancelación, ni resaltado del tile bajo el cursor.
 
 Dos niveles, resueltos en este orden:
 

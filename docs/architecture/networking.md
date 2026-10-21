@@ -322,7 +322,7 @@ Nada de esto se persiste: son datos **reconstruibles** (conjuntos de interés y 
 
 ### 5.3 Movimiento del centro de vista (`session.view`)
 
-Al conectar, el centro de vista se fija en la **ciudad del jugador** (`RequestSnapshot` con `Center: nil`; si el jugador no tuviera ciudad, se cae al centro del mundo y el resultado se marca `Found: false`). El cliente lo mueve con `session.view` (sujeto al rate limit global, §8.1). El servidor no confía en el cliente para nada más que esto: `session.view` declara *dónde mira*, no *qué recibe*; el conjunto lo calcula el servidor.
+Al conectar, el centro de vista se fija en la **ciudad del jugador** (`RequestSnapshot` con `Center: nil`; si el jugador no tuviera ciudad, se cae al centro del mundo y el resultado se marca `Found: false`). El cliente lo mueve con `session.view` (sujeto al rate limit global, §8.1): el de `apps/web` lo envía cuando el centro de su cámara cambia de chunk, como mucho uno por segundo, y tras una reconexión para restaurar la vista ([frontend.md](./frontend.md) §7.4.1). El servidor no confía en el cliente para nada más que esto: `session.view` declara *dónde mira*, no *qué recibe*; el conjunto lo calcula el servidor.
 
 **Un centro fuera de los límites no se rechaza: se recorta.** `ChunksInRadius` aplica un `clamp` del centro al mundo antes de calcular los chunks, de modo que un `session.view` con coordenadas absurdas devuelve el área de interés del borde más cercano en lugar de un error. Es deliberado: mover la cámara no es una orden de gameplay y fallar aquí no protegería nada.
 

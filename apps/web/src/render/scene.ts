@@ -10,7 +10,8 @@
  */
 import { Application, Container, Graphics, Text } from 'pixi.js';
 
-import { TILE_H, TILE_W, depthOf, screenToTile, worldToIso, type Camera, type Tile } from './iso';
+import { TILE_H, TILE_W, depthOf, screenToTile, worldToIso, type Camera, type Point, type Tile } from './iso';
+import type { CameraController } from './camera';
 import type { ActiveMovement } from '../state/interpolation';
 import { RenderReconciler } from './reconciler';
 
@@ -61,7 +62,6 @@ export interface SceneData {
   readonly terrainAt: (x: number, y: number) => number | undefined;
   /** Instante del SERVIDOR, ya corregido por el desfase de reloj. */
   readonly serverTimeMs: () => number;
-  readonly camera: Camera;
 }
 
 export interface SceneCallbacks {
@@ -69,6 +69,11 @@ export interface SceneCallbacks {
   onTileClick?: (tile: Tile) => void;
   /** El jugador hizo clic sobre una unidad. */
   onUnitClick?: (unitId: number) => void;
+  /**
+   * Cada frame, tras mover la cámara, con su centro en tiles continuos. Es por
+   * donde la página decide si enviar session.view: la escena nunca envía nada.
+   */
+  onCameraFrame?: (center: Point) => void;
 }
 
 export class IsoScene {
@@ -88,7 +93,13 @@ export class IsoScene {
   // gradual de las discontinuidades que traen los deltas (frontend.md §5.3).
   private reconciler = new RenderReconciler();
 
-  constructor(private readonly callbacks: SceneCallbacks = {}) {}
+  // La cámara de este frame: la usan el dibujo y el picking (frontend.md §7.4.1).
+  private camera: Camera | null = null;
+
+  constructor(
+    private readonly cameraController: CameraController,
+    private readonly callbacks: SceneCallbacks = {},
+  ) {}
 
   /** Inicializa PixiJS sobre un canvas ya montado. */
   async mount(canvas: HTMLCanvasElement, width: number, height: number): Promise<void> {
@@ -114,8 +125,11 @@ export class IsoScene {
     app.stage.eventMode = 'static';
     app.stage.hitArea = app.screen;
     app.stage.on('pointerdown', (event) => {
-      if (!this.data) return;
-      const tile = screenToTile(event.global.x, event.global.y, this.data.camera);
+      // Sólo el botón izquierdo selecciona y ordena: el derecho y el central
+      // arrastran la cámara (los gestiona GameCanvas).
+      if (event.button !== 0) return;
+      if (!this.data || !this.camera) return;
+      const tile = screenToTile(event.global.x, event.global.y, this.camera);
 
       // El picking de unidades tiene prioridad: seleccionar una unidad es más
       // frecuente que ordenar un movimiento a su tile exacto.
@@ -159,7 +173,14 @@ export class IsoScene {
     const data = this.data;
     if (!data || !this.app) return;
 
-    const { camera } = data;
+    // La cámara avanza con el dt del ticker: el desplazamiento por teclado no
+    // depende de los FPS.
+    this.cameraController.step(this.app.ticker.deltaMS);
+    const camera = this.cameraController.camera(this.app.screen.width, this.app.screen.height);
+    this.camera = camera;
+    if (!camera) return;
+    const center = this.cameraController.centerWorld();
+    if (center) this.callbacks.onCameraFrame?.(center);
     this.root.position.set(camera.viewportWidth / 2 - camera.x, camera.viewportHeight / 2 - camera.y);
     this.root.scale.set(camera.zoom);
 
@@ -167,7 +188,7 @@ export class IsoScene {
     // dt del ticker es lo que mide la continuidad (frontend.md §5.3).
     this.reconciler.frame(data.serverTimeMs(), this.app.ticker.deltaMS);
 
-    this.drawTerrain(data);
+    this.drawTerrain(data, camera);
     this.drawTerritories(data);
     this.drawCities(data);
     this.drawUnits(data);
@@ -178,13 +199,13 @@ export class IsoScene {
     this.entityLayer.children.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
   }
 
-  private drawTerrain(data: SceneData): void {
+  private drawTerrain(data: SceneData, camera: Camera): void {
     // Sólo se dibujan los tiles visibles: culling por área de interés.
-    const halfW = data.camera.viewportWidth / (2 * data.camera.zoom);
-    const halfH = data.camera.viewportHeight / (2 * data.camera.zoom);
+    const halfW = camera.viewportWidth / (2 * camera.zoom);
+    const halfH = camera.viewportHeight / (2 * camera.zoom);
     const margin = 4;
 
-    const centerIso = { x: data.camera.x, y: data.camera.y };
+    const centerIso = { x: camera.x, y: camera.y };
     const centerWorld = {
       x: centerIso.y / TILE_H + centerIso.x / TILE_W,
       y: centerIso.y / TILE_H - centerIso.x / TILE_W,

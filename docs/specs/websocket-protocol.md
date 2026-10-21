@@ -278,6 +278,11 @@ payload: z.object({ center: Tile }).strict()   // Tile = { x, y } en tiles, no p
 
 **Efectos:** el servidor despacha `RequestSnapshot` al game loop con el nuevo centro, recalcula el conjunto de chunks suscritos (radio `EO_INTEREST_RADIUS_CHUNKS` = 2 alrededor del chunk del centro, 5×5 = 25 chunks en el interior del mundo, menos en los bordes) y responde con un **`world.snapshot` completo del área nueva**, llevando el `requestId` de este comando. El terreno incluido en esa respuesta es **sólo el de los chunks que esta sesión aún no tiene** (§8.4).
 
+**Obligaciones del cliente.** Enviar el centro en tiles enteros, sólo cuando cambia el chunk del centro respecto
+del último que conoce el servidor, y como mucho uno por segundo; no enviar nada entre el `session.welcome` y el
+snapshot inicial de la sesión, que se sirve centrado en la ciudad del jugador. El cliente de `apps/web` lo
+cumple con una cámara desplazable ([../architecture/frontend.md](../architecture/frontend.md) §7.4.1, `EO-122`).
+
 > El MVP recentra con un snapshot, no con deltas. `Hub.Subscribe` ya devuelve los chunks que entran y los que salen, pero emitir `entity.spawn` / `entity.despawn` a partir de esa diferencia está **pendiente**: hoy esos dos conjuntos sólo se registran en el log. Un cliente correcto reemplaza su escena con lo que trae el snapshot.
 
 ### 7.4 `unit.move`

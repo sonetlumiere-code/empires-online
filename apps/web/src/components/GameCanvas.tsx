@@ -21,7 +21,8 @@ import {
   type SceneTerritory,
   type SceneUnit,
 } from '../render/scene';
-import { cameraAt, type Tile } from '../render/iso';
+import { CameraController, panDirectionOf } from '../render/camera';
+import type { Point, Tile } from '../render/iso';
 import { terrainAt, useWorldStore } from '../state/world';
 
 export interface GameCanvasProps {
@@ -29,12 +30,13 @@ export interface GameCanvasProps {
   serverTimeMs: () => number;
   onTileClick: (tile: Tile) => void;
   onUnitClick: (unitId: number) => void;
+  /** Centro de la cámara en cada frame, en tiles continuos (frontend.md §7.4.1). */
+  onCameraCenter?: (center: Point) => void;
 }
 
 /** Proyecta el estado del store a lo que la escena necesita dibujar. */
 function toSceneData(
   state: ReturnType<typeof useWorldStore.getState>,
-  canvas: HTMLCanvasElement,
   serverTimeMs: () => number,
 ): SceneData | null {
   if (!state.world) return null;
@@ -57,10 +59,8 @@ function toSceneData(
   }
 
   const cities: SceneCity[] = [];
-  let focus = { x: Math.floor(state.world.width / 2), y: Math.floor(state.world.height / 2) };
   for (const c of state.cities.values()) {
     const isOwn = c.ownerPlayerId === ownId;
-    if (isOwn) focus = { x: c.centerX, y: c.centerY };
     cities.push({
       id: c.id,
       centerX: c.centerX,
@@ -99,19 +99,30 @@ function toSceneData(
     // frame para interpolar. Congelarlo aquí dejaría las unidades quietas entre
     // actualizaciones del store.
     serverTimeMs,
-    camera: cameraAt(focus, canvas.clientWidth, canvas.clientHeight, 1),
   };
 }
 
-export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick }: GameCanvasProps) {
+/** La ciudad propia en el store, si la hay. */
+function ownCityCenter(state: ReturnType<typeof useWorldStore.getState>): Tile | null {
+  for (const c of state.cities.values()) {
+    if (c.ownerPlayerId === state.playerId) return { x: c.centerX, y: c.centerY };
+  }
+  return null;
+}
+
+export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCenter }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<IsoScene | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
 
   // Los callbacks viven en un ref para que la escena no tenga que recrearse cada
   // vez que el padre se vuelve a renderizar.
-  const handlers = useRef({ onTileClick, onUnitClick });
-  handlers.current = { onTileClick, onUnitClick };
+  const handlers = useRef({ onTileClick, onUnitClick, onCameraCenter });
+  handlers.current = { onTileClick, onUnitClick, onCameraCenter };
+
+  // La cámara vive mientras viva el componente, también a través de una
+  // reconexión: así la vista se restaura en lugar de volver a la ciudad.
+  const cameraRef = useRef<CameraController>(new CameraController());
 
   const timeRef = useRef(serverTimeMs);
   timeRef.current = serverTimeMs;
@@ -130,9 +141,10 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick }: GameCanva
       .then(async () => {
         if (disposed) return;
 
-        const s = new IsoScene({
+        const s = new IsoScene(cameraRef.current, {
           onTileClick: (tile) => handlers.current.onTileClick(tile),
           onUnitClick: (unitId) => handlers.current.onUnitClick(unitId),
+          onCameraFrame: (center) => handlers.current.onCameraCenter?.(center),
         });
         await s.mount(canvas, canvas.clientWidth, canvas.clientHeight);
 
@@ -147,7 +159,7 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick }: GameCanva
         sceneRef.current = s;
         setRenderError(null);
 
-        const data = toSceneData(useWorldStore.getState(), canvas, () => timeRef.current());
+        const data = toSceneData(useWorldStore.getState(), () => timeRef.current());
         if (data) s.update(data);
       })
       .catch((err: unknown) => {
@@ -176,16 +188,102 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick }: GameCanva
   // El store empuja el estado a la escena; la escena decide cuándo dibujar.
   useEffect(() => {
     const push = (state: ReturnType<typeof useWorldStore.getState>) => {
+      // La primera vez que se conoce la ciudad propia, la cámara se centra en
+      // ella; después ya no la recentra nada salvo el jugador (tecla H).
+      const camera = cameraRef.current;
+      if (state.world) {
+        camera.setBounds(state.world);
+        const city = ownCityCenter(state);
+        if (city) camera.setHome(city);
+      }
+
       const scene = sceneRef.current;
       const canvas = canvasRef.current;
       if (!scene || !canvas) return;
 
-      const data = toSceneData(state, canvas, () => timeRef.current());
+      const data = toSceneData(state, () => timeRef.current());
       if (data) scene.update(data);
     };
 
     push(useWorldStore.getState());
     return useWorldStore.subscribe(push);
+  }, []);
+
+  // Teclado y arrastre de la cámara (frontend.md §7.4.1). Viven en el DOM, no en
+  // Pixi: el botón izquierdo sigue siendo de la escena (seleccionar y ordenar).
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const camera = cameraRef.current;
+
+    const ignorable = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return true;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable === true;
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (ignorable(e)) return;
+      const direction = panDirectionOf(e.key);
+      if (direction) {
+        camera.setHeld(direction, true);
+        e.preventDefault(); // las flechas no deben desplazar la página
+        return;
+      }
+      if (e.key === 'h' || e.key === 'H') camera.goHome();
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      const direction = panDirectionOf(e.key);
+      if (direction) camera.setHeld(direction, false);
+    };
+    // Si la ventana pierde el foco con una tecla pulsada, su keyup no llega.
+    const onBlur = () => camera.releaseAll();
+
+    let drag: { pointerId: number; x: number; y: number } | null = null;
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 1 && e.button !== 2) return;
+      drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      // La captura sólo mejora el arrastre fuera del lienzo; si el puntero ya no
+      // está activo el navegador la rechaza, y el arrastre sigue igual.
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* sin captura */
+      }
+      e.preventDefault();
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      camera.dragBy(e.clientX - drag.x, e.clientY - drag.y);
+      drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      drag = null;
+      if (canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    };
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+    canvas.addEventListener('contextmenu', onContextMenu);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', onPointerUp);
+      canvas.removeEventListener('contextmenu', onContextMenu);
+      camera.releaseAll();
+    };
   }, []);
 
   return (
