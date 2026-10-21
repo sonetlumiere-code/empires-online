@@ -57,7 +57,7 @@ Código de referencia: `internal/domain/movement/{path.go,movement.go}` (dominio
 | Modificadores de velocidad por tecnología o civilización | Fuera de MVP |
 | Búsqueda del tile libre más cercano si el destino está bloqueado | Fuera de MVP (canon §8: se rechaza) |
 | Cota dura de waypoints por polilínea | `TBD (fuera de MVP)` — ver RN-MOVE-014 |
-| Registro del movimiento en `world_events` | Fuera de MVP: la tabla y su repositorio existen, pero el subsistema de movimiento no escribe en ella |
+| Registro del movimiento en `world_events` | Fuera de MVP por decisión (§11): el historial es `unit_movements` |
 | Validación del mensaje entrante contra el JSON Schema **en tiempo de ejecución** | Fuera de MVP: los esquemas embebidos alimentan los *contract tests*, no el camino caliente |
 | Movimiento de `TOWN_CENTER` | No aplica: es un *building*, no una unidad (canon §10) |
 
@@ -510,6 +510,25 @@ Cota cuantitativa del desplazamiento máximo: un `VILLAGER` sobre ROAD (el terre
 `360 ms` por tile ortogonal, es decir **menos de un tile cada 3 ticks**. Ninguna secuencia de mensajes del
 cliente puede alterar esa cifra, porque no participa en su cálculo.
 
+### 6.10 Lo que dibuja el cliente
+
+El cliente no calcula ninguna posición que cuente: dibuja. Lo que dibuja sale de dos piezas, ambas en
+`apps/web` y ambas sin efecto sobre el servidor:
+
+- **Interpolación** (`renderPosition`, `src/state/interpolation.ts`): entre el waypoint alcanzado y el
+  siguiente, en proporción al tiempo transcurrido del segmento, con los `tMs` que vinieron en la polilínea. El
+  cliente no recalcula la fórmula de §6.3.
+- **Corrección gradual** (`RenderReconciler`, `src/render/reconciler.ts`): cuando un delta hace saltar el
+  objetivo —la orden que sustituye a otra de §6.7, que reinicia la ruta desde el último tile **alcanzado**
+  mientras el dibujo ya iba camino del siguiente; la cancelación de §6.8; un `unit.movement.completed`
+  anunciado antes de que el reloj local llegue a `arrival_time_ms`; un `entity.update` con posición; un
+  snapshot al reconectar—, el salto se reparte en unos frames en lugar de dibujarse de golpe. Por encima de
+  2 tiles se salta, y ninguna corrección dura más de 300 ms. El diseño y sus constantes están en
+  [../architecture/frontend.md](../architecture/frontend.md) §5.3.
+
+Ninguna de las dos se envía al servidor ni decide nada: la verdad sigue siendo `PositionAt` en el reloj del
+servidor (§6.5), y lo único que el cliente envía es el tile de destino (§6.9).
+
 ---
 
 ## 7. Estados y transiciones
@@ -775,7 +794,23 @@ Los eventos son hechos consumados (canon §15) y son la base de los deltas de re
 | `UnitMovementFailed` | Recuperación con polilínea inválida o unidad ausente | — (no hay cliente conectado) | `UPDATE status='FAILED'` |
 
 La tabla `world_events` y su repositorio (`internal/persistence/postgres/events.go`) existen, pero **el
-subsistema de movimiento no escribe en ella en MVP**. Añadir esa traza es trabajo pendiente, no un hecho.
+subsistema de movimiento no escribe en ella en MVP**, y es una decisión, no un olvido (2026-10-20, cierre de
+M4):
+
+- **El historial del movimiento ya es durable y completo en `unit_movements`.** Cada fila guarda la
+  polilínea, `start_time_ms`, `arrival_time_ms`, el estado final y `finished_at`, y no se borra. Un
+  `UnitMovementStarted` o `UnitMovementCompleted` en `world_events` repetiría esos datos en otra tabla.
+- **Los deltas no salen de `world_events`.** La simulación emite los mensajes de protocolo directamente en
+  la fase en que ocurre el hecho ([../architecture/persistence.md](../architecture/persistence.md): no hay bus
+  de eventos de dominio en el MVP). El criterio original de `EO-072` —«son la base de los deltas»— describía
+  una arquitectura que el proyecto no adoptó.
+- **Es la escritura más frecuente del juego.** Cada orden son dos transacciones (inicio y cierre); añadirles
+  una fila de evento duplica las inserciones del camino más caliente sin que nada las lea.
+
+`world_events` queda para los hechos que no tienen otra traza durable: el alta, el cambio de control de un
+territorio, la entrada y salida de una guarnición, la caducidad de un tratado y las reparaciones de la carga.
+Si un consumidor futuro —auditoría antitrampas, repetición de partidas— necesitara el movimiento en el mismo
+registro, se añade entonces dentro de las dos transacciones que ya existen: es aditivo y no exige migrar datos.
 
 Los mensajes se emiten en el momento en que ocurre el hecho —fase 2 para el inicio, fase 3 para el avance y la
 llegada— y se dirigen por chunk según el interest management (`EO_INTEREST_RADIUS_CHUNKS = 2`). El chunk de
@@ -996,3 +1031,17 @@ Se ejecutan en la CI y en local, contra el cluster propio de PostgreSQL y Redis 
 | MV-E-001 | Cliente WS real: conectar, mover, llegar | Recibe `accepted`, `started`, `entity.update`, `completed` en ese orden **(existe, `TestVerticalSliceEndToEnd`)** |
 | MV-E-002 | Desconexión a mitad de trayecto | Al reconectar, `world.snapshot` muestra la unidad avanzada y con su `movement` **(en simulación: `TestElMovimientoContinuaConElJugadorDesconectado`, `TestSnapshotIncluyeElMovimientoEnCurso`; sin e2e)** |
 | MV-E-003 | Dos clientes en el mismo chunk | El observador recibe los mismos eventos de movimiento que el propietario **(pendiente como e2e; el reparto por chunk lo cubren los tests del `Hub`)** |
+
+### Cliente (`apps/web`, Vitest)
+
+| ID | Caso | Test real |
+|---|---|---|
+| MV-W-001 | La posición autoritativa del cliente coincide con la del servidor en el ejemplo canónico de §6.4 | `authoritativePosition` en `src/state/interpolation.test.ts` **(existe)** |
+| MV-W-002 | Sin discontinuidades, el dibujo es la interpolación exacta durante todo el trayecto | «sin discontinuidades sigue la interpolación exactamente…» en `src/render/reconciler.test.ts` **(existe)** |
+| MV-W-003 | Sustitución, cancelación y llegada anticipada se corrigen sin salto y convergen | Los tres casos de `src/render/reconciler.test.ts` **(existen)** |
+| MV-W-004 | Más de 2 tiles se salta; la cota de 300 ms se respeta; la convergencia no depende de los FPS | `src/render/reconciler.test.ts` **(existen)** |
+
+Cada guarda del reconciliador tiene un test que la defiende: once mutaciones —sin `EPS`, sin cota, cota con
+`>=`, sin salto, continuidad medida con el reloj, `retain` que no olvida, factor fijo por frame, cota que no
+se reinicia, entradas que no se actualizan, picking sobre la autoritativa y persecución del objetivo— hacen
+fallar la batería. La escena de Pixi no tiene test propio: se verificó en el navegador (M4, aceptación 10).

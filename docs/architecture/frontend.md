@@ -2,15 +2,23 @@
 
 Propósito: definir el diseño objetivo del cliente de **Empires Online** —Next.js 15 (App Router) + React 19 + TypeScript + PixiJS 8— y en particular la separación estricta entre transporte de red, estado replicado del mundo y capa de render, así como el tratamiento del tiempo, la interpolación y las transformaciones de coordenadas.
 
-> **Estado: `apps/web` NO existe todavía.** No hay ni un fichero del cliente escrito: ni el proyecto de
-> Next.js, ni `src/net`, ni `src/world`, ni `src/render`. Todo lo que sigue está redactado como diseño
-> objetivo —lo que **se implementará**— y queda pendiente del milestone del cliente en
-> [`../roadmap/milestones.md`](../roadmap/milestones.md). Nada de este documento debe leerse como
-> descripción de código existente.
+> **Estado (2026-10-20): `apps/web` existe y este documento mezcla código y diseño objetivo.** El cliente
+> real es más pequeño que el árbol de §11 y lo reparte así:
 >
-> Lo que sí existe y condiciona este diseño es el otro extremo del cable: el Game Server en Go, con su
-> protocolo v1 y su paquete compartido `@empires-online/protocol` (Zod + JSON Schema), ambos
-> implementados y con tests en verde.
+> | Fichero | Papel |
+> |---|---|
+> | `app/page.tsx`, `app/layout.tsx` | Alta, entrada y HUD en una sola página |
+> | `src/net/client.ts`, `src/net/auth.ts` | Capa 1: transporte WebSocket, handshake, latido, reconexión con backoff y jitter, desfase de reloj; obtención del ticket |
+> | `src/state/world.ts` | Capa 2: store Zustand, réplica de sólo lectura aplicada desde los mensajes |
+> | `src/state/interpolation.ts` | Posición autoritativa e interpolada de una polilínea (§5.1, §5.2) |
+> | `src/render/reconciler.ts` | Corrección gradual de las discontinuidades (§5.3) |
+> | `src/render/iso.ts`, `src/render/scene.ts`, `src/components/GameCanvas.tsx` | Capa 3: proyección, escena PixiJS y su montaje en React |
+>
+> Se ajustan al código, y así se verificaron, §5 entero y el bucle de frame de §7.3. Lo demás —el árbol de
+> carpetas de §11, los módulos separados de la capa 1 (`backoff.ts`, `clockSync.ts`, `seqTracker.ts`…), el
+> terreno rasterizado por chunk, el `depthIndex` con *bias* de capa, el resaltado del tile bajo el cursor,
+> React Query y la batería de §12 salvo donde se indica— describe el **objetivo**, no el código. Los tests
+> reales están en `apps/web/src/**/*.test.ts` y los ejecuta la CI.
 
 Documentos relacionados: [`./game-loop.md`](./game-loop.md) · [`./overview.md`](./overview.md) · [`../specs/websocket-protocol.md`](../specs/websocket-protocol.md) · [`../specs/movement.md`](../specs/movement.md) · [`../specs/player.md`](../specs/player.md) · [`../testing/strategy.md`](../testing/strategy.md)
 
@@ -327,15 +335,15 @@ Esta distinción es el corazón del cliente y no admite atajos.
 
 ### 5.1 Reconstrucción analítica de la posición
 
-El servidor define la posición autoritativa en el instante `T` como *el último waypoint con `tMs <= (T - startTimeMs)`* (`movement.PositionAt`, con búsqueda binaria; antes de 0 → origen, después del último `tMs` → destino). Eso es exactamente reproducible en el cliente, sin replay de ticks:
+El servidor define la posición autoritativa en el instante `T` como *el último waypoint con `tMs <= (T - startTimeMs)`* (`movement.PositionAt`, con búsqueda binaria; antes de 0 → origen, después del último `tMs` → destino). Eso es exactamente reproducible en el cliente, sin replay de ticks (`src/state/interpolation.ts`):
 
 ```ts
-/** Tile autoritativo en el instante serverNowMs. Discreto, igual que el servidor. */
-export function authoritativeTileAt(m: ActiveMovement, serverNowMs: number): Waypoint {
-  const rel = serverNowMs - m.startTimeMs;
-  if (rel <= 0) return m.waypoints[0];
-  const i = lastIndexWithTMsLTE(m.waypoints, rel);   // búsqueda binaria + cursor cacheado
-  return m.waypoints[i];
+/** Posición AUTORITATIVA en un instante: el último waypoint alcanzado. */
+export function authoritativePosition(movement: ActiveMovement, serverTimeMs: number): RenderPosition {
+  const elapsed = serverTimeMs - movement.startTimeMs;
+  // antes del inicio → origen; tras el último tMs → destino
+  const wp = movement.path[waypointIndexAt(movement.path, elapsed)];   // búsqueda binaria
+  return { x: wp.x, y: wp.y };
 }
 ```
 
@@ -344,67 +352,86 @@ export function authoritativeTileAt(m: ActiveMovement, serverNowMs: number): Way
 La interpolación sub-tile es **exclusivamente visual**. El servidor razona en tiles; el cliente dibuja el tramo intermedio.
 
 ```ts
-/** Posición continua de mundo hacia la que debe tender el sprite. */
-export function interpolatedPositionAt(m: ActiveMovement, serverNowMs: number): Vec2 {
-  const wps = m.waypoints;
-  const rel = serverNowMs - m.startTimeMs;
-  if (rel <= 0) return { x: wps[0].x, y: wps[0].y };
-
-  const last = wps.length - 1;
-  const i = lastIndexWithTMsLTE(wps, rel);
-  if (i >= last) return { x: wps[last].x, y: wps[last].y };
-
-  const a = wps[i];
-  const b = wps[i + 1];
-  const span = b.tMs - a.tMs;            // > 0 por construcción del servidor
-  const u = span > 0 ? clamp01((rel - a.tMs) / span) : 1;
-  return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+/** Posición INTERPOLADA para dibujar: entre el waypoint alcanzado y el siguiente. */
+export function renderPosition(movement: ActiveMovement, serverTimeMs: number): RenderPosition {
+  const elapsed = serverTimeMs - movement.startTimeMs;
+  const index = waypointIndexAt(movement.path, elapsed);
+  const from = movement.path[index];
+  const to = movement.path[index + 1];
+  if (!to) return { x: from.x, y: from.y };
+  const segmentMs = to.tMs - from.tMs;
+  const alpha = segmentMs > 0 ? (elapsed - from.tMs) / segmentMs : 1;   // sin división por cero
+  return { x: from.x + (to.x - from.x) * alpha, y: from.y + (to.y - from.y) * alpha };
 }
 ```
+
+(Abreviado: el código real resuelve antes los extremos —antes del inicio y tras la llegada— igual que
+`authoritativePosition`.)
 
 Notas de implementación:
 
 - Los segmentos son siempre entre tiles **adyacentes en 8 direcciones**, así que `b - a` está en `{-1, 0, 1}` por eje. La interpolación lineal es correcta; no hace falta *spline*.
 - La duración de segmento la fija el servidor con aritmética entera: `ms = (baseMsPerTile*costUnits + 5) / 10` y, si el paso es diagonal, `ms = (ms*1414214 + 500000) / 1000000` — es decir, **se redondea cada segmento al milisegundo más cercano y solo después se acumula**. El cliente **no recalcula** esa fórmula; lee los `tMs` que vienen en la polilínea. Duplicarla en el cliente crearía una segunda fuente de verdad que se desviaría en el primer cambio de balance. Ver [`../specs/movement.md`](../specs/movement.md).
-- `lastIndexWithTMsLTE` usa un cursor por unidad: como `serverNowMs` avanza monótonamente, en régimen normal el avance es O(1) y solo se cae a búsqueda binaria tras un salto (pestaña en segundo plano, reconexión).
-- Con `rel > arrivalTimeMs - startTimeMs` la función devuelve el último waypoint. Ese es también el comportamiento correcto tras una recuperación de caída del servidor: si el movimiento venció mientras el servidor estaba abajo, `simulation.Hydrate` coloca la unidad en el destino y cierra el movimiento como `COMPLETED`, y el cliente ya está dibujando ahí.
+- `waypointIndexAt` hace una búsqueda binaria en cada llamada, `O(log L)` con `L` ≤ 256 waypoints. Un cursor por unidad que la evite en régimen normal es una optimización **no hecha** y sin medición que la pida.
+- Con `elapsed` posterior al último `tMs` la función devuelve el último waypoint. Ese es también el comportamiento correcto tras una recuperación de caída del servidor: si el movimiento venció mientras el servidor estaba abajo, `simulation.Hydrate` coloca la unidad en el destino y cierra el movimiento como `COMPLETED`, y el cliente ya está dibujando ahí.
 
 ### 5.3 Reconciliación suave
 
-`renderPosition` no salta a `interpolatedPositionAt` de golpe. Se suaviza, porque el `interpolatedPositionAt` puede desplazarse bruscamente cuando: converge el `ClockSync`, llega un `unit.movement.started` que sustituye a otro cancelado, o la pestaña vuelve del segundo plano.
+La posición dibujada es continua mientras nada cambie: es `renderPosition` evaluada en el reloj del
+servidor. Pero el objetivo puede **saltar** entre dos frames, y dibujar el salto tal cual se ve como un
+tirón. Las discontinuidades que el cliente corrige, y el delta o el hecho que las produce:
 
-Constantes de render (`src/render/constants.ts`), ancladas al período de tick de 100 ms (`EO_TICK_RATE_HZ = 10`):
+| Discontinuidad | Origen | Tamaño típico |
+|---|---|---|
+| Una orden nueva sustituye a la que estaba en curso | `unit.movement.started` (con su `unit.movement.cancelled` de `reason: REPLACED`) | Menos de un tile hacia atrás: la ruta nueva parte del último tile alcanzado, y el dibujo iba ya camino del siguiente |
+| Cancelación | `unit.movement.cancelled` (`CANCELLED_BY_PLAYER`, `PATH_BLOCKED`, `SERVER`…) | Ídem: `stoppedAt` es el último waypoint alcanzado |
+| Llegada anunciada antes de que el reloj local la alcance | `unit.movement.completed` | Unos milisegundos de trayecto, si el desfase de reloj estimado va por detrás |
+| Posición corregida sin movimiento | `entity.update` con `x`/`y` o `movement` (la unidad que una ciudad nueva aparta de su muralla, `RN-CITY-022`) | Uno o dos tiles |
+| Reconexión | `world.snapshot`, que reemplaza el estado y trae la posición resuelta a `now` | Lo que haya avanzado la unidad mientras tanto |
+| Corrección del reloj | `session.pong`, que recalcula el desfase | Decenas de ms de trayecto |
+| La pestaña vuelve del segundo plano | El *ticker* de Pixi acota cada frame a 100 ms; el reloj del servidor no | Lo que avanzó la unidad con la pestaña oculta |
+
+**Mecanismo: un desfase que decae, no una persecución.** Por cada unidad dibujada, un registro mutable fuera
+del store (`RenderReconciler`, en `src/render/reconciler.ts`, sin Pixi ni DOM) guarda las entradas con las
+que se dibujó el frame anterior —`x`, `y` y `movement`— y un **desfase** `(ox, oy)`. En cada frame:
+
+1. **Continuidad.** Se calcula dónde estaría la unidad si nada hubiera cambiado: las entradas anteriores
+   evaluadas en `tAnterior + dt`, más el desfase anterior. `dt` es el del *ticker*, no la diferencia de
+   relojes: así una corrección del reloj o un salto por la pestaña oculta cuentan como discontinuidad.
+2. **Objetivo.** Las entradas de ahora, evaluadas en el reloj del servidor de ahora (`t`).
+3. El desfase pasa a ser `continuidad − objetivo`. Si nada cambió, es el anterior: el dibujo sigue la
+   interpolación **exactamente**, sin retraso, aunque la unidad se mueva.
+4. El desfase decae hacia cero con `reconcile(desfase, 0, 1 − e^(−dt/τ), RECONCILE_SNAP_TILES)`.
+5. Se dibuja en `objetivo + desfase`.
+
+Constantes de render, exportadas por `src/render/reconciler.ts` y ancladas al período de tick de 100 ms
+(`EO_TICK_RATE_HZ = 10`):
 
 | Constante | Valor | Justificación |
 |---|---|---|
-| `RECONCILE_TAU_MS` | 60 | Constante de tiempo del suavizado exponencial: ~95 % de convergencia en 180 ms, menos de 2 ticks. |
-| `RECONCILE_MAX_MS` | 300 | Cota dura (3 ticks): pasado ese tiempo se hace *snap*. "Suave" nunca significa "indefinido". |
-| `RECONCILE_SNAP_TILES` | 2.0 | Por encima de 2 tiles no es un desfase de render: es un spawn, un *snap* de recuperación o una corrección grande. Interpolar ahí produce un deslizamiento antinatural sobre terreno intransitable. |
-| `RECONCILE_EPS_TILES` | 0.01 | Sub-píxel a zoom 1 (0.01 tile = 0.64 px en X). Por debajo se iguala y se deja de suavizar. |
+| `RECONCILE_TAU_MS` | 60 | Constante de tiempo del decaimiento exponencial: ~95 % de convergencia en 180 ms, menos de 2 ticks. |
+| `RECONCILE_MAX_MS` | 300 | Cota dura (3 ticks): un desfase que lleva 300 ms corrigiéndose se anula de golpe. «Suave» nunca significa «indefinido»; con τ = 60 ms lo que queda entonces de un desfase de 2 tiles es 0,013 tiles, menos de un píxel. |
+| `RECONCILE_SNAP_TILES` | 2 | Una discontinuidad de más de 2 tiles en algún eje (distancia de Chebyshev, la de un grid de 8 direcciones) no es un desfase de render: es una corrección grande o una recuperación. Deslizar ahí la unidad la haría atravesar terreno intransitable; se salta. |
+| `RECONCILE_EPS_TILES` | 0,01 | Sub-píxel a zoom 1 (0,01 tile = 0,64 px en X). Un desfase por debajo se anula y el registro deja de corregir. |
 
-```ts
-export function reconcile(rec: RenderRecord, target: Vec2, dtMs: number): void {
-  const err = Math.hypot(target.x - rec.x, target.y - rec.y);
+El uso de `1 − e^(−dt/τ)` en lugar de un factor fijo por frame es deliberado: con un factor fijo la velocidad
+de convergencia dependería de los FPS, y el juego se vería distinto en un portátil que en una máquina de
+escritorio.
 
-  if (err > RECONCILE_SNAP_TILES || rec.reconcilingMs > RECONCILE_MAX_MS) {
-    rec.x = target.x; rec.y = target.y; rec.reconcilingMs = 0;   // teleport visual, explícito
-    return;
-  }
-  if (err <= RECONCILE_EPS_TILES) {
-    rec.x = target.x; rec.y = target.y; rec.reconcilingMs = 0;
-    return;
-  }
-  // Suavizado exponencial independiente de la tasa de frames.
-  const k = 1 - Math.exp(-dtMs / RECONCILE_TAU_MS);
-  rec.x += (target.x - rec.x) * k;
-  rec.y += (target.y - rec.y) * k;
-  rec.reconcilingMs += dtMs;
-}
-```
+**Por qué un desfase y no perseguir el objetivo.** El diseño anterior de esta sección suavizaba la posición
+dibujada hacia el objetivo en cada frame. Con una unidad en marcha eso deja el dibujo permanentemente
+retrasado —a 600 ms por tile y τ = 60 ms, una décima de tile— y el error nunca baja de `EPS`, así que la cota
+de 300 ms provocaba un salto cada 300 ms durante todo el trayecto: el tirón que la reconciliación existe para
+evitar. Con el desfase, el movimiento normal no se suaviza porque no hay nada que suavizar, y sólo las
+discontinuidades entran en la cota.
 
-El uso de `1 - exp(-dt/τ)` en lugar de un factor fijo por frame es deliberado: con un factor fijo, la velocidad de convergencia dependería de los FPS y el juego se vería distinto en un portátil que en una máquina de escritorio.
+Casos donde el *teleport* visual es correcto y esperado, y que el registro produce por construcción: la
+**primera vez** que se dibuja una unidad (`entity.spawn`, primer `world.snapshot`) no hay continuidad
+de la que partir; una unidad que deja de dibujarse —`entity.despawn`, guarnecida u oculta— pierde su registro,
+así que **reaparece** donde diga el servidor; y una discontinuidad de más de `RECONCILE_SNAP_TILES`, como la
+de un `unit.movement.completed` tras una recuperación de caída del servidor, se salta.
 
-Casos donde el *teleport* visual es correcto y esperado: `entity.spawn`, primer `world.snapshot`, `unit.movement.completed` tras una recuperación de crash del servidor, y reaparición de una unidad que estuvo `HIDDEN`.
+El picking (§7.5) usa la posición **dibujada**, la que el jugador ve.
 
 ---
 
@@ -552,24 +579,30 @@ Detalles que importan:
 
 ### 7.3 Bucle de frame
 
+Lo que hace hoy `IsoScene.draw` (`src/render/scene.ts`), registrado en el `ticker` de Pixi:
+
 ```
-ticker (hasta 60 fps, dt real en ms)
-  1. t = clockSync.serverNowMs()
-  2. state = useWorldStore.getState()                 // lectura, SIN suscripción
-  3. diff de entidades: altas → crear sprite; bajas → destruir; (solo cuando cambia el mapa)
-  4. por cada entidad visible:
-       target = unit.movement ? interpolatedPositionAt(unit.movement, t)
-                              : unit.authoritativePosition
-       reconcile(rec, target, dt)
-       iso = worldToIso(rec.x, rec.y)
-       sprite.position.set(iso.x, iso.y + TILE_H / 2)
-       sprite.zIndex = depthIndex(rec.x, rec.y, LAYER_BIAS.UNIT)
-  5. culling por viewport
-  6. actualizar cámara (seguimiento / paneo con inercia)
-  7. si el centro de vista cambió de chunk → encolar session.view (throttled)
+ticker (hasta 60 fps; deltaMS acotado a 100 ms por Pixi)
+  1. cámara: position + scale del contenedor raíz
+  2. reconciler.frame(data.serverTimeMs(), ticker.deltaMS)      // un instante del servidor por frame
+  3. terreno visible (culling por la cámara, caché por tile), territorios, ciudades
+  4. por cada unidad que no está guarnecida:
+       pos = reconciler.position(unit.id, { x, y, movement })    // interpolación + corrección (§5.3)
+       sprite.position = worldToIso(pos.x, pos.y)
+       sprite.zIndex   = depthOf(pos.x, pos.y) + 0.5
+  5. sprites y registros de las unidades que ya no están: prune + reconciler.retain
+  6. ordenar entityLayer por zIndex
 ```
 
-El paso 3 es el único que asigna memoria en régimen normal. Los pasos 4–6 trabajan sobre objetos preexistentes: nada de `{ x, y }` nuevos por entidad y frame, porque a 60 fps eso alimenta al GC y produce micro-tirones.
+`SceneData` llega del store cuando éste cambia (`useWorldStore.subscribe` en `GameCanvas`), no en cada
+frame; lo que sí se evalúa en cada frame es el reloj, a través de la función `serverTimeMs` que la escena
+recibe en lugar de un valor.
+
+Diseño objetivo que el bucle real **todavía no** hace: el terreno compuesto por chunk en una `RenderTexture`
+(hoy es un `Graphics` por tile visible), el `depthIndex` con *bias* de capa de §7.2, el seguimiento de cámara
+con inercia y el envío de `session.view` al cruzar de chunk —`GameClient.setView` existe y tiene test, pero la
+escena no lo llama y la vista queda centrada en la ciudad propia—. Tampoco evita asignar un `{ x, y }` por
+unidad y frame; con las decenas de unidades de un área de interés del MVP no se ha medido que importe.
 
 ### 7.4 Área de interés, culling y `session.view`
 
@@ -753,7 +786,13 @@ Entorno real de desarrollo: Windows 10, Node v22.17.1, pnpm 10.25.0. Los tests d
 
 ## 12. Tests previstos del cliente
 
-Runner: **Vitest**, el mismo que ya usa `packages/protocol` (donde 18 tests están en verde). **Ninguno de estos tests existe todavía**: son la batería que debe acompañar a la implementación del cliente. Todo lo que sigue es *unit* salvo indicación contraria; nada de esto necesita navegador, canvas ni servidor, que es precisamente el objetivo de la separación en capas.
+Runner: **Vitest**, el mismo que usa `packages/protocol`. Esta sección es la batería **objetivo**; la real
+está en `apps/web/src/**/*.test.ts` —coordenadas (`iso.test.ts`), interpolación (`interpolation.test.ts`),
+reconciliación (`reconciler.test.ts`), store (`world.test.ts`) y cliente WebSocket (`client.test.ts`)— y
+la ejecuta la CI. Sólo §12.3 está reconciliado con su fichero real y lo dice en el título; los demás
+apartados son objetivo, aunque parte de lo que piden ya lo cubran esos ficheros. Todo lo que sigue es *unit* salvo indicación
+contraria; nada de esto necesita navegador, canvas ni servidor, que es precisamente el objetivo de la
+separación en capas.
 
 ### 12.1 Transformaciones de coordenadas (`coords.test.ts`)
 
@@ -774,13 +813,22 @@ Runner: **Vitest**, el mismo que ya usa `packages/protocol` (donde 18 tests est�
 - Coherencia: `floor(interpolatedPositionAt)` está en el tile de `authoritativeTileAt` o en el siguiente del path, nunca en otro.
 - Monotonía del cursor: llamadas con `t` creciente no reevalúan la búsqueda binaria (test de rendimiento con contador de comparaciones).
 
-### 12.3 Reconciliación (`reconcile.test.ts`)
+### 12.3 Reconciliación (`src/render/reconciler.test.ts`, existe)
 
-- Error por debajo de `RECONCILE_EPS_TILES` → igualación inmediata, `reconcilingMs = 0`.
-- Error por encima de `RECONCILE_SNAP_TILES` → *snap* en un solo frame.
-- Error intermedio → convergencia por debajo de `EPS` antes de `RECONCILE_MAX_MS`, verificada simulando frames de 16.67 ms.
-- **Independencia de la tasa de frames**: convergencia a 30, 60 y 144 fps; la posición tras 200 ms simulados coincide dentro de tolerancia en los tres casos.
-- Cota dura: un `target` que se aleja continuamente fuerza el *snap* al superar `RECONCILE_MAX_MS`.
+- Sin discontinuidades, el dibujo es la interpolación **exacta** durante todo el trayecto: ni retraso ni saltos.
+- Cancelación a mitad de segmento, orden que sustituye a otra y llegada anunciada antes de tiempo: el primer
+  frame sigue cerca de lo dibujado, el error decrece sin oscilar ni pasarse de largo y llega a cero.
+- Discontinuidad por encima de `RECONCILE_SNAP_TILES` en un eje → salto en ese frame; exactamente en el
+  umbral, todavía se desliza.
+- Desfase por debajo de `RECONCILE_EPS_TILES` → se anula sin suavizar.
+- Cota dura: el desfase se anula al pasar `RECONCILE_MAX_MS` y no antes, también con un objetivo que salta en
+  cada frame.
+- **Independencia de la tasa de frames**: tras 100 ms simulados, la posición a 30, 60 y 144 fps coincide
+  dentro de 0,03 tiles.
+- Una corrección del reloj y la vuelta de una pestaña oculta cuentan como discontinuidad: la primera se
+  suaviza, la segunda salta si la unidad avanzó más de 2 tiles.
+- Una unidad que deja de dibujarse pierde su registro y reaparece sin deslizarse; el picking ve la posición
+  dibujada.
 
 ### 12.4 Reducers de deltas (`reducers.test.ts`)
 

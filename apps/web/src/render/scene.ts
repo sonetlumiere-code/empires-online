@@ -11,7 +11,8 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 
 import { TILE_H, TILE_W, depthOf, screenToTile, worldToIso, type Camera, type Tile } from './iso';
-import { renderPosition, type ActiveMovement } from '../state/interpolation';
+import type { ActiveMovement } from '../state/interpolation';
+import { RenderReconciler } from './reconciler';
 
 /** Colores por tipo de terreno (índice = valor del byte de TerrainType). */
 const TERRAIN_COLORS = [
@@ -83,6 +84,9 @@ export class IsoScene {
   // la firma es más barato que reconstruir el gráfico en cada frame.
   private readonly territoryShapes = new Map<number, { signature: string; graphic: Graphics }>();
   private data: SceneData | null = null;
+  // Posición dibujada de cada unidad: la interpolación más la corrección
+  // gradual de las discontinuidades que traen los deltas (frontend.md §5.3).
+  private reconciler = new RenderReconciler();
 
   constructor(private readonly callbacks: SceneCallbacks = {}) {}
 
@@ -116,7 +120,8 @@ export class IsoScene {
       // El picking de unidades tiene prioridad: seleccionar una unidad es más
       // frecuente que ordenar un movimiento a su tile exacto.
       const hit = this.data.units.find((u) => {
-        const pos = this.positionOf(u);
+        // La posición que el jugador VE, no la autoritativa.
+        const pos = this.reconciler.drawn(u.id) ?? { x: u.x, y: u.y };
         return Math.round(pos.x) === tile.x && Math.round(pos.y) === tile.y;
       });
 
@@ -138,6 +143,7 @@ export class IsoScene {
     this.unitSprites.clear();
     this.citySprites.clear();
     this.territoryShapes.clear();
+    this.reconciler = new RenderReconciler();
   }
 
   resize(width: number, height: number): void {
@@ -149,12 +155,6 @@ export class IsoScene {
     this.data = data;
   }
 
-  /** Posición en la que se DIBUJA una unidad este frame (puede ser fraccionaria). */
-  private positionOf(unit: SceneUnit): { x: number; y: number } {
-    if (!unit.movement || !this.data) return { x: unit.x, y: unit.y };
-    return renderPosition(unit.movement, this.data.serverTimeMs());
-  }
-
   private draw(): void {
     const data = this.data;
     if (!data || !this.app) return;
@@ -162,6 +162,10 @@ export class IsoScene {
     const { camera } = data;
     this.root.position.set(camera.viewportWidth / 2 - camera.x, camera.viewportHeight / 2 - camera.y);
     this.root.scale.set(camera.zoom);
+
+    // Un instante del servidor por frame, el mismo para todas las unidades; el
+    // dt del ticker es lo que mide la continuidad (frontend.md §5.3).
+    this.reconciler.frame(data.serverTimeMs(), this.app.ticker.deltaMS);
 
     this.drawTerrain(data);
     this.drawTerritories(data);
@@ -350,8 +354,9 @@ export class IsoScene {
 
       // La posición dibujada es la INTERPOLADA, no la autoritativa: por eso el
       // movimiento se ve continuo aunque el servidor sólo avance un tile cada
-      // 600 ms.
-      const pos = this.positionOf(unit);
+      // 600 ms. Cuando un delta la hace saltar, el reconciliador reparte el
+      // salto en unos frames en lugar de dibujarlo de golpe.
+      const pos = this.reconciler.position(unit.id, unit);
       const iso = worldToIso(pos.x, pos.y);
       sprite.position.set(iso.x, iso.y);
       sprite.zIndex = depthOf(pos.x, pos.y) + 0.5; // por delante del terreno y de la ciudad
@@ -360,6 +365,7 @@ export class IsoScene {
     }
 
     this.prune(this.unitSprites, seen);
+    this.reconciler.retain(seen);
   }
 
   private prune(map: Map<number, Container>, seen: Set<number>): void {

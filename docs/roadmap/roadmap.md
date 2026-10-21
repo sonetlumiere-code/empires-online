@@ -10,15 +10,14 @@ ejecuta sobre cada push a `main` y está en verde: documentación y lint de dete
 tests del protocolo y del cliente, deriva del JSON Schema y `next build`), Game Server con `-race`,
 integración contra PostgreSQL y Redis reales, e imagen del contenedor.
 
-Estado por milestone, tal como lo fija [milestones.md](milestones.md): **M0, M1, M2, M5, M6 y M7 cerrados**;
-**M3 y M4 parciales**.
+Estado por milestone, tal como lo fija [milestones.md](milestones.md): **M0, M1, M2, M4, M5, M6 y M7 cerrados**;
+**M3 parcial**.
 
 Lo que falta, y que este roadmap no debe dar por hecho:
 
 | Pendiente | Situación |
 |---|---|
 | **Emisión del ticket desde Next.js** (`EO-041`) | Bloqueada por una decisión, no por trabajo: `DEBT-18` en [backlog.md](backlog.md). Hoy el alta y el login los sirve el propio Game Server (`internal/httpapi`, con bcrypt y límite de tasa por origen). Impide cerrar M3. |
-| **Corrección gradual en el cliente** (`EO-075`) | El cliente dibuja el movimiento de forma continua; la corrección hacia la verdad del servidor al llegar un delta está escrita y no conectada. Impide cerrar M4. |
 
 Ningún milestone se considera **cerrado** hasta que su documentación refleje lo implementado y la CI
 esté en verde.
@@ -80,13 +79,13 @@ nunca como funcionalidad existente.
 | ID | Nombre | Objetivo en una frase | Valor entregado | Criterio binario de finalización | Estado real |
 |---|---|---|---|---|---|
 | **M0** | Foundation | Levantar el esqueleto ejecutable del monorepo, el módulo Go, la infraestructura local y el CI. | El equipo puede clonar, arrancar y contribuir con verificación automática. | `pnpm run db:up` levanta Postgres y Redis, el servidor arranca, `GET /health` y `GET /ready` responden 200 y el workflow de GitHub Actions pasa en verde. | **Parcial**: todo hecho salvo la CI |
-| **M1** | World | Generar el mundo determinísticamente desde `EO_WORLD_SEED` y persistirlo por chunks. | Existe un mundo consultable, reproducible y auditable. | Dos generaciones con la misma seed producen el mismo mundo byte a byte y las transformaciones de coordenadas pasan sus tests. | **Hecho** (tests en verde) |
-| **M2** | Player & City | Crear un jugador con su ciudad y sus 3 aldeanos en una única transacción atómica. | Hay entidades de dominio persistentes sobre las que operar. | El bootstrap de un jugador nuevo deja en base 1 fila en `players`, 1 en `cities` y 3 en `units`, o ninguna; nunca un estado parcial. | **Hecho** del lado servidor |
-| **M3** | Realtime | Conectar cliente y servidor con autenticación por ticket, snapshot e interest management por chunks. | El jugador ve el mundo en tiempo real y solo lo que le concierne. | Un cliente se autentica con `session.hello`, recibe `session.welcome` y `world.snapshot`, y al mover la vista con `session.view` recibe `entity.spawn`/`entity.despawn` coherentes con el radio de 2 chunks. | **Parcial**: servidor hecho, falta `apps/web` |
-| **M4** | Movement | Mover unidades con A\*, polilínea temporizada, game loop a 10 Hz y recuperación tras reinicio. | El primer verbo real del juego funciona extremo a extremo. | Una unidad ordenada a un destino llega al tile correcto en el tiempo esperado, y si el servidor se reinicia a mitad de trayecto el movimiento continúa o se completa sin intervención. | **Parcial**: servidor hecho, falta la interpolación del cliente |
-| **M5** | Offline protection & Safe Zones | Modelar presencia, cooldown de protección y zonas seguras calculadas por el servidor. | El mundo persistente deja de castigar la desconexión. | Al vencer el margen de reconexión la ciudad pasa a `OFFLINE_PENDING` y, tras el cooldown, a `PROTECTED`; al reconectar vuelve a `ONLINE` y `protection_until` queda a NULL. | **Parcial**: presencia y protección hechas; `safe_zones` sólo tabla |
-| **M6** | Territories | Introducir territorios rectangulares y control/ownership sobre el mundo. | El espacio pasa a tener significado político. | Un territorio con control asignado se refleja en `territory.update` y su ownership sobrevive a un reinicio del servidor. | **Pendiente**: tablas creadas, lógica diferida |
-| **M7** | Diplomacy foundation | Persistir treaties y garrisons y hacer que condicionen las acciones permitidas. | Existe la base sobre la que construir alianzas, comercio y guerra. | Un intento de garrison sin treaty `ACTIVE` con `allows_garrison` verdadero devuelve `TREATY_REQUIRED`; con él, la unidad pasa a `GARRISONED` de forma persistente. | **Pendiente**: tablas creadas, lógica diferida |
+| **M1** | World | Generar el mundo determinísticamente desde `EO_WORLD_SEED` y persistirlo por chunks. | Existe un mundo consultable, reproducible y auditable. | Dos generaciones con la misma seed producen el mismo mundo byte a byte y las transformaciones de coordenadas pasan sus tests. | **Cerrado** |
+| **M2** | Player & City | Crear un jugador con su ciudad y sus 3 aldeanos en una única transacción atómica. | Hay entidades de dominio persistentes sobre las que operar. | El bootstrap de un jugador nuevo deja en base 1 fila en `players`, 1 en `cities` y 3 en `units`, o ninguna; nunca un estado parcial. | **Cerrado** (el alta la sirve hoy el Game Server: `DEBT-18`) |
+| **M3** | Realtime | Conectar cliente y servidor con autenticación por ticket, snapshot e interest management por chunks. | El jugador ve el mundo en tiempo real y solo lo que le concierne. | Un cliente se autentica con `session.hello`, recibe `session.welcome` y `world.snapshot`, y al mover la vista con `session.view` recibe `entity.spawn`/`entity.despawn` coherentes con el radio de 2 chunks. | **Parcial**: servidor y cliente hechos; falta la emisión del ticket desde Next.js (`EO-041`) |
+| **M4** | Movement | Mover unidades con A\*, polilínea temporizada, game loop a 10 Hz y recuperación tras reinicio. | El primer verbo real del juego funciona extremo a extremo. | Una unidad ordenada a un destino llega al tile correcto en el tiempo esperado, y si el servidor se reinicia a mitad de trayecto el movimiento continúa o se completa sin intervención. | **Cerrado**: servidor, interpolación del cliente y corrección gradual de las discontinuidades (`EO-075`) |
+| **M5** | Offline protection & Safe Zones | Modelar presencia, cooldown de protección y zonas seguras calculadas por el servidor. | El mundo persistente deja de castigar la desconexión. | Al vencer el margen de reconexión la ciudad pasa a `OFFLINE_PENDING` y, tras el cooldown, a `PROTECTED`; al reconectar vuelve a `ONLINE` y `protection_until` queda a NULL. | **Cerrado**: presencia, protección y Safe Zones con ocultamiento; el mundo canónico no tiene zonas sembradas (`Q-17`) |
+| **M6** | Territories | Introducir territorios rectangulares y control/ownership sobre el mundo. | El espacio pasa a tener significado político. | Un territorio con control asignado se refleja en `territory.update` y su ownership sobrevive a un reinicio del servidor. | **Cerrado**: territorios, control, reclamación al fundar y `territory.update`; el territorio ajeno no restringe nada ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)) |
+| **M7** | Diplomacy foundation | Persistir treaties y garrisons y hacer que condicionen las acciones permitidas. | Existe la base sobre la que construir alianzas, comercio y guerra. | Un intento de garrison sin treaty `ACTIVE` con `allows_garrison` verdadero devuelve `TREATY_REQUIRED`; con él, la unidad pasa a `GARRISONED` de forma persistente. | **Cerrado**: tratados, guarnición y los comandos `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)); los tratados se crean por vía administrativa |
 
 El desglose entregable por entregable —qué está HECHO, qué PARCIAL y qué PENDIENTE— está en
 [milestones.md](milestones.md).

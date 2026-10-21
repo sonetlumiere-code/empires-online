@@ -215,8 +215,6 @@ de contrato, de simulación y de recuperación está **en verde**.
 Lo que falta para cerrar el slice, y que ningún documento debe dar por hecho:
 
 - **La emisión del ticket desde Next.js** (`EO-041`), bloqueada por una decisión (`DEBT-18`).
-- **La corrección gradual del cliente** hacia la verdad del servidor (`EO-075`): la interpolación existe,
-  la corrección está escrita y no conectada.
 - El alta de jugador (`POST /api/auth/register`, `POST /api/auth/login`) vive hoy **en el game server**,
   no en Next.js como prevé ADR-010. Es provisional y está registrado como deuda técnica.
 

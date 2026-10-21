@@ -616,12 +616,13 @@ conexión viva.
 
 ## M4 — Movement
 
-**Estado: PARCIAL.** El lado servidor está completo y es la parte mejor cubierta por tests del proyecto:
+**Estado: CERRADO (2026-10-20).** El lado servidor es la parte mejor cubierta por tests del proyecto:
 `internal/pathfinding`, `internal/domain/movement`, `internal/game/loop` y el *vertical slice* de
 `internal/game/simulation` —con reemplazo de orden, cancelación, los siete rechazos, los tests de
-recuperación, reproducibilidad y volcado por lotes— están **en verde**. El cliente dibuja el movimiento
-de forma continua; lo que impide cerrar es la otra mitad del entregable 15, la corrección gradual hacia
-la verdad del servidor (`EO-075`), que existe en `apps/web` y no está conectada.
+recuperación, reproducibilidad y volcado por lotes— están **en verde**. El cliente dibuja el movimiento de
+forma continua y corrige gradualmente las discontinuidades que traen los deltas (`EO-075`, entregable 15),
+con test de cada guarda y verificado en el navegador. El entregable 12 se cerró por decisión: el movimiento
+no se registra en `world_events` (`EO-072`, [../specs/movement.md](../specs/movement.md) §11).
 
 **Objetivo.** Implementar el primer verbo del juego: mover una unidad con A\*, polilínea temporizada
 persistida, game loop a 10 Hz, recuperación tras reinicio e interpolación visual en el cliente.
@@ -703,11 +704,14 @@ grupo ni recolección.
     `{unitId, movement:{movementId, path[], startTimeMs, arrivalTimeMs, target}}` y
     `unit.movement.cancelled.payload.reason` pertenece a
     `REPLACED | CANCELLED_BY_PLAYER | PATH_BLOCKED | UNIT_DEAD | SERVER`.
-12. **PARCIAL** — **Separación Command / Event / State**: `MoveUnit` y `CancelMovement` son comandos,
-    `Unit.status = MOVING` es estado, y los hechos de movimiento se comunican como deltas de red
-    (`unit.movement.started`, `unit.movement.completed`, `unit.movement.cancelled`). **No se escriben en
-    `world_events`**: el movimiento no deja rastro en el registro de eventos; su historial es la propia
-    tabla `unit_movements`.
+12. **HECHO, con una parte cerrada por decisión** — **Separación Command / Event / State**: `MoveUnit` y
+    `CancelMovement` son comandos, `Unit.status = MOVING` es estado, y los hechos de movimiento se comunican
+    como deltas de red (`unit.movement.started`, `unit.movement.completed`, `unit.movement.cancelled`).
+    **No se escriben en `world_events`**, y es una decisión de la spec
+    ([../specs/movement.md](../specs/movement.md) §11), no un hueco: el historial durable es la propia tabla
+    `unit_movements`, los deltas no se derivan de `world_events` porque el MVP no tiene bus de eventos, y
+    duplicar la escritura más frecuente del juego sin un lector no compensa. Añadirlo después es aditivo
+    (`EO-072`, ahora `P3`).
 13. **HECHO** — **Recuperación tras crash** (`simulation.Hydrate`): al arrancar se cargan los movimientos
     `ACTIVE`. Si el movimiento venció durante la caída, la unidad aparece en el destino y el movimiento se
     cierra `COMPLETED`; si sigue en curso, se reanuda desde la polilínea; si la polilínea es inválida,
@@ -721,10 +725,14 @@ grupo ni recolección.
     reposo (`hp` no se vuelca: nada lo modifica en el MVP); posición durante un movimiento activo **no se persiste**, se deriva
     de `unit_movements`. La ventana entre la aceptación y el `COMMIT` es un RPO documentado: ver
     `DEBT-17` en [backlog.md](backlog.md).
-15. **PARCIAL — Cliente** (`EO-075`): la interpolación visual entre waypoints existe y se usa
-    (`renderPosition` en la escena PixiJS, con sus tests en `apps/web/src/state/interpolation.test.ts`). La
-    corrección gradual hacia la verdad del servidor cuando llega un delta (`reconcile`) está escrita y
-    probada, pero **la escena no la llama**. El cliente nunca decide la posición final ni el ETA.
+15. **HECHO — Cliente** (`EO-075`): la interpolación visual entre waypoints (`renderPosition`, tests en
+    `apps/web/src/state/interpolation.test.ts`) y la corrección gradual hacia la verdad del servidor cuando
+    un delta hace saltar el objetivo: `RenderReconciler` (`apps/web/src/render/reconciler.ts`), al que la
+    escena PixiJS pide la posición de cada unidad en cada frame. Corrige como un desfase que decae
+    (τ = 60 ms), salta por encima de 2 tiles y no corrige más de 300 ms; el movimiento sin discontinuidades
+    se dibuja exactamente en la interpolación. Diseño en
+    [../architecture/frontend.md](../architecture/frontend.md) §5.3. El cliente nunca decide la posición
+    final ni el ETA.
 16. **HECHO** — **Métricas activas**: `eo_pathfinding_requests_total{result}`,
     `eo_pathfinding_duration_seconds`, `eo_game_tick_duration_seconds`, `eo_game_tick_overruns_total`,
     `eo_active_units`, `eo_active_movements`, `eo_persistence_queue_depth`,
@@ -771,10 +779,18 @@ grupo ni recolección.
 - **HECHO** *contract*: los cinco mensajes de movimiento existen en el JSON Schema embebido y
   `unit.movement.started` lleva la polilínea completa (`TestTiposDeMensajePresentesEnElEsquema`,
   `TestMovementStartedLlevaLaPolilineaCompleta`). No se validan contra el esquema.
+- **HECHO** *unit* del cliente (`apps/web/src/render/reconciler.test.ts`, quince tests): sin
+  discontinuidades el dibujo es la interpolación exacta en todo el trayecto; sustitución, cancelación y
+  llegada anticipada se corrigen sin salto, sin oscilar y hasta cero; salto por encima de 2 tiles y
+  deslizamiento justo en el umbral; `EPS`; la cota de 300 ms, también con un objetivo que salta en cada
+  frame; la misma convergencia a 30, 60 y 144 fps; corrección del reloj y vuelta de una pestaña oculta;
+  reaparición sin deslizarse; picking sobre la posición dibujada. Once mutaciones de sus guardas hacen
+  fallar la batería ([../specs/movement.md](../specs/movement.md) §13, «Cliente»).
 
 ### Documentación actualizada al cerrar
 
 [../specs/movement.md](../specs/movement.md),
+[../architecture/frontend.md](../architecture/frontend.md) (§5 y §7.3, y su cabecera de estado),
 [../architecture/game-loop.md](../architecture/game-loop.md),
 [../architecture/pathfinding.md](../architecture/pathfinding.md),
 [../architecture/persistence.md](../architecture/persistence.md),
@@ -809,9 +825,15 @@ tres categorías: write-through, dirty-flag y reconstruible.
 9. **Cumplido.** `eo_game_tick_overruns_total` permanece en cero durante un escenario de 10 unidades
    moviéndose a la vez (`TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick`, medido sin `-race`: con el
    detector de carreras el primer tick ya pasa de 100 ms, y eso rompió la CI de `86878d5`).
-10. **Parcial.** En el cliente la unidad se dibuja de forma continua entre waypoints (`renderPosition`); la
-    corrección suave al llegar un delta no está conectada (`EO-075`). No se ha verificado a la vista en
-    esta reconciliación.
+10. **Cumplido.** En el cliente la unidad se dibuja de forma continua entre waypoints (`renderPosition`) y
+    las correcciones que traen los deltas se reparten en unos frames (`RenderReconciler`, quince tests).
+    Verificado en el navegador el 2026-10-20 contra un servidor real sobre `empires_test`: con el reloj de
+    Pixi conducido a ~56 fps se ordenó un trayecto y se sustituyó dos veces a mitad de camino. En la
+    primera sustitución el servidor reinicia la ruta desde el último tile alcanzado, `(493,73)`, con el
+    dibujo ya en `492.29`: sin corrección habría sido un retroceso de 0,71 tiles en un frame; con ella, 0,36
+    en un frame largo de 54 ms y después 0,05, 0,03, 0,02… hasta empalmar con la ruta nueva. Fuera de las
+    sustituciones, el mayor paso por frame fue el de la propia marcha en los frames más largos (0,10 tiles
+    en 62 ms), sin errores en la consola.
 
 ---
 
