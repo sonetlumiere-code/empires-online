@@ -36,6 +36,30 @@ func TestSinHandshakeEnPlazoSeCierraCon4408(t *testing.T) {
 	require.Equal(t, protocol.CloseHandshakeTimeout, codigoDeCierre(t, c, 3*time.Second))
 }
 
+// ADR-019: sin sesión no hay mensajes. Un primer mensaje ilegible, o de una
+// versión no soportada, cierra con 4400 y la PRIMERA lectura es ese cierre: un
+// system.error previo haría fallar el test.
+func TestUnHandshakeIlegibleCierraCon4400SinMensaje(t *testing.T) {
+	casos := map[string]string{
+		"JSON malformado":      `{esto no es json`,
+		"sin ticket":           `{"v":1,"type":"session.hello","requestId":"00000000-0000-4000-8000-000000000001","payload":{}}`,
+		"versión no soportada": `{"v":2,"type":"session.hello","requestId":"00000000-0000-4000-8000-000000000001","payload":{"ticket":"x"}}`,
+	}
+	for nombre, primero := range casos {
+		t.Run(nombre, func(t *testing.T) {
+			env := newE2E(t)
+			c := env.dial()
+			require.NoError(t, c.c.WriteMessage(gws.TextMessage, []byte(primero)))
+
+			require.NoError(t, c.c.SetReadDeadline(time.Now().Add(3*time.Second)))
+			_, err := c.read()
+			var cierre *gws.CloseError
+			require.ErrorAs(t, err, &cierre, "lo primero que llega debe ser el cierre, no un mensaje")
+			require.Equal(t, protocol.CloseInvalidMessage, cierre.Code)
+		})
+	}
+}
+
 // INV-SEC-005: un frame por encima de EO_WS_MAX_MESSAGE_BYTES lo corta el
 // transporte con 1009, antes y después del handshake. No hay system.error: el
 // frame no se llega a leer.

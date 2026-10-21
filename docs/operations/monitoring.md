@@ -32,45 +32,53 @@ escribe archivos: el sistema de archivos del contenedor es de solo lectura.
 | `service` | string | Sí | Constante `game-server`, añadida al logger raíz |
 | `env` | string | Sí | Valor de `EO_ENV`, añadido al logger raíz |
 | `player_id` | uuid | Cuando hay jugador en contexto | `players.id` |
-| `session_id` | string | Cuando hay sesión | Identificador de la sesión WebSocket |
-| `request_id` | uuid v4 | Cuando el evento deriva de un comando | El `requestId` del envelope cliente→servidor |
-| `tick` | uint64 | Cuando el evento ocurre dentro del loop | `tickNumber` monótono |
+| `session_id` | uuid | Cuando hay sesión | Identificador de la sesión WebSocket |
+| `request_id` | uuid v4 | Hoy sólo en los logs de la capa WebSocket (duplicados, comandos descartados) | El `requestId` del envelope cliente→servidor |
+| `tick` | uint64 | Hoy en los avisos del propio loop y en `invariant_violation` | `tickNumber` monótono |
 
 Estos campos son el contrato. `observability` fija además los nombres de los campos frecuentes en constantes
 —`unit_id`, `city_id`, `msg_type`, `error_code`— precisamente para que no convivan `player_id` y `playerId`,
 que es como se pierden las búsquedas. Cualquier otro campo es específico del evento (`duration_ms`, `from`,
 `to`…) y se documenta donde se emite.
 
-La clave operativa es `request_id`: permite reconstruir la vida completa de un comando — recepción,
+La clave operativa **prevista** es `request_id`: reconstruir la vida completa de un comando — recepción,
 validación, ejecución de A\*, creación del movimiento, evento emitido y escritura persistida — con un único
-filtro. Y `tick` permite correlacionar todo lo que ocurrió en el mismo tick, que es la unidad de tiempo
-real del sistema.
+filtro; y `tick`, correlacionar todo lo que ocurrió en el mismo tick. **Hoy no se puede**: los logs de la
+simulación y de la cola de persistencia no llevan `request_id` ni `tick` (sólo `unit_id`, `city_id`…), y la
+validación, el A\* y la creación del movimiento no se registran. Llevar los dos campos a esos logs está
+pendiente.
 
 ### 1.3 Niveles: cuándo usar cada uno
 
-Los valores que acepta `EO_LOG_LEVEL` van en minúscula (`debug`, `info`, `warn`, `error`); el campo `level`
-que emite `log/slog` en cada línea va en **mayúscula** (`DEBUG`, `INFO`, `WARN`, `ERROR`). Es la diferencia
-que hace que un filtro escrito a ojo no devuelva nada.
+`EO_LOG_LEVEL` admite `debug`, `info`, `warn` (o `warning`) y `error` sin distinguir mayúsculas; cualquier
+otro valor cae en `info` **sin aviso** (el arranque no lo valida). El campo `level` que emite `log/slog` en
+cada línea va en **mayúscula** (`DEBUG`, `INFO`, `WARN`, `ERROR`). Es la diferencia que hace que un filtro
+escrito a ojo no devuelva nada.
 
-| Nivel | Uso | Ejemplos |
+| Nivel | Uso | Ejemplos que el código emite hoy |
 |---|---|---|
-| `error` | El servidor no pudo cumplir su función y **alguien debe mirarlo**. Todo `error` es potencialmente una alerta. | Fallo de escritura en Postgres tras reintentos, pánico recuperado, imposibilidad de cargar el mundo al arrancar |
-| `warn` | Anomalía tolerada, con degradación o riesgo. | Overrun de tick, cola de persistencia por encima del umbral, Redis no disponible con caída a modo degradado, rate limit disparado repetidamente por una conexión |
-| `info` | Hechos del ciclo de vida, en volumen acotado. | `arrancando Empires Online game server`, `migraciones aplicadas`, `mundo generado y persistido` / `mundo existente cargado`, `mundo rehidratado`, `servidor de juego escuchando`, sesión creada/cerrada, transición de presencia, `apagado completado` |
-| `debug` | Diagnóstico detallado, alto volumen. **No usar en producción salvo diagnóstico acotado.** | Cada comando recibido con su payload, cada búsqueda A\* con nodos expandidos, cada delta emitido |
+| `error` | El servidor no pudo cumplir su función y **alguien debe mirarlo**. Todo `error` es potencialmente una alerta. | `escritura durable descartada tras agotar los reintentos`, `cola de persistencia saturada: trabajo descartado`, `invariant_violation`, `cola de comandos saturada; comando descartado` |
+| `warn` | Anomalía tolerada, con degradación o riesgo. | `escritura durable fallida; se reintentará`, `ticks perdidos descartados`, el aviso de rate limit antes del cierre `4429` |
+| `info` | Hechos del ciclo de vida, en volumen acotado. | `arrancando Empires Online game server`, `migraciones aplicadas` / `esquema ya al día`, `mundo existente cargado y verificado`, `mundo rehidratado`, `handshake rechazado` (con `close_code`), `sesión establecida`, `sesión finalizada` |
+| `debug` | Diagnóstico detallado. **No usar en producción salvo diagnóstico acotado.** | Comandos duplicados. No hay hoy logs por comando, por búsqueda A\* ni por delta |
+
+El overrun de tick y la transición de presencia **no** escriben log: el primero sólo incrementa
+`eo_game_tick_overruns_total`, y la segunda se ve en `city.update` y en la base.
 
 Reglas duras:
 
 - **Un rechazo de comando por regla de negocio no es `error`.** `TARGET_NOT_WALKABLE` o `UNIT_NOT_OWNED` son
-  el sistema funcionando: se registran en `debug`, se cuentan en `eo_protocol_errors_total{code}` —no en `eo_commands_total`, que no tiene ese valor de etiqueta— y se
-  desglosan por código en `eo_protocol_errors_total`. Elevarlos a `error` convierte el log en ruido y
-  entrena al equipo a ignorarlo.
+  el sistema funcionando. Hoy no se registran ni se cuentan por código: sólo se ven como volumen de
+  `eo_ws_messages_total{direction="outbound",type="unit.move.rejected"}` o `type="system.error"`. Contarlos
+  por código es una mejora pendiente; elevarlos a `error` convertiría el log en ruido.
 - **Nunca se registran secretos ni payloads sensibles.** Ni el ticket JWT, ni el DSN completo, ni el
   contenido íntegro de mensajes en producción.
 - **Un log por evento, no por capa.** Registrar el mismo comando en el handler, en el servicio y en el
   repositorio triplica el volumen sin añadir información.
 - **Nunca se hace logging síncrono costoso dentro del tick.** El canon prohíbe I/O bloqueante en el tick, y
   eso incluye escribir a un `stdout` bloqueado.
+
+Ejemplo **ilustrativo** del formato (esos dos mensajes no se emiten hoy):
 
 ```json
 {"ts":"2026-09-09T18:22:31.104Z","level":"INFO","service":"game-server","env":"production","msg":"movement started","player_id":"5f1c…","session_id":"s-91af","request_id":"3d6b…","tick":184220,"unit_id":4471,"from":{"x":257,"y":190},"to":{"x":268,"y":184},"waypoints":14,"arrival_time_ms":1788020551900}
@@ -116,23 +124,23 @@ de métricas.
 
 | Métrica | Tipo | Etiquetas | Para qué sirve |
 |---|---|---|---|
-| `eo_commands_total` | Counter | `type`, `result` | Comandos **del game loop** procesados por tipo y resultado. `type` toma los valores que devuelve `commandLabel` en `internal/game/loop`: `unit.move`, `unit.cancel_move`, `player.connected`, `player.disconnected` y `unknown`. **No incluye `session.hello`, `session.ping` ni `session.view`**: esos se resuelven en la capa WebSocket sin llegar al loop, y se cuentan en `eo_ws_messages_total`. `result` sólo toma **`accepted`** (el comando se aplicó) o **`failed`** (pánico contenido al aplicarlo). **No existe `rejected`**: un comando rechazado por regla de negocio —unidad ajena, destino intransitable— sí se aplicó desde el punto de vista del loop, y su rechazo se cuenta en `eo_protocol_errors_total{code}`. **No hay etiqueta `code`**. |
-| `eo_ws_messages_total` | Counter | `direction`, `type` | Mensajes WebSocket por sentido y tipo. `direction` es **`inbound`** o **`outbound`** (no `in`/`out`); `type` es el tipo de mensaje v1. El ratio `outbound/inbound` mide la amplificación de deltas por comando, que es lo que dimensiona el ancho de banda. |
-| `eo_protocol_errors_total` | Counter | `code` | Errores de protocolo emitidos, por **código estable** del catálogo de 22. Es aquí —y solo aquí— donde se responde "¿qué regla se está incumpliendo?". |
+| `eo_commands_total` | Counter | `type`, `result` | Comandos **del game loop** procesados por tipo y resultado. `type` toma los valores que devuelve `commandLabel` en `internal/game/loop`: `unit.move`, `unit.cancel_move`, `player.connected`, `player.disconnected` y `unknown`, que agrupa todo lo demás que llega al loop —guarnición, los snapshots de `session.hello` y `session.view`, la incorporación de jugadores y las compensaciones— además de los pánicos. `session.ping` no llega al loop. `result` sólo toma **`accepted`** (el comando se aplicó) o **`failed`** (pánico contenido al aplicarlo). **No existe `rejected`**: un comando rechazado por regla de negocio —unidad ajena, destino intransitable— sí se aplicó desde el punto de vista del loop, y su rechazo **no se cuenta por código** en ninguna métrica. **No hay etiqueta `code`**. |
+| `eo_ws_messages_total` | Counter | `direction`, `type` | Mensajes WebSocket por sentido y tipo. `direction` es **`inbound`** o **`outbound`** (no `in`/`out`). En `inbound` cuenta los mensajes **posteriores al handshake** que decodifican: `session.hello` no se cuenta. Defecto conocido: la etiqueta `type` se toma del mensaje **antes** de comprobar que el tipo existe, así que un cliente puede crear series nuevas enviando tipos inventados (`EO-121`). El ratio `outbound/inbound` mide la amplificación de deltas por comando, que es lo que dimensiona el ancho de banda. |
+| `eo_protocol_errors_total` | Counter | `code` | `system.error` emitidos por la capa WebSocket: `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `RATE_LIMITED` e `INTERNAL_ERROR` cuando la cola de comandos del loop está llena. Los códigos de regla de negocio (`UNIT_NOT_OWNED`, `PATH_NOT_FOUND`, `TREATY_REQUIRED`…) viajan en `unit.move.rejected` o en `system.error` desde la simulación y **no se cuentan aquí**. |
 
 ### 2.4 Pathfinding (2)
 
 | Métrica | Tipo | Etiquetas | Para qué sirve |
 |---|---|---|---|
-| `eo_pathfinding_requests_total` | Counter | `result` | Consultas de pathfinding por resultado. La etiqueta admite `found` y `not_found`, pero **hoy sólo se incrementa `found`**: `Loop.observe` cuenta las consultas del tick sin distinguir su desenlace. Un A* fallido se ve únicamente en `eo_protocol_errors_total{code="PATH_NOT_FOUND"}`. Separar los dos resultados exige contarlos en `handleMoveUnit` y está **pendiente**. |
-| `eo_pathfinding_duration_seconds` | Histogram | **ninguna** | Coste de cada búsqueda A\*. Se ejecuta **dentro** del tick, así que su p99 entra directamente en el presupuesto de 100 ms. Buckets reales: `0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.05, 0.1`. |
+| `eo_pathfinding_requests_total` | Counter | `result` | Consultas de pathfinding por resultado. La etiqueta admite `found` y `not_found`, pero **hoy sólo se incrementa `found`**: `Loop.observe` cuenta las consultas del tick sin distinguir su desenlace. Un A\* fallido no tiene métrica propia: sólo se ve, sin código, en el volumen de `eo_ws_messages_total{direction="outbound",type="unit.move.rejected"}`. Separar los dos resultados exige contarlos en `handleMoveUnit` y está **pendiente**. |
+| `eo_pathfinding_duration_seconds` | Histogram | **ninguna** | Tiempo total de A\* dentro de un tick —la suma de sus búsquedas—, observado una vez por cada tick con al menos una búsqueda. Se ejecuta **dentro** del tick, así que su p99 entra directamente en el presupuesto de 100 ms. Buckets reales: `0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.05, 0.1`. |
 
 ### 2.5 Dependencias (2)
 
 | Métrica | Tipo | Etiquetas | Para qué sirve |
 |---|---|---|---|
-| `eo_database_latency_seconds` | Histogram | **ninguna** | Latencia de las operaciones contra PostgreSQL vista desde la aplicación, que es la que importa: incluye la espera por el pool. Buckets: los `DefBuckets` de Prometheus. **No** está desglosada por `operation` ni por `table`. |
-| `eo_redis_latency_seconds` | Histogram | **ninguna** | **Registrada pero nunca observada.** El instrumento existe en `internal/observability/metrics.go` y aparece en `/metrics` con contadores a cero; ninguna ruta de código llama a `Observe`. Instrumentar `internal/persistence/redis` está **pendiente**. Hasta entonces la serie es plana, y una alerta sobre ella no dispararía nunca. Buckets previstos: `0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5`. |
+| `eo_database_latency_seconds` | Histogram | **ninguna** | Duración de **cada intento** de cada trabajo de la cola de persistencia —una transacción completa, incluida la espera por el pool—. No cubre las lecturas del arranque ni la fundación de jugadores, que no pasan por la cola. Buckets: los `DefBuckets` de Prometheus (el primero, 5 ms). **No** está desglosada por `operation` ni por `table`. |
+| `eo_redis_latency_seconds` | Histogram | **ninguna** | **Registrada pero nunca observada.** El instrumento existe en `internal/observability/metrics.go` y aparece en `/metrics` con contadores a cero; ninguna ruta de código llama a `Observe`. Instrumentar `internal/persistence/redis` está **pendiente**. Hasta entonces la serie es plana, y una alerta sobre ella no dispararía nunca. Buckets ya declarados: `0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5`. |
 
 ### 2.6 Métricas que **no** existen
 
@@ -181,13 +189,13 @@ corre se averigua en los logs de arranque, no aquí.
 | Aspecto | Definición |
 |---|---|
 | Pregunta que responde | ¿El servidor puede atender jugadores **ahora mismo**? |
-| Dependencias consultadas | Postgres (ping), Redis (ping), game loop vivo (ha latido dentro del umbral) |
+| Dependencias consultadas | Postgres (ping), estado caliente (ping a Redis; sin `EO_REDIS_URL`, el almacén en proceso responde siempre `ok`), game loop vivo (ha latido dentro del umbral) |
 | 200 | Las tres comprobaciones pasan; `status: "ready"` |
 | 503 | Al menos una falla; `status: "not_ready"` y el mapa `checks` dice cuál |
-| Consumidor | Reverse proxy, monitorización, y la espera activa del despliegue (la imagen no declara `HEALTHCHECK`, así que `--wait` no sirve — ver [deployment.md](./deployment.md#31-imagen-docker-multi-stage)) |
+| Consumidor | Reverse proxy, monitorización, y la espera activa del despliegue. El `HEALTHCHECK` de la imagen mira `/health`, no `/ready`: `--wait` espera a que el proceso viva, no a que esté listo ([deployment.md](./deployment.md#31-imagen-docker-multi-stage)) |
 | Acción ante fallo | **Diagnosticar la dependencia**, nunca reiniciar automáticamente |
 
-Las claves del mapa `checks` son exactamente **`postgres`**, **`redis`** y **`game_loop`**. Cada dependencia
+Las claves del mapa `checks` son exactamente **`postgres`**, **`hot_state`** y **`game_loop`**. Cada dependencia
 vale `"ok"` o `"error: <motivo>"`; `game_loop` vale `"ok"` o **`"stale"`**.
 
 ```http
@@ -206,8 +214,10 @@ se considera **`stale`** si su último latido tiene más de **5 segundos** — 5
 umbral es generoso a propósito: filtra una pausa de GC o un pico de I/O del host, y solo se dispara ante un
 bloqueo real.
 
-Durante el apagado ordenado, `/ready` pasa a 503 **antes** de cerrar conexiones, mientras `/health` sigue en
-200. Eso permite al proxy dejar de enviar conexiones nuevas mientras el servidor drena.
+Durante el apagado ordenado **no hay fase de 503**: el servidor cierra primero su listener HTTP, así que
+`/health` y `/ready` dejan de responder a la vez, y sólo después despide las sesiones abiertas y drena la
+cola. El proxy ve conexiones rechazadas, no un `not_ready`. Una fase previa de `not_ready` para que el
+balanceador retire la instancia antes de cortar es una mejora pendiente, que sólo importa con varias.
 
 Ambos endpoints se sirven en `EO_HTTP_ADDR` pero **no se exponen públicamente**: el reverse proxy los
 devuelve como 404 al exterior (ver [deployment.md](./deployment.md#4-reverse-proxy-y-terminación-tls)).
@@ -232,7 +242,7 @@ La regla de diseño es que **cada tablero responda una pregunta**, no que acumul
 | Latido del loop | `rate(eo_game_tick_duration_seconds_count[1m])` | Debe ser ≈ `EO_TICK_RATE_HZ` (10). Si cae, el loop se está saltando ticks; si es 0, está muerto |
 | Unidades y movimientos activos | `eo_active_units` y `eo_active_movements` superpuestos | `eo_active_movements` es el principal impulsor del coste del tick. **No hay desglose por `status`** (§2.6) |
 | Duración de A\* p99 | `histogram_quantile(0.99, sum(rate(eo_pathfinding_duration_seconds_bucket[5m])) by (le))` | Entra dentro del presupuesto del tick |
-| Resultado de A\* | `sum(rate(eo_pathfinding_requests_total[5m])) by (result)` | Solo `found` / `not_found`. Un `not_found` creciente = problema de mundo o de cliente |
+| Resultado de A\* | `sum(rate(eo_pathfinding_requests_total[5m])) by (result)` | Hoy sólo existe la serie `found`, que cuenta **todas** las búsquedas: los fallos del A\* no tienen métrica propia (§2.4) |
 
 ### 4.2 Red y protocolo — "¿qué están enviando los clientes?"
 
@@ -241,8 +251,8 @@ La regla de diseño es que **cada tablero responda una pregunta**, no que acumul
 | Mensajes por segundo por sentido | `sum(rate(eo_ws_messages_total[1m])) by (direction)` | Amplificación `outbound/inbound`: dimensiona el ancho de banda |
 | Top de tipos entrantes | `topk(5, sum(rate(eo_ws_messages_total{direction="inbound"}[5m])) by (type))` | Un `session.view` dominante indica un cliente que arrastra vista sin *throttle* |
 | Tasa de `system.error` | `sum(rate(eo_ws_messages_total{direction="outbound",type="system.error"}[5m]))` | Tasa absoluta de error del protocolo |
-| Comandos por resultado | `sum(rate(eo_commands_total[5m])) by (result)` | Proporción `accepted` / `rejected` / `failed` |
-| Errores por código | `topk(8, sum(rate(eo_protocol_errors_total[5m])) by (code))` | Identifica **qué** regla se está incumpliendo. Va contra `eo_protocol_errors_total`, no contra `eo_commands_total`, que no tiene etiqueta `code` |
+| Comandos por resultado | `sum(rate(eo_commands_total[5m])) by (result)` | Proporción `accepted` / `failed` (no existe `rejected`, §2.3) |
+| Errores por código | `topk(8, sum(rate(eo_protocol_errors_total[5m])) by (code))` | Sólo ve los códigos de la capa WebSocket (§2.3): versión, mensaje inválido, rate limit y saturación; las reglas de negocio no aparecen aquí. Va contra `eo_protocol_errors_total`, no contra `eo_commands_total`, que no tiene etiqueta `code` |
 
 ### 4.3 Persistencia — "¿estamos perdiendo el hilo con la base de datos?"
 
@@ -252,7 +262,7 @@ La regla de diseño es que **cada tablero responda una pregunta**, no que acumul
 | Tendencia de la cola | `deriv(eo_persistence_queue_depth[10m])` | Positiva y sostenida = los workers no dan abasto |
 | Latencia de Postgres p95 / p99 | `histogram_quantile(0.99, sum(rate(eo_database_latency_seconds_bucket[5m])) by (le))` | Latencia agregada, incluida la espera por el pool. **Sin desglose por `operation` ni por `table`** (§2.6) |
 | Volumen de operaciones | `rate(eo_database_latency_seconds_count[5m])` | Operaciones por segundo contra Postgres; un salto sin más jugadores es sospechoso |
-| Latencia de Redis p99 | `histogram_quantile(0.99, sum(rate(eo_redis_latency_seconds_bucket[5m])) by (le))` | Afecta a presencia y a los logins |
+| Latencia de Redis p99 | `histogram_quantile(0.99, sum(rate(eo_redis_latency_seconds_bucket[5m])) by (le))` | **Serie plana**: la métrica no se observa (§2.5). Afectaría a la presencia y al handshake |
 
 ### 4.4 Jugadores — "¿hay alguien y está bien?"
 
@@ -261,7 +271,7 @@ La regla de diseño es que **cada tablero responda una pregunta**, no que acumul
 | Jugadores conectados | `eo_connected_players` | Serie principal; compárala con la misma hora de días anteriores |
 | WebSockets frente a jugadores | `eo_connected_websockets` y `eo_connected_players` superpuestos | Divergencia grande = conexiones zombis o reconexión en bucle. Alguna divergencia es normal: un jugador puede tener varias sesiones |
 | Variación en 5 min | `delta(eo_connected_players[5m])` | Caídas bruscas: ver alerta §5.7 |
-| Tasa de handshakes | `rate(eo_ws_messages_total{direction="inbound",type="session.hello"}[5m])` | Un pico sin subida de `eo_connected_players` = los handshakes están fallando |
+| Tasa de handshakes | — | **No hay métrica de handshakes**: `session.hello` no se cuenta en `eo_ws_messages_total`. Se usan los logs `handshake rechazado` (con `close_code`) y `sesión establecida` |
 
 ---
 
@@ -331,7 +341,7 @@ evita tener que actuar en la crisis.
     summary: "La cola de persistencia crece de forma sostenida: los workers no drenan"
 
 - alert: EOPersistenceQueueCritical
-  expr: eo_persistence_queue_depth > 10000
+  expr: eo_persistence_queue_depth > 3000
   for: 5m
   labels: { severity: critical }
   annotations:
@@ -340,7 +350,7 @@ evita tener que actuar en la crisis.
 
 **Justificación.** La cola es un amortiguador entre el loop (que nunca hace I/O de Postgres) y los workers.
 Que suba en un pico es su función. Que suba **y no baje** significa que la tasa de generación supera a la
-de drenaje, algo que no se corrige solo: la cola crecerá hasta agotar memoria. Además, todo lo encolado y
+de drenaje, algo que no se corrige solo. La cola está acotada —4096 trabajos en total, en 4 particiones de 1024—, así que no agota la memoria: cuando una partición se llena **descarta** trabajos con el log `cola de persistencia saturada: trabajo descartado`, y por eso el umbral crítico está por debajo de esa capacidad y conviene alertar también sobre ese log. Además, todo lo encolado y
 no escrito se pierde en un crash, así que la profundidad es literalmente el tamaño de la ventana de
 pérdida. La condición `deriv > 0` elimina los falsos positivos de los picos que sí se recuperan.
 
@@ -357,7 +367,7 @@ pérdida. La condición `deriv > 0` elimina los falsos positivos de los picos qu
   for: 5m
   labels: { severity: critical }
 
-- alert: EORedisLatencyHigh
+- alert: EORedisLatencyHigh   # no dispara hoy: eo_redis_latency_seconds no se observa (§2.5)
   expr: histogram_quantile(0.99, sum(rate(eo_redis_latency_seconds_bucket[5m])) by (le)) > 0.02
   for: 10m
   labels: { severity: warning }
@@ -423,7 +433,9 @@ congelado. Con 10 Hz esperados, menos de 1 tick/s no admite explicación benigna
 solo ofrece destinos válidos. Un 5 % de errores sostenido significa un cliente desplegado con un bug, una
 divergencia de esquema entre `packages/protocol` y el servidor, o alguien sondeando el protocolo.
 `INTERNAL_ERROR` merece regla propia y severidad crítica porque, a diferencia de todos los demás códigos, no
-lo causa el cliente: **lo causa el servidor**. 0.1/s (6 por minuto) es señal inequívoca de un bug activo.
+lo causa el cliente: **lo causa el servidor**. Hoy la serie sólo cuenta un caso: la cola de comandos hacia el
+loop llena (los `INTERNAL_ERROR` de la simulación no pasan por esta métrica, §2.3), así que mide
+**saturación del loop**, no bugs.
 
 ### 5.7 Caída brusca de jugadores conectados
 
@@ -464,17 +476,17 @@ que mirar, no una lista de sugerencias.
 
 1. **`eo_active_movements`**, `eo_active_units` y `eo_connected_players`. ¿Es simplemente más carga? Si han
    crecido proporcionalmente, es un problema de capacidad, no un bug.
-2. **`eo_pathfinding_duration_seconds` p99** y `eo_pathfinding_requests_total{result="not_found"}`. El A\*
-   corre dentro del tick: si su p99 se ha disparado, es el sospechoso principal. Cruza con
-   `eo_protocol_errors_total{code="PATH_TOO_LONG"}` para ver si alguien está pidiendo rutas al límite de
-   `EO_PATHFINDING_MAX_DISTANCE` (256) o rutas que agotan `EO_PATHFINDING_MAX_NODES` (20000) antes de fallar.
+2. **`eo_pathfinding_duration_seconds` p99** (tiempo de A\* por tick). El A\* corre dentro del tick: si su
+   p99 se ha disparado, es el sospechoso principal. No hay métrica que distinga los fallos (`PATH_TOO_LONG`
+   al límite de `EO_PATHFINDING_MAX_DISTANCE` = 256 o de `EO_PATHFINDING_MAX_NODES` = 20000): el volumen de
+   `unit.move.rejected` salientes es la única pista.
 3. **`eo_persistence_queue_depth`.** Si la cola también crece, el problema probablemente **no** está en el
    tick sino aguas abajo, y la presión de memoria está afectando a todo.
 4. **`eo_database_latency_seconds`.** Si está alta **y** el tick se resiente, sospecha lo peor: **I/O
    síncrono de Postgres dentro del tick**, que el canon prohíbe expresamente y que el diseño evita encolando
    toda escritura. Es un bug de diseño, no de capacidad.
-5. Logs `"level":"WARN","msg":"tick overrun"` con su campo `phase`: dicen exactamente qué fase se pasó de
-   presupuesto.
+5. No hay log de overrun ni desglose por fase: sólo `eo_game_tick_overruns_total` y el histograma del tick.
+   El aviso `ticks perdidos descartados` (con `missed`) dice cuándo el retraso llegó a saltarse ticks.
 
 ### 6.2 "La cola de persistencia crece"
 
@@ -490,9 +502,9 @@ que mirar, no una lista de sugerencias.
 
 ### 6.3 "`/ready` devuelve 503"
 
-1. **Lee el cuerpo de `/ready`**: el mapa `checks` dice qué comprobación falla — `postgres`, `redis` o
+1. **Lee el cuerpo de `/ready`**: el mapa `checks` dice qué comprobación falla — `postgres`, `hot_state` o
    `game_loop`. No adivines.
-2. Si falla `postgres` o `redis`: es un problema de dependencia o de red. **No reinicies el Game Server**,
+2. Si falla `postgres` o `hot_state`: es un problema de dependencia o de red. **No reinicies el Game Server**,
    no arregla nada y desconecta a todos.
 3. Si `game_loop` está en **`stale`**: el proceso vive pero la simulación lleva más de 5 s sin latir. Captura
    un volcado de goroutines antes de hacer nada — es la única evidencia que permitirá encontrar el
@@ -502,25 +514,31 @@ que mirar, no una lista de sugerencias.
 
 ### 6.4 "Los jugadores no pueden conectar"
 
-1. **`rate(eo_ws_messages_total{direction="inbound",type="session.hello"}[5m])`.** ¿Llegan handshakes?
-   - **No llegan** → el problema está delante del servidor: DNS, TLS, reverse proxy, firewall, o el
-     frontend no está emitiendo tickets. Prueba `curl -I https://game.<dominio>/`.
+1. **Logs `handshake rechazado` y `sesión establecida`.** ¿Llegan handshakes? (No hay métrica: `session.hello`
+   no se cuenta.)
+   - **No llegan** → el problema está delante del servidor: DNS, TLS, reverse proxy, firewall, o la web no
+     está emitiendo tickets. Prueba `curl -I https://game.<dominio>/` y `POST /api/auth/ticket` en la web.
    - **Llegan pero `eo_connected_players` no sube** → el handshake falla. Sigue en el punto 2.
-2. Logs de cierre por código: `4401` (secreto desincronizado o ticket expirado — sospecha de una rotación
-   mal ejecutada, ver [configuration.md](./configuration.md#63-rotación-de-eo_auth_jwt_secret)), `4408`
-   (el cliente no envía `session.hello` dentro del `WSHandshakeTimeout` de 5 s), `4429` (rate limit), `4400`
-   (mensaje inválido: sospecha divergencia de esquema del protocolo), `4500` (cola de salida de la sesión
-   llena; ver `EO_WS_OUTBOUND_QUEUE_SIZE`).
-3. **`eo_redis_latency_seconds`.** El consumo del `jti` en `ticket:jti:{jti}` es parte del handshake: si
-   Redis está lento o caído, los logins fallan aunque todo lo demás esté bien.
+2. El campo `close_code` de `handshake rechazado`: `4401` (secreto desincronizado, ticket expirado o Redis sin
+   responder al consumir el `jti` — sospecha de una rotación mal ejecutada, ver
+   [configuration.md](./configuration.md#63-rotación-de-eo_auth_jwt_secret)), `4408` (el cliente no envía
+   `session.hello` dentro del `WSHandshakeTimeout` de 5 s), `4400` (mensaje inválido o versión no soportada:
+   sospecha divergencia de esquema del protocolo) y `1009` (frame demasiado grande). `4429` (rate limit) y
+   `4500` (cola de salida llena o fallo de escritura o ping) son cierres de una sesión **ya establecida**, con
+   sus propios mensajes de log.
+3. **El check `hot_state` de `/ready`.** El consumo del `jti` en `ticket:jti:{jti}` es parte del handshake: si
+   Redis está caído, los handshakes cierran con `4401` aunque todo lo demás esté bien.
+   `eo_redis_latency_seconds` no sirve aquí: no se observa (§2.5).
 4. Comprueba que emisor y verificador comparten `EO_AUTH_JWT_SECRET`. El servidor **no** registra una huella
    del secreto (ver [configuration.md](./configuration.md#53-registro-de-la-configuración-efectiva)), así que
    la verificación práctica es intentar una conexión real con un ticket recién emitido.
 
 ### 6.5 "Sube la tasa de `system.error`"
 
-1. **`topk(8, sum(rate(eo_protocol_errors_total[5m])) by (code))`.** El código dice qué pasa. (Es esta
-   métrica y no `eo_commands_total`: la de comandos solo tiene `type` y `result`.)
+1. **`topk(8, sum(rate(eo_protocol_errors_total[5m])) by (code))`.** Sólo mostrará `INVALID_MESSAGE`,
+   `UNSUPPORTED_VERSION`, `RATE_LIMITED` e `INTERNAL_ERROR` (§2.3). Los códigos de negocio de la lista de abajo
+   no se cuentan en ninguna métrica: hoy se ven en el cliente, en el tráfico de `unit.move.rejected` /
+   `system.error` y, cuando haya `request_id` en los logs de la simulación, en los logs.
    - `INVALID_MESSAGE` / `UNSUPPORTED_VERSION` → divergencia entre el esquema del cliente y el del servidor.
      Recuerda que los esquemas cliente→servidor son **estrictos** (`additionalProperties: false`): un campo
      de más basta para el rechazo. Comprueba qué versión del frontend está desplegada frente a la del Game
@@ -530,10 +548,11 @@ que mirar, no una lista de sugerencias.
      `player_id` en los logs.
    - `PATH_NOT_FOUND` / `TARGET_NOT_WALKABLE` / `PATH_TOO_LONG` → la UI está ofreciendo destinos que el
      servidor rechaza: posible desincronización de la capa de ocupación en el cliente.
-   - `INTERNAL_ERROR` → **bug del servidor**, o contrapresión: la cola de comandos llena descarta el comando
-     y responde con este código. Cruza con `eo_persistence_queue_depth` antes de escalar.
-2. Filtra los logs por el código y extrae los `request_id` afectados; con uno solo se reconstruye el caso
-   completo.
+   - `INTERNAL_ERROR` → en esta métrica, contrapresión: la cola de comandos hacia el loop está llena y
+     descarta comandos (log `cola de comandos saturada; comando descartado`). Cruza con
+     `eo_game_tick_duration_seconds` y `eo_game_tick_overruns_total`, no con la cola de persistencia.
+2. Los `request_id` sólo aparecen hoy en los logs de la capa WebSocket (duplicados y descartes); reconstruir
+   un caso completo desde un `request_id` está pendiente (§1.2).
 
 ### 6.6 "Caída brusca de jugadores conectados"
 

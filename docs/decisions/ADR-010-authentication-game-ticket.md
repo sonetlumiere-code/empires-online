@@ -13,7 +13,14 @@ Propósito: fijar que Next.js autentica al usuario y emite un JWT HS256 de 60 se
 > **Implementado por [ADR-018](ADR-018-identity-store-and-ticket-issuer.md) (2026-10-20).** Hasta entonces el
 > ticket lo emitía, como provisional, el propio Game Server. ADR-018 decide lo que este ADR dejaba abierto —dónde
 > viven usuarios y contraseñas y cuál es la «sesión web ya autenticada» (una cookie opaca de `apps/web`)— y no
-> cambia nada de lo que aquí se decide: este ADR sigue vigente entero.
+> cambia nada de lo que aquí se decide.
+>
+> **Sustitución parcial (2026-10-21).** El `system.error` con `UNAUTHORIZED` previo al cierre `4401` (§2.1, el
+> último punto de §2.3, «Fallo explícito y accionable» en §4.1 y las filas de §5 que lo esperan) queda
+> **sustituido por [ADR-019](ADR-019-handshake-failure-close-code.md)**: mientras la conexión no tiene sesión el
+> servidor no envía mensajes, y un handshake fallido se comunica sólo con el código de cierre. El servidor nunca
+> envió ese mensaje. El resto de este ADR sigue vigente. El texto anterior se conserva íntegro como registro de
+> la decisión original.
 
 ---
 

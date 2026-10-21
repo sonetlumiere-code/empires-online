@@ -296,7 +296,7 @@ Hay dos colas acotadas en este camino, y se comportan distinto:
 
 | Cola | Capacidad | Al saturarse |
 |---|---|---|
-| Canal de comandos (`commands`, constante `commandQueueSize` de `cmd/server/main.go`) | 8192 | El productor **no bloquea**: `Server.dispatch` descarta el comando con `select`/`default` y registra `level=error`. La ruta de `session.view` lo convierte en `system.error` con `INTERNAL_ERROR`; `unit.move` y `unit.cancel_move` hoy **ignoran** el valor de retorno y el cliente no recibe rechazo — carencia conocida, no diseño |
+| Canal de comandos (`commands`, constante `commandQueueSize` de `cmd/server/main.go`) | 8192 | El productor **no bloquea**: `Server.dispatch` descarta el comando con `select`/`default` y registra `level=error`. El jugador recibe `system.error` con `INTERNAL_ERROR` y su `requestId`, y en los comandos deduplicados se libera la reserva para que el reintento se ejecute (I-10, [networking.md](./networking.md) §8.4) |
 | Cola de persistencia (`persistence.Queue`, `DefaultQueueConfig()`) | 4096, 4 workers, 3 intentos, 200 ms entre reintentos | El trabajo se **descarta**, se registra `level=error` y se invoca su `OnPermanentFailure` como compensación. Observable en `eo_persistence_queue_depth` |
 
 Nótese que **no existe control de admisión**: el loop no deja de aceptar comandos durables cuando la cola de persistencia crece. Añadirlo es una palanca disponible, no una propiedad actual.
@@ -466,6 +466,6 @@ Todas las métricas existen hoy en `internal/observability/metrics.go` y se expo
 - [`./game-server.md`](./game-server.md) — estructura de paquetes real, modelo de concurrencia y colas.
 - [`./pathfinding.md`](./pathfinding.md) — límites y presupuesto del A\*, que es el coste dominante de §3.
 - [`./networking.md`](./networking.md) — fan-out, interest management y presupuesto de mensajes.
-- ADRs en [`../decisions/`](../decisions/README.md) — el sharding (eje 3), el cambio de codificación del protocolo (palanca 1.7) y la separación del gateway (eje 2) requieren cada uno su ADR antes de implementarse. Ninguno existe todavía: los doce ADR actuales van de [ADR-001](../decisions/ADR-001-game-server-language.md) a [ADR-012](../decisions/ADR-012-database-migrations.md).
+- ADRs en [`../decisions/`](../decisions/README.md) — el sharding (eje 3), el cambio de codificación del protocolo (palanca 1.7) y la separación del gateway (eje 2) requieren cada uno su ADR antes de implementarse. Ninguno existe todavía: los diecinueve ADR actuales, de [ADR-001](../decisions/ADR-001-game-server-language.md) a [ADR-019](../decisions/ADR-019-handshake-failure-close-code.md), no tratan ninguno de los tres.
 
 Referencias al canon técnico usadas en este documento: §2 (principios), §4 (coordenadas y chunks), §5 (terreno), §6 (game loop), §7 (movimiento), §8 (pathfinding), §11 (esquema), §12 (persistencia), §13 (protocolo), §14 (autenticación), §16 (códigos de error), §17 (configuración), §18 (observabilidad).

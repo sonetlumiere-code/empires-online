@@ -381,7 +381,7 @@ autorización de la conexión reside en la sesión establecida. Por tanto:
 - **Las sesiones WebSocket ya establecidas NO se ven afectadas por una rotación.** Nadie es expulsado.
 - Lo único afectado son las **conexiones nuevas** durante la ventana de propagación: si el emisor (Next.js)
   y el verificador (Game Server) no comparten el mismo secreto, el ticket falla y la conexión se cierra con
-  `4401` / `UNAUTHORIZED`.
+  `4401`, sin mensaje previo ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)).
 - Como el ticket tiene **TTL de 60 s**, cualquier ticket emitido con el secreto viejo caduca solo. No hay
   arrastre largo.
 

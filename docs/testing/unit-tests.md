@@ -2,9 +2,11 @@
 
 Catálogo de los tests de dominio puro del Game Server: qué se verifica sin ninguna infraestructura, con qué fixtures, y la lista enumerada de casos obligatorios por subsistema con sus valores numéricos exactos.
 
-> **Estado real.** Buena parte de este nivel **ya existe y está en verde**: seis ficheros `_test.go`
-> que se ejecutan con `pnpm run server:test`. Cada sección distingue con una etiqueta los casos
-> **✔ implementados** (con su nombre de test real) de los **○ previstos**.
+> **Estado real.** Buena parte de este nivel **ya existe y está en verde**: los `_test.go` sin etiqueta
+> `integration` de `internal/`, que se ejecutan con `pnpm run server:test`. Cada sección distingue con una
+> etiqueta los casos **✔ implementados** (con su nombre de test real) de los **○ previstos**; las filas
+> reconciliadas el 2026-10-21 llevan además una nota **Estado** con el test que las cubre, si es otro, o lo que
+> difiere del comportamiento previsto.
 > Ubicación, nombres y convenciones vienen de [strategy.md](./strategy.md) §5.
 
 ---
@@ -31,7 +33,7 @@ Todo lo que no cumpla las cinco es otro nivel: [integration](./integration-tests
 | `internal/domain/city` | `city_test.go` ✔ | Autómata de presencia, `ShouldEngageProtection` y sus bordes, límite de población. |
 | `internal/auth` | `ticket_test.go` ✔ | Verificación del game ticket: caducidad, firma, `alg=none`, audiencia, claims, replay, fail-closed. |
 | `internal/config` | `config_test.go` ✔ | Parseo de las `EO_*`, valores por defecto del canon §17 y validaciones cruzadas. |
-| `internal/domain/unit` | ○ pendiente | Máquina de estados de unidad. Hoy las transiciones se ejercitan indirectamente desde [simulation-tests.md](./simulation-tests.md); un `unit_test.go` propio está previsto (§7.1). |
+| `internal/domain/unit` | `unit_test.go` ✔ | `EnsureCanMove` por estado, `IsAlive`, `EnsureOwnedBy`, el catálogo de tipos y que los estados del dominio son los del esquema. La matriz completa de transiciones de §7.1 no existe. |
 
 Lo que **no** se prueba aquí: SQL, serialización JSON del protocolo, avance real del loop, y por supuesto nada de red. En particular, **la validación del comando `unit.move` no vive en este nivel** (§8): se ejerce contra la simulación completa, porque el orden de validación es una propiedad del comando, no de una función pura.
 
@@ -157,9 +159,9 @@ Con `EO_CHUNK_SIZE = 32` eso equivale a `chunkX = x >> 5`, `localX = x & 31` y `
 
 | # | Test | Entrada | Salida esperada exacta |
 |---|---|---|---|
-| C13 | `TestConversionTileChunkEnElMundoDelMvp` | `(100,100)` y `(511,511)` en el mundo MVP 512×512 (`ChunksPerRow = 16`) | `chunk(3,3)`, `ChunkIndex = 51`, local `(4,4)`, offset `132`; y `chunk(15,15)`, `ChunkIndex = 255`, local `(31,31)`, offset `1023` |
-| C14 | `TestParticionCompletaDelMundo` | los 262 144 tiles del mundo MVP | Cada tile produce exactamente un `ChunkIndex`; la unión de los 256 conjuntos es una partición sin solapes. Caro en apariencia y barato de verdad: son microsegundos de aritmética entera, y verifica la partición completa en vez de una muestra |
-| C15 | `TestChunkIndexDependeDeLaConfiguracion` | mundo 256×256 con chunk 32 ⇒ `ChunksPerRow = 8` | `(32,32)` ⇒ `ChunkIndex = 1*8+1 = 9`. Verifica que `ChunksPerRow` se deriva del mundo y no está hardcodeado |
+| C13 | `TestConversionTileChunkEnElMundoDelMvp` | `(100,100)` y `(511,511)` en el mundo MVP 512×512 (`ChunksPerRow = 16`) | `chunk(3,3)`, `ChunkIndex = 51`, local `(4,4)`, offset `132`; y `chunk(15,15)`, `ChunkIndex = 255`, local `(31,31)`, offset `1023` **Estado (2026-10-21):** ○ cubierto en parte por `TestConversionTileChunk` (`(511,511)` → chunk `(15,15)`, id 255, y 256 chunks); no cubre `(100,100)` ni el local ni el offset. |
+| C14 | `TestParticionCompletaDelMundo` | los 262 144 tiles del mundo MVP | Cada tile produce exactamente un `ChunkIndex`; la unión de los 256 conjuntos es una partición sin solapes. Caro en apariencia y barato de verdad: son microsegundos de aritmética entera, y verifica la partición completa en vez de una muestra **Estado (2026-10-21):** ○ sin test. |
+| C15 | `TestConversionTileChunk` | mundo 256×256 con chunk 32 ⇒ `ChunksPerRow = 8` | `(32,32)` ⇒ `ChunkIndex = 1*8+1 = 9`. Verifica que `ChunksPerRow` se deriva del mundo y no está hardcodeado **Estado (2026-10-21):** ✔ con mundos de 128 y 512 (`ChunksPerRow` 4 y 16): `ChunksPerRow` se deriva del mundo. No usa 256×256. |
 
 ### 3.3 Proyección isométrica: se prueba en el cliente, y el servidor prueba que NO la tiene
 
@@ -169,12 +171,12 @@ El canon §4 es explícito: el servidor **nunca** maneja píxeles. La verificaci
 
 | # | Entrada `(x,y)` | `(screenX, screenY)` esperado |
 |---|---|---|
-| C16 | `(0,0)` | `(0, 0)` |
-| C17 | `(1,0)` | `(32, 16)` |
-| C18 | `(0,1)` | `(-32, 16)` |
-| C19 | `(1,1)` | `(0, 32)` |
-| C20 | `(100,100)` | `(0, 3200)` |
-| C21 | Ida y vuelta `screenToTile(tileToScreen(t)) == t` para 1000 tiles | Identidad exacta |
+| C16 | `(0,0)` | `(0, 0)` **Estado (2026-10-21):** ✔ `el origen del mundo cae en el origen isométrico` (`apps/web/src/render/iso.test.ts`). |
+| C17 | `(1,0)` | `(32, 16)` **Estado (2026-10-21):** ✔ `aplica las fórmulas canónicas` (`iso.test.ts`). |
+| C18 | `(0,1)` | `(-32, 16)` **Estado (2026-10-21):** ✔ `aplica las fórmulas canónicas` (`iso.test.ts`). |
+| C19 | `(1,1)` | `(0, 32)` **Estado (2026-10-21):** ✔ `aplica las fórmulas canónicas` (`iso.test.ts`). |
+| C20 | `(100,100)` | `(0, 3200)` **Estado (2026-10-21):** ○ el test prueba `(10,4)`, no `(100,100)`. |
+| C21 | Ida y vuelta `screenToTile(tileToScreen(t)) == t` para 1000 tiles | Identidad exacta **Estado (2026-10-21):** ○ en parte: `es la inversa exacta de worldToIso` y `screenToTile invierte worldToScreen` recorren unos pocos tiles, no mil. |
 
 **○ En el servidor:** `TestSinConstantesDePixeles` recorre el árbol `internal/` y falla si aparecen los identificadores `TILE_W`, `TILE_H`, `screenX` o `screenY`. Es un test de arquitectura, barato, y evita que la proyección se filtre al lado autoritativo. Hoy la propiedad se cumple —no hay ni una constante de píxeles en el módulo Go— pero no está verificada por ningún test.
 
@@ -232,10 +234,10 @@ if chebyshev(from, to) > maxDistance {
 
 | # | Test | Escenario | Resultado esperado exacto |
 |---|---|---|---|
-| **P16** | `TestDestinoSobreAgua` | Destino sobre `WATER` | `ErrTargetNotWalkable`, igual que sobre `MOUNTAIN`. Hoy sólo se cubre la variante `MOUNTAIN` |
-| **P17** | `TestEsquinaBloqueadaPorAmbosLadosEsInalcanzable` | `(0,0) → (1,1)` con `(1,0)` y `(0,1)` = `MOUNTAIN` | `ErrPathNotFound` |
-| **P18** | `TestDesempateEsEstablePorFHYX` | Mundo abierto donde existen ≥ 2 rutas de coste idéntico entre `(0,0)` y `(3,3)` | La ruta devuelta es exactamente la que dicta el desempate `(f, h, y, x)`, enumerada tile a tile en el test |
-| **P19** | `TestRutaNuncaAtraviesaTileNoTransitable` | 200 consultas generadas sobre mapas con obstáculos | Ningún waypoint cae en un tile no transitable, ninguna diagonal ataja una esquina, y ningún par consecutivo repite tile. Generaliza P6 y P8 |
+| **P16** | `TestDestinoSobreAgua` | Destino sobre `WATER` | `ErrTargetNotWalkable`, igual que sobre `MOUNTAIN`. Hoy sólo se cubre la variante `MOUNTAIN` **Estado (2026-10-21):** ○ sin test; `WATER` no es transitable y da el mismo error. |
+| **P17** | `TestEsquinaBloqueadaPorAmbosLadosEsInalcanzable` | `(0,0) → (1,1)` con `(1,0)` y `(0,1)` = `MOUNTAIN` | `ErrPathNotFound` **Estado (2026-10-21):** ○ sin test; `TestProhibidoAtajarEsquinas` usa otro mapa. |
+| **P18** | `TestDesempateEsEstablePorFHYX` | Mundo abierto donde existen ≥ 2 rutas de coste idéntico entre `(0,0)` y `(3,3)` | La ruta devuelta es exactamente la que dicta el desempate `(f, h, y, x)`, enumerada tile a tile en el test **Estado (2026-10-21):** ○ sin test. |
+| **P19** | `TestRutaNuncaAtraviesaTileNoTransitable` | 200 consultas generadas sobre mapas con obstáculos | Ningún waypoint cae en un tile no transitable, ninguna diagonal ataja una esquina, y ningún par consecutivo repite tile. Generaliza P6 y P8 **Estado (2026-10-21):** ○ sin test; lo cubren en parte `TestRodeaElObstaculo` y `TestProhibidoAtajarEsquinas`. |
 
 ### 4.3 Mapa del caso P8 (prohibición de corner cutting)
 
@@ -338,9 +340,9 @@ Cubre en cuatro segmentos las tres cosas que pueden salir mal: el redondeo de la
 
 | # | Test | Entrada | Resultado esperado exacto |
 |---|---|---|---|
-| **W8** | `TestRedondeoPorSegmentoNoAlFinal` | 3 diagonales `GRASSLAND` seguidas | `[0, 849, 1698, 2547]`. Acumular en real y redondear una sola vez al final daría `2546`; el test distingue dos implementaciones que parecen equivalentes y no lo son |
-| **W9** | `TestPolilineaDeUnSoloWaypoint` | `[(5,5)]` | `[0]`, `DurationMs() == 0`, `arrivalTimeMs == startTimeMs` |
-| **W10** | `TestTiemposEstrictamenteCrecientes` | 200 polilíneas generadas sobre mapas variados | `tMs[i] > tMs[i-1]` para todo `i > 0`, y `arrivalTimeMs == startTimeMs + tMs[len-1]` exactamente. Generaliza W3 y W6 |
+| **W8** | `TestRedondeoPorSegmentoNoAlFinal` | 3 diagonales `GRASSLAND` seguidas | `[0, 849, 1698, 2547]`. Acumular en real y redondear una sola vez al final daría `2546`; el test distingue dos implementaciones que parecen equivalentes y no lo son **Estado (2026-10-21):** ○ sin test. |
+| **W9** | `TestPolilineaDeUnSoloWaypoint` | `[(5,5)]` | `[0]`, `DurationMs() == 0`, `arrivalTimeMs == startTimeMs` **Estado (2026-10-21):** ○ sin test; `BuildTimedPath` acepta un solo tile y devuelve `[0]`. |
+| **W10** | `TestTiemposEstrictamenteCrecientes` | 200 polilíneas generadas sobre mapas variados | `tMs[i] > tMs[i-1]` para todo `i > 0`, y `arrivalTimeMs == startTimeMs + tMs[len-1]` exactamente. Generaliza W3 y W6 **Estado (2026-10-21):** ○ sin test; `TestLaPosicionNuncaAdelantaAlReloj` genera las polilíneas a mano, no con `BuildTimedPath`. |
 
 ---
 
@@ -378,10 +380,10 @@ A3, A4 y A6 son la frontera entre servidor y cliente: si un test esperase `(0.5,
 
 | # | Test | Escenario | Resultado esperado |
 |---|---|---|---|
-| **A11** | `TestPositionAtEnPolilineaDeUnSoloWaypoint` | Cualquier `elapsed` sobre `[(5,5)]` | Siempre el único waypoint |
-| **A12** | `TestIndiceMonotonoEnBarrido` | Barrido de `-100` a `2900` de 1 en 1 ms | El índice devuelto es monótono no decreciente; nunca retrocede. Unas 3 000 evaluaciones, microsegundos |
-| **A13** | `TestPosicionDerivadaNuncaAdelantaAlReloj` | 50 instantes de la ventana del movimiento | La posición derivada nunca corresponde a un `tMs > elapsed`. Es la propiedad que impide "adelantar" a la unidad |
-| **A14** | `TestBusquedaBinariaCoincideConBarridoLineal` | 200 polilíneas generadas, evaluadas en `tMs-1`, `tMs` y `tMs+1` de cada segmento | El resultado de la búsqueda binaria coincide con el de un barrido lineal ingenuo. Protege la optimización |
+| **A11** | `TestPositionAtEnPolilineaDeUnSoloWaypoint` | Cualquier `elapsed` sobre `[(5,5)]` | Siempre el único waypoint **Estado (2026-10-21):** ○ en parte: `TestLaPosicionNuncaAdelantaAlReloj` incluye polilíneas de un waypoint, al azar. |
+| **A12** | `TestIndiceMonotonoEnBarrido` | Barrido de `-100` a `2900` de 1 en 1 ms | El índice devuelto es monótono no decreciente; nunca retrocede. Unas 3 000 evaluaciones, microsegundos **Estado (2026-10-21):** ○ en parte: `TestLaPosicionNuncaAdelantaAlReloj` muestrea al azar, sin barrido. |
+| **A13** | `TestLaPosicionNuncaAdelantaAlReloj` | 50 instantes de la ventana del movimiento | La posición derivada nunca corresponde a un `tMs > elapsed`. Es la propiedad que impide "adelantar" a la unidad **Estado (2026-10-21):** ✔ sobre 2000 polilíneas. |
+| **A14** | `TestLaPosicionNuncaAdelantaAlReloj` | 200 polilíneas generadas, evaluadas en `tMs-1`, `tMs` y `tMs+1` de cada segmento | El resultado de la búsqueda binaria coincide con el de un barrido lineal ingenuo. Protege la optimización **Estado (2026-10-21):** ✔ comprueba que el índice es el último alcanzado, aunque no en `tMs ± 1`. |
 
 ### 6.3 Cancelación
 
@@ -391,31 +393,31 @@ Lo que sí falta en este nivel es la variante puramente funcional, ○ prevista:
 
 | # | Test | Escenario | Resultado esperado |
 |---|---|---|---|
-| **A15** | `TestCancelarSeAjustaAlUltimoTileAlcanzado` | Cancelar en `elapsed = 1000` sobre la polilínea de §5.3 | `(1,0)`, el último waypoint alcanzado: ni el siguiente ni una posición intermedia |
-| **A16** | `TestCancelarSobreWaypointExactoSeQuedaAhi` | Cancelar en `elapsed = 1449` | `(2,1)` |
-| **A17** | `TestCancelarSinProgresoSeQuedaEnElOrigen` | Cancelar en `elapsed = 10` | `(0,0)` |
-| **A18** | `TestCancelarTrasLaLlegadaNoHaceNada` | Cancelar en `elapsed = 5000` | `(4,1)`; el movimiento ya es terminal y no vuelve a `ACTIVE` |
+| **A15** | `TestPositionAt` | Cancelar en `elapsed = 1000` sobre la polilínea de §5.3 | `(1,0)`, el último waypoint alcanzado: ni el siguiente ni una posición intermedia **Estado (2026-10-21):** ✔ no hay función de cancelación pura: `cancelActiveMovement` usa `PositionAt`, que es lo que se prueba. |
+| **A16** | `TestPositionAt` | Cancelar en `elapsed = 1449` | `(2,1)` **Estado (2026-10-21):** ✔ ídem. |
+| **A17** | `TestPositionAt` | Cancelar en `elapsed = 10` | `(0,0)` **Estado (2026-10-21):** ✔ ídem. |
+| **A18** | `TestCancelarTrasLaLlegadaNoHaceNada` | Cancelar en `elapsed = 5000` | `(4,1)`; el movimiento ya es terminal y no vuelve a `ACTIVE` **Estado (2026-10-21):** ○ sin test; tras la llegada el movimiento ya no está y cancelar no hace nada. |
 
 ---
 
 ## 7. Transiciones de estado
 
-### 7.1 Estado de unidad — ○ pendiente
+### 7.1 Estado de unidad — ✔ en parte
 
 Referencia: [../specs/unit.md](../specs/unit.md) §7 y canon §10. Estados reales del dominio (`internal/domain/unit`): `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`.
 
-**No existe todavía `internal/domain/unit/unit_test.go`.** Hoy las transiciones se ejercitan indirectamente desde el nivel `simulation` (`TestVerticalSliceMovimiento` recorre `IDLE → MOVING → IDLE`; `TestRechazosDeMovimiento` cubre los rechazos desde `DEAD` y `GARRISONED`). Eso cubre los caminos que el MVP recorre, pero no la matriz completa, que es donde aparece la transición que nadie pensó en prohibir.
+**`internal/domain/unit/unit_test.go` existe** (`TestEnsureCanMoveDecidePorEstado`, `TestIsAliveExigeEstadoYVida`, `TestEnsureOwnedByComparaElDueno`, `TestLookupSoloConoceElCatalogo`, `TestLosEstadosDelDominioSonLosDelEsquema`), pero el dominio no tiene una función de transición: sólo `EnsureCanMove`. Las transiciones se ejercitan además desde el nivel `simulation` (`TestVerticalSliceMovimiento` recorre `IDLE → MOVING → IDLE`; `TestRechazosDeMovimiento` cubre los rechazos desde `DEAD` y `GARRISONED`). Eso cubre los caminos que el MVP recorre, pero no la matriz completa, que es donde aparece la transición que nadie pensó en prohibir.
 
 El test previsto es **table-driven sobre la matriz completa 5×5**: 25 celdas, cada una con su veredicto explícito.
 
 | # | Test | Verifica |
 |---|---|---|
-| **U1** | `TestTransicionesPermitidas` | `IDLE→MOVING`, `HIDDEN→MOVING`, `MOVING→IDLE`, `IDLE→GARRISONED`, `GARRISONED→IDLE`, `IDLE→HIDDEN`, `HIDDEN→IDLE` se aceptan |
-| **U2** | `TestTransicionesProhibidas` | `MOVING→GARRISONED` ⇒ `UNIT_NOT_MOVABLE`, `GARRISONED→MOVING` ⇒ `UNIT_GARRISONED`, `MOVING→HIDDEN`, `GARRISONED→HIDDEN`, `HIDDEN→GARRISONED`, `DEAD→*` ⇒ `UNIT_DEAD` |
-| **U3** | `TestUnidadMuertaRechazaOrdenes` | Toda acción sobre una unidad `DEAD` devuelve `UNIT_DEAD` y **no muta nada**. Hoy cubierto parcialmente por `TestRechazosDeMovimiento` en `simulation` |
-| **U4** | `TestSegundaOrdenPasaPorIdle` | Una segunda orden sobre una unidad `MOVING` no salta de `MOVING` a `MOVING`: cancela el movimiento anterior y vuelve a entrar en `MOVING`. Hoy cubierto de extremo a extremo por `TestNuevaOrdenReemplazaLaAnterior` |
-| **U5** | `TestLaMatrizDeTransicionesEsExhaustiva` | Las 25 celdas tienen veredicto declarado. Añadir un estado nuevo sin actualizar la tabla rompe este test |
-| **U6** | `TestMovingEquivaleAMovimientoActivo` | `status == MOVING` ⟺ el agregado tiene un movimiento `ACTIVE`. La contraparte en base de datos la verifica [integration](./integration-tests.md) |
+| **U1** | `TestTransicionesPermitidas` | `IDLE→MOVING`, `HIDDEN→MOVING`, `MOVING→IDLE`, `IDLE→GARRISONED`, `GARRISONED→IDLE`, `IDLE→HIDDEN`, `HIDDEN→IDLE` se aceptan **Estado (2026-10-21):** ○ sin test: el dominio no tiene función de transición, sólo `EnsureCanMove`. |
+| **U2** | `TestTransicionesProhibidas` | `MOVING→GARRISONED` ⇒ `UNIT_NOT_MOVABLE`, `GARRISONED→MOVING` ⇒ `UNIT_GARRISONED`, `MOVING→HIDDEN`, `GARRISONED→HIDDEN`, `HIDDEN→GARRISONED`, `DEAD→*` ⇒ `UNIT_DEAD` **Estado (2026-10-21):** ○ en parte: `TestEnsureCanMoveDecidePorEstado`, `TestSoloSeEntraDesdeIdle` (garrison) y los tests de ocultamiento; `HIDDEN → GARRISONED` no está probado. |
+| **U3** | `TestRechazosDeMovimiento` + `TestEnsureCanMoveDecidePorEstado` | Toda acción sobre una unidad `DEAD` devuelve `UNIT_DEAD` y **no muta nada**. Hoy cubierto parcialmente por `TestRechazosDeMovimiento` en `simulation` **Estado (2026-10-21):** ✔ |
+| **U4** | `TestEnsureCanMoveDecidePorEstado` + `TestNuevaOrdenReemplazaLaAnterior` | Una segunda orden sobre una unidad `MOVING` no salta de `MOVING` a `MOVING`: cancela el movimiento anterior y vuelve a entrar en `MOVING`. Hoy cubierto de extremo a extremo por `TestNuevaOrdenReemplazaLaAnterior` **Estado (2026-10-21):** ✔ |
+| **U5** | `TestLaMatrizDeTransicionesEsExhaustiva` | Las 25 celdas tienen veredicto declarado. Añadir un estado nuevo sin actualizar la tabla rompe este test **Estado (2026-10-21):** ○ sin test: la matriz 5×5 no existe en el código. |
+| **U6** | `TestMovingEquivaleAMovimientoActivo` | `status == MOVING` ⟺ el agregado tiene un movimiento `ACTIVE`. La contraparte en base de datos la verifica [integration](./integration-tests.md) **Estado (2026-10-21):** ○ en parte, sólo en la recuperación: `TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento` y `TestRecuperacionNoReanudaElMovimientoDeUnaUnidadGuarnecida`. |
 
 **Nota de scope.** `DEAD` **no tiene productor en MVP**: el combate está fuera de scope (canon §21). Los tests que llevan una unidad a `DEAD` la construyen directamente en ese estado, como hace hoy `TestRechazosDeMovimiento`; no existe un comando que mate unidades.
 
@@ -455,8 +457,8 @@ S4 es la razón de existir del tiempo como valor: con reloj real, comprobar los 
 
 | # | Test | Escenario | Resultado esperado |
 |---|---|---|---|
-| **S7** | `TestProteccionIndefinidaMientrasSigaOffline` | Entrar en `PROTECTED` | `ProtectionUntil == nil`: en MVP la protección no caduca sola mientras el jugador siga offline (canon §9). Hoy sólo se comprueba el reverso —que reconectar lo limpia— desde `simulation` |
-| **S8** | `TestCiudadProtegidaRechazaAccionesProhibidas` | Acción prohibida sobre ciudad `PROTECTED` | `CITY_PROTECTED`, sin mutación |
+| **S7** | `TestProteccionIndefinidaMientrasSigaOffline` | Entrar en `PROTECTED` | `ProtectionUntil == nil`: en MVP la protección no caduca sola mientras el jugador siga offline (canon §9). Hoy sólo se comprueba el reverso —que reconectar lo limpia— desde `simulation` **Estado (2026-10-21):** ○ sin test; el código lo cumple (nadie asigna `ProtectionUntil`). |
+| **S8** | `TestCiudadProtegidaRechazaAccionesProhibidas` | Acción prohibida sobre ciudad `PROTECTED` | `CITY_PROTECTED`, sin mutación **Estado (2026-10-21):** ○ sin test: en el MVP ninguna acción es hostil y `CITY_PROTECTED` no se emite; lo fija `TestNingunaAccionDelMVPEsHostilNiSeRestringePorTerritorio` ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). |
 
 El ciclo completo en el tiempo (desconexión → margen de 30 s → `OFFLINE_PENDING` → cooldown de 300 s → `PROTECTED` → reconexión) **sí está verificado hoy**, pero en el nivel `simulation`, porque es el game loop quien decide la transición: ver `TestCicloDePresenciaYProteccion` en [simulation-tests.md](./simulation-tests.md) §4.4.
 
@@ -481,7 +483,7 @@ Referencia: canon §16, [../specs/unit.md](../specs/unit.md) §8 y [../specs/web
 | **E7** | ✔ (parcial) | `target` = posición actual de la unidad | Hoy **se acepta** sin crear polilínea: `unit.move.accepted` y **ningún** `unit.movement.started`, «no se crea una polilínea degenerada de un solo punto» | `TestMoverseAlSitioDondeYaEstas` |
 | **E8** | ✔ | `target` sobre un tile del *blocked overlay* | `TARGET_NOT_WALKABLE` | `TestRechazosDeMovimiento/destino intransitable` |
 | **E9** | ✔ | Destino transitable pero amurallado por completo | `PATH_NOT_FOUND` | `TestSinRutaPosibleSeRechaza` |
-| **E10** | ○ | Distancia Chebyshev > `EO_PATHFINDING_MAX_DISTANCE`; y variante que agota `EO_PATHFINDING_MAX_NODES` | `PATH_TOO_LONG` | pendiente en `simulation`; el pathfinder por su cuenta sí lo cubre (§4.1, P9 y P10) |
+| **E10** | ○ | Distancia Chebyshev > `EO_PATHFINDING_MAX_DISTANCE`; y variante que agota `EO_PATHFINDING_MAX_NODES` | `PATH_TOO_LONG` | pendiente en `simulation`; el pathfinder por su cuenta sí lo cubre (§4.1, P9 y P10) **Estado (2026-10-21):** sin test; el mapeo existe. |
 
 **Sobre E7.** El comportamiento implementado es aceptar y no generar movimiento, no rechazar con `INVALID_TARGET`. Es una decisión deliberada —una orden redundante no es un error del jugador— y así está fijada por test. Si la spec exige `INVALID_TARGET`, es el código el que debe cambiar y este documento con él, pero hoy manda lo implementado.
 
@@ -489,9 +491,9 @@ Referencia: canon §16, [../specs/unit.md](../specs/unit.md) §8 y [../specs/web
 
 | # | Test | Escenario | Esperado |
 |---|---|---|---|
-| **E11** | `TestElOrdenDeValidacionEsEstricto` | Unidad **ajena** y **muerta**, con destino **fuera de límites** | `UNIT_NOT_OWNED`: gana la comprobación de propiedad, no la de estado ni la de destino |
-| **E12** | `TestMuertaGanaAGuarnecida` | Unidad propia `DEAD` marcada además como guarnecida | `UNIT_DEAD` |
-| **E13** | `TestFueraDeLimitesGanaANoTransitable` | `target` fuera del mundo | `TARGET_OUT_OF_BOUNDS`, nunca `TARGET_NOT_WALKABLE` |
+| **E11** | `TestElOrdenDeValidacionEsEstricto` | Unidad **ajena** y **muerta**, con destino **fuera de límites** | `UNIT_NOT_OWNED`: gana la comprobación de propiedad, no la de estado ni la de destino **Estado (2026-10-21):** ○ en parte: el subcaso «unidad ajena y muerta» de `TestRechazosDeMovimiento`, con el destino dentro del mundo. |
+| **E12** | `TestMuertaGanaAGuarnecida` | Unidad propia `DEAD` marcada además como guarnecida | `UNIT_DEAD` **Estado (2026-10-21):** ○ sin test: escenario imposible, la unidad tiene un único `status`. |
+| **E13** | `TestRechazosDeMovimiento` (subcaso «destino fuera del mundo») | `target` fuera del mundo | `TARGET_OUT_OF_BOUNDS`, nunca `TARGET_NOT_WALKABLE` **Estado (2026-10-21):** ✔ `(500,500)` tampoco es transitable y gana `TARGET_OUT_OF_BOUNDS`. |
 
 ### 8.3 Ausencia de efectos secundarios
 
@@ -499,9 +501,9 @@ Requisito explícito de la Definition of Done (canon §19): *errores testeados*.
 
 | # | Estado | Verifica |
 |---|---|---|
-| **E14** | ✔ (parcial) | `TestRechazosDeMovimiento` comprueba, **para cada uno de sus seis subcasos**, que no se emitió ningún `unit.movement.started`: «un comando rechazado no puede producir ningún movimiento». Falta extender la aserción a `status`, `x` e `y` de la unidad |
-| **E15** | ○ | `TestLaPropiedadSeCompruebaAntesDeBuscarRuta`: el path **no se calcula** cuando falla la propiedad, verificado con un `Pathfinder` doble que cuenta llamadas |
-| **E16** | ○ | `TestElRechazoLlevaElRequestId`: el rechazo lleva el `requestId` original para que el cliente correlacione |
+| **E14** | ✔ (parcial) | `TestRechazosDeMovimiento` comprueba, **para cada uno de sus seis subcasos**, que no se emitió ningún `unit.movement.started`: «un comando rechazado no puede producir ningún movimiento». Falta extender la aserción a `status`, `x` e `y` de la unidad **Estado (2026-10-21):** ahora son **siete** subcasos, y todos exigen cero llamadas al A*. |
+| **E15** | ✔ | `TestLaPropiedadSeCompruebaAntesDeBuscarRuta`: el path **no se calcula** cuando falla la propiedad, verificado con un `Pathfinder` doble que cuenta llamadas **Estado (2026-10-21):** cubierto por `TestRechazosDeMovimiento`: los siete subcasos exigen cero búsquedas. |
+| **E16** | ○ | `TestElRechazoLlevaElRequestId`: el rechazo lleva el `requestId` original para que el cliente correlacione **Estado (2026-10-21):** sin test; el código lo hace. |
 | **E17** | ✔ | `TestErrorDeProtocoloLlevaCodigoEstable` (en `internal/protocol/contract_test.go`): el error expone `Code` y `Details`, y la lógica de control nunca usa el texto (regla R9 de [strategy.md](./strategy.md)) |
 | **E18** | ✔ | `TestCatalogoDeErroresCoincideConElExportado` (ídem): los **22** códigos del canon §16 de Go coinciden exactamente con los exportados por `packages/protocol`. Ver [contract-tests.md](./contract-tests.md) §5.1 |
 
@@ -510,9 +512,9 @@ Requisito explícito de la Definition of Done (canon §19): *errores testeados*.
 | # | Estado | Escenario | Esperado |
 |---|---|---|---|
 | **E19** | ✔ | Cancelar un movimiento en curso | `unit.movement.cancelled` con `reason: "CANCELLED_BY_PLAYER"` y `stoppedAt` en el último tile alcanzado; la unidad queda `IDLE` y **no avanza más**. `TestCancelacionExplicita` |
-| **E20** | ○ | Unidad `IDLE`, sin movimiento activo | **No es error**: se responde con la última información conocida ([../specs/unit.md](../specs/unit.md) §7) |
-| **E21** | ○ | Unidad ajena | `UNIT_NOT_OWNED` |
-| **E22** | ○ | Unidad `DEAD` / `GARRISONED` | `UNIT_DEAD` / `UNIT_GARRISONED` |
+| **E20** | ○ | Unidad `IDLE`, sin movimiento activo | **No es error**: se responde con la última información conocida ([../specs/unit.md](../specs/unit.md) §7) **Estado (2026-10-21):** **difiere**: sobre una unidad sin movimiento `unit.cancel_move` no responde nada. Sin test. |
+| **E21** | ○ | Unidad ajena | `UNIT_NOT_OWNED` **Estado (2026-10-21):** sin test; llega como `system.error UNIT_NOT_OWNED`. |
+| **E22** | ○ | Unidad `DEAD` / `GARRISONED` | `UNIT_DEAD` / `UNIT_GARRISONED` **Estado (2026-10-21):** **difiere**: no hay comprobación de estado; sobre una unidad `DEAD` o `GARRISONED` es un no-op silencioso. Sin test. |
 
 El enum de `reason` implementado es **`REPLACED | CANCELLED_BY_PLAYER | PATH_BLOCKED | UNIT_DEAD | SERVER`** (`movement.CancelReason`). Un test que espere `SUPERSEDED` o `PLAYER_REQUEST` está escrito contra un contrato que no existe.
 
@@ -534,13 +536,13 @@ Los topes se siembran en la migración `000002_seed_catalogs`, no en código.
 | # | Estado | Test | Escenario | Esperado |
 |---|---|---|---|---|
 | **N1** | ✔ | `TestLimiteDePoblacion` (`// INV-CITY-002`) | `City{Population: 3, PopulationLimit: 20}` y `City{Population: 20, PopulationLimit: 20}` | `HasPopulationRoom(1)` y `(17)` ciertos, `(18)` falso; en la ciudad llena `(1)` falso y `(0)` **cierto**. El borde exacto queda fijado por escrito |
-| **N2** | ○ | `TestLimiteDePoblacionDerivaDeLaEra` | Las cuatro eras | `population_limit` = 20 / 50 / 100 / 150; ningún literal `20` en el dominio: procede del catálogo cargado desde `eras` |
-| **N3** | ○ | `TestCiudadInicialTieneTresAldeanos` | Ciudad recién creada | `population == 3` (canon §10: 1 `TOWN_CENTER` + 3 `VILLAGER`). El `TOWN_CENTER` es un *building*, **no** cuenta como población. Verificado hoy de forma indirecta por el harness de `simulation`, que crea exactamente 3 aldeanos con `Population: 3` |
-| **N4** | ○ | `TestEnElLimiteSeRechazaLaUnidadNueva` | `population == 20` en `STONE_AGE` | `POPULATION_LIMIT_REACHED`, sin crear la unidad |
-| **N5** | ○ | `TestPoblacionNuncaSuperaElLimite` | Barrido intentando crear 40 unidades en `STONE_AGE` desde `population = 3` | Se crean exactamente 17; las 23 restantes fallan con `POPULATION_LIMIT_REACHED`; `population` final = 20 |
-| **N6** | ○ | `TestAvanzarDeEraSubeElLimiteSinTocarLaPoblacion` | `STONE_AGE (20/20)` → `BRONZE_AGE` | `population_limit` pasa a 50, `population` sigue 20; no se crean ni destruyen unidades |
-| **N7** | ○ | `TestSinModificadoresDeEdificioEnMvp` | Cualquier configuración de edificios | El modificador agregado es 0. Marca explícita: los modificadores de edificios son **Fuera de MVP** |
-| **N8** | ○ | `TestLaPoblacionBajaAlRetirarUnaUnidad` | Retirar una unidad | `population` baja en 1 y nunca por debajo de 0 |
+| **N2** | ✔ | `TestElAltaTomaElLimiteDePoblacionDeSuEra` + `TestLasErasDelCatalogoSonLasDelCanon` | Las cuatro eras | `population_limit` = 20 / 50 / 100 / 150; ningún literal `20` en el dominio: procede del catálogo cargado desde `eras` **Estado (2026-10-21):** de integración, no unitarios. |
+| **N3** | ✔ | `TestBootstrapCreaMundoCompletoDelJugador` | Ciudad recién creada | `population == 3` (canon §10: 1 `TOWN_CENTER` + 3 `VILLAGER`). El `TOWN_CENTER` es un *building*, **no** cuenta como población. Verificado hoy de forma indirecta por el harness de `simulation`, que crea exactamente 3 aldeanos con `Population: 3` **Estado (2026-10-21):** de integración. |
+| **N4** | ○ | `TestEnElLimiteSeRechazaLaUnidadNueva` | `population == 20` en `STONE_AGE` | `POPULATION_LIMIT_REACHED`, sin crear la unidad **Estado (2026-10-21):** sin test: ningún comando crea unidades, y `POPULATION_LIMIT_REACHED` no se emite. |
+| **N5** | ○ | `TestPoblacionNuncaSuperaElLimite` | Barrido intentando crear 40 unidades en `STONE_AGE` desde `population = 3` | Se crean exactamente 17; las 23 restantes fallan con `POPULATION_LIMIT_REACHED`; `population` final = 20 **Estado (2026-10-21):** sin test, por lo mismo. |
+| **N6** | ○ | `TestAvanzarDeEraSubeElLimiteSinTocarLaPoblacion` | `STONE_AGE (20/20)` → `BRONZE_AGE` | `population_limit` pasa a 50, `population` sigue 20; no se crean ni destruyen unidades **Estado (2026-10-21):** sin test: no existe avance de era. |
+| **N7** | ○ | `TestSinModificadoresDeEdificioEnMvp` | Cualquier configuración de edificios | El modificador agregado es 0. Marca explícita: los modificadores de edificios son **Fuera de MVP** **Estado (2026-10-21):** sin test: no existen modificadores. |
+| **N8** | ○ | `TestLaPoblacionBajaAlRetirarUnaUnidad` | Retirar una unidad | `population` baja en 1 y nunca por debajo de 0 **Estado (2026-10-21):** sin test: ningún comando retira unidades; la validación de carga recuenta al arrancar. |
 
 ---
 

@@ -10,7 +10,7 @@ Definir, sin ambigüedad, el único canal de comunicación en tiempo real entre 
 
 > **Fuente de verdad.** El contrato lo definen los esquemas Zod de `packages/protocol/src/v1/` y su implementación Go en `services/game-server/internal/protocol/`. Este documento describe ese contrato; si difiere del código, **el documento está mal**. Cada ficha de mensaje de las secciones 7 y 8 es un reflejo literal de `internal/protocol/protocol.go` y de `packages/protocol/src/v1/{client,server,common,errors}.ts`.
 
-El cliente web (`apps/web`, Next.js + PixiJS 8) **todavía no existe** en el repositorio: sus obligaciones aquí descritas están redactadas como el contrato que deberá cumplir cuando se implemente (milestone de frontend), no como comportamiento ya observable.
+El cliente web (`apps/web`, Next.js + PixiJS 8) existe y habla este protocolo; las obligaciones del cliente aquí descritas son el contrato, y qué parte de ellas cumple hoy está en [../architecture/frontend.md](../architecture/frontend.md) §3 y en [../architecture/networking.md](../architecture/networking.md) §7.1.
 
 El protocolo materializa el principio no negociable número 1: *client sends intent, server determines truth*. El cliente jamás transmite estado autoritativo (posición final, HP, resultado de pathfinding, ETA, ownership, cooldowns). Envía **intenciones** y recibe **hechos**.
 
@@ -188,7 +188,7 @@ sequenceDiagram
 Reglas del ciclo de vida:
 
 1. **El primer mensaje de la conexión debe ser `session.hello`.** No hay "estado pre-sesión" en el que quepan otros mensajes: el lector de la sesión autenticada ni siquiera arranca hasta que el handshake termina bien (INV-SEC-002).
-2. Durante el handshake el servidor **no envía `system.error`**: cierra con el código correspondiente y punto. Distinguir por mensaje entre "ticket caducado", "firma inválida" y "jti ya consumido" ayudaría a afinar un ataque, así que los tres se traducen al mismo `4401`.
+2. Durante el handshake el servidor **no envía `system.error`** ni ningún otro mensaje: cierra con el código correspondiente y punto ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md), que sustituye en esto a ADR-010). `system.error` es un mensaje de sesión y la sesión empieza con el `session.welcome`. Distinguir entre "ticket caducado", "firma inválida" y "jti ya consumido" ayudaría a afinar un ataque, así que los tres se traducen al mismo `4401`.
 3. Un `session.hello` posterior a un handshake completado no es un tipo pre-auth válido; el lector lo trata como cualquier otro mensaje y no reabre la sesión.
 4. Al establecerse la sesión, el servidor la registra en el `Hub`, marca presencia en Redis (`presence:player:{playerId}` con el `sessionId` como valor, TTL `EO_PRESENCE_TTL_SECONDS` = 30 s) y despacha `PlayerConnected` al game loop, que transiciona la ciudad del jugador a `ONLINE`. Un jugador con varias sesiones abiertas sigue `ONLINE` mientras le quede una.
 5. Al cerrarse el WebSocket **no** se destruye ningún estado durable. La ciudad pasa a `OFFLINE_PENDING` cuando el game loop, en RAM, comprueba que el jugador lleva sin sesión más que `DisconnectGrace` (= `EO_PRESENCE_TTL_SECONDS`); la clave de Redis es para observadores externos y para el futuro multiproceso, no la fuente de esa decisión. Ver [../architecture/overview.md](../architecture/overview.md). Los movimientos `ACTIVE` continúan simulándose.
@@ -209,7 +209,7 @@ Los seis códigos de aplicación viven en el rango privado 4000–4999 (`protoco
 
 Un cierre limpio por fin de sesión o shutdown planificado usa el código estándar `1001`/`1000`. Un frame entrante que supera `EO_WS_MAX_MESSAGE_BYTES` lo corta el `SetReadLimit` del transporte: la lectura falla y la conexión se cierra con el código estándar `1009` (*message too big*), sin llegar a ningún handler. El código de aplicación `MESSAGE_TOO_LARGE` está **reservado** en el catálogo para el día en que el boundary lo emita explícitamente.
 
-El cliente aplica backoff exponencial con jitter: 1 s, 2 s, 4 s, 8 s, máximo 30 s.
+El cliente de `apps/web` reconecta con backoff exponencial y jitter —0,5 s, 1 s, 2 s, 4 s… con tope de 30 s, más hasta un 30 % de jitter— salvo tras `4401` y `4403`, que devuelven al jugador al formulario de entrada ([../architecture/networking.md](../architecture/networking.md) §7.1).
 
 ## 7. Mensajes cliente → servidor
 
@@ -521,7 +521,7 @@ interface ChunkTerrain {
 
 **`requestId`.** El snapshot inicial del handshake se emite **sin `requestId`** (el `requestId` del hello lo lleva el `session.welcome` que lo precede). El snapshot de respuesta a un `session.view` sí lleva el `requestId` de ese comando.
 
-`territories` está en el contrato y hoy viaja **siempre vacío**: la proyección de territorios al snapshot está pendiente.
+`territories` trae los territorios que solapan los chunks del área de interés, con su control vigente (`TerritoryViews`, M6).
 
 ### 8.5 `entity.spawn`
 
@@ -535,7 +535,7 @@ payload: z.object({ unit: UnitView })
 { "v": 1, "type": "entity.spawn", "seq": 41, "ts": 1788955203100, "payload": { "unit": { "id": 50877, "playerId": "1c9e2f40-7bb1-4a02-98d5-4d61aa03e7f9", "cityId": 1207, "unitType": "VILLAGER", "x": 118, "y": 104, "hp": 40, "maxHp": 40, "status": "IDLE", "movement": null } } }
 ```
 
-**No hay campo `reason`.** El payload es exactamente `{ unit }`. Hoy el servidor lo emite en un único punto: al incorporar un jugador al mundo (`IntroducePlayer`), una vez por cada uno de sus 3 aldeanos iniciales. El spawn por entrada en el área de interés está pendiente (ver la nota de 7.3).
+**No hay campo `reason`.** El payload es exactamente `{ unit }`. Hoy el servidor lo emite en tres puntos: al incorporar un jugador al mundo (`IntroducePlayer`), una vez por cada uno de sus 3 aldeanos iniciales; a los terceros del chunk cuando una unidad oculta se revela —al salir de su Safe Zone o al recibir una orden de movimiento—; y a los terceros cuando una unidad sale de una guarnición (§7.6). El spawn por entrada en el área de interés está pendiente (ver la nota de 7.3).
 
 El cliente debe tratar un `entity.spawn` de una entidad que ya conoce como **reemplazo total** del estado local de esa entidad (upsert), no como error.
 
@@ -637,7 +637,7 @@ interface TerritoryView {
 { "v": 1, "type": "territory.update", "seq": 64, "ts": 1788955500100, "payload": { "territory": { "id": 310, "name": "Latium", "minX": 96, "minY": 96, "maxX": 127, "maxY": 127, "ownerType": "NONE", "ownerId": null, "contested": false } } }
 ```
 
-El payload envuelve el estado completo bajo la clave `territory`; no es un delta parcial. `ownerType = 'NONE'` ⟺ `ownerId = null` es la misma consistencia que impone el CHECK de `territory_control` en la base de datos. Como `entity.despawn`, el tipo está definido pero **ninguna ruta del servidor lo emite todavía**.
+El payload envuelve el estado completo bajo la clave `territory`; no es un delta parcial. `ownerType = 'NONE'` ⟺ `ownerId = null` es la misma consistencia que impone el CHECK de `territory_control` en la base de datos. Hoy lo emite la fundación de un jugador, que reclama el territorio de su ciudad (`IntroducePlayer`), a los suscriptores de los chunks que el territorio solapa.
 
 ### 8.10 `unit.move.accepted`
 
@@ -751,9 +751,7 @@ El campo es `finalPosition`, no `position`; y no hay `arrivalTimeMs`, ni `tick`,
 
 Se emite en el **primer tick cuyo tiempo de simulación alcanza o supera `arrivalTimeMs`**, por lo que `ts` puede ser hasta un período de tick (100 ms) posterior a la llegada teórica. El cliente debe usar `arrivalTimeMs` para la animación y `finalPosition` como verdad.
 
-**Efectos:** se limpia el movimiento del estado en RAM, `unit.status = IDLE`, la unidad se marca sucia, y se encolan **dos** escrituras durables independientes: `Job{Name: "movement.complete"}` cierra la fila de `unit_movements` como `COMPLETED` de forma inmediata, mientras que la posición consolidada de `units.(x, y)` viaja en el volcado periódico de entidades sucias (`EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` = 50, es decir cada 5 s a 10 Hz). Ambas van por la cola de persistencia, nunca dentro del tick.
-
-> **Consecuencia honesta.** Entre el `COMPLETED` y el volcado siguiente hay una ventana en la que la base tiene el movimiento cerrado y una `units.(x, y)` anterior. La recuperación la cubre: `simulation.Hydrate` reconstruye la posición desde la polilínea del movimiento vencido y la unidad aparece en el destino. No es RPO 0 sobre `units.(x, y)`, y así debe documentarse en [../database/persistence-strategy.md](../database/persistence-strategy.md).
+**Efectos:** se limpia el movimiento del estado en RAM, `unit.status = IDLE`, y se encola **una** escritura durable, `Job{Name: "movement.complete"}`, que en una sola transacción cierra la fila de `unit_movements` como `COMPLETED` y deja `units` en el tile final con `IDLE` ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.3). Va por la cola de persistencia, en el worker de la clave de la unidad, nunca dentro del tick. La base no llega a tener el movimiento cerrado con la unidad a medio camino.
 
 Tras un reinicio, un movimiento cuyo `arrival_time_ms <= now` se completa al arrancar (snap al tile final) y su fila queda como `COMPLETED`; un movimiento aún en curso se reanuda desde la polilínea; una polilínea inválida cierra el movimiento como `FAILED` y la unidad se queda donde estaba —nunca se teletransporta a nadie por un dato dudoso—.
 
@@ -796,7 +794,7 @@ El formato es siempre `{ code, message, details? }` dentro de `system.error`, o 
 
 | `code` | Análogo HTTP / WS | Cierra la conexión | Cuándo se emite |
 |---|---|---|---|
-| `UNAUTHORIZED` | 401 / WS `4401` | Sí (`4401`) | Fallo de autenticación. Hoy el handshake cierra con `4401` **sin** enviar el mensaje; el código está reservado para el día en que el boundary lo emita |
+| `UNAUTHORIZED` | 401 / WS `4401` | Sí (`4401`) | Reservado. Un fallo de autenticación en el handshake cierra con `4401` **sin** enviar el mensaje ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)); ninguna ruta del WebSocket lo emite. Las rutas HTTP de `apps/web` sí responden `401 UNAUTHORIZED` |
 | `FORBIDDEN` | 403 / WS `4403` | Solo si es a nivel de sesión | Reservado: sesión válida, operación no permitida para ese jugador |
 | `INVALID_MESSAGE` | 400 / WS `4400` | Solo en el handshake | JSON malformado, `type` desconocido, payload que no decodifica, `requestId` ausente en un comando durable, propiedad desconocida (esquema estricto). Dentro de la sesión se emite como `system.error` y la conexión **continúa** |
 | `UNSUPPORTED_VERSION` | 426 / WS `4400` | Solo en el handshake | `v` distinto de las versiones soportadas |
@@ -898,7 +896,7 @@ Cadena de propagación:
 Zod (TS)  --pnpm run protocol:build-->  JSON Schema  --go:embed-->  internal/protocol (contract tests)
    |                                          |
    v                                          v
-apps/web (tipos + validación, pendiente)   validación manual en Go (runtime, por rendimiento)
+apps/web (tipos + validación Zod)          validación manual en Go (runtime, por rendimiento)
 ```
 
 `export-schema.ts` escribe en **dos** destinos y ambos se versionan en git: `packages/protocol/schema/v1/` y `services/game-server/internal/protocol/schema/v1/`. El espejo existe porque `go:embed` no puede salir del módulo Go.
@@ -938,6 +936,8 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | unit | `seq` estrictamente creciente sin huecos en 10 000 mensajes | Monotonía verificada | Pendiente |
 | e2e | Handshake sin `session.hello` dentro del plazo | Cierre `4408` | **EN VERDE** (`TestSinHandshakeEnPlazoSeCierraCon4408`) |
 | e2e | Ticket con `jti` reutilizado | Cierre `4401`, sin sesión | **EN VERDE** (`TestTicketNoSePuedeReutilizarEnOtraConexion`) |
+| e2e | Ticket ilegible, o un comando como primer mensaje | La **primera** lectura es el cierre `4401`: ningún mensaje antes ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)) | **EN VERDE** (`TestTicketInvalidoCierraLaConexion`, `TestNoSeAceptanComandosSinAutenticar`) |
+| e2e | Primer mensaje con JSON malformado, sin `ticket` o con `v: 2` | La primera lectura es el cierre `4400` | **EN VERDE** (`TestUnHandshakeIlegibleCierraCon4400SinMensaje`) |
 | unit | Ticket expirado (TTL 60 s) | La verificación lo rechaza; el cierre `4401` es el mismo camino que el de un ticket inválido | **EN VERDE** (`TestTicketCaducado` en `internal/auth`, `TestTicketInvalidoCierraLaConexion`) |
 | e2e | 60 mensajes en ráfaga | `system.error RATE_LIMITED` y, después, cierre `4429` | **EN VERDE** (`TestUnaRafagaPorEncimaDelBurstCierraCon4429`) |
 | e2e | Un frame por encima de `EO_WS_MAX_MESSAGE_BYTES`, antes y después del handshake | Cierre `1009` sin leer el frame | **EN VERDE** (`TestUnMensajeDemasiadoGrandeCierraCon1009`) |

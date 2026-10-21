@@ -2,7 +2,7 @@
 
 Vista arquitectónica canónica de Empires Online: principios, componentes, capas de estado, layout del repositorio, reglas de dependencia y el recorrido completo de un comando a través del sistema.
 
-Este documento es el punto de entrada técnico del proyecto. El **game server Go y el paquete `packages/protocol` ya existen, compilan y tienen su suite de tests en verde**; lo que existe desde hace poco es `apps/web/` (el cliente Next.js), que aquí se describe en futuro y como pendiente de su milestone. Cuando un detalle pertenece a otro documento se enlaza en lugar de duplicarlo.
+Este documento es el punto de entrada técnico del proyecto. El **game server Go, el paquete `packages/protocol` y `apps/web` (el cliente y la identidad en Next.js) existen, compilan y tienen su suite de tests en verde**; lo que falta es desplegarlos. Qué parte del diseño del cliente es código y qué parte objetivo lo dice [frontend.md](./frontend.md). Cuando un detalle pertenece a otro documento se enlaza en lugar de duplicarlo.
 
 ---
 
@@ -49,7 +49,7 @@ Los otros dos principios del canon no describen la topología pero sí condicion
 
 ## 2. Diagrama de componentes
 
-Cuatro piezas desplegables y ninguna más en el MVP: el cliente web en Vercel, el game server Go en un VPS, PostgreSQL gestionado y Redis gestionado. **Hoy sólo existen las tres últimas**: `apps/web/` ya tiene contenido: cliente WebSocket, store del mundo, transformaciones isométricas y escena PixiJS, con sus tests.
+Cuatro piezas desplegables y ninguna más en el MVP: la aplicación web en Vercel (cliente e identidad), el game server Go en un VPS, PostgreSQL gestionado —con dos bases y dos roles: la del juego y el almacén de identidad— y Redis gestionado. Las cuatro existen como código y en desarrollo local; **ninguna está desplegada** ([../operations/deployment.md](../operations/deployment.md)).
 
 ```mermaid
 flowchart TB
@@ -62,15 +62,18 @@ flowchart TB
     end
 
     subgraph vps["VPS (Docker)"]
-        GS["services/game-server — Go (go 1.23 mínimo)<br/>WS y HTTP :8080 (EO_HTTP_ADDR)<br/>metrics :9090 (EO_METRICS_ADDR)<br/>game loop 10 Hz + simulación en RAM<br/>POST /internal/players (fundación)"]
+        GS["services/game-server — Go (go 1.25.11 mínimo)<br/>WS y HTTP :8080 (EO_HTTP_ADDR)<br/>metrics :9090 (EO_METRICS_ADDR)<br/>game loop 10 Hz + simulación en RAM<br/>POST /internal/players (fundación)"]
     end
 
     PG[("PostgreSQL gestionado<br/>durable source of truth<br/>EO_POSTGRES_URL")]
     RD[("Redis gestionado<br/>hot / transient state<br/>EO_REDIS_URL")]
+    ID[("PostgreSQL — empires_identity<br/>almacén de identidad de apps/web<br/>otro rol, otra base")]
 
     UI -->|"HTTPS: HTML, JS, assets"| WEB
-    UI -->|"HTTPS: POST /api/auth/{register,login} (provisional)"| GS
-    GS -->|"game ticket JWT (sub, jti, iat, exp, aud=game-server)"| UI
+    UI -->|"HTTPS: POST /api/auth/{register,login,ticket} + cookie de sesión"| WEB
+    WEB -->|"game ticket JWT (sub, jti, iat, exp, aud=game-server)"| UI
+    WEB -->|"HTTPS: POST /internal/players (token aud=game-server-internal)"| GS
+    WEB -->|"SQL/TLS — cuentas y sesiones web (EO_IDENTITY_POSTGRES_URL)"| ID
     UI <-->|"WSS JSON v1 — intenciones y deltas"| GS
     GS -->|"SQL/TLS — escrituras durables encoladas + flush periódico"| PG
     GS -->|"RESP/TLS — presence, idem, ticket jti"| RD
@@ -126,7 +129,7 @@ Regla operativa: **un dato pertenece a la capa más barata que preserve su garan
 | Ciudades y su `presence_state` / `protection_until` | PostgreSQL | `cities` | Write-through en cada transición de presencia | Pérdida inaceptable |
 | Unidades: ownership, tipo, `status` | PostgreSQL | `units` | Write-through en creación y en cambios de ownership/estado relevantes | Pérdida inaceptable |
 | Posición consolidada de unidad, HP | PostgreSQL (diferido) | `units` (`x`, `y`, `status`, `chunk_x`, `chunk_y`) | Dirty-flag + flush cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS=50` (5 s), en un único `UPDATE ... FROM unnest(...)` | Se pierde ≤ 5 s de consolidación; recuperable desde el movimiento activo |
-| Posición **durante** un movimiento activo | RAM | Simulación | Autoritativa por derivación desde la polilínea; el flush puede escribir una posición intermedia, pero en la recuperación **prevalece** la derivada de `unit_movements` | Recomputable |
+| Posición **durante** un movimiento activo | RAM | Simulación | Autoritativa por derivación desde la polilínea. El volcado **no** escribe unidades en marcha: el inicio del movimiento deja en `units` el origen y `MOVING`, y el cierre el tile final e `IDLE`, cada uno en la transacción de su movimiento ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)) | Recomputable desde `unit_movements` |
 | Movimientos (polilínea temporizada, estado, `arrival_time_ms`) | PostgreSQL | `unit_movements` | Escritura durable **encolada** al iniciar, cancelar y finalizar; la ejecuta un worker fuera del tick | Pérdida inaceptable: rompe P2 |
 | Sesión de juego establecida | PostgreSQL | `sessions` (tabla creada, **sin escritura en el MVP actual**) | Pendiente: hoy la sesión vive sólo en RAM (`internal/websocket`) y su presencia en Redis | Degradación de auditoría |
 | Idempotencia de comandos (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`) | Redis (hoy) | `idem:{playerId}:{requestId}`, TTL 300 s, marcador `"pending"` fijado con `SETNX` **antes** de ejecutar | Sin respaldo durable, por diseño ([ADR-014](../decisions/ADR-014-command-idempotency.md)). Si Redis no responde, el comando **se ejecuta igualmente** (fail-open deliberado) | Riesgo de doble ejecución mientras Redis no responda o tras vaciarse |
@@ -153,27 +156,35 @@ Monorepo pnpm con un módulo Go dentro. Task runner: **pnpm scripts** (`pnpm run
 
 ```text
 empires-online/
-├── apps/web/                     # Next.js 15 + React 19 + PixiJS 8 — TODAVÍA VACÍO (milestone pendiente)
+├── apps/web/                     # Next.js 15 + React 19 + PixiJS 8: cliente, alta, sesión web y ticket (ADR-018)
+│   ├── app/                      # page.tsx (alta, entrada y HUD) + api/auth/{register,login,ticket,logout}
+│   ├── src/{net,state,render,components}   # las tres capas del cliente (frontend.md)
+│   ├── src/server/               # identidad, scrypt, firma del ticket; `server-only`
+│   └── identity/                 # migraciones del almacén de identidad (empires_identity)
 ├── services/game-server/         # módulo Go — proceso independiente, autoritativo
 │   ├── go.mod                    # module github.com/empires-online/empires-online/services/game-server
-│   │                             # `go 1.23` es la versión MÍNIMA; el toolchain instalado es Go 1.27.0
-│   ├── cmd/server/main.go
+│   │                             # `go 1.25.11` es la versión MÍNIMA; el toolchain instalado es Go 1.27.0
+│   ├── cmd/server/               # main.go, hotstate.go, loadcheck.go — el servidor
+│   ├── cmd/migrate/              # el migrador explícito (producción, ADR-012)
+│   ├── cmd/devseed/              # la siembra de desarrollo
 │   ├── internal/
-│   │   ├── game/{loop,world,simulation,founding}
-│   │   ├── domain/{player,city,unit,movement}
+│   │   ├── game/{loop,world,simulation,founding,loadcheck}
+│   │   ├── domain/{player,city,unit,movement,territory,safezone,diplomacy,garrison}
 │   │   ├── pathfinding            # pathfinding.go + astar.go
 │   │   ├── websocket              # hub.go, session.go, server.go
 │   │   ├── protocol               # protocol.go, codes.go, schema.go + schema/v1/*.json embebidos
 │   │   ├── persistence            # gamestore.go, queue.go, pgxalias.go
-│   │   │   ├── postgres           # store, db, migrate, players, cities, units, movements, world, bootstrap, events
-│   │   │   └── redis              # redis.go, presence.go, idempotency.go
+│   │   │   ├── postgres           # store, db, migrate, world, players, cities, units, movements, bootstrap,
+│   │   │   │                      # territories, safezones, diplomacy, events, loadcheck
+│   │   │   ├── redis              # redis.go, presence.go, idempotency.go
+│   │   │   └── memory             # estado caliente en proceso, sin Redis (desarrollo y tests)
 │   │   ├── httpapi                # founding.go — POST /internal/players (ADR-018)
 │   │   ├── auth                   # ticket.go — Verifier, Authenticator, Claims (Issuer: tests)
+│   │   ├── devseed                # colocación de la siembra de desarrollo, lógica pura
 │   │   ├── clock                  # clock.go, random.go
-│   │   ├── config
+│   │   ├── config                 # config.go, dotenv.go, secret.go
 │   │   └── observability          # logging.go, metrics.go, health.go
-│   └── migrations/               # 000001_initial_schema.{up,down}.sql, 000002_seed_catalogs.{up,down}.sql
-│                                 # + embed.go (//go:embed *.sql)
+│   └── migrations/               # 000001 … 000005 .{up,down}.sql + embed.go (//go:embed *.sql)
 ├── packages/protocol/            # Zod = fuente de verdad del protocolo; exporta JSON Schema
 ├── infra/docker/                 # game-server.Dockerfile
 ├── scripts/                      # tareas (NO Makefile: make no está disponible en Windows)
@@ -188,7 +199,7 @@ No existen `internal/presence` ni `internal/events`: la presencia vive en `inter
 
 | Ruta | Propósito |
 |---|---|
-| `apps/web/` | Cliente web **pendiente**. Renderizará el mundo isométrico con PixiJS 8 y consumirá `@empires-online/protocol` para tipar los mensajes. Será el **único** componente que conozca píxeles. |
+| `apps/web/` | Cliente web: renderiza el mundo isométrico con PixiJS 8 y consume `@empires-online/protocol` para tipar y validar los mensajes; es el **único** componente que conoce píxeles. Su servidor de Next.js lleva además la identidad: alta, login, sesión web, emisión del ticket y su propio almacén ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Qué parte de su diseño existe: [frontend.md](./frontend.md). |
 | `services/game-server/` | Módulo Go `github.com/empires-online/empires-online/services/game-server`. Proceso autoritativo de larga vida: loop, simulación, WebSocket, persistencia. |
 | `services/game-server/cmd/server/` | Punto de entrada ejecutable: lee configuración, aplica migraciones, abre pools, rehidrata el mundo, arranca loop, WS, métricas y apagado ordenado. Sin lógica de negocio. |
 | `internal/game/loop` | `Loop.Run` (driver con calendario absoluto) y `Loop.Step` (un tick, ocho fases). Nunca hace I/O bloqueante contra PostgreSQL. |
@@ -288,7 +299,7 @@ sequenceDiagram
     WS->>R: SETNX idem:{playerId}:{requestId} (TTL 300 s)
     alt requestId ya visto
         R-->>WS: la clave ya existía
-        WS->>WS: el comando se descarta sin re-ejecutar y sin respuesta nueva
+        WS->>WS: no se re-ejecuta; se reenvía la respuesta original si ya la hubo
     else nuevo
         WS->>Q: MoveUnit{playerId, sessionId, unitId, target, requestId}
         L->>Q: fase 1 — drain commands (no bloqueante, tope MaxCommandsPerTick)
@@ -296,7 +307,7 @@ sequenceDiagram
         D->>D: ownership → estado de unidad → destino → A*
         D->>D: construir polilínea temporizada {x,y,tMs}
         D->>D: cancelar el ACTIVE previo en RAM, units.status = MOVING
-        D->>P: ENCOLAR job "movement.start" (cancel + INSERT en una transacción)
+        D->>P: ENCOLAR job "movement.start" (cancel + INSERT + unidad MOVING, una transacción)
         D->>B: unit.move.accepted (al solicitante) + unit.movement.started (por chunk)
         B-->>C: deltas con seq y ts
         P->>P: el worker ejecuta la transacción FUERA del tick (hasta 3 intentos)
@@ -349,7 +360,7 @@ if ms < 1 { ms = 1 }
 
 Con `VILLAGER` (`baseMsPerTile = 600`): GRASSLAND 600 / 849 ms, FOREST 960 / 1358, HILL 1080 / 1527, ROAD 360 / 509 (ortogonal / diagonal).
 
-En RAM se cancela el movimiento `ACTIVE` anterior de esa unidad, se registra el nuevo y `units.status` pasa a `MOVING`. La transacción equivalente (`UPDATE ... SET status='CANCELLED'` + `INSERT INTO unit_movements ... 'ACTIVE'`) **se encola** como trabajo durable (`movement.start`) y la ejecuta un worker fuera del tick, con hasta 3 intentos y backoff; si se agotan, se registra como error y se invoca `OnPermanentFailure`, que hoy **sólo registra**: la compensación real —detener la unidad en RAM— sigue pendiente. El índice único parcial `unit_movements_one_active_per_unit` es la última línea de defensa del invariante en la propia base de datos.
+En RAM se cancela el movimiento `ACTIVE` anterior de esa unidad, se registra el nuevo y `units.status` pasa a `MOVING`. La transacción equivalente (`UPDATE ... SET status='CANCELLED'` + `INSERT INTO unit_movements ... 'ACTIVE'`) **se encola** como trabajo durable (`movement.start`), con el id de movimiento que ya asignó la simulación, y la ejecuta fuera del tick el worker de la clave de esa unidad, con hasta 3 intentos y backoff ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)). Si se agotan, `OnPermanentFailure` devuelve al loop un `MovementPersistFailed` y la simulación detiene la unidad en RAM: el mundo no sigue moviendo una unidad cuyo movimiento no existe en la base. El índice único parcial `unit_movements_one_active_per_unit` es la última línea de defensa del invariante en la propia base de datos.
 
 **7. Fase 3 en ticks sucesivos (`advance movement`).** La posición autoritativa en el instante `T` es el último waypoint con `tMs <= (T - start_time_ms)`. Es **analíticamente reconstruible**: no requiere replay de ticks y no se persiste por tick. La interpolación sub-tile es exclusivamente visual, en el cliente; el servidor razona en tiles.
 
@@ -369,7 +380,7 @@ Cada decisión estructural vive en su propio ADR con contexto, alternativas desc
 
 | ADR | Decisión | Resumen |
 |---|---|---|
-| [ADR-001](../decisions/ADR-001-game-server-language.md) | Lenguaje del game server: **Go** (`go 1.23` mínimo en `go.mod`; toolchain instalado 1.27.0) | Un proceso de larga vida con loop de 10 Hz, miles de conexiones y estado en RAM; Go da goroutines, GC de baja pausa, binario único y despliegue trivial en contenedor. Requiere instalar Go en la máquina de desarrollo (`winget install --id GoLang.Go`). |
+| [ADR-001](../decisions/ADR-001-game-server-language.md) | Lenguaje del game server: **Go** (el ADR decidió 1.23; `go.mod` exige hoy `go 1.25.11` como mínimo, impuesto por las dependencias; toolchain instalado 1.27.0) | Un proceso de larga vida con loop de 10 Hz, miles de conexiones y estado en RAM; Go da goroutines, GC de baja pausa, binario único y despliegue trivial en contenedor. Requiere instalar Go en la máquina de desarrollo (`winget install --id GoLang.Go`). |
 | [ADR-002](../decisions/ADR-002-authoritative-server.md) | **Servidor autoritativo** | El cliente envía intención; el servidor determina la verdad. Elimina por construcción una clase entera de trampas y hace del cliente una vista reemplazable. |
 | [ADR-003](../decisions/ADR-003-postgresql-source-of-truth.md) | **PostgreSQL como source of truth** | Todo hecho consumado se persiste transaccionalmente. Transacciones, constraints y concurrencia optimista (`version`) por encima de rendimiento bruto. |
 | [ADR-004](../decisions/ADR-004-redis-hot-state.md) | **Redis como hot state** | Presencia con TTL, `jti` de tickets, idempotencia de corto plazo, locks y caché. Redis nunca sustituye a PostgreSQL: su pérdida degrada disponibilidad, no durabilidad. |
@@ -378,9 +389,10 @@ Cada decisión estructural vive en su propio ADR con contexto, alternativas desc
 | [ADR-007](../decisions/ADR-007-game-loop-frequency.md) | **Game loop a 10 Hz** | `EO_TICK_RATE_HZ=10`, período 100 ms, ocho fases en orden fijo. Suficiente para un MMORTS de movimiento por tiles y barato en CPU; el determinismo importa más que la frecuencia. |
 | [ADR-008](../decisions/ADR-008-grid-coordinate-system.md) | **Coordenadas y chunks** | Grid 512×512 de tiles `int32`, chunks de 32×32 (`chunkX = x / EO_CHUNK_SIZE`), 256 chunks en MVP. El chunk es la unidad de interés, de difusión y de persistencia del terreno. |
 | [ADR-009](../decisions/ADR-009-shared-protocol-package.md) | **Zod como fuente del protocolo, JSON Schema exportado** | Los esquemas viven en `packages/protocol/src/v1/`; el build exporta JSON Schema a `schema/v1/*.json` y el game server los embebe con `go:embed` para *contract tests*. Un solo lugar donde cambiar un mensaje. |
-| [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) | **Autenticación por game ticket JWT efímero** | JWT HS256 de 60 s, consumido una sola vez vía `ticket:jti:{jti}` en Redis. La sesión de usuario no cruza la frontera del game server. |
+| [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) | **Autenticación por game ticket JWT efímero** | JWT HS256 de 60 s, consumido una sola vez vía `ticket:jti:{jti}` en Redis. La sesión de usuario no cruza la frontera del game server: el ticket lo firma `apps/web` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). |
 | [ADR-011](../decisions/ADR-011-movement-timed-polyline.md) | **Movimiento como polilínea temporizada persistida** | Waypoints `{x, y, tMs}` en `unit_movements`. La posición es una función analítica del tiempo: sobrevive a crashes, no requiere replay y no exige persistir cada tick. |
-| [ADR-012](../decisions/ADR-012-database-migrations.md) | **Migraciones SQL versionadas embebidas** | `NNNN_nombre.up.sql` / `.down.sql` embebidas en el binario y aplicadas al arrancar contra `schema_migrations`. El esquema viaja con la versión que lo necesita, sin depender de `psql` (no instalado en la máquina de desarrollo). |
+| [ADR-012](../decisions/ADR-012-database-migrations.md) | **Migraciones SQL versionadas embebidas** | `NNNNNN_nombre.up.sql` / `.down.sql` embebidas en el binario, registradas en `schema_migrations` y aplicadas al arrancar fuera de producción, o con el binario `migrate` antes de desplegar ([../database/migrations.md](../database/migrations.md) §1.2). El esquema viaja con la versión que lo necesita. |
+| [ADR-013](../decisions/ADR-013-persistence-pipeline.md) … [ADR-019](../decisions/ADR-019-handshake-failure-close-code.md) | **Decisiones posteriores al vertical slice** | La cola de persistencia ordenada por entidad (013), la deduplicación sólo en Redis (014), el tick reanclado al reloj (015), el territorio que no restringe (016), los comandos de guarnición (017), la identidad en Next.js (018) y el handshake que falla sólo con el código de cierre (019). Resumen de cada una en el índice. |
 
 ---
 

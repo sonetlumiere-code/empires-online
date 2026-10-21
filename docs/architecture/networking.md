@@ -195,7 +195,7 @@ Detalles de diseño:
 - **El terreno se envía una sola vez por sesión y por chunk.** Es inmutable, así que reenviarlo en cada movimiento de cámara sería malgastar ancho de banda. La sesión recuerda qué chunks ya lo recibieron (`NeedsTerrain` / `MarkTerrainSent`) y el servidor filtra el array `terrain[]` antes de enviar; el array `chunks[]` sí va completo siempre.
 - **El terreno es cacheable indefinidamente en el cliente**: se genera determinísticamente desde `EO_WORLD_SEED` en cada arranque. Lo que cambia es el overlay de ocupación, no el terreno base.
 - **La posición de una unidad en movimiento se resuelve en el instante del snapshot** (`PositionAt`), y su polilínea activa completa viaja en `movement`. Ver §9.
-- **El overlay de ocupación no se transporta.** El cliente no recibe la lista de tiles bloqueados; la deduce de las ciudades visibles. Un canal explícito para el overlay es **TBD (fuera de MVP)**.
+- **El overlay de ocupación no se transporta.** El cliente no recibe la lista de tiles bloqueados; podría deducirla de las ciudades visibles, y hoy no lo hace. Un canal explícito para el overlay es **TBD (fuera de MVP)**.
 - **Cota de tamaño del snapshot.** `EO_WS_MAX_MESSAGE_BYTES` (16 384) se aplica hoy **sólo al sentido entrante**, como `SetReadLimit` del socket; no hay ninguna cota impuesta al mensaje saliente. Consecuencia honesta: el primer snapshot de una sesión con 25 chunks de terreno ronda los 34 KB una vez codificado en base64 y **excede** esa cifra. No se rompe nada —el límite entrante no se aplica de vuelta— pero conviene no documentarlo como si cupiera. Una cota real de salida, con paginación o *spill* a `entity.spawn`, es **TBD (fuera de MVP)**; el mitigante que ya existe es que el terreno sólo viaja la primera vez.
 
 ### 4.3 Generación de deltas por tick
@@ -259,6 +259,11 @@ Precisión de ingeniería: WebSocket corre sobre TCP, de modo que **el transport
 3. **Confusión entre conexiones.** Tras una reconexión el `seq` reinicia en `1`; un cliente que mezclara mensajes de dos sockets lo detecta de inmediato.
 
 `seq` **no** se usa para pedir retransmisiones. No existe un mecanismo de *replay* de deltas (§7.3).
+
+El fragmento de arriba es el **diseño**. El cliente de hoy no detecta huecos: descarta un mensaje cuyo `seq` sea
+menor o igual que el último procesado (salvo `session.welcome`, que lo reinicia) y aplica el resto, de modo que
+un hueco pasaría inadvertido ([frontend.md](frontend.md) §3.4). Del lado servidor la contigüidad sí está
+verificada por conexión.
 
 ---
 
@@ -414,15 +419,38 @@ Dos mensajes salientes merecen atención por tamaño:
 
 ### 7.1 Qué hace el cliente
 
-1. Detecta la caída (evento `close`/`error` del socket, o `seq` discontinuo, o timeout de pong).
-2. **Descarta por completo su réplica del mundo.** No conserva entidades, no conserva el `seq`, no intenta continuar.
-3. Pide un **ticket nuevo** a `POST /api/auth/ticket` de `apps/web`, con la cookie de sesión: la contraseña no se vuelve a pedir ni se guarda. El anterior no sirve: su TTL es de 60 s y su `jti` ya fue consumido en `ticket:jti:{jti}`; reutilizarlo produce cierre `4401`.
-4. Reabre el WebSocket y repite el handshake completo (§3).
-5. Recibe `session.welcome` + `world.snapshot` y **reconstruye la escena desde cero**.
-6. Reintenta con **backoff exponencial con jitter** para no producir una tormenta de reconexiones tras una caída del servidor. Los valores concretos de la curva de backoff son **TBD (fuera de MVP)**.
-7. Los comandos emitidos y no confirmados antes de la caída se reintentan **con el mismo `requestId`** (§10), o se descartan. Nunca se reintentan con un `requestId` nuevo.
+Lo que hace `GameClient` (`apps/web/src/net/client.ts`), comprobado contra el código el 2026-10-21; el diseño
+objetivo de cada punto, cuando difiere, está en [frontend.md](frontend.md) §3.3–§3.5.
 
-Durante la reconexión la UI debe indicar el estado degradado y **dejar de animar** las unidades (§9): seguir interpolando sin servidor sería inventar estado.
+1. **Detecta la caída sólo por el cierre del socket** (`onclose`; `onerror` siempre le precede y no hace nada
+   por sí mismo). No vigila la continuidad de `seq` (§4.4) ni el `session.pong`: una conexión medio abierta la
+   termina el servidor con su plazo de lectura de 45 s (§8.3) o el propio navegador.
+2. **Decide por el código de cierre.** Un cierre pedido por el cliente (`disconnect`) no reconecta. `4401` y
+   `4403` **no reconectan**: el estado pasa a `closed`, se notifica `UNAUTHORIZED` y la página vuelve al
+   formulario de entrada. Cualquier otro código —`1006`, `1000`/`1001` del servidor, `1009`, `4400`, `4408`,
+   `4429`, `4500`— reconecta.
+3. **Reintenta con backoff exponencial y jitter**: el intento `n` espera `min(500 · 2^n, 30 000)` ms más un
+   jitter uniforme de hasta el 30 % de ese valor, de modo que mil clientes cortados a la vez no vuelven en el
+   mismo milisegundo. El contador vuelve a 0 con cada `session.welcome`.
+4. Pide un **ticket nuevo** en cada intento a `POST /api/auth/ticket` de `apps/web`, con la cookie de sesión: la
+   contraseña no se vuelve a pedir ni se guarda (`ticketProvider`). El anterior no sirve: su TTL es de 60 s y su
+   `jti` ya se consumió en `ticket:jti:{jti}`; reutilizarlo produce cierre `4401`. Si pedirlo falla —también con
+   la cookie caducada— se notifica y se programa el siguiente intento con el mismo backoff.
+5. Reabre el WebSocket y repite el handshake completo (§3).
+6. Con el `session.welcome`, el `seq` vuelve a empezar y se reestima el desfase de reloj; el `world.snapshot`
+   **reemplaza** unidades, ciudades y territorios. La réplica no se vacía antes: el terreno ya conocido se
+   conserva (es inmutable, y el servidor lo reenvía igualmente, §7.3) y la escena sigue dibujando lo último que
+   sabía hasta que llega el snapshot.
+7. **Los comandos no se reintentan.** El cliente no guarda los que envió: uno sin respuesta cuando cayó el
+   socket se pierde para él, y uno que se intenta enviar sin sesión `ready` se descarta con un aviso. El
+   servidor sí está preparado para un reenvío con el mismo `requestId` (§10), que es lo que haría la cola de
+   [frontend.md](frontend.md) §3.5; un `requestId` nuevo para la misma orden sería un bug.
+
+Durante la reconexión el HUD muestra el estado (`reconnecting`) en lugar de «conectado». Las unidades **siguen
+animándose** sobre la última réplica: su polilínea es la verdad del servidor hasta que algo la cambie (§9), y
+no se extrapola más allá del último waypoint. Lo que puede quedar desfasado durante la caída —una orden
+cancelada, una unidad que entró en el área— lo corrige el snapshot al volver, y el reconciliador reparte el
+salto o lo da de golpe si pasa de 2 tiles ([frontend.md](frontend.md) §5.3).
 
 ### 7.2 Qué hace el servidor
 
@@ -452,7 +480,7 @@ Un mecanismo de replay exigiría un búfer por sesión con todos los deltas desd
 3. **Superficie de bugs.** El replay crea un segundo camino de sincronización que se ejerce poco y falla en producción. El snapshot se ejerce en cada conexión: si está roto, se sabe de inmediato.
 4. **El snapshot es barato.** El terreno (~34 KB en base64) más las entidades del área de interés. Reenviarlo es trivial comparado con mantener un log por sesión. Matiz honesto: `terrainSent` vive en la `Session`, así que una **reconexión vuelve a recibir el terreno**; que el cliente lo tenga cacheado no evita el reenvío. Un mecanismo para que el cliente declare qué chunks ya tiene es **TBD (fuera de MVP)**.
 
-**Regla operativa:** ante cualquier duda de consistencia — hueco de `seq`, error de decodificación, desincronía detectada — el cliente **reconecta y re-sincroniza**. No existe una ruta de reparación parcial.
+**Regla operativa:** ante cualquier duda de consistencia — hueco de `seq`, error de decodificación, desincronía detectada — el cliente **reconecta y re-sincroniza**. No existe una ruta de reparación parcial. Es la regla de diseño; el cliente de hoy sólo reconecta cuando se cierra el socket, y un mensaje que no valida lo descarta sin reconectar (§7.1).
 
 ---
 
@@ -504,7 +532,7 @@ Reglas duras:
 2. `Session.Send` es **no bloqueante** (`select` con `default`). Si el canal está lleno, la sesión se considera irrecuperable: se registra un `warn` y se **cierra con `4500`**; el cliente reconecta según §7.
 3. No se descartan mensajes selectivamente. Descartar deltas dejaría al cliente con una réplica silenciosamente incorrecta — exactamente lo que `seq` existe para no tolerar. Cerrar y re-sincronizar es la única política consistente.
 4. Una sola goroutine (`writePump`) escribe en cada socket, y también es la que emite los `ping` de control. Escrituras concurrentes sobre una conexión WebSocket son un error de programación, no una condición de carrera tolerable.
-5. Simétricamente, la cola de **comandos** hacia el loop (capacidad 8192) también se escribe sin bloquear: si está llena, el comando se descarta y se registra como error; para `RequestSnapshot`, que sí espera respuesta, se contesta `system.error{INTERNAL_ERROR}`.
+5. Simétricamente, la cola de **comandos** hacia el loop (capacidad 8192) también se escribe sin bloquear: si está llena, el comando no se ejecuta, se registra como error y el jugador recibe `system.error{INTERNAL_ERROR}` con su `requestId`; en los comandos deduplicados se libera además la reserva del `requestId`, para que el reintento con el mismo id se ejecute (I-10, `TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`). `RequestSnapshot` recibe la misma respuesta.
 
 El tamaño de la cola de salida **sí es configurable**: `EO_WS_OUTBOUND_QUEUE_SIZE`, por defecto **256**, rango admitido 8–65536. El dimensionado razonable es "varios ticks de deltas del peor caso": suficiente para absorber una pausa de GC o un hipo de red, insuficiente para acumular segundos de estado obsoleto.
 
@@ -520,9 +548,9 @@ Cómo funciona:
 
 1. El servidor razona en **tiles** y en **milisegundos**. Nunca en píxeles. La proyección isométrica (`screenX = (x - y) * 32`, `screenY = (x + y) * 16`, con `TILE_W = 64`, `TILE_H = 32`) es responsabilidad exclusiva del cliente.
 2. Al iniciarse un movimiento, `unit.movement.started` entrega la **polilínea temporizada completa** en su payload `{ unitId, movement: { movementId, path[], startTimeMs, arrivalTimeMs, target } }`, donde cada waypoint es `{x, y, tMs}` y `tMs` es el offset desde `startTimeMs` en el que la unidad **alcanza** ese tile. El primer waypoint es el origen con `tMs = 0`. El mismo objeto `movement` viaja dentro de cada `UnitView` del `world.snapshot` para las unidades que ya se estaban moviendo.
-3. El cliente estima el offset entre su reloj y el del servidor usando el campo `ts` de los mensajes y el RTT medido con `session.ping`/`session.pong`. Con ese offset calcula el tiempo de servidor actual `T`.
+3. El cliente estima el offset entre su reloj y el del servidor con el `serverTimeMs` del `session.welcome` y, después, con el de cada `session.pong` corregido por la mitad del RTT medido con `session.ping`. Con ese offset calcula el tiempo de servidor actual `T` ([frontend.md](frontend.md) §3.7).
 4. Para dibujar, interpola linealmente **entre el waypoint alcanzado y el siguiente**, y proyecta a píxeles.
-5. Cuando llega `unit.movement.completed` o cualquier `entity.update` con posición, el cliente **acepta el valor del servidor sin discusión**. Si difiere de lo que estaba dibujando, corrige (idealmente suavizando el error residual; si el error es grande, *snap* directo).
+5. Cuando llega `unit.movement.completed` o cualquier `entity.update` con posición, el cliente **acepta el valor del servidor sin discusión**. Si difiere de lo que estaba dibujando, corrige: el reconciliador reparte la diferencia en unos frames y, si pasa de 2 tiles, salta ([frontend.md](frontend.md) §5.3, `EO-075`).
 
 Propiedad valiosa de este diseño: como el cliente conoce **toda la trayectoria futura**, no necesita el clásico búfer de interpolación de ~100 ms que introducen los esquemas de *entity interpolation* basados en muestreo de posiciones. No interpola *entre snapshots pasados*: evalúa una función analítica que el servidor ya le dio. El movimiento se ve fluido a la tasa de refresco del monitor aunque el tick sea de 10 Hz, y sin latencia añadida deliberadamente.
 
@@ -557,15 +585,15 @@ cliente ──unit.move{requestId=R}──> servidor
                        SETNX idem:{player}:{R} EX 300
                             │ ya existía            │ reservado
                             v                       v
-              descartar sin re-ejecutar      encolar el comando al loop
-              y sin respuesta nueva          (validación, mutación, deltas)
+              no re-ejecutar; reenviar       encolar el comando al loop
+              la respuesta original si       (validación, mutación, deltas)
+              ya la hubo (si no, nada)
 ```
 
 **No hay doble barrera, y es deliberado** ([ADR-014](../decisions/ADR-014-command-idempotency.md)). La deduplicación es exclusivamente de Redis y de corto plazo. Un registro durable aparte no podría ir en la misma transacción que el efecto —éste se aplica en RAM y su escritura va a la cola— y consultarlo antes de ejecutar pondría PostgreSQL en la ruta de cada comando. Un comando futuro cuyo efecto no se pueda repetir sin daño guardará su `requestId` en la fila de ese efecto, con `UNIQUE`. La tabla `idempotency_keys`, que nunca se escribió, se eliminó en `000004`.
 
-Dos matices sobre lo que el código hace y el diseño objetivo no:
+Un matiz sobre lo que el código hace:
 
-- `IdempotencyStore` sabe guardar y devolver la respuesta original (`Complete`), pero el borde WebSocket **no la usa**: ante un duplicado no reenvía nada. Reenviar la respuesta original es una mejora pendiente, no una funcionalidad existente.
 - La reserva se hace con el marcador `"pending"` **antes** de ejecutar. Un comando que falle de forma transitoria deja la clave reservada durante 300 s salvo que se libere explícitamente (`Release`).
 
 Regla para el cliente: **al reintentar, conservar el `requestId`.** Generar uno nuevo convierte un reintento seguro en una orden distinta. La ventana de 300 s cubre con holgura cualquier reconexión razonable; pasado ese plazo el reintento se considera una orden nueva, lo cual es aceptable porque un movimiento repetido es idempotente en su efecto observable (la unidad ya está en el destino o vuelve a él).
@@ -631,12 +659,11 @@ Se enuncian aquí para su verificación en los tests de contrato e integración;
 - *Client-side prediction* y reconciliación del jugador local.
 - Hysteresis y nivel de detalle degradado en el interest management; límite de entidades reportadas por chunk.
 - Sharding del mundo por chunks entre múltiples procesos de Game Server.
-- Sub-límite de rate dedicado a `session.view`; cota de tamaño del mensaje **saliente**; curva concreta de backoff de reconexión — todos **TBD (fuera de MVP)**.
+- Sub-límite de rate dedicado a `session.view` y cota de tamaño del mensaje **saliente** — ambos **TBD (fuera de MVP)**. La curva de backoff de reconexión ya no lo es: la fija el cliente (§7.1).
 - Pruebas de carga (k6).
 
 Y, por separado, lo que **está diseñado y todavía no implementado** (distinto de lo anterior: aquí sí hay compromiso):
 
 - `entity.spawn` / `entity.despawn` incrementales a partir del diff que ya devuelve `Hub.Subscribe`, en lugar de un `world.snapshot` completo por cada `session.view`.
 - Escritura de la fila de `sessions` en PostgreSQL.
-- Reenvío de la respuesta original ante un `requestId` duplicado: hoy el duplicado se descarta sin respuesta.
 - Refresco de la presencia desde el servidor, sin depender de que el cliente envíe `session.ping`.

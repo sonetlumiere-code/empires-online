@@ -124,7 +124,7 @@ node scripts/smoke.mjs --url http://localhost:8080
 |---|---|---|---|
 | Go (versión del módulo en `services/game-server/go.mod`; toolchain instalado en la máquina de desarrollo: **1.27.0**) | `testing` estándar | `github.com/stretchr/testify/require` | `require` (aborta), **no** `assert` (continúa). Un test que sigue tras una aserción fallida produce cascadas de errores ilegibles. |
 | TypeScript | **Vitest 2** | `expect` de Vitest | Configurado en `packages/protocol/vitest.config.ts`, con `include: ['src/**/*.test.ts']`. |
-| E2E cliente↔servidor | Cliente WS en Go | — | Canon §19. **Aún no existe**: se implementará en Go, dentro del mismo módulo, para reutilizar los dobles de prueba. |
+| E2E cliente↔servidor | Cliente WS en Go | `require` | Canon §19. **Existe**: los `*_e2e_test.go` y `e2e_test.go` de `internal/websocket` levantan el servidor WebSocket real sobre `httptest` con un cliente `gorilla/websocket`, dentro del mismo módulo; y `pnpm run smoke` recorre el flujo contra procesos vivos. |
 | Carga (diferido) | **k6** + generador propio en Go | — | Ver [load-tests.md](./load-tests.md). |
 
 **Dependencias de test permitidas en Go.** `testify/require`, `github.com/golang-jwt/jwt/v5` y `github.com/google/uuid` (ya dependencias de producción) y la librería estándar. Cualquier otra dependencia de test (mocking frameworks, generadores de aserciones, contenedores efímeros gestionados desde el test) requiere ADR. Razón: los dobles se escriben a mano en el propio `_test.go` del paquete —`recorder`, `syncPersister`, `fakeRepos`, `memoryConsumer`—, son pocos y son parte del diseño; un framework de mocks invita a testear interacciones en vez de comportamiento.
@@ -144,7 +144,7 @@ pnpm run verify                   # protocol:build + docs:check + typecheck + te
                                   #   + server:fmt:check + server:vet + server:test
 ```
 
-**No existen** `test:unit`, `test:contract`, `test:simulation` ni `test:recovery` como scripts propios: los tres primeros niveles viven dentro de `server:test` (más `protocol:test` para el lado TypeScript) y el cuarto todavía no tiene código. Si en el futuro se separan, se añaden al `package.json` y se actualiza esta lista.
+**No existen** `test:unit`, `test:contract`, `test:simulation` ni `test:recovery` como scripts propios: los tres primeros niveles viven dentro de `server:test` (más `protocol:test` para el lado TypeScript), y la recuperación vive repartida entre `server:test` (la mitad en RAM, `internal/game/simulation`) y `server:test:integration` (contra PostgreSQL real). Si en el futuro se separan, se añaden al `package.json` y se actualiza esta lista.
 
 El detalle de cada script está en [../operations/local-development.md](../operations/local-development.md).
 
@@ -160,7 +160,7 @@ No son recomendaciones. Un pull request que las viole se rechaza en revisión au
 | **R2** | Todo invariante importante tiene test cuando es viable. Cada `INV-*` del [catálogo](../invariants/README.md) queda asociado a su test. Si un invariante no es verificable con test automatizado, el documento debe decir por qué y qué control lo sustituye. | La asociación real en el árbol es un **comentario inmediatamente encima del test** con el ID y su enunciado — por ejemplo `// INV-WORLD-001: toda coordenada válida está dentro de [0,width) x [0,height).` sobre `TestLimitesDelMundo`. Un `grep -rn "INV-" --include=*_test.go` enumera la cobertura; un `INV-*` sin test y sin justificación explícita es un hallazgo de revisión. |
 | **R3** | **Nada de `time.Now()` ni de aleatoriedad no inyectada en el dominio** (canon §1.5). El dominio recibe `clock.Clock` y `clock.RandomSource` por constructor o por argumento. | `go vet` + revisión, más una búsqueda de `time.Now(` y `math/rand` bajo `internal/domain/**`, `internal/game/**` e `internal/pathfinding`. La única implementación autorizada de `Clock` en producción es `clock.SystemClock`, y sólo se construye en `cmd/server`. |
 | **R4** | Prohibido iterar un `map` de Go cuando el orden afecta al resultado (canon §8). Si hay que recorrer un mapa, se ordenan las claves primero. | Revisión + tests de reproducibilidad (`TestSimulacionEsReproducible`, `TestRutaEsDeterminista`, `TestChunksEnRadioSeRecortanYVanOrdenados`) que ejecutan lo mismo dos o más veces y comparan el resultado. |
-| **R5** | Ningún test usa `time.Sleep` para esperar a que "algo pase". Se usa `clock.FakeClock`, un canal, o una espera con condición y deadline explícito. | Revisión + búsqueda de `time.Sleep` en `*_test.go`: **hoy no aparece ninguna**. Las únicas excepciones legítimas serán las del nivel `integration` (expiración real de una clave de Redis) y deberán llevar comentario justificándolo. |
+| **R5** | Ningún test usa `time.Sleep` para esperar a que "algo pase". Se usa `clock.FakeClock`, un canal, o una espera con condición y deadline explícito. | Revisión + búsqueda de `time.Sleep` en `*_test.go`. Hoy aparece en siete sitios: tres en `redis_integration_test.go` (la expiración real de una clave, la excepción legítima), dos en `queue_test.go` y dos en `websocket/e2e_test.go`. Los cuatro últimos son deuda de esta regla: deberían esperar a una condición con plazo. |
 | **R6** | Los tests no comparten estado mutable global. Cada test construye su mundo (`newTestWorld`, `buildWorld`, `newHarness`). Los tests de integración limpiarán su rastro (§4 de [integration-tests.md](./integration-tests.md)). | `go test -count=2` y ejecución en orden aleatorio (`-shuffle=on`) en el pipeline nocturno. |
 | **R7** | Un test que falla intermitentemente se **arregla o se borra**, nunca se marca como *skip* indefinido ni se reintenta automáticamente. Un `flaky` tolerado destruye la señal de toda la suite. | Pipeline nocturno con `-count=10`; cualquier test no determinista aparece ahí. |
 | **R8** | Los tests de integración están *gated* por **dos** mecanismos a la vez: la etiqueta de compilación `integration` y la variable `EO_INTEGRATION=1`, con `t.Skip` —no `t.Fatal`— si la variable no está. Quien no tenga PostgreSQL y Redis a mano debe poder ejecutar `pnpm run server:test` sin ruido. | Ejecutar `pnpm run server:test` sin la variable: debe terminar en verde. Es lo que hace `go test -race -count=1 ./...` en el job `game-server` de la CI. |
@@ -219,14 +219,19 @@ services/game-server/
 │   ├── websocket/e2e_test.go             ✔ e2e: vertical slice completo sobre transporte real
 │   ├── persistence/memory/memory_test.go ✔ unit: TTL y atomicidad con reloj falso
 │   └── persistence/{postgres,redis}/
-│       └── *_integration_test.go         postgres ✔ ejecutado (12); redis ○ sin Redis en la máquina
+│       └── *integration_test.go          ✔ ejecutados: 82 contra PostgreSQL y 11 contra Redis
 └── testdata/                             ○ golden files y escenarios (aún no existe)
 ```
+
+El árbol de arriba es una muestra, no el inventario: hay 45 ficheros de test sin etiqueta `integration` en
+`internal/` (entre otros `domain/unit/unit_test.go`, `domain/{territory,safezone,diplomacy,garrison}`,
+`game/{loop,founding,loadcheck}`, `persistence/queue_test.go`, `httpapi`, y los `*_e2e_test.go` de
+`websocket`). `go test ./...` los encuentra todos.
 
 ```
 packages/protocol/
 ├── src/v1/{common,errors,client,server,index}.ts
-├── src/v1/protocol.test.ts               ✔ 18 tests (Vitest)
+├── src/v1/protocol.test.ts               ✔ Vitest
 ├── src/scripts/export-schema.ts          ✔ genera schema/v1 y el espejo del módulo Go
 └── schema/v1/{client-message.schema.json,server-message.schema.json,error-codes.json}
 ```
@@ -431,7 +436,7 @@ Versiones fijadas en el workflow: `GO_VERSION: '1.23'`, `NODE_VERSION: '22'`, `P
 > 2. **Los tests de integración de Redis: verificados.** Contra un Redis real en WSL, con `-race`, ejecutados y en verde (no saltados: `t.Skip` sólo actúa sin `EO_TEST_REDIS_URL`). Nota de versión: en WSL es Redis **6.0.16** y la CI usa **7-alpine**. Los comandos que ejercen estos tests (`SET NX`, `EVAL`, TTL) son muy anteriores a ambas, pero la diferencia existe y no está cubierta.
 > 3. **La construcción de la imagen del contenedor: verificada, pero sólo en la CI.** No es que Docker no esté instalado: es que **no se va a usar en esta máquina**, porque produce pantallazos azules por consumo de RAM. No hay sustituto local —construir una imagen exige un daemon—, así que el job `docker` es la única prueba que existe de que el artefacto desplegable se construye. Pasa; lo que no se puede es reproducirlo desde aquí.
 
-**Lo que la CI todavía no hace, y hay que añadir cuando exista lo que verifica:** no hay ESLint: ningún paquete declara un script `lint`. El **lint de determinismo** sí existe (`node scripts/lint-determinism.mjs`, `EO-017`) y corre en el job `docs` y no existe todavía el pipeline nocturno de §8.2. La comprobación de enlaces rotos **sí** existe ya, en el job `docs`, y el **build del cliente** también: `tsc --noEmit` comprueba tipos pero no construye, y un fallo de *bundling* o un componente de servidor usando algo del navegador pasan el typecheck y revientan `next build`. Documentar lo pendiente como pendiente es preferible a describir una CI que no está.
+**Lo que la CI todavía no hace, y hay que añadir cuando exista lo que verifica:** no hay ESLint: el `lint` raíz ejecuta el lint de determinismo y después el de cada paquete que lo declare, y ninguno lo hace. El **lint de determinismo** sí existe (`node scripts/lint-determinism.mjs`, `EO-017`) y corre en el job `docs` y no existe todavía el pipeline nocturno de §8.2. La comprobación de enlaces rotos **sí** existe ya, en el job `docs`, y el **build del cliente** también: `tsc --noEmit` comprueba tipos pero no construye, y un fallo de *bundling* o un componente de servidor usando algo del navegador pasan el typecheck y revientan `next build`. Documentar lo pendiente como pendiente es preferible a describir una CI que no está.
 
 En CI el gate `EO_INTEGRATION=1` **estará siempre activo** en su job, porque los servicios están garantizados. En local es opcional: quien no tenga PostgreSQL y Redis a mano ejecuta `pnpm run server:test` sin ruido, porque la etiqueta `integration` excluye esos ficheros de la compilación (regla R8).
 

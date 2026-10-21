@@ -3,8 +3,11 @@
 Verificación del protocolo WebSocket v1 contra el JSON Schema exportado desde los esquemas Zod: qué se valida, en qué lenguaje, cómo se detecta la deriva de schema como fallo de CI y por qué eso es lo que impide que cliente y servidor dejen de hablar el mismo idioma.
 
 > **Estado real.** Este nivel **existe y está en verde por los dos lados**: `internal/protocol/contract_test.go`
-> (Go) y `packages/protocol/src/v1/protocol.test.ts` (18 tests, Vitest). El check de deriva de schema
-> está activo en la CI. Los casos ✔ llevan el nombre de test real; los ○ están previstos.
+> (Go), `packages/protocol/src/v1/protocol.test.ts` (Vitest) y los e2e de `internal/websocket`, que validan
+> contra el JSON Schema todo frame que emite el servidor real (`schema_e2e_test.go`). El check de deriva de
+> schema está activo en la CI. Los casos ✔ llevan el nombre de test real; los ○ no tienen test. Cada fila
+> reconciliada el 2026-10-21 lleva una nota **Estado** con el test real que la cubre, si la cubre otro con otro
+> nombre, o lo que difiere del comportamiento previsto.
 > El protocolo completo está en [../specs/websocket-protocol.md](../specs/websocket-protocol.md);
 > este documento no lo repite, lo verifica.
 
@@ -88,8 +91,10 @@ Ese fichero encontró un bug real de producción: el servidor pasaba `r.Context(
 sesión, y ese contexto se cancela en cuanto retorna el handler HTTP —lo que ocurre de inmediato—, así que
 toda sesión habría muerto tras su primer mensaje. Hoy `Handler` recibe el contexto de vida del proceso.
 
-Lo que sigue sin cubrir a este nivel es el **rate limiting** (exige controlar el reloj del limitador desde
-fuera) y el `seq` por conexión bajo reordenación. Van marcados ○.
+Después se añadieron `limits_e2e_test.go` (cierres `4408`, `1009`, `4429` y la contigüidad del `seq`),
+`contract_e2e_test.go` (los tipos que nadie emitía y `session.view`) y `schema_e2e_test.go` (validación de
+cada frame). Lo que sigue sin cubrir es el rate limiting fino —el limitador no admite un reloj inyectable— y el
+`seq` entre conexiones. Van marcados ○.
 
 ---
 
@@ -126,7 +131,7 @@ Entre los dos, añadir un tipo a un lado sin añadirlo al otro es imposible sin 
 | S→C | `unit.movement.completed` | ✔ | ✔ | ○ |
 | S→C | `unit.movement.cancelled` | ✔ | ✔ | ○ |
 
-El catálogo de comandos es además **cerrado por test**: `TestCatalogoDeComandosEsCerrado` exige `len(protocol.ClientMessageTypes) == 5` y comprueba que `"unit.teleport"`, `"admin.grant"`, `""` y `"world.snapshot"` **no** se aceptan como comandos del cliente. Un tipo servidor→cliente no puede colarse como comando entrante.
+El catálogo de comandos es además **cerrado por test**: `TestCatalogoDeComandosEsCerrado` exige `len(protocol.ClientMessageTypes) == 7` y comprueba que `"unit.teleport"`, `"admin.grant"`, `""` y `"world.snapshot"` **no** se aceptan como comandos del cliente. Un tipo servidor→cliente no puede colarse como comando entrante.
 
 ---
 
@@ -143,10 +148,10 @@ El catálogo de comandos es además **cerrado por test**: `TestCatalogoDeComando
 | **K5** | ✔ | `TestEntityUpdateEsUnDeltaDeVerdad` (Go) | `entity.update` transporta **sólo lo que cambió**: con `X` e `Y` presentes, el JSON contiene `"x":10` y `"y":20` y **no contiene** `hp`, `status` ni `movement`. Los punteros `nil` se omiten; un campo sin cambios no viaja |
 | **K6** | ✔ | `TestMovementStartedLlevaLaPolilineaCompleta` (Go) y `acepta unit.movement.started con la polilínea temporizada completa` (Vitest) | `unit.movement.started` lleva la polilínea **entera** dentro de `movement`, con `movementId`, `path[]`, `startTimeMs`, `arrivalTimeMs` y `target`. Es lo que permite al cliente interpolar sin sondear al servidor. El round-trip conserva los `tMs` (`0` y `1449`) y el `arrivalTimeMs` |
 | **K7** | ✔ | `exige una polilínea no vacía` (Vitest) | Un `path: []` se rechaza. Una polilínea vacía no es un movimiento, es un dato corrupto |
-| **K8** | ○ | `TestTodoMensajeDelServidorValidaContraElEsquema` | Para los 14 tipos servidor→cliente: se construye la estructura Go, se serializa, y el documento resultante se valida **contra el JSON Schema embebido** con un validador real. Hoy la comprobación Go es de presencia del literal del tipo en el esquema (§4), no de validación completa del documento |
-| **K9** | ○ | `TestLosSellosDeTiempoSonEnterosEpochMs` | `ts`, `startTimeMs`, `arrivalTimeMs` y `tMs` son enteros; ningún flotante ni ninguna cadena ISO-8601 en el camino caliente |
-| **K10** | ○ | `TestMensajesEmitidosEnUnEscenarioCompleto` | Escenario completo (hello → welcome → move → accepted → started → completed) capturando **todo** lo emitido, validando cada frame. Cubre los mensajes que un test unitario no piensa en construir |
-| **K11** | ○ | `TestElSnapshotCabeEnElPresupuestoDeTamaño` | Un `world.snapshot` del área de interés cabe en `EO_WS_MAX_MESSAGE_BYTES` (16 384). **Ojo:** el `world.snapshot` implementado incluye `terrain[]` con el blob del chunk en base64 (1024 bytes ⇒ ~1368 caracteres por chunk), y la sesión sólo lo envía **una vez por chunk y sesión** (`NeedsTerrain` / `MarkTerrainSent`), porque el terreno es inmutable. El presupuesto hay que calcularlo con esa regla, no suponiendo que el terreno viaja en cada snapshot |
+| **K8** | ✔ | `validarMensajeDelServidor` + `TestMain` (`internal/websocket/schema_e2e_test.go`) | Para los 14 tipos servidor→cliente: se construye la estructura Go, se serializa, y el documento resultante se valida **contra el JSON Schema embebido** con un validador real. Hoy la comprobación Go es de presencia del literal del tipo en el esquema (§4), no de validación completa del documento **Estado (2026-10-21):** cubierto con frames reales del servidor: toda lectura de los e2e valida contra el JSON Schema, y `TestMain` exige que los 14 tipos aparezcan. |
+| **K9** | ✔ | `validarMensajeDelServidor` (`schema_e2e_test.go`) | `ts`, `startTimeMs`, `arrivalTimeMs` y `tMs` son enteros; ningún flotante ni ninguna cadena ISO-8601 en el camino caliente **Estado (2026-10-21):** el esquema declara `ts` y `tMs` como enteros y `startTimeMs`/`arrivalTimeMs` apuntan a `ts`; lo cubre la misma validación, sin test dedicado. |
+| **K10** | ✔ | `TestVerticalSliceEndToEnd` (`e2e_test.go`) | Escenario completo (hello → welcome → move → accepted → started → completed) capturando **todo** lo emitido, validando cada frame. Cubre los mensajes que un test unitario no piensa en construir **Estado (2026-10-21):** cada frame se valida al leerlo; el escenario no llega a `unit.movement.completed`, que valida otro e2e. |
+| **K11** | ○ | `TestElSnapshotCabeEnElPresupuestoDeTamaño` | Un `world.snapshot` del área de interés cabe en `EO_WS_MAX_MESSAGE_BYTES` (16 384). **Ojo:** el `world.snapshot` implementado incluye `terrain[]` con el blob del chunk en base64 (1024 bytes ⇒ ~1368 caracteres por chunk), y la sesión sólo lo envía **una vez por chunk y sesión** (`NeedsTerrain` / `MarkTerrainSent`), porque el terreno es inmutable. El presupuesto hay que calcularlo con esa regla, no suponiendo que el terreno viaja en cada snapshot **Estado (2026-10-21):** sin test, y el servidor no limita el tamaño de lo que emite. |
 
 ### 5.1.1 Los identificadores `bigint` viajan como **número JSON**
 
@@ -174,32 +179,32 @@ Los tests que lo fijan: `TestMovementStartedLlevaLaPolilineaCompleta` y `TestEnv
 | **K17** | ✔ | `rechaza coordenadas no enteras: el mundo es un grid de tiles` (Vitest) | `target.x = 120.5` ⇒ `INVALID_MESSAGE`. El servidor razona en tiles completos (canon §7); una coordenada fraccionaria no es un redondeo, es un mensaje inválido |
 | **K18** | ✔ | `rechaza un payload que intente aportar estado autoritativo desconocido` (Vitest) | Un `hp: 9999` dentro del `payload` **se rechaza en lugar de ignorarse en silencio**. Exige que los esquemas Zod cliente→servidor sean **estrictos** y que el JSON Schema generado lleve `additionalProperties: false` |
 | **K19** | ✔ | `unit.move no admite que el cliente envíe una ruta` (Vitest) + `TestElComandoDeMovimientoNoAdmiteRuta` (Go) | El cliente no puede aportar la polilínea ni por accidente ni a propósito. Doble defensa: el esquema lo rechaza en el *boundary*, y la estructura Go `UnitMovePayload` **no tiene dónde guardarla** aunque el JSON la traiga |
-| **K20** | ○ | `TestTodoMensajeDelClienteValidaContraElEsquema` | Los 7 tipos cliente→servidor validan en su forma canónica, no sólo `unit.move` |
-| **K21** | ○ | `TestFaltaUnCampoObligatorio` | Para cada campo obligatorio de cada uno de los 5 mensajes de cliente, omitirlo produce `INVALID_MESSAGE`. Test generado a partir de la lista de `required` del schema: añadir un campo obligatorio añade automáticamente su caso |
-| **K22** | ○ | `TestTipoIncorrectoSeRechaza` | `target.x` como cadena, `payload` como array ⇒ `INVALID_MESSAGE` |
+| **K20** | ○ | `TestTodoMensajeDelClienteValidaContraElEsquema` | Los 7 tipos cliente→servidor validan en su forma canónica, no sólo `unit.move` **Estado (2026-10-21):** cubierto en parte por `TestElDecodificadorEsTanEstrictoComoElEsquema` (los 7 tipos con `DecodeStrict`, no contra el JSON Schema). |
+| **K21** | ○ | `TestFaltaUnCampoObligatorio` | Para cada campo obligatorio de cada uno de los 7 mensajes de cliente, omitirlo produce `INVALID_MESSAGE`. Test generado a partir de la lista de `required` del schema: añadir un campo obligatorio añade automáticamente su caso **Estado (2026-10-21):** sin test; Zod y `DecodeStrict` lo rechazan. |
+| **K22** | ○ | `TestTipoIncorrectoSeRechaza` | `target.x` como cadena, `payload` como array ⇒ `INVALID_MESSAGE` **Estado (2026-10-21):** sin test; Zod y `DecodeStrict` lo rechazan. |
 
 **Asimetría deliberada.** Los esquemas cliente→servidor son **estrictos** (`additionalProperties: false`, K18); los servidor→cliente **no lo son**, para poder añadir campos opcionales sin romper clientes antiguos. No es un descuido: es la única forma de que el protocolo evolucione de manera aditiva sin obligar a todos los clientes a actualizarse a la vez. Un test que exigiera estrictitud en la dirección servidor→cliente estaría verificando lo contrario del diseño.
 
 ### 5.3 Los mensajes inválidos se rechazan con `INVALID_MESSAGE` y **sin efectos secundarios**
 
-Este es el bloque que distingue un contract test útil de uno decorativo. No basta con el código de error. **Todo este bloque está ○ previsto**: exige una sesión WebSocket con estado, y hoy no existe `internal/websocket/contract_test.go`.
+Este es el bloque que distingue un contract test útil de uno decorativo. No basta con el código de error. Esta tabla no tiene columna de estado: cada fila lleva el suyo en la nota **Estado** (✔ o ○). Las que existen viven en los e2e de `internal/websocket`.
 
 | # | Test | Verifica |
 |---|---|---|
-| **K23** | `TestUnMensajeInvalidoNoMutaNadaDelEstado` | Para cada caso de K16 a K22: no se crea ningún `unit_movements`, no cambia ningún `units.status`, no se emite ningún evento de dominio, y el `Pathfinder` doble registra **cero** llamadas |
-| **K24** | `TestUnMensajeInvalidoNoConsumeLaClaveDeIdempotencia` | Un mensaje malformado con un `requestId` válido **no** registra la clave de idempotencia: el cliente puede corregir y reenviar con el mismo `requestId` |
-| **K25** | `TestUnRechazoConsumeExactamenteUnSeq` | El `seq` avanza sólo por los mensajes realmente emitidos; un rechazo emite exactamente un `system.error` y consume exactamente un `seq` |
-| **K26** | `TestJsonMalformadoCierraCon4400` | Bytes que no son JSON, o JSON truncado ⇒ `INVALID_MESSAGE` y cierre `4400` |
-| **K27** | `TestElValidadorManualYElEsquemaCoinciden` | Corpus de ~200 documentos (válidos e inválidos, incluidos los generados por fuzzing) pasado por el validador manual de Go **y** por el schema. Un desacuerdo en cualquiera de los dos sentidos es un fallo. Es la verificación directa de la razón de ser de §2: si la validación de runtime está escrita a mano, alguien tiene que demostrar que coincide con el contrato |
+| **K23** | `TestUnMensajeInvalidoNoMutaNadaDelEstado` | Para cada caso de K16 a K22: no se crea ningún `unit_movements`, no cambia ningún `units.status`, no se emite ningún evento de dominio, y el `Pathfinder` doble registra **cero** llamadas **Estado (2026-10-21):** ○ cubierto en parte por `TestPayloadConCamposExtraNoAportaEstado` (ningún inválido llega a la simulación), sin contar llamadas al pathfinder. |
+| **K24** | `TestUnMensajeInvalidoNoConsumeLaClaveDeIdempotencia` | Un mensaje malformado con un `requestId` válido **no** registra la clave de idempotencia: el cliente puede corregir y reenviar con el mismo `requestId` **Estado (2026-10-21):** ○ sin test; el código lo cumple: el payload se decodifica antes de reservar el `requestId`. |
+| **K25** | `TestElSeqCreceDeUnoEnUnoEnUnaConexion` (`limits_e2e_test.go`) | El `seq` avanza sólo por los mensajes realmente emitidos; un rechazo emite exactamente un `system.error` y consume exactamente un `seq` **Estado (2026-10-21):** ✔ incluye un mensaje malformado y comprueba que no hay huecos. |
+| **K26** | `TestMensajeMalformadoNoTumbaLaSesion`, `TestUnHandshakeIlegibleCierraCon4400SinMensaje` | Bytes que no son JSON, o JSON truncado ⇒ `INVALID_MESSAGE` y cierre `4400` **Estado (2026-10-21):** ✔ **difiere**: con la sesión establecida se responde `system.error INVALID_MESSAGE` y la sesión sigue; sólo en el handshake se cierra con `4400`, y sin mensaje ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)). |
+| **K27** | `TestElValidadorManualYElEsquemaCoinciden` | Corpus de ~200 documentos (válidos e inválidos, incluidos los generados por fuzzing) pasado por el validador manual de Go **y** por el schema. Un desacuerdo en cualquiera de los dos sentidos es un fallo. Es la verificación directa de la razón de ser de §2: si la validación de runtime está escrita a mano, alguien tiene que demostrar que coincide con el contrato **Estado (2026-10-21):** ○ cubierto en parte por `TestElDecodificadorEsTanEstrictoComoElEsquema`; no hay corpus ni fuzzing. |
 
 ### 5.4 Versión no soportada ⇒ `UNSUPPORTED_VERSION`
 
 | # | Estado | Test | Entrada | Esperado |
 |---|---|---|---|---|
 | **K28** | ✔ | `distingue versión no soportada de mensaje inválido` (Vitest) | `{...unit.move válido, v: 2}` | `{ ok: false, code: 'UNSUPPORTED_VERSION' }`, **distinto de `INVALID_MESSAGE`**. Es la distinción que permite al cliente saber si debe actualizarse o si envió basura |
-| **K29** | ○ | `TestFaltaLaVersion` | Envelope sin `v` | `INVALID_MESSAGE` (falta un campo obligatorio), no `UNSUPPORTED_VERSION` |
-| **K30** | ○ | `TestVersionCeroNegativaONoNumerica` | `v = 0`, `v = -1`, `v = "1"` | `UNSUPPORTED_VERSION` para los numéricos fuera de rango; `INVALID_MESSAGE` para el tipo incorrecto |
-| **K31** | ○ | `TestLaVersionSeComprubaAntesDelPayload` | `v = 2` con un `payload` además malformado | Gana `UNSUPPORTED_VERSION`: la versión se comprueba primero, porque un `payload` v2 no tiene por qué ser interpretable con reglas v1 |
+| **K29** | ○ | `TestFaltaLaVersion` | Envelope sin `v` | `INVALID_MESSAGE` (falta un campo obligatorio), no `UNSUPPORTED_VERSION` **Estado (2026-10-21):** sin test, y **difiere en Go**: sin `v` se decodifica `v = 0` y la respuesta es `UNSUPPORTED_VERSION`; en TypeScript sí es `INVALID_MESSAGE`. |
+| **K30** | ○ | `TestVersionCeroNegativaONoNumerica` | `v = 0`, `v = -1`, `v = "1"` | `UNSUPPORTED_VERSION` para los numéricos fuera de rango; `INVALID_MESSAGE` para el tipo incorrecto **Estado (2026-10-21):** sin test; los dos lados lo cumplen. En el handshake todo cierra con `4400`. |
+| **K31** | ○ | `TestLaVersionSeComprubaAntesDelPayload` | `v = 2` con un `payload` además malformado | Gana `UNSUPPORTED_VERSION`: la versión se comprueba primero, porque un `payload` v2 no tiene por qué ser interpretable con reglas v1 **Estado (2026-10-21):** sin test; los dos lados lo cumplen. |
 
 `ExportedErrorCodes()` aplica la misma disciplina en el otro extremo de la cadena: si `error-codes.json` declara una versión distinta de la que habla el servidor, el error dice exactamente eso en vez de comparar catálogos de versiones diferentes.
 
@@ -210,12 +215,12 @@ Canon §14: el cliente abre la conexión y envía `session.hello { ticket }` **c
 | # | Estado | Test | Escenario | Esperado |
 |---|---|---|---|---|
 | **K32** | ✔ | `TestPreAuthSoloAdmiteElHandshake` (Go) | El catálogo de mensajes admitidos antes de autenticar | `protocol.IsPreAuth` es cierto **sólo** para `session.hello`; es falso para `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `session.ping` y `session.view`. **Ningún mensaje precede al hello, ni siquiera los inocuos.** Es la comprobación puramente declarativa; el efecto sobre la conexión lo cubre K33 |
-| **K33** | ○ | `TestNingunComandoAntesDeAutenticar` | `unit.move` como primer frame, sin `session.hello` previo | `UNAUTHORIZED` y cierre **`4401`**. El comando **no se ejecuta**: cero llamadas al pathfinder, cero movimientos |
-| **K34** | ○ | `TestTimeoutDeHandshakeCierraCon4408` | Conexión abierta sin enviar nada durante 5 s (`clock.FakeClock`) | Cierre **`4408`**, distinto de `4401`: el cliente debe poder distinguir "no me autenticaste" de "tardaste demasiado" |
-| **K35** | ○ | `TestUnSegundoHelloSeRechaza` | Un segundo `session.hello` en una sesión ya autenticada | `INVALID_MESSAGE`; la identidad de la sesión no se reasigna nunca |
+| **K33** | ✔ | `TestNoSeAceptanComandosSinAutenticar` (`e2e_test.go`) | `unit.move` como primer frame, sin `session.hello` previo | `UNAUTHORIZED` y cierre **`4401`**. El comando **no se ejecuta**: cero llamadas al pathfinder, cero movimientos **Estado (2026-10-21):** cierre `4401` como primera lectura, sin `UNAUTHORIZED` ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)); no cuenta movimientos. |
+| **K34** | ✔ | `TestSinHandshakeEnPlazoSeCierraCon4408` (`limits_e2e_test.go`) | Conexión abierta sin enviar nada durante 5 s (`clock.FakeClock`) | Cierre **`4408`**, distinto de `4401`: el cliente debe poder distinguir "no me autenticaste" de "tardaste demasiado" **Estado (2026-10-21):** con un plazo real de 200 ms, no con `FakeClock`. |
+| **K35** | ○ | `TestUnSegundoHelloSeRechaza` | Un segundo `session.hello` en una sesión ya autenticada | `INVALID_MESSAGE`; la identidad de la sesión no se reasigna nunca **Estado (2026-10-21):** sin test, y **difiere**: un segundo `session.hello` se ignora sin respuesta. |
 | **K36** | ✔ (parcial) | `rechaza un payload que intente aportar estado autoritativo desconocido` (Vitest) | `unit.move` con un `playerId` inyectado en el `payload` | El campo se rechaza como propiedad desconocida (K18); la identidad procede exclusivamente del claim `sub` del ticket verificado. La mitad del ticket la verifica `ticket_test.go` (ver [unit-tests.md](./unit-tests.md) §1) |
 | **K37** | ✔ | `TestCodigosDeCierreSonDelRangoPrivado` (Go) | Los seis códigos de cierre declarados | Todos están en el rango privado de aplicación **4000–4999**. Un código fuera de ese rango colisionaría con los códigos estándar del protocolo WebSocket |
-| **K38** | ○ | `TestLosCodigosDeCierreSonLosCanonicos` | Tabla completa | `4400` mensaje inválido, `4401` no autenticado, `4403` no autorizado, `4408` timeout de handshake, `4429` rate limited, `4500` error interno. Ningún código fuera de esa lista. Complementa a K37, que hoy comprueba el rango pero no el valor de cada uno |
+| **K38** | ○ | `TestLosCodigosDeCierreSonLosCanonicos` | Tabla completa | `4400` mensaje inválido, `4401` no autenticado, `4403` no autorizado, `4408` timeout de handshake, `4429` rate limited, `4500` error interno. Ningún código fuera de esa lista. Complementa a K37, que hoy comprueba el rango pero no el valor de cada uno **Estado (2026-10-21):** sin test: los e2e comparan con las constantes, no con los literales; `4403` y `4500` no los ejerce ningún test, y el exceso de tamaño cierra con `1009`. |
 
 ### 5.6 Comando sobre una unidad ajena ⇒ `UNIT_NOT_OWNED`
 
@@ -224,16 +229,16 @@ Canon §14: el cliente abre la conexión y envía `session.hello { ticket }` **c
 | **K39** | ✔ | `TestRechazosDeMovimiento/unidad ajena` (nivel `simulation`) | Jugador A envía `unit.move` sobre una unidad del jugador B | `unit.move.rejected` con `code: "UNIT_NOT_OWNED"`; **no se emite ningún `unit.movement.started`**, la unidad de B no se mueve. Ver [simulation-tests.md](./simulation-tests.md) §4.3 |
 | **K40** | ✔ | `TestRechazosDeMovimiento` (el mismo) | El mismo caso | Se emite `unit.move.rejected`, **no** `system.error`: `unit.move.rejected` es el error tipado de ese comando ([../specs/websocket-protocol.md](../specs/websocket-protocol.md) §7.4) |
 | **K41** | ✔ | `UnitMoveRejectedPayload` (estructura) | El mismo caso | El `payload` del rechazo es exactamente `{unitId, code, message}`: **no hay dónde filtrar** posición, propietario ni estado de la unidad ajena. La ausencia de fuga está garantizada por el tipo, no por una aserción |
-| **K42** | ○ | `TestElRechazoDeUnidadAjenaLlevaElRequestId` | El mismo caso, a través del WebSocket | El envelope de respuesta lleva el `requestId` original para que el cliente correlacione |
-| **K43** | ○ | `TestCancelarUnidadAjenaSeRechaza` | `unit.cancel_move` sobre unidad ajena | `UNIT_NOT_OWNED`; el movimiento de B sigue `ACTIVE` |
+| **K42** | ○ | `TestElRechazoDeUnidadAjenaLlevaElRequestId` | El mismo caso, a través del WebSocket | El envelope de respuesta lleva el `requestId` original para que el cliente correlacione **Estado (2026-10-21):** sin test; el código lo hace. `TestNoSePuedeComandarUnaUnidadAjena` no mira el `requestId`. |
+| **K43** | ○ | `TestCancelarUnidadAjenaSeRechaza` | `unit.cancel_move` sobre unidad ajena | `UNIT_NOT_OWNED`; el movimiento de B sigue `ACTIVE` **Estado (2026-10-21):** sin test; llega como `system.error UNIT_NOT_OWNED`. |
 
 ### 5.7 `requestId` duplicado ⇒ ningún segundo efecto
 
 | # | Estado | Test | Escenario | Esperado |
 |---|---|---|---|---|
-| **K44** | ○ | `TestUnRequestIdDuplicadoNoProduceUnSegundoEfecto` | El mismo `unit.move` con el mismo `requestId`, dos veces | Un solo movimiento creado; dos respuestas con `payload` **idéntico** y `seq` distinto (el `seq` es por conexión y siempre avanza) |
-| **K45** | ○ | `TestIdempotenciaTrasReconectar` | Reenvío del mismo `requestId` tras reconectar | Sigue siendo idempotente: la clave es `(playerId, requestId)`, no la conexión |
-| **K46** | ○ | `TestUnDuplicadoNoEmiteUnBroadcastDuplicado` | Duplicado sobre un chunk con varios suscriptores | Los demás suscriptores reciben `unit.movement.started` **una sola vez** |
+| **K44** | ○ | `TestUnRequestIdDuplicadoNoProduceUnSegundoEfecto` | El mismo `unit.move` con el mismo `requestId`, dos veces | Un solo movimiento creado; dos respuestas con `payload` **idéntico** y `seq` distinto (el `seq` es por conexión y siempre avanza) **Estado (2026-10-21):** cubierto en parte por `TestComandoDuplicadoSeIgnora` (un único `started`). |
+| **K45** | ✔ | `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal` (`e2e_test.go`) | Reenvío del mismo `requestId` tras reconectar | Sigue siendo idempotente: la clave es `(playerId, requestId)`, no la conexión |
+| **K46** | ○ | `TestUnDuplicadoNoEmiteUnBroadcastDuplicado` | Duplicado sobre un chunk con varios suscriptores | Los demás suscriptores reciben `unit.movement.started` **una sola vez** **Estado (2026-10-21):** sin test; se cumple porque el duplicado no llega a la simulación. |
 | **K47** | ✔ | `TestNuevaOrdenReemplazaLaAnterior` (nivel `simulation`) | Segundo `unit.move` con `requestId` nuevo sobre la misma unidad | El movimiento anterior se cancela con **`reason: "REPLACED"`** y `stoppedAt` en el tile realmente alcanzado, y se crea uno nuevo con id distinto que parte de ahí |
 
 **El enum de `reason` es `REPLACED | CANCELLED_BY_PLAYER | PATH_BLOCKED | UNIT_DEAD | SERVER`** (`movement.CancelReason`, transmitido como cadena en `unit.movement.cancelled.payload.reason`). Un test que espere `SUPERSEDED` o `PLAYER_REQUEST` está escrito contra un contrato que no existe: el reemplazo es `REPLACED` y la cancelación explícita del jugador es `CANCELLED_BY_PLAYER`.
@@ -247,13 +252,13 @@ Canon §13: mensaje ≤ 16 KiB (`EO_WS_MAX_MESSAGE_BYTES=16384`), 20 msg/s por c
 | # | Estado | Test | Entrada | Esperado |
 |---|---|---|---|---|
 | **K48** | ✔ | `coinciden con los valores por defecto de la configuración EO_WS_*` (Vitest) | `TRANSPORT_LIMITS` del paquete de protocolo | `maxMessageBytes === 16384`, `rateLimitPerSecond === 20`, `rateLimitBurst === 40`. El cliente y el servidor parten de los **mismos** números: si alguien cambia un valor por defecto en `internal/config` y no en el protocolo, este test lo delata |
-| **K49** | ○ | `TestUnMensajeEnElLimiteSeAcepta` | Frame de exactamente **16384** bytes, bien formado | Aceptado. El límite es inclusivo |
-| **K50** | ○ | `TestUnMensajeDemasiadoGrandeSeRechazaSinParsear` | Frame de **16385** bytes | `MESSAGE_TOO_LARGE` y cierre `4400`. **Sin parsear**: el rechazo ocurre por longitud, antes de deserializar. El test lo verifica con un frame cuyo contenido es JSON deliberadamente inválido: si el error fuese `INVALID_MESSAGE`, es que se parseó primero |
-| **K51** | ○ | `TestElRateLimitPermiteLaRafaga` | 40 mensajes instantáneos con `clock.FakeClock` | Los 40 se aceptan: es exactamente el burst |
-| **K52** | ○ | `TestElMensaje41SeLimita` | Mensaje 41 dentro del mismo segundo | `RATE_LIMITED`, sin procesar el comando |
-| **K53** | ○ | `TestElCuboSeRellenaConElTiempo` | Tras 1 s de `clock.FakeClock`, 20 mensajes más | Aceptados: el cubo se rellena a `EO_WS_RATE_LIMIT_PER_SECOND` por segundo |
-| **K54** | ○ | `TestElAbusoSostenidoCierraCon4429` | Presión sostenida muy por encima del límite | Cierre `4429` |
-| **K55** | ○ | `TestElServidorNuncaEmiteUnFrameDemasiadoGrande` | Escenario con un `world.snapshot` grande | Ningún frame emitido supera 16 384 bytes |
+| **K49** | ○ | `TestUnMensajeEnElLimiteSeAcepta` | Frame de exactamente **16384** bytes, bien formado | Aceptado. El límite es inclusivo **Estado (2026-10-21):** sin test. |
+| **K50** | ✔ | `TestUnMensajeDemasiadoGrandeCierraCon1009` (`limits_e2e_test.go`) | Frame de **16385** bytes | `MESSAGE_TOO_LARGE` y cierre `4400`. **Sin parsear**: el rechazo ocurre por longitud, antes de deserializar. El test lo verifica con un frame cuyo contenido es JSON deliberadamente inválido: si el error fuese `INVALID_MESSAGE`, es que se parseó primero **Estado (2026-10-21):** **difiere**: el transporte corta el frame sin parsearlo y cierra con `1009`, sin `MESSAGE_TOO_LARGE` (código reservado). |
+| **K51** | ○ | `TestElRateLimitPermiteLaRafaga` | 40 mensajes instantáneos con `clock.FakeClock` | Los 40 se aceptan: es exactamente el burst **Estado (2026-10-21):** sin test: el limitador no admite un reloj inyectable. |
+| **K52** | ○ | `TestElMensaje41SeLimita` | Mensaje 41 dentro del mismo segundo | `RATE_LIMITED`, sin procesar el comando **Estado (2026-10-21):** cubierto en parte por `TestUnaRafagaPorEncimaDelBurstCierraCon4429` (60 mensajes, no exactamente el 41). |
+| **K53** | ○ | `TestElCuboSeRellenaConElTiempo` | Tras 1 s de `clock.FakeClock`, 20 mensajes más | Aceptados: el cubo se rellena a `EO_WS_RATE_LIMIT_PER_SECOND` por segundo **Estado (2026-10-21):** sin test; el relleno existe. |
+| **K54** | ✔ | `TestUnaRafagaPorEncimaDelBurstCierraCon4429` (`limits_e2e_test.go`) | Presión sostenida muy por encima del límite | Cierre `4429` **Estado (2026-10-21):** el cierre llega al primer exceso. |
+| **K55** | ○ | `TestElServidorNuncaEmiteUnFrameDemasiadoGrande` | Escenario con un `world.snapshot` grande | Ningún frame emitido supera 16 384 bytes **Estado (2026-10-21):** sin test, y no hay límite de salida en el código. |
 
 **Sobre un sub-límite propio para `session.view`.** No existe: `session.view` está sujeto al **mismo cubo global** que el resto de mensajes. El canon §17 sólo define `EO_WS_RATE_LIMIT_PER_SECOND` y `EO_WS_RATE_LIMIT_BURST`, y no hay ninguna variable `EO_` para un límite específico. Un sub-límite dedicado es **TBD (fuera de MVP)**: si se añade, será primero como variable de configuración publicada al cliente en el handshake, y sólo entonces como test. Documentar un "4 mensajes por segundo" que ningún código aplica ni ningún cliente conoce provocaría que un cliente respetuoso del contrato recibiera `RATE_LIMITED` sin haber excedido ningún límite anunciado.
 
@@ -261,15 +266,15 @@ Canon §13: mensaje ≤ 16 KiB (`EO_WS_MAX_MESSAGE_BYTES=16384`), 20 msg/s por c
 
 ### 5.9 Orden por `seq`
 
-Canon §13: `seq` es un uint64 monótono **por conexión**. Todo este bloque está ○ previsto: el `seq` lo asigna la sesión WebSocket, y `contract_test.go` lo construye hoy a mano (`protocol.NewOutbound(..., seq, ...)`) sin ejercitar al asignador.
+Canon §13: `seq` es un uint64 monótono **por conexión**. El `seq` lo asigna la sesión WebSocket; `contract_test.go` lo construye a mano (`protocol.NewOutbound(..., seq, ...)`), y el asignador real lo ejercita `TestElSeqCreceDeUnoEnUnoEnUnaConexion`. Cada fila lleva su estado en la nota.
 
 | # | Test | Verifica |
 |---|---|---|
-| **K56** | `TestElSeqCreceSinHuecos` | 10 000 mensajes emitidos en una conexión: `seq` es exactamente `n, n+1, …` sin huecos ni repeticiones |
-| **K57** | `TestElSeqEsPorConexion` | Dos conexiones simultáneas: cada una lleva su propia secuencia; la del jugador B no depende del tráfico de A |
-| **K58** | `TestElSeqReiniciaAlReconectar` | La nueva conexión arranca su `seq` desde el inicio; el cliente descarta su `lastSeenSeq` anterior al recibir el nuevo `session.welcome` |
-| **K59** | `TestElOrdenDentroDelTickSigueElOrdenDeFases` | Orden aceptada que reemplaza otra: orden exacto por `seq`, `unit.movement.cancelled(REPLACED)` → `unit.move.accepted` → `unit.movement.started`. Refleja el orden de fases del tick ([../architecture/game-loop.md](../architecture/game-loop.md)) |
-| **K60** | `TestElTsNoEsCriterioDeOrdenacion` | Varios mensajes del mismo tick comparten `ts`; sólo `seq` los ordena. El test comprueba que **existen empates de `ts`**, para que el cliente no pueda apoyarse en él por casualidad |
+| **K56** | `TestElSeqCreceDeUnoEnUnoEnUnaConexion` (`limits_e2e_test.go`) | 10 000 mensajes emitidos en una conexión: `seq` es exactamente `n, n+1, …` sin huecos ni repeticiones **Estado (2026-10-21):** ✔ con una decena de mensajes, no 10 000. |
+| **K57** | `TestElSeqEsPorConexion` | Dos conexiones simultáneas: cada una lleva su propia secuencia; la del jugador B no depende del tráfico de A **Estado (2026-10-21):** ○ sin test; el código lo cumple (`seq` es un contador por `Session`). |
+| **K58** | `TestElSeqReiniciaAlReconectar` | La nueva conexión arranca su `seq` desde el inicio; el cliente descarta su `lastSeenSeq` anterior al recibir el nuevo `session.welcome` **Estado (2026-10-21):** ○ sin test; el código lo cumple (sesión nueva, `seq` desde 1). |
+| **K59** | `TestElOrdenDentroDelTickSigueElOrdenDeFases` | Orden aceptada que reemplaza otra: orden exacto por `seq`, `unit.movement.cancelled(REPLACED)` → `unit.move.accepted` → `unit.movement.started`. Refleja el orden de fases del tick ([../architecture/game-loop.md](../architecture/game-loop.md)) **Estado (2026-10-21):** ○ sin test; el orden `cancelled → accepted → started` está en el código. |
+| **K60** | `TestElTsNoEsCriterioDeOrdenacion` | Varios mensajes del mismo tick comparten `ts`; sólo `seq` los ordena. El test comprueba que **existen empates de `ts`**, para que el cliente no pueda apoyarse en él por casualidad **Estado (2026-10-21):** ○ sin test. |
 
 ### 5.10 Ciclo completo de reconexión
 
@@ -279,15 +284,15 @@ Canon §13: `world.snapshot` al conectar y luego deltas incrementales; nunca se 
 |---|---|---|---|---|
 | **K61** | ✔ | `TestSnapshotDelAreaDeInteres` (nivel `simulation`) | Snapshot del radio de interés 2 chunks centrado en la ciudad | `ServerTimeMs` correcto, los **3** aldeanos, **1** ciudad, `terrain[]` con `size == 32` y el blob **en base64**; un área lejana (`(60,60)`, radio 0) no ve ninguna unidad ni ciudad de ese jugador. Es la comprobación de que **el snapshot contiene el conjunto de interés y sólo ése** |
 | **K62** | ✔ | `TestSnapshotIncluyeElMovimientoEnCurso` (ídem) | Snapshot a mitad de un movimiento | La unidad aparece con su `movement` no nulo —«debe traer su polilínea para que el cliente interpole»—, con `target` correcto, y **`X` es la posición autoritativa de ese instante** (14 tras 1200 ms), no la del inicio del movimiento |
-| **K63** | ✔ | `TestTicketNoSePuedeReutilizar` (`ticket_test.go`) | Segundo canje del mismo ticket | `auth.ErrReplayedTicket`: el ticket es de un solo uso (canon §14). La traducción a `UNAUTHORIZED` + cierre `4401` está ○ pendiente, en el nivel WebSocket |
-| **K64** | ○ | `TestElCicloDeReconexionProduceUnSnapshotCoherente` | 1. `session.hello` → `session.welcome` | El `welcome` valida y trae `{sessionId, playerId, serverTimeMs, tickDurationMs, heartbeatIntervalMs, world:{width,height,chunkSize}}` |
+| **K63** | ✔ | `TestTicketNoSePuedeReutilizar` (`ticket_test.go`) | Segundo canje del mismo ticket | `auth.ErrReplayedTicket`: el ticket es de un solo uso (canon §14). En el nivel WebSocket el rechazo es el cierre `4401`, sin mensaje **Estado (2026-10-21):** la traducción a cierre `4401` ya está cubierta en el nivel WebSocket por `TestTicketNoSePuedeReutilizarEnOtraConexion`. |
+| **K64** | ○ | `TestElCicloDeReconexionProduceUnSnapshotCoherente` | 1. `session.hello` → `session.welcome` | El `welcome` valida y trae `{sessionId, playerId, serverTimeMs, tickDurationMs, heartbeatIntervalMs, world:{width,height,chunkSize}}` **Estado (2026-10-21):** cubierto en parte: `TestVerticalSliceEndToEnd` revisa el `welcome` y reconecta después de la llegada; el snapshot a mitad de movimiento sólo lo cubre `TestSnapshotIncluyeElMovimientoEnCurso` (simulation). |
 | | | | 2. `world.snapshot` inicial | Centrado en la ciudad del jugador (canon §13) |
 | | | | 3. `unit.move` aceptado: llegan `unit.move.accepted` y `unit.movement.started` | Ambos validan; el `started` incluye la polilínea completa |
 | | | | 4. Desconexión abrupta a mitad del movimiento, 5. reconexión con ticket nuevo | Nuevo `session.welcome` y nuevo `world.snapshot` |
 | | | | 6. **Coherencia** | El snapshot trae la **misma polilínea** (mismos waypoints, mismos `tMs`, mismo `startTimeMs`, mismo `arrivalTimeMs`) y la unidad en `MOVING`. La posición mostrada corresponde al instante de la reconexión, derivada de la polilínea, no a la del momento de la desconexión |
-| **K65** | ○ | `TestReconectarTrasLaLlegadaMuestraElEstadoFinal` | Reconexión después de `arrivalTimeMs` | La unidad aparece `IDLE` en el tile final; no llega un `unit.movement.started` obsoleto |
-| **K66** | ○ | `TestSinRetransmisionCompletaTrasCambiarLaVista` | `session.view` que desplaza el área | Llegan `entity.spawn` de lo que entra y `entity.despawn` con `reason: "OUT_OF_INTEREST"` de lo que sale, y **ningún** `world.snapshot` nuevo |
-| **K67** | ○ | `TestElTerrenoDeUnChunkViajaUnaSolaVezPorSesion` | Dos snapshots de la misma sesión que comparten chunks | El segundo **no** repite el `terrain[]` de los chunks ya enviados (`NeedsTerrain` / `MarkTerrainSent`): el terreno es inmutable y reenviarlo es puro desperdicio de presupuesto de frame |
+| **K65** | ✔ | `TestVerticalSliceEndToEnd` (`e2e_test.go`) | Reconexión después de `arrivalTimeMs` | La unidad aparece `IDLE` en el tile final; no llega un `unit.movement.started` obsoleto **Estado (2026-10-21):** la unidad aparece `IDLE` en su destino y sin movimiento. |
+| **K66** | ✔ | `TestSessionViewRecentraConUnSnapshotDelAreaNueva` (`contract_e2e_test.go`) | `session.view` que desplaza el área | Llegan `entity.spawn` de lo que entra y `entity.despawn` con `reason: "OUT_OF_INTEREST"` de lo que sale, y **ningún** `world.snapshot` nuevo **Estado (2026-10-21):** **difiere**: `session.view` responde con un `world.snapshot` nuevo, no con `spawn`/`despawn` incrementales. |
+| **K67** | ✔ | `TestSessionViewRecentraConUnSnapshotDelAreaNueva` (`contract_e2e_test.go`) | Dos snapshots de la misma sesión que comparten chunks | El segundo **no** repite el `terrain[]` de los chunks ya enviados (`NeedsTerrain` / `MarkTerrainSent`): el terreno es inmutable y reenviarlo es puro desperdicio de presupuesto de frame |
 
 El enum de `entity.despawn.reason` implementado es **`OUT_OF_INTEREST | DEAD | GARRISONED | HIDDEN | REMOVED`**: cubre explícitamente el ocultamiento y la guarnición, de modo que un cliente nunca tiene que elegir entre reproducir efectos de destrucción o fingir que la unidad salió del área de interés.
 

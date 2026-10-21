@@ -54,8 +54,8 @@ solo altera las reglas ligadas a la presencia del jugador, nada más.
 | Servidor WebSocket (`internal/websocket`) | Al aceptar el handshake y al cerrar la conexión: marca/retira la presencia en Redis y **despacha un comando** `PlayerConnected` / `PlayerDisconnected` al game loop. No toca el estado del mundo. |
 | Simulación (`internal/game/simulation`) | Guarda `sessions[playerID]` (contador de sesiones vivas) y `disconnectedAt[playerID]` en RAM, y es la **única** goroutine que muta `cities.presence_state`. |
 | Tick loop, fase 5 (`Simulation.ProcessTimers`) | Único lugar donde se decide `ONLINE → OFFLINE_PENDING → PROTECTED`. |
-| PostgreSQL | Durable: `cities.presence_state`, `last_online_at`, `last_offline_at`, `protection_until`, `version`, `sessions`. |
-| Redis | Hot/transient: `presence:player:{playerId}`. Nunca sustituye a PostgreSQL (canon §1.4) y no participa en la decisión de degradar la ciudad. |
+| PostgreSQL | Durable: `cities.presence_state`, `last_online_at`, `last_offline_at`, `protection_until`, `version`. (La tabla `sessions` existe pero nadie la escribe.) |
+| Redis | Hot/transient: `presence:player:{playerId}`. Nunca sustituye a PostgreSQL (canon §1.4) y no participa en la decisión de degradar la ciudad. Sin `EO_REDIS_URL` (sólo en desarrollo) la clave vive en el almacén en proceso, con la misma semántica. |
 
 ## 4. Inputs
 
@@ -71,7 +71,7 @@ Configuración consumida:
 
 | Variable | Valor por defecto | Uso |
 |---|---|---|
-| `EO_PRESENCE_TTL_SECONDS` | 30 | Dos usos: TTL de `presence:player:{playerId}` **y** `Deps.DisconnectGrace` de la simulación, que es el margen real que decide `T1`. `cmd/server/main.go` inyecta el mismo valor en ambos sitios, por lo que la ventana de grace observable y la efectiva coinciden. |
+| `EO_PRESENCE_TTL_SECONDS` | 30 | Dos usos: TTL de `presence:player:{playerId}` **y** `Deps.DisconnectGrace` de la simulación, que es el margen real que decide `T1`. `cmd/server` inyecta el mismo valor en ambos sitios (`main.go` el grace, `hotstate.go` el TTL), por lo que la ventana de grace observable y la efectiva coinciden. |
 | `EO_PRESENCE_HEARTBEAT_SECONDS` | 10 | Periodo de refresco. Tres refrescos por TTL: se toleran dos pérdidas. Se publica al cliente en `session.welcome.heartbeatIntervalMs`. |
 | `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` | 300 | `Deps.ProtectionCooldown`: tiempo en `OFFLINE_PENDING` antes de `PROTECTED`. |
 | `EO_TICK_RATE_HZ` | 10 | Granularidad de la evaluación: 100 ms. |
@@ -85,12 +85,12 @@ Configuración consumida:
 | Output | Destino | Cuándo |
 |---|---|---|
 | `SET presence:player:{playerId} <sessionId> EX 30` | Redis | Handshake (`MarkOnline`). |
-| `EXPIRE presence:player:{playerId} 30` | Redis | Cada `session.ping` (`Heartbeat`). |
+| `EXPIRE presence:player:{playerId} 30` | Redis | Cada `session.ping` (`Heartbeat`). Si la clave ya no existe (Redis vaciado), `EXPIRE` no la recrea y el servidor lo ignora: la presencia observable falta hasta el siguiente `session.hello`, sin efecto en la simulación. |
 | `UPDATE cities SET presence_state, …, version = version + 1` | PostgreSQL | Cada transición, encolada como `Job{Name: "city.presence"}` en la cola de persistencia. |
 | `city.update` | Suscriptores del chunk de la ciudad | Cada transición. Ver [city.md](city.md) §12. |
-| Métrica `eo_connected_players` | Prometheus | Gauge de jugadores presentes. |
+| Métrica `eo_connected_players` | Prometheus | Gauge de jugadores con al menos una conexión registrada en el `Hub` (no incluye a los que están en el margen de reconexión). |
 | Métrica `eo_connected_websockets` | Prometheus | Gauge de conexiones, mayor o igual que el anterior. |
-| Log `msg="transición de presencia rechazada"` con `city_id`, `from`, `to` | stdout JSON | Solo cuando `city.CanTransition` rechaza el par: es la señal de un bug, no de una transición normal. |
+| Log de nivel `error` `msg="invariant_violation"` con `inv_id=INV-CITY-005`, `entity=city:<id>` y el par rechazado en `detail` | stdout JSON | Solo cuando `city.CanTransition` rechaza el par: es la señal de un bug, no de una transición normal. |
 
 No hay eventos de dominio propios de la presencia: `CityPresenceChanged`, `CityProtectionEngaged` y
 `CityProtectionReleased` **no existen** en el código y no se escribe ninguna fila de `world_events` por una
@@ -135,13 +135,14 @@ Dominio de reglas: `RN-PRESENCE`.
 > dirigida contra ella se rechaza con el código `CITY_PROTECTED`.
 
 Y en el MVP esa regla **no tiene ningún llamador real**, porque el combate está fuera de scope: los únicos
-mensajes cliente→servidor de la v1 son `session.hello`, `session.ping`, `session.view`, `unit.move` y
-`unit.cancel_move` (canon §13). Ninguno es hostil. En consecuencia:
+mensajes cliente→servidor de la v1 son siete —`session.hello`, `session.ping`, `session.view`, `unit.move`,
+`unit.cancel_move`, `unit.garrison` y `unit.ungarrison`— y ninguno es hostil: `simulation.ActionPolicyOf` los
+clasifica todos así ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). En consecuencia:
 
 | ID | Regla |
 |---|---|
-| `RN-PRESENCE-013` | La comprobación vive en **un único predicado de dominio**, `City.IsProtected()` (`internal/domain/city/city.go`), que es cierto si y solo si `presence_state == PROTECTED`, y en el error de dominio `city.ErrProtected`, que la capa de protocolo traduce a `CITY_PROTECTED`. Es el punto de aplicación futuro y el único lugar donde esta decisión se toma. |
-| `RN-PRESENCE-014` | En MVP el predicado existe, está testeado y **no lo invoca ningún handler**, porque no hay comandos hostiles. Envolverlo en un guard con clasificación exhaustiva de acciones —lo que [`INV-CITY-006`](../invariants/city.md#inv-city-006) exige— es trabajo del milestone en que aparezca la primera acción hostil; hasta entonces, invocarlo será obligatorio y su ausencia debe hacer fallar el code review. |
+| `RN-PRESENCE-013` | La comprobación vive en **un único predicado de dominio**, `City.IsProtected()` (`internal/domain/city/city.go`), que es cierto si y solo si `presence_state == PROTECTED`, y en el error de dominio `city.ErrProtected`. Hoy `ErrProtected` no tiene llamadores ni traducción: el futuro punto único de rechazo la mapeará a `CITY_PROTECTED` (`protocol.CodeCityProtected`). Es el punto de aplicación futuro y el único lugar donde esta decisión se tomará. |
+| `RN-PRESENCE-014` | En MVP el predicado existe, está testeado y **no lo invoca ningún handler**, porque no hay comandos hostiles. La clasificación exhaustiva de acciones que [`INV-CITY-006`](../invariants/city.md#inv-city-006) exige ya existe (`simulation.ActionPolicyOf`, `TestTodaAccionDelCatalogoEstaClasificada`, ADR-016); lo que queda para el milestone de la primera acción hostil es el punto único que invoque `IsProtected()` y rechace con `CITY_PROTECTED`. |
 | `RN-PRESENCE-015` | `PROTECTED` **no** hace ninguna de estas cosas: no congela la ciudad, no detiene el mundo, no oculta la ciudad de `world.snapshot` ni de `city.update`, no vuelve invulnerables a las unidades fuera de la zona urbana, no bloquea el movimiento de terceros por tiles cercanos, y no impide que el propio jugador reconecte. |
 | `RN-PRESENCE-016` | La protección es de la **ciudad**, no del jugador: las unidades del jugador ausente que estén en campo abierto no reciben ninguna protección por el estado de su ciudad. |
 
@@ -155,7 +156,7 @@ llegue el asedio, la semántica de protección no se reinvente ni se reparta por
 | `RN-PRESENCE-017` | La seguridad de una Safe Zone (`DENSE_FOREST`, `CAVERN`) es **por unidad** y **ortogonal** al `presence_state` de la ciudad: la calcula y valida siempre el servidor (canon §10). Una unidad en Safe Zone está a salvo aunque su ciudad esté `ONLINE`, y una unidad en campo abierto no está a salvo aunque su ciudad esté `PROTECTED`. |
 | `RN-PRESENCE-018` | El estado `HIDDEN` de una unidad (canon §10) depende de la Safe Zone, no de la presencia del jugador. Desconectarse **no** oculta unidades ni las mueve a una Safe Zone. |
 | `RN-PRESENCE-019` | Las unidades con `status = 'GARRISONED'` dentro de una ciudad `PROTECTED` quedan cubiertas por la protección de la ciudad, porque el guard de `RN-PRESENCE-013` se aplica sobre la ciudad y una acción de asedio contra la guarnición es una acción contra la ciudad. |
-| `RN-PRESENCE-020` | La protección **no** habilita ni deshabilita el garrison: guarnecer requiere un `treaty` con `allows_garrison` y `status = 'ACTIVE'` (canon §10); en su ausencia el error es `TREATY_REQUIRED`, no `CITY_PROTECTED`. |
+| `RN-PRESENCE-020` | La protección **no** habilita ni deshabilita el garrison y no se consulta al guarnecer: guarnecer en una ciudad **ajena** requiere un `treaty` `ACTIVE` con `allows_garrison`, comprobado en la transacción de entrada; en su ausencia el error es `TREATY_REQUIRED`, no `CITY_PROTECTED`. En la ciudad propia no se exige nada ([garrison.md](garrison.md)). |
 | `RN-PRESENCE-021` | Una ciudad `PROTECTED` no puede usarse como plataforma de ataque por aliados guarnecidos en ella. La regla queda enunciada aquí; su punto de aplicación es el mismo guard, invocado desde los futuros comandos ofensivos. `Fuera de MVP`. |
 
 ## 7. Estados y transiciones
@@ -192,7 +193,7 @@ stateDiagram-v2
 ### 7.2 Tabla de transiciones
 
 Todas las transiciones las aplica **la goroutine del game loop**, por `Simulation.applyPresence`, que primero
-valida el par con `city.CanTransition` y descarta el que no esté permitido con un log `warn`. El `UPDATE` lo
+valida el par con `city.CanTransition` y descarta el que no esté permitido con un log `invariant_violation` de nivel `error`. El `UPDATE` lo
 escribe `CityRepo.SetPresence`, que además hace `version = version + 1` en las tres ramas.
 
 | ID | Desde | Hasta | Disparador exacto | Dónde se evalúa | Columnas que escribe `SetPresence` | Difusión |
@@ -265,10 +266,11 @@ tick N
 Ésta es la implementación real (`internal/game/simulation/simulation.go`), no un pseudocódigo:
 
 ```go
-// ProcessTimers es la fase 5 del tick: presencia, protección y demás plazos.
-// Es enteramente aritmética sobre estado en RAM. No consulta la base de datos.
+// ProcessTimers es la fase 5 del tick (extracto; los pasos 2, 4 y 5 son la caducidad de tratados,
+// las salidas de guarnición pendientes y el ocultamiento en Safe Zones).
 func (s *Simulation) ProcessTimers(now time.Time) {
-    // 1. Margen de reconexión agotado: ONLINE -> OFFLINE_PENDING.
+    // 1. Margen de reconexión agotado: ONLINE -> OFFLINE_PENDING, en orden de ciudad.
+    var degradan []*city.City
     for playerID, since := range s.disconnectedAt {
         if s.sessions[playerID] > 0 {
             delete(s.disconnectedAt, playerID)
@@ -277,26 +279,37 @@ func (s *Simulation) ProcessTimers(now time.Time) {
         if now.Sub(since) < s.deps.DisconnectGrace {
             continue
         }
-        s.setPresence(playerID, city.PresenceOfflinePending)
         delete(s.disconnectedAt, playerID)
+        if c, ok := s.state.CityOf(playerID); ok {
+            degradan = append(degradan, c)
+        }
+    }
+    sort.Slice(degradan, func(i, j int) bool { return degradan[i].ID < degradan[j].ID })
+    for _, c := range degradan {
+        s.applyPresence(c, city.PresenceOfflinePending, now)
     }
 
-    // 2. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
+    s.sweepTreaties(now) // 2
+
+    // 3. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
     s.state.EachCity(func(c *city.City) bool {
         if city.ShouldEngageProtection(c.PresenceState, c.LastOfflineAt, s.deps.ProtectionCooldown, now) {
             s.applyPresence(c, city.PresenceProtected, now)
         }
         return true
     })
+
+    s.retryPendingExits()   // 4
+    s.evaluateConcealment() // 5
 }
 ```
 
 Detalles no negociables:
 
-- El recorrido del paso 2 usa `State.EachCity`, que ordena por `city.ID` antes de iterar. Prohibido iterar
-  mapas de Go sin ordenar: dos ejecuciones con la misma entrada deben producir la misma secuencia de efectos.
-  El paso 1 sí itera un mapa (`disconnectedAt`), pero su orden es irrelevante: cada entrada es independiente y
-  afecta a una ciudad distinta.
+- El paso 3 usa `State.EachCity`, que ordena por `city.ID` antes de iterar. Prohibido iterar mapas de Go sin
+  ordenar: dos ejecuciones con la misma entrada deben producir la misma secuencia de efectos. El paso 1 recorre
+  el mapa `disconnectedAt` para decidir quién degrada, pero aplica las transiciones en orden ascendente de
+  `city.ID` (`TestLasCiudadesQueDegradanEnElMismoTickSalenEnOrden`), con el `now` del tick como marca.
 - Ninguna de las dos pasadas consulta Redis ni PostgreSQL: `sessions`, `disconnectedAt` y `LastOfflineAt` ya
   están en RAM.
 - La transición se aplica primero en RAM (autoritativo durante el tick), difunde `city.update` de inmediato y
@@ -333,7 +346,10 @@ siempre mayor o igual que la segunda, y su divergencia es la señal observable d
 
 Al arrancar, el servidor no tiene ni conexiones ni (necesariamente) claves de Redis: Redis es *hot state* y
 puede haberse vaciado. `simulation.Hydrate` carga las ciudades **tal cual estaban** en `cities`: no reescribe
-`presence_state` ni ninguna marca temporal. A partir de ahí, la fase 5 del primer tick decide, y el resultado
+`presence_state` ni ninguna marca temporal. Antes, la validación de carga (`internal/game/loadcheck`, `EO-119`)
+repara y persiste sólo las filas que violan `INV-CITY-011` o `INV-CITY-012` —fecha `last_offline_at` con el
+instante de arranque si falta, borra `protection_until` de una ciudad `ONLINE`—, con un evento
+`InvariantRepaired` por corrección; sobre filas sanas no escribe nada. A partir de ahí, la fase 5 del primer tick decide, y el resultado
 por estado es éste:
 
 | Estado en la fila | Situación real | Comportamiento real tras el arranque | Valoración |
@@ -346,7 +362,7 @@ por estado es éste:
 |---|---|
 | `RN-PRESENCE-028` | El arranque es **idempotente** respecto de la presencia: `Hydrate` no escribe `cities`, así que ejecutarlo dos veces sobre la misma base de datos deja `presence_state`, `last_offline_at` y `last_online_at` idénticos. |
 | `RN-PRESENCE-029` | Redis vacío al arrancar es una condición **normal**, no un error: nada de la decisión de presencia lo consulta, y la ausencia de `presence:player:*` significa exactamente "nadie presente", que es cierto tras un arranque. |
-| `RN-PRESENCE-030` | Las filas de `sessions` **no** se usan para inferir el instante de desconexión: la tabla tiene `connected_at` y `disconnected_at`, y ninguno de los dos representa el último latido. Cerrar en el arranque las sesiones que quedaron abiertas, y un registro durable del último latido que permitiese una reanudación exacta, son `TBD (fuera de MVP)`. |
+| `RN-PRESENCE-030` | La tabla `sessions` existe en el esquema pero **ningún código la escribe**, y no se usa para inferir el instante de desconexión. Usarla como registro de conexiones, o un registro durable del último latido que permitiese una reanudación exacta, son `TBD (fuera de MVP)`. |
 
 ### 7.7 Caso borde: reloj desplazado
 
@@ -363,12 +379,12 @@ por estado es éste:
 | Código | Condición exacta | Notas |
 |---|---|---|
 | `CITY_PROTECTED` | Acción hostil contra una ciudad con `presence_state = 'PROTECTED'`, detectada por `City.IsProtected()`. | En MVP sin llamadores reales (`RN-PRESENCE-014`). |
-| `CITY_NOT_FOUND` | Se consulta el estado de un `cities.id` inexistente o fuera del área de interés del solicitante. | No revela existencia. |
-| `TREATY_REQUIRED` | Intento de guarnecer sin `treaty` `ACTIVE` con `allows_garrison`. | Precede a cualquier consideración de protección (`RN-PRESENCE-020`). |
-| `UNAUTHORIZED` | Ticket inválido o `jti` reutilizado durante el handshake que habría producido `T3`/`T4`. | Cierre `4401`; el estado de la ciudad no cambia, porque nunca llega a despacharse `PlayerConnected`. |
+| `CITY_NOT_FOUND` | `unit.garrison` con un `cityId` que no existe. Ningún mensaje consulta el estado de una ciudad. | — |
+| `TREATY_REQUIRED` | Intento de guarnecer en una ciudad ajena sin `treaty` `ACTIVE` con `allows_garrison`. | La protección no se consulta al guarnecer (`RN-PRESENCE-020`). |
+| Cierre `4401` | Ticket inválido o `jti` reutilizado durante el handshake que habría producido `T3`/`T4`. No llega ningún `system.error`: el handshake falla sólo con el código de cierre ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)). | El estado de la ciudad no cambia, porque nunca llega a despacharse `PlayerConnected`. |
 | `RATE_LIMITED` | Exceso de `session.ping` o de cualquier mensaje por encima de `EO_WS_RATE_LIMIT_PER_SECOND` (20, burst 40). | El rate limit **no** degrada la presencia: el jugador sigue presente hasta el cierre `4429`, que es el que despacha `PlayerDisconnected`. |
-| `INTERNAL_ERROR` | Fallo de PostgreSQL al persistir una transición, tras agotar los reintentos de la cola. | La transición sigue vigente en RAM y ya se difundió. Ver §10. |
-| `NOT_IMPLEMENTED` | Comando de asedio, ataque o expiración manual de protección. | Todo `Fuera de MVP`. |
+| — | Fallo de PostgreSQL al persistir una transición, tras agotar los reintentos de la cola. | Ningún mensaje al jugador: la escritura se descarta con un log `error` y no hay compensación. La transición sigue vigente en RAM y ya se difundió. Ver §10. |
+| `NOT_IMPLEMENTED` | Está en el catálogo y nadie lo emite: no existe ningún mensaje de asedio, ataque o expiración manual de protección, y un tipo desconocido se rechaza con `INVALID_MESSAGE`. | Todo `Fuera de MVP`. |
 
 No se introduce ningún código nuevo: `PROTECTED`, la expiración de presencia y el cooldown se expresan
 enteramente con el catálogo del canon §16.
@@ -388,8 +404,8 @@ Esta spec **cita** `INV-CITY-004..006`, ya asignados en [../invariants/city.md](
 | ID | Enunciado del registro | Dónde lo defiende esta spec |
 |---|---|---|
 | [`INV-CITY-004`](../invariants/city.md#inv-city-004) | El dominio de `presence_state` es cerrado. | `CHECK cities_presence_state_valid`, el tipo `city.PresenceState` con `Valid()`, y el enum `PresenceState` de `packages/protocol`. |
-| [`INV-CITY-005`](../invariants/city.md#inv-city-005) | Solo transiciones permitidas de `presence_state`. | §7.2; `applyPresence` valida con `city.CanTransition` antes de escribir, y descarta con log `warn` el par no permitido. En particular no existe `ONLINE → PROTECTED` directo. |
-| [`INV-CITY-006`](../invariants/city.md#inv-city-006) | Una ciudad protegida rechaza las acciones prohibidas. | §6.2; `City.IsProtected()` y `city.ErrProtected` → `CITY_PROTECTED`. |
+| [`INV-CITY-005`](../invariants/city.md#inv-city-005) | Solo transiciones permitidas de `presence_state`. | §7.2; `applyPresence` valida con `city.CanTransition` antes de escribir, y descarta el par no permitido con un log `invariant_violation` de nivel `error`. En particular no existe `ONLINE → PROTECTED` directo. |
+| [`INV-CITY-006`](../invariants/city.md#inv-city-006) | Una ciudad protegida rechaza las acciones prohibidas. | §6.2; `City.IsProtected()`, la clasificación de acciones de ADR-016 y, el día que haya una acción hostil, `city.ErrProtected` → `CITY_PROTECTED`. |
 
 **Invariantes nuevos que introduce esta spec** (`INV-CITY-011..016`):
 
@@ -405,12 +421,12 @@ Esta spec **cita** `INV-CITY-004..006`, ya asignados en [../invariants/city.md](
 Tres propiedades que esta spec **no** eleva a invariante, porque no lo son:
 
 - «El contador de sesiones nunca es negativo» es una propiedad de `handlePlayerDisconnected` y está enunciada
-  como `RN-PRESENCE-023`; se verifica con `T-PRES-U-002`.
+  como `RN-PRESENCE-023`; está prevista en `T-PRES-U-002` y hoy la cubre en parte `TestVariasSesionesDelMismoJugador`.
 - «Si hay sesiones vivas, la clave de Redis existe» es **falso** por diseño: si Redis falla, `MarkOnline`
   registra un `warn` y la sesión sigue siendo válida (`RN-PRESENCE-004`). Es una propiedad *best-effort* de la
   observabilidad, no del estado.
 - «`eo_connected_websockets >= eo_connected_players`» es una relación entre dos gauges de observabilidad, no
-  una propiedad del estado del mundo; se comprueba con `T-PRES-I-003`.
+  una propiedad del estado del mundo; está prevista en `T-PRES-I-003`, sin test todavía.
 
 ## 10. Persistencia
 
@@ -422,10 +438,11 @@ Tres propiedades que esta spec **no** eleva a invariante, porque no lo son:
 **2. Escritura durable encolada, no write-through** (canon §12)
 
 - Toda transición `T1`..`T4` se aplica primero en RAM y se entrega a la cola de persistencia como
-  `Job{Name: "city.presence"}`, que ejecuta `CityRepo.SetPresence(ctx, cityID, state, at)` fuera del tick.
+  `Job{Name: "city.presence"}`, que ejecuta `Repos.PersistCityPresence` (→ `CityRepo.SetPresence(ctx, db, cityID, state, at)`) fuera del tick.
   Escribe `presence_state`, la marca temporal que corresponda al estado destino y `version = version + 1`.
 - El tick **nunca** ejecuta I/O de PostgreSQL, así que la transición no puede ser síncrona respecto del tick.
-  La cola reintenta con backoff y, si agota los intentos, aplica su compensación.
+  La cola reintenta con backoff y, si agota los intentos, descarta la escritura con un log `error`: este
+  trabajo no declara compensación.
 
 **Ventana de riesgo, declarada.** `city.update` se difunde antes del `COMMIT`. Si el proceso muere entre la
 transición y la escritura, la fila conserva el estado anterior mientras los clientes ya vieron el nuevo. Es un
@@ -460,7 +477,7 @@ OPS    SET    presence:player:{p} <sessionId> EX 30   (MarkOnline, en el handsha
        EXPIRE presence:player:{p} 30                  (Heartbeat, en cada session.ping)
        EXISTS presence:player:{p}                     (IsOnline)
        GET    presence:player:{p}                     (SessionOf)
-       SCAN   presence:player:*                       (CountOnline, métrica)
+       SCAN   presence:player:*                       (CountOnline; existe, ninguna métrica lo usa)
        DEL condicional vía script Lua                 (ClearIfSession, al cerrar)
 ```
 
@@ -483,11 +500,24 @@ observables, y ninguno de ellos es una fila de `world_events`:
 | Delta de red | `city.update` con `presenceState` (y `id`), difundido con `Broadcaster.BroadcastChunk` al chunk del centro de la ciudad. | Cualquiera de `T1`..`T4`, en el mismo instante en que se aplica en RAM. |
 | Escritura durable | `Job{Name: "city.presence"}` en la cola de persistencia → `CityRepo.SetPresence`. | Cualquiera de `T1`..`T4`. |
 
-`CityPresenceChanged`, `CityProtectionEngaged` y `CityProtectionReleased` **no están implementados**: no hay bus
-de eventos de dominio ni fila de `world_events` para ellos. El único `world_events` que escribe el MVP es
-`PlayerBootstrapped` (ver [city.md](city.md) §11). Añadir estos tres eventos en pasado (canon §15), con
-`world_events` como consumidor para auditoría, es `TBD (fuera de MVP)`; `EventRepo.Append` es el punto de
-extensión y no requiere migración.
+**Decisión (2026-10-21): la presencia no se registra en `world_events` en el MVP.** `CityPresenceChanged`,
+`CityProtectionEngaged` y `CityProtectionReleased` no existen, por las mismas razones que el movimiento
+([movement.md](movement.md) §11, `EO-072`):
+
+- **El estado durable ya es la traza.** `cities.presence_state`, `last_offline_at` y `protection_until` dicen
+  en qué punto del autómata está cada ciudad y desde cuándo, y sobreviven a un reinicio (`EO-089`).
+- **No hay lector.** Los deltas no salen de `world_events` —el MVP no tiene bus de eventos—, y ninguna regla del
+  MVP consulta el historial de presencia: la protección no protege de nada mientras no haya acciones hostiles
+  (`RN-PRESENCE-014`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)).
+- **Es la escritura más frecuente después del movimiento**: cada desconexión produce dos transiciones.
+
+Cuándo se reabre: con la fase Combat, cuando la protección decida acciones y su historial sirva para auditar una
+disputa (`DEBT-02`, `Q-07`). Se añadirá entonces el evento en la misma transacción que ya escribe la transición
+(`CityRepo.SetPresence`), sin migración. Esto **sustituye** el entregable 8 de M5 y el criterio de `EO-087`, que
+pedían registrar `CityProtectionEngaged` y nunca se cumplieron.
+
+Los eventos que el MVP sí escribe en `world_events` son `PlayerBootstrapped` y `TerritoryControlChanged` en el
+alta, `UnitGarrisoned` / `UnitUngarrisoned`, `TreatyExpired` e `InvariantRepaired`.
 
 ## 12. Contratos de red
 
@@ -529,6 +559,20 @@ Reglas del contrato:
   detalles internos del servidor.
 
 ## 13. Tests esperados
+
+**Qué existe hoy** (2026-10-21). Los IDs de la tabla son el plan; los tests reales que los cubren son:
+`T-PRES-U-001` `TestAutomataDePresencia`; `U-003` `TestIsProtected`; `U-004` `TestShouldEngageProtection`;
+`U-002` y `S-005` en parte `TestVariasSesionesDelMismoJugador` (no prueba cierres duplicados); `S-001` y
+`S-003` `TestCicloDePresenciaYProteccion` (avanza 290 s + 20 s, no el borde 299/300); `S-006`
+`TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`; `S-007` `TestElMovimientoContinuaConElJugadorDesconectado`
+(sin llegar a `OFFLINE_PENDING`); el «un único `city.update` por transición», `TestCityUpdateSoloSeEmiteAnteUnCambio`;
+`I-001` `TestPresenciaSeRegistraYExpira` y `TestLatidoRenuevaLaPresencia`; `I-002`
+`TestSoloLaSesionPropietariaRetiraLaPresencia`; `I-004` `TestTransicionesDePresenciaSePersisten`; `R-001`
+`TestUnReinicioNoReiniciaElCooldownDeProteccion` (en `safezones_integration_test.go`); `R-003`
+`TestRehidratarDosVecesNoEscribePresencia`; `C-001` `TestLosEstadosDePresenciaDelDominioSonLosDelEsquema`; `C-002`
+`TestCatalogoDeErroresCoincideConElExportado`. **Sin test**: `S-002` (reconexión dentro de `OFFLINE_PENDING`),
+`S-004` (borde exacto del cooldown), `I-003`, `I-005`, `R-002` y `R-004`. Los de integración necesitan la etiqueta
+`integration` además de `EO_INTEGRATION=1`.
 
 | ID | Nivel | Descripción | Cubre |
 |---|---|---|---|

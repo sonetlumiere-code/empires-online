@@ -216,7 +216,7 @@ Nótese qué transición **no existe**: `ONLINE → PROTECTED`. Y qué transici�
 - `DOMAIN` — la tabla de transición es exhaustiva y explícita, no un conjunto de `if` encadenados; los pares no listados devuelven `false` en lugar de caer en un `default` permisivo, y `applyPresence` emite `invariant_violation` y **no** aplica el cambio.
 - `DOMAIN` — la condición de `ONLINE → OFFLINE_PENDING` es: el contador de sesiones vivas del jugador llegó a cero **y** transcurrió `DisconnectGrace` (= `EO_PRESENCE_TTL_SECONDS`, 30 s) desde ese instante. Se evalúa en la fase 5 del tick (`ProcessTimers`), no en el manejador de cierre del socket: un socket que se cae no es por sí solo una desconexión. La marca `disconnectedAt` es estado en RAM del propio loop, no una lectura de Redis. Si varios jugadores agotan el margen en el mismo tick, se degradan en orden ascendente de ciudad, nunca en el orden aleatorio del `map` que guarda las marcas.
 - `DOMAIN` — `OFFLINE_PENDING → PROTECTED` la dispara `city.ShouldEngageProtection(state, lastOfflineAt, cooldown, now)` con `cooldown = EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`, evaluado con el `Clock` inyectado; nunca con `time.Now()`.
-- `DOMAIN` — cada transición aplicada es write-through inmediato (canon §12) y emite `city.update`; `CityProtectionEngaged` es un evento de dominio del canon §15.
+- `DOMAIN` — cada transición aplicada se encola hacia la persistencia (`city.presence` → `CityRepo.SetPresence`) y emite `city.update`. `CityProtectionEngaged` es un evento del canon §15 que el MVP no escribe ([../specs/presence.md](../specs/presence.md) §11).
 
 **Cómo se verifica.**
 

@@ -8,7 +8,7 @@ El esquema resultante está descrito en [schema.md](./schema.md); los índices q
 
 ## 1. Herramienta y ubicación
 
-**golang-migrate embebido en el binario del Game Server.** No hay una CLI separada que instalar, ni un contenedor de migraciones, ni un `Makefile` (en la máquina de desarrollo Windows `make` no está instalado; el task runner del proyecto son **pnpm scripts**).
+**golang-migrate embebido en los binarios del Game Server**: `empires-server` (`cmd/server`) y `migrate` (`cmd/migrate`), que se compilan del mismo módulo y viajan juntos en la imagen ([../operations/deployment.md](../operations/deployment.md)). No hay una CLI de terceros que instalar, ni un contenedor de migraciones, ni un `Makefile` (en la máquina de desarrollo Windows `make` no está instalado; el task runner del proyecto son **pnpm scripts**).
 
 | Aspecto | Decisión |
 |---|---|
@@ -18,7 +18,7 @@ El esquema resultante está descrito en [schema.md](./schema.md); los índices q
 | Embebido | `//go:embed *.sql` en `migrations/embed.go`, que es `package migrations` y vive junto al propio SQL |
 | Tabla de versión | `schema_migrations` (`version bigint`, `dirty boolean`), creada y gestionada por golang-migrate |
 | Conexión | `EO_POSTGRES_URL`, la misma que usa el servidor, con el esquema de la URL reescrito a `pgx5` |
-| Aplicación | **Automática al arrancar el servidor, en todos los entornos**, antes de abrir puertos y de iniciar el game loop |
+| Aplicación | Al arrancar el servidor, antes de abrir puertos y de iniciar el game loop, **salvo con `EO_ENV=production`** (`EO_MIGRATE_ON_START`); y de forma explícita con el binario `cmd/migrate` (`pnpm run db:migrate`), que es la vía de producción (§1.2) |
 
 Embeber las migraciones en el binario elimina la clase entera de fallos "el binario y los ficheros SQL no coinciden": una versión del servidor lleva dentro exactamente las migraciones que espera. También evita depender de `psql`, que no está instalado en el entorno de desarrollo. Y el SQL vive en el mismo paquete que el `go:embed` para que exista **una sola copia**: duplicarlo en otra carpeta garantizaría que las dos versiones divergieran.
 
@@ -62,15 +62,18 @@ Dos detalles con consecuencias operativas:
 
 ### 1.2 Cuándo se migra
 
-Hoy, **siempre al arrancar**: `run()` llama a `postgres.Migrate` como paso 1, antes de abrir el pool, el puerto HTTP y el game loop. No hay distinción por `EO_ENV` ni subcomando `migrate`. Si la migración falla, el proceso termina con código distinto de cero: nunca se arranca con un esquema desconocido. En desarrollo eso hace que `pnpm run db:up && pnpm run server:run` deje una base lista sin pasos manuales.
+Hay dos vías, y cuál se usa depende del entorno:
 
-Es una decisión adecuada a un despliegue de **una sola instancia**, que es el del MVP, y tiene un coste conocido que conviene tener escrito antes de que muerda:
+- **Al arrancar el servidor**, si `EO_MIGRATE_ON_START` es verdadera: `run()` llama a `postgres.Migrate` como paso 1, antes de abrir el pool, el puerto HTTP y el game loop. Su valor por defecto es `true` en todo entorno **salvo** `EO_ENV=production` (`internal/config`, `TestMigrateOnStartDependeDelEntorno`). Si la migración falla, el proceso termina con código distinto de cero: nunca se arranca con un esquema desconocido. En desarrollo eso hace que arrancar el servidor deje una base lista sin pasos manuales.
+- **Con el binario `cmd/migrate`** (`pnpm run db:migrate`), que aplica las pendientes y sale; con `-version` (`pnpm run db:version`) sólo informa de la versión y de la marca `dirty`, y sale con código 2 si está sucia. Lee `EO_POSTGRES_URL` del entorno, igual que el servidor. Es la vía de producción: el despliegue lo ejecuta **una vez** y sólo después arranca el servidor, que allí no migra y lo registra (`migración automática desactivada; se asume el esquema ya migrado`).
+
+La migración al arrancar es adecuada a un despliegue de **una sola instancia**, que es el de desarrollo y el del MVP, y por eso producción no la usa. Su coste, escrito antes de que muerda:
 
 - Varias réplicas arrancando a la vez competirían por el lock de migración. golang-migrate usa un advisory lock de PostgreSQL, así que no habría corrupción, pero sí arranques bloqueados y timeouts.
 - Una migración lenta convierte un reinicio rutinario en una ventana de indisponibilidad no planificada.
 - El patrón expand/migrate/contract (§3) exige poder decidir *cuándo* se migra respecto al despliegue del binario, y con migración automática esa decisión no existe.
 
-Separar la migración del arranque —un subcomando `migrate up` / `migrate version` / `migrate down 1`, o un job de despliegue— es trabajo **pendiente**, no algo que el binario haga hoy. Mientras tanto, el procedimiento manual de §7.2 es la vía.
+`cmd/migrate` **no** tiene `down`: retroceder sigue siendo el procedimiento manual de §7.2.
 
 ### 1.3 pnpm scripts
 
@@ -85,14 +88,25 @@ El task runner del proyecto son pnpm scripts. Los relevantes para la base:
     "db:logs":  "docker compose logs -f postgres redis",
     "db:psql":  "docker compose exec postgres psql -U empires -d empires",
     "db:redis": "docker compose exec redis redis-cli",
+    "db:migrate": "cd services/game-server && go run ./cmd/migrate",
+    "db:version": "cd services/game-server && go run ./cmd/migrate -version",
+    "identity:migrate": "node apps/web/scripts/identity-migrate.mjs",
+    "pg:psql": "node scripts/pg-local.mjs psql",
     "server:run": "cd services/game-server && go run ./cmd/server"
   }
 }
 ```
 
-No hay ningún script `db:migrate`: migrar es arrancar el servidor (§1.2). `db:reset` **borra los volúmenes** (`down -v`), así que recrea la base desde cero y vuelve a aplicar las dos migraciones en el siguiente arranque; es la vía rápida en desarrollo y no debe existir el reflejo de usarla en ningún otro sitio.
+`db:migrate` y `db:version` son `cmd/migrate` (§1.2); `identity:migrate` aplica las del almacén de identidad
+(§1.4). `db:reset` **borra los volúmenes** (`down -v`), así que recrea la base desde cero y vuelve a aplicar
+todas las migraciones en el siguiente arranque; es la vía rápida en desarrollo con Docker y no debe existir el
+reflejo de usarla en ningún otro sitio.
 
-`db:psql` pasa por `docker compose exec` porque **`psql` no está instalado en la máquina de desarrollo**. Igual ocurre con `redis-cli`, de ahí `db:redis`. Nótese que la base se llama `empires`, no `empires_online`. Cualquier procedimiento de este documento que necesite una sesión SQL asume esa vía, y por tanto asume el daemon de Docker arrancado — que en el assessment del entorno estaba instalado pero apagado.
+`db:psql` pasa por `docker compose exec` para no exigir `psql` en el host, igual que `db:redis` con
+`redis-cli`. Nótese que la base se llama `empires`, no `empires_online`. En la máquina de desarrollo Docker
+está **descartado**, y la consola es `pnpm run pg:psql`, que usa el `psql` de los binarios de PostgreSQL que
+el cluster propio ya necesita ([../operations/local-development.md](../operations/local-development.md) §6).
+Los procedimientos de este documento que piden una sesión SQL valen con cualquiera de las dos.
 
 ### 1.4 El frontend nunca toca el esquema del juego
 
@@ -125,12 +139,12 @@ Corolario: **todo arreglo es una migración nueva**. Si `000001_initial_schema.u
 
 ### 2.2 Siempre se escribe el `.down.sql`
 
-Cada `NNNNNN_nombre.up.sql` tiene su `NNNNNN_nombre.down.sql` que deshace exactamente sus efectos, en orden inverso. Sin excepciones, ni siquiera para migraciones "obviamente irreversibles". Las dos migraciones existentes cumplen la regla: `000001_initial_schema.down.sql` hace `DROP TABLE` de las diecisiete tablas en orden inverso al de dependencias y luego `DROP FUNCTION set_updated_at()`, y `000002_seed_catalogs.down.sql` borra las filas de semilla por su `code`.
+Cada `NNNNNN_nombre.up.sql` tiene su `NNNNNN_nombre.down.sql` que deshace exactamente sus efectos, en orden inverso. Sin excepciones, ni siquiera para migraciones "obviamente irreversibles". Las cinco migraciones existentes cumplen la regla, y `TestLasMigracionesSonCorrelativasYCompletas` exige el par en cada una: `000001_initial_schema.down.sql` hace `DROP TABLE` de las diecisiete tablas en orden inverso al de dependencias y luego `DROP FUNCTION set_updated_at()`, `000002_seed_catalogs.down.sql` borra las filas de semilla por su `code`, `000003` quita la columna `version`, `000004` recrea `idempotency_keys` vacía y `000005` recrea `players.password_hash` anulable y vacía, declarándolo en su primera línea como pide el párrafo siguiente.
 
 El `down` cumple tres funciones, y sólo una de ellas es el rollback:
 
 1. **Ciclo de desarrollo.** Permite `down 1` / `up` para reprobar una migración sin recrear la base entera.
-2. **Tests de integración.** El CI puede aplicar todas las migraciones, revertirlas todas y volver a aplicarlas: si el `down` está mal, esto falla en CI y no en producción.
+2. **Tests de integración.** El CI puede aplicar todas las migraciones, revertirlas todas y volver a aplicarlas: si el `down` está mal, esto falla en CI y no en producción. Ese ciclo todavía no está en el pipeline (§7.4).
 3. **Rollback real.** Sólo válido en los casos que §5 delimita.
 
 Cuando el `down` no puede restaurar datos (por ejemplo, el `down` de un `DROP COLUMN` recrea la columna pero no su contenido), el fichero lo declara explícitamente en un comentario en su primera línea:
@@ -149,7 +163,7 @@ Detallado en §4. Regla resumida: ninguna migración puede mantener un `ACCESS E
 
 Los catálogos (`civilizations`, `factions`, `eras`) se siembran desde `000002_seed_catalogs.up.sql` porque otras tablas dependen de ellos por clave foránea: sin filas en `eras`, no se puede crear una ciudad. Las inserciones son idempotentes (`ON CONFLICT (id) DO NOTHING`, por `id` porque la semilla fija los identificadores) para que reaplicar sea inocuo.
 
-La **generación del mundo** (`world_state` y las 256 filas de `world_chunks`) **no** es una migración. Es una tarea de bootstrap del servidor que lee `EO_WORLD_SEED`, `EO_WORLD_WIDTH`, `EO_WORLD_HEIGHT` y `EO_CHUNK_SIZE` y genera el terreno determinísticamente. Meterla en una migración congelaría valores de configuración dentro del esquema y ataría la forma del mundo al número de versión de la base. `000001` crea las dos tablas vacías; `WorldRepo.LoadOrInit` las puebla en el primer arranque y **falla** si el mundo persistido no coincide con la configuración, en vez de regenerar nada por su cuenta.
+La **generación del mundo** (`world_state` y las 256 filas de `world_chunks`) **no** es una migración. Es una tarea de bootstrap del servidor que lee `EO_WORLD_SEED`, `EO_WORLD_WIDTH`, `EO_WORLD_HEIGHT` y `EO_CHUNK_SIZE` y genera el terreno determinísticamente. Meterla en una migración congelaría valores de configuración dentro del esquema y ataría la forma del mundo al número de versión de la base. `000001` crea las dos tablas vacías; `WorldRepo.LoadOrInit` las puebla en el primer arranque y **falla** si la semilla o las dimensiones persistidas no coinciden con la configuración, en vez de regenerar nada por su cuenta. En los arranques siguientes `WorldRepo.VerifyTerrain` compara además el terreno regenerado, byte a byte, con `world_chunks` ([INV-WORLD-005](../invariants/world.md#inv-world-005)).
 
 ### 2.5 Una migración, un propósito
 
@@ -312,9 +326,13 @@ Los ficheros que existen hoy son, por tanto:
 
 ```
 services/game-server/migrations/
-├── 000001_initial_schema.up.sql / .down.sql
-├── 000002_seed_catalogs.up.sql  / .down.sql
-└── embed.go
+├── 000001_initial_schema.up.sql              / .down.sql
+├── 000002_seed_catalogs.up.sql               / .down.sql
+├── 000003_territory_control_version.up.sql   / .down.sql
+├── 000004_drop_idempotency_keys.up.sql       / .down.sql
+├── 000005_players_without_credentials.up.sql / .down.sql
+├── embed.go
+└── migrations_test.go      # TestLasMigracionesSonCorrelativasYCompletas
 ```
 
 **Secuencial en vez de timestamp** es una decisión consciente. Con timestamps, dos ramas concurrentes producen migraciones que se aplican en un orden distinto según cuándo se mergee cada una, y una base puede aplicar `20260901` después de `20260903`. Con numeración secuencial, dos ramas que añaden `000003` producen un **conflicto explícito** en el merge: alguien debe renumerar y, al hacerlo, decidir conscientemente el orden. El coste de ese conflicto es pequeño; el coste de un orden de aplicación ambiguo, no.
@@ -325,7 +343,7 @@ services/game-server/migrations/
 
 ## 6. Migraciones del MVP
 
-Son **cuatro**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
+Son **cinco**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
 
 | # | Fichero | Contenido |
 |---|---|---|
@@ -335,11 +353,11 @@ Son **cuatro**, todas embebidas en el binario. Juntas materializan lo descrito e
 | `000004` | `drop_idempotency_keys` | Elimina `idempotency_keys`, que nunca tuvo escritor ([ADR-014](../decisions/ADR-014-command-idempotency.md)). Su `.down.sql` la recrea. |
 | `000005` | `players_without_credentials` | Borra `players.password_hash`: la identidad sale del esquema del juego ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Su `.down.sql` recrea la columna **anulable** y vacía: los hashes no se recuperan, y así lo dice el fichero. |
 
-Por qué el esquema entero cabe en una sola migración y no en catorce: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido catorce oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
+Por qué el esquema inicial cabe en una sola migración y no en una por tabla: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido diecisiete oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
 
 A partir de `000003`, cada cambio va en su propio fichero con un único propósito (§2.5).
 
-**Extensiones de PostgreSQL: ninguna.** Los `uuid` los genera la aplicación, no `gen_random_uuid()`, así que no se necesita ni `pgcrypto` ni ninguna función de núcleo concreta; y el "índice espacial" del MVP es un B-tree sobre `(chunk_x, chunk_y)`, así que no se necesita PostGIS. Cero extensiones significa que la imagen `postgres:16-alpine` del `docker-compose.yml` sirve tal cual y que un `pg_dump` restaura en cualquier instancia estándar.
+**Extensiones de PostgreSQL: ninguna.** Los `uuid` los genera la aplicación, no `gen_random_uuid()`, así que no se necesita ni `pgcrypto` ni ninguna función de núcleo concreta; y el "índice espacial" del MVP es un B-tree sobre `(chunk_x, chunk_y)`, así que no se necesita PostGIS. Cero extensiones significa que la imagen `postgres:16-alpine` del `docker-compose.yml` sirve tal cual y que un `pg_dump` restaura en cualquier instancia estándar. El almacén de identidad tampoco usa ninguna: el `id` de cada cuenta lo genera Next.js.
 
 ---
 
@@ -358,14 +376,15 @@ En orden de preferencia:
 
 ### 7.2 Procedimiento de rollback
 
-**El binario no expone hoy un subcomando `migrate` (§1.2).** Mientras eso siga así, el procedimiento es una sesión SQL por `pnpm run db:psql` y, si hace falta ejecutar un `down`, la CLI de golang-migrate apuntando a los mismos ficheros:
+**`cmd/migrate` aplica y consulta, pero no retrocede (§1.2).** El procedimiento es leer la versión con el binario, una sesión SQL (`pnpm run pg:psql`, o `pnpm run db:psql` con Docker) y, si hace falta ejecutar un `down`, la CLI de golang-migrate apuntando a los mismos ficheros:
 
 ```powershell
-# 1. Confirmar la versión actual y si hay estado sucio
-pnpm run db:psql
+# 1. Confirmar la versión actual y si hay estado sucio (sale con código 2 si está dirty)
+pnpm run db:version
 ```
 
 ```sql
+-- o, desde la sesión SQL
 SELECT version, dirty FROM schema_migrations;
 ```
 
@@ -382,15 +401,17 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
  WHERE conrelid = 'units'::regclass;
 ```
 
-En desarrollo hay una salida mucho más rápida y menos peligrosa que cualquier `force`: `pnpm run db:reset`, que destruye los volúmenes y deja que el siguiente arranque vuelva a aplicar `000001` y `000002` sobre una base limpia.
+En desarrollo hay una salida mucho más rápida y menos peligrosa que cualquier `force`: recrear la base y dejar que el siguiente arranque vuelva a aplicar todas las migraciones sobre ella limpia. Con Docker es `pnpm run db:reset`, que destruye los volúmenes; con el cluster propio, `DROP DATABASE` y `CREATE DATABASE … OWNER empires` desde `pnpm run pg:psql -- -d postgres`, o `pnpm run pg:destroy` y `pnpm run pg:init` para empezar de cero, que también recrea el almacén de identidad con una contraseña nueva.
 
 ### 7.3 Backups y migraciones de contracción
 
 **Regla: toda migración de contracción va precedida de un backup verificado.** Un `down` que recrea una columna vacía no es un rollback, es una cicatriz.
 
 ```powershell
-# Antes de una migración de contract
+# Antes de una migración de contract (con Docker)
 docker compose exec -T postgres pg_dump -U empires -Fc empires > backup_pre_0000NN.dump
+# Con el cluster propio, el pg_dump de los binarios del host
+& "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe" -h localhost -p 5433 -U empires -Fc -f backup_pre_0000NN.dump empires
 ```
 
 El backup se considera válido sólo si se ha restaurado con éxito en una base desechable. Un backup no verificado es una suposición. El detalle de la política de retención y del calendario de backups es responsabilidad de operaciones: **TBD (fuera de MVP)** en cuanto a frecuencia, destino y cifrado.
@@ -407,6 +428,8 @@ Relación con las tablas del esquema:
 | `world_events` | Media | No; es un log de auditoría |
 
 Esa tabla es lo que determina qué se restaura primero y qué puede sacrificarse en una recuperación parcial.
+Las cuentas y las sesiones web no están en ella porque no viven en esta base: el almacén de identidad se
+respalda aparte ([../operations/backups.md](../operations/backups.md)).
 
 ### 7.4 Migraciones en CI
 
@@ -424,13 +447,13 @@ La suite necesita **las dos condiciones**: la etiqueta de compilación `integrat
 
 Esos tests aplican las migraciones sobre una base limpia antes de ejercitar los repositorios, de modo que un `up` roto se detecta ahí. El ciclo completo **`up` → `down` hasta 0 → `up`**, que es el que detecta `down` mal escritos y órdenes de `DROP` incorrectos respecto a las claves foráneas, todavía **no** está en el pipeline: añadirlo es trabajo pendiente y sería barato.
 
-Estos tests de integración se ejecutan en la CI en cada push y en local contra el cluster propio de PostgreSQL ([../operations/local-development.md](../operations/local-development.md) §3-bis). Además, `TestLasMigracionesSonCorrelativasYCompletas` (`migrations`) comprueba que los nombres son correlativos y que cada `.up.sql` tiene su `.down.sql`, y `TestElMigradorEsIdempotente` y `TestUnEsquemaDirtyAbortaElMigrador` (integración) que aplicar dos veces no cambia nada y que un esquema `dirty` aborta.
+Estos tests de integración se ejecutan en la CI en cada push y en local contra el cluster propio de PostgreSQL ([../operations/local-development.md](../operations/local-development.md) §3-bis). Además, `TestLasMigracionesSonCorrelativasYCompletas` (`migrations`) comprueba que los nombres son correlativos y que cada `.up.sql` tiene su `.down.sql`, `TestElMigradorEsIdempotente` y `TestUnEsquemaDirtyAbortaElMigrador` (integración) que aplicar dos veces no cambia nada y que un esquema `dirty` aborta, y `TestIdempotencyKeysYaNoExiste` que `000004` se aplicó. El mismo job prepara el rol y la base del almacén de identidad y ejecuta su suite (`apps/web/src/server/store.integration.test.ts`), que aplica las migraciones de identidad sobre `empires_identity_test`.
 
 ---
 
 ## 8. Retención
 
-Cuatro tablas crecen sin límite natural y necesitan una política. Ninguno de estos barridos está implementado todavía: son la política acordada, no código en ejecución.
+Tres tablas del esquema del juego crecen sin límite natural y necesitan una política. Ninguno de estos barridos está implementado todavía: son la política acordada, no código en ejecución.
 
 | Tabla | Criterio | Mecanismo |
 |---|---|---|
@@ -439,6 +462,10 @@ Cuatro tablas crecen sin límite natural y necesitan una política. Ninguno de e
 | `world_events` | Antigüedad | Borrado por lotes o particionado por rango de `occurred_at`. El particionado es **TBD (fuera de MVP)**: se decide cuando el volumen lo justifique, y hacerlo entonces es una migración de expand sobre una tabla ya grande, que exige la secuencia de §3 |
 
 El barrido se ejecuta **fuera del tick**, como cualquier otra I/O de PostgreSQL, y en lotes acotados: un `DELETE` masivo sobre `world_events` mantiene un lock largo y genera un pico de WAL que compite con las escrituras del juego.
+
+En el almacén de identidad, las `web_sessions` caducadas sí se borran: lo hace cada inicio de sesión nuevo
+(`deleteExpiredSessions`, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) §2.3). Las
+cuentas `PENDING` abandonadas no tienen todavía limpieza (ADR-018 §4.2).
 
 ---
 

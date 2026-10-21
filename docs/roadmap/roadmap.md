@@ -37,7 +37,7 @@ mínimo de funcionalidad, en lugar de completar una capa antes de empezar la sig
 El objetivo del slice es que, al terminar M7, exista este recorrido íntegro y funcionando:
 
 ```
-Jugador se registra (hoy POST /api/auth/register en el game server; ADR-010 lo mueve a Next.js)
+Jugador se registra (POST /api/auth/register en Next.js, que funda al jugador en el game server; ADR-018)
    -> recibe un game ticket (JWT HS256, TTL 60 s)
    -> abre wss://.../ws y envía session.hello
    -> el servidor valida el ticket, consume el jti en Redis y responde session.welcome

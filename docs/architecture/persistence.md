@@ -93,7 +93,7 @@ Tabla exhaustiva del vertical slice. `SoT` = source of truth.
 | **`jti` de game ticket consumido** | no | `ticket:jti:{jti}` (TTL 120 s) | no | Redis | Anti-replay del handshake. Ver §8.2 para la degradación. |
 | **Interest sets / suscripciones por chunk** | sí | no | no | Reconstruible | Se recalculan desde `session.view` y la posición de la ciudad al reconectar. |
 | **`tickNumber` / `epoch_ms`** | sí (`tickNumber` en RAM) | no | `world_state.current_tick`, `world_state.epoch_ms` | PostgreSQL | Al arrancar, el loop reancla el contador al reloj y usa `current_tick` sólo como suelo ([ADR-015](../decisions/ADR-015-tick-continuity.md)); el instante de simulación lo aporta el `Clock`, no una fórmula sobre el contador. |
-| **Eventos de dominio emitidos** | no se bufferizan | no | `world_events` (**tabla creada, sin escritura hoy**) | — | La simulación emite mensajes de protocolo directamente; no hay bus de eventos de dominio separado en el MVP. |
+| **Eventos de dominio emitidos** | no se bufferizan | no | `world_events`, append-only, escrito **en la transacción del hecho**: `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` / `UnitUngarrisoned`, `TreatyExpired` e `InvariantRepaired` de la validación de carga | — | La simulación emite mensajes de protocolo directamente; no hay bus de eventos de dominio separado en el MVP. El movimiento y la presencia **no** escriben `world_events` (`EO-072`, [../specs/presence.md](../specs/presence.md) §11). |
 
 Tablas que nacieron con lógica mínima o diferida (`territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events`): todas las que tienen escritor son write-through —`territory_control` en la transacción del alta, `garrisons` y `treaties` en transacciones encoladas, `world_events` junto al hecho que registra— y **ninguna** participa del dirty-set. El detalle, tabla por tabla, en [../database/persistence-strategy.md](../database/persistence-strategy.md).
 
@@ -250,7 +250,7 @@ Consecuencia honesta de las filas 3 y 4: entre el `COMMIT` que cierra un movimie
 
 Notas:
 
-- El `jti` se consume de forma atómica (`SET NX` con TTL). Un `SET NX` que devuelve "ya existía" ⇒ replay ⇒ `UNAUTHORIZED` y cierre `4401`.
+- El `jti` se consume de forma atómica (`SET NX` con TTL). Un `SET NX` que devuelve "ya existía" ⇒ replay ⇒ cierre `4401`, sin mensaje previo ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)).
 - `idem:{playerId}:{requestId}` incluye el `playerId` en la clave: un `requestId` de un jugador jamás puede colisionar con el de otro. Ver [../specs/websocket-protocol.md](../specs/websocket-protocol.md) y [./networking.md](./networking.md).
 - El TTL de idempotencia (300 s) es holgadamente mayor que el TTL del ticket (60 s de vida + 120 s de marca), de modo que un reintento tras reconexión sigue encontrando la reserva.
 

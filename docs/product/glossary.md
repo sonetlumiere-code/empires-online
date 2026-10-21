@@ -95,7 +95,8 @@ chunkId = chunkY * chunksPerRow + chunkX     // uint32
 El terreno de cada chunk se persiste en `world_chunks` como un `bytea` de **1024 bytes** (un byte de
 `TerrainType` por tile, en orden fila-mayor). Esa copia existe para auditoría y para permitir mapas
 editados en el futuro: la fuente primaria del terreno es la **regeneración determinista desde
-`EO_WORLD_SEED` en cada arranque**.
+`EO_WORLD_SEED` en cada arranque**, y en cada arranque la copia se compara con lo regenerado: si difiere o
+falta un chunk, el servidor no arranca (`INV-WORLD-005`).
 
 Ver: [../architecture/networking.md](../architecture/networking.md), [../database/schema.md](../database/schema.md).
 
@@ -129,8 +130,8 @@ Ver: [game-pillars.md](game-pillars.md) (Pilar 4), [../specs/player.md](../specs
 ### Command
 
 **Intención validable** enviada por el cliente o generada internamente, expresada en imperativo y aún no
-ejecutada. Los comandos del MVP son `MoveUnit` y `CancelMovement`, transportados por los mensajes
-`unit.move` y `unit.cancel_move`.
+ejecutada. Los comandos del MVP son `MoveUnit`, `CancelMovement`, `GarrisonUnit` y `UngarrisonUnit`,
+transportados por los mensajes `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`.
 
 Un comando puede ser rechazado. Se procesa en las fases 1 y 2 del tick (`drain commands`,
 `validate & apply commands`) y siempre lleva un *Request Id* para garantizar idempotencia. Distinto de un
@@ -148,8 +149,10 @@ Mensaje incremental servidor→cliente que describe **solo lo que ha cambiado** 
 de la sesión: `entity.spawn`, `entity.update`, `entity.despawn`, `city.update`, `territory.update`, y los
 mensajes de movimiento `unit.movement.started` / `.completed` / `.cancelled`.
 
-Los deltas derivan de eventos de dominio y se emiten en la fase 7 del tick (`emit deltas`), difundidos por
-chunk. **El mundo completo no se retransmite nunca**: tras el `world.snapshot` inicial, todo es delta.
+Los deltas se emiten en el momento en que ocurre el hecho, dentro de la fase que lo produce (fases 2 a 5),
+difundidos por chunk; la fase 7 (`emit deltas`) no es un paso aparte. **El mundo completo no se retransmite
+nunca**: entre un `world.snapshot` y el siguiente —al conectar y en respuesta a cada `session.view`—, todo es
+delta.
 
 Ver: [../architecture/networking.md](../architecture/networking.md).
 
@@ -183,12 +186,14 @@ Ver: [../specs/city.md](../specs/city.md).
 
 ### Event
 
-**Hecho consumado**, nombrado en pasado y no rechazable: `UnitMovementStarted`, `UnitMovementCompleted`,
-`UnitSpawned`, `CityProtectionEngaged`. Los eventos de dominio son la base tanto de los *Deltas* de red
-como de las filas de `world_events`.
+**Hecho consumado**, nombrado en pasado y no rechazable. Los que se escriben hoy en `world_events` son
+`PlayerBootstrapped`, `TerritoryControlChanged`, `UnitGarrisoned`, `UnitUngarrisoned`, `TreatyExpired` e
+`InvariantRepaired`. El movimiento y la presencia no se registran ahí (sus decisiones, en
+[../specs/movement.md](../specs/movement.md) §11 y [../specs/presence.md](../specs/presence.md) §11): sus
+deltas (`unit.movement.started`…) salen directamente del tick, sin un tipo `Event` intermedio en el código.
 
-La distinción Command / Event / State es explícita y se mantiene en el código: un `Command` es
-`MoveUnit`, el `Event` resultante es `UnitMovementStarted`, y el `State` es `Unit.status = MOVING`.
+La distinción Command / Event / State es conceptual: un `Command` es `MoveUnit`, el hecho resultante es
+«el movimiento empezó» —que viaja como `unit.movement.started`— y el `State` es `Unit.status = MOVING`.
 
 Ver: [../architecture/game-server.md](../architecture/game-server.md).
 
@@ -201,8 +206,8 @@ Ver: [../architecture/game-server.md](../architecture/game-server.md).
 Escritura periódica a PostgreSQL del estado marcado como *dirty*. Se ejecuta cada
 `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` ticks (**50**, es decir **5 segundos** a 10 Hz). El flush ocurre en
 workers asíncronos: **el tick nunca ejecuta I/O bloqueante contra PostgreSQL**, solo encola trabajo en la
-fase 8 (`enqueue persistence`). Los workers reintentan hasta **3 veces con backoff** y, si se agotan,
-ejecutan la compensación `OnPermanentFailure`.
+fase 8 (`enqueue persistence`). Los workers hacen hasta **3 intentos con backoff** y, si se agotan,
+ejecutan la compensación `OnPermanentFailure` del trabajo que la declare.
 
 La profundidad de esa cola se observa con la métrica `eo_persistence_queue_depth`.
 
@@ -226,6 +231,9 @@ independiente de que haya jugadores conectados. Su orden de fases es fijo y dete
 7. `emit deltas` (broadcast por chunk)
 8. `enqueue persistence`
 
+Las fases 6 y 7 no son pasos de código propios: la membresía de chunk se actualiza y el delta se emite en el
+punto en que ocurre el hecho, dentro de las fases 2 a 5 ([../architecture/game-loop.md](../architecture/game-loop.md)).
+
 Ver: [../architecture/game-loop.md](../architecture/game-loop.md).
 
 ### Game Ticket
@@ -245,12 +253,13 @@ Ver: [../specs/websocket-protocol.md](../specs/websocket-protocol.md).
 
 ### Garrison
 
-Estacionamiento de unidades de un jugador dentro de una ciudad ajena, representado por la tabla
-`garrisons`. **Requiere un `Treaty` en estado `ACTIVE` con el flag `allows_garrison`**; en caso contrario
-el servidor rechaza con `TREATY_REQUIRED`. Una unidad guarnecida tiene `units.status = GARRISONED` y no
-puede moverse (`UNIT_GARRISONED`).
+Estacionamiento de una unidad `IDLE` adyacente dentro de una ciudad, propia o ajena, representado por la
+tabla `garrisons`. **En una ciudad ajena requiere un `Treaty` en estado `ACTIVE` con el flag
+`allows_garrison`**; en caso contrario el servidor rechaza con `TREATY_REQUIRED`. Una unidad guarnecida tiene
+`units.status = GARRISONED` y no puede moverse (`UNIT_GARRISONED`). La ciudad anfitriona va en
+`garrisons.city_id`; `units.city_id` sigue siendo la ciudad de origen.
 
-En el MVP la tabla se crea con **lógica mínima o diferida**.
+Comandos `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)).
 
 Ver: [../specs/garrison.md](../specs/garrison.md).
 
@@ -270,14 +279,14 @@ Ver: [vision.md](vision.md), [../specs/player.md](../specs/player.md).
 
 ### Heartbeat
 
-Latido periódico que mantiene viva la clave de presencia del jugador en Redis. Se emite cada
-`EO_PRESENCE_HEARTBEAT_SECONDS` (**10 s**) y refresca `presence:player:{playerId}`, cuyo TTL es
-`EO_PRESENCE_TTL_SECONDS` (**30 s**). La relación 10 s / 30 s tolera la pérdida de dos latidos
-consecutivos antes de considerar ausente al jugador. La validación cruzada del arranque exige
-`EO_PRESENCE_HEARTBEAT_SECONDS < EO_PRESENCE_TTL_SECONDS`, estrictamente.
+Latido periódico que mantiene viva la clave de presencia del jugador en Redis. Es el `session.ping` que el
+cliente envía cada `EO_PRESENCE_HEARTBEAT_SECONDS` (**10 s**, anunciado en `session.welcome`), y renueva el
+TTL de `presence:player:{playerId}`, que es `EO_PRESENCE_TTL_SECONDS` (**30 s**); no recrea la clave si ya
+expiró. La relación 10 s / 30 s tolera la pérdida de dos latidos consecutivos. La validación cruzada del
+arranque exige `EO_PRESENCE_HEARTBEAT_SECONDS < EO_PRESENCE_TTL_SECONDS`, estrictamente.
 
-No confundir con el ping del protocolo WebSocket (`session.ping` / `session.pong`, ping cada 15 s y
-timeout de lectura de 45 s), que vigila la conexión, no la presencia. Esos cuatro plazos del transporte
+No confundir con los ping/pong **de control** de WebSocket (cada 15 s, timeout de lectura de 45 s), que
+vigilan la conexión, no la presencia. Esos cuatro plazos del transporte
 —`WSHandshakeTimeout = 5 s`, `WSPingInterval = 15 s`, `WSReadTimeout = 45 s`, `WSWriteTimeout = 10 s`—
 son **constantes de código**, no variables de entorno.
 
@@ -290,9 +299,10 @@ Ver: [../specs/presence.md](../specs/presence.md).
 ### Idempotency
 
 Garantía de que ejecutar el mismo comando dos veces produce el mismo efecto que ejecutarlo una vez. Se
-implementa registrando el *Request Id* en Redis (`idem:{playerId}:{requestId}`, **TTL 300 s**); un
-comando con efectos durables no repetibles lo guarda además en la fila de su efecto, con `UNIQUE`
-([ADR-014](../decisions/ADR-014-command-idempotency.md)).
+implementa registrando el *Request Id* en Redis (`idem:{playerId}:{requestId}`, **TTL 300 s**). Un duplicado
+recibe la respuesta original si ya la hubo, o nada si el original sigue en curso.
+[ADR-014](../decisions/ADR-014-command-idempotency.md) fija además que un comando futuro con efectos durables
+no repetibles guarde su `requestId` en la fila de su efecto, con `UNIQUE`; ninguno de los actuales lo necesita.
 
 Regla canónica: **un `requestId` repetido devuelve la respuesta original, no re-ejecuta el comando**. Es
 lo que hace segura la reconexión y el reintento del cliente. La reserva se hace con `SETNX` antes de
@@ -309,8 +319,8 @@ ciudad del jugador al conectar y se actualiza con `session.view`.
 
 Su propósito es doble: limitar el ancho de banda y **limitar la información** (un cliente no puede
 observar lo que no debería ver). La suscripción la gestiona el `Hub`: `Subscribe` devuelve a la vez los
-chunks que entran y los que salen. Los conjuntos de interés se recalculan en la fase 6 del tick y son
-estado reconstruible.
+chunks que entran y los que salen. El `Hub` recalcula la suscripción cada vez que sirve un snapshot —al
+conectar y con cada `session.view`—, y es estado reconstruible.
 
 El terreno de un chunk se envía **una sola vez por sesión** (`NeedsTerrain` / `MarkTerrainSent`), porque
 el terreno es inmutable.
@@ -441,8 +451,9 @@ Ver: [../architecture/pathfinding.md](../architecture/pathfinding.md).
 
 ### Player
 
-Cuenta de jugador, fila de la tabla `players`. Es la única tabla cuya clave primaria es **`uuid`** (el
-resto usa `bigint GENERATED ALWAYS AS IDENTITY`). Todo jugador es humano y está caracterizado por su
+Jugador del mundo, fila de la tabla `players`, con clave primaria **`uuid`**: el mismo id que su cuenta
+(`accounts.id`) en el almacén de identidad de `apps/web`. El esquema del juego no guarda credenciales
+([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Todo jugador es humano y está caracterizado por su
 *Civilization* y su *Global Faction*, ejes independientes.
 
 Ver: [../specs/player.md](../specs/player.md), [../invariants/player.md](../invariants/player.md).
@@ -463,7 +474,7 @@ population_limit = era.population_cap + modificadores de edificios
 ```
 
 En el MVP **no hay modificadores de edificios**, por lo que equivale al `population_cap` de la era actual.
-Superarlo produce `POPULATION_LIMIT_REACHED`.
+Superarlo producirá `POPULATION_LIMIT_REACHED`, código reservado: ningún comando del MVP crea unidades.
 
 Ver: [../specs/city.md](../specs/city.md).
 
@@ -485,7 +496,8 @@ Ver: [../specs/presence.md](../specs/presence.md).
 Estado de `cities.presence_state` en el que la ciudad está protegida por ausencia del jugador. Se alcanza
 desde `OFFLINE_PENDING` tras el *Protection Cooldown*, y se abandona al reconectar (`→ ONLINE`).
 
-Las acciones hostiles contra una ciudad en este estado se rechazan con `CITY_PROTECTED`. La columna
+Las acciones hostiles contra una ciudad en este estado se rechazarán con `CITY_PROTECTED`, código reservado:
+el MVP no tiene ninguna acción hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). La columna
 `protection_until` permanece **NULL** mientras el jugador siga offline —la protección es indefinida en el
 MVP— y se limpia al reconectar; el campo existe para poder acotarla en el futuro sin migrar el esquema.
 
@@ -534,8 +546,9 @@ Ver: [../specs/websocket-protocol.md](../specs/websocket-protocol.md).
 Región del mundo donde aplican reglas de seguridad especiales, representada por la tabla `safe_zones`.
 Tipos canónicos: `DENSE_FOREST` (sobre terreno `FOREST`) y `CAVERN` (adyacente a `MOUNTAIN`).
 
-**La seguridad la calcula y valida SIEMPRE el servidor.** El cliente no puede declararse a salvo. En el
-MVP la tabla se crea con lógica mínima o diferida.
+**La seguridad la calcula y valida SIEMPRE el servidor.** El cliente no puede declararse a salvo. La lógica
+está implementada (M5: índice en RAM, ocultamiento en la fase 5, filtrado por destinatario); la siembra de
+zonas del mundo canónico es `TBD`, así que hoy su tabla está vacía fuera de la base de desarrollo.
 
 Ver: [../specs/safe-zones.md](../specs/safe-zones.md).
 
@@ -549,8 +562,10 @@ Ver: [../architecture/frontend.md](../architecture/frontend.md).
 
 ### Session
 
-Vínculo autenticado entre un jugador y el Game Server durante una conexión WebSocket, registrado en la
-tabla `sessions`. Se crea tras validar el *Game Ticket* en `session.hello` y responder `session.welcome`.
+Vínculo autenticado entre un jugador y el Game Server durante una conexión WebSocket, mantenido en memoria
+por el `Hub` (la tabla `sessions` existe pero no se escribe). Se crea tras validar el *Game Ticket* en
+`session.hello` y responder `session.welcome`. No confundir con la sesión web de `apps/web` (cookie
+`eo_session`, tabla `web_sessions` del almacén de identidad).
 
 Cada sesión mantiene su propio contador `seq` (uint64 monótono por conexión) para los mensajes
 servidor→cliente, su área de interés, el conjunto de chunks cuyo terreno ya recibió, su presupuesto de
@@ -562,9 +577,9 @@ Ver: [../specs/websocket-protocol.md](../specs/websocket-protocol.md).
 
 ### Snapshot
 
-Mensaje `world.snapshot` enviado **al conectar**, que contiene el estado completo de las entidades dentro
-del área de interés inicial de la sesión. Es el único envío "grueso" del protocolo: a partir de él todo es
-*Delta*. Su payload es
+Mensaje `world.snapshot` enviado **al conectar** y como respuesta a cada `session.view`, que contiene el
+estado completo de las entidades dentro del área de interés de la sesión (el terreno, sólo de los chunks que
+la sesión no había recibido). Es el único envío "grueso" del protocolo: entre dos snapshots todo es *Delta*. Su payload es
 `{serverTimeMs, tick, chunks[], terrain[], units[], cities[], territories[]}`, donde `terrain[].terrain`
 va en **base64** de `size*size` bytes.
 
@@ -644,7 +659,8 @@ Relación de dominio sobre un territorio, tabla **separada** `territory_control`
 `territories` es deliberada: permite que el control cambie de manos, se dispute o quede vacante sin tocar
 la definición geométrica.
 
-En el MVP se crea con lógica mínima o diferida. El delta de red asociado es `territory.update`.
+Implementado en M6: se siembra al primer arranque, la fundación de una ciudad reclama su territorio y el
+delta de red asociado es `territory.update`. La conquista queda fuera de MVP.
 
 Ver: [../specs/territory.md](../specs/territory.md).
 
@@ -660,14 +676,16 @@ Ver: [../architecture/game-loop.md](../architecture/game-loop.md).
 
 ### Tick Number
 
-Contador `uint64` **monótono** de ticks transcurridos desde el origen temporal del mundo. Relación
-canónica con el tiempo absoluto:
+Contador `uint64` **estrictamente creciente** de ticks ejecutados. Al arrancar se reancla al reloj,
+`max(world_state.current_tick, (ahora − epoch_ms) / tickDurationMs)`, y los ticks que el loop se salta por ir
+retrasado no se cuentan ([ADR-015](../decisions/ADR-015-tick-continuity.md)), así que
 
 ```
-tickTime = world_state.epoch_ms + tickNumber * tickDurationMs
+world_state.epoch_ms + tickNumber * tickDurationMs  ≤  instante real del tick
 ```
 
-Es el reloj lógico del mundo y aparece como campo `tick` en el logging estructurado. No debe confundirse
+es una cota, no una igualdad. Es una etiqueta de orden —el instante del juego lo da el `Clock`— y aparece como
+campo `tick` en el logging estructurado. No debe confundirse
 con el timestamp `ts` de los mensajes servidor→cliente, que es epoch ms del servidor.
 
 Ver: [../architecture/game-loop.md](../architecture/game-loop.md).
@@ -698,8 +716,9 @@ Ver: [../specs/movement.md](../specs/movement.md),
 
 ### Town Center
 
-Edificio central de la ciudad (`TOWN_CENTER`). **Es un building, no una unidad**: no aparece en `units` ni
-cuenta como población. Toda ciudad inicial tiene exactamente uno.
+Edificio central de la ciudad, representado por su zona urbana 3 × 3 (`city.UrbanRadius = 1`) amurallada en
+la capa de ocupación; no tiene tabla ni identificador propio. **Es un building, no una unidad**: no aparece en
+`units` ni cuenta como población. Toda ciudad inicial tiene exactamente uno.
 
 Ver: [../specs/city.md](../specs/city.md).
 
@@ -708,8 +727,9 @@ Ver: [../specs/city.md](../specs/city.md).
 Acuerdo persistido entre jugadores, tabla `treaties`. Tipos: `NON_AGGRESSION`, `ALLIANCE`, `TRADE`.
 Estados: `PROPOSED`, `ACTIVE`, `EXPIRED`, `BROKEN`. Incluye el flag `allows_garrison`.
 
-Regla canónica: **solo un tratado `ACTIVE` habilita garrison**. En el MVP la tabla se crea con lógica
-mínima o diferida.
+Regla canónica: **solo un tratado `ACTIVE` habilita garrison**. Implementados el dominio, la caducidad
+automática y la autorización de guarnición (M7); no hay comandos para proponer ni aceptar tratados, que se
+crean por vía administrativa (`DEBT-14`).
 
 Ver: [../specs/garrison.md](../specs/garrison.md).
 
@@ -759,7 +779,8 @@ Ver: [../specs/movement.md](../specs/movement.md).
 El único mundo compartido y persistente del juego: grid 2D de tiles cuadrados de **512 × 512** en el MVP
 (`EO_WORLD_WIDTH`, `EO_WORLD_HEIGHT`, que deben ser múltiplos exactos de `EO_CHUNK_SIZE`). Se
 **regenera determinísticamente desde `EO_WORLD_SEED` en cada arranque**; `world_chunks` guarda una copia
-del terreno para auditoría y para permitir mapas editados en el futuro, pero no es la fuente primaria. Su
+del terreno para auditoría y para permitir mapas editados en el futuro, pero no es la fuente primaria: en
+cada arranque se compara con lo regenerado y una diferencia impide arrancar. Su
 estado global vive en `world_state`, que incluye `epoch_ms`.
 
 No hay instancias, no hay salas y no hay reinicio.

@@ -2,7 +2,7 @@
 
 Propósito: definir el diseño objetivo del cliente de **Empires Online** —Next.js 15 (App Router) + React 19 + TypeScript + PixiJS 8— y en particular la separación estricta entre transporte de red, estado replicado del mundo y capa de render, así como el tratamiento del tiempo, la interpolación y las transformaciones de coordenadas.
 
-> **Estado (2026-10-20): `apps/web` existe y este documento mezcla código y diseño objetivo.** El cliente
+> **Estado (2026-10-21): `apps/web` existe y este documento mezcla código y diseño objetivo.** El cliente
 > real es más pequeño que el árbol de §11 y lo reparte así:
 >
 > | Fichero | Papel |
@@ -15,17 +15,39 @@ Propósito: definir el diseño objetivo del cliente de **Empires Online** —Nex
 > | `src/render/iso.ts`, `src/render/scene.ts`, `src/components/GameCanvas.tsx` | Capa 3: proyección, escena PixiJS y su montaje en React |
 > | `app/api/auth/*/route.ts`, `src/server/*`, `identity/*`, `instrumentation.ts` | Servidor de Next.js: alta, login, sesión web, emisión del ticket y almacén de identidad ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) |
 >
-> Se ajustan al código, y así se verificaron, §5 entero y el bucle de frame de §7.3. Lo demás —el árbol de
-> carpetas de §11, los módulos separados de la capa 1 (`backoff.ts`, `clockSync.ts`, `seqTracker.ts`…), el
-> terreno rasterizado por chunk, el `depthIndex` con *bias* de capa, el resaltado del tile bajo el cursor,
-> React Query y la batería de §12 salvo donde se indica— describe el **objetivo**, no el código. Los tests
-> reales están en `apps/web/src/**/*.test.ts` y los ejecuta la CI.
+> Cada sección empieza con una línea **Estado** que dice qué parte es código y qué parte es diseño objetivo,
+> comprobada contra `apps/web` el 2026-10-21. En resumen:
+>
+> | Sección | Estado |
+> |---|---|
+> | §1 Principio rector, §6.5, §10 | **Se cumplen** en el código. |
+> | §2 Las tres capas | Las capas existen con otros nombres (`src/net`, `src/state`, `src/render`, `src/components`); sus módulos internos son objetivo. |
+> | §3.1 Envelopes | Existe, con diferencias: el cliente valida con Zod **todo** mensaje también en producción y emite también `unit.garrison` y `unit.ungarrison`. |
+> | §3.2 Handshake | **Ajustada al código.** |
+> | §3.3–§3.7 Reconexión, `seq`, cola de comandos, errores, reloj | **Objetivo.** Cada una dice qué hace hoy `src/net/client.ts`, que es bastante menos. |
+> | §4 Store | Existe en lo esencial (réplica de sólo lectura, snapshot que reemplaza, terreno que se fusiona); la forma del estado y los reducers separados son objetivo. |
+> | §5 Posición autoritativa y de render | **Ajustada al código.** |
+> | §6 Coordenadas | Las fórmulas existen; el anclaje del rombo y el acotado del clic difieren (§6.2, §6.4). |
+> | §7.1–§7.2, §7.4–§7.6 Escena, profundidad, culling, picking, presupuesto | **Objetivo**, con lo que existe dicho en cada una. |
+> | §7.3 Bucle de frame | **Ajustada al código.** |
+> | §8 React frente a PixiJS | El reparto existe; minimapa, paneles y `next/dynamic` no. |
+> | §9 React Query | **No existe**: el cliente no tiene esa dependencia. |
+> | §11 Estructura de carpetas | **Objetivo.** El árbol real es el de la tabla de arriba. |
+> | §12 Tests | §12.3 **ajustada al código**; las demás, objetivo cubierto en parte por los ficheros reales. |
+>
+> Los tests reales están en `apps/web/src/**/*.test.ts` (y `identity/*.test.ts`, `scripts/*.test.ts`) y los
+> ejecuta la CI.
 
 Documentos relacionados: [`./game-loop.md`](./game-loop.md) · [`./overview.md`](./overview.md) · [`../specs/websocket-protocol.md`](../specs/websocket-protocol.md) · [`../specs/movement.md`](../specs/movement.md) · [`../specs/player.md`](../specs/player.md) · [`../testing/strategy.md`](../testing/strategy.md)
 
 ---
 
 ## 1. Principio rector
+
+> **Estado: se cumple.** El cliente sólo envía intenciones y dibuja lo que replica. Las que hoy emite la
+> interfaz son `unit.move`, `unit.garrison` (clic sobre la zona urbana de una ciudad con una unidad
+> seleccionada) y `unit.ungarrison` (botón del HUD); `GameClient` tiene también `cancelMove` y `setView`, que
+> ninguna parte de la interfaz llama.
 
 El cliente es un **terminal de observación e intención**. Envía intenciones (`unit.move`, `unit.cancel_move`, `session.view`) y renderiza una réplica de solo lectura de la verdad que emite el Game Server en Go. No calcula posiciones finales, ni HP, ni recursos, ni resultados de combate, ni ETAs, ni paths: *client sends intent, server determines truth*.
 
@@ -36,6 +58,13 @@ Corolario operativo: cualquier función del cliente que produzca un número que 
 ---
 
 ## 2. Las tres capas
+
+> **Estado: las capas existen; su forma interna es objetivo.** En el código la capa 1 es `src/net`
+> (`client.ts`, `auth.ts`), la 2 es `src/state` (`world.ts`, `interpolation.ts`), la 3 es `src/render`
+> (`iso.ts`, `reconciler.ts`, `scene.ts`) y React vive en `app/` y `src/components`. Las reglas de dependencia
+> de la tabla se cumplen con esos nombres: `src/state` no importa ni Pixi ni la red, y `src/render` no envía
+> nada (la escena devuelve los clics a React por *callbacks*). No existen `ClockSync`, la cola de comandos
+> pendientes ni el control de `seq` como piezas separadas: ver §3.3–§3.7.
 
 ```mermaid
 flowchart TB
@@ -88,6 +117,11 @@ La capa 2 no conoce píxeles. La capa 3 no conoce WebSockets. La capa 1 no conoc
 
 ### 3.1 Envelopes y versión
 
+> **Estado: existe, con dos diferencias.** `GameClient.handleRaw` valida **todo** mensaje entrante con
+> `v1.parseServerMessage` (Zod) también en producción, no sólo el envelope: lo que no valida, incluido un
+> `type` desconocido, se descarta y se notifica por `onError` sin cerrar la sesión. Y además de los tipos de
+> abajo el cliente emite `unit.garrison` y `unit.ungarrison` (ADR-017).
+
 El cliente habla **protocolo WebSocket v1** sobre WSS, JSON UTF-8, con `"v": 1` explícito en cada mensaje.
 
 - Cliente → servidor: `{ v, type, requestId, payload }`, con `requestId` = UUIDv4 obligatorio en comandos.
@@ -100,6 +134,9 @@ Los tipos TypeScript y los validadores se importan de `@empires-online/protocol`
 Asimetría del protocolo que el cliente debe conocer, porque está implementada así en los esquemas: los mensajes **cliente→servidor son estrictos** (`additionalProperties: false`; un campo de más se rechaza), mientras que los **servidor→cliente no lo son**, para poder añadir campos opcionales sin romper clientes antiguos. Por eso descartar un `type` desconocido es seguro, pero enviar un campo extra no lo es.
 
 ### 3.2 Handshake
+
+> **Estado: ajustada al código** (`src/net/client.ts`, `src/net/auth.ts`). Un handshake fallido llega sólo
+> como código de cierre, sin `system.error` ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)).
 
 1. React pide un **game ticket** (JWT HS256, TTL **60 s**, `aud: "game-server"`). El ticket es de un solo uso: su `jti` se consume en Redis del lado servidor.
 2. `GameSocket` abre `<ws|wss>://<host>/ws`.
@@ -117,6 +154,22 @@ Consecuencia de diseño: **el ticket nunca se cachea**. Con TTL de 60 s, cada in
 > `apps/web/src/server/`, bajo `server-only`, y nunca llega al bundle del navegador.
 
 ### 3.3 Reconexión: backoff exponencial con jitter
+
+> **Estado: objetivo.** Lo que hace hoy `GameClient` (`src/net/client.ts`), sin módulo `backoff.ts`:
+>
+> - Retardo del intento `n` = `min(500 · 2^n, 30 000)` ms **más** un jitter uniforme de hasta el 30 % de ese
+>   valor (no *full jitter*). Constantes `BASE_BACKOFF_MS = 500` y `MAX_BACKOFF_MS = 30 000`. El contador
+>   vuelve a 0 con cada `session.welcome`.
+> - Cada intento pide un ticket nuevo (`ticketProvider`: el del alta o el login la primera vez, después
+>   `POST /api/auth/ticket` con la cookie). Si pedirlo falla, notifica `UNAUTHORIZED` y programa otro intento
+>   con el mismo backoff, también cuando la cookie caducó.
+> - Política por código: un cierre pedido por el propio cliente (`disconnect`) no reconecta; `4401` y `4403`
+>   **no reconectan** —el estado pasa a `closed` y la página vuelve al formulario de entrada con el error—;
+>   cualquier otro código, incluidos `4400`, `4408`, `4429` y `4500`, reconecta con el backoff normal.
+> - No hay `RECONNECT_*` ni `PRESENCE_GRACE_MS`, y `4429` no arranca en el máximo.
+>
+> Lo que la tabla de abajo pide y el código no hace: reintentar `4401` con un ticket nuevo antes de volver al
+> login, un único reintento para `4400` y el arranque de `4429` en el máximo.
 
 Los parámetros de reconexión son constantes del cliente en `src/net/backoff.ts`. **No son valores de gameplay** y por tanto no pertenecen a la superficie de configuración `EO_*`; se eligen anclados a constantes reales del servidor:
 
@@ -155,6 +208,13 @@ Al reconectar, `seq` **se reinicia** (es monótono por conexión, no por jugador
 
 ### 3.4 Control de `seq` y detección de huecos
 
+> **Estado: objetivo.** Hoy `GameClient` guarda el último `seq` como `number` (el esquema Zod lo declara
+> `z.number().int().min(0)`, no `bigint`) y **descarta** cualquier mensaje con `seq` menor o igual, salvo
+> `session.welcome`, que lo reinicia. No detecta huecos ni resincroniza: un hueco pasaría inadvertido. Al
+> reconectar no vacía el store; el `world.snapshot` de la nueva sesión reemplaza unidades, ciudades y
+> territorios y fusiona el terreno (§4.3), así que el efecto es el mismo salvo para el terreno, que sigue
+> en memoria.
+
 `seq` es monótono creciente por conexión. Como el transporte es TCP/WSS ordenado, un hueco (`seq !== lastSeq + 1n`) no puede deberse a reordenamiento: significa pérdida real de un delta. Un cliente que sigue aplicando deltas sobre un estado con un hueco diverge silenciosamente, que es el peor fallo posible en un sistema autoritativo.
 
 Política MVP: **ante un hueco, resincronizar por reconexión**. El protocolo v1 no define un mensaje de resincronización; el único mecanismo que produce un `world.snapshot` es abrir una sesión. Por tanto el cliente cierra el socket con `1000`, limpia el store y ejecuta el flujo de reconexión inmediatamente (sin backoff en el primer intento, porque no es un fallo de red). El evento se cuenta y se registra: un hueco recurrente es un bug de servidor que debe verse.
@@ -163,10 +223,19 @@ Se usa `bigint` para `seq`, no `number`: es `uint64` en el protocolo (`seq` mon�
 
 ### 3.5 Cola de comandos pendientes y `requestId`
 
+> **Estado: objetivo; no existe cola.** `GameClient.send` genera un `requestId` UUIDv4 nuevo por comando
+> (`crypto.randomUUID()`) y lo envía si la sesión está `ready`; si no, **descarta** el comando y lo notifica
+> con `INTERNAL_ERROR`, a propósito, para no reproducir órdenes viejas tras reconectar. No correlaciona
+> respuestas por `requestId`, no reenvía nada, no tiene *token bucket* ni comprueba el tamaño antes de enviar.
+>
+> Lo que sí ha cambiado del lado servidor respecto al punto 2: un duplicado del mismo `requestId` **sí** recibe
+> la respuesta original cuando la hubo (I-5, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal`), y
+> la reserva en Redis es `SET NX` con TTL de 300 s ([ADR-014](../decisions/ADR-014-command-idempotency.md)).
+
 `PendingCommands` cumple tres funciones:
 
 1. **Correlación.** Cada comando se guarda por `requestId` con su `type`, `payload`, `createdAtMs` y `sentAtMs`. Las respuestas correlacionadas (`unit.move.accepted`, `unit.move.rejected`, `system.error` con `requestId`) resuelven la entrada. Las respuestas del servidor sin `requestId` son deltas de mundo y no tocan la cola.
-2. **Idempotencia en reintentos.** Un comando reenviado tras una reconexión conserva **el mismo `requestId`**. El servidor reserva ese `requestId` en Redis con `SETNX` y TTL 300 s antes de ejecutar; si ya estaba reservado, **descarta el duplicado en silencio** (lo registra, no lo re-ejecuta y **no reemite la respuesta original**). Generar un `requestId` nuevo al reintentar sería un bug: duplicaría órdenes. La contrapartida que el cliente debe asumir: un reenvío idempotente puede no recibir respuesta alguna, así que la entrada de la cola debe caducar por tiempo, no esperar indefinidamente una confirmación. Y si Redis no responde, el servidor **ejecuta igualmente** el comando: prefiere jugar a bloquear al jugador.
+2. **Idempotencia en reintentos.** Un comando reenviado tras una reconexión conserva **el mismo `requestId`**. El servidor reserva ese `requestId` en Redis con `SET NX` y TTL 300 s antes de ejecutar; si ya estaba reservado, no lo re-ejecuta y le **reemite la respuesta original** si la hubo (I-5). Generar un `requestId` nuevo al reintentar sería un bug: duplicaría órdenes. La contrapartida que el cliente debe asumir: si el original todavía no había respondido, el reenvío no recibe nada, así que la entrada de la cola debe caducar por tiempo, no esperar indefinidamente una confirmación. Y si Redis no responde, el servidor **ejecuta igualmente** el comando: prefiere jugar a bloquear al jugador.
 3. **Respeto del rate limit.** El cliente mantiene su propio *token bucket* de **20 msg/s con burst 40**, espejo de `EO_WS_RATE_LIMIT_PER_SECOND` / `EO_WS_RATE_LIMIT_BURST`. Nunca debe provocar un cierre `4429`: si el bucket está vacío, el comando espera en la cola. Igualmente, antes de enviar se comprueba que el JSON serializado no supere **16384 bytes** (`EO_WS_MAX_MESSAGE_BYTES`); un comando que lo supere se rechaza localmente como bug, no se envía.
 
 Reglas de caducidad, distinguiendo dos situaciones:
@@ -177,6 +246,12 @@ Reglas de caducidad, distinguiendo dos situaciones:
 Tamaño máximo de la cola: 64 entradas. Al desbordar se descarta la más antigua y se registra en `warn`.
 
 ### 3.6 Errores
+
+> **Estado: objetivo.** Hoy `system.error` y `unit.move.rejected` dejan `{ code, message }` en
+> `lastError` del store y la página lo muestra tal cual en el pie del HUD; los avisos del transporte
+> (`onError`: mensaje que no valida, comando sin conexión, cierre `4401`) se muestran en el formulario de
+> entrada. No hay tratamiento por grupo de códigos, ni toasts, ni reversión de feedback optimista (no lo hay).
+> Lo que sí se cumple: ninguna decisión del cliente mira el texto del mensaje.
 
 `system.error` llega con `{ code, message, requestId?, details? }`. **La lógica del cliente conmuta siempre sobre `code`, nunca sobre `message`.** El texto humano es para el log y, traducido, para el HUD.
 
@@ -192,6 +267,14 @@ Mapeo de códigos a comportamiento de UI. Son los **22 códigos** del catálogo 
 | Genéricos | `INTERNAL_ERROR`, `NOT_IMPLEMENTED` | Toast genérico; `NOT_IMPLEMENTED` además oculta el control que lo provocó. |
 
 ### 3.7 Sincronización de reloj
+
+> **Estado: objetivo.** Hoy `GameClient` mantiene un único `clockOffsetMs` sobre `Date.now()` (no sobre el
+> reloj monótono): lo fija el `session.welcome` (`serverTimeMs − now`) y lo recalcula cada `session.pong` con
+> el estimador de medio RTT (`serverTimeMs + rtt/2 − now`), sin ventana de muestras, sin elegir la de RTT
+> mínimo y sin suavizado. Envía `session.ping` cada `heartbeatIntervalMs` del `welcome` (10 s por defecto,
+> `EO_PRESENCE_HEARTBEAT_SECONDS`), sin ráfaga inicial. `serverTimeMs()` es lo que reciben la escena y el
+> reconciliador; no hay `quality()` y se interpola desde el primer frame. Los saltos que produce un cambio de
+> desfase los absorbe el reconciliador (§5.3).
 
 Todo instante del dominio viaja en **epoch milliseconds del servidor**: el `ts` del envelope, el `start_time_ms` y el `arrival_time_ms` de los movimientos, los `tMs` de la polilínea. El reloj de pared del cliente (`Date.now()`) puede estar desviado minutos y además salta (ajustes NTP, suspensión). Interpolar contra él produce unidades que van adelantadas o atrasadas de forma permanente.
 
@@ -229,6 +312,12 @@ Mientras `quality() === 'UNSYNCED'` (antes del primer `session.pong`), el render
 
 ### 4.1 Naturaleza del store
 
+> **Estado: existe en lo esencial.** `useWorldStore` (`src/state/world.ts`, Zustand) es una réplica de sólo
+> lectura que sólo cambia por `applyServerMessage` (y `applyWelcome` / `applySnapshot`, que ella llama), y no
+> hay predicción de movimiento. Diferencias: también guarda la selección (`selectedUnitId`, `selectUnit`) y el
+> último error (`lastError`), porque no hay `uiStore` separado; y `reset()` existe pero la reconexión no lo
+> llama (§3.4).
+
 `worldStore` (Zustand) contiene **estado autoritativo replicado y de solo lectura**. Su única vía de escritura es el reductor que consume mensajes del servidor:
 
 ```ts
@@ -245,6 +334,13 @@ No existe `setUnitPosition`, ni `moveUnitLocally`, ni ninguna forma de predicci�
 El estado *de interfaz* (selección de unidades, panel abierto, hover) vive en un store distinto, `uiStore`. Mezclarlos haría imposible el `resetWorld` limpio de la reconexión.
 
 ### 4.2 Forma del estado
+
+> **Estado: objetivo en la forma; ajustado en el terreno.** El estado real es `{ playerId, sessionId, world,
+> tick, units, cities, territories, terrain, selectedUnitId, lastError }`: sin `connection` (el estado de la
+> conexión lo lleva `GameClient` y la página) ni `view`. Cada unidad es un `UnitView` con `x`, `y` (la
+> posición autoritativa consolidada), `movement`, `cityId` y `garrisonCityId`; el terreno es un `Map` por
+> clave `"cx:cy"` con los bytes ya decodificados. Lo que dicen los dos párrafos sobre cómo llega el terreno —una
+> vez por sesión (`NeedsTerrain` / `MarkTerrainSent`), fusionado y nunca borrado por un snapshot— es exacto.
 
 Los identificadores siguen los tipos del paquete de protocolo: `EntityId` es un **entero positivo** (`number`, acotado a `Number.MAX_SAFE_INTEGER`) para unidades, ciudades, movimientos y territorios; `Uuid` es un **string** y se usa para `playerId` y `sessionId`. No hay ids de entidad como cadena.
 
@@ -302,6 +398,14 @@ Volumen: con `EO_INTEREST_RADIUS_CHUNKS = 2` el área son 5×5 = 25 chunks = 25 
 
 ### 4.3 Reducers
 
+> **Estado: el efecto de cada mensaje existe; los reducers separados, no.** Un único `switch` en
+> `applyServerMessage` hace lo que dice la tabla para el snapshot, `entity.*`, `city.update`,
+> `territory.update` (que trae el territorio completo y por eso **añade** uno desconocido) y
+> `unit.movement.*`. Diferencias: `entity.update` sobre una entidad desconocida se ignora sin contarse; no hay
+> cola que resolver, así que `unit.move.accepted` no hace nada y `unit.move.rejected` y `system.error` sólo
+> dejan `lastError`; `unit.movement.cancelled` deja además la unidad en `IDLE`; y `session.pong` lo consume
+> `GameClient`, no el store. Tests: `src/state/world.test.ts`.
+
 Un reducer puro por familia de mensajes, todos con firma `(state, payload, envelope) => state`:
 
 | Mensaje | Efecto sobre el store |
@@ -326,6 +430,10 @@ Los reducers son funciones puras en módulos sin dependencias de DOM ni de Pixi:
 ---
 
 ## 5. Posición autoritativa frente a posición de render
+
+> **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).
+> En la tabla, «`worldStore`» es `useWorldStore`, y la posición autoritativa de una unidad quieta son sus
+> `x`, `y`.
 
 Esta distinción es el corazón del cliente y no admite atajos.
 
@@ -446,6 +554,15 @@ El picking (§7.5) usa la posición **dibujada**, la que el jugador ve.
 
 ### 6.1 Las tres representaciones
 
+> **Estado de §6: las fórmulas existen; el anclaje y el acotado, no como aquí.** `src/render/iso.ts` tiene
+> `worldToIso`, `isoToWorld`, `isoToTile`, `worldToScreen` y `screenToTile` con las fórmulas de §6.2–§6.4, y
+> la cámara se aplica como `position` + `scale` del contenedor raíz. Tres diferencias con lo que sigue: el
+> rombo de un tile se dibuja **centrado** en `worldToIso(x, y)` —no colgado de su vértice superior—, por eso
+> `isoToTile` redondea (`floor(w + 0.5)`) en lugar de truncar; el zoom está fijo en 1 y la cámara centrada
+> en la ciudad propia (§7.4); y el tile pulsado **no** se acota al mundo antes de enviarlo. §6.5 se cumple.
+> Tests: `src/render/iso.test.ts` (fórmulas, inversa, redondeo, picking con zoom), sin el recorrido
+> exhaustivo de 512×512 de §12.1.
+
 ```
  MUNDO (tiles, int32)        ISOMÉTRICO (px de escena)        PANTALLA (px de viewport)
  x: 0..511 este                                                depende de cámara, zoom,
@@ -548,6 +665,12 @@ Regla práctica: los píxeles nacen en la capa 3, viven un frame y mueren en la 
 
 ### 7.1 Grafo de escena
 
+> **Estado: objetivo.** El grafo real (`IsoScene`, `src/render/scene.ts`) es `Application` (`antialias: true`,
+> `resolution = devicePixelRatio`, `autoDensity`) → `root` (la cámara) → `terrainLayer`, `territoryLayer` (el
+> overlay de territorios, entre el suelo y las entidades) y `entityLayer` (ciudades y unidades). No hay `fxLayer`
+> ni overlay de safe zones, tile resaltado o ruta prevista. El terreno es un `Graphics` por tile visible,
+> cacheado por tile y retirado al salir de la vista, no una `RenderTexture` por chunk.
+
 ```
 Application (canvas WebGL, resolution = devicePixelRatio, antialias = false)
 └── worldRoot          Container   ← cámara: position + scale
@@ -561,6 +684,10 @@ uiRoot (DOM, React)                ← HUD por encima del canvas, fuera de Pixi
 El terreno se rasteriza **por chunk**: cuando llega un `ChunkTerrain` completo, se compone su rombo 32×32 en una `RenderTexture` y se añade como un único `Sprite` al `terrainLayer`. Redibujar 25 600 tiles individuales cada frame es inviable; con este esquema el terreno cuesta 25 draw calls, no 25 600.
 
 ### 7.2 Orden de dibujado (depth sorting)
+
+> **Estado: objetivo; existe la versión simple.** `depthOf(x, y) = x + y` sobre la posición **dibujada**; la
+> ciudad usa la suya y la unidad la suya más 0,5, y la escena ordena `entityLayer.children` por `zIndex` en cada
+> frame. No hay `LAYER_BIAS`, ni sub-pasos, ni desempate por `id`.
 
 En proyección isométrica el orden de pintado *es* la profundidad. Un objeto tapa a otro si está "más al frente", y en esta proyección eso se ordena por `x + y` ascendente: cuanto mayor es `x + y`, más abajo/adelante en pantalla y más tarde debe dibujarse.
 
@@ -585,6 +712,8 @@ Detalles que importan:
 - `sortableChildren = true` reordena el contenedor cada frame en O(n log n). Con las cantidades del MVP (unas pocas decenas de entidades por área de interés) es irrelevante; si crece, la mitigación es un *bucket sort* por `x + y` incremental, ya que entre frames casi ningún elemento cambia de posición relativa. Optimización: **Fuera de MVP**.
 
 ### 7.3 Bucle de frame
+
+> **Estado: ajustada al código.**
 
 Lo que hace hoy `IsoScene.draw` (`src/render/scene.ts`), registrado en el `ticker` de Pixi:
 
@@ -613,6 +742,11 @@ unidad y frame; con las decenas de unidades de un área de interés del MVP no s
 
 ### 7.4 Área de interés, culling y `session.view`
 
+> **Estado: objetivo.** El cliente no envía `session.view`: la cámara se centra en la ciudad propia en cada
+> actualización del store y no se mueve. El culling existe sólo para el terreno: en cada frame se recorre el
+> cuadrado de tiles que cubre el viewport, con un margen de 4, y se crean o retiran sus gráficos. Las
+> entidades no se descartan por visibilidad.
+
 El servidor ya limita lo que envía: suscripción **por chunk**, radio por defecto **2 chunks** (`EO_INTEREST_RADIUS_CHUNKS = 2`), es decir 5×5 chunks = 160×160 tiles alrededor del centro de vista. Eso no basta como culling de render: a zoom 1 en un viewport de 1920×1080 son visibles del orden de 30×34 tiles (unos 1000 tiles), frente a los 25 600 del área de interés. El cliente hace por tanto **su propio culling**:
 
 - Terreno: se calcula el rectángulo de mundo visible a partir de las cuatro esquinas del viewport pasadas por `screenToIso` + `isoToWorld`, se expande un chunk de margen y se marcan `renderable = false` los sprites de chunk fuera de él.
@@ -622,6 +756,13 @@ El servidor ya limita lo que envía: suscripción **por chunk**, radio por defec
 `session.view` está sujeto a rate limit en el servidor. El cliente lo emite **solo cuando el centro de la cámara cruza a otro chunk**, y como máximo una vez por segundo (muy por debajo de los 20 msg/s permitidos). El centro se envía en tiles enteros. Al conectar no se envía nada: el servidor centra la vista en la ciudad del jugador.
 
 ### 7.5 Picking
+
+> **Estado: objetivo; existe una versión por tile.** Un único `pointerdown` en el `stage` traduce el punto a
+> tile (`screenToTile`); si alguna unidad se **dibuja** en ese tile (su posición del reconciliador,
+> redondeada), es un clic sobre ella —la página sólo selecciona unidades propias—; si no, es un clic sobre el
+> tile. Con una unidad seleccionada, un clic sobre el 3 × 3 de una ciudad es `unit.garrison` y cualquier otro
+> tile es `unit.move`. No hay `hitArea` por sprite, ni clic derecho, ni tecla de cancelación, ni resaltado del
+> tile bajo el cursor.
 
 Dos niveles, resueltos en este orden:
 
@@ -633,6 +774,11 @@ Interacción MVP: clic izquierdo sobre unidad propia = seleccionar; clic derecho
 El tile bajo el cursor se resalta continuamente en `overlayLayer` usando la misma función de picking; ese resaltado es el mejor test manual de que la inversa de coordenadas es correcta.
 
 ### 7.6 Presupuesto de rendimiento
+
+> **Estado: objetivo, sin medir.** No hay atlas de texturas (todo es `Graphics`), el antialias está activo y
+> nadie ha medido el presupuesto por fase. Sí se cumplen: React no se re-renderiza por frame (la escena recibe
+> el estado por suscripción y la posición interpolada nunca llega a React), y `resolution: devicePixelRatio`
+> con `autoDensity`.
 
 Objetivo: **60 fps sostenidos**, es decir **16.67 ms por frame**. Presupuesto orientativo:
 
@@ -658,6 +804,15 @@ Medidas concretas:
 
 ## 8. React frente a PixiJS: reparto de responsabilidades
 
+> **Estado: el reparto existe; buena parte de las piezas, no.** React tiene el formulario de alta y entrada, el
+> HUD de una línea (conexión, ciudad, era, población, presencia, botones para sacar unidades guarnecidas) y el
+> último error; Pixi, el terreno, los territorios, las ciudades y las unidades. No hay selección de
+> civilización, paneles, minimapa, tratados ni indicador de destino. `GameCanvas.tsx` monta y destruye la
+> `Application` dentro de un efecto, con el montaje y la destrucción encadenados para el doble montaje de
+> *Strict Mode*; no usa `next/dynamic`, porque es un componente de cliente que sólo toca WebGL dentro del
+> efecto. React → Pixi es `scene.update(data)` desde una suscripción al store; Pixi → React, los *callbacks*
+> `onTileClick` y `onUnitClick`.
+
 | Va en **React** (DOM) | Va en **PixiJS** (canvas) |
 |---|---|
 | Landing, login, registro, selección de civilización | Terreno, chunks, rejilla |
@@ -674,6 +829,10 @@ Frontera técnica: un único componente `GameCanvas.tsx` monta la `Application` 
 ---
 
 ## 9. React Query: dónde sí y dónde no
+
+> **Estado: no existe.** `apps/web` no depende de React Query ni sirve catálogos: el alta y el login son un
+> `fetch` directo (`src/net/auth.ts`) y no hay ruta `catalog`. La regla de esta sección sigue siendo la que
+> aplica el día que haga falta HTTP de referencia.
 
 React Query se usa **solo para datos HTTP que no pertenecen a la simulación en tiempo real**:
 
@@ -703,17 +862,20 @@ Es una consecuencia directa del reparto de capas de estado (PostgreSQL durable, 
 2. **El determinismo es obligatorio.** El dominio Go tiene prohibido llamar a `time.Now()` y a `math/rand`: se inyectan `clock.Clock` y `clock.RandomSource`. Ese contrato ya está implementado y permite tests de simulación con `FakeClock`. Un route handler no puede sostenerlo.
 3. **El mundo persiste sin jugadores conectados.** Ningún estado durable depende de un WebSocket vivo ni de que alguien tenga la web abierta. Un mundo que solo avanza cuando hay peticiones HTTP no es un mundo persistente.
 4. **El cliente es hostil por definición.** Todo lo que se ejecuta en el navegador es modificable. Si la validación de un movimiento viviera en el cliente, el juego no tendría reglas.
-5. **Frontera de secretos.** `EO_POSTGRES_URL`, `EO_REDIS_URL` y `EO_AUTH_JWT_SECRET` nunca cruzan hacia el navegador. Next.js solo toca `EO_AUTH_JWT_SECRET`, y exclusivamente en el servidor, para firmar el ticket.
+5. **Frontera de secretos.** `EO_POSTGRES_URL`, `EO_REDIS_URL`, `EO_AUTH_JWT_SECRET` y `EO_IDENTITY_POSTGRES_URL` nunca cruzan hacia el navegador. Next.js no toca ni `EO_POSTGRES_URL` ni `EO_REDIS_URL`; en el servidor, y sólo allí, lee `EO_AUTH_JWT_SECRET` para firmar el ticket y el token de fundación, `EO_IDENTITY_POSTGRES_URL` para su propio almacén de identidad y `EO_GAME_SERVER_INTERNAL_URL` para fundar jugadores ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Los módulos que las leen importan `server-only`, y la CI comprueba que ninguna llega al bundle (`INV-SEC-006`).
 
-Lo que Next.js **sí** hace: servir la aplicación, autenticar al usuario, emitir el game ticket y exponer catálogos de referencia. Nada más.
+Lo que Next.js **sí** hace: servir la aplicación, autenticar al usuario contra su almacén de identidad, mantener la sesión web, emitir el game ticket y pedir al Game Server que funde a cada jugador nuevo. Exponer catálogos de referencia sería lo siguiente (§9); hoy no lo hace. Nada más.
+
+> **Estado de §10: se cumple.** La simulación no tiene ni una línea en `apps/web`.
 
 ---
 
 ## 11. Estructura de carpetas prevista para `apps/web`
 
-**Ninguno de estos ficheros existe.** Es el árbol que se creará cuando arranque el milestone del
-cliente; se documenta ahora para que el reparto en capas de §2 tenga una forma concreta y para que la
-primera persona que lo implemente no tenga que reinventarlo.
+> **Estado: objetivo.** `apps/web` existe con la forma de la tabla del principio de este documento, que es
+> más pequeña: de este árbol sólo existen tal cual `app/layout.tsx`, `app/page.tsx` y las cuatro rutas de
+> `app/api/auth/`. El árbol se conserva como destino del reparto en capas de §2, para que quien parta los
+> módulos actuales no tenga que reinventarlo.
 
 ```
 apps/web/
@@ -774,18 +936,18 @@ apps/web/
 └── package.json
 ```
 
-`pnpm-workspace.yaml` ya incluye `apps/*`, así que el paquete encajará en el workspace en cuanto se cree. Scripts previstos (task runner = **pnpm scripts**, no Makefile: `make` no está instalado en el entorno Windows de desarrollo):
+El paquete es `@empires-online/web` y está en el workspace. Sus scripts (task runner = **pnpm scripts**, no Makefile):
 
 ```bash
-pnpm --filter "./apps/web" dev          # servidor de desarrollo de Next.js
-pnpm --filter "./apps/web" build
-pnpm --filter "./apps/web" test         # Vitest
-pnpm --filter "./apps/web" typecheck
+pnpm run web:dev                                  # = pnpm --filter @empires-online/web run dev
+pnpm run web:build
+pnpm --filter @empires-online/web run test        # Vitest; la CI lo ejecuta
+pnpm --filter @empires-online/web run typecheck
 ```
 
-Entorno real de desarrollo: Windows 10, Node v22.17.1, pnpm 10.25.0. Los tests de integración cliente↔servidor requerirán Docker Desktop iniciado y el Game Server en marcha; el daemon de Docker **no arrancó** en esta máquina, por lo que ni siquiera los tests de integración del servidor han llegado a ejecutarse.
-
-> El único paquete del workspace con nombre npm fijado hoy es `@empires-online/protocol`; el de `apps/web` está **TBD (fuera de MVP)**. Hasta que se decida, los scripts filtran por ruta.
+No hay tests de integración cliente↔servidor en Vitest: el recorrido de punta a punta contra el Game Server y
+la web vivos es `pnpm run smoke` (`scripts/smoke.mjs`). Lo que sí corre contra PostgreSQL real es la suite del
+almacén de identidad, `src/server/store.integration.test.ts`, en local contra el cluster propio y en la CI.
 
 ---
 
@@ -793,13 +955,17 @@ Entorno real de desarrollo: Windows 10, Node v22.17.1, pnpm 10.25.0. Los tests d
 
 Runner: **Vitest**, el mismo que usa `packages/protocol`. Esta sección es la batería **objetivo**; la real
 está en `apps/web/src/**/*.test.ts` —coordenadas (`iso.test.ts`), interpolación (`interpolation.test.ts`),
-reconciliación (`reconciler.test.ts`), store (`world.test.ts`) y cliente WebSocket (`client.test.ts`)— y
-la ejecuta la CI. Sólo §12.3 está reconciliado con su fichero real y lo dice en el título; los demás
+reconciliación (`reconciler.test.ts`), store (`world.test.ts`), cliente WebSocket (`client.test.ts`) y el
+servidor de Next.js (`src/server/*.test.ts`, `identity/password.test.ts`)— y la ejecuta la CI. Sólo §12.3 está reconciliado con su fichero real y lo dice en el título; los demás
 apartados son objetivo, aunque parte de lo que piden ya lo cubran esos ficheros. Todo lo que sigue es *unit* salvo indicación
 contraria; nada de esto necesita navegador, canvas ni servidor, que es precisamente el objetivo de la
 separación en capas.
 
 ### 12.1 Transformaciones de coordenadas (`coords.test.ts`)
+
+> **Estado:** cubre parte `src/render/iso.test.ts` (valores conocidos, inversa exacta y fraccionaria, redondeo
+> al tile, cámara y picking con zoom). Faltan el recorrido exhaustivo de 512×512, los vértices del rombo y el
+> acotado del clic, que tampoco existe (§6).
 
 - Valores conocidos: `worldToIso(0,0) = (0,0)`, `worldToIso(1,0) = (32,16)`, `worldToIso(0,1) = (-32,16)`, `worldToIso(1,1) = (0,32)`.
 - **Round-trip exhaustivo**: para los 262 144 tiles del mundo 512×512, `isoToTile(worldToIso(x,y).x, worldToIso(x,y).y + TILE_H/2) === (x,y)`.
@@ -809,6 +975,10 @@ separación en capas.
 - Clamping: un clic fuera del mundo produce un tile acotado y **no** genera comando.
 
 ### 12.2 Interpolación y polilínea (`interpolate.test.ts`)
+
+> **Estado:** cubre casi todo `src/state/interpolation.test.ts`: la autoritativa reproduce la del servidor y es
+> entera, la interpolada coincide en los waypoints, es lineal y monótona, se queda en el destino, empieza en el
+> origen, no se aleja más de un tile y no divide por cero. Falta la prueba del cursor, que no existe (§5.2).
 
 - Polilínea de un solo waypoint (`tMs = 0`): la posición es constante para cualquier `t`.
 - `t <= startTimeMs` → primer waypoint; `t >= arrivalTimeMs` → último waypoint; `t` muy posterior (simulando pestaña en segundo plano) → último waypoint, sin extrapolación.
@@ -837,6 +1007,11 @@ separación en capas.
 
 ### 12.4 Reducers de deltas (`reducers.test.ts`)
 
+> **Estado:** cubre parte `src/state/world.test.ts`: el snapshot reemplaza y conserva el terreno, el delta
+> sobre una entidad desconocida se ignora, `entity.spawn`/`update`/`despawn` (también la guarnición), el ciclo
+> del movimiento, `city.update` de presencia y el rechazo expuesto con su código. Faltan el contador de
+> anomalías, los objetos congelados y `resetWorld`, que no se usa al reconectar (§3.4).
+
 - `world.snapshot` **reemplaza**: entidades presentes antes del snapshot y ausentes en él desaparecen.
 - `entity.spawn` duplicado es idempotente.
 - `entity.update` sobre entidad inexistente no crea la entidad y sí incrementa el contador de anomalías.
@@ -848,6 +1023,12 @@ separación en capas.
 - Los reducers no mutan el estado de entrada (comprobación con objetos congelados).
 
 ### 12.5 Conexión y cola de comandos (`socketLifecycle.test.ts`, `commandQueue.test.ts`)
+
+> **Estado:** `src/net/client.test.ts` cubre el handshake (`session.hello` primero, `ready` con el `welcome`, un
+> ticket nuevo por conexión), los comandos (sólo intención, sólo los campos del contrato, `requestId` distinto,
+> nada sin conexión), la validación de lo que llega (contrato, versión, JSON malformado, `seq` fuera de orden),
+> que `4401` no reintenta en bucle, que un cierre inesperado reconecta y que `disconnect` es definitivo. El
+> resto describe la cola y el control de `seq` de §3.4–§3.5, que no existen.
 
 Con `WebSocket` falso y temporizadores falsos de Vitest:
 
@@ -866,6 +1047,9 @@ Con `WebSocket` falso y temporizadores falsos de Vitest:
 
 ### 12.6 Reloj (`clockSync.test.ts`)
 
+> **Estado:** objetivo. `src/net/client.test.ts` sólo comprueba que el desfase se estima contra el reloj del
+> servidor (§3.7).
+
 - Con RTT simétrico simulado de 120 ms y un desfase de reloj de +5 000 ms, el offset estimado converge dentro de ±10 ms.
 - Una muestra con RTT anómalo (2 s) no desplaza la estimación (se elige la de RTT mínimo).
 - `serverNowMs()` es monótona incluso si el reloj de pared del sistema retrocede.
@@ -873,12 +1057,19 @@ Con `WebSocket` falso y temporizadores falsos de Vitest:
 
 ### 12.7 Depth sorting (`depth.test.ts`)
 
+> **Estado:** objetivo. `src/render/iso.test.ts` comprueba que `depthOf` ordena por `x + y`; no hay *bias*.
+
 - Para dos entidades con `x + y` distinto, el `zIndex` respeta el orden isométrico.
 - Con `x + y` igual, el `bias` de capa ordena edificio antes que unidad.
 - El `zIndex` máximo del mundo 512×512 cabe en `int32`.
 - Durante la interpolación de un cruce delante de un edificio, el `zIndex` cambia de forma monótona (sin oscilaciones que produzcan parpadeo).
 
 ### 12.8 Contract tests
+
+> **Estado:** objetivo. Los tests del cliente construyen sus mensajes a mano: los de `client.test.ts` pasan,
+> como cualquier mensaje entrante, por `v1.parseServerMessage` (Zod), y los de `world.test.ts` se aplican al
+> store directamente. Ninguno se valida contra el JSON Schema exportado. Lo que sí está contra
+> el JSON Schema es el lado servidor: todo mensaje que emite el Game Server en sus e2e (`EO-056`).
 
 Los tipos y validadores vienen de `@empires-online/protocol`. Los reducers se ejercitan con *fixtures* de mensaje validadas contra el **JSON Schema exportado** por ese paquete, de modo que un cambio de protocolo rompa el test del cliente en compilación o en validación, nunca en producción. Ver [`../testing/strategy.md`](../testing/strategy.md).
 

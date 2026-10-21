@@ -234,13 +234,13 @@ Un error de un tick de desfase —el clásico `<` donde debía ir `<=`— mueve 
 
 | # | Test | Escenario | Aserción exacta |
 |---|---|---|---|
-| **M1** | `TestLlegadaConRedondeoHaciaArriba` | Movimiento cuya duración **no** es múltiplo de 100 ms (por ejemplo la polilínea canónica de 2769 ms) | Llegada en el tick 28 (`ceil(2769/100)`), no en el 27. Fija por escrito el redondeo del tick discreto para que nadie lo "arregle" más tarde |
-| **M2** | `TestUnCaminoLargoNoAcumulaDeriva` | 60 tiles en línea recta de hierba (36 000 ms) | Llegada en el tick 360 exacto; ninguna deriva acumulada. El tiempo se deriva siempre de `epochMs + n*100`, nunca de sumar `+100` a una variable |
-| **M3** | `TestElNumeroDeTickCreceEstrictamente` | Avanzar 10 s | La secuencia observada de `loop.Tick()` es exactamente `0, 1, …, 100`, sin huecos ni repeticiones |
-| **M4** | `TestElOrdenDeFasesEsFijo` | Un tick instrumentado | Las fases ocurren en el orden del canon §6, y en particular la persistencia se **encola** en la fase 8, después de haber emitido los deltas |
-| **M5** | `TestSinIoBloqueanteDentroDelTick` | Tick instrumentado con un repositorio que registra llamadas | Cero I/O síncrono contra PostgreSQL dentro del tick |
-| **M6** | `TestMovimientosSimultaneosSonIndependientes` | 50 unidades con destinos distintos lanzadas en el mismo tick | Cada una llega en su tick calculado; el orden de procesamiento no altera ningún resultado. Hoy `TestSimulacionEsReproducible` cubre parcialmente esto con tres unidades |
-| **M7** | `TestUnPanicoEnUnComandoNoTumbaLaSimulacion` | Comando que provoca un pánico dentro de `applyCommand` | El tick continúa, el resto de comandos se aplican, y el pánico queda registrado y contado. Es el comportamiento que `applyCommand` ya implementa y que ningún test verifica todavía |
+| **M1** | `TestLlegadaConRedondeoHaciaArriba` | Movimiento cuya duración **no** es múltiplo de 100 ms (por ejemplo la polilínea canónica de 2769 ms) | Llegada en el tick 28 (`ceil(2769/100)`), no en el 27. Fija por escrito el redondeo del tick discreto para que nadie lo "arregle" más tarde **Estado (2026-10-21):** ○ sin test. |
+| **M2** | `TestUnCaminoLargoNoAcumulaDeriva` | 60 tiles en línea recta de hierba (36 000 ms) | Llegada en el tick 360 exacto; ninguna deriva acumulada. El tiempo se deriva siempre de `epochMs + n*100`, nunca de sumar `+100` a una variable **Estado (2026-10-21):** ○ sin test. |
+| **M3** | `TestElNumeroDeTickCreceEstrictamente` | Avanzar 10 s | La secuencia observada de `loop.Tick()` es exactamente `0, 1, …, 100`, sin huecos ni repeticiones **Estado (2026-10-21):** ✔ `TestElTickEsEstrictamenteCreciente` (`recovery_test.go`), con nueve pasos y saltos en vez de 0..100. |
+| **M4** | `TestElOrdenDeFasesEsFijo` | Un tick instrumentado | Las fases ocurren en el orden del canon §6, y en particular la persistencia se **encola** en la fase 8, después de haber emitido los deltas **Estado (2026-10-21):** ○ en parte: `TestTerminarElMovimientoDentroDeLaZonaPasaPorIdleYLaOculta` fija que la fase 3 va antes que la 5. |
+| **M5** | `TestSinIoBloqueanteDentroDelTick` | Tick instrumentado con un repositorio que registra llamadas | Cero I/O síncrono contra PostgreSQL dentro del tick **Estado (2026-10-21):** ○ sin test; lo más cercano es `TestConLaColaLlenaSubmitNoBloqueaYCompensa` (`persistence`). |
+| **M6** | `TestMovimientosSimultaneosSonIndependientes` | 50 unidades con destinos distintos lanzadas en el mismo tick | Cada una llega en su tick calculado; el orden de procesamiento no altera ningún resultado. Hoy `TestSimulacionEsReproducible` cubre parcialmente esto con tres unidades **Estado (2026-10-21):** ○ en parte: `TestSimulacionEsReproducible` y `TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick`. |
+| **M7** | `TestUnPanicoEnUnComandoNoTumbaLaSimulacion` | Comando que provoca un pánico dentro de `applyCommand` | El tick continúa, el resto de comandos se aplican, y el pánico queda registrado y contado. Es el comportamiento que `applyCommand` ya implementa y que ningún test verifica todavía **Estado (2026-10-21):** ○ sin test; el código lo hace (`applyCommand` con `recover`). |
 
 ---
 
@@ -280,7 +280,7 @@ El enum completo de `movement.CancelReason` es
 
 ### 4.3 Rechazos del comando `unit.move`
 
-`TestRechazosDeMovimiento` es table-driven con **seis** subcasos y lleva el comentario
+`TestRechazosDeMovimiento` es table-driven con **siete** subcasos (el último, «unidad ajena y muerta», fija el orden de validación) y lleva el comentario
 `// INV-PLAYER-001: un jugador sólo puede comandar unidades propias.` Cada subcase construye su
 propio harness.
 
@@ -336,7 +336,7 @@ Estos tres tests **no** usan el harness: construyen el mundo y las entidades a m
 directamente a `simulation.Hydrate(state, units, cities, movements, nowMs, log)`, que devuelve un
 resultado con los contadores `Resumed`, `Arrived`, `Failed` y la lista `FinishedMovements`. Es la
 mitad en memoria del nivel `recovery`; la mitad durable —crash y reinicio contra PostgreSQL real—
-pertenece a [integration-tests.md](./integration-tests.md) §5.6 y **no se ha ejecutado todavía**.
+pertenece a [integration-tests.md](./integration-tests.md) §5.6, y la ejercitan `TestRecuperacionCompletaTrasReinicio` y `TestConLaColaRealElMovimientoLlevaSuIdYCierraConSuPosicion` contra PostgreSQL real.
 
 | # | Test | Escenario | Aserción exacta |
 |---|---|---|---|
@@ -368,10 +368,10 @@ Casos ○ previstos que refuerzan la propiedad:
 
 | # | Test | Verifica |
 |---|---|---|
-| **R1** | `TestReproducibleAlAgruparTicks` | Avanzar 100 ticks de golpe y avanzar 100 veces un tick producen el mismo estado final: el loop no puede depender del tamaño del lote |
-| **R2** | `TestOrdenDeComandosDentroDelTickEsEstable` | 20 comandos encolados en el mismo tick se aplican en orden FIFO; dos ejecuciones dan el mismo resultado |
-| **R3** | `TestNoSeFiltraElRelojDelSistema` | El escenario ejecutado con el reloj real de la máquina en otro instante da el mismo resultado (regla R3 de [strategy.md](./strategy.md)) |
-| **R4** | `TestReproducibleConGomaxprocsVariable` | El mismo escenario con `-race` y `GOMAXPROCS` en 1, 2 y 8 ⇒ mismo estado final. Si el resultado depende del paralelismo, hay estado compartido no determinista |
+| **R1** | `TestReproducibleAlAgruparTicks` | Avanzar 100 ticks de golpe y avanzar 100 veces un tick producen el mismo estado final: el loop no puede depender del tamaño del lote **Estado (2026-10-21):** ○ sin test. |
+| **R2** | `TestOrdenDeComandosDentroDelTickEsEstable` | 20 comandos encolados en el mismo tick se aplican en orden FIFO; dos ejecuciones dan el mismo resultado **Estado (2026-10-21):** ○ sin test. |
+| **R3** | `TestNoSeFiltraElRelojDelSistema` | El escenario ejecutado con el reloj real de la máquina en otro instante da el mismo resultado (regla R3 de [strategy.md](./strategy.md)) **Estado (2026-10-21):** ✔ estático, no en ejecución: `scripts/lint-determinism.mjs` y su test «el árbol real del Game Server está limpio». |
+| **R4** | `TestReproducibleConGomaxprocsVariable` | El mismo escenario con `-race` y `GOMAXPROCS` en 1, 2 y 8 ⇒ mismo estado final. Si el resultado depende del paralelismo, hay estado compartido no determinista **Estado (2026-10-21):** ○ sin test. |
 
 El determinismo del **generador de mundo** con la misma semilla no se verifica aquí sino en el nivel
 `unit`: `TestGeneracionEsDeterminista` en `world_test.go` (ver [unit-tests.md](./unit-tests.md) §3.1,
@@ -415,18 +415,18 @@ funcional del interest management por chunk, con radio por defecto de 2 chunks.
 
 ## 5. Casos ○ previstos sobre el loop y los eventos
 
-Ninguno existe todavía. Se listan para que el mapa de cobertura sea completo y para que quien los
-escriba no tenga que redescubrir el escenario.
+Ninguno existe con este nombre (comprobado el 2026-10-21; cada fila dice si algo lo cubre en parte). Se listan
+para que el mapa de cobertura sea completo y para que quien los escriba no tenga que redescubrir el escenario.
 
 | # | Test | Escenario | Aserción exacta |
 |---|---|---|---|
-| **M8** | `TestOrdenExactoDeEventosAlReemplazar` | Reemplazo de orden como en §4.1 | Secuencia exacta de tipos emitidos en ese tick: `unit.movement.cancelled` (`reason: "REPLACED"`) → `unit.move.accepted` → `unit.movement.started`, y sus `seq` en ese orden |
-| **M9** | `TestDosOrdenesEnElMismoTick` | Dos `unit.move` para la misma unidad encolados en el mismo tick | Se aplican en orden de llegada; queda un único movimiento activo, el último, y dos cancelados |
-| **M10** | `TestNuncaHayDosMovimientosActivos` (`INV-MOVE-001`) | 100 ticks con órdenes solapadas | En **cada** tick, el número de movimientos activos de esa unidad es 0 o 1, nunca 2. Se comprueba tick a tick, no sólo al final |
-| **M11** | `TestUnMovimientoTerminalNuncaSeReactiva` (`INV-MOVE-007`) | Tras 100 ticks | Ningún movimiento `CANCELLED`, `COMPLETED` o `FAILED` vuelve a `ACTIVE` en ningún tick intermedio |
-| **M12** | `TestCancelarSinMovimientoActivoNoEsError` | `unit.cancel_move` sobre una unidad `IDLE` | No es error: se responde con la última información conocida y el estado no cambia ([../specs/unit.md](../specs/unit.md) §7) |
-| **M13** | `TestCooldownSeLeeDeLaConfiguracion` | `ProtectionCooldown: 60 * time.Second` | La transición a protegida ocurre a los 60 s, no a los 300. Hace cumplir el canon §9: ningún valor de gameplay hardcodeado |
-| **M14** | `TestLasTransicionesDePresenciaOcurrenEnLaFase5` | Tick instrumentado en los instantes de transición | Las transiciones de presencia ocurren en la fase 5 (temporizadores y eventos programados), no en otra |
+| **M8** | `TestOrdenExactoDeEventosAlReemplazar` | Reemplazo de orden como en §4.1 | Secuencia exacta de tipos emitidos en ese tick: `unit.movement.cancelled` (`reason: "REPLACED"`) → `unit.move.accepted` → `unit.movement.started`, y sus `seq` en ese orden **Estado (2026-10-21):** ○ sin test; el orden está en el código. |
+| **M9** | `TestDosOrdenesEnElMismoTick` | Dos `unit.move` para la misma unidad encolados en el mismo tick | Se aplican en orden de llegada; queda un único movimiento activo, el último, y dos cancelados **Estado (2026-10-21):** ○ sin test; con la unidad `IDLE` saldría un único cancelado, no dos. |
+| **M10** | `TestNuncaHayDosMovimientosActivos` (`INV-MOVE-001`) | 100 ticks con órdenes solapadas | En **cada** tick, el número de movimientos activos de esa unidad es 0 o 1, nunca 2. Se comprueba tick a tick, no sólo al final **Estado (2026-10-21):** ○ sin test; el estado guarda un movimiento por unidad, y el índice de la base lo prueba `TestIndiceUnicoImpideDosMovimientosActivos`. |
+| **M11** | `TestUnMovimientoTerminalNuncaSeReactiva` (`INV-MOVE-007`) | Tras 100 ticks | Ningún movimiento `CANCELLED`, `COMPLETED` o `FAILED` vuelve a `ACTIVE` en ningún tick intermedio **Estado (2026-10-21):** ○ sin test. |
+| **M12** | `TestCancelarSinMovimientoActivoNoEsError` | `unit.cancel_move` sobre una unidad `IDLE` | No es error: se responde con la última información conocida y el estado no cambia ([../specs/unit.md](../specs/unit.md) §7) **Estado (2026-10-21):** ○ sin test, y **difiere**: no responde nada. |
+| **M13** | `TestCooldownSeLeeDeLaConfiguracion` | `ProtectionCooldown: 60 * time.Second` | La transición a protegida ocurre a los 60 s, no a los 300. Hace cumplir el canon §9: ningún valor de gameplay hardcodeado **Estado (2026-10-21):** ○ sin test: todos los tests usan 300 s. |
+| **M14** | `TestLasTransicionesDePresenciaOcurrenEnLaFase5` | Tick instrumentado en los instantes de transición | Las transiciones de presencia ocurren en la fase 5 (temporizadores y eventos programados), no en otra **Estado (2026-10-21):** ○ sin test; `ProcessTimers` es la fase 5. |
 
 ---
 

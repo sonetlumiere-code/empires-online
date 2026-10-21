@@ -2,7 +2,8 @@
 
 Procedimiento completo de despliegue de Empires Online: frontend Next.js en Vercel, Game Server en VPS dedicado, Postgres y Redis gestionados, reverse proxy con terminación TLS y upgrade a WSS, migraciones, verificación, rollback y checklist de seguridad.
 
-> Estado: **diseño objetivo**. El proyecto es greenfield; no hay ningún entorno desplegado todavía. Este
+> Estado: **diseño objetivo**. El código existe y la CI construye sus artefactos —la imagen del Game Server y
+> el build de Next.js—, pero no hay ningún entorno desplegado todavía. Este
 > documento es la especificación que debe cumplirse en el primer despliegue, no la descripción de uno
 > existente.
 
@@ -104,10 +105,10 @@ Cada PR genera un despliegue *preview* con URL propia. Reglas:
 
 ### 2.3 Build y despliegue
 
-> **`apps/web/` existe y construye** (Next.js 15 + React 19 + PixiJS 8, 58 tests en verde, `next build`
-> correcto), y los scripts `web:dev` y `web:build` están declarados en `package.json`. Lo que **no** existe
-> es ningún despliegue: nunca se ha subido a Vercel ni a ningún otro sitio. Todo el §2 describe el
-> despliegue objetivo, no uno existente. La CI tampoco ejecuta `web:build` todavía.
+> **`apps/web/` existe y construye** (Next.js 15 + React 19 + PixiJS 8), con los scripts `web:dev` y
+> `web:build` en `package.json`; la CI ejecuta su suite de Vitest y `web:build`, y escanea el bundle en busca
+> de secretos con valores canario. Lo que **no** existe es ningún despliegue: nunca se ha subido a Vercel ni a
+> ningún otro sitio. Todo el §2 describe el despliegue objetivo, no uno existente.
 
 - Build command: `pnpm run web:build` desde la raíz del monorepo; `apps/web` como directorio de la app.
 - El paquete `@empires-online/protocol` se construye como dependencia del workspace: los esquemas Zod deben
@@ -425,34 +426,33 @@ antelación por el canal habitual del proyecto.
 # Procedimiento completo en backups.md §7.
 ```
 
-### Paso 3 — Entender que las migraciones las aplica el propio arranque
+### Paso 3 — Migrar con el binario `migrate`
 
-**No hay un paso de migración separado, porque el binario no tiene subcomando `migrate`.** Las migraciones
-están embebidas en el binario con `go:embed` y `postgres.Migrate` las aplica **automáticamente al arrancar**,
-antes de abrir ninguna conexión de juego, usando golang-migrate. Consecuencias operativas, que hay que
-asumir tal cual:
+**En producción el servidor no migra al arrancar**: con `EO_ENV=production`, `EO_MIGRATE_ON_START` vale `false`
+por defecto, y el arranque lo registra (`migración automática desactivada; se asume el esquema ya migrado`).
+El esquema se migra **antes**, con el segundo binario de la imagen (§3.1), que lleva embebidas exactamente las
+migraciones que espera el servidor de esa misma imagen:
 
-- **El orden "esquema primero, aplicación después" se cumple igualmente**, pero dentro del mismo arranque:
-  la versión nueva migra y luego se pone a servir. Nunca hay código nuevo hablando con un esquema viejo.
-- **No se puede migrar sin desplegar, ni desplegar sin migrar.** Para migraciones aditivas eso da igual. Para
-  destructivas obliga a la disciplina de dos fases de §7.3, que es la que se quería de todas formas.
-- **Un esquema marcado como `dirty`** (una migración anterior que falló a medias) hace que el proceso
-  **se niegue a arrancar**, con un mensaje que nombra la versión afectada. Es deliberado: continuar sería
-  adivinar. Eso convierte una migración fallida en un despliegue que no levanta, no en un servidor sirviendo
-  sobre un esquema a medias.
-
-Verifica el estado del esquema desde el cliente de Postgres, no desde el binario. golang-migrate mantiene
-`schema_migrations` con dos columnas, `version` y `dirty`:
-
-```sql
-SELECT version, dirty FROM schema_migrations;
+```bash
+cd /opt/empires-online
+# Versión aplicada y marca dirty (sale con código 2 si está sucio)
+docker compose run --rm --no-deps --entrypoint /usr/local/bin/migrate game-server -version
+# Aplicar las pendientes con la imagen NUEVA (EO_IMAGE_TAG ya apunta a ella)
+docker compose run --rm --no-deps --entrypoint /usr/local/bin/migrate game-server
 ```
 
-Si `dirty` es `true`, **para el despliegue aquí** y resuelve la migración antes de continuar
-(ver [disaster-recovery.md](./disaster-recovery.md#e7-despliegue-defectuoso)).
+Lee `EO_POSTGRES_URL` del mismo `env_file` que el servidor, de modo que no puede migrar otra base. Con el
+servidor viejo todavía en pie, una migración aditiva (*expand*) no le afecta; una destructiva obliga a la
+disciplina de dos fases de §7.3.
 
-Un paso de migración desacoplado del arranque —un subcomando `migrate up` / `migrate status` que permita
-migrar con el servidor viejo aún en pie— queda como **TBD (fuera de MVP)**.
+- **Un esquema marcado como `dirty`** (una migración anterior que falló a medias) hace que `migrate` falle con un
+  mensaje que nombra la versión afectada, y que un servidor que sí migre al arrancar **se niegue a arrancar**.
+  Es deliberado: continuar sería adivinar.
+- Si `dirty` es `true`, **para el despliegue aquí** y resuelve la migración antes de continuar
+  (ver [disaster-recovery.md](./disaster-recovery.md#e7-despliegue-defectuoso)).
+
+`migrate` no tiene `down` (§7.3). Fuera de producción el servidor sigue migrando al arrancar, que es lo que
+quiere el desarrollo de una sola instancia ([../database/migrations.md](../database/migrations.md) §1.2).
 
 ### Paso 4 — Desplegar la imagen nueva
 
@@ -460,11 +460,11 @@ migrar con el servidor viejo aún en pie— queda como **TBD (fuera de MVP)**.
 cd /opt/empires-online
 echo "EO_IMAGE_TAG=<sha-nuevo>" > .image-tag        # registro del tag activo
 docker compose pull
-docker compose up -d
+docker compose up -d --wait
 ```
 
-No se usa `--wait`: la imagen no declara `HEALTHCHECK` (§3.1), así que no habría nada que esperar. La espera
-real es el Paso 5, sondeando `/ready` desde el host:
+`--wait` espera al `HEALTHCHECK` de la imagen (§3.1), que mira `/health`: dice que el proceso vive, no que sus
+dependencias respondan. La espera real es la de `/ready`, sondeada desde el host:
 
 ```bash
 # Espera activa a que el servidor esté listo, con tope de 120 s
@@ -488,8 +488,8 @@ curl -fsS http://127.0.0.1:9090/metrics | grep '^eo_game_tick_duration_seconds_c
 sleep 5
 curl -fsS http://127.0.0.1:9090/metrics | grep '^eo_game_tick_duration_seconds_count'
 
-# Las migraciones se aplicaron y el mundo se rehidrató sin sorpresas
-docker logs empires-game-server 2>&1 | grep -E '"msg":"(migraciones aplicadas|esquema ya al día)"' | tail -1
+# El servidor arrancó sin migrar (lo hizo el Paso 3) y el mundo se rehidrató sin sorpresas
+docker logs empires-game-server 2>&1 | grep '"msg":"migración automática desactivada' | tail -1
 docker logs empires-game-server 2>&1 | grep '"msg":"mundo rehidratado"' | tail -1
 docker logs empires-game-server 2>&1 | grep '"msg":"arrancando Empires Online game server"' | tail -1
 
@@ -506,10 +506,12 @@ Cierre de la verificación: **una conexión real de un jugador**. Un despliegue 
 un movimiento se ha completado de extremo a extremo, y eso está automatizado:
 
 ```bash
-node scripts/smoke.mjs --url https://game.<dominio>
+node scripts/smoke.mjs --url https://game.<dominio> --web https://<dominio-web>
 ```
 
-El script recorre el vertical slice completo contra el despliegue: `/health`, `/ready`, alta o login,
+`--url` es el Game Server y `--web` la aplicación de Next.js, que desde
+[ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) da de alta y emite los tickets. El script
+recorre el vertical slice completo contra el despliegue: `/health`, `/ready`, alta o login en la web,
 `session.hello → session.welcome`, `world.snapshot`, un `unit.move` con su `unit.movement.started`, y
 —esto es lo que ninguna sonda HTTP puede comprobar— **cierra la conexión a mitad de trayecto, espera sin
 cliente conectado más allá de la hora de llegada, y reconecta para verificar que la unidad llegó**. Si el
@@ -565,9 +567,9 @@ Entre ambas, el rollback siempre es un cambio de imagen. Detalles en
 [../database/migrations.md](../database/migrations.md).
 
 Aquí es donde la regla deja de ser una preferencia y pasa a ser un requisito, porque **no hay forma de
-revertir el esquema con las herramientas del propio despliegue**: el binario no expone `migrate down`, y
-volver a la imagen anterior **no** deshace las migraciones ya aplicadas — el arranque solo migra hacia
-adelante. Si un `.down.sql` tiene que ejecutarse, hoy se ejecuta a mano contra la base, con revisión de otra
+revertir el esquema con las herramientas del propio despliegue**: el binario `migrate` sólo aplica y
+consulta, no tiene `down`, y volver a la imagen anterior **no** deshace las migraciones ya aplicadas —
+`migrate` y el arranque sólo migran hacia adelante. Si un `.down.sql` tiene que ejecutarse, hoy se ejecuta a mano contra la base, con revisión de otra
 persona y backup previo:
 
 ```bash
@@ -634,7 +636,8 @@ y la unidad se queda en su última posición consolidada. Es un RPO conocido, no
 ### 8.4 Secuencia de arranque
 
 1. `config.Load()` y validación fail-fast (ver [configuration.md](./configuration.md#4-validación-al-arrancar-fail-fast)).
-2. **Se aplican las migraciones embebidas** (§6, Paso 3). Un esquema `dirty` aborta el arranque aquí.
+2. **Migraciones embebidas**, sólo si `EO_MIGRATE_ON_START` es verdadera, que no lo es en producción: allí ya
+   las aplicó `migrate` (§6, Paso 3). Si se aplican, un esquema `dirty` aborta el arranque aquí.
 3. Se conecta a Postgres y a Redis.
 4. **Se carga el mundo:** se lee `world_state` (semilla, dimensiones, `epoch_ms`, tick) y **se regenera el
    terreno desde la semilla**. La copia de `world_chunks` solo se escribe la primera vez; en los arranques
@@ -648,13 +651,14 @@ y la unidad se queda en su última posición consolidada. Es un RPO conocido, no
      teletransporta a nadie por un dato dudoso.**
    Las murallas de las ciudades existentes vuelven a bloquear su rectángulo 3×3 —la capa de ocupación no se
    persiste, se deriva—, y lo que una caída haya dejado dentro de una muralla, o en marcha a través de ella, se
+   aparta o se detiene como en el tick del alta (`RN-CITY-022` en [../specs/city.md](../specs/city.md)).
+
    Antes de rehidratar, la **validación de carga** (`EO-119`) comprueba lo que el esquema no garantiza —población,
    límite de era, marcas de presencia, posición y tipo de cada unidad, guarniciones y dueños de territorio— y
    emite un `invariant_violation` por hallazgo. Si alguno es `FAIL_FAST` (una unidad o un centro de ciudad fuera
    del mundo o sobre terreno intransitable), **el arranque aborta sin escribir nada** y hay que corregir el dato a
    mano antes de volver a arrancar. Lo demás se repara en una sola transacción, con un evento `InvariantRepaired`
    en `world_events` por cada corrección.
-   aparta o se detiene como en el tick del alta (`RN-CITY-022` en [../specs/city.md](../specs/city.md)).
 6. Arrancan el servidor HTTP, el de métricas y el game loop; `/ready` empieza a devolver 200.
 7. Los jugadores reconectan (con *backoff*), obtienen ticket nuevo, envían `session.hello`, reciben
    `session.welcome` y un `world.snapshot` del área de interés (por defecto 5×5 chunks), y a partir de ahí
@@ -717,10 +721,11 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 
 ### Aplicación
 
-- [ ] Imagen no root, sin shell, `cap_drop: ALL`, `no-new-privileges`, `read_only`.
+- [ ] Imagen no root (`alpine` con `wget` para su `HEALTHCHECK`, §3.1), `cap_drop: ALL`, `no-new-privileges`, `read_only`.
 - [ ] Etiqueta de imagen por SHA de commit, no `latest`.
 - [ ] `EO_ENV=production` y `EO_LOG_LEVEL` distinto de `debug`. **El nivel de log es comprobación manual: el arranque no lo valida.**
-- [ ] Ninguna verificación automatizada depende de un `HEALTHCHECK` de la imagen ni de un subcomando `migrate` / `healthcheck`: **no existen** (§3.1, §6 Paso 3).
+- [ ] La readiness se comprueba contra `/ready` desde el host, no con el `HEALTHCHECK` de la imagen, que sólo mira `/health` (§3.1).
+- [ ] El despliegue ejecuta `migrate` antes de arrancar el servidor y para si el esquema está `dirty` (§6, Paso 3).
 - [ ] Rate limit activo: 20 msg/s con burst 40 por conexión.
 - [ ] Idempotencia operativa: `requestId` repetido devuelve la respuesta original y **no** re-ejecuta.
 - [ ] Los logs no contienen tickets, DSN completos ni payloads con datos personales.

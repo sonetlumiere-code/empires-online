@@ -908,8 +908,11 @@ llegan con Combat, fuera del MVP; ni la geometría de las zonas del mundo canón
    `entity.despawn { reason: "HIDDEN" }` o `entity.spawn` por `Hub.BroadcastChunkExcept`; y
    `world.snapshot` filtra las unidades ocultas ajenas por destinatario. Cero mensajes nuevos en el
    protocolo. El estado se persiste por dirty-flag; el tick no hace I/O.
-8. **HECHO** — Emisión de `city.update` con `presence_state` y `protection_until` en cada transición, y
-   evento de dominio `CityProtectionEngaged` registrado en `world_events`.
+8. **HECHO** — Emisión de `city.update` con `presence_state` y `protection_until` en cada transición.
+   **Cerrado por decisión** en lo demás ([../specs/presence.md](../specs/presence.md) §11, 2026-10-21): la
+   presencia no se registra en `world_events` en el MVP. El texto anterior marcaba como hecho el «evento de
+   dominio `CityProtectionEngaged` registrado en `world_events`», que nunca existió; la reconciliación del
+   2026-10-21 lo encontró y la spec decide no escribirlo hasta Combat, con sus motivos.
 9. **HECHO** — Código de error `CITY_PROTECTED` definido y devuelto por las acciones que la protección
    bloquea. En el MVP la superficie de acciones bloqueables es mínima; el código existe, está testeado y
    su uso se amplía con Combat.

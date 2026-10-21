@@ -10,6 +10,13 @@ Propósito: justificar la decisión central del proyecto — el camino de una un
 | Índice | [README.md](README.md) |
 | Relacionados | [ADR-003](ADR-003-postgresql-source-of-truth.md), [ADR-007](ADR-007-game-loop-frequency.md), [ADR-008](ADR-008-grid-coordinate-system.md) |
 
+> **Sustitución parcial (2026-10-20, anotada el 2026-10-21).** Cuándo se escribe la posición consolidada de la
+> unidad —«al finalizar el movimiento y en el flush periódico de dirty-flag», en la tabla de persistencia de
+> este ADR— queda **sustituido por [ADR-013](ADR-013-persistence-pipeline.md)**: el inicio y el cierre de un
+> movimiento escriben la unidad en la transacción de su movimiento, el id lo asigna la simulación y el volcado
+> periódico no escribe unidades en marcha. La polilínea temporizada y todo lo demás de este ADR siguen vigentes.
+> El texto anterior se conserva íntegro como registro de la decisión original.
+
 ---
 
 ## 1. Contexto

@@ -10,7 +10,7 @@ Todo el DDL de este documento es **transcripción literal** de las migraciones a
 
 ## 1. Alcance y clasificación de tablas
 
-Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que sigue describe qué escribe cada una **hoy**.
+La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempotency_keys` (§14), así que el esquema del juego tiene **dieciséis**, más `schema_migrations`, que es de golang-migrate. Lo que sigue describe qué escribe cada una **hoy**.
 
 | Tabla | Clasificación | Escrito por |
 |---|---|---|
@@ -19,7 +19,7 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 | `factions` | MVP: activa (catálogo) | Migración de semilla `000002` |
 | `eras` | MVP: activa (catálogo) | Migración de semilla `000002` |
 | `cities` | MVP: activa | Alta transaccional (incluido el recálculo de `population`) + `UPDATE` encolado por cada transición de presencia |
-| `units` | MVP: activa | Alta transaccional + dirty-set y flush por lotes |
+| `units` | MVP: activa | Alta transaccional; la transacción de inicio y la de cierre de cada movimiento ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)); la de la guarnición; y dirty-set y flush por lotes para las unidades que no están en marcha |
 | `unit_movements` | MVP: activa | Escritura durable encolada (inicio, cancelación, finalización) |
 | `world_state` | MVP: activa (fila única) | `WorldRepo.LoadOrInit` en el bootstrap + `SaveTick` de `current_tick` en el apagado ordenado |
 | `world_chunks` | MVP: activa | Generación determinista del mundo (`COPY`, una sola vez) |
@@ -39,7 +39,7 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 | `trade_transactions` | Fuera de MVP: solo diseño | — |
 | `clans` | Fuera de MVP: solo diseño | — |
 
-"Creada con lógica diferida" significa que la migración crea la tabla, las claves y los índices, pero el Game Server del MVP no ejecuta reglas de negocio sobre ella. Se crean ahora porque sus claves foráneas apuntan a tablas activas (`garrisons` → `units` y `cities`, `treaties` → `players`, `territory_control` → `territories`) y porque introducirlas más tarde obligaría a un paso *expand* adicional sobre tablas ya grandes.
+Las tablas de territorio, safe zones, tratados y guarniciones las creó `000001` antes de que existiera su mecánica, porque sus claves foráneas apuntan a tablas activas (`garrisons` → `units` y `cities`, `treaties` → `players`, `territory_control` → `territories`) y porque introducirlas más tarde habría obligado a un paso *expand* adicional sobre tablas ya grandes. Hoy todas tienen su lógica (M5–M7); la única tabla creada que sigue sin escritor es `sessions`.
 
 ---
 
@@ -168,7 +168,7 @@ Estas reglas aplican a **todas** las tablas y no se repiten en cada ficha:
 2. **Timestamps**: `timestamptz` siempre. Los instantes que la simulación compara con aritmética entera se guardan además como `bigint` en epoch milliseconds con sufijo `_time_ms` / `_ms` (ver §5). No todas las marcas humanas tienen contrapartida en milisegundos: sólo las que el dominio evalúa.
 3. **`created_at timestamptz NOT NULL DEFAULT now()`** en toda tabla. **`updated_at`** existe y lo mantiene un trigger, nunca la aplicación, sólo en las seis tablas que se actualizan de verdad: `players`, `world_state`, `cities`, `units`, `unit_movements` y `territory_control`. Las tablas de una sola escritura (`civilizations`, `factions`, `eras`, `world_chunks`, `safe_zones`, `territories`, `garrisons`) y las append-only (`world_events`) no la llevan.
 4. **Enums de dominio como `text` + `CHECK`**, nunca tipos `ENUM` de PostgreSQL: añadir un valor a un `CHECK` es un `ALTER TABLE ... ADD CONSTRAINT ... NOT VALID` seguido de `VALIDATE`, sin lock exclusivo prolongado ni el problema de `ALTER TYPE ... ADD VALUE` dentro de transacción.
-5. **Concurrencia optimista**: `version integer NOT NULL DEFAULT 0` **sólo en `cities`**, que es la única entidad mutable desde dos caminos de escritura (la máquina de presencia y el recálculo de población). `units` **no** tiene `version`: su única escritura concurrente es el lote de flush, que es de un solo escritor. Añadir `version` a `units` sería pagar una columna y un conflicto que hoy nadie puede producir.
+5. **Concurrencia optimista**: `version integer NOT NULL DEFAULT 0` en `cities`, mutable desde dos caminos de escritura (la máquina de presencia y el recálculo de población), y en `territory_control`, cuyo cambio de dueño lo exige la spec de territorio (añadida por `000003`, §15.2). `units` **no** tiene `version`: su única escritura concurrente es el lote de flush, que es de un solo escritor. Añadir `version` a `units` sería pagar una columna y un conflicto que hoy nadie puede producir.
 6. **Sin bounds de mundo hardcodeados**: ningún `CHECK` de coordenadas de entidad fija un límite superior. `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` son configuración y el dominio los valida contra `world_state`. Poner `512` en un `CHECK` congelaría un valor de gameplay dentro del esquema y contradiría la regla de configuración única.
 7. **`ON DELETE`**: se elige explícitamente donde importa. `CASCADE` desde el agregado raíz hacia sus hijos estrictos (`players` → `cities`, `units`, `sessions`, `treaties`; `units` → `unit_movements`, `garrisons`; `cities` → `garrisons`; `territories` → `territory_control`), `SET NULL` en referencias opcionales (`units.city_id`, `world_events.player_id`) y **sin cláusula** —es decir `NO ACTION`— hacia los catálogos (`players.civilization_id`, `players.faction_id`, `cities.era`): borrar una civilización que tiene jugadores debe fallar, y `NO ACTION` ya lo impide.
 
@@ -592,9 +592,9 @@ Las operaciones van juntas **por necesidad**: si se hicieran por separado, entre
 
 > **`unit_movements.id` lo asigna la simulación.** La columna sigue siendo `GENERATED ALWAYS AS IDENTITY`, pero el Game Server inserta siempre con `OVERRIDING SYSTEM VALUE` y un id propio, por encima del máximo leído al arrancar. Su secuencia queda desfasada y no se usa: un `INSERT` manual sin id chocaría con ids ya asignados.
 
-Si dos transacciones concurrentes intentan esto, la segunda bloquea en el índice único y termina abortando con `23505` (`unique_violation`) o con un conflicto de serialización. El trabajo se reintenta hasta **3 veces**, con una espera creciente de 200 ms por número de intento, en la cola de persistencia; si se agotan, se ejecuta la compensación `OnPermanentFailure` del trabajo. Hoy esa compensación **sólo registra el fallo a `level=error`**: detener la unidad exigiría volver a entrar en el loop por el canal de comandos —el worker no puede mutar el mundo desde otra goroutine sin provocar una carrera— y es trabajo pendiente. Nunca se resuelve borrando el índice.
+Si dos transacciones concurrentes intentan esto, la segunda bloquea en el índice único y termina abortando con `23505` (`unique_violation`) o con un conflicto de serialización. El trabajo se reintenta hasta **3 veces**, con una espera creciente de 200 ms por número de intento, en la cola de persistencia; si se agotan, se ejecuta la compensación `OnPermanentFailure` del trabajo. Para un inicio de movimiento, esa compensación vuelve a entrar en el loop por el canal de comandos —el worker no puede mutar el mundo desde otra goroutine— y la simulación detiene la unidad ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.4, `TestUnInicioQueNoSePersisteDetieneLaUnidad`). Nunca se resuelve borrando el índice.
 
-**Recuperación tras crash.** Al arrancar se cargan todos los movimientos `ACTIVE` con `MovementRepo.ListActive` (§2.3 de [indexing.md](./indexing.md)). Para cada uno, `simulation.Hydrate` decide: si `arrival_time_ms <= now_ms`, el movimiento se completa —la unidad aparece en el último waypoint, vuelve a `IDLE` y la fila se cierra como `COMPLETED`—; si sigue en curso, se reanuda desde la polilínea calculando la posición como el último waypoint con `tMs <= now_ms - start_time_ms`; y si la polilínea es inválida —o su unidad ya no existe— la fila se cierra como `FAILED` y **la unidad se queda en su última posición consolidada**, sin teletransportarse a ninguna parte por un dato dudoso. El cierre de esas filas lo aplica `GameStore.FinishRecoveredMovements` antes de arrancar el loop, con un `UPDATE` por movimiento (`status` + `finished_at = now()`).
+**Recuperación tras crash.** Al arrancar se cargan todos los movimientos `ACTIVE` con `MovementRepo.ListActive` (§2.3 de [indexing.md](./indexing.md)). Para cada uno, `simulation.Hydrate` decide: si `arrival_time_ms <= now_ms`, el movimiento se completa —la unidad aparece en el último waypoint, vuelve a `IDLE` y la fila se cierra como `COMPLETED`—; si sigue en curso, se reanuda desde la polilínea calculando la posición como el último waypoint con `tMs <= now_ms - start_time_ms`; y si la polilínea es inválida —o su unidad ya no existe— la fila se cierra como `FAILED` y **la unidad se queda en su última posición consolidada**, sin teletransportarse a ninguna parte por un dato dudoso. El cierre de esas filas lo aplica `GameStore.FinishRecoveredMovements` antes de arrancar el loop, una transacción por movimiento que escribe `status` + `finished_at = now()` en la fila y deja la unidad `IDLE` en su tile.
 
 ---
 
@@ -886,7 +886,7 @@ CREATE INDEX world_events_player_idx     ON world_events (player_id, occurred_at
 
 | Columna | Semántica |
 |---|---|
-| `event_type` | Nombre del evento de dominio en **pasado**: `PlayerBootstrapped`, `UnitMovementStarted`, `UnitMovementCompleted`, `CityProtectionEngaged`. Sin `CHECK` de formato: el conjunto crece constantemente y una expresión regular en el esquema sólo añadiría una migración por cada convención nueva |
+| `event_type` | Nombre del evento de dominio en **pasado**. Los que se escriben hoy: `PlayerBootstrapped`, `TerritoryControlChanged`, `UnitGarrisoned`, `UnitUngarrisoned`, `TreatyExpired` e `InvariantRepaired`. El movimiento y la presencia no escriben eventos por decisión ([../specs/movement.md](../specs/movement.md) §11, [../specs/presence.md](../specs/presence.md) §11). Sin `CHECK` de formato: el conjunto crece constantemente y una expresión regular en el esquema sólo añadiría una migración por cada convención nueva |
 | `tick` | `tickNumber` en que ocurrió. Permite reproducir el orden exacto dentro de un mismo milisegundo |
 | `occurred_at` | Instante del hecho, `now()` por defecto. **No hay `occurred_at_ms`**: el orden fino ya lo da `tick`, y nada compara este instante con aritmética entera |
 | `player_id` | Actor, cuando lo hay. `SET NULL` para no perder el evento al borrar un jugador. El índice por jugador es parcial, porque los eventos sin actor no se consultan por esta vía |

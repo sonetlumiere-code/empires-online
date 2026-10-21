@@ -4,9 +4,10 @@ Arquitectura interna del proceso autoritativo `services/game-server`: paquetes y
 
 > Estado: **implementado**. El servicio compila (`go build ./...`), pasa `go vet` y su suite de tests
 > unitarios está en verde. Lo que aquí se describe es el código que existe; lo que todavía no existe se
-> marca explícitamente como **fuera de MVP** o **TBD**. Los tests de integración contra PostgreSQL y
-> Redis reales están escritos y **ambos ejecutados y en verde**: 12 tests contra un cluster PostgreSQL
-> local y 9 contra un Redis real en WSL, todos con el detector de carreras activo (§8).
+> marca explícitamente como **fuera de MVP** o **TBD**. La suite de integración contra PostgreSQL y
+> Redis reales se ejecuta y está en verde con el detector de carreras activo, en la CI y en local contra un
+> cluster propio y un Redis en WSL (§8); el recuento vigente está en
+> [../roadmap/backlog.md](../roadmap/backlog.md).
 > Documentos relacionados: [game-loop.md](./game-loop.md) · [pathfinding.md](./pathfinding.md) ·
 > [specs funcionales](../specs/README.md) · [esquema de base de datos](../database/schema.md) ·
 > [invariantes](../invariants/README.md) · [estrategia de tests](../testing/strategy.md) ·
@@ -625,9 +626,9 @@ veces seguidas para descubrir tres variables mal puestas es una pérdida de tiem
   las dos comprobaciones que Windows no puede hacer: el detector de carreras —`-race` necesita cgo— y
   los tests de integración contra un Redis real. Desde WSL 1 `localhost:5433` alcanza el PostgreSQL de
   Windows, así que la suite completa corre desde allí.
-- **Los tests de integración están ejecutados y en verde**: 12 contra PostgreSQL
-  (`internal/persistence/postgres/integration_test.go`) y 9 contra Redis
-  (`internal/persistence/redis/redis_integration_test.go`), todos con `-race`.
+- **Los tests de integración están ejecutados y en verde**, con `-race`: los ficheros
+  `*integration_test.go` de `internal/persistence/postgres` (que prueban también `internal/httpapi`) y de
+  `internal/persistence/redis`, con la etiqueta `integration` y `EO_INTEGRATION=1`.
 - `psql`, `initdb` y `pg_ctl` están en `C:\Program Files\PostgreSQL\16\bin`, fuera del `PATH`;
   `pnpm run pg:psql` los localiza y abre una sesión contra el cluster local. Ojo con la distinción:
   los scripts **`db:*`** pasan todos por `docker compose exec` y aquí no sirven; los **`pg:*`** operan

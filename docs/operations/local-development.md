@@ -1027,7 +1027,8 @@ Marcado explícitamente para que nadie lo busque:
   están en §8; la siembra de desarrollo es `dev:seed`.
 - **Subcomandos del binario del servidor**: no existen. `empires-server` hace una sola cosa, arrancar.
   Las migraciones explícitas tienen su propio binario, `cmd/migrate` (§5.4).
-- **Emisión del game ticket desde Next.js**: no existe todavía; la hace el Game Server (§5.7).
+- **Emisión del game ticket desde el Game Server**: ya no existe. La hacen las rutas `/api/auth/*` de
+  Next.js ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)); el Game Server sólo la verifica.
 - **ESLint**: no hay. `pnpm run lint` sólo ejecuta el lint de determinismo de Go.
 - **Combate, economía, tecnologías, comercio, clanes, chat, ranking**: fuera del primer vertical slice.
 - **Tests de carga (k6)**: fuera de MVP.

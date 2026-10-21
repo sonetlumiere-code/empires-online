@@ -602,6 +602,12 @@ func TestTicketNoSePuedeReutilizarEnOtraConexion(t *testing.T) {
 	_ = c2.c.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, err = c2.read()
 	require.Error(t, err, "el ticket reutilizado debe rechazarse")
+
+	// ADR-019: con el mismo cierre que cualquier otro ticket rechazado, y sin
+	// mensaje previo (la primera lectura ya es el cierre).
+	var closeErr *gws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, protocol.CloseUnauthenticated, closeErr.Code)
 }
 
 // INV-PLAYER-001: sólo puedes comandar lo que es tuyo.

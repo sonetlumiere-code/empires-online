@@ -5,6 +5,12 @@ Catálogo de escenarios de fallo con detección, impacto en jugadores, procedimi
 > Este documento asume que los backups existen, están verificados y son restaurables. Si esa premisa no se
 > cumple, la mitad de los procedimientos siguientes no tiene desenlace. Ver
 > [backups.md](./backups.md#8-un-backup-no-verificado-no-cuenta-como-backup).
+>
+> **Estado (2026-10-21):** no hay ningún entorno desplegado. Lo que aquí se dice del código —recuperación al
+> arrancar, `/ready`, métricas, logs— está contrastado con él; lo que se dice de la infraestructura (VPS,
+> servicios gestionados, proxy, firewall) describe el despliegue objetivo de
+> [deployment.md](./deployment.md) §2, cuya configuración todavía no existe en el repositorio (sólo
+> `infra/docker/game-server.Dockerfile`).
 
 ---
 
@@ -15,8 +21,8 @@ una tiene una estrategia de recuperación distinta:
 
 | Capa | Contenido | Ante una pérdida |
 |---|---|---|
-| **PostgreSQL** — *durable source of truth* | Todo lo irrecuperable | Restaurar desde backup + PITR |
-| **Redis** — *hot/transient* | Presencia, sesiones, locks, cooldowns, idempotencia, caché | **Se descarta y se reconstruye**; degradación temporal |
+| **PostgreSQL** — *durable source of truth* | Todo lo irrecuperable, en dos bases: `empires` (el mundo) y `empires_identity` (cuentas y sesiones web de `apps/web`, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) | Restaurar desde backup + PITR, las dos al mismo instante (E4) |
+| **Redis** — *hot/transient* | Presencia (`presence:player:*`), anti-replay de tickets y de tokens de fundación (`ticket:jti:*`) e idempotencia de comandos (`idem:*`). Nada más | **Se descarta y se reconstruye**; degradación temporal |
 | **RAM del Game Server** — simulación activa | Mundo cargado, entidades, movimientos en curso | Se reconstruye desde Postgres al arrancar |
 
 De ahí se deriva la jerarquía de gravedad, que conviene tener interiorizada antes de un incidente:
@@ -59,9 +65,10 @@ Todas las conexiones se cierran. El cliente entra en reconexión con *backoff*. 
 percibida es de **~15–60 s**, la misma de un despliegue normal
 (ver [deployment.md](./deployment.md#85-ventana-de-indisponibilidad-esperada)).
 
-**Pérdida de estado:** el estado *write-through* (creación de entidades, inicio y fin de movimiento,
-ownership, transiciones de presencia, `treaties`, `garrisons`, `world_events`) se aplica en RAM y su
-transacción se encola de inmediato, con hasta 3 reintentos y compensación si se agotan. Se pierde, como
+**Pérdida de estado:** salvo la fundación de un jugador (síncrona: se confirma antes de entrar en el mundo) y
+la entrada en guarnición (se decide en su transacción), el estado *write-through* (inicio y fin de movimiento,
+ownership, transiciones de presencia, `treaties`, salida de guarnición, `world_events`) se aplica en RAM y su
+transacción se encola de inmediato, con hasta 3 intentos y compensación, donde la hay, si se agotan. Se pierde, como
 máximo:
 
 - el estado con *dirty flag* desde el último flush —`EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50` a 10 Hz son
@@ -102,7 +109,7 @@ Las posiciones de unidades en movimiento ya persistido no se pierden en absoluto
 
 - `/ready` en 200 y `eo_game_tick_duration_seconds_count` creciendo a ~10/s.
 - `eo_connected_players` recuperándose hacia el nivel previo.
-- Ningún movimiento `ACTIVE` huérfano: la consulta del invariante `INV-MOVE-001`
+- Ninguna unidad con más de un movimiento `ACTIVE`: la consulta del invariante `INV-MOVE-001`
   (ver [backups.md](./backups.md#63-verificación-antes-de-dar-el-servicio-por-restaurado), consulta 5)
   devuelve cero filas.
 - Sin `INTERNAL_ERROR` sostenido.
@@ -113,8 +120,9 @@ Las posiciones de unidades en movimiento ya persistido no se pierden en absoluto
   en una regla no tumba la simulación del mundo entero. El pánico se registra y el resto del tick continúa.
 - Límite de memoria en el contenedor y vigilancia de `eo_persistence_queue_depth`: el OOM más probable viene
   de una cola que crece sin drenar.
-- Tests de recuperación en `internal/game/simulation` (3 casos): movimiento vencido durante la caída,
-  movimiento en curso reanudado y polilínea inválida. Están en verde.
+- Tests de recuperación en `internal/game/simulation` (6 casos: movimiento vencido durante la caída, en curso
+  reanudado, polilínea inválida, unidad `MOVING` sin movimiento, unidad guarnecida con movimiento y fila que no
+  cuadra con su polilínea), más `TestRecuperacionCompletaTrasReinicio` contra PostgreSQL real. Están en verde.
 - **Catch-up del loop:** el calendario es de tiempo absoluto y los ticks perdidos se descartan; jamás se
   ejecutan en ráfaga para "ponerse al día". Un reinicio no provoca una avalancha de ticks comprimidos.
 
@@ -142,8 +150,9 @@ como mucho los 5 segundos de estado con *dirty flag* no volcado.
 2. **Verifica que Postgres y Redis siguen sanos.** Si lo están —y deberían, son servicios distintos—, el
    problema es solo de cómputo y la recuperación es un reaprovisionamiento, no una restauración.
 3. **Aprovisiona un VPS nuevo** desde la configuración versionada (Caddyfile o Nginx, unidad systemd,
-   `docker-compose.yml`, reglas de firewall). Este paso mide directamente si la infraestructura estaba
-   descrita como código o vivía en la memoria de alguien.
+   `docker-compose.yml` de producción, reglas de firewall). Este paso mide directamente si la infraestructura
+   estaba descrita como código o vivía en la memoria de alguien; hoy esa configuración **no existe** en el
+   repositorio, y escribirla es parte del primer despliegue.
 4. Restaura el archivo de entorno `/etc/empires-online/game-server.env` desde el gestor de secretos, con
    permisos `0600` y propietario root.
 5. **Añade la IP del nuevo VPS a las listas blancas** de Postgres y Redis. Este es el paso que se olvida y
@@ -187,7 +196,7 @@ como mucho los 5 segundos de estado con *dirty flag* no volcado.
 - `/ready` devuelve 503 con `"postgres":"error: ..."` en su mapa `checks`.
 - `eo_database_latency_seconds` se dispara o desaparece.
 - `eo_persistence_queue_depth` crece de forma monótona (alerta `EOPersistenceQueueCritical`).
-- Logs con `"level":"ERROR"` sobre fallos de escritura tras agotar los 3 reintentos.
+- Logs con `"level":"ERROR"` sobre fallos de escritura tras agotar los 3 intentos.
 
 ### Impacto en jugadores
 
@@ -197,9 +206,13 @@ los deltas se emiten. Lo que **no** puede hacer es persistir. En la práctica:
 - Los jugadores conectados siguen jugando, aparentemente con normalidad: el tick nunca hace I/O de Postgres,
   así que la simulación no se entera.
 - La cola de persistencia crece sin drenar, y con ella la cantidad de estado que se perderá si el proceso
-  muere. Los trabajos agotan sus 3 reintentos con backoff y disparan la compensación `OnPermanentFailure`.
-- Cuando la cola se llena, el comando se descarta y el jugador recibe `INTERNAL_ERROR`. Ese es el momento en
-  que la caída deja de ser invisible.
+  muere. Los trabajos agotan sus 3 intentos con backoff y disparan la compensación `OnPermanentFailure` los
+  que la tienen: un movimiento cuyo inicio no se escribió se cancela con `reason: SERVER`.
+- Cuando una partición de la cola se llena, el trabajo se descarta con el error `cola de persistencia
+  saturada: trabajo descartado` y su compensación revierte el efecto en RAM. Ese es el momento en que la caída
+  deja de ser invisible.
+- Si `empires_identity` vive en el mismo clúster, también caen el login, el alta y `POST /api/auth/ticket`:
+  los conectados siguen jugando, pero nadie puede entrar ni reconectar hasta que vuelva.
 
 Ese "aparentemente con normalidad" es la trampa del escenario: **cuanto más se prolonga, más caro es el
 final**.
@@ -214,9 +227,11 @@ final**.
 4. **Decide con la cola en la mano.** Vigila `eo_persistence_queue_depth`:
    - si Postgres vuelve en pocos minutos y la cola es manejable, el sistema drena solo y no hay que hacer
      nada más;
-   - si la cola se acerca al umbral crítico (10000) o la memoria del contenedor se estrecha, **detén el
-     Game Server de forma ordenada**. Es contraintuitivo apagar un servicio que "funciona", pero un apagado
-     ordenado drena la cola y evita la pérdida; un OOM la garantiza.
+   - la cola tiene capacidad fija (4096 trabajos) y a partir de ahí descarta, así que no hay OOM que temer
+     pero sí pérdida: si se acerca al umbral crítico (3000), cada minuto más de caída son escrituras
+     descartadas. Detener el Game Server de forma ordenada **no** salva lo encolado mientras Postgres siga
+     caído —cada trabajo agota sus intentos y se descarta—; sólo deja de acumular estado nuevo que perder.
+     La decisión es entre seguir sirviendo un mundo que no persiste o pararlo.
 5. Cuando Postgres vuelva, arranca el Game Server y verifica el drenaje de la cola hasta cero.
 6. Verifica el invariante `INV-MOVE-001` y el volumen de entidades.
 
@@ -269,7 +284,11 @@ Servicio detenido de inmediato y de forma deliberada. **Pérdida esperada: hasta
    opcional.
 6. **Vacía Redis** (`FLUSHALL`). Tras un PITR, las claves de idempotencia pueden referirse a comandos que ya
    no existen en la base restaurada, y las de presencia a un estado que ya no aplica. Es seguro (§E5).
-7. Apunta `EO_POSTGRES_URL` a la instancia restaurada y arranca el Game Server.
+7. Apunta `EO_POSTGRES_URL` a la instancia restaurada y arranca el Game Server. **Restaura `empires_identity`
+   al mismo instante objetivo**: si sólo se restaura `empires`, las cuentas `ACTIVE` dadas de alta en la
+   ventana perdida quedan sin jugador —el login de una cuenta `ACTIVE` no vuelve a fundar— y hay que pasarlas a
+   `PENDING` (o borrarlas) para que el siguiente login funde de nuevo; y al revés, un jugador sin cuenta ocupa
+   su nombre (`USERNAME_TAKEN`).
 8. **Comunica qué se perdió**, con precisión y sin adornos.
 
 ### Criterios de éxito
@@ -304,10 +323,12 @@ la única copia de un hecho del mundo.
 
 | Contenido | Clave | TTL | Qué pasa al desaparecer |
 |---|---|---|---|
-| Presencia del jugador | `presence:player:{playerId}` | 30 s | El heartbeat cada 10 s la reescribe. Se restablece sola en ≤ 10 s. **No gobierna la transición a `OFFLINE_PENDING`**: eso lo decide el loop en RAM |
+| Presencia del jugador | `presence:player:{playerId}` | 30 s | Desaparece hasta que el jugador vuelve a conectar: el latido sólo renueva el TTL (`EXPIRE`) de una clave que existe, no la recrea. **No gobierna la transición a `OFFLINE_PENDING`**: eso lo decide el loop en RAM |
 | Idempotencia de comandos | `idem:{playerId}:{requestId}` | 300 s | Se pierde la deduplicación de los últimos 5 min; no hay respaldo en PostgreSQL ([ADR-014](../decisions/ADR-014-command-idempotency.md)). Además, si Redis no responde el comando **se ejecuta igualmente**: se prefiere jugar a bloquear al jugador |
-| Anti-replay del ticket | `ticket:jti:{jti}` | 120 s | Un ticket interceptado podría reutilizarse dentro de su TTL de 60 s. Ventana estrecha y transitoria |
-| Sesiones, locks, cooldowns, caché | varias | varios | Se recalculan desde Postgres o se repueblan por uso |
+| Anti-replay del ticket y del token de fundación | `ticket:jti:{jti}` | 120 s | Un ticket interceptado podría reutilizarse dentro de su TTL de 60 s. Ventana estrecha y transitoria |
+
+No hay en Redis sesiones, locks, cooldowns ni caché: las sesiones web viven en `empires_identity` y las de
+juego en la RAM del `Hub`.
 
 Qué **no** hay en Redis, y por eso no se pierde nada del mundo: posiciones de unidades, ownership, estado de
 ciudades, movimientos, territorio, tratados, el mapa. Todo eso es Postgres.
@@ -322,50 +343,56 @@ Durante los segundos u horas que Redis esté vacío o ausente:
    de la clave. Redis mantiene la presencia para observadores externos y para el futuro multiproceso. Así
    que con Redis vacío **o caído**, nadie pasa a `OFFLINE_PENDING` por ese motivo: un jugador con una sesión
    WebSocket abierta sigue `ONLINE`, y uno con varias sesiones sigue `ONLINE` mientras le quede una. Lo que
-   sí se pierde es la visibilidad externa de la presencia hasta que el heartbeat (cada 10 s) reescriba las
-   claves.
+   sí se pierde es la visibilidad externa de la presencia hasta que cada jugador vuelva a conectar: el
+   latido no recrea una clave borrada.
 2. **Idempotencia.** Un `requestId` repetido en la ventana de 5 minutos podría re-ejecutarse. La reserva se
    hace con `SETNX` en Redis **antes** de ejecutar, pero si Redis no responde el comando se ejecuta de todos
    modos: es una decisión consciente —se prefiere jugar a bloquear al jugador— y por eso Redis caído degrada
    la deduplicación en vez de detener el juego. No hay respaldo durable ([ADR-014](../decisions/ADR-014-command-idempotency.md)): con los comandos
-   actuales, mover y cancelar, una reejecución deja el mundo igual. Además, el invariante de
+   actuales —mover, cancelar, guarnecer y salir—, una reejecución deja el mundo igual (la entrada y la salida
+   de guarnición son idempotentes en su transacción). Además, el invariante de
    movimiento contiene el efecto: **una unidad tiene como máximo un movimiento `ACTIVE`**, garantizado por un
    índice único parcial en la base, y una orden nueva cancela la anterior en la misma transacción. Un
    `unit.move` duplicado produce, en el peor caso, un movimiento cancelado (`reason: REPLACED`) y otro
    creado, no dos movimientos simultáneos.
-3. **Anti-replay del ticket.** Sin `ticket:jti:{jti}`, un ticket capturado podría usarse dos veces dentro de
-   su TTL de 60 s. Bajo TLS, capturarlo ya requiere un compromiso previo; y la ventana es de un minuto.
-4. **Caché.** Más consultas a Postgres, latencia algo mayor. Vigila `eo_database_latency_seconds`.
+3. **Anti-replay del ticket.** Con Redis **vacío**, un ticket capturado podría usarse dos veces dentro de su
+   TTL de 60 s; bajo TLS, capturarlo ya requiere un compromiso previo, y la ventana es de un minuto. Con Redis
+   **caído**, el anti-replay falla cerrado: todo handshake se rechaza con `4401` y la fundación de jugadores
+   responde 503, así que **nadie puede conectar ni reconectar** hasta que vuelva.
 
 **Lo que NO ocurre:** ninguna unidad pierde su posición, ningún movimiento se cancela, ninguna ciudad cambia
 de dueño, ningún jugador pierde progreso. El mundo sigue exactamente donde estaba.
 
 ### Procedimiento
 
-1. Confirma el alcance leyendo el mapa `checks` de `/ready`: `"redis":"error: ..."` (caído) frente a
-   `"redis":"ok"` con claves ausentes (vaciado).
-2. **Si está vaciado y accesible: no hay nada que hacer.** El sistema se repuebla solo. Vigila 15 minutos
-   `eo_redis_latency_seconds`, `eo_connected_players` y las transiciones de presencia en los logs.
-3. **Si está caído:** revisa el estado del proveedor. El Game Server debe degradar, no morir: `/ready`
-   devuelve 503 (correcto: el servidor no está plenamente operativo), pero el loop sigue simulando y los
-   jugadores conectados siguen jugando.
+1. Confirma el alcance leyendo el mapa `checks` de `/ready`: `"hot_state":"error: ..."` (caído) frente a
+   `"hot_state":"ok"` con claves ausentes (vaciado).
+2. **Si está vaciado y accesible: no hay nada que hacer.** El sistema se repuebla a medida que los jugadores
+   reconectan. Vigila `eo_connected_players` y el log `no se pudo verificar la idempotencia`
+   (`eo_redis_latency_seconds` existe pero todavía no se mide).
+3. **Si está caído:** revisa el estado del proveedor. El Game Server degrada, no muere: `/ready` devuelve 503
+   (correcto: el servidor no está plenamente operativo), el loop sigue simulando y los jugadores ya
+   conectados siguen jugando, pero toda conexión nueva se rechaza con `4401`, y si el proceso se reinicia
+   durante la caída **no arrancará** hasta que Redis vuelva.
 4. **No restaures Redis desde ningún backup.** No se respalda, y no debe respaldarse
    (ver [backups.md](./backups.md#2-por-qué-redis-no-se-respalda)). Levantar una instancia vacía es la
    recuperación correcta y completa.
-5. Cuando vuelva, verifica que `/ready` regresa a 200 y que las claves de presencia reaparecen:
+5. Cuando vuelva, verifica que `/ready` regresa a 200 y que las claves de presencia reaparecen a medida que
+   los jugadores reconectan:
    ```bash
    redis-cli --scan --pattern "presence:player:*" | head
    ```
-   En local, el equivalente es
-   `docker compose exec redis redis-cli --scan --pattern "presence:player:*"`.
+   En local, con el Redis de WSL: `wsl -d Ubuntu -- redis-cli --scan --pattern "presence:player:*"` (con
+   Docker, `docker compose exec redis redis-cli …`). Sin `EO_REDIS_URL` no hay Redis que inspeccionar: el
+   estado caliente vive en el proceso.
 6. Revisa si alguna ciudad quedó en `OFFLINE_PENDING` o `PROTECTED` de forma indebida. **Debería ser raro**,
    porque esa transición no depende de Redis; si las hay, la causa está en otro sitio y merece investigarse.
    Si el jugador está conectado, la reconexión ya lo corrige.
 
 ### Criterios de éxito
 
-- `/ready` en 200 con `"redis":"ok"` en el mapa `checks`.
-- Las claves de presencia se están escribiendo (cadencia de 10 s).
+- `/ready` en 200 con `"hot_state":"ok"` en el mapa `checks`.
+- Las claves de presencia existen para los jugadores que han reconectado.
 - Sin estados de presencia anómalos para jugadores conectados.
 - **Ninguna pérdida de estado durable**, comprobada con las consultas de volumen de entidades.
 
@@ -373,9 +400,9 @@ de dueño, ningún jugador pierde progreso. El mundo sigue exactamente donde est
 
 - Redis gestionado con alta disponibilidad.
 - **Ensayar `FLUSHALL` en staging con jugadores simulados** y confirmar que degrada como aquí se describe.
-  En local el Redis del compose arranca con AOF (`--appendonly yes`), así que la propiedad **no** se
-  ejercita sola: hay que provocar el vaciado a mano, y merece la pena hacerlo al menos una vez por
-  desarrollador (ver [local-development.md](./local-development.md#62-redis)).
+  En local, el Redis del compose arranca con AOF (`--appendonly yes`) y hay que vaciarlo a mano para
+  ejercitar la propiedad; el de WSL arranca sin persistencia (`--save "" --appendonly no`) y se vacía cada vez
+  que se reinicia (ver [local-development.md](./local-development.md#62-redis)).
 - Revisiones de código con un criterio explícito: **cualquier escritura a Redis que no sea derivable ni
   prescindible es un bug de arquitectura**, y debe ir a Postgres.
 
@@ -393,8 +420,8 @@ Depende del enlace afectado:
 |---|---|
 | Jugadores ↔ VPS | `eo_connected_players` cae en picado, `/ready` sigue en 200 desde dentro del VPS |
 | VPS ↔ Postgres | `checks.postgres` en error, la cola de persistencia crece (ver E3) |
-| VPS ↔ Redis | `checks.redis` en error (ver E5) |
-| Frontend ↔ jugadores | Nadie llega ni a intentar el handshake: `rate(eo_ws_messages_total{direction="inbound",type="session.hello"}[5m])` a cero |
+| VPS ↔ Redis | `checks.hot_state` en error (ver E5) |
+| Frontend ↔ jugadores | Nadie completa el handshake: `rate(eo_ws_messages_total{direction="outbound",type="session.welcome"}[5m])` a cero y sin logs `sesión establecida` (`session.hello` no se cuenta en ninguna métrica). Comprueba también que `apps/web` y `empires_identity` emiten tickets |
 
 La comprobación decisiva: **prueba desde fuera, no desde el VPS**. Muchas particiones solo se ven desde
 Internet, y desde dentro todo parece perfecto.
@@ -446,11 +473,15 @@ persistiendo.
 - `eo_protocol_errors_total{code="INTERNAL_ERROR"}` subiendo tras el despliegue (alerta `EOInternalErrorsRising`).
 - Overruns de tick que no existían antes.
 - `eo_connected_players` que no se recupera tras la ventana normal de reinicio.
-- Rechazos con códigos nuevos: `INVALID_MESSAGE` o `UNSUPPORTED_VERSION` apuntan a divergencia de esquema
-  entre `packages/protocol` y el espejo embebido en el servidor. Los esquemas cliente→servidor son
+- Cierres `4400` en el handshake (logs `handshake rechazado` con `close_code=4400`, sin `system.error`,
+  [ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)) o `system.error` `INVALID_MESSAGE` /
+  `UNSUPPORTED_VERSION` ya en sesión apuntan a divergencia de esquema entre `packages/protocol` y el espejo
+  embebido en el servidor. Los esquemas cliente→servidor son
   **estrictos** (`additionalProperties: false`), así que basta un campo de más.
-- **El servidor no arranca y el log dice que el esquema está `dirty`**: una migración falló a medias. No lo
-  fuerces; ver el punto 3 del procedimiento.
+- **El esquema está `dirty`**: una migración falló a medias. En producción (`EO_MIGRATE_ON_START=false` por
+  defecto) migra el paso `migrate` del despliegue, que falla, y `pnpm run db:version` / `migrate -version` sale
+  con código 2; fuera de producción el propio servidor migra al arrancar y se niega a arrancar. No lo fuerces;
+  ver el punto 3 del procedimiento.
 
 ### Impacto en jugadores
 
@@ -464,7 +495,7 @@ estado incorrecto en Postgres**, porque el rollback de la imagen no deshace lo y
    - **No** → hay margen para diagnosticar unos minutos.
 2. **Rollback de la imagen** al SHA anterior
    (ver [deployment.md](./deployment.md#72-game-server-sin-migraciones)).
-3. **Si el despliegue incluía migraciones**, ten presente que el arranque solo migra **hacia adelante**:
+3. **Si el despliegue incluía migraciones**, ten presente que `migrate` y el arranque sólo migran **hacia adelante**:
    volver a la imagen anterior **no** deshace el esquema. Consulta la matriz de
    [deployment.md §7.3](./deployment.md#73-game-server-con-migraciones):
    - migración **aditiva** → basta volver la imagen; el código viejo ignora lo que no conoce;
@@ -472,8 +503,8 @@ estado incorrecto en Postgres**, porque el rollback de la imagen no deshace lo y
      revisión de otra persona, y aun así restaura la estructura pero **no los datos**; recupera los datos
      desde el backup previo a la migración
      (ver [backups.md](./backups.md#7-backup-lógico-previo-a-migración-destructiva));
-   - esquema **`dirty`** → el servidor no arrancará hasta que alguien resuelva la migración a medias y
-     corrija `schema_migrations`. Es intervención manual por diseño: continuar automáticamente sería
+   - esquema **`dirty`** → ni `migrate` ni un servidor que migre al arrancar seguirán hasta que alguien
+     resuelva la migración a medias y corrija `schema_migrations`. Es intervención manual por diseño: continuar automáticamente sería
      adivinar.
 4. **Si se escribió estado incorrecto**, evalúa el alcance antes de elegir:
    - daño acotado a filas identificables → corrección quirúrgica con una consulta revisada por otra persona,
@@ -490,9 +521,10 @@ estado incorrecto en Postgres**, porque el rollback de la imagen no deshace lo y
 
 ### Prevención
 
-- CI completo obligatorio: `pnpm run verify` (`protocol:build → docs:check → typecheck → test →
-  server:fmt:check → server:vet → server:test`), más `protocol:check` y los tests de integración con
-  `EO_INTEGRATION=1`, que `verify` no ejecuta. Un PR con cualquier check obligatorio en rojo no es válido.
+- CI completo obligatorio: `pnpm run verify` (`protocol:build → docs:check → secrets:scan → lint →
+  typecheck → test → scripts:test → server:fmt:check → server:vet → server:vet:integration → server:test`),
+  más `protocol:check` y los tests de integración —los de Go y `store.integration.test.ts` del almacén de
+  identidad— con `EO_INTEGRATION=1`, que `verify` no ejecuta. Un PR con cualquier check obligatorio en rojo no es válido.
   **Los tests de integración solo cuentan si de verdad se ejecutaron**: sin `EO_INTEGRATION=1` se saltan y el
   verde no significa nada (ver [local-development.md](./local-development.md#9-ejecutar-los-tests)).
 - Staging con el mismo procedimiento de despliegue que producción; si staging es distinto, no prueba nada.
@@ -559,8 +591,10 @@ propagándose por la simulación.
    identificadores.
 2. **Acota el alcance.** ¿Una unidad, un jugador, o todo el mundo? La respuesta cambia por completo la
    estrategia.
-3. **Determina cuándo empezó.** Correlaciona con despliegues y con los logs por `tick`. `world_events` es
-   aquí la fuente más valiosa: es la historia de hechos consumados del mundo.
+3. **Determina cuándo empezó.** Correlaciona con despliegues y con los logs por `tick`. `world_events`
+   registra altas, guarniciones, cambios de control, caducidad de tratados y reparaciones de arranque; los
+   movimientos y la presencia no quedan ahí, y para ellos hay que ir a `unit_movements`, a `cities` y a los
+   logs.
 4. **Detén la propagación.** Si el bug sigue produciendo estado malo, detén el Game Server o despliega el
    arreglo. No tiene sentido reparar mientras la fuente del daño sigue activa.
 5. **Elige la estrategia de reparación:**
@@ -596,7 +630,7 @@ propagándose por la simulación.
   inyectados. Un bug determinista es reproducible; uno no determinista puede ser imposible de encontrar.
 - Tests de simulación ("avanza 10 s, asserta estado exacto") y de recuperación en cada PR: hoy existen y
   están en verde en `internal/game/simulation`, incluidos el *vertical slice* completo, el reemplazo de
-  orden, la cancelación, los 6 rechazos y la reproducibilidad.
+  orden, la cancelación, los 7 rechazos y la reproducibilidad.
 - Restricciones en el esquema como última línea de defensa: todos los enums de dominio son `text` + `CHECK`
   (no tipos ENUM de PostgreSQL), más claves foráneas, el `CHECK population <= population_limit`, el
   `CHECK hp <= max_hp`, el `UNIQUE (center_x, center_y)` de `cities`, el índice único parcial de movimientos
@@ -654,29 +688,38 @@ ventaja. Con `VILLAGER`: `GRASSLAND` (costUnits 10) cuesta **600** ms en ortogon
 
 ### 7.2 Procedimiento de arranque
 
-Al arrancar, el servidor carga todos los movimientos con `status = 'ACTIVE'` y aplica exactamente esta
-regla:
+Al arrancar, antes de nada, la **validación de carga** (`EO-119`) repara lo reparable o aborta el arranque.
+Después el servidor carga todos los movimientos con `status = 'ACTIVE'` y aplica esta regla:
 
 ```
+si alguna polilínea no parsea o está vacía:
+    → el ARRANQUE ABORTA ("cargar movimientos activos"): hay que corregir el dato a mano
 para cada movimiento con status = 'ACTIVE':
-    si la polilínea es inválida (no parsea, vacía, incoherente):
+    si la polilínea es incoherente (movement.Validate), su unidad no existe o está GARRISONED:
         → el movimiento pasa a FAILED
         → la unidad SE QUEDA DONDE ESTABA
-    si no, si arrival_time_ms <= now:
+    si la fila contradice su polilínea (llegada o destino):
+        → se corrige desde la polilínea (INV-MOVE-005) y se sigue
+    si arrival_time_ms <= now:
         → la unidad hace SNAP al tile final de la polilínea
-        → el movimiento pasa a COMPLETED
-        → se emite unit.movement.completed
+        → el movimiento pasa a COMPLETED (sin mensaje: no hay nadie conectado; el
+          jugador lo ve en su snapshot)
     si no:
         → posición = último waypoint con tMs <= (now - start_time_ms)
         → el movimiento se REANUDA desde ese punto de la polilínea
         → sigue ACTIVE; llegará a arrival_time_ms como estaba previsto
+después:
+    las murallas de las ciudades existentes cancelan las rutas que las cruzan
+    y apartan a las unidades que quedaron dentro (RN-CITY-022)
 ```
 
 La rama `FAILED` es tan importante como las otras dos: ante un dato dudoso el servidor **no teletransporta a
 nadie**. Deja la unidad quieta, cierra el movimiento y lo cuenta. El recuento de las tres ramas aparece en el
 log de arranque, en la línea `mundo rehidratado`, como `movements_resumed`,
-`movements_arrived_while_down` y `movements_failed`. **Un `movements_failed` distinto de cero merece
-investigación aunque el servidor haya arrancado bien**: significa que hay polilíneas corruptas en la base.
+`movements_arrived_while_down`, `movements_failed` y `units_reconciled`. **Un `movements_failed` distinto de
+cero merece investigación aunque el servidor haya arrancado bien**: significa polilíneas incoherentes, o
+unidades ausentes o guarnecidas con un movimiento `ACTIVE`; las líneas `invariant_violation` del arranque dicen
+cuáles.
 
 ### 7.3 El caso de `arrival_time_ms` ya vencido
 
@@ -687,8 +730,8 @@ servidor cae a las 18:00:05 y no vuelve hasta las 18:47:00. El movimiento sigue 
 nadie pudo finalizarlo.
 
 **Qué hace el servidor al arrancar.** `arrival_time_ms` (18:00:12) es anterior a `now` (18:47:00), así que
-el movimiento **se completa inmediatamente**: la unidad hace *snap* al tile final, el movimiento pasa a
-`COMPLETED` y se emite `unit.movement.completed`.
+el movimiento **se completa inmediatamente**: la unidad hace *snap* al tile final y el movimiento pasa a
+`COMPLETED`, sin mensaje (al conectar, el jugador ya lo ve en su snapshot).
 
 **Por qué esto es correcto, y no un atajo:**
 
@@ -707,10 +750,9 @@ el movimiento **se completa inmediatamente**: la unidad hace *snap* al tile fina
 lo correcto y lo esperado — le dio una orden y se cumplió.
 
 **Qué no se recalcula.** El *snap* usa el tile final de la polilínea persistida, no una nueva búsqueda A\*.
-Si el terreno cambiase durante la caída (bloqueo dinámico por un edificio nuevo), el destino podría haber
-dejado de ser transitable. En MVP el bloqueo dinámico no cambia sin jugadores actuando, así que el caso no
-se materializa; la reconciliación de destinos invalidados durante una caída queda como
-**TBD (fuera de MVP)**.
+Si el terreno cambió antes de la caída por una ciudad recién fundada, su muralla sí se aplica al arrancar:
+cancela las rutas que la cruzan y aparta a las unidades atrapadas (`RN-CITY-022`). La reconciliación de otros
+bloqueos dinámicos que invalidaran un destino queda como **TBD (fuera de MVP)**.
 
 ### 7.4 Invariante que hay que verificar después
 

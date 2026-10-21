@@ -25,8 +25,8 @@ Esta frontera es lo que permite reemplazar el algoritmo completo (A\* → Hierar
 +-----------+-------------+
             v
 +-------------------------+
-|  domain/movement        |   valida ownership, estado, destino
-|                         |   construye la polilínea temporizada
+|  game/simulation        |   handleMoveUnit: valida ownership, estado,
+|                         |   destino; llama al A* y a BuildTimedPath
 +-----------+-------------+
             | Pathfinder.FindPath(ctx, grid, from, to, opts)
             v
@@ -81,7 +81,7 @@ Notas sobre el contrato de salida, que el dominio da por garantizadas:
 - Nunca se devuelve una ruta vacía con `error == nil`: o hay al menos un tile, o hay error.
 - El `Grid` se pasa **por consulta**, no se guarda en el `AStar`. Así el mismo pathfinder sirve a mundos distintos en los tests.
 
-**Por qué la interfaz aísla al dominio.** El dominio depende de `Pathfinder` (abstracción), no de `AStar` (implementación). Consecuencias concretas:
+**Por qué la interfaz aísla al dominio.** La simulación depende de `Pathfinder` (abstracción), no de `AStar` (implementación). Consecuencias concretas:
 
 | Propiedad | Efecto |
 |---|---|
@@ -369,7 +369,7 @@ func (a *AStar) FindPath(ctx context.Context, grid Grid, from, to world.Tile, op
 - El `AStar` **no guarda el `Grid`**: solo los límites por defecto (`NewAStar(maxNodes, maxDistance)`, con respaldo a 20000 / 256 si se le pasan valores ≤ 0) y el pool.
 - En MVP el pathfinding se ejecuta **exclusivamente en la goroutine del game loop**, por lo que en la práctica hay un único `workspace` vivo y el `sync.Pool` no llega a contender.
 - El `sync.Pool` se introduce desde el principio porque es la pieza que hace segura la evolución al pool de workers (§9.2): cada goroutine obtiene su propio buffer sin sincronización adicional.
-- **La propiedad honesta es «sin asignaciones amortizado», no «cero asignaciones».** `sync.Pool` vacía su contenido en cada ciclo de GC, así que la primera consulta posterior a un GC reasigna los 4 MiB del `workspace` dentro de la fase 2 del tick. En régimen estacionario entre GCs no se asigna nada fuera de la ruta devuelta; el peor caso por ciclo de GC es una reasignación de 4 MiB. Si esa reasignación llegara a aparecer en el presupuesto de §8.3, la corrección es dar al `AStar` un `*workspace` propio mientras el pathfinding siga siendo de una sola goroutine, y reservar el pool para §9.2.
+- **La propiedad honesta es «sin asignaciones amortizado», no «cero asignaciones».** `sync.Pool` puede liberar su contenido con el GC (con la caché víctima, un objeto sin uso sobrevive a un ciclo y se pierde en el siguiente), así que la primera consulta posterior puede reasignar los 4 MiB del `workspace` dentro de la fase 2 del tick. En régimen estacionario entre GCs no se asigna nada fuera de la ruta devuelta; el peor caso por ciclo de GC es una reasignación de 4 MiB. Si esa reasignación llegara a aparecer en el presupuesto de §8.3, la corrección es dar al `AStar` un `*workspace` propio mientras el pathfinding siga siendo de una sola goroutine, y reservar el pool para §9.2.
 - El `[]world.Tile` devuelto **sí** se asigna por consulta: sale del subsistema y su vida útil la controla el dominio (se convierte en polilínea y se persiste). Se construye con `append` hacia atrás desde el destino y se invierte in situ.
 
 ---
@@ -426,7 +426,7 @@ Detalles que no son adorno:
 
 **Los nodos cerrados se filtran dos veces**: al extraer del heap y al expandir vecinos. La segunda comprobación es una poda barata que evita calcular coste y heurística de un nodo que se descartaría igualmente. Es correcta precisamente porque la heurística es consistente (§4): un nodo cerrado ya tiene su `g` óptimo y jamás necesita reabrirse.
 
-**Cancelación.** `ctx` se comprueba **cada 512 iteraciones del bucle** (`expanded%512 == 0`) con un `select` no bloqueante, para no pagar el coste en cada iteración. Un `ctx` cancelado devuelve `ctx.Err()` tal cual (`context.Canceled` o `context.DeadlineExceeded`), que `pathErrorCode` traduce a `INTERNAL_ERROR` por la rama `default`. Cubierto por `TestCancelacionPorContexto`. En MVP el único cancelador previsto es el apagado del servidor: la llamada de `simulation` pasa hoy un `context.Background()`.
+**Cancelación.** `ctx` se comprueba **cada 512 nodos expandidos** (`expanded%512 == 0`, incluida la primera iteración) con un `select` no bloqueante, para no pagar el coste en cada iteración. Un `ctx` cancelado devuelve `ctx.Err()` tal cual (`context.Canceled` o `context.DeadlineExceeded`), que `pathErrorCode` traduce a `INTERNAL_ERROR` por la rama `default`. Cubierto por `TestCancelacionPorContexto`. En MVP el único cancelador previsto es el apagado del servidor: la llamada de `simulation` pasa hoy un `context.Background()`.
 
 **Reconstrucción.** Se recorre `cameFrom` hacia atrás desde el destino hasta el origen y se invierte el resultado in situ, de modo que la ruta devuelta **empieza siempre en el origen** (`path[0] == from`) y termina en el destino. Lo asertan `TestRutaTrivialEnLineaRecta` y `TestOrigenIgualADestino`.
 
@@ -489,14 +489,16 @@ El pathfinding se ejecuta **dentro de la fase 2 del tick** (`validate & apply co
 tick N (100 ms)
  1. drain commands            <- se sacan de la cola los unit.move pendientes
  2. validate & apply commands <- AQUÍ se ejecuta A*; los tiles resultantes se
-                                 convierten en polilínea (BuildTimedPath) y se
-                                 crea el movimiento
+                                 convierten en polilínea (BuildTimedPath), se
+                                 crea el movimiento y se encola movement.start
+                                 (INSERT en unit_movements, asíncrono)
  3. advance movement          <- solo lee polilíneas ya existentes
  4. resolve simulation        (fuera de MVP)
  5. process timers
  6-7. estado del mundo y deltas  <- unit.movement.started se emite dentro de la
                                     fase que lo provoca, no en un paso aparte
- 8. enqueue persistence       <- INSERT unit_movements (asíncrono, vía cola)
+ 8. enqueue persistence       <- sólo el volcado periódico units.flush, que
+                                    excluye las unidades en marcha
 ```
 
 Por qué síncrono en MVP:
@@ -598,9 +600,9 @@ Cómo se alimentan hoy, con exactitud:
 
 - El pathfinder **no toca métricas**. La simulación acumula `LastPathfindingCalls` y `LastPathfindingTime` por tick, y `Loop.observe` los vuelca al final del tick. Mantener el algoritmo libre de dependencias de observabilidad es lo que permite ejecutarlo en tests sin registro de Prometheus.
 - Por eso `eo_pathfinding_duration_seconds` observa **el tiempo agregado de todas las consultas del tick**, no una muestra por consulta. Es el número que importa frente al presupuesto agregado de §8.3; el p99 por consulta individual aún no se instrumenta — TBD (fuera de MVP).
-- La etiqueta `result` admite los valores del catálogo de `internal/observability` (`found`, `not_found`, …), pero el loop **emite hoy `found` para todas las consultas**: `simulation` incrementa `LastPathfindingCalls` justo después de `FindPath`, **antes** de mirar el error, y `Loop.observe` vuelca ese contador con `observability.ResultFound` fijo. Es decir, `eo_pathfinding_requests_total{result="found"}` es en realidad "consultas totales" y hoy no discrimina fallos. Corregirlo exige separar el contador por resultado en `simulation`; está anotado como deuda, no como cobertura existente. Mientras tanto, la discriminación de fallos se obtiene de `eo_protocol_errors_total{code}` con `code` en `PATH_NOT_FOUND` / `PATH_TOO_LONG` / `TARGET_NOT_WALKABLE` / `TARGET_OUT_OF_BOUNDS`.
+- La etiqueta `result` admite los valores del catálogo de `internal/observability` (`found`, `not_found`, …), pero el loop **emite hoy `found` para todas las consultas**: `simulation` incrementa `LastPathfindingCalls` justo después de `FindPath`, **antes** de mirar el error, y `Loop.observe` vuelca ese contador con `observability.ResultFound` fijo. Es decir, `eo_pathfinding_requests_total{result="found"}` es en realidad "consultas totales" y hoy no discrimina fallos. Corregirlo exige separar el contador por resultado en `simulation`; está anotado como deuda, no como cobertura existente. Hoy **ninguna métrica** discrimina los fallos de pathfinding: viajan en `unit.move.rejected`, que no incrementa `eo_protocol_errors_total` (esa serie sólo cuenta los `system.error` de la capa WebSocket), así que lo único observable es el volumen de `eo_ws_messages_total{direction="outbound",type="unit.move.rejected"}`, sin código.
 
-Log estructurado (`log/slog`) **solo en fallo**; nunca por consulta exitosa, para no inundar el log en régimen.
+No hay log por consulta, ni exitosa ni fallida: un fallo del A\* sólo viaja al cliente como `unit.move.rejected`. Se registra (`error`) únicamente el fallo interno al construir la polilínea (`BuildTimedPath`).
 
 ---
 

@@ -509,9 +509,9 @@ Detalle del protocolo en [websocket-protocol.md](./websocket-protocol.md).
 - Reinicio con una polilínea inválida: el movimiento queda `FAILED` y la unidad conserva su posición
   consolidada; no se la teletransporta.
 
-Estrategia y gating en [../testing/strategy.md](../testing/strategy.md). Los tests de integración
-requieren Docker Desktop arrancado; mientras el daemon no arranque quedan **pendientes de ejecución**, no
-en verde.
+Estrategia y gating en [../testing/strategy.md](../testing/strategy.md). Los tests de integración se
+ejecutan en la CI y en local contra PostgreSQL y Redis reales, sin Docker
+([../operations/local-development.md](../operations/local-development.md) §3-bis).
 
 ## 16. Documentos relacionados
 

@@ -199,7 +199,7 @@ Dominio de reglas: `RN-PLAYER`.
 | `RN-PLAYER-006` | El alta HTTP **no** es idempotente por `requestId`. La defensa contra el alta duplicada es el `UNIQUE` de `accounts.username` en el almacén de identidad, que traduce a `USERNAME_TAKEN` (409), y detrás el de `players.username`. La **fundación** sí es idempotente, por `playerId`: repetirla devuelve el jugador que ya existe, y dos fundaciones simultáneas del mismo id acaban en un solo jugador (`INV-PLAYER-009`). La deduplicación por `requestId` sirve a los **comandos del protocolo v1**, no a estos endpoints. |
 | `RN-PLAYER-007` | El alta es **atómica**: `players` + `cities` + 3 `units` + el `world_events` de auditoría se escriben en una sola transacción (`Bootstrapper.Create` sobre `Store.InTx`). Un fallo en cualquier paso deja la base de datos sin rastro del jugador. No existe estado intermedio "jugador sin ciudad" ni "ciudad sin aldeanos". |
 | `RN-PLAYER-008` | El game server no ve contraseñas: su esquema no tiene ninguna columna de credencial (migración `000005`) y sus dos entradas de autenticación son el ticket del handshake y el token de fundación, ambos firmados. La contraseña sólo atraviesa `apps/web`, el tiempo justo de derivar o comparar su hash `scrypt`, que vive en `accounts.password_hash` del almacén de identidad y no viaja a ninguna otra capa ni a ningún log. |
-| `RN-PLAYER-009` | El ticket se verifica en firma HS256, `exp` y `aud == "game-server"`, y su `jti` se consume una sola vez en Redis (`ticket:jti:{jti}`). Un ticket sin `jti` se rechaza: sin él no se puede impedir el replay. Un `jti` ya consumido se rechaza con `UNAUTHORIZED` y cierre `4401`. |
+| `RN-PLAYER-009` | El ticket se verifica en firma HS256, `exp` y `aud == "game-server"`, y su `jti` se consume una sola vez en Redis (`ticket:jti:{jti}`). Un ticket sin `jti` se rechaza: sin él no se puede impedir el replay. Un `jti` ya consumido se rechaza con el cierre `4401`, sin mensaje previo ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)). |
 | `RN-PLAYER-010` | Si `session.hello` no llega en los primeros 5 s de la conexión, el servidor cierra con código `4408`. Ningún otro tipo de mensaje se procesa antes del handshake. |
 | `RN-PLAYER-011` | En MVP un jugador posee **exactamente una** ciudad. El área de interés inicial se centra en `cities.center_x` / `cities.center_y` de esa ciudad, con radio `EO_INTEREST_RADIUS_CHUNKS` (canon §13). Multi-ciudad es `Fuera de MVP`. |
 | `RN-PLAYER-012` | Los rasgos de civilización no se consultan con condicionales por código de civilización. Toda lectura pasa por `Civilization.Trait(key, def)` (§6.3). |
@@ -357,23 +357,23 @@ hasta que el canon los defina.
 la existencia de al menos una conexión WebSocket viva. No es una columna de `players`. Especificada por
 completo en [presence.md](presence.md).
 
-**c) Ciclo de vida de la sesión** (una fila de `sessions` por conexión aceptada):
+**c) Ciclo de vida de la sesión WebSocket:**
 
 ```mermaid
 stateDiagram-v2
     [*] --> CONNECTING: TCP/TLS establecido
     CONNECTING --> AUTHENTICATING: session.hello recibido
-    CONNECTING --> [*]: 5 s sin hello → cierre 4408
+    CONNECTING --> [*]: 5 s sin mensaje → cierre 4408
     AUTHENTICATING --> ACTIVE: ticket válido + jti consumido → session.welcome
-    AUTHENTICATING --> [*]: firma/exp/aud inválidos o jti repetido → UNAUTHORIZED + cierre 4401
-    ACTIVE --> ACTIVE: session.ping / session.view / unit.move
+    AUTHENTICATING --> [*]: firma/exp/aud inválidos o jti repetido → cierre 4401 (sin mensaje)
+    ACTIVE --> ACTIVE: session.ping / session.view / unit.*
     ACTIVE --> [*]: cierre del cliente, timeout de lectura 45 s, 4429 o 4500
 ```
 
-`CONNECTING`, `AUTHENTICATING` y `ACTIVE` son estados **en RAM** de la goroutine de la conexión: la tabla
-`sessions` no tiene columna de estado. Sus columnas son `id`, `player_id`, `connected_at`,
-`disconnected_at`, `remote_addr` y `client_version`; una sesión abierta es una fila con
-`disconnected_at IS NULL`.
+`CONNECTING`, `AUTHENTICATING` y `ACTIVE` son estados **en RAM** de la goroutine de la conexión, y no se
+persisten: la tabla `sessions` existe desde `000001` (`id`, `player_id`, `connected_at`, `disconnected_at`,
+`remote_addr`, `client_version`) pero **ningún código la escribe**. Las sesiones vivas las cuenta la
+simulación por jugador, y la presencia caliente está en Redis (`presence:player:{playerId}`).
 
 La transición `ACTIVE → cerrada` **no** degrada por sí sola el estado de la ciudad: eso lo decide la fase de
 timers del tick comparando contra `DisconnectGrace` (= `EO_PRESENCE_TTL_SECONDS`, 30 s) en RAM, no leyendo
@@ -382,23 +382,28 @@ quede una. Ver [presence.md](presence.md) §7.
 
 ## 8. Errores
 
-Solo se usan códigos del canon §16, emitidos como `system.error` con `{ code, message, requestId?, details? }`.
-La lógica de control se basa en `code`, jamás en el texto.
+Por el WebSocket sólo se usan códigos del canon §16, emitidos como `system.error` con
+`{ code, message, requestId?, details? }`, y **sólo dentro de una sesión**: mientras la conexión no tiene
+sesión, un fallo se comunica únicamente con el código de cierre
+([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)). La lógica de control se basa en `code`, o en
+el código de cierre, jamás en el texto.
 
 | Código | Condición exacta | Efecto sobre la conexión |
 |---|---|---|
-| `UNAUTHORIZED` | Ticket ausente, firma inválida, `exp` vencido, `aud != "game-server"`, `jti` ya consumido, o `sub` que no existe en `players`. | Cierre `4401`. |
-| `FORBIDDEN` | La sesión autenticada intenta operar sobre entidades de otro jugador. | Cierre `4403` si es reiterado; en caso puntual, error y conexión viva. |
-| `INVALID_MESSAGE` | `session.hello` malformado, `v` ausente, payload que no valida contra el esquema. | Cierre `4400`. |
-| `UNSUPPORTED_VERSION` | `v != 1`. | Cierre `4400`. |
-| `MESSAGE_TOO_LARGE` | Mensaje > `EO_WS_MAX_MESSAGE_BYTES` (16384). | Cierre `4400`. |
-| `RATE_LIMITED` | Más de `EO_WS_RATE_LIMIT_PER_SECOND` (20) msg/s con burst 40. | Cierre `4429` si persiste. |
-| `INTERNAL_ERROR` | Fallo de la transacción de bootstrap, de PostgreSQL o de Redis. | Cierre `4500`. La transacción revierte entera. |
-| `NOT_IMPLEMENTED` | Operación de cuenta prevista pero fuera de MVP (renombrado, cambio de civilización o facción). | Conexión viva. |
+| Cierre `4401` | Durante el handshake: ticket con firma inválida, `exp` vencido, `aud != "game-server"`, sin `jti` o con `jti` ya consumido, `sub` que no es un UUID, Redis sin responder al consumir el `jti`, o un primer mensaje que no es `session.hello`. El handshake **no** comprueba que el `sub` exista en `players`: el ticket lo firma quien acaba de fundarlo. | Cierre `4401` sin mensaje. `UNAUTHORIZED` está reservado en el catálogo y el WebSocket no lo emite. |
+| Cierre `4400` | Durante el handshake: JSON malformado, `session.hello` sin `ticket` o con propiedades que el contrato no declara, o `v != 1`. | Cierre `4400` sin mensaje. |
+| `INVALID_MESSAGE` | Dentro de la sesión: JSON malformado, `type` desconocido, payload que no valida contra el esquema estricto, o comando sin `requestId`. | `system.error`; la conexión **continúa**. |
+| `UNSUPPORTED_VERSION` | Dentro de la sesión: `v != 1`. | `system.error`; la conexión continúa. |
+| `MESSAGE_TOO_LARGE` | Reservado. Un frame de más de `EO_WS_MAX_MESSAGE_BYTES` (16384) lo corta el transporte antes de leerlo. | Cierre `1009`, sin mensaje. |
+| `RATE_LIMITED` | Más de `EO_WS_RATE_LIMIT_PER_SECOND` (20) msg/s con burst 40. | `system.error` y cierre `4429` en cuanto el bucket se agota. |
+| `UNIT_NOT_OWNED` | La sesión ordena algo sobre una unidad de otro jugador (`INV-PLAYER-001`). | `unit.move.rejected` o `system.error`; la conexión continúa. |
+| `FORBIDDEN` | Reservado: ninguna ruta del WebSocket lo emite, y el cierre `4403` tampoco. | — |
+| `INTERNAL_ERROR` | Dentro de la sesión: la cola de comandos del loop está llena o el mundo no responde a tiempo. | `system.error` con el `requestId`, que se puede reintentar; la conexión continúa. Una cola de **salida** llena cierra con `4500`. |
 
-Nota: no existe un código específico para "nombre en uso" ni para "civilización inexistente" en el canon §16.
-Ambos se reportan como `INVALID_MESSAGE` con `details` describiendo el campo ofensor. Introducir un código
-nuevo exigiría modificar el canon.
+`NOT_IMPLEMENTED` no lo emite ninguna ruta del MVP. El alta no pasa por el WebSocket: sus errores son los del
+transporte HTTP de la identidad (§4.1), incluido `USERNAME_TAKEN` (409), que no está en el catálogo de 22
+códigos del protocolo. El MVP no deja elegir civilización (§4.1), así que no hay error de civilización
+inexistente.
 
 ## 9. Invariantes (con ID)
 
@@ -631,7 +636,7 @@ Reglas del contrato:
 | `T-PLAYER-I-007` | integration | `INSERT` con `civilization_id` o `faction_id` nulo o inexistente: rechazado por `NOT NULL` / FK. Escrito: `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`. | `INV-PLAYER-002` |
 | `T-PLAYER-C-001` | contract | `session.hello` y `session.welcome` existen en el JSON Schema exportado por `@empires-online/protocol`. Escritos: `TestTiposDeMensajePresentesEnElEsquema`; y todo `session.welcome` y `world.snapshot` que emite el servidor real en los e2e se valida contra el esquema (`schema_e2e_test.go`). | §12 |
 | `T-PLAYER-C-002` | contract | `session.hello` con un campo extra (`playerId`, por ejemplo) **no** valida: los mensajes cliente→servidor son estrictos, también en el decodificador Go. Escrito: `TestElDecodificadorEsTanEstrictoComoElEsquema`. | `INV-PLAYER-004` |
-| `T-PLAYER-C-003` | contract | El handshake no emite `system.error`: sus rechazos son códigos de cierre del rango privado. Escrito: `TestCodigosDeCierreSonDelRangoPrivado`. | §8 |
+| `T-PLAYER-C-003` | contract | El handshake no emite `system.error`: sus rechazos son códigos de cierre del rango privado ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)). Escritos: `TestCodigosDeCierreSonDelRangoPrivado` (el rango), y `TestTicketInvalidoCierraLaConexion`, `TestNoSeAceptanComandosSinAutenticar` y `TestUnHandshakeIlegibleCierraCon4400SinMensaje` (e2e: la primera lectura es el cierre). | §8 |
 | `T-PLAYER-E-001` | e2e | Conexión sin `session.hello` dentro del plazo → cierre `4408`. Escrito: `TestSinHandshakeEnPlazoSeCierraCon4408`. | `RN-PLAYER-010` |
 | `T-PLAYER-E-002` | e2e | Handshake correcto → `session.welcome` seguido de `world.snapshot` centrado en la ciudad. Escrito: `TestVerticalSliceEndToEnd`. | `RN-PLAYER-011` |
 | `T-PLAYER-E-003` | integration | Alta → el mundo en RAM no conoce al jugador hasta después del COMMIT; con la transacción abortada, no se introduce nada. Escritos: `TestLaFundacionIntroduceAlJugadorDespuesDelCommit`, `TestUnNombreDeOtroJugadorNoSeFundaNiSeReasigna`, `TestSinSitioLaFundacionResponde409YNoEscribe`. | `INV-PLAYER-008` |

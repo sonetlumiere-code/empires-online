@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son dieciocho, del 001
-al 018, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son diecinueve, del 001
+al 019, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -160,6 +160,7 @@ elección de A\*: son decisiones del canon y de `architecture/`, no del registro
 | [decisions/ADR-016-foreign-territory-actions.md](decisions/ADR-016-foreign-territory-actions.md) | El territorio ajeno no restringe ninguna acción del MVP; toda acción de mundo se clasifica y un test exige clasificar cada comando nuevo. |
 | [decisions/ADR-017-garrison-commands.md](decisions/ADR-017-garrison-commands.md) | `unit.garrison` y `unit.ungarrison`: el tick valida, la transacción decide el tratado; `units.city_id` no cambia; la unidad guarnecida sólo la ve su dueño. |
 | [decisions/ADR-018-identity-store-and-ticket-issuer.md](decisions/ADR-018-identity-store-and-ticket-issuer.md) | La identidad vive en Next.js con su propio almacén; Next.js emite el ticket y el game server sólo funda al jugador (`POST /internal/players`). |
+| [decisions/ADR-019-handshake-failure-close-code.md](decisions/ADR-019-handshake-failure-close-code.md) | Un handshake fallido se comunica sólo con el código de cierre (`4401`, `4400`, `4408`, `1009`), sin `system.error` previo. Sustituye en parte a ADR-010. |
 
 ### 2.9 `roadmap/` — Plan
 
@@ -293,6 +294,12 @@ Matices que conviene no maquillar:
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en
   Next.js. El game server sólo funda al jugador. El límite de tasa del alta es por proceso de Next.js y no hay
   todavía limpieza de cuentas `PENDING` abandonadas.
+- **El cliente es más pequeño que su diseño.** [architecture/frontend.md](architecture/frontend.md) marca sección
+  por sección qué existe y qué es objetivo: entre lo que no existe, la cola de comandos pendientes, la detección
+  de huecos de `seq`, la sincronización de reloj con ventana de muestras y el envío de `session.view`.
+- **La observabilidad promete más de lo que mide** ([operations/monitoring.md](operations/monitoring.md)):
+  `eo_redis_latency_seconds` no se observa, los rechazos de negocio no se cuentan por código, los logs de la
+  simulación no llevan `request_id`, y la etiqueta `type` de `eo_ws_messages_total` no está acotada (`EO-121`).
 - **Hay paquetes sin test propio**: `internal/clock` e `internal/observability`, ejercitados indirectamente;
   `internal/httpapi`, cuyos tests viven en la suite de integración de `internal/persistence/postgres`; y los
   `cmd/*`, que se verifican arrancándolos (`pnpm run smoke`).

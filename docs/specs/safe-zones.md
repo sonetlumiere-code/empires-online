@@ -86,7 +86,7 @@ ningún input** en este subsistema (`RN-SAFE-008`). Los inputs son todos interno
 
 | Input | Origen | Tipo | Nota |
 |---|---|---|---|
-| Filas de `safe_zones` | PostgreSQL, al arrancar | `(id, name, zone_type, min_x, min_y, max_x, max_y)` | Vacío en MVP. |
+| Filas de `safe_zones` | PostgreSQL, al arrancar | `(id, name, zone_type, min_x, min_y, max_x, max_y)` | Vacío en el mundo canónico (siembra `TBD`, `Q-17`). La base de desarrollo tiene las `DENSE_FOREST` de `pnpm run dev:seed`. |
 | Terreno del mundo | RAM, regenerado desde `EO_WORLD_SEED` en cada arranque | `world.Grid` | `world_chunks` es copia de auditoría, no fuente primaria. |
 | `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` | `internal/config` | `int32`, por defecto `512` cada uno | Dimensionan el índice denso. |
 | Posición y estado de las unidades | RAM (simulación) | `units.x`, `units.y`, `units.status` | Conjunto candidato de la fase 5. |
@@ -101,7 +101,7 @@ ningún input** en este subsistema (`RN-SAFE-008`). Los inputs son todos interno
 | `entity.despawn { id, reason: "HIDDEN" }` | Terceros del chunk | Al ocultarse. |
 | `entity.spawn { unit }` | Terceros del chunk | Al revelarse. |
 | Índice `safeZoneOfTile` | RAM | Al arrancar, después de marcar las murallas de las ciudades existentes. La fundación de una ciudad retira después los tiles de su muralla (§6.3). |
-| Log `error` + contador de violación de invariantes | Logs y métricas | Solape entre zonas (`INV-SAFE-001`). |
+| Log `invariant_violation` de nivel `error` (sin métrica) | Logs | Al arrancar: zona descartada (`INV-SAFE-005`), solape entre zonas (`INV-SAFE-001`) o solape con una zona urbana (`INV-SAFE-006`). |
 
 El servidor **no** produce ningún output dirigido a terceros que mencione una unidad oculta, ni
 siquiera anonimizado (`RN-SAFE-009`).
@@ -214,7 +214,8 @@ el arranque. Un cambio en la tabla se recoge en el siguiente arranque.
 > **Lo que la fundación no hace.** `internal/game/founding` no evita las safe zones al elegir el
 > emplazamiento de una ciudad. Si debe evitarlas es una regla de juego que esta spec no fija: hoy una
 > ciudad puede fundarse sobre una zona y la deja recortada, con un log `invariant_violation` de
-> `INV-SAFE-006`. Con la tabla vacía del mundo canónico el caso no se da.
+> `INV-SAFE-006`. Con la tabla vacía del mundo canónico el caso no se da; en la base de desarrollo, con las zonas
+> de `dev:seed`, una fundación nueva sí puede recortar una.
 
 ### 6.4 Condiciones de ocultamiento
 
@@ -234,7 +235,7 @@ entra_en_HIDDEN(u) :=
 | `RN-SAFE-010` | El ocultamiento se evalúa **solo sobre unidades `IDLE`**, nunca sobre `MOVING`: es un estado de reposo. Esto es lo que hace coherente la transición prohibida `MOVING → HIDDEN` de [unit.md](unit.md) y evita recalcular pertenencia en cada waypoint de una polilínea. |
 | `RN-SAFE-011` | Para no barrer todas las unidades del mundo cada tick, la fase 5 solo evalúa las unidades que cambiaron de tile o de estado desde la evaluación anterior. El resultado es idéntico a un barrido completo; la diferencia es únicamente de coste. **Implementación:** `State.MarkDirty`, por donde pasa todo cambio de tile o de estado, apunta además la unidad como candidata; `State.AddUnit` también, para que una unidad hidratada tras un reinicio o recién fundada se evalúe en la primera fase 5. |
 | `RN-SAFE-012` | El ocultamiento **no expira por tiempo** y no tiene coste: no hay temporizador, ni cooldown de reentrada, ni penalización por entrar y salir repetidamente. Cualquiera de esas mecánicas pertenece al diseño de combate y está fuera de MVP. |
-| `RN-SAFE-013` | Iniciar un movimiento revela la unidad de forma **inmediata y completa**: en el mismo tick en que el movimiento pasa a `ACTIVE`, los observadores de los chunks afectados reciben `entity.spawn` con la unidad ya en `MOVING`. No existe revelado progresivo ni ventana en la que la unidad se mueva todavía oculta; eso sería un privilegio de información imposible de auditar. |
+| `RN-SAFE-013` | Iniciar un movimiento revela la unidad de forma **inmediata y completa**: en el mismo tick en que el movimiento pasa a `ACTIVE`, los terceros suscritos al chunk de origen reciben `entity.spawn` con la unidad ya en `MOVING`. No existe revelado progresivo ni ventana en la que la unidad se mueva todavía oculta; eso sería un privilegio de información imposible de auditar. |
 | `RN-SAFE-014` | Ocultar **no altera la simulación**: ni la capa de ocupación, ni la transitabilidad, ni el índice espacial de unidades por chunk. Las rutas que calcula el pathfinder son idénticas antes y después de que una unidad se oculte. Ocultar no es desmaterializar: filtrar la información por el canal de visibilidad y no por el de simulación evita divergencias entre lo que el servidor simula y lo que cree cada cliente. |
 
 > **Por qué cambió `RN-SAFE-014`.** La redacción anterior decía que la unidad oculta «sigue ocupando
@@ -309,7 +310,7 @@ cerrado es `IDLE | MOVING | GARRISONED | HIDDEN | DEAD` (`CHECK units_status_val
 |---|---|---|---|
 | `IDLE` | `HIDDEN` | La unidad está en reposo sobre un tile que satisface el predicado de su zona (`RN-SAFE-010`) | Fase 5 (timers) |
 | `HIDDEN` | `MOVING` | `unit.move` aceptado sobre la unidad; revelado inmediato (`RN-SAFE-013`) | Fase 2 (comandos) |
-| `HIDDEN` | `IDLE` | El tile deja de pertenecer a una zona. En runtime solo ocurre si una ciudad se funda encima (`RN-SAFE-018`); al arrancar, si la zona ya no existe en `safe_zones` | Fase 5 (timers) |
+| `HIDDEN` | `IDLE` | El tile deja de pertenecer a una zona —en runtime sólo si una ciudad se funda encima (`RN-SAFE-018`); al arrancar, si la zona ya no existe en `safe_zones`— o la unidad tiene `hp <= 0` (sin productor en MVP) | Fase 5 (timers) |
 | `HIDDEN` | `DEAD` | Muerte. **Sin productor en MVP** | — |
 
 Transiciones prohibidas: `MOVING → HIDDEN` (`RN-SAFE-010`), `HIDDEN → GARRISONED` y
@@ -380,8 +381,8 @@ el servidor.
 
 ## 11. Eventos
 
-Evento de dominio: `UnitConcealmentChanged` (hecho consumado, en pasado). Es útil como registro
-interno y como origen del delta.
+No existe evento de dominio de ocultamiento: `evaluateConcealment` emite los deltas directamente. Un
+`UnitConcealmentChanged` (hecho consumado, en pasado) sería el nombre si algún día hace falta.
 
 Su escritura en `world_events` es **TBD (fuera de MVP)**: publicar cada ocultamiento en una tabla de
 eventos consultable sería, en sí mismo, una fuga de información si esa tabla llegara a exponerse.
@@ -423,15 +424,16 @@ compartido:
   ajenas con `simulation.VisibleTo`. Un snapshot es un delta completo; sin este filtro, reconectar o
   mover la cámara devolvería la unidad oculta.
 
-Ningún otro punto del servidor emite unidades en estado `HIDDEN`: los deltas de posición solo los
-producen unidades en `MOVING`. **No existe** la aserción en tiempo de ejecución por destinatario que
+Ningún otro punto del servidor emite unidades en estado `HIDDEN` a terceros: los deltas de posición los
+producen el movimiento (que antes revela la unidad), el desplazamiento por una fundación —que para una unidad
+`HIDDEN` sólo va a su dueño— y la salida de guarnición, que nunca afecta a una unidad oculta. **No existe** la aserción en tiempo de ejecución por destinatario que
 proponía la ficha de `INV-SAFE-004`: la garantía es estructural y la sostienen los tests de §13.
 
 ## 13. Tests
 
 Todos existen y pasan. Los de los niveles unit, simulation, e2e de transporte y contract corren con
 `pnpm run server:test` y en el job `game-server` de la CI, con `-race`. Los de integración necesitan
-PostgreSQL real y `EO_INTEGRATION=1`. Corren en el job `integration` de la CI y, en la máquina de
+PostgreSQL real, `EO_INTEGRATION=1` y la etiqueta `integration` (`pnpm run server:test:integration`). Corren en el job `integration` de la CI y, en la máquina de
 desarrollo, contra el clúster propio de [../operations/local-development.md](../operations/local-development.md)
 §3-bis: sin Docker.
 

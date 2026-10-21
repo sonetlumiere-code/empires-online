@@ -19,14 +19,16 @@ El loop es la **única** goroutine autorizada a mutar el estado del mundo (ver
 2. **Nunca** ejecuta I/O bloqueante contra PostgreSQL. Sólo encola trabajos de persistencia en
    `simulation.Persister` (implementado por `persistence.Queue`), cuyo `Submit` nunca bloquea.
 3. **Nunca** bloquea leyendo o escribiendo canales: drena y encola con `select`/`default`.
-4. No llama a `time.Now()` ni a `rand` dentro de la simulación: usa `Clock` y `RandomSource` inyectados.
-   La única excepción es la medición de duración del propio tick (`time.Since` en `Step` y `observe`),
-   que es observabilidad, no simulación.
+4. No llama a `time.Now()` ni a `rand` dentro de la simulación: usa el `Clock` inyectado, y no usa azar
+   (`clock.RandomSource` existe en `internal/clock` para cuando haga falta, pero hoy no se inyecta ni se
+   siembra). Las únicas excepciones son mediciones de duración marcadas con `//lint:reloj-real`: la del propio
+   tick (`Step`, `observe`) y la del A\* en `handleMoveUnit`. Son observabilidad, no simulación.
 5. Dado el mismo instante de tick, el mismo estado inicial y la misma secuencia de comandos drenados,
    produce **exactamente** el mismo estado final y la misma secuencia de eventos.
 6. Preserva la invariante de movimiento único activo por unidad (`INV-MOVE-001`): una nueva orden
-   cancela la anterior **en RAM antes** de registrar la nueva, y la transacción encolada
-   (`UPDATE ... 'CANCELLED'` + `INSERT ... 'ACTIVE'`) las agrupa en un solo commit.
+   cancela la anterior **en RAM antes** de registrar la nueva; en disco, el cierre de la anterior
+   (`movement.cancel`) y la transacción de inicio (`UPDATE ... 'CANCELLED'` + `INSERT ... 'ACTIVE'` + unidad
+   `MOVING`) van a la cola con la misma clave de unidad, y se ejecutan en ese orden.
 7. **Aísla los pánicos por comando**: `applyCommand` envuelve cada comando en un `recover`. Un bug en
    una regla se registra, se cuenta en `eo_commands_total{result="failed"}` y el tick continúa; no
    tumba la simulación del mundo entero.
@@ -46,12 +48,13 @@ El loop es la **única** goroutine autorizada a mutar el estado del mundo (ver
 `tickTime` es **la noción de "ahora" que recorre el tick**. Todos los instantes durables
 (`start_time_ms`, `arrival_time_ms`, `protection_until`, `tMs` de los waypoints) se comparan contra
 el reloj **inyectado**, jamás contra `time.Now()` dentro de la simulación. Las fases 3 y 5 reciben
-`nowMs` como parámetro (`AdvanceMovements(nowMs)`, `ProcessTimers(time.UnixMilli(nowMs).UTC())`), de
-modo que todas las entidades que procesan ven exactamente el mismo instante.
+`nowMs` como parámetro (`AdvanceMovements(nowMs)`, `ProcessTimers(time.UnixMilli(nowMs).UTC())`); dentro
+de la fase 5, el ocultamiento en Safe Zones y las salidas de guarnición pendientes vuelven a leer el `Clock`
+inyectado, como los manejadores de la fase 2.
 
 Precisión sobre la fase 2, para no idealizar el código: los manejadores de comandos
-(`handleMoveUnit`, `handleCancelMovement`, `handleRequestSnapshot`) **releen el instante del mismo
-`Clock` inyectado** con `s.deps.Clock.NowMs()` al entrar en cada comando, en lugar de recibir el
+(`handleMoveUnit`, `handleCancelMovement`, `handleRequestSnapshot`, `handleIntroducePlayer`, los de presencia
+y guarnición y las compensaciones) **releen el instante del mismo `Clock` inyectado** con `s.deps.Clock.NowMs()` al entrar en cada comando, en lugar de recibir el
 `nowMs` del tick. No rompe el determinismo de los *simulation tests* —el `FakeClock` no avanza
 mientras corre `Step`, así que ambos valores coinciden al milisegundo—, pero en producción pueden
 diferir en los pocos milisegundos que dure el tick. Unificar ambos instantes pasando `nowMs` a
@@ -96,12 +99,12 @@ Orden fijo, sin excepciones. Ninguna fase puede adelantar trabajo de otra.
 |---|---|---|---|---|---|
 | 1 | `drain commands` | Canal `commands` (capacidad 8192) | Comandos del tick | Consumir con `select`/`default` hasta un tope de `MaxCommandsPerTick` (**1024**); lo que no entra espera al tick siguiente y se registra un `warn` | Bloquear; superar el tope; validar o mutar |
 | 2 | `validate & apply commands` | Comandos del paso 1 | Mutaciones + mensajes + rechazos | Validar ownership/estado/destino, ejecutar A*, crear/cancelar movimientos, responder `unit.move.rejected` con los códigos del catálogo, encolar el trabajo durable del movimiento | Tocar Postgres o Redis de forma bloqueante; usar cualquier reloj que no sea el `Clock` inyectado |
-| 3 | `advance movement` | Movimientos `ACTIVE`, `tickTime` | Posiciones nuevas, `unit.movement.completed` | Recorrer movimientos, avanzar por la polilínea, completar los vencidos, actualizar el índice espacial, marcar la unidad como *dirty* | Recalcular paths; crear movimientos nuevos; cancelar por decisión propia |
+| 3 | `advance movement` | Movimientos `ACTIVE`, `tickTime` | Posiciones nuevas, `unit.movement.completed` | Recorrer movimientos, avanzar por la polilínea, completar los vencidos, actualizar el índice espacial y marcar como *dirty* sólo la unidad que llega (la posición en tránsito no se persiste, `INV-PERSIST-004`) | Recalcular paths; crear movimientos nuevos; cancelar por decisión propia |
 | 4 | `resolve simulation` | — | — | **Fuera de MVP**: reservado a combate. Hoy no existe ninguna llamada en `Step` | Cualquier cosa, mientras esté fuera de MVP |
-| 5 | `process timers / scheduled events` | `tickTime`, contadores de sesión y marcas de desconexión en RAM; índice de safe zones y unidades que cambiaron desde la evaluación anterior | Transiciones de presencia + `city.update`; barrido de tratados encolado; cambios de ocultamiento + `entity.update` / `entity.despawn` / `entity.spawn` | En este orden: evaluar `ONLINE → OFFLINE_PENDING` (margen `DisconnectGrace` = `EO_PRESENCE_TTL_SECONDS`); **encolar** el barrido de tratados vencidos, muestreado a una vez por segundo (M7); evaluar `OFFLINE_PENDING → PROTECTED` (`EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`); y evaluar el ocultamiento en Safe Zones sólo sobre las unidades que cambiaron de tile o de estado ([../specs/safe-zones.md](../specs/safe-zones.md) §6.4) | Consultar Redis o PostgreSQL dentro del tick: las decisiones son **enteramente aritmética sobre RAM**, y el barrido de tratados se encola hacia los workers |
+| 5 | `process timers / scheduled events` | `tickTime`, contadores de sesión y marcas de desconexión en RAM; índice de safe zones y unidades que cambiaron desde la evaluación anterior | Transiciones de presencia + `city.update`; barrido de tratados encolado; cambios de ocultamiento + `entity.update` / `entity.despawn` / `entity.spawn` | En este orden: evaluar `ONLINE → OFFLINE_PENDING` (margen `DisconnectGrace` = `EO_PRESENCE_TTL_SECONDS`); **encolar** el barrido de tratados vencidos, muestreado a una vez por segundo (M7); evaluar `OFFLINE_PENDING → PROTECTED` (`EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`); reintentar, en orden de unidad, las salidas de guarnición que esperaban un tile libre (`RN-GARR-014`); y evaluar el ocultamiento en Safe Zones sólo sobre las unidades que cambiaron de tile o de estado ([../specs/safe-zones.md](../specs/safe-zones.md) §6.4) | Consultar Redis o PostgreSQL dentro del tick: las decisiones son **enteramente aritmética sobre RAM**, y el barrido de tratados se encola hacia los workers |
 | 6 | `update world state / interest sets` | Posiciones nuevas; el conjunto suscrito por sesión | Membresía de chunk actualizada | Recalcular el chunk de cada entidad (`chunkX = x / EO_CHUNK_SIZE`) y mantener el índice `chunk → entidades` | Enviar mensajes; mutar entidades |
 | 7 | `emit deltas` | Hechos de las fases 2, 3 y 5 | Broadcast por chunk / por jugador hacia el `Hub` | Construir los payloads v1 y entregarlos al `Hub`, que los deposita en la cola de salida de cada sesión | Escribir en sockets (lo hace el `writePump` de cada conexión); asignar `seq`/`ts` (los estampa `Session.Send`); bloquear si la cola está llena |
-| 8 | `enqueue persistence` | *Dirty-set* de unidades | Un trabajo de volcado por lote | Cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (**50**) drenar el dirty-set y encolar **un único** `units.flush` | Ejecutar SQL; esperar confirmación; perder un trabajo durable en silencio |
+| 8 | `enqueue persistence` | *Dirty-set* de unidades | Un trabajo de volcado por lote | Cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (**50**) drenar el dirty-set y encolar un `units.flush` **por partición** de la cola ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.2), sin las unidades con movimiento activo y aplazando las que están entrando en una ciudad | Ejecutar SQL; esperar confirmación; perder un trabajo durable en silencio |
 
 **Precisión sobre las fases 6, 7 y 8, porque es donde el código se aparta de la lectura ingenua del
 diagrama.** No existen tres pasadas separadas al final del tick:
@@ -131,6 +134,7 @@ de qué error recibe.
 | `status` distinto de `DEAD` | `UNIT_DEAD` |
 | `status` distinto de `GARRISONED` | `UNIT_GARRISONED` |
 | El resto de estados que no admiten movimiento | `UNIT_NOT_MOVABLE` |
+| La unidad no está entrando en una ciudad (transacción de guarnición pendiente, `RN-GARR-020`) | `UNIT_NOT_MOVABLE` |
 | Destino dentro de `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)` | `TARGET_OUT_OF_BOUNDS` |
 | Tile destino `walkable` y no bloqueado por el *overlay* | `TARGET_NOT_WALKABLE` |
 | El tipo de unidad está en el catálogo (`unit.Lookup`) | `INTERNAL_ERROR` |
@@ -166,9 +170,10 @@ if ms < 1 { ms = 1 }
 ```
 
 —se redondea **cada segmento** al milisegundo más cercano y sólo después se acumula, porque mil pasos
-truncados regalarían casi un segundo de ventaja—, se pasa `status` a `MOVING`, se encola el trabajo
-durable `movement.start` y se emiten `unit.move.accepted` (al solicitante) y `unit.movement.started`
-(al chunk de origen).
+truncados regalarían casi un segundo de ventaja—, se pasa `status` a `MOVING`, el loop asigna el
+`movementId` ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)), se encola el trabajo durable
+`movement.start` y se emiten `unit.move.accepted` (al solicitante), `entity.spawn` a los terceros del chunk si
+la unidad estaba oculta, y `unit.movement.started` (al chunk de origen).
 
 **El rechazo produce únicamente `unit.move.rejected { unitId, code, message }`**, sin un `system.error`
 adicional: los fallos de dominio de este comando son su respuesta tipada, y `system.error` queda
@@ -192,9 +197,6 @@ de un tick de 100 ms. El caso está resuelto en RAM y acotado —no ignorado— 
   incluidos ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)). El índice único parcial `unit_movements_one_active_per_unit` sigue siendo la red
   de seguridad física. Si un inicio de movimiento agota sus 3 intentos, el worker devuelve
   `MovementPersistFailed` al loop por su buzón y el loop detiene la unidad con `reason = SERVER`.
-- **Mitigación pendiente**, para que el orden durable coincida siempre con el orden de RAM: un único
-  worker, o particionado de la cola por `unit_id`. Hoy no está implementado y así debe leerse este
-  documento.
 
 ---
 
@@ -228,8 +230,8 @@ normativa es: **si la duración del tick supera el período, se incrementa `eo_g
 1. El loop calcula el instante de despertar del siguiente tick con **tiempo absoluto**: fija un
    `start = Clock.Now()` al arrancar y programa el vencimiento número *n* en `start + n*periodo`,
    nunca con `sleep(periodo - duracion)` acumulativo. Así el error de temporización no se acumula.
-2. Si un tick se pasa de presupuesto: se incrementa `eo_game_tick_overruns_total`, se registra
-   `level=warn` con `tick` y duración, y **se continúa**. No se aborta el tick a medias: un tick parcial
+2. Si un tick se pasa de presupuesto: se incrementa `eo_game_tick_overruns_total` y **se continúa**; el
+   overrun por sí solo no escribe log, que sólo aparece si además se descartan vencimientos (punto 3). No se aborta el tick a medias: un tick parcial
    dejaría el mundo en estado inconsistente.
 3. Si al terminar el tick ya venció el instante de uno o varios ticks siguientes, esos **vencimientos
    se descartan** y el calendario se reancla al presente, con un `warn` que registra cuántos se
@@ -248,7 +250,7 @@ normativa es: **si la duración del tick supera el período, se incrementa `eo_g
 tiempo real ──────────────────────────────────────────────────────────►
 ticks planificados   |100|100|100|100|100|100|  (ms)
 tick 41 dura 260 ms  |█████████████████████|
-                     ^ overrun: +1 a eo_game_tick_overruns_total, warn con tick=41
+                     ^ overrun: +1 a eo_game_tick_overruns_total (sin log propio)
 vencimientos 42 y 43 ── DESCARTADOS, warn "ticks perdidos descartados" missed=2 ──
 siguiente ejecución  tickNumber = 42 (el contador avanza de uno en uno);
                      tickTime = Clock.NowMs(), es decir el presente real.
@@ -265,9 +267,9 @@ Sin determinismo no hay *simulation tests* reproducibles ni depuración fiable d
 
 | Regla | Cómo se cumple | Cómo se verifica |
 |---|---|---|
-| Nada de `time.Now()` en la simulación | `Clock` inyectado; `Run` (driver de infraestructura) lo lee una vez por tick y se lo pasa a `Step(nowMs)`; los manejadores de la fase 2 releen ese **mismo** `Clock` (§2). La única `time.Now()` del loop mide la duración del propio tick, que es observabilidad y no entra en el estado | Lint/test de arquitectura: prohibido `time.Now` bajo `internal/domain` e `internal/game/simulation` |
-| Nada de `rand` global | `RandomSource` inyectada (`internal/clock/random.go`) y sembrada con `EO_WORLD_SEED` | Igual que arriba, para `math/rand` |
-| **Prohibido iterar mapas de Go sin ordenar** | Todo recorrido de entidades que produzca salida observable usa un slice de IDs en orden ascendente, o `slices.Sort` explícito antes de iterar | Revisión + test que ejecuta dos veces el mismo escenario y compara el estado y la traza de eventos |
+| Nada de `time.Now()` en la simulación | `Clock` inyectado; `Run` (driver de infraestructura) lo lee una vez por tick y se lo pasa a `Step(nowMs)`; los manejadores de la fase 2 releen ese **mismo** `Clock` (§2). Las únicas lecturas del reloj real miden duraciones —del tick y del A\*— y están marcadas `//lint:reloj-real`: son observabilidad y no entran en el estado | `scripts/lint-determinism.mjs` (en `pnpm run lint` y en la CI): prohibidos `time.Now`, `time.Since`, `time.Until` e importar `math/rand` en `internal/domain`, `internal/game/{world,simulation,loop,founding,loadcheck}` e `internal/pathfinding`, salvo líneas marcadas |
+| Nada de `rand` global | La simulación no usa azar. `clock.RandomSource` (`internal/clock/random.go`) existe para cuando lo necesite; hoy no se inyecta ni se siembra con `EO_WORLD_SEED` | El mismo lint impide importar `math/rand` en el núcleo |
+| **Prohibido iterar mapas de Go sin ordenar** | Todo recorrido de entidades que produzca salida observable usa un slice de IDs en orden ascendente, o `sort.Slice` explícito antes de iterar | Revisión + `TestSimulacionEsReproducible` (dos ejecuciones, mismas posiciones finales; la traza de mensajes no se compara) |
 | Orden estable de entidades | Unidades por `id` ascendente; ciudades por `id`; chunks recorridos por `(cy, cx)` | Simulation test de doble ejecución (`reproducibilidad`) |
 | Orden estable de comandos | FIFO del canal dentro de un tick; en tests, la secuencia de inyección es el orden | Los simulation tests inyectan comandos explícitamente, sin concurrencia |
 | Desempate del A* | `(f, h, y, x)`, con costes enteros escalados (`costScaleOrtho = 1000`, `costScaleDiag = 1414`) y heurística octile **ponderada por `MinTerrainCostUnits` = 6** (ROAD, el terreno más barato): `h = 6*1000*rectos + 6*1414*diagonales`. Usar el coste de la hierba haría la heurística inadmisible en un mundo con caminos más baratos | Tests de `internal/pathfinding`: determinismo, preferencia de ROAD sobre FOREST, corner cutting |
@@ -291,9 +293,10 @@ El loop separa **driver** de **simulación**:
   Está separado de `Run` a propósito: es la unidad de ejecución de los tests.
 
 ```go
-// Simulation test: "avanza 10 s y asserta el estado exacto".
+// Simulation test: "avanza 10 s y asserta el estado exacto". Ejemplo ilustrativo:
+// el equivalente real es TestVerticalSliceMovimiento (internal/game/simulation).
 func TestVillagerReachesTarget(t *testing.T) {
-    clk := clock.NewFake(1_700_000_000_000) // instante fijo, sin dependencia del reloj real
+    clk := clock.NewFakeClock(1_700_000_000_000) // instante fijo, sin dependencia del reloj real
     commands := make(chan simulation.Command, 16)
     sim := simulation.New(state, simulation.Deps{Clock: clk, Pathfinder: pf, /* ... */})
     lp := loop.New(sim, clk, commands, loop.Config{
@@ -351,6 +354,7 @@ func (l *Loop) Run(ctx context.Context) error {
     for {
         select {
         case <-ctx.Done():
+            l.sim.FlushDirty()         // volcado final en el apagado ordenado
             return ctx.Err()
         case <-timer.C:
         }
@@ -435,8 +439,9 @@ Dos detalles que este código fija y que no conviene idealizar:
 2. **La mutación en RAM precede al encolado durable, no al revés.** `handleMoveUnit` cancela el
    movimiento previo, registra el nuevo, pasa la unidad a `MOVING` y **después** llama a
    `Persister.Submit`. Si la cola de persistencia está saturada, `Submit` descarta el trabajo, lo
-   registra como error e invoca `OnPermanentFailure` **si el trabajo declaró uno** (`movement.start`
-   sí; `movement.cancel`, `movement.complete`, `city.presence` y `units.flush` no); en ningún caso se
+   registra como error e invoca `OnPermanentFailure` **si el trabajo declaró uno** (`movement.start`,
+   `garrison.enter` y `garrison.leave` sí; `movement.cancel`, `movement.complete`, `city.presence`,
+   `treaty.expire` y `units.flush` no); en ningún caso se
    revierte la mutación en RAM. Es la contrapartida honesta de no hacer I/O en el tick, y está
    descrita como ventana de riesgo en [estrategia de persistencia](./persistence.md).
 
@@ -458,7 +463,7 @@ sequenceDiagram
     R->>R: ReadLimit 16384 B, rate limit 20/s (burst 40), parseo del envelope v1
     R->>R: idempotencia: SETNX idem:{playerId}:{requestId} en Redis (TTL 300 s)
     alt cola del loop llena
-        R->>R: comando descartado y registrado como error
+        R->>R: comando descartado, registrado, reserva liberada y system.error INTERNAL_ERROR
     else encolado
         R->>Q: Command{MoveUnit}
     end
@@ -486,7 +491,7 @@ sequenceDiagram
     L->>L: FASE 6 reindexado de chunk al cambiar de tile
     L->>H: FASE 7 entity.update al chunk de la posición nueva
     H-->>C: deltas (el cliente interpola sub-tile, sólo visual)
-    L->>P: FASE 8 cada 50 ticks: encola "units.flush" con el dirty-set
+    Note over L,P: FASE 8 cada 50 ticks: el "units.flush" excluye a esta unidad (está en marcha)
 
     Note over L: TICK N+k — arrival_time_ms alcanzado
 
@@ -504,8 +509,9 @@ Puntos que este diagrama fija:
   escribe después. La ventana de riesgo —si el proceso muere entre la aceptación y el commit, ese
   movimiento se pierde y la unidad queda en su última posición consolidada— es un RPO documentado en
   [estrategia de persistencia](./persistence.md), no un descuido.
-- La posición durante el movimiento se **deriva** de `unit_movements`; el volcado por lotes cada 50
-  ticks puede escribir una posición intermedia, pero en la recuperación prevalece la derivada.
+- La posición durante el movimiento se **deriva** de `unit_movements` y nunca se escribe: el volcado
+  periódico excluye las unidades en marcha (`INV-PERSIST-004`), y `units` sólo cambia en la transacción de
+  inicio (`movement.start`, origen y `MOVING`) y en la de cierre (`movement.complete`, tile final e `IDLE`).
 - Si el proceso muere entre el tick N y el N+k, al reiniciar `simulation.Hydrate` reanuda o completa
   el movimiento desde la polilínea, y descarta como `FAILED` cualquier polilínea que ya no valide
   contra el mundo actual (ver [game-server.md](./game-server.md)).
@@ -520,19 +526,19 @@ fallo**, y esta distinción es normativa:
 | Fallo | Mensaje portador |
 |---|---|
 | Dominio de `unit.move` | `unit.move.rejected { unitId, code, message }` — y **sólo** ese |
-| Dominio de `unit.cancel_move` | `system.error { code, message }` con el `requestId` correlacionado |
+| Dominio de `unit.cancel_move`, `unit.garrison` y `unit.ungarrison` | `system.error { code, message }` con el `requestId` correlacionado |
 | Transporte, versión, sesión, saturación | `system.error { code, message, details? }` |
 
 | Fase | Códigos posibles |
 |---|---|
-| 1 | Ninguno: la saturación de la cola la detecta el productor (`internal/websocket`), que descarta el comando y lo registra |
-| 2 | `UNIT_NOT_FOUND`, `UNIT_NOT_OWNED`, `UNIT_NOT_MOVABLE`, `UNIT_DEAD`, `UNIT_GARRISONED`, `TARGET_OUT_OF_BOUNDS`, `TARGET_NOT_WALKABLE`, `PATH_NOT_FOUND`, `PATH_TOO_LONG`, `INTERNAL_ERROR` |
+| 1 | Ninguno: la saturación de la cola la detecta el productor (`internal/websocket`), que descarta el comando, lo registra, libera su reserva de idempotencia y responde `system.error` con `INTERNAL_ERROR` |
+| 2 | `UNIT_NOT_FOUND`, `UNIT_NOT_OWNED`, `UNIT_NOT_MOVABLE`, `UNIT_DEAD`, `UNIT_GARRISONED`, `TARGET_OUT_OF_BOUNDS`, `TARGET_NOT_WALKABLE`, `PATH_NOT_FOUND`, `PATH_TOO_LONG`, `INTERNAL_ERROR`; y, en la guarnición, `CITY_NOT_FOUND`, `INVALID_TARGET` (ciudad no adyacente) y `TREATY_REQUIRED` |
 | 3–8 | Ninguno hacia el cliente: un fallo aquí se registra con `tick`, se cuenta y, si el latido del loop se detiene, `/ready` deja de responder `200` |
 
-`INVALID_TARGET`, `CITY_NOT_FOUND`, `CITY_PROTECTED`, `TREATY_REQUIRED`, `POPULATION_LIMIT_REACHED`,
-`NOT_IMPLEMENTED`, `UNAUTHORIZED`, `FORBIDDEN` y `MESSAGE_TOO_LARGE` están en el catálogo de 22 códigos
-—que un contract test verifica contra `packages/protocol`— pero **ningún camino del MVP los emite
-todavía**: pertenecen a comandos que aún no existen, o se resuelven cerrando el socket con su código
+`CITY_PROTECTED`, `POPULATION_LIMIT_REACHED`, `NOT_IMPLEMENTED`, `UNAUTHORIZED`, `FORBIDDEN` y
+`MESSAGE_TOO_LARGE` están en el catálogo de 22 códigos —que un contract test verifica contra
+`packages/protocol`— pero **ningún camino del MVP los emite todavía**, y `unit.move` tampoco emite
+`INVALID_TARGET`: pertenecen a comandos que aún no existen, o se resuelven cerrando el socket con su código
 de cierre (`4401` para credenciales, `1009` del propio `ReadLimit` para un frame sobredimensionado)
 sin llegar a mandar un `system.error`. `INVALID_MESSAGE`, `UNSUPPORTED_VERSION` y `RATE_LIMITED` sí se
 emiten, pero en la capa `websocket` y antes de que exista un comando: nunca llegan al loop.
@@ -545,10 +551,10 @@ emiten, pero en la capa `websocket` y antes de que exista un comando: nunca lleg
 |---|---|---|
 | Métrica | `eo_game_tick_duration_seconds` (histogram) | Presupuesto de la sección 4; alerta sobre p99 |
 | Métrica | `eo_game_tick_overruns_total` | Ticks que superaron el período |
-| Métrica | `eo_commands_total{type,result}` | `type` = `unit.move`, `unit.cancel_move`, `player.connected`, `player.disconnected`, `unknown`; `result` = `accepted` o `failed` (pánico recuperado) |
+| Métrica | `eo_commands_total{type,result}` | `type` = `unit.move`, `unit.cancel_move`, `player.connected`, `player.disconnected`, `unknown` —todo comando sin etiqueta propia: guarnición, snapshots, alta de jugador y compensaciones, además de los pánicos—; `result` = `accepted` o `failed` (pánico recuperado) |
 | Métrica | `eo_pathfinding_requests_total{result}`, `eo_pathfinding_duration_seconds` | Coste del A* dentro de la fase 2, agregado al final del tick |
 | Métrica | `eo_active_units`, `eo_active_movements`, `eo_persistence_queue_depth` | Tamaño del mundo activo y salud del carril de escritura |
-| Log | `slog` JSON con `tick` | Todo log emitido desde el loop incluye `tick`; los originados por un comando incluyen además `player_id`, `session_id`, `request_id` |
+| Log | `slog` JSON | Los avisos del propio loop (`loop.go`) y los `invariant_violation` llevan `tick`; el resto de logs de la simulación lleva sólo identificadores de entidad (`unit_id`, `city_id`). `request_id` sólo lo registra la capa WebSocket. Añadir `tick`, `player_id` y `request_id` de forma sistemática está pendiente |
 | Readiness | `GET /ready` | Incluye "loop vivo": el loop late en cada tick (`Health.BeatLoop`) y el latido no puede tener más de **5 s** de antigüedad. `GET /health` (liveness) no depende de nada |
 
 Regla de logging dentro del tick: **nada de logs por entidad en el camino caliente**. Se registra por

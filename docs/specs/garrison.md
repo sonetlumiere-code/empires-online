@@ -42,7 +42,8 @@ expulsión diferida al romperse un tratado (§6.4).
 **Fuera de MVP**
 
 - Diplomacia completa: proponer, aceptar, rechazar, renegociar o romper tratados desde el cliente;
-  caducidad automática; notificaciones de diplomacia.
+  notificaciones de diplomacia. (La caducidad por `expires_at` **sí** está implementada: un barrido de la fase 5,
+  una vez por segundo, los pasa a `EXPIRED` con un evento `TreatyExpired`.)
 - **Expulsión diferida por ruptura de tratado: `TBD (fuera de MVP)`.** La decisión está tomada (§6.4)
   pero `garrisons` **no tiene** columna de vencimiento en la migración `000001`: implementarla exige
   una migración aditiva. Ver §10.
@@ -79,7 +80,7 @@ expulsión diferida al romperse un tratado (§6.4).
 | Output | Destino | Cuándo |
 |---|---|---|
 | Fila `garrisons (unit_id, city_id, entered_at)` | PostgreSQL | Entrada. Se borra al salir. |
-| `units.status` (entrada); `units.status`, `units.x`, `units.y`, `units.chunk_x`, `units.chunk_y` (salida) | PostgreSQL | En la misma transacción que la fila. `units.city_id` **no** se escribe (§7.1). |
+| `units.status` (entrada); `units.status`, `units.x`, `units.y`, `units.chunk_x`, `units.chunk_y` (salida) | PostgreSQL | En la misma transacción que la fila, que en la entrada cancela además cualquier movimiento `ACTIVE` de la unidad (`cancelledMovement`). `units.city_id` **no** se escribe (§7.1). |
 | `entity.update` con el `requestId` del comando | Propietario | Entrada y salida. |
 | `entity.despawn { reason: "GARRISONED" }` | Terceros del chunk | Entrada. |
 | `entity.spawn` | Terceros del chunk de reentrada | Salida. |
@@ -180,7 +181,7 @@ Diagrama estructural de la autorización:
 | `RN-GARR-011` | Tile de reentrada: el primer tile transitable y desocupado del anillo exterior de la zona urbana, recorrido en orden estable ascendente por `(y, x)`. El mismo criterio de desempate determinista que usa el pathfinder (canon §8), para que la salida sea reproducible en tests. |
 | `RN-GARR-012` | Se escriben `units.x`, `units.y`, `units.chunk_x`, `units.chunk_y` con ese tile y `status = 'IDLE'`. La salida la decide y la aplica el tick; si su escritura falla de forma definitiva, la unidad vuelve a la ciudad en la RAM ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.3). |
 | `RN-GARR-013` | La fila de `garrisons` se **borra** (`DELETE ... WHERE unit_id = `). La tabla del MVP no tiene columna de cierre: `garrisons.unit_id` es la PRIMARY KEY y solo modela guarniciones **abiertas**. El historial está en `world_events`: `UnitGarrisoned` al entrar y `UnitUngarrisoned` al salir. |
-| `RN-GARR-014` | Si **no hay ningún tile de reentrada disponible** (ciudad completamente rodeada), la salida no falla con error: queda **pendiente**, se reintenta en la fase 5 de cada tick y se registra un log de nivel `warn`. La unidad permanece `GARRISONED` y la respuesta al comando llega cuando sale. Se prefiere el reintento silencioso a inventar un código de error nuevo o a colocar la unidad en un tile arbitrario, que rompería `INV-UNIT-001`. |
+| `RN-GARR-014` | Si **no hay ningún tile de reentrada disponible** (ciudad completamente rodeada), la salida no falla con error: queda **pendiente** (todo el anillo es intransitable por terreno o murallas; las unidades no cuentan), se reintenta en la fase 5 de cada tick y se registra un log de nivel `warn`. La unidad permanece `GARRISONED` y la respuesta al comando llega cuando sale. Se prefiere el reintento silencioso a inventar un código de error nuevo o a colocar la unidad en un tile arbitrario, que rompería `INV-UNIT-001`. |
 
 ### 6.4 Ruptura del tratado con la unidad dentro — decisión
 
@@ -197,6 +198,12 @@ Tres políticas posibles:
 | **Expulsión diferida con periodo de gracia** | El tratado deja de estar `ACTIVE`, la guarnición se marca como *en gracia*, y al vencer el plazo el servidor la expulsa por el procedimiento normal de salida. | **Elegida.** |
 
 **Decisión adoptada: expulsión diferida con periodo de gracia. Implementación `TBD (fuera de MVP)`.**
+
+> **Lo que ocurre hoy, sin maquillar.** Como la caducidad de tratados ya existe y la expulsión no, un tratado
+> que caduca deja sus guarniciones dentro **indefinidamente**: rige de hecho la política descartada de
+> «permanencia indefinida». No es explotable por un jugador mientras los tratados sólo los cree la vía
+> administrativa (`DEBT-14`), y por eso puede esperar; deja de poder esperar el día que exista la diplomacia de
+> cara al jugador.
 
 Mecánica del diseño objetivo:
 
@@ -255,7 +262,7 @@ stateDiagram-v2
 | **No ocupa tile del mundo** | Sale del mapa: nadie la ve en su tile y no se le pueden dar órdenes de movimiento. En el MVP las unidades no entran nunca en la capa de ocupación —la colisión entre unidades está fuera de alcance ([movement.md](movement.md))—, así que guarnecer no la toca. `units.x`/`units.y` conservan el último tile exterior, que es donde su dueño la encuentra en el snapshot, pero **no** representan una posición en el mapa: `INV-UNIT-003` excluye a las unidades guarnecidas. |
 | **Invisible para terceros** | Al entrar se emite `entity.despawn { reason: "GARRISONED" }` a los demás observadores del chunk —el anfitrión incluido—. Mientras esté guarnecida no aparece en el `world.snapshot` de nadie más que su dueño, ni en ningún delta dirigido a terceros. Es el mismo filtro por destinatario que el de una unidad `HIDDEN`. |
 | **Visible para su propietario** | Vía `entity.update`, con `status = "GARRISONED"` y `garrisonCityId` de la ciudad anfitriona, y en su `world.snapshot`, donde sigue apareciendo en el chunk de su último tile exterior. La visibilidad para el anfitrión es `TBD (fuera de MVP)`: `city.update` no transporta la composición de la guarnición (§12). |
-| **No recibe órdenes de movimiento** | `unit.move` y `unit.cancel_move` se rechazan con `UNIT_GARRISONED`. No hay excepción: no existe "mover hacia la salida". La unidad debe salir primero. |
+| **No recibe órdenes de movimiento** | `unit.move` se rechaza con `unit.move.rejected { code: UNIT_GARRISONED }`; `unit.cancel_move` no tiene movimiento que cancelar y no produce nada. No hay excepción: no existe "mover hacia la salida". La unidad debe salir primero. |
 | **No se oculta ni se revela** | La fase 5 del tick ignora las unidades `GARRISONED`; el interior de una ciudad no es Safe Zone (ver [safe-zones.md](safe-zones.md)). |
 | **Cuenta para la población de su ciudad de origen** | `units.city_id` no cambia (`RN-GARR-021`): sigue contando contra el `population_limit` de su ciudad, no del anfitrión. Guarnecer no es una vía para esquivar el cap, ni para consumir el de un aliado. Como nada de la ciudad cambia, guarnecer no emite `city.update`. |
 | **Sobrevive al offline** | El mundo persiste (canon §1.2). Desconectarse no expulsa unidades ni las devuelve al mapa. |
@@ -271,12 +278,12 @@ spec no introduce ninguno.
 | `UNIT_NOT_FOUND` | No existe `units.id`. |
 | `UNIT_NOT_OWNED` | El solicitante no es `units.player_id`. Incluye el caso del anfitrión intentando mover unidades alojadas. Se comprueba **antes** que el estado. |
 | `UNIT_DEAD` | `units.status = 'DEAD'`. |
-| `UNIT_GARRISONED` | Cualquier comando de movimiento sobre una unidad guarnecida, o segunda entrada de una unidad ya dentro. |
-| `UNIT_NOT_MOVABLE` | La unidad no está `IDLE` (típicamente `MOVING` o `HIDDEN`) al intentar entrar; o está **entrando** (`RN-GARR-020`) y recibe cualquier orden; o se pide sacar una unidad que no está guarnecida. |
+| `UNIT_GARRISONED` | `unit.move` sobre una unidad guarnecida (en `unit.move.rejected`), o segunda entrada de una unidad ya dentro. |
+| `UNIT_NOT_MOVABLE` | La unidad no está `IDLE` (típicamente `MOVING` o `HIDDEN`) al intentar entrar; o está **entrando** (`RN-GARR-020`) y recibe cualquier orden; o se pide sacar una unidad que no está guarnecida, o que ya tiene una salida pendiente (`RN-GARR-014`). |
 | `CITY_NOT_FOUND` | La ciudad destino no existe. |
 | `INVALID_TARGET` | La unidad no es adyacente a la zona urbana de la ciudad. |
 | `TREATY_REQUIRED` | Entrada en ciudad ajena sin `Treaty` `ACTIVE` con `allows_garrison = true` entre ambos jugadores. |
-| `INTERNAL_ERROR` | Fallo definitivo de la transacción de entrada, o cola de comandos llena (canon §13). |
+| `INTERNAL_ERROR` | Fallo definitivo de la transacción de entrada, cola de comandos llena (canon §13), servidor sin almacén de guarnición, o guarnición inconsistente en la RAM (una unidad `GARRISONED` sin ciudad anfitriona, que además registra una violación de `INV-GARR-002`). |
 
 Códigos que deliberadamente **no** se emiten:
 
@@ -294,10 +301,10 @@ sólo cita los IDs.
 | `INV-GARR-001` | Una unidad tiene como máximo una guarnición abierta. | `garrisons.unit_id` es PRIMARY KEY (garantía física de la base de datos) + test de integración |
 | `INV-GARR-002` | `units.status = 'GARRISONED'` ⟺ existe una fila de `garrisons` para esa unidad. | Misma transacción en entrada y salida + test de integración |
 | `INV-GARR-003` | **DEROGADO** por [ADR-017](../decisions/ADR-017-garrison-commands.md): `units.city_id` es la ciudad de origen y no coincide con la anfitriona. | — |
-| `INV-GARR-004` | Guarnición en ciudad ajena (`units.player_id <> cities.owner_player_id`) ⟹ existía un `Treaty` `ACTIVE` con `allows_garrison = true` entre ambos en el instante de la entrada. | Test de simulación en el momento de la entrada |
+| `INV-GARR-004` | Guarnición en ciudad ajena (`units.player_id <> cities.owner_player_id`) ⟹ existía un `Treaty` `ACTIVE` con `allows_garrison = true` entre ambos en el instante de la entrada. | Tests de dominio, de integración (el `treatyId` en el evento), de simulación y e2e: ver la ficha |
 | `INV-GARR-005` | Ninguna unidad `GARRISONED` figura en la capa de ocupación del mundo. | Test de simulación |
-| `INV-GARR-006` | Ninguna unidad `GARRISONED` aparece en un delta dirigido a un jugador distinto de su propietario. | Test de integración de visibilidad |
-| `INV-GARR-007` | El ownership (`units.player_id`) de una unidad guarnecida no cambia al entrar ni al salir. | Unit test |
+| `INV-GARR-006` | Ninguna unidad `GARRISONED` aparece en un delta dirigido a un jugador distinto de su propietario. | `TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot` (simulation) y `TestLaGuarnicionPorLaRedSoloLaVeSuDueno` (e2e) |
+| `INV-GARR-007` | El ownership (`units.player_id`) de una unidad guarnecida no cambia al entrar ni al salir. | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno` (integration) |
 | `INV-GARR-009` | Entrar y salir de la guarnición no cambian `units.city_id`. | Test de integración |
 
 `INV-GARR-008` está **reservado** para la coherencia entre gracia y tratado vigente, que no se puede
@@ -360,7 +367,7 @@ tratado pertenece a la diplomacia, diferida.
 
 ## 11. Eventos
 
-Eventos de dominio (canon §15, hechos en pasado): `UnitGarrisoned` (`{unitId, cityId, cancelledMovement}`)
+Eventos de dominio (canon §15, hechos en pasado): `UnitGarrisoned` (`{unitId, cityId, cancelledMovement, treatyId?}`; `treatyId` sólo en ciudad ajena, `INV-GARR-004`)
 y `UnitUngarrisoned` (`{unitId, x, y}`), escritos en `world_events` en la misma transacción que el cambio,
 con el tick del loop y el `player_id` del dueño. Son el historial que `garrisons` no conserva
 (`RN-GARR-013`). `GarrisonEvictionScheduled` y `UnitEvicted` pertenecen a la mecánica de gracia y son

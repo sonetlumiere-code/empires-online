@@ -2,25 +2,36 @@
 
 Cómo se verifica la capa de persistencia contra PostgreSQL y Redis **reales**: montaje del entorno, base de datos dedicada, limpieza entre tests, el gate `EO_INTEGRATION=1`, y la lista enumerada de casos obligatorios incluido el test de recuperación tras caída del servidor.
 
-> **Estado real: EJECUTADO Y EN VERDE.** Tres ficheros llevan la etiqueta de compilación `integration`
-> en `services/game-server`:
+> **Estado real: EJECUTADO Y EN VERDE** (recuento del 2026-10-21). Llevan la etiqueta de compilación
+> `integration`, en `services/game-server`:
 >
 > | Fichero | Tests | Contra qué |
 > |---|---|---|
-> | `internal/persistence/postgres/integration_test.go` | 12 | PostgreSQL 16 real |
-> | `internal/persistence/postgres/territories_integration_test.go` | 9 | PostgreSQL 16 real |
-> | `internal/persistence/postgres/diplomacy_integration_test.go` | 14 | PostgreSQL 16 real |
+> | `internal/persistence/postgres/integration_test.go` | 13 | PostgreSQL 16 real |
+> | `internal/persistence/postgres/cities_integration_test.go` | 9 | ídem |
+> | `internal/persistence/postgres/diplomacy_integration_test.go` | 14 | ídem |
+> | `internal/persistence/postgres/fundacion_integration_test.go` | 9 | ídem (también `internal/httpapi`) |
+> | `internal/persistence/postgres/garrison_integration_test.go` | 4 | ídem |
+> | `internal/persistence/postgres/loadcheck_integration_test.go` | 2 | ídem |
+> | `internal/persistence/postgres/migrate_integration_test.go` | 3 | ídem |
+> | `internal/persistence/postgres/movement_pipeline_integration_test.go` | 1 | ídem, con la cola real |
+> | `internal/persistence/postgres/players_integration_test.go` | 6 | ídem |
+> | `internal/persistence/postgres/safezones_integration_test.go` | 5 | ídem |
+> | `internal/persistence/postgres/territories_integration_test.go` | 11 | ídem |
+> | `internal/persistence/postgres/units_integration_test.go` | 5 | ídem |
 > | `internal/persistence/postgres/testenv_integration_test.go` | — | montaje y limpieza |
-> | `internal/persistence/redis/redis_integration_test.go` | 9 | Redis real |
+> | `internal/persistence/redis/redis_integration_test.go` | 11 | Redis real |
 >
-> Los 44 pasan con el detector de carreras activo. **No se ejecutan con Docker**: la máquina de
+> Son 93, y pasan con el detector de carreras activo. Aparte, `apps/web/src/server/store.integration.test.ts`
+> (8 tests, Vitest) prueba el almacén de identidad contra PostgreSQL real. **No se ejecutan con Docker**: la máquina de
 > desarrollo lo tiene descartado (provoca pantallazos azules por consumo de RAM). PostgreSQL es un
 > cluster propio en `.pgdata/` puerto 5433, y Redis vive en WSL. El procedimiento exacto está en
 > [local-development.md](../operations/local-development.md) §3-bis. El job `integration` de la CI sí
 > usa contenedores, y desde que el repositorio es público esos tests —93 de Go a 2026-10-21, más los 8 del almacén de identidad de `apps/web`— **también pasan allí**, con
 > `-race`, contra `postgres:16-alpine` y `redis:7-alpine`.
 >
-> Donde este documento describa un test que **no** existe todavía, lo dice en su propia fila. Ubicación
+> Los nombres de las tablas I/R de este documento son el **plan** original y ninguno existe con ese nombre:
+> cada fila lleva una nota **Estado** (2026-10-21) con el test real que la cubre, si la cubre, o lo que difiere. Ubicación
 > y convenciones en [strategy.md](./strategy.md) §5.
 
 ---
@@ -196,9 +207,9 @@ PR, que compila **y** ejecuta con `-tags=integration`: la deriva de compilación
 la nocturna.
 
 **En CI el gate siempre está activo.** Los servicios están garantizados, así que un *skip* en CI sería
-una regresión silenciosa. Cuando existan los primeros ficheros, el job debe verificar además que el
-número de tests ejecutados es mayor que cero; **hoy el job pasa con cero tests**, y eso es
-precisamente lo que este documento no puede presentar como verde.
+una regresión silenciosa. El job no verifica que el número de tests ejecutados sea mayor que cero: si un día
+la etiqueta o la variable dejasen de llegarle, pasaría en verde sin ejecutar nada. Añadir ese recuento es una
+mejora pendiente y barata.
 
 ---
 
@@ -273,12 +284,12 @@ Canon §10 y §12: la creación de player/city/unit es **write-through inmediato
 
 | # | Test | Escenario | Aserciones |
 |---|---|---|---|
-| **I1** | `Test_INV_PLAYER_003_NewPlayerHasOneCityAndThreeVillagers` | Alta completa de jugador | Exactamente 1 fila en `players` (con `id` `uuid`), 1 en `cities`, **3** en `units` con `unit_type = 'VILLAGER'`, `status = 'IDLE'`, `hp = 40`; `cities.population = 3`; `cities.population_limit = 20` derivado de `STONE_AGE`; `cities.presence_state = 'ONLINE'` |
-| **I2** | `TestPlayerCreation_PartialFailureLeavesNothing` | Se inyecta un fallo al insertar el **tercer** `VILLAGER` | `players`, `cities` y `units` quedan **con cero filas** para ese jugador. No hay ciudad huérfana ni jugador sin unidades |
-| **I3** | `TestPlayerCreation_DuplicateUsernameRollsBackEverything` | Segundo alta con el mismo `username` | Violación de `UNIQUE` en `players.username`; la ciudad y las unidades de ese segundo intento no existen |
-| **I4** | `TestPlayerCreation_DuplicateCityPositionRollsBackEverything` | Dos ciudades sobre el mismo tile | Violación de la restricción real `cities_unique_center` (`UNIQUE (center_x, center_y)`); nada persistido del segundo intento |
-| **I5** | `Test_INV_CITY_007_CityCenterOnValidTile` | Ciudad sobre `MOUNTAIN` o fuera de límites | Rechazo en el dominio (`internal/game/founding`); ninguna fila creada. La base no lo comprueba: el terreno no vive en PostgreSQL como restricción |
-| **I6** | `TestPlayerCreation_IsSingleTransaction` | Instrumentación del pool | Todas las escrituras del alta ocurren en **una** transacción. Tres transacciones separadas pasarían I1 y fallarían I2 |
+| **I1** | `Test_INV_PLAYER_003_NewPlayerHasOneCityAndThreeVillagers` | Alta completa de jugador | Exactamente 1 fila en `players` (con `id` `uuid`), 1 en `cities`, **3** en `units` con `unit_type = 'VILLAGER'`, `status = 'IDLE'`, `hp = 40`; `cities.population = 3`; `cities.population_limit = 20` derivado de `STONE_AGE`; `cities.presence_state = 'ONLINE'` **Estado (2026-10-21):** ✔ `TestBootstrapCreaMundoCompletoDelJugador`. |
+| **I2** | `TestPlayerCreation_PartialFailureLeavesNothing` | Se inyecta un fallo al insertar el **tercer** `VILLAGER` | `players`, `cities` y `units` quedan **con cero filas** para ese jugador. No hay ciudad huérfana ni jugador sin unidades **Estado (2026-10-21):** ○ en parte: `TestBootstrapFallidoNoDejaNadaAMedias` y `TestUnAltaConUnaEraInexistenteNoEscribeNada`; no inyecta el fallo en el tercer aldeano. |
+| **I3** | `TestPlayerCreation_DuplicateUsernameRollsBackEverything` | Segundo alta con el mismo `username` | Violación de `UNIQUE` en `players.username`; la ciudad y las unidades de ese segundo intento no existen **Estado (2026-10-21):** ✔ `TestBootstrapFallidoNoDejaNadaAMedias` y `TestElAltaRegistraUnEventoYNoSeDuplica`. |
+| **I4** | `TestPlayerCreation_DuplicateCityPositionRollsBackEverything` | Dos ciudades sobre el mismo tile | Violación de la restricción real `cities_unique_center` (`UNIQUE (center_x, center_y)`); nada persistido del segundo intento **Estado (2026-10-21):** ✔ `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (`cities_unique_center`) y `TestDosCiudadesNoPuedenCompartirCentro`. |
+| **I5** | `Test_INV_CITY_007_CityCenterOnValidTile` | Ciudad sobre `MOUNTAIN` o fuera de límites | Rechazo en el dominio (`internal/game/founding`); ninguna fila creada. La base no lo comprueba: el terreno no vive en PostgreSQL como restricción **Estado (2026-10-21):** ✔ en unidad: `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestSinTerrenoTransitableNoHaySitio` (`founding`) y `TestUnCentroSobreAguaAbortaElArranque` (`loadcheck`). |
+| **I6** | `TestPlayerCreation_IsSingleTransaction` | Instrumentación del pool | Todas las escrituras del alta ocurren en **una** transacción. Tres transacciones separadas pasarían I1 y fallarían I2 **Estado (2026-10-21):** ○ sin test. |
 
 **Orden real del alta.** Primero la transacción en PostgreSQL (jugador + ciudad + 3 aldeanos, atómica)
 y **sólo después** el comando `IntroducePlayer` que incorpora al jugador al mundo en RAM. Un test que
@@ -321,13 +332,13 @@ la razón de cancelación viaja en el mensaje `unit.movement.cancelled` pero **n
 
 | # | Test | Aserciones |
 |---|---|---|
-| **I7** | `TestMovementRepository_PersistAndHydrate` | Se persiste un movimiento `(100,100)→(103,102)` sobre `GRASSLAND`: dos diagonales y un paso ortogonal ⇒ `tMs = [0, 849, 1698, 2298]`. Al hidratarlo: mismos `unit_id`, `target_x`/`target_y`, `start_time_ms`, `arrival_time_ms = start_time_ms + 2298`, `status = 'ACTIVE'`, y la polilínea **idéntica elemento a elemento**, con el primer waypoint en el origen y `tMs = 0` |
-| **I8** | `TestMovementRepository_JsonbPreservesIntegerTMs` | Los `tMs` vuelven como enteros, no como `float64`. Un `tMs` de `849` que regrese como `849.0` y se redondee mal desplazaría la posición reconstruida un tile |
-| **I9** | `TestMovementRepository_BigintIdsSurviveRoundTrip` | Un `unit_id` cercano al máximo de `bigint` (`9223372036854775807`) se persiste y recupera sin pérdida de precisión |
-| **I10** | `TestMovementRepository_TimestamptzAndTimeMsAgree` | `created_at` (`timestamptz`, con `DEFAULT now()`) y `start_time_ms` (`bigint`, epoch ms de la simulación) representan instantes coherentes. La aritmética de simulación usa **siempre** el `bigint`; el `timestamptz` es sólo para auditoría humana |
-| **I11** | `TestMovementRepository_CheckConstraintsRejectMalformedRows` | Inserción directa por SQL que viola `unit_movements_time_ordered` (`arrival_time_ms < start_time_ms`), `unit_movements_path_is_array` (`path` que no es un array, o array vacío) y `unit_movements_status_valid` (`status = 'PAUSED'`) ⇒ rechazo del motor. Son los tres nombres reales de las restricciones |
-| **I12** | `TestFlushNoContradiceLaPolilinea` (`INV-PERSIST-004`) | Con un movimiento `ACTIVE` en curso, el flush periódico (`EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50`) no deja una `units.x/y` incompatible con la polilínea. La contraparte en RAM ya está verificada: `TestVolcadoPeriodicoNoOcurreEnCadaTick` ([simulation-tests.md](./simulation-tests.md) §4.7) comprueba que en 60 ticks hay **exactamente un** `units.flush` |
-| **I40** | `TestUnitsMantieneElChunkDesnormalizado` | Toda escritura de `units.x/y` recalcula `units.chunk_x`/`chunk_y` en la misma sentencia. Es la clave del interest management (`units_chunk_idx`, parcial sobre `status <> 'DEAD'`) y una desincronización haría desaparecer unidades del snapshot |
+| **I7** | `TestMovementRepository_PersistAndHydrate` | Se persiste un movimiento `(100,100)→(103,102)` sobre `GRASSLAND`: dos diagonales y un paso ortogonal ⇒ `tMs = [0, 849, 1698, 2298]`. Al hidratarlo: mismos `unit_id`, `target_x`/`target_y`, `start_time_ms`, `arrival_time_ms = start_time_ms + 2298`, `status = 'ACTIVE'`, y la polilínea **idéntica elemento a elemento**, con el primer waypoint en el origen y `tMs = 0` **Estado (2026-10-21):** ✔ `TestMovimientoSobreviveAlCicloDePersistencia`, con otro trayecto. |
+| **I8** | `TestMovementRepository_JsonbPreservesIntegerTMs` | Los `tMs` vuelven como enteros, no como `float64`. Un `tMs` de `849` que regrese como `849.0` y se redondee mal desplazaría la posición reconstruida un tile **Estado (2026-10-21):** ✔ el mismo test compara la polilínea entera. |
+| **I9** | `TestMovementRepository_BigintIdsSurviveRoundTrip` | Un `unit_id` cercano al máximo de `bigint` (`9223372036854775807`) se persiste y recupera sin pérdida de precisión **Estado (2026-10-21):** ○ sin test. |
+| **I10** | `TestMovementRepository_TimestamptzAndTimeMsAgree` | `created_at` (`timestamptz`, con `DEFAULT now()`) y `start_time_ms` (`bigint`, epoch ms de la simulación) representan instantes coherentes. La aritmética de simulación usa **siempre** el `bigint`; el `timestamptz` es sólo para auditoría humana **Estado (2026-10-21):** ○ sin test. |
+| **I11** | `TestMovementRepository_CheckConstraintsRejectMalformedRows` | Inserción directa por SQL que viola `unit_movements_time_ordered` (`arrival_time_ms < start_time_ms`), `unit_movements_path_is_array` (`path` que no es un array, o array vacío) y `unit_movements_status_valid` (`status = 'PAUSED'`) ⇒ rechazo del motor. Son los tres nombres reales de las restricciones **Estado (2026-10-21):** ✔ `TestLasRestriccionesDeMovimientosRechazanFilasInvalidas`. |
+| **I12** | `TestFlushNoContradiceLaPolilinea` (`INV-PERSIST-004`) | Con un movimiento `ACTIVE` en curso, el flush periódico (`EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50`) no deja una `units.x/y` incompatible con la polilínea. La contraparte en RAM ya está verificada: `TestVolcadoPeriodicoNoOcurreEnCadaTick` ([simulation-tests.md](./simulation-tests.md) §4.7) comprueba que en 60 ticks hay **exactamente un** `units.flush` **Estado (2026-10-21):** ✔ en RAM: `TestUnaUnidadEnMarchaNoSeVuelca` (el volcado excluye las unidades en marcha, ADR-013). |
+| **I40** | `TestUnitsMantieneElChunkDesnormalizado` | Toda escritura de `units.x/y` recalcula `units.chunk_x`/`chunk_y` en la misma sentencia. Es la clave del interest management (`units_chunk_idx`, parcial sobre `status <> 'DEAD'`) y una desincronización haría desaparecer unidades del snapshot **Estado (2026-10-21):** ✔ `TestFlushPositionsEscribeElLoteYMantieneElChunk` y `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk`. |
 
 ### 5.3 El índice único parcial impide dos movimientos `ACTIVE`
 
@@ -346,12 +357,12 @@ y también parcial sobre `status = 'ACTIVE'`: da un orden estable de carga.
 
 | # | Test | Escenario | Aserciones |
 |---|---|---|---|
-| **I13** | `Test_INV_MOVE_001_AtMostOneActiveMovement` | Insertar dos filas `ACTIVE` para la misma `unit_id` | La segunda falla con `23505` (`unique_violation`) sobre `unit_movements_one_active_per_unit`. **No** se comprueba solo el mensaje: se comprueba el `SQLSTATE`. La contraparte en RAM es `TestNuevaOrdenReemplazaLaAnterior` ([simulation-tests.md](./simulation-tests.md) §4.1) |
-| **I14** | `TestMovementRepository_ManyTerminalMovementsAreAllowed` | 50 filas `COMPLETED` y `CANCELLED` para la misma unidad | Todas se insertan. El índice es parcial precisamente para preservar el historial |
-| **I15** | `TestMovementRepository_ReplaceOrderCancelsAndCreatesInOneTransaction` | Nueva orden sobre unidad en movimiento | En **una** transacción: `UPDATE … SET status='CANCELLED'` sobre el anterior e `INSERT` del nuevo. Al terminar hay exactamente 1 `ACTIVE` y 1 `CANCELLED` |
-| **I16** | `TestMovementRepository_ConcurrentDoubleStartLosesOne` | Dos conexiones reales intentan iniciar movimiento para la misma unidad simultáneamente | Una gana; la otra recibe `23505` o un conflicto de serialización. Nunca quedan dos `ACTIVE`. **Requiere mecanismo B**: con transacción revertida este test no verifica nada |
-| **I17** | `TestMovementRepository_ConflictIsRetriedThenRejected` | Se fuerza el conflicto de I16 en el camino de comando | El comando reintenta; si vuelve a fallar, se rechaza con `INTERNAL_ERROR` (canon §16). **Jamás** se resuelve borrando el índice |
-| **I18** | `Test_INV_UNIT_005_MovingIffActiveMovement` (parte de base de datos) | Barrido sobre el estado persistido | No existe ninguna `units` con `status='MOVING'` sin `unit_movements` `ACTIVE`, ni viceversa |
+| **I13** | `Test_INV_MOVE_001_AtMostOneActiveMovement` | Insertar dos filas `ACTIVE` para la misma `unit_id` | La segunda falla con `23505` (`unique_violation`) sobre `unit_movements_one_active_per_unit`. **No** se comprueba solo el mensaje: se comprueba el `SQLSTATE`. La contraparte en RAM es `TestNuevaOrdenReemplazaLaAnterior` ([simulation-tests.md](./simulation-tests.md) §4.1) **Estado (2026-10-21):** ✔ `TestIndiceUnicoImpideDosMovimientosActivos` (comprueba la violación de unicidad, no el nombre del índice). |
+| **I14** | `TestMovementRepository_ManyTerminalMovementsAreAllowed` | 50 filas `COMPLETED` y `CANCELLED` para la misma unidad | Todas se insertan. El índice es parcial precisamente para preservar el historial **Estado (2026-10-21):** ○ sólo indirecto: en `TestIndiceUnicoImpideDosMovimientosActivos` conviven un `CANCELLED` y un `ACTIVE`. |
+| **I15** | `TestMovementRepository_ReplaceOrderCancelsAndCreatesInOneTransaction` | Nueva orden sobre unidad en movimiento | En **una** transacción: `UPDATE … SET status='CANCELLED'` sobre el anterior e `INSERT` del nuevo. Al terminar hay exactamente 1 `ACTIVE` y 1 `CANCELLED` **Estado (2026-10-21):** ✔ `TestIndiceUnicoImpideDosMovimientosActivos` (la parte de `Start`). |
+| **I16** | `TestMovementRepository_ConcurrentDoubleStartLosesOne` | Dos conexiones reales intentan iniciar movimiento para la misma unidad simultáneamente | Una gana; la otra recibe `23505` o un conflicto de serialización. Nunca quedan dos `ACTIVE`. **Requiere mecanismo B**: con transacción revertida este test no verifica nada **Estado (2026-10-21):** ○ sin test. |
+| **I17** | `TestMovementRepository_ConflictIsRetriedThenRejected` | Se fuerza el conflicto de I16 en el camino de comando | El comando reintenta; si vuelve a fallar, se rechaza con `INTERNAL_ERROR` (canon §16). **Jamás** se resuelve borrando el índice **Estado (2026-10-21):** **difiere**: la persistencia es asíncrona; tras agotar los intentos se compensa con `unit.movement.cancelled { reason: SERVER }`, no con `INTERNAL_ERROR` (`TestUnInicioQueNoSePersisteDetieneLaUnidad`, `TestAgotadosLosIntentosSeCompensaUnaVez`). |
+| **I18** | `Test_INV_UNIT_005_MovingIffActiveMovement` (parte de base de datos) | Barrido sobre el estado persistido | No existe ninguna `units` con `status='MOVING'` sin `unit_movements` `ACTIVE`, ni viceversa **Estado (2026-10-21):** ✔ en RAM: `TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento`; no hay barrido en la base. |
 
 ### 5.4 Presencia con expiración real de la clave de Redis
 
@@ -376,31 +387,31 @@ la clave con el TTL configurado, y que la transición que decidió el loop **se 
 
 | # | Test | Escenario | Aserciones |
 |---|---|---|---|
-| **I19** | `TestPresence_KeyExpiresAfterTtl` | `SET presence:player:{id}` con TTL corto; esperar con deadline | `EXISTS` pasa de 1 a 0; `TTL` decrece monótonamente y nunca es negativo mientras la clave vive |
-| **I20** | `TestPresence_HeartbeatRefreshesTtl` | Heartbeat antes de la expiración | El TTL vuelve al valor completo; la clave no expira mientras haya heartbeats |
-| **I21** | `TestPresence_OnlineWhileWithinGrace` | Cerrar el WS pero sin agotar `DisconnectGrace` | `cities.presence_state` sigue `'ONLINE'`: es el margen de reconexión (canon §9) |
-| **I22** | `TestPresence_TransitionsToOfflinePendingIsPersisted` | Agotado el margen sin ninguna sesión abierta | `cities.presence_state = 'OFFLINE_PENDING'` y `cities.last_offline_at` no nulo, **persistidos en PostgreSQL**, no sólo en RAM. Es lo que hace útil el índice parcial `cities_offline_pending_idx` sobre `last_offline_at` |
-| **I23** | `TestPresence_OfflinePendingToProtectedIsPersisted` | Vencido el cooldown (con `FakeClock` para los 300 s del temporizador de dominio) | `cities.presence_state = 'PROTECTED'` y `cities.protection_until IS NULL` en la fila real: en MVP la protección no caduca sola mientras el jugador siga offline |
-| **I24** | `TestPresence_ReconnectClearsProtection` | Reconexión estando `PROTECTED` | `cities.presence_state = 'ONLINE'`, `cities.protection_until IS NULL`, clave de presencia recreada con TTL completo |
-| **I25** | `Test_INV_PERSIST_003_NoDurableDataOnlyInRedis` | `FLUSHDB` del índice de test con el mundo poblado | Tras vaciar Redis, ningún dato durable se ha perdido: jugadores, ciudades, unidades y movimientos siguen en PostgreSQL. Solo se degrada la presencia, que se reconstruye |
-| **I26** | `TestPresence_CityStateIsServerOnly` | Intento de escribir `presence_state` desde un payload de cliente | Imposible por construcción: no existe camino de escritura desde el protocolo (canon §9) |
+| **I19** | `TestPresence_KeyExpiresAfterTtl` | `SET presence:player:{id}` con TTL corto; esperar con deadline | `EXISTS` pasa de 1 a 0; `TTL` decrece monótonamente y nunca es negativo mientras la clave vive **Estado (2026-10-21):** ✔ `TestPresenciaSeRegistraYExpira`. |
+| **I20** | `TestPresence_HeartbeatRefreshesTtl` | Heartbeat antes de la expiración | El TTL vuelve al valor completo; la clave no expira mientras haya heartbeats **Estado (2026-10-21):** ✔ `TestLatidoRenuevaLaPresencia`. |
+| **I21** | `TestPresence_OnlineWhileWithinGrace` | Cerrar el WS pero sin agotar `DisconnectGrace` | `cities.presence_state` sigue `'ONLINE'`: es el margen de reconexión (canon §9) **Estado (2026-10-21):** ✔ en RAM: `TestCicloDePresenciaYProteccion`, `TestReconexionDentroDelMargenNoDegradaLaCiudad`. |
+| **I22** | `TestPresence_TransitionsToOfflinePendingIsPersisted` | Agotado el margen sin ninguna sesión abierta | `cities.presence_state = 'OFFLINE_PENDING'` y `cities.last_offline_at` no nulo, **persistidos en PostgreSQL**, no sólo en RAM. Es lo que hace útil el índice parcial `cities_offline_pending_idx` sobre `last_offline_at` **Estado (2026-10-21):** ✔ `TestTransicionesDePresenciaSePersisten` (por el repositorio, no a través del loop). |
+| **I23** | `TestPresence_OfflinePendingToProtectedIsPersisted` | Vencido el cooldown (con `FakeClock` para los 300 s del temporizador de dominio) | `cities.presence_state = 'PROTECTED'` y `cities.protection_until IS NULL` en la fila real: en MVP la protección no caduca sola mientras el jugador siga offline **Estado (2026-10-21):** ○ en parte: `TestUnReinicioNoReiniciaElCooldownDeProteccion`. |
+| **I24** | `TestPresence_ReconnectClearsProtection` | Reconexión estando `PROTECTED` | `cities.presence_state = 'ONLINE'`, `cities.protection_until IS NULL`, clave de presencia recreada con TTL completo **Estado (2026-10-21):** ✔ `TestTransicionesDePresenciaSePersisten` (sin comprobar la clave de Redis). |
+| **I25** | `Test_INV_PERSIST_003_NoDurableDataOnlyInRedis` | `FLUSHDB` del índice de test con el mundo poblado | Tras vaciar Redis, ningún dato durable se ha perdido: jugadores, ciudades, unidades y movimientos siguen en PostgreSQL. Solo se degrada la presencia, que se reconstruye **Estado (2026-10-21):** ○ en parte: `TestNingunaClaveDelServidorQuedaSinCaducidad` (toda clave caduca); no vacía Redis con el mundo poblado. |
+| **I26** | `TestPresence_CityStateIsServerOnly` | Intento de escribir `presence_state` desde un payload de cliente | Imposible por construcción: no existe camino de escritura desde el protocolo (canon §9) **Estado (2026-10-21):** ✔ indirecto: `TestElDecodificadorEsTanEstrictoComoElEsquema` (el cliente no puede enviar estado). |
 
 I25 es el test que hace cumplir el principio del canon §1.4: **Redis nunca sustituye a PostgreSQL**.
 
 ### 5.5 Idempotencia de un `requestId` repetido
 
-Canon §13 y [ADR-014](../decisions/ADR-014-command-idempotency.md): `requestId` se registra en Redis (`idem:{playerId}:{requestId}`, TTL 300 s), sin respaldo durable. Un `requestId` repetido dentro de esa ventana **no se re-ejecuta**; hoy además se descarta sin respuesta, y reenviar la respuesta original está pendiente.
+Canon §13 y [ADR-014](../decisions/ADR-014-command-idempotency.md): `requestId` se registra en Redis (`idem:{playerId}:{requestId}`, TTL 300 s), sin respaldo durable. Un `requestId` repetido dentro de esa ventana **no se re-ejecuta**: recibe la respuesta original si ya la hubo (`TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal`), y nada si el original sigue en curso.
 
 | # | Test | Escenario | Aserciones |
 |---|---|---|---|
-| **I27** | `Test_INV_SEC_007_RepeatedRequestIdIsIdempotent` | Mismo `unit.move` con el mismo `requestId`, dos veces | Exactamente **1** fila en `unit_movements`; ambas respuestas tienen el mismo `payload` (el `seq` difiere, porque es por conexión) |
-| **I28** | `TestIdempotency_RedisKeyIsWrittenWithCorrectTtl` | Comando aceptado | Existe `idem:{playerId}:{requestId}` con TTL ≈ 300 s |
-| **I29** | `TestIdempotency_RedisFlushAllowsReexecution` | Ejecutar, `FLUSHDB`, repetir el comando | Se re-ejecuta: no hay respaldo durable (ADR-014). Con `unit.move`, el segundo cancela el primero con `REPLACED` y el mundo acaba igual |
-| **I30** | `TestIdempotency_ConcurrentDuplicateExecutesOnce` | Dos frames idénticos procesados en el mismo tick | Una sola ejecución; dos respuestas con idéntico `payload` |
-| **I31** | `TestIdempotency_DifferentRequestIdExecutesAgain` | Mismo comando, `requestId` distinto | **2** movimientos: el primero queda `CANCELLED` (el mensaje lleva `reason: "REPLACED"`, que no se persiste), el segundo `ACTIVE` |
-| **I32** | `TestIdempotency_ScopedByPlayer` | Mismo `requestId` de dos jugadores distintos | Ambos se ejecutan: la clave es `(player_id, request_id)`, no `request_id` solo |
-| **I33** | `TestIdempotency_RejectedCommandIsNotCached` | Comando rechazado con `TARGET_NOT_WALKABLE`, reintentado con el mismo `requestId` tras desbloquear el destino | Decisión de MVP: los rechazos **no** consumen la clave de idempotencia; el reintento se evalúa de nuevo. Se documenta explícitamente para que el comportamiento sea deliberado |
-| **I34** | `TestIdempotency_ExpiredKeyAllowsReexecution` | Clave vencida (TTL corto inyectado) | El comando se ejecuta de nuevo. Es correcto: pasados 300 s el cliente ya no está reintentando |
+| **I27** | `Test_INV_SEC_007_RepeatedRequestIdIsIdempotent` | Mismo `unit.move` con el mismo `requestId`, dos veces | Exactamente **1** fila en `unit_movements`; ambas respuestas tienen el mismo `payload` (el `seq` difiere, porque es por conexión) **Estado (2026-10-21):** ✔ `TestComandoDuplicadoSeIgnora` y `TestIdempotenciaDeduplicaComandos`. |
+| **I28** | `TestIdempotency_RedisKeyIsWrittenWithCorrectTtl` | Comando aceptado | Existe `idem:{playerId}:{requestId}` con TTL ≈ 300 s **Estado (2026-10-21):** ○ en parte: `TestNingunaClaveDelServidorQuedaSinCaducidad` exige TTL, no ≈ 300 s. |
+| **I29** | `TestIdempotency_RedisFlushAllowsReexecution` | Ejecutar, `FLUSHDB`, repetir el comando | Se re-ejecuta: no hay respaldo durable (ADR-014). Con `unit.move`, el segundo cancela el primero con `REPLACED` y el mundo acaba igual **Estado (2026-10-21):** ○ sin test. |
+| **I30** | `TestIdempotency_ConcurrentDuplicateExecutesOnce` | Dos frames idénticos procesados en el mismo tick | Una sola ejecución; dos respuestas con idéntico `payload` **Estado (2026-10-21):** ✔ `TestComandoDuplicadoSeIgnora` y `TestReservaConcurrenteSoloLaGanaUna` (almacén en memoria). |
+| **I31** | `TestIdempotency_DifferentRequestIdExecutesAgain` | Mismo comando, `requestId` distinto | **2** movimientos: el primero queda `CANCELLED` (el mensaje lleva `reason: "REPLACED"`, que no se persiste), el segundo `ACTIVE` **Estado (2026-10-21):** ✔ en RAM: `TestNuevaOrdenReemplazaLaAnterior`. |
+| **I32** | `TestIdempotency_ScopedByPlayer` | Mismo `requestId` de dos jugadores distintos | Ambos se ejecutan: la clave es `(player_id, request_id)`, no `request_id` solo **Estado (2026-10-21):** ✔ `TestIdempotenciaEstaAcotadaPorJugador`. |
+| **I33** | `TestIdempotency_RejectedCommandIsNotCached` | Comando rechazado con `TARGET_NOT_WALKABLE`, reintentado con el mismo `requestId` tras desbloquear el destino | Decisión de MVP: los rechazos **no** consumen la clave de idempotencia; el reintento se evalúa de nuevo. Se documenta explícitamente para que el comportamiento sea deliberado **Estado (2026-10-21):** **difiere**: el `unit.move.rejected` también se guarda como respuesta original, y un reintento con el mismo `requestId` recibe el rechazo sin reevaluarse. Sin test. |
+| **I34** | `TestIdempotency_ExpiredKeyAllowsReexecution` | Clave vencida (TTL corto inyectado) | El comando se ejecuta de nuevo. Es correcto: pasados 300 s el cliente ya no está reintentando **Estado (2026-10-21):** ✔ `TestIdempotenciaCaducaConSuTTL` (almacén en memoria, no Redis). |
 
 ### 5.6 Recuperación tras caída del servidor
 
@@ -456,20 +467,20 @@ t = ?             RESTART con el Clock posicionado en el instante que el caso re
 
 | # | Test | Instante del reinicio | Estado esperado tras arrancar |
 |---|---|---|---|
-| **R1** | `Test_INV_PERSIST_002_RestartStateMatchesCommitted` | `T0 + 1000` | Movimiento sigue `ACTIVE`. Posición reconstruida = **`(101,101)`** (último waypoint con `tMs <= 1000`). `units.status = 'MOVING'`. La polilínea en memoria es idéntica a la persistida |
-| **R2** | `TestRecovery_ResumedMovementCompletesAtOriginalArrival` | `T0 + 1000`, y luego se avanza el loop | El movimiento termina en `T0 + 2298` **exactamente**, no en `reinicio + 2298`. La caída no regala ni roba tiempo al jugador |
-| **R3** | `TestRecovery_ArrivalExpiredDuringDowntimeCompletesImmediately` | `T0 + 5000` (la llegada venció durante la caída) | Al arrancar y **sin avanzar un solo tick**: `unit_movements.status = 'COMPLETED'`, `finished_at` fijado (el nombre real de la columna; no existe `ended_at`), `units.x = 103`, `units.y = 102`, `units.status = 'IDLE'`, `units.chunk_x`/`chunk_y` recalculados. Es la versión durable de H2 |
-| **R4** | `TestRecovery_ArrivalExactlyAtRestartCompletes` | `T0 + 2298`, exactamente `arrival_time_ms` | Se completa: la condición del canon es `arrival_time_ms <= now`, inclusiva |
-| **R5** | `TestRecovery_OneMillisecondBeforeArrivalResumes` | `T0 + 2297` | **No** se completa: sigue `ACTIVE` en `(102,102)` y termina 1 ms después |
-| **R6** | `TestRecovery_MultipleActiveMovementsAllRecovered` | 100 unidades con movimientos `ACTIVE`, mitad vencidos y mitad en curso | Los 50 vencidos quedan `COMPLETED` con su tile final; los 50 en curso siguen `ACTIVE` con su posición reconstruida correcta |
-| **R7** | `TestRecovery_IsIdempotentAcrossDoubleRestart` | Reiniciar dos veces seguidas | El segundo arranque no vuelve a completar lo ya completado ni emite eventos duplicados: un movimiento terminal nunca vuelve a `ACTIVE` (`INV-MOVE-007`), y aquí se comprueba contra la fila real |
-| **R8** | `TestRecovery_CancelledAndCompletedMovementsAreNotReloaded` | Historial con filas `CANCELLED`, `COMPLETED` y `FAILED` | Solo se cargan las `ACTIVE`, por el índice parcial `unit_movements_active_idx`. El arranque no depende del tamaño del historial |
-| **R9** | `TestRecovery_UnitPositionInDbMayLagAndIsReconciled` | `units.x/y` quedaron en `(100,100)` por diseño | El arranque **no** confía en `units.x/y` para una unidad con movimiento `ACTIVE`: reconstruye la posición evaluando la polilínea de `unit_movements.path` en el instante del arranque. No existe ninguna columna `position_time_ms`; el instante lo aporta el reloj, no la fila |
-| **R14** | `TestRecovery_InvalidPolylineFailsWithoutTeleporting` | El mapa cambió durante la caída y un tile de la polilínea persistida ya no es transitable | El movimiento se cierra como `FAILED` y `units.x/y` **no cambian**: ante un dato dudoso no se teletransporta a nadie. Versión durable de H3 |
-| **R10** | `Test_INV_PERSIST_001_CommittedSurvivesDisconnect` | Caída inmediatamente después del `COMMIT` y antes de emitir el delta al cliente | El movimiento existe tras el reinicio. La confirmación al cliente puede perderse; el estado durable no |
-| **R11** | `TestRecovery_EpochMsIsNeverRewritten` | Reinicio con `world_state` poblado | `world_state.epoch_ms` no cambia: modificarlo reinterpretaría todos los `*_time_ms` persistidos |
-| **R12** | `TestRecovery_SnapshotAfterRestartMatchesPolyline` | Reconexión de un cliente tras R1 | El `world.snapshot` trae la misma polilínea que había antes de la caída (nivel `contract` verifica su forma; aquí se verifica el contenido) |
-| **R13** | `TestRecovery_RedisEmptyAfterCrashDoesNotLoseWorld` | `FLUSHDB` antes del reinicio (Redis se perdió con el host) | El mundo se reconstruye completo desde PostgreSQL; solo la presencia parte de cero, y las ciudades se reevalúan hacia `OFFLINE_PENDING` según las reglas del canon §9 |
+| **R1** | `Test_INV_PERSIST_002_RestartStateMatchesCommitted` | `T0 + 1000` | Movimiento sigue `ACTIVE`. Posición reconstruida = **`(101,101)`** (último waypoint con `tMs <= 1000`). `units.status = 'MOVING'`. La polilínea en memoria es idéntica a la persistida **Estado (2026-10-21):** ✔ `TestRecuperacionCompletaTrasReinicio` («el servidor vuelve a mitad del recorrido»), sin arnés de SIGKILL. |
+| **R2** | `TestRecovery_ResumedMovementCompletesAtOriginalArrival` | `T0 + 1000`, y luego se avanza el loop | El movimiento termina en `T0 + 2298` **exactamente**, no en `reinicio + 2298`. La caída no regala ni roba tiempo al jugador **Estado (2026-10-21):** ○ sin test. |
+| **R3** | `TestRecovery_ArrivalExpiredDuringDowntimeCompletesImmediately` | `T0 + 5000` (la llegada venció durante la caída) | Al arrancar y **sin avanzar un solo tick**: `unit_movements.status = 'COMPLETED'`, `finished_at` fijado (el nombre real de la columna; no existe `ended_at`), `units.x = 103`, `units.y = 102`, `units.status = 'IDLE'`, `units.chunk_x`/`chunk_y` recalculados. Es la versión durable de H2 **Estado (2026-10-21):** ○ en parte: `TestRecuperacionCompletaTrasReinicio` («ya venció»), con el cierre llamado a mano. |
+| **R4** | `TestRecovery_ArrivalExactlyAtRestartCompletes` | `T0 + 2298`, exactamente `arrival_time_ms` | Se completa: la condición del canon es `arrival_time_ms <= now`, inclusiva **Estado (2026-10-21):** ○ sin test; `HasArrived` es inclusivo (`TestMovementCicloDeVida`). |
+| **R5** | `TestRecovery_OneMillisecondBeforeArrivalResumes` | `T0 + 2297` | **No** se completa: sigue `ACTIVE` en `(102,102)` y termina 1 ms después **Estado (2026-10-21):** ○ sin test. |
+| **R6** | `TestRecovery_MultipleActiveMovementsAllRecovered` | 100 unidades con movimientos `ACTIVE`, mitad vencidos y mitad en curso | Los 50 vencidos quedan `COMPLETED` con su tile final; los 50 en curso siguen `ACTIVE` con su posición reconstruida correcta **Estado (2026-10-21):** ○ sin test. |
+| **R7** | `TestRecovery_IsIdempotentAcrossDoubleRestart` | Reiniciar dos veces seguidas | El segundo arranque no vuelve a completar lo ya completado ni emite eventos duplicados: un movimiento terminal nunca vuelve a `ACTIVE` (`INV-MOVE-007`), y aquí se comprueba contra la fila real **Estado (2026-10-21):** ○ en parte: `TestRehidratarDosVecesNoEscribePresencia` y `TestFinishEsIdempotente`. |
+| **R8** | `TestRecovery_CancelledAndCompletedMovementsAreNotReloaded` | Historial con filas `CANCELLED`, `COMPLETED` y `FAILED` | Solo se cargan las `ACTIVE`, por el índice parcial `unit_movements_active_idx`. El arranque no depende del tamaño del historial **Estado (2026-10-21):** ○ en parte: `TestFinishEsIdempotente`. |
+| **R9** | `TestRecovery_UnitPositionInDbMayLagAndIsReconciled` | `units.x/y` quedaron en `(100,100)` por diseño | El arranque **no** confía en `units.x/y` para una unidad con movimiento `ACTIVE`: reconstruye la posición evaluando la polilínea de `unit_movements.path` en el instante del arranque. No existe ninguna columna `position_time_ms`; el instante lo aporta el reloj, no la fila **Estado (2026-10-21):** ✔ `TestRecuperacionCompletaTrasReinicio`. |
+| **R14** | `TestRecovery_InvalidPolylineFailsWithoutTeleporting` | El mapa cambió durante la caída y un tile de la polilínea persistida ya no es transitable | El movimiento se cierra como `FAILED` y `units.x/y` **no cambian**: ante un dato dudoso no se teletransporta a nadie. Versión durable de H3 **Estado (2026-10-21):** ✔ en RAM: `TestRecuperacionConPolilineaInvalida`. |
+| **R10** | `Test_INV_PERSIST_001_CommittedSurvivesDisconnect` | Caída inmediatamente después del `COMMIT` y antes de emitir el delta al cliente | El movimiento existe tras el reinicio. La confirmación al cliente puede perderse; el estado durable no **Estado (2026-10-21):** ○ en parte: `TestConLaColaRealElMovimientoLlevaSuIdYCierraConSuPosicion`. |
+| **R11** | `TestRecovery_EpochMsIsNeverRewritten` | Reinicio con `world_state` poblado | `world_state.epoch_ms` no cambia: modificarlo reinterpretaría todos los `*_time_ms` persistidos **Estado (2026-10-21):** ○ sin test. |
+| **R12** | `TestRecovery_SnapshotAfterRestartMatchesPolyline` | Reconexión de un cliente tras R1 | El `world.snapshot` trae la misma polilínea que había antes de la caída (nivel `contract` verifica su forma; aquí se verifica el contenido) **Estado (2026-10-21):** ○ sin test. |
+| **R13** | `TestRecovery_RedisEmptyAfterCrashDoesNotLoseWorld` | `FLUSHDB` antes del reinicio (Redis se perdió con el host) | El mundo se reconstruye completo desde PostgreSQL; solo la presencia parte de cero, y las ciudades se reevalúan hacia `OFFLINE_PENDING` según las reglas del canon §9 **Estado (2026-10-21):** ○ sin test. |
 
 #### 5.6.4 Esqueleto del caso R3
 
@@ -523,11 +534,11 @@ func TestRecovery_ArrivalExpiredDuringDowntimeCompletesImmediately(t *testing.T)
 
 | # | Test | Aserciones |
 |---|---|---|
-| **I35** | `Test_INV_SEC_003_TicketRedeemableOnce` | El `jti` se consume en Redis (`ticket:jti:{jti}`); el segundo canje devuelve `UNAUTHORIZED`. La mitad en memoria ya está en verde: `TestTicketNoSePuedeReutilizar` y `TestFalloDelRegistroDeTicketsFallaCerrado` en `ticket_test.go`. **La tabla `sessions` no tiene columna `jti`** (sus columnas reales son `id`, `player_id`, `connected_at`, `disconnected_at`, `remote_addr`, `client_version`), así que la defensa durable contra el replay no existe hoy: si Redis se vacía, un ticket aún vigente podría recanjearse. Añadir esa columna con su `UNIQUE` es una decisión pendiente, no un hecho |
-| **I36** | `TestSessions_ExpiredTicketIsRejected` | Ticket con `exp` vencido (TTL 60 s, canon §14) ⇒ `UNAUTHORIZED` y cierre `4401`. La verificación pura ya está cubierta por `TestTicketCaducado` |
-| **I37** | `Test_INV_PERSIST_005_MigrationsOrderedIdempotentImmutable` | Sobre base vacía: las dos migraciones `.up.sql` en orden (`000001_initial_schema`, `000002_seed_catalogs`), luego las `.down.sql` en orden inverso, luego las `.up.sql` otra vez. El esquema final es idéntico y `schema_migrations` es coherente. Se aplican con **golang-migrate embebido**. **Etapa nocturna** (§8.2 de [strategy.md](./strategy.md)) |
-| **I38** | `TestWorldChunks_BlobIsExactly1024Bytes` | Cada fila de `world_chunks` almacena exactamente 1024 bytes en `bytea` (32×32 tiles, 1 byte por `TerrainType`, orden fila-mayor). **`world_chunks` no es la fuente primaria**: el mapa se regenera desde la semilla en cada arranque y esta tabla guarda una copia para auditoría y para permitir mapas editados en el futuro |
-| **I39** | `TestSeedCatalogsSeInsertaronCompletos` | Tras `000002_seed_catalogs`: civilizaciones `ROMAN`/`BYZANTINE`/`PERSIAN`/`NORSE` con su `traits jsonb`; facciones `ORDER`/`CHAOS`/`NEUTRAL`; eras `STONE_AGE(20)`/`BRONZE_AGE(50)`/`IRON_AGE(100)`/`CASTLE_AGE(150)`. Es de lo que dependen I1 y I5 |
+| **I35** | `Test_INV_SEC_003_TicketRedeemableOnce` | El `jti` se consume en Redis (`ticket:jti:{jti}`); el segundo canje devuelve `UNAUTHORIZED`. La mitad en memoria ya está en verde: `TestTicketNoSePuedeReutilizar` y `TestFalloDelRegistroDeTicketsFallaCerrado` en `ticket_test.go`. **La tabla `sessions` no tiene columna `jti`** (sus columnas reales son `id`, `player_id`, `connected_at`, `disconnected_at`, `remote_addr`, `client_version`), así que la defensa durable contra el replay no existe hoy: si Redis se vacía, un ticket aún vigente podría recanjearse. Añadir esa columna con su `UNIQUE` es una decisión pendiente, no un hecho **Estado (2026-10-21):** ✔ `TestTicketSoloSeConsumeUnaVez` y `TestTicketNoSePuedeReutilizarEnOtraConexion`. `sessions` no tiene `jti` y no se escribe. |
+| **I36** | `TestSessions_ExpiredTicketIsRejected` | Ticket con `exp` vencido (TTL 60 s, canon §14) ⇒ `UNAUTHORIZED` y cierre `4401`. La verificación pura ya está cubierta por `TestTicketCaducado` **Estado (2026-10-21):** ○ en parte: `TestLosLogsDelHandshakeNoContienenTicketsNiSecreto` rechaza el ticket caducado sin comprobar el `4401`; el cierre, sin `system.error` ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)). |
+| **I37** | `Test_INV_PERSIST_005_MigrationsOrderedIdempotentImmutable` | Sobre base vacía: las dos migraciones `.up.sql` en orden (`000001_initial_schema`, `000002_seed_catalogs`), luego las `.down.sql` en orden inverso, luego las `.up.sql` otra vez. El esquema final es idéntico y `schema_migrations` es coherente. Se aplican con **golang-migrate embebido**. **Etapa nocturna** (§8.2 de [strategy.md](./strategy.md)) **Estado (2026-10-21):** ○ en parte: `TestElMigradorEsIdempotente` y `TestLasMigracionesSonCorrelativasYCompletas`; no hay ciclo up/down/up, y ya son cinco migraciones. |
+| **I38** | `TestWorldChunks_BlobIsExactly1024Bytes` | Cada fila de `world_chunks` almacena exactamente 1024 bytes en `bytea` (32×32 tiles, 1 byte por `TerrainType`, orden fila-mayor). **`world_chunks` no es la fuente primaria**: el mapa se regenera desde la semilla en cada arranque y esta tabla guarda una copia para auditoría y para permitir mapas editados en el futuro **Estado (2026-10-21):** ✔ `TestElArranqueRechazaUnTerrenoPersistidoQueNoEsElDeLaSemilla` y `TestMundoPersistidoCoincideByteAByteConLaSemilla`. |
+| **I39** | `TestSeedCatalogsSeInsertaronCompletos` | Tras `000002_seed_catalogs`: civilizaciones `ROMAN`/`BYZANTINE`/`PERSIAN`/`NORSE` con su `traits jsonb`; facciones `ORDER`/`CHAOS`/`NEUTRAL`; eras `STONE_AGE(20)`/`BRONZE_AGE(50)`/`IRON_AGE(100)`/`CASTLE_AGE(150)`. Es de lo que dependen I1 y I5 **Estado (2026-10-21):** ✔ `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon` y `TestLasErasDelCatalogoSonLasDelCanon` (sin comprobar `traits`). |
 
 ---
 

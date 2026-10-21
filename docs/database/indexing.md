@@ -1,10 +1,14 @@
 # Estrategia de índices
 
-Índices de PostgreSQL que **existen** en el esquema del MVP: DDL exacto con su nombre real, consulta que sirve cada uno, coste de escritura y guía de medición con `EXPLAIN ANALYZE`.
+Índices de PostgreSQL que **existen** en el esquema del juego del MVP: DDL exacto con su nombre real, consulta que sirve cada uno, coste de escritura y guía de medición con `EXPLAIN ANALYZE`.
 
 Todos los índices de este documento los crea `services/game-server/migrations/000001_initial_schema.up.sql`, en la misma migración que la tabla a la que pertenecen. Los nombres son los de esa migración: son el identificador operativo que aparece en `pg_stat_user_indexes` y en el mensaje de un error `23505`, así que citarlos mal no es cosmético.
 
-El esquema está en [schema.md](./schema.md); las reglas de evolución, en [migrations.md](./migrations.md).
+El esquema está en [schema.md](./schema.md); las reglas de evolución, en [migrations.md](./migrations.md). El
+almacén de identidad de `apps/web` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) es otra
+base y tiene sus propios índices, declarados en `apps/web/identity/migrations.mjs`: las claves primarias de
+`accounts` y `web_sessions` (`token_hash`), `accounts_username_unique`, `web_sessions_account_idx` y
+`web_sessions_expiry_idx`, que sirve el borrado de sesiones caducadas.
 
 ---
 
@@ -17,13 +21,17 @@ Antes de listar índices conviene fijar el contexto, porque determina cuáles so
 | Momento | Frecuencia | Sensibilidad a la latencia |
 |---|---|---|
 | Arranque del proceso (carga del mundo) | Una vez | Alta: determina el tiempo hasta `/ready` |
-| Conexión de un jugador (`session.hello` → `world.snapshot`) | Por conexión | **Muy alta**: está en la ruta de la primera impresión |
+| Fundación de un jugador (`POST /internal/players`) | Por alta | Media: el alta de la web la espera |
 | Flush de persistencia | Cada 50 ticks (5 s) | Media: si se acumula, `eo_persistence_queue_depth` crece |
-| Escritura durable encolada (movimientos, presencia) | Por comando durable | Media: la respuesta al cliente **no** la espera; lo que sube es el retraso y la profundidad de la cola |
-| Reconciliación de timers de protección | Al arrancar | Media |
-| Barrido de retención | Periódica, fuera de hora punta | Baja |
+| Escritura durable encolada (movimientos, presencia, guarnición) | Por comando durable | Media: la respuesta al cliente **no** la espera; lo que sube es el retraso y la profundidad de la cola |
+| Caducidad de tratados (`TreatyRepo.ExpireDue`) | Encolada una vez por segundo | Baja: con pocos tratados, un barrido secuencial basta; ningún índice cubre `expires_at` |
 
-Consecuencia práctica: se optimiza **el arranque y la conexión**, no un caudal de lecturas sostenido. Y como la mayoría de las escrituras vienen de un flush por lotes, el coste de escritura de los índices se paga concentrado, lo que hace que cada índice de más sea más visible, no menos.
+La conexión de un jugador **no** consulta PostgreSQL: el ticket se valida contra el estado caliente y el
+snapshot sale de la RAM del loop. Tampoco hay reconciliación de protección contra la base al arrancar —el
+arranque carga todas las ciudades y la fase 5 decide en RAM— ni barrido de retención (§6.1 lo usa sólo como
+ejemplo de medición).
+
+Consecuencia práctica: se optimiza **el arranque**, no un caudal de lecturas sostenido. Y como la mayoría de las escrituras vienen de un flush por lotes, el coste de escritura de los índices se paga concentrado, lo que hace que cada índice de más sea más visible, no menos.
 
 ---
 
@@ -31,7 +39,7 @@ Consecuencia práctica: se optimiza **el arranque y la conexión**, no un caudal
 
 ### 2.1 Cargar las unidades vivas de un jugador — `units_player_idx`
 
-`UnitRepo.ListByPlayer`. Se ejecuta al conectar un jugador. Excluye las unidades muertas: no se cargan en memoria ni se envían al cliente.
+`UnitRepo.ListByPlayer`. Hoy sólo la usan los tests de integración: ninguna ruta de producción la emite, porque el arranque carga todas las unidades vivas con `ListAlive` y la conexión no lee la base. Excluye las unidades muertas.
 
 ```sql
 SELECT id, player_id, city_id, unit_type, x, y, hp, max_hp, status
@@ -60,7 +68,7 @@ La carga completa del arranque (`UnitRepo.ListAlive`, `WHERE status <> 'DEAD' OR
 
 El interest management es por chunk, con radio 2 (`EO_INTEREST_RADIUS_CHUNKS=2`), es decir hasta 25 chunks alrededor del centro de vista.
 
-**Ningún repositorio emite hoy esta consulta**: el snapshot se sirve desde RAM (ver la nota del final de esta sección) y las dos únicas sentencias que tocan `chunk_x`/`chunk_y` son el `INSERT` de `UnitRepo.Create` y el `UPDATE` del flush. El índice se crea con la tabla porque es el acceso previsto para el arranque en frío y para reconstrucciones puntuales, y porque añadirlo después sobre `units` ya poblada exigiría `CREATE INDEX CONCURRENTLY` (§4 de [migrations.md](./migrations.md)). La consulta que serviría es:
+**Ningún repositorio emite hoy esta consulta**: el snapshot se sirve desde RAM (ver la nota del final de esta sección) y las sentencias que tocan `chunk_x`/`chunk_y` son el `INSERT` de `UnitRepo.Create`, el `UPDATE` del flush (`FlushPositions`, que usan también el inicio y el cierre de cada movimiento) y el de `GarrisonRepo.Leave`. El arranque en frío lee todas las unidades vivas con `ListAlive`, sin filtrar por chunk. El índice se crea con la tabla porque es el acceso previsto para una carga por región futura, y porque añadirlo después sobre `units` ya poblada exigiría `CREATE INDEX CONCURRENTLY` (§4 de [migrations.md](./migrations.md)). La consulta que serviría es:
 
 ```sql
 SELECT id, player_id, unit_type, status, x, y, chunk_x, chunk_y, hp, max_hp
@@ -80,7 +88,7 @@ CREATE INDEX units_chunk_idx ON units (chunk_x, chunk_y) WHERE status <> 'DEAD';
 | Orden de columnas | `(chunk_x, chunk_y)`. El B-tree ordena lexicográficamente: con un rango en la primera columna, la segunda sólo filtra dentro de cada valor de `chunk_x`. Con 16 chunks por fila en el mundo MVP, el rango de `chunk_x` cubre como mucho 5 valores, así que el escaneo recorre 5 subárboles pequeños. Aceptable y muy predecible |
 | Alternativa evaluada | Un `chunk_id` entero único con `IN (...)` de 25 valores. Sería más compacto, pero `chunk_id` depende de `chunksPerRow` = `EO_WORLD_WIDTH / EO_CHUNK_SIZE` e indexar por él ataría el índice a la configuración del mundo. Se descartó, y por eso `world_chunks` tampoco tiene esa columna |
 
-**Nota importante sobre la autoridad**: en régimen normal el snapshot se sirve **desde RAM** —la goroutine de la conexión ni siquiera lee el estado: pide un `RequestSnapshot` por el canal de comandos y el loop responde—, no desde esta consulta. Este índice existe para el arranque en frío y para reconstrucciones puntuales. Es caliente en frecuencia baja y en criticidad alta.
+**Nota importante sobre la autoridad**: en régimen normal el snapshot se sirve **desde RAM** —la goroutine de la conexión ni siquiera lee el estado: pide un `RequestSnapshot` por el canal de comandos y el loop responde—, no desde esta consulta. Hoy ninguna consulta usa `units_chunk_idx`: queda reservado para una carga por región.
 
 ### 2.3 Movimientos `ACTIVE` al arrancar — `unit_movements_active_idx`
 
@@ -103,17 +111,17 @@ CREATE INDEX unit_movements_active_idx
 |---|---|
 | Tipo | B-tree compuesto parcial, ordenado por tiempo de llegada y desempatado por `id` |
 | Por qué parcial por `status` | `unit_movements` es la tabla que más crece: cada orden deja una fila permanente. Las `ACTIVE` son, como mucho, una por unidad viva. Un índice total contendría el historial completo; el parcial contiene sólo el conjunto de trabajo — órdenes de magnitud menos entradas, y prácticamente siempre en caché |
-| Por qué `arrival_time_ms` primero | Es la columna por la que se filtra por rango: `WHERE status = 'ACTIVE' AND arrival_time_ms <= $now` separa en un descenso de árbol los movimientos ya vencidos de los que siguen en curso, que es la partición exacta que hace la recuperación |
+| Por qué `arrival_time_ms` primero | Es la columna por la que se filtraría por rango: `WHERE status = 'ACTIVE' AND arrival_time_ms <= $now` separaría en un descenso de árbol los vencidos de los que siguen en curso. Hoy esa partición la hace `simulation.Hydrate` en memoria y ninguna consulta filtra por `arrival_time_ms`: sólo se aprovecha el predicado parcial |
 | Por qué `id` como segunda columna | Desempate determinista y estable |
 | Salvedad honesta | La consulta de `ListActive` que hay hoy **ordena por `id`**, no por `arrival_time_ms`, así que se apoya en el predicado parcial del índice pero **no** en su orden, y el plan puede incluir un nodo `Sort`. Es aceptable: se ejecuta una vez por arranque, sobre un conjunto pequeño |
 
 Este índice **no** sustituye a `unit_movements_one_active_per_unit` (§2.8): uno sirve consultas, el otro impone `INV-MOVE-001`.
 
-`MovementRepo.GetActiveByUnit` (`WHERE unit_id = $1 AND status = 'ACTIVE'`) y el `UPDATE ... WHERE unit_id = $1 AND status = 'ACTIVE'` que cancela el movimiento anterior sí usan el índice único parcial de §2.8: para ellos es, además de una restricción, el índice de acceso.
+El `UPDATE ... WHERE unit_id = $1 AND status = 'ACTIVE'` que cancela el movimiento anterior en `MovementRepo.Start`, y `CancelActiveByUnit` (la entrada en guarnición), usan el índice único parcial de §2.8: para ellos es, además de una restricción, el índice de acceso. `MovementRepo.GetActiveByUnit` existe con el mismo `WHERE` pero no tiene llamantes.
 
 ### 2.4 Resolver la ciudad por owner — `cities_owner_idx`
 
-`CityRepo.GetByOwner`. Se ejecuta al conectar (el `world.snapshot` inicial se centra en la ciudad del jugador).
+`CityRepo.GetByOwner`. Se ejecuta cuando `POST /internal/players` recibe un jugador ya fundado —la respuesta idempotente devuelve su ciudad— y en `cmd/devseed`. El `world.snapshot` se centra en la ciudad propia desde RAM, sin consultarla.
 
 ```sql
 SELECT id, owner_player_id, name, center_x, center_y, era, population,
@@ -161,7 +169,7 @@ CREATE INDEX cities_offline_pending_idx
 | Reparto columna / predicado | La columna que se compara **por rango** (`last_offline_at`) va en el índice; la que se compara por igualdad y tiene tres valores posibles (`presence_state`) va en el predicado parcial. Es el reparto correcto y no el contrario |
 | Coste | El conjunto candidato son las ciudades actualmente en `OFFLINE_PENDING` — un estado transitorio de 300 s por defecto — y la consulta es un descenso de árbol que termina en el primer valor mayor que el corte |
 
-**Quién decide la transición.** Esta consulta **no** es un decisor. `ONLINE → OFFLINE_PENDING → PROTECTED` lo decide exclusivamente la fase 5 del tick, en RAM, comparando contra `DisconnectGrace` (= `EO_PRESENCE_TTL_SECONDS`) y contra el cooldown; la base recibe después el `UPDATE` encolado. `ListPendingProtection` es una consulta de **arranque y reconciliación**: sirve para que un proceso que acaba de levantarse sepa qué ciudades quedaron a medio camino, igual que §2.2 sirve el arranque en frío del snapshot. De hecho hoy **no la llama nadie en régimen**: `simulation.ProcessTimers` recorre las ciudades en RAM con `city.ShouldEngageProtection` y no consulta la base. El método del repositorio existe para la reconciliación de arranque y para diagnóstico. Si además la evaluara un worker en régimen, habría dos decisores sobre `cities.presence_state` y el worker podría proteger la ciudad de un jugador que acaba de reconectar, porque no ve el espejo de presencia en RAM.
+**Quién decide la transición.** Esta consulta **no** es un decisor. `ONLINE → OFFLINE_PENDING → PROTECTED` lo decide exclusivamente la fase 5 del tick, en RAM, comparando contra `DisconnectGrace` (= `EO_PRESENCE_TTL_SECONDS`) y contra el cooldown; la base recibe después el `UPDATE` encolado. `ListPendingProtection` está pensada como consulta de **arranque, reconciliación y diagnóstico**, pero hoy **no la llama ninguna ruta de producción**, sólo los tests de integración: el arranque carga todas las ciudades con `ListAll` y `simulation.ProcessTimers` las recorre en RAM con `city.ShouldEngageProtection`. Si además la evaluara un worker en régimen, habría dos decisores sobre `cities.presence_state` y el worker podría proteger la ciudad de un jugador que acaba de reconectar, porque no ve el espejo de presencia en RAM.
 
 El cooldown **no está materializado** en una columna `protection_eligible_at_ms`: el corte se calcula en la aplicación (`now - EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`) y se pasa como parámetro. Así el valor de configuración vive en un solo sitio y no queda congelado dentro de una columna ni de un índice sobre expresión.
 
@@ -178,7 +186,7 @@ El número de sección se conserva para no romper las referencias.
 SELECT chunk_x, chunk_y, terrain FROM world_chunks ORDER BY chunk_y, chunk_x;
 ```
 
-**Sin índice adicional.** `WorldRepo.LoadTerrain` lee la tabla entera de una vez, ordenada, y la PK compuesta es el único índice existente. En MVP la tabla tiene **256 filas de 1024 bytes** de terreno: 256 KiB. Cabe entera en `shared_buffers` y se lee, como mucho, una vez por arranque —y sólo para verificar contra el mapa regenerado desde la semilla—. A partir de ahí el pathfinding y las comprobaciones de transitabilidad no vuelven a tocar PostgreSQL.
+**Sin índice adicional.** `WorldRepo.LoadTerrain` lee la tabla entera de una vez, ordenada, y la PK compuesta es el único índice existente. El orden pedido, `(chunk_y, chunk_x)`, es el inverso del de la PK, así que el plan es un recorrido secuencial más un `Sort`: con 256 filas da igual. En MVP la tabla tiene **256 filas de 1024 bytes** de terreno: 256 KiB. Cabe entera en `shared_buffers` y se lee, como mucho, una vez por arranque —y sólo para verificar contra el mapa regenerado desde la semilla—. A partir de ahí el pathfinding y las comprobaciones de transitabilidad no vuelven a tocar PostgreSQL.
 
 ### 2.8 Índices únicos que imponen invariantes
 
@@ -208,7 +216,8 @@ Existen, sirven consultas reales o previstas, y conviene no olvidarlos al medir:
 |---|---|---|
 | `units_city_idx` | `ON units (city_id) WHERE city_id IS NOT NULL` | Recálculo de población: `count(*)` de las unidades vivas de una ciudad (`CityRepo.UpdatePopulation`). Es parcial por `city_id IS NOT NULL`, no por `status`, porque la consulta filtra el estado dentro del `count` |
 | `sessions_player_idx` | `ON sessions (player_id, connected_at DESC)` | Historial de conexiones de un jugador, de la más reciente hacia atrás. Tabla aún sin escritor (§13 de schema.md) |
-| `garrisons_city_idx` | `ON garrisons (city_id)` | Qué unidades hay guarnecidas en una ciudad. Lógica diferida |
+| `garrisons_city_idx` | `ON garrisons (city_id)` | Qué unidades hay guarnecidas en una ciudad (`GarrisonRepo.ListByCity`, hoy sólo en tests; el arranque lee la tabla entera) y el `ON DELETE CASCADE` desde `cities`. La guarnición está implementada ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
+| `treaties_one_active_per_pair_and_type` | `UNIQUE ON treaties (player_a_id, player_b_id, treaty_type) WHERE status = 'ACTIVE'` (el par se guarda canónico, `treaties_canonical_pair`) | Además de impedir dos tratados activos iguales, es el índice de acceso de `TreatyRepo.FindAuthorizingGarrison`, la consulta de la transacción de entrada en guarnición |
 | `world_events_type_time_idx` | `ON world_events (event_type, occurred_at DESC)` | Auditoría: los últimos eventos de un tipo |
 | `world_events_player_idx` | `ON world_events (player_id, occurred_at DESC) WHERE player_id IS NOT NULL` | Auditoría: los últimos eventos de un jugador. Parcial porque los eventos sin actor no se consultan por esta vía |
 
@@ -256,9 +265,9 @@ Cada índice adicional impone, por cada fila insertada o actualizada:
 
 Este es el argumento decisivo en `units`. PostgreSQL puede aplicar una **actualización HOT** (*Heap-Only Tuple*) cuando se cumplen dos condiciones: la nueva versión de la fila cabe en la misma página, y **ninguna columna indexada cambia**. Una actualización HOT no toca ningún índice: es dramáticamente más barata y no genera basura de índice para autovacuum.
 
-`units` recibe una actualización por unidad sucia cada 50 ticks (5 s) desde el flush de persistencia. Las columnas que cambian en ese `UPDATE ... FROM unnest(...)` son exactamente `x`, `y`, `status`, `chunk_x`, `chunk_y` — más `updated_at`, que pone el trigger.
+`units` recibe una actualización por unidad sucia cada 50 ticks (5 s) desde el flush de persistencia, y además una al inicio y otra al cierre de cada movimiento, cada una en la transacción de su movimiento ([ADR-013](../decisions/ADR-013-persistence-pipeline.md)), y otra en la salida de guarnición. Las columnas que cambian en ese `UPDATE ... FROM unnest(...)` son exactamente `x`, `y`, `status`, `chunk_x`, `chunk_y` — más `updated_at`, que pone el trigger.
 
-De ellas, sólo `chunk_x` y `chunk_y` están indexadas (y `status` aparece en el predicado de dos índices parciales, lo que también obliga a tocarlos cuando una unidad pasa a `DEAD`). Y eso tiene una consecuencia muy concreta y muy favorable: **una unidad que se mueve dentro del mismo chunk cambia `x` e `y` pero no `chunk_x` ni `chunk_y`**, así que su actualización sigue siendo candidata a HOT. Con chunks de 32 × 32 tiles, la inmensa mayoría de los pasos de movimiento son intra-chunk. Sólo el paso que cruza una frontera de chunk fuerza actualización de índice.
+De ellas, sólo `chunk_x` y `chunk_y` están indexadas (y `status` aparece en el predicado de dos índices parciales, así que cualquier cambio de su valor —`IDLE → MOVING` al iniciar un movimiento, `MOVING → IDLE` al cerrarlo, `GARRISONED`, `HIDDEN`— impide la actualización HOT de esa fila). Y eso tiene una consecuencia muy concreta y muy favorable: **una unidad que se mueve dentro del mismo chunk cambia `x` e `y` pero no `chunk_x` ni `chunk_y`**, así que su actualización sigue siendo candidata a HOT. Con chunks de 32 × 32 tiles, la inmensa mayoría de los pasos de movimiento son intra-chunk. Sólo el paso que cruza una frontera de chunk fuerza actualización de índice.
 
 Ese es exactamente el motivo por el que **`x` e `y` no están indexadas**. Un índice sobre `(x, y)` destruiría el escenario HOT: cada consolidación de posición actualizaría un índice, cada lote de flush generaría entradas muertas, y autovacuum tendría que perseguirlas. Además no serviría para nada: no existe ninguna consulta del MVP que busque unidades por tile exacto — el interest management es por chunk y la colisión por tile se resuelve en RAM.
 
@@ -305,7 +314,7 @@ El "índice espacial" del MVP es un B-tree compuesto sobre dos columnas enteras 
 
 **El mundo es una rejilla discreta y minúscula.** 512 × 512 tiles, 256 chunks. El espacio de valores de `chunk_x` y `chunk_y` es `[0, 16)`. Un B-tree sobre ese dominio es esencialmente una tabla de dispersión con caché perfecta. PostGIS está diseñado para geometrías arbitrarias en espacios continuos con millones de objetos; nada de eso describe este problema.
 
-**Coste operativo cero.** PostGIS es una extensión que hay que instalar en la imagen, versionar junto al servidor, y considerar en cada actualización mayor de PostgreSQL y en cada restauración de backup. El MVP no requiere **ninguna** extensión (ver [migrations.md](./migrations.md#6-migraciones-del-mvp)), lo que significa que la imagen oficial sirve tal cual y que un `pg_dump` restaura en cualquier instancia estándar. En un entorno de desarrollo Windows donde ni siquiera `psql` está instalado y todo el acceso pasa por `docker compose exec`, cada dependencia añadida se paga varias veces.
+**Coste operativo cero.** PostGIS es una extensión que hay que instalar en la imagen, versionar junto al servidor, y considerar en cada actualización mayor de PostgreSQL y en cada restauración de backup. El MVP no requiere **ninguna** extensión (ver [migrations.md](./migrations.md#6-migraciones-del-mvp)), lo que significa que la imagen oficial sirve tal cual y que un `pg_dump` restaura en cualquier instancia estándar. En un entorno de desarrollo Windows sin Docker, con un cluster propio levantado con los binarios de PostgreSQL, cada dependencia añadida se paga varias veces.
 
 **Determinismo.** `chunkX = x / chunkSize` es una división entera de enteros no negativos, idéntica en Go, en TypeScript y en SQL. Nótese que **no** se escribe como `x >> 5`: el desplazamiento sólo equivale a la división si `chunk_size` es exactamente 32, y `EO_CHUNK_SIZE` es configuración (rango 1–256) sin ninguna obligación de ser potencia de dos. Los operadores geométricos con aritmética de punto flotante tampoco ofrecen la garantía de determinismo, que es un principio no negociable del proyecto.
 
@@ -315,9 +324,9 @@ El "índice espacial" del MVP es un B-tree compuesto sobre dos columnas enteras 
 
 `chunk_x`/`chunk_y` son datos derivados de `x`/`y`, y todo dato derivado puede desincronizarse. Tres decisiones lo contienen:
 
-1. **Un único punto de escritura.** `UnitRepo` recibe el `chunkSize` al construirse y calcula el chunk tanto en `Create` como en `FlushPositions`. Ninguna sentencia SQL suelta escribe `x` sin escribir el chunk: las dos únicas que escriben posición lo hacen en la misma sentencia.
+1. **Pocos puntos de escritura.** `UnitRepo` recibe el `chunkSize` al construirse y calcula el chunk tanto en `Create` como en `FlushPositions`; `GarrisonRepo.Leave` recibe el chunk calculado por la simulación. Ninguna sentencia SQL escribe `x` sin escribir el chunk: las tres que escriben posición lo hacen en la misma sentencia.
 2. **No es una columna generada** (`GENERATED ALWAYS AS (x / 32) STORED`). Sería automáticamente coherente, pero congelaría `EO_CHUNK_SIZE` dentro del esquema, en contra de la regla de configuración única del canon. La coherencia se compra con disciplina de código, no con un valor de gameplay hardcodeado en el DDL.
-3. **Test de integración de coherencia.** Una prueba verifica, tras una sesión de simulación, que `chunk_x = x / chunk_size` para toda fila, leyendo `chunk_size` de `world_state`:
+3. **Test de integración de coherencia.** `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` comprueba, tras volcados y una entrada y salida de guarnición, que `chunk_x = x / 32` para toda fila (el test fija el tamaño de chunk). La consulta general, leyendo `chunk_size` de `world_state`, es:
 
 ```sql
 SELECT count(*)
@@ -333,11 +342,11 @@ SELECT count(*)
 
 ### 6.1 Procedimiento
 
-`psql` no está instalado en la máquina de desarrollo: toda sesión SQL pasa por Docker, con el daemon arrancado.
+En la máquina de desarrollo Docker está descartado; la sesión SQL se abre contra el cluster propio con el
+`psql` de los binarios de PostgreSQL. Con Docker, la vía equivalente es `pnpm run db:psql`.
 
 ```powershell
-pnpm run db:up     # docker compose up -d postgres redis
-pnpm run db:psql   # docker compose exec postgres psql -U empires -d empires
+pnpm run pg:psql   # psql contra el cluster local (puerto 5433)
 ```
 
 Para cada consulta del §2, sobre una base con volumen representativo:
@@ -354,6 +363,7 @@ SELECT id, player_id, city_id, unit_type, x, y, hp, max_hp, status
 `ANALYZE` **ejecuta** la consulta. Para medir un `UPDATE` o `DELETE` sin efectos, se envuelve en una transacción que se revierte:
 
 ```sql
+-- Ilustrativo: el barrido de retención de migrations.md §8 todavía no existe.
 BEGIN;
 EXPLAIN (ANALYZE, BUFFERS) DELETE FROM unit_movements
  WHERE status <> 'ACTIVE' AND finished_at < now() - interval '7 days';
@@ -367,17 +377,17 @@ ROLLBACK;
 | `Seq Scan on units` en una consulta del §2 | El índice no se está usando. Causas típicas: el `WHERE` no implica el predicado del índice parcial, hay una conversión de tipo implícita, o la tabla es tan pequeña que el planificador prefiere el escaneo (normal en desarrollo con pocas filas — hay que medir con volumen) |
 | `rows=N` estimado vs `actual rows=M` con desviación grande | Estadísticas obsoletas. `ANALYZE units;` y volver a medir. Si persiste, considerar `ALTER TABLE ... ALTER COLUMN ... SET STATISTICS` |
 | `Buffers: shared read=` alto frente a `shared hit=` | Se está leyendo de disco. Puede ser caché fría o un índice demasiado grande para `shared_buffers` |
-| `Index Scan` donde se esperaba `Index Only Scan` | Faltan columnas en el índice o el mapa de visibilidad está desactualizado (`VACUUM`). Ninguna consulta del §2 espera hoy un *index-only scan*: todos los índices son de una o dos columnas y sin `INCLUDE` |
+| `Index Scan` donde se esperaba `Index Only Scan` | Faltan columnas en el índice o el mapa de visibilidad está desactualizado (`VACUUM`). Ninguna consulta del §2 espera hoy un *index-only scan*: los índices tienen entre una y tres columnas y ninguno lleva `INCLUDE` |
 | Nodo `Sort` en §2.3 | Esperado mientras `ListActive` ordene por `id` y el índice lo haga por `arrival_time_ms`. Sólo es un problema si el conjunto `ACTIVE` deja de ser pequeño |
 | `Rows Removed by Filter` alto | El índice devuelve muchas filas que luego se descartan: el predicado del índice parcial o el orden de columnas del compuesto están mal elegidos |
 
 ### 6.3 Umbrales de alerta de latencia
 
-La métrica `eo_database_latency_seconds` (histogram, ver [../operations/monitoring.md](../operations/monitoring.md)) es la fuente de alertas. La observa el worker de la cola de persistencia alrededor de **cada intento** de cada trabajo durable; el alta de jugador, que no pasa por la cola, no queda cubierta por ella. Objetivos por clase de consulta:
+La métrica `eo_database_latency_seconds` (histogram, ver [../operations/monitoring.md](../operations/monitoring.md)) es la fuente de alertas. La observa el worker de la cola de persistencia alrededor de **cada intento** de cada trabajo durable; el alta de jugador y las lecturas del arranque, que no pasan por la cola, no quedan cubiertas por ella. Tampoco distingue clases de consulta —no tiene etiquetas— y su primer cubo es de 5 ms, así que los objetivos de abajo **no se pueden medir con ella tal cual**; son la referencia para cuando se añada ese desglose. Objetivos por clase de consulta:
 
 | Clase de consulta | p50 objetivo | p95 objetivo | Alerta (warning) | Alerta (crítica) |
 |---|---|---|---|---|
-| Punto por PK o índice único (§2.4, §2.6) | < 1 ms | < 5 ms | p95 > 10 ms durante 5 min | p95 > 50 ms durante 2 min |
+| Punto por PK o por índice selectivo (§2.4) | < 1 ms | < 5 ms | p95 > 10 ms durante 5 min | p95 > 50 ms durante 2 min |
 | Rango pequeño (§2.1, §2.2, §2.5) | < 3 ms | < 20 ms | p95 > 40 ms durante 5 min | p95 > 150 ms durante 2 min |
 | Transacción durable de movimiento (§2.8) | < 5 ms | < 25 ms | p95 > 50 ms durante 5 min | p95 > 200 ms durante 2 min |
 | Lote de flush de persistencia | < 50 ms | < 200 ms | p95 > 400 ms durante 10 min | p95 > 1 s, o `eo_persistence_queue_depth` creciendo de forma sostenida |
