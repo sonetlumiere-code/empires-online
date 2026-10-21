@@ -15,8 +15,7 @@ Estado por milestone, tal como lo fija [milestones.md](milestones.md): **M0 a M7
 
 El vertical slice está completo. Lo que queda antes de exponerlo a jugadores reales no es trabajo de ningún
 milestone sino de operación y endurecimiento, y vive en [backlog.md](backlog.md): el runbook 24/7 (`EO-111`),
-los tests de carga (`EO-116`, `DEBT-06`), el escaneo de secretos del repositorio y del bundle
-(`INV-SEC-006`), el acuse de recibo diferido o un WAL frente al RPO del movimiento (`DEBT-17`), y lo que
+los tests de carga (`EO-116`, `DEBT-06`), el acuse de recibo diferido o un WAL frente al RPO del movimiento (`DEBT-17`), y lo que
 dejó pendiente [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md): limpieza de cuentas `PENDING`, límite de tasa compartido entre instancias, un *pooler*
 si la web va a funciones *serverless* y la firma asimétrica del ticket.
 

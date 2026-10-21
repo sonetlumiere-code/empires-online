@@ -432,3 +432,25 @@ func TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot(t *testing.T) {
 	}
 	assert.Len(t, otro.Units, len(propio.Units)-1)
 }
+
+// INV-SEC-006: el texto de un error de infraestructura —que suele llevar host,
+// usuario y a veces la cadena de conexión— no viaja al cliente. Le llega el
+// código del catálogo con un mensaje fijo; el detalle, sólo al log.
+func TestUnErrorDeInfraestructuraNoLlegaAlCliente(t *testing.T) {
+	h := newHarness(t)
+	h.persister.permanent = true
+	// Concatenada: el escáner de secretos del repositorio marcaría la URL entera.
+	conexion := "postgres://empires:" + "clave-de-la-base" + "@db.interna:5432/empires"
+	h.garrisons.enterErr = errors.New("failed to connect to `" + conexion + "`: connection refused")
+	h.rec.reset()
+
+	h.guarnecer(h.units[0].ID, h.cityID, "req")
+
+	errs := h.rec.byType(protocol.TypeSystemError)
+	require.Len(t, errs, 1)
+	p := errs[0].Payload.(protocol.SystemErrorPayload)
+	assert.Equal(t, protocol.CodeInternalError, p.Code)
+	for _, prohibido := range []string{conexion, "clave-de-la-base", "db.interna", "connection refused"} {
+		assert.NotContains(t, p.Message, prohibido)
+	}
+}

@@ -308,7 +308,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-SEC-003 | Un ticket sólo puede canjearse una vez | CRITICO | BOUNDARY, TEST | ✓ | `TestTicketSoloSeConsumeUnaVez`, `TestFalloDelRegistroDeTicketsFallaCerrado` |
 | INV-SEC-004 | Todo comando valida ownership antes de ejecutarse | CRITICO | DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento` |
 | INV-SEC-005 | Los mensajes que superan el límite de tamaño o de tasa se rechazan sin procesarse | ALTO | BOUNDARY, TEST | ✓ | `TestUnMensajeDemasiadoGrandeCierraCon1009`, `TestUnaRafagaPorEncimaDelBurstCierraCon4429` |
-| INV-SEC-006 | Las credenciales de infraestructura nunca llegan al cliente ni al repositorio | CRITICO | BOUNDARY, TEST | ~ | `TestLosSecretosNoSeImprimenPorNingunaVia`, `TestObligatoriasAusentes`; falta el escaneo del repositorio y del bundle |
+| INV-SEC-006 | Las credenciales de infraestructura nunca llegan al cliente ni al repositorio | CRITICO | BOUNDARY, TEST | ✓ | `TestLosSecretosNoSeImprimenPorNingunaVia`, `TestUnErrorDeInfraestructuraNoLlegaAlCliente`; `scripts/scan-secrets.mjs` (árbol, historia y bundle con canarios, en la CI) |
 | INV-SEC-007 | Un `requestId` repetido nunca produce un segundo efecto | CRITICO | BOUNDARY, TEST | ✓ | `TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal` |
 | INV-SEC-008 | Un token sólo sirve a su audiencia: un ticket de juego no funda y un token de fundación no abre sesión | CRITICO | BOUNDARY, TEST | ✓ | `TestLasAudienciasSonDisjuntas`, `TestUnTicketDeJuegoNoFundaJugadores`, `TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub` |
 
@@ -383,8 +383,8 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 90 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 2 | Hay test real para parte del enunciado |
+| ✓ Cubierto | 91 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 1 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 1 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **93** | |
@@ -397,7 +397,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 Ninguna fila queda sin cobertura. Las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). Las dos parciales que quedan esperan algo que no existe: la primera acción hostil (`INV-CITY-006`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)) y el escaneo de secretos del repositorio y del bundle (`INV-SEC-006`). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). La única parcial que queda espera algo que no existe: la primera acción hostil (`INV-CITY-006`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 

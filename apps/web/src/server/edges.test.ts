@@ -254,6 +254,28 @@ describe('capa HTTP', () => {
     expect(await res.json()).toEqual({ code: 'UNAUTHORIZED', message: 'no' });
   });
 
+  // INV-SEC-006: el texto de un error de infraestructura —que puede llevar la
+  // cadena de conexión— va al log del servidor, nunca a la respuesta.
+  it('un error interno responde 500 con un mensaje fijo, sin el texto del error', async () => {
+    const conexion = ['postgres://identidad:', 'clave-del-almacen', '@db.interna:5432/empires_identity'].join('');
+    const lanza = async () => {
+      throw new Error(`connect ECONNREFUSED ${conexion}`);
+    };
+    const { d } = deps();
+    const service = { register: lanza, login: lanza, ticket: lanza, logout: lanza } as unknown as AuthService;
+    const d2 = { ...d, service };
+    for (const res of [
+      await handleCredentials(post('/api/auth/login', { username: 'a', password: 'b' }), d2, 'login'),
+      await handleTicket(post('/api/auth/ticket'), d2),
+    ]) {
+      expect(res.status).toBe(500);
+      const texto = await res.text();
+      expect(texto).not.toContain('clave-del-almacen');
+      expect(texto).not.toContain('db.interna');
+      expect(JSON.parse(texto)).toEqual({ code: 'INTERNAL_ERROR', message: 'error interno' });
+    }
+  });
+
   it('cerrar sesión borra la sesión y caduca la cookie', async () => {
     const { d, calls } = deps();
     const res = await handleLogout(post('/api/auth/logout', undefined, { cookie: `${SESSION_COOKIE}=abc` }), d);

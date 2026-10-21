@@ -561,7 +561,7 @@ Los topes se siembran en la migración `000002_seed_catalogs`, no en código.
 | **G9** | `TestValorFueraDeRango` / `TestValorNoNumerico` | `EO_TICK_RATE_HZ=0` ⇒ `"fuera del rango permitido"`; `EO_WORLD_SEED=no-es-un-numero` ⇒ `"no es un entero válido"`. **Error de arranque, nunca un valor silenciosamente corregido** |
 | **G10** | `TestSobrescrituraPorEntorno` | Con `EO_ENV=production` y valores propios: `IsProduction()` cierto, `TickRateHz == 20`, `TickDuration() == 50ms`, cooldown 600 s, `WorldWidth == 256` |
 
-○ Pendiente: `TestLaConfiguracionNuncaRegistraSecretos`, que verificaría que la representación textual de `Config` enmascara `EO_AUTH_JWT_SECRET` y las credenciales embebidas en `EO_POSTGRES_URL` y `EO_REDIS_URL` (`INV-SEC-006`).
+✓ Lo que aquí figuraba como pendiente con el nombre `TestLaConfiguracionNuncaRegistraSecretos` existe como `TestLosSecretosNoSeImprimenPorNingunaVia` (`internal/config`): la configuración, impresa por cualquier vía, no contiene `EO_AUTH_JWT_SECRET` ni las credenciales de `EO_POSTGRES_URL` y `EO_REDIS_URL` (`INV-SEC-006`).
 
 Este bloque es el que hace cumplir la regla del canon §17: *ningún valor de gameplay se hardcodea en más de un lugar; todo pasa por `internal/config`*.
 

@@ -40,6 +40,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # La historia entera: el escaneo de secretos recorre todas las revisiones.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -57,6 +60,12 @@ jobs:
       # Los scripts de utilidad no tienen dependencias: corren con el runner de
       # tests integrado de Node, sin `pnpm install`. Por eso viven en este job y
       # no en el de protocolo.
+      # INV-SEC-006: ninguna credencial en el repositorio, en ninguna revisión.
+      # Script de Node sin dependencias (scripts/scan-secrets.mjs): las reglas y
+      # la lista de permitidos, con su motivo cada entrada, viven en el repositorio.
+      - name: Escaneo de secretos (árbol e historia)
+        run: node scripts/scan-secrets.mjs --tree --history
+
       - name: Tests de los scripts
         run: node --test "scripts/*.test.mjs"
 
@@ -118,8 +127,26 @@ jobs:
       # componente de servidor usando algo del navegador pasan el typecheck y
       # revientan el build. Es barato y cubre el único artefacto desplegable del
       # frontend.
+      # Las variables secretas llevan aquí valores CANARIO: el escaneo de después
+      # exige que ninguno aparezca en lo que se sirve al navegador. Si alguien
+      # copiara un secreto a una variable NEXT_PUBLIC_ o al `env` de next.config,
+      # este job se pone rojo. Los valores son de usar y tirar y están en la lista
+      # de permitidos del escaneo del repositorio.
       - name: Build del cliente
+        env:
+          EO_AUTH_JWT_SECRET: canario-ci-jwt-no-debe-llegar-al-navegador-01
+          EO_IDENTITY_POSTGRES_URL: postgres://canario:canario-ci-identidad@canario.invalid:5432/empires_identity
+          EO_POSTGRES_URL: postgres://canario:canario-ci-juego@canario.invalid:5432/empires
+          EO_REDIS_URL: redis://:canario-ci-redis@canario.invalid:6379/0
         run: pnpm run web:build
+
+      - name: Escaneo de secretos del bundle del cliente
+        env:
+          EO_AUTH_JWT_SECRET: canario-ci-jwt-no-debe-llegar-al-navegador-01
+          EO_IDENTITY_POSTGRES_URL: postgres://canario:canario-ci-identidad@canario.invalid:5432/empires_identity
+          EO_POSTGRES_URL: postgres://canario:canario-ci-juego@canario.invalid:5432/empires
+          EO_REDIS_URL: redis://:canario-ci-redis@canario.invalid:6379/0
+        run: node scripts/scan-secrets.mjs --bundle apps/web/.next/static --require-canaries
 
   # ─────────────────────────────────────────────────────────────
   # Game Server: formato, vet, build y tests unitarios (sin infraestructura).

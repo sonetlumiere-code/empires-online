@@ -198,6 +198,7 @@ fallo, así que sirve como puerta en un script de despliegue.
 | `pnpm run dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado, y sus cuentas |
 | `pnpm run pg:identity` / `identity:migrate` | Rol y bases del almacén de identidad de la web / sus migraciones (las aplica también la web al arrancar) |
 | `pnpm run docs:check` | Verifica enlaces, invariantes registrados y ADR citados |
+| `pnpm run secrets:scan` | Escaneo de secretos del repositorio y de toda su historia (`INV-SEC-006`); la CI escanea además el bundle del cliente |
 | `pnpm run protocol:build` | Regenera el JSON Schema desde los esquemas Zod |
 | `pnpm run protocol:check` | Falla si el JSON Schema ha derivado (lo mismo que hace la CI) |
 | `pnpm run server:test` | Tests unitarios del Game Server |

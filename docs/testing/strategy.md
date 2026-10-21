@@ -406,10 +406,12 @@ Versiones fijadas en el workflow: `GO_VERSION: '1.23'`, `NODE_VERSION: '22'`, `P
 | Job | Paso | Comando | Servicios | Falla si… |
 |---|---|---|---|---|
 | **docs** | Integridad documental | `node scripts/check-docs.mjs` | — | Hay enlaces relativos rotos, ADR citados que no existen o `INV-*` citados y no registrados. Es el paso más barato del pipeline y el que impide que esta carpeta vuelva a divergir del árbol. |
+| | **Escaneo de secretos** | `node scripts/scan-secrets.mjs --tree --history` (checkout con `fetch-depth: 0`) | — | Algún fichero versionado, o alguna línea añadida en cualquier revisión, casa con una regla de credencial y no está en `scripts/secret-scan-allowlist.json` (`INV-SEC-006`). |
 | **protocol** | Typecheck | `pnpm run typecheck` —script RAÍZ, que construye antes `packages/protocol`— | — | El TypeScript no compila. Usar `pnpm -r run typecheck` aquí fallaría en un checkout limpio: `apps/web` importa tipos de `dist/`. |
 | | Tests del protocolo | `pnpm run protocol:test` | — | Falla cualquier test de Vitest del protocolo. |
 | | Tests del cliente | `pnpm --filter @empires-online/web run test` | — | Falla cualquier test de Vitest de `apps/web`. Añadido en `EO-118`: antes sólo se ejecutaban a mano. |
 | | Build del cliente | `pnpm run web:build` | — | `next build` falla. No lo cubre el typecheck: comprobar tipos no es construir. |
+| | **Secretos en el bundle** | `node scripts/scan-secrets.mjs --bundle apps/web/.next/static --require-canaries`, tras un build hecho con valores canario en las cuatro variables secretas | — | `.next/static` contiene el valor de alguna variable secreta, su nombre, una marca de los módulos de servidor de `apps/web` o una credencial; o falta algún canario en el entorno (`INV-SEC-006`). |
 | | **Deriva de schema** | `pnpm run protocol:build` + `pnpm run protocol:check` + `git diff --exit-code -- packages/protocol/schema services/game-server/internal/protocol/schema` | — | El JSON Schema versionado no coincide con el generado desde Zod, **en cualquiera de las dos copias** (§6 de [contract-tests.md](./contract-tests.md)). |
 | **game-server** | Formato | `gofmt -l .` (falla si la lista no está vacía) | — | Hay ficheros sin formatear. |
 | | Dependencias limpias | `go mod tidy` + `git diff --exit-code -- go.mod go.sum` | — | `go.mod`/`go.sum` no están al día. |
@@ -418,6 +420,7 @@ Versiones fijadas en el workflow: `GO_VERSION: '1.23'`, `NODE_VERSION: '22'`, `P
 | | **Tests** | `go test -race -count=1 ./...` | — | Falla cualquier test de `unit`, `contract` (lado Go) o `simulation`, o salta el detector de carreras. |
 | | Cobertura | `go test -count=1 -coverprofile=coverage.out ./...` + `go tool cover -func` | — | Informativo: publica el total, no impone umbral. |
 | **integration** | Tests de integración | `go test -race -count=1 -tags=integration ./...` con `EO_INTEGRATION=1`, `EO_TEST_POSTGRES_URL=postgres://empires:empires_ci_password@localhost:5432/empires_test?sslmode=disable` y `EO_TEST_REDIS_URL=redis://localhost:6379/1` | `postgres:16-alpine` (usuario `empires`, base `empires_test`) y `redis:7-alpine` (índice **1**), ambos con healthcheck | Falla cualquier test de integración. La etiqueta `integration` cubre los ficheros `*_integration_test.go` de `internal/persistence/postgres` y `internal/persistence/redis`. |
+| | Tests de integración del cliente | `vitest run src/server/store.integration.test.ts` con `EO_INTEGRATION=1` y el almacén de identidad preparado en el propio job | PostgreSQL | Falla el almacén de identidad contra PostgreSQL real, o el rol de identidad puede abrir la base del juego ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). |
 | **docker** | Imagen | `docker/build-push-action` sobre `infra/docker/game-server.Dockerfile` | — | La imagen del Game Server no se construye. |
 
 **Todas son obligatorias.** Un pull request con cualquier check en rojo no es válido, independientemente de la urgencia (canon §19).

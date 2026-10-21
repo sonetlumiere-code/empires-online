@@ -794,11 +794,11 @@ pnpm run verify
 `pnpm run verify` encadena exactamente esto, en este orden:
 
 ```
-protocol:build → docs:check → lint → typecheck → test → scripts:test
+protocol:build → docs:check → secrets:scan → lint → typecheck → test → scripts:test
   → server:fmt:check → server:vet → server:vet:integration → server:test
 ```
 
-Regenera el JSON Schema, verifica la integridad de `docs/`, pasa el lint de determinismo, comprueba tipos, ejecuta los tests de
+Regenera el JSON Schema, verifica la integridad de `docs/`, escanea el repositorio y su historia en busca de secretos, pasa el lint de determinismo, comprueba tipos, ejecuta los tests de
 Vitest y los de los scripts de Node, comprueba el formato de Go, pasa `go vet` con y sin la etiqueta
 `integration` y ejecuta `go test ./...`. **No ejecuta los tests de integración ni el detector de
 carreras**: eso es §9, y en la CI lo cubren los jobs `integration` y `game-server`.
@@ -843,6 +843,7 @@ que no está aquí, no existe.
 | `web:dev` / `web:build` | Cliente Next.js en desarrollo / build de producción |
 | `smoke` | Vertical slice completo contra el Game Server y la web en marcha (§3-bis.9) |
 | `docs:check` | Enlaces, anclas, mayúsculas de rutas, invariantes citados y ADR existentes |
+| `secrets:scan` | Escaneo de secretos del árbol versionado y de toda la historia (`INV-SEC-006`); el del bundle del cliente lo hace la CI tras construirlo con valores canario: a mano, `node scripts/scan-secrets.mjs --bundle apps/web/.next/static` |
 | `scripts:test` | Tests de los scripts de `scripts/`, con el runner de Node |
 | `lint` | `node scripts/lint-determinism.mjs`: el núcleo determinista no lee el reloj real ni el azar global (`EO-017`). Después, el `lint` de cada paquete que lo declare; ninguno lo hace todavía |
 | `typecheck` / `test` | Recursivos sobre el workspace |
