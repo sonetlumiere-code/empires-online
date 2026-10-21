@@ -46,7 +46,10 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
   it('las migraciones son idempotentes y quedan registradas', async () => {
     expect(await store.migrate()).toEqual([]);
     const { rows } = await pool.query('SELECT version, name FROM identity_schema_migrations ORDER BY version');
-    expect(rows).toEqual([{ version: 1, name: 'accounts_and_sessions' }]);
+    expect(rows).toEqual([
+      { version: 1, name: 'accounts_and_sessions' },
+      { version: 2, name: 'accounts_founding_attempted_at' },
+    ]);
   });
 
   // INV-PLAYER-007, mitad del almacén de identidad: las dos únicas columnas de
@@ -129,6 +132,86 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
     await store.deletePendingAccount(id(1));
     const { rows } = await pool.query('SELECT count(*)::int AS n FROM web_sessions');
     expect(rows[0].n).toBe(0);
+  });
+
+  // ADR-020: antigüedad del último intento de fundación, en el reloj de la base.
+  const age = (accountId: string, interval: string) =>
+    pool.query(`UPDATE accounts SET founding_attempted_at = now() - $2::interval WHERE id = $1`, [accountId, interval]);
+
+  it('el alta fija el intento de fundación y el login lo renueva sólo si sigue PENDING', async () => {
+    await store.createAccount({ id: id(1), username: 'intento', passwordHash: hash });
+    const { rows } = await pool.query(`SELECT founding_attempted_at > now() - interval '1 minute' AS reciente FROM accounts`);
+    expect(rows[0].reciente).toBe(true);
+
+    await age(id(1), '2 hours');
+    expect(await store.listStalePending(10)).toEqual([{ id: id(1), username: 'intento' }]);
+    expect(await store.markFoundingAttempt(id(1))).toBe('pending');
+    expect(await store.listStalePending(10)).toEqual([]);
+
+    await store.activateAccount(id(1));
+    await age(id(1), '2 hours');
+    expect(await store.markFoundingAttempt(id(1))).toBe('active');
+    const after = await pool.query(`SELECT founding_attempted_at < now() - interval '1 hour' AS vieja FROM accounts`);
+    expect(after.rows[0].vieja).toBe(true); // a una ACTIVE no se le toca nada
+    expect(await store.markFoundingAttempt(id(9))).toBe('gone');
+  });
+
+  it('abandonada es PENDING con el intento de hace más de una hora, por orden de antigüedad', async () => {
+    await store.createAccount({ id: id(1), username: 'vieja', passwordHash: hash });
+    await store.createAccount({ id: id(2), username: 'mas_vieja', passwordHash: hash });
+    await store.createAccount({ id: id(3), username: 'reciente', passwordHash: hash });
+    await store.createAccount({ id: id(4), username: 'activa', passwordHash: hash });
+    await age(id(1), '61 minutes');
+    await age(id(2), '3 hours');
+    await age(id(3), '59 minutes');
+    await store.activateAccount(id(4));
+    await age(id(4), '3 hours');
+
+    expect(await store.listStalePending(10)).toEqual([
+      { id: id(2), username: 'mas_vieja' },
+      { id: id(1), username: 'vieja' },
+    ]);
+    expect(await store.listStalePending(1)).toEqual([{ id: id(2), username: 'mas_vieja' }]);
+    expect(await store.findStalePending('vieja')).toEqual({ id: id(1), username: 'vieja' });
+    expect(await store.findStalePending('reciente')).toBeNull();
+    expect(await store.findStalePending('activa')).toBeNull();
+  });
+
+  it('a igual antigüedad, el barrido desempata por id', async () => {
+    // Insertadas al revés del orden por id, y con el mismo instante: sólo el
+    // ORDER BY decide, no el índice ni el orden físico.
+    await store.createAccount({ id: id(6), username: 'seis', passwordHash: hash });
+    await store.createAccount({ id: id(5), username: 'cinco', passwordHash: hash });
+    await pool.query(`UPDATE accounts SET founding_attempted_at = '2026-01-01T00:00:00Z'`);
+    expect(await store.listStalePending(1)).toEqual([{ id: id(5), username: 'cinco' }]);
+  });
+
+  it('el borrado de una abandonada lleva la guarda en la sentencia', async () => {
+    await store.createAccount({ id: id(1), username: 'reciente', passwordHash: hash });
+    await store.createAccount({ id: id(2), username: 'activa', passwordHash: hash });
+    await store.createAccount({ id: id(3), username: 'abandonada', passwordHash: hash });
+    await store.createSession(token(3), id(3), new Date(Date.now() + 60_000));
+    await store.activateAccount(id(2));
+    await age(id(2), '3 hours');
+    await age(id(3), '3 hours');
+
+    expect(await store.deleteStalePending(id(1))).toBe(false);
+    expect(await store.deleteStalePending(id(2))).toBe(false);
+    expect(await store.deleteStalePending(id(3))).toBe(true);
+    expect(await store.deleteStalePending(id(3))).toBe(false);
+    const { rows } = await pool.query('SELECT username FROM accounts ORDER BY username');
+    expect(rows.map((r) => r.username)).toEqual(['activa', 'reciente']);
+    const sessions = await pool.query('SELECT count(*)::int AS n FROM web_sessions');
+    expect(sessions.rows[0].n).toBe(0);
+  });
+
+  it('un intento renovado entre la consulta y el borrado lo impide', async () => {
+    await store.createAccount({ id: id(1), username: 'disputada', passwordHash: hash });
+    await age(id(1), '3 hours');
+    expect(await store.findStalePending('disputada')).not.toBeNull();
+    await store.markFoundingAttempt(id(1)); // el login llega mientras se pregunta al mundo
+    expect(await store.deleteStalePending(id(1))).toBe(false);
+    expect((await store.findAccountByUsername('disputada'))?.status).toBe('PENDING');
   });
 
   // ADR-018 §2.1: el rol de identidad no puede abrir la base del juego.

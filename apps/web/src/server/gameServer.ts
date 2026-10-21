@@ -11,6 +11,7 @@
  */
 import 'server-only';
 
+import { lookupPlayer } from '../../identity/pending.mjs';
 import { issueFoundingToken } from './tokens';
 
 export interface CityInfo {
@@ -25,8 +26,16 @@ export type FoundResult =
   | { readonly kind: 'rejected'; readonly status: number; readonly code: string; readonly message: string }
   | { readonly kind: 'unavailable'; readonly reason: string };
 
+/** Lo que contesta `GET /internal/players/{id}` (ADR-020). Sólo consulta: nunca funda. */
+export type LookupResult =
+  | { readonly kind: 'exists'; readonly username: string }
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'unavailable'; readonly reason: string };
+
 export interface GameServerClient {
   found(playerId: string, username: string): Promise<FoundResult>;
+  /** Si el jugador existe en el mundo. Para resolver cuentas PENDING abandonadas. */
+  lookup(playerId: string): Promise<LookupResult>;
 }
 
 export interface GameServerClientOptions {
@@ -78,6 +87,10 @@ export function createGameServerClient(opts: GameServerClientOptions): GameServe
       // secreto, o el reloj de uno va desfasado. Se trata como indisponible para
       // que la cuenta quede PENDING y se pueda terminar cuando se arregle.
       return { kind: 'unavailable', reason: `el Game Server respondió ${response.status} ${code}` };
+    },
+
+    lookup(playerId) {
+      return lookupPlayer({ ...opts, fetch: doFetch }, playerId);
     },
   };
 }

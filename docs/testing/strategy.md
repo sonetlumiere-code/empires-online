@@ -3,7 +3,7 @@
 Cómo se verifica Empires Online: los seis niveles de test del canon, qué garantiza cada uno, las reglas duras que ningún cambio puede saltarse, las convenciones de nombres y fixtures, los objetivos de cobertura y el pipeline de CI que decide si un pull request es válido.
 
 > **Estado real.** Todos los niveles del MVP **se ejecutan y pasan hoy** (§2.2): `unit`, `contract`,
-> `simulation`, `e2e de transporte`, `integration` —93 tests de Go y 8 del almacén de identidad de `apps/web` contra PostgreSQL y Redis reales, a 2026-10-21— y
+> `simulation`, `e2e de transporte`, `integration` —95 tests de Go y 13 del almacén de identidad de `apps/web` contra PostgreSQL y Redis reales, a 2026-10-21— y
 > `recovery`, en sus dos mitades. El detector de carreras corre sobre toda la suite. `load` sigue fuera
 > del MVP.
 >
@@ -95,7 +95,7 @@ tests a propósito: cambian con cada commit, y la salida de `go test` y de Vites
 | **e2e de transporte** | `internal/websocket/*_test.go`: el vertical slice sobre un WebSocket real servido con `httptest`, con dobles en memoria de PostgreSQL y del estado caliente; los límites del transporte (plazo de handshake, tamaño, ráfaga, `seq`), la idempotencia y la visibilidad de las unidades ocultas; y el reparto por chunks del `Hub` | **En verde**. Es el nivel que encontró que `r.Context()` mataba la sesión tras el primer mensaje, y que el `RATE_LIMITED` nunca llegaba antes del cierre `4429` |
 | **integration** | `internal/persistence/postgres/*_integration_test.go` y `internal/persistence/redis/redis_integration_test.go`, más el harness `testenv_integration_test.go`. Etiqueta `integration` + gate `EO_INTEGRATION=1` (§4, R8) | **En verde**: en la CI con `-race`, y en local contra el cluster propio de PostgreSQL y Redis en WSL |
 | **recovery** | En RAM, los tests de rehidratación de `internal/game/simulation`; durable, `TestRecuperacionCompletaTrasReinicio` y, para el ownership, `TestElOwnershipSobreviveAUnReinicio` (nivel `integration`). El arranque real se verificó además a mano contra la base de desarrollo, matando el proceso | **En verde**, ambas partes |
-| **frontend** | `apps/web/src/{net/client,render/iso,render/reconciler,state/interpolation,state/world}.test.ts`, y la identidad del servidor de Next.js en `apps/web/src/server/*.test.ts`, `identity/password.test.ts` y `scripts/seed-identity.test.ts` | **En verde** (Vitest), en el job de TypeScript de la CI desde `EO-118`. El almacén de identidad contra PostgreSQL (`store.integration.test.ts`) corre en el job de integración |
+| **frontend** | `apps/web/src/{net/client,render/iso,render/reconciler,state/interpolation,state/world}.test.ts`, y la identidad del servidor de Next.js en `apps/web/src/server/*.test.ts`, `identity/{password,pending}.test.ts` y `scripts/{seed-identity,identity-sweep}.test.ts` | **En verde** (Vitest), en el job de TypeScript de la CI desde `EO-118`. El almacén de identidad contra PostgreSQL (`store.integration.test.ts`) corre en el job de integración |
 | **scripts** | `scripts/{lint-determinism,smoke}.test.mjs` (`node --test`) | **En verde**, en el job `docs` de la CI |
 | **humo de despliegue** | [`scripts/smoke.mjs`](../../scripts/smoke.mjs) | **Ejecutado.** No es un nivel de la pirámide: ver abajo |
 | **load** | Ninguno | **Fuera de MVP** |

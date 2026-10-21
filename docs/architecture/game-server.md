@@ -32,7 +32,7 @@ Responsabilidades:
 | Terminación WebSocket | `/ws`, protocolo v1 JSON, autenticación por *game ticket* JWT. |
 | Persistencia durable | PostgreSQL como *source of truth*; escritura asíncrona vía cola + workers. |
 | Estado caliente | Redis para presencia, idempotencia y consumo de `jti`. |
-| Fundación del jugador | `POST /internal/players` (`internal/httpapi`): el bootstrap atómico del jugador que `apps/web` acaba de dar de alta, autorizado con un token de fundación. |
+| Fundación del jugador | `POST /internal/players` (`internal/httpapi`): el bootstrap atómico del jugador que `apps/web` acaba de dar de alta, autorizado con un token de fundación. `GET /internal/players/{playerId}`, con el mismo token: si ese jugador existe, sin fundar nada ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)). |
 | Observabilidad | `log/slog` en JSON, métricas Prometheus, `GET /health` y `GET /ready`. |
 
 **No** es responsable de: proyección isométrica ni píxeles (cliente), ni renderizado de deltas.
@@ -81,7 +81,7 @@ services/game-server/
     │   ├── simulation/             # state, simulation, commands, recovery,
     │   │                           # snapshot, interest, introduce
     │   └── world/{tile.go,world.go,generator.go}
-    ├── httpapi/founding.go         # POST /internal/players: fundación del jugador (ADR-018)
+    ├── httpapi/founding.go         # POST /internal/players: fundación (ADR-018); GET …/{id}: consulta (ADR-020)
     ├── observability/{logging.go,metrics.go,health.go}
     ├── pathfinding/{pathfinding.go,astar.go}
     ├── persistence/{gamestore.go,queue.go,pgxalias.go}
@@ -136,7 +136,7 @@ revisión de código, no por un test de arquitectura automático — añadirlo e
 | `internal/domain/movement` | Polilínea temporizada: `Waypoint`, `TimedPath`, `BuildTimedPath`, `StepDurationMs`, `PositionAt`, `IndexAt`, `Validate`, y el ciclo `ACTIVE`/`COMPLETED`/`CANCELLED`/`FAILED`. | `world` | ídem |
 | `internal/pathfinding` | A\* octile con costes `u×1000` / `u×1414`, heurística ponderada por `MinTerrainCostUnits`, desempate `(f, h, y, x)` y límites `EO_PATHFINDING_MAX_NODES` / `EO_PATHFINDING_MAX_DISTANCE`. Ver [pathfinding.md](./pathfinding.md). | `world` | `domain/*`, `game/loop`, `simulation`, `persistence/*`, `websocket`, `observability` |
 | `internal/auth` | `Verifier` HS256 de una audiencia (`exp`, `aud`): `Audience` para el ticket de juego, `InternalAudience` para el token de fundación; `Claims`; `Authenticator` (verifica y consume el `jti` contra Redis). `Issuer` ya no se usa en producción: acuña tokens en los tests. | `clock` | `domain/*`, `game/*`, `persistence/*` |
-| `internal/httpapi` | `POST /internal/players`: verifica el token de fundación (`NewFoundingAuthenticator`), funda el jugador con el `playerId` que eligió `apps/web` en la transacción atómica, es idempotente por ese id y lo introduce en el mundo tras el `COMMIT`. Sin contraseñas. | `auth`, `founding`, `persistence/postgres`, `simulation`, `world` | `websocket` |
+| `internal/httpapi` | `POST /internal/players`: verifica el token de fundación (`NewFoundingAuthenticator`), funda el jugador con el `playerId` que eligió `apps/web` en la transacción atómica, es idempotente por ese id y lo introduce en el mundo tras el `COMMIT`. `GET /internal/players/{playerId}`: responde si ese jugador existe (ADR-020). Sin contraseñas. | `auth`, `founding`, `persistence/postgres`, `simulation`, `world` | `websocket` |
 | `internal/websocket` | `Hub` (registro de sesiones e índices por jugador y por chunk), `Session` (writer único, `seq`, cola de salida, memoria de terreno enviado) y `Server` (upgrade, handshake, rate limit, traducción mensaje→comando). Declara sus propios puertos `PresenceTracker` y `Deduper`, que Redis satisface sin ser importado. | `auth`, `protocol`, `simulation`, `world`, `observability` | `persistence/*`, `pathfinding` |
 | `internal/persistence` | Contratos y mecanismos transversales: `GameStore` (fachada de repositorios), `Queue` (cola de escrituras durables con workers y reintentos) y `pgxalias`. | `simulation`, `persistence/postgres`, `observability` | `websocket`, `loop` |
 | `internal/persistence/postgres` | Pool `pgx`, migraciones embebidas con golang-migrate, repositorios (`players`, `cities`, `units`, `movements`, `world`, `events`), el `Bootstrapper` del alta atómica y `LoadCheckRepo`, que escribe las reparaciones de carga en una transacción auditada. | `domain/*`, `world`, `game/loadcheck`, `migrations`, `observability` | `loop`, `simulation`, `websocket`, `pathfinding` |
@@ -419,7 +419,7 @@ distinto de cero. Nunca se arranca a medias.
  6. transporte    auth.NewAuthenticator (verifier + ticket store de Redis), presence store,
                   idempotency store, ws.NewServer, httpapi.NewFoundingAPI (con su autenticador de
                   la audiencia interna; toma como era inicial la primera del catálogo leído en el
-                  paso 4) y el mux HTTP: /health, /ready, /ws, /internal/players.
+                  paso 4) y el mux HTTP: /health, /ready, /ws, /internal/players[/{id}].
  7. arranque      Tres goroutines: servidor de juego en EO_HTTP_ADDR, servidor de métricas en
                   EO_METRICS_ADDR y gameLoop.Run(rootCtx). El primer tick es el del paso 3:
                   el máximo entre el CurrentTick guardado y los ticks transcurridos desde

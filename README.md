@@ -197,6 +197,7 @@ fallo, así que sirve como puerta en un script de despliegue.
 | `pnpm run db:migrate` / `db:version` | Aplica el esquema / muestra la versión aplicada |
 | `pnpm run dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado, y sus cuentas |
 | `pnpm run pg:identity` / `identity:migrate` | Rol y bases del almacén de identidad de la web / sus migraciones (las aplica también la web al arrancar) |
+| `pnpm run identity:sweep` | Resuelve las cuentas `PENDING` abandonadas preguntando al Game Server ([ADR-020](docs/decisions/ADR-020-stale-pending-accounts.md)) |
 | `pnpm run docs:check` | Verifica enlaces, invariantes registrados y ADR citados |
 | `pnpm run secrets:scan` | Escaneo de secretos del repositorio y de toda su historia (`INV-SEC-006`); la CI escanea además el bundle del cliente |
 | `pnpm run protocol:build` | Regenera el JSON Schema desde los esquemas Zod |

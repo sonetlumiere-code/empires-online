@@ -325,6 +325,7 @@ func run() error {
 	mux.HandleFunc("/ready", health.ReadinessHandler())
 	mux.HandleFunc("/ws", wsServer.Handler(rootCtx))
 	mux.HandleFunc(httpapi.FoundPath, foundingAPI.Found())
+	mux.HandleFunc(httpapi.LookupPattern, foundingAPI.Lookup())
 
 	gameHTTP := &http.Server{
 		Addr:              cfg.HTTPAddr,

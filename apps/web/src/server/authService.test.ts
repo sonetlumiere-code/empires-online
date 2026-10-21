@@ -3,21 +3,55 @@ import { createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { AuthService, SESSION_TTL_MS, hashSessionToken, type Logger } from './authService';
-import type { FoundResult, GameServerClient } from './gameServer';
+import type { FoundResult, GameServerClient, LookupResult } from './gameServer';
 import type { Account, IdentityStore } from './store';
 
 const SECRET = 'secreto-de-los-tests-del-servicio-de-identidad';
 const T0 = 1_760_000_000_000;
 
-/** Almacén en memoria con la misma semántica que PgIdentityStore. */
+const STALE_MS = 60 * 60 * 1000;
+
+/**
+ * Almacén en memoria con la misma semántica que PgIdentityStore. Su reloj es el
+ * de la base (`founding_attempted_at`), que los tests mueven con `dbNow`.
+ */
 class MemoryStore implements IdentityStore {
   accounts = new Map<string, Account>();
+  attempts = new Map<string, number>();
   sessions = new Map<string, { accountId: string; expiresAt: Date }>();
+  dbNow = T0;
 
   async createAccount(a: { id: string; username: string; passwordHash: string }) {
     if ([...this.accounts.values()].some((x) => x.username === a.username)) return 'taken' as const;
     this.accounts.set(a.id, { ...a, status: 'PENDING' });
+    this.attempts.set(a.id, this.dbNow);
     return 'created' as const;
+  }
+  async markFoundingAttempt(id: string) {
+    const a = this.accounts.get(id);
+    if (a?.status === 'PENDING') {
+      this.attempts.set(id, this.dbNow);
+      return 'pending' as const;
+    }
+    return a?.status === 'ACTIVE' ? ('active' as const) : ('gone' as const);
+  }
+  private stale(a: Account) {
+    return a.status === 'PENDING' && this.attempts.get(a.id)! < this.dbNow - STALE_MS;
+  }
+  async findStalePending(username: string) {
+    const a = [...this.accounts.values()].find((x) => x.username === username && this.stale(x));
+    return a ? { id: a.id, username: a.username } : null;
+  }
+  async listStalePending(limit: number) {
+    return [...this.accounts.values()]
+      .filter((a) => this.stale(a))
+      .sort((x, y) => this.attempts.get(x.id)! - this.attempts.get(y.id)! || x.id.localeCompare(y.id))
+      .slice(0, limit)
+      .map((a) => ({ id: a.id, username: a.username }));
+  }
+  async deleteStalePending(id: string) {
+    const a = this.accounts.get(id);
+    return a !== undefined && this.stale(a) && this.accounts.delete(id);
   }
   async findAccountByUsername(username: string) {
     return [...this.accounts.values()].find((a) => a.username === username) ?? null;
@@ -50,12 +84,32 @@ class MemoryStore implements IdentityStore {
 
 /** Game Server falso: responde lo que se le programe y anota cada llamada. */
 class FakeGame implements GameServerClient {
-  calls: Array<{ playerId: string; username: string; accountStatusAtCall?: string }> = [];
+  calls: Array<{ playerId: string; username: string; accountStatusAtCall?: string; attemptAtCall?: number }> = [];
   next: FoundResult[] = [];
+  /** Jugadores que el mundo tiene; `lookup` responde según esto. */
+  players = new Map<string, string>();
+  lookups: string[] = [];
+  lookupDown = false;
+  /** Lo que ocurre en la identidad mientras el mundo contesta a una consulta. */
+  duringLookup: (() => void) | null = null;
   constructor(private readonly store: MemoryStore) {}
   async found(playerId: string, username: string): Promise<FoundResult> {
-    this.calls.push({ playerId, username, accountStatusAtCall: this.store.accounts.get(playerId)?.status });
-    return this.next.shift() ?? { kind: 'founded', city: { id: 7, name: `${username}polis`, centerX: 40, centerY: 50 } };
+    this.calls.push({
+      playerId,
+      username,
+      accountStatusAtCall: this.store.accounts.get(playerId)?.status,
+      attemptAtCall: this.store.attempts.get(playerId),
+    });
+    const r = this.next.shift() ?? { kind: 'founded', city: { id: 7, name: `${username}polis`, centerX: 40, centerY: 50 } };
+    if (r.kind === 'founded') this.players.set(playerId, username);
+    return r;
+  }
+  async lookup(playerId: string): Promise<LookupResult> {
+    this.lookups.push(playerId);
+    this.duringLookup?.();
+    if (this.lookupDown) return { kind: 'unavailable', reason: 'red' };
+    const username = this.players.get(playerId);
+    return username === undefined ? { kind: 'absent' } : { kind: 'exists', username };
   }
 }
 
@@ -105,7 +159,9 @@ describe('AuthService.register', () => {
     expect(r.body.city).toEqual({ id: 7, name: 'nuevapolis', centerX: 40, centerY: 50 });
 
     // INV-PLAYER-009: la cuenta estaba PENDING mientras el Game Server fundaba.
-    expect(game.calls).toEqual([{ playerId: r.body.playerId, username: 'nueva', accountStatusAtCall: 'PENDING' }]);
+    expect(game.calls).toEqual([
+      { playerId: r.body.playerId, username: 'nueva', accountStatusAtCall: 'PENDING', attemptAtCall: T0 },
+    ]);
     expect(store.accounts.get(r.body.playerId)?.status).toBe('ACTIVE');
 
     // El ticket es de ADR-010 y su sub es el id de la cuenta, que es players.id.
@@ -196,6 +252,135 @@ describe('AuthService.login', () => {
     game.next.push({ kind: 'rejected', status: 409, code: 'USERNAME_TAKEN', message: 'ocupado' });
     expect(await service.login('heredado', 'contrasena-larga')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
     expect(store.accounts.size).toBe(0);
+  });
+});
+
+// ADR-020 · INV-PLAYER-010: una cuenta PENDING abandonada se resuelve
+// preguntando al mundo, nunca a ciegas.
+describe('cuentas PENDING abandonadas', () => {
+  /** Alta que se queda PENDING porque el mundo no contestó. */
+  async function abandoned(username: string): Promise<string> {
+    game.next.push({ kind: 'unavailable', reason: 'red' });
+    await service.register(username, 'contrasena-larga');
+    return (await store.findAccountByUsername(username))!.id;
+  }
+
+  it('el login renueva el intento ANTES de volver a fundar', async () => {
+    const id = await abandoned('renovada');
+    store.dbNow = T0 + 5_000;
+    await service.login('renovada', 'contrasena-larga');
+    expect(game.calls.at(-1)).toMatchObject({ playerId: id, accountStatusAtCall: 'PENDING', attemptAtCall: T0 + 5_000 });
+  });
+
+  it('un login de una cuenta que el barrido borró no funda nada', async () => {
+    const id = await abandoned('barrida');
+    const pending = (await store.findAccountByUsername('barrida'))!;
+    store.accounts.delete(id); // el barrido llegó primero, entre leer la cuenta y renovar
+    const real = store.findAccountByUsername.bind(store);
+    store.findAccountByUsername = async () => pending;
+    const r = await service.login('barrida', 'contrasena-larga');
+    store.findAccountByUsername = real;
+    expect(r).toMatchObject({ ok: false, status: 401, code: 'UNAUTHORIZED' });
+    expect(game.calls).toHaveLength(1); // sólo el alta
+  });
+
+  it('un login de una cuenta que otro resolvió entra sin fundar', async () => {
+    const id = await abandoned('resuelta');
+    const pending = (await store.findAccountByUsername('resuelta'))!;
+    await store.activateAccount(id); // el barrido la activó entre leer la cuenta y renovar
+    const real = store.findAccountByUsername.bind(store);
+    store.findAccountByUsername = async () => pending;
+    const r = await service.login('resuelta', 'contrasena-larga');
+    store.findAccountByUsername = real;
+    expect(r).toMatchObject({ ok: true, status: 200 });
+    expect(game.calls).toHaveLength(1);
+  });
+
+  it('un nombre retenido por un alta reciente sigue ocupado y no se consulta al mundo', async () => {
+    await abandoned('reciente');
+    store.dbNow = T0 + STALE_MS; // justo en el corte: aún no es abandonada
+    expect(await service.register('reciente', 'otra-contrasena')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
+    expect(game.lookups).toHaveLength(0);
+  });
+
+  it('un nombre retenido por un alta abandonada sin jugador se libera para la nueva', async () => {
+    const vieja = await abandoned('liberable');
+    store.dbNow = T0 + STALE_MS + 1;
+    const r = await service.register('liberable', 'otra-contrasena');
+    expect(r).toMatchObject({ ok: true, status: 201 });
+    expect(game.lookups).toEqual([vieja]);
+    expect(store.accounts.has(vieja)).toBe(false);
+    if (r.ok) expect(store.accounts.get(r.body.playerId)?.status).toBe('ACTIVE');
+  });
+
+  it('si el jugador de la abandonada existe, la cuenta se activa y el nombre sigue siendo suyo', async () => {
+    const vieja = await abandoned('fundada');
+    game.players.set(vieja, 'fundada'); // la fundación sí terminó; sólo se perdió la respuesta
+    store.dbNow = T0 + STALE_MS + 1;
+    expect(await service.register('fundada', 'otra-contrasena')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
+    expect(store.accounts.get(vieja)?.status).toBe('ACTIVE');
+    expect(await service.login('fundada', 'contrasena-larga')).toMatchObject({ ok: true, status: 200 });
+  });
+
+  it('si el mundo no contesta, la abandonada no se toca y el alta responde 503', async () => {
+    const vieja = await abandoned('dudosa');
+    game.lookupDown = true;
+    store.dbNow = T0 + STALE_MS + 1;
+    expect(await service.register('dudosa', 'otra-contrasena')).toMatchObject({ status: 503, code: 'GAME_SERVER_UNAVAILABLE' });
+    expect(store.accounts.get(vieja)?.status).toBe('PENDING');
+    expect(store.accounts.size).toBe(1);
+  });
+
+  it('un login que renueva el intento durante la consulta impide el borrado', async () => {
+    const vieja = await abandoned('disputada');
+    store.dbNow = T0 + STALE_MS + 1;
+    game.duringLookup = () => void store.markFoundingAttempt(vieja);
+    expect(await service.register('disputada', 'otra-contrasena')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
+    expect(store.accounts.get(vieja)?.status).toBe('PENDING');
+  });
+
+  it('si otra alta toma el nombre liberado entretanto, el reintento responde 409', async () => {
+    const vieja = await abandoned('carrera');
+    store.dbNow = T0 + STALE_MS + 1;
+    const realDelete = store.deleteStalePending.bind(store);
+    store.deleteStalePending = async (id) => {
+      const borrada = await realDelete(id);
+      await store.createAccount({ id: 'intrusa', username: 'carrera', passwordHash: 'scrypt$x' });
+      return borrada;
+    };
+    expect(await service.register('carrera', 'otra-contrasena')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
+    expect(store.accounts.has(vieja)).toBe(false);
+    expect(game.calls).toHaveLength(1); // sólo la primera alta
+  });
+
+  it('el barrido resuelve cada abandonada y cuenta qué hizo con ella', async () => {
+    const sinJugador = await abandoned('sin_jugador');
+    const conJugador = await abandoned('con_jugador');
+    game.players.set(conJugador, 'con_jugador');
+    store.dbNow = T0 + 10_000;
+    await abandoned('reciente_aun');
+    await service.register('activa_ya', 'contrasena-larga');
+    store.dbNow = T0 + STALE_MS + 1;
+
+    expect(await service.sweepStalePending()).toEqual({ activated: 1, deleted: 1, kept: 0, unavailable: 0 });
+    expect(store.accounts.has(sinJugador)).toBe(false);
+    expect(store.accounts.get(conJugador)?.status).toBe('ACTIVE');
+    expect((await store.findAccountByUsername('reciente_aun'))?.status).toBe('PENDING');
+    expect(game.lookups).toEqual([sinJugador, conJugador]);
+
+    store.dbNow = T0 + STALE_MS + 20_000;
+    game.lookupDown = true;
+    expect(await service.sweepStalePending()).toEqual({ activated: 0, deleted: 0, kept: 0, unavailable: 1 });
+    expect((await store.findAccountByUsername('reciente_aun'))?.status).toBe('PENDING');
+  });
+
+  it('el barrido respeta su límite, empezando por la más antigua', async () => {
+    const primera = await abandoned('primera');
+    store.dbNow = T0 + 1;
+    await abandoned('segunda');
+    store.dbNow = T0 + STALE_MS + 2;
+    expect(await service.sweepStalePending(1)).toEqual({ activated: 0, deleted: 1, kept: 0, unavailable: 0 });
+    expect(game.lookups).toEqual([primera]);
   });
 });
 

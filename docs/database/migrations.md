@@ -465,7 +465,11 @@ El barrido se ejecuta **fuera del tick**, como cualquier otra I/O de PostgreSQL,
 
 En el almacén de identidad, las `web_sessions` caducadas sí se borran: lo hace cada inicio de sesión nuevo
 (`deleteExpiredSessions`, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) §2.3). Las
-cuentas `PENDING` abandonadas no tienen todavía limpieza (ADR-018 §4.2).
+cuentas `PENDING` abandonadas se resuelven preguntando al Game Server si su jugador existe —se activan, se
+borran con la guarda en la sentencia o se dejan—, al chocar un alta con su nombre y con
+`pnpm run identity:sweep` ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)). La migración 2 del almacén,
+`accounts_founding_attempted_at`, añade la columna en la que se basa: el último intento de fundación, con un
+índice parcial sobre las `PENDING`.
 
 ---
 

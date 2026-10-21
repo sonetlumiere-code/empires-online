@@ -55,6 +55,23 @@ CREATE INDEX web_sessions_account_idx ON web_sessions (account_id);
 CREATE INDEX web_sessions_expiry_idx ON web_sessions (expires_at);
 `,
   },
+  {
+    version: 2,
+    name: 'accounts_founding_attempted_at',
+    up: `
+-- ADR-020: el último intento de fundar al jugador de una cuenta, en el reloj de
+-- la base. Lo fija el alta y lo renueva el login de una cuenta PENDING antes de
+-- llamar al Game Server; una PENDING cuyo intento tiene más de una hora es
+-- abandonada y se puede resolver sin cruzarse con una fundación en vuelo.
+ALTER TABLE accounts ADD COLUMN founding_attempted_at timestamptz;
+UPDATE accounts SET founding_attempted_at = created_at;
+ALTER TABLE accounts ALTER COLUMN founding_attempted_at SET DEFAULT now();
+ALTER TABLE accounts ALTER COLUMN founding_attempted_at SET NOT NULL;
+
+-- El barrido busca PENDING por antigüedad del intento.
+CREATE INDEX accounts_pending_attempt_idx ON accounts (founding_attempted_at) WHERE status = 'PENDING';
+`,
+  },
 ];
 
 /**

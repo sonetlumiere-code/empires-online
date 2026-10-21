@@ -10,6 +10,13 @@ import 'server-only';
 import { Pool } from 'pg';
 
 import { migrateIdentity } from '../../identity/migrations.mjs';
+import {
+  activatePending,
+  deleteStalePending,
+  findStalePending,
+  listStalePending,
+  markFoundingAttempt,
+} from '../../identity/pending.mjs';
 
 export type AccountStatus = 'PENDING' | 'ACTIVE';
 
@@ -18,6 +25,12 @@ export interface Account {
   readonly username: string;
   readonly passwordHash: string;
   readonly status: AccountStatus;
+}
+
+/** Una cuenta PENDING abandonada (ADR-020): lo justo para resolverla. */
+export interface PendingAccount {
+  readonly id: string;
+  readonly username: string;
 }
 
 export interface IdentityStore {
@@ -33,6 +46,17 @@ export interface IdentityStore {
   findSessionAccount(tokenHash: Buffer, now: Date): Promise<Account | null>;
   deleteSession(tokenHash: Buffer): Promise<void>;
   deleteExpiredSessions(now: Date): Promise<number>;
+  /**
+   * Renueva el último intento de fundación de una cuenta que sigue PENDING, antes
+   * de llamar al Game Server, y dice cómo está la cuenta (ADR-020 §2.2).
+   */
+  markFoundingAttempt(id: string): Promise<'pending' | 'active' | 'gone'>;
+  /** La cuenta PENDING abandonada con ese nombre, o null. */
+  findStalePending(username: string): Promise<PendingAccount | null>;
+  /** Las cuentas PENDING abandonadas, de la más antigua a la más reciente. */
+  listStalePending(limit: number): Promise<PendingAccount[]>;
+  /** Borra la cuenta sólo si sigue PENDING y abandonada; dice si la borró. */
+  deleteStalePending(id: string): Promise<boolean>;
 }
 
 interface AccountRow {
@@ -93,11 +117,8 @@ export class PgIdentityStore implements IdentityStore {
     return rows[0] ? toAccount(rows[0]) : null;
   }
 
-  async activateAccount(id: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE accounts SET status = 'ACTIVE', activated_at = now() WHERE id = $1 AND status = 'PENDING'`,
-      [id],
-    );
+  activateAccount(id: string): Promise<void> {
+    return activatePending(this.pool, id);
   }
 
   async deletePendingAccount(id: string): Promise<void> {
@@ -129,5 +150,21 @@ export class PgIdentityStore implements IdentityStore {
   async deleteExpiredSessions(now: Date): Promise<number> {
     const result = await this.pool.query('DELETE FROM web_sessions WHERE expires_at <= $1', [now]);
     return result.rowCount ?? 0;
+  }
+
+  markFoundingAttempt(id: string): Promise<'pending' | 'active' | 'gone'> {
+    return markFoundingAttempt(this.pool, id);
+  }
+
+  findStalePending(username: string): Promise<PendingAccount | null> {
+    return findStalePending(this.pool, username);
+  }
+
+  listStalePending(limit: number): Promise<PendingAccount[]> {
+    return listStalePending(this.pool, limit);
+  }
+
+  deleteStalePending(id: string): Promise<boolean> {
+    return deleteStalePending(this.pool, id);
   }
 }

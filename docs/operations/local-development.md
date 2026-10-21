@@ -832,6 +832,7 @@ que no está aquí, no existe.
 | `dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado, y sus cuentas en el almacén de identidad (§3-bis.8) |
 | `pg:identity` | Rol y bases del almacén de identidad de `apps/web`, con contraseña aleatoria escrita sólo en `.env` (§3-bis.1) |
 | `identity:migrate` | Aplica las migraciones del almacén de identidad (el servidor de Next.js también lo hace al arrancar) |
+| `identity:sweep [límite]` | Resuelve las cuentas `PENDING` abandonadas preguntando al Game Server, que debe estar en marcha; sale con 2 si no contestó ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)) |
 | `protocol:build` / `protocol:test` / `protocol:check` | JSON Schema desde Zod / tests del protocolo / deriva del esquema sin escribir |
 | `server:tidy` | `go mod tidy` |
 | `server:build` | `node scripts/build-server.mjs`: compila el binario del servidor |

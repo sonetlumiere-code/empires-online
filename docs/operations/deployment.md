@@ -398,7 +398,11 @@ rol de la aplicación tiene privilegios sobre su esquema, **no** es superusuario
 propio rol, sin `CONNECT` sobre la base del juego, y el rol del Game Server sin `CONNECT` sobre ella. La conecta
 el servidor de Next.js con un pool de 5 conexiones por proceso: **desde funciones *serverless* exige un *pooler***
 (PgBouncer o el del proveedor) delante, que este documento todavía no diseña. Sus migraciones las aplica el
-servidor de Next.js al arrancar, o `pnpm run identity:migrate` antes de desplegar.
+servidor de Next.js al arrancar, o `pnpm run identity:migrate` antes de desplegar. Las cuentas `PENDING`
+abandonadas que no estorban a ningún alta sólo se resuelven con `pnpm run identity:sweep`
+([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)): conviene programarlo —una vez al día basta— en un
+entorno con `EO_IDENTITY_POSTGRES_URL`, `EO_AUTH_JWT_SECRET` y `EO_GAME_SERVER_INTERNAL_URL`. Sale con código 2 si
+el Game Server no contestó por alguna cuenta, que queda para la pasada siguiente.
 
 Requisitos de Redis: política de expiración que respete los TTL (las claves `presence:player:{playerId}`,
 `idem:{playerId}:{requestId}` y `ticket:jti:{jti}` dependen de que el TTL se honre), y **sin** persistencia

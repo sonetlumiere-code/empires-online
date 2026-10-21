@@ -18,6 +18,7 @@
     "db:migrate": "cd services/game-server && go run ./cmd/migrate",
     "db:version": "cd services/game-server && go run ./cmd/migrate -version",
     "identity:migrate": "node apps/web/scripts/identity-migrate.mjs",
+    "identity:sweep": "node apps/web/scripts/identity-sweep.mjs",
     "dev:seed": "cd services/game-server && go run ./cmd/devseed && cd ../.. && node apps/web/scripts/seed-identity.mjs",
     "pg:init": "node scripts/pg-local.mjs init",
     "pg:start": "node scripts/pg-local.mjs start",

@@ -38,8 +38,6 @@ transacción, un jugador jugable con ciudad y unidades.
 
 - Recuperación de cuenta, cambio de contraseña, OAuth, *magic link* y verificación de correo:
   `TBD (fuera de MVP)`. El almacén de identidad de ADR-018 admite añadirlos sin tocar el juego.
-- Limpieza de cuentas `PENDING` abandonadas (§4.1): no existe; una cuenta así ocupa su nombre hasta que su
-  dueño vuelve a entrar o alguien la borra.
 - Efecto de gameplay de los traits de civilización sobre economía, tecnología, combate o coste de unidades:
   esos subsistemas no existen (canon §21). Los valores sembrados en `civilizations.traits` existen pero
   **ningún sistema los lee todavía**.
@@ -106,7 +104,17 @@ la trae, y el cliente la encuentra en el `world.snapshot`.
 bootstrap de §6 y responde `201` con la ciudad, o `200` si ese jugador ya existía. Sólo entonces la cuenta pasa a
 `ACTIVE` y se abre la sesión (`INV-PLAYER-009`). Si el game server rechaza de forma definitiva, la cuenta
 `PENDING` se borra y el nombre queda libre; si no responde, la cuenta se queda `PENDING`, el alta responde 503
-y el siguiente login con la contraseña correcta repite la fundación.
+y el siguiente login con la contraseña correcta repite la fundación. Antes de repetirla, el login renueva el
+intento de fundación de la cuenta; si entretanto la cuenta se activó, entra sin fundar, y si se borró, responde
+`UNAUTHORIZED` sin llamar al game server (`RN-PLAYER-016`).
+
+**Cuentas abandonadas** ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)). Una cuenta `PENDING` cuyo último intento de fundación
+(`accounts.founding_attempted_at`, en el reloj de la base) tiene más de una hora es *abandonada*. Se resuelve
+preguntando al game server con `GET /internal/players/{playerId}`: si el jugador existe, la cuenta se activa;
+si responde `404 PLAYER_NOT_FOUND`, se borra, con la guarda en la propia sentencia; con cualquier otra respuesta,
+o sin ella, no se toca (`RN-PLAYER-015`, `INV-PLAYER-010`). Lo hace el alta que choca con su nombre —si la
+borra, reintenta la creación una vez— y el comando `pnpm run identity:sweep`, que resuelve hasta 500 de la
+más antigua a la más reciente.
 
 Lo que el cuerpo del alta **no** lleva, y por qué:
 
@@ -123,7 +131,7 @@ Errores del alta (Next.js), con su código HTTP: `INVALID_MESSAGE` (400: cuerpo 
 `WEAK_PASSWORD` (400), `FORBIDDEN` (403, petición con `Origin` de otro sitio), `USERNAME_TAKEN` (409),
 `NO_SITE_AVAILABLE` (409), `RATE_LIMITED` (429), `SITE_CONTENDED` (503: otras altas simultáneas ocuparon cada
 sitio elegido y basta con reintentar), `GAME_SERVER_UNAVAILABLE` (503: la cuenta existe pero el mundo no
-respondió) e `INTERNAL_ERROR` (500). El login responde `UNAUTHORIZED` (401) tanto si el usuario no existe como
+respondió; o el nombre lo retiene una cuenta abandonada y el mundo no contestó para resolverla) e `INTERNAL_ERROR` (500). El login responde `UNAUTHORIZED` (401) tanto si el usuario no existe como
 si la contraseña no coincide, tras comparar igualmente contra un hash de relleno para no revelar por tiempo qué
 nombres existen. **Estos códigos son del transporte HTTP de la identidad y no pertenecen al catálogo de 22
 códigos del protocolo v1** (canon §16).
@@ -133,6 +141,11 @@ Respuestas de `POST /internal/players` (game server): `201`/`200` con `{ playerI
 consumido); `403` `FORBIDDEN` (el cuerpo nombra otro `playerId` que el `sub`); `409` `USERNAME_TAKEN` (el
 nombre es de otro jugador), `PLAYER_CONFLICT` (el id ya existe con otro nombre) o `NO_SITE_AVAILABLE`; `503`
 `SITE_CONTENDED` o `INTERNAL_ERROR` (no se pudo comprobar el `jti`); `500` `INTERNAL_ERROR`.
+
+Respuestas de `GET /internal/players/{playerId}` (game server), con el mismo token de fundación: `200`
+`{ playerId, username, city }` si el jugador existe; `404` `PLAYER_NOT_FOUND` si no; `400` `INVALID_MESSAGE`
+(el id no es un `uuid`); `401` `UNAUTHORIZED` y `503` `INTERNAL_ERROR` como en la fundación; `403`
+`FORBIDDEN` (la ruta nombra otro id que el `sub`); `500` `INTERNAL_ERROR`. Sólo lee: nunca funda.
 
 ### 4.2 Handshake de sesión (WebSocket v1)
 
@@ -205,6 +218,8 @@ Dominio de reglas: `RN-PLAYER`.
 | `RN-PLAYER-012` | Los rasgos de civilización no se consultan con condicionales por código de civilización. Toda lectura pasa por `Civilization.Trait(key, def)` (§6.3). |
 | `RN-PLAYER-013` | La facción no restringe ninguna acción del MVP. Es un atributo persistido; su efecto sobre reglas es `Fuera de MVP`. |
 | `RN-PLAYER-014` | El emplazamiento de la ciudad inicial se elige **antes** de abrir la transacción, con `founding.FindSite`: espiral determinista desde `hashSeed(username)`, entorno despejado de radio 3, separación mínima de 24 tiles con cualquier centro de ciudad existente, y 3 aldeanos a radio 2 sobre tiles transitables. Si no hay sitio, el alta responde `NO_SITE_AVAILABLE` (409) y **no** se coloca al jugador «donde sea». Dentro de la transacción, bajo un `pg_advisory_xact_lock` que serializa las altas, el centro elegido se vuelve a comprobar con `founding.FarEnough` contra los centros ya confirmados; si otra alta se adelantó, la búsqueda se repite hasta tres veces y, agotadas, el alta responde `SITE_CONTENDED` (503, `Retry-After: 1`) sin escribir nada (`INV-CITY-008`). |
+| `RN-PLAYER-015` | Una cuenta `PENDING` cuyo último intento de fundación tiene más de una hora se resuelve preguntando al game server: si su jugador existe, se activa; si responde `404 PLAYER_NOT_FOUND`, se borra sólo si en el instante del borrado sigue `PENDING` y abandonada; con cualquier otra respuesta, o sin ella, no se toca. Ningún proceso borra una cuenta `PENDING` sin esa respuesta, salvo el rechazo definitivo de su propia fundación (`INV-PLAYER-010`, [ADR-020](../decisions/ADR-020-stale-pending-accounts.md)). |
+| `RN-PLAYER-016` | El login de una cuenta `PENDING` renueva su intento de fundación **antes** de llamar al game server, y sólo lo llama si la cuenta seguía `PENDING`: una cuenta activada entretanto entra sin fundar, y una borrada responde `UNAUTHORIZED`. |
 
 ### 6.1 Ortogonalidad Civilization × Global Faction
 
@@ -436,6 +451,7 @@ del jugador se documenta en [presence.md](presence.md) §9 y toma sus números p
 | `INV-PLAYER-006` | `players.username` es único y cumple `^[A-Za-z0-9_-]{3,24}$`. La misma regla se aplica en el boundary (`player.ValidateUsername`) y en la base (`CHECK players_username_format`), de modo que ninguna ruta de escritura pueda saltársela. | `UNIQUE` + `CHECK` + unit test de tabla sobre `ValidateUsername`. |
 | `INV-PLAYER-007` | Ninguna tabla guarda una contraseña en claro y ningún log estructurado contiene contraseña, hash, token de sesión, ticket ni `EO_AUTH_JWT_SECRET`. El esquema del juego no tiene ninguna columna de credencial; el almacén de identidad, sólo dos hashes. | Tests de esquema de las dos bases + tests que inspeccionan los logs del alta, el login, la fundación y el handshake. |
 | `INV-PLAYER-009` | Toda cuenta `ACTIVE` del almacén de identidad tiene en el juego un jugador con el mismo id y nombre; una cuenta `PENDING` no obtiene sesión ni ticket. | Orquestación del alta en `apps/web` con un game server falso + idempotencia y carrera de la fundación contra PostgreSQL. |
+| `INV-PLAYER-010` | Una cuenta `PENDING` sólo se borra si el game server confirma que su jugador no existe y, al borrarla, sigue `PENDING` y abandonada; ninguna limpieza deja un jugador sin cuenta. | Clasificación de las respuestas de la consulta + orquestación con un game server falso + la guarda del borrado contra PostgreSQL + el endpoint contra PostgreSQL. |
 | `INV-PLAYER-008` | El comando `IntroducePlayer` que incorpora al jugador al mundo en RAM se emite **después** del COMMIT del bootstrap, nunca antes. No existe ningún instante en que el mundo en RAM conozca a un jugador que PostgreSQL no conoce. | Test de simulación con fallo inyectado en la transacción: el mundo no recibe la ciudad ni los aldeanos. |
 
 No se asigna ningún invariante para «cada jugador tiene exactamente una ciudad»: esa propiedad es
@@ -644,6 +660,9 @@ Reglas del contrato:
 | `T-PLAYER-I-009` | integration | Sólo un token de fundación funda, una vez y sólo su `sub`: `TestUnTicketDeJuegoNoFundaJugadores`, `TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub`; y las audiencias son disjuntas (`TestLasAudienciasSonDisjuntas`, unit). | `INV-SEC-008` |
 | `T-PLAYER-W-001` | unit (`apps/web`) | Orquestación del alta y del login: activación sólo tras la fundación, borrado ante rechazo definitivo, `PENDING` sin sesión ante indisponibilidad y su cierre en el login, respuestas idénticas ante contraseña errónea y usuario inexistente, ticket por cookie, logs sin secretos. `src/server/authService.test.ts`. | `INV-PLAYER-007`, `INV-PLAYER-009` |
 | `T-PLAYER-W-002` | integration (`apps/web`) | Almacén de identidad contra PostgreSQL real: migraciones idempotentes, restricciones, sesiones sólo de cuentas `ACTIVE`, y el rol de identidad sin acceso a la base del juego. `src/server/store.integration.test.ts`. | `INV-PLAYER-009`, ADR-018 |
+| `T-PLAYER-W-004` | unit (`apps/web`) | Cuentas abandonadas: sólo `404 PLAYER_NOT_FOUND` es «no existe» (`identity/pending.test.ts`); el alta libera un nombre abandonado sin jugador y reintenta una vez, y no lo libera si es reciente, si el jugador existe o si el mundo no contesta; el login renueva el intento antes de fundar y no funda una cuenta borrada; el barrido cuenta lo que hizo (`authService.test.ts`). | `RN-PLAYER-015`, `RN-PLAYER-016`, `INV-PLAYER-010` |
+| `T-PLAYER-W-005` | integration (`apps/web`) | La migración 2 y la guarda del borrado contra PostgreSQL real: el intento se fija y se renueva sólo en `PENDING`, el corte de una hora, el orden del barrido y el borrado que no toca recientes, `ACTIVE` ni renovadas. `store.integration.test.ts`. | `INV-PLAYER-010` |
+| `T-PLAYER-I-010` | integration | `GET /internal/players/{id}`: 200 con el jugador fundado, 404 `PLAYER_NOT_FOUND` con uno inexistente, y sólo con un token interno de ese `sub`. `TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste`, `TestLaConsultaExigeUnTokenInternoDeSuSub`. | `INV-PLAYER-010`, `INV-SEC-008` |
 | `T-PLAYER-W-003` | contract | El emisor de TypeScript produce los bytes exactos de `internal/auth/testdata/web-tokens.json` y el verificador de Go los acepta. `tokens.test.ts`, `TestLosTokensDeAppsWebSeVerificanEnGo`. | ADR-018 §2.4 |
 
 Los tests de integración necesitan PostgreSQL y Redis reales y están gated por `EO_INTEGRATION=1` (canon §3,

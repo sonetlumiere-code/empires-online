@@ -34,6 +34,10 @@ import (
 // FoundPath es la ruta del endpoint interno de fundación.
 const FoundPath = "/internal/players"
 
+// LookupPattern es el patrón de la consulta de un jugador (ADR-020): sólo lee,
+// nunca funda.
+const LookupPattern = "GET /internal/players/{playerId}"
+
 // FoundingAPI funda jugadores en el mundo a petición de apps/web.
 type FoundingAPI struct {
 	players      *postgres.PlayerRepo
@@ -216,6 +220,61 @@ func (a *FoundingAPI) Found() http.HandlerFunc {
 				ID: result.City.ID, Name: result.City.Name,
 				CenterX: result.City.CenterX, CenterY: result.City.CenterY,
 			},
+		})
+	}
+}
+
+type lookupResponse struct {
+	PlayerID string       `json:"playerId"`
+	Username string       `json:"username"`
+	City     cityResponse `json:"city"`
+}
+
+// Lookup responde si un jugador existe en el mundo: 200 con su nombre y su
+// ciudad, o 404 PLAYER_NOT_FOUND. Lo usa apps/web para resolver una cuenta
+// PENDING abandonada sin fundar nada (ADR-020): si el jugador existe, la cuenta
+// se activa; si no, se puede borrar sin dejar un jugador huérfano
+// (INV-PLAYER-010). Se autentica con el mismo token de fundación, cuyo sub debe
+// ser el jugador consultado.
+func (a *FoundingAPI) Lookup() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims, ok := a.authenticate(ctx, w, r)
+		if !ok {
+			return
+		}
+		playerID, err := uuid.Parse(r.PathValue("playerId"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_MESSAGE", "playerId no es un uuid")
+			return
+		}
+		if playerID != claims.PlayerID {
+			a.log.Warn("consulta rechazada: la ruta no nombra el sub del token",
+				"jti", claims.JTI, "player_id", playerID)
+			writeError(w, http.StatusForbidden, "FORBIDDEN", "el token no autoriza ese jugador")
+			return
+		}
+
+		p, err := a.players.GetByID(ctx, playerID)
+		if errors.Is(err, player.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "PLAYER_NOT_FOUND", "ese jugador no existe en el mundo")
+			return
+		}
+		if err != nil {
+			a.log.Error("no se pudo consultar el jugador", "err", err, "player_id", playerID)
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "error interno")
+			return
+		}
+		c, err := a.cities.GetByOwner(ctx, playerID)
+		if err != nil {
+			a.log.Error("jugador sin ciudad legible", "err", err, "player_id", playerID)
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "error interno")
+			return
+		}
+		writeJSON(w, http.StatusOK, lookupResponse{
+			PlayerID: playerID.String(),
+			Username: p.Username,
+			City:     cityResponse{ID: c.ID, Name: c.Name, CenterX: c.CenterX, CenterY: c.CenterY},
 		})
 	}
 }

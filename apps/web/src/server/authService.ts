@@ -17,6 +17,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 
 import { dummyHash, hashPassword, verifyPassword } from '../../identity/password.mjs';
+import { settleStalePending, sweepStalePending } from '../../identity/pending.mjs';
 import type { CityInfo, GameServerClient } from './gameServer';
 import type { Account, IdentityStore } from './store';
 import { TOKEN_TTL_SECONDS, issueGameTicket } from './tokens';
@@ -59,6 +60,12 @@ export type AuthResult =
 
 const fail = (status: number, code: string, message: string): AuthResult => ({ ok: false, status, code, message });
 
+/** Cómo terminó la resolución de una cuenta PENDING abandonada (ADR-020). */
+export type SettleOutcome = 'activated' | 'deleted' | 'kept' | 'unavailable';
+
+/** Recuento de un barrido de cuentas abandonadas. */
+export type SweepReport = Readonly<Record<SettleOutcome, number>>;
+
 /** SHA-256 del token de sesión: lo único que se guarda de él. */
 export function hashSessionToken(token: string): Buffer {
   return createHash('sha256').update(token).digest();
@@ -82,7 +89,16 @@ export class AuthService {
     const id = this.deps.randomUUID();
     const passwordHash = await hashPassword(password);
     if ((await store.createAccount({ id, username, passwordHash })) === 'taken') {
-      return fail(409, 'USERNAME_TAKEN', 'ese nombre ya está en uso');
+      // Un alta abandonada no retiene el nombre para siempre: si lo ocupa una
+      // cuenta PENDING sin intento en la última hora, se resuelve ahora (ADR-020).
+      const freed = await this.freeAbandonedName(username);
+      if (freed === 'unavailable') {
+        return fail(503, 'GAME_SERVER_UNAVAILABLE', 'ese nombre lo retiene un alta sin terminar y el mundo no responde: vuelve a intentarlo en un momento');
+      }
+      // Un solo reintento: si otra alta lo tomó entretanto, el nombre está en uso.
+      if (freed !== 'deleted' || (await store.createAccount({ id, username, passwordHash })) === 'taken') {
+        return fail(409, 'USERNAME_TAKEN', 'ese nombre ya está en uso');
+      }
     }
     log.info('cuenta creada, pendiente de fundación', { player_id: id, username });
 
@@ -106,6 +122,14 @@ export class AuthService {
 
     // Una cuenta PENDING es un alta que no terminó: la fundación es idempotente
     // por playerId, así que se repite y, si confirma, la cuenta se activa.
+    // Antes se renueva el intento: un barrido concurrente ya no puede borrarla, y
+    // si la borró o la activó antes, se sabe aquí, sin llamar al mundo (ADR-020).
+    const state = await store.markFoundingAttempt(account.id);
+    if (state === 'active') return this.signIn(account.id, 200);
+    if (state === 'gone') {
+      log.warn('login rechazado: la cuenta pendiente se borró mientras tanto', { player_id: account.id, username });
+      return fail(401, 'UNAUTHORIZED', 'credenciales inválidas');
+    }
     log.info('login de una cuenta pendiente: se completa la fundación', { player_id: account.id, username });
     const founded = await this.found(account.id, account.username);
     if (!founded.ok) return founded.result;
@@ -119,8 +143,32 @@ export class AuthService {
     return { ok: true, status: 200, body: this.ticketBody(account.id) };
   }
 
+  /**
+   * Resuelve las cuentas PENDING abandonadas, de la más antigua a la más
+   * reciente y de una en una (ADR-020 §2.3). Lo usa `pnpm run identity:sweep`.
+   */
+  sweepStalePending(limit = 500): Promise<SweepReport> {
+    return sweepStalePending({ ...this.settleDeps(), list: (n) => this.deps.store.listStalePending(n) }, limit);
+  }
+
   async logout(sessionToken: string | undefined): Promise<void> {
     if (sessionToken) await this.deps.store.deleteSession(hashSessionToken(sessionToken));
+  }
+
+  /** Si el nombre lo ocupa una cuenta PENDING abandonada, la resuelve. */
+  private async freeAbandonedName(username: string): Promise<SettleOutcome | 'none'> {
+    const stale = await this.deps.store.findStalePending(username);
+    return stale ? settleStalePending(this.settleDeps(), stale) : 'none';
+  }
+
+  private settleDeps() {
+    const { store, game, log } = this.deps;
+    return {
+      lookup: (id: string) => game.lookup(id),
+      activate: (id: string) => store.activateAccount(id),
+      removeIfStale: (id: string) => store.deleteStalePending(id),
+      log,
+    };
   }
 
   private async sessionAccount(sessionToken: string | undefined): Promise<Account | null> {

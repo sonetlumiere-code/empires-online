@@ -217,7 +217,7 @@ No existen `internal/presence` ni `internal/events`: la presencia vive en `inter
 | `internal/persistence` | `GameStore` (implementa `simulation.Repositories`) y `Queue`: la cola de escrituras durables con workers, reintentos y compensación. |
 | `internal/persistence/postgres` | Repositorios, transacciones, migrador embebido, bootstrap de jugador. |
 | `internal/persistence/redis` | Presencia, `jti` de tickets consumidos e idempotencia de corto plazo. |
-| `internal/httpapi` | `POST /internal/players`: la fundación del jugador que `apps/web` acaba de dar de alta, autorizada con un token de audiencia `game-server-internal`. Sin contraseñas ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). |
+| `internal/httpapi` | `POST /internal/players`: la fundación del jugador que `apps/web` acaba de dar de alta, autorizada con un token de audiencia `game-server-internal`. Sin contraseñas ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). `GET /internal/players/{playerId}`, con el mismo token: si ese jugador existe, para resolver una cuenta `PENDING` abandonada ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)). |
 | `internal/auth` | Verificación del game ticket y del token de fundación: firma HS256, `exp`, `aud` (una por verificador), consumo de `jti`. Incluye un `Issuer` para los tests. |
 | `internal/clock` | `Clock`, `SystemClock`, `FakeClock` y `RandomSource`: los puertos que hacen determinista la simulación. |
 | `internal/config` | Carga y validación agregada de todas las variables `EO_*`. Punto único de valores de gameplay. |

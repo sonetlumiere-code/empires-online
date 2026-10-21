@@ -232,6 +232,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-PLAYER-007 | Ninguna tabla ni log contiene contraseña, hash, token de sesión, ticket ni `EO_AUTH_JWT_SECRET` | CRITICO | DB, BOUNDARY, TEST | ✓ | `TestElEsquemaDelJuegoNoTieneCredenciales`, `TestLosLogsDeLaFundacionNoContienenSecretos`, `TestLosLogsDelHandshakeNoContienenTicketsNiSecreto`; en `apps/web`, los del almacén y de la identidad |
 | INV-PLAYER-008 | El mundo en RAM sólo conoce jugadores ya confirmados en PostgreSQL | ALTO | DOMAIN, TEST | ✓ | `TestLaFundacionIntroduceAlJugadorDespuesDelCommit`, `TestUnNombreDeOtroJugadorNoSeFundaNiSeReasigna` |
 | INV-PLAYER-009 | Una cuenta sólo entra si su jugador existe en el mundo | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaFundacionEsIdempotentePorPlayerId`, `TestDosFundacionesSimultaneasDelMismoJugadorAcabanEnUno`; en `apps/web`, `authService.test.ts` y `store.integration.test.ts` |
+| INV-PLAYER-010 | Una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste`, `TestLaConsultaExigeUnTokenInternoDeSuSub`; en `apps/web`, `pending.test.ts`, `authService.test.ts` y `store.integration.test.ts` |
 
 ### CITY — [city.md](city.md)
 
@@ -383,13 +384,13 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 91 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 92 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 1 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 1 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **93** | |
+| **Total** | **94** | |
 
-> **93 filas y 94 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
+> **94 filas y 95 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
 > pero **no** fila en esta tabla: es un ID **reservado** —apartado para que nadie lo reutilice— cuyo
 > enunciado todavía no se puede verificar, porque la gracia de expulsión que describiría no tiene dónde
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
@@ -397,7 +398,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 Ninguna fila queda sin cobertura. Las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). La única parcial que queda espera algo que no existe: la primera acción hostil (`INV-CITY-006`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). La única parcial que queda espera algo que no existe: la primera acción hostil (`INV-CITY-006`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas), y con [ADR-020](../decisions/ADR-020-stale-pending-accounts.md), `INV-PLAYER-010` (una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 

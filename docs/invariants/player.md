@@ -358,6 +358,50 @@ podría aparecer por una escritura manual; el síntoma sería un snapshot sin ci
 
 ---
 
+<a id="inv-player-010"></a>
+## INV-PLAYER-010 — Una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | M3 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `identity/pending.test.ts`, `src/server/authService.test.ts` y `src/server/store.integration.test.ts` (`apps/web`), y por `TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste` y `TestLaConsultaExigeUnTokenInternoDeSuSub` (integration, `internal/persistence/postgres`) |
+
+**Enunciado.** Fuera del rechazo definitivo de su propia fundación, una cuenta `PENDING` sólo se borra si el Game
+Server ha respondido `404 PLAYER_NOT_FOUND` por su `playerId` y, en el instante del borrado, sigue `PENDING` y su
+último intento de fundación tiene más de una hora. Ninguna limpieza deja en el mundo un jugador sin cuenta.
+
+**Razón.** Una cuenta `PENDING` es un alta cuya fundación no confirmó, que no es lo mismo que una fundación que
+no ocurrió: el 503 se da también cuando el jugador se fundó y la respuesta se perdió. Borrar esa cuenta dejaría
+al jugador sin identidad que lo reclame y su nombre bloqueado en `players.username`
+([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)).
+
+**Cómo se garantiza.**
+
+- `DB` — `accounts.founding_attempted_at` (migración 2 del almacén de identidad), en el reloj de la base: lo fija
+  el alta y lo renueva el login de una cuenta `PENDING` antes de volver a fundar.
+- `DB` — el borrado lleva la guarda en la sentencia: `DELETE … WHERE id = $1 AND status = 'PENDING' AND
+  founding_attempted_at < now() − 1 h`. Un login que renueva el intento durante la consulta lo impide.
+- `DOMAIN` — `settleStalePending` (`identity/pending.mjs`) sólo borra ante un `404 PLAYER_NOT_FOUND` de
+  `GET /internal/players/{id}`; un 200 de ese jugador activa la cuenta, y cualquier otra respuesta la deja.
+- `DOMAIN` — el login renueva el intento antes de llamar al Game Server, y si la cuenta ya no está, responde
+  `UNAUTHORIZED` sin fundar.
+
+**Cómo se verifica.**
+
+- `identity/pending.test.ts` (unit, `apps/web`) — sólo un `404 PLAYER_NOT_FOUND` es «no existe»: otro 404, un 401, un 5xx, un error de red o un 200 de otro jugador son «no se sabe», y entonces no se toca nada. Verificado por mutación.
+- «un nombre retenido por un alta abandonada sin jugador se libera para la nueva», «si el jugador de la abandonada existe, la cuenta se activa…», «si el mundo no contesta, la abandonada no se toca…», «un login que renueva el intento durante la consulta impide el borrado» y «un login de una cuenta que el barrido borró no funda nada» (unit, `apps/web`, `authService.test.ts`). Verificados por mutación.
+- «el borrado de una abandonada lleva la guarda en la sentencia» y «un intento renovado entre la consulta y el borrado lo impide» (integration, `apps/web`) — la guarda contra PostgreSQL real. Verificado por mutación: sin la guarda de antigüedad o de estado fallan.
+- `TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste` y `TestLaConsultaExigeUnTokenInternoDeSuSub` (integration) — 200 con el jugador fundado, 404 `PLAYER_NOT_FOUND` con uno inexistente, y el token debe ser interno y de ese `sub`. Verificados por mutación.
+
+**Violación en runtime.** Sin detección automática: un borrado fuera de esta ruta (una escritura manual) dejaría
+un jugador en `players` sin cuenta. El síntoma es un `USERNAME_TAKEN` del Game Server a un alta cuyo nombre está
+libre en `accounts`; la reparación es manual.
+
+---
+
 
 ## Trazabilidad
 
@@ -372,3 +416,4 @@ podría aparecer por una escritura manual; el síntoma sería un snapshot sin ci
 | INV-PLAYER-007 | `apps/web` (identidad), `internal/httpapi`, `internal/websocket` | [INV-SEC-006](security.md#inv-sec-006) |
 | INV-PLAYER-008 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-PERSIST-001](persistence.md#inv-persist-001) |
 | INV-PLAYER-009 | `apps/web` (identidad), `internal/httpapi` | [INV-PLAYER-008](#inv-player-008), [INV-SEC-008](security.md#inv-sec-008) |
+| INV-PLAYER-010 | `apps/web` (identidad), `internal/httpapi` | [INV-PLAYER-009](#inv-player-009), [ADR-020](../decisions/ADR-020-stale-pending-accounts.md) |

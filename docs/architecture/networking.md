@@ -101,7 +101,8 @@ route handlers del mismo origen que la página:
 | Errores | `400` `INVALID_MESSAGE`/`INVALID_USERNAME`/`WEAK_PASSWORD`, `403 FORBIDDEN` (otro origen), `409` `USERNAME_TAKEN`/`NO_SITE_AVAILABLE`, `429 RATE_LIMITED`, `503` `SITE_CONTENDED`/`GAME_SERVER_UNAVAILABLE`, `500` | `400`, `401 UNAUTHORIZED` (mismo error y mismo coste para usuario inexistente y contraseña incorrecta), `403`, `429`, `503`, `500` | `401 UNAUTHORIZED`, `403`, `500` |
 
 El detalle del alta —la cuenta `PENDING`, la fundación en `POST /internal/players` del game server y la
-activación— está en [../specs/player.md](../specs/player.md) §4.1. El contrato del ticket —JWT HS256,
+activación, y la resolución de una cuenta `PENDING` abandonada con `GET /internal/players/{playerId}`
+([ADR-020](../decisions/ADR-020-stale-pending-accounts.md))— está en [../specs/player.md](../specs/player.md) §4.1. El contrato del ticket —JWT HS256,
 `aud = "game-server"`, TTL 60 s, `jti` de un solo uso— no cambió con el traslado: un fixture compartido
 (`internal/auth/testdata/web-tokens.json`) obliga a los dos lados a seguir hablando el mismo formato.
 

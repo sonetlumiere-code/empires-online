@@ -82,6 +82,20 @@ func (f fundacion) conToken(token string, body any) *httptest.ResponseRecorder {
 	return rec
 }
 
+// consultar hace GET /internal/players/{id} a través de un ServeMux con el patrón
+// de producción, que es quien rellena el {playerId} de la ruta.
+func (f fundacion) consultar(token string, id string) *httptest.ResponseRecorder {
+	mux := http.NewServeMux()
+	mux.HandleFunc(httpapi.LookupPattern, f.api.Lookup())
+	req := httptest.NewRequest(http.MethodGet, "/internal/players/"+id, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec
+}
+
 func cuerpo(id uuid.UUID, username string) map[string]string {
 	return map[string]string{"playerId": id.String(), "username": username}
 }
@@ -320,6 +334,79 @@ func TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub(t *testing.T) {
 	rec = f.conToken(token, cuerpo(autorizado, "legitimo"))
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Empty(t, f.commands)
+}
+
+// INV-PLAYER-010 (ADR-020): la consulta distingue un jugador que existe de uno
+// que no, y no funda nada. Es lo que permite a apps/web activar una cuenta
+// PENDING cuyo jugador sí se fundó, y borrar sólo la que no tiene jugador.
+func TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste(t *testing.T) {
+	store, ctx := newTestStore(t)
+	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	fundado := uuid.New()
+	alta := f.fundar(t, f.interno, fundado, cuerpo(fundado, "consultado"))
+	require.Equal(t, http.StatusCreated, alta.Code, alta.Body.String())
+	<-f.commands
+	var fundacionResp struct {
+		City json.RawMessage `json:"city"`
+	}
+	require.NoError(t, json.Unmarshal(alta.Body.Bytes(), &fundacionResp))
+
+	token, err := f.interno.Issue(fundado)
+	require.NoError(t, err)
+	rec := f.consultar(token, fundado.String())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var existe struct {
+		PlayerID string          `json:"playerId"`
+		Username string          `json:"username"`
+		City     json.RawMessage `json:"city"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &existe))
+	assert.Equal(t, fundado.String(), existe.PlayerID)
+	assert.Equal(t, "consultado", existe.Username)
+	assert.JSONEq(t, string(fundacionResp.City), string(existe.City), "la misma ciudad que devolvió la fundación")
+
+	nadie := uuid.New()
+	token, err = f.interno.Issue(nadie)
+	require.NoError(t, err)
+	rec = f.consultar(token, nadie.String())
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Equal(t, "PLAYER_NOT_FOUND", codigoHTTP(t, rec))
+
+	// Consultar no funda: ni jugador nuevo ni nada que introducir en el mundo.
+	var n int
+	require.NoError(t, store.Pool().QueryRow(ctx, `SELECT count(*) FROM players`).Scan(&n))
+	assert.Equal(t, 1, n)
+	assert.Empty(t, f.commands)
+}
+
+// INV-SEC-008 e INV-SEC-003 en la consulta: sólo con un token interno, de un solo
+// uso y cuyo sub es el jugador consultado.
+func TestLaConsultaExigeUnTokenInternoDeSuSub(t *testing.T) {
+	store, _ := newTestStore(t)
+	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	id := uuid.New()
+
+	sinToken := f.consultar("", id.String())
+	assert.Equal(t, http.StatusUnauthorized, sinToken.Code)
+
+	ticket, err := f.juego.Issue(id)
+	require.NoError(t, err)
+	deJuego := f.consultar(ticket, id.String())
+	assert.Equal(t, http.StatusUnauthorized, deJuego.Code, "un ticket de juego no consulta")
+
+	token, err := f.interno.Issue(id)
+	require.NoError(t, err)
+	otro := f.consultar(token, uuid.NewString())
+	assert.Equal(t, http.StatusForbidden, otro.Code)
+	assert.Equal(t, "FORBIDDEN", codigoHTTP(t, otro))
+
+	repetido := f.consultar(token, id.String())
+	assert.Equal(t, http.StatusUnauthorized, repetido.Code, "el token ya se consumió")
+
+	token, err = f.interno.Issue(id)
+	require.NoError(t, err)
+	malformado := f.consultar(token, "no-es-un-uuid")
+	assert.Equal(t, http.StatusBadRequest, malformado.Code)
 }
 
 // INV-PLAYER-007, mitad de los logs: se recorren las rutas de la fundación que

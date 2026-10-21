@@ -94,11 +94,12 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Diecinueve decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Veinte decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
-que el servidor implementa.
+que el servidor implementa, y ADR-020, del mismo día, de cerrar la limpieza de cuentas `PENDING` que ADR-018
+dejó abierta.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-019, ADR-013 y
 ADR-018).
@@ -124,13 +125,14 @@ ADR-018).
 | [017](ADR-017-garrison-commands.md) | Los comandos de guarnición entran por el loop y el tratado se decide en la transacción | Aceptado | `unit.garrison` y `unit.ungarrison`; la entrada se valida en el tick y el tratado se comprueba en la transacción de la cola, que devuelve el resultado al loop; la salida la decide el tick y se compensa; `units.city_id` no cambia (deroga INV-GARR-003); la unidad guarnecida sólo la ve su dueño. |
 | [018](ADR-018-identity-store-and-ticket-issuer.md) | La identidad vive en Next.js, con su propio almacén; el Game Server sólo funda el mundo | Aceptado | Cuentas y sesiones en una base propia de `apps/web` con otro rol; `scrypt` y cookie opaca; Next.js firma el ticket HS256 de ADR-010; el alta funda el jugador por `POST /internal/players` con un token de audiencia `game-server-internal`; `players.password_hash` desaparece. Precisa ADR-012. |
 | [019](ADR-019-handshake-failure-close-code.md) | Un handshake fallido se comunica sólo con el código de cierre | Aceptado | Sin sesión no hay mensajes: un ticket rechazado o un primer mensaje que no es `session.hello` cierra con `4401`, un handshake ilegible con `4400`, sin `system.error` previo; `system.error` es un mensaje de sesión y `UNAUTHORIZED` queda reservado en el catálogo. Sustituye en parte a ADR-010. |
+| [020](ADR-020-stale-pending-accounts.md) | Una cuenta `PENDING` abandonada se resuelve preguntando al mundo, nunca se borra a ciegas | Aceptado | Abandonada = `PENDING` con el último intento de fundación de hace más de una hora. `GET /internal/players/{id}` decide: si el jugador existe, la cuenta se activa; si no, se borra con la guarda en la sentencia; si no contesta, se deja. Lo hace el alta que choca con el nombre y `pnpm run identity:sweep`. Completa ADR-018 §4.2. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y
 `RandomSource` (canon §1.5), el *interest management* por suscripción a chunks (canon §13) y la
 elección de A\* con heurística octile tras la interfaz `Pathfinder`
 ([../architecture/pathfinding.md](../architecture/pathfinding.md)). Si alguna de ellas necesita
-registrarse, toma el siguiente número libre —**020** en adelante—, nunca un número ya asignado.
+registrarse, toma el siguiente número libre —**021** en adelante—, nunca un número ya asignado.
 
 ## 6. Cómo se propone un ADR nuevo
 
