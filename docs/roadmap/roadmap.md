@@ -10,8 +10,8 @@ ejecuta sobre cada push a `main` y está en verde: documentación y lint de dete
 tests del protocolo y del cliente, deriva del JSON Schema y `next build`), Game Server con `-race`,
 integración contra PostgreSQL y Redis reales, e imagen del contenedor.
 
-Estado por milestone, tal como lo fija [milestones.md](milestones.md): **M0, M1, M2 y M5 cerrados**; M6
-completo salvo su entregable 8; **M3 y M4 parciales** y M7 con las reglas hechas y sin puerta de entrada.
+Estado por milestone, tal como lo fija [milestones.md](milestones.md): **M0, M1, M2, M5, M6 y M7 cerrados**;
+**M3 y M4 parciales**.
 
 Lo que falta, y que este roadmap no debe dar por hecho:
 
@@ -19,8 +19,6 @@ Lo que falta, y que este roadmap no debe dar por hecho:
 |---|---|
 | **Emisión del ticket desde Next.js** (`EO-041`) | Bloqueada por una decisión, no por trabajo: `DEBT-18` en [backlog.md](backlog.md). Hoy el alta y el login los sirve el propio Game Server (`internal/httpapi`, con bcrypt y límite de tasa por origen). Impide cerrar M3. |
 | **Corrección gradual en el cliente** (`EO-075`) | El cliente dibuja el movimiento de forma continua; la corrección hacia la verdad del servidor al llegar un delta está escrita y no conectada. Impide cerrar M4. |
-| **Acciones en territorio ajeno** (M6, entregable 8) | Sin regla de juego que las defina. |
-| **Comandos de guarnición** (M7, entregable 6) | Las reglas y la persistencia existen; ningún comando de red las invoca. |
 
 Ningún milestone se considera **cerrado** hasta que su documentación refleje lo implementado y la CI
 esté en verde.

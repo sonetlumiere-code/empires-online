@@ -30,7 +30,7 @@ Leyenda de la columna **Clase**:
 | `cities.presence_state`, `protection_until` | sí (máquina de estados, fase 5 del tick, en RAM) | sí, `UPDATE` encolado por transición | — | — | DQ |
 | `cities.population` | sí | sí, recalculado con `count(*)` en la transacción de alta | — | sí, desde `units` | TX + RC |
 | `unit_movements` (crear / cancelar / completar) | sí (copia caliente) | sí, transacción encolada | — | — | DQ |
-| `units.status` | sí | — | sí, en el lote de flush | sí, desde la existencia de un movimiento `ACTIVE` | DF |
+| `units.status` | sí | sí, en las transacciones de entrada y salida de una guarnición | sí, en el lote de flush | sí, desde la existencia de un movimiento `ACTIVE` y desde `garrisons` | DF |
 | `units.x`, `units.y`, `chunk_x`, `chunk_y` | sí | — | sí, en el lote de flush | parcialmente | DF |
 | `units.hp` | sí | — | **no**: la sentencia del flush escribe `x`, `y`, `status`, `chunk_x` y `chunk_y`, y `hp` no está entre ellas | — | — (sin combate en MVP, no cambia) |
 | `world_state.epoch_ms` | `tickNumber` en RAM | sí, una vez, en la creación del mundo | — | `tickNumber` = `(now − epoch_ms) / tickDurationMs` | TX + RC |
@@ -43,7 +43,11 @@ Leyenda de la columna **Clase**:
 | Interest sets / suscripciones por chunk | sí | — | — | sí, desde `session.hello` y `session.view` | RC |
 | `world_events` | no | sí, junto al hecho que lo origina | — | — | TX |
 | `sessions` | RAM / Redis | **todavía no se escribe** (tabla creada sin escritor) | — | — | — |
-| `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons` | — | cuando su lógica se active | — | — | — |
+| `territories` (geometría) | sí, como índice tile → territorio | sí, una vez, en la siembra del primer arranque | — | el índice sí, desde la tabla | TX + RC |
+| `territory_control` | sí | sí, en la transacción del alta que reclama el territorio | — | — | TX |
+| `safe_zones` | sí, como índice tile → zona | sin escritor en runtime (siembra administrativa) | — | el índice sí, desde la tabla y el terreno | RC |
+| `treaties` | no: los decide la transacción que los consulta | sí: altas administrativas; la caducidad, encolada y muestreada a 1 s | — | — | DQ |
+| `garrisons` | sí, como índice unidad → ciudad anfitriona | sí, transacción encolada con la clave de la unidad en la entrada y en la salida ([ADR-017](../decisions/ADR-017-garrison-commands.md)) | — | el índice sí, desde la tabla al arrancar | DQ + RC |
 
 **Consecuencia clave:** la posición de una unidad en movimiento **no se escribe por tick** —eso es lo que el diseño prohíbe—, pero sí converge en el lote de flush cada 50 ticks, porque avanzar de waypoint marca la unidad como sucia. No es una contradicción con la reconstruibilidad: mientras exista un `unit_movements` `ACTIVE`, la posición autoritativa es la derivada de la polilínea (`PositionAt`), y la recuperación la usa **en lugar** de `units.x/y`. La columna es un denormalizado de convergencia, no una segunda fuente de verdad, y por eso una posición de flush de hace 4,9 s nunca gana a la derivación.
 

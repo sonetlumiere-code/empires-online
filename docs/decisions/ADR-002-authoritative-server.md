@@ -22,7 +22,7 @@ El canon técnico ya fija el principio como no negociable: *"Client sends intent
 Restricciones concretas del sistema que enmarcan la decisión:
 
 - El game loop corre a 10 Hz con un presupuesto de 100 ms por tick, y la validación de comandos es la fase 2 de ocho ([../architecture/game-loop.md](../architecture/game-loop.md)).
-- El protocolo v1 solo define cinco mensajes cliente→servidor: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`. Ninguno transporta estado del mundo.
+- El protocolo v1 solo define cinco mensajes cliente→servidor: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`. Ninguno transporta estado del mundo. *(Nota del 2026-10-20: son siete desde [ADR-017](ADR-017-garrison-commands.md), que añadió `unit.garrison` y `unit.ungarrison`, también de intención pura.)*
 - El mundo evoluciona sin jugadores conectados; ningún estado durable depende de que un WebSocket siga vivo.
 - El servidor es el único que decide el estado de presencia de una ciudad (`ONLINE`, `OFFLINE_PENDING`, `PROTECTED`); el cliente lo observa.
 
@@ -139,7 +139,7 @@ Este modelo **no** previene por sí solo: automatización del cliente (bots que 
 - **Una sola implementación del dominio**, en Go, dentro de `services/game-server`. No hay reglas de juego duplicadas en TypeScript que puedan divergir.
 - **Los bugs de estado tienen un único lugar donde reproducirse.** Con `Clock` y `RandomSource` inyectados (`internal/clock`), un tick es reproducible en un test de simulación: `Loop.Step(nowMs)` se invoca directamente con un `FakeClock`, sin temporizadores reales ([../testing/simulation-tests.md](../testing/simulation-tests.md)).
 - **La persistencia es coherente por construcción**: lo que se escribe en PostgreSQL es lo que el servidor calculó, y los invariantes de base de datos pueden ser estrictos porque nada externo escribe ([ADR-003](ADR-003-postgresql-source-of-truth.md)).
-- **El protocolo es pequeño.** Cinco mensajes cliente→servidor en v1, todos de intención, lo que reduce la superficie de ataque y el coste de los contract tests.
+- **El protocolo es pequeño.** Cinco mensajes cliente→servidor en v1 —siete desde [ADR-017](ADR-017-garrison-commands.md)—, todos de intención, lo que reduce la superficie de ataque y el coste de los contract tests.
 - El servidor puede evolucionar reglas de juego (costes de terreno, cooldowns, límites) sin desplegar un cliente nuevo, siempre que el contrato de red no cambie.
 
 ### Negativas

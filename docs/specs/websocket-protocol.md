@@ -23,6 +23,7 @@ Dentro del scope de v1:
 - Gestión de área de interés por chunk (`session.view`).
 - Sincronización del área de interés (`world.snapshot`, terreno incluido) y deltas incrementales (`entity.*`, `city.update`, `territory.update`).
 - Ciclo de vida completo del movimiento de unidades (`unit.move`, `unit.cancel_move` y sus cinco mensajes de salida).
+- Entrada y salida de la guarnición (`unit.garrison`, `unit.ungarrison`), con la ciudad anfitriona en `garrisonCityId` ([garrison.md](garrison.md), [ADR-017](../decisions/ADR-017-garrison-commands.md)).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -118,8 +119,8 @@ type Inbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. Distinto de una versión soportada → `UNSUPPORTED_VERSION`. |
-| `type` | `string` | Sí | Uno de los cinco tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
-| `requestId` | `string` (UUID) | Sí en los cinco tipos, según el esquema Zod. El servidor lo **exige** hoy en `unit.move` y `unit.cancel_move`, donde es la clave de idempotencia; en los demás lo usa sólo para correlacionar la respuesta | Correlación y clave de idempotencia. Ver sección 10. |
+| `type` | `string` | Sí | Uno de los siete tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
+| `requestId` | `string` (UUID) | Sí en los siete tipos, según el esquema Zod. El servidor lo **exige** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`, donde es la clave de idempotencia; en los demás lo usa sólo para correlacionar la respuesta | Correlación y clave de idempotencia. Ver sección 10. |
 | `payload` | `object` | Sí | Objeto específico del `type`, **estricto**: ninguna propiedad adicional. Nunca `null`. |
 
 El payload se deja sin decodificar (`json.RawMessage`) hasta después de validar versión, tipo y autorización: no se gasta trabajo en mensajes que van a rechazarse.
@@ -212,7 +213,7 @@ El cliente aplica backoff exponencial con jitter: 1 s, 2 s, 4 s, 8 s, máximo 30
 
 ## 7. Mensajes cliente → servidor
 
-Los cinco tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`. El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
+Los siete tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`. Los dos últimos llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
 
 ### 7.1 `session.hello`
 
@@ -345,6 +346,34 @@ Si la unidad existe y es del jugador pero **no tiene movimiento activo**, la ope
 
 **Efectos cuando sí había movimiento activo:** la unidad queda **snapeada al waypoint alcanzado** en ese instante (nunca a medio tile), se limpia el movimiento del estado, `unit.status = IDLE`, se encola la escritura durable (`Job{Name: "movement.cancel"}` → `unit_movements.status = CANCELLED`) y se emite `unit.movement.cancelled` con `reason: "CANCELLED_BY_PLAYER"` a los suscriptores del chunk donde se detuvo. La cancelación se aplica en el tick que consume el comando, no en el instante exacto del frame: el tiempo del juego avanza solo en el loop.
 
+### 7.6 `unit.garrison`
+
+- **Dirección:** cliente → servidor. **Propósito:** meter una unidad propia en una ciudad —la propia, o la de un jugador con el que haya un tratado `ACTIVE` que lo permita—. Spec: [garrison.md](garrison.md).
+
+```ts
+payload: z.object({ unitId: EntityId, cityId: EntityId }).strict()
+```
+
+```json
+{ "v": 1, "type": "unit.garrison", "requestId": "5d1e7a02-91c3-4f6e-8a0b-2c4d6e8f0a12", "payload": { "unitId": 48211, "cityId": 1204 } }
+```
+
+**Validaciones, en dos fases** (`RN-GARR-020`). En el tick, en este orden: la unidad existe (`UNIT_NOT_FOUND`) · ownership (`UNIT_NOT_OWNED`) · no está ya entrando (`UNIT_NOT_MOVABLE`) · estado: `DEAD` → `UNIT_DEAD`, `GARRISONED` → `UNIT_GARRISONED`, `MOVING` o `HIDDEN` → `UNIT_NOT_MOVABLE` · la ciudad existe (`CITY_NOT_FOUND`) · la unidad toca su zona urbana en las ocho direcciones (`INVALID_TARGET`). Después, en la transacción de la cola de persistencia, el tratado si la ciudad es ajena (`TREATY_REQUIRED`). Todos los rechazos viajan como **`system.error`** con el `requestId` del comando.
+
+**Efectos.** Mientras su transacción no responde, la unidad está **entrando**: sigue `IDLE` pero rechaza toda orden con `UNIT_NOT_MOVABLE`. Aceptada, el dueño recibe `entity.update { id, status: "GARRISONED", garrisonCityId }` con el `requestId` del comando, y los demás observadores del chunk, el anfitrión incluido, `entity.despawn { id, reason: "GARRISONED" }`. La respuesta llega uno o dos ticks después de la orden: el tiempo de una transacción. No hay `city.update`: la unidad sigue contando en la población de su ciudad de origen.
+
+### 7.7 `unit.ungarrison`
+
+- **Dirección:** cliente → servidor. **Propósito:** sacar una unidad propia de la ciudad en la que está guarnecida. El tile de salida lo elige el servidor.
+
+```ts
+payload: z.object({ unitId: EntityId }).strict()
+```
+
+**Validaciones:** la unidad existe (`UNIT_NOT_FOUND`) · ownership (`UNIT_NOT_OWNED`; el anfitrión no saca lo que aloja) · está guarnecida y no entrando ni saliendo ya (`UNIT_NOT_MOVABLE`). Rechazos como **`system.error`** con el `requestId`.
+
+**Efectos.** El tick elige el primer tile transitable del anillo exterior de la zona urbana en orden `(y, x)` (`RN-GARR-011`), deja la unidad `IDLE` en él y emite al dueño `entity.update { id, status: "IDLE", x, y, garrisonCityId: null }` con el `requestId`, y a los demás observadores del chunk de salida `entity.spawn { unit }`. Si el anillo está cerrado, la salida queda pendiente y se reintenta cada tick; la respuesta llega cuando la unidad sale (`RN-GARR-014`).
+
 ## 8. Mensajes servidor → cliente
 
 Los catorce tipos de v1. Ninguno de estos payloads es estricto (S-7).
@@ -448,6 +477,7 @@ interface UnitView {
   hp: number; maxHp: number;
   status: 'IDLE' | 'MOVING' | 'GARRISONED' | 'HIDDEN' | 'DEAD';
   movement: ActiveMovement | null;
+  garrisonCityId: number | null; // ciudad que la aloja si está GARRISONED; cityId es la de origen
 }
 
 interface ActiveMovement {
@@ -522,6 +552,7 @@ payload: z.object({
   status: UnitStatus.optional(),
   cityId: EntityId.nullable().optional(),
   movement: ActiveMovement.nullable().optional(),
+  garrisonCityId: EntityId.nullable().optional(),
 })
 ```
 
@@ -530,6 +561,8 @@ payload: z.object({
 ```
 
 Es un delta de verdad: en Go los campos opcionales son punteros con `omitempty`, y un campo sin cambios **no viaja** (`TestEntityUpdateEsUnDeltaDeVerdad`). Nótese la ausencia de `kind` y de `chunkId`: no existen en v1.
+
+El que responde a `unit.garrison` o `unit.ungarrison` es la excepción a «sin `requestId`»: va sólo al dueño y lleva el `requestId` del comando. `garrisonCityId` sigue la regla S-6: ausente, no cambia; `null`, la unidad sale de la guarnición; un id, entra en esa ciudad (`TestEntityUpdateDistingueEntradaSalidaYSinCambio`).
 
 **Sí se emite durante el movimiento.** En la fase 3 del tick, cada vez que una unidad en movimiento **cambia de tile**, el servidor emite un `entity.update` con `x` e `y` al chunk correspondiente. No es un mensaje por tick —a 10 Hz con pasos de 600 ms la mayoría de los ticks no producen ninguno—, sino un mensaje por tile cruzado. Es la corrección autoritativa que ancla la interpolación del cliente, que entretanto reconstruye la posición analíticamente desde la polilínea de `unit.movement.started`.
 
@@ -558,7 +591,7 @@ Las cinco razones son las constantes `protocol.DespawnOutOfInterest`, `DespawnDe
 | `HIDDEN` | Se ocultó (Safe Zone). Sin efectos de destrucción. |
 | `REMOVED` | Desapareció del mundo por otra causa (corrección administrativa, recovery). Sin efectos de destrucción. |
 
-El servidor lo emite **sólo con `reason: HIDDEN`**, cuando una unidad se oculta en una Safe Zone, y sólo a los terceros del chunk: el propietario recibe en su lugar un `entity.update` con el estado ([./safe-zones.md](./safe-zones.md) §12). Las demás razones están en el contrato y ninguna ruta las emite todavía: `OUT_OF_INTEREST` es el correlato pendiente del spawn por interés descrito en 7.3, y `GARRISONED` espera al comando de guarnición de [./garrison.md](./garrison.md).
+El servidor lo emite con dos razones, y en los dos casos sólo a los terceros del chunk —el propietario recibe en su lugar un `entity.update` con el estado—: `HIDDEN`, cuando una unidad se oculta en una Safe Zone ([./safe-zones.md](./safe-zones.md) §12), y `GARRISONED`, cuando entra en una ciudad (§7.6). Las demás razones están en el contrato y ninguna ruta las emite todavía: `OUT_OF_INTEREST` es el correlato pendiente del spawn por interés descrito en 7.3.
 
 ### 8.8 `city.update`
 
@@ -769,24 +802,24 @@ El formato es siempre `{ code, message, details? }` dentro de `system.error`, o 
 | `UNSUPPORTED_VERSION` | 426 / WS `4400` | Solo en el handshake | `v` distinto de las versiones soportadas |
 | `RATE_LIMITED` | 429 / WS `4429` | Sí (`4429`) | Token bucket agotado (20/s, burst 40). El `system.error` y el cierre son simultáneos |
 | `MESSAGE_TOO_LARGE` | 413 / WS `1009` | Sí | Reservado. Hoy el exceso lo corta `SetReadLimit` y el cierre lleva el código estándar `1009` |
-| `UNIT_NOT_FOUND` | 404 | No | `unitId` inexistente en `unit.move` (→ `unit.move.rejected`) o en `unit.cancel_move` (→ `system.error`) |
+| `UNIT_NOT_FOUND` | 404 | No | `unitId` inexistente en `unit.move` (→ `unit.move.rejected`) o en `unit.cancel_move`, `unit.garrison` y `unit.ungarrison` (→ `system.error`) |
 | `UNIT_NOT_OWNED` | 403 | No | La unidad existe pero no pertenece al jugador de la sesión |
-| `UNIT_NOT_MOVABLE` | 409 | No | El estado actual de la unidad no admite órdenes de movimiento |
+| `UNIT_NOT_MOVABLE` | 409 | No | El estado actual de la unidad no admite la orden: moverse o guarnecerse estando `MOVING`/`HIDDEN`, cualquier orden mientras entra en una ciudad, o sacar una unidad que no está guarnecida |
 | `UNIT_DEAD` | 409 | No | `unit.status == DEAD` |
 | `UNIT_GARRISONED` | 409 | No | `unit.status == GARRISONED`; requiere salir de la guarnición primero |
-| `INVALID_TARGET` | 400 | No | Reservado: destino mal formado. El caso "destino igual a la posición actual" **no** lo usa: se acepta con `movementId: 0` (§7.4) |
+| `INVALID_TARGET` | 400 | No | `unit.garrison` con una unidad que no toca la zona urbana de la ciudad. El caso "destino igual a la posición actual" de `unit.move` **no** lo usa: se acepta con `movementId: 0` (§7.4) |
 | `TARGET_OUT_OF_BOUNDS` | 400 | No | Tile fuera de `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)`. **No** aplica a `session.view`, cuyo centro se recorta |
 | `TARGET_NOT_WALKABLE` | 409 | No | Terreno `MOUNTAIN`/`WATER` o tile marcado en la capa de ocupación. El MVP **rechaza**, no busca tile cercano |
 | `PATH_NOT_FOUND` | 409 | No | A\* agotó el frontier sin alcanzar el destino (destino encerrado) |
 | `PATH_TOO_LONG` | 409 | No | Se excedió `EO_PATHFINDING_MAX_NODES` (20000) o `EO_PATHFINDING_MAX_DISTANCE` (256) |
-| `CITY_NOT_FOUND` | 404 | No | Reservado: referencia a una ciudad inexistente |
+| `CITY_NOT_FOUND` | 404 | No | `unit.garrison` con una ciudad inexistente |
 | `CITY_PROTECTED` | 409 | No | Reservado: operación bloqueada por `presence_state = PROTECTED` |
-| `TREATY_REQUIRED` | 409 | No | Reservado: requiere un `treaty` `ACTIVE` con `allows_garrison` |
+| `TREATY_REQUIRED` | 409 | No | `unit.garrison` en una ciudad ajena sin `treaty` `ACTIVE` con `allows_garrison`; lo decide la transacción (§7.6) |
 | `POPULATION_LIMIT_REACHED` | 409 | No | Reservado: `population_limit` alcanzado (`eras.population_cap`) |
 | `INTERNAL_ERROR` | 500 / WS `4500` | Solo si es irrecuperable | Cola de comandos saturada, el game loop no responde en 2 s, tipo de unidad no catalogado, polilínea no construible. El `message` nunca expone detalles internos ni credenciales |
 | `NOT_IMPLEMENTED` | 501 | No | Reservado: ruta de código para funcionalidad fuera de MVP |
 
-Los códigos marcados **Reservado** están definidos y estables en v1, pero ninguna ruta del servidor los emite todavía: sus comandos naturales (asedio, garrison, entrenamiento, revocación de sesión) están fuera de MVP.
+Los códigos marcados **Reservado** están definidos y estables en v1, pero ninguna ruta del servidor los emite todavía: sus comandos naturales (asedio, entrenamiento, revocación de sesión, la primera acción hostil) están fuera de MVP. `CITY_PROTECTED` no lo emite la guarnición, que no es una acción hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)).
 
 ## 10. Idempotencia
 
@@ -794,8 +827,8 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 
 | Regla | Detalle |
 |---|---|
-| I-1 | Los esquemas exigen `requestId` con formato UUID en los cinco comandos. El servidor lo **hace cumplir** hoy en `unit.move` y `unit.cancel_move`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
-| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`). `session.hello`, `session.ping` y `session.view` no reservan clave: no crean efectos durables. |
+| I-1 | Los esquemas exigen `requestId` con formato UUID en los siete comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
+| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`). `session.hello`, `session.ping` y `session.view` no reservan clave: no crean efectos durables. |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
 | I-5 | Un `requestId` repetido dentro de la ventana **no re-ejecuta** el comando. Si el original ya tuvo respuesta directa —`unit.move.accepted`, `unit.move.rejected` o un `system.error` con ese `requestId`—, el duplicado **recibe esa misma respuesta** otra vez, con el mismo payload: es lo que necesita el cliente que reintenta tras perder la conexión justo cuando el servidor contestaba. La respuesta se guarda en la clave `idem:{playerId}:{requestId}` en sustitución del marcador `"pending"`, sin bloquear el game loop, y conserva el TTL de 300 s. Un duplicado que llega mientras el original sigue en curso, o de un comando que no tiene respuesta directa (un `unit.cancel_move` que sale bien sólo produce el `unit.movement.cancelled` del chunk), no recibe nada. |
@@ -823,10 +856,10 @@ Este documento no define invariantes propios: materializa los de la familia `INV
 
 | Invariante | Cómo lo materializa este protocolo |
 |---|---|
-| [INV-SEC-001](../invariants/security.md#inv-sec-001) — el estado del cliente nunca muta el estado autoritativo | Los cinco payloads cliente→servidor son **estrictos** (S-7) y ninguno tiene campo para posición, HP, ruta, ETA ni ownership (§7.4) |
+| [INV-SEC-001](../invariants/security.md#inv-sec-001) — el estado del cliente nunca muta el estado autoritativo | Los siete payloads cliente→servidor son **estrictos** (S-7) y ninguno tiene campo para posición, HP, ruta, ETA ni ownership (§7.4) |
 | [INV-SEC-002](../invariants/security.md#inv-sec-002) — ninguna conexión ejecuta comandos antes de autenticarse | El lector de la sesión no arranca hasta que el handshake termina; `session.hello` es el único tipo pre-auth (§6, §7.1) |
 | [INV-SEC-003](../invariants/security.md#inv-sec-003) — un ticket solo puede canjearse una vez | `SET ticket:jti:{jti} NX EX 120` en el handshake (§7.1) |
-| [INV-SEC-004](../invariants/security.md#inv-sec-004) — todo comando valida ownership antes de ejecutarse | Validación 2 de `unit.move` y primera de `unit.cancel_move`, antes que cualquier lectura de estado (§7.4, §7.5) |
+| [INV-SEC-004](../invariants/security.md#inv-sec-004) — todo comando valida ownership antes de ejecutarse | Validación 2 de `unit.move` y de `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`, antes que cualquier lectura de estado (§7.4–§7.7) |
 | [INV-SEC-005](../invariants/security.md#inv-sec-005) — los mensajes fuera de límite se rechazan sin procesarse | `SetReadLimit(EO_WS_MAX_MESSAGE_BYTES)` y token bucket, ambos antes de deserializar (§4, §4.2) |
 | [INV-SEC-006](../invariants/security.md#inv-sec-006) — las credenciales de infraestructura no salen del servidor | Ningún payload servidor→cliente transporta configuración de infraestructura; `INTERNAL_ERROR` nunca expone detalles internos (§9) |
 | [INV-SEC-007](../invariants/security.md#inv-sec-007) — un `requestId` repetido no produce un segundo efecto | Reserva `SETNX` de `idem:{playerId}:{requestId}` antes de despachar el comando (§10) |
@@ -837,7 +870,7 @@ Este documento no define invariantes propios: materializa los de la familia `INV
 |---|---|---|---|
 | Anti-replay del ticket | Redis `ticket:jti:{jti}`, TTL 120 s | En el handshake, antes de crear la sesión | No, y no hace falta: expira solo |
 | Presencia del jugador | Redis `presence:player:{playerId}`, TTL 30 s | Al establecer la sesión y con cada `session.ping` | Sí: la verdad de presencia la lleva el game loop en RAM |
-| Deduplicación de comandos | Redis `idem:{playerId}:{requestId}`, TTL 300 s | Antes de despachar `unit.move` / `unit.cancel_move` | No; su pérdida sólo reabre la ventana de duplicado |
+| Deduplicación de comandos | Redis `idem:{playerId}:{requestId}`, TTL 300 s | Antes de despachar `unit.move`, `unit.cancel_move`, `unit.garrison` o `unit.ungarrison` | No; su pérdida sólo reabre la ventana de duplicado |
 | Movimiento aceptado | PostgreSQL `unit_movements` (`path` en `jsonb`, `start_time_ms`, `arrival_time_ms` en `bigint`) | Encolado en la fase 2, escrito por los workers fuera del tick | Sí, desde la polilínea, en `simulation.Hydrate` |
 | Posición consolidada | PostgreSQL `units.(x, y)` | Volcado periódico de sucios (`EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` = 50) | Sí, desde el movimiento vigente o su último waypoint |
 | Sesión | Tabla `sessions` **sin uso todavía**; la sesión vive en RAM y en Redis | — | Sí: una sesión perdida se rehace reconectando |
@@ -886,14 +919,15 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | Nivel | Test | Criterio de aceptación | Estado |
 |---|---|---|---|
 | contract | El catálogo de 22 códigos de Go coincide con el exportado por `packages/protocol` | `ElementsMatch` exacto | **EN VERDE** (`TestCatalogoDeErroresCoincideConElExportado`) |
-| contract | Los 5 + 14 tipos declarados en Go aparecen en los JSON Schema embebidos | Los 19 presentes | **EN VERDE** |
+| contract | Los 7 + 14 tipos declarados en Go aparecen en los JSON Schema embebidos | Los 21 presentes | **EN VERDE** |
 | contract | El envelope saliente serializa `v`, `type`, `seq`, `ts`, `requestId`, `payload` | Campos exactos | **EN VERDE** |
 | contract | `requestId` se **omite** cuando no aplica | La cadena `requestId` no aparece en el JSON | **EN VERDE** |
 | contract | `entity.update` es un delta: los campos sin cambios no viajan | Sólo `id` y lo modificado | **EN VERDE** |
 | contract | `unit.movement.started` lleva la polilínea completa y sobrevive al round-trip | `path` íntegro, `tMs` preservados | **EN VERDE** |
 | contract | `unit.move` no admite que el cliente aporte una ruta | `DecodeStrict` la rechaza | **EN VERDE** (`TestElComandoDeMovimientoNoAdmiteRuta`) |
-| contract | El decodificador Go es tan estricto como el JSON Schema (S-7) | El esquema declara `additionalProperties: false` en todo objeto cliente→servidor, y una propiedad de más en el envelope, el payload o un objeto anidado se rechaza en los cinco mensajes | **EN VERDE** (`TestElDecodificadorEsTanEstrictoComoElEsquema`) |
-| contract | Sólo `session.hello` es pre-auth; el catálogo de comandos es cerrado (5) | Los otros cuatro rechazados como pre-auth | **EN VERDE** |
+| contract | El decodificador Go es tan estricto como el JSON Schema (S-7) | El esquema declara `additionalProperties: false` en todo objeto cliente→servidor, y una propiedad de más en el envelope, el payload o un objeto anidado se rechaza en los siete mensajes | **EN VERDE** (`TestElDecodificadorEsTanEstrictoComoElEsquema`) |
+| contract | Sólo `session.hello` es pre-auth; el catálogo de comandos es cerrado (7) | Los otros seis rechazados como pre-auth | **EN VERDE** |
+| contract | Los comandos de guarnición y `garrisonCityId` coinciden con el esquema | Campos exactos y obligatorios; `UnitView` siempre lo lleva; `entity.update` distingue ausente, `null` e id | **EN VERDE** (`TestLosComandosDeGuarnicionSonLosDelEsquema`, `TestUnitViewLlevaLaCiudadAnfitrionaSiempre`, `TestEntityUpdateDistingueEntradaSalidaYSinCambio`) |
 | contract | Los seis códigos de cierre están en el rango privado 4000–4999 | Verificado | **EN VERDE** |
 | unit (TS) | Envelope cliente→servidor: tipo desconocido, versión no soportada, `requestId` no UUID, coordenadas no enteras, campo extra rechazado | Cada caso con su fallo esperado | **EN VERDE** |
 | unit (TS) | `system.error` acepta cada uno de los 22 códigos y rechaza uno fuera del catálogo | Verificado | **EN VERDE** |
@@ -908,6 +942,8 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | e2e | 60 mensajes en ráfaga | `system.error RATE_LIMITED` y, después, cierre `4429` | **EN VERDE** (`TestUnaRafagaPorEncimaDelBurstCierraCon4429`) |
 | e2e | Un frame por encima de `EO_WS_MAX_MESSAGE_BYTES`, antes y después del handshake | Cierre `1009` sin leer el frame | **EN VERDE** (`TestUnMensajeDemasiadoGrandeCierraCon1009`) |
 | e2e | `unit.move` duplicado con el mismo `requestId`, en la misma sesión y tras reconectar | Un solo movimiento; el duplicado recibe la respuesta original cuando la hubo (I-5) | **EN VERDE** (`TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal`) |
+| e2e | Guarnecer y salir con dos jugadores conectados | El dueño recibe la respuesta con su `requestId`; el tercero, `entity.despawn GARRISONED` y luego `entity.spawn`; un duplicado reproduce la respuesta; ningún snapshot ajeno trae la unidad guarnecida | **EN VERDE** (`TestLaGuarnicionPorLaRedSoloLaVeSuDueno`) |
+| e2e | `unit.garrison` en una ciudad ajena sin tratado, y sobre una unidad ajena | `TREATY_REQUIRED` y `UNIT_NOT_OWNED` con el `requestId` | **EN VERDE** (`TestGuarnecerEnUnaCiudadAjenaSinTratadoLlegaComoTreatyRequired`) |
 | e2e | `unit.move` con la cola del loop llena | `system.error INTERNAL_ERROR` con su `requestId`, y el reintento con el mismo `requestId` se ejecuta (I-10) | **EN VERDE** (`TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`) |
 | e2e | Redis caído durante un `unit.move` | El comando se ejecuta igualmente y se registra `warn` | Pendiente |
 | e2e | `session.view` que desplaza el área 2 chunks | Nuevo `world.snapshot` con el `requestId` del comando y terreno **sólo** de los chunks nuevos | Pendiente |

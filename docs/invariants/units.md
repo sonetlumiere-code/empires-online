@@ -14,7 +14,7 @@ Formato y severidades: [README.md](README.md). Estados y tipos de unidad: canon 
 |---|---|---|---|
 | `IDLE` | Sí | Sí | Sí |
 | `MOVING` | Sí (posición derivada del movimiento) | Sí (una nueva orden cancela la anterior) | Sí |
-| `GARRISONED` | **No** | No | No (todavía sí en el snapshot: [INV-UNIT-003](#inv-unit-003)) |
+| `GARRISONED` | **No** | Sólo `unit.ungarrison` | Sólo para su dueño ([INV-GARR-006](diplomacy.md#inv-garr-006)) |
 | `HIDDEN` | Sí | Sí | Sólo para su dueño ([INV-SAFE-004](territory.md#inv-safe-004)) |
 | `DEAD` | No | **No** | No (no se carga) |
 
@@ -118,19 +118,19 @@ La excepción de `GARRISONED` y `DEAD` es deliberada y se detalla en [INV-UNIT-0
 | Aplicación | DOMAIN, TEST |
 | Milestone | M7 |
 | Política ante violación | REPAIR |
-| Cobertura | **Parcial**: `TestRechazosDeMovimiento` / caso «unidad guarnecida», `TestGuarnecidasYSinVidaNoSeOcultan` y `TestLaMurallaNuevaNoTocaUnidadesGuarnecidas` (`internal/game/simulation`). Falta lo principal: una unidad `GARRISONED` sigue en el índice por chunk y sale en los snapshots (M7, entregable 6) |
+| Cobertura | **Cubierto**: `TestRechazosDeMovimiento` / caso «unidad guarnecida», `TestGuarnecidasYSinVidaNoSeOcultan`, `TestLaMurallaNuevaNoTocaUnidadesGuarnecidas`, `TestGuarnecerEnLaCiudadPropiaEnDosFases` y `TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot` (`internal/game/simulation`), y `TestLaGuarnicionPorLaRedSoloLaVeSuDueno` (e2e, `internal/websocket`) |
 
-**Enunciado.** Una unidad con `status = GARRISONED` no ocupa ningún tile: no se emite en los deltas ni en los snapshots por chunk y no es origen ni destino de pathfinding; su ubicación es la guarnición registrada en `garrisons`, no un tile.
+**Enunciado.** Una unidad con `status = GARRISONED` no ocupa ningún tile: no se emite en los deltas ni en los snapshots por chunk dirigidos a terceros y no es origen ni destino de pathfinding; su ubicación es la guarnición registrada en `garrisons`, no un tile.
 
 **Razón.** Es un problema de doble contabilidad. Si la unidad guarnecida sigue en el índice de ocupación, ocupa un tile que nadie ve, bloqueando paths de forma inexplicable para los jugadores: una casilla aparentemente vacía por la que no se puede pasar. Y si sigue emitiéndose en deltas de chunk, aparece en pantalla fuera de la guarnición, revelando además la presencia de tropas dentro de una ciudad ajena, que es información con valor táctico directo.
 
 **Cómo se garantiza.**
 
-- Las unidades **no** están en la capa de ocupación del MVP: esa capa sólo la marcan las murallas de las ciudades, y las unidades no se bloquean entre sí. «No figura en la ocupación» se cumple para todas, guarnecidas o no, y no es lo que este invariante protege. Lo que importa es el índice por chunk (`State.unitsByChunk`), que alimenta los snapshots y el reparto de deltas.
+- Las unidades **no** están en la capa de ocupación del MVP: esa capa sólo la marcan las murallas de las ciudades, y las unidades no se bloquean entre sí. «No figura en la ocupación» se cumple para todas, guarnecidas o no ([INV-GARR-005](diplomacy.md#inv-garr-005)). Lo que importa es lo que sale por el índice por chunk (`State.unitsByChunk`), que alimenta los snapshots y el reparto de deltas.
 - `DOMAIN` — `unit.EnsureCanMove` rechaza `GARRISONED` con `UNIT_GARRISONED`: la unidad no es origen de ningún A\*.
 - `DOMAIN` — la fase 5 no oculta una unidad guarnecida (`safezone.NextStatus`), y la regla de la fundación ([RN-CITY-022](../specs/city.md)) no la aparta: ninguna de las dos la trata como si estuviera en el mapa.
-- `DOMAIN` — `GarrisonRepo.Enter` cancela el movimiento activo, escribe `GARRISONED` y la fila de `garrisons` en una transacción; `Leave` devuelve la unidad a un tile transitable del anillo exterior (`garrison.ReentryTile`) y borra la fila. Las dos existen y tienen tests de integración, pero **ningún comando de red las invoca todavía**: `unit.garrison` y `unit.ungarrison` son el entregable 6 de M7.
-- **Lo que falta.** `State.AddUnit` indexa por chunk a toda unidad cargada, guarnecida o no, y `simulation.VisibleTo` sólo filtra `HIDDEN`. Una unidad `GARRISONED` leída de disco sale por tanto en el snapshot de quien mire su último tile. Hoy ninguna ruta de producción escribe `GARRISONED`, así que no ocurre; deja de ser latente en cuanto existan los comandos, y se corrige con ellos.
+- `DOMAIN` — `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) son las dos únicas vías de entrar y salir. Al entrar, los demás observadores del chunk reciben `entity.despawn { reason: GARRISONED }`; al salir, `entity.spawn` en el tile de reentrada (`garrison.ReentryTile`).
+- `BOUNDARY` — la unidad sigue indexada en el chunk de su último tile exterior, para que su dueño la encuentre al reconectar, pero `simulation.VisibleTo` sólo la deja pasar hacia él: el snapshot de un tercero no la trae ([INV-GARR-006](diplomacy.md#inv-garr-006)). Hasta [ADR-017](../decisions/ADR-017-garrison-commands.md) `VisibleTo` sólo filtraba `HIDDEN`, y una unidad `GARRISONED` leída de disco salía en el snapshot de cualquiera; no ocurría porque ninguna ruta escribía ese estado.
 - `DOMAIN` — la columna de posición de una unidad `GARRISONED` conserva su último valor como dato histórico. Por eso [INV-UNIT-001](#inv-unit-001) excluye este estado.
 
 **Cómo se verifica.**
@@ -138,9 +138,10 @@ La excepción de `GARRISONED` y `DEAD` es deliberada y se detalla en [INV-UNIT-0
 - `TestRechazosDeMovimiento` / caso «unidad guarnecida» (simulation) — `unit.move` responde `UNIT_GARRISONED`.
 - `TestGuarnecidasYSinVidaNoSeOcultan` y `TestLaMurallaNuevaNoTocaUnidadesGuarnecidas` (simulation) — ni la fase 5 ni la fundación la tratan como presente en el mapa.
 - `TestSalirDeLaGuarnicionDevuelveLaUnidadAlMapaYBorraLaFila` (integration, `internal/persistence/postgres`) — la salida la deja `IDLE` en el tile elegido.
-- Test previsto (M7, entregable 6): una unidad guarnecida no aparece en el snapshot ni en los deltas de un tercero, y su entrada emite `entity.despawn` al chunk.
+- `TestGuarnecerEnLaCiudadPropiaEnDosFases` y `TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot` (simulation) — la entrada emite el despawn a los demás y el snapshot de un tercero no la trae. Verificado por mutación.
+- `TestLaGuarnicionPorLaRedSoloLaVeSuDueno` (e2e) — lo mismo con dos jugadores conectados de verdad.
 
-**Violación en runtime.** No hay detección: el caso que la ficha describe no es alcanzable hasta que existan los comandos de guarnición.
+**Violación en runtime.** Sin detección en runtime: la garantía es estructural, en los dos puntos que emiten la entrada y la salida y en el filtro del snapshot ([INV-GARR-006](diplomacy.md#inv-garr-006)).
 
 > Las propiedades específicas de la guarnición viven en [diplomacy.md](diplomacy.md), familia `INV-GARR-*`.
 
@@ -270,7 +271,7 @@ Además, sin `player_id` la unidad no cuenta en la `population` de ninguna ciuda
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M7 |
 | Política ante violación | REPAIR (derivar desde `garrisons`) |
-| Cobertura | **Parcial**: `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`, `TestSalirDeLaGuarnicionDevuelveLaUnidadAlMapaYBorraLaFila` y `TestTratadosYGuarnicionesSobrevivenAUnReinicio` (integration, `internal/persistence/postgres`) cubren estado y fila juntos; la reconciliación de carga, `TestLaGuarnicionSeDerivaDeSuTabla` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration). Falta decidir qué es `units.city_id` de una unidad guarnecida (M7, entregable 6) |
+| Cobertura | **Cubierto**: `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`, `TestSalirDeLaGuarnicionDevuelveLaUnidadAlMapaYBorraLaFila`, `TestTratadosYGuarnicionesSobrevivenAUnReinicio` y `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno` (integration, `internal/persistence/postgres`) cubren estado, fila y ciudad de origen; la reconciliación de carga, `TestLaGuarnicionSeDerivaDeSuTabla` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) |
 
 **Enunciado.** `status = GARRISONED` implica `city_id IS NOT NULL` y la existencia de una fila de `garrisons` para esa unidad.
 
@@ -281,8 +282,8 @@ Es la misma clase de fallo que [INV-UNIT-005](#inv-unit-005) —un estado que af
 **Cómo se garantiza.**
 
 - `DB` — `garrisons.unit_id bigint PRIMARY KEY REFERENCES units (id) ON DELETE CASCADE` y `garrisons.city_id bigint NOT NULL REFERENCES cities (id) ON DELETE CASCADE`: una fila de guarnición siempre nombra una ciudad existente, y una unidad tiene como máximo una ([INV-GARR-001](diplomacy.md#inv-garr-001)).
-- `DOMAIN` — `GarrisonRepo.Enter` pone `status = GARRISONED` y escribe la fila de `garrisons` en la **misma transacción**, junto con la cancelación del movimiento activo y el evento `UnitGarrisoned`; `GarrisonRepo.Leave` borra la fila y deja la unidad `IDLE` en su tile de salida en otra. Ningún comando de red las invoca todavía (M7, entregable 6).
-- `DOMAIN` — `units.city_id` **no lo toca ninguna de las dos**. Para las unidades del MVP la mitad «`city_id IS NOT NULL`» se cumple igualmente, porque el alta crea los aldeanos con la ciudad de su dueño. Pero la spec de guarnición dice que la entrada fija `units.city_id` a la ciudad anfitriona, y [INV-GARR-003](diplomacy.md#inv-garr-003) exige que coincida con `garrisons.city_id`; mientras que [RN-CITY-012](../specs/city.md) cuenta la población de una ciudad por `units.city_id`. Las dos cosas no pueden ser ciertas a la vez para una unidad guarnecida en una ciudad aliada: o la población viaja con ella, o `city_id` no es la ciudad de la guarnición. Es una decisión de diseño pendiente y se toma con los comandos de guarnición.
+- `DOMAIN` — `GarrisonRepo.Enter` pone `status = GARRISONED` y escribe la fila de `garrisons` en la **misma transacción**, junto con la cancelación del movimiento activo y el evento `UnitGarrisoned`; `GarrisonRepo.Leave` borra la fila y deja la unidad `IDLE` en su tile de salida en otra. Las invocan los comandos `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)).
+- `DOMAIN` — `units.city_id` es la **ciudad de origen** y no la toca ninguna de las dos ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4, [INV-GARR-009](diplomacy.md#inv-garr-009)): la población no viaja con la unidad. La ciudad que la aloja está en `garrisons.city_id`. Con esa decisión, la mitad «`city_id IS NOT NULL`» ya no dice dónde está la unidad; se cumple porque toda unidad nace con la ciudad de su dueño y ninguna ruta borra ciudades, que es lo único que la pondría a `NULL` (`ON DELETE SET NULL`).
 - `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) lee todas las filas de `garrisons` (`LoadCheckRepo.Garrisons`) y deriva el estado de ellas, en los dos sentidos: una unidad `GARRISONED` sin fila vuelve a `IDLE` en su última posición, y una unidad viva con fila pasa a `GARRISONED`. Una fila de una unidad que no está viva se borra: no guarnece nada.
 - `DB` — `units_city_idx` hace barata la consulta de reconciliación por ciudad.
 
@@ -294,7 +295,7 @@ Es la misma clase de fallo que [INV-UNIT-005](#inv-unit-005) —un estado que af
 - `TestLaGuarnicionSeDerivaDeSuTabla` (unit, `internal/game/loadcheck`) — los tres casos, y que la posición histórica de una unidad que pasa a `GARRISONED` no aborta la carga.
 - `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — lo mismo en la base: los estados corregidos, la fila de la unidad `DEAD` borrada y un `InvariantRepaired` por caso.
 
-**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-UNIT-007` y `entity=unit:<id>`. Política `REPAIR`: prevalece `garrisons`, que es la fuente; se escribe el estado derivado o se borra la fila huérfana, y se registra un `InvariantRepaired`. La mitad «`city_id IS NOT NULL`» no se repara: depende de la decisión pendiente sobre `units.city_id`.
+**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-UNIT-007` y `entity=unit:<id>`. Política `REPAIR`: prevalece `garrisons`, que es la fuente; se escribe el estado derivado o se borra la fila huérfana, y se registra un `InvariantRepaired`. La mitad «`city_id IS NOT NULL`» no se repara: una unidad sin ciudad de origen sigue estando en su guarnición, y no hay valor correcto que escribir.
 
 ---
 

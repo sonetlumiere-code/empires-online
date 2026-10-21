@@ -29,8 +29,8 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 | `territory_control` | MVP: **activa** | Write-through transaccional en la fundación de la ciudad, con concurrencia optimista sobre `version` |
 | `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
-| `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. Sin comando de red todavía |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, e `InvariantRepaired` en la validación de carga del arranque |
+| `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, `TreatyExpired` en la caducidad e `InvariantRepaired` en la validación de carga del arranque |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
@@ -864,7 +864,9 @@ CREATE INDEX garrisons_city_idx ON garrisons (city_id);
 
 La tabla modela **la guarnición vigente**, no su historial: `unit_id` es la clave primaria, así que una unidad está guarnecida o no lo está, y salir de la guarnición es borrar la fila. Por eso no hay `left_at`, ni índice único parcial sobre guarniciones vivas: la PK ya lo garantiza.
 
-Tampoco hay `treaty_id` ni `host_player_id`/`guest_player_id`. La regla que produce `TREATY_REQUIRED` —guarnecer en ciudad ajena exige un tratado `ACTIVE` que lo permita— **se valida en el dominio**, no en el esquema: exigirla con un `CHECK` habría requerido desnormalizar dos jugadores en cada fila y una FK `RESTRICT` a `treaties`, para una mecánica que en el MVP está diferida. `garrisons_city_idx` sirve la consulta natural: qué unidades hay guarnecidas en una ciudad.
+Tampoco hay `treaty_id` ni `host_player_id`/`guest_player_id`. La regla que produce `TREATY_REQUIRED` —guarnecer en ciudad ajena exige un tratado `ACTIVE` que lo permita— **se valida en el dominio**, no en el esquema: exigirla con un `CHECK` habría requerido desnormalizar dos jugadores en cada fila y una FK `RESTRICT` a `treaties`, y el tratado no es una condición continua sino de entrada. La comprueba la transacción de `GarrisonRepo.Enter`, que registra en el evento `UnitGarrisoned` qué tratado la autorizó. `garrisons_city_idx` sirve la consulta natural: qué unidades hay guarnecidas en una ciudad.
+
+`garrisons.city_id` es la **única** sede de la ciudad anfitriona: `units.city_id` sigue siendo la ciudad de origen de la unidad y no cambia al guarnecer, para que la población no viaje con ella ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4).
 
 ### 15.6 `world_events`
 
@@ -893,7 +895,7 @@ CREATE INDEX world_events_player_idx     ON world_events (player_id, occurred_at
 | `player_id` | Actor, cuando lo hay. `SET NULL` para no perder el evento al borrar un jugador. El índice por jugador es parcial, porque los eventos sin actor no se consultan por esta vía |
 | `payload` | Cuerpo del evento, `{}` por defecto. `jsonb` y no columnas tipadas porque cada evento tiene forma propia |
 
-**Append-only** significa: sin `UPDATE`, sin `DELETE`, sin trigger `updated_at`. Sólo la retención por antigüedad puede borrar filas, y es una operación de mantenimiento explícita. En MVP la escriben tres tipos de evento alcanzables: `PlayerBootstrapped` y `TerritoryControlChanged`, dentro de la transacción de alta, e `InvariantRepaired`, uno por cada corrección de la validación de carga del arranque (`EO-119`), con `{inv_id, severity, entity, detail}` en el `payload` y el tick de arranque. Los repositorios de diplomacia escriben además `UnitGarrisoned`, `UnitUngarrisoned` y `TreatyExpired`, pero ningún comando de red los invoca todavía (M7). El volumen se controla antes de convertir esta tabla en el bus principal.
+**Append-only** significa: sin `UPDATE`, sin `DELETE`, sin trigger `updated_at`. Sólo la retención por antigüedad puede borrar filas, y es una operación de mantenimiento explícita. En MVP la escriben estos tipos de evento: `PlayerBootstrapped` y `TerritoryControlChanged`, dentro de la transacción de alta; `UnitGarrisoned` (`{unitId, cityId, cancelledMovement, treatyId?}`) y `UnitUngarrisoned` (`{unitId, x, y}`), en la transacción de entrada y de salida de una guarnición ([ADR-017](../decisions/ADR-017-garrison-commands.md)); `TreatyExpired`, en el barrido de caducidad; e `InvariantRepaired`, uno por cada corrección de la validación de carga del arranque (`EO-119`), con `{inv_id, severity, entity, detail}` en el `payload` y el tick de arranque. El volumen se controla antes de convertir esta tabla en el bus principal.
 
 ---
 

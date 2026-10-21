@@ -109,6 +109,8 @@ Entre los dos, añadir un tipo a un lado sin añadirlo al otro es imposible sin 
 | C→S | `session.view` | ✔ | ✔ | ○ |
 | C→S | `unit.move` | ✔ | ✔ | ○ |
 | C→S | `unit.cancel_move` | ✔ | ✔ | ○ |
+| C→S | `unit.garrison` | ✔ | ✔ | ○ |
+| C→S | `unit.ungarrison` | ✔ | ✔ | ○ |
 | S→C | `session.welcome` | ✔ | ✔ | ○ |
 | S→C | `session.pong` | ✔ | ✔ | ○ |
 | S→C | `system.error` | ✔ | ✔ | ○ |
@@ -172,7 +174,7 @@ Los tests que lo fijan: `TestMovementStartedLlevaLaPolilineaCompleta` y `TestEnv
 | **K17** | ✔ | `rechaza coordenadas no enteras: el mundo es un grid de tiles` (Vitest) | `target.x = 120.5` ⇒ `INVALID_MESSAGE`. El servidor razona en tiles completos (canon §7); una coordenada fraccionaria no es un redondeo, es un mensaje inválido |
 | **K18** | ✔ | `rechaza un payload que intente aportar estado autoritativo desconocido` (Vitest) | Un `hp: 9999` dentro del `payload` **se rechaza en lugar de ignorarse en silencio**. Exige que los esquemas Zod cliente→servidor sean **estrictos** y que el JSON Schema generado lleve `additionalProperties: false` |
 | **K19** | ✔ | `unit.move no admite que el cliente envíe una ruta` (Vitest) + `TestElComandoDeMovimientoNoAdmiteRuta` (Go) | El cliente no puede aportar la polilínea ni por accidente ni a propósito. Doble defensa: el esquema lo rechaza en el *boundary*, y la estructura Go `UnitMovePayload` **no tiene dónde guardarla** aunque el JSON la traiga |
-| **K20** | ○ | `TestTodoMensajeDelClienteValidaContraElEsquema` | Los 5 tipos cliente→servidor validan en su forma canónica, no sólo `unit.move` |
+| **K20** | ○ | `TestTodoMensajeDelClienteValidaContraElEsquema` | Los 7 tipos cliente→servidor validan en su forma canónica, no sólo `unit.move` |
 | **K21** | ○ | `TestFaltaUnCampoObligatorio` | Para cada campo obligatorio de cada uno de los 5 mensajes de cliente, omitirlo produce `INVALID_MESSAGE`. Test generado a partir de la lista de `required` del schema: añadir un campo obligatorio añade automáticamente su caso |
 | **K22** | ○ | `TestTipoIncorrectoSeRechaza` | `target.x` como cadena, `payload` como array ⇒ `INVALID_MESSAGE` |
 
@@ -207,7 +209,7 @@ Canon §14: el cliente abre la conexión y envía `session.hello { ticket }` **c
 
 | # | Estado | Test | Escenario | Esperado |
 |---|---|---|---|---|
-| **K32** | ✔ | `TestPreAuthSoloAdmiteElHandshake` (Go) | El catálogo de mensajes admitidos antes de autenticar | `protocol.IsPreAuth` es cierto **sólo** para `session.hello`; es falso para `unit.move`, `unit.cancel_move`, `session.ping` y `session.view`. **Ningún mensaje precede al hello, ni siquiera los inocuos.** Es la comprobación puramente declarativa; el efecto sobre la conexión lo cubre K33 |
+| **K32** | ✔ | `TestPreAuthSoloAdmiteElHandshake` (Go) | El catálogo de mensajes admitidos antes de autenticar | `protocol.IsPreAuth` es cierto **sólo** para `session.hello`; es falso para `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `session.ping` y `session.view`. **Ningún mensaje precede al hello, ni siquiera los inocuos.** Es la comprobación puramente declarativa; el efecto sobre la conexión lo cubre K33 |
 | **K33** | ○ | `TestNingunComandoAntesDeAutenticar` | `unit.move` como primer frame, sin `session.hello` previo | `UNAUTHORIZED` y cierre **`4401`**. El comando **no se ejecuta**: cero llamadas al pathfinder, cero movimientos |
 | **K34** | ○ | `TestTimeoutDeHandshakeCierraCon4408` | Conexión abierta sin enviar nada durante 5 s (`clock.FakeClock`) | Cierre **`4408`**, distinto de `4401`: el cliente debe poder distinguir "no me autenticaste" de "tardaste demasiado" |
 | **K35** | ○ | `TestUnSegundoHelloSeRechaza` | Un segundo `session.hello` en una sesión ya autenticada | `INVALID_MESSAGE`; la identidad de la sesión no se reasigna nunca |

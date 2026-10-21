@@ -242,7 +242,7 @@ Nótese qué transición **no existe**: `ONLINE → PROTECTED`. Y qué transici�
 | Aplicación | DOMAIN, TEST |
 | Milestone | M5 |
 | Política ante violación | REJECT |
-| Cobertura | **Parcial**: `TestIsProtected` (`internal/domain/city`) cubre el predicado; el conjunto de acciones hostiles es vacío en MVP, así que **no hay test de rechazo** que escribir todavía |
+| Cobertura | **Parcial**: `TestIsProtected` (`internal/domain/city`) cubre el predicado y `TestTodaAccionDelCatalogoEstaClasificada` (`internal/game/simulation`) la clasificación exhaustiva de acciones; el conjunto de acciones hostiles es vacío en MVP, así que **no hay test de rechazo** que escribir todavía |
 
 **Enunciado.** Mientras `presence_state = PROTECTED`, toda acción del conjunto prohibido por la regla de protección dirigida contra esa ciudad o contra su territorio se rechaza con `CITY_PROTECTED`, sin producir ningún efecto sobre el estado.
 
@@ -253,11 +253,11 @@ El riesgo estructural es la **dispersión**: cada nueva acción que se añada al
 **Cómo se garantiza.**
 
 - `DOMAIN` — el predicado autoritativo es `City.IsProtected() bool` (`internal/domain/city`), que devuelve `PresenceState == PROTECTED` y nada más. Cuando exista la primera acción hostil, el punto único que la consulte devolverá `CITY_PROTECTED` (código estable del catálogo, `protocol.CodeCityProtected`); toda acción clasificada como hostil deberá pasar por él, sin ruta alternativa.
-- `DOMAIN` — la clasificación de acciones será un enum cerrado con exhaustividad verificada: añadir una acción nueva sin clasificarla debe romper la compilación o el test de exhaustividad, lo que convierte el olvido en un fallo detectado. Ese enum **todavía no existe**: hoy no hay ninguna acción hostil que clasificar.
+- `DOMAIN` — la clasificación de acciones existe desde [ADR-016](../decisions/ADR-016-foreign-territory-actions.md): `simulation.ActionPolicyOf` dice, para cada mensaje cliente→servidor que actúa sobre el mundo, si es hostil y dónde se permite, y un test recorre el catálogo cerrado `protocol.ClientMessageTypes` y falla si alguno no está clasificado ni declarado de sesión. Añadir una acción sin decidir si es hostil deja de ser un olvido posible. Hoy ninguna lo es: moverse, cancelar, guarnecer y salir no son agresión (la guarnición, por `RN-GARR-009`).
 - `DOMAIN` — la evaluación usa el `presence_state` autoritativo del servidor. El cliente nunca aporta el estado de protección; lo observa por `city.update` ([INV-SEC-001](security.md#inv-sec-001)).
 - `DOMAIN` — `protection_until` es `NULL` en MVP (protección indefinida mientras el jugador siga offline, canon §9): el chequeo depende del estado, **no** de una comparación de fechas. Un chequeo escrito como `now < protection_until` sería incorrecto en MVP, porque con `NULL` daría siempre falso.
 
-**Alcance real en MVP.** El combate está fuera de MVP (canon §21), así que el conjunto de acciones hostiles **ejecutables** hoy es vacío. Lo que existe es el predicado `IsProtected` y el código `CITY_PROTECTED` en el catálogo; ni el punto único que los consulte ni la clasificación de acciones existen todavía, y tienen que nacer con la primera acción hostil. La lista definitiva de acciones prohibidas cuando exista combate y saqueo es **TBD (fuera de MVP)**.
+**Alcance real en MVP.** El combate está fuera de MVP (canon §21), así que el conjunto de acciones hostiles **ejecutables** hoy es vacío. Lo que existe es el predicado `IsProtected`, el código `CITY_PROTECTED` en el catálogo y la clasificación de acciones; el punto único que rechace una acción hostil contra una ciudad protegida no se escribe hasta que exista la primera, porque sería código que ningún camino ejecuta. La lista definitiva de acciones prohibidas cuando exista combate y saqueo es **TBD (fuera de MVP)**.
 
 Distinción con diplomacia: el `garrison` de unidades ajenas requiere un `treaties` en estado `ACTIVE` con `allows_garrison` (canon §10) y se rechaza con `TREATY_REQUIRED`, que es un código distinto y una regla distinta. La protección no sustituye a la diplomacia ni viceversa, y no bloquea la entrada de una guarnición aliada: `TestLaProteccionOfflineDelAnfitrionNoBloqueaLaEntrada` (`internal/domain/garrison`) lo fija.
 
@@ -266,7 +266,7 @@ Distinción con diplomacia: el `garrison` de unidades ajenas requiere un `treati
 - `TestIsProtected` (unit, `internal/domain/city`) — **existe y pasa**: `IsProtected()` es verdadero exactamente en `PROTECTED`, y lo es con `ProtectionUntil == nil`, que es el caso del MVP.
 - `TestCatalogoDeErroresCoincideConElExportado` (contract, `internal/protocol`) — **existe y pasa**: `CITY_PROTECTED` está en el catálogo cerrado de 22 códigos y coincide con el exportado por `packages/protocol`.
 - Test previsto: `Test_INV_CITY_006_ProtectedCityRejectsForbiddenActions` (unit) — para cada acción clasificada como hostil, una ciudad `PROTECTED` devuelve `CITY_PROTECTED` y el estado queda idéntico.
-- Test previsto: `Test_INV_CITY_006_ActionClassificationIsExhaustive` (unit) — toda variante del enum de acciones está clasificada; añadir una sin clasificar falla.
+- `TestTodaAccionDelCatalogoEstaClasificada` (unit, `internal/game/simulation`) — **existe y pasa**: todo mensaje del catálogo cerrado es de sesión o está clasificado, y no las dos cosas. `TestNingunaAccionDelMVPEsHostilNiSeRestringePorTerritorio` fija que ninguna es hostil hoy.
 
 **Violación en runtime.** Hoy no hay ninguna acción hostil que pueda violarlo. Cuando exista, la detección prevista es una aserción posterior del handler que compruebe si la acción produjo efecto sobre una ciudad `PROTECTED`. Log `invariant_violation` con `inv_id=INV-CITY-006`, `city_id`, acción y `player_id` del actor. Política `REJECT` antes del efecto. Una violación consumada se trata como incidente: la protección es una garantía hacia el jugador, y su ruptura debe revisarse manualmente, no repararse en silencio.
 

@@ -16,7 +16,7 @@ El cliente **nunca** aporta estado autoritativo: ni posición final, ni HP, ni r
 
 ### Superficie de ataque del MVP
 
-Solo existe una superficie: la conexión WebSocket. Cinco tipos de mensaje cliente→servidor en v1:
+Solo existe una superficie: la conexión WebSocket. Siete tipos de mensaje cliente→servidor en v1 (los dos de guarnición, desde [ADR-017](../decisions/ADR-017-garrison-commands.md)):
 
 | Tipo | Payload | Requiere sesión |
 |---|---|---|
@@ -25,6 +25,8 @@ Solo existe una superficie: la conexión WebSocket. Cinco tipos de mensaje clien
 | `session.view` | centro de vista | Sí |
 | `unit.move` | `{ unitId, target:{x,y} }` | Sí |
 | `unit.cancel_move` | `{ unitId }` | Sí |
+| `unit.garrison` | `{ unitId, cityId }` | Sí |
+| `unit.ungarrison` | `{ unitId }` | Sí |
 
 Límites del transporte (canon §13):
 
@@ -39,7 +41,7 @@ Límites del transporte (canon §13):
 | Timeout de handshake | 5 s | — (`WSHandshakeTimeout`, constante de código) |
 | Cola de salida por conexión | 256 | `EO_WS_OUTBOUND_QUEUE_SIZE` (rango 8–65536) |
 
-> **Un único token bucket.** En MVP existe **un solo** limitador de tasa por conexión: 20 msg/s con burst 40, aplicado por igual a los cinco tipos de mensaje. `session.view` **no** tiene un sub-límite dedicado; el canon §13 dice que `session.view` actualiza el centro «con rate limit», refiriéndose a ese límite global, y no define ninguno adicional. Un sub-límite propio para `session.view` —justificable, porque recalcular conjuntos de interés es más caro que responder un ping— es **TBD (fuera de MVP)**.
+> **Un único token bucket.** En MVP existe **un solo** limitador de tasa por conexión: 20 msg/s con burst 40, aplicado por igual a los siete tipos de mensaje. `session.view` **no** tiene un sub-límite dedicado; el canon §13 dice que `session.view` actualiza el centro «con rate limit», refiriéndose a ese límite global, y no define ninguno adicional. Un sub-límite propio para `session.view` —justificable, porque recalcular conjuntos de interés es más caro que responder un ping— es **TBD (fuera de MVP)**.
 >
 > Los cuatro timeouts de la tabla son **constantes de código**, no variables de entorno: no se pueden ajustar por despliegue. La única variable `EO_WS_*` añadida sobre el canon §17 es `EO_WS_OUTBOUND_QUEUE_SIZE`.
 
@@ -76,7 +78,7 @@ La forma en que este invariante se rompe en la práctica no es un descuido grose
 **Cómo se verifica.**
 
 - `packages/protocol` (Vitest) — «rechaza un payload que intente aportar estado autoritativo desconocido», «unit.move no admite que el cliente envíe una ruta» y «no ha derivado respecto de los esquemas Zod (misma comprobación que la CI)».
-- `TestElDecodificadorEsTanEstrictoComoElEsquema` (contract, `internal/protocol`) — las dos mitades de S-7: todo objeto cliente→servidor del esquema es estricto, y en los cinco mensajes una propiedad de más en el envelope, en el payload o en un objeto anidado se rechaza.
+- `TestElDecodificadorEsTanEstrictoComoElEsquema` (contract, `internal/protocol`) — las dos mitades de S-7: todo objeto cliente→servidor del esquema es estricto, y en los siete mensajes una propiedad de más en el envelope, en el payload o en un objeto anidado se rechaza.
 - `TestElComandoDeMovimientoNoAdmiteRuta` (contract) — `DecodeStrict` rechaza una ruta en `unit.move`.
 - `TestEntityUpdateEsUnDeltaDeVerdad` (contract) — el servidor emite deltas parciales calculados por él, no ecos del cliente.
 - `TestPayloadConCamposExtraNoAportaEstado` (e2e, `internal/websocket`) — una ruta y un HP colados, una coordenada de más y un campo de más en el envelope reciben `INVALID_MESSAGE`; el comando limpio posterior es el primero que se acepta, y su ruta la calcula el servidor. Verificado por mutación: sin `DisallowUnknownFields` falla.
@@ -119,7 +121,7 @@ El timeout de 5 segundos cubre un segundo problema, de disponibilidad: conexione
 - `TestSinHandshakeEnPlazoSeCierraCon4408` (e2e) — un socket que no envía nada se cierra con `4408` al vencer el plazo.
 - `TestTicketInvalidoCierraLaConexion` (e2e) — los tickets inválidos cierran con `4401`.
 - `TestTicketNoSePuedeReutilizarEnOtraConexion` (e2e) — el segundo canje no establece sesión.
-- `TestPreAuthSoloAdmiteElHandshake` (contract, `internal/protocol`) — de los cinco tipos cliente→servidor, sólo `session.hello` es pre-auth.
+- `TestPreAuthSoloAdmiteElHandshake` (contract, `internal/protocol`) — de los siete tipos cliente→servidor, sólo `session.hello` es pre-auth.
 - `TestCodigosDeCierreSonDelRangoPrivado` (contract) — `4400`, `4401`, `4403`, `4408`, `4429` y `4500` están en el rango privado.
 
 **Violación en runtime.** El rechazo es la regla, no una violación: `Server.serve` registra «handshake rechazado» a nivel `info`, con la causa y el código de cierre, y cierra. No hay un camino de código en el que un comando llegue a enrutarse sin sesión, y por tanto no hay una detección que escribir.
@@ -223,7 +225,7 @@ El canon §7 fija el orden explícitamente: **validar ownership → validar esta
 - **Tamaño** — deserializar un JSON de 50 MiB para después responder `MESSAGE_TOO_LARGE` ya ha asignado 50 MiB. Repetido en paralelo desde varias conexiones, es un agotamiento de memoria. El límite debe aplicarlo el lector del WebSocket, que corta la lectura del frame, no el validador que corre después.
 - **Tasa** — enrutar 10 000 `unit.move` por segundo y responder `RATE_LIMITED` a partir del vigésimo ya ha ejecutado 10 000 búsquedas de unidad. El contador debe consultarse antes del enrutado.
 
-Los 16 KiB son holgados para los cinco mensajes de v1: el mayor concebible es `session.hello` con un JWT, muy por debajo del límite. Un mensaje que se acerque siquiera al límite es, por definición, anómalo.
+Los 16 KiB son holgados para los siete mensajes de v1: el mayor concebible es `session.hello` con un JWT, muy por debajo del límite. Un mensaje que se acerque siquiera al límite es, por definición, anómalo.
 
 **Cómo se garantiza.**
 

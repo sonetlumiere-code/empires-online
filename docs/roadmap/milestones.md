@@ -380,8 +380,8 @@ eventos de dominio en `world_events`. **No entra**: presencia (M5), movimiento (
    separación mínima de **24 tiles** entre centros de ciudad, muralla como rectángulo **3 × 3** marcado en
    el `blocked overlay` de M1 alrededor del centro, y los 3 aldeanos naciendo a **radio 2**. Esto resuelve
    en la práctica la pregunta Q-01 de [backlog.md](backlog.md), que queda cerrada.
-9. **HECHO** — Error `CITY_NOT_FOUND` definido en el catálogo de códigos. Ninguna ruta lo emite todavía: en el
-   MVP no hay comandos de red sobre una ciudad. La guarnición (M7, entregable 6) será la primera.
+9. **HECHO** — Error `CITY_NOT_FOUND` definido en el catálogo de códigos. Lo emite `unit.garrison` con una ciudad
+   inexistente (M7, entregable 6; `TestRechazosDeGuarnicion`).
 
 ### Tests
 
@@ -596,11 +596,11 @@ conexión viva.
    (`TestSinHandshakeEnPlazoSeCierraCon4408`, con el plazo acortado; en producción son 5 s).
 5. **Cumplido.** `seq` es estrictamente creciente en todos los mensajes de una conexión
    (`TestElSeqCreceDeUnoEnUnoEnUnaConexion`).
-6. **Parcial.** El `world.snapshot` inicial contiene sólo entidades dentro del área de 5×5 chunks centrada
-   en la ciudad del jugador (`TestSnapshotDelAreaDeInteres`), con una excepción conocida: una unidad
-   `GARRISONED` sigue en el índice por chunk y saldría en él
-   ([INV-UNIT-003](../invariants/units.md#inv-unit-003)). Hoy nada la produce; se corrige con M7,
-   entregable 6.
+6. **Cumplido.** El `world.snapshot` inicial contiene sólo entidades dentro del área de 5×5 chunks centrada
+   en la ciudad del jugador (`TestSnapshotDelAreaDeInteres`). La excepción que había —una unidad
+   `GARRISONED` seguía en el índice por chunk y salía en el snapshot de cualquiera
+   ([INV-UNIT-003](../invariants/units.md#inv-unit-003))— se corrigió con M7, entregable 6: sólo la recibe
+   su dueño (`TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot`).
 7. **Cumplido.** Enviar más mensajes que el burst en un segundo produce `RATE_LIMITED` y el cierre `4429`
    (`TestUnaRafagaPorEncimaDelBurstCierraCon4429`).
 8. **Cumplido tras corregir el criterio.** Decía que un mensaje de 20 KiB produce `MESSAGE_TOO_LARGE` sin
@@ -950,13 +950,10 @@ Redis/PostgreSQL: la presencia es transitoria, el `presence_state` es durable. D
 
 ## M6 — Territories
 
-**Estado: COMPLETO salvo el entregable 8.** El circuito funciona y está verificado de extremo a extremo:
-geometría sembrada, índice en RAM, cambio de dueño transaccional, evento de dominio, delta de red y
-overlay en el cliente. Todos los tests de la sección correspondiente existen y pasan.
-
-El **entregable 8** no está hecho y no lo estará hasta que alguien tome una decisión de diseño que
-ningún documento ha tomado; su entrada explica por qué implementarlo hoy sería inventar una regla de
-juego. Ese es el único motivo por el que este milestone no se marca cerrado.
+**Estado: CERRADO.** El circuito funciona y está verificado de extremo a extremo: geometría sembrada,
+índice en RAM, cambio de dueño transaccional, evento de dominio, delta de red y overlay en el cliente.
+Todos los tests de la sección existen y pasan. El entregable 8, que esperaba una decisión de juego, la
+tiene desde [ADR-016](../decisions/ADR-016-foreign-territory-actions.md).
 
 **Objetivo.** Introducir territorios rectangulares y el control sobre ellos, de modo que el espacio
 del mundo tenga significado político persistente.
@@ -987,21 +984,15 @@ por combate, que son parte de Sieges, fuera del MVP.
    poder leerlo desde la goroutine del alta sin provocar una carrera.
 7. **HECHO** — Renderizado del territorio en el cliente como overlay isométrico, derivado
    exclusivamente de `territory.update`. El cliente no calcula ownership. Requiere `apps/web/`.
-8. **BLOQUEADO POR DISEÑO, no por implementación** — Uso de `FORBIDDEN` para acciones no permitidas
-   dentro de territorio ajeno, con la superficie de acciones restringidas que defina la spec de
-   territorio.
+8. **HECHO, por decisión** — Uso de `FORBIDDEN` para acciones no permitidas dentro de territorio ajeno.
 
-   Este entregable se remite a una superficie que **la spec declina definir**, y lo dice de forma
-   explícita: [«no hay superficie de error de usuario»](../specs/territory.md) porque en MVP no existe
-   ningún comando de cliente dirigido a un territorio, y «comandos cliente→servidor sobre territorios:
-   no existen en el protocolo v1 y **no se inventan aquí**». Además, `FORBIDDEN` significa en el resto
-   del sistema *operar sobre entidades de otro jugador* ([city.md](../specs/city.md),
-   [player.md](../specs/player.md)), no *estar dentro de su territorio*.
-
-   Implementarlo hoy significaría inventar una regla de juego —previsiblemente «no puedes mover unidades
-   dentro del territorio de otro»— que ningún documento especifica y que cambia cómo se juega. Eso es
-   una decisión de diseño, no una tarea de programación. Queda pendiente de que alguien la tome y la
-   escriba en la spec; entonces el código son unas pocas líneas en el manejador de `unit.move`.
+   La decisión está en [ADR-016](../decisions/ADR-016-foreign-territory-actions.md): **ninguna acción del
+   MVP se restringe por territorio**, y `FORBIDDEN` conserva su significado de *operar sobre entidades de
+   otro jugador*, no de *estar dentro de su territorio*. La razón de juego es concreta: guarnecer en una
+   ciudad aliada exige estar junto a ella, es decir, dentro del territorio del aliado, y un jugador
+   desconectado no puede convertirse en un muro permanente del mapa. Lo que sí existe es la clasificación
+   de cada acción de mundo —hostil o no, y dónde se permite— con un test que exige clasificar todo comando
+   nuevo (`simulation.ActionPolicyOf`).
 
 ### Tests
 
@@ -1037,13 +1028,17 @@ Todos existen y pasan salvo el marcado como pendiente.
   `ownerId: null` explícito, y los tipos de dueño coinciden con su enum
   (`internal/protocol/territory_contract_test.go`). Hasta `EO-118` esta línea afirmaba que lo validaba
   `contract_test.go`, que sólo comprueba que el nombre del tipo aparece en el esquema.
+- ✔ *unit*: todo mensaje cliente→servidor está clasificado como acción de mundo o de sesión, y ninguna
+  acción del MVP es hostil ni se restringe por territorio (`TestTodaAccionDelCatalogoEstaClasificada`,
+  `TestNingunaAccionDelMVPEsHostilNiSeRestringePorTerritorio`).
 
 ### Documentación actualizada al cerrar
 
 [../specs/territory.md](../specs/territory.md),
 [../architecture/networking.md](../architecture/networking.md),
 [../database/schema.md](../database/schema.md),
-[../specs/websocket-protocol.md](../specs/websocket-protocol.md).
+[../specs/websocket-protocol.md](../specs/websocket-protocol.md). La decisión del entregable 8:
+[ADR-016](../decisions/ADR-016-foreign-territory-actions.md).
 
 ### Invariantes cubiertos
 
@@ -1063,18 +1058,13 @@ write-through para cambios de ownership.
 
 ## M7 — Diplomacy foundation
 
-**Estado: las reglas están implementadas y verificadas; falta la puerta de entrada.** Existen
-`internal/domain/diplomacy` (ciclo de vida del tratado) e `internal/domain/garrison` (condiciones de
-entrada y salida), su ejecución transaccional en `postgres.TreatyRepo` y `postgres.GarrisonRepo`, y el
-barrido de caducidad enganchado a la fase 5 del tick. Todo con tests contra PostgreSQL real.
-
-**Lo que no existe es un comando de red que lo dispare.** El protocolo v1 define cinco mensajes
-cliente→servidor y ninguno guarnece; la [spec de guarnición](../specs/garrison.md) lo declara fuera de
-MVP y dice explícitamente que no se inventa aquí. Hoy la guarnición se alcanza por vía administrativa y
-desde los tests, que es exactamente lo que este milestone se propuso validar: *«los treaties se crean
-por vía administrativa o de seed, y lo que se valida es su efecto sobre el dominio»*.
-
-Los entregables 6 y el test de contrato dependen de ese comando y quedan pendientes con él.
+**Estado: CERRADO.** Existen `internal/domain/diplomacy` (ciclo de vida del tratado) e
+`internal/domain/garrison` (condiciones de entrada y salida), su ejecución transaccional en
+`postgres.TreatyRepo` y `postgres.GarrisonRepo`, el barrido de caducidad enganchado a la fase 5 del tick
+y, desde [ADR-017](../decisions/ADR-017-garrison-commands.md), la puerta de entrada: los comandos
+`unit.garrison` y `unit.ungarrison`. Los tratados siguen creándose por vía administrativa o de seed, que es
+lo que el alcance de este milestone fija; lo que se valida es su efecto sobre el dominio, ahora también por
+la red.
 
 **Objetivo.** Persistir treaties y garrisons y hacer que condicionen de forma efectiva qué puede
 hacer un jugador con las unidades de otro y en la ciudad de otro.
@@ -1104,15 +1094,17 @@ efecto sobre el dominio.
    unidad `GARRISONED` con un movimiento vivo sería un estado que ninguna regla sabe interpretar: el
    bucle la seguiría moviendo mientras el resto del sistema la cree dentro de una ciudad. `unit.move`
    sobre una guarnecida ya rechazaba con `UNIT_GARRISONED`.
-6. **BLOQUEADO por el entregable que no existe** — Efecto en el interest management: una unidad que
-   entra en garrison genera `entity.despawn` con `reason: GARRISONED` para los observadores que dejan
-   de verla, y su ciudad emite `city.update`. El valor `GARRISONED` de `entity.despawn.payload.reason`
-   ya está en el protocolo.
+6. **HECHO** — Efecto en el interest management: una unidad que entra en garrison genera
+   `entity.despawn` con `reason: GARRISONED` para los observadores que dejan de verla, y `entity.spawn`
+   al salir; su dueño recibe `entity.update` con la ciudad anfitriona en `garrisonCityId`, y el snapshot
+   de un tercero no la trae. Llegó con los comandos `unit.garrison` y `unit.ungarrison`
+   ([ADR-017](../decisions/ADR-017-garrison-commands.md)), la entrada en dos fases —el tick valida, la
+   transacción decide el tratado— y la salida decidida por el tick con compensación.
 
-   No se implementa porque **no hay ningún disparador en vivo**: sin un comando de red que guarnezca,
-   la entrada sólo ocurre por vía administrativa, fuera del game loop y sin sesiones a las que
-   notificar. Escribir el emisor ahora sería código muerto que nadie ejecuta y que envejecería sin que
-   ningún test lo protegiera. Se implementa a la vez que el comando.
+   La frase original pedía además que la ciudad emitiera `city.update`. Se retiró: guarnecer no cambia
+   nada de lo que transporta `city.update` —la unidad sigue contando en la población de su ciudad de
+   origen ([INV-GARR-009](../invariants/diplomacy.md#inv-garr-009))—, y un `city.update` sin cambio
+   contradiría `T-CITY-C-002`.
 7. **HECHO** — Persistencia transaccional de treaties y garrisons, y registro de los cambios en
    `world_events`.
 8. **HECHO en su parte implementable** — Expiración de treaties evaluada en la fase 5 del tick, con
@@ -1157,8 +1149,13 @@ contra PostgreSQL real y 2 de simulación sobre el muestreo del barrido.
 - ✔ *recovery*: un reinicio conserva treaties y garrisons y no resucita movimientos cancelados.
 - ✔ *simulation*: el barrido de caducidad se **muestrea** y no ocurre en cada tick.
 - ✔ *unit*: `unit.move` sobre una unidad `GARRISONED` devuelve `UNIT_GARRISONED` (ya existía).
-- ○ *contract*: los `entity.despawn` y `city.update` derivados. **Pendiente junto al entregable 6**: no
-  hay disparador que los emita, así que no hay nada que validar todavía.
+- ✔ *contract*: los comandos de guarnición, `garrisonCityId` y el motivo `GARRISONED` coinciden con el
+  esquema exportado (`TestLosComandosDeGuarnicionSonLosDelEsquema`, `TestUnitViewLlevaLaCiudadAnfitrionaSiempre`,
+  `TestEntityUpdateDistingueEntradaSalidaYSinCambio`, `TestEntityDespawnAdmiteElMotivoGarrisoned`).
+- ✔ *simulation* y *e2e*: entrada en dos fases, rechazos, salida al anillo, salida pendiente,
+  compensación y visibilidad por destinatario (`internal/game/simulation/garrison_test.go`,
+  `TestLaGuarnicionPorLaRedSoloLaVeSuDueno`); idempotencia de la entrada y la salida contra PostgreSQL
+  (`TestUnaEntradaRepetidaEsIdempotenteYNoDuplicaElEvento`, `TestUnaSalidaRepetidaEsIdempotenteYNoDuplicaElEvento`).
 
 ### Documentación actualizada al cerrar
 
@@ -1181,7 +1178,10 @@ nunca el cliente. `EJE-PERSIST` para treaties y garrisons.
    `TREATY_REQUIRED`.
 4. `unit.move` sobre una unidad guarnecida devuelve `UNIT_GARRISONED`.
 5. Guarnecer una unidad en movimiento deja su `unit_movements` en `CANCELLED` y ninguno `ACTIVE`.
-6. Un treaty con fecha de expiración pasada transiciona a `EXPIRED` dentro del tick siguiente.
+6. Un treaty con fecha de expiración pasada transiciona a `EXPIRED` dentro del segundo siguiente. Decía
+   «dentro del tick siguiente»; el barrido se muestrea a una vez por segundo por la razón del entregable 8,
+   y el criterio se ajusta a esa decisión (`TestLaCaducidadDeTratadosSeMuestreaYNoOcurreEnCadaTick`,
+   `TestLaCaducidadSeDetectaYTransicionaAExpired`).
 7. Tras reiniciar, treaties y garrisons conservan su estado exacto.
 
 ---

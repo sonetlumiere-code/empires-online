@@ -241,7 +241,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-003 | `population_limit` deriva de la era vigente | ALTO | DB, DOMAIN, TEST | ✓ | `TestElAltaTomaElLimiteDePoblacionDeSuEra`, `TestLasCiudadesSeReparanDesdeSusFuentes`, `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` |
 | INV-CITY-004 | `presence_state` sólo toma `ONLINE`, `OFFLINE_PENDING` o `PROTECTED` | CRITICO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestEstadosDePresenciaValidos`, `TestLosEstadosDePresenciaDelDominioSonLosDelEsquema` |
 | INV-CITY-005 | Toda transición de `presence_state` pertenece al conjunto permitido | ALTO | DOMAIN, TEST | ✓ | `TestAutomataDePresencia`, `TestLasCiudadesQueDegradanEnElMismoTickSalenEnOrden` |
-| INV-CITY-006 | Una ciudad `PROTECTED` no recibe acciones prohibidas por la protección | CRITICO | DOMAIN, TEST | ~ | `TestIsProtected` |
+| INV-CITY-006 | Una ciudad `PROTECTED` no recibe acciones prohibidas por la protección | CRITICO | DOMAIN, TEST | ~ | `TestIsProtected`, `TestTodaAccionDelCatalogoEstaClasificada`; falta el rechazo, que nace con la primera acción hostil |
 | INV-CITY-007 | El centro de la ciudad está sobre un tile válido y transitable | ALTO | DOMAIN, TEST | ✓ | `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestSinTerrenoTransitableNoHaySitio`, `TestUnCentroSobreAguaAbortaElArranque` |
 | INV-CITY-008 | Las zonas urbanas de dos ciudades nunca comparten tile (centro único, 24 tiles de separación) | ALTO | DB, DOMAIN, TEST | ✓ | `TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan`, `TestAltasSimultaneasGuardanLaDistanciaMinima`, `TestDosCiudadesNoPuedenCompartirCentro` |
 | INV-CITY-009 | `population` es el recuento de `units` de la ciudad con `status <> 'DEAD'` | ALTO | DOMAIN, TEST | ✓ | `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal`, `TestLasCiudadesSeReparanDesdeSusFuentes`, `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` |
@@ -259,11 +259,11 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 |---|---|---|---|---|---|
 | INV-UNIT-001 | La posición de una unidad referencia un tile válido y transitable | CRITICO | DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento`, `TestFundarApartaLaUnidadQueQuedaDentroDeLaMuralla`, `TestLasUnidadesSeExcluyenSeReparanOAbortan` |
 | INV-UNIT-002 | Una unidad `DEAD` no acepta órdenes | ALTO | DB, DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento`, `TestEnsureCanMoveDecidePorEstado` |
-| INV-UNIT-003 | Una unidad `GARRISONED` no ocupa tile del mundo | ALTO | DOMAIN, TEST | ~ | `TestRechazosDeMovimiento`, `TestGuarnecidasYSinVidaNoSeOcultan`; todavía sale en el snapshot (M7, entregable 6) |
+| INV-UNIT-003 | Una unidad `GARRISONED` no ocupa tile del mundo | ALTO | DOMAIN, TEST | ✓ | `TestRechazosDeMovimiento`, `TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot`, `TestLaGuarnicionPorLaRedSoloLaVeSuDueno` |
 | INV-UNIT-004 | `hp` está en `[0, max_hp]` | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`, `TestIsAliveExigeEstadoYVida`, `TestLasUnidadesSeExcluyenSeReparanOAbortan` |
 | INV-UNIT-005 | `status = MOVING` si y sólo si existe un movimiento `ACTIVE` | CRITICO | DB, DOMAIN, TEST | ✓ | `TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento`, `TestRecuperacionNoReanudaElMovimientoDeUnaUnidadGuarnecida`, `TestVerticalSliceMovimiento` |
 | INV-UNIT-006 | Una unidad pertenece a un único jugador | CRITICO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeUnidadesRechazanFilasInvalidas`, `TestNoSePuedeComandarUnaUnidadAjena` |
-| INV-UNIT-007 | `GARRISONED` implica `city_id IS NOT NULL` y fila en `garrisons` | ALTO | DB, DOMAIN, TEST | ~ | `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`, `TestLaGuarnicionSeDerivaDeSuTabla`; falta decidir `city_id` (M7) |
+| INV-UNIT-007 | `GARRISONED` implica `city_id IS NOT NULL` y fila en `garrisons` | ALTO | DB, DOMAIN, TEST | ✓ | `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`, `TestLaGuarnicionSeDerivaDeSuTabla`, `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno` |
 | INV-UNIT-008 | `HIDDEN` implica Safe Zone activa y reposo; moverse deja de ocultar | MEDIO | DOMAIN, TEST | ✓ | `TestReglaDeOcultamiento`, `TestUnaUnidadOcultaQueRecibeUnMoveSeRevelaEnElMismoTick` |
 | INV-UNIT-009 | Todo `unit_type` persistido resuelve en el catálogo de `unit.Lookup` | ALTO | DOMAIN, TEST | ✓ | `TestLookupSoloConoceElCatalogo`, `TestLasUnidadesSeExcluyenSeReparanOAbortan` |
 | INV-UNIT-010 | `player_id` y `unit_type` son inmutables tras la creación en MVP | MEDIO | DOMAIN, TEST | ✓ | `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
@@ -340,13 +340,14 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-GARR-001 | Una unidad tiene como máximo una guarnición abierta (`unit_id` es `PRIMARY KEY`) | CRITICO | DB, TEST | ○ | `Test_INV_GARR_001_OneOpenGarrisonPerUnit` |
-| INV-GARR-002 | `status = 'GARRISONED'` si y sólo si existe fila en `garrisons` | CRITICO | DOMAIN, TEST | ~ | `TestRechazosDeMovimiento` |
-| INV-GARR-003 | `units.city_id` es igual a `garrisons.city_id` cuando hay guarnición | ALTO | DOMAIN, TEST | ○ | `Test_INV_GARR_003_UnitCityMatchesGarrisonCity` |
-| INV-GARR-004 | Guarnecer en ciudad ajena exige un `treaty` `ACTIVE` con `allows_garrison` en la entrada | CRITICO | DOMAIN, TEST | ~ | `TestCatalogoDeErroresCoincideConElExportado` |
-| INV-GARR-005 | Ninguna unidad `GARRISONED` figura en la capa de ocupación | ALTO | DOMAIN, TEST | ○ | `Test_INV_GARR_005_GarrisonedNotInBlockedOverlay` |
-| INV-GARR-006 | Ninguna unidad `GARRISONED` aparece en un delta dirigido a un tercero | CRITICO | BOUNDARY, TEST | ○ | `Test_INV_GARR_006_GarrisonedInvisibleToThirdParties` |
-| INV-GARR-007 | El ownership no cambia al entrar ni al salir de la guarnición | ALTO | DOMAIN, TEST | ○ | `Test_INV_GARR_007_OwnershipPreservedAcrossGarrison` |
+| INV-GARR-001 | Una unidad tiene como máximo una guarnición abierta (`unit_id` es `PRIMARY KEY`) | CRITICO | DB, DOMAIN, TEST | ✓ | `TestUnaUnidadNoPuedeTenerDosGuarnicionesAbiertas`, `TestUnaEntradaRepetidaEsIdempotenteYNoDuplicaElEvento` |
+| INV-GARR-002 | `status = 'GARRISONED'` si y sólo si existe fila en `garrisons` | CRITICO | DOMAIN, TEST | ✓ | `TestGuarnecerConTratadoActivoDejaLaUnidadGarrisonedYPersistida`, `TestMientrasEntraLaUnidadNoAceptaOrdenesNiSeVuelca`, `TestLaGuarnicionSeDerivaDeSuTabla` |
+| INV-GARR-003 | ~~`units.city_id` es igual a `garrisons.city_id` cuando hay guarnición~~ | ALTO | — | DEROGADO | Derogado el 2026-10-20 por [ADR-017](../decisions/ADR-017-garrison-commands.md); lo sustituye INV-GARR-009 |
+| INV-GARR-004 | Guarnecer en ciudad ajena exige un `treaty` `ACTIVE` con `allows_garrison` en la entrada | CRITICO | DOMAIN, TEST | ✓ | `TestEnCiudadAjenaSinTratadoSeRechaza`, `TestUnTratadoRotoDejaDeHabilitarGuarnicionesNuevas`, `TestGuarnecerEnUnaCiudadAjenaSinTratadoLlegaComoTreatyRequired` |
+| INV-GARR-005 | Ninguna unidad `GARRISONED` figura en la capa de ocupación | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerEnLaCiudadPropiaEnDosFases`, `TestLaMurallaNuevaNoTocaUnidadesGuarnecidas` |
+| INV-GARR-006 | Ninguna unidad `GARRISONED` aparece en un delta dirigido a un tercero | CRITICO | BOUNDARY, DOMAIN, TEST | ✓ | `TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot`, `TestLaGuarnicionPorLaRedSoloLaVeSuDueno` |
+| INV-GARR-007 | El ownership no cambia al entrar ni al salir de la guarnición | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno`, `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
+| INV-GARR-009 | Entrar y salir de la guarnición no cambian `units.city_id`: la población se queda en la ciudad de origen | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno`, `TestGuarnecerEnLaCiudadPropiaEnDosFases` |
 
 ### Distribución
 
@@ -355,9 +356,9 @@ Por severidad:
 | Severidad | Cantidad |
 |---|---|
 | CRITICO | 39 |
-| ALTO | 40 |
+| ALTO | 41 |
 | MEDIO | 11 |
-| **Total** | **90** |
+| **Total** | **91** |
 
 Por familia:
 
@@ -372,28 +373,29 @@ Por familia:
 | `INV-SEC` | 001–007 | 7 | [security.md](security.md) |
 | `INV-TERR` | 001–009 | 9 | [territory.md](territory.md) |
 | `INV-SAFE` | 001–007 | 7 | [territory.md](territory.md) |
-| `INV-GARR` | 001–007 | 7 | [diplomacy.md](diplomacy.md) |
+| `INV-GARR` | 001–009 | 8 | [diplomacy.md](diplomacy.md) |
 
-Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Ningún número está quemado todavía, porque ningún invariante se ha derogado.
+Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Hay un número quemado, `INV-GARR-003`, derogado por [ADR-017](../decisions/ADR-017-garrison-commands.md): conserva su fila y su ficha con la marca `DEROGADO`, y no se reutiliza. `INV-GARR-008` está reservado (ver abajo), así que el rango de `INV-GARR` tiene ocho filas para nueve números.
 
 ### Estado de cobertura
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 78 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 7 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 5 | Test inexistente, o fila sin reconciliar con la suite |
-| **Total** | **90** | |
+| ✓ Cubierto | 87 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 3 | Hay test real para parte del enunciado |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
+| `DEROGADO` | 1 | Ya no aplica; la fila se conserva para que el número no se reutilice |
+| **Total** | **91** | |
 
-> **90 filas y 91 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
+> **91 filas y 92 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
 > pero **no** fila en esta tabla: es un ID **reservado** —apartado para que nadie lo reutilice— cuyo
 > enunciado todavía no se puede verificar, porque la gracia de expulsión que describiría no tiene dónde
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Los 5 sin cobertura son todos de `INV-GARR`, la única familia que `EO-118` no ha reconciliado todavía: describen efectos de una guarnición que ningún comando de red puede producir (M7, entregable 6), y sus filas citan nombres `Test_INV_*` previstos que no están en la suite. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)), así que al cubrir una fila se escribe el nombre real.
+Ninguna fila queda sin cobertura. Las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
-La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`: todas salvo `INV-GARR`, que se reconciliará con los comandos de guarnición. La detección y la reparación al arrancar que prometían once de sus fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`), y esas filas pasaron de ~ a ✓. Las siete parciales que quedan esperan otra cosa: los comandos de guarnición de M7 (`INV-UNIT-003`, `INV-UNIT-007`, `INV-GARR-002`, `INV-GARR-004`), la autenticación del handshake (`INV-PLAYER-007`), la regla de protección sobre acciones ajenas de M6 (`INV-CITY-006`) y el escaneo de secretos del repositorio y del bundle (`INV-SEC-006`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
+La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). Las tres parciales que quedan esperan algo que no existe: la autenticación del handshake (`INV-PLAYER-007`), la primera acción hostil (`INV-CITY-006`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)) y el escaneo de secretos del repositorio y del bundle (`INV-SEC-006`). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
 Los once invariantes `MEDIO` desmienten la nota anterior de este catálogo, que afirmaba que no había ninguno en el MVP: están repartidos entre `CITY` (015, 016), `UNIT` (008, 010), `MOVE` (012, 014), `SAFE` (006, 007) y `TERR` (006, 007, 008). Cubren exactamente lo que la escala prevé: propiedades de calidad —determinismo, reproducibilidad, monotonía, idempotencia, alcance de MVP— cuya violación degrada garantías sin corromper estado durable.
 
@@ -420,7 +422,7 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 | [persistence.md](persistence.md) | `INV-PERSIST` | 5 |
 | [security.md](security.md) | `INV-SEC` | 7 |
 | [territory.md](territory.md) | `INV-TERR`, `INV-SAFE` | 16 |
-| [diplomacy.md](diplomacy.md) | `INV-GARR` | 7 |
+| [diplomacy.md](diplomacy.md) | `INV-GARR` | 8 |
 
 ## 10. Documentos relacionados
 

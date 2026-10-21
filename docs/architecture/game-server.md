@@ -124,7 +124,7 @@ revisión de código, no por un test de arquitectura automático — añadirlo e
 | `internal/protocol` | Envelope v1 (entrante `{v,type,requestId,payload}` / saliente `{v,type,seq,ts,requestId?,payload}`), tipos de payload, catálogo cerrado de 22 códigos de error, códigos de cierre 44xx/4500 y los JSON Schema embebidos. **No importa nada de `internal/*`**: es el paquete hoja del que dependen los demás. | — | todo `internal/*` |
 | `internal/game/world` | Grid `EO_WORLD_WIDTH`×`EO_WORLD_HEIGHT`, `TerrainType`, *blocked overlay* bajo `sync.RWMutex`, chunks, geometría, `Tile`, generador determinista desde la semilla. No conoce entidades de dominio. | — | `domain/*`, `loop`, `simulation`, `persistence/*`, `websocket`, `pathfinding` |
 | `internal/game/loop` | El tick: `Run` (calendario absoluto, descarte de ticks perdidos) y `Step` (las 8 fases). Drena la cola de comandos, aísla pánicos por comando y vuelca métricas. Recibe sus parámetros en un `loop.Config` propio, **no** importa `internal/config`. | `simulation`, `clock`, `observability` | `config`, `persistence/*`, `websocket` |
-| `internal/game/simulation` | **El corazón del MVP**, no un reservado: estado del mundo (`state.go`), aplicación de comandos (`commands.go`, `simulation.go`), hidratación y recuperación (`recovery.go`), snapshots (`snapshot.go`), interest management (`interest.go`) y alta de jugador en caliente (`introduce.go`). La resolución de combate (fase 4) sí sigue fuera de MVP. | `world`, `domain/*`, `pathfinding`, `protocol`, `clock`, `observability` | `persistence/postgres`, `persistence/redis`, `websocket` |
+| `internal/game/simulation` | **El corazón del MVP**, no un reservado: estado del mundo (`state.go`), aplicación de comandos (`commands.go`, `simulation.go`), hidratación y recuperación (`recovery.go`), snapshots (`snapshot.go`), interest management (`interest.go`) y alta de jugador en caliente (`introduce.go`). También la guarnición en dos fases (`garrison.go`) y la clasificación de las acciones de mundo (`actions.go`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). La resolución de combate (fase 4) sí sigue fuera de MVP. | `world`, `domain/*`, `pathfinding`, `protocol`, `clock`, `observability` | `persistence/postgres`, `persistence/redis`, `websocket` |
 | `internal/game/founding` | `FindSite`: emplazamiento determinista de una ciudad nueva por búsqueda en espiral desde una semilla derivada del nombre de usuario. | `world` | `domain/*`, `persistence/*`, `websocket` |
 | `internal/game/loadcheck` | Validación de carga (`EO-119`): `Check` recibe el estado durable recién leído y devuelve los hallazgos (`REPAIR`, `EXCLUDE`, `FAIL_FAST`), las correcciones aplicadas en memoria y las filas que hay que reescribir. Dominio puro: sin reloj, sin I/O, en orden de id. | `world`, `domain/*` | `persistence/*`, `simulation`, `websocket` |
 | `internal/domain/player` | Identidad del jugador, `Civilization` con sus `Traits`, `Faction`. | — | `game/*`, `persistence/*`, `websocket`, `pathfinding` |
@@ -244,11 +244,11 @@ func (s *Server) dispatch(cmd simulation.Command) bool {
 }
 ```
 
-Asimetría real y documentada: la ruta de `session.view` **sí** convierte ese `false` en un
-`system.error` con código `INTERNAL_ERROR` (`"el servidor está saturado"`), mientras que `unit.move` y
-`unit.cancel_move` ignoran hoy el valor de retorno, de modo que el comando se descarta y el cliente no
-recibe rechazo. Es una carencia conocida, no un diseño: unificar la respuesta a `INTERNAL_ERROR` en las
-tres rutas está pendiente.
+Todas las rutas convierten ese `false` en un `system.error` con código `INTERNAL_ERROR` («el servidor
+está saturado»). Los comandos durables —`unit.move`, `unit.cancel_move`, `unit.garrison` y
+`unit.ungarrison`— pasan por `dispatchClaimed`, que además **libera** la reserva de idempotencia de su
+`requestId`: el comando no llegó a ejecutarse, y sin liberarla el reintento se descartaría como duplicado
+de algo que nunca ocurrió (I-10 de [../specs/websocket-protocol.md](../specs/websocket-protocol.md)).
 
 Hay dos niveles de control de flujo, en este orden:
 
@@ -641,9 +641,10 @@ Se documenta para que nadie lo implemente por inercia ni lo asuma existente:
 
 - **Combate** (fase 4 del tick): el paquete `simulation` existe y está lleno, pero la resolución de
   combate no está implementada; la fase 4 no hace nada.
-- **Comandos de red de guarnición y diplomacia.** `domain/diplomacy` y `domain/garrison` existen y
-  sus reglas se ejecutan contra PostgreSQL, pero el protocolo v1 no tiene ningún comando que las
-  dispare (M7). Tampoco hay siembra de safe zones en el mundo canónico: el índice existe y está vacío.
+- **Comandos de red de diplomacia.** Los tratados se crean por vía administrativa: el protocolo v1 no
+  tiene comandos para proponerlos, aceptarlos ni romperlos. La guarnición sí los tiene
+  (`unit.garrison`, `unit.ungarrison`, [ADR-017](../decisions/ADR-017-garrison-commands.md)). Tampoco hay
+  siembra de safe zones en el mundo canónico: el índice existe y está vacío.
 - **Emisión del ticket desde Next.js** (ADR-010): hoy la sirve `internal/httpapi`. Ver §1.
 - Sharding del mundo entre varios procesos: el MVP es **un único proceso** dueño del mundo entero.
 - Paralelización interna del tick (A\* en pool de workers, fases concurrentes).

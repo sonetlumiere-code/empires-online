@@ -337,8 +337,8 @@ entregable por entregable está en [../roadmap/milestones.md](../roadmap/milesto
 | **M3** Realtime | WebSocket, auth, snapshot, deltas, reconexión | Dentro | **Parcial**: servidor y cliente hechos; la emisión del ticket desde Next.js está bloqueada por una decisión (`DEBT-18`) |
 | **M4** Movement | A\*, loop, persistencia del movimiento, interpolación | Dentro | **Parcial**: servidor hecho y el cliente interpola; falta conectar la corrección gradual (`EO-075`) |
 | **M5** Offline protection & Safe Zones | Presencia y protección **sí**; Safe Zones con lógica mínima | Parcial | **Hecho**: presencia, protección y Safe Zones con ocultamiento y filtrado por destinatario. El mundo canónico no tiene zonas sembradas (`TBD`) |
-| **M6** Territories | Tablas creadas, lógica diferida | Fundamento | **Hecho** salvo el entregable 8: territorios, control, reclamación al fundar y `territory.update`; las acciones en territorio ajeno no tienen regla |
-| **M7** Diplomacy foundation | `treaties` y `garrisons` creados, lógica diferida | Fundamento | Reglas y persistencia de tratados y guarnición implementadas; ningún comando de red las expone |
+| **M6** Territories | Tablas creadas, lógica diferida | Fundamento | **Cerrado**: territorios, control, reclamación al fundar y `territory.update`. El territorio ajeno no restringe ninguna acción del MVP ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)) |
+| **M7** Diplomacy foundation | `treaties` y `garrisons` creados, lógica diferida | Fundamento | **Cerrado**: reglas y persistencia de tratados y guarnición, y los comandos `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)). Los tratados se crean por vía administrativa; la expulsión diferida queda fuera |
 
 Ver [../roadmap/milestones.md](../roadmap/milestones.md) para el criterio de salida de cada uno.
 

@@ -95,7 +95,7 @@ Tabla exhaustiva del vertical slice. `SoT` = source of truth.
 | **`tickNumber` / `epoch_ms`** | sí (`tickNumber` en RAM) | no | `world_state.current_tick`, `world_state.epoch_ms` | PostgreSQL | Al arrancar, el loop reancla el contador al reloj y usa `current_tick` sólo como suelo ([ADR-015](../decisions/ADR-015-tick-continuity.md)); el instante de simulación lo aporta el `Clock`, no una fórmula sobre el contador. |
 | **Eventos de dominio emitidos** | no se bufferizan | no | `world_events` (**tabla creada, sin escritura hoy**) | — | La simulación emite mensajes de protocolo directamente; no hay bus de eventos de dominio separado en el MVP. |
 
-Tablas creadas en MVP con lógica mínima o diferida (`territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events`): su contrato de persistencia será write-through cuando se activen; **no** participan del dirty-set.
+Tablas que nacieron con lógica mínima o diferida (`territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events`): todas las que tienen escritor son write-through —`territory_control` en la transacción del alta, `garrisons` y `treaties` en transacciones encoladas, `world_events` junto al hecho que registra— y **ninguna** participa del dirty-set. El detalle, tabla por tabla, en [../database/persistence-strategy.md](../database/persistence-strategy.md).
 
 ---
 

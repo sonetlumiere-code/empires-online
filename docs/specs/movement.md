@@ -180,7 +180,7 @@ contrario).
 |---|---|---|---|
 | RN-MOVE-006 | Existencia | `units.id = unitId` está en el estado en RAM | `UNIT_NOT_FOUND` |
 | RN-MOVE-007 | Propiedad | `units.player_id == session.playerId` (`EnsureOwnedBy`) | `UNIT_NOT_OWNED` |
-| RN-MOVE-008 | Estado | `EnsureCanMove()`: `IDLE`, `MOVING` y **`HIDDEN` sí pueden moverse**; `DEAD` y `GARRISONED` no | `UNIT_DEAD` / `UNIT_GARRISONED` / `UNIT_NOT_MOVABLE` |
+| RN-MOVE-008 | Estado | `EnsureCanMove()`: `IDLE`, `MOVING` y **`HIDDEN` sí pueden moverse**; `DEAD` y `GARRISONED` no. Una unidad que está **entrando** en una ciudad tampoco: sigue `IDLE` mientras su transacción no responde, y una orden la dejaría en la RAM fuera de la ciudad en la que la base la está metiendo (`RN-GARR-020`) | `UNIT_DEAD` / `UNIT_GARRISONED` / `UNIT_NOT_MOVABLE` |
 | RN-MOVE-009 | Límites | `world.TileInBounds(target)` | `TARGET_OUT_OF_BOUNDS` |
 | RN-MOVE-010 | Transitabilidad | `world.IsWalkable(target)`: terreno transitable **y** libre en el *blocked overlay* | `TARGET_NOT_WALKABLE` |
 | RN-MOVE-011 | Destino == origen | Si `PositionAt(now) == target`, **se acepta sin crear movimiento** (§6.2) | — (éxito) |
@@ -565,7 +565,7 @@ contra `packages/protocol` por un *contract test*. Esta spec **no introduce ning
 | `UNIT_NOT_OWNED` | `unit.move.rejected` / `system.error` | `u.PlayerID != session.PlayerID` |
 | `UNIT_DEAD` | `unit.move.rejected` | `EnsureCanMove()` devuelve `ErrDead` (`status == DEAD`) |
 | `UNIT_GARRISONED` | `unit.move.rejected` | `EnsureCanMove()` devuelve `ErrGarrisoned` (`status == GARRISONED`) |
-| `UNIT_NOT_MOVABLE` | `unit.move.rejected` | `EnsureCanMove()` devuelve cualquier otro error: `status` fuera del dominio conocido. **No** se dispara para `HIDDEN` |
+| `UNIT_NOT_MOVABLE` | `unit.move.rejected` | `EnsureCanMove()` devuelve cualquier otro error —`status` fuera del dominio conocido—, o la unidad está entrando en una ciudad (`TestMientrasEntraLaUnidadNoAceptaOrdenesNiSeVuelca`). **No** se dispara para `HIDDEN` |
 | `TARGET_OUT_OF_BOUNDS` | `unit.move.rejected` | `!world.TileInBounds(target)`, o el pathfinder devuelve `ErrTargetOutOfBounds` |
 | `TARGET_NOT_WALKABLE` | `unit.move.rejected` | `!world.IsWalkable(target)` (terreno intransitable u ocupado), o el pathfinder devuelve `ErrTargetNotWalkable` |
 | `PATH_TOO_LONG` | `unit.move.rejected` | El pathfinder devuelve `ErrPathTooLong`: distancia Chebyshev > `EO_PATHFINDING_MAX_DISTANCE`, o nodos expandidos > `EO_PATHFINDING_MAX_NODES` |

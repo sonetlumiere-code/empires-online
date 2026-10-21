@@ -247,7 +247,7 @@ un campo que el servidor lleva mandando desde entonces. Rechazada sin más discu
 
 - **Hay dos implementaciones de las mismas reglas.** Zod valida en el navegador; código Go escrito a mano
   valida en el servidor. Es exactamente la duplicación que el ADR dice combatir, con la diferencia de que
-  aquí es **deliberada, acotada a cinco tipos de mensaje y vigilada por CI**. No es que no pueda divergir:
+  aquí es **deliberada, acotada a los tipos de mensaje cliente→servidor —cinco al aceptarse este ADR, siete desde [ADR-017](ADR-017-garrison-commands.md)— y vigilada por CI**. No es que no pueda divergir:
   es que si diverge, el corpus de contract tests debería atraparlo.
 - **La garantía es tan buena como el corpus de tests.** Si el validador Go acepta un `unit.move` con
   `target.x` negativo y el corpus no incluye ese caso, la divergencia pasa. La calidad del corpus es la

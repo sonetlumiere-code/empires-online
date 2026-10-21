@@ -39,14 +39,14 @@ Envelope **servidor → cliente**:
 { "v": 1, "type": "entity.update", "seq": 1487, "ts": 1789453210123, "payload": { "...": "..." } }
 ```
 
-- `requestId` es UUIDv4 y es **obligatorio en los comandos que mutan el mundo**: `unit.move` y `unit.cancel_move`. Sin él, el servidor responde `system.error{INVALID_MESSAGE}` («requestId obligatorio») y no ejecuta nada, porque sin `requestId` no hay barrera de idempotencia. En `session.hello`, `session.ping` y `session.view` es **opcional**: si viene, se refleja en la respuesta correlacionada (`session.welcome`, `session.pong`, `world.snapshot`); si no, la respuesta sale sin campo `requestId`.
+- `requestId` es UUIDv4 y es **obligatorio en los comandos que mutan el mundo**: `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`. Sin él, el servidor responde `system.error{INVALID_MESSAGE}` («requestId obligatorio») y no ejecuta nada, porque sin `requestId` no hay barrera de idempotencia. En `session.hello`, `session.ping` y `session.view` es **opcional**: si viene, se refleja en la respuesta correlacionada (`session.welcome`, `session.pong`, `world.snapshot`); si no, la respuesta sale sin campo `requestId`.
 - `seq` es un **uint64 monótono por conexión** que empieza en `1` con `session.welcome`. `ts` es epoch ms del reloj del servidor.
 - Los identificadores numéricos (`unitId`, `movementId`, `cityId`) viajan como **números JSON**, no como cadenas: en Go son `int64` y así los serializa `encoding/json`. Los identificadores UUID (`sessionId`, `playerId`) viajan como cadenas.
 - El Game Server valida los mensajes entrantes **a mano en Go** por rendimiento; el JSON Schema exportado por `packages/protocol` se embebe con `go:embed` en `internal/protocol/schema/v1/` y se usa en los *contract tests*, no en el hot path. Ambas rutas deben coincidir o el contract test falla.
 
 **Tipos de mensaje v1** (lista cerrada; cualquier `type` fuera de ella produce `INVALID_MESSAGE`):
 
-- Cliente → servidor: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`.
+- Cliente → servidor: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`.
 - Servidor → cliente: `session.welcome`, `session.pong`, `system.error`, `world.snapshot`, `entity.spawn`, `entity.update`, `entity.despawn`, `city.update`, `territory.update`, `unit.move.accepted`, `unit.move.rejected`, `unit.movement.started`, `unit.movement.completed`, `unit.movement.cancelled`.
 
 ---
@@ -539,7 +539,7 @@ Lo que el cliente **no** hace, en ningún caso:
 
 Una reconexión o un reintento no deben ejecutar dos veces la misma orden. El mecanismo es el `requestId`:
 
-1. `unit.move` y `unit.cancel_move` llevan `requestId` UUIDv4 **generado por el cliente**. Sin él, el servidor responde `system.error{INVALID_MESSAGE}` y no ejecuta nada.
+1. `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison` llevan `requestId` UUIDv4 **generado por el cliente**. Sin él, el servidor responde `system.error{INVALID_MESSAGE}` y no ejecuta nada.
 2. Al recibirlo, el servidor **reserva** `idem:{playerId}:{requestId}` en Redis con `SETNX` y TTL **300 s**, **antes** de encolar el comando. Si dos copias del mismo comando llegan a la vez, sólo una gana la reserva.
 3. Si la clave **ya existía**, el comando **no se re-ejecuta**. Si el original ya tuvo respuesta directa (`unit.move.accepted`, `unit.move.rejected` o un `system.error` con su `requestId`), el duplicado recibe esa misma respuesta: el `Hub` la ve pasar al enviarla y el servidor la guarda en la misma clave, en una goroutine aparte para no frenar el tick. Si el original sigue en curso, no recibe nada. En cualquier caso, el estado del mundo lo da el `world.snapshot` de la reconexión.
 4. Si **Redis no responde**, el comando **se ejecuta igualmente** y se registra un `warn`. Es una elección explícita de fail-open en esta puerta concreta: se prefiere arriesgar un duplicado a dejar al jugador sin poder jugar. Contrasta a propósito con el handshake, que es fail-closed (§3.2): una identidad no verificable es un riesgo de seguridad; un movimiento duplicado, no.

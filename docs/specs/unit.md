@@ -25,6 +25,7 @@ HP, estado ni ownership (canon §1.1).
 
 - Persistencia de la entidad en la tabla `units`.
 - Máquina de estados `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`.
+- Comandos de red `unit.garrison` y `unit.ungarrison` ([garrison.md](./garrison.md), [ADR-017](../decisions/ADR-017-garrison-commands.md)).
 - Catálogo de tipos de unidad data-driven con `VILLAGER` como único tipo jugable.
 - Validación de ownership para todo comando dirigido a una unidad.
 - Spawn inicial: 3 `VILLAGER` junto al `TOWN_CENTER` de la ciudad inicial (canon §10).
@@ -36,8 +37,6 @@ HP, estado ni ownership (canon §1.1).
 - Entrenamiento y coste de unidades (economía).
 - Tipos de unidad militares, unidades navales, unidades de asedio.
 - Transferencia de ownership entre jugadores.
-- Comandos de red `unit.garrison` / `unit.ungarrison`: **TBD (fuera de MVP)**. El protocolo v1 solo
-  define `unit.move` y `unit.cancel_move` como comandos sobre unidades (canon §13).
 
 ## 3. Actores
 
@@ -55,7 +54,7 @@ Campos canónicos de `units` (canon §10 y §11):
 |---|---|---|---|
 | `id` | `bigint GENERATED ALWAYS AS IDENTITY` | no | Identidad de la unidad. |
 | `player_id` | `uuid` | no | Propietario. FK a `players.id` `ON DELETE CASCADE`. Inmutable en MVP. |
-| `city_id` | `bigint` | **sí** | Ciudad de origen y, si `status = GARRISONED`, ciudad anfitriona. FK a `cities.id` `ON DELETE SET NULL`. |
+| `city_id` | `bigint` | **sí** | Ciudad de origen: la que cuenta la unidad en su población. No cambia al guarnecer; la anfitriona está en `garrisons.city_id` ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4). FK a `cities.id` `ON DELETE SET NULL`. |
 | `unit_type` | `text` | no | Clave del catálogo de tipos. MVP: `VILLAGER`. Sin `CHECK`: el dominio cerrado lo impone `unit.Lookup` (`INV-UNIT-009`), porque el catálogo vive en código y no en la base. |
 | `x` | `integer` | no | Coordenada lógica de mapa (columna, hacia el este). |
 | `y` | `integer` | no | Coordenada lógica de mapa (fila, hacia el sur). |
@@ -182,8 +181,8 @@ stateDiagram-v2
 | T3 | `HIDDEN` | `MOVING` | `unit.move` validado; el ocultamiento se pierde al iniciar | Fase 2 del tick |
 | T4 | `MOVING` | `IDLE` | Movimiento `COMPLETED`, `CANCELLED` o `FAILED` | Fase 3 del tick |
 | T4b | `MOVING` | `MOVING` | `unit.move` validado sobre una unidad ya en marcha: el movimiento anterior se cancela con `REPLACED` y se registra el nuevo | Fase 2 del tick |
-| T5 | `IDLE` | `GARRISONED` | Entrada a guarnición autorizada | Servicio de garrison |
-| T6 | `GARRISONED` | `IDLE` | Salida de guarnición | Servicio de garrison |
+| T5 | `IDLE` | `GARRISONED` | `unit.garrison` autorizado y escrito (`RN-GARR-020`) | Resultado de la transacción de entrada |
+| T6 | `GARRISONED` | `IDLE` | `unit.ungarrison` | Tick (fase 2), o fase 5 si esperaba tile |
 | T7 | `IDLE` | `HIDDEN` | Reposo dentro de una Safe Zone activa | Fase 5 del tick |
 | T8 | `HIDDEN` | `IDLE` | La unidad deja de pertenecer a la Safe Zone | Fase 5 del tick |
 | T9 | cualquiera vivo | `DEAD` | Muerte. **Sin productor en MVP** (combate fuera de scope) | — |
@@ -226,10 +225,10 @@ la posición consolidada en `units.x/y`, que puede ir por detrás.
 |---|---|---|---|---|---|
 | `unit.move` | ✔ | ✔ (cancela y reemplaza, T4b) | ✘ `UNIT_GARRISONED` | ✔ (revela) | ✘ `UNIT_DEAD` |
 | `unit.cancel_move` | no-op (sin movimiento activo) | ✔ | no-op | no-op | no-op |
-| Entrar a guarnición | ✔ | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_GARRISONED` | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_DEAD` |
-| Salir de guarnición | ✘ | ✘ | ✔ | ✘ | ✘ `UNIT_DEAD` |
+| `unit.garrison` | ✔ | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_GARRISONED` | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_DEAD` |
+| `unit.ungarrison` | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_NOT_MOVABLE` | ✔ | ✘ `UNIT_NOT_MOVABLE` | ✘ (no se carga) |
 | Ocultamiento automático | ✔ (evaluado) | ✘ | ✘ | ✔ (reevaluado) | ✘ |
-| Aparecer en `entity.spawn`/`entity.update` | ✔ | ✔ | ✘ (solo propietario y anfitrión) | solo propietario | ✘ (`entity.despawn`) |
+| Aparecer en `entity.spawn`/`entity.update` | ✔ | ✔ | solo propietario | solo propietario | ✘ (`entity.despawn`) |
 
 `unit.cancel_move` valida **solo** existencia y ownership; después cancela el movimiento activo si lo hay.
 Sobre una unidad sin movimiento `ACTIVE` —esté `IDLE`, `HIDDEN`, `GARRISONED` o `DEAD`— es un **no-op
@@ -297,9 +296,10 @@ Dominio de reglas: `RN-UNIT` (convención de [README.md](README.md) §5.1).
   debajo del cap), así que `HasPopulationRoom` todavía no tiene ningún llamador en un camino de comando.
   El código de error `POPULATION_LIMIT_REACHED` existe en el catálogo del protocolo y queda reservado
   para el primer productor de unidades, que está `Fuera de MVP`.
-- **RN-UNIT-006** `city_id` es nullable por diseño: modela tanto "unidad sin ciudad de origen" (casos
-  administrativos y futuros) como la ciudad anfitriona durante `GARRISONED`. La FK es
-  `ON DELETE SET NULL`: borrar una ciudad no borra sus unidades.
+- **RN-UNIT-006** `city_id` es nullable por diseño: modela la «unidad sin ciudad de origen» (casos
+  administrativos y futuros). Es siempre la ciudad de origen, también durante `GARRISONED`
+  ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4). La FK es `ON DELETE SET NULL`: borrar una
+  ciudad no borra sus unidades.
 
 ## 10. Errores
 
@@ -369,7 +369,7 @@ Respondiendo a las cuatro preguntas obligatorias del canon §12:
 | Existencia de la unidad (`id`, `player_id`, `unit_type`, `max_hp`) | PostgreSQL | **Write-through transaccional** en la creación, dentro de la transacción de alta del jugador (`Bootstrapper.Create`). |
 | Hecho «esta unidad se está moviendo» | PostgreSQL, tabla `unit_movements` | La fila se escribe **en su propia transacción**, encolada en la cola de persistencia. Cancelar el movimiento anterior y crear el nuevo van en la MISMA transacción, para que nunca coexistan dos `ACTIVE`. |
 | `units.status` (los cinco valores) | RAM (loop) | **Dirty-flag + flush** cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50 ticks = 5 s), en el mismo lote que la posición. `units.status` es una **proyección**: ante discrepancia manda `unit_movements` ([`INV-UNIT-005`](../invariants/units.md#inv-unit-005)). |
-| `city_id` durante `GARRISONED` | RAM (loop) | Junto con la fila de `garrisons`. Guarnición: `Fuera de MVP` salvo la tabla. |
+| Ciudad anfitriona durante `GARRISONED` | PostgreSQL, tabla `garrisons` | **Write-through transaccional** en la entrada y la salida, encoladas con la clave de la unidad. En la RAM, un índice unidad → anfitriona reconstruido al arrancar. `units.city_id` no cambia. |
 | `x`, `y` en reposo | RAM (loop) | **Dirty-flag + flush** por lotes, junto con `chunk_x`/`chunk_y`, que se recalculan en la escritura. |
 | `x`, `y` durante un movimiento activo | RAM (loop) | **No se persiste por tick.** Se deriva analíticamente de la polilínea con `PositionAt(elapsedMs)` (canon §7). |
 | `hp` | RAM (loop) | **Dirty-flag + flush**. Constante en MVP: no hay productor de daño. |
@@ -455,7 +455,8 @@ cambio, es un `uuid` en texto.
 
 Reglas de visibilidad, no negociables:
 
-1. Una unidad `GARRISONED` **no** se emite a terceros bajo ninguna forma.
+1. Una unidad `GARRISONED` **no** se emite a terceros bajo ninguna forma; su propietario la recibe con
+   `garrisonCityId` ([INV-GARR-006](../invariants/diplomacy.md#inv-garr-006)).
 2. Una unidad `HIDDEN` se emite únicamente a su propietario. Enviarla "marcada como oculta" a los
    demás equivale a publicar su posición: cualquier cliente modificado la dibujaría.
 3. El servidor nunca envía la polilínea completa a observadores que no puedan verla, ni predice

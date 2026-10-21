@@ -169,7 +169,7 @@ y su byte en `world_chunks`. Ver [movement.md](movement.md) y
 
 | ID | Regla |
 |---|---|
-| `RN-CITY-012` | `population` es el número de unidades vivas asociadas a la ciudad. **No se lleva a mano**: `CityRepo.UpdatePopulation` la recalcula con `SET population = COALESCE((SELECT count(*) FROM units u WHERE u.city_id = c.id AND u.status <> 'DEAD'), 0)` dentro de la misma transacción que crea o destruye unidades. Los estados `IDLE`, `MOVING`, `GARRISONED` y `HIDDEN` cuentan; `DEAD` no. |
+| `RN-CITY-012` | `population` es el número de unidades vivas asociadas a la ciudad. **No se lleva a mano**: `CityRepo.UpdatePopulation` la recalcula con `SET population = COALESCE((SELECT count(*) FROM units u WHERE u.city_id = c.id AND u.status <> 'DEAD'), 0)` dentro de la misma transacción que crea o destruye unidades. Los estados `IDLE`, `MOVING`, `GARRISONED` y `HIDDEN` cuentan; `DEAD` no. Una unidad guarnecida cuenta en su ciudad de origen, no en la anfitriona: guarnecer no cambia `units.city_id` ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4). |
 | `RN-CITY-013` | Cada unidad consume 1 punto de población en MVP, porque el único `unit_type` del MVP es `VILLAGER` (canon §10). Una tabla de coste poblacional por tipo de unidad es `Fuera de MVP`. |
 | `RN-CITY-014` | `population_limit = era.population_cap + Σ(modificadores de edificios)`. En MVP el sumatorio es **cero** (canon §10), luego `population_limit == eras.population_cap` de la era de la ciudad. |
 | `RN-CITY-015` | `eras.population_cap` se lee de la tabla `eras`, **nunca** de una constante en código: `STONE_AGE`=20, `BRONZE_AGE`=50, `IRON_AGE`=100, `CASTLE_AGE`=150 (canon §10). El código no contiene esos literales; la tabla se siembra por migración. |
@@ -418,9 +418,11 @@ Reglas de difusión:
   `protection_until = NULL`.
 - Los esquemas servidor→cliente **no** son estrictos: pueden ganar campos opcionales sin romper clientes
   antiguos. Los de cliente→servidor sí lo son (`additionalProperties: false`).
-- El cliente **nunca** envía `city.update` ni ningún comando que altere la ciudad: los cinco mensajes
-  cliente→servidor de la v1 son `session.hello`, `session.ping`, `session.view`, `unit.move` y
-  `unit.cancel_move`.
+- El cliente **nunca** envía `city.update` ni ningún comando que altere la ciudad: los siete mensajes
+  cliente→servidor de la v1 son `session.hello`, `session.ping`, `session.view`, `unit.move`,
+  `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`. Guarnecer tampoco la altera: la unidad sigue
+  contando en la población de su ciudad de origen, y no se emite `city.update`
+  ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4).
 
 ## 13. Tests esperados
 

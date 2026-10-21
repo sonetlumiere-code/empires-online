@@ -521,7 +521,7 @@ La forma en que este invariante se rompe en la práctica no es un ataque, sino u
 
 **Cómo se garantiza.**
 
-- `TYPE` — los esquemas Zod de `packages/protocol/src/v1/client.ts` son la fuente de verdad del protocolo. Los cinco mensajes cliente→servidor son `session.hello`, `session.ping`, `session.view`, `unit.move` y `unit.cancel_move`, y ninguno declara campos de estado derivado. `unit.move` es exactamente `{ unitId, target: {x, y} }`.
+- `TYPE` — los esquemas Zod de `packages/protocol/src/v1/client.ts` son la fuente de verdad del protocolo. Los siete mensajes cliente→servidor son `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`, y ninguno declara campos de estado derivado. `unit.move` es exactamente `{ unitId, target: {x, y} }`.
 - `BOUNDARY` — los esquemas cliente→servidor se exportan a JSON Schema con `additionalProperties: false`. Un campo desconocido **falla la validación** en lugar de ignorarse silenciosamente; un descarte silencioso podría convertirse en aceptación tras un refactor.
 - `BOUNDARY` — el servidor Go decodifica envelope y payload con `protocol.DecodeStrict`, que rechaza toda propiedad no declarada a cualquier profundidad. Un contract test comprueba que el JSON Schema embebido (`go:embed` del espejo de `pnpm run protocol:build`) declara `additionalProperties: false` en todo objeto cliente→servidor y que el decodificador rechaza lo mismo. Hasta `EO-118` el servidor usaba `json.Unmarshal`, que descartaba los campos de más en silencio y ejecutaba el comando.
 - `TYPE` — las coordenadas se declaran como enteros, lo que descarta flotantes y `NaN` antes de llegar a Go.
