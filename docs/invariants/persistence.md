@@ -24,7 +24,7 @@ Todo documento de diseño debe poder responder a las cuatro preguntas; aquí est
 
 | Estrategia | Qué entra | Mecanismo |
 |---|---|---|
-| **Write-through transaccional, con escritura diferida** | Creación de player/city/unit, inicio y finalización de movimiento, transiciones de presencia, `world_events` | El alta de jugador es una transacción síncrona en `internal/httpapi`; el resto se aplica en RAM y se **encola** en la cola de persistencia, que unos workers escriben fuera del tick |
+| **Write-through transaccional, con escritura diferida** | Creación de player/city/unit, inicio y finalización de movimiento, transiciones de presencia, `world_events` | La fundación de un jugador es una transacción síncrona en `internal/httpapi` (`POST /internal/players`); el resto se aplica en RAM y se **encola** en la cola de persistencia, que unos workers escriben fuera del tick |
 | **Dirty-flag + flush periódico** | Posiciones consolidadas de unidades, `hp` | Cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS = 50` ticks, es decir 5 s a 10 Hz |
 | **Reconstruible (no se persiste)** | Posición durante un movimiento activo, conjuntos de interés y suscripciones, presencia derivada | Derivación analítica desde `unit_movements` / recálculo |
 

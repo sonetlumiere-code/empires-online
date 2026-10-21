@@ -178,7 +178,7 @@ Crear un jugador implica crear su ciudad inicial y sus 3 aldeanos (canon §10). 
 
 ```sql
 BEGIN;
-  INSERT INTO players (id, username, password_hash, ...) VALUES ($1, ...);
+  INSERT INTO players (id, username, civilization_id, faction_id) VALUES ($1, ...);  -- id elegido por apps/web
   INSERT INTO cities (owner_player_id, name, center_x, center_y, era, population_limit, ...)
        VALUES ($1, ...) RETURNING id;                                     -- centro + zona urbana
   INSERT INTO units (player_id, city_id, unit_type, status, x, y, chunk_x, chunk_y, hp, max_hp)
@@ -188,7 +188,7 @@ BEGIN;
 COMMIT;
 ```
 
-La ejecuta `postgres.Bootstrapper.Create` desde `internal/httpapi` (`POST /api/auth/register`), **no** un worker de la cola. Fallo en cualquier paso ⇒ `ROLLBACK` ⇒ el jugador no existe ⇒ el cliente recibe `500 INTERNAL_ERROR` (o `409 USERNAME_TAKEN` si el conflicto es de unicidad) y puede volver a intentar el alta; no se crea nada a medias.
+La ejecuta `postgres.Bootstrapper.Create` desde la fundación de `internal/httpapi` (`POST /internal/players`, que llama `apps/web` al dar de alta una cuenta), **no** un worker de la cola. Fallo en cualquier paso ⇒ `ROLLBACK` ⇒ el jugador no existe ⇒ la fundación responde `500 INTERNAL_ERROR` (o `409 USERNAME_TAKEN` si el nombre es de otro jugador) y la cuenta de `apps/web` se queda `PENDING` o se borra ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) §2.5); no se crea nada a medias.
 
 **Orden obligatorio**: primero la transacción y sólo **después** el comando `IntroducePlayer`, que incorpora al jugador al mundo en RAM. Nunca al revés: el mundo en RAM no conoce a nadie que la base de datos no haya confirmado antes.
 
@@ -292,7 +292,7 @@ Al recuperarse Redis, los `session.ping` de los clientes vuelven a escribir `pre
 | Game loop | Sigue ticando. La simulación en RAM es autoritativa para el tick en curso. |
 | Movimientos ya `ACTIVE` | Continúan y se completan en RAM; su persistencia queda encolada. |
 | `unit.move` y `unit.cancel_move` | **Se siguen aceptando.** La validación y la mutación ocurren en RAM y la confirmación al cliente precede al `COMMIT` (§2.1, regla 4), así que la caída de PostgreSQL no llega a la fase 2. El trabajo durable se encola, se reintenta hasta 3 veces con backoff y, agotados los intentos, se registra como error. **Ése es el riesgo real**: el jugador ve un mundo que la base de datos no confirmó. |
-| Bootstrap de jugador (`POST /api/auth/register`) | **Se rechaza**: su transacción sí es síncrona y en el camino de la petición. Respuesta `500 INTERNAL_ERROR`; no se crea nada. |
+| Fundación de jugador (`POST /internal/players`) | **Se rechaza**: su transacción sí es síncrona y en el camino de la petición. Respuesta `500 INTERNAL_ERROR`; no se crea nada, y la cuenta de `apps/web` queda `PENDING` hasta el siguiente login. |
 | Cola de persistencia | Crece; `eo_persistence_queue_depth` sube. Si llega a su capacidad (4096), `Submit` **descarta** el trabajo y lo registra como error: descartar escrituras nunca es normal y por eso se grita. Política de saturación en [../database/persistence-strategy.md](../database/persistence-strategy.md). |
 | `/ready` | *not ready* (se retira de balanceo si aplica). `GET /health` sigue respondiendo 200: el proceso está vivo. |
 

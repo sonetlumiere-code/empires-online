@@ -1,10 +1,10 @@
 package websocket_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -192,6 +192,28 @@ type e2e struct {
 	// saturación de la cola.
 	dedupe   *memoryDeduper
 	commands chan simulation.Command
+	// logs guarda todo lo que el servidor registra, en debug, para los tests
+	// que comprueban qué NO se registra (INV-PLAYER-007).
+	logs *safeBuffer
+}
+
+// safeBuffer es un bytes.Buffer que admite escrituras desde varias goroutines:
+// la sesión, el hub y el loop registran a la vez.
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func newE2E(t *testing.T) *e2e {
@@ -210,19 +232,28 @@ func newE2EConTerreno(t *testing.T, pintar func(terrain []byte)) *e2e {
 // configuración del servidor WebSocket antes de construirlo.
 func newE2ECon(t *testing.T, pintar func(terrain []byte), ajustar func(*ws.Config)) *e2e {
 	t.Helper()
+	return newE2EDeLado(t, 128, pintar, ajustar)
+}
 
-	terrain := make([]byte, 128*128)
+// newE2EDeLado permite un mundo mayor: con 128 × 128 y chunks de 32, el radio de
+// interés de 2 chunks ya cubre el mundo entero, y mover la vista no cambiaría
+// nada.
+func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar func(*ws.Config)) *e2e {
+	t.Helper()
+
+	terrain := make([]byte, int(lado)*int(lado))
 	for i := range terrain {
 		terrain[i] = byte(world.Grassland)
 	}
 	if pintar != nil {
 		pintar(terrain)
 	}
-	gameWorld, err := world.New(128, 128, 32, 1, terrain)
+	gameWorld, err := world.New(lado, lado, 32, 1, terrain)
 	require.NoError(t, err)
 
 	clk := clock.NewFakeClock(testEpoch)
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logs := &safeBuffer{}
+	log := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	state := simulation.NewState(gameWorld)
 	hub := ws.NewHub(nil, log)
 	commands := make(chan simulation.Command, 256)
@@ -288,8 +319,8 @@ func newE2ECon(t *testing.T, pintar func(terrain []byte), ajustar func(*ws.Confi
 		InterestRadiusChunks: 2,
 		TickDurationMs:       100,
 		HeartbeatIntervalMs:  10_000,
-		WorldWidth:           128,
-		WorldHeight:          128,
+		WorldWidth:           lado,
+		WorldHeight:          lado,
 		ChunkSize:            32,
 	}
 	if ajustar != nil {
@@ -309,6 +340,7 @@ func newE2ECon(t *testing.T, pintar func(terrain []byte), ajustar func(*ws.Confi
 		state:    state,
 		playerID: playerID, unitIDs: unitIDs,
 		dedupe: dedupe, commands: commands,
+		logs: logs,
 	}
 	env.stop = func() { httpServer.Close() }
 	t.Cleanup(env.stop)
@@ -400,7 +432,7 @@ func (c *conn) await(msgType string, timeout time.Duration) envelope {
 	require.NoError(c.t, c.c.SetReadDeadline(time.Now().Add(timeout)))
 
 	for {
-		_, data, err := c.c.ReadMessage()
+		data, err := c.read()
 		if err != nil {
 			c.t.Fatalf("esperando %q: %v (recibidos: %v)", msgType, err, seen)
 		}
@@ -529,7 +561,7 @@ func TestNoSeAceptanComandosSinAutenticar(t *testing.T) {
 	})
 
 	_ = c.c.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, _, err := c.c.ReadMessage()
+	_, err := c.read()
 	require.Error(t, err, "el servidor debe cerrar la conexión")
 
 	var closeErr *gws.CloseError
@@ -544,7 +576,7 @@ func TestTicketInvalidoCierraLaConexion(t *testing.T) {
 	c.send(protocol.TypeSessionHello, map[string]any{"ticket": "esto-no-es-un-jwt"})
 
 	_ = c.c.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, _, err := c.c.ReadMessage()
+	_, err := c.read()
 	require.Error(t, err)
 
 	var closeErr *gws.CloseError
@@ -568,7 +600,7 @@ func TestTicketNoSePuedeReutilizarEnOtraConexion(t *testing.T) {
 	c2.send(protocol.TypeSessionHello, map[string]any{"ticket": ticket})
 
 	_ = c2.c.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, _, err = c2.c.ReadMessage()
+	_, err = c2.read()
 	require.Error(t, err, "el ticket reutilizado debe rechazarse")
 }
 
@@ -696,7 +728,7 @@ func TestComandoDuplicadoSeIgnora(t *testing.T) {
 	_ = c.c.SetReadDeadline(time.Now().Add(700 * time.Millisecond))
 	iniciados := 0
 	for {
-		_, data, err := c.c.ReadMessage()
+		data, err := c.read()
 		if err != nil {
 			break
 		}
@@ -882,4 +914,51 @@ func TestConLaColaLlenaElComandoRespondeYSePuedeReintentar(t *testing.T) {
 	})
 	env.pump()
 	require.Equal(t, orden, c.await(protocol.TypeUnitMoveAccepted, 3*time.Second).RequestID)
+}
+
+// INV-PLAYER-007, mitad del handshake: el servidor registra el motivo de cada
+// rechazo de un ticket, y nunca el ticket. Se recorren un handshake válido, un
+// ticket basura, uno firmado con otro secreto, uno caducado y uno reutilizado,
+// y ninguna línea de log contiene ninguno de esos tickets ni el secreto.
+func TestLosLogsDelHandshakeNoContienenTicketsNiSecreto(t *testing.T) {
+	env := newE2E(t)
+	rechazado := func(ticket string) {
+		c := env.dial()
+		c.send(protocol.TypeSessionHello, map[string]any{"ticket": ticket})
+		_ = c.c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, err := c.read()
+		require.Error(t, err)
+	}
+
+	bueno, err := env.issuer.Issue(env.playerID)
+	require.NoError(t, err)
+	c := env.dial()
+	c.send(protocol.TypeSessionHello, map[string]any{"ticket": bueno})
+	c.await(protocol.TypeSessionWelcome, 3*time.Second)
+
+	ajeno, err := auth.NewIssuer("otro-secreto-igual-de-largo-que-el-bueno-0123", time.Minute, env.clk).Issue(env.playerID)
+	require.NoError(t, err)
+	caducado, err := auth.NewIssuer(testSecret, time.Second, clock.NewFakeClock(testEpoch-60_000)).Issue(env.playerID)
+	require.NoError(t, err)
+	const basura = "esto-no-es-un-jwt-pero-podria-parecerlo"
+
+	rechazado(basura)
+	rechazado(ajeno)
+	rechazado(caducado)
+	rechazado(bueno) // reutilizado
+
+	// Los cuatro rechazos se registran, con su motivo: si no se registrara nada,
+	// el test pasaría sin comprobar nada.
+	require.Eventually(t, func() bool { return strings.Count(env.logs.String(), "handshake rechazado") == 4 },
+		2*time.Second, 20*time.Millisecond, "logs:\n%s", env.logs.String())
+	todo := env.logs.String()
+	for nombre, prohibido := range map[string]string{
+		"ticket válido": bueno, "ticket ajeno": ajeno, "ticket caducado": caducado,
+		"ticket basura": basura, "secreto": testSecret,
+	} {
+		require.False(t, strings.Contains(todo, prohibido), "los logs contienen el %s", nombre)
+	}
+	// Y la firma por separado: un log que truncara el ticket la dejaría ver.
+	firma := bueno[strings.LastIndex(bueno, ".")+1:]
+	require.False(t, strings.Contains(todo, firma), "los logs contienen la firma del ticket")
 }

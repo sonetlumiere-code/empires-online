@@ -37,7 +37,6 @@ import (
 const (
 	commandQueueSize = 8192
 	shutdownTimeout  = 25 * time.Second
-	ticketTTL        = 60 * time.Second
 	ticketReplayTTL  = 120 * time.Second
 	idempotencyTTL   = 300 * time.Second
 )
@@ -307,25 +306,25 @@ func run() error {
 
 	firstEra := eras[0]
 
-	authAPI := httpapi.NewAuthAPI(playerRepo, cityRepo, bootstrapper,
-		auth.NewIssuer(cfg.AuthJWTSecret.Reveal(), ticketTTL, sysClock),
+	// La identidad vive en apps/web (ADR-018): aquí no hay alta ni login, sólo la
+	// fundación del jugador en el mundo, autorizada por un token de la audiencia
+	// interna. Su jti se consume en el mismo almacén anti-replay que el ticket.
+	foundingAPI := httpapi.NewFoundingAPI(playerRepo, cityRepo, bootstrapper,
+		httpapi.NewFoundingAuthenticator(cfg.AuthJWTSecret.Reveal(), sysClock, hot.Tickets()),
 		gameWorld, commands, httpapi.Options{
 			DefaultEra:     firstEra.Code,
 			CivilizationID: 1,
 			FactionID:      3, // NEUTRAL
 			Territories:    territories,
-			Limiter: httpapi.NewIPLimiter(
-				cfg.AuthRateLimitPerMin, cfg.AuthRateLimitBurst, cfg.TrustProxyHeaders),
-			Tick:  gameLoop.Tick,
-			Clock: sysClock,
+			Tick:           gameLoop.Tick,
+			Clock:          sysClock,
 		}, log)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", health.LivenessHandler())
 	mux.HandleFunc("/ready", health.ReadinessHandler())
 	mux.HandleFunc("/ws", wsServer.Handler(rootCtx))
-	mux.HandleFunc("/api/auth/register", withCORS(authAPI.Register()))
-	mux.HandleFunc("/api/auth/login", withCORS(authAPI.Login()))
+	mux.HandleFunc(httpapi.FoundPath, foundingAPI.Found())
 
 	gameHTTP := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -480,20 +479,6 @@ func loadWorld(
 			"seed", state.Seed, "tick", state.CurrentTick, "epoch_ms", state.EpochMs)
 	}
 	return gameWorld, state, nil
-}
-
-// withCORS permite que el frontend en otro origen consuma la API de desarrollo.
-func withCORS(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next(w, r)
-	}
 }
 
 // loadTerritories siembra la geometría la primera vez y devuelve el índice y el

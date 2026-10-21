@@ -1007,7 +1007,7 @@ Los tests marcados **(existe)** están escritos y en verde; el resto están dise
 
 | ID | Caso | Aserción |
 |---|---|---|
-| MV-C-001 | Los mensajes de §12 validan contra el JSON Schema v1 | Sin campos extra ni faltantes; ids como número |
+| MV-C-001 | Los mensajes de §12 validan contra el JSON Schema v1 | Sin campos extra ni faltantes; ids como número **(existe: cada vez que el servidor real los emite en un e2e, `internal/websocket/schema_e2e_test.go`)** |
 | MV-C-002 | `INV-MOVE-011` | Ningún esquema cliente→servidor de v1 contiene posición, ruta, `tMs`, velocidad ni instante de llegada |
 | MV-C-003 | Catálogo de errores Go ↔ TypeScript | Los 22 códigos coinciden exactamente **(existe, `internal/protocol`)** |
 

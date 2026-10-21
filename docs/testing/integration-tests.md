@@ -17,7 +17,7 @@ Cómo se verifica la capa de persistencia contra PostgreSQL y Redis **reales**: 
 > desarrollo lo tiene descartado (provoca pantallazos azules por consumo de RAM). PostgreSQL es un
 > cluster propio en `.pgdata/` puerto 5433, y Redis vive en WSL. El procedimiento exacto está en
 > [local-development.md](../operations/local-development.md) §3-bis. El job `integration` de la CI sí
-> usa contenedores, y desde que el repositorio es público esos 44 tests **también pasan allí**, con
+> usa contenedores, y desde que el repositorio es público esos tests —93 de Go a 2026-10-21, más los 8 del almacén de identidad de `apps/web`— **también pasan allí**, con
 > `-race`, contra `postgres:16-alpine` y `redis:7-alpine`.
 >
 > Donde este documento describa un test que **no** existe todavía, lo dice en su propia fila. Ubicación
@@ -283,8 +283,9 @@ Canon §10 y §12: la creación de player/city/unit es **write-through inmediato
 **Orden real del alta.** Primero la transacción en PostgreSQL (jugador + ciudad + 3 aldeanos, atómica)
 y **sólo después** el comando `IntroducePlayer` que incorpora al jugador al mundo en RAM. Un test que
 observara el mundo en memoria antes del `COMMIT` estaría verificando un orden que el código no tiene.
-Nótese además que hoy el alta la sirve el propio game server en `POST /api/auth/register`
-(`internal/httpapi`, con bcrypt): es explícitamente provisional, y ADR-010 la traslada a Next.js.
+El alta de la cuenta la sirve `apps/web` y el game server sólo funda al jugador (`POST /internal/players`,
+[ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)); los tests de la fundación están en `internal/persistence/postgres/fundacion_integration_test.go`, y los
+del almacén de identidad, en `apps/web/src/server/store.integration.test.ts`, con la misma puerta `EO_INTEGRATION=1`.
 
 I2 es el test que da valor a todo el bloque. Implementación concreta del fallo inyectado: el repositorio recibe un `UnitOfWork` decorado que devuelve error en la n-ésima escritura.
 

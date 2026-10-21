@@ -43,13 +43,15 @@ export default function Page() {
       setAuthError(null);
       try {
         const creds = { username, password };
-        // El alta y el inicio de sesión devuelven un ticket, pero el cliente
-        // pedirá uno nuevo en cada reconexión: los tickets son de un solo uso.
-        await (mode === 'register' ? register(creds) : login(creds));
+        // El alta y el inicio de sesión devuelven un ticket y dejan una cookie de
+        // sesión; cada reconexión pide un ticket nuevo con ella, porque los
+        // tickets son de un solo uso. La contraseña no se guarda.
+        const { ticket } = await (mode === 'register' ? register(creds) : login(creds));
+        setPassword('');
 
         const client = new GameClient({
           url: WS_URL,
-          fetchTicket: ticketProvider(creds),
+          fetchTicket: ticketProvider(ticket),
           onMessage: applyServerMessage,
           onStateChange: setConnection,
           onError: (code, message) => setAuthError(`${code}: ${message}`),

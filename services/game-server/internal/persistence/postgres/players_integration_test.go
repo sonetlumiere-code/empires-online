@@ -16,8 +16,6 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
-const hashDePrueba = "$2a$10$hashdepruebahashdepruebahashdepruebahashdepru"
-
 // La mitad DB de INV-PLAYER-002, 005 y 006: cada fila inválida la rechaza el
 // motor con el nombre exacto de la restricción.
 func TestLasRestriccionesDeJugadoresRechazanFilasInvalidas(t *testing.T) {
@@ -26,8 +24,8 @@ func TestLasRestriccionesDeJugadoresRechazanFilasInvalidas(t *testing.T) {
 
 	insertar := func(id uuid.UUID, username string, civ, faction any) error {
 		_, err := db.Exec(ctx,
-			`INSERT INTO players (id, username, password_hash, civilization_id, faction_id)
-			 VALUES ($1, $2, $3, $4, $5)`, id, username, hashDePrueba, civ, faction)
+			`INSERT INTO players (id, username, civilization_id, faction_id)
+			 VALUES ($1, $2, $3, $4)`, id, username, civ, faction)
 		return err
 	}
 
@@ -63,8 +61,8 @@ func TestValidateUsernameYElCheckDicenLoMismo(t *testing.T) {
 	}
 	for _, nombre := range nombres {
 		_, err := db.Exec(ctx,
-			`INSERT INTO players (id, username, password_hash, civilization_id, faction_id)
-			 VALUES ($1, $2, $3, 1, 3)`, uuid.New(), nombre, hashDePrueba)
+			`INSERT INTO players (id, username, civilization_id, faction_id)
+			 VALUES ($1, $2, 1, 3)`, uuid.New(), nombre)
 		enBorde := player.ValidateUsername(nombre) == nil
 		enBase := err == nil
 		assert.Equal(t, enBorde, enBase, "%q: borde=%v base=%v (%v)", nombre, enBorde, enBase, err)
@@ -126,10 +124,11 @@ func TestLosDosEjesSonOrtogonales(t *testing.T) {
 	assert.Equal(t, 12, i)
 }
 
-// INV-PLAYER-007, mitad del esquema: la única columna de credencial es
-// players.password_hash. Ninguna otra columna de ninguna tabla se llama como
-// algo que guarde una contraseña, un secreto, un ticket o un token.
-func TestLaUnicaColumnaDeCredencialEsElHash(t *testing.T) {
+// INV-PLAYER-007, mitad del esquema: desde ADR-018 (migración 000005) el esquema
+// del juego no guarda ninguna credencial. Ninguna columna de ninguna tabla se
+// llama como algo que guarde una contraseña, un secreto, un ticket o un token:
+// la identidad vive en el almacén propio de apps/web.
+func TestElEsquemaDelJuegoNoTieneCredenciales(t *testing.T) {
 	store, ctx := newTestStore(t)
 
 	rows, err := store.Pool().Query(ctx,
@@ -146,7 +145,7 @@ func TestLaUnicaColumnaDeCredencialEsElHash(t *testing.T) {
 		columnas = append(columnas, c)
 	}
 	require.NoError(t, rows.Err())
-	assert.Equal(t, []string{"players.password_hash"}, columnas)
+	assert.Empty(t, columnas)
 }
 
 // INV-PLAYER-003: el alta exige exactamente player.InitialVillagers aldeanos.
@@ -163,7 +162,7 @@ func TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir(t *testing.T) {
 		}
 		_, err := bootstrapper.Create(ctx, req)
 		require.Error(t, err, "%d aldeanos", n)
-		_, _, err = players.GetByUsername(ctx, req.Username)
+		_, err = players.GetByUsername(ctx, req.Username)
 		assert.Error(t, err, "%d aldeanos: no queda jugador", n)
 	}
 }

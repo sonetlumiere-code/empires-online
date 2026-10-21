@@ -67,7 +67,7 @@ comando `city.found` en el protocolo v1 (canon §13).
 | Input | Tipo | Origen |
 |---|---|---|
 | `ownerPlayerId` | `uuid` | Transacción de bootstrap (`internal/persistence/postgres/bootstrap.go`). |
-| `name` | `text` | Hoy se deriva del `username`: `username + "polis"` (`internal/httpapi/auth.go`). Que el jugador proponga el nombre es `Fuera de MVP`. Validación en `RN-CITY-011`. |
+| `name` | `text` | Hoy se deriva del `username`: `username + "polis"` (`internal/httpapi/founding.go`). Que el jugador proponga el nombre es `Fuera de MVP`. Validación en `RN-CITY-011`. |
 | Semilla de emplazamiento | `hashSeed(username) uint64` | Elección determinista del sitio, que hace raro que dos altas simultáneas busquen en la misma región; cuando ocurre, la comprobación bajo cerrojo de `RN-PLAYER-014` lo resuelve. **No** deriva de `EO_WORLD_SEED`, que gobierna el terreno, no el emplazamiento. |
 
 ### 4.2 Del mundo
@@ -123,7 +123,7 @@ Dominio de reglas: `RN-CITY`.
 | `RN-CITY-003` | **Todo** el entorno de semilado `clearRadius = 3` alrededor del centro (un cuadrado 7×7, más amplio que la propia zona urbana 3×3) debe pasar `World.IsWalkable`: dentro de límites, terreno transitable y **sin marca en el overlay de ocupación**. Como `IsWalkable` ya combina terreno y ocupación, la zona urbana de otra ciudad invalida el candidato sin ninguna comprobación adicional. |
 | `RN-CITY-004` | La distancia **Chebyshev** entre el centro de la nueva ciudad y el centro de cualquier ciudad existente debe ser `>= minCityDistance = 24` tiles. Se usa Chebyshev porque la vecindad del mundo es de 8 direcciones (canon §4). Es una constante del paquete `internal/game/founding`, no una variable `EO_`: parametrizarla por entorno haría que dos despliegues generaran mundos incompatibles. |
 | `RN-CITY-005` | La búsqueda de emplazamiento es **determinista**: dados el mismo `username`, el mismo mundo y el mismo conjunto de ciudades previas, produce siempre el mismo resultado. Se implementa como un punto de partida derivado de `hashSeed(username)` seguido de una **espiral cuadrada** de anillos con orden de tiles fijo (`ringTiles`), muestreada con paso `ring/8 + 1` para no generar millones de candidatos en los anillos grandes; prohibido iterar mapas de Go sin ordenar. |
-| `RN-CITY-006` | Si la espiral recorre el mundo entero sin encontrar un sitio válido, `FindSite` devuelve `ErrNoSite` y el alta falla. Hoy el alta la sirve `POST /api/auth/register` (`internal/httpapi`), que responde `409 Conflict` con el código HTTP `NO_SITE_AVAILABLE`. Ese código **no** pertenece al catálogo de 22 códigos del protocolo WebSocket (canon §16) y no se inventa ninguno: es un error de la API HTTP de alta. |
+| `RN-CITY-006` | Si la espiral recorre el mundo entero sin encontrar un sitio válido, `FindSite` devuelve `ErrNoSite` y el alta falla. La fundación (`POST /internal/players`, `internal/httpapi`) responde `409 Conflict` con el código HTTP `NO_SITE_AVAILABLE`, y el alta de `apps/web` lo devuelve tal cual y borra la cuenta pendiente ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Ese código **no** pertenece al catálogo de 22 códigos del protocolo WebSocket (canon §16) y no se inventa ninguno: es un error de la API HTTP de alta. |
 
 ### 6.2 Zona urbana amurallada
 
@@ -224,8 +224,8 @@ En MVP una ciudad, una vez creada, existe para siempre.
 
 Los nueve códigos anteriores pertenecen al catálogo cerrado de 22 del protocolo WebSocket
 (`internal/protocol/codes.go`, verificado contra `@empires-online/protocol` por un contract test). El alta de
-jugador, en cambio, la sirve hoy `POST /api/auth/register` sobre HTTP y usa códigos **propios de esa API**, que
-no están en el catálogo y no deben confundirse con él: `NO_SITE_AVAILABLE` (409, `RN-CITY-006`),
+jugador, en cambio, la sirve `apps/web` sobre HTTP (`POST /api/auth/register`, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) y usa códigos
+**propios de esa API**, que no están en el catálogo y no deben confundirse con él: `NO_SITE_AVAILABLE` (409, `RN-CITY-006`),
 `USERNAME_TAKEN` (409), `INVALID_USERNAME` (400), `WEAK_PASSWORD` (400), `SITE_CONTENDED` (503) e `INTERNAL_ERROR` (500).
 
 ## 9. Invariantes (con ID)

@@ -62,6 +62,18 @@ pnpm run db:up          # PostgreSQL 16 + Redis 7 en contenedores
 `db:up` falla si el daemon de Docker no está en marcha. En Windows hay que abrir
 Docker Desktop (requiere permisos de administrador la primera vez).
 
+La web guarda las cuentas en su **propio almacén de identidad**, otra base con otro rol
+([ADR-018](docs/decisions/ADR-018-identity-store-and-ticket-issuer.md)). Con Docker, créalo una vez:
+
+```bash
+docker compose cp scripts/setup-local-db.sql postgres:/tmp/setup-local-db.sql
+docker compose exec postgres psql -U empires -d postgres -f /tmp/setup-local-db.sql
+```
+
+Te pedirá la contraseña del rol `empires_identity`, que no se guarda en ningún fichero; ponla después en las
+URL de tu `.env` (`EO_IDENTITY_POSTGRES_URL`, `EO_TEST_IDENTITY_POSTGRES_URL`). Este camino no se ha podido
+verificar en la máquina de desarrollo, donde Docker está descartado.
+
 <details>
 <summary><b>Alternativa sin Docker</b> (cluster propio, sin permisos de administrador)</summary>
 
@@ -100,8 +112,12 @@ ver [`docs/operations/local-development.md`](docs/operations/local-development.m
 Con Docker descartado, la consola de la base se abre con `pnpm run pg:psql`
 (los scripts `db:psql` y `db:redis` entran al contenedor y aquí no sirven).
 
+`pg:init` crea también el almacén de identidad de la web y escribe su URL, con una contraseña aleatoria,
+en tu `.env`. En un cluster creado antes, ejecuta una vez `pnpm run pg:identity`.
+
 Si en cambio prefieres usar un PostgreSQL que ya administras, `psql -U postgres
--f scripts/setup-local-db.sql` crea el rol y las bases en él.
+-f scripts/setup-local-db.sql` crea los roles y las bases en él, incluido el almacén de identidad (te pedirá
+su contraseña, que luego va en el `.env`).
 
 </details>
 
@@ -137,7 +153,8 @@ unidades y reanuda los movimientos que quedaron a medias. Escucha en `:8080`
 pnpm run web:dev         # http://localhost:3000
 ```
 
-Pulsa **Fundar imperio** para crear un jugador con su ciudad y sus tres aldeanos.
+Pulsa **Fundar imperio** para crear un jugador con su ciudad y sus tres aldeanos. La cuenta la guarda la
+web y el Game Server funda al jugador en el mundo, así que hacen falta los dos procesos en marcha.
 Haz clic en un aldeano para seleccionarlo y en el mapa para ordenarle moverse.
 
 ### 6. Poblar el mundo (opcional)
@@ -149,8 +166,8 @@ Un mundo recién creado está vacío. Para probar a mano con varios jugadores y 
 pnpm run dev:seed
 ```
 
-Crea `dev_norte`, `dev_sur`, `dev_este` y `dev_oeste`, con la contraseña
-`semilla-de-desarrollo`, en ciudades vecinas, y un bosque seguro junto a cada una. Sólo en una base
+Crea `dev_norte`, `dev_sur`, `dev_este` y `dev_oeste` en ciudades vecinas, con un bosque seguro junto a
+cada una, y sus cuentas en el almacén de identidad, con la contraseña `semilla-de-desarrollo`. Sólo en una base
 de desarrollo: se niega si `EO_ENV` no es `development`. Vuelve a arrancar el servidor después.
 
 ### 7. Comprobar que todo funciona
@@ -159,10 +176,10 @@ de desarrollo: se niega si `EO_ENV` no es `development`. Vuelve a arrancar el se
 pnpm run smoke
 ```
 
-Recorre el flujo completo contra el servidor que acabas de arrancar: alta,
+Recorre el flujo completo contra el servidor y la web que acabas de arrancar: alta en la web,
 handshake, snapshot, una orden de movimiento y —lo que ninguna sonda HTTP puede
 comprobar— **cierra la conexión a mitad de trayecto, espera sin cliente
-conectado, y reconecta para verificar que la unidad llegó igualmente**. Si eso
+conectado, y reconecta —con un ticket pedido con la cookie de sesión— para verificar que la unidad llegó igualmente**. Si eso
 pasa, el sistema hace lo que promete. Sale con código distinto de cero al primer
 fallo, así que sirve como puerta en un script de despliegue.
 
@@ -176,9 +193,10 @@ fallo, así que sirve como puerta en un script de despliegue.
 | `pnpm run db:psql` / `db:redis` | Consola de PostgreSQL o Redis dentro del contenedor |
 | `pnpm run pg:init` / `pg:start` / `pg:stop` / `pg:status` | Cluster de PostgreSQL propio, sin Docker ni administrador |
 | `pnpm run pg:psql` | Consola de PostgreSQL contra ese cluster (acepta argumentos tras `--`) |
-| `pnpm run smoke` | Vertical slice completo contra un servidor vivo. `--url` para apuntar a otro despliegue |
+| `pnpm run smoke` | Vertical slice completo contra el servidor y la web vivos. `--url` (Game Server) y `--web` (Next.js) para apuntar a otro despliegue |
 | `pnpm run db:migrate` / `db:version` | Aplica el esquema / muestra la versión aplicada |
-| `pnpm run dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado |
+| `pnpm run dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado, y sus cuentas |
+| `pnpm run pg:identity` / `identity:migrate` | Rol y bases del almacén de identidad de la web / sus migraciones (las aplica también la web al arrancar) |
 | `pnpm run docs:check` | Verifica enlaces, invariantes registrados y ADR citados |
 | `pnpm run protocol:build` | Regenera el JSON Schema desde los esquemas Zod |
 | `pnpm run protocol:check` | Falla si el JSON Schema ha derivado (lo mismo que hace la CI) |

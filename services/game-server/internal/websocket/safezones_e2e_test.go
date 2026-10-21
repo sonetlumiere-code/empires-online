@@ -30,7 +30,7 @@ func (c *conn) awaitWhere(msgType string, match func(json.RawMessage) bool, time
 	var seen []envelope
 	require.NoError(c.t, c.c.SetReadDeadline(time.Now().Add(timeout)))
 	for {
-		_, data, err := c.c.ReadMessage()
+		data, err := c.read()
 		if err != nil {
 			c.t.Fatalf("esperando %q: %v (recibidos: %d)", msgType, err, len(seen))
 		}

@@ -18,9 +18,15 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 )
 
-// Audience identifica al destinatario legítimo del ticket. Un token emitido para
-// otro servicio no sirve aquí.
+// Audience identifica al destinatario legítimo del ticket de juego. Un token
+// emitido para otro servicio no sirve aquí.
 const Audience = "game-server"
+
+// InternalAudience es la del token con el que apps/web autoriza la fundación de
+// un jugador (ADR-018). Es disjunta de Audience a propósito: los dos tokens se
+// firman con el mismo secreto, y sin audiencias distintas un ticket de juego
+// fundaría jugadores y un token de fundación abriría una sesión (INV-SEC-008).
+const InternalAudience = "game-server-internal"
 
 // Errores de autenticación. Todos se traducen al MISMO código UNAUTHORIZED de
 // cara al cliente: distinguirlos ayudaría a un atacante a afinar sus intentos.
@@ -40,13 +46,19 @@ type Claims struct {
 
 // Verifier valida tickets.
 type Verifier struct {
-	secret []byte
-	clock  clock.Clock
+	secret   []byte
+	clock    clock.Clock
+	audience string
 }
 
-// NewVerifier crea el verificador.
+// NewVerifier crea el verificador de tickets de juego (audiencia Audience).
 func NewVerifier(secret string, clk clock.Clock) *Verifier {
-	return &Verifier{secret: []byte(secret), clock: clk}
+	return NewVerifierFor(secret, clk, Audience)
+}
+
+// NewVerifierFor crea un verificador que sólo acepta tokens de la audiencia dada.
+func NewVerifierFor(secret string, clk clock.Clock, audience string) *Verifier {
+	return &Verifier{secret: []byte(secret), clock: clk, audience: audience}
 }
 
 // Verify comprueba firma, caducidad y audiencia, y devuelve los claims.
@@ -57,7 +69,7 @@ func NewVerifier(secret string, clk clock.Clock) *Verifier {
 func (v *Verifier) Verify(tokenString string) (Claims, error) {
 	parser := jwt.NewParser(
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
-		jwt.WithAudience(Audience),
+		jwt.WithAudience(v.audience),
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuedAt(),
 		// El reloj inyectado también manda aquí: así los tests de caducidad no
@@ -143,18 +155,24 @@ func (a *Authenticator) Authenticate(ctx context.Context, ticket string) (Claims
 
 // Issuer emite tickets.
 //
-// En producción el emisor es el frontend Next.js. Esta implementación existe para
-// los tests, las herramientas de desarrollo y para documentar exactamente qué
-// forma debe tener un ticket válido.
+// En producción el emisor es apps/web (ADR-018): el Game Server ya no firma
+// tickets. Esta implementación sobrevive para los tests, que necesitan acuñar
+// tickets válidos, y documenta qué forma debe tener uno.
 type Issuer struct {
-	secret []byte
-	ttl    time.Duration
-	clock  clock.Clock
+	secret   []byte
+	ttl      time.Duration
+	clock    clock.Clock
+	audience string
 }
 
-// NewIssuer crea el emisor.
+// NewIssuer crea un emisor de tickets de juego (audiencia Audience).
 func NewIssuer(secret string, ttl time.Duration, clk clock.Clock) *Issuer {
-	return &Issuer{secret: []byte(secret), ttl: ttl, clock: clk}
+	return NewIssuerFor(secret, ttl, clk, Audience)
+}
+
+// NewIssuerFor crea un emisor para otra audiencia; en los tests, la de fundación.
+func NewIssuerFor(secret string, ttl time.Duration, clk clock.Clock, audience string) *Issuer {
+	return &Issuer{secret: []byte(secret), ttl: ttl, clock: clk, audience: audience}
 }
 
 // Issue emite un ticket para un jugador.
@@ -163,7 +181,7 @@ func (i *Issuer) Issue(playerID uuid.UUID) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": playerID.String(),
 		"jti": uuid.NewString(),
-		"aud": Audience,
+		"aud": i.audience,
 		"iat": now.Unix(),
 		"exp": now.Add(i.ttl).Unix(),
 	})

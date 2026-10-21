@@ -21,7 +21,7 @@ Que sean ortogonales significa que cualquier combinación es válida: un `Norse`
 
 > **Nota sobre nombres de constraint.** La migración `000001_initial_schema.up.sql` declara las claves foráneas **en línea** (`REFERENCES players (id) ON DELETE CASCADE`), sin nombrarlas: PostgreSQL les asigna el nombre generado `<tabla>_<columna>_fkey`. Las únicas constraints con nombre explícito relacionadas con `players` son `players_username_format` (`CHECK (username ~ '^[A-Za-z0-9_-]{3,24}$')`) y la unicidad inline de `username`, que PostgreSQL llama `players_username_key`. Este documento cita los mecanismos reales, no nombres de convención que la DDL no usa.
 
-> **Estado de estas fichas.** Reconciliadas con la suite por `EO-118`: cada fila `Cobertura` nombra tests que existen y pasan. Los tests del alta HTTP viven en `internal/persistence/postgres/alta_http_integration_test.go` y no en `internal/httpapi`, porque reutilizan el arnés de integración protegido.
+> **Estado de estas fichas.** Reconciliadas con la suite por `EO-118`: cada fila `Cobertura` nombra tests que existen y pasan. Los tests de la fundación viven en `internal/persistence/postgres/fundacion_integration_test.go` y no en `internal/httpapi`, porque reutilizan el arnés de integración protegido. Desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) el alta la sirve `apps/web` y el game server sólo funda: las fichas que hablaban del «alta HTTP» del game server se reescribieron contra la fundación.
 
 ---
 
@@ -129,8 +129,8 @@ El segundo modo lo cierra hoy la unicidad del nombre de usuario: un reintento de
 - `TestBootstrapCreaMundoCompletoDelJugador` (integration) — tras crear un jugador hay exactamente una ciudad y tres `VILLAGER`, todos con el owner correcto.
 - `TestBootstrapFallidoNoDejaNadaAMedias` (integration) — un alta que falla a mitad no deja ni jugador, ni ciudad, ni aldeanos.
 - `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir` (integration) — un alta con 0, 2 o 4 aldeanos se rechaza sin dejar jugador.
-- `TestSinSitioElAltaResponde409YNoEscribe` (integration) — en un mundo sin sitio, `NO_SITE_AVAILABLE` y nada escrito.
-- `TestUnAltaRechazadaNoIntroduceNada` (integration) — repetir el alta de un nombre existente da `USERNAME_TAKEN` y no crea un segundo lote.
+- `TestSinSitioLaFundacionResponde409YNoEscribe` (integration) — en un mundo sin sitio, `NO_SITE_AVAILABLE` y nada escrito.
+- `TestUnNombreDeOtroJugadorNoSeFundaNiSeReasigna` (integration) — fundar con el nombre de otro jugador da `USERNAME_TAKEN` y no crea un segundo lote; y `TestDosFundacionesSimultaneasDelMismoJugadorAcabanEnUno` — dos fundaciones del mismo jugador a la vez dejan una sola ciudad.
 - Que los aldeanos nazcan sobre tiles transitables lo cubre `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable` (`internal/game/founding`), bajo [INV-CITY-007](city.md#inv-city-007).
 
 **Violación en runtime.** Durante el alta, cualquier fallo deshace la transacción entera (`FAIL_FAST`). No hay más detección: ni un recuento posterior al commit ni una comprobación en el handshake de que el jugador tenga ciudad antes de `session.welcome`. Con el único escritor exigiendo el estado inicial completo, un jugador incompleto sólo podría venir de una escritura manual. Si apareciera, no se repararía automáticamente, porque cualquier reparación automática es indistinguible de una duplicación.
@@ -155,7 +155,7 @@ El segundo modo lo cierra hoy la unicidad del nombre de usuario: un reintento de
 **Cómo se garantiza.**
 
 - `BOUNDARY` — el flujo del canon §14 es estricto: se emite un ticket JWT HS256 firmado con `EO_AUTH_JWT_SECRET` y TTL 60 s (`auth.Issuer`, con `sub`, `jti`, `aud` y `exp`); el cliente envía `session.hello { ticket }` como **primer** mensaje antes de 5 s (`WSHandshakeTimeout`, constante de código, no configurable) o se cierra con `4408`; el servidor verifica firma, `exp` y `aud = "game-server"` (`auth.Audience`), consume el `jti` en `ticket:jti:{jti}` (Redis, `SETNX` con TTL 120 s) y sólo entonces crea la sesión.
-- `BOUNDARY` — **quién emite el ticket hoy**: lo emite el propio Game Server desde `internal/httpapi` (`POST /api/auth/register` y `POST /api/auth/login`, con bcrypt), cableado en `cmd/server/main.go` con `auth.NewIssuer(cfg.AuthJWTSecret, 60s, clock)`. Es explícitamente provisional: la arquitectura objetivo de [../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md) traslada la emisión a Next.js. El invariante no depende de quién emita: depende de que el `playerId` salga del claim `sub` verificado y de ningún otro sitio.
+- `BOUNDARY` — **quién emite el ticket**: `apps/web` (`src/server/tokens.ts`), en el alta, el login y `POST /api/auth/ticket`, como fija [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) y concreta [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md). El Game Server ya no firma tickets en producción; `auth.Issuer` queda para los tests. Un fixture compartido (`internal/auth/testdata/web-tokens.json`) ata los dos lados: el emisor de TypeScript tiene que seguir produciendo esos bytes y el verificador de Go tiene que aceptarlos (`TestLosTokensDeAppsWebSeVerificanEnGo`). El invariante no depende de quién emita: depende de que el `playerId` salga del claim `sub` verificado y de ningún otro sitio.
 - `BOUNDARY` — el `playerId` vive en `websocket.Session.PlayerID`, que sólo escribe `newSession` con el `sub` de los claims verificados. **No es inmutable por tipo**: es un campo del paquete `websocket`, y nada fuera de él tiene acceso a la sesión. La garantía es que ningún código del paquete lo reasigna después, algo que cualquier revisión comprueba buscando asignaciones al campo.
 - `TYPE` — el esquema Zod de `session.hello` en `packages/protocol/src/v1/` declara el payload como `{ ticket }` y nada más. Los esquemas cliente→servidor son **estrictos** (`additionalProperties: false`), de modo que un campo extra se rechaza en lugar de ignorarse. Ningún mensaje cliente→servidor de v1 (`session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`) contiene un campo de identidad de jugador, y los tests de `packages/protocol` verifican que un payload con un campo extra tipo `playerId` no valida.
 - `BOUNDARY` — el `playerId` se propaga como campo `player_id` de todo log estructurado (canon §18), lo que hace auditable qué identidad ejecutó qué.
@@ -228,7 +228,7 @@ La regla se declara **dos veces a propósito**: el boundary la aplica para devol
 **Cómo se garantiza.**
 
 - `DB` — `players.username text NOT NULL UNIQUE` y `CONSTRAINT players_username_format CHECK (username ~ '^[A-Za-z0-9_-]{3,24}$')` en `000001_initial_schema.up.sql`. Es el nombre real de la constraint, sin prefijo de convención.
-- `BOUNDARY` — `player.ValidateUsername(name string) error` en `internal/domain/player`, invocada por `internal/httpapi` antes de intentar el alta. Devuelve un error de dominio, no un error de driver.
+- `BOUNDARY` — `player.ValidateUsername(name string) error` en `internal/domain/player`, invocada por la fundación (`internal/httpapi`) antes de intentar el bootstrap; `apps/web` aplica la misma expresión antes de crear la cuenta, y `accounts_username_format` la repite en el almacén de identidad. Devuelve un error de dominio, no un error de driver.
 - `DOMAIN` — la comparación de la regla es la misma expresión en ambos lados; un cambio de la clase de caracteres exige tocar los dos puntos y una migración, lo que lo convierte en una decisión visible.
 
 **Cómo se verifica.**
@@ -248,34 +248,39 @@ La regla se declara **dos veces a propósito**: el boundary la aplica para devol
 |---|---|
 | Severidad | CRITICO |
 | Aplicación | DB, BOUNDARY, TEST |
-| Milestone | M2 |
+| Milestone | M2 (identidad movida a `apps/web` en M3, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Parcial**: el esquema por `TestLaUnicaColumnaDeCredencialEsElHash` y los logs del alta y del login por `TestLosLogsDeAltaYLoginNoContienenSecretos` (integration); el arranque por `TestSecretoDemasiadoCorto` y `TestSecretoDeDesarrolloEnProduccion` (`internal/config`). **Ningún test** captura los logs del handshake WebSocket ni del resto del servidor |
+| Cobertura | **Cubierto**: el esquema del juego por `TestElEsquemaDelJuegoNoTieneCredenciales` y el del almacén de identidad por «las únicas columnas de credencial son dos hashes» (integration); los logs de la fundación por `TestLosLogsDeLaFundacionNoContienenSecretos` (integration), los del handshake por `TestLosLogsDelHandshakeNoContienenTicketsNiSecreto` (e2e, `internal/websocket`) y los del alta, el login y el ticket por «los logs de la identidad no contienen secretos» (`apps/web/src/server/authService.test.ts`); el arranque por `TestSecretoDemasiadoCorto`, `TestSecretoDeDesarrolloEnProduccion` (`internal/config`) y su gemelo de `apps/web` (`edges.test.ts`) |
 
-**Enunciado.** Ninguna tabla guarda una contraseña en claro y ningún log estructurado contiene contraseña, `password_hash`, ticket completo ni `EO_AUTH_JWT_SECRET`; `password_hash` sólo sale de `PlayerRepo.GetByUsername` hacia el verificador de credenciales.
+**Enunciado.** Ninguna tabla guarda una contraseña en claro; el esquema del juego no tiene ninguna columna de
+credencial y el almacén de identidad sólo tiene dos, ambas hashes (`accounts.password_hash` con `scrypt` y
+`web_sessions.token_hash` con SHA-256); y ningún log estructurado, de ninguno de los dos procesos, contiene una
+contraseña, un hash de contraseña, un token de sesión, un ticket o token de fundación —completo o en parte— ni
+`EO_AUTH_JWT_SECRET`.
 
-**Razón.** Es la extensión de [INV-SEC-006](security.md#inv-sec-006) al dato personal del jugador. Una contraseña en claro en una columna, o un `password_hash` volcado en un log de depuración, convierte una filtración de logs —mucho más frecuente que una filtración de base de datos— en una filtración de credenciales. Y el ticket completo en un log es directamente una sesión regalada durante 60 s ([INV-SEC-003](security.md#inv-sec-003)).
+**Razón.** Es la extensión de [INV-SEC-006](security.md#inv-sec-006) al dato personal del jugador. Una contraseña en claro en una columna, o un hash volcado en un log de depuración, convierte una filtración de logs —mucho más frecuente que una filtración de base de datos— en una filtración de credenciales. Y un ticket en un log es directamente una sesión regalada durante 60 s ([INV-SEC-003](security.md#inv-sec-003)); un token de sesión, una sesión regalada durante 7 días.
 
-El punto de fuga concreto en este proyecto es el volcado de estructuras: `slog` serializa lo que se le pasa, y una `struct` de credenciales pasada entera a un `log.Debug` imprime el campo de contraseña sin preguntar.
+El punto de fuga concreto en este proyecto es el volcado de estructuras: `slog` serializa lo que se le pasa, y una `struct` de credenciales pasada entera a un `log.Debug` imprime el campo de contraseña sin preguntar. En `apps/web`, lo mismo con un objeto pasado a `JSON.stringify`.
 
 **Cómo se garantiza.**
 
-- `DB` — `players.password_hash text NOT NULL` es la **única** columna de credencial del esquema; no existe ninguna columna de contraseña en claro en ninguna tabla de `000001_initial_schema.up.sql`.
-- `BOUNDARY` — el alta usa bcrypt en `internal/httpapi`: la contraseña recibida se hashea y el valor en claro no se propaga ni se conserva.
-- `BOUNDARY` — `password_hash` se lee exclusivamente en `PlayerRepo.GetByUsername` y se consume en el verificador de credenciales; no viaja a ningún DTO, mensaje o log.
-- `BOUNDARY` — los logs de autenticación registran el `username` y el motivo del fallo, nunca la contraseña, el hash ni el ticket. Del ticket sólo puede registrarse el `jti`, que ya está consumido.
-- `BOUNDARY` — `config.Load` exige `EO_AUTH_JWT_SECRET` de al menos 32 caracteres y rechaza el valor de desarrollo (`dev-only`) cuando `EO_ENV=production`, de modo que el proceso nunca arranca con un secreto de ejemplo.
-- `BOUNDARY` — el login con un usuario inexistente ejecuta igualmente una comparación bcrypt contra un hash fijo y responde el mismo `UNAUTHORIZED` que una contraseña equivocada: no revela qué nombres existen.
+- `DB` — la migración `000005` borró `players.password_hash`: el esquema del juego no tiene dónde guardar una credencial. En el almacén de identidad, `accounts_password_hash_format` exige el prefijo `scrypt$` y `web_sessions_token_hash_length` 32 bytes: un texto en claro no cabe en ninguna de las dos.
+- `BOUNDARY` — la contraseña sólo atraviesa `apps/web`, el tiempo justo de derivar (`hashPassword`) o comparar (`verifyPassword`) su hash; no se propaga ni se conserva. El cliente la borra del formulario tras entrar y no la guarda: cada ticket nuevo se pide con la cookie.
+- `BOUNDARY` — el token de sesión sólo existe en claro en la cookie `HttpOnly` del navegador; en la base se guarda su SHA-256.
+- `BOUNDARY` — los logs registran el `username`, el `player_id`, el código y el motivo; nunca el valor de una credencial. Del ticket sólo puede registrarse el `jti`, que ya está consumido.
+- `BOUNDARY` — los dos procesos exigen `EO_AUTH_JWT_SECRET` de al menos 32 caracteres y rechazan el valor de desarrollo (`dev-only`) con `EO_ENV=production`, y el mensaje de error no incluye el valor.
+- `BOUNDARY` — el login con un usuario inexistente compara igualmente contra un hash de relleno y responde el mismo `UNAUTHORIZED` que una contraseña equivocada: no revela qué nombres existen.
 
 **Cómo se verifica.**
 
-- `TestSecretoDemasiadoCorto` y `TestSecretoDeDesarrolloEnProduccion` (unit, `internal/config`) — **existen y pasan**: el arranque falla en ambos casos.
-- `TestObligatoriasAusentes` (unit, `internal/config`) — **existe y pasa**: sin `EO_AUTH_JWT_SECRET` el arranque no continúa.
-- `TestLaUnicaColumnaDeCredencialEsElHash` (integration) — en todo el esquema `public`, la única columna cuyo nombre sugiere una contraseña, un secreto, un ticket, un token o una credencial es `players.password_hash`.
-- `TestLosLogsDeAltaYLoginNoContienenSecretos` (integration) — captura el `slog` de un alta correcta, un login correcto, uno con contraseña equivocada, otro con usuario inexistente y un alta que falla dentro de la transacción y registra el error. Ninguna línea contiene la contraseña, un hash bcrypt, los tickets emitidos ni el secreto JWT. Verificado por mutación: registrar la contraseña lo hace fallar.
-- Pendiente: la misma captura sobre el handshake WebSocket, que registra el motivo del rechazo de un ticket.
+- `TestSecretoDemasiadoCorto`, `TestSecretoDeDesarrolloEnProduccion` y `TestObligatoriasAusentes` (unit, `internal/config`) — el game server no arranca con un secreto ausente, corto o de desarrollo en producción. Sus gemelos en `apps/web/src/server/edges.test.ts` (`loadAuthConfig`), que además comprueban que el mensaje no contiene el secreto.
+- `TestElEsquemaDelJuegoNoTieneCredenciales` (integration) — en todo el esquema `public` del juego, ninguna columna se llama como una contraseña, un secreto, un ticket, un token o una credencial.
+- «las únicas columnas de credencial son dos hashes» (integration, `apps/web/src/server/store.integration.test.ts`) — en el almacén de identidad, sólo `accounts.password_hash` y `web_sessions.token_hash`.
+- «los logs de la identidad no contienen secretos» (unit, `apps/web`) — recorre alta, login correcto y erróneo, usuario inexistente, alta rechazada, alta sin respuesta del mundo y petición de ticket: ninguna línea contiene la contraseña, su hash, el prefijo `scrypt$`, el secreto, un token de sesión ni un ticket. Verificado por mutación: registrar la contraseña lo hace fallar.
+- `TestLosLogsDeLaFundacionNoContienenSecretos` (integration) — fundación correcta, rechazada por audiencia y fallida dentro de la transacción: ningún token ni el secreto. Verificado por mutación.
+- `TestLosLogsDelHandshakeNoContienenTicketsNiSecreto` (e2e, `internal/websocket`) — handshake válido y rechazos por ticket basura, ajeno, caducado y reutilizado: ni los tickets, ni su firma por separado, ni el secreto. Verificado por mutación: registrar el ticket, o sólo su segunda mitad, lo hace fallar.
 
-**Violación en runtime.** No hay detección en runtime: la detecta el test. Si una fuga apareciera, el tratamiento es `FAIL_FAST` sobre el cambio que la introdujo, y nunca se registra el valor filtrado, sólo el nombre del campo. Una fuga confirmada de `EO_AUTH_JWT_SECRET` exige rotación inmediata: corregir el código no basta.
+**Violación en runtime.** No hay detección en runtime: la detecta el test. Si una fuga apareciera, el tratamiento es `FAIL_FAST` sobre el cambio que la introdujo, y nunca se registra el valor filtrado, sólo el nombre del campo. Una fuga confirmada de `EO_AUTH_JWT_SECRET` exige rotación inmediata en los dos procesos: corregir el código no basta.
 
 ---
 
@@ -288,7 +293,7 @@ El punto de fuga concreto en este proyecto es el volcado de estructuras: `slog` 
 | Aplicación | DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST (el jugador no se introduce) |
-| Cobertura | **Cubierto** por `TestElAltaHTTPIntroduceAlJugadorDespuesDelCommit`, `TestUnAltaRechazadaNoIntroduceNada` y `TestBootstrapFallidoNoDejaNadaAMedias` (integration, `internal/persistence/postgres`) |
+| Cobertura | **Cubierto** por `TestLaFundacionIntroduceAlJugadorDespuesDelCommit`, `TestUnNombreDeOtroJugadorNoSeFundaNiSeReasigna`, `TestLaFundacionEsIdempotentePorPlayerId` y `TestBootstrapFallidoNoDejaNadaAMedias` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** El comando `IntroducePlayer` que incorpora al jugador al mundo en RAM se emite después del `COMMIT` del bootstrap; no existe ningún instante en que el mundo en RAM conozca a un jugador que PostgreSQL no conoce.
 
@@ -298,20 +303,61 @@ Con el orden correcto, el modo de fallo es benigno y observable: si el `COMMIT` 
 
 **Cómo se garantiza.**
 
-- `DOMAIN` — `internal/httpapi` ejecuta primero la transacción de bootstrap (jugador + ciudad + 3 aldeanos, atómica) y **sólo después** envía `IntroducePlayer` por el canal de comandos de la simulación. No hay ninguna ruta que invierta el orden.
+- `DOMAIN` — la fundación (`internal/httpapi`) ejecuta primero la transacción de bootstrap (jugador + ciudad + 3 aldeanos, atómica) y **sólo después** envía `IntroducePlayer` por el canal de comandos de la simulación. No hay ninguna ruta que invierta el orden.
 - `DOMAIN` — `IntroducePlayer` recibe las entidades **con los identificadores ya asignados por PostgreSQL**, no unos provisionales: el mundo en RAM y el disco comparten identidad desde el primer instante.
 - `DOMAIN` — la simulación no lee la base de datos durante el tick; recibe el alta como un comando más y la aplica en la fase de drenaje, con el aislamiento de pánicos de `applyCommand`.
 - `DOMAIN` — si el bootstrap falla, la transacción hace rollback completo ([INV-PLAYER-003](#inv-player-003)) y el comando no llega a emitirse.
 
 **Cómo se verifica.**
 
-- `TestElAltaHTTPIntroduceAlJugadorDespuesDelCommit` (integration) — el handler de alta escribe en un canal de comandos sin buffer, así que queda bloqueado hasta que el test recibe `IntroducePlayer`. En ese instante, desde otra conexión, el jugador, su ciudad y sus aldeanos ya están confirmados, y los ids del comando son los de disco. Verificado por mutación: emitir un `IntroducePlayer` antes de la transacción lo hace fallar.
-- `TestUnAltaRechazadaNoIntroduceNada` (integration) — un alta rechazada no envía ningún comando.
+- `TestLaFundacionIntroduceAlJugadorDespuesDelCommit` (integration) — el handler de la fundación escribe en un canal de comandos sin buffer, así que queda bloqueado hasta que el test recibe `IntroducePlayer`. En ese instante, desde otra conexión, el jugador, su ciudad y sus aldeanos ya están confirmados, y los ids del comando son los de disco. Verificado por mutación: emitir un `IntroducePlayer` antes de la transacción lo hace fallar.
+- `TestUnNombreDeOtroJugadorNoSeFundaNiSeReasigna` (integration) — una fundación rechazada no envía ningún comando; y `TestLaFundacionEsIdempotentePorPlayerId` — repetir la fundación de un jugador ya introducido no lo vuelve a introducir.
 - `TestBootstrapFallidoNoDejaNadaAMedias` (integration) — un fallo del bootstrap no deja rastro en disco.
 
 **Violación en runtime.** No hay detección en runtime: `handleIntroducePlayer` no valida los ids que recibe, porque su único emisor ya los recibió de PostgreSQL. La garantía es el orden del handler. Si el `COMMIT` tiene éxito y el comando no llega —por ejemplo, porque la cola está saturada más de 2 s—, el jugador existe en disco y entra en el mundo en el siguiente arranque por rehidratación.
 
 ---
+
+<a id="inv-player-009"></a>
+## INV-PLAYER-009 — Una cuenta sólo entra si su jugador existe en el mundo
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | M3 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por los tests de la orquestación de `apps/web` (`src/server/authService.test.ts`), los del almacén contra PostgreSQL (`src/server/store.integration.test.ts`) y `TestLaFundacionEsIdempotentePorPlayerId`, `TestLaRepeticionNoBuscaSitioAunqueElMundoEsteLleno` y `TestDosFundacionesSimultaneasDelMismoJugadorAcabanEnUno` (integration, `internal/persistence/postgres`) |
+
+**Enunciado.** Toda cuenta `ACTIVE` de `accounts` (almacén de identidad) tiene en el esquema del juego un
+jugador con el mismo `id` y el mismo `username`; una cuenta `PENDING` no obtiene sesión web ni ticket.
+
+**Razón.** Desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) la cuenta y el jugador viven
+en dos bases que no comparten transacción. Una cuenta que pudiera entrar sin jugador recibiría un ticket cuyo
+`sub` no existe en el mundo: el handshake lo aceptaría y el snapshot llegaría vacío, un jugador fantasma.
+
+**Cómo se garantiza.**
+
+- `DB` — `accounts.status` sólo admite `PENDING` y `ACTIVE` (`accounts_status_valid`), y nace `PENDING`.
+- `DOMAIN` — el alta y el login de `apps/web` sólo pasan una cuenta a `ACTIVE` **después** de que el Game Server
+  confirme el jugador; sólo crean sesión y ticket para cuentas `ACTIVE`.
+- `DOMAIN` — la fundación es idempotente por `playerId`: repetirla tras un fallo intermedio devuelve el mismo
+  jugador, y un nombre ocupado por otro id se rechaza (409), nunca se reasigna.
+
+**Cómo se verifica.**
+
+- «funda el jugador, activa la cuenta DESPUÉS y entrega sesión y ticket» (unit, `apps/web`) — el Game Server falso anota el estado de la cuenta en el instante de la llamada: era `PENDING`. Verificado por mutación: activar antes de fundar lo hace fallar.
+- «sin respuesta del mundo la cuenta queda PENDING, sin sesión, y el login la termina» y «un rechazo definitivo del mundo borra la cuenta pendiente y libera el nombre» (unit, `apps/web`) — las dos salidas de una fundación que no confirma. Verificados por mutación: abrir sesión sin fundación, o no borrar la pendiente, los hacen fallar.
+- «una sesión sólo resuelve si está vigente y su cuenta está ACTIVE» (integration, `apps/web`) — la guarda vive también en la consulta SQL. Verificado por mutación.
+- `TestLaFundacionEsIdempotentePorPlayerId` (integration) — repetir la fundación devuelve el mismo jugador y no lo introduce dos veces.
+- `TestLaRepeticionNoBuscaSitioAunqueElMundoEsteLleno` (integration) — el jugador existente se reconoce antes de buscar sitio: con el mundo lleno, la repetición responde 200 y no `NO_SITE_AVAILABLE`, que haría a `apps/web` borrar una cuenta cuyo jugador existe. Verificado por mutación.
+- `TestDosFundacionesSimultaneasDelMismoJugadorAcabanEnUno` (integration) — el test retiene el cerrojo de fundación hasta que las dos esperan en él; una responde 201, la otra 200, y queda una ciudad. Verificado por mutación: sin el respaldo tras la violación de unicidad, la perdedora responde `USERNAME_TAKEN`.
+
+**Violación en runtime.** No hay barrido que compare las dos bases. Una cuenta `ACTIVE` sin jugador sólo
+podría aparecer por una escritura manual; el síntoma sería un snapshot sin ciudad propia.
+
+---
+
 
 ## Trazabilidad
 
@@ -323,5 +369,6 @@ Con el orden correcto, el modo de fallo es benigno y observable: si el `COMMIT` 
 | INV-PLAYER-004 | `internal/auth`, `internal/websocket` | [INV-SEC-002](security.md#inv-sec-002), [INV-SEC-003](security.md#inv-sec-003) |
 | INV-PLAYER-005 | `internal/domain/player`, `internal/persistence/postgres` | [INV-UNIT-006](units.md#inv-unit-006) |
 | INV-PLAYER-006 | `internal/domain/player`, `internal/httpapi` | [../database/schema.md](../database/schema.md) |
-| INV-PLAYER-007 | `internal/httpapi`, `internal/observability` | [INV-SEC-006](security.md#inv-sec-006) |
+| INV-PLAYER-007 | `apps/web` (identidad), `internal/httpapi`, `internal/websocket` | [INV-SEC-006](security.md#inv-sec-006) |
 | INV-PLAYER-008 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-PERSIST-001](persistence.md#inv-persist-001) |
+| INV-PLAYER-009 | `apps/web` (identidad), `internal/httpapi` | [INV-PLAYER-008](#inv-player-008), [INV-SEC-008](security.md#inv-sec-008) |

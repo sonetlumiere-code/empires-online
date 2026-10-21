@@ -24,30 +24,26 @@ func (r *PlayerRepo) GetByID(ctx context.Context, id uuid.UUID) (*player.Player,
 		`SELECT `+playerColumns+` FROM players WHERE id = $1`, id))
 }
 
-// GetByUsername recupera un jugador junto a su hash de contraseña.
+// GetByUsername recupera un jugador por su nombre.
 //
-// El hash sólo sale de este método y sólo lo consume el verificador de
-// credenciales: no forma parte del modelo de dominio ni viaja a ninguna otra capa.
-func (r *PlayerRepo) GetByUsername(ctx context.Context, username string) (*player.Player, string, error) {
-	var hash string
-	row := r.store.pool.QueryRow(ctx,
-		`SELECT `+playerColumns+`, password_hash FROM players WHERE username = $1`, username)
-
-	var p player.Player
-	err := row.Scan(&p.ID, &p.Username, &p.CivilizationID, &p.FactionID, &p.LastSeenAt, &p.CreatedAt, &hash)
-	if err != nil {
-		return nil, "", normalize(err)
-	}
-	return &p, hash, nil
+// El esquema del juego no guarda credenciales (ADR-018): el nombre es aquí un
+// dato visible y la semilla del emplazamiento, no un identificador de acceso.
+func (r *PlayerRepo) GetByUsername(ctx context.Context, username string) (*player.Player, error) {
+	return scanPlayer(r.store.pool.QueryRow(ctx,
+		`SELECT `+playerColumns+` FROM players WHERE username = $1`, username))
 }
 
 // Create inserta un jugador. Recibe la DB por parámetro para poder participar en
 // la transacción de bootstrap junto a la ciudad y las unidades iniciales.
-func (r *PlayerRepo) Create(ctx context.Context, db DB, p *player.Player, passwordHash string) error {
+//
+// Devuelve player.ErrUsernameTaken ante cualquier violación de unicidad: la del
+// nombre y también la del id. En la fundación idempotente de ADR-018 las dos son
+// la misma pregunta —¿existe ya este jugador?— y la resuelve el llamante.
+func (r *PlayerRepo) Create(ctx context.Context, db DB, p *player.Player) error {
 	_, err := db.Exec(ctx,
-		`INSERT INTO players (id, username, password_hash, civilization_id, faction_id)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		p.ID, p.Username, passwordHash, p.CivilizationID, p.FactionID)
+		`INSERT INTO players (id, username, civilization_id, faction_id)
+		 VALUES ($1, $2, $3, $4)`,
+		p.ID, p.Username, p.CivilizationID, p.FactionID)
 	if err != nil {
 		if IsUniqueViolation(err) {
 			return player.ErrUsernameTaken

@@ -18,7 +18,7 @@ func codigoDeCierre(t *testing.T, c *conn, plazo time.Duration) int {
 	t.Helper()
 	require.NoError(t, c.c.SetReadDeadline(time.Now().Add(plazo)))
 	for {
-		_, _, err := c.c.ReadMessage()
+		_, err := c.read()
 		if err == nil {
 			continue
 		}
@@ -124,7 +124,7 @@ func TestElSeqCreceDeUnoEnUnoEnUnaConexion(t *testing.T) {
 		seqs = append(seqs, m.Seq)
 	}
 	for {
-		_, data, err := c.c.ReadMessage()
+		data, err := c.read()
 		if err != nil {
 			break
 		}

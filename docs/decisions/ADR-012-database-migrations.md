@@ -10,6 +10,13 @@ Propósito: fijar que el esquema de PostgreSQL evoluciona mediante ficheros SQL 
 | Índice | [README.md](README.md) |
 | Relacionados | [ADR-003](ADR-003-postgresql-source-of-truth.md), [ADR-011](ADR-011-movement-timed-polyline.md) |
 
+> **Sustitución parcial (2026-10-20).** La regla de que `apps/web` no tiene credenciales de PostgreSQL ni
+> cliente SQL (§4.2, y [../database/migrations.md](../database/migrations.md) §1.4) queda **precisada por
+> [ADR-018](ADR-018-identity-store-and-ticket-issuer.md)**: `apps/web` nunca toca el **esquema del juego**,
+> que sigue teniendo un único dueño, pero tiene su propio almacén de identidad, en otra base, con otro rol y
+> su propio ciclo de migración. El resto de este ADR sigue vigente. El texto anterior se conserva íntegro como
+> registro de la decisión original.
+
 ---
 
 ## 1. Contexto

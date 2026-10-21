@@ -116,7 +116,7 @@ func TestUnAltaConUnaEraInexistenteNoEscribeNada(t *testing.T) {
 	_, err := bootstrapper.Create(ctx, req)
 	require.ErrorIs(t, err, postgres.ErrNotFound)
 
-	_, _, err = players.GetByUsername(ctx, "anacronica")
+	_, err = players.GetByUsername(ctx, "anacronica")
 	assert.Error(t, err, "el jugador tampoco existe: el alta es atómica")
 }
 
@@ -298,7 +298,7 @@ func TestUnSitioSiempreOcupadoAgotaLosIntentosSinEscribir(t *testing.T) {
 	_, err = bootstrapper.Create(ctx, req)
 	require.ErrorIs(t, err, postgres.ErrPlacementContended)
 	assert.Equal(t, 3, llamadas)
-	_, _, err = players.GetByUsername(ctx, "insistente")
+	_, err = players.GetByUsername(ctx, "insistente")
 	assert.Error(t, err, "ni rastro del jugador")
 }
 

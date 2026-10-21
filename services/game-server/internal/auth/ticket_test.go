@@ -2,7 +2,9 @@ package auth_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -213,4 +215,70 @@ func TestTicketBasuraSeRechaza(t *testing.T) {
 		_, err := verifier.Verify(garbage)
 		require.Error(t, err, "debía rechazarse: %q", garbage)
 	}
+}
+
+// INV-SEC-008: los dos tokens se firman con el mismo secreto (ADR-018), así que
+// sólo la audiencia los separa. Un ticket de juego no lo acepta el verificador
+// de la fundación, y un token de fundación no lo acepta el del handshake.
+func TestLasAudienciasSonDisjuntas(t *testing.T) {
+	clk := clock.NewFakeClock(testEpoch)
+	juego := auth.NewIssuer(testSecret, 60*time.Second, clk)
+	interno := auth.NewIssuerFor(testSecret, 60*time.Second, clk, auth.InternalAudience)
+	verificaJuego := auth.NewVerifier(testSecret, clk)
+	verificaInterno := auth.NewVerifierFor(testSecret, clk, auth.InternalAudience)
+
+	id := uuid.New()
+	ticket, err := juego.Issue(id)
+	require.NoError(t, err)
+	fundacion, err := interno.Issue(id)
+	require.NoError(t, err)
+
+	_, err = verificaJuego.Verify(ticket)
+	require.NoError(t, err)
+	_, err = verificaInterno.Verify(fundacion)
+	require.NoError(t, err)
+
+	_, err = verificaInterno.Verify(ticket)
+	require.ErrorIs(t, err, auth.ErrInvalidTicket, "un ticket de juego no funda")
+	_, err = verificaJuego.Verify(fundacion)
+	require.ErrorIs(t, err, auth.ErrInvalidTicket, "un token de fundación no abre una sesión")
+}
+
+// Contrato entre lenguajes (ADR-018 §2.4): el emisor de apps/web, escrito en
+// TypeScript, produce testdata/web-tokens.json, y su propio test exige que siga
+// produciendo esos bytes exactos. Aquí se exige que el verificador los acepte:
+// el ticket con la audiencia de juego, el token de fundación con la interna, y
+// ninguno de los dos con la del otro.
+func TestLosTokensDeAppsWebSeVerificanEnGo(t *testing.T) {
+	raw, err := os.ReadFile("testdata/web-tokens.json")
+	require.NoError(t, err)
+	var f struct {
+		Secret        string `json:"secret"`
+		NowMs         int64  `json:"nowMs"`
+		PlayerID      string `json:"playerId"`
+		JTI           string `json:"jti"`
+		GameTicket    string `json:"gameTicket"`
+		FoundingToken string `json:"foundingToken"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &f))
+	clk := clock.NewFakeClock(f.NowMs + 30_000) // a mitad de su vida
+
+	claims, err := auth.NewVerifier(f.Secret, clk).Verify(f.GameTicket)
+	require.NoError(t, err)
+	require.Equal(t, f.PlayerID, claims.PlayerID.String())
+	require.Equal(t, f.JTI, claims.JTI)
+	require.Equal(t, time.Duration(60)*time.Second, claims.Expires.Sub(claims.IssuedAt))
+
+	claims, err = auth.NewVerifierFor(f.Secret, clk, auth.InternalAudience).Verify(f.FoundingToken)
+	require.NoError(t, err)
+	require.Equal(t, f.PlayerID, claims.PlayerID.String())
+
+	_, err = auth.NewVerifier(f.Secret, clk).Verify(f.FoundingToken)
+	require.Error(t, err)
+	_, err = auth.NewVerifierFor(f.Secret, clk, auth.InternalAudience).Verify(f.GameTicket)
+	require.Error(t, err)
+
+	// Y caduca a los 60 s exactos de su emisión.
+	_, err = auth.NewVerifier(f.Secret, clock.NewFakeClock(f.NowMs+61_000)).Verify(f.GameTicket)
+	require.ErrorIs(t, err, auth.ErrExpiredTicket)
 }

@@ -89,7 +89,7 @@ servidor.
 | `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` | `internal/config` | `int32`, por defecto `512` cada uno | Dimensionan el índice denso. |
 | `EO_CHUNK_SIZE` | `internal/config` | `int32`, por defecto `32` | Divide la geometría en la huella de chunks. |
 | `EO_INTEREST_RADIUS_CHUNKS` | `internal/config` | `int32`, por defecto `2` | Decide qué sesiones reciben `territory.update`. |
-| Fundación de una ciudad | `internal/httpapi` -> `postgres.Bootstrapper` | transacción | **Único productor de cambio de dueño** (§6.4, RN-TERR-007). |
+| Fundación de una ciudad | `internal/httpapi` (`POST /internal/players`) -> `postgres.Bootstrapper` | transacción | **Único productor de cambio de dueño** (§6.4, RN-TERR-007). |
 | `tickTime` | `Clock` inyectado | `int64` epoch ms | Sella `captured_at` y los envelopes de salida. |
 
 ## 5. Outputs

@@ -123,10 +123,9 @@ Escenario descrito:
 
 ```
 FASE A — Obtención del ticket (HTTP)
-  Cada VU hace POST /api/auth/login contra el propio Game Server, que HOY es
-  quien emite el game ticket (JWT HS256, TTL 60 s, canon §14) desde
-  internal/httpapi. Es provisional: ADR-010 traslada la emisión a Next.js, y
-  cuando eso ocurra esta fase apunta al frontend sin más cambios.
+  Cada VU hace POST /api/auth/login contra apps/web, que emite el game
+  ticket (JWT HS256, TTL 60 s, canon §14; ADR-018), y guarda la cookie de
+  sesión para pedir los siguientes a POST /api/auth/ticket.
   Un ticket por conexión: son de un solo uso.
 
 FASE B — Handshake (WSS)

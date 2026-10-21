@@ -57,12 +57,12 @@ flowchart TB
         UI["Next.js 15 App Router + React 19<br/>PixiJS 8 — render isométrico<br/>@empires-online/protocol (Zod)<br/>apps/web: implementado"]
     end
 
-    subgraph vercel["Vercel — futuro"]
-        WEB["apps/web — Next.js 15<br/>SSR/SSG + login<br/>destino final del game ticket (ADR-010)"]
+    subgraph vercel["Vercel — despliegue futuro"]
+        WEB["apps/web — Next.js 15<br/>SSR/SSG + alta, login y sesión web<br/>emite el game ticket (ADR-010, ADR-018)"]
     end
 
     subgraph vps["VPS (Docker)"]
-        GS["services/game-server — Go (go 1.23 mínimo)<br/>WS y HTTP :8080 (EO_HTTP_ADDR)<br/>metrics :9090 (EO_METRICS_ADDR)<br/>game loop 10 Hz + simulación en RAM<br/>HOY: POST /api/auth/register y /api/auth/login"]
+        GS["services/game-server — Go (go 1.23 mínimo)<br/>WS y HTTP :8080 (EO_HTTP_ADDR)<br/>metrics :9090 (EO_METRICS_ADDR)<br/>game loop 10 Hz + simulación en RAM<br/>POST /internal/players (fundación)"]
     end
 
     PG[("PostgreSQL gestionado<br/>durable source of truth<br/>EO_POSTGRES_URL")]
@@ -79,7 +79,7 @@ flowchart TB
 Notas de despliegue y frontera:
 
 - El game server **no** se despliega en Vercel: necesita un proceso de larga vida con estado en RAM y un loop de 10 Hz. Vercel servirá el cliente cuando exista.
-- **Alta y login son hoy del game server, no de Next.js.** `internal/httpapi` sirve `POST /api/auth/register` y `POST /api/auth/login` con bcrypt y emite el game ticket. Es explícitamente **provisional**: la arquitectura objetivo de [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) los traslada a `apps/web`. Cuando eso ocurra, el único acoplamiento obligatorio entre `apps/web` y `services/game-server` será el secreto compartido `EO_AUTH_JWT_SECRET` con el que se firma y verifica el game ticket, más el contrato de mensajes de `@empires-online/protocol`.
+- **Alta, login y sesión web son de `apps/web`** ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): un almacén de identidad propio —otra base, otro rol—, contraseñas con `scrypt`, una cookie de sesión opaca y el game ticket firmado en Next.js. El game server no ve contraseñas. El acoplamiento entre los dos es el secreto compartido `EO_AUTH_JWT_SECRET` —Next.js firma, el game server verifica—, la llamada `POST /internal/players` con la que Next.js pide fundar a un jugador recién dado de alta, y el contrato de mensajes de `@empires-online/protocol`.
 - El navegador **nunca** ve credenciales de PostgreSQL ni de Redis. Los secretos viajan por variables de entorno y jamás al repositorio.
 - El servidor **nunca** maneja píxeles. La proyección isométrica (`TILE_W = 64`, `TILE_H = 32`) es responsabilidad exclusiva del cliente.
 - El detalle de fronteras, autenticación y modos degradados está en [system-context.md](./system-context.md).
@@ -167,8 +167,8 @@ empires-online/
 │   │   ├── persistence            # gamestore.go, queue.go, pgxalias.go
 │   │   │   ├── postgres           # store, db, migrate, players, cities, units, movements, world, bootstrap, events
 │   │   │   └── redis              # redis.go, presence.go, idempotency.go
-│   │   ├── httpapi                # auth.go — /api/auth/register y /api/auth/login (provisional)
-│   │   ├── auth                   # ticket.go — Verifier, Authenticator, Issuer, Claims
+│   │   ├── httpapi                # founding.go — POST /internal/players (ADR-018)
+│   │   ├── auth                   # ticket.go — Verifier, Authenticator, Claims (Issuer: tests)
 │   │   ├── clock                  # clock.go, random.go
 │   │   ├── config
 │   │   └── observability          # logging.go, metrics.go, health.go
@@ -206,8 +206,8 @@ No existen `internal/presence` ni `internal/events`: la presencia vive en `inter
 | `internal/persistence` | `GameStore` (implementa `simulation.Repositories`) y `Queue`: la cola de escrituras durables con workers, reintentos y compensación. |
 | `internal/persistence/postgres` | Repositorios, transacciones, migrador embebido, bootstrap de jugador. |
 | `internal/persistence/redis` | Presencia, `jti` de tickets consumidos e idempotencia de corto plazo. |
-| `internal/httpapi` | `POST /api/auth/register` y `POST /api/auth/login` con bcrypt. **Provisional**: ADR-010 los traslada a `apps/web`. |
-| `internal/auth` | Verificación del game ticket: firma HS256, `exp`, `aud`, consumo de `jti`. Incluye un `Issuer` para desarrollo y tests. |
+| `internal/httpapi` | `POST /internal/players`: la fundación del jugador que `apps/web` acaba de dar de alta, autorizada con un token de audiencia `game-server-internal`. Sin contraseñas ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). |
+| `internal/auth` | Verificación del game ticket y del token de fundación: firma HS256, `exp`, `aud` (una por verificador), consumo de `jti`. Incluye un `Issuer` para los tests. |
 | `internal/clock` | `Clock`, `SystemClock`, `FakeClock` y `RandomSource`: los puertos que hacen determinista la simulación. |
 | `internal/config` | Carga y validación agregada de todas las variables `EO_*`. Punto único de valores de gameplay. |
 | `internal/observability` | `log/slog` en JSON, métricas Prometheus, `/health` y `/ready`. |

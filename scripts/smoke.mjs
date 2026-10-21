@@ -10,20 +10,23 @@
  * Recorre el flujo que define el producto:
  *
  *   1. /health y /ready responden
- *   2. alta o login  ->  ticket efímero + ciudad
+ *   2. alta o login en Next.js  ->  cookie de sesión + ticket efímero
  *   3. WebSocket + session.hello  ->  session.welcome
  *   4. world.snapshot con la ciudad y los aldeanos
  *   5. unit.move  ->  el servidor calcula la ruta y responde con la polilínea
  *   6. SE CIERRA la conexión a mitad de movimiento
  *   7. se espera, sin cliente conectado, más allá de la hora de llegada
- *   8. reconexión con ticket nuevo  ->  la unidad está EN EL DESTINO
+ *   8. ticket nuevo pedido con la cookie, reconexión  ->  la unidad está EN EL DESTINO
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--verbose]
+ *
+ * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
+ * ADR-018 da de alta, abre la sesión web y emite los tickets.
  *
  * Requiere Node 22 o superior: usa `fetch` y `WebSocket` globales, sin
  * dependencias. Sale con código 1 al primer fallo.
@@ -39,6 +42,7 @@ const flag = (name, fallback) => {
 
 const BASE = (flag('--url', process.env.EO_SMOKE_URL || 'http://localhost:8080')).replace(/\/+$/, '');
 const WS_URL = BASE.replace(/^http/, 'ws') + '/ws';
+const WEB = (flag('--web', process.env.EO_SMOKE_WEB_URL || 'http://localhost:3000')).replace(/\/+$/, '');
 const VERBOSE = args.includes('--verbose');
 const PROTOCOL_VERSION = 1;
 
@@ -68,14 +72,14 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 // HTTP
 // ─────────────────────────────────────────────────────────────
 
-async function pedir(ruta, opciones = {}) {
+async function pedir(ruta, opciones = {}, base = BASE) {
   let res;
   try {
-    res = await fetch(BASE + ruta, { ...opciones, signal: AbortSignal.timeout(15_000) });
+    res = await fetch(base + ruta, { ...opciones, signal: AbortSignal.timeout(15_000) });
   } catch (err) {
     fallar(
-      `no se pudo contactar con ${BASE}${ruta}`,
-      `${err.message}\n\n¿Está el servidor arrancado? \`pnpm run server:run\``,
+      `no se pudo contactar con ${base}${ruta}`,
+      `${err.message}\n\n¿Están arrancados el servidor (\`pnpm run server:run\`) y la web (\`pnpm run web:dev\`)?`,
     );
   }
   const texto = await res.text();
@@ -85,7 +89,7 @@ async function pedir(ruta, opciones = {}) {
   } catch {
     /* se queda como texto */
   }
-  return { status: res.status, cuerpo };
+  return { status: res.status, cuerpo, cookie: res.headers.get('set-cookie') };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -218,33 +222,47 @@ export function elegirDestino(terreno, desde) {
 const USUARIO = process.env.EO_SMOKE_USER || 'smoke_runner';
 const CLAVE = process.env.EO_SMOKE_PASSWORD || 'smoke-password-1234';
 
-/** Da de alta al jugador de humo o entra con el que ya existe. Devuelve un ticket NUEVO. */
-async function obtenerTicket({ silencioso = false } = {}) {
+/** Sólo `nombre=valor` de un Set-Cookie: lo que el navegador devolvería. */
+export function cookieDeSesion(setCookie) {
+  return setCookie ? setCookie.split(';')[0].trim() : null;
+}
+
+/**
+ * Da de alta al jugador de humo o entra con el que ya existe. Devuelve el cuerpo
+ * (con el primer ticket) y la cookie de sesión con la que pedir los siguientes.
+ */
+async function abrirSesion() {
   const cuerpo = JSON.stringify({ username: USUARIO, password: CLAVE });
   const cabeceras = { 'content-type': 'application/json' };
 
-  const alta = await pedir('/api/auth/register', { method: 'POST', headers: cabeceras, body: cuerpo });
+  const alta = await pedir('/api/auth/register', { method: 'POST', headers: cabeceras, body: cuerpo }, WEB);
   if (alta.status === 429) {
     fallar(
-      'el servidor está limitando por tasa las peticiones de esta máquina',
-      'Cada ejecución gasta 2 o 3 peticiones de `/api/auth/*`, y el límite por defecto son 10 por\n' +
+      'la web está limitando por tasa las peticiones de esta máquina',
+      'Cada ejecución gasta 1 o 2 peticiones de alta o login, y el límite por defecto son 10 por\n' +
         'minuto (EO_AUTH_RATE_LIMIT_PER_MINUTE). Espera un minuto y reintenta.\n\n' +
-        'NO es un fallo del despliegue: el límite existe porque el alta ejecuta bcrypt sin\n' +
-        'autenticación previa y sin él sería un amplificador de denegación de servicio.',
+        'NO es un fallo del despliegue: el límite existe porque cada intento calcula scrypt.',
     );
   }
   if (alta.status === 201 || alta.status === 200) {
-    if (!silencioso) ok('alta del jugador de humo', `${USUARIO}`);
-    return alta.cuerpo;
+    ok('alta del jugador de humo', `${USUARIO}`);
+    return { cuenta: alta.cuerpo, cookie: cookieDeSesion(alta.cookie) };
   }
   if (alta.status !== 409 || alta.cuerpo?.code !== 'USERNAME_TAKEN') {
     fallar(`el alta falló con ${alta.status}`, alta.cuerpo);
   }
 
-  const login = await pedir('/api/auth/login', { method: 'POST', headers: cabeceras, body: cuerpo });
+  const login = await pedir('/api/auth/login', { method: 'POST', headers: cabeceras, body: cuerpo }, WEB);
   if (login.status !== 200) fallar(`el login falló con ${login.status}`, login.cuerpo);
-  if (!silencioso) ok('login del jugador de humo', `${USUARIO} (ya existía)`);
-  return login.cuerpo;
+  ok('login del jugador de humo', `${USUARIO} (ya existía)`);
+  return { cuenta: login.cuerpo, cookie: cookieDeSesion(login.cookie) };
+}
+
+/** Ticket nuevo con la cookie de sesión: lo que hace el cliente en cada reconexión. */
+async function ticketConCookie(cookie) {
+  const r = await pedir('/api/auth/ticket', { method: 'POST', headers: { cookie } }, WEB);
+  if (r.status !== 200 || !r.cuerpo?.ticket) fallar(`la sesión web no dio un ticket nuevo (${r.status})`, r.cuerpo);
+  return r.cuerpo;
 }
 
 /** Abre una sesión completa: hello, welcome y el snapshot inicial. */
@@ -269,7 +287,7 @@ async function conectar(ticket) {
 // ─────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`\nComprobación de humo contra ${BASE}\n`);
+  console.log(`\nComprobación de humo contra ${BASE} (web: ${WEB})\n`);
 
   // 1. Salud ────────────────────────────────────────────────
   const salud = await pedir('/health');
@@ -287,10 +305,10 @@ async function main() {
   ok('/ready responde', Object.entries(checks).map(([k, v]) => `${k}=${v}`).join(' '));
 
   // 2. Identidad ────────────────────────────────────────────
-  const cuenta = await obtenerTicket();
+  const { cuenta, cookie } = await abrirSesion();
   if (!cuenta.ticket) fallar('la respuesta no trae ticket', cuenta);
-  if (!cuenta.city) fallar('el jugador no tiene ciudad: el alta no fundó nada', cuenta);
-  ok('ciudad fundada', `"${cuenta.city.name}" en (${cuenta.city.centerX}, ${cuenta.city.centerY})`);
+  if (!cookie?.startsWith('eo_session=')) fallar('la web no abrió una sesión (falta la cookie eo_session)', cuenta);
+  ok('sesión web abierta', 'cookie eo_session');
 
   // 3-4. Sesión y snapshot ──────────────────────────────────
   const primera = await conectar(cuenta.ticket);
@@ -303,6 +321,10 @@ async function main() {
     `mundo ${mundo.width}x${mundo.height} · ${snap.chunks.length} chunks · ` +
       `${snap.units.length} unidades · ${snap.cities.length} ciudades`,
   );
+
+  const ciudad = snap.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudad) fallar('el snapshot no trae la ciudad del jugador: la fundación no llegó al mundo', snap.cities);
+  ok('ciudad propia en el snapshot', `"${ciudad.name}" en (${ciudad.centerX}, ${ciudad.centerY})`);
 
   const propias = snap.units.filter((u) => u.playerId === cuenta.playerId);
   if (propias.length === 0) fallar('el snapshot no trae ninguna unidad propia', snap.units);
@@ -358,9 +380,9 @@ async function main() {
 
   // 8. Reconexión ───────────────────────────────────────────
   // Ticket nuevo: el `jti` del anterior se consumió en el primer handshake.
-  const cuenta2 = await obtenerTicket({ silencioso: true });
+  const cuenta2 = await ticketConCookie(cookie);
   const segunda = await conectar(cuenta2.ticket);
-  ok('reconexión aceptada con ticket nuevo');
+  ok('reconexión aceptada con un ticket pedido con la cookie');
 
   const tras = segunda.snapshot.payload.units.find((u) => u.id === unidad.id);
   if (!tras) fallar('la unidad no aparece en el snapshot tras reconectar', segunda.snapshot.payload.units);

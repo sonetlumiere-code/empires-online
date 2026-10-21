@@ -47,3 +47,33 @@ SELECT
     AS resultado
 FROM pg_database
 WHERE datname IN ('empires', 'empires_test');
+
+-- ─────────────────────────────────────────────────────────────
+-- Almacén de identidad de apps/web (ADR-018): su propio rol y sus dos bases.
+--
+-- La contraseña del rol se pide aquí, de forma interactiva, y no se escribe en
+-- ningún fichero del repositorio: después hay que ponerla en el .env local, en
+-- EO_IDENTITY_POSTGRES_URL y EO_TEST_IDENTITY_POSTGRES_URL. (Con el cluster
+-- propio, `pnpm run pg:identity` hace todo esto y genera la contraseña al azar.)
+-- ─────────────────────────────────────────────────────────────
+
+\prompt 'Contraseña para el rol empires_identity (no se guarda en ningún fichero): ' identity_password
+
+SELECT format('CREATE ROLE empires_identity LOGIN PASSWORD %L', :'identity_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'empires_identity')
+\gexec
+
+SELECT format('ALTER ROLE empires_identity PASSWORD %L', :'identity_password')
+WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'empires_identity')
+\gexec
+
+SELECT 'CREATE DATABASE empires_identity OWNER empires_identity'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'empires_identity')
+\gexec
+
+SELECT 'CREATE DATABASE empires_identity_test OWNER empires_identity'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'empires_identity_test')
+\gexec
+
+-- Sin CONNECT público: el rol de identidad no abre las bases del juego.
+REVOKE CONNECT ON DATABASE empires, empires_test, empires_identity, empires_identity_test FROM PUBLIC;

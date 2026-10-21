@@ -214,9 +214,9 @@ de contrato, de simulación y de recuperación está **en verde**.
 
 Lo que falta para cerrar el slice, y que ningún documento debe dar por hecho:
 
-- **La emisión del ticket desde Next.js** (`EO-041`), bloqueada por una decisión (`DEBT-18`).
-- El alta de jugador (`POST /api/auth/register`, `POST /api/auth/login`) vive hoy **en el game server**,
-  no en Next.js como prevé ADR-010. Es provisional y está registrado como deuda técnica.
+- Nada del propio slice: M0 a M7 están cerrados. La identidad salió del game server con
+  [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) y el ticket lo emite Next.js. Lo que queda
+  antes de exponerlo a jugadores reales está en [../roadmap/roadmap.md](../roadmap/roadmap.md) §1.
 
 Todo lo demás —combate, economía completa, árbol tecnológico, comercio, caravanas, clanes— se construye
 después, sobre una base que ya haya demostrado esa propiedad.

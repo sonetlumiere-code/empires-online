@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { elegirDestino, indexarTerreno } from './smoke.mjs';
+import { cookieDeSesion, elegirDestino, indexarTerreno } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
 const GRASSLAND = 0;
@@ -127,4 +127,12 @@ test('elegirDestino prefiere el candidato más lejano dentro del rango', () => {
 
   // Cuanto más largo el trayecto, más margen tiene el paso de la desconexión.
   assert.equal(destino.x, 12);
+});
+
+test('cookieDeSesion devuelve sólo nombre=valor, lo que el navegador reenvía', () => {
+  assert.equal(
+    cookieDeSesion('eo_session=abc-123; Path=/api/auth; HttpOnly; SameSite=Strict; Max-Age=604800'),
+    'eo_session=abc-123',
+  );
+  assert.equal(cookieDeSesion(null), null);
 });

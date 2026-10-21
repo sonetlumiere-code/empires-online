@@ -59,13 +59,14 @@ Envelope **servidor → cliente**:
 sequenceDiagram
     autonumber
     participant C as Cliente
-    participant A as HTTP de alta/login
+    participant A as apps/web (/api/auth/*)
     participant G as Game Server (/ws)
     participant R as Redis
     participant L as Game loop (10 Hz)
 
     C->>A: POST /api/auth/login { username, password }
-    A-->>C: { playerId, ticket, expiresInSeconds: 60, city? }
+    A-->>C: { playerId, ticket, expiresInSeconds: 60, city? } + Set-Cookie eo_session
+    Note over C,A: en cada reconexión: POST /api/auth/ticket con la cookie
     C->>G: GET /ws  (Upgrade: websocket)
     G-->>C: 101 Switching Protocols
     Note over G: SetReadLimit(16384) y deadline de handshake = 5 s
@@ -88,23 +89,27 @@ sequenceDiagram
     C--xG: close (1000 normal, o 4xxx por política)
 ```
 
-**El endpoint que emite el game ticket es hoy del propio game server.** `internal/httpapi` sirve dos rutas, y ésta es su ficha:
+**El ticket lo emite `apps/web`** desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), en
+route handlers del mismo origen que la página:
 
-| | `POST /api/auth/register` | `POST /api/auth/login` |
-|---|---|---|
-| Autenticación previa | Ninguna | Ninguna |
-| Request body | `{ "username": string, "password": string }` | `{ "username": string, "password": string }` |
-| Validación | `username` de 3 a 24 caracteres `[A-Za-z0-9_-]`; `password` de 8 o más | — |
-| Response 200/201 | `201` `{ playerId, ticket, expiresInSeconds: 60, city: { id, name, centerX, centerY } }` | `200` con el mismo cuerpo; `city` sólo si el jugador ya la tiene |
-| Errores | `400 INVALID_MESSAGE` / `INVALID_USERNAME` / `WEAK_PASSWORD`, `409 USERNAME_TAKEN` / `NO_SITE_AVAILABLE`, `405 METHOD_NOT_ALLOWED`, `503 SITE_CONTENDED` (con `Retry-After: 1`), `500 INTERNAL_ERROR` | `400 INVALID_MESSAGE`, `401 UNAUTHORIZED` (mismo error y mismo coste aproximado para usuario inexistente y contraseña incorrecta), `405`, `500` |
+| | `POST /api/auth/register` | `POST /api/auth/login` | `POST /api/auth/ticket` |
+|---|---|---|---|
+| Autenticación previa | Ninguna | Ninguna | Cookie `eo_session` |
+| Request body | `{ "username": string, "password": string }`, `application/json` | ídem | Ninguno |
+| Validación | `username` de 3 a 24 caracteres `[A-Za-z0-9_-]`; `password` de 8 a 256 | — | Sesión vigente de una cuenta `ACTIVE` |
+| Response | `201` `{ playerId, ticket, expiresInSeconds: 60, city }` + cookie | `200` con el mismo cuerpo (`city` sólo si el login terminó una fundación pendiente) + cookie | `200` `{ playerId, ticket, expiresInSeconds: 60 }`, sin renovar la cookie |
+| Errores | `400` `INVALID_MESSAGE`/`INVALID_USERNAME`/`WEAK_PASSWORD`, `403 FORBIDDEN` (otro origen), `409` `USERNAME_TAKEN`/`NO_SITE_AVAILABLE`, `429 RATE_LIMITED`, `503` `SITE_CONTENDED`/`GAME_SERVER_UNAVAILABLE`, `500` | `400`, `401 UNAUTHORIZED` (mismo error y mismo coste para usuario inexistente y contraseña incorrecta), `403`, `429`, `503`, `500` | `401 UNAUTHORIZED`, `403`, `500` |
 
-Es **explícitamente provisional**: la arquitectura objetivo de [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) traslada la emisión del ticket a `apps/web` (Next.js), que todavía no existe. El contrato del ticket —JWT HS256, `aud = "game-server"`, TTL 60 s, `jti` de un solo uso— no cambia con el traslado.
+El detalle del alta —la cuenta `PENDING`, la fundación en `POST /internal/players` del game server y la
+activación— está en [../specs/player.md](../specs/player.md) §4.1. El contrato del ticket —JWT HS256,
+`aud = "game-server"`, TTL 60 s, `jti` de un solo uso— no cambió con el traslado: un fixture compartido
+(`internal/auth/testdata/web-tokens.json`) obliga a los dos lados a seguir hablando el mismo formato.
 
 ### 3.2 Fases y su contrato
 
 | Fase | Quién actúa | Contrato | Fallo |
 |---|---|---|---|
-| **Ticket** | `internal/httpapi` (hoy); `apps/web` (objetivo) | JWT HS256 firmado con `EO_AUTH_JWT_SECRET`, TTL **60 s**, claims `{ sub: playerId, jti, iat, exp, aud: "game-server" }`. Un ticket sin `jti` se rechaza: sin él no hay anti-replay | 401 HTTP; no se abre socket |
+| **Ticket** | `apps/web` (`src/server/tokens.ts`) | JWT HS256 firmado con `EO_AUTH_JWT_SECRET`, TTL **60 s**, claims `{ sub: playerId, jti, iat, exp, aud: "game-server" }`. Un ticket sin `jti` se rechaza: sin él no hay anti-replay | 401 HTTP de `apps/web`; no se abre socket |
 | **Upgrade HTTP** | Game Server | `GET /ws` sin credenciales en URL ni cookies. `CheckOrigin` contra `AllowedOrigins` (vacío = cualquiera, sólo aceptable en desarrollo). Se acepta el upgrade y **la conexión queda no autenticada** | Rechazo HTTP estándar |
 | **Handshake de aplicación** | Cliente | El **primer** mensaje debe ser `session.hello { ticket }`, dentro de **5 s** | Cierre `4408` si no llega nada; `4400` si el frame es indescifrable o `v != 1`; `4401` si el primer mensaje no es `session.hello` |
 | **Verificación** | Game Server | Firma + `exp` + `aud` + consumo de `jti` en Redis (`ticket:jti:{jti}`, TTL **120 s**, `SET NX`) | Cierre `4401`. Todos los fallos de credenciales se traducen al **mismo** código: distinguirlos ayudaría a afinar un ataque |
@@ -411,7 +416,7 @@ Dos mensajes salientes merecen atención por tamaño:
 
 1. Detecta la caída (evento `close`/`error` del socket, o `seq` discontinuo, o timeout de pong).
 2. **Descarta por completo su réplica del mundo.** No conserva entidades, no conserva el `seq`, no intenta continuar.
-3. Pide un **ticket nuevo** al endpoint de login (hoy `POST /api/auth/login` del game server; `apps/web` cuando exista). El anterior no sirve: su TTL es de 60 s y su `jti` ya fue consumido en `ticket:jti:{jti}`; reutilizarlo produce cierre `4401`.
+3. Pide un **ticket nuevo** a `POST /api/auth/ticket` de `apps/web`, con la cookie de sesión: la contraseña no se vuelve a pedir ni se guarda. El anterior no sirve: su TTL es de 60 s y su `jti` ya fue consumido en `ticket:jti:{jti}`; reutilizarlo produce cierre `4401`.
 4. Reabre el WebSocket y repite el handshake completo (§3).
 5. Recibe `session.welcome` + `world.snapshot` y **reconstruye la escena desde cero**.
 6. Reintenta con **backoff exponencial con jitter** para no producir una tormenta de reconexiones tras una caída del servidor. Los valores concretos de la curva de backoff son **TBD (fuera de MVP)**.

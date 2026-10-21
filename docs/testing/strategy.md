@@ -3,7 +3,7 @@
 Cómo se verifica Empires Online: los seis niveles de test del canon, qué garantiza cada uno, las reglas duras que ningún cambio puede saltarse, las convenciones de nombres y fixtures, los objetivos de cobertura y el pipeline de CI que decide si un pull request es válido.
 
 > **Estado real.** Todos los niveles del MVP **se ejecutan y pasan hoy** (§2.2): `unit`, `contract`,
-> `simulation`, `e2e de transporte`, `integration` —44 tests contra PostgreSQL y Redis reales— y
+> `simulation`, `e2e de transporte`, `integration` —93 tests de Go y 8 del almacén de identidad de `apps/web` contra PostgreSQL y Redis reales, a 2026-10-21— y
 > `recovery`, en sus dos mitades. El detector de carreras corre sobre toda la suite. `load` sigue fuera
 > del MVP.
 >
@@ -89,13 +89,13 @@ tests a propósito: cambian con cada commit, y la salida de `go test` y de Vites
 
 | Nivel | Archivos reales | Estado |
 |---|---|---|
-| **unit** | El dominio (`internal/domain/{city,diplomacy,garrison,movement,player,safezone,territory,unit}`), el mundo y el emplazamiento (`internal/game/{world,founding}`), el reanclaje del tick (`internal/game/loop`), `internal/pathfinding`, `internal/auth`, `internal/config` (incluida la redacción de secretos), el limitador del alta (`internal/httpapi`), la cola de persistencia (`internal/persistence`), los dobles en memoria (`internal/persistence/memory`), la siembra de desarrollo (`internal/devseed`) y los nombres de las migraciones (`migrations`) | **En verde** (`pnpm run server:test`) |
+| **unit** | El dominio (`internal/domain/{city,diplomacy,garrison,movement,player,safezone,territory,unit}`), el mundo y el emplazamiento (`internal/game/{world,founding}`), el reanclaje del tick (`internal/game/loop`), `internal/pathfinding`, `internal/auth`, `internal/config` (incluida la redacción de secretos), la cola de persistencia (`internal/persistence`), los dobles en memoria (`internal/persistence/memory`), la siembra de desarrollo (`internal/devseed`) y los nombres de las migraciones (`migrations`) | **En verde** (`pnpm run server:test`) |
 | **contract** | `internal/protocol/*_test.go` (Go: catálogo de códigos, tipos presentes en el esquema, decodificación estricta, vistas de ciudad, territorio y safe zones) y `packages/protocol/src/v1/protocol.test.ts` (Vitest) | **En verde** (`pnpm run server:test` + `pnpm run protocol:test`) |
 | **simulation** | `internal/game/simulation/*_test.go`: el vertical slice, presencia y protección, safe zones, territorios, tratados, la cola real frente al loop, la regla de la fundación y la rehidratación sobre `simulation.Hydrate` | **En verde** |
 | **e2e de transporte** | `internal/websocket/*_test.go`: el vertical slice sobre un WebSocket real servido con `httptest`, con dobles en memoria de PostgreSQL y del estado caliente; los límites del transporte (plazo de handshake, tamaño, ráfaga, `seq`), la idempotencia y la visibilidad de las unidades ocultas; y el reparto por chunks del `Hub` | **En verde**. Es el nivel que encontró que `r.Context()` mataba la sesión tras el primer mensaje, y que el `RATE_LIMITED` nunca llegaba antes del cierre `4429` |
 | **integration** | `internal/persistence/postgres/*_integration_test.go` y `internal/persistence/redis/redis_integration_test.go`, más el harness `testenv_integration_test.go`. Etiqueta `integration` + gate `EO_INTEGRATION=1` (§4, R8) | **En verde**: en la CI con `-race`, y en local contra el cluster propio de PostgreSQL y Redis en WSL |
 | **recovery** | En RAM, los tests de rehidratación de `internal/game/simulation`; durable, `TestRecuperacionCompletaTrasReinicio` y, para el ownership, `TestElOwnershipSobreviveAUnReinicio` (nivel `integration`). El arranque real se verificó además a mano contra la base de desarrollo, matando el proceso | **En verde**, ambas partes |
-| **frontend** | `apps/web/src/{net/client,render/iso,state/interpolation,state/world}.test.ts` | **En verde** (Vitest), en el job de TypeScript de la CI desde `EO-118`; antes sólo se ejecutaban a mano |
+| **frontend** | `apps/web/src/{net/client,render/iso,render/reconciler,state/interpolation,state/world}.test.ts`, y la identidad del servidor de Next.js en `apps/web/src/server/*.test.ts`, `identity/password.test.ts` y `scripts/seed-identity.test.ts` | **En verde** (Vitest), en el job de TypeScript de la CI desde `EO-118`. El almacén de identidad contra PostgreSQL (`store.integration.test.ts`) corre en el job de integración |
 | **scripts** | `scripts/{lint-determinism,smoke}.test.mjs` (`node --test`) | **En verde**, en el job `docs` de la CI |
 | **humo de despliegue** | [`scripts/smoke.mjs`](../../scripts/smoke.mjs) | **Ejecutado.** No es un nivel de la pirámide: ver abajo |
 | **load** | Ninguno | **Fuera de MVP** |
@@ -364,9 +364,9 @@ La cobertura útil es la del código donde un error es caro y silencioso. En los
 | `internal/protocol` | **≥ 70 %** | Envelopes, deltas parciales y catálogo de códigos; el resto son constantes. |
 | `internal/persistence/{postgres,redis}` | **≥ 50 %**, medida con la etiqueta `integration` | Casi todo su valor lo verifican los tests de integración contra el motor real; la cobertura sin la etiqueta `integration` es engañosamente baja y no debe perseguirse con mocks. **Hoy la cobertura de estos paquetes es 0 %**, y así seguirá hasta que el nivel `integration` se ejecute. |
 | `internal/observability` | Sin objetivo numérico | Cableado y emisión de métricas. Se verifica que emiten, no cuánto código se ejecuta. |
-| `internal/httpapi`, `cmd/server` | Sin objetivo numérico | Composición de dependencias y alta provisional de jugador. Se verifica arrancando: `/health` y `/ready` (canon §18). |
+| `internal/httpapi`, `cmd/server` | Sin objetivo numérico | Composición de dependencias y fundación del jugador. La fundación tiene sus tests de integración (`fundacion_integration_test.go`); el resto se verifica arrancando: `/health`, `/ready` y `pnpm run smoke` (canon §18). |
 | `packages/protocol` (Vitest) | **≥ 95 %** | Son esquemas: cada rama es un caso de validación real. |
-| `apps/web` | **≥ 40 %** | **Ya existe**, con 58 tests de Vitest sobre transformaciones isométricas, interpolación, store del mundo y cliente WebSocket: el objetivo aplica desde el milestone que cree el frontend Next.js. Se testeará la lógica de estado y el cliente de protocolo; el render de PixiJS no se testea unitariamente. |
+| `apps/web` | **≥ 40 %** | **Ya existe**, con más de cien tests de Vitest sobre transformaciones isométricas, interpolación y su corrección gradual, store del mundo, cliente WebSocket y la identidad del lado servidor. Se testea la lógica de estado, el cliente de protocolo y el servidor de identidad; el render de PixiJS no se testea unitariamente. |
 
 Estos porcentajes son **umbrales de alerta**, no gates de CI que rompan el build por medio punto. Una bajada brusca en `internal/domain/**` es una señal para mirar el diff, no para añadir tests decorativos. La CI publica hoy la cobertura agregada (`go tool cover -func=coverage.out | tail -1`) como dato informativo, sin umbral que rompa el build.
 

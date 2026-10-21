@@ -14,7 +14,7 @@ Las diecisiete tablas del MVP existen y las crea la migración `000001`. Lo que 
 
 | Tabla | Clasificación | Escrito por |
 |---|---|---|
-| `players` | MVP: activa | Alta de cuenta (`POST /api/auth/register`), `TouchLastSeen` en login |
+| `players` | MVP: activa | Fundación del jugador (`POST /internal/players`, que llama `apps/web` al dar de alta una cuenta). Sin credenciales desde `000005` |
 | `civilizations` | MVP: activa (catálogo) | Migración de semilla `000002` |
 | `factions` | MVP: activa (catálogo) | Migración de semilla `000002` |
 | `eras` | MVP: activa (catálogo) | Migración de semilla `000002` |
@@ -64,7 +64,6 @@ erDiagram
     players {
         uuid id PK
         text username UK
-        text password_hash
         integer civilization_id FK
         integer faction_id FK
         timestamptz last_seen_at
@@ -330,7 +329,6 @@ Los multiplicadores de `traits` están declarados pero **el MVP todavía no los 
 CREATE TABLE players (
     id                uuid        PRIMARY KEY,
     username          text        NOT NULL UNIQUE,
-    password_hash     text        NOT NULL,
     civilization_id   integer     NOT NULL REFERENCES civilizations (id),
     faction_id        integer     NOT NULL REFERENCES factions (id),
     last_seen_at      timestamptz,
@@ -347,14 +345,13 @@ CREATE TRIGGER players_set_updated_at
 
 | Columna | Tipo | Semántica |
 |---|---|---|
-| `id` | `uuid` PK | Identificador público del jugador. Es el claim `sub` del game ticket JWT y el campo `player_id` de los logs estructurados. UUID y no `bigint` porque se expone al cliente y no debe ser enumerable. **Sin `DEFAULT`**: lo genera el servidor (`uuid.New()`) dentro de la transacción de alta, de modo que la aplicación conoce el id antes del `COMMIT` y puede crear ciudad y unidades en la misma transacción |
-| `username` | `text` UNIQUE | Identificador de login. El `CHECK` admite mayúsculas, minúsculas, dígitos, `_` y `-`, de 3 a 24 caracteres: `^[A-Za-z0-9_-]{3,24}$` |
-| `password_hash` | `text` | Hash bcrypt de la contraseña. **Nunca una contraseña en claro.** Sólo sale de la base por `PlayerRepo.GetByUsername`, y sólo lo consume el verificador de credenciales |
+| `id` | `uuid` PK | Identificador público del jugador. Es el claim `sub` del game ticket JWT y el campo `player_id` de los logs estructurados. UUID y no `bigint` porque se expone al cliente y no debe ser enumerable. **Sin `DEFAULT`**: lo elige `apps/web` al crear la cuenta (es también `accounts.id` del almacén de identidad, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) y llega en la fundación, de modo que la aplicación conoce el id antes del `COMMIT` y puede crear ciudad y unidades en la misma transacción |
+| `username` | `text` UNIQUE | Nombre visible del jugador y semilla de su emplazamiento; el nombre de acceso vive en `accounts.username`, con la misma regla. El `CHECK` admite mayúsculas, minúsculas, dígitos, `_` y `-`, de 3 a 24 caracteres: `^[A-Za-z0-9_-]{3,24}$` |
 | `civilization_id` | `integer` FK | Civilización elegida. Sin `ON DELETE`: el `NO ACTION` por defecto impide borrar un catálogo referenciado |
 | `faction_id` | `integer` FK | Facción global. Ortogonal a la civilización: cualquier combinación es válida |
-| `last_seen_at` | `timestamptz` | Última actividad observada (`TouchLastSeen`). `NULL` hasta el primer login |
+| `last_seen_at` | `timestamptz` | Última actividad observada. `PlayerRepo.TouchLastSeen` existe pero **ninguna ruta la llama**: hoy la columna queda `NULL` |
 
-**Credenciales.** Contra lo que describe la arquitectura objetivo, **hoy el propio Game Server almacena y verifica las credenciales**: `players.password_hash` guarda un hash bcrypt y `internal/httpapi` sirve `POST /api/auth/register` y `POST /api/auth/login`. Es explícitamente provisional. [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) traslada la autenticación de usuario a Next.js, que emitirá el game ticket (JWT HS256, TTL 60 s) que el Game Server ya verifica hoy; cuando eso ocurra, `password_hash` saldrá de esta tabla mediante el patrón *contract* de [migrations.md](./migrations.md) §3. El contrato del ticket está en [../specs/websocket-protocol.md](../specs/websocket-protocol.md).
+**Credenciales.** Ninguna, desde la migración `000005_players_without_credentials` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Hasta entonces el Game Server guardaba aquí `password_hash` (bcrypt) y servía el alta y el login, como provisional. Ahora la identidad —nombre de acceso, hash `scrypt` y sesiones web— vive en el almacén propio de `apps/web` (base `empires_identity`, tablas `accounts` y `web_sessions`), que este documento no describe porque no es el esquema del juego: su DDL está en `apps/web/identity/migrations.mjs`. Los hashes que había no se migraron: eran de cuentas de humo y de la siembra de desarrollo. El contrato del ticket está en [../specs/websocket-protocol.md](../specs/websocket-protocol.md).
 
 ---
 

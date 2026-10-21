@@ -259,9 +259,9 @@ Los 16 KiB son holgados para los siete mensajes de v1: el mayor concebible es `s
 | Aplicación | BOUNDARY, TEST |
 | Milestone | M0 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Parcial**: `TestLosSecretosNoSeImprimenPorNingunaVia`, `TestObligatoriasAusentes`, `TestSecretoDemasiadoCorto` y `TestSecretoDeDesarrolloEnProduccion` (`internal/config`) y `TestLosLogsDeAltaYLoginNoContienenSecretos` (integration) cubren la configuración y los logs; el escaneo de secretos del repositorio y la comprobación del bundle de cliente **no existen todavía** |
+| Cobertura | **Parcial**: `TestLosSecretosNoSeImprimenPorNingunaVia`, `TestObligatoriasAusentes`, `TestSecretoDemasiadoCorto` y `TestSecretoDeDesarrolloEnProduccion` (`internal/config`) y los tests de logs de [INV-PLAYER-007](player.md#inv-player-007) cubren la configuración y los logs de los dos procesos; el escaneo de secretos del repositorio y la comprobación del bundle de cliente **no existen todavía** |
 
-**Enunciado.** `EO_POSTGRES_URL`, `EO_REDIS_URL`, `EO_AUTH_JWT_SECRET` y cualquier otro secreto de infraestructura no aparecen jamás en un mensaje al cliente, en un artefacto servido al navegador, en un log, ni en el repositorio de código en ninguna revisión de su historia.
+**Enunciado.** `EO_POSTGRES_URL`, `EO_REDIS_URL`, `EO_AUTH_JWT_SECRET`, `EO_IDENTITY_POSTGRES_URL` y cualquier otro secreto de infraestructura no aparecen jamás en un mensaje al cliente, en un artefacto servido al navegador, en un log, ni en el repositorio de código en ninguna revisión de su historia.
 
 **Razón.** Cada uno tiene una consecuencia distinta y todas son terminales:
 
@@ -269,9 +269,10 @@ Los 16 KiB son holgados para los siete mensajes de v1: el mayor concebible es `s
 |---|---|
 | `EO_POSTGRES_URL` | Acceso directo a la *source of truth*: lectura y escritura de todo el estado durable |
 | `EO_REDIS_URL` | Manipulación de presencia, sesiones y anti-replay de tickets ([INV-SEC-003](#inv-sec-003)) |
-| `EO_AUTH_JWT_SECRET` | **Falsificación de tickets**: cualquier `sub`, cualquier `exp`. Suplantación de cualquier jugador sin límite |
+| `EO_AUTH_JWT_SECRET` | **Falsificación de tickets y de tokens de fundación**: cualquier `sub`, cualquier `exp`. Suplantación de cualquier jugador sin límite |
+| `EO_IDENTITY_POSTGRES_URL` | Acceso a las cuentas: hashes de contraseña y sesiones web ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) |
 
-El último es el peor. Hoy el emisor de tickets es el propio Game Server (`internal/httpapi` + `auth.Issuer`), así que el secreto vive en un único proceso y no toca ningún bundle. La arquitectura objetivo de [../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md) traslada la emisión a Next.js, y **ahí aparece una vía de fuga específica**: en Next.js, una variable de entorno con el prefijo público se **incluye en el bundle del navegador**. `EO_AUTH_JWT_SECRET` no lleva ese prefijo y no debe llevarlo nunca; lo usará exclusivamente el código de servidor de la API route de emisión. Se anota aquí por adelantado porque el momento de recordarlo es el del traslado, no el posterior.
+El secreto JWT es el peor. Desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) lo usan dos procesos —`apps/web` firma, el Game Server verifica— y en Next.js **hay una vía de fuga específica**: una variable de entorno con el prefijo `NEXT_PUBLIC_` se **incluye en el bundle del navegador**. `EO_AUTH_JWT_SECRET` y `EO_IDENTITY_POSTGRES_URL` no llevan ese prefijo y no deben llevarlo nunca; las lee en tiempo de ejecución el código de servidor (`apps/web/src/server/config.ts`), y todo módulo que las toca importa `server-only`, de modo que el build falla si un componente de cliente lo importa.
 
 El repositorio importa tanto como el runtime: un secreto commiteado sigue en el historial de git aunque se borre en el commit siguiente. Rotarlo es la única mitigación real.
 
@@ -282,7 +283,7 @@ El repositorio importa tanto como el runtime: un secreto commiteado sigue en el 
 - `BOUNDARY` — ninguno de los mensajes servidor→cliente v1 contiene configuración de infraestructura. `session.welcome` lleva la información de sesión y de mundo que el cliente necesita, no cadenas de conexión.
 - `BOUNDARY` — `system.error` devuelve `{ code, message, requestId?, details? }` (canon §16) con mensajes redactados: un error de PostgreSQL nunca se propaga textualmente al cliente, porque los mensajes de error de driver incluyen a menudo el host y el usuario. Al cliente le llega `INTERNAL_ERROR`; el detalle va al log del servidor.
 - `BOUNDARY` — el repositorio incluye `.env.example` con las variables `EO_*` y valores de marcador, y `.gitignore` cubre los `.env` reales. El escaneo de secretos en el paso `lint` del pipeline (canon §19) es **trabajo pendiente**, no una comprobación ya activa.
-- `BOUNDARY` — el cliente `apps/web` sólo lee variables `NEXT_PUBLIC_GAME_SERVER_*` (las URL del servidor) y no conoce ninguna credencial: hoy el ticket lo emite el propio Game Server.
+- `BOUNDARY` — el código de navegador de `apps/web` sólo lee `NEXT_PUBLIC_GAME_SERVER_WS_URL`. Las credenciales las lee el servidor de Next.js en `src/server/`, bajo `server-only`; `next.config.mjs` no copia ninguna a `env`.
 - Las credenciales de desarrollo viven en `docker-compose.yml` para los servicios locales y no se reutilizan en ningún otro entorno.
 
 **Cómo se verifica.**
@@ -290,7 +291,7 @@ El repositorio importa tanto como el runtime: un secreto commiteado sigue en el 
 - `TestLosSecretosNoSeImprimenPorNingunaVia` (unit, `internal/config`) — la configuración cargada con tres credenciales, impresa con seis verbos de `fmt`, con `slog` en texto y en JSON y con `json.Marshal`, no contiene ninguna; `Reveal` sigue dando el valor. Verificado por mutación: sin `Format`, `%#v` la filtra.
 - `TestObligatoriasAusentes` (unit, `internal/config`) — sin `EO_POSTGRES_URL` o `EO_AUTH_JWT_SECRET`, el arranque falla en lugar de usar un valor por defecto; sin `EO_REDIS_URL`, sólo fuera de producción se admite el estado caliente en proceso.
 - `TestSecretoDemasiadoCorto` y `TestSecretoDeDesarrolloEnProduccion` (unit, `internal/config`) — un secreto de menos de 32 caracteres, o el de desarrollo en producción, abortan el arranque.
-- `TestLosLogsDeAltaYLoginNoContienenSecretos` (integration, `internal/persistence/postgres`) — ni la contraseña ni el ticket aparecen en los logs del alta y del login.
+- Los tests de logs de [INV-PLAYER-007](player.md#inv-player-007) —`TestLosLogsDeLaFundacionNoContienenSecretos`, `TestLosLogsDelHandshakeNoContienenTicketsNiSecreto` y «los logs de la identidad no contienen secretos» en `apps/web`— comprueban que el secreto no aparece en ningún log.
 - `TestErrorDeProtocoloLlevaCodigoEstable` (contract, `internal/protocol`) — `system.error` viaja con un código del catálogo cerrado, no con texto de driver.
 - Test previsto: `Test_INV_SEC_006_ErrorsDoNotExposeInternals` (integration) — se fuerza un error de base de datos; el `system.error` recibido es `INTERNAL_ERROR` sin cadena de conexión ni texto del driver.
 - Test previsto: `Test_INV_SEC_006_NoSecretsInRepository` (CI) — escaneo de secretos sobre el árbol de trabajo y el historial.
@@ -347,6 +348,51 @@ Los efectos de una reejecución no son simétricos:
 
 ---
 
+<a id="inv-sec-008"></a>
+## INV-SEC-008 — Un token sólo sirve a su audiencia
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | BOUNDARY, TEST |
+| Milestone | M3 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestLasAudienciasSonDisjuntas` y `TestLosTokensDeAppsWebSeVerificanEnGo` (unit, `internal/auth`) y por `TestUnTicketDeJuegoNoFundaJugadores` y `TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub` (integration, `internal/persistence/postgres`) |
+
+**Enunciado.** Un ticket de juego (`aud: "game-server"`) no funda jugadores; un token de fundación
+(`aud: "game-server-internal"`) no abre una sesión de juego; y la fundación sólo crea el jugador cuyo
+`playerId` es el `sub` del token que la autoriza.
+
+**Razón.** [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) firma los dos tokens con el mismo
+`EO_AUTH_JWT_SECRET`. Sin audiencias disjuntas, cualquier jugador con un ticket de juego válido —que recibe en
+cada conexión— podría llamar al endpoint interno y fundar jugadores a su gusto; y un token de fundación
+interceptado abriría una sesión de juego para la cuenta recién creada. Atar el cuerpo al `sub` impide que un
+token legítimo funde otro id que el que Next.js acaba de autenticar.
+
+**Cómo se garantiza.**
+
+- `BOUNDARY` — `auth.Verifier` recibe la audiencia al construirse y la exige con `jwt.WithAudience`. El
+  WebSocket usa `auth.Audience` y el endpoint interno `auth.InternalAudience`, a través de
+  `httpapi.NewFoundingAuthenticator`, que es lo que usan tanto `cmd/server` como los tests; ningún verificador
+  acepta las dos.
+- `BOUNDARY` — `POST /internal/players` rechaza con 401 un token de otra audiencia, caducado o ya consumido, y
+  con 403 un cuerpo cuyo `playerId` no es el `sub`.
+- `BOUNDARY` — el `jti` del token de fundación se consume en el mismo almacén anti-replay que el del ticket
+  ([INV-SEC-003](#inv-sec-003)).
+
+**Cómo se verifica.**
+
+- `TestLasAudienciasSonDisjuntas` (unit, `internal/auth`) — cada verificador acepta su token y rechaza el del otro. Verificado por mutación: un verificador sin `WithAudience` lo hace fallar.
+- `TestLosTokensDeAppsWebSeVerificanEnGo` (unit, `internal/auth`) — lo mismo con los tokens que produce el emisor de TypeScript.
+- `TestUnTicketDeJuegoNoFundaJugadores` (integration) — un ticket de juego, o ningún token, no funda nada. Verificado por mutación: construir la fundación con la audiencia de juego lo hace fallar.
+- `TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub` (integration) — un cuerpo con otro `playerId` recibe 403, y el token ya consumido no sirve después ni para su propio `sub`. Verificado por mutación.
+- «el token de fundación sólo cambia la audiencia» (unit, `apps/web/src/server/tokens.test.ts`) — y la audiencia interna no es la de juego. Verificado por mutación.
+
+**Violación en runtime.** Cada rechazo se registra en `warn` con el motivo y el `jti`, nunca con el token.
+
+---
+
+
 ## Modelo de amenazas del MVP
 
 Qué cubre este catálogo y qué queda explícitamente fuera.
@@ -373,5 +419,6 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | INV-SEC-003 | `internal/auth`, `internal/persistence/redis` | [INV-PERSIST-003](persistence.md#inv-persist-003) |
 | INV-SEC-004 | `internal/websocket`, `internal/domain` | [INV-PLAYER-001](player.md#inv-player-001) |
 | INV-SEC-005 | `internal/websocket` | [../specs/websocket-protocol.md](../specs/websocket-protocol.md) |
-| INV-SEC-006 | `internal/config`, `internal/httpapi` | [../operations/monitoring.md](../operations/monitoring.md) |
+| INV-SEC-006 | `internal/config`, `apps/web/src/server` | [../operations/monitoring.md](../operations/monitoring.md) |
 | INV-SEC-007 | `internal/websocket`, `internal/persistence/redis` | [INV-PERSIST-001](persistence.md#inv-persist-001), [INV-PLAYER-003](player.md#inv-player-003) |
+| INV-SEC-008 | `internal/auth`, `internal/httpapi`, `apps/web` | [INV-SEC-003](#inv-sec-003), [INV-PLAYER-009](player.md#inv-player-009) |

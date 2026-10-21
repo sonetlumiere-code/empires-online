@@ -8,11 +8,12 @@ Propósito: definir el diseño objetivo del cliente de **Empires Online** —Nex
 > | Fichero | Papel |
 > |---|---|
 > | `app/page.tsx`, `app/layout.tsx` | Alta, entrada y HUD en una sola página |
-> | `src/net/client.ts`, `src/net/auth.ts` | Capa 1: transporte WebSocket, handshake, latido, reconexión con backoff y jitter, desfase de reloj; obtención del ticket |
+> | `src/net/client.ts`, `src/net/auth.ts` | Capa 1: transporte WebSocket, handshake, latido, reconexión con backoff y jitter, desfase de reloj; alta, login y ticket por la cookie de sesión |
 > | `src/state/world.ts` | Capa 2: store Zustand, réplica de sólo lectura aplicada desde los mensajes |
 > | `src/state/interpolation.ts` | Posición autoritativa e interpolada de una polilínea (§5.1, §5.2) |
 > | `src/render/reconciler.ts` | Corrección gradual de las discontinuidades (§5.3) |
 > | `src/render/iso.ts`, `src/render/scene.ts`, `src/components/GameCanvas.tsx` | Capa 3: proyección, escena PixiJS y su montaje en React |
+> | `app/api/auth/*/route.ts`, `src/server/*`, `identity/*`, `instrumentation.ts` | Servidor de Next.js: alta, login, sesión web, emisión del ticket y almacén de identidad ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) |
 >
 > Se ajustan al código, y así se verificaron, §5 entero y el bucle de frame de §7.3. Lo demás —el árbol de
 > carpetas de §11, los módulos separados de la capa 1 (`backoff.ts`, `clockSync.ts`, `seqTracker.ts`…), el
@@ -107,7 +108,13 @@ Asimetría del protocolo que el cliente debe conocer, porque está implementada 
 
 Consecuencia de diseño: **el ticket nunca se cachea**. Con TTL de 60 s, cada intento de (re)conexión pide un ticket nuevo. Un reintento de reconexión es siempre `fetch ticket → open socket → session.hello`.
 
-> **De dónde sale hoy el ticket.** [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) sitúa la emisión en una API route de Next.js, y así se describe en el resto de este documento. Pero, aunque `apps/web` ya existe, quien emite el ticket **hoy** sigue siendo el propio Game Server: `POST /api/auth/register` y `POST /api/auth/login` de `internal/httpapi` responden con el ticket ya firmado. Cuando exista el cliente, tendrá que decidirse si esas rutas se trasladan a Next.js (arquitectura objetivo) o si el cliente sigue llamándolas en el Game Server durante el MVP. Hasta entonces, el diseño del cliente es indiferente al emisor: pide un ticket a un endpoint HTTP y lo presenta en `session.hello`.
+> **De dónde sale el ticket.** De `apps/web`, en el mismo origen que la página
+> ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). El alta (`POST /api/auth/register`) y el
+> login (`POST /api/auth/login`) responden con el primer ticket y dejan una cookie de sesión `HttpOnly`; cada
+> reconexión pide el siguiente a `POST /api/auth/ticket`, que sólo necesita esa cookie. El cliente no guarda la
+> contraseña: `src/net/auth.ts` (`ticketProvider`) usa el ticket del alta para la primera conexión y la cookie
+> para las demás. El código de servidor —almacén de identidad, `scrypt`, firma del ticket— vive en
+> `apps/web/src/server/`, bajo `server-only`, y nunca llega al bundle del navegador.
 
 ### 3.3 Reconexión: backoff exponencial con jitter
 
@@ -716,9 +723,7 @@ apps/web/
 │   ├── login/page.tsx
 │   ├── play/page.tsx                     # monta GameCanvas (dynamic, ssr:false)
 │   └── api/
-│       ├── auth/ticket/route.ts          # emitirá el game ticket (JWT HS256, TTL 60 s).
-│       │                                 # HOY ese papel lo cumplen /api/auth/{register,login}
-│       │                                 # del Game Server; ver §3.2.
+│       ├── auth/{register,login,ticket,logout}/route.ts   # EXISTEN (ADR-018); ver §3.2
 │       └── catalog/route.ts              # civilizations / factions / eras
 ├── src/
 │   ├── net/                              # CAPA 1 — sin tiles, sin píxeles

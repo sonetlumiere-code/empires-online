@@ -80,7 +80,7 @@ La versión viaja **en cada mensaje**, en el campo `v` (entero). En v1 el valor 
 | S-4 | Coordenadas `x`, `y`: enteros `int32` en espacio de **tiles**. El servidor nunca envía píxeles; la proyección isométrica es responsabilidad exclusiva del cliente. |
 | S-5 | Un chunk se identifica por el **par `{cx, cy}`** (`ChunkRef`), nunca por un índice lineal: `cx = x / chunkSize`, `cy = y / chunkSize` con `chunkSize = EO_CHUNK_SIZE` (32 en MVP). No existe ningún campo `chunkId` en el protocolo v1. |
 | S-6 | En los deltas servidor→cliente, campo **ausente** y `null` **no son equivalentes**: ausente significa "sin cambios en este delta"; `null` significa "el servidor afirma que no hay valor" (p. ej. `protectionUntilMs: null`, `movement: null`, `cityId: null`). |
-| S-7 | Los esquemas **cliente→servidor son estrictos** (`.strict()` en Zod → `additionalProperties: false` en el JSON Schema): una propiedad desconocida se rechaza. Los esquemas **servidor→cliente NO son estrictos**, deliberadamente: es lo que permite añadir campos opcionales (R-VER-2) sin invalidar a un cliente antiguo que valide lo que recibe. La asimetría es intencionada: hacia dentro se cierra la puerta para detectar drift y bloquear estado no contractual (INV-SEC-001); hacia fuera se deja abierta para poder evolucionar. |
+| S-7 | Los esquemas **cliente→servidor son estrictos** (`.strict()` en Zod → `additionalProperties: false` en el JSON Schema): una propiedad desconocida se rechaza. Los esquemas **servidor→cliente NO son estrictos en el cliente**, deliberadamente: Zod descarta lo que no conoce, y es lo que permite añadir campos opcionales (R-VER-2) sin invalidar a un cliente antiguo que valide lo que recibe. El JSON Schema exportado sí cierra esos objetos (`additionalProperties: false`), y por eso el test de contrato del servidor, que valida con él todo lo que emite, exige que el servidor no emita ningún campo que el contrato no declare: un campo nuevo se declara primero en Zod. La asimetría es intencionada: hacia dentro se cierra la puerta para detectar drift y bloquear estado no contractual (INV-SEC-001); hacia fuera se deja abierta para poder evolucionar. |
 | S-8 | El terreno viaja como **base64** de `size*size` bytes en orden fila-mayor, un byte por tile con el valor numérico del tipo de terreno: `GRASSLAND=0`, `FOREST=1`, `HILL=2`, `MOUNTAIN=3`, `WATER=4`, `ROAD=5`. |
 
 ### 4.2 Rate limiting
@@ -163,11 +163,11 @@ type Outbound struct {
 ```mermaid
 sequenceDiagram
     participant C as Cliente
-    participant H as HTTP API de auth
+    participant H as apps/web (/api/auth/*)
     participant G as Game Server WS (Go)
     participant R as Redis
     C->>H: POST /api/auth/login { username, password }
-    H-->>C: { playerId, ticket, expiresInSeconds: 60 }
+    H-->>C: { playerId, ticket, expiresInSeconds: 60 } + cookie eo_session
     C->>G: WSS CONNECT /ws
     Note over G: read deadline de handshake (5 s)
     C->>G: session.hello { ticket }
@@ -183,7 +183,7 @@ sequenceDiagram
     end
 ```
 
-**Emisión del ticket, hoy y mañana.** En el estado actual del repositorio el ticket lo emite el **propio game server** en `POST /api/auth/register` y `POST /api/auth/login` (`internal/httpapi`, bcrypt para las credenciales), que devuelven `{ playerId, ticket, expiresInSeconds: 60 }`. Es explícitamente **provisional**: la arquitectura objetivo de [../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md) traslada la emisión a Next.js. El contrato del WebSocket no cambia con esa mudanza: el `session.hello` sigue llevando el mismo JWT HS256, `aud = "game-server"`, TTL 60 s, `jti` de un solo uso.
+**Emisión del ticket.** Lo emite `apps/web` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): `POST /api/auth/register` y `POST /api/auth/login` devuelven `{ playerId, ticket, expiresInSeconds: 60 }` y dejan una cookie de sesión; cada reconexión pide el siguiente a `POST /api/auth/ticket` con esa cookie. El contrato del ticket es el de [ADR-010](../decisions/ADR-010-authentication-game-ticket.md) —JWT HS256, `aud = "game-server"`, TTL 60 s, `jti` de un solo uso— y un fixture compartido (`internal/auth/testdata/web-tokens.json`) obliga al emisor de TypeScript y al verificador de Go a seguir hablándolo. El game server no ve contraseñas.
 
 Reglas del ciclo de vida:
 
@@ -907,7 +907,7 @@ apps/web (tipos + validación, pendiente)   validación manual en Go (runtime, p
 |---|---|
 | SC-1 | Los esquemas Zod de `packages/protocol/src/v1/` son la única fuente de verdad. Ningún tipo del protocolo se declara a mano en el cliente: se importan de `@empires-online/protocol`. |
 | SC-2 | `pnpm run protocol:build` regenera ambos destinos; `pnpm run protocol:check` (`export-schema.ts --check`) falla si hay deriva. CI lo ejecuta: un schema desactualizado en el repo es un check rojo. |
-| SC-3 | El Game Server embebe los JSON Schema con `go:embed` en `internal/protocol` (`schema.go`) y los usa **solo en contract tests**. La validación en runtime está escrita a mano en Go por rendimiento; los contract tests garantizan que ambas coinciden. |
+| SC-3 | El Game Server embebe los JSON Schema con `go:embed` en `internal/protocol` (`schema.go`) y los usa **solo en tests**: los contract tests de `internal/protocol`, y los e2e de `internal/websocket`, que validan contra `server-message.schema.json` cada mensaje que el servidor real emite (`schema_e2e_test.go`). La validación en runtime está escrita a mano en Go por rendimiento; los tests garantizan que ambas coinciden. |
 | SC-4 | `error-codes.json` declara su `version`; `ExportedErrorCodes()` rechaza un artefacto cuya versión no sea la que habla el servidor, antes incluso de comparar el catálogo. |
 | SC-5 | Guardar los ejemplos JSON de este documento como *golden files* validados en CI es `TBD (fuera de MVP)`: hoy no existe `services/game-server/testdata/`. La cobertura equivalente la dan los contract tests de `internal/protocol` y los tests de `packages/protocol`. |
 | SC-6 | `v2` no modifica `src/v1/`: crea `src/v2/` y `schema/v2/`. Los dos árboles coexisten mientras haya clientes v1 en producción. |
@@ -946,7 +946,8 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | e2e | `unit.garrison` en una ciudad ajena sin tratado, y sobre una unidad ajena | `TREATY_REQUIRED` y `UNIT_NOT_OWNED` con el `requestId` | **EN VERDE** (`TestGuarnecerEnUnaCiudadAjenaSinTratadoLlegaComoTreatyRequired`) |
 | e2e | `unit.move` con la cola del loop llena | `system.error INTERNAL_ERROR` con su `requestId`, y el reintento con el mismo `requestId` se ejecuta (I-10) | **EN VERDE** (`TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`) |
 | e2e | Redis caído durante un `unit.move` | El comando se ejecuta igualmente y se registra `warn` | Pendiente |
-| e2e | `session.view` que desplaza el área 2 chunks | Nuevo `world.snapshot` con el `requestId` del comando y terreno **sólo** de los chunks nuevos | Pendiente |
+| e2e | `session.view` que desplaza el área 2 chunks | Nuevo `world.snapshot` con el `requestId` del comando y terreno **sólo** de los chunks nuevos | **EN VERDE** (`TestSessionViewRecentraConUnSnapshotDelAreaNueva`) |
+| contract (e2e) | Todo mensaje servidor→cliente que emite el servidor real valida contra `server-message.schema.json`, y los 14 tipos aparecen al menos una vez | Un mensaje fuera de contrato, o un tipo que ningún e2e emite, falla el paquete | **EN VERDE** (`schema_e2e_test.go`, `contract_e2e_test.go`) |
 | simulation | `unit.move` con `FakeClock` sobre el trayecto canónico | `path` exacto `[0, 600, 1449, 2409, 2769]`, `arrivalTimeMs` exacto | **EN VERDE** |
 | simulation | Reconstrucción de la posición desde la polilínea (`PositionAt`) | Coincide con la posición autoritativa del servidor | **EN VERDE** |
 | simulation | Segunda orden sobre una unidad en movimiento | `unit.movement.cancelled(REPLACED)` antes de `unit.move.accepted` y `unit.movement.started` | **EN VERDE** |

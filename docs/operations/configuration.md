@@ -93,7 +93,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
 |---|---|---|---|---|---|---|
-| `EO_HTTP_ADDR` | addr | `:8080` | `host:port` tal y como lo acepta `net/http` | No | No | Dirección de escucha del servidor HTTP: upgrade WebSocket en `/ws`, `GET /health`, `GET /ready`, `POST /api/auth/register` y `POST /api/auth/login`. Es la superficie **pública** (detrás del reverse proxy). |
+| `EO_HTTP_ADDR` | addr | `:8080` | `host:port` tal y como lo acepta `net/http` | No | No | Dirección de escucha del servidor HTTP: upgrade WebSocket en `/ws`, `GET /health`, `GET /ready` y `POST /internal/players`, la fundación que llama `apps/web` con un token firmado ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Es la superficie **pública** (detrás del reverse proxy). |
 | `EO_METRICS_ADDR` | addr | `:9090` | `host:port` | No | No | Dirección de escucha de `/metrics` (Prometheus), en un `http.Server` **separado** a propósito: permite exponer 8080 al mundo y dejar 9090 accesible solo desde la red de monitorización. Ponerla igual que `EO_HTTP_ADDR` no lo detecta la validación: falla al abrir el segundo listener. |
 
 ### 3.3 Dependencias
@@ -144,10 +144,26 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_WS_MAX_MESSAGE_BYTES` | bytes | `16384` | 256–4194304 | No | No | Tamaño máximo de mensaje entrante (16 KiB con el default). Superarlo produce `MESSAGE_TOO_LARGE`. Debe ser ≤ al límite del reverse proxy, o el proxy cortará antes y el cliente verá un cierre opaco en vez del código de error. |
 | `EO_WS_RATE_LIMIT_PER_SECOND` | int | `20` | 1–10000 | No | No | Tasa sostenida de mensajes por conexión. Al superarse: `RATE_LIMITED` y, si persiste, cierre `4429`. |
 | `EO_WS_RATE_LIMIT_BURST` | int | `40` | 1–20000, y **≥ `EO_WS_RATE_LIMIT_PER_SECOND`** | No | No | Capacidad del *token bucket*: ráfaga tolerada por encima de la tasa sostenida. Cubre el pico legítimo de un jugador arrastrando la vista (`session.view`) sin castigarlo. |
-| `EO_AUTH_RATE_LIMIT_PER_MINUTE` | int | `10` | 1–100000 | No | No | Peticiones por minuto y por dirección de origen a `POST /api/auth/register` y `POST /api/auth/login`. Por minuto y no por segundo porque es la unidad natural de un intento de login. **No es una comodidad**: el alta ejecuta bcrypt sin autenticación previa, así que sin límite es un amplificador de denegación de servicio apuntando al proceso que corre el game loop. |
-| `EO_AUTH_RATE_LIMIT_BURST` | int | `5` | 1–10000 | No | No | Capacidad del cubo de fichas de esos endpoints. Un humano que se equivoca de contraseña dos veces no lo nota; un script sí. |
-| `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false` | No | No | Si se cree a `X-Forwarded-For` / `X-Real-IP` al identificar al cliente. **Actívalo sólo con un proxy inverso delante.** Con proxy y sin esto, todas las peticiones parecen venir del proxy y comparten un único cupo; sin proxy y con esto, cualquiera falsifica la cabecera y se salta el límite. El valor por defecto es el seguro, no el cómodo. |
 | `EO_WS_OUTBOUND_QUEUE_SIZE` | int | `256` | 8–65536 | No | No | Tamaño de la **cola de salida por conexión**. Es la contrapresión del lado servidor: si un cliente no consume sus deltas y la cola se llena, la sesión se cierra con **4500** y el cliente reconecta pidiendo un snapshot limpio. Subirlo tolera clientes más lentos a costa de memoria por conexión; bajarlo corta antes. **No aparece en `.env.example`**: se toma el default salvo que se declare. |
+
+### 3.8-bis Identidad (las lee `apps/web`, no el Game Server)
+
+Desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) el alta, el login y la sesión web viven
+en el servidor de Next.js. Estas variables las lee `apps/web/src/server/config.ts` en tiempo de ejecución,
+con los errores reportados todos juntos como `internal/config`; `internal/config` no lee ninguna, y ninguna
+lleva el prefijo `NEXT_PUBLIC_`. En desarrollo, `apps/web` carga el `.env` de la raíz sin pisar el entorno.
+
+| Variable | Tipo | Default | Rango válido | Secreto | Efecto |
+|---|---|---|---|---|---|
+| `EO_AUTH_JWT_SECRET` | string | — | ≥ 32 caracteres; sin `dev-only` en producción | **Sí** | El **mismo** que verifica el Game Server (§3.3): `apps/web` firma con él el game ticket y el token de fundación. |
+| `EO_IDENTITY_POSTGRES_URL` | DSN | — (obligatoria) | URL de PostgreSQL | **Sí** | Almacén de identidad: `accounts` y `web_sessions`, en una base y con un rol propios. En local la crea `pnpm run pg:identity` con una contraseña aleatoria que escribe sólo en el `.env`. |
+| `EO_GAME_SERVER_INTERNAL_URL` | URL | `http://localhost:8080` | URL HTTP(S) | No | Base a la que `apps/web` llama `POST /internal/players` para fundar un jugador. |
+| `EO_AUTH_RATE_LIMIT_PER_MINUTE` | int | `10` | 1–100000 | No | Intentos de alta y login por minuto y por origen. Cada uno calcula `scrypt`: sin límite, cualquiera hace quemar CPU al servidor web, y en el login es lo único que separa una contraseña de la fuerza bruta. **Por proceso**: con varias instancias de Next.js, cada una lleva su cuenta. |
+| `EO_AUTH_RATE_LIMIT_BURST` | int | `5` | 1–10000 | No | Capacidad del cubo de esos intentos. Un humano que se equivoca de contraseña dos veces no lo nota; un script sí. |
+| `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false` | No | Si se cree a `X-Forwarded-For` al identificar el origen. **Actívalo sólo con un proxy inverso delante.** Sin esto, todas las peticiones comparten un único cupo; sin proxy y con esto, cualquiera falsifica la cabecera y se salta el límite. El valor por defecto es el seguro. |
+
+Hasta ADR-018, `EO_AUTH_RATE_LIMIT_*` y `EO_TRUST_PROXY_HEADERS` las leía el Game Server, que era quien
+calculaba bcrypt; cambiaron de proceso, no de nombre ni de significado.
 
 ### 3.9 Constantes NO configurables por entorno
 
@@ -168,16 +184,16 @@ que ser más tolerante que ellos (ver [deployment.md](./deployment.md#43-reglas-
 |---|---|---|
 | `EO_INTEGRATION` | Solo tests | Gate del nivel *integration*: con `EO_INTEGRATION=1` se ejecutan; sin él, `t.Skip`. Además hace falta la etiqueta de compilación `integration`. **No la lee `internal/config`.** |
 | `EO_TEST_POSTGRES_URL` | Solo tests | DSN de la base contra la que corren los tests de integración. Si está vacía se usa el valor por defecto del propio test, `postgres://empires:empires_dev_password@localhost:5432/empires?sslmode=disable`. **No la lee `internal/config`.** |
+| `EO_TEST_IDENTITY_POSTGRES_URL` | Solo tests | DSN del almacén de identidad de tests (`empires_identity_test`), para `apps/web/src/server/store.integration.test.ts`. El test se niega si la base no termina en `_test`. |
 | `EO_TEST_REDIS_URL` | Solo tests | DSN de Redis para los tests de integración; por defecto `redis://localhost:6379/1` — la base **1**, no la 0 que usa `EO_REDIS_URL`, para no pisar el estado de desarrollo. **No la lee `internal/config`.** |
 | `NEXT_PUBLIC_GAME_SERVER_WS_URL` | Solo frontend | URL del WebSocket, tal y como aparece en `.env.example`. Al llevar prefijo `NEXT_PUBLIC_` **se incrusta en el bundle del navegador**: es información pública por construcción y jamás debe contener credenciales. **No forma parte del catálogo `EO_` del Game Server** y `internal/config` no la lee. Ver [deployment.md](./deployment.md#2-frontend-nextjs-en-vercel). |
-| `NEXT_PUBLIC_GAME_SERVER_HTTP_URL` | Solo frontend | Origen HTTP del Game Server contra el que el cliente pide alta e inicio de sesión (`/api/auth/register`, `/api/auth/login`). Por defecto `http://localhost:8080`, fijado en `apps/web/next.config.mjs`. Pública por construcción, como la anterior. Desaparecerá cuando el alta salga del Game Server (`EO-117`). |
 | `EO_IMAGE_TAG` | Solo despliegue | Etiqueta (SHA de commit) de la imagen que referencia el `docker-compose.yml` del VPS. Es una variable **de tooling de despliegue**, no de configuración del servidor: el proceso Go no la lee. Ver [deployment.md](./deployment.md#32-composición-en-el-vps). |
 
 Otras constantes que **no** son configuración porque viven en código o en datos: `TILE_W = 64` y
 `TILE_H = 32` (proyección isométrica, exclusiva del cliente); √2 en punto fijo `1414214/1000000` para el paso
 diagonal; las escalas de coste del A\* `costScaleOrtho = 1000` y `costScaleDiag = 1414`, con la heurística
 octile ponderada por `MinTerrainCostUnits = 6` (ROAD); los códigos de cierre WS
-`4400/4401/4403/4408/4429/4500`; el TTL de 60 s del *game ticket* y el de 120 s de `ticket:jti:{jti}`; el TTL
+`4400/4401/4403/4408/4429/4500`; el TTL de 60 s del *game ticket* y del token de fundación (en `apps/web`) y el de 120 s de `ticket:jti:{jti}`; la vida de 7 días de la sesión web y el coste de `scrypt` (`N = 2^15, r = 8, p = 3`); el TTL
 de 300 s de `idem:{playerId}:{requestId}`; el tamaño de la cola de comandos del loop (8192); el presupuesto
 de apagado ordenado (25 s, con 15 s para drenar la cola de persistencia) y el umbral de 5 s tras el cual
 `/ready` marca el game loop como `stale`; y las eras, que viven en la tabla `eras`.

@@ -256,7 +256,7 @@ func TestUnAltaSinInstanteSeRechazaSinEscribirNada(t *testing.T) {
 	_, err := bootstrapper.Create(ctx, req)
 	require.Error(t, err)
 
-	_, _, err = players.GetByUsername(ctx, "sinreloj")
+	_, err = players.GetByUsername(ctx, "sinreloj")
 	assert.Error(t, err, "un alta rechazada no deja jugador")
 }
 

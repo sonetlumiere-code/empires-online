@@ -62,7 +62,10 @@ bundle JavaScript** que se descarga el navegador: es público de forma irreversi
 | Variable | Prefijo | Ámbito | Contenido |
 |---|---|---|---|
 | `NEXT_PUBLIC_GAME_SERVER_WS_URL` | **público** | Navegador y servidor | `wss://game.<dominio>/ws` |
-| `EO_AUTH_JWT_SECRET` | **privado** | Solo runtime del servidor de Next | Clave HS256 compartida con el Game Server |
+| `EO_AUTH_JWT_SECRET` | **privado** | Solo runtime del servidor de Next | Clave HS256 compartida con el Game Server: firma el ticket y el token de fundación |
+| `EO_IDENTITY_POSTGRES_URL` | **privado** | Solo runtime del servidor de Next | Almacén de identidad ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): cuentas y sesiones web, en una base y con un rol propios |
+| `EO_GAME_SERVER_INTERNAL_URL` | **privado** | Solo runtime del servidor de Next | Base HTTPS del Game Server para `POST /internal/players` |
+| `EO_AUTH_RATE_LIMIT_*`, `EO_TRUST_PROXY_HEADERS` | **privado** | Solo runtime del servidor de Next | Límite de alta y login por origen; en Vercel, `EO_TRUST_PROXY_HEADERS=true` |
 
 `NEXT_PUBLIC_GAME_SERVER_WS_URL` es una variable **del frontend**, no del catálogo `EO_` del Game Server:
 `internal/config` no la lee y no aparece en la referencia de [configuration.md §3](./configuration.md#3-referencia-de-variables).
@@ -72,8 +75,9 @@ La URL del WebSocket **debe** ser pública: el navegador necesita saber a dónde
 sensible en ella, y ocultarla no aportaría seguridad alguna — el endpoint es público por diseño y su
 protección real es el handshake autenticado.
 
-`EO_AUTH_JWT_SECRET` **jamás** lleva prefijo `NEXT_PUBLIC_`. Se usa exclusivamente dentro de la API route
-que emite el ticket. Un secreto expuesto en el bundle permitiría a cualquiera firmar un ticket con el `sub`
+`EO_AUTH_JWT_SECRET` y `EO_IDENTITY_POSTGRES_URL` **jamás** llevan prefijo `NEXT_PUBLIC_`. Se leen sólo en el
+servidor de Next.js (`src/server/`, bajo `server-only`): en los route handlers que dan de alta, abren sesión y
+emiten el ticket. Un secreto expuesto en el bundle permitiría a cualquiera firmar un ticket con el `sub`
 de otro jugador y suplantarlo por completo. Ver
 [configuration.md](./configuration.md#6-manejo-de-secretos).
 
@@ -388,6 +392,12 @@ Postgres son la diferencia entre un incidente y una pérdida de mundo, y no es s
 Requisitos adicionales de Postgres: la extensión y la configuración de WAL necesarias para PITR deben estar
 activas desde el primer día (no se puede recuperar a un punto anterior a la activación del archivado), y el
 rol de la aplicación tiene privilegios sobre su esquema, **no** es superusuario.
+
+**Almacén de identidad** ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Otra base PostgreSQL —puede vivir en el mismo servicio gestionado— con su
+propio rol, sin `CONNECT` sobre la base del juego, y el rol del Game Server sin `CONNECT` sobre ella. La conecta
+el servidor de Next.js con un pool de 5 conexiones por proceso: **desde funciones *serverless* exige un *pooler***
+(PgBouncer o el del proveedor) delante, que este documento todavía no diseña. Sus migraciones las aplica el
+servidor de Next.js al arrancar, o `pnpm run identity:migrate` antes de desplegar.
 
 Requisitos de Redis: política de expiración que respete los TTL (las claves `presence:player:{playerId}`,
 `idem:{playerId}:{requestId}` y `ticket:jti:{jti}` dependen de que el TTL se honre), y **sin** persistencia

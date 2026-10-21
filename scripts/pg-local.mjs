@@ -21,9 +21,10 @@
  * Se pueden borrar y recrear cuando se quiera: no son fuente de nada.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, rmSync, appendFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, appendFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = join(repoRoot, '.pgdata');
@@ -61,8 +62,12 @@ function findBinDir() {
   return '';
 }
 
-const binDir = findBinDir();
-const exe = (name) => (binDir ? join(binDir, name) : name);
+// Perezoso: importar el módulo (los tests lo hacen) no debe exigir PostgreSQL instalado.
+let binDir;
+const exe = (name) => {
+  binDir ??= findBinDir();
+  return binDir ? join(binDir, name) : name;
+};
 
 function fail(message) {
   console.error(`\n${message}\n`);
@@ -129,6 +134,10 @@ function init() {
   console.log(`\nListo. Añade esto a tu .env:\n`);
   console.log(`  EO_POSTGRES_URL=postgres://${ROLE}:${PASSWORD}@localhost:${PORT}/empires?sslmode=disable\n`);
   console.log(`Aplica el esquema con: pnpm run db:migrate\n`);
+
+  console.log('Almacén de identidad de apps/web (ADR-018):');
+  identity();
+  console.log('');
 }
 
 function start() {
@@ -205,12 +214,122 @@ function psql() {
   process.exit(result.status ?? 0);
 }
 
-const commands = { init, start, stop, status, destroy, psql };
-const command = process.argv[2];
+// ─────────────────────────────────────────────────────────────
+// Almacén de identidad de apps/web (ADR-018)
+// ─────────────────────────────────────────────────────────────
 
-if (!command || !(command in commands)) {
-  console.log('Uso: node scripts/pg-local.mjs <init|start|stop|status|destroy|psql>');
-  process.exit(command ? 1 : 0);
+const IDENTITY_ROLE = 'empires_identity';
+const IDENTITY_DATABASES = ['empires_identity', 'empires_identity_test'];
+const envFile = join(repoRoot, '.env');
+
+/** Valor de una clave del .env local, o undefined. */
+function envValue(key) {
+  if (!existsSync(envFile)) return undefined;
+  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && m[1] === key) return m[2];
+  }
+  return undefined;
 }
-commands[command]();
+
+/**
+ * Escribe claves en el .env local: sustituye la línea si ya existe —también vacía,
+ * como la deja `.env.example`— y si no, la añade al final. Sustituir importa: los
+ * cargadores se quedan con la PRIMERA aparición de cada clave, así que una línea
+ * añadida detrás de una vacía no surtiría efecto.
+ */
+export function upsertEnv(text, values) {
+  const pending = new Map(Object.entries(values));
+  const lines = text.split(/\r?\n/).map((line) => {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=/);
+    if (m && pending.has(m[1])) {
+      const value = pending.get(m[1]);
+      pending.delete(m[1]);
+      return `${m[1]}=${value}`;
+    }
+    return line;
+  });
+  if (pending.size > 0) {
+    if (lines.length && lines[lines.length - 1] !== '') lines.push('');
+    lines.push('# Almacén de identidad de apps/web (ADR-018). Generado por pg-local.mjs identity.');
+    for (const [k, v] of pending) lines.push(`${k}=${v}`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+function setEnvValues(values) {
+  writeFileSync(envFile, upsertEnv(existsSync(envFile) ? readFileSync(envFile, 'utf8') : '', values));
+}
+
+/** SQL por la entrada estándar: lo que lleva una contraseña no pasa por argv. */
+function psqlInput(database, sql) {
+  const result = spawnSync(exe('psql'), ['-h', 'localhost', '-p', String(PORT), '-U', ROLE, '-d', database, '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], {
+    input: sql,
+    encoding: 'utf8',
+    env: { ...process.env, PGPASSWORD: PASSWORD, PGCLIENTENCODING: 'UTF8' },
+  });
+  if (result.error) fail(`no se pudo ejecutar psql: ${result.error.message}`);
+  if (result.status !== 0) fail(`psql falló:\n${result.stderr}`);
+  return result.stdout;
+}
+
+/**
+ * Crea el rol y las dos bases del almacén de identidad, idempotente.
+ *
+ * La contraseña del rol se genera aquí, al azar, y sólo se escribe en el .env
+ * local (ignorado por git): no hay contraseña del almacén de identidad en ningún
+ * fichero versionado. Si el rol ya existe pero el .env no tiene su URL, se le
+ * asigna una contraseña nueva.
+ *
+ * Aislamiento: se retira el CONNECT público de las cuatro bases. El rol de
+ * identidad no puede abrir las del juego. El del juego es aquí el superusuario
+ * del cluster y sí puede abrir las de identidad: en desarrollo el aislamiento es
+ * de un solo sentido, y en producción el rol del Game Server no es superusuario.
+ */
+function identity() {
+  if (!isRunning()) fail('El cluster está detenido. Arráncalo con: node scripts/pg-local.mjs start');
+
+  const configured = envValue('EO_IDENTITY_POSTGRES_URL');
+  const exists = psqlInput('postgres', `SELECT 1 FROM pg_roles WHERE rolname = '${IDENTITY_ROLE}';\n`).trim() !== '';
+
+  if (!exists || !configured) {
+    const password = randomBytes(24).toString('base64url');
+    psqlInput(
+      'postgres',
+      `${exists ? 'ALTER' : 'CREATE'} ROLE ${IDENTITY_ROLE} LOGIN PASSWORD '${password}';\n`,
+    );
+    const url = (db) => `postgres://${IDENTITY_ROLE}:${password}@localhost:${PORT}/${db}?sslmode=disable`;
+    setEnvValues({
+      EO_IDENTITY_POSTGRES_URL: url(IDENTITY_DATABASES[0]),
+      EO_TEST_IDENTITY_POSTGRES_URL: url(IDENTITY_DATABASES[1]),
+    });
+    console.log(`  rol "${IDENTITY_ROLE}" ${exists ? 'con contraseña nueva' : 'creado'}; URL escrita en .env`);
+  } else {
+    console.log(`  rol "${IDENTITY_ROLE}" ya existía y .env ya tiene su URL: no se toca`);
+  }
+
+  for (const db of IDENTITY_DATABASES) {
+    const present = psqlInput('postgres', `SELECT 1 FROM pg_database WHERE datname = '${db}';\n`).trim() !== '';
+    if (!present) psqlInput('postgres', `CREATE DATABASE ${db} OWNER ${IDENTITY_ROLE};\n`);
+    console.log(present ? `  base "${db}" ya existía` : `  base "${db}" creada`);
+  }
+  psqlInput(
+    'postgres',
+    [...DATABASES, ...IDENTITY_DATABASES].map((db) => `REVOKE CONNECT ON DATABASE ${db} FROM PUBLIC;`).join('\n') + '\n',
+  );
+  console.log('  CONNECT público retirado de las bases del juego y de identidad');
+}
+
+const commands = { init, start, stop, status, destroy, psql, identity };
+
+// Sólo cuando se ejecuta como programa: los tests importan upsertEnv.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const command = process.argv[2];
+  if (!command || !(command in commands)) {
+    console.log('Uso: node scripts/pg-local.mjs <init|start|stop|status|destroy|psql|identity>');
+    process.exit(command ? 1 : 0);
+  }
+  commands[command]();
+}
 

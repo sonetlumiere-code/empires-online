@@ -234,10 +234,8 @@ Credencial de un solo uso y vida corta que autoriza la apertura de una sesión d
 HS256** firmado con `EO_AUTH_JWT_SECRET`, con **TTL de 60 s** y claims
 `{ sub: playerId, jti, iat, exp, aud: "game-server" }`.
 
-**Quién lo emite hoy:** el propio Game Server, desde `POST /api/auth/register` y `POST /api/auth/login`
-(`internal/httpapi`, contraseñas con bcrypt). Es explícitamente provisional: la arquitectura objetivo de
-[../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md)
-traslada esos endpoints a Next.js cuando exista `apps/web`.
+**Quién lo emite:** `apps/web`, en el alta, el login y `POST /api/auth/ticket`, con la cookie de sesión
+([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). El Game Server sólo lo verifica.
 
 El cliente lo envía en `session.hello { ticket }` como primer mensaje del WebSocket. El servidor verifica
 firma, `exp` y `aud`, y **consume el `jti` en Redis** (`ticket:jti:{jti}`, TTL 120 s) para impedir replay.
@@ -785,8 +783,8 @@ una transacción propia, en lugar de acumularse hasta el siguiente flush. Se apl
 city y unit; inicio y finalización de movimiento; cambios de ownership; transiciones de presencia;
 treaties; garrisons; y `world_events`.
 
-Matiz obligatorio: **no todas esas escrituras son síncronas**. El alta de jugador
-(`POST /api/auth/register`) sí commitea antes de nada —primero la transacción de PostgreSQL, y sólo
+Matiz obligatorio: **no todas esas escrituras son síncronas**. La fundación de un jugador
+(`POST /internal/players`, que llama `apps/web` al dar de alta) sí commitea antes de nada —primero la transacción de PostgreSQL, y sólo
 después el comando `IntroducePlayer` que incorpora al jugador al mundo en RAM—. En cambio el movimiento
 se aplica primero en RAM y su transacción se **encola**, porque el tick no puede hacer I/O de PostgreSQL.
 Ver *Dirty State*, *Flush* y la deuda `DEBT-17` de [../roadmap/backlog.md](../roadmap/backlog.md).

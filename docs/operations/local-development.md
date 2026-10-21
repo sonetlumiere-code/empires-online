@@ -209,7 +209,8 @@ pnpm run pg:init
 ```
 
 Crea un cluster en `.pgdata/` (ignorado por git), lo configura en el **puerto 5433** escuchando solo
-en loopback, lo arranca y crea las bases `empires` y `empires_test`.
+en loopback, lo arranca y crea las bases `empires` y `empires_test`, y después el almacén de identidad de
+`apps/web` (lo mismo que `pnpm run pg:identity`, abajo).
 
 La clave de por qué esto resuelve el problema de credenciales: **quien ejecuta `initdb` es el
 superusuario del cluster que crea**. No hay ninguna contraseña previa que averiguar. El rol se llama
@@ -220,6 +221,7 @@ superusuario del cluster que crea**. No hay ninguna contraseña previa que averi
 | `pnpm run pg:init` | Crea el cluster y las bases. Falla sin destruir nada si ya existe. |
 | `pnpm run pg:start` / `pg:stop` | Arranca / detiene (`stop` usa modo `fast`: cierra conexiones y hace checkpoint). |
 | `pnpm run pg:status` | Dice si está en marcha y en qué puerto. |
+| `pnpm run pg:identity` | Crea, idempotente, el rol `empires_identity` y las bases `empires_identity` y `empires_identity_test` del almacén de identidad de `apps/web` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)), y retira el `CONNECT` público de las cuatro bases. La contraseña del rol la **genera al azar** y la escribe, con las dos URL (`EO_IDENTITY_POSTGRES_URL`, `EO_TEST_IDENTITY_POSTGRES_URL`), sólo en el `.env` local: no está en ningún fichero versionado. Si el rol ya existe y el `.env` tiene su URL, no toca nada. En un cluster creado antes de ADR-018, ejecútalo una vez. |
 | `pnpm run pg:psql` | Abre `psql` contra el cluster. Acepta argumentos: `pnpm run pg:psql -- -d empires_test -c "select 1"`. |
 | `pnpm run pg:destroy` | **Borra el cluster entero.** Los datos no son fuente de nada: se recrean con `init`. |
 
@@ -389,9 +391,12 @@ pnpm run dev:seed
 pnpm run server:run
 ```
 
-Crea cuatro jugadores —`dev_norte`, `dev_sur`, `dev_este` y `dev_oeste`, con la contraseña
-`semilla-de-desarrollo`— por el mismo camino que el alta, y una zona `DENSE_FOREST` junto a cada
-ciudad. Las ciudades nacen juntas, a la separación mínima, así que cada jugador ve a los demás. Es
+Crea cuatro jugadores —`dev_norte`, `dev_sur`, `dev_este` y `dev_oeste`— por el mismo camino que la
+fundación, y una zona `DENSE_FOREST` junto a cada ciudad; después, `apps/web/scripts/seed-identity.mjs` crea
+sus cuentas en el almacén de identidad, ya activas, con la contraseña `semilla-de-desarrollo`. Los dos lados
+casan por el id: cada jugador de desarrollo lleva un UUID v5 de su nombre (`devseed.PlayerID`), que el script
+de identidad calcula igual. Un `dev_*` sembrado antes de ADR-018 tiene un id aleatorio y su cuenta no lo
+encontraría: la siembra lo avisa, y la salida es recrear la base de desarrollo y volver a sembrar. Las ciudades nacen juntas, a la separación mínima, así que cada jugador ve a los demás. Es
 idempotente: volver a ejecutarlo no duplica nada.
 
 Se niega a ejecutarse si `EO_ENV` no es `development`, si el servidor está escuchando en
@@ -405,15 +410,17 @@ No siembra ninguna `CAVERN`, y no es un fallo de la siembra: el mundo de la semi
 
 ### 3-bis.9 Comprobar el montaje de extremo a extremo
 
-Con el servidor arrancado, esto recorre el vertical slice completo y dice si la máquina quedó bien montada:
+Con el servidor **y la web** arrancados (`pnpm run server:run` y `pnpm run web:dev`), esto recorre el vertical
+slice completo y dice si la máquina quedó bien montada:
 
 ```bash
 pnpm run smoke
 ```
 
 Es la misma comprobación que cierra un despliegue ([deployment.md](./deployment.md) §6, Paso 5). Verifica
-`/health` y `/ready`, da de alta un jugador, hace el handshake, recibe el snapshot, ordena un movimiento y
-**cierra la conexión a mitad de trayecto para reconectar después y comprobar que la unidad llegó igualmente**.
+`/health` y `/ready`, da de alta un jugador **a través de Next.js** (o entra con él, si ya existe), hace el handshake, recibe el snapshot, ordena un movimiento y
+**cierra la conexión a mitad de trayecto para reconectar después —con un ticket pedido con la cookie de sesión— y
+comprobar que la unidad llegó igualmente**. `--url` apunta al Game Server y `--web` a Next.js.
 Falla con código distinto de cero y explica en qué paso.
 
 ---
@@ -612,6 +619,10 @@ Migraciones existentes hoy:
 | `000001_initial_schema` | Esquema completo: `civilizations`, `factions`, `eras`, `players`, `world_state`, `world_chunks`, `cities`, `units`, `unit_movements`, `sessions`, `idempotency_keys` (eliminada en `000004`), `territories`, `territory_control`, `safe_zones`, `treaties`, `garrisons`, `world_events` |
 | `000002_seed_catalogs` | Catálogos: civilizaciones ROMAN/BYZANTINE/PERSIAN/NORSE, facciones ORDER/CHAOS/NEUTRAL, eras STONE_AGE(20)/BRONZE_AGE(50)/IRON_AGE(100)/CASTLE_AGE(150) |
 | `000003_territory_control_version` | Columna `version` de `territory_control`, para la concurrencia optimista del cambio de dueño |
+| `000004_drop_idempotency_keys` | Elimina `idempotency_keys`, que nunca tuvo escritor ([ADR-014](../decisions/ADR-014-command-idempotency.md)) |
+| `000005_players_without_credentials` | Elimina `players.password_hash`: la identidad vive en el almacén de `apps/web` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) |
+
+El almacén de identidad de `apps/web` tiene sus propias migraciones (`apps/web/identity/migrations.mjs`): las aplica el servidor de Next.js al arrancar y `pnpm run identity:migrate`.
 
 Si una migración falla a medias, golang-migrate marca el esquema como **`dirty`** y el servidor **se
 niega a arrancar**, con un mensaje que nombra la versión afectada. Es deliberado: continuar sería
@@ -625,20 +636,21 @@ Llegan por cuatro vías distintas:
 1. **Catálogos** (`civilizations`, `factions`, `eras`): los siembra la migración `000002`.
 2. **Mundo**: el primer arranque contra una base vacía crea `world_state` con su `epoch_ms`, guarda los
    256 chunks de `world_chunks` y siembra la rejilla de 64 territorios con su fila de control.
-3. **Jugadores y ciudades**, uno a uno, por la API de alta:
+3. **Jugadores y ciudades**, uno a uno, por el formulario de la web (`pnpm run web:dev`) o por su API, que
+   da de alta la cuenta en el almacén de identidad y pide al Game Server que funde al jugador:
 
    ```powershell
-   curl.exe -X POST http://localhost:8080/api/auth/register `
+   curl.exe -X POST http://localhost:3000/api/auth/register `
      -H "Content-Type: application/json" `
      -d '{\"username\":\"tester\",\"password\":\"un-password-largo\"}'
    ```
 
-   El alta ejecuta primero una transacción atómica en PostgreSQL —jugador, ciudad, 3 `VILLAGER` y, si
+   La fundación ejecuta primero una transacción atómica en PostgreSQL —jugador, ciudad, 3 `VILLAGER` y, si
    el territorio del centro está libre, su control— y sólo después incorpora al jugador al mundo en RAM.
    El emplazamiento es **determinista**: búsqueda en espiral desde una semilla derivada del nombre, con
    entorno despejado de radio 3 y 24 tiles de separación entre centros. `username` debe casar con
-   `^[A-Za-z0-9_-]{3,24}$`. Hoy lo sirve el propio Game Server (`internal/httpapi`, con bcrypt); es
-   provisional, ver `DEBT-18` y `EO-117` en [../roadmap/backlog.md](../roadmap/backlog.md).
+   `^[A-Za-z0-9_-]{3,24}$`. Hacen falta los dos procesos arrancados y el almacén de identidad creado
+   (`pnpm run pg:identity`) ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)).
 4. **Un mundo de prueba completo**, con varios jugadores y safe zones: `pnpm run dev:seed`, con el
    servidor parado (§3-bis.8).
 
@@ -677,23 +689,23 @@ La semántica exacta de `/health` y `/ready` está en [monitoring.md](./monitori
 pnpm run web:dev     # http://localhost:3000
 ```
 
-No necesita `.env.local`. El cliente lee dos variables públicas cuyos valores por defecto, fijados en
-`apps/web/next.config.mjs`, ya apuntan al servidor local:
+No necesita `.env.local`: el servidor de Next.js lee el `.env` de la raíz (sin pisar el entorno). Del
+navegador sólo sale una variable pública, con su valor por defecto en `apps/web/next.config.mjs`:
 
 | Variable | Por defecto | Para qué |
 |---|---|---|
 | `NEXT_PUBLIC_GAME_SERVER_WS_URL` | `ws://localhost:8080/ws` | WebSocket del juego |
-| `NEXT_PUBLIC_GAME_SERVER_HTTP_URL` | `http://localhost:8080` | Alta e inicio de sesión |
 
-**Hoy el cliente no emite el game ticket.** Pide alta o inicio de sesión al propio Game Server
-(`/api/auth/register`, `/api/auth/login`), que responde con el ticket, y con él abre el WebSocket. Por
-eso `apps/web` **no necesita `EO_AUTH_JWT_SECRET`**: la API route de Next.js que lo emitiría es el
-diseño objetivo de [ADR-010](../decisions/ADR-010-authentication-game-ticket.md), todavía sin construir
-(`EO-041`, `DEBT-18`).
+**El cliente emite el game ticket** ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): el
+alta y el login son route handlers de Next.js (`/api/auth/register`, `/api/auth/login`), que guardan la cuenta en
+el almacén de identidad, abren una sesión con la cookie `eo_session` y responden con el ticket. Cada reconexión
+pide uno nuevo a `/api/auth/ticket`. Por eso el servidor de Next.js necesita `EO_AUTH_JWT_SECRET` —el mismo del
+Game Server— y `EO_IDENTITY_POSTGRES_URL`; al arrancar aplica las migraciones del almacén y, si no puede, no
+arranca.
 
 Si el puerto 3000 está ocupado por otra aplicación, el script `dev` lo fija y fallará con
-`EADDRINUSE`. Arranca Next.js en otro puerto directamente; el Game Server acepta peticiones de cualquier
-origen en desarrollo:
+`EADDRINUSE`. Arranca Next.js en otro puerto directamente; la web y su API viven en el mismo origen, así que no
+hay nada más que cambiar:
 
 ```powershell
 pnpm --filter @empires-online/web exec next dev --port 3001
@@ -817,7 +829,9 @@ que no está aquí, no existe.
 | `db:migrate` / `db:version` | Binario `cmd/migrate`: aplica las migraciones pendientes / muestra la versión y si está `dirty`. Sirven con y sin Docker |
 | `pg:init` / `pg:start` / `pg:stop` / `pg:status` / `pg:destroy` | Cluster propio de PostgreSQL en `.pgdata/`, puerto 5433 (§3-bis.1) |
 | `pg:psql` | `psql` contra ese cluster; acepta argumentos tras `--` |
-| `dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado (§3-bis.8) |
+| `dev:seed` | Jugadores y safe zones de prueba en la base de desarrollo, con el servidor parado, y sus cuentas en el almacén de identidad (§3-bis.8) |
+| `pg:identity` | Rol y bases del almacén de identidad de `apps/web`, con contraseña aleatoria escrita sólo en `.env` (§3-bis.1) |
+| `identity:migrate` | Aplica las migraciones del almacén de identidad (el servidor de Next.js también lo hace al arrancar) |
 | `protocol:build` / `protocol:test` / `protocol:check` | JSON Schema desde Zod / tests del protocolo / deriva del esquema sin escribir |
 | `server:tidy` | `go mod tidy` |
 | `server:build` | `node scripts/build-server.mjs`: compila el binario del servidor |
@@ -827,7 +841,7 @@ que no está aquí, no existe.
 | `server:vet` / `server:vet:integration` | `go vet`, sin y con la etiqueta `integration` |
 | `server:fmt` / `server:fmt:check` | `gofmt -l -w .` / sólo lista |
 | `web:dev` / `web:build` | Cliente Next.js en desarrollo / build de producción |
-| `smoke` | Vertical slice completo contra un servidor vivo (§3-bis.9) |
+| `smoke` | Vertical slice completo contra el Game Server y la web en marcha (§3-bis.9) |
 | `docs:check` | Enlaces, anclas, mayúsculas de rutas, invariantes citados y ADR existentes |
 | `scripts:test` | Tests de los scripts de `scripts/`, con el runner de Node |
 | `lint` | `node scripts/lint-determinism.mjs`: el núcleo determinista no lee el reloj real ni el azar global (`EO-017`). Después, el `lint` de cada paquete que lo declare; ninguno lo hace todavía |
@@ -879,6 +893,18 @@ EO_INTEGRATION=1 pnpm run server:test:integration
 ```
 
 Para la suite completa con `-race`, que es lo que ejecuta el job `integration` de la CI, ver §3-bis.7.
+
+Los tests de integración del **almacén de identidad** son de Vitest, en `apps/web`, con la misma puerta
+(`EO_INTEGRATION=1`) y la misma negativa a correr contra una base que no termine en `_test`. Las URL las deja
+`pnpm run pg:identity` en el `.env`; `EO_TEST_POSTGRES_URL` hace falta para el test que comprueba que el rol de
+identidad no puede abrir la base del juego:
+
+```powershell
+$env:EO_INTEGRATION = "1"
+$env:EO_TEST_IDENTITY_POSTGRES_URL = "<la de tu .env>"
+$env:EO_TEST_POSTGRES_URL = "postgres://empires:empires_dev_password@localhost:5433/empires_test?sslmode=disable"
+pnpm --filter @empires-online/web exec vitest run src/server/store.integration.test.ts
+```
 **Estado:** en verde, en local por los dos caminos y en la CI.
 
 ---

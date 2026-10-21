@@ -1,0 +1,8 @@
+{
+  "secret": "secreto-del-fixture-entre-lenguajes-0123456789",
+  "nowMs": 1757376000000,
+  "playerId": "5802b8b1-cdb1-5e7a-83f0-f32e243688bd",
+  "jti": "9b7a6c2e-1f3d-4e5a-8b9c-0d1e2f3a4b5c",
+  "gameTicket": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ODAyYjhiMS1jZGIxLTVlN2EtODNmMC1mMzJlMjQzNjg4YmQiLCJqdGkiOiI5YjdhNmMyZS0xZjNkLTRlNWEtOGI5Yy0wZDFlMmYzYTRiNWMiLCJhdWQiOiJnYW1lLXNlcnZlciIsImlhdCI6MTc1NzM3NjAwMCwiZXhwIjoxNzU3Mzc2MDYwfQ.HjNkQVhq6QIRVdePznUxBRr3-OcLdpxuT1ylDJY7mz4",
+  "foundingToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ODAyYjhiMS1jZGIxLTVlN2EtODNmMC1mMzJlMjQzNjg4YmQiLCJqdGkiOiI5YjdhNmMyZS0xZjNkLTRlNWEtOGI5Yy0wZDFlMmYzYTRiNWMiLCJhdWQiOiJnYW1lLXNlcnZlci1pbnRlcm5hbCIsImlhdCI6MTc1NzM3NjAwMCwiZXhwIjoxNzU3Mzc2MDYwfQ.EBXcWw3xtX8iaApsqzyEKIdRO4k9DHenItfjWIxbx9E"
+}

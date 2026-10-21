@@ -13,6 +13,7 @@ Política de respaldo de Empires Online: qué se respalda y qué no, backups com
 | Componente | ¿Se respalda? | Motivo |
 |---|---|---|
 | **PostgreSQL** | **Sí, completo, con PITR** | Es la *durable source of truth*. Todo lo irrecuperable vive aquí |
+| **Almacén de identidad** (`empires_identity`) | **Sí**, con el mismo mecanismo pero como base aparte | Cuentas, hashes de contraseña y sesiones web ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Perderlo deja a todos los jugadores sin acceso aunque el mundo esté intacto. Son datos personales: su retención y su cifrado pueden necesitar otra política que la del mundo, **TBD** |
 | **Redis** | **No** | Estado *hot/transient*, reconstruible por diseño (§2) |
 | RAM del Game Server | No | Simulación activa; reconstruible desde Postgres al arrancar |
 | Imágenes Docker | No como backup | Reproducibles desde el repositorio y el registro, etiquetadas por SHA |

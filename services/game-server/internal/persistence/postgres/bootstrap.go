@@ -18,8 +18,12 @@ import (
 
 // BootstrapRequest describe el alta completa de un jugador nuevo.
 type BootstrapRequest struct {
+	// PlayerID es el id del jugador nuevo. Desde ADR-018 lo elige quien posee la
+	// identidad —apps/web, que lo usa también como id de la cuenta— y por eso
+	// viaja en la petición. Vacío, se genera uno: es lo que hacen los tests que
+	// no tienen identidad que casar.
+	PlayerID       uuid.UUID
 	Username       string
-	PasswordHash   string
 	CivilizationID int32
 	FactionID      int32
 	CityName       string
@@ -190,13 +194,17 @@ func (b *Bootstrapper) create(ctx context.Context, req BootstrapRequest, def uni
 			}
 		}
 
+		id := req.PlayerID
+		if id == uuid.Nil {
+			id = uuid.New()
+		}
 		p := &player.Player{
-			ID:             uuid.New(),
+			ID:             id,
 			Username:       req.Username,
 			CivilizationID: req.CivilizationID,
 			FactionID:      req.FactionID,
 		}
-		if err := b.players.Create(ctx, tx, p, req.PasswordHash); err != nil {
+		if err := b.players.Create(ctx, tx, p); err != nil {
 			return err
 		}
 

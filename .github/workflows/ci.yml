@@ -213,12 +213,48 @@ jobs:
           go-version-file: services/game-server/go.mod
           cache-dependency-path: services/game-server/go.sum
 
+      # El almacén de identidad de apps/web (ADR-018): su propio rol y su propia
+      # base, y el CONNECT público retirado, como hace `pg-local.mjs identity`.
+      # Las contraseñas son de este servicio efímero y mueren con él.
+      - name: Preparar el almacén de identidad
+        env:
+          PGPASSWORD: empires_ci_password
+        run: |
+          psql -h localhost -U empires -d empires_test -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE empires_identity LOGIN PASSWORD 'identity_ci_password'" \
+            -c "CREATE DATABASE empires_identity_test OWNER empires_identity" \
+            -c "REVOKE CONNECT ON DATABASE empires_test FROM PUBLIC" \
+            -c "REVOKE CONNECT ON DATABASE empires_identity_test FROM PUBLIC"
+
       - name: Tests de integración
         env:
           EO_INTEGRATION: '1'
           EO_TEST_POSTGRES_URL: postgres://empires:empires_ci_password@localhost:5432/empires_test?sslmode=disable
           EO_TEST_REDIS_URL: redis://localhost:6379/1
         run: go test -race -count=1 -tags=integration ./...
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Instalar dependencias de Node
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      # Los tests del almacén de identidad contra PostgreSQL real, incluido que
+      # su rol no puede abrir la base del juego.
+      - name: Tests de integración del cliente (identidad)
+        working-directory: .
+        env:
+          EO_INTEGRATION: '1'
+          EO_TEST_IDENTITY_POSTGRES_URL: postgres://empires_identity:identity_ci_password@localhost:5432/empires_identity_test?sslmode=disable
+          EO_TEST_POSTGRES_URL: postgres://empires:empires_ci_password@localhost:5432/empires_test?sslmode=disable
+        run: |
+          pnpm run protocol:build
+          pnpm --filter @empires-online/web exec vitest run src/server/store.integration.test.ts
 
   # ─────────────────────────────────────────────────────────────
   # Imagen de contenedor: que el artefacto desplegable se construya.

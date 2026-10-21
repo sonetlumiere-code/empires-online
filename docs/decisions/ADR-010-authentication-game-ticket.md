@@ -10,6 +10,11 @@ Propósito: fijar que Next.js autentica al usuario y emite un JWT HS256 de 60 se
 | Índice | [README.md](README.md) |
 | Relacionados | [ADR-004](ADR-004-redis-hot-state.md), [ADR-006](ADR-006-websocket-protocol.md), [ADR-009](ADR-009-shared-protocol-package.md) |
 
+> **Implementado por [ADR-018](ADR-018-identity-store-and-ticket-issuer.md) (2026-10-20).** Hasta entonces el
+> ticket lo emitía, como provisional, el propio Game Server. ADR-018 decide lo que este ADR dejaba abierto —dónde
+> viven usuarios y contraseñas y cuál es la «sesión web ya autenticada» (una cookie opaca de `apps/web`)— y no
+> cambia nada de lo que aquí se decide: este ADR sigue vigente entero.
+
 ---
 
 ## 1. Contexto

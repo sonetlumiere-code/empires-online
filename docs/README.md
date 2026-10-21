@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son doce, del 001
-al 012, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son dieciocho, del 001
+al 018, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -159,6 +159,7 @@ elección de A\*: son decisiones del canon y de `architecture/`, no del registro
 | [decisions/ADR-015-tick-continuity.md](decisions/ADR-015-tick-continuity.md) | El tick se reancla al reloj en cada arranque: ningún número de tick se repite tras una caída. |
 | [decisions/ADR-016-foreign-territory-actions.md](decisions/ADR-016-foreign-territory-actions.md) | El territorio ajeno no restringe ninguna acción del MVP; toda acción de mundo se clasifica y un test exige clasificar cada comando nuevo. |
 | [decisions/ADR-017-garrison-commands.md](decisions/ADR-017-garrison-commands.md) | `unit.garrison` y `unit.ungarrison`: el tick valida, la transacción decide el tratado; `units.city_id` no cambia; la unidad guarnecida sólo la ve su dueño. |
+| [decisions/ADR-018-identity-store-and-ticket-issuer.md](decisions/ADR-018-identity-store-and-ticket-issuer.md) | La identidad vive en Next.js con su propio almacén; Next.js emite el ticket y el game server sólo funda al jugador (`POST /internal/players`). |
 
 ### 2.9 `roadmap/` — Plan
 
@@ -264,9 +265,9 @@ Un pull request con cualquier check obligatorio en rojo no es válido, independi
 ## 5. Estado actual del proyecto
 
 Esta sección existe para que nadie confunda una spec con un hecho. Se actualiza cuando cambia el
-código, no cuando cambia la intención. Fecha de la última verificación: **2026-10-07**, ejecutando la
-suite completa —unit, integration con `-race`, contract— y la comprobación de humo contra un servidor
-vivo.
+código, no cuando cambia la intención. Fecha de la última verificación: **2026-10-21**, ejecutando la
+suite completa —unit, integration con `-race`, contract, y la de Vitest del cliente con la integración del
+almacén de identidad— y la comprobación de humo contra el game server y la web vivos.
 
 ### 5.1 Implementado y con tests en verde
 
@@ -276,9 +277,9 @@ vivo.
 | Mundo y pathfinding | `internal/game/world` (grid, chunks, terreno, ocupación, generador determinista) e `internal/pathfinding` (A\* de 8 direcciones sin corner cutting). | `go test` |
 | Dominio | `movement`, `city` (presencia y protección), `territory`, `safezone`, `diplomacy` y `garrison`, en `internal/domain`. | `go test` |
 | Simulación | `internal/game/simulation`: vertical slice, órdenes, presencia, recuperación, territorios, ocultamiento en Safe Zones, caducidad de tratados. | `go test` |
-| Bordes | `internal/auth`, `internal/config`, `internal/protocol` (contract), `internal/websocket` (incluido un e2e de transporte con servidor real), `internal/httpapi`, `internal/persistence/memory`. | `go test` |
+| Bordes | `internal/auth`, `internal/config`, `internal/protocol` (contract), `internal/websocket` (e2e contra un servidor real, que valida contra el JSON Schema cada mensaje que emite), `internal/httpapi` (la fundación, probada desde la suite de integración), `internal/persistence/memory`. | `go test` |
 | Persistencia | `internal/persistence/postgres` e `internal/persistence/redis`, contra PostgreSQL 16 y Redis reales. | Integración con `-race`: en la CI y en local sin Docker ([operations/local-development.md](operations/local-development.md) §3-bis). |
-| Esquema | Migraciones `000001` a `000004`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
+| Esquema | Migraciones `000001` a `000005`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
 | `apps/web` | Cliente Next.js 15 + React 19 + PixiJS 8: proyección isométrica, interpolación, estado del mundo, cliente WebSocket, overlay de territorios. | Vitest y `next build` en la CI. |
 | Despliegue de punta a punta | Alta, handshake, snapshot, movimiento, desconexión y reconexión contra un servidor vivo. | `pnpm run smoke`. |
 
@@ -288,13 +289,13 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **El alta de jugador la sirve hoy el game server.** `POST /api/auth/register` y `POST /api/auth/login`
-  viven en `internal/httpapi` con bcrypt. Es provisional y contrario a la arquitectura objetivo de
-  [ADR-010](decisions/ADR-010-authentication-game-ticket.md); el plan para cambiarlo es `EO-117` en
-  [roadmap/backlog.md](roadmap/backlog.md).
-- **Hay paquetes sin test propio**: `internal/clock`, `internal/domain/player`, `internal/domain/unit`,
-  `internal/game/founding`, `internal/game/loop` e `internal/observability`. Están ejercitados
-  indirectamente desde `internal/game/simulation`, pero eso no es lo mismo que estar cubiertos.
+- **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
+  almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en
+  Next.js. El game server sólo funda al jugador. El límite de tasa del alta es por proceso de Next.js y no hay
+  todavía limpieza de cuentas `PENDING` abandonadas.
+- **Hay paquetes sin test propio**: `internal/clock` e `internal/observability`, ejercitados indirectamente;
+  `internal/httpapi`, cuyos tests viven en la suite de integración de `internal/persistence/postgres`; y los
+  `cmd/*`, que se verifican arrancándolos (`pnpm run smoke`).
 
 ### 5.2 Lo que no se puede verificar desde la máquina de desarrollo
 
@@ -311,13 +312,13 @@ la migración `000001`. Su mecánica se escribió después y hoy está viva:
 
 | Tablas | Código | Lo que todavía no existe |
 |---|---|---|
-| `territories`, `territory_control` | `internal/domain/territory` (M6): índice en RAM, cambio de dueño transaccional, `territory.update` | Restricciones en territorio ajeno: decisión de diseño pendiente |
+| `territories`, `territory_control` | `internal/domain/territory` (M6): índice en RAM, cambio de dueño transaccional, `territory.update` | Restricciones en territorio ajeno: ninguna en el MVP, por decisión ([ADR-016](decisions/ADR-016-foreign-territory-actions.md)) |
 | `safe_zones` | `internal/domain/safezone` (M5): índice en RAM, ocultamiento en la fase 5 y filtrado por destinatario | Las zonas del mundo canónico: la tabla está vacía y su siembra es `TBD` |
-| `treaties`, `garrisons` | `internal/domain/diplomacy` e `internal/domain/garrison` (M7), caducidad en la fase 5 | Comandos de red que las disparen: el protocolo v1 no los tiene |
+| `treaties`, `garrisons` | `internal/domain/diplomacy` e `internal/domain/garrison` (M7), caducidad en la fase 5, y los comandos `unit.garrison` / `unit.ungarrison` ([ADR-017](decisions/ADR-017-garrison-commands.md)) | Comandos de red para los tratados: se crean por vía administrativa (`DEBT-14`) |
 
 El detalle, invariante por invariante, está en [invariants/territory.md](invariants/territory.md) e
-[invariants/diplomacy.md](invariants/diplomacy.md). Las fichas `INV-SAFE-*` están reconciliadas con la
-suite; las `INV-TERR-*` y `INV-GARR-*` todavía no (`EO-118`).
+[invariants/diplomacy.md](invariants/diplomacy.md). Todas las familias están reconciliadas con la suite
+(`EO-118`, y `INV-GARR` con los comandos de guarnición).
 
 Fuera de MVP y sin código: combate, recursos, construcción, progresión de eras más allá de las semillas
 del catálogo, y los tests de carga con k6 de [testing/load-tests.md](testing/load-tests.md).

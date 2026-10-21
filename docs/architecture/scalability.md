@@ -178,7 +178,7 @@ Sacar del proceso de simulación lo que **no** necesita el estado autoritativo e
 
 | Responsabilidad | Estado en MVP | Separación |
 |---|---|---|
-| Autenticación de usuario y emisión del *game ticket* | **Todavía NO separada.** `apps/web` ya existe, pero no emite tickets: hoy sigue siendo el propio game server quien registra y autentica (`internal/httpapi`, `POST /api/auth/register` y `POST /api/auth/login`, con bcrypt) y quien firma el ticket con `auth.NewIssuer`. Verificar el JWT HS256 y consumir el `jti` en Redis sí vive ya donde debe | Trasladar la emisión a Next.js, como fija [ADR-010](../decisions/ADR-010-authentication-game-ticket.md). Es el trabajo más barato del eje 2: el verificador ya está escrito y aislado |
+| Autenticación de usuario y emisión del *game ticket* | **Separada** ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): `apps/web` registra, autentica, mantiene la sesión web en su propio almacén y firma el ticket; el game server sólo lo verifica y consume el `jti`, y funda al jugador cuando `apps/web` se lo pide | Lo pendiente es operativo: un *pooler* delante del almacén de identidad si `apps/web` corre en funciones *serverless*, y un límite de tasa compartido entre instancias |
 | API de lectura (perfiles, rankings, historial) | Fuera de MVP | Servicio de solo-lectura contra réplica de PostgreSQL. No toca el loop |
 | Persistencia | Ya asíncrona: `persistence.Queue` (capacidad 4096, 4 workers, 3 intentos, 200 ms de espera) detrás de la interfaz `Persister`. El tick nunca hace I/O de Postgres | Los workers pueden pasar a proceso aparte consumiendo una cola durable. Hay que llevarse consigo el **RPO documentado**: el estado se muta en RAM y *después* se encola, así que `unit.move.accepted` sale antes del COMMIT y un proceso que muera en esa ventana (decenas de ms) pierde ese movimiento. Sacar la cola de proceso alarga esa ventana, y esa es la decisión a evaluar |
 | Terminación WebSocket (gateway) | En el mismo proceso | Split viable pero es **camino crítico**, no "no crítico": añade un salto de red por mensaje y desplaza el problema de fan-out al gateway. Solo tiene sentido cuando `eo_connected_websockets` satura la CPU de red con el tick sano |
@@ -369,7 +369,7 @@ Redis es *hot/transient state*, **nunca** sustituto de PostgreSQL (canon §4). E
 | Uso en MVP | Clave | Por qué está en Redis |
 |---|---|---|
 | Presencia de jugador | `presence:player:{playerId}`, TTL 30 s (`EO_PRESENCE_TTL_SECONDS`), heartbeat 10 s (`EO_PRESENCE_HEARTBEAT_SECONDS`) | TTL nativo; sobrevive al reinicio del proceso. **La transición a `OFFLINE_PENDING` NO la decide esta clave**: la decide el game loop en RAM comparando contra `DisconnectGrace`. Redis mantiene la presencia para observadores externos y para el futuro multiproceso |
-| Anti-replay de tickets | `ticket:jti:{jti}`, TTL 120 s | Se compartirá con `apps/web` cuando exista; **hoy lo escribe y lo consume el mismo proceso**, porque el ticket lo emite `internal/httpapi` |
+| Anti-replay de tickets | `ticket:jti:{jti}`, TTL 120 s | Lo escribe sólo el game server, al consumir el `jti` de un ticket o de un token de fundación; `apps/web` no toca Redis |
 | Idempotencia de comandos | `idem:{playerId}:{requestId}`, TTL 300 s, reservado con `SETNX` antes de ejecutar | Expiración automática. Sin respaldo durable ([ADR-014](../decisions/ADR-014-command-idempotency.md), la tabla `idempotency_keys` se eliminó en `000004`); si Redis no responde el comando **se ejecuta igualmente** |
 
 Con **un solo** proceso de simulación, toda la coordinación interna la da el runtime de Go: canales, mutexes y el propio orden de fases del tick. Pedirle a Redis lo que un canal resuelve en nanosegundos sería introducir una dependencia de red en el camino crítico a cambio de nada.
@@ -405,7 +405,7 @@ Estas propiedades del diseño no cuestan nada hoy y son las que hacen viables lo
 | Comandos autocontenidos por valor hacia el loop y payloads de protocolo por valor hacia fuera (no hay `internal/events`: la simulación emite mensajes de protocolo directamente y el historial va a `world_events`) | Nada que cruce la frontera del loop es un puntero, así que puede cruzar también la frontera de un proceso |
 | Protocolo versionado `v:1` con esquemas Zod → JSON Schema | El gateway y los contract tests pueden evolucionar sin tocar el dominio |
 | Toda la configuración por `EO_*` en `internal/config` | Un shard o un mundo nuevo es el mismo binario con otro entorno |
-| Emisión y verificación del ticket **ya separadas entre sí**: `auth.Issuer` firma, `auth.Verifier` + `auth.Authenticator` verifican y consumen el `jti`, y ningún otro paquete conoce el secreto | Mover el emisor a Next.js (ADR-010) es cambiar quién construye un `Issuer`, no rediseñar la autenticación. Hoy ambos lados viven en el game server (`internal/httpapi`) |
+| Emisión y verificación del ticket **en procesos distintos**: `apps/web` firma, `auth.Verifier` + `auth.Authenticator` verifican y consumen el `jti`; un fixture compartido fija el formato a los dos lados | Pasar a firma asimétrica (RS256, EdDSA) toca dos ficheros: el emisor de `apps/web` y el `Verifier` |
 
 ## 11. Decisiones que cerrarían esas opciones
 

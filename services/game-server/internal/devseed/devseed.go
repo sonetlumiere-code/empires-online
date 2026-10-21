@@ -13,6 +13,8 @@ package devseed
 import (
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
@@ -27,11 +29,17 @@ var Players = []string{"dev_norte", "dev_sur", "dev_este", "dev_oeste"}
 // AnchorSeed es el punto de partida común de la búsqueda de emplazamiento.
 const AnchorSeed uint64 = 0x5eed_0000_0000_0114
 
-// Password es la contraseña de las cuentas de desarrollo. No es un secreto: es
-// un valor de prueba para una base local, del mismo tipo que la contraseña de
-// PostgreSQL de .env.example. cmd/devseed se niega a ejecutarse fuera de
-// EO_ENV=development.
-const Password = "semilla-de-desarrollo"
+// Namespace es el espacio de nombres de los ids de los jugadores de desarrollo.
+var Namespace = uuid.MustParse("5eed0114-0000-4000-8000-000000000000")
+
+// PlayerID es el id del jugador de desarrollo con ese nombre: un UUID v5,
+// determinista. Desde ADR-018 la cuenta vive en el almacén de identidad de
+// apps/web, que la crea con este mismo id (apps/web/scripts/seed-identity.mjs);
+// sin un id que los dos lados calculen igual, la cuenta no encontraría su
+// jugador. La contraseña de esas cuentas tampoco vive ya aquí.
+func PlayerID(username string) uuid.UUID {
+	return uuid.NewSHA1(Namespace, []byte(username))
+}
 
 // Parámetros de colocación de zonas.
 const (

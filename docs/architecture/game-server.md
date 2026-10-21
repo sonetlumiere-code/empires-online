@@ -31,16 +31,17 @@ Responsabilidades:
 | Terminación WebSocket | `/ws`, protocolo v1 JSON, autenticación por *game ticket* JWT. |
 | Persistencia durable | PostgreSQL como *source of truth*; escritura asíncrona vía cola + workers. |
 | Estado caliente | Redis para presencia, idempotencia y consumo de `jti`. |
-| Alta de jugador (**provisional**) | `POST /api/auth/register` y `POST /api/auth/login` con bcrypt, servidos por `internal/httpapi`. |
+| Fundación del jugador | `POST /internal/players` (`internal/httpapi`): el bootstrap atómico del jugador que `apps/web` acaba de dar de alta, autorizado con un token de fundación. |
 | Observabilidad | `log/slog` en JSON, métricas Prometheus, `GET /health` y `GET /ready`. |
 
 **No** es responsable de: proyección isométrica ni píxeles (cliente), ni renderizado de deltas.
 
-Sobre la autenticación conviene ser exacto, porque es el punto donde el código y la arquitectura
-objetivo divergen a propósito: **hoy es el game server quien registra y autentica jugadores**
-(`internal/httpapi/auth.go`, con bcrypt y emisión del ticket vía `auth.NewIssuer`). [ADR-010](../decisions/ADR-010-authentication-game-ticket.md)
-sitúa esa responsabilidad en Next.js, que emitiría el ticket y dejaría al game server únicamente
-verificándolo. La implementación actual es un andamio explícito de MVP, no la arquitectura final.
+Sobre la autenticación conviene ser exacto. Desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)
+el game server **no registra ni autentica usuarios**: no tiene contraseñas, ni columna donde guardarlas, ni
+bcrypt. La identidad vive en `apps/web`, que firma el ticket de [ADR-010](../decisions/ADR-010-authentication-game-ticket.md).
+Aquí quedan la verificación del ticket en el handshake —el WebSocket llega directo y el servidor no se fía de
+que otro haya comprobado nada ([ADR-002](../decisions/ADR-002-authoritative-server.md))— y la **fundación** del
+jugador, que no puede salir de este proceso porque toca el mundo en RAM.
 
 Módulo Go: `github.com/empires-online/empires-online/services/game-server`.
 
@@ -79,7 +80,7 @@ services/game-server/
     │   ├── simulation/             # state, simulation, commands, recovery,
     │   │                           # snapshot, interest, introduce
     │   └── world/{tile.go,world.go,generator.go}
-    ├── httpapi/auth.go             # POST /api/auth/register y /api/auth/login (MVP)
+    ├── httpapi/founding.go         # POST /internal/players: fundación del jugador (ADR-018)
     ├── observability/{logging.go,metrics.go,health.go}
     ├── pathfinding/{pathfinding.go,astar.go}
     ├── persistence/{gamestore.go,queue.go,pgxalias.go}
@@ -133,8 +134,8 @@ revisión de código, no por un test de arquitectura automático — añadirlo e
 | `internal/domain/safezone` | Zonas seguras: predicados `DENSE_FOREST` y `CAVERN`, índice denso tile → zona (`Index`, `BuildIndex`, `ZoneAt`, `Exclude`) y la regla de ocultamiento `NextStatus`. Ver [../specs/safe-zones.md](../specs/safe-zones.md). | `world`, `unit` | `game/simulation`, `persistence/postgres`, `cmd/server` |
 | `internal/domain/movement` | Polilínea temporizada: `Waypoint`, `TimedPath`, `BuildTimedPath`, `StepDurationMs`, `PositionAt`, `IndexAt`, `Validate`, y el ciclo `ACTIVE`/`COMPLETED`/`CANCELLED`/`FAILED`. | `world` | ídem |
 | `internal/pathfinding` | A\* octile con costes `u×1000` / `u×1414`, heurística ponderada por `MinTerrainCostUnits`, desempate `(f, h, y, x)` y límites `EO_PATHFINDING_MAX_NODES` / `EO_PATHFINDING_MAX_DISTANCE`. Ver [pathfinding.md](./pathfinding.md). | `world` | `domain/*`, `game/loop`, `simulation`, `persistence/*`, `websocket`, `observability` |
-| `internal/auth` | `Verifier` del game ticket HS256 (`exp`, `aud`), `Claims`, `Authenticator` (verifica y consume el `jti` contra Redis) e `Issuer` para el alta provisional. | `clock` | `domain/*`, `game/*`, `persistence/*` |
-| `internal/httpapi` | `POST /api/auth/register` y `POST /api/auth/login`: bcrypt, alta transaccional del jugador y emisión del ticket. **Provisional**, ver §1. | `auth`, `founding`, `persistence/postgres`, `simulation`, `world` | `websocket` |
+| `internal/auth` | `Verifier` HS256 de una audiencia (`exp`, `aud`): `Audience` para el ticket de juego, `InternalAudience` para el token de fundación; `Claims`; `Authenticator` (verifica y consume el `jti` contra Redis). `Issuer` ya no se usa en producción: acuña tokens en los tests. | `clock` | `domain/*`, `game/*`, `persistence/*` |
+| `internal/httpapi` | `POST /internal/players`: verifica el token de fundación (`NewFoundingAuthenticator`), funda el jugador con el `playerId` que eligió `apps/web` en la transacción atómica, es idempotente por ese id y lo introduce en el mundo tras el `COMMIT`. Sin contraseñas. | `auth`, `founding`, `persistence/postgres`, `simulation`, `world` | `websocket` |
 | `internal/websocket` | `Hub` (registro de sesiones e índices por jugador y por chunk), `Session` (writer único, `seq`, cola de salida, memoria de terreno enviado) y `Server` (upgrade, handshake, rate limit, traducción mensaje→comando). Declara sus propios puertos `PresenceTracker` y `Deduper`, que Redis satisface sin ser importado. | `auth`, `protocol`, `simulation`, `world`, `observability` | `persistence/*`, `pathfinding` |
 | `internal/persistence` | Contratos y mecanismos transversales: `GameStore` (fachada de repositorios), `Queue` (cola de escrituras durables con workers y reintentos) y `pgxalias`. | `simulation`, `persistence/postgres`, `observability` | `websocket`, `loop` |
 | `internal/persistence/postgres` | Pool `pgx`, migraciones embebidas con golang-migrate, repositorios (`players`, `cities`, `units`, `movements`, `world`, `events`), el `Bootstrapper` del alta atómica y `LoadCheckRepo`, que escribe las reparaciones de carga en una transacción auditada. | `domain/*`, `world`, `game/loadcheck`, `migrations`, `observability` | `loop`, `simulation`, `websocket`, `pathfinding` |
@@ -415,9 +416,9 @@ distinto de cero. Nunca se arranca a medias.
                   umbral de 5 s y los checkers de postgres y redis; ws.NewHub; el canal de
                   comandos (8192); simulation.New(...) y loop.New(...).
  6. transporte    auth.NewAuthenticator (verifier + ticket store de Redis), presence store,
-                  idempotency store, ws.NewServer, httpapi.NewAuthAPI (que toma como era inicial
-                  la primera del catálogo leído en el paso 4) y el mux HTTP:
-                  /health, /ready, /ws, /api/auth/register, /api/auth/login.
+                  idempotency store, ws.NewServer, httpapi.NewFoundingAPI (con su autenticador de
+                  la audiencia interna; toma como era inicial la primera del catálogo leído en el
+                  paso 4) y el mux HTTP: /health, /ready, /ws, /internal/players.
  7. arranque      Tres goroutines: servidor de juego en EO_HTTP_ADDR, servidor de métricas en
                   EO_METRICS_ADDR y gameLoop.Run(rootCtx). El primer tick es el del paso 3:
                   el máximo entre el CurrentTick guardado y los ticks transcurridos desde
@@ -436,7 +437,7 @@ Dos detalles de orden que importan y que el código fija a propósito:
 
 - **Las migraciones van antes que el pool de la aplicación.** Se aplican con una conexión propia y la
   URL reescrita al esquema `pgx5` que espera golang-migrate.
-- **El alta de un jugador es primero PostgreSQL y después RAM**: `httpapi` ejecuta la transacción
+- **La fundación de un jugador es primero PostgreSQL y después RAM**: `httpapi` ejecuta la transacción
   atómica (jugador + ciudad + 3 aldeanos) y solo entonces encola el comando `IntroducePlayer` que lo
   incorpora al mundo en memoria. Al revés existiría un jugador en el mundo que la base de datos no
   conoce.
@@ -645,7 +646,8 @@ Se documenta para que nadie lo implemente por inercia ni lo asuma existente:
   tiene comandos para proponerlos, aceptarlos ni romperlos. La guarnición sí los tiene
   (`unit.garrison`, `unit.ungarrison`, [ADR-017](../decisions/ADR-017-garrison-commands.md)). Tampoco hay
   siembra de safe zones en el mundo canónico: el índice existe y está vacío.
-- **Emisión del ticket desde Next.js** (ADR-010): hoy la sirve `internal/httpapi`. Ver §1.
+- **Firma asimétrica del ticket** (RS256 o EdDSA): con HS256 el game server conserva el secreto y podría
+  fabricar tickets aunque ya no lo haga ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) §2.7).
 - Sharding del mundo entre varios procesos: el MVP es **un único proceso** dueño del mundo entero.
 - Paralelización interna del tick (A\* en pool de workers, fases concurrentes).
 - Sharding de los workers de persistencia por entidad.

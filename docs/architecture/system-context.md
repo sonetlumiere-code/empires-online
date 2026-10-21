@@ -4,14 +4,11 @@ Define quién usa Empires Online, con qué sistemas externos habla, qué cruza c
 
 Complementa a [overview.md](./overview.md): allí está la estructura interna; aquí, los bordes.
 
-> **Qué existe y qué no.** El contenedor `services/game-server` está **implementado**: compila, pasa
-> `go vet` y su suite unitaria está en verde, con el protocolo v1, la persistencia, Redis y la
-> observabilidad descritos aquí. El contenedor `apps/web` (cliente Next.js) **no existe todavía**: ni
-> el proyecto ni el despliegue en Vercel. Todo lo que este documento dice de `apps/web` y de Vercel es
-> diseño objetivo, y así se marca en cada frontera afectada. En consecuencia, hoy **el propio game
-> server emite el game ticket** por `POST /api/auth/register` y `POST /api/auth/login`
-> (`internal/httpapi`, con bcrypt); es provisional y [ADR-010](../decisions/ADR-010-authentication-game-ticket.md)
-> lo traslada a Next.js.
+> **Qué existe y qué no.** Los dos contenedores propios están **implementados** y la CI los construye y
+> prueba: `services/game-server` (protocolo v1, persistencia, Redis, observabilidad) y `apps/web` (cliente
+> Next.js con su almacén de identidad, que da de alta, abre la sesión web y emite el game ticket desde
+> [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Lo que **no** existe es el despliegue: ni
+> Vercel ni el VPS se han montado, y todo lo que este documento dice de ellos es diseño objetivo.
 
 ---
 
@@ -70,18 +67,19 @@ flowchart TB
     OPERATOR(["Operador"])
 
     subgraph untrusted["Zona no confiable — máquina del jugador"]
-        SPA["<b>Cliente web</b> — PENDIENTE, no existe<br/>Next.js 15 App Router + React 19<br/>PixiJS 8 · @empires-online/protocol (Zod)<br/>TypeScript en el navegador"]
+        SPA["<b>Cliente web</b> — IMPLEMENTADO<br/>Next.js 15 App Router + React 19<br/>PixiJS 8 · @empires-online/protocol (Zod)<br/>TypeScript en el navegador"]
     end
 
-    subgraph edge["Vercel — borde público (PENDIENTE)"]
-        NEXT["<b>apps/web (servidor)</b> — sin API route todavía<br/>Next.js 15 · SSR/SSG<br/>API route: autenticará y emitirá el game ticket<br/>JWT HS256, TTL 60 s, aud=game-server"]
+    subgraph edge["Vercel — borde público (despliegue PENDIENTE)"]
+        NEXT["<b>apps/web (servidor)</b> — IMPLEMENTADO<br/>Next.js 15 · route handlers /api/auth/*<br/>alta, login, sesión web (cookie)<br/>emite el game ticket: JWT HS256, TTL 60 s, aud=game-server"]
     end
 
     subgraph vps["VPS — Docker"]
-        GS["<b>services/game-server</b> — IMPLEMENTADO<br/>Go (go.mod: go 1.23 mínimo) · binario único<br/>HTTP/WS en EO_HTTP_ADDR :8080<br/>métricas en EO_METRICS_ADDR :9090<br/>loop 10 Hz · simulación en RAM<br/>migraciones embebidas (go:embed)<br/>hoy también /api/auth/register y /login"]
+        GS["<b>services/game-server</b> — IMPLEMENTADO<br/>Go (go.mod: go 1.23 mínimo) · binario único<br/>HTTP/WS en EO_HTTP_ADDR :8080<br/>métricas en EO_METRICS_ADDR :9090<br/>loop 10 Hz · simulación en RAM<br/>migraciones embebidas (go:embed)<br/>POST /internal/players (fundación)"]
     end
 
     PG[("<b>PostgreSQL gestionado</b><br/>civilizations, factions, eras,<br/>players, world_state, world_chunks,<br/>cities, units, unit_movements,<br/>sessions,<br/>territories, territory_control, safe_zones,<br/>treaties, garrisons, world_events")]
+    ID[("<b>PostgreSQL · almacén de identidad</b><br/>accounts, web_sessions<br/>otro rol, otra base")]
     RD[("<b>Redis gestionado</b><br/>presence:player:{playerId}<br/>ticket:jti:{jti}<br/>idem:{playerId}:{requestId}")]
     REG["Registro de contenedores"]
     OBS["Stack de observabilidad"]
@@ -90,7 +88,8 @@ flowchart TB
     SPA -->|"B2 · HTTPS"| NEXT
     NEXT -->|"B2 · game ticket"| SPA
     SPA <-->|"B3 · WSS JSON v1"| GS
-    NEXT -. "B4 · solo secreto compartido EO_AUTH_JWT_SECRET" .- GS
+    NEXT -->|"B4 · POST /internal/players (token de fundación)"| GS
+    NEXT -->|"B11 · SQL/TLS"| ID
     GS -->|"B5 · SQL/TLS"| PG
     GS -->|"B6 · RESP/TLS"| RD
     REG -->|"B7 · docker pull"| GS
@@ -115,17 +114,16 @@ flowchart TB
 
 ### B2 · Navegador ↔ Vercel (`apps/web`)
 
-> **Frontera pendiente.** Ni `apps/web` ni su despliegue en Vercel existen. Lo que sigue es el diseño
-> objetivo. Hoy el equivalente funcional lo cubre el propio game server: `POST /api/auth/register` y
-> `POST /api/auth/login`, con contraseña y bcrypt, devolviendo el ticket ya firmado.
+> **Frontera implementada; despliegue pendiente.** `apps/web` existe y sirve el alta, el login y el ticket
+> ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)); lo que no existe es su despliegue en Vercel.
 
 | | |
 |---|---|
-| **Protocolo** | HTTPS. HTML/JS/CSS/assets y una llamada a la API route de login. |
+| **Protocolo** | HTTPS. HTML/JS/CSS/assets y los route handlers de identidad: `POST /api/auth/register`, `/login`, `/ticket` y `/logout`, en el mismo origen que la página. |
 | **Dirección** | Cliente → Vercel (petición), Vercel → cliente (documento y ticket). |
-| **Autenticación** | La sesión de usuario de la aplicación web. El mecanismo definitivo (contraseña propia, OAuth, magic link) es **TBD (fuera de MVP)**. La implementación provisional del game server usa usuario y contraseña con bcrypt, con `username` restringido por un `CHECK` de PostgreSQL a `^[A-Za-z0-9_-]{3,24}$`. |
+| **Autenticación** | Usuario y contraseña (`scrypt`), verificados por el servidor de Next.js contra su almacén de identidad; después, una **cookie de sesión opaca** `eo_session` (`HttpOnly`, `SameSite=Strict`, `Secure` en producción, 7 días) con la que se piden los tickets siguientes. OAuth y *magic link* siguen **TBD (fuera de MVP)**. Límite de tasa por origen en alta y login (`EO_AUTH_RATE_LIMIT_*`), por proceso. |
 | **Datos que cruzan** | Bundle del cliente, assets del render, y el **game ticket**: JWT HS256 firmado con `EO_AUTH_JWT_SECRET`, TTL **60 s**, claims `{ sub: playerId, jti, iat, exp, aud: "game-server" }`. |
-| **Si cae** | No se pueden emitir tickets nuevos: **no entran jugadores nuevos**. Las sesiones WSS ya establecidas continúan sin degradación y el mundo sigue simulando (P2). Un jugador que se desconecte no podrá volver a entrar hasta que Vercel se restablezca. Modo degradado aceptable: pérdida de acceso, nunca de estado. |
+| **Si cae** | No se pueden emitir tickets nuevos ni dar de alta: **no entran jugadores nuevos**. Las sesiones WSS ya establecidas continúan sin degradación y el mundo sigue simulando (P2). Un jugador que se desconecte no podrá volver a entrar hasta que Vercel se restablezca. Modo degradado aceptable: pérdida de acceso, nunca de estado. |
 
 ### B3 · Navegador ↔ Game Server (WebSocket)
 
@@ -133,24 +131,33 @@ La frontera crítica del sistema: es la única superficie por la que entra inten
 
 | | |
 |---|---|
-| **Protocolo** | WebSocket (**WSS** en despliegue), JSON UTF-8, versionado explícito `"v": 1` en cada mensaje. Envelope cliente→servidor `{ v, type, requestId, payload }`; servidor→cliente `{ v, type, seq, ts, requestId?, payload }` con `seq` uint64 monótono por conexión y `ts` en epoch ms del servidor. Los esquemas cliente→servidor son **estrictos** (`additionalProperties: false`); los de servidor→cliente **no**, para poder añadir campos opcionales sin romper clientes antiguos. |
+| **Protocolo** | WebSocket (**WSS** en despliegue), JSON UTF-8, versionado explícito `"v": 1` en cada mensaje. Envelope cliente→servidor `{ v, type, requestId, payload }`; servidor→cliente `{ v, type, seq, ts, requestId?, payload }` con `seq` uint64 monótono por conexión y `ts` en epoch ms del servidor. Los esquemas cliente→servidor son **estrictos** (`additionalProperties: false`). Los de servidor→cliente los valida el cliente con Zod, que descarta los campos que no conoce: así un servidor nuevo no rompe a un cliente antiguo. El JSON Schema que exporta el protocolo sí cierra los objetos, y por eso el test de contrato del servidor exige que no emita campos que el contrato no declara. |
 | **Dirección** | Bidireccional y asimétrica: el cliente solo envía intenciones, el servidor solo envía hechos. |
 | **Autenticación** | `session.hello { ticket }` debe ser el **primer** mensaje y llegar antes de 5 s, o el servidor cierra con `4408`. El servidor verifica firma HS256, `exp`, `aud: "game-server"` y **consume** `jti` en Redis (`ticket:jti:{jti}`, TTL 120 s) para impedir replay. Después crea la sesión y responde `session.welcome`. |
-| **Datos que cruzan** | Cliente→servidor (5): `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`. Servidor→cliente (14): `session.welcome`, `session.pong`, `system.error`, `world.snapshot`, `entity.spawn`, `entity.update`, `entity.despawn`, `city.update`, `territory.update`, `unit.move.accepted`, `unit.move.rejected`, `unit.movement.started`, `unit.movement.completed`, `unit.movement.cancelled`. Nunca se retransmite el mundo completo: `world.snapshot` al conectar (área de interés) y después deltas por chunk. El terreno de un chunk viaja **una sola vez por sesión**, en base64 dentro del snapshot: la sesión recuerda cuáles ya envió, porque el terreno es inmutable. |
+| **Datos que cruzan** | Cliente→servidor (7): `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`. Servidor→cliente (14): `session.welcome`, `session.pong`, `system.error`, `world.snapshot`, `entity.spawn`, `entity.update`, `entity.despawn`, `city.update`, `territory.update`, `unit.move.accepted`, `unit.move.rejected`, `unit.movement.started`, `unit.movement.completed`, `unit.movement.cancelled`. Nunca se retransmite el mundo completo: `world.snapshot` al conectar (área de interés) y después deltas por chunk. El terreno de un chunk viaja **una sola vez por sesión**, en base64 dentro del snapshot: la sesión recuerda cuáles ya envió, porque el terreno es inmutable. |
 | **Límites** | Mensaje entrante ≤ `EO_WS_MAX_MESSAGE_BYTES=16384`; rate limit `EO_WS_RATE_LIMIT_PER_SECOND=20` con burst `EO_WS_RATE_LIMIT_BURST=40`; cola de salida por conexión `EO_WS_OUTBOUND_QUEUE_SIZE=256`. Constantes no configurables: handshake 5 s, ping 15 s, lectura 45 s, escritura 10 s. Interés por chunk con radio `EO_INTEREST_RADIUS_CHUNKS=2`. |
 | **Códigos de cierre** | `4400` mensaje inválido · `4401` no autenticado · `4403` no autorizado · `4408` timeout de handshake · `4429` rate limited · `4500` error interno (incluida la cola de salida saturada). |
 | **Si cae** | Para el jugador: pierde la vista, no pierde el mundo. Las unidades continúan su movimiento porque este está persistido en `unit_movements` y es analíticamente reconstruible. La degradación a `OFFLINE_PENDING` **la decide el game loop en RAM**, comparando el tiempo sin sesiones contra `DisconnectGrace` (= `EO_PRESENCE_TTL_SECONDS`, 30 s); Redis mantiene la presencia para observadores externos y para el futuro multiproceso, pero el loop **no** lee la expiración de su clave. Un jugador con varias sesiones abiertas sigue `ONLINE` mientras le quede una. Cumplido `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS=300`, la ciudad pasa a `PROTECTED`. Al reconectar: nuevo ticket, nuevo `session.hello`, nuevo `world.snapshot`. |
 
-### B4 · Vercel ↔ Game Server (acoplamiento por secreto compartido)
+### B4 · Vercel ↔ Game Server (fundación del jugador)
 
 | | |
 |---|---|
-| **Protocolo** | Ninguno en tiempo de ejecución en el MVP: no hay llamada directa entre ambos. El acoplamiento es **criptográfico**, no de red. |
-| **Dirección** | N/A. |
-| **Autenticación** | Ambos lados conocen `EO_AUTH_JWT_SECRET`. Vercel firma; el game server verifica. |
-| **Datos que cruzan** | Solo el contenido del JWT, transportado por el cliente. Y, fuera de ejecución, el contrato de mensajes de `@empires-online/protocol` compartido en tiempo de build. |
-| **Detalle no definido** | Cómo resuelve la API route el `playerId` que pone en `sub` (lectura directa de `players` desde Next.js frente a un endpoint dedicado del game server): **TBD (fuera de MVP)**. |
-| **Si cae** | Una rotación descoordinada del secreto invalida todos los tickets: los jugadores conectados siguen jugando (su sesión ya está establecida), pero ninguno nuevo puede entrar. Procedimiento de rotación en [despliegue](../operations/deployment.md). |
+| **Protocolo** | HTTP(S): `POST /internal/players { playerId, username }` en `EO_GAME_SERVER_INTERNAL_URL`, sólo en el alta (y en el login de una cuenta cuya alta no terminó). Fuera de eso, el acoplamiento es criptográfico: el ticket lo firma Next.js y lo transporta el cliente. |
+| **Dirección** | Vercel → game server. |
+| **Autenticación** | `Authorization: Bearer` con un **token de fundación**: JWT HS256 firmado con `EO_AUTH_JWT_SECRET`, `aud: "game-server-internal"`, `sub` = el `playerId` que se funda, TTL 60 s, `jti` de un solo uso consumido en el mismo anti-replay que el ticket. Audiencias disjuntas: un ticket de juego no funda y este token no abre una sesión ([INV-SEC-008](../invariants/security.md#inv-sec-008)). |
+| **Datos que cruzan** | El `playerId` que eligió Next.js y el nombre; de vuelta, la ciudad fundada. Y, fuera de ejecución, el contrato de `@empires-online/protocol` compartido en tiempo de build. |
+| **Si cae** | Las altas nuevas quedan `PENDING` y responden 503; se completan solas en el siguiente login. Los jugadores ya dados de alta entran sin tocar esta frontera. Una rotación descoordinada del secreto invalida tickets y tokens de fundación a la vez: los conectados siguen jugando, ninguno nuevo entra. Procedimiento de rotación en [despliegue](../operations/deployment.md). |
+
+### B11 · Vercel ↔ almacén de identidad
+
+| | |
+|---|---|
+| **Protocolo** | Protocolo nativo de PostgreSQL, desde `EO_IDENTITY_POSTGRES_URL`, con un pool de 5 conexiones por proceso. Desde funciones *serverless* exige un *pooler* delante, que hoy no está en el diseño de despliegue. |
+| **Dirección** | Next.js → base de identidad. Nunca a la base del juego: el rol de identidad no tiene `CONNECT` sobre ella. |
+| **Autenticación** | Rol propio, `empires_identity`, dueño de su base. |
+| **Datos que cruzan** | Cuentas (nombre, hash `scrypt`, estado) y sesiones (SHA-256 del token). |
+| **Si cae** | Nadie nuevo entra ni pide ticket; los conectados siguen jugando, y el mundo, simulando. |
 
 ### B5 · Game Server ↔ PostgreSQL gestionado
 

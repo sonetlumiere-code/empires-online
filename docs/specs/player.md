@@ -26,8 +26,9 @@ transacción, un jugador jugable con ciudad y unidades.
 - Verificación del *game ticket* JWT en el handshake `session.hello` y creación de la sesión.
 - Alta del jugador con **bootstrap atómico**: `players` + `cities` + 3 `units` de tipo `VILLAGER` en una única
   transacción de PostgreSQL (`internal/persistence/postgres/bootstrap.go`).
-- Endpoints **provisionales** `POST /api/auth/register` y `POST /api/auth/login`, servidos hoy por el propio
-  game server (`internal/httpapi`) con `bcrypt`. Ver §4.1.
+- Alta, inicio de sesión y sesión web en `apps/web` (Next.js), con su propio almacén de identidad, y la
+  **fundación** del jugador en el mundo por el endpoint interno del game server
+  ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Ver §4.1.
 - Asignación de `Civilization` y de `Global Faction` como dos ejes independientes.
 - Modelo **data-driven** de rasgos de civilización: `civilizations.traits` como `jsonb` consultado por clave,
   sin condicionales por civilización repartidos por el código.
@@ -35,10 +36,10 @@ transacción, un jugador jugable con ciudad y unidades.
 
 **Fuera de MVP (no se implementa; se documenta el punto de extensión)**
 
-- Traslado de la autenticación a `apps/web` (Next.js). Es la arquitectura objetivo de
-  [ADR-010](../decisions/ADR-010-authentication-game-ticket.md), pero esa API route **todavía no existe** en `apps/web`, en el
-  repositorio: hoy el emisor de tickets es el game server. Recuperación de cuenta, OAuth y verificación de
-  correo son `TBD (fuera de MVP)`.
+- Recuperación de cuenta, cambio de contraseña, OAuth, *magic link* y verificación de correo:
+  `TBD (fuera de MVP)`. El almacén de identidad de ADR-018 admite añadirlos sin tocar el juego.
+- Limpieza de cuentas `PENDING` abandonadas (§4.1): no existe; una cuenta así ocupa su nombre hasta que su
+  dueño vuelve a entrar o alguien la borra.
 - Efecto de gameplay de los traits de civilización sobre economía, tecnología, combate o coste de unidades:
   esos subsistemas no existen (canon §21). Los valores sembrados en `civilizations.traits` existen pero
   **ningún sistema los lee todavía**.
@@ -54,41 +55,37 @@ transacción, un jugador jugable con ciudad y unidades.
 | Actor | Rol |
 |---|---|
 | Jugador humano | Origen de toda intención. Todos los jugadores son humanos; la variedad viene de `Civilization`, no de razas (canon §0). |
-| Emisor del ticket | Firma el *game ticket* JWT HS256 con `EO_AUTH_JWT_SECRET`, `aud = "game-server"` y TTL 60 s. **Hoy es `services/game-server/internal/httpapi`** (`auth.Issuer`); en la arquitectura objetivo será `apps/web` (Next.js), que aún no existe. Nunca escribe estado de simulación. |
-| `services/game-server` (Go) | Único autoritativo. Verifica el ticket, consume el `jti`, crea la sesión, ejecuta el bootstrap y responde. |
-| PostgreSQL | *Durable source of truth*: `players`, `civilizations`, `factions`, `eras`, `cities`, `units`, `sessions`, `world_events`. |
+| `apps/web` (Next.js) | Dueño de la identidad ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): verifica la contraseña, mantiene la sesión web y firma el *game ticket* JWT HS256 con `EO_AUTH_JWT_SECRET`, `aud = "game-server"` y TTL 60 s (`src/server/tokens.ts`). Elige el `playerId` en el alta y pide al game server que funde el jugador. Nunca escribe estado de simulación ni toca el esquema del juego. |
+| `services/game-server` (Go) | Único autoritativo. Funda el jugador cuando `apps/web` se lo pide con un token de fundación, verifica el ticket, consume el `jti`, crea la sesión y responde. No ve contraseñas. |
+| PostgreSQL, base del juego | *Durable source of truth*: `players`, `civilizations`, `factions`, `eras`, `cities`, `units`, `sessions`, `world_events`. Sin ninguna credencial. |
+| PostgreSQL, almacén de identidad | Base propia de `apps/web` (`empires_identity`): `accounts` y `web_sessions`. Otro rol, otro ciclo de migración. |
 | Redis | *Hot state*: `ticket:jti:{jti}`, `presence:player:{playerId}`, idempotencia de comandos del protocolo. Nunca sustituye a PostgreSQL. |
 
 ## 4. Inputs
 
-### 4.1 Alta e inicio de sesión (fuera del canal WebSocket)
+### 4.1 Alta, inicio de sesión y fundación (fuera del canal WebSocket)
 
 El canon no define un mensaje WebSocket de registro (§13 no lo lista), de modo que el alta **no** es un
-comando del protocolo v1. Hoy la sirve el propio game server en `internal/httpapi/auth.go`, y así debe
-documentarse: es una implementación **provisional y sustituible**, no la arquitectura objetivo. La
-arquitectura objetivo ([ADR-010](../decisions/ADR-010-authentication-game-ticket.md)) traslada estos dos
-endpoints a `apps/web`; mientras `apps/web` no exista, el vertical slice tiene que ser ejecutable de
-extremo a extremo y el contrato del emisor de tickets queda documentado con código.
+comando del protocolo v1. Desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) la sirve
+`apps/web` (route handlers de Next.js en `app/api/auth/*`, lógica en `src/server/`), y el game server sólo
+**funda** al jugador en el mundo cuando `apps/web` se lo pide.
 
-`POST /api/auth/register` — cuerpo JSON, máximo 4096 bytes:
+`POST /api/auth/register` (Next.js) — cuerpo JSON `application/json`, máximo 4096 bytes:
 
 | Input | Tipo | Origen | Notas |
 |---|---|---|---|
-| `username` | `string` | jugador | Validado por `player.ValidateUsername`; ver `RN-PLAYER-003`. |
-| `password` | `string` | jugador | Mínimo 8 caracteres. Se deriva con `bcrypt.DefaultCost` y **nunca** se almacena en claro. |
+| `username` | `string` | jugador | Misma regla que `RN-PLAYER-003`, comprobada en `apps/web` y otra vez en el game server. |
+| `password` | `string` | jugador | De 8 a 256 caracteres. Se deriva con `scrypt` (`N = 2^15, r = 8, p = 3`) y **nunca** se almacena en claro ni sale de `apps/web`. |
 
 `POST /api/auth/login` — mismo cuerpo `{ username, password }`.
 
-Lo que el cuerpo **no** lleva, y por qué:
+`POST /api/auth/ticket` — sin cuerpo: un ticket nuevo para la sesión de la cookie `eo_session`. Es lo que pide
+el cliente en cada (re)conexión, porque el ticket es de un solo uso.
 
-- **`playerId`.** Lo genera el servidor con `uuid.New()` dentro de la transacción (`RN-PLAYER-001`).
-- **`civilizationCode` / `factionCode`.** En MVP son parámetros de arranque del proceso
-  (`httpapi.Options.CivilizationID` = 1 → `ROMAN`, `FactionID` = 3 → `NEUTRAL`), no elección del jugador.
-  Exponerlos en el formulario es `Fuera de MVP`; el modelo de datos ya soporta cualquier combinación
-  (`RN-PLAYER-005`).
-- **`requestId`.** El alta HTTP **no es idempotente por clave de petición**: ver `RN-PLAYER-006`.
+`POST /api/auth/logout` — sin cuerpo: borra la sesión y caduca la cookie (204).
 
-Respuesta de ambos endpoints (`201 Created` en el alta, `200 OK` en el login):
+El alta y el login dejan la cookie de sesión `eo_session` (`HttpOnly`, `SameSite=Strict`, `Path=/api/auth`,
+`Secure` en producción, 7 días) y responden:
 
 ```json
 {
@@ -99,12 +96,43 @@ Respuesta de ambos endpoints (`201 Created` en el alta, `200 OK` en el login):
 }
 ```
 
-Errores del alta, con su código HTTP: `INVALID_MESSAGE` (400), `INVALID_USERNAME` (400), `WEAK_PASSWORD`
-(400), `USERNAME_TAKEN` (409), `NO_SITE_AVAILABLE` (409), `SITE_CONTENDED` (503, con `Retry-After: 1`: otras altas simultáneas ocuparon cada sitio elegido y basta con reintentar), `INTERNAL_ERROR` (500). El login responde
-`UNAUTHORIZED` (401) tanto si el usuario no existe como si la contraseña no coincide, tras comparar
-igualmente contra un hash inválido para no revelar por tiempo qué nombres existen. **Estos códigos son
-del transporte HTTP provisional y no pertenecen al catálogo de 22 códigos del protocolo v1** (canon §16):
-cuando el alta se mueva a `apps/web`, desaparecen con ella.
+`city` sólo viene cuando la llamada fundó (o terminó de fundar) al jugador; el login de una cuenta ya activa no
+la trae, y el cliente la encuentra en el `world.snapshot`.
+
+**Fundación.** El alta crea la cuenta en el almacén de identidad como `PENDING`, con un `playerId` nuevo
+(`crypto.randomUUID()`), y llama a `POST /internal/players` del game server con
+`{ playerId, username }` y un token de fundación (JWT HS256 firmado con `EO_AUTH_JWT_SECRET`,
+`aud = "game-server-internal"`, `sub = playerId`, TTL 60 s, `jti` de un solo uso). El game server ejecuta el
+bootstrap de §6 y responde `201` con la ciudad, o `200` si ese jugador ya existía. Sólo entonces la cuenta pasa a
+`ACTIVE` y se abre la sesión (`INV-PLAYER-009`). Si el game server rechaza de forma definitiva, la cuenta
+`PENDING` se borra y el nombre queda libre; si no responde, la cuenta se queda `PENDING`, el alta responde 503
+y el siguiente login con la contraseña correcta repite la fundación.
+
+Lo que el cuerpo del alta **no** lleva, y por qué:
+
+- **`playerId`.** Lo genera `apps/web` en el alta y es el mismo `uuid` para la cuenta y para el jugador
+  (`RN-PLAYER-001`). El jugador no lo elige.
+- **`civilizationCode` / `factionCode`.** En MVP son parámetros de arranque del game server
+  (`httpapi.Options.CivilizationID` = 1 → `ROMAN`, `FactionID` = 3 → `NEUTRAL`), no elección del jugador.
+  Exponerlos en el formulario es `Fuera de MVP`; el modelo de datos ya soporta cualquier combinación
+  (`RN-PLAYER-005`).
+- **`requestId`.** El alta HTTP **no es idempotente por clave de petición**: ver `RN-PLAYER-006`.
+
+Errores del alta (Next.js), con su código HTTP: `INVALID_MESSAGE` (400: cuerpo que no es JSON, sin
+`Content-Type: application/json`, o contraseña de más de 256 caracteres), `INVALID_USERNAME` (400),
+`WEAK_PASSWORD` (400), `FORBIDDEN` (403, petición con `Origin` de otro sitio), `USERNAME_TAKEN` (409),
+`NO_SITE_AVAILABLE` (409), `RATE_LIMITED` (429), `SITE_CONTENDED` (503: otras altas simultáneas ocuparon cada
+sitio elegido y basta con reintentar), `GAME_SERVER_UNAVAILABLE` (503: la cuenta existe pero el mundo no
+respondió) e `INTERNAL_ERROR` (500). El login responde `UNAUTHORIZED` (401) tanto si el usuario no existe como
+si la contraseña no coincide, tras comparar igualmente contra un hash de relleno para no revelar por tiempo qué
+nombres existen. **Estos códigos son del transporte HTTP de la identidad y no pertenecen al catálogo de 22
+códigos del protocolo v1** (canon §16).
+
+Respuestas de `POST /internal/players` (game server): `201`/`200` con `{ playerId, city }`; `400`
+`INVALID_MESSAGE` o `INVALID_USERNAME`; `401` `UNAUTHORIZED` (sin token, token de otra audiencia, caducado o ya
+consumido); `403` `FORBIDDEN` (el cuerpo nombra otro `playerId` que el `sub`); `409` `USERNAME_TAKEN` (el
+nombre es de otro jugador), `PLAYER_CONFLICT` (el id ya existe con otro nombre) o `NO_SITE_AVAILABLE`; `503`
+`SITE_CONTENDED` o `INTERNAL_ERROR` (no se pudo comprobar el `jti`); `500` `INTERNAL_ERROR`.
 
 ### 4.2 Handshake de sesión (WebSocket v1)
 
@@ -120,15 +148,19 @@ Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-serv
 
 | Variable | Valor por defecto | Uso en esta spec |
 |---|---|---|
-| `EO_AUTH_JWT_SECRET` | — (obligatoria) | Firma y verificación del ticket. Mínimo 32 caracteres; no puede contener `dev-only` si `EO_ENV=production`. |
+| `EO_AUTH_JWT_SECRET` | — (obligatoria en los dos procesos) | `apps/web` firma con él el ticket y el token de fundación; el game server los verifica. Mínimo 32 caracteres; no puede contener `dev-only` si `EO_ENV=production`, en ninguno de los dos. |
+| `EO_IDENTITY_POSTGRES_URL` | — (obligatoria en `apps/web`) | Almacén de identidad. Sólo la lee `apps/web`. |
+| `EO_GAME_SERVER_INTERNAL_URL` | `http://localhost:8080` | Dónde llama `apps/web` para fundar. |
+| `EO_AUTH_RATE_LIMIT_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_BURST` | 10 / 5 | Límite de alta y login por origen, en `apps/web` y por proceso. |
 | `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` | 512 / 512 | Límites para el emplazamiento de la ciudad inicial. |
 | `EO_WORLD_SEED` | 20260909 | Semilla del **generador del mapa**, no del emplazamiento. |
 | `EO_INTEREST_RADIUS_CHUNKS` | 2 | Área de interés inicial centrada en la ciudad del jugador. |
 | `EO_CHUNK_SIZE` | 32 | Deriva `units.chunk_x`/`chunk_y` de los aldeanos iniciales. |
 
-Constante no configurable por entorno, fijada en código: el TTL del ticket, **60 s** (`ticketTTL` en
-`cmd/server/main.go`). Tampoco lo son el plazo de handshake (5 s), el intervalo de ping (15 s) ni los
-timeouts de lectura (45 s) y escritura (10 s) del WebSocket.
+Constante no configurable por entorno, fijada en código: el TTL del ticket y del token de fundación, **60 s**
+(`TOKEN_TTL_SECONDS` en `apps/web/src/server/tokens.ts`). Tampoco lo son la vida de la sesión web (7 días,
+`SESSION_TTL_MS`), el plazo de handshake (5 s), el intervalo de ping (15 s) ni los timeouts de lectura (45 s)
+y escritura (10 s) del WebSocket.
 
 La semilla del emplazamiento **no** es `EO_WORLD_SEED`: es un FNV-1a de 64 bits del propio `username`
 (`hashSeed`). Así es raro que dos altas simultáneas busquen en la misma región, y el mismo nombre obtiene siempre el
@@ -143,14 +175,15 @@ mismo punto de partida, lo que hace el alta reproducible en tests y depurable en
 | 3 filas en `units` (`VILLAGER`, `IDLE`) | PostgreSQL | Alta, misma transacción. |
 | Fila en `world_events` con `event_type = 'PlayerBootstrapped'` | PostgreSQL | Alta, misma transacción. Payload: `{ cityId, villagers, center:{x,y} }`. |
 | Comando `IntroducePlayer` | cola de comandos de la simulación | **Después** del COMMIT, nunca antes: el mundo en RAM solo conoce al jugador cuando la transacción confirmó. Incorpora ciudad, aldeanos y el rectángulo bloqueado de la muralla. |
-| Ticket JWT + `city` | respuesta HTTP del alta o del login | Ver §4.1. |
+| Fila en `accounts` (`PENDING`, luego `ACTIVE`) y en `web_sessions` | almacén de identidad de `apps/web` | Alta y login. Ver §4.1. |
+| Ticket JWT, cookie `eo_session` y `city` | respuesta HTTP del alta o del login | Ver §4.1. |
 | Fila en `sessions` | PostgreSQL | Handshake aceptado. |
 | Clave `presence:player:{playerId}` | Redis, TTL `EO_PRESENCE_TTL_SECONDS` (30 s) | Handshake aceptado. Ver [presence.md](presence.md). |
 | `session.welcome` | conexión que hizo el handshake | Tras verificar el ticket y crear la sesión. |
 | `world.snapshot` | misma conexión | Inmediatamente después de `session.welcome`, con el área de interés centrada en la ciudad. |
 | `system.error` | misma conexión | Ante cualquier fallo, con un `code` del canon §16. |
 | Métrica `eo_connected_players` | Prometheus | Gauge, +1 al primer WS del jugador, −1 al cerrar el último. |
-| Log estructurado con `player_id` | stdout JSON (`log/slog`) | Alta fallida, alta revertida y cierre de sesión. Nunca registra la contraseña, su hash ni el ticket completo. |
+| Log estructurado con `player_id` | stdout JSON (`log/slog` en el game server, `jsonLogger` en `apps/web`) | Cuenta creada, activada o borrada; fundación hecha o rechazada; login rechazado; cierre de sesión. Nunca registra la contraseña, su hash, el token de la sesión ni un ticket o token de fundación, completo o en parte. |
 
 ## 6. Reglas de negocio
 
@@ -158,14 +191,14 @@ Dominio de reglas: `RN-PLAYER`.
 
 | ID | Regla |
 |---|---|
-| `RN-PLAYER-001` | `players.id` es un `uuid` (canon §11: la única PK que no es `bigint GENERATED ALWAYS AS IDENTITY`). Lo genera el servidor con `uuid.New()` (UUIDv4 respaldado por `crypto/rand`) **fuera del tick**, en la goroutine de la petición HTTP. No forma parte del dominio determinista y por tanto no usa `RandomSource`. |
+| `RN-PLAYER-001` | `players.id` es un `uuid` (canon §11: la única PK que no es `bigint GENERATED ALWAYS AS IDENTITY`). Desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) lo genera `apps/web` en el alta (`crypto.randomUUID()`, UUIDv4) y es a la vez el id de la cuenta y el `sub` del ticket; el game server lo recibe en la fundación y lo usa tal cual. Los jugadores de la siembra de desarrollo llevan un UUIDv5 de su nombre (`devseed.PlayerID`). Nada de eso ocurre en el tick: no forma parte del dominio determinista y no usa `RandomSource`. |
 | `RN-PLAYER-002` | Un jugador se identifica siempre por su `uuid`. Ningún mensaje del protocolo transporta claves internas alternativas ni índices posicionales. |
 | `RN-PLAYER-003` | El nombre de cuenta es la columna **`players.username`**, no `display_name`: la tabla no tiene una columna de nombre visible separada. Es único (`UNIQUE` en la columna) y su formato se valida en **dos** niveles con la misma regla: `player.ValidateUsername` en el boundary y el `CHECK` `players_username_format` (`username ~ '^[A-Za-z0-9_-]{3,24}$'`) en PostgreSQL. Longitud 3..24 y únicamente `A-Z`, `a-z`, `0-9`, `_` y `-`. **No hay normalización NFKC ni recorte de espacios**, precisamente porque el alfabeto permitido es ASCII cerrado: normalizar sería resolver un problema que el `CHECK` ya impide. La lista de nombres reservados es `TBD (fuera de MVP)`. |
 | `RN-PLAYER-004` | Todo jugador tiene exactamente una `Civilization` y exactamente una `Global Faction`, ambas `NOT NULL` con FK. No hay valor nulo ni "sin asignar". |
 | `RN-PLAYER-005` | `Civilization` y `Global Faction` son **ejes ortogonales**: cualquier combinación del producto cartesiano es válida. No existe ninguna restricción, tabla de compatibilidad ni valor por defecto derivado del otro eje. |
-| `RN-PLAYER-006` | El alta HTTP **no** es idempotente por `requestId`. La defensa contra el alta duplicada es el `UNIQUE` de `players.username`, que traduce a `USERNAME_TAKEN` (409); un reintento con el mismo nombre no crea un segundo jugador. La deduplicación por `requestId` sirve a los **comandos del protocolo v1**, no a este endpoint. Dar idempotencia por `requestId` al alta es `TBD (fuera de MVP)` y llegará con `apps/web`. |
+| `RN-PLAYER-006` | El alta HTTP **no** es idempotente por `requestId`. La defensa contra el alta duplicada es el `UNIQUE` de `accounts.username` en el almacén de identidad, que traduce a `USERNAME_TAKEN` (409), y detrás el de `players.username`. La **fundación** sí es idempotente, por `playerId`: repetirla devuelve el jugador que ya existe, y dos fundaciones simultáneas del mismo id acaban en un solo jugador (`INV-PLAYER-009`). La deduplicación por `requestId` sirve a los **comandos del protocolo v1**, no a estos endpoints. |
 | `RN-PLAYER-007` | El alta es **atómica**: `players` + `cities` + 3 `units` + el `world_events` de auditoría se escriben en una sola transacción (`Bootstrapper.Create` sobre `Store.InTx`). Un fallo en cualquier paso deja la base de datos sin rastro del jugador. No existe estado intermedio "jugador sin ciudad" ni "ciudad sin aldeanos". |
-| `RN-PLAYER-008` | El game server nunca almacena ni registra contraseñas en claro: solo el `password_hash` de bcrypt, que se lee exclusivamente en `PlayerRepo.GetByUsername` y no viaja a ninguna otra capa ni a ningún log. Mientras el alta viva aquí (§4.1), la contraseña sí atraviesa el proceso el tiempo justo de derivar el hash; cuando el alta se mueva a `apps/web`, la única entrada de autenticación del game server será el ticket firmado. |
+| `RN-PLAYER-008` | El game server no ve contraseñas: su esquema no tiene ninguna columna de credencial (migración `000005`) y sus dos entradas de autenticación son el ticket del handshake y el token de fundación, ambos firmados. La contraseña sólo atraviesa `apps/web`, el tiempo justo de derivar o comparar su hash `scrypt`, que vive en `accounts.password_hash` del almacén de identidad y no viaja a ninguna otra capa ni a ningún log. |
 | `RN-PLAYER-009` | El ticket se verifica en firma HS256, `exp` y `aud == "game-server"`, y su `jti` se consume una sola vez en Redis (`ticket:jti:{jti}`). Un ticket sin `jti` se rechaza: sin él no se puede impedir el replay. Un `jti` ya consumido se rechaza con `UNAUTHORIZED` y cierre `4401`. |
 | `RN-PLAYER-010` | Si `session.hello` no llega en los primeros 5 s de la conexión, el servidor cierra con código `4408`. Ningún otro tipo de mensaje se procesa antes del handshake. |
 | `RN-PLAYER-011` | En MVP un jugador posee **exactamente una** ciudad. El área de interés inicial se centra en `cities.center_x` / `cities.center_y` de esa ciudad, con radio `EO_INTEREST_RADIUS_CHUNKS` (canon §13). Multi-ciudad es `Fuera de MVP`. |
@@ -396,7 +429,8 @@ del jugador se documenta en [presence.md](presence.md) §9 y toma sus números p
 |---|---|---|
 | `INV-PLAYER-005` | `players.id` es `uuid` y único: no existen dos filas con el mismo id, y ningún otro mecanismo (correlativo, índice posicional) identifica a un jugador. | PK `uuid` en PostgreSQL + tipo `uuid.UUID` no puntero en el agregado de Go. |
 | `INV-PLAYER-006` | `players.username` es único y cumple `^[A-Za-z0-9_-]{3,24}$`. La misma regla se aplica en el boundary (`player.ValidateUsername`) y en la base (`CHECK players_username_format`), de modo que ninguna ruta de escritura pueda saltársela. | `UNIQUE` + `CHECK` + unit test de tabla sobre `ValidateUsername`. |
-| `INV-PLAYER-007` | Ninguna tabla guarda una contraseña en claro y ningún log estructurado contiene contraseña, `password_hash`, ticket completo ni `EO_AUTH_JWT_SECRET`. `password_hash` solo sale de `PlayerRepo.GetByUsername` y solo entra al verificador de credenciales. | Revisión de esquema + test que inspecciona los logs producidos durante alta, login y handshake. |
+| `INV-PLAYER-007` | Ninguna tabla guarda una contraseña en claro y ningún log estructurado contiene contraseña, hash, token de sesión, ticket ni `EO_AUTH_JWT_SECRET`. El esquema del juego no tiene ninguna columna de credencial; el almacén de identidad, sólo dos hashes. | Tests de esquema de las dos bases + tests que inspeccionan los logs del alta, el login, la fundación y el handshake. |
+| `INV-PLAYER-009` | Toda cuenta `ACTIVE` del almacén de identidad tiene en el juego un jugador con el mismo id y nombre; una cuenta `PENDING` no obtiene sesión ni ticket. | Orquestación del alta en `apps/web` con un game server falso + idempotencia y carrera de la fundación contra PostgreSQL. |
 | `INV-PLAYER-008` | El comando `IntroducePlayer` que incorpora al jugador al mundo en RAM se emite **después** del COMMIT del bootstrap, nunca antes. No existe ningún instante en que el mundo en RAM conozca a un jugador que PostgreSQL no conoce. | Test de simulación con fallo inyectado en la transacción: el mundo no recibe la ciudad ni los aldeanos. |
 
 No se asigna ningún invariante para «cada jugador tiene exactamente una ciudad»: esa propiedad es
@@ -441,10 +475,11 @@ del DDL real; la secuencia, la que ejecuta el código:
 ```sql
 BEGIN;
 
--- 1) jugador. El uuid lo genera la aplicación; el hash bcrypt llega ya derivado.
-INSERT INTO players (id, username, password_hash, civilization_id, faction_id)
-VALUES ($player_id, $username, $password_hash, $civilization_id, $faction_id);
--- una violación de UNIQUE(username) aborta el alta con USERNAME_TAKEN
+-- 1) jugador. El uuid lo eligió apps/web (ADR-018); el esquema no guarda credenciales.
+INSERT INTO players (id, username, civilization_id, faction_id)
+VALUES ($player_id, $username, $civilization_id, $faction_id);
+-- una violación de UNIQUE(id) o UNIQUE(username) aborta con USERNAME_TAKEN, y la
+-- fundación comprueba entonces si el jugador ya existía con ese id y ese nombre
 
 -- 2) ciudad inicial: emplazamiento ya validado en memoria (ver city.md §6)
 INSERT INTO cities (owner_player_id, name, center_x, center_y, era,
@@ -589,17 +624,22 @@ Reglas del contrato:
 | `T-PLAYER-U-005` | unit | `founding.FindSite` con la misma semilla devuelve el mismo emplazamiento; con ciudades existentes respeta la separación de 24 tiles; sin sitio devuelve `ErrNoSite`. Escritos: `TestLaBusquedaEsDeterminista`, `TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan`, `TestSinTerrenoTransitableNoHaySitio`. | `RN-PLAYER-014` |
 | `T-PLAYER-I-001` | integration | Bootstrap completo: 1 fila en `players`, 1 en `cities`, 3 en `units` con `hp = max_hp = 40` y `status='IDLE'`, `cities.population = 3`. Escrito: `TestBootstrapCreaMundoCompletoDelJugador`. | `RN-PLAYER-007`, `INV-PLAYER-003` |
 | `T-PLAYER-I-002` | integration | Un fallo a mitad del alta no deja ninguna fila en `players`, `cities` ni `units`. Escritos: `TestBootstrapFallidoNoDejaNadaAMedias`, `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir`. | `RN-PLAYER-007`, `INV-PLAYER-003` |
-| `T-PLAYER-I-003` | integration | Alta repetida con el mismo `username`: la segunda falla con `USERNAME_TAKEN` (409) y no crea ninguna fila adicional. Escritos: `TestUnAltaRechazadaNoIntroduceNada` (por HTTP), `TestElAltaRegistraUnEventoYNoSeDuplica`. | `RN-PLAYER-006`, `INV-PLAYER-006` |
+| `T-PLAYER-I-003` | integration | Alta repetida con el mismo `username`: la segunda falla con `USERNAME_TAKEN` (409) y no crea ninguna fila adicional. Escritos: `TestUnNombreDeOtroJugadorNoSeFundaNiSeReasigna` (por la fundación), `TestElAltaRegistraUnEventoYNoSeDuplica`; en `apps/web`, «un nombre ya tomado no llega al Game Server» (`authService.test.ts`). | `RN-PLAYER-006`, `INV-PLAYER-006` |
 | `T-PLAYER-I-004` | integration | Alta de un jugador por cada combinación (civilización × facción): las doce tienen éxito. Falla si alguien acopla los ejes. Escrito: `TestLosDosEjesSonOrtogonales`. | `RN-PLAYER-005`, `INV-PLAYER-002` |
 | `T-PLAYER-I-005` | e2e | `jti` reutilizado: el segundo handshake se rechaza con el cierre `4401`, sin `system.error` previo (el handshake se comunica sólo con códigos de cierre). Escrito: `TestTicketNoSePuedeReutilizarEnOtraConexion`. | `RN-PLAYER-009`, `INV-PLAYER-004` |
 | `T-PLAYER-I-006` | integration | `INSERT` directo con `username` de 2 caracteres o con `@`: rechazado por `players_username_format`. Escritos: `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestValidateUsernameYElCheckDicenLoMismo`. | `INV-PLAYER-006` |
 | `T-PLAYER-I-007` | integration | `INSERT` con `civilization_id` o `faction_id` nulo o inexistente: rechazado por `NOT NULL` / FK. Escrito: `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`. | `INV-PLAYER-002` |
-| `T-PLAYER-C-001` | contract | `session.hello` y `session.welcome` existen en el JSON Schema exportado por `@empires-online/protocol`. Escrito: `TestTiposDeMensajePresentesEnElEsquema`. **Parcial**: no se valida el `session.welcome` emitido contra su esquema. | §12 |
+| `T-PLAYER-C-001` | contract | `session.hello` y `session.welcome` existen en el JSON Schema exportado por `@empires-online/protocol`. Escritos: `TestTiposDeMensajePresentesEnElEsquema`; y todo `session.welcome` y `world.snapshot` que emite el servidor real en los e2e se valida contra el esquema (`schema_e2e_test.go`). | §12 |
 | `T-PLAYER-C-002` | contract | `session.hello` con un campo extra (`playerId`, por ejemplo) **no** valida: los mensajes cliente→servidor son estrictos, también en el decodificador Go. Escrito: `TestElDecodificadorEsTanEstrictoComoElEsquema`. | `INV-PLAYER-004` |
 | `T-PLAYER-C-003` | contract | El handshake no emite `system.error`: sus rechazos son códigos de cierre del rango privado. Escrito: `TestCodigosDeCierreSonDelRangoPrivado`. | §8 |
 | `T-PLAYER-E-001` | e2e | Conexión sin `session.hello` dentro del plazo → cierre `4408`. Escrito: `TestSinHandshakeEnPlazoSeCierraCon4408`. | `RN-PLAYER-010` |
 | `T-PLAYER-E-002` | e2e | Handshake correcto → `session.welcome` seguido de `world.snapshot` centrado en la ciudad. Escrito: `TestVerticalSliceEndToEnd`. | `RN-PLAYER-011` |
-| `T-PLAYER-E-003` | integration | Alta → el mundo en RAM no conoce al jugador hasta después del COMMIT; con la transacción abortada, no se introduce nada. Escritos: `TestElAltaHTTPIntroduceAlJugadorDespuesDelCommit`, `TestUnAltaRechazadaNoIntroduceNada`. | `INV-PLAYER-008` |
+| `T-PLAYER-E-003` | integration | Alta → el mundo en RAM no conoce al jugador hasta después del COMMIT; con la transacción abortada, no se introduce nada. Escritos: `TestLaFundacionIntroduceAlJugadorDespuesDelCommit`, `TestUnNombreDeOtroJugadorNoSeFundaNiSeReasigna`, `TestSinSitioLaFundacionResponde409YNoEscribe`. | `INV-PLAYER-008` |
+| `T-PLAYER-I-008` | integration | La fundación es idempotente por `playerId`, también con el mundo lleno, y dos fundaciones simultáneas del mismo id acaban en un jugador. Escritos: `TestLaFundacionEsIdempotentePorPlayerId`, `TestLaRepeticionNoBuscaSitioAunqueElMundoEsteLleno`, `TestDosFundacionesSimultaneasDelMismoJugadorAcabanEnUno`. | `INV-PLAYER-009` |
+| `T-PLAYER-I-009` | integration | Sólo un token de fundación funda, una vez y sólo su `sub`: `TestUnTicketDeJuegoNoFundaJugadores`, `TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub`; y las audiencias son disjuntas (`TestLasAudienciasSonDisjuntas`, unit). | `INV-SEC-008` |
+| `T-PLAYER-W-001` | unit (`apps/web`) | Orquestación del alta y del login: activación sólo tras la fundación, borrado ante rechazo definitivo, `PENDING` sin sesión ante indisponibilidad y su cierre en el login, respuestas idénticas ante contraseña errónea y usuario inexistente, ticket por cookie, logs sin secretos. `src/server/authService.test.ts`. | `INV-PLAYER-007`, `INV-PLAYER-009` |
+| `T-PLAYER-W-002` | integration (`apps/web`) | Almacén de identidad contra PostgreSQL real: migraciones idempotentes, restricciones, sesiones sólo de cuentas `ACTIVE`, y el rol de identidad sin acceso a la base del juego. `src/server/store.integration.test.ts`. | `INV-PLAYER-009`, ADR-018 |
+| `T-PLAYER-W-003` | contract | El emisor de TypeScript produce los bytes exactos de `internal/auth/testdata/web-tokens.json` y el verificador de Go los acepta. `tokens.test.ts`, `TestLosTokensDeAppsWebSeVerificanEnGo`. | ADR-018 §2.4 |
 
 Los tests de integración necesitan PostgreSQL y Redis reales y están gated por `EO_INTEGRATION=1` (canon §3,
 §19). La CI los ejecuta en cada push; en la máquina de desarrollo se ejecutan contra el cluster propio de

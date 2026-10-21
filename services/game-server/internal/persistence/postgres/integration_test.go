@@ -65,7 +65,6 @@ var instanteDeAlta = time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 func bootstrapRequest(username string, center world.Tile) postgres.BootstrapRequest {
 	return postgres.BootstrapRequest{
 		Username:       username,
-		PasswordHash:   "$2a$10$hashdepruebahashdepruebahashdepruebahashdepru",
 		CivilizationID: 1,
 		FactionID:      3,
 		CityName:       username + "polis",
@@ -138,7 +137,7 @@ func TestBootstrapFallidoNoDejaNadaAMedias(t *testing.T) {
 	require.Equal(t, 3, unitCount, "ni aldeanos huérfanos")
 
 	// El primer jugador sigue intacto.
-	p, _, err := players.GetByUsername(ctx, "jugador_dos")
+	p, err := players.GetByUsername(ctx, "jugador_dos")
 	require.NoError(t, err)
 	_, err = cities.GetByOwner(ctx, p.ID)
 	require.NoError(t, err)

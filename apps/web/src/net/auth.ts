@@ -1,17 +1,15 @@
 /**
- * Obtención del game ticket.
+ * Alta, entrada y obtención del game ticket desde el navegador.
  *
  * Un ticket es EFÍMERO (60 s) y de UN SOLO USO: cada conexión —y cada
  * reconexión— necesita uno nuevo. Guardarlo o reutilizarlo no funciona por
  * diseño, no por descuido. Ver ../../../../docs/decisions/ADR-010-authentication-game-ticket.md
  *
- * Provisional: hoy estos endpoints los sirve el Game Server
- * (`internal/httpapi`). La arquitectura objetivo los traslada a una API route de
- * Next.js, que es quien debe custodiar el secreto de firma. Cuando eso ocurra,
- * sólo cambia `BASE_URL`: la interfaz de este módulo no se mueve.
+ * Las rutas son de este mismo origen (`/api/auth/*`, ADR-018): el alta y el
+ * login dejan una cookie de sesión `HttpOnly` que este código no puede leer, y
+ * cada ticket nuevo se pide con ella. La contraseña sólo viaja en el alta y en
+ * el login, y no se guarda en ninguna parte.
  */
-
-const BASE_URL = process.env.NEXT_PUBLIC_GAME_SERVER_HTTP_URL ?? 'http://localhost:8080';
 
 export interface Credentials {
   readonly username: string;
@@ -40,11 +38,13 @@ export class AuthError extends Error {
   }
 }
 
-async function post(path: string, body: unknown): Promise<TicketResponse> {
-  const response = await fetch(`${BASE_URL}${path}`, {
+async function post(path: string, body?: unknown): Promise<TicketResponse> {
+  const response = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    credentials: 'same-origin',
+    ...(body === undefined
+      ? {}
+      : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   });
 
   const payload = (await response.json().catch(() => null)) as
@@ -57,27 +57,40 @@ async function post(path: string, body: unknown): Promise<TicketResponse> {
   return payload;
 }
 
-/** Da de alta un jugador: crea su ciudad y sus tres aldeanos. */
+/** Da de alta un jugador: crea su ciudad y sus tres aldeanos, y abre la sesión web. */
 export function register(creds: Credentials): Promise<TicketResponse> {
   return post('/api/auth/register', creds);
 }
 
-/** Verifica credenciales y devuelve un ticket nuevo. */
+/** Verifica credenciales, abre la sesión web y devuelve un ticket. */
 export function login(creds: Credentials): Promise<TicketResponse> {
   return post('/api/auth/login', creds);
 }
 
+/** Pide un ticket nuevo con la cookie de sesión. */
+export async function requestTicket(): Promise<string> {
+  const { ticket } = await post('/api/auth/ticket');
+  return ticket;
+}
+
+/** Cierra la sesión web. */
+export async function logout(): Promise<void> {
+  await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+}
+
 /**
  * Construye la función que el cliente WebSocket usa para pedir un ticket fresco
- * en cada (re)conexión.
- *
- * Guardar las credenciales en memoria es el compromiso del MVP: la alternativa
- * correcta —cookie de sesión en Next.js— llega con ADR-010, y esta función es
- * justo la costura por la que se sustituirá.
+ * en cada (re)conexión. La primera conexión usa el ticket que ya trajo el alta o
+ * el login; las siguientes lo piden con la cookie.
  */
-export function ticketProvider(creds: Credentials): () => Promise<string> {
+export function ticketProvider(first?: string): () => Promise<string> {
+  let pending = first;
   return async () => {
-    const { ticket } = await login(creds);
-    return ticket;
+    if (pending) {
+      const ticket = pending;
+      pending = undefined;
+      return ticket;
+    }
+    return requestTicket();
   };
 }

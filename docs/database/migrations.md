@@ -94,15 +94,22 @@ No hay ningún script `db:migrate`: migrar es arrancar el servidor (§1.2). `db:
 
 `db:psql` pasa por `docker compose exec` porque **`psql` no está instalado en la máquina de desarrollo**. Igual ocurre con `redis-cli`, de ahí `db:redis`. Nótese que la base se llama `empires`, no `empires_online`. Cualquier procedimiento de este documento que necesite una sesión SQL asume esa vía, y por tanto asume el daemon de Docker arrancado — que en el assessment del entorno estaba instalado pero apagado.
 
-### 1.4 El frontend NO aplica migraciones
+### 1.4 El frontend nunca toca el esquema del juego
 
-`apps/web` (el frontend Next.js) **todavía no existe** en el repositorio. Cuando exista, no tendrá credenciales de PostgreSQL, no importará ningún cliente SQL y no ejecutará migraciones. Es una regla de arquitectura, no una convención:
+`apps/web` (el frontend Next.js) no tiene credenciales de la base del juego, no aplica sus migraciones y no
+consulta sus tablas. Es una regla de arquitectura, no una convención:
 
-- El único escritor del esquema es el binario del Game Server. Un segundo escritor rompería la correspondencia entre versión de binario y versión de esquema.
+- El único escritor del esquema del juego es el binario del Game Server. Un segundo escritor rompería la correspondencia entre versión de binario y versión de esquema.
 - El frontend no es autoritativo sobre nada del mundo (principio 1 del canon). Darle acceso directo a la base contradiría eso incluso antes de escribir la primera consulta.
 - `EO_POSTGRES_URL` nunca se expone al proceso del frontend ni, obviamente, al navegador. Los secretos van por variables de entorno del servicio que los necesita.
 
-El frontend habla con el Game Server por WebSocket y con su propia API route de autenticación. Si algún día el frontend necesita almacenamiento propio (sesiones de usuario, por ejemplo), será una base o un esquema separado con su propio ciclo de migración: **TBD (fuera de MVP)**.
+Lo que `apps/web` **sí** tiene, desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), es su
+**propio almacén de identidad**: la base `empires_identity`, con otro rol (`empires_identity`), que el rol de
+identidad no puede usar para abrir la base del juego. Tiene su propio ciclo de migración, con el mismo modelo
+que este documento y otro dueño: SQL versionado en `apps/web/identity/migrations.mjs`, registro en
+`identity_schema_migrations`, un *advisory lock* para que dos procesos no migren a la vez, y lo aplican el
+arranque del servidor de Next.js (`instrumentation.ts`) y `pnpm run identity:migrate`. Esta regla precisa la
+de [ADR-012](../decisions/ADR-012-database-migrations.md) §4.2, que estaba escrita más ancha que su motivo.
 
 ---
 
@@ -326,6 +333,7 @@ Son **cuatro**, todas embebidas en el binario. Juntas materializan lo descrito e
 | `000002` | `seed_catalogs` | Semilla idempotente con `id` explícito: 4 civilizaciones (`ROMAN`, `BYZANTINE`, `PERSIAN`, `NORSE`, con sus `traits`), 3 facciones (`ORDER`, `CHAOS`, `NEUTRAL`), 4 eras (`STONE_AGE` 20, `BRONZE_AGE` 50, `IRON_AGE` 100, `CASTLE_AGE` 150, con `ordinal` 1–4). Separada de `000001` porque estructura y datos tienen ciclos de vida distintos: el esquema se corrige con una migración de esquema, el catálogo con una de datos. `down`: `DELETE` de esas filas por su `code` |
 | `000003` | `territory_control_version` | Añade `version` a `territory_control` para la concurrencia optimista del cambio de dueño. |
 | `000004` | `drop_idempotency_keys` | Elimina `idempotency_keys`, que nunca tuvo escritor ([ADR-014](../decisions/ADR-014-command-idempotency.md)). Su `.down.sql` la recrea. |
+| `000005` | `players_without_credentials` | Borra `players.password_hash`: la identidad sale del esquema del juego ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Su `.down.sql` recrea la columna **anulable** y vacía: los hashes no se recuperan, y así lo dice el fichero. |
 
 Por qué el esquema entero cabe en una sola migración y no en catorce: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido catorce oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
 

@@ -3,8 +3,10 @@
 //
 //	pnpm run dev:seed
 //
-// Crea los jugadores de devseed.Players por el mismo camino que el alta —
-// founding.FindSite y la transacción atómica del Bootstrapper— y coloca un
+// Crea los jugadores de devseed.Players —con el id determinista de
+// devseed.PlayerID, que es el que lleva su cuenta en apps/web (ADR-018)— por el
+// mismo camino que la fundación —founding.FindSite y la transacción atómica del
+// Bootstrapper— y coloca un
 // DENSE_FOREST junto a cada ciudad. Es idempotente: lo que ya existe se deja.
 //
 // Condiciones, todas comprobadas antes de escribir nada:
@@ -29,8 +31,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
@@ -117,11 +117,6 @@ func run() error {
 		return fmt.Errorf("catálogo de eras vacío o ilegible: %w", err)
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(devseed.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
 	fmt.Printf("\nSiembra de desarrollo sobre el mundo seed=%d %d×%d\n\n", state.Seed, state.Width, state.Height)
 
 	// ── Jugadores ───────────────────────────────────────────────
@@ -131,10 +126,17 @@ func run() error {
 	}
 	var jugadores []sembrado
 	for _, nombre := range devseed.Players {
-		if p, _, err := players.GetByUsername(ctx, nombre); err == nil {
+		if p, err := players.GetByUsername(ctx, nombre); err == nil {
 			c, err := cities.GetByOwner(ctx, p.ID)
 			if err != nil {
 				return fmt.Errorf("%s existe pero no se pudo leer su ciudad: %w", nombre, err)
+			}
+			if p.ID != devseed.PlayerID(nombre) {
+				// Un jugador sembrado antes de ADR-018, con id aleatorio: la cuenta
+				// que crea apps/web lleva el id determinista y no lo encontraría.
+				fmt.Printf("  ! %-10s es anterior a ADR-018 (id %s): su cuenta no podrá entrar.\n"+
+					"               Para recuperarlo, recrea la base de desarrollo y vuelve a sembrar.\n",
+					nombre, p.ID)
 			}
 			jugadores = append(jugadores, sembrado{nombre, world.Tile{X: c.CenterX, Y: c.CenterY}})
 			fmt.Printf("  = %-10s ya existía, ciudad en (%d,%d)\n", nombre, c.CenterX, c.CenterY)
@@ -152,8 +154,8 @@ func run() error {
 			territorioID = t.ID
 		}
 		if _, err := bootstrapper.Create(ctx, postgres.BootstrapRequest{
+			PlayerID:       devseed.PlayerID(nombre),
 			Username:       nombre,
-			PasswordHash:   string(hash),
 			CivilizationID: 1,
 			FactionID:      3, // NEUTRAL, como el alta por la API
 			CityName:       nombre + "polis",
@@ -231,7 +233,8 @@ func run() error {
 	}
 
 	fmt.Printf("\n  %d zonas en el índice, sin solapes ni tiles urbanos.\n", idx.Len())
-	fmt.Printf("  Usuarios: %s · contraseña: %s\n", strings.Join(devseed.Players, ", "), devseed.Password)
+	fmt.Printf("  Jugadores: %s. Sus cuentas las crea apps/web (ADR-018):\n", strings.Join(devseed.Players, ", "))
+	fmt.Println("  pnpm run dev:seed lo hace a continuación; a mano, node apps/web/scripts/seed-identity.mjs.")
 	fmt.Println("  Arranca el servidor (pnpm run server:run) para que cargue lo sembrado.")
 	fmt.Println()
 	return nil

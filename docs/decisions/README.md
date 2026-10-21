@@ -94,10 +94,12 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Diecisiete decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
-**2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, y ADR-016 y ADR-017 de
-las reglas de juego que M6 y M7 tenían bloqueadas, todos con fecha **2026-10-20**.
-Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`.
+Dieciocho decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+**2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
+las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
+cerrar M3, todos con fecha **2026-10-20**.
+Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
+ADR-004 y ADR-012 llevan una nota de sustitución parcial (por ADR-014 y ADR-018).
 
 | ADR | Título | Estado | Resumen |
 |---|---|---|---|
@@ -118,13 +120,14 @@ Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos es
 | [015](ADR-015-tick-continuity.md) | El tick se reancla al reloj en cada arranque | Aceptado | Al arrancar, el tick parte de `max(world_state.current_tick, (ahora − epoch_ms) / período)`: ningún número de tick se repite tras una caída; con el reloj por detrás de lo guardado se arranca desde lo guardado y se registra, sin abortar. |
 | [016](ADR-016-foreign-territory-actions.md) | El territorio ajeno no restringe ninguna acción del MVP | Aceptado | Moverse, cancelar, guarnecer y salir están permitidos en cualquier territorio; `FORBIDDEN` no se usa para el territorio; toda acción de mundo se clasifica como hostil o no y por su regla de territorio, con un test que exige clasificar cada mensaje nuevo. Cierra el entregable 8 de M6. |
 | [017](ADR-017-garrison-commands.md) | Los comandos de guarnición entran por el loop y el tratado se decide en la transacción | Aceptado | `unit.garrison` y `unit.ungarrison`; la entrada se valida en el tick y el tratado se comprueba en la transacción de la cola, que devuelve el resultado al loop; la salida la decide el tick y se compensa; `units.city_id` no cambia (deroga INV-GARR-003); la unidad guarnecida sólo la ve su dueño. |
+| [018](ADR-018-identity-store-and-ticket-issuer.md) | La identidad vive en Next.js, con su propio almacén; el Game Server sólo funda el mundo | Aceptado | Cuentas y sesiones en una base propia de `apps/web` con otro rol; `scrypt` y cookie opaca; Next.js firma el ticket HS256 de ADR-010; el alta funda el jugador por `POST /internal/players` con un token de audiencia `game-server-internal`; `players.password_hash` desaparece. Precisa ADR-012. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y
 `RandomSource` (canon §1.5), el *interest management* por suscripción a chunks (canon §13) y la
 elección de A\* con heurística octile tras la interfaz `Pathfinder`
 ([../architecture/pathfinding.md](../architecture/pathfinding.md)). Si alguna de ellas necesita
-registrarse, toma el siguiente número libre —**018** en adelante—, nunca un número ya asignado.
+registrarse, toma el siguiente número libre —**019** en adelante—, nunca un número ya asignado.
 
 ## 6. Cómo se propone un ADR nuevo
 

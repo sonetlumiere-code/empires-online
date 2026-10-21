@@ -131,3 +131,21 @@ func TestPlaceZoneRespetaLoOcupadoYLosBordes(t *testing.T) {
 	_, _, ok = devseed.PlaceZone(w, cerca, safezone.Cavern, nil)
 	assert.False(t, ok, "sin montañas no hay caverna posible")
 }
+
+// Los ids de los jugadores de desarrollo son UUID v5 del nombre (ADR-018). El
+// almacén de identidad de apps/web los calcula por su cuenta
+// (apps/web/scripts/seed-identity.mjs) y su test fija estos mismos valores: si
+// cualquiera de los dos lados cambia el espacio de nombres o el algoritmo, las
+// cuentas dejarían de encontrar a sus jugadores, y uno de los dos tests falla.
+func TestLosIdsDeDesarrolloSonDeterministas(t *testing.T) {
+	esperados := map[string]string{
+		"dev_norte": "5802b8b1-cdb1-5e7a-83f0-f32e243688bd",
+		"dev_sur":   "8211d668-939b-5d33-8614-983ac4814ee0",
+		"dev_este":  "704568fc-a197-5c7f-82de-b071e2abf42c",
+		"dev_oeste": "112988a8-a53f-5bd9-8586-d760dca48c6b",
+	}
+	require.Len(t, devseed.Players, len(esperados))
+	for _, nombre := range devseed.Players {
+		assert.Equal(t, esperados[nombre], devseed.PlayerID(nombre).String(), nombre)
+	}
+}

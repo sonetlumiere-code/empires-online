@@ -32,11 +32,11 @@ lugar de completar una capa entera. Ver [glossary.md](glossary.md) → *Vertical
 | IN-01 | **Mundo 512 × 512 determinista** | Grid de tiles int32, **regenerado desde `EO_WORLD_SEED` (20260909) en cada arranque**; `world_chunks` (bytea de 1024 B por chunk) guarda una copia para auditoría y edición futura, no como fuente primaria. | Sin mundo fijo y reproducible no hay nada que persistir ni forma de comparar dos ejecuciones. |
 | IN-02 | **Chunks de 32 × 32** | 256 chunks; `chunkX = x >> 5`, `chunkY = y >> 5`, `chunkId = chunkY*chunksPerRow + chunkX`. `EO_WORLD_WIDTH` y `EO_WORLD_HEIGHT` deben ser múltiplos exactos de `EO_CHUNK_SIZE`. | Unidad de suscripción de red e índice de persistencia; introducirla después obligaría a rehacer el protocolo. |
 | IN-03 | **Terreno con coste y bloqueo** | `GRASSLAND` (10), `FOREST` (16), `HILL` (18), `ROAD` (6) transitables y `MOUNTAIN`/`WATER` bloqueados, con el coste en décimas del base (`world.CostBase = 10`); capa de ocupación (*blocked overlay*) separada, que no muta el terreno. | El coste del terreno es lo que hace del tiempo un recurso y del A\* algo no trivial. |
-| IN-04 | **Player** | Tabla `players` (PK `uuid`, `password_hash` con bcrypt, CHECK `username ~ '^[A-Za-z0-9_-]{3,24}$'`), con `Civilization` y `Global Faction` como ejes ortogonales. | La estructura de identidad debe existir desde el principio; migrarla más tarde tocaría a todos los jugadores. |
+| IN-04 | **Player** | Tabla `players` (PK `uuid`, CHECK `username ~ '^[A-Za-z0-9_-]{3,24}$'`, sin credenciales), con `Civilization` y `Global Faction` como ejes ortogonales. La cuenta —nombre de acceso, hash `scrypt`, sesión web— vive en el almacén de identidad de `apps/web`, con el mismo id ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). | La estructura de identidad debe existir desde el principio; migrarla más tarde tocaría a todos los jugadores. |
 | IN-05 | **City inicial** | 1 `TOWN_CENTER` + 1 zona urbana amurallada inicial (rectángulo 3 × 3 bloqueado alrededor del centro) + 3 `VILLAGER` nacidos a radio 2. Emplazamiento determinista en espiral, entorno despejado de radio 3 y separación mínima de 24 tiles entre centros. `population_limit` = `era.population_cap`. | Ancla del jugador en el mundo y sujeto de la protección offline. |
 | IN-06 | **Eras como datos** | Tabla `eras` con `STONE_AGE` (20), `BRONZE_AGE` (50), `IRON_AGE` (100), `CASTLE_AGE` (150). | Se crean como datos, sin lógica de avance de era: fijan el `population_limit`. |
 | IN-07 | **Unit `VILLAGER`** | hp 40, `baseMsPerTile` 600; estados `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`. | Un solo tipo de unidad basta para ejercitar todo el pipeline de movimiento. |
-| IN-08 | **Autenticación por game ticket** | JWT HS256, TTL 60 s, `aud: "game-server"`, `jti` consumido en Redis (`ticket:jti:{jti}`, TTL 120 s). Hoy lo emiten `POST /api/auth/register` y `POST /api/auth/login` del propio game server (`internal/httpapi`); trasladarlos a Next.js es el objetivo de ADR-010. | Sin identidad verificada no hay ownership, y sin ownership no hay autoridad del servidor. |
+| IN-08 | **Autenticación por game ticket** | JWT HS256, TTL 60 s, `aud: "game-server"`, `jti` consumido en Redis (`ticket:jti:{jti}`, TTL 120 s). Lo emite `apps/web` en el alta, el login y `POST /api/auth/ticket` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)); el game server sólo lo verifica. | Sin identidad verificada no hay ownership, y sin ownership no hay autoridad del servidor. |
 | IN-09 | **Protocolo WebSocket v1** | C→S: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`. S→C: `session.welcome`, `session.pong`, `system.error`, `world.snapshot`, `entity.spawn`, `entity.update`, `entity.despawn`, `city.update`, `territory.update`, `unit.move.accepted`, `unit.move.rejected`, `unit.movement.started`, `unit.movement.completed`, `unit.movement.cancelled`. | Es la superficie mínima que cubre el flujo completo; cada mensaje extra es superficie de ataque y de mantenimiento. |
 | IN-10 | **Idempotencia** | `requestId` UUIDv4 obligatorio; Redis `idem:{playerId}:{requestId}` TTL 300 s ([ADR-014](../decisions/ADR-014-command-idempotency.md)). | La reconexión implica reintentos; sin idempotencia el slice produce estado duplicado justo en el escenario que quiere demostrar. |
 | IN-11 | **Interest management por chunk** | Radio `EO_INTEREST_RADIUS_CHUNKS` = 2; centro inicial en la ciudad; actualizable con `session.view` (rate-limited). | Es lo que hace que `world.snapshot` sea acotado y que el cliente no reciba el mundo entero. |
@@ -99,8 +99,8 @@ sequenceDiagram
     participant P as PostgreSQL
 
     U->>W: login
-    W->>G: POST /api/auth/login (hoy en el game server; ADR-010 lo mueve a Next.js)
-    G-->>W: game ticket (JWT HS256, TTL 60 s)
+    W->>W: POST /api/auth/login (route handler de Next.js, ADR-018)
+    W-->>U: game ticket (JWT HS256, TTL 60 s) + cookie de sesión
     W->>G: WSS connect + session.hello { ticket }
     G->>R: consume ticket:jti:{jti} (TTL 120 s)
     G->>P: crea sessions; city.presence_state = ONLINE
@@ -333,8 +333,8 @@ entregable por entregable está en [../roadmap/milestones.md](../roadmap/milesto
 |---|---|---|---|
 | **M0** Foundation | Monorepo, configuración, Docker Compose, migraciones, protocolo | Dentro | **Cerrado**, con la CI en verde |
 | **M1** World | Grid, tiles, chunks, generación determinista | Dentro | **Cerrado** |
-| **M2** Player & City | `players`, `cities`, `units` iniciales | Dentro | **Cerrado** (alta vía `POST /api/auth/register`) |
-| **M3** Realtime | WebSocket, auth, snapshot, deltas, reconexión | Dentro | **Parcial**: servidor y cliente hechos; la emisión del ticket desde Next.js está bloqueada por una decisión (`DEBT-18`) |
+| **M2** Player & City | `players`, `cities`, `units` iniciales | Dentro | **Cerrado** (alta en `apps/web`, fundación en `POST /internal/players`) |
+| **M3** Realtime | WebSocket, auth, snapshot, deltas, reconexión | Dentro | **Cerrado**: servidor y cliente hechos; Next.js emite el ticket y el game server no ve contraseñas ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) |
 | **M4** Movement | A\*, loop, persistencia del movimiento, interpolación | Dentro | **Cerrado**: servidor hecho, y el cliente interpola y corrige gradualmente las discontinuidades (`EO-075`) |
 | **M5** Offline protection & Safe Zones | Presencia y protección **sí**; Safe Zones con lógica mínima | Parcial | **Hecho**: presencia, protección y Safe Zones con ocultamiento y filtrado por destinatario. El mundo canónico no tiene zonas sembradas (`TBD`) |
 | **M6** Territories | Tablas creadas, lógica diferida | Fundamento | **Cerrado**: territorios, control, reclamación al fundar y `territory.update`. El territorio ajeno no restringe ninguna acción del MVP ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)) |

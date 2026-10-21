@@ -148,7 +148,8 @@ Actions. **No entra**: lógica de dominio, mundo, jugadores, WebSocket ni mensaj
     el binario `cmd/migrate`, antes de desplegar. En los dos casos de forma idempotente, y abortando ante un
     esquema `dirty`. Las migraciones existentes son `000001_initial_schema` (esquema completo, incluido el
     trigger `set_updated_at()` y `world_state` con `epoch_ms`), `000002_seed_catalogs`,
-    `000003_territory_control_version` y `000004_drop_idempotency_keys`.
+    `000003_territory_control_version`, `000004_drop_idempotency_keys` y `000005_players_without_credentials`
+    ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)).
     El DDL exacto lo define [../database/schema.md](../database/schema.md).
 11. **HECHO — `packages/protocol`** publicado en el workspace como `@empires-online/protocol`: esquemas
     Zod en `src/v1/{common,errors,client,server,index}.ts` para los envelopes cliente→servidor
@@ -436,11 +437,12 @@ player/city/unit.
 
 ## M3 — Realtime
 
-**Estado: PARCIAL.** El lado servidor está implementado —`internal/auth`, `internal/websocket`
-(`hub`, `session`, `server`), idempotencia y presencia en Redis, snapshot e interest management en
-`internal/game/simulation`— con tests de unidad, contrato, simulación y *e2e* en verde, y el cliente de
-`apps/web/` existe (entregable 13). Lo que impide cerrarlo es el entregable 2, bloqueado por una decisión
-(`DEBT-18`), y dos criterios de aceptación que sólo se cumplen en parte (6 y 10).
+**Estado: CERRADO (2026-10-21).** El lado servidor —`internal/auth`, `internal/websocket` (`hub`, `session`,
+`server`), idempotencia y presencia en Redis, snapshot e interest management en `internal/game/simulation`—
+tiene tests de unidad, contrato, simulación y *e2e* en verde, y el cliente de `apps/web/` existe (entregable
+13). Lo que lo tenía abierto se cerró así: el entregable 2 con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que saca la identidad del Game Server y
+hace que Next.js emita el ticket; la aceptación 10 con la validación contra el JSON Schema de todo mensaje que el
+servidor real emite en los e2e; y el e2e pendiente de `session.view`.
 
 **Objetivo.** Conectar cliente y servidor por WebSocket con autenticación por ticket, sesión,
 snapshot inicial, deltas incrementales, interest management por chunks y reconexión.
@@ -454,27 +456,21 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
 1. **HECHO** — Migración de `sessions` e `idempotency_keys`, con `sessions_player_idx` e
    `idempotency_keys_expiry_idx`. `idempotency_keys` nunca tuvo escritor y la eliminó `000004`
    ([ADR-014](../decisions/ADR-014-command-idempotency.md)).
-2. **BLOQUEADO por una decisión que el proyecto aplazó** — Emisión del game ticket desde una API route
-   de Next.js en `apps/web`: JWT HS256 firmado con `EO_AUTH_JWT_SECRET`, TTL 60 s, claims
-   `{ sub: playerId, jti, iat, exp, aud: "game-server" }`. **Hoy lo emite el propio game server** desde
-   `POST /api/auth/register` y `POST /api/auth/login` (`internal/httpapi`, con bcrypt). La arquitectura
-   objetivo la fija
-   [../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md).
+2. **HECHO** ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) — Emisión del game ticket desde `apps/web`: JWT HS256 firmado con
+   `EO_AUTH_JWT_SECRET`, TTL 60 s, claims `{ sub: playerId, jti, iat, exp, aud: "game-server" }`, emitido con
+   `node:crypto` (`src/server/tokens.ts`) en el alta, el login y `POST /api/auth/ticket`. La identidad vive en
+   un almacén propio de `apps/web` (base `empires_identity`, con su rol): cuentas con hash `scrypt` y sesiones
+   web con una cookie opaca `HttpOnly`. El alta funda al jugador en el mundo llamando a `POST /internal/players`
+   del Game Server con un token de audiencia `game-server-internal`; la cuenta sólo se activa cuando el jugador
+   existe (`INV-PLAYER-009`). El Game Server ya no ve contraseñas: `internal/httpapi` perdió el alta, el login,
+   bcrypt y su limitador, y la migración `000005` borró `players.password_hash`.
 
-   Al intentar cerrarlo apareció una contradicción entre reglas propias.
-   [migrations.md](../database/migrations.md) establece **como regla de arquitectura** que `apps/web`
-   no tendrá credenciales de PostgreSQL ni importará ningún cliente SQL, y
-   [frontend.md](../architecture/frontend.md) que Next.js sólo toca `EO_AUTH_JWT_SECRET`. Si Next.js no
-   puede leer la base, **no puede verificar una contraseña**: bcrypt tiene que vivir donde vive
-   `password_hash`. Y el flujo de ADR-010 arranca con «sesión web ya autenticada», cuyo mecanismo
-   [system-context.md](../architecture/system-context.md) marca **TBD (fuera de MVP)**.
-
-   Es decir: no es trabajo pendiente, es una decisión pendiente. Detalle completo y las dos salidas
-   posibles en `DEBT-18` de [backlog.md](backlog.md). Lo que **sí** se ha hecho es quitarle el filo:
-   ambos endpoints tienen ya límite de tasa por dirección de origen, porque bcrypt sin autenticación
-   previa y sin límite era un amplificador de denegación de servicio contra el proceso del game loop.
-3. **HECHO** — `internal/auth`: `Verifier`, `Authenticator`, `Issuer` y `Claims`. Verificación de firma,
-   `exp` y `aud`, y consumo del `jti` en Redis con `SETNX` sobre `ticket:jti:{jti}` y TTL 120 s para
+   Lo que lo tenía bloqueado era una contradicción entre reglas propias: [migrations.md](../database/migrations.md)
+   prohibía a `apps/web` tener credenciales de PostgreSQL, y una contraseña sólo se verifica donde vive su hash.
+   ADR-018 la resuelve precisando la regla a su motivo —`apps/web` nunca toca el **esquema del juego**— y dándole
+   un almacén propio. Un fixture compartido ata el formato del ticket entre los dos lenguajes.
+3. **HECHO** — `internal/auth`: `Verifier` (de una audiencia: la del ticket o la de la fundación), `Authenticator`
+   y `Claims`; `Issuer` sólo lo usan ya los tests. Verificación de firma, `exp` y `aud`, y consumo del `jti` en Redis con `SETNX` sobre `ticket:jti:{jti}` y TTL 120 s para
    impedir replay. Un `jti` ya consumido cierra con `4401`. El comportamiento es *fail-closed*.
 4. **HECHO** — Endpoint WebSocket `/ws` sobre WSS. El primer mensaje debe ser `session.hello { ticket }`
    antes de `WSHandshakeTimeout` (5 s, constante de código); si no llega, cierre `4408`.
@@ -524,8 +520,8 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
     `4429` rate limited, `4500` internal.
 12. **HECHO** — **Reconexión**: al reconectar se emite un `world.snapshot` nuevo. No hay buffer de deltas
     ni reanudación por `seq`; esto es deuda técnica aceptada y registrada (`DEBT-08`).
-13. **HECHO — Cliente en `apps/web`** (`EO-055`): capa de transporte que abre la conexión, envía
-    `session.hello`, mantiene el ping, aplica snapshot y deltas a un store local, y renderiza en
+13. **HECHO — Cliente en `apps/web`** (`EO-055`): capa de transporte que pide el ticket con la cookie de
+    sesión, abre la conexión, envía `session.hello`, mantiene el ping, aplica snapshot y deltas a un store local, y renderiza en
     isométrico con PixiJS usando `screenX = (x - y) * 32` y `screenY = (x + y) * 16`
     (`TILE_W = 64`, `TILE_H = 32`). El servidor no maneja píxeles en ningún caso.
 14. **HECHO** — **Métricas activas**: `eo_connected_players`, `eo_connected_websockets`,
@@ -560,14 +556,26 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
 - **HECHO** *e2e*: un `requestId` repetido no genera un segundo efecto y, si el original ya tuvo respuesta,
   la recibe (`TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal`); con
   la cola llena, `INTERNAL_ERROR` y reintento posible (`TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`).
-- **PENDIENTE** *e2e*: `session.view` que desplaza el centro. El servidor responde con un `world.snapshot`
-  nuevo del área (`TestSnapshotDelAreaDeInteres` cubre el snapshot en la simulación); no emite
-  `entity.spawn` ni `entity.despawn` por los chunks que entran o salen, como preveía este punto, y no hay
-  test de extremo a extremo.
+- **HECHO** *e2e*: `session.view` que desplaza el centro dos chunks: el servidor responde con un
+  `world.snapshot` del área nueva, con el `requestId` del comando, y el terreno sólo de los chunks que la
+  sesión no tenía (`TestSessionViewRecentraConUnSnapshotDelAreaNueva`, en un mundo de 256 × 256 donde el área
+  de 5 × 5 ya no lo cubre todo). Este punto preveía `entity.spawn` y `entity.despawn` por los chunks que entran
+  y salen; la spec del protocolo (§7.3) fijó un snapshot, y el criterio se reescribe para decir lo que la spec
+  manda.
 - **HECHO** *contract*: los esquemas embebidos y el catálogo de 22 códigos de error de Go coinciden con
   los exportados por `@empires-online/protocol`, y un delta parcial serializa sólo los campos que cambian
-  (`TestEntityUpdateEsUnDeltaDeVerdad`). **Ningún test Go valida los mensajes emitidos contra el JSON Schema**
-  servidor→cliente: lo hace el cliente, con Zod, al recibirlos.
+  (`TestEntityUpdateEsUnDeltaDeVerdad`). Y **todo mensaje que el servidor real emite en los e2e** se valida
+  contra `server-message.schema.json` (`internal/websocket/schema_e2e_test.go`, con
+  `santhosh-tekuri/jsonschema/v6` fijado en `go.sum` y sólo en tests): la validación vive en la única función
+  que lee del socket, y `TestMain` exige que cada uno de los 14 tipos servidor→cliente se haya validado al
+  menos una vez. Tres no los emitía ningún e2e —`city.update`, `territory.update` y
+  `unit.movement.cancelled`— y `contract_e2e_test.go` los provoca. Verificado por mutación: un campo renombrado,
+  un campo que el contrato no declara o un tipo que ningún test emite hacen fallar el paquete.
+- **HECHO** identidad (`apps/web` y Game Server): orquestación del alta y del login con un Game Server falso,
+  bordes HTTP y cookie, almacén contra PostgreSQL real (incluido que el rol de identidad no abre la base del
+  juego), contrato del ticket entre lenguajes, fundación contra PostgreSQL (idempotencia, carrera, audiencias,
+  logs) y logs del handshake. Detalle en [../specs/player.md](../specs/player.md) §13; cada guarda nueva se
+  verificó por mutación.
 - **HECHO** *e2e*: un cliente WS se autentica, recibe `world.snapshot` con su ciudad y sus tres aldeanos,
   y responde a los pings (`TestVerticalSliceEndToEnd`, `TestPingPongDevuelveElRelojDelServidor`), contra
   el servidor real sobre `httptest`, sin Docker.
@@ -576,8 +584,12 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
 
 [../specs/websocket-protocol.md](../specs/websocket-protocol.md),
 [../decisions/ADR-010-authentication-game-ticket.md](../decisions/ADR-010-authentication-game-ticket.md),
+[ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), [../specs/player.md](../specs/player.md),
 [../architecture/networking.md](../architecture/networking.md),
-[../database/schema.md](../database/schema.md).
+[../architecture/system-context.md](../architecture/system-context.md),
+[../database/schema.md](../database/schema.md), [../database/migrations.md](../database/migrations.md),
+[../operations/configuration.md](../operations/configuration.md),
+[../operations/local-development.md](../operations/local-development.md).
 
 ### Invariantes cubiertos
 
@@ -609,8 +621,12 @@ conexión viva.
    (`TestUnMensajeDemasiadoGrandeCierraCon1009`).
 9. **Cumplido.** Reconectar tras una caída devuelve un snapshot coherente sin intervención manual
    (`TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal` reconecta y recibe el snapshot).
-10. **Parcial.** Los mensajes que tienen contract test coinciden con el contrato, pero ningún test valida
-    todos los mensajes emitidos contra el JSON Schema servidor→cliente.
+10. **Cumplido.** Todo mensaje que el servidor real emite en los tests e2e se valida contra el JSON Schema
+    servidor→cliente, y el paquete falla si alguno de los 14 tipos del contrato no se ha emitido y validado
+    (`schema_e2e_test.go`, `contract_e2e_test.go`).
+11. **Cumplido** (nuevo, del entregable 2). El ticket lo emite Next.js y el Game Server no ve contraseñas:
+    `smoke` recorre el alta en la web, la fundación, el handshake y una reconexión con un ticket pedido con la
+    cookie; verificado el 2026-10-21 contra `empires_test` y `empires_identity_test`, también en el navegador.
 
 ---
 
@@ -778,7 +794,7 @@ grupo ni recolección.
   `TestRecuperacionCompletaTrasReinicio`.
 - **HECHO** *contract*: los cinco mensajes de movimiento existen en el JSON Schema embebido y
   `unit.movement.started` lleva la polilínea completa (`TestTiposDeMensajePresentesEnElEsquema`,
-  `TestMovementStartedLlevaLaPolilineaCompleta`). No se validan contra el esquema.
+  `TestMovementStartedLlevaLaPolilineaCompleta`). Desde el cierre de M3, los cinco se validan contra el esquema cada vez que el servidor real los emite en un e2e (`schema_e2e_test.go`).
 - **HECHO** *unit* del cliente (`apps/web/src/render/reconciler.test.ts`, quince tests): sin
   discontinuidades el dibujo es la interpolación exacta en todo el trayecto; sustitución, cancelación y
   llegada anticipada se corrigen sin salto, sin oscilar y hasta cero; salto por encima de 2 tiles y

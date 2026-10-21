@@ -54,15 +54,8 @@ type Config struct {
 	WSMaxMessageBytes int64
 	WSRateLimitPerSec int
 	WSRateLimitBurst  int
-	// AuthRateLimitPerMin y AuthRateLimitBurst acotan los endpoints de alta y
-	// login por dirección de origen. El de alta ejecuta bcrypt sin autenticación
-	// previa: sin límite es un amplificador de denegación de servicio apuntando
-	// al proceso que corre el game loop.
-	AuthRateLimitPerMin int
-	AuthRateLimitBurst  int
-	// TrustProxyHeaders decide si se cree a X-Forwarded-For para identificar al
-	// cliente. Falso por defecto: creerla sin proxy delante permite falsificarla.
-	TrustProxyHeaders   bool
+	// EO_AUTH_RATE_LIMIT_* y EO_TRUST_PROXY_HEADERS ya no son del Game Server:
+	// desde ADR-018 el alta y el login viven en apps/web, que es quien las lee.
 	WSHandshakeTimeout  time.Duration
 	WSPingInterval      time.Duration
 	WSReadTimeout       time.Duration
@@ -127,9 +120,6 @@ func Load() (Config, error) {
 		WSMaxMessageBytes:   int64(v.intRange("EO_WS_MAX_MESSAGE_BYTES", 16384, 256, 1<<22)),
 		WSRateLimitPerSec:   v.intRange("EO_WS_RATE_LIMIT_PER_SECOND", 20, 1, 10000),
 		WSRateLimitBurst:    v.intRange("EO_WS_RATE_LIMIT_BURST", 40, 1, 20000),
-		AuthRateLimitPerMin: v.intRange("EO_AUTH_RATE_LIMIT_PER_MINUTE", 10, 1, 100000),
-		AuthRateLimitBurst:  v.intRange("EO_AUTH_RATE_LIMIT_BURST", 5, 1, 10000),
-		TrustProxyHeaders:   v.boolean("EO_TRUST_PROXY_HEADERS", false),
 		WSHandshakeTimeout:  5 * time.Second,
 		WSPingInterval:      15 * time.Second,
 		WSReadTimeout:       45 * time.Second,
