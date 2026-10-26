@@ -108,7 +108,10 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
 
   // INV-PLAYER-009: la sesión de una cuenta que no es ACTIVE no da cuenta.
   it('una sesión sólo resuelve si está vigente y su cuenta está ACTIVE', async () => {
-    const ahora = new Date('2026-10-21T12:00:00Z');
+    // Relativa al reloj real, nunca una fecha fija: la base exige que la sesión
+    // caduque después de `created_at`, que es su now(). Con una fecha fija el
+    // test caducaba él solo el día que esa fecha quedaba en el pasado.
+    const ahora = new Date(Date.now() + 60 * 60_000);
     const despues = new Date(ahora.getTime() + 60_000);
     await store.createAccount({ id: id(1), username: 'conectada', passwordHash: hash });
     await store.createSession(token(1), id(1), despues);
