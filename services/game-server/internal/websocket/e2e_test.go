@@ -26,6 +26,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loop"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
+	"github.com/empires-online/empires-online/services/game-server/internal/observability"
 	"github.com/empires-online/empires-online/services/game-server/internal/pathfinding"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 	ws "github.com/empires-online/empires-online/services/game-server/internal/websocket"
@@ -195,6 +196,8 @@ type e2e struct {
 	// logs guarda todo lo que el servidor registra, en debug, para los tests
 	// que comprueban qué NO se registra (INV-PLAYER-007).
 	logs *safeBuffer
+	// metrics son las del servidor WebSocket, en un registro propio del test.
+	metrics *observability.Metrics
 }
 
 // safeBuffer es un bytes.Buffer que admite escrituras desde varias goroutines:
@@ -326,7 +329,8 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 	if ajustar != nil {
 		ajustar(&wsCfg)
 	}
-	wsServer := ws.NewServer(wsCfg, hub, authenticator, newMemoryPresence(), dedupe, commands, nil, log)
+	metrics := observability.NewMetrics()
+	wsServer := ws.NewServer(wsCfg, hub, authenticator, newMemoryPresence(), dedupe, commands, metrics, log)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", wsServer.Handler(context.Background()))
@@ -340,7 +344,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		state:    state,
 		playerID: playerID, unitIDs: unitIDs,
 		dedupe: dedupe, commands: commands,
-		logs: logs,
+		logs: logs, metrics: metrics,
 	}
 	env.stop = func() { httpServer.Close() }
 	t.Cleanup(env.stop)

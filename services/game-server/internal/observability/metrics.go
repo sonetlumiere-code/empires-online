@@ -128,4 +128,9 @@ const (
 
 	DirectionInbound  = "inbound"
 	DirectionOutbound = "outbound"
+
+	// TypeUnknown es la etiqueta `type` de un mensaje entrante cuyo tipo no
+	// está en el catálogo del protocolo. El tipo lo escribe el cliente: usarlo
+	// tal cual crearía una serie por cada tipo inventado (EO-121).
+	TypeUnknown = "unknown"
 )

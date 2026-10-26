@@ -2,6 +2,7 @@ package websocket_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	gws "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/observability"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 	ws "github.com/empires-online/empires-online/services/game-server/internal/websocket"
 )
@@ -115,6 +117,58 @@ func TestUnaRafagaPorEncimaDelBurstCierraCon4429(t *testing.T) {
 		limitado = c.await(protocol.TypeSystemError, 3*time.Second)
 	}
 	require.Equal(t, protocol.CloseRateLimited, codigoDeCierre(t, c, 3*time.Second))
+}
+
+// EO-121: el tipo de un mensaje entrante lo escribe el cliente. Contado tal
+// cual, cada tipo inventado sería una serie nueva de eo_ws_messages_total, para
+// siempre. Fuera del catálogo, todos cuentan como `unknown`.
+func TestLosTiposInventadosNoCreanSeriesDeMetricas(t *testing.T) {
+	env := newE2ECon(t, nil, func(c *ws.Config) {
+		c.RateLimitBurst = 500
+		c.RateLimitPerSec = 500
+	})
+	ticket, err := env.issuer.Issue(env.playerID)
+	require.NoError(t, err)
+	c := env.dial()
+	c.send(protocol.TypeSessionHello, map[string]any{"ticket": ticket})
+	c.await(protocol.TypeSessionWelcome, 3*time.Second)
+	env.pump()
+	c.await(protocol.TypeWorldSnapshot, 3*time.Second)
+
+	const inventados = 100
+	for i := 0; i < inventados; i++ {
+		c.send(fmt.Sprintf("inventado.%d", i), map[string]any{})
+	}
+	for i := 0; i < inventados; i++ {
+		rechazo := c.await(protocol.TypeSystemError, 3*time.Second)
+		require.Equal(t, protocol.CodeInvalidMessage,
+			decode[protocol.SystemErrorPayload](t, rechazo.Payload).Code)
+	}
+	// Un tipo del catálogo conserva su nombre.
+	c.send(protocol.TypeSessionPing, map[string]any{"clientTimeMs": 1})
+	c.await(protocol.TypeSessionPong, 3*time.Second)
+
+	entrantes := map[string]float64{}
+	familias, err := env.metrics.Registry().Gather()
+	require.NoError(t, err)
+	for _, f := range familias {
+		if f.GetName() != "eo_ws_messages_total" {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			labels := map[string]string{}
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["direction"] == observability.DirectionInbound {
+				entrantes[labels["type"]] = m.GetCounter().GetValue()
+			}
+		}
+	}
+	require.Equal(t, map[string]float64{
+		observability.TypeUnknown: inventados,
+		protocol.TypeSessionPing:  1,
+	}, entrantes)
 }
 
 func uuidN(i int) string {

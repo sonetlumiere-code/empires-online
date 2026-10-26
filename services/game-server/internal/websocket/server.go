@@ -284,7 +284,7 @@ func (s *Server) readPump(ctx context.Context, session *Session, log *slog.Logge
 			continue
 		}
 		if s.metrics != nil {
-			s.metrics.WSMessages.WithLabelValues(observability.DirectionInbound, msg.Type).Inc()
+			s.metrics.WSMessages.WithLabelValues(observability.DirectionInbound, inboundTypeLabel(msg.Type)).Inc()
 		}
 		if msg.V != protocol.Version {
 			session.SendError(msg.RequestID, protocol.CodeUnsupportedVersion,
@@ -306,6 +306,17 @@ func (s *Server) readPump(ctx context.Context, session *Session, log *slog.Logge
 		default:
 		}
 	}
+}
+
+// inboundTypeLabel acota la etiqueta `type` de eo_ws_messages_total al catálogo
+// cerrado del protocolo: cualquier otro tipo cuenta como `unknown`. El tipo lo
+// elige el cliente, y cada valor distinto de una etiqueta es una serie nueva
+// que vive en memoria hasta que el proceso termina (EO-121).
+func inboundTypeLabel(msgType string) string {
+	if protocol.ClientMessageTypes[msgType] {
+		return msgType
+	}
+	return observability.TypeUnknown
 }
 
 func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbound, log *slog.Logger) {

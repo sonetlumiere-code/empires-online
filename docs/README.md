@@ -302,8 +302,8 @@ Matices que conviene no maquillar:
   de huecos de `seq` y la sincronización de reloj con ventana de muestras. La cámara desplazable y el envío de
   `session.view` existen desde `EO-122`.
 - **La observabilidad promete más de lo que mide** ([operations/monitoring.md](operations/monitoring.md)):
-  `eo_redis_latency_seconds` no se observa, los rechazos de negocio no se cuentan por código, los logs de la
-  simulación no llevan `request_id`, y la etiqueta `type` de `eo_ws_messages_total` no está acotada (`EO-121`).
+  `eo_redis_latency_seconds` no se observa, los rechazos de negocio no se cuentan por código, y los logs de la
+  simulación no llevan `request_id`.
 - **Hay paquetes sin test propio**: `internal/clock` e `internal/observability`, ejercitados indirectamente;
   `internal/httpapi`, cuyos tests viven en la suite de integración de `internal/persistence/postgres`; y los
   `cmd/*`, que se verifican arrancándolos (`pnpm run smoke`).
