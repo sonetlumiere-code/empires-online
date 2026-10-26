@@ -359,7 +359,10 @@ require.Equal(t, run(), run(),
     "la misma secuencia de comandos debe dar el mismo estado final")
 ```
 
-Es deliberadamente modesto y por eso es fiable: no depende de ningún serializador canónico ni de
+Los escenarios de §6 aplican la misma comprobación a escala: cada uno se ejecuta dos veces y el
+resultado completo —mensajes, escrituras y estado final— tiene que coincidir byte a byte.
+
+`TestSimulacionEsReproducible` es deliberadamente modesto y por eso es fiable: no depende de ningún serializador canónico ni de
 ningún fichero de escenario. Detecta lo que tiene que detectar —iteración de un `map` sin ordenar
 (canon §8), aleatoriedad no inyectada, `time.Now()` filtrado en el dominio— porque `EachUnit` recorre
 las unidades en orden estable y cualquiera de esos fallos rompería ese orden o el resultado.
@@ -430,46 +433,96 @@ para que el mapa de cobertura sea completo y para que quien los escriba no tenga
 
 ---
 
-## 6. Escenarios como datos — ○ previsto
+## 6. Escenarios como datos y su *golden file* (`EO-115`)
 
-**No existe todavía.** `services/game-server/testdata/` está sin crear y hoy cada test construye su
-escenario en Go, con `newHarness`. Un escenario como fichero permitiría reutilizarlo desde varios
-tests, versionarlo y —sobre todo— convertir un incidente de producción en un test de regresión.
-Éste es el formato previsto; el `epochMs` es el epoch de fixture vigente en el árbol y la semilla la
-canónica del canon §17:
+Un escenario es un fichero que describe un mundo inicial y una secuencia de comandos con su tick. El test
+`TestLosEscenariosReproducenSuGolden` (`internal/game/simulation/scenario_test.go`) ejecuta cada uno con el
+harness real —`Loop.Step` con `FakeClock`, el A\* real y los dobles de §2.1— y compara el resultado con su
+*golden file*. Sirve para tres cosas: fijar el comportamiento observable de la simulación de punta a punta,
+de modo que cualquier cambio en lo que el servidor emite o guarda se vea en una revisión; demostrar que el
+resultado es reproducible; y convertir un incidente en un test de regresión escribiendo su escenario.
+
+### 6.1 Dónde viven
+
+`services/game-server/internal/game/simulation/testdata/scenarios/`: `<nombre>.json` es el escenario y
+`<nombre>.golden.json` su resultado esperado. Es la convención de Go —`go test` ejecuta cada paquete con
+su directorio como directorio de trabajo, y `testdata/` no se compila—, y deja el escenario junto a la
+simulación que ejercita.
+
+### 6.2 Formato
 
 ```json
 {
-  "name": "mixed_traffic",
+  "name": "trafico_mixto",
+  "description": "Qué ejercita, en una frase.",
   "epochMs": 1757376000000,
-  "seed": 20260909,
-  "tickRateHz": 10,
-  "world": { "width": 512, "height": 512, "terrain": "seeded" },
-  "players": [
-    { "ref": "p1", "username": "romulus" },
-    { "ref": "p2", "username": "brennus" }
-  ],
-  "units": [
-    { "ref": "u1", "player": "p1", "type": "VILLAGER", "x": 100, "y": 100 },
-    { "ref": "u2", "player": "p2", "type": "VILLAGER", "x": 140, "y": 96 }
-  ],
+  "runTicks": 900,
+  "config": { "protectionCooldownSec": 20, "disconnectGraceSec": 5 },
+  "world": {
+    "width": 64, "height": 64, "terrain": "grassland",
+    "paint": [ { "terrain": "FOREST", "minX": 30, "minY": 0, "maxX": 33, "maxY": 63 } ]
+  },
+  "safeZones": [ { "type": "DENSE_FOREST", "minX": 30, "minY": 0, "maxX": 33, "maxY": 63 } ],
+  "players": [ { "ref": "p1", "city": { "x": 10, "y": 10 } } ],
+  "units":   [ { "ref": "u1", "player": "p1", "x": 12, "y": 10 } ],
   "commands": [
-    { "tick": 0,   "type": "unit.move",        "player": "p1", "unit": "u1", "target": { "x": 103, "y": 102 } },
-    { "tick": 10,  "type": "unit.move",        "player": "p1", "unit": "u1", "target": { "x": 101, "y": 105 } },
-    { "tick": 12,  "type": "unit.move",        "player": "p2", "unit": "u2", "target": { "x": 120, "y": 120 } },
-    { "tick": 60,  "type": "unit.cancel_move", "player": "p2", "unit": "u2" },
-    { "tick": 100, "type": "disconnect",       "player": "p1" }
-  ],
-  "runTicks": 3500
+    { "tick": 0,  "type": "unit.move",        "player": "p1", "unit": "u1", "target": { "x": 20, "y": 14 } },
+    { "tick": 40, "type": "unit.cancel_move", "player": "p1", "unit": "u1" },
+    { "tick": 60, "type": "disconnect",       "player": "p1" },
+    { "tick": 500, "type": "connect",         "player": "p1" }
+  ]
 }
 ```
 
-Reglas del formato cuando se implemente:
+Reglas:
 
-- Los `ref` son **estables** dentro del escenario y se resuelven a ids reales al construir el mundo. Así el fichero no depende de qué ids asigne la secuencia.
-- `tick` es el tick en el que el comando entra en la cola; se drena en la fase 1 del mismo tick y se aplica en la fase 2.
-- No hay instantes en milisegundos: todo se expresa en ticks, porque el tick es la unidad de la simulación.
-- Un escenario sin `runTicks` no es válido: la duración es parte del escenario.
+- **Ticks, no milisegundos.** El tick `k` (de 0 a `runTicks − 1`) se ejecuta en `epochMs + k × 100`. Los
+  comandos de un tick entran en la cola justo antes de él, en el orden del fichero, y se aplican en ese
+  mismo tick. Así un `unit.move` del tick 0 empieza exactamente en `epochMs`.
+- **Referencias estables.** Jugadores y unidades se nombran con `ref`. El `playerId` es un UUID v5 derivado
+  del `ref`, y las unidades y ciudades toman ids correlativos en el orden del fichero: el escenario no
+  depende de qué asigne una secuencia. El *golden* escribe `player:<ref>` donde iría el UUID.
+- **Mundo.** `terrain` es `grassland` (todo hierba) o `seeded` (`world.Generate` con `seed`, el generador
+  real). `paint` pinta rectángulos de terreno encima, en orden. Cada jugador tiene una ciudad `ONLINE` en
+  su `city`; las unidades son `VILLAGER` en reposo. Un tile de partida intransitable invalida el escenario.
+- **Comandos.** `unit.move`, `unit.cancel_move`, `connect` y `disconnect`, los cuatro que hoy entran en la
+  simulación sin pasar por PostgreSQL. El `requestId` de cada uno es determinista (su posición en la lista).
+- **Configuración.** `protectionCooldownSec` y `disconnectGraceSec` acortan la presencia para que un
+  escenario la recorra entera en pocos cientos de ticks; por omisión valen lo que en producción (300 y 30).
+- Un escenario sin `runTicks`, con un `ref` repetido o desconocido, o con un comando fuera de
+  `[0, runTicks)` no es válido, y el test falla nombrando el problema antes de ejecutar nada.
+
+### 6.3 Qué fija el *golden*
+
+Un JSON con tres secciones, todas en orden determinista:
+
+| Sección | Contenido |
+|---|---|
+| `emitted` | Cada mensaje que la simulación emitió, con su tick, su destino (`chunk`, `chunks`, `chunk-except` o `player`), su tipo, su `requestId` y su payload completo |
+| `persisted` | El nombre de cada trabajo durable encolado, en orden |
+| `final` | Cada unidad (posición y estado), cada movimiento aún activo y la presencia de cada ciudad al terminar |
+
+Además, el test ejecuta cada escenario **dos veces** y exige el mismo resultado byte a byte antes de
+compararlo con el *golden*: si la simulación dejara de ser determinista, el fallo diría eso y no «el
+*golden* cambió».
+
+### 6.4 Cuando el *golden* no coincide
+
+Un *golden* que deja de coincidir no es necesariamente un error: puede ser un cambio de comportamiento
+buscado. Se regenera con
+
+```
+go test ./internal/game/simulation -run TestLosEscenariosReproducenSuGolden -update-golden
+```
+
+y **el diff del *golden* se revisa en el commit como cualquier otro cambio de código**: es la descripción
+exacta de qué hace ahora distinto la simulación. Regenerarlo sin leer el diff anula el test.
+
+### 6.5 Escenarios existentes
+
+| Escenario | Qué ejercita |
+|---|---|
+| `trafico_mixto` | Dos jugadores en hierba con un bosque seguro y una montaña: movimientos simultáneos, un reemplazo a mitad de camino, una cancelación, rechazos (destino en montaña, unidad ajena), entrada y salida de una Safe Zone, y el ciclo de presencia completo (`ONLINE → OFFLINE_PENDING → PROTECTED → ONLINE`) |
 
 ---
 
@@ -484,7 +537,7 @@ El diseño que hace posibles estos tests es el mismo que hace posibles dos capac
 ```
 1. Se reporta: "mi aldeano llegó a un tile que no era el que ordené".
 2. Se toma el estado inicial y el log de comandos de la ventana afectada.
-3. Se convierte en un fichero de testdata/scenarios/.
+3. Se convierte en un fichero de internal/game/simulation/testdata/scenarios/ (§6).
 4. Se ejecuta como test de simulación: reproduce el bug de forma determinista,
    en milisegundos y sin infraestructura.
 5. Se arregla; el escenario queda en la suite como test de regresión permanente.

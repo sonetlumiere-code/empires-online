@@ -211,7 +211,9 @@ services/game-server/
 │   │   ├── schema/v1/*.json              ✔ espejo generado (go:embed), NO se edita a mano
 │   │   └── contract_test.go              ✔ contract (lado Go)
 │   ├── game/simulation/
-│   │   └── simulation_test.go            ✔ simulation + recuperación en RAM
+│   │   ├── simulation_test.go            ✔ simulation + recuperación en RAM
+│   │   ├── scenario_test.go              ✔ escenarios como datos contra su golden (EO-115)
+│   │   └── testdata/scenarios/           ✔ <nombre>.json y <nombre>.golden.json
 │   ├── game/world/world_test.go          ✔ unit: límites, chunks, terreno, generador determinista
 │   ├── pathfinding/astar_test.go         ✔ unit: A*, corner cutting, límites, determinismo
 │   ├── domain/movement/path_test.go      ✔ unit: polilínea temporizada y posición autoritativa
@@ -220,10 +222,10 @@ services/game-server/
 │   ├── persistence/memory/memory_test.go ✔ unit: TTL y atomicidad con reloj falso
 │   └── persistence/{postgres,redis}/
 │       └── *integration_test.go          ✔ ejecutados: 82 contra PostgreSQL y 11 contra Redis
-└── testdata/                             ○ golden files y escenarios (aún no existe)
+└── testdata/                             ○ golden files del protocolo (aún no existe)
 ```
 
-El árbol de arriba es una muestra, no el inventario: hay 45 ficheros de test sin etiqueta `integration` en
+El árbol de arriba es una muestra, no el inventario: hay 46 ficheros de test sin etiqueta `integration` en
 `internal/` (entre otros `domain/unit/unit_test.go`, `domain/{territory,safezone,diplomacy,garrison}`,
 `game/{loop,founding,loadcheck}`, `persistence/queue_test.go`, `httpapi`, y los `*_e2e_test.go` de
 `websocket`). `go test ./...` los encuentra todos.
@@ -344,9 +346,9 @@ Los valores de gameplay que son del canon (`baseMsPerTile` de `VILLAGER` = 600 m
 
 ### 6.4 Golden files
 
-**Estado: previstos, aún no existen.** El único artefacto generado que hoy se versiona y se compara es el JSON Schema del protocolo (`packages/protocol/schema/v1/` y su espejo `services/game-server/internal/protocol/schema/v1/`), y su deriva la detecta la CI (§8). Cuando se añadan golden files de mensajes en `services/game-server/testdata/protocol/v1/`, valen estas reglas:
+**Estado: existen los de la simulación; los del protocolo, no.** Desde `EO-115`, cada escenario de `internal/game/simulation/testdata/scenarios/` tiene su golden: los mensajes emitidos, las escrituras durables y el estado final ([simulation-tests.md](./simulation-tests.md) §6). Aparte de eso, el único artefacto generado que hoy se versiona y se compara es el JSON Schema del protocolo (`packages/protocol/schema/v1/` y su espejo `services/game-server/internal/protocol/schema/v1/`), y su deriva la detecta la CI (§8). Cuando se añadan golden files de mensajes en `services/game-server/testdata/protocol/v1/`, valen estas reglas:
 
-- Un golden file se regenera con un flag explícito (`go test ./... -update-golden`), nunca automáticamente.
+- Un golden file se regenera con un flag explícito, `-update-golden`, pasado al paquete que lo define (`go test ./internal/game/simulation -update-golden`; con `./...` fallaría en los paquetes que no lo definen), nunca automáticamente.
 - El diff del golden file entra en la revisión del pull request como cualquier otro cambio. Un golden que cambia sin que nadie explique por qué es un hallazgo de revisión.
 - Los golden del protocolo son además los ejemplos del documento [../specs/websocket-protocol.md](../specs/websocket-protocol.md): si un ejemplo del documento deja de validar, el test falla.
 

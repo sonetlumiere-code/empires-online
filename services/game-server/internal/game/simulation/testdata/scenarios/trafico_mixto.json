@@ -1,0 +1,45 @@
+{
+  "name": "trafico_mixto",
+  "description": "Dos jugadores en hierba con un bosque seguro y una montaña: movimientos simultáneos, reemplazo, cancelación, rechazos, entrada y salida de una Safe Zone y el ciclo de presencia completo.",
+  "epochMs": 1757376000000,
+  "runTicks": 800,
+  "config": { "protectionCooldownSec": 20, "disconnectGraceSec": 5 },
+  "world": {
+    "width": 64,
+    "height": 64,
+    "terrain": "grassland",
+    "paint": [
+      { "terrain": "FOREST", "minX": 30, "minY": 0, "maxX": 33, "maxY": 63 },
+      { "terrain": "MOUNTAIN", "minX": 10, "minY": 40, "maxX": 12, "maxY": 42 }
+    ]
+  },
+  "safeZones": [
+    { "type": "DENSE_FOREST", "minX": 30, "minY": 0, "maxX": 33, "maxY": 63 }
+  ],
+  "players": [
+    { "ref": "p1", "city": { "x": 10, "y": 10 } },
+    { "ref": "p2", "city": { "x": 50, "y": 50 } }
+  ],
+  "units": [
+    { "ref": "u1", "player": "p1", "x": 12, "y": 10 },
+    { "ref": "u2", "player": "p1", "x": 8, "y": 10 },
+    { "ref": "u3", "player": "p1", "x": 10, "y": 12 },
+    { "ref": "v1", "player": "p2", "x": 52, "y": 50 },
+    { "ref": "v2", "player": "p2", "x": 48, "y": 50 }
+  ],
+  "commands": [
+    { "tick": 0, "type": "connect", "player": "p1" },
+    { "tick": 0, "type": "connect", "player": "p2" },
+    { "tick": 0, "type": "unit.move", "player": "p1", "unit": "u1", "target": { "x": 20, "y": 14 } },
+    { "tick": 0, "type": "unit.move", "player": "p2", "unit": "v1", "target": { "x": 40, "y": 40 } },
+    { "tick": 5, "type": "unit.move", "player": "p1", "unit": "u2", "target": { "x": 31, "y": 20 } },
+    { "tick": 20, "type": "unit.move", "player": "p1", "unit": "u1", "target": { "x": 5, "y": 20 } },
+    { "tick": 25, "type": "unit.move", "player": "p1", "unit": "u3", "target": { "x": 11, "y": 41 } },
+    { "tick": 30, "type": "unit.move", "player": "p2", "unit": "u1", "target": { "x": 50, "y": 52 } },
+    { "tick": 40, "type": "unit.move", "player": "p2", "unit": "v2", "target": { "x": 45, "y": 20 } },
+    { "tick": 60, "type": "unit.cancel_move", "player": "p2", "unit": "v2" },
+    { "tick": 200, "type": "unit.move", "player": "p1", "unit": "u2", "target": { "x": 25, "y": 20 } },
+    { "tick": 300, "type": "disconnect", "player": "p1" },
+    { "tick": 700, "type": "connect", "player": "p1" }
+  ]
+}
