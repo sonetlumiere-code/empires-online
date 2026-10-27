@@ -154,7 +154,7 @@ Respuestas de `GET /internal/players/{playerId}` (game server), con el mismo tok
 | `session.hello` | cliente→servidor | `{ ticket, clientVersion? }` | Primer mensaje de la conexión, antes de 5 s o cierre `4408`. Esquema estricto: cualquier campo adicional se rechaza. |
 | `session.ping` | cliente→servidor | `{ clientTimeMs }` | Mantiene viva la conexión y refresca la presencia (ver [presence.md](presence.md)). El servidor responde `session.pong` con eco de `clientTimeMs`. |
 
-Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-server" }`, HS256, TTL **60 s**.
+Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-server" }`, HS256, TTL **60 s**. El Game Server verifica `iat` y `exp` con **30 s** de margen por desfase de reloj entre las dos máquinas (`auth.ClockSkew`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)); el mismo margen rige el token de fundación.
 `clientVersion` es solo diagnóstico y telemetría: no altera ninguna decisión de gameplay.
 
 ### 4.3 Configuración consumida

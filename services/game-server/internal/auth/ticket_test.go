@@ -68,10 +68,69 @@ func TestTicketCaducado(t *testing.T) {
 	_, err = verifier.Verify(ticket)
 	require.NoError(t, err)
 
-	// Pasado el minuto, no.
-	clk.Advance(2 * time.Second)
+	// Pasado el minuto sigue valiendo mientras quede margen de desfase de
+	// reloj (ADR-021): 60 s de TTL más 30 s de ClockSkew.
+	clk.Advance(30 * time.Second) // 89 s
+	_, err = verifier.Verify(ticket)
+	require.NoError(t, err)
+
+	// Agotado el margen, no.
+	clk.Advance(2 * time.Second) // 91 s
 	_, err = verifier.Verify(ticket)
 	require.ErrorIs(t, err, auth.ErrExpiredTicket)
+}
+
+// ADR-021: el emisor corre en otra máquina y trunca `iat` a segundos; sin
+// margen, un reloj del emisor un segundo por delante rechazaría todos los
+// tickets con 4401, indistinguible de un ticket falso. El verificador tolera
+// ClockSkew (30 s) en ambos sentidos, y ni un segundo más.
+func TestElVerificadorToleraElDesfaseDeReloj(t *testing.T) {
+	require.Equal(t, 30*time.Second, auth.ClockSkew)
+
+	firmado := func(t *testing.T, iat, exp time.Time) string {
+		t.Helper()
+		signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"sub": uuid.NewString(),
+			"jti": uuid.NewString(),
+			"aud": auth.Audience,
+			"iat": iat.Unix(),
+			"exp": exp.Unix(),
+		}).SignedString([]byte(testSecret))
+		require.NoError(t, err)
+		return signed
+	}
+
+	clk := clock.NewFakeClock(testEpoch)
+	verifier := auth.NewVerifier(testSecret, clk)
+	ahora := clk.Now()
+
+	t.Run("iat 20 s en el futuro se acepta", func(t *testing.T) {
+		_, err := verifier.Verify(firmado(t, ahora.Add(20*time.Second), ahora.Add(80*time.Second)))
+		require.NoError(t, err)
+	})
+
+	t.Run("iat 60 s en el futuro se rechaza", func(t *testing.T) {
+		_, err := verifier.Verify(firmado(t, ahora.Add(60*time.Second), ahora.Add(120*time.Second)))
+		require.ErrorIs(t, err, auth.ErrInvalidTicket)
+	})
+
+	t.Run("exp vencido hace 20 s se acepta", func(t *testing.T) {
+		_, err := verifier.Verify(firmado(t, ahora.Add(-80*time.Second), ahora.Add(-20*time.Second)))
+		require.NoError(t, err)
+	})
+
+	t.Run("exp vencido hace 60 s se rechaza", func(t *testing.T) {
+		_, err := verifier.Verify(firmado(t, ahora.Add(-120*time.Second), ahora.Add(-60*time.Second)))
+		require.ErrorIs(t, err, auth.ErrExpiredTicket)
+	})
+
+	t.Run("el margen vale igual para el token de fundación", func(t *testing.T) {
+		interno := auth.NewIssuerFor(testSecret, 60*time.Second, clock.NewFakeClock(testEpoch+20_000), auth.InternalAudience)
+		token, err := interno.Issue(uuid.New())
+		require.NoError(t, err)
+		_, err = auth.NewVerifierFor(testSecret, clk, auth.InternalAudience).Verify(token)
+		require.NoError(t, err, "emitido 20 s en el futuro por un reloj adelantado")
+	})
 }
 
 func TestTicketFirmadoConOtroSecreto(t *testing.T) {
@@ -278,7 +337,11 @@ func TestLosTokensDeAppsWebSeVerificanEnGo(t *testing.T) {
 	_, err = auth.NewVerifierFor(f.Secret, clk, auth.InternalAudience).Verify(f.GameTicket)
 	require.Error(t, err)
 
-	// Y caduca a los 60 s exactos de su emisión.
+	// Caduca a los 60 s de su emisión, más los 30 s de margen de desfase de
+	// reloj que concede el verificador (ADR-021): a los 61 s todavía vale, a
+	// los 91 s no.
 	_, err = auth.NewVerifier(f.Secret, clock.NewFakeClock(f.NowMs+61_000)).Verify(f.GameTicket)
+	require.NoError(t, err)
+	_, err = auth.NewVerifier(f.Secret, clock.NewFakeClock(f.NowMs+91_000)).Verify(f.GameTicket)
 	require.ErrorIs(t, err, auth.ErrExpiredTicket)
 }

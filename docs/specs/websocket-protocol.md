@@ -238,7 +238,7 @@ payload: z.object({
 }
 ```
 
-**Validaciones del servidor:** primer mensaje de la conexión y dentro de 5 s · JSON válido y `v == 1` · `type == "session.hello"` · payload decodificable con `ticket` no vacío · firma HS256 con `EO_AUTH_JWT_SECRET` · `exp` no vencido · `aud == "game-server"` · `sub` es un UUID de jugador · `jti` presente y no consumido (`SET ticket:jti:{jti} NX EX 120`).
+**Validaciones del servidor:** primer mensaje de la conexión y dentro de 5 s · JSON válido y `v == 1` · `type == "session.hello"` · payload decodificable con `ticket` no vacío · firma HS256 con `EO_AUTH_JWT_SECRET` · `exp` no vencido e `iat` no futuro, ambos con **30 s de margen** por desfase de reloj entre `apps/web` y el Game Server (`auth.ClockSkew`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) · `aud == "game-server"` · `sub` es un UUID de jugador · `jti` presente y no consumido (`SET ticket:jti:{jti} NX EX 120`).
 
 **Fallos:** cierre `4400` (mensaje o payload inválido, versión no soportada) o `4401` (tipo distinto de `session.hello`, o autenticación fallida). **Sin `system.error` previo.**
 

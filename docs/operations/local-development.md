@@ -987,7 +987,7 @@ Errores típicos y su causa:
 | `SecurityError: An insecure WebSocket connection may not be initiated from a page loaded over HTTPS` | La página va por `https://` y el WS por `ws://` | Sirve el frontend en `http://localhost:3000` (por defecto en `web:dev`) |
 | `WebSocket connection failed` inmediato | `NEXT_PUBLIC_GAME_SERVER_WS_URL` apunta a `wss://localhost:8080/ws` | Corrige a `ws://localhost:8080/ws` |
 | `WebSocket connection failed` inmediato y el servidor registra «origen rechazado en el upgrade de WebSocket» | La página se sirve desde un origen que no está en `EO_WS_ALLOWED_ORIGINS` (otro puerto, `127.0.0.1` en vez de `localhost`): el upgrade responde `403` | Añade ese origen exacto a la lista, o déjala vacía en local para admitir cualquiera |
-| Conexión abierta y cierre `4401` | `EO_AUTH_JWT_SECRET` distinto entre Next y Game Server, o ticket ya expirado (TTL 60 s) | Iguala el secreto; no reutilices tickets |
+| Conexión abierta y cierre `4401` | `EO_AUTH_JWT_SECRET` distinto entre Next y Game Server, ticket ya expirado (TTL 60 s más 30 s de margen) o relojes desfasados más de 30 s entre las dos máquinas | Iguala el secreto; no reutilices tickets; sincroniza los relojes |
 | Cierre `4408` a los 5 s | El cliente no envió `session.hello` a tiempo | Revisa el orden: `session.hello` debe ser el **primer** mensaje |
 | Cierre `4429` | Superaste 20 msg/s con burst 40 | Es el rate limit funcionando; no lo subas para "arreglarlo" |
 

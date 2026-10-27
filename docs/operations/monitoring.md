@@ -522,7 +522,8 @@ que mirar, no una lista de sugerencias.
      antes del handshake porque el `Origin` del navegador no está en `EO_WS_ALLOWED_ORIGINS`: el log trae el
      origen tal cual llegó; compáralo con la lista (esquema, host y puerto exactos, sin ruta).
    - **Llegan pero `eo_connected_players` no sube** → el handshake falla. Sigue en el punto 2.
-2. El campo `close_code` de `handshake rechazado`: `4401` (secreto desincronizado, ticket expirado o Redis sin
+2. El campo `close_code` de `handshake rechazado`: `4401` (secreto desincronizado, ticket expirado, relojes de
+   `apps/web` y del Game Server desfasados más de 30 s —`auth.ClockSkew`; revisa el NTP de ambos— o Redis sin
    responder al consumir el `jti` — sospecha de una rotación mal ejecutada, ver
    [configuration.md](./configuration.md#63-rotación-de-eo_auth_jwt_secret)), `4408` (el cliente no envía
    `session.hello` dentro del `WSHandshakeTimeout` de 5 s), `4400` (mensaje inválido o versión no soportada:

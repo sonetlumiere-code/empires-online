@@ -31,7 +31,7 @@ Todo lo que no cumpla las cinco es otro nivel: [integration](./integration-tests
 | `internal/pathfinding` | `astar_test.go` ✔ | A\* octile: corrección, límites de nodos y distancia, determinismo, regla anti corner-cutting, cancelación por contexto. |
 | `internal/domain/movement` | `path_test.go` ✔ | Construcción de la polilínea temporizada, `ArrivalTimeMs`, función de posición autoritativa, `Validate`, ciclo de vida del movimiento. |
 | `internal/domain/city` | `city_test.go` ✔ | Autómata de presencia, `ShouldEngageProtection` y sus bordes, límite de población. |
-| `internal/auth` | `ticket_test.go` ✔ | Verificación del game ticket: caducidad, firma, `alg=none`, audiencia, claims, replay, fail-closed. |
+| `internal/auth` | `ticket_test.go` ✔ | Verificación del game ticket: caducidad, margen de 30 s por desfase de reloj en `iat` y `exp` (`auth.ClockSkew`), firma, `alg=none`, audiencia, claims, replay, fail-closed. |
 | `internal/config` | `config_test.go` ✔ | Parseo de las `EO_*`, valores por defecto del canon §17 y validaciones cruzadas. |
 | `internal/domain/unit` | `unit_test.go` ✔ | `EnsureCanMove` por estado, `IsAlive`, `EnsureOwnedBy`, el catálogo de tipos y que los estados del dominio son los del esquema. La matriz completa de transiciones de §7.1 no existe. |
 
@@ -94,8 +94,14 @@ func TestTicketCaducado(t *testing.T) {
 	_, err = verifier.Verify(ticket)
 	require.NoError(t, err)
 
-	// Pasado el minuto, no.
-	clk.Advance(2 * time.Second)
+	// Pasado el minuto sigue valiendo mientras quede margen de desfase de
+	// reloj (ADR-021): 60 s de TTL más 30 s de ClockSkew.
+	clk.Advance(30 * time.Second) // 89 s
+	_, err = verifier.Verify(ticket)
+	require.NoError(t, err)
+
+	// Agotado el margen, no.
+	clk.Advance(2 * time.Second) // 91 s
 	_, err = verifier.Verify(ticket)
 	require.ErrorIs(t, err, auth.ErrExpiredTicket)
 }

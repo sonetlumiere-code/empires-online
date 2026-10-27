@@ -194,7 +194,7 @@ Otras constantes que **no** son configuración porque viven en código o en dato
 `TILE_H = 32` (proyección isométrica, exclusiva del cliente); √2 en punto fijo `1414214/1000000` para el paso
 diagonal; las escalas de coste del A\* `costScaleOrtho = 1000` y `costScaleDiag = 1414`, con la heurística
 octile ponderada por `MinTerrainCostUnits = 6` (ROAD); los códigos de cierre WS
-`4400/4401/4403/4408/4429/4500`; el TTL de 60 s del *game ticket* y del token de fundación (en `apps/web`) y el de 120 s de `ticket:jti:{jti}`; la vida de 7 días de la sesión web y el coste de `scrypt` (`N = 2^15, r = 8, p = 3`); el TTL
+`4400/4401/4403/4408/4429/4500`; el TTL de 60 s del *game ticket* y del token de fundación (en `apps/web`), el margen de 30 s de desfase de reloj con que el Game Server verifica su `iat` y su `exp` (`auth.ClockSkew`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) y el de 120 s de `ticket:jti:{jti}`; la vida de 7 días de la sesión web y el coste de `scrypt` (`N = 2^15, r = 8, p = 3`); el TTL
 de 300 s de `idem:{playerId}:{requestId}`; el tamaño de la cola de comandos del loop (8192); el presupuesto
 de apagado ordenado (25 s, con 15 s para drenar la cola de persistencia) y el umbral de 5 s tras el cual
 `/ready` marca el game loop como `stale`; y las eras, que viven en la tabla `eras`.
