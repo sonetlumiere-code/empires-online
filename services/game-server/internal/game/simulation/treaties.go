@@ -40,7 +40,7 @@ func (s *Simulation) sweepTreaties(now time.Time) {
 	log := s.deps.Log
 
 	s.deps.Persister.Submit(Job{
-		Name: "treaty.expire",
+		Name: JobTreatyExpire,
 		// Un barrido recorre todos los tratados: la clave fija lo ordena
 		// respecto a los barridos anteriores, que es lo único que importa.
 		Key: "treaties:sweep",

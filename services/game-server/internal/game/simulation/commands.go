@@ -105,9 +105,60 @@ type Broadcaster interface {
 	SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any)
 }
 
+// CommandType es el tipo de un comando tal como lo identifican los logs y la
+// etiqueta `type` de eo_commands_dropped_total. El conjunto de valores lo fija
+// el código —uno por tipo de Go—, nunca el cliente: es una etiqueta de
+// cardinalidad acotada (ADR-022).
+func CommandType(cmd Command) string { return cmd.commandType() }
+
+// CommandTypes es el catálogo cerrado de tipos de comando, en orden estable,
+// para que las series que lo usan como etiqueta existan a cero desde el
+// arranque. Un comando nuevo se añade aquí.
+func CommandTypes() []string {
+	return []string{
+		MoveUnit{}.commandType(),
+		CancelMovement{}.commandType(),
+		PlayerConnected{}.commandType(),
+		PlayerDisconnected{}.commandType(),
+		RequestSnapshot{}.commandType(),
+		IntroducePlayer{}.commandType(),
+		MovementPersistFailed{}.commandType(),
+		GarrisonUnit{}.commandType(),
+		UngarrisonUnit{}.commandType(),
+		GarrisonEntryResolved{}.commandType(),
+		GarrisonExitFailed{}.commandType(),
+	}
+}
+
+// Nombres de los trabajos durables (Job.Name). Es un catálogo CERRADO: cada
+// nombre es la etiqueta `job` de eo_persistence_jobs_dropped_total, y cada
+// valor distinto es una serie que vive en memoria hasta que el proceso
+// termina. Un trabajo nuevo se añade aquí y en JobNames (ADR-022).
+const (
+	JobMovementStart    = "movement.start"
+	JobMovementCancel   = "movement.cancel"
+	JobMovementComplete = "movement.complete"
+	JobCityPresence     = "city.presence"
+	JobUnitsFlush       = "units.flush"
+	JobGarrisonEnter    = "garrison.enter"
+	JobGarrisonLeave    = "garrison.leave"
+	JobTreatyExpire     = "treaty.expire"
+)
+
+// JobNames es el catálogo cerrado de nombres de trabajo, en orden estable.
+func JobNames() []string {
+	return []string{
+		JobMovementStart, JobMovementCancel, JobMovementComplete,
+		JobCityPresence, JobUnitsFlush,
+		JobGarrisonEnter, JobGarrisonLeave,
+		JobTreatyExpire,
+	}
+}
+
 // Job es una escritura durable diferida.
 type Job struct {
-	// Name identifica el trabajo en logs y métricas.
+	// Name identifica el trabajo en logs y métricas. Es uno de los Job* de
+	// arriba: con otro valor la métrica lo cuenta como `unknown`.
 	Name string
 	// Key es la entidad que escribe, por ejemplo UnitKey(42). Los trabajos con
 	// la misma clave se ejecutan en el orden en que se encolaron, reintentos

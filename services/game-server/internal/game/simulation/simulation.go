@@ -244,7 +244,7 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 	// quedarse con un movimiento que la base de datos nunca conoció.
 	copia, unitID, movementID := *m, u.ID, m.ID
 	s.deps.Persister.Submit(Job{
-		Name: "movement.start",
+		Name: JobMovementStart,
 		Key:  UnitKey(unitID),
 		Run: func(ctx context.Context) error {
 			return s.deps.Repos.PersistMovementStart(ctx, copia, origin)
@@ -309,7 +309,7 @@ func (s *Simulation) cancelActiveMovement(u *unit.Unit, reason movement.CancelRe
 
 	finish := MovementFinish{MovementID: m.ID, Status: movement.StatusCancelled, UnitID: u.ID, At: stoppedAt}
 	s.deps.Persister.Submit(Job{
-		Name: "movement.cancel",
+		Name: JobMovementCancel,
 		Key:  UnitKey(u.ID),
 		Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementFinish(ctx, finish) },
 	})
@@ -386,7 +386,7 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 			finish.UnitID, finish.At = a.unitID, a.at
 		}
 		s.deps.Persister.Submit(Job{
-			Name: "movement.complete",
+			Name: JobMovementComplete,
 			Key:  UnitKey(a.unitID),
 			Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementFinish(ctx, finish) },
 		})
@@ -517,7 +517,7 @@ func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now t
 
 	cityID, at := c.ID, now
 	s.deps.Persister.Submit(Job{
-		Name: "city.presence",
+		Name: JobCityPresence,
 		Key:  CityKey(cityID),
 		Run: func(ctx context.Context) error {
 			return s.deps.Repos.PersistCityPresence(ctx, cityID, state, at)
@@ -575,7 +575,7 @@ func (s *Simulation) FlushDirty() int {
 		}
 		lote := lote
 		s.deps.Persister.Submit(Job{
-			Name: "units.flush",
+			Name: JobUnitsFlush,
 			Key:  UnitKey(lote[0].ID),
 			Run:  func(ctx context.Context) error { return s.deps.Repos.PersistUnitPositions(ctx, lote) },
 		})

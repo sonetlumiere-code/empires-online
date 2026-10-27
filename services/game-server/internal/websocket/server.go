@@ -604,8 +604,19 @@ func (s *Server) dispatch(cmd simulation.Command) bool {
 	case s.commands <- cmd:
 		return true
 	default:
-		s.log.Error("cola de comandos saturada; comando descartado")
+		s.countDropped(cmd)
 		return false
+	}
+}
+
+// countDropped registra y cuenta un comando que no se aplicará nunca
+// (eo_commands_dropped_total, ADR-022). Nunca es normal: el loop va tan por
+// detrás que ni su canal de comandos tiene sitio.
+func (s *Server) countDropped(cmd simulation.Command) {
+	tipo := simulation.CommandType(cmd)
+	s.log.Error("cola de comandos saturada; comando descartado", "type", tipo)
+	if s.metrics != nil {
+		s.metrics.CommandsDropped.WithLabelValues(tipo).Inc()
 	}
 }
 

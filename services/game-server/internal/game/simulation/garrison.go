@@ -160,7 +160,7 @@ func (s *Simulation) handleGarrisonUnit(cmd GarrisonUnit) {
 	tick, store := s.state.Tick(), s.deps.Garrisons
 	resolved := GarrisonEntryResolved{PlayerID: cmd.PlayerID, RequestID: cmd.RequestID, UnitID: u.ID, CityID: c.ID}
 	s.deps.Persister.Submit(Job{
-		Name: "garrison.enter",
+		Name: JobGarrisonEnter,
 		Key:  UnitKey(u.ID),
 		Run: func(ctx context.Context) error {
 			unidad := copiaUnidad // cada intento parte del estado del tick
@@ -295,7 +295,7 @@ func (s *Simulation) exit(u *unit.Unit, c *city.City, req exitRequest) error {
 	}
 	copia, tick, store, cityID := *u, s.state.Tick(), s.deps.Garrisons, c.ID
 	s.deps.Persister.Submit(Job{
-		Name: "garrison.leave",
+		Name: JobGarrisonLeave,
 		Key:  UnitKey(u.ID),
 		Run: func(ctx context.Context) error {
 			unidad := copia

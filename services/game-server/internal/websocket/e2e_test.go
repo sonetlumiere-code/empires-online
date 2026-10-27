@@ -926,6 +926,52 @@ func TestConLaColaLlenaElComandoRespondeYSePuedeReintentar(t *testing.T) {
 	require.Equal(t, orden, c.await(protocol.TypeUnitMoveAccepted, 3*time.Second).RequestID)
 }
 
+// ADR-022: un comando que la cola del loop no admite se cuenta en
+// eo_commands_dropped_total con su tipo, y los demás tipos siguen a cero.
+func TestUnComandoDescartadoPorColaLlenaSeCuentaPorTipo(t *testing.T) {
+	env := newE2E(t)
+	c := env.conectar()
+	for len(env.commands) < cap(env.commands) {
+		env.commands <- simulation.CancelMovement{PlayerID: env.playerID, UnitID: 9999}
+	}
+
+	c.send(protocol.TypeUnitMove, map[string]any{
+		"unitId": env.unitIDs[0], "target": map[string]int{"x": 50, "y": 40},
+	})
+	require.Equal(t, protocol.CodeInternalError,
+		decode[protocol.SystemErrorPayload](t, c.await(protocol.TypeSystemError, 3*time.Second).Payload).Code)
+
+	descartados := comandosDescartados(t, env)
+	require.EqualValues(t, 1, descartados[protocol.TypeUnitMove])
+	for tipo, n := range descartados {
+		if tipo != protocol.TypeUnitMove {
+			require.Zero(t, n, "%s no se descartó", tipo)
+		}
+	}
+	require.Len(t, descartados, len(simulation.CommandTypes()), "todas las series existen desde el arranque")
+}
+
+// comandosDescartados lee eo_commands_dropped_total{type}.
+func comandosDescartados(t *testing.T, env *e2e) map[string]float64 {
+	t.Helper()
+	out := map[string]float64{}
+	familias, err := env.metrics.Registry().Gather()
+	require.NoError(t, err)
+	for _, f := range familias {
+		if f.GetName() != "eo_commands_dropped_total" {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "type" {
+					out[l.GetValue()] = m.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return out
+}
+
 // INV-PLAYER-007, mitad del handshake: el servidor registra el motivo de cada
 // rechazo de un ticket, y nunca el ticket. Se recorren un handshake válido, un
 // ticket basura, uno firmado con otro secreto, uno caducado y uno reutilizado,

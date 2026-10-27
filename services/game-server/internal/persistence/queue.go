@@ -24,8 +24,9 @@ import (
 //
 // Contrapresión: si PostgreSQL se ralentiza, la cola crece y la métrica
 // eo_persistence_queue_depth lo delata. Si una partición se llena, el trabajo se
-// descarta antes que bloquear el mundo — y se registra como error, porque
-// descartar escrituras nunca es normal.
+// descarta antes que bloquear el mundo — y se registra como error y se cuenta
+// en eo_persistence_jobs_dropped_total, porque descartar escrituras nunca es
+// normal (ADR-022).
 type Queue struct {
 	parts   []chan simulation.Job
 	log     *slog.Logger
@@ -108,9 +109,18 @@ func (q *Queue) Submit(job simulation.Job) {
 		// significa que la base de datos no sigue el ritmo del mundo.
 		q.log.Error("cola de persistencia saturada: trabajo descartado",
 			"job", job.Name, "key", job.Key, "partition", i, "capacity", cap(q.parts[i]))
+		q.countDropped(job.Name, observability.DropQueueFull)
 		if job.OnPermanentFailure != nil {
 			job.OnPermanentFailure(context.DeadlineExceeded)
 		}
+	}
+}
+
+// countDropped cuenta una escritura descartada. Se cuenta ANTES de llamar a la
+// compensación: la métrica dice que la cola la perdió, compense o no.
+func (q *Queue) countDropped(name, reason string) {
+	if q.metrics != nil {
+		q.metrics.PersistenceJobsDropped.WithLabelValues(observability.PersistenceJobLabel(name), reason).Inc()
 	}
 }
 
@@ -191,6 +201,7 @@ func (q *Queue) run(ctx context.Context, job simulation.Job) {
 
 	q.log.Error("escritura durable descartada tras agotar los reintentos",
 		"job", job.Name, "key", job.Key, "err", lastErr)
+	q.countDropped(job.Name, observability.DropAttemptsExhausted)
 	if job.OnPermanentFailure != nil {
 		job.OnPermanentFailure(lastErr)
 	}
