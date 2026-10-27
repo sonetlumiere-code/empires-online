@@ -62,7 +62,7 @@ flowchart TB
     end
 
     subgraph vps["VPS (Docker)"]
-        GS["services/game-server — Go (go 1.25.11 mínimo)<br/>WS y HTTP :8080 (EO_HTTP_ADDR)<br/>metrics :9090 (EO_METRICS_ADDR)<br/>game loop 10 Hz + simulación en RAM<br/>POST /internal/players (fundación)"]
+        GS["services/game-server — Go (go 1.25.11 mínimo)<br/>WS y HTTP :8080 (EO_HTTP_ADDR)<br/>metrics :9090 (EO_METRICS_ADDR)<br/>game loop 10 Hz + simulación en RAM<br/>POST /internal/players (fundación) en 127.0.0.1:8081 (EO_INTERNAL_ADDR)"]
     end
 
     PG[("PostgreSQL gestionado<br/>durable source of truth<br/>EO_POSTGRES_URL")]

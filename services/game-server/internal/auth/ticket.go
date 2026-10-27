@@ -28,6 +28,20 @@ const Audience = "game-server"
 // fundaría jugadores y un token de fundación abriría una sesión (INV-SEC-008).
 const InternalAudience = "game-server-internal"
 
+// ClockSkew es el margen que el verificador concede a `iat` y `exp` por el
+// desfase de reloj entre el emisor (Next.js, en otra máquina) y este proceso
+// (ADR-021). El emisor trunca `iat` a segundos, así que basta con que su reloj
+// vaya un segundo por delante para que, sin margen, todo ticket llegue «emitido
+// en el futuro» y se rechace con 4401, indistinguible de un ticket falso.
+//
+// Es una constante y no una variable EO_* a propósito: forma parte del contrato
+// del ticket igual que su TTL de 60 s, que también es una constante (en
+// apps/web/identity/tokens.mjs), y la vida efectiva máxima de un ticket —TTL
+// más margen, 90 s— tiene que quedar por debajo de los 120 s de la clave
+// anti-replay (INV-SEC-003). Un ajuste por entorno invitaría a subirlo para
+// «arreglar» un reloj desincronizado en lugar de arreglar el NTP.
+const ClockSkew = 30 * time.Second
+
 // Errores de autenticación. Todos se traducen al MISMO código UNAUTHORIZED de
 // cara al cliente: distinguirlos ayudaría a un atacante a afinar sus intentos.
 var (
@@ -63,7 +77,9 @@ func NewVerifierFor(secret string, clk clock.Clock, audience string) *Verifier {
 
 // Verify comprueba firma, caducidad y audiencia, y devuelve los claims.
 //
-// NO comprueba la reutilización: eso exige estado compartido y lo hace
+// `iat` y `exp` se evalúan con ClockSkew de margen en ambos sentidos: un ticket
+// emitido hasta 30 s «en el futuro» o caducado hace menos de 30 s sigue
+// valiendo. NO comprueba la reutilización: eso exige estado compartido y lo hace
 // Consumer.Consume con Redis. Separarlos permite testear la criptografía sin
 // infraestructura.
 func (v *Verifier) Verify(tokenString string) (Claims, error) {
@@ -72,6 +88,7 @@ func (v *Verifier) Verify(tokenString string) (Claims, error) {
 		jwt.WithAudience(v.audience),
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuedAt(),
+		jwt.WithLeeway(ClockSkew),
 		// El reloj inyectado también manda aquí: así los tests de caducidad no
 		// dependen del reloj de la máquina.
 		jwt.WithTimeFunc(v.clock.Now),

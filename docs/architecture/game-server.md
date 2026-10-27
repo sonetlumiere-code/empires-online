@@ -32,7 +32,7 @@ Responsabilidades:
 | Terminación WebSocket | `/ws`, protocolo v1 JSON, autenticación por *game ticket* JWT. |
 | Persistencia durable | PostgreSQL como *source of truth*; escritura asíncrona vía cola + workers. |
 | Estado caliente | Redis para presencia, idempotencia y consumo de `jti`. |
-| Fundación del jugador | `POST /internal/players` (`internal/httpapi`): el bootstrap atómico del jugador que `apps/web` acaba de dar de alta, autorizado con un token de fundación. `GET /internal/players/{playerId}`, con el mismo token: si ese jugador existe, sin fundar nada ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)). |
+| Fundación del jugador | `POST /internal/players` (`internal/httpapi`): el bootstrap atómico del jugador que `apps/web` acaba de dar de alta, autorizado con un token de fundación. `GET /internal/players/{playerId}`, con el mismo token: si ese jugador existe, sin fundar nada ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md)). Las dos en su propio listener, `EO_INTERNAL_ADDR`, que el proxy no publica ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
 | Observabilidad | `log/slog` en JSON, métricas Prometheus, `GET /health` y `GET /ready`. |
 
 **No** es responsable de: proyección isométrica ni píxeles (cliente), ni renderizado de deltas.
@@ -197,8 +197,9 @@ Cuatro reglas que no se negocian:
                           │ persistence workers│ ──► PostgreSQL
                           │  (4, sin sharding) │
                           └────────────────────┘
-   metrics HTTP server (goroutine propia, EO_METRICS_ADDR :9090)
-   HTTP/WS server      (goroutine propia, EO_HTTP_ADDR    :8080)
+   metrics HTTP server  (goroutine propia, EO_METRICS_ADDR  :9090)
+   internal HTTP server (goroutine propia, EO_INTERNAL_ADDR 127.0.0.1:8081)
+   HTTP/WS server       (goroutine propia, EO_HTTP_ADDR     :8080)
 ```
 
 | Goroutine | Cardinalidad | Posee | Bloquea en |
@@ -207,7 +208,8 @@ Cuatro reglas que no se negocian:
 | WS `readPump` | 1 por conexión | Buffer de lectura, *token bucket* de esa conexión | `conn.ReadMessage()` con deadline `WSReadTimeout` (45 s) |
 | WS `writePump` | 1 por conexión | El lado de escritura del socket, contador `seq` | El canal `out` y el ticker de ping (`WSPingInterval`, 15 s) |
 | Persistence worker | **4**, fijas, sin sharding | Su conexión del pool `pgx` | El canal `jobs` y la red hacia Postgres |
-| HTTP/WS server | 1 (+ las que genera `net/http`) | Listener | `ListenAndServe()` |
+| HTTP/WS server | 1 (+ las que genera `net/http`) | Listener `EO_HTTP_ADDR` | `ListenAndServe()` |
+| Internal server | 1 (+ las que genera `net/http`) | Listener `EO_INTERNAL_ADDR` (`/internal/players`) | `ListenAndServe()` |
 | Metrics server | 1 | Listener `EO_METRICS_ADDR` | `ListenAndServe()` |
 
 **El `Hub` no es una goroutine.** Es una estructura con `sync.RWMutex` que mantiene tres índices
@@ -419,9 +421,11 @@ distinto de cero. Nunca se arranca a medias.
  6. transporte    auth.NewAuthenticator (verifier + ticket store de Redis), presence store,
                   idempotency store, ws.NewServer, httpapi.NewFoundingAPI (con su autenticador de
                   la audiencia interna; toma como era inicial la primera del catálogo leído en el
-                  paso 4) y el mux HTTP: /health, /ready, /ws, /internal/players[/{id}].
- 7. arranque      Tres goroutines: servidor de juego en EO_HTTP_ADDR, servidor de métricas en
-                  EO_METRICS_ADDR y gameLoop.Run(rootCtx). El primer tick es el del paso 3:
+                  paso 4) y dos muxes HTTP: el público (/health, /ready, /ws) y el interno
+                  (/internal/players[/{id}]), en listeners distintos (ADR-021).
+ 7. arranque      Cuatro goroutines: servidor de juego en EO_HTTP_ADDR, servidor interno en
+                  EO_INTERNAL_ADDR, servidor de métricas en EO_METRICS_ADDR y
+                  gameLoop.Run(rootCtx). El primer tick es el del paso 3:
                   el máximo entre el CurrentTick guardado y los ticks transcurridos desde
                   EpochMs, para que ninguno se repita tras una caída (ADR-015). El instante de cada tick lo da el Clock.
 ```
@@ -582,9 +586,10 @@ Todo pasa por `internal/config`; ningún valor de gameplay se hardcodea en más 
 
 | Variable | Default (rango) | Efecto en el proceso |
 |---|---|---|
-| `EO_ENV`, `EO_LOG_LEVEL` | `development` / `info` | Nivel de log y estrictez de validación del secreto. |
-| `EO_HTTP_ADDR` | `:8080` | Listener de `/health`, `/ready`, `/ws`, `/api/auth/*`. |
-| `EO_METRICS_ADDR` | `:9090` | Listener de `/metrics`. |
+| `EO_ENV`, `EO_LOG_LEVEL` | `development` / `info` | Nivel de log y estrictez de validación del secreto. `EO_ENV` sólo admite `development`, `test` o `production`; otro valor aborta el arranque. |
+| `EO_HTTP_ADDR` | `:8080` | Listener público: `/health`, `/ready`, `/ws`. |
+| `EO_INTERNAL_ADDR` | `127.0.0.1:8081` | Listener interno: `POST`/`GET /internal/players`. Sólo loopback por defecto; el proxy no lo publica ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
+| `EO_METRICS_ADDR` | `:9090` | Listener de `/metrics`. Los tres puertos deben ser distintos: lo valida el arranque. |
 | `EO_POSTGRES_URL`, `EO_REDIS_URL` | — | Obligatorias. Migraciones y pools del bootstrap. |
 | `EO_AUTH_JWT_SECRET` | — | Verificación HS256 del game ticket. Obligatoria, ≥ 32 caracteres; nunca en el repositorio. |
 | `EO_TICK_RATE_HZ` | 10 (1–1000) | Período del loop (100 ms). Debe dividir exactamente a 1000. |
@@ -598,12 +603,17 @@ Todo pasa por `internal/config`; ningún valor de gameplay se hardcodea en más 
 | `EO_WS_MAX_MESSAGE_BYTES` | 16384 (256–4 194 304) | Tamaño máximo de un mensaje entrante. |
 | `EO_WS_RATE_LIMIT_PER_SECOND` / `_BURST` | 20 / 40 | *Token bucket* por conexión. El burst no puede ser menor que la tasa. |
 | `EO_WS_OUTBOUND_QUEUE_SIZE` | 256 (8–65536) | Capacidad de la cola de salida por conexión (§3.3). |
+| `EO_WS_ALLOWED_ORIGINS` | — (obligatoria en producción) | Lista blanca de `Origin` en el upgrade de `/ws`; sin `Origin` se admite ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
+| `EO_WS_MAX_CONNECTIONS` / `_PER_IP` | 5000 / 32 (0 = sin tope) | Sockets de `/ws` abiertos, contados desde antes del upgrade; por encima, `503` / `429` sin abrir socket. |
+| `EO_TRUST_PROXY_HEADERS` | `false` | La IP de una conexión es la primera de `X-Forwarded-For`; sólo detrás de un proxy que la sobrescriba. La misma variable que lee `apps/web`. |
 | `EO_PRESENCE_TTL_SECONDS` / `_HEARTBEAT_SECONDS` | 30 / 10 | Margen de reconexión y latido. El heartbeat debe ser **estrictamente menor** que el TTL. |
 | `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` | 300 (0–86400) | Transición `OFFLINE_PENDING → PROTECTED`. |
 
 Constantes de tiempo del WebSocket que **no** son configurables por entorno, fijadas en
 `internal/config`: `WSHandshakeTimeout = 5s`, `WSPingInterval = 15s`, `WSReadTimeout = 45s`,
-`WSWriteTimeout = 10s`.
+`WSWriteTimeout = 10s`. Y las de los `http.Server`, fijadas en `cmd/server`: `ReadHeaderTimeout = 10s`,
+`ReadTimeout = 15s`, `IdleTimeout = 60s`; no afectan a un WebSocket ya establecido, porque gorilla retira
+esos plazos del socket al hacer el upgrade.
 
 `config.Load()` reporta **todos** los errores de validación juntos, no de uno en uno: arrancar tres
 veces seguidas para descubrir tres variables mal puestas es una pérdida de tiempo evitable.

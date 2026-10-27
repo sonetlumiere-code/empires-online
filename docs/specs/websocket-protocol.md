@@ -56,12 +56,13 @@ La versión viaja **en cada mensaje**, en el campo `v` (entero). En v1 el valor 
 |---|---|
 | Esquema | `wss://` (TLS obligatorio en cualquier entorno que no sea local) |
 | Endpoint | `/ws` sobre `EO_HTTP_ADDR` (por defecto `:8080`) → `wss://<host>/ws` |
-| Origen | El upgrade comprueba la cabecera `Origin` contra una lista blanca. Vacía = se acepta cualquier origen (sólo desarrollo); en producción debe estar poblada. |
+| Origen | El upgrade comprueba la cabecera `Origin` contra la lista blanca `EO_WS_ALLOWED_ORIGINS` (orígenes exactos `scheme://host[:port]`, sin distinguir mayúsculas). Un origen no listado recibe **`403`** antes del handshake. Una petición **sin** `Origin` no viene de un navegador y se admite siempre. Vacía = cualquier origen, sólo fuera de producción: allí el arranque la exige ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
 | Subprotocolo | v1 **no negocia** `Sec-WebSocket-Protocol`. La versión viaja en el campo `v` de cada envelope. Registrar un subprotocolo con nombre es `TBD (fuera de MVP)`. |
 | Formato de frame | Frame de **texto**, JSON válido, codificación **UTF-8**. |
 | Un frame | Exactamente **un envelope**. No hay *framing* de varios mensajes por frame ni fragmentación aplicativa. |
 | Tamaño máximo entrante | **16 KiB** = 16384 bytes (`EO_WS_MAX_MESSAGE_BYTES`), aplicado por `conn.SetReadLimit` sobre el frame entrante. Es un límite del **sentido entrante**: los mensajes salientes no se truncan (ver la nota de tamaño de 8.4). |
 | Rate limit entrante | **20 msg/s** (`EO_WS_RATE_LIMIT_PER_SECOND`) con **burst 40** (`EO_WS_RATE_LIMIT_BURST`), token bucket por conexión. |
+| Tope de conexiones | **5000** sockets en el proceso (`EO_WS_MAX_CONNECTIONS`) y **32** por IP (`EO_WS_MAX_CONNECTIONS_PER_IP`), contados desde antes del upgrade hasta el cierre, autenticados o no. Por encima, el upgrade responde **`503`** (tope global) o **`429`** (tope de esa IP) con `Retry-After: 5` y no abre socket. La IP es la del socket salvo con `EO_TRUST_PROXY_HEADERS=true` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
 | Cola de salida | **256** mensajes por conexión (`EO_WS_OUTBOUND_QUEUE_SIZE`, rango 8–65536). Si se llena, la sesión se cierra con `4500`. |
 | Ping | El servidor envía un ping de control WebSocket cada **15 s**. El cliente debe responder pong (lo hace el navegador de forma automática). |
 | Read timeout | **45 s** sin ningún frame recibido del cliente → cierre. Cada frame recibido, incluido el pong de control, renueva el deadline. |
@@ -238,7 +239,7 @@ payload: z.object({
 }
 ```
 
-**Validaciones del servidor:** primer mensaje de la conexión y dentro de 5 s · JSON válido y `v == 1` · `type == "session.hello"` · payload decodificable con `ticket` no vacío · firma HS256 con `EO_AUTH_JWT_SECRET` · `exp` no vencido · `aud == "game-server"` · `sub` es un UUID de jugador · `jti` presente y no consumido (`SET ticket:jti:{jti} NX EX 120`).
+**Validaciones del servidor:** primer mensaje de la conexión y dentro de 5 s · JSON válido y `v == 1` · `type == "session.hello"` · payload decodificable con `ticket` no vacío · firma HS256 con `EO_AUTH_JWT_SECRET` · `exp` no vencido e `iat` no futuro, ambos con **30 s de margen** por desfase de reloj entre `apps/web` y el Game Server (`auth.ClockSkew`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) · `aud == "game-server"` · `sub` es un UUID de jugador · `jti` presente y no consumido (`SET ticket:jti:{jti} NX EX 120`).
 
 **Fallos:** cierre `4400` (mensaje o payload inválido, versión no soportada) o `4401` (tipo distinto de `session.hello`, o autenticación fallida). **Sin `system.error` previo.**
 

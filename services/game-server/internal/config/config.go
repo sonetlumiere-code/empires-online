@@ -12,6 +12,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -24,6 +26,11 @@ type Config struct {
 	LogLevel    string
 	HTTPAddr    string
 	MetricsAddr string
+	// InternalAddr es el listener de la API interna (`/internal/players`), que
+	// sólo llama apps/web con un token de fundación (ADR-018). Es un servidor
+	// aparte del público para que el reverse proxy no lo publique: por defecto
+	// escucha sólo en loopback (ADR-021).
+	InternalAddr string
 
 	PostgresURL   Secret
 	RedisURL      Secret
@@ -54,14 +61,43 @@ type Config struct {
 	WSMaxMessageBytes int64
 	WSRateLimitPerSec int
 	WSRateLimitBurst  int
-	// EO_AUTH_RATE_LIMIT_* y EO_TRUST_PROXY_HEADERS ya no son del Game Server:
-	// desde ADR-018 el alta y el login viven en apps/web, que es quien las lee.
+	// EO_AUTH_RATE_LIMIT_* ya no son del Game Server: desde ADR-018 el alta y
+	// el login viven en apps/web, que es quien las lee.
 	WSHandshakeTimeout  time.Duration
 	WSPingInterval      time.Duration
 	WSReadTimeout       time.Duration
 	WSWriteTimeout      time.Duration
 	WSOutboundQueueSize int
+
+	// WSAllowedOrigins son los orígenes (`scheme://host[:port]`, normalizados a
+	// minúsculas) desde los que un navegador puede abrir /ws. Vacía fuera de
+	// producción significa «cualquiera»; en producción es obligatoria, porque sin
+	// ella cualquier página web abriría sesiones desde el navegador del jugador
+	// (ADR-021). Un cliente que no envía Origin no es un navegador y no se filtra.
+	WSAllowedOrigins []string
+
+	// WSMaxConnections y WSMaxConnectionsPerIP acotan los sockets de /ws
+	// abiertos, contados desde antes del upgrade (ADR-021). 0 = sin tope.
+	WSMaxConnections      int
+	WSMaxConnectionsPerIP int
+	// TrustProxyHeaders: creer a X-Forwarded-For para identificar la IP de una
+	// conexión. La misma variable y el mismo significado que en apps/web
+	// (EO_TRUST_PROXY_HEADERS): sólo con un proxy inverso delante.
+	TrustProxyHeaders bool
 }
+
+// Valores admitidos de EO_ENV. La lista es cerrada a propósito: `prod` o un
+// error de tecleo activaría en silencio la semántica de desarrollo (migración
+// automática, estado caliente en proceso, secreto de ejemplo admitido).
+const (
+	EnvDevelopment = "development"
+	EnvTest        = "test"
+	EnvProduction  = "production"
+)
+
+// environments es la lista cerrada de EO_ENV, en el orden en que se enumera
+// en el mensaje de error.
+var environments = []string{EnvDevelopment, EnvTest, EnvProduction}
 
 // TickDuration es el período de un tick del game loop.
 func (c Config) TickDuration() time.Duration {
@@ -74,7 +110,7 @@ func (c Config) TickDurationMs() int64 {
 }
 
 // IsProduction indica si el proceso corre en un entorno productivo.
-func (c Config) IsProduction() bool { return c.Env == "production" }
+func (c Config) IsProduction() bool { return c.Env == EnvProduction }
 
 // UsesInProcessHotState indica si el estado caliente vive en el proceso en lugar
 // de en Redis. Sólo puede ocurrir fuera de producción.
@@ -86,11 +122,17 @@ func (c Config) UsesInProcessHotState() bool { return c.RedisURL.IsZero() }
 func Load() (Config, error) {
 	v := &collector{}
 
+	// El entorno se resuelve primero porque otros valores por defecto dependen
+	// de él. Un valor fuera de la lista es un error, no un entorno de desarrollo.
+	env := v.oneOf("EO_ENV", EnvDevelopment, environments)
+	origins, originsSet := v.origins("EO_WS_ALLOWED_ORIGINS")
+
 	cfg := Config{
-		Env:         v.str("EO_ENV", "development"),
-		LogLevel:    v.str("EO_LOG_LEVEL", "info"),
-		HTTPAddr:    v.str("EO_HTTP_ADDR", ":8080"),
-		MetricsAddr: v.str("EO_METRICS_ADDR", ":9090"),
+		Env:          env,
+		LogLevel:     v.str("EO_LOG_LEVEL", "info"),
+		HTTPAddr:     v.addr("EO_HTTP_ADDR", ":8080"),
+		MetricsAddr:  v.addr("EO_METRICS_ADDR", ":9090"),
+		InternalAddr: v.addr("EO_INTERNAL_ADDR", "127.0.0.1:8081"),
 
 		PostgresURL:   NewSecret(v.str("EO_POSTGRES_URL", "")),
 		RedisURL:      NewSecret(v.str("EO_REDIS_URL", "")),
@@ -112,7 +154,7 @@ func Load() (Config, error) {
 		// El valor por defecto depende del entorno: se activa en desarrollo y se
 		// desactiva en producción. Un default único obligaría a recordar ponerlo
 		// en el sitio donde olvidarlo hace daño.
-		MigrateOnStart: v.boolean("EO_MIGRATE_ON_START", os.Getenv("EO_ENV") != "production"),
+		MigrateOnStart: v.boolean("EO_MIGRATE_ON_START", env != EnvProduction),
 
 		PathfindingMaxNodes:    v.intRange("EO_PATHFINDING_MAX_NODES", 20000, 100, 10_000_000),
 		PathfindingMaxDistance: int32(v.intRange("EO_PATHFINDING_MAX_DISTANCE", 256, 1, 65536)),
@@ -125,6 +167,11 @@ func Load() (Config, error) {
 		WSReadTimeout:       45 * time.Second,
 		WSWriteTimeout:      10 * time.Second,
 		WSOutboundQueueSize: v.intRange("EO_WS_OUTBOUND_QUEUE_SIZE", 256, 8, 65536),
+		WSAllowedOrigins:    origins,
+
+		WSMaxConnections:      v.intRange("EO_WS_MAX_CONNECTIONS", 5000, 0, 1_000_000),
+		WSMaxConnectionsPerIP: v.intRange("EO_WS_MAX_CONNECTIONS_PER_IP", 32, 0, 100_000),
+		TrustProxyHeaders:     v.boolean("EO_TRUST_PROXY_HEADERS", false),
 	}
 
 	// --- Validaciones cruzadas: las que un rango por sí solo no puede expresar ---
@@ -159,6 +206,19 @@ func Load() (Config, error) {
 	if cfg.WSRateLimitBurst < cfg.WSRateLimitPerSec {
 		v.fail("EO_WS_RATE_LIMIT_BURST no puede ser menor que EO_WS_RATE_LIMIT_PER_SECOND")
 	}
+	// Sin lista, el upgrade acepta cualquier Origin. Eso sólo vale en desarrollo:
+	// en producción, cualquier página web podría abrir sesiones de juego desde el
+	// navegador de un jugador que tenga la web abierta (ADR-021).
+	if cfg.IsProduction() && !originsSet {
+		v.fail("EO_WS_ALLOWED_ORIGINS es obligatoria en producción: sin ella el upgrade de /ws acepta cualquier Origin")
+	}
+	// Tres listeners, tres puertos. Dos direcciones con el mismo puerto fallan
+	// al abrir el segundo listener, ya en marcha; mejor aquí, antes de arrancar.
+	v.distinctPorts(
+		listenAddr{"EO_HTTP_ADDR", cfg.HTTPAddr},
+		listenAddr{"EO_METRICS_ADDR", cfg.MetricsAddr},
+		listenAddr{"EO_INTERNAL_ADDR", cfg.InternalAddr},
+	)
 
 	if err := v.err(); err != nil {
 		return Config{}, err
@@ -182,6 +242,88 @@ func (c *collector) str(key, def string) string {
 	if raw, ok := os.LookupEnv(key); ok && raw != "" {
 		return raw
 	}
+	return def
+}
+
+// addr lee una dirección de escucha `host:port` tal y como la acepta net.Listen,
+// con el puerto explícito y distinto de 0: un puerto 0 sería «uno al azar», y
+// nadie sabría a dónde conectar.
+func (c *collector) addr(key, def string) string {
+	raw := c.str(key, def)
+	if _, port, err := net.SplitHostPort(raw); err != nil || !validPort(port) {
+		c.fail(fmt.Sprintf("%s=%q no es una dirección de escucha válida (usa host:port o :port, con puerto entre 1 y 65535)", key, raw))
+		return def
+	}
+	return raw
+}
+
+func validPort(port string) bool {
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535
+}
+
+// listenAddr es una dirección de escucha con el nombre de su variable, para
+// los mensajes de error.
+type listenAddr struct{ key, value string }
+
+// distinctPorts exige que ninguna dirección de escucha repita puerto. Se
+// compara sólo el puerto porque `:8080` escucha en todas las interfaces y
+// choca con cualquier `host:8080`; dos hosts concretos con el mismo puerto
+// podrían convivir, pero es una rareza que no merece un listener roto.
+func (c *collector) distinctPorts(addrs ...listenAddr) {
+	seen := map[string]listenAddr{}
+	for _, a := range addrs {
+		_, port, err := net.SplitHostPort(a.value)
+		if err != nil {
+			continue // ya reportado por addr
+		}
+		if prev, dup := seen[port]; dup {
+			c.fail(fmt.Sprintf("%s=%q repite el puerto %s de %s: cada listener necesita el suyo", a.key, a.value, port, prev.key))
+			continue
+		}
+		seen[port] = a
+	}
+}
+
+// origins lee una lista separada por comas de orígenes exactos
+// `scheme://host[:port]` (http o https) y la devuelve normalizada a minúsculas,
+// que es como se compara con la cabecera Origin. Una entrada con ruta, query,
+// credenciales o sin esquema es un error: `https://game.example.com/` no
+// casaría nunca con lo que envía un navegador y en producción dejaría fuera a
+// todos los jugadores. El segundo valor dice si la variable tenía contenido.
+func (c *collector) origins(key string) ([]string, bool) {
+	raw := strings.TrimSpace(c.str(key, ""))
+	if raw == "" {
+		return nil, false
+	}
+	var out []string
+	for _, item := range strings.Split(raw, ",") {
+		o := strings.TrimSpace(item)
+		if o == "" {
+			continue
+		}
+		u, err := url.Parse(o)
+		if err != nil || u.Opaque != "" || u.User != nil || u.Host == "" ||
+			u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
+			(u.Scheme != "http" && u.Scheme != "https") {
+			c.fail(fmt.Sprintf("%s: %q no es un origen válido (usa scheme://host[:port], con http o https y sin ruta)", key, o))
+			continue
+		}
+		out = append(out, strings.ToLower(u.Scheme)+"://"+strings.ToLower(u.Host))
+	}
+	return out, true
+}
+
+// oneOf lee una variable que sólo admite los valores de `allowed`, tal cual,
+// sin normalizar mayúsculas: `Production` no es `production`.
+func (c *collector) oneOf(key, def string, allowed []string) string {
+	raw := c.str(key, def)
+	for _, a := range allowed {
+		if raw == a {
+			return raw
+		}
+	}
+	c.fail(fmt.Sprintf("%s=%q no es un entorno válido (usa %s)", key, raw, strings.Join(allowed, ", ")))
 	return def
 }
 

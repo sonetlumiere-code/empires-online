@@ -154,7 +154,7 @@ Respuestas de `GET /internal/players/{playerId}` (game server), con el mismo tok
 | `session.hello` | cliente→servidor | `{ ticket, clientVersion? }` | Primer mensaje de la conexión, antes de 5 s o cierre `4408`. Esquema estricto: cualquier campo adicional se rechaza. |
 | `session.ping` | cliente→servidor | `{ clientTimeMs }` | Mantiene viva la conexión y refresca la presencia (ver [presence.md](presence.md)). El servidor responde `session.pong` con eco de `clientTimeMs`. |
 
-Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-server" }`, HS256, TTL **60 s**.
+Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-server" }`, HS256, TTL **60 s**. El Game Server verifica `iat` y `exp` con **30 s** de margen por desfase de reloj entre las dos máquinas (`auth.ClockSkew`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)); el mismo margen rige el token de fundación.
 `clientVersion` es solo diagnóstico y telemetría: no altera ninguna decisión de gameplay.
 
 ### 4.3 Configuración consumida
@@ -163,7 +163,8 @@ Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-serv
 |---|---|---|
 | `EO_AUTH_JWT_SECRET` | — (obligatoria en los dos procesos) | `apps/web` firma con él el ticket y el token de fundación; el game server los verifica. Mínimo 32 caracteres; no puede contener `dev-only` si `EO_ENV=production`, en ninguno de los dos. |
 | `EO_IDENTITY_POSTGRES_URL` | — (obligatoria en `apps/web`) | Almacén de identidad. Sólo la lee `apps/web`. |
-| `EO_GAME_SERVER_INTERNAL_URL` | `http://localhost:8080` | Dónde llama `apps/web` para fundar. |
+| `EO_GAME_SERVER_INTERNAL_URL` | `http://localhost:8081` en `.env.example` | Dónde llama `apps/web` para fundar: el listener **interno** del game server (`EO_INTERNAL_ADDR`), no el puerto público ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
+| `EO_INTERNAL_ADDR` | `127.0.0.1:8081` | Listener del game server para `/internal/players`; sólo loopback por defecto. |
 | `EO_AUTH_RATE_LIMIT_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_BURST` | 10 / 5 | Límite de alta y login por origen, en `apps/web` y por proceso. |
 | `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` | 512 / 512 | Límites para el emplazamiento de la ciudad inicial. |
 | `EO_WORLD_SEED` | 20260909 | Semilla del **generador del mapa**, no del emplazamiento. |

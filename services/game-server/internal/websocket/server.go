@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -68,9 +69,22 @@ type Config struct {
 	WorldHeight int32
 	ChunkSize   int32
 
-	// AllowedOrigins limita qué orígenes pueden abrir una conexión. Vacío en
-	// desarrollo significa "cualquiera"; en producción debe estar poblado.
+	// AllowedOrigins limita desde qué orígenes (`scheme://host[:port]`) puede un
+	// navegador abrir una conexión; la comparación ignora mayúsculas. Vacío
+	// significa «cualquiera», y la configuración sólo lo admite fuera de
+	// producción (ADR-021). Una petición SIN cabecera Origin se acepta siempre:
+	// no viene de un navegador, y el riesgo cross-site sólo existe en ellos.
 	AllowedOrigins []string
+
+	// MaxConnections y MaxConnectionsPerIP acotan los sockets abiertos, contados
+	// desde antes del upgrade (ADR-021); 0 es «sin tope». Por encima, el upgrade
+	// responde 503 (tope global) o 429 (tope de esa IP) y no abre socket.
+	MaxConnections      int
+	MaxConnectionsPerIP int
+	// TrustProxyHeaders hace que la IP de una conexión sea la primera de
+	// X-Forwarded-For en lugar de la del socket. Sólo con un proxy inverso
+	// delante que sobrescriba la cabecera; sin él, cualquiera elige su IP.
+	TrustProxyHeaders bool
 }
 
 // Server acepta conexiones WebSocket y las traduce a comandos del dominio.
@@ -84,6 +98,7 @@ type Server struct {
 	metrics  *observability.Metrics
 	log      *slog.Logger
 	upgrader gws.Upgrader
+	limits   *connLimiter
 }
 
 // NewServer construye el servidor.
@@ -100,6 +115,7 @@ func NewServer(
 	s := &Server{
 		cfg: cfg, hub: hub, auth: authenticator, presence: presence,
 		dedupe: dedupe, commands: commands, metrics: metrics, log: log,
+		limits: newConnLimiter(cfg.MaxConnections, cfg.MaxConnectionsPerIP),
 	}
 	if dedupe != nil {
 		hub.RecordReplies(s.recordReply)
@@ -113,18 +129,36 @@ func NewServer(
 	return s
 }
 
+// checkOrigin decide el upgrade según la cabecera Origin. Devolver false hace
+// que gorilla responda 403 antes del handshake: no se abre ningún socket.
+//
+// Un navegador envía Origin en TODO upgrade y no deja al script cambiarla, así
+// que es lo único que separa a la web del juego de cualquier otra página abierta
+// en el mismo navegador (cross-site WebSocket hijacking). Un cliente que no es
+// navegador —scripts/smoke.mjs, curl, otro servidor— no la envía, y tampoco
+// tiene cookies ajenas que explotar: se admite sin más.
 func (s *Server) checkOrigin(r *http.Request) bool {
-	if len(s.cfg.AllowedOrigins) == 0 {
-		return true // desarrollo
-	}
 	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	if len(s.cfg.AllowedOrigins) == 0 {
+		return true // desarrollo y test: la configuración exige la lista en producción
+	}
 	for _, allowed := range s.cfg.AllowedOrigins {
-		if origin == allowed {
+		if strings.EqualFold(origin, allowed) {
 			return true
 		}
 	}
-	s.log.Warn("origen rechazado en el upgrade de WebSocket", "origin", origin)
+	s.log.Warn("origen rechazado en el upgrade de WebSocket", "origin", origin, "remote", r.RemoteAddr)
+	s.countRejected(rejectOrigin)
 	return false
+}
+
+func (s *Server) countRejected(reason string) {
+	if s.metrics != nil {
+		s.metrics.WSConnectionsRejected.WithLabelValues(reason).Inc()
+	}
 }
 
 // Handler devuelve el handler HTTP del endpoint /ws.
@@ -135,12 +169,32 @@ func (s *Server) checkOrigin(r *http.Request) bool {
 // Usar r.Context() mataría toda sesión justo después de su primer mensaje.
 func (s *Server) Handler(base context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// La plaza se reserva ANTES del upgrade y se conserva hasta que la
+		// goroutine de la conexión termina: un socket que nunca se autentica
+		// también cuenta (ADR-021).
+		ip := clientIP(r, s.cfg.TrustProxyHeaders)
+		release, reason := s.limits.acquire(ip)
+		if reason != "" {
+			status := rejectStatus(reason)
+			s.log.Warn("conexión rechazada por tope antes del upgrade",
+				"reason", reason, "status", status, "ip", ip, "remote", r.RemoteAddr)
+			s.countRejected(reason)
+			w.Header().Set("Retry-After", retryAfterSeconds)
+			http.Error(w, "demasiadas conexiones", status)
+			return
+		}
+
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
+			// gorilla ya respondió: 403 por Origin, 400 por cabeceras.
+			release()
 			s.log.Debug("upgrade a WebSocket fallido", "err", err, "remote", r.RemoteAddr)
 			return
 		}
-		go s.serve(base, conn, r.RemoteAddr)
+		go func() {
+			defer release()
+			s.serve(base, conn, r.RemoteAddr)
+		}()
 	}
 }
 

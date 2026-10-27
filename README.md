@@ -145,7 +145,7 @@ go run ./cmd/server
 
 Al arrancar aplica las migraciones, genera el mundo desde la semilla, rehidrata las
 unidades y reanuda los movimientos que quedaron a medias. Escucha en `:8080`
-(juego) y `:9090` (métricas).
+(juego), `127.0.0.1:8081` (API interna, la que llama la web para fundar) y `:9090` (métricas).
 
 ### 5. Cliente
 

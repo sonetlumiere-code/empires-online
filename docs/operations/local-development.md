@@ -701,7 +701,10 @@ alta y el login son route handlers de Next.js (`/api/auth/register`, `/api/auth/
 el almacén de identidad, abren una sesión con la cookie `eo_session` y responden con el ticket. Cada reconexión
 pide uno nuevo a `/api/auth/ticket`. Por eso el servidor de Next.js necesita `EO_AUTH_JWT_SECRET` —el mismo del
 Game Server— y `EO_IDENTITY_POSTGRES_URL`; al arrancar aplica las migraciones del almacén y, si no puede, no
-arranca.
+arranca. Para fundar al jugador llama al **listener interno** del Game Server, `EO_GAME_SERVER_INTERNAL_URL`
+(`http://localhost:8081`, el `EO_INTERNAL_ADDR` del servidor): un `.env` anterior a
+[ADR-021](../decisions/ADR-021-game-server-perimeter.md) que siga apuntando a `8080` hace que el alta falle
+con `503 GAME_SERVER_UNAVAILABLE`, porque en `8080` esas rutas ya no existen.
 
 Si el puerto 3000 está ocupado por otra aplicación, el script `dev` lo fija y fallará con
 `EADDRINUSE`. Arranca Next.js en otro puerto directamente; la web y su API viven en el mismo origen, así que no
@@ -913,7 +916,7 @@ pnpm --filter @empires-online/web exec vitest run src/server/store.integration.t
 
 ## 10. Solución de problemas frecuentes
 
-### 10.1 Puerto ocupado (5432, 6379, 8080, 9090, 3000)
+### 10.1 Puerto ocupado (5432, 6379, 8080, 8081, 9090, 3000)
 
 Síntoma: `Ports are not available: ... bind: An attempt was made to access a socket in a way forbidden`,
 o el Game Server muere al arrancar con `address already in use`.
@@ -986,7 +989,8 @@ Errores típicos y su causa:
 |---|---|---|
 | `SecurityError: An insecure WebSocket connection may not be initiated from a page loaded over HTTPS` | La página va por `https://` y el WS por `ws://` | Sirve el frontend en `http://localhost:3000` (por defecto en `web:dev`) |
 | `WebSocket connection failed` inmediato | `NEXT_PUBLIC_GAME_SERVER_WS_URL` apunta a `wss://localhost:8080/ws` | Corrige a `ws://localhost:8080/ws` |
-| Conexión abierta y cierre `4401` | `EO_AUTH_JWT_SECRET` distinto entre Next y Game Server, o ticket ya expirado (TTL 60 s) | Iguala el secreto; no reutilices tickets |
+| `WebSocket connection failed` inmediato y el servidor registra «origen rechazado en el upgrade de WebSocket» | La página se sirve desde un origen que no está en `EO_WS_ALLOWED_ORIGINS` (otro puerto, `127.0.0.1` en vez de `localhost`): el upgrade responde `403` | Añade ese origen exacto a la lista, o déjala vacía en local para admitir cualquiera |
+| Conexión abierta y cierre `4401` | `EO_AUTH_JWT_SECRET` distinto entre Next y Game Server, ticket ya expirado (TTL 60 s más 30 s de margen) o relojes desfasados más de 30 s entre las dos máquinas | Iguala el secreto; no reutilices tickets; sincroniza los relojes |
 | Cierre `4408` a los 5 s | El cliente no envió `session.hello` a tiempo | Revisa el orden: `session.hello` debe ser el **primer** mensaje |
 | Cierre `4429` | Superaste 20 msg/s con burst 40 | Es el rate limit funcionando; no lo subas para "arreglarlo" |
 

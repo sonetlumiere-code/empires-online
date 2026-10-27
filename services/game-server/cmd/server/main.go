@@ -39,6 +39,15 @@ const (
 	shutdownTimeout  = 25 * time.Second
 	ticketReplayTTL  = 120 * time.Second
 	idempotencyTTL   = 300 * time.Second
+
+	// Plazos de los servidores HTTP (ADR-021). Acotan lo que un socket puede
+	// ocupar sin terminar de hablar: las cabeceras, la petición entera y el
+	// silencio entre peticiones keep-alive. No afectan a un WebSocket ya
+	// establecido: gorilla retira estos plazos del socket al hacer el upgrade y
+	// desde ahí mandan WSHandshakeTimeout y WSReadTimeout.
+	httpReadHeaderTimeout = 10 * time.Second
+	httpReadTimeout       = 15 * time.Second
+	httpIdleTimeout       = 60 * time.Second
 )
 
 func main() {
@@ -302,7 +311,20 @@ func run() error {
 		WorldWidth:           cfg.WorldWidth,
 		WorldHeight:          cfg.WorldHeight,
 		ChunkSize:            cfg.ChunkSize,
+		AllowedOrigins:       cfg.WSAllowedOrigins,
+		MaxConnections:       cfg.WSMaxConnections,
+		MaxConnectionsPerIP:  cfg.WSMaxConnectionsPerIP,
+		TrustProxyHeaders:    cfg.TrustProxyHeaders,
 	}, hub, authenticator, presence, dedupe, commands, metrics, log)
+
+	// Detrás del reverse proxy del despliegue de referencia, TODAS las
+	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el
+	// tope por IP sería el tope del servidor entero. No se puede validar en la
+	// configuración —nada dice si hay proxy— así que se avisa donde importa.
+	if cfg.IsProduction() && cfg.WSMaxConnectionsPerIP > 0 && !cfg.TrustProxyHeaders {
+		log.Warn("EO_WS_MAX_CONNECTIONS_PER_IP activo sin EO_TRUST_PROXY_HEADERS: detrás de un proxy inverso todas las conexiones comparten la IP del proxy y el tope por IP sería el tope global",
+			"max_connections_per_ip", cfg.WSMaxConnectionsPerIP)
+	}
 
 	firstEra := eras[0]
 
@@ -320,17 +342,34 @@ func run() error {
 			Clock:          sysClock,
 		}, log)
 
+	// Superficie pública, la que publica el reverse proxy: el juego y la salud.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", health.LivenessHandler())
 	mux.HandleFunc("/ready", health.ReadinessHandler())
 	mux.HandleFunc("/ws", wsServer.Handler(rootCtx))
-	mux.HandleFunc(httpapi.FoundPath, foundingAPI.Found())
-	mux.HandleFunc(httpapi.LookupPattern, foundingAPI.Lookup())
 
 	gameHTTP := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		IdleTimeout:       httpIdleTimeout,
+	}
+
+	// Superficie interna, en su propio listener (ADR-021): sólo la fundación y
+	// la consulta de jugadores que llama apps/web. No comparte puerto con /ws
+	// para que el proxy no pueda publicarla por accidente; el token de fundación
+	// es la segunda barrera, no la única.
+	internalMux := http.NewServeMux()
+	internalMux.HandleFunc(httpapi.FoundPath, foundingAPI.Found())
+	internalMux.HandleFunc(httpapi.LookupPattern, foundingAPI.Lookup())
+
+	internalHTTP := &http.Server{
+		Addr:              cfg.InternalAddr,
+		Handler:           internalMux,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	metricsMux := http.NewServeMux()
@@ -338,16 +377,24 @@ func run() error {
 	metricsHTTP := &http.Server{
 		Addr:              cfg.MetricsAddr,
 		Handler:           metricsMux,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	// ── 7. Arranque ─────────────────────────────────────────────
-	errCh := make(chan error, 3)
+	errCh := make(chan error, 4)
 
 	go func() {
 		log.Info("servidor de juego escuchando", "addr", cfg.HTTPAddr)
 		if err := gameHTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- fmt.Errorf("servidor HTTP: %w", err)
+		}
+	}()
+	go func() {
+		log.Info("servidor interno escuchando", "addr", cfg.InternalAddr)
+		if err := internalHTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("servidor interno: %w", err)
 		}
 	}()
 	go func() {
@@ -388,6 +435,7 @@ func run() error {
 	// despide a quien está dentro, y sólo al final se vacían las escrituras
 	// pendientes. Al revés se perderían datos.
 	_ = gameHTTP.Shutdown(shutdownCtx)
+	_ = internalHTTP.Shutdown(shutdownCtx)
 	_ = metricsHTTP.Shutdown(shutdownCtx)
 	hub.CloseAll(1001, "servidor en mantenimiento")
 

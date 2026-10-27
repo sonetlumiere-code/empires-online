@@ -23,6 +23,9 @@ type Metrics struct {
 	CommandsTotal  *prometheus.CounterVec
 	WSMessages     *prometheus.CounterVec
 	ProtocolErrors *prometheus.CounterVec
+	// WSConnectionsRejected cuenta los upgrades de /ws rechazados antes de
+	// abrir socket, por motivo (ADR-021).
+	WSConnectionsRejected *prometheus.CounterVec
 
 	PathfindingRequests *prometheus.CounterVec
 	PathfindingDuration prometheus.Histogram
@@ -83,6 +86,10 @@ func NewMetrics() *Metrics {
 			Name: "eo_protocol_errors_total",
 			Help: "Errores de protocolo emitidos, por código estable.",
 		}, []string{"code"}),
+		WSConnectionsRejected: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "eo_ws_connections_rejected_total",
+			Help: "Upgrades de /ws rechazados antes de abrir socket, por motivo: origin, max_connections o max_connections_per_ip.",
+		}, []string{"reason"}),
 
 		PathfindingRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "eo_pathfinding_requests_total",
@@ -109,9 +116,15 @@ func NewMetrics() *Metrics {
 	reg.MustRegister(
 		m.ConnectedPlayers, m.ConnectedWebsockets, m.ActiveUnits, m.ActiveMovements,
 		m.PersistenceQueue, m.TickDuration, m.TickOverruns, m.CommandsTotal,
-		m.WSMessages, m.ProtocolErrors, m.PathfindingRequests, m.PathfindingDuration,
+		m.WSMessages, m.ProtocolErrors, m.WSConnectionsRejected,
+		m.PathfindingRequests, m.PathfindingDuration,
 		m.DatabaseLatency, m.RedisLatency,
 	)
+	// Las series de rechazo existen a cero desde el arranque: una alerta sobre
+	// `rate()` de una serie que aún no existe no dispara nunca.
+	for _, reason := range []string{RejectOrigin, RejectMaxConnections, RejectMaxConnectionsPerIP} {
+		m.WSConnectionsRejected.WithLabelValues(reason)
+	}
 	return m
 }
 
@@ -133,4 +146,10 @@ const (
 	// está en el catálogo del protocolo. El tipo lo escribe el cliente: usarlo
 	// tal cual crearía una serie por cada tipo inventado (EO-121).
 	TypeUnknown = "unknown"
+
+	// Motivos de eo_ws_connections_rejected_total{reason} (ADR-021). Catálogo
+	// cerrado: ninguno lo elige el cliente.
+	RejectOrigin              = "origin"
+	RejectMaxConnections      = "max_connections"
+	RejectMaxConnectionsPerIP = "max_connections_per_ip"
 )

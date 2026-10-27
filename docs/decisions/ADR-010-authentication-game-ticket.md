@@ -213,7 +213,7 @@ que no le corresponden. Rechazada.
   ambas máquinas empieza a rechazar tickets legítimos, y una desviación en sentido contrario alarga la
   validez efectiva. Mitigación operativa: NTP en ambos hosts, con ajuste por deslizamiento y no por salto.
   El margen de tolerancia (*leeway*) que el verificador debe aceptar **no está definido por el canon:
-  TBD (fuera de MVP)**.
+  TBD (fuera de MVP)**. Lo fija [ADR-021](ADR-021-game-server-perimeter.md): 30 s, como constante.
 - **Cada reconexión exige un ticket nuevo.** El ticket es de un solo uso y dura un minuto, así que un corte
   de red obliga al cliente a pedir otro a `apps/web` **antes** de reabrir el WebSocket. Esto acopla la
   reconexión de juego a la disponibilidad del frontend y a la vigencia de la sesión web: si la sesión web

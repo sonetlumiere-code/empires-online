@@ -100,7 +100,8 @@ route handlers del mismo origen que la página:
 | Response | `201` `{ playerId, ticket, expiresInSeconds: 60, city }` + cookie | `200` con el mismo cuerpo (`city` sólo si el login terminó una fundación pendiente) + cookie | `200` `{ playerId, ticket, expiresInSeconds: 60 }`, sin renovar la cookie |
 | Errores | `400` `INVALID_MESSAGE`/`INVALID_USERNAME`/`WEAK_PASSWORD`, `403 FORBIDDEN` (otro origen), `409` `USERNAME_TAKEN`/`NO_SITE_AVAILABLE`, `429 RATE_LIMITED`, `503` `SITE_CONTENDED`/`GAME_SERVER_UNAVAILABLE`, `500` | `400`, `401 UNAUTHORIZED` (mismo error y mismo coste para usuario inexistente y contraseña incorrecta), `403`, `429`, `503`, `500` | `401 UNAUTHORIZED`, `403`, `500` |
 
-El detalle del alta —la cuenta `PENDING`, la fundación en `POST /internal/players` del game server y la
+El detalle del alta —la cuenta `PENDING`, la fundación en `POST /internal/players` del game server (en su
+listener interno `EO_INTERNAL_ADDR`, que el proxy no publica, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) y la
 activación, y la resolución de una cuenta `PENDING` abandonada con `GET /internal/players/{playerId}`
 ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md))— está en [../specs/player.md](../specs/player.md) §4.1. El contrato del ticket —JWT HS256,
 `aud = "game-server"`, TTL 60 s, `jti` de un solo uso— no cambió con el traslado: un fixture compartido
@@ -111,9 +112,9 @@ activación, y la resolución de una cuenta `PENDING` abandonada con `GET /inter
 | Fase | Quién actúa | Contrato | Fallo |
 |---|---|---|---|
 | **Ticket** | `apps/web` (`src/server/tokens.ts`) | JWT HS256 firmado con `EO_AUTH_JWT_SECRET`, TTL **60 s**, claims `{ sub: playerId, jti, iat, exp, aud: "game-server" }`. Un ticket sin `jti` se rechaza: sin él no hay anti-replay | 401 HTTP de `apps/web`; no se abre socket |
-| **Upgrade HTTP** | Game Server | `GET /ws` sin credenciales en URL ni cookies. `CheckOrigin` contra `AllowedOrigins` (vacío = cualquiera, sólo aceptable en desarrollo). Se acepta el upgrade y **la conexión queda no autenticada** | Rechazo HTTP estándar |
+| **Upgrade HTTP** | Game Server | `GET /ws` sin credenciales en URL ni cookies. `CheckOrigin` contra `EO_WS_ALLOWED_ORIGINS` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)): un `Origin` listado (comparación exacta, sin distinguir mayúsculas) o **ninguno** (un script, no un navegador) pasa; vacía sólo fuera de producción, donde el arranque la exige. Antes del upgrade se reserva plaza en los topes de conexiones (`EO_WS_MAX_CONNECTIONS`, `EO_WS_MAX_CONNECTIONS_PER_IP`), que la conexión ocupa hasta cerrarse, autenticada o no. Se acepta el upgrade y **la conexión queda no autenticada** | `403` (origen), `503` (servidor lleno) o `429` (esa IP se pasa) antes del handshake: no se abre socket; `eo_ws_connections_rejected_total{reason}` |
 | **Handshake de aplicación** | Cliente | El **primer** mensaje debe ser `session.hello { ticket }`, dentro de **5 s** | Cierre `4408` si no llega nada; `4400` si el frame es indescifrable o `v != 1`; `4401` si el primer mensaje no es `session.hello` |
-| **Verificación** | Game Server | Firma + `exp` + `aud` + consumo de `jti` en Redis (`ticket:jti:{jti}`, TTL **120 s**, `SET NX`) | Cierre `4401`. Todos los fallos de credenciales se traducen al **mismo** código: distinguirlos ayudaría a afinar un ataque |
+| **Verificación** | Game Server | Firma + `iat`/`exp` (con **30 s** de margen por desfase de reloj, `auth.ClockSkew`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) + `aud` + consumo de `jti` en Redis (`ticket:jti:{jti}`, TTL **120 s**, `SET NX`) | Cierre `4401`. Todos los fallos de credenciales se traducen al **mismo** código: distinguirlos ayudaría a afinar un ataque |
 | **Sesión** | Game Server | Registro en el `Hub`, arranque del `writePump`, presencia en `presence:player:{playerId}` (TTL **30 s**) y comando `PlayerConnected` al loop. Si Redis falla al marcar presencia, **la sesión sigue siendo válida**: la presencia caliente es una optimización, no la verdad | — |
 | **Bienvenida** | Game Server | `session.welcome` con `seq = 1` y payload `{ sessionId, playerId, serverTimeMs, tickDurationMs, heartbeatIntervalMs, world: { width, height, chunkSize } }` | — |
 | **Snapshot** | Game loop | `world.snapshot` del área de interés inicial, centrada en la ciudad del jugador | `system.error{INTERNAL_ERROR}` si la cola de comandos está llena o el loop no responde en 2 s |
@@ -628,6 +629,7 @@ Métricas Prometheus expuestas en `EO_METRICS_ADDR/metrics` (`:9090`) relevantes
 | `eo_connected_players` | Jugadores **distintos** con al menos una conexión abierta (tamaño de `Hub.byPlayer`), no una lectura de la presencia en Redis |
 | `eo_ws_messages_total{direction,type}` | Volumen de mensajes; `direction` es `inbound`/`outbound`. Segmentar por tipo permite detectar tormentas de `world.snapshot` por churn de `session.view` |
 | `eo_protocol_errors_total{code}` | Errores de protocolo por código estable; es la señal directa de clientes mal implementados o de un contrato que se rompió |
+| `eo_ws_connections_rejected_total{reason}` | Upgrades rechazados antes de abrir socket: `origin`, `max_connections` o `max_connections_per_ip` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Es lo único que ve el tráfico que no llegó al handshake |
 | `eo_game_tick_duration_seconds` | Si la emisión de deltas se vuelve dominante, el interest management es el sospechoso |
 | `eo_game_tick_overruns_total` | Un tick que excede los 100 ms retrasa todos los deltas |
 

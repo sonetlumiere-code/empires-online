@@ -56,7 +56,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if cfg.Env != "development" {
+	if cfg.Env != config.EnvDevelopment {
 		return fmt.Errorf("EO_ENV=%q: la siembra de desarrollo sólo se ejecuta con EO_ENV=development", cfg.Env)
 	}
 	if addr := localAddr(cfg.HTTPAddr); serverListening(addr) {

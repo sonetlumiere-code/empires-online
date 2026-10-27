@@ -97,7 +97,7 @@ La forma en que este invariante se rompe en la práctica no es un descuido grose
 | Aplicación | BOUNDARY, TEST |
 | Milestone | M3 |
 | Política ante violación | FAIL_FAST (cierre de la conexión) |
-| Cobertura | **Cubierto** por `TestNoSeAceptanComandosSinAutenticar`, `TestSinHandshakeEnPlazoSeCierraCon4408`, `TestTicketInvalidoCierraLaConexion` y `TestTicketNoSePuedeReutilizarEnOtraConexion` (`internal/websocket`), y por `TestPreAuthSoloAdmiteElHandshake` (`internal/protocol`) |
+| Cobertura | **Cubierto** por `TestNoSeAceptanComandosSinAutenticar`, `TestSinHandshakeEnPlazoSeCierraCon4408`, `TestTicketInvalidoCierraLaConexion`, `TestTicketNoSePuedeReutilizarEnOtraConexion` y `TestUnOrigenNoListadoSeRechazaCon403AntesDelHandshake` (`internal/websocket`), por `TestOrigenesPermitidosDelWebSocket` (`internal/config`) y por `TestPreAuthSoloAdmiteElHandshake` (`internal/protocol`) |
 
 **Enunciado.** Una conexión WebSocket sólo acepta `session.hello` hasta que el ticket ha sido verificado y la sesión creada. Cualquier otro tipo de mensaje recibido antes cierra la conexión con `4401` sin procesarse; si no llega un frame legible dentro del plazo de handshake (5 s), la conexión se cierra con `4408`.
 
@@ -111,6 +111,7 @@ El timeout de 5 segundos cubre un segundo problema, de disponibilidad: conexione
 - `BOUNDARY` — el plazo de handshake (`HandshakeTimeout`, 5 s en producción) es el `SetReadDeadline` de esa primera lectura. Al vencer, cierre `4408`.
 - `BOUNDARY` — `conn.SetReadLimit(EO_WS_MAX_MESSAGE_BYTES)` se aplica **antes** del handshake, en `Server.serve`, de modo que ni siquiera un `session.hello` puede desbordar memoria: un frame mayor lo corta el transporte con `1009` ([INV-SEC-005](#inv-sec-005)).
 - `BOUNDARY` — la verificación del ticket es completa antes de crear la sesión (canon §14): firma HS256 con `EO_AUTH_JWT_SECRET`, `exp`, `aud = "game-server"` y consumo del `jti` ([INV-SEC-003](#inv-sec-003)). Un fallo en cualquier paso cierra con `4401` sin crear sesión, y el mismo código para todos: distinguirlos ayudaría a afinar un ataque.
+- `BOUNDARY` — **antes incluso del socket**, el upgrade comprueba la cabecera `Origin` contra `EO_WS_ALLOWED_ORIGINS` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)): un origen no listado recibe `403` y no hay handshake que proteger. Un navegador envía `Origin` siempre y no deja al script cambiarla, así que es lo que impide que otra página abierta en el mismo navegador abra una sesión con el ticket que la web del juego acaba de pedir (*cross-site WebSocket hijacking*). Una petición sin `Origin` no es un navegador y se admite. En producción la lista es obligatoria; hasta la auditoría del 2026-10-26 nunca se rellenaba y la comprobación estaba apagada.
 - `DOMAIN` — el `playerId` de la sesión se establece una sola vez y es inmutable ([INV-PLAYER-004](player.md#inv-player-004)).
 
 > **Qué protege realmente la fase previa al handshake.** El límite de **tamaño** sí se aplica antes (`SetReadLimit` en `Server.serve`), pero el **token bucket NO**: `newRateLimiter` se construye en `readPump`, que sólo se ejecuta con la sesión ya establecida. Lo que acota el coste de una conexión no autenticada es la combinación de tres cosas: el límite de lectura, el plazo de handshake y que el handshake acepta **un solo mensaje**. Una conexión no autenticada no puede, por tanto, enviar una ráfaga: no hay un bucle que la lea. Extender el token bucket a la fase de handshake, para acotar también el coste de conexiones que abren y cierran en serie, es **TBD (fuera de MVP)**.
@@ -123,6 +124,8 @@ El timeout de 5 segundos cubre un segundo problema, de disponibilidad: conexione
 - `TestTicketNoSePuedeReutilizarEnOtraConexion` (e2e) — el segundo canje no establece sesión.
 - `TestPreAuthSoloAdmiteElHandshake` (contract, `internal/protocol`) — de los siete tipos cliente→servidor, sólo `session.hello` es pre-auth.
 - `TestCodigosDeCierreSonDelRangoPrivado` (contract) — `4400`, `4401`, `4403`, `4408`, `4429` y `4500` están en el rango privado.
+- `TestUnOrigenNoListadoSeRechazaCon403AntesDelHandshake`, `TestUnOrigenListadoAbreSesion`, `TestSinOrigenSeAdmiteAunqueHayaLista` y `TestConLaListaVaciaSeAdmiteCualquierOrigen` (e2e, `internal/websocket`) — con lista, un `Origin` ajeno recibe `403` sin socket y uno listado abre sesión; sin `Origin`, o sin lista, se admite. Verificado por mutación: la comprobación que siempre devuelve `true` —la que sobrevivía a la suite antes— lo hace fallar.
+- `TestOrigenesPermitidosDelWebSocket` (unit, `internal/config`) — la lista se parsea y normaliza, una entrada que no es `scheme://host[:port]` aborta el arranque y en producción la variable es obligatoria.
 
 **Violación en runtime.** El rechazo es la regla, no una violación: `Server.serve` registra «handshake rechazado» a nivel `info`, con la causa y el código de cierre, y cierra. No hay un camino de código en el que un comando llegue a enrutarse sin sesión, y por tanto no hay una detección que escribir.
 
@@ -137,18 +140,19 @@ El timeout de 5 segundos cubre un segundo problema, de disponibilidad: conexione
 | Aplicación | BOUNDARY, TEST |
 | Milestone | M3 |
 | Política ante violación | FAIL_FAST (cierre `4401`) |
-| Cobertura | **Cubierto** por `TestTicketNoSePuedeReutilizar`, `TestCadaTicketTieneUnJtiDistinto` y `TestFalloDelRegistroDeTicketsFallaCerrado` (`internal/auth`), `TestTicketSoloSeConsumeUnaVez` (`internal/persistence/redis`, integration, y `internal/persistence/memory`), `TestConsumoConcurrenteDeTicketSoloUnaVez` (`internal/persistence/memory`), `TestNingunaClaveDelServidorQuedaSinCaducidad` (integration) y `TestTicketNoSePuedeReutilizarEnOtraConexion` (`internal/websocket`) |
+| Cobertura | **Cubierto** por `TestTicketNoSePuedeReutilizar`, `TestCadaTicketTieneUnJtiDistinto`, `TestFalloDelRegistroDeTicketsFallaCerrado`, `TestTicketCaducado` y `TestElVerificadorToleraElDesfaseDeReloj` (`internal/auth`), `TestTicketSoloSeConsumeUnaVez` (`internal/persistence/redis`, integration, y `internal/persistence/memory`), `TestConsumoConcurrenteDeTicketSoloUnaVez` (`internal/persistence/memory`), `TestNingunaClaveDelServidorQuedaSinCaducidad` (integration) y `TestTicketNoSePuedeReutilizarEnOtraConexion` (`internal/websocket`) |
 
 **Enunciado.** El `jti` de todo game ticket verificado se consume atómicamente en Redis bajo la clave `ticket:jti:{jti}` con TTL 120 s; un segundo intento de canjear el mismo `jti` se rechaza y cierra la conexión con `4401`.
 
-**Razón.** Es la defensa contra **replay**. El ticket es un JWT HS256 con TTL de 60 s (`ticketTTL`, constante de `cmd/server/main.go`) que viaja del navegador al Game Server. Sin consumo del `jti`, cualquiera que capture el ticket dentro de esa ventana —un log mal configurado, una extensión del navegador, un proxy corporativo, el propio jugador compartiéndolo— puede abrir sesiones como ese jugador durante 60 segundos. El TTL corto reduce la ventana, pero no la cierra: solo el consumo único la cierra.
+**Razón.** Es la defensa contra **replay**. El ticket es un JWT HS256 con TTL de 60 s (`TOKEN_TTL_SECONDS`, constante de `apps/web/identity/tokens.mjs`: desde [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) lo emite `apps/web`, no el Game Server) que viaja del navegador al Game Server. Sin consumo del `jti`, cualquiera que capture el ticket dentro de esa ventana —un log mal configurado, una extensión del navegador, un proxy corporativo, el propio jugador compartiéndolo— puede abrir sesiones como ese jugador durante 60 segundos. El TTL corto reduce la ventana, pero no la cierra: solo el consumo único la cierra.
 
-El TTL de 120 s de la clave es deliberadamente el doble del TTL del ticket: garantiza que el registro anti-replay sobrevive a cualquier ticket que pudiera seguir siendo válido, con margen para desfase de reloj entre el emisor Next.js y el Game Server. Que el `jti` desaparezca después no importa: para entonces el ticket ya expiró y `exp` lo rechaza por sí solo.
+El TTL de 120 s de la clave es deliberadamente el doble del TTL del ticket: garantiza que el registro anti-replay sobrevive a cualquier ticket que pudiera seguir siendo válido. La vida efectiva máxima de un ticket es el TTL de 60 s **más los 30 s de margen de desfase de reloj** que el verificador concede a `exp` (`auth.ClockSkew`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)): 90 s, por debajo de los 120 s de la clave. Que el `jti` desaparezca después no importa: para entonces el ticket ya expiró, margen incluido, y `exp` lo rechaza por sí solo.
 
 **Cómo se garantiza.**
 
 - `BOUNDARY` — el consumo es `SETNX ticket:jti:{jti} "1" EX 120`, una operación **atómica** de Redis en una sola llamada (`TicketStore.Consume`). No es un `EXISTS` seguido de un `SET`: dos conexiones simultáneas con el mismo ticket entrarían ambas por esa ventana.
 - `BOUNDARY` — el orden de verificación es: firma HS256 → `exp` → `aud = "game-server"` (`auth.Audience`) → presencia del `jti` → consumo del `jti`. El consumo va al final, para no gastar entradas de Redis con tickets que ya son inválidos por otra razón; y va **antes** de crear la sesión, para que no exista sesión sin ticket consumido.
+- `BOUNDARY` — `iat` y `exp` se evalúan con **30 s de margen** en ambos sentidos (`auth.ClockSkew`, `jwt.WithLeeway`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)): el emisor corre en otra máquina y trunca `iat` a segundos, así que sin margen bastaba con que su reloj fuese un segundo por delante para que todo ticket llegase «emitido en el futuro» y se rechazase con `4401`, indistinguible de un ticket falso. Es una constante y no una variable `EO_*`: forma parte del contrato del ticket, como su TTL, y acota la vida efectiva (90 s) por debajo de la clave anti-replay. El mismo margen vale para el token de fundación ([INV-SEC-008](#inv-sec-008)).
 - `BOUNDARY` — un ticket **sin `jti`** se rechaza en la verificación, antes del consumo: sin `jti` no se puede impedir el replay, así que el ticket no sirve. Es una decisión explícita del verificador, no un efecto colateral.
 - `BOUNDARY` — el fallo del consumo (clave ya existente) cierra con `4401`. No se distingue en la respuesta al cliente entre «ticket ya usado» y «ticket inválido»: ambos son el mismo cierre `4401`, sin mensaje previo ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)).
 - `DOMAIN` — la indisponibilidad de Redis en el momento del consumo se trata como **fallo cerrado**: si no se puede garantizar la unicidad, no se autentica. Se cierra con `4401`, el mismo código que cualquier otro fallo de verificación ([../architecture/networking.md](../architecture/networking.md) §3.2), y el cliente reintenta con un ticket nuevo y backoff. Autenticar «por si acaso» convertiría una caída de Redis en una ventana de replay abierta.
@@ -158,6 +162,7 @@ El TTL de 120 s de la clave es deliberadamente el doble del TTL del ticket: gara
 
 - `TestTicketSoloSeConsumeUnaVez` (integration, `internal/persistence/redis`; y su gemelo en `internal/persistence/memory`) — el segundo consumo del mismo `jti` devuelve falso. `TestConsumoConcurrenteDeTicketSoloUnaVez` (unit, `internal/persistence/memory`) — con consumos simultáneos, sólo uno gana.
 - `TestTicketNoSePuedeReutilizar` (unit, `internal/auth`) — el ticket ya canjeado no autentica.
+- `TestTicketCaducado` y `TestElVerificadorToleraElDesfaseDeReloj` (unit, `internal/auth`) — un ticket vale hasta 90 s después de emitido y no a los 91; `iat` 20 s en el futuro se acepta y 60 s se rechaza; `exp` vencido hace 20 s se acepta y hace 60 s se rechaza; el token de fundación tiene el mismo margen. `TestLosTokensDeAppsWebSeVerificanEnGo` lo fija sobre los tokens reales de TypeScript.
 - `TestCadaTicketTieneUnJtiDistinto` (unit, `internal/auth`) — el emisor no repite `jti`, que es lo que hace útil el registro anti-replay.
 - `TestFalloDelRegistroDeTicketsFallaCerrado` (unit, `internal/auth`) — si el registro no responde, **no se autentica**. Es el fail-closed del enunciado.
 - `TestTicketNoSePuedeReutilizarEnOtraConexion` (e2e, `internal/websocket`) — el mismo ticket en dos conexiones sólo crea una sesión.
@@ -216,7 +221,7 @@ El canon §7 fija el orden explícitamente: **validar ownership → validar esta
 | Aplicación | BOUNDARY, TEST |
 | Milestone | M3 |
 | Política ante violación | REJECT + cierre (`1009` o `4429`) |
-| Cobertura | **Cubierto** por `TestUnMensajeDemasiadoGrandeCierraCon1009`, `TestUnaRafagaPorEncimaDelBurstCierraCon4429`, `TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`, `TestMensajeMalformadoNoTumbaLaSesion` y `TestTipoDeMensajeDesconocidoSeRechaza` (`internal/websocket`), y por `TestBurstNoPuedeSerMenorQueLaTasa` y `TestValoresPorDefectoDelCanon` (`internal/config`) |
+| Cobertura | **Cubierto** por `TestUnMensajeDemasiadoGrandeCierraCon1009`, `TestUnaRafagaPorEncimaDelBurstCierraCon4429`, `TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`, `TestMensajeMalformadoNoTumbaLaSesion`, `TestTipoDeMensajeDesconocidoSeRechaza`, `TestPorEncimaDelTopeDeConexionesElUpgradeResponde503`, `TestPorEncimaDelTopePorIPElUpgradeResponde429` y `TestLaIPDeXForwardedForSoloCuentaConProxyDeConfianza` (`internal/websocket`), y por `TestBurstNoPuedeSerMenorQueLaTasa`, `TestTopesDeConexionesDelWebSocket` y `TestValoresPorDefectoDelCanon` (`internal/config`) |
 
 **Enunciado.** Un mensaje que supera `EO_WS_MAX_MESSAGE_BYTES = 16384` bytes se rechaza **sin deserializarse**; una conexión que supera `EO_WS_RATE_LIMIT_PER_SECOND = 20` mensajes por segundo con burst `EO_WS_RATE_LIMIT_BURST = 40` ve sus mensajes excedentes rechazados **sin enrutarse a ningún handler**.
 
@@ -233,6 +238,7 @@ Los 16 KiB son holgados para los siete mensajes de v1: el mayor concebible es `s
 - `BOUNDARY` — el rate limit es un *token bucket* por conexión (`newRateLimiter(RateLimitPerSec, RateLimitBurst)`) con tasa 20/s y capacidad 40, evaluado en `readPump` **inmediatamente después** de `ReadMessage` y **antes** de decodificar. Ése es el punto exacto en que el enunciado se cumple: sin ficha, el frame no llega a deserializarse.
 - `BOUNDARY` — agotar el bucket **cierra la conexión**: se envía `system.error RATE_LIMITED` y, después, el cierre `4429`. No hay un modo intermedio de «descartar y seguir»; el burst de 40 es el margen que absorbe la ráfaga legítima, y superarlo se trata como abuso. Que el `RATE_LIMITED` llegue antes del cierre exige dos cosas que hasta `EO-118` no se hacían: cerrar **después** de vaciar la cola de salida (`Session.CloseAfterFlush`), porque el cierre directo adelantaba al mensaje encolado; y no soltar el socket con datos del cliente sin leer (`drainAndClose`), porque el sistema responde entonces con un RST y el cliente pierde hasta el frame de cierre. Antes, el cliente que inundaba veía «conexión reiniciada» y ningún código.
 - `BOUNDARY` — el límite de **tamaño** se aplica también antes del handshake; el **token bucket no**, porque se construye en `readPump` (ver la nota de [INV-SEC-002](#inv-sec-002)). Lo que acota la fase previa es el límite de lectura, el plazo de handshake y que el handshake lee un solo mensaje.
+- `BOUNDARY` — el **número de sockets** también está acotado, y desde antes del upgrade ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)): `Server.Handler` reserva plaza en un contador global (`EO_WS_MAX_CONNECTIONS`, 5000) y en un mapa por IP (`EO_WS_MAX_CONNECTIONS_PER_IP`, 32) **antes** de llamar a `Upgrade`, y la libera cuando la goroutine de la conexión termina. Por encima, responde `503` o `429` con `Retry-After` **sin abrir socket**: ni descriptor, ni goroutine, ni plazo de handshake que esperar. El plazo de handshake de [INV-SEC-002](#inv-sec-002) acota cuánto dura un socket mudo; este tope acota cuántos puede haber a la vez. La IP es la del socket, salvo con `EO_TRUST_PROXY_HEADERS` detrás de un proxy que sobrescriba `X-Forwarded-For`. Los `http.Server` llevan además `ReadHeaderTimeout`, `ReadTimeout` e `IdleTimeout`, para que un socket que no termina de enviar la petición no ocupe plaza indefinidamente.
 - `BOUNDARY` — un mensaje malformado, de tipo desconocido o con propiedades fuera del contrato se responde con `INVALID_MESSAGE` y la sesión **continúa**: un JSON roto no es motivo de cierre, a diferencia del abuso de tasa.
 - `DOMAIN` — la contrapresión completa el cuadro: si la cola de comandos del loop está llena, el comando no se ejecuta, se responde `INTERNAL_ERROR` con su `requestId` y se libera su reserva de idempotencia (I-10). Hasta `EO-118` el comando se descartaba sin responder y el reintento con el mismo `requestId` se ignoraba como duplicado. Si la cola de salida de una sesión (`EO_WS_OUTBOUND_QUEUE_SIZE`, 256) se llena, la sesión se cierra con `4500` y el cliente reconecta con un snapshot limpio.
 - Los contadores alimentan `eo_ws_messages_total{direction,type}` y `eo_protocol_errors_total{code}`, que permiten ver el rechazo en agregado.
@@ -241,6 +247,7 @@ Los 16 KiB son holgados para los siete mensajes de v1: el mayor concebible es `s
 
 - `TestUnMensajeDemasiadoGrandeCierraCon1009` (e2e, `internal/websocket`) — un frame por encima del límite cierra con `1009`, antes y después del handshake.
 - `TestUnaRafagaPorEncimaDelBurstCierraCon4429` (e2e) — 60 mensajes en ráfaga: llega `RATE_LIMITED` y después el cierre `4429`. Estable en diez repeticiones; sin `CloseAfterFlush` el `RATE_LIMITED` no llega, y sin drenar el cierre llega como RST.
+- `TestPorEncimaDelTopeDeConexionesElUpgradeResponde503`, `TestPorEncimaDelTopePorIPElUpgradeResponde429`, `TestLaIPDeXForwardedForSoloCuentaConProxyDeConfianza`, `TestUnTopeACeroNoLimita` y `TestLasSeriesDeRechazoExistenACeroDesdeElArranque` (e2e) — con tope 2, el tercer socket recibe `503` o `429` con `Retry-After: 5` sin abrirse, también cuando los dos primeros nunca enviaron `session.hello`; cerrar uno libera su plaza; `X-Forwarded-For` sólo cuenta con `TrustProxyHeaders`; 0 es sin tope; y las tres series de `eo_ws_connections_rejected_total` existen a cero.
 - `TestConLaColaLlenaElComandoRespondeYSePuedeReintentar` (e2e) — con la cola del loop llena, `INTERNAL_ERROR` con el `requestId`, y el reintento con el mismo `requestId` se ejecuta. Verificado por mutación.
 - `TestMensajeMalformadoNoTumbaLaSesion` y `TestTipoDeMensajeDesconocidoSeRechaza` (e2e) — el mensaje inválido se responde con `INVALID_MESSAGE` y la sesión sobrevive.
 - `TestValoresPorDefectoDelCanon` y `TestBurstNoPuedeSerMenorQueLaTasa` (unit, `internal/config`) — los tres valores (`16384`, `20`, `40`) salen de `internal/config`, y el burst no puede ser menor que la tasa.
@@ -382,6 +389,10 @@ token legítimo funde otro id que el que Next.js acaba de autenticar.
   acepta las dos.
 - `BOUNDARY` — `POST /internal/players` rechaza con 401 un token de otra audiencia, caducado o ya consumido, y
   con 403 un cuerpo cuyo `playerId` no es el `sub`.
+- `BOUNDARY` — `/internal/players` sólo escucha en `EO_INTERNAL_ADDR` (`127.0.0.1:8081` por defecto), un
+  listener aparte del público que el reverse proxy no publica ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)):
+  el token es la segunda barrera, no la única. Hasta la auditoría del 2026-10-26 compartía puerto con `/ws` y
+  el Caddyfile de referencia lo proxyaba a Internet.
 - `BOUNDARY` — el `jti` del token de fundación se consume en el mismo almacén anti-replay que el del ticket
   ([INV-SEC-003](#inv-sec-003)).
 
@@ -405,11 +416,13 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | Amenaza | Invariante que la cubre |
 |---|---|
 | Suplantación de jugador | [INV-PLAYER-004](player.md#inv-player-004), [INV-SEC-002](#inv-sec-002), [INV-SEC-003](#inv-sec-003) |
+| Sesión abierta desde otra página en el navegador del jugador (*cross-site WebSocket hijacking*) | [INV-SEC-002](#inv-sec-002) (`Origin` en el upgrade, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) |
 | Control de unidades ajenas | [INV-PLAYER-001](player.md#inv-player-001), [INV-SEC-004](#inv-sec-004) |
 | Falsificación de posición, velocidad o path | [INV-SEC-001](#inv-sec-001), [INV-MOVE-004](movement.md#inv-move-004), [INV-MOVE-006](movement.md#inv-move-006) |
 | Replay de ticket | [INV-SEC-003](#inv-sec-003) |
 | Duplicación de efectos por reintento | [INV-SEC-007](#inv-sec-007) |
 | Agotamiento de recursos por mensajes | [INV-SEC-005](#inv-sec-005), [INV-SEC-002](#inv-sec-002) (timeout de handshake) |
+| Agotamiento de recursos por sockets abiertos | [INV-SEC-005](#inv-sec-005) (topes de conexiones y plazos del servidor HTTP, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) |
 | Fuga de credenciales | [INV-SEC-006](#inv-sec-006) |
 | Evasión de la protección por desconexión | [INV-CITY-005](city.md#inv-city-005), [INV-CITY-006](city.md#inv-city-006) |
 

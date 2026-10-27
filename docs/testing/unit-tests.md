@@ -31,7 +31,7 @@ Todo lo que no cumpla las cinco es otro nivel: [integration](./integration-tests
 | `internal/pathfinding` | `astar_test.go` ✔ | A\* octile: corrección, límites de nodos y distancia, determinismo, regla anti corner-cutting, cancelación por contexto. |
 | `internal/domain/movement` | `path_test.go` ✔ | Construcción de la polilínea temporizada, `ArrivalTimeMs`, función de posición autoritativa, `Validate`, ciclo de vida del movimiento. |
 | `internal/domain/city` | `city_test.go` ✔ | Autómata de presencia, `ShouldEngageProtection` y sus bordes, límite de población. |
-| `internal/auth` | `ticket_test.go` ✔ | Verificación del game ticket: caducidad, firma, `alg=none`, audiencia, claims, replay, fail-closed. |
+| `internal/auth` | `ticket_test.go` ✔ | Verificación del game ticket: caducidad, margen de 30 s por desfase de reloj en `iat` y `exp` (`auth.ClockSkew`), firma, `alg=none`, audiencia, claims, replay, fail-closed. |
 | `internal/config` | `config_test.go` ✔ | Parseo de las `EO_*`, valores por defecto del canon §17 y validaciones cruzadas. |
 | `internal/domain/unit` | `unit_test.go` ✔ | `EnsureCanMove` por estado, `IsAlive`, `EnsureOwnedBy`, el catálogo de tipos y que los estados del dominio son los del esquema. La matriz completa de transiciones de §7.1 no existe. |
 
@@ -94,8 +94,14 @@ func TestTicketCaducado(t *testing.T) {
 	_, err = verifier.Verify(ticket)
 	require.NoError(t, err)
 
-	// Pasado el minuto, no.
-	clk.Advance(2 * time.Second)
+	// Pasado el minuto sigue valiendo mientras quede margen de desfase de
+	// reloj (ADR-021): 60 s de TTL más 30 s de ClockSkew.
+	clk.Advance(30 * time.Second) // 89 s
+	_, err = verifier.Verify(ticket)
+	require.NoError(t, err)
+
+	// Agotado el margen, no.
+	clk.Advance(2 * time.Second) // 91 s
 	_, err = verifier.Verify(ticket)
 	require.ErrorIs(t, err, auth.ErrExpiredTicket)
 }
@@ -562,6 +568,10 @@ Los topes se siembran en la migración `000002_seed_catalogs`, no en código.
 | **G8** | `TestBurstNoPuedeSerMenorQueLaTasa` | `EO_WS_RATE_LIMIT_BURST=5` con `EO_WS_RATE_LIMIT_PER_SECOND=20` ⇒ error `"no puede ser menor"` |
 | **G9** | `TestValorFueraDeRango` / `TestValorNoNumerico` | `EO_TICK_RATE_HZ=0` ⇒ `"fuera del rango permitido"`; `EO_WORLD_SEED=no-es-un-numero` ⇒ `"no es un entero válido"`. **Error de arranque, nunca un valor silenciosamente corregido** |
 | **G10** | `TestSobrescrituraPorEntorno` | Con `EO_ENV=production` y valores propios: `IsProduction()` cierto, `TickRateHz == 20`, `TickDuration() == 50ms`, cooldown 600 s, `WorldWidth == 256` |
+| **G11** | `TestEntornoContraListaCerrada` | `EO_ENV` sólo admite `development`, `test` y `production`, tal cual; `prod`, `Production`, `staging`, `dev` o `local` ⇒ error `"no es un entorno válido"` que enumera los tres. Vacía o ausente ⇒ `development`. Antes, cualquier texto distinto de `production` activaba en silencio la semántica de desarrollo |
+| **G14** | `TestLasTresDireccionesDeEscuchaSonDistintas` | `EO_HTTP_ADDR`, `EO_METRICS_ADDR` y `EO_INTERNAL_ADDR` admiten `host:port`, `:port` y `[::1]:port`; un puerto repetido ⇒ error `"repite el puerto 8080 de EO_HTTP_ADDR"`; sin puerto, puerto 0, `:70000` o `:abc` ⇒ `"no es una dirección de escucha válida"`. El default de `EO_INTERNAL_ADDR`, `127.0.0.1:8081`, lo fija G1 |
+| **G13** | `TestTopesDeConexionesDelWebSocket` | `EO_WS_MAX_CONNECTIONS=0` (sin tope), `EO_WS_MAX_CONNECTIONS_PER_IP=8` y `EO_TRUST_PROXY_HEADERS=true` se leen; `-1` y `100001` ⇒ `"fuera del rango permitido"`. Los defaults (5000, 32, `false`) los fija G1 |
+| **G12** | `TestOrigenesPermitidosDelWebSocket` | `EO_WS_ALLOWED_ORIGINS=" https://Play.Example.com , http://localhost:3000,, "` ⇒ `["https://play.example.com", "http://localhost:3000"]` (recortada, en minúsculas). Una entrada con ruta, sin esquema, con `ws://`, con credenciales, query o fragmento ⇒ error `"no es un origen válido"`. Vacía con `EO_ENV=production` ⇒ error `"obligatoria en producción"`; vacía en `development` o `test` ⇒ lista vacía, cualquier origen |
 
 ✓ Lo que aquí figuraba como pendiente con el nombre `TestLaConfiguracionNuncaRegistraSecretos` existe como `TestLosSecretosNoSeImprimenPorNingunaVia` (`internal/config`): la configuración, impresa por cualquier vía, no contiene `EO_AUTH_JWT_SECRET` ni las credenciales de `EO_POSTGRES_URL` y `EO_REDIS_URL` (`INV-SEC-006`).
 

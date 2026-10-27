@@ -86,15 +86,16 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
 |---|---|---|---|---|---|---|
-| `EO_ENV` | string | `development` | libre; `production` es el único valor con significado especial | No | No | Selecciona el perfil de arranque. En `production` se prohíben los secretos de desarrollo (§4.2). El cargador **no** restringe el conjunto de valores: cualquier cadena distinta de `production` se comporta como un entorno no productivo. |
+| `EO_ENV` | string | `development` | **exactamente** `development` \| `test` \| `production` | No | No | Selecciona el perfil de arranque. En `production` se prohíben los secretos de desarrollo (§4.2), `EO_REDIS_URL` y `EO_WS_ALLOWED_ORIGINS` pasan a ser obligatorias y `EO_MIGRATE_ON_START` vale `false`. **La lista es cerrada**: `prod`, `Production` o `staging` abortan el arranque con `EO_ENV="prod" no es un entorno válido (usa development, test, production)`. Antes el cargador aceptaba texto libre y cualquier cadena distinta de `production` activaba en silencio la semántica de desarrollo. `test` existe para los tests de integración y la CI: se comporta como `development`. |
 | `EO_LOG_LEVEL` | string | `info` | `debug` \| `info` \| `warn` \| `error` | No | No | Nivel mínimo de `log/slog`. En `debug` se emiten trazas por comando y por tick, con coste de CPU y volumen apreciables: no usar en producción salvo diagnóstico acotado. |
 
 ### 3.2 Red del proceso
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
 |---|---|---|---|---|---|---|
-| `EO_HTTP_ADDR` | addr | `:8080` | `host:port` tal y como lo acepta `net/http` | No | No | Dirección de escucha del servidor HTTP: upgrade WebSocket en `/ws`, `GET /health`, `GET /ready` y `POST /internal/players`, la fundación que llama `apps/web` con un token firmado ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Es la superficie **pública** (detrás del reverse proxy). |
-| `EO_METRICS_ADDR` | addr | `:9090` | `host:port` | No | No | Dirección de escucha de `/metrics` (Prometheus), en un `http.Server` **separado** a propósito: permite exponer 8080 al mundo y dejar 9090 accesible solo desde la red de monitorización. Ponerla igual que `EO_HTTP_ADDR` no lo detecta la validación: falla al abrir el segundo listener. |
+| `EO_HTTP_ADDR` | addr | `:8080` | `host:port` o `:port`, con puerto entre 1 y 65535 | No | No | Dirección de escucha del servidor HTTP **público** (detrás del reverse proxy): upgrade WebSocket en `/ws`, `GET /health` y `GET /ready`. Nada más: la API interna tiene su propio listener. |
+| `EO_INTERNAL_ADDR` | addr | `127.0.0.1:8081` | `host:port` o `:port`, con puerto entre 1 y 65535 | No | No | Dirección de escucha de la **API interna**: `POST /internal/players` (fundación, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) y `GET /internal/players/{playerId}` (consulta, [ADR-020](../decisions/ADR-020-stale-pending-accounts.md)), las dos llamadas sólo por `apps/web` con un token de fundación. Es un `http.Server` **aparte** del público para que el reverse proxy no pueda publicarlo ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)): por defecto escucha **sólo en loopback**, y desde `8080` esas rutas responden `404`. `/health` y `/ready` **no** se sirven aquí: los consume el balanceador por el listener público. Cómo llega `apps/web` hasta él según dónde corra: [deployment.md §4.4](./deployment.md#44-el-listener-interno-no-se-publica). |
+| `EO_METRICS_ADDR` | addr | `:9090` | `host:port` o `:port`, con puerto entre 1 y 65535 | No | No | Dirección de escucha de `/metrics` (Prometheus), en un `http.Server` **separado** a propósito: permite exponer 8080 al mundo y dejar 9090 accesible solo desde la red de monitorización. **Los tres listeners necesitan puertos distintos**: el cargador lo valida (§4.2, regla 8) y falla al arrancar en vez de al abrir el segundo. |
 
 ### 3.3 Dependencias
 
@@ -145,6 +146,10 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_WS_RATE_LIMIT_PER_SECOND` | int | `20` | 1–10000 | No | No | Tasa sostenida de mensajes por conexión. Al superarse: `RATE_LIMITED` y, si persiste, cierre `4429`. |
 | `EO_WS_RATE_LIMIT_BURST` | int | `40` | 1–20000, y **≥ `EO_WS_RATE_LIMIT_PER_SECOND`** | No | No | Capacidad del *token bucket*: ráfaga tolerada por encima de la tasa sostenida. Cubre el pico legítimo de un jugador arrastrando la vista (`session.view`) sin castigarlo. |
 | `EO_WS_OUTBOUND_QUEUE_SIZE` | int | `256` | 8–65536 | No | No | Tamaño de la **cola de salida por conexión**. Es la contrapresión del lado servidor: si un cliente no consume sus deltas y la cola se llena, la sesión se cierra con **4500** y el cliente reconecta pidiendo un snapshot limpio. Subirlo tolera clientes más lentos a costa de memoria por conexión; bajarlo corta antes. **No aparece en `.env.example`**: se toma el default salvo que se declare. |
+| `EO_WS_ALLOWED_ORIGINS` | lista | — (vacía: cualquier origen; **obligatoria en producción**) | orígenes `scheme://host[:port]` con `http` o `https`, separados por comas, **sin ruta** | No | No | Lista blanca de la cabecera `Origin` en el upgrade de `/ws` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Un navegador la envía siempre y no deja al script cambiarla: es lo que impide que otra página abierta en el mismo navegador abra sesiones de juego (*cross-site WebSocket hijacking*). Comparación exacta sin distinguir mayúsculas; `null` (iframe aislado, `file://`) no casa nunca. Una petición **sin** `Origin` —`scripts/smoke.mjs`, `curl`, otro servidor— se admite siempre: no es un navegador y no lleva las cookies de nadie. Un origen no listado recibe **403** antes del handshake y un `warn` «origen rechazado en el upgrade de WebSocket». Una entrada con ruta (`https://x/`), sin esquema o con `ws://` es un **error de arranque**: nunca casaría y en producción dejaría fuera a todos los jugadores sin que nada lo dijera. En producción la lista lleva el dominio exacto del frontend; no hay comodines. |
+| `EO_WS_MAX_CONNECTIONS` | int | `5000` | 0–1000000; **0 = sin tope** | No | No | Tope de sockets de `/ws` abiertos en el proceso, contados desde **antes** del upgrade y hasta que la goroutine de la conexión termina: un socket que nunca envía `session.hello` también ocupa plaza durante sus 5 s de handshake ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Por encima, el upgrade responde **`503 Service Unavailable`** con `Retry-After: 5` y no abre socket; se cuenta en `eo_ws_connections_rejected_total{reason="max_connections"}` y se registra en `warn`. El límite de descriptores del proceso (`ulimit -n`) tiene que quedar por encima de este valor más las conexiones a PostgreSQL y Redis: ver [deployment.md §3.2](./deployment.md#32-composición-en-el-vps). |
+| `EO_WS_MAX_CONNECTIONS_PER_IP` | int | `32` | 0–100000; **0 = sin tope** | No | No | Tope de sockets de `/ws` abiertos **por IP**, con el mismo recuento. Por encima, **`429 Too Many Requests`** con `Retry-After: 5`; `reason="max_connections_per_ip"`. La IP es la del socket salvo con `EO_TRUST_PROXY_HEADERS=true`. **Detrás de un reverse proxy, sin esa variable, todas las conexiones comparten la IP del proxy y este tope sería el del servidor entero**: el arranque lo avisa en `warn` en producción. Varios jugadores detrás de una misma NAT (una oficina, una universidad, un operador móvil con CGNAT) comparten el cupo: 32 es holgado para una NAT doméstica y corto para un CGNAT grande; se sube, o se pone a 0, si los logs muestran rechazos legítimos. Es por IP exacta; agregar IPv6 por `/64` es **TBD (fuera de MVP)**. |
+| `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off` | No | No | Si la IP de una conexión es la **primera** entrada de `X-Forwarded-For` en lugar de la del socket. **La misma variable, con el mismo significado, que lee `apps/web`** (§3.8-bis): en el Game Server gobierna el tope por IP. Sólo con un reverse proxy delante que **sobrescriba** la cabecera (Caddy por defecto; Nginx con `$remote_addr`, no con `$proxy_add_x_forwarded_for`, que la añade a lo que trajo el cliente y la deja falsificable). Sin proxy y con `true`, cualquiera elige su IP y se salta el tope. |
 
 ### 3.8-bis Identidad (las lee `apps/web`, no el Game Server)
 
@@ -157,13 +162,14 @@ lleva el prefijo `NEXT_PUBLIC_`. En desarrollo, `apps/web` carga el `.env` de la
 |---|---|---|---|---|---|
 | `EO_AUTH_JWT_SECRET` | string | — | ≥ 32 caracteres; sin `dev-only` en producción | **Sí** | El **mismo** que verifica el Game Server (§3.3): `apps/web` firma con él el game ticket y el token de fundación. |
 | `EO_IDENTITY_POSTGRES_URL` | DSN | — (obligatoria) | URL de PostgreSQL | **Sí** | Almacén de identidad: `accounts` y `web_sessions`, en una base y con un rol propios. En local la crea `pnpm run pg:identity` con una contraseña aleatoria que escribe sólo en el `.env`. |
-| `EO_GAME_SERVER_INTERNAL_URL` | URL | `http://localhost:8080` | URL HTTP(S) | No | Base a la que `apps/web` llama `POST /internal/players` para fundar un jugador. |
+| `EO_GAME_SERVER_INTERNAL_URL` | URL | `http://localhost:8080` (en `apps/web`; `.env.example` trae `http://localhost:8081`) | URL HTTP(S) | No | Base a la que `apps/web` llama `POST /internal/players` y `GET /internal/players/{id}`. Desde [ADR-021](../decisions/ADR-021-game-server-perimeter.md) apunta al **listener interno** (`EO_INTERNAL_ADDR`, `127.0.0.1:8081`), no al puerto público del juego: contra `8080` esas rutas responden `404`. El valor por defecto de `apps/web/src/server/config.ts` sigue diciendo `8080` y debe cambiarse a `8081`; mientras tanto, el `.env` lo fija. |
 | `EO_AUTH_RATE_LIMIT_PER_MINUTE` | int | `10` | 1–100000 | No | Intentos de alta y login por minuto y por origen. Cada uno calcula `scrypt`: sin límite, cualquiera hace quemar CPU al servidor web, y en el login es lo único que separa una contraseña de la fuerza bruta. **Por proceso**: con varias instancias de Next.js, cada una lleva su cuenta. |
 | `EO_AUTH_RATE_LIMIT_BURST` | int | `5` | 1–10000 | No | Capacidad del cubo de esos intentos. Un humano que se equivoca de contraseña dos veces no lo nota; un script sí. |
-| `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false` | No | Si se cree a `X-Forwarded-For` al identificar el origen. **Actívalo sólo con un proxy inverso delante.** Sin esto, todas las peticiones comparten un único cupo; sin proxy y con esto, cualquiera falsifica la cabecera y se salta el límite. El valor por defecto es el seguro. |
+| `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false` | No | Si se cree a `X-Forwarded-For` al identificar el origen. **Actívalo sólo con un proxy inverso delante.** Sin esto, todas las peticiones comparten un único cupo; sin proxy y con esto, cualquiera falsifica la cabecera y se salta el límite. El valor por defecto es el seguro. **También la lee el Game Server** (§3.8), para el tope de conexiones por IP: es la misma decisión —hay o no un proxy de confianza delante— tomada una vez para los dos procesos. |
 
 Hasta ADR-018, `EO_AUTH_RATE_LIMIT_*` y `EO_TRUST_PROXY_HEADERS` las leía el Game Server, que era quien
-calculaba bcrypt; cambiaron de proceso, no de nombre ni de significado.
+calculaba bcrypt; cambiaron de proceso, no de nombre ni de significado. Desde
+[ADR-021](../decisions/ADR-021-game-server-perimeter.md), `EO_TRUST_PROXY_HEADERS` la leen los dos.
 
 ### 3.9 Constantes NO configurables por entorno
 
@@ -177,6 +183,14 @@ que ser más tolerante que ellos (ver [deployment.md](./deployment.md#43-reglas-
 | `WSPingInterval` | **15 s** | Cadencia del ping del servidor. Mantiene viva la conexión a través de NAT y proxies. |
 | `WSReadTimeout` | **45 s** | Silencio máximo tolerado en la lectura. Da margen para perder dos pings seguidos. |
 | `WSWriteTimeout` | **10 s** | Plazo máximo para completar una escritura hacia el cliente. |
+
+Y tres plazos de los servidores HTTP (`net/http`), fijados en `cmd/server` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Acotan lo que un socket puede ocupar sin terminar de hablar; **no** afectan a un WebSocket ya establecido, porque gorilla retira estos plazos del socket al hacer el upgrade y desde ahí mandan los cuatro de arriba:
+
+| Constante | Valor | Papel |
+|---|---|---|
+| `httpReadHeaderTimeout` | **10 s** | Plazo para recibir las cabeceras de una petición. |
+| `httpReadTimeout` | **15 s** | Plazo para recibir la petición entera, cuerpo incluido. |
+| `httpIdleTimeout` | **60 s** | Silencio máximo de una conexión keep-alive entre dos peticiones. |
 
 ### 3.10 Variables que no son configuración del servidor
 
@@ -193,7 +207,7 @@ Otras constantes que **no** son configuración porque viven en código o en dato
 `TILE_H = 32` (proyección isométrica, exclusiva del cliente); √2 en punto fijo `1414214/1000000` para el paso
 diagonal; las escalas de coste del A\* `costScaleOrtho = 1000` y `costScaleDiag = 1414`, con la heurística
 octile ponderada por `MinTerrainCostUnits = 6` (ROAD); los códigos de cierre WS
-`4400/4401/4403/4408/4429/4500`; el TTL de 60 s del *game ticket* y del token de fundación (en `apps/web`) y el de 120 s de `ticket:jti:{jti}`; la vida de 7 días de la sesión web y el coste de `scrypt` (`N = 2^15, r = 8, p = 3`); el TTL
+`4400/4401/4403/4408/4429/4500`; el TTL de 60 s del *game ticket* y del token de fundación (en `apps/web`), el margen de 30 s de desfase de reloj con que el Game Server verifica su `iat` y su `exp` (`auth.ClockSkew`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) y el de 120 s de `ticket:jti:{jti}`; la vida de 7 días de la sesión web y el coste de `scrypt` (`N = 2^15, r = 8, p = 3`); el TTL
 de 300 s de `idem:{playerId}:{requestId}`; el tamaño de la cola de comandos del loop (8192); el presupuesto
 de apagado ordenado (25 s, con 15 s para drenar la cola de persistencia) y el umbral de 5 s tras el cual
 `/ready` marca el game loop como `stale`; y las eras, que viven en la tabla `eras`.
@@ -215,11 +229,12 @@ las consecuencias se escriben en Postgres antes de que nadie lo note.
 ### 4.2 Orden de validación
 
 1. **Parseo por tipo y rango individual**, variable a variable, según §3. Un entero que no parsea produce
-   `EO_X="…" no es un entero válido`; uno fuera de rango, `EO_X=N fuera del rango permitido [min, max]`. En
-   ambos casos el valor efectivo cae al default y el error queda anotado.
+   `EO_X="…" no es un entero válido`; uno fuera de rango, `EO_X=N fuera del rango permitido [min, max]`; un
+   `EO_ENV` fuera de la lista cerrada, `EO_ENV="…" no es un entorno válido (usa development, test, production)`.
+   En todos los casos el valor efectivo cae al default y el error queda anotado.
 2. **Presencia de obligatorias.** `EO_POSTGRES_URL` y `EO_AUTH_JWT_SECRET`: ausente o vacía → error.
    `EO_REDIS_URL` solo es obligatoria si `EO_ENV=production`.
-3. **Las seis validaciones cruzadas**, las que ninguna variable puede comprobar sola:
+3. **Las ocho validaciones cruzadas**, las que ninguna variable puede comprobar sola:
 
    | # | Regla | Por qué existe |
    |---|---|---|
@@ -229,14 +244,17 @@ las consecuencias se escriben en Postgres antes de que nadie lo note.
    | 4 | `EO_WORLD_WIDTH` y `EO_WORLD_HEIGHT` deben ser **múltiplos exactos** de `EO_CHUNK_SIZE` | Un mundo que no encaja en chunks enteros deja una franja sin chunk al que suscribirse. |
    | 5 | `EO_PRESENCE_HEARTBEAT_SECONDS` **estrictamente menor** que `EO_PRESENCE_TTL_SECONDS` | Con heartbeat ≥ TTL la presencia expiraría entre latidos y los jugadores conectados parpadearían a ausentes. |
    | 6 | `EO_WS_RATE_LIMIT_BURST` **≥** `EO_WS_RATE_LIMIT_PER_SECOND` | Un *bucket* con capacidad menor que su tasa de recarga no puede sostener siquiera la tasa nominal. |
+   | 7 | `EO_WS_ALLOWED_ORIGINS` **no puede estar vacía** si `EO_ENV=production` | Sin lista, el upgrade de `/ws` acepta cualquier `Origin`: cualquier página web abriría sesiones de juego desde el navegador de un jugador que tenga la web abierta ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
+   | 8 | `EO_HTTP_ADDR`, `EO_METRICS_ADDR` y `EO_INTERNAL_ADDR` con **puertos distintos** | Dos listeners en el mismo puerto fallan al abrir el segundo, ya en marcha. Se compara sólo el puerto porque `:8080` escucha en todas las interfaces y choca con cualquier `host:8080`. Error: `EO_INTERNAL_ADDR=":8080" repite el puerto 8080 de EO_HTTP_ADDR`. |
 
 **La validación acumula TODOS los errores y los reporta juntos**, no de uno en uno. Arreglar la
 configuración de un despliegue con un reinicio por error es tiempo de indisponibilidad regalado.
 
 Reglas que **no** aplica el cargador, y que por tanto son responsabilidad del procedimiento de despliegue
 (ver el checklist de [deployment.md](./deployment.md#9-checklist-de-seguridad-previo-a-producción)):
-`sslmode=require` en `EO_POSTGRES_URL`, esquema `rediss://` en `EO_REDIS_URL`, `EO_LOG_LEVEL != debug` en
-producción y `EO_METRICS_ADDR != EO_HTTP_ADDR`. No están automatizadas: si se te olvidan, el proceso arranca.
+`sslmode=require` en `EO_POSTGRES_URL`, esquema `rediss://` en `EO_REDIS_URL` y `EO_LOG_LEVEL != debug` en
+producción. No están automatizadas: si se te olvidan, el proceso arranca. (Que los tres listeners no
+compartan puerto sí lo valida el cargador desde [ADR-021](../decisions/ADR-021-game-server-perimeter.md).)
 
 ### 4.3 Mensajes de error
 

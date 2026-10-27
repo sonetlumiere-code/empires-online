@@ -162,6 +162,7 @@ elección de A\*: son decisiones del canon y de `architecture/`, no del registro
 | [decisions/ADR-018-identity-store-and-ticket-issuer.md](decisions/ADR-018-identity-store-and-ticket-issuer.md) | La identidad vive en Next.js con su propio almacén; Next.js emite el ticket y el game server sólo funda al jugador (`POST /internal/players`). |
 | [decisions/ADR-019-handshake-failure-close-code.md](decisions/ADR-019-handshake-failure-close-code.md) | Un handshake fallido se comunica sólo con el código de cierre (`4401`, `4400`, `4408`, `1009`), sin `system.error` previo. Sustituye en parte a ADR-010. |
 | [decisions/ADR-020-stale-pending-accounts.md](decisions/ADR-020-stale-pending-accounts.md) | Una cuenta `PENDING` abandonada (último intento de fundación de hace más de una hora) se resuelve preguntando al game server si su jugador existe: se activa, se borra o se deja. |
+| [decisions/ADR-021-game-server-perimeter.md](decisions/ADR-021-game-server-perimeter.md) | El perímetro del Game Server tras la auditoría del 2026-10-26: `Origin` contra `EO_WS_ALLOWED_ORIGINS`, 30 s de margen de reloj en el ticket, topes de conexiones con `503`/`429`, `/internal/players` en su propio listener y `EO_ENV` cerrado. |
 
 ### 2.9 `roadmap/` — Plan
 
