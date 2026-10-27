@@ -123,6 +123,11 @@ export class RenderReconciler {
     return rec ? { x: rec.drawnX, y: rec.drawnY } : undefined;
   }
 
+  /** Olvida una unidad que deja de dibujarse: si vuelve, reaparece sin deslizarse. */
+  forget(unitId: number): void {
+    this.records.delete(unitId);
+  }
+
   /** Olvida las unidades que ya no se dibujan: si vuelven, reaparecen sin deslizarse. */
   retain(unitIds: ReadonlySet<number>): void {
     for (const id of this.records.keys()) {

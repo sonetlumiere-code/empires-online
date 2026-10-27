@@ -12,6 +12,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { v1 } from '@empires-online/protocol';
 
 import { useWorldStore } from './world';
+import { createHudSelector } from './selectors';
+import { projectChanges } from '../render/projection';
 
 const PLAYER = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -107,5 +109,43 @@ describe('coste de un delta con 2 000 unidades (informativo)', () => {
     // Cota de seguridad, no de rendimiento: 20 µs por unidad y delta sería ya
     // el síntoma de volver a copiar el mapa entero en cada mensaje.
     expect(deltasMs).toBeLessThan(DELTAS * UNITS * 0.02);
+  });
+
+  it('la proyección a la escena y el selector del HUD cuestan lo que cambia', () => {
+    const next = lcg(11);
+    const deltas: v1.ServerMessage[] = [];
+    for (let i = 0; i < DELTAS; i++) deltas.push(update(100 + i, 1 + (next() % UNITS), next() % 41));
+
+    const { applySnapshot, applyServerMessage } = useWorldStore.getState();
+    applySnapshot(snapshot());
+
+    // Lo que hacen GameCanvas y la página por cada cambio del store.
+    const selectHud = createHudSelector();
+    let projected = 0;
+    let hudRenders = 0;
+    let lastHud = selectHud(useWorldStore.getState());
+    const unsubscribe = useWorldStore.subscribe((state, previous) => {
+      if (state.changes === previous.changes) return;
+      const sceneUpdate = projectChanges(state, state.changes);
+      projected += sceneUpdate?.units.length ?? 0;
+      const hud = selectHud(state);
+      if (hud !== lastHud) hudRenders++;
+      lastHud = hud;
+    });
+
+    const t0 = performance.now();
+    for (const d of deltas) applyServerMessage(d);
+    const t1 = performance.now();
+    unsubscribe();
+
+    const totalMs = t1 - t0;
+    console.info(
+      `[perf tubería] ${DELTAS} entity.update con store + proyección + selector del HUD: ` +
+        `${totalMs.toFixed(2)} ms (${((totalMs / DELTAS) * 1000).toFixed(1)} µs/delta)`,
+    );
+
+    expect(projected, 'cada delta proyecta exactamente su unidad').toBe(DELTAS);
+    expect(hudRenders, 'un cambio de hp no re-renderiza el HUD').toBe(0);
+    expect(totalMs).toBeLessThan(DELTAS * UNITS * 0.02);
   });
 });

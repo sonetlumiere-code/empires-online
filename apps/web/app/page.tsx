@@ -15,11 +15,16 @@ import { GameClient, type ConnectionState } from '../src/net/client';
 import { login, register, ticketProvider, AuthError } from '../src/net/auth';
 import type { v1 } from '@empires-online/protocol';
 
-import { useWorldStore } from '../src/state/world';
+import { useWorldStore, type CityView } from '../src/state/world';
+import { createHudSelector } from '../src/state/selectors';
 import { ViewSync } from '../src/state/viewSync';
 import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
+
+// Lo que el HUD muestra del mundo, por valor: misma vista, misma referencia, y
+// React no se vuelve a renderizar con el delta de una unidad que no le incumbe.
+const selectHud = createHudSelector();
 
 /** Lo que ve el jugador cuando su sesión web ya no sirve y vuelve al formulario. */
 const SESSION_ENDED_MESSAGE = 'Tu sesión ha caducado o ya no es válida. Vuelve a entrar.';
@@ -39,11 +44,7 @@ export default function Page() {
   const selectUnit = useWorldStore((s) => s.selectUnit);
   const selectedUnitId = useWorldStore((s) => s.selectedUnitId);
   const playerId = useWorldStore((s) => s.playerId);
-  const units = useWorldStore((s) => s.units);
-  const cities = useWorldStore((s) => s.cities);
-  // Los mapas son de referencia estable: lo que cambia por delta es `changes`.
-  // Provisional hasta que el HUD se suscriba a un selector por valor.
-  useWorldStore((s) => s.changes);
+  const hud = useWorldStore(selectHud);
   const lastError = useWorldStore((s) => s.lastError);
 
   useEffect(() => () => clientRef.current?.disconnect(), []);
@@ -105,9 +106,7 @@ export default function Page() {
       // Un clic sobre la zona urbana de una ciudad (su 3 × 3) es la orden de
       // entrar en ella, como un clic sobre un edificio en la referencia. El
       // cliente sólo elige el objetivo; si se puede lo decide el servidor.
-      const ciudad = [...useWorldStore.getState().cities.values()].find(
-        (c) => Math.abs(tile.x - c.centerX) <= 1 && Math.abs(tile.y - c.centerY) <= 1,
-      );
+      const ciudad = cityAt(tile);
       if (ciudad) {
         client.garrisonUnit(selectedUnitId, ciudad.id);
         selectUnit(null);
@@ -179,9 +178,7 @@ export default function Page() {
     );
   }
 
-  const ownUnits = [...units.values()].filter((u) => u.playerId === playerId);
-  const garrisoned = ownUnits.filter((u) => u.garrisonCityId !== null);
-  const ownCity = [...cities.values()].find((c) => c.ownerPlayerId === playerId);
+  const { ownUnitCount, garrisoned, ownCity } = hud;
 
   return (
     <main style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -214,7 +211,7 @@ export default function Page() {
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
           {selectedUnitId !== null
             ? `Unidad ${selectedUnitId} seleccionada — clic en el mapa para moverla, en una ciudad para guarnecerla`
-            : `${ownUnits.length} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H vuelve a la ciudad`}
+            : `${ownUnitCount} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H vuelve a la ciudad`}
         </span>
       </header>
 
@@ -236,6 +233,14 @@ export default function Page() {
       )}
     </main>
   );
+}
+
+/** La ciudad cuya zona urbana (su 3 × 3) contiene el tile, si la hay. Se consulta al hacer clic, no por render. */
+function cityAt(tile: Tile): CityView | undefined {
+  for (const c of useWorldStore.getState().cities.values()) {
+    if (Math.abs(tile.x - c.centerX) <= 1 && Math.abs(tile.y - c.centerY) <= 1) return c;
+  }
+  return undefined;
 }
 
 /**

@@ -6,14 +6,21 @@
  * renderizado de React sería tirar el rendimiento por una comodidad que no
  * necesitamos.
  *
+ * La escena recibe del store sólo lo que CAMBIÓ (`apply(SceneUpdate)`): crea,
+ * actualiza o retira esos sprites y nada más. Por frame sólo trabaja sobre las
+ * unidades activas —en movimiento, recién cambiadas o con un desfase por
+ * corregir—; una unidad quieta no cuesta nada hasta que llega su delta.
+ *
  * Ver ../../../../docs/architecture/frontend.md
  */
 import { Application, Container, Graphics, Text } from 'pixi.js';
 
 import { TILE_H, TILE_W, depthOf, screenToTile, worldToIso, type Camera, type Point, type Tile } from './iso';
 import type { CameraController } from './camera';
-import type { ActiveMovement } from '../state/interpolation';
 import { RenderReconciler } from './reconciler';
+import type { SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
+
+export type { SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
 
 /** Colores por tipo de terreno (índice = valor del byte de TerrainType). */
 const TERRAIN_COLORS = [
@@ -24,45 +31,6 @@ const TERRAIN_COLORS = [
   0x2f6f9f, // 4 WATER
   0xb59b66, // 5 ROAD
 ] as const;
-
-export interface SceneUnit {
-  readonly id: number;
-  readonly x: number;
-  readonly y: number;
-  readonly movement: ActiveMovement | null;
-  readonly isOwn: boolean;
-  readonly isSelected: boolean;
-}
-
-export interface SceneCity {
-  readonly id: number;
-  readonly centerX: number;
-  readonly centerY: number;
-  readonly name: string;
-  readonly presenceState: string;
-  readonly isOwn: boolean;
-}
-
-export interface SceneTerritory {
-  readonly id: number;
-  readonly minX: number;
-  readonly minY: number;
-  readonly maxX: number;
-  readonly maxY: number;
-  /** Tal cual lo envió el servidor. El cliente NO deduce ownership. */
-  readonly ownerType: string;
-  readonly isOwn: boolean;
-}
-
-export interface SceneData {
-  readonly units: readonly SceneUnit[];
-  readonly cities: readonly SceneCity[];
-  readonly territories: readonly SceneTerritory[];
-  /** Devuelve el terreno de un tile, o undefined si su chunk no está cargado. */
-  readonly terrainAt: (x: number, y: number) => number | undefined;
-  /** Instante del SERVIDOR, ya corregido por el desfase de reloj. */
-  readonly serverTimeMs: () => number;
-}
 
 export interface SceneCallbacks {
   /** El jugador hizo clic sobre un tile del mundo. */
@@ -76,6 +44,19 @@ export interface SceneCallbacks {
   onCameraFrame?: (center: Point) => void;
 }
 
+interface UnitEntry {
+  readonly sprite: Container;
+  readonly body: Graphics;
+  unit: SceneUnit;
+}
+
+interface CityEntry {
+  readonly sprite: Container;
+  readonly body: Graphics;
+  readonly label: Text;
+  city: SceneCity;
+}
+
 export class IsoScene {
   private app: Application | null = null;
   private readonly root = new Container();
@@ -83,12 +64,16 @@ export class IsoScene {
   private readonly territoryLayer = new Container();
   private readonly entityLayer = new Container();
   private readonly terrainCache = new Map<string, Graphics>();
-  private readonly unitSprites = new Map<number, Container>();
-  private readonly citySprites = new Map<number, Container>();
+  private readonly units = new Map<number, UnitEntry>();
+  private readonly cities = new Map<number, CityEntry>();
   // La clave incluye el dueño: cambiar de dueño obliga a redibujar, y comparar
-  // la firma es más barato que reconstruir el gráfico en cada frame.
+  // la firma es más barato que reconstruir el gráfico.
   private readonly territoryShapes = new Map<number, { signature: string; graphic: Graphics }>();
-  private data: SceneData | null = null;
+  /** Unidades que hay que reconciliar este frame: en movimiento, recién cambiadas o con desfase pendiente. */
+  private readonly active = new Set<number>();
+  /** Algún `zIndex` cambió o entró un sprite desde la última ordenación. */
+  private sortDirty = false;
+  private terrain: TerrainSource | null = null;
   // Posición dibujada de cada unidad: la interpolación más la corrección
   // gradual de las discontinuidades que traen los deltas (frontend.md §5.3).
   private reconciler = new RenderReconciler();
@@ -98,7 +83,9 @@ export class IsoScene {
 
   constructor(
     private readonly cameraController: CameraController,
-    private readonly callbacks: SceneCallbacks = {},
+    private readonly callbacks: SceneCallbacks,
+    /** Instante del SERVIDOR, ya corregido por el desfase de reloj. Se evalúa en cada frame. */
+    private readonly serverTimeMs: () => number,
   ) {}
 
   /** Inicializa PixiJS sobre un canvas ya montado. */
@@ -128,19 +115,14 @@ export class IsoScene {
       // Sólo el botón izquierdo selecciona y ordena: el derecho y el central
       // arrastran la cámara (los gestiona GameCanvas).
       if (event.button !== 0) return;
-      if (!this.data || !this.camera) return;
+      if (!this.camera) return;
       const tile = screenToTile(event.global.x, event.global.y, this.camera);
 
       // El picking de unidades tiene prioridad: seleccionar una unidad es más
       // frecuente que ordenar un movimiento a su tile exacto.
-      const hit = this.data.units.find((u) => {
-        // La posición que el jugador VE, no la autoritativa.
-        const pos = this.reconciler.drawn(u.id) ?? { x: u.x, y: u.y };
-        return Math.round(pos.x) === tile.x && Math.round(pos.y) === tile.y;
-      });
-
-      if (hit && this.callbacks.onUnitClick) {
-        this.callbacks.onUnitClick(hit.id);
+      const hit = this.unitAt(tile);
+      if (hit !== null && this.callbacks.onUnitClick) {
+        this.callbacks.onUnitClick(hit);
         return;
       }
       this.callbacks.onTileClick?.(tile);
@@ -154,9 +136,11 @@ export class IsoScene {
     this.app?.destroy(true, { children: true });
     this.app = null;
     this.terrainCache.clear();
-    this.unitSprites.clear();
-    this.citySprites.clear();
+    this.units.clear();
+    this.cities.clear();
     this.territoryShapes.clear();
+    this.active.clear();
+    this.terrain = null;
     this.reconciler = new RenderReconciler();
   }
 
@@ -164,19 +148,36 @@ export class IsoScene {
     this.app?.renderer.resize(width, height);
   }
 
-  /** Entrega el estado más reciente. Se llama cuando cambia el store, no cada frame. */
-  update(data: SceneData): void {
-    this.data = data;
+  /**
+   * Entrega lo que cambió en el store. Se llama por cambio, no por frame, y
+   * sólo toca los sprites de las entidades que vienen en el cambio.
+   */
+  apply(update: SceneUpdate): void {
+    if (update.terrain) this.terrain = update.terrain;
+
+    if (update.complete) {
+      this.pruneAbsent(this.units, update.units, (id) => this.removeUnit(id));
+      this.pruneAbsent(this.cities, update.cities, (id) => this.removeCity(id));
+      this.pruneAbsent(this.territoryShapes, update.territories, (id) => this.removeTerritory(id));
+    } else {
+      for (const id of update.removedUnits) this.removeUnit(id);
+      for (const id of update.removedCities) this.removeCity(id);
+      for (const id of update.removedTerritories) this.removeTerritory(id);
+    }
+
+    for (const unit of update.units) this.upsertUnit(unit);
+    for (const city of update.cities) this.upsertCity(city);
+    for (const territory of update.territories) this.upsertTerritory(territory);
   }
 
   private draw(): void {
-    const data = this.data;
-    if (!data || !this.app) return;
+    const app = this.app;
+    if (!app) return;
 
     // La cámara avanza con el dt del ticker: el desplazamiento por teclado no
     // depende de los FPS.
-    this.cameraController.step(this.app.ticker.deltaMS);
-    const camera = this.cameraController.camera(this.app.screen.width, this.app.screen.height);
+    this.cameraController.step(app.ticker.deltaMS);
+    const camera = this.cameraController.camera(app.screen.width, app.screen.height);
     this.camera = camera;
     if (!camera) return;
     const center = this.cameraController.centerWorld();
@@ -186,20 +187,191 @@ export class IsoScene {
 
     // Un instante del servidor por frame, el mismo para todas las unidades; el
     // dt del ticker es lo que mide la continuidad (frontend.md §5.3).
-    this.reconciler.frame(data.serverTimeMs(), this.app.ticker.deltaMS);
+    this.reconciler.frame(this.serverTimeMs(), app.ticker.deltaMS);
 
-    this.drawTerrain(data, camera);
-    this.drawTerritories(data);
-    this.drawCities(data);
-    this.drawUnits(data);
+    this.drawTerrain(camera);
+    this.stepUnits();
 
     // Orden de dibujado isométrico: lo que está más "al fondo" (menor x+y) se
     // pinta antes. Sin esto, una unidad delante de un edificio se dibujaría
-    // detrás de él.
-    this.entityLayer.children.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    // detrás de él. Sólo se reordena si algún zIndex cambió.
+    if (this.sortDirty) {
+      this.entityLayer.children.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+      this.sortDirty = false;
+    }
   }
 
-  private drawTerrain(data: SceneData, camera: Camera): void {
+  /**
+   * Mueve las unidades activas a su posición de este frame. Una unidad quieta
+   * y ya en su sitio deja de ser activa hasta su próximo delta: no se le pide
+   * nada al reconciliador ni se toca su sprite.
+   */
+  private stepUnits(): void {
+    for (const id of this.active) {
+      const entry = this.units.get(id);
+      if (!entry) {
+        this.active.delete(id);
+        continue;
+      }
+      const unit = entry.unit;
+      // La posición dibujada es la INTERPOLADA, no la autoritativa: por eso el
+      // movimiento se ve continuo aunque el servidor sólo avance un tile cada
+      // 600 ms. Cuando un delta la hace saltar, el reconciliador reparte el
+      // salto en unos frames en lugar de dibujarlo de golpe.
+      const pos = this.reconciler.position(id, unit);
+      const iso = worldToIso(pos.x, pos.y);
+      entry.sprite.position.set(iso.x, iso.y);
+      this.setDepth(entry.sprite, depthOf(pos.x, pos.y) + 0.5); // por delante del terreno y de la ciudad
+      // Quieta y sin desfase que corregir: hasta el próximo delta no hay nada que hacer.
+      if (unit.movement === null && pos.x === unit.x && pos.y === unit.y) this.active.delete(id);
+    }
+  }
+
+  private setDepth(sprite: Container, z: number): void {
+    if (sprite.zIndex === z) return;
+    sprite.zIndex = z;
+    this.sortDirty = true;
+  }
+
+  /** La unidad que se DIBUJA en ese tile, si la hay: la posición que el jugador ve, no la autoritativa. */
+  private unitAt(tile: Tile): number | null {
+    for (const [id, entry] of this.units) {
+      const pos = this.reconciler.drawn(id) ?? { x: entry.unit.x, y: entry.unit.y };
+      if (Math.round(pos.x) === tile.x && Math.round(pos.y) === tile.y) return id;
+    }
+    return null;
+  }
+
+  private pruneAbsent<T>(map: Map<number, T>, present: readonly { readonly id: number }[], remove: (id: number) => void): void {
+    const seen = new Set<number>();
+    for (const p of present) seen.add(p.id);
+    for (const id of map.keys()) {
+      if (!seen.has(id)) remove(id);
+    }
+  }
+
+  private upsertUnit(unit: SceneUnit): void {
+    let entry = this.units.get(unit.id);
+    if (!entry) {
+      const sprite = new Container();
+      const body = new Graphics();
+      paintUnitBody(body, unit.isOwn);
+      sprite.addChild(body);
+      // Aparece donde dice el servidor; el primer frame la lleva a la posición
+      // interpolada por el reconciliador.
+      const iso = worldToIso(unit.x, unit.y);
+      sprite.position.set(iso.x, iso.y);
+      entry = { sprite, body, unit };
+      this.units.set(unit.id, entry);
+      this.entityLayer.addChild(sprite);
+      this.sortDirty = true;
+    } else if (entry.unit.isOwn !== unit.isOwn) {
+      paintUnitBody(entry.body, unit.isOwn);
+    }
+    entry.unit = unit;
+    entry.sprite.alpha = unit.isSelected ? 1 : 0.9;
+    entry.sprite.scale.set(unit.isSelected ? 1.25 : 1);
+    this.active.add(unit.id);
+  }
+
+  private removeUnit(id: number): void {
+    const entry = this.units.get(id);
+    if (!entry) return;
+    this.entityLayer.removeChild(entry.sprite);
+    entry.sprite.destroy({ children: true });
+    this.units.delete(id);
+    this.active.delete(id);
+    // Si vuelve, reaparece donde diga el servidor, sin deslizarse desde donde estaba.
+    this.reconciler.forget(id);
+  }
+
+  private upsertCity(city: SceneCity): void {
+    let entry = this.cities.get(city.id);
+    if (!entry) {
+      const sprite = new Container();
+      const body = new Graphics();
+      paintCityBody(body, city.isOwn);
+      sprite.addChild(body);
+
+      const label = new Text({
+        text: city.name,
+        style: { fontSize: 11, fill: 0xffffff, fontFamily: 'monospace' },
+      });
+      label.anchor.set(0.5, 1);
+      label.position.set(0, -TILE_H * 1.6);
+      sprite.addChild(label);
+
+      entry = { sprite, body, label, city };
+      this.cities.set(city.id, entry);
+      this.entityLayer.addChild(sprite);
+      this.sortDirty = true;
+    }
+    entry.city = city;
+
+    const iso = worldToIso(city.centerX, city.centerY);
+    entry.sprite.position.set(iso.x, iso.y);
+    this.setDepth(entry.sprite, depthOf(city.centerX, city.centerY));
+    // Una ciudad protegida se distingue de un vistazo.
+    entry.sprite.alpha = city.presenceState === 'PROTECTED' ? 0.65 : 1;
+  }
+
+  private removeCity(id: number): void {
+    const entry = this.cities.get(id);
+    if (!entry) return;
+    this.entityLayer.removeChild(entry.sprite);
+    entry.sprite.destroy({ children: true });
+    this.cities.delete(id);
+  }
+
+  /**
+   * Overlay de territorios: el contorno del rectángulo, proyectado.
+   *
+   * Un rectángulo del mundo se ve como un ROMBO en isométrico, no como un
+   * rectángulo. Sus cuatro vértices son los extremos de las cuatro esquinas del
+   * área, no los centros de esos tiles: por eso cada uno lleva el desplazamiento
+   * de medio tile que lo lleva al borde de su diamante.
+   *
+   * El color sale ÚNICAMENTE de `ownerType` y de si el dueño es el jugador de
+   * esta sesión, ambos enviados por el servidor. El cliente no deduce ownership
+   * de ninguna otra cosa (ADR-002).
+   */
+  private upsertTerritory(t: SceneTerritory): void {
+    const signature = `${t.ownerType}:${t.isOwn}:${t.minX},${t.minY},${t.maxX},${t.maxY}`;
+    const cached = this.territoryShapes.get(t.id);
+    if (cached && cached.signature === signature) return;
+    if (cached) this.removeTerritory(t.id);
+
+    const north = worldToIso(t.minX, t.minY);
+    const east = worldToIso(t.maxX, t.minY);
+    const south = worldToIso(t.maxX, t.maxY);
+    const west = worldToIso(t.minX, t.maxY);
+
+    const { color, alpha } = territoryStyle(t);
+    const g = new Graphics();
+    g.moveTo(north.x, north.y - TILE_H / 2)
+      .lineTo(east.x + TILE_W / 2, east.y)
+      .lineTo(south.x, south.y + TILE_H / 2)
+      .lineTo(west.x - TILE_W / 2, west.y)
+      .closePath()
+      .fill({ color, alpha })
+      .stroke({ color, width: 2, alpha: Math.min(1, alpha * 6) });
+
+    this.territoryLayer.addChild(g);
+    this.territoryShapes.set(t.id, { signature, graphic: g });
+  }
+
+  private removeTerritory(id: number): void {
+    const entry = this.territoryShapes.get(id);
+    if (!entry) return;
+    this.territoryLayer.removeChild(entry.graphic);
+    entry.graphic.destroy();
+    this.territoryShapes.delete(id);
+  }
+
+  private drawTerrain(camera: Camera): void {
+    const source = this.terrain;
+    if (!source) return;
+
     // Sólo se dibujan los tiles visibles: culling por área de interés.
     const halfW = camera.viewportWidth / (2 * camera.zoom);
     const halfH = camera.viewportHeight / (2 * camera.zoom);
@@ -221,7 +393,7 @@ export class IsoScene {
 
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
-        const terrain = data.terrainAt(x, y);
+        const terrain = terrainOf(source, x, y);
         if (terrain === undefined) continue;
 
         const key = `${x}:${y}`;
@@ -229,7 +401,7 @@ export class IsoScene {
 
         let tile = this.terrainCache.get(key);
         if (!tile) {
-          tile = this.createTerrainTile(x, y, terrain);
+          tile = createTerrainTile(x, y, terrain);
           this.terrainCache.set(key, tile);
           this.terrainLayer.addChild(tile);
         }
@@ -245,158 +417,49 @@ export class IsoScene {
       this.terrainCache.delete(key);
     }
   }
+}
 
-  /**
-   * Overlay de territorios: el contorno del rectángulo, proyectado.
-   *
-   * Un rectángulo del mundo se ve como un ROMBO en isométrico, no como un
-   * rectángulo. Sus cuatro vértices son los extremos de las cuatro esquinas del
-   * área, no los centros de esos tiles: por eso cada uno lleva el desplazamiento
-   * de medio tile que lo lleva al borde de su diamante.
-   *
-   * El color sale ÚNICAMENTE de `ownerType` y de si el dueño es el jugador de
-   * esta sesión, ambos enviados por el servidor. El cliente no deduce ownership
-   * de ninguna otra cosa (ADR-002).
-   */
-  private drawTerritories(data: SceneData): void {
-    const seen = new Set<number>();
+/** Terreno de un tile, o `undefined` si su chunk no ha llegado. */
+function terrainOf(source: TerrainSource, x: number, y: number): number | undefined {
+  const size = source.chunkSize;
+  const cx = Math.floor(x / size);
+  const cy = Math.floor(y / size);
+  const chunk = source.chunkAt(cx, cy);
+  if (!chunk) return undefined;
+  return chunk.tiles[(y - cy * size) * chunk.size + (x - cx * size)];
+}
 
-    for (const t of data.territories) {
-      seen.add(t.id);
-      const signature = `${t.ownerType}:${t.isOwn}:${t.minX},${t.minY},${t.maxX},${t.maxY}`;
-      const cached = this.territoryShapes.get(t.id);
-      if (cached && cached.signature === signature) continue;
+function createTerrainTile(x: number, y: number, terrain: number): Graphics {
+  const iso = worldToIso(x, y);
+  const color = TERRAIN_COLORS[terrain] ?? 0xff00ff;
 
-      if (cached) {
-        this.territoryLayer.removeChild(cached.graphic);
-        cached.graphic.destroy();
-      }
+  const g = new Graphics();
+  g.moveTo(0, -TILE_H / 2)
+    .lineTo(TILE_W / 2, 0)
+    .lineTo(0, TILE_H / 2)
+    .lineTo(-TILE_W / 2, 0)
+    .closePath()
+    .fill({ color })
+    .stroke({ color: 0x000000, width: 0.5, alpha: 0.15 });
 
-      const north = worldToIso(t.minX, t.minY);
-      const east = worldToIso(t.maxX, t.minY);
-      const south = worldToIso(t.maxX, t.maxY);
-      const west = worldToIso(t.minX, t.maxY);
+  g.position.set(iso.x, iso.y);
+  return g;
+}
 
-      const { color, alpha } = territoryStyle(t);
-      const g = new Graphics();
-      g.moveTo(north.x, north.y - TILE_H / 2)
-        .lineTo(east.x + TILE_W / 2, east.y)
-        .lineTo(south.x, south.y + TILE_H / 2)
-        .lineTo(west.x - TILE_W / 2, west.y)
-        .closePath()
-        .fill({ color, alpha })
-        .stroke({ color, width: 2, alpha: Math.min(1, alpha * 6) });
+function paintUnitBody(body: Graphics, isOwn: boolean): void {
+  body
+    .clear()
+    .circle(0, -TILE_H / 3, 7)
+    .fill({ color: isOwn ? 0x4ea3ff : 0xff6b6b })
+    .stroke({ color: 0x0b1a2a, width: 1.5 });
+}
 
-      this.territoryLayer.addChild(g);
-      this.territoryShapes.set(t.id, { signature, graphic: g });
-    }
-
-    for (const [id, entry] of this.territoryShapes) {
-      if (seen.has(id)) continue;
-      this.territoryLayer.removeChild(entry.graphic);
-      entry.graphic.destroy();
-      this.territoryShapes.delete(id);
-    }
-  }
-
-  private createTerrainTile(x: number, y: number, terrain: number): Graphics {
-    const iso = worldToIso(x, y);
-    const color = TERRAIN_COLORS[terrain] ?? 0xff00ff;
-
-    const g = new Graphics();
-    g.moveTo(0, -TILE_H / 2)
-      .lineTo(TILE_W / 2, 0)
-      .lineTo(0, TILE_H / 2)
-      .lineTo(-TILE_W / 2, 0)
-      .closePath()
-      .fill({ color })
-      .stroke({ color: 0x000000, width: 0.5, alpha: 0.15 });
-
-    g.position.set(iso.x, iso.y);
-    return g;
-  }
-
-  private drawCities(data: SceneData): void {
-    const seen = new Set<number>();
-
-    for (const city of data.cities) {
-      seen.add(city.id);
-      let sprite = this.citySprites.get(city.id);
-
-      if (!sprite) {
-        sprite = new Container();
-        const body = new Graphics();
-        body
-          .rect(-TILE_W / 2, -TILE_H * 1.5, TILE_W, TILE_H * 1.5)
-          .fill({ color: city.isOwn ? 0xc9a227 : 0x8a5a2b })
-          .stroke({ color: 0x000000, width: 1, alpha: 0.4 });
-        sprite.addChild(body);
-
-        const label = new Text({
-          text: city.name,
-          style: { fontSize: 11, fill: 0xffffff, fontFamily: 'monospace' },
-        });
-        label.anchor.set(0.5, 1);
-        label.position.set(0, -TILE_H * 1.6);
-        sprite.addChild(label);
-
-        this.citySprites.set(city.id, sprite);
-        this.entityLayer.addChild(sprite);
-      }
-
-      const iso = worldToIso(city.centerX, city.centerY);
-      sprite.position.set(iso.x, iso.y);
-      sprite.zIndex = depthOf(city.centerX, city.centerY);
-      // Una ciudad protegida se distingue de un vistazo.
-      sprite.alpha = city.presenceState === 'PROTECTED' ? 0.65 : 1;
-    }
-
-    this.prune(this.citySprites, seen);
-  }
-
-  private drawUnits(data: SceneData): void {
-    const seen = new Set<number>();
-
-    for (const unit of data.units) {
-      seen.add(unit.id);
-      let sprite = this.unitSprites.get(unit.id);
-
-      if (!sprite) {
-        sprite = new Container();
-        const body = new Graphics();
-        body
-          .circle(0, -TILE_H / 3, 7)
-          .fill({ color: unit.isOwn ? 0x4ea3ff : 0xff6b6b })
-          .stroke({ color: 0x0b1a2a, width: 1.5 });
-        sprite.addChild(body);
-        this.unitSprites.set(unit.id, sprite);
-        this.entityLayer.addChild(sprite);
-      }
-
-      // La posición dibujada es la INTERPOLADA, no la autoritativa: por eso el
-      // movimiento se ve continuo aunque el servidor sólo avance un tile cada
-      // 600 ms. Cuando un delta la hace saltar, el reconciliador reparte el
-      // salto en unos frames en lugar de dibujarlo de golpe.
-      const pos = this.reconciler.position(unit.id, unit);
-      const iso = worldToIso(pos.x, pos.y);
-      sprite.position.set(iso.x, iso.y);
-      sprite.zIndex = depthOf(pos.x, pos.y) + 0.5; // por delante del terreno y de la ciudad
-      sprite.alpha = unit.isSelected ? 1 : 0.9;
-      sprite.scale.set(unit.isSelected ? 1.25 : 1);
-    }
-
-    this.prune(this.unitSprites, seen);
-    this.reconciler.retain(seen);
-  }
-
-  private prune(map: Map<number, Container>, seen: Set<number>): void {
-    for (const [id, sprite] of map) {
-      if (seen.has(id)) continue;
-      this.entityLayer.removeChild(sprite);
-      sprite.destroy({ children: true });
-      map.delete(id);
-    }
-  }
+function paintCityBody(body: Graphics, isOwn: boolean): void {
+  body
+    .clear()
+    .rect(-TILE_W / 2, -TILE_H * 1.5, TILE_W, TILE_H * 1.5)
+    .fill({ color: isOwn ? 0xc9a227 : 0x8a5a2b })
+    .stroke({ color: 0x000000, width: 1, alpha: 0.4 });
 }
 
 /**

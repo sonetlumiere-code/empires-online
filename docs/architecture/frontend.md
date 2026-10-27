@@ -739,30 +739,44 @@ Detalles que importan:
 
 > **Estado: ajustada al código.**
 
-Lo que hace hoy `IsoScene.draw` (`src/render/scene.ts`), registrado en el `ticker` de Pixi:
+Dos caminos, con costes distintos: **por cambio del store** y **por frame**.
+
+Por cambio (`useWorldStore.subscribe` en `GameCanvas`, sólo cuando `changes` es otro, §4.2): la proyección
+pura `projectChanges` (`src/render/projection.ts`) convierte **únicamente los ids señalados** en `SceneUnit`,
+`SceneCity` y `SceneTerritory` —una unidad guarnecida o despawneada va en `removedUnits`— y
+`IsoScene.apply(SceneUpdate)` crea, actualiza o retira esos sprites y nada más; con `changes.all` (snapshot,
+reconexión, primera vez) la proyección es completa y la escena retira lo que no venga. La unidad tocada entra
+en el conjunto de **activas**.
+
+Por frame, lo que hace hoy `IsoScene.draw` (`src/render/scene.ts`), registrado en el `ticker` de Pixi:
 
 ```
 ticker (hasta 60 fps; deltaMS acotado a 100 ms por Pixi)
   1. cámara: position + scale del contenedor raíz
-  2. reconciler.frame(data.serverTimeMs(), ticker.deltaMS)      // un instante del servidor por frame
-  3. terreno visible (culling por la cámara, caché por tile), territorios, ciudades
-  4. por cada unidad que no está guarnecida:
+  2. reconciler.frame(serverTimeMs(), ticker.deltaMS)           // un instante del servidor por frame
+  3. terreno visible (culling por la cámara, caché por tile)
+  4. por cada unidad ACTIVA (en movimiento, recién cambiada o con desfase por corregir):
        pos = reconciler.position(unit.id, { x, y, movement })    // interpolación + corrección (§5.3)
        sprite.position = worldToIso(pos.x, pos.y)
        sprite.zIndex   = depthOf(pos.x, pos.y) + 0.5
-  5. sprites y registros de las unidades que ya no están: prune + reconciler.retain
-  6. ordenar entityLayer por zIndex
+       quieta y ya en su sitio → deja de ser activa hasta su próximo delta
+  5. ordenar entityLayer por zIndex, sólo si algún zIndex cambió o entró un sprite
 ```
 
-`SceneData` llega del store cuando éste cambia (`useWorldStore.subscribe` en `GameCanvas`), no en cada
-frame; lo que sí se evalúa en cada frame es el reloj, a través de la función `serverTimeMs` que la escena
-recibe en lugar de un valor.
+Una unidad quieta no cuesta nada por frame; las ciudades y los territorios sólo se tocan en `apply`. El reloj
+sí se evalúa en cada frame, a través de la función `serverTimeMs` que la escena recibe al construirse. Medido
+en `src/state/world.perf.test.ts` (informativo, 2 000 unidades): store + proyección + selector del HUD cuestan
+16–17 µs por `entity.update` (el store, 4; la mayor parte del resto es el selector del HUD, que recorre las
+unidades sin reservar memoria), y ninguno re-renderiza React. Si algún día esa cuenta importa, el selector
+puede mantenerse incremental con los ids de `changes`.
 
 Diseño objetivo que el bucle real **todavía no** hace: el terreno compuesto por chunk en una `RenderTexture`
-(hoy es un `Graphics` por tile visible), el `depthIndex` con *bias* de capa de §7.2 y el seguimiento de cámara
-con inercia. Lo que sí hace, desde `EO-122`, es avanzar la cámara con el `deltaMS` del *ticker* al principio de
-cada frame (`CameraController.step`) y entregar su centro a la página (`onCameraFrame`), que decide si envía
-`session.view` (§7.4.1). Tampoco evita asignar un `{ x, y }` por unidad y frame; con las decenas de unidades de un área de interés del MVP no se ha medido que importe.
+(hoy es un `Graphics` por tile visible), el `depthIndex` con *bias* de capa de §7.2, el *bucket sort* cuando
+cientos de unidades se muevan a la vez (hoy, si alguna activa cambia de profundidad, se reordena todo el
+`entityLayer`) y el seguimiento de cámara con inercia. Lo que sí hace, desde `EO-122`, es avanzar la cámara
+con el `deltaMS` del *ticker* al principio de cada frame (`CameraController.step`) y entregar su centro a la
+página (`onCameraFrame`), que decide si envía `session.view` (§7.4.1). Tampoco evita asignar un `{ x, y }` por
+unidad activa y frame; no se ha medido que importe.
 
 ### 7.4 Área de interés, culling y `session.view`
 
@@ -854,10 +868,13 @@ El tile bajo el cursor se resalta continuamente en `overlayLayer` usando la mism
 
 ### 7.6 Presupuesto de rendimiento
 
-> **Estado: objetivo, sin medir.** No hay atlas de texturas (todo es `Graphics`), el antialias está activo y
-> nadie ha medido el presupuesto por fase. Sí se cumplen: React no se re-renderiza por frame (la escena recibe
-> el estado por suscripción y la posición interpolada nunca llega a React), y `resolution: devicePixelRatio`
-> con `autoDensity`.
+> **Estado: objetivo en el presupuesto; cumplido en React.** No hay atlas de texturas (todo es `Graphics`), el
+> antialias está activo y nadie ha medido el presupuesto por fase en el navegador. Sí se cumplen: React no se
+> re-renderiza por frame ni por delta ajeno —la página se suscribe con un **selector memorizado por valor**
+> (`createHudSelector`, `src/state/selectors.ts`: unidades propias, guarnecidas y ciudad propia; misma vista ⇒
+> misma referencia, test en `selectors.test.ts`), la escena recibe sólo los ids cambiados (§7.3) y la posición
+> interpolada nunca llega a React—, y `resolution: devicePixelRatio` con `autoDensity`. La fila «lectura de
+> store + diff de entidades» es hoy la proyección por ids de §7.3; la fila «sorting y culling» sigue sin medir.
 
 Objetivo: **60 fps sostenidos**, es decir **16.67 ms por frame**. Presupuesto orientativo:
 
@@ -889,8 +906,8 @@ Medidas concretas:
 > civilización, paneles, minimapa, tratados ni indicador de destino. `GameCanvas.tsx` monta y destruye la
 > `Application` dentro de un efecto, con el montaje y la destrucción encadenados para el doble montaje de
 > *Strict Mode*; no usa `next/dynamic`, porque es un componente de cliente que sólo toca WebGL dentro del
-> efecto. React → Pixi es `scene.update(data)` desde una suscripción al store; Pixi → React, los *callbacks*
-> `onTileClick` y `onUnitClick`.
+> efecto. React → Pixi es `scene.apply(update)` con sólo lo que cambió, desde una suscripción al store (§7.3);
+> Pixi → React, los *callbacks* `onTileClick` y `onUnitClick`.
 
 | Va en **React** (DOM) | Va en **PixiJS** (canvas) |
 |---|---|
