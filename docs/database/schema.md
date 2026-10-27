@@ -4,13 +4,13 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql` y `000002_seed_catalogs.up.sql`. Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`. Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
 ## 1. Alcance y clasificación de tablas
 
-La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempotency_keys` (§14), así que el esquema del juego tiene **dieciséis**, más `schema_migrations`, que es de golang-migrate. Lo que sigue describe qué escribe cada una **hoy**.
+La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempotency_keys` (§14), y `000006` añadió las cuatro de la economía (§16), así que el esquema del juego tiene **veinte**, más `schema_migrations`, que es de golang-migrate. Lo que sigue describe qué escribe cada una **hoy**.
 
 | Tabla | Clasificación | Escrito por |
 |---|---|---|
@@ -30,7 +30,11 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, `TreatyExpired` en la caducidad e `InvariantRepaired` en la validación de carga del arranque |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, `TreatyExpired` en la caducidad, `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, e `InvariantRepaired` en la validación de carga del arranque |
+| `city_stocks` | E1: **activa** | Una fila por ciudad y recurso, creada en la fundación (y para las ciudades existentes, por `000006`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
+| `unit_tasks` | E1: **activa** | Write-through en cada transición de la tarea de recolección, con su tramo de movimiento y `units.status` en la misma transacción |
+| `buildings` | E1: **activa** | Encargo de `city.build` (con su débito) y finalización en la fase 5 |
+| `city_productions` | E1: **activa** | Encargo de `city.train` (con su débito y la reserva de población) y nacimiento del aldeano |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
@@ -451,7 +455,7 @@ CREATE TABLE units (
     updated_at timestamptz NOT NULL DEFAULT now(),
 
     CONSTRAINT units_status_valid
-        CHECK (status IN ('IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'DEAD')),
+        CHECK (status IN ('IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'DEAD')),  -- WORKING desde 000006
     -- INV-UNIT-004: hp nunca supera max_hp.
     CONSTRAINT units_hp_within_max CHECK (hp <= max_hp)
 );
@@ -473,7 +477,7 @@ CREATE INDEX units_chunk_idx  ON units (chunk_x, chunk_y) WHERE status <> 'DEAD'
 | `unit_type` | `text` | `VILLAGER` en MVP. **Sin `CHECK` de dominio**: el catálogo de tipos vive en `internal/domain/unit` y `unit.Lookup` rechaza un tipo desconocido antes de que llegue a la base. Añadir un tipo no exige migración |
 | `x`, `y` | `integer` | **Posición consolidada.** Autoritativa sólo cuando `status <> 'MOVING'`. Durante un movimiento la posición autoritativa se deriva de la polilínea (§10); esta columna es entonces el último punto volcado por el flush periódico |
 | `hp`, `max_hp` | `integer` + CHECK | `VILLAGER`: 40/40. `hp >= 0`, `max_hp > 0` y `units_hp_within_max` materializa `INV-UNIT-004` |
-| `status` | `text` + CHECK | `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`. `MOVING` implica un `unit_movements` `ACTIVE` (`INV-UNIT-005`) |
+| `status` | `text` + CHECK | `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `WORKING`, `DEAD`. `MOVING` implica un `unit_movements` `ACTIVE` (`INV-UNIT-005`); `WORKING` (desde `000006`) implica una fila de `unit_tasks` en fase `WORKING` (`INV-ECON-003`) |
 | `chunk_x`, `chunk_y` | `integer` | Chunk desnormalizado para interest management, calculado por la aplicación como `x / chunk_size` (no `x >> 5`: `EO_CHUNK_SIZE` es configuración y no tiene por qué ser potencia de dos). Es el índice espacial del MVP; ver [indexing.md](./indexing.md) |
 
 `units` **no** tiene `version`, ni `base_ms_per_tile`, ni `position_time_ms`. Las tres se consideraron y ninguna se materializó:
@@ -892,15 +896,127 @@ CREATE INDEX world_events_player_idx     ON world_events (player_id, occurred_at
 | `player_id` | Actor, cuando lo hay. `SET NULL` para no perder el evento al borrar un jugador. El índice por jugador es parcial, porque los eventos sin actor no se consultan por esta vía |
 | `payload` | Cuerpo del evento, `{}` por defecto. `jsonb` y no columnas tipadas porque cada evento tiene forma propia |
 
-**Append-only** significa: sin `UPDATE`, sin `DELETE`, sin trigger `updated_at`. Sólo la retención por antigüedad puede borrar filas, y es una operación de mantenimiento explícita. En MVP la escriben estos tipos de evento: `PlayerBootstrapped` y `TerritoryControlChanged`, dentro de la transacción de alta; `UnitGarrisoned` (`{unitId, cityId, cancelledMovement, treatyId?}`) y `UnitUngarrisoned` (`{unitId, x, y}`), en la transacción de entrada y de salida de una guarnición ([ADR-017](../decisions/ADR-017-garrison-commands.md)); `TreatyExpired`, en el barrido de caducidad; e `InvariantRepaired`, uno por cada corrección de la validación de carga del arranque (`EO-119`), con `{inv_id, severity, entity, detail}` en el `payload` y el tick de arranque. El volumen se controla antes de convertir esta tabla en el bus principal.
+**Append-only** significa: sin `UPDATE`, sin `DELETE`, sin trigger `updated_at`. Sólo la retención por antigüedad puede borrar filas, y es una operación de mantenimiento explícita. En MVP la escriben estos tipos de evento: `PlayerBootstrapped` y `TerritoryControlChanged`, dentro de la transacción de alta; desde E1, `BuildingOrdered` (`{buildingId, cityId, type, x, y, requestId}`), `BuildingCompleted` (`{buildingId, cityId}`), `TrainingOrdered` (`{cityId, unitType, requestId}`) y `UnitTrained` (`{cityId, unitId}`), cada uno en la transacción de su hecho; `UnitGarrisoned` (`{unitId, cityId, cancelledMovement, treatyId?}`) y `UnitUngarrisoned` (`{unitId, x, y}`), en la transacción de entrada y de salida de una guarnición ([ADR-017](../decisions/ADR-017-garrison-commands.md)); `TreatyExpired`, en el barrido de caducidad; e `InvariantRepaired`, uno por cada corrección de la validación de carga del arranque (`EO-119`), con `{inv_id, severity, entity, detail}` en el `payload` y el tick de arranque. El volumen se controla antes de convertir esta tabla en el bus principal.
 
 ---
 
-## 16. Modelo previsto — Fuera de MVP: solo diseño
+## 16. Economía: madera (`000006`)
+
+**E1: activas.** Las cuatro tablas del primer slice de economía ([../specs/economy-wood.md](../specs/economy-wood.md)).
+El reparto entre RAM y base, y por qué el stock se escribe por deltas, está en
+[ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md); los invariantes, en
+[../invariants/economy.md](../invariants/economy.md).
+
+### 16.1 `city_stocks`
+
+```sql
+CREATE TABLE city_stocks (
+    city_id   bigint NOT NULL REFERENCES cities (id) ON DELETE CASCADE,
+    resource  text   NOT NULL,
+    amount    bigint NOT NULL DEFAULT 0,
+    version   bigint NOT NULL DEFAULT 0,
+    PRIMARY KEY (city_id, resource),
+    CONSTRAINT city_stocks_resource_valid CHECK (resource IN ('WOOD')),
+    CONSTRAINT city_stocks_amount_non_negative CHECK (amount >= 0),
+    CONSTRAINT city_stocks_version_non_negative CHECK (version >= 0)
+);
+```
+
+| Columna | Semántica |
+|---|---|
+| `resource` | `WOOD` en E1. El dominio cerrado vive también en `economy.Resources()` |
+| `amount` | Madera de la ciudad. `city_stocks_amount_non_negative` es la mitad `DB` de `INV-ECON-001` |
+| `version` | Sube con cada cambio en la RAM. Toda escritura es `amount = amount + delta, version = v WHERE version < v`: un reintento no aplica dos veces el mismo delta y una escritura vieja no pisa una nueva |
+
+La fila nace a cero en la transacción de la fundación; `000006` la creó para las ciudades que ya existían.
+
+### 16.2 `unit_tasks`
+
+```sql
+CREATE TABLE unit_tasks (
+    unit_id        bigint      PRIMARY KEY REFERENCES units (id) ON DELETE CASCADE,
+    kind           text        NOT NULL,
+    target_x       integer     NOT NULL,
+    target_y       integer     NOT NULL,
+    phase          text        NOT NULL,
+    phase_until_ms bigint,
+    carrying       integer     NOT NULL DEFAULT 0,
+    trips_done     integer     NOT NULL DEFAULT 0,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT unit_tasks_kind_valid CHECK (kind IN ('GATHER_WOOD')),
+    CONSTRAINT unit_tasks_phase_valid CHECK (phase IN ('TO_RESOURCE', 'WORKING', 'TO_DEPOSIT')),
+    CONSTRAINT unit_tasks_working_has_deadline
+        CHECK ((phase = 'WORKING') = (phase_until_ms IS NOT NULL)),
+    CONSTRAINT unit_tasks_carrying_non_negative CHECK (carrying >= 0),
+    CONSTRAINT unit_tasks_trips_non_negative CHECK (trips_done >= 0)
+);
+```
+
+La clave primaria es la unidad: «una unidad, una tarea» (`INV-ECON-003`) no se comprueba, es imposible violarlo. Los
+tramos de la tarea son filas normales de `unit_movements`; la tarea sólo dice qué viene después. `phase_until_ms`
+es el instante absoluto en que vence `WORKING`, el único que se persiste porque es el único que no se deduce de un
+movimiento. Cada transición escribe esta fila, el tramo que cierra o abre y `units.status` en una transacción; una
+orden de movimiento, `unit.cancel_move` o un tramo detenido borran la fila en la transacción que cierra el
+movimiento.
+
+### 16.3 `buildings`
+
+```sql
+CREATE TABLE buildings (
+    id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    city_id         bigint      NOT NULL REFERENCES cities (id) ON DELETE CASCADE,
+    type            text        NOT NULL,
+    x               integer     NOT NULL,
+    y               integer     NOT NULL,
+    status          text        NOT NULL,
+    completes_at_ms bigint      NOT NULL,
+    request_id      text        NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT buildings_type_valid CHECK (type IN ('HOUSE')),
+    CONSTRAINT buildings_status_valid CHECK (status IN ('UNDER_CONSTRUCTION', 'COMPLETE')),
+    CONSTRAINT buildings_unique_tile UNIQUE (x, y),
+    CONSTRAINT buildings_unique_request UNIQUE (city_id, request_id)
+);
+```
+
+| Columna | Semántica |
+|---|---|
+| `x`, `y` | Un tile de la zona urbana 3×3 que no es el centro (`RN-ECON-007`). Sin `CHECK` de geometría: la zona urbana se calcula desde `cities`, y eso es dominio. `buildings_unique_tile` impide dos edificios en un tile |
+| `completes_at_ms` | Instante absoluto en que termina la obra, fijado al ordenar; la fase 5 lo compara con el reloj del tick (`INV-ECON-005`) |
+| `request_id` | El `requestId` del `city.build` que lo encargó. Con `buildings_unique_request`, un reintento tras perder el `COMMIT` encuentra su fila y no debita dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md)) |
+
+El índice de `buildings_unique_request` empieza por `city_id` y sirve también para listar los edificios de una
+ciudad: no hay índice aparte.
+
+### 16.4 `city_productions`
+
+```sql
+CREATE TABLE city_productions (
+    city_id         bigint      PRIMARY KEY REFERENCES cities (id) ON DELETE CASCADE,
+    unit_type       text        NOT NULL,
+    completes_at_ms bigint      NOT NULL,
+    request_id      text        NOT NULL,
+    unit_id         bigint      REFERENCES units (id) ON DELETE CASCADE,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT city_productions_unit_type_valid CHECK (unit_type IN ('VILLAGER'))
+);
+```
+
+Una fila por ciudad. `unit_id` es `NULL` mientras el entrenamiento está en curso y el id del aldeano desde la
+transacción que lo inserta: es lo que hace idempotente el nacimiento y lo que distingue la población reservada
+(`INV-CITY-017`). La fila de una producción terminada se queda hasta el siguiente encargo de la ciudad, que la
+sustituye en su transacción.
+
+**Persistencia de las cuatro.** Ver §18 y [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md):
+todo es escritura encolada salvo los depósitos, que viajan por volcado.
+
+---
+
+## 17. Modelo previsto — Fuera de MVP: solo diseño
 
 Sin DDL definitivo y **sin migración**. Se documenta la forma prevista para verificar que encaja sin romper el esquema del MVP. Todas estas tablas son **aditivas**: no exigen modificar ninguna columna existente. Las únicas intrusiones previstas sobre tablas MVP son columnas nuevas y anulables, introducidas mediante el patrón *expand* descrito en [migrations.md](./migrations.md).
 
-### 16.1 Tecnología
+### 17.1 Tecnología
 
 | Tabla | Campos previstos | Encaje |
 |---|---|---|
@@ -909,18 +1025,18 @@ Sin DDL definitivo y **sin migración**. Se documenta la forma prevista para ver
 
 La investigación **por jugador** requerirá una tercera tabla (`player_technologies` o `city_technologies`, decisión **TBD (fuera de MVP)**). Los efectos sobre gameplay se resolverán en RAM al cargar el jugador, no con joins por tick.
 
-### 16.2 Economía y comercio
+### 17.2 Economía y comercio
 
 | Tabla | Campos previstos | Encaje |
 |---|---|---|
-| `markets` | `id`, `city_id` → `cities`, `resource_type`, `stock`, `price`, `updated_at` | Cuelga de `cities`. Un mercado por ciudad y recurso |
+| `markets` | `id`, `city_id` → `cities`, `resource_type`, `stock`, `price`, `updated_at` | Cuelga de `cities`. Un mercado por ciudad y recurso. El stock de la ciudad ya existe (`city_stocks`, §16.1); el del mercado sería otro |
 | `trade_routes` | `id`, `origin_city_id` → `cities`, `destination_city_id` → `cities`, `path` jsonb, `total_travel_ms` bigint, `status` text + CHECK, `treaty_id` → `treaties` (nullable) | **Reutiliza la polilínea temporizada de `unit_movements`**: `path` con el mismo formato `{x,y,tMs}`. El cálculo de trayecto usa el mismo `Pathfinder` |
 | `caravans` | `id`, `trade_route_id` → `trade_routes`, `unit_id` → `units` (nullable), `cargo` jsonb, `start_time_ms`, `arrival_time_ms`, `status` text + CHECK | Una caravana es, estructuralmente, un movimiento con carga. Puede o no materializarse como una `units` visible; si lo hace, se apoya en la tabla existente sin cambiarla |
 | `trade_transactions` | `id`, `market_id` → `markets`, `buyer_player_id` → `players`, `seller_player_id` → `players`, `resource_type`, `quantity`, `unit_price`, `occurred_at_ms`, `occurred_at` | Log append-only, mismo patrón que `world_events` |
 
 El punto clave de encaje: `caravans` y `trade_routes` **no** reinventan el movimiento. Al reutilizar la polilínea temporizada, la reconstrucción tras crash es idéntica y no aparece un segundo sistema de posición.
 
-### 16.3 Clanes
+### 17.3 Clanes
 
 | Tabla | Campos previstos | Encaje |
 |---|---|---|
@@ -930,7 +1046,7 @@ Cuando `clans` llegue, `territory_control` no necesitará ninguna columna nueva:
 
 ---
 
-## 17. Resumen de autoridad y persistencia
+## 18. Resumen de autoridad y persistencia
 
 Respuesta explícita a las cuatro preguntas del canon §12 para el esquema del MVP. Atención a un matiz que recorre toda la tabla: **"durable" no significa "síncrono"**. Salvo el alta de jugador, toda escritura durable se aplica primero en RAM y se **encola** en la cola de persistencia, que la ejecuta fuera del tick con hasta 3 intentos y compensación si se agotan. Eso abre una ventana de riesgo real —si el proceso muere entre la confirmación al cliente y el `COMMIT`, esa escritura se pierde— documentada en [persistence-strategy.md](./persistence-strategy.md) §4 y §6.1.
 
@@ -942,7 +1058,10 @@ Respuesta explícita a las cuatro preguntas del canon §12 para el esquema del M
 | Posición consolidada, `chunk_x`/`chunk_y` y `status` de la unidad | Sí | No | **Sí**, flush cada 50 ticks | Parcialmente |
 | `units.hp` | Sí | No | No: el `UPDATE` del flush no escribe `hp`, y sin combate no cambia | No |
 | `presence_state` de la ciudad | Sí (fase 5 del tick, en RAM) | Sí, `UPDATE` encolado | — | No |
-| `cities.population` | Sí | Sí, recalculado con `count(*)` en la transacción de alta | — | **Sí**, desde `units` |
+| `cities.population` | Sí | Sí, recalculado con `count(*)` en la transacción de alta, y `+1` en la de cada encargo de entrenamiento | — | **Sí**, desde `units` y `city_productions` en curso (`INV-CITY-017`) |
+| `cities.population_limit` | Sí | Sí, en el alta y `+5` en la transacción que completa una casa | — | **Sí**, desde `eras` y `buildings` (`INV-ECON-004`) |
+| `city_stocks.amount` | Sí | Sí, cada débito en la transacción de su efecto | **Sí**, los depósitos por volcado cada 50 ticks | No |
+| `unit_tasks`, `buildings`, `city_productions` | Sí | Sí, transacción **encolada** en cada cambio | — | No |
 | Presencia del jugador | RAM (decide) + Redis (publica) | No (Redis, TTL 30 s) | — | **Sí**, derivada |
 | Conjuntos de interés / suscripciones | Sí | No | No | **Sí** |
 | `world_state.current_tick` | Sí | **Sí**, un `SaveTick` en el apagado ordenado | — | No hace falta: el contador se reancla al reloj al arrancar (ADR-015) |

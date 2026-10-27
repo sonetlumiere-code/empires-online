@@ -31,8 +31,11 @@ const (
 	townCenterRadius = city.UrbanRadius
 	// clearRadius: alrededor debe haber terreno despejado para la zona amurallada.
 	clearRadius int32 = 3
-	// spawnRadius: distancia a la que nacen los aldeanos, justo fuera de la muralla.
-	spawnRadius int32 = 2
+	// spawnRadius: distancia a la que nacen los aldeanos, justo fuera de la
+	// muralla. Vive en la ciudad por la misma razón que el radio urbano: el
+	// depósito de la madera y el nacimiento de un aldeano entrenado usan el
+	// mismo anillo y en el mismo orden (city.SpawnTilesAround).
+	spawnRadius = city.SpawnRadius
 	// minCityDistance: separación mínima entre centros de ciudades, en tiles.
 	minCityDistance int32 = 24
 )
@@ -109,17 +112,10 @@ func FarEnough(center world.Tile, existing []world.Tile) bool {
 func findSpawns(w *world.World, center world.Tile, n int) []world.Tile {
 	out := make([]world.Tile, 0, n)
 	// Orden fijo alrededor del centro: el resultado no depende de ningún mapa.
-	offsets := []world.Tile{
-		{X: spawnRadius, Y: 0}, {X: -spawnRadius, Y: 0},
-		{X: 0, Y: spawnRadius}, {X: 0, Y: -spawnRadius},
-		{X: spawnRadius, Y: spawnRadius}, {X: -spawnRadius, Y: -spawnRadius},
-		{X: spawnRadius, Y: -spawnRadius}, {X: -spawnRadius, Y: spawnRadius},
-	}
-	for _, off := range offsets {
+	for _, t := range city.SpawnTilesAround(center) {
 		if len(out) == n {
 			break
 		}
-		t := world.Tile{X: center.X + off.X, Y: center.Y + off.Y}
 		if w.IsWalkable(t.X, t.Y) {
 			out = append(out, t)
 		}

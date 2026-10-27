@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
@@ -22,13 +23,17 @@ const (
 	StatusMoving     Status = "MOVING"
 	StatusGarrisoned Status = "GARRISONED"
 	StatusHidden     Status = "HIDDEN"
-	StatusDead       Status = "DEAD"
+	// StatusWorking: parada sobre el tile de un recurso hasta que vence el
+	// temporizador de su tarea (RN-ECON-003). Sólo existe con una tarea en fase
+	// WORKING (INV-ECON-003).
+	StatusWorking Status = "WORKING"
+	StatusDead    Status = "DEAD"
 )
 
 // Valid indica si el estado pertenece al conjunto conocido.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusIdle, StatusMoving, StatusGarrisoned, StatusHidden, StatusDead:
+	case StatusIdle, StatusMoving, StatusGarrisoned, StatusHidden, StatusWorking, StatusDead:
 		return true
 	}
 	return false
@@ -51,13 +56,34 @@ type Definition struct {
 	BaseMsPerTile int64
 	// PopulationCost es cuánta población consume del límite de la ciudad.
 	PopulationCost int32
+
+	// TrainCost y TrainMs son lo que cuesta y tarda entrenarla en una ciudad
+	// (RN-ECON-010). Un coste cero significa que no se entrena.
+	TrainCost economy.Cost
+	TrainMs   int64
+	// GatherWorkMs es lo que trabaja sobre un recurso antes de cargar, y
+	// GatherCarry lo que carga al terminar (RN-ECON-003). Cero: no recolecta.
+	GatherWorkMs int64
+	GatherCarry  int32
 }
+
+// CanTrain indica si el tipo se entrena en una ciudad.
+func (d Definition) CanTrain() bool { return d.TrainMs > 0 && d.TrainCost.Amount > 0 }
+
+// CanGather indica si el tipo recolecta (RN-ECON-001).
+func (d Definition) CanGather() bool { return d.GatherWorkMs > 0 && d.GatherCarry > 0 }
 
 // catalog es la tabla de definiciones. En el MVP vive en código porque sólo hay
 // una unidad; cuando haya decenas se moverá a la base de datos sin cambiar la
 // interfaz de consulta.
 var catalog = map[Type]Definition{
-	TypeVillager: {Type: TypeVillager, MaxHP: 40, BaseMsPerTile: 600, PopulationCost: 1},
+	// Coste y tiempos de SPEC-ECON-WOOD §4.5: parámetros de equilibrio, no de
+	// diseño. Se ajustan aquí sin tocar la spec mientras sigan siendo catálogo.
+	TypeVillager: {
+		Type: TypeVillager, MaxHP: 40, BaseMsPerTile: 600, PopulationCost: 1,
+		TrainCost: economy.Cost{Resource: economy.ResourceWood, Amount: 50}, TrainMs: 20_000,
+		GatherWorkMs: 10_000, GatherCarry: 10,
+	},
 }
 
 // ErrUnknownType indica un tipo de unidad ausente del catálogo.
@@ -127,6 +153,10 @@ func (u *Unit) EnsureCanMove() error {
 	switch u.Status {
 	case StatusIdle, StatusMoving:
 		// Moverse mientras se mueve es válido: reemplaza el movimiento anterior.
+		return nil
+	case StatusWorking:
+		// Una orden de movimiento cancela la tarea y pierde lo cargado
+		// (RN-ECON-003).
 		return nil
 	case StatusDead:
 		return ErrDead
