@@ -98,7 +98,13 @@ route handlers del mismo origen que la página:
 | Request body | `{ "username": string, "password": string }`, `application/json` | ídem | Ninguno |
 | Validación | `username` de 3 a 24 caracteres `[A-Za-z0-9_-]`; `password` de 8 a 256 | — | Sesión vigente de una cuenta `ACTIVE` |
 | Response | `201` `{ playerId, ticket, expiresInSeconds: 60, city }` + cookie | `200` con el mismo cuerpo (`city` sólo si el login terminó una fundación pendiente) + cookie | `200` `{ playerId, ticket, expiresInSeconds: 60 }`, sin renovar la cookie |
-| Errores | `400` `INVALID_MESSAGE`/`INVALID_USERNAME`/`WEAK_PASSWORD`, `403 FORBIDDEN` (otro origen), `409` `USERNAME_TAKEN`/`NO_SITE_AVAILABLE`, `429 RATE_LIMITED`, `503` `SITE_CONTENDED`/`GAME_SERVER_UNAVAILABLE`, `500` | `400`, `401 UNAUTHORIZED` (mismo error y mismo coste para usuario inexistente y contraseña incorrecta), `403`, `429`, `503`, `500` | `401 UNAUTHORIZED`, `403`, `500` |
+| Errores | `400` `INVALID_MESSAGE`/`INVALID_USERNAME`/`WEAK_PASSWORD`, `403 FORBIDDEN` (otro origen), `409` `USERNAME_TAKEN`/`NO_SITE_AVAILABLE`, `429 RATE_LIMITED`, `503` `SITE_CONTENDED`/`GAME_SERVER_UNAVAILABLE`, `500` | `400`, `401 UNAUTHORIZED` (mismo error y mismo coste para usuario inexistente y contraseña incorrecta), `403`, `429`, `503`, `500` | `401 UNAUTHORIZED`, `403`, `429 RATE_LIMITED`, `500` |
+
+Los tres endpoints —y `POST /api/auth/logout`— pasan por los límites de tasa de `apps/web`, por proceso: para el
+alta y el login, por IP (sólo detrás de un proxy de confianza, tomando el salto que añadió el último proxy a
+`X-Forwarded-For`), por nombre de usuario y un tope global que acota el coste de `scrypt`; para el ticket y el
+cierre de sesión, por sesión, por IP y un tope global propio. Cupos y variables en
+[../specs/player.md](../specs/player.md) §4.1.
 
 El detalle del alta —la cuenta `PENDING`, la fundación en `POST /internal/players` del game server (en su
 listener interno `EO_INTERNAL_ADDR`, que el proxy no publica, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) y la
@@ -439,8 +445,10 @@ objetivo de cada punto, cuando difiere, está en [frontend.md](frontend.md) §3.
    mismo milisegundo. El contador vuelve a 0 con cada `session.welcome`.
 4. Pide un **ticket nuevo** en cada intento a `POST /api/auth/ticket` de `apps/web`, con la cookie de sesión: la
    contraseña no se vuelve a pedir ni se guarda (`ticketProvider`). El anterior no sirve: su TTL es de 60 s y su
-   `jti` ya se consumió en `ticket:jti:{jti}`; reutilizarlo produce cierre `4401`. Si pedirlo falla —también con
-   la cookie caducada— se notifica y se programa el siguiente intento con el mismo backoff.
+   `jti` ya se consumió en `ticket:jti:{jti}`; reutilizarlo produce cierre `4401`. Si pedirlo falla por red o
+   con `429`/`500`, se notifica y se programa el siguiente intento con el mismo backoff; si responde `401` o
+   `403` —la sesión web caducó o se cerró— el cliente pasa a `closed` sin reintentar y la página vuelve al
+   formulario de entrada ([frontend.md](./frontend.md) §3.3).
 5. Reabre el WebSocket y repite el handshake completo (§3).
 6. Con el `session.welcome`, el `seq` vuelve a empezar y se reestima el desfase de reloj; el `world.snapshot`
    **reemplaza** unidades, ciudades y territorios. La réplica no se vacía antes: el terreno ya conocido se

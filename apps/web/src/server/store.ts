@@ -7,9 +7,10 @@
  */
 import 'server-only';
 
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 
 import { migrateIdentity } from '../../identity/migrations.mjs';
+import type { Logger } from './authService';
 import {
   activatePending,
   deleteStalePending,
@@ -73,21 +74,80 @@ const toAccount = (r: AccountRow): Account => ({
   status: r.status,
 });
 
-export class PgIdentityStore implements IdentityStore {
-  constructor(private readonly pool: Pool) {}
+/**
+ * Opciones del pool del almacén de identidad. Constantes, no variables de
+ * entorno: son plazos de infraestructura que ningún despliegue razonable mueve,
+ * y cada uno existe para que una base que no responde falle rápido en vez de
+ * colgar al jugador o al proceso (ADR-018 §2.1).
+ *
+ * - `max` 5: pedir un ticket es una operación por conexión, no por mensaje.
+ * - `connectionTimeoutMillis` 5 s: sin esto, un `connect` contra una base caída
+ *   espera indefinidamente y la petición HTTP con él.
+ * - `idleTimeoutMillis` 30 s: una conexión ociosa se devuelve al servidor; un
+ *   proceso que no sirve nada no retiene cinco de ellas (relevante tras un
+ *   pooler o con varias instancias).
+ * - `statement_timeout` 5 s, en el servidor: ninguna consulta de la identidad
+ *   —todas por clave primaria o índice— debe tardar más. Lo aplica PostgreSQL,
+ *   así que corta también lo que el cliente no vea.
+ * - `query_timeout` 10 s, en el cliente: el respaldo si el servidor no contesta
+ *   ni para abortar (red partida).
+ * - `keepAlive`: que el sistema operativo detecte una conexión muerta tras un
+ *   corte, en lugar de descubrirlo con la siguiente consulta colgada.
+ *
+ * TLS no se configura aquí sino en la URL: ver configuration.md §3.8-bis.
+ */
+export const IDENTITY_POOL_OPTIONS = {
+  max: 5,
+  connectionTimeoutMillis: 5_000,
+  idleTimeoutMillis: 30_000,
+  statement_timeout: 5_000,
+  query_timeout: 10_000,
+  keepAlive: true,
+} as const;
 
-  /** Pool pequeño: pedir un ticket es una operación por conexión, no por mensaje. */
-  static connect(url: string): PgIdentityStore {
-    return new PgIdentityStore(new Pool({ connectionString: url, max: 5 }));
+/**
+ * Crea el pool y le pone su oyente de `error`. Es obligatorio: una conexión
+ * ociosa que el servidor cierra (reinicio de la base, corte del pooler) emite
+ * `error` en el pool, y un emisor de Node sin oyente convierte ese evento en una
+ * excepción sin capturar que tumba el proceso entero. El pool ya ha descartado
+ * esa conexión cuando avisa; aquí sólo se deja constancia, sin la URL
+ * (INV-SEC-006).
+ */
+export function createIdentityPool(url: string, log: Logger): Pool {
+  const pool = new Pool({ connectionString: url, ...IDENTITY_POOL_OPTIONS });
+  pool.on('error', (err: Error & { code?: string }) => {
+    log.error('conexión ociosa del almacén de identidad perdida', { err: err.message, code: err.code });
+  });
+  return pool;
+}
+
+export class PgIdentityStore implements IdentityStore {
+  /**
+   * @param url la misma URL del pool, para la conexión dedicada de las
+   *   migraciones; por defecto se toma del propio pool.
+   */
+  constructor(
+    private readonly pool: Pool,
+    private readonly url: string | undefined = pool.options.connectionString,
+  ) {}
+
+  static connect(url: string, log: Logger): PgIdentityStore {
+    return new PgIdentityStore(createIdentityPool(url, log), url);
   }
 
-  /** Aplica las migraciones pendientes del almacén con una conexión dedicada. */
+  /**
+   * Aplica las migraciones pendientes del almacén con una conexión dedicada y
+   * fuera del pool: el cerrojo consultivo es de sesión, y una migración o una
+   * espera del cerrojo pueden tardar más que los plazos de las consultas
+   * normales, que no deben relajarse para la conexión que vuelve al pool.
+   */
   async migrate(): Promise<number[]> {
-    const client = await this.pool.connect();
+    const client = new Client({ connectionString: this.url, connectionTimeoutMillis: IDENTITY_POOL_OPTIONS.connectionTimeoutMillis });
+    await client.connect();
     try {
       return await migrateIdentity(client);
     } finally {
-      client.release();
+      await client.end();
     }
   }
 

@@ -21,6 +21,9 @@ import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
 
+/** Lo que ve el jugador cuando su sesión web ya no sirve y vuelve al formulario. */
+const SESSION_ENDED_MESSAGE = 'Tu sesión ha caducado o ya no es válida. Vuelve a entrar.';
+
 export default function Page() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -66,7 +69,12 @@ export default function Page() {
             if (state !== 'ready') viewSyncRef.current.suspend();
             setConnection(state);
           },
-          onError: (code, message) => setAuthError(`${code}: ${message}`),
+          // Un UNAUTHORIZED del transporte —ticket rechazado porque la sesión web
+          // caducó o se cerró, o cierre 4401/4403— deja al cliente en `closed` y
+          // a la página en el formulario: el mensaje es para una persona, no un
+          // código (frontend.md §3.6). El resto se muestra tal cual.
+          onError: (code, message) =>
+            setAuthError(code === 'UNAUTHORIZED' ? SESSION_ENDED_MESSAGE : `${code}: ${message}`),
         });
         clientRef.current = client;
         await client.connect();

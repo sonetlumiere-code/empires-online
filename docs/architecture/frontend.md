@@ -66,7 +66,11 @@ Corolario operativo: cualquier función del cliente que produzca un número que 
 > (`iso.ts`, `reconciler.ts`, `scene.ts`) y React vive en `app/` y `src/components`. Las reglas de dependencia
 > de la tabla se cumplen con esos nombres: `src/state` no importa ni Pixi ni la red, y `src/render` no envía
 > nada (la escena devuelve los clics a React por *callbacks*). No existen `ClockSync`, la cola de comandos
-> pendientes ni el control de `seq` como piezas separadas: ver §3.3–§3.7.
+> pendientes ni el control de `seq` como piezas separadas: ver §3.3–§3.7. Fuera de las tres capas, el servidor
+> de Next.js pone las cabeceras de seguridad de la web —una `Content-Security-Policy` con nonce por petición
+> desde `middleware.ts` y las fijas desde `next.config.mjs`— y por eso la página se renderiza en cada petición;
+> la política y cómo comprobarla están en
+> [../operations/deployment.md](../operations/deployment.md#24-cabeceras-de-seguridad).
 
 ```mermaid
 flowchart TB
@@ -163,8 +167,11 @@ Consecuencia de diseño: **el ticket nunca se cachea**. Con TTL de 60 s, cada in
 >   valor (no *full jitter*). Constantes `BASE_BACKOFF_MS = 500` y `MAX_BACKOFF_MS = 30 000`. El contador
 >   vuelve a 0 con cada `session.welcome`.
 > - Cada intento pide un ticket nuevo (`ticketProvider`: el del alta o el login la primera vez, después
->   `POST /api/auth/ticket` con la cookie). Si pedirlo falla, notifica `UNAUTHORIZED` y programa otro intento
->   con el mismo backoff, también cuando la cookie caducó.
+>   `POST /api/auth/ticket` con la cookie). Si pedirlo falla por red o con `429`/`500`, notifica
+>   `UNAUTHORIZED` y programa otro intento con el mismo backoff. Si `/api/auth/ticket` responde `401` o `403`
+>   —la sesión web caducó o se cerró— el error lleva `code` `UNAUTHORIZED`/`FORBIDDEN` (`AuthError`) y el
+>   cliente **no reintenta**: pasa a `closed` y la página vuelve al formulario de entrada con «Tu sesión ha
+>   caducado o ya no es válida. Vuelve a entrar.», también si la sesión caduca a mitad de una reconexión.
 > - Política por código: un cierre pedido por el propio cliente (`disconnect`) no reconecta; `4401` y `4403`
 >   **no reconectan** —el estado pasa a `closed` y la página vuelve al formulario de entrada con el error—;
 >   cualquier otro código, incluidos `4400`, `4408`, `4429` y `4500`, reconecta con el backoff normal.
@@ -251,8 +258,10 @@ Tamaño máximo de la cola: 64 entradas. Al desbordar se descarta la más antigu
 
 > **Estado: objetivo.** Hoy `system.error` y `unit.move.rejected` dejan `{ code, message }` en
 > `lastError` del store y la página lo muestra tal cual en el pie del HUD; los avisos del transporte
-> (`onError`: mensaje que no valida, comando sin conexión, cierre `4401`) se muestran en el formulario de
-> entrada. No hay tratamiento por grupo de códigos, ni toasts, ni reversión de feedback optimista (no lo hay).
+> (`onError`: mensaje que no valida, comando sin conexión, cierre `4401`, ticket rechazado) se muestran en el
+> formulario de entrada: un `UNAUTHORIZED` del transporte se traduce a una frase para el jugador («Tu sesión ha
+> caducado o ya no es válida. Vuelve a entrar.») y el resto sale con su código. No hay más tratamiento por grupo
+> de códigos, ni toasts, ni reversión de feedback optimista (no lo hay).
 > Lo que sí se cumple: ninguna decisión del cliente mira el texto del mensaje.
 
 `system.error` llega con `{ code, message, requestId?, details? }`. **La lógica del cliente conmuta siempre sobre `code`, nunca sobre `message`.** El texto humano es para el log y, traducido, para el HUD.

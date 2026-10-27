@@ -259,6 +259,96 @@ describe('reloj', () => {
   });
 });
 
+describe('sesión web caducada', () => {
+  /** Como `AuthError` de auth.ts: un Error con el `code` de la respuesta. */
+  const authError = (code: string) => Object.assign(new Error(`${code} desde /api/auth/ticket`), { code });
+
+  function clientWith(fetchTicket: () => Promise<string>) {
+    const socket = new FakeSocket();
+    const errors: Array<{ code: string; message: string }> = [];
+    const states: string[] = [];
+    const client = new GameClient({
+      url: 'ws://test/ws',
+      fetchTicket,
+      onMessage: () => {},
+      onError: (code, message) => errors.push({ code, message }),
+      onStateChange: (s) => states.push(s),
+      socketFactory: () => socket,
+      now: () => SERVER_NOW,
+    });
+    return { client, socket, errors, states };
+  }
+
+  it('un 401 al pedir el ticket cierra la sesión y no reintenta: el jugador vuelve a entrar', async () => {
+    vi.useFakeTimers();
+    const fetchTicket = vi.fn(async () => {
+      throw authError('UNAUTHORIZED');
+    });
+    const { client, errors, states } = clientWith(fetchTicket);
+    await client.connect();
+
+    expect(client.getState()).toBe('closed');
+    expect(states).toEqual(['connecting', 'closed']);
+    expect(errors).toEqual([{ code: 'UNAUTHORIZED', message: expect.stringMatching(/caducado|cerrado/) }]);
+
+    // Ni en un minuto ni nunca: no quedó ningún temporizador de reconexión.
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchTicket).toHaveBeenCalledTimes(1);
+    expect(client.getState()).toBe('closed');
+  });
+
+  it('un 403 recibe el mismo trato que el 401', async () => {
+    const { client } = clientWith(async () => {
+      throw authError('FORBIDDEN');
+    });
+    await client.connect();
+    expect(client.getState()).toBe('closed');
+  });
+
+  it('la sesión que caduca durante una reconexión también termina en closed', async () => {
+    vi.useFakeTimers();
+    let session = 'vigente';
+    const fetchTicket = vi.fn(async () => {
+      if (session === 'caducada') throw authError('UNAUTHORIZED');
+      return 'ticket';
+    });
+    const { client, socket, states } = clientWith(fetchTicket);
+    await client.connect();
+    socket.open();
+    socket.deliver(welcome());
+    expect(client.getState()).toBe('ready');
+
+    // Se cae la red y, mientras el cliente espera para reconectar, la sesión web caduca.
+    socket.serverClose(1006, 'conexión perdida');
+    expect(client.getState()).toBe('reconnecting');
+    session = 'caducada';
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(fetchTicket).toHaveBeenCalledTimes(2);
+    expect(client.getState()).toBe('closed');
+    expect(states.at(-1)).toBe('closed');
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchTicket).toHaveBeenCalledTimes(2);
+  });
+
+  it('un fallo transitorio del ticket (red, 429, 500) sí programa una reconexión', async () => {
+    vi.useFakeTimers();
+    const fallos = [new TypeError('fetch failed'), authError('RATE_LIMITED'), authError('INTERNAL_ERROR')];
+    for (const fallo of fallos) {
+      const fetchTicket = vi.fn(async () => {
+        throw fallo;
+      });
+      const { client, errors } = clientWith(fetchTicket);
+      await client.connect();
+      expect(client.getState()).toBe('reconnecting');
+      expect(errors.at(-1)?.code).toBe('UNAUTHORIZED');
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchTicket.mock.calls.length).toBeGreaterThan(1);
+      client.disconnect();
+    }
+  });
+});
+
 describe('cierre y reconexión', () => {
   it('un cierre 4401 no reintenta en bucle', async () => {
     const { client, socket, errors } = setup();

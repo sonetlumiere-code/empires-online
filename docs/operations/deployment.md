@@ -67,7 +67,7 @@ bundle JavaScript** que se descarga el navegador: es público de forma irreversi
 | `EO_AUTH_JWT_SECRET` | **privado** | Solo runtime del servidor de Next | Clave HS256 compartida con el Game Server: firma el ticket y el token de fundación |
 | `EO_IDENTITY_POSTGRES_URL` | **privado** | Solo runtime del servidor de Next | Almacén de identidad ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): cuentas y sesiones web, en una base y con un rol propios |
 | `EO_GAME_SERVER_INTERNAL_URL` | **privado** | Solo runtime del servidor de Next | Base del **listener interno** del Game Server (`EO_INTERNAL_ADDR`) para `POST /internal/players`: nunca `game.<dominio>`, que no lo publica (§4.4) |
-| `EO_AUTH_RATE_LIMIT_*`, `EO_TRUST_PROXY_HEADERS` | **privado** | Solo runtime del servidor de Next | Límite de alta y login por origen; en Vercel, `EO_TRUST_PROXY_HEADERS=true` |
+| `EO_AUTH_RATE_LIMIT_*`, `EO_AUTH_TICKET_RATE_LIMIT_*`, `EO_TRUST_PROXY_HEADERS`, `EO_TRUSTED_PROXY_COUNT` | **privado** | Solo runtime del servidor de Next | Límites de alta, login y ticket por IP, por usuario y por proceso ([player.md](../specs/player.md) §4.1); en Vercel, `EO_TRUST_PROXY_HEADERS=true` y `EO_TRUSTED_PROXY_COUNT=1` |
 
 `NEXT_PUBLIC_GAME_SERVER_WS_URL` es una variable **del frontend**, no del catálogo `EO_` del Game Server:
 `internal/config` no la lee y no aparece en la referencia de [configuration.md §3](./configuration.md#3-referencia-de-variables).
@@ -121,6 +121,52 @@ Cada PR genera un despliegue *preview* con URL propia. Reglas:
 - Un cambio del protocolo v1 exige coordinar frontend y Game Server. Regla: **el servidor se despliega
   primero** cuando el cambio es aditivo y compatible; si no lo es, deja de ser v1 y requiere versionado
   explícito del protocolo (`"v": 2`), que está fuera de MVP.
+
+### 2.4 Cabeceras de seguridad
+
+Las pone el propio servidor de Next.js, no el proxy, para que valgan en cualquier despliegue
+(`apps/web/src/server/securityHeaders.mjs`, sin secretos y sin nada de Node):
+
+- **Fijas, en toda respuesta** incluidos los estáticos de `_next/` (`headers()` de `next.config.mjs`):
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`,
+  `Cross-Origin-Opener-Policy: same-origin` y, **sólo en un build de producción** (`NODE_ENV=production`, que
+  `next build` fija solo), `Strict-Transport-Security: max-age=31536000; includeSubDomains`, sin `preload`:
+  entrar en la lista de precarga es casi irreversible y se decide aparte. Los navegadores ignoran HSTS sobre
+  HTTP, así que un `next start` local no se queda atrapado.
+- **`Content-Security-Policy` por petición**, con un nonce nuevo cada vez (`apps/web/middleware.ts`). Next.js
+  lee el nonce de la cabecera `Content-Security-Policy` de la *petición* y lo pone en sus scripts en línea y
+  en sus chunks; por eso la página se renderiza en cada petición (`dynamic = 'force-dynamic'` en
+  `app/layout.tsx`): un HTML prerenderizado los llevaría sin nonce y la propia CSP los bloquearía. En
+  producción:
+
+  ```text
+  default-src 'self'; script-src 'self' 'nonce-<aleatorio>' 'strict-dynamic'; style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss://game.<dominio>; worker-src 'self' blob:;
+  object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  ```
+
+  `connect-src` lleva el origen de `NEXT_PUBLIC_GAME_SERVER_WS_URL` (esquema y host, sin la ruta); si la URL
+  no se puede leer, no se añade nada y el WebSocket queda bloqueado: una configuración rota tiene que verse.
+  `style-src 'unsafe-inline'` es el único hueco abierto a sabiendas: React escribe estilos en atributos
+  `style=` y un estilo inyectado no ejecuta código. En desarrollo (`next dev`) `script-src` añade
+  `'unsafe-eval'`, que React Refresh necesita, y `connect-src` apunta a `ws://localhost:8080`; nada más se
+  relaja. `'self'` cubre el WebSocket del HMR, que conecta al mismo host.
+
+**Comprobación a mano**, con la web arrancada (`pnpm run web:dev`, o `pnpm run web:build && pnpm --filter
+@empires-online/web run start` para ver las de producción):
+
+```bash
+curl -sI http://localhost:3000/ | grep -i -E 'content-security-policy|strict-transport|x-frame|x-content-type|referrer-policy|permissions-policy|cross-origin-opener'
+```
+
+Debe salir `Content-Security-Policy` con `script-src 'self' 'nonce-…' 'strict-dynamic'` y **sin**
+`'unsafe-inline'` en `script-src`, un nonce distinto en cada petición, y las cinco cabeceras fijas; con el
+build de producción, además `Strict-Transport-Security`. Sobre un estático (`curl -sI
+http://localhost:3000/_next/static/...`) salen las fijas y no la CSP, que sólo protege documentos. En el
+navegador, la consola no debe mostrar ningún `Refused to …` al cargar la página ni al conectar el WebSocket.
+La CSP y las fijas tienen test unitario (`src/server/securityHeaders.test.ts`), y `next build` escribe las
+fijas en `.next/routes-manifest.json`.
 
 ---
 
@@ -760,6 +806,7 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 - [ ] Firewall del VPS: solo 80, 443 y SSH (con puerto o restricción de origen). Verificado **después** de arrancar Docker, porque Docker manipula `iptables`.
 - [ ] Postgres y Redis sin acceso público; lista blanca con la IP del VPS o red privada.
 - [ ] `EO_POSTGRES_URL` con `sslmode=require` o superior; `EO_REDIS_URL` con esquema `rediss://`. **Comprobación manual: el arranque no la valida.**
+- [ ] `EO_IDENTITY_POSTGRES_URL` con `sslmode=verify-full` (y `sslrootcert=` si la CA no es pública): en node-postgres `require` no garantiza la verificación ([configuration.md §3.8-bis](./configuration.md#38-bis-identidad-las-lee-appsweb-no-el-game-server)). **Comprobación manual.**
 - [ ] `EO_HTTP_ADDR`, `EO_METRICS_ADDR` y `EO_INTERNAL_ADDR` con puertos distintos. Desde [ADR-021](../decisions/ADR-021-game-server-perimeter.md) **sí lo valida el arranque**; la casilla queda para el `docker-compose.yml`, que debe publicar los dos primeros y no el tercero.
 - [ ] SSH: solo clave pública, sin contraseña, sin login directo de root.
 
@@ -767,6 +814,7 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 
 - [ ] Certificado válido y renovación automática comprobada.
 - [ ] HSTS activo.
+- [ ] Cabeceras de seguridad de la web comprobadas con `curl -sI` (§2.4): `Content-Security-Policy` con nonce y `'strict-dynamic'`, sin `'unsafe-inline'` en `script-src`, y `connect-src` con el origen `wss://` del Game Server; `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` y `Permissions-Policy` presentes.
 - [ ] Solo TLS 1.2 y 1.3.
 - [ ] El cliente conecta por `wss://`, nunca por `ws://`, en producción.
 - [ ] `EO_WS_ALLOWED_ORIGINS` con **exclusivamente** el origen del frontend (`https://<dominio>`, sin ruta ni comodines). En producción el arranque falla si está vacía; un origen no listado recibe `403` antes del handshake ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Una petición sin `Origin` —un script, no un navegador— entra siempre.
@@ -782,6 +830,7 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 - [ ] El despliegue ejecuta `migrate` antes de arrancar el servidor y para si el esquema está `dirty` (§6, Paso 3).
 - [ ] Rate limit activo: 20 msg/s con burst 40 por conexión.
 - [ ] Tope de conexiones activo: `EO_WS_MAX_CONNECTIONS` (5000) por debajo de `ulimits.nofile`, y `EO_WS_MAX_CONNECTIONS_PER_IP` (32) **con `EO_TRUST_PROXY_HEADERS=true`** y el proxy sobrescribiendo `X-Forwarded-For`; verificado abriendo 33 sockets desde una misma IP y recibiendo `429` en el último ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)).
+- [ ] Límites de tasa de `apps/web` activos, con `EO_TRUST_PROXY_HEADERS=true` **sólo** detrás del proxy y `EO_TRUSTED_PROXY_COUNT` igual al número real de proxies: uno de más deja al atacante elegir la IP que se le atribuye.
 - [ ] Idempotencia operativa: `requestId` repetido devuelve la respuesta original y **no** re-ejecuta.
 - [ ] Los logs no contienen tickets, DSN completos ni payloads con datos personales.
 

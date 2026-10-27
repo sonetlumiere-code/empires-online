@@ -40,6 +40,16 @@ export function parseLimit(raw) {
   return n;
 }
 
+/**
+ * Base del listener INTERNO del Game Server (EO_INTERNAL_ADDR, 127.0.0.1:8081
+ * por defecto), no el público de :8080, que ya no sirve /internal.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ */
+export function internalBaseUrl(env = process.env) {
+  return (env.EO_GAME_SERVER_INTERNAL_URL || 'http://localhost:8081').replace(/\/+$/, '');
+}
+
 /** Una línea JSON por evento, como los logs del servidor. */
 const log = {
   info: (msg, fields) => console.log(JSON.stringify({ level: 'info', msg, ...fields })),
@@ -53,7 +63,7 @@ async function main() {
   if (!url) throw new Error('falta EO_IDENTITY_POSTGRES_URL (en local: node scripts/pg-local.mjs identity)');
   const secret = process.env.EO_AUTH_JWT_SECRET ?? '';
   if (secret.length < 32) throw new Error('falta EO_AUTH_JWT_SECRET o tiene menos de 32 caracteres');
-  const baseUrl = (process.env.EO_GAME_SERVER_INTERNAL_URL || 'http://localhost:8080').replace(/\/+$/, '');
+  const baseUrl = internalBaseUrl();
 
   const pool = new pg.Pool({ connectionString: url, max: 2 });
   try {

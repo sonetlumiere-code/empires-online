@@ -12,7 +12,7 @@ import { AuthService, type Logger } from './authService';
 import { loadAuthConfig } from './config';
 import { createGameServerClient } from './gameServer';
 import type { HttpDeps } from './http';
-import { RateLimiter } from './rateLimit';
+import { AuthRateLimits } from './rateLimit';
 import { PgIdentityStore } from './store';
 
 /** Logs estructurados en JSON por la salida estándar, como el Game Server. */
@@ -29,7 +29,7 @@ function build() {
   // apps/web. Nunca pisa lo que ya venga del entorno.
   loadRootDotEnv();
   const config = loadAuthConfig();
-  const store = PgIdentityStore.connect(config.identityPostgresUrl);
+  const store = PgIdentityStore.connect(config.identityPostgresUrl, jsonLogger);
   const nowMs = () => Date.now();
   const service = new AuthService({
     store,
@@ -49,8 +49,7 @@ function build() {
     store,
     deps: {
       service,
-      limiter: new RateLimiter(config.rateLimitPerMinute, config.rateLimitBurst),
-      trustProxyHeaders: config.trustProxyHeaders,
+      limits: new AuthRateLimits({ trust: config.proxy, ...config.rateLimits }),
       secureCookies: config.production,
       nowMs,
       log: jsonLogger,

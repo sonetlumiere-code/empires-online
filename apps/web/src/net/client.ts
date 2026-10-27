@@ -25,7 +25,12 @@ export type ConnectionState =
 export interface GameClientOptions {
   /** URL del endpoint WebSocket, p. ej. ws://localhost:8080/ws */
   readonly url: string;
-  /** Función que obtiene un game ticket FRESCO. Cada reconexión necesita uno nuevo. */
+  /**
+   * Función que obtiene un game ticket FRESCO. Cada reconexión necesita uno
+   * nuevo. Si rechaza con un error cuyo `code` sea `UNAUTHORIZED` o `FORBIDDEN`
+   * (la sesión web caducó o se cerró), el cliente no reintenta: pasa a `closed`.
+   * Cualquier otro fallo (red, 429, 500) se reintenta con el backoff.
+   */
   readonly fetchTicket: () => Promise<string>;
   readonly onMessage: (message: v1.ServerMessage) => void;
   readonly onStateChange?: (state: ConnectionState) => void;
@@ -47,6 +52,18 @@ export interface WebSocketLike {
 
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 500;
+
+/**
+ * Códigos con los que `/api/auth/ticket` dice que la sesión web ya no sirve.
+ * Son los mismos que el cierre `4401`/`4403` del WebSocket y reciben el mismo
+ * trato: no se reintenta, el jugador tiene que volver a entrar.
+ */
+const TERMINAL_TICKET_CODES: ReadonlySet<unknown> = new Set(['UNAUTHORIZED', 'FORBIDDEN']);
+
+/** Si el fallo al pedir el ticket es definitivo (sesión caducada o cerrada). */
+function isTerminalTicketError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && TERMINAL_TICKET_CODES.has((err as { code?: unknown }).code);
+}
 
 export class GameClient {
   private socket: WebSocketLike | null = null;
@@ -111,6 +128,15 @@ export class GameClient {
       // nunca se reutiliza el de la conexión anterior.
       ticket = await this.opts.fetchTicket();
     } catch (err) {
+      if (this.stopped) return;
+      // La sesión web caducó o se cerró: ningún reintento la va a revivir. Se
+      // cierra y el jugador vuelve al formulario de entrada, en vez de pedir un
+      // ticket cada 30 s para siempre.
+      if (isTerminalTicketError(err)) {
+        this.opts.onError?.('UNAUTHORIZED', 'la sesión ha caducado o se ha cerrado: vuelve a entrar');
+        this.setState('closed');
+        return;
+      }
       this.opts.onError?.('UNAUTHORIZED', 'no se pudo obtener un game ticket');
       this.scheduleReconnect();
       return;
