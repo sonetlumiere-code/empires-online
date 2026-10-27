@@ -202,6 +202,50 @@ func (h *Hub) BroadcastChunks(chunks []world.ChunkCoord, msgType string, payload
 	}
 }
 
+// BroadcastChunkTransition anuncia el paso de una entidad del chunk `from` al
+// chunk `to`: el spawn va a las sesiones suscritas a `to` y no a `from`; el
+// despawn, a las suscritas a `from` y no a `to`. Quien observa los dos no
+// recibe nada, porque sigue viendo la entidad por sus deltas de siempre; quien
+// no observa ninguno, tampoco. Con `onlyPlayer` distinto de uuid.Nil sólo
+// cuentan las sesiones de ese jugador —todas sus pestañas—: es el filtro por
+// destinatario de INV-SAFE-004 aplicado al cruce de una unidad que sólo ve su
+// dueño.
+//
+// Las dos diferencias se calculan bajo el mismo lock, así que una sesión que
+// cambia de área en ese mismo instante recibe exactamente uno de los dos
+// mensajes o ninguno, nunca ambos.
+func (h *Hub) BroadcastChunkTransition(from, to world.ChunkCoord, onlyPlayer uuid.UUID,
+	spawnType string, spawnPayload any, despawnType string, despawnPayload any) {
+	if from == to {
+		return
+	}
+	admitida := func(s *Session) bool { return onlyPlayer == uuid.Nil || s.PlayerID == onlyPlayer }
+
+	h.mu.RLock()
+	fromSet := h.byChunk[makeChunkKey(from.CX, from.CY)]
+	toSet := h.byChunk[makeChunkKey(to.CX, to.CY)]
+	spawns := make([]*Session, 0, len(toSet))
+	for id, s := range toSet {
+		if _, keeps := fromSet[id]; !keeps && admitida(s) {
+			spawns = append(spawns, s)
+		}
+	}
+	despawns := make([]*Session, 0, len(fromSet))
+	for id, s := range fromSet {
+		if _, keeps := toSet[id]; !keeps && admitida(s) {
+			despawns = append(despawns, s)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, s := range spawns {
+		s.Send(spawnType, "", spawnPayload)
+	}
+	for _, s := range despawns {
+		s.Send(despawnType, "", despawnPayload)
+	}
+}
+
 // SendToPlayer entrega un mensaje a todas las sesiones de un jugador.
 func (h *Hub) SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any) {
 	if fn := h.onReply.Load(); fn != nil && requestID != "" {

@@ -798,9 +798,10 @@ lo sumo un `session.view` por segundo, y cada uno lleva el centro más reciente.
 Lo que esta sección **no** hace, a propósito: zoom, desplazamiento por el borde de la pantalla, minimapa, y
 `entity.spawn` / `entity.despawn` incrementales al cambiar de área (el servidor responde con un snapshot,
 [../specs/websocket-protocol.md](../specs/websocket-protocol.md) §7.3). Consecuencia visible: lejos de casa, el
-HUD cuenta sólo las unidades propias que hay en el área, porque el store sólo replica el área; y una unidad que
-entra en el área ya observada no aparece hasta el siguiente snapshot, porque el servidor todavía no emite
-`entity.spawn` por cruce de frontera ([networking.md](./networking.md) §4.3).
+HUD cuenta sólo las unidades propias que hay en el área, porque el store sólo replica el área. Una unidad que
+entra en el área ya observada sí aparece sin esperar al siguiente snapshot: desde 2026-10-26 el servidor emite
+`entity.spawn` —con su polilínea— a quien gana el chunk y `entity.despawn OUT_OF_INTEREST` a quien lo pierde
+([networking.md](./networking.md) §4.3), y el reducer ya los aplica (§12.4).
 
 **Tests.** `src/render/camera.test.ts` (dirección en pantalla, independencia de los FPS, arrastre, recorte, ciudad
 recordada, teclas) y `src/state/viewSync.test.ts` (sin envíos fuera de sesión ni antes del snapshot inicial,

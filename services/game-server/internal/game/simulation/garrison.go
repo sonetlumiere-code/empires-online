@@ -271,13 +271,17 @@ func (s *Simulation) exit(u *unit.Unit, c *city.City, req exitRequest) error {
 		return err
 	}
 	from := u.Tile()
+	nowMs := s.deps.Clock.NowMs()
 
-	s.state.MoveUnitTo(u, tile)
+	prev := u.Status
 	u.Status = unit.StatusIdle
 	delete(s.state.garrisonedIn, u.ID)
+	// Si el tile de reentrada cae en otro chunk, la transición sólo alcanza al
+	// dueño: los terceros no la veían guarnecida y la reciben por el
+	// entity.spawn de abajo, una sola vez.
+	s.moveUnit(u, tile, prev, nowMs)
 	s.state.MarkDirty(u.ID)
 
-	nowMs := s.deps.Clock.NowMs()
 	status, x, y := string(u.Status), tile.X, tile.Y
 	var ninguna *int64
 	s.deps.Broadcaster.SendToPlayer(u.PlayerID, protocol.TypeEntityUpdate, req.RequestID,
@@ -321,9 +325,12 @@ func (s *Simulation) handleGarrisonExitFailed(cmd GarrisonExitFailed) {
 	s.deps.Broadcaster.BroadcastChunkExcept(cx, cy, u.PlayerID, protocol.TypeEntityDespawn,
 		protocol.EntityDespawnPayload{ID: u.ID, Reason: protocol.DespawnGarrisoned})
 
-	s.state.MoveUnitTo(u, cmd.From)
+	// Primero el estado, después el tile: si el regreso cruza de chunk, el
+	// dueño recibe la unidad ya GARRISONED en su ciudad, y los terceros nada.
+	prev := u.Status
 	u.Status = unit.StatusGarrisoned
 	s.state.garrisonedIn[u.ID] = cmd.CityID
+	s.moveUnit(u, cmd.From, prev, nowMs)
 	s.state.MarkDirty(u.ID)
 
 	status, x, y := string(u.Status), cmd.From.X, cmd.From.Y

@@ -92,6 +92,15 @@ type Broadcaster interface {
 	// ocultamiento: el propietario recibe otro mensaje por SendToPlayer
 	// (docs/specs/safe-zones.md §12, INV-SAFE-004).
 	BroadcastChunkExcept(cx, cy int32, except uuid.UUID, msgType string, payload any)
+	// BroadcastChunkTransition anuncia que una entidad pasó del chunk `from` al
+	// chunk `to`: entrega el spawn a las sesiones suscritas a `to` y NO a
+	// `from`, y el despawn a las suscritas a `from` y NO a `to`. Quien observa
+	// los dos no recibe nada: sigue viendo la entidad por sus deltas de siempre
+	// (docs/architecture/networking.md §4.3). Con `onlyPlayer` distinto de
+	// uuid.Nil sólo cuentan las sesiones de ese jugador: es como una unidad
+	// que sólo ve su dueño cruza de chunk sin revelarse (INV-SAFE-004).
+	BroadcastChunkTransition(from, to world.ChunkCoord, onlyPlayer uuid.UUID,
+		spawnType string, spawnPayload any, despawnType string, despawnPayload any)
 	// SendToPlayer entrega el mensaje a todas las sesiones de un jugador.
 	SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any)
 }
@@ -150,7 +159,9 @@ type NoopBroadcaster struct{}
 func (NoopBroadcaster) BroadcastChunk(int32, int32, string, any)                  {}
 func (NoopBroadcaster) BroadcastChunks([]world.ChunkCoord, string, any)           {}
 func (NoopBroadcaster) BroadcastChunkExcept(int32, int32, uuid.UUID, string, any) {}
-func (NoopBroadcaster) SendToPlayer(uuid.UUID, string, string, any)               {}
+func (NoopBroadcaster) BroadcastChunkTransition(_, _ world.ChunkCoord, _ uuid.UUID, _ string, _ any, _ string, _ any) {
+}
+func (NoopBroadcaster) SendToPlayer(uuid.UUID, string, string, any) {}
 
 // NoopPersister descarta las escrituras. Útil en tests de simulación pura.
 type NoopPersister struct{}

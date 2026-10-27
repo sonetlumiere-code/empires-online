@@ -148,9 +148,10 @@ func (s *Simulation) clearFootprint(f footprint, cityID int64, nowMs int64) {
 					cityID, u.Tile()))
 			continue
 		}
-		s.state.MoveUnitTo(u, to)
 		// El estado se conserva: IDLE sigue IDLE, y una HIDDEN la reevalúa la
-		// fase 5 en su tile nuevo, que es quien decide sobre el ocultamiento.
+		// fase 5 en su tile nuevo, que es quien decide sobre el ocultamiento. Si
+		// el apartamiento cruza de chunk, una HIDDEN sólo se anuncia a su dueño.
+		s.moveUnit(u, to, u.Status, nowMs)
 		s.state.MarkDirty(u.ID)
 
 		x, y := to.X, to.Y

@@ -355,7 +355,7 @@ de la familia es [../invariants/territory.md](../invariants/territory.md), compa
 | `INV-SAFE-001` | Dos Safe Zones no comparten ningún tile. | Construcción del índice (`RN-SAFE-007`); `TestDosZonasSolapadasResuelvenElIDMenorYSeReportan` |
 | `INV-SAFE-002` | Ningún tile perteneciente a una Safe Zone es intransitable. | Construcción del índice (`RN-SAFE-017`) y fundación (`RN-SAFE-018`); `TestTodoTileDelIndiceEsTransitable`, `TestExcluirRetiraLosTilesYDiceDeQueZona` |
 | `INV-SAFE-003` | `units.status = 'HIDDEN'` ⟹ `SafeZoneIndex.ZoneAt(x,y)` devuelve una zona y la unidad no tiene movimiento `ACTIVE`. | Fase 5; comprobado sobre todo el mundo tras cada tick en los tests de simulación (`verificarOcultamiento`) |
-| `INV-SAFE-004` | Ninguna unidad `HIDDEN` aparece en un delta dirigido a un jugador distinto de su propietario. | `Hub.BroadcastChunkExcept` y `simulation.VisibleTo`; `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno` (e2e de transporte) |
+| `INV-SAFE-004` | Ninguna unidad `HIDDEN` aparece en un delta dirigido a un jugador distinto de su propietario. | `Hub.BroadcastChunkExcept`, `simulation.VisibleTo` y el `onlyPlayer` de `Hub.BroadcastChunkTransition`; `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno` (e2e de transporte), `TestUnaUnidadOcultaQueCruzaDeChunkSoloSeAnunciaASuDueno` |
 | `INV-SAFE-005` | El rectángulo es válido: `min_x <= max_x` y `min_y <= max_y` (garantizado por `CHECK safe_zones_bounds_ordered`) y está contenido en `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)`. | `CHECK` para el orden; validación al construir el índice para la contención; `TestLosCheckDeSafeZonesRechazanTipoYLimitesInvalidos`, `TestZonasInvalidasSeRechazanSinArrastrarALasDemas` |
 | `INV-SAFE-006` | Ninguna Safe Zone se solapa con la zona urbana de una ciudad. | Construcción del índice y fundación; `TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla` |
 | `INV-SAFE-007` | El índice en RAM es función pura de (`safe_zones`, terreno): reconstruirlo produce el mismo resultado byte a byte. | `TestElIndiceEsDeterminista` |
@@ -426,7 +426,10 @@ compartido:
 
 Ningún otro punto del servidor emite unidades en estado `HIDDEN` a terceros: los deltas de posición los
 producen el movimiento (que antes revela la unidad), el desplazamiento por una fundación —que para una unidad
-`HIDDEN` sólo va a su dueño— y la salida de guarnición, que nunca afecta a una unidad oculta. **No existe** la aserción en tiempo de ejecución por destinatario que
+`HIDDEN` sólo va a su dueño— y la salida de guarnición, que nunca afecta a una unidad oculta. El cruce de chunk
+que ese desplazamiento puede provocar se anuncia con `entity.spawn` / `entity.despawn` a quien gana o pierde el
+chunk ([../architecture/networking.md](../architecture/networking.md) §4.3), y para una unidad `HIDDEN` esa
+transición se limita a las sesiones de su dueño (`Hub.BroadcastChunkTransition` con `onlyPlayer`). **No existe** la aserción en tiempo de ejecución por destinatario que
 proponía la ficha de `INV-SAFE-004`: la garantía es estructural y la sostienen los tests de §13.
 
 ## 13. Tests

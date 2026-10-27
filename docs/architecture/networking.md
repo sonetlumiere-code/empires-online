@@ -216,7 +216,7 @@ hecho de la simulación  --(mapeo)-->  tipo de mensaje v1  --(chunk o jugador)--
 | Posición nueva de una unidad en tránsito | `entity.update` (con `x`, `y`) | Chunk del tile **nuevo** |
 | Movimiento completado / cancelado | `unit.movement.completed` / `.cancelled` | Chunk del tile final |
 | Transición de presencia de la ciudad | `city.update` (con `presenceState`) | Chunk del centro de la ciudad |
-| Entidad entra o sale del área de interés | `entity.spawn` / `entity.despawn` | La sesión afectada |
+| Una unidad cambia de chunk (avance, parada, salida de guarnición, apartamiento por una muralla) | `entity.spawn` con la vista completa —movimiento activo incluido— a quien gana el chunk; `entity.despawn` con `reason: OUT_OF_INTEREST` a quien lo pierde; **nada** a quien observa los dos, que sigue con sus deltas | Sesiones suscritas al chunk nuevo y no al viejo / al viejo y no al nuevo, por `Hub.BroadcastChunkTransition`; sólo las del dueño si la unidad está `HIDDEN` o `GARRISONED` |
 | Una unidad se oculta en una Safe Zone | `entity.update` (con `status`) al propietario; `entity.despawn` con `reason: HIDDEN` a los demás | Propietario por `SendToPlayer`; terceros por `BroadcastChunkExcept` |
 | Una unidad oculta se revela | `entity.update` al propietario; `entity.spawn` a los demás | Ídem |
 
@@ -226,18 +226,21 @@ hecho de la simulación  --(mapeo)-->  tipo de mensaje v1  --(chunk o jugador)--
 2. Deltas de movimiento (fase 3): `entity.update` de cada avance y `unit.movement.completed` de las llegadas.
 3. Temporizadores (fase 5): `city.update` de las transiciones de presencia y, después, los cambios de ocultamiento de Safe Zones.
 
+La transición de chunk no tiene fase propia: se emite en el punto en que la unidad cambia de tile, sea cual sea la fase, e inmediatamente **antes** del delta de ese cambio —el `entity.update` del avance, el `unit.movement.cancelled` de una parada—. Así quien gana la unidad la conoce, con su polilínea, antes de recibir su primer delta, y quien la pierde no recibe ninguno después del `despawn` (`Simulation.moveUnit`, el único camino por el que una unidad del mundo vivo cambia de tile).
+
 **Sin coalescencia y sin batching en v1.** Cada hecho produce su mensaje: una unidad que cambia de tile en un tick genera exactamente un `entity.update`, y no se fusionan varios cambios de la misma entidad ni se agrupan mensajes de un mismo tick en un solo frame. Es la consecuencia de emitir en el punto del hecho, y es aceptable a 10 Hz con movimiento por tiles: una unidad de `VILLAGER` cambia de tile como mucho cada 360 ms. Coalescencia por entidad y un mensaje contenedor de deltas son **decisiones futuras, fuera de MVP** (§6.1).
 
 **Visibilidad por destinatario.** Hasta las Safe Zones, el destino de un delta era siempre un chunk o un jugador, y todos los suscriptores de un chunk veían lo mismo. Una unidad `HIDDEN` rompe esa simetría: su propietario la sigue viendo y los demás no (`INV-SAFE-004`). El filtro se aplica **por sesión de destino**, nunca al construir un delta compartido:
 
 - `Hub.BroadcastChunkExcept(cx, cy, except, …)` entrega a las sesiones del chunk cuyo jugador no es `except`, incluidas todas sus pestañas.
 - `BuildSnapshot` recibe el jugador destinatario y descarta las unidades `HIDDEN` ajenas (`simulation.VisibleTo`). Es necesario porque cada `session.view` reenvía un snapshot completo: sin filtro, mover la cámara devolvería la unidad oculta.
+- `Hub.BroadcastChunkTransition(from, to, onlyPlayer, …)` limita la transición de chunk a las sesiones de `onlyPlayer` cuando la simulación se lo pide. Lo pide cuando la unidad estaba o queda `HIDDEN` o `GARRISONED`: el dueño gana o pierde su unidad con el chunk, y los terceros no reciben nada, porque lo que ellos ven lo deciden los mensajes del cambio de estado, no el cruce. Una oculta apartada por una muralla a otro chunk no se revela; una que sale de guarnición a otro chunk llega a los terceros una sola vez, por el `entity.spawn` de la salida.
 
-Es la única regla de visibilidad por observador del MVP. Cualquier mecánica futura de sigilo o detección tendrá que pasar por los mismos dos puntos. Ver [../specs/safe-zones.md](../specs/safe-zones.md) §12.
+Es la única regla de visibilidad por observador del MVP. Cualquier mecánica futura de sigilo o detección tendrá que pasar por los mismos tres puntos. Ver [../specs/safe-zones.md](../specs/safe-zones.md) §12.
 
 **Ticks silenciosos**: si en el chunk de una sesión no ocurrió ningún hecho, no se emite ningún mensaje. A 10 Hz, la mayoría de los ticks de una sesión típica son silenciosos. El keepalive lo aporta el ping de control (§8.3), no un delta vacío.
 
-**`entity.spawn` y `entity.despawn` todavía no se emiten por cruce de frontera.** `Hub.Subscribe` ya devuelve los chunks que entran y los que salen —es la información necesaria—, pero en el MVP actual la resincronización del área de interés se hace reenviando un `world.snapshot` completo tras cada `session.view`. Emitir `spawn`/`despawn` incrementales a partir de ese diff es trabajo **pendiente**, no una funcionalidad existente.
+**Cruce de frontera: lo que se emite y lo que no.** Desde 2026-10-26, una unidad que pasa del chunk A al chunk B se anuncia a las sesiones cuya área de interés cambia con ella: `entity.spawn` a las suscritas a B y no a A, `entity.despawn` con `OUT_OF_INTEREST` a las suscritas a A y no a B, y nada a las suscritas a ambas (`Hub.BroadcastChunkTransition`, con las dos diferencias calculadas bajo el mismo lock, de modo que una sesión recibe exactamente uno de los dos mensajes o ninguno). Antes, la unidad que entraba era invisible hasta el siguiente `session.view` —el cliente descarta `entity.update` de ids desconocidos— y la que salía quedaba como fantasma. Lo que sigue **pendiente** es el otro lado de la misma simetría: cuando es la **cámara** la que cambia de chunks, `Hub.Subscribe` devuelve los que entran y los que salen, pero la resincronización se hace reenviando un `world.snapshot` completo tras cada `session.view` (§5.3). Cubierto por `TestUnaUnidadQueCruzaDeChunkApareceYDesapareceEnElAreaDeOtraSesion` (e2e, tres sesiones) y `internal/game/simulation/transition_test.go`.
 
 ### 4.4 `seq` y detección de pérdida de orden
 
@@ -360,13 +363,13 @@ left    = old \ new
 kept    = old ∩ new    ->  el cliente ya tiene esas entidades
 ```
 
-Con un desplazamiento de un chunk en horizontal, `entered` y `left` tienen 5 chunks cada uno de los 25: **el 80 % de la suscripción se conserva**. Esa es la propiedad que justifica el diseño; el aprovechamiento pleno del diff —emitir `entity.spawn`/`entity.despawn` incrementales en lugar de un snapshot completo— es trabajo pendiente (§4.3).
+Con un desplazamiento de un chunk en horizontal, `entered` y `left` tienen 5 chunks cada uno de los 25: **el 80 % de la suscripción se conserva**. Esa es la propiedad que justifica el diseño; aprovechar ese diff para emitir `entity.spawn`/`entity.despawn` incrementales en lugar de un snapshot completo **al mover la cámara** es trabajo pendiente (§4.3).
 
-La regla objetivo para el cruce de fronteras, cuando se implemente, es simétrica:
+La regla del cruce de fronteras es simétrica, y la mitad en que es la **entidad** la que cruza ya se cumple (§4.3, `Hub.BroadcastChunkTransition`):
 
-- Entidad que pasa de un chunk **no suscrito** a uno **suscrito** por el observador O → `entity.spawn` para O.
-- Entidad que pasa de **suscrito** a **no suscrito** → `entity.despawn` para O.
-- Entidad que se mueve dentro del conjunto suscrito → `entity.update`.
+- Entidad que pasa de un chunk **no suscrito** a uno **suscrito** por el observador O → `entity.spawn` para O, con la vista completa y el movimiento activo si lo hay.
+- Entidad que pasa de **suscrito** a **no suscrito** → `entity.despawn` con `reason: OUT_OF_INTEREST` para O.
+- Entidad que se mueve dentro del conjunto suscrito → `entity.update`, y nada más.
 
 Nótese que `spawn`/`despawn` son eventos **relativos al observador**, no al mundo: una unidad que sale de tu vista no ha muerto, solo dejó de ser observable. La muerte de una entidad es `units.status = DEAD` y se comunica con `entity.update` seguido de `entity.despawn`. El cliente **no debe** inferir nada de gameplay a partir de un `despawn`.
 

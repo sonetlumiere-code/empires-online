@@ -32,13 +32,16 @@ const epoch int64 = 1_757_376_000_000
 // ─────────────────────────────────────────────────────────────
 
 type capturedMessage struct {
-	Kind      string // "chunk" o "player"
+	Kind      string // "chunk", "chunks", "chunk-except", "transition" o "player"
 	Type      string
 	RequestID string
 	PlayerID  uuid.UUID
 	CX, CY    int32
-	Chunks    []world.ChunkCoord
-	Payload   any
+	// MinusCX, MinusCY es, en una transición, el chunk que se resta: el mensaje
+	// va a quien observa (CX, CY) y no (MinusCX, MinusCY).
+	MinusCX, MinusCY int32
+	Chunks           []world.ChunkCoord
+	Payload          any
 }
 
 // recorder captura todo lo que la simulación emite hacia la red.
@@ -72,6 +75,22 @@ func (r *recorder) BroadcastChunkExcept(cx, cy int32, except uuid.UUID, msgType 
 	r.messages = append(r.messages, capturedMessage{
 		Kind: "chunk-except", Type: msgType, CX: cx, CY: cy, PlayerID: except, Payload: payload,
 	})
+}
+
+func (r *recorder) BroadcastChunkTransition(from, to world.ChunkCoord, onlyPlayer uuid.UUID,
+	spawnType string, spawnPayload any, despawnType string, despawnPayload any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Una transición son dos entregas a dos conjuntos disjuntos. Se guardan por
+	// separado, cada una con el chunk que recibe y el que se resta, y con el
+	// jugador al que se limita si lo hay: es lo que un test necesita para afirmar
+	// quién gana la unidad, quién la pierde, y que una oculta no llega a terceros.
+	r.messages = append(r.messages,
+		capturedMessage{Kind: "transition", Type: spawnType, CX: to.CX, CY: to.CY,
+			MinusCX: from.CX, MinusCY: from.CY, PlayerID: onlyPlayer, Payload: spawnPayload},
+		capturedMessage{Kind: "transition", Type: despawnType, CX: from.CX, CY: from.CY,
+			MinusCX: to.CX, MinusCY: to.CY, PlayerID: onlyPlayer, Payload: despawnPayload},
+	)
 }
 
 func (r *recorder) SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any) {

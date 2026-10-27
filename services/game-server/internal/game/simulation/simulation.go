@@ -298,9 +298,13 @@ func (s *Simulation) cancelActiveMovement(u *unit.Unit, reason movement.CancelRe
 		return
 	}
 	stoppedAt := m.PositionAt(nowMs)
-	s.state.MoveUnitTo(u, stoppedAt)
+	prev := u.Status
 	s.state.ClearMovement(u.ID)
 	u.Status = unit.StatusIdle
+	// Con el estado ya definitivo: si el último tramo cruzó de chunk, quien
+	// gana la unidad con él la recibe parada donde se detuvo, y después el
+	// unit.movement.cancelled de abajo.
+	s.moveUnit(u, stoppedAt, prev, nowMs)
 	s.state.MarkDirty(u.ID)
 
 	finish := MovementFinish{MovementID: m.ID, Status: movement.StatusCancelled, UnitID: u.ID, At: stoppedAt}
@@ -344,8 +348,10 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 		pos := m.PositionAt(nowMs)
 		if pos != u.Tile() {
 			// Sin MarkDirty: la posición en tránsito no se persiste, se deriva de
-			// la polilínea (INV-PERSIST-004). La final la escribe el cierre.
-			s.state.MoveUnitTo(u, pos)
+			// la polilínea (INV-PERSIST-004). La final la escribe el cierre. Si
+			// el paso cruza de chunk, moveUnit anuncia la unidad —con su
+			// polilínea— a quien la gana, ANTES del entity.update de abajo.
+			s.moveUnit(u, pos, u.Status, nowMs)
 
 			cx, cy := s.state.World().ChunkOf(pos.X, pos.Y)
 			x, y := pos.X, pos.Y

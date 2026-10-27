@@ -193,8 +193,12 @@ func (s *State) UnitsInChunk(cx, cy int32) []*unit.Unit {
 
 // MoveUnitTo actualiza la posición de una unidad y reindexa su chunk.
 //
-// Devuelve true si la unidad cambió de chunk: quien llama necesita saberlo para
-// emitir spawn/despawn a las sesiones cuyo área de interés cambió.
+// Devuelve true si la unidad cambió de chunk. En el mundo vivo no se llama
+// directamente: Simulation.moveUnit lo envuelve y, con ese true, anuncia la
+// transición a las sesiones cuya área de interés gana o pierde la unidad
+// (entity.spawn / entity.despawn OUT_OF_INTEREST). Las rehidrataciones de
+// arranque —Hydrate, ClearFootprints— sí lo llaman a secas: todavía no hay
+// sesiones a las que anunciar nada.
 func (s *State) MoveUnitTo(u *unit.Unit, t world.Tile) bool {
 	oldCX, oldCY := s.world.ChunkOf(u.X, u.Y)
 	newCX, newCY := s.world.ChunkOf(t.X, t.Y)
