@@ -129,6 +129,11 @@ del juego; la coordinación de secuencias sí añade una forma nueva de fallar.
 - La versión del stock es contabilidad nueva que el código tiene que mantener en cada cambio.
 - `INV-CITY-009` se deroga; quien lea `cities.population` tiene que saber que incluye lo reservado.
 - `city_productions` conserva la última producción terminada de cada ciudad hasta el siguiente encargo.
+- Un volcado de depósitos que agota sus intentos devuelve su delta a la ciudad **con una versión nueva**, para que
+  el reintento supere a cualquier encargo escrito entre medias y no se pierda. El precio es el caso patológico de
+  un `COMMIT` confirmado cuya confirmación se perdió y cuyos tres reintentos fallaron después: ese delta se
+  sumaría dos veces. Exige una caída de la base justo después de confirmar; la alternativa, conservar la versión,
+  perdería los depósitos en un caso mucho más común (un encargo escrito antes del reintento).
 
 ### Neutras
 

@@ -33,7 +33,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | M5 (EO-080 … EO-089) | **Completado.** `EO-084`, `EO-085` y `EO-086` cerrados: safe zones, `HIDDEN` y su filtrado por destinatario. La geometría de las zonas del mundo canónico es una decisión de diseño pendiente, no un item de este bloque. |
 | M6 (EO-090 … EO-097) | **Completado.** El entregable 8 (`EO-096`) se cerró por decisión: ninguna acción del MVP se restringe por territorio ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). |
 | M7 (EO-100 … EO-108) | **Completado.** Dominio, persistencia, caducidad y, desde [ADR-017](../decisions/ADR-017-garrison-commands.md), los comandos `unit.garrison` y `unit.ungarrison` con su efecto en el interest management (`EO-107`). La expulsión diferida al romperse un tratado sigue fuera del MVP. |
-| E1 (EO-130 … EO-141) | **En curso** desde el 2026-10-27, contra [SPEC-ECON-WOOD](../specs/economy-wood.md). `EO-130` hecho. |
+| E1 (EO-130 … EO-141) | **En curso** desde el 2026-10-27, contra [SPEC-ECON-WOOD](../specs/economy-wood.md). `EO-130` a `EO-139` hechos en la rama `claude/slice-madera-0b24a4`; `EO-140` y `EO-141`, a falta de la verificación en vivo. |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se
@@ -192,17 +192,17 @@ Rango propio a partir de `EO-130`, el siguiente bloque de diez libre: los transv
 | ID | Título | Milestone | Prioridad | Tamaño | Dependencias | Criterio de aceptación |
 |---|---|---|---|---|---|---|
 | EO-130 | Invariantes `INV-ECON`, ADR-023 y milestone E1 | E1 | P0 | S | — | **Cerrado.** `docs/invariants/economy.md` registra `INV-ECON-001` a `006` antes del código; `INV-CITY-009` derogado y sustituido por `INV-CITY-017`; `node scripts/check-docs.mjs` en verde. |
-| EO-131 | Migración `000006` de la economía | E1 | P0 | M | EO-130 | `city_stocks`, `unit_tasks`, `buildings`, `city_productions` y `WORKING` en `units_status_valid`; el `down` deja el esquema de `000005` y `TestLasMigracionesSonCorrelativasYCompletas` pasa. |
-| EO-132 | Dominio de la economía | E1 | P0 | M | EO-130 | `economy`, `building`, `production` y `task` son dominio puro con un test por regla `RN-ECON-*` y los valores de la spec §4.5 en sus catálogos. |
-| EO-133 | Tarea `GATHER_WOOD` en la simulación | E1 | P0 | L | EO-132 | Un aldeano a 10 tiles de un bosque hace tres viajes con los depósitos en los ticks del golden `madera`; con el dueño ausente no empieza un viaje nuevo (`INV-ECON-006`). |
-| EO-134 | `city.build` y `city.train` en dos fases | E1 | P0 | M | EO-132 | Validación y reserva en el tick, débito y efecto en una transacción, respuesta por el buzón; un rechazo devuelve la madera a la RAM. |
-| EO-135 | Casas que se completan y aldeanos que nacen | E1 | P0 | M | EO-134 | La casa sube `population_limit` en cinco en el tick de `completes_at_ms`; el aldeano nace `IDLE` en el primer tile libre del anillo de nacimiento. |
-| EO-136 | Persistencia de la economía | E1 | P0 | M | EO-131 | `postgres.EconomyRepo` con tests de integración de los `CHECK`, la PK, los `UNIQUE`, el débito con fallo inyectado y la idempotencia por `requestId`; cada escritura declara compensación (ADR-022). |
-| EO-137 | Arranque de la economía | E1 | P0 | M | EO-136 | La validación de carga repara `INV-ECON-003`, `INV-ECON-004` e `INV-CITY-017`; los tests de recuperación de cada fase terminan en su instante absoluto (`INV-ECON-005`). |
-| EO-138 | Protocolo v1 de la economía | E1 | P0 | M | EO-132 | Tres comandos, dos mensajes, `buildings[]`, `stocks`, `WORKING`, `carrying` y dos códigos en `packages/protocol`; `pnpm run protocol:check` sin deriva y los contract tests de Go en verde. |
-| EO-139 | Manejadores WebSocket de la economía | E1 | P0 | S | EO-138 | Los tres flujos de la spec §9 de extremo a extremo, validados contra el JSON Schema, y cada comando clasificado (ADR-016). |
-| EO-140 | Cliente de la economía | E1 | P1 | M | EO-139 | Contador de madera, botones «Casa» y «Aldeano», recolección con un clic en un bosque y render de edificios y de `WORKING`, con tests de lo puro. |
-| EO-141 | Escenario `madera` y humo | E1 | P1 | S | EO-133, EO-140 | El golden `madera` se reproduce dos veces igual; `scripts/smoke.mjs` recorre un viaje de recolección completo. |
+| EO-131 | Migración `000006` de la economía | E1 | P0 | M | EO-130 | **Cerrado.** `city_stocks`, `unit_tasks`, `buildings`, `city_productions` y `WORKING` en `units_status_valid`; el `down` deja el esquema de `000005` y `TestLasMigracionesSonCorrelativasYCompletas` pasa. |
+| EO-132 | Dominio de la economía | E1 | P0 | M | EO-130 | **Cerrado.** `economy`, `building`, `production` y `task` son dominio puro con un test por regla `RN-ECON-*` y los valores de la spec §4.5 en sus catálogos. |
+| EO-133 | Tarea `GATHER_WOOD` en la simulación | E1 | P0 | L | EO-132 | **Cerrado.** Un aldeano a 10 tiles de un bosque hace tres viajes con los depósitos en los ticks del golden `madera`; con el dueño ausente no empieza un viaje nuevo (`INV-ECON-006`). |
+| EO-134 | `city.build` y `city.train` en dos fases | E1 | P0 | M | EO-132 | **Cerrado.** Validación y reserva en el tick, débito y efecto en una transacción, respuesta por el buzón; un rechazo devuelve la madera a la RAM. |
+| EO-135 | Casas que se completan y aldeanos que nacen | E1 | P0 | M | EO-134 | **Cerrado.** La casa sube `population_limit` en cinco en el tick de `completes_at_ms`; el aldeano nace `IDLE` en el primer tile libre del anillo de nacimiento. |
+| EO-136 | Persistencia de la economía | E1 | P0 | M | EO-131 | **Cerrado.** `postgres.EconomyRepo` con tests de integración de los `CHECK`, la PK, los `UNIQUE`, el débito con fallo inyectado y la idempotencia por `requestId`; cada escritura declara compensación (ADR-022). |
+| EO-137 | Arranque de la economía | E1 | P0 | M | EO-136 | **Cerrado.** La validación de carga repara `INV-ECON-003`, `INV-ECON-004` e `INV-CITY-017`; los tests de recuperación de cada fase terminan en su instante absoluto (`INV-ECON-005`). |
+| EO-138 | Protocolo v1 de la economía | E1 | P0 | M | EO-132 | **Cerrado.** Tres comandos, dos mensajes, `buildings[]`, `stocks`, `WORKING`, `carrying` y dos códigos en `packages/protocol`; `pnpm run protocol:check` sin deriva y los contract tests de Go en verde. |
+| EO-139 | Manejadores WebSocket de la economía | E1 | P0 | S | EO-138 | **Cerrado.** Los tres flujos de la spec §9 de extremo a extremo, validados contra el JSON Schema, y cada comando clasificado (ADR-016). |
+| EO-140 | Cliente de la economía | E1 | P1 | M | EO-139 | **Abierto: falta verlo en el navegador.** Contador de madera, botones «Casa» y «Aldeano», recolección con un clic en un bosque y render de edificios y de `WORKING`, con tests de lo puro. |
+| EO-141 | Escenario `madera` y humo | E1 | P1 | S | EO-133, EO-140 | **Abierto: falta ejecutar el humo contra un servidor vivo; el golden está hecho.** El golden `madera` se reproduce dos veces igual; `scripts/smoke.mjs` recorre un viaje de recolección completo. |
 
 ## Transversales
 

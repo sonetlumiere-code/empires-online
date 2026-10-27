@@ -254,7 +254,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-014 | Ninguna ciudad sigue protegida mientras su dueño tenga una sesión viva | CRITICO | DOMAIN, TEST | ✓ | `TestCicloDePresenciaYProteccion` |
 | INV-CITY-015 | `last_online_at` y `last_offline_at` son monótonos no decrecientes en una ejecución | MEDIO | DOMAIN, TEST | ✓ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` |
 | INV-CITY-016 | `simulation.Hydrate` no escribe `cities`: es idempotente para la presencia | MEDIO | TEST | ✓ | `TestRehidratarDosVecesNoEscribePresencia` |
-| INV-CITY-017 | `population` es el recuento de unidades vivas más las producciones en curso | ALTO | DB, DOMAIN, TEST | ○ | Previstos: recuento al cargar (`loadcheck`), encargo y nacimiento (integration) |
+| INV-CITY-017 | `population` es el recuento de unidades vivas más las producciones en curso | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaPoblacionCuentaLasProduccionesEnCurso`, `TestEntrenarReservaLaPlazaYEsIdempotente`, `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad` |
 
 ### UNIT — [units.md](units.md)
 
@@ -357,12 +357,12 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-ECON-001 | El stock de una ciudad nunca es negativo | CRITICO | DB, DOMAIN, TEST | ○ | Previsto: `Test_INV_ECON_001_UnDebitoMayorQueElStockNoSeEscribe` |
-| INV-ECON-002 | Todo débito ocurre en la misma transacción que su efecto | CRITICO | DB, DOMAIN, TEST | ○ | Previsto: `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` |
-| INV-ECON-003 | Una unidad tiene como mucho una tarea, y está `WORKING` si y sólo si su tarea está en `WORKING` | ALTO | DB, DOMAIN, TEST | ○ | Previstos: `unit_tasks_pkey` (integration), `loadcheck` (unit) |
-| INV-ECON-004 | `population_limit` es el de la era más cinco por casa completa | ALTO | DOMAIN, TEST | ○ | Previstos: `building.PopulationLimit`, `loadcheck`, casa completándose |
-| INV-ECON-005 | Lo que estaba a medias termina, tras un reinicio, en el mismo instante absoluto | ALTO | DOMAIN, TEST | ○ | Previstos: recuperación en cada fase |
-| INV-ECON-006 | Ningún viaje nuevo empieza con el dueño ausente | ALTO | DOMAIN, TEST | ○ | Previsto: desconexión a mitad de viaje (simulation) |
+| INV-ECON-001 | El stock de una ciudad nunca es negativo | CRITICO | DB, DOMAIN, TEST | ✓ | `Test_INV_ECON_001_UnDebitoMayorQueElStockNoSeEscribe`, `TestUnDebitoNuncaDejaElStockNegativo` |
+| INV-ECON-002 | Todo débito ocurre en la misma transacción que su efecto | CRITICO | DB, DOMAIN, TEST | ✓ | `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera`, `TestUnEncargoDeCasaEsIdempotentePorRequestID`, `TestUnEncargoRechazadoDevuelveLaMadera` |
+| INV-ECON-003 | Una unidad tiene como mucho una tarea, y está `WORKING` si y sólo si su tarea está en `WORKING` | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaTransicionDeTareaEscribeTramoUnidadYTarea`, `TestLasTareasIncoherentesSeReparanHaciaElLadoSinTarea` |
+| INV-ECON-004 | `population_limit` es el de la era más cinco por casa completa | ALTO | DOMAIN, TEST | ✓ | `TestElLimiteDePoblacionCuentaLasCasasCompletas`, `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite`, `TestCompletarUnaCasaSumaSuBonoUnaVez` |
+| INV-ECON-005 | Lo que estaba a medias termina, tras un reinicio, en el mismo instante absoluto | ALTO | DOMAIN, TEST | ✓ | `TestReinicioConLaLlegadaAlBosqueVencidaEnLaCaida`, `TestReinicioDuranteUnaConstruccion` y el resto de `economy_recovery_test.go` |
+| INV-ECON-006 | Ningún viaje nuevo empieza con el dueño ausente | ALTO | DOMAIN, TEST | ✓ | `TestConElDuenoAusenteElViajeTerminaYNoEmpiezaOtro`, `TestUnaCiudadOnlineSinSesionNoEmpiezaViajesNuevos` |
 
 ### Distribución
 
@@ -399,9 +399,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 91 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 98 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 1 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 7 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **101** | |
 
@@ -411,7 +411,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Las siete filas sin cobertura son las de E1 —la familia `INV-ECON` e `INV-CITY-017`—, registradas antes de escribir su código como manda §8; pasan a ✓ con la implementación de SPEC-ECON-WOOD. Antes de ellas no quedaba ninguna: las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
+Ninguna fila queda sin cobertura. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
 La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). La única parcial que queda espera algo que no existe: la primera acción hostil (`INV-CITY-006`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas), y con [ADR-020](../decisions/ADR-020-stale-pending-accounts.md), `INV-PLAYER-010` (una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 

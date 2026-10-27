@@ -595,7 +595,7 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (recontar desde `units` y `city_productions`) |
-| Cobertura | **Sin cobertura**: tests previstos del recuento al cargar (`internal/game/loadcheck`) y del encargo y el nacimiento (integration) |
+| Cobertura | **Cubierto** por `TestLaPoblacionCuentaLasProduccionesEnCurso` (`internal/game/loadcheck`), `TestEntrenarReservaLaPlazaYEsIdempotente` y `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad` (integration), y `TestEntrenarUnAldeanoReservaYNaceAlVencer` (simulation) |
 
 **Enunciado.** Para toda ciudad, `cities.population` es igual al número de filas de `units` con `city_id` de esa ciudad y `status <> 'DEAD'`, más el número de filas de `city_productions` de esa ciudad con `unit_id IS NULL` (en curso), tras cada transacción confirmada.
 
@@ -610,8 +610,9 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 
 **Cómo se verifica.**
 
-- Test previsto de `loadcheck` (unit) — una ciudad con tres aldeanos y una producción en curso tiene población 4; un contador de 3 se repara a 4.
-- Test previsto (integration) — tras un encargo de entrenamiento la población sube uno; tras el nacimiento no cambia.
+- `TestLaPoblacionCuentaLasProduccionesEnCurso` (unit, `internal/game/loadcheck`) — una ciudad con tres aldeanos y una producción en curso tiene población 4 (un contador de 3 se repara a 4); una producción terminada no reserva nada. `TestLasCiudadesSeReparanDesdeSusFuentes` sigue cubriendo el recuento de unidades.
+- `TestEntrenarReservaLaPlazaYEsIdempotente`, `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad` (integration) — tras un encargo la población sube uno; tras el nacimiento no cambia.
+- `TestEntrenarUnAldeanoReservaYNaceAlVencer` (simulation) — la plaza se reserva al ordenar y pasa a la unidad al nacer.
 - Siguen valiendo para la parte del alta `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal` y `TestBootstrapCreaMundoCompletoDelJugador` (integration).
 
 **Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-CITY-017`, `entity=city:<id>` y el contador persistido frente al recuento. Política `REPAIR` con un `InvariantRepaired` de auditoría.

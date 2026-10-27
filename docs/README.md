@@ -280,19 +280,24 @@ almacén de identidad— y la comprobación de humo contra el game server y la w
 |---|---|---|
 | `packages/protocol` | Esquemas Zod del protocolo v1, exportación a JSON Schema y catálogo de códigos de error. | Vitest; la CI comprueba además que el esquema exportado no ha derivado. |
 | Mundo y pathfinding | `internal/game/world` (grid, chunks, terreno, ocupación, generador determinista) e `internal/pathfinding` (A\* de 8 direcciones sin corner cutting). | `go test` |
-| Dominio | `movement`, `city` (presencia y protección), `territory`, `safezone`, `diplomacy` y `garrison`, en `internal/domain`. | `go test` |
-| Simulación | `internal/game/simulation`: vertical slice, órdenes, presencia, recuperación, territorios, ocultamiento en Safe Zones, caducidad de tratados. | `go test` |
+| Dominio | `movement`, `city` (presencia y protección), `territory`, `safezone`, `diplomacy`, `garrison` y, desde E1, `economy`, `building`, `production` y `task`, en `internal/domain`. | `go test` |
+| Simulación | `internal/game/simulation`: vertical slice, órdenes, presencia, recuperación, territorios, ocultamiento en Safe Zones, caducidad de tratados y, desde E1, la economía de la madera (recolección, casa, aldeano) con su golden `madera`. | `go test` |
 | Bordes | `internal/auth`, `internal/config`, `internal/protocol` (contract), `internal/websocket` (e2e contra un servidor real, que valida contra el JSON Schema cada mensaje que emite), `internal/httpapi` (la fundación, probada desde la suite de integración), `internal/persistence/memory`. | `go test` |
 | Persistencia | `internal/persistence/postgres` e `internal/persistence/redis`, contra PostgreSQL 16 y Redis reales. | Integración con `-race`: en la CI y en local sin Docker ([operations/local-development.md](operations/local-development.md) §3-bis). |
-| Esquema | Migraciones `000001` a `000005`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
-| `apps/web` | Cliente Next.js 15 + React 19 + PixiJS 8: proyección isométrica, interpolación, estado del mundo, cliente WebSocket, overlay de territorios. | Vitest y `next build` en la CI. |
-| Despliegue de punta a punta | Alta, handshake, snapshot, movimiento, desconexión y reconexión contra un servidor vivo. | `pnpm run smoke`. |
+| Esquema | Migraciones `000001` a `000006`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
+| `apps/web` | Cliente Next.js 15 + React 19 + PixiJS 8: proyección isométrica, interpolación, estado del mundo, cliente WebSocket, overlay de territorios y, desde E1, madera, casa, aldeano y recolección en el HUD y la escena. | Vitest y `next build` en la CI. |
+| Despliegue de punta a punta | Alta, handshake, snapshot, movimiento, desconexión y reconexión contra un servidor vivo; desde E1, un viaje de recolección completo. | `pnpm run smoke`. |
 
 El estado por milestone, entregable a entregable, está en [roadmap/milestones.md](roadmap/milestones.md).
 `go.mod` declara `go 1.25.11` como versión **mínima**, impuesta por las dependencias; el toolchain de la
 máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
+
+- **E1 Madera está en curso** ([roadmap/milestones.md](roadmap/milestones.md) §E1): el primer slice de economía
+  ([specs/economy-wood.md](specs/economy-wood.md)) está implementado con su suite completa en verde en la rama
+  que lo trae, pero la escena y el HUD del cliente y el paso de recolección del humo no se han verificado contra
+  un servidor vivo todavía.
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en
@@ -334,7 +339,10 @@ El detalle, invariante por invariante, está en [invariants/territory.md](invari
 [invariants/diplomacy.md](invariants/diplomacy.md). Todas las familias están reconciliadas con la suite
 (`EO-118`, y `INV-GARR` con los comandos de guarnición).
 
-Fuera de MVP y sin código: combate, recursos, construcción, progresión de eras más allá de las semillas
+La migración `000006` añade `city_stocks`, `unit_tasks`, `buildings` y `city_productions` con su mecánica desde
+el primer día ([specs/economy-wood.md](specs/economy-wood.md), [invariants/economy.md](invariants/economy.md)).
+
+Fuera de MVP y sin código: combate, recursos distintos de la madera, edificios distintos de la casa, progresión de eras más allá de las semillas
 del catálogo, y los tests de carga con k6 de [testing/load-tests.md](testing/load-tests.md).
 
 ---

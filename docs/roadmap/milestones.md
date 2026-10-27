@@ -1234,7 +1234,9 @@ nunca el cliente. `EJE-PERSIST` para treaties y garrisons.
 
 ## E1 — Madera
 
-**Estado: EN CURSO.** Primer milestone después del vertical slice, y el primero de la fase «Economy» de
+**Estado: EN CURSO — implementado en la rama `claude/slice-madera-0b24a4` (2026-10-27) con la suite completa en
+verde (unit, integration contra PostgreSQL y Redis reales, contract, e2e, Vitest y `next build`); falta verificar
+en vivo el cliente y el paso de recolección del humo, y fusionar.** Primer milestone después del vertical slice, y el primero de la fase «Economy» de
 [roadmap.md](roadmap.md) §5. Su contrato es [SPEC-ECON-WOOD](../specs/economy-wood.md), aceptada el
 2026-10-27 con sus seis decisiones de producto.
 
@@ -1253,29 +1255,33 @@ madera.
 1. **HECHO** — Registro de la familia `INV-ECON` ([../invariants/economy.md](../invariants/economy.md)),
    derogación de `INV-CITY-009` y su sustituto `INV-CITY-017`, y
    [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md), antes que el código.
-2. **PENDIENTE** — Migración `000006`: `city_stocks`, `unit_tasks`, `buildings`, `city_productions` y el valor
+2. **HECHO** — Migración `000006`: `city_stocks`, `unit_tasks`, `buildings`, `city_productions` y el valor
    `WORKING` en `units_status_valid`, con su `down` reversible.
-3. **PENDIENTE** — Dominio puro: `internal/domain/economy` (stock y costes), `internal/domain/building` (casa,
+3. **HECHO** — Dominio puro: `internal/domain/economy` (stock y costes), `internal/domain/building` (casa,
    emplazamiento, fórmula del límite), `internal/domain/production` (entrenamiento) e `internal/domain/task`
    (máquina de estados de `GATHER_WOOD`), con los valores de la spec §4.5 en los catálogos de código.
-4. **PENDIENTE** — `unit.gather` y la tarea en la simulación: tramos como movimientos normales, la fase 3
+4. **HECHO** — `unit.gather` y la tarea en la simulación: tramos como movimientos normales, la fase 3
    decide al llegar y la fase 5 al vencer `phase_until_ms`; el depósito marca el stock sucio; ningún viaje nuevo
    con el dueño ausente (`RN-ECON-005`).
-5. **PENDIENTE** — `city.build` y `city.train` en dos fases ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)):
+5. **HECHO** — `city.build` y `city.train` en dos fases ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)):
    el tick valida y reserva, la transacción debita y escribe el efecto, el resultado vuelve por el buzón.
-6. **PENDIENTE** — Finalización de casas (`population_limit + 5`) y nacimiento del aldeano en la fase 5.
-7. **PENDIENTE** — `postgres.EconomyRepo` con una compensación declarada para cada escritura (ADR-022) y el
+6. **HECHO** — Finalización de casas (`population_limit + 5`) y nacimiento del aldeano en la fase 5.
+7. **HECHO** — `postgres.EconomyRepo` con una compensación declarada para cada escritura (ADR-022) y el
    volcado de depósitos en la fase 8.
-8. **PENDIENTE** — Arranque: la validación de carga repara `INV-ECON-003`, `INV-ECON-004` e `INV-CITY-017`;
+8. **HECHO** — Arranque: la validación de carga repara `INV-ECON-003`, `INV-ECON-004` e `INV-CITY-017`;
    `Hydrate` reanuda tareas, casas y producciones con sus instantes absolutos.
-9. **PENDIENTE** — Protocolo v1: `unit.gather`, `city.build`, `city.train`, `building.spawn`, `building.update`,
+9. **HECHO** — Protocolo v1: `unit.gather`, `city.build`, `city.train`, `building.spawn`, `building.update`,
    `buildings[]` en `world.snapshot`, `stocks` en `city.update` y `CityView`, `WORKING`, `carrying`, y los
    códigos `INSUFFICIENT_RESOURCES` y `CITY_BUSY`.
-10. **PENDIENTE** — Manejadores WebSocket de los tres comandos, clasificados según
+10. **HECHO** — Manejadores WebSocket de los tres comandos, clasificados según
     [ADR-016](../decisions/ADR-016-foreign-territory-actions.md).
-11. **PENDIENTE** — Cliente: contador de madera, botones «Casa» y «Aldeano», orden de recolección sobre un
-    bosque, edificios y unidad `WORKING` en la escena.
-12. **PENDIENTE** — Escenario golden `madera` y un viaje de recolección completo en `scripts/smoke.mjs`.
+11. **PARCIAL** — Cliente: contador de madera, botones «Casa» y «Aldeano», orden de recolección sobre un
+    bosque, edificios y unidad `WORKING` en la escena. Implementado con tests de lo puro, del store y de la
+    proyección ([../architecture/frontend.md](../architecture/frontend.md) §4.4); la escena y el HUD no se han
+    visto en un navegador contra un servidor vivo.
+12. **PARCIAL** — Escenario golden `madera` (**hecho**, `TestLosEscenariosReproducenSuGolden`) y un viaje de
+    recolección completo en `scripts/smoke.mjs` (escrito, con `elegirBosque` probado; sin ejecutar contra un
+    servidor vivo).
 
 ### Tests
 

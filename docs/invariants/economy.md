@@ -48,7 +48,7 @@ Spec: [../specs/economy-wood.md](../specs/economy-wood.md). Decisiones:
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REJECT (constraint y guarda de dominio) |
-| Cobertura | **Sin cobertura**: tests previstos `Test_INV_ECON_001_UnDebitoMayorQueElStockNoSeEscribe` (integration) y los de `economy.Stock` (unit) |
+| Cobertura | **Cubierto** por `Test_INV_ECON_001_UnDebitoMayorQueElStockNoSeEscribe` (integration, `internal/persistence/postgres`), `TestUnDebitoNuncaDejaElStockNegativo` (unit, `internal/domain/economy`) y `TestRechazosDeConstruccion` (simulation) |
 
 **Enunciado.** Para toda fila de `city_stocks`, `amount >= 0`; y para toda ciudad en la RAM del Game Server, el
 stock de cada recurso es `>= 0` tras cada comando y cada fase del tick.
@@ -68,9 +68,12 @@ más directa de hacer trampa en una economía, y por eso es la primera propiedad
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_ECON_001_UnDebitoMayorQueElStockNoSeEscribe` (integration) — un encargo que pide más
-  de lo que hay se rechaza y la fila no cambia.
-- Tests previstos de `economy.Stock` (unit) — el débito exacto deja cero, el excesivo no muta.
+- `Test_INV_ECON_001_UnDebitoMayorQueElStockNoSeEscribe` (integration) — un `UPDATE` a negativo viola el
+  `CHECK`, y un encargo que pide más de lo que hay se rechaza con `ErrInsufficientResources` sin escribir nada.
+- `TestUnDebitoNuncaDejaElStockNegativo` y `TestCantidadesInvalidasNoMutan` (unit, `internal/domain/economy`) —
+  el débito exacto deja cero, el excesivo no muta ni la cantidad ni la versión.
+- `TestRechazosDeConstruccion`, `TestRechazosDeEntrenamiento` (simulation) — `INSUFFICIENT_RESOURCES` sin tocar
+  el stock.
 
 **Violación en runtime.** Un débito rechazado por el `CHECK` vuelve al loop como `INSUFFICIENT_RESOURCES` y la
 compensación restaura la RAM. Si la RAM llegara a negativo —no hay ruta que lo haga—, el log
@@ -87,7 +90,7 @@ compensación restaura la RAM. Si la RAM llegara a negativo —no hay ruta que l
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
-| Cobertura | **Sin cobertura**: tests previstos `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` (integration) y la compensación en simulación |
+| Cobertura | **Cubierto** por `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` y `TestUnEncargoDeCasaEsIdempotentePorRequestID` (integration), y `TestUnEncargoRechazadoDevuelveLaMadera` (simulation) |
 
 **Enunciado.** Toda reducción de `city_stocks.amount` se confirma en la misma transacción que inserta el
 edificio (`buildings`) o la producción (`city_productions`) que la justifica; y toda fila de `buildings` o de
@@ -111,10 +114,13 @@ madera, y ninguna de las dos cosas se puede reconstruir después: el jugador no 
 
 **Cómo se verifica.**
 
-- Test previsto: `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` (integration) — con un fallo
-  inyectado al insertar el edificio, el stock y la versión no cambian.
-- Test previsto (integration) — un encargo repetido con el mismo `requestId` no debita dos veces.
-- Test previsto (simulation) — un encargo rechazado por la transacción devuelve la madera a la RAM.
+- `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` (integration) — con un fallo inyectado al
+  insertar el edificio (un tipo fuera de `buildings_type_valid`), el stock, la versión y los eventos no cambian.
+- `TestUnEncargoDeCasaEsIdempotentePorRequestID`, `TestEntrenarReservaLaPlazaYEsIdempotente` (integration) — un
+  encargo repetido con el mismo `requestId` no debita dos veces; `TestUnEncargoConElStockAdelantadoSeRechaza`, un
+  encargo cuya versión ya está escrita no inserta su efecto.
+- `TestUnEncargoRechazadoDevuelveLaMadera`, `TestUnFalloDefinitivoDelEncargoDevuelveLaReserva`,
+  `TestUnEntrenamientoRechazadoDeshaceLaReserva` y `TestElEncargoLlevaLosDepositosSinVolcar` (simulation).
 
 **Violación en runtime.** No hay estado intermedio que detectar: la transacción es la garantía. Un rechazo se
 registra con su código y llega al jugador como `system.error`.
@@ -130,7 +136,7 @@ registra con su código y llega al jugador como `system.error`.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (al arrancar) |
-| Cobertura | **Sin cobertura**: tests previstos de `unit_tasks_pkey` (integration) y de `loadcheck` (unit) |
+| Cobertura | **Cubierto** por `TestUnaTransicionDeTareaEscribeTramoUnidadYTarea` (integration), `TestLasTareasIncoherentesSeReparanHaciaElLadoSinTarea` (unit, `internal/game/loadcheck`) y `TestUnGatherNuevoSustituyeLaTarea` (simulation) |
 
 **Enunciado.** Para toda unidad hay como mucho una fila en `unit_tasks`; y `units.status = 'WORKING'` si y sólo
 si existe su fila de `unit_tasks` con `phase = 'WORKING'`. Una fila de `unit_tasks` pertenece siempre a una
@@ -154,9 +160,14 @@ que no trabaja cargaría madera sin que nadie la viera trabajar.
 
 **Cómo se verifica.**
 
-- Test previsto (integration) — una segunda fila para la misma unidad viola `unit_tasks_pkey`.
-- Tests previstos de `loadcheck` (unit) — cada combinación incoherente se repara hacia el lado sin tarea.
-- Test previsto (simulation) — sustituir una tarea deja una sola.
+- `TestUnaTransicionDeTareaEscribeTramoUnidadYTarea` (integration) — una segunda fila para la misma unidad viola
+  `unit_tasks_pkey`, la fase `WORKING` sin vencimiento viola `unit_tasks_working_has_deadline`, y la transición
+  escribe tramo, unidad y tarea juntos; `TestUnaOrdenDeMovimientoBorraLaTareaEnSuTransaccion`, el inicio y el
+  cierre de un movimiento borran la tarea.
+- `TestLasTareasIncoherentesSeReparanHaciaElLadoSinTarea`, `TestUnaUnidadQueTrabajaConSuTareaEsCoherente` (unit,
+  `internal/game/loadcheck`).
+- `TestUnGatherNuevoSustituyeLaTarea`, `TestCancelarDetieneAUnaUnidadQueTrabaja` (simulation);
+  `TestUnaTareaEnWorkingFueraDeSuBosqueTerminaAlArrancar` (recovery).
 
 **Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con
 `inv_id=INV-ECON-003`, `entity=unit:<id>` y la combinación encontrada. Política `REPAIR` con evento
@@ -173,7 +184,7 @@ que no trabaja cargaría madera sin que nadie la viera trabajar.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (al arrancar) |
-| Cobertura | **Sin cobertura**: tests previstos de `building.PopulationLimit` (unit), de `loadcheck` (unit) y la casa completándose (simulation, integration) |
+| Cobertura | **Cubierto** por `TestElLimiteDePoblacionSumaCincoPorCasaCompleta` (unit), `TestElLimiteDePoblacionCuentaLasCasasCompletas` (`internal/game/loadcheck`), `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` (simulation) y `TestCompletarUnaCasaSumaSuBonoUnaVez` (integration) |
 
 **Enunciado.** Para toda ciudad, `population_limit = eras.population_cap(era) + 5 × (número de filas de
 `buildings` de la ciudad con `type = 'HOUSE'` y `status = 'COMPLETE'`)`, tras cada transacción confirmada; salvo
@@ -193,11 +204,12 @@ escribir suelto, una casa se podría cobrar dos veces o no cobrarse nunca.
 
 **Cómo se verifica.**
 
-- Tests previstos de `building.PopulationLimit` (unit).
-- Test previsto de `loadcheck` (unit) — una ciudad con dos casas completas y el límite de su era vuelve a
-  `cap + 10`.
-- Test previsto (simulation) — al completarse la casa, el límite sube cinco en el tick previsto.
-- Test previsto (integration) — completar dos veces la misma casa sólo suma una.
+- `TestElLimiteDePoblacionSumaCincoPorCasaCompleta`, `TestUnaCasaSoloSeCompletaUnaVez` (unit,
+  `internal/domain/building`).
+- `TestElLimiteDePoblacionCuentaLasCasasCompletas` (unit, `internal/game/loadcheck`) — una ciudad con dos casas
+  completas y el límite de su era vuelve a `cap + 10`; una en obras no cuenta.
+- `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` (simulation) — en el tick previsto, una sola vez.
+- `TestCompletarUnaCasaSumaSuBonoUnaVez` (integration) — completar dos veces la misma casa sólo suma una.
 
 **Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con
 `inv_id=INV-ECON-004` (`INV-CITY-003` si la ciudad no tiene casas), el límite persistido y el calculado.
@@ -214,7 +226,7 @@ Política `REPAIR` con `InvariantRepaired`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (la recuperación avanza la máquina de estados) |
-| Cobertura | **Sin cobertura**: tests previstos de recuperación en cada fase de la tarea, en una construcción y en un entrenamiento |
+| Cobertura | **Cubierto** por los tests de recuperación de `internal/game/simulation/economy_recovery_test.go` |
 
 **Enunciado.** Una tarea, un edificio o una producción a medias en el instante de una caída terminan su fase en
 curso en el mismo instante absoluto (`phase_until_ms`, la llegada de su tramo, `completes_at_ms`) en que habría
@@ -236,8 +248,12 @@ adelantara las construcciones regalaría o robaría tiempo de forma desigual ent
 - `DOMAIN` — durante la caída no hay dueños conectados, así que ningún viaje **nuevo** empieza por haber
   vencido estando caído el servidor ([INV-ECON-006](#inv-econ-006)): el viaje en curso se termina.
 
-**Cómo se verifica.** Tests previstos de recuperación (simulation): reinicio durante `TO_RESOURCE`, `WORKING` y
-`TO_DEPOSIT`; durante una construcción; durante un entrenamiento; y con cada vencimiento ya pasado en la caída.
+**Cómo se verifica.** Tests de recuperación (simulation, `economy_recovery_test.go`): `TestReinicioDuranteLaIdaAlBosque`,
+`TestReinicioConLaLlegadaAlBosqueVencidaEnLaCaida`, `TestReinicioConLaLlegadaYElTrabajoVencidos`,
+`TestReinicioDuranteElTrabajo`, `TestReinicioConLaVueltaVencidaTerminaElViajeSinEmpezarOtro`,
+`TestReinicioDuranteLaVueltaConElDuenoConectado`, `TestReinicioDuranteUnaConstruccion` y
+`TestReinicioDuranteUnEntrenamiento`, cada uno con el vencimiento antes y después del arranque; y
+`TestUnaTareaSinSuTramoTerminaAlArrancar`, `TestUnaProduccionTerminadaNoReservaNada`.
 
 **Violación en runtime.** Una tarea que no puede reanudarse —su tramo desapareció, su unidad dejó el tile— se
 termina con la unidad `IDLE` donde está, y se registra.
@@ -253,7 +269,7 @@ termina con la unidad `IDLE` donde está, y se registra.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REJECT (el viaje no empieza; la tarea termina) |
-| Cobertura | **Sin cobertura**: test previsto de simulación de la desconexión a mitad de viaje |
+| Cobertura | **Cubierto** por `TestConElDuenoAusenteElViajeTerminaYNoEmpiezaOtro`, `TestUnaCiudadOnlineSinSesionNoEmpiezaViajesNuevos` (simulation), `TestReinicioConLaVueltaVencidaTerminaElViajeSinEmpezarOtro` (recovery) y el golden `madera` |
 
 **Enunciado.** Una tarea de recolección sólo empieza un viaje nuevo (el tramo `TO_RESOURCE` que sigue a un
 depósito) si la ciudad de la unidad está `ONLINE` y su dueño tiene una sesión viva o está dentro del margen de
@@ -270,8 +286,10 @@ de ciudad no cubre: tras un reinicio, una ciudad que estaba `ONLINE` se queda `O
   dueño antes de pedir la ruta; si no la hay, deposita, termina la tarea y deja la unidad `IDLE` en el tile de
   depósito (`RN-ECON-005`).
 
-**Cómo se verifica.** Test previsto (simulation): con el dueño desconectado a mitad del tramo al bosque, la
-unidad termina el viaje, deposita una vez más y queda `IDLE`; con el servidor recién arrancado y el dueño sin
-conectar, igual.
+**Cómo se verifica.** `TestConElDuenoAusenteElViajeTerminaYNoEmpiezaOtro` (simulation): con el dueño
+desconectado a mitad del tramo al bosque, la unidad termina el viaje, deposita una vez más y queda `IDLE` en el
+depósito, sin ningún tramo nuevo al bosque; `TestUnaCiudadOnlineSinSesionNoEmpiezaViajesNuevos`, con la ciudad
+`ONLINE` y nadie conectado, igual; y el golden `madera` (`TestLosEscenariosReproducenSuGolden`), con el depósito
+del tick 895 como el último.
 
 **Violación en runtime.** No hay estado que detectar: la guarda es la propia transición.
