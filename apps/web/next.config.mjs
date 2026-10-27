@@ -11,6 +11,8 @@
  *
  * @type {import('next').NextConfig}
  */
+import { staticSecurityHeaders } from './src/server/securityHeaders.mjs';
+
 const nextConfig = {
   reactStrictMode: true,
 
@@ -24,6 +26,19 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_GAME_SERVER_WS_URL:
       process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws',
+  },
+
+  // Cabeceras de seguridad fijas, para toda respuesta incluidos los estáticos.
+  // La Content-Security-Policy no está aquí: lleva un nonce por petición y la
+  // pone middleware.ts. HSTS depende del NODE_ENV del build: `next build` lo
+  // fija a production, y los navegadores la ignoran sobre HTTP.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: staticSecurityHeaders({ production: process.env.NODE_ENV === 'production' }),
+      },
+    ];
   },
 };
 

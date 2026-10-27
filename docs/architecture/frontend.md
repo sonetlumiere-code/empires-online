@@ -66,7 +66,11 @@ Corolario operativo: cualquier función del cliente que produzca un número que 
 > (`iso.ts`, `reconciler.ts`, `scene.ts`) y React vive en `app/` y `src/components`. Las reglas de dependencia
 > de la tabla se cumplen con esos nombres: `src/state` no importa ni Pixi ni la red, y `src/render` no envía
 > nada (la escena devuelve los clics a React por *callbacks*). No existen `ClockSync`, la cola de comandos
-> pendientes ni el control de `seq` como piezas separadas: ver §3.3–§3.7.
+> pendientes ni el control de `seq` como piezas separadas: ver §3.3–§3.7. Fuera de las tres capas, el servidor
+> de Next.js pone las cabeceras de seguridad de la web —una `Content-Security-Policy` con nonce por petición
+> desde `middleware.ts` y las fijas desde `next.config.mjs`— y por eso la página se renderiza en cada petición;
+> la política y cómo comprobarla están en
+> [../operations/deployment.md](../operations/deployment.md#24-cabeceras-de-seguridad).
 
 ```mermaid
 flowchart TB
