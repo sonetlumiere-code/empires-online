@@ -127,6 +127,12 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleIntroducePlayer(c)
 	case MovementPersistFailed:
 		s.handleMovementPersistFailed(c)
+	case MovementFinishPersistFailed:
+		s.handleMovementFinishPersistFailed(c)
+	case CityPresencePersistFailed:
+		s.handleCityPresencePersistFailed(c)
+	case UnitsFlushPersistFailed:
+		s.handleUnitsFlushPersistFailed(c)
 	case GarrisonUnit:
 		s.handleGarrisonUnit(c)
 	case UngarrisonUnit:
@@ -307,12 +313,7 @@ func (s *Simulation) cancelActiveMovement(u *unit.Unit, reason movement.CancelRe
 	s.moveUnit(u, stoppedAt, prev, nowMs)
 	s.state.MarkDirty(u.ID)
 
-	finish := MovementFinish{MovementID: m.ID, Status: movement.StatusCancelled, UnitID: u.ID, At: stoppedAt}
-	s.deps.Persister.Submit(Job{
-		Name: JobMovementCancel,
-		Key:  UnitKey(u.ID),
-		Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementFinish(ctx, finish) },
-	})
+	s.submitFinish(MovementFinish{MovementID: m.ID, Status: movement.StatusCancelled, UnitID: u.ID, At: stoppedAt}, u.ID)
 	movementID := m.ID
 
 	cx, cy := s.state.World().ChunkOf(stoppedAt.X, stoppedAt.Y)
@@ -385,11 +386,49 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 		if _, ok := s.state.Unit(a.unitID); ok {
 			finish.UnitID, finish.At = a.unitID, a.at
 		}
-		s.deps.Persister.Submit(Job{
-			Name: JobMovementComplete,
-			Key:  UnitKey(a.unitID),
-			Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementFinish(ctx, finish) },
-		})
+		s.submitFinish(finish, a.unitID)
+	}
+}
+
+// submitFinish encola el cierre durable de un movimiento, ordenado con las
+// demás escrituras de su unidad. Si la cola lo descarta, la compensación vuelve
+// al loop y el siguiente volcado lo reintenta (ADR-022): un cierre perdido deja
+// la fila ACTIVE y la unidad MOVING en la base hasta el reinicio, y un cancel
+// perdido se desharía al rehidratar. `unitID` es la unidad del movimiento
+// aunque `finish` no la escriba (0 si ya no existe).
+func (s *Simulation) submitFinish(finish MovementFinish, unitID int64) {
+	name := JobMovementComplete
+	if finish.Status != movement.StatusCompleted {
+		name = JobMovementCancel
+	}
+	var key string
+	if unitID != 0 {
+		key = UnitKey(unitID)
+	}
+	s.deps.Persister.Submit(Job{
+		Name: name,
+		Key:  key,
+		Run:  func(ctx context.Context) error { return s.deps.Repos.PersistMovementFinish(ctx, finish) },
+		OnPermanentFailure: func(err error) {
+			s.deps.Log.Error("no se pudo persistir el cierre del movimiento; se reintentará en el siguiente volcado",
+				"err", err, "unit_id", unitID, "movement_id", finish.MovementID, "status", string(finish.Status))
+			s.reinject(MovementFinishPersistFailed{MovementID: finish.MovementID, Status: finish.Status, UnitID: unitID})
+		},
+	})
+}
+
+// handleMovementFinishPersistFailed apunta un cierre descartado para el
+// siguiente volcado. La fila se cerrará tal cual; la unidad NO se reescribe con
+// la posición del cierre perdido, que puede ser antigua: vuelve al conjunto
+// sucio y el volcado escribe la que tenga entonces, si sigue parada.
+func (s *Simulation) handleMovementFinishPersistFailed(cmd MovementFinishPersistFailed) {
+	if cmd.UnitID != 0 {
+		if _, ok := s.state.Unit(cmd.UnitID); ok {
+			s.state.keepDirty(cmd.UnitID)
+		}
+	}
+	if cmd.MovementID != 0 {
+		s.state.pendingFinishes[cmd.MovementID] = cmd
 	}
 }
 
@@ -515,14 +554,10 @@ func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now t
 		c.LastOfflineAt = &t
 	}
 
-	cityID, at := c.ID, now
-	s.deps.Persister.Submit(Job{
-		Name: JobCityPresence,
-		Key:  CityKey(cityID),
-		Run: func(ctx context.Context) error {
-			return s.deps.Repos.PersistCityPresence(ctx, cityID, state, at)
-		},
-	})
+	// La transición lleva el estado y la marca actuales: si había una escritura
+	// anterior pendiente de reintento, ésta la sustituye.
+	delete(s.state.presenceDirty, c.ID)
+	s.submitPresence(c, now)
 
 	presence := string(state)
 	cx, cy := s.state.World().ChunkOf(c.CenterX, c.CenterY)
@@ -530,17 +565,83 @@ func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now t
 		protocol.CityUpdatePayload{ID: c.ID, PresenceState: &presence})
 }
 
+// submitPresence encola la escritura durable de la presencia ACTUAL de una
+// ciudad: su estado y la marca temporal que lo acompaña. Si la cola la descarta,
+// la compensación vuelve al loop y el siguiente volcado la vuelve a encolar con
+// lo que la ciudad tenga entonces (ADR-022): una transición perdida dejaría la
+// base con una presencia obsoleta hasta el reinicio, y una ciudad ONLINE
+// obsoleta ni siquiera se repara al arrancar (docs/specs/presence.md §7.6).
+func (s *Simulation) submitPresence(c *city.City, now time.Time) {
+	cityID, state, at := c.ID, c.PresenceState, presenceMark(c, now)
+	s.deps.Persister.Submit(Job{
+		Name: JobCityPresence,
+		Key:  CityKey(cityID),
+		Run: func(ctx context.Context) error {
+			return s.deps.Repos.PersistCityPresence(ctx, cityID, state, at)
+		},
+		OnPermanentFailure: func(err error) {
+			s.deps.Log.Error("no se pudo persistir la presencia de la ciudad; se reencolará en el siguiente volcado",
+				"err", err, "city_id", cityID, "state", string(state))
+			s.reinject(CityPresencePersistFailed{CityID: cityID})
+		},
+	})
+}
+
+// presenceMark es la marca temporal que acompaña al estado actual de una
+// ciudad en su escritura durable: la de conexión en ONLINE y la de desconexión
+// en OFFLINE_PENDING y PROTECTED, cada una en su columna (CityRepo.SetPresence).
+// Sin marca —no debería ocurrir, INV-CITY-011— se usa el instante dado.
+func presenceMark(c *city.City, fallback time.Time) time.Time {
+	switch c.PresenceState {
+	case city.PresenceOnline:
+		if c.LastOnlineAt != nil {
+			return *c.LastOnlineAt
+		}
+	default:
+		if c.LastOfflineAt != nil {
+			return *c.LastOfflineAt
+		}
+	}
+	return fallback
+}
+
+// handleCityPresencePersistFailed marca la ciudad para que el siguiente volcado
+// vuelva a encolar su presencia actual.
+func (s *Simulation) handleCityPresencePersistFailed(cmd CityPresencePersistFailed) {
+	if _, ok := s.state.City(cmd.CityID); !ok {
+		return
+	}
+	s.state.presenceDirty[cmd.CityID] = struct{}{}
+}
+
+// handleUnitsFlushPersistFailed devuelve al conjunto sucio las unidades de un
+// lote que no se escribió. Sin apuntarlas al ocultamiento: no cambió nada.
+func (s *Simulation) handleUnitsFlushPersistFailed(cmd UnitsFlushPersistFailed) {
+	for _, id := range cmd.UnitIDs {
+		if _, ok := s.state.Unit(id); ok {
+			s.state.keepDirty(id)
+		}
+	}
+}
+
 // ─────────────────────────────────────────────────────────────
 // Volcado periódico
 // ─────────────────────────────────────────────────────────────
 
-// FlushDirty encola el volcado de las unidades marcadas como sucias.
+// FlushDirty encola el volcado de las unidades marcadas como sucias y vuelve a
+// encolar lo que la cola descartó desde el volcado anterior: la presencia de
+// las ciudades marcadas y los cierres de movimiento pendientes (ADR-022).
+// Devuelve cuántas unidades encoló.
 //
 // Excluye toda unidad con un movimiento activo: su posición se deriva de la
 // polilínea y la escriben el inicio y el cierre del movimiento (INV-PERSIST-004).
 // El lote se parte en un trabajo por partición de la cola, para que cada unidad
-// siga en orden con sus otras escrituras (ADR-013 §2.2).
+// siga en orden con sus otras escrituras (ADR-013 §2.2). Si un lote se
+// descarta, sus unidades vuelven al conjunto sucio para el siguiente volcado.
 func (s *Simulation) FlushDirty() int {
+	s.flushPresence()
+	s.flushFinishes()
+
 	dirty := s.state.DrainDirty()
 	if len(dirty) == 0 {
 		return 0
@@ -574,13 +675,67 @@ func (s *Simulation) FlushDirty() int {
 			continue
 		}
 		lote := lote
+		ids := make([]int64, len(lote))
+		for i, u := range lote {
+			ids[i] = u.ID
+		}
 		s.deps.Persister.Submit(Job{
 			Name: JobUnitsFlush,
 			Key:  UnitKey(lote[0].ID),
 			Run:  func(ctx context.Context) error { return s.deps.Repos.PersistUnitPositions(ctx, lote) },
+			OnPermanentFailure: func(err error) {
+				s.deps.Log.Error("no se pudo volcar un lote de unidades; vuelven al conjunto sucio",
+					"err", err, "units", len(ids))
+				s.reinject(UnitsFlushPersistFailed{UnitIDs: ids})
+			},
 		})
 	}
 	return total
+}
+
+// flushPresence vuelve a encolar la presencia ACTUAL de las ciudades cuya
+// última escritura se descartó. Es la actual y no la del trabajo perdido a
+// propósito: si entre medias hubo otra transición, la base converge al estado
+// vigente de una sola vez (ADR-022).
+func (s *Simulation) flushPresence() {
+	if len(s.state.presenceDirty) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(s.state.presenceDirty))
+	for id := range s.state.presenceDirty {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	s.state.presenceDirty = make(map[int64]struct{})
+
+	now := s.deps.Clock.Now()
+	for _, id := range ids {
+		if c, ok := s.state.City(id); ok {
+			s.submitPresence(c, now)
+		}
+	}
+}
+
+// flushFinishes reintenta los cierres de movimiento descartados, sólo sobre la
+// fila de unit_movements: la unidad la escribe el volcado de este mismo tick
+// con su posición actual, si sigue parada. Cerrar la fila es idempotente, y si
+// un movimiento posterior ya la canceló, no cambia nada (ADR-022).
+func (s *Simulation) flushFinishes() {
+	if len(s.state.pendingFinishes) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(s.state.pendingFinishes))
+	for id := range s.state.pendingFinishes {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	pendientes := s.state.pendingFinishes
+	s.state.pendingFinishes = make(map[int64]MovementFinishPersistFailed)
+
+	for _, id := range ids {
+		p := pendientes[id]
+		s.submitFinish(MovementFinish{MovementID: p.MovementID, Status: p.Status}, p.UnitID)
+	}
 }
 
 // reinject devuelve un comando al loop desde la goroutine de un worker.

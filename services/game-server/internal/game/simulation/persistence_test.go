@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loop"
@@ -145,6 +146,187 @@ func TestUnInicioQueNoSePersisteDetieneLaUnidad(t *testing.T) {
 	cancelados := h.rec.byType(protocol.TypeUnitMovementCancelled)
 	require.Len(t, cancelados, 1)
 	assert.Equal(t, string(movement.ReasonServer), cancelados[0].Payload.(protocol.UnitMovementCancelledPayload).Reason)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Compensaciones por volcado (ADR-022)
+// ─────────────────────────────────────────────────────────────
+
+var errBaseCaida = errors.New("PostgreSQL no responde")
+
+// presenciaEscrita es una presencia que llegó a la base, con su marca.
+type presenciaEscrita struct {
+	cityID int64
+	state  city.PresenceState
+	at     time.Time
+}
+
+// reposFragiles envuelve fakeRepos y hace fallar las escrituras que se le
+// indiquen, como una base de datos caída; registra además la marca temporal de
+// cada presencia que sí se escribió.
+type reposFragiles struct {
+	*fakeRepos
+	fallaPresencia, fallaVolcado, fallaCierre bool
+
+	presenciasEscritas []presenciaEscrita
+}
+
+func (r *reposFragiles) PersistCityPresence(ctx context.Context, cityID int64, state city.PresenceState, at time.Time) error {
+	if r.fallaPresencia {
+		return errBaseCaida
+	}
+	r.presenciasEscritas = append(r.presenciasEscritas, presenciaEscrita{cityID: cityID, state: state, at: at})
+	return r.fakeRepos.PersistCityPresence(ctx, cityID, state, at)
+}
+
+func (r *reposFragiles) PersistUnitPositions(ctx context.Context, units []*unit.Unit) error {
+	if r.fallaVolcado {
+		return errBaseCaida
+	}
+	return r.fakeRepos.PersistUnitPositions(ctx, units)
+}
+
+func (r *reposFragiles) PersistMovementFinish(ctx context.Context, f simulation.MovementFinish) error {
+	if r.fallaCierre {
+		return errBaseCaida
+	}
+	return r.fakeRepos.PersistMovementFinish(ctx, f)
+}
+
+// conPersistenciaFragil reconstruye la simulación y el loop del banco con
+// repositorios que fallan a voluntad y con el persistidor síncrono en modo
+// permanente: un trabajo que falla agota sus reintentos en el acto y llama a su
+// compensación, como la cola real al rendirse.
+func conPersistenciaFragil(h *harness) *reposFragiles {
+	repos := &reposFragiles{fakeRepos: h.repos}
+	h.persister.permanent = true
+	silencio := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h.sim = simulation.New(h.state, simulation.Deps{
+		Clock: h.clk, Pathfinder: h.rutas, Broadcaster: h.rec,
+		Persister: h.persister, Repos: repos, Garrisons: h.garrisons,
+		Inbox: func(c simulation.Command) bool {
+			select {
+			case h.commands <- c:
+				return true
+			default:
+				return false
+			}
+		},
+		Log:                silencio,
+		ProtectionCooldown: 300 * time.Second,
+		DisconnectGrace:    30 * time.Second,
+		PathMaxNodes:       20000,
+		PathMaxDistance:    256,
+	})
+	h.loop = loop.New(h.sim, h.clk, h.commands, loop.Config{
+		TickDuration: 100 * time.Millisecond, FlushIntervalTicks: 50,
+		MaxCommandsPerTick: 256, EpochMs: epoch,
+	}, nil, nil, silencio)
+	return repos
+}
+
+// ADR-022: una transición de presencia que la cola descarta no se pierde: la
+// compensación marca la ciudad y el siguiente volcado vuelve a encolar su
+// presencia ACTUAL con su marca, no la del trabajo perdido. Aquí se descartan
+// T1 (OFFLINE_PENDING) y T3 (ONLINE), y la base recibe una sola escritura: la
+// del estado vigente, ONLINE con last_online_at.
+func TestUnaPresenciaQueNoSePersisteSeReencolaConElEstadoActual(t *testing.T) {
+	h := newHarness(t)
+	repos := conPersistenciaFragil(h)
+	c, _ := h.state.City(h.cityID)
+	sesion := uuid.New()
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: sesion}) // ya ONLINE: sin transición
+	repos.fallaPresencia = true
+
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: sesion})
+	h.advance(31 * time.Second) // T1, y su escritura se descarta
+	require.Equal(t, city.PresenceOfflinePending, c.PresenceState)
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: uuid.New()}) // T3, también descartada
+	require.Equal(t, city.PresenceOnline, c.PresenceState)
+	require.Empty(t, repos.presenciasEscritas, "mientras la base falla no llega nada")
+	require.NotEmpty(t, h.persister.errs)
+
+	repos.fallaPresencia = false
+	h.advance(5 * time.Second) // incluye un volcado periódico
+
+	require.Len(t, repos.presenciasEscritas, 1, "una sola escritura, la del estado vigente")
+	escrita := repos.presenciasEscritas[0]
+	assert.Equal(t, h.cityID, escrita.cityID)
+	assert.Equal(t, city.PresenceOnline, escrita.state)
+	require.NotNil(t, c.LastOnlineAt)
+	assert.True(t, escrita.at.Equal(*c.LastOnlineAt), "la marca es la de la conexión vigente, no la del trabajo perdido")
+	assert.Equal(t, 0, h.state.PresenceDirtyCount(), "escrita: ya no está pendiente")
+}
+
+// ADR-022: si un lote del volcado periódico no se puede escribir, sus unidades
+// vuelven al conjunto sucio y salen en el siguiente volcado. Antes, FlushDirty
+// las sacaba del conjunto antes de saber si se habían escrito.
+func TestUnVolcadoQueNoSePersisteDevuelveLasUnidadesAlConjuntoSucio(t *testing.T) {
+	h := newHarness(t)
+	repos := conPersistenciaFragil(h)
+	for _, u := range h.units {
+		h.state.MarkDirty(u.ID)
+	}
+	repos.fallaVolcado = true
+
+	require.Equal(t, 3, h.sim.FlushDirty())
+	require.Equal(t, 0, h.state.DirtyCount(), "el volcado drena el conjunto")
+	h.loop.Step(h.clk.NowMs()) // la compensación vuelve por el buzón y se aplica
+	assert.Equal(t, 3, h.state.DirtyCount(), "las tres vuelven al conjunto sucio")
+	assert.Zero(t, h.repos.unitsFlushed)
+
+	repos.fallaVolcado = false
+	require.Equal(t, 3, h.sim.FlushDirty())
+	assert.Equal(t, 3, h.repos.unitsFlushed)
+	h.loop.Step(h.clk.NowMs())
+	assert.Equal(t, 0, h.state.DirtyCount(), "escritas: no vuelven")
+}
+
+// ADR-022: un cierre de movimiento que la cola descarta —por llegada o por
+// cancelación— se reintenta en el siguiente volcado SÓLO sobre la fila de
+// unit_movements; la unidad la escribe el propio volcado con su posición
+// actual. Sin esto, la fila quedaba ACTIVE y la unidad MOVING en la base hasta
+// el reinicio, y una cancelación perdida se deshacía al rehidratar.
+func TestUnCierreQueNoSePersisteSeReintentaEnElSiguienteVolcado(t *testing.T) {
+	casos := []struct {
+		nombre string
+		cerrar func(h *harness, u *unit.Unit)
+		status movement.Status
+	}{
+		{"llegada", func(h *harness, _ *unit.Unit) { h.advance(700 * time.Millisecond) }, movement.StatusCompleted},
+		{"cancelación", func(h *harness, u *unit.Unit) {
+			h.send(simulation.CancelMovement{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: u.ID})
+		}, movement.StatusCancelled},
+	}
+	for _, caso := range casos {
+		t.Run(caso.nombre, func(t *testing.T) {
+			h := newHarness(t)
+			repos := conPersistenciaFragil(h)
+			u := h.units[0]
+			h.send(simulation.MoveUnit{PlayerID: h.playerID, RequestID: uuid.NewString(),
+				UnitID: u.ID, Target: world.Tile{X: u.X + 1, Y: u.Y}}) // un tile: 600 ms
+			m, ok := h.state.Movement(u.ID)
+			require.True(t, ok)
+			repos.fallaCierre = true
+
+			caso.cerrar(h, u)
+			require.Equal(t, unit.StatusIdle, u.Status)
+			h.loop.Step(h.clk.NowMs()) // la compensación se aplica
+			require.Equal(t, 1, h.state.PendingFinishCount())
+			require.NotContains(t, h.repos.movementsFinish, m.ID, "la base no conoce el cierre")
+
+			repos.fallaCierre = false
+			antes := h.repos.unitsFlushed
+			h.advance(5 * time.Second) // incluye un volcado periódico
+
+			assert.Equal(t, caso.status, h.repos.movementsFinish[m.ID], "la fila se cierra con su estado")
+			ultimo := h.repos.finishes[len(h.repos.finishes)-1]
+			assert.Equal(t, m.ID, ultimo.MovementID)
+			assert.Zero(t, ultimo.UnitID, "el reintento no reescribe la unidad con la posición del cierre perdido")
+			assert.Greater(t, h.repos.unitsFlushed, antes, "la unidad la escribe el volcado, con su posición actual")
+			assert.Equal(t, 0, h.state.PendingFinishCount())
+		})
+	}
 }
 
 // particiones es un persistidor que sólo registra los trabajos, con cuatro

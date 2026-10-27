@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
@@ -76,6 +77,41 @@ type MovementPersistFailed struct {
 
 func (MovementPersistFailed) commandType() string { return "movement.persist_failed" }
 
+// MovementFinishPersistFailed lo devuelve la cola cuando el cierre de un
+// movimiento —por llegada o por cancelación— no se pudo escribir (ADR-022).
+// El loop lo apunta para que el siguiente volcado periódico cierre la fila y
+// vuelva a escribir la unidad con su posición ACTUAL: un cierre perdido deja la
+// fila ACTIVE y la unidad MOVING en la base, y una cancelación perdida se
+// desharía al rehidratar, porque la polilínea manda sobre la fila de la unidad.
+type MovementFinishPersistFailed struct {
+	MovementID int64
+	Status     movement.Status
+	// UnitID es la unidad del movimiento, para la clave de partición y para
+	// devolverla al conjunto sucio; 0 si ya no existía al cerrar.
+	UnitID int64
+}
+
+func (MovementFinishPersistFailed) commandType() string { return "movement.finish_persist_failed" }
+
+// CityPresencePersistFailed lo devuelve la cola cuando una transición de
+// presencia no se pudo escribir (ADR-022). El loop marca la ciudad para que el
+// siguiente volcado periódico vuelva a encolar su presencia ACTUAL —no la del
+// trabajo perdido, que puede ser antigua—: la base converge al estado vigente.
+type CityPresencePersistFailed struct {
+	CityID int64
+}
+
+func (CityPresencePersistFailed) commandType() string { return "city.presence_persist_failed" }
+
+// UnitsFlushPersistFailed lo devuelve la cola cuando un lote del volcado
+// periódico no se pudo escribir (ADR-022). Las unidades del lote vuelven al
+// conjunto sucio y salen en el siguiente volcado con su estado de entonces.
+type UnitsFlushPersistFailed struct {
+	UnitIDs []int64
+}
+
+func (UnitsFlushPersistFailed) commandType() string { return "units.flush_persist_failed" }
+
 // Broadcaster entrega mensajes a las sesiones conectadas.
 //
 // La simulación no sabe qué es un WebSocket: sólo sabe emitir hechos hacia un
@@ -123,6 +159,9 @@ func CommandTypes() []string {
 		RequestSnapshot{}.commandType(),
 		IntroducePlayer{}.commandType(),
 		MovementPersistFailed{}.commandType(),
+		MovementFinishPersistFailed{}.commandType(),
+		CityPresencePersistFailed{}.commandType(),
+		UnitsFlushPersistFailed{}.commandType(),
 		GarrisonUnit{}.commandType(),
 		UngarrisonUnit{}.commandType(),
 		GarrisonEntryResolved{}.commandType(),
