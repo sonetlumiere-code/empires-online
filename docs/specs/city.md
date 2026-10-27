@@ -418,9 +418,11 @@ Reglas de difusión:
   `protection_until = NULL`.
 - Los esquemas servidor→cliente **no** son estrictos: pueden ganar campos opcionales sin romper clientes
   antiguos. Los de cliente→servidor sí lo son (`additionalProperties: false`).
-- El cliente **nunca** envía `city.update` ni ningún comando que altere la ciudad: los siete mensajes
-  cliente→servidor de la v1 son `session.hello`, `session.ping`, `session.view`, `unit.move`,
-  `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`. Guarnecer tampoco la altera: la unidad sigue
+- El cliente **nunca** envía `city.update` ni ningún estado de la ciudad. Desde E1 hay dos comandos que la
+  afectan, `city.build` y `city.train`, y ninguno lleva cantidades, costes ni tiempos: sólo el tipo y, al
+  construir, el tile ([economy-wood.md](economy-wood.md)). Los diez mensajes cliente→servidor de la v1 son
+  `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`,
+  `unit.ungarrison`, `unit.gather`, `city.build` y `city.train`. Guarnecer tampoco la altera: la unidad sigue
   contando en la población de su ciudad de origen, y no se emite `city.update`
   ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4).
 

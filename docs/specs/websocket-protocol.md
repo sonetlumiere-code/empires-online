@@ -24,16 +24,17 @@ Dentro del scope de v1:
 - Sincronización del área de interés (`world.snapshot`, terreno incluido) y deltas incrementales (`entity.*`, `city.update`, `territory.update`).
 - Ciclo de vida completo del movimiento de unidades (`unit.move`, `unit.cancel_move` y sus cinco mensajes de salida).
 - Entrada y salida de la guarnición (`unit.garrison`, `unit.ungarrison`), con la ciudad anfitriona en `garrisonCityId` ([garrison.md](garrison.md), [ADR-017](../decisions/ADR-017-garrison-commands.md)).
+- La economía de la madera ([economy-wood.md](economy-wood.md)): recolección (`unit.gather`), casa (`city.build`) y entrenamiento (`city.train`); `building.spawn` y `building.update`; `stocks` y `production` en las ciudades; el estado `WORKING` y la carga (`carrying`) de las unidades.
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
 
-No forman parte de v1 y **no deben documentarse ni implementarse como si existieran**: combate y resolución de daño, economía y recolección de recursos, construcción de edificios, árbol tecnológico, chat, comercio y caravanas, clanes, ranking, unidades navales, IA de NPC. La fase 4 del tick (`resolve simulation`) está reservada para combate y hoy es un no-op; ver [../architecture/game-loop.md](../architecture/game-loop.md).
+No forman parte de v1 y **no deben documentarse ni implementarse como si existieran**: combate y resolución de daño, recursos distintos de la madera, edificios distintos de la casa, árbol tecnológico, chat, comercio y caravanas, clanes, ranking, unidades navales, IA de NPC. La fase 4 del tick (`resolve simulation`) está reservada para combate y hoy es un no-op; ver [../architecture/game-loop.md](../architecture/game-loop.md).
 
 Tampoco entran en v1:
 
 - **Compresión** (`permessage-deflate`), binario/CBOR, batching de múltiples envelopes por frame: `TBD (fuera de MVP)`. v1 es JSON UTF-8, un envelope por frame de texto.
-- Entidades de tipo edificio: en MVP no existe tabla `buildings`; el `TOWN_CENTER` se describe dentro de `city.update`. Un *kind* de entidad `BUILDING` es `TBD (fuera de MVP)`.
+- Edificios como un *kind* más de `entity.*`: desde E1 existen (`buildings`), pero viajan por sus propios mensajes, `building.spawn` y `building.update` (§8.15, §8.16), y el `TOWN_CENTER` sigue descrito dentro de la ciudad. Unificarlos con las unidades es `TBD (fuera de MVP)`.
 - **Cota máxima de waypoints** de una polilínea: `TBD (fuera de MVP)`. Ver la nota de la ficha 8.12.
 
 ## 3. Versionado y política de compatibilidad
@@ -153,7 +154,7 @@ type Outbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. |
-| `type` | `string` | Sí | Uno de los catorce tipos servidor→cliente de v1. |
+| `type` | `string` | Sí | Uno de los dieciséis tipos servidor→cliente de v1. |
 | `seq` | `number` (uint64) | Sí | Contador **monótono estrictamente creciente por conexión**, empieza en `1`. Se reinicia en cada conexión nueva. Ver sección 11. |
 | `ts` | `number` | Sí | Epoch ms del reloj del servidor en el momento de encolar el mensaje. Es la referencia temporal del cliente. |
 | `requestId` | `string` | **Se omite** salvo que el mensaje responda a un comando concreto | La etiqueta `json:"requestId,omitempty"` garantiza que el campo **no aparece** cuando no aplica: un broadcast (`entity.*`, `city.update`, `territory.update`, `unit.movement.*` dirigidos al chunk) nunca lleva un `requestId` vacío que el cliente pudiera confundir con una respuesta. Lo verifica el contract test `TestRequestIDSeOmiteCuandoNoAplica`. |
@@ -380,9 +381,49 @@ payload: z.object({ unitId: EntityId }).strict()
 
 **Efectos.** El tick elige el primer tile transitable del anillo exterior de la zona urbana en orden `(y, x)` (`RN-GARR-011`), deja la unidad `IDLE` en él y emite al dueño `entity.update { id, status: "IDLE", x, y, garrisonCityId: null }` con el `requestId`, y a los demás observadores del chunk de salida `entity.spawn { unit }`. Si el anillo está cerrado, la salida queda pendiente y se reintenta cada tick; la respuesta llega cuando la unidad sale (`RN-GARR-014`).
 
+### 7.8 `unit.gather`
+
+- **Dirección:** cliente → servidor. **Propósito:** poner a un aldeano propio a recolectar madera en un tile de bosque: viajes bosque → ciudad hasta que otra orden lo interrumpa. Spec: [economy-wood.md](economy-wood.md).
+
+```ts
+payload: z.object({ unitId: EntityId, target: Tile }).strict()
+```
+
+```json
+{ "v": 1, "type": "unit.gather", "requestId": "0f6a2c4e-1b3d-4e5f-8a7b-9c0d1e2f3a4b", "payload": { "unitId": 48211, "target": { "x": 52, "y": 40 } } }
+```
+
+**Validaciones, en este orden** (`RN-ECON-001`, `RN-ECON-002`): la unidad existe (`UNIT_NOT_FOUND`) · ownership (`UNIT_NOT_OWNED`) · el tipo recolecta y la unidad está viva y no guarnecida (`UNIT_NOT_MOVABLE`, `UNIT_DEAD`, `UNIT_GARRISONED`) · no está entrando en una ciudad (`UNIT_NOT_MOVABLE`) · `target` dentro del mundo (`TARGET_OUT_OF_BOUNDS`) y sobre `FOREST` (`INVALID_TARGET`) · ruta como la de `unit.move` (`PATH_NOT_FOUND`, `PATH_TOO_LONG`). Los rechazos viajan como **`system.error`** con el `requestId`.
+
+**Efectos.** No hay `*.accepted`: la aceptación se observa en el estado. El tramo al bosque es un movimiento normal (`unit.movement.started`). Al llegar, `entity.update { status: "WORKING" }`; al vencer el trabajo, el tramo de vuelta y `entity.update { carrying: 10 }`; al llegar al depósito, `city.update { stocks }` y `entity.update { carrying: 0 }`, y el viaje siguiente si el dueño está presente (`RN-ECON-005`). Una orden nueva sobre la misma unidad sustituye la tarea; `unit.move` o `unit.cancel_move` la cancelan y la carga se pierde (`RN-ECON-003`, `RN-ECON-006`).
+
+### 7.9 `city.build`
+
+- **Dirección:** cliente → servidor. **Propósito:** encargar un edificio en un tile de la zona urbana 3×3 de una ciudad propia, distinto del centro.
+
+```ts
+payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y: WorldCoordinate }).strict()  // BuildingType = 'HOUSE'
+```
+
+**Validaciones, en este orden** (`RN-ECON-007`): la ciudad existe y es propia (`CITY_NOT_FOUND`, igual en los dos casos) · el tile está en el 3×3, no es el centro y no tiene edificio ni encargo (`INVALID_TARGET`) · el stock cubre el coste (`INSUFFICIENT_RESOURCES`). Rechazos como **`system.error`**.
+
+**Efectos, en dos fases** ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). El tick reserva la madera y el tile; la transacción debita y escribe el edificio. Con éxito, el chunk recibe `building.spawn` (§8.15) y `city.update { stocks }`; con un rechazo de la transacción, el jugador recibe `system.error` y la ciudad `city.update { stocks }` con la madera devuelta. Al completarse, `building.update` (§8.16) y `city.update { populationLimit }`.
+
+### 7.10 `city.train`
+
+- **Dirección:** cliente → servidor. **Propósito:** encargar el entrenamiento de una unidad en una ciudad propia. Una producción por ciudad, sin cola ni cancelación.
+
+```ts
+payload: z.object({ cityId: EntityId, type: UnitType }).strict()  // UnitType = 'VILLAGER'
+```
+
+**Validaciones, en este orden** (`RN-ECON-010`): la ciudad existe y es propia (`CITY_NOT_FOUND`) · no tiene producción en curso (`CITY_BUSY`) · `population + 1 <= populationLimit` (`POPULATION_LIMIT_REACHED`) · el stock cubre el coste (`INSUFFICIENT_RESOURCES`). Rechazos como **`system.error`**.
+
+**Efectos, en dos fases.** El tick reserva la madera y la plaza de población; la transacción debita, reserva y escribe la producción. Con éxito, `city.update { stocks, population, production }`. Al vencer, el aldeano nace en el primer tile libre del anillo de nacimiento cuando la base le da su id: `entity.spawn` al chunk y `city.update { production: null }` (`RN-ECON-011`).
+
 ## 8. Mensajes servidor → cliente
 
-Los catorce tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los dieciséis tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -469,6 +510,7 @@ payload: z.object({
   units: z.array(UnitView),
   cities: z.array(CityView),
   territories: z.array(TerritoryView),
+  buildings: z.array(BuildingView),  // E1, §8.15
 })
 ```
 
@@ -481,9 +523,10 @@ interface UnitView {
   unitType: 'VILLAGER';       // MVP
   x: number; y: number;       // tiles, planos: no hay objeto position
   hp: number; maxHp: number;
-  status: 'IDLE' | 'MOVING' | 'GARRISONED' | 'HIDDEN' | 'DEAD';
+  status: 'IDLE' | 'MOVING' | 'GARRISONED' | 'HIDDEN' | 'WORKING' | 'DEAD';
   movement: ActiveMovement | null;
   garrisonCityId: number | null; // ciudad que la aloja si está GARRISONED; cityId es la de origen
+  carrying?: number;          // madera que lleva encima; ausente si nada (E1)
 }
 
 interface ActiveMovement {
@@ -529,6 +572,8 @@ interface ChunkTerrain {
 
 `territories` trae los territorios que solapan los chunks del área de interés, con su control vigente (`TerritoryViews`, M6).
 
+`buildings` trae los edificios confirmados de los chunks del área (E1), y cada `CityView` de `cities[]` lleva además `stocks: { WOOD }` y `production: { unitType, completesAtMs } | null`, el entrenamiento confirmado en curso.
+
 ### 8.5 `entity.spawn`
 
 - **Propósito:** una entidad entra en escena. Sin `requestId` (es broadcast al chunk).
@@ -559,6 +604,7 @@ payload: z.object({
   cityId: EntityId.nullable().optional(),
   movement: ActiveMovement.nullable().optional(),
   garrisonCityId: EntityId.nullable().optional(),
+  carrying: z.number().int().min(0).optional(),   // E1: lo que lleva encima; 0 al depositar o perderlo
 })
 ```
 
@@ -611,6 +657,8 @@ payload: z.object({
   populationLimit: z.number().int().min(0).optional(),
   presenceState: PresenceState.optional(),          // ONLINE | OFFLINE_PENDING | PROTECTED
   protectionUntilMs: EpochMs.nullable().optional(),
+  stocks: Stocks.optional(),                         // E1: { WOOD }
+  production: ProductionView.nullable().optional(),  // E1: null cuando termina
 })
 ```
 
@@ -618,7 +666,7 @@ payload: z.object({
 { "v": 1, "type": "city.update", "seq": 63, "ts": 1788955500000, "payload": { "id": 1204, "presenceState": "PROTECTED" } }
 ```
 
-Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite dos variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`) y en cada transición de presencia (`id`, `presenceState`).
+Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`). Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
 
 El estado de presencia lo decide **exclusivamente el servidor** (transición a `PROTECTED` tras `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` = 300 s). El cliente lo observa; nunca lo propone.
 
@@ -792,9 +840,45 @@ Las cinco razones son las constantes de `movement.CancelReason`:
 
 `stoppedAt` es siempre un tile completo, el waypoint alcanzado en el instante de la cancelación, nunca una fracción. El estado `FAILED` de `unit_movements` no tiene mensaje propio en v1: un fallo interno durante la simulación se reporta como `system.error INTERNAL_ERROR` más el `entity.update` correctivo.
 
+### 8.15 `building.spawn`
+
+- **Propósito:** un edificio aparece: recién encargado (§7.9) o, en el snapshot, al entrar en el área. Sin `requestId` (es broadcast al chunk del edificio).
+
+```ts
+payload: z.object({ building: BuildingView })
+
+interface BuildingView {
+  id: number; cityId: number;
+  type: 'HOUSE';
+  x: number; y: number;
+  status: 'UNDER_CONSTRUCTION' | 'COMPLETE';
+  completesAtMs: number;      // instante absoluto en que termina (o terminó) la obra
+}
+```
+
+```json
+{ "v": 1, "type": "building.spawn", "seq": 88, "ts": 1788955210000, "payload": { "building": { "id": 501, "cityId": 1204, "type": "HOUSE", "x": 97, "y": 98, "status": "UNDER_CONSTRUCTION", "completesAtMs": 1788955225000 } } }
+```
+
+Se emite cuando la transacción del encargo confirma el edificio, no en el tick que lo valida: nada se anuncia antes de existir ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §2).
+
+### 8.16 `building.update`
+
+- **Propósito:** cambio de estado de un edificio conocido. Hoy, que se completa. Sin `requestId`.
+
+```ts
+payload: z.object({ id: EntityId, status: BuildingStatus })
+```
+
+```json
+{ "v": 1, "type": "building.update", "seq": 140, "ts": 1788955225000, "payload": { "id": 501, "status": "COMPLETE" } }
+```
+
+Lo acompaña un `city.update { populationLimit }` con el bono de la casa (`RN-ECON-009`).
+
 ## 9. Códigos de error
 
-El catálogo es de **22 códigos** y es cerrado. Vive en `errors.ts` (`ErrorCode`) y en `codes.go` (`AllErrorCodes`); un contract test en Go (`TestCatalogoDeErroresCoincideConElExportado`) compara ambos contra `error-codes.json` y rompe la CI si divergen.
+El catálogo es de **24 códigos** y es cerrado. Vive en `errors.ts` (`ErrorCode`) y en `codes.go` (`AllErrorCodes`); un contract test en Go (`TestCatalogoDeErroresCoincideConElExportado`) compara ambos contra `error-codes.json` y rompe la CI si divergen.
 
 El formato es siempre `{ code, message, details? }` dentro de `system.error`, o `{ unitId, code, message }` dentro de `unit.move.rejected`. La columna "análogo" es orientativa para logging y métricas: **el protocolo no usa códigos HTTP**.
 
@@ -811,19 +895,21 @@ El formato es siempre `{ code, message, details? }` dentro de `system.error`, o 
 | `UNIT_NOT_MOVABLE` | 409 | No | El estado actual de la unidad no admite la orden: moverse o guarnecerse estando `MOVING`/`HIDDEN`, cualquier orden mientras entra en una ciudad, o sacar una unidad que no está guarnecida |
 | `UNIT_DEAD` | 409 | No | `unit.status == DEAD` |
 | `UNIT_GARRISONED` | 409 | No | `unit.status == GARRISONED`; requiere salir de la guarnición primero |
-| `INVALID_TARGET` | 400 | No | `unit.garrison` con una unidad que no toca la zona urbana de la ciudad. El caso "destino igual a la posición actual" de `unit.move` **no** lo usa: se acepta con `movementId: 0` (§7.4) |
+| `INVALID_TARGET` | 400 | No | `unit.garrison` con una unidad que no toca la zona urbana de la ciudad; `unit.gather` sobre un tile que no es `FOREST`; `city.build` fuera del 3×3, en el centro o en un tile con edificio. El caso "destino igual a la posición actual" de `unit.move` **no** lo usa: se acepta con `movementId: 0` (§7.4) |
 | `TARGET_OUT_OF_BOUNDS` | 400 | No | Tile fuera de `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)`. **No** aplica a `session.view`, cuyo centro se recorta |
 | `TARGET_NOT_WALKABLE` | 409 | No | Terreno `MOUNTAIN`/`WATER` o tile marcado en la capa de ocupación. El MVP **rechaza**, no busca tile cercano |
 | `PATH_NOT_FOUND` | 409 | No | A\* agotó el frontier sin alcanzar el destino (destino encerrado) |
 | `PATH_TOO_LONG` | 409 | No | Se excedió `EO_PATHFINDING_MAX_NODES` (20000) o `EO_PATHFINDING_MAX_DISTANCE` (256) |
-| `CITY_NOT_FOUND` | 404 | No | `unit.garrison` con una ciudad inexistente |
+| `CITY_NOT_FOUND` | 404 | No | `unit.garrison` con una ciudad inexistente; `city.build` o `city.train` sobre una ciudad inexistente o ajena (misma respuesta: no se revela su existencia) |
 | `CITY_PROTECTED` | 409 | No | Reservado: operación bloqueada por `presence_state = PROTECTED` |
 | `TREATY_REQUIRED` | 409 | No | `unit.garrison` en una ciudad ajena sin `treaty` `ACTIVE` con `allows_garrison`; lo decide la transacción (§7.6) |
-| `POPULATION_LIMIT_REACHED` | 409 | No | Reservado: `population_limit` alcanzado (`eras.population_cap`) |
+| `POPULATION_LIMIT_REACHED` | 409 | No | `city.train` con `population + 1 > population_limit` |
+| `INSUFFICIENT_RESOURCES` | 409 | No | El stock de la ciudad no cubre el coste de `city.build` o `city.train` (E1) |
+| `CITY_BUSY` | 409 | No | `city.train` con una producción en curso (E1) |
 | `INTERNAL_ERROR` | 500 / WS `4500` | Solo si es irrecuperable | Cola de comandos saturada, el game loop no responde en 2 s, tipo de unidad no catalogado, polilínea no construible. El `message` nunca expone detalles internos ni credenciales |
 | `NOT_IMPLEMENTED` | 501 | No | Reservado: ruta de código para funcionalidad fuera de MVP |
 
-Los códigos marcados **Reservado** están definidos y estables en v1, pero ninguna ruta del servidor los emite todavía: sus comandos naturales (asedio, entrenamiento, revocación de sesión, la primera acción hostil) están fuera de MVP. `CITY_PROTECTED` no lo emite la guarnición, que no es una acción hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)).
+Los códigos marcados **Reservado** están definidos y estables en v1, pero ninguna ruta del servidor los emite todavía: sus comandos naturales (asedio, revocación de sesión, la primera acción hostil) están fuera de MVP. `CITY_PROTECTED` no lo emite la guarnición, que no es una acción hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)).
 
 ## 10. Idempotencia
 
@@ -831,8 +917,8 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 
 | Regla | Detalle |
 |---|---|
-| I-1 | Los esquemas exigen `requestId` con formato UUID en los siete comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
-| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`). `session.hello`, `session.ping` y `session.view` no reservan clave: no crean efectos durables. |
+| I-1 | Los esquemas exigen `requestId` con formato UUID en los diez comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build` y `city.train`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
+| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`). `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping` y `session.view` no reservan clave: no crean efectos durables. |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
 | I-5 | Un `requestId` repetido dentro de la ventana **no re-ejecuta** el comando. Si el original ya tuvo respuesta directa —`unit.move.accepted`, `unit.move.rejected` o un `system.error` con ese `requestId`—, el duplicado **recibe esa misma respuesta** otra vez, con el mismo payload: es lo que necesita el cliente que reintenta tras perder la conexión justo cuando el servidor contestaba. La respuesta se guarda en la clave `idem:{playerId}:{requestId}` en sustitución del marcador `"pending"`, sin bloquear el game loop, y conserva el TTL de 300 s. Un duplicado que llega mientras el original sigue en curso, o de un comando que no tiene respuesta directa (un `unit.cancel_move` que sale bien sólo produce el `unit.movement.cancelled` del chunk), no recibe nada. |
@@ -885,9 +971,9 @@ Este documento no define invariantes propios: materializa los de la familia `INV
 packages/protocol/
 ├── src/v1/
 │   ├── common.ts            # Tile, Waypoint, TimedPath, UnitView, CityView, TerritoryView, ChunkRef, ChunkTerrain
-│   ├── errors.ts            # ErrorCode como z.enum, exactamente los 22 códigos, y WS_CLOSE
-│   ├── client.ts            # los 5 mensajes cliente→servidor, TODOS .strict()
-│   ├── server.ts            # los 14 mensajes servidor→cliente, ninguno .strict()
+│   ├── errors.ts            # ErrorCode como z.enum, exactamente los 24 códigos, y WS_CLOSE
+│   ├── client.ts            # los 10 mensajes cliente→servidor, TODOS .strict()
+│   ├── server.ts            # los 16 mensajes servidor→cliente, ninguno .strict()
 │   └── index.ts             # export público de @empires-online/protocol
 ├── src/scripts/export-schema.ts
 └── schema/v1/               # JSON Schema GENERADO — artefacto de build, nunca editado a mano
@@ -922,19 +1008,20 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 
 | Nivel | Test | Criterio de aceptación | Estado |
 |---|---|---|---|
-| contract | El catálogo de 22 códigos de Go coincide con el exportado por `packages/protocol` | `ElementsMatch` exacto | **EN VERDE** (`TestCatalogoDeErroresCoincideConElExportado`) |
-| contract | Los 7 + 14 tipos declarados en Go aparecen en los JSON Schema embebidos | Los 21 presentes | **EN VERDE** |
+| contract | El catálogo de 24 códigos de Go coincide con el exportado por `packages/protocol` | `ElementsMatch` exacto | **EN VERDE** (`TestCatalogoDeErroresCoincideConElExportado`) |
+| contract | Los 10 + 16 tipos declarados en Go aparecen en los JSON Schema embebidos | Los 26 presentes | **EN VERDE** |
 | contract | El envelope saliente serializa `v`, `type`, `seq`, `ts`, `requestId`, `payload` | Campos exactos | **EN VERDE** |
 | contract | `requestId` se **omite** cuando no aplica | La cadena `requestId` no aparece en el JSON | **EN VERDE** |
 | contract | `entity.update` es un delta: los campos sin cambios no viajan | Sólo `id` y lo modificado | **EN VERDE** |
 | contract | `unit.movement.started` lleva la polilínea completa y sobrevive al round-trip | `path` íntegro, `tMs` preservados | **EN VERDE** |
 | contract | `unit.move` no admite que el cliente aporte una ruta | `DecodeStrict` la rechaza | **EN VERDE** (`TestElComandoDeMovimientoNoAdmiteRuta`) |
-| contract | El decodificador Go es tan estricto como el JSON Schema (S-7) | El esquema declara `additionalProperties: false` en todo objeto cliente→servidor, y una propiedad de más en el envelope, el payload o un objeto anidado se rechaza en los siete mensajes | **EN VERDE** (`TestElDecodificadorEsTanEstrictoComoElEsquema`) |
-| contract | Sólo `session.hello` es pre-auth; el catálogo de comandos es cerrado (7) | Los otros seis rechazados como pre-auth | **EN VERDE** |
+| contract | El decodificador Go es tan estricto como el JSON Schema (S-7) | El esquema declara `additionalProperties: false` en todo objeto cliente→servidor, y una propiedad de más en el envelope, el payload o un objeto anidado se rechaza en los diez mensajes | **EN VERDE** (`TestElDecodificadorEsTanEstrictoComoElEsquema`) |
+| contract | Sólo `session.hello` es pre-auth; el catálogo de comandos es cerrado (10) | Los otros nueve rechazados como pre-auth | **EN VERDE** |
 | contract | Los comandos de guarnición y `garrisonCityId` coinciden con el esquema | Campos exactos y obligatorios; `UnitView` siempre lo lleva; `entity.update` distingue ausente, `null` e id | **EN VERDE** (`TestLosComandosDeGuarnicionSonLosDelEsquema`, `TestUnitViewLlevaLaCiudadAnfitrionaSiempre`, `TestEntityUpdateDistingueEntradaSalidaYSinCambio`) |
+| contract | Los comandos de economía, `building.*`, `stocks`, `production`, `WORKING` y `carrying` coinciden con el esquema | Campos exactos y obligatorios; tipos de edificio y de entrenamiento del catálogo del dominio; los dos códigos nuevos en los dos catálogos | **EN VERDE** (`economy_contract_test.go`: `TestLosComandosDeEconomiaSonLosDelEsquema`, `TestLosMensajesDeEdificioSonLosDelEsquema`, `TestLaCiudadLlevaSuStockYSuProduccion`, `TestElEstadoWorkingYLaCargaEstanEnElEsquema`, `TestLosCodigosDeLaEconomiaEstanEnElCatalogo`) |
 | contract | Los seis códigos de cierre están en el rango privado 4000–4999 | Verificado | **EN VERDE** |
 | unit (TS) | Envelope cliente→servidor: tipo desconocido, versión no soportada, `requestId` no UUID, coordenadas no enteras, campo extra rechazado | Cada caso con su fallo esperado | **EN VERDE** |
-| unit (TS) | `system.error` acepta cada uno de los 22 códigos y rechaza uno fuera del catálogo | Verificado | **EN VERDE** |
+| unit (TS) | `system.error` acepta cada uno de los 24 códigos y rechaza uno fuera del catálogo | Verificado | **EN VERDE** |
 | unit (TS) | El JSON Schema exportado no ha derivado de los esquemas Zod | Mismo resultado que `--check` de CI | **EN VERDE** |
 | unit (TS) | Los límites de transporte coinciden con los valores por defecto `EO_WS_*` | 16384 / 20 / 40 | **EN VERDE** |
 | unit | Rechazo de `unit.move` / `unit.cancel_move` sin `requestId` | `INVALID_MESSAGE`, sin ejecución | Pendiente |
@@ -950,11 +1037,12 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | e2e | `unit.move` duplicado con el mismo `requestId`, en la misma sesión y tras reconectar | Un solo movimiento; el duplicado recibe la respuesta original cuando la hubo (I-5) | **EN VERDE** (`TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal`) |
 | e2e | Guarnecer y salir con dos jugadores conectados | El dueño recibe la respuesta con su `requestId`; el tercero, `entity.despawn GARRISONED` y luego `entity.spawn`; un duplicado reproduce la respuesta; ningún snapshot ajeno trae la unidad guarnecida | **EN VERDE** (`TestLaGuarnicionPorLaRedSoloLaVeSuDueno`) |
 | e2e | `unit.garrison` en una ciudad ajena sin tratado, y sobre una unidad ajena | `TREATY_REQUIRED` y `UNIT_NOT_OWNED` con el `requestId` | **EN VERDE** (`TestGuarnecerEnUnaCiudadAjenaSinTratadoLlegaComoTreatyRequired`) |
+| e2e | Los tres flujos de la economía | `unit.gather` → `unit.movement.started` → `entity.update { WORKING }` → `city.update { stocks }`; `city.build` → `building.spawn` → `building.update { COMPLETE }` + `city.update { populationLimit }`; `city.train` → `entity.spawn`; rechazos `INVALID_TARGET`, `INSUFFICIENT_RESOURCES` y `CITY_BUSY` con su `requestId` | **EN VERDE** (`TestRecolectarPorLaRedLlegaAlStockDeLaCiudad`, `TestConstruirUnaCasaPorLaRed`, `TestEntrenarUnAldeanoPorLaRed`) |
 | e2e | `unit.move` con la cola del loop llena | `system.error INTERNAL_ERROR` con su `requestId`, y el reintento con el mismo `requestId` se ejecuta (I-10) | **EN VERDE** (`TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`) |
 | e2e | Redis caído durante un `unit.move` | El comando se ejecuta igualmente y se registra `warn` | Pendiente |
 | e2e | `session.view` que desplaza el área 2 chunks | Nuevo `world.snapshot` con el `requestId` del comando y terreno **sólo** de los chunks nuevos | **EN VERDE** (`TestSessionViewRecentraConUnSnapshotDelAreaNueva`) |
 | e2e | Una unidad cruza de chunk con tres sesiones de áreas distintas, colocadas con `session.view` | Quien sólo observa el chunk nuevo recibe `entity.spawn` con `movement` y después los `entity.update`; quien sólo observa el viejo, `entity.despawn OUT_OF_INTEREST` y nada más; quien observa los dos, sólo `entity.update`. Ida y vuelta | **EN VERDE** (`TestUnaUnidadQueCruzaDeChunkApareceYDesapareceEnElAreaDeOtraSesion`) |
-| contract (e2e) | Todo mensaje servidor→cliente que emite el servidor real valida contra `server-message.schema.json`, y los 14 tipos aparecen al menos una vez | Un mensaje fuera de contrato, o un tipo que ningún e2e emite, falla el paquete | **EN VERDE** (`schema_e2e_test.go`, `contract_e2e_test.go`) |
+| contract (e2e) | Todo mensaje servidor→cliente que emite el servidor real valida contra `server-message.schema.json`, y los 16 tipos aparecen al menos una vez | Un mensaje fuera de contrato, o un tipo que ningún e2e emite, falla el paquete | **EN VERDE** (`schema_e2e_test.go`, `contract_e2e_test.go`) |
 | simulation | `unit.move` con `FakeClock` sobre el trayecto canónico | `path` exacto `[0, 600, 1449, 2409, 2769]`, `arrivalTimeMs` exacto | **EN VERDE** |
 | simulation | Reconstrucción de la posición desde la polilínea (`PositionAt`) | Coincide con la posición autoritativa del servidor | **EN VERDE** |
 | simulation | Segunda orden sobre una unidad en movimiento | `unit.movement.cancelled(REPLACED)` antes de `unit.move.accepted` y `unit.movement.started` | **EN VERDE** |

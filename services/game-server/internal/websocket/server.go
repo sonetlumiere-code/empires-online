@@ -13,6 +13,8 @@ import (
 	gws "github.com/gorilla/websocket"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/observability"
@@ -495,6 +497,61 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			SessionID: session.ID,
 			RequestID: msg.RequestID,
 			UnitID:    p.UnitID,
+		})
+
+	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
+	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del
+	// servidor (INV-SEC-001); los rechazos llegan por system.error.
+	case protocol.TypeUnitGather:
+		var p protocol.UnitGatherPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.GatherWood{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+			Target:    world.Tile{X: p.Target.X, Y: p.Target.Y},
+		})
+
+	case protocol.TypeCityBuild:
+		var p protocol.CityBuildPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.BuildBuilding{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			CityID:    p.CityID,
+			Type:      building.Type(p.Type),
+			Tile:      world.Tile{X: p.X, Y: p.Y},
+		})
+
+	case protocol.TypeCityTrain:
+		var p protocol.CityTrainPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.TrainUnit{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			CityID:    p.CityID,
+			Type:      unit.Type(p.Type),
 		})
 	}
 }

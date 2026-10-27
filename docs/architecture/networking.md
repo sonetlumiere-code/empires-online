@@ -186,7 +186,8 @@ world.snapshot.payload = {
   terrain:     [{ cx, cy, size, terrain }],       // terrain = base64 de size*size bytes
   units:       [ UnitView ],
   cities:      [ CityView ],
-  territories: [ TerritoryView ]                  // vacío en el MVP
+  territories: [ TerritoryView ],
+  buildings:   [ BuildingView ]                   // E1: edificios de esos chunks
 }
 ```
 
@@ -196,7 +197,8 @@ world.snapshot.payload = {
 | Conjunto de interés | `chunks[]` con las coordenadas `(cx, cy)` suscritas | `World.ChunksInRadius(centro, EO_INTEREST_RADIUS_CHUNKS)` |
 | Terreno | `terrain[]` con `size` y los `size*size` bytes del chunk en **base64**, un byte por tile con el valor de `TerrainType` | Grid en RAM (`World.ChunkTerrain`) |
 | Unidades | `UnitView`: `id`, `playerId`, `cityId`, `unitType`, `x`, `y`, `hp`, `maxHp`, `status` y, si se está moviendo, `movement` con la polilínea completa | RAM del game server |
-| Ciudades | `CityView`: `id`, `ownerPlayerId`, `name`, `centerX`, `centerY`, `era`, `population`, `populationLimit`, `presenceState`, `protectionUntilMs` | RAM (respaldado en `cities`) |
+| Ciudades | `CityView`: `id`, `ownerPlayerId`, `name`, `centerX`, `centerY`, `era`, `population`, `populationLimit`, `presenceState`, `protectionUntilMs` y, desde E1, `stocks` y `production` | RAM (respaldado en `cities`, `city_stocks` y `city_productions`) |
+| Edificios | `BuildingView`: `id`, `cityId`, `type`, `x`, `y`, `status`, `completesAtMs`; sólo los confirmados por la base | RAM (respaldado en `buildings`) |
 
 Detalles de diseño:
 
@@ -226,12 +228,23 @@ hecho de la simulación  --(mapeo)-->  tipo de mensaje v1  --(chunk o jugador)--
 | Una unidad cambia de chunk (avance, parada, salida de guarnición, apartamiento por una muralla) | `entity.spawn` con la vista completa —movimiento activo incluido— a quien gana el chunk; `entity.despawn` con `reason: OUT_OF_INTEREST` a quien lo pierde; **nada** a quien observa los dos, que sigue con sus deltas | Sesiones suscritas al chunk nuevo y no al viejo / al viejo y no al nuevo, por `Hub.BroadcastChunkTransition`; sólo las del dueño si la unidad está `HIDDEN` o `GARRISONED` |
 | Una unidad se oculta en una Safe Zone | `entity.update` (con `status`) al propietario; `entity.despawn` con `reason: HIDDEN` a los demás | Propietario por `SendToPlayer`; terceros por `BroadcastChunkExcept` |
 | Una unidad oculta se revela | `entity.update` al propietario; `entity.spawn` a los demás | Ídem |
+| Rechazo de `unit.gather`, `city.build` o `city.train` (E1) | `system.error` con su `requestId` | Todas las sesiones del emisor |
+| Llegada de un tramo de recolección al bosque | `unit.movement.completed` y `entity.update` (con `status: WORKING`) | Chunk del bosque |
+| Fin del trabajo: sale hacia el depósito | `unit.movement.started` y `entity.update` (con `carrying`) | Chunk del bosque |
+| Depósito de madera | `city.update` (con `stocks`), `entity.update` (con `carrying: 0`) y, si el dueño está presente, el `unit.movement.started` del viaje siguiente | Chunk del centro de la ciudad; chunk del depósito |
+| Encargo de casa confirmado por la base | `building.spawn` y `city.update` (con `stocks`) | Chunk del edificio; chunk del centro de la ciudad |
+| Encargo rechazado por la transacción | `system.error` y `city.update` (con `stocks`, la madera devuelta) | Emisor; chunk del centro |
+| Casa completa | `building.update` (con `status: COMPLETE`) y `city.update` (con `populationLimit`) | Chunk del edificio; chunk del centro |
+| Entrenamiento confirmado | `city.update` (con `stocks`, `population` y `production`) | Chunk del centro |
+| Nacimiento del aldeano | `entity.spawn` y `city.update` (con `production: null`) | Chunk del tile de nacimiento; chunk del centro |
 
 **Orden de emisión dentro de un tick.** Es fijo y determinista, y se deriva del orden de las fases, no de una regla de ordenación aparte:
 
 1. Respuestas a comandos (fase 2): `unit.move.accepted` / `unit.move.rejected`, y el `unit.movement.cancelled` del movimiento reemplazado, que se emite **antes** que el `accepted` porque la cancelación ocurre antes en el código.
 2. Deltas de movimiento (fase 3): `entity.update` de cada avance y `unit.movement.completed` de las llegadas.
-3. Temporizadores (fase 5): `city.update` de las transiciones de presencia y, después, los cambios de ocultamiento de Safe Zones.
+3. Temporizadores (fase 5): `city.update` de las transiciones de presencia, las salidas de guarnición pendientes, la economía —fin del trabajo de las tareas, casas que se completan y nacimientos decididos—, y por último los cambios de ocultamiento de Safe Zones.
+
+Las respuestas de la cola de persistencia (un edificio o un entrenamiento confirmados, un aldeano nacido) llegan por el buzón del loop y se emiten en la fase 1-2 del tick siguiente, antes que los comandos de los jugadores ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)).
 
 La transición de chunk no tiene fase propia: se emite en el punto en que la unidad cambia de tile, sea cual sea la fase, e inmediatamente **antes** del delta de ese cambio —el `entity.update` del avance, el `unit.movement.cancelled` de una parada—. Así quien gana la unidad la conoce, con su polilínea, antes de recibir su primer delta, y quien la pierde no recibe ninguno después del `despawn` (`Simulation.moveUnit`, el único camino por el que una unidad del mundo vivo cambia de tile).
 
