@@ -17,8 +17,18 @@ import { Application, Container, Graphics, Text } from 'pixi.js';
 
 import { TILE_H, TILE_W, depthOf, screenToTile, worldToIso, type Camera, type Point, type Tile } from './iso';
 import type { CameraController } from './camera';
+import {
+  chunkRectOf,
+  expandRect,
+  rectContains,
+  rectEquals,
+  visibleIsoRect,
+  visibleWorldRect,
+  type Rect,
+} from './culling';
 import { RenderReconciler } from './reconciler';
 import type { SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
+import type { ChunkTerrain } from '../state/world';
 
 export type { SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
 
@@ -31,6 +41,12 @@ const TERRAIN_COLORS = [
   0x2f6f9f, // 4 WATER
   0xb59b66, // 5 ROAD
 ] as const;
+
+/**
+ * Holgura del recorte de entidades, en píxeles de escena: dos tiles de ancho,
+ * más que el cuerpo de una ciudad (48 px) con su etiqueta encima.
+ */
+const ENTITY_CULL_MARGIN_PX = 2 * TILE_W;
 
 export interface SceneCallbacks {
   /** El jugador hizo clic sobre un tile del mundo. */
@@ -57,13 +73,23 @@ interface CityEntry {
   city: SceneCity;
 }
 
+interface ChunkEntry {
+  readonly cx: number;
+  readonly cy: number;
+  readonly graphic: Graphics;
+}
+
+/** Clave única de un chunk, también con coordenadas negativas (los bordes del mundo). */
+const chunkKeyOf = (cx: number, cy: number): number => (cx + 32_768) * 65_536 + (cy + 32_768);
+
 export class IsoScene {
   private app: Application | null = null;
   private readonly root = new Container();
   private readonly terrainLayer = new Container();
   private readonly territoryLayer = new Container();
   private readonly entityLayer = new Container();
-  private readonly terrainCache = new Map<string, Graphics>();
+  /** Un `Graphics` por chunk de terreno a la vista (con un chunk de holgura al retirarlos). */
+  private readonly chunks = new Map<number, ChunkEntry>();
   private readonly units = new Map<number, UnitEntry>();
   private readonly cities = new Map<number, CityEntry>();
   // La clave incluye el dueño: cambiar de dueño obliga a redibujar, y comparar
@@ -74,6 +100,12 @@ export class IsoScene {
   /** Algún `zIndex` cambió o entró un sprite desde la última ordenación. */
   private sortDirty = false;
   private terrain: TerrainSource | null = null;
+  /** Llegaron chunks nuevos desde la última sincronización del terreno. */
+  private terrainDirty = false;
+  /** Rectángulo de tiles que cubría la cámara en el último frame: si no cambia, no se recalcula nada. */
+  private worldRect: Rect | null = null;
+  /** Viewport en píxeles de escena con la holgura de las entidades; `null` antes del primer frame. */
+  private isoRect: Rect | null = null;
   // Posición dibujada de cada unidad: la interpolación más la corrección
   // gradual de las discontinuidades que traen los deltas (frontend.md §5.3).
   private reconciler = new RenderReconciler();
@@ -135,12 +167,15 @@ export class IsoScene {
   destroy(): void {
     this.app?.destroy(true, { children: true });
     this.app = null;
-    this.terrainCache.clear();
+    this.chunks.clear();
     this.units.clear();
     this.cities.clear();
     this.territoryShapes.clear();
     this.active.clear();
     this.terrain = null;
+    this.terrainDirty = false;
+    this.worldRect = null;
+    this.isoRect = null;
     this.reconciler = new RenderReconciler();
   }
 
@@ -153,7 +188,10 @@ export class IsoScene {
    * sólo toca los sprites de las entidades que vienen en el cambio.
    */
   apply(update: SceneUpdate): void {
-    if (update.terrain) this.terrain = update.terrain;
+    if (update.terrain) {
+      this.terrain = update.terrain;
+      this.terrainDirty = true;
+    }
 
     if (update.complete) {
       this.pruneAbsent(this.units, update.units, (id) => this.removeUnit(id));
@@ -189,7 +227,21 @@ export class IsoScene {
     // dt del ticker es lo que mide la continuidad (frontend.md §5.3).
     this.reconciler.frame(this.serverTimeMs(), app.ticker.deltaMS);
 
-    this.drawTerrain(camera);
+    // Culling: cuatro proyecciones por frame y nada más mientras la cámara no
+    // cambie de tile. Cuando cambia (o llega terreno), se sincronizan los
+    // chunks dibujados y qué entidades se ven (frontend.md §7.4).
+    const worldRect = visibleWorldRect(camera);
+    const moved = !rectEquals(this.worldRect, worldRect);
+    if (moved || this.terrainDirty) {
+      this.syncTerrain(worldRect);
+      this.terrainDirty = false;
+    }
+    if (moved) {
+      this.worldRect = worldRect;
+      this.isoRect = visibleIsoRect(camera, ENTITY_CULL_MARGIN_PX);
+      this.cullEntities();
+    }
+
     this.stepUnits();
 
     // Orden de dibujado isométrico: lo que está más "al fondo" (menor x+y) se
@@ -221,6 +273,7 @@ export class IsoScene {
       const pos = this.reconciler.position(id, unit);
       const iso = worldToIso(pos.x, pos.y);
       entry.sprite.position.set(iso.x, iso.y);
+      entry.sprite.visible = this.isVisible(iso.x, iso.y);
       this.setDepth(entry.sprite, depthOf(pos.x, pos.y) + 0.5); // por delante del terreno y de la ciudad
       // Quieta y sin desfase que corregir: hasta el próximo delta no hay nada que hacer.
       if (unit.movement === null && pos.x === unit.x && pos.y === unit.y) this.active.delete(id);
@@ -231,6 +284,56 @@ export class IsoScene {
     if (sprite.zIndex === z) return;
     sprite.zIndex = z;
     this.sortDirty = true;
+  }
+
+  /** Si un anclaje en píxeles de escena cae en el viewport con holgura. Antes del primer frame, todo se ve. */
+  private isVisible(isoX: number, isoY: number): boolean {
+    return this.isoRect === null || rectContains(this.isoRect, isoX, isoY);
+  }
+
+  /** Recorte de entidades: se decide por su anclaje actual y sólo cuando la cámara cambia de tile. */
+  private cullEntities(): void {
+    for (const entry of this.units.values()) {
+      entry.sprite.visible = this.isVisible(entry.sprite.position.x, entry.sprite.position.y);
+    }
+    for (const entry of this.cities.values()) {
+      entry.sprite.visible = this.isVisible(entry.sprite.position.x, entry.sprite.position.y);
+    }
+  }
+
+  /**
+   * Terreno por chunk: un `Graphics` con los rombos de sus `size × size` tiles,
+   * construido una vez cuando el chunk entra en la caja de tiles visible y
+   * retirado cuando queda a más de un chunk de ella. Entre medias no cuesta
+   * nada por frame: ni recorrer tiles ni crear claves.
+   */
+  private syncTerrain(worldRect: Rect): void {
+    const source = this.terrain;
+    if (!source) return;
+
+    const wanted = chunkRectOf(worldRect, source.chunkSize);
+    for (let cy = wanted.minY; cy <= wanted.maxY; cy++) {
+      for (let cx = wanted.minX; cx <= wanted.maxX; cx++) {
+        const key = chunkKeyOf(cx, cy);
+        if (this.chunks.has(key)) continue;
+        // Un chunk que todavía no llegó se intentará de nuevo cuando llegue
+        // terreno (`terrainDirty`).
+        const chunk = source.chunkAt(cx, cy);
+        if (!chunk) continue;
+        const graphic = buildChunkGraphics(chunk, source.chunkSize);
+        this.chunks.set(key, { cx, cy, graphic });
+        this.terrainLayer.addChild(graphic);
+      }
+    }
+
+    // Un chunk de holgura: ir y venir por un borde no reconstruye nada.
+    const keep = expandRect(wanted, 1);
+    for (const [key, entry] of this.chunks) {
+      if (rectContains(keep, entry.cx, entry.cy)) continue;
+      this.terrainLayer.removeChild(entry.graphic);
+      entry.graphic.destroy();
+      this.chunks.delete(key);
+    }
   }
 
   /** La unidad que se DIBUJA en ese tile, si la hay: la posición que el jugador ve, no la autoritativa. */
@@ -261,6 +364,7 @@ export class IsoScene {
       // interpolada por el reconciliador.
       const iso = worldToIso(unit.x, unit.y);
       sprite.position.set(iso.x, iso.y);
+      sprite.visible = this.isVisible(iso.x, iso.y);
       entry = { sprite, body, unit };
       this.units.set(unit.id, entry);
       this.entityLayer.addChild(sprite);
@@ -310,6 +414,7 @@ export class IsoScene {
 
     const iso = worldToIso(city.centerX, city.centerY);
     entry.sprite.position.set(iso.x, iso.y);
+    entry.sprite.visible = this.isVisible(iso.x, iso.y);
     this.setDepth(entry.sprite, depthOf(city.centerX, city.centerY));
     // Una ciudad protegida se distingue de un vistazo.
     entry.sprite.alpha = city.presenceState === 'PROTECTED' ? 0.65 : 1;
@@ -368,81 +473,31 @@ export class IsoScene {
     this.territoryShapes.delete(id);
   }
 
-  private drawTerrain(camera: Camera): void {
-    const source = this.terrain;
-    if (!source) return;
+}
 
-    // Sólo se dibujan los tiles visibles: culling por área de interés.
-    const halfW = camera.viewportWidth / (2 * camera.zoom);
-    const halfH = camera.viewportHeight / (2 * camera.zoom);
-    const margin = 4;
-
-    const centerIso = { x: camera.x, y: camera.y };
-    const centerWorld = {
-      x: centerIso.y / TILE_H + centerIso.x / TILE_W,
-      y: centerIso.y / TILE_H - centerIso.x / TILE_W,
-    };
-    const radius = Math.ceil(Math.max(halfW / (TILE_W / 2), halfH / (TILE_H / 2))) + margin;
-
-    const minX = Math.floor(centerWorld.x - radius);
-    const maxX = Math.ceil(centerWorld.x + radius);
-    const minY = Math.floor(centerWorld.y - radius);
-    const maxY = Math.ceil(centerWorld.y + radius);
-
-    const visible = new Set<string>();
-
-    for (let y = minY; y <= maxY; y++) {
-      for (let x = minX; x <= maxX; x++) {
-        const terrain = terrainOf(source, x, y);
-        if (terrain === undefined) continue;
-
-        const key = `${x}:${y}`;
-        visible.add(key);
-
-        let tile = this.terrainCache.get(key);
-        if (!tile) {
-          tile = createTerrainTile(x, y, terrain);
-          this.terrainCache.set(key, tile);
-          this.terrainLayer.addChild(tile);
-        }
-      }
-    }
-
-    // Se retiran los tiles que salieron de la vista para que la caché no crezca
-    // sin límite mientras el jugador recorre el mundo.
-    for (const [key, graphic] of this.terrainCache) {
-      if (visible.has(key)) continue;
-      this.terrainLayer.removeChild(graphic);
-      graphic.destroy();
-      this.terrainCache.delete(key);
+/**
+ * Los rombos de un chunk en un solo `Graphics`, en coordenadas isométricas
+ * absolutas: las mismas órdenes de dibujo que tenía cada tile por separado,
+ * en un único objeto de escena en lugar de `size × size`.
+ */
+function buildChunkGraphics(chunk: ChunkTerrain, chunkSize: number): Graphics {
+  const g = new Graphics();
+  const baseX = chunk.cx * chunkSize;
+  const baseY = chunk.cy * chunkSize;
+  for (let ly = 0; ly < chunk.size; ly++) {
+    for (let lx = 0; lx < chunk.size; lx++) {
+      const terrain = chunk.tiles[ly * chunk.size + lx];
+      const color = terrain === undefined ? 0xff00ff : (TERRAIN_COLORS[terrain] ?? 0xff00ff);
+      const iso = worldToIso(baseX + lx, baseY + ly);
+      g.moveTo(iso.x, iso.y - TILE_H / 2)
+        .lineTo(iso.x + TILE_W / 2, iso.y)
+        .lineTo(iso.x, iso.y + TILE_H / 2)
+        .lineTo(iso.x - TILE_W / 2, iso.y)
+        .closePath()
+        .fill({ color })
+        .stroke({ color: 0x000000, width: 0.5, alpha: 0.15 });
     }
   }
-}
-
-/** Terreno de un tile, o `undefined` si su chunk no ha llegado. */
-function terrainOf(source: TerrainSource, x: number, y: number): number | undefined {
-  const size = source.chunkSize;
-  const cx = Math.floor(x / size);
-  const cy = Math.floor(y / size);
-  const chunk = source.chunkAt(cx, cy);
-  if (!chunk) return undefined;
-  return chunk.tiles[(y - cy * size) * chunk.size + (x - cx * size)];
-}
-
-function createTerrainTile(x: number, y: number, terrain: number): Graphics {
-  const iso = worldToIso(x, y);
-  const color = TERRAIN_COLORS[terrain] ?? 0xff00ff;
-
-  const g = new Graphics();
-  g.moveTo(0, -TILE_H / 2)
-    .lineTo(TILE_W / 2, 0)
-    .lineTo(0, TILE_H / 2)
-    .lineTo(-TILE_W / 2, 0)
-    .closePath()
-    .fill({ color })
-    .stroke({ color: 0x000000, width: 0.5, alpha: 0.15 });
-
-  g.position.set(iso.x, iso.y);
   return g;
 }
 
