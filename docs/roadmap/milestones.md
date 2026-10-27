@@ -142,7 +142,7 @@ Actions. **No entra**: lógica de dominio, mundo, jugadores, WebSocket ni mensaj
    (`Now() time.Time`, `NowMs() int64`), `SystemClock`, `FakeClock` y `RandomSource`. Prohibido
    el uso directo de `time.Now()` o `rand` dentro del dominio.
 10. **HECHO — Mecanismo de migraciones** en `services/game-server/migrations/` con nomenclatura
-    `NNNN_nombre.up.sql` / `NNNN_nombre.down.sql` y `embed.go` (`//go:embed *.sql`), aplicadas con
+    `NNNNNN_nombre.up.sql` / `NNNNNN_nombre.down.sql` y `embed.go` (`//go:embed *.sql`), aplicadas con
     **golang-migrate** embebido reescribiendo la URL al esquema `pgx5`. Fuera de producción las aplica **el
     arranque del servidor** (`EO_MIGRATE_ON_START`, verdadero salvo con `EO_ENV=production`); en producción,
     el binario `cmd/migrate`, antes de desplegar. En los dos casos de forma idempotente, y abortando ante un

@@ -5,6 +5,11 @@ Política de respaldo de Empires Online: qué se respalda y qué no, backups com
 > Regla que gobierna este documento: **un backup no verificado no es un backup, es una esperanza**. Un
 > archivo que nunca se ha restaurado tiene una probabilidad desconocida de servir, y la probabilidad
 > desconocida se descubre siempre en el peor momento. La sección §6 no es opcional.
+>
+> **Estado (2026-10-27):** diseño objetivo, no un hecho. No hay ningún entorno desplegado ni infraestructura de
+> respaldo en el repositorio (ver [disaster-recovery.md](./disaster-recovery.md) y [deployment.md](./deployment.md) §2): el
+> backup diario, el archivado de WAL con `archive_timeout = 60s`, los objetivos de RPO y RTO y la retención de 14 días
+> de §3–§5 son la política con la que se implantará el despliegue, no algo que hoy se ejecute.
 
 ---
 
@@ -321,9 +326,10 @@ distinto de lo previsto.
    referirse a un futuro que ya no existe. Vaciarlo es seguro por lo explicado en §2, y evita
    inconsistencias sutiles.
 3. Arranca el Game Server y verifica `/health` y `/ready`
-   (ver [deployment.md](./deployment.md#paso-5--verificar)). Recuerda que el arranque **aplica las
-   migraciones embebidas**: si el binario es más nuevo que el esquema restaurado, migrará hacia adelante
-   sobre la copia recién restaurada. Confirma que eso es lo que quieres antes de arrancar.
+   (ver [deployment.md](./deployment.md#paso-5--verificar)). Recuerda que en producción el arranque **no
+   migra** (`EO_MIGRATE_ON_START=false`): si el binario es más nuevo que el esquema restaurado, migrar hacia
+   adelante sobre la copia recién restaurada es un paso aparte, con `migrate` (deployment.md §6, Paso 3).
+   Confirma que eso es lo que quieres antes de darlo.
 4. Comprueba `eo_active_units`, `eo_active_movements`, `eo_connected_players` y la ausencia de
    `eo_protocol_errors_total{code="INTERNAL_ERROR"}`. Contrasta la línea de log `mundo rehidratado` con las
    cifras de la consulta 6 de §6.3.
@@ -355,19 +361,22 @@ pg_restore --list "pre-migration-000014-....dump" | head -20
 
 # 3. Subir la copia al almacenamiento externo y confirmar la subida
 
-# 4. Solo entonces, desplegar la imagen que trae la migración.
-#    NO hay un paso de migración separado: el arranque del binario las aplica
-#    (ver deployment.md §6, Paso 3).
-cd /opt/empires-online && docker compose up -d
+# 4. Solo entonces, migrar con la imagen que trae la migración. En producción el
+#    servidor NO migra al arrancar (EO_MIGRATE_ON_START=false): lo hace el binario
+#    `migrate` como paso previo del despliegue (ver deployment.md §6, Paso 3).
+cd /opt/empires-online
+docker compose run --rm --no-deps --entrypoint /usr/local/bin/migrate game-server
+
+# 5. Y después desplegar la imagen nueva (ver deployment.md §6, Paso 4).
 ```
 
 Nombrado obligatorio: `pre-migration-<NNNNNN>-<nombre>-<timestamp>.dump`, con el mismo `NNNNNN` del archivo
 `NNNNNN_nombre.up.sql` — seis dígitos, como `000001_initial_schema` y `000002_seed_catalogs`. Un backup que
 no permite saber a qué migración corresponde es un backup que nadie usa bajo presión.
 
-Y hay una razón extra para no saltarse este paso: como las migraciones se aplican **en el arranque**, el
-punto de no retorno y el despliegue son el mismo evento. No existe la ventana de "he migrado, miro cómo ha
-quedado y luego levanto la aplicación".
+Y hay una razón extra para no saltarse este paso: `migrate` es el punto de no retorno y, desde que termina,
+el servidor viejo, todavía en pie, corre contra un esquema que ya no es el suyo. Fuera de producción
+(`EO_MIGRATE_ON_START` verdadero) el arranque migra solo y ese punto y el despliegue son el mismo evento.
 
 Retención: 90 días (§5.1).
 

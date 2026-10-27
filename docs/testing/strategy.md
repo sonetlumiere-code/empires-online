@@ -221,7 +221,7 @@ services/game-server/
 │   ├── websocket/e2e_test.go             ✔ e2e: vertical slice completo sobre transporte real
 │   ├── persistence/memory/memory_test.go ✔ unit: TTL y atomicidad con reloj falso
 │   └── persistence/{postgres,redis}/
-│       └── *integration_test.go          ✔ ejecutados: 82 contra PostgreSQL y 11 contra Redis
+│       └── *integration_test.go          ✔ ejecutados: 84 contra PostgreSQL y 11 contra Redis
 └── testdata/                             ○ golden files del protocolo (aún no existe)
 ```
 
@@ -406,7 +406,7 @@ integration ─┘
 
 El workflow lleva además `concurrency` con `cancel-in-progress: true`: un push nuevo sobre la misma rama cancela la ejecución anterior.
 
-Versiones fijadas en el workflow: `GO_VERSION: '1.23'`, `NODE_VERSION: '22'`, `PNPM_VERSION: '10'`.
+Versiones del workflow: `NODE_VERSION: '22'` es la única fijada en `.github/workflows/ci.yml`; la de Go sale de `services/game-server/go.mod` (`go-version-file`) y la de pnpm del campo `packageManager` de `package.json`, para declarar cada versión una sola vez.
 
 ### 8.1 Pasos de cada job
 

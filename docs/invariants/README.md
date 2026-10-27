@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**90 invariantes** repartidos en diez familias y nueve archivos. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**94 invariantes** —93 vigentes y 1 `DEROGADO`, `INV-GARR-003`— repartidos en diez familias y nueve archivos (las fichas son 95: `INV-GARR-008` está reservado y no tiene fila, ver el recuento final). `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|

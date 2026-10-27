@@ -171,9 +171,9 @@ Con `EO_CHUNK_SIZE = 32` eso equivale a `chunkX = x >> 5`, `localX = x & 31` y `
 
 ### 3.3 Proyección isométrica: se prueba en el cliente, y el servidor prueba que NO la tiene
 
-El canon §4 es explícito: el servidor **nunca** maneja píxeles. La verificación es doble, y **ninguna de las dos mitades existe todavía**:
+El canon §4 es explícito: el servidor **nunca** maneja píxeles. La verificación es doble, y **la mitad del servidor no existe todavía y la del cliente está cubierta sólo en parte**:
 
-**○ En `apps/web` (Vitest).** `apps/` está vacío: el frontend Next.js no existe aún, así que estos casos se activan con el milestone que lo cree. Fórmula: `screenX = (x - y) * (TILE_W/2)`, `screenY = (x + y) * (TILE_H/2)`, con `TILE_W = 64` y `TILE_H = 32`.
+**En `apps/web` (Vitest).** El frontend existe y sus tests viven en `apps/web/src/render/iso.test.ts`; la columna de estado de la tabla dice qué casos cubre ya (✔) y cuáles faltan (○). Fórmula: `screenX = (x - y) * (TILE_W/2)`, `screenY = (x + y) * (TILE_H/2)`, con `TILE_W = 64` y `TILE_H = 32`.
 
 | # | Entrada `(x,y)` | `(screenX, screenY)` esperado |
 |---|---|---|

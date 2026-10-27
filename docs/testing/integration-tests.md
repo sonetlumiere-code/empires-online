@@ -124,7 +124,7 @@ integración no lo usa**. Las migraciones son **SQL embebido con `go:embed`** y 
 que además reescribe la URL al esquema `pgx5`). El harness de integración llama a ese mismo migrador,
 no a un `schema.sql` paralelo: un esquema de test generado por otro camino deja de representar la
 realidad en cuanto alguien añade una migración, y entonces los tests dejan de proteger nada.
-Convención `NNNN_nombre.up.sql` / `.down.sql` y control por `schema_migrations`: ver
+Convención `NNNNNN_nombre.up.sql` / `.down.sql` y control por `schema_migrations`: ver
 [../database/migrations.md](../database/migrations.md).
 
 Ciclo completo en local (PowerShell), replicando lo que hace el job `integration`:
@@ -591,7 +591,7 @@ docker compose exec redis redis-cli -n 1 --scan --pattern "presence:player:*"
 - [simulation-tests.md](./simulation-tests.md) — avance del loop con `FakeClock`.
 - [contract-tests.md](./contract-tests.md) — forma de los mensajes emitidos tras la recuperación.
 - [../database/schema.md](../database/schema.md) — tablas, `CHECK`s e índice único parcial.
-- [../database/migrations.md](../database/migrations.md) — convención `NNNN_nombre.up.sql` / `.down.sql`.
+- [../database/migrations.md](../database/migrations.md) — convención `NNNNNN_nombre.up.sql` / `.down.sql`.
 - [../database/persistence-strategy.md](../database/persistence-strategy.md) — write-through, dirty-flag y estado reconstruible.
 - [../operations/local-development.md](../operations/local-development.md) — Docker Compose en Windows y acceso sin `psql` ni `redis-cli`.
 - [../operations/disaster-recovery.md](../operations/disaster-recovery.md) — el mismo escenario de recuperación, desde la perspectiva de operación.
