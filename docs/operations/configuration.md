@@ -86,7 +86,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
 |---|---|---|---|---|---|---|
-| `EO_ENV` | string | `development` | libre; `production` es el único valor con significado especial | No | No | Selecciona el perfil de arranque. En `production` se prohíben los secretos de desarrollo (§4.2). El cargador **no** restringe el conjunto de valores: cualquier cadena distinta de `production` se comporta como un entorno no productivo. |
+| `EO_ENV` | string | `development` | **exactamente** `development` \| `test` \| `production` | No | No | Selecciona el perfil de arranque. En `production` se prohíben los secretos de desarrollo (§4.2), `EO_REDIS_URL` pasa a ser obligatoria y `EO_MIGRATE_ON_START` vale `false`. **La lista es cerrada**: `prod`, `Production` o `staging` abortan el arranque con `EO_ENV="prod" no es un entorno válido (usa development, test, production)`. Antes el cargador aceptaba texto libre y cualquier cadena distinta de `production` activaba en silencio la semántica de desarrollo. `test` existe para los tests de integración y la CI: se comporta como `development`. |
 | `EO_LOG_LEVEL` | string | `info` | `debug` \| `info` \| `warn` \| `error` | No | No | Nivel mínimo de `log/slog`. En `debug` se emiten trazas por comando y por tick, con coste de CPU y volumen apreciables: no usar en producción salvo diagnóstico acotado. |
 
 ### 3.2 Red del proceso
@@ -215,8 +215,9 @@ las consecuencias se escriben en Postgres antes de que nadie lo note.
 ### 4.2 Orden de validación
 
 1. **Parseo por tipo y rango individual**, variable a variable, según §3. Un entero que no parsea produce
-   `EO_X="…" no es un entero válido`; uno fuera de rango, `EO_X=N fuera del rango permitido [min, max]`. En
-   ambos casos el valor efectivo cae al default y el error queda anotado.
+   `EO_X="…" no es un entero válido`; uno fuera de rango, `EO_X=N fuera del rango permitido [min, max]`; un
+   `EO_ENV` fuera de la lista cerrada, `EO_ENV="…" no es un entorno válido (usa development, test, production)`.
+   En todos los casos el valor efectivo cae al default y el error queda anotado.
 2. **Presencia de obligatorias.** `EO_POSTGRES_URL` y `EO_AUTH_JWT_SECRET`: ausente o vacía → error.
    `EO_REDIS_URL` solo es obligatoria si `EO_ENV=production`.
 3. **Las seis validaciones cruzadas**, las que ninguna variable puede comprobar sola:

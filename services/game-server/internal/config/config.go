@@ -63,6 +63,19 @@ type Config struct {
 	WSOutboundQueueSize int
 }
 
+// Valores admitidos de EO_ENV. La lista es cerrada a propósito: `prod` o un
+// error de tecleo activaría en silencio la semántica de desarrollo (migración
+// automática, estado caliente en proceso, secreto de ejemplo admitido).
+const (
+	EnvDevelopment = "development"
+	EnvTest        = "test"
+	EnvProduction  = "production"
+)
+
+// environments es la lista cerrada de EO_ENV, en el orden en que se enumera
+// en el mensaje de error.
+var environments = []string{EnvDevelopment, EnvTest, EnvProduction}
+
 // TickDuration es el período de un tick del game loop.
 func (c Config) TickDuration() time.Duration {
 	return time.Second / time.Duration(c.TickRateHz)
@@ -74,7 +87,7 @@ func (c Config) TickDurationMs() int64 {
 }
 
 // IsProduction indica si el proceso corre en un entorno productivo.
-func (c Config) IsProduction() bool { return c.Env == "production" }
+func (c Config) IsProduction() bool { return c.Env == EnvProduction }
 
 // UsesInProcessHotState indica si el estado caliente vive en el proceso en lugar
 // de en Redis. Sólo puede ocurrir fuera de producción.
@@ -86,8 +99,12 @@ func (c Config) UsesInProcessHotState() bool { return c.RedisURL.IsZero() }
 func Load() (Config, error) {
 	v := &collector{}
 
+	// El entorno se resuelve primero porque otros valores por defecto dependen
+	// de él. Un valor fuera de la lista es un error, no un entorno de desarrollo.
+	env := v.oneOf("EO_ENV", EnvDevelopment, environments)
+
 	cfg := Config{
-		Env:         v.str("EO_ENV", "development"),
+		Env:         env,
 		LogLevel:    v.str("EO_LOG_LEVEL", "info"),
 		HTTPAddr:    v.str("EO_HTTP_ADDR", ":8080"),
 		MetricsAddr: v.str("EO_METRICS_ADDR", ":9090"),
@@ -112,7 +129,7 @@ func Load() (Config, error) {
 		// El valor por defecto depende del entorno: se activa en desarrollo y se
 		// desactiva en producción. Un default único obligaría a recordar ponerlo
 		// en el sitio donde olvidarlo hace daño.
-		MigrateOnStart: v.boolean("EO_MIGRATE_ON_START", os.Getenv("EO_ENV") != "production"),
+		MigrateOnStart: v.boolean("EO_MIGRATE_ON_START", env != EnvProduction),
 
 		PathfindingMaxNodes:    v.intRange("EO_PATHFINDING_MAX_NODES", 20000, 100, 10_000_000),
 		PathfindingMaxDistance: int32(v.intRange("EO_PATHFINDING_MAX_DISTANCE", 256, 1, 65536)),
@@ -182,6 +199,19 @@ func (c *collector) str(key, def string) string {
 	if raw, ok := os.LookupEnv(key); ok && raw != "" {
 		return raw
 	}
+	return def
+}
+
+// oneOf lee una variable que sólo admite los valores de `allowed`, tal cual,
+// sin normalizar mayúsculas: `Production` no es `production`.
+func (c *collector) oneOf(key, def string, allowed []string) string {
+	raw := c.str(key, def)
+	for _, a := range allowed {
+		if raw == a {
+			return raw
+		}
+	}
+	c.fail(fmt.Sprintf("%s=%q no es un entorno válido (usa %s)", key, raw, strings.Join(allowed, ", ")))
 	return def
 }
 

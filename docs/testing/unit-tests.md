@@ -562,6 +562,7 @@ Los topes se siembran en la migración `000002_seed_catalogs`, no en código.
 | **G8** | `TestBurstNoPuedeSerMenorQueLaTasa` | `EO_WS_RATE_LIMIT_BURST=5` con `EO_WS_RATE_LIMIT_PER_SECOND=20` ⇒ error `"no puede ser menor"` |
 | **G9** | `TestValorFueraDeRango` / `TestValorNoNumerico` | `EO_TICK_RATE_HZ=0` ⇒ `"fuera del rango permitido"`; `EO_WORLD_SEED=no-es-un-numero` ⇒ `"no es un entero válido"`. **Error de arranque, nunca un valor silenciosamente corregido** |
 | **G10** | `TestSobrescrituraPorEntorno` | Con `EO_ENV=production` y valores propios: `IsProduction()` cierto, `TickRateHz == 20`, `TickDuration() == 50ms`, cooldown 600 s, `WorldWidth == 256` |
+| **G11** | `TestEntornoContraListaCerrada` | `EO_ENV` sólo admite `development`, `test` y `production`, tal cual; `prod`, `Production`, `staging`, `dev` o `local` ⇒ error `"no es un entorno válido"` que enumera los tres. Vacía o ausente ⇒ `development`. Antes, cualquier texto distinto de `production` activaba en silencio la semántica de desarrollo |
 
 ✓ Lo que aquí figuraba como pendiente con el nombre `TestLaConfiguracionNuncaRegistraSecretos` existe como `TestLosSecretosNoSeImprimenPorNingunaVia` (`internal/config`): la configuración, impresa por cualquier vía, no contiene `EO_AUTH_JWT_SECRET` ni las credenciales de `EO_POSTGRES_URL` y `EO_REDIS_URL` (`INV-SEC-006`).
 

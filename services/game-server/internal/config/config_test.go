@@ -255,3 +255,39 @@ func TestSobrescrituraPorEntorno(t *testing.T) {
 	require.Equal(t, 600*time.Second, cfg.CityOfflineProtectionCooldwn)
 	require.EqualValues(t, 256, cfg.WorldWidth)
 }
+
+// EO_ENV es una lista cerrada: `prod`, `staging` o un error de tecleo
+// activarían en silencio la semántica de desarrollo —migración automática,
+// estado caliente en proceso, secreto de ejemplo admitido— en una máquina que
+// se cree de producción.
+func TestEntornoContraListaCerrada(t *testing.T) {
+	t.Run("acepta los tres entornos", func(t *testing.T) {
+		for _, env := range []string{config.EnvDevelopment, config.EnvTest, config.EnvProduction} {
+			setValidEnv(t)
+			t.Setenv("EO_ENV", env)
+			t.Setenv("EO_AUTH_JWT_SECRET", "un-secreto-de-produccion-suficientemente-largo")
+			cfg, err := config.Load()
+			require.NoError(t, err, "entorno %q", env)
+			require.Equal(t, env, cfg.Env)
+			require.Equal(t, env == config.EnvProduction, cfg.IsProduction())
+		}
+	})
+
+	t.Run("cualquier otro valor es un error que nombra los válidos", func(t *testing.T) {
+		for _, env := range []string{"prod", "Production", "staging", "dev", "local"} {
+			setValidEnv(t)
+			t.Setenv("EO_ENV", env)
+			_, err := config.Load()
+			require.ErrorContains(t, err, `EO_ENV="`+env+`" no es un entorno válido`, "entorno %q", env)
+			require.ErrorContains(t, err, "development, test, production")
+		}
+	})
+
+	t.Run("sin definir, es desarrollo", func(t *testing.T) {
+		setValidEnv(t)
+		t.Setenv("EO_ENV", "")
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.Equal(t, config.EnvDevelopment, cfg.Env)
+	})
+}

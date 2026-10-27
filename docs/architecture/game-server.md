@@ -582,7 +582,7 @@ Todo pasa por `internal/config`; ningún valor de gameplay se hardcodea en más 
 
 | Variable | Default (rango) | Efecto en el proceso |
 |---|---|---|
-| `EO_ENV`, `EO_LOG_LEVEL` | `development` / `info` | Nivel de log y estrictez de validación del secreto. |
+| `EO_ENV`, `EO_LOG_LEVEL` | `development` / `info` | Nivel de log y estrictez de validación del secreto. `EO_ENV` sólo admite `development`, `test` o `production`; otro valor aborta el arranque. |
 | `EO_HTTP_ADDR` | `:8080` | Listener de `/health`, `/ready`, `/ws`, `/api/auth/*`. |
 | `EO_METRICS_ADDR` | `:9090` | Listener de `/metrics`. |
 | `EO_POSTGRES_URL`, `EO_REDIS_URL` | — | Obligatorias. Migraciones y pools del bootstrap. |
