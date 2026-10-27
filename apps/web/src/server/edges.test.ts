@@ -11,7 +11,15 @@ import type { AuthResult, AuthService } from './authService';
 import { ConfigError, loadAuthConfig } from './config';
 import { createGameServerClient } from './gameServer';
 import { SESSION_COOKIE, handleCredentials, handleLogout, handleTicket, readSessionCookie, type HttpDeps } from './http';
-import { RateLimiter, clientKey } from './rateLimit';
+import {
+  AuthRateLimits,
+  RateLimiter,
+  TICKET_IP_POLICY,
+  TICKET_SESSION_POLICY,
+  clientIp,
+  type AuthRateLimitOptions,
+  type ProxyTrust,
+} from './rateLimit';
 
 const SECRET = 'un-secreto-de-pruebas-suficientemente-largo';
 
@@ -22,10 +30,31 @@ describe('loadAuthConfig', () => {
     expect(loadAuthConfig(base)).toMatchObject({
       production: false,
       gameServerInternalUrl: 'http://localhost:8080',
-      rateLimitPerMinute: 10,
-      rateLimitBurst: 5,
-      trustProxyHeaders: false,
+      rateLimits: {
+        ip: { perMinute: 10, burst: 5 },
+        user: { perMinute: 20, burst: 10 },
+        global: { perMinute: 120, burst: 30 },
+        ticket: { perMinute: 1200, burst: 600 },
+      },
+      proxy: { trustProxyHeaders: false, trustedProxyCount: 1 },
     });
+  });
+
+  it('lee cada cupo y el número de proxies de su variable', () => {
+    const config = loadAuthConfig({
+      ...base,
+      EO_AUTH_RATE_LIMIT_PER_MINUTE: '6',
+      EO_AUTH_RATE_LIMIT_USER_BURST: '7',
+      EO_AUTH_RATE_LIMIT_GLOBAL_PER_MINUTE: '600',
+      EO_AUTH_TICKET_RATE_LIMIT_BURST: '50',
+      EO_TRUST_PROXY_HEADERS: 'true',
+      EO_TRUSTED_PROXY_COUNT: '2',
+    });
+    expect(config.rateLimits.ip.perMinute).toBe(6);
+    expect(config.rateLimits.user.burst).toBe(7);
+    expect(config.rateLimits.global.perMinute).toBe(600);
+    expect(config.rateLimits.ticket.burst).toBe(50);
+    expect(config.proxy).toEqual({ trustProxyHeaders: true, trustedProxyCount: 2 });
   });
 
   it('reporta todos los errores juntos', () => {
@@ -36,6 +65,12 @@ describe('loadAuthConfig', () => {
       expect(err).toBeInstanceOf(ConfigError);
       expect((err as ConfigError).problems).toHaveLength(3);
     }
+  });
+
+  it('un tope global más estrecho que el cupo por IP o por usuario es un error', () => {
+    expect(() => loadAuthConfig({ ...base, EO_AUTH_RATE_LIMIT_GLOBAL_PER_MINUTE: '5' })).toThrow(/GLOBAL/);
+    expect(() => loadAuthConfig({ ...base, EO_AUTH_RATE_LIMIT_GLOBAL_BURST: '9' })).toThrow(/GLOBAL/);
+    expect(() => loadAuthConfig({ ...base, EO_TRUSTED_PROXY_COUNT: '0' })).toThrow(/EO_TRUSTED_PROXY_COUNT/);
   });
 
   it('rechaza el secreto de desarrollo en producción', () => {
@@ -73,11 +108,39 @@ describe('RateLimiter', () => {
     expect(l.allow('a', 999)).toBe(false);
     expect(l.allow('a', 1000)).toBe(true);
   });
+});
 
-  it('sólo cree a X-Forwarded-For si se le dice', () => {
-    const h = new Headers({ 'x-forwarded-for': '203.0.113.7, 10.0.0.1' });
-    expect(clientKey(h, false)).toBe('direct');
-    expect(clientKey(h, true)).toBe('ip:203.0.113.7');
+describe('clientIp', () => {
+  const trust = (trustedProxyCount = 1): ProxyTrust => ({ trustProxyHeaders: true, trustedProxyCount });
+  const h = (xff?: string, real?: string) =>
+    new Headers({ ...(xff !== undefined ? { 'x-forwarded-for': xff } : {}), ...(real ? { 'x-real-ip': real } : {}) });
+
+  it('sin proxy de confianza no cree a ninguna cabecera', () => {
+    expect(clientIp(h('203.0.113.7', '203.0.113.7'), { trustProxyHeaders: false, trustedProxyCount: 1 })).toBeNull();
+  });
+
+  it('toma el salto que añadió el último proxy, nunca el primero, que lo escribe el cliente', () => {
+    // El cliente mandó «198.51.100.1» y el proxy añadió la dirección real.
+    expect(clientIp(h('198.51.100.1, 203.0.113.7'), trust())).toBe('203.0.113.7');
+    // Con dos proxies de confianza, el penúltimo salto es el del cliente.
+    expect(clientIp(h('198.51.100.1, 203.0.113.7, 10.0.0.2'), trust(2))).toBe('203.0.113.7');
+  });
+
+  it('una lista más corta que los proxies declarados no se cree', () => {
+    expect(clientIp(h('203.0.113.7'), trust(2))).toBeNull();
+    expect(clientIp(h(' , '), trust())).toBeNull();
+  });
+
+  it('X-Real-IP sólo vale a falta de X-Forwarded-For', () => {
+    expect(clientIp(h(undefined, '203.0.113.7'), trust())).toBe('203.0.113.7');
+    expect(clientIp(h('203.0.113.9', '198.51.100.1'), trust())).toBe('203.0.113.9');
+    expect(clientIp(new Headers(), trust())).toBeNull();
+  });
+
+  it('quita el puerto y unifica la caja de IPv6', () => {
+    expect(clientIp(h('203.0.113.7:51234'), trust())).toBe('203.0.113.7');
+    expect(clientIp(h('[2001:DB8::1]:443'), trust())).toBe('2001:db8::1');
+    expect(clientIp(h('2001:DB8::1'), trust())).toBe('2001:db8::1');
   });
 });
 
@@ -147,6 +210,14 @@ describe('createGameServerClient', () => {
   });
 });
 
+/** Cupos tan amplios que ningún test los roza, salvo el que se estrecha a propósito. */
+const WIDE = { perMinute: 100000, burst: 10000 };
+const NO_PROXY: ProxyTrust = { trustProxyHeaders: false, trustedProxyCount: 1 };
+
+function limits(over: Partial<AuthRateLimitOptions> = {}): AuthRateLimits {
+  return new AuthRateLimits({ trust: NO_PROXY, ip: WIDE, user: WIDE, global: WIDE, ticket: WIDE, ...over });
+}
+
 describe('capa HTTP', () => {
   const ok: AuthResult = {
     ok: true,
@@ -157,6 +228,7 @@ describe('capa HTTP', () => {
 
   function deps(result: AuthResult = ok, over: Partial<HttpDeps> = {}) {
     const calls: string[] = [];
+    const warnings: Array<Record<string, unknown>> = [];
     const service = {
       register: async (u: string) => (calls.push(`register:${u}`), result),
       login: async (u: string) => (calls.push(`login:${u}`), result),
@@ -165,14 +237,13 @@ describe('capa HTTP', () => {
     } as unknown as AuthService;
     const d: HttpDeps = {
       service,
-      limiter: new RateLimiter(10, 5),
-      trustProxyHeaders: false,
+      limits: limits(),
       secureCookies: false,
       nowMs: () => 0,
-      log: { info() {}, warn() {}, error() {} },
+      log: { info() {}, warn: (msg, fields) => void warnings.push({ msg, ...fields }), error() {} },
       ...over,
     };
-    return { d, calls };
+    return { d, calls, warnings };
   }
 
   const post = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
@@ -181,6 +252,9 @@ describe('capa HTTP', () => {
       headers: { host: 'localhost:3000', ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...headers },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
+
+  const login = (d: HttpDeps, username: string, headers: Record<string, string> = {}) =>
+    handleCredentials(post('/api/auth/login', { username, password: 'b' }, headers), d, 'login');
 
   it('el alta deja una cookie HttpOnly, SameSite=Strict y limitada a /api/auth', async () => {
     const { d } = deps();
@@ -203,13 +277,113 @@ describe('capa HTTP', () => {
   });
 
   it('el límite de tasa corta ANTES de leer el cuerpo y de llamar al servicio', async () => {
-    const { d, calls } = deps(ok, { limiter: new RateLimiter(1, 2) });
+    const { d, calls } = deps(ok, { limits: limits({ global: { perMinute: 1, burst: 2 } }) });
     const codes = [];
     for (let i = 0; i < 3; i++) {
       codes.push((await handleCredentials(post('/api/auth/login', { username: 'a', password: 'b' }), d, 'login')).status);
     }
     expect(codes).toEqual([201, 201, 429]);
     expect(calls).toHaveLength(2);
+  });
+
+  it('un X-Forwarded-For falsificado no evita el límite por IP', async () => {
+    const trust: ProxyTrust = { trustProxyHeaders: true, trustedProxyCount: 1 };
+    const { d, warnings } = deps(ok, { limits: limits({ trust, ip: { perMinute: 1, burst: 2 } }) });
+    // El atacante cambia el primer elemento en cada petición; el proxy añade
+    // siempre su dirección real detrás.
+    const codes = [];
+    for (let i = 0; i < 3; i++) {
+      codes.push((await login(d, `u${i}`, { 'x-forwarded-for': `198.51.100.${i}, 203.0.113.7` })).status);
+    }
+    expect(codes).toEqual([201, 201, 429]);
+    expect(warnings.at(-1)).toMatchObject({ endpoint: 'login', bucket: 'ip', key: '203.0.113.7' });
+    // Otra dirección real sigue teniendo su cupo.
+    expect((await login(d, 'u9', { 'x-forwarded-for': '198.51.100.9, 203.0.113.8' })).status).toBe(201);
+  });
+
+  it('sin proxy de confianza, X-Forwarded-For se ignora y manda el tope global', async () => {
+    const { d, warnings } = deps(ok, { limits: limits({ ip: { perMinute: 1, burst: 1 }, global: { perMinute: 1, burst: 2 } }) });
+    const codes = [];
+    for (let i = 0; i < 3; i++) codes.push((await login(d, `u${i}`, { 'x-forwarded-for': `203.0.113.${i}` })).status);
+    expect(codes).toEqual([201, 201, 429]);
+    expect(warnings.at(-1)).toMatchObject({ bucket: 'global' });
+  });
+
+  it('un usuario no puede agotar el cupo de otro, y las mayúsculas no abren otro cupo', async () => {
+    const { d, calls, warnings } = deps(ok, { limits: limits({ user: { perMinute: 1, burst: 2 } }) });
+    expect([(await login(d, 'alice')).status, (await login(d, 'Alice')).status, (await login(d, 'ALICE')).status]).toEqual([
+      201, 201, 429,
+    ]);
+    expect(warnings.at(-1)).toMatchObject({ bucket: 'user', key: 'alice' });
+    expect((await login(d, 'bob')).status).toBe(201);
+    // El cupo por usuario se evalúa antes de llamar al servicio: scrypt no se gasta.
+    expect(calls).toEqual(['login:alice', 'login:Alice', 'login:bob']);
+  });
+
+  it('el tope global corta aunque cambien la IP y el usuario', async () => {
+    const trust: ProxyTrust = { trustProxyHeaders: true, trustedProxyCount: 1 };
+    const { d, warnings } = deps(ok, { limits: limits({ trust, global: { perMinute: 1, burst: 3 } }) });
+    const codes = [];
+    for (let i = 0; i < 4; i++) codes.push((await login(d, `u${i}`, { 'x-forwarded-for': `203.0.113.${i}` })).status);
+    expect(codes).toEqual([201, 201, 201, 429]);
+    expect(warnings.at(-1)).toMatchObject({ bucket: 'global', key: 'global' });
+  });
+
+  it('el ticket y el cierre de sesión se limitan por sesión, con la clave en el log como hash', async () => {
+    const { d, warnings } = deps(
+      { ok: true, status: 200, body: ok.body },
+      { limits: limits({ ticketSession: { perMinute: 1, burst: 2 } }) },
+    );
+    const cookie = { cookie: `${SESSION_COOKIE}=token-secreto-de-la-sesion` };
+    const codes = [
+      (await handleTicket(post('/api/auth/ticket', undefined, cookie), d)).status,
+      (await handleLogout(post('/api/auth/logout', undefined, cookie), d)).status,
+      (await handleTicket(post('/api/auth/ticket', undefined, cookie), d)).status,
+    ];
+    expect(codes).toEqual([200, 204, 429]);
+    const warning = warnings.at(-1)!;
+    expect(warning).toMatchObject({ endpoint: 'ticket', bucket: 'session' });
+    expect(JSON.stringify(warning)).not.toContain('token-secreto');
+    // Otra sesión tiene su propio cupo.
+    expect((await handleTicket(post('/api/auth/ticket', undefined, { cookie: `${SESSION_COOKIE}=otra` }), d)).status).toBe(200);
+  });
+
+  it('el ticket se limita también por IP y por el tope global', async () => {
+    const trust: ProxyTrust = { trustProxyHeaders: true, trustedProxyCount: 1 };
+    const body: AuthResult = { ok: true, status: 200, body: ok.body };
+    const porIp = deps(body, { limits: limits({ trust, ticketIp: { perMinute: 1, burst: 2 } }) });
+    const ticket = (d: HttpDeps, session: string, ip: string) =>
+      handleTicket(post('/api/auth/ticket', undefined, { cookie: `${SESSION_COOKIE}=${session}`, 'x-forwarded-for': ip }), d);
+    expect([
+      (await ticket(porIp.d, 's1', '203.0.113.7')).status,
+      (await ticket(porIp.d, 's2', '203.0.113.7')).status,
+      (await ticket(porIp.d, 's3', '203.0.113.7')).status,
+    ]).toEqual([200, 200, 429]);
+    expect(porIp.warnings.at(-1)).toMatchObject({ bucket: 'ip', key: '203.0.113.7' });
+
+    const global = deps(body, { limits: limits({ trust, ticket: { perMinute: 1, burst: 2 } }) });
+    expect([
+      (await ticket(global.d, 's1', '203.0.113.1')).status,
+      (await ticket(global.d, 's2', '203.0.113.2')).status,
+      (await ticket(global.d, 's3', '203.0.113.3')).status,
+    ]).toEqual([200, 200, 429]);
+    expect(global.warnings.at(-1)).toMatchObject({ bucket: 'global' });
+  });
+
+  it('sin cookie, el ticket responde 401 y no gasta ningún cupo', async () => {
+    const { d, calls } = deps(
+      { ok: false, status: 401, code: 'UNAUTHORIZED', message: 'no hay sesión' },
+      { limits: limits({ ticketSession: { perMinute: 1, burst: 1 }, ticket: { perMinute: 1, burst: 1 } }) },
+    );
+    for (let i = 0; i < 3; i++) expect((await handleTicket(post('/api/auth/ticket'), d)).status).toBe(401);
+    expect(calls).toHaveLength(3);
+  });
+
+  it('las constantes del ticket son generosas con un cliente que reconecta', () => {
+    // Siete tickets en el primer minuto de reconexión (frontend.md §3.3), con margen para varias pestañas.
+    expect(TICKET_SESSION_POLICY.burst).toBeGreaterThanOrEqual(4 * 7);
+    expect(TICKET_IP_POLICY.burst).toBeGreaterThanOrEqual(4 * TICKET_SESSION_POLICY.burst);
+    expect(TICKET_IP_POLICY.perMinute).toBeGreaterThanOrEqual(4 * TICKET_SESSION_POLICY.perMinute);
   });
 
   it('cuerpo inválido, sin JSON o con campos que no son texto: 400 sin llamar al servicio', async () => {

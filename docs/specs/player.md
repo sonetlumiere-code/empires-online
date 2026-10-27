@@ -136,6 +136,22 @@ si la contraseña no coincide, tras comparar igualmente contra un hash de rellen
 nombres existen. **Estos códigos son del transporte HTTP de la identidad y no pertenecen al catálogo de 22
 códigos del protocolo v1** (canon §16).
 
+**Límites de tasa** (`src/server/rateLimit.ts`, por proceso de Next.js). El alta y el login pasan por tres
+cubos de fichas antes de calcular `scrypt`, y basta con que uno se agote para responder `RATE_LIMITED` (429):
+por IP (`EO_AUTH_RATE_LIMIT_PER_MINUTE` / `_BURST`, 10 / 5), sólo cuando se conoce; por nombre de usuario sin
+distinguir mayúsculas (`EO_AUTH_RATE_LIMIT_USER_*`, 20 / 10), venga de donde venga, que es lo que frena la
+fuerza bruta repartida entre direcciones; y uno global (`EO_AUTH_RATE_LIMIT_GLOBAL_*`, 120 / 30) que acota el
+coste total de `scrypt` del proceso y que, sin proxy, es lo único que acota a un solo cliente. La IP sólo se
+conoce con `EO_TRUST_PROXY_HEADERS=true`, y entonces es el `EO_TRUSTED_PROXY_COUNT`-ésimo elemento **por la
+derecha** de `X-Forwarded-For` —el que añadió el último proxy de confianza; el primero lo escribe el cliente—,
+o `X-Real-IP` si no hay lista. Los cubos por IP y global se evalúan antes de leer el cuerpo; el de usuario, con
+el cuerpo leído y antes de `scrypt`. `POST /api/auth/ticket` y `POST /api/auth/logout` no calculan `scrypt`
+pero consultan la base: con cookie pasan por un cubo por sesión (60 / 30, constante: un cliente correcto pide
+como mucho siete tickets en su primer minuto de reconexión), otro por IP si se conoce (240 / 120, constante) y
+un tope global (`EO_AUTH_TICKET_RATE_LIMIT_*`, 1200 / 600), y responden `RATE_LIMITED` (429) al agotar
+cualquiera; sin cookie responden `UNAUTHORIZED` sin gastar ningún cupo ni tocar la base. La clave de sesión
+que llega al log del 429 es un hash truncado del token, nunca el token (`INV-PLAYER-007`).
+
 Respuestas de `POST /internal/players` (game server): `201`/`200` con `{ playerId, city }`; `400`
 `INVALID_MESSAGE` o `INVALID_USERNAME`; `401` `UNAUTHORIZED` (sin token, token de otra audiencia, caducado o ya
 consumido); `403` `FORBIDDEN` (el cuerpo nombra otro `playerId` que el `sub`); `409` `USERNAME_TAKEN` (el
@@ -164,7 +180,11 @@ Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-serv
 | `EO_AUTH_JWT_SECRET` | — (obligatoria en los dos procesos) | `apps/web` firma con él el ticket y el token de fundación; el game server los verifica. Mínimo 32 caracteres; no puede contener `dev-only` si `EO_ENV=production`, en ninguno de los dos. |
 | `EO_IDENTITY_POSTGRES_URL` | — (obligatoria en `apps/web`) | Almacén de identidad. Sólo la lee `apps/web`. |
 | `EO_GAME_SERVER_INTERNAL_URL` | `http://localhost:8080` | Dónde llama `apps/web` para fundar. |
-| `EO_AUTH_RATE_LIMIT_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_BURST` | 10 / 5 | Límite de alta y login por origen, en `apps/web` y por proceso. |
+| `EO_AUTH_RATE_LIMIT_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_BURST` | 10 / 5 | Alta y login por IP, en `apps/web` y por proceso; sólo actúa con `EO_TRUST_PROXY_HEADERS=true`. |
+| `EO_AUTH_RATE_LIMIT_USER_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_USER_BURST` | 20 / 10 | Alta y login por nombre de usuario, con o sin proxy. |
+| `EO_AUTH_RATE_LIMIT_GLOBAL_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_GLOBAL_BURST` | 120 / 30 | Tope de alta y login de todo el proceso: acota el coste de `scrypt`. Al menos tan amplio como los dos anteriores. |
+| `EO_AUTH_TICKET_RATE_LIMIT_PER_MINUTE` / `EO_AUTH_TICKET_RATE_LIMIT_BURST` | 1200 / 600 | Tope de ticket y cierre de sesión de todo el proceso. |
+| `EO_TRUST_PROXY_HEADERS` / `EO_TRUSTED_PROXY_COUNT` | `false` / 1 | Si se cree a `X-Forwarded-For` (y a `X-Real-IP` a falta de ella) y cuántos proxies de confianza añaden su salto. |
 | `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` | 512 / 512 | Límites para el emplazamiento de la ciudad inicial. |
 | `EO_WORLD_SEED` | 20260909 | Semilla del **generador del mapa**, no del emplazamiento. |
 | `EO_INTEREST_RADIUS_CHUNKS` | 2 | Área de interés inicial centrada en la ciudad del jugador. |
@@ -172,8 +192,10 @@ Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-serv
 
 Constante no configurable por entorno, fijada en código: el TTL del ticket y del token de fundación, **60 s**
 (`TOKEN_TTL_SECONDS` en `apps/web/src/server/tokens.ts`). Tampoco lo son la vida de la sesión web (7 días,
-`SESSION_TTL_MS`), el plazo de handshake (5 s), el intervalo de ping (15 s) ni los timeouts de lectura (45 s)
-y escritura (10 s) del WebSocket.
+`SESSION_TTL_MS`), los cupos de ticket y cierre de sesión por sesión (60 por minuto, ráfaga 30,
+`TICKET_SESSION_POLICY`) y por IP (240 / 120, `TICKET_IP_POLICY`), el tope de 4096 bytes del cuerpo del alta y
+del login, el plazo de handshake (5 s), el intervalo de ping (15 s) ni los timeouts de lectura (45 s) y
+escritura (10 s) del WebSocket.
 
 La semilla del emplazamiento **no** es `EO_WORLD_SEED`: es un FNV-1a de 64 bits del propio `username`
 (`hashSeed`). Así es raro que dos altas simultáneas busquen en la misma región, y el mismo nombre obtiene siempre el
@@ -662,6 +684,7 @@ Reglas del contrato:
 | `T-PLAYER-W-002` | integration (`apps/web`) | Almacén de identidad contra PostgreSQL real: migraciones idempotentes, restricciones, sesiones sólo de cuentas `ACTIVE`, y el rol de identidad sin acceso a la base del juego. `src/server/store.integration.test.ts`. | `INV-PLAYER-009`, ADR-018 |
 | `T-PLAYER-W-004` | unit (`apps/web`) | Cuentas abandonadas: sólo `404 PLAYER_NOT_FOUND` es «no existe» (`identity/pending.test.ts`); el alta libera un nombre abandonado sin jugador y reintenta una vez, y no lo libera si es reciente, si el jugador existe o si el mundo no contesta; el login renueva el intento antes de fundar y no funda una cuenta borrada; el barrido cuenta lo que hizo (`authService.test.ts`). | `RN-PLAYER-015`, `RN-PLAYER-016`, `INV-PLAYER-010` |
 | `T-PLAYER-W-005` | integration (`apps/web`) | La migración 2 y la guarda del borrado contra PostgreSQL real: el intento se fija y se renueva sólo en `PENDING`, el corte de una hora, el orden del barrido y el borrado que no toca recientes, `ACTIVE` ni renovadas. `store.integration.test.ts`. | `INV-PLAYER-010` |
+| `T-PLAYER-W-006` | unit (`apps/web`) | Perímetro HTTP de la identidad: la IP es el salto que añadió el último proxy y un `X-Forwarded-For` falsificado no evita el cupo por IP; sin proxy la cabecera se ignora y manda el tope global; un usuario no agota el cupo de otro y las mayúsculas no abren otro; el tope global corta aunque cambien IP y usuario; el ticket y el cierre de sesión se limitan por sesión, por IP y en global, con la clave de sesión en el log como hash, y sin cookie no gastan cupo. `src/server/edges.test.ts`. | §4.1, `INV-PLAYER-007` |
 | `T-PLAYER-I-010` | integration | `GET /internal/players/{id}`: 200 con el jugador fundado, 404 `PLAYER_NOT_FOUND` con uno inexistente, y sólo con un token interno de ese `sub`. `TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste`, `TestLaConsultaExigeUnTokenInternoDeSuSub`. | `INV-PLAYER-010`, `INV-SEC-008` |
 | `T-PLAYER-W-003` | contract | El emisor de TypeScript produce los bytes exactos de `internal/auth/testdata/web-tokens.json` y el verificador de Go los acepta. `tokens.test.ts`, `TestLosTokensDeAppsWebSeVerificanEnGo`. | ADR-018 §2.4 |
 

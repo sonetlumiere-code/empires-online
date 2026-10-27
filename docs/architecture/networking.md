@@ -98,7 +98,13 @@ route handlers del mismo origen que la página:
 | Request body | `{ "username": string, "password": string }`, `application/json` | ídem | Ninguno |
 | Validación | `username` de 3 a 24 caracteres `[A-Za-z0-9_-]`; `password` de 8 a 256 | — | Sesión vigente de una cuenta `ACTIVE` |
 | Response | `201` `{ playerId, ticket, expiresInSeconds: 60, city }` + cookie | `200` con el mismo cuerpo (`city` sólo si el login terminó una fundación pendiente) + cookie | `200` `{ playerId, ticket, expiresInSeconds: 60 }`, sin renovar la cookie |
-| Errores | `400` `INVALID_MESSAGE`/`INVALID_USERNAME`/`WEAK_PASSWORD`, `403 FORBIDDEN` (otro origen), `409` `USERNAME_TAKEN`/`NO_SITE_AVAILABLE`, `429 RATE_LIMITED`, `503` `SITE_CONTENDED`/`GAME_SERVER_UNAVAILABLE`, `500` | `400`, `401 UNAUTHORIZED` (mismo error y mismo coste para usuario inexistente y contraseña incorrecta), `403`, `429`, `503`, `500` | `401 UNAUTHORIZED`, `403`, `500` |
+| Errores | `400` `INVALID_MESSAGE`/`INVALID_USERNAME`/`WEAK_PASSWORD`, `403 FORBIDDEN` (otro origen), `409` `USERNAME_TAKEN`/`NO_SITE_AVAILABLE`, `429 RATE_LIMITED`, `503` `SITE_CONTENDED`/`GAME_SERVER_UNAVAILABLE`, `500` | `400`, `401 UNAUTHORIZED` (mismo error y mismo coste para usuario inexistente y contraseña incorrecta), `403`, `429`, `503`, `500` | `401 UNAUTHORIZED`, `403`, `429 RATE_LIMITED`, `500` |
+
+Los tres endpoints —y `POST /api/auth/logout`— pasan por los límites de tasa de `apps/web`, por proceso: para el
+alta y el login, por IP (sólo detrás de un proxy de confianza, tomando el salto que añadió el último proxy a
+`X-Forwarded-For`), por nombre de usuario y un tope global que acota el coste de `scrypt`; para el ticket y el
+cierre de sesión, por sesión, por IP y un tope global propio. Cupos y variables en
+[../specs/player.md](../specs/player.md) §4.1.
 
 El detalle del alta —la cuenta `PENDING`, la fundación en `POST /internal/players` del game server y la
 activación, y la resolución de una cuenta `PENDING` abandonada con `GET /internal/players/{playerId}`

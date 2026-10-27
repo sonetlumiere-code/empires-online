@@ -10,15 +10,14 @@ import 'server-only';
 
 import type { AuthResult, AuthService, Logger } from './authService';
 import { SESSION_TTL_MS } from './authService';
-import { RateLimiter, clientKey } from './rateLimit';
+import type { AuthRateLimits, Denied } from './rateLimit';
 
 export const SESSION_COOKIE = 'eo_session';
 const MAX_BODY_BYTES = 4096;
 
 export interface HttpDeps {
   readonly service: AuthService;
-  readonly limiter: RateLimiter;
-  readonly trustProxyHeaders: boolean;
+  readonly limits: AuthRateLimits;
   readonly secureCookies: boolean;
   readonly nowMs: () => number;
   readonly log: Logger;
@@ -31,6 +30,16 @@ const json = (status: number, body: unknown, headers: Record<string, string> = {
   });
 
 const error = (status: number, code: string, message: string) => json(status, { code, message });
+
+/**
+ * Una ráfaga de 429 es la firma de alguien probando contraseñas o de un cliente
+ * roto, y se registra con el cubo que la cortó. La clave de una sesión ya llega
+ * aquí como hash: el token no se escribe en ningún log (INV-PLAYER-007).
+ */
+function rateLimited(deps: HttpDeps, endpoint: string, denied: Denied): Response {
+  deps.log.warn('petición rechazada por límite de tasa', { endpoint, bucket: denied.bucket, key: denied.key });
+  return error(429, 'RATE_LIMITED', 'demasiados intentos; espera unos segundos');
+}
 
 export function sessionCookie(token: string, secure: boolean): string {
   return [
@@ -98,16 +107,16 @@ export async function handleCredentials(
   action: 'register' | 'login',
 ): Promise<Response> {
   if (crossSite(req)) return error(403, 'FORBIDDEN', 'origen no permitido');
-  // ANTES de leer el cuerpo y muy antes de scrypt: el objetivo es no gastar ese
-  // trabajo. Una ráfaga de 429 desde un origen es la firma de alguien probando
-  // contraseñas, y se registra.
-  const key = clientKey(req.headers, deps.trustProxyHeaders);
-  if (!deps.limiter.allow(key, deps.nowMs())) {
-    deps.log.warn('petición rechazada por límite de tasa', { endpoint: action, origin_key: key });
-    return error(429, 'RATE_LIMITED', 'demasiados intentos; espera unos segundos');
-  }
+  // La IP y el tope global, ANTES de leer el cuerpo y muy antes de scrypt: el
+  // objetivo es no gastar ese trabajo.
+  const denied = deps.limits.admitCredentials(req.headers, deps.nowMs());
+  if (denied) return rateLimited(deps, action, denied);
   const creds = await readCredentials(req);
   if (!creds) return error(400, 'INVALID_MESSAGE', 'cuerpo inválido');
+  // El cupo del nombre de usuario necesita el cuerpo, pero sigue yendo antes de
+  // scrypt: es lo que separa una contraseña de la fuerza bruta repartida.
+  const deniedUser = deps.limits.admitUser(creds.username, deps.nowMs());
+  if (deniedUser) return rateLimited(deps, action, deniedUser);
   try {
     const result =
       action === 'register'
@@ -122,8 +131,11 @@ export async function handleCredentials(
 
 export async function handleTicket(req: Request, deps: HttpDeps): Promise<Response> {
   if (crossSite(req)) return error(403, 'FORBIDDEN', 'origen no permitido');
+  const token = readSessionCookie(req);
+  const denied = deps.limits.admitSession(req.headers, token, deps.nowMs());
+  if (denied) return rateLimited(deps, 'ticket', denied);
   try {
-    return toResponse(await deps.service.ticket(readSessionCookie(req)), deps.secureCookies);
+    return toResponse(await deps.service.ticket(token), deps.secureCookies);
   } catch (err) {
     deps.log.error('ticket fallido', { err: err instanceof Error ? err.message : String(err) });
     return error(500, 'INTERNAL_ERROR', 'error interno');
@@ -132,6 +144,9 @@ export async function handleTicket(req: Request, deps: HttpDeps): Promise<Respon
 
 export async function handleLogout(req: Request, deps: HttpDeps): Promise<Response> {
   if (crossSite(req)) return error(403, 'FORBIDDEN', 'origen no permitido');
-  await deps.service.logout(readSessionCookie(req));
+  const token = readSessionCookie(req);
+  const denied = deps.limits.admitSession(req.headers, token, deps.nowMs());
+  if (denied) return rateLimited(deps, 'logout', denied);
+  await deps.service.logout(token);
   return new Response(null, { status: 204, headers: { 'Set-Cookie': clearedSessionCookie(deps.secureCookies) } });
 }

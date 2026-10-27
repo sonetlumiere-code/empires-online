@@ -66,7 +66,7 @@ bundle JavaScript** que se descarga el navegador: es público de forma irreversi
 | `EO_AUTH_JWT_SECRET` | **privado** | Solo runtime del servidor de Next | Clave HS256 compartida con el Game Server: firma el ticket y el token de fundación |
 | `EO_IDENTITY_POSTGRES_URL` | **privado** | Solo runtime del servidor de Next | Almacén de identidad ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): cuentas y sesiones web, en una base y con un rol propios |
 | `EO_GAME_SERVER_INTERNAL_URL` | **privado** | Solo runtime del servidor de Next | Base HTTPS del Game Server para `POST /internal/players` |
-| `EO_AUTH_RATE_LIMIT_*`, `EO_TRUST_PROXY_HEADERS` | **privado** | Solo runtime del servidor de Next | Límite de alta y login por origen; en Vercel, `EO_TRUST_PROXY_HEADERS=true` |
+| `EO_AUTH_RATE_LIMIT_*`, `EO_AUTH_TICKET_RATE_LIMIT_*`, `EO_TRUST_PROXY_HEADERS`, `EO_TRUSTED_PROXY_COUNT` | **privado** | Solo runtime del servidor de Next | Límites de alta, login y ticket por IP, por usuario y por proceso ([player.md](../specs/player.md) §4.1); en Vercel, `EO_TRUST_PROXY_HEADERS=true` y `EO_TRUSTED_PROXY_COUNT=1` |
 
 `NEXT_PUBLIC_GAME_SERVER_WS_URL` es una variable **del frontend**, no del catálogo `EO_` del Game Server:
 `internal/config` no la lee y no aparece en la referencia de [configuration.md §3](./configuration.md#3-referencia-de-variables).
@@ -731,6 +731,7 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 - [ ] La readiness se comprueba contra `/ready` desde el host, no con el `HEALTHCHECK` de la imagen, que sólo mira `/health` (§3.1).
 - [ ] El despliegue ejecuta `migrate` antes de arrancar el servidor y para si el esquema está `dirty` (§6, Paso 3).
 - [ ] Rate limit activo: 20 msg/s con burst 40 por conexión.
+- [ ] Límites de tasa de `apps/web` activos, con `EO_TRUST_PROXY_HEADERS=true` **sólo** detrás del proxy y `EO_TRUSTED_PROXY_COUNT` igual al número real de proxies: uno de más deja al atacante elegir la IP que se le atribuye.
 - [ ] Idempotencia operativa: `requestId` repetido devuelve la respuesta original y **no** re-ejecuta.
 - [ ] Los logs no contienen tickets, DSN completos ni payloads con datos personales.
 
