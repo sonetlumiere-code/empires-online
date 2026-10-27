@@ -52,7 +52,7 @@ solo altera las reglas ligadas a la presencia del jugador, nada más.
 | Jugador | Genera presencia conectándose y manteniendo la conexión. No decide ningún estado. |
 | Conexión WebSocket | Portadora de la presencia. Puede haber varias por jugador (pestañas, dispositivos). |
 | Servidor WebSocket (`internal/websocket`) | Al aceptar el handshake y al cerrar la conexión: marca/retira la presencia en Redis y **despacha un comando** `PlayerConnected` / `PlayerDisconnected` al game loop. No toca el estado del mundo. |
-| Simulación (`internal/game/simulation`) | Guarda `sessions[playerID]` (contador de sesiones vivas) y `disconnectedAt[playerID]` en RAM, y es la **única** goroutine que muta `cities.presence_state`. |
+| Simulación (`internal/game/simulation`) | Guarda `sessions[playerID]` (el conjunto de `sessionId` vivos) y `disconnectedAt[playerID]` en RAM, y es la **única** goroutine que muta `cities.presence_state`. |
 | Tick loop, fase 5 (`Simulation.ProcessTimers`) | Único lugar donde se decide `ONLINE → OFFLINE_PENDING → PROTECTED`. |
 | PostgreSQL | Durable: `cities.presence_state`, `last_online_at`, `last_offline_at`, `protection_until`, `version`. (La tabla `sessions` existe pero nadie la escribe.) |
 | Redis | Hot/transient: `presence:player:{playerId}`. Nunca sustituye a PostgreSQL (canon §1.4) y no participa en la decisión de degradar la ciudad. Sin `EO_REDIS_URL` (sólo en desarrollo) la clave vive en el almacén en proceso, con la misma semántica. |
@@ -61,9 +61,9 @@ solo altera las reglas ligadas a la presencia del jugador, nada más.
 
 | Input | Origen | Efecto |
 |---|---|---|
-| `session.hello` aceptado | cliente | `MarkOnline` fija `presence:player:{playerId}` = `sessionId` con TTL 30 s, y se despacha el comando `PlayerConnected`. El loop lo aplica: `sessions[playerID]++`, se olvida cualquier `disconnectedAt` y la ciudad pasa a `ONLINE`. |
+| `session.hello` aceptado | cliente | `MarkOnline` fija `presence:player:{playerId}` = `sessionId` con TTL 30 s, y se despacha el comando `PlayerConnected` (esperando hasta `DispatchTimeout` a que quepa en el canal; si no cabe, la sesión se cierra con `4500`, [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). El loop lo aplica: añade el `sessionId` a `sessions[playerID]`, se olvida cualquier `disconnectedAt` y la ciudad pasa a `ONLINE`. |
 | `session.ping` | cliente | `Heartbeat` renueva el TTL de la clave con `EXPIRE`. **No** toca el estado del mundo. |
-| Cierre de conexión (limpio, timeout de lectura 45 s, `4429`, `4500`) | transporte | `ClearIfSession` retira la clave **solo si sigue siendo la de esa sesión**, y se despacha `PlayerDisconnected`. El loop decrementa el contador y, si llega a 0, anota `disconnectedAt[playerID] = now`. |
+| Cierre de conexión (limpio, timeout de lectura 45 s, `4429`, `4500`) | transporte | `ClearIfSession` retira la clave **solo si sigue siendo la de esa sesión**, y se despacha `PlayerDisconnected` (por el canal de comandos o, si está lleno, por el buzón del loop: no puede perderse). El loop retira el `sessionId` del conjunto y, si queda vacío, anota `disconnectedAt[playerID] = now`. |
 | Paso del tick (fase 5) | game loop | `Simulation.ProcessTimers(now)` reevalúa el grace de reconexión y el cooldown de protección. |
 | Arranque del servidor | proceso | `simulation.Hydrate` carga `cities` con el `presence_state` que tuvieran. Ver §7.6. |
 
@@ -119,7 +119,7 @@ Dominio de reglas: `RN-PRESENCE`.
 | `RN-PRESENCE-003` | Al cerrarse una conexión, `ClearIfSession` retira la clave **solo si su valor sigue siendo el `sessionId` de esa conexión**; la comprobación y el `DEL` van en un único script Lua, atómico. Sin esa condición, cerrar una pestaña vieja marcaría ausente a un jugador que acaba de reconectar desde otra. Si la clave pertenece ya a otra sesión, no se toca. |
 | `RN-PRESENCE-004` | El paso a `OFFLINE_PENDING` lo decide **el game loop en RAM**, no la expiración de la clave de Redis: ocurre cuando `sessions[playerID] == 0` y `now - disconnectedAt[playerID] >= DisconnectGrace`. `DisconnectGrace` toma el valor de `EO_PRESENCE_TTL_SECONDS` (30 s), de modo que la ventana efectiva coincide con la del TTL sin depender de que Redis esté vivo. Redis mantiene la presencia para observadores externos y para el futuro multiproceso. |
 | `RN-PRESENCE-005` | El paso a `PROTECTED` ocurre cuando la ciudad lleva en `OFFLINE_PENDING` al menos `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` (300 s) y el jugador sigue ausente. Lo decide `city.ShouldEngageProtection(state, lastOfflineAt, cooldown, now)`, cuyo predicado exacto es `state == OFFLINE_PENDING && lastOfflineAt != nil && !now.Before(lastOfflineAt.Add(cooldown))`. Se compara contra `cities.last_offline_at` (`timestamptz`); no existe ninguna columna `last_offline_time_ms`. |
-| `RN-PRESENCE-006` | Reconectar lleva la ciudad a `ONLINE` **inmediatamente**, desde `OFFLINE_PENDING` o desde `PROTECTED`, sin cooldown de salida. El handshake **no** muta el mundo: despacha el comando `PlayerConnected`, que el loop aplica en la fase 1-2 del tick siguiente, antes de que se sirva el snapshot inicial. |
+| `RN-PRESENCE-006` | Reconectar lleva la ciudad a `ONLINE` **inmediatamente**, desde `OFFLINE_PENDING` o desde `PROTECTED`, sin cooldown de salida. El handshake **no** muta el mundo: despacha el comando `PlayerConnected` por el canal de comandos —el mismo que el snapshot, para que se aplique antes que él—, esperando como mucho `DispatchTimeout` (2 s) a que quepa; si no cabe, la sesión se cierra con `4500` sin alta ni baja, y el cliente reconecta. La baja (`PlayerDisconnected`) no puede perderse: con el canal lleno va al buzón del loop ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). |
 | `RN-PRESENCE-007` | Solo el servidor decide el estado. El cliente lo observa vía `city.update` y jamás lo propone (canon §1.1, §9). |
 | `RN-PRESENCE-008` | Todas las comparaciones temporales usan el `Clock` inyectado (`clock.Clock`), nunca `time.Now()` dentro del dominio: `Loop.Step` toma `nowMs` del reloj y se lo pasa a `ProcessTimers`, y `Simulation` obtiene el instante de desconexión de `deps.Clock.Now()`. Los tests usan `FakeClock` y avanzan el tiempo a voluntad. |
 | `RN-PRESENCE-009` | Ningún valor de gameplay se hardcodea: el cooldown, el TTL/grace y el latido llegan desde `internal/config` (canon §9, §17). |
@@ -272,7 +272,7 @@ func (s *Simulation) ProcessTimers(now time.Time) {
     // 1. Margen de reconexión agotado: ONLINE -> OFFLINE_PENDING, en orden de ciudad.
     var degradan []*city.City
     for playerID, since := range s.disconnectedAt {
-        if s.sessions[playerID] > 0 {
+        if len(s.sessions[playerID]) > 0 {
             delete(s.disconnectedAt, playerID)
             continue
         }
@@ -324,9 +324,9 @@ Detalles no negociables:
 
 | ID | Regla |
 |---|---|
-| `RN-PRESENCE-022` | La presencia es **por jugador**, no por conexión. La simulación mantiene `sessions[playerID]` como contador entero en RAM. **Un jugador con varias sesiones sigue `ONLINE` mientras le quede una.** |
-| `RN-PRESENCE-023` | El contador se incrementa al aplicar `PlayerConnected` y se decrementa al aplicar `PlayerDisconnected`, sea cual sea el motivo del cierre. Nunca baja de 0: `handlePlayerDisconnected` decrementa solo si el valor era `> 1`, y si no, borra la entrada del mapa. |
-| `RN-PRESENCE-024` | El paso de `sessions[playerID]` a 0 **no** degrada nada por sí solo: solo anota `disconnectedAt[playerID]`, que es lo que arranca el grace de `RN-PRESENCE-004`. La clave de Redis, por su parte, guarda el `sessionId` de la **última** sesión que hizo `MarkOnline`, no un contador: es lo que hace seguro a `ClearIfSession` (`RN-PRESENCE-003`), pero significa que la clave no sabe cuántas conexiones hay. El contador autoritativo vive en RAM. |
+| `RN-PRESENCE-022` | La presencia es **por jugador**, no por conexión. La simulación mantiene `sessions[playerID]` como el **conjunto de `sessionId` vivos** de ese jugador en RAM ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). **Un jugador con varias sesiones sigue `ONLINE` mientras le quede una.** |
+| `RN-PRESENCE-023` | `PlayerConnected` añade su `sessionId` al conjunto y `PlayerDisconnected` lo retira, sea cual sea el motivo del cierre. El recuento nunca baja de 0 ni resta de más: una baja de un `sessionId` que el loop no tiene **no resta nada** —es un duplicado, o una baja que llegó antes que su alta porque viajó por el buzón del loop cuando el canal de comandos estaba lleno— y se recuerda para anular esa alta si llega después. Una baja duplicada tampoco reinicia el margen de reconexión (`TestUnaBajaAdelantadaODuplicadaNoDesajustaLasSesiones`). |
+| `RN-PRESENCE-024` | Que el conjunto `sessions[playerID]` quede vacío **no** degrada nada por sí solo: solo anota `disconnectedAt[playerID]`, que es lo que arranca el grace de `RN-PRESENCE-004`. La clave de Redis, por su parte, guarda el `sessionId` de la **última** sesión que hizo `MarkOnline`, no el conjunto: es lo que hace seguro a `ClearIfSession` (`RN-PRESENCE-003`), pero significa que la clave no sabe cuántas conexiones hay. El conjunto autoritativo vive en RAM. |
 | `RN-PRESENCE-025` | Cerrar una pestaña mientras otra sigue abierta **no** dispara nada: ni escritura durable, ni `city.update`, ni siquiera un `disconnectedAt`. `handlePlayerDisconnected` sale antes. |
 | `RN-PRESENCE-026` | Una segunda conexión del mismo jugador **no** expulsa a la primera en MVP. Cada conexión tiene su propia sesión con su `sessionId` y su propio contador `seq`. La política de sesión única es `TBD (fuera de MVP)`. |
 | `RN-PRESENCE-027` | El `jti` del ticket es de un solo uso (canon §14): abrir una segunda pestaña exige pedir un ticket nuevo. Esto no es una limitación de la presencia, es una propiedad de la autenticación. |
@@ -414,14 +414,15 @@ Esta spec **cita** `INV-CITY-004..006`, ya asignados en [../invariants/city.md](
 | `INV-CITY-011` | Si `presence_state != 'ONLINE'`, entonces `last_offline_at IS NOT NULL`. Nunca se está fuera de línea sin saber desde cuándo. | La única vía a `OFFLINE_PENDING` es `applyPresence`, que fija `LastOfflineAt` antes de encolar el `UPDATE`, y `PROTECTED` solo se alcanza desde `OFFLINE_PENDING`. Consulta de consistencia en test de integración. |
 | `INV-CITY-012` | Si `presence_state = 'ONLINE'`, entonces `protection_until IS NULL`. | La rama `PresenceOnline` de `CityRepo.SetPresence` escribe `protection_until = NULL` explícitamente, y `applyPresence` hace lo propio en RAM. Consulta de consistencia tras cada `T3`/`T4`. |
 | `INV-CITY-013` | Para toda ciudad en `PROTECTED`, transcurrió el cooldown completo desde `last_offline_at`: `now - last_offline_at >= EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`. La protección nunca se concede antes de tiempo. | `city.ShouldEngageProtection` es el único camino a `PROTECTED`. Test de simulación con `FakeClock` en los bordes 299 s / 300 s. |
-| `INV-CITY-014` | Ninguna ciudad queda `PROTECTED` mientras su dueño tenga al menos una sesión viva: aplicar `PlayerConnected` la devuelve a `ONLINE` antes de que se sirva el snapshot de esa sesión. | `handlePlayerConnected` fuerza `ONLINE` en el mismo comando que incrementa el contador, y el loop es el único escritor, así que no hay ventana observable. Consulta de consistencia cruzando `sessions[playerID]` con `cities`. |
+| `INV-CITY-014` | Ninguna ciudad queda `PROTECTED` mientras su dueño tenga al menos una sesión viva: aplicar `PlayerConnected` la devuelve a `ONLINE` antes de que se sirva el snapshot de esa sesión. | `handlePlayerConnected` fuerza `ONLINE` en el mismo comando que añade la sesión al conjunto, y el loop es el único escritor, así que no hay ventana observable; el alta viaja por el mismo canal que el snapshot, lo que conserva el orden entre ambos. Consulta de consistencia cruzando `sessions[playerID]` con `cities`. |
 | `INV-CITY-015` | `last_online_at` y `last_offline_at` son monótonos no decrecientes dentro de una ejecución del proceso. | Ambos se escriben siempre con el instante del `Clock` inyectado, que en producción es `SystemClock`. Test de simulación con conexiones y desconexiones alternadas. |
 | `INV-CITY-016` | El arranque no altera la presencia: `Hydrate` carga `cities` sin escribir, luego ejecutarlo dos veces sobre la misma base de datos deja `presence_state`, `last_offline_at` y `last_online_at` idénticos. | Test de recovery; ver `RN-PRESENCE-028` y la limitación conocida de la fila `ONLINE` en §7.6. |
 
 Tres propiedades que esta spec **no** eleva a invariante, porque no lo son:
 
-- «El contador de sesiones nunca es negativo» es una propiedad de `handlePlayerDisconnected` y está enunciada
-  como `RN-PRESENCE-023`; está prevista en `T-PRES-U-002` y hoy la cubre en parte `TestVariasSesionesDelMismoJugador`.
+- «El recuento de sesiones nunca es negativo ni resta de más» es una propiedad de `handlePlayerDisconnected` y
+  está enunciada como `RN-PRESENCE-023`; es `T-PRES-U-002`, y la cubren `TestVariasSesionesDelMismoJugador` y
+  `TestUnaBajaAdelantadaODuplicadaNoDesajustaLasSesiones`.
 - «Si hay sesiones vivas, la clave de Redis existe» es **falso** por diseño: si Redis falla, `MarkOnline`
   registra un `warn` y la sesión sigue siendo válida (`RN-PRESENCE-004`). Es una propiedad *best-effort* de la
   observabilidad, no del estado.
@@ -441,18 +442,27 @@ Tres propiedades que esta spec **no** eleva a invariante, porque no lo son:
   `Job{Name: "city.presence"}`, que ejecuta `Repos.PersistCityPresence` (→ `CityRepo.SetPresence(ctx, db, cityID, state, at)`) fuera del tick.
   Escribe `presence_state`, la marca temporal que corresponda al estado destino y `version = version + 1`.
 - El tick **nunca** ejecuta I/O de PostgreSQL, así que la transición no puede ser síncrona respecto del tick.
-  La cola reintenta con backoff y, si agota los intentos, descarta la escritura con un log `error`: este
-  trabajo no declara compensación.
+  La cola reintenta con backoff y, si agota los intentos o estaba llena al encolar, descarta la escritura con
+  un log `error`, la cuenta en `eo_persistence_jobs_dropped_total{job="city.presence"}` y ejecuta la
+  compensación: `CityPresencePersistFailed` vuelve al loop por su buzón y marca la ciudad, y el siguiente
+  volcado periódico (cada 50 ticks) vuelve a encolar su presencia **actual** —estado y marca vigentes—, no la
+  del trabajo perdido ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md),
+  `TestUnaPresenciaQueNoSePersisteSeReencolaConElEstadoActual`). Para que esa escritura deje la fila completa,
+  `SetPresence(PROTECTED)` escribe también `last_offline_at`, con el mismo instante que ya escribió `T1`.
 
 **Ventana de riesgo, declarada.** `city.update` se difunde antes del `COMMIT`. Si el proceso muere entre la
-transición y la escritura, la fila conserva el estado anterior mientras los clientes ya vieron el nuevo. Es un
-RPO documentado, no un descuido, y sus dos casos son asimétricos:
+transición y la escritura —o con la base caída y la transición esperando el siguiente volcado—, la fila
+conserva el estado anterior mientras los clientes ya vieron el nuevo. Es un RPO documentado, no un descuido, y
+sus dos casos son asimétricos:
 
 - Se pierde una `T1`/`T2`: al arrancar, la ciudad vuelve a un estado **menos** protegido que el difundido. Con
   el dueño ausente, la fase 5 la vuelve a degradar en cuanto vuelva a haber una desconexión observada — salvo
   el caso `ONLINE` de §7.6, donde no la hay.
 - Se pierde una `T3`/`T4`: al arrancar, la ciudad queda `PROTECTED` u `OFFLINE_PENDING` con el dueño de vuelta.
   El primer `session.hello` la devuelve a `ONLINE` ([`INV-CITY-014`](#9-invariantes-con-id)), así que se corrige sola.
+
+Mientras el proceso viva, en cambio, una transición que la cola descartó **no** se pierde: se reencola cada
+5 s hasta que la base la acepte.
 
 **3. Dirty-flag + flush periódico**
 
@@ -562,7 +572,8 @@ Reglas del contrato:
 
 **Qué existe hoy** (2026-10-21). Los IDs de la tabla son el plan; los tests reales que los cubren son:
 `T-PRES-U-001` `TestAutomataDePresencia`; `U-003` `TestIsProtected`; `U-004` `TestShouldEngageProtection`;
-`U-002` y `S-005` en parte `TestVariasSesionesDelMismoJugador` (no prueba cierres duplicados); `S-001` y
+`U-002` `TestVariasSesionesDelMismoJugador` y `TestUnaBajaAdelantadaODuplicadaNoDesajustaLasSesiones` (cierres
+duplicados y adelantados); `S-005` en parte `TestVariasSesionesDelMismoJugador`; `S-001` y
 `S-003` `TestCicloDePresenciaYProteccion` (avanza 290 s + 20 s, no el borde 299/300); `S-006`
 `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`; `S-007` `TestElMovimientoContinuaConElJugadorDesconectado`
 (sin llegar a `OFFLINE_PENDING`); el «un único `city.update` por transición», `TestCityUpdateSoloSeEmiteAnteUnCambio`;
@@ -577,7 +588,7 @@ Reglas del contrato:
 | ID | Nivel | Descripción | Cubre |
 |---|---|---|---|
 | `T-PRES-U-001` | unit | `city.CanTransition`: matriz completa 3×3 más los pares con estados inválidos; las cuatro aristas y la identidad son válidas, el resto no. | `INV-CITY-005` |
-| `T-PRES-U-002` | unit | El contador de sesiones nunca baja de 0 ante cierres duplicados, y un jugador con dos sesiones sigue presente al cerrar una. | `RN-PRESENCE-022`, `RN-PRESENCE-023` |
+| `T-PRES-U-002` | unit | El recuento de sesiones nunca baja de 0 ante cierres duplicados ni adelantados a su alta, un cierre duplicado no reinicia el margen, y un jugador con dos sesiones sigue presente al cerrar una. | `RN-PRESENCE-022`, `RN-PRESENCE-023` |
 | `T-PRES-U-003` | unit | `City.IsProtected()` es cierto solo con `presence_state = 'PROTECTED'`. | `RN-PRESENCE-013`, `INV-CITY-006` |
 | `T-PRES-U-004` | unit | `ShouldEngageProtection` en sus bordes: `state != OFFLINE_PENDING` → falso; `lastOfflineAt == nil` → falso; `now` justo antes y justo en el vencimiento. | `RN-PRESENCE-005`, `INV-CITY-013` |
 | `T-PRES-S-001` | **simulation** | `FakeClock`: jugador desconecta en `t0`; a `t0+29 s` → sigue `ONLINE`; a `t0+31 s` → `OFFLINE_PENDING`; a `t0+31+299 s` → sigue `OFFLINE_PENDING`; a `t0+31+300 s` → `PROTECTED`, con un único `city.update` por transición. | `T1`, `T2`, `INV-CITY-005`, `INV-CITY-013` |

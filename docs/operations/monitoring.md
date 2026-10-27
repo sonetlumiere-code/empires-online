@@ -57,7 +57,7 @@ escrito a ojo no devuelva nada.
 
 | Nivel | Uso | Ejemplos que el código emite hoy |
 |---|---|---|
-| `error` | El servidor no pudo cumplir su función y **alguien debe mirarlo**. Todo `error` es potencialmente una alerta. | `escritura durable descartada tras agotar los reintentos`, `cola de persistencia saturada: trabajo descartado`, `invariant_violation`, `cola de comandos saturada; comando descartado` |
+| `error` | El servidor no pudo cumplir su función y **alguien debe mirarlo**. Todo `error` es potencialmente una alerta. | `escritura durable descartada tras agotar los reintentos`, `cola de persistencia saturada: trabajo descartado`, `invariant_violation`, `cola de comandos saturada; comando descartado`, `buzón del loop saturado; comando descartado`, `el loop no admitió la sesión a tiempo; se cierra` |
 | `warn` | Anomalía tolerada, con degradación o riesgo. | `escritura durable fallida; se reintentará`, `ticks perdidos descartados`, el aviso de rate limit antes del cierre `4429` |
 | `info` | Hechos del ciclo de vida, en volumen acotado. | `arrancando Empires Online game server`, `migraciones aplicadas` / `esquema ya al día`, `mundo existente cargado y verificado`, `mundo rehidratado`, `handshake rechazado` (con `close_code`), `sesión establecida`, `sesión finalizada` |
 | `debug` | Diagnóstico detallado. **No usar en producción salvo diagnóstico acotado.** | Comandos duplicados. No hay hoy logs por comando, por búsqueda A\* ni por delta |

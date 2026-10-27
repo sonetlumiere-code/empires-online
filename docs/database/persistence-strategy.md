@@ -170,7 +170,9 @@ Nunca: alta o baja de entidades, ownership, transiciones de presencia, movimient
         │                                                    │ se agotan
         └── métrica: eo_persistence_queue_depth               ▼
             (gauge, suma de las 4)              job.OnPermanentFailure(err)
-                                                 → Deps.Inbox → comando al loop
+                                                 (antes: eo_persistence_jobs_dropped_total{job, reason}++)
+                                                 → Deps.Inbox = loop.Inbox.Offer → el loop lo drena
+                                                   ANTES que los comandos de los jugadores (ADR-022)
 ```
 
 Parámetros reales, fijados como constantes en `persistence.DefaultQueueConfig()` — **no** hay variables `EO_` para ellos, y añadirlas exigiría pasar antes por el canon §17:
@@ -205,9 +207,20 @@ default:
 }
 ```
 
-Bloquear aquí sería bloquear el tick, así que no se bloquea nunca. El precio es explícito: **un trabajo descartado es una escritura perdida**, y por eso el descarte no es silencioso — se registra a `level=error` y se ejecuta la compensación del trabajo, si la tiene. Para un `units.flush` el descarte es inocuo (no lleva compensación: el estado sigue en RAM y se volverá a marcar). Para un `movement.start` sí hay `OnPermanentFailure`, y hace lo que hace falta para que el mundo no conserve un movimiento que la base nunca conoció: como el worker corre en otra goroutine y no puede mutar el mundo, **devuelve al loop un comando** `MovementPersistFailed` por el canal de comandos, y la simulación detiene la unidad —si ese movimiento sigue siendo el activo— con `unit.movement.cancelled { reason: SERVER }` ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.4, `TestUnInicioQueNoSePersisteDetieneLaUnidad`). Si el canal también está lleno, la compensación se registra y se pierde: la recuperación del siguiente arranque reconcilia la unidad `MOVING` sin movimiento.
+Bloquear aquí sería bloquear el tick, así que no se bloquea nunca. El precio es explícito: **un trabajo descartado es una escritura que la cola perdió**, y por eso el descarte no es silencioso — se registra a `level=error`, se cuenta en `eo_persistence_jobs_dropped_total{job, reason="queue_full"}` (agotar los tres intentos cuenta con `reason="attempts_exhausted"`) y se ejecuta la compensación del trabajo. Como el callback corre fuera del loop —en el worker, o en la goroutine del loop cuando `Submit` descarta al encolar— y no puede mutar el mundo, **devuelve al loop un comando** por su buzón (`Deps.Inbox` = `loop.Inbox.Offer`), que el loop drena antes que los comandos de los jugadores ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). Qué hace cada compensación:
 
-Que esto aparezca en los logs significa que la base de datos no sigue el ritmo del mundo. Nunca es normal.
+| Trabajo | Comando que devuelve | Qué hace el loop | Quién lo reencola |
+|---|---|---|---|
+| `movement.start` | `MovementPersistFailed` | Detiene la unidad si ese movimiento sigue activo: `unit.movement.cancelled { reason: SERVER }` ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.4, `TestUnInicioQueNoSePersisteDetieneLaUnidad`) | El cierre de esa cancelación, como cualquier otro |
+| `movement.cancel`, `movement.complete` | `MovementFinishPersistFailed{MovementID, Status, UnitID}` | Apunta el cierre en `pendingFinishes` y devuelve la unidad al dirty-set | El siguiente `FlushDirty`: la fila, sola (idempotente; si un inicio posterior ya la canceló, no cambia nada); la unidad la escribe el volcado con su posición **actual**, nunca la del cierre perdido (`TestUnCierreQueNoSePersisteSeReintentaEnElSiguienteVolcado`) |
+| `city.presence` | `CityPresencePersistFailed{CityID}` | Marca la ciudad en `presenceDirty`; una transición nueva sustituye a la pendiente | El siguiente `FlushDirty`: la presencia **actual** de la ciudad —estado y marca vigentes—, no la del trabajo perdido (`TestUnaPresenciaQueNoSePersisteSeReencolaConElEstadoActual`) |
+| `units.flush` | `UnitsFlushPersistFailed{UnitIDs}` | Devuelve el lote al dirty-set, sin apuntarlo al ocultamiento | El siguiente `FlushDirty` (`TestUnVolcadoQueNoSePersisteDevuelveLasUnidadesAlConjuntoSucio`) |
+| `garrison.enter`, `garrison.leave` | `GarrisonEntryResolved{INTERNAL_ERROR}`, `GarrisonExitFailed` | Responde al jugador; devuelve la unidad a la ciudad ([ADR-017](../decisions/ADR-017-garrison-commands.md)) | — |
+| `treaty.expire` | **ninguno** | — | El barrido siguiente, un segundo después |
+
+Reencolar desde el volcado y no en el acto es deliberado: con la partición llena, un reencolado inmediato se descartaría otra vez y volvería diez veces por segundo; el volcado da una cadencia de 5 s sin ningún temporizador nuevo. Lo que espera en `presenceDirty`, `pendingFinishes` y el dirty-set es RAM: si el proceso cae con descartes pendientes, eso es lo que se pierde (§6). Si el buzón también está lleno —8192 plazas drenadas con prioridad en cada tick: hace falta un loop parado—, el comando se cuenta en `eo_commands_dropped_total{type}` y se registra; es el único caso en que una compensación no llega.
+
+Que esto aparezca en los logs o en las métricas significa que la base de datos no sigue el ritmo del mundo. Nunca es normal, y la alerta propuesta dispara con el primer descarte ([../operations/monitoring.md](../operations/monitoring.md) §5.8).
 
 ### 4.3 Modos de degradación
 
@@ -226,7 +239,7 @@ Secuencia esperada y correcta:
 1. Los workers tardan más ⇒ `eo_database_latency_seconds` sube (la observa el propio worker alrededor de cada intento).
 2. La cola crece ⇒ `eo_persistence_queue_depth` sube.
 3. El game loop **no se entera**: sigue ticando a 10 Hz; `eo_game_tick_duration_seconds` no se degrada y `eo_game_tick_overruns_total` no crece. Tampoco sufren latencia los comandos: al cliente se le confirma desde RAM.
-4. Si la lentitud persiste hasta llenar el canal, empiezan los descartes de §4.2 con su log de error y sus compensaciones.
+4. Si la lentitud persiste hasta llenar el canal, empiezan los descartes de §4.2 con su log de error, su cuenta en `eo_persistence_jobs_dropped_total` y sus compensaciones; cada volcado reencola lo descartado, así que mientras la base no responda la misma escritura falla y se cuenta una vez cada 5 s.
 
 Regla de diagnóstico: **si `eo_game_tick_overruns_total` crece a la vez que `eo_persistence_queue_depth`, hay I/O dentro del tick — es un bug, no un problema de capacidad.**
 
@@ -311,8 +324,8 @@ RPO = cantidad máxima de trabajo confirmado que puede perderse ante un crash de
 |---|---|---|
 | Alta de jugador + ciudad + 3 aldeanos | **0** | Es la identidad del jugador. Perderla es perder la cuenta. Única transacción síncrona del sistema, y el jugador no entra en el mundo hasta que ha confirmado. |
 | Ownership de ciudad (`cities.owner_player_id`) | **0** | Se escribe en esa misma transacción de alta y después no cambia en el MVP. Dato con el mayor coste de inconsistencia percibida: "me robaron la ciudad" es irreparable socialmente. |
-| Transiciones de presencia y protección | **≈ ventana de cola** (unas decenas de ms) | El objetivo de diseño es 0 —determinan si una ciudad es atacable—, pero el `UPDATE` va encolado: si el proceso muere antes del `COMMIT`, la transición se pierde y al rearrancar la ciudad vuelve a evaluarse desde su `last_offline_at`, que es la reconciliación que contiene el daño. |
-| Inicio / cancelación / finalización de movimiento | **≈ ventana de cola** (unas decenas de ms) | Es la ventana honesta del modelo, no un descuido: ver el recuadro que sigue a esta tabla. |
+| Transiciones de presencia y protección | **≈ ventana de cola** (unas decenas de ms); con la base fallando, **lo que lleve fallando** | El objetivo de diseño es 0 —determinan si una ciudad es atacable—, pero el `UPDATE` va encolado: si el proceso muere antes del `COMMIT`, la transición se pierde y al rearrancar la ciudad vuelve a evaluarse desde su `last_offline_at`, que es la reconciliación que contiene el daño. Si la cola la descarta, el volcado la reencola cada 5 s con el estado actual ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)); sólo un crash con la base aún caída la pierde. |
+| Inicio / cancelación / finalización de movimiento | **≈ ventana de cola** (unas decenas de ms); con la base fallando, **lo que lleve fallando** | Es la ventana honesta del modelo, no un descuido: ver el recuadro que sigue a esta tabla. Un inicio descartado se compensa deteniendo la unidad; un cierre descartado se reencola cada 5 s ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). |
 | Deduplicación de comandos | **n/a** | Sólo Redis (`idem:{playerId}:{requestId}`, 300 s), con el RPO de la fila correspondiente más abajo. La tabla `idempotency_keys` se eliminó en `000004` ([ADR-014](../decisions/ADR-014-command-idempotency.md)). |
 | Posición de unidad en movimiento | **0 efectivo** | No se persiste por tick, pero es reconstruible de la polilínea ya persistida. La derivación es exacta, no aproximada. |
 | Posición consolidada de unidad en reposo (`units.x/y`) | **≤ 5 s** (50 ticks) + latencia de cola | Es un denormalizado de convergencia. En el peor caso se recupera del último `unit_movements`, por lo que la pérdida real observable tiende a cero. |
@@ -331,7 +344,7 @@ El servidor acepta un `unit.move`, lo aplica en RAM, responde `unit.move.accepte
 Es un RPO **documentado**, no un descuido, y es el precio explícito de la regla "el tick nunca hace I/O de PostgreSQL": la alternativa —confirmar sólo después del `COMMIT`— pondría la latencia de disco dentro del camino del comando y, si se hiciera dentro del tick, dentro del presupuesto de 100 ms. Lo que sí es exigible es no mentir sobre ella:
 
 - La ventana no crece indefinidamente en régimen normal; crece exactamente con `eo_persistence_queue_depth`, que por eso es la señal de control de §4.
-- Un trabajo descartado por cola llena (§4.2) amplía la misma ventana a una pérdida segura, y por eso se registra a `level=error`.
+- Un trabajo descartado por cola llena (§4.2) no es una pérdida segura: su compensación lo devuelve al volcado, que lo reencola cada 5 s. Pero mientras no se escriba, la ventana deja de medirse por la profundidad de la cola y pasa a medirse desde el **primer** descarte; por eso se registra a `level=error`, se cuenta en `eo_persistence_jobs_dropped_total` y la alerta propuesta dispara con el primero.
 - Ningún otro dato del sistema tiene una ventana peor, porque el alta de jugador —lo único cuya pérdida sería irrecuperable— sí es síncrona y ocurre fuera del loop.
 
 Resumen en una frase: **sólo el alta de jugador tiene RPO 0 estricto; el resto de escrituras durables tienen el RPO de la cola, y los datos derivables o transitorios el de su flush o su TTL.**
@@ -345,12 +358,14 @@ En modo `SATURATED` (§4.3) el RPO de los datos DF crece sin límite hasta que l
 | Métrica (canon §18) | Uso en persistencia |
 |---|---|
 | `eo_persistence_queue_depth` | Señal principal de backpressure y disparador de `DEGRADED`/`SATURATED`. |
+| `eo_persistence_jobs_dropped_total{job, reason}` | Escrituras que la cola descartó, por trabajo y motivo (`queue_full`, `attempts_exhausted`). Debe ser cero; cada descarte se reencola en el siguiente volcado ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). |
+| `eo_commands_dropped_total{type}` | Comandos que no cupieron ni en el canal del loop ni en su buzón: una compensación aquí es una reconciliación que no llegará hasta el reinicio. Debe ser cero. |
 | `eo_database_latency_seconds` | Latencia de las transacciones write-through y de los lotes de flush. |
 | `eo_redis_latency_seconds` | Presencia, idempotencia rápida y consumo de `jti`. |
 | `eo_game_tick_duration_seconds` / `eo_game_tick_overruns_total` | Deben permanecer planas ante lentitud de Postgres. Si no, hay I/O en el tick. |
 | `eo_active_units` | Denominador para dimensionar lotes y cola. |
 
-Logs estructurados (`log/slog`, JSON) con los campos estándar `ts`, `level`, `msg`, `player_id`, `session_id`, `request_id`, `tick`. Cada intento fallido de un trabajo durable se registra a `level=warn` con `job`, `attempt` y `max_attempts`; el agotamiento de los tres intentos y el descarte por cola llena, a `level=error` con el nombre del trabajo. No hay ningún registro de "discrepancia de `version`" en el camino del flush, sencillamente porque el flush no compara versiones (§3.4).
+Logs estructurados (`log/slog`, JSON) con los campos estándar `ts`, `level`, `msg`, `player_id`, `session_id`, `request_id`, `tick`. Cada intento fallido de un trabajo durable se registra a `level=warn` con `job`, `attempt` y `max_attempts`; el agotamiento de los tres intentos y el descarte por cola llena, a `level=error` con el nombre del trabajo; y cada compensación, a `level=error` con la entidad (`city_id`, `unit_id`/`movement_id` o el tamaño del lote). No hay ningún registro de "discrepancia de `version`" en el camino del flush, sencillamente porque el flush no compara versiones (§3.4).
 
 ---
 

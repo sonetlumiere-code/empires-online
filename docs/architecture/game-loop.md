@@ -17,8 +17,12 @@ El loop es la **única** goroutine autorizada a mutar el estado del mundo (ver
 
 1. Ejecuta exactamente las **8 fases del canon, siempre en el mismo orden**, sin saltarse ninguna.
 2. **Nunca** ejecuta I/O bloqueante contra PostgreSQL. Sólo encola trabajos de persistencia en
-   `simulation.Persister` (implementado por `persistence.Queue`), cuyo `Submit` nunca bloquea.
-3. **Nunca** bloquea leyendo o escribiendo canales: drena y encola con `select`/`default`.
+   `simulation.Persister` (implementado por `persistence.Queue`), cuyo `Submit` nunca bloquea. Lo que la cola
+   descarta vuelve al loop como comando por su buzón y el siguiente volcado lo reencola
+   ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)).
+3. **Nunca** bloquea leyendo o escribiendo canales: drena y encola con `select`/`default`. Drena dos canales,
+   en este orden: el **buzón** (`loop.Inbox`: compensaciones y respuestas de la cola, bajas de sesión) y el
+   canal de **comandos** de los jugadores, con un tope común por tick.
 4. No llama a `time.Now()` ni a `rand` dentro de la simulación: usa el `Clock` inyectado, y no usa azar
    (`clock.RandomSource` existe en `internal/clock` para cuando haga falta, pero hoy no se inyecta ni se
    siembra). Las únicas excepciones son mediciones de duración marcadas con `//lint:reloj-real`: la del propio
@@ -97,14 +101,14 @@ Orden fijo, sin excepciones. Ninguna fase puede adelantar trabajo de otra.
 
 | # | Fase | Entrada | Salida | Puede | No puede |
 |---|---|---|---|---|---|
-| 1 | `drain commands` | Canal `commands` (capacidad 8192) | Comandos del tick | Consumir con `select`/`default` hasta un tope de `MaxCommandsPerTick` (**1024**); lo que no entra espera al tick siguiente y se registra un `warn` | Bloquear; superar el tope; validar o mutar |
+| 1 | `drain commands` | El buzón `loop.Inbox` (capacidad 8192) y después el canal `commands` (capacidad 8192) | Comandos del tick | Consumir con `select`/`default`, primero el buzón y después el canal, hasta un tope **común** de `MaxCommandsPerTick` (**1024**); lo que no entra espera al tick siguiente y se registra un `warn` ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)) | Bloquear; superar el tope; validar o mutar |
 | 2 | `validate & apply commands` | Comandos del paso 1 | Mutaciones + mensajes + rechazos | Validar ownership/estado/destino, ejecutar A*, crear/cancelar movimientos, responder `unit.move.rejected` con los códigos del catálogo, encolar el trabajo durable del movimiento | Tocar Postgres o Redis de forma bloqueante; usar cualquier reloj que no sea el `Clock` inyectado |
 | 3 | `advance movement` | Movimientos `ACTIVE`, `tickTime` | Posiciones nuevas, `unit.movement.completed` | Recorrer movimientos, avanzar por la polilínea, completar los vencidos, actualizar el índice espacial y marcar como *dirty* sólo la unidad que llega (la posición en tránsito no se persiste, `INV-PERSIST-004`) | Recalcular paths; crear movimientos nuevos; cancelar por decisión propia |
 | 4 | `resolve simulation` | — | — | **Fuera de MVP**: reservado a combate. Hoy no existe ninguna llamada en `Step` | Cualquier cosa, mientras esté fuera de MVP |
 | 5 | `process timers / scheduled events` | `tickTime`, contadores de sesión y marcas de desconexión en RAM; índice de safe zones y unidades que cambiaron desde la evaluación anterior | Transiciones de presencia + `city.update`; barrido de tratados encolado; cambios de ocultamiento + `entity.update` / `entity.despawn` / `entity.spawn` | En este orden: evaluar `ONLINE → OFFLINE_PENDING` (margen `DisconnectGrace` = `EO_PRESENCE_TTL_SECONDS`); **encolar** el barrido de tratados vencidos, muestreado a una vez por segundo (M7); evaluar `OFFLINE_PENDING → PROTECTED` (`EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`); reintentar, en orden de unidad, las salidas de guarnición que esperaban un tile libre (`RN-GARR-014`); y evaluar el ocultamiento en Safe Zones sólo sobre las unidades que cambiaron de tile o de estado ([../specs/safe-zones.md](../specs/safe-zones.md) §6.4) | Consultar Redis o PostgreSQL dentro del tick: las decisiones son **enteramente aritmética sobre RAM**, y el barrido de tratados se encola hacia los workers |
 | 6 | `update world state / interest sets` | Posiciones nuevas; el conjunto suscrito por sesión | Membresía de chunk actualizada | Recalcular el chunk de cada entidad (`chunkX = x / EO_CHUNK_SIZE`) y mantener el índice `chunk → entidades` | Enviar mensajes; mutar entidades |
 | 7 | `emit deltas` | Hechos de las fases 2, 3 y 5 | Broadcast por chunk / por jugador hacia el `Hub` | Construir los payloads v1 y entregarlos al `Hub`, que los deposita en la cola de salida de cada sesión | Escribir en sockets (lo hace el `writePump` de cada conexión); asignar `seq`/`ts` (los estampa `Session.Send`); bloquear si la cola está llena |
-| 8 | `enqueue persistence` | *Dirty-set* de unidades | Un trabajo de volcado por lote | Cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (**50**) drenar el dirty-set y encolar un `units.flush` **por partición** de la cola ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.2), sin las unidades con movimiento activo y aplazando las que están entrando en una ciudad | Ejecutar SQL; esperar confirmación; perder un trabajo durable en silencio |
+| 8 | `enqueue persistence` | *Dirty-set* de unidades; ciudades con presencia pendiente y cierres de movimiento pendientes | Un trabajo de volcado por lote, más un `city.presence` por ciudad pendiente y un cierre por movimiento pendiente | Cada `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (**50**) reencolar primero lo que la cola descartó desde el volcado anterior —la presencia **actual** de cada ciudad marcada y la fila de cada cierre apuntado ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md))—, después drenar el dirty-set y encolar un `units.flush` **por partición** de la cola ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.2), sin las unidades con movimiento activo y aplazando las que están entrando en una ciudad | Ejecutar SQL; esperar confirmación; perder un trabajo durable en silencio |
 
 **Precisión sobre las fases 6, 7 y 8, porque es donde el código se aparta de la lectura ingenua del
 diagrama.** No existen tres pasadas separadas al final del tick:
@@ -404,21 +408,34 @@ func (l *Loop) Step(nowMs int64) {
     l.observe(started, nowMs)           // métricas, latido de /ready
 }
 
-// drainCommands consume la cola sin bloquearse jamás, con tope por tick.
+// drainCommands consume primero el buzón y después la cola de comandos, sin bloquearse jamás y con
+// un tope común por tick (ADR-022).
 func (l *Loop) drainCommands() {
-    for i := 0; i < l.cfg.MaxCommandsPerTick; i++ {   // 1024 por defecto
+    budget := l.cfg.MaxCommandsPerTick                // 1024 por defecto
+    if l.inbox != nil {
+        budget -= l.drain(l.inbox.ch, budget)         // compensaciones, respuestas de la cola, bajas de sesión
+    }
+    budget -= l.drain(l.commands, budget)             // comandos de los jugadores
+    if budget <= 0 {
+        l.log.Warn("límite de comandos por tick alcanzado; el resto espera al siguiente",
+            "limit", l.cfg.MaxCommandsPerTick, "tick", l.tick)
+    }
+}
+
+// drain aplica hasta `max` comandos de un canal: se detiene al vaciarse, al cerrarse o al agotar el tope.
+func (l *Loop) drain(ch <-chan simulation.Command, max int) int {
+    for n := 0; n < max; n++ {
         select {
-        case cmd, ok := <-l.commands:
+        case cmd, ok := <-ch:
             if !ok {
-                return
+                return n
             }
             l.applyCommand(cmd)
         default:
-            return                                    // la cola se vació: no se espera a nadie
+            return n                                  // el canal se vació: no se espera a nadie
         }
     }
-    l.log.Warn("límite de comandos por tick alcanzado; el resto espera al siguiente",
-        "limit", l.cfg.MaxCommandsPerTick, "tick", l.tick)
+    return max
 }
 
 // applyCommand aísla el pánico de un comando concreto.
@@ -437,13 +454,20 @@ func (l *Loop) applyCommand(cmd simulation.Command) {
 Dos detalles que este código fija y que no conviene idealizar:
 
 1. **El drenaje está acotado por `MaxCommandsPerTick`, no por `len(ch)` al entrar.** Una avalancha no
-   puede convertir un tick en un bloqueo; lo que no entra espera al tick siguiente, con `warn`.
+   puede convertir un tick en un bloqueo; lo que no entra espera al tick siguiente, con `warn`. El tope es
+   **común** al buzón y al canal, y el buzón va primero: lo que trae reconcilia el mundo con la base de datos
+   o con las sesiones vivas, y no debe esperar detrás de las órdenes de los jugadores
+   ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)).
 2. **La mutación en RAM precede al encolado durable, no al revés.** `handleMoveUnit` cancela el
    movimiento previo, registra el nuevo, pasa la unidad a `MOVING` y **después** llama a
    `Persister.Submit`. Si la cola de persistencia está saturada, `Submit` descarta el trabajo, lo
-   registra como error e invoca `OnPermanentFailure` **si el trabajo declaró uno** (`movement.start`,
-   `garrison.enter` y `garrison.leave` sí; `movement.cancel`, `movement.complete`, `city.presence`,
-   `treaty.expire` y `units.flush` no); en ningún caso se
+   registra como error, lo cuenta en `eo_persistence_jobs_dropped_total{reason="queue_full"}` e invoca
+   `OnPermanentFailure`, que **todos los trabajos declaran salvo `treaty.expire`** (el barrido siguiente lo
+   recoge). La compensación vuelve al loop por el buzón: `movement.start` detiene la unidad
+   ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.4); `movement.cancel` y `movement.complete`
+   apuntan el cierre y devuelven la unidad al dirty-set; `city.presence` marca la ciudad; `units.flush`
+   devuelve el lote al dirty-set; y la fase 8 del siguiente volcado lo reencola con el estado **actual**
+   ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). En ningún caso se
    revierte la mutación en RAM. Es la contrapartida honesta de no hacer I/O en el tick, y está
    descrita como ventana de riesgo en [estrategia de persistencia](./persistence.md).
 
