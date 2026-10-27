@@ -14,6 +14,18 @@ que el código valida al arrancar y la suite cubre, en vez de con casillas de un
 
 ---
 
+> **Precisión (2026-10-27).** El punto 3 de la decisión tomaba la **primera** IP de `X-Forwarded-For` «por
+> coherencia con `apps/web`», y la alternativa «la última IP» se descartó por el mismo motivo. Ese mismo día
+> `apps/web` pasó a tomar el **N-ésimo elemento por la derecha**, con `EO_TRUSTED_PROXY_COUNT` (1–10, por
+> defecto 1) como número de proxies de confianza, precisamente porque el primero lo escribe quien quiera. El
+> argumento de la decisión —«dos criterios para la misma variable serían un error esperando a ocurrir»— obliga
+> entonces al Game Server a seguirla: desde esta fecha lee `EO_TRUSTED_PROXY_COUNT`, toma ese elemento, usa
+> `X-Real-IP` sólo a falta de `X-Forwarded-For` y, si la lista es más corta que N, cuenta por la IP del socket
+> (`internal/websocket/limits.go`, `clientIP`/`forwardedClientIP`; cubierto por
+> `TestLaIPDelClienteSeLeeComoEnAppsWeb` y `TestLaIPDeXForwardedForSoloCuentaConProxyDeConfianza`). El
+> despliegue ya no exige que el proxy sobrescriba la cabecera: con N correcto, añadir también vale. Nada más de
+> esta decisión cambia; el texto original se conserva tal cual más abajo.
+
 ## Contexto
 
 El Game Server expone cuatro superficies: el upgrade de WebSocket en `/ws`, los endpoints de salud, la API

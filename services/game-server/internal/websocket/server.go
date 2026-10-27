@@ -81,10 +81,13 @@ type Config struct {
 	// responde 503 (tope global) o 429 (tope de esa IP) y no abre socket.
 	MaxConnections      int
 	MaxConnectionsPerIP int
-	// TrustProxyHeaders hace que la IP de una conexión sea la primera de
-	// X-Forwarded-For en lugar de la del socket. Sólo con un proxy inverso
-	// delante que sobrescriba la cabecera; sin él, cualquiera elige su IP.
+	// TrustProxyHeaders hace que la IP de una conexión se tome de las cabeceras
+	// del proxy (X-Forwarded-For, y X-Real-IP a falta de ella) en lugar del
+	// socket, con la misma lectura que apps/web: el elemento de X-Forwarded-For
+	// que está TrustedProxyCount posiciones por la derecha. Sólo con un proxy
+	// inverso delante; sin él, cualquiera elige su IP.
 	TrustProxyHeaders bool
+	TrustedProxyCount int
 }
 
 // Server acepta conexiones WebSocket y las traduce a comandos del dominio.
@@ -172,7 +175,7 @@ func (s *Server) Handler(base context.Context) http.HandlerFunc {
 		// La plaza se reserva ANTES del upgrade y se conserva hasta que la
 		// goroutine de la conexión termina: un socket que nunca se autentica
 		// también cuenta (ADR-021).
-		ip := clientIP(r, s.cfg.TrustProxyHeaders)
+		ip := clientIP(r, s.cfg.TrustProxyHeaders, s.cfg.TrustedProxyCount)
 		release, reason := s.limits.acquire(ip)
 		if reason != "" {
 			status := rejectStatus(reason)

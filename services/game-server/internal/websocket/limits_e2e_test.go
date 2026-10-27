@@ -264,8 +264,10 @@ func TestPorEncimaDelTopePorIPElUpgradeResponde429(t *testing.T) {
 }
 
 // X-Forwarded-For sólo cuenta con TrustProxyHeaders: sin un proxy de confianza
-// delante, cualquiera elegiría su IP y se saltaría el tope. Con él, la IP es
-// la PRIMERA de la cabecera, como en apps/web.
+// delante, cualquiera elegiría su IP y se saltaría el tope. Con él, la IP se
+// lee como en apps/web (ADR-021): el elemento que está TrustedProxyCount
+// posiciones por la derecha, el que añadió el último proxy de confianza. El
+// primero lo escribe quien quiera y nunca cuenta.
 func TestLaIPDeXForwardedForSoloCuentaConProxyDeConfianza(t *testing.T) {
 	t.Run("sin confianza se ignora", func(t *testing.T) {
 		env := newE2ECon(t, nil, func(c *ws.Config) { c.MaxConnectionsPerIP = 1 })
@@ -276,15 +278,17 @@ func TestLaIPDeXForwardedForSoloCuentaConProxyDeConfianza(t *testing.T) {
 		rechazadoAntesDelUpgrade(t, env, http.Header{"X-Forwarded-For": {"10.0.0.2"}}, http.StatusTooManyRequests)
 	})
 
-	t.Run("con confianza se cuenta por la primera IP de la cabecera", func(t *testing.T) {
+	t.Run("con un proxy de confianza cuenta el último elemento, no el primero", func(t *testing.T) {
 		env := newE2ECon(t, nil, func(c *ws.Config) {
 			c.MaxConnectionsPerIP = 1
 			c.TrustProxyHeaders = true
+			c.TrustedProxyCount = 1
 		})
 		c, _, err := env.dialConCabeceras(http.Header{"X-Forwarded-For": {"10.0.0.1, 192.168.0.9"}})
 		require.NoError(t, err)
 		require.NotNil(t, c)
-		rechazadoAntesDelUpgrade(t, env, http.Header{"X-Forwarded-For": {"10.0.0.1"}}, http.StatusTooManyRequests)
+		// El atacante cambia el primer elemento y sigue siendo 192.168.0.9.
+		rechazadoAntesDelUpgrade(t, env, http.Header{"X-Forwarded-For": {"203.0.113.5, 192.168.0.9"}}, http.StatusTooManyRequests)
 
 		otra, _, err := env.dialConCabeceras(http.Header{"X-Forwarded-For": {"10.0.0.2"}})
 		require.NoError(t, err, "otra IP tiene su propio cupo")
@@ -294,6 +298,25 @@ func TestLaIPDeXForwardedForSoloCuentaConProxyDeConfianza(t *testing.T) {
 		sinCabecera, _, err := env.dialConCabeceras(nil)
 		require.NoError(t, err)
 		require.NotNil(t, sinCabecera)
+	})
+
+	t.Run("con dos proxies cuenta el penúltimo, y una lista corta no se cree", func(t *testing.T) {
+		env := newE2ECon(t, nil, func(c *ws.Config) {
+			c.MaxConnectionsPerIP = 1
+			c.TrustProxyHeaders = true
+			c.TrustedProxyCount = 2
+		})
+		c, _, err := env.dialConCabeceras(http.Header{"X-Forwarded-For": {"10.0.0.1, 192.168.0.9, 172.16.0.1"}})
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		rechazadoAntesDelUpgrade(t, env, http.Header{"X-Forwarded-For": {"10.0.0.7, 192.168.0.9, 172.16.0.2"}}, http.StatusTooManyRequests)
+
+		// Un solo elemento con dos proxies declarados: ningún proxy de confianza
+		// lo añadió, así que cuenta la IP del socket, que tiene su plaza libre.
+		corta, _, err := env.dialConCabeceras(http.Header{"X-Forwarded-For": {"192.168.0.9"}})
+		require.NoError(t, err)
+		require.NotNil(t, corta)
+		rechazadoAntesDelUpgrade(t, env, nil, http.StatusTooManyRequests)
 	})
 }
 

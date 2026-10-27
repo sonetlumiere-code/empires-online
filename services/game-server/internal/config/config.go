@@ -80,10 +80,15 @@ type Config struct {
 	// abiertos, contados desde antes del upgrade (ADR-021). 0 = sin tope.
 	WSMaxConnections      int
 	WSMaxConnectionsPerIP int
-	// TrustProxyHeaders: creer a X-Forwarded-For para identificar la IP de una
-	// conexión. La misma variable y el mismo significado que en apps/web
-	// (EO_TRUST_PROXY_HEADERS): sólo con un proxy inverso delante.
+	// TrustProxyHeaders: creer a las cabeceras del proxy (X-Forwarded-For, y
+	// X-Real-IP a falta de ella) para identificar la IP de una conexión.
+	// TrustedProxyCount: cuántos proxies de confianza añaden su salto a
+	// X-Forwarded-For; la IP del cliente es el N-ésimo elemento por la derecha.
+	// Las mismas dos variables, con el mismo significado y la misma lectura, que
+	// en apps/web (EO_TRUST_PROXY_HEADERS, EO_TRUSTED_PROXY_COUNT): sólo con un
+	// proxy inverso delante.
 	TrustProxyHeaders bool
+	TrustedProxyCount int
 }
 
 // Valores admitidos de EO_ENV. La lista es cerrada a propósito: `prod` o un
@@ -172,6 +177,7 @@ func Load() (Config, error) {
 		WSMaxConnections:      v.intRange("EO_WS_MAX_CONNECTIONS", 5000, 0, 1_000_000),
 		WSMaxConnectionsPerIP: v.intRange("EO_WS_MAX_CONNECTIONS_PER_IP", 32, 0, 100_000),
 		TrustProxyHeaders:     v.boolean("EO_TRUST_PROXY_HEADERS", false),
+		TrustedProxyCount:     v.intRange("EO_TRUSTED_PROXY_COUNT", 1, 1, 10),
 	}
 
 	// --- Validaciones cruzadas: las que un rango por sí solo no puede expresar ---

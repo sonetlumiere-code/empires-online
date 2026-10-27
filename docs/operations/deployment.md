@@ -398,9 +398,9 @@ server {
         proxy_set_header   Connection $connection_upgrade;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
-        # $remote_addr, NO $proxy_add_x_forwarded_for: el servidor toma la PRIMERA IP
-        # de la cabecera (EO_TRUST_PROXY_HEADERS) y la variante que añade conserva
-        # lo que trajo el cliente, que elegiría así su propia IP.
+        # Con EO_TRUSTED_PROXY_COUNT=1 el servidor toma el ÚLTIMO elemento de la
+        # cabecera, el que añade este proxy: vale $remote_addr (sobrescribe) o
+        # $proxy_add_x_forwarded_for (añade). Lo que traiga el cliente nunca cuenta.
         proxy_set_header   X-Forwarded-For   $remote_addr;
         proxy_set_header   X-Forwarded-Proto $scheme;
 
@@ -829,7 +829,7 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 - [ ] La readiness se comprueba contra `/ready` desde el host, no con el `HEALTHCHECK` de la imagen, que sólo mira `/health` (§3.1).
 - [ ] El despliegue ejecuta `migrate` antes de arrancar el servidor y para si el esquema está `dirty` (§6, Paso 3).
 - [ ] Rate limit activo: 20 msg/s con burst 40 por conexión.
-- [ ] Tope de conexiones activo: `EO_WS_MAX_CONNECTIONS` (5000) por debajo de `ulimits.nofile`, y `EO_WS_MAX_CONNECTIONS_PER_IP` (32) **con `EO_TRUST_PROXY_HEADERS=true`** y el proxy sobrescribiendo `X-Forwarded-For`; verificado abriendo 33 sockets desde una misma IP y recibiendo `429` en el último ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)).
+- [ ] Tope de conexiones activo: `EO_WS_MAX_CONNECTIONS` (5000) por debajo de `ulimits.nofile`, y `EO_WS_MAX_CONNECTIONS_PER_IP` (32) **con `EO_TRUST_PROXY_HEADERS=true`** y `EO_TRUSTED_PROXY_COUNT` igual al número real de proxies, los mismos valores que en `apps/web`; verificado abriendo 33 sockets desde una misma IP y recibiendo `429` en el último ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)).
 - [ ] Límites de tasa de `apps/web` activos, con `EO_TRUST_PROXY_HEADERS=true` **sólo** detrás del proxy y `EO_TRUSTED_PROXY_COUNT` igual al número real de proxies: uno de más deja al atacante elegir la IP que se le atribuye.
 - [ ] Idempotencia operativa: `requestId` repetido devuelve la respuesta original y **no** re-ejecuta.
 - [ ] Los logs no contienen tickets, DSN completos ni payloads con datos personales.

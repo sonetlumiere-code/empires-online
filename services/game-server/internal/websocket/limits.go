@@ -93,18 +93,15 @@ func rejectStatus(reason string) int {
 const retryAfterSeconds = "5"
 
 // clientIP es la IP con la que se cuenta la conexión. Por defecto es la del
-// socket (r.RemoteAddr). Sólo con trustProxy se cree a X-Forwarded-For, y se
-// toma su PRIMERA entrada, como hace apps/web: con un proxy que la sobrescribe
-// (Caddy por defecto, Nginx con $remote_addr) es la IP del cliente; con uno
-// que la añade a lo que trajo el cliente, sería falsificable, y por eso el
-// despliegue exige la primera forma. Sin proxy, creerla dejaría a cualquiera
-// elegir su IP y saltarse el tope.
-func clientIP(r *http.Request, trustProxy bool) string {
+// socket (r.RemoteAddr). Sólo con trustProxy se creen las cabeceras del proxy,
+// y se leen exactamente como hace apps/web (`clientIp` en
+// apps/web/src/server/rateLimit.ts): la misma variable, la misma lectura.
+// Sin proxy, creerlas dejaría a cualquiera elegir su IP y saltarse el tope.
+// Cuando las cabeceras no dan una IP fiable, cuenta la del socket.
+func clientIP(r *http.Request, trustProxy bool, trustedProxies int) string {
 	if trustProxy {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if first := strings.TrimSpace(strings.Split(xff, ",")[0]); first != "" {
-				return first
-			}
+		if ip, ok := forwardedClientIP(r.Header, trustedProxies); ok {
+			return ip
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -112,4 +109,57 @@ func clientIP(r *http.Request, trustProxy bool) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// forwardedClientIP saca la IP del cliente de las cabeceras del proxy.
+//
+// X-Forwarded-For es una lista «cliente, proxy1, proxy2, …» a la que cada
+// proxy AÑADE la dirección de quien le habló. El primer elemento lo escribe
+// quien quiera, el atacante incluido; el único fiable es el que añadió el
+// último proxy de confianza: el N-ésimo por la derecha, con N el número de
+// proxies de confianza (EO_TRUSTED_PROXY_COUNT). Si la lista es más corta,
+// ningún proxy de confianza añadió nada y no se cree ninguno.
+//
+// X-Real-IP sólo se usa a falta de X-Forwarded-For: Nginx la fija a
+// $remote_addr y la sobrescribe, pero un proxy que no la toque dejaría pasar
+// la que mande el cliente, y por eso nunca prevalece sobre la lista.
+//
+// Un N menor que 1 —configuración sin rellenar— se trata como 1.
+func forwardedClientIP(h http.Header, trustedProxies int) (string, bool) {
+	if trustedProxies < 1 {
+		trustedProxies = 1
+	}
+	// Varias cabeceras X-Forwarded-For equivalen a una sola lista, como en la
+	// API Fetch que usa apps/web.
+	if lines := h.Values("X-Forwarded-For"); len(lines) > 0 {
+		var hops []string
+		for _, hop := range strings.Split(strings.Join(lines, ","), ",") {
+			if hop = strings.TrimSpace(hop); hop != "" {
+				hops = append(hops, hop)
+			}
+		}
+		idx := len(hops) - trustedProxies
+		if idx < 0 {
+			return "", false
+		}
+		return normalizeIP(hops[idx]), true
+	}
+	if real := strings.TrimSpace(h.Get("X-Real-IP")); real != "" {
+		return normalizeIP(real), true
+	}
+	return "", false
+}
+
+// normalizeIP quita el puerto que algunos proxies añaden («203.0.113.7:51234»,
+// «[2001:db8::1]:443») y unifica la caja, como hace apps/web.
+func normalizeIP(raw string) string {
+	if strings.HasPrefix(raw, "[") {
+		if end := strings.IndexByte(raw, ']'); end > 0 {
+			return strings.ToLower(raw[1:end])
+		}
+	}
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		return strings.ToLower(host)
+	}
+	return strings.ToLower(raw)
 }

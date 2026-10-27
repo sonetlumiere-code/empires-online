@@ -605,7 +605,7 @@ Todo pasa por `internal/config`; ningún valor de gameplay se hardcodea en más 
 | `EO_WS_OUTBOUND_QUEUE_SIZE` | 256 (8–65536) | Capacidad de la cola de salida por conexión (§3.3). |
 | `EO_WS_ALLOWED_ORIGINS` | — (obligatoria en producción) | Lista blanca de `Origin` en el upgrade de `/ws`; sin `Origin` se admite ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
 | `EO_WS_MAX_CONNECTIONS` / `_PER_IP` | 5000 / 32 (0 = sin tope) | Sockets de `/ws` abiertos, contados desde antes del upgrade; por encima, `503` / `429` sin abrir socket. |
-| `EO_TRUST_PROXY_HEADERS` | `false` | La IP de una conexión es la primera de `X-Forwarded-For`; sólo detrás de un proxy que la sobrescriba. La misma variable que lee `apps/web`. |
+| `EO_TRUST_PROXY_HEADERS` / `EO_TRUSTED_PROXY_COUNT` | `false` / 1 | La IP de una conexión se toma de las cabeceras del proxy, leídas como en `apps/web`: el elemento de `X-Forwarded-For` que está N posiciones por la derecha (`X-Real-IP` a falta de ella); sólo detrás de un proxy de confianza. Las mismas dos variables que lee `apps/web`. |
 | `EO_PRESENCE_TTL_SECONDS` / `_HEARTBEAT_SECONDS` | 30 / 10 | Margen de reconexión y latido. El heartbeat debe ser **estrictamente menor** que el TTL. |
 | `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` | 300 (0–86400) | Transición `OFFLINE_PENDING → PROTECTED`. |
 

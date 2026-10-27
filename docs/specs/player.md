@@ -187,7 +187,7 @@ Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-serv
 | `EO_AUTH_RATE_LIMIT_USER_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_USER_BURST` | 20 / 10 | Alta y login por nombre de usuario, con o sin proxy. |
 | `EO_AUTH_RATE_LIMIT_GLOBAL_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_GLOBAL_BURST` | 120 / 30 | Tope de alta y login de todo el proceso: acota el coste de `scrypt`. Al menos tan amplio como los dos anteriores. |
 | `EO_AUTH_TICKET_RATE_LIMIT_PER_MINUTE` / `EO_AUTH_TICKET_RATE_LIMIT_BURST` | 1200 / 600 | Tope de ticket y cierre de sesión de todo el proceso. |
-| `EO_TRUST_PROXY_HEADERS` / `EO_TRUSTED_PROXY_COUNT` | `false` / 1 | Si se cree a `X-Forwarded-For` (y a `X-Real-IP` a falta de ella) y cuántos proxies de confianza añaden su salto. `EO_TRUST_PROXY_HEADERS` la lee también el game server para su tope de conexiones por IP ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
+| `EO_TRUST_PROXY_HEADERS` / `EO_TRUSTED_PROXY_COUNT` | `false` / 1 | Si se cree a `X-Forwarded-For` (y a `X-Real-IP` a falta de ella) y cuántos proxies de confianza añaden su salto. Las dos las lee también el game server, con la misma lectura, para su tope de conexiones por IP ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
 | `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` | 512 / 512 | Límites para el emplazamiento de la ciudad inicial. |
 | `EO_WORLD_SEED` | 20260909 | Semilla del **generador del mapa**, no del emplazamiento. |
 | `EO_INTEREST_RADIUS_CHUNKS` | 2 | Área de interés inicial centrada en la ciudad del jugador. |

@@ -336,19 +336,35 @@ func TestLasTresDireccionesDeEscuchaSonDistintas(t *testing.T) {
 }
 
 // ADR-021: los topes de conexiones admiten 0 («sin tope») y rechazan lo que
-// no sea un entero en rango; EO_TRUST_PROXY_HEADERS es el mismo booleano que
-// lee apps/web.
+// no sea un entero en rango; EO_TRUST_PROXY_HEADERS y EO_TRUSTED_PROXY_COUNT
+// son las mismas variables, con el mismo rango, que lee apps/web.
 func TestTopesDeConexionesDelWebSocket(t *testing.T) {
 	t.Run("se leen del entorno", func(t *testing.T) {
 		setValidEnv(t)
 		t.Setenv("EO_WS_MAX_CONNECTIONS", "0")
 		t.Setenv("EO_WS_MAX_CONNECTIONS_PER_IP", "8")
 		t.Setenv("EO_TRUST_PROXY_HEADERS", "true")
+		t.Setenv("EO_TRUSTED_PROXY_COUNT", "3")
 		cfg, err := config.Load()
 		require.NoError(t, err)
 		require.Equal(t, 0, cfg.WSMaxConnections, "0 es «sin tope»")
 		require.Equal(t, 8, cfg.WSMaxConnectionsPerIP)
 		require.True(t, cfg.TrustProxyHeaders)
+		require.Equal(t, 3, cfg.TrustedProxyCount)
+	})
+
+	t.Run("un proxy de confianza por defecto, como en apps/web", func(t *testing.T) {
+		setValidEnv(t)
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.Equal(t, 1, cfg.TrustedProxyCount)
+	})
+
+	t.Run("cero proxies de confianza no tiene sentido", func(t *testing.T) {
+		setValidEnv(t)
+		t.Setenv("EO_TRUSTED_PROXY_COUNT", "0")
+		_, err := config.Load()
+		require.ErrorContains(t, err, "EO_TRUSTED_PROXY_COUNT=0 fuera del rango permitido")
 	})
 
 	t.Run("fuera de rango es un error", func(t *testing.T) {

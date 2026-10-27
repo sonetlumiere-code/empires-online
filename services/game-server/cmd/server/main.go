@@ -315,6 +315,7 @@ func run() error {
 		MaxConnections:       cfg.WSMaxConnections,
 		MaxConnectionsPerIP:  cfg.WSMaxConnectionsPerIP,
 		TrustProxyHeaders:    cfg.TrustProxyHeaders,
+		TrustedProxyCount:    cfg.TrustedProxyCount,
 	}, hub, authenticator, presence, dedupe, commands, metrics, log)
 
 	// Detrás del reverse proxy del despliegue de referencia, TODAS las
