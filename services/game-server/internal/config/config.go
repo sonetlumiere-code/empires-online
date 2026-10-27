@@ -12,6 +12,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -25,6 +26,11 @@ type Config struct {
 	LogLevel    string
 	HTTPAddr    string
 	MetricsAddr string
+	// InternalAddr es el listener de la API interna (`/internal/players`), que
+	// sólo llama apps/web con un token de fundación (ADR-018). Es un servidor
+	// aparte del público para que el reverse proxy no lo publique: por defecto
+	// escucha sólo en loopback (ADR-021).
+	InternalAddr string
 
 	PostgresURL   Secret
 	RedisURL      Secret
@@ -122,10 +128,11 @@ func Load() (Config, error) {
 	origins, originsSet := v.origins("EO_WS_ALLOWED_ORIGINS")
 
 	cfg := Config{
-		Env:         env,
-		LogLevel:    v.str("EO_LOG_LEVEL", "info"),
-		HTTPAddr:    v.str("EO_HTTP_ADDR", ":8080"),
-		MetricsAddr: v.str("EO_METRICS_ADDR", ":9090"),
+		Env:          env,
+		LogLevel:     v.str("EO_LOG_LEVEL", "info"),
+		HTTPAddr:     v.addr("EO_HTTP_ADDR", ":8080"),
+		MetricsAddr:  v.addr("EO_METRICS_ADDR", ":9090"),
+		InternalAddr: v.addr("EO_INTERNAL_ADDR", "127.0.0.1:8081"),
 
 		PostgresURL:   NewSecret(v.str("EO_POSTGRES_URL", "")),
 		RedisURL:      NewSecret(v.str("EO_REDIS_URL", "")),
@@ -205,6 +212,13 @@ func Load() (Config, error) {
 	if cfg.IsProduction() && !originsSet {
 		v.fail("EO_WS_ALLOWED_ORIGINS es obligatoria en producción: sin ella el upgrade de /ws acepta cualquier Origin")
 	}
+	// Tres listeners, tres puertos. Dos direcciones con el mismo puerto fallan
+	// al abrir el segundo listener, ya en marcha; mejor aquí, antes de arrancar.
+	v.distinctPorts(
+		listenAddr{"EO_HTTP_ADDR", cfg.HTTPAddr},
+		listenAddr{"EO_METRICS_ADDR", cfg.MetricsAddr},
+		listenAddr{"EO_INTERNAL_ADDR", cfg.InternalAddr},
+	)
 
 	if err := v.err(); err != nil {
 		return Config{}, err
@@ -229,6 +243,46 @@ func (c *collector) str(key, def string) string {
 		return raw
 	}
 	return def
+}
+
+// addr lee una dirección de escucha `host:port` tal y como la acepta net.Listen,
+// con el puerto explícito y distinto de 0: un puerto 0 sería «uno al azar», y
+// nadie sabría a dónde conectar.
+func (c *collector) addr(key, def string) string {
+	raw := c.str(key, def)
+	if _, port, err := net.SplitHostPort(raw); err != nil || !validPort(port) {
+		c.fail(fmt.Sprintf("%s=%q no es una dirección de escucha válida (usa host:port o :port, con puerto entre 1 y 65535)", key, raw))
+		return def
+	}
+	return raw
+}
+
+func validPort(port string) bool {
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535
+}
+
+// listenAddr es una dirección de escucha con el nombre de su variable, para
+// los mensajes de error.
+type listenAddr struct{ key, value string }
+
+// distinctPorts exige que ninguna dirección de escucha repita puerto. Se
+// compara sólo el puerto porque `:8080` escucha en todas las interfaces y
+// choca con cualquier `host:8080`; dos hosts concretos con el mismo puerto
+// podrían convivir, pero es una rareza que no merece un listener roto.
+func (c *collector) distinctPorts(addrs ...listenAddr) {
+	seen := map[string]listenAddr{}
+	for _, a := range addrs {
+		_, port, err := net.SplitHostPort(a.value)
+		if err != nil {
+			continue // ya reportado por addr
+		}
+		if prev, dup := seen[port]; dup {
+			c.fail(fmt.Sprintf("%s=%q repite el puerto %s de %s: cada listener necesita el suyo", a.key, a.value, port, prev.key))
+			continue
+		}
+		seen[port] = a
+	}
 }
 
 // origins lee una lista separada por comas de orígenes exactos

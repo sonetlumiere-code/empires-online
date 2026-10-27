@@ -389,6 +389,10 @@ token legítimo funde otro id que el que Next.js acaba de autenticar.
   acepta las dos.
 - `BOUNDARY` — `POST /internal/players` rechaza con 401 un token de otra audiencia, caducado o ya consumido, y
   con 403 un cuerpo cuyo `playerId` no es el `sub`.
+- `BOUNDARY` — `/internal/players` sólo escucha en `EO_INTERNAL_ADDR` (`127.0.0.1:8081` por defecto), un
+  listener aparte del público que el reverse proxy no publica ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)):
+  el token es la segunda barrera, no la única. Hasta la auditoría del 2026-10-26 compartía puerto con `/ws` y
+  el Caddyfile de referencia lo proxyaba a Internet.
 - `BOUNDARY` — el `jti` del token de fundación se consume en el mismo almacén anti-replay que el del ticket
   ([INV-SEC-003](#inv-sec-003)).
 

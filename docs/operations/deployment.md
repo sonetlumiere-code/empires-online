@@ -28,7 +28,8 @@ Procedimiento completo de despliegue de Empires Online: frontend Next.js en Verc
                              │  ┌──────────▼───────────────────┐   │
                              │  │ empires-game-server          │   │
                              │  │  /ws  /health  /ready        │   │
-                             │  │  :9090 /metrics (privado)    │   │
+                             │  │  :8081 /internal (privado)   │   │
+                             │  │  :9090 /metrics  (privado)   │   │
                              │  └──────────┬───────────────────┘   │
                              └─────────────┼───────────────────────┘
                                            │ red privada + TLS
@@ -65,7 +66,7 @@ bundle JavaScript** que se descarga el navegador: es público de forma irreversi
 | `NEXT_PUBLIC_GAME_SERVER_WS_URL` | **público** | Navegador y servidor | `wss://game.<dominio>/ws` |
 | `EO_AUTH_JWT_SECRET` | **privado** | Solo runtime del servidor de Next | Clave HS256 compartida con el Game Server: firma el ticket y el token de fundación |
 | `EO_IDENTITY_POSTGRES_URL` | **privado** | Solo runtime del servidor de Next | Almacén de identidad ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)): cuentas y sesiones web, en una base y con un rol propios |
-| `EO_GAME_SERVER_INTERNAL_URL` | **privado** | Solo runtime del servidor de Next | Base HTTPS del Game Server para `POST /internal/players` |
+| `EO_GAME_SERVER_INTERNAL_URL` | **privado** | Solo runtime del servidor de Next | Base del **listener interno** del Game Server (`EO_INTERNAL_ADDR`) para `POST /internal/players`: nunca `game.<dominio>`, que no lo publica (§4.4) |
 | `EO_AUTH_RATE_LIMIT_*`, `EO_TRUST_PROXY_HEADERS` | **privado** | Solo runtime del servidor de Next | Límite de alta y login por origen; en Vercel, `EO_TRUST_PROXY_HEADERS=true` |
 
 `NEXT_PUBLIC_GAME_SERVER_WS_URL` es una variable **del frontend**, no del catálogo `EO_` del Game Server:
@@ -193,6 +194,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"    # solo loopback: el proxy es el único que entra
       - "127.0.0.1:9090:9090"    # métricas: solo loopback
+      # 8081 (EO_INTERNAL_ADDR, la API interna) NO se publica: ver §4.4
     restart: unless-stopped
     stop_grace_period: 30s        # margen para cerrar conexiones y drenar la cola de persistencia
     ulimits:
@@ -302,9 +304,8 @@ game.<dominio> {
     handle /health { respond "" 404 }   # liveness no se expone públicamente
     handle /ready  { respond "" 404 }
 
-    handle {
-        reverse_proxy 127.0.0.1:8080
-    }
+    # Nada más se publica. /internal/* ni siquiera escucha en :8080 (§4.4).
+    handle { respond "" 404 }
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -370,7 +371,7 @@ server {
 
     location = /health { return 404; }
     location = /ready  { return 404; }
-    location / { proxy_pass http://eo_game_server; }
+    location / { return 404; }   # nada más se publica; /internal/* vive en otro listener (§4.4)
 }
 server { listen 80; server_name game.<dominio>; return 301 https://$host$request_uri; }
 ```
@@ -387,6 +388,41 @@ server { listen 80; server_name game.<dominio>; return 301 https://$host$request
 | Read/idle timeout del proxy | Sin límite (Caddy) o 600 s (Nginx) | **Debe superar al del servidor.** Si el proxy corta antes, el jugador ve una desconexión sin código de cierre y el servidor no se entera hasta su propio timeout. |
 | Tamaño máximo de frame en el proxy | ≥ 16 KiB | Para que el rechazo por tamaño lo emita el servidor con `MESSAGE_TOO_LARGE`, en vez de un corte mudo del proxy. |
 | Buffering | Desactivado | Un delta bufferizado es un delta tarde; el juego es en tiempo real. |
+
+### 4.4 El listener interno no se publica
+
+`POST /internal/players` y `GET /internal/players/{playerId}` —la fundación y la consulta que llama
+`apps/web` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md),
+[ADR-020](../decisions/ADR-020-stale-pending-accounts.md))— escuchan en **`EO_INTERNAL_ADDR`**
+(`127.0.0.1:8081` por defecto), un `http.Server` aparte del de `/ws`
+([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Ningún `handle` del proxy público apunta a él:
+desde `game.<dominio>` esas rutas responden `404` del proxy, y el token de fundación pasa a ser la segunda
+barrera, no la única. `/health` y `/ready` siguen en el listener público, que es donde los sondea el host.
+
+Cómo llega `apps/web` hasta él depende de dónde corra:
+
+| Dónde corre `apps/web` | `EO_INTERNAL_ADDR` | `EO_GAME_SERVER_INTERNAL_URL` | Red |
+|---|---|---|---|
+| En el mismo VPS (**objetivo** en cuanto salga de Vercel) | `127.0.0.1:8081` (default) | `http://127.0.0.1:8081` | Loopback: nada que publicar ni cifrar. |
+| En otro host de la misma red privada (otro contenedor, VPC, WireGuard) | `:8081`, con el puerto en `expose` del Compose, **nunca** en `ports` | `http://<ip-privada>:8081` | Sólo la red privada; el firewall del VPS no abre 8081. |
+| En Vercel (despliegue de referencia hoy) | `127.0.0.1:8081` | `https://internal.game.<dominio>` | Un **segundo sitio** de Caddy, con TLS propio, que proxya **sólo** `/internal/*` a `127.0.0.1:8081` y restringe el origen por `remote_ip` a las IP de salida de Vercel. Vercel sólo da IP de salida fijas como opción de pago; sin ella, el filtro no es viable y ese host queda abierto a Internet con el token como única barrera —lo mismo que antes de ADR-021, pero en un host propio que se puede limitar, vigilar y cerrar sin tocar el juego—. |
+
+```caddyfile
+# Sólo si apps/web corre en Vercel. Nunca dentro del sitio game.<dominio>.
+internal.game.<dominio> {
+    @fundacion {
+        path /internal/*
+        remote_ip <ip-de-salida-de-vercel-1> <ip-de-salida-de-vercel-2>
+    }
+    handle @fundacion {
+        reverse_proxy 127.0.0.1:8081
+    }
+    respond "" 404
+}
+```
+
+Comprobación, desde fuera: `curl -i https://game.<dominio>/internal/players` responde `404`, y `nmap` no ve
+el 8081.
 
 ---
 
@@ -719,11 +755,12 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 
 ### Red
 
-- [ ] Puertos 8080 y 9090 publicados **solo** en `127.0.0.1`, verificado desde fuera con `nmap` o equivalente.
+- [ ] Puertos 8080 y 9090 publicados **solo** en `127.0.0.1`, y 8081 (`EO_INTERNAL_ADDR`) **sin publicar**, verificado desde fuera con `nmap` o equivalente.
+- [ ] `/internal/players` no es alcanzable desde el host público: `curl -i https://game.<dominio>/internal/players` responde `404` del proxy ([ADR-021](../decisions/ADR-021-game-server-perimeter.md), §4.4).
 - [ ] Firewall del VPS: solo 80, 443 y SSH (con puerto o restricción de origen). Verificado **después** de arrancar Docker, porque Docker manipula `iptables`.
 - [ ] Postgres y Redis sin acceso público; lista blanca con la IP del VPS o red privada.
 - [ ] `EO_POSTGRES_URL` con `sslmode=require` o superior; `EO_REDIS_URL` con esquema `rediss://`. **Comprobación manual: el arranque no la valida.**
-- [ ] `EO_METRICS_ADDR` distinto de `EO_HTTP_ADDR`. **Comprobación manual: tampoco la valida el arranque**; un valor repetido falla al abrir el segundo listener, ya en marcha.
+- [ ] `EO_HTTP_ADDR`, `EO_METRICS_ADDR` y `EO_INTERNAL_ADDR` con puertos distintos. Desde [ADR-021](../decisions/ADR-021-game-server-perimeter.md) **sí lo valida el arranque**; la casilla queda para el `docker-compose.yml`, que debe publicar los dos primeros y no el tercero.
 - [ ] SSH: solo clave pública, sin contraseña, sin login directo de root.
 
 ### TLS y protocolo

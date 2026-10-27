@@ -55,7 +55,10 @@ COPY --from=builder /out/migrate /usr/local/bin/migrate
 # Nunca root.
 USER empires:empires
 
-EXPOSE 8080 9090
+# 8080 juego (/ws, /health, /ready), 9090 métricas, 8081 API interna. 8081 escucha
+# sólo en loopback por defecto (EO_INTERNAL_ADDR): para alcanzarla desde otro
+# contenedor hay que ponerla en :8081, y aun así nunca se publica al host.
+EXPOSE 8080 8081 9090
 
 # Liveness: no toca dependencias externas a propósito. La readiness (/ready) la
 # consulta el balanceador, no el runtime del contenedor: confundirlas provoca

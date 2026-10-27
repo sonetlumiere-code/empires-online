@@ -37,6 +37,7 @@ func TestValoresPorDefectoDelCanon(t *testing.T) {
 	require.Equal(t, "development", cfg.Env)
 	require.Equal(t, ":8080", cfg.HTTPAddr)
 	require.Equal(t, ":9090", cfg.MetricsAddr)
+	require.Equal(t, "127.0.0.1:8081", cfg.InternalAddr, "la API interna sólo escucha en loopback por defecto")
 	require.Equal(t, 10, cfg.TickRateHz)
 	require.EqualValues(t, 512, cfg.WorldWidth)
 	require.EqualValues(t, 512, cfg.WorldHeight)
@@ -294,6 +295,43 @@ func TestEntornoContraListaCerrada(t *testing.T) {
 		cfg, err := config.Load()
 		require.NoError(t, err)
 		require.Equal(t, config.EnvDevelopment, cfg.Env)
+	})
+}
+
+// ADR-021: tres listeners, tres puertos. Dos direcciones con el mismo puerto
+// fallaban al abrir el segundo listener, ya en marcha, y el checklist de
+// despliegue lo comprobaba a mano.
+func TestLasTresDireccionesDeEscuchaSonDistintas(t *testing.T) {
+	t.Run("host:port, :port y [::1]:port se aceptan", func(t *testing.T) {
+		setValidEnv(t)
+		t.Setenv("EO_HTTP_ADDR", "0.0.0.0:8080")
+		t.Setenv("EO_METRICS_ADDR", ":9090")
+		t.Setenv("EO_INTERNAL_ADDR", "[::1]:8081")
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.Equal(t, "[::1]:8081", cfg.InternalAddr)
+	})
+
+	t.Run("un puerto repetido es un error que nombra a las dos", func(t *testing.T) {
+		setValidEnv(t)
+		t.Setenv("EO_INTERNAL_ADDR", ":8080")
+		_, err := config.Load()
+		require.ErrorContains(t, err, `EO_INTERNAL_ADDR=":8080" repite el puerto 8080 de EO_HTTP_ADDR`)
+
+		setValidEnv(t)
+		t.Setenv("EO_INTERNAL_ADDR", "") // vuelve al default, 127.0.0.1:8081
+		t.Setenv("EO_METRICS_ADDR", "127.0.0.1:8081")
+		_, err = config.Load()
+		require.ErrorContains(t, err, `EO_INTERNAL_ADDR="127.0.0.1:8081" repite el puerto 8081 de EO_METRICS_ADDR`)
+	})
+
+	t.Run("sin puerto, con puerto 0 o fuera de rango es un error", func(t *testing.T) {
+		for _, malo := range []string{"8081", "localhost", "127.0.0.1:0", ":70000", ":abc"} {
+			setValidEnv(t)
+			t.Setenv("EO_INTERNAL_ADDR", malo)
+			_, err := config.Load()
+			require.ErrorContains(t, err, `EO_INTERNAL_ADDR="`+malo+`" no es una dirección de escucha válida`, "valor %q", malo)
+		}
 	})
 }
 

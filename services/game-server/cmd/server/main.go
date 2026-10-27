@@ -342,16 +342,31 @@ func run() error {
 			Clock:          sysClock,
 		}, log)
 
+	// Superficie pública, la que publica el reverse proxy: el juego y la salud.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", health.LivenessHandler())
 	mux.HandleFunc("/ready", health.ReadinessHandler())
 	mux.HandleFunc("/ws", wsServer.Handler(rootCtx))
-	mux.HandleFunc(httpapi.FoundPath, foundingAPI.Found())
-	mux.HandleFunc(httpapi.LookupPattern, foundingAPI.Lookup())
 
 	gameHTTP := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		IdleTimeout:       httpIdleTimeout,
+	}
+
+	// Superficie interna, en su propio listener (ADR-021): sólo la fundación y
+	// la consulta de jugadores que llama apps/web. No comparte puerto con /ws
+	// para que el proxy no pueda publicarla por accidente; el token de fundación
+	// es la segunda barrera, no la única.
+	internalMux := http.NewServeMux()
+	internalMux.HandleFunc(httpapi.FoundPath, foundingAPI.Found())
+	internalMux.HandleFunc(httpapi.LookupPattern, foundingAPI.Lookup())
+
+	internalHTTP := &http.Server{
+		Addr:              cfg.InternalAddr,
+		Handler:           internalMux,
 		ReadHeaderTimeout: httpReadHeaderTimeout,
 		ReadTimeout:       httpReadTimeout,
 		IdleTimeout:       httpIdleTimeout,
@@ -368,12 +383,18 @@ func run() error {
 	}
 
 	// ── 7. Arranque ─────────────────────────────────────────────
-	errCh := make(chan error, 3)
+	errCh := make(chan error, 4)
 
 	go func() {
 		log.Info("servidor de juego escuchando", "addr", cfg.HTTPAddr)
 		if err := gameHTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- fmt.Errorf("servidor HTTP: %w", err)
+		}
+	}()
+	go func() {
+		log.Info("servidor interno escuchando", "addr", cfg.InternalAddr)
+		if err := internalHTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("servidor interno: %w", err)
 		}
 	}()
 	go func() {
@@ -414,6 +435,7 @@ func run() error {
 	// despide a quien está dentro, y sólo al final se vacían las escrituras
 	// pendientes. Al revés se perderían datos.
 	_ = gameHTTP.Shutdown(shutdownCtx)
+	_ = internalHTTP.Shutdown(shutdownCtx)
 	_ = metricsHTTP.Shutdown(shutdownCtx)
 	hub.CloseAll(1001, "servidor en mantenimiento")
 

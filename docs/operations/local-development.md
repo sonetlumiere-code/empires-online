@@ -701,7 +701,10 @@ alta y el login son route handlers de Next.js (`/api/auth/register`, `/api/auth/
 el almacén de identidad, abren una sesión con la cookie `eo_session` y responden con el ticket. Cada reconexión
 pide uno nuevo a `/api/auth/ticket`. Por eso el servidor de Next.js necesita `EO_AUTH_JWT_SECRET` —el mismo del
 Game Server— y `EO_IDENTITY_POSTGRES_URL`; al arrancar aplica las migraciones del almacén y, si no puede, no
-arranca.
+arranca. Para fundar al jugador llama al **listener interno** del Game Server, `EO_GAME_SERVER_INTERNAL_URL`
+(`http://localhost:8081`, el `EO_INTERNAL_ADDR` del servidor): un `.env` anterior a
+[ADR-021](../decisions/ADR-021-game-server-perimeter.md) que siga apuntando a `8080` hace que el alta falle
+con `503 GAME_SERVER_UNAVAILABLE`, porque en `8080` esas rutas ya no existen.
 
 Si el puerto 3000 está ocupado por otra aplicación, el script `dev` lo fija y fallará con
 `EADDRINUSE`. Arranca Next.js en otro puerto directamente; la web y su API viven en el mismo origen, así que no
@@ -913,7 +916,7 @@ pnpm --filter @empires-online/web exec vitest run src/server/store.integration.t
 
 ## 10. Solución de problemas frecuentes
 
-### 10.1 Puerto ocupado (5432, 6379, 8080, 9090, 3000)
+### 10.1 Puerto ocupado (5432, 6379, 8080, 8081, 9090, 3000)
 
 Síntoma: `Ports are not available: ... bind: An attempt was made to access a socket in a way forbidden`,
 o el Game Server muere al arrancar con `address already in use`.

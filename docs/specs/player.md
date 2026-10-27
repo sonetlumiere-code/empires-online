@@ -163,7 +163,8 @@ Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-serv
 |---|---|---|
 | `EO_AUTH_JWT_SECRET` | — (obligatoria en los dos procesos) | `apps/web` firma con él el ticket y el token de fundación; el game server los verifica. Mínimo 32 caracteres; no puede contener `dev-only` si `EO_ENV=production`, en ninguno de los dos. |
 | `EO_IDENTITY_POSTGRES_URL` | — (obligatoria en `apps/web`) | Almacén de identidad. Sólo la lee `apps/web`. |
-| `EO_GAME_SERVER_INTERNAL_URL` | `http://localhost:8080` | Dónde llama `apps/web` para fundar. |
+| `EO_GAME_SERVER_INTERNAL_URL` | `http://localhost:8081` en `.env.example` | Dónde llama `apps/web` para fundar: el listener **interno** del game server (`EO_INTERNAL_ADDR`), no el puerto público ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
+| `EO_INTERNAL_ADDR` | `127.0.0.1:8081` | Listener del game server para `/internal/players`; sólo loopback por defecto. |
 | `EO_AUTH_RATE_LIMIT_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_BURST` | 10 / 5 | Límite de alta y login por origen, en `apps/web` y por proceso. |
 | `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` | 512 / 512 | Límites para el emplazamiento de la ciudad inicial. |
 | `EO_WORLD_SEED` | 20260909 | Semilla del **generador del mapa**, no del emplazamiento. |

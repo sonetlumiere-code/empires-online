@@ -93,8 +93,9 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
 |---|---|---|---|---|---|---|
-| `EO_HTTP_ADDR` | addr | `:8080` | `host:port` tal y como lo acepta `net/http` | No | No | Dirección de escucha del servidor HTTP: upgrade WebSocket en `/ws`, `GET /health`, `GET /ready` y `POST /internal/players`, la fundación que llama `apps/web` con un token firmado ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Es la superficie **pública** (detrás del reverse proxy). |
-| `EO_METRICS_ADDR` | addr | `:9090` | `host:port` | No | No | Dirección de escucha de `/metrics` (Prometheus), en un `http.Server` **separado** a propósito: permite exponer 8080 al mundo y dejar 9090 accesible solo desde la red de monitorización. Ponerla igual que `EO_HTTP_ADDR` no lo detecta la validación: falla al abrir el segundo listener. |
+| `EO_HTTP_ADDR` | addr | `:8080` | `host:port` o `:port`, con puerto entre 1 y 65535 | No | No | Dirección de escucha del servidor HTTP **público** (detrás del reverse proxy): upgrade WebSocket en `/ws`, `GET /health` y `GET /ready`. Nada más: la API interna tiene su propio listener. |
+| `EO_INTERNAL_ADDR` | addr | `127.0.0.1:8081` | `host:port` o `:port`, con puerto entre 1 y 65535 | No | No | Dirección de escucha de la **API interna**: `POST /internal/players` (fundación, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) y `GET /internal/players/{playerId}` (consulta, [ADR-020](../decisions/ADR-020-stale-pending-accounts.md)), las dos llamadas sólo por `apps/web` con un token de fundación. Es un `http.Server` **aparte** del público para que el reverse proxy no pueda publicarlo ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)): por defecto escucha **sólo en loopback**, y desde `8080` esas rutas responden `404`. `/health` y `/ready` **no** se sirven aquí: los consume el balanceador por el listener público. Cómo llega `apps/web` hasta él según dónde corra: [deployment.md §4.4](./deployment.md#44-el-listener-interno-no-se-publica). |
+| `EO_METRICS_ADDR` | addr | `:9090` | `host:port` o `:port`, con puerto entre 1 y 65535 | No | No | Dirección de escucha de `/metrics` (Prometheus), en un `http.Server` **separado** a propósito: permite exponer 8080 al mundo y dejar 9090 accesible solo desde la red de monitorización. **Los tres listeners necesitan puertos distintos**: el cargador lo valida (§4.2, regla 8) y falla al arrancar en vez de al abrir el segundo. |
 
 ### 3.3 Dependencias
 
@@ -161,7 +162,7 @@ lleva el prefijo `NEXT_PUBLIC_`. En desarrollo, `apps/web` carga el `.env` de la
 |---|---|---|---|---|---|
 | `EO_AUTH_JWT_SECRET` | string | — | ≥ 32 caracteres; sin `dev-only` en producción | **Sí** | El **mismo** que verifica el Game Server (§3.3): `apps/web` firma con él el game ticket y el token de fundación. |
 | `EO_IDENTITY_POSTGRES_URL` | DSN | — (obligatoria) | URL de PostgreSQL | **Sí** | Almacén de identidad: `accounts` y `web_sessions`, en una base y con un rol propios. En local la crea `pnpm run pg:identity` con una contraseña aleatoria que escribe sólo en el `.env`. |
-| `EO_GAME_SERVER_INTERNAL_URL` | URL | `http://localhost:8080` | URL HTTP(S) | No | Base a la que `apps/web` llama `POST /internal/players` para fundar un jugador. |
+| `EO_GAME_SERVER_INTERNAL_URL` | URL | `http://localhost:8080` (en `apps/web`; `.env.example` trae `http://localhost:8081`) | URL HTTP(S) | No | Base a la que `apps/web` llama `POST /internal/players` y `GET /internal/players/{id}`. Desde [ADR-021](../decisions/ADR-021-game-server-perimeter.md) apunta al **listener interno** (`EO_INTERNAL_ADDR`, `127.0.0.1:8081`), no al puerto público del juego: contra `8080` esas rutas responden `404`. El valor por defecto de `apps/web/src/server/config.ts` sigue diciendo `8080` y debe cambiarse a `8081`; mientras tanto, el `.env` lo fija. |
 | `EO_AUTH_RATE_LIMIT_PER_MINUTE` | int | `10` | 1–100000 | No | Intentos de alta y login por minuto y por origen. Cada uno calcula `scrypt`: sin límite, cualquiera hace quemar CPU al servidor web, y en el login es lo único que separa una contraseña de la fuerza bruta. **Por proceso**: con varias instancias de Next.js, cada una lleva su cuenta. |
 | `EO_AUTH_RATE_LIMIT_BURST` | int | `5` | 1–10000 | No | Capacidad del cubo de esos intentos. Un humano que se equivoca de contraseña dos veces no lo nota; un script sí. |
 | `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false` | No | Si se cree a `X-Forwarded-For` al identificar el origen. **Actívalo sólo con un proxy inverso delante.** Sin esto, todas las peticiones comparten un único cupo; sin proxy y con esto, cualquiera falsifica la cabecera y se salta el límite. El valor por defecto es el seguro. **También la lee el Game Server** (§3.8), para el tope de conexiones por IP: es la misma decisión —hay o no un proxy de confianza delante— tomada una vez para los dos procesos. |
@@ -233,7 +234,7 @@ las consecuencias se escriben en Postgres antes de que nadie lo note.
    En todos los casos el valor efectivo cae al default y el error queda anotado.
 2. **Presencia de obligatorias.** `EO_POSTGRES_URL` y `EO_AUTH_JWT_SECRET`: ausente o vacía → error.
    `EO_REDIS_URL` solo es obligatoria si `EO_ENV=production`.
-3. **Las siete validaciones cruzadas**, las que ninguna variable puede comprobar sola:
+3. **Las ocho validaciones cruzadas**, las que ninguna variable puede comprobar sola:
 
    | # | Regla | Por qué existe |
    |---|---|---|
@@ -244,14 +245,16 @@ las consecuencias se escriben en Postgres antes de que nadie lo note.
    | 5 | `EO_PRESENCE_HEARTBEAT_SECONDS` **estrictamente menor** que `EO_PRESENCE_TTL_SECONDS` | Con heartbeat ≥ TTL la presencia expiraría entre latidos y los jugadores conectados parpadearían a ausentes. |
    | 6 | `EO_WS_RATE_LIMIT_BURST` **≥** `EO_WS_RATE_LIMIT_PER_SECOND` | Un *bucket* con capacidad menor que su tasa de recarga no puede sostener siquiera la tasa nominal. |
    | 7 | `EO_WS_ALLOWED_ORIGINS` **no puede estar vacía** si `EO_ENV=production` | Sin lista, el upgrade de `/ws` acepta cualquier `Origin`: cualquier página web abriría sesiones de juego desde el navegador de un jugador que tenga la web abierta ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
+   | 8 | `EO_HTTP_ADDR`, `EO_METRICS_ADDR` y `EO_INTERNAL_ADDR` con **puertos distintos** | Dos listeners en el mismo puerto fallan al abrir el segundo, ya en marcha. Se compara sólo el puerto porque `:8080` escucha en todas las interfaces y choca con cualquier `host:8080`. Error: `EO_INTERNAL_ADDR=":8080" repite el puerto 8080 de EO_HTTP_ADDR`. |
 
 **La validación acumula TODOS los errores y los reporta juntos**, no de uno en uno. Arreglar la
 configuración de un despliegue con un reinicio por error es tiempo de indisponibilidad regalado.
 
 Reglas que **no** aplica el cargador, y que por tanto son responsabilidad del procedimiento de despliegue
 (ver el checklist de [deployment.md](./deployment.md#9-checklist-de-seguridad-previo-a-producción)):
-`sslmode=require` en `EO_POSTGRES_URL`, esquema `rediss://` en `EO_REDIS_URL`, `EO_LOG_LEVEL != debug` en
-producción y `EO_METRICS_ADDR != EO_HTTP_ADDR`. No están automatizadas: si se te olvidan, el proceso arranca.
+`sslmode=require` en `EO_POSTGRES_URL`, esquema `rediss://` en `EO_REDIS_URL` y `EO_LOG_LEVEL != debug` en
+producción. No están automatizadas: si se te olvidan, el proceso arranca. (Que los tres listeners no
+compartan puerto sí lo valida el cargador desde [ADR-021](../decisions/ADR-021-game-server-perimeter.md).)
 
 ### 4.3 Mensajes de error
 

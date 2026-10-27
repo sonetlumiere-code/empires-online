@@ -75,7 +75,7 @@ flowchart TB
     end
 
     subgraph vps["VPS — Docker"]
-        GS["<b>services/game-server</b> — IMPLEMENTADO<br/>Go (go.mod: go 1.23 mínimo) · binario único<br/>HTTP/WS en EO_HTTP_ADDR :8080<br/>métricas en EO_METRICS_ADDR :9090<br/>loop 10 Hz · simulación en RAM<br/>migraciones embebidas (go:embed)<br/>POST /internal/players (fundación)"]
+        GS["<b>services/game-server</b> — IMPLEMENTADO<br/>Go (go.mod: go 1.23 mínimo) · binario único<br/>HTTP/WS en EO_HTTP_ADDR :8080<br/>métricas en EO_METRICS_ADDR :9090<br/>API interna en EO_INTERNAL_ADDR 127.0.0.1:8081<br/>loop 10 Hz · simulación en RAM<br/>migraciones embebidas (go:embed)<br/>POST /internal/players (fundación)"]
     end
 
     PG[("<b>PostgreSQL gestionado</b><br/>civilizations, factions, eras,<br/>players, world_state, world_chunks,<br/>cities, units, unit_movements,<br/>sessions,<br/>territories, territory_control, safe_zones,<br/>treaties, garrisons, world_events")]
