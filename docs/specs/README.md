@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las nueve specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las diez specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -49,6 +49,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Territory | [territory.md](territory.md) | M6 Territories | Draft | `territories` y `territory_control`, resolución tile → territorio |
 | Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Draft | `garrisons`, entrada y salida, tratados con `allows_garrison` |
 | WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Draft | Envelopes, los 7 mensajes cliente→servidor y los 14 servidor→cliente, límites e idempotencia |
+| Economía: madera | [economy-wood.md](economy-wood.md) | E1 Madera | Accepted | `city_stocks`, tarea de recolección `GATHER_WOOD` y estado `WORKING`, casa en la zona urbana, entrenamiento de aldeanos; primer slice después de M7 |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
