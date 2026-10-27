@@ -26,12 +26,13 @@ Propósito: definir el diseño objetivo del cliente de **Empires Online** —Nex
 > | §3.1 Envelopes | Existe, con diferencias: el cliente valida con Zod **todo** mensaje también en producción y emite también `unit.garrison` y `unit.ungarrison`. |
 > | §3.2 Handshake | **Ajustada al código.** |
 > | §3.3–§3.7 Reconexión, `seq`, cola de comandos, errores, reloj | **Objetivo.** Cada una dice qué hace hoy `src/net/client.ts`, que es bastante menos. |
-> | §4 Store | Existe en lo esencial (réplica de sólo lectura, snapshot que reemplaza, terreno que se fusiona); la forma del estado y los reducers separados son objetivo. |
+> | §4 Store | Existe en lo esencial (réplica de sólo lectura, snapshot que reemplaza, terreno que se fusiona, mapas estables con la señal `changes` de qué ids tocó cada delta); la forma del estado y los reducers separados son objetivo. |
 > | §5 Posición autoritativa y de render | **Ajustada al código.** |
 > | §6 Coordenadas | Las fórmulas existen; el anclaje del rombo y el acotado del clic difieren (§6.2, §6.4). |
-> | §7.1–§7.2, §7.4–§7.6 Escena, profundidad, culling, picking, presupuesto | **Objetivo**, con lo que existe dicho en cada una. |
+> | §7.1–§7.2, §7.5–§7.6 Escena, profundidad, picking, presupuesto | **Objetivo**, con lo que existe dicho en cada una; el HUD por selector de valor de §7.6 sí se cumple. |
+> | §7.4 Culling | **Ajustada al código** desde 2026-10-27 (`src/render/culling.ts`), con las diferencias que dice su Estado. |
 > | §7.4.1 Cámara desplazable y `session.view` | **Ajustada al código** (`EO-122`). |
-> | §7.3 Bucle de frame | **Ajustada al código.** |
+> | §7.3 Bucle de frame | **Ajustada al código**: la escena recibe sólo lo que cambió y por frame mueve sólo las unidades activas. |
 > | §8 React frente a PixiJS | El reparto existe; minimapa, paneles y `next/dynamic` no. |
 > | §9 React Query | **No existe**: el cliente no tiene esa dependencia. |
 > | §11 Estructura de carpetas | **Objetivo.** El árbol real es el de la tabla de arriba. |
@@ -327,7 +328,10 @@ Mientras `quality() === 'UNSYNCED'` (antes del primer `session.pong`), el render
 > lectura que sólo cambia por `applyServerMessage` (y `applyWelcome` / `applySnapshot`, que ella llama), y no
 > hay predicción de movimiento. Diferencias: también guarda la selección (`selectedUnitId`, `selectUnit`) y el
 > último error (`lastError`), porque no hay `uiStore` separado; y `reset()` existe pero la reconexión no lo
-> llama (§3.4).
+> llama (§3.4). Desde 2026-10-27 **un delta cuesta lo que cambia**: los mapas de entidades son de referencia
+> estable y se mutan en sitio, cada entidad es un objeto inmutable que se reemplaza entero, y cada `set` que
+> toca el mundo publica en `changes` qué ids tocó (§4.2). Antes, cada `entity.update` copiaba el `Map` de
+> unidades entero.
 
 `worldStore` (Zustand) contiene **estado autoritativo replicado y de solo lectura**. Su única vía de escritura es el reductor que consume mensajes del servidor:
 
@@ -347,11 +351,19 @@ El estado *de interfaz* (selección de unidades, panel abierto, hover) vive en u
 ### 4.2 Forma del estado
 
 > **Estado: objetivo en la forma; ajustado en el terreno.** El estado real es `{ playerId, sessionId, world,
-> tick, units, cities, territories, terrain, selectedUnitId, lastError }`: sin `connection` (el estado de la
-> conexión lo lleva `GameClient` y la página) ni `view`. Cada unidad es un `UnitView` con `x`, `y` (la
+> tick, units, cities, territories, terrain, changes, selectedUnitId, lastError }`: sin `connection` (el estado
+> de la conexión lo lleva `GameClient` y la página) ni `view`. Cada unidad es un `UnitView` con `x`, `y` (la
 > posición autoritativa consolidada), `movement`, `cityId` y `garrisonCityId`; el terreno es un `Map` por
 > clave `"cx:cy"` con los bytes ya decodificados. Lo que dicen los dos párrafos sobre cómo llega el terreno —una
 > vez por sesión (`NeedsTerrain` / `MarkTerrainSent`), fusionado y nunca borrado por un snapshot— es exacto.
+>
+> Los cuatro mapas se exponen como `ReadonlyMap` y son **los mismos objetos durante toda la pestaña**: un
+> snapshot o un `reset` los vacían y rellenan en sitio. Por eso su referencia no sirve para detectar cambios;
+> lo que se compara es `changes: WorldChanges` —`revision` creciente, `all` (snapshot, welcome, reset), los
+> ids de `units`, `cities` y `territories` tocados (en `units`, también la unidad que entra y la que sale de la
+> selección) y `terrain` (llegaron chunks)—, que se reemplaza en cada `set` que toca el mundo y no en los que
+> sólo dejan `lastError`. Medido en `src/state/world.perf.test.ts` (informativo, 2 000 unidades y 1 000
+> `entity.update`): unos 4 µs por delta frente a 133–145 µs cuando se copiaba el mapa.
 
 Los identificadores siguen los tipos del paquete de protocolo: `EntityId` es un **entero positivo** (`number`, acotado a `Number.MAX_SAFE_INTEGER`) para unidades, ciudades, movimientos y territorios; `Uuid` es un **string** y se usa para `playerId` y `sessionId`. No hay ids de entidad como cadena.
 
@@ -415,7 +427,9 @@ Volumen: con `EO_INTEREST_RADIUS_CHUNKS = 2` el área son 5×5 = 25 chunks = 25 
 > `unit.movement.*`. Diferencias: `entity.update` sobre una entidad desconocida se ignora sin contarse; no hay
 > cola que resolver, así que `unit.move.accepted` no hace nada y `unit.move.rejected` y `system.error` sólo
 > dejan `lastError`; `unit.movement.cancelled` deja además la unidad en `IDLE`; y `session.pong` lo consume
-> `GameClient`, no el store. Tests: `src/state/world.test.ts`.
+> `GameClient`, no el store. Cada caso muta su entrada del mapa y publica en `changes` el id tocado (§4.2); un
+> delta sobre una entidad desconocida no publica nada. Tests: `src/state/world.test.ts` (también qué ids
+> señala cada mensaje y que el mapa y las entidades no tocadas conservan su objeto).
 
 Un reducer puro por familia de mensajes, todos con firma `(state, payload, envelope) => state`:
 
@@ -679,8 +693,11 @@ Regla práctica: los píxeles nacen en la capa 3, viven un frame y mueren en la 
 > **Estado: objetivo.** El grafo real (`IsoScene`, `src/render/scene.ts`) es `Application` (`antialias: true`,
 > `resolution = devicePixelRatio`, `autoDensity`) → `root` (la cámara) → `terrainLayer`, `territoryLayer` (el
 > overlay de territorios, entre el suelo y las entidades) y `entityLayer` (ciudades y unidades). No hay `fxLayer`
-> ni overlay de safe zones, tile resaltado o ruta prevista. El terreno es un `Graphics` por tile visible,
-> cacheado por tile y retirado al salir de la vista, no una `RenderTexture` por chunk.
+> ni overlay de safe zones, tile resaltado o ruta prevista. El terreno es un `Graphics` **por chunk** a la
+> vista —los rombos de sus `size × size` tiles en un solo objeto de escena, construido cuando el chunk entra en
+> la caja de tiles visible y retirado cuando queda a más de un chunk de ella (§7.4)—, no una `RenderTexture`
+> por chunk: Pixi lo tesela y lo pinta en pocos *draw calls*, pero sigue siendo geometría, no una textura
+> cacheada.
 
 ```
 Application (canvas WebGL, resolution = devicePixelRatio, antialias = false)
@@ -726,37 +743,62 @@ Detalles que importan:
 
 > **Estado: ajustada al código.**
 
-Lo que hace hoy `IsoScene.draw` (`src/render/scene.ts`), registrado en el `ticker` de Pixi:
+Dos caminos, con costes distintos: **por cambio del store** y **por frame**.
+
+Por cambio (`useWorldStore.subscribe` en `GameCanvas`, sólo cuando `changes` es otro, §4.2): la proyección
+pura `projectChanges` (`src/render/projection.ts`) convierte **únicamente los ids señalados** en `SceneUnit`,
+`SceneCity` y `SceneTerritory` —una unidad guarnecida o despawneada va en `removedUnits`— y
+`IsoScene.apply(SceneUpdate)` crea, actualiza o retira esos sprites y nada más; con `changes.all` (snapshot,
+reconexión, primera vez) la proyección es completa y la escena retira lo que no venga. La unidad tocada entra
+en el conjunto de **activas**; una ciudad tocada actualiza posición, opacidad (`presenceState`), etiqueta
+(`name`) y color (propia o no) comparando con lo último aplicado, como hace la firma de los territorios: antes
+la etiqueta y el color se fijaban al crear el sprite y un `city.update` con `name` no se veía.
+
+Por frame, lo que hace hoy `IsoScene.draw` (`src/render/scene.ts`), registrado en el `ticker` de Pixi:
 
 ```
 ticker (hasta 60 fps; deltaMS acotado a 100 ms por Pixi)
   1. cámara: position + scale del contenedor raíz
-  2. reconciler.frame(data.serverTimeMs(), ticker.deltaMS)      // un instante del servidor por frame
-  3. terreno visible (culling por la cámara, caché por tile), territorios, ciudades
-  4. por cada unidad que no está guarnecida:
+  2. reconciler.frame(serverTimeMs(), ticker.deltaMS)           // un instante del servidor por frame
+  3. culling (§7.4): rectángulo de tiles de la cámara; SÓLO si cambió o llegó terreno,
+       chunks de terreno que entran y salen, y `visible` de unidades y ciudades
+  4. por cada unidad ACTIVA (en movimiento, recién cambiada o con desfase por corregir):
        pos = reconciler.position(unit.id, { x, y, movement })    // interpolación + corrección (§5.3)
        sprite.position = worldToIso(pos.x, pos.y)
        sprite.zIndex   = depthOf(pos.x, pos.y) + 0.5
-  5. sprites y registros de las unidades que ya no están: prune + reconciler.retain
-  6. ordenar entityLayer por zIndex
+       quieta y ya en su sitio → deja de ser activa hasta su próximo delta
+  5. ordenar entityLayer por zIndex, sólo si algún zIndex cambió o entró un sprite
 ```
 
-`SceneData` llega del store cuando éste cambia (`useWorldStore.subscribe` en `GameCanvas`), no en cada
-frame; lo que sí se evalúa en cada frame es el reloj, a través de la función `serverTimeMs` que la escena
-recibe en lugar de un valor.
+Una unidad quieta no cuesta nada por frame; las ciudades y los territorios sólo se tocan en `apply`. El reloj
+sí se evalúa en cada frame, a través de la función `serverTimeMs` que la escena recibe al construirse. Medido
+en `src/state/world.perf.test.ts` (informativo, 2 000 unidades): store + proyección + selector del HUD cuestan
+16–17 µs por `entity.update` (el store, 4; la mayor parte del resto es el selector del HUD, que recorre las
+unidades sin reservar memoria), y ninguno re-renderiza React. Si algún día esa cuenta importa, el selector
+puede mantenerse incremental con los ids de `changes`.
 
 Diseño objetivo que el bucle real **todavía no** hace: el terreno compuesto por chunk en una `RenderTexture`
-(hoy es un `Graphics` por tile visible), el `depthIndex` con *bias* de capa de §7.2 y el seguimiento de cámara
-con inercia. Lo que sí hace, desde `EO-122`, es avanzar la cámara con el `deltaMS` del *ticker* al principio de
-cada frame (`CameraController.step`) y entregar su centro a la página (`onCameraFrame`), que decide si envía
-`session.view` (§7.4.1). Tampoco evita asignar un `{ x, y }` por unidad y frame; con las decenas de unidades de un área de interés del MVP no se ha medido que importe.
+(hoy es un `Graphics` por chunk, §7.1), el `depthIndex` con *bias* de capa de §7.2, el *bucket sort* cuando
+cientos de unidades se muevan a la vez (hoy, si alguna activa cambia de profundidad, se reordena todo el
+`entityLayer`) y el seguimiento de cámara con inercia. Lo que sí hace, desde `EO-122`, es avanzar la cámara
+con el `deltaMS` del *ticker* al principio de cada frame (`CameraController.step`) y entregar su centro a la
+página (`onCameraFrame`), que decide si envía `session.view` (§7.4.1). Tampoco evita asignar un `{ x, y }` por
+unidad activa y frame; no se ha medido que importe.
 
 ### 7.4 Área de interés, culling y `session.view`
 
 > **Estado:** la cámara desplazable y el envío de `session.view` están **implementados** tal como dice §7.4.1
-> (`EO-122`). El culling sigue siendo objetivo: hoy existe sólo para el terreno —en cada frame se recorre el
-> cuadrado de tiles que cubre el viewport, con un margen de 4, y se crean o retiran sus gráficos— y las
-> entidades no se descartan por visibilidad.
+> (`EO-122`). El culling existe desde 2026-10-27 (`src/render/culling.ts`, puro, con `culling.test.ts`): en
+> cada frame la escena calcula el rectángulo de tiles que cubre el viewport a partir de sus cuatro esquinas
+> (`visibleWorldRect`: la caja envolvente del rombo visible, que lo dobla) y **sólo si cambió** —la cámara
+> cruzó un tile, cambió el zoom o el tamaño— o llegó terreno, crea los chunks de terreno que entran en esa caja,
+> retira los que quedan a más de un chunk de ella y decide `visible` de unidades y ciudades por su anclaje
+> contra el viewport en píxeles de escena con 128 px de holgura (`visibleIsoRect`, exacto); una unidad activa
+> lo reevalúa al moverse. Diferencias con lo que sigue: los chunks fuera se destruyen y se reconstruyen en
+> lugar de marcarse `renderable = false` (son `Graphics`, no sprites con textura, y construir uno cuesta una
+> vez por entrada en vista); el margen de entidades es en píxeles, no en tiles; y los territorios no se
+> recortan, porque son pocos y grandes. Antes, cada frame recorría el cuadrado de tiles del viewport creando
+> una clave por tile y un `Graphics` por tile, y ninguna entidad se descartaba por visibilidad.
 
 El servidor ya limita lo que envía: suscripción **por chunk**, radio por defecto **2 chunks** (`EO_INTEREST_RADIUS_CHUNKS = 2`), es decir 5×5 chunks = 160×160 tiles alrededor del centro de vista. Eso no basta como culling de render: a zoom 1 en un viewport de 1920×1080 son visibles del orden de 30×34 tiles (unos 1000 tiles), frente a los 25 600 del área de interés. El cliente hace por tanto **su propio culling**:
 
@@ -841,10 +883,13 @@ El tile bajo el cursor se resalta continuamente en `overlayLayer` usando la mism
 
 ### 7.6 Presupuesto de rendimiento
 
-> **Estado: objetivo, sin medir.** No hay atlas de texturas (todo es `Graphics`), el antialias está activo y
-> nadie ha medido el presupuesto por fase. Sí se cumplen: React no se re-renderiza por frame (la escena recibe
-> el estado por suscripción y la posición interpolada nunca llega a React), y `resolution: devicePixelRatio`
-> con `autoDensity`.
+> **Estado: objetivo en el presupuesto; cumplido en React.** No hay atlas de texturas (todo es `Graphics`), el
+> antialias está activo y nadie ha medido el presupuesto por fase en el navegador. Sí se cumplen: React no se
+> re-renderiza por frame ni por delta ajeno —la página se suscribe con un **selector memorizado por valor**
+> (`createHudSelector`, `src/state/selectors.ts`: unidades propias, guarnecidas y ciudad propia; misma vista ⇒
+> misma referencia, test en `selectors.test.ts`), la escena recibe sólo los ids cambiados (§7.3) y la posición
+> interpolada nunca llega a React—, y `resolution: devicePixelRatio` con `autoDensity`. La fila «lectura de
+> store + diff de entidades» es hoy la proyección por ids de §7.3; la fila «sorting y culling» sigue sin medir.
 
 Objetivo: **60 fps sostenidos**, es decir **16.67 ms por frame**. Presupuesto orientativo:
 
@@ -876,8 +921,8 @@ Medidas concretas:
 > civilización, paneles, minimapa, tratados ni indicador de destino. `GameCanvas.tsx` monta y destruye la
 > `Application` dentro de un efecto, con el montaje y la destrucción encadenados para el doble montaje de
 > *Strict Mode*; no usa `next/dynamic`, porque es un componente de cliente que sólo toca WebGL dentro del
-> efecto. React → Pixi es `scene.update(data)` desde una suscripción al store; Pixi → React, los *callbacks*
-> `onTileClick` y `onUnitClick`.
+> efecto. React → Pixi es `scene.apply(update)` con sólo lo que cambió, desde una suscripción al store (§7.3);
+> Pixi → React, los *callbacks* `onTileClick` y `onUnitClick`.
 
 | Va en **React** (DOM) | Va en **PixiJS** (canvas) |
 |---|---|

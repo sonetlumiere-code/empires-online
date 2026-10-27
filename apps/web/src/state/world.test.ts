@@ -230,6 +230,155 @@ describe('ciclo de vida del movimiento', () => {
   });
 });
 
+describe('señal de cambios: un delta cuesta lo que cambia', () => {
+  beforeEach(() => {
+    useWorldStore
+      .getState()
+      .applySnapshot(snapshot({ units: [unitView({ id: 1 }), unitView({ id: 2, playerId: OTHER })] }));
+  });
+
+  it('entity.update enumera sólo la unidad tocada y no sustituye el mapa', () => {
+    const before = useWorldStore.getState();
+    const mapa = before.units;
+    const tocada = mapa.get(1);
+    const intacta = mapa.get(2);
+
+    useWorldStore.getState().applyServerMessage(server('entity.update', 2, { id: 1, x: 9 }));
+
+    const after = useWorldStore.getState();
+    expect(after.changes.all).toBe(false);
+    expect([...after.changes.units]).toEqual([1]);
+    expect(after.changes.cities.size).toBe(0);
+    expect(after.changes.territories.size).toBe(0);
+    expect(after.changes.terrain).toBe(false);
+    expect(after.changes.revision).toBeGreaterThan(before.changes.revision);
+    // Lo que hace barato el delta: el mapa es el mismo objeto y la unidad que
+    // no se tocó conserva el suyo; la tocada es un objeto nuevo.
+    expect(after.units).toBe(mapa);
+    expect(after.units.get(2)).toBe(intacta);
+    expect(after.units.get(1)).not.toBe(tocada);
+    expect(tocada!.x, 'la vista anterior es inmutable').toBe(5);
+  });
+
+  it('un delta sobre una entidad desconocida no produce ningún cambio', () => {
+    const before = useWorldStore.getState().changes;
+    useWorldStore.getState().applyServerMessage(server('entity.update', 3, { id: 999, x: 1 }));
+    expect(useWorldStore.getState().changes).toBe(before);
+  });
+
+  it('spawn, despawn y el ciclo del movimiento señalan su unidad y sólo ella', () => {
+    const { applyServerMessage } = useWorldStore.getState();
+    const unidades = () => [...useWorldStore.getState().changes.units];
+
+    applyServerMessage(server('entity.spawn', 4, { unit: unitView({ id: 7 }) }));
+    expect(unidades()).toEqual([7]);
+
+    const movement = {
+      movementId: 900,
+      path: [
+        { x: 5, y: 5, tMs: 0 },
+        { x: 6, y: 5, tMs: 600 },
+      ],
+      startTimeMs: 1_757_376_000_000,
+      arrivalTimeMs: 1_757_376_000_600,
+      target: { x: 6, y: 5 },
+    };
+    applyServerMessage(server('unit.movement.started', 5, { unitId: 2, movement }));
+    expect(unidades()).toEqual([2]);
+    applyServerMessage(
+      server('unit.movement.completed', 6, { unitId: 2, movementId: 900, finalPosition: { x: 6, y: 5 } }),
+    );
+    expect(unidades()).toEqual([2]);
+    applyServerMessage(
+      server('unit.movement.cancelled', 7, {
+        unitId: 1,
+        movementId: 901,
+        stoppedAt: { x: 5, y: 5 },
+        reason: 'CANCELLED_BY_PLAYER',
+      }),
+    );
+    expect(unidades()).toEqual([1]);
+
+    applyServerMessage(server('entity.despawn', 8, { id: 7, reason: 'OUT_OF_INTEREST' }));
+    expect(unidades()).toEqual([7]);
+    expect(useWorldStore.getState().changes.all).toBe(false);
+  });
+
+  it('city.update y territory.update señalan la suya y ninguna unidad', () => {
+    const { applyServerMessage } = useWorldStore.getState();
+
+    applyServerMessage(server('city.update', 2, { id: 10, population: 4 }));
+    let changes = useWorldStore.getState().changes;
+    expect([...changes.cities]).toEqual([10]);
+    expect(changes.units.size).toBe(0);
+    expect(changes.territories.size).toBe(0);
+
+    applyServerMessage(
+      server('territory.update', 3, {
+        territory: {
+          id: 30,
+          name: 'Llanura',
+          minX: 0,
+          minY: 0,
+          maxX: 15,
+          maxY: 15,
+          ownerType: 'PLAYER',
+          ownerId: PLAYER,
+          contested: false,
+        },
+      }),
+    );
+    changes = useWorldStore.getState().changes;
+    expect([...changes.territories]).toEqual([30]);
+    expect(changes.units.size).toBe(0);
+    expect(changes.cities.size).toBe(0);
+  });
+
+  it('el snapshot y el reset marcan el conjunto entero, y el terreno sólo si llegó', () => {
+    useWorldStore.getState().applySnapshot(snapshot({ terrain: [] }));
+    let changes = useWorldStore.getState().changes;
+    expect(changes.all).toBe(true);
+    expect(changes.terrain).toBe(false);
+
+    const base64 = Buffer.from(new Uint8Array([0, 1, 2, 3])).toString('base64');
+    useWorldStore.getState().applySnapshot(snapshot({ terrain: [{ cx: 0, cy: 0, size: 2, terrain: base64 }] }));
+    changes = useWorldStore.getState().changes;
+    expect(changes.all).toBe(true);
+    expect(changes.terrain).toBe(true);
+
+    useWorldStore.getState().reset();
+    expect(useWorldStore.getState().changes.all).toBe(true);
+    expect(useWorldStore.getState().units.size).toBe(0);
+    expect(useWorldStore.getState().terrain.size).toBe(0);
+  });
+
+  it('la selección señala la unidad que entra y la que sale, y no repite si no cambia', () => {
+    const { selectUnit } = useWorldStore.getState();
+    const unidades = () => [...useWorldStore.getState().changes.units].sort();
+
+    selectUnit(1);
+    expect(unidades()).toEqual([1]);
+    selectUnit(2);
+    expect(unidades()).toEqual([1, 2]);
+
+    const sinCambio = useWorldStore.getState().changes;
+    selectUnit(2);
+    expect(useWorldStore.getState().changes).toBe(sinCambio);
+
+    selectUnit(null);
+    expect(unidades()).toEqual([2]);
+  });
+
+  it('un error o un mensaje que no toca el mundo dejan la señal como estaba', () => {
+    const before = useWorldStore.getState().changes;
+    useWorldStore.getState().applyServerMessage(
+      server('unit.move.rejected', 2, { unitId: 1, code: 'PATH_NOT_FOUND', message: 'sin camino' }),
+    );
+    expect(useWorldStore.getState().lastError?.code).toBe('PATH_NOT_FOUND');
+    expect(useWorldStore.getState().changes).toBe(before);
+  });
+});
+
 describe('ciudad y errores', () => {
   beforeEach(() => {
     useWorldStore.getState().applySnapshot(snapshot());

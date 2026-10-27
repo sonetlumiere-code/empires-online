@@ -14,16 +14,11 @@
  */
 import { useEffect, useRef, useState } from 'react';
 
-import {
-  IsoScene,
-  type SceneCity,
-  type SceneData,
-  type SceneTerritory,
-  type SceneUnit,
-} from '../render/scene';
+import { IsoScene } from '../render/scene';
+import { projectAll, projectChanges } from '../render/projection';
 import { CameraController, panDirectionOf } from '../render/camera';
 import type { Point, Tile } from '../render/iso';
-import { terrainAt, useWorldStore } from '../state/world';
+import { useWorldStore, type WorldState } from '../state/world';
 
 export interface GameCanvasProps {
   /** Instante actual del SERVIDOR (reloj local corregido por el desfase). */
@@ -34,76 +29,8 @@ export interface GameCanvasProps {
   onCameraCenter?: (center: Point) => void;
 }
 
-/** Proyecta el estado del store a lo que la escena necesita dibujar. */
-function toSceneData(
-  state: ReturnType<typeof useWorldStore.getState>,
-  serverTimeMs: () => number,
-): SceneData | null {
-  if (!state.world) return null;
-
-  const ownId = state.playerId;
-
-  const units: SceneUnit[] = [];
-  for (const u of state.units.values()) {
-    // Una unidad guarnecida está dentro de su ciudad, no en el mapa: sólo la
-    // recibe su dueño, y se ofrece en el HUD para sacarla.
-    if (u.garrisonCityId !== null) continue;
-    units.push({
-      id: u.id,
-      x: u.x,
-      y: u.y,
-      movement: u.movement,
-      isOwn: u.playerId === ownId,
-      isSelected: state.selectedUnitId === u.id,
-    });
-  }
-
-  const cities: SceneCity[] = [];
-  for (const c of state.cities.values()) {
-    const isOwn = c.ownerPlayerId === ownId;
-    cities.push({
-      id: c.id,
-      centerX: c.centerX,
-      centerY: c.centerY,
-      name: c.name,
-      presenceState: c.presenceState,
-      isOwn,
-    });
-  }
-
-  // `isOwn` se decide comparando el `ownerId` que envió el servidor con el
-  // jugador de esta sesión. Es lo único que el cliente calcula sobre territorio,
-  // y no es ownership: es a quién pintar de verde.
-  const territories: SceneTerritory[] = [];
-  for (const t of state.territories.values()) {
-    territories.push({
-      id: t.id,
-      minX: t.minX,
-      minY: t.minY,
-      maxX: t.maxX,
-      maxY: t.maxY,
-      ownerType: t.ownerType,
-      isOwn: t.ownerType === 'PLAYER' && t.ownerId === ownId,
-    });
-  }
-
-  const chunkSize = state.world.chunkSize;
-  const terrainSnapshot = state.terrain;
-
-  return {
-    units,
-    cities,
-    territories,
-    terrainAt: (x, y) => terrainAt(terrainSnapshot, chunkSize, x, y),
-    // Se pasa la FUNCIÓN, no el valor: la escena necesita el instante de cada
-    // frame para interpolar. Congelarlo aquí dejaría las unidades quietas entre
-    // actualizaciones del store.
-    serverTimeMs,
-  };
-}
-
 /** La ciudad propia en el store, si la hay. */
-function ownCityCenter(state: ReturnType<typeof useWorldStore.getState>): Tile | null {
+function ownCityCenter(state: WorldState): Tile | null {
   for (const c of state.cities.values()) {
     if (c.ownerPlayerId === state.playerId) return { x: c.centerX, y: c.centerY };
   }
@@ -141,11 +68,17 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCen
       .then(async () => {
         if (disposed) return;
 
-        const s = new IsoScene(cameraRef.current, {
-          onTileClick: (tile) => handlers.current.onTileClick(tile),
-          onUnitClick: (unitId) => handlers.current.onUnitClick(unitId),
-          onCameraFrame: (center) => handlers.current.onCameraCenter?.(center),
-        });
+        const s = new IsoScene(
+          cameraRef.current,
+          {
+            onTileClick: (tile) => handlers.current.onTileClick(tile),
+            onUnitClick: (unitId) => handlers.current.onUnitClick(unitId),
+            onCameraFrame: (center) => handlers.current.onCameraCenter?.(center),
+          },
+          // Se pasa la FUNCIÓN, no el valor: la escena necesita el instante de
+          // cada frame para interpolar.
+          () => timeRef.current(),
+        );
         await s.mount(canvas, canvas.clientWidth, canvas.clientHeight);
 
         // Pudo desmontarse mientras se inicializaba: entonces se destruye sin
@@ -159,8 +92,10 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCen
         sceneRef.current = s;
         setRenderError(null);
 
-        const data = toSceneData(useWorldStore.getState(), () => timeRef.current());
-        if (data) s.update(data);
+        // Lo que el store ya tenía cuando la escena estuvo lista; desde aquí
+        // sólo llegan cambios.
+        const initial = projectAll(useWorldStore.getState());
+        if (initial) s.apply(initial);
       })
       .catch((err: unknown) => {
         // Un fallo de WebGL no puede quedarse en un lienzo negro sin explicación.
@@ -185,27 +120,32 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCen
     };
   }, []);
 
-  // El store empuja el estado a la escena; la escena decide cuándo dibujar.
+  // El store empuja a la escena SÓLO lo que cambió; la escena decide cuándo
+  // dibujar. Los mapas del store son estables: lo que distingue un cambio del
+  // mundo de uno que no lo es (un error) es la señal `changes`.
   useEffect(() => {
-    const push = (state: ReturnType<typeof useWorldStore.getState>) => {
+    const push = (state: WorldState, previous: WorldState | null) => {
+      if (previous && state.changes === previous.changes) return;
+      const changes = state.changes;
+
       // La primera vez que se conoce la ciudad propia, la cámara se centra en
-      // ella; después ya no la recentra nada salvo el jugador (tecla H).
+      // ella; después ya no la recentra nada salvo el jugador (tecla H). Sólo
+      // hay que mirarlo cuando cambian las ciudades o el conjunto entero.
       const camera = cameraRef.current;
-      if (state.world) {
+      if (state.world && (changes.all || changes.cities.size > 0)) {
         camera.setBounds(state.world);
         const city = ownCityCenter(state);
         if (city) camera.setHome(city);
       }
 
       const scene = sceneRef.current;
-      const canvas = canvasRef.current;
-      if (!scene || !canvas) return;
+      if (!scene) return;
 
-      const data = toSceneData(state, () => timeRef.current());
-      if (data) scene.update(data);
+      const update = previous ? projectChanges(state, changes) : projectAll(state);
+      if (update) scene.apply(update);
     };
 
-    push(useWorldStore.getState());
+    push(useWorldStore.getState(), null);
     return useWorldStore.subscribe(push);
   }, []);
 

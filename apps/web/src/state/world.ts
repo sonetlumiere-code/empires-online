@@ -6,7 +6,12 @@
  * jugador la modifica directamente: el jugador envía una intención, el servidor
  * decide, y el cambio llega como un delta.
  *
- * Ver ../../../../docs/architecture/networking.md
+ * Un delta cuesta lo que cambia, no lo que existe: los mapas de entidades son
+ * mutables y de referencia estable, cada entidad es un objeto inmutable que se
+ * reemplaza al cambiar, y cada `set` que toca el mundo publica en `changes` qué
+ * ids tocó. Los consumidores actualizan sólo eso (ver `WorldChanges`).
+ *
+ * Ver ../../../../docs/architecture/networking.md y frontend.md §4
  */
 import { create } from 'zustand';
 import type { v1 } from '@empires-online/protocol';
@@ -74,16 +79,47 @@ export interface WorldInfo {
   chunkSize: number;
 }
 
-interface WorldState {
+/**
+ * Qué tocó el último cambio del mundo.
+ *
+ * Los mapas de entidades NO se copian por mensaje (con 2 000 unidades, copiar
+ * `units` costaba más de 100 µs por `entity.update`): la referencia del mapa
+ * es siempre la misma y no sirve para detectar cambios. Lo que se compara es
+ * este objeto, que se reemplaza en cada `set` que toca el mundo y enumera los
+ * ids afectados, de modo que la escena actualiza sólo esos sprites y el HUD
+ * decide con un selector por valor. Cada entidad sí es un objeto inmutable que
+ * se reemplaza entero al cambiar: `units.get(id)` de antes y de después se
+ * pueden comparar por identidad.
+ */
+export interface WorldChanges {
+  /** Crece con cada cambio del mundo; dos cambios nunca comparten número. */
+  readonly revision: number;
+  /** Cambió el conjunto entero (snapshot, welcome, reset): los ids no se enumeran. */
+  readonly all: boolean;
+  /** Unidades añadidas, modificadas o retiradas, y las que entran o salen de la selección. */
+  readonly units: ReadonlySet<number>;
+  readonly cities: ReadonlySet<number>;
+  readonly territories: ReadonlySet<number>;
+  /** Llegaron chunks de terreno nuevos. */
+  readonly terrain: boolean;
+}
+
+export interface WorldState {
   playerId: string | null;
   sessionId: string | null;
   world: WorldInfo | null;
   tick: number;
 
-  units: Map<number, UnitView>;
-  cities: Map<number, CityView>;
-  territories: Map<number, TerritoryView>;
-  terrain: Map<string, ChunkTerrain>;
+  /**
+   * Réplica de sólo lectura. Los mapas pertenecen al store y son los mismos
+   * objetos durante toda la vida de la pestaña: un snapshot o un `reset` los
+   * vacían y rellenan en sitio, nunca los sustituyen.
+   */
+  units: ReadonlyMap<number, UnitView>;
+  cities: ReadonlyMap<number, CityView>;
+  territories: ReadonlyMap<number, TerritoryView>;
+  terrain: ReadonlyMap<string, ChunkTerrain>;
+  changes: WorldChanges;
 
   selectedUnitId: number | null;
   lastError: { code: string; message: string } | null;
@@ -105,203 +141,210 @@ function decodeTerrain(base64: string): Uint8Array {
   return out;
 }
 
-export const useWorldStore = create<WorldState>((set, get) => ({
-  playerId: null,
-  sessionId: null,
-  world: null,
-  tick: 0,
-  units: new Map(),
-  cities: new Map(),
-  territories: new Map(),
-  terrain: new Map(),
-  selectedUnitId: null,
-  lastError: null,
+function unitFromView(u: v1.UnitView): UnitView {
+  return {
+    id: u.id,
+    playerId: u.playerId,
+    cityId: u.cityId,
+    unitType: u.unitType,
+    x: u.x,
+    y: u.y,
+    hp: u.hp,
+    maxHp: u.maxHp,
+    status: u.status,
+    movement: u.movement ?? null,
+    garrisonCityId: u.garrisonCityId ?? null,
+  };
+}
 
-  applyWelcome: (payload) =>
-    set({
-      playerId: payload.playerId,
-      sessionId: payload.sessionId,
-      world: payload.world,
-    }),
+/** Un conjunto vacío compartido: la mayoría de los deltas no toca dos familias a la vez. */
+const NO_IDS: ReadonlySet<number> = new Set<number>();
 
-  /**
-   * El snapshot REEMPLAZA el estado observable, no lo mezcla.
-   *
-   * Es la razón por la que reconectar es fiable: no hay que reproducir deltas
-   * perdidos ni razonar sobre qué se quedó a medias. Se tira lo que había y se
-   * parte de la foto que acaba de enviar el servidor.
-   *
-   * El terreno es la excepción: es inmutable, así que los chunks ya conocidos se
-   * conservan y sólo se añaden los nuevos.
-   */
-  applySnapshot: (payload) => {
-    const units = new Map<number, UnitView>();
-    for (const u of payload.units) {
-      units.set(u.id, {
-        id: u.id,
-        playerId: u.playerId,
-        cityId: u.cityId,
-        unitType: u.unitType,
-        x: u.x,
-        y: u.y,
-        hp: u.hp,
-        maxHp: u.maxHp,
-        status: u.status,
-        movement: u.movement ?? null,
-        garrisonCityId: u.garrisonCityId ?? null,
-      });
-    }
+const INITIAL_CHANGES: WorldChanges = {
+  revision: 0,
+  all: true,
+  units: NO_IDS,
+  cities: NO_IDS,
+  territories: NO_IDS,
+  terrain: false,
+};
 
-    const territories = new Map<number, TerritoryView>();
-    for (const t of payload.territories) territories.set(t.id, { ...t });
+export const useWorldStore = create<WorldState>((set, get) => {
+  // Los mapas viven en esta clausura y se mutan en sitio: son los que el estado
+  // expone como `ReadonlyMap`. Fuera del store nadie debe sustituirlos.
+  const units = new Map<number, UnitView>();
+  const cities = new Map<number, CityView>();
+  const territories = new Map<number, TerritoryView>();
+  const terrain = new Map<string, ChunkTerrain>();
 
-    const cities = new Map<number, CityView>();
-    for (const c of payload.cities) cities.set(c.id, { ...c });
+  let revision = 0;
+  const changed = (partial: Partial<Omit<WorldChanges, 'revision'>>): WorldChanges => ({
+    revision: ++revision,
+    all: false,
+    units: NO_IDS,
+    cities: NO_IDS,
+    territories: NO_IDS,
+    terrain: false,
+    ...partial,
+  });
+  const unitChanged = (id: number): WorldChanges => changed({ units: new Set([id]) });
 
-    const terrain = new Map(get().terrain);
-    for (const t of payload.terrain) {
-      terrain.set(chunkKey(t.cx, t.cy), {
-        cx: t.cx,
-        cy: t.cy,
-        size: t.size,
-        tiles: decodeTerrain(t.terrain),
-      });
-    }
+  return {
+    playerId: null,
+    sessionId: null,
+    world: null,
+    tick: 0,
+    units,
+    cities,
+    territories,
+    terrain,
+    changes: INITIAL_CHANGES,
+    selectedUnitId: null,
+    lastError: null,
 
-    const selected = get().selectedUnitId;
-    set({
-      units,
-      cities,
-      territories,
-      terrain,
-      tick: payload.tick,
-      // Si la unidad seleccionada ya no está en el área de interés, se deselecciona.
-      selectedUnitId: selected !== null && units.has(selected) ? selected : null,
-    });
-  },
+    // Cambiar de jugador cambia qué es «propio» en todas las entidades: se
+    // señala el conjunto entero, que al conectar está vacío y al reconectar se
+    // reemplaza enseguida por el snapshot.
+    applyWelcome: (payload) =>
+      set({
+        playerId: payload.playerId,
+        sessionId: payload.sessionId,
+        world: payload.world,
+        changes: changed({ all: true }),
+      }),
 
-  applyServerMessage: (message) => {
-    switch (message.type) {
-      case 'session.welcome':
-        get().applyWelcome(message.payload);
-        break;
+    /**
+     * El snapshot REEMPLAZA el estado observable, no lo mezcla.
+     *
+     * Es la razón por la que reconectar es fiable: no hay que reproducir deltas
+     * perdidos ni razonar sobre qué se quedó a medias. Se tira lo que había y se
+     * parte de la foto que acaba de enviar el servidor.
+     *
+     * El terreno es la excepción: es inmutable, así que los chunks ya conocidos se
+     * conservan y sólo se añaden los nuevos.
+     */
+    applySnapshot: (payload) => {
+      units.clear();
+      for (const u of payload.units) units.set(u.id, unitFromView(u));
 
-      case 'world.snapshot':
-        get().applySnapshot(message.payload);
-        break;
+      territories.clear();
+      for (const t of payload.territories) territories.set(t.id, { ...t });
 
-      case 'entity.spawn': {
-        const u = message.payload.unit;
-        set((s) => {
-          const units = new Map(s.units);
-          units.set(u.id, {
-            id: u.id,
-            playerId: u.playerId,
-            cityId: u.cityId,
-            unitType: u.unitType,
-            x: u.x,
-            y: u.y,
-            hp: u.hp,
-            maxHp: u.maxHp,
-            status: u.status,
-            movement: u.movement ?? null,
-            garrisonCityId: u.garrisonCityId ?? null,
-          });
-          return { units };
+      cities.clear();
+      for (const c of payload.cities) cities.set(c.id, { ...c });
+
+      let newTerrain = false;
+      for (const t of payload.terrain) {
+        terrain.set(chunkKey(t.cx, t.cy), {
+          cx: t.cx,
+          cy: t.cy,
+          size: t.size,
+          tiles: decodeTerrain(t.terrain),
         });
-        break;
+        newTerrain = true;
       }
 
-      case 'entity.update': {
-        const p = message.payload;
-        set((s) => {
-          const existing = s.units.get(p.id);
+      const selected = get().selectedUnitId;
+      set({
+        tick: payload.tick,
+        // Si la unidad seleccionada ya no está en el área de interés, se deselecciona.
+        selectedUnitId: selected !== null && units.has(selected) ? selected : null,
+        changes: changed({ all: true, terrain: newTerrain }),
+      });
+    },
+
+    applyServerMessage: (message) => {
+      switch (message.type) {
+        case 'session.welcome':
+          get().applyWelcome(message.payload);
+          break;
+
+        case 'world.snapshot':
+          get().applySnapshot(message.payload);
+          break;
+
+        case 'entity.spawn': {
+          const u = message.payload.unit;
+          units.set(u.id, unitFromView(u));
+          set({ changes: unitChanged(u.id) });
+          break;
+        }
+
+        case 'entity.update': {
+          const p = message.payload;
+          const existing = units.get(p.id);
           // Un delta sobre una entidad desconocida se ignora: llegará su spawn
           // o el próximo snapshot. Inventarla a partir de un delta parcial
           // produciría una unidad con campos fantasma.
-          if (!existing) return s;
+          if (!existing) break;
 
-          const units = new Map(s.units);
+          // Los campos ausentes no se tocan; `null` sí es un valor (cityId,
+          // movement y garrisonCityId), por eso se compara con `undefined`.
           units.set(p.id, {
             ...existing,
-            ...(p.x !== undefined ? { x: p.x } : {}),
-            ...(p.y !== undefined ? { y: p.y } : {}),
-            ...(p.hp !== undefined ? { hp: p.hp } : {}),
-            ...(p.status !== undefined ? { status: p.status } : {}),
-            ...(p.cityId !== undefined ? { cityId: p.cityId } : {}),
-            ...(p.movement !== undefined ? { movement: p.movement } : {}),
-            ...(p.garrisonCityId !== undefined ? { garrisonCityId: p.garrisonCityId } : {}),
+            x: p.x !== undefined ? p.x : existing.x,
+            y: p.y !== undefined ? p.y : existing.y,
+            hp: p.hp !== undefined ? p.hp : existing.hp,
+            status: p.status !== undefined ? p.status : existing.status,
+            cityId: p.cityId !== undefined ? p.cityId : existing.cityId,
+            movement: p.movement !== undefined ? p.movement : existing.movement,
+            garrisonCityId: p.garrisonCityId !== undefined ? p.garrisonCityId : existing.garrisonCityId,
           });
-          return { units };
-        });
-        break;
-      }
+          set({ changes: unitChanged(p.id) });
+          break;
+        }
 
-      case 'entity.despawn': {
-        const { id } = message.payload;
-        set((s) => {
-          if (!s.units.has(id)) return s;
-          const units = new Map(s.units);
-          units.delete(id);
-          return {
-            units,
-            selectedUnitId: s.selectedUnitId === id ? null : s.selectedUnitId,
-          };
-        });
-        break;
-      }
+        case 'entity.despawn': {
+          const { id } = message.payload;
+          if (!units.delete(id)) break;
+          const selected = get().selectedUnitId;
+          set({
+            selectedUnitId: selected === id ? null : selected,
+            changes: unitChanged(id),
+          });
+          break;
+        }
 
-      case 'territory.update': {
-        // A diferencia de `entity.update`, esto NO es un delta parcial: el
-        // mensaje trae el `TerritoryView` completo, geometría incluida
-        // (RN-TERR-014). Por eso un territorio desconocido se añade en lugar de
-        // ignorarse — no hay campos que quedaran sin rellenar.
-        const t = message.payload.territory;
-        set((s) => {
-          const territories = new Map(s.territories);
+        case 'territory.update': {
+          // A diferencia de `entity.update`, esto NO es un delta parcial: el
+          // mensaje trae el `TerritoryView` completo, geometría incluida
+          // (RN-TERR-014). Por eso un territorio desconocido se añade en lugar de
+          // ignorarse — no hay campos que quedaran sin rellenar.
+          const t = message.payload.territory;
           territories.set(t.id, { ...t });
-          return { territories };
-        });
-        break;
-      }
+          set({ changes: changed({ territories: new Set([t.id]) }) });
+          break;
+        }
 
-      case 'city.update': {
-        const p = message.payload;
-        set((s) => {
-          const existing = s.cities.get(p.id);
-          if (!existing) return s;
-          const cities = new Map(s.cities);
+        case 'city.update': {
+          const p = message.payload;
+          const existing = cities.get(p.id);
+          if (!existing) break;
           cities.set(p.id, {
             ...existing,
-            ...(p.name !== undefined ? { name: p.name } : {}),
-            ...(p.population !== undefined ? { population: p.population } : {}),
-            ...(p.populationLimit !== undefined ? { populationLimit: p.populationLimit } : {}),
-            ...(p.presenceState !== undefined ? { presenceState: p.presenceState } : {}),
-            ...(p.protectionUntilMs !== undefined ? { protectionUntilMs: p.protectionUntilMs } : {}),
+            name: p.name !== undefined ? p.name : existing.name,
+            population: p.population !== undefined ? p.population : existing.population,
+            populationLimit: p.populationLimit !== undefined ? p.populationLimit : existing.populationLimit,
+            presenceState: p.presenceState !== undefined ? p.presenceState : existing.presenceState,
+            protectionUntilMs: p.protectionUntilMs !== undefined ? p.protectionUntilMs : existing.protectionUntilMs,
           });
-          return { cities };
-        });
-        break;
-      }
+          set({ changes: changed({ cities: new Set([p.id]) }) });
+          break;
+        }
 
-      case 'unit.movement.started': {
-        const { unitId, movement } = message.payload;
-        set((s) => {
-          const existing = s.units.get(unitId);
-          if (!existing) return s;
-          const units = new Map(s.units);
+        case 'unit.movement.started': {
+          const { unitId, movement } = message.payload;
+          const existing = units.get(unitId);
+          if (!existing) break;
           units.set(unitId, { ...existing, movement, status: 'MOVING' });
-          return { units };
-        });
-        break;
-      }
+          set({ changes: unitChanged(unitId) });
+          break;
+        }
 
-      case 'unit.movement.completed': {
-        const { unitId, finalPosition } = message.payload;
-        set((s) => {
-          const existing = s.units.get(unitId);
-          if (!existing) return s;
-          const units = new Map(s.units);
+        case 'unit.movement.completed': {
+          const { unitId, finalPosition } = message.payload;
+          const existing = units.get(unitId);
+          if (!existing) break;
           units.set(unitId, {
             ...existing,
             movement: null,
@@ -309,17 +352,14 @@ export const useWorldStore = create<WorldState>((set, get) => ({
             x: finalPosition.x,
             y: finalPosition.y,
           });
-          return { units };
-        });
-        break;
-      }
+          set({ changes: unitChanged(unitId) });
+          break;
+        }
 
-      case 'unit.movement.cancelled': {
-        const { unitId, stoppedAt } = message.payload;
-        set((s) => {
-          const existing = s.units.get(unitId);
-          if (!existing) return s;
-          const units = new Map(s.units);
+        case 'unit.movement.cancelled': {
+          const { unitId, stoppedAt } = message.payload;
+          const existing = units.get(unitId);
+          if (!existing) break;
           units.set(unitId, {
             ...existing,
             movement: null,
@@ -327,46 +367,57 @@ export const useWorldStore = create<WorldState>((set, get) => ({
             x: stoppedAt.x,
             y: stoppedAt.y,
           });
-          return { units };
-        });
-        break;
+          set({ changes: unitChanged(unitId) });
+          break;
+        }
+
+        case 'unit.move.rejected':
+          set({ lastError: { code: message.payload.code, message: message.payload.message } });
+          break;
+
+        case 'system.error':
+          set({ lastError: { code: message.payload.code, message: message.payload.message } });
+          break;
+
+        default:
+          // session.pong y unit.move.accepted no alteran el estado observable
+          // del mundo.
+          break;
       }
+    },
 
-      case 'unit.move.rejected':
-        set({ lastError: { code: message.payload.code, message: message.payload.message } });
-        break;
+    // La selección es estado de interfaz, pero la escena la dibuja: la unidad
+    // que la pierde y la que la gana se señalan como cambiadas.
+    selectUnit: (unitId) => {
+      const previous = get().selectedUnitId;
+      if (previous === unitId) return;
+      const ids = new Set<number>();
+      if (previous !== null) ids.add(previous);
+      if (unitId !== null) ids.add(unitId);
+      set({ selectedUnitId: unitId, changes: changed({ units: ids }) });
+    },
 
-      case 'system.error':
-        set({ lastError: { code: message.payload.code, message: message.payload.message } });
-        break;
-
-      default:
-        // session.pong, unit.move.accepted y territory.update no alteran el
-        // estado observable del mundo.
-        break;
-    }
-  },
-
-  selectUnit: (unitId) => set({ selectedUnitId: unitId }),
-
-  reset: () =>
-    set({
-      playerId: null,
-      sessionId: null,
-      world: null,
-      tick: 0,
-      units: new Map(),
-      cities: new Map(),
-      territories: new Map(),
-      terrain: new Map(),
-      selectedUnitId: null,
-      lastError: null,
-    }),
-}));
+    reset: () => {
+      units.clear();
+      cities.clear();
+      territories.clear();
+      terrain.clear();
+      set({
+        playerId: null,
+        sessionId: null,
+        world: null,
+        tick: 0,
+        selectedUnitId: null,
+        lastError: null,
+        changes: changed({ all: true }),
+      });
+    },
+  };
+});
 
 /** Terreno de un tile concreto, o `undefined` si su chunk no está cargado. */
 export function terrainAt(
-  terrain: Map<string, ChunkTerrain>,
+  terrain: ReadonlyMap<string, ChunkTerrain>,
   chunkSize: number,
   x: number,
   y: number,
@@ -378,6 +429,15 @@ export function terrainAt(
   const localX = x - cx * chunkSize;
   const localY = y - cy * chunkSize;
   return chunk.tiles[localY * chunk.size + localX];
+}
+
+/** El chunk `(cx, cy)` si ya llegó su terreno. */
+export function chunkAt(
+  terrain: ReadonlyMap<string, ChunkTerrain>,
+  cx: number,
+  cy: number,
+): ChunkTerrain | undefined {
+  return terrain.get(chunkKey(cx, cy));
 }
 
 export { chunkKey, decodeTerrain };

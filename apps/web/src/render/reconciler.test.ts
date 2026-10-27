@@ -281,6 +281,50 @@ describe('RenderReconciler', () => {
     expect(r.position(1, { x: 11, y: 10, movement: null })).toEqual({ x: 11, y: 10 });
   });
 
+  it('forget olvida una sola unidad y deja las demás con su registro', () => {
+    const r = new RenderReconciler();
+    r.frame(START, FRAME);
+    r.position(1, { x: 10, y: 10, movement: null });
+    r.position(2, { x: 20, y: 20, movement: null });
+    r.forget(1);
+    expect(r.size).toBe(1);
+    expect(r.drawn(1)).toBeUndefined();
+    expect(r.drawn(2)).toEqual({ x: 20, y: 20 });
+    r.frame(START + FRAME, FRAME);
+    // Sin registro reaparece donde dice el servidor, sin deslizarse.
+    expect(r.position(1, { x: 11, y: 10, movement: null })).toEqual({ x: 11, y: 10 });
+    // Olvidar lo que no existe no es un error.
+    r.forget(99);
+    expect(r.size).toBe(2);
+  });
+
+  it('una unidad quieta a la que no se le pide posición durante frames se corrige igual al llegar su delta', () => {
+    // La escena sólo pide posición a las unidades activas; una quieta y ya en
+    // su sitio deja de pedirla. Cuando su delta la mueve un tile, el desfase
+    // debe ser el mismo que si se hubiera pedido en cada frame.
+    const continua = new RenderReconciler();
+    const saltada = new RenderReconciler();
+    const quieta: UnitInputs = { x: 10, y: 10, movement: null };
+    continua.frame(START, FRAME);
+    saltada.frame(START, FRAME);
+    continua.position(1, quieta);
+    saltada.position(1, quieta);
+    for (let i = 1; i <= 30; i++) {
+      continua.frame(START + i * FRAME, FRAME);
+      saltada.frame(START + i * FRAME, FRAME);
+      continua.position(1, quieta);
+      // saltada: no se le pide nada.
+    }
+    const movida: UnitInputs = { x: 11, y: 10, movement: null };
+    continua.frame(START + 31 * FRAME, FRAME);
+    saltada.frame(START + 31 * FRAME, FRAME);
+    const a = continua.position(1, movida);
+    const b = saltada.position(1, movida);
+    expect(b).toEqual(a);
+    expect(a.x).toBeGreaterThan(10);
+    expect(a.x).toBeLessThan(11);
+  });
+
   it('el picking ve la posición dibujada, no la autoritativa', () => {
     const r = new RenderReconciler();
     r.frame(START, FRAME);
