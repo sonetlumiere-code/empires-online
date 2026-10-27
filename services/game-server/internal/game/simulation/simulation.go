@@ -49,8 +49,10 @@ type Deps struct {
 	// sin él, unit.garrison responde INTERNAL_ERROR.
 	Garrisons GarrisonStore
 	// Inbox devuelve un comando al loop desde otra goroutine sin bloquear, y
-	// dice si cupo. Lo usan las compensaciones de la cola de persistencia.
-	// Opcional: sin él, la compensación sólo se registra.
+	// dice si cupo. Lo usan las compensaciones y respuestas de la cola de
+	// persistencia; en producción es loop.Inbox.Offer, el buzón que el loop
+	// drena antes que los comandos de los jugadores (ADR-022). Opcional: sin él,
+	// la compensación sólo se registra.
 	Inbox func(Command) bool
 	Log   *slog.Logger
 
@@ -72,9 +74,17 @@ type Simulation struct {
 	state *State
 	deps  Deps
 
-	// sessions cuenta las sesiones vivas por jugador. Un jugador con dos pestañas
-	// abiertas sigue estando presente cuando cierra una.
-	sessions map[uuid.UUID]int
+	// sessions son las sesiones vivas de cada jugador, por su id. Un jugador con
+	// dos pestañas abiertas sigue estando presente cuando cierra una. Es un
+	// conjunto y no un contador para que una baja duplicada no reste dos veces
+	// y una baja que llegue antes que su alta no deje una sesión fantasma
+	// (RN-PRESENCE-023, ADR-022).
+	sessions map[uuid.UUID]map[uuid.UUID]struct{}
+	// earlyDisconnects son las bajas que llegaron antes que su alta: la baja
+	// viaja por el buzón del loop cuando el canal de comandos está lleno, y el
+	// buzón se drena antes que el canal (ADR-022). Anulan el alta cuando llega,
+	// para que una sesión ya cerrada no cuente nunca.
+	earlyDisconnects map[uuid.UUID]struct{}
 	// disconnectedAt registra cuándo se quedó sin sesiones un jugador, para
 	// aplicar el margen de reconexión antes de degradar su ciudad.
 	disconnectedAt map[uuid.UUID]time.Time
@@ -100,10 +110,11 @@ func New(state *State, deps Deps) *Simulation {
 		deps.Persister = NoopPersister{}
 	}
 	return &Simulation{
-		state:          state,
-		deps:           deps,
-		sessions:       make(map[uuid.UUID]int),
-		disconnectedAt: make(map[uuid.UUID]time.Time),
+		state:            state,
+		deps:             deps,
+		sessions:         make(map[uuid.UUID]map[uuid.UUID]struct{}),
+		earlyDisconnects: make(map[uuid.UUID]struct{}),
+		disconnectedAt:   make(map[uuid.UUID]time.Time),
 	}
 }
 
@@ -450,15 +461,34 @@ func (s *Simulation) AuthoritativePosition(u *unit.Unit, nowMs int64) world.Tile
 // ─────────────────────────────────────────────────────────────
 
 func (s *Simulation) handlePlayerConnected(cmd PlayerConnected) {
-	s.sessions[cmd.PlayerID]++
+	if _, early := s.earlyDisconnects[cmd.SessionID]; early {
+		// Su baja llegó antes: la sesión ya está cerrada y el alta y la baja
+		// se anulan. Contarla ahora dejaría una sesión fantasma para siempre.
+		delete(s.earlyDisconnects, cmd.SessionID)
+		return
+	}
+	set := s.sessions[cmd.PlayerID]
+	if set == nil {
+		set = make(map[uuid.UUID]struct{})
+		s.sessions[cmd.PlayerID] = set
+	}
+	set[cmd.SessionID] = struct{}{}
 	delete(s.disconnectedAt, cmd.PlayerID)
 	s.setPresence(cmd.PlayerID, city.PresenceOnline)
 }
 
 func (s *Simulation) handlePlayerDisconnected(cmd PlayerDisconnected) {
-	if n := s.sessions[cmd.PlayerID]; n > 1 {
+	set := s.sessions[cmd.PlayerID]
+	if _, ok := set[cmd.SessionID]; !ok {
+		// El loop no tiene esa sesión: o la baja se adelantó a su alta por el
+		// buzón, o es un duplicado. Se recuerda para anular el alta si llega;
+		// un duplicado no resta nada (RN-PRESENCE-023).
+		s.earlyDisconnects[cmd.SessionID] = struct{}{}
+		return
+	}
+	delete(set, cmd.SessionID)
+	if len(set) > 0 {
 		// Le quedan otras sesiones abiertas: sigue presente.
-		s.sessions[cmd.PlayerID] = n - 1
 		return
 	}
 	delete(s.sessions, cmd.PlayerID)
@@ -466,6 +496,9 @@ func (s *Simulation) handlePlayerDisconnected(cmd PlayerDisconnected) {
 	// que un corte de red de tres segundos no cambie el estado del mundo.
 	s.disconnectedAt[cmd.PlayerID] = s.deps.Clock.Now()
 }
+
+// SessionCount es cuántas sesiones vivas tiene un jugador para la simulación.
+func (s *Simulation) SessionCount(playerID uuid.UUID) int { return len(s.sessions[playerID]) }
 
 // ProcessTimers es la fase 5 del tick: presencia, protección y demás plazos.
 //
@@ -482,7 +515,7 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	// el paso 3 evalúa el cooldown.
 	var degradan []*city.City
 	for playerID, since := range s.disconnectedAt {
-		if s.sessions[playerID] > 0 {
+		if len(s.sessions[playerID]) > 0 {
 			delete(s.disconnectedAt, playerID)
 			continue
 		}
@@ -738,12 +771,18 @@ func (s *Simulation) flushFinishes() {
 	}
 }
 
-// reinject devuelve un comando al loop desde la goroutine de un worker.
+// reinject devuelve un comando al loop por su buzón (Deps.Inbox), desde la
+// goroutine de un worker o desde la del propio loop cuando la cola descarta al
+// encolar. El buzón tiene prioridad sobre el canal de comandos y, si está
+// lleno, quien lo implementa lo cuenta y lo registra (loop.Inbox.Offer,
+// ADR-022): aquí sólo queda el caso de no tener buzón.
 func (s *Simulation) reinject(cmd Command) {
-	if s.deps.Inbox == nil || !s.deps.Inbox(cmd) {
-		s.deps.Log.Error("no se pudo devolver la compensación al loop; se resolverá al rearrancar",
+	if s.deps.Inbox == nil {
+		s.deps.Log.Error("sin buzón: la compensación no puede volver al loop y se resolverá al rearrancar",
 			"command", cmd.commandType())
+		return
 	}
+	s.deps.Inbox(cmd)
 }
 
 // handleMovementPersistFailed detiene la unidad cuyo movimiento no se pudo

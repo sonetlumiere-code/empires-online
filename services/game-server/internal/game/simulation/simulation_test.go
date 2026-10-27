@@ -236,6 +236,7 @@ type harness struct {
 	rec       *recorder
 	repos     *fakeRepos
 	commands  chan simulation.Command
+	inbox     *loop.Inbox
 	playerID  uuid.UUID
 	cityID    int64
 	units     []*unit.Unit
@@ -276,23 +277,16 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	persister := &syncPersister{}
 	garrisons := &fakeGarrisons{}
 	commands := make(chan simulation.Command, 256)
+	// Las respuestas de la cola vuelven al loop por su buzón, como en cmd/server.
+	inbox := loop.NewInbox(256, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	sim := simulation.New(state, simulation.Deps{
-		Clock:       clk,
-		Pathfinder:  rutas,
-		Broadcaster: rec,
-		Persister:   persister,
-		Repos:       repos,
-		Garrisons:   garrisons,
-		// Las respuestas de la cola vuelven al loop por el mismo canal, como en
-		// cmd/server.
-		Inbox: func(c simulation.Command) bool {
-			select {
-			case commands <- c:
-				return true
-			default:
-				return false
-			}
-		},
+		Clock:              clk,
+		Pathfinder:         rutas,
+		Broadcaster:        rec,
+		Persister:          persister,
+		Repos:              repos,
+		Garrisons:          garrisons,
+		Inbox:              inbox.Offer,
 		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
@@ -300,7 +294,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 		PathMaxDistance:    256,
 	})
 
-	gameLoop := loop.New(sim, clk, commands, loop.Config{
+	gameLoop := loop.New(sim, clk, commands, inbox, loop.Config{
 		TickDuration:       100 * time.Millisecond,
 		FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256,
@@ -309,7 +303,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 
 	h := &harness{
 		t: t, clk: clk, state: state, sim: sim, loop: gameLoop,
-		rec: rec, repos: repos, commands: commands, rutas: rutas,
+		rec: rec, repos: repos, commands: commands, inbox: inbox, rutas: rutas,
 		persister: persister, garrisons: garrisons,
 		playerID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
 		cityID:   1,
@@ -646,10 +640,11 @@ func TestCicloDePresenciaYProteccion(t *testing.T) {
 	c, ok := h.state.City(h.cityID)
 	require.True(t, ok)
 
-	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: uuid.New()})
+	sesion := uuid.New()
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: sesion})
 	require.Equal(t, city.PresenceOnline, c.PresenceState)
 
-	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: uuid.New()})
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: sesion})
 	require.Equal(t, city.PresenceOnline, c.PresenceState,
 		"un corte breve no degrada nada: primero corre el margen de reconexión")
 
@@ -677,8 +672,9 @@ func TestReconexionDentroDelMargenNoDegradaLaCiudad(t *testing.T) {
 	h := newHarness(t)
 	c, _ := h.state.City(h.cityID)
 
-	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: uuid.New()})
-	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: uuid.New()})
+	sesion := uuid.New()
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: sesion})
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: sesion})
 	h.advance(10 * time.Second)
 
 	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: uuid.New()})
@@ -711,14 +707,15 @@ func TestElMovimientoContinuaConElJugadorDesconectado(t *testing.T) {
 	h := newHarness(t)
 	u := h.units[0]
 
-	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: uuid.New()})
+	sesion := uuid.New()
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: sesion})
 	h.send(simulation.MoveUnit{PlayerID: h.playerID, RequestID: uuid.NewString(),
 		UnitID: u.ID, Target: world.Tile{X: 22, Y: 10}})
 
 	h.advance(600 * time.Millisecond)
 	require.Equal(t, world.Tile{X: 13, Y: 10}, h.unitTile(u.ID))
 
-	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: uuid.New()})
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: sesion})
 
 	h.advance(5400 * time.Millisecond) // completa los 6000 ms del recorrido
 	require.Equal(t, world.Tile{X: 22, Y: 10}, h.unitTile(u.ID),
@@ -881,7 +878,7 @@ func TestVolcadoPeriodicoNoOcurreEnCadaTick(t *testing.T) {
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
 	})
-	h.loop = loop.New(h.sim, h.clk, h.commands, loop.Config{
+	h.loop = loop.New(h.sim, h.clk, h.commands, h.inbox, loop.Config{
 		TickDuration: 100 * time.Millisecond, FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256, EpochMs: epoch,
 	}, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))

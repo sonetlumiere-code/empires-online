@@ -113,24 +113,17 @@ func (r reposQueFallanAlIniciar) PersistMovementStart(context.Context, movement.
 func TestUnInicioQueNoSePersisteDetieneLaUnidad(t *testing.T) {
 	h := newHarness(t)
 	h.sim = simulation.New(h.state, simulation.Deps{
-		Clock:       h.clk,
-		Pathfinder:  pathfinding.NewAStar(20000, 256),
-		Broadcaster: h.rec,
-		Persister:   &falloDeInicio{},
-		Repos:       reposQueFallanAlIniciar{h.repos},
-		Inbox: func(c simulation.Command) bool {
-			select {
-			case h.commands <- c:
-				return true
-			default:
-				return false
-			}
-		},
+		Clock:              h.clk,
+		Pathfinder:         pathfinding.NewAStar(20000, 256),
+		Broadcaster:        h.rec,
+		Persister:          &falloDeInicio{},
+		Repos:              reposQueFallanAlIniciar{h.repos},
+		Inbox:              h.inbox.Offer,
 		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
 	})
-	h.loop = loop.New(h.sim, h.clk, h.commands, loop.Config{
+	h.loop = loop.New(h.sim, h.clk, h.commands, h.inbox, loop.Config{
 		TickDuration: 100 * time.Millisecond, FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256, EpochMs: epoch,
 	}, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -204,21 +197,14 @@ func conPersistenciaFragil(h *harness) *reposFragiles {
 	h.sim = simulation.New(h.state, simulation.Deps{
 		Clock: h.clk, Pathfinder: h.rutas, Broadcaster: h.rec,
 		Persister: h.persister, Repos: repos, Garrisons: h.garrisons,
-		Inbox: func(c simulation.Command) bool {
-			select {
-			case h.commands <- c:
-				return true
-			default:
-				return false
-			}
-		},
+		Inbox:              h.inbox.Offer,
 		Log:                silencio,
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
 		PathMaxNodes:       20000,
 		PathMaxDistance:    256,
 	})
-	h.loop = loop.New(h.sim, h.clk, h.commands, loop.Config{
+	h.loop = loop.New(h.sim, h.clk, h.commands, h.inbox, loop.Config{
 		TickDuration: 100 * time.Millisecond, FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256, EpochMs: epoch,
 	}, nil, nil, silencio)

@@ -41,11 +41,13 @@ func TestLasCiudadesQueDegradanEnElMismoTickSalenEnOrden(t *testing.T) {
 	for ronda := 0; ronda < 25; ronda++ {
 		h := newHarness(t)
 		jugadores := append([]uuid.UUID{h.playerID}, conVecinos(h, 5)...)
+		sesiones := map[uuid.UUID]uuid.UUID{}
 		for _, p := range jugadores {
-			h.send(simulation.PlayerConnected{PlayerID: p, SessionID: uuid.New()})
+			sesiones[p] = uuid.New()
+			h.send(simulation.PlayerConnected{PlayerID: p, SessionID: sesiones[p]})
 		}
 		for _, p := range jugadores {
-			h.commands <- simulation.PlayerDisconnected{PlayerID: p, SessionID: uuid.New()}
+			h.commands <- simulation.PlayerDisconnected{PlayerID: p, SessionID: sesiones[p]}
 		}
 		h.loop.Step(h.clk.NowMs()) // todas las desconexiones en el mismo tick
 		h.rec.reset()
@@ -66,8 +68,9 @@ func TestLasCiudadesQueDegradanEnElMismoTickSalenEnOrden(t *testing.T) {
 func TestLaDegradacionSellaElInstanteDelTick(t *testing.T) {
 	h := newHarness(t)
 	c, _ := h.state.City(h.cityID)
-	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: uuid.New()})
-	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: uuid.New()})
+	sesion := uuid.New()
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: sesion})
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: sesion})
 
 	tick := h.clk.Now().Add(45 * time.Second) // el reloj no se mueve: sólo el tick
 	h.sim.ProcessTimers(tick)
@@ -110,15 +113,42 @@ func TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden(t *testing.T) {
 
 	// Pausas: dentro del margen, hasta OFFLINE_PENDING, hasta PROTECTED.
 	for _, pausa := range []time.Duration{10 * time.Second, 40 * time.Second, 340 * time.Second, 5 * time.Second, 400 * time.Second} {
-		h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: uuid.New()})
+		sesion := uuid.New()
+		h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: sesion})
 		verificar()
 		avanzar(2 * time.Second)
-		h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: uuid.New()})
+		h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: sesion})
 		verificar()
 		avanzar(pausa)
 	}
 	require.Equal(t, city.PresenceProtected, c.PresenceState, "el ciclo termina protegido")
 	require.NotNil(t, c.LastOnlineAt)
+}
+
+// RN-PRESENCE-023 / ADR-022: la baja de una sesión puede llegar antes que su
+// alta —viaja por el buzón cuando el canal de comandos está lleno, y el buzón
+// se drena antes— y puede llegar dos veces. Las sesiones se llevan por id, no
+// por recuento: la baja adelantada anula el alta cuando llega, y la duplicada
+// no resta nada ni reinicia el margen de reconexión.
+func TestUnaBajaAdelantadaODuplicadaNoDesajustaLasSesiones(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.state.City(h.cityID)
+	pestaña, fugaz := uuid.New(), uuid.New()
+
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: pestaña})
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: fugaz}) // su alta aún no llegó
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: fugaz})    // llega después: se anulan
+	require.Equal(t, 1, h.sim.SessionCount(h.playerID), "la sesión ya cerrada no cuenta")
+
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: pestaña}) // la última: arranca el margen
+	require.Equal(t, 0, h.sim.SessionCount(h.playerID))
+	h.advance(20 * time.Second)
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: pestaña}) // duplicada
+	require.Equal(t, 0, h.sim.SessionCount(h.playerID), "no baja de cero")
+	h.advance(11 * time.Second) // 31 s desde la baja real
+
+	require.Equal(t, city.PresenceOfflinePending, c.PresenceState,
+		"la baja duplicada no reinició el margen de reconexión")
 }
 
 // Al parar, el loop vuelca lo que quedaba sucio. Una unidad que llegó a su

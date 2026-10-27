@@ -36,10 +36,13 @@ type Loop struct {
 	sim      *simulation.Simulation
 	clk      clock.Clock
 	commands <-chan simulation.Command
-	cfg      Config
-	metrics  *observability.Metrics
-	health   *observability.Health
-	log      *slog.Logger
+	// inbox es el buzón del loop (ADR-022): se drena antes que commands en cada
+	// tick. Puede ser nil en tests que no lo necesitan.
+	inbox   *Inbox
+	cfg     Config
+	metrics *observability.Metrics
+	health  *observability.Health
+	log     *slog.Logger
 
 	// tick es atómico porque lo LEE código fuera del loop —el alta de jugador
 	// fecha su evento de dominio con él— mientras el loop lo incrementa. Con un
@@ -47,11 +50,13 @@ type Loop struct {
 	tick atomic.Uint64
 }
 
-// New crea el loop.
+// New crea el loop. `inbox` es su buzón (ADR-022); con nil, el loop sólo drena
+// `commands`.
 func New(
 	sim *simulation.Simulation,
 	clk clock.Clock,
 	commands <-chan simulation.Command,
+	inbox *Inbox,
 	cfg Config,
 	metrics *observability.Metrics,
 	health *observability.Health,
@@ -64,7 +69,7 @@ func New(
 		cfg.FlushIntervalTicks = 50
 	}
 	l := &Loop{
-		sim: sim, clk: clk, commands: commands, cfg: cfg,
+		sim: sim, clk: clk, commands: commands, inbox: inbox, cfg: cfg,
 		metrics: metrics, health: health, log: log,
 	}
 	l.tick.Store(cfg.StartTick)
@@ -165,21 +170,41 @@ func (l *Loop) Step(nowMs int64) {
 	l.observe(started, nowMs)
 }
 
-// drainCommands consume la cola sin bloquearse jamás.
+// drainCommands consume primero el buzón del loop y después la cola de
+// comandos, sin bloquearse jamás y con un tope común por tick (ADR-022).
+//
+// El buzón va primero porque lo que trae —compensaciones y respuestas de la
+// cola de persistencia, bajas de sesión— reconcilia el mundo con la base de
+// datos o con las sesiones vivas, y no debe esperar detrás de una avalancha de
+// órdenes de los jugadores: es lo que hace que una compensación no pueda
+// perderse por culpa del tráfico.
 func (l *Loop) drainCommands() {
-	for i := 0; i < l.cfg.MaxCommandsPerTick; i++ {
+	budget := l.cfg.MaxCommandsPerTick
+	if l.inbox != nil {
+		budget -= l.drain(l.inbox.ch, budget)
+	}
+	budget -= l.drain(l.commands, budget)
+	if budget <= 0 {
+		l.log.Warn("límite de comandos por tick alcanzado; el resto espera al siguiente",
+			"limit", l.cfg.MaxCommandsPerTick, "tick", l.tick.Load())
+	}
+}
+
+// drain aplica hasta `max` comandos de un canal y devuelve cuántos aplicó. Se
+// detiene al vaciarse el canal, al cerrarse o al agotar el tope.
+func (l *Loop) drain(ch <-chan simulation.Command, max int) int {
+	for n := 0; n < max; n++ {
 		select {
-		case cmd, ok := <-l.commands:
+		case cmd, ok := <-ch:
 			if !ok {
-				return
+				return n
 			}
 			l.applyCommand(cmd)
 		default:
-			return
+			return n
 		}
 	}
-	l.log.Warn("límite de comandos por tick alcanzado; el resto espera al siguiente",
-		"limit", l.cfg.MaxCommandsPerTick, "tick", l.tick.Load())
+	return max
 }
 
 // applyCommand aísla el pánico de un comando concreto.
