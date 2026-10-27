@@ -401,6 +401,77 @@ describe('capa HTTP', () => {
     expect(calls).toHaveLength(0);
   });
 
+  /** Cuerpo por trozos de 1 KiB, sin Content-Length, que anota cuántos llegaron a leerse. */
+  function chunkedBody(totalBytes: number) {
+    const pulled = { chunks: 0, cancelled: false };
+    let sent = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= totalBytes) return controller.close();
+        const size = Math.min(1024, totalBytes - sent);
+        controller.enqueue(new Uint8Array(size).fill(0x61));
+        sent += size;
+        pulled.chunks++;
+      },
+      cancel() {
+        pulled.cancelled = true;
+      },
+      // Sin cola interna: cada `pull` es una lectura real de quien consume, no
+      // un adelanto del propio stream.
+    }, { highWaterMark: 0 });
+    return { stream, pulled };
+  }
+
+  const chunkedPost = (stream: ReadableStream<Uint8Array>, headers: Record<string, string> = {}) =>
+    new Request('http://localhost:3000/api/auth/login', {
+      method: 'POST',
+      headers: { host: 'localhost:3000', 'content-type': 'application/json', ...headers },
+      body: stream,
+      // undici exige declararlo para un cuerpo en streaming; el DOM no lo tipa.
+      duplex: 'half',
+    } as RequestInit);
+
+  it('un cuerpo que declara más de 4096 bytes se rechaza sin leer ni un byte', async () => {
+    const { d, calls } = deps();
+    const { stream, pulled } = chunkedBody(8192);
+    const res = await handleCredentials(chunkedPost(stream, { 'content-length': '8192' }), d, 'login');
+    expect(res.status).toBe(400);
+    expect(pulled.chunks).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('sin Content-Length, se deja de leer al pasar el tope y se descarta el resto', async () => {
+    const { d, calls } = deps();
+    const { stream, pulled } = chunkedBody(64 * 1024);
+    const res = await handleCredentials(chunkedPost(stream), d, 'login');
+    expect(res.status).toBe(400);
+    // 4096 bytes son cuatro trozos; el quinto es el que se pasa. Nunca los 64.
+    expect(pulled.chunks).toBeLessThanOrEqual(5);
+    expect(pulled.cancelled).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('un cuerpo por trozos que cabe se lee entero y llega al servicio', async () => {
+    const { d, calls } = deps();
+    const body = new TextEncoder().encode(JSON.stringify({ username: 'a', password: 'b' }));
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(body.slice(0, 10));
+        controller.enqueue(body.slice(10));
+        controller.close();
+      },
+    });
+    expect((await handleCredentials(chunkedPost(stream), d, 'login')).status).toBe(201);
+    expect(calls).toEqual(['login:a']);
+  });
+
+  it('el tope es en bytes: 4096 caracteres multibyte no caben', async () => {
+    const { d, calls } = deps();
+    const res = await handleCredentials(post('/api/auth/login', { username: 'a', password: 'ñ'.repeat(2100) }), d, 'login');
+    expect(res.status).toBe(400);
+    expect(calls).toHaveLength(0);
+  });
+
   it('una petición de otro origen se rechaza', async () => {
     const { d, calls } = deps();
     const res = await handleCredentials(

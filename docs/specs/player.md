@@ -150,7 +150,9 @@ pero consultan la base: con cookie pasan por un cubo por sesión (60 / 30, const
 como mucho siete tickets en su primer minuto de reconexión), otro por IP si se conoce (240 / 120, constante) y
 un tope global (`EO_AUTH_TICKET_RATE_LIMIT_*`, 1200 / 600), y responden `RATE_LIMITED` (429) al agotar
 cualquiera; sin cookie responden `UNAUTHORIZED` sin gastar ningún cupo ni tocar la base. La clave de sesión
-que llega al log del 429 es un hash truncado del token, nunca el token (`INV-PLAYER-007`).
+que llega al log del 429 es un hash truncado del token, nunca el token (`INV-PLAYER-007`). El tope de 4096
+bytes del cuerpo del alta y del login se aplica **antes** de leerlo: con `Content-Length` mayor se rechaza sin
+leer un byte y, sin esa cabecera, se deja de leer al pasarlo; en los dos casos `INVALID_MESSAGE` (400).
 
 Respuestas de `POST /internal/players` (game server): `201`/`200` con `{ playerId, city }`; `400`
 `INVALID_MESSAGE` o `INVALID_USERNAME`; `401` `UNAUTHORIZED` (sin token, token de otra audiencia, caducado o ya
@@ -684,7 +686,7 @@ Reglas del contrato:
 | `T-PLAYER-W-002` | integration (`apps/web`) | Almacén de identidad contra PostgreSQL real: migraciones idempotentes, restricciones, sesiones sólo de cuentas `ACTIVE`, y el rol de identidad sin acceso a la base del juego. `src/server/store.integration.test.ts`. | `INV-PLAYER-009`, ADR-018 |
 | `T-PLAYER-W-004` | unit (`apps/web`) | Cuentas abandonadas: sólo `404 PLAYER_NOT_FOUND` es «no existe» (`identity/pending.test.ts`); el alta libera un nombre abandonado sin jugador y reintenta una vez, y no lo libera si es reciente, si el jugador existe o si el mundo no contesta; el login renueva el intento antes de fundar y no funda una cuenta borrada; el barrido cuenta lo que hizo (`authService.test.ts`). | `RN-PLAYER-015`, `RN-PLAYER-016`, `INV-PLAYER-010` |
 | `T-PLAYER-W-005` | integration (`apps/web`) | La migración 2 y la guarda del borrado contra PostgreSQL real: el intento se fija y se renueva sólo en `PENDING`, el corte de una hora, el orden del barrido y el borrado que no toca recientes, `ACTIVE` ni renovadas. `store.integration.test.ts`. | `INV-PLAYER-010` |
-| `T-PLAYER-W-006` | unit (`apps/web`) | Perímetro HTTP de la identidad: la IP es el salto que añadió el último proxy y un `X-Forwarded-For` falsificado no evita el cupo por IP; sin proxy la cabecera se ignora y manda el tope global; un usuario no agota el cupo de otro y las mayúsculas no abren otro; el tope global corta aunque cambien IP y usuario; el ticket y el cierre de sesión se limitan por sesión, por IP y en global, con la clave de sesión en el log como hash, y sin cookie no gastan cupo. `src/server/edges.test.ts`. | §4.1, `INV-PLAYER-007` |
+| `T-PLAYER-W-006` | unit (`apps/web`) | Perímetro HTTP de la identidad: la IP es el salto que añadió el último proxy y un `X-Forwarded-For` falsificado no evita el cupo por IP; sin proxy la cabecera se ignora y manda el tope global; un usuario no agota el cupo de otro y las mayúsculas no abren otro; el tope global corta aunque cambien IP y usuario; el ticket y el cierre de sesión se limitan por sesión, por IP y en global, con la clave de sesión en el log como hash, y sin cookie no gastan cupo; el cuerpo se rechaza sin leerlo si `Content-Length` pasa de 4096 bytes y, sin cabecera, se deja de leer al pasar el tope. `src/server/edges.test.ts`. | §4.1, `INV-PLAYER-007` |
 | `T-PLAYER-I-010` | integration | `GET /internal/players/{id}`: 200 con el jugador fundado, 404 `PLAYER_NOT_FOUND` con uno inexistente, y sólo con un token interno de ese `sub`. `TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste`, `TestLaConsultaExigeUnTokenInternoDeSuSub`. | `INV-PLAYER-010`, `INV-SEC-008` |
 | `T-PLAYER-W-003` | contract | El emisor de TypeScript produce los bytes exactos de `internal/auth/testdata/web-tokens.json` y el verificador de Go los acepta. `tokens.test.ts`, `TestLosTokensDeAppsWebSeVerificanEnGo`. | ADR-018 §2.4 |
 

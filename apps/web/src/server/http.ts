@@ -78,10 +78,37 @@ function crossSite(req: Request): boolean {
   }
 }
 
+/**
+ * Lee el cuerpo con tope, en bytes, que es lo que cuesta recibirlos. Con
+ * `Content-Length` se rechaza antes de leer un solo byte; sin ella (transferencia
+ * por trozos) se lee hasta el tope y ni uno más: un cuerpo de un gigabyte no se
+ * acumula en memoria para descubrir después que no cabía. Null si se pasa.
+ */
+async function readBoundedBody(req: Request, maxBytes: number): Promise<string | null> {
+  const declared = req.headers.get('content-length');
+  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) return null;
+  if (!req.body) return '';
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > maxBytes) {
+      // Lo que quede se descarta sin leerlo; a quien lo mandó no se le espera.
+      void reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 async function readCredentials(req: Request): Promise<{ username: string; password: string } | null> {
   if (!(req.headers.get('content-type') ?? '').toLowerCase().startsWith('application/json')) return null;
-  const text = await req.text();
-  if (text.length > MAX_BODY_BYTES) return null;
+  const text = await readBoundedBody(req, MAX_BODY_BYTES);
+  if (text === null) return null;
   try {
     const body = JSON.parse(text) as unknown;
     if (typeof body !== 'object' || body === null) return null;
