@@ -49,7 +49,11 @@ export type Waypoint = z.infer<typeof Waypoint>;
 export const TimedPath = z.array(Waypoint).min(1);
 export type TimedPath = z.infer<typeof TimedPath>;
 
-export const UnitStatus = z.enum(['IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'DEAD']);
+/**
+ * `WORKING`: parada sobre el tile de un recurso hasta que vence el temporizador de
+ * su tarea. Ver ../../../docs/specs/economy-wood.md (RN-ECON-003).
+ */
+export const UnitStatus = z.enum(['IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'DEAD']);
 export type UnitStatus = z.infer<typeof UnitStatus>;
 
 export const UnitType = z.enum(['VILLAGER']);
@@ -57,6 +61,25 @@ export type UnitType = z.infer<typeof UnitType>;
 
 export const PresenceState = z.enum(['ONLINE', 'OFFLINE_PENDING', 'PROTECTED']);
 export type PresenceState = z.infer<typeof PresenceState>;
+
+/** Recursos de la economía. Ver ../../../docs/specs/economy-wood.md */
+export const ResourceType = z.enum(['WOOD']);
+export type ResourceType = z.infer<typeof ResourceType>;
+
+/**
+ * Stock de una ciudad, por recurso. Lo calcula y lo envía el servidor; el cliente
+ * jamás lo propone.
+ */
+export const Stocks = z.object({
+  WOOD: z.number().int().min(0),
+});
+export type Stocks = z.infer<typeof Stocks>;
+
+export const BuildingType = z.enum(['HOUSE']);
+export type BuildingType = z.infer<typeof BuildingType>;
+
+export const BuildingStatus = z.enum(['UNDER_CONSTRUCTION', 'COMPLETE']);
+export type BuildingStatus = z.infer<typeof BuildingStatus>;
 
 export const TerrainType = z.enum(['GRASSLAND', 'FOREST', 'HILL', 'MOUNTAIN', 'WATER', 'ROAD']);
 export type TerrainType = z.infer<typeof TerrainType>;
@@ -104,8 +127,30 @@ export const UnitView = z.object({
   movement: ActiveMovement.nullable(),
   /** Ciudad que aloja a la unidad mientras está GARRISONED; `null` fuera de una guarnición. `cityId` es siempre la de origen. */
   garrisonCityId: EntityId.nullable(),
+  /** Lo que lleva encima una unidad que recolecta. Ausente si no lleva nada. */
+  carrying: z.number().int().min(0).optional(),
 });
 export type UnitView = z.infer<typeof UnitView>;
+
+/** Entrenamiento en curso de una ciudad: qué y cuándo termina. */
+export const ProductionView = z.object({
+  unitType: UnitType,
+  completesAtMs: EpochMs,
+});
+export type ProductionView = z.infer<typeof ProductionView>;
+
+/** Estado observable de un edificio. */
+export const BuildingView = z.object({
+  id: EntityId,
+  cityId: EntityId,
+  type: BuildingType,
+  x: WorldCoordinate,
+  y: WorldCoordinate,
+  status: BuildingStatus,
+  /** Instante absoluto en que la obra termina (o terminó). */
+  completesAtMs: EpochMs,
+});
+export type BuildingView = z.infer<typeof BuildingView>;
 
 /** Estado observable de una ciudad. */
 export const CityView = z.object({
@@ -119,6 +164,10 @@ export const CityView = z.object({
   populationLimit: z.number().int().min(0),
   presenceState: PresenceState,
   protectionUntilMs: EpochMs.nullable(),
+  /** Stock de la ciudad. */
+  stocks: Stocks.optional(),
+  /** Entrenamiento en curso; `null` si no entrena nada. */
+  production: ProductionView.nullable().optional(),
 });
 export type CityView = z.infer<typeof CityView>;
 

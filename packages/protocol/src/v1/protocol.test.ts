@@ -115,6 +115,80 @@ describe('comandos de guarnición', () => {
   });
 });
 
+describe('comandos de economía (SPEC-ECON-WOOD)', () => {
+  it('acepta unit.gather con unidad y bosque', () => {
+    const result = parseClientMessage({
+      v: 1, type: 'unit.gather', requestId: uuid, payload: { unitId: 42, target: { x: 20, y: 10 } },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('unit.gather no admite que el cliente aporte la carga ni la ruta', () => {
+    for (const extra of [{ carrying: 10 }, { path: [] }, { trips: 3 }]) {
+      const result = parseClientMessage({
+        v: 1, type: 'unit.gather', requestId: uuid,
+        payload: { unitId: 42, target: { x: 20, y: 10 }, ...extra },
+      });
+      expect(result).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('acepta city.build de una casa y rechaza un coste o un tiempo del cliente', () => {
+    const base = { cityId: 7, type: 'HOUSE', x: 9, y: 10 };
+    expect(parseClientMessage({ v: 1, type: 'city.build', requestId: uuid, payload: base }).ok).toBe(true);
+    for (const extra of [{ cost: 0 }, { completesAtMs: 1 }]) {
+      const result = parseClientMessage({
+        v: 1, type: 'city.build', requestId: uuid, payload: { ...base, ...extra },
+      });
+      expect(result.ok).toBe(false);
+    }
+    const otro = parseClientMessage({
+      v: 1, type: 'city.build', requestId: uuid, payload: { ...base, type: 'CASTLE' },
+    });
+    expect(otro.ok).toBe(false);
+  });
+
+  it('acepta city.train de un aldeano y nada más', () => {
+    expect(parseClientMessage({
+      v: 1, type: 'city.train', requestId: uuid, payload: { cityId: 7, type: 'VILLAGER' },
+    }).ok).toBe(true);
+    expect(parseClientMessage({
+      v: 1, type: 'city.train', requestId: uuid, payload: { cityId: 7, type: 'VILLAGER', count: 5 },
+    }).ok).toBe(false);
+  });
+
+  it('acepta building.spawn, building.update y city.update con stocks', () => {
+    const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+    const spawn = parseServerMessage({
+      ...env, type: 'building.spawn',
+      payload: {
+        building: {
+          id: 1, cityId: 7, type: 'HOUSE', x: 9, y: 10,
+          status: 'UNDER_CONSTRUCTION', completesAtMs: 1_757_376_015_000,
+        },
+      },
+    });
+    expect(spawn.ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'building.update', payload: { id: 1, status: 'COMPLETE' },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'city.update',
+      payload: { id: 7, stocks: { WOOD: 40 }, production: null, populationLimit: 25 },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, stocks: { WOOD: -1 } },
+    }).ok).toBe(false);
+  });
+
+  it('entity.update admite WORKING y la carga', () => {
+    const result = parseServerMessage({
+      v: 1, seq: 1, ts: 1, type: 'entity.update', payload: { id: 3, status: 'WORKING', carrying: 10 },
+    });
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe('envelope servidor → cliente', () => {
   it('acepta unit.movement.started con la polilínea temporizada completa', () => {
     const result = parseServerMessage({

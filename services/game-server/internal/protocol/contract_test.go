@@ -64,6 +64,7 @@ func TestTiposDeMensajePresentesEnElEsquema(t *testing.T) {
 		protocol.TypeUnitMoveAccepted, protocol.TypeUnitMoveRejected,
 		protocol.TypeUnitMovementStarted, protocol.TypeUnitMovementCompleted,
 		protocol.TypeUnitMovementCancelled,
+		protocol.TypeBuildingSpawn, protocol.TypeBuildingUpdate,
 	}
 	for _, msgType := range serverTypes {
 		require.Contains(t, server, `"`+msgType+`"`,
@@ -188,7 +189,7 @@ func TestElDecodificadorEsTanEstrictoComoElEsquema(t *testing.T) {
 		}
 	}
 	recorrer(schema, "")
-	require.GreaterOrEqual(t, objetos, 15, "siete envelopes, siete payloads y el centro de session.view")
+	require.GreaterOrEqual(t, objetos, 21, "diez envelopes, diez payloads y el centro de session.view")
 
 	casos := []struct {
 		tipo    string
@@ -203,6 +204,9 @@ func TestElDecodificadorEsTanEstrictoComoElEsquema(t *testing.T) {
 		{protocol.TypeUnitCancelMove, `{"unitId":1}`, &protocol.UnitCancelMovePayload{}, ""},
 		{protocol.TypeUnitGarrison, `{"unitId":1,"cityId":2}`, &protocol.UnitGarrisonPayload{}, ""},
 		{protocol.TypeUnitUngarrison, `{"unitId":1}`, &protocol.UnitUngarrisonPayload{}, ""},
+		{protocol.TypeUnitGather, `{"unitId":1,"target":{"x":1,"y":2}}`, &protocol.UnitGatherPayload{}, `{"unitId":1,"target":{"x":1,"y":2,"carrying":10}}`},
+		{protocol.TypeCityBuild, `{"cityId":1,"type":"HOUSE","x":1,"y":2}`, &protocol.CityBuildPayload{}, ""},
+		{protocol.TypeCityTrain, `{"cityId":1,"type":"VILLAGER"}`, &protocol.CityTrainPayload{}, ""},
 	}
 	for _, c := range casos {
 		t.Run(c.tipo, func(t *testing.T) {
@@ -230,6 +234,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 	for _, msgType := range []string{
 		protocol.TypeUnitMove, protocol.TypeUnitCancelMove,
 		protocol.TypeUnitGarrison, protocol.TypeUnitUngarrison,
+		protocol.TypeUnitGather, protocol.TypeCityBuild, protocol.TypeCityTrain,
 		protocol.TypeSessionPing, protocol.TypeSessionView,
 	} {
 		require.False(t, protocol.IsPreAuth(msgType),
@@ -238,7 +243,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 }
 
 func TestCatalogoDeComandosEsCerrado(t *testing.T) {
-	require.Len(t, protocol.ClientMessageTypes, 7)
+	require.Len(t, protocol.ClientMessageTypes, 10)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)
