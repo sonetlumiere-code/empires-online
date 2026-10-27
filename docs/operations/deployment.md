@@ -195,6 +195,8 @@ services:
       - "127.0.0.1:9090:9090"    # métricas: solo loopback
     restart: unless-stopped
     stop_grace_period: 30s        # margen para cerrar conexiones y drenar la cola de persistencia
+    ulimits:
+      nofile: { soft: 16384, hard: 16384 }   # > EO_WS_MAX_CONNECTIONS (5000) + pools de Postgres y Redis
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -212,6 +214,11 @@ Notas:
   capacidades.
 - `stop_grace_period: 30s`: el apagado ordenado tiene un presupuesto propio de 25 s, dentro del cual el
   drenaje de la cola de persistencia dispone de hasta 15 s (§8.3). 30 s deja margen sobre ambos.
+- `ulimits.nofile` por encima de `EO_WS_MAX_CONNECTIONS` ([configuration.md §3.8](./configuration.md#38-websocket)):
+  el tope de conexiones del servidor sólo protege si el proceso puede abrir esos descriptores; con el límite
+  del sistema por debajo, el `503` nunca llega y lo que falla es `accept`. Y, detrás del proxy, el archivo de
+  entorno lleva **`EO_TRUST_PROXY_HEADERS=true`**: sin él todas las conexiones llegan desde `127.0.0.1` y el
+  tope por IP (`EO_WS_MAX_CONNECTIONS_PER_IP`, 32) sería el tope del servidor entero.
 - **`EO_IMAGE_TAG` no es configuración del Game Server.** Es una variable de *tooling de despliegue* que solo
   interpola Compose para elegir la etiqueta de la imagen; el proceso Go no la lee y no forma parte del
   catálogo `EO_` de [configuration.md §3](./configuration.md#3-referencia-de-variables). El mismo criterio
@@ -344,7 +351,10 @@ server {
         proxy_set_header   Connection $connection_upgrade;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        # $remote_addr, NO $proxy_add_x_forwarded_for: el servidor toma la PRIMERA IP
+        # de la cabecera (EO_TRUST_PROXY_HEADERS) y la variante que añade conserva
+        # lo que trajo el cliente, que elegiría así su propia IP.
+        proxy_set_header   X-Forwarded-For   $remote_addr;
         proxy_set_header   X-Forwarded-Proto $scheme;
 
         # Timeouts: por encima del read timeout de 45 s del servidor.
@@ -373,6 +383,7 @@ server { listen 80; server_name game.<dominio>; return 301 https://$host$request
 | Read timeout del servidor (`WSReadTimeout`) | 45 s | Constante de código. Tolera perder dos pings. |
 | Write timeout del servidor (`WSWriteTimeout`) | 10 s | Constante de código. Plazo máximo para completar una escritura hacia el cliente. |
 | Handshake timeout (`WSHandshakeTimeout`) | 5 s | Constante de código. Plazo para recibir `session.hello`; al agotarse, cierre 4408. El proxy no debe cortar antes. |
+| Cabeceras / petición / keep-alive del servidor HTTP (`httpReadHeaderTimeout`, `httpReadTimeout`, `httpIdleTimeout`) | 10 s / 15 s / 60 s | Constantes de `cmd/server` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Acotan un socket que no termina de hablar antes del upgrade o en `/health`, `/ready` y `/internal`; **no** tocan un WebSocket ya establecido. El keep-alive del proxy hacia el servidor debe ser menor que 60 s, o reutilizará conexiones que el servidor ya cerró. |
 | Read/idle timeout del proxy | Sin límite (Caddy) o 600 s (Nginx) | **Debe superar al del servidor.** Si el proxy corta antes, el jugador ve una desconexión sin código de cierre y el servidor no se entera hasta su propio timeout. |
 | Tamaño máximo de frame en el proxy | ≥ 16 KiB | Para que el rechazo por tamaño lo emita el servidor con `MESSAGE_TOO_LARGE`, en vez de un corte mudo del proxy. |
 | Buffering | Desactivado | Un delta bufferizado es un delta tarde; el juego es en tiempo real. |
@@ -733,6 +744,7 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 - [ ] La readiness se comprueba contra `/ready` desde el host, no con el `HEALTHCHECK` de la imagen, que sólo mira `/health` (§3.1).
 - [ ] El despliegue ejecuta `migrate` antes de arrancar el servidor y para si el esquema está `dirty` (§6, Paso 3).
 - [ ] Rate limit activo: 20 msg/s con burst 40 por conexión.
+- [ ] Tope de conexiones activo: `EO_WS_MAX_CONNECTIONS` (5000) por debajo de `ulimits.nofile`, y `EO_WS_MAX_CONNECTIONS_PER_IP` (32) **con `EO_TRUST_PROXY_HEADERS=true`** y el proxy sobrescribiendo `X-Forwarded-For`; verificado abriendo 33 sockets desde una misma IP y recibiendo `429` en el último ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)).
 - [ ] Idempotencia operativa: `requestId` repetido devuelve la respuesta original y **no** re-ejecuta.
 - [ ] Los logs no contienen tickets, DSN completos ni payloads con datos personales.
 

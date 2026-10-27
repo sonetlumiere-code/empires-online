@@ -8,6 +8,7 @@ import (
 	gws "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/observability"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 	ws "github.com/empires-online/empires-online/services/game-server/internal/websocket"
 )
@@ -63,6 +64,7 @@ func TestUnOrigenNoListadoSeRechazaCon403AntesDelHandshake(t *testing.T) {
 		})
 	}
 	require.Contains(t, env.logs.String(), "origen rechazado en el upgrade de WebSocket")
+	require.Equal(t, 4.0, rechazosPorMotivo(t, env)[observability.RejectOrigin])
 }
 
 // Un Origin listado abre sesión con normalidad. La comparación no distingue

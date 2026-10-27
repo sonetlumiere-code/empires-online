@@ -39,6 +39,15 @@ const (
 	shutdownTimeout  = 25 * time.Second
 	ticketReplayTTL  = 120 * time.Second
 	idempotencyTTL   = 300 * time.Second
+
+	// Plazos de los servidores HTTP (ADR-021). Acotan lo que un socket puede
+	// ocupar sin terminar de hablar: las cabeceras, la petición entera y el
+	// silencio entre peticiones keep-alive. No afectan a un WebSocket ya
+	// establecido: gorilla retira estos plazos del socket al hacer el upgrade y
+	// desde ahí mandan WSHandshakeTimeout y WSReadTimeout.
+	httpReadHeaderTimeout = 10 * time.Second
+	httpReadTimeout       = 15 * time.Second
+	httpIdleTimeout       = 60 * time.Second
 )
 
 func main() {
@@ -303,7 +312,19 @@ func run() error {
 		WorldHeight:          cfg.WorldHeight,
 		ChunkSize:            cfg.ChunkSize,
 		AllowedOrigins:       cfg.WSAllowedOrigins,
+		MaxConnections:       cfg.WSMaxConnections,
+		MaxConnectionsPerIP:  cfg.WSMaxConnectionsPerIP,
+		TrustProxyHeaders:    cfg.TrustProxyHeaders,
 	}, hub, authenticator, presence, dedupe, commands, metrics, log)
+
+	// Detrás del reverse proxy del despliegue de referencia, TODAS las
+	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el
+	// tope por IP sería el tope del servidor entero. No se puede validar en la
+	// configuración —nada dice si hay proxy— así que se avisa donde importa.
+	if cfg.IsProduction() && cfg.WSMaxConnectionsPerIP > 0 && !cfg.TrustProxyHeaders {
+		log.Warn("EO_WS_MAX_CONNECTIONS_PER_IP activo sin EO_TRUST_PROXY_HEADERS: detrás de un proxy inverso todas las conexiones comparten la IP del proxy y el tope por IP sería el tope global",
+			"max_connections_per_ip", cfg.WSMaxConnectionsPerIP)
+	}
 
 	firstEra := eras[0]
 
@@ -331,7 +352,9 @@ func run() error {
 	gameHTTP := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	metricsMux := http.NewServeMux()
@@ -339,7 +362,9 @@ func run() error {
 	metricsHTTP := &http.Server{
 		Addr:              cfg.MetricsAddr,
 		Handler:           metricsMux,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	// ── 7. Arranque ─────────────────────────────────────────────

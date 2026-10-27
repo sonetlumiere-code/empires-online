@@ -97,7 +97,7 @@ juego de métricas limpio sin colisionar entre sí. En ese registro también est
 (`go_*`) y de proceso (`process_*`), que se obtienen gratis y conviene tener a mano en un incidente de
 memoria.
 
-**Son 14 métricas propias, y estas son exactamente sus etiquetas.** Ni más ni menos: si una consulta agrupa
+**Son 15 métricas propias, y estas son exactamente sus etiquetas.** Ni más ni menos: si una consulta agrupa
 por una etiqueta que no está aquí, devuelve una sola serie y engaña. Regla que gobierna toda etiqueta:
 **cardinalidad acotada**. Jamás `player_id`, `unit_id`, `session_id` ni coordenadas como etiqueta: un
 `player_id` en una etiqueta convierte cada jugador nuevo en una serie temporal nueva y hace estallar la base
@@ -120,13 +120,14 @@ de métricas.
 | `eo_game_tick_duration_seconds` | Histogram | **ninguna** | Distribución de la duración del tick. Es **la** métrica de salud de la simulación. Buckets reales, centrados en el presupuesto de 100 ms de un tick a 10 Hz: `0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1`. Su `_count` sirve además de latido: si no crece, el loop está bloqueado. |
 | `eo_game_tick_overruns_total` | Counter | **ninguna** | Ticks cuya duración superó su período (100 ms con `EO_TICK_RATE_HZ=10`). Un overrun aislado es tolerable; una tasa sostenida significa que el servidor va por detrás del mundo. |
 
-### 2.3 Comandos y protocolo (3)
+### 2.3 Comandos y protocolo (4)
 
 | Métrica | Tipo | Etiquetas | Para qué sirve |
 |---|---|---|---|
 | `eo_commands_total` | Counter | `type`, `result` | Comandos **del game loop** procesados por tipo y resultado. `type` toma los valores que devuelve `commandLabel` en `internal/game/loop`: `unit.move`, `unit.cancel_move`, `player.connected`, `player.disconnected` y `unknown`, que agrupa todo lo demás que llega al loop —guarnición, los snapshots de `session.hello` y `session.view`, la incorporación de jugadores y las compensaciones— además de los pánicos. `session.ping` no llega al loop. `result` sólo toma **`accepted`** (el comando se aplicó) o **`failed`** (pánico contenido al aplicarlo). **No existe `rejected`**: un comando rechazado por regla de negocio —unidad ajena, destino intransitable— sí se aplicó desde el punto de vista del loop, y su rechazo **no se cuenta por código** en ninguna métrica. **No hay etiqueta `code`**. |
 | `eo_ws_messages_total` | Counter | `direction`, `type` | Mensajes WebSocket por sentido y tipo. `direction` es **`inbound`** o **`outbound`** (no `in`/`out`). En `inbound` cuenta los mensajes **posteriores al handshake** que decodifican: `session.hello` no se cuenta. En `inbound`, `type` es el tipo del mensaje sólo si pertenece al catálogo cerrado de comandos del cliente (`protocol.ClientMessageTypes`); cualquier otro se cuenta como **`unknown`**, porque el tipo lo escribe el cliente y cada valor distinto sería una serie nueva (`EO-121`). Un `unknown` creciente es un cliente que habla otra versión del protocolo o que sondea. En `outbound`, `type` es siempre un tipo del servidor. El ratio `outbound/inbound` mide la amplificación de deltas por comando, que es lo que dimensiona el ancho de banda. |
 | `eo_protocol_errors_total` | Counter | `code` | `system.error` emitidos por la capa WebSocket: `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `RATE_LIMITED` e `INTERNAL_ERROR` cuando la cola de comandos del loop está llena. Los códigos de regla de negocio (`UNIT_NOT_OWNED`, `PATH_NOT_FOUND`, `TREATY_REQUIRED`…) viajan en `unit.move.rejected` o en `system.error` desde la simulación y **no se cuentan aquí**. |
+| `eo_ws_connections_rejected_total` | Counter | `reason` | Upgrades de `/ws` rechazados **antes de abrir socket** ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). `reason` es un catálogo cerrado de tres valores, y las tres series existen a cero desde el arranque: **`origin`** (`Origin` fuera de `EO_WS_ALLOWED_ORIGINS`, respuesta `403`), **`max_connections`** (tope global `EO_WS_MAX_CONNECTIONS`, respuesta `503`) y **`max_connections_per_ip`** (tope por IP `EO_WS_MAX_CONNECTIONS_PER_IP`, respuesta `429`). `origin` creciente es una página ajena intentando abrir sesiones, o la lista mal escrita tras un cambio de dominio; `max_connections` sostenido es el servidor lleno; `max_connections_per_ip` sin `EO_TRUST_PROXY_HEADERS` detrás de un proxy es el síntoma de que todas las conexiones comparten la IP del proxy. Un `403` de gorilla por cabeceras de upgrade malformadas **no** se cuenta: no es un rechazo del perímetro. |
 
 ### 2.4 Pathfinding (2)
 
@@ -253,6 +254,7 @@ La regla de diseño es que **cada tablero responda una pregunta**, no que acumul
 | Tasa de `system.error` | `sum(rate(eo_ws_messages_total{direction="outbound",type="system.error"}[5m]))` | Tasa absoluta de error del protocolo |
 | Comandos por resultado | `sum(rate(eo_commands_total[5m])) by (result)` | Proporción `accepted` / `failed` (no existe `rejected`, §2.3) |
 | Errores por código | `topk(8, sum(rate(eo_protocol_errors_total[5m])) by (code))` | Sólo ve los códigos de la capa WebSocket (§2.3): versión, mensaje inválido, rate limit y saturación; las reglas de negocio no aparecen aquí. Va contra `eo_protocol_errors_total`, no contra `eo_commands_total`, que no tiene etiqueta `code` |
+| Conexiones rechazadas en el upgrade | `sum(rate(eo_ws_connections_rejected_total[5m])) by (reason)` | `origin`, `max_connections` y `max_connections_per_ip` (§2.3). Cualquier valor sostenido distinto de cero merece mirarse: es tráfico que no llegó ni al handshake |
 
 ### 4.3 Persistencia — "¿estamos perdiendo el hilo con la base de datos?"
 
@@ -521,6 +523,10 @@ que mirar, no una lista de sugerencias.
    - **No llegan, pero hay `warn` «origen rechazado en el upgrade de WebSocket»** → el upgrade responde `403`
      antes del handshake porque el `Origin` del navegador no está en `EO_WS_ALLOWED_ORIGINS`: el log trae el
      origen tal cual llegó; compáralo con la lista (esquema, host y puerto exactos, sin ruta).
+   - **No llegan, pero `eo_ws_connections_rejected_total` crece** → el perímetro los rechaza antes del socket
+     (§2.3): `max_connections` es el servidor lleno (`503`); `max_connections_per_ip` (`429`) con un proxy
+     delante y sin `EO_TRUST_PROXY_HEADERS=true` significa que todas las conexiones cuentan como una sola IP.
+     El `warn` «conexión rechazada por tope antes del upgrade» trae `reason`, `ip` y `remote`.
    - **Llegan pero `eo_connected_players` no sube** → el handshake falla. Sigue en el punto 2.
 2. El campo `close_code` de `handshake rechazado`: `4401` (secreto desincronizado, ticket expirado, relojes de
    `apps/web` y del Game Server desfasados más de 30 s —`auth.ClockSkew`; revisa el NTP de ambos— o Redis sin

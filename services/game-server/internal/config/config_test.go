@@ -53,6 +53,9 @@ func TestValoresPorDefectoDelCanon(t *testing.T) {
 	require.Equal(t, 20, cfg.WSRateLimitPerSec)
 	require.Equal(t, 40, cfg.WSRateLimitBurst)
 	require.Empty(t, cfg.WSAllowedOrigins, "sin lista, fuera de producción, se admite cualquier origen")
+	require.Equal(t, 5000, cfg.WSMaxConnections)
+	require.Equal(t, 32, cfg.WSMaxConnectionsPerIP)
+	require.False(t, cfg.TrustProxyHeaders, "sin proxy delante, X-Forwarded-For la escribe cualquiera")
 
 	require.Equal(t, 100*time.Millisecond, cfg.TickDuration())
 	require.EqualValues(t, 100, cfg.TickDurationMs())
@@ -291,6 +294,32 @@ func TestEntornoContraListaCerrada(t *testing.T) {
 		cfg, err := config.Load()
 		require.NoError(t, err)
 		require.Equal(t, config.EnvDevelopment, cfg.Env)
+	})
+}
+
+// ADR-021: los topes de conexiones admiten 0 («sin tope») y rechazan lo que
+// no sea un entero en rango; EO_TRUST_PROXY_HEADERS es el mismo booleano que
+// lee apps/web.
+func TestTopesDeConexionesDelWebSocket(t *testing.T) {
+	t.Run("se leen del entorno", func(t *testing.T) {
+		setValidEnv(t)
+		t.Setenv("EO_WS_MAX_CONNECTIONS", "0")
+		t.Setenv("EO_WS_MAX_CONNECTIONS_PER_IP", "8")
+		t.Setenv("EO_TRUST_PROXY_HEADERS", "true")
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.Equal(t, 0, cfg.WSMaxConnections, "0 es «sin tope»")
+		require.Equal(t, 8, cfg.WSMaxConnectionsPerIP)
+		require.True(t, cfg.TrustProxyHeaders)
+	})
+
+	t.Run("fuera de rango es un error", func(t *testing.T) {
+		setValidEnv(t)
+		t.Setenv("EO_WS_MAX_CONNECTIONS", "-1")
+		t.Setenv("EO_WS_MAX_CONNECTIONS_PER_IP", "100001")
+		_, err := config.Load()
+		require.ErrorContains(t, err, "EO_WS_MAX_CONNECTIONS=-1 fuera del rango permitido")
+		require.ErrorContains(t, err, "EO_WS_MAX_CONNECTIONS_PER_IP=100001 fuera del rango permitido")
 	})
 }
 

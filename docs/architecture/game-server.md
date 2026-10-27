@@ -598,12 +598,17 @@ Todo pasa por `internal/config`; ningún valor de gameplay se hardcodea en más 
 | `EO_WS_MAX_MESSAGE_BYTES` | 16384 (256–4 194 304) | Tamaño máximo de un mensaje entrante. |
 | `EO_WS_RATE_LIMIT_PER_SECOND` / `_BURST` | 20 / 40 | *Token bucket* por conexión. El burst no puede ser menor que la tasa. |
 | `EO_WS_OUTBOUND_QUEUE_SIZE` | 256 (8–65536) | Capacidad de la cola de salida por conexión (§3.3). |
+| `EO_WS_ALLOWED_ORIGINS` | — (obligatoria en producción) | Lista blanca de `Origin` en el upgrade de `/ws`; sin `Origin` se admite ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
+| `EO_WS_MAX_CONNECTIONS` / `_PER_IP` | 5000 / 32 (0 = sin tope) | Sockets de `/ws` abiertos, contados desde antes del upgrade; por encima, `503` / `429` sin abrir socket. |
+| `EO_TRUST_PROXY_HEADERS` | `false` | La IP de una conexión es la primera de `X-Forwarded-For`; sólo detrás de un proxy que la sobrescriba. La misma variable que lee `apps/web`. |
 | `EO_PRESENCE_TTL_SECONDS` / `_HEARTBEAT_SECONDS` | 30 / 10 | Margen de reconexión y latido. El heartbeat debe ser **estrictamente menor** que el TTL. |
 | `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` | 300 (0–86400) | Transición `OFFLINE_PENDING → PROTECTED`. |
 
 Constantes de tiempo del WebSocket que **no** son configurables por entorno, fijadas en
 `internal/config`: `WSHandshakeTimeout = 5s`, `WSPingInterval = 15s`, `WSReadTimeout = 45s`,
-`WSWriteTimeout = 10s`.
+`WSWriteTimeout = 10s`. Y las de los `http.Server`, fijadas en `cmd/server`: `ReadHeaderTimeout = 10s`,
+`ReadTimeout = 15s`, `IdleTimeout = 60s`; no afectan a un WebSocket ya establecido, porque gorilla retira
+esos plazos del socket al hacer el upgrade.
 
 `config.Load()` reporta **todos** los errores de validación juntos, no de uno en uno: arrancar tres
 veces seguidas para descubrir tres variables mal puestas es una pérdida de tiempo evitable.

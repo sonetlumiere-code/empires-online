@@ -62,6 +62,7 @@ La versión viaja **en cada mensaje**, en el campo `v` (entero). En v1 el valor 
 | Un frame | Exactamente **un envelope**. No hay *framing* de varios mensajes por frame ni fragmentación aplicativa. |
 | Tamaño máximo entrante | **16 KiB** = 16384 bytes (`EO_WS_MAX_MESSAGE_BYTES`), aplicado por `conn.SetReadLimit` sobre el frame entrante. Es un límite del **sentido entrante**: los mensajes salientes no se truncan (ver la nota de tamaño de 8.4). |
 | Rate limit entrante | **20 msg/s** (`EO_WS_RATE_LIMIT_PER_SECOND`) con **burst 40** (`EO_WS_RATE_LIMIT_BURST`), token bucket por conexión. |
+| Tope de conexiones | **5000** sockets en el proceso (`EO_WS_MAX_CONNECTIONS`) y **32** por IP (`EO_WS_MAX_CONNECTIONS_PER_IP`), contados desde antes del upgrade hasta el cierre, autenticados o no. Por encima, el upgrade responde **`503`** (tope global) o **`429`** (tope de esa IP) con `Retry-After: 5` y no abre socket. La IP es la del socket salvo con `EO_TRUST_PROXY_HEADERS=true` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
 | Cola de salida | **256** mensajes por conexión (`EO_WS_OUTBOUND_QUEUE_SIZE`, rango 8–65536). Si se llena, la sesión se cierra con `4500`. |
 | Ping | El servidor envía un ping de control WebSocket cada **15 s**. El cliente debe responder pong (lo hace el navegador de forma automática). |
 | Read timeout | **45 s** sin ningún frame recibido del cliente → cierre. Cada frame recibido, incluido el pong de control, renueva el deadline. |

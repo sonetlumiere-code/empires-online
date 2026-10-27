@@ -55,8 +55,8 @@ type Config struct {
 	WSMaxMessageBytes int64
 	WSRateLimitPerSec int
 	WSRateLimitBurst  int
-	// EO_AUTH_RATE_LIMIT_* y EO_TRUST_PROXY_HEADERS ya no son del Game Server:
-	// desde ADR-018 el alta y el login viven en apps/web, que es quien las lee.
+	// EO_AUTH_RATE_LIMIT_* ya no son del Game Server: desde ADR-018 el alta y
+	// el login viven en apps/web, que es quien las lee.
 	WSHandshakeTimeout  time.Duration
 	WSPingInterval      time.Duration
 	WSReadTimeout       time.Duration
@@ -69,6 +69,15 @@ type Config struct {
 	// ella cualquier página web abriría sesiones desde el navegador del jugador
 	// (ADR-021). Un cliente que no envía Origin no es un navegador y no se filtra.
 	WSAllowedOrigins []string
+
+	// WSMaxConnections y WSMaxConnectionsPerIP acotan los sockets de /ws
+	// abiertos, contados desde antes del upgrade (ADR-021). 0 = sin tope.
+	WSMaxConnections      int
+	WSMaxConnectionsPerIP int
+	// TrustProxyHeaders: creer a X-Forwarded-For para identificar la IP de una
+	// conexión. La misma variable y el mismo significado que en apps/web
+	// (EO_TRUST_PROXY_HEADERS): sólo con un proxy inverso delante.
+	TrustProxyHeaders bool
 }
 
 // Valores admitidos de EO_ENV. La lista es cerrada a propósito: `prod` o un
@@ -152,6 +161,10 @@ func Load() (Config, error) {
 		WSWriteTimeout:      10 * time.Second,
 		WSOutboundQueueSize: v.intRange("EO_WS_OUTBOUND_QUEUE_SIZE", 256, 8, 65536),
 		WSAllowedOrigins:    origins,
+
+		WSMaxConnections:      v.intRange("EO_WS_MAX_CONNECTIONS", 5000, 0, 1_000_000),
+		WSMaxConnectionsPerIP: v.intRange("EO_WS_MAX_CONNECTIONS_PER_IP", 32, 0, 100_000),
+		TrustProxyHeaders:     v.boolean("EO_TRUST_PROXY_HEADERS", false),
 	}
 
 	// --- Validaciones cruzadas: las que un rango por sí solo no puede expresar ---

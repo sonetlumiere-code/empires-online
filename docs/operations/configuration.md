@@ -146,6 +146,9 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_WS_RATE_LIMIT_BURST` | int | `40` | 1–20000, y **≥ `EO_WS_RATE_LIMIT_PER_SECOND`** | No | No | Capacidad del *token bucket*: ráfaga tolerada por encima de la tasa sostenida. Cubre el pico legítimo de un jugador arrastrando la vista (`session.view`) sin castigarlo. |
 | `EO_WS_OUTBOUND_QUEUE_SIZE` | int | `256` | 8–65536 | No | No | Tamaño de la **cola de salida por conexión**. Es la contrapresión del lado servidor: si un cliente no consume sus deltas y la cola se llena, la sesión se cierra con **4500** y el cliente reconecta pidiendo un snapshot limpio. Subirlo tolera clientes más lentos a costa de memoria por conexión; bajarlo corta antes. **No aparece en `.env.example`**: se toma el default salvo que se declare. |
 | `EO_WS_ALLOWED_ORIGINS` | lista | — (vacía: cualquier origen; **obligatoria en producción**) | orígenes `scheme://host[:port]` con `http` o `https`, separados por comas, **sin ruta** | No | No | Lista blanca de la cabecera `Origin` en el upgrade de `/ws` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Un navegador la envía siempre y no deja al script cambiarla: es lo que impide que otra página abierta en el mismo navegador abra sesiones de juego (*cross-site WebSocket hijacking*). Comparación exacta sin distinguir mayúsculas; `null` (iframe aislado, `file://`) no casa nunca. Una petición **sin** `Origin` —`scripts/smoke.mjs`, `curl`, otro servidor— se admite siempre: no es un navegador y no lleva las cookies de nadie. Un origen no listado recibe **403** antes del handshake y un `warn` «origen rechazado en el upgrade de WebSocket». Una entrada con ruta (`https://x/`), sin esquema o con `ws://` es un **error de arranque**: nunca casaría y en producción dejaría fuera a todos los jugadores sin que nada lo dijera. En producción la lista lleva el dominio exacto del frontend; no hay comodines. |
+| `EO_WS_MAX_CONNECTIONS` | int | `5000` | 0–1000000; **0 = sin tope** | No | No | Tope de sockets de `/ws` abiertos en el proceso, contados desde **antes** del upgrade y hasta que la goroutine de la conexión termina: un socket que nunca envía `session.hello` también ocupa plaza durante sus 5 s de handshake ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Por encima, el upgrade responde **`503 Service Unavailable`** con `Retry-After: 5` y no abre socket; se cuenta en `eo_ws_connections_rejected_total{reason="max_connections"}` y se registra en `warn`. El límite de descriptores del proceso (`ulimit -n`) tiene que quedar por encima de este valor más las conexiones a PostgreSQL y Redis: ver [deployment.md §3.2](./deployment.md#32-composición-en-el-vps). |
+| `EO_WS_MAX_CONNECTIONS_PER_IP` | int | `32` | 0–100000; **0 = sin tope** | No | No | Tope de sockets de `/ws` abiertos **por IP**, con el mismo recuento. Por encima, **`429 Too Many Requests`** con `Retry-After: 5`; `reason="max_connections_per_ip"`. La IP es la del socket salvo con `EO_TRUST_PROXY_HEADERS=true`. **Detrás de un reverse proxy, sin esa variable, todas las conexiones comparten la IP del proxy y este tope sería el del servidor entero**: el arranque lo avisa en `warn` en producción. Varios jugadores detrás de una misma NAT (una oficina, una universidad, un operador móvil con CGNAT) comparten el cupo: 32 es holgado para una NAT doméstica y corto para un CGNAT grande; se sube, o se pone a 0, si los logs muestran rechazos legítimos. Es por IP exacta; agregar IPv6 por `/64` es **TBD (fuera de MVP)**. |
+| `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off` | No | No | Si la IP de una conexión es la **primera** entrada de `X-Forwarded-For` en lugar de la del socket. **La misma variable, con el mismo significado, que lee `apps/web`** (§3.8-bis): en el Game Server gobierna el tope por IP. Sólo con un reverse proxy delante que **sobrescriba** la cabecera (Caddy por defecto; Nginx con `$remote_addr`, no con `$proxy_add_x_forwarded_for`, que la añade a lo que trajo el cliente y la deja falsificable). Sin proxy y con `true`, cualquiera elige su IP y se salta el tope. |
 
 ### 3.8-bis Identidad (las lee `apps/web`, no el Game Server)
 
@@ -161,10 +164,11 @@ lleva el prefijo `NEXT_PUBLIC_`. En desarrollo, `apps/web` carga el `.env` de la
 | `EO_GAME_SERVER_INTERNAL_URL` | URL | `http://localhost:8080` | URL HTTP(S) | No | Base a la que `apps/web` llama `POST /internal/players` para fundar un jugador. |
 | `EO_AUTH_RATE_LIMIT_PER_MINUTE` | int | `10` | 1–100000 | No | Intentos de alta y login por minuto y por origen. Cada uno calcula `scrypt`: sin límite, cualquiera hace quemar CPU al servidor web, y en el login es lo único que separa una contraseña de la fuerza bruta. **Por proceso**: con varias instancias de Next.js, cada una lleva su cuenta. |
 | `EO_AUTH_RATE_LIMIT_BURST` | int | `5` | 1–10000 | No | Capacidad del cubo de esos intentos. Un humano que se equivoca de contraseña dos veces no lo nota; un script sí. |
-| `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false` | No | Si se cree a `X-Forwarded-For` al identificar el origen. **Actívalo sólo con un proxy inverso delante.** Sin esto, todas las peticiones comparten un único cupo; sin proxy y con esto, cualquiera falsifica la cabecera y se salta el límite. El valor por defecto es el seguro. |
+| `EO_TRUST_PROXY_HEADERS` | bool | `false` | `true`/`false` | No | Si se cree a `X-Forwarded-For` al identificar el origen. **Actívalo sólo con un proxy inverso delante.** Sin esto, todas las peticiones comparten un único cupo; sin proxy y con esto, cualquiera falsifica la cabecera y se salta el límite. El valor por defecto es el seguro. **También la lee el Game Server** (§3.8), para el tope de conexiones por IP: es la misma decisión —hay o no un proxy de confianza delante— tomada una vez para los dos procesos. |
 
 Hasta ADR-018, `EO_AUTH_RATE_LIMIT_*` y `EO_TRUST_PROXY_HEADERS` las leía el Game Server, que era quien
-calculaba bcrypt; cambiaron de proceso, no de nombre ni de significado.
+calculaba bcrypt; cambiaron de proceso, no de nombre ni de significado. Desde
+[ADR-021](../decisions/ADR-021-game-server-perimeter.md), `EO_TRUST_PROXY_HEADERS` la leen los dos.
 
 ### 3.9 Constantes NO configurables por entorno
 
@@ -178,6 +182,14 @@ que ser más tolerante que ellos (ver [deployment.md](./deployment.md#43-reglas-
 | `WSPingInterval` | **15 s** | Cadencia del ping del servidor. Mantiene viva la conexión a través de NAT y proxies. |
 | `WSReadTimeout` | **45 s** | Silencio máximo tolerado en la lectura. Da margen para perder dos pings seguidos. |
 | `WSWriteTimeout` | **10 s** | Plazo máximo para completar una escritura hacia el cliente. |
+
+Y tres plazos de los servidores HTTP (`net/http`), fijados en `cmd/server` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Acotan lo que un socket puede ocupar sin terminar de hablar; **no** afectan a un WebSocket ya establecido, porque gorilla retira estos plazos del socket al hacer el upgrade y desde ahí mandan los cuatro de arriba:
+
+| Constante | Valor | Papel |
+|---|---|---|
+| `httpReadHeaderTimeout` | **10 s** | Plazo para recibir las cabeceras de una petición. |
+| `httpReadTimeout` | **15 s** | Plazo para recibir la petición entera, cuerpo incluido. |
+| `httpIdleTimeout` | **60 s** | Silencio máximo de una conexión keep-alive entre dos peticiones. |
 
 ### 3.10 Variables que no son configuración del servidor
 

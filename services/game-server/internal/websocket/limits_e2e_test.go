@@ -3,6 +3,7 @@ package websocket_test
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -178,6 +179,136 @@ func uuidN(i int) string {
 		s[p] = byte('0' + n%10)
 	}
 	return string(s)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tope de conexiones (ADR-021)
+// ─────────────────────────────────────────────────────────────
+
+// rechazosPorMotivo lee eo_ws_connections_rejected_total{reason}.
+func rechazosPorMotivo(t *testing.T, env *e2e) map[string]float64 {
+	t.Helper()
+	out := map[string]float64{}
+	familias, err := env.metrics.Registry().Gather()
+	require.NoError(t, err)
+	for _, f := range familias {
+		if f.GetName() != "eo_ws_connections_rejected_total" {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "reason" {
+					out[l.GetValue()] = m.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return out
+}
+
+// rechazadoAntesDelUpgrade comprueba que el dial no abrió socket y devolvió el
+// código HTTP esperado con Retry-After.
+func rechazadoAntesDelUpgrade(t *testing.T, env *e2e, h http.Header, status int) {
+	t.Helper()
+	c, resp, err := env.dialConCabeceras(h)
+	require.ErrorIs(t, err, gws.ErrBadHandshake)
+	require.Nil(t, c)
+	require.NotNil(t, resp)
+	require.Equal(t, status, resp.StatusCode)
+	require.Equal(t, "5", resp.Header.Get("Retry-After"))
+}
+
+// Las series de rechazo existen a cero desde el arranque: una alerta sobre
+// rate() de una serie inexistente no dispararía nunca.
+func TestLasSeriesDeRechazoExistenACeroDesdeElArranque(t *testing.T) {
+	env := newE2E(t)
+	require.Equal(t, map[string]float64{
+		observability.RejectOrigin:              0,
+		observability.RejectMaxConnections:      0,
+		observability.RejectMaxConnectionsPerIP: 0,
+	}, rechazosPorMotivo(t, env))
+}
+
+// Por encima de MaxConnections el upgrade responde 503 y no abre socket. La
+// plaza se ocupa desde ANTES del handshake —un socket mudo también cuenta— y se
+// libera al cerrarse, momento en que vuelve a caber uno.
+func TestPorEncimaDelTopeDeConexionesElUpgradeResponde503(t *testing.T) {
+	env := newE2ECon(t, nil, func(c *ws.Config) { c.MaxConnections = 2 })
+
+	primera := env.dial() // sin handshake: ocupa plaza igualmente
+	env.dial()
+	rechazadoAntesDelUpgrade(t, env, nil, http.StatusServiceUnavailable)
+	require.Equal(t, 1.0, rechazosPorMotivo(t, env)[observability.RejectMaxConnections])
+	require.Contains(t, env.logs.String(), `"reason":"max_connections"`)
+
+	// Cerrar una libera su plaza: la goroutine de la conexión termina y suelta
+	// la reserva poco después.
+	require.NoError(t, primera.c.Close())
+	require.Eventually(t, func() bool {
+		c, _, err := env.dialConCabeceras(nil)
+		return err == nil && c != nil
+	}, 3*time.Second, 20*time.Millisecond, "al cerrar una conexión debe caber otra")
+}
+
+// Por encima de MaxConnectionsPerIP el upgrade responde 429: es esa IP la que
+// se pasa, no el servidor el que está lleno. Todas las conexiones del test
+// salen de 127.0.0.1.
+func TestPorEncimaDelTopePorIPElUpgradeResponde429(t *testing.T) {
+	env := newE2ECon(t, nil, func(c *ws.Config) { c.MaxConnectionsPerIP = 2 })
+
+	env.dial()
+	env.dial()
+	rechazadoAntesDelUpgrade(t, env, nil, http.StatusTooManyRequests)
+	require.Equal(t, 1.0, rechazosPorMotivo(t, env)[observability.RejectMaxConnectionsPerIP])
+	require.Contains(t, env.logs.String(), `"reason":"max_connections_per_ip"`)
+}
+
+// X-Forwarded-For sólo cuenta con TrustProxyHeaders: sin un proxy de confianza
+// delante, cualquiera elegiría su IP y se saltaría el tope. Con él, la IP es
+// la PRIMERA de la cabecera, como en apps/web.
+func TestLaIPDeXForwardedForSoloCuentaConProxyDeConfianza(t *testing.T) {
+	t.Run("sin confianza se ignora", func(t *testing.T) {
+		env := newE2ECon(t, nil, func(c *ws.Config) { c.MaxConnectionsPerIP = 1 })
+		c, _, err := env.dialConCabeceras(http.Header{"X-Forwarded-For": {"10.0.0.1"}})
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		// Otra IP «declarada» sigue siendo 127.0.0.1 para el servidor.
+		rechazadoAntesDelUpgrade(t, env, http.Header{"X-Forwarded-For": {"10.0.0.2"}}, http.StatusTooManyRequests)
+	})
+
+	t.Run("con confianza se cuenta por la primera IP de la cabecera", func(t *testing.T) {
+		env := newE2ECon(t, nil, func(c *ws.Config) {
+			c.MaxConnectionsPerIP = 1
+			c.TrustProxyHeaders = true
+		})
+		c, _, err := env.dialConCabeceras(http.Header{"X-Forwarded-For": {"10.0.0.1, 192.168.0.9"}})
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		rechazadoAntesDelUpgrade(t, env, http.Header{"X-Forwarded-For": {"10.0.0.1"}}, http.StatusTooManyRequests)
+
+		otra, _, err := env.dialConCabeceras(http.Header{"X-Forwarded-For": {"10.0.0.2"}})
+		require.NoError(t, err, "otra IP tiene su propio cupo")
+		require.NotNil(t, otra)
+		// Sin cabecera, la IP vuelve a ser la del socket, que aún no ha gastado
+		// su plaza.
+		sinCabecera, _, err := env.dialConCabeceras(nil)
+		require.NoError(t, err)
+		require.NotNil(t, sinCabecera)
+	})
+}
+
+// Un tope a cero es «sin tope»: la configuración lo admite para desactivar el
+// tope por IP detrás de un proxy que no se puede hacer de confianza.
+func TestUnTopeACeroNoLimita(t *testing.T) {
+	env := newE2ECon(t, nil, func(c *ws.Config) {
+		c.MaxConnections = 0
+		c.MaxConnectionsPerIP = 0
+	})
+	for i := 0; i < 40; i++ {
+		env.dial()
+	}
+	require.Equal(t, 0.0, rechazosPorMotivo(t, env)[observability.RejectMaxConnections])
+	require.Equal(t, 0.0, rechazosPorMotivo(t, env)[observability.RejectMaxConnectionsPerIP])
 }
 
 // Criterio 5 de M3: seq es estrictamente creciente, sin huecos, en todos los

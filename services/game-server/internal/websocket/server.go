@@ -75,6 +75,16 @@ type Config struct {
 	// producción (ADR-021). Una petición SIN cabecera Origin se acepta siempre:
 	// no viene de un navegador, y el riesgo cross-site sólo existe en ellos.
 	AllowedOrigins []string
+
+	// MaxConnections y MaxConnectionsPerIP acotan los sockets abiertos, contados
+	// desde antes del upgrade (ADR-021); 0 es «sin tope». Por encima, el upgrade
+	// responde 503 (tope global) o 429 (tope de esa IP) y no abre socket.
+	MaxConnections      int
+	MaxConnectionsPerIP int
+	// TrustProxyHeaders hace que la IP de una conexión sea la primera de
+	// X-Forwarded-For en lugar de la del socket. Sólo con un proxy inverso
+	// delante que sobrescriba la cabecera; sin él, cualquiera elige su IP.
+	TrustProxyHeaders bool
 }
 
 // Server acepta conexiones WebSocket y las traduce a comandos del dominio.
@@ -88,6 +98,7 @@ type Server struct {
 	metrics  *observability.Metrics
 	log      *slog.Logger
 	upgrader gws.Upgrader
+	limits   *connLimiter
 }
 
 // NewServer construye el servidor.
@@ -104,6 +115,7 @@ func NewServer(
 	s := &Server{
 		cfg: cfg, hub: hub, auth: authenticator, presence: presence,
 		dedupe: dedupe, commands: commands, metrics: metrics, log: log,
+		limits: newConnLimiter(cfg.MaxConnections, cfg.MaxConnectionsPerIP),
 	}
 	if dedupe != nil {
 		hub.RecordReplies(s.recordReply)
@@ -139,7 +151,14 @@ func (s *Server) checkOrigin(r *http.Request) bool {
 		}
 	}
 	s.log.Warn("origen rechazado en el upgrade de WebSocket", "origin", origin, "remote", r.RemoteAddr)
+	s.countRejected(rejectOrigin)
 	return false
+}
+
+func (s *Server) countRejected(reason string) {
+	if s.metrics != nil {
+		s.metrics.WSConnectionsRejected.WithLabelValues(reason).Inc()
+	}
 }
 
 // Handler devuelve el handler HTTP del endpoint /ws.
@@ -150,12 +169,32 @@ func (s *Server) checkOrigin(r *http.Request) bool {
 // Usar r.Context() mataría toda sesión justo después de su primer mensaje.
 func (s *Server) Handler(base context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// La plaza se reserva ANTES del upgrade y se conserva hasta que la
+		// goroutine de la conexión termina: un socket que nunca se autentica
+		// también cuenta (ADR-021).
+		ip := clientIP(r, s.cfg.TrustProxyHeaders)
+		release, reason := s.limits.acquire(ip)
+		if reason != "" {
+			status := rejectStatus(reason)
+			s.log.Warn("conexión rechazada por tope antes del upgrade",
+				"reason", reason, "status", status, "ip", ip, "remote", r.RemoteAddr)
+			s.countRejected(reason)
+			w.Header().Set("Retry-After", retryAfterSeconds)
+			http.Error(w, "demasiadas conexiones", status)
+			return
+		}
+
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
+			// gorilla ya respondió: 403 por Origin, 400 por cabeceras.
+			release()
 			s.log.Debug("upgrade a WebSocket fallido", "err", err, "remote", r.RemoteAddr)
 			return
 		}
-		go s.serve(base, conn, r.RemoteAddr)
+		go func() {
+			defer release()
+			s.serve(base, conn, r.RemoteAddr)
+		}()
 	}
 }
 
