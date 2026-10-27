@@ -41,6 +41,9 @@ export default function Page() {
   const playerId = useWorldStore((s) => s.playerId);
   const units = useWorldStore((s) => s.units);
   const cities = useWorldStore((s) => s.cities);
+  // Los mapas son de referencia estable: lo que cambia por delta es `changes`.
+  // Provisional hasta que el HUD se suscriba a un selector por valor.
+  useWorldStore((s) => s.changes);
   const lastError = useWorldStore((s) => s.lastError);
 
   useEffect(() => () => clientRef.current?.disconnect(), []);

@@ -26,7 +26,7 @@ Propósito: definir el diseño objetivo del cliente de **Empires Online** —Nex
 > | §3.1 Envelopes | Existe, con diferencias: el cliente valida con Zod **todo** mensaje también en producción y emite también `unit.garrison` y `unit.ungarrison`. |
 > | §3.2 Handshake | **Ajustada al código.** |
 > | §3.3–§3.7 Reconexión, `seq`, cola de comandos, errores, reloj | **Objetivo.** Cada una dice qué hace hoy `src/net/client.ts`, que es bastante menos. |
-> | §4 Store | Existe en lo esencial (réplica de sólo lectura, snapshot que reemplaza, terreno que se fusiona); la forma del estado y los reducers separados son objetivo. |
+> | §4 Store | Existe en lo esencial (réplica de sólo lectura, snapshot que reemplaza, terreno que se fusiona, mapas estables con la señal `changes` de qué ids tocó cada delta); la forma del estado y los reducers separados son objetivo. |
 > | §5 Posición autoritativa y de render | **Ajustada al código.** |
 > | §6 Coordenadas | Las fórmulas existen; el anclaje del rombo y el acotado del clic difieren (§6.2, §6.4). |
 > | §7.1–§7.2, §7.4–§7.6 Escena, profundidad, culling, picking, presupuesto | **Objetivo**, con lo que existe dicho en cada una. |
@@ -327,7 +327,10 @@ Mientras `quality() === 'UNSYNCED'` (antes del primer `session.pong`), el render
 > lectura que sólo cambia por `applyServerMessage` (y `applyWelcome` / `applySnapshot`, que ella llama), y no
 > hay predicción de movimiento. Diferencias: también guarda la selección (`selectedUnitId`, `selectUnit`) y el
 > último error (`lastError`), porque no hay `uiStore` separado; y `reset()` existe pero la reconexión no lo
-> llama (§3.4).
+> llama (§3.4). Desde 2026-10-27 **un delta cuesta lo que cambia**: los mapas de entidades son de referencia
+> estable y se mutan en sitio, cada entidad es un objeto inmutable que se reemplaza entero, y cada `set` que
+> toca el mundo publica en `changes` qué ids tocó (§4.2). Antes, cada `entity.update` copiaba el `Map` de
+> unidades entero.
 
 `worldStore` (Zustand) contiene **estado autoritativo replicado y de solo lectura**. Su única vía de escritura es el reductor que consume mensajes del servidor:
 
@@ -347,11 +350,19 @@ El estado *de interfaz* (selección de unidades, panel abierto, hover) vive en u
 ### 4.2 Forma del estado
 
 > **Estado: objetivo en la forma; ajustado en el terreno.** El estado real es `{ playerId, sessionId, world,
-> tick, units, cities, territories, terrain, selectedUnitId, lastError }`: sin `connection` (el estado de la
-> conexión lo lleva `GameClient` y la página) ni `view`. Cada unidad es un `UnitView` con `x`, `y` (la
+> tick, units, cities, territories, terrain, changes, selectedUnitId, lastError }`: sin `connection` (el estado
+> de la conexión lo lleva `GameClient` y la página) ni `view`. Cada unidad es un `UnitView` con `x`, `y` (la
 > posición autoritativa consolidada), `movement`, `cityId` y `garrisonCityId`; el terreno es un `Map` por
 > clave `"cx:cy"` con los bytes ya decodificados. Lo que dicen los dos párrafos sobre cómo llega el terreno —una
 > vez por sesión (`NeedsTerrain` / `MarkTerrainSent`), fusionado y nunca borrado por un snapshot— es exacto.
+>
+> Los cuatro mapas se exponen como `ReadonlyMap` y son **los mismos objetos durante toda la pestaña**: un
+> snapshot o un `reset` los vacían y rellenan en sitio. Por eso su referencia no sirve para detectar cambios;
+> lo que se compara es `changes: WorldChanges` —`revision` creciente, `all` (snapshot, welcome, reset), los
+> ids de `units`, `cities` y `territories` tocados (en `units`, también la unidad que entra y la que sale de la
+> selección) y `terrain` (llegaron chunks)—, que se reemplaza en cada `set` que toca el mundo y no en los que
+> sólo dejan `lastError`. Medido en `src/state/world.perf.test.ts` (informativo, 2 000 unidades y 1 000
+> `entity.update`): unos 4 µs por delta frente a 133–145 µs cuando se copiaba el mapa.
 
 Los identificadores siguen los tipos del paquete de protocolo: `EntityId` es un **entero positivo** (`number`, acotado a `Number.MAX_SAFE_INTEGER`) para unidades, ciudades, movimientos y territorios; `Uuid` es un **string** y se usa para `playerId` y `sessionId`. No hay ids de entidad como cadena.
 
@@ -415,7 +426,9 @@ Volumen: con `EO_INTEREST_RADIUS_CHUNKS = 2` el área son 5×5 = 25 chunks = 25 
 > `unit.movement.*`. Diferencias: `entity.update` sobre una entidad desconocida se ignora sin contarse; no hay
 > cola que resolver, así que `unit.move.accepted` no hace nada y `unit.move.rejected` y `system.error` sólo
 > dejan `lastError`; `unit.movement.cancelled` deja además la unidad en `IDLE`; y `session.pong` lo consume
-> `GameClient`, no el store. Tests: `src/state/world.test.ts`.
+> `GameClient`, no el store. Cada caso muta su entrada del mapa y publica en `changes` el id tocado (§4.2); un
+> delta sobre una entidad desconocida no publica nada. Tests: `src/state/world.test.ts` (también qué ids
+> señala cada mensaje y que el mapa y las entidades no tocadas conservan su objeto).
 
 Un reducer puro por familia de mensajes, todos con firma `(state, payload, envelope) => state`:
 
