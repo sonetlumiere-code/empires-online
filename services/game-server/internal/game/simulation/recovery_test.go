@@ -114,7 +114,7 @@ func TestDiezUnidadesMoviendoseNoPasanDelPresupuestoDelTick(t *testing.T) {
 		h.ponerUnidad(10+i, h.playerID, world.Tile{X: int32(4 + i), Y: 20}, unit.StatusIdle, 40)
 	}
 	metrics := observability.NewMetrics()
-	l := loop.New(h.sim, h.clk, h.commands, loop.Config{
+	l := loop.New(h.sim, h.clk, h.commands, h.inbox, loop.Config{
 		TickDuration: 100 * time.Millisecond, FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256, EpochMs: epoch,
 	}, metrics, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))

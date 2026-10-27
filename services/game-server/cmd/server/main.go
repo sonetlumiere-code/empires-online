@@ -36,9 +36,15 @@ import (
 
 const (
 	commandQueueSize = 8192
-	shutdownTimeout  = 25 * time.Second
-	ticketReplayTTL  = 120 * time.Second
-	idempotencyTTL   = 300 * time.Second
+	// inboxSize acota el buzón del loop (ADR-022). Se drena antes que el canal
+	// de comandos en cada tick, así que sólo acumula lo que falla entre dos
+	// ticks: como mucho la cola de persistencia entera (4096) más los descartes
+	// al encolar de un tick. Con el mismo tamaño que el canal, llenarlo exige
+	// un fallo que no es de capacidad.
+	inboxSize       = 8192
+	shutdownTimeout = 25 * time.Second
+	ticketReplayTTL = 120 * time.Second
+	idempotencyTTL  = 300 * time.Second
 
 	// Plazos de los servidores HTTP (ADR-021). Acotan lo que un socket puede
 	// ocupar sin terminar de hablar: las cabeceras, la petición entera y el
@@ -254,6 +260,11 @@ func run() error {
 
 	hub := ws.NewHub(metrics, log)
 	commands := make(chan simulation.Command, commandQueueSize)
+	// El buzón del loop (ADR-022): compensaciones y respuestas de la cola de
+	// persistencia, y bajas de sesión que no caben en `commands`. Se drena antes
+	// que `commands` en cada tick, así que lo que espera en él es, como mucho,
+	// lo que falló durante un tick: nunca debería llenarse.
+	inbox := loop.NewInbox(inboxSize, metrics, log)
 
 	sim := simulation.New(state, simulation.Deps{
 		Clock:       sysClock,
@@ -263,16 +274,9 @@ func run() error {
 		Repos:       gameStore,
 		Treaties:    treatyRepo,
 		Garrisons:   postgres.NewGarrisonRepo(store, unitRepo, movementRepo, treatyRepo),
-		// Las compensaciones de la cola vuelven al loop por el mismo canal que
-		// los comandos de los jugadores, sin bloquear al worker (ADR-013 §2.4).
-		Inbox: func(c simulation.Command) bool {
-			select {
-			case commands <- c:
-				return true
-			default:
-				return false
-			}
-		},
+		// Las compensaciones de la cola vuelven al loop por su buzón, sin
+		// bloquear al worker (ADR-013 §2.4, ADR-022).
+		Inbox:              inbox.Offer,
 		Log:                log,
 		ProtectionCooldown: cfg.CityOfflineProtectionCooldwn,
 		DisconnectGrace:    cfg.PresenceTTL,
@@ -280,7 +284,7 @@ func run() error {
 		PathMaxDistance:    cfg.PathfindingMaxDistance,
 	})
 
-	gameLoop := loop.New(sim, sysClock, commands, loop.Config{
+	gameLoop := loop.New(sim, sysClock, commands, inbox, loop.Config{
 		TickDuration:       cfg.TickDuration(),
 		FlushIntervalTicks: cfg.PersistenceFlushIntervalTicks,
 		MaxCommandsPerTick: 1024,
@@ -316,7 +320,7 @@ func run() error {
 		MaxConnectionsPerIP:  cfg.WSMaxConnectionsPerIP,
 		TrustProxyHeaders:    cfg.TrustProxyHeaders,
 		TrustedProxyCount:    cfg.TrustedProxyCount,
-	}, hub, authenticator, presence, dedupe, commands, metrics, log)
+	}, hub, authenticator, presence, dedupe, commands, inbox.Offer, metrics, log)
 
 	// Detrás del reverse proxy del despliegue de referencia, TODAS las
 	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el

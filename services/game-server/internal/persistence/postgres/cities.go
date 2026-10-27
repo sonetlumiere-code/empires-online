@@ -104,13 +104,15 @@ func (r *CityRepo) SetPresence(ctx context.Context, db DB, cityID int64, state c
 	case city.PresenceProtected:
 		// protection_until queda NULL: en el MVP la protección no caduca sola,
 		// sólo termina cuando el dueño vuelve. El campo existe para poder
-		// introducir un límite superior sin migrar. No se toca ninguna marca
-		// temporal: last_offline_at debe conservar el instante de la desconexión,
-		// que es desde donde se midió el cooldown.
+		// introducir un límite superior sin migrar. `at` es el instante de la
+		// desconexión —desde donde se midió el cooldown—, el mismo que ya
+		// escribió OFFLINE_PENDING: volver a escribirlo no cambia nada en el
+		// camino normal, y repara la fila si aquella escritura se descartó y la
+		// cola la reencola ya en PROTECTED (ADR-022).
 		query = `UPDATE cities
-		         SET presence_state = $2, version = version + 1
+		         SET presence_state = $2, last_offline_at = $3, version = version + 1
 		         WHERE id = $1`
-		args = []any{cityID, string(state)}
+		args = []any{cityID, string(state), at}
 	default:
 		return fmt.Errorf("%w: estado de presencia desconocido %q", city.ErrInvalidTransition, state)
 	}

@@ -189,10 +189,12 @@ type e2e struct {
 	playerID uuid.UUID
 	unitIDs  []int64
 	stop     func()
-	// dedupe y commands se exponen para los tests de idempotencia y de
+	// dedupe, commands e inbox se exponen para los tests de idempotencia y de
 	// saturación de la cola.
 	dedupe   *memoryDeduper
 	commands chan simulation.Command
+	inbox    *loop.Inbox
+	sim      *simulation.Simulation
 	// logs guarda todo lo que el servidor registra, en debug, para los tests
 	// que comprueban qué NO se registra (INV-PLAYER-007).
 	logs *safeBuffer
@@ -260,22 +262,16 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 	state := simulation.NewState(gameWorld)
 	hub := ws.NewHub(nil, log)
 	commands := make(chan simulation.Command, 256)
+	inbox := loop.NewInbox(256, nil, log)
 
 	sim := simulation.New(state, simulation.Deps{
-		Clock:       clk,
-		Pathfinder:  pathfinding.NewAStar(20000, 256),
-		Broadcaster: hub,
-		Persister:   syncPersister{},
-		Repos:       &memoryRepos{},
-		Garrisons:   memoryGarrisons{},
-		Inbox: func(c simulation.Command) bool {
-			select {
-			case commands <- c:
-				return true
-			default:
-				return false
-			}
-		},
+		Clock:              clk,
+		Pathfinder:         pathfinding.NewAStar(20000, 256),
+		Broadcaster:        hub,
+		Persister:          syncPersister{},
+		Repos:              &memoryRepos{},
+		Garrisons:          memoryGarrisons{},
+		Inbox:              inbox.Offer,
 		Log:                log,
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
@@ -301,7 +297,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 	}
 
 	dedupe := newMemoryDeduper()
-	gameLoop := loop.New(sim, clk, commands, loop.Config{
+	gameLoop := loop.New(sim, clk, commands, inbox, loop.Config{
 		TickDuration:       100 * time.Millisecond,
 		FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256,
@@ -330,7 +326,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		ajustar(&wsCfg)
 	}
 	metrics := observability.NewMetrics()
-	wsServer := ws.NewServer(wsCfg, hub, authenticator, newMemoryPresence(), dedupe, commands, metrics, log)
+	wsServer := ws.NewServer(wsCfg, hub, authenticator, newMemoryPresence(), dedupe, commands, inbox.Offer, metrics, log)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", wsServer.Handler(context.Background()))
@@ -343,7 +339,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		issuer:   auth.NewIssuer(testSecret, 60*time.Second, clk),
 		state:    state,
 		playerID: playerID, unitIDs: unitIDs,
-		dedupe: dedupe, commands: commands,
+		dedupe: dedupe, commands: commands, inbox: inbox, sim: sim,
 		logs: logs, metrics: metrics,
 	}
 	env.stop = func() { httpServer.Close() }
@@ -924,6 +920,99 @@ func TestConLaColaLlenaElComandoRespondeYSePuedeReintentar(t *testing.T) {
 	})
 	env.pump()
 	require.Equal(t, orden, c.await(protocol.TypeUnitMoveAccepted, 3*time.Second).RequestID)
+}
+
+// ADR-022: un comando que la cola del loop no admite se cuenta en
+// eo_commands_dropped_total con su tipo, y los demás tipos siguen a cero.
+func TestUnComandoDescartadoPorColaLlenaSeCuentaPorTipo(t *testing.T) {
+	env := newE2E(t)
+	c := env.conectar()
+	for len(env.commands) < cap(env.commands) {
+		env.commands <- simulation.CancelMovement{PlayerID: env.playerID, UnitID: 9999}
+	}
+
+	c.send(protocol.TypeUnitMove, map[string]any{
+		"unitId": env.unitIDs[0], "target": map[string]int{"x": 50, "y": 40},
+	})
+	require.Equal(t, protocol.CodeInternalError,
+		decode[protocol.SystemErrorPayload](t, c.await(protocol.TypeSystemError, 3*time.Second).Payload).Code)
+
+	descartados := comandosDescartados(t, env)
+	require.EqualValues(t, 1, descartados[protocol.TypeUnitMove])
+	for tipo, n := range descartados {
+		if tipo != protocol.TypeUnitMove {
+			require.Zero(t, n, "%s no se descartó", tipo)
+		}
+	}
+	require.Len(t, descartados, len(simulation.CommandTypes()), "todas las series existen desde el arranque")
+}
+
+// ADR-022: la baja de una sesión no puede perderse —sin ella la ciudad quedaría
+// ONLINE para siempre—, así que con el canal de comandos lleno va al buzón del
+// loop, que se drena con prioridad, y el loop deja de contar la sesión.
+func TestConElCanalLlenoLaBajaDeLaSesionVaAlBuzonDelLoop(t *testing.T) {
+	env := newE2E(t)
+	c := env.conectar()
+	require.Equal(t, 1, env.sim.SessionCount(env.playerID))
+	for len(env.commands) < cap(env.commands) {
+		env.commands <- simulation.CancelMovement{PlayerID: env.playerID, UnitID: 9999}
+	}
+
+	require.NoError(t, c.c.Close())
+	require.Eventually(t, func() bool { return env.inbox.Len() == 1 }, 3*time.Second, 10*time.Millisecond,
+		"la baja espera en el buzón, no se descarta")
+	require.Zero(t, comandosDescartados(t, env)[simulation.CommandType(simulation.PlayerDisconnected{})])
+
+	env.pump()
+	require.Equal(t, 0, env.sim.SessionCount(env.playerID), "el loop aplicó la baja")
+}
+
+// ADR-022: si el alta de una sesión no cabe en el canal de comandos dentro del
+// plazo, la sesión se cierra con 4500 sin dar de baja nada —nunca llegó a
+// contar— y el descarte se cuenta. El alta no va por el buzón porque debe
+// aplicarse antes que el snapshot inicial, que viaja por el canal (INV-CITY-014).
+func TestSinSitioParaElAltaLaSesionSeCierraSinBaja(t *testing.T) {
+	env := newE2ECon(t, nil, func(cfg *ws.Config) { cfg.DispatchTimeout = 100 * time.Millisecond })
+	for len(env.commands) < cap(env.commands) {
+		env.commands <- simulation.CancelMovement{PlayerID: env.playerID, UnitID: 9999}
+	}
+
+	ticket, err := env.issuer.Issue(env.playerID)
+	require.NoError(t, err)
+	c := env.dial()
+	c.send(protocol.TypeSessionHello, map[string]any{"ticket": ticket})
+	_ = c.c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, err = c.read()
+	require.True(t, gws.IsCloseError(err, protocol.CloseInternalError), "se esperaba el cierre 4500, llegó %v", err)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(env.logs.String(), "el loop no admitió la sesión a tiempo")
+	}, 3*time.Second, 10*time.Millisecond, "logs:\n%s", env.logs.String())
+	require.Zero(t, env.inbox.Len(), "sin alta no hay baja")
+	require.EqualValues(t, 1, comandosDescartados(t, env)[simulation.CommandType(simulation.PlayerConnected{})])
+	env.pump()
+	require.Equal(t, 0, env.sim.SessionCount(env.playerID), "el loop nunca contó la sesión")
+}
+
+// comandosDescartados lee eo_commands_dropped_total{type}.
+func comandosDescartados(t *testing.T, env *e2e) map[string]float64 {
+	t.Helper()
+	out := map[string]float64{}
+	familias, err := env.metrics.Registry().Gather()
+	require.NoError(t, err)
+	for _, f := range familias {
+		if f.GetName() != "eo_commands_dropped_total" {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "type" {
+					out[l.GetValue()] = m.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return out
 }
 
 // INV-PLAYER-007, mitad del handshake: el servidor registra el motivo de cada

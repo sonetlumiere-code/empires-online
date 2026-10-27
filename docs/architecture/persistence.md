@@ -46,7 +46,7 @@ flowchart TB
 
 Reglas de frontera:
 
-1. El tick **nunca** ejecuta I/O bloqueante contra PostgreSQL: encola, y unos workers escriben a su ritmo. `Queue.Submit` no bloquea jamás; si la cola está llena, descarta el trabajo, lo registra como error e invoca la compensación.
+1. El tick **nunca** ejecuta I/O bloqueante contra PostgreSQL: encola, y unos workers escriben a su ritmo. `Queue.Submit` no bloquea jamás; si la cola está llena, descarta el trabajo, lo registra como error, lo cuenta en `eo_persistence_jobs_dropped_total` e invoca la compensación, que devuelve el dato al siguiente volcado periódico por el buzón del loop ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)).
 2. Ninguna decisión de gameplay se toma leyendo Redis dentro del tick. En particular, la máquina de presencia de la fase 5 es **enteramente aritmética sobre RAM**: cuenta sesiones vivas y compara marcas temporales; no consulta la expiración de ninguna clave.
 3. El estado de RAM **debe** poder reconstruirse enteramente desde PostgreSQL —y, para el terreno, desde `EO_WORLD_SEED`— en el arranque. Si un dato no es reconstruible y no está persistido, es un bug de diseño.
 4. **La confirmación al cliente precede al `COMMIT`.** Es la contrapartida honesta de la regla 1: no se puede tener a la vez "cero I/O en el tick" y "commit antes de responder" con un único hilo autoritativo. La ventana de riesgo —si el proceso muere entre la aceptación y el `COMMIT`, típicamente pocas decenas de milisegundos, ese movimiento se pierde y la unidad queda en su última posición consolidada— es un **RPO documentado**, no un descuido. Ver §8.3, §9 y [../database/persistence-strategy.md](../database/persistence-strategy.md).
@@ -146,9 +146,11 @@ Además, la simulación declara los dos puertos que garantizan la regla de "cero
 
 // Job es una escritura durable diferida.
 type Job struct {
-    Name string                          // identifica el trabajo en logs y métricas
+    Name string                          // uno de los Job* del catálogo cerrado simulation.JobNames
+    Key  string                          // entidad que escribe: los trabajos de una clave van en orden (ADR-013)
     Run  func(ctx context.Context) error // debe ser IDEMPOTENTE: puede reintentarse
-    // OnPermanentFailure compensa el fallo definitivo tras agotar los reintentos.
+    // OnPermanentFailure compensa el fallo definitivo: corre fuera del loop y devuelve un
+    // comando por Deps.Inbox. Lo declaran todos los trabajos salvo treaty.expire (ADR-022).
     OnPermanentFailure func(err error)
 }
 
@@ -291,9 +293,9 @@ Al recuperarse Redis, los `session.ping` de los clientes vuelven a escribir `pre
 |---|---|
 | Game loop | Sigue ticando. La simulación en RAM es autoritativa para el tick en curso. |
 | Movimientos ya `ACTIVE` | Continúan y se completan en RAM; su persistencia queda encolada. |
-| `unit.move` y `unit.cancel_move` | **Se siguen aceptando.** La validación y la mutación ocurren en RAM y la confirmación al cliente precede al `COMMIT` (§2.1, regla 4), así que la caída de PostgreSQL no llega a la fase 2. El trabajo durable se encola, se reintenta hasta 3 veces con backoff y, agotados los intentos, se registra como error. **Ése es el riesgo real**: el jugador ve un mundo que la base de datos no confirmó. |
+| `unit.move` y `unit.cancel_move` | **Se siguen aceptando.** La validación y la mutación ocurren en RAM y la confirmación al cliente precede al `COMMIT` (§2.1, regla 4), así que la caída de PostgreSQL no llega a la fase 2. El trabajo durable se encola, se reintenta hasta 3 veces con backoff y, agotados los intentos, se registra como error, se cuenta y se compensa: el inicio detiene la unidad con `reason = SERVER` ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.4), el cierre vuelve al siguiente volcado ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). **El riesgo real** es la ventana entre la confirmación y el `COMMIT`, y lo que espere en RAM si el proceso cae con la base caída. |
 | Fundación de jugador (`POST /internal/players`) | **Se rechaza**: su transacción sí es síncrona y en el camino de la petición. Respuesta `500 INTERNAL_ERROR`; no se crea nada, y la cuenta de `apps/web` queda `PENDING` hasta el siguiente login. |
-| Cola de persistencia | Crece; `eo_persistence_queue_depth` sube. Si llega a su capacidad (4096), `Submit` **descarta** el trabajo y lo registra como error: descartar escrituras nunca es normal y por eso se grita. Política de saturación en [../database/persistence-strategy.md](../database/persistence-strategy.md). |
+| Cola de persistencia | Crece; `eo_persistence_queue_depth` sube. Si llega a su capacidad (4096), `Submit` **descarta** el trabajo, lo registra como error y lo cuenta en `eo_persistence_jobs_dropped_total{reason="queue_full"}`: descartar escrituras nunca es normal y por eso se grita. La compensación devuelve el dato al volcado periódico, que lo reencola cada 5 s mientras la base no responda ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). Política de saturación en [../database/persistence-strategy.md](../database/persistence-strategy.md). |
 | `/ready` | *not ready* (se retira de balanceo si aplica). `GET /health` sigue respondiendo 200: el proceso está vivo. |
 
 ---

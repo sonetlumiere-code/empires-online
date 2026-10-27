@@ -94,13 +94,14 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Veintiuna decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Veintidós decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
 que el servidor implementa, y ADR-020, del mismo día, de cerrar la limpieza de cuentas `PENDING` que ADR-018
-dejó abierta; y ADR-021, del **2026-10-26**, de cerrar el perímetro del Game Server que la auditoría de ese
-día encontró abierto.
+dejó abierta; ADR-021, del **2026-10-26**, de cerrar el perímetro del Game Server que la auditoría de ese
+día encontró abierto; y ADR-022, del **2026-10-27**, de que ninguna escritura de la cola de persistencia ni
+ningún comando del propio servidor se pierda en silencio, el otro hallazgo de esa auditoría.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-019, ADR-013 y
 ADR-018).
@@ -128,13 +129,14 @@ ADR-018).
 | [019](ADR-019-handshake-failure-close-code.md) | Un handshake fallido se comunica sólo con el código de cierre | Aceptado | Sin sesión no hay mensajes: un ticket rechazado o un primer mensaje que no es `session.hello` cierra con `4401`, un handshake ilegible con `4400`, sin `system.error` previo; `system.error` es un mensaje de sesión y `UNAUTHORIZED` queda reservado en el catálogo. Sustituye en parte a ADR-010. |
 | [020](ADR-020-stale-pending-accounts.md) | Una cuenta `PENDING` abandonada se resuelve preguntando al mundo, nunca se borra a ciegas | Aceptado | Abandonada = `PENDING` con el último intento de fundación de hace más de una hora. `GET /internal/players/{id}` decide: si el jugador existe, la cuenta se activa; si no, se borra con la guarda en la sentencia; si no contesta, se deja. Lo hace el alta que choca con el nombre y `pnpm run identity:sweep`. Completa ADR-018 §4.2. |
 | [021](ADR-021-game-server-perimeter.md) | El perímetro del Game Server: `Origin` obligatorio, margen de reloj del ticket, topes de conexión y listener interno | Aceptado | `EO_WS_ALLOWED_ORIGINS` (exacta, obligatoria en producción; sin `Origin` se admite; `403` antes del handshake); `auth.ClockSkew` de 30 s en `iat` y `exp`, constante; `EO_WS_MAX_CONNECTIONS` (5000) y `_PER_IP` (32) antes del upgrade, con `503`/`429` y `eo_ws_connections_rejected_total{reason}`; `/internal/players` en su propio listener `EO_INTERNAL_ADDR` (`127.0.0.1:8081`) que el proxy no publica, con los tres puertos validados distintos; `EO_ENV` sólo `development`, `test` o `production`. Fija el *leeway* que ADR-010 dejó TBD. |
+| [022](ADR-022-durable-write-retry-and-loop-inbox.md) | Ninguna escritura durable ni comando del sistema se pierde en silencio: el volcado reencola lo que la cola descarta y el loop tiene buzón propio | Aceptado | Todo `Job` declara compensación salvo `treaty.expire`, y la compensación no reescribe: marca la ciudad, apunta el cierre o devuelve las unidades al conjunto sucio, y `FlushDirty` lo reencola con el estado **actual**; `loop.Inbox` (8192) lleva las compensaciones y las bajas de sesión y se drena antes que los comandos; el alta espera hasta 2 s en el canal o cierra con `4500`; las sesiones se llevan por id; `eo_persistence_jobs_dropped_total{job, reason}` y `eo_commands_dropped_total{type}` a cero desde el arranque, con alerta en «> 0». Precisa ADR-013 §2.4. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y
 `RandomSource` (canon §1.5), el *interest management* por suscripción a chunks (canon §13) y la
 elección de A\* con heurística octile tras la interfaz `Pathfinder`
 ([../architecture/pathfinding.md](../architecture/pathfinding.md)). Si alguna de ellas necesita
-registrarse, toma el siguiente número libre —**022** en adelante—, nunca un número ya asignado.
+registrarse, toma el siguiente número libre —**023** en adelante—, nunca un número ya asignado.
 
 ## 6. Cómo se propone un ADR nuevo
 

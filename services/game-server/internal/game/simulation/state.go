@@ -38,6 +38,15 @@ type State struct {
 	unitIDs   []int64 // ordenado: garantiza recorridos deterministas
 	unitDirty map[int64]struct{}
 
+	// presenceDirty son las ciudades cuya última escritura de presencia se
+	// descartó: el siguiente volcado vuelve a encolar su presencia actual
+	// (ADR-022). pendingFinishes son los cierres de movimiento descartados,
+	// por id de movimiento, que el siguiente volcado reintenta sólo sobre la
+	// fila. Ninguno de los dos sobrevive a un reinicio: lo que quede aquí al
+	// caer el proceso es la ventana de pérdida documentada.
+	presenceDirty   map[int64]struct{}
+	pendingFinishes map[int64]MovementFinishPersistFailed
+
 	// movements se indexa por unitID: por construcción sólo puede haber uno
 	// activo por unidad, que es justamente INV-MOVE-001.
 	movements map[int64]*movement.Movement
@@ -77,13 +86,16 @@ type State struct {
 // NewState crea un mundo vacío sobre el mapa dado.
 func NewState(w *world.World) *State {
 	return &State{
-		world:        w,
-		units:        make(map[int64]*unit.Unit),
-		unitDirty:    make(map[int64]struct{}),
-		movements:    make(map[int64]*movement.Movement),
-		cities:       make(map[int64]*city.City),
-		cityByOwner:  make(map[uuid.UUID]int64),
-		unitsByChunk: make(map[chunkKey]map[int64]struct{}),
+		world:     w,
+		units:     make(map[int64]*unit.Unit),
+		unitDirty: make(map[int64]struct{}),
+		movements: make(map[int64]*movement.Movement),
+
+		presenceDirty:   make(map[int64]struct{}),
+		pendingFinishes: make(map[int64]MovementFinishPersistFailed),
+		cities:          make(map[int64]*city.City),
+		cityByOwner:     make(map[uuid.UUID]int64),
+		unitsByChunk:    make(map[chunkKey]map[int64]struct{}),
 
 		concealCandidates: make(map[int64]struct{}),
 		garrisonedIn:      make(map[int64]int64),
@@ -282,6 +294,14 @@ func (s *State) DrainDirty() []*unit.Unit {
 
 // DirtyCount indica cuántas unidades esperan volcado.
 func (s *State) DirtyCount() int { return len(s.unitDirty) }
+
+// PresenceDirtyCount indica cuántas ciudades esperan que el volcado vuelva a
+// encolar su presencia (ADR-022).
+func (s *State) PresenceDirtyCount() int { return len(s.presenceDirty) }
+
+// PendingFinishCount indica cuántos cierres de movimiento esperan que el
+// volcado los reintente (ADR-022).
+func (s *State) PendingFinishCount() int { return len(s.pendingFinishes) }
 
 // ─────────────────────────────────────────────────────────────
 // Movimientos

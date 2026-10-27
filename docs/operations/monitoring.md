@@ -1,8 +1,8 @@
 # Observabilidad y monitorización
 
-Logging estructurado, catálogo completo de las 14 métricas Prometheus con sus etiquetas exactas, semántica de `/health` y `/ready`, dashboards y reglas de alerta **propuestos**, y runbook de primer diagnóstico.
+Logging estructurado, catálogo completo de las 17 métricas Prometheus con sus etiquetas exactas, semántica de `/health` y `/ready`, dashboards y reglas de alerta **propuestos**, y runbook de primer diagnóstico.
 
-> **Qué existe y qué no.** Lo que está implementado y corriendo es: el logging estructurado (§1), las 14
+> **Qué existe y qué no.** Lo que está implementado y corriendo es: el logging estructurado (§1), las 17
 > métricas de §2 expuestas en `EO_METRICS_ADDR/metrics`, y los endpoints `/health` y `/ready` de §3. Los
 > dashboards (§4) y las reglas de alerta (§5) son **propuestas**: no hay Prometheus raspando, ni Grafana, ni
 > Alertmanager. El runbook (§6) sirve igual consultando `/metrics` a mano.
@@ -57,7 +57,7 @@ escrito a ojo no devuelva nada.
 
 | Nivel | Uso | Ejemplos que el código emite hoy |
 |---|---|---|
-| `error` | El servidor no pudo cumplir su función y **alguien debe mirarlo**. Todo `error` es potencialmente una alerta. | `escritura durable descartada tras agotar los reintentos`, `cola de persistencia saturada: trabajo descartado`, `invariant_violation`, `cola de comandos saturada; comando descartado` |
+| `error` | El servidor no pudo cumplir su función y **alguien debe mirarlo**. Todo `error` es potencialmente una alerta. | `escritura durable descartada tras agotar los reintentos`, `cola de persistencia saturada: trabajo descartado`, `invariant_violation`, `cola de comandos saturada; comando descartado`, `buzón del loop saturado; comando descartado`, `el loop no admitió la sesión a tiempo; se cierra` |
 | `warn` | Anomalía tolerada, con degradación o riesgo. | `escritura durable fallida; se reintentará`, `ticks perdidos descartados`, el aviso de rate limit antes del cierre `4429` |
 | `info` | Hechos del ciclo de vida, en volumen acotado. | `arrancando Empires Online game server`, `migraciones aplicadas` / `esquema ya al día`, `mundo existente cargado y verificado`, `mundo rehidratado`, `handshake rechazado` (con `close_code`), `sesión establecida`, `sesión finalizada` |
 | `debug` | Diagnóstico detallado. **No usar en producción salvo diagnóstico acotado.** | Comandos duplicados. No hay hoy logs por comando, por búsqueda A\* ni por delta |
@@ -97,7 +97,7 @@ juego de métricas limpio sin colisionar entre sí. En ese registro también est
 (`go_*`) y de proceso (`process_*`), que se obtienen gratis y conviene tener a mano en un incidente de
 memoria.
 
-**Son 15 métricas propias, y estas son exactamente sus etiquetas.** Ni más ni menos: si una consulta agrupa
+**Son 17 métricas propias, y estas son exactamente sus etiquetas.** Ni más ni menos: si una consulta agrupa
 por una etiqueta que no está aquí, devuelve una sola serie y engaña. Regla que gobierna toda etiqueta:
 **cardinalidad acotada**. Jamás `player_id`, `unit_id`, `session_id` ni coordenadas como etiqueta: un
 `player_id` en una etiqueta convierte cada jugador nuevo en una serie temporal nueva y hace estallar la base
@@ -120,7 +120,7 @@ de métricas.
 | `eo_game_tick_duration_seconds` | Histogram | **ninguna** | Distribución de la duración del tick. Es **la** métrica de salud de la simulación. Buckets reales, centrados en el presupuesto de 100 ms de un tick a 10 Hz: `0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1`. Su `_count` sirve además de latido: si no crece, el loop está bloqueado. |
 | `eo_game_tick_overruns_total` | Counter | **ninguna** | Ticks cuya duración superó su período (100 ms con `EO_TICK_RATE_HZ=10`). Un overrun aislado es tolerable; una tasa sostenida significa que el servidor va por detrás del mundo. |
 
-### 2.3 Comandos y protocolo (4)
+### 2.3 Comandos y protocolo (5)
 
 | Métrica | Tipo | Etiquetas | Para qué sirve |
 |---|---|---|---|
@@ -128,6 +128,7 @@ de métricas.
 | `eo_ws_messages_total` | Counter | `direction`, `type` | Mensajes WebSocket por sentido y tipo. `direction` es **`inbound`** o **`outbound`** (no `in`/`out`). En `inbound` cuenta los mensajes **posteriores al handshake** que decodifican: `session.hello` no se cuenta. En `inbound`, `type` es el tipo del mensaje sólo si pertenece al catálogo cerrado de comandos del cliente (`protocol.ClientMessageTypes`); cualquier otro se cuenta como **`unknown`**, porque el tipo lo escribe el cliente y cada valor distinto sería una serie nueva (`EO-121`). Un `unknown` creciente es un cliente que habla otra versión del protocolo o que sondea. En `outbound`, `type` es siempre un tipo del servidor. El ratio `outbound/inbound` mide la amplificación de deltas por comando, que es lo que dimensiona el ancho de banda. |
 | `eo_protocol_errors_total` | Counter | `code` | `system.error` emitidos por la capa WebSocket: `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `RATE_LIMITED` e `INTERNAL_ERROR` cuando la cola de comandos del loop está llena. Los códigos de regla de negocio (`UNIT_NOT_OWNED`, `PATH_NOT_FOUND`, `TREATY_REQUIRED`…) viajan en `unit.move.rejected` o en `system.error` desde la simulación y **no se cuentan aquí**. |
 | `eo_ws_connections_rejected_total` | Counter | `reason` | Upgrades de `/ws` rechazados **antes de abrir socket** ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). `reason` es un catálogo cerrado de tres valores, y las tres series existen a cero desde el arranque: **`origin`** (`Origin` fuera de `EO_WS_ALLOWED_ORIGINS`, respuesta `403`), **`max_connections`** (tope global `EO_WS_MAX_CONNECTIONS`, respuesta `503`) y **`max_connections_per_ip`** (tope por IP `EO_WS_MAX_CONNECTIONS_PER_IP`, respuesta `429`). `origin` creciente es una página ajena intentando abrir sesiones, o la lista mal escrita tras un cambio de dominio; `max_connections` sostenido es el servidor lleno; `max_connections_per_ip` sin `EO_TRUST_PROXY_HEADERS` detrás de un proxy es el síntoma de que todas las conexiones comparten la IP del proxy. Un `403` de gorilla por cabeceras de upgrade malformadas **no** se cuenta: no es un rechazo del perímetro. |
+| `eo_commands_dropped_total` | Counter | `type` | Comandos que **no se aplicaron nunca** porque no cupieron ni en el canal de comandos del loop (8192) ni, para los que tienen derecho a él, en su buzón ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). `type` es el tipo del comando tal como lo define el código (`simulation.CommandType`: `unit.move`, `unit.cancel_move`, `player.connected`, `player.disconnected`, `world.snapshot`, `player.introduce`, `movement.persist_failed`, `unit.garrison`, `unit.ungarrison`, `garrison.entry_resolved`, `garrison.exit_failed`, `city.presence_persist_failed`, `units.flush_persist_failed`, `movement.finish_persist_failed`), un catálogo cerrado cuyas series existen a cero desde el arranque. Lo incrementan el servidor WebSocket (`dispatch`) y el buzón del loop (`loop.Inbox.Offer`). **Cualquier valor > 0 es un incidente** (§5.8): un comando de jugador descartado ya recibió `INTERNAL_ERROR` y puede reintentarse, pero un `player.connected` descartado cerró esa sesión, y una compensación descartada dejó RAM y base de datos sin reconciliar hasta el siguiente arranque. |
 
 ### 2.4 Pathfinding (2)
 
@@ -136,12 +137,13 @@ de métricas.
 | `eo_pathfinding_requests_total` | Counter | `result` | Consultas de pathfinding por resultado. La etiqueta admite `found` y `not_found`, pero **hoy sólo se incrementa `found`**: `Loop.observe` cuenta las consultas del tick sin distinguir su desenlace. Un A\* fallido no tiene métrica propia: sólo se ve, sin código, en el volumen de `eo_ws_messages_total{direction="outbound",type="unit.move.rejected"}`. Separar los dos resultados exige contarlos en `handleMoveUnit` y está **pendiente**. |
 | `eo_pathfinding_duration_seconds` | Histogram | **ninguna** | Tiempo total de A\* dentro de un tick —la suma de sus búsquedas—, observado una vez por cada tick con al menos una búsqueda. Se ejecuta **dentro** del tick, así que su p99 entra directamente en el presupuesto de 100 ms. Buckets reales: `0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.05, 0.1`. |
 
-### 2.5 Dependencias (2)
+### 2.5 Dependencias (3)
 
 | Métrica | Tipo | Etiquetas | Para qué sirve |
 |---|---|---|---|
 | `eo_database_latency_seconds` | Histogram | **ninguna** | Duración de **cada intento** de cada trabajo de la cola de persistencia —una transacción completa, incluida la espera por el pool—. No cubre las lecturas del arranque ni la fundación de jugadores, que no pasan por la cola. Buckets: los `DefBuckets` de Prometheus (el primero, 5 ms). **No** está desglosada por `operation` ni por `table`. |
 | `eo_redis_latency_seconds` | Histogram | **ninguna** | **Registrada pero nunca observada.** El instrumento existe en `internal/observability/metrics.go` y aparece en `/metrics` con contadores a cero; ninguna ruta de código llama a `Observe`. Instrumentar `internal/persistence/redis` está **pendiente**. Hasta entonces la serie es plana, y una alerta sobre ella no dispararía nunca. Buckets ya declarados: `0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5`. |
+| `eo_persistence_jobs_dropped_total` | Counter | `job`, `reason` | Escrituras durables que la cola de persistencia **descartó** ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). `reason` es un catálogo cerrado de dos valores: **`queue_full`** (la partición del trabajo estaba llena al encolar; se descarta en el acto, en la goroutine del loop) y **`attempts_exhausted`** (el worker agotó los 3 intentos). `job` es el nombre del trabajo acotado al catálogo `simulation.JobNames` —`movement.start`, `movement.cancel`, `movement.complete`, `city.presence`, `units.flush`, `garrison.enter`, `garrison.leave`, `treaty.expire`— más **`unknown`** para un nombre fuera de él; las 18 series existen a cero desde el arranque. Se cuenta **antes** de ejecutar la compensación del trabajo, así que dice cuántas veces la cola perdió una escritura, no cuántas se perdieron para siempre: todos los trabajos salvo `treaty.expire` tienen hoy compensación que los vuelve a encolar. **Cualquier valor > 0 es un incidente** (§5.8): `queue_full` significa que PostgreSQL no sigue el ritmo del mundo; `attempts_exhausted`, que lleva más de medio segundo sin aceptar una escritura. |
 
 ### 2.6 Métricas que **no** existen
 
@@ -265,6 +267,8 @@ La regla de diseño es que **cada tablero responda una pregunta**, no que acumul
 | Latencia de Postgres p95 / p99 | `histogram_quantile(0.99, sum(rate(eo_database_latency_seconds_bucket[5m])) by (le))` | Latencia agregada, incluida la espera por el pool. **Sin desglose por `operation` ni por `table`** (§2.6) |
 | Volumen de operaciones | `rate(eo_database_latency_seconds_count[5m])` | Operaciones por segundo contra Postgres; un salto sin más jugadores es sospechoso |
 | Latencia de Redis p99 | `histogram_quantile(0.99, sum(rate(eo_redis_latency_seconds_bucket[5m])) by (le))` | **Serie plana**: la métrica no se observa (§2.5). Afectaría a la presencia y al handshake |
+| Escrituras descartadas | `sum by (job, reason) (increase(eo_persistence_jobs_dropped_total[1h]))` | **Debe ser cero.** `queue_full` acompaña a una cola en su capacidad; `attempts_exhausted` a una latencia de Postgres por encima del timeout de 10 s o a una base caída. Cada descarte se vuelve a encolar en el siguiente volcado (§5.8), así que una tasa sostenida es la misma escritura fallando una y otra vez |
+| Comandos descartados | `sum by (type) (increase(eo_commands_dropped_total[1h]))` | **Debe ser cero.** Un valor aquí significa que el canal de comandos (8192) o el buzón del loop estaban llenos: el loop no drena, y correlaciona con overruns (§4.1) |
 
 ### 4.4 Jugadores — "¿hay alguien y está bien?"
 
@@ -352,7 +356,7 @@ evita tener que actuar en la crisis.
 
 **Justificación.** La cola es un amortiguador entre el loop (que nunca hace I/O de Postgres) y los workers.
 Que suba en un pico es su función. Que suba **y no baje** significa que la tasa de generación supera a la
-de drenaje, algo que no se corrige solo. La cola está acotada —4096 trabajos en total, en 4 particiones de 1024—, así que no agota la memoria: cuando una partición se llena **descarta** trabajos con el log `cola de persistencia saturada: trabajo descartado`, y por eso el umbral crítico está por debajo de esa capacidad y conviene alertar también sobre ese log. Además, todo lo encolado y
+de drenaje, algo que no se corrige solo. La cola está acotada —4096 trabajos en total, en 4 particiones de 1024—, así que no agota la memoria: cuando una partición se llena **descarta** trabajos con el log `cola de persistencia saturada: trabajo descartado` y los cuenta en `eo_persistence_jobs_dropped_total{reason="queue_full"}` (§5.8), y por eso el umbral crítico está por debajo de esa capacidad. Además, todo lo encolado y
 no escrito se pierde en un crash, así que la profundidad es literalmente el tamaño de la ventana de
 pérdida. La condición `deriv > 0` elimina los falsos positivos de los picos que sí se recuperan.
 
@@ -467,6 +471,35 @@ dos condiciones combinadas (caída absoluta > 10 **y** relativa > 50 %) evitan q
 natural de la madrugada, cuando bajar de 8 a 3 jugadores es normal. `EOPlayersZeroUnexpected` cubre el caso
 extremo con contexto histórico.
 
+### 5.8 Escrituras o comandos descartados
+
+```yaml
+- alert: EOPersistenceJobsDropped
+  expr: increase(eo_persistence_jobs_dropped_total[5m]) > 0
+  for: 0m
+  labels: { severity: critical }
+  annotations:
+    summary: "La cola de persistencia descartó una escritura ({{ $labels.job }}, {{ $labels.reason }})"
+
+- alert: EOCommandsDropped
+  expr: increase(eo_commands_dropped_total[5m]) > 0
+  for: 0m
+  labels: { severity: critical }
+  annotations:
+    summary: "El game loop descartó un comando ({{ $labels.type }}): su canal y su buzón estaban llenos"
+```
+
+**Justificación.** Son las dos únicas alertas sin umbral: **cualquier valor por encima de cero es un
+incidente**, porque ninguno de los dos contadores crece en una operación sana. Una escritura descartada se
+vuelve a encolar en el siguiente volcado periódico ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)),
+así que el dato no se pierde mientras el proceso viva, pero la ventana de pérdida ante un crash deja de ser
+la profundidad de la cola para ser «todo lo que lleva fallando desde el primer descarte»; y un comando
+descartado no se aplica jamás: un `player.connected` descartado cerró esa sesión, una compensación descartada
+dejó RAM y base de datos sin reconciliar hasta el siguiente arranque. `for: 0m` es deliberado: no hay falso
+positivo que filtrar, y ambas series existen a cero desde el arranque, así que `increase()` dispara con el
+primer incremento. Las dos alertas van a la vez que §5.3 o §5.1: la causa casi siempre es Postgres (la cola) o
+un loop que no drena (el canal), y esas alertas dicen cuál.
+
 ---
 
 ## 6. Runbook: qué mirar primero
@@ -499,7 +532,12 @@ que mirar, no una lista de sugerencias.
 4. `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (50): un valor **más bajo** produce lotes más pequeños y más
    frecuentes; puede empeorar la situación si el cuello de botella es el número de transacciones, no su
    tamaño.
-5. Si la cola no se recupera, es un incidente: ver
+5. **`eo_persistence_jobs_dropped_total`** por `job` y `reason`. Si crece, la cola ya está perdiendo escrituras:
+   con `queue_full`, la partición de esa clave está llena; con `attempts_exhausted`, cada intento falla o
+   supera los 10 s. Lo descartado vuelve a encolarse en el siguiente volcado (cada 5 s), así que mientras
+   siga creciendo son las mismas escrituras fallando otra vez, y el log `escritura durable fallida; se
+   reintentará` dice con qué error.
+6. Si la cola no se recupera, es un incidente: ver
    [disaster-recovery.md](./disaster-recovery.md#e3-postgres-caído-sin-corrupción).
 
 ### 6.3 "`/ready` devuelve 503"
@@ -559,7 +597,8 @@ que mirar, no una lista de sugerencias.
    - `PATH_NOT_FOUND` / `TARGET_NOT_WALKABLE` / `PATH_TOO_LONG` → la UI está ofreciendo destinos que el
      servidor rechaza: posible desincronización de la capa de ocupación en el cliente.
    - `INTERNAL_ERROR` → en esta métrica, contrapresión: la cola de comandos hacia el loop está llena y
-     descarta comandos (log `cola de comandos saturada; comando descartado`). Cruza con
+     descarta comandos (log `cola de comandos saturada; comando descartado` y
+     `eo_commands_dropped_total{type}`, §5.8). Cruza con
      `eo_game_tick_duration_seconds` y `eo_game_tick_overruns_total`, no con la cola de persistencia.
 2. Los `request_id` sólo aparecen hoy en los logs de la capa WebSocket (duplicados y descartes); reconstruir
    un caso completo desde un `request_id` está pendiente (§1.2).

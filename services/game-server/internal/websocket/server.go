@@ -88,7 +88,16 @@ type Config struct {
 	// inverso delante; sin él, cualquiera elige su IP.
 	TrustProxyHeaders bool
 	TrustedProxyCount int
+
+	// DispatchTimeout es cuánto espera una conexión recién autenticada a que su
+	// PlayerConnected quepa en el canal de comandos del loop antes de darse por
+	// no admitida y cerrarse (ADR-022). 0 es el valor por defecto, 2 s: con el
+	// loop vivo, el canal entero se drena en menos de un segundo.
+	DispatchTimeout time.Duration
 }
+
+// defaultDispatchTimeout es el DispatchTimeout cuando la configuración no lo fija.
+const defaultDispatchTimeout = 2 * time.Second
 
 // Server acepta conexiones WebSocket y las traduce a comandos del dominio.
 type Server struct {
@@ -98,6 +107,10 @@ type Server struct {
 	presence PresenceTracker
 	dedupe   Deduper
 	commands chan<- simulation.Command
+	// inbox es el buzón del loop (loop.Inbox.Offer): la baja de una sesión va
+	// por él cuando el canal de comandos está lleno, porque no puede perderse
+	// (ADR-022). Opcional en tests.
+	inbox    func(simulation.Command) bool
 	metrics  *observability.Metrics
 	log      *slog.Logger
 	upgrader gws.Upgrader
@@ -112,12 +125,16 @@ func NewServer(
 	presence PresenceTracker,
 	dedupe Deduper,
 	commands chan<- simulation.Command,
+	inbox func(simulation.Command) bool,
 	metrics *observability.Metrics,
 	log *slog.Logger,
 ) *Server {
+	if cfg.DispatchTimeout <= 0 {
+		cfg.DispatchTimeout = defaultDispatchTimeout
+	}
 	s := &Server{
 		cfg: cfg, hub: hub, auth: authenticator, presence: presence,
-		dedupe: dedupe, commands: commands, metrics: metrics, log: log,
+		dedupe: dedupe, commands: commands, inbox: inbox, metrics: metrics, log: log,
 		limits: newConnLimiter(cfg.MaxConnections, cfg.MaxConnectionsPerIP),
 	}
 	if dedupe != nil {
@@ -229,7 +246,20 @@ func (s *Server) serve(ctx context.Context, conn *gws.Conn, remote string) {
 		// la sesión sigue siendo válida y el estado durable no se ve afectado.
 		log.Warn("no se pudo registrar la presencia caliente", "err", err)
 	}
-	s.dispatch(simulation.PlayerConnected{PlayerID: session.PlayerID, SessionID: session.ID})
+	if !s.dispatchWithin(simulation.PlayerConnected{PlayerID: session.PlayerID, SessionID: session.ID}, s.cfg.DispatchTimeout) {
+		// Sin alta no hay sesión (ADR-022): una sesión que el loop no cuenta
+		// dejaría la presencia de su ciudad a medias, y su baja de después
+		// descontaría una sesión que nunca sumó. Se cierra sin baja, y el
+		// cliente reconecta con su política de siempre.
+		log.Error("el loop no admitió la sesión a tiempo; se cierra", "wait", s.cfg.DispatchTimeout)
+		s.hub.Unregister(session)
+		session.CloseWith(protocol.CloseInternalError, "el servidor está saturado")
+		session.drainAndClose()
+		if _, err := s.presence.ClearIfSession(context.WithoutCancel(ctx), session.PlayerID, session.ID); err != nil {
+			log.Warn("no se pudo retirar la presencia caliente", "err", err)
+		}
+		return
+	}
 
 	session.Send(protocol.TypeSessionWelcome, helloReqID, protocol.SessionWelcomePayload{
 		SessionID:           session.ID.String(),
@@ -258,7 +288,7 @@ func (s *Server) serve(ctx context.Context, conn *gws.Conn, remote string) {
 		if _, err := s.presence.ClearIfSession(context.WithoutCancel(ctx), session.PlayerID, session.ID); err != nil {
 			log.Warn("no se pudo retirar la presencia caliente", "err", err)
 		}
-		s.dispatch(simulation.PlayerDisconnected{PlayerID: session.PlayerID, SessionID: session.ID})
+		s.dispatchDisconnect(simulation.PlayerDisconnected{PlayerID: session.PlayerID, SessionID: session.ID})
 		log.Info("sesión finalizada")
 	}()
 
@@ -604,8 +634,62 @@ func (s *Server) dispatch(cmd simulation.Command) bool {
 	case s.commands <- cmd:
 		return true
 	default:
-		s.log.Error("cola de comandos saturada; comando descartado")
+		s.countDropped(cmd)
 		return false
+	}
+}
+
+// dispatchWithin encola un comando esperando, como mucho, `wait` a que haya
+// sitio en el canal. Sólo para el alta de la propia conexión, en su goroutine,
+// que todavía no tiene nada mejor que hacer: nunca desde el writePump, desde
+// el hub ni desde el loop. El alta va por el canal de comandos y no por el
+// buzón porque debe aplicarse ANTES que el snapshot inicial de la sesión
+// (INV-CITY-014), que viaja por ese canal: compartir la cola es lo que conserva
+// el orden.
+func (s *Server) dispatchWithin(cmd simulation.Command, wait time.Duration) bool {
+	select {
+	case s.commands <- cmd:
+		return true
+	default:
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case s.commands <- cmd:
+		return true
+	case <-timer.C:
+		s.countDropped(cmd)
+		return false
+	}
+}
+
+// dispatchDisconnect encola la baja de una sesión. No puede perderse: sin ella
+// el loop contaría la sesión para siempre y la ciudad no saldría nunca de
+// ONLINE, y el latido de presencia no lo cubre porque el loop decide en RAM sin
+// consultar Redis (RN-PRESENCE-004). Si el canal de comandos está lleno va al
+// buzón del loop, que se drena con prioridad; la simulación tolera que la baja
+// adelante al alta (ADR-022). Sólo con los dos llenos se cuenta como descartada.
+func (s *Server) dispatchDisconnect(cmd simulation.PlayerDisconnected) {
+	select {
+	case s.commands <- cmd:
+		return
+	default:
+	}
+	if s.inbox != nil {
+		s.inbox(cmd) // si tampoco cabe, el buzón lo cuenta y lo registra
+		return
+	}
+	s.countDropped(cmd)
+}
+
+// countDropped registra y cuenta un comando que no se aplicará nunca
+// (eo_commands_dropped_total, ADR-022). Nunca es normal: el loop va tan por
+// detrás que ni su canal de comandos tiene sitio.
+func (s *Server) countDropped(cmd simulation.Command) {
+	tipo := simulation.CommandType(cmd)
+	s.log.Error("cola de comandos saturada; comando descartado", "type", tipo)
+	if s.metrics != nil {
+		s.metrics.CommandsDropped.WithLabelValues(tipo).Inc()
 	}
 }
 

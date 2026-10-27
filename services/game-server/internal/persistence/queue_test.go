@@ -11,11 +11,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
+	"github.com/empires-online/empires-online/services/game-server/internal/observability"
 )
+
+// descartes lee eo_persistence_jobs_dropped_total{job, reason}.
+func descartes(m *observability.Metrics, job, reason string) float64 {
+	return testutil.ToFloat64(m.PersistenceJobsDropped.WithLabelValues(job, reason))
+}
 
 func colaDePrueba(capacidad, intentos int) *Queue {
 	return NewQueue(QueueConfig{Capacity: capacidad, Workers: 1, MaxAttempts: intentos, RetryDelay: time.Millisecond},
@@ -89,6 +96,56 @@ func TestConLaColaLlenaSubmitNoBloqueaYCompensa(t *testing.T) {
 	}
 	assert.ErrorIs(t, compensado, context.DeadlineExceeded)
 	assert.Equal(t, 1, q.Depth())
+}
+
+// ADR-022: un trabajo descartado por partición llena se cuenta en
+// eo_persistence_jobs_dropped_total con reason=queue_full, además de compensarse;
+// la etiqueta `job` es su nombre si está en el catálogo, y `unknown` si no.
+func TestUnDescartePorColaLlenaSeCuentaPorTrabajoYMotivo(t *testing.T) {
+	m := observability.NewMetrics()
+	q := NewQueue(QueueConfig{Capacity: 1, Workers: 1, MaxAttempts: 1, RetryDelay: time.Millisecond},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), m) // sin workers: nada consume
+	q.Submit(simulation.Job{Name: simulation.JobUnitsFlush, Run: func(context.Context) error { return nil }})
+
+	compensado := false
+	q.Submit(simulation.Job{
+		Name:               simulation.JobUnitsFlush,
+		Run:                func(context.Context) error { return nil },
+		OnPermanentFailure: func(error) { compensado = true },
+	})
+	q.Submit(simulation.Job{Name: "inventado", Run: func(context.Context) error { return nil }})
+
+	assert.True(t, compensado, "la compensación sigue ejecutándose")
+	assert.EqualValues(t, 1, descartes(m, simulation.JobUnitsFlush, observability.DropQueueFull))
+	assert.Zero(t, descartes(m, simulation.JobUnitsFlush, observability.DropAttemptsExhausted))
+	assert.EqualValues(t, 1, descartes(m, observability.JobUnknown, observability.DropQueueFull),
+		"un nombre fuera del catálogo no crea una serie nueva")
+}
+
+// ADR-022: agotar los intentos cuenta con reason=attempts_exhausted, una sola
+// vez por trabajo aunque haya habido tres intentos.
+func TestAgotarLosIntentosSeCuentaUnaVezPorTrabajo(t *testing.T) {
+	m := observability.NewMetrics()
+	q := NewQueue(QueueConfig{Capacity: 8, Workers: 1, MaxAttempts: 3, RetryDelay: time.Millisecond},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), m)
+	q.Start(context.Background())
+
+	var intentos atomic.Int32
+	compensado := false
+	q.Submit(simulation.Job{
+		Name:               simulation.JobCityPresence,
+		Run:                func(context.Context) error { intentos.Add(1); return errors.New("PostgreSQL no responde") },
+		OnPermanentFailure: func(error) { compensado = true },
+	})
+	q.Submit(simulation.Job{Name: simulation.JobMovementComplete, Run: func(context.Context) error { return nil }})
+	q.Close()
+
+	assert.EqualValues(t, 3, intentos.Load())
+	assert.True(t, compensado)
+	assert.EqualValues(t, 1, descartes(m, simulation.JobCityPresence, observability.DropAttemptsExhausted))
+	assert.Zero(t, descartes(m, simulation.JobCityPresence, observability.DropQueueFull))
+	assert.Zero(t, descartes(m, simulation.JobMovementComplete, observability.DropAttemptsExhausted),
+		"el trabajo que salió bien no cuenta")
 }
 
 // Close vacía lo que quedaba en el canal y espera al trabajo que un worker ya

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
@@ -76,6 +77,41 @@ type MovementPersistFailed struct {
 
 func (MovementPersistFailed) commandType() string { return "movement.persist_failed" }
 
+// MovementFinishPersistFailed lo devuelve la cola cuando el cierre de un
+// movimiento —por llegada o por cancelación— no se pudo escribir (ADR-022).
+// El loop lo apunta para que el siguiente volcado periódico cierre la fila y
+// vuelva a escribir la unidad con su posición ACTUAL: un cierre perdido deja la
+// fila ACTIVE y la unidad MOVING en la base, y una cancelación perdida se
+// desharía al rehidratar, porque la polilínea manda sobre la fila de la unidad.
+type MovementFinishPersistFailed struct {
+	MovementID int64
+	Status     movement.Status
+	// UnitID es la unidad del movimiento, para la clave de partición y para
+	// devolverla al conjunto sucio; 0 si ya no existía al cerrar.
+	UnitID int64
+}
+
+func (MovementFinishPersistFailed) commandType() string { return "movement.finish_persist_failed" }
+
+// CityPresencePersistFailed lo devuelve la cola cuando una transición de
+// presencia no se pudo escribir (ADR-022). El loop marca la ciudad para que el
+// siguiente volcado periódico vuelva a encolar su presencia ACTUAL —no la del
+// trabajo perdido, que puede ser antigua—: la base converge al estado vigente.
+type CityPresencePersistFailed struct {
+	CityID int64
+}
+
+func (CityPresencePersistFailed) commandType() string { return "city.presence_persist_failed" }
+
+// UnitsFlushPersistFailed lo devuelve la cola cuando un lote del volcado
+// periódico no se pudo escribir (ADR-022). Las unidades del lote vuelven al
+// conjunto sucio y salen en el siguiente volcado con su estado de entonces.
+type UnitsFlushPersistFailed struct {
+	UnitIDs []int64
+}
+
+func (UnitsFlushPersistFailed) commandType() string { return "units.flush_persist_failed" }
+
 // Broadcaster entrega mensajes a las sesiones conectadas.
 //
 // La simulación no sabe qué es un WebSocket: sólo sabe emitir hechos hacia un
@@ -105,9 +141,63 @@ type Broadcaster interface {
 	SendToPlayer(playerID uuid.UUID, msgType, requestID string, payload any)
 }
 
+// CommandType es el tipo de un comando tal como lo identifican los logs y la
+// etiqueta `type` de eo_commands_dropped_total. El conjunto de valores lo fija
+// el código —uno por tipo de Go—, nunca el cliente: es una etiqueta de
+// cardinalidad acotada (ADR-022).
+func CommandType(cmd Command) string { return cmd.commandType() }
+
+// CommandTypes es el catálogo cerrado de tipos de comando, en orden estable,
+// para que las series que lo usan como etiqueta existan a cero desde el
+// arranque. Un comando nuevo se añade aquí.
+func CommandTypes() []string {
+	return []string{
+		MoveUnit{}.commandType(),
+		CancelMovement{}.commandType(),
+		PlayerConnected{}.commandType(),
+		PlayerDisconnected{}.commandType(),
+		RequestSnapshot{}.commandType(),
+		IntroducePlayer{}.commandType(),
+		MovementPersistFailed{}.commandType(),
+		MovementFinishPersistFailed{}.commandType(),
+		CityPresencePersistFailed{}.commandType(),
+		UnitsFlushPersistFailed{}.commandType(),
+		GarrisonUnit{}.commandType(),
+		UngarrisonUnit{}.commandType(),
+		GarrisonEntryResolved{}.commandType(),
+		GarrisonExitFailed{}.commandType(),
+	}
+}
+
+// Nombres de los trabajos durables (Job.Name). Es un catálogo CERRADO: cada
+// nombre es la etiqueta `job` de eo_persistence_jobs_dropped_total, y cada
+// valor distinto es una serie que vive en memoria hasta que el proceso
+// termina. Un trabajo nuevo se añade aquí y en JobNames (ADR-022).
+const (
+	JobMovementStart    = "movement.start"
+	JobMovementCancel   = "movement.cancel"
+	JobMovementComplete = "movement.complete"
+	JobCityPresence     = "city.presence"
+	JobUnitsFlush       = "units.flush"
+	JobGarrisonEnter    = "garrison.enter"
+	JobGarrisonLeave    = "garrison.leave"
+	JobTreatyExpire     = "treaty.expire"
+)
+
+// JobNames es el catálogo cerrado de nombres de trabajo, en orden estable.
+func JobNames() []string {
+	return []string{
+		JobMovementStart, JobMovementCancel, JobMovementComplete,
+		JobCityPresence, JobUnitsFlush,
+		JobGarrisonEnter, JobGarrisonLeave,
+		JobTreatyExpire,
+	}
+}
+
 // Job es una escritura durable diferida.
 type Job struct {
-	// Name identifica el trabajo en logs y métricas.
+	// Name identifica el trabajo en logs y métricas. Es uno de los Job* de
+	// arriba: con otro valor la métrica lo cuenta como `unknown`.
 	Name string
 	// Key es la entidad que escribe, por ejemplo UnitKey(42). Los trabajos con
 	// la misma clave se ejecutan en el orden en que se encolaron, reintentos

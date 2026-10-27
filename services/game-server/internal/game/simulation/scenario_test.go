@@ -346,7 +346,7 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 		PathMaxNodes:       20000,
 		PathMaxDistance:    256,
 	})
-	gameLoop := loop.New(sim, clk, commands, loop.Config{
+	gameLoop := loop.New(sim, clk, commands, nil, loop.Config{
 		TickDuration:       100 * time.Millisecond,
 		FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256,

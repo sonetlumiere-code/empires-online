@@ -54,7 +54,7 @@ func TestLaCaducidadDeTratadosSeMuestreaYNoOcurreEnCadaTick(t *testing.T) {
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
 	})
-	h.loop = loop.New(h.sim, h.clk, h.commands, loop.Config{
+	h.loop = loop.New(h.sim, h.clk, h.commands, h.inbox, loop.Config{
 		TickDuration: 100 * time.Millisecond, FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256, EpochMs: epoch,
 	}, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -93,7 +93,7 @@ func TestSinCaducadorConfiguradoElTickNoEncolaNada(t *testing.T) {
 		ProtectionCooldown: 300 * time.Second,
 		DisconnectGrace:    30 * time.Second,
 	})
-	h.loop = loop.New(h.sim, h.clk, h.commands, loop.Config{
+	h.loop = loop.New(h.sim, h.clk, h.commands, h.inbox, loop.Config{
 		TickDuration: 100 * time.Millisecond, FlushIntervalTicks: 50,
 		MaxCommandsPerTick: 256, EpochMs: epoch,
 	}, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
