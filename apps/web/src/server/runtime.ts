@@ -29,7 +29,7 @@ function build() {
   // apps/web. Nunca pisa lo que ya venga del entorno.
   loadRootDotEnv();
   const config = loadAuthConfig();
-  const store = PgIdentityStore.connect(config.identityPostgresUrl);
+  const store = PgIdentityStore.connect(config.identityPostgresUrl, jsonLogger);
   const nowMs = () => Date.now();
   const service = new AuthService({
     store,

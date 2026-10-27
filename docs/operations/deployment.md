@@ -756,6 +756,7 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 - [ ] Firewall del VPS: solo 80, 443 y SSH (con puerto o restricción de origen). Verificado **después** de arrancar Docker, porque Docker manipula `iptables`.
 - [ ] Postgres y Redis sin acceso público; lista blanca con la IP del VPS o red privada.
 - [ ] `EO_POSTGRES_URL` con `sslmode=require` o superior; `EO_REDIS_URL` con esquema `rediss://`. **Comprobación manual: el arranque no la valida.**
+- [ ] `EO_IDENTITY_POSTGRES_URL` con `sslmode=verify-full` (y `sslrootcert=` si la CA no es pública): en node-postgres `require` no garantiza la verificación ([configuration.md §3.8-bis](./configuration.md#38-bis-identidad-las-lee-appsweb-no-el-game-server)). **Comprobación manual.**
 - [ ] `EO_METRICS_ADDR` distinto de `EO_HTTP_ADDR`. **Comprobación manual: tampoco la valida el arranque**; un valor repetido falla al abrir el segundo listener, ya en marcha.
 - [ ] SSH: solo clave pública, sin contraseña, sin login directo de root.
 

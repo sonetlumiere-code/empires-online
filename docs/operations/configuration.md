@@ -156,7 +156,7 @@ lleva el prefijo `NEXT_PUBLIC_`. En desarrollo, `apps/web` carga el `.env` de la
 | Variable | Tipo | Default | Rango válido | Secreto | Efecto |
 |---|---|---|---|---|---|
 | `EO_AUTH_JWT_SECRET` | string | — | ≥ 32 caracteres; sin `dev-only` en producción | **Sí** | El **mismo** que verifica el Game Server (§3.3): `apps/web` firma con él el game ticket y el token de fundación. |
-| `EO_IDENTITY_POSTGRES_URL` | DSN | — (obligatoria) | URL de PostgreSQL | **Sí** | Almacén de identidad: `accounts` y `web_sessions`, en una base y con un rol propios. En local la crea `pnpm run pg:identity` con una contraseña aleatoria que escribe sólo en el `.env`. |
+| `EO_IDENTITY_POSTGRES_URL` | DSN | — (obligatoria) | URL de PostgreSQL | **Sí** | Almacén de identidad: `accounts` y `web_sessions`, en una base y con un rol propios. En local la crea `pnpm run pg:identity` con una contraseña aleatoria que escribe sólo en el `.env`. **TLS se activa en la propia URL**, con la semántica de node-postgres (`pg` 8.23), que no es la de libpq: `?sslmode=verify-full` cifra y verifica el certificado contra las CA del sistema, o contra la indicada con `&sslrootcert=/ruta/ca.pem`; `sslmode=require`, `prefer` y `verify-ca` son hoy alias de `verify-full` con un aviso de obsolescencia y en `pg` 9 dejarán de verificar, así que no los uses; `sslmode=no-verify` cifra sin verificar y `sslmode=disable` (el del cluster local) no cifra. El pool del proceso tiene sus plazos fijados en código (§3.10). |
 | `EO_GAME_SERVER_INTERNAL_URL` | URL | `http://localhost:8080` | URL HTTP(S) | No | Base a la que `apps/web` llama `POST /internal/players` para fundar un jugador. |
 | `EO_AUTH_RATE_LIMIT_PER_MINUTE` | int | `10` | 1–100000 | No | Intentos de alta y login por minuto **por IP**. Cada uno calcula `scrypt`: sin límite, cualquiera hace quemar CPU al servidor web, y en el login es lo único que separa una contraseña de la fuerza bruta. Sólo actúa cuando la IP se conoce (`EO_TRUST_PROXY_HEADERS=true`). **Por proceso**: con varias instancias de Next.js, cada una lleva su cuenta. |
 | `EO_AUTH_RATE_LIMIT_BURST` | int | `5` | 1–10000 | No | Capacidad del cubo por IP. Un humano que se equivoca de contraseña dos veces no lo nota; un script sí. |
@@ -203,7 +203,10 @@ octile ponderada por `MinTerrainCostUnits = 6` (ROAD); los códigos de cierre WS
 `4400/4401/4403/4408/4429/4500`; el TTL de 60 s del *game ticket* y del token de fundación (en `apps/web`) y el de 120 s de `ticket:jti:{jti}`; la vida de 7 días de la sesión web y el coste de `scrypt` (`N = 2^15, r = 8, p = 3`); el TTL
 de 300 s de `idem:{playerId}:{requestId}`; los cupos de ticket y cierre de sesión de `apps/web` por sesión (60 por
 minuto, ráfaga 30, `TICKET_SESSION_POLICY`) y por IP (240 / 120, `TICKET_IP_POLICY`), que fija la política de
-reconexión del cliente, y el tope de 4096 bytes del cuerpo del alta y del login; el tamaño de la cola de comandos del loop (8192); el presupuesto
+reconexión del cliente, y el tope de 4096 bytes del cuerpo del alta y del login; los plazos del pool del almacén de
+identidad (`IDENTITY_POOL_OPTIONS` en `apps/web/src/server/store.ts`: 5 conexiones, 5 s para conectar, 30 s de
+inactividad, `statement_timeout` de 5 s en el servidor y `query_timeout` de 10 s en el cliente, con *keepalive*; las
+migraciones usan una conexión dedicada fuera del pool, sin esos plazos); el tamaño de la cola de comandos del loop (8192); el presupuesto
 de apagado ordenado (25 s, con 15 s para drenar la cola de persistencia) y el umbral de 5 s tras el cual
 `/ready` marca el game loop como `stale`; y las eras, que viven en la tabla `eras`.
 
