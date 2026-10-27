@@ -8,7 +8,7 @@ Este documento describe un diseño **objetivo**. `services/game-server` ya está
 
 ## 1. Punto de partida: un proceso, un mundo, una RAM
 
-El MVP es deliberadamente un único proceso `services/game-server` (módulo Go con `go 1.23` como versión **mínima**; el toolchain instalado en la máquina de desarrollo es Go 1.27.0) que:
+El MVP es deliberadamente un único proceso `services/game-server` (módulo Go con `go 1.25.11` como versión **mínima**, la de `services/game-server/go.mod`; el toolchain instalado en la máquina de desarrollo es Go 1.27.0) que:
 
 - Carga el mundo completo (512 × 512 tiles, 256 chunks de 32 × 32) en memoria al arrancar.
 - Ejecuta un game loop **single-threaded** a 10 Hz con el orden de fases fijo del canon (ver [`./game-loop.md`](./game-loop.md)).
@@ -90,13 +90,15 @@ Período de tick a `EO_TICK_RATE_HZ=10` = **100 ms**. Presupuesto operativo obje
 | 4. `resolve simulation` | 0 (reservado, fuera de MVP) | — |
 | 5. `timers/scheduled events` | ~1 µs / evento vencido (heap) | eventos vencidos |
 | 6. `interest sets` | O(25 chunks) solo al recibir `session.view` | tasa de `session.view` |
-| 7. `emit deltas` — serialización JSON | ~1.5 µs / mensaje **serializado una vez por chunk** | chunks con cambios |
-| 7. `emit deltas` — encolado por suscriptor | ~0.8 µs / (suscriptor × chunk con delta) | **fan-out** |
+| 7. `emit deltas` — serialización JSON | ~1.5 µs / (mensaje × suscriptor): v1 **no** serializa una vez por chunk, cada `writePump` hace su propio `json.Marshal` (`internal/websocket/session.go`), así que este coste cae **fuera del tick**, repartido entre las goroutines de sesión | mensajes × suscriptores |
+| 7. `emit deltas` — encolado por suscriptor | ~0.8 µs / (suscriptor × mensaje con delta) | **fan-out** |
 | 8. `enqueue persistence` | ~0.3 µs / registro sucio | entidades sucias |
+
+Estas filas describen el código de v1, **sin** las palancas de §6.2 (coalescer por entidad y por tick) y §6.3 (serializar una vez por chunk), que son diseño futuro: cada hecho es un mensaje —una unidad que alcanza un tile emite un `entity.update` en `AdvanceMovements`— y cada mensaje se serializa y se encola una vez por suscriptor.
 
 ### 3.2 Tick típico a 1 000 CCU
 
-Supuestos: 20 000 unidades, 4 000 en movimiento, 20 comandos `unit.move` por tick, 60 chunks con al menos un delta, distribución uniforme de jugadores (⇒ 1000 × 25/256 ≈ **98 suscriptores por chunk**).
+Supuestos: 20 000 unidades, 4 000 en movimiento, 20 comandos `unit.move` por tick, 60 mensajes de delta por tick (uno por chunk con cambios; sin coalescer ni agrupar), distribución uniforme de jugadores (⇒ 1000 × 25/256 ≈ **98 suscriptores por chunk**).
 
 | Fase | Cálculo | Coste |
 |---|---|---|
@@ -104,10 +106,12 @@ Supuestos: 20 000 unidades, 4 000 en movimiento, 20 comandos `unit.move` por tic
 | **A\*** | 20 × 0.5 ms | **10.0 ms** |
 | advance movement | 4 000 × 40 ns | 0.16 ms |
 | timers | ~100 × 1 µs | 0.10 ms |
-| serialización de deltas | 60 × 1.5 µs | 0.09 ms |
+| serialización de deltas | fuera del tick (`writePump`): 60 × 98 × 1.5 µs ≈ 8.8 ms de CPU repartidos entre sesiones | — |
 | **fan-out (encolado)** | 60 × 98 × 0.8 µs | **4.70 ms** |
 | enqueue persistencia (amortizado) | 20 000 / 50 × 0.3 µs | 0.12 ms |
 | **Total** | | **≈ 15 ms (15 % del período)** |
+
+El total supone sólo esos 60 mensajes por tick. No incluye el movimiento en curso: v1 emite un `entity.update` por unidad cada vez que alcanza un tile y no los coalesce. A `BaseMsPerTile = 600` del `VILLAGER` en terreno de coste 1.0, 4 000 unidades en movimiento son del orden de 670 mensajes por tick; a 98 suscriptores y 0.8 µs son ≈ 52 ms de encolado más, y el total pasa de los 60 ms. Con las palancas de §6.2 y §6.3 ausentes, el escenario de 1 000 CCU con 4 000 unidades en movimiento a la vez **no cabe** en el presupuesto de 20 ms hasta medirlo y aplicar el eje 1.
 
 ### 3.3 Dónde deja de servir
 
@@ -119,7 +123,7 @@ Dos costes dominan y ninguno es lineal en "número de unidades":
 | Magnitud | Estado del proceso único |
 |---|---|
 | ≤ 200 CCU, ≤ 20 000 unidades | Holgado. Tick p50 ~2 ms, p99 ~6 ms. |
-| ~1 000 CCU, ~20 000 unidades | Sano si el fan-out serializa una vez por chunk y las escrituras de socket están fuera del tick. p99 ~15–25 ms. |
+| ~1 000 CCU, ~20 000 unidades | Sano si pocas unidades se mueven a la vez (las escrituras de socket ya están fuera del tick). Con el movimiento en curso de §3.2 y sin las palancas de §6.2/§6.3, p99 ~15–25 ms **no** está garantizado. |
 | ~5 000 CCU | Fan-out y presión de GC dominan. Requiere eje 1 completo y probablemente eje 2 (gateway separado). |
 | > 5 000 CCU en un mundo continuo | El núcleo del loop se satura. Eje 3 o eje 4. |
 | Cualquier CCU con clustering extremo en 5 × 5 chunks | Se rompe antes que todo lo anterior. Mitigación: §7 (contrapresión) y reducir `EO_INTEREST_RADIUS_CHUNKS`. |
@@ -235,15 +239,15 @@ Un viewport de 1920 × 1080 en proyección isométrica (`TILE_W=64`, `TILE_H=32`
 
 El interest management amortigua la **dispersión**, no la **aglomeración**. Si 1 000 jugadores convergen en la misma región de 5 × 5 chunks, cada evento allí tiene 1 000 suscriptores y el factor de reducción desaparece. Mitigaciones, en orden:
 
-1. **Coalescer por entidad y por tick**: como máximo un `entity.update` por entidad por tick, fusionando cambios.
-2. **No emitir posición por tick durante un movimiento.** Ésta es la mitigación más potente y es gratuita por diseño: la polilínea temporizada (`{x, y, tMs}`, canon §7) se envía **una sola vez** en `unit.movement.started`, y el cliente reconstruye la posición analíticamente. En estado estacionario, una unidad en movimiento genera **0 mensajes por tick**, no 10 por segundo. Comparación: emitir posición cada tick para 50 entidades visibles a ~120 B/mensaje son ~480 kbps por jugador; con la polilínea son picos de eventos, no un caudal continuo.
+1. **Coalescer por entidad y por tick** (palanca futura, **no implementada**): como máximo un `entity.update` por entidad por tick, fusionando cambios. Hoy cada hecho produce su mensaje ([`networking.md`](./networking.md), «Sin coalescencia y sin batching en v1»).
+2. **No emitir posición por tick durante un movimiento**: ya se evita, pero no del todo. La polilínea temporizada (`{x, y, tMs}`, canon §7) se envía **una sola vez** en `unit.movement.started`, y el cliente puede reconstruir la posición analíticamente; en un tick sin cambio de tile una unidad en movimiento no genera mensajes. Pero `AdvanceMovements` (`internal/game/simulation/simulation.go`) emite además un `entity.update` por unidad **cada vez que alcanza un tile** (para un `VILLAGER`, uno cada 360–600 ms según el terreno): no son 0 mensajes por tick en estado estacionario. Suprimir ese `entity.update` mientras la polilínea basta es una palanca futura, **no implementada**. Comparación: emitir posición cada tick para 50 entidades visibles a ~120 B/mensaje son ~480 kbps por jugador; hoy el caudal es un mensaje por tile y unidad.
 3. **Contrapresión y resincronización** por conexión (§7).
 4. **Reducir dinámicamente `EO_INTEREST_RADIUS_CHUNKS`** bajo carga.
 5. **Niveles de detalle por distancia** (chunks lejanos con actualizaciones agregadas o de menor frecuencia): **TBD (fuera de MVP)**.
 
 ### 6.3 Reglas de implementación que hacen escalable el fan-out
 
-- Un delta se serializa **una vez por chunk y por tick**; a cada suscriptor se le encola el mismo buffer inmutable (referencia contada o `[]byte` compartido de solo lectura).
+- **Palanca futura (v1 no lo hace; ver 1.1):** serializar un delta **una vez por chunk y por tick** y encolar a cada suscriptor el mismo buffer inmutable (referencia contada o `[]byte` compartido de solo lectura). Hoy `Hub.BroadcastChunk` llama a `Session.Send` por suscriptor y cada `writePump` hace su `json.Marshal` (`internal/websocket/session.go`), entre otras cosas porque el `seq` del sobre es por conexión. Compartir bytes exigiría serializar el sobre sin `seq` o inyectarlo por sesión.
 - El `seq` monótono por conexión (canon §13) lo genera **la capa de conexión al escribir**, nunca el simulador. Si el `seq` se generase en la simulación, un futuro gateway o un segundo shard escribiendo a la misma conexión produciría colisiones. Es una regla barata hoy que preserva los ejes 2 y 3.
 - `world.snapshot` se construye como **unión de snapshots por chunk**, nunca como un recorrido del mundo global. Así puede ensamblarse desde varias fuentes en el eje 3.
 - Los conjuntos de interés viven en la capa de sesión, **no** dentro de las estructuras de simulación. Son reconstruibles (canon §12) y no se persisten.
@@ -258,7 +262,7 @@ El principio invariable: **el tick jamás se bloquea por un cliente lento**. Un 
 
 | Límite | Valor | Acción al excederse |
 |---|---|---|
-| Tamaño de mensaje | `EO_WS_MAX_MESSAGE_BYTES=16384` | `MESSAGE_TOO_LARGE` |
+| Tamaño de mensaje | `EO_WS_MAX_MESSAGE_BYTES=16384` | cierre estándar `1009` por `SetReadLimit`, sin `system.error`: `MESSAGE_TOO_LARGE` está reservado |
 | Tasa | `EO_WS_RATE_LIMIT_PER_SECOND=20`, `EO_WS_RATE_LIMIT_BURST=40` (el burst nunca puede ser menor que la tasa: lo valida `config.Load`) | `system.error` con `RATE_LIMITED` **y cierre inmediato con `4429`**. No hay tolerancia progresiva |
 | Handshake `session.hello` | 5 s (`WSHandshakeTimeout`, constante de código, no variable `EO_*`) | cierre `4408` |
 | Timeout de lectura | 45 s (`WSReadTimeout`; ping cada 15 s, `WSPingInterval`) | cierre de conexión |

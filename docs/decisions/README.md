@@ -107,7 +107,7 @@ ADR-018).
 
 | ADR | Título | Estado | Resumen |
 |---|---|---|---|
-| [001](ADR-001-game-server-language.md) | Lenguaje del game server — Go 1.23 | Aceptado | El servidor autoritativo se implementa en Go 1.23 por concurrencia con goroutines, GC de baja latencia compatible con un tick de 100 ms y despliegue como binario estático. |
+| [001](ADR-001-game-server-language.md) | Lenguaje del game server — Go 1.23 | Aceptado | El servidor autoritativo se implementa en Go (el ADR decidió 1.23; el mínimo actual es `go 1.25.11`, el de `services/game-server/go.mod`, impuesto por las dependencias) por concurrencia con goroutines, GC de baja latencia compatible con un tick de 100 ms y despliegue como binario estático. |
 | [002](ADR-002-authoritative-server.md) | Servidor autoritativo | Aceptado | El cliente envía intención y jamás estado; el servidor es la única autoridad sobre posición, HP, recursos, ownership, cooldowns y resultados. |
 | [003](ADR-003-postgresql-source-of-truth.md) | PostgreSQL como fuente de verdad durable | Aceptado | Todo estado durable vive en PostgreSQL, con transacciones ACID, `CHECK` e índices parciales que materializan invariantes del dominio. |
 | [004](ADR-004-redis-hot-state.md) | Redis como hot state | Aceptado | Redis almacena solo estado caliente y transitorio (presencia, sesiones, locks, cooldowns, idempotencia, caché); su pérdida total nunca pierde estado durable. |

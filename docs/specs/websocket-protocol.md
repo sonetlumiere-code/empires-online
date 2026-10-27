@@ -6,7 +6,7 @@ Especificación normativa y completa del contrato cliente↔servidor de Empires 
 
 ## 1. Objetivo
 
-Definir, sin ambigüedad, el único canal de comunicación en tiempo real entre el cliente web y el Game Server autoritativo (`services/game-server`, módulo Go con `go 1.23` como versión mínima). Un ingeniero que llegue nuevo debe poder escribir cliente o servidor únicamente con este documento y los esquemas de `packages/protocol`.
+Definir, sin ambigüedad, el único canal de comunicación en tiempo real entre el cliente web y el Game Server autoritativo (`services/game-server`, módulo Go con `go 1.25.11` como versión mínima). Un ingeniero que llegue nuevo debe poder escribir cliente o servidor únicamente con este documento y los esquemas de `packages/protocol`.
 
 > **Fuente de verdad.** El contrato lo definen los esquemas Zod de `packages/protocol/src/v1/` y su implementación Go en `services/game-server/internal/protocol/`. Este documento describe ese contrato; si difiere del código, **el documento está mal**. Cada ficha de mensaje de las secciones 7 y 8 es un reflejo literal de `internal/protocol/protocol.go` y de `packages/protocol/src/v1/{client,server,common,errors}.ts`.
 

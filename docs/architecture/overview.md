@@ -222,7 +222,7 @@ No existen `internal/presence` ni `internal/events`: la presencia vive en `inter
 | `internal/clock` | `Clock`, `SystemClock`, `FakeClock` y `RandomSource`: los puertos que hacen determinista la simulación. |
 | `internal/config` | Carga y validación agregada de todas las variables `EO_*`. Punto único de valores de gameplay. |
 | `internal/observability` | `log/slog` en JSON, métricas Prometheus, `/health` y `/ready`. |
-| `services/game-server/migrations/` | Migraciones SQL versionadas `NNNN_nombre.up.sql` / `.down.sql`, embebidas con `//go:embed` y aplicadas con golang-migrate. |
+| `services/game-server/migrations/` | Migraciones SQL versionadas `NNNNNN_nombre.up.sql` / `.down.sql`, embebidas con `//go:embed` y aplicadas con golang-migrate. |
 | `packages/protocol/` | Paquete npm `@empires-online/protocol`. Esquemas Zod en `src/v1/` y JSON Schema exportado a `schema/v1/*.json`. |
 | `infra/docker/` | Dockerfiles e imágenes de servicio. |
 | `scripts/` | Tareas invocadas por pnpm scripts (arranque de dependencias, migraciones, generación de esquemas, utilidades de desarrollo). |

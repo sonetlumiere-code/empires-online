@@ -105,7 +105,7 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 | Documento | Contenido |
 |---|---|
 | [database/schema.md](database/schema.md) | Tablas canónicas, columnas, tipos, `CHECK`s y relaciones. |
-| [database/migrations.md](database/migrations.md) | Convención `NNNN_nombre.up.sql` / `.down.sql` y control vía `schema_migrations`. |
+| [database/migrations.md](database/migrations.md) | Convención `NNNNNN_nombre.up.sql` / `.down.sql` (seis dígitos) y control vía `schema_migrations`. |
 | [database/indexing.md](database/indexing.md) | Índices por patrón de acceso real (consultas por chunk, por owner, por estado). |
 | [database/persistence-strategy.md](database/persistence-strategy.md) | Write-through inmediato, dirty-flag + flush y estado reconstruible. |
 
