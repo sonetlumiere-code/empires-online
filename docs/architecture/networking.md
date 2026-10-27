@@ -441,8 +441,10 @@ objetivo de cada punto, cuando difiere, está en [frontend.md](frontend.md) §3.
    mismo milisegundo. El contador vuelve a 0 con cada `session.welcome`.
 4. Pide un **ticket nuevo** en cada intento a `POST /api/auth/ticket` de `apps/web`, con la cookie de sesión: la
    contraseña no se vuelve a pedir ni se guarda (`ticketProvider`). El anterior no sirve: su TTL es de 60 s y su
-   `jti` ya se consumió en `ticket:jti:{jti}`; reutilizarlo produce cierre `4401`. Si pedirlo falla —también con
-   la cookie caducada— se notifica y se programa el siguiente intento con el mismo backoff.
+   `jti` ya se consumió en `ticket:jti:{jti}`; reutilizarlo produce cierre `4401`. Si pedirlo falla por red o
+   con `429`/`500`, se notifica y se programa el siguiente intento con el mismo backoff; si responde `401` o
+   `403` —la sesión web caducó o se cerró— el cliente pasa a `closed` sin reintentar y la página vuelve al
+   formulario de entrada ([frontend.md](./frontend.md) §3.3).
 5. Reabre el WebSocket y repite el handshake completo (§3).
 6. Con el `session.welcome`, el `seq` vuelve a empezar y se reestima el desfase de reloj; el `world.snapshot`
    **reemplaza** unidades, ciudades y territorios. La réplica no se vacía antes: el terreno ya conocido se
