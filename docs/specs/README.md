@@ -66,7 +66,7 @@ Documentación relacionada que **no** es una spec funcional y por tanto no sigue
 ## 3. Plantilla obligatoria de spec
 
 La plantilla tiene tres partes: una **cabecera** fija, un **núcleo** fijo y un **cuerpo temático** libre.
-Lo que sigue describe lo que las nueve specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
+Lo que sigue describe lo que las diez specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
 
 ### 3.1 Cabecera
 
