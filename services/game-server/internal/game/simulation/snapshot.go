@@ -38,6 +38,7 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 		// viajan en el snapshot inicial, para que el cliente pinte el overlay sin
 		// esperar a que algo cambie.
 		Territories: s.state.TerritoryViews(chunks),
+		Buildings:   make([]protocol.BuildingView, 0, 8),
 	}
 
 	for _, ch := range chunks {
@@ -61,7 +62,10 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 			payload.Units = append(payload.Units, s.UnitView(u, nowMs))
 		}
 		for _, c := range s.state.CitiesInChunk(ch.CX, ch.CY) {
-			payload.Cities = append(payload.Cities, CityView(c))
+			payload.Cities = append(payload.Cities, s.state.cityViewOf(c))
+		}
+		for _, b := range s.state.buildingsInChunk(ch.CX, ch.CY) {
+			payload.Buildings = append(payload.Buildings, BuildingView(b))
 		}
 	}
 
@@ -84,6 +88,9 @@ func (s *Simulation) UnitView(u *unit.Unit, nowMs int64) protocol.UnitView {
 	}
 	if cityID, ok := s.state.GarrisonCity(u.ID); ok {
 		view.GarrisonCityID = &cityID
+	}
+	if e, ok := s.state.tasks[u.ID]; ok {
+		view.Carrying = e.Carrying
 	}
 	if m, ok := s.state.Movement(u.ID); ok {
 		pos := m.PositionAt(nowMs)

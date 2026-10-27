@@ -3,9 +3,11 @@ package simulation
 import (
 	"fmt"
 	"log/slog"
+	"sort"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
@@ -132,6 +134,17 @@ func Hydrate(
 		}
 
 		if m.HasArrived(nowMs) {
+			if e, conTarea := state.tasks[u.ID]; conTarea && e.Phase.IsLeg() {
+				// INV-ECON-005: el tramo de una tarea que llegó durante la caída
+				// no se cierra aquí. Se deja activo, con la unidad ya en el
+				// destino, para que la fase 3 del primer tick procese la llegada
+				// con su instante exacto y la tarea ancle a él su fase siguiente.
+				state.MoveUnitTo(u, m.Destination())
+				u.Status = unit.StatusMoving
+				state.SetMovement(m)
+				res.Resumed++
+				continue
+			}
 			dest := m.Destination()
 			state.MoveUnitTo(u, dest)
 			u.Status = unit.StatusIdle
@@ -172,4 +185,57 @@ func Hydrate(
 	})
 
 	return res
+}
+
+// ReconcileTasks termina, al arrancar, las tareas que no pueden reanudarse, y
+// devuelve lo que hay que escribir para que la base lo sepa. Va después de
+// Hydrate y de ClearFootprints, que pueden haber detenido tramos.
+//
+//   - Una tarea en un tramo sin movimiento activo: el tramo se cerró o se
+//     detuvo (una muralla nueva, una polilínea inválida).
+//   - Una tarea en WORKING cuya unidad no está WORKING o no está sobre su
+//     bosque: alguien la movió (INV-ECON-003).
+//
+// La unidad queda IDLE donde está y la tarea se borra (INV-ECON-005: lo que no
+// puede terminar a su hora no se inventa). Las de unidades que no están vivas
+// ya las borró la validación de carga.
+func ReconcileTasks(state *State, log *slog.Logger) []TaskWrite {
+	ids := make([]int64, 0, len(state.tasks))
+	for id := range state.tasks {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	var writes []TaskWrite
+	for _, id := range ids {
+		e := state.tasks[id]
+		u, ok := state.Unit(id)
+		if !ok {
+			delete(state.tasks, id)
+			continue
+		}
+		_, enMarcha := state.Movement(id)
+		var motivo string
+		switch {
+		case e.Phase.IsLeg() && !enMarcha:
+			motivo = "tramo sin movimiento activo"
+		case e.Phase == task.PhaseWorking && (u.Status != unit.StatusWorking || u.Tile() != e.Target):
+			motivo = fmt.Sprintf("WORKING sobre una unidad %s en %s, no en %s", u.Status, u.Tile(), e.Target)
+		default:
+			continue
+		}
+		delete(state.tasks, id)
+		if enMarcha {
+			// Un movimiento que no es de la tarea: la unidad sigue con él y sólo
+			// se borra la fila (INV-PERSIST-004: no se escribe su posición).
+			writes = append(writes, TaskWrite{UnitID: u.ID, KeepUnit: true})
+		} else {
+			u.Status = unit.StatusIdle
+			state.MarkDirty(u.ID)
+			writes = append(writes, TaskWrite{UnitID: u.ID, Status: u.Status, At: u.Tile()})
+		}
+		log.Warn("tarea que no puede reanudarse: termina al arrancar",
+			"unit_id", u.ID, "phase", string(e.Phase), "detail", motivo)
+	}
+	return writes
 }

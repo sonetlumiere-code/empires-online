@@ -141,6 +141,9 @@ func (s *Simulation) clearFootprint(f footprint, cityID int64, nowMs int64) {
 
 	w := s.state.World()
 	for _, u := range s.state.unitsInside(f) {
+		// Un aldeano que trabajaba en un bosque que acaba de quedar dentro de la
+		// muralla deja de trabajar: su tile de trabajo ya no existe.
+		s.stopWorking(u)
 		to, ok := evictionTile(w, f, u.Tile())
 		if !ok {
 			s.invariantViolation("INV-UNIT-001", "CRITICO", "FAIL_FAST", u.ID,

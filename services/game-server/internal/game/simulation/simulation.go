@@ -48,6 +48,10 @@ type Deps struct {
 	// Garrisons escribe la entrada y la salida de las guarniciones. Opcional:
 	// sin él, unit.garrison responde INTERNAL_ERROR.
 	Garrisons GarrisonStore
+	// Economy escribe la economía: tareas, stocks, encargos y finalizaciones
+	// (ADR-023). Opcional: sin él, unit.gather, city.build y city.train
+	// responden INTERNAL_ERROR.
+	Economy EconomyStore
 	// Inbox devuelve un comando al loop desde otra goroutine sin bloquear, y
 	// dice si cupo. Lo usan las compensaciones y respuestas de la cola de
 	// persistencia; en producción es loop.Inbox.Offer, el buzón que el loop
@@ -152,6 +156,24 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleGarrisonEntryResolved(c)
 	case GarrisonExitFailed:
 		s.handleGarrisonExitFailed(c)
+	case GatherWood:
+		s.handleGatherWood(c)
+	case BuildBuilding:
+		s.handleBuildBuilding(c)
+	case TrainUnit:
+		s.handleTrainUnit(c)
+	case BuildResolved:
+		s.handleBuildResolved(c)
+	case TrainResolved:
+		s.handleTrainResolved(c)
+	case BirthResolved:
+		s.handleBirthResolved(c)
+	case TaskPersistFailed:
+		s.handleTaskPersistFailed(c)
+	case StocksFlushFailed:
+		s.handleStocksFlushFailed(c)
+	case BuildingCompletePersistFailed:
+		s.handleBuildingCompletePersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -205,7 +227,9 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 	origin := s.authoritativePosition(u, nowMs)
 	if origin == cmd.Target {
 		// Ya está allí. Se acepta sin crear movimiento: es idempotente y evita
-		// polilíneas degeneradas de un solo punto.
+		// polilíneas degeneradas de un solo punto. Una unidad que trabajaba deja
+		// de hacerlo y pierde lo cargado (RN-ECON-003).
+		s.stopWorking(u)
 		s.cancelActiveMovement(u, movement.ReasonCancelledByPlayer, nowMs)
 		s.deps.Broadcaster.SendToPlayer(cmd.PlayerID, protocol.TypeUnitMoveAccepted, cmd.RequestID,
 			protocol.UnitMoveAcceptedPayload{UnitID: u.ID, MovementID: 0})
@@ -237,6 +261,10 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 		s.rejectMove(cmd, protocol.CodeInternalError, "no se pudo construir la ruta")
 		return
 	}
+
+	// RN-ECON-003: una orden de movimiento cancela la tarea y pierde lo
+	// cargado. La transacción del inicio borra su fila.
+	s.dropTask(u)
 
 	// Cancelar el movimiento anterior ANTES de registrar el nuevo, para que en
 	// ningún instante existan dos movimientos activos de la misma unidad.
@@ -302,6 +330,8 @@ func (s *Simulation) handleCancelMovement(cmd CancelMovement) {
 			protocol.SystemErrorPayload{Code: protocol.CodeUnitNotOwned, Message: "la unidad no te pertenece"})
 		return
 	}
+	// RN-ECON-003: cancelar detiene también a una unidad que trabaja.
+	s.stopWorking(u)
 	s.cancelActiveMovement(u, movement.ReasonCancelledByPlayer, nowMs)
 }
 
@@ -316,6 +346,9 @@ func (s *Simulation) cancelActiveMovement(u *unit.Unit, reason movement.CancelRe
 	}
 	stoppedAt := m.PositionAt(nowMs)
 	prev := u.Status
+	// Cancelar el tramo cancela la tarea, y su carga (RN-ECON-003). El cierre
+	// de abajo borra la fila de la tarea en su transacción.
+	s.dropTask(u)
 	s.state.ClearMovement(u.ID)
 	u.Status = unit.StatusIdle
 	// Con el estado ya definitivo: si el último tramo cruzó de chunk, quien
@@ -346,6 +379,9 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 		unitID     int64
 		movementID int64
 		at         world.Tile
+		// arrivedAtMs es el instante exacto de llegada, no el del tick: la
+		// tarea ancla a él su fase siguiente (INV-ECON-005).
+		arrivedAtMs int64
 	}
 	var arrivals []arrival
 
@@ -372,7 +408,7 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 		}
 
 		if m.HasArrived(nowMs) {
-			arrivals = append(arrivals, arrival{unitID: m.UnitID, movementID: m.ID, at: pos})
+			arrivals = append(arrivals, arrival{unitID: m.UnitID, movementID: m.ID, at: pos, arrivedAtMs: m.ArrivalTimeMs})
 		}
 		return true
 	})
@@ -381,6 +417,11 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 		s.state.ClearMovement(a.unitID)
 
 		if u, ok := s.state.Unit(a.unitID); ok {
+			if e, conTarea := s.state.tasks[u.ID]; conTarea && e.Phase.IsLeg() {
+				// El tramo de una tarea: ella decide qué sigue.
+				s.onLegArrived(u, e.Task, a.movementID, a.at, a.arrivedAtMs)
+				continue
+			}
 			u.Status = unit.StatusIdle
 			s.state.MarkDirty(u.ID)
 
@@ -548,6 +589,14 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	// mismo tick.
 	s.retryPendingExits()
 
+	// 4b. Economía (SPEC-ECON-WOOD): unidades que terminan de trabajar,
+	// casas que se completan y entrenamientos que vencen. Antes del
+	// ocultamiento: un aldeano que nace en una zona segura se evalúa ya.
+	nowMs := now.UnixMilli()
+	s.advanceTasks(nowMs)
+	s.completeBuildings(nowMs)
+	s.completeProductions(nowMs)
+
 	// 5. Ocultamiento en Safe Zones (docs/specs/safe-zones.md §6.4). Va después
 	// de la fase 3 del mismo tick, así que una unidad que llega a una zona pasa
 	// por IDLE y se oculta en este mismo tick: MOVING → HIDDEN no ocurre nunca.
@@ -674,6 +723,8 @@ func (s *Simulation) handleUnitsFlushPersistFailed(cmd UnitsFlushPersistFailed) 
 func (s *Simulation) FlushDirty() int {
 	s.flushPresence()
 	s.flushFinishes()
+	s.flushStocks()
+	s.flushCompletions()
 
 	dirty := s.state.DrainDirty()
 	if len(dirty) == 0 {

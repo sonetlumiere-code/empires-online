@@ -241,6 +241,11 @@ func (r *GarrisonRepo) Enter(
 		if err != nil {
 			return err
 		}
+		// RN-ECON-003: guarnecer cancela la tarea. CanEnter exige IDLE, y una
+		// unidad IDLE no tiene tarea (INV-ECON-003): es defensa en profundidad.
+		if err := DeleteTask(ctx, tx, u.ID); err != nil {
+			return err
+		}
 		if err := r.units.SetStatus(ctx, tx, u.ID, unit.StatusGarrisoned); err != nil {
 			return err
 		}

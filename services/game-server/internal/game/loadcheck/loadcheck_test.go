@@ -8,7 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loadcheck"
@@ -78,7 +81,7 @@ func TestUnEstadoSanoNoProduceHallazgos(t *testing.T) {
 	assert.Empty(t, r.GarrisonDeletes)
 }
 
-// INV-CITY-003, 009, 011 y 012: se reparan en la ciudad en memoria.
+// INV-CITY-003, 017, 011 y 012: se reparan en la ciudad en memoria.
 func TestLasCiudadesSeReparanDesdeSusFuentes(t *testing.T) {
 	in, ciudad, _ := sano(t)
 	ciudad.Population = 9
@@ -87,7 +90,7 @@ func TestLasCiudadesSeReparanDesdeSusFuentes(t *testing.T) {
 
 	r := loadcheck.Check(in)
 
-	assert.Equal(t, []string{"INV-CITY-009/REPAIR", "INV-CITY-003/REPAIR", "INV-CITY-011/REPAIR"}, invs(r))
+	assert.Equal(t, []string{"INV-CITY-017/REPAIR", "INV-CITY-003/REPAIR", "INV-CITY-011/REPAIR"}, invs(r))
 	assert.EqualValues(t, 3, ciudad.Population, "el recuento de unidades vivas")
 	assert.EqualValues(t, 20, ciudad.PopulationLimit, "el de su era")
 	require.NotNil(t, ciudad.LastOfflineAt)
@@ -197,7 +200,7 @@ func TestLaMismaEntradaDaLosMismosHallazgos(t *testing.T) {
 		aldeanos[2].Type = "X"
 		in.Garrisons[42] = 1
 		r := loadcheck.Check(in)
-		assert.Equal(t, []string{"INV-UNIT-009/EXCLUDE", "INV-UNIT-007/REPAIR", "INV-CITY-009/REPAIR"}, invs(r))
+		assert.Equal(t, []string{"INV-UNIT-009/EXCLUDE", "INV-UNIT-007/REPAIR", "INV-CITY-017/REPAIR"}, invs(r))
 	}
 }
 
@@ -212,4 +215,69 @@ func TestUnaEntidadFueraDelMundoAbortaElArranque(t *testing.T) {
 
 	assert.Equal(t, []string{"INV-UNIT-001/FAIL_FAST", "INV-CITY-007/FAIL_FAST"}, invs(r))
 	assert.True(t, r.Fatal())
+}
+
+// INV-ECON-004: con casas completas, el límite es la era más cinco por casa;
+// las que están en obras no cuentan. Sin casas, el hallazgo sigue siendo
+// INV-CITY-003.
+func TestElLimiteDePoblacionCuentaLasCasasCompletas(t *testing.T) {
+	in, ciudad, _ := sano(t)
+	in.Buildings = []building.Building{
+		{ID: 1, CityID: ciudad.ID, Type: building.TypeHouse, X: 19, Y: 19, Status: building.StatusComplete},
+		{ID: 2, CityID: ciudad.ID, Type: building.TypeHouse, X: 21, Y: 19, Status: building.StatusComplete},
+		{ID: 3, CityID: ciudad.ID, Type: building.TypeHouse, X: 19, Y: 21, Status: building.StatusUnderConstruction},
+	}
+	r := loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-ECON-004/REPAIR"}, invs(r))
+	assert.EqualValues(t, 30, ciudad.PopulationLimit)
+
+	ciudad.PopulationLimit = 30
+	assert.Empty(t, loadcheck.Check(in).Findings, "el límite con casas ya es el correcto")
+}
+
+// INV-CITY-017: la población cuenta las producciones en curso, no las
+// terminadas (cuya unidad ya está entre las vivas).
+func TestLaPoblacionCuentaLasProduccionesEnCurso(t *testing.T) {
+	in, ciudad, _ := sano(t)
+	in.Productions = []production.Production{{CityID: ciudad.ID, UnitType: unit.TypeVillager, CompletesAtMs: 1}}
+	r := loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-CITY-017/REPAIR"}, invs(r))
+	assert.EqualValues(t, 4, ciudad.Population, "tres aldeanos y una plaza reservada")
+
+	in2, ciudad2, _ := sano(t)
+	in2.Productions = []production.Production{{CityID: ciudad2.ID, UnitType: unit.TypeVillager, UnitID: 3}}
+	assert.Empty(t, loadcheck.Check(in2).Findings, "una producción terminada no reserva nada")
+}
+
+// INV-ECON-003: se repara siempre hacia el lado sin tarea.
+func TestLasTareasIncoherentesSeReparanHaciaElLadoSinTarea(t *testing.T) {
+	in, _, aldeanos := sano(t)
+	bosque := world.Tile{X: 30, Y: 30}
+	trabajando, err := task.NewGather(2, bosque).StartWork(1, 10_000)
+	require.NoError(t, err)
+	aldeanos[0].Status = unit.StatusWorking // WORKING sin tarea
+	in.Tasks = []task.Task{
+		trabajando,                 // tarea en WORKING de una unidad IDLE
+		task.NewGather(3, bosque),  // un tramo: lo resuelve la rehidratación
+		task.NewGather(99, bosque), // de una unidad que no existe
+	}
+
+	r := loadcheck.Check(in)
+	assert.ElementsMatch(t, []string{"INV-ECON-003/REPAIR", "INV-ECON-003/REPAIR", "INV-ECON-003/REPAIR"}, invs(r))
+	assert.Equal(t, []int64{2, 99}, r.TaskDeletes)
+	assert.Equal(t, unit.StatusIdle, aldeanos[0].Status)
+	assert.Equal(t, []int64{1}, r.UnitRepairs)
+	require.Len(t, r.Tasks, 1)
+	assert.Equal(t, int64(3), r.Tasks[0].UnitID)
+}
+
+// Una unidad WORKING con su tarea en WORKING es coherente.
+func TestUnaUnidadQueTrabajaConSuTareaEsCoherente(t *testing.T) {
+	in, _, aldeanos := sano(t)
+	trabajando, _ := task.NewGather(1, world.Tile{X: 22, Y: 19}).StartWork(1, 10_000)
+	aldeanos[0].Status = unit.StatusWorking
+	in.Tasks = []task.Task{trabajando}
+	r := loadcheck.Check(in)
+	assert.Empty(t, r.Findings)
+	assert.Len(t, r.Tasks, 1)
 }

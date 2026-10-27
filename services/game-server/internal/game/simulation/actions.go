@@ -32,6 +32,13 @@ var actionPolicies = map[string]ActionPolicy{
 	// La protección es contra agresión, no contra logística (RN-GARR-009).
 	protocol.TypeUnitGarrison:   {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeUnitUngarrison: {Hostile: false, Territory: TerritoryFree},
+	// La economía no es agresión: recolectar en un bosque de territorio ajeno,
+	// construir y entrenar en la ciudad propia no tocan a nadie (ADR-016 §2.1).
+	// Robar madera llegará con el slice de riesgo, y con él la primera acción
+	// hostil.
+	protocol.TypeUnitGather: {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeCityBuild:  {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeCityTrain:  {Hostile: false, Territory: TerritoryFree},
 }
 
 // sessionMessages son los mensajes que no actúan sobre el mundo.
