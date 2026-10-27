@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -68,8 +69,11 @@ type Config struct {
 	WorldHeight int32
 	ChunkSize   int32
 
-	// AllowedOrigins limita qué orígenes pueden abrir una conexión. Vacío en
-	// desarrollo significa "cualquiera"; en producción debe estar poblado.
+	// AllowedOrigins limita desde qué orígenes (`scheme://host[:port]`) puede un
+	// navegador abrir una conexión; la comparación ignora mayúsculas. Vacío
+	// significa «cualquiera», y la configuración sólo lo admite fuera de
+	// producción (ADR-021). Una petición SIN cabecera Origin se acepta siempre:
+	// no viene de un navegador, y el riesgo cross-site sólo existe en ellos.
 	AllowedOrigins []string
 }
 
@@ -113,17 +117,28 @@ func NewServer(
 	return s
 }
 
+// checkOrigin decide el upgrade según la cabecera Origin. Devolver false hace
+// que gorilla responda 403 antes del handshake: no se abre ningún socket.
+//
+// Un navegador envía Origin en TODO upgrade y no deja al script cambiarla, así
+// que es lo único que separa a la web del juego de cualquier otra página abierta
+// en el mismo navegador (cross-site WebSocket hijacking). Un cliente que no es
+// navegador —scripts/smoke.mjs, curl, otro servidor— no la envía, y tampoco
+// tiene cookies ajenas que explotar: se admite sin más.
 func (s *Server) checkOrigin(r *http.Request) bool {
-	if len(s.cfg.AllowedOrigins) == 0 {
-		return true // desarrollo
-	}
 	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	if len(s.cfg.AllowedOrigins) == 0 {
+		return true // desarrollo y test: la configuración exige la lista en producción
+	}
 	for _, allowed := range s.cfg.AllowedOrigins {
-		if origin == allowed {
+		if strings.EqualFold(origin, allowed) {
 			return true
 		}
 	}
-	s.log.Warn("origen rechazado en el upgrade de WebSocket", "origin", origin)
+	s.log.Warn("origen rechazado en el upgrade de WebSocket", "origin", origin, "remote", r.RemoteAddr)
 	return false
 }
 

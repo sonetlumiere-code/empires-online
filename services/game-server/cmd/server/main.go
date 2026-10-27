@@ -302,6 +302,7 @@ func run() error {
 		WorldWidth:           cfg.WorldWidth,
 		WorldHeight:          cfg.WorldHeight,
 		ChunkSize:            cfg.ChunkSize,
+		AllowedOrigins:       cfg.WSAllowedOrigins,
 	}, hub, authenticator, presence, dedupe, commands, metrics, log)
 
 	firstEra := eras[0]

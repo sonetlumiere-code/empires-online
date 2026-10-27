@@ -97,7 +97,7 @@ La forma en que este invariante se rompe en la práctica no es un descuido grose
 | Aplicación | BOUNDARY, TEST |
 | Milestone | M3 |
 | Política ante violación | FAIL_FAST (cierre de la conexión) |
-| Cobertura | **Cubierto** por `TestNoSeAceptanComandosSinAutenticar`, `TestSinHandshakeEnPlazoSeCierraCon4408`, `TestTicketInvalidoCierraLaConexion` y `TestTicketNoSePuedeReutilizarEnOtraConexion` (`internal/websocket`), y por `TestPreAuthSoloAdmiteElHandshake` (`internal/protocol`) |
+| Cobertura | **Cubierto** por `TestNoSeAceptanComandosSinAutenticar`, `TestSinHandshakeEnPlazoSeCierraCon4408`, `TestTicketInvalidoCierraLaConexion`, `TestTicketNoSePuedeReutilizarEnOtraConexion` y `TestUnOrigenNoListadoSeRechazaCon403AntesDelHandshake` (`internal/websocket`), por `TestOrigenesPermitidosDelWebSocket` (`internal/config`) y por `TestPreAuthSoloAdmiteElHandshake` (`internal/protocol`) |
 
 **Enunciado.** Una conexión WebSocket sólo acepta `session.hello` hasta que el ticket ha sido verificado y la sesión creada. Cualquier otro tipo de mensaje recibido antes cierra la conexión con `4401` sin procesarse; si no llega un frame legible dentro del plazo de handshake (5 s), la conexión se cierra con `4408`.
 
@@ -111,6 +111,7 @@ El timeout de 5 segundos cubre un segundo problema, de disponibilidad: conexione
 - `BOUNDARY` — el plazo de handshake (`HandshakeTimeout`, 5 s en producción) es el `SetReadDeadline` de esa primera lectura. Al vencer, cierre `4408`.
 - `BOUNDARY` — `conn.SetReadLimit(EO_WS_MAX_MESSAGE_BYTES)` se aplica **antes** del handshake, en `Server.serve`, de modo que ni siquiera un `session.hello` puede desbordar memoria: un frame mayor lo corta el transporte con `1009` ([INV-SEC-005](#inv-sec-005)).
 - `BOUNDARY` — la verificación del ticket es completa antes de crear la sesión (canon §14): firma HS256 con `EO_AUTH_JWT_SECRET`, `exp`, `aud = "game-server"` y consumo del `jti` ([INV-SEC-003](#inv-sec-003)). Un fallo en cualquier paso cierra con `4401` sin crear sesión, y el mismo código para todos: distinguirlos ayudaría a afinar un ataque.
+- `BOUNDARY` — **antes incluso del socket**, el upgrade comprueba la cabecera `Origin` contra `EO_WS_ALLOWED_ORIGINS` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)): un origen no listado recibe `403` y no hay handshake que proteger. Un navegador envía `Origin` siempre y no deja al script cambiarla, así que es lo que impide que otra página abierta en el mismo navegador abra una sesión con el ticket que la web del juego acaba de pedir (*cross-site WebSocket hijacking*). Una petición sin `Origin` no es un navegador y se admite. En producción la lista es obligatoria; hasta la auditoría del 2026-10-26 nunca se rellenaba y la comprobación estaba apagada.
 - `DOMAIN` — el `playerId` de la sesión se establece una sola vez y es inmutable ([INV-PLAYER-004](player.md#inv-player-004)).
 
 > **Qué protege realmente la fase previa al handshake.** El límite de **tamaño** sí se aplica antes (`SetReadLimit` en `Server.serve`), pero el **token bucket NO**: `newRateLimiter` se construye en `readPump`, que sólo se ejecuta con la sesión ya establecida. Lo que acota el coste de una conexión no autenticada es la combinación de tres cosas: el límite de lectura, el plazo de handshake y que el handshake acepta **un solo mensaje**. Una conexión no autenticada no puede, por tanto, enviar una ráfaga: no hay un bucle que la lea. Extender el token bucket a la fase de handshake, para acotar también el coste de conexiones que abren y cierran en serie, es **TBD (fuera de MVP)**.
@@ -123,6 +124,8 @@ El timeout de 5 segundos cubre un segundo problema, de disponibilidad: conexione
 - `TestTicketNoSePuedeReutilizarEnOtraConexion` (e2e) — el segundo canje no establece sesión.
 - `TestPreAuthSoloAdmiteElHandshake` (contract, `internal/protocol`) — de los siete tipos cliente→servidor, sólo `session.hello` es pre-auth.
 - `TestCodigosDeCierreSonDelRangoPrivado` (contract) — `4400`, `4401`, `4403`, `4408`, `4429` y `4500` están en el rango privado.
+- `TestUnOrigenNoListadoSeRechazaCon403AntesDelHandshake`, `TestUnOrigenListadoAbreSesion`, `TestSinOrigenSeAdmiteAunqueHayaLista` y `TestConLaListaVaciaSeAdmiteCualquierOrigen` (e2e, `internal/websocket`) — con lista, un `Origin` ajeno recibe `403` sin socket y uno listado abre sesión; sin `Origin`, o sin lista, se admite. Verificado por mutación: la comprobación que siempre devuelve `true` —la que sobrevivía a la suite antes— lo hace fallar.
+- `TestOrigenesPermitidosDelWebSocket` (unit, `internal/config`) — la lista se parsea y normaliza, una entrada que no es `scheme://host[:port]` aborta el arranque y en producción la variable es obligatoria.
 
 **Violación en runtime.** El rechazo es la regla, no una violación: `Server.serve` registra «handshake rechazado» a nivel `info`, con la causa y el código de cierre, y cierra. No hay un camino de código en el que un comando llegue a enrutarse sin sesión, y por tanto no hay una detección que escribir.
 
@@ -405,6 +408,7 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | Amenaza | Invariante que la cubre |
 |---|---|
 | Suplantación de jugador | [INV-PLAYER-004](player.md#inv-player-004), [INV-SEC-002](#inv-sec-002), [INV-SEC-003](#inv-sec-003) |
+| Sesión abierta desde otra página en el navegador del jugador (*cross-site WebSocket hijacking*) | [INV-SEC-002](#inv-sec-002) (`Origin` en el upgrade, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) |
 | Control de unidades ajenas | [INV-PLAYER-001](player.md#inv-player-001), [INV-SEC-004](#inv-sec-004) |
 | Falsificación de posición, velocidad o path | [INV-SEC-001](#inv-sec-001), [INV-MOVE-004](movement.md#inv-move-004), [INV-MOVE-006](movement.md#inv-move-006) |
 | Replay de ticket | [INV-SEC-003](#inv-sec-003) |

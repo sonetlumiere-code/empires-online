@@ -93,8 +93,9 @@ toda sesión habría muerto tras su primer mensaje. Hoy `Handler` recibe el cont
 
 Después se añadieron `limits_e2e_test.go` (cierres `4408`, `1009`, `4429`, la contigüidad del `seq` y, desde
 `EO-121`, que los tipos inventados no crean series de `eo_ws_messages_total`),
-`contract_e2e_test.go` (los tipos que nadie emitía y `session.view`) y `schema_e2e_test.go` (validación de
-cada frame). Lo que sigue sin cubrir es el rate limiting fino —el limitador no admite un reloj inyectable— y el
+`contract_e2e_test.go` (los tipos que nadie emitía y `session.view`), `schema_e2e_test.go` (validación de
+cada frame) y `origin_e2e_test.go` (la cabecera `Origin` en el upgrade: `403` para un origen no listado, paso
+para uno listado o para una petición sin `Origin`; [ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Lo que sigue sin cubrir es el rate limiting fino —el limitador no admite un reloj inyectable— y el
 `seq` entre conexiones. Van marcados ○.
 
 ---

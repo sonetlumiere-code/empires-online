@@ -12,6 +12,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -61,6 +62,13 @@ type Config struct {
 	WSReadTimeout       time.Duration
 	WSWriteTimeout      time.Duration
 	WSOutboundQueueSize int
+
+	// WSAllowedOrigins son los orígenes (`scheme://host[:port]`, normalizados a
+	// minúsculas) desde los que un navegador puede abrir /ws. Vacía fuera de
+	// producción significa «cualquiera»; en producción es obligatoria, porque sin
+	// ella cualquier página web abriría sesiones desde el navegador del jugador
+	// (ADR-021). Un cliente que no envía Origin no es un navegador y no se filtra.
+	WSAllowedOrigins []string
 }
 
 // Valores admitidos de EO_ENV. La lista es cerrada a propósito: `prod` o un
@@ -102,6 +110,7 @@ func Load() (Config, error) {
 	// El entorno se resuelve primero porque otros valores por defecto dependen
 	// de él. Un valor fuera de la lista es un error, no un entorno de desarrollo.
 	env := v.oneOf("EO_ENV", EnvDevelopment, environments)
+	origins, originsSet := v.origins("EO_WS_ALLOWED_ORIGINS")
 
 	cfg := Config{
 		Env:         env,
@@ -142,6 +151,7 @@ func Load() (Config, error) {
 		WSReadTimeout:       45 * time.Second,
 		WSWriteTimeout:      10 * time.Second,
 		WSOutboundQueueSize: v.intRange("EO_WS_OUTBOUND_QUEUE_SIZE", 256, 8, 65536),
+		WSAllowedOrigins:    origins,
 	}
 
 	// --- Validaciones cruzadas: las que un rango por sí solo no puede expresar ---
@@ -176,6 +186,12 @@ func Load() (Config, error) {
 	if cfg.WSRateLimitBurst < cfg.WSRateLimitPerSec {
 		v.fail("EO_WS_RATE_LIMIT_BURST no puede ser menor que EO_WS_RATE_LIMIT_PER_SECOND")
 	}
+	// Sin lista, el upgrade acepta cualquier Origin. Eso sólo vale en desarrollo:
+	// en producción, cualquier página web podría abrir sesiones de juego desde el
+	// navegador de un jugador que tenga la web abierta (ADR-021).
+	if cfg.IsProduction() && !originsSet {
+		v.fail("EO_WS_ALLOWED_ORIGINS es obligatoria en producción: sin ella el upgrade de /ws acepta cualquier Origin")
+	}
 
 	if err := v.err(); err != nil {
 		return Config{}, err
@@ -200,6 +216,35 @@ func (c *collector) str(key, def string) string {
 		return raw
 	}
 	return def
+}
+
+// origins lee una lista separada por comas de orígenes exactos
+// `scheme://host[:port]` (http o https) y la devuelve normalizada a minúsculas,
+// que es como se compara con la cabecera Origin. Una entrada con ruta, query,
+// credenciales o sin esquema es un error: `https://game.example.com/` no
+// casaría nunca con lo que envía un navegador y en producción dejaría fuera a
+// todos los jugadores. El segundo valor dice si la variable tenía contenido.
+func (c *collector) origins(key string) ([]string, bool) {
+	raw := strings.TrimSpace(c.str(key, ""))
+	if raw == "" {
+		return nil, false
+	}
+	var out []string
+	for _, item := range strings.Split(raw, ",") {
+		o := strings.TrimSpace(item)
+		if o == "" {
+			continue
+		}
+		u, err := url.Parse(o)
+		if err != nil || u.Opaque != "" || u.User != nil || u.Host == "" ||
+			u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
+			(u.Scheme != "http" && u.Scheme != "https") {
+			c.fail(fmt.Sprintf("%s: %q no es un origen válido (usa scheme://host[:port], con http o https y sin ruta)", key, o))
+			continue
+		}
+		out = append(out, strings.ToLower(u.Scheme)+"://"+strings.ToLower(u.Host))
+	}
+	return out, true
 }
 
 // oneOf lee una variable que sólo admite los valores de `allowed`, tal cual,

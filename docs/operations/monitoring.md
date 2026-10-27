@@ -518,6 +518,9 @@ que mirar, no una lista de sugerencias.
    no se cuenta.)
    - **No llegan** → el problema está delante del servidor: DNS, TLS, reverse proxy, firewall, o la web no
      está emitiendo tickets. Prueba `curl -I https://game.<dominio>/` y `POST /api/auth/ticket` en la web.
+   - **No llegan, pero hay `warn` «origen rechazado en el upgrade de WebSocket»** → el upgrade responde `403`
+     antes del handshake porque el `Origin` del navegador no está en `EO_WS_ALLOWED_ORIGINS`: el log trae el
+     origen tal cual llegó; compáralo con la lista (esquema, host y puerto exactos, sin ruta).
    - **Llegan pero `eo_connected_players` no sube** → el handshake falla. Sigue en el punto 2.
 2. El campo `close_code` de `handshake rechazado`: `4401` (secreto desincronizado, ticket expirado o Redis sin
    responder al consumir el `jti` — sospecha de una rotación mal ejecutada, ver

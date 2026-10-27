@@ -56,7 +56,7 @@ La versión viaja **en cada mensaje**, en el campo `v` (entero). En v1 el valor 
 |---|---|
 | Esquema | `wss://` (TLS obligatorio en cualquier entorno que no sea local) |
 | Endpoint | `/ws` sobre `EO_HTTP_ADDR` (por defecto `:8080`) → `wss://<host>/ws` |
-| Origen | El upgrade comprueba la cabecera `Origin` contra una lista blanca. Vacía = se acepta cualquier origen (sólo desarrollo); en producción debe estar poblada. |
+| Origen | El upgrade comprueba la cabecera `Origin` contra la lista blanca `EO_WS_ALLOWED_ORIGINS` (orígenes exactos `scheme://host[:port]`, sin distinguir mayúsculas). Un origen no listado recibe **`403`** antes del handshake. Una petición **sin** `Origin` no viene de un navegador y se admite siempre. Vacía = cualquier origen, sólo fuera de producción: allí el arranque la exige ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
 | Subprotocolo | v1 **no negocia** `Sec-WebSocket-Protocol`. La versión viaja en el campo `v` de cada envelope. Registrar un subprotocolo con nombre es `TBD (fuera de MVP)`. |
 | Formato de frame | Frame de **texto**, JSON válido, codificación **UTF-8**. |
 | Un frame | Exactamente **un envelope**. No hay *framing* de varios mensajes por frame ni fragmentación aplicativa. |

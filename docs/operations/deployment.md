@@ -98,8 +98,10 @@ Cada PR genera un despliegue *preview* con URL propia. Reglas:
   propia base y su propio mundo. Un preview que escribiera en el mundo de producción sería una vía de
   corrupción de estado durable desde una rama sin revisar.
 - El Game Server de staging debe aceptar el origen del preview en su comprobación de `Origin` durante el
-  upgrade WebSocket. Como las URLs de preview son dinámicas, staging admite el patrón de dominio de preview;
-  producción admite **exclusivamente** el dominio del frontend.
+  upgrade WebSocket (`EO_WS_ALLOWED_ORIGINS`, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)). La
+  lista es de orígenes **exactos**, sin comodines: como las URLs de preview por commit son dinámicas, los
+  previews que necesiten el juego usan el alias estable de rama de Vercel (`<rama>-<proyecto>.vercel.app`) y
+  ese alias es el que se lista en staging. Producción admite **exclusivamente** el dominio del frontend.
 - Los previews son públicos por defecto en Vercel: activa la protección de despliegue si el contenido no
   debe ser accesible.
 
@@ -719,7 +721,7 @@ Ninguna casilla es opcional. Un "no" bloquea el despliegue.
 - [ ] HSTS activo.
 - [ ] Solo TLS 1.2 y 1.3.
 - [ ] El cliente conecta por `wss://`, nunca por `ws://`, en producción.
-- [ ] Comprobación de `Origin` en el upgrade WebSocket: producción acepta **exclusivamente** el dominio del frontend.
+- [ ] `EO_WS_ALLOWED_ORIGINS` con **exclusivamente** el origen del frontend (`https://<dominio>`, sin ruta ni comodines). En producción el arranque falla si está vacía; un origen no listado recibe `403` antes del handshake ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Una petición sin `Origin` —un script, no un navegador— entra siempre.
 - [ ] Timeouts del proxy más permisivos que los del servidor (ping 15 s / read 45 s).
 - [ ] Límite de frame del proxy ≥ `EO_WS_MAX_MESSAGE_BYTES` (16384).
 

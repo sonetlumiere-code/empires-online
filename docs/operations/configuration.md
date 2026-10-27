@@ -86,7 +86,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
 |---|---|---|---|---|---|---|
-| `EO_ENV` | string | `development` | **exactamente** `development` \| `test` \| `production` | No | No | Selecciona el perfil de arranque. En `production` se prohíben los secretos de desarrollo (§4.2), `EO_REDIS_URL` pasa a ser obligatoria y `EO_MIGRATE_ON_START` vale `false`. **La lista es cerrada**: `prod`, `Production` o `staging` abortan el arranque con `EO_ENV="prod" no es un entorno válido (usa development, test, production)`. Antes el cargador aceptaba texto libre y cualquier cadena distinta de `production` activaba en silencio la semántica de desarrollo. `test` existe para los tests de integración y la CI: se comporta como `development`. |
+| `EO_ENV` | string | `development` | **exactamente** `development` \| `test` \| `production` | No | No | Selecciona el perfil de arranque. En `production` se prohíben los secretos de desarrollo (§4.2), `EO_REDIS_URL` y `EO_WS_ALLOWED_ORIGINS` pasan a ser obligatorias y `EO_MIGRATE_ON_START` vale `false`. **La lista es cerrada**: `prod`, `Production` o `staging` abortan el arranque con `EO_ENV="prod" no es un entorno válido (usa development, test, production)`. Antes el cargador aceptaba texto libre y cualquier cadena distinta de `production` activaba en silencio la semántica de desarrollo. `test` existe para los tests de integración y la CI: se comporta como `development`. |
 | `EO_LOG_LEVEL` | string | `info` | `debug` \| `info` \| `warn` \| `error` | No | No | Nivel mínimo de `log/slog`. En `debug` se emiten trazas por comando y por tick, con coste de CPU y volumen apreciables: no usar en producción salvo diagnóstico acotado. |
 
 ### 3.2 Red del proceso
@@ -145,6 +145,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_WS_RATE_LIMIT_PER_SECOND` | int | `20` | 1–10000 | No | No | Tasa sostenida de mensajes por conexión. Al superarse: `RATE_LIMITED` y, si persiste, cierre `4429`. |
 | `EO_WS_RATE_LIMIT_BURST` | int | `40` | 1–20000, y **≥ `EO_WS_RATE_LIMIT_PER_SECOND`** | No | No | Capacidad del *token bucket*: ráfaga tolerada por encima de la tasa sostenida. Cubre el pico legítimo de un jugador arrastrando la vista (`session.view`) sin castigarlo. |
 | `EO_WS_OUTBOUND_QUEUE_SIZE` | int | `256` | 8–65536 | No | No | Tamaño de la **cola de salida por conexión**. Es la contrapresión del lado servidor: si un cliente no consume sus deltas y la cola se llena, la sesión se cierra con **4500** y el cliente reconecta pidiendo un snapshot limpio. Subirlo tolera clientes más lentos a costa de memoria por conexión; bajarlo corta antes. **No aparece en `.env.example`**: se toma el default salvo que se declare. |
+| `EO_WS_ALLOWED_ORIGINS` | lista | — (vacía: cualquier origen; **obligatoria en producción**) | orígenes `scheme://host[:port]` con `http` o `https`, separados por comas, **sin ruta** | No | No | Lista blanca de la cabecera `Origin` en el upgrade de `/ws` ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). Un navegador la envía siempre y no deja al script cambiarla: es lo que impide que otra página abierta en el mismo navegador abra sesiones de juego (*cross-site WebSocket hijacking*). Comparación exacta sin distinguir mayúsculas; `null` (iframe aislado, `file://`) no casa nunca. Una petición **sin** `Origin` —`scripts/smoke.mjs`, `curl`, otro servidor— se admite siempre: no es un navegador y no lleva las cookies de nadie. Un origen no listado recibe **403** antes del handshake y un `warn` «origen rechazado en el upgrade de WebSocket». Una entrada con ruta (`https://x/`), sin esquema o con `ws://` es un **error de arranque**: nunca casaría y en producción dejaría fuera a todos los jugadores sin que nada lo dijera. En producción la lista lleva el dominio exacto del frontend; no hay comodines. |
 
 ### 3.8-bis Identidad (las lee `apps/web`, no el Game Server)
 
@@ -220,7 +221,7 @@ las consecuencias se escriben en Postgres antes de que nadie lo note.
    En todos los casos el valor efectivo cae al default y el error queda anotado.
 2. **Presencia de obligatorias.** `EO_POSTGRES_URL` y `EO_AUTH_JWT_SECRET`: ausente o vacía → error.
    `EO_REDIS_URL` solo es obligatoria si `EO_ENV=production`.
-3. **Las seis validaciones cruzadas**, las que ninguna variable puede comprobar sola:
+3. **Las siete validaciones cruzadas**, las que ninguna variable puede comprobar sola:
 
    | # | Regla | Por qué existe |
    |---|---|---|
@@ -230,6 +231,7 @@ las consecuencias se escriben en Postgres antes de que nadie lo note.
    | 4 | `EO_WORLD_WIDTH` y `EO_WORLD_HEIGHT` deben ser **múltiplos exactos** de `EO_CHUNK_SIZE` | Un mundo que no encaja en chunks enteros deja una franja sin chunk al que suscribirse. |
    | 5 | `EO_PRESENCE_HEARTBEAT_SECONDS` **estrictamente menor** que `EO_PRESENCE_TTL_SECONDS` | Con heartbeat ≥ TTL la presencia expiraría entre latidos y los jugadores conectados parpadearían a ausentes. |
    | 6 | `EO_WS_RATE_LIMIT_BURST` **≥** `EO_WS_RATE_LIMIT_PER_SECOND` | Un *bucket* con capacidad menor que su tasa de recarga no puede sostener siquiera la tasa nominal. |
+   | 7 | `EO_WS_ALLOWED_ORIGINS` **no puede estar vacía** si `EO_ENV=production` | Sin lista, el upgrade de `/ws` acepta cualquier `Origin`: cualquier página web abriría sesiones de juego desde el navegador de un jugador que tenga la web abierta ([ADR-021](../decisions/ADR-021-game-server-perimeter.md)). |
 
 **La validación acumula TODOS los errores y los reporta juntos**, no de uno en uno. Arreglar la
 configuración de un despliegue con un reinicio por error es tiempo de indisponibilidad regalado.

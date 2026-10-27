@@ -17,6 +17,17 @@ func setValidEnv(t *testing.T) {
 	t.Setenv("EO_AUTH_JWT_SECRET", "un-secreto-de-pruebas-suficientemente-largo")
 }
 
+// setProductionEnv deja el entorno en el mínimo válido de PRODUCCIÓN: además
+// de lo anterior, un secreto propio y la lista de orígenes, que allí es
+// obligatoria (ADR-021). Cada test de producción quita lo que quiere ver fallar.
+func setProductionEnv(t *testing.T) {
+	t.Helper()
+	setValidEnv(t)
+	t.Setenv("EO_ENV", "production")
+	t.Setenv("EO_AUTH_JWT_SECRET", "un-secreto-de-produccion-suficientemente-largo")
+	t.Setenv("EO_WS_ALLOWED_ORIGINS", "https://play.example.com")
+}
+
 func TestValoresPorDefectoDelCanon(t *testing.T) {
 	setValidEnv(t)
 
@@ -41,6 +52,7 @@ func TestValoresPorDefectoDelCanon(t *testing.T) {
 	require.EqualValues(t, 16384, cfg.WSMaxMessageBytes)
 	require.Equal(t, 20, cfg.WSRateLimitPerSec)
 	require.Equal(t, 40, cfg.WSRateLimitBurst)
+	require.Empty(t, cfg.WSAllowedOrigins, "sin lista, fuera de producción, se admite cualquier origen")
 
 	require.Equal(t, 100*time.Millisecond, cfg.TickDuration())
 	require.EqualValues(t, 100, cfg.TickDurationMs())
@@ -59,9 +71,7 @@ func TestMigrateOnStartDependeDelEntorno(t *testing.T) {
 	})
 
 	t.Run("producción: desactivada", func(t *testing.T) {
-		setValidEnv(t)
-		t.Setenv("EO_ENV", "production")
-		t.Setenv("EO_AUTH_JWT_SECRET", "un-secreto-de-produccion-suficientemente-largo")
+		setProductionEnv(t)
 		cfg, err := config.Load()
 		require.NoError(t, err)
 		require.False(t, cfg.MigrateOnStart, "en producción se migra con el binario `migrate`")
@@ -134,9 +144,7 @@ func TestRedisEsOpcionalSoloFueraDeProduccion(t *testing.T) {
 	})
 
 	t.Run("producción sin Redis: se rechaza", func(t *testing.T) {
-		setValidEnv(t)
-		t.Setenv("EO_ENV", "production")
-		t.Setenv("EO_AUTH_JWT_SECRET", "un-secreto-de-produccion-suficientemente-largo")
+		setProductionEnv(t)
 		t.Setenv("EO_REDIS_URL", "")
 
 		_, err := config.Load()
@@ -144,9 +152,7 @@ func TestRedisEsOpcionalSoloFueraDeProduccion(t *testing.T) {
 	})
 
 	t.Run("producción con Redis: válido", func(t *testing.T) {
-		setValidEnv(t)
-		t.Setenv("EO_ENV", "production")
-		t.Setenv("EO_AUTH_JWT_SECRET", "un-secreto-de-produccion-suficientemente-largo")
+		setProductionEnv(t)
 
 		cfg, err := config.Load()
 		require.NoError(t, err)
@@ -163,8 +169,7 @@ func TestSecretoDemasiadoCorto(t *testing.T) {
 }
 
 func TestSecretoDeDesarrolloEnProduccion(t *testing.T) {
-	setValidEnv(t)
-	t.Setenv("EO_ENV", "production")
+	setProductionEnv(t)
 	t.Setenv("EO_AUTH_JWT_SECRET", "dev-only-insecure-secret-change-me-before-any-deployment")
 
 	_, err := config.Load()
@@ -239,9 +244,7 @@ func TestValorNoNumerico(t *testing.T) {
 }
 
 func TestSobrescrituraPorEntorno(t *testing.T) {
-	setValidEnv(t)
-	t.Setenv("EO_ENV", "production")
-	t.Setenv("EO_AUTH_JWT_SECRET", "un-secreto-de-produccion-suficientemente-largo")
+	setProductionEnv(t)
 	t.Setenv("EO_TICK_RATE_HZ", "20")
 	t.Setenv("EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS", "600")
 	t.Setenv("EO_WORLD_WIDTH", "256")
@@ -263,9 +266,8 @@ func TestSobrescrituraPorEntorno(t *testing.T) {
 func TestEntornoContraListaCerrada(t *testing.T) {
 	t.Run("acepta los tres entornos", func(t *testing.T) {
 		for _, env := range []string{config.EnvDevelopment, config.EnvTest, config.EnvProduction} {
-			setValidEnv(t)
+			setProductionEnv(t)
 			t.Setenv("EO_ENV", env)
-			t.Setenv("EO_AUTH_JWT_SECRET", "un-secreto-de-produccion-suficientemente-largo")
 			cfg, err := config.Load()
 			require.NoError(t, err, "entorno %q", env)
 			require.Equal(t, env, cfg.Env)
@@ -289,5 +291,52 @@ func TestEntornoContraListaCerrada(t *testing.T) {
 		cfg, err := config.Load()
 		require.NoError(t, err)
 		require.Equal(t, config.EnvDevelopment, cfg.Env)
+	})
+}
+
+// ADR-021: la lista blanca de Origin del upgrade de /ws. Se recorta, se
+// normaliza a minúsculas y sólo admite `scheme://host[:port]`: una entrada con
+// ruta o sin esquema no casaría nunca con lo que envía un navegador, y en
+// producción dejaría fuera a todos los jugadores sin que nada lo dijera.
+func TestOrigenesPermitidosDelWebSocket(t *testing.T) {
+	t.Run("lista separada por comas, recortada y en minúsculas", func(t *testing.T) {
+		setValidEnv(t)
+		t.Setenv("EO_WS_ALLOWED_ORIGINS", " https://Play.Example.com , http://localhost:3000,, ")
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.Equal(t, []string{"https://play.example.com", "http://localhost:3000"}, cfg.WSAllowedOrigins)
+	})
+
+	t.Run("una entrada que no es scheme://host[:port] es un error", func(t *testing.T) {
+		for _, malo := range []string{
+			"https://play.example.com/",
+			"play.example.com",
+			"ws://play.example.com",
+			"https://user@play.example.com",
+			"https://play.example.com?x=1",
+			"https://play.example.com#f",
+		} {
+			setValidEnv(t)
+			t.Setenv("EO_WS_ALLOWED_ORIGINS", "http://localhost:3000,"+malo)
+			_, err := config.Load()
+			require.ErrorContains(t, err, `EO_WS_ALLOWED_ORIGINS: "`+malo+`" no es un origen válido`, "entrada %q", malo)
+		}
+	})
+
+	t.Run("obligatoria en producción", func(t *testing.T) {
+		setProductionEnv(t)
+		t.Setenv("EO_WS_ALLOWED_ORIGINS", "")
+		_, err := config.Load()
+		require.ErrorContains(t, err, "EO_WS_ALLOWED_ORIGINS es obligatoria en producción")
+	})
+
+	t.Run("fuera de producción puede faltar", func(t *testing.T) {
+		for _, env := range []string{config.EnvDevelopment, config.EnvTest} {
+			setValidEnv(t)
+			t.Setenv("EO_ENV", env)
+			cfg, err := config.Load()
+			require.NoError(t, err, "entorno %q", env)
+			require.Empty(t, cfg.WSAllowedOrigins)
+		}
 	})
 }
