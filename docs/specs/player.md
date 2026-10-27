@@ -181,7 +181,7 @@ Claims del ticket (canon §14): `{ sub: playerId, jti, iat, exp, aud: "game-serv
 |---|---|---|
 | `EO_AUTH_JWT_SECRET` | — (obligatoria en los dos procesos) | `apps/web` firma con él el ticket y el token de fundación; el game server los verifica. Mínimo 32 caracteres; no puede contener `dev-only` si `EO_ENV=production`, en ninguno de los dos. |
 | `EO_IDENTITY_POSTGRES_URL` | — (obligatoria en `apps/web`) | Almacén de identidad. Sólo la lee `apps/web`. |
-| `EO_GAME_SERVER_INTERNAL_URL` | `http://localhost:8080` | Dónde llama `apps/web` para fundar. |
+| `EO_GAME_SERVER_INTERNAL_URL` | `http://localhost:8081` | Dónde llama `apps/web` para fundar: el listener interno del Game Server (`EO_INTERNAL_ADDR`), no el público. |
 | `EO_AUTH_RATE_LIMIT_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_BURST` | 10 / 5 | Alta y login por IP, en `apps/web` y por proceso; sólo actúa con `EO_TRUST_PROXY_HEADERS=true`. |
 | `EO_AUTH_RATE_LIMIT_USER_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_USER_BURST` | 20 / 10 | Alta y login por nombre de usuario, con o sin proxy. |
 | `EO_AUTH_RATE_LIMIT_GLOBAL_PER_MINUTE` / `EO_AUTH_RATE_LIMIT_GLOBAL_BURST` | 120 / 30 | Tope de alta y login de todo el proceso: acota el coste de `scrypt`. Al menos tan amplio como los dos anteriores. |

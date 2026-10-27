@@ -85,7 +85,9 @@ export function loadAuthConfig(env: Record<string, string | undefined> = process
   const identityPostgresUrl = env.EO_IDENTITY_POSTGRES_URL ?? '';
   if (!identityPostgresUrl) problems.push('falta EO_IDENTITY_POSTGRES_URL');
 
-  const gameServerInternalUrl = (env.EO_GAME_SERVER_INTERNAL_URL || 'http://localhost:8080').replace(/\/+$/, '');
+  // El listener INTERNO del Game Server (EO_INTERNAL_ADDR, 127.0.0.1:8081 por
+  // defecto), no el público de :8080, que ya no sirve /internal.
+  const gameServerInternalUrl = (env.EO_GAME_SERVER_INTERNAL_URL || 'http://localhost:8081').replace(/\/+$/, '');
 
   // Los valores por defecto y su porqué están en docs/specs/player.md §4.3.
   const rateLimits: AuthRateLimitConfig = {

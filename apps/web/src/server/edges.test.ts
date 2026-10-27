@@ -29,7 +29,8 @@ describe('loadAuthConfig', () => {
   it('aplica los valores por defecto', () => {
     expect(loadAuthConfig(base)).toMatchObject({
       production: false,
-      gameServerInternalUrl: 'http://localhost:8080',
+      // El listener interno del Game Server, no el público de :8080.
+      gameServerInternalUrl: 'http://localhost:8081',
       rateLimits: {
         ip: { perMinute: 10, burst: 5 },
         user: { perMinute: 20, burst: 10 },
