@@ -452,6 +452,41 @@ Un reducer puro por familia de mensajes, todos con firma `(state, payload, envel
 
 Los reducers son funciones puras en módulos sin dependencias de DOM ni de Pixi: son la parte del cliente más barata de testear y la que más se rompe en refactors.
 
+### 4.4 Economía: órdenes, HUD y escena (SPEC-ECON-WOOD)
+
+> **Estado (2026-10-27): implementado y con tests de lo puro**; la escena y el HUD, sin verificar en el
+> navegador (se hace con un servidor vivo desde el checkout principal).
+
+Lo que llega y cómo se guarda:
+
+- `world.snapshot` trae `buildings[]` y cada ciudad con `stocks` y `production`; el store guarda los
+  edificios en un mapa propio (`buildings`, de referencia estable como los demás) y señala en
+  `changes.buildings` los ids que toca cada `building.spawn` o `building.update`. Una ciudad sin `stocks`
+  (un servidor anterior a E1) vale `{ WOOD: 0 }`.
+- `city.update` aplica `stocks` y `production` como el resto de campos opcionales: `production: null` es «deja
+  de entrenar», no «sin cambio». `entity.update` aplica `status: WORKING` y `carrying`.
+- `building.spawn` trae la vista completa y **añade** un edificio desconocido (como `territory.update`);
+  `building.update` sobre uno desconocido se ignora.
+
+Las decisiones del cliente son intenciones, puras y probadas en `src/state/economy.ts`:
+
+| Decisión | Criterio | Por qué |
+|---|---|---|
+| Clic en el mapa con una unidad propia seleccionada | Dentro del 3 × 3 de una ciudad → `unit.garrison`; si no, sobre un tile `FOREST` (byte 1 del terreno ya cargado) con un `VILLAGER` → `unit.gather`; en cualquier otro caso → `unit.move` (`decideTileOrder`). | Es la orden contextual de la referencia: el destino decide la orden. La zona urbana va primero porque es muralla: no hay bosque que recolectar ahí. Un aldeano que ya recolecta y recibe un clic en otro bosque cambia de bosque (RN-ECON-006); en hierba deja de recolectar (RN-ECON-003). |
+| Botón «Casa» | Pide construir en el **primer hueco libre** del 3 × 3 en orden `(y, x)` según los edificios que el store conoce (`firstFreeHouseTile`), sin pedir clic. Sin huecos, no envía nada. | Un clic en la zona urbana ya significa «guarnecerse»: pedir un segundo modo de clic sobre los mismos tiles añadiría un estado de interfaz para elegir entre ocho huecos equivalentes en este slice. Si otro encargo ocupa el tile entre tanto, el servidor responde `INVALID_TARGET`. |
+| Botón «Aldeano» | `city.train { VILLAGER }`; deshabilitado mientras `production` no es `null`. | El servidor respondería `CITY_BUSY`; deshabilitarlo ahorra el viaje, no decide nada. |
+| Costes | **No** se muestran ni se comprueban en el cliente. | Viven en los catálogos del servidor (spec §4.5) y cambian sin tocar el cliente; el servidor responde `INSUFFICIENT_RESOURCES`. |
+
+El HUD muestra la madera de la ciudad propia, los dos botones y, mientras entrena, la cuenta atrás hasta
+`production.completesAtMs` medida con el reloj del servidor (§3.7), refrescada una vez por segundo sólo
+mientras hay producción. Los códigos `INSUFFICIENT_RESOURCES`, `CITY_BUSY`, `POPULATION_LIMIT_REACHED` e
+`INVALID_TARGET` se muestran con un texto para personas (`readableError`); el resto, con su código.
+
+En la escena (§7.1), los edificios son primitivas como las unidades y las ciudades: en obras, el contorno; completos,
+relleno con tejado; color propio o ajeno según la ciudad del edificio. Una unidad `WORKING` lleva el borde marrón
+y grueso, y una que carga madera, un tronco a la espalda.
+
+
 ---
 
 ## 5. Posición autoritativa frente a posición de render
@@ -868,8 +903,8 @@ del mundo; y una reconexión forzada restaura la vista sin esperar.
 > `stage` traduce el punto a tile (`screenToTile`) con la cámara del frame —el derecho y el central arrastran la
 > cámara, §7.4.1—; si alguna unidad se **dibuja** en ese tile (su posición del reconciliador,
 > redondeada), es un clic sobre ella —la página sólo selecciona unidades propias—; si no, es un clic sobre el
-> tile. Con una unidad seleccionada, un clic sobre el 3 × 3 de una ciudad es `unit.garrison` y cualquier otro
-> tile es `unit.move`. No hay `hitArea` por sprite, ni orden con clic derecho (el derecho arrastra la cámara), ni
+> tile. Con una unidad seleccionada, un clic sobre el 3 × 3 de una ciudad es `unit.garrison`, uno sobre un bosque
+> con un aldeano es `unit.gather` (§4.4) y cualquier otro tile es `unit.move`. No hay `hitArea` por sprite, ni orden con clic derecho (el derecho arrastra la cámara), ni
 > tecla de cancelación, ni resaltado del tile bajo el cursor.
 
 Dos niveles, resueltos en este orden:

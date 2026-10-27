@@ -11,13 +11,21 @@
  *
  * Ver ../../../../docs/architecture/frontend.md §7.3
  */
-import { chunkAt, type CityView, type TerritoryView, type UnitView, type WorldChanges, type WorldState } from '../state/world';
-import type { SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
+import {
+  chunkAt,
+  type BuildingView,
+  type CityView,
+  type TerritoryView,
+  type UnitView,
+  type WorldChanges,
+  type WorldState,
+} from '../state/world';
+import type { SceneBuilding, SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
 
 /** Lo que la proyección lee del store. */
 export type ProjectableState = Pick<
   WorldState,
-  'playerId' | 'world' | 'units' | 'cities' | 'territories' | 'terrain' | 'selectedUnitId'
+  'playerId' | 'world' | 'units' | 'cities' | 'territories' | 'buildings' | 'terrain' | 'selectedUnitId'
 >;
 
 function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number | null): SceneUnit {
@@ -28,6 +36,21 @@ function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number |
     movement: u.movement,
     isOwn: u.playerId === ownId,
     isSelected: selectedUnitId === u.id,
+    working: u.status === 'WORKING',
+    carrying: u.carrying,
+  };
+}
+
+/** Un edificio es propio si lo es su ciudad; una ciudad fuera del área no se sabe, y se pinta ajena. */
+function toSceneBuilding(b: BuildingView, state: ProjectableState): SceneBuilding {
+  const city = state.cities.get(b.cityId);
+  return {
+    id: b.id,
+    x: b.x,
+    y: b.y,
+    type: b.type,
+    status: b.status,
+    isOwn: city !== undefined && city.ownerPlayerId === state.playerId,
   };
 }
 
@@ -77,6 +100,8 @@ export function projectAll(state: ProjectableState): SceneUpdate | null {
   for (const c of state.cities.values()) cities.push(toSceneCity(c, ownId));
   const territories: SceneTerritory[] = [];
   for (const t of state.territories.values()) territories.push(toSceneTerritory(t, ownId));
+  const buildings: SceneBuilding[] = [];
+  for (const b of state.buildings.values()) buildings.push(toSceneBuilding(b, state));
 
   return {
     complete: true,
@@ -86,6 +111,8 @@ export function projectAll(state: ProjectableState): SceneUpdate | null {
     removedCities: [],
     territories,
     removedTerritories: [],
+    buildings,
+    removedBuildings: [],
     terrain: terrainSourceOf(state),
   };
 }
@@ -123,6 +150,14 @@ export function projectChanges(state: ProjectableState, changes: WorldChanges): 
     else removedTerritories.push(id);
   }
 
+  const buildings: SceneBuilding[] = [];
+  const removedBuildings: number[] = [];
+  for (const id of changes.buildings) {
+    const b = state.buildings.get(id);
+    if (b) buildings.push(toSceneBuilding(b, state));
+    else removedBuildings.push(id);
+  }
+
   return {
     complete: false,
     units,
@@ -131,6 +166,8 @@ export function projectChanges(state: ProjectableState, changes: WorldChanges): 
     removedCities,
     territories,
     removedTerritories,
+    buildings,
+    removedBuildings,
     terrain: changes.terrain ? terrainSourceOf(state) : null,
   };
 }

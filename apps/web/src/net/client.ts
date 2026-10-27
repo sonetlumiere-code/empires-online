@@ -290,6 +290,24 @@ export class GameClient {
     return this.send('unit.ungarrison', { unitId });
   }
 
+  // Economía (SPEC-ECON-WOOD). Igual que el resto: sólo la intención. La ruta,
+  // los tiempos, el coste y la cantidad los decide el servidor.
+
+  /** Pone a un aldeano propio a recolectar en un tile de bosque. */
+  gatherWood(unitId: number, target: { x: number; y: number }): string {
+    return this.send('unit.gather', { unitId, target: { x: target.x, y: target.y } });
+  }
+
+  /** Encarga una casa en un tile de la zona urbana de una ciudad propia. */
+  buildHouse(cityId: number, tile: { x: number; y: number }): string {
+    return this.send('city.build', { cityId, type: 'HOUSE', x: tile.x, y: tile.y });
+  }
+
+  /** Encarga el entrenamiento de un aldeano. */
+  trainVillager(cityId: number): string {
+    return this.send('city.train', { cityId, type: 'VILLAGER' });
+  }
+
   /** Recentra el área de interés (la cámara). */
   setView(center: { x: number; y: number }): string {
     return this.send('session.view', { center: { x: center.x, y: center.y } });

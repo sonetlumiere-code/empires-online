@@ -177,3 +177,34 @@ describe('projectChanges: un delta de X no toca Y', () => {
     expect(update.units.map((u) => u.id)).toEqual([9]);
   });
 });
+
+describe('economía en la escena (SPEC-ECON-WOOD)', () => {
+  const casa = (over: Partial<v1.BuildingView> = {}): v1.BuildingView => ({
+    id: 40, cityId: 10, type: 'HOUSE', x: 4, y: 4, status: 'UNDER_CONSTRUCTION', completesAtMs: 1, ...over,
+  });
+
+  it('el snapshot proyecta los edificios; propio es el de una ciudad propia', () => {
+    state().applySnapshot(snapshot({ buildings: [casa(), casa({ id: 41, cityId: 99, x: 50, y: 50 })] }));
+    const update = projectLast();
+    expect(update.buildings.map((b) => [b.id, b.status, b.isOwn])).toEqual([
+      [40, 'UNDER_CONSTRUCTION', true],
+      [41, 'UNDER_CONSTRUCTION', false],
+    ]);
+  });
+
+  it('building.update sólo lleva el edificio, y una unidad WORKING con carga se marca', () => {
+    state().applySnapshot(snapshot({ buildings: [casa()] }));
+    projectLast();
+    state().applyServerMessage(server('building.update', 3, { id: 40, status: 'COMPLETE' }));
+    let update = projectLast();
+    expect(update.buildings.map((b) => [b.id, b.status])).toEqual([[40, 'COMPLETE']]);
+    expect(update.units).toEqual([]);
+
+    state().applyServerMessage(server('entity.update', 4, { id: 1, status: 'WORKING' }));
+    update = projectLast();
+    expect(update.units.map((u) => [u.id, u.working, u.carrying])).toEqual([[1, true, 0]]);
+    expect(update.buildings).toEqual([]);
+    state().applyServerMessage(server('entity.update', 5, { id: 1, status: 'MOVING', carrying: 10 }));
+    expect(projectLast().units.map((u) => [u.working, u.carrying])).toEqual([[false, 10]]);
+  });
+});
