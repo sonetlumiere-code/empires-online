@@ -334,7 +334,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-SAFE-001 | Dos Safe Zones no comparten ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestDosZonasSolapadasResuelvenElIDMenorYSeReportan` |
 | INV-SAFE-002 | Ningún tile de una Safe Zone es intransitable | ALTO | DOMAIN, TEST | ✓ | `TestTodoTileDelIndiceEsTransitable`, `TestExcluirRetiraLosTilesYDiceDeQueZona` |
 | INV-SAFE-003 | `HIDDEN` implica estar en una zona y sin movimiento `ACTIVE` | CRITICO | DOMAIN, TEST | ✓ | `TestUnaUnidadEnReposoDentroDeLaZonaSeOcultaTrasUnTick` y el barrido tras cada tick de `safezones_test.go` |
-| INV-SAFE-004 | Ninguna unidad `HIDDEN` aparece en un delta dirigido a un tercero | CRITICO | BOUNDARY, TEST | ✓ | `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno`, `TestElSnapshotDeUnTerceroNoIncluyeUnidadesOcultas` |
+| INV-SAFE-004 | Ninguna unidad `HIDDEN` aparece en un delta dirigido a un tercero | CRITICO | BOUNDARY, TEST | ✓ | `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno`, `TestElSnapshotDeUnTerceroNoIncluyeUnidadesOcultas`, `TestUnaUnidadOcultaQueCruzaDeChunkSoloSeAnunciaASuDueno` |
 | INV-SAFE-005 | El rectángulo de una Safe Zone está ordenado y contenido en el mundo | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosCheckDeSafeZonesRechazanTipoYLimitesInvalidos`, `TestZonasInvalidasSeRechazanSinArrastrarALasDemas` |
 | INV-SAFE-006 | Ninguna Safe Zone se solapa con la zona urbana de una ciudad | MEDIO | TEST | ✓ | `TestUnaZonaCargadaSobreUnaCiudadExcluyeSuMuralla`, `TestUnaZonaSobreUnaCiudadSeRecortaYSeInforma` |
 | INV-SAFE-007 | El índice `safeZoneOfTile` es función pura de `(safe_zones, terreno)` | MEDIO | TEST | ✓ | `TestElIndiceEsDeterminista` |

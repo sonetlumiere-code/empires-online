@@ -111,7 +111,9 @@ diagrama.** No existen tres pasadas separadas al final del tick:
 
 - Las fases 6 y 7 **no son bloques de código propios**: la membresía de chunk se actualiza y el delta
   correspondiente se emite en el mismo punto en que ocurre el hecho, dentro de la fase que lo produce
-  (`state.MoveUnitTo` reindexa, `Broadcaster.BroadcastChunk` emite). El orden que ve el cliente es,
+  (`Simulation.moveUnit` reindexa con `state.MoveUnitTo` y, si el tile nuevo cae en otro chunk, anuncia
+  antes la transición con `Broadcaster.BroadcastChunkTransition` —`entity.spawn` a quien gana el chunk,
+  `entity.despawn OUT_OF_INTEREST` a quien lo pierde—; `Broadcaster.BroadcastChunk` emite el delta). El orden que ve el cliente es,
   por tanto, el orden de las fases: respuestas a comandos (fase 2) → deltas de movimiento (fase 3) →
   transiciones de presencia (fase 5). El recálculo del **conjunto suscrito** de una sesión no ocurre
   en el tick: lo hace `Hub.Subscribe` cuando llega un `session.view`, y devuelve los chunks que
@@ -489,6 +491,7 @@ sequenceDiagram
 
     L->>L: FASE 3 PositionAt(tickTime): último waypoint con tMs <= tickTime - start_time_ms
     L->>L: FASE 6 reindexado de chunk al cambiar de tile
+    L->>H: FASE 7 si cambió de chunk, entity.spawn a quien gana el chunk y entity.despawn a quien lo pierde
     L->>H: FASE 7 entity.update al chunk de la posición nueva
     H-->>C: deltas (el cliente interpola sub-tile, sólo visual)
     Note over L,P: FASE 8 cada 50 ticks: el "units.flush" excluye a esta unidad (está en marcha)

@@ -436,6 +436,13 @@ func destino(m capturedMessage) string {
 		return fmt.Sprintf("chunk %d,%d", m.CX, m.CY)
 	case "chunk-except":
 		return fmt.Sprintf("chunk %d,%d except %s", m.CX, m.CY, m.PlayerID)
+	case "transition":
+		// «chunk 0,1 not 0,0»: a quien observa el primero y no el segundo.
+		d := fmt.Sprintf("chunk %d,%d not %d,%d", m.CX, m.CY, m.MinusCX, m.MinusCY)
+		if m.PlayerID != uuid.Nil {
+			d += " only " + m.PlayerID.String()
+		}
+		return d
 	case "chunks":
 		partes := make([]string, 0, len(m.Chunks))
 		for _, c := range m.Chunks {

@@ -283,7 +283,7 @@ del último que conoce el servidor, y como mucho uno por segundo; no enviar nada
 snapshot inicial de la sesión, que se sirve centrado en la ciudad del jugador. El cliente de `apps/web` lo
 cumple con una cámara desplazable ([../architecture/frontend.md](../architecture/frontend.md) §7.4.1, `EO-122`).
 
-> El MVP recentra con un snapshot, no con deltas. `Hub.Subscribe` ya devuelve los chunks que entran y los que salen, pero emitir `entity.spawn` / `entity.despawn` a partir de esa diferencia está **pendiente**: hoy esos dos conjuntos sólo se registran en el log. Un cliente correcto reemplaza su escena con lo que trae el snapshot.
+> El MVP recentra con un snapshot, no con deltas. `Hub.Subscribe` ya devuelve los chunks que entran y los que salen, pero emitir `entity.spawn` / `entity.despawn` a partir de esa diferencia está **pendiente**: hoy esos dos conjuntos sólo se registran en el log. Un cliente correcto reemplaza su escena con lo que trae el snapshot. Es la cámara la que se resincroniza así; cuando es una **unidad** la que cruza de chunk, el servidor sí emite `entity.spawn` a quien gana el chunk y `entity.despawn` con `OUT_OF_INTEREST` a quien lo pierde (§8.5, §8.7).
 
 ### 7.4 `unit.move`
 
@@ -540,7 +540,7 @@ payload: z.object({ unit: UnitView })
 { "v": 1, "type": "entity.spawn", "seq": 41, "ts": 1788955203100, "payload": { "unit": { "id": 50877, "playerId": "1c9e2f40-7bb1-4a02-98d5-4d61aa03e7f9", "cityId": 1207, "unitType": "VILLAGER", "x": 118, "y": 104, "hp": 40, "maxHp": 40, "status": "IDLE", "movement": null } } }
 ```
 
-**No hay campo `reason`.** El payload es exactamente `{ unit }`. Hoy el servidor lo emite en tres puntos: al incorporar un jugador al mundo (`IntroducePlayer`), una vez por cada uno de sus 3 aldeanos iniciales; a los terceros del chunk cuando una unidad oculta se revela —al salir de su Safe Zone o al recibir una orden de movimiento—; y a los terceros cuando una unidad sale de una guarnición (§7.6). El spawn por entrada en el área de interés está pendiente (ver la nota de 7.3).
+**No hay campo `reason`.** El payload es exactamente `{ unit }`. Hoy el servidor lo emite en cuatro puntos: al incorporar un jugador al mundo (`IntroducePlayer`), una vez por cada uno de sus 3 aldeanos iniciales; a los terceros del chunk cuando una unidad oculta se revela —al salir de su Safe Zone o al recibir una orden de movimiento—; a los terceros cuando una unidad sale de una guarnición (§7.6); y, cuando una unidad **cambia de chunk**, a las sesiones suscritas al chunk nuevo y no al viejo, con la vista completa y `movement` si está en marcha, para que interpolen desde el primer mensaje ([../architecture/networking.md](../architecture/networking.md) §4.3). Una sesión que observa los dos chunks no recibe spawn: sigue con sus `entity.update`. El spawn por recentrado de la **cámara** sigue siendo un snapshot (nota de 7.3).
 
 El cliente debe tratar un `entity.spawn` de una entidad que ya conoce como **reemplazo total** del estado local de esa entidad (upsert), no como error.
 
@@ -596,7 +596,7 @@ Las cinco razones son las constantes `protocol.DespawnOutOfInterest`, `DespawnDe
 | `HIDDEN` | Se ocultó (Safe Zone). Sin efectos de destrucción. |
 | `REMOVED` | Desapareció del mundo por otra causa (corrección administrativa, recovery). Sin efectos de destrucción. |
 
-El servidor lo emite con dos razones, y en los dos casos sólo a los terceros del chunk —el propietario recibe en su lugar un `entity.update` con el estado—: `HIDDEN`, cuando una unidad se oculta en una Safe Zone ([./safe-zones.md](./safe-zones.md) §12), y `GARRISONED`, cuando entra en una ciudad (§7.6). Las demás razones están en el contrato y ninguna ruta las emite todavía: `OUT_OF_INTEREST` es el correlato pendiente del spawn por interés descrito en 7.3.
+El servidor lo emite con tres razones. `HIDDEN`, cuando una unidad se oculta en una Safe Zone ([./safe-zones.md](./safe-zones.md) §12), y `GARRISONED`, cuando entra en una ciudad (§7.6), van sólo a los terceros del chunk —el propietario recibe en su lugar un `entity.update` con el estado—. `OUT_OF_INTEREST` va a las sesiones suscritas al chunk que una unidad acaba de dejar y no al que ha pasado, el propietario incluido si su área no cubre el chunk nuevo: la unidad sigue existiendo y ha dejado de estar a la vista ([../architecture/networking.md](../architecture/networking.md) §4.3). `DEAD` y `REMOVED` están en el contrato y ninguna ruta las emite todavía. El recentrado de la cámara no produce despawns: responde con un snapshot (7.3).
 
 ### 8.8 `city.update`
 
@@ -952,6 +952,7 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | e2e | `unit.move` con la cola del loop llena | `system.error INTERNAL_ERROR` con su `requestId`, y el reintento con el mismo `requestId` se ejecuta (I-10) | **EN VERDE** (`TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`) |
 | e2e | Redis caído durante un `unit.move` | El comando se ejecuta igualmente y se registra `warn` | Pendiente |
 | e2e | `session.view` que desplaza el área 2 chunks | Nuevo `world.snapshot` con el `requestId` del comando y terreno **sólo** de los chunks nuevos | **EN VERDE** (`TestSessionViewRecentraConUnSnapshotDelAreaNueva`) |
+| e2e | Una unidad cruza de chunk con tres sesiones de áreas distintas, colocadas con `session.view` | Quien sólo observa el chunk nuevo recibe `entity.spawn` con `movement` y después los `entity.update`; quien sólo observa el viejo, `entity.despawn OUT_OF_INTEREST` y nada más; quien observa los dos, sólo `entity.update`. Ida y vuelta | **EN VERDE** (`TestUnaUnidadQueCruzaDeChunkApareceYDesapareceEnElAreaDeOtraSesion`) |
 | contract (e2e) | Todo mensaje servidor→cliente que emite el servidor real valida contra `server-message.schema.json`, y los 14 tipos aparecen al menos una vez | Un mensaje fuera de contrato, o un tipo que ningún e2e emite, falla el paquete | **EN VERDE** (`schema_e2e_test.go`, `contract_e2e_test.go`) |
 | simulation | `unit.move` con `FakeClock` sobre el trayecto canónico | `path` exacto `[0, 600, 1449, 2409, 2769]`, `arrivalTimeMs` exacto | **EN VERDE** |
 | simulation | Reconstrucción de la posición desde la polilínea (`PositionAt`) | Coincide con la posición autoritativa del servidor | **EN VERDE** |

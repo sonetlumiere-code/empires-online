@@ -120,8 +120,13 @@ func CityView(c *city.City) protocol.CityView {
 // INV-GARR-006). Son las únicas reglas de visibilidad por observador del MVP;
 // el resto la decide el chunk.
 func VisibleTo(u *unit.Unit, viewer uuid.UUID) bool {
-	if u.PlayerID == viewer {
-		return true
-	}
-	return u.Status != unit.StatusHidden && u.Status != unit.StatusGarrisoned
+	return u.PlayerID == viewer || visibleToThirdParties(u.Status)
+}
+
+// visibleToThirdParties dice si un estado deja ver la unidad a quien no es su
+// propietario. HIDDEN y GARRISONED son los dos únicos que no (INV-SAFE-004,
+// INV-GARR-006). Es la misma regla que VisibleTo, expresada sobre el estado
+// para poder preguntar por el de ANTES de una operación, no sólo por el actual.
+func visibleToThirdParties(st unit.Status) bool {
+	return st != unit.StatusHidden && st != unit.StatusGarrisoned
 }

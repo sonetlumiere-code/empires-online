@@ -414,6 +414,23 @@ loop. En el test se invoca directamente `sim.BuildSnapshot(chunks, nowMs, includ
 S1 fija además que el snapshot **contiene el conjunto de interés y sólo ése**: es la verificación
 funcional del interest management por chunk, con radio por defecto de 2 chunks.
 
+### 4.9 Cruce de frontera de chunk (`transition_test.go`)
+
+Una unidad que pasa del chunk A al B se anuncia a las sesiones que ganan o pierden el chunk con ella
+([../architecture/networking.md](../architecture/networking.md) §4.3). El `recorder` captura cada transición
+como dos mensajes de `Kind: "transition"`: el spawn, dirigido a quien observa el chunk nuevo y no el viejo, y
+el despawn, a quien observa el viejo y no el nuevo; `PlayerID` es el jugador al que se limita, o `uuid.Nil`.
+Quién está suscrito a qué lo prueba `hub_transition_test.go` (`internal/websocket`); el camino completo,
+`TestUnaUnidadQueCruzaDeChunkApareceYDesapareceEnElAreaDeOtraSesion` (e2e).
+
+| # | Test | Escenario | Aserción exacta |
+|---|---|---|---|
+| **T1** | `TestCruzarDeChunkAnunciaLaUnidadConSuMovimientoAQuienGanaElChunk` | Unidad en `(30,10)` hacia `(34,10)`: cruza `x = 32` en su segundo paso | El primer paso emite sólo `entity.update`. El segundo, **en este orden**: `entity.spawn` a `(1,0)` menos `(0,0)` con `status: MOVING`, `x = 32` y el `movement` activo con su `movementId`; `entity.despawn OUT_OF_INTEREST` a `(0,0)` menos `(1,0)`; y después el `entity.update`. Ninguna transición más hasta la llegada |
+| **T2** | `TestDetenerseJustoTrasCruzarAnunciaLaUnidadYaParada` | `unit.cancel_move` en el tick en que la unidad acaba de cruzar: la fase 2 la detiene antes de que la fase 3 la mueva | `entity.spawn` con `status: IDLE` y sin `movement`, `entity.despawn`, y después el `unit.movement.cancelled` al chunk donde se detuvo |
+| **T3** | `TestUnaUnidadOcultaQueCruzaDeChunkSoloSeAnunciaASuDueno` | Bosque a caballo de la frontera; una unidad `HIDDEN` apartada por la muralla de una ciudad nueva al chunk vecino, todavía dentro del bosque | Sigue `HIDDEN`; el spawn y el despawn de la transición llevan `PlayerID` del dueño; ningún mensaje a un chunk entero ni a terceros la menciona (`INV-SAFE-004`) |
+| **T4** | `TestSalirDeLaGuarnicionAOtroChunkSoloAnunciaLaTransicionAlDueno` | Ciudad propia con la zona urbana a caballo de la frontera: entra desde `(33,10)` y sale a `(29,8)` | Secuencia exacta: transición limitada al dueño con la unidad ya `IDLE` y sin `garrisonCityId`, la respuesta al dueño, y el `entity.spawn` de la salida a los terceros de `(0,0)` excluyendo al dueño, una sola vez |
+| **T5** | `TestUnaSalidaFallidaDevuelveLaUnidadASuChunkSoloParaElDueno` | Como T4 con la escritura de la salida fallando de forma permanente | Cuatro transiciones (ida y vuelta), todas limitadas al dueño; la de vuelta trae la unidad `GARRISONED` con su `garrisonCityId`; los terceros reciben exactamente `entity.spawn` y luego `entity.despawn GARRISONED` |
+
 ---
 
 ## 5. Casos ○ previstos sobre el loop y los eventos

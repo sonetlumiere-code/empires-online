@@ -562,6 +562,11 @@ movimiento, que son M4; ni `territory.update`, que se emite en M6.
   de 5 × 5 ya no lo cubre todo). Este punto preveía `entity.spawn` y `entity.despawn` por los chunks que entran
   y salen; la spec del protocolo (§7.3) fijó un snapshot, y el criterio se reescribe para decir lo que la spec
   manda.
+- **HECHO** *e2e* (2026-10-26): una **unidad** que cruza de chunk aparece en el área de otra sesión con
+  `entity.spawn` y su polilínea, seguida de sus `entity.update`; desaparece del área que deja con
+  `entity.despawn OUT_OF_INTEREST` y nada más; y quien observa los dos chunks sólo recibe `entity.update`
+  (`TestUnaUnidadQueCruzaDeChunkApareceYDesapareceEnElAreaDeOtraSesion`, tres sesiones colocadas con
+  `session.view` en un mundo de 256 × 256; `Hub.BroadcastChunkTransition`, networking.md §4.3).
 - **HECHO** *contract*: los esquemas embebidos y el catálogo de 22 códigos de error de Go coinciden con
   los exportados por `@empires-online/protocol`, y un delta parcial serializa sólo los campos que cambian
   (`TestEntityUpdateEsUnDeltaDeVerdad`). Y **todo mensaje que el servidor real emite en los e2e** se valida

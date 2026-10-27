@@ -473,7 +473,7 @@ La conjunción de ambas es lo que hace el ocultamiento **local y verificable en 
 | Aplicación | BOUNDARY, TEST |
 | Milestone | M5 |
 | Política ante violación | Estructural: no hay aserción en runtime (ver «Violación en runtime») |
-| Cobertura | **Cubierto** por `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno` y `TestBroadcastChunkExceptExcluyeTodasLasSesionesDelJugador` (`internal/websocket`), y `TestElSnapshotDeUnTerceroNoIncluyeUnidadesOcultas` (`internal/game/simulation/safezones_test.go`) |
+| Cobertura | **Cubierto** por `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno`, `TestBroadcastChunkExceptExcluyeTodasLasSesionesDelJugador` y `TestBroadcastChunkTransitionConOnlyPlayerSoloAlcanzaAEseJugador` (`internal/websocket`), y `TestElSnapshotDeUnTerceroNoIncluyeUnidadesOcultas` y `TestUnaUnidadOcultaQueCruzaDeChunkSoloSeAnunciaASuDueno` (`internal/game/simulation`) |
 
 **Enunciado.** Ninguna unidad `HIDDEN` aparece en un delta dirigido a un jugador distinto de su propietario.
 
@@ -486,6 +486,7 @@ La formulación «dirigido a un jugador distinto de su propietario» es delibera
 - `BOUNDARY` — el filtrado se aplica **por sesión de destino**, en `Hub.BroadcastChunkExcept`, que compara el `PlayerID` de cada sesión con el propietario. Nunca al construir el delta compartido. Es el único orden que respeta la asimetría.
 - `BOUNDARY` — al pasar a `HIDDEN` se emite `entity.despawn` con `reason = HIDDEN` a los suscriptores del chunk que no son el propietario; al dejar de estarlo, `entity.spawn`. El propietario recibe `entity.update` con el estado por `SendToPlayer`.
 - `BOUNDARY` — `world.snapshot` aplica el mismo filtro que los deltas: `BuildSnapshot` recibe el jugador destinatario y descarta las unidades `HIDDEN` ajenas con `simulation.VisibleTo`. Un snapshot es un delta completo, y una unidad oculta que reapareciera al reconectar sería la misma fuga por otra puerta.
+- `BOUNDARY` — el cruce de chunk emite `entity.spawn` a quien gana el chunk con la vista completa de la unidad ([../architecture/networking.md](../architecture/networking.md) §4.3). Para una unidad que estaba o queda `HIDDEN` —apartada por una muralla a otro chunk, por ejemplo— `Simulation.moveUnit` limita la transición a las sesiones del propietario (`Hub.BroadcastChunkTransition` con `onlyPlayer`), que es la misma regla de `VisibleTo` aplicada al estado de antes y al de después; los terceros no reciben ni el spawn ni el despawn.
 - `DOMAIN` — el ocultamiento no toca la simulación: la unidad sigue en el índice espacial de su chunk y la transitabilidad no cambia (`RN-SAFE-014`). A diferencia de una guarnecida ([INV-GARR-005](diplomacy.md#inv-garr-005)), una unidad oculta sigue estando físicamente ahí.
 
 > **Nota honesta sobre el sondeo.** Una versión anterior de esta nota decía que la unidad oculta sigue bloqueando su tile, y que eso permite deducir su presencia viendo que una ruta la rodea. La premisa era falsa: en el MVP ninguna unidad bloquea tiles, oculta o no, así que ese canal no existe hoy. Aparecerá en cuanto las unidades ocupen tiles para el pathfinder, y entonces habrá que decidir si una unidad oculta bloquea. Queda como **TBD (fuera de MVP)**. Que un tercero vea a una unidad entrar en un bosque y desaparecer no es una fuga: la geometría de las zonas es decorado de mapa (`RN-SAFE-015`).
@@ -493,8 +494,9 @@ La formulación «dirigido a un jugador distinto de su propietario» es delibera
 **Cómo se verifica.**
 
 - `TestUnaUnidadOcultaEsInvisibleParaTercerosYVisibleParaSuDueno` (e2e de transporte, servidor WebSocket real) — dos jugadores conectados mirando el mismo chunk: el tercero recibe `entity.despawn` con `reason = HIDDEN` y ningún mensaje posterior sobre la unidad, tampoco en su siguiente `world.snapshot`; el dueño nunca recibe ese despawn y su snapshot la trae con `status = HIDDEN`. Vive en el nivel e2e y no en integración porque a qué conexión llega cada mensaje no depende de PostgreSQL.
+- `TestUnaUnidadOcultaQueCruzaDeChunkSoloSeAnunciaASuDueno` (simulation) — una unidad `HIDDEN` apartada por una muralla al chunk vecino: el spawn y el despawn de la transición se limitan al dueño, y ningún mensaje a un chunk entero ni a terceros la menciona. `TestBroadcastChunkTransitionConOnlyPlayerSoloAlcanzaAEseJugador` (unit, `internal/websocket`) — con `onlyPlayer`, sólo las sesiones de ese jugador reciben la transición, a los dos lados de la frontera.
 
-**Violación en runtime.** No hay detección en runtime: la aserción del emisor de deltas por destinatario que preveía esta ficha **no se implementó**. La garantía es estructural —solo tres puntos del servidor pueden emitir una unidad oculta, y los tres filtran— y la sostienen los tests anteriores, que fallan si cualquiera de los tres deja de filtrar. Una fuga consumada se trata como incidente, no como bug ordinario: la información ya salió y no se puede retirar.
+**Violación en runtime.** No hay detección en runtime: la aserción del emisor de deltas por destinatario que preveía esta ficha **no se implementó**. La garantía es estructural —solo cuatro puntos del servidor pueden emitir una unidad oculta, y los cuatro filtran— y la sostienen los tests anteriores, que fallan si cualquiera de ellos deja de filtrar. Una fuga consumada se trata como incidente, no como bug ordinario: la información ya salió y no se puede retirar.
 
 ---
 
