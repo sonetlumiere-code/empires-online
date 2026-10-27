@@ -750,7 +750,9 @@ pura `projectChanges` (`src/render/projection.ts`) convierte **únicamente los i
 `SceneCity` y `SceneTerritory` —una unidad guarnecida o despawneada va en `removedUnits`— y
 `IsoScene.apply(SceneUpdate)` crea, actualiza o retira esos sprites y nada más; con `changes.all` (snapshot,
 reconexión, primera vez) la proyección es completa y la escena retira lo que no venga. La unidad tocada entra
-en el conjunto de **activas**.
+en el conjunto de **activas**; una ciudad tocada actualiza posición, opacidad (`presenceState`), etiqueta
+(`name`) y color (propia o no) comparando con lo último aplicado, como hace la firma de los territorios: antes
+la etiqueta y el color se fijaban al crear el sprite y un `city.update` con `name` no se veía.
 
 Por frame, lo que hace hoy `IsoScene.draw` (`src/render/scene.ts`), registrado en el `ticker` de Pixi:
 

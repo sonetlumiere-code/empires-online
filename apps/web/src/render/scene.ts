@@ -409,6 +409,12 @@ export class IsoScene {
       this.cities.set(city.id, entry);
       this.entityLayer.addChild(sprite);
       this.sortDirty = true;
+    } else {
+      // La etiqueta y el color se fijan al crear el sprite; si un `city.update`
+      // cambia el nombre, o cambia quién es el dueño para esta sesión, se
+      // redibujan. Comparar con lo último aplicado es más barato que rehacerlos.
+      if (entry.city.name !== city.name) entry.label.text = city.name;
+      if (entry.city.isOwn !== city.isOwn) paintCityBody(entry.body, city.isOwn);
     }
     entry.city = city;
 

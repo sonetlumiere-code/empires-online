@@ -157,8 +157,13 @@ describe('projectChanges: un delta de X no toca Y', () => {
     expect(update.cities.map((c) => [c.id, c.presenceState])).toEqual([[10, 'PROTECTED']]);
     expect(update.units).toEqual([]);
 
+    // El nombre viaja con la ciudad: la escena lo compara con el último aplicado y redibuja la etiqueta.
+    state().applyServerMessage(server('city.update', 3, { id: 10, name: 'Nueva Testópolis' }));
+    update = projectLast();
+    expect(update.cities.map((c) => [c.id, c.name, c.presenceState])).toEqual([[10, 'Nueva Testópolis', 'PROTECTED']]);
+
     state().applyServerMessage(
-      server('territory.update', 3, { territory: territoryView({ ownerType: 'PLAYER', ownerId: OTHER }) }),
+      server('territory.update', 4, { territory: territoryView({ ownerType: 'PLAYER', ownerId: OTHER }) }),
     );
     update = projectLast();
     expect(update.territories.map((t) => [t.id, t.ownerType, t.isOwn])).toEqual([[30, 'PLAYER', false]]);
