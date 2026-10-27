@@ -210,6 +210,10 @@ se registran en dos archivos del catálogo: `docs/invariants/territory.md` (TERR
 `docs/invariants/diplomacy.md` (GARR). Mientras esos archivos no existan, esas familias están **sin
 registrar** y ninguna spec debe darlas por definidas.
 
+La familia `INV-ECON`, de [economy-wood.md](economy-wood.md), se registra en
+[../invariants/economy.md](../invariants/economy.md): stock de recursos, tareas de recolección y el límite de
+población que suben los edificios.
+
 **No existe `INV-PRESENCE`**: los invariantes de presencia se reparten entre `INV-PLAYER` (presencia del
 jugador, volátil, Redis) e `INV-CITY` (`presence_state` durable, PostgreSQL). Ver
 [presence.md](presence.md) §9.

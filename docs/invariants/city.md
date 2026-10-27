@@ -121,7 +121,7 @@ El fallo típico no es un olvido de comprobar, sino un **TOCTOU**: dos comandos 
 | Política ante violación | REPAIR |
 | Cobertura | **Cubierto**: el único escritor lo cumple por construcción y lo comprueban `TestElAltaTomaElLimiteDePoblacionDeSuEra`, `TestUnAltaConUnaEraInexistenteNoEscribeNada` y `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration); la recomputación al cargar, `TestLasCiudadesSeReparanDesdeSusFuentes` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) |
 
-**Enunciado.** Para toda ciudad, `population_limit = era.population_cap + modificadores de edificios`, donde `era` es la era vigente de la ciudad y el conjunto de modificadores es **vacío en MVP**; por tanto en MVP `population_limit == era.population_cap` exactamente.
+**Enunciado.** Para toda ciudad, `population_limit = era.population_cap + modificadores de edificios`, donde `era` es la era vigente de la ciudad. Hasta M7 el conjunto de modificadores era vacío; desde E1 lo forman las casas completas, y la fórmula exacta es [INV-ECON-004](economy.md#inv-econ-004): `population_limit == era.population_cap + 5 × casas COMPLETE`. Una ciudad sin casas sigue teniendo exactamente el `population_cap` de su era.
 
 **Razón.** El límite es una función del estado, no un dato independiente. Si se puede escribir un `population_limit` arbitrario, la progresión por eras se puede saltar editando una fila, y la información de «qué era estoy jugando» deja de ser deducible del límite. El invariante mantiene el límite como valor **derivado y recomputable**, lo que a su vez permite corregirlo sin ambigüedad si diverge.
 
@@ -139,10 +139,10 @@ Eras del MVP, definidas en la tabla `eras`, **no en código** (canon §10):
 - `DB` — `cities.era text NOT NULL REFERENCES eras (code)`: la referencia es al **código** de la era, no a un `era_id` numérico. Los `population_cap` viven en `eras`, poblada por la migración `000002_seed_catalogs`, y ningún literal `20`/`50`/`100`/`150` aparece en el código Go: `city.EraDefinition` es la fila del catálogo, no una constante.
 - `DB` — `cities.population_limit integer NOT NULL CHECK (population_limit >= 0)`: el límite nunca es negativo, ni siquiera transitoriamente durante una recomputación.
 - `DOMAIN` — el catálogo de eras se representa en Go como `city.EraDefinition` (`Code`, `Name`, `Ordinal`, `PopulationCap`), que es una **fila de la tabla `eras`**, no una constante.
-- `DOMAIN` — **vigente**: el único escritor de `population_limit` es el alta, y el `Bootstrapper` lo lee con `CityRepo.PopulationCapOf` de la tabla `eras`, dentro de la misma transacción que crea la ciudad. La petición de alta lleva la era y **no** el límite, así que ningún llamante puede pasar uno incoherente. Una era que no está en el catálogo hace fallar el alta entera con `ErrNotFound`. En MVP no hay modificadores de edificios, así que la derivación es la identidad.
-- `DOMAIN` — cuando existan modificadores, el cálculo vivirá en un punto único y `population_limit` se escribirá **sólo** con su resultado.
+- `DOMAIN` — **vigente**: el único escritor de `population_limit` es el alta, y el `Bootstrapper` lo lee con `CityRepo.PopulationCapOf` de la tabla `eras`, dentro de la misma transacción que crea la ciudad. La petición de alta lleva la era y **no** el límite, así que ningún llamante puede pasar uno incoherente. Una era que no está en el catálogo hace fallar el alta entera con `ErrNotFound`. Una ciudad recién fundada no tiene casas, así que la derivación es la identidad.
+- `DOMAIN` — desde E1, el cálculo vive en un punto único, `building.PopulationLimit`, y el segundo escritor es la finalización de una casa, que suma su bono en la misma transacción que la marca `COMPLETE` ([INV-ECON-004](economy.md#inv-econ-004)).
 - `DOMAIN` — ninguna ruta cambia `cities.era`: el avance de era está **fuera del alcance implementado hoy**. Cuando exista, tendrá que recomputar `population_limit` en la misma transacción y emitir `city.update` (canon §13).
-- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) compara cada `population_limit` con el `population_cap` de su era, leído con `CityRepo.ListEras`, y escribe el de la era. La única excepción es [INV-CITY-002](#inv-city-002): si las unidades vivas ya superan ese valor, el límite queda en el recuento.
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) compara cada `population_limit` con el `population_cap` de su era, leído con `CityRepo.ListEras`, más el bono de sus casas completas, y escribe ese valor (el hallazgo se registra como `INV-ECON-004` si la ciudad tiene casas). La única excepción es [INV-CITY-002](#inv-city-002): si las unidades vivas ya superan ese valor, el límite queda en el recuento.
 
 **Cómo se verifica.**
 
@@ -345,41 +345,15 @@ El margen es deliberadamente enorme. Cada zona urbana es un rectángulo 3 × 3 (
 ---
 
 <a id="inv-city-009"></a>
-## INV-CITY-009 — `population` es el recuento de unidades vivas de la ciudad
+## INV-CITY-009 — `population` es el recuento de unidades vivas de la ciudad (DEROGADO)
 
-| Campo | Valor |
-|---|---|
-| Severidad | ALTO |
-| Aplicación | DOMAIN, TEST |
-| Milestone | M2 |
-| Política ante violación | REPAIR (recontar desde `units`) |
-| Cobertura | **Cubierto**: el único escritor recuenta y `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal` y `TestBootstrapCreaMundoCompletoDelJugador` (integration) lo comprueban; el recuento al cargar, `TestLasCiudadesSeReparanDesdeSusFuentes` (`internal/game/loadcheck`) y `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) |
+**Estado: DEROGADO el 2026-10-27 por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md).** El número queda quemado. Lo sustituye [INV-CITY-017](#inv-city-017).
 
-**Enunciado.** Para toda ciudad, `cities.population` es igual al número de filas de `units` con `city_id` de esa ciudad y `status <> 'DEAD'`, tras cada transacción confirmada.
+**Enunciado derogado.** Para toda ciudad, `cities.population` es igual al número de filas de `units` con `city_id` de esa ciudad y `status <> 'DEAD'`, tras cada transacción confirmada.
 
-**Razón.** `population` es un contador **denormalizado**: existe para que el chequeo de capacidad de [INV-CITY-002](#inv-city-002) sea una comparación de dos enteros de la misma fila, sin un `COUNT(*)` sobre `units` en el camino caliente de la creación de unidades. Toda denormalización puede divergir, y aquí la divergencia tiene dos formas simétricas y ambas dañinas:
+**Por qué se deroga.** SPEC-ECON-WOOD reserva la población al **ordenar** un entrenamiento (`RN-ECON-010`): `population += 1` en la transacción del encargo, para que el `CHECK (population <= population_limit)` de `cities` siga siendo la última barrera mientras el aldeano se entrena. Desde ese momento, y hasta que el aldeano nace, la población es el recuento de unidades vivas **más uno**: el enunciado de arriba deja de ser cierto por diseño. Mientras no existió ninguna ruta que creara unidades después del alta, los dos enunciados coincidían.
 
-- **`population` alto** — la ciudad se declara llena antes de estarlo; el jugador pierde plazas que sí le corresponden y no hay forma de que lo detecte.
-- **`population` bajo** — la ciudad admite más unidades de las que su era permite; la progresión por eras deja de significar algo, que es exactamente lo que [INV-CITY-002](#inv-city-002) protege.
-
-La cualificación «tras cada transacción confirmada» es la que hace el enunciado verificable: **dentro** de una transacción el contador y las filas cambian en momentos distintos, y exigir la igualdad en todo instante intermedio sería exigir algo que ninguna base de datos ofrece.
-
-**Cómo se garantiza.**
-
-- `DOMAIN` — **vigente**: `population` no se incrementa ni se decrementa a mano. `CityRepo.UpdatePopulation` la fija con un `count(*)` de las unidades vivas de la ciudad, y el alta lo llama en la misma transacción que inserta los aldeanos. Es el único escritor: no existe ninguna ruta que cree unidades después del alta ni que pase una a `DEAD`.
-- `DOMAIN` — cuando existan esas rutas, deberán recontar igual, en la misma transacción que el cambio en `units`. El estado `DEAD` es terminal ([INV-UNIT-002](units.md#inv-unit-002)).
-- `DB` — `units_city_idx` (índice parcial sobre `city_id WHERE city_id IS NOT NULL`) hace barato el recuento: recontar no es una operación que haya que evitar por coste.
-- `DOMAIN` — la validación de carga (`internal/game/loadcheck`, `EO-119`) recuenta las unidades vivas que `UnitRepo.ListAlive` acaba de leer y compara con el contador. Cuenta también las que excluye por [INV-UNIT-009](units.md#inv-unit-009): no entran en la simulación, pero existen y ocupan plaza.
-
-**Cómo se verifica.**
-
-- `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal` (integration) — tras el alta, `cities.population` es exactamente `count(*)` de sus unidades con `status <> 'DEAD'`.
-- `TestBootstrapCreaMundoCompletoDelJugador` (integration) — la ciudad nace con población 3, la de sus tres aldeanos.
-- `TestLasCiudadesSeReparanDesdeSusFuentes` (unit, `internal/game/loadcheck`) — un contador de 9 con tres aldeanos vuelve a 3.
-- `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` (integration) — el recuento corregido queda en la base, con su `InvariantRepaired`; la unidad `DEAD` no cuenta.
-- El escenario que crea y mata unidades llegará con esas rutas.
-
-**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-CITY-009`, `entity=city:<id>` y, en `detail`, el contador persistido y el recuento real. Política `REPAIR`: prevalece el recuento sobre `units`, que es la fuente, y se registra un `InvariantRepaired` de auditoría. La reparación es segura porque el valor correcto es una función pura de datos que sí son autoritativos.
+Lo que el invariante protegía —que el contador denormalizado no diverja de sus fuentes— lo protege [INV-CITY-017](#inv-city-017) con la fuente completa.
 
 ---
 
@@ -612,6 +586,38 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 
 ---
 
+<a id="inv-city-017"></a>
+## INV-CITY-017 — `population` es el recuento de unidades vivas más las producciones en curso
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E1 |
+| Política ante violación | REPAIR (recontar desde `units` y `city_productions`) |
+| Cobertura | **Sin cobertura**: tests previstos del recuento al cargar (`internal/game/loadcheck`) y del encargo y el nacimiento (integration) |
+
+**Enunciado.** Para toda ciudad, `cities.population` es igual al número de filas de `units` con `city_id` de esa ciudad y `status <> 'DEAD'`, más el número de filas de `city_productions` de esa ciudad con `unit_id IS NULL` (en curso), tras cada transacción confirmada.
+
+**Razón.** Es [INV-CITY-009](#inv-city-009) con la reserva de `RN-ECON-010` dentro. El contador sigue siendo denormalizado para que [INV-CITY-002](#inv-city-002) sea una comparación de dos enteros de la misma fila, y la reserva es lo que impide que dos encargos seguidos superen el límite entre la orden y el nacimiento.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — el alta fija `population` con `CityRepo.UpdatePopulation` (un `count(*)` de unidades vivas): en el alta no hay producciones.
+- `DOMAIN` — `EconomyRepo.Train` suma uno a `population` en la transacción que inserta la producción; `EconomyRepo.CompleteProduction` inserta la unidad y apunta su id en `city_productions.unit_id` en una transacción, sin tocar `population`: la plaza pasa de la producción a la unidad en el mismo `COMMIT` ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)).
+- `DB` — `cities_population_within_limit` rechaza la reserva que no cabe.
+- `DOMAIN` — la validación de carga recuenta unidades vivas y producciones en curso y repara el contador.
+
+**Cómo se verifica.**
+
+- Test previsto de `loadcheck` (unit) — una ciudad con tres aldeanos y una producción en curso tiene población 4; un contador de 3 se repara a 4.
+- Test previsto (integration) — tras un encargo de entrenamiento la población sube uno; tras el nacimiento no cambia.
+- Siguen valiendo para la parte del alta `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal` y `TestBootstrapCreaMundoCompletoDelJugador` (integration).
+
+**Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-CITY-017`, `entity=city:<id>` y el contador persistido frente al recuento. Política `REPAIR` con un `InvariantRepaired` de auditoría.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -624,7 +630,7 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 | INV-CITY-006 | `internal/domain/city` | [INV-SEC-001](security.md#inv-sec-001) |
 | INV-CITY-007 | `internal/game/founding`, `internal/game/world` | [INV-WORLD-001](world.md#inv-world-001), [INV-UNIT-001](units.md#inv-unit-001) |
 | INV-CITY-008 | `internal/game/founding`, `internal/game/world` | [INV-CITY-007](#inv-city-007) |
-| INV-CITY-009 | `internal/domain/city`, `internal/domain/unit` | [INV-CITY-002](#inv-city-002) |
+| INV-CITY-009 | — (DEROGADO, ver INV-CITY-017) | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) |
 | INV-CITY-010 | `internal/game/world`, `internal/game/founding` | [INV-WORLD-005](world.md#inv-world-005) |
 | INV-CITY-011 | `internal/game/simulation` | [INV-CITY-005](#inv-city-005) |
 | INV-CITY-012 | `internal/game/simulation` | [INV-CITY-006](#inv-city-006) |
@@ -632,3 +638,4 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 | INV-CITY-014 | `internal/game/simulation` | [INV-CITY-006](#inv-city-006) |
 | INV-CITY-015 | `internal/game/simulation` | [INV-WORLD-004](world.md#inv-world-004) |
 | INV-CITY-016 | `internal/game/simulation` | [INV-PERSIST-002](persistence.md#inv-persist-002) |
+| INV-CITY-017 | `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-CITY-002](#inv-city-002), [RN-ECON-010](../specs/economy-wood.md) |

@@ -13,7 +13,7 @@ almacén, un edificio, una producción; nada más.
 | Depende de | [unit.md](unit.md), [city.md](city.md), [movement.md](movement.md), [presence.md](presence.md), [websocket-protocol.md](websocket-protocol.md) |
 | Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola por entidad y compensaciones), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md) (toda escritura durable declara compensación). Un ADR nuevo sólo si la tarea persistente de §4.2 se adopta como patrón general. |
 | Reemplaza a | — |
-| Invariantes | familia `ECON`, que la implementación registra en `docs/invariants/` **antes** de escribir código (§8) |
+| Invariantes | Asigna `INV-ECON-001` a `INV-ECON-006` ([../invariants/economy.md](../invariants/economy.md)) e `INV-CITY-017`, que sustituye al derogado `INV-CITY-009` (§8) |
 
 ## 1. Objetivo
 
@@ -161,16 +161,32 @@ esta tabla son orientativos hasta que existan allí.
 Migración `000006`: `city_stocks`, `unit_tasks`, `buildings`, `city_productions`, el valor `WORKING` en
 `units_status_valid`, y el `down` que las retira.
 
-## 8. Invariantes (a registrar al aceptar la spec)
+## 8. Invariantes
 
-| ID propuesto | Enunciado | Verificación |
+Esta spec **asigna** la familia `INV-ECON` (`001` a `006`), registrada en
+[../invariants/economy.md](../invariants/economy.md) antes de escribir código, e
+[INV-CITY-017](../invariants/city.md#inv-city-017), que sustituye a
+[INV-CITY-009](../invariants/city.md#inv-city-009): la reserva de población de `RN-ECON-010` hace que
+`population` cuente también las producciones en curso, y el enunciado antiguo quedó derogado por
+[ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md). **Cita**
+[INV-CITY-002](../invariants/city.md#inv-city-002) e [INV-CITY-003](../invariants/city.md#inv-city-003), de
+la que `INV-ECON-004` es la fórmula concreta.
+
+| ID | Enunciado | Verificación |
 |---|---|---|
-| `ECON-001` | `city_stocks.amount >= 0` siempre; un débito nunca deja el stock negativo. | `CHECK` en base + test de integración que intenta gastar más de lo que hay. |
-| `ECON-002` | Todo débito de madera ocurre en la misma transacción que el efecto que lo justifica. | Test de integración con fallo inyectado al insertar el edificio: el stock no cambia. |
-| `ECON-003` | Una unidad tiene como mucho una tarea, y sólo una unidad `WORKING` tiene tarea en fase `WORKING`. | PK de `unit_tasks` + `loadcheck`. |
-| `ECON-004` | `population_limit == eras.population_cap + 5 × casas COMPLETE` para toda ciudad. | `loadcheck` al arrancar + test de simulación. |
-| `ECON-005` | Una tarea, un edificio o una producción a medias sobrevive a un reinicio y termina en el mismo instante absoluto en que habría terminado. | Tests de recuperación en cada fase. |
-| `ECON-006` | Ningún viaje nuevo empieza con la ciudad fuera de `ONLINE`. | Test de simulación: desconexión a mitad de viaje → un depósito más y `IDLE`. |
+| [INV-ECON-001](../invariants/economy.md#inv-econ-001) | `city_stocks.amount >= 0` siempre; un débito nunca deja el stock negativo. | `CHECK` en base + test de integración que intenta gastar más de lo que hay. |
+| [INV-ECON-002](../invariants/economy.md#inv-econ-002) | Todo débito de madera ocurre en la misma transacción que el efecto que lo justifica. | Test de integración con fallo inyectado al insertar el edificio: el stock no cambia. |
+| [INV-ECON-003](../invariants/economy.md#inv-econ-003) | Una unidad tiene como mucho una tarea, y está `WORKING` si y sólo si su tarea está en fase `WORKING`. | PK de `unit_tasks` + `loadcheck`. |
+| [INV-ECON-004](../invariants/economy.md#inv-econ-004) | `population_limit == eras.population_cap + 5 × casas COMPLETE` para toda ciudad. | `loadcheck` al arrancar + test de simulación. |
+| [INV-ECON-005](../invariants/economy.md#inv-econ-005) | Una tarea, un edificio o una producción a medias sobrevive a un reinicio y termina en el mismo instante absoluto en que habría terminado. | Tests de recuperación en cada fase. |
+| [INV-ECON-006](../invariants/economy.md#inv-econ-006) | Ningún viaje nuevo empieza con la ciudad fuera de `ONLINE` ni con su dueño ausente. | Test de simulación: desconexión a mitad de viaje → un depósito más y `IDLE`. |
+| [INV-CITY-017](../invariants/city.md#inv-city-017) | `population` es el recuento de unidades vivas más las producciones en curso. | `loadcheck` al arrancar + tests de integración del encargo y el nacimiento. |
+
+**Precisión (2026-10-27).** `INV-ECON-003` se registra como bicondicional (`WORKING` si y sólo si la tarea está
+en `WORKING`), que es lo que la frase original implica para que una unidad `WORKING` no quede parada sin
+temporizador. `INV-ECON-006` añade «ni con su dueño ausente»: tras un reinicio una ciudad que estaba `ONLINE`
+se queda `ONLINE` aunque nadie se conecte ([presence.md](presence.md) §7.6), y sin esa mitad sus aldeanos
+recolectarían indefinidamente, que es justo lo que Q1 descarta.
 
 ## 9. Tests esperados
 

@@ -29,12 +29,12 @@ Corolario operativo: **un invariante nunca se comunica al jugador**. Si el servi
 INV-<AREA>-<NNN>
 ```
 
-- `<AREA>` ∈ `WORLD`, `PLAYER`, `CITY`, `UNIT`, `MOVE`, `PERSIST`, `SEC`, `TERR`, `SAFE`, `GARR`.
+- `<AREA>` ∈ `WORLD`, `PLAYER`, `CITY`, `UNIT`, `MOVE`, `PERSIST`, `SEC`, `TERR`, `SAFE`, `GARR`, `ECON`.
 - `<NNN>` es un correlativo de tres dígitos con ceros a la izquierda, **asignado una sola vez y jamás reutilizado**.
 - Un invariante que deja de aplicar no se borra ni se renumera: se marca `DEROGADO` con la fecha y el ADR que lo deroga, y su número queda quemado.
 - Un invariante nuevo toma el siguiente número libre del área, aunque el catálogo quede desordenado temáticamente.
 
-Las siete primeras familias son las del canon §22. Las tres últimas —`TERR`, `SAFE`, `GARR`— se añadieron al aparecer las specs de territorio, safe zones y guarnición, que necesitaban propiedades que ninguna familia existente expresaba: la geometría de una región no es la del mundo, y el ocultamiento de una unidad no es su posición. Se registran en dos archivos nuevos, [territory.md](territory.md) (`TERR` y `SAFE`) y [diplomacy.md](diplomacy.md) (`GARR`), y quedan enlazadas desde este índice.
+Las siete primeras familias son las del canon §22. Las tres últimas —`TERR`, `SAFE`, `GARR`— se añadieron al aparecer las specs de territorio, safe zones y guarnición, que necesitaban propiedades que ninguna familia existente expresaba: la geometría de una región no es la del mundo, y el ocultamiento de una unidad no es su posición. Se registran en dos archivos nuevos, [territory.md](territory.md) (`TERR` y `SAFE`) y [diplomacy.md](diplomacy.md) (`GARR`), y quedan enlazadas desde este índice. La undécima, `ECON`, llegó con el primer slice de economía ([../specs/economy-wood.md](../specs/economy-wood.md)) y vive en [economy.md](economy.md): el stock de un recurso, la tarea de recolección y el límite de población que suben las casas no son propiedades de ninguna familia anterior.
 
 > **Regla de resolución de colisiones.** Este catálogo es el **único registro** de invariantes del proyecto. Un ID estable designa un solo invariante, aquí y en cualquier documento que lo cite. Las specs de `docs/specs/` **citan IDs, no los redefinen** (§8): si una spec necesita una propiedad nueva, se añade aquí primero y se numera continuando la familia por encima del máximo ya asignado. Un ID reutilizado con otro significado es un defecto de documentación tan grave como un invariante roto, porque hace que dos equipos lean lo mismo y entiendan cosas distintas.
 
@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**94 invariantes** —93 vigentes y 1 `DEROGADO`, `INV-GARR-003`— repartidos en diez familias y nueve archivos (las fichas son 95: `INV-GARR-008` está reservado y no tiene fila, ver el recuento final). `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**101 invariantes** —99 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en once familias y diez archivos (las fichas son 102: `INV-GARR-008` está reservado y no tiene fila, ver el recuento final). `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -246,7 +246,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-006 | Una ciudad `PROTECTED` no recibe acciones prohibidas por la protección | CRITICO | DOMAIN, TEST | ~ | `TestIsProtected`, `TestTodaAccionDelCatalogoEstaClasificada`; falta el rechazo, que nace con la primera acción hostil |
 | INV-CITY-007 | El centro de la ciudad está sobre un tile válido y transitable | ALTO | DOMAIN, TEST | ✓ | `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable`, `TestSinTerrenoTransitableNoHaySitio`, `TestUnCentroSobreAguaAbortaElArranque` |
 | INV-CITY-008 | Las zonas urbanas de dos ciudades nunca comparten tile (centro único, 24 tiles de separación) | ALTO | DB, DOMAIN, TEST | ✓ | `TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan`, `TestAltasSimultaneasGuardanLaDistanciaMinima`, `TestDosCiudadesNoPuedenCompartirCentro` |
-| INV-CITY-009 | `population` es el recuento de `units` de la ciudad con `status <> 'DEAD'` | ALTO | DOMAIN, TEST | ✓ | `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal`, `TestLasCiudadesSeReparanDesdeSusFuentes`, `TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza` |
+| INV-CITY-009 | ~~`population` es el recuento de `units` de la ciudad con `status <> 'DEAD'`~~ | ALTO | — | DEROGADO | Derogado el 2026-10-27 por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md); lo sustituye INV-CITY-017 |
 | INV-CITY-010 | Fundar una ciudad no muta el `TerrainType` de ningún tile | ALTO | DOMAIN, TEST | ✓ | `TestCapaDeOcupacionNoMutaElTerreno`, `TestMundoPersistidoCoincideByteAByteConLaSemilla` |
 | INV-CITY-011 | `presence_state <> 'ONLINE'` implica `last_offline_at IS NOT NULL` | ALTO | DOMAIN, TEST | ✓ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`, `TestLasCiudadesSeReparanDesdeSusFuentes` |
 | INV-CITY-012 | `presence_state = 'ONLINE'` implica `protection_until IS NULL` | ALTO | DOMAIN, TEST | ✓ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden`, `TestTransicionesDePresenciaSePersisten`, `TestLasCiudadesSeReparanDesdeSusFuentes` |
@@ -254,6 +254,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-014 | Ninguna ciudad sigue protegida mientras su dueño tenga una sesión viva | CRITICO | DOMAIN, TEST | ✓ | `TestCicloDePresenciaYProteccion` |
 | INV-CITY-015 | `last_online_at` y `last_offline_at` son monótonos no decrecientes en una ejecución | MEDIO | DOMAIN, TEST | ✓ | `TestLasMarcasDePresenciaAcompañanAlEstadoYNoRetroceden` |
 | INV-CITY-016 | `simulation.Hydrate` no escribe `cities`: es idempotente para la presencia | MEDIO | TEST | ✓ | `TestRehidratarDosVecesNoEscribePresencia` |
+| INV-CITY-017 | `population` es el recuento de unidades vivas más las producciones en curso | ALTO | DB, DOMAIN, TEST | ○ | Previstos: recuento al cargar (`loadcheck`), encargo y nacimiento (integration) |
 
 ### UNIT — [units.md](units.md)
 
@@ -352,51 +353,65 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-GARR-007 | El ownership no cambia al entrar ni al salir de la guarnición | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno`, `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
 | INV-GARR-009 | Entrar y salir de la guarnición no cambian `units.city_id`: la población se queda en la ciudad de origen | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno`, `TestGuarnecerEnLaCiudadPropiaEnDosFases` |
 
+### ECONOMY — [economy.md](economy.md)
+
+| ID | Invariante | Sev | Aplicación | Cob. | Test |
+|---|---|---|---|---|---|
+| INV-ECON-001 | El stock de una ciudad nunca es negativo | CRITICO | DB, DOMAIN, TEST | ○ | Previsto: `Test_INV_ECON_001_UnDebitoMayorQueElStockNoSeEscribe` |
+| INV-ECON-002 | Todo débito ocurre en la misma transacción que su efecto | CRITICO | DB, DOMAIN, TEST | ○ | Previsto: `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` |
+| INV-ECON-003 | Una unidad tiene como mucho una tarea, y está `WORKING` si y sólo si su tarea está en `WORKING` | ALTO | DB, DOMAIN, TEST | ○ | Previstos: `unit_tasks_pkey` (integration), `loadcheck` (unit) |
+| INV-ECON-004 | `population_limit` es el de la era más cinco por casa completa | ALTO | DOMAIN, TEST | ○ | Previstos: `building.PopulationLimit`, `loadcheck`, casa completándose |
+| INV-ECON-005 | Lo que estaba a medias termina, tras un reinicio, en el mismo instante absoluto | ALTO | DOMAIN, TEST | ○ | Previstos: recuperación en cada fase |
+| INV-ECON-006 | Ningún viaje nuevo empieza con el dueño ausente | ALTO | DOMAIN, TEST | ○ | Previsto: desconexión a mitad de viaje (simulation) |
+
 ### Distribución
 
 Por severidad:
 
 | Severidad | Cantidad |
 |---|---|
-| CRITICO | 39 |
-| ALTO | 41 |
+| CRITICO | 42 |
+| ALTO | 46 |
 | MEDIO | 11 |
-| **Total** | **91** |
+| **Total** | **99** |
+
+La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
 Por familia:
 
 | Familia | Rango asignado | Nº | Archivo |
 |---|---|---|---|
 | `INV-WORLD` | 001–006 | 6 | [world.md](world.md) |
-| `INV-PLAYER` | 001–008 | 8 | [player.md](player.md) |
-| `INV-CITY` | 001–016 | 16 | [city.md](city.md) |
+| `INV-PLAYER` | 001–010 | 10 | [player.md](player.md) |
+| `INV-CITY` | 001–017 | 17 | [city.md](city.md) |
 | `INV-UNIT` | 001–011 | 11 | [units.md](units.md) |
 | `INV-MOVE` | 001–014 | 14 | [movement.md](movement.md) |
 | `INV-PERSIST` | 001–005 | 5 | [persistence.md](persistence.md) |
-| `INV-SEC` | 001–007 | 7 | [security.md](security.md) |
+| `INV-SEC` | 001–008 | 8 | [security.md](security.md) |
 | `INV-TERR` | 001–009 | 9 | [territory.md](territory.md) |
 | `INV-SAFE` | 001–007 | 7 | [territory.md](territory.md) |
 | `INV-GARR` | 001–009 | 8 | [diplomacy.md](diplomacy.md) |
+| `INV-ECON` | 001–006 | 6 | [economy.md](economy.md) |
 
-Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Hay un número quemado, `INV-GARR-003`, derogado por [ADR-017](../decisions/ADR-017-garrison-commands.md): conserva su fila y su ficha con la marca `DEROGADO`, y no se reutiliza. `INV-GARR-008` está reservado (ver abajo), así que el rango de `INV-GARR` tiene ocho filas para nueve números.
+Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Hay dos números quemados, `INV-GARR-003`, derogado por [ADR-017](../decisions/ADR-017-garrison-commands.md), e `INV-CITY-009`, derogado por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md): conservan su fila y su ficha con la marca `DEROGADO`, y no se reutilizan. `INV-GARR-008` está reservado (ver abajo), así que el rango de `INV-GARR` tiene ocho filas para nueve números.
 
 ### Estado de cobertura
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 92 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 91 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 1 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
-| `DEROGADO` | 1 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **94** | |
+| ○ Sin cobertura | 7 | Test inexistente, o fila sin reconciliar con la suite |
+| `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
+| **Total** | **101** | |
 
-> **94 filas y 95 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
+> **101 filas y 102 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
 > pero **no** fila en esta tabla: es un ID **reservado** —apartado para que nadie lo reutilice— cuyo
 > enunciado todavía no se puede verificar, porque la gracia de expulsión que describiría no tiene dónde
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Ninguna fila queda sin cobertura. Las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
+Las siete filas sin cobertura son las de E1 —la familia `INV-ECON` e `INV-CITY-017`—, registradas antes de escribir su código como manda §8; pasan a ✓ con la implementación de SPEC-ECON-WOOD. Antes de ellas no quedaba ninguna: las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
 La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). La única parcial que queda espera algo que no existe: la primera acción hostil (`INV-CITY-006`, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas), y con [ADR-020](../decisions/ADR-020-stale-pending-accounts.md), `INV-PLAYER-010` (una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
@@ -418,14 +433,15 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 | Archivo | Familias | Nº |
 |---|---|---|
 | [world.md](world.md) | `INV-WORLD` | 6 |
-| [player.md](player.md) | `INV-PLAYER` | 8 |
-| [city.md](city.md) | `INV-CITY` | 16 |
+| [player.md](player.md) | `INV-PLAYER` | 10 |
+| [city.md](city.md) | `INV-CITY` | 17 |
 | [units.md](units.md) | `INV-UNIT` | 11 |
 | [movement.md](movement.md) | `INV-MOVE` | 14 |
 | [persistence.md](persistence.md) | `INV-PERSIST` | 5 |
-| [security.md](security.md) | `INV-SEC` | 7 |
+| [security.md](security.md) | `INV-SEC` | 8 |
 | [territory.md](territory.md) | `INV-TERR`, `INV-SAFE` | 16 |
 | [diplomacy.md](diplomacy.md) | `INV-GARR` | 8 |
+| [economy.md](economy.md) | `INV-ECON` | 6 |
 
 ## 10. Documentos relacionados
 
