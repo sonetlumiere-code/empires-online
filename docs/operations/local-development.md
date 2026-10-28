@@ -7,14 +7,14 @@ Guía reproducible para levantar Empires Online en una máquina de desarrollo: i
 > en la máquina de desarrollo Windows.
 >
 > `apps/web/` (el frontend Next.js) **ya existe** en el repositorio: Next.js 15 + React 19 + PixiJS 8,
-> con 58 tests de Vitest en verde y `next build` correcto. `pnpm run web:dev` lo levanta en
+> con sus tests de Vitest y `next build` correcto. `pnpm run web:dev` lo levanta en
 > `http://localhost:3000`.
 
 ---
 
 ## 1. Hechos del entorno detectado
 
-Lo siguiente son hechos verificados en esta máquina, no supuestos. Cualquier desviación debe corregirse antes de continuar.
+Lo siguiente son hechos verificados en esta máquina, no supuestos. Cualquier desviación debe corregirse antes de continuar. En una máquina nueva nada de esto está dado: §2.4 dice qué instalar y en qué orden seguir.
 
 | Herramienta | Estado | Versión detectada | Acción |
 |---|---|---|---|
@@ -137,6 +137,34 @@ corepack prepare pnpm@10.25.0 --activate
 Docker Desktop **está instalado** (CLI 20.10.22, Compose v2.15.1), pero en esta máquina **no se usa**:
 produce pantallazos azules por consumo de RAM. Tampoco llegó a arrancar el daemon. No es un
 prerrequisito pendiente: es una vía descartada. El camino que funciona aquí es §3-bis.
+
+### 2.4 Máquina nueva: PostgreSQL 16 y, si hace falta, WSL
+
+La tabla de §1 describe la máquina de referencia, donde ya estaban instalados. En una máquina limpia
+faltan dos cosas que el resto de la guía da por hechas:
+
+- **Los binarios de PostgreSQL 16.** `pnpm run pg:init` sólo necesita `initdb`, `pg_ctl` y `psql`; los
+  busca en `C:\Program Files\PostgreSQL\<versión>` (la más alta) o en `EO_PG_BIN`:
+
+  ```powershell
+  winget install --id PostgreSQL.PostgreSQL.16
+  ```
+
+  El instalador registra además un servicio en el puerto 5432 con su propio superusuario. El proyecto no
+  lo usa ni lo toca: el cluster propio de §3-bis vive en el 5433.
+- **WSL con Ubuntu**, sólo si quieres Redis real o `-race` (§3-bis.7); sin él, el servidor usa estado
+  caliente en proceso (§3-bis.2). Pide permisos de administrador y, a veces, un reinicio:
+
+  ```powershell
+  wsl --install -d Ubuntu
+  ```
+
+  Una instalación nueva crea la distro en **WSL 2**, no en WSL 1 como la máquina de referencia: el Game
+  Server de Windows alcanza el Redis de WSL en `localhost:6379`, pero los tests lanzados *desde* WSL no
+  alcanzan el PostgreSQL de Windows en `localhost:5433` (§3-bis.7, «Por qué `localhost:5433`…»).
+
+Con eso, el orden es: §5.1 (clonar e instalar) → §5.2 (`.env`) → `pnpm run pg:init` (§3-bis.1) →
+§5.6 y §5.7 (servidor y web) → `pnpm run smoke` (§3-bis.9).
 
 ---
 
@@ -556,6 +584,10 @@ sed -i "s|^EO_AUTH_JWT_SECRET=.*|EO_AUTH_JWT_SECRET=$(openssl rand -base64 48)|"
 El servidor **carga el `.env` por sí solo** buscándolo hacia arriba desde el directorio actual, y nunca
 pisa una variable ya definida en el entorno (§3-bis.3).
 
+En una máquina nueva, créalo desde la plantilla en lugar de copiar el de otra: nada de él es
+irremplazable, y `pnpm run pg:init` escribe las URL del almacén de identidad con la contraseña del rol que
+crea en el cluster nuevo (§3-bis.1), así que las de otra máquina no servirían.
+
 ### 5.3 Levantar la infraestructura
 
 > **Sin Docker**, que es el caso de la máquina de desarrollo de referencia, este paso es `pnpm run pg:init`
@@ -621,6 +653,7 @@ Migraciones existentes hoy:
 | `000003_territory_control_version` | Columna `version` de `territory_control`, para la concurrencia optimista del cambio de dueño |
 | `000004_drop_idempotency_keys` | Elimina `idempotency_keys`, que nunca tuvo escritor ([ADR-014](../decisions/ADR-014-command-idempotency.md)) |
 | `000005_players_without_credentials` | Elimina `players.password_hash`: la identidad vive en el almacén de `apps/web` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) |
+| `000006_economy_wood` | Primer slice de economía ([economy-wood.md](../specs/economy-wood.md)): `city_stocks`, `unit_tasks`, `buildings`, `city_productions` y el estado `WORKING` en `units_status_valid` |
 
 El almacén de identidad de `apps/web` tiene sus propias migraciones (`apps/web/identity/migrations.mjs`): las aplica el servidor de Next.js al arrancar y `pnpm run identity:migrate`.
 
@@ -1035,7 +1068,8 @@ Marcado explícitamente para que nadie lo busque:
 - **Emisión del game ticket desde el Game Server**: ya no existe. La hacen las rutas `/api/auth/*` de
   Next.js ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)); el Game Server sólo la verifica.
 - **ESLint**: no hay. `pnpm run lint` sólo ejecuta el lint de determinismo de Go.
-- **Combate, economía, tecnologías, comercio, clanes, chat, ranking**: fuera del primer vertical slice.
+- **Combate, tecnologías, comercio, clanes, chat, ranking**: todavía no existen. De la economía sólo existe
+  la madera ([economy-wood.md](../specs/economy-wood.md)): un recurso, la casa y el entrenamiento de aldeanos.
 - **Tests de carga (k6)**: fuera de MVP.
 - **Hot reload de configuración o de código Go**: cambiar una variable `EO_` o el código exige reiniciar
   el proceso.
