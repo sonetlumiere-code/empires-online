@@ -166,6 +166,15 @@ func CommandTypes() []string {
 		UngarrisonUnit{}.commandType(),
 		GarrisonEntryResolved{}.commandType(),
 		GarrisonExitFailed{}.commandType(),
+		GatherWood{}.commandType(),
+		BuildBuilding{}.commandType(),
+		TrainUnit{}.commandType(),
+		BuildResolved{}.commandType(),
+		TrainResolved{}.commandType(),
+		BirthResolved{}.commandType(),
+		TaskPersistFailed{}.commandType(),
+		StocksFlushFailed{}.commandType(),
+		BuildingCompletePersistFailed{}.commandType(),
 	}
 }
 
@@ -182,6 +191,13 @@ const (
 	JobGarrisonEnter    = "garrison.enter"
 	JobGarrisonLeave    = "garrison.leave"
 	JobTreatyExpire     = "treaty.expire"
+	// Economía (ADR-023).
+	JobTaskWrite          = "task.write"
+	JobStocksFlush        = "stocks.flush"
+	JobCityBuild          = "city.build"
+	JobCityTrain          = "city.train"
+	JobBuildingComplete   = "building.complete"
+	JobProductionComplete = "production.complete"
 )
 
 // JobNames es el catálogo cerrado de nombres de trabajo, en orden estable.
@@ -191,6 +207,8 @@ func JobNames() []string {
 		JobCityPresence, JobUnitsFlush,
 		JobGarrisonEnter, JobGarrisonLeave,
 		JobTreatyExpire,
+		JobTaskWrite, JobStocksFlush, JobCityBuild, JobCityTrain,
+		JobBuildingComplete, JobProductionComplete,
 	}
 }
 

@@ -36,6 +36,10 @@ export const ErrorCode = z.enum([
   'CITY_PROTECTED',
   'TREATY_REQUIRED',
   'POPULATION_LIMIT_REACHED',
+  /** El stock de la ciudad no cubre el coste de `city.build` o `city.train`. */
+  'INSUFFICIENT_RESOURCES',
+  /** `city.train` con una producción ya en curso. */
+  'CITY_BUSY',
 
   // --- Genéricos ---
   'INTERNAL_ERROR',

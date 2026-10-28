@@ -96,7 +96,7 @@ func TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza(t *testing.T) {
 		_, err := db.Exec(ctx, sql, args...)
 		require.NoError(t, err, sql)
 	}
-	// INV-CITY-003, 009 y 011.
+	// INV-CITY-003, 017 y 011.
 	exec(`UPDATE cities SET population = 1, population_limit = 99,
 	      presence_state = 'OFFLINE_PENDING', last_offline_at = NULL WHERE id = $1`, ciudad)
 	// INV-UNIT-004.
@@ -129,7 +129,7 @@ func TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza(t *testing.T) {
 		"INV-UNIT-007@" + u(ids[1]),
 		"INV-UNIT-007@" + u(ids[2]),
 		"INV-UNIT-007@" + u(muerta),
-		"INV-CITY-009@city:" + itoa(ciudad),
+		"INV-CITY-017@city:" + itoa(ciudad),
 		"INV-CITY-003@city:" + itoa(ciudad),
 		"INV-CITY-011@city:" + itoa(ciudad),
 		"INV-TERR-005@territory:1",

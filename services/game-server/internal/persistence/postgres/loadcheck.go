@@ -106,6 +106,11 @@ func (r *LoadCheckRepo) ApplyLoadRepairs(
 				return fmt.Errorf("borrar la guarnición de la unidad %d: %w", id, err)
 			}
 		}
+		for _, id := range res.TaskDeletes {
+			if err := DeleteTask(ctx, tx, id); err != nil {
+				return err
+			}
+		}
 		for _, id := range res.UnitRepairs {
 			u, ok := unitByID[id]
 			if !ok {
@@ -178,7 +183,7 @@ func (r *LoadCheckRepo) ApplyLoadRepairs(
 }
 
 func hasRepairs(res loadcheck.Result) bool {
-	return len(res.CityRepairs)+len(res.UnitRepairs)+len(res.ControlRepairs)+len(res.GarrisonDeletes) > 0
+	return len(res.CityRepairs)+len(res.UnitRepairs)+len(res.ControlRepairs)+len(res.GarrisonDeletes)+len(res.TaskDeletes) > 0
 }
 
 // ErrLoadCheckFatal indica que el estado persistido viola un invariante que no

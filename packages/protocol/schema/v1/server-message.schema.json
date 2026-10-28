@@ -181,6 +181,8 @@
                     "CITY_PROTECTED",
                     "TREATY_REQUIRED",
                     "POPULATION_LIMIT_REACHED",
+                    "INSUFFICIENT_RESOURCES",
+                    "CITY_BUSY",
                     "INTERNAL_ERROR",
                     "NOT_IMPLEMENTED"
                   ]
@@ -343,6 +345,7 @@
                           "MOVING",
                           "GARRISONED",
                           "HIDDEN",
+                          "WORKING",
                           "DEAD"
                         ]
                       },
@@ -425,6 +428,10 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "carrying": {
+                        "type": "integer",
+                        "minimum": 0
                       }
                     },
                     "required": [
@@ -494,6 +501,42 @@
                         "anyOf": [
                           {
                             "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "stocks": {
+                        "type": "object",
+                        "properties": {
+                          "WOOD": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "WOOD"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "production": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "unitType": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/unitType"
+                              },
+                              "completesAtMs": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                              }
+                            },
+                            "required": [
+                              "unitType",
+                              "completesAtMs"
+                            ],
+                            "additionalProperties": false
                           },
                           {
                             "type": "null"
@@ -573,6 +616,52 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "buildings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "cityId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "HOUSE"
+                        ]
+                      },
+                      "x": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "y": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "UNDER_CONSTRUCTION",
+                          "COMPLETE"
+                        ]
+                      },
+                      "completesAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "cityId",
+                      "type",
+                      "x",
+                      "y",
+                      "status",
+                      "completesAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -582,7 +671,8 @@
                 "terrain",
                 "units",
                 "cities",
-                "territories"
+                "territories",
+                "buildings"
               ],
               "additionalProperties": false
             }
@@ -704,6 +794,10 @@
                       "type": "null"
                     }
                   ]
+                },
+                "carrying": {
+                  "type": "integer",
+                  "minimum": 0
                 }
               },
               "required": [
@@ -818,6 +912,19 @@
                   "anyOf": [
                     {
                       "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "stocks": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/stocks"
+                },
+                "production": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/production/anyOf/0"
                     },
                     {
                       "type": "null"
@@ -1117,6 +1224,92 @@
                 "movementId",
                 "stoppedAt",
                 "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "building.spawn"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "building": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/buildings/items"
+                }
+              },
+              "required": [
+                "building"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "building.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "status": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/buildings/items/properties/status"
+                }
+              },
+              "required": [
+                "id",
+                "status"
               ],
               "additionalProperties": false
             }

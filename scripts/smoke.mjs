@@ -17,6 +17,9 @@
  *   6. SE CIERRA la conexión a mitad de movimiento
  *   7. se espera, sin cliente conectado, más allá de la hora de llegada
  *   8. ticket nuevo pedido con la cookie, reconexión  ->  la unidad está EN EL DESTINO
+ *   9. unit.gather sobre el bosque más cercano a la ciudad  ->  un viaje completo:
+ *      tramo al bosque, WORKING, vuelta y city.update con la madera depositada
+ *      (SPEC-ECON-WOOD)
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
@@ -49,6 +52,8 @@ const PROTOCOL_VERSION = 1;
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
 // MOUNTAIN y WATER no son transitables (internal/game/world/tile.go).
 const NO_TRANSITABLE = new Set([3, 4]);
+// FOREST: el único terreno que se recolecta (RN-ECON-001).
+const FOREST = 1;
 
 let pasos = 0;
 const log = (...a) => VERBOSE && console.log('   ', ...a);
@@ -149,6 +154,15 @@ class Sesion {
     return msg.requestId;
   }
 
+  /** Espera el primer mensaje de esos tipos que cumpla `cumple`, descartando los demás. */
+  async esperarQue(tipos, cumple, msTimeout = 15_000) {
+    const limite = Date.now() + msTimeout;
+    for (;;) {
+      const msg = await this.esperar(tipos, Math.max(1, limite - Date.now()));
+      if (cumple(msg)) return msg;
+    }
+  }
+
   /** Espera el primer mensaje de alguno de esos tipos, incluidos los ya recibidos. */
   esperar(tipos, msTimeout = 15_000) {
     const lista = Array.isArray(tipos) ? tipos : [tipos];
@@ -213,6 +227,26 @@ export function elegirDestino(terreno, desde) {
   // Determinista: el más lejano y, a igualdad, el de menor (y, x).
   candidatos.sort((a, b) => b.d - a.d || a.y - b.y || a.x - b.x);
   return candidatos[0];
+}
+
+/**
+ * Elige el bosque al que mandar a recolectar: el tile FOREST más cercano al
+ * centro de la ciudad, fuera de su zona urbana. Cuanto más cerca, más corto el
+ * viaje que el humo tiene que esperar. Determinista: a igual distancia, el de
+ * menor (y, x).
+ */
+export function elegirBosque(terreno, ciudad) {
+  let mejor = null;
+  for (const [clave, tipo] of terreno) {
+    if (tipo !== FOREST) continue;
+    const [x, y] = clave.split(',').map(Number);
+    const d = Math.max(Math.abs(x - ciudad.centerX), Math.abs(y - ciudad.centerY));
+    if (d <= 1) continue; // la zona urbana es muralla
+    if (!mejor || d < mejor.d || (d === mejor.d && (y < mejor.y || (y === mejor.y && x < mejor.x)))) {
+      mejor = { x, y, d };
+    }
+  }
+  return mejor;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -400,6 +434,33 @@ async function main() {
     fallar('la unidad llegó pero sigue con un movimiento activo', tras.movement);
   }
   ok('la unidad llegó al destino con el cliente desconectado', `(${tras.x}, ${tras.y})`);
+
+  // 9. Recolección ─────────────────────────────────────────
+  // Un viaje completo con el dueño conectado: el tramo al bosque, el trabajo,
+  // la vuelta y la madera en la ciudad. Los tiempos y la cantidad los decide el
+  // servidor; el humo sólo comprueba que el stock sube.
+  const snap2 = segunda.snapshot.payload;
+  const ciudad2 = snap2.cities.find((c) => c.id === ciudad.id) ?? ciudad;
+  const bosque = elegirBosque(indexarTerreno(snap2.terrain), ciudad2);
+  if (!bosque) fallar('no hay ningún bosque en el área de interés de la ciudad para probar la recolección', ciudad2);
+  const maderaInicial = ciudad2.stocks?.WOOD ?? 0;
+  segunda.sesion.enviar('unit.gather', { unitId: unidad.id, target: { x: bosque.x, y: bosque.y } });
+  const ida = await segunda.sesion.esperarQue(['unit.movement.started', 'system.error'],
+    (m) => m.type === 'system.error' || m.payload.unitId === unidad.id);
+  if (ida.type === 'system.error') fallar('el servidor rechazó la orden de recolección', ida.payload);
+  const llegadaMs = ida.payload.movement.arrivalTimeMs - Date.now();
+  ok('recolección aceptada', `unidad ${unidad.id} -> bosque (${bosque.x}, ${bosque.y}) · ida de ${ida.payload.movement.path.length} tiles`);
+
+  await segunda.sesion.esperarQue('entity.update',
+    (m) => m.payload.id === unidad.id && m.payload.status === 'WORKING', Math.max(0, llegadaMs) + 5_000);
+  ok('la unidad trabaja en el bosque', 'WORKING');
+
+  // El trabajo (10 s en el catálogo) y una vuelta como la ida, con margen.
+  const vueltaMs = ida.payload.movement.arrivalTimeMs - ida.payload.movement.startTimeMs;
+  const deposito = await segunda.sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudad.id && m.payload.stocks && m.payload.stocks.WOOD > maderaInicial,
+    vueltaMs + 30_000);
+  ok('viaje de recolección completo', `madera ${maderaInicial} -> ${deposito.payload.stocks.WOOD}`);
 
   segunda.sesion.cerrar();
   await dormir(200);

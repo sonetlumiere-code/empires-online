@@ -33,6 +33,11 @@ const (
 	CodeCityProtected          = "CITY_PROTECTED"
 	CodeTreatyRequired         = "TREATY_REQUIRED"
 	CodePopulationLimitReached = "POPULATION_LIMIT_REACHED"
+	// CodeInsufficientResources: el stock de la ciudad no cubre el coste de
+	// city.build o city.train (SPEC-ECON-WOOD §5).
+	CodeInsufficientResources = "INSUFFICIENT_RESOURCES"
+	// CodeCityBusy: city.train con una producción ya en curso.
+	CodeCityBusy = "CITY_BUSY"
 
 	// Genéricos.
 	CodeInternalError  = "INTERNAL_ERROR"
@@ -47,6 +52,7 @@ var AllErrorCodes = []string{
 	CodeUnitNotFound, CodeUnitNotOwned, CodeUnitNotMovable, CodeUnitDead, CodeUnitGarrisoned,
 	CodeInvalidTarget, CodeTargetOutOfBounds, CodeTargetNotWalkable, CodePathNotFound, CodePathTooLong,
 	CodeCityNotFound, CodeCityProtected, CodeTreatyRequired, CodePopulationLimitReached,
+	CodeInsufficientResources, CodeCityBusy,
 	CodeInternalError, CodeNotImplemented,
 }
 

@@ -139,7 +139,7 @@ Corolario: **todo arreglo es una migración nueva**. Si `000001_initial_schema.u
 
 ### 2.2 Siempre se escribe el `.down.sql`
 
-Cada `NNNNNN_nombre.up.sql` tiene su `NNNNNN_nombre.down.sql` que deshace exactamente sus efectos, en orden inverso. Sin excepciones, ni siquiera para migraciones "obviamente irreversibles". Las cinco migraciones existentes cumplen la regla, y `TestLasMigracionesSonCorrelativasYCompletas` exige el par en cada una: `000001_initial_schema.down.sql` hace `DROP TABLE` de las diecisiete tablas en orden inverso al de dependencias y luego `DROP FUNCTION set_updated_at()`, `000002_seed_catalogs.down.sql` borra las filas de semilla por su `code`, `000003` quita la columna `version`, `000004` recrea `idempotency_keys` vacía y `000005` recrea `players.password_hash` anulable y vacía, declarándolo en su primera línea como pide el párrafo siguiente.
+Cada `NNNNNN_nombre.up.sql` tiene su `NNNNNN_nombre.down.sql` que deshace exactamente sus efectos, en orden inverso. Sin excepciones, ni siquiera para migraciones "obviamente irreversibles". Las seis migraciones existentes cumplen la regla, y `TestLasMigracionesSonCorrelativasYCompletas` exige el par en cada una: `000001_initial_schema.down.sql` hace `DROP TABLE` de las diecisiete tablas en orden inverso al de dependencias y luego `DROP FUNCTION set_updated_at()`, `000002_seed_catalogs.down.sql` borra las filas de semilla por su `code`, `000003` quita la columna `version`, `000004` recrea `idempotency_keys` vacía `000005` recrea `players.password_hash` anulable y vacía, declarándolo en su primera línea como pide el párrafo siguiente, y `000006` recuenta población y límite desde sus fuentes de antes de la economía, borra sus cuatro tablas, devuelve a `IDLE` las unidades `WORKING` y restaura el `CHECK` de cinco estados.
 
 El `down` cumple tres funciones, y sólo una de ellas es el rollback:
 
@@ -331,6 +331,7 @@ services/game-server/migrations/
 ├── 000003_territory_control_version.up.sql   / .down.sql
 ├── 000004_drop_idempotency_keys.up.sql       / .down.sql
 ├── 000005_players_without_credentials.up.sql / .down.sql
+├── 000006_economy_wood.up.sql / .down.sql
 ├── embed.go
 └── migrations_test.go      # TestLasMigracionesSonCorrelativasYCompletas
 ```
@@ -343,7 +344,7 @@ services/game-server/migrations/
 
 ## 6. Migraciones del MVP
 
-Son **cinco**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
+Son **seis**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
 
 | # | Fichero | Contenido |
 |---|---|---|
@@ -352,6 +353,7 @@ Son **cinco**, todas embebidas en el binario. Juntas materializan lo descrito en
 | `000003` | `territory_control_version` | Añade `version` a `territory_control` para la concurrencia optimista del cambio de dueño. |
 | `000004` | `drop_idempotency_keys` | Elimina `idempotency_keys`, que nunca tuvo escritor ([ADR-014](../decisions/ADR-014-command-idempotency.md)). Su `.down.sql` la recrea. |
 | `000005` | `players_without_credentials` | Borra `players.password_hash`: la identidad sale del esquema del juego ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Su `.down.sql` recrea la columna **anulable** y vacía: los hashes no se recuperan, y así lo dice el fichero. |
+| `000006` | `economy_wood` | El primer slice de economía ([SPEC-ECON-WOOD](../specs/economy-wood.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)): `WORKING` en `units_status_valid` (el patrón de §3.2, aditivo); `city_stocks`, con una fila a cero para cada ciudad existente; `unit_tasks`, `buildings` y `city_productions`, cada una con sus `CHECK` y su índice único. Todo en la misma migración porque es un solo propósito: ninguna de las cuatro tablas tiene sentido sin las otras. Su `.down.sql` recuenta `population` desde `units` y deja `population_limit` en el de la era o en el recuento si es mayor (no destruye unidades, `INV-CITY-002`), borra las cuatro tablas, devuelve a `IDLE` las unidades `WORKING` y restaura el `CHECK` de cinco estados. Lo que se pierde al bajar —madera, casas, producciones— lo dice el fichero. |
 
 Por qué el esquema inicial cabe en una sola migración y no en una por tabla: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido diecisiete oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
 

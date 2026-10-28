@@ -29,6 +29,10 @@ const (
 	TypeUnitCancelMove = "unit.cancel_move"
 	TypeUnitGarrison   = "unit.garrison"
 	TypeUnitUngarrison = "unit.ungarrison"
+	// Economía (SPEC-ECON-WOOD).
+	TypeUnitGather = "unit.gather"
+	TypeCityBuild  = "city.build"
+	TypeCityTrain  = "city.train"
 )
 
 // Mensajes servidor → cliente.
@@ -47,6 +51,8 @@ const (
 	TypeUnitMovementStarted   = "unit.movement.started"
 	TypeUnitMovementCompleted = "unit.movement.completed"
 	TypeUnitMovementCancelled = "unit.movement.cancelled"
+	TypeBuildingSpawn         = "building.spawn"
+	TypeBuildingUpdate        = "building.update"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -58,6 +64,9 @@ var ClientMessageTypes = map[string]bool{
 	TypeUnitCancelMove: true,
 	TypeUnitGarrison:   true,
 	TypeUnitUngarrison: true,
+	TypeUnitGather:     true,
+	TypeCityBuild:      true,
+	TypeCityTrain:      true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -174,6 +183,30 @@ type UnitView struct {
 	// GarrisonCityID es la ciudad que aloja a la unidad, o nil fuera de una
 	// guarnición. CityID es siempre la de origen (ADR-017 §2.4).
 	GarrisonCityID *int64 `json:"garrisonCityId"`
+	// Carrying es lo que lleva encima una unidad que recolecta; ausente si nada.
+	Carrying int32 `json:"carrying,omitempty"`
+}
+
+// Stocks es el stock de una ciudad, por recurso (SPEC-ECON-WOOD §6).
+type Stocks struct {
+	Wood int64 `json:"WOOD"`
+}
+
+// ProductionView es el entrenamiento en curso de una ciudad.
+type ProductionView struct {
+	UnitType      string `json:"unitType"`
+	CompletesAtMs int64  `json:"completesAtMs"`
+}
+
+// BuildingView es el estado observable de un edificio.
+type BuildingView struct {
+	ID            int64  `json:"id"`
+	CityID        int64  `json:"cityId"`
+	Type          string `json:"type"`
+	X             int32  `json:"x"`
+	Y             int32  `json:"y"`
+	Status        string `json:"status"`
+	CompletesAtMs int64  `json:"completesAtMs"`
 }
 
 // CityView es el estado observable de una ciudad.
@@ -188,6 +221,10 @@ type CityView struct {
 	PopulationLimit   int32  `json:"populationLimit"`
 	PresenceState     string `json:"presenceState"`
 	ProtectionUntilMs *int64 `json:"protectionUntilMs"`
+	// Stocks y Production viajan siempre: el stock de la ciudad y su
+	// entrenamiento en curso, o null.
+	Stocks     Stocks          `json:"stocks"`
+	Production *ProductionView `json:"production"`
 }
 
 // TerritoryView es el estado observable de un territorio.
@@ -243,6 +280,27 @@ type UnitUngarrisonPayload struct {
 	UnitID int64 `json:"unitId"`
 }
 
+// UnitGatherPayload pone a un aldeano a recolectar en un tile de bosque. Sólo
+// el destino: la ruta, los tiempos y las cantidades son del servidor.
+type UnitGatherPayload struct {
+	UnitID int64 `json:"unitId"`
+	Target Tile  `json:"target"`
+}
+
+// CityBuildPayload encarga un edificio en un tile de la zona urbana.
+type CityBuildPayload struct {
+	CityID int64  `json:"cityId"`
+	Type   string `json:"type"`
+	X      int32  `json:"x"`
+	Y      int32  `json:"y"`
+}
+
+// CityTrainPayload encarga el entrenamiento de una unidad.
+type CityTrainPayload struct {
+	CityID int64  `json:"cityId"`
+	Type   string `json:"type"`
+}
+
 // ─────────────────────────────────────────────────────────────
 // Payloads servidor → cliente
 // ─────────────────────────────────────────────────────────────
@@ -281,6 +339,7 @@ type WorldSnapshotPayload struct {
 	Units        []UnitView      `json:"units"`
 	Cities       []CityView      `json:"cities"`
 	Territories  []TerritoryView `json:"territories"`
+	Buildings    []BuildingView  `json:"buildings"`
 }
 
 type EntitySpawnPayload struct {
@@ -300,6 +359,8 @@ type EntityUpdatePayload struct {
 	// GarrisonCityID: nil si no cambia; apuntando a nil, la unidad sale de la
 	// guarnición; apuntando a un id, entra en esa ciudad.
 	GarrisonCityID **int64 `json:"garrisonCityId,omitempty"`
+	// Carrying: nil si no cambia; 0 al depositar o al perder la carga.
+	Carrying *int32 `json:"carrying,omitempty"`
 }
 
 type EntityDespawnPayload struct {
@@ -314,6 +375,22 @@ type CityUpdatePayload struct {
 	PopulationLimit   *int32  `json:"populationLimit,omitempty"`
 	PresenceState     *string `json:"presenceState,omitempty"`
 	ProtectionUntilMs *int64  `json:"protectionUntilMs,omitempty"`
+	// Stocks: nil si no cambia.
+	Stocks *Stocks `json:"stocks,omitempty"`
+	// Production: nil si no cambia; apuntando a nil, la ciudad deja de
+	// entrenar; apuntando a una vista, empieza.
+	Production **ProductionView `json:"production,omitempty"`
+}
+
+// BuildingSpawnPayload anuncia un edificio.
+type BuildingSpawnPayload struct {
+	Building BuildingView `json:"building"`
+}
+
+// BuildingUpdatePayload es el cambio de estado de un edificio conocido.
+type BuildingUpdatePayload struct {
+	ID     int64  `json:"id"`
+	Status string `json:"status"`
 }
 
 type TerritoryUpdatePayload struct {

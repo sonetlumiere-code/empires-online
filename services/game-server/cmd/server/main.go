@@ -132,6 +132,7 @@ func run() error {
 	worldRepo := postgres.NewWorldRepo(store)
 	territoryRepo := postgres.NewTerritoryRepo(store)
 	treatyRepo := postgres.NewTreatyRepo(store)
+	economyRepo := postgres.NewEconomyRepo(store, unitRepo, movementRepo)
 	bootstrapper := postgres.NewBootstrapper(store, playerRepo, cityRepo, unitRepo, territoryRepo)
 
 	sysClock := clock.NewSystemClock()
@@ -180,6 +181,12 @@ func run() error {
 		return err
 	}
 
+	// La economía (SPEC-ECON-WOOD): stocks, tareas, edificios y producciones.
+	economia, err := loadEconomy(rootCtx, economyRepo)
+	if err != nil {
+		return err
+	}
+
 	eras, err := cityRepo.ListEras(rootCtx)
 	if err != nil || len(eras) == 0 {
 		return fmt.Errorf("catálogo de eras vacío o ilegible: %w", err)
@@ -188,13 +195,16 @@ func run() error {
 	// Validación de carga (EO-119): lo que el esquema no garantiza se comprueba
 	// sobre lo recién leído, antes de construir la RAM. Un fatal aborta sin
 	// escribir nada; lo reparable se corrige en una transacción auditada.
-	units, controls, garrisons, err := checkLoadedState(rootCtx, postgres.NewLoadCheckRepo(store), loadcheck.Input{
-		World:    gameWorld,
-		EraCaps:  postgres.EraCaps(eras),
-		Cities:   cities,
-		Units:    units,
-		Controls: controls,
-		Now:      sysClock.Now(),
+	units, controls, garrisons, tasks, err := checkLoadedState(rootCtx, postgres.NewLoadCheckRepo(store), loadcheck.Input{
+		World:       gameWorld,
+		EraCaps:     postgres.EraCaps(eras),
+		Cities:      cities,
+		Units:       units,
+		Controls:    controls,
+		Tasks:       economia.Tasks,
+		Buildings:   economia.Buildings,
+		Productions: economia.Productions,
+		Now:         sysClock.Now(),
 	}, startTick, log)
 	if err != nil {
 		return err
@@ -204,6 +214,10 @@ func run() error {
 	state.SetTerritories(territories, controls)
 	state.SetMovementIDFloor(maxMovementID)
 	state.SetGarrisons(garrisons)
+	// Antes de Hydrate: la rehidratación de movimientos pregunta qué unidades
+	// tienen una tarea (INV-ECON-005).
+	economia.Tasks = tasks
+	state.SetEconomy(economia)
 	recovery := simulation.Hydrate(state, units, cities, movements, sysClock.NowMs(), log)
 	log.Info("mundo rehidratado",
 		"units", recovery.Units, "cities", recovery.Cities,
@@ -223,6 +237,9 @@ func run() error {
 	// detienen igual que en el tick del alta (RN-CITY-022).
 	recovery.FinishedMovements = append(recovery.FinishedMovements,
 		simulation.ClearFootprints(state, cities, sysClock.NowMs(), log)...)
+	// Las tareas que ya no pueden reanudarse —su tramo se cerró o se detuvo—
+	// terminan aquí, y la base lo sabe antes de servir (INV-ECON-005).
+	taskWrites := simulation.ReconcileTasks(state, log)
 
 	// Las zonas seguras se indexan DESPUÉS de las murallas: el índice excluye
 	// los tiles ocupados (INV-SAFE-002), y construirlo antes dejaría dentro
@@ -240,6 +257,13 @@ func run() error {
 			return fmt.Errorf("cerrar movimientos recuperados: %w", err)
 		}
 		log.Info("movimientos recuperados cerrados", "count", len(recovery.FinishedMovements))
+	}
+	economyStore := persistence.NewEconomyStore(economyRepo)
+	if len(taskWrites) > 0 {
+		if err := economyStore.FinishRecoveredTasks(rootCtx, taskWrites); err != nil {
+			return fmt.Errorf("terminar tareas recuperadas: %w", err)
+		}
+		log.Info("tareas que no pueden reanudarse terminadas", "count", len(taskWrites))
 	}
 
 	// ── 5. Simulación y game loop ───────────────────────────────
@@ -274,6 +298,7 @@ func run() error {
 		Repos:       gameStore,
 		Treaties:    treatyRepo,
 		Garrisons:   postgres.NewGarrisonRepo(store, unitRepo, movementRepo, treatyRepo),
+		Economy:     economyStore,
 		// Las compensaciones de la cola vuelven al loop por su buzón, sin
 		// bloquear al worker (ADR-013 §2.4, ADR-022).
 		Inbox:              inbox.Offer,

@@ -21,7 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -67,6 +69,8 @@ type escenario struct {
 			X int32 `json:"x"`
 			Y int32 `json:"y"`
 		} `json:"city"`
+		// Wood es la madera inicial de su ciudad (SPEC-ECON-WOOD). Opcional.
+		Wood *int64 `json:"wood"`
 	} `json:"players"`
 	Units []struct {
 		Ref    string `json:"ref"`
@@ -98,7 +102,43 @@ type resultadoEscenario struct {
 		Units     []unidadFinal     `json:"units"`
 		Movements []movimientoFinal `json:"movements"`
 		Cities    []ciudadFinal     `json:"cities"`
+		// Economy sólo aparece en los escenarios que la usan: así el golden de
+		// los demás no cambia de forma.
+		Economy *economiaFinal `json:"economy,omitempty"`
 	} `json:"final"`
+}
+
+// Lo que fija el golden de la economía: el stock, la población y el límite de
+// cada ciudad, las tareas vivas y los edificios.
+type economiaFinal struct {
+	Cities    []ciudadEconomica `json:"cities"`
+	Tasks     []tareaFinal      `json:"tasks"`
+	Buildings []edificioFinal   `json:"buildings"`
+}
+
+type ciudadEconomica struct {
+	Owner           string `json:"owner"`
+	Wood            int64  `json:"wood"`
+	Population      int32  `json:"population"`
+	PopulationLimit int32  `json:"populationLimit"`
+}
+
+type tareaFinal struct {
+	Unit      string     `json:"unit"`
+	Target    world.Tile `json:"target"`
+	Phase     string     `json:"phase"`
+	UntilMs   int64      `json:"phaseUntilMs"`
+	Carrying  int32      `json:"carrying"`
+	TripsDone int32      `json:"tripsDone"`
+}
+
+type edificioFinal struct {
+	ID            int64           `json:"id"`
+	Type          building.Type   `json:"type"`
+	X             int32           `json:"x"`
+	Y             int32           `json:"y"`
+	Status        building.Status `json:"status"`
+	CompletesAtMs int64           `json:"completesAtMs"`
 }
 
 type emitido struct {
@@ -224,7 +264,15 @@ func validarEscenario(esc *escenario) error {
 			if refs[c.Unit] != "unit" {
 				return fmt.Errorf("comando %d: unit.cancel_move necesita una unidad conocida", i)
 			}
-		case "connect", "disconnect":
+		case "unit.gather":
+			if refs[c.Unit] != "unit" || c.Target == nil {
+				return fmt.Errorf("comando %d: unit.gather necesita una unidad conocida y un target", i)
+			}
+		case "city.build":
+			if c.Target == nil {
+				return fmt.Errorf("comando %d: city.build necesita el tile en target", i)
+			}
+		case "connect", "disconnect", "city.train":
 		default:
 			return fmt.Errorf("comando %d: tipo %q no admitido", i, c.Type)
 		}
@@ -285,6 +333,7 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 	}
 
 	sustituir := map[string]string{}
+	conEconomia := false
 	jugadores := map[string]uuid.UUID{}
 	sesiones := map[string]uuid.UUID{}
 	ciudades := map[string]int64{}
@@ -293,13 +342,26 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 		jugadores[p.Ref], sesiones[p.Ref] = id, sesion
 		sustituir[id.String()] = "player:" + p.Ref
 		sustituir[sesion.String()] = "session:" + p.Ref
+		// La población es la de sus unidades (INV-CITY-017).
+		var poblacion int32
+		for _, u := range esc.Units {
+			if u.Player == p.Ref {
+				poblacion++
+			}
+		}
 		c := &city.City{
 			ID: int64(i + 1), OwnerPlayerID: id, Name: "Ciudad de " + p.Ref,
 			CenterX: p.City.X, CenterY: p.City.Y, Era: city.EraStone,
-			PopulationLimit: 20, PresenceState: city.PresenceOnline,
+			Population: poblacion, PopulationLimit: 20, PresenceState: city.PresenceOnline,
 		}
 		ciudades[p.Ref] = c.ID
 		state.AddCity(c)
+		if p.Wood != nil {
+			conEconomia = true
+			state.SetEconomy(simulation.EconomyLoad{Stocks: []simulation.StockRow{
+				{CityID: c.ID, Stock: economy.Stock{Resource: economy.ResourceWood, Amount: *p.Wood}},
+			}})
+		}
 	}
 	unidades := map[string]int64{}
 	refDeUnidad := map[int64]string{}
@@ -332,6 +394,7 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 		Persister:   persister,
 		Repos:       newFakeRepos(),
 		Garrisons:   &fakeGarrisons{},
+		Economy:     newFakeEconomy(),
 		Inbox: func(c simulation.Command) bool {
 			select {
 			case commands <- c:
@@ -373,6 +436,18 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 			case "unit.cancel_move":
 				commands <- simulation.CancelMovement{PlayerID: player, SessionID: sesion, RequestID: requestID,
 					UnitID: unidades[c.Unit]}
+			case "unit.gather":
+				conEconomia = true
+				commands <- simulation.GatherWood{PlayerID: player, SessionID: sesion, RequestID: requestID,
+					UnitID: unidades[c.Unit], Target: *c.Target}
+			case "city.build":
+				conEconomia = true
+				commands <- simulation.BuildBuilding{PlayerID: player, SessionID: sesion, RequestID: requestID,
+					CityID: ciudades[c.Player], Type: building.TypeHouse, Tile: *c.Target}
+			case "city.train":
+				conEconomia = true
+				commands <- simulation.TrainUnit{PlayerID: player, SessionID: sesion, RequestID: requestID,
+					CityID: ciudades[c.Player], Type: unit.TypeVillager}
 			case "connect":
 				commands <- simulation.PlayerConnected{PlayerID: player, SessionID: sesion}
 			case "disconnect":
@@ -415,6 +490,26 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 		})
 		return true
 	})
+	if conEconomia {
+		eco := &economiaFinal{Cities: []ciudadEconomica{}, Tasks: []tareaFinal{}, Buildings: []edificioFinal{}}
+		state.EachCity(func(c *city.City) bool {
+			eco.Cities = append(eco.Cities, ciudadEconomica{Owner: c.OwnerPlayerID.String(),
+				Wood: state.Stock(c.ID).Amount, Population: c.Population, PopulationLimit: c.PopulationLimit})
+			for _, b := range state.BuildingsOf(c.ID) {
+				eco.Buildings = append(eco.Buildings, edificioFinal{ID: b.ID, Type: b.Type, X: b.X, Y: b.Y,
+					Status: b.Status, CompletesAtMs: b.CompletesAtMs})
+			}
+			return true
+		})
+		state.EachUnit(func(u *unit.Unit) bool {
+			if tk, ok := state.Task(u.ID); ok {
+				eco.Tasks = append(eco.Tasks, tareaFinal{Unit: refDeUnidad[u.ID], Target: tk.Target,
+					Phase: string(tk.Phase), UntilMs: tk.PhaseUntilMs, Carrying: tk.Carrying, TripsDone: tk.TripsDone})
+			}
+			return true
+		})
+		res.Final.Economy = eco
+	}
 	// Los recorridos del estado ya son estables; ordenar aquí hace que el golden
 	// no dependa de esa propiedad, que ya prueba TestSimulacionEsReproducible.
 	sort.Slice(res.Final.Units, func(i, j int) bool { return res.Final.Units[i].ID < res.Final.Units[j].ID })

@@ -14,10 +14,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cookieDeSesion, elegirDestino, indexarTerreno } from './smoke.mjs';
+import { cookieDeSesion, elegirBosque, elegirDestino, indexarTerreno } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
 const GRASSLAND = 0;
+const FOREST = 1;
 const MOUNTAIN = 3;
 const WATER = 4;
 const ROAD = 5;
@@ -135,4 +136,17 @@ test('cookieDeSesion devuelve sólo nombre=valor, lo que el navegador reenvía',
     'eo_session=abc-123',
   );
   assert.equal(cookieDeSesion(null), null);
+});
+
+test('elegirBosque toma el bosque más cercano a la ciudad, fuera de su muralla', () => {
+  const mapa = new Map([
+    ['10,10', FOREST], // el centro: es muralla
+    ['11,9', FOREST], // dentro del 3×3: también
+    ['14,10', FOREST], // a 4
+    ['10,13', FOREST], // a 3, el más cercano
+    ['7,7', FOREST], // a 3, pero de menor y: gana el desempate
+    ['12,10', GRASSLAND],
+  ]);
+  assert.deepEqual(elegirBosque(mapa, { centerX: 10, centerY: 10 }), { x: 7, y: 7, d: 3 });
+  assert.equal(elegirBosque(new Map([['3,3', GRASSLAND]]), { centerX: 10, centerY: 10 }), null);
 });

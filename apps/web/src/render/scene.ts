@@ -27,10 +27,10 @@ import {
   type Rect,
 } from './culling';
 import { RenderReconciler } from './reconciler';
-import type { SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
+import type { SceneBuilding, SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
 import type { ChunkTerrain } from '../state/world';
 
-export type { SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
+export type { SceneBuilding, SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
 
 /** Colores por tipo de terreno (índice = valor del byte de TerrainType). */
 const TERRAIN_COLORS = [
@@ -73,6 +73,12 @@ interface CityEntry {
   city: SceneCity;
 }
 
+interface BuildingEntry {
+  readonly sprite: Container;
+  readonly body: Graphics;
+  building: SceneBuilding;
+}
+
 interface ChunkEntry {
   readonly cx: number;
   readonly cy: number;
@@ -92,6 +98,7 @@ export class IsoScene {
   private readonly chunks = new Map<number, ChunkEntry>();
   private readonly units = new Map<number, UnitEntry>();
   private readonly cities = new Map<number, CityEntry>();
+  private readonly buildings = new Map<number, BuildingEntry>();
   // La clave incluye el dueño: cambiar de dueño obliga a redibujar, y comparar
   // la firma es más barato que reconstruir el gráfico.
   private readonly territoryShapes = new Map<number, { signature: string; graphic: Graphics }>();
@@ -197,15 +204,18 @@ export class IsoScene {
       this.pruneAbsent(this.units, update.units, (id) => this.removeUnit(id));
       this.pruneAbsent(this.cities, update.cities, (id) => this.removeCity(id));
       this.pruneAbsent(this.territoryShapes, update.territories, (id) => this.removeTerritory(id));
+      this.pruneAbsent(this.buildings, update.buildings, (id) => this.removeBuilding(id));
     } else {
       for (const id of update.removedUnits) this.removeUnit(id);
       for (const id of update.removedCities) this.removeCity(id);
       for (const id of update.removedTerritories) this.removeTerritory(id);
+      for (const id of update.removedBuildings) this.removeBuilding(id);
     }
 
     for (const unit of update.units) this.upsertUnit(unit);
     for (const city of update.cities) this.upsertCity(city);
     for (const territory of update.territories) this.upsertTerritory(territory);
+    for (const building of update.buildings) this.upsertBuilding(building);
   }
 
   private draw(): void {
@@ -299,6 +309,9 @@ export class IsoScene {
     for (const entry of this.cities.values()) {
       entry.sprite.visible = this.isVisible(entry.sprite.position.x, entry.sprite.position.y);
     }
+    for (const entry of this.buildings.values()) {
+      entry.sprite.visible = this.isVisible(entry.sprite.position.x, entry.sprite.position.y);
+    }
   }
 
   /**
@@ -358,7 +371,7 @@ export class IsoScene {
     if (!entry) {
       const sprite = new Container();
       const body = new Graphics();
-      paintUnitBody(body, unit.isOwn);
+      paintUnitBody(body, unit);
       sprite.addChild(body);
       // Aparece donde dice el servidor; el primer frame la lleva a la posición
       // interpolada por el reconciliador.
@@ -369,8 +382,12 @@ export class IsoScene {
       this.units.set(unit.id, entry);
       this.entityLayer.addChild(sprite);
       this.sortDirty = true;
-    } else if (entry.unit.isOwn !== unit.isOwn) {
-      paintUnitBody(entry.body, unit.isOwn);
+    } else if (
+      entry.unit.isOwn !== unit.isOwn ||
+      entry.unit.working !== unit.working ||
+      (entry.unit.carrying > 0) !== (unit.carrying > 0)
+    ) {
+      paintUnitBody(entry.body, unit);
     }
     entry.unit = unit;
     entry.sprite.alpha = unit.isSelected ? 1 : 0.9;
@@ -424,6 +441,39 @@ export class IsoScene {
     this.setDepth(entry.sprite, depthOf(city.centerX, city.centerY));
     // Una ciudad protegida se distingue de un vistazo.
     entry.sprite.alpha = city.presenceState === 'PROTECTED' ? 0.65 : 1;
+  }
+
+  /**
+   * Un edificio de la zona urbana: primitivas como el resto (frontend.md §6).
+   * En obras se dibuja sólo el contorno; completo, relleno con su tejado.
+   */
+  private upsertBuilding(building: SceneBuilding): void {
+    let entry = this.buildings.get(building.id);
+    if (!entry) {
+      const sprite = new Container();
+      const body = new Graphics();
+      sprite.addChild(body);
+      paintBuildingBody(body, building);
+      entry = { sprite, body, building };
+      this.buildings.set(building.id, entry);
+      this.entityLayer.addChild(sprite);
+      this.sortDirty = true;
+    } else if (entry.building.status !== building.status || entry.building.isOwn !== building.isOwn) {
+      paintBuildingBody(entry.body, building);
+    }
+    entry.building = building;
+    const iso = worldToIso(building.x, building.y);
+    entry.sprite.position.set(iso.x, iso.y);
+    entry.sprite.visible = this.isVisible(iso.x, iso.y);
+    this.setDepth(entry.sprite, depthOf(building.x, building.y));
+  }
+
+  private removeBuilding(id: number): void {
+    const entry = this.buildings.get(id);
+    if (!entry) return;
+    this.entityLayer.removeChild(entry.sprite);
+    entry.sprite.destroy({ children: true });
+    this.buildings.delete(id);
   }
 
   private removeCity(id: number): void {
@@ -507,12 +557,38 @@ function buildChunkGraphics(chunk: ChunkTerrain, chunkSize: number): Graphics {
   return g;
 }
 
-function paintUnitBody(body: Graphics, isOwn: boolean): void {
+function paintUnitBody(body: Graphics, unit: Pick<SceneUnit, 'isOwn' | 'working' | 'carrying'>): void {
   body
     .clear()
     .circle(0, -TILE_H / 3, 7)
-    .fill({ color: isOwn ? 0x4ea3ff : 0xff6b6b })
-    .stroke({ color: 0x0b1a2a, width: 1.5 });
+    .fill({ color: unit.isOwn ? 0x4ea3ff : 0xff6b6b })
+    .stroke({ color: unit.working ? 0x7a4a1e : 0x0b1a2a, width: unit.working ? 3 : 1.5 });
+  if (unit.carrying > 0) {
+    // Un tronco a la espalda: lleva madera de vuelta a la ciudad.
+    body.rect(4, -TILE_H / 3 - 9, 6, 4).fill({ color: 0x8b5a2b }).stroke({ color: 0x3b2410, width: 1 });
+  }
+}
+
+function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'status' | 'isOwn'>): void {
+  const color = building.isOwn ? 0xd8b36a : 0x9c7a55;
+  const w = TILE_W * 0.45;
+  const h = TILE_H * 0.7;
+  body.clear();
+  if (building.status === 'COMPLETE') {
+    body
+      .rect(-w / 2, -h, w, h)
+      .fill({ color })
+      .stroke({ color: 0x000000, width: 1, alpha: 0.4 })
+      .moveTo(-w / 2 - 2, -h)
+      .lineTo(0, -h - TILE_H * 0.45)
+      .lineTo(w / 2 + 2, -h)
+      .closePath()
+      .fill({ color: 0x8b3a2b })
+      .stroke({ color: 0x000000, width: 1, alpha: 0.4 });
+  } else {
+    // En obras: el andamio, sin relleno.
+    body.rect(-w / 2, -h, w, h).stroke({ color, width: 1.5, alpha: 0.9 });
+  }
 }
 
 function paintCityBody(body: Graphics, isOwn: boolean): void {

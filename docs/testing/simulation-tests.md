@@ -501,9 +501,13 @@ Reglas:
   depende de qué asigne una secuencia. El *golden* escribe `player:<ref>` donde iría el UUID.
 - **Mundo.** `terrain` es `grassland` (todo hierba) o `seeded` (`world.Generate` con `seed`, el generador
   real). `paint` pinta rectángulos de terreno encima, en orden. Cada jugador tiene una ciudad `ONLINE` en
-  su `city`; las unidades son `VILLAGER` en reposo. Un tile de partida intransitable invalida el escenario.
-- **Comandos.** `unit.move`, `unit.cancel_move`, `connect` y `disconnect`, los cuatro que hoy entran en la
-  simulación sin pasar por PostgreSQL. El `requestId` de cada uno es determinista (su posición en la lista).
+  su `city`, con la población de sus unidades y, si el jugador declara `wood`, ese stock de madera inicial; las
+  unidades son `VILLAGER` en reposo. Un tile de partida intransitable invalida el escenario.
+- **Comandos.** `unit.move`, `unit.cancel_move`, `connect`, `disconnect` y, desde E1, `unit.gather` (unidad y
+  `target`), `city.build` (una casa en el tile `target` de la ciudad del jugador) y `city.train` (un aldeano). Los
+  de la economía escriben en un `EconomyStore` en memoria que acepta todo y da ids correlativos, de modo que sus
+  respuestas vuelven por el buzón como en producción. El `requestId` de cada uno es determinista (su posición
+  en la lista).
 - **Configuración.** `protectionCooldownSec` y `disconnectGraceSec` acortan la presencia para que un
   escenario la recorra entera en pocos cientos de ticks; por omisión valen lo que en producción (300 y 30).
 - Un escenario sin `runTicks`, con un `ref` repetido o desconocido, o con un comando fuera de
@@ -517,7 +521,7 @@ Un JSON con tres secciones, todas en orden determinista:
 |---|---|
 | `emitted` | Cada mensaje que la simulación emitió, con su tick, su destino (`chunk`, `chunks`, `chunk-except` o `player`), su tipo, su `requestId` y su payload completo |
 | `persisted` | El nombre de cada trabajo durable encolado, en orden |
-| `final` | Cada unidad (posición y estado), cada movimiento aún activo y la presencia de cada ciudad al terminar |
+| `final` | Cada unidad (posición y estado), cada movimiento aún activo y la presencia de cada ciudad al terminar; en los escenarios que usan la economía, además `economy` con la madera, la población y el límite de cada ciudad, las tareas vivas y los edificios (la clave no aparece en los demás, cuyo *golden* no cambia) |
 
 Además, el test ejecuta cada escenario **dos veces** y exige el mismo resultado byte a byte antes de
 compararlo con el *golden*: si la simulación dejara de ser determinista, el fallo diría eso y no «el
@@ -540,6 +544,7 @@ exacta de qué hace ahora distinto la simulación. Regenerarlo sin leer el diff 
 | Escenario | Qué ejercita |
 |---|---|
 | `trafico_mixto` | Dos jugadores en hierba con un bosque seguro y una montaña: movimientos simultáneos, un reemplazo a mitad de camino, una cancelación, rechazos (destino en montaña, unidad ajena), entrada y salida de una Safe Zone, y el ciclo de presencia completo (`ONLINE → OFFLINE_PENDING → PROTECTED → ONLINE`) |
+| `madera` | SPEC-ECON-WOOD: un aldeano a diez tiles de un bosque deposita en los ticks 224, 448, 671 y 895 (la línea temporal anclada a los instantes de llegada); otro empieza a recolectar y se le cancela con un `unit.move` a mitad de tramo; la ciudad entrena un aldeano con su madera inicial (nace en el tick 202) y construye una casa con la recolectada (completa en el 830, límite 25); el dueño se desconecta en el 700 y, con la ciudad `OFFLINE_PENDING` desde el 750, el viaje en curso termina con un depósito más y la unidad `IDLE` (`INV-ECON-006`) |
 
 ---
 

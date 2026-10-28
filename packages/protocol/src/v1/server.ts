@@ -8,6 +8,8 @@
 import { z } from 'zod';
 import {
   ActiveMovement,
+  BuildingStatus,
+  BuildingView,
   ChunkRef,
   ChunkTerrain,
   CityView,
@@ -15,6 +17,8 @@ import {
   EpochMs,
   PROTOCOL_VERSION,
   PresenceState,
+  ProductionView,
+  Stocks,
   TerritoryView,
   Tile,
   UnitStatus,
@@ -107,6 +111,8 @@ export const WorldSnapshot = z.object({
     units: z.array(UnitView),
     cities: z.array(CityView),
     territories: z.array(TerritoryView),
+    /** Edificios de esos chunks. */
+    buildings: z.array(BuildingView),
   }),
 });
 
@@ -135,6 +141,8 @@ export const EntityUpdate = z.object({
     cityId: EntityId.nullable().optional(),
     movement: ActiveMovement.nullable().optional(),
     garrisonCityId: EntityId.nullable().optional(),
+    /** Lo que lleva encima; 0 cuando lo deposita o lo pierde. */
+    carrying: z.number().int().min(0).optional(),
   }),
 });
 
@@ -159,6 +167,10 @@ export const CityUpdate = z.object({
     populationLimit: z.number().int().min(0).optional(),
     presenceState: PresenceState.optional(),
     protectionUntilMs: EpochMs.nullable().optional(),
+    /** Stock nuevo de la ciudad: tras un depósito, un encargo o una devolución. */
+    stocks: Stocks.optional(),
+    /** Entrenamiento en curso; `null` cuando termina. */
+    production: ProductionView.nullable().optional(),
   }),
 });
 
@@ -168,6 +180,29 @@ export const TerritoryUpdate = z.object({
   type: z.literal('territory.update'),
   payload: z.object({
     territory: TerritoryView,
+  }),
+});
+
+// ─────────────────────────────────────────────────────────────
+// Edificios
+// ─────────────────────────────────────────────────────────────
+
+/** Un edificio aparece en el área de interés: recién encargado o al entrar en vista. */
+export const BuildingSpawn = z.object({
+  ...serverEnvelope,
+  type: z.literal('building.spawn'),
+  payload: z.object({
+    building: BuildingView,
+  }),
+});
+
+/** Cambio de estado de un edificio conocido: hoy, que se completa. */
+export const BuildingUpdate = z.object({
+  ...serverEnvelope,
+  type: z.literal('building.update'),
+  payload: z.object({
+    id: EntityId,
+    status: BuildingStatus,
   }),
 });
 
@@ -253,6 +288,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
   UnitMovementStarted,
   UnitMovementCompleted,
   UnitMovementCancelled,
+  BuildingSpawn,
+  BuildingUpdate,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -270,6 +307,8 @@ export type UnitMoveRejected = z.infer<typeof UnitMoveRejected>;
 export type UnitMovementStarted = z.infer<typeof UnitMovementStarted>;
 export type UnitMovementCompleted = z.infer<typeof UnitMovementCompleted>;
 export type UnitMovementCancelled = z.infer<typeof UnitMovementCancelled>;
+export type BuildingSpawn = z.infer<typeof BuildingSpawn>;
+export type BuildingUpdate = z.infer<typeof BuildingUpdate>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -286,6 +325,8 @@ export const SERVER_MESSAGE_TYPES = [
   'unit.movement.started',
   'unit.movement.completed',
   'unit.movement.cancelled',
+  'building.spawn',
+  'building.update',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

@@ -11,7 +11,7 @@ import (
 )
 
 // INV-UNIT-002 e INV-UNIT-003: el estado decide, en un único punto, si una
-// unidad acepta una orden de movimiento. Tabla exhaustiva sobre los cinco
+// unidad acepta una orden de movimiento. Tabla exhaustiva sobre los seis
 // estados del esquema y uno que no existe.
 func TestEnsureCanMoveDecidePorEstado(t *testing.T) {
 	cases := []struct {
@@ -19,8 +19,9 @@ func TestEnsureCanMoveDecidePorEstado(t *testing.T) {
 		want   error
 	}{
 		{unit.StatusIdle, nil},
-		{unit.StatusMoving, nil}, // la orden nueva reemplaza a la anterior
-		{unit.StatusHidden, nil}, // moverse revela, no está prohibido
+		{unit.StatusMoving, nil},  // la orden nueva reemplaza a la anterior
+		{unit.StatusHidden, nil},  // moverse revela, no está prohibido
+		{unit.StatusWorking, nil}, // la orden cancela la tarea y pierde la carga (RN-ECON-003)
 		{unit.StatusDead, unit.ErrDead},
 		{unit.StatusGarrisoned, unit.ErrGarrisoned},
 		{unit.Status("WALKING"), unit.ErrNotMovable},
@@ -61,7 +62,10 @@ func TestEnsureOwnedByComparaElDueno(t *testing.T) {
 func TestLookupSoloConoceElCatalogo(t *testing.T) {
 	def, err := unit.Lookup(unit.TypeVillager)
 	require.NoError(t, err)
-	assert.Equal(t, unit.Definition{Type: unit.TypeVillager, MaxHP: 40, BaseMsPerTile: 600, PopulationCost: 1}, def)
+	assert.Equal(t, unit.TypeVillager, def.Type)
+	assert.Equal(t, int32(40), def.MaxHP)
+	assert.Equal(t, int64(600), def.BaseMsPerTile)
+	assert.Equal(t, int32(1), def.PopulationCost)
 
 	for _, raro := range []unit.Type{"villager", "", "TOWN_CENTER", "KNIGHT"} {
 		_, err := unit.Lookup(raro)
@@ -70,11 +74,27 @@ func TestLookupSoloConoceElCatalogo(t *testing.T) {
 }
 
 func TestLosEstadosDelDominioSonLosDelEsquema(t *testing.T) {
-	// El CHECK units_status_valid admite exactamente estos cinco.
-	for _, s := range []unit.Status{unit.StatusIdle, unit.StatusMoving, unit.StatusGarrisoned, unit.StatusHidden, unit.StatusDead} {
+	// El CHECK units_status_valid admite exactamente estos seis (000006 añade
+	// WORKING).
+	for _, s := range []unit.Status{unit.StatusIdle, unit.StatusMoving, unit.StatusGarrisoned, unit.StatusHidden, unit.StatusWorking, unit.StatusDead} {
 		assert.True(t, s.Valid(), "%s", s)
 	}
 	for _, s := range []unit.Status{"idle", "", "WALKING"} {
 		assert.False(t, s.Valid(), "%q", s)
 	}
+}
+
+// SPEC-ECON-WOOD §4.5: los valores de equilibrio del aldeano viven en su
+// definición. Si cambian, cambian aquí y en ningún otro sitio.
+func TestElAldeanoRecolectaYSeEntrenaConLosValoresDelCatalogo(t *testing.T) {
+	def, err := unit.Lookup(unit.TypeVillager)
+	require.NoError(t, err)
+	assert.True(t, def.CanGather(), "RN-ECON-001: el aldeano recolecta")
+	assert.True(t, def.CanTrain(), "RN-ECON-010: el aldeano se entrena")
+	assert.Equal(t, int64(10_000), def.GatherWorkMs)
+	assert.Equal(t, int32(10), def.GatherCarry)
+	assert.Equal(t, int64(50), def.TrainCost.Amount)
+	assert.Equal(t, int64(20_000), def.TrainMs)
+	assert.False(t, unit.Definition{}.CanGather())
+	assert.False(t, unit.Definition{}.CanTrain())
 }

@@ -156,6 +156,44 @@ func (c *City) Occupies(x, y int32) bool {
 	return x >= minX && x <= maxX && y >= minY && y <= maxY
 }
 
+// SpawnRadius es la distancia Chebyshev al centro del anillo de nacimiento:
+// justo fuera de la muralla, adyacente a la zona urbana.
+const SpawnRadius int32 = 2
+
+// spawnOffsets es el orden fijo del anillo de nacimiento. No depende de ningún
+// mapa: dos ejecuciones eligen siempre el mismo tile.
+var spawnOffsets = [...]world.Tile{
+	{X: SpawnRadius, Y: 0}, {X: -SpawnRadius, Y: 0},
+	{X: 0, Y: SpawnRadius}, {X: 0, Y: -SpawnRadius},
+	{X: SpawnRadius, Y: SpawnRadius}, {X: -SpawnRadius, Y: -SpawnRadius},
+	{X: SpawnRadius, Y: -SpawnRadius}, {X: -SpawnRadius, Y: SpawnRadius},
+}
+
+// SpawnTilesAround devuelve, en su orden fijo, los ocho tiles del anillo de
+// nacimiento de un centro. Es el criterio con el que nacen los aldeanos
+// iniciales (founding), el tile de depósito de la madera (RN-ECON-004) y el
+// tile en el que nace un aldeano entrenado (RN-ECON-011): un solo sitio para
+// que los tres no puedan dejar de coincidir.
+func SpawnTilesAround(center world.Tile) []world.Tile {
+	out := make([]world.Tile, len(spawnOffsets))
+	for i, off := range spawnOffsets {
+		out[i] = world.Tile{X: center.X + off.X, Y: center.Y + off.Y}
+	}
+	return out
+}
+
+// FirstSpawnTile devuelve el primer tile del anillo de nacimiento que cumple
+// `free`, o false si ninguno. En el MVP las unidades no ocupan tile, así que
+// «libre» es transitable: terreno y murallas.
+func (c *City) FirstSpawnTile(free func(x, y int32) bool) (world.Tile, bool) {
+	for _, t := range SpawnTilesAround(c.Center()) {
+		if free(t.X, t.Y) {
+			return t, true
+		}
+	}
+	return world.Tile{}, false
+}
+
 // IsAdjacent indica si el tile toca la zona urbana en cualquiera de las ocho
 // direcciones, sin estar dentro de ella.
 //

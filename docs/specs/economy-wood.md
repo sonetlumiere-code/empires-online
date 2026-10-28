@@ -7,13 +7,13 @@ almacén, un edificio, una producción; nada más.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-ECON-WOOD` |
-| Estado | Accepted (2026-10-27; las preguntas de §10 quedaron decididas ese día). Nada implementado todavía. |
+| Estado | Accepted (2026-10-27; las preguntas de §10 quedaron decididas ese día). Implementada el mismo día en la rama `claude/slice-madera-0b24a4`, con su suite en verde; pasa a `Implemented` cuando esté en `main` con la CI en verde. Las decisiones de implementación que la spec dejaba abiertas están anotadas como «Precisión (2026-10-27)». |
 | Milestone | E1 Madera (primero después de M7; la implementación lo añade a milestones.md) |
 | Canon | §12 (persistencia), §16 (errores) |
 | Depende de | [unit.md](unit.md), [city.md](city.md), [movement.md](movement.md), [presence.md](presence.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola por entidad y compensaciones), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md) (toda escritura durable declara compensación). Un ADR nuevo sólo si la tarea persistente de §4.2 se adopta como patrón general. |
+| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola por entidad y compensaciones), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md) (toda escritura durable declara compensación), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (stock por deltas versionados, encargos en dos fases). La tarea persistente de §4.2 **no** se adopta como patrón general (ADR-023, «Fuera de esta decisión»). |
 | Reemplaza a | — |
-| Invariantes | familia `ECON`, que la implementación registra en `docs/invariants/` **antes** de escribir código (§8) |
+| Invariantes | Asigna `INV-ECON-001` a `INV-ECON-006` ([../invariants/economy.md](../invariants/economy.md)) e `INV-CITY-017`, que sustituye al derogado `INV-CITY-009` (§8) |
 
 ## 1. Objetivo
 
@@ -82,6 +82,26 @@ tramo termina (fase 3, llegadas) o cuando vence `phase_until_ms` (fase 5).
 | `RN-ECON-005` | **La tarea sólo empieza un viaje nuevo si la ciudad está `ONLINE`.** Con la ciudad en `OFFLINE_PENDING` o `PROTECTED`, el viaje en curso se termina (se deposita lo cargado) y la unidad queda `IDLE` en el tile de depósito. Es la lectura de «no es un idle game» ([vision.md](../product/vision.md) §7): la ausencia no acumula recursos. Ver pregunta abierta Q1. |
 | `RN-ECON-006` | Una nueva orden de `unit.gather` sobre una unidad que ya recolecta sustituye la tarea (cancela tramo y carga) en la misma transacción, igual que una orden de movimiento sustituye a la anterior. |
 
+**Precisión (2026-10-27).** Lo que la implementación decide dentro de estas reglas:
+
+- **La línea temporal se ancla a instantes absolutos**, no al tick que los observa: `WORKING` dura `workMs` desde
+  el instante exacto de llegada del tramo (`arrivalTimeMs`), y el tramo de vuelta empieza en `phase_until_ms`, y el
+  siguiente viaje en el instante del depósito. Es lo que hace que un reinicio no desplace nada (`INV-ECON-005`).
+- **El tile de depósito y el de nacimiento** son el primer tile transitable de `city.SpawnTilesAround`: los ocho
+  tiles a distancia 2 del centro, en el orden fijo con el que nacen los aldeanos iniciales. La fundación usa la
+  misma lista (`RN-ECON-004`, `RN-ECON-011`).
+- **Una unidad de un tipo que no recolecta** responde `UNIT_NOT_MOVABLE`: no hay código más preciso y hoy no
+  existe tal tipo (`RN-ECON-001`).
+- **«Guarnición cancela la tarea»** se cumple por vacuidad: `unit.garrison` exige la unidad `IDLE` (`RN-GARR`),
+  y una unidad con tarea está `MOVING` o `WORKING`, así que la orden se rechaza con `UNIT_NOT_MOVABLE` y la tarea
+  sigue. La transacción de entrada borra igualmente cualquier tarea, como defensa en profundidad (`RN-ECON-003`).
+- **«La ciudad está `ONLINE`»** de `RN-ECON-005` se lee como «la ciudad está `ONLINE` y su dueño tiene una
+  sesión viva o está dentro del margen de reconexión» (`INV-ECON-006`): tras un reinicio, una ciudad `ONLINE` sin
+  nadie conectado no recolecta ([presence.md](presence.md) §7.6). Un viaje cuyo depósito venció con el servidor
+  caído termina en el primer tick tras el arranque, con su depósito, y no empieza otro hasta que el dueño vuelve.
+- **Una muralla nueva** que deja el bosque de una unidad `WORKING` dentro de una ciudad recién fundada termina la
+  tarea (la unidad se aparta `IDLE`, `RN-CITY-022`).
+
 ### 4.3 Casa
 
 `buildings (id, city_id, type, x, y, status, completes_at_ms, created_at)`, `type IN ('HOUSE')`,
@@ -93,6 +113,12 @@ tramo termina (fase 3, llegadas) o cuando vence `phase_until_ms` (fase 5).
 | `RN-ECON-008` | El coste se **debita en la misma transacción** que inserta el edificio; si la escritura falla, el stock en RAM se restaura con una compensación que vuelve al loop (patrón de ADR-013). Nunca hay madera gastada sin edificio ni edificio sin madera gastada. |
 | `RN-ECON-009` | Al vencer `completes_at_ms` (fase 5), `status = COMPLETE` y `population_limit += 5`, escritos juntos en la fila de la ciudad y del edificio. `population_limit = eras.population_cap + 5 × casas completas`, siempre. |
 
+**Precisión (2026-10-27).** `buildings` lleva además `request_id` con `UNIQUE (city_id, request_id)`: es el
+`requestId` del encargo en la fila de su efecto que pide §7 ([ADR-014](../decisions/ADR-014-command-idempotency.md)).
+El encargo es **en dos fases** ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §2):
+el tick valida y reserva madera y tile; `building.spawn` sale cuando la transacción lo confirma, no antes. La
+finalización es optimista en la RAM y su escritura lleva compensación.
+
 ### 4.4 Entrenar un aldeano
 
 `city_productions (city_id PK, unit_type, completes_at_ms, created_at)`: una producción por ciudad.
@@ -102,6 +128,15 @@ tramo termina (fase 3, llegadas) o cuando vence `phase_until_ms` (fase 5).
 | `RN-ECON-010` | `city.train { cityId, type: VILLAGER }` exige ciudad propia, sin producción en curso (`CITY_BUSY`), `population + 1 <= population_limit` (`POPULATION_LIMIT_REACHED`) y `amount >= cost` (`INSUFFICIENT_RESOURCES`). La población se **reserva al ordenar**: `population += 1` en la misma transacción que el débito y la inserción. |
 | `RN-ECON-011` | Al vencer `completes_at_ms`, nace un `VILLAGER` `IDLE` en el primer tile libre a `spawnRadius` del centro, como los tres iniciales, con `entity.spawn` al chunk; si no hay tile libre, espera al siguiente tick (misma espera que la salida de guarnición, RN-GARR-014). |
 | `RN-ECON-012` | Cancelar una producción no está en el slice: una vez ordenada, termina. |
+
+**Precisión (2026-10-27).** `city_productions` lleva además `request_id` (idempotencia del encargo) y `unit_id`,
+el aldeano que produjo: `NULL` en curso. El aldeano **nace cuando la base le da su id**: la fase 5 decide el
+nacimiento al vencer `completes_at_ms` y su transacción inserta la unidad y la apunta en `unit_id`, y el loop la
+incorpora con `entity.spawn` en cuanto vuelve la respuesta, una ida y vuelta a la base después. Los ids de
+`units` comparten secuencia con la fundación, que escribe fuera del loop, y el loop no puede asignarlos como
+asigna los de los movimientos (ADR-023 §3). La fila terminada se queda hasta el siguiente encargo, que la
+sustituye. Como la población se reserva al ordenar, `INV-CITY-009` deja de ser cierto tal como estaba escrito:
+lo sustituye `INV-CITY-017`.
 
 ### 4.5 Valores iniciales
 
@@ -149,6 +184,13 @@ encargada*, *aldeano entrenado*.
 Los esquemas Zod son la fuente ([ADR-009](../decisions/ADR-009-shared-protocol-package.md)); los payloads de
 esta tabla son orientativos hasta que existan allí.
 
+**Precisión (2026-10-27).** Tal como quedaron en `packages/protocol` ([websocket-protocol.md](websocket-protocol.md)
+§7.8–7.10, §8.15–8.16): `building.spawn` es `{ building: BuildingView }`, como `entity.spawn { unit }` y
+`territory.update { territory }`, no un payload plano; `CityView` lleva también `stocks` y `production`
+(`{ unitType, completesAtMs } | null`), para que el snapshot traiga el stock y el entrenamiento en curso, y
+`city.update` admite `production` (`null` al terminar); `carrying` sólo viaja con carga en `UnitView`, y en
+`entity.update` con su valor nuevo (0 al depositar o perder la carga).
+
 ## 7. Persistencia
 
 | Pregunta (canon §12) | Respuesta |
@@ -161,16 +203,37 @@ esta tabla son orientativos hasta que existan allí.
 Migración `000006`: `city_stocks`, `unit_tasks`, `buildings`, `city_productions`, el valor `WORKING` en
 `units_status_valid`, y el `down` que las retira.
 
-## 8. Invariantes (a registrar al aceptar la spec)
+**Precisión (2026-10-27).** El stock se escribe por **deltas versionados** ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §1):
+el volcado sólo suma depósitos y el único escritor que resta es el encargo, que lleva «depósitos pendientes −
+coste» en la transacción de su efecto. Así un débito nunca sale sin su efecto (`INV-ECON-002`) y la base, que va
+por detrás de la RAM hasta un volcado, no rechaza por error un encargo que la RAM sí cubre.
 
-| ID propuesto | Enunciado | Verificación |
+## 8. Invariantes
+
+Esta spec **asigna** la familia `INV-ECON` (`001` a `006`), registrada en
+[../invariants/economy.md](../invariants/economy.md) antes de escribir código, e
+[INV-CITY-017](../invariants/city.md#inv-city-017), que sustituye a
+[INV-CITY-009](../invariants/city.md#inv-city-009): la reserva de población de `RN-ECON-010` hace que
+`population` cuente también las producciones en curso, y el enunciado antiguo quedó derogado por
+[ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md). **Cita**
+[INV-CITY-002](../invariants/city.md#inv-city-002) e [INV-CITY-003](../invariants/city.md#inv-city-003), de
+la que `INV-ECON-004` es la fórmula concreta.
+
+| ID | Enunciado | Verificación |
 |---|---|---|
-| `ECON-001` | `city_stocks.amount >= 0` siempre; un débito nunca deja el stock negativo. | `CHECK` en base + test de integración que intenta gastar más de lo que hay. |
-| `ECON-002` | Todo débito de madera ocurre en la misma transacción que el efecto que lo justifica. | Test de integración con fallo inyectado al insertar el edificio: el stock no cambia. |
-| `ECON-003` | Una unidad tiene como mucho una tarea, y sólo una unidad `WORKING` tiene tarea en fase `WORKING`. | PK de `unit_tasks` + `loadcheck`. |
-| `ECON-004` | `population_limit == eras.population_cap + 5 × casas COMPLETE` para toda ciudad. | `loadcheck` al arrancar + test de simulación. |
-| `ECON-005` | Una tarea, un edificio o una producción a medias sobrevive a un reinicio y termina en el mismo instante absoluto en que habría terminado. | Tests de recuperación en cada fase. |
-| `ECON-006` | Ningún viaje nuevo empieza con la ciudad fuera de `ONLINE`. | Test de simulación: desconexión a mitad de viaje → un depósito más y `IDLE`. |
+| [INV-ECON-001](../invariants/economy.md#inv-econ-001) | `city_stocks.amount >= 0` siempre; un débito nunca deja el stock negativo. | `CHECK` en base + test de integración que intenta gastar más de lo que hay. |
+| [INV-ECON-002](../invariants/economy.md#inv-econ-002) | Todo débito de madera ocurre en la misma transacción que el efecto que lo justifica. | Test de integración con fallo inyectado al insertar el edificio: el stock no cambia. |
+| [INV-ECON-003](../invariants/economy.md#inv-econ-003) | Una unidad tiene como mucho una tarea, y está `WORKING` si y sólo si su tarea está en fase `WORKING`. | PK de `unit_tasks` + `loadcheck`. |
+| [INV-ECON-004](../invariants/economy.md#inv-econ-004) | `population_limit == eras.population_cap + 5 × casas COMPLETE` para toda ciudad. | `loadcheck` al arrancar + test de simulación. |
+| [INV-ECON-005](../invariants/economy.md#inv-econ-005) | Una tarea, un edificio o una producción a medias sobrevive a un reinicio y termina en el mismo instante absoluto en que habría terminado. | Tests de recuperación en cada fase. |
+| [INV-ECON-006](../invariants/economy.md#inv-econ-006) | Ningún viaje nuevo empieza con la ciudad fuera de `ONLINE` ni con su dueño ausente. | Test de simulación: desconexión a mitad de viaje → un depósito más y `IDLE`. |
+| [INV-CITY-017](../invariants/city.md#inv-city-017) | `population` es el recuento de unidades vivas más las producciones en curso. | `loadcheck` al arrancar + tests de integración del encargo y el nacimiento. |
+
+**Precisión (2026-10-27).** `INV-ECON-003` se registra como bicondicional (`WORKING` si y sólo si la tarea está
+en `WORKING`), que es lo que la frase original implica para que una unidad `WORKING` no quede parada sin
+temporizador. `INV-ECON-006` añade «ni con su dueño ausente»: tras un reinicio una ciudad que estaba `ONLINE`
+se queda `ONLINE` aunque nadie se conecte ([presence.md](presence.md) §7.6), y sin esa mitad sus aldeanos
+recolectarían indefinidamente, que es justo lo que Q1 descarta.
 
 ## 9. Tests esperados
 

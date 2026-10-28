@@ -35,14 +35,16 @@ y su relación con el resto del modelo.
 
 **Fuera de MVP (no se implementa; se documenta el punto de extensión)**
 
-- Tabla general de edificios: el canon §11 fija las tablas del MVP y no incluye `buildings`. En MVP el
-  `TOWN_CENTER` no es una fila, es el tile central de la ciudad. `Fuera de MVP`.
-- Modificadores de `population_limit` por edificios: la fórmula los contempla, el MVP los evalúa a cero
-  (canon §10: "sin modificadores en MVP").
+- Edificios distintos de la casa: desde E1 existe `buildings` con un único tipo, `HOUSE`, dentro de la zona
+  urbana ([economy-wood.md](economy-wood.md)). El `TOWN_CENTER` sigue sin ser una fila: es el tile central de
+  la ciudad. Otros edificios, `Fuera de MVP`.
+- Modificadores de `population_limit` por edificios distintos de la casa: la fórmula los contempla (§6.3) y
+  hoy el único es la casa completa, +5 (`RN-ECON-009`).
 - Avance de era, fundación de ciudades adicionales, renombrado, conquista, destrucción y transferencia de
   ownership: `TBD (fuera de MVP)`.
-- Almacenes, recursos, producción y entrenamiento de unidades: no existe mensaje `unit.train` en el canon §13.
-  `Fuera de MVP`.
+- Almacenes con capacidad, recursos distintos de la madera y colas de producción: `Fuera de MVP`. Desde E1 la
+  ciudad tiene stock de madera (`city_stocks`) y entrena un aldeano a la vez con `city.train`
+  ([economy-wood.md](economy-wood.md)).
 - Asedio y combate sobre ciudades: `Fuera de MVP` (ver [presence.md](presence.md) §6 para la regla de
   protección y su punto de aplicación futuro).
 
@@ -169,13 +171,13 @@ y su byte en `world_chunks`. Ver [movement.md](movement.md) y
 
 | ID | Regla |
 |---|---|
-| `RN-CITY-012` | `population` es el número de unidades vivas asociadas a la ciudad. **No se lleva a mano**: `CityRepo.UpdatePopulation` la recalcula con `SET population = COALESCE((SELECT count(*) FROM units u WHERE u.city_id = c.id AND u.status <> 'DEAD'), 0)` dentro de la misma transacción que crea o destruye unidades. Los estados `IDLE`, `MOVING`, `GARRISONED` y `HIDDEN` cuentan; `DEAD` no. Una unidad guarnecida cuenta en su ciudad de origen, no en la anfitriona: guarnecer no cambia `units.city_id` ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4). |
+| `RN-CITY-012` | `population` es el número de unidades vivas asociadas a la ciudad **más sus producciones en curso** (E1: la plaza se reserva al ordenar el entrenamiento, `RN-ECON-010`). **No se lleva a mano**: el alta la fija con `CityRepo.UpdatePopulation` (`SET population = COALESCE((SELECT count(*) FROM units u WHERE u.city_id = c.id AND u.status <> 'DEAD'), 0)`), la transacción de `city.train` le suma la plaza que reserva, y la del nacimiento la pasa de la producción a la unidad sin cambiarla ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). Los estados `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN` y `WORKING` cuentan; `DEAD` no. Una unidad guarnecida cuenta en su ciudad de origen, no en la anfitriona: guarnecer no cambia `units.city_id` ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4). |
 | `RN-CITY-013` | Cada unidad consume 1 punto de población en MVP, porque el único `unit_type` del MVP es `VILLAGER` (canon §10). Una tabla de coste poblacional por tipo de unidad es `Fuera de MVP`. |
-| `RN-CITY-014` | `population_limit = era.population_cap + Σ(modificadores de edificios)`. En MVP el sumatorio es **cero** (canon §10), luego `population_limit == eras.population_cap` de la era de la ciudad. |
+| `RN-CITY-014` | `population_limit = era.population_cap + Σ(modificadores de edificios)`. Desde E1 el sumatorio es **5 por casa `COMPLETE`** de la ciudad (`RN-ECON-009`, [INV-ECON-004](../invariants/economy.md#inv-econ-004)); una ciudad sin casas tiene exactamente `eras.population_cap` de su era. El cálculo vive en `building.PopulationLimit`. |
 | `RN-CITY-015` | `eras.population_cap` se lee de la tabla `eras`, **nunca** de una constante en código: `STONE_AGE`=20, `BRONZE_AGE`=50, `IRON_AGE`=100, `CASTLE_AGE`=150 (canon §10). El código no contiene esos literales; la tabla se siembra por migración. |
-| `RN-CITY-016` | `population_limit` se materializa como columna de `cities` (lectura barata para `city.update`) y se recalcula en cada transacción que pueda alterarlo: creación de la ciudad y cambio de era (`Fuera de MVP`). Es un caché derivado, y [`INV-CITY-003`](../invariants/city.md#inv-city-003) lo verifica. |
+| `RN-CITY-016` | `population_limit` se materializa como columna de `cities` (lectura barata para `city.update`) y se recalcula en cada transacción que pueda alterarlo: creación de la ciudad, finalización de una casa (suma su bono en la misma transacción que la marca `COMPLETE`) y cambio de era (`Fuera de MVP`). Es un caché derivado, y [`INV-CITY-003`](../invariants/city.md#inv-city-003) e [`INV-ECON-004`](../invariants/economy.md#inv-econ-004) lo verifican al arrancar. |
 | `RN-CITY-017` | Toda operación que incremente la población valida **antes de escribir** que `population + coste <= population_limit` (guard de dominio `City.HasPopulationRoom(n)`). Si no cabe, la operación se rechaza entera con `POPULATION_LIMIT_REACHED` y no se escribe nada. La validación ocurre dentro de la misma transacción que la escritura, para que no haya carrera entre dos comandos concurrentes; `cities.version` da la concurrencia optimista y el `CHECK cities_population_within_limit` es la última línea de defensa. |
-| `RN-CITY-018` | En MVP la única operación que incrementa la población es el bootstrap (3 aldeanos contra un cap de 20), de modo que `POPULATION_LIMIT_REACHED` **no es alcanzable en juego normal**. Lo que existe es el predicado `City.HasPopulationRoom`, con su test (`TestLimiteDePoblacion`), y el `CHECK cities_population_within_limit`, que es la guarda real (`TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`). **Ninguna operación llama al predicado** ni emite el código: el bootstrap no lo necesita, porque tres aldeanos caben en el cap de cualquier era. Lo usará la primera operación que añada población; el entrenamiento de unidades es `Fuera de MVP`. |
+| `RN-CITY-018` | Hasta E1 la única operación que incrementaba la población era el bootstrap (3 aldeanos contra un cap de 20) y `POPULATION_LIMIT_REACHED` no era alcanzable en juego normal. Desde E1 lo es: `city.train` lo responde cuando `population + 1 > population_limit` (`RN-ECON-010`), con la plaza reservada al ordenar y el `CHECK cities_population_within_limit` como última barrera de esa transacción. |
 
 ### 6.4 Ownership
 
@@ -213,7 +215,7 @@ En MVP una ciudad, una vez creada, existe para siempre.
 | Código | Condición exacta | Notas |
 |---|---|---|
 | `CITY_NOT_FOUND` | Se referencia un `cities.id` inexistente o no visible para el solicitante. | Se usa también para no filtrar existencia de ciudades fuera del área de interés. |
-| `POPULATION_LIMIT_REACHED` | Una operación incrementaría `population` por encima de `population_limit`. | Ver `RN-CITY-017`. No alcanzable en juego normal en MVP (`RN-CITY-018`). |
+| `POPULATION_LIMIT_REACHED` | Una operación incrementaría `population` por encima de `population_limit`. | Ver `RN-CITY-017`. Desde E1 lo responde `city.train` (`RN-CITY-018`). |
 | `CITY_PROTECTED` | Acción hostil contra una ciudad con `presence_state = 'PROTECTED'`. | Punto de aplicación en [presence.md](presence.md) §6. El combate está `Fuera de MVP`. |
 | `FORBIDDEN` | Operación sobre una ciudad que no pertenece al jugador de la sesión. | |
 | `INVALID_MESSAGE` | Nombre de ciudad fuera de rango o mal formado, coordenadas ausentes. | `details` indica el campo. |
@@ -222,7 +224,7 @@ En MVP una ciudad, una vez creada, existe para siempre.
 | `INTERNAL_ERROR` | Fallo de transacción o violación de invariante detectada en runtime. | |
 | `NOT_IMPLEMENTED` | Fundación adicional, renombrado, avance de era, cesión. | Todo `Fuera de MVP`. |
 
-Los nueve códigos anteriores pertenecen al catálogo cerrado de 22 del protocolo WebSocket
+Los nueve códigos anteriores pertenecen al catálogo cerrado de 24 del protocolo WebSocket
 (`internal/protocol/codes.go`, verificado contra `@empires-online/protocol` por un contract test). El alta de
 jugador, en cambio, la sirve `apps/web` sobre HTTP (`POST /api/auth/register`, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) y usa códigos
 **propios de esa API**, que no están en el catálogo y no deben confundirse con él: `NO_SITE_AVAILABLE` (409, `RN-CITY-006`),
@@ -242,7 +244,7 @@ protección son `INV-CITY-011..016` y viven en [presence.md](presence.md).
 |---|---|---|
 | [`INV-CITY-001`](../invariants/city.md#inv-city-001) | Una ciudad tiene exactamente un owner. | `RN-CITY-019..021`; `owner_player_id NOT NULL` + FK a `players (id)`. |
 | [`INV-CITY-002`](../invariants/city.md#inv-city-002) | `0 <= population <= population_limit`. | `RN-CITY-017`; `CHECK cities_population_within_limit` y `CHECK (population >= 0)`. |
-| [`INV-CITY-003`](../invariants/city.md#inv-city-003) | `population_limit` deriva de la era vigente. | `RN-CITY-014..016`; en MVP `population_limit == eras.population_cap`. |
+| [`INV-CITY-003`](../invariants/city.md#inv-city-003) | `population_limit` deriva de la era vigente. | `RN-CITY-014..016`; desde E1, con el bono de las casas completas ([INV-ECON-004](../invariants/economy.md#inv-econ-004)). |
 | [`INV-CITY-004`](../invariants/city.md#inv-city-004) | El dominio de `presence_state` es cerrado. | `CHECK cities_presence_state_valid` + el tipo `city.PresenceState` con `Valid()`. |
 | [`INV-CITY-005`](../invariants/city.md#inv-city-005) | Solo transiciones permitidas de `presence_state`. | §7; el autómata es `city.CanTransition`. Detalle en [presence.md](presence.md). |
 | [`INV-CITY-006`](../invariants/city.md#inv-city-006) | Una ciudad protegida rechaza las acciones prohibidas. | Error `CITY_PROTECTED` de §8; punto de aplicación en [presence.md](presence.md) §6.2. |
@@ -253,7 +255,7 @@ protección son `INV-CITY-011..016` y viven en [presence.md](presence.md).
 | ID | Invariante | Verificación |
 |---|---|---|
 | `INV-CITY-008` | Las zonas urbanas de dos ciudades distintas **nunca** comparten un tile en el overlay de ocupación. | `UNIQUE (center_x, center_y)` (`cities_unique_center`) más `minCityDistance = 24` en `founding.FindSite`, muy por encima del tamaño 3×3 de la zona; test que crea N ciudades y verifica que ningún tile del overlay se marca dos veces. |
-| `INV-CITY-009` | `population` coincide siempre con el número de unidades no `DEAD` de la ciudad tras cada transacción confirmada. | `CityRepo.UpdatePopulation` recalcula desde `units` en la misma transacción; test de integración que compara la columna con el conteo real. |
+| `INV-CITY-009` | ~~`population` coincide siempre con el número de unidades no `DEAD` de la ciudad tras cada transacción confirmada.~~ **Derogado** por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md): la sustituye [INV-CITY-017](../invariants/city.md#inv-city-017), que cuenta también las producciones en curso. | Ver `RN-CITY-012`. |
 | `INV-CITY-010` | El `TerrainType` de un tile **nunca** cambia por la existencia de una ciudad: `world_chunks` regenerado desde `EO_WORLD_SEED` es idéntico byte a byte antes y después de fundar ciudades. | Fundar solo llama a `World.SetBlocked`, que escribe el overlay y no el array de terreno; test de recovery con hash del chunk antes y después. |
 
 Nota sobre «un jugador, una ciudad»: es una regla del MVP que se sostiene en el dominio
@@ -418,9 +420,11 @@ Reglas de difusión:
   `protection_until = NULL`.
 - Los esquemas servidor→cliente **no** son estrictos: pueden ganar campos opcionales sin romper clientes
   antiguos. Los de cliente→servidor sí lo son (`additionalProperties: false`).
-- El cliente **nunca** envía `city.update` ni ningún comando que altere la ciudad: los siete mensajes
-  cliente→servidor de la v1 son `session.hello`, `session.ping`, `session.view`, `unit.move`,
-  `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`. Guarnecer tampoco la altera: la unidad sigue
+- El cliente **nunca** envía `city.update` ni ningún estado de la ciudad. Desde E1 hay dos comandos que la
+  afectan, `city.build` y `city.train`, y ninguno lleva cantidades, costes ni tiempos: sólo el tipo y, al
+  construir, el tile ([economy-wood.md](economy-wood.md)). Los diez mensajes cliente→servidor de la v1 son
+  `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`,
+  `unit.ungarrison`, `unit.gather`, `city.build` y `city.train`. Guarnecer tampoco la altera: la unidad sigue
   contando en la población de su ciudad de origen, y no se emite `city.update`
   ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4).
 

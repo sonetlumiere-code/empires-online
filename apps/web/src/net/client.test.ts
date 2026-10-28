@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { v1 } from '@empires-online/protocol';
+import { v1 } from '@empires-online/protocol';
 
 import { GameClient, type WebSocketLike } from './client';
 
@@ -167,6 +167,24 @@ describe('comandos', () => {
     expect(entrar!.payload).toEqual({ unitId: 42, cityId: 7 });
     expect(salir!.type).toBe('unit.ungarrison');
     expect(salir!.payload, 'el tile de salida lo elige el servidor').toEqual({ unitId: 42 });
+  });
+
+  it('los comandos de economía envían sólo la intención y validan contra el contrato', async () => {
+    const { client, socket } = await ready();
+    client.gatherWood(42, { x: 22, y: 10, terrain: 'FOREST' } as { x: number; y: number });
+    client.buildHouse(7, { x: 9, y: 9 });
+    client.trainVillager(7);
+
+    const [recolectar, construir, entrenar] = socket.parsedSent();
+    expect(recolectar!.type).toBe('unit.gather');
+    expect(recolectar!.payload, 'ni carga, ni ruta, ni tiempos').toEqual({ unitId: 42, target: { x: 22, y: 10 } });
+    expect(construir!.type).toBe('city.build');
+    expect(construir!.payload, 'ni coste ni tiempo').toEqual({ cityId: 7, type: 'HOUSE', x: 9, y: 9 });
+    expect(entrenar!.type).toBe('city.train');
+    expect(entrenar!.payload).toEqual({ cityId: 7, type: 'VILLAGER' });
+    for (const m of [recolectar, construir, entrenar]) {
+      expect(v1.parseClientMessage(m).ok, String(m!.type)).toBe(true);
+    }
   });
 
   it('cada comando lleva un requestId distinto', async () => {

@@ -1,6 +1,6 @@
 # Milestones
 
-Detalle ejecutable de M0 a M7: alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
+Detalle ejecutable de M0 a M7 y del primer milestone posterior, E1: alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
 
 ## Cómo leer este documento
 
@@ -1232,6 +1232,95 @@ nunca el cliente. `EJE-PERSIST` para treaties y garrisons.
 
 ---
 
+## E1 — Madera
+
+**Estado: EN CURSO — implementado en la rama `claude/slice-madera-0b24a4` (2026-10-27) con la suite completa en
+verde (unit, integration contra PostgreSQL y Redis reales, contract, e2e, Vitest y `next build`); falta verificar
+en vivo el cliente y el paso de recolección del humo, y fusionar.** Primer milestone después del vertical slice, y el primero de la fase «Economy» de
+[roadmap.md](roadmap.md) §5. Su contrato es [SPEC-ECON-WOOD](../specs/economy-wood.md), aceptada el
+2026-10-27 con sus seis decisiones de producto.
+
+**Objetivo.** Que el jugador tenga algo que hacer durante más de dos minutos y una razón para volver: mandar
+aldeanos a por madera, gastarla en una casa que sube el tope de población y entrenar aldeanos con los que
+recolectar más.
+
+**Alcance.** Un recurso (`WOOD`) almacenado por ciudad, la tarea de recolección `GATHER_WOOD` con el estado de
+unidad `WORKING`, la casa (`HOUSE`) en la zona urbana 3×3, el entrenamiento de un `VILLAGER` a la vez por
+ciudad, y la recuperación de todo ello tras un reinicio. **No entra** (spec §2): otros recursos, agotamiento del
+bosque, capacidad de almacén, aldeanos constructores, colas de producción, edificios fuera del 3×3, robo de
+madera.
+
+### Entregables
+
+1. **HECHO** — Registro de la familia `INV-ECON` ([../invariants/economy.md](../invariants/economy.md)),
+   derogación de `INV-CITY-009` y su sustituto `INV-CITY-017`, y
+   [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md), antes que el código.
+2. **HECHO** — Migración `000006`: `city_stocks`, `unit_tasks`, `buildings`, `city_productions` y el valor
+   `WORKING` en `units_status_valid`, con su `down` reversible.
+3. **HECHO** — Dominio puro: `internal/domain/economy` (stock y costes), `internal/domain/building` (casa,
+   emplazamiento, fórmula del límite), `internal/domain/production` (entrenamiento) e `internal/domain/task`
+   (máquina de estados de `GATHER_WOOD`), con los valores de la spec §4.5 en los catálogos de código.
+4. **HECHO** — `unit.gather` y la tarea en la simulación: tramos como movimientos normales, la fase 3
+   decide al llegar y la fase 5 al vencer `phase_until_ms`; el depósito marca el stock sucio; ningún viaje nuevo
+   con el dueño ausente (`RN-ECON-005`).
+5. **HECHO** — `city.build` y `city.train` en dos fases ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)):
+   el tick valida y reserva, la transacción debita y escribe el efecto, el resultado vuelve por el buzón.
+6. **HECHO** — Finalización de casas (`population_limit + 5`) y nacimiento del aldeano en la fase 5.
+7. **HECHO** — `postgres.EconomyRepo` con una compensación declarada para cada escritura (ADR-022) y el
+   volcado de depósitos en la fase 8.
+8. **HECHO** — Arranque: la validación de carga repara `INV-ECON-003`, `INV-ECON-004` e `INV-CITY-017`;
+   `Hydrate` reanuda tareas, casas y producciones con sus instantes absolutos.
+9. **HECHO** — Protocolo v1: `unit.gather`, `city.build`, `city.train`, `building.spawn`, `building.update`,
+   `buildings[]` en `world.snapshot`, `stocks` en `city.update` y `CityView`, `WORKING`, `carrying`, y los
+   códigos `INSUFFICIENT_RESOURCES` y `CITY_BUSY`.
+10. **HECHO** — Manejadores WebSocket de los tres comandos, clasificados según
+    [ADR-016](../decisions/ADR-016-foreign-territory-actions.md).
+11. **PARCIAL** — Cliente: contador de madera, botones «Casa» y «Aldeano», orden de recolección sobre un
+    bosque, edificios y unidad `WORKING` en la escena. Implementado con tests de lo puro, del store y de la
+    proyección ([../architecture/frontend.md](../architecture/frontend.md) §4.4); la escena y el HUD no se han
+    visto en un navegador contra un servidor vivo.
+12. **PARCIAL** — Escenario golden `madera` (**hecho**, `TestLosEscenariosReproducenSuGolden`) y un viaje de
+    recolección completo en `scripts/smoke.mjs` (escrito, con `elegirBosque` probado; sin ejecutar contra un
+    servidor vivo).
+
+### Tests
+
+Los de la spec §9: *unit* de cada regla `RN-ECON-*` y de la máquina de estados; *simulation* con el golden
+`madera` y la desconexión a mitad de viaje; *recovery* en cada fase de la tarea, en una construcción y en un
+entrenamiento; *integration* de los `CHECK`, la PK y los `UNIQUE`, del débito con fallo inyectado y de la
+idempotencia por `requestId`; *contract* de los mensajes y códigos nuevos; *e2e* de los tres flujos; y del
+cliente, el store, los selectores y la decisión entre recolectar y mover.
+
+### Documentación actualizada al cerrar
+
+[../specs/economy-wood.md](../specs/economy-wood.md), [../specs/unit.md](../specs/unit.md) (`WORKING`),
+[../specs/city.md](../specs/city.md) (`population_limit` con casas),
+[../specs/websocket-protocol.md](../specs/websocket-protocol.md),
+[../database/schema.md](../database/schema.md), [../architecture/networking.md](../architecture/networking.md),
+[../architecture/frontend.md](../architecture/frontend.md), [../invariants/economy.md](../invariants/economy.md).
+
+### Invariantes cubiertos
+
+`INV-ECON-001` a `INV-ECON-006` e `INV-CITY-017`. `EJE-SEC`: el cliente envía el bosque, el tipo de edificio y
+el tile, nunca cantidades, costes ni tiempos. `EJE-PERSIST` para stocks, tareas, edificios y producciones.
+
+### Aceptación
+
+1. `unit.gather` sobre un bosque produce `unit.movement.started`, después `entity.update` con `WORKING` y, tras
+   el viaje de vuelta, `city.update` con `stocks.WOOD` aumentado en 10.
+2. `unit.gather` sobre un tile que no es `FOREST` devuelve `system.error` con `INVALID_TARGET`.
+3. `city.build` con madera suficiente produce `building.spawn` y, 15 s después, `building.update` con
+   `COMPLETE` y `city.update` con `populationLimit` cinco mayor.
+4. `city.build` o `city.train` sin madera devuelve `INSUFFICIENT_RESOURCES` y el stock no cambia, en la RAM ni
+   en la base.
+5. Un segundo `city.train` con una producción en curso devuelve `CITY_BUSY`.
+6. `city.train` termina con `entity.spawn` de un `VILLAGER` `IDLE` junto a la ciudad.
+7. Con el dueño desconectado a mitad de viaje, la unidad deposita una vez más y queda `IDLE`.
+8. Tras un reinicio a mitad de cada fase, lo que estaba en curso termina en su instante absoluto.
+9. El golden `madera` se reproduce y la CI está en verde.
+
+---
+
 ## Dependencias y paralelización
 
 ### Dependencias estrictas
@@ -1252,6 +1341,7 @@ terminado y en la rama principal.
 | M5 → M6 | El overlay de territorio y las safe zones comparten la capa de consulta espacial y la fase 5 del tick. |
 | M4 → M7 | El garrison cancela movimientos y depende de `EJE-MOVE`. |
 | M6 → M7 | Un treaty regula qué se puede hacer en el territorio de otro. |
+| M7 → E1 | La economía se apoya en la presencia (M5), el movimiento (M4) y la cola de persistencia con sus compensaciones; E1 empieza con el vertical slice cerrado. |
 
 ### Trabajo paralelizable
 

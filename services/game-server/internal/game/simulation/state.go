@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
@@ -80,6 +81,25 @@ type State struct {
 	// reintentan en la fase 5 (RN-GARR-014).
 	pendingExits map[int64]exitRequest
 
+	// Economía (SPEC-ECON-WOOD, ADR-023). economies es la de cada ciudad:
+	// stock, depósitos sin volcar y producción. stockDirty son las ciudades
+	// con depósitos por volcar. tasks es la tarea de cada unidad
+	// (INV-ECON-003: una como mucho), con taskRev como contador de revisiones.
+	economies  map[int64]*cityEconomy
+	stockDirty map[int64]struct{}
+	tasks      map[int64]*taskEntry
+	taskRev    uint64
+	// buildings son los edificios confirmados por la base, indexados por id
+	// y por tile; buildingIDs, en orden, para recorrerlos de forma estable.
+	// pendingBuilds son los encargos cuya transacción no ha vuelto, por tile
+	// (RN-ECON-007 los cuenta como ocupados). pendingCompletions son las
+	// finalizaciones que la cola descartó (ADR-022).
+	buildings          map[int64]*building.Building
+	buildingAt         map[world.Tile]int64
+	buildingIDs        []int64
+	pendingBuilds      map[world.Tile]pendingBuild
+	pendingCompletions map[int64]struct{}
+
 	tick uint64
 }
 
@@ -101,6 +121,14 @@ func NewState(w *world.World) *State {
 		garrisonedIn:      make(map[int64]int64),
 		entering:          make(map[int64]struct{}),
 		pendingExits:      make(map[int64]exitRequest),
+
+		economies:          make(map[int64]*cityEconomy),
+		stockDirty:         make(map[int64]struct{}),
+		tasks:              make(map[int64]*taskEntry),
+		buildings:          make(map[int64]*building.Building),
+		buildingAt:         make(map[world.Tile]int64),
+		pendingBuilds:      make(map[world.Tile]pendingBuild),
+		pendingCompletions: make(map[int64]struct{}),
 	}
 }
 
@@ -153,6 +181,7 @@ func (s *State) RemoveUnit(id int64) {
 	s.unindexUnit(u)
 	delete(s.units, id)
 	delete(s.movements, id)
+	delete(s.tasks, id)
 	delete(s.unitDirty, id)
 	delete(s.concealCandidates, id)
 	s.unitIDs = removeSorted(s.unitIDs, id)

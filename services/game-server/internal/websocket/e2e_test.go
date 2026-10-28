@@ -271,6 +271,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		Persister:          syncPersister{},
 		Repos:              &memoryRepos{},
 		Garrisons:          memoryGarrisons{},
+		Economy:            &memoryEconomy{},
 		Inbox:              inbox.Offer,
 		Log:                log,
 		ProtectionCooldown: 300 * time.Second,

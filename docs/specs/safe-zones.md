@@ -265,7 +265,7 @@ Reglas de implementación que se derivan y son verificables en revisión de cód
 
 | ID | Regla |
 |---|---|
-| `RN-SAFE-008` | Ningún mensaje **cliente→servidor** de v1 menciona Safe Zones ni ocultamiento. El protocolo fija siete comandos (`session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`) y ninguno lleva información de zona. |
+| `RN-SAFE-008` | Ningún mensaje **cliente→servidor** de v1 menciona Safe Zones ni ocultamiento. El protocolo fija diez comandos (`session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`) y ninguno lleva información de zona. |
 | `RN-SAFE-009` | El servidor **no** emite unidades ocultas a terceros ni siquiera anonimizadas o con posición redondeada. La ausencia total es el único filtro seguro. |
 | `RN-SAFE-015` | La geometría de las Safe Zones se envía al cliente solo como decorado de mapa dentro del área de interés; que el jugador vea dónde hay bosque denso no le da ninguna ventaja, porque el estado de las unidades ajenas nunca sale del servidor. El mensaje que la transportaría es `TBD (fuera de MVP)`: el protocolo v1 no tiene ninguno. |
 | `RN-SAFE-016` | La pertenencia se recalcula desde el terreno autoritativo en cada arranque; no se confía siquiera en el índice persistido, porque es un derivado. |
@@ -389,8 +389,8 @@ eventos consultable sería, en sí mismo, una fuga de información si esa tabla 
 
 ## 12. Contratos de red
 
-No se introduce ningún tipo de mensaje nuevo: el protocolo v1 fija catorce mensajes
-servidor→cliente y las Safe Zones no añaden ninguno. Los payloads los fija Zod en
+No se introduce ningún tipo de mensaje nuevo: el protocolo v1 fija dieciséis mensajes
+servidor→cliente (catorce hasta E1) y las Safe Zones no añaden ninguno. Los payloads los fija Zod en
 `packages/protocol/src/v1/` y son la autoridad.
 
 | Situación | Propietario | Terceros del chunk |

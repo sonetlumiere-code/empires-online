@@ -15,8 +15,15 @@ import { GameClient, type ConnectionState } from '../src/net/client';
 import { login, register, ticketProvider, AuthError } from '../src/net/auth';
 import type { v1 } from '@empires-online/protocol';
 
-import { useWorldStore, type CityView } from '../src/state/world';
+import { terrainAt, useWorldStore, type CityView } from '../src/state/world';
 import { createHudSelector } from '../src/state/selectors';
+import {
+  buildingsOf,
+  decideTileOrder,
+  firstFreeHouseTile,
+  readableError,
+  secondsUntil,
+} from '../src/state/economy';
 import { ViewSync } from '../src/state/viewSync';
 import type { Point, Tile } from '../src/render/iso';
 
@@ -46,6 +53,18 @@ export default function Page() {
   const playerId = useWorldStore((s) => s.playerId);
   const hud = useWorldStore(selectHud);
   const lastError = useWorldStore((s) => s.lastError);
+  // La unidad seleccionada es un objeto inmutable que el store reemplaza al
+  // cambiar: suscribirse a ella re-renderiza sólo con sus propios deltas.
+  const selectedUnit = useWorldStore((s) => (s.selectedUnitId !== null ? s.units.get(s.selectedUnitId) : undefined));
+
+  // Un segundero mientras la ciudad entrena, para la cuenta atrás del HUD.
+  const [, setTick] = useState(0);
+  const training = hud.ownCity?.production ?? null;
+  useEffect(() => {
+    if (!training) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [training]);
 
   useEffect(() => () => clientRef.current?.disconnect(), []);
 
@@ -106,10 +125,21 @@ export default function Page() {
       // Un clic sobre la zona urbana de una ciudad (su 3 × 3) es la orden de
       // entrar en ella, como un clic sobre un edificio en la referencia. El
       // cliente sólo elige el objetivo; si se puede lo decide el servidor.
-      const ciudad = cityAt(tile);
-      if (ciudad) {
-        client.garrisonUnit(selectedUnitId, ciudad.id);
+      // Un clic sobre un bosque con un aldeano es la orden de recolectar en él
+      // (SPEC-ECON-WOOD, frontend.md §4.4). El cliente sólo elige la orden; si
+      // se puede lo decide el servidor.
+      const state = useWorldStore.getState();
+      const unit = state.units.get(selectedUnitId);
+      if (!unit) return;
+      const terrain = state.world ? terrainAt(state.terrain, state.world.chunkSize, tile.x, tile.y) : undefined;
+      const order = decideTileOrder(tile, unit, terrain, cityAt);
+      if (order.kind === 'garrison') {
+        client.garrisonUnit(selectedUnitId, order.cityId);
         selectUnit(null);
+        return;
+      }
+      if (order.kind === 'gather') {
+        client.gatherWood(selectedUnitId, tile);
         return;
       }
       // Sólo se envía la INTENCIÓN. La ruta, el tiempo y la validez los decide
@@ -180,6 +210,15 @@ export default function Page() {
 
   const { ownUnitCount, garrisoned, ownCity } = hud;
 
+  // «Casa»: el primer hueco libre del 3 × 3, sin pedir clic (frontend.md §4.4).
+  // Un clic en la zona urbana ya es la orden de guarnecerse.
+  const buildHouse = () => {
+    const state = useWorldStore.getState();
+    if (!ownCity) return;
+    const tile = firstFreeHouseTile(ownCity, buildingsOf(state.buildings, ownCity.id));
+    if (tile) clientRef.current?.buildHouse(ownCity.id, tile);
+  };
+
   return (
     <main style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <header style={styles.hud}>
@@ -196,6 +235,23 @@ export default function Page() {
               Población {ownCity.population}/{ownCity.populationLimit}
             </span>
             <span style={{ color: 'var(--muted)' }}>Presencia: {ownCity.presenceState}</span>
+            <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
+            <button className="secondary" onClick={buildHouse} title="Encarga una casa en el primer hueco libre junto al centro: +5 de población al terminar">
+              Casa
+            </button>
+            <button
+              className="secondary"
+              onClick={() => clientRef.current?.trainVillager(ownCity.id)}
+              disabled={ownCity.production !== null}
+              title="Entrena un aldeano en la ciudad"
+            >
+              Aldeano
+            </button>
+            {ownCity.production && (
+              <span style={{ color: 'var(--muted)' }}>
+                Entrenando aldeano: {secondsUntil(ownCity.production.completesAtMs, serverTimeMs())} s
+              </span>
+            )}
           </>
         )}
         {garrisoned.map((u) => (
@@ -210,7 +266,7 @@ export default function Page() {
         ))}
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
           {selectedUnitId !== null
-            ? `Unidad ${selectedUnitId} seleccionada — clic en el mapa para moverla, en una ciudad para guarnecerla`
+            ? `Unidad ${selectedUnitId}${describeUnit(selectedUnit)} — clic en el mapa para moverla, en un bosque para recolectar, en una ciudad para guarnecerla`
             : `${ownUnitCount} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H vuelve a la ciudad`}
         </span>
       </header>
@@ -226,13 +282,19 @@ export default function Page() {
 
       {lastError && (
         <footer style={{ ...styles.hud, borderTop: '1px solid var(--border)', borderBottom: 'none' }}>
-          <span style={{ color: 'var(--danger)' }}>
-            {lastError.code}: {lastError.message}
-          </span>
+          <span style={{ color: 'var(--danger)' }}>{readableError(lastError.code, lastError.message)}</span>
         </footer>
       )}
     </main>
   );
+}
+
+/** Lo que el HUD dice de la unidad seleccionada: si trabaja y cuánto lleva. */
+function describeUnit(u: { status: string; carrying: number } | undefined): string {
+  if (!u) return '';
+  if (u.status === 'WORKING') return ' (recolectando)';
+  if (u.carrying > 0) return ` (lleva ${u.carrying} de madera)`;
+  return '';
 }
 
 /** La ciudad cuya zona urbana (su 3 × 3) contiene el tile, si la hay. Se consulta al hacer clic, no por render. */

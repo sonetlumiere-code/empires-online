@@ -274,6 +274,134 @@
             "payload"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "unit.gather"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                },
+                "target": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/2/properties/payload/properties/center"
+                }
+              },
+              "required": [
+                "unitId",
+                "target"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "city.build"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "cityId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "HOUSE"
+                  ]
+                },
+                "x": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/2/properties/payload/properties/center/properties/x"
+                },
+                "y": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/2/properties/payload/properties/center/properties/x"
+                }
+              },
+              "required": [
+                "cityId",
+                "type",
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "city.train"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "cityId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "VILLAGER"
+                  ]
+                }
+              },
+              "required": [
+                "cityId",
+                "type"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
         }
       ]
     }

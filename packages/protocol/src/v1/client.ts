@@ -7,7 +7,7 @@
  * Ver ../../../docs/decisions/ADR-002-authoritative-server.md
  */
 import { z } from 'zod';
-import { EntityId, PROTOCOL_VERSION, Tile, Uuid, WorldCoordinate } from './common.js';
+import { BuildingType, EntityId, PROTOCOL_VERSION, Tile, UnitType, Uuid, WorldCoordinate } from './common.js';
 
 /** Versión del protocolo presente en todo mensaje. */
 const V = z.literal(PROTOCOL_VERSION);
@@ -108,6 +108,49 @@ export const UnitUngarrison = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * Pone a un aldeano propio a recolectar madera en un tile de bosque: viajes
+ * bosque → ciudad hasta que otra orden lo interrumpa. El cliente dice dónde; el
+ * servidor decide la ruta, los tiempos y las cantidades.
+ * Ver ../../../docs/specs/economy-wood.md
+ */
+export const UnitGather = z.object({
+  v: V,
+  type: z.literal('unit.gather'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+    target: Tile,
+  }).strict(),
+}).strict();
+
+/**
+ * Encarga un edificio en un tile de la zona urbana de una ciudad propia. El coste
+ * y el tiempo los decide el servidor.
+ */
+export const CityBuild = z.object({
+  v: V,
+  type: z.literal('city.build'),
+  requestId: Uuid,
+  payload: z.object({
+    cityId: EntityId,
+    type: BuildingType,
+    x: WorldCoordinate,
+    y: WorldCoordinate,
+  }).strict(),
+}).strict();
+
+/** Encarga el entrenamiento de una unidad en una ciudad propia. */
+export const CityTrain = z.object({
+  v: V,
+  type: z.literal('city.train'),
+  requestId: Uuid,
+  payload: z.object({
+    cityId: EntityId,
+    type: UnitType,
+  }).strict(),
+}).strict();
+
 /** Unión discriminada de todos los mensajes cliente → servidor de la v1. */
 export const ClientMessage = z.discriminatedUnion('type', [
   SessionHello,
@@ -117,6 +160,9 @@ export const ClientMessage = z.discriminatedUnion('type', [
   UnitCancelMove,
   UnitGarrison,
   UnitUngarrison,
+  UnitGather,
+  CityBuild,
+  CityTrain,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -127,6 +173,9 @@ export type UnitMove = z.infer<typeof UnitMove>;
 export type UnitCancelMove = z.infer<typeof UnitCancelMove>;
 export type UnitGarrison = z.infer<typeof UnitGarrison>;
 export type UnitUngarrison = z.infer<typeof UnitUngarrison>;
+export type UnitGather = z.infer<typeof UnitGather>;
+export type CityBuild = z.infer<typeof CityBuild>;
+export type CityTrain = z.infer<typeof CityTrain>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -136,6 +185,9 @@ export const CLIENT_MESSAGE_TYPES = [
   'unit.cancel_move',
   'unit.garrison',
   'unit.ungarrison',
+  'unit.gather',
+  'city.build',
+  'city.train',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

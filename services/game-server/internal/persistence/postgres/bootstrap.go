@@ -227,6 +227,10 @@ func (b *Bootstrapper) create(ctx context.Context, req BootstrapRequest, def uni
 		if _, err := b.cities.Create(ctx, tx, c); err != nil {
 			return err
 		}
+		// §4.1 de SPEC-ECON-WOOD: el stock de la ciudad nace a cero con ella.
+		if err := CreateCityStocks(ctx, tx, c.ID); err != nil {
+			return err
+		}
 
 		units := make([]*unit.Unit, 0, len(req.VillagerSpawns))
 		for _, spawn := range req.VillagerSpawns {

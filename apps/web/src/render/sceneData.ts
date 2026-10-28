@@ -16,6 +16,20 @@ export interface SceneUnit {
   readonly movement: ActiveMovement | null;
   readonly isOwn: boolean;
   readonly isSelected: boolean;
+  /** Trabaja en un bosque (`WORKING`, SPEC-ECON-WOOD): se dibuja con su marca. */
+  readonly working: boolean;
+  /** Madera que lleva encima; 0 si nada. */
+  readonly carrying: number;
+}
+
+export interface SceneBuilding {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly type: string;
+  /** `UNDER_CONSTRUCTION` o `COMPLETE`, tal cual lo envió el servidor. */
+  readonly status: string;
+  readonly isOwn: boolean;
 }
 
 export interface SceneCity {
@@ -60,6 +74,8 @@ export interface SceneUpdate {
   readonly removedCities: readonly number[];
   readonly territories: readonly SceneTerritory[];
   readonly removedTerritories: readonly number[];
+  readonly buildings: readonly SceneBuilding[];
+  readonly removedBuildings: readonly number[];
   /** Fuente de terreno si hay chunks nuevos o es un cambio completo; `null` si el terreno no cambió. */
   readonly terrain: TerrainSource | null;
 }

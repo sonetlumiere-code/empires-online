@@ -24,7 +24,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -51,6 +54,11 @@ type Input struct {
 	// Garrisons son las filas de garrisons: unidad → ciudad.
 	Garrisons map[int64]int64
 	Controls  []territory.Control
+	// Economía (SPEC-ECON-WOOD): las tareas, los edificios y las producciones
+	// leídos de la base.
+	Tasks       []task.Task
+	Buildings   []building.Building
+	Productions []production.Production
 	// Now es el instante de la detección: el que se escribe en los campos que
 	// una reparación tiene que fechar.
 	Now time.Time
@@ -84,6 +92,10 @@ type Result struct {
 	// Garrisons son las filas de garrisons que siguen vigentes: las de Input
 	// menos las borradas. Es el índice unidad → anfitriona de la simulación.
 	Garrisons map[int64]int64
+	// TaskDeletes son las tareas que hay que borrar (INV-ECON-003), por unidad;
+	// Tasks, las que siguen vigentes y entran en la simulación.
+	TaskDeletes []int64
+	Tasks       []task.Task
 }
 
 // Fatal indica si algún hallazgo exige abortar el arranque.
@@ -103,6 +115,7 @@ func Check(in Input) Result {
 	sort.Slice(controls, func(i, j int) bool { return controls[i].TerritoryID < controls[j].TerritoryID })
 	c := checker{in: in, res: Result{Controls: controls}}
 	c.units()
+	c.tasks()
 	c.cities()
 	c.controls()
 	return c.res
@@ -230,13 +243,24 @@ func terrainWalkable(w *world.World, x, y int32) bool {
 // ─────────────────────────────────────────────────────────────
 
 func (c *checker) cities() {
-	// INV-CITY-009 se cuenta sobre todas las unidades vivas de la base, también
-	// las excluidas: existen, y consumen población.
+	// INV-CITY-017 se cuenta sobre todas las unidades vivas de la base, también
+	// las excluidas —existen, y consumen población—, más las producciones en
+	// curso, cuya plaza se reservó al ordenar (RN-ECON-010).
 	population := make(map[int64]int32)
 	for _, u := range c.in.Units {
 		if u.CityID != nil {
 			population[*u.CityID]++
 		}
+	}
+	for _, p := range c.in.Productions {
+		if p.InProgress() {
+			population[p.CityID]++
+		}
+	}
+	// INV-ECON-004: los edificios de cada ciudad, para el bono de sus casas.
+	edificios := make(map[int64][]building.Building)
+	for _, b := range c.in.Buildings {
+		edificios[b.CityID] = append(edificios[b.CityID], b)
 	}
 
 	cities := append([]*city.City(nil), c.in.Cities...)
@@ -251,17 +275,21 @@ func (c *checker) cities() {
 				fmt.Sprintf("centro (%d,%d) fuera del mundo o sobre terreno intransitable", ci.CenterX, ci.CenterY))
 		}
 
-		// INV-CITY-009 e INV-CITY-003, juntos porque el CHECK de la base
+		// INV-CITY-017 e INV-CITY-003, juntos porque el CHECK de la base
 		// (population <= population_limit) los ata en la misma fila.
 		real := population[ci.ID]
 		if ci.Population != real {
-			c.find("INV-CITY-009", "ALTO", PolicyRepair, entity,
-				fmt.Sprintf("population %d; las unidades vivas de la ciudad son %d", ci.Population, real))
+			c.find("INV-CITY-017", "ALTO", PolicyRepair, entity,
+				fmt.Sprintf("population %d; las unidades vivas y las producciones en curso de la ciudad son %d", ci.Population, real))
 			ci.Population = real
 			c.touchCity(ci.ID)
 		}
 		limit, ok := c.in.EraCaps[ci.Era]
-		if !ok {
+		bonus := building.PopulationBonus(edificios[ci.ID])
+		if ok {
+			// INV-ECON-004: la era más cinco por casa completa.
+			limit = building.PopulationLimit(limit, edificios[ci.ID])
+		} else {
 			// La FK de cities.era lo impide; si faltara el catálogo, no hay límite
 			// que recomputar.
 			limit = ci.PopulationLimit
@@ -275,8 +303,14 @@ func (c *checker) cities() {
 			limit = ci.Population
 		}
 		if ci.PopulationLimit != limit {
-			c.find("INV-CITY-003", "ALTO", PolicyRepair, entity,
-				fmt.Sprintf("population_limit %d; el de su era es %d", ci.PopulationLimit, limit))
+			// Sin casas es la regla de la era (INV-CITY-003); con casas, su
+			// fórmula concreta (INV-ECON-004).
+			inv := "INV-CITY-003"
+			if bonus > 0 {
+				inv = "INV-ECON-004"
+			}
+			c.find(inv, "ALTO", PolicyRepair, entity,
+				fmt.Sprintf("population_limit %d; el de su era y sus casas es %d", ci.PopulationLimit, limit))
 			ci.PopulationLimit = limit
 			c.touchCity(ci.ID)
 		}
@@ -296,6 +330,57 @@ func (c *checker) cities() {
 			c.touchCity(ci.ID)
 			c.find("INV-CITY-012", "ALTO", PolicyRepair, entity,
 				"ONLINE con protection_until: se borra")
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tareas
+// ─────────────────────────────────────────────────────────────
+
+// tasks aplica INV-ECON-003: una tarea pertenece a una unidad viva y no
+// guarnecida, es válida, y está en WORKING si y sólo si su unidad lo está. Se
+// repara siempre hacia el lado sin tarea, que no regala madera.
+func (c *checker) tasks() {
+	unidades := make(map[int64]*unit.Unit, len(c.res.Units))
+	for _, u := range c.res.Units {
+		unidades[u.ID] = u
+	}
+	tareas := append([]task.Task(nil), c.in.Tasks...)
+	sort.Slice(tareas, func(i, j int) bool { return tareas[i].UnitID < tareas[j].UnitID })
+
+	trabajando := make(map[int64]bool)
+	for _, t := range tareas {
+		entity := fmt.Sprintf("unit:%d", t.UnitID)
+		u, viva := unidades[t.UnitID]
+		var motivo string
+		switch {
+		case !viva:
+			motivo = "tarea de una unidad que no está viva o no entra en la simulación"
+		case u.Status == unit.StatusGarrisoned:
+			motivo = "tarea de una unidad guarnecida"
+		case t.Validate() != nil:
+			motivo = fmt.Sprintf("tarea inválida: %v", t.Validate())
+		case t.Phase == task.PhaseWorking && u.Status != unit.StatusWorking:
+			motivo = fmt.Sprintf("tarea en WORKING sobre una unidad %s", u.Status)
+		}
+		if motivo != "" {
+			c.res.TaskDeletes = append(c.res.TaskDeletes, t.UnitID)
+			c.find("INV-ECON-003", "ALTO", PolicyRepair, entity, motivo+": se borra")
+			continue
+		}
+		if t.Phase == task.PhaseWorking {
+			trabajando[t.UnitID] = true
+		}
+		c.res.Tasks = append(c.res.Tasks, t)
+	}
+
+	for _, u := range c.res.Units {
+		if u.Status == unit.StatusWorking && !trabajando[u.ID] {
+			u.Status = unit.StatusIdle
+			c.touchUnit(u.ID)
+			c.find("INV-ECON-003", "ALTO", PolicyRepair, fmt.Sprintf("unit:%d", u.ID),
+				"WORKING sin tarea en WORKING: vuelve a IDLE en su última posición")
 		}
 	}
 }

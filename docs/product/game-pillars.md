@@ -92,8 +92,9 @@ comercio— exige que nadie pueda afirmar unilateralmente un hecho del mundo.
 - **Comandos como intención.** El cliente envía `unit.move { unitId, target:{x,y} }` y nunca una secuencia
   de posiciones. El servidor valida ownership → estado de la unidad → destino → ejecuta A\* → crea el
   movimiento → simula → notifica. Ver [../specs/movement.md](../specs/movement.md).
-- **Superficie de comandos mínima.** Solo siete mensajes cliente→servidor en v1: `session.hello`,
-  `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`.
+- **Superficie de comandos mínima.** Solo diez mensajes cliente→servidor en v1: `session.hello`,
+  `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison` y,
+  desde E1, `unit.gather`, `city.build` y `city.train`, que sólo dicen el bosque, el edificio o el tipo.
   Lo que no existe no se puede falsear.
 - **Autenticación por game ticket**: JWT HS256 de TTL 60 s, `aud: "game-server"`, con `jti` consumido en
   Redis (`ticket:jti:{jti}`, TTL 120 s) para impedir replay. Códigos de cierre estables `4400`, `4401`,

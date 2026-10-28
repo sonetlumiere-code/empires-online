@@ -42,6 +42,11 @@ func (g *GameStore) PersistMovementStart(ctx context.Context, m movement.Movemen
 		if _, _, err := g.movements.Start(ctx, tx, &m); err != nil {
 			return err
 		}
+		// RN-ECON-003: una orden de movimiento cancela la tarea de la unidad,
+		// en la misma transacción que sustituye su tramo.
+		if err := postgres.DeleteTask(ctx, tx, m.UnitID); err != nil {
+			return err
+		}
 		return g.units.FlushPositions(ctx, tx, []postgres.PositionUpdate{
 			{UnitID: m.UnitID, X: origin.X, Y: origin.Y, Status: unit.StatusMoving},
 		})
@@ -64,6 +69,12 @@ func (g *GameStore) PersistMovementFinish(ctx context.Context, f simulation.Move
 		}
 		if f.UnitID == 0 {
 			return nil
+		}
+		// Un cierre deja la unidad IDLE: si tenía tarea, se terminó con él
+		// (RN-ECON-003). Las transiciones de la propia tarea no pasan por aquí:
+		// escriben su cierre con EconomyStore.PersistTask.
+		if err := postgres.DeleteTask(ctx, tx, f.UnitID); err != nil {
+			return err
 		}
 		return g.units.FlushPositions(ctx, tx, []postgres.PositionUpdate{
 			{UnitID: f.UnitID, X: f.At.X, Y: f.At.Y, Status: unit.StatusIdle},

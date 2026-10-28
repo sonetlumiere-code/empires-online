@@ -1,0 +1,31 @@
+{
+  "name": "madera",
+  "description": "SPEC-ECON-WOOD: un aldeano a diez tiles de un bosque hace sus viajes con los depósitos en sus instantes exactos; otro empieza a recolectar y se le cancela a mitad de tramo; la ciudad entrena un aldeano con su madera inicial y construye una casa con la recolectada; al final el dueño se desconecta y el viaje en curso termina con un depósito más y la unidad IDLE.",
+  "epochMs": 1757376000000,
+  "runTicks": 950,
+  "config": { "protectionCooldownSec": 300, "disconnectGraceSec": 5 },
+  "world": {
+    "width": 64,
+    "height": 64,
+    "terrain": "grassland",
+    "paint": [
+      { "terrain": "FOREST", "minX": 22, "minY": 0, "maxX": 23, "maxY": 63 }
+    ]
+  },
+  "players": [
+    { "ref": "p1", "city": { "x": 10, "y": 10 }, "wood": 50 }
+  ],
+  "units": [
+    { "ref": "u1", "player": "p1", "x": 12, "y": 10 },
+    { "ref": "u2", "player": "p1", "x": 10, "y": 12 }
+  ],
+  "commands": [
+    { "tick": 0, "type": "connect", "player": "p1" },
+    { "tick": 0, "type": "unit.gather", "player": "p1", "unit": "u1", "target": { "x": 22, "y": 10 } },
+    { "tick": 1, "type": "city.train", "player": "p1" },
+    { "tick": 5, "type": "unit.gather", "player": "p1", "unit": "u2", "target": { "x": 22, "y": 12 } },
+    { "tick": 40, "type": "unit.move", "player": "p1", "unit": "u2", "target": { "x": 15, "y": 16 } },
+    { "tick": 680, "type": "city.build", "player": "p1", "target": { "x": 9, "y": 9 } },
+    { "tick": 700, "type": "disconnect", "player": "p1" }
+  ]
+}

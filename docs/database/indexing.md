@@ -206,7 +206,9 @@ CREATE UNIQUE INDEX treaties_one_active_per_pair_and_type
 
 El primero es la garantía física de `INV-MOVE-001` (una unidad tiene como máximo un movimiento `ACTIVE`); su justificación completa está en [schema.md](./schema.md#101-unit_movements_one_active_per_unit-es-la-garantía-física-de-inv-move-001). El segundo aplica el mismo patrón a los tratados, y es directo porque `treaties_canonical_pair` obliga a `player_a_id < player_b_id`: no hace falta normalizar el par con `LEAST`/`GREATEST` dentro del índice. Ambos son parciales, y esa parcialidad es la que los mantiene diminutos: sólo contienen el estado vivo.
 
-La guarnición no necesita índice equivalente: `garrisons` tiene `unit_id` como **clave primaria**, así que "una unidad está guarnecida en una sola ciudad" ya lo impone la PK.
+La guarnición no necesita índice equivalente: `garrisons` tiene `unit_id` como **clave primaria**, así que "una unidad está guarnecida en una sola ciudad" ya lo impone la PK. Lo mismo vale para la tarea de una unidad (`unit_tasks`, `INV-ECON-003`) y la producción de una ciudad (`city_productions`): su clave primaria es la regla.
+
+La economía (`000006`) añade dos restricciones `UNIQUE` con su índice implícito, ambas en `buildings`: `buildings_unique_tile` `(x, y)`, un edificio por tile (`RN-ECON-007`), y `buildings_unique_request` `(city_id, request_id)`, que hace idempotente el encargo ([ADR-014](../decisions/ADR-014-command-idempotency.md)). La segunda empieza por `city_id`, así que sirve también para listar los edificios de una ciudad sin un índice aparte. `city_stocks` se lee entero al arrancar y se escribe por su clave primaria `(city_id, resource)`: no necesita más.
 
 ### 2.9 Los índices restantes
 
@@ -225,7 +227,7 @@ Existen, sirven consultas reales o previstas, y conviene no olvidarlos al medir:
 
 ## 3. Resumen de índices del MVP
 
-Inventario completo, con los nombres reales de la migración `000001`:
+Inventario completo, con los nombres reales de las migraciones `000001` y `000006`:
 
 | Índice | Tabla | Tipo | Consulta que sirve |
 |---|---|---|---|
@@ -242,6 +244,8 @@ Inventario completo, con los nombres reales de la migración `000001`:
 | `sessions_player_idx` | `sessions` | B-tree compuesto | §2.9 historial de conexiones |
 | `treaties_one_active_per_pair_and_type` | `treaties` | B-tree único parcial | Invariante de tratado |
 | `garrisons_city_idx` | `garrisons` | B-tree | §2.9 guarnición por ciudad |
+| `buildings_unique_tile` | `buildings` | B-tree único (constraint `UNIQUE`) | §2.8 un edificio por tile |
+| `buildings_unique_request` | `buildings` | B-tree único (constraint `UNIQUE`) | §2.8 idempotencia del encargo; edificios de una ciudad |
 | `world_events_type_time_idx` | `world_events` | B-tree compuesto | §2.9 auditoría por tipo |
 | `world_events_player_idx` | `world_events` | B-tree compuesto parcial | §2.9 auditoría por jugador |
 | `players_username_key`, `civilizations_code_key`, `factions_code_key`, `eras_code_key`, `eras_ordinal_key` | catálogos y `players` | B-tree único | Unicidad de identificadores naturales (índices implícitos de los `UNIQUE`) |

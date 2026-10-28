@@ -31,6 +31,8 @@ export interface UnitView {
   movement: ActiveMovement | null;
   /** Ciudad que la aloja si está GARRISONED; `null` en el mapa. `cityId` es la de origen. */
   garrisonCityId: number | null;
+  /** Madera que lleva encima una unidad que recolecta (SPEC-ECON-WOOD); 0 si nada. */
+  carrying: number;
 }
 
 /**
@@ -63,6 +65,21 @@ export interface CityView {
   populationLimit: number;
   presenceState: string;
   protectionUntilMs: number | null;
+  /** Stock de la ciudad, tal cual lo envía el servidor (SPEC-ECON-WOOD). */
+  stocks: { WOOD: number };
+  /** Entrenamiento en curso, o `null`. */
+  production: { unitType: string; completesAtMs: number } | null;
+}
+
+/** Edificio tal y como lo ve el cliente (SPEC-ECON-WOOD §4.3). */
+export interface BuildingView {
+  id: number;
+  cityId: number;
+  type: string;
+  x: number;
+  y: number;
+  status: string;
+  completesAtMs: number;
 }
 
 export interface ChunkTerrain {
@@ -100,6 +117,7 @@ export interface WorldChanges {
   readonly units: ReadonlySet<number>;
   readonly cities: ReadonlySet<number>;
   readonly territories: ReadonlySet<number>;
+  readonly buildings: ReadonlySet<number>;
   /** Llegaron chunks de terreno nuevos. */
   readonly terrain: boolean;
 }
@@ -118,6 +136,7 @@ export interface WorldState {
   units: ReadonlyMap<number, UnitView>;
   cities: ReadonlyMap<number, CityView>;
   territories: ReadonlyMap<number, TerritoryView>;
+  buildings: ReadonlyMap<number, BuildingView>;
   terrain: ReadonlyMap<string, ChunkTerrain>;
   changes: WorldChanges;
 
@@ -154,6 +173,15 @@ function unitFromView(u: v1.UnitView): UnitView {
     status: u.status,
     movement: u.movement ?? null,
     garrisonCityId: u.garrisonCityId ?? null,
+    carrying: u.carrying ?? 0,
+  };
+}
+
+function cityFromView(c: v1.CityView): CityView {
+  return {
+    ...c,
+    stocks: c.stocks ?? { WOOD: 0 },
+    production: c.production ?? null,
   };
 }
 
@@ -166,6 +194,7 @@ const INITIAL_CHANGES: WorldChanges = {
   units: NO_IDS,
   cities: NO_IDS,
   territories: NO_IDS,
+  buildings: NO_IDS,
   terrain: false,
 };
 
@@ -175,6 +204,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
   const units = new Map<number, UnitView>();
   const cities = new Map<number, CityView>();
   const territories = new Map<number, TerritoryView>();
+  const buildings = new Map<number, BuildingView>();
   const terrain = new Map<string, ChunkTerrain>();
 
   let revision = 0;
@@ -184,6 +214,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     units: NO_IDS,
     cities: NO_IDS,
     territories: NO_IDS,
+    buildings: NO_IDS,
     terrain: false,
     ...partial,
   });
@@ -197,6 +228,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     units,
     cities,
     territories,
+    buildings,
     terrain,
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
@@ -231,7 +263,10 @@ export const useWorldStore = create<WorldState>((set, get) => {
       for (const t of payload.territories) territories.set(t.id, { ...t });
 
       cities.clear();
-      for (const c of payload.cities) cities.set(c.id, { ...c });
+      for (const c of payload.cities) cities.set(c.id, cityFromView(c));
+
+      buildings.clear();
+      for (const b of payload.buildings ?? []) buildings.set(b.id, { ...b });
 
       let newTerrain = false;
       for (const t of payload.terrain) {
@@ -289,6 +324,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
             cityId: p.cityId !== undefined ? p.cityId : existing.cityId,
             movement: p.movement !== undefined ? p.movement : existing.movement,
             garrisonCityId: p.garrisonCityId !== undefined ? p.garrisonCityId : existing.garrisonCityId,
+            carrying: p.carrying !== undefined ? p.carrying : existing.carrying,
           });
           set({ changes: unitChanged(p.id) });
           break;
@@ -327,8 +363,28 @@ export const useWorldStore = create<WorldState>((set, get) => {
             populationLimit: p.populationLimit !== undefined ? p.populationLimit : existing.populationLimit,
             presenceState: p.presenceState !== undefined ? p.presenceState : existing.presenceState,
             protectionUntilMs: p.protectionUntilMs !== undefined ? p.protectionUntilMs : existing.protectionUntilMs,
+            stocks: p.stocks !== undefined ? p.stocks : existing.stocks,
+            production: p.production !== undefined ? p.production : existing.production,
           });
           set({ changes: changed({ cities: new Set([p.id]) }) });
+          break;
+        }
+
+        case 'building.spawn': {
+          // Como territory.update, trae la vista completa: un edificio que no
+          // se conocía se añade, uno conocido se reemplaza.
+          const b = message.payload.building;
+          buildings.set(b.id, { ...b });
+          set({ changes: changed({ buildings: new Set([b.id]) }) });
+          break;
+        }
+
+        case 'building.update': {
+          const p = message.payload;
+          const existing = buildings.get(p.id);
+          if (!existing) break;
+          buildings.set(p.id, { ...existing, status: p.status });
+          set({ changes: changed({ buildings: new Set([p.id]) }) });
           break;
         }
 
@@ -401,6 +457,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
       units.clear();
       cities.clear();
       territories.clear();
+      buildings.clear();
       terrain.clear();
       set({
         playerId: null,

@@ -78,7 +78,7 @@ La forma en que este invariante se rompe en la práctica no es un descuido grose
 **Cómo se verifica.**
 
 - `packages/protocol` (Vitest) — «rechaza un payload que intente aportar estado autoritativo desconocido», «unit.move no admite que el cliente envíe una ruta» y «no ha derivado respecto de los esquemas Zod (misma comprobación que la CI)».
-- `TestElDecodificadorEsTanEstrictoComoElEsquema` (contract, `internal/protocol`) — las dos mitades de S-7: todo objeto cliente→servidor del esquema es estricto, y en los siete mensajes una propiedad de más en el envelope, en el payload o en un objeto anidado se rechaza.
+- `TestElDecodificadorEsTanEstrictoComoElEsquema` (contract, `internal/protocol`) — las dos mitades de S-7: todo objeto cliente→servidor del esquema es estricto, y en los diez mensajes una propiedad de más en el envelope, en el payload o en un objeto anidado se rechaza.
 - `TestElComandoDeMovimientoNoAdmiteRuta` (contract) — `DecodeStrict` rechaza una ruta en `unit.move`.
 - `TestEntityUpdateEsUnDeltaDeVerdad` (contract) — el servidor emite deltas parciales calculados por él, no ecos del cliente.
 - `TestPayloadConCamposExtraNoAportaEstado` (e2e, `internal/websocket`) — una ruta y un HP colados, una coordenada de más y un campo de más en el envelope reciben `INVALID_MESSAGE`; el comando limpio posterior es el primero que se acepta, y su ruta la calcula el servidor. Verificado por mutación: sin `DisallowUnknownFields` falla.
@@ -230,7 +230,7 @@ El canon §7 fija el orden explícitamente: **validar ownership → validar esta
 - **Tamaño** — deserializar un JSON de 50 MiB para después responder `MESSAGE_TOO_LARGE` ya ha asignado 50 MiB. Repetido en paralelo desde varias conexiones, es un agotamiento de memoria. El límite debe aplicarlo el lector del WebSocket, que corta la lectura del frame, no el validador que corre después.
 - **Tasa** — enrutar 10 000 `unit.move` por segundo y responder `RATE_LIMITED` a partir del vigésimo ya ha ejecutado 10 000 búsquedas de unidad. El contador debe consultarse antes del enrutado.
 
-Los 16 KiB son holgados para los siete mensajes de v1: el mayor concebible es `session.hello` con un JWT, muy por debajo del límite. Un mensaje que se acerque siquiera al límite es, por definición, anómalo.
+Los 16 KiB son holgados para los diez mensajes de v1: el mayor concebible es `session.hello` con un JWT, muy por debajo del límite. Un mensaje que se acerque siquiera al límite es, por definición, anómalo.
 
 **Cómo se garantiza.**
 

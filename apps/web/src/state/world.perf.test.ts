@@ -48,6 +48,7 @@ function snapshot(): v1.WorldSnapshot['payload'] {
     units,
     cities: [],
     territories: [],
+    buildings: [],
   } as v1.WorldSnapshot['payload'];
 }
 

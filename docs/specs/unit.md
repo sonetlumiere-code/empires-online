@@ -24,7 +24,7 @@ HP, estado ni ownership (canon §1.1).
 **Dentro de MVP**
 
 - Persistencia de la entidad en la tabla `units`.
-- Máquina de estados `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`.
+- Máquina de estados `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `WORKING`, `DEAD` (`WORKING` desde E1, [economy-wood.md](./economy-wood.md)).
 - Comandos de red `unit.garrison` y `unit.ungarrison` ([garrison.md](./garrison.md), [ADR-017](../decisions/ADR-017-garrison-commands.md)).
 - Catálogo de tipos de unidad data-driven con `VILLAGER` como único tipo jugable.
 - Validación de ownership para todo comando dirigido a una unidad.
@@ -60,7 +60,7 @@ Campos canónicos de `units` (canon §10 y §11):
 | `y` | `integer` | no | Coordenada lógica de mapa (fila, hacia el sur). |
 | `hp` | `integer` | no | Puntos de vida actuales. |
 | `max_hp` | `integer` | no | Puntos de vida máximos, copiados del catálogo al crear. |
-| `status` | `text` + `CHECK` | no | `IDLE` \| `MOVING` \| `GARRISONED` \| `HIDDEN` \| `DEAD`. |
+| `status` | `text` + `CHECK` | no | `IDLE` \| `MOVING` \| `GARRISONED` \| `HIDDEN` \| `WORKING` \| `DEAD`. `WORKING` desde la migración `000006`. |
 | `chunk_x` | `integer` | no | Chunk desnormalizado de `x`. Clave del interest management. |
 | `chunk_y` | `integer` | no | Chunk desnormalizado de `y`. Se reescribe en cada escritura de `x`/`y`. |
 | `created_at` / `updated_at` | `timestamptz` | no | Auditoría; `updated_at` por trigger `units_set_updated_at`. |
@@ -165,10 +165,16 @@ stateDiagram-v2
     IDLE --> HIDDEN: en reposo dentro de Safe Zone (tick, fase 5)
     HIDDEN --> IDLE: fuera de Safe Zone o zona desactivada
     HIDDEN --> MOVING: unit.move aceptado (revela la unidad)
+    MOVING --> WORKING: llega al bosque de su tarea (fase 3)
+    IDLE --> WORKING: unit.gather sobre el propio bosque
+    HIDDEN --> WORKING: unit.gather sobre el propio bosque (revela la unidad)
+    WORKING --> MOVING: vence el trabajo (fase 5), o unit.move / unit.gather
+    WORKING --> IDLE: unit.cancel_move, unit.move a su propio tile, o muralla nueva encima
     IDLE --> DEAD: sin productor en MVP
     MOVING --> DEAD: sin productor en MVP
     GARRISONED --> DEAD: sin productor en MVP
     HIDDEN --> DEAD: sin productor en MVP
+    WORKING --> DEAD: sin productor en MVP
     DEAD --> [*]
 ```
 
@@ -186,9 +192,15 @@ stateDiagram-v2
 | T7 | `IDLE` | `HIDDEN` | Reposo dentro de una Safe Zone activa | Fase 5 del tick |
 | T8 | `HIDDEN` | `IDLE` | La unidad deja de pertenecer a la Safe Zone | Fase 5 del tick |
 | T9 | cualquiera vivo | `DEAD` | Muerte. **Sin productor en MVP** (combate fuera de scope) | — |
+| T10 | `MOVING` | `WORKING` | El tramo de una tarea de recolección llega a su bosque (`RN-ECON-003`) | Fase 3 del tick |
+| T11 | `IDLE`, `HIDDEN` | `WORKING` | `unit.gather` sobre el tile de bosque en el que ya está la unidad | Fase 2 del tick |
+| T12 | `WORKING` | `MOVING` | Vence el trabajo y sale hacia el depósito (fase 5), o una orden nueva: `unit.move` o `unit.gather` (`RN-ECON-003`, `RN-ECON-006`) | Fase 5 o fase 2 del tick |
+| T13 | `WORKING` | `IDLE` | `unit.cancel_move`, `unit.move` a su propio tile, o una muralla nueva sobre el bosque: la tarea termina y la carga se pierde | Fase 2 del tick, o la fundación |
 
 T2, T3, T4 y T4b son propiedad de [movement.md](./movement.md); T5/T6 de [garrison.md](./garrison.md);
-T7/T8 de [safe-zones.md](./safe-zones.md). Esta spec fija la máquina; cada spec fija la regla.
+T7/T8 de [safe-zones.md](./safe-zones.md); T10–T13 de [economy-wood.md](./economy-wood.md). Esta spec fija la máquina; cada spec fija la regla.
+
+`WORKING` existe si y sólo si la unidad tiene su tarea en fase `WORKING` ([INV-ECON-003](../invariants/economy.md#inv-econ-003)). Una unidad `WORKING` no se mueve, no se oculta aunque esté en una Safe Zone (la fase 5 sólo evalúa `IDLE` y `HIDDEN`, `RN-ECON-003`) y la ven todos. Sus tramos de ida y vuelta son movimientos normales en `MOVING`.
 
 Sobre T4b: `MOVING → MOVING` es una transición **legal**, no un rechazo. `EnsureCanMove` admite `IDLE` y
 `MOVING`, y el handler cancela el movimiento anterior antes de registrar el nuevo, de modo que en ningún
@@ -200,13 +212,14 @@ la posición consolidada en `units.x/y`, que puede ir por detrás.
 
 ### 6.2 Matriz completa (`✔` válida · `✘` prohibida · `—` no-op)
 
-| desde \ hacia | IDLE | MOVING | GARRISONED | HIDDEN | DEAD |
-|---|---|---|---|---|---|
-| **IDLE** | — | ✔ T2 | ✔ T5 | ✔ T7 | ✔ T9 |
-| **MOVING** | ✔ T4 | ✔ T4b | ✘ P2 | ✘ P3 | ✔ T9 |
-| **GARRISONED** | ✔ T6 | ✘ P4 | — | ✘ P5 | ✔ T9 |
-| **HIDDEN** | ✔ T8 | ✔ T3 | ✘ P6 | — | ✔ T9 |
-| **DEAD** | ✘ P7 | ✘ P7 | ✘ P7 | ✘ P7 | — |
+| desde \ hacia | IDLE | MOVING | GARRISONED | HIDDEN | WORKING | DEAD |
+|---|---|---|---|---|---|---|
+| **IDLE** | — | ✔ T2 | ✔ T5 | ✔ T7 | ✔ T11 | ✔ T9 |
+| **MOVING** | ✔ T4 | ✔ T4b | ✘ P2 | ✘ P3 | ✔ T10 | ✔ T9 |
+| **GARRISONED** | ✔ T6 | ✘ P4 | — | ✘ P5 | ✘ P4 | ✔ T9 |
+| **HIDDEN** | ✔ T8 | ✔ T3 | ✘ P6 | — | ✔ T11 | ✔ T9 |
+| **WORKING** | ✔ T13 | ✔ T12 | ✘ P8 | ✘ P9 | — | ✔ T9 |
+| **DEAD** | ✘ P7 | ✘ P7 | ✘ P7 | ✘ P7 | ✘ P7 | — |
 
 ### 6.3 Transiciones prohibidas y su razón
 
@@ -218,20 +231,24 @@ la posición consolidada en `units.x/y`, que puede ir por detrás.
 | P5 | `GARRISONED → HIDDEN` | El interior de una ciudad no es una Safe Zone; son sistemas de ocultamiento distintos y no componibles. | Ninguno; la fase 5 ignora unidades guarnecidas. |
 | P6 | `HIDDEN → GARRISONED` | Requiere adyacencia a la zona urbana. La unidad debe moverse primero, lo que la revela (T3). | La secuencia legal es `HIDDEN → MOVING → IDLE → GARRISONED`. |
 | P7 | `DEAD → *` | `DEAD` es terminal. La resurrección no existe en el modelo. | Rechazo `UNIT_DEAD`. |
+| P8 | `WORKING → GARRISONED` | `unit.garrison` exige `IDLE` (`RN-GARR`); una unidad que trabaja está en un bosque, no junto a la muralla. | Rechazo `UNIT_NOT_MOVABLE`; la tarea sigue. |
+| P9 | `WORKING → HIDDEN` | Trabajar no es estar en reposo: la fase 5 no oculta a una unidad que trabaja aunque su bosque sea una Safe Zone (`RN-ECON-003`). | Se oculta, si procede, cuando la tarea termina y queda `IDLE`. |
 
 ## 7. Acciones admitidas por estado
 
-| Acción | IDLE | MOVING | GARRISONED | HIDDEN | DEAD |
-|---|---|---|---|---|---|
-| `unit.move` | ✔ | ✔ (cancela y reemplaza, T4b) | ✘ `UNIT_GARRISONED` | ✔ (revela) | ✘ `UNIT_DEAD` |
-| `unit.cancel_move` | no-op (sin movimiento activo) | ✔ | no-op | no-op | no-op |
-| `unit.garrison` | ✔ | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_GARRISONED` | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_DEAD` |
-| `unit.ungarrison` | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_NOT_MOVABLE` | ✔ | ✘ `UNIT_NOT_MOVABLE` | ✘ (no se carga) |
-| Ocultamiento automático | ✔ (evaluado) | ✘ | ✘ | ✔ (reevaluado) | ✘ |
-| Aparecer en `entity.spawn`/`entity.update` | ✔ | ✔ | solo propietario | solo propietario | ✘ (`entity.despawn`) |
+| Acción | IDLE | MOVING | GARRISONED | HIDDEN | WORKING | DEAD |
+|---|---|---|---|---|---|---|
+| `unit.move` | ✔ | ✔ (cancela y reemplaza, T4b) | ✘ `UNIT_GARRISONED` | ✔ (revela) | ✔ (termina la tarea, T12) | ✘ `UNIT_DEAD` |
+| `unit.cancel_move` | no-op (sin movimiento activo) | ✔ | no-op | no-op | ✔ (termina la tarea, T13) | no-op |
+| `unit.garrison` | ✔ | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_GARRISONED` | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_DEAD` |
+| `unit.ungarrison` | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_NOT_MOVABLE` | ✔ | ✘ `UNIT_NOT_MOVABLE` | ✘ `UNIT_NOT_MOVABLE` | ✘ (no se carga) |
+| `unit.gather` (aldeano) | ✔ | ✔ (sustituye el tramo) | ✘ `UNIT_GARRISONED` | ✔ (revela) | ✔ (sustituye la tarea) | ✘ `UNIT_DEAD` |
+| Ocultamiento automático | ✔ (evaluado) | ✘ | ✘ | ✔ (reevaluado) | ✘ | ✘ |
+| Aparecer en `entity.spawn`/`entity.update` | ✔ | ✔ | solo propietario | solo propietario | ✔ | ✘ (`entity.despawn`) |
 
-`unit.cancel_move` valida **solo** existencia y ownership; después cancela el movimiento activo si lo hay.
-Sobre una unidad sin movimiento `ACTIVE` —esté `IDLE`, `HIDDEN`, `GARRISONED` o `DEAD`— es un **no-op
+`unit.cancel_move` valida **solo** existencia y ownership; después detiene a una unidad `WORKING` (T13) y
+cancela el movimiento activo si lo hay; en los dos casos la tarea de recolección termina y la carga se pierde
+(`RN-ECON-003`). Sobre una unidad sin movimiento `ACTIVE` ni trabajo —esté `IDLE`, `HIDDEN`, `GARRISONED` o `DEAD`— es un **no-op
 idempotente y silencioso**: no muta nada y no emite `unit.movement.cancelled`, porque no hay ningún
 movimiento cuyo final anunciar. Deliberadamente no devuelve error: el cliente puede haber enviado la
 cancelación en la misma ventana en que el movimiento terminó por sí solo, y castigar esa carrera con un
