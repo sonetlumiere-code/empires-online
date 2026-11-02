@@ -49,6 +49,23 @@ func testWorld(t *testing.T) *world.World {
 	return w
 }
 
+// mundoDeFundacion es un mundo de hierba de lado×lado salpicado de bosque —un
+// FOREST en cada (8i+4, 8j+4)—, porque una ciudad sólo se funda con un bosque
+// alcanzable a 8 tiles (RN-CITY-023).
+func mundoDeFundacion(t *testing.T, lado int32) *world.World {
+	t.Helper()
+	terrain := make([]byte, int(lado)*int(lado))
+	for i := range terrain {
+		terrain[i] = byte(world.Grassland)
+		if x, y := int32(i)%lado, int32(i)/lado; x%8 == 4 && y%8 == 4 {
+			terrain[i] = byte(world.Forest)
+		}
+	}
+	w, err := world.New(lado, lado, 32, 1, terrain)
+	require.NoError(t, err)
+	return w
+}
+
 func newRepos(s *postgres.Store) (*postgres.PlayerRepo, *postgres.CityRepo, *postgres.UnitRepo, *postgres.MovementRepo, *postgres.Bootstrapper) {
 	p := postgres.NewPlayerRepo(s)
 	c := postgres.NewCityRepo(s)

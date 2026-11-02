@@ -38,6 +38,11 @@ const (
 	spawnRadius = city.SpawnRadius
 	// minCityDistance: separación mínima entre centros de ciudades, en tiles.
 	minCityDistance int32 = 24
+	// forestRadius: a esta distancia Chebyshev del centro, como mucho, tiene que
+	// haber un bosque alcanzable a pie (RN-CITY-023). Sin madera no hay casa ni
+	// aldeano. Con 8, el bosque cae dentro de la vista inicial incluso en una
+	// pantalla de 1024 px: en isométrico, R tiles en diagonal son 64·R px.
+	forestRadius int32 = 8
 )
 
 // ErrNoSite indica que no se encontró ningún emplazamiento válido.
@@ -92,7 +97,50 @@ func isViable(w *world.World, center world.Tile, existing []world.Tile) bool {
 			}
 		}
 	}
-	return FarEnough(center, existing)
+	return FarEnough(center, existing) && hasReachableForest(w, center)
+}
+
+// fourNeighbours: la búsqueda de bosque sólo avanza en vertical y horizontal.
+// Es conservadora: lo que se alcanza así lo alcanza también el pathfinder de
+// ocho direcciones, que además no corta esquinas.
+var fourNeighbours = [4][2]int32{{0, -1}, {-1, 0}, {1, 0}, {0, 1}}
+
+// hasReachableForest indica si desde la zona urbana se llega a pie a un tile
+// FOREST sin salir del cuadrado de semilado forestRadius (RN-CITY-023).
+//
+// Búsqueda en anchura desde el anillo de nacimiento —que el entorno despejado
+// ya garantiza transitable— por tiles que pasan IsWalkable, sin entrar en el
+// 3 × 3 de la zona urbana. Recorre como mucho 17 × 17 tiles, en orden fijo.
+func hasReachableForest(w *world.World, center world.Tile) bool {
+	side := 2*forestRadius + 1
+	seen := make([]bool, side*side)
+	index := func(t world.Tile) int {
+		return int((t.Y-center.Y+forestRadius)*side + (t.X - center.X + forestRadius))
+	}
+
+	queue := make([]world.Tile, 0, 64)
+	for _, t := range city.SpawnTilesAround(center) {
+		if w.IsWalkable(t.X, t.Y) && !seen[index(t)] {
+			seen[index(t)] = true
+			queue = append(queue, t)
+		}
+	}
+	for i := 0; i < len(queue); i++ {
+		t := queue[i]
+		if w.TerrainAt(t.X, t.Y) == world.Forest {
+			return true
+		}
+		for _, d := range fourNeighbours {
+			n := world.Tile{X: t.X + d[0], Y: t.Y + d[1]}
+			dist := chebyshev(center, n)
+			if dist > forestRadius || dist <= townCenterRadius || seen[index(n)] || !w.IsWalkable(n.X, n.Y) {
+				continue
+			}
+			seen[index(n)] = true
+			queue = append(queue, n)
+		}
+	}
+	return false
 }
 
 // FarEnough indica si un centro guarda la separación mínima con todos los

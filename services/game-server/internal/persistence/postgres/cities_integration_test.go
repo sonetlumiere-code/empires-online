@@ -182,12 +182,7 @@ func TestAltasSimultaneasGuardanLaDistanciaMinima(t *testing.T) {
 	store, ctx := newTestStore(t)
 	_, cities, _, _, bootstrapper := newRepos(store)
 
-	terrain := make([]byte, 128*128)
-	for i := range terrain {
-		terrain[i] = byte(world.Grassland)
-	}
-	mundo, err := world.New(128, 128, 32, 1, terrain)
-	require.NoError(t, err)
+	mundo := mundoDeFundacion(t, 128)
 	const semilla = 64*128 + 64 // todas empiezan a buscar en (64,64)
 
 	const altas = 6

@@ -117,7 +117,7 @@ func codigoHTTP(t *testing.T, rec *httptest.ResponseRecorder) string {
 func TestLaFundacionIntroduceAlJugadorDespuesDelCommit(t *testing.T) {
 	store, ctx := newTestStore(t)
 	players, cities, units, _, _ := newRepos(store)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command))
 	id := uuid.New()
 
 	hecho := make(chan *httptest.ResponseRecorder, 1)
@@ -162,7 +162,7 @@ func TestLaFundacionIntroduceAlJugadorDespuesDelCommit(t *testing.T) {
 // introduce dos veces en el mundo.
 func TestLaFundacionEsIdempotentePorPlayerId(t *testing.T) {
 	store, ctx := newTestStore(t)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command, 4))
 	id := uuid.New()
 
 	primera := f.fundar(t, f.interno, id, cuerpo(id, "insistente"))
@@ -214,7 +214,7 @@ func TestLaRepeticionNoBuscaSitioAunqueElMundoEsteLleno(t *testing.T) {
 // esperan en él.
 func TestDosFundacionesSimultaneasDelMismoJugadorAcabanEnUno(t *testing.T) {
 	store, ctx := newTestStore(t)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command, 4))
 	id := uuid.New()
 
 	// El de postgres.foundingLockKey, «EO_FUND» en ASCII.
@@ -250,7 +250,7 @@ func TestDosFundacionesSimultaneasDelMismoJugadorAcabanEnUno(t *testing.T) {
 // nombre ocupado por OTRO id —una cuenta anterior a ADR-018— no se reasigna.
 func TestUnNombreDeOtroJugadorNoSeFundaNiSeReasigna(t *testing.T) {
 	store, _ := newTestStore(t)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command, 4))
 	primero := uuid.New()
 
 	rec := f.fundar(t, f.interno, primero, cuerpo(primero, "repetido"))
@@ -297,7 +297,7 @@ func TestSinSitioLaFundacionResponde409YNoEscribe(t *testing.T) {
 func TestUnTicketDeJuegoNoFundaJugadores(t *testing.T) {
 	store, ctx := newTestStore(t)
 	players, _, _, _, _ := newRepos(store)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command, 4))
 	id := uuid.New()
 
 	rec := f.fundar(t, f.juego, id, cuerpo(id, "colado"))
@@ -317,7 +317,7 @@ func TestUnTicketDeJuegoNoFundaJugadores(t *testing.T) {
 func TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub(t *testing.T) {
 	store, ctx := newTestStore(t)
 	players, _, _, _, _ := newRepos(store)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command, 4))
 
 	autorizado := uuid.New()
 	otro := uuid.New()
@@ -341,7 +341,7 @@ func TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub(t *testing.T) {
 // PENDING cuyo jugador sí se fundó, y borrar sólo la que no tiene jugador.
 func TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste(t *testing.T) {
 	store, ctx := newTestStore(t)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command, 4))
 	fundado := uuid.New()
 	alta := f.fundar(t, f.interno, fundado, cuerpo(fundado, "consultado"))
 	require.Equal(t, http.StatusCreated, alta.Code, alta.Body.String())
@@ -383,7 +383,7 @@ func TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste(t *testing.T) {
 // uso y cuyo sub es el jugador consultado.
 func TestLaConsultaExigeUnTokenInternoDeSuSub(t *testing.T) {
 	store, _ := newTestStore(t)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 4))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command, 4))
 	id := uuid.New()
 
 	sinToken := f.consultar("", id.String())
@@ -415,7 +415,7 @@ func TestLaConsultaExigeUnTokenInternoDeSuSub(t *testing.T) {
 // secreto.
 func TestLosLogsDeLaFundacionNoContienenSecretos(t *testing.T) {
 	store, _ := newTestStore(t)
-	f := montarFundacion(t, store, testWorld(t), city.EraStone, make(chan simulation.Command, 8))
+	f := montarFundacion(t, store, mundoDeFundacion(t, 64), city.EraStone, make(chan simulation.Command, 8))
 
 	id := uuid.New()
 	bueno, err := f.interno.Issue(id)
@@ -427,7 +427,7 @@ func TestLosLogsDeLaFundacionNoContienenSecretos(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, f.conToken(deJuego, cuerpo(id, "discreta")).Code)
 
 	// Una fundación que falla dentro de la transacción y SÍ registra el error.
-	rota := montarFundacion(t, store, testWorld(t), "SPACE_AGE", f.commands)
+	rota := montarFundacion(t, store, mundoDeFundacion(t, 64), "SPACE_AGE", f.commands)
 	otroID := uuid.New()
 	malo, err := rota.interno.Issue(otroID)
 	require.NoError(t, err)

@@ -10,12 +10,23 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
-// mundoLiso devuelve un mundo de hierba con los tiles indicados pintados.
+// mundoLiso devuelve un mundo de hierba salpicado de bosque —un tile FOREST en
+// cada (8i+4, 8j+4), así que todo candidato tiene uno a 4 tiles o menos
+// (RN-CITY-023)— con los tiles indicados pintados encima.
 func mundoLiso(t *testing.T, w, h int32, pintar map[world.Tile]world.TerrainType) *world.World {
+	t.Helper()
+	return mundoPintado(t, w, h, true, pintar)
+}
+
+// mundoPintado es mundoLiso con la retícula de bosque opcional.
+func mundoPintado(t *testing.T, w, h int32, reticula bool, pintar map[world.Tile]world.TerrainType) *world.World {
 	t.Helper()
 	terrain := make([]byte, int(w)*int(h))
 	for i := range terrain {
 		terrain[i] = byte(world.Grassland)
+		if x, y := int32(i)%w, int32(i)/w; reticula && x%8 == 4 && y%8 == 4 {
+			terrain[i] = byte(world.Forest)
+		}
 	}
 	for tile, tt := range pintar {
 		terrain[int(tile.Y)*int(w)+int(tile.X)] = byte(tt)
@@ -23,6 +34,27 @@ func mundoLiso(t *testing.T, w, h int32, pintar map[world.Tile]world.TerrainType
 	mundo, err := world.New(w, h, 32, 1, terrain)
 	require.NoError(t, err)
 	return mundo
+}
+
+// bosqueDeLaSpec es el radio de RN-CITY-023, escrito como literal por la misma
+// razón que separacionDeLaSpec.
+const bosqueDeLaSpec int32 = 8
+
+// hayBosqueCerca dice si hay algún FOREST a bosqueDeLaSpec tiles o menos del
+// centro, fuera de la zona urbana. Sólo la distancia: la alcanzabilidad la
+// prueba TestUnBosqueAisladoPorAguaNoCuenta.
+func hayBosqueCerca(w *world.World, c world.Tile) bool {
+	for dy := -bosqueDeLaSpec; dy <= bosqueDeLaSpec; dy++ {
+		for dx := -bosqueDeLaSpec; dx <= bosqueDeLaSpec; dx++ {
+			if max32(abs32(dx), abs32(dy)) <= 1 || !w.InBounds(c.X+dx, c.Y+dy) {
+				continue
+			}
+			if w.TerrainAt(c.X+dx, c.Y+dy) == world.Forest {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // semillaEn devuelve la semilla cuyo punto de partida es (x, y).
@@ -49,6 +81,55 @@ func verificarSitio(t *testing.T, w *world.World, s Site, villagers int) {
 		assert.True(t, w.IsWalkable(sp.X, sp.Y), "el aldeano nace en %v, que no es transitable", sp)
 		assert.Equal(t, spawnRadius, chebyshev(c, sp), "los aldeanos nacen justo fuera de la muralla")
 	}
+	assert.True(t, hayBosqueCerca(w, c), "RN-CITY-023: la ciudad de %v no tiene bosque a %d tiles", c, bosqueDeLaSpec)
+}
+
+// RN-CITY-023, el fallo visto en vivo el 2026-11-02: sobre el mundo canónico
+// de 512 × 512, una de cada cinco ventanas del tamaño del área de interés no
+// tiene ningún bosque, y la ciudad del smoke nació con el más cercano a 74
+// tiles. Sin madera no hay casa ni aldeano. Con muchas semillas repartidas
+// por el mapa, toda ciudad tiene que nacer con un bosque al lado.
+func TestTodaCiudadNaceConUnBosqueCerca(t *testing.T) {
+	const lado, semilla = 512, 20260909
+	w, err := world.New(lado, lado, 32, semilla, world.Generate(lado, lado, semilla))
+	require.NoError(t, err)
+
+	for i := uint64(0); i < 64; i++ {
+		s, err := FindSite(w, nil, i*4_099+17, 3)
+		require.NoError(t, err, "semilla %d", i)
+		verificarSitio(t, w, s, 3)
+	}
+}
+
+// RN-CITY-023: un mundo sin un solo bosque no tiene emplazamiento: la ciudad no
+// se funda donde no podría recolectar.
+func TestSinBosqueNoHaySitio(t *testing.T) {
+	w := mundoPintado(t, 64, 64, false, nil)
+	_, err := FindSite(w, nil, semillaEn(w, 32, 32), 3)
+	assert.True(t, errors.Is(err, ErrNoSite), "se esperaba ErrNoSite, llegó %v", err)
+}
+
+// RN-CITY-023: el bosque tiene que ser alcanzable a pie, no sólo estar cerca.
+// Junto al punto de partida hay un bosque encerrado en agua; el único bosque
+// alcanzable está en (50, 50), así que la ciudad tiene que nacer cerca de ése.
+func TestUnBosqueAisladoPorAguaNoCuenta(t *testing.T) {
+	inicio := world.Tile{X: 20, Y: 20}
+	isla := world.Tile{X: 27, Y: 20}
+	pintar := map[world.Tile]world.TerrainType{isla: world.Forest, {X: 50, Y: 50}: world.Forest}
+	for dy := int32(-1); dy <= 1; dy++ {
+		for dx := int32(-1); dx <= 1; dx++ {
+			if dx != 0 || dy != 0 {
+				pintar[world.Tile{X: isla.X + dx, Y: isla.Y + dy}] = world.Water
+			}
+		}
+	}
+	w := mundoPintado(t, 96, 96, false, pintar)
+
+	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3)
+	require.NoError(t, err)
+	verificarSitio(t, w, s, 3)
+	assert.LessOrEqual(t, chebyshev(s.Center, world.Tile{X: 50, Y: 50}), bosqueDeLaSpec,
+		"la ciudad de %v sólo tiene cerca el bosque aislado", s.Center)
 }
 
 // INV-CITY-007: sobre el generador real, el centro cae dentro del mundo y
