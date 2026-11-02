@@ -163,8 +163,26 @@ faltan dos cosas que el resto de la guía da por hechas:
   Server de Windows alcanza el Redis de WSL en `localhost:6379`, pero los tests lanzados *desde* WSL no
   alcanzan el PostgreSQL de Windows en `localhost:5433` (§3-bis.7, «Por qué `localhost:5433`…»).
 
-Con eso, el orden es: §5.1 (clonar e instalar) → §5.2 (`.env`) → `pnpm run pg:init` (§3-bis.1) →
+Con eso, el orden es: §5.1 (clonar, instalar y `pnpm run protocol:build`) → §5.2 (`.env`) → `pnpm run pg:init` (§3-bis.1) →
 §5.6 y §5.7 (servidor y web) → `pnpm run smoke` (§3-bis.9).
+
+**En macOS** (verificado el 2026-11-02, Apple Silicon) no hay WSL ni `winget`: todo sale de Homebrew, sin
+administrador y sin registrar servicios:
+
+```bash
+brew install go postgresql@16 redis
+```
+
+`postgresql@16` es *keg-only*: sus binarios quedan en `/opt/homebrew/opt/postgresql@16/bin`, fuera del
+`PATH`. Si en el `PATH` hay otros (`libpq` trae `initdb` y `psql` de otra versión, pero no el servidor),
+fija `EO_PG_BIN=/opt/homebrew/opt/postgresql@16/bin` en el `.env`. Redis se arranca a mano, en primer
+plano, cuando hagan falta sus tests: `redis-server --port 6379`. Y si el puerto 5433 ya lo ocupa otra cosa
+(`lsof -nP -iTCP:5433 -sTCP:LISTEN`), no la toques: pon `EO_PG_PORT` (§3-bis.1) y el mismo puerto en
+`EO_POSTGRES_URL` y en `EO_TEST_POSTGRES_URL` de los tests de integración.
+
+Dos diferencias más: el `sed -i` de macOS exige un argumento vacío (`sed -i '' ...`, §5.2), y sin
+`LC_ALL` el postmaster aborta con «postmaster became multithreaded during startup»; `pg-local.mjs` ya
+pone `LC_ALL=en_US.UTF-8` en macOS cuando la shell no trae ninguna.
 
 ---
 
@@ -260,7 +278,9 @@ superusuario del cluster que crea**. No hay ninguna contraseña previa que averi
 
 El script vive en [`scripts/pg-local.mjs`](../../scripts/pg-local.mjs). En Windows localiza los
 binarios en `C:\Program Files\PostgreSQL\<versión>`; en Linux y macOS los espera en el `PATH`. Con
-`EO_PG_BIN` se puede forzar la ruta.
+`EO_PG_BIN` se puede forzar la ruta. El puerto es el 5433 salvo que `EO_PG_PORT` diga otro; el script
+lee las dos variables del entorno o, si no están, del `.env`. El puerto se escribe en el
+`postgresql.conf` del cluster al hacer `init`: para cambiarlo después, `pg:destroy` y `pg:init`.
 
 > Si prefieres usar un PostgreSQL que **ya administras** (y cuya contraseña de superusuario
 > conoces), [`scripts/setup-local-db.sql`](../../scripts/setup-local-db.sql) crea en él el rol y las
@@ -535,8 +555,15 @@ cd D:\Desktop\dev\empires-online
 pnpm install
 ```
 
-`pnpm install` resuelve el workspace: `packages/protocol` y `apps/web`. Las dependencias de
-Go se resuelven aparte, **desde `services/game-server`**:
+`pnpm install` resuelve el workspace: `packages/protocol` y `apps/web`. En un clon nuevo, compila
+después el protocolo: `apps/web` lo importa desde `packages/protocol/dist`, que no se versiona, y sin él
+`next dev` responde 500 con «Module not found: Can't resolve '@empires-online/protocol'»:
+
+```bash
+pnpm run protocol:build
+```
+
+Las dependencias de Go se resuelven aparte, **desde `services/game-server`**:
 
 ```powershell
 cd services\game-server
@@ -579,6 +606,8 @@ $secret = [Convert]::ToBase64String($bytes)
 
 ```bash
 sed -i "s|^EO_AUTH_JWT_SECRET=.*|EO_AUTH_JWT_SECRET=$(openssl rand -base64 48)|" .env
+# macOS (sed de BSD):
+sed -i '' "s|^EO_AUTH_JWT_SECRET=.*|EO_AUTH_JWT_SECRET=$(openssl rand -base64 48)|" .env
 ```
 
 El servidor **carga el `.env` por sí solo** buscándolo hacia arriba desde el directorio actual, y nunca
@@ -740,8 +769,9 @@ arranca. Para fundar al jugador llama al **listener interno** del Game Server, `
 con `503 GAME_SERVER_UNAVAILABLE`, porque en `8080` esas rutas ya no existen.
 
 Si el puerto 3000 está ocupado por otra aplicación, el script `dev` lo fija y fallará con
-`EADDRINUSE`. Arranca Next.js en otro puerto directamente; la web y su API viven en el mismo origen, así que no
-hay nada más que cambiar:
+`EADDRINUSE`. Arranca Next.js en otro puerto directamente. La web y su API viven en el mismo origen, pero el Game Server
+sólo acepta el WebSocket desde los orígenes de `EO_WS_ALLOWED_ORIGINS`: añade allí el nuevo
+(`http://localhost:3001`) y reinicia el servidor. Y pasa el mismo origen al humo: `node scripts/smoke.mjs --web http://localhost:3001`.
 
 ```powershell
 pnpm --filter @empires-online/web exec next dev --port 3001

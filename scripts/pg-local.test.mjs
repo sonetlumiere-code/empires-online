@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { upsertEnv } from './pg-local.mjs';
+import { DEFAULT_PORT, parsePort, pgEnv, upsertEnv } from './pg-local.mjs';
 
 test('upsertEnv sustituye una clave vacía en su sitio, sin duplicarla', () => {
   // Así queda un .env copiado de .env.example: la clave existe y está vacía.
@@ -31,4 +31,27 @@ test('upsertEnv añade al final lo que no existía y respeta lo demás', () => {
 
 test('upsertEnv sobre un .env que no existe lo crea', () => {
   assert.match(upsertEnv('', { A: '1' }), /^\n?# Almacén[^\n]*\nA=1\n$/);
+});
+
+test('parsePort: sin EO_PG_PORT, el 5433 de siempre', () => {
+  assert.equal(parsePort(undefined), DEFAULT_PORT);
+  assert.equal(parsePort(''), DEFAULT_PORT);
+  assert.equal(DEFAULT_PORT, 5433);
+});
+
+test('parsePort: acepta otro puerto cuando el 5433 está ocupado', () => {
+  assert.equal(parsePort('5434'), 5434);
+});
+
+test('parsePort: rechaza valores que no son un puerto utilizable', () => {
+  for (const malo of ['abc', '54.3', '80', '70000', '-1']) {
+    assert.throws(() => parsePort(malo), /EO_PG_PORT inválido/);
+  }
+});
+
+test('pgEnv: en macOS sin LC_ALL fija un locale válido (si no, el postmaster aborta)', () => {
+  assert.equal(pgEnv({}, 'darwin').LC_ALL, 'en_US.UTF-8');
+  assert.equal(pgEnv({ LC_ALL: 'es_AR.UTF-8' }, 'darwin').LC_ALL, 'es_AR.UTF-8');
+  assert.equal(pgEnv({}, 'win32').LC_ALL, undefined);
+  assert.equal(pgEnv({}, 'linux').PGCLIENTENCODING, 'UTF8');
 });

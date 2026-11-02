@@ -31,14 +31,48 @@ const dataDir = join(repoRoot, '.pgdata');
 const logDir = join(repoRoot, '.pglogs');
 const logFile = join(logDir, 'postgres.log');
 
-const PORT = 5433;
+const envFile = join(repoRoot, '.env');
+
+/** Valor de una clave del .env local, o undefined. */
+function envValue(key) {
+  if (!existsSync(envFile)) return undefined;
+  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && m[1] === key) return m[2];
+  }
+  return undefined;
+}
+
+/** Ajuste de este script: manda el entorno; si no está, el .env local. */
+function setting(key) {
+  return process.env[key] || envValue(key) || undefined;
+}
+
+export const DEFAULT_PORT = 5433;
+
+/**
+ * Puerto del cluster. 5433 salvo que EO_PG_PORT diga otro: en una máquina donde
+ * el 5433 ya lo ocupa otra cosa (otro PostgreSQL, un contenedor ajeno) no hay
+ * que tocar lo ajeno, sino mover el nuestro.
+ */
+export function parsePort(raw) {
+  if (raw === undefined || raw === '') return DEFAULT_PORT;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    throw new Error(`EO_PG_PORT inválido: "${raw}" (entero entre 1024 y 65535)`);
+  }
+  return port;
+}
+
+const PORT = parsePort(setting('EO_PG_PORT'));
 const ROLE = 'empires';
 const PASSWORD = 'empires_dev_password';
 const DATABASES = ['empires', 'empires_test'];
 
 /** Localiza los binarios de PostgreSQL. */
 function findBinDir() {
-  if (process.env.EO_PG_BIN) return process.env.EO_PG_BIN;
+  const configured = setting('EO_PG_BIN');
+  if (configured) return configured;
 
   if (process.platform === 'win32') {
     const base = 'C:\\Program Files\\PostgreSQL';
@@ -74,11 +108,22 @@ function fail(message) {
   process.exit(1);
 }
 
+/**
+ * Entorno de los binarios de PostgreSQL. En macOS, sin LC_ALL el postmaster
+ * deduce el locale por las APIs del sistema, que arrancan hilos, y aborta con
+ * «postmaster became multithreaded during startup». Una LC_ALL válida lo evita.
+ */
+export function pgEnv(env, platform = process.platform) {
+  const out = { ...env, PGPASSWORD: PASSWORD, PGCLIENTENCODING: 'UTF8' };
+  if (platform === 'darwin' && !env.LC_ALL) out.LC_ALL = 'en_US.UTF-8';
+  return out;
+}
+
 function run(command, args, opts = {}) {
   const result = spawnSync(exe(command), args, {
     stdio: opts.quiet ? 'pipe' : 'inherit',
     encoding: 'utf8',
-    env: { ...process.env, PGPASSWORD: PASSWORD, PGCLIENTENCODING: 'UTF8' },
+    env: pgEnv(process.env),
   });
   if (result.error) fail(`no se pudo ejecutar ${command}: ${result.error.message}`);
   return result;
@@ -220,17 +265,6 @@ function psql() {
 
 const IDENTITY_ROLE = 'empires_identity';
 const IDENTITY_DATABASES = ['empires_identity', 'empires_identity_test'];
-const envFile = join(repoRoot, '.env');
-
-/** Valor de una clave del .env local, o undefined. */
-function envValue(key) {
-  if (!existsSync(envFile)) return undefined;
-  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-    if (m && m[1] === key) return m[2];
-  }
-  return undefined;
-}
 
 /**
  * Escribe claves en el .env local: sustituye la línea si ya existe —también vacía,
@@ -267,7 +301,7 @@ function psqlInput(database, sql) {
   const result = spawnSync(exe('psql'), ['-h', 'localhost', '-p', String(PORT), '-U', ROLE, '-d', database, '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], {
     input: sql,
     encoding: 'utf8',
-    env: { ...process.env, PGPASSWORD: PASSWORD, PGCLIENTENCODING: 'UTF8' },
+    env: pgEnv(process.env),
   });
   if (result.error) fail(`no se pudo ejecutar psql: ${result.error.message}`);
   if (result.status !== 0) fail(`psql falló:\n${result.stderr}`);
