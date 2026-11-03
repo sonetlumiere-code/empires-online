@@ -216,6 +216,14 @@ Bloquear aquí sería bloquear el tick, así que no se bloquea nunca. El precio 
 | `city.presence` | `CityPresencePersistFailed{CityID}` | Marca la ciudad en `presenceDirty`; una transición nueva sustituye a la pendiente | El siguiente `FlushDirty`: la presencia **actual** de la ciudad —estado y marca vigentes—, no la del trabajo perdido (`TestUnaPresenciaQueNoSePersisteSeReencolaConElEstadoActual`) |
 | `units.flush` | `UnitsFlushPersistFailed{UnitIDs}` | Devuelve el lote al dirty-set, sin apuntarlo al ocultamiento | El siguiente `FlushDirty` (`TestUnVolcadoQueNoSePersisteDevuelveLasUnidadesAlConjuntoSucio`) |
 | `garrison.enter`, `garrison.leave` | `GarrisonEntryResolved{INTERNAL_ERROR}`, `GarrisonExitFailed` | Responde al jugador; devuelve la unidad a la ciudad ([ADR-017](../decisions/ADR-017-garrison-commands.md)) | — |
+| `task.write` | `TaskPersistFailed` | Termina la tarea por el camino de una cancelación, que escribe un estado nuevo y completo ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §6) | El cierre de esa cancelación |
+| `stocks.flush` | `StocksFlushFailed{CityID, Delta}` | Devuelve el delta a la ciudad y sube la versión ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §1) | El siguiente `FlushDirty` |
+| `city.build`, `city.train` | `BuildResolved`, `TrainResolved` con `INTERNAL_ERROR` | Devuelve la reserva (madera y plaza) y responde al jugador ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §2) | — |
+| `building.complete` | `BuildingCompletePersistFailed` | Apunta la casa | El siguiente `FlushDirty` ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §5) |
+| `production.complete` | `BirthResolved` con el fallo | El nacimiento se reintenta a los 5 s ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §3) | El propio reintento |
+| `unit.death` | `DeathPersistFailed` | Apunta la muerte en `pendingDeaths` | El siguiente `FlushDirty`, idempotente ([ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) §2) |
+| `unit.attacked` | **ninguno** | — | Ninguno: es auditoría (`UnitAttacked`), y se pierde con un log de nivel `error` |
+| `city.pillage` | `PillageResolved{Failed}` | Devuelve lo robado y los depósitos que viajaban a la víctima, y quita la carga pendiente ([ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md) §1) | — |
 | `treaty.order` | `TreatyResolved` con el código, por el buzón | La reserva del par se libera y el jugador recibe el rechazo | — ([ADR-027](../decisions/ADR-027-hot-treaties.md) §2) |
 | `treaty.end` | `TreatyEndPersistFailed`, por el buzón | La RAM ya aplicó el fin; el barrido siguiente reencola la escritura | Un segundo después ([ADR-027](../decisions/ADR-027-hot-treaties.md) §3; sustituye a `treaty.expire`, que no tenía compensación) |
 

@@ -2,32 +2,38 @@
 
 Cómo se verifica la capa de persistencia contra PostgreSQL y Redis **reales**: montaje del entorno, base de datos dedicada, limpieza entre tests, el gate `EO_INTEGRATION=1`, y la lista enumerada de casos obligatorios incluido el test de recuperación tras caída del servidor.
 
-> **Estado real: EJECUTADO Y EN VERDE** (recuento del 2026-10-21). Llevan la etiqueta de compilación
+> **Estado real: EJECUTADO Y EN VERDE** (recuento del 2026-11-03). Llevan la etiqueta de compilación
 > `integration`, en `services/game-server`:
 >
 > | Fichero | Tests | Contra qué |
 > |---|---|---|
 > | `internal/persistence/postgres/integration_test.go` | 13 | PostgreSQL 16 real |
 > | `internal/persistence/postgres/cities_integration_test.go` | 9 | ídem |
+> | `internal/persistence/postgres/combat_integration_test.go` | 5 | ídem (E2: la muerte, el volcado de vida y botín, UnitAttacked) |
 > | `internal/persistence/postgres/diplomacy_integration_test.go` | 14 | ídem |
+> | `internal/persistence/postgres/economy_integration_test.go` | 13 | ídem (E1: stock por deltas, encargos, nacimiento, tareas) |
+> | `internal/persistence/postgres/forest_integration_test.go` | 5 | ídem (E4: la capa de madera) |
 > | `internal/persistence/postgres/fundacion_integration_test.go` | 11 | ídem (también `internal/httpapi`: la fundación y, desde ADR-020, la consulta) |
 > | `internal/persistence/postgres/garrison_integration_test.go` | 4 | ídem |
 > | `internal/persistence/postgres/loadcheck_integration_test.go` | 2 | ídem |
 > | `internal/persistence/postgres/migrate_integration_test.go` | 3 | ídem |
 > | `internal/persistence/postgres/movement_pipeline_integration_test.go` | 1 | ídem, con la cola real |
+> | `internal/persistence/postgres/pillage_integration_test.go` | 3 | ídem (E5: el golpe de saqueo) |
 > | `internal/persistence/postgres/players_integration_test.go` | 6 | ídem |
 > | `internal/persistence/postgres/safezones_integration_test.go` | 5 | ídem |
 > | `internal/persistence/postgres/territories_integration_test.go` | 11 | ídem |
+> | `internal/persistence/postgres/treaty_orders_integration_test.go` | 5 | ídem (E6: las órdenes de tratado) |
 > | `internal/persistence/postgres/units_integration_test.go` | 5 | ídem |
 > | `internal/persistence/postgres/testenv_integration_test.go` | — | montaje y limpieza |
 > | `internal/persistence/redis/redis_integration_test.go` | 11 | Redis real |
 >
-> Son 95, y pasan con el detector de carreras activo. Aparte, `apps/web/src/server/store.integration.test.ts`
+> Son 126, y pasan con el detector de carreras activo. Aparte, `apps/web/src/server/store.integration.test.ts`
 > (13 tests, Vitest) prueba el almacén de identidad contra PostgreSQL real. **No se ejecutan con Docker**: la máquina de
 > desarrollo lo tiene descartado (provoca pantallazos azules por consumo de RAM). PostgreSQL es un
-> cluster propio en `.pgdata/` puerto 5433, y Redis vive en WSL. El procedimiento exacto está en
+> cluster propio en `.pgdata/` (puerto 5433 en Windows, 5434 en macOS, `EO_PG_PORT`), y Redis vive en WSL o en
+> Homebrew. El procedimiento exacto está en
 > [local-development.md](../operations/local-development.md) §3-bis. El job `integration` de la CI sí
-> usa contenedores, y desde que el repositorio es público esos tests —95 de Go a 2026-10-21, más los 13 del almacén de identidad de `apps/web`— **también pasan allí**, con
+> usa contenedores, y desde que el repositorio es público esos tests —126 de Go a 2026-11-03, más los 13 del almacén de identidad de `apps/web`— **también pasan allí**, con
 > `-race`, contra `postgres:16-alpine` y `redis:7-alpine`.
 >
 > Los nombres de las tablas I/R de este documento son el **plan** original y ninguno existe con ese nombre:

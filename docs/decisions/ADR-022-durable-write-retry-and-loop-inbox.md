@@ -226,6 +226,6 @@ y el mundo debe seguir ([ADR-004](ADR-004-redis-hot-state.md)). Invertirlo serí
 
 ## Estado
 
-Aceptado. **Precisado por [ADR-027](ADR-027-hot-treaties.md) (2026-11-03):** el barrido `treaty.expire`, la única
-escritura sin compensación, desaparece; los vencimientos de los tratados se aplican en la RAM y se escriben con
+Aceptado. **Precisado por [ADR-027](ADR-027-hot-treaties.md) (2026-11-03):** el barrido `treaty.expire`, que no tenía
+compensación, desaparece (la otra sin ella es `unit.attacked`, auditoría de E3); los vencimientos de los tratados se aplican en la RAM y se escriben con
 `treaty.end`, que sí la declara.
