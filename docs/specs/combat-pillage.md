@@ -1,19 +1,19 @@
 # Combate: saqueo de la ciudad
 
-Propuesta del primer ataque a una ciudad: un guerrero junto a la muralla enemiga roba madera del almacén golpe a
+El primer ataque a una ciudad: un guerrero junto a la muralla enemiga roba madera del almacén golpe a
 golpe y tiene que llevársela a casa para que cuente. La ciudad no tiene vida ni cae: lo que se arriesga es el
 almacén.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-COMBAT-PILLAGE` |
-| Estado | Draft (2026-11-03). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-03; las preguntas de §10 se decidieron ese día con la recomendación de cada una). |
 | Milestone | E5 Saqueo (quinto slice después de M7) |
 | Canon | §9 (protección), §12 (persistencia), §16 (errores), §21 (fuera de MVP: asedio) |
 | Depende de | [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [economy-wood.md](economy-wood.md), [city.md](city.md), [presence.md](presence.md), [safe-zones.md](safe-zones.md), [garrison.md](garrison.md) |
-| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (acción hostil), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (deltas del stock), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (fase 4). Un ADR nuevo (`ADR-026`, un tercer escritor que resta del stock) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (acción hostil), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (deltas del stock), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (fase 4). [ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md) (el golpe de saqueo, un débito en dos fases). |
 | Reemplaza a | — |
-| Invariantes | Amplía dos existentes y propone dos nuevos que se registran al aceptar (§8) |
+| Invariantes | Amplía dos existentes y asigna `INV-COMBAT-004` e `INV-COMBAT-005` ([../invariants/combat.md](../invariants/combat.md)) |
 
 ## 1. Objetivo
 
@@ -45,12 +45,13 @@ los decide él, [INV-SEC-001](../invariants/security.md#inv-sec-001)), tick loop
 `unit.pillage { unitId, cityId }` sustituye cualquier orden en curso del guerrero, como `unit.attack`. La ciudad
 no es una unidad: el objetivo es su **muralla**, el 3 × 3 de [city.md](city.md) (`RN-CITY-009`), que es `BLOCKED`
 entera. Un guerrero está **en alcance** sobre cualquier tile transitable del anillo que rodea el 3 × 3 (distancia
-de Chebyshev 2 al centro). El guerrero pasa a `MOVING` hacia el tile del anillo con la ruta más corta (empate:
-menor `y`, después menor `x`) y, al llegar, a `ATTACKING`, el mismo estado de E2.
+de Chebyshev 2 al centro). El guerrero pasa a `MOVING` hacia el tile transitable del anillo más cercano a él (distancia de
+Chebyshev; empate: menor `y`, después menor `x`) al que haya ruta y, al llegar, a `ATTACKING`, el mismo estado de
+E2.
 
 ### 4.2 Valores de partida
 
-Parámetros de catálogo y de configuración, como los de [combat-raid.md](combat-raid.md) §4.1 (ver Q2 y Q3):
+Parámetros de catálogo y de configuración, como los de [combat-raid.md](combat-raid.md) §4.1 (Q2 y Q3):
 
 | Parámetro | Valor propuesto | Hoy |
 |---|---|---|
@@ -114,25 +115,25 @@ saqueador, la carga que lleva.
 | Pregunta (canon §12) | Respuesta |
 |---|---|
 | Autoritativo en RAM | El saqueo en curso (guerrero → ciudad, `next_hit_at_ms`), los stocks, la carga y `pillagedAtMs` |
-| Write-through | Cada golpe de saqueo: el débito del stock de la víctima con su `CityPillaged`, en una transacción |
+| Write-through | Cada golpe de saqueo: el débito del stock de la víctima con su `CityPillaged`, en una transacción en dos fases (ADR-026) |
 | Dirty-flag | La carga del guerrero, en el volcado de unidades, **sólo lo ya confirmado** (ver abajo) |
 | Reconstruible / no persistido | El saqueo en curso y `ATTACKING`, como en E2: un reinicio lo termina y el guerrero queda `IDLE`. `pillagedAtMs` se pierde al reiniciar |
 
-**El problema que pide un ADR.** Hoy el stock tiene dos escritores ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)
+**Por qué hace falta un ADR.** Hasta E5 el stock tenía dos escritores ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)
 §1): el volcado, que sólo suma depósitos, y el encargo, que resta en la transacción de su efecto. El saqueo es
 un tercero que resta, y su efecto (la carga del guerrero) vive en otra fila con otra clave de la cola. Si el
 volcado de unidades escribiera la carga robada antes que el débito de la víctima, una caída entre ambos
 **duplicaría madera**, justo lo que prohíbe [INV-COMBAT-003](../invariants/combat.md#inv-combat-003).
 
-**Propuesta para `ADR-026`.** El golpe de saqueo es una orden en dos fases, como un encargo (ADR-023 §2): el tick
+**Decisión ([ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md)).** El golpe de saqueo es una orden en dos fases, como un encargo (ADR-023 §2): el tick
 reserva (resta del stock en RAM y suma a la carga como **pendiente**), la transacción con la clave de la ciudad
 víctima escribe el delta versionado del stock («depósitos pendientes − robado») y su `CityPillaged`, y el resultado
 vuelve al loop por el buzón. Con éxito, lo pendiente pasa a carga confirmada; con un fallo definitivo, vuelve al
 almacén de la víctima. El volcado de unidades escribe sólo la carga confirmada. Una caída puede así perder lo
-robado (la víctima ya pagó y el guerrero aún no lo tiene en disco), nunca crearlo. El ADR fija los casos de
-borde: depositar o morir con carga pendiente.
+robado (la víctima ya pagó y el guerrero aún no lo tiene en disco), nunca crearlo. El ADR fija también la
+idempotencia por versión y los casos de borde: depositar o morir con carga pendiente.
 
-Sin migración prevista: `world_events.event_type` no tiene `CHECK`, `units.carrying` ya existe y `ATTACKING` sólo
+Sin migración: `world_events.event_type` no tiene `CHECK`, `units.loot` ya existe (`000007`) y `ATTACKING` sólo
 vive en la RAM. La siguiente libre sigue siendo `000009`.
 
 ## 8. Invariantes
@@ -142,10 +143,9 @@ Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001) (stock nunca negativo
 lo cumple con las dos fases de §7), [INV-ECON-006](../invariants/economy.md#inv-econ-006) y
 [INV-CITY-006](../invariants/city.md#inv-city-006). **Amplía** [INV-COMBAT-002](../invariants/combat.md#inv-combat-002)
 a los golpes de saqueo y [INV-COMBAT-003](../invariants/combat.md#inv-combat-003) a «un combate o un saqueo nunca
-crea madera». **Propone** dos nuevos, que se numeran en `INV-COMBAT` al aceptar:
-
-- Ningún saqueo deja el almacén de una ciudad por debajo del suelo (`RN-COMBAT-023`).
-- Ningún golpe de saqueo cae con el dueño del saqueador ausente (`RN-COMBAT-024`).
+crea madera». **Asigna** [INV-COMBAT-004](../invariants/combat.md#inv-combat-004) (ningún saqueo deja el almacén
+por debajo del suelo, `RN-COMBAT-023`) e [INV-COMBAT-005](../invariants/combat.md#inv-combat-005) (ningún golpe de
+saqueo cae con el dueño del saqueador ausente, `RN-COMBAT-024`).
 
 ## 9. Tests esperados
 
@@ -158,11 +158,12 @@ crea madera». **Propone** dos nuevos, que se numeran en `INV-COMBAT` al aceptar
 | contract / e2e | `unit.pillage` y `pillagedAtMs` contra el JSON Schema; recorrido completo por WebSocket |
 | cliente | Clic con guerrero sobre una ciudad ajena, aviso de saqueo en el HUD; `scripts/smoke.mjs` añade `--saqueo` contra `smoke_victim` |
 
-## 10. Preguntas abiertas de producto
+## 10. Decisiones de producto (2026-11-03)
 
-Cada una con mi recomendación. Las decide producto; la spec no pasa a `Accepted` sin ellas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de
+producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué se ataca de una ciudad: el **almacén** (saqueo) o las **casas** (destrucción)? | **Saqueo**, esta spec. Da al atacante algo que ganar y al defensor algo que recuperar, sin vida de edificios ni migración. Destruir casas se puede hacer después como «E6 Asedio», pero pide una decisión más dura: una casa destruida baja `population_limit`, y con la población al tope la ciudad quedaría por encima de su límite, que hoy prohíben [INV-CITY-002](../invariants/city.md#inv-city-002) y el `CHECK cities_population_within_limit`. Habría que permitir el exceso (y bloquear sólo el entrenamiento) o matar unidades, y las dos cosas cambian la economía de E1. |
 | Q2 | ¿Cuánto se roba por golpe y cuánto carga el guerrero? | 5 por golpe y carga de 20 (§4.2). Con la carga de hoy, 10, saquear rinde lo mismo que recolectar y nadie cruzaría el mapa para hacerlo. Subirla también dobla el botín máximo de E2, que me parece bien: hace más valioso matar a un saqueador. |

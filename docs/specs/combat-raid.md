@@ -27,7 +27,8 @@ enemiga visible; la persecución y la resolución del golpe en la fase 4 del tic
 primera acción **hostil** de [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) y su rechazo por
 protección, Safe Zone, ocultamiento y tratado.
 
-**No entra** (`Fuera de MVP` de este slice): atacar edificios o ciudades, asedio y saqueo del almacén; respuesta
+**No entra** (`Fuera de MVP` de este slice): atacar edificios o ciudades, asedio y saqueo del almacén (el saqueo llega
+con [combat-pillage.md](combat-pillage.md)); respuesta
 automática del atacado (llega con [combat-response.md](combat-response.md)); daño a distancia, armadura, bonos de facción o civilización; curación; formaciones;
 captura de territorio (`contested` sigue sin productor); romper un tratado atacando.
 
@@ -88,6 +89,9 @@ Dominio: `RN-COMBAT`.
   movimiento normal y el atacante queda `IDLE`.
 - La carga ganada por el asesino viaja en el volcado de su unidad, no en la transacción de la muerte
   ([ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) §2).
+
+**Precisión (2026-11-03).** La carga máxima del `WARRIOR` pasa de 10 a 20 con el saqueo
+([combat-pillage.md](combat-pillage.md) Q2), también para el botín: matar a un guerrero cargado rinde el doble.
 
 ## 5. Errores
 

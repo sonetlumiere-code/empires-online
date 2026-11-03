@@ -1,6 +1,6 @@
 # Milestones
 
-Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E4): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
+Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E5): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
 
 ## Cómo leer este documento
 
@@ -1453,3 +1453,27 @@ tiles con madera. **No entra** (spec §2): talar para abrir camino, otros recurs
 6. **HECHO** — Humo y prueba en vivo (2026-11-03): `scripts/smoke.mjs --tala` en verde. Tres aldeanos agotaron el
    tile (279, 7), se escribió `ForestDepleted` y uno pasó solo a (278, 6). En el navegador, el tile agotado se ve
    como tala con tocones y el de al lado, a medias.
+
+## E5 — Saqueo
+
+**Estado: EN CURSO** desde el 2026-11-03, en la rama `claude/slice-asedio`. Contrato:
+[SPEC-COMBAT-PILLAGE](../specs/combat-pillage.md), aceptada el 2026-11-03 con sus nueve decisiones de producto, y
+[ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md).
+
+**Objetivo.** Que tener cosas cueste algo: un guerrero junto a la muralla enemiga roba madera del almacén golpe a
+golpe, hasta un suelo, y la tiene que llevar a casa; los guerreros de la ciudad la defienden.
+
+**Alcance.** La orden `unit.pillage`, el alcance en el anillo de la muralla, los golpes de saqueo en la fase 4 con
+su débito en dos fases, el suelo, la presencia del saqueador, la defensa con la regla de E3, el aviso
+`pillagedAtMs` al dueño y el clic de saqueo en el cliente. **No entra** (spec §2): vida de edificios, destruir
+casas, que la ciudad caiga, máquinas de asedio, niebla de guerra.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-026, `INV-COMBAT-004` e `INV-COMBAT-005`.
+2. Protocolo: `unit.pillage` y `pillagedAtMs`, con el JSON Schema y los contract tests.
+3. Simulación: la orden, la aproximación, los golpes con el suelo y la presencia, la defensa y las dos fases;
+   golden «saqueo».
+4. Persistencia: la transacción del golpe, idempotente por versión, con fallo inyectado.
+5. Cliente: clic de saqueo con un guerrero sobre una ciudad ajena y el aviso en el HUD.
+6. Humo `--saqueo` y prueba en vivo.
