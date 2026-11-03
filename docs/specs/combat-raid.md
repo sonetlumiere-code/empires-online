@@ -6,13 +6,13 @@ enemiga, la mata y se queda con lo que cargaba. Una unidad, una orden, una fase 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-COMBAT-RAID` |
-| Estado | Draft (2026-11-02). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-02; las preguntas de §10 se decidieron ese día con la recomendación de cada una). Implementación en la rama `claude/slice-incursion`. |
 | Milestone | E2 Incursión (segundo slice después de M7) |
 | Canon | §9 (protección), §12 (persistencia), §16 (errores), §21 (fuera de MVP: combate) |
 | Depende de | [unit.md](unit.md), [movement.md](movement.md), [presence.md](presence.md), [safe-zones.md](safe-zones.md), [garrison.md](garrison.md), [territory.md](territory.md), [economy-wood.md](economy-wood.md) |
-| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (clasificación de acciones), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md). Un ADR nuevo (`ADR-024`, resolución simultánea en la fase 4) acompañará a la aceptación. |
+| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (clasificación de acciones), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md). [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (resolución simultánea, qué se persiste, tope de la protección). |
 | Reemplaza a | — |
-| Invariantes | Cita los existentes de §8; propone tres nuevos que se registran al aceptar |
+| Invariantes | Cita los existentes de §8 y asigna `INV-COMBAT-001` a `INV-COMBAT-003` ([../invariants/combat.md](../invariants/combat.md)) |
 
 ## 1. Objetivo
 
@@ -114,9 +114,10 @@ Cita [INV-UNIT-002](../invariants/units.md#inv-unit-002) (un `DEAD` no acepta ó
 [INV-CITY-006](../invariants/city.md#inv-city-006) (este slice escribe su **test de rechazo** y la deja
 **cubierta**), [INV-CITY-017](../invariants/city.md#inv-city-017),
 [INV-SAFE-004](../invariants/territory.md#inv-safe-004) e [INV-ECON-003](../invariants/economy.md#inv-econ-003).
-Propone tres nuevos, a registrar en una familia `INV-COMBAT` al aceptar: `DEAD` si y sólo si `hp = 0`; ningún
-golpe se aplica con atacante u objetivo en Safe Zone, objetivo oculto o dueño protegido; la madera nunca se crea
-en un combate (lo que gana el atacante es como mucho lo que perdió la víctima).
+Asigna [INV-COMBAT-001](../invariants/combat.md#inv-combat-001) (`DEAD` si y sólo si `hp = 0`),
+[INV-COMBAT-002](../invariants/combat.md#inv-combat-002) (ningún golpe donde la protección, el refugio o el
+ocultamiento lo prohíben) e [INV-COMBAT-003](../invariants/combat.md#inv-combat-003) (un combate nunca crea
+madera).
 
 ## 9. Tests esperados
 
@@ -129,11 +130,12 @@ en un combate (lo que gana el atacante es como mucho lo que perdió la víctima)
 | contract / e2e | `unit.attack` y los valores nuevos de los enums contra el JSON Schema; recorrido completo por WebSocket |
 | cliente | Selección de objetivo con clic sobre unidad enemiga, barra de vida, botón «Guerrero»; `scripts/smoke.mjs` añade una incursión entre dos jugadores |
 
-## 10. Preguntas abiertas de producto
+## 10. Decisiones de producto (2026-11-02)
 
-Cada una con mi recomendación. Las decide producto; la spec no pasa a `Accepted` sin ellas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de
+producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | La protección offline es indefinida ([DEBT-02](../roadmap/backlog.md), «prerrequisito duro» del combate). ¿Qué tope? | Un tope configurable (`EO_CITY_PROTECTION_MAX_HOURS`, 48 h de partida) y cerrar a la vez el caso de [presence.md](presence.md) §7.6: tras un reinicio, una ciudad `ONLINE` sin sesión reancla `last_offline_at` al arranque. Sin eso, una caída del servidor deja ciudades expuestas para siempre. |
 | Q2 | ¿Protege `PROTECTED` a las unidades que están fuera de la ciudad (backlog Q-08)? | Sí: la protección es del jugador. Si no, apagar el ordenador con un aldeano en el bosque costaría ese aldeano, y la promesa de presence.md sería falsa. |

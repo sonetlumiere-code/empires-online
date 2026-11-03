@@ -102,7 +102,8 @@ que el servidor implementa, y ADR-020, del mismo día, de cerrar la limpieza de 
 dejó abierta; ADR-021, del **2026-10-26**, de cerrar el perímetro del Game Server que la auditoría de ese
 día encontró abierto; ADR-022, del **2026-10-27**, de que ninguna escritura de la cola de persistencia ni
 ningún comando del propio servidor se pierda en silencio, el otro hallazgo de esa auditoría; y ADR-023, del
-mismo día, de cómo el primer slice de economía escribe la madera y sus encargos sin gastar dos veces.
+mismo día, de cómo el primer slice de economía escribe la madera y sus encargos sin gastar dos veces;
+y ADR-024, del **2026-11-02**, de cómo el slice de incursión resuelve los golpes y qué persiste de un combate.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-019, ADR-013 y
 ADR-018).
@@ -132,13 +133,14 @@ ADR-018).
 | [021](ADR-021-game-server-perimeter.md) | El perímetro del Game Server: `Origin` obligatorio, margen de reloj del ticket, topes de conexión y listener interno | Aceptado | `EO_WS_ALLOWED_ORIGINS` (exacta, obligatoria en producción; sin `Origin` se admite; `403` antes del handshake); `auth.ClockSkew` de 30 s en `iat` y `exp`, constante; `EO_WS_MAX_CONNECTIONS` (5000) y `_PER_IP` (32) antes del upgrade, con `503`/`429` y `eo_ws_connections_rejected_total{reason}`; `/internal/players` en su propio listener `EO_INTERNAL_ADDR` (`127.0.0.1:8081`) que el proxy no publica, con los tres puertos validados distintos; `EO_ENV` sólo `development`, `test` o `production`. Fija el *leeway* que ADR-010 dejó TBD. |
 | [022](ADR-022-durable-write-retry-and-loop-inbox.md) | Ninguna escritura durable ni comando del sistema se pierde en silencio: el volcado reencola lo que la cola descarta y el loop tiene buzón propio | Aceptado | Todo `Job` declara compensación salvo `treaty.expire`, y la compensación no reescribe: marca la ciudad, apunta el cierre o devuelve las unidades al conjunto sucio, y `FlushDirty` lo reencola con el estado **actual**; `loop.Inbox` (8192) lleva las compensaciones y las bajas de sesión y se drena antes que los comandos; el alta espera hasta 2 s en el canal o cierra con `4500`; las sesiones se llevan por id; `eo_persistence_jobs_dropped_total{job, reason}` y `eo_commands_dropped_total{type}` a cero desde el arranque, con alerta en «> 0». Precisa ADR-013 §2.4. |
 | [023](ADR-023-economy-stock-deltas-and-two-phase-orders.md) | El stock se persiste por deltas versionados y los encargos de la economía son órdenes en dos fases | Aceptado | Toda escritura de `city_stocks` es `amount + delta` condicionada a `version`; el volcado sólo suma depósitos y el encargo lleva `depósitos − coste` en la transacción de su efecto; `city.build`, `city.train` y el nacimiento del aldeano se validan y reservan en el tick y se confirman por el buzón; la población cuenta lo reservado (deroga INV-CITY-009, lo sustituye INV-CITY-017); un viaje nuevo exige al dueño presente. La tarea persistente no se adopta como patrón general. |
+| [024](ADR-024-combat-simultaneous-resolution.md) | El combate se resuelve a la vez en la fase 4 y sólo la muerte se escribe en el acto | Aceptado | Golpes calculados con el estado de fin de la fase 3 y aplicados a la vez; la muerte es una transacción (víctima, población, botín, `world_events`); `hp` y botín van en el volcado; el enfrentamiento y `ATTACKING` no se persisten. El tope de la protección se deriva de `last_offline_at` y una ciudad `ONLINE` sin sesión al arrancar se reancla a `OFFLINE_PENDING`. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y
 `RandomSource` (canon §1.5), el *interest management* por suscripción a chunks (canon §13) y la
 elección de A\* con heurística octile tras la interfaz `Pathfinder`
 ([../architecture/pathfinding.md](../architecture/pathfinding.md)). Si alguna de ellas necesita
-registrarse, toma el siguiente número libre —**024** en adelante—, nunca un número ya asignado.
+registrarse, toma el siguiente número libre —**025** en adelante—, nunca un número ya asignado.
 
 ## 6. Cómo se propone un ADR nuevo
 

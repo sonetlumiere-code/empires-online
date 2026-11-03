@@ -50,7 +50,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Draft | `garrisons`, entrada y salida, tratados con `allows_garrison` |
 | WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Draft | Envelopes, los 10 mensajes cliente→servidor y los 16 servidor→cliente, límites e idempotencia |
 | Economía: madera | [economy-wood.md](economy-wood.md) | E1 Madera | Accepted | `city_stocks`, tarea de recolección `GATHER_WOOD` y estado `WORKING`, casa en la zona urbana, entrenamiento de aldeanos; primer slice después de M7 |
-| Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Draft | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil. Propuesta: no se implementa hasta `Accepted` |
+| Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Accepted | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil; tope de la protección offline |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
