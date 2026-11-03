@@ -470,6 +470,17 @@
     {
       "tick": 164,
       "to": "chunk 0,0",
+      "type": "forest.update",
+      "payload": {
+        "x": 22,
+        "y": 10,
+        "remaining": 90,
+        "regrowsAtMs": 1757462416360
+      }
+    },
+    {
+      "tick": 164,
+      "to": "chunk 0,0",
       "type": "unit.movement.started",
       "payload": {
         "unitId": 1,
@@ -911,6 +922,17 @@
     {
       "tick": 388,
       "to": "chunk 0,0",
+      "type": "forest.update",
+      "payload": {
+        "x": 22,
+        "y": 10,
+        "remaining": 80,
+        "regrowsAtMs": 1757462438720
+      }
+    },
+    {
+      "tick": 388,
+      "to": "chunk 0,0",
       "type": "unit.movement.started",
       "payload": {
         "unitId": 1,
@@ -1318,6 +1340,17 @@
       "payload": {
         "id": 1,
         "status": "WORKING"
+      }
+    },
+    {
+      "tick": 611,
+      "to": "chunk 0,0",
+      "type": "forest.update",
+      "payload": {
+        "x": 22,
+        "y": 10,
+        "remaining": 70,
+        "regrowsAtMs": 1757462461080
       }
     },
     {
@@ -1789,6 +1822,17 @@
     {
       "tick": 835,
       "to": "chunk 0,0",
+      "type": "forest.update",
+      "payload": {
+        "x": 22,
+        "y": 10,
+        "remaining": 60,
+        "regrowsAtMs": 1757462483440
+      }
+    },
+    {
+      "tick": 835,
+      "to": "chunk 0,0",
       "type": "unit.movement.started",
       "payload": {
         "unitId": 1,
@@ -2086,6 +2130,18 @@
           "y": 9,
           "status": "COMPLETE",
           "completesAtMs": 1757376083000
+        }
+      ],
+      "forests": [
+        {
+          "tile": {
+            "x": 22,
+            "y": 10
+          },
+          "state": {
+            "remaining": 60,
+            "regrowsAtMs": 1757462483440
+          }
         }
       ]
     }

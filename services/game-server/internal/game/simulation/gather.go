@@ -130,6 +130,11 @@ func (s *Simulation) handleGatherWood(cmd GatherWood) {
 		s.economyError(cmd.PlayerID, cmd.RequestID, gatherErrorCode(err), err.Error())
 		return
 	}
+	// RN-ECON-014: un tile sin madera no se recolecta.
+	if s.state.ForestAt(cmd.Target, nowMs) == 0 {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "ese bosque está agotado")
+		return
+	}
 	if s.deps.Economy == nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInternalError, "la economía no está disponible")
 		return
@@ -260,6 +265,11 @@ func (s *Simulation) onLegArrived(u *unit.Unit, t task.Task, movementID int64, a
 // TO_RESOURCE → WORKING durante workMs (RN-ECON-003). Si el trabajo ya venció
 // —tras un reinicio—, la fase 5 de este mismo tick lo despierta.
 func (s *Simulation) arriveAtResource(u *unit.Unit, t task.Task, arrivedAtMs int64, finish *MovementFinish, wasHidden bool) {
+	// RN-ECON-015: si el bosque se agotó mientras llegaba, no se trabaja en él.
+	if s.state.ForestAt(t.Target, arrivedAtMs) == 0 {
+		s.leaveDepletedForest(u, t, arrivedAtMs, finish, wasHidden)
+		return
+	}
 	def, err := unit.Lookup(u.Type)
 	if err != nil {
 		s.endTask(u, task.EndCancelled, finish)
@@ -306,7 +316,14 @@ func (s *Simulation) leaveResource(u *unit.Unit, t task.Task) {
 		return
 	}
 	leftAtMs := t.PhaseUntilMs
-	next, err := t.FinishWork(def.GatherCarry)
+	// RN-ECON-013: carga lo que quede, hasta su capacidad. Un tile que otra
+	// unidad vació mientras trabajaba no da nada (RN-ECON-015).
+	carry := s.takeForest(u, t, def.GatherCarry, leftAtMs)
+	if carry == 0 {
+		s.leaveDepletedForest(u, t, leftAtMs, nil, false)
+		return
+	}
+	next, err := t.FinishWork(carry)
 	if err != nil {
 		s.endTask(u, task.EndCancelled, nil)
 		return
@@ -362,6 +379,25 @@ func (s *Simulation) arriveAtDeposit(u *unit.Unit, t task.Task, arrivedAtMs int6
 		return
 	}
 	origin := u.Tile()
+	// RN-ECON-015: con su bosque agotado, el viaje siguiente va al tile con
+	// madera más cercano; si no hay ninguno, la tarea termina en el depósito.
+	if s.state.ForestAt(next.Target, arrivedAtMs) == 0 {
+		nt, path, ok := s.findForest(u, next.Target, def, arrivedAtMs)
+		if !ok {
+			s.endTask(u, task.EndForestDepleted, finish)
+			return
+		}
+		if next, err = next.Retarget(nt); err != nil {
+			s.endTask(u, task.EndCancelled, finish)
+			return
+		}
+		if path == nil {
+			s.arriveAtResource(u, next, arrivedAtMs, finish, false)
+			return
+		}
+		s.startLeg(u, next, path, nt, origin, arrivedAtMs, finish, false)
+		return
+	}
 	if origin == next.Target {
 		s.arriveAtResource(u, next, arrivedAtMs, finish, false)
 		return
@@ -372,6 +408,57 @@ func (s *Simulation) arriveAtDeposit(u *unit.Unit, t task.Task, arrivedAtMs int6
 		return
 	}
 	s.startLeg(u, next, path, next.Target, origin, arrivedAtMs, finish, false)
+}
+
+// leaveDepletedForest saca a una unidad de un bosque agotado (RN-ECON-015):
+// en el instante atMs va al tile con madera más cercano o, si no hay ninguno,
+// al depósito con lo que lleve, y allí la tarea termina. finish es el cierre
+// del tramo que acaba de llegar, si lo hay.
+func (s *Simulation) leaveDepletedForest(u *unit.Unit, t task.Task, atMs int64, finish *MovementFinish, wasHidden bool) {
+	def, err := unit.Lookup(u.Type)
+	if err != nil {
+		s.endTask(u, task.EndCancelled, finish)
+		return
+	}
+	origin := u.Tile()
+	if nt, path, ok := s.findForest(u, t.Target, def, atMs); ok {
+		next, err := t.Retarget(nt)
+		if err != nil {
+			s.endTask(u, task.EndCancelled, finish)
+			return
+		}
+		if path == nil {
+			s.arriveAtResource(u, next, atMs, finish, wasHidden)
+			return
+		}
+		s.startLeg(u, next, path, nt, origin, atMs, finish, wasHidden)
+		return
+	}
+	next, err := t.ReturnToDeposit()
+	if err != nil {
+		s.endTask(u, task.EndCancelled, finish)
+		return
+	}
+	c, ok := s.cityOfUnit(u)
+	if !ok {
+		s.endTask(u, task.EndForestDepleted, finish)
+		return
+	}
+	depot, ok := s.depositTile(c)
+	if !ok {
+		s.endTask(u, task.EndForestDepleted, finish)
+		return
+	}
+	if origin == depot {
+		s.arriveAtDeposit(u, next, atMs, finish)
+		return
+	}
+	path, err := s.legPath(origin, depot, def)
+	if err != nil {
+		s.endTask(u, task.EndNoPath, finish)
+		return
+	}
+	s.startLeg(u, next, path, depot, origin, atMs, finish, wasHidden)
 }
 
 // endTask termina la tarea de una unidad que está parada (sin tramo activo):
@@ -475,6 +562,12 @@ func (s *Simulation) advanceTasks(nowMs int64) {
 // submitTask encola una transición de tarea, ordenada con las demás escrituras
 // de su unidad. `rev` es la revisión de la tarea que escribe (0 si la borra).
 func (s *Simulation) submitTask(w TaskWrite, rev uint64) {
+	// La carga del bosque viaja en la primera transición que sigue a la carga,
+	// en su misma transacción (ADR-025 §2, INV-ECON-008).
+	if p := s.state.forest.pending; p != nil {
+		w.Forest = p
+		s.state.forest.pending = nil
+	}
 	if s.deps.Economy == nil {
 		return
 	}

@@ -62,6 +62,9 @@ const (
 	EndReplaced EndReason = "REPLACED"
 	// EndNoPath: el tramo siguiente no tiene ruta.
 	EndNoPath EndReason = "NO_PATH"
+	// EndForestDepleted: el bosque se agotó y no hay otro tile con madera
+	// cerca (RN-ECON-015).
+	EndForestDepleted EndReason = "FOREST_DEPLETED"
 )
 
 // Errores de dominio.
@@ -124,6 +127,29 @@ func (t Task) FinishWork(carry int32) (Task, error) {
 	return t, nil
 }
 
+// Retarget cambia el tile de trabajo porque el suyo se agotó (RN-ECON-015):
+// desde TO_RESOURCE o WORKING, la tarea vuelve a TO_RESOURCE hacia `target`,
+// sin carga nueva y sin perder la que lleve.
+func (t Task) Retarget(target world.Tile) (Task, error) {
+	if t.Phase != PhaseToResource && t.Phase != PhaseWorking {
+		return t, fmt.Errorf("%w: cambiar de bosque desde %s", ErrBadTransition, t.Phase)
+	}
+	t.Target, t.Phase, t.PhaseUntilMs = target, PhaseToResource, 0
+	return t, nil
+}
+
+// ReturnToDeposit manda la tarea al depósito con lo que lleve, aunque sea nada,
+// porque su bosque se agotó y no hay otro cerca (RN-ECON-015): desde
+// TO_RESOURCE o WORKING pasa a TO_DEPOSIT. Al depositar, quien llama termina
+// la tarea.
+func (t Task) ReturnToDeposit() (Task, error) {
+	if t.Phase != PhaseToResource && t.Phase != PhaseWorking {
+		return t, fmt.Errorf("%w: volver al depósito desde %s", ErrBadTransition, t.Phase)
+	}
+	t.Phase, t.PhaseUntilMs = PhaseToDeposit, 0
+	return t, nil
+}
+
 // Deposit es la llegada al depósito: entrega lo cargado y la tarea vuelve a
 // TO_RESOURCE con un viaje más (RN-ECON-004). Devuelve lo entregado. Si el
 // viaje siguiente empieza o no lo decide quien llama (RN-ECON-005).
@@ -180,7 +206,8 @@ type Grid interface {
 }
 
 // ValidTarget aplica la parte de RN-ECON-001 que depende del destino: dentro
-// del mundo y sobre terreno FOREST. El bosque no se agota en este slice.
+// del mundo y sobre terreno FOREST. Que al tile le quede madera
+// (RN-ECON-014) lo comprueba la simulación, que tiene la capa del bosque.
 func ValidTarget(g Grid, target world.Tile) error {
 	if !g.InBounds(target.X, target.Y) {
 		return ErrOutOfBounds

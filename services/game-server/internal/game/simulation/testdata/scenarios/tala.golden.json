@@ -1,0 +1,2677 @@
+{
+  "emitted": [
+    {
+      "tick": 0,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 1,
+        "movement": {
+          "movementId": 1,
+          "path": [
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 0
+            },
+            {
+              "x": 13,
+              "y": 10,
+              "tMs": 600
+            },
+            {
+              "x": 14,
+              "y": 10,
+              "tMs": 1200
+            },
+            {
+              "x": 15,
+              "y": 10,
+              "tMs": 1800
+            },
+            {
+              "x": 16,
+              "y": 10,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 10,
+              "tMs": 3000
+            },
+            {
+              "x": 18,
+              "y": 10,
+              "tMs": 3600
+            },
+            {
+              "x": 19,
+              "y": 10,
+              "tMs": 4200
+            },
+            {
+              "x": 20,
+              "y": 10,
+              "tMs": 4800
+            },
+            {
+              "x": 21,
+              "y": 10,
+              "tMs": 5400
+            },
+            {
+              "x": 22,
+              "y": 10,
+              "tMs": 6360
+            }
+          ],
+          "startTimeMs": 1757376000000,
+          "arrivalTimeMs": 1757376006360,
+          "target": {
+            "x": 22,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 0,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 2,
+        "movement": {
+          "movementId": 2,
+          "path": [
+            {
+              "x": 10,
+              "y": 12,
+              "tMs": 0
+            },
+            {
+              "x": 11,
+              "y": 12,
+              "tMs": 600
+            },
+            {
+              "x": 12,
+              "y": 12,
+              "tMs": 1200
+            },
+            {
+              "x": 13,
+              "y": 12,
+              "tMs": 1800
+            },
+            {
+              "x": 14,
+              "y": 12,
+              "tMs": 2400
+            },
+            {
+              "x": 15,
+              "y": 12,
+              "tMs": 3000
+            },
+            {
+              "x": 16,
+              "y": 12,
+              "tMs": 3600
+            },
+            {
+              "x": 17,
+              "y": 12,
+              "tMs": 4200
+            },
+            {
+              "x": 18,
+              "y": 12,
+              "tMs": 4800
+            },
+            {
+              "x": 19,
+              "y": 12,
+              "tMs": 5400
+            },
+            {
+              "x": 20,
+              "y": 11,
+              "tMs": 6249
+            },
+            {
+              "x": 21,
+              "y": 10,
+              "tMs": 7098
+            },
+            {
+              "x": 22,
+              "y": 10,
+              "tMs": 8058
+            }
+          ],
+          "startTimeMs": 1757376000000,
+          "arrivalTimeMs": 1757376008058,
+          "target": {
+            "x": 22,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 0,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 3,
+        "movement": {
+          "movementId": 3,
+          "path": [
+            {
+              "x": 8,
+              "y": 10,
+              "tMs": 0
+            },
+            {
+              "x": 9,
+              "y": 10,
+              "tMs": 600
+            },
+            {
+              "x": 10,
+              "y": 10,
+              "tMs": 1200
+            },
+            {
+              "x": 11,
+              "y": 10,
+              "tMs": 1800
+            },
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 2400
+            },
+            {
+              "x": 13,
+              "y": 10,
+              "tMs": 3000
+            },
+            {
+              "x": 14,
+              "y": 10,
+              "tMs": 3600
+            },
+            {
+              "x": 15,
+              "y": 10,
+              "tMs": 4200
+            },
+            {
+              "x": 16,
+              "y": 10,
+              "tMs": 4800
+            },
+            {
+              "x": 17,
+              "y": 10,
+              "tMs": 5400
+            },
+            {
+              "x": 18,
+              "y": 10,
+              "tMs": 6000
+            },
+            {
+              "x": 19,
+              "y": 10,
+              "tMs": 6600
+            },
+            {
+              "x": 20,
+              "y": 10,
+              "tMs": 7200
+            },
+            {
+              "x": 21,
+              "y": 10,
+              "tMs": 7800
+            },
+            {
+              "x": 22,
+              "y": 10,
+              "tMs": 8760
+            }
+          ],
+          "startTimeMs": 1757376000000,
+          "arrivalTimeMs": 1757376008760,
+          "target": {
+            "x": 22,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 6,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 13,
+        "y": 10
+      }
+    },
+    {
+      "tick": 6,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 11,
+        "y": 12
+      }
+    },
+    {
+      "tick": 6,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 9,
+        "y": 10
+      }
+    },
+    {
+      "tick": 12,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 14,
+        "y": 10
+      }
+    },
+    {
+      "tick": 12,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 12,
+        "y": 12
+      }
+    },
+    {
+      "tick": 12,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 10,
+        "y": 10
+      }
+    },
+    {
+      "tick": 18,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 15,
+        "y": 10
+      }
+    },
+    {
+      "tick": 18,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 13,
+        "y": 12
+      }
+    },
+    {
+      "tick": 18,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 11,
+        "y": 10
+      }
+    },
+    {
+      "tick": 24,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 16,
+        "y": 10
+      }
+    },
+    {
+      "tick": 24,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 14,
+        "y": 12
+      }
+    },
+    {
+      "tick": 24,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 12,
+        "y": 10
+      }
+    },
+    {
+      "tick": 30,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 17,
+        "y": 10
+      }
+    },
+    {
+      "tick": 30,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 15,
+        "y": 12
+      }
+    },
+    {
+      "tick": 30,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 13,
+        "y": 10
+      }
+    },
+    {
+      "tick": 36,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 18,
+        "y": 10
+      }
+    },
+    {
+      "tick": 36,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 16,
+        "y": 12
+      }
+    },
+    {
+      "tick": 36,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 14,
+        "y": 10
+      }
+    },
+    {
+      "tick": 42,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 19,
+        "y": 10
+      }
+    },
+    {
+      "tick": 42,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 17,
+        "y": 12
+      }
+    },
+    {
+      "tick": 42,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 15,
+        "y": 10
+      }
+    },
+    {
+      "tick": 48,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 20,
+        "y": 10
+      }
+    },
+    {
+      "tick": 48,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 18,
+        "y": 12
+      }
+    },
+    {
+      "tick": 48,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 16,
+        "y": 10
+      }
+    },
+    {
+      "tick": 54,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 21,
+        "y": 10
+      }
+    },
+    {
+      "tick": 54,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 19,
+        "y": 12
+      }
+    },
+    {
+      "tick": 54,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 17,
+        "y": 10
+      }
+    },
+    {
+      "tick": 60,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 18,
+        "y": 10
+      }
+    },
+    {
+      "tick": 63,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 20,
+        "y": 11
+      }
+    },
+    {
+      "tick": 64,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 22,
+        "y": 10
+      }
+    },
+    {
+      "tick": 64,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 1,
+        "movementId": 1,
+        "finalPosition": {
+          "x": 22,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 64,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "status": "WORKING"
+      }
+    },
+    {
+      "tick": 66,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 19,
+        "y": 10
+      }
+    },
+    {
+      "tick": 71,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 21,
+        "y": 10
+      }
+    },
+    {
+      "tick": 72,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 20,
+        "y": 10
+      }
+    },
+    {
+      "tick": 78,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 21,
+        "y": 10
+      }
+    },
+    {
+      "tick": 81,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 22,
+        "y": 10
+      }
+    },
+    {
+      "tick": 81,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 2,
+        "movementId": 2,
+        "finalPosition": {
+          "x": 22,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 81,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "status": "WORKING"
+      }
+    },
+    {
+      "tick": 88,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 22,
+        "y": 10
+      }
+    },
+    {
+      "tick": 88,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 3,
+        "movementId": 3,
+        "finalPosition": {
+          "x": 22,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 88,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "status": "WORKING"
+      }
+    },
+    {
+      "tick": 164,
+      "to": "chunk 0,0",
+      "type": "forest.update",
+      "payload": {
+        "x": 22,
+        "y": 10,
+        "remaining": 15,
+        "regrowsAtMs": 1757462416360
+      }
+    },
+    {
+      "tick": 164,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 1,
+        "movement": {
+          "movementId": 4,
+          "path": [
+            {
+              "x": 22,
+              "y": 10,
+              "tMs": 0
+            },
+            {
+              "x": 21,
+              "y": 10,
+              "tMs": 600
+            },
+            {
+              "x": 20,
+              "y": 10,
+              "tMs": 1200
+            },
+            {
+              "x": 19,
+              "y": 10,
+              "tMs": 1800
+            },
+            {
+              "x": 18,
+              "y": 10,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 10,
+              "tMs": 3000
+            },
+            {
+              "x": 16,
+              "y": 10,
+              "tMs": 3600
+            },
+            {
+              "x": 15,
+              "y": 10,
+              "tMs": 4200
+            },
+            {
+              "x": 14,
+              "y": 10,
+              "tMs": 4800
+            },
+            {
+              "x": 13,
+              "y": 10,
+              "tMs": 5400
+            },
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 6000
+            }
+          ],
+          "startTimeMs": 1757376016360,
+          "arrivalTimeMs": 1757376022360,
+          "target": {
+            "x": 12,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 164,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "carrying": 10
+      }
+    },
+    {
+      "tick": 170,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 21,
+        "y": 10
+      }
+    },
+    {
+      "tick": 176,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 20,
+        "y": 10
+      }
+    },
+    {
+      "tick": 181,
+      "to": "chunk 0,0",
+      "type": "forest.update",
+      "payload": {
+        "x": 22,
+        "y": 10,
+        "remaining": 5,
+        "regrowsAtMs": 1757462418058
+      }
+    },
+    {
+      "tick": 181,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 2,
+        "movement": {
+          "movementId": 5,
+          "path": [
+            {
+              "x": 22,
+              "y": 10,
+              "tMs": 0
+            },
+            {
+              "x": 21,
+              "y": 10,
+              "tMs": 600
+            },
+            {
+              "x": 20,
+              "y": 10,
+              "tMs": 1200
+            },
+            {
+              "x": 19,
+              "y": 10,
+              "tMs": 1800
+            },
+            {
+              "x": 18,
+              "y": 10,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 10,
+              "tMs": 3000
+            },
+            {
+              "x": 16,
+              "y": 10,
+              "tMs": 3600
+            },
+            {
+              "x": 15,
+              "y": 10,
+              "tMs": 4200
+            },
+            {
+              "x": 14,
+              "y": 10,
+              "tMs": 4800
+            },
+            {
+              "x": 13,
+              "y": 10,
+              "tMs": 5400
+            },
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 6000
+            }
+          ],
+          "startTimeMs": 1757376018058,
+          "arrivalTimeMs": 1757376024058,
+          "target": {
+            "x": 12,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 181,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "carrying": 10
+      }
+    },
+    {
+      "tick": 182,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 19,
+        "y": 10
+      }
+    },
+    {
+      "tick": 187,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 21,
+        "y": 10
+      }
+    },
+    {
+      "tick": 188,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 18,
+        "y": 10
+      }
+    },
+    {
+      "tick": 188,
+      "to": "chunk 0,0",
+      "type": "forest.update",
+      "payload": {
+        "x": 22,
+        "y": 10,
+        "remaining": 0,
+        "regrowsAtMs": 1757462418760
+      }
+    },
+    {
+      "tick": 188,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 3,
+        "movement": {
+          "movementId": 6,
+          "path": [
+            {
+              "x": 22,
+              "y": 10,
+              "tMs": 0
+            },
+            {
+              "x": 21,
+              "y": 10,
+              "tMs": 600
+            },
+            {
+              "x": 20,
+              "y": 10,
+              "tMs": 1200
+            },
+            {
+              "x": 19,
+              "y": 10,
+              "tMs": 1800
+            },
+            {
+              "x": 18,
+              "y": 10,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 10,
+              "tMs": 3000
+            },
+            {
+              "x": 16,
+              "y": 10,
+              "tMs": 3600
+            },
+            {
+              "x": 15,
+              "y": 10,
+              "tMs": 4200
+            },
+            {
+              "x": 14,
+              "y": 10,
+              "tMs": 4800
+            },
+            {
+              "x": 13,
+              "y": 10,
+              "tMs": 5400
+            },
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 6000
+            }
+          ],
+          "startTimeMs": 1757376018760,
+          "arrivalTimeMs": 1757376024760,
+          "target": {
+            "x": 12,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 188,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "carrying": 5
+      }
+    },
+    {
+      "tick": 193,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 20,
+        "y": 10
+      }
+    },
+    {
+      "tick": 194,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 17,
+        "y": 10
+      }
+    },
+    {
+      "tick": 194,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 21,
+        "y": 10
+      }
+    },
+    {
+      "tick": 199,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 19,
+        "y": 10
+      }
+    },
+    {
+      "tick": 200,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 16,
+        "y": 10
+      }
+    },
+    {
+      "tick": 200,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 20,
+        "y": 10
+      }
+    },
+    {
+      "tick": 205,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 18,
+        "y": 10
+      }
+    },
+    {
+      "tick": 206,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 15,
+        "y": 10
+      }
+    },
+    {
+      "tick": 206,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 19,
+        "y": 10
+      }
+    },
+    {
+      "tick": 211,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 17,
+        "y": 10
+      }
+    },
+    {
+      "tick": 212,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 14,
+        "y": 10
+      }
+    },
+    {
+      "tick": 212,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 18,
+        "y": 10
+      }
+    },
+    {
+      "tick": 217,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 16,
+        "y": 10
+      }
+    },
+    {
+      "tick": 218,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 13,
+        "y": 10
+      }
+    },
+    {
+      "tick": 218,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 17,
+        "y": 10
+      }
+    },
+    {
+      "tick": 223,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 15,
+        "y": 10
+      }
+    },
+    {
+      "tick": 224,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 12,
+        "y": 10
+      }
+    },
+    {
+      "tick": 224,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 16,
+        "y": 10
+      }
+    },
+    {
+      "tick": 224,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 1,
+        "movementId": 4,
+        "finalPosition": {
+          "x": 12,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 224,
+      "to": "chunk 0,0",
+      "type": "city.update",
+      "payload": {
+        "id": 1,
+        "stocks": {
+          "WOOD": 10
+        }
+      }
+    },
+    {
+      "tick": 224,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "carrying": 0
+      }
+    },
+    {
+      "tick": 224,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 1,
+        "movement": {
+          "movementId": 7,
+          "path": [
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 0
+            },
+            {
+              "x": 13,
+              "y": 10,
+              "tMs": 600
+            },
+            {
+              "x": 14,
+              "y": 10,
+              "tMs": 1200
+            },
+            {
+              "x": 15,
+              "y": 10,
+              "tMs": 1800
+            },
+            {
+              "x": 16,
+              "y": 10,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 10,
+              "tMs": 3000
+            },
+            {
+              "x": 18,
+              "y": 10,
+              "tMs": 3600
+            },
+            {
+              "x": 19,
+              "y": 10,
+              "tMs": 4200
+            },
+            {
+              "x": 20,
+              "y": 10,
+              "tMs": 4800
+            },
+            {
+              "x": 21,
+              "y": 9,
+              "tMs": 5649
+            },
+            {
+              "x": 22,
+              "y": 9,
+              "tMs": 6609
+            }
+          ],
+          "startTimeMs": 1757376022360,
+          "arrivalTimeMs": 1757376028969,
+          "target": {
+            "x": 22,
+            "y": 9
+          }
+        }
+      }
+    },
+    {
+      "tick": 229,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 14,
+        "y": 10
+      }
+    },
+    {
+      "tick": 230,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 13,
+        "y": 10
+      }
+    },
+    {
+      "tick": 230,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 15,
+        "y": 10
+      }
+    },
+    {
+      "tick": 235,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 13,
+        "y": 10
+      }
+    },
+    {
+      "tick": 236,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 14,
+        "y": 10
+      }
+    },
+    {
+      "tick": 236,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 14,
+        "y": 10
+      }
+    },
+    {
+      "tick": 241,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 12,
+        "y": 10
+      }
+    },
+    {
+      "tick": 241,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 2,
+        "movementId": 5,
+        "finalPosition": {
+          "x": 12,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 241,
+      "to": "chunk 0,0",
+      "type": "city.update",
+      "payload": {
+        "id": 1,
+        "stocks": {
+          "WOOD": 20
+        }
+      }
+    },
+    {
+      "tick": 241,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "carrying": 0
+      }
+    },
+    {
+      "tick": 241,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 2,
+        "movement": {
+          "movementId": 8,
+          "path": [
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 0
+            },
+            {
+              "x": 13,
+              "y": 10,
+              "tMs": 600
+            },
+            {
+              "x": 14,
+              "y": 10,
+              "tMs": 1200
+            },
+            {
+              "x": 15,
+              "y": 10,
+              "tMs": 1800
+            },
+            {
+              "x": 16,
+              "y": 10,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 10,
+              "tMs": 3000
+            },
+            {
+              "x": 18,
+              "y": 10,
+              "tMs": 3600
+            },
+            {
+              "x": 19,
+              "y": 10,
+              "tMs": 4200
+            },
+            {
+              "x": 20,
+              "y": 10,
+              "tMs": 4800
+            },
+            {
+              "x": 21,
+              "y": 9,
+              "tMs": 5649
+            },
+            {
+              "x": 22,
+              "y": 9,
+              "tMs": 6609
+            }
+          ],
+          "startTimeMs": 1757376024058,
+          "arrivalTimeMs": 1757376030667,
+          "target": {
+            "x": 22,
+            "y": 9
+          }
+        }
+      }
+    },
+    {
+      "tick": 242,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 15,
+        "y": 10
+      }
+    },
+    {
+      "tick": 242,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 13,
+        "y": 10
+      }
+    },
+    {
+      "tick": 247,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 13,
+        "y": 10
+      }
+    },
+    {
+      "tick": 248,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 16,
+        "y": 10
+      }
+    },
+    {
+      "tick": 248,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 12,
+        "y": 10
+      }
+    },
+    {
+      "tick": 248,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 3,
+        "movementId": 6,
+        "finalPosition": {
+          "x": 12,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 248,
+      "to": "chunk 0,0",
+      "type": "city.update",
+      "payload": {
+        "id": 1,
+        "stocks": {
+          "WOOD": 25
+        }
+      }
+    },
+    {
+      "tick": 248,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "carrying": 0
+      }
+    },
+    {
+      "tick": 248,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 3,
+        "movement": {
+          "movementId": 9,
+          "path": [
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 0
+            },
+            {
+              "x": 13,
+              "y": 10,
+              "tMs": 600
+            },
+            {
+              "x": 14,
+              "y": 10,
+              "tMs": 1200
+            },
+            {
+              "x": 15,
+              "y": 10,
+              "tMs": 1800
+            },
+            {
+              "x": 16,
+              "y": 10,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 10,
+              "tMs": 3000
+            },
+            {
+              "x": 18,
+              "y": 10,
+              "tMs": 3600
+            },
+            {
+              "x": 19,
+              "y": 10,
+              "tMs": 4200
+            },
+            {
+              "x": 20,
+              "y": 10,
+              "tMs": 4800
+            },
+            {
+              "x": 21,
+              "y": 9,
+              "tMs": 5649
+            },
+            {
+              "x": 22,
+              "y": 9,
+              "tMs": 6609
+            }
+          ],
+          "startTimeMs": 1757376024760,
+          "arrivalTimeMs": 1757376031369,
+          "target": {
+            "x": 22,
+            "y": 9
+          }
+        }
+      }
+    },
+    {
+      "tick": 253,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 14,
+        "y": 10
+      }
+    },
+    {
+      "tick": 254,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 17,
+        "y": 10
+      }
+    },
+    {
+      "tick": 254,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 13,
+        "y": 10
+      }
+    },
+    {
+      "tick": 259,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 15,
+        "y": 10
+      }
+    },
+    {
+      "tick": 260,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 18,
+        "y": 10
+      }
+    },
+    {
+      "tick": 260,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 14,
+        "y": 10
+      }
+    },
+    {
+      "tick": 265,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 16,
+        "y": 10
+      }
+    },
+    {
+      "tick": 266,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 19,
+        "y": 10
+      }
+    },
+    {
+      "tick": 266,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 15,
+        "y": 10
+      }
+    },
+    {
+      "tick": 271,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 17,
+        "y": 10
+      }
+    },
+    {
+      "tick": 272,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 20,
+        "y": 10
+      }
+    },
+    {
+      "tick": 272,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 16,
+        "y": 10
+      }
+    },
+    {
+      "tick": 277,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 18,
+        "y": 10
+      }
+    },
+    {
+      "tick": 278,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 17,
+        "y": 10
+      }
+    },
+    {
+      "tick": 281,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 21,
+        "y": 9
+      }
+    },
+    {
+      "tick": 283,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 19,
+        "y": 10
+      }
+    },
+    {
+      "tick": 284,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 18,
+        "y": 10
+      }
+    },
+    {
+      "tick": 289,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 20,
+        "y": 10
+      }
+    },
+    {
+      "tick": 290,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 22,
+        "y": 9
+      }
+    },
+    {
+      "tick": 290,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 19,
+        "y": 10
+      }
+    },
+    {
+      "tick": 290,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 1,
+        "movementId": 7,
+        "finalPosition": {
+          "x": 22,
+          "y": 9
+        }
+      }
+    },
+    {
+      "tick": 290,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "status": "WORKING"
+      }
+    },
+    {
+      "tick": 296,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 20,
+        "y": 10
+      }
+    },
+    {
+      "tick": 298,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 21,
+        "y": 9
+      }
+    },
+    {
+      "tick": 305,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 21,
+        "y": 9
+      }
+    },
+    {
+      "tick": 307,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 22,
+        "y": 9
+      }
+    },
+    {
+      "tick": 307,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 2,
+        "movementId": 8,
+        "finalPosition": {
+          "x": 22,
+          "y": 9
+        }
+      }
+    },
+    {
+      "tick": 307,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "status": "WORKING"
+      }
+    },
+    {
+      "tick": 314,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 22,
+        "y": 9
+      }
+    },
+    {
+      "tick": 314,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 3,
+        "movementId": 9,
+        "finalPosition": {
+          "x": 22,
+          "y": 9
+        }
+      }
+    },
+    {
+      "tick": 314,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "status": "WORKING"
+      }
+    },
+    {
+      "tick": 390,
+      "to": "chunk 0,0",
+      "type": "forest.update",
+      "payload": {
+        "x": 22,
+        "y": 9,
+        "remaining": 0,
+        "regrowsAtMs": 1757462438969
+      }
+    },
+    {
+      "tick": 390,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 1,
+        "movement": {
+          "movementId": 10,
+          "path": [
+            {
+              "x": 22,
+              "y": 9,
+              "tMs": 0
+            },
+            {
+              "x": 21,
+              "y": 9,
+              "tMs": 600
+            },
+            {
+              "x": 20,
+              "y": 9,
+              "tMs": 1200
+            },
+            {
+              "x": 19,
+              "y": 9,
+              "tMs": 1800
+            },
+            {
+              "x": 18,
+              "y": 9,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 9,
+              "tMs": 3000
+            },
+            {
+              "x": 16,
+              "y": 9,
+              "tMs": 3600
+            },
+            {
+              "x": 15,
+              "y": 9,
+              "tMs": 4200
+            },
+            {
+              "x": 14,
+              "y": 9,
+              "tMs": 4800
+            },
+            {
+              "x": 13,
+              "y": 9,
+              "tMs": 5400
+            },
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 6249
+            }
+          ],
+          "startTimeMs": 1757376038969,
+          "arrivalTimeMs": 1757376045218,
+          "target": {
+            "x": 12,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 390,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "carrying": 10
+      }
+    },
+    {
+      "tick": 396,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 21,
+        "y": 9
+      }
+    },
+    {
+      "tick": 402,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 20,
+        "y": 9
+      }
+    },
+    {
+      "tick": 407,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 2,
+        "movement": {
+          "movementId": 11,
+          "path": [
+            {
+              "x": 22,
+              "y": 9,
+              "tMs": 0
+            },
+            {
+              "x": 21,
+              "y": 9,
+              "tMs": 600
+            },
+            {
+              "x": 20,
+              "y": 9,
+              "tMs": 1200
+            },
+            {
+              "x": 19,
+              "y": 9,
+              "tMs": 1800
+            },
+            {
+              "x": 18,
+              "y": 9,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 9,
+              "tMs": 3000
+            },
+            {
+              "x": 16,
+              "y": 9,
+              "tMs": 3600
+            },
+            {
+              "x": 15,
+              "y": 9,
+              "tMs": 4200
+            },
+            {
+              "x": 14,
+              "y": 9,
+              "tMs": 4800
+            },
+            {
+              "x": 13,
+              "y": 9,
+              "tMs": 5400
+            },
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 6249
+            }
+          ],
+          "startTimeMs": 1757376040667,
+          "arrivalTimeMs": 1757376046916,
+          "target": {
+            "x": 12,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 408,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 19,
+        "y": 9
+      }
+    },
+    {
+      "tick": 413,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 21,
+        "y": 9
+      }
+    },
+    {
+      "tick": 414,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 18,
+        "y": 9
+      }
+    },
+    {
+      "tick": 414,
+      "to": "chunk 0,0",
+      "type": "unit.movement.started",
+      "payload": {
+        "unitId": 3,
+        "movement": {
+          "movementId": 12,
+          "path": [
+            {
+              "x": 22,
+              "y": 9,
+              "tMs": 0
+            },
+            {
+              "x": 21,
+              "y": 9,
+              "tMs": 600
+            },
+            {
+              "x": 20,
+              "y": 9,
+              "tMs": 1200
+            },
+            {
+              "x": 19,
+              "y": 9,
+              "tMs": 1800
+            },
+            {
+              "x": 18,
+              "y": 9,
+              "tMs": 2400
+            },
+            {
+              "x": 17,
+              "y": 9,
+              "tMs": 3000
+            },
+            {
+              "x": 16,
+              "y": 9,
+              "tMs": 3600
+            },
+            {
+              "x": 15,
+              "y": 9,
+              "tMs": 4200
+            },
+            {
+              "x": 14,
+              "y": 9,
+              "tMs": 4800
+            },
+            {
+              "x": 13,
+              "y": 9,
+              "tMs": 5400
+            },
+            {
+              "x": 12,
+              "y": 10,
+              "tMs": 6249
+            }
+          ],
+          "startTimeMs": 1757376041369,
+          "arrivalTimeMs": 1757376047618,
+          "target": {
+            "x": 12,
+            "y": 10
+          }
+        }
+      }
+    },
+    {
+      "tick": 419,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 20,
+        "y": 9
+      }
+    },
+    {
+      "tick": 420,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 17,
+        "y": 9
+      }
+    },
+    {
+      "tick": 420,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 21,
+        "y": 9
+      }
+    },
+    {
+      "tick": 425,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 19,
+        "y": 9
+      }
+    },
+    {
+      "tick": 426,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 16,
+        "y": 9
+      }
+    },
+    {
+      "tick": 426,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 20,
+        "y": 9
+      }
+    },
+    {
+      "tick": 431,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 18,
+        "y": 9
+      }
+    },
+    {
+      "tick": 432,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 15,
+        "y": 9
+      }
+    },
+    {
+      "tick": 432,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 19,
+        "y": 9
+      }
+    },
+    {
+      "tick": 437,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 17,
+        "y": 9
+      }
+    },
+    {
+      "tick": 438,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 14,
+        "y": 9
+      }
+    },
+    {
+      "tick": 438,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 18,
+        "y": 9
+      }
+    },
+    {
+      "tick": 443,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 16,
+        "y": 9
+      }
+    },
+    {
+      "tick": 444,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 13,
+        "y": 9
+      }
+    },
+    {
+      "tick": 444,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 17,
+        "y": 9
+      }
+    },
+    {
+      "tick": 449,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 15,
+        "y": 9
+      }
+    },
+    {
+      "tick": 450,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 16,
+        "y": 9
+      }
+    },
+    {
+      "tick": 453,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "x": 12,
+        "y": 10
+      }
+    },
+    {
+      "tick": 453,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 1,
+        "movementId": 10,
+        "finalPosition": {
+          "x": 12,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 453,
+      "to": "chunk 0,0",
+      "type": "city.update",
+      "payload": {
+        "id": 1,
+        "stocks": {
+          "WOOD": 35
+        }
+      }
+    },
+    {
+      "tick": 453,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 1,
+        "carrying": 0
+      }
+    },
+    {
+      "tick": 455,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 14,
+        "y": 9
+      }
+    },
+    {
+      "tick": 456,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 15,
+        "y": 9
+      }
+    },
+    {
+      "tick": 461,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 13,
+        "y": 9
+      }
+    },
+    {
+      "tick": 462,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 14,
+        "y": 9
+      }
+    },
+    {
+      "tick": 468,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 13,
+        "y": 9
+      }
+    },
+    {
+      "tick": 470,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "x": 12,
+        "y": 10
+      }
+    },
+    {
+      "tick": 470,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 2,
+        "movementId": 11,
+        "finalPosition": {
+          "x": 12,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 470,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 2,
+        "carrying": 0
+      }
+    },
+    {
+      "tick": 477,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "x": 12,
+        "y": 10
+      }
+    },
+    {
+      "tick": 477,
+      "to": "chunk 0,0",
+      "type": "unit.movement.completed",
+      "payload": {
+        "unitId": 3,
+        "movementId": 12,
+        "finalPosition": {
+          "x": 12,
+          "y": 10
+        }
+      }
+    },
+    {
+      "tick": 477,
+      "to": "chunk 0,0",
+      "type": "entity.update",
+      "payload": {
+        "id": 3,
+        "carrying": 0
+      }
+    }
+  ],
+  "persisted": [
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "units.flush",
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "stocks.flush",
+    "task.write",
+    "units.flush",
+    "task.write",
+    "task.write",
+    "units.flush",
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "task.write",
+    "stocks.flush",
+    "units.flush"
+  ],
+  "final": {
+    "units": [
+      {
+        "ref": "u1",
+        "id": 1,
+        "x": 12,
+        "y": 10,
+        "status": "IDLE"
+      },
+      {
+        "ref": "u2",
+        "id": 2,
+        "x": 12,
+        "y": 10,
+        "status": "IDLE"
+      },
+      {
+        "ref": "u3",
+        "id": 3,
+        "x": 12,
+        "y": 10,
+        "status": "IDLE"
+      }
+    ],
+    "movements": [],
+    "cities": [
+      {
+        "owner": "player:p1",
+        "id": 1,
+        "presenceState": "ONLINE",
+        "protectionUntil": null
+      }
+    ],
+    "economy": {
+      "cities": [
+        {
+          "owner": "player:p1",
+          "wood": 35,
+          "population": 3,
+          "populationLimit": 20
+        }
+      ],
+      "tasks": [],
+      "buildings": [],
+      "forests": [
+        {
+          "tile": {
+            "x": 22,
+            "y": 9
+          },
+          "state": {
+            "remaining": 0,
+            "regrowsAtMs": 1757462438969
+          }
+        },
+        {
+          "tile": {
+            "x": 22,
+            "y": 10
+          },
+          "state": {
+            "remaining": 0,
+            "regrowsAtMs": 1757462418760
+          }
+        },
+        {
+          "tile": {
+            "x": 22,
+            "y": 11
+          },
+          "state": {
+            "remaining": 0,
+            "regrowsAtMs": 1757462400000
+          }
+        }
+      ]
+    }
+  }
+}

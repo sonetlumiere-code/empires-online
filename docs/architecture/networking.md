@@ -235,6 +235,7 @@ hecho de la simulación  --(mapeo)-->  tipo de mensaje v1  --(chunk o jugador)--
 | Encargo de casa confirmado por la base | `building.spawn` y `city.update` (con `stocks`) | Chunk del edificio; chunk del centro de la ciudad |
 | Encargo rechazado por la transacción | `system.error` y `city.update` (con `stocks`, la madera devuelta) | Emisor; chunk del centro |
 | Casa completa | `building.update` (con `status: COMPLETE`) y `city.update` (con `populationLimit`) | Chunk del edificio; chunk del centro |
+| Carga de bosque o regeneración | `forest.update` ([economy-forest.md](../specs/economy-forest.md)): el terreno no se reenvía, cambia la capa de madera | Chunk del tile |
 | Entrenamiento confirmado | `city.update` (con `stocks`, `population` y `production`) | Chunk del centro |
 | Nacimiento del aldeano | `entity.spawn` y `city.update` (con `production: null`) | Chunk del tile de nacimiento; chunk del centro |
 

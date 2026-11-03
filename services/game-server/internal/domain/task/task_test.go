@@ -141,3 +141,31 @@ func TestElDestinoTieneQueSerBosque(t *testing.T) {
 	assert.True(t, errors.Is(ValidTarget(g, world.Tile{X: -1, Y: 0}), ErrOutOfBounds))
 	assert.True(t, errors.Is(ValidTarget(g, world.Tile{X: 64, Y: 0}), ErrOutOfBounds))
 }
+
+// RN-ECON-015: un bosque agotado cambia el destino de la tarea sin perder la
+// carga, o la manda al depósito; desde TO_DEPOSIT no tiene sentido ninguna.
+func TestCambiarDeBosqueYVolverAlDeposito(t *testing.T) {
+	nuevo := world.Tile{X: 9, Y: 9}
+	trabajando, err := NewGather(1, world.Tile{X: 1, Y: 1}).StartWork(0, 10_000)
+	require.NoError(t, err)
+
+	otro, err := trabajando.Retarget(nuevo)
+	require.NoError(t, err)
+	assert.Equal(t, PhaseToResource, otro.Phase)
+	assert.Equal(t, nuevo, otro.Target)
+	assert.Zero(t, otro.PhaseUntilMs)
+	require.NoError(t, otro.Validate())
+
+	vuelta, err := trabajando.ReturnToDeposit()
+	require.NoError(t, err)
+	assert.Equal(t, PhaseToDeposit, vuelta.Phase)
+	assert.Zero(t, vuelta.Carrying)
+	require.NoError(t, vuelta.Validate())
+
+	cargado, err := trabajando.FinishWork(10)
+	require.NoError(t, err)
+	_, err = cargado.Retarget(nuevo)
+	require.ErrorIs(t, err, ErrBadTransition)
+	_, err = cargado.ReturnToDeposit()
+	require.ErrorIs(t, err, ErrBadTransition)
+}

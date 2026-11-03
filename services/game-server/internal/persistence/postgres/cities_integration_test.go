@@ -196,7 +196,7 @@ func TestAltasSimultaneasGuardanLaDistanciaMinima(t *testing.T) {
 			req := bootstrapRequest(fmt.Sprintf("simultanea_%d", i), world.Tile{})
 			req.CityCenter, req.VillagerSpawns = world.Tile{}, nil
 			req.Place = func(existing []world.Tile) (postgres.Placement, error) {
-				s, err := founding.FindSite(mundo, existing, semilla, 3)
+				s, err := founding.FindSite(mundo, existing, semilla, 3, nil)
 				if err != nil {
 					return postgres.Placement{}, err
 				}

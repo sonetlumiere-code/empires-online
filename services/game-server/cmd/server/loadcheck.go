@@ -65,5 +65,12 @@ func loadEconomy(ctx context.Context, repo *postgres.EconomyRepo) (simulation.Ec
 	if out.Productions, err = repo.ListProductions(ctx); err != nil {
 		return out, err
 	}
+	forests, err := repo.ListForests(ctx)
+	if err != nil {
+		return out, err
+	}
+	for _, f := range forests {
+		out.Forests = append(out.Forests, simulation.ForestRow{Tile: f.Tile, State: f.State})
+	}
 	return out, nil
 }

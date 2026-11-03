@@ -11,6 +11,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
@@ -188,6 +189,24 @@ type TaskTransition struct {
 	At        world.Tile
 	// Task es la tarea tal como queda; nil la borra.
 	Task *task.Task
+	// Forest es la carga de un tile de bosque que esta transición escribe
+	// (ADR-025 §2); nil si no carga.
+	Forest *ForestTake
+}
+
+// ForestTake es la carga de un tile, como delta (ADR-025 §2).
+type ForestTake struct {
+	Tile        world.Tile
+	Amount      int32
+	AtMs        int64
+	RegrowsAtMs int64
+	// FromTrips y FromUntilMs son la fase WORKING que la carga consume.
+	FromTrips   int32
+	FromUntilMs int64
+	Depleted    bool
+	PlayerID    uuid.UUID
+	CityID      *int64
+	Tick        uint64
 }
 
 // PersistTask escribe una transición de tarea en una transacción: el cierre
@@ -197,6 +216,15 @@ type TaskTransition struct {
 // la unidad y la tarea se escriben con su valor final.
 func (r *EconomyRepo) PersistTask(ctx context.Context, tr TaskTransition) error {
 	return r.store.InTx(ctx, func(tx pgx.Tx) error {
+		// La carga del bosque se decide antes de reescribir la tarea: sólo se
+		// aplica si la tarea sigue en la fase WORKING que la carga consume. Un
+		// reintento de una transacción ya confirmada la encuentra cambiada y no
+		// descuenta dos veces (ADR-025 §2).
+		if tr.Forest != nil {
+			if err := takeForest(ctx, tx, tr.UnitID, *tr.Forest); err != nil {
+				return err
+			}
+		}
 		if tr.FinishMovementID != 0 {
 			if err := r.movements.Finish(ctx, tx, tr.FinishMovementID, tr.FinishStatus); err != nil {
 				return err
@@ -226,6 +254,101 @@ func (r *EconomyRepo) PersistTask(ctx context.Context, tr TaskTransition) error 
 		}
 		return upsertTask(ctx, tx, *tr.Task)
 	})
+}
+
+// takeForest descuenta una carga del tile, como delta, si la tarea de la unidad
+// sigue en la fase WORKING que la carga consume (ADR-025 §2, INV-ECON-008).
+// Una fila vencida cuenta como llena: la carga parte de la capacidad.
+func takeForest(ctx context.Context, tx pgx.Tx, unitID int64, f ForestTake) error {
+	var trips int32
+	var until *int64
+	var phase string
+	err := tx.QueryRow(ctx,
+		`SELECT phase, trips_done, phase_until_ms FROM unit_tasks WHERE unit_id = $1 FOR UPDATE`, unitID).
+		Scan(&phase, &trips, &until)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("leer la tarea de la unidad %d: %w", unitID, normalize(err))
+	}
+	if phase != string(task.PhaseWorking) || trips != f.FromTrips || until == nil || *until != f.FromUntilMs {
+		// La transición ya se escribió: esta carga ya está en el bosque.
+		return nil
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO forest_wood (x, y, remaining, regrows_at_ms) VALUES ($1, $2, $5::integer - $3::integer, $4::bigint)
+		 ON CONFLICT (x, y) DO UPDATE SET
+		   remaining = CASE WHEN forest_wood.regrows_at_ms <= $6::bigint THEN $5::integer ELSE forest_wood.remaining END - $3::integer,
+		   regrows_at_ms = GREATEST(forest_wood.regrows_at_ms, EXCLUDED.regrows_at_ms)`,
+		f.Tile.X, f.Tile.Y, f.Amount, f.RegrowsAtMs, forest.Capacity, f.AtMs); err != nil {
+		return fmt.Errorf("descontar la madera de %s: %w", f.Tile, normalize(err))
+	}
+	if !f.Depleted {
+		return nil
+	}
+	player := f.PlayerID
+	payload := map[string]any{"x": f.Tile.X, "y": f.Tile.Y, "unitId": unitID}
+	if f.CityID != nil {
+		payload["cityId"] = *f.CityID
+	}
+	return appendEvent(ctx, tx, worldEvent{EventType: "ForestDepleted", Tick: f.Tick, PlayerID: &player, Payload: payload})
+}
+
+// ForestRow es una fila de forest_wood.
+type ForestRow struct {
+	Tile  world.Tile
+	State forest.State
+}
+
+// ListForests lee la capa de madera del bosque, en orden de (y, x).
+func (r *EconomyRepo) ListForests(ctx context.Context) ([]ForestRow, error) {
+	rows, err := r.store.pool.Query(ctx,
+		`SELECT x, y, remaining, regrows_at_ms FROM forest_wood ORDER BY y, x`)
+	if err != nil {
+		return nil, fmt.Errorf("leer la madera del bosque: %w", normalize(err))
+	}
+	defer rows.Close()
+	var out []ForestRow
+	for rows.Next() {
+		var f ForestRow
+		if err := rows.Scan(&f.Tile.X, &f.Tile.Y, &f.State.Remaining, &f.State.RegrowsAtMs); err != nil {
+			return nil, fmt.Errorf("leer una fila de forest_wood: %w", err)
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// DepletedForests son los tiles agotados en nowMs: la fundación no los cuenta
+// (RN-ECON-017).
+func (r *EconomyRepo) DepletedForests(ctx context.Context, nowMs int64) (map[world.Tile]struct{}, error) {
+	rows, err := r.store.pool.Query(ctx,
+		`SELECT x, y FROM forest_wood WHERE remaining = 0 AND regrows_at_ms > $1`, nowMs)
+	if err != nil {
+		return nil, fmt.Errorf("leer el bosque agotado: %w", normalize(err))
+	}
+	defer rows.Close()
+	out := make(map[world.Tile]struct{})
+	for rows.Next() {
+		var t world.Tile
+		if err := rows.Scan(&t.X, &t.Y); err != nil {
+			return nil, fmt.Errorf("leer un tile agotado: %w", err)
+		}
+		out[t] = struct{}{}
+	}
+	return out, rows.Err()
+}
+
+// DeleteRegrownForests borra las filas de los tiles que ya volvieron a crecer
+// en nowMs: están llenos y no aportan nada. Es limpieza de arranque; la lógica
+// ya las trata como llenas.
+func (r *EconomyRepo) DeleteRegrownForests(ctx context.Context, nowMs int64) (int64, error) {
+	tag, err := r.store.pool.Exec(ctx, `DELETE FROM forest_wood WHERE regrows_at_ms <= $1`, nowMs)
+	if err != nil {
+		return 0, fmt.Errorf("limpiar el bosque regenerado: %w", normalize(err))
+	}
+	return tag.RowsAffected(), nil
 }
 
 // DeleteTask borra la tarea de una unidad, si la tiene. La llaman las

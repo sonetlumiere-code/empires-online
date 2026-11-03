@@ -104,6 +104,9 @@ type State struct {
 	// muertes por reescribir.
 	combat combatState
 
+	// Bosque (SPEC-ECON-FOREST, ADR-025): la madera de los tiles tocados.
+	forest forestState
+
 	tick uint64
 }
 
@@ -133,6 +136,7 @@ func NewState(w *world.World) *State {
 		buildingAt:         make(map[world.Tile]int64),
 		pendingBuilds:      make(map[world.Tile]pendingBuild),
 		combat:             newCombatState(),
+		forest:             newForestState(),
 		pendingCompletions: make(map[int64]struct{}),
 	}
 }

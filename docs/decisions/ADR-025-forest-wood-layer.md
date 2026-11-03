@@ -55,6 +55,11 @@ ON CONFLICT (x, y) DO UPDATE SET
 - **`GREATEST`** para que una carga anterior que llega tarde no adelante la regeneración.
 - **Conservación**: lo que pierde la fila es exactamente lo que gana `unit_tasks.carrying` en la misma
   transacción (`INV-ECON-008`). `CHECK (remaining BETWEEN 0 AND 100)` impide la madera negativa (`INV-ECON-007`).
+- **Idempotencia**: la cola reintenta una transacción cuya confirmación se perdió, y un delta no es idempotente.
+  Antes de descontar, la transacción lee la fila de la tarea con `FOR UPDATE` y sólo aplica el delta si sigue en la
+  fase `WORKING` que la carga consume (mismo `trips_done` y mismo `phase_until_ms`). Un reintento la encuentra ya
+  cambiada y no descuenta dos veces. Es la misma idea que la versión de `city_stocks` en ADR-023, sin columna nueva:
+  la fila de la tarea ya hace de versión.
 
 Si la transacción se descarta, la compensación de la tarea (`TaskPersistFailed`) ya existente termina la tarea y
 pierde la carga. La RAM ya había descontado el tile y la base no: el bosque en la RAM queda por debajo del de la

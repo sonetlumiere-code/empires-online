@@ -11,8 +11,8 @@ import (
 )
 
 // mundoLiso devuelve un mundo de hierba salpicado de bosque —un tile FOREST en
-// cada (8i+4, 8j+4), así que todo candidato tiene uno a 4 tiles o menos
-// (RN-CITY-023)— con los tiles indicados pintados encima.
+// cada (4i+2, 4j+2), así que todo candidato tiene al menos dieciséis a 8 tiles
+// o menos (RN-CITY-023, RN-ECON-017)— con los tiles indicados pintados encima.
 func mundoLiso(t *testing.T, w, h int32, pintar map[world.Tile]world.TerrainType) *world.World {
 	t.Helper()
 	return mundoPintado(t, w, h, true, pintar)
@@ -24,7 +24,7 @@ func mundoPintado(t *testing.T, w, h int32, reticula bool, pintar map[world.Tile
 	terrain := make([]byte, int(w)*int(h))
 	for i := range terrain {
 		terrain[i] = byte(world.Grassland)
-		if x, y := int32(i)%w, int32(i)/w; reticula && x%8 == 4 && y%8 == 4 {
+		if x, y := int32(i)%w, int32(i)/w; reticula && x%4 == 2 && y%4 == 2 {
 			terrain[i] = byte(world.Forest)
 		}
 	}
@@ -40,21 +40,45 @@ func mundoPintado(t *testing.T, w, h int32, reticula bool, pintar map[world.Tile
 // razón que separacionDeLaSpec.
 const bosqueDeLaSpec int32 = 8
 
-// hayBosqueCerca dice si hay algún FOREST a bosqueDeLaSpec tiles o menos del
-// centro, fuera de la zona urbana. Sólo la distancia: la alcanzabilidad la
-// prueba TestUnBosqueAisladoPorAguaNoCuenta.
+// tilesDeLaSpec es el umbral de RN-ECON-017, como literal.
+const tilesDeLaSpec = 10
+
+// hayBosqueCerca dice si hay al menos tilesDeLaSpec FOREST a bosqueDeLaSpec
+// tiles o menos del centro, fuera de la zona urbana. Sólo la distancia: la
+// alcanzabilidad la prueba TestUnBosqueAisladoPorAguaNoCuenta.
 func hayBosqueCerca(w *world.World, c world.Tile) bool {
+	n := 0
 	for dy := -bosqueDeLaSpec; dy <= bosqueDeLaSpec; dy++ {
 		for dx := -bosqueDeLaSpec; dx <= bosqueDeLaSpec; dx++ {
 			if max32(abs32(dx), abs32(dy)) <= 1 || !w.InBounds(c.X+dx, c.Y+dy) {
 				continue
 			}
 			if w.TerrainAt(c.X+dx, c.Y+dy) == world.Forest {
-				return true
+				n++
 			}
 		}
 	}
-	return false
+	return n >= tilesDeLaSpec
+}
+
+// bosqueEn pinta un rectángulo de bosque.
+func bosqueEn(pintar map[world.Tile]world.TerrainType, x0, y0, x1, y1 int32) {
+	for y := y0; y <= y1; y++ {
+		for x := x0; x <= x1; x++ {
+			pintar[world.Tile{X: x, Y: y}] = world.Forest
+		}
+	}
+}
+
+// cuantosCerca cuenta los tiles de una lista a bosqueDeLaSpec o menos de c.
+func cuantosCerca(c world.Tile, tiles []world.Tile) int {
+	n := 0
+	for _, t := range tiles {
+		if chebyshev(c, t) <= bosqueDeLaSpec {
+			n++
+		}
+	}
+	return n
 }
 
 // semillaEn devuelve la semilla cuyo punto de partida es (x, y).
@@ -81,7 +105,7 @@ func verificarSitio(t *testing.T, w *world.World, s Site, villagers int) {
 		assert.True(t, w.IsWalkable(sp.X, sp.Y), "el aldeano nace en %v, que no es transitable", sp)
 		assert.Equal(t, spawnRadius, chebyshev(c, sp), "los aldeanos nacen justo fuera de la muralla")
 	}
-	assert.True(t, hayBosqueCerca(w, c), "RN-CITY-023: la ciudad de %v no tiene bosque a %d tiles", c, bosqueDeLaSpec)
+	assert.True(t, hayBosqueCerca(w, c), "RN-CITY-023: la ciudad de %v no tiene %d tiles de bosque a %d", c, tilesDeLaSpec, bosqueDeLaSpec)
 }
 
 // RN-CITY-023, el fallo visto en vivo el 2026-11-02: sobre el mundo canónico
@@ -95,7 +119,7 @@ func TestTodaCiudadNaceConUnBosqueCerca(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := uint64(0); i < 64; i++ {
-		s, err := FindSite(w, nil, i*4_099+17, 3)
+		s, err := FindSite(w, nil, i*4_099+17, 3, nil)
 		require.NoError(t, err, "semilla %d", i)
 		verificarSitio(t, w, s, 3)
 	}
@@ -105,17 +129,30 @@ func TestTodaCiudadNaceConUnBosqueCerca(t *testing.T) {
 // se funda donde no podría recolectar.
 func TestSinBosqueNoHaySitio(t *testing.T) {
 	w := mundoPintado(t, 64, 64, false, nil)
-	_, err := FindSite(w, nil, semillaEn(w, 32, 32), 3)
+	_, err := FindSite(w, nil, semillaEn(w, 32, 32), 3, nil)
 	assert.True(t, errors.Is(err, ErrNoSite), "se esperaba ErrNoSite, llegó %v", err)
 }
 
 // RN-CITY-023: el bosque tiene que ser alcanzable a pie, no sólo estar cerca.
 // Junto al punto de partida hay un bosque encerrado en agua; el único bosque
-// alcanzable está en (50, 50), así que la ciudad tiene que nacer cerca de ése.
+// alcanzable son doce tiles en (50..53, 50..52), así que la ciudad tiene que
+// nacer cerca de ése.
 func TestUnBosqueAisladoPorAguaNoCuenta(t *testing.T) {
 	inicio := world.Tile{X: 20, Y: 20}
 	isla := world.Tile{X: 27, Y: 20}
-	pintar := map[world.Tile]world.TerrainType{isla: world.Forest, {X: 50, Y: 50}: world.Forest}
+	pintar := map[world.Tile]world.TerrainType{isla: world.Forest}
+	bosqueEn(pintar, 50, 50, 53, 52)
+	// Nueve tiles más junto a la isla, también tras el agua: con ella serían
+	// diez a mano si el agua no contara.
+	bosqueEn(pintar, 29, 18, 31, 20)
+	for y := int32(17); y <= 21; y++ {
+		pintar[world.Tile{X: 28, Y: y}] = world.Water
+		pintar[world.Tile{X: 32, Y: y}] = world.Water
+	}
+	for x := int32(28); x <= 32; x++ {
+		pintar[world.Tile{X: x, Y: 17}] = world.Water
+		pintar[world.Tile{X: x, Y: 21}] = world.Water
+	}
 	for dy := int32(-1); dy <= 1; dy++ {
 		for dx := int32(-1); dx <= 1; dx++ {
 			if dx != 0 || dy != 0 {
@@ -125,11 +162,57 @@ func TestUnBosqueAisladoPorAguaNoCuenta(t *testing.T) {
 	}
 	w := mundoPintado(t, 96, 96, false, pintar)
 
-	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3)
+	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3, nil)
 	require.NoError(t, err)
 	verificarSitio(t, w, s, 3)
-	assert.LessOrEqual(t, chebyshev(s.Center, world.Tile{X: 50, Y: 50}), bosqueDeLaSpec,
+	var grupo []world.Tile
+	for y := int32(50); y <= 52; y++ {
+		for x := int32(50); x <= 53; x++ {
+			grupo = append(grupo, world.Tile{X: x, Y: y})
+		}
+	}
+	assert.GreaterOrEqual(t, cuantosCerca(s.Center, grupo), tilesDeLaSpec,
 		"la ciudad de %v sólo tiene cerca el bosque aislado", s.Center)
+}
+
+// RN-ECON-017: hacen falta diez tiles con madera; nueve no bastan.
+func TestNueveTilesDeBosqueNoBastan(t *testing.T) {
+	pintar := map[world.Tile]world.TerrainType{}
+	bosqueEn(pintar, 30, 30, 32, 32)
+	w := mundoPintado(t, 64, 64, false, pintar)
+	_, err := FindSite(w, nil, semillaEn(w, 32, 32), 3, nil)
+	assert.True(t, errors.Is(err, ErrNoSite), "se esperaba ErrNoSite, llegó %v", err)
+
+	bosqueEn(pintar, 33, 30, 33, 30)
+	w = mundoPintado(t, 64, 64, false, pintar)
+	_, err = FindSite(w, nil, semillaEn(w, 32, 32), 3, nil)
+	require.NoError(t, err, "con el décimo tile sí hay sitio")
+}
+
+// RN-ECON-017: un bosque talado no cuenta. Junto al punto de partida hay doce
+// tiles sin madera; la ciudad tiene que nacer junto al otro bosque.
+func TestUnBosqueTaladoNoCuentaParaFundar(t *testing.T) {
+	pintar := map[world.Tile]world.TerrainType{}
+	bosqueEn(pintar, 22, 20, 25, 22)
+	bosqueEn(pintar, 60, 60, 63, 62)
+	w := mundoPintado(t, 96, 96, false, pintar)
+	talado := func(tl world.Tile) bool { return !(tl.X >= 22 && tl.X <= 25 && tl.Y >= 20 && tl.Y <= 22) }
+
+	s, err := FindSite(w, nil, semillaEn(w, 20, 20), 3, talado)
+	require.NoError(t, err)
+	var otro []world.Tile
+	for y := int32(60); y <= 62; y++ {
+		for x := int32(60); x <= 63; x++ {
+			otro = append(otro, world.Tile{X: x, Y: y})
+		}
+	}
+	assert.GreaterOrEqual(t, cuantosCerca(s.Center, otro), tilesDeLaSpec,
+		"la ciudad de %v nació junto al bosque talado", s.Center)
+
+	sinCapa, err := FindSite(w, nil, semillaEn(w, 20, 20), 3, nil)
+	require.NoError(t, err)
+	assert.Less(t, chebyshev(sinCapa.Center, world.Tile{X: 23, Y: 21}), chebyshev(s.Center, world.Tile{X: 23, Y: 21}),
+		"control: sin la capa, el bosque de al lado sí cuenta")
 }
 
 // INV-CITY-007: sobre el generador real, el centro cae dentro del mundo y
@@ -140,7 +223,7 @@ func TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, semilla := range []uint64{0, 1, 77, 4_096, 16_383, 1 << 40} {
-		s, err := FindSite(w, nil, semilla, 3)
+		s, err := FindSite(w, nil, semilla, 3, nil)
 		require.NoError(t, err, "semilla %d", semilla)
 		verificarSitio(t, w, s, 3)
 	}
@@ -157,7 +240,7 @@ func TestSinTerrenoTransitableNoHaySitio(t *testing.T) {
 	}
 	w := mundoLiso(t, 32, 32, agua)
 
-	_, err := FindSite(w, nil, 0, 3)
+	_, err := FindSite(w, nil, 0, 3, nil)
 	assert.True(t, errors.Is(err, ErrNoSite), "se esperaba ErrNoSite, llegó %v", err)
 }
 
@@ -166,7 +249,7 @@ func TestSinTerrenoTransitableNoHaySitio(t *testing.T) {
 func TestUnCandidatoJuntoAlBordeSeDescarta(t *testing.T) {
 	w := mundoLiso(t, 32, 32, nil)
 
-	s, err := FindSite(w, nil, semillaEn(w, 0, 0), 3)
+	s, err := FindSite(w, nil, semillaEn(w, 0, 0), 3, nil)
 	require.NoError(t, err)
 	verificarSitio(t, w, s, 3)
 	assert.GreaterOrEqual(t, s.Center.X, clearRadius)
@@ -181,7 +264,7 @@ func TestUnObstaculoEnElEntornoDescartaElCandidato(t *testing.T) {
 		{X: inicio.X + clearRadius, Y: inicio.Y}: world.Water,
 	})
 
-	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3)
+	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3, nil)
 	require.NoError(t, err)
 	assert.NotEqual(t, inicio, s.Center)
 	verificarSitio(t, w, s, 3)
@@ -206,7 +289,7 @@ func TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		// Semillas cercanas a propósito: todas empiezan a buscar en la misma
 		// región, que es el caso en que la separación tiene que actuar.
-		s, err := FindSite(w, centros, semillaEn(w, 128, 128)+uint64(i), 3)
+		s, err := FindSite(w, centros, semillaEn(w, 128, 128)+uint64(i), 3, nil)
 		require.NoError(t, err, "fundación %d", i)
 		verificarSitio(t, w, s, 3)
 		w.SetBlocked(s.MinX, s.MinY, s.MaxX, s.MaxY, true)
@@ -233,16 +316,16 @@ func TestLaBusquedaEsDeterminista(t *testing.T) {
 	require.NoError(t, err)
 	existentes := []world.Tile{{X: 64, Y: 64}}
 
-	a, err := FindSite(w, existentes, 12345, 3)
+	a, err := FindSite(w, existentes, 12345, 3, nil)
 	require.NoError(t, err)
-	b, err := FindSite(w, existentes, 12345, 3)
+	b, err := FindSite(w, existentes, 12345, 3, nil)
 	require.NoError(t, err)
 	assert.Equal(t, a, b)
 }
 
 func TestSinAldeanosNoSeFunda(t *testing.T) {
 	w := mundoLiso(t, 32, 32, nil)
-	_, err := FindSite(w, nil, 0, 0)
+	_, err := FindSite(w, nil, 0, 0, nil)
 	assert.Error(t, err)
 }
 

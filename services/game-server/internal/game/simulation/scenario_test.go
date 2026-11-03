@@ -24,6 +24,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -72,6 +73,13 @@ type escenario struct {
 		// Wood es la madera inicial de su ciudad (SPEC-ECON-WOOD). Opcional.
 		Wood *int64 `json:"wood"`
 	} `json:"players"`
+	// Forests fija la madera inicial de algunos tiles de bosque
+	// (SPEC-ECON-FOREST). Opcional; vuelven a crecer un día después de epochMs.
+	Forests []struct {
+		X         int32 `json:"x"`
+		Y         int32 `json:"y"`
+		Remaining int32 `json:"remaining"`
+	} `json:"forests"`
 	Units []struct {
 		Ref    string `json:"ref"`
 		Player string `json:"player"`
@@ -114,6 +122,8 @@ type economiaFinal struct {
 	Cities    []ciudadEconomica `json:"cities"`
 	Tasks     []tareaFinal      `json:"tasks"`
 	Buildings []edificioFinal   `json:"buildings"`
+	// Forests son los tiles de bosque que no están llenos al final.
+	Forests []simulation.ForestRow `json:"forests,omitempty"`
 }
 
 type ciudadEconomica struct {
@@ -363,6 +373,11 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 			}})
 		}
 	}
+	for _, f := range esc.Forests {
+		conEconomia = true
+		state.SetForest(world.Tile{X: f.X, Y: f.Y},
+			forest.State{Remaining: f.Remaining, RegrowsAtMs: esc.EpochMs + forest.RegrowAfterMs})
+	}
 	unidades := map[string]int64{}
 	refDeUnidad := map[int64]string{}
 	for i, u := range esc.Units {
@@ -508,6 +523,7 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 			}
 			return true
 		})
+		eco.Forests = state.Forests(clk.NowMs())
 		res.Final.Economy = eco
 	}
 	// Los recorridos del estado ya son estables; ordenar aquí hace que el golden

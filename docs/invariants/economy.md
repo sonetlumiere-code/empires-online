@@ -305,7 +305,7 @@ del tick 895 como el último.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E4 |
 | Política ante violación | REJECT (escritura) · REPAIR (arranque) |
-| Cobertura | **Pendiente**: se cubre con la implementación de E4 ([../specs/economy-forest.md](../specs/economy-forest.md)) |
+| Cobertura | **Cubierto** por `Test_INV_ECON_007_ElCheckRechazaMaderaFueraDeRango` (integration), `TestUnaEntradaFueraDeRangoEsInvalida` (`internal/domain/forest`) y `TestLaCapaDelArranqueDescartaLoQueNoVale` (`internal/game/simulation`) |
 
 **Enunciado.** Para toda fila de `forest_wood` y toda entrada de la capa de madera en la RAM, `0 ≤ remaining ≤
 forestWood` y el tile `(x, y)` es `FOREST` en el terreno del mundo.
@@ -319,8 +319,10 @@ es bosque es un recurso donde el terreno dice que no hay ninguno.
 - `DOMAIN` — la carga es `min(carry, remaining)` (`RN-ECON-013`) y la capa sólo admite tiles `FOREST`; la carga
   al arrancar descarta, con `invariant_violation`, una fila sobre un tile que no lo es.
 
-**Cómo se verifica.** Se escribirán con la implementación: el `CHECK` por su nombre (integration), la carga
-parcial y nula (unit) y la fila sobre un tile que no es bosque al arrancar (recovery).
+**Cómo se verifica.** `Test_INV_ECON_007_ElCheckRechazaMaderaFueraDeRango` (integration): el motor rechaza −1 y 101
+por el nombre del `CHECK`. `TestUnaCargaNuncaCreaMadera` y `TestUnaEntradaFueraDeRangoEsInvalida` (unit): la carga
+parcial y nula, y el rango. `TestLaCapaDelArranqueDescartaLoQueNoVale` (simulation): al arrancar, una fila fuera de
+rango o sobre un tile que no es bosque se descarta y se señala — **existen y pasan**.
 
 **Violación en runtime.** La base rechaza la escritura; al arrancar, la fila mala se descarta y se audita.
 
@@ -335,7 +337,7 @@ parcial y nula (unit) y la fila sobre un tile que no es bosque al arrancar (reco
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E4 |
 | Política ante violación | REJECT |
-| Cobertura | **Pendiente**: se cubre con la implementación de E4 ([../specs/economy-forest.md](../specs/economy-forest.md)) |
+| Cobertura | **Cubierto** por `TestUnaCargaQueFallaNoDejaNadaAMedias`, `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente` (integration), `TestDosAldeanosEnElMismoTileCarganEnOrdenDeId` (simulation) y el golden «tala» |
 
 **Enunciado.** En cada carga, lo que gana la unidad es exactamente lo que pierde el tile, en la RAM y en la base.
 
@@ -348,7 +350,9 @@ caída dejaría la madera a la vez en la mano del aldeano y en el bosque.
   como delta ([ADR-025](../decisions/ADR-025-forest-wood-layer.md) §2).
 - `DOMAIN` — la RAM descuenta del tile la misma cantidad que pone en `carrying`, en el mismo paso.
 
-**Cómo se verifica.** Se escribirán con la implementación: la transacción de carga con fallo inyectado (ni tile ni
-carga a medias, integration) y la suma tile + cargas constante en el golden «tala» (simulation).
+**Cómo se verifica.** `TestUnaCargaQueFallaNoDejaNadaAMedias` (integration): con un fallo dentro de la transacción,
+ni el tile ni la tarea cambian. `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente` (integration): un reintento
+no descuenta dos veces. `TestDosAldeanosEnElMismoTileCarganEnOrdenDeId` (simulation): las cargas suman lo que tenía
+el tile. El golden «tala» (`TestLosEscenariosReproducenSuGolden`): 35 maderas salen de 35 — **existen y pasan**.
 
 **Violación en runtime.** No hay ruta conocida; la transacción es la garantía.

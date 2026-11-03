@@ -50,14 +50,14 @@ func testWorld(t *testing.T) *world.World {
 }
 
 // mundoDeFundacion es un mundo de hierba de lado×lado salpicado de bosque —un
-// FOREST en cada (8i+4, 8j+4)—, porque una ciudad sólo se funda con un bosque
-// alcanzable a 8 tiles (RN-CITY-023).
+// FOREST en cada (4i+2, 4j+2)—, porque una ciudad sólo se funda con diez tiles
+// de bosque alcanzables a 8 tiles (RN-CITY-023, RN-ECON-017).
 func mundoDeFundacion(t *testing.T, lado int32) *world.World {
 	t.Helper()
 	terrain := make([]byte, int(lado)*int(lado))
 	for i := range terrain {
 		terrain[i] = byte(world.Grassland)
-		if x, y := int32(i)%lado, int32(i)/lado; x%8 == 4 && y%8 == 4 {
+		if x, y := int32(i)%lado, int32(i)/lado; x%4 == 2 && y%4 == 2 {
 			terrain[i] = byte(world.Forest)
 		}
 	}

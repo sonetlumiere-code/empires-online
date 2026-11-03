@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -54,6 +55,14 @@ type FoundingAPI struct {
 	clock        clock.Clock
 	civilization int32
 	faction      int32
+	forests      ForestReader
+}
+
+// ForestReader lee de la base los tiles de bosque agotados (SPEC-ECON-FOREST).
+// La fundación corre fuera del game loop y no puede leer su RAM; la base va un
+// instante por detrás, que para elegir un emplazamiento basta (RN-ECON-017).
+type ForestReader interface {
+	DepletedForests(ctx context.Context, nowMs int64) (map[world.Tile]struct{}, error)
 }
 
 // Options configura la API.
@@ -71,6 +80,9 @@ type Options struct {
 	// Clock fecha el alta (captured_at del territorio reclamado). Si es nil se
 	// usa el reloj del sistema, que es lo que hace producción.
 	Clock clock.Clock
+	// Forests da los tiles de bosque agotados; nil trata todo el bosque como
+	// lleno.
+	Forests ForestReader
 }
 
 // NewFoundingAuthenticator construye el autenticador de la fundación: sólo
@@ -103,6 +115,7 @@ func NewFoundingAPI(
 		territories: opts.Territories,
 		tick:        opts.Tick,
 		clock:       opts.Clock,
+		forests:     opts.Forests,
 	}
 }
 
@@ -171,6 +184,11 @@ func (a *FoundingAPI) Found() http.HandlerFunc {
 		}
 
 		var site founding.Site
+		hasWood, err := a.hasWood(ctx)
+		if err != nil {
+			a.foundingFailed(ctx, w, err, playerID, req.Username)
+			return
+		}
 		result, err := a.bootstrapper.Create(ctx, postgres.BootstrapRequest{
 			PlayerID:       playerID,
 			Username:       req.Username,
@@ -186,7 +204,7 @@ func (a *FoundingAPI) Found() http.HandlerFunc {
 			// simultáneas podían fundar a menos de la distancia mínima
 			// (INV-CITY-008).
 			Place: func(existing []world.Tile) (postgres.Placement, error) {
-				s, err := founding.FindSite(a.world, existing, hashSeed(req.Username), player.InitialVillagers)
+				s, err := founding.FindSite(a.world, existing, hashSeed(req.Username), player.InitialVillagers, hasWood)
 				if err != nil {
 					return postgres.Placement{}, err
 				}
@@ -424,4 +442,17 @@ func (a *FoundingAPI) currentTick() uint64 {
 		return 0
 	}
 	return a.tick()
+}
+
+// hasWood es la capa de madera para la fundación: un tile cuenta si no está
+// agotado (RN-ECON-017).
+func (a *FoundingAPI) hasWood(ctx context.Context) (founding.HasWood, error) {
+	if a.forests == nil {
+		return nil, nil
+	}
+	agotados, err := a.forests.DepletedForests(ctx, a.clock.NowMs())
+	if err != nil {
+		return nil, fmt.Errorf("leer el bosque agotado: %w", err)
+	}
+	return func(t world.Tile) bool { _, no := agotados[t]; return !no }, nil
 }

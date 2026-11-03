@@ -218,6 +218,17 @@ func run() error {
 	// tienen una tarea (INV-ECON-005).
 	economia.Tasks = tasks
 	state.SetEconomy(economia)
+	// La madera del bosque (SPEC-ECON-FOREST). Las filas vencidas son tiles
+	// llenos: no entran, y se borran como limpieza.
+	bosque := state.SetForests(economia.Forests, sysClock.NowMs(), func(t world.Tile, detail string) {
+		log.Error("invariant_violation", "inv_id", "INV-ECON-007", "severity", "ALTO", "policy", "REPAIR",
+			"entity", fmt.Sprintf("forest:%d,%d", t.X, t.Y), "detail", detail+": se descarta")
+	})
+	if limpias, err := economyRepo.DeleteRegrownForests(rootCtx, sysClock.NowMs()); err != nil {
+		return err
+	} else if limpias > 0 || bosque > 0 {
+		log.Info("madera del bosque cargada", "tiles", bosque, "regenerados_borrados", limpias)
+	}
 	recovery := simulation.Hydrate(state, units, cities, movements, sysClock.NowMs(), log)
 	log.Info("mundo rehidratado",
 		"units", recovery.Units, "cities", recovery.Cities,
@@ -388,6 +399,7 @@ func run() error {
 			Territories:    territories,
 			Tick:           gameLoop.Tick,
 			Clock:          sysClock,
+			Forests:        economyRepo,
 		}, log)
 
 	// Superficie pública, la que publica el reverse proxy: el juego y la salud.

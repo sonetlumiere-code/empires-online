@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -30,10 +30,11 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, `TreatyExpired` en la caducidad, `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática) y `UnitKilled` en el combate, e `InvariantRepaired` en la validación de carga del arranque |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, `TreatyExpired` en la caducidad, `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática) y `UnitKilled` en el combate, `ForestDepleted` al agotarse un tile de bosque, e `InvariantRepaired` en la validación de carga del arranque |
 | `city_stocks` | E1: **activa** | Una fila por ciudad y recurso, creada en la fundación (y para las ciudades existentes, por `000006`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
 | `unit_tasks` | E1: **activa** | Write-through en cada transición de la tarea de recolección, con su tramo de movimiento y `units.status` en la misma transacción |
 | `buildings` | E1: **activa** | Encargo de `city.build` (con su débito) y finalización en la fase 5 |
+| `forest_wood` | E4: **activa** | La madera de los tiles de bosque tocados, aparte del terreno ([ADR-025](../decisions/ADR-025-forest-wood-layer.md)). Una carga descuenta un delta en la transacción de la tarea; una fila vencida cuenta como llena |
 | `city_productions` | E1: **activa** | Encargo de `city.train` (con su débito y la reserva de población) y nacimiento del aldeano |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |
@@ -1014,6 +1015,28 @@ sustituye en su transacción.
 
 **Persistencia de las cuatro.** Ver §18 y [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md):
 todo es escritura encolada salvo los depósitos, que viajan por volcado.
+
+### 16.5 `forest_wood` (`000008`)
+
+La madera de los tiles de bosque que alguien ha empezado a talar ([../specs/economy-forest.md](../specs/economy-forest.md),
+[ADR-025](../decisions/ADR-025-forest-wood-layer.md)). El terreno no cambia: un tile sin fila está lleno.
+
+```sql
+CREATE TABLE forest_wood (
+    x             integer NOT NULL,
+    y             integer NOT NULL,
+    remaining     integer NOT NULL,
+    regrows_at_ms bigint  NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT forest_wood_pkey PRIMARY KEY (x, y),
+    CONSTRAINT forest_wood_remaining_range CHECK (remaining BETWEEN 0 AND 100)
+);
+```
+
+Una carga la escribe como **delta** en la transacción de la transición de la tarea, sólo si la tarea sigue en la
+fase `WORKING` que la carga consume (así un reintento no descuenta dos veces). Una fila con `regrows_at_ms` vencido
+cuenta como llena: la carga siguiente parte de 100 y `GREATEST` conserva la regeneración más tardía. El arranque
+borra las vencidas como limpieza.
 
 ---
 

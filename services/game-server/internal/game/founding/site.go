@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
@@ -48,14 +49,19 @@ const (
 // ErrNoSite indica que no se encontró ningún emplazamiento válido.
 var ErrNoSite = errors.New("no se encontró un emplazamiento válido para la ciudad")
 
+// HasWood dice si a un tile FOREST le queda madera (SPEC-ECON-FOREST). nil
+// trata todo el bosque como lleno.
+type HasWood func(world.Tile) bool
+
 // FindSite busca un emplazamiento válido para una ciudad nueva.
 //
 // Requisitos de un emplazamiento: estar dentro del mundo, tener todo su entorno
 // despejado y transitable, y guardar la distancia mínima con cualquier ciudad ya
 // existente. La búsqueda arranca en un punto derivado de `seed` y recorre el mundo
 // en espiral, de modo que dos jugadores creados a la vez no compitan por el mismo
-// tile.
-func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int) (Site, error) {
+// tile. hasWood es la capa de madera del bosque: sólo cuentan los tiles a los
+// que les queda (RN-ECON-017); nil, todos.
+func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int, hasWood HasWood) (Site, error) {
 	if villagers <= 0 {
 		return Site{}, fmt.Errorf("un jugador nuevo necesita al menos un aldeano")
 	}
@@ -68,7 +74,7 @@ func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int)
 	maxRing := max32(w.Width(), w.Height())
 	for ring := int32(0); ring <= maxRing; ring++ {
 		for _, candidate := range ringTiles(startX, startY, ring) {
-			if !isViable(w, candidate, existing) {
+			if !isViable(w, candidate, existing, hasWood) {
 				continue
 			}
 			spawns := findSpawns(w, candidate, villagers)
@@ -89,7 +95,7 @@ func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int)
 }
 
 // isViable comprueba que un tile sirve como centro de ciudad.
-func isViable(w *world.World, center world.Tile, existing []world.Tile) bool {
+func isViable(w *world.World, center world.Tile, existing []world.Tile, hasWood HasWood) bool {
 	for dy := -clearRadius; dy <= clearRadius; dy++ {
 		for dx := -clearRadius; dx <= clearRadius; dx++ {
 			if !w.IsWalkable(center.X+dx, center.Y+dy) {
@@ -97,7 +103,7 @@ func isViable(w *world.World, center world.Tile, existing []world.Tile) bool {
 			}
 		}
 	}
-	return FarEnough(center, existing) && hasReachableForest(w, center)
+	return FarEnough(center, existing) && hasReachableForest(w, center, hasWood)
 }
 
 // fourNeighbours: la búsqueda de bosque sólo avanza en vertical y horizontal.
@@ -105,13 +111,15 @@ func isViable(w *world.World, center world.Tile, existing []world.Tile) bool {
 // ocho direcciones, que además no corta esquinas.
 var fourNeighbours = [4][2]int32{{0, -1}, {-1, 0}, {1, 0}, {0, 1}}
 
-// hasReachableForest indica si desde la zona urbana se llega a pie a un tile
-// FOREST sin salir del cuadrado de semilado forestRadius (RN-CITY-023).
+// hasReachableForest indica si desde la zona urbana se llega a pie a al menos
+// forest.FoundingTiles tiles FOREST con madera sin salir del cuadrado de
+// semilado forestRadius (RN-CITY-023, RN-ECON-017).
 //
 // Búsqueda en anchura desde el anillo de nacimiento —que el entorno despejado
 // ya garantiza transitable— por tiles que pasan IsWalkable, sin entrar en el
 // 3 × 3 de la zona urbana. Recorre como mucho 17 × 17 tiles, en orden fijo.
-func hasReachableForest(w *world.World, center world.Tile) bool {
+func hasReachableForest(w *world.World, center world.Tile, hasWood HasWood) bool {
+	found := 0
 	side := 2*forestRadius + 1
 	seen := make([]bool, side*side)
 	index := func(t world.Tile) int {
@@ -127,8 +135,11 @@ func hasReachableForest(w *world.World, center world.Tile) bool {
 	}
 	for i := 0; i < len(queue); i++ {
 		t := queue[i]
-		if w.TerrainAt(t.X, t.Y) == world.Forest {
-			return true
+		if w.TerrainAt(t.X, t.Y) == world.Forest && (hasWood == nil || hasWood(t)) {
+			found++
+			if found >= forest.FoundingTiles {
+				return true
+			}
 		}
 		for _, d := range fourNeighbours {
 			n := world.Tile{X: t.X + d[0], Y: t.Y + d[1]}

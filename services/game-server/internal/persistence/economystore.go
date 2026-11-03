@@ -32,6 +32,13 @@ func toTransition(w simulation.TaskWrite) postgres.TaskTransition {
 	if w.Finish != nil {
 		tr.FinishMovementID, tr.FinishStatus = w.Finish.MovementID, w.Finish.Status
 	}
+	if f := w.Forest; f != nil {
+		tr.Forest = &postgres.ForestTake{
+			Tile: f.Tile, Amount: f.Amount, AtMs: f.AtMs, RegrowsAtMs: f.RegrowsAtMs,
+			FromTrips: f.FromTrips, FromUntilMs: f.FromUntilMs,
+			Depleted: f.Depleted, PlayerID: f.PlayerID, CityID: f.CityID, Tick: f.Tick,
+		}
+	}
 	return tr
 }
 

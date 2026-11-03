@@ -640,6 +640,8 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	s.advanceTasks(nowMs)
 	s.completeBuildings(nowMs)
 	s.completeProductions(nowMs)
+	// El bosque que vuelve a crecer (RN-ECON-016).
+	s.regrowForests(nowMs)
 
 	// 5. Ocultamiento en Safe Zones (docs/specs/safe-zones.md §6.4). Va después
 	// de la fase 3 del mismo tick, así que una unidad que llega a una zona pasa

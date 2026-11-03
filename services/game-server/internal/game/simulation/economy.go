@@ -86,6 +86,9 @@ type TaskWrite struct {
 	// para borrar la tarea de una unidad que sigue con otro movimiento.
 	KeepUnit bool
 	Task     *task.Task
+	// Forest es la carga de un tile de bosque que esta transición escribe en su
+	// transacción, como delta (ADR-025 §2). nil si no carga.
+	Forest *ForestLoad
 }
 
 // BuildOrder es un encargo de edificio con su débito.
@@ -244,6 +247,8 @@ type EconomyLoad struct {
 	Buildings   []building.Building
 	Productions []production.Production
 	Tasks       []task.Task
+	// Forests son las filas de forest_wood (SPEC-ECON-FOREST).
+	Forests []ForestRow
 }
 
 // StockRow es una fila de city_stocks.

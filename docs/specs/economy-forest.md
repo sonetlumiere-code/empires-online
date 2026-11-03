@@ -73,6 +73,19 @@ Dominio: `RN-ECON`, continuando la numeración de [economy-wood.md](economy-wood
 Lo que no cambia: la ruta, el depósito, la pérdida de lo cargado al cancelar (`RN-ECON-003`) y la regla de la
 ausencia (`RN-ECON-005`) son las de [economy-wood.md](economy-wood.md).
 
+**Precisión (2026-11-03).** Lo que la implementación decide dentro de estas reglas:
+
+- La búsqueda del tile siguiente prueba el pathfinding sólo con los ocho candidatos más cercanos
+  (`forest.SearchAttempts`): acota el coste del A* cuando el bosque de alrededor está muy talado.
+- La regeneración es exacta en la lógica: un tile cuyo instante ya pasó cuenta como lleno aunque el barrido de la
+  fase 5, una vez por segundo, no lo haya sacado todavía de la capa. El barrido sólo lo limpia y lo anuncia.
+- Un aldeano cuyo tile se agota mientras trabaja y que no encuentra otro vuelve al depósito sin carga y su tarea
+  termina allí, con el motivo `FOREST_DEPLETED`.
+- La fundación lee de la base los tiles agotados: corre fuera del game loop y no puede leer su RAM. La base va un
+  instante por detrás de la RAM, que para elegir un emplazamiento basta.
+- El golden «tala» (`testdata/scenarios/tala.json`) fija el recorrido entero: tres aldeanos, un bosque de tres
+  tiles con 25, 10 y 0, y 35 maderas en total.
+
 ## 5. Errores
 
 | Código | Condición | Estado |
