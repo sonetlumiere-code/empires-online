@@ -469,7 +469,10 @@ Es la misma comprobación que cierra un despliegue ([deployment.md](./deployment
 `/health` y `/ready`, da de alta un jugador **a través de Next.js** (o entra con él, si ya existe), hace el handshake, recibe el snapshot, ordena un movimiento y
 **cierra la conexión a mitad de trayecto para reconectar después —con un ticket pedido con la cookie de sesión— y
 comprobar que la unidad llegó igualmente**. `--url` apunta al Game Server y `--web` a Next.js.
-Falla con código distinto de cero y explica en qué paso.
+Falla con código distinto de cero y explica en qué paso. Con `--incursion` añade el combate
+([../specs/combat-raid.md](../specs/combat-raid.md)): junta 60 de madera, entrena un guerrero, acerca un aldeano
+de un segundo jugador (`smoke_victim`) y lo mata. Tarda minutos y mata una unidad de otra cuenta, así que no
+corre por defecto ni tras un despliegue en producción.
 
 ---
 

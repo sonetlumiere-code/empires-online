@@ -1374,7 +1374,7 @@ terminado y en la rama principal.
 
 ## E2 — Incursión
 
-**Estado: EN CURSO (2026-11-02)** — implementación en la rama `claude/slice-incursion`. Contrato:
+**Estado: HECHO en la rama `claude/slice-incursion` (2026-11-02)**, pendiente de fusionar en `main` y de la CI. Contrato:
 [SPEC-COMBAT-RAID](../specs/combat-raid.md), aceptada el 2026-11-02 con sus ocho decisiones de producto, y
 [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md).
 
@@ -1393,6 +1393,7 @@ atacar edificios o ciudades, asedio, respuesta automática, daño a distancia, c
 3. **HECHO** — Protocolo: `unit.attack`, `WARRIOR`, `ATTACKING`.
 4. **HECHO** — Simulación: orden, persecución, fase 4, muerte y botín; `unit.attack` es la primera acción hostil.
 5. **HECHO** — Persistencia: migración `000007`, transacción de muerte, `hp` y botín en el volcado.
-6. **PENDIENTE** — Cliente: botón «Guerrero», orden de ataque con clic sobre una unidad enemiga, vida y
-   `ATTACKING` en la escena; incursión en `scripts/smoke.mjs`.
-7. **PENDIENTE** — Prueba en vivo y verificación completa.
+6. **HECHO** — Cliente: botón «Guerrero», orden de ataque con clic sobre una unidad enemiga, vida y
+   `ATTACKING` en la escena; incursión en `scripts/smoke.mjs --incursion`.
+7. **HECHO** — Prueba en vivo (2026-11-02): humo con incursión en verde, ataque y entrenamiento desde el
+   navegador, reanclaje al arrancar observado en el servidor.

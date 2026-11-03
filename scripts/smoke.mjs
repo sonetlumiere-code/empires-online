@@ -370,7 +370,11 @@ async function main() {
   ok('unidades propias en el snapshot', `${propias.length}`);
 
   // 5. Movimiento ───────────────────────────────────────────
-  const unidad = propias.find((u) => !u.movement) ?? propias[0];
+  // Un aldeano: el mismo recorre después el viaje de recolección, y un guerrero
+  // (de una incursión anterior) no recolecta.
+  const aldeanos = propias.filter((u) => u.unitType === 'VILLAGER');
+  if (aldeanos.length === 0) fallar('el jugador de humo no tiene aldeanos', propias);
+  const unidad = aldeanos.find((u) => !u.movement) ?? aldeanos[0];
   const terreno = indexarTerreno(snap.terrain);
   const destino = elegirDestino(terreno, unidad);
   if (!destino) fallar('no encontré ningún tile transitable a distancia media', { desde: unidad });
@@ -503,6 +507,11 @@ async function acercar(sesion, unidad, destino, cerca) {
   let pos = { x: unidad.x, y: unidad.y };
   for (let tramo = 0; tramo < 8; tramo++) {
     if (Math.max(Math.abs(pos.x - destino.x), Math.abs(pos.y - destino.y)) <= cerca) return pos;
+    // Como hace la cámara del cliente: el área de interés sigue a la unidad. Sin
+    // esto, una unidad propia lejos de la ciudad no está en vista y su
+    // unit.movement.started, que se difunde por chunk, no llega.
+    sesion.enviar('session.view', { center: { x: pos.x, y: pos.y } });
+    await sesion.esperar('world.snapshot');
     let objetivo = destino;
     let mov = null;
     for (let intento = 0; intento < 40 && !mov; intento++) {
@@ -522,8 +531,10 @@ async function acercar(sesion, unidad, destino, cerca) {
         : { x: medio.x + giro[0] * d, y: medio.y + giro[1] * d };
     }
     if (!mov) fallar('no encontré cómo acercar la unidad', { desde: pos, destino });
-    const espera = mov.arrivalTimeMs - Date.now() + 1500;
-    await sesion.esperarQue('unit.movement.completed', (m) => m.payload.unitId === unidad.id, Math.max(espera, 1000) + 10_000);
+    // Se espera a la hora de llegada de la polilínea, no a unit.movement.completed:
+    // una unidad que camina lejos sale del área de interés de su propio dueño, y
+    // ese mensaje sólo llega a quien la ve.
+    await dormir(Math.max(0, mov.arrivalTimeMs - Date.now()) + 1500);
     pos = mov.target;
   }
   return pos;
