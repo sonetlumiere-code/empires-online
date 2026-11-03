@@ -6,7 +6,7 @@ madera, la recolección la gasta y un tile agotado deja de dar madera hasta que 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-ECON-FOREST` |
-| Estado | Accepted (2026-11-03; las preguntas de §10 se decidieron ese día con la recomendación de cada una). Implementada en `main` (`a35bc1d`, CI en verde el 2026-11-03). |
+| Estado | Implemented (2026-11-03). Aceptada el 2026-11-03 con las preguntas de §10 decididas ese día con la recomendación de cada una; en `main` desde `a35bc1d`, con la CI en verde el mismo día. |
 | Milestone | E4 Bosque (cuarto slice después de M7) |
 | Canon | §5 (terreno), §12 (persistencia), §16 (errores) |
 | Depende de | [economy-wood.md](economy-wood.md), [city.md](city.md), [websocket-protocol.md](websocket-protocol.md), [movement.md](movement.md) |

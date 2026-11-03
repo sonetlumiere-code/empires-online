@@ -7,7 +7,7 @@ vigente.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-GARRISON` |
-| Estado | Implementado (entrada y salida); expulsión diferida fuera de MVP |
+| Estado | Implemented (entrada y salida); la expulsión diferida al romperse un tratado queda fuera de MVP |
 | Milestone | M6 Territory, Safe Zones & Diplomacy |
 | Canon | §10, §11, §12, §13, §16 |
 | Depende de | [unit.md](unit.md), [city.md](city.md), [movement.md](movement.md) |

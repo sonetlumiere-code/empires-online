@@ -6,7 +6,7 @@ enemiga, la mata y se queda con lo que cargaba. Una unidad, una orden, una fase 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-COMBAT-RAID` |
-| Estado | Accepted (2026-11-02; las preguntas de §10 se decidieron ese día con la recomendación de cada una). Implementación en la rama `claude/slice-incursion`. |
+| Estado | Implemented (2026-11-03). Aceptada el 2026-11-02 con las preguntas de §10 decididas ese día con la recomendación de cada una; en `main` desde `bc87cce`, con la CI en verde el 2026-11-03. |
 | Milestone | E2 Incursión (segundo slice después de M7) |
 | Canon | §9 (protección), §12 (persistencia), §16 (errores), §21 (fuera de MVP: combate) |
 | Depende de | [unit.md](unit.md), [movement.md](movement.md), [presence.md](presence.md), [safe-zones.md](safe-zones.md), [garrison.md](garrison.md), [territory.md](territory.md), [economy-wood.md](economy-wood.md) |

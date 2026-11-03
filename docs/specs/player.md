@@ -5,7 +5,7 @@ Especificación de la entidad `Player`: identidad, autenticación por ticket, al
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-PLAYER` |
-| Estado | Draft |
+| Estado | Implemented (2026-11-03). Pasó de `Draft` a `Implemented` sin el paso `Accepted`: el código y sus tests están en `main` desde M2 (el alta, desde ADR-018) y la spec se reconcilió con ellos en `EO-118`; ver [README.md](README.md) §4, «Precisión (2026-11-03)». |
 | Milestone | M2 Player & City |
 | Canon | §0, §1, §10, §11, §12, §14, §16, §17 |
 | Depende de | [city.md](city.md), [unit.md](unit.md), [websocket-protocol.md](websocket-protocol.md) |

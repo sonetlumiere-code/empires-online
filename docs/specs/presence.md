@@ -5,7 +5,7 @@ Especificación de la presencia del jugador (volátil, Redis) y del `presence_st
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-PRESENCE` |
-| Estado | Draft |
+| Estado | Implemented (2026-11-03). Pasó de `Draft` a `Implemented` sin el paso `Accepted`: el código y sus tests están en `main` desde M5, con el tope de 48 h de E2, y la spec se reconcilió con ellos en `EO-118`; ver [README.md](README.md) §4, «Precisión (2026-11-03)». |
 | Milestone | M5 Offline protection & Safe Zones |
 | Canon | §1, §6, §9, §10, §11, §12, §13, §14, §16, §17 |
 | Depende de | [player.md](player.md), [city.md](city.md), [../architecture/game-loop.md](../architecture/game-loop.md) |
