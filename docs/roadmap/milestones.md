@@ -1430,7 +1430,7 @@ huida de aldeanos, posturas por unidad, salir de la guarnición a defender.
 
 ## E4 — Bosque
 
-**Estado: HECHO en la rama `claude/slice-bosque` (2026-11-03)**, pendiente de fusionar en `main` y de la CI. Contrato:
+**Estado: HECHO (2026-11-03)**, fusionado en `main` (`a35bc1d`) con la CI en verde el mismo día. Contrato:
 [SPEC-ECON-FOREST](../specs/economy-forest.md), aceptada el 2026-11-03 con sus siete decisiones de producto, y
 [ADR-025](../decisions/ADR-025-forest-wood-layer.md).
 
