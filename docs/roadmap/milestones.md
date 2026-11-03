@@ -1456,8 +1456,7 @@ tiles con madera. **No entra** (spec §2): talar para abrir camino, otros recurs
 
 ## E5 — Saqueo
 
-**Estado: HECHO en la rama** `claude/slice-asedio` (2026-11-03), con su suite y la prueba en vivo en verde; falta
-fusionarlo en `main`. Contrato:
+**Estado: HECHO (2026-11-03)**, fusionado en `main` (`82f3db8`) con la CI en verde el mismo día y probado en vivo. Contrato:
 [SPEC-COMBAT-PILLAGE](../specs/combat-pillage.md), aceptada el 2026-11-03 con sus nueve decisiones de producto, y
 [ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md).
 

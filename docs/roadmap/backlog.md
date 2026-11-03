@@ -37,7 +37,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E2 Incursión | **Completado** (2026-11-03). Sin items `EO-` propios: el detalle está en [milestones.md](milestones.md) §E2 y el contrato en [SPEC-COMBAT-RAID](../specs/combat-raid.md). |
 | E3 Defensa | **Completado** (2026-11-03). Detalle en [milestones.md](milestones.md) §E3; contrato en [SPEC-COMBAT-RESPONSE](../specs/combat-response.md). |
 | E4 Bosque | **Completado** (2026-11-03). Detalle en [milestones.md](milestones.md) §E4; contrato en [SPEC-ECON-FOREST](../specs/economy-forest.md). |
-| E5 Saqueo | **Hecho en la rama** `claude/slice-asedio` (2026-11-03), a falta de fusionarse. Detalle en [milestones.md](milestones.md) §E5; contrato en [SPEC-COMBAT-PILLAGE](../specs/combat-pillage.md). |
+| E5 Saqueo | **Completado** (2026-11-03). En `main` desde la fusión `82f3db8`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E5; contrato en [SPEC-COMBAT-PILLAGE](../specs/combat-pillage.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

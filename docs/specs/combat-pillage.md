@@ -7,7 +7,7 @@ almacén.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-COMBAT-PILLAGE` |
-| Estado | Accepted (2026-11-03; las preguntas de §10 se decidieron ese día con la recomendación de cada una). |
+| Estado | Implemented (2026-11-03). Aceptada el 2026-11-03 con las preguntas de §10 decididas ese día con la recomendación de cada una; en `main` desde la fusión `82f3db8`, con la CI en verde el mismo día. |
 | Milestone | E5 Saqueo (quinto slice después de M7) |
 | Canon | §9 (protección), §12 (persistencia), §16 (errores), §21 (fuera de MVP: asedio) |
 | Depende de | [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [economy-wood.md](economy-wood.md), [city.md](city.md), [presence.md](presence.md), [safe-zones.md](safe-zones.md), [garrison.md](garrison.md) |
