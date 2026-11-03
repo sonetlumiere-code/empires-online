@@ -292,6 +292,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 		Inbox:              inbox.Offer,
 		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ProtectionCooldown: 300 * time.Second,
+		ProtectionMax:      48 * time.Hour,
 		DisconnectGrace:    30 * time.Second,
 		PathMaxNodes:       20000,
 		PathMaxDistance:    256,

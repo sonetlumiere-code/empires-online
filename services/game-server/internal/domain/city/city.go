@@ -77,8 +77,31 @@ func (c *City) Center() world.Tile { return world.Tile{X: c.CenterX, Y: c.Center
 // HasPopulationRoom indica si caben `n` puntos de población más.
 func (c *City) HasPopulationRoom(n int32) bool { return c.Population+n <= c.PopulationLimit }
 
-// IsProtected indica si la ciudad goza de protección por ausencia de su dueño.
+// IsProtected indica si la ciudad está en el estado PROTECTED, venza o no su
+// tope. Para decidir si la protección frena un ataque se usa ProtectedAt.
 func (c *City) IsProtected() bool { return c.PresenceState == PresenceProtected }
+
+// ProtectedAt indica si la protección frena un ataque en `now`: la ciudad está
+// PROTECTED y su tope no ha vencido (INV-CITY-006; SPEC-COMBAT-RAID Q1). Sin
+// tope (ProtectionUntil nil) protege mientras dure el estado.
+func (c *City) ProtectedAt(now time.Time) bool {
+	if !c.IsProtected() {
+		return false
+	}
+	return c.ProtectionUntil == nil || now.Before(*c.ProtectionUntil)
+}
+
+// ProtectionEndsAt es el fin de la protección de una ciudad que se desconectó
+// en `lastOfflineAt`: el cooldown más el tope (ADR-024 §3). Se deriva de datos
+// durables, así que vale igual al concederla que al rehidratar. Con tope cero,
+// o sin marca de desconexión, no hay fin: devuelve nil.
+func ProtectionEndsAt(lastOfflineAt *time.Time, cooldown, max time.Duration) *time.Time {
+	if lastOfflineAt == nil || max <= 0 {
+		return nil
+	}
+	end := lastOfflineAt.Add(cooldown + max)
+	return &end
+}
 
 // Errores de dominio.
 var (

@@ -62,6 +62,9 @@ type Deps struct {
 
 	// ProtectionCooldown es el tiempo desde la desconexión hasta PROTECTED.
 	ProtectionCooldown time.Duration
+	// ProtectionMax es cuánto dura como mucho la protección una vez concedida
+	// (ADR-024 §3). Cero: sin tope.
+	ProtectionMax time.Duration
 	// DisconnectGrace es el margen de reconexión antes de degradar a OFFLINE_PENDING.
 	DisconnectGrace time.Duration
 	// PathMaxNodes y PathMaxDistance acotan cada consulta de pathfinding.
@@ -634,6 +637,9 @@ func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now t
 	case city.PresenceOfflinePending:
 		t := now
 		c.LastOfflineAt = &t
+	case city.PresenceProtected:
+		// El fin se deriva de la marca durable de desconexión (ADR-024 §3).
+		c.ProtectionUntil = city.ProtectionEndsAt(c.LastOfflineAt, s.deps.ProtectionCooldown, s.deps.ProtectionMax)
 	}
 
 	// La transición lleva el estado y la marca actuales: si había una escritura
@@ -642,9 +648,46 @@ func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now t
 	s.submitPresence(c, now)
 
 	presence := string(state)
+	update := protocol.CityUpdatePayload{ID: c.ID, PresenceState: &presence}
+	if state == city.PresenceProtected && c.ProtectionUntil != nil {
+		ms := c.ProtectionUntil.UnixMilli()
+		update.ProtectionUntilMs = &ms
+	}
 	cx, cy := s.state.World().ChunkOf(c.CenterX, c.CenterY)
-	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeCityUpdate,
-		protocol.CityUpdatePayload{ID: c.ID, PresenceState: &presence})
+	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeCityUpdate, update)
+}
+
+// AfterBoot prepara la presencia tras rehidratar, antes del primer tick y fuera
+// de Hydrate, que no escribe (RN-PRESENCE-028):
+//
+//   - Una ciudad PROTECTED recupera el fin de su protección, que se deriva de
+//     last_offline_at y no se persiste (ADR-024 §3).
+//   - Una ciudad ONLINE sin sesión es la de un dueño que estaba conectado cuando
+//     el servidor cayó: nadie sabe cuándo se fue, así que se le da por ido al
+//     arrancar y pasa a OFFLINE_PENDING con esa marca (ADR-024 §4). Sin esto se
+//     quedaría ONLINE, y por tanto expuesta, para siempre (presence.md §7.6).
+//
+// Va en orden de ciudad, para que las escrituras salgan siempre igual.
+func (s *Simulation) AfterBoot(now time.Time) {
+	var huerfanas []*city.City
+	s.state.EachCity(func(c *city.City) bool {
+		switch c.PresenceState {
+		case city.PresenceProtected:
+			c.ProtectionUntil = city.ProtectionEndsAt(c.LastOfflineAt, s.deps.ProtectionCooldown, s.deps.ProtectionMax)
+		case city.PresenceOnline:
+			if len(s.sessions[c.OwnerPlayerID]) == 0 {
+				huerfanas = append(huerfanas, c)
+			}
+		}
+		return true
+	})
+	sort.Slice(huerfanas, func(i, j int) bool { return huerfanas[i].ID < huerfanas[j].ID })
+	for _, c := range huerfanas {
+		s.applyPresence(c, city.PresenceOfflinePending, now)
+	}
+	if len(huerfanas) > 0 {
+		s.deps.Log.Info("ciudades ONLINE sin sesión reancladas a OFFLINE_PENDING", "count", len(huerfanas))
+	}
 }
 
 // submitPresence encola la escritura durable de la presencia ACTUAL de una

@@ -263,6 +263,26 @@ func TestSobrescrituraPorEntorno(t *testing.T) {
 	require.EqualValues(t, 256, cfg.WorldWidth)
 }
 
+// SPEC-COMBAT-RAID: el tope de la protección y la persecución tienen valores
+// por defecto de la spec, y cero en el tope significa «sin tope».
+func TestTopeDeProteccionYPersecucion(t *testing.T) {
+	setProductionEnv(t)
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	require.Equal(t, 48*time.Hour, cfg.CityProtectionMax)
+	require.Equal(t, 5, cfg.CombatRepathTicks)
+	require.EqualValues(t, 32, cfg.CombatMaxChaseTiles)
+
+	t.Setenv("EO_CITY_PROTECTION_MAX_HOURS", "0")
+	cfg, err = config.Load()
+	require.NoError(t, err)
+	require.Zero(t, cfg.CityProtectionMax)
+
+	t.Setenv("EO_CITY_PROTECTION_MAX_HOURS", "9000")
+	_, err = config.Load()
+	require.Error(t, err)
+}
+
 // EO_ENV es una lista cerrada: `prod`, `staging` o un error de tecleo
 // activarían en silencio la semántica de desarrollo —migración automática,
 // estado caliente en proceso, secreto de ejemplo admitido— en una máquina que

@@ -38,8 +38,9 @@ solo altera las reglas ligadas a la presencia del jugador, nada más.
 
 - Asedio, combate y cualquier acción hostil real: no existe ningún mensaje cliente→servidor de ataque en el
   canon §13. Aquí se define la **regla** y su **punto de aplicación**, no un sistema de combate.
-- Límite temporal de la protección: `protection_until` es `NULL` en MVP (protección indefinida mientras el
-  jugador siga offline, canon §9). La política de expiración es `TBD (fuera de MVP)`.
+- **Precisión (2026-11-02).** El límite temporal de la protección ya no está fuera de scope: lo trajo el
+  combate ([combat-raid.md](combat-raid.md) Q1, [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md)).
+  Ver `RN-PRESENCE-036` y `RN-PRESENCE-037`.
 - Despliegue multi-proceso o multi-nodo del game server: en MVP hay un único proceso autoritativo.
   La clave de Redis está diseñada para soportarlo, pero el reparto de mundo entre procesos es
   `TBD (fuera de MVP)`.
@@ -124,7 +125,9 @@ Dominio de reglas: `RN-PRESENCE`.
 | `RN-PRESENCE-008` | Todas las comparaciones temporales usan el `Clock` inyectado (`clock.Clock`), nunca `time.Now()` dentro del dominio: `Loop.Step` toma `nowMs` del reloj y se lo pasa a `ProcessTimers`, y `Simulation` obtiene el instante de desconexión de `deps.Clock.Now()`. Los tests usan `FakeClock` y avanzan el tiempo a voluntad. |
 | `RN-PRESENCE-009` | Ningún valor de gameplay se hardcodea: el cooldown, el TTL/grace y el latido llegan desde `internal/config` (canon §9, §17). |
 | `RN-PRESENCE-010` | La fase 5 del tick **no hace I/O bloqueante** contra PostgreSQL ni contra Redis: opera sobre estado en RAM ya cargado y entrega la escritura a la cola de persistencia (`Persister.Submit`). La difusión de `city.update` sale en el mismo instante y **no espera al `COMMIT`**; la ventana de riesgo y su recuperación se documentan en §10. |
-| `RN-PRESENCE-011` | `protection_until` permanece `NULL` mientras el jugador siga offline (protección indefinida en MVP): la transición a `PROTECTED` no lo escribe, y volver a `ONLINE` lo pone explícitamente a `NULL`. El campo queda previsto para límites futuros (canon §9). |
+| `RN-PRESENCE-011` | La columna `protection_until` no se escribe al conceder la protección, y volver a `ONLINE` la pone explícitamente a `NULL`. **Precisión (2026-11-02):** el fin de la protección se deriva en RAM (`RN-PRESENCE-036`) y viaja en `city.update`; la columna sigue sin escribirse. |
+| `RN-PRESENCE-036` | **Tope de la protección** (2026-11-02, ADR-024 §3). Al conceder `PROTECTED` y al rehidratar, `protection_until = last_offline_at + EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS + EO_CITY_PROTECTION_MAX_HOURS` (sin fin si el tope es 0). La protección frena una acción hostil mientras `now < protection_until` (`City.ProtectedAt`). Al vencer, el estado **no cambia**: sigue `PROTECTED` hasta que el dueño vuelve (`T4`), pero ya no protege. El `city.update` de `T2` lleva `protectionUntilMs`. |
+| `RN-PRESENCE-037` | **Reanclaje al arrancar** (2026-11-02, ADR-024 §4). Tras rehidratar y antes del primer tick, toda ciudad `ONLINE` sin sesión pasa a `OFFLINE_PENDING` con `last_offline_at` = instante del arranque, y sigue el autómata normal. Lo hace `Simulation.AfterBoot`, no `Hydrate`, que sigue sin escribir (`RN-PRESENCE-028`). |
 | `RN-PRESENCE-012` | Un movimiento `ACTIVE` iniciado antes de la desconexión **continúa** y se completa según su polilínea temporizada. Desconectarse no congela unidades: el mundo persiste (canon §1.2, §7). |
 
 ### 6.2 Qué significa exactamente `PROTECTED` en el MVP
@@ -354,7 +357,7 @@ por estado es éste:
 
 | Estado en la fila | Situación real | Comportamiento real tras el arranque | Valoración |
 |---|---|---|---|
-| `ONLINE` | El proceso cayó sin poder degradar el estado. No se sabe cuándo se fue el jugador. | La ciudad **se queda `ONLINE` indefinidamente**: `disconnectedAt` arranca vacío, así que el paso 1 de la fase 5 no tiene a quién degradar. Solo vuelve al autómata cuando su dueño abre una sesión y la cierra. | Limitación conocida del MVP, no un descuido: el servidor no puede inventar un instante de desconexión, y con un único proceso autoritativo el efecto es que una ciudad cuyo dueño no vuelve nunca queda expuesta. Reanclar `last_offline_at = bootTimeMs` al arrancar y degradar tras el grace es `TBD (fuera de MVP)`. |
+| `ONLINE` | El proceso cayó sin poder degradar el estado. No se sabe cuándo se fue el jugador. | **Precisión (2026-11-02):** se reancla a `OFFLINE_PENDING` con la marca del arranque (`RN-PRESENCE-037`) y sigue el autómata: cooldown, protección y tope. | Antes se quedaba `ONLINE` indefinidamente, una limitación aceptable sin combate y no con él: una ciudad cuyo dueño no volviera quedaba expuesta para siempre. |
 | `OFFLINE_PENDING` | El jugador ya estaba ausente antes del reinicio; `last_offline_at` es un dato durable y fiable. | Se **respeta** `last_offline_at`. Si `bootTime - last_offline_at >= cooldown`, la primera fase 5 aplica `T2` → `PROTECTED` de inmediato, porque `ShouldEngageProtection` solo mira ese campo. El tiempo de caída del servidor **cuenta** para el cooldown. | Correcto y deseado. La ausencia del jugador es un hecho previo e independiente de la caída del servidor, y errar hacia la protección es el modo de fallo seguro. |
 | `PROTECTED` | Estado terminal hasta la reconexión. | Se mantiene sin cambios. | No hay degradación de protección sin reconexión (`T4` es la única salida). |
 

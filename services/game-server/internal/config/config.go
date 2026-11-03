@@ -46,6 +46,15 @@ type Config struct {
 	PresenceTTL                  time.Duration
 	PresenceHeartbeat            time.Duration
 	CityOfflineProtectionCooldwn time.Duration
+	// CityProtectionMax es cuánto dura como mucho la protección offline una vez
+	// concedida (SPEC-COMBAT-RAID Q1, ADR-024 §3). Cero: sin tope.
+	CityProtectionMax time.Duration
+
+	// CombatRepathTicks es cada cuántos ticks, como mucho, la persecución
+	// recalcula la ruta hacia un objetivo que se movió; CombatMaxChaseTiles, a
+	// qué distancia Chebyshev se abandona (SPEC-COMBAT-RAID §4.2).
+	CombatRepathTicks   int
+	CombatMaxChaseTiles int32
 
 	PersistenceFlushIntervalTicks int
 
@@ -153,6 +162,10 @@ func Load() (Config, error) {
 		PresenceTTL:                  v.seconds("EO_PRESENCE_TTL_SECONDS", 30, 1, 3600),
 		PresenceHeartbeat:            v.seconds("EO_PRESENCE_HEARTBEAT_SECONDS", 10, 1, 3600),
 		CityOfflineProtectionCooldwn: v.seconds("EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS", 300, 0, 86400),
+		CityProtectionMax:            time.Duration(v.intRange("EO_CITY_PROTECTION_MAX_HOURS", 48, 0, 8760)) * time.Hour,
+
+		CombatRepathTicks:   v.intRange("EO_COMBAT_REPATH_TICKS", 5, 1, 1000),
+		CombatMaxChaseTiles: int32(v.intRange("EO_COMBAT_MAX_CHASE_TILES", 32, 1, 1024)),
 
 		PersistenceFlushIntervalTicks: v.intRange("EO_PERSISTENCE_FLUSH_INTERVAL_TICKS", 50, 1, 100000),
 

@@ -169,3 +169,76 @@ func TestAlPararElLoopVuelcaLoQueQuedabaSucio(t *testing.T) {
 
 	assert.Greater(t, h.repos.unitsFlushed, antes, "el volcado final escribe la unidad que llegó")
 }
+
+// SPEC-COMBAT-RAID Q1 (ADR-024 §3): al conceder la protección se fija su fin,
+// last_offline_at + cooldown + tope, y viaja en el city.update para que el
+// cliente sepa hasta cuándo.
+func TestLaProteccionConcedidaLlevaSuFin(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.state.City(h.cityID)
+	sesion := uuid.New()
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: sesion})
+	h.send(simulation.PlayerDisconnected{PlayerID: h.playerID, SessionID: sesion})
+	h.advance(31 * time.Second)
+	require.Equal(t, city.PresenceOfflinePending, c.PresenceState)
+	h.rec.reset()
+
+	h.advance(300 * time.Second)
+	require.Equal(t, city.PresenceProtected, c.PresenceState)
+	require.NotNil(t, c.ProtectionUntil)
+	esperado := c.LastOfflineAt.Add(300*time.Second + 48*time.Hour)
+	assert.True(t, c.ProtectionUntil.Equal(esperado), "fin %s, esperado %s", c.ProtectionUntil, esperado)
+
+	var fin *int64
+	for _, m := range h.rec.byType(protocol.TypeCityUpdate) {
+		if p := m.Payload.(protocol.CityUpdatePayload); p.PresenceState != nil && *p.PresenceState == string(city.PresenceProtected) {
+			fin = p.ProtectionUntilMs
+		}
+	}
+	require.NotNil(t, fin, "el city.update de PROTECTED lleva protectionUntilMs")
+	assert.Equal(t, esperado.UnixMilli(), *fin)
+	assert.True(t, c.ProtectedAt(h.clk.Now()))
+	assert.False(t, c.ProtectedAt(esperado), "al vencer el tope deja de proteger")
+}
+
+// ADR-024 §4: tras una caída con el dueño conectado, la ciudad se queda ONLINE
+// sin nadie. Al arrancar se le da por ido en ese instante y sigue el autómata
+// normal; una ciudad PROTECTED recupera el fin de su protección, que no se
+// persiste.
+func TestAlArrancarSeReanclaLaCiudadOnlineSinSesion(t *testing.T) {
+	h := newHarness(t)
+	conVecinos(h, 1)
+	c, _ := h.state.City(h.cityID)
+	protegida, _ := h.state.City(2)
+	desconexion := h.clk.Now().Add(-time.Hour)
+	protegida.PresenceState = city.PresenceProtected
+	protegida.LastOfflineAt = &desconexion
+
+	arranque := h.clk.Now()
+	h.sim.AfterBoot(arranque)
+
+	require.Equal(t, city.PresenceOfflinePending, c.PresenceState, "ONLINE sin sesión pasa a OFFLINE_PENDING")
+	require.NotNil(t, c.LastOfflineAt)
+	assert.True(t, c.LastOfflineAt.Equal(arranque))
+	assert.Equal(t, city.PresenceOfflinePending, h.repos.presence[h.cityID], "y la base lo sabe")
+
+	require.NotNil(t, protegida.ProtectionUntil)
+	assert.True(t, protegida.ProtectionUntil.Equal(desconexion.Add(300*time.Second+48*time.Hour)))
+	assert.Equal(t, city.PresenceProtected, protegida.PresenceState, "la protegida no cambia de estado")
+
+	// Desde ahí, el autómata de siempre: el cooldown lleva a PROTECTED.
+	h.advance(301 * time.Second)
+	assert.Equal(t, city.PresenceProtected, c.PresenceState)
+}
+
+// Un dueño que vuelve justo tras el arranque recupera su ciudad: el reanclaje
+// no es un castigo, sólo deja de suponer que sigue conectado.
+func TestElDuenoQueVuelveTrasElArranqueRecuperaSuCiudad(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.state.City(h.cityID)
+	h.sim.AfterBoot(h.clk.Now())
+	require.Equal(t, city.PresenceOfflinePending, c.PresenceState)
+
+	h.send(simulation.PlayerConnected{PlayerID: h.playerID, SessionID: uuid.New()})
+	assert.Equal(t, city.PresenceOnline, c.PresenceState)
+}

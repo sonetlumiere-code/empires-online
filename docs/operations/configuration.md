@@ -122,6 +122,9 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 |---|---|---|---|---|---|---|
 | `EO_PRESENCE_TTL_SECONDS` | duration-s | `30` | 1–3600, y **estrictamente mayor** que `EO_PRESENCE_HEARTBEAT_SECONDS` | No | No | Dos usos: TTL de `presence:player:{playerId}` en Redis, y **`DisconnectGrace` del game loop**. La transición a `OFFLINE_PENDING` la decide el loop en RAM comparando contra este valor, **no** leyendo la expiración de la clave de Redis. Un jugador con varias sesiones abiertas sigue `ONLINE` mientras le quede una. |
 | `EO_PRESENCE_HEARTBEAT_SECONDS` | duration-s | `10` | 1–3600, y **estrictamente menor** que `EO_PRESENCE_TTL_SECONDS` | No | No | Cadencia con la que el servidor refresca la clave de presencia. También es el `heartbeatIntervalMs` que se anuncia al cliente en `session.welcome`. La relación 10/30 da margen para perder dos heartbeats seguidos sin declarar ausente a nadie. |
+| `EO_CITY_PROTECTION_MAX_HOURS` | int | `48` | 0–8760 | No | No | Cuánto dura como mucho la protección offline una vez concedida; 0 = sin tope. Al vencer, la ciudad sigue `PROTECTED` pero ya no frena ataques. Ver [../specs/presence.md](../specs/presence.md) `RN-PRESENCE-036` y [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md). |
+| `EO_COMBAT_REPATH_TICKS` | int | `5` | 1–1000 | No | No | Cada cuántos ticks, como mucho, la persecución recalcula la ruta hacia un objetivo que se movió. Ver [../specs/combat-raid.md](../specs/combat-raid.md) §4.2. |
+| `EO_COMBAT_MAX_CHASE_TILES` | int | `32` | 1–1024 | No | No | Distancia Chebyshev a la que el atacante abandona la persecución. |
 | `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` | duration-s | `300` | 0–86400 | No | No | Tiempo en `OFFLINE_PENDING` antes de transicionar a `PROTECTED`. Constante **de gameplay**: define la ventana en la que una ciudad recién abandonada sigue siendo atacable. Ver [../specs/presence.md](../specs/presence.md). |
 
 ### 3.6 Persistencia

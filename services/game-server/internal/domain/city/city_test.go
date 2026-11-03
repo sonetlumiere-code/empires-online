@@ -116,6 +116,28 @@ func TestIsProtected(t *testing.T) {
 	require.False(t, (&city.City{PresenceState: city.PresenceOnline}).IsProtected())
 }
 
+// SPEC-COMBAT-RAID Q1 (ADR-024 §3): la protección vence en
+// last_offline_at + cooldown + tope; antes frena un ataque y después no.
+// Sin tope, protege mientras dure el estado.
+func TestLaProteccionVenceEnSuTope(t *testing.T) {
+	desconexion := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	fin := city.ProtectionEndsAt(&desconexion, 5*time.Minute, 48*time.Hour)
+	require.NotNil(t, fin)
+	require.Equal(t, desconexion.Add(5*time.Minute+48*time.Hour), *fin)
+
+	c := &city.City{PresenceState: city.PresenceProtected, ProtectionUntil: fin}
+	require.True(t, c.ProtectedAt(fin.Add(-time.Millisecond)))
+	require.False(t, c.ProtectedAt(*fin), "el instante del tope ya no protege")
+	require.True(t, c.IsProtected(), "el estado no cambia al vencer: sólo deja de proteger")
+
+	require.Nil(t, city.ProtectionEndsAt(&desconexion, 5*time.Minute, 0), "tope cero: sin fin")
+	require.Nil(t, city.ProtectionEndsAt(nil, 5*time.Minute, time.Hour))
+	sinTope := &city.City{PresenceState: city.PresenceProtected}
+	require.True(t, sinTope.ProtectedAt(desconexion.Add(1000*time.Hour)))
+	require.False(t, (&city.City{PresenceState: city.PresenceOfflinePending}).ProtectedAt(desconexion),
+		"OFFLINE_PENDING no protege: es la ventana de riesgo")
+}
+
 // RN-ECON-004 y RN-ECON-011: el anillo de nacimiento es el de los aldeanos
 // iniciales, a distancia 2 del centro, en un orden fijo; el primer tile libre
 // es el de depósito y el de nacimiento.

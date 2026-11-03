@@ -304,10 +304,15 @@ func run() error {
 		Inbox:              inbox.Offer,
 		Log:                log,
 		ProtectionCooldown: cfg.CityOfflineProtectionCooldwn,
+		ProtectionMax:      cfg.CityProtectionMax,
 		DisconnectGrace:    cfg.PresenceTTL,
 		PathMaxNodes:       cfg.PathfindingMaxNodes,
 		PathMaxDistance:    cfg.PathfindingMaxDistance,
 	})
+
+	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje
+	// de las ciudades que se quedaron ONLINE sin nadie (ADR-024 §3 y §4).
+	sim.AfterBoot(sysClock.Now())
 
 	gameLoop := loop.New(sim, sysClock, commands, inbox, loop.Config{
 		TickDuration:       cfg.TickDuration(),
