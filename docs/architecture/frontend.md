@@ -511,6 +511,23 @@ y grueso, y una que carga madera, un tronco a la espalda.
 
 ---
 
+### 4.5 Diplomacia: ofertas, tratados y preaviso (SPEC-DIPLOMACY)
+
+> **Estado (2026-11-03): implementado y con tests de lo puro** (`src/state/diplomacy.ts`).
+
+- El store guarda `treaties`, los tratados `PROPOSED` y `ACTIVE` del jugador, como una **lista inmutable** que se
+  sustituye en cada cambio, a diferencia de los mapas estables de §4.4: sólo la lee el HUD. `world.snapshot.treaties`
+  la reemplaza entera; `treaty.update` la cambia tratado a tratado y, con un estado que no es `PROPOSED` ni
+  `ACTIVE`, saca el tratado (`applyTreatyUpdate`).
+- **Proponer.** Un clic en el 3 × 3 de una ciudad ajena **sin unidad seleccionada** abre una barra con «Proponer
+  pacto» y «Proponer alianza» (`treaty.propose` con el `ownerPlayerId` de la ciudad). Con una unidad
+  seleccionada, el clic sigue siendo la orden de §4.4.
+- **Responder, retirar y romper.** La barra lista cada tratado con su texto (`treatyLabel`) y sus órdenes
+  (`treatyActions`): una oferta recibida, «Aceptar» y «Rechazar»; la propia, «Retirar»; una vigente, «Romper», que
+  pide confirmación porque no se deshace. En preaviso no hay botón y el texto lleva la cuenta atrás hasta
+  `breaksAtMs`, medida con el reloj del servidor y refrescada una vez por segundo sólo mientras haya alguna.
+- Los rechazos llegan como `system.error INVALID_TARGET` y se muestran en el pie con su mensaje (§3.6).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

@@ -14,6 +14,7 @@
  * Ver ../../../../docs/architecture/networking.md y frontend.md §4
  */
 import { create } from 'zustand';
+import { applyTreatyUpdate, type TreatyView } from './diplomacy';
 import type { v1 } from '@empires-online/protocol';
 import type { ActiveMovement } from './interpolation';
 
@@ -162,6 +163,11 @@ export interface WorldState {
   terrain: ReadonlyMap<string, ChunkTerrain>;
   /** Tiles de bosque que no están llenos, por `forestKey`. */
   forests: ReadonlyMap<string, ForestView>;
+  /**
+   * Tratados abiertos del jugador (SPEC-DIPLOMACY), por id. A diferencia de los
+   * mapas de arriba se sustituye en cada cambio: sólo lo lee el HUD.
+   */
+  treaties: readonly TreatyView[];
   changes: WorldChanges;
 
   selectedUnitId: number | null;
@@ -258,6 +264,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     buildings,
     terrain,
     forests,
+    treaties: [],
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
     lastError: null,
@@ -319,6 +326,8 @@ export const useWorldStore = create<WorldState>((set, get) => {
         // Si la unidad seleccionada ya no está en el área de interés, se deselecciona.
         selectedUnitId: selected !== null && units.has(selected) ? selected : null,
         changes: changed({ all: true, terrain: newTerrain, forests: true }),
+        // Como el resto del snapshot, la lista de tratados se reemplaza (ADR-027 §5).
+        treaties: [...(payload.treaties ?? [])].sort((a, b) => a.id - b.id),
       });
     },
 
@@ -423,6 +432,10 @@ export const useWorldStore = create<WorldState>((set, get) => {
           break;
         }
 
+        case 'treaty.update':
+          set({ treaties: applyTreatyUpdate(get().treaties, message.payload.treaty) });
+          break;
+
         case 'forest.update': {
           // Sin instante de regeneración, el tile vuelve a estar lleno y sale de la capa.
           const f = message.payload;
@@ -511,6 +524,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
         tick: 0,
         selectedUnitId: null,
         lastError: null,
+        treaties: [],
         changes: changed({ all: true }),
       });
     },
