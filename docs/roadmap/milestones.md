@@ -1456,7 +1456,8 @@ tiles con madera. **No entra** (spec §2): talar para abrir camino, otros recurs
 
 ## E5 — Saqueo
 
-**Estado: EN CURSO** desde el 2026-11-03, en la rama `claude/slice-asedio`. Contrato:
+**Estado: HECHO en la rama** `claude/slice-asedio` (2026-11-03), con su suite y la prueba en vivo en verde; falta
+fusionarlo en `main`. Contrato:
 [SPEC-COMBAT-PILLAGE](../specs/combat-pillage.md), aceptada el 2026-11-03 con sus nueve decisiones de producto, y
 [ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md).
 
@@ -1471,9 +1472,17 @@ casas, que la ciudad caiga, máquinas de asedio, niebla de guerra.
 ### Entregables
 
 1. **HECHO** — Aceptación: spec, ADR-026, `INV-COMBAT-004` e `INV-COMBAT-005`.
-2. Protocolo: `unit.pillage` y `pillagedAtMs`, con el JSON Schema y los contract tests.
-3. Simulación: la orden, la aproximación, los golpes con el suelo y la presencia, la defensa y las dos fases;
-   golden «saqueo».
-4. Persistencia: la transacción del golpe, idempotente por versión, con fallo inyectado.
-5. Cliente: clic de saqueo con un guerrero sobre una ciudad ajena y el aviso en el HUD.
-6. Humo `--saqueo` y prueba en vivo.
+2. **HECHO** — Protocolo: `unit.pillage` y `pillagedAtMs`, con el JSON Schema y los contract tests
+   (`TestElComandoDeSaqueoEsElDelEsquema`, `TestElAvisoDeSaqueoEstaEnElEsquemaDeCityUpdate`).
+3. **HECHO** — Simulación (`pillage.go`): la orden, la aproximación al anillo, los golpes con el suelo y la
+   presencia, la defensa y las dos fases; tests en `pillage_test.go` con el golden «saqueo». Tres mutaciones (sin
+   suelo, sin presencia, sin defensa) las detecta algún test.
+4. **HECHO** — Persistencia: la transacción del golpe, idempotente por versión, con los depósitos que viajan y fallo
+   inyectado (`pillage_integration_test.go`); e2e por WebSocket (`pillage_e2e_test.go`).
+5. **HECHO** — Cliente: clic de saqueo con un guerrero sobre una ciudad ajena (`decideTileOrder`) y el aviso en el
+   HUD (`pillageAlertActive`).
+6. **HECHO** — Humo y prueba en vivo (2026-11-03): `scripts/smoke.mjs --saqueo` en verde (22 comprobaciones). El
+   aldeano de `smoke_victim`, varado junto a `smoke_runner` desde E3, volvió a casa y juntó madera; el guerrero 15
+   cruzó el mapa hasta (449, 181), junto a la muralla de (451, 179), y dio cuatro golpes de 5 cada 1,5 s (cuatro
+   `CityPillaged` en la base) hasta quedar `IDLE` con 20 de carga. En el navegador, con `smoke_victim` conectado,
+   el HUD mostró «¡Están saqueando tu ciudad!» desde el primer golpe hasta cinco segundos después del último.

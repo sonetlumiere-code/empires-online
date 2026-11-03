@@ -86,7 +86,7 @@ descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E2 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestElBotinPasaAlAsesinoYSeDeposita` (`internal/game/simulation`) y `TestElVolcadoEscribeVidaYBotinYNoResucita` (integration) |
+| Cobertura | **Cubierto** por `TestElBotinPasaAlAsesinoYSeDeposita` (`internal/game/simulation`) y `TestElVolcadoEscribeVidaYBotinYNoResucita` (integration); el saqueo, por `TestElSaqueoGoldenCuatroGolpesYDeposito`, `TestLaCargaPendienteNoSeVuelcaNiSeHereda`, `TestElVolcadoEscribeAlSaqueadorIdleYSinLaCargaPendiente` (`internal/game/simulation`) y `TestUnGolpeDeSaqueoQueFallaNoDejaNadaAMedias` (integration) |
 
 **Enunciado.** En toda muerte, lo que gana el atacante es como mucho lo que llevaba la víctima; y la madera que
 un `WARRIOR` deposita en su ciudad es exactamente la que llevaba, que pasa a cero. Desde E5: en todo golpe de
@@ -117,7 +117,7 @@ transferencia.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E5 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-03, antes de su código |
+| Cobertura | **Cubierto** por `TestElSaqueoRespetaElSuelo` y `TestDosSaqueadoresSeRepartenLoQueQuedaPorEncimaDelSuelo` (`internal/game/simulation`) |
 
 **Enunciado.** Tras cualquier golpe de saqueo, el stock de madera de la ciudad saqueada es mayor o igual que
 `EO_PILLAGE_STOCK_FLOOR`, o el que tenía antes del golpe si ya estaba por debajo. Los encargos de su dueño sí pueden
@@ -129,8 +129,9 @@ grande dejaría a uno pequeño a cero en cada desconexión.
 **Cómo se garantiza.** `DOMAIN` — lo robado es `min(madera por golpe, hueco de la carga, stock − suelo)`, calculado
 en el instante de aplicar el golpe contra el stock que dejaron los anteriores del mismo tick (`RN-COMBAT-022`).
 
-**Cómo se verifica.** Previstos con E5: la cantidad robada con cada límite y dos saqueadores sobre una ciudad cerca
-del suelo, en `internal/game/simulation`.
+**Cómo se verifica.** `TestElSaqueoRespetaElSuelo` (con 57 roba 5 y 2, y para en 50; con el almacén ya en el suelo,
+la orden se acepta y no roba nada) y `TestDosSaqueadoresSeRepartenLoQueQuedaPorEncimaDelSuelo` (con 58, 5 y 3, en orden
+de guerrero) — **existen y pasan**, en `internal/game/simulation`. Quitar el suelo del cálculo los pone en rojo.
 
 **Violación en runtime.** Un golpe que fuera a dejar el stock por debajo no se aplica y se registra
 `invariant_violation` con `inv_id=INV-COMBAT-004`.
@@ -146,7 +147,7 @@ del suelo, en `internal/game/simulation`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E5 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-03, antes de su código |
+| Cobertura | **Cubierto** por `TestElSaqueoTerminaConElDuenoAusente` (`internal/game/simulation`) |
 
 **Enunciado.** Un golpe de saqueo sólo se aplica si el dueño del guerrero está presente: su ciudad `ONLINE` y su
 sesión viva o dentro del margen de reconexión, el mismo predicado que
@@ -158,8 +159,9 @@ guerreros pegados a una muralla y apagar el ordenador.
 **Cómo se garantiza.** `DOMAIN` — la fase 4 comprueba la presencia antes de cada golpe de saqueo y, si falta,
 termina el saqueo (`RN-COMBAT-025`).
 
-**Cómo se verifica.** Previsto con E5: el saqueo termina al vencer el margen de reconexión del dueño, en
-`internal/game/simulation`.
+**Cómo se verifica.** `TestElSaqueoTerminaConElDuenoAusente` — **existe y pasa**: dentro del margen de reconexión el
+saqueo sigue; con la ciudad del saqueador `OFFLINE_PENDING`, termina y no hay más golpes. Quitar la comprobación lo
+pone en rojo.
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse con el dueño ausente se descarta
 y se registra `invariant_violation` con `inv_id=INV-COMBAT-005`.

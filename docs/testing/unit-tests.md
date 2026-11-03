@@ -425,7 +425,7 @@ El test previsto es **table-driven sobre la matriz completa 5×5**: 25 celdas, c
 | **U5** | `TestLaMatrizDeTransicionesEsExhaustiva` | Las 25 celdas tienen veredicto declarado. Añadir un estado nuevo sin actualizar la tabla rompe este test **Estado (2026-10-21):** ○ sin test: la matriz 5×5 no existe en el código. |
 | **U6** | `TestMovingEquivaleAMovimientoActivo` | `status == MOVING` ⟺ el agregado tiene un movimiento `ACTIVE`. La contraparte en base de datos la verifica [integration](./integration-tests.md) **Estado (2026-10-21):** ○ en parte, sólo en la recuperación: `TestRecuperacionReconciliaUnaUnidadMovingSinMovimiento` y `TestRecuperacionNoReanudaElMovimientoDeUnaUnidadGuarnecida`. |
 
-**Nota de scope.** `DEAD` **no tiene productor en MVP**: el combate está fuera de scope (canon §21). Los tests que llevan una unidad a `DEAD` la construyen directamente en ese estado, como hace hoy `TestRechazosDeMovimiento`; no existe un comando que mate unidades.
+**Nota de scope.** Hasta E2, `DEAD` no tenía productor y los tests que llevaban una unidad a `DEAD` la construían directamente en ese estado, como hace `TestRechazosDeMovimiento`. Desde E2 la produce el combate ([../specs/combat-raid.md](../specs/combat-raid.md)), con sus propios tests en `internal/game/simulation`; los de esta tabla siguen construyéndola a mano porque prueban otra cosa.
 
 ### 7.2 Estado de presencia de ciudad — ✔ implementado (`city_test.go`)
 
@@ -464,7 +464,7 @@ S4 es la razón de existir del tiempo como valor: con reloj real, comprobar los 
 | # | Test | Escenario | Resultado esperado |
 |---|---|---|---|
 | **S7** | `TestProteccionIndefinidaMientrasSigaOffline` | Entrar en `PROTECTED` | `ProtectionUntil == nil`: en MVP la protección no caduca sola mientras el jugador siga offline (canon §9). Hoy sólo se comprueba el reverso —que reconectar lo limpia— desde `simulation` **Estado (2026-10-21):** ○ sin test; el código lo cumple (nadie asigna `ProtectionUntil`). |
-| **S8** | `TestCiudadProtegidaRechazaAccionesProhibidas` | Acción prohibida sobre ciudad `PROTECTED` | `CITY_PROTECTED`, sin mutación **Estado (2026-11-02):** ✓ con la primera acción hostil, `unit.attack`: `TestRechazosDelAtaque` (caso «dueño protegido») y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento`, en `internal/game/simulation` ([../specs/combat-raid.md](../specs/combat-raid.md)). |
+| **S8** | `TestCiudadProtegidaRechazaAccionesProhibidas` | Acción prohibida sobre ciudad `PROTECTED` | `CITY_PROTECTED`, sin mutación **Estado (2026-11-02):** ✓ con la primera acción hostil, `unit.attack`: `TestRechazosDelAtaque` (caso «dueño protegido») y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento`, en `internal/game/simulation` ([../specs/combat-raid.md](../specs/combat-raid.md)); desde E5, también el saqueo: `TestRechazosDelSaqueo` (casos «ciudad protegida» y «saqueador protegido») y `TestLaProteccionAMitadDelSaqueoLoTermina` ([../specs/combat-pillage.md](../specs/combat-pillage.md)). |
 
 El ciclo completo en el tiempo (desconexión → margen de 30 s → `OFFLINE_PENDING` → cooldown de 300 s → `PROTECTED` → reconexión) **sí está verificado hoy**, pero en el nivel `simulation`, porque es el game loop quien decide la transición: ver `TestCicloDePresenciaYProteccion` en [simulation-tests.md](./simulation-tests.md) §4.4.
 

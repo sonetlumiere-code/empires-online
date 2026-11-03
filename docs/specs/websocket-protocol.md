@@ -130,8 +130,8 @@ type Inbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. Distinto de una versión soportada → `UNSUPPORTED_VERSION`. |
-| `type` | `string` | Sí | Uno de los once tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
-| `requestId` | `string` (UUID) | Sí en los once tipos, según el esquema Zod. El servidor lo **exige** hoy en los ocho comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train` y `unit.attack`), donde es la clave de idempotencia; en los de sesión lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
+| `type` | `string` | Sí | Uno de los doce tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
+| `requestId` | `string` (UUID) | Sí en los doce tipos, según el esquema Zod. El servidor lo **exige** hoy en los nueve comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack` y `unit.pillage`), donde es la clave de idempotencia; en los de sesión lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
 | `payload` | `object` | Sí | Objeto específico del `type`, **estricto**: ninguna propiedad adicional. Nunca `null`. |
 
 El payload se deja sin decodificar (`json.RawMessage`) hasta después de validar versión, tipo y autorización: no se gasta trabajo en mensajes que van a rechazarse.
@@ -224,7 +224,7 @@ El cliente de `apps/web` reconecta con backoff exponencial y jitter —0,5 s, 1 
 
 ## 7. Mensajes cliente → servidor
 
-Los once tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train` y `unit.attack`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), y `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
+Los doce tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack` y `unit.pillage`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), y `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
 
 ### 7.1 `session.hello`
 
@@ -445,6 +445,22 @@ payload: z.object({ unitId: EntityId, targetUnitId: EntityId }).strict()
 **Validaciones, en este orden** (`RN-COMBAT-001` a `RN-COMBAT-006`): el atacante existe (`UNIT_NOT_FOUND`) · ownership (`UNIT_NOT_OWNED`) · vivo y no guarnecido (`UNIT_DEAD`, `UNIT_GARRISONED`) · no está entrando en una ciudad y su tipo ataca (`UNIT_NOT_MOVABLE`) · el objetivo existe y el jugador lo ve —una unidad `HIDDEN` o `GARRISONED` ajena responde igual que una inexistente— (`UNIT_NOT_FOUND`) · no es propio (`INVALID_TARGET`) · su dueño no está protegido (`CITY_PROTECTED`) · no hay tratado de paz vigente (`INVALID_TARGET`) · ni atacante ni objetivo en Safe Zone (`INVALID_TARGET`) · ruta de aproximación (`PATH_NOT_FOUND`, `PATH_TOO_LONG`). Rechazos como **`system.error`**.
 
 **Efectos.** No hay `*.accepted`. Lejos del objetivo, el atacante se pone en marcha (`unit.movement.started`); al alcanzarlo, `entity.update { status: "ATTACKING" }`; cada golpe, `entity.update { hp }` del objetivo; al morir, `entity.despawn { reason: "DEAD" }`, `city.update { population }` de su ciudad y `entity.update { carrying }` del asesino si hubo botín. Al terminar el enfrentamiento por cualquier causa (`RN-COMBAT-008`), `entity.update { status: "IDLE" }`. `unit.move` y `unit.cancel_move` lo terminan.
+
+### 7.12 `unit.pillage`
+
+- **Dirección:** cliente → servidor. **Propósito:** ordenar a un guerrero propio saquear una ciudad de otro jugador: va hasta su muralla y roba madera del almacén golpe a golpe. Es hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). Spec: [combat-pillage.md](combat-pillage.md); persistencia: [ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md).
+
+```ts
+payload: z.object({ unitId: EntityId, cityId: EntityId }).strict()
+```
+
+```json
+{ "v": 1, "type": "unit.pillage", "requestId": "7c2a5b1e-4f3d-4b6a-8c9d-1e0f2a3b4c5d", "payload": { "unitId": 48211, "cityId": 1204 } }
+```
+
+**Validaciones, en este orden** (`RN-COMBAT-019` y `RN-COMBAT-020`): el guerrero existe (`UNIT_NOT_FOUND`) · ownership (`UNIT_NOT_OWNED`) · vivo y no guarnecido (`UNIT_DEAD`, `UNIT_GARRISONED`) · no está entrando en una ciudad y su tipo ataca (`UNIT_NOT_MOVABLE`) · la ciudad existe (`CITY_NOT_FOUND`) · no es propia (`INVALID_TARGET`) · ni ella ni el saqueador están protegidos (`CITY_PROTECTED`) · no hay tratado de paz vigente (`INVALID_TARGET`) · el guerrero no está en una Safe Zone (`INVALID_TARGET`) · hay ruta a algún tile transitable del anillo de la muralla (`PATH_NOT_FOUND`, `PATH_TOO_LONG`). Rechazos como **`system.error`**. Un almacén ya en el suelo **no** es un rechazo: la orden se acepta y el primer golpe no roba nada.
+
+**Efectos.** No hay `*.accepted`. Lejos de la muralla, el guerrero se pone en marcha (`unit.movement.started`) hacia el tile del anillo más cercano; al llegar, `entity.update { status: "ATTACKING" }`; cada golpe, `city.update { stocks }` de la víctima al chunk, `entity.update { carrying }` del guerrero y `city.update { pillagedAtMs }` **sólo** a su dueño. Al terminar por cualquier causa (`RN-COMBAT-025`), `entity.update { status: "IDLE" }`. `unit.move` y `unit.cancel_move` lo terminan.
 
 ## 8. Mensajes servidor → cliente
 
@@ -685,6 +701,7 @@ payload: z.object({
   protectionUntilMs: EpochMs.nullable().optional(),
   stocks: Stocks.optional(),                         // E1: { WOOD }
   production: ProductionView.nullable().optional(),  // E1: null cuando termina
+  pillagedAtMs: EpochMs.optional(),                  // E5: último golpe de saqueo, sólo al dueño
 })
 ```
 
@@ -692,7 +709,7 @@ payload: z.object({
 { "v": 1, "type": "city.update", "seq": 63, "ts": 1788955500000, "payload": { "id": 1204, "presenceState": "PROTECTED" } }
 ```
 
-Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`). Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
+Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`); desde E5, en cada golpe de saqueo, `stocks` al chunk y `pillagedAtMs` sólo al dueño de la ciudad, por `SendToPlayer` ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-028`). Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
 
 El estado de presencia lo decide **exclusivamente el servidor** (transición a `PROTECTED` tras `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` = 300 s). El cliente lo observa; nunca lo propone.
 
@@ -957,7 +974,7 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 
 | Regla | Detalle |
 |---|---|
-| I-1 | Los esquemas exigen `requestId` con formato UUID en los once comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train` y `unit.attack`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
+| I-1 | Los esquemas exigen `requestId` con formato UUID en los doce comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack` y `unit.pillage`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
 | I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack`). `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping` y `session.view` no reservan clave: no crean efectos durables. |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
@@ -986,7 +1003,7 @@ Este documento no define invariantes propios: materializa los de la familia `INV
 
 | Invariante | Cómo lo materializa este protocolo |
 |---|---|
-| [INV-SEC-001](../invariants/security.md#inv-sec-001) — el estado del cliente nunca muta el estado autoritativo | Los once payloads cliente→servidor son **estrictos** (S-7) y ninguno tiene campo para posición, HP, ruta, ETA ni ownership (§7.4) |
+| [INV-SEC-001](../invariants/security.md#inv-sec-001) — el estado del cliente nunca muta el estado autoritativo | Los doce payloads cliente→servidor son **estrictos** (S-7) y ninguno tiene campo para posición, HP, ruta, ETA ni ownership (§7.4) |
 | [INV-SEC-002](../invariants/security.md#inv-sec-002) — ninguna conexión ejecuta comandos antes de autenticarse | El lector de la sesión no arranca hasta que el handshake termina; `session.hello` es el único tipo pre-auth (§6, §7.1) |
 | [INV-SEC-003](../invariants/security.md#inv-sec-003) — un ticket solo puede canjearse una vez | `SET ticket:jti:{jti} NX EX 120` en el handshake (§7.1) |
 | [INV-SEC-004](../invariants/security.md#inv-sec-004) — todo comando valida ownership antes de ejecutarse | Validación 2 de `unit.move` y de `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`, antes que cualquier lectura de estado (§7.4–§7.7) |
@@ -1012,7 +1029,7 @@ packages/protocol/
 ├── src/v1/
 │   ├── common.ts            # Tile, Waypoint, TimedPath, UnitView, CityView, TerritoryView, ChunkRef, ChunkTerrain
 │   ├── errors.ts            # ErrorCode como z.enum, exactamente los 24 códigos, y WS_CLOSE
-│   ├── client.ts            # los 11 mensajes cliente→servidor, TODOS .strict()
+│   ├── client.ts            # los 12 mensajes cliente→servidor, TODOS .strict()
 │   ├── server.ts            # los 17 mensajes servidor→cliente, ninguno .strict()
 │   └── index.ts             # export público de @empires-online/protocol
 ├── src/scripts/export-schema.ts
@@ -1055,7 +1072,7 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | contract | `entity.update` es un delta: los campos sin cambios no viajan | Sólo `id` y lo modificado | **EN VERDE** |
 | contract | `unit.movement.started` lleva la polilínea completa y sobrevive al round-trip | `path` íntegro, `tMs` preservados | **EN VERDE** |
 | contract | `unit.move` no admite que el cliente aporte una ruta | `DecodeStrict` la rechaza | **EN VERDE** (`TestElComandoDeMovimientoNoAdmiteRuta`) |
-| contract | El decodificador Go es tan estricto como el JSON Schema (S-7) | El esquema declara `additionalProperties: false` en todo objeto cliente→servidor, y una propiedad de más en el envelope, el payload o un objeto anidado se rechaza en los once mensajes | **EN VERDE** (`TestElDecodificadorEsTanEstrictoComoElEsquema`) |
+| contract | El decodificador Go es tan estricto como el JSON Schema (S-7) | El esquema declara `additionalProperties: false` en todo objeto cliente→servidor, y una propiedad de más en el envelope, el payload o un objeto anidado se rechaza en los doce mensajes | **EN VERDE** (`TestElDecodificadorEsTanEstrictoComoElEsquema`) |
 | contract | Sólo `session.hello` es pre-auth; el catálogo de comandos es cerrado (10) | Los otros nueve rechazados como pre-auth | **EN VERDE** |
 | contract | Los comandos de guarnición y `garrisonCityId` coinciden con el esquema | Campos exactos y obligatorios; `UnitView` siempre lo lleva; `entity.update` distingue ausente, `null` e id | **EN VERDE** (`TestLosComandosDeGuarnicionSonLosDelEsquema`, `TestUnitViewLlevaLaCiudadAnfitrionaSiempre`, `TestEntityUpdateDistingueEntradaSalidaYSinCambio`) |
 | contract | Los comandos de economía, `building.*`, `stocks`, `production`, `WORKING` y `carrying` coinciden con el esquema | Campos exactos y obligatorios; tipos de edificio y de entrenamiento del catálogo del dominio; los dos códigos nuevos en los dos catálogos | **EN VERDE** (`economy_contract_test.go`: `TestLosComandosDeEconomiaSonLosDelEsquema`, `TestLosMensajesDeEdificioSonLosDelEsquema`, `TestLaCiudadLlevaSuStockYSuProduccion`, `TestElEstadoWorkingYLaCargaEstanEnElEsquema`, `TestLosCodigosDeLaEconomiaEstanEnElCatalogo`) |
