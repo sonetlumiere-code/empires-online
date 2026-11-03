@@ -149,4 +149,7 @@ test('elegirBosque toma el bosque más cercano a la ciudad, fuera de su muralla'
   ]);
   assert.deepEqual(elegirBosque(mapa, { centerX: 10, centerY: 10 }), { x: 7, y: 7, d: 3 });
   assert.equal(elegirBosque(new Map([['3,3', GRASSLAND]]), { centerX: 10, centerY: 10 }), null);
+  // SPEC-ECON-FOREST: un tile agotado no se elige; uno a medias, sí.
+  assert.deepEqual(elegirBosque(mapa, { centerX: 10, centerY: 10 }, [{ x: 7, y: 7, remaining: 0 }]), { x: 10, y: 13, d: 3 });
+  assert.deepEqual(elegirBosque(mapa, { centerX: 10, centerY: 10 }, [{ x: 7, y: 7, remaining: 40 }]), { x: 7, y: 7, d: 3 });
 });

@@ -1430,7 +1430,7 @@ huida de aldeanos, posturas por unidad, salir de la guarnición a defender.
 
 ## E4 — Bosque
 
-**Estado: EN CURSO en la rama `claude/slice-bosque` (2026-11-03).** Contrato:
+**Estado: HECHO en la rama `claude/slice-bosque` (2026-11-03)**, pendiente de fusionar en `main` y de la CI. Contrato:
 [SPEC-ECON-FOREST](../specs/economy-forest.md), aceptada el 2026-11-03 con sus siete decisiones de producto, y
 [ADR-025](../decisions/ADR-025-forest-wood-layer.md).
 
@@ -1444,8 +1444,12 @@ tiles con madera. **No entra** (spec §2): talar para abrir camino, otros recurs
 ### Entregables
 
 1. **HECHO** — Aceptación: spec, ADR-025, `INV-ECON-007` e `INV-ECON-008`.
-2. Simulación: la capa en la RAM, la carga parcial, la búsqueda del tile siguiente y la regeneración.
-3. Persistencia: migración `000008` y el descuento por delta en la transacción de la carga.
-4. Protocolo y cliente: `forests`, `forest.update` y el bosque talado en la escena.
-5. Fundación: diez tiles con madera alcanzables a ≤ 8.
-6. Humo y prueba en vivo.
+2. **HECHO** — Simulación: la capa en la RAM (`forest.go`), la carga parcial, la búsqueda del tile siguiente y la
+   regeneración; tests en `forest_test.go` y el golden «tala».
+3. **HECHO** — Persistencia: migración `000008` y el descuento por delta en la transacción de la carga, idempotente
+   frente a reintentos (`forest_integration_test.go`).
+4. **HECHO** — Protocolo y cliente: `forests`, `forest.update` y el bosque talado en su propia capa de la escena.
+5. **HECHO** — Fundación: diez tiles con madera alcanzables a ≤ 8; el alta lee de la base los tiles agotados.
+6. **HECHO** — Humo y prueba en vivo (2026-11-03): `scripts/smoke.mjs --tala` en verde. Tres aldeanos agotaron el
+   tile (279, 7), se escribió `ForestDepleted` y uno pasó solo a (278, 6). En el navegador, el tile agotado se ve
+   como tala con tocones y el de al lado, a medias.

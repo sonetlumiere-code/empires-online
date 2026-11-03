@@ -20,7 +20,10 @@
  *   9. unit.gather sobre el bosque más cercano a la ciudad  ->  un viaje completo:
  *      tramo al bosque, WORKING, vuelta y city.update con la madera depositada
  *      (SPEC-ECON-WOOD)
- *  10. sólo con --incursion (SPEC-COMBAT-RAID): con 60 de madera se entrena un
+ *  10. sólo con --tala (SPEC-ECON-FOREST): todos los aldeanos recolectan del mismo
+ *      tile hasta agotarlo, y al menos uno pasa solo a otro tile con madera a 6 o
+ *      menos. Tarda minutos y gasta bosque de verdad, así que no corre por defecto.
+ *  11. sólo con --incursion (SPEC-COMBAT-RAID): con 60 de madera se entrena un
  *      guerrero; un segundo jugador acerca un aldeano y el guerrero lo mata. Tarda
  *      minutos (juntar madera, entrenar, caminar) y mata una unidad de otra cuenta,
  *      así que no corre por defecto ni tras un despliegue en producción.
@@ -32,7 +35,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--incursion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -54,6 +57,7 @@ const WS_URL = BASE.replace(/^http/, 'ws') + '/ws';
 const WEB = (flag('--web', process.env.EO_SMOKE_WEB_URL || 'http://localhost:3000')).replace(/\/+$/, '');
 const VERBOSE = args.includes('--verbose');
 const INCURSION = args.includes('--incursion');
+const TALA = args.includes('--tala');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -243,10 +247,12 @@ export function elegirDestino(terreno, desde) {
  * viaje que el humo tiene que esperar. Determinista: a igual distancia, el de
  * menor (y, x).
  */
-export function elegirBosque(terreno, ciudad) {
+export function elegirBosque(terreno, ciudad, bosqueAMedias = []) {
+  // Un tile sin madera no se recolecta (SPEC-ECON-FOREST, RN-ECON-014).
+  const agotados = new Set(bosqueAMedias.filter((f) => f.remaining === 0).map((f) => `${f.x},${f.y}`));
   let mejor = null;
   for (const [clave, tipo] of terreno) {
-    if (tipo !== FOREST) continue;
+    if (tipo !== FOREST || agotados.has(clave)) continue;
     const [x, y] = clave.split(',').map(Number);
     const d = Math.max(Math.abs(x - ciudad.centerX), Math.abs(y - ciudad.centerY));
     if (d <= 1) continue; // la zona urbana es muralla
@@ -453,7 +459,7 @@ async function main() {
   // servidor; el humo sólo comprueba que el stock sube.
   const snap2 = segunda.snapshot.payload;
   const ciudad2 = snap2.cities.find((c) => c.id === ciudad.id) ?? ciudad;
-  const bosque = elegirBosque(indexarTerreno(snap2.terrain), ciudad2);
+  const bosque = elegirBosque(indexarTerreno(snap2.terrain), ciudad2, snap2.forests);
   if (!bosque) fallar('no hay ningún bosque en el área de interés de la ciudad para probar la recolección', ciudad2);
   const maderaInicial = ciudad2.stocks?.WOOD ?? 0;
   segunda.sesion.enviar('unit.gather', { unitId: unidad.id, target: { x: bosque.x, y: bosque.y } });
@@ -474,6 +480,10 @@ async function main() {
     vueltaMs + 30_000);
   ok('viaje de recolección completo', `madera ${maderaInicial} -> ${deposito.payload.stocks.WOOD}`);
 
+  if (TALA) {
+    await tala(segunda, cuenta.playerId, snap2, bosque);
+  }
+
   if (INCURSION) {
     await incursion(segunda, ciudad, cuenta.playerId, snap2);
   }
@@ -486,6 +496,39 @@ async function main() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Tala (SPEC-ECON-FOREST), sólo con --tala
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Todos los aldeanos propios recolectan del tile `bosque` hasta que se agota
+ * (forest.update a 0). Después, el aldeano que vuelve a salir hacia un bosque
+ * lo hace solo hacia otro tile, a 6 o menos del agotado (RN-ECON-015).
+ */
+async function tala(sesion, playerId, snap, bosque) {
+  const aldeanos = snap.units.filter((u) => u.playerId === playerId && u.unitType === 'VILLAGER');
+  for (const a of aldeanos) {
+    sesion.sesion.enviar('unit.gather', { unitId: a.id, target: { x: bosque.x, y: bosque.y } });
+  }
+  const queda = (snap.forests ?? []).find((f) => f.x === bosque.x && f.y === bosque.y)?.remaining ?? 100;
+  ok('tala en marcha', `${aldeanos.length} aldeanos sobre (${bosque.x}, ${bosque.y}), con ${queda} de madera`);
+  const ids = new Set(aldeanos.map((a) => a.id));
+  // Diez de madera por viaje y un viaje cada ~35 s por aldeano, con margen.
+  const plazo = Math.ceil(queda / 10 / Math.max(1, aldeanos.length)) * 60_000 + 60_000;
+  const agotado = await sesion.sesion.esperarQue('forest.update',
+    (m) => m.payload.x === bosque.x && m.payload.y === bosque.y && m.payload.remaining === 0, plazo);
+  ok('el tile se agotó', `(${bosque.x}, ${bosque.y}) vuelve a crecer en ${new Date(agotado.payload.regrowsAtMs).toISOString()}`);
+
+  const otro = await sesion.sesion.esperarQue('unit.movement.started', (m) => {
+    if (!ids.has(m.payload.unitId)) return false;
+    const t = m.payload.movement.target;
+    return !(t.x === bosque.x && t.y === bosque.y) &&
+      Math.max(Math.abs(t.x - bosque.x), Math.abs(t.y - bosque.y)) <= 6;
+  }, 120_000);
+  const t = otro.payload.movement.target;
+  ok('un aldeano pasa solo al tile siguiente', `unidad ${otro.payload.unitId} -> (${t.x}, ${t.y})`);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Incursión (SPEC-COMBAT-RAID), sólo con --incursion
 // ─────────────────────────────────────────────────────────────
 
@@ -493,7 +536,7 @@ const VICTIMA = process.env.EO_SMOKE_VICTIM || 'smoke_victim';
 
 /** Espera a que la madera de la ciudad llegue a `n`, mandando a recolectar a todos los aldeanos. */
 async function juntarMadera(sesion, ciudad, playerId, snap, n) {
-  const bosque = elegirBosque(indexarTerreno(snap.terrain), ciudad);
+  const bosque = elegirBosque(indexarTerreno(snap.terrain), ciudad, snap.forests);
   for (const u of snap.units.filter((u) => u.playerId === playerId && u.unitType === 'VILLAGER')) {
     sesion.enviar('unit.gather', { unitId: u.id, target: { x: bosque.x, y: bosque.y } });
   }
@@ -614,7 +657,7 @@ async function incursion(atacante, ciudad, playerId, snap) {
     victima.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
     await victima.sesion.esperar('world.snapshot');
     const stockCasa = casa.cities.find((c) => c.id === ciudadV.id) ?? ciudadV;
-    const m = await juntarMadera(victima.sesion, stockCasa, cuenta.playerId, { terrain: terreno, units: aldeanos }, falta);
+    const m = await juntarMadera(victima.sesion, stockCasa, cuenta.playerId, { terrain: terreno, units: aldeanos, forests: casa.forests }, falta);
     ok('la víctima junta madera', `${m}`);
     if (!guardia) guardia = await entrenar(victima.sesion, ciudadV, cuenta.playerId, 'WARRIOR');
     if (aldeanos.length < 2) await entrenar(victima.sesion, ciudadV, cuenta.playerId, 'VILLAGER');
