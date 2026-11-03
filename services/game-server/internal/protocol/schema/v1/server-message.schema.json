@@ -664,6 +664,41 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "forests": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "y": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "remaining": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "regrowsAtMs": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "remaining",
+                      "regrowsAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -1314,6 +1349,38 @@
                 "status"
               ],
               "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "forest.update"
+            },
+            "payload": {
+              "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/forests/items"
             }
           },
           "required": [

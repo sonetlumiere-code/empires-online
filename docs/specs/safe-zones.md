@@ -389,8 +389,8 @@ eventos consultable sería, en sí mismo, una fuga de información si esa tabla 
 
 ## 12. Contratos de red
 
-No se introduce ningún tipo de mensaje nuevo: el protocolo v1 fija dieciséis mensajes
-servidor→cliente (catorce hasta E1) y las Safe Zones no añaden ninguno. Los payloads los fija Zod en
+No se introduce ningún tipo de mensaje nuevo: el protocolo v1 fija diecisiete mensajes
+servidor→cliente (catorce hasta E1, dieciséis hasta E4) y las Safe Zones no añaden ninguno. Los payloads los fija Zod en
 `packages/protocol/src/v1/` y son la autoridad.
 
 | Situación | Propietario | Terceros del chunk |

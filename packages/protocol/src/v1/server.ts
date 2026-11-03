@@ -15,6 +15,7 @@ import {
   CityView,
   EntityId,
   EpochMs,
+  ForestView,
   PROTOCOL_VERSION,
   PresenceState,
   ProductionView,
@@ -113,6 +114,11 @@ export const WorldSnapshot = z.object({
     territories: z.array(TerritoryView),
     /** Edificios de esos chunks. */
     buildings: z.array(BuildingView),
+    /**
+     * Tiles de bosque de esos chunks que no están llenos (SPEC-ECON-FOREST). Opcional:
+     * aditivo en v1 (R-VER-2); sin él, todo el bosque está lleno.
+     */
+    forests: z.array(ForestView).optional(),
   }),
 });
 
@@ -207,6 +213,20 @@ export const BuildingUpdate = z.object({
 });
 
 // ─────────────────────────────────────────────────────────────
+// Bosque
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Cambió la madera de un tile de bosque: una carga lo vació un poco, o volvió a crecer.
+ * Con `remaining` igual a la capacidad y `regrowsAtMs` nulo, el tile está lleno.
+ */
+export const ForestUpdate = z.object({
+  ...serverEnvelope,
+  type: z.literal('forest.update'),
+  payload: ForestView,
+});
+
+// ─────────────────────────────────────────────────────────────
 // Movimiento
 // ─────────────────────────────────────────────────────────────
 
@@ -290,6 +310,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   UnitMovementCancelled,
   BuildingSpawn,
   BuildingUpdate,
+  ForestUpdate,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -309,6 +330,7 @@ export type UnitMovementCompleted = z.infer<typeof UnitMovementCompleted>;
 export type UnitMovementCancelled = z.infer<typeof UnitMovementCancelled>;
 export type BuildingSpawn = z.infer<typeof BuildingSpawn>;
 export type BuildingUpdate = z.infer<typeof BuildingUpdate>;
+export type ForestUpdate = z.infer<typeof ForestUpdate>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -327,6 +349,7 @@ export const SERVER_MESSAGE_TYPES = [
   'unit.movement.cancelled',
   'building.spawn',
   'building.update',
+  'forest.update',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

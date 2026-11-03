@@ -200,6 +200,32 @@ describe('comandos de economía (SPEC-ECON-WOOD)', () => {
     }).ok).toBe(false);
   });
 
+  it('acepta forest.update a medias y lleno, y rechaza la madera negativa (SPEC-ECON-FOREST)', () => {
+    const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+    expect(parseServerMessage({
+      ...env, type: 'forest.update', payload: { x: 4, y: 5, remaining: 0, regrowsAtMs: 1_757_462_400_000 },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'forest.update', payload: { x: 4, y: 5, remaining: 100, regrowsAtMs: null },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'forest.update', payload: { x: 4, y: 5, remaining: -1, regrowsAtMs: null },
+    }).ok).toBe(false);
+  });
+
+  it('world.snapshot admite forests opcional', () => {
+    const base = {
+      v: 1, seq: 1, ts: 1, type: 'world.snapshot',
+      payload: {
+        serverTimeMs: 1, tick: 1, chunks: [], terrain: [], units: [], cities: [], territories: [], buildings: [],
+      },
+    };
+    expect(parseServerMessage(base).ok).toBe(true);
+    expect(parseServerMessage({
+      ...base, payload: { ...base.payload, forests: [{ x: 1, y: 2, remaining: 40, regrowsAtMs: 5 }] },
+    }).ok).toBe(true);
+  });
+
   it('entity.update admite WORKING y la carga', () => {
     const result = parseServerMessage({
       v: 1, seq: 1, ts: 1, type: 'entity.update', payload: { id: 3, status: 'WORKING', carrying: 10 },

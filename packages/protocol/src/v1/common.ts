@@ -194,3 +194,16 @@ export const ChunkTerrain = z.object({
   terrain: z.string(),
 });
 export type ChunkTerrain = z.infer<typeof ChunkTerrain>;
+
+/**
+ * Madera de un tile de bosque que no está lleno (SPEC-ECON-FOREST). Un tile `FOREST`
+ * que no aparece está lleno. `regrowsAtMs` es cuándo vuelve a estarlo; `null` cuando
+ * un `forest.update` anuncia que ya lo está.
+ */
+export const ForestView = z.object({
+  x: WorldCoordinate,
+  y: WorldCoordinate,
+  remaining: z.number().int().min(0),
+  regrowsAtMs: EpochMs.nullable(),
+});
+export type ForestView = z.infer<typeof ForestView>;

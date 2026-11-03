@@ -26,6 +26,7 @@ Dentro del scope de v1:
 - Entrada y salida de la guarnición (`unit.garrison`, `unit.ungarrison`), con la ciudad anfitriona en `garrisonCityId` ([garrison.md](garrison.md), [ADR-017](../decisions/ADR-017-garrison-commands.md)).
 - El combate ([combat-raid.md](combat-raid.md)): `unit.attack`, el estado `ATTACKING`, la unidad `WARRIOR` y la muerte (`entity.despawn { DEAD }`).
 - La economía de la madera ([economy-wood.md](economy-wood.md)): recolección (`unit.gather`), casa (`city.build`) y entrenamiento (`city.train`); `building.spawn` y `building.update`; `stocks` y `production` en las ciudades; el estado `WORKING` y la carga (`carrying`) de las unidades.
+- El agotamiento del bosque ([economy-forest.md](economy-forest.md)): `forests` en el snapshot y `forest.update` (§8.17), los dos aditivos (`R-VER-2`, `R-VER-3`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -155,7 +156,7 @@ type Outbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. |
-| `type` | `string` | Sí | Uno de los dieciséis tipos servidor→cliente de v1. |
+| `type` | `string` | Sí | Uno de los diecisiete tipos servidor→cliente de v1. |
 | `seq` | `number` (uint64) | Sí | Contador **monótono estrictamente creciente por conexión**, empieza en `1`. Se reinicia en cada conexión nueva. Ver sección 11. |
 | `ts` | `number` | Sí | Epoch ms del reloj del servidor en el momento de encolar el mensaje. Es la referencia temporal del cliente. |
 | `requestId` | `string` | **Se omite** salvo que el mensaje responda a un comando concreto | La etiqueta `json:"requestId,omitempty"` garantiza que el campo **no aparece** cuando no aplica: un broadcast (`entity.*`, `city.update`, `territory.update`, `unit.movement.*` dirigidos al chunk) nunca lleva un `requestId` vacío que el cliente pudiera confundir con una respuesta. Lo verifica el contract test `TestRequestIDSeOmiteCuandoNoAplica`. |
@@ -440,7 +441,7 @@ payload: z.object({ unitId: EntityId, targetUnitId: EntityId }).strict()
 
 ## 8. Mensajes servidor → cliente
 
-Los dieciséis tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los diecisiete tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -528,6 +529,7 @@ payload: z.object({
   cities: z.array(CityView),
   territories: z.array(TerritoryView),
   buildings: z.array(BuildingView),  // E1, §8.15
+  forests: z.array(ForestView).optional(),  // E4, §8.17
 })
 ```
 
@@ -589,7 +591,7 @@ interface ChunkTerrain {
 
 `territories` trae los territorios que solapan los chunks del área de interés, con su control vigente (`TerritoryViews`, M6).
 
-`buildings` trae los edificios confirmados de los chunks del área (E1), y cada `CityView` de `cities[]` lleva además `stocks: { WOOD }` y `production: { unitType, completesAtMs } | null`, el entrenamiento confirmado en curso.
+`forests` trae los tiles de bosque del área que no están llenos (E4, [economy-forest.md](economy-forest.md)); un tile `FOREST` que no aparece está lleno, y un servidor anterior a E4 no lo envía. `buildings` trae los edificios confirmados de los chunks del área (E1), y cada `CityView` de `cities[]` lleva además `stocks: { WOOD }` y `production: { unitType, completesAtMs } | null`, el entrenamiento confirmado en curso.
 
 ### 8.5 `entity.spawn`
 
@@ -893,6 +895,20 @@ payload: z.object({ id: EntityId, status: BuildingStatus })
 
 Lo acompaña un `city.update { populationLimit }` con el bono de la casa (`RN-ECON-009`).
 
+### 8.17 `forest.update`
+
+- **Propósito:** cambió la madera de un tile de bosque: una carga lo vació un poco, o volvió a crecer ([economy-forest.md](economy-forest.md) §6). Al chunk del tile, sin `requestId`. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: ForestView // { x, y, remaining, regrowsAtMs: EpochMs | null }
+```
+
+```json
+{ "v": 1, "type": "forest.update", "seq": 141, "ts": 1788955226000, "payload": { "x": 279, "y": 7, "remaining": 90, "regrowsAtMs": 1789041626000 } }
+```
+
+Con `regrowsAtMs: null` y `remaining` igual a la capacidad (100), el tile vuelve a estar lleno y el cliente lo saca de su capa. El terreno no cambia nunca: la capa de madera es aparte ([ADR-025](../decisions/ADR-025-forest-wood-layer.md)).
+
 ## 9. Códigos de error
 
 El catálogo es de **24 códigos** y es cerrado. Vive en `errors.ts` (`ErrorCode`) y en `codes.go` (`AllErrorCodes`); un contract test en Go (`TestCatalogoDeErroresCoincideConElExportado`) compara ambos contra `error-codes.json` y rompe la CI si divergen.
@@ -990,7 +1006,7 @@ packages/protocol/
 │   ├── common.ts            # Tile, Waypoint, TimedPath, UnitView, CityView, TerritoryView, ChunkRef, ChunkTerrain
 │   ├── errors.ts            # ErrorCode como z.enum, exactamente los 24 códigos, y WS_CLOSE
 │   ├── client.ts            # los 11 mensajes cliente→servidor, TODOS .strict()
-│   ├── server.ts            # los 16 mensajes servidor→cliente, ninguno .strict()
+│   ├── server.ts            # los 17 mensajes servidor→cliente, ninguno .strict()
 │   └── index.ts             # export público de @empires-online/protocol
 ├── src/scripts/export-schema.ts
 └── schema/v1/               # JSON Schema GENERADO — artefacto de build, nunca editado a mano
@@ -1060,7 +1076,7 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | e2e | Redis caído durante un `unit.move` | El comando se ejecuta igualmente y se registra `warn` | Pendiente |
 | e2e | `session.view` que desplaza el área 2 chunks | Nuevo `world.snapshot` con el `requestId` del comando y terreno **sólo** de los chunks nuevos | **EN VERDE** (`TestSessionViewRecentraConUnSnapshotDelAreaNueva`) |
 | e2e | Una unidad cruza de chunk con tres sesiones de áreas distintas, colocadas con `session.view` | Quien sólo observa el chunk nuevo recibe `entity.spawn` con `movement` y después los `entity.update`; quien sólo observa el viejo, `entity.despawn OUT_OF_INTEREST` y nada más; quien observa los dos, sólo `entity.update`. Ida y vuelta | **EN VERDE** (`TestUnaUnidadQueCruzaDeChunkApareceYDesapareceEnElAreaDeOtraSesion`) |
-| contract (e2e) | Todo mensaje servidor→cliente que emite el servidor real valida contra `server-message.schema.json`, y los 16 tipos aparecen al menos una vez | Un mensaje fuera de contrato, o un tipo que ningún e2e emite, falla el paquete | **EN VERDE** (`schema_e2e_test.go`, `contract_e2e_test.go`) |
+| contract (e2e) | Todo mensaje servidor→cliente que emite el servidor real valida contra `server-message.schema.json`, y los 17 tipos aparecen al menos una vez | Un mensaje fuera de contrato, o un tipo que ningún e2e emite, falla el paquete | **EN VERDE** (`schema_e2e_test.go`, `contract_e2e_test.go`) |
 | simulation | `unit.move` con `FakeClock` sobre el trayecto canónico | `path` exacto `[0, 600, 1449, 2409, 2769]`, `arrivalTimeMs` exacto | **EN VERDE** |
 | simulation | Reconstrucción de la posición desde la polilínea (`PositionAt`) | Coincide con la posición autoritativa del servidor | **EN VERDE** |
 | simulation | Segunda orden sobre una unidad en movimiento | `unit.movement.cancelled(REPLACED)` antes de `unit.move.accepted` y `unit.movement.started` | **EN VERDE** |

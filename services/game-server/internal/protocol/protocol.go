@@ -55,6 +55,7 @@ const (
 	TypeUnitMovementCancelled = "unit.movement.cancelled"
 	TypeBuildingSpawn         = "building.spawn"
 	TypeBuildingUpdate        = "building.update"
+	TypeForestUpdate          = "forest.update"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -350,6 +351,9 @@ type WorldSnapshotPayload struct {
 	Cities       []CityView      `json:"cities"`
 	Territories  []TerritoryView `json:"territories"`
 	Buildings    []BuildingView  `json:"buildings"`
+	// Forests son los tiles de bosque del área que no están llenos
+	// (SPEC-ECON-FOREST). Opcional en el esquema: se omite si no hay ninguno.
+	Forests []ForestView `json:"forests,omitempty"`
 }
 
 type EntitySpawnPayload struct {
@@ -395,6 +399,16 @@ type CityUpdatePayload struct {
 // BuildingSpawnPayload anuncia un edificio.
 type BuildingSpawnPayload struct {
 	Building BuildingView `json:"building"`
+}
+
+// ForestView es la madera de un tile de bosque que no está lleno, y el
+// payload de forest.update. RegrowsAtMs nil viaja como null: el tile está
+// lleno (SPEC-ECON-FOREST §6).
+type ForestView struct {
+	X           int32  `json:"x"`
+	Y           int32  `json:"y"`
+	Remaining   int32  `json:"remaining"`
+	RegrowsAtMs *int64 `json:"regrowsAtMs"`
 }
 
 // BuildingUpdatePayload es el cambio de estado de un edificio conocido.
