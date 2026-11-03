@@ -325,3 +325,23 @@ func TestSePuedeProponerAUnJugadorProtegido(t *testing.T) {
 	assert.Empty(t, h.codigos())
 	assert.Len(t, h.state.TreatiesBetween(h.playerID, vecino), 1)
 }
+
+// Regresión (2026-11-03, la CI de 800a269): SetTreaties guardaba el par tal como
+// llegaba y AtPeace lo busca en orden canónico, así que un tratado con
+// PlayerA > PlayerB no daba paz. El jugador del arnés tiene un UUID fijo que
+// empieza por 1111…, así que TestRechazosDelSaqueo y TestRechazosDelAtaque sólo
+// fallaban cuando el UUID aleatorio del enemigo salía menor: unas 6 de cada 100
+// ejecuciones. Aquí, con UUID fijos en el orden que lo rompía.
+func TestUnTratadoConElParSinOrdenarDaPazEnLasDosDirecciones(t *testing.T) {
+	h := newHarness(t)
+	mayor := uuid.MustParse("ffffffff-ffff-4fff-8fff-ffffffffffff")
+	menor := uuid.MustParse("00000000-0000-4000-8000-000000000001")
+	h.state.SetPeaceTreaties([]diplomacy.Treaty{{ID: 1, PlayerA: mayor, PlayerB: menor,
+		Type: diplomacy.TypeNonAggression, Status: diplomacy.StatusActive}})
+
+	assert.True(t, h.state.AtPeace(mayor, menor, h.clk.Now()))
+	assert.True(t, h.state.AtPeace(menor, mayor, h.clk.Now()))
+	require.Len(t, h.state.TreatiesBetween(menor, mayor), 1)
+	tr := h.state.TreatiesBetween(menor, mayor)[0]
+	assert.Equal(t, menor, tr.PlayerA, "se guarda en orden canónico")
+}
