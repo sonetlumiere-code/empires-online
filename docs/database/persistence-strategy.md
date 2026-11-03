@@ -216,7 +216,8 @@ Bloquear aquí sería bloquear el tick, así que no se bloquea nunca. El precio 
 | `city.presence` | `CityPresencePersistFailed{CityID}` | Marca la ciudad en `presenceDirty`; una transición nueva sustituye a la pendiente | El siguiente `FlushDirty`: la presencia **actual** de la ciudad —estado y marca vigentes—, no la del trabajo perdido (`TestUnaPresenciaQueNoSePersisteSeReencolaConElEstadoActual`) |
 | `units.flush` | `UnitsFlushPersistFailed{UnitIDs}` | Devuelve el lote al dirty-set, sin apuntarlo al ocultamiento | El siguiente `FlushDirty` (`TestUnVolcadoQueNoSePersisteDevuelveLasUnidadesAlConjuntoSucio`) |
 | `garrison.enter`, `garrison.leave` | `GarrisonEntryResolved{INTERNAL_ERROR}`, `GarrisonExitFailed` | Responde al jugador; devuelve la unidad a la ciudad ([ADR-017](../decisions/ADR-017-garrison-commands.md)) | — |
-| `treaty.expire` | **ninguno** | — | El barrido siguiente, un segundo después |
+| `treaty.order` | `TreatyResolved` con el código, por el buzón | La reserva del par se libera y el jugador recibe el rechazo | — ([ADR-027](../decisions/ADR-027-hot-treaties.md) §2) |
+| `treaty.end` | `TreatyEndPersistFailed`, por el buzón | La RAM ya aplicó el fin; el barrido siguiente reencola la escritura | Un segundo después ([ADR-027](../decisions/ADR-027-hot-treaties.md) §3; sustituye a `treaty.expire`, que no tenía compensación) |
 
 Reencolar desde el volcado y no en el acto es deliberado: con la partición llena, un reencolado inmediato se descartaría otra vez y volvería diez veces por segundo; el volcado da una cadencia de 5 s sin ningún temporizador nuevo. Lo que espera en `presenceDirty`, `pendingFinishes` y el dirty-set es RAM: si el proceso cae con descartes pendientes, eso es lo que se pierde (§6). Si el buzón también está lleno —8192 plazas drenadas con prioridad en cada tick: hace falta un loop parado—, el comando se cuenta en `eo_commands_dropped_total{type}` y se registra; es el único caso en que una compensación no llega.
 

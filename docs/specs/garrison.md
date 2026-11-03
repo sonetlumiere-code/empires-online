@@ -366,10 +366,10 @@ Consecuencias que esta spec asume y que no debe contradecir:
 | `allows_garrison` | `boolean NOT NULL DEFAULT false` |
 | `proposed_at`, `accepted_at`, `expires_at`, `broken_at` | `timestamptz`; solo `proposed_at` es `NOT NULL` |
 
-Índice `treaties_one_active_per_pair_and_type` (único parcial sobre
-`(player_a_id, player_b_id, treaty_type) WHERE status = 'ACTIVE'`): como máximo un tratado vigente de
-cada tipo entre dos jugadores. Solo `ACTIVE` habilita la guarnición; el resto del ciclo de vida del
-tratado pertenece a la diplomacia, diferida.
+Índice `treaties_one_active_per_pair` (único parcial sobre `(player_a_id, player_b_id) WHERE status =
+'ACTIVE'`, desde `000009`; hasta entonces era por par **y tipo**): como máximo un tratado vigente entre dos
+jugadores. Solo `ACTIVE` habilita la guarnición; el resto del ciclo de vida del tratado lo fija
+[diplomacy.md](diplomacy.md).
 
 ## 11. Eventos
 

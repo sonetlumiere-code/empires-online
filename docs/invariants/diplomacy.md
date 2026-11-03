@@ -13,7 +13,7 @@ Desde [ADR-017](../decisions/ADR-017-garrison-commands.md) los jugadores guarnec
 | Pieza | Dónde | Qué hace |
 |---|---|---|
 | Reglas | `internal/domain/garrison` | `CanEnter`, `CanLeave` y `ReentryTile` deciden; no escriben ni conocen el protocolo. |
-| Tratados | `internal/domain/diplomacy`, `postgres.TreatyRepo` | Ciclo de vida y la pregunta «¿este par tiene un tratado `ACTIVE` con `allows_garrison`?». Los tratados se crean por vía administrativa: no hay comandos de diplomacia. |
+| Tratados | `internal/domain/diplomacy`, `postgres.TreatyRepo` | Ciclo de vida y la pregunta «¿este par tiene un tratado `ACTIVE` con `allows_garrison`?». Desde E6 los proponen, aceptan, rechazan, retiran y rompen los jugadores ([../specs/diplomacy.md](../specs/diplomacy.md)); la vía administrativa sigue existiendo. |
 | Simulación | `internal/game/simulation/garrison.go` | La entrada en dos fases —el tick valida lo que está en RAM, la transacción decide el tratado— y la salida decidida por el tick con compensación. Filtro de visibilidad por destinatario. |
 | Persistencia | `postgres.GarrisonRepo` | `Enter` y `Leave`, cada uno en una transacción con su evento de `world_events`, idempotentes por construcción. |
 | Arranque | `internal/game/loadcheck` | Deriva `units.status` de `garrisons` y reconstruye el índice unidad → anfitriona ([EO-119](../roadmap/backlog.md)). |
@@ -38,7 +38,7 @@ CREATE INDEX garrisons_city_idx ON garrisons (city_id);
 
 La forma de la tabla **es** el invariante principal: al ser `unit_id` la clave primaria, «una unidad tiene como máximo una guarnición abierta» no es una regla que haya que comprobar, es una imposibilidad física ([INV-GARR-001](#inv-garr-001)).
 
-`treaties` complementa el cuadro con el **par canónico**: `CHECK (player_a_id < player_b_id)` obliga a un orden fijo entre los dos firmantes, de modo que un tratado A–B y otro B–A no puedan coexistir como filas distintas; `CHECK (player_a_id <> player_b_id)` impide firmar consigo mismo; y `treaties_one_active_per_pair_and_type` —índice único parcial `WHERE status = 'ACTIVE'`— permite como máximo un tratado vigente de cada tipo entre dos jugadores. `allows_garrison boolean NOT NULL DEFAULT false` es el permiso concreto del que depende [INV-GARR-004](#inv-garr-004).
+`treaties` complementa el cuadro con el **par canónico**: `CHECK (player_a_id < player_b_id)` obliga a un orden fijo entre los dos firmantes, de modo que un tratado A–B y otro B–A no puedan coexistir como filas distintas; `CHECK (player_a_id <> player_b_id)` impide firmar consigo mismo; y `treaties_one_active_per_pair_and_type` —índice único parcial `WHERE status = 'ACTIVE'`— permite como máximo un tratado vigente de cada tipo entre dos jugadores. `allows_garrison boolean NOT NULL DEFAULT false` es el permiso concreto del que depende [INV-GARR-004](#inv-garr-004). Desde `000009` el único es por par, no por tipo: un tratado vigente y una oferta pendiente como mucho ([INV-DIPLO-002](#inv-diplo-002)).
 
 ### Por qué guarnición y ocultamiento se documentan por separado
 
@@ -165,7 +165,7 @@ La cualificación **«en el instante de la entrada»** es la parte con más cont
 - `DOMAIN` — el orden de `CanEnter` deja el tratado para el final: propiedad, estado, ciudad y adyacencia se comprueban antes, en el tick, y un jugador no averigua nada sobre los tratados de una unidad que no es suya (`TestElOrdenDeComprobacionNoFiltraInformacionSobreTratados`). El `playerId` es el de la sesión, no el del payload ([INV-PLAYER-004](player.md#inv-player-004)).
 - `DOMAIN` — la protección offline del anfitrión **no** cuenta: guarnecer no es una acción hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md), `RN-GARR-009`).
 - `DOMAIN` — el evento `UnitGarrisoned` registra el `treatyId` que autorizó la entrada. Es lo que hace auditable la cualificación temporal del enunciado: el estado actual de `treaties` no dice qué valía entonces.
-- `DB` — el par canónico, `treaties_one_active_per_pair_and_type`, `treaties_status_valid` y `allows_garrison DEFAULT false` hacen la consulta inequívoca y el permiso opt-in.
+- `DB` — el par canónico, `treaties_one_active_per_pair` (desde `000009`; antes, por par y tipo), `treaties_status_valid` y `allows_garrison DEFAULT false` hacen la consulta inequívoca y el permiso opt-in.
 
 **Cómo se verifica.**
 
@@ -334,7 +334,7 @@ Vistas como una sola propiedad: *una unidad guarnecida está en exactamente una 
 | Aplicación | DOMAIN, TEST |
 | Milestone | E6 |
 | Política ante violación | REPAIR |
-| Cobertura | **Sin cobertura**: vigente desde el 2026-11-03, antes de su código |
+| Cobertura | **Cubierto** por `TestGoldenAlianzaPropuestaAceptacionRupturaYExpulsion` (`internal/game/simulation`) |
 
 **Enunciado.** Cuando un tratado que autorizaba guarnición deja de estar `ACTIVE`, ninguna unidad de uno de los dos
 jugadores queda `GARRISONED` en la ciudad del otro, salvo la que espera un tile de salida (`RN-GARR-014`) y sale en
@@ -351,7 +351,8 @@ la ruptura, durante el cual el tratado sigue `ACTIVE` ([ADR-027](../decisions/AD
 en el mismo tick, por la salida normal, a cada unidad de uno guarnecida en la ciudad del otro; la que no encuentra
 tile queda en las salidas pendientes, que se reintentan cada tick.
 
-**Cómo se verifica.** Previsto con E6: el golden «alianza» en `internal/game/simulation`.
+**Cómo se verifica.** `TestGoldenAlianzaPropuestaAceptacionRupturaYExpulsion` — **existe y pasa**: durante el preaviso la
+unidad sigue dentro y, al vencer, sale y deja de estar guarnecida. Quitar la expulsión lo pone en rojo.
 
 **Violación en runtime.** Una unidad que siguiera dentro sin tratado ni salida pendiente se saca y se registra
 `invariant_violation` con `inv_id=INV-GARR-008`.
@@ -367,7 +368,7 @@ tile queda en las salidas pendientes, que se reintentan cada tick.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E6 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-03, antes de su código |
+| Cobertura | **Cubierto** por `TestSoloRespondeQuienNoPropusoYSoloRetiraQuienPropuso` (`internal/domain/diplomacy`) y `TestRechazosDeLaDiplomacia` (`internal/game/simulation`) |
 
 **Enunciado.** Un tratado pasa de `PROPOSED` a `ACTIVE` o a `REJECTED` sólo por una orden del jugador del par que no
 es `proposed_by`; a `WITHDRAWN`, sólo por una de `proposed_by`.
@@ -378,7 +379,8 @@ unidades en la ciudad o pactos para blindarse sin su acuerdo.
 **Cómo se garantiza.** `DOMAIN` — la validación del tick compara al autor de la orden con `proposed_by` antes de
 reservar; la transacción condiciona la escritura al estado esperado.
 
-**Cómo se verifica.** Previstos con E6: los rechazos de `treaty.respond` y `treaty.cancel` en `internal/game/simulation`.
+**Cómo se verifica.** `TestSoloRespondeQuienNoPropusoYSoloRetiraQuienPropuso` y `TestRechazosDeLaDiplomacia` — **existen y
+pasan**. Dejar responder a quien propuso pone en rojo los dos.
 
 **Violación en runtime.** La orden se rechaza con `INVALID_TARGET` y no se escribe nada.
 
@@ -393,7 +395,7 @@ reservar; la transacción condiciona la escritura al estado esperado.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E6 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-03, antes de su código |
+| Cobertura | **Cubierto** por `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration), `TestRechazosDeLaDiplomacia` y `TestUnaAlianzaSustituyeAlPactoVigente` (`internal/game/simulation`) |
 
 **Enunciado.** Para cada par de jugadores existe como mucho un tratado `ACTIVE` y como mucho uno `PROPOSED`; y una
 oferta sólo convive con un tratado vigente si éste es un pacto y la oferta es una alianza.
@@ -405,8 +407,8 @@ abiertas, ambigua la respuesta.
 con `status = 'PROPOSED'` (migración `000009`). `DOMAIN` — `treaty.propose` se valida contra los tratados abiertos
 de la RAM (`RN-DIPLO-001`), y aceptar una alianza cierra el pacto en la misma transacción.
 
-**Cómo se verifica.** Previstos con E6: el índice por su nombre (integration) y los rechazos de `treaty.propose`
-(simulation).
+**Cómo se verifica.** `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration: los dos índices) y, en la
+simulación, `TestRechazosDeLaDiplomacia` (una segunda oferta) y `TestUnaAlianzaSustituyeAlPactoVigente` — **existen y pasan**.
 
 **Violación en runtime.** La transacción falla por el índice y la orden se rechaza con `INVALID_TARGET`.
 

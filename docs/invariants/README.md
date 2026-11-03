@@ -130,7 +130,7 @@ Las fichas de este catálogo citan **los nombres que la migración `000001_initi
 | `safe_zones_bounds_ordered` | `safe_zones` | `min_x <= max_x AND min_y <= max_y` |
 | `treaties_type_valid`, `treaties_status_valid` | `treaties` | Dominios cerrados |
 | `treaties_distinct_players`, `treaties_canonical_pair` | `treaties` | `player_a_id <> player_b_id` y `player_a_id < player_b_id` |
-| `treaties_one_active_per_pair_and_type` | `treaties` | Índice **parcial** único `WHERE status = 'ACTIVE'` |
+| `treaties_one_active_per_pair` y `treaties_one_offer_per_pair` | `treaties` | Índices **parciales** únicos por par `WHERE status = 'ACTIVE'` y `WHERE status = 'PROPOSED'` (`000009`; sustituyen al de par y tipo) |
 
 > **Lo que la base de datos NO garantiza.** Merece decirse en el índice y no sólo en las fichas, porque es la fuente de error más habitual al leer este catálogo:
 >
@@ -351,10 +351,10 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-GARR-005 | Ninguna unidad `GARRISONED` figura en la capa de ocupación | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerEnLaCiudadPropiaEnDosFases`, `TestLaMurallaNuevaNoTocaUnidadesGuarnecidas` |
 | INV-GARR-006 | Ninguna unidad `GARRISONED` aparece en un delta dirigido a un tercero | CRITICO | BOUNDARY, DOMAIN, TEST | ✓ | `TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot`, `TestLaGuarnicionPorLaRedSoloLaVeSuDueno` |
 | INV-GARR-007 | El ownership no cambia al entrar ni al salir de la guarnición | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno`, `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
-| INV-GARR-008 | Al terminar una alianza, nadie queda guarnecido en la ciudad del otro | ALTO | DOMAIN, TEST | ○ | Previsto con E6: el golden «alianza» |
+| INV-GARR-008 | Al terminar una alianza, nadie queda guarnecido en la ciudad del otro | ALTO | DOMAIN, TEST | ✓ | `TestGoldenAlianzaPropuestaAceptacionRupturaYExpulsion` |
 | INV-GARR-009 | Entrar y salir de la guarnición no cambian `units.city_id`: la población se queda en la ciudad de origen | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno`, `TestGuarnecerEnLaCiudadPropiaEnDosFases` |
-| INV-DIPLO-001 | Una oferta sólo la acepta o la rechaza el jugador que no la propuso | CRITICO | DOMAIN, TEST | ○ | Previstos con E6: los rechazos de `treaty.respond` y `treaty.cancel` |
-| INV-DIPLO-002 | Entre dos jugadores, como mucho un tratado vigente y una oferta pendiente | ALTO | DB, DOMAIN, TEST | ○ | Previstos con E6: el índice por su nombre y los rechazos de `treaty.propose` |
+| INV-DIPLO-001 | Una oferta sólo la acepta o la rechaza el jugador que no la propuso | CRITICO | DOMAIN, TEST | ✓ | `TestSoloRespondeQuienNoPropusoYSoloRetiraQuienPropuso`, `TestRechazosDeLaDiplomacia` |
+| INV-DIPLO-002 | Entre dos jugadores, como mucho un tratado vigente y una oferta pendiente | ALTO | DB, DOMAIN, TEST | ✓ | `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration), `TestRechazosDeLaDiplomacia`, `TestUnaAlianzaSustituyeAlPactoVigente` |
 
 ### ECONOMY — [economy.md](economy.md)
 
@@ -416,9 +416,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 106 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 109 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 3 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **111** | |
 
@@ -426,7 +426,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-GARR-008`, `INV-DIPLO-001` e `INV-DIPLO-002` se registraron el 2026-11-03 con SPEC-DIPLOMACY, antes de escribir su código, como manda §8: son las tres filas sin cobertura hasta que exista. `INV-COMBAT-004` e `INV-COMBAT-005` se registraron el 2026-11-03 con SPEC-COMBAT-PILLAGE, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-ECON-007` e `INV-ECON-008` se registraron el 2026-11-03 con SPEC-ECON-FOREST, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación. La familia `INV-COMBAT` se registró el 2026-11-02 antes de escribir su código, como manda §8, y pasó a ✓ con la implementación de SPEC-COMBAT-RAID; con ella, `INV-CITY-006` tiene por fin su test de rechazo: `unit.attack` es la primera acción hostil. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
+Ninguna fila queda sin cobertura ni parcial. `INV-GARR-008`, `INV-DIPLO-001` e `INV-DIPLO-002` se registraron el 2026-11-03 con SPEC-DIPLOMACY, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-COMBAT-004` e `INV-COMBAT-005` se registraron el 2026-11-03 con SPEC-COMBAT-PILLAGE, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-ECON-007` e `INV-ECON-008` se registraron el 2026-11-03 con SPEC-ECON-FOREST, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación. La familia `INV-COMBAT` se registró el 2026-11-02 antes de escribir su código, como manda §8, y pasó a ✓ con la implementación de SPEC-COMBAT-RAID; con ella, `INV-CITY-006` tiene por fin su test de rechazo: `unit.attack` es la primera acción hostil. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
 La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). `INV-CITY-006`, la última parcial, pasó a ✓ con la primera acción hostil (SPEC-COMBAT-RAID, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas), y con [ADR-020](../decisions/ADR-020-stale-pending-accounts.md), `INV-PLAYER-010` (una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
