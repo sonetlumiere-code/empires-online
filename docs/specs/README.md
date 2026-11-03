@@ -54,7 +54,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Combate: respuesta automática | [combat-response.md](combat-response.md) | E3 Defensa | Implemented | Un `WARRIOR` parado responde a los golpes sobre él o sobre sus unidades cercanas, con correa y vuelta al puesto; protección simétrica del atacante |
 | Economía: agotamiento del bosque | [economy-forest.md](economy-forest.md) | E4 Bosque | Implemented | Madera finita por tile de bosque en una capa aparte del terreno, regeneración, búsqueda del tile siguiente, fundación con bosque suficiente |
 | Combate: saqueo | [combat-pillage.md](combat-pillage.md) | E5 Saqueo | Implemented | Un `WARRIOR` junto a la muralla enemiga roba madera del almacén golpe a golpe hasta un suelo y la lleva a casa; los guerreros de la ciudad defienden |
-| Diplomacia en caliente | [diplomacy.md](diplomacy.md) | E6 Diplomacia | Accepted | Proponer, aceptar, rechazar, retirar y romper pactos de no agresión y alianzas desde el cliente; ruptura con preaviso y expulsión de las guarniciones al terminar una alianza |
+| Diplomacia en caliente | [diplomacy.md](diplomacy.md) | E6 Diplomacia | Implemented | Proponer, aceptar, rechazar, retirar y romper pactos de no agresión y alianzas desde el cliente; ruptura con preaviso y expulsión de las guarniciones al terminar una alianza |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
@@ -171,7 +171,7 @@ Reglas del ciclo:
   «Implementado». Ese día pasaron a `Implemented` sin el paso `Accepted`: el proyecto tiene un solo
   responsable de producto y un solo revisor, no los dos que pide el diagrama, y cada una se había reconciliado ya
   con el código, regla por regla, en `EO-118`. Desde entonces, con un solo revisor, `Accepted` lo da el
-  responsable de producto al decidir las preguntas de la spec, como se hizo de E1 a E4.
+  responsable de producto al decidir las preguntas de la spec, como se hizo de E1 a E6.
 - **No se borra una spec.** Se marca `Superseded` y se enlaza a la que la reemplaza, para que el historial de
   decisiones siga siendo legible.
 - **Una spec `Implemented` que deja de describir el código es un bug**, no una discrepancia aceptable. O se

@@ -6,7 +6,7 @@ Especificación normativa y completa del contrato cliente↔servidor de Empires 
 |---|---|
 | Spec ID | `SPEC-PROTOCOL` |
 | Estado | Implemented (2026-11-03; ver [README.md](README.md) §4, «Precisión (2026-11-03)») |
-| Milestone | M3 Realtime, con los mensajes que añadieron M7 y E1 a E4 |
+| Milestone | M3 Realtime, con los mensajes que añadieron M7 y E1 a E6 |
 | Reemplaza a | — |
 
 ---

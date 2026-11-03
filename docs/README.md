@@ -294,15 +294,14 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E4 están en `main`** ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E6 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
 - **E5 Saqueo está en `main`** desde `82f3db8`, con la CI en verde y una prueba en vivo con el humo `--saqueo` y el
   navegador el 2026-11-03; [SPEC-COMBAT-PILLAGE](specs/combat-pillage.md) está en `Implemented`.
-- **E6 Diplomacia está hecho en la rama `claude/slice-diplomacia`**, todavía no en `main`: suite y prueba en vivo en
-  verde el 2026-11-03 ([SPEC-DIPLOMACY](specs/diplomacy.md), `Accepted`; pasa a `Implemented` al fusionarse con la CI
-  en verde).
+- **E6 Diplomacia está en `main`** desde `800a269`, con la CI en verde desde `7943e87` y una prueba en vivo con el
+  humo `--diplomacia` y el navegador el 2026-11-03; [SPEC-DIPLOMACY](specs/diplomacy.md) está en `Implemented`.
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

@@ -7,7 +7,7 @@ existen si alguien los inserta en la base y el servidor los lee al arrancar.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-DIPLOMACY` |
-| Estado | Accepted (2026-11-03; las preguntas de §10 se decidieron ese día con la recomendación de cada una). |
+| Estado | Implemented (2026-11-03). Aceptada el 2026-11-03 con las preguntas de §10 decididas ese día con la recomendación de cada una; en `main` desde la fusión `800a269`, con la CI en verde desde `7943e87` (el arreglo del par canónico). |
 | Milestone | E6 Diplomacia (sexto slice después de M7) |
 | Canon | §11, §12 (persistencia), §13, §16 (errores) |
 | Depende de | [garrison.md](garrison.md), [combat-raid.md](combat-raid.md), [combat-pillage.md](combat-pillage.md), [presence.md](presence.md), [player.md](player.md) |

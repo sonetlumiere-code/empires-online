@@ -1488,8 +1488,8 @@ casas, que la ciudad caiga, máquinas de asedio, niebla de guerra.
 
 ## E6 — Diplomacia
 
-**Estado: HECHO en la rama** `claude/slice-diplomacia` (2026-11-03), con su suite y la prueba en vivo en verde; falta
-fusionarlo en `main`. Contrato:
+**Estado: HECHO (2026-11-03)**, fusionado en `main` (`800a269`) y con la CI en verde desde `7943e87`, que corrigió un
+test intermitente: el par de un tratado instalado sin ordenar no daba paz (ver el entregable 9). Contrato:
 [SPEC-DIPLOMACY](../specs/diplomacy.md), aceptada el 2026-11-03 con sus nueve decisiones de producto, y
 [ADR-027](../decisions/ADR-027-hot-treaties.md).
 
@@ -1520,3 +1520,6 @@ una alianza; `treaty.update` y `treaties[]` en el snapshot; la migración `00000
    (19:02:15) y escribió `TreatyBroken`, y el HUD dejó de mostrarlo.
 8. **HECHO** — Fallo encontrado al implementarlo: los catálogos de métricas no tenían los trabajos y comandos de E2
    y E5; corregido, con un `TestMain` que lo impide.
+9. **HECHO** — Fallo encontrado por la CI de `800a269`: `SetTreaties` guardaba el par tal como llegaba y `AtPeace` lo
+   busca ordenado. En producción no pasa (la base lo guarda ordenado), pero dos tests de E2 y E5 fallaban unas 6 veces
+   de cada 100. Corregido en `0f96c3b` con `TestUnTratadoConElParSinOrdenarDaPazEnLasDosDirecciones`.
