@@ -1,8 +1,8 @@
-# Invariantes de Diplomacia y Guarnición (INV-GARR-xxx)
+# Invariantes de Diplomacia y Guarnición (INV-GARR-xxx, INV-DIPLO-xxx)
 
-Propiedades de la guarnición de unidades en ciudades: unicidad, coherencia con `units`, autorización por tratado, ocupación y visibilidad.
+Propiedades de la guarnición de unidades en ciudades —unicidad, coherencia con `units`, autorización por tratado, ocupación y visibilidad— y, desde E6, de los tratados que firman los jugadores.
 
-Formato y severidades: [README.md](README.md). Estados de unidad: [units.md](units.md). Ciudades: [city.md](city.md). Spec: [../specs/garrison.md](../specs/garrison.md). Decisiones: [ADR-017](../decisions/ADR-017-garrison-commands.md).
+Formato y severidades: [README.md](README.md). Estados de unidad: [units.md](units.md). Ciudades: [city.md](city.md). Specs: [../specs/garrison.md](../specs/garrison.md) y [../specs/diplomacy.md](../specs/diplomacy.md). Decisiones: [ADR-017](../decisions/ADR-017-garrison-commands.md) y [ADR-027](../decisions/ADR-027-hot-treaties.md).
 
 ---
 
@@ -326,27 +326,89 @@ Vistas como una sola propiedad: *una unidad guarnecida está en exactamente una 
 ```
 
 <a id="inv-garr-008"></a>
-## INV-GARR-008 — Coherencia entre gracia de expulsión y tratado vigente (RESERVADO)
+## INV-GARR-008 — Al terminar una alianza, nadie queda guarnecido en la ciudad del otro
 
-**Estado: reservado, no vigente.** Este ID está apartado y **no debe reutilizarse**, pero el
-invariante todavía no se puede enunciar de forma verificable.
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E6 |
+| Política ante violación | REPAIR |
+| Cobertura | **Sin cobertura**: vigente desde el 2026-11-03, antes de su código |
 
-**Enunciado previsto.** Toda unidad guarnecida en una ciudad ajena cuyo tratado ha dejado de estar
-`ACTIVE` tiene una gracia de expulsión en curso y no vencida.
+**Enunciado.** Cuando un tratado que autorizaba guarnición deja de estar `ACTIVE`, ninguna unidad de uno de los dos
+jugadores queda `GARRISONED` en la ciudad del otro, salvo la que espera un tile de salida (`RN-GARR-014`) y sale en
+cuanto lo hay.
 
-**Por qué no está vigente.** La gracia no tiene dónde vivir: la tabla `garrisons` no tiene columna
-para su vencimiento, y la política de expulsión diferida al romperse un tratado está descrita en
-[../specs/garrison.md](../specs/garrison.md) §6.4 como diseño objetivo, no como comportamiento
-implementado. Mientras tanto, romper o caducar un tratado no saca a nadie; no es explotable por un
-jugador porque ningún jugador crea ni rompe tratados ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.6).
+**Historia.** Estuvo reservado desde M7 con otro enunciado previsto, una gracia de expulsión guardada en
+`garrisons`. [SPEC-DIPLOMACY](../specs/diplomacy.md) Q6 lo concretó sin columna nueva: la gracia es el preaviso de
+la ruptura, durante el cual el tratado sigue `ACTIVE` ([ADR-027](../decisions/ADR-027-hot-treaties.md) §6).
 
-**Cuándo pasa a estar vigente.** En la misma migración aditiva que introduzca el vencimiento de la
-gracia. Ese cambio debe, a la vez: añadir la columna, implementar la expulsión, escribir el test, y
-sustituir esta ficha por una completa con su mecanismo de garantía y su política ante violación.
+**Razón.** Sin esto, firmar una alianza un instante bastaría para alojar unidades para siempre en la ciudad de otro
+([../specs/garrison.md](../specs/garrison.md) §6.4).
 
-**Registrado aquí y no sólo en la spec** porque el registro de invariantes es el dueño único de la
-numeración: un ID mencionado en una spec pero ausente del registro es exactamente la clase de deriva
-que `scripts/check-docs.mjs` existe para impedir.
+**Cómo se garantiza.** `DOMAIN` — la fase 5 que aplica el fin de una alianza (preaviso vencido o `expires_at`) saca
+en el mismo tick, por la salida normal, a cada unidad de uno guarnecida en la ciudad del otro; la que no encuentra
+tile queda en las salidas pendientes, que se reintentan cada tick.
+
+**Cómo se verifica.** Previsto con E6: el golden «alianza» en `internal/game/simulation`.
+
+**Violación en runtime.** Una unidad que siguiera dentro sin tratado ni salida pendiente se saca y se registra
+`invariant_violation` con `inv_id=INV-GARR-008`.
+
+---
+
+<a id="inv-diplo-001"></a>
+## INV-DIPLO-001 — Una oferta sólo la acepta o la rechaza el jugador que no la propuso
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E6 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: registrado el 2026-11-03, antes de su código |
+
+**Enunciado.** Un tratado pasa de `PROPOSED` a `ACTIVE` o a `REJECTED` sólo por una orden del jugador del par que no
+es `proposed_by`; a `WITHDRAWN`, sólo por una de `proposed_by`.
+
+**Razón.** Si quien propone pudiera aceptar, un jugador firmaría tratados en nombre de otro: alianzas para meterle
+unidades en la ciudad o pactos para blindarse sin su acuerdo.
+
+**Cómo se garantiza.** `DOMAIN` — la validación del tick compara al autor de la orden con `proposed_by` antes de
+reservar; la transacción condiciona la escritura al estado esperado.
+
+**Cómo se verifica.** Previstos con E6: los rechazos de `treaty.respond` y `treaty.cancel` en `internal/game/simulation`.
+
+**Violación en runtime.** La orden se rechaza con `INVALID_TARGET` y no se escribe nada.
+
+---
+
+<a id="inv-diplo-002"></a>
+## INV-DIPLO-002 — Entre dos jugadores, como mucho un tratado vigente y una oferta pendiente
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E6 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: registrado el 2026-11-03, antes de su código |
+
+**Enunciado.** Para cada par de jugadores existe como mucho un tratado `ACTIVE` y como mucho uno `PROPOSED`; y una
+oferta sólo convive con un tratado vigente si éste es un pacto y la oferta es una alianza.
+
+**Razón.** Dos tratados vigentes entre los mismos jugadores harían ambigua la paz y la guarnición; dos ofertas
+abiertas, ambigua la respuesta.
+
+**Cómo se garantiza.** `DB` — dos índices únicos parciales sobre el par canónico, uno con `status = 'ACTIVE'` y otro
+con `status = 'PROPOSED'` (migración `000009`). `DOMAIN` — `treaty.propose` se valida contra los tratados abiertos
+de la RAM (`RN-DIPLO-001`), y aceptar una alianza cierra el pacto en la misma transacción.
+
+**Cómo se verifica.** Previstos con E6: el índice por su nombre (integration) y los rechazos de `treaty.propose`
+(simulation).
+
+**Violación en runtime.** La transacción falla por el índice y la orden se rechaza con `INVALID_TARGET`.
 
 ---
 
@@ -361,8 +423,10 @@ que `scripts/check-docs.mjs` existe para impedir.
 | INV-GARR-005 | `internal/game/world`, `internal/game/simulation` | [INV-UNIT-003](units.md#inv-unit-003) |
 | INV-GARR-006 | `internal/game/simulation` | [INV-SAFE-004](territory.md#inv-safe-004) |
 | INV-GARR-007 | `postgres.GarrisonRepo`, `internal/domain/garrison` | [INV-UNIT-006](units.md#inv-unit-006), [INV-UNIT-010](units.md#inv-unit-010) |
-| INV-GARR-008 | *reservado, sin propietario todavía* | [INV-GARR-004](#inv-garr-004) |
+| INV-GARR-008 | `internal/game/simulation` (fase 5) | [INV-GARR-004](#inv-garr-004), [INV-DIPLO-002](#inv-diplo-002) |
 | INV-GARR-009 | `postgres.GarrisonRepo`, `internal/game/simulation` | [INV-CITY-009](city.md#inv-city-009) |
+| INV-DIPLO-001 | `internal/game/simulation` | [INV-SEC-001](security.md#inv-sec-001) |
+| INV-DIPLO-002 | `migrations/`, `internal/game/simulation` | [INV-COMBAT-002](combat.md#inv-combat-002) |
 
 ## Documentos relacionados
 

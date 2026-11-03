@@ -199,6 +199,11 @@ Tres políticas posibles:
 
 **Decisión adoptada: expulsión diferida con periodo de gracia. Implementación `TBD (fuera de MVP)`.**
 
+> **Precisión (2026-11-03).** [SPEC-DIPLOMACY](diplomacy.md) Q6 la concreta sin columna nueva: la gracia es el
+> preaviso de la ruptura (15 minutos en los que el tratado sigue `ACTIVE`), y al terminar la alianza las unidades
+> salen por el procedimiento de §6.3 ([ADR-027](../decisions/ADR-027-hot-treaties.md) §6). `RN-GARR-015` a
+> `RN-GARR-018` quedan sustituidas por `RN-DIPLO-004` y `RN-DIPLO-005`; `RN-GARR-019` sigue igual.
+
 > **Lo que ocurre hoy, sin maquillar.** Como la caducidad de tratados ya existe y la expulsión no, un tratado
 > que caduca deja sus guarniciones dentro **indefinidamente**: rige de hecho la política descartada de
 > «permanencia indefinida». No es explotable por un jugador mientras los tratados sólo los cree la vía
@@ -307,8 +312,9 @@ sólo cita los IDs.
 | `INV-GARR-007` | El ownership (`units.player_id`) de una unidad guarnecida no cambia al entrar ni al salir. | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno` (integration) |
 | `INV-GARR-009` | Entrar y salir de la guarnición no cambian `units.city_id`. | Test de integración |
 
-`INV-GARR-008` está **reservado** para la coherencia entre gracia y tratado vigente, que no se puede
-verificar hasta que la gracia tenga columna donde vivir (§6.4).
+`INV-GARR-008` estuvo reservado para la coherencia entre gracia y tratado vigente. Desde el 2026-11-03 es vigente
+con el enunciado de [diplomacy.md](diplomacy.md) §8: al terminar una alianza, nadie queda guarnecido en la ciudad del
+otro (precisión de §6.4).
 
 ## 10. Persistencia
 

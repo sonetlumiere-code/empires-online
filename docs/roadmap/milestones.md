@@ -1,6 +1,6 @@
 # Milestones
 
-Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E5): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
+Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E6): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
 
 ## Cómo leer este documento
 
@@ -1485,3 +1485,27 @@ casas, que la ciudad caiga, máquinas de asedio, niebla de guerra.
    cruzó el mapa hasta (449, 181), junto a la muralla de (451, 179), y dio cuatro golpes de 5 cada 1,5 s (cuatro
    `CityPillaged` en la base) hasta quedar `IDLE` con 20 de carga. En el navegador, con `smoke_victim` conectado,
    el HUD mostró «¡Están saqueando tu ciudad!» desde el primer golpe hasta cinco segundos después del último.
+
+## E6 — Diplomacia
+
+**Estado: EN CURSO** desde el 2026-11-03, en la rama `claude/slice-diplomacia`. Contrato:
+[SPEC-DIPLOMACY](../specs/diplomacy.md), aceptada el 2026-11-03 con sus nueve decisiones de producto, y
+[ADR-027](../decisions/ADR-027-hot-treaties.md).
+
+**Objetivo.** Que el riesgo de E2 a E5 tenga contrapeso: los jugadores proponen, aceptan, rechazan, retiran y rompen
+pactos de no agresión y alianzas mientras juegan, con un preaviso que impide la traición por sorpresa.
+
+**Alcance.** `treaty.propose`, `treaty.respond` y `treaty.cancel`; la RAM como fuente de las órdenes y la paz; los
+vencimientos optimistas en la fase 5 (ofertas, preavisos, `expires_at`); la expulsión de las guarniciones al terminar
+una alianza; `treaty.update` y `treaties[]` en el snapshot; la migración `000009`; el panel del cliente. **No entra**
+(spec §2): `TRADE`, plazos al firmar, chat, alianzas visibles para terceros.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-027, `INV-DIPLO-001`, `INV-DIPLO-002` e `INV-GARR-008` vigente.
+2. Migración `000009` y dominio `diplomacy` con la máquina de estados ampliada.
+3. Protocolo: los tres comandos, `treaty.update` y `treaties[]`, con el JSON Schema y los contract tests.
+4. Simulación: las órdenes en dos fases, los vencimientos, la paz en caliente y la expulsión; golden «alianza».
+5. Persistencia: cada transición, idempotente, con fallo inyectado; e2e con dos jugadores.
+6. Cliente: panel de propuesta, ofertas y tratados con la cuenta atrás del preaviso.
+7. Humo `--diplomacia` y prueba en vivo.

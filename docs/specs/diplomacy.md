@@ -1,19 +1,19 @@
 # Diplomacia: tratados en caliente
 
-Propuesta para que los jugadores firmen y rompan tratados mientras juegan: un pacto de no agresión o una alianza
+Que los jugadores firmen y rompan tratados mientras juegan: un pacto de no agresión o una alianza
 se proponen, se aceptan o se rechazan desde el cliente, y romperlos avisa con tiempo. Hasta hoy los tratados sólo
 existen si alguien los inserta en la base y el servidor los lee al arrancar.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-DIPLOMACY` |
-| Estado | Draft (2026-11-03). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-03; las preguntas de §10 se decidieron ese día con la recomendación de cada una). |
 | Milestone | E6 Diplomacia (sexto slice después de M7) |
 | Canon | §11, §12 (persistencia), §13, §16 (errores) |
 | Depende de | [garrison.md](garrison.md), [combat-raid.md](combat-raid.md), [combat-pillage.md](combat-pillage.md), [presence.md](presence.md), [player.md](player.md) |
-| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (clasificación de acciones), [ADR-017](../decisions/ADR-017-garrison-commands.md) (guarnición), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (órdenes en dos fases). Un ADR nuevo (`ADR-027`, los tratados en caliente: quién es la fuente de verdad en la RAM y cómo se persiste el preaviso) acompañará a la aceptación. |
+| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (clasificación de acciones), [ADR-017](../decisions/ADR-017-garrison-commands.md) (guarnición), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (órdenes en dos fases). [ADR-027](../decisions/ADR-027-hot-treaties.md) (la RAM decide las órdenes, en dos fases; vencimientos optimistas; migración `000009`). |
 | Reemplaza a | — (precisa [garrison.md](garrison.md) §6.4, ver Q6) |
-| Invariantes | Cita los existentes de §8 y propone tres nuevos que se registran al aceptar |
+| Invariantes | Cita los existentes de §8, asigna `INV-DIPLO-001` e `INV-DIPLO-002` y da enunciado vigente a `INV-GARR-008` ([../invariants/diplomacy.md](../invariants/diplomacy.md)) |
 
 ## 1. Objetivo
 
@@ -47,8 +47,9 @@ fase 5 para los vencimientos), PostgreSQL.
 | `NON_AGGRESSION` | Ninguno de los dos ataca ni saquea al otro (`RN-COMBAT-006`, `RN-COMBAT-020`) | `false` |
 | `ALLIANCE` | Lo mismo, y cada uno puede guarnecer en la ciudad del otro ([garrison.md](garrison.md) `RN-GARR-006`) | `true` |
 
-El flag lo fija el tipo (Q1): no es una opción aparte al proponer. Entre dos jugadores hay como mucho **una
-relación**, vigente o pendiente: aceptar una alianza con un pacto vigente lo sustituye en la misma transacción.
+El flag lo fija el tipo (Q1): no es una opción aparte al proponer. Entre dos jugadores hay como mucho **un tratado
+vigente y una oferta pendiente**: la oferta sólo puede convivir con un pacto vigente, cuando se propone convertirlo en
+alianza, y aceptarla lo sustituye en la misma transacción (el pacto pasa a `EXPIRED`).
 
 ### 4.2 Ciclo de vida
 
@@ -103,8 +104,9 @@ Cliente → servidor, tres comandos nuevos y estrictos, aditivos en v1 como los 
 `treaty.propose { playerId, type }`, `treaty.respond { treatyId, accept }` y `treaty.cancel { treatyId }`.
 
 Servidor → cliente: `treaty.update { treaty }`, tipo nuevo (R-VER-3), a las sesiones de **los dos** jugadores en cada
-cambio; y `treaties[]`, campo opcional de `session.welcome` (R-VER-2), con los tratados `PROPOSED` y `ACTIVE` del
-jugador. La vista: `{ id, otherPlayerId, otherCityId, otherCityName, type, status, proposedByMe, breaksAtMs }`
+cambio; y `treaties[]`, campo opcional de `world.snapshot` (R-VER-2), con los tratados `PROPOSED` y `ACTIVE` del
+jugador: el snapshot lo construye la simulación, que es quien los tiene, y como el resto de lo que trae reemplaza
+la lista del cliente (ADR-027 §5). La vista: `{ id, otherPlayerId, otherCityId, otherCityName, type, status, proposedByMe, breaksAtMs }`
 (`breaksAtMs` sólo durante un preaviso). Nadie más los recibe (Q8).
 
 Eventos de dominio en `world_events`: `TreatyProposed`, `TreatyAccepted`, `TreatyRejected`, `TreatyWithdrawn`,
@@ -118,27 +120,25 @@ vigentes con «Romper» y, en preaviso, la cuenta atrás.
 
 | Pregunta (canon §12) | Respuesta |
 |---|---|
-| Autoritativo en RAM | Los tratados `PROPOSED` y `ACTIVE` de todo el mundo, con su preaviso: la RAM decide cada orden en el tick (dos fases, como un encargo de [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §2) |
+| Autoritativo en RAM | Los tratados `PROPOSED` y `ACTIVE` de todo el mundo, con su preaviso, y los rechazos recientes: la RAM decide cada orden en el tick (dos fases, como un encargo de [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §2) y aplica los vencimientos de forma optimista (ADR-027 §3) |
 | Write-through | Cada transición, en una transacción con su `world_events`; la sustitución de un pacto por una alianza, en la misma |
 | Dirty-flag | Nada |
 | Reconstruible | Nada: al arrancar se cargan de la base los tratados `PROPOSED` y `ACTIVE`, y los vencimientos que pasaron durante la caída se aplican en el primer tick |
 
-Migración `000009`: `treaties.proposed_by` (hoy no se sabe quién propuso, porque el par se guarda en orden
-canónico), los estados `REJECTED` y `WITHDRAWN` en `treaties_status_valid`, el instante en que surte efecto una
-ruptura anunciada, y un índice único parcial que impide dos relaciones vigentes o pendientes entre el mismo par.
-Cómo se reparte esto entre columnas, y por qué la RAM y no la base decide cada orden, lo fija `ADR-027`.
+Migración `000009` ([ADR-027](../decisions/ADR-027-hot-treaties.md) §4): `treaties.proposed_by` (hoy no se sabe quién propuso, porque el par se guarda en
+orden canónico), `request_id`, `break_effective_at` y `closed_at`; los estados `REJECTED` y `WITHDRAWN` en
+`treaties_status_valid`; y dos índices únicos parciales por par, uno para `ACTIVE` y otro para `PROPOSED`.
 
 ## 8. Invariantes
 
 Cita [INV-GARR-004](../invariants/diplomacy.md#inv-garr-004) (guarnecer en ciudad ajena exige tratado activo) y
 [INV-COMBAT-002](../invariants/combat.md#inv-combat-002) (ningún golpe donde un tratado lo prohíbe, también durante
-el preaviso). Propone tres nuevos, que se numeran al aceptar:
-
-- Una oferta sólo la acepta o la rechaza el jugador que no la propuso.
-- Entre dos jugadores hay como mucho un tratado `PROPOSED` o `ACTIVE`.
-- Cuando una alianza deja de estar `ACTIVE`, ninguna unidad de uno queda guarnecida en la ciudad del otro, salvo
-  la que espera un tile de salida (`RN-GARR-014`). Es el enunciado que [INV-GARR-008](../invariants/diplomacy.md#inv-garr-008)
-  tenía reservado; con la decisión de Q6 deja de necesitar una columna de gracia.
+el preaviso). Asigna [INV-DIPLO-001](../invariants/diplomacy.md#inv-diplo-001) (una oferta sólo la acepta o la
+rechaza el jugador que no la propuso) e [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002) (entre dos jugadores,
+como mucho un tratado `ACTIVE` y una oferta `PROPOSED`), y da enunciado vigente a
+[INV-GARR-008](../invariants/diplomacy.md#inv-garr-008), que estaba reservado: cuando una alianza deja de estar
+`ACTIVE`, ninguna unidad de uno queda guarnecida en la ciudad del otro, salvo la que espera un tile de salida
+(`RN-GARR-014`). Con la decisión de Q6 no necesita columna de gracia.
 
 ## 9. Tests esperados
 
@@ -151,11 +151,12 @@ el preaviso). Propone tres nuevos, que se numeran al aceptar:
 | contract / e2e | Los tres comandos, `treaty.update` y `treaties[]` contra el JSON Schema; un tratado de punta a punta por WebSocket con dos jugadores |
 | cliente | Panel de propuesta, lista de ofertas y tratados, cuenta atrás del preaviso; `scripts/smoke.mjs --diplomacia` |
 
-## 10. Preguntas abiertas de producto
+## 10. Decisiones de producto (2026-11-03)
 
-Cada una con mi recomendación. Las decide producto; la spec no pasa a `Accepted` sin ellas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de
+producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué tipos se pueden proponer, y la guarnición es una opción aparte? | `NON_AGGRESSION` y `ALLIANCE`, con la guarnición fijada por el tipo (la alianza la permite, el pacto no). `TRADE` no hace nada mientras no haya comercio. Un flag suelto sería una casilla más que explicar. |
 | Q2 | ¿Los tratados tienen plazo? | No en este slice: duran hasta que alguien los rompe. Elegir un plazo al firmar es interfaz y casos de borde para algo que el preaviso ya cubre. Los tratados con `expires_at` que cree la vía administrativa siguen caducando. |
