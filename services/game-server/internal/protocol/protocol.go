@@ -35,6 +35,8 @@ const (
 	TypeCityTrain  = "city.train"
 	// Combate (SPEC-COMBAT-RAID).
 	TypeUnitAttack = "unit.attack"
+	// Saqueo (SPEC-COMBAT-PILLAGE).
+	TypeUnitPillage = "unit.pillage"
 )
 
 // Mensajes servidor → cliente.
@@ -71,6 +73,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeCityBuild:      true,
 	TypeCityTrain:      true,
 	TypeUnitAttack:     true,
+	TypeUnitPillage:    true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -298,6 +301,14 @@ type UnitAttackPayload struct {
 	TargetUnitID int64 `json:"targetUnitId"`
 }
 
+// UnitPillagePayload ordena a un guerrero propio saquear una ciudad ajena.
+// Sólo quién y qué ciudad: el tile de llegada, lo robado y el suelo son del
+// servidor (SPEC-COMBAT-PILLAGE).
+type UnitPillagePayload struct {
+	UnitID int64 `json:"unitId"`
+	CityID int64 `json:"cityId"`
+}
+
 // CityBuildPayload encarga un edificio en un tile de la zona urbana.
 type CityBuildPayload struct {
 	CityID int64  `json:"cityId"`
@@ -394,6 +405,9 @@ type CityUpdatePayload struct {
 	// Production: nil si no cambia; apuntando a nil, la ciudad deja de
 	// entrenar; apuntando a una vista, empieza.
 	Production **ProductionView `json:"production,omitempty"`
+	// PillagedAtMs es el instante del último golpe de saqueo. Sólo lo recibe
+	// el dueño de la ciudad (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
+	PillagedAtMs *int64 `json:"pillagedAtMs,omitempty"`
 }
 
 // BuildingSpawnPayload anuncia un edificio.

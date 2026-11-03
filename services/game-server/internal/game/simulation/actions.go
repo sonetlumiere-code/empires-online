@@ -34,14 +34,16 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeUnitUngarrison: {Hostile: false, Territory: TerritoryFree},
 	// La economía no es agresión: recolectar en un bosque de territorio ajeno,
 	// construir y entrenar en la ciudad propia no tocan a nadie (ADR-016 §2.1).
-	// Robar madera llegará con el slice de riesgo, y con él la primera acción
-	// hostil.
+	// Robar madera es unit.pillage, más abajo.
 	protocol.TypeUnitGather: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeCityBuild:  {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeCityTrain:  {Hostile: false, Territory: TerritoryFree},
 	// La primera acción hostil (RN-COMBAT-002): la frena la protección del
 	// dueño del objetivo, no el suelo. Su punto único es attackBlocked.
 	protocol.TypeUnitAttack: {Hostile: true, Territory: TerritoryFree},
+	// El saqueo (RN-COMBAT-020): hostil contra la ciudad, con el mismo punto
+	// único de la protección, pillageBlocked.
+	protocol.TypeUnitPillage: {Hostile: true, Territory: TerritoryFree},
 }
 
 // sessionMessages son los mensajes que no actúan sobre el mundo.

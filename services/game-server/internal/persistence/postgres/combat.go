@@ -90,3 +90,35 @@ func (r *UnitRepo) Attacked(ctx context.Context, db DB, a Attacked) error {
 		"x": a.At.X, "y": a.At.Y, "auto": a.Auto,
 	}})
 }
+
+// Pillaged es un golpe de saqueo (SPEC-COMBAT-PILLAGE, ADR-026): el débito del
+// stock de la ciudad saqueada, como delta versionado que lleva también los
+// depósitos sin volcar, y el evento que lo audita.
+type Pillaged struct {
+	AttackerID     int64
+	AttackerPlayer uuid.UUID
+	CityID         int64
+	VictimPlayer   uuid.UUID
+	Amount         int32
+	Stock          StockDelta
+	At             world.Tile
+	Tick           uint64
+}
+
+// Pillaged escribe un golpe de saqueo dentro de la transacción `db` y dice si
+// lo escribió. Es idempotente por la versión del stock (ADR-026 §3): si la base
+// ya tiene esa versión o una posterior, el golpe ya estaba escrito —la cola
+// ejecuta en orden todas las escrituras del stock de una ciudad— y no hace
+// nada, tampoco el evento. Un débito que dejaría el stock negativo es
+// economy.ErrInsufficientResources (INV-ECON-001).
+func (r *UnitRepo) Pillaged(ctx context.Context, db DB, p Pillaged) (bool, error) {
+	aplicado, err := applyStock(ctx, db, p.Stock)
+	if err != nil || !aplicado {
+		return false, err
+	}
+	victim := p.VictimPlayer
+	return true, appendEvent(ctx, db, worldEvent{EventType: "CityPillaged", Tick: p.Tick, PlayerID: &victim, Payload: map[string]any{
+		"cityId": p.CityID, "attackerId": p.AttackerID, "attackerPlayerId": p.AttackerPlayer.String(),
+		"amount": p.Amount, "x": p.At.X, "y": p.At.Y,
+	}})
+}

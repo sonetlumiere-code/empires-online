@@ -472,7 +472,10 @@ comprobar que la unidad llegó igualmente**. `--url` apunta al Game Server y `--
 Falla con código distinto de cero y explica en qué paso. Con `--incursion` añade el combate
 ([../specs/combat-raid.md](../specs/combat-raid.md)): junta 60 de madera, entrena un guerrero, acerca un aldeano
 de un segundo jugador (`smoke_victim`) y lo mata. Tarda minutos y mata una unidad de otra cuenta, así que no
-corre por defecto ni tras un despliegue en producción.
+corre por defecto ni tras un despliegue en producción. Con `--saqueo` ([../specs/combat-pillage.md](../specs/combat-pillage.md)), un
+guerrero propio va hasta la muralla de `smoke_victim`, que se conecta para no estar protegida (y, si le falta,
+junta madera trayendo a casa a sus aldeanos), y la saquea: comprueba el golpe, el aviso `pillagedAtMs` a la
+víctima y la carga del guerrero. También tarda minutos y roba madera de otra cuenta.
 
 ---
 

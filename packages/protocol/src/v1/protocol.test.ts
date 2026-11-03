@@ -134,6 +134,35 @@ describe('combate (SPEC-COMBAT-RAID)', () => {
   });
 });
 
+describe('saqueo (SPEC-COMBAT-PILLAGE)', () => {
+  it('acepta unit.pillage con guerrero y ciudad', () => {
+    const result = parseClientMessage({
+      v: 1, type: 'unit.pillage', requestId: uuid, payload: { unitId: 42, cityId: 7 },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('unit.pillage no admite que el cliente aporte cantidad, tile ni suelo', () => {
+    for (const extra of [{ amount: 50 }, { target: { x: 1, y: 1 } }, { floor: 0 }, { loot: 20 }]) {
+      const result = parseClientMessage({
+        v: 1, type: 'unit.pillage', requestId: uuid,
+        payload: { unitId: 42, cityId: 7, ...extra },
+      });
+      expect(result).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('city.update acepta pillagedAtMs y rechaza un instante negativo', () => {
+    const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, pillagedAtMs: 1_757_376_000_500 },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, pillagedAtMs: -1 },
+    }).ok).toBe(false);
+  });
+});
+
 describe('comandos de economía (SPEC-ECON-WOOD)', () => {
   it('acepta unit.gather con unidad y bosque', () => {
     const result = parseClientMessage({

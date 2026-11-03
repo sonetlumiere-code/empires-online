@@ -518,6 +518,25 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			TargetID:  p.TargetUnitID,
 		})
 
+	// Saqueo (SPEC-COMBAT-PILLAGE). Sólo quién y qué ciudad: el tile de llegada,
+	// lo robado y el suelo son del servidor (INV-SEC-001).
+	case protocol.TypeUnitPillage:
+		var p protocol.UnitPillagePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.PillageCity{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+			CityID:    p.CityID,
+		})
+
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
 	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del
 	// servidor (INV-SEC-001); los rechazos llegan por system.error.

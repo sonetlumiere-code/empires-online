@@ -29,13 +29,18 @@
  *      así que no corre por defecto ni tras un despliegue en producción.
  *      El aldeano va escoltado por un guardia de la víctima, que responde solo al
  *      ataque (SPEC-COMBAT-RESPONSE); si le faltan guardia o aldeanos, los entrena.
+ *  12. sólo con --saqueo (SPEC-COMBAT-PILLAGE): un guerrero propio (el que haya en
+ *      casa, o uno nuevo) va hasta la muralla de la víctima, que se conecta para no
+ *      estar protegida, y la saquea: su almacén baja, la víctima recibe el aviso
+ *      pillagedAtMs y el guerrero carga lo robado. Tarda minutos y roba madera de
+ *      otra cuenta, así que no corre por defecto.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--saqueo] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -58,6 +63,7 @@ const WEB = (flag('--web', process.env.EO_SMOKE_WEB_URL || 'http://localhost:300
 const VERBOSE = args.includes('--verbose');
 const INCURSION = args.includes('--incursion');
 const TALA = args.includes('--tala');
+const SAQUEO = args.includes('--saqueo');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -488,6 +494,10 @@ async function main() {
     await incursion(segunda, ciudad, cuenta.playerId, snap2);
   }
 
+  if (SAQUEO) {
+    await saqueo(segunda, ciudad, cuenta.playerId, snap2);
+  }
+
   segunda.sesion.cerrar();
   await dormir(200);
 
@@ -704,6 +714,76 @@ async function incursion(atacante, ciudad, playerId, snap) {
   }
   ok('incursión completa', `el guerrero ${guerrero.id} mató al aldeano ${aldeano.id}`);
   ok('respuesta automática', `el guardia ${guardia.id} respondió sin órdenes: el incursor bajó a ${herido} de vida`);
+  victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Saqueo (SPEC-COMBAT-PILLAGE), sólo con --saqueo
+// ─────────────────────────────────────────────────────────────
+
+async function saqueo(atacante, ciudad, playerId, snap) {
+  let guerrero = snap.units.find((u) => u.playerId === playerId && u.unitType === 'WARRIOR');
+  if (!guerrero) {
+    const madera = await juntarMadera(atacante.sesion, ciudad, playerId, snap, 60);
+    ok('madera para un guerrero', `${madera}`);
+    guerrero = await entrenar(atacante.sesion, ciudad, playerId, 'WARRIOR');
+  }
+  ok('guerrero para saquear', `unidad ${guerrero.id} en (${guerrero.x}, ${guerrero.y})`);
+
+  // La víctima se conecta: desconectada más de cinco minutos estaría protegida
+  // y el saqueo se rechazaría con CITY_PROTECTED. Necesita madera por encima
+  // del suelo (50) para que haya algo que robar.
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const ciudadV = victima.snapshot.payload.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
+  let almacen = ciudadV.stocks?.WOOD ?? 0;
+  if (almacen < 70) {
+    // Sus aldeanos pueden haberse quedado por el camino hacia el atacante en
+    // incursiones anteriores: vuelven a casa y recolectan.
+    const { unidades, casa, terreno } = await unidadesPropias(victima.sesion, cuenta.playerId, ciudadV, guerrero,
+      victima.snapshot.payload.terrain);
+    const aldeanos = unidades.filter((u) => u.unitType === 'VILLAGER');
+    if (aldeanos.length === 0) {
+      fallar('la víctima no tiene madera ni aldeanos para juntarla',
+        `Usa EO_SMOKE_VICTIM con otra cuenta cuya ciudad esté a menos de ~200 tiles de la de ${USUARIO}.`);
+    }
+    for (const a of aldeanos) {
+      if (Math.max(Math.abs(a.x - ciudadV.centerX), Math.abs(a.y - ciudadV.centerY)) > 12) {
+        await acercar(victima.sesion, a, { x: ciudadV.centerX, y: ciudadV.centerY }, 8);
+      }
+    }
+    victima.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+    await victima.sesion.esperar('world.snapshot');
+    const stockCasa = casa.cities.find((c) => c.id === ciudadV.id) ?? ciudadV;
+    almacen = await juntarMadera(victima.sesion, stockCasa, cuenta.playerId,
+      { terrain: terreno, units: aldeanos, forests: casa.forests }, 70);
+    ok('la víctima junta madera', `${almacen}`);
+  }
+
+  // El guerrero va por tramos hasta cerca de la muralla y desde ahí se ordena el
+  // saqueo: el servidor elige el tile del anillo.
+  const cerca = await acercar(atacante.sesion, guerrero, { x: ciudadV.centerX, y: ciudadV.centerY + 5 }, 4);
+  ok('el guerrero llega junto a la ciudad', `(${cerca.x}, ${cerca.y}) · ciudad en (${ciudadV.centerX}, ${ciudadV.centerY})`);
+  atacante.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const vista = (await atacante.sesion.esperar('world.snapshot')).payload;
+  const antes = vista.cities.find((c) => c.id === ciudadV.id)?.stocks?.WOOD ?? almacen;
+  const cargaAntes = vista.units.find((u) => u.id === guerrero.id)?.carrying ?? 0;
+
+  atacante.sesion.enviar('unit.pillage', { unitId: guerrero.id, cityId: ciudadV.id });
+  const golpe = await atacante.sesion.esperarQue(['city.update', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.id === ciudadV.id && m.payload.stocks && m.payload.stocks.WOOD < antes),
+    60_000);
+  if (golpe.type === 'system.error') fallar('el servidor rechazó el saqueo', golpe.payload);
+  ok('golpe de saqueo', `almacén de la víctima ${antes} -> ${golpe.payload.stocks.WOOD}`);
+
+  const aviso = await victima.sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadV.id && typeof m.payload.pillagedAtMs === 'number', 10_000);
+  ok('aviso al saqueado', `pillagedAtMs ${aviso.payload.pillagedAtMs}`);
+
+  const carga = await atacante.sesion.esperarQue('entity.update',
+    (m) => m.payload.id === guerrero.id && typeof m.payload.carrying === 'number' && m.payload.carrying > cargaAntes, 10_000);
+  ok('el guerrero carga lo robado', `${cargaAntes} -> ${carga.payload.carrying}`);
   victima.sesion.cerrar();
 }
 

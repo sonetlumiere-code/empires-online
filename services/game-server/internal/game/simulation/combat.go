@@ -66,6 +66,10 @@ type Death struct {
 type CombatStore interface {
 	PersistDeath(ctx context.Context, d Death) error
 	PersistAttack(ctx context.Context, a Attack) error
+	// PersistPillage escribe un golpe de saqueo: el débito versionado del stock
+	// de la víctima y su CityPillaged, en una transacción (ADR-026). Ya escrito
+	// es éxito; un débito que no cabe es economy.ErrInsufficientResources.
+	PersistPillage(ctx context.Context, p Pillage) error
 }
 
 // JobDeath es el nombre del trabajo de la cola que escribe una muerte.
@@ -75,6 +79,9 @@ const JobDeath = "unit.death"
 type engagement struct {
 	attackerID int64
 	targetID   int64
+	// cityID es la ciudad saqueada; distinto de cero, el enfrentamiento es un
+	// saqueo y targetID no se usa (SPEC-COMBAT-PILLAGE).
+	cityID int64
 	// nextHitAtMs es el instante del próximo golpe; 0 hasta el primer contacto.
 	nextHitAtMs int64
 	// lastRepathTick es el último tick en que la persecución recalculó ruta.
@@ -115,6 +122,10 @@ type combatState struct {
 	// vale mientras su movimiento sea el de la unidad: State.ClearMovement la
 	// borra cuando ese movimiento termina, se cancela o lo sustituye otro.
 	returning map[int64]returnLeg
+	// pendingLoot es la carga robada que espera la transacción de su golpe, por
+	// unidad. No entra en unit.Loot hasta confirmarse: el volcado sólo escribe
+	// lo confirmado (ADR-026 §2).
+	pendingLoot map[int64]int32
 }
 
 func newCombatState() combatState {
@@ -123,6 +134,7 @@ func newCombatState() combatState {
 		peace:         make(map[[2]uuid.UUID][]peaceTreaty),
 		pendingDeaths: make(map[int64]Death),
 		returning:     make(map[int64]returnLeg),
+		pendingLoot:   make(map[int64]int32),
 	}
 }
 
@@ -156,7 +168,7 @@ func (s *State) AtPeace(x, y uuid.UUID, now time.Time) bool {
 // Engaged dice a quién ataca una unidad (tests).
 func (s *State) Engaged(attackerID int64) (int64, bool) {
 	e, ok := s.combat.engagements[attackerID]
-	if !ok {
+	if !ok || e.cityID != 0 {
 		return 0, false
 	}
 	return e.targetID, true
@@ -423,6 +435,7 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 
 	// 1. Calcular, con el estado de fin de la fase 3.
 	var hits []hit
+	var pillages []pillageHit
 	for _, id := range ids {
 		e, ok := s.state.combat.engagements[id]
 		if !ok {
@@ -431,6 +444,12 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 		a, ok := s.state.Unit(id)
 		if !ok || !a.IsAlive() {
 			delete(s.state.combat.engagements, id)
+			continue
+		}
+		if e.cityID != 0 {
+			if ph, due := s.stepPillage(a, e, nowMs, now); due {
+				pillages = append(pillages, ph)
+			}
 			continue
 		}
 		t, ok := s.state.Unit(e.targetID)
@@ -509,9 +528,22 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 		}
 	}
 
-	// 4. Las respuestas automáticas, en el orden de los golpes (RN-COMBAT-015).
+	// 4. Los golpes de saqueo, después de los golpes a unidades y en orden de
+	// guerrero, cada uno contra el stock que dejó el anterior (RN-COMBAT-022).
+	var robbed []pillageHit
+	for _, ph := range pillages {
+		if s.applyPillage(ph, nowMs) {
+			robbed = append(robbed, ph)
+		}
+	}
+
+	// 5. Las respuestas automáticas, en el orden de los golpes (RN-COMBAT-015):
+	// primero los golpes a unidades y después los saqueos (RN-COMBAT-027).
 	for _, al := range alerts {
 		s.raiseAlarm(al, nowMs)
+	}
+	for _, ph := range robbed {
+		s.raiseCityAlarm(ph.attacker, ph.city, nowMs)
 	}
 }
 
@@ -576,12 +608,15 @@ func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
 		delete(s.state.tasks, v.ID)
 	}
 	delete(s.state.combat.engagements, v.ID)
+	// La carga pendiente de un saqueo no se hereda: si su transacción se
+	// confirma, esa madera se pierde (ADR-026 §4).
+	delete(s.state.combat.pendingLoot, v.ID)
 
 	// INV-COMBAT-003: el botín es min(carga de la víctima, hueco del asesino).
 	var gained int32
 	if killer != nil && killer.IsAlive() && carried > 0 {
 		if def, err := unit.Lookup(killer.Type); err == nil {
-			room := def.LootCarry - killer.Loot
+			room := def.LootCarry - s.state.carrying(killer)
 			if room > 0 {
 				gained = min(carried, room)
 			}
@@ -629,7 +664,7 @@ func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
 	if gained > 0 {
 		killer.Loot += gained
 		s.state.MarkDirty(killer.ID)
-		loot := killer.Loot
+		loot := s.state.carrying(killer)
 		kx, ky := s.state.World().ChunkOf(killer.X, killer.Y)
 		s.deps.Broadcaster.BroadcastChunk(kx, ky, protocol.TypeEntityUpdate,
 			protocol.EntityUpdatePayload{ID: killer.ID, Carrying: &loot})
@@ -706,10 +741,11 @@ func (s *Simulation) depositLoot(u *unit.Unit, at world.Tile) {
 	u.Loot = 0
 	s.state.MarkDirty(u.ID)
 	s.deposit(c, amount)
-	cero := int32(0)
+	// Lo que quede es carga de saqueo pendiente de confirmar (ADR-026 §4).
+	left := s.state.carrying(u)
 	cx, cy := s.state.World().ChunkOf(u.X, u.Y)
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityUpdate,
-		protocol.EntityUpdatePayload{ID: u.ID, Carrying: &cero})
+		protocol.EntityUpdatePayload{ID: u.ID, Carrying: &left})
 }
 
 func chebyshevTiles(a, b world.Tile) int32 {

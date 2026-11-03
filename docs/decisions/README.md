@@ -94,7 +94,7 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Veinticinco decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Veintiséis decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
@@ -104,7 +104,8 @@ día encontró abierto; ADR-022, del **2026-10-27**, de que ninguna escritura de
 ningún comando del propio servidor se pierda en silencio, el otro hallazgo de esa auditoría; y ADR-023, del
 mismo día, de cómo el primer slice de economía escribe la madera y sus encargos sin gastar dos veces;
 ADR-024, del **2026-11-02**, de cómo el slice de incursión resuelve los golpes y qué persiste de un combate;
-y ADR-025, del **2026-11-03**, de cómo el slice de agotamiento guarda la madera del bosque sin tocar el terreno.
+ADR-025, del **2026-11-03**, de cómo el slice de agotamiento guarda la madera del bosque sin tocar el terreno;
+y ADR-026, del mismo día, de cómo el saqueo resta del almacén sin poder duplicar madera.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-019, ADR-013 y
 ADR-018).
@@ -136,6 +137,7 @@ ADR-018).
 | [023](ADR-023-economy-stock-deltas-and-two-phase-orders.md) | El stock se persiste por deltas versionados y los encargos de la economía son órdenes en dos fases | Aceptado | Toda escritura de `city_stocks` es `amount + delta` condicionada a `version`; el volcado sólo suma depósitos y el encargo lleva `depósitos − coste` en la transacción de su efecto; `city.build`, `city.train` y el nacimiento del aldeano se validan y reservan en el tick y se confirman por el buzón; la población cuenta lo reservado (deroga INV-CITY-009, lo sustituye INV-CITY-017); un viaje nuevo exige al dueño presente. La tarea persistente no se adopta como patrón general. |
 | [024](ADR-024-combat-simultaneous-resolution.md) | El combate se resuelve a la vez en la fase 4 y sólo la muerte se escribe en el acto | Aceptado | Golpes calculados con el estado de fin de la fase 3 y aplicados a la vez; la muerte es una transacción (víctima, población, botín, `world_events`); `hp` y botín van en el volcado; el enfrentamiento y `ATTACKING` no se persisten. El tope de la protección se deriva de `last_offline_at` y una ciudad `ONLINE` sin sesión al arrancar se reancla a `OFFLINE_PENDING`. |
 | [025](ADR-025-forest-wood-layer.md) | La madera del bosque es una capa aparte del terreno, escrita por deltas con la carga | Aceptado | El terreno no cambia: un tile agotado sigue `FOREST`. La madera vive en `forest_wood`, sólo para los tiles tocados; la carga descuenta un delta en la transacción de la tarea, con la regeneración aplicada perezosamente y `GREATEST` en su instante; la RAM regenera por barrido de un segundo; `forests` y `forest.update` son aditivos en v1. |
+| [026](ADR-026-pillage-two-phase-stock-debit.md) | El golpe de saqueo es un débito del stock en dos fases, y la carga robada no se vuelca hasta confirmarlo | Aceptado | Tercer escritor que resta del stock: el tick reserva (stock −, carga pendiente +), la transacción con la clave de la ciudad víctima escribe el delta versionado y `CityPillaged`, y el buzón confirma o devuelve; el volcado de unidades sólo escribe la carga confirmada, así que una caída pierde lo robado y nunca lo duplica; idempotencia por versión; la carga pendiente no se hereda al morir; `pillagedAtMs` no se persiste. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y

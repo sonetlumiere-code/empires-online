@@ -82,6 +82,11 @@ type Deps struct {
 	// valores por defecto, 4 y 8.
 	CombatGuardRadiusTiles int32
 	CombatLeashTiles       int32
+	// PillageWoodPerHit y PillageStockFloor son la madera de cada golpe de
+	// saqueo y el suelo del almacén (SPEC-COMBAT-PILLAGE §4.2). Cero: los
+	// valores por defecto, 5 y 50.
+	PillageWoodPerHit int32
+	PillageStockFloor int64
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -193,6 +198,10 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleAttackUnit(c)
 	case DeathPersistFailed:
 		s.handleDeathPersistFailed(c)
+	case PillageCity:
+		s.handlePillageCity(c)
+	case PillageResolved:
+		s.handlePillageResolved(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}

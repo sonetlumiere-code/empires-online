@@ -488,10 +488,16 @@ Las decisiones del cliente son intenciones, puras y probadas en `src/state/econo
 
 | Decisión | Criterio | Por qué |
 |---|---|---|
-| Clic en el mapa con una unidad propia seleccionada | Dentro del 3 × 3 de una ciudad → `unit.garrison`; si no, sobre un tile `FOREST` (byte 1 del terreno ya cargado) con un `VILLAGER` → `unit.gather`; en cualquier otro caso → `unit.move` (`decideTileOrder`). | Es la orden contextual de la referencia: el destino decide la orden. La zona urbana va primero porque es muralla: no hay bosque que recolectar ahí. Un aldeano que ya recolecta y recibe un clic en otro bosque cambia de bosque (RN-ECON-006); en hierba deja de recolectar (RN-ECON-003). |
+| Clic en el mapa con una unidad propia seleccionada | Dentro del 3 × 3 de una ciudad **ajena** con un `WARRIOR` → `unit.pillage` (desde E5, [combat-pillage.md](../specs/combat-pillage.md)); dentro del 3 × 3 de cualquier otra ciudad → `unit.garrison`; si no, sobre un tile `FOREST` (byte 1 del terreno ya cargado) con un `VILLAGER` → `unit.gather`; en cualquier otro caso → `unit.move` (`decideTileOrder`). | Es la orden contextual de la referencia: el destino decide la orden. La zona urbana va primero porque es muralla: no hay bosque que recolectar ahí. Un aldeano que ya recolecta y recibe un clic en otro bosque cambia de bosque (RN-ECON-006); en hierba deja de recolectar (RN-ECON-003). |
 | Botón «Casa» | Pide construir en el **primer hueco libre** del 3 × 3 en orden `(y, x)` según los edificios que el store conoce (`firstFreeHouseTile`), sin pedir clic. Sin huecos, no envía nada. | Un clic en la zona urbana ya significa «guarnecerse»: pedir un segundo modo de clic sobre los mismos tiles añadiría un estado de interfaz para elegir entre ocho huecos equivalentes en este slice. Si otro encargo ocupa el tile entre tanto, el servidor responde `INVALID_TARGET`. |
 | Botón «Aldeano» | `city.train { VILLAGER }`; deshabilitado mientras `production` no es `null`. | El servidor respondería `CITY_BUSY`; deshabilitarlo ahorra el viaje, no decide nada. |
 | Costes | **No** se muestran ni se comprueban en el cliente. | Viven en los catálogos del servidor (spec §4.5) y cambian sin tocar el cliente; el servidor responde `INSUFFICIENT_RESOURCES`. |
+
+Desde E5, `city.update` aplica también `pillagedAtMs`, que sólo llega al dueño: mientras el último golpe de saqueo
+sea de hace menos de cinco segundos (`pillageAlertActive`, medido con el reloj del servidor), el HUD muestra
+«¡Están saqueando tu ciudad!» junto a la madera, y un temporizador lo apaga al caducar. Con un guerrero
+seleccionado, un clic en una ciudad ajena ya no es guarnecerse: hoy no hay tratados en caliente (backlog Q-04),
+así que esa guarnición sólo acababa en `TREATY_REQUIRED`.
 
 El HUD muestra la madera de la ciudad propia, los dos botones y, mientras entrena, la cuenta atrás hasta
 `production.completesAtMs` medida con el reloj del servidor (§3.7), refrescada una vez por segundo sólo
@@ -919,7 +925,7 @@ del mundo; y una reconexión forzada restaura la vista sin esperar.
 > `stage` traduce el punto a tile (`screenToTile`) con la cámara del frame —el derecho y el central arrastran la
 > cámara, §7.4.1—; si alguna unidad se **dibuja** en ese tile (su posición del reconciliador,
 > redondeada), es un clic sobre ella —la página sólo selecciona unidades propias—; si no, es un clic sobre el
-> tile. Con una unidad seleccionada, un clic sobre el 3 × 3 de una ciudad es `unit.garrison`, uno sobre un bosque
+> tile. Con una unidad seleccionada, un clic sobre el 3 × 3 de una ciudad es `unit.garrison` (o `unit.pillage`, con un guerrero y una ciudad ajena), uno sobre un bosque
 > con un aldeano es `unit.gather` (§4.4) y cualquier otro tile es `unit.move`. No hay `hitArea` por sprite, ni orden con clic derecho (el derecho arrastra la cámara), ni
 > tecla de cancelación, ni resaltado del tile bajo el cursor.
 

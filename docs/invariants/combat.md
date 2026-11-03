@@ -1,11 +1,13 @@
 # Invariantes de Combate (INV-COMBAT-xxx)
 
-Propiedades del primer slice de combate: la vida de una unidad, la muerte, el botín y las reglas que impiden
-un golpe.
+Propiedades del combate: la vida de una unidad, la muerte, el botín, las reglas que impiden un golpe y, desde E5,
+el saqueo del almacén de una ciudad.
 
 Formato y severidades: [README.md](README.md). Unidades: [units.md](units.md). Ciudades: [city.md](city.md).
-Economía: [economy.md](economy.md). Spec: [../specs/combat-raid.md](../specs/combat-raid.md). Decisión:
-[ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md).
+Economía: [economy.md](economy.md). Specs: [../specs/combat-raid.md](../specs/combat-raid.md) y
+[../specs/combat-pillage.md](../specs/combat-pillage.md). Decisiones:
+[ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) y
+[ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md).
 
 ---
 
@@ -61,7 +63,9 @@ solo golpe que las ignore las vuelve falsas.
 
 **Cómo se garantiza.** `DOMAIN` — la orden se valida al llegar y **otra vez** en cada golpe de la fase 4, con el
 mismo predicado: el estado puede cambiar durante la persecución. La respuesta automática de E3
-([../specs/combat-response.md](../specs/combat-response.md)) pasa por el mismo predicado antes de abrirse.
+([../specs/combat-response.md](../specs/combat-response.md)) pasa por el mismo predicado antes de abrirse. Desde E5,
+el golpe de saqueo sobre una ciudad también (`RN-COMBAT-020`): la ciudad cuenta como objetivo y su dueño como el
+de la víctima.
 
 **Cómo se verifica.** `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` (objetivo oculto, dueño
 protegido, tratado) y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (la revalidación en cada
@@ -74,7 +78,7 @@ descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.
 ---
 
 <a id="inv-combat-003"></a>
-## INV-COMBAT-003 — Un combate nunca crea madera
+## INV-COMBAT-003 — Un combate o un saqueo nunca crea madera
 
 | Campo | Valor |
 |---|---|
@@ -82,10 +86,12 @@ descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E2 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestElBotinPasaAlAsesinoYSeDeposita` (`internal/game/simulation`) y `TestElVolcadoEscribeVidaYBotinYNoResucita` (integration) |
+| Cobertura | **Cubierto** por `TestElBotinPasaAlAsesinoYSeDeposita` (`internal/game/simulation`) y `TestElVolcadoEscribeVidaYBotinYNoResucita` (integration); el saqueo, por `TestElSaqueoGoldenCuatroGolpesYDeposito`, `TestLaCargaPendienteNoSeVuelcaNiSeHereda`, `TestElVolcadoEscribeAlSaqueadorIdleYSinLaCargaPendiente` (`internal/game/simulation`) y `TestUnGolpeDeSaqueoQueFallaNoDejaNadaAMedias` (integration) |
 
 **Enunciado.** En toda muerte, lo que gana el atacante es como mucho lo que llevaba la víctima; y la madera que
-un `WARRIOR` deposita en su ciudad es exactamente la que llevaba, que pasa a cero.
+un `WARRIOR` deposita en su ciudad es exactamente la que llevaba, que pasa a cero. Desde E5: en todo golpe de
+saqueo, lo que gana el guerrero es exactamente lo que pierde el almacén de la víctima, y en disco el débito llega
+antes que la carga ([ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md)).
 
 **Razón.** El botín es una transferencia, no una fuente. Si matar creara madera, el combate sería una granja.
 
@@ -99,3 +105,63 @@ cinco y se pierden cinco, y al depósito llega exactamente lo que lleva. `TestEl
 
 **Violación en runtime.** Se registra `invariant_violation` con `inv_id=INV-COMBAT-003` y no se aplica la
 transferencia.
+
+---
+
+<a id="inv-combat-004"></a>
+## INV-COMBAT-004 — Ningún saqueo deja el almacén de una ciudad por debajo del suelo
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E5 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestElSaqueoRespetaElSuelo` y `TestDosSaqueadoresSeRepartenLoQueQuedaPorEncimaDelSuelo` (`internal/game/simulation`) |
+
+**Enunciado.** Tras cualquier golpe de saqueo, el stock de madera de la ciudad saqueada es mayor o igual que
+`EO_PILLAGE_STOCK_FLOOR`, o el que tenía antes del golpe si ya estaba por debajo. Los encargos de su dueño sí pueden
+bajarlo.
+
+**Razón.** Una ciudad saqueada siempre puede volver a producir (SPEC-COMBAT-PILLAGE Q3). Sin suelo, un jugador
+grande dejaría a uno pequeño a cero en cada desconexión.
+
+**Cómo se garantiza.** `DOMAIN` — lo robado es `min(madera por golpe, hueco de la carga, stock − suelo)`, calculado
+en el instante de aplicar el golpe contra el stock que dejaron los anteriores del mismo tick (`RN-COMBAT-022`).
+
+**Cómo se verifica.** `TestElSaqueoRespetaElSuelo` (con 57 roba 5 y 2, y para en 50; con el almacén ya en el suelo,
+la orden se acepta y no roba nada) y `TestDosSaqueadoresSeRepartenLoQueQuedaPorEncimaDelSuelo` (con 58, 5 y 3, en orden
+de guerrero) — **existen y pasan**, en `internal/game/simulation`. Quitar el suelo del cálculo los pone en rojo.
+
+**Violación en runtime.** Un golpe que fuera a dejar el stock por debajo no se aplica y se registra
+`invariant_violation` con `inv_id=INV-COMBAT-004`.
+
+---
+
+<a id="inv-combat-005"></a>
+## INV-COMBAT-005 — Ningún golpe de saqueo cae con el dueño del saqueador ausente
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E5 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestElSaqueoTerminaConElDuenoAusente` (`internal/game/simulation`) |
+
+**Enunciado.** Un golpe de saqueo sólo se aplica si el dueño del guerrero está presente: su ciudad `ONLINE` y su
+sesión viva o dentro del margen de reconexión, el mismo predicado que
+[INV-ECON-006](economy.md#inv-econ-006) aplica a los viajes de recolección.
+
+**Razón.** Saquear es una acción del jugador presente (SPEC-COMBAT-PILLAGE Q4). Sin esta regla bastaría dejar
+guerreros pegados a una muralla y apagar el ordenador.
+
+**Cómo se garantiza.** `DOMAIN` — la fase 4 comprueba la presencia antes de cada golpe de saqueo y, si falta,
+termina el saqueo (`RN-COMBAT-025`).
+
+**Cómo se verifica.** `TestElSaqueoTerminaConElDuenoAusente` — **existe y pasa**: dentro del margen de reconexión el
+saqueo sigue; con la ciudad del saqueador `OFFLINE_PENDING`, termina y no hay más golpes. Quitar la comprobación lo
+pone en rojo.
+
+**Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse con el dueño ausente se descarta
+y se registra `invariant_violation` con `inv_id=INV-COMBAT-005`.

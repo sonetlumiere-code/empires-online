@@ -109,7 +109,7 @@ var catalog = map[Type]Definition{
 	TypeWarrior: {
 		Type: TypeWarrior, MaxHP: 60, BaseMsPerTile: 600, PopulationCost: 1,
 		TrainCost: economy.Cost{Resource: economy.ResourceWood, Amount: 60}, TrainMs: 25_000,
-		AttackDamage: 8, AttackIntervalMs: 1_500, AttackRange: 1, LootCarry: 10,
+		AttackDamage: 8, AttackIntervalMs: 1_500, AttackRange: 1, LootCarry: 20,
 	},
 }
 

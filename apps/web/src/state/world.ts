@@ -69,6 +69,11 @@ export interface CityView {
   stocks: { WOOD: number };
   /** Entrenamiento en curso, o `null`. */
   production: { unitType: string; completesAtMs: number } | null;
+  /**
+   * Instante del último golpe de saqueo, si lo hubo en esta sesión. Sólo lo
+   * recibe el dueño (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
+   */
+  pillagedAtMs?: number;
 }
 
 /** Edificio tal y como lo ve el cliente (SPEC-ECON-WOOD §4.3). */
@@ -394,6 +399,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
             protectionUntilMs: p.protectionUntilMs !== undefined ? p.protectionUntilMs : existing.protectionUntilMs,
             stocks: p.stocks !== undefined ? p.stocks : existing.stocks,
             production: p.production !== undefined ? p.production : existing.production,
+            pillagedAtMs: p.pillagedAtMs !== undefined ? p.pillagedAtMs : existing.pillagedAtMs,
           });
           set({ changes: changed({ cities: new Set([p.id]) }) });
           break;

@@ -7,6 +7,7 @@ import {
   decideTileOrder,
   decideUnitClick,
   firstFreeHouseTile,
+  pillageAlertActive,
   readableError,
   secondsUntil,
   unitTypeLabel,
@@ -17,7 +18,7 @@ import { useWorldStore } from './world';
 // store, que es una réplica de sólo lectura de lo que dice el servidor.
 
 const PLAYER = '11111111-1111-4111-8111-111111111111';
-const ciudad = { id: 10, centerX: 5, centerY: 5 };
+const ciudad = { id: 10, centerX: 5, centerY: 5, ownerPlayerId: PLAYER };
 const sinCiudad = () => undefined;
 const conCiudad = (tile: { x: number; y: number }) =>
   Math.abs(tile.x - ciudad.centerX) <= 1 && Math.abs(tile.y - ciudad.centerY) <= 1 ? ciudad : undefined;
@@ -26,20 +27,38 @@ describe('decideTileOrder: recolectar, mover o guarnecer', () => {
   const aldeano = { unitType: 'VILLAGER' };
 
   it('un bosque con un aldeano es recolectar', () => {
-    expect(decideTileOrder({ x: 20, y: 10 }, aldeano, TERRAIN_FOREST, sinCiudad)).toEqual({ kind: 'gather' });
+    expect(decideTileOrder({ x: 20, y: 10 }, aldeano, TERRAIN_FOREST, sinCiudad, PLAYER)).toEqual({ kind: 'gather' });
   });
 
   it('cualquier otro terreno, o terreno aún sin cargar, es moverse', () => {
-    expect(decideTileOrder({ x: 20, y: 10 }, aldeano, 0, sinCiudad)).toEqual({ kind: 'move' });
-    expect(decideTileOrder({ x: 20, y: 10 }, aldeano, undefined, sinCiudad)).toEqual({ kind: 'move' });
+    expect(decideTileOrder({ x: 20, y: 10 }, aldeano, 0, sinCiudad, PLAYER)).toEqual({ kind: 'move' });
+    expect(decideTileOrder({ x: 20, y: 10 }, aldeano, undefined, sinCiudad, PLAYER)).toEqual({ kind: 'move' });
   });
 
   it('un tipo que no recolecta va al bosque andando', () => {
-    expect(decideTileOrder({ x: 20, y: 10 }, { unitType: 'KNIGHT' }, TERRAIN_FOREST, sinCiudad)).toEqual({ kind: 'move' });
+    expect(decideTileOrder({ x: 20, y: 10 }, { unitType: 'KNIGHT' }, TERRAIN_FOREST, sinCiudad, PLAYER)).toEqual({ kind: 'move' });
   });
 
   it('la zona urbana manda sobre el terreno: guarnecerse', () => {
-    expect(decideTileOrder({ x: 6, y: 4 }, aldeano, TERRAIN_FOREST, conCiudad)).toEqual({ kind: 'garrison', cityId: 10 });
+    expect(decideTileOrder({ x: 6, y: 4 }, aldeano, TERRAIN_FOREST, conCiudad, PLAYER)).toEqual({ kind: 'garrison', cityId: 10 });
+  });
+
+  it('un guerrero sobre una ciudad ajena la saquea; sobre la propia, se guarnece (SPEC-COMBAT-PILLAGE)', () => {
+    const guerrero = { unitType: 'WARRIOR' };
+    const ajena = () => ({ id: 20, ownerPlayerId: '22222222-2222-4222-8222-222222222222' });
+    expect(decideTileOrder({ x: 6, y: 4 }, guerrero, 0, ajena, PLAYER)).toEqual({ kind: 'pillage', cityId: 20 });
+    expect(decideTileOrder({ x: 6, y: 4 }, guerrero, 0, conCiudad, PLAYER)).toEqual({ kind: 'garrison', cityId: 10 });
+    expect(decideTileOrder({ x: 6, y: 4 }, aldeano, 0, ajena, PLAYER)).toEqual({ kind: 'garrison', cityId: 20 });
+  });
+});
+
+describe('pillageAlertActive: el aviso de saqueo', () => {
+  it('vale cinco segundos desde el último golpe, y sin golpe no hay aviso', () => {
+    expect(pillageAlertActive({ pillagedAtMs: 1_000 }, 1_000)).toBe(true);
+    expect(pillageAlertActive({ pillagedAtMs: 1_000 }, 5_999)).toBe(true);
+    expect(pillageAlertActive({ pillagedAtMs: 1_000 }, 6_000)).toBe(false);
+    expect(pillageAlertActive({}, 1_000)).toBe(false);
+    expect(pillageAlertActive(null, 1_000)).toBe(false);
   });
 });
 

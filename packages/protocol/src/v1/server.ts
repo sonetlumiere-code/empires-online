@@ -177,6 +177,11 @@ export const CityUpdate = z.object({
     stocks: Stocks.optional(),
     /** Entrenamiento en curso; `null` cuando termina. */
     production: ProductionView.nullable().optional(),
+    /**
+     * Instante del último golpe de saqueo sobre la ciudad. Sólo lo recibe su
+     * dueño, para avisarle (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
+     */
+    pillagedAtMs: EpochMs.optional(),
   }),
 });
 

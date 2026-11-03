@@ -1,6 +1,6 @@
 # Milestones
 
-Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E4): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
+Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E5): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
 
 ## Cómo leer este documento
 
@@ -1453,3 +1453,36 @@ tiles con madera. **No entra** (spec §2): talar para abrir camino, otros recurs
 6. **HECHO** — Humo y prueba en vivo (2026-11-03): `scripts/smoke.mjs --tala` en verde. Tres aldeanos agotaron el
    tile (279, 7), se escribió `ForestDepleted` y uno pasó solo a (278, 6). En el navegador, el tile agotado se ve
    como tala con tocones y el de al lado, a medias.
+
+## E5 — Saqueo
+
+**Estado: HECHO en la rama** `claude/slice-asedio` (2026-11-03), con su suite y la prueba en vivo en verde; falta
+fusionarlo en `main`. Contrato:
+[SPEC-COMBAT-PILLAGE](../specs/combat-pillage.md), aceptada el 2026-11-03 con sus nueve decisiones de producto, y
+[ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md).
+
+**Objetivo.** Que tener cosas cueste algo: un guerrero junto a la muralla enemiga roba madera del almacén golpe a
+golpe, hasta un suelo, y la tiene que llevar a casa; los guerreros de la ciudad la defienden.
+
+**Alcance.** La orden `unit.pillage`, el alcance en el anillo de la muralla, los golpes de saqueo en la fase 4 con
+su débito en dos fases, el suelo, la presencia del saqueador, la defensa con la regla de E3, el aviso
+`pillagedAtMs` al dueño y el clic de saqueo en el cliente. **No entra** (spec §2): vida de edificios, destruir
+casas, que la ciudad caiga, máquinas de asedio, niebla de guerra.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-026, `INV-COMBAT-004` e `INV-COMBAT-005`.
+2. **HECHO** — Protocolo: `unit.pillage` y `pillagedAtMs`, con el JSON Schema y los contract tests
+   (`TestElComandoDeSaqueoEsElDelEsquema`, `TestElAvisoDeSaqueoEstaEnElEsquemaDeCityUpdate`).
+3. **HECHO** — Simulación (`pillage.go`): la orden, la aproximación al anillo, los golpes con el suelo y la
+   presencia, la defensa y las dos fases; tests en `pillage_test.go` con el golden «saqueo». Tres mutaciones (sin
+   suelo, sin presencia, sin defensa) las detecta algún test.
+4. **HECHO** — Persistencia: la transacción del golpe, idempotente por versión, con los depósitos que viajan y fallo
+   inyectado (`pillage_integration_test.go`); e2e por WebSocket (`pillage_e2e_test.go`).
+5. **HECHO** — Cliente: clic de saqueo con un guerrero sobre una ciudad ajena (`decideTileOrder`) y el aviso en el
+   HUD (`pillageAlertActive`).
+6. **HECHO** — Humo y prueba en vivo (2026-11-03): `scripts/smoke.mjs --saqueo` en verde (22 comprobaciones). El
+   aldeano de `smoke_victim`, varado junto a `smoke_runner` desde E3, volvió a casa y juntó madera; el guerrero 15
+   cruzó el mapa hasta (449, 181), junto a la muralla de (451, 179), y dio cuatro golpes de 5 cada 1,5 s (cuatro
+   `CityPillaged` en la base) hasta quedar `IDLE` con 20 de carga. En el navegador, con `smoke_victim` conectado,
+   el HUD mostró «¡Están saqueando tu ciudad!» desde el primer golpe hasta cinco segundos después del último.

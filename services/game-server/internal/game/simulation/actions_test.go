@@ -25,16 +25,18 @@ func TestTodaAccionDelCatalogoEstaClasificada(t *testing.T) {
 	assert.False(t, ok, "lo que no está en el catálogo no tiene clasificación")
 }
 
-// ADR-016 §2.1 y SPEC-COMBAT-RAID RN-COMBAT-002: ninguna acción se restringe
-// por territorio, y la única hostil es unit.attack. Cuando cambie, este test
-// cambia con su decisión.
-func TestSoloElAtaqueEsHostilYNingunaSeRestringePorTerritorio(t *testing.T) {
+// ADR-016 §2.1, SPEC-COMBAT-RAID RN-COMBAT-002 y SPEC-COMBAT-PILLAGE
+// RN-COMBAT-020: ninguna acción se restringe por territorio, y las únicas
+// hostiles son unit.attack y unit.pillage. Cuando cambie, este test cambia con
+// su decisión.
+func TestSoloAtaqueYSaqueoSonHostilesYNingunaSeRestringePorTerritorio(t *testing.T) {
 	for msgType := range protocol.ClientMessageTypes {
 		p, ok := simulation.ActionPolicyOf(msgType)
 		if !ok {
 			continue
 		}
-		assert.Equal(t, msgType == protocol.TypeUnitAttack, p.Hostile, "%s", msgType)
+		hostil := msgType == protocol.TypeUnitAttack || msgType == protocol.TypeUnitPillage
+		assert.Equal(t, hostil, p.Hostile, "%s", msgType)
 		assert.Equal(t, simulation.TerritoryFree, p.Territory, "%s", msgType)
 	}
 }
