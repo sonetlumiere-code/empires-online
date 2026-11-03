@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { GameCanvas } from '../src/components/GameCanvas';
 import { GameClient, type ConnectionState } from '../src/net/client';
-import { login, register, ticketProvider, AuthError } from '../src/net/auth';
+import { login, logout, register, resumeSession, ticketProvider, AuthError } from '../src/net/auth';
 import type { v1 } from '@empires-online/protocol';
 
 import { terrainAt, useWorldStore, type CityView } from '../src/state/world';
@@ -44,8 +44,14 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('idle');
+  // Al cargar se intenta retomar la sesión web antes de enseñar el formulario.
+  const [resuming, setResuming] = useState(true);
+  const [leaving, setLeaving] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   const clientRef = useRef<GameClient | null>(null);
+  // Strict Mode monta dos veces: la sesión se retoma una sola.
+  const resumeStartedRef = useRef(false);
   // Cuándo decirle al servidor dónde mira la cámara (frontend.md §7.4.1).
   const viewSyncRef = useRef(new ViewSync());
 
@@ -70,6 +76,56 @@ export default function Page() {
 
   useEffect(() => () => clientRef.current?.disconnect(), []);
 
+  // Abre el WebSocket con el primer ticket; las reconexiones piden el suyo con
+  // la cookie de sesión, porque los tickets son de un solo uso.
+  const connectWith = useCallback(
+    async (ticket: string) => {
+      const client = new GameClient({
+        url: WS_URL,
+        fetchTicket: ticketProvider(ticket),
+        onMessage: (message) => {
+          applyServerMessage(message);
+          trackSession(viewSyncRef.current, message);
+        },
+        onStateChange: (state) => {
+          // Fuera de una sesión lista no se envía session.view.
+          if (state !== 'ready') viewSyncRef.current.suspend();
+          setConnection(state);
+        },
+        // Un UNAUTHORIZED del transporte —ticket rechazado porque la sesión web
+        // caducó o se cerró, o cierre 4401/4403— deja al cliente en `closed` y
+        // a la página en el formulario: el mensaje es para una persona, no un
+        // código (frontend.md §3.6). El resto se muestra tal cual.
+        onError: (code, message) =>
+          setAuthError(code === 'UNAUTHORIZED' ? SESSION_ENDED_MESSAGE : `${code}: ${message}`),
+      });
+      clientRef.current = client;
+      await client.connect();
+    },
+    [applyServerMessage],
+  );
+
+  // Una recarga no pide entrar otra vez: si la cookie de sesión sigue viva, se
+  // conecta directamente (frontend.md §3.2). Sin sesión, el formulario.
+  useEffect(() => {
+    if (resumeStartedRef.current) return;
+    resumeStartedRef.current = true;
+    void (async () => {
+      try {
+        const ticket = await resumeSession();
+        if (ticket) await connectWith(ticket);
+      } catch (err) {
+        setAuthError(
+          err instanceof AuthError
+            ? `No se pudo recuperar la sesión (${err.code}): entra de nuevo.`
+            : `No se pudo recuperar la sesión: ${String(err)}`,
+        );
+      } finally {
+        setResuming(false);
+      }
+    })();
+  }, [connectWith]);
+
   const startSession = useCallback(
     async (mode: 'login' | 'register') => {
       setBusy(true);
@@ -77,40 +133,43 @@ export default function Page() {
       try {
         const creds = { username, password };
         // El alta y el inicio de sesión devuelven un ticket y dejan una cookie de
-        // sesión; cada reconexión pide un ticket nuevo con ella, porque los
-        // tickets son de un solo uso. La contraseña no se guarda.
+        // sesión. La contraseña no se guarda.
         const { ticket } = await (mode === 'register' ? register(creds) : login(creds));
         setPassword('');
-
-        const client = new GameClient({
-          url: WS_URL,
-          fetchTicket: ticketProvider(ticket),
-          onMessage: (message) => {
-            applyServerMessage(message);
-            trackSession(viewSyncRef.current, message);
-          },
-          onStateChange: (state) => {
-            // Fuera de una sesión lista no se envía session.view.
-            if (state !== 'ready') viewSyncRef.current.suspend();
-            setConnection(state);
-          },
-          // Un UNAUTHORIZED del transporte —ticket rechazado porque la sesión web
-          // caducó o se cerró, o cierre 4401/4403— deja al cliente en `closed` y
-          // a la página en el formulario: el mensaje es para una persona, no un
-          // código (frontend.md §3.6). El resto se muestra tal cual.
-          onError: (code, message) =>
-            setAuthError(code === 'UNAUTHORIZED' ? SESSION_ENDED_MESSAGE : `${code}: ${message}`),
-        });
-        clientRef.current = client;
-        await client.connect();
+        await connectWith(ticket);
       } catch (err) {
         setAuthError(err instanceof AuthError ? `${err.code}: ${err.message}` : String(err));
       } finally {
         setBusy(false);
       }
     },
-    [username, password, applyServerMessage],
+    [username, password, connectWith],
   );
+
+  // «Salir»: primero se borra la sesión web en el servidor y sólo después se
+  // cierra el WebSocket. Si el servidor no lo confirma, se sigue conectado: con
+  // la cookie viva, una recarga volvería a entrar. Cerrar el WebSocket es una
+  // desconexión normal (SPEC-PRESENCE): la ciudad sigue el camino de siempre
+  // hacia OFFLINE_PENDING y PROTECTED.
+  const endSession = useCallback(async () => {
+    setLeaving(true);
+    setLogoutError(null);
+    try {
+      await logout();
+    } catch (err) {
+      setLogoutError(
+        `No se pudo cerrar la sesión${err instanceof AuthError ? ` (${err.code})` : ''}: inténtalo de nuevo.`,
+      );
+      return;
+    } finally {
+      setLeaving(false);
+    }
+    const client = clientRef.current;
+    clientRef.current = null;
+    client?.disconnect();
+    useWorldStore.getState().reset();
+    setAuthError(null);
+  }, []);
 
   const serverTimeMs = useCallback(() => clientRef.current?.serverTimeMs() ?? Date.now(), []);
 
@@ -166,6 +225,17 @@ export default function Page() {
     },
     [playerId, selectUnit, selectedUnitId],
   );
+
+  if (resuming) {
+    return (
+      <main style={styles.center}>
+        <div style={styles.panel}>
+          <h1 style={{ margin: '0 0 0.25rem', fontSize: '1.4rem' }}>Empires Online</h1>
+          <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.85rem' }}>Recuperando tu sesión…</p>
+        </div>
+      </main>
+    );
+  }
 
   if (connection === 'idle' || connection === 'closed') {
     return (
@@ -286,7 +356,19 @@ export default function Page() {
             ? `${selectedUnit ? unitTypeLabel(selectedUnit.unitType) : 'Unidad'} ${selectedUnitId}${describeUnit(selectedUnit)} — ${helpFor(selectedUnit)}`
             : `${ownUnitCount} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H vuelve a la ciudad`}
         </span>
+        <button
+          className="secondary"
+          onClick={() => void endSession()}
+          disabled={leaving}
+          title="Cierra la sesión en este navegador. Tu ciudad sigue en el mundo y, como en cualquier desconexión, pasa a estar protegida"
+        >
+          Salir
+        </button>
       </header>
+
+      {logoutError && (
+        <div style={{ ...styles.hud, color: 'var(--danger)' }}>{logoutError}</div>
+      )}
 
       <div style={{ flex: 1, minHeight: 0 }}>
         <GameCanvas

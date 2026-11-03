@@ -82,6 +82,12 @@ el cliente en cada (re)conexión, porque el ticket es de un solo uso.
 
 `POST /api/auth/logout` — sin cuerpo: borra la sesión y caduca la cookie (204).
 
+**Precisión (2026-11-03).** El cliente web usa estas dos rutas también fuera de la reconexión: al cargar la
+página pide un ticket con la cookie y, si la sesión sigue viva, entra sin pedir credenciales; el botón «Salir»
+llama a `logout` y sólo después cierra el WebSocket. Salir no es un estado propio del jugador: es una
+desconexión más, y la ciudad sigue el camino de [SPEC-PRESENCE](presence.md) hacia `OFFLINE_PENDING` y
+`PROTECTED`. Detalle en [frontend.md](../architecture/frontend.md) §3.2.
+
 El alta y el login dejan la cookie de sesión `eo_session` (`HttpOnly`, `SameSite=Strict`, `Path=/api/auth`,
 `Secure` en producción, 7 días) y responden:
 
