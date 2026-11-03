@@ -6,7 +6,7 @@ una unidad suya cercana, sin que su dueño tenga que estar mirando.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-COMBAT-RESPONSE` |
-| Estado | Accepted (2026-11-03; las preguntas de §10 se decidieron ese día con la recomendación de cada una). Implementación en la rama `claude/slice-defensa`. |
+| Estado | Accepted (2026-11-03; las preguntas de §10 se decidieron ese día con la recomendación de cada una). Implementada en `main` (`1e99a96`, CI en verde el 2026-11-03). |
 | Milestone | E3 Defensa (tercer slice después de M7) |
 | Canon | §9 (protección), §12 (persistencia), §16 (errores) |
 | Depende de | [combat-raid.md](combat-raid.md), [presence.md](presence.md), [safe-zones.md](safe-zones.md), [garrison.md](garrison.md), [movement.md](movement.md) |

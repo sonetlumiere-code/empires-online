@@ -1400,7 +1400,7 @@ atacar edificios o ciudades, asedio, respuesta automática, daño a distancia, c
 
 ## E3 — Defensa
 
-**Estado: HECHO en la rama `claude/slice-defensa` (2026-11-03)**, pendiente de fusionar en `main` y de la CI. Contrato:
+**Estado: HECHO (2026-11-03)**, fusionado en `main` (`1e99a96`) con la CI en verde el mismo día. Contrato:
 [SPEC-COMBAT-RESPONSE](../specs/combat-response.md), aceptada el 2026-11-03 con sus ocho decisiones de producto.
 
 **Objetivo.** Que defender no exija estar delante de la pantalla: un guerrero parado responde a los golpes sobre
