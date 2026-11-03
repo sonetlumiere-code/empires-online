@@ -24,16 +24,16 @@ HP, estado ni ownership (canon §1.1).
 **Dentro de MVP**
 
 - Persistencia de la entidad en la tabla `units`.
-- Máquina de estados `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `WORKING`, `DEAD` (`WORKING` desde E1, [economy-wood.md](./economy-wood.md)).
+- Máquina de estados `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `WORKING`, `ATTACKING`, `DEAD` (`WORKING` desde E1, [economy-wood.md](./economy-wood.md); `ATTACKING`, sólo en RAM, desde E2, [combat-raid.md](./combat-raid.md)).
 - Comandos de red `unit.garrison` y `unit.ungarrison` ([garrison.md](./garrison.md), [ADR-017](../decisions/ADR-017-garrison-commands.md)).
-- Catálogo de tipos de unidad data-driven con `VILLAGER` como único tipo jugable.
+- Catálogo de tipos de unidad data-driven: `VILLAGER` y, desde E2, `WARRIOR` ([combat-raid.md](./combat-raid.md) §4.1).
 - Validación de ownership para todo comando dirigido a una unidad.
 - Spawn inicial: 3 `VILLAGER` junto al `TOWN_CENTER` de la ciudad inicial (canon §10).
 - Emisión de `entity.spawn` / `entity.update` / `entity.despawn` por área de interés.
 
 **Fuera de MVP**
 
-- Combate, daño, curación y por tanto cualquier productor real del estado `DEAD`.
+- **Precisión (2026-11-02).** El combate ya existe ([combat-raid.md](./combat-raid.md)): es el productor de `DEAD` (`T9`). La curación sigue fuera.
 - Entrenamiento y coste de unidades (economía).
 - Tipos de unidad militares, unidades navales, unidades de asedio.
 - Transferencia de ownership entre jugadores.
@@ -60,7 +60,7 @@ Campos canónicos de `units` (canon §10 y §11):
 | `y` | `integer` | no | Coordenada lógica de mapa (fila, hacia el sur). |
 | `hp` | `integer` | no | Puntos de vida actuales. |
 | `max_hp` | `integer` | no | Puntos de vida máximos, copiados del catálogo al crear. |
-| `status` | `text` + `CHECK` | no | `IDLE` \| `MOVING` \| `GARRISONED` \| `HIDDEN` \| `WORKING` \| `DEAD`. `WORKING` desde la migración `000006`. |
+| `status` | `text` + `CHECK` | no | `IDLE` \| `MOVING` \| `GARRISONED` \| `HIDDEN` \| `WORKING` \| `DEAD`. `WORKING` desde la migración `000006`. `ATTACKING` (E2) no llega a la base: el volcado la escribe `IDLE` (ADR-024 §2). |
 | `chunk_x` | `integer` | no | Chunk desnormalizado de `x`. Clave del interest management. |
 | `chunk_y` | `integer` | no | Chunk desnormalizado de `y`. Se reescribe en cada escritura de `x`/`y`. |
 | `created_at` / `updated_at` | `timestamptz` | no | Auditoría; `updated_at` por trigger `units_set_updated_at`. |
@@ -191,7 +191,7 @@ stateDiagram-v2
 | T6 | `GARRISONED` | `IDLE` | `unit.ungarrison` | Tick (fase 2), o fase 5 si esperaba tile |
 | T7 | `IDLE` | `HIDDEN` | Reposo dentro de una Safe Zone activa | Fase 5 del tick |
 | T8 | `HIDDEN` | `IDLE` | La unidad deja de pertenecer a la Safe Zone | Fase 5 del tick |
-| T9 | cualquiera vivo | `DEAD` | Muerte. **Sin productor en MVP** (combate fuera de scope) | — |
+| T9 | cualquiera vivo | `DEAD` | Muerte: `hp` llega a 0 en la fase 4 (`RN-COMBAT-009`). La fila se conserva y no se carga al arrancar | `entity.despawn { DEAD }` |
 | T10 | `MOVING` | `WORKING` | El tramo de una tarea de recolección llega a su bosque (`RN-ECON-003`) | Fase 3 del tick |
 | T11 | `IDLE`, `HIDDEN` | `WORKING` | `unit.gather` sobre el tile de bosque en el que ya está la unidad | Fase 2 del tick |
 | T12 | `WORKING` | `MOVING` | Vence el trabajo y sale hacia el depósito (fase 5), o una orden nueva: `unit.move` o `unit.gather` (`RN-ECON-003`, `RN-ECON-006`) | Fase 5 o fase 2 del tick |

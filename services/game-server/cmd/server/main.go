@@ -251,6 +251,14 @@ func run() error {
 	}
 	state.SetSafeZones(safeZones)
 
+	// Los tratados que impiden atacar (RN-COMBAT-006). Se cargan una vez: hoy
+	// no hay vía para crearlos en caliente, y su caducidad se evalúa por fecha.
+	paz, err := treatyRepo.ListActive(rootCtx)
+	if err != nil {
+		return fmt.Errorf("cargar tratados activos: %w", err)
+	}
+	state.SetPeaceTreaties(paz)
+
 	gameStore := persistence.NewGameStore(store, unitRepo, cityRepo, movementRepo)
 	if len(recovery.FinishedMovements) > 0 {
 		if err := gameStore.FinishRecoveredMovements(rootCtx, recovery.FinishedMovements); err != nil {
@@ -299,15 +307,18 @@ func run() error {
 		Treaties:    treatyRepo,
 		Garrisons:   postgres.NewGarrisonRepo(store, unitRepo, movementRepo, treatyRepo),
 		Economy:     economyStore,
+		Combat:      persistence.NewCombatStore(store, unitRepo),
 		// Las compensaciones de la cola vuelven al loop por su buzón, sin
 		// bloquear al worker (ADR-013 §2.4, ADR-022).
-		Inbox:              inbox.Offer,
-		Log:                log,
-		ProtectionCooldown: cfg.CityOfflineProtectionCooldwn,
-		ProtectionMax:      cfg.CityProtectionMax,
-		DisconnectGrace:    cfg.PresenceTTL,
-		PathMaxNodes:       cfg.PathfindingMaxNodes,
-		PathMaxDistance:    cfg.PathfindingMaxDistance,
+		Inbox:               inbox.Offer,
+		Log:                 log,
+		ProtectionCooldown:  cfg.CityOfflineProtectionCooldwn,
+		ProtectionMax:       cfg.CityProtectionMax,
+		DisconnectGrace:     cfg.PresenceTTL,
+		PathMaxNodes:        cfg.PathfindingMaxNodes,
+		PathMaxDistance:     cfg.PathfindingMaxDistance,
+		CombatRepathTicks:   cfg.CombatRepathTicks,
+		CombatMaxChaseTiles: cfg.CombatMaxChaseTiles,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

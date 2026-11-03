@@ -52,6 +52,9 @@ type Deps struct {
 	// (ADR-023). Opcional: sin él, unit.gather, city.build y city.train
 	// responden INTERNAL_ERROR.
 	Economy EconomyStore
+	// Combat escribe las muertes (ADR-024 §2). Opcional: sin él, la muerte
+	// sólo existe en la RAM.
+	Combat CombatStore
 	// Inbox devuelve un comando al loop desde otra goroutine sin bloquear, y
 	// dice si cupo. Lo usan las compensaciones y respuestas de la cola de
 	// persistencia; en producción es loop.Inbox.Offer, el buzón que el loop
@@ -70,6 +73,10 @@ type Deps struct {
 	// PathMaxNodes y PathMaxDistance acotan cada consulta de pathfinding.
 	PathMaxNodes    int
 	PathMaxDistance int32
+	// CombatRepathTicks y CombatMaxChaseTiles acotan la persecución
+	// (SPEC-COMBAT-RAID §4.2). Cero: los valores por defecto, 5 y 32.
+	CombatRepathTicks   int
+	CombatMaxChaseTiles int32
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -177,6 +184,10 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleStocksFlushFailed(c)
 	case BuildingCompletePersistFailed:
 		s.handleBuildingCompletePersistFailed(c)
+	case AttackUnit:
+		s.handleAttackUnit(c)
+	case DeathPersistFailed:
+		s.handleDeathPersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -233,6 +244,7 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 		// polilíneas degeneradas de un solo punto. Una unidad que trabajaba deja
 		// de hacerlo y pierde lo cargado (RN-ECON-003).
 		s.stopWorking(u)
+		s.endEngagement(u, true)
 		s.cancelActiveMovement(u, movement.ReasonCancelledByPlayer, nowMs)
 		s.deps.Broadcaster.SendToPlayer(cmd.PlayerID, protocol.TypeUnitMoveAccepted, cmd.RequestID,
 			protocol.UnitMoveAcceptedPayload{UnitID: u.ID, MovementID: 0})
@@ -265,6 +277,23 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 		return
 	}
 
+	// Moverse termina el enfrentamiento (RN-COMBAT-008); el movimiento nuevo
+	// sustituye al de la persecución.
+	s.endEngagement(u, false)
+
+	s.beginMovement(u, origin, cmd.Target, path, nowMs, func(m *movement.Movement) {
+		s.deps.Broadcaster.SendToPlayer(cmd.PlayerID, protocol.TypeUnitMoveAccepted, cmd.RequestID,
+			protocol.UnitMoveAcceptedPayload{UnitID: u.ID, MovementID: m.ID})
+	})
+}
+
+// beginMovement pone en marcha a una unidad por una ruta ya calculada: cancela
+// su tarea y su movimiento anterior, registra el nuevo con un id del loop, lo
+// encola para la base y lo anuncia. `accepted`, si no es nil, se llama justo
+// antes de los anuncios: es donde unit.move envía su acuse.
+func (s *Simulation) beginMovement(u *unit.Unit, origin, target world.Tile, path movement.TimedPath, nowMs int64,
+	accepted func(*movement.Movement)) *movement.Movement {
+	w := s.state.World()
 	// RN-ECON-003: una orden de movimiento cancela la tarea y pierde lo
 	// cargado. La transacción del inicio borra su fila.
 	s.dropTask(u)
@@ -278,7 +307,7 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 	// la unidad existe antes de verla moverse.
 	wasHidden := u.Status == unit.StatusHidden
 
-	m := movement.New(u.ID, path, cmd.Target, nowMs)
+	m := movement.New(u.ID, path, target, nowMs)
 	// El id lo asigna el loop, no PostgreSQL: los mensajes de este mismo tick
 	// lo necesitan, y el COMMIT todavía no existe (ADR-013 §2.1).
 	m.ID = s.state.NewMovementID()
@@ -304,8 +333,9 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 		},
 	})
 
-	s.deps.Broadcaster.SendToPlayer(cmd.PlayerID, protocol.TypeUnitMoveAccepted, cmd.RequestID,
-		protocol.UnitMoveAcceptedPayload{UnitID: u.ID, MovementID: m.ID})
+	if accepted != nil {
+		accepted(m)
+	}
 
 	cx, cy := w.ChunkOf(origin.X, origin.Y)
 	if wasHidden {
@@ -317,6 +347,7 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 	}
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeUnitMovementStarted,
 		protocol.UnitMovementStartedPayload{UnitID: u.ID, Movement: toActiveMovement(m)})
+	return m
 }
 
 func (s *Simulation) handleCancelMovement(cmd CancelMovement) {
@@ -333,8 +364,10 @@ func (s *Simulation) handleCancelMovement(cmd CancelMovement) {
 			protocol.SystemErrorPayload{Code: protocol.CodeUnitNotOwned, Message: "la unidad no te pertenece"})
 		return
 	}
-	// RN-ECON-003: cancelar detiene también a una unidad que trabaja.
+	// RN-ECON-003: cancelar detiene también a una unidad que trabaja, y
+	// RN-COMBAT-008 a una que ataca o persigue.
 	s.stopWorking(u)
+	s.endEngagement(u, true)
 	s.cancelActiveMovement(u, movement.ReasonCancelledByPlayer, nowMs)
 }
 
@@ -427,6 +460,9 @@ func (s *Simulation) AdvanceMovements(nowMs int64) {
 			}
 			u.Status = unit.StatusIdle
 			s.state.MarkDirty(u.ID)
+			// Un guerrero que llega al depósito de su ciudad deja el botín
+			// (RN-COMBAT-010).
+			s.depositLoot(u, a.at)
 
 			cx, cy := s.state.World().ChunkOf(a.at.X, a.at.Y)
 			s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeUnitMovementCompleted,
@@ -768,6 +804,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushFinishes()
 	s.flushStocks()
 	s.flushCompletions()
+	s.flushDeaths()
 
 	dirty := s.state.DrainDirty()
 	if len(dirty) == 0 {
@@ -793,6 +830,11 @@ func (s *Simulation) FlushDirty() int {
 			continue
 		}
 		cp := *u
+		if cp.Status == unit.StatusAttacking {
+			// El enfrentamiento no se persiste: en la base, la unidad está
+			// parada (ADR-024 §2).
+			cp.Status = unit.StatusIdle
+		}
 		p := PartitionOf(UnitKey(u.ID), n)
 		lotes[p] = append(lotes[p], &cp)
 		total++

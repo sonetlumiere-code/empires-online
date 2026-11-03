@@ -43,7 +43,7 @@ func TestLasRestriccionesDeUnidadesRechazanFilasInvalidas(t *testing.T) {
 	// INV-UNIT-004: 0 <= hp <= max_hp, y max_hp positivo.
 	assert.Equal(t, "units_hp_check", constraintDe(t, insertar(duena, -1, 40, "IDLE")))
 	assert.Equal(t, "units_hp_within_max", constraintDe(t, insertar(duena, 41, 40, "IDLE")))
-	assert.Equal(t, "units_max_hp_check", constraintDe(t, insertar(duena, 0, 0, "IDLE")))
+	assert.Equal(t, "units_max_hp_check", constraintDe(t, insertar(duena, 0, 0, "DEAD")))
 	require.NoError(t, insertar(duena, 0, 40, "DEAD"), "los dos extremos del rango son válidos")
 	require.NoError(t, insertar(duena, 40, 40, "IDLE"))
 

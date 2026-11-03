@@ -1,0 +1,605 @@
+package simulation
+
+import (
+	"context"
+	"sort"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/diplomacy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
+	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
+	"github.com/empires-online/empires-online/services/game-server/internal/pathfinding"
+	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
+)
+
+// El combate en la simulación (SPEC-COMBAT-RAID, ADR-024).
+//
+// Una orden unit.attack abre un enfrentamiento atacante → objetivo. La fase 4
+// del tick lo hace avanzar: persigue mientras el objetivo esté lejos, se planta
+// en ATTACKING al alcanzarlo y golpea cada AttackIntervalMs. Los golpes de un
+// tick se calculan todos con el estado de fin de la fase 3 y se aplican a la
+// vez; las muertes se procesan después, en orden de víctima. El enfrentamiento
+// vive sólo en la RAM: un reinicio lo termina (ADR-024 §2).
+
+// AttackUnit ordena a una unidad militar propia atacar a una unidad ajena.
+type AttackUnit struct {
+	PlayerID  uuid.UUID
+	SessionID uuid.UUID
+	RequestID string
+	UnitID    int64
+	TargetID  int64
+}
+
+func (AttackUnit) commandType() string { return protocol.TypeUnitAttack }
+
+// DeathPersistFailed es la compensación de una muerte que no se escribió: el
+// siguiente volcado la vuelve a encolar (ADR-024 §2). La transacción es
+// idempotente: sólo actúa sobre una víctima que aún no está DEAD.
+type DeathPersistFailed struct{ Death Death }
+
+func (DeathPersistFailed) commandType() string { return "death.persist_failed" }
+
+// Death es lo que escribe la transacción de una muerte (RN-COMBAT-009).
+type Death struct {
+	VictimID       int64
+	VictimPlayer   uuid.UUID
+	KillerID       int64
+	KillerPlayer   uuid.UUID
+	CityID         *int64
+	PopulationCost int32
+	At             world.Tile
+	Tick           uint64
+	// Loot es lo que pasó al asesino y Lost lo que se perdió por falta de
+	// hueco. La carga del asesino NO va en esta transacción: viaja en el
+	// volcado de su unidad, así que una caída puede perderla pero nunca
+	// duplicarla (INV-COMBAT-003).
+	Loot int32
+	Lost int32
+}
+
+// CombatStore escribe las muertes. Opcional: sin él, la muerte sólo existe en
+// la RAM, que es lo que hacen los tests de simulación que no la miran.
+type CombatStore interface {
+	PersistDeath(ctx context.Context, d Death) error
+}
+
+// JobDeath es el nombre del trabajo de la cola que escribe una muerte.
+const JobDeath = "unit.death"
+
+// engagement es un enfrentamiento en curso.
+type engagement struct {
+	attackerID int64
+	targetID   int64
+	// nextHitAtMs es el instante del próximo golpe; 0 hasta el primer contacto.
+	nextHitAtMs int64
+	// lastRepathTick es el último tick en que la persecución recalculó ruta.
+	lastRepathTick uint64
+}
+
+// peaceTreaty es un tratado que impide atacar (RN-COMBAT-006).
+type peaceTreaty struct {
+	id        int64
+	expiresAt *time.Time
+}
+
+// combatState es lo que la simulación sabe del combate.
+type combatState struct {
+	engagements map[int64]*engagement // por atacante
+	// peace son los tratados ACTIVE de no agresión o alianza, por par canónico
+	// de jugadores. Se cargan al arrancar; hoy no hay vía para crearlos en
+	// caliente (backlog Q-04). Su caducidad se evalúa por fecha.
+	peace map[[2]uuid.UUID][]peaceTreaty
+	// pendingDeaths son las muertes cuya escritura se descartó (ADR-022).
+	pendingDeaths map[int64]Death
+}
+
+func newCombatState() combatState {
+	return combatState{
+		engagements:   make(map[int64]*engagement),
+		peace:         make(map[[2]uuid.UUID][]peaceTreaty),
+		pendingDeaths: make(map[int64]Death),
+	}
+}
+
+// SetPeaceTreaties instala los tratados vigentes que impiden atacar.
+func (s *State) SetPeaceTreaties(ts []diplomacy.Treaty) {
+	s.combat.peace = make(map[[2]uuid.UUID][]peaceTreaty)
+	for _, t := range ts {
+		if t.Status != diplomacy.StatusActive {
+			continue
+		}
+		if t.Type != diplomacy.TypeNonAggression && t.Type != diplomacy.TypeAlliance {
+			continue
+		}
+		a, b := diplomacy.CanonicalPair(t.PlayerA, t.PlayerB)
+		k := [2]uuid.UUID{a, b}
+		s.combat.peace[k] = append(s.combat.peace[k], peaceTreaty{id: t.ID, expiresAt: t.ExpiresAt})
+	}
+}
+
+// AtPeace indica si dos jugadores tienen un tratado vigente que impide atacar.
+func (s *State) AtPeace(x, y uuid.UUID, now time.Time) bool {
+	a, b := diplomacy.CanonicalPair(x, y)
+	for _, t := range s.combat.peace[[2]uuid.UUID{a, b}] {
+		if t.expiresAt == nil || now.Before(*t.expiresAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// Engaged dice a quién ataca una unidad (tests).
+func (s *State) Engaged(attackerID int64) (int64, bool) {
+	e, ok := s.combat.engagements[attackerID]
+	if !ok {
+		return 0, false
+	}
+	return e.targetID, true
+}
+
+// ─────────────────────────────────────────────────────────────
+// unit.attack
+// ─────────────────────────────────────────────────────────────
+
+func (s *Simulation) handleAttackUnit(cmd AttackUnit) {
+	nowMs := s.deps.Clock.NowMs()
+	reject := func(code, msg string) { s.economyError(cmd.PlayerID, cmd.RequestID, code, msg) }
+
+	a, ok := s.state.Unit(cmd.UnitID)
+	if !ok {
+		reject(protocol.CodeUnitNotFound, "la unidad no existe")
+		return
+	}
+	// La propiedad antes que nada, como en unit.move (INV-PLAYER-001).
+	if err := a.EnsureOwnedBy(cmd.PlayerID); err != nil {
+		reject(protocol.CodeUnitNotOwned, "la unidad no te pertenece")
+		return
+	}
+	switch a.Status {
+	case unit.StatusDead:
+		reject(protocol.CodeUnitDead, "la unidad está muerta")
+		return
+	case unit.StatusGarrisoned:
+		reject(protocol.CodeUnitGarrisoned, "la unidad está guarnecida")
+		return
+	}
+	if s.state.IsEntering(a.ID) {
+		reject(protocol.CodeUnitNotMovable, "la unidad está entrando en una ciudad")
+		return
+	}
+	def, err := unit.Lookup(a.Type)
+	if err != nil || !def.CanAttack() {
+		reject(protocol.CodeUnitNotMovable, "esta unidad no ataca")
+		return
+	}
+
+	t, ok := s.state.Unit(cmd.TargetID)
+	if !ok || !s.visibleTo(t, cmd.PlayerID) {
+		// RN-COMBAT-004: lo que el jugador no ve no existe para él.
+		reject(protocol.CodeUnitNotFound, "la unidad objetivo no existe")
+		return
+	}
+	posA := s.authoritativePosition(a, nowMs)
+	posT := s.authoritativePosition(t, nowMs)
+	if code, msg := s.attackBlocked(a, t, posA, posT, s.deps.Clock.Now()); code != "" {
+		reject(code, msg)
+		return
+	}
+
+	// Sustituye cualquier orden anterior del atacante (RN-COMBAT-008).
+	s.stopWorking(a)
+	s.endEngagement(a, false)
+	e := &engagement{attackerID: a.ID, targetID: t.ID, lastRepathTick: s.state.Tick()}
+
+	if chebyshevTiles(posA, posT) > def.AttackRange {
+		path, perr := s.chasePath(a, posA, posT, def)
+		if perr != nil {
+			reject(pathErrorCode(perr), perr.Error())
+			return
+		}
+		s.state.combat.engagements[a.ID] = e
+		s.beginMovement(a, posA, posT, path, nowMs, nil)
+		return
+	}
+	s.state.combat.engagements[a.ID] = e
+	s.startAttacking(a, e, nowMs)
+}
+
+// visibleTo indica si un jugador ve una unidad: la propia siempre; la ajena
+// si está en el mapa y no oculta (INV-SAFE-004, INV-GARR-006).
+func (s *Simulation) visibleTo(u *unit.Unit, playerID uuid.UUID) bool {
+	if u.PlayerID == playerID {
+		return true
+	}
+	switch u.Status {
+	case unit.StatusHidden, unit.StatusGarrisoned, unit.StatusDead:
+		return false
+	}
+	return !s.state.IsEntering(u.ID)
+}
+
+// attackBlocked devuelve el código que impide el golpe, o "" si nada lo
+// impide. Es el mismo predicado al ordenar y en cada golpe (INV-COMBAT-002),
+// y el punto único de la regla de protección para la acción hostil
+// (INV-CITY-006, ADR-016).
+func (s *Simulation) attackBlocked(a, t *unit.Unit, posA, posT world.Tile, now time.Time) (string, string) {
+	if t.PlayerID == a.PlayerID {
+		return protocol.CodeInvalidTarget, "no puedes atacar tus propias unidades"
+	}
+	if !s.visibleTo(t, a.PlayerID) {
+		return protocol.CodeUnitNotFound, "la unidad objetivo no existe"
+	}
+	if c, ok := s.state.CityOf(t.PlayerID); ok && c.ProtectedAt(now) {
+		return protocol.CodeCityProtected, "el dueño de esa unidad está protegido"
+	}
+	if s.state.AtPeace(a.PlayerID, t.PlayerID, now) {
+		return protocol.CodeInvalidTarget, "un tratado de paz impide atacar a ese jugador"
+	}
+	if _, ok := s.state.SafeZoneAt(posA.X, posA.Y); ok {
+		return protocol.CodeInvalidTarget, "no se ataca desde una zona segura"
+	}
+	if _, ok := s.state.SafeZoneAt(posT.X, posT.Y); ok {
+		return protocol.CodeInvalidTarget, "no se ataca dentro de una zona segura"
+	}
+	return "", ""
+}
+
+// chasePath calcula la ruta de persecución hasta el tile del objetivo.
+func (s *Simulation) chasePath(a *unit.Unit, from, to world.Tile, def unit.Definition) (movement.TimedPath, error) {
+	start := time.Now() //lint:reloj-real mide la duración del A* para la métrica; no afecta al resultado
+	tiles, err := s.deps.Pathfinder.FindPath(context.Background(), s.state.World(), from, to, pathfinding.Options{
+		MaxNodes:    s.deps.PathMaxNodes,
+		MaxDistance: s.deps.PathMaxDistance,
+	})
+	s.LastPathfindingCalls++
+	s.LastPathfindingTime += time.Since(start) //lint:reloj-real ídem
+	if err != nil {
+		return movement.TimedPath{}, err
+	}
+	return movement.BuildTimedPath(tiles, s.state.World(), def.BaseMsPerTile)
+}
+
+// startAttacking planta al atacante en ATTACKING. El primer golpe cae en el
+// instante del contacto.
+func (s *Simulation) startAttacking(a *unit.Unit, e *engagement, nowMs int64) {
+	if _, moving := s.state.Movement(a.ID); moving {
+		s.cancelActiveMovement(a, movement.ReasonReplaced, nowMs)
+	}
+	if e.nextHitAtMs == 0 || e.nextHitAtMs < nowMs {
+		e.nextHitAtMs = nowMs
+	}
+	if a.Status == unit.StatusAttacking {
+		return
+	}
+	a.Status = unit.StatusAttacking
+	s.state.MarkDirty(a.ID)
+	s.broadcastStatus(a)
+}
+
+// endEngagement termina el enfrentamiento de un atacante, si lo tiene. Con
+// stop, además lo deja parado e IDLE: es el final por una causa del mundo
+// (RN-COMBAT-008). Sin stop, quien llama le da a continuación otra orden.
+func (s *Simulation) endEngagement(a *unit.Unit, stop bool) {
+	if _, ok := s.state.combat.engagements[a.ID]; !ok {
+		return
+	}
+	delete(s.state.combat.engagements, a.ID)
+	if !stop {
+		return
+	}
+	if _, moving := s.state.Movement(a.ID); moving {
+		s.cancelActiveMovement(a, movement.ReasonServer, s.deps.Clock.NowMs())
+	}
+	if a.Status == unit.StatusAttacking {
+		a.Status = unit.StatusIdle
+		s.state.MarkDirty(a.ID)
+		s.broadcastStatus(a)
+	}
+}
+
+func (s *Simulation) broadcastStatus(u *unit.Unit) {
+	status := string(u.Status)
+	cx, cy := s.state.World().ChunkOf(u.X, u.Y)
+	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityUpdate,
+		protocol.EntityUpdatePayload{ID: u.ID, Status: &status})
+}
+
+// ─────────────────────────────────────────────────────────────
+// Fase 4
+// ─────────────────────────────────────────────────────────────
+
+type hit struct {
+	attacker *unit.Unit
+	target   *unit.Unit
+	damage   int32
+}
+
+// ResolveCombat es la fase 4 del tick (ADR-024 §1).
+func (s *Simulation) ResolveCombat(nowMs int64) {
+	if len(s.state.combat.engagements) == 0 {
+		return
+	}
+	now := time.UnixMilli(nowMs).UTC()
+	ids := make([]int64, 0, len(s.state.combat.engagements))
+	for id := range s.state.combat.engagements {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// 1. Calcular, con el estado de fin de la fase 3.
+	var hits []hit
+	for _, id := range ids {
+		e, ok := s.state.combat.engagements[id]
+		if !ok {
+			continue
+		}
+		a, ok := s.state.Unit(id)
+		if !ok || !a.IsAlive() {
+			delete(s.state.combat.engagements, id)
+			continue
+		}
+		t, ok := s.state.Unit(e.targetID)
+		if !ok || !t.IsAlive() {
+			s.endEngagement(a, true)
+			continue
+		}
+		def, err := unit.Lookup(a.Type)
+		if err != nil || !def.CanAttack() {
+			s.endEngagement(a, true)
+			continue
+		}
+		posA := s.authoritativePosition(a, nowMs)
+		posT := s.authoritativePosition(t, nowMs)
+		if code, _ := s.attackBlocked(a, t, posA, posT, now); code != "" {
+			s.endEngagement(a, true)
+			continue
+		}
+		d := chebyshevTiles(posA, posT)
+		if d > s.maxChase() {
+			s.endEngagement(a, true)
+			continue
+		}
+		if d > def.AttackRange {
+			s.chase(a, e, posA, posT, def, nowMs)
+			continue
+		}
+		s.startAttacking(a, e, nowMs)
+		if nowMs >= e.nextHitAtMs {
+			hits = append(hits, hit{attacker: a, target: t, damage: def.AttackDamage})
+			e.nextHitAtMs += def.AttackIntervalMs
+		}
+	}
+
+	// 2. Aplicar todos a la vez. A igualdad, el golpe mortal es el del
+	// atacante de id menor: el orden de cálculo, que es estable.
+	killers := make(map[int64]*unit.Unit)
+	for _, h := range hits {
+		if h.target.HP <= 0 {
+			continue
+		}
+		h.target.HP -= h.damage
+		if h.target.HP < 0 {
+			h.target.HP = 0
+		}
+		s.state.MarkDirty(h.target.ID)
+		if h.target.HP == 0 {
+			killers[h.target.ID] = h.attacker
+		}
+		hp := h.target.HP
+		cx, cy := s.state.World().ChunkOf(h.target.X, h.target.Y)
+		s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityUpdate,
+			protocol.EntityUpdatePayload{ID: h.target.ID, HP: &hp})
+	}
+
+	// 3. Las muertes, en orden de víctima.
+	victims := make([]int64, 0, len(killers))
+	for id := range killers {
+		victims = append(victims, id)
+	}
+	sort.Slice(victims, func(i, j int) bool { return victims[i] < victims[j] })
+	for _, id := range victims {
+		if v, ok := s.state.Unit(id); ok {
+			s.kill(v, killers[id], nowMs)
+		}
+	}
+}
+
+func (s *Simulation) maxChase() int32 {
+	if s.deps.CombatMaxChaseTiles > 0 {
+		return s.deps.CombatMaxChaseTiles
+	}
+	return 32
+}
+
+// chase lleva al atacante hacia el objetivo. Recalcula la ruta sólo si el
+// objetivo ya no está al alcance del final de la actual, y como mucho cada
+// CombatRepathTicks.
+func (s *Simulation) chase(a *unit.Unit, e *engagement, posA, posT world.Tile, def unit.Definition, nowMs int64) {
+	if a.Status == unit.StatusAttacking {
+		a.Status = unit.StatusIdle
+		s.state.MarkDirty(a.ID)
+		s.broadcastStatus(a)
+	}
+	if m, moving := s.state.Movement(a.ID); moving && chebyshevTiles(m.Target, posT) <= def.AttackRange {
+		return
+	}
+	every := uint64(s.deps.CombatRepathTicks)
+	if every == 0 {
+		every = 5
+	}
+	_, moving := s.state.Movement(a.ID)
+	if moving && s.state.Tick()-e.lastRepathTick < every {
+		return
+	}
+	e.lastRepathTick = s.state.Tick()
+	path, err := s.chasePath(a, posA, posT, def)
+	if err != nil {
+		s.endEngagement(a, true)
+		return
+	}
+	s.beginMovement(a, posA, posT, path, nowMs, nil)
+}
+
+// kill aplica una muerte (RN-COMBAT-009) y el botín (RN-COMBAT-010).
+func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
+	at := s.authoritativePosition(v, nowMs)
+	// Su movimiento y su tarea mueren con ella; la transacción los cierra.
+	s.state.ClearMovement(v.ID)
+	carried := v.Loot
+	if e, ok := s.state.tasks[v.ID]; ok {
+		carried += e.Carrying
+		delete(s.state.tasks, v.ID)
+	}
+	delete(s.state.combat.engagements, v.ID)
+
+	// INV-COMBAT-003: el botín es min(carga de la víctima, hueco del asesino).
+	var gained int32
+	if killer != nil && killer.IsAlive() && carried > 0 {
+		if def, err := unit.Lookup(killer.Type); err == nil {
+			room := def.LootCarry - killer.Loot
+			if room > 0 {
+				gained = min(carried, room)
+			}
+		}
+	}
+
+	v.HP = 0
+	v.Status = unit.StatusDead
+	v.Loot = 0
+	v.SetTile(at)
+
+	d := Death{
+		VictimID: v.ID, VictimPlayer: v.PlayerID, At: at, Tick: s.state.Tick(),
+		Loot: gained, Lost: carried - gained, CityID: v.CityID,
+	}
+	if def, err := unit.Lookup(v.Type); err == nil {
+		d.PopulationCost = def.PopulationCost
+	}
+	if killer != nil {
+		d.KillerID, d.KillerPlayer = killer.ID, killer.PlayerID
+	}
+
+	// La población de su ciudad (INV-CITY-017).
+	if c, ok := s.cityOfUnit(v); ok {
+		c.Population -= d.PopulationCost
+		if c.Population < 0 {
+			c.Population = 0
+		}
+		pop := c.Population
+		s.broadcastCity(c, protocol.CityUpdatePayload{Population: &pop})
+	}
+
+	cx, cy := s.state.World().ChunkOf(at.X, at.Y)
+	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityDespawn,
+		protocol.EntityDespawnPayload{ID: v.ID, Reason: protocol.DespawnDead})
+	s.state.RemoveUnit(v.ID)
+
+	// Quien atacaba a la víctima se queda sin objetivo.
+	for _, id := range s.attackersOf(v.ID) {
+		if a, ok := s.state.Unit(id); ok {
+			s.endEngagement(a, true)
+		}
+	}
+
+	if gained > 0 {
+		killer.Loot += gained
+		s.state.MarkDirty(killer.ID)
+		loot := killer.Loot
+		kx, ky := s.state.World().ChunkOf(killer.X, killer.Y)
+		s.deps.Broadcaster.BroadcastChunk(kx, ky, protocol.TypeEntityUpdate,
+			protocol.EntityUpdatePayload{ID: killer.ID, Carrying: &loot})
+	}
+	s.deps.Log.Info("unidad muerta", "unit_id", v.ID, "killer_id", d.KillerID, "loot", gained, "lost", d.Lost)
+	s.submitDeath(d)
+}
+
+func (s *Simulation) attackersOf(targetID int64) []int64 {
+	var out []int64
+	for id, e := range s.state.combat.engagements {
+		if e.targetID == targetID {
+			out = append(out, id)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func (s *Simulation) submitDeath(d Death) {
+	if s.deps.Combat == nil {
+		return
+	}
+	store := s.deps.Combat
+	s.deps.Persister.Submit(Job{
+		Name: JobDeath,
+		Key:  UnitKey(d.VictimID),
+		Run:  func(ctx context.Context) error { return store.PersistDeath(ctx, d) },
+		OnPermanentFailure: func(err error) {
+			s.deps.Log.Error("no se pudo escribir la muerte; se reintentará en el siguiente volcado",
+				"err", err, "unit_id", d.VictimID)
+			s.reinject(DeathPersistFailed{Death: d})
+		},
+	})
+}
+
+func (s *Simulation) handleDeathPersistFailed(cmd DeathPersistFailed) {
+	s.state.combat.pendingDeaths[cmd.Death.VictimID] = cmd.Death
+}
+
+// flushDeaths reencola las muertes descartadas, en orden de víctima.
+func (s *Simulation) flushDeaths() {
+	if len(s.state.combat.pendingDeaths) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(s.state.combat.pendingDeaths))
+	for id := range s.state.combat.pendingDeaths {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	pending := s.state.combat.pendingDeaths
+	s.state.combat.pendingDeaths = make(map[int64]Death)
+	for _, id := range ids {
+		s.submitDeath(pending[id])
+	}
+}
+
+// depositLoot deja el botín de una unidad que acaba de pararse en el tile de
+// depósito de su ciudad (RN-COMBAT-010): lo que suma la ciudad es lo que
+// pierde la unidad (INV-COMBAT-003).
+func (s *Simulation) depositLoot(u *unit.Unit, at world.Tile) {
+	if u.Loot <= 0 {
+		return
+	}
+	c, ok := s.cityOfUnit(u)
+	if !ok {
+		return
+	}
+	depot, ok := s.depositTile(c)
+	if !ok || depot != at {
+		return
+	}
+	amount := u.Loot
+	u.Loot = 0
+	s.state.MarkDirty(u.ID)
+	s.deposit(c, amount)
+	cero := int32(0)
+	cx, cy := s.state.World().ChunkOf(u.X, u.Y)
+	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityUpdate,
+		protocol.EntityUpdatePayload{ID: u.ID, Carrying: &cero})
+}
+
+func chebyshevTiles(a, b world.Tile) int32 {
+	dx, dy := a.X-b.X, a.Y-b.Y
+	if dx < 0 {
+		dx = -dx
+	}
+	if dy < 0 {
+		dy = -dy
+	}
+	if dx > dy {
+		return dx
+	}
+	return dy
+}

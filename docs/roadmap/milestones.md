@@ -1076,7 +1076,7 @@ Todos existen y pasan salvo el marcado como pendiente.
   `contract_test.go`, que sólo comprueba que el nombre del tipo aparece en el esquema.
 - ✔ *unit*: todo mensaje cliente→servidor está clasificado como acción de mundo o de sesión, y ninguna
   acción del MVP es hostil ni se restringe por territorio (`TestTodaAccionDelCatalogoEstaClasificada`,
-  `TestNingunaAccionDelMVPEsHostilNiSeRestringePorTerritorio`).
+  `TestSoloElAtaqueEsHostilYNingunaSeRestringePorTerritorio`).
 
 ### Documentación actualizada al cerrar
 
@@ -1234,9 +1234,9 @@ nunca el cliente. `EJE-PERSIST` para treaties y garrisons.
 
 ## E1 — Madera
 
-**Estado: EN CURSO — implementado en la rama `claude/slice-madera-0b24a4` (2026-10-27) con la suite completa en
-verde (unit, integration contra PostgreSQL y Redis reales, contract, e2e, Vitest y `next build`); falta verificar
-en vivo el cliente y el paso de recolección del humo, y fusionar.** Primer milestone después del vertical slice, y el primero de la fase «Economy» de
+**Estado: HECHO (2026-11-02)** — fusionado en `main` con la CI en verde y probado en vivo: humo con recolección,
+casa, aldeano, reconexión y reinicio a mitad de viaje, y desconexión recolectando. La prueba en vivo encontró que
+una ciudad podía nacer sin bosque al alcance, corregido con `RN-CITY-023`. Primer milestone después del vertical slice, y el primero de la fase «Economy» de
 [roadmap.md](roadmap.md) §5. Su contrato es [SPEC-ECON-WOOD](../specs/economy-wood.md), aceptada el
 2026-10-27 con sus seis decisiones de producto.
 
@@ -1275,13 +1275,11 @@ madera.
    códigos `INSUFFICIENT_RESOURCES` y `CITY_BUSY`.
 10. **HECHO** — Manejadores WebSocket de los tres comandos, clasificados según
     [ADR-016](../decisions/ADR-016-foreign-territory-actions.md).
-11. **PARCIAL** — Cliente: contador de madera, botones «Casa» y «Aldeano», orden de recolección sobre un
-    bosque, edificios y unidad `WORKING` en la escena. Implementado con tests de lo puro, del store y de la
-    proyección ([../architecture/frontend.md](../architecture/frontend.md) §4.4); la escena y el HUD no se han
-    visto en un navegador contra un servidor vivo.
-12. **PARCIAL** — Escenario golden `madera` (**hecho**, `TestLosEscenariosReproducenSuGolden`) y un viaje de
-    recolección completo en `scripts/smoke.mjs` (escrito, con `elegirBosque` probado; sin ejecutar contra un
-    servidor vivo).
+11. **HECHO** — Cliente: contador de madera, botones «Casa» y «Aldeano», orden de recolección sobre un
+    bosque, edificios y unidad `WORKING` en la escena ([../architecture/frontend.md](../architecture/frontend.md)
+    §4.4), probado en el navegador contra un servidor vivo el 2026-11-02.
+12. **HECHO** — Escenario golden `madera` (`TestLosEscenariosReproducenSuGolden`) y un viaje de recolección
+    completo en `scripts/smoke.mjs`, en verde contra un servidor vivo.
 
 ### Tests
 
@@ -1371,3 +1369,30 @@ terminado y en la rama principal.
 - [../architecture/game-loop.md](../architecture/game-loop.md) — fases del tick.
 - [../specs/websocket-protocol.md](../specs/websocket-protocol.md) — contrato de red.
 - [../invariants/README.md](../invariants/README.md) — registro único de invariantes.
+
+---
+
+## E2 — Incursión
+
+**Estado: EN CURSO (2026-11-02)** — implementación en la rama `claude/slice-incursion`. Contrato:
+[SPEC-COMBAT-RAID](../specs/combat-raid.md), aceptada el 2026-11-02 con sus ocho decisiones de producto, y
+[ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md).
+
+**Objetivo.** Que salir de casa cueste algo: una unidad militar entrenada con madera puede matar a una unidad
+enemiga y llevarse lo que cargaba, y la protección, las Safe Zones, el ocultamiento y los tratados por fin
+protegen de algo.
+
+**Alcance.** El tope de la protección offline y el reanclaje al arrancar (prerrequisito, DEBT-02); `WARRIOR`;
+`unit.attack` con persecución; resolución simultánea en la fase 4; HP, `DEAD` y botín. **No entra** (spec §2):
+atacar edificios o ciudades, asedio, respuesta automática, daño a distancia, curación.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-024 y la familia `INV-COMBAT`, antes que el código.
+2. **HECHO** — Tope de la protección (`EO_CITY_PROTECTION_MAX_HOURS`) y `Simulation.AfterBoot`.
+3. **HECHO** — Protocolo: `unit.attack`, `WARRIOR`, `ATTACKING`.
+4. **HECHO** — Simulación: orden, persecución, fase 4, muerte y botín; `unit.attack` es la primera acción hostil.
+5. **HECHO** — Persistencia: migración `000007`, transacción de muerte, `hp` y botín en el volcado.
+6. **PENDIENTE** — Cliente: botón «Guerrero», orden de ataque con clic sobre una unidad enemiga, vida y
+   `ATTACKING` en la escena; incursión en `scripts/smoke.mjs`.
+7. **PENDIENTE** — Prueba en vivo y verificación completa.

@@ -36,12 +36,14 @@ desde su propio valor, no desde el tick, igual que la tarea de recolección se a
 
 | Dato | Cuándo | Por qué |
 |---|---|---|
-| La muerte: víctima `DEAD` y `hp = 0`, su movimiento cerrado y su tarea borrada, población de su ciudad −1, botín del asesino y víctima sin carga, `world_events` `UnitKilled` | Una transacción, encolada en el tick de la muerte | Es irreversible y cruza tres tablas: una muerte a medias deja población fantasma o madera duplicada |
+| La muerte: víctima `DEAD`, `hp = 0` y sin carga, su movimiento cerrado y su tarea borrada, población de su ciudad −1 (por delta), `world_events` `UnitKilled` | Una transacción, encolada en el tick de la muerte con la clave de la víctima | Es irreversible y cruza tres tablas: una muerte a medias deja población fantasma o una víctima resucitable |
+| La carga ganada por el asesino | En el volcado de su unidad, con su clave | Escribirla en la transacción de la víctima la desordenaría respecto de las demás escrituras del asesino: un depósito posterior podría quedar debajo y duplicar madera. En el volcado, una caída puede perderla, nunca duplicarla (`INV-COMBAT-003`) |
 | `hp` de las heridas y `loot` del guerrero | En el volcado de unidades | Cambian varias veces por segundo; perder un intervalo de volcado de daño en una caída es aceptable, perder una muerte no |
 | El enfrentamiento (`atacante → objetivo`, `next_hit_at_ms`) y el estado `ATTACKING` | Nunca | Es intención del jugador, no estado del mundo. El volcado escribe `ATTACKING` como `IDLE`, y un reinicio termina los enfrentamientos; un tramo de persecución en curso se reanuda como un movimiento normal |
 
-La muerte es optimista, como la finalización de una casa (ADR-023 §5): la RAM y los mensajes van primero. Si la
-transacción se descarta, la compensación vuelve al loop y el siguiente volcado la reencola, idempotente porque
+La muerte es optimista, como la finalización de una casa (ADR-023 §5): la RAM y los mensajes van primero, y la
+unidad muerta sale de la RAM. El volcado no toca una fila ya `DEAD`, así que ninguna escritura tardía la resucita.
+Si la transacción se descarta, la compensación vuelve al loop y el siguiente volcado la reencola, idempotente porque
 sólo actúa sobre una víctima que aún no está `DEAD`.
 
 El depósito del botín sigue el camino del depósito de la recolección: suma al stock en RAM y llega a la base en

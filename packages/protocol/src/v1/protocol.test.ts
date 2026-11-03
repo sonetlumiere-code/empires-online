@@ -115,6 +115,25 @@ describe('comandos de guarnición', () => {
   });
 });
 
+describe('combate (SPEC-COMBAT-RAID)', () => {
+  it('acepta unit.attack con atacante y objetivo', () => {
+    const result = parseClientMessage({
+      v: 1, type: 'unit.attack', requestId: uuid, payload: { unitId: 42, targetUnitId: 77 },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('unit.attack no admite que el cliente aporte daño, vida ni botín', () => {
+    for (const extra of [{ damage: 99 }, { hp: 0 }, { loot: 10 }, { target: { x: 1, y: 1 } }]) {
+      const result = parseClientMessage({
+        v: 1, type: 'unit.attack', requestId: uuid,
+        payload: { unitId: 42, targetUnitId: 77, ...extra },
+      });
+      expect(result).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+});
+
 describe('comandos de economía (SPEC-ECON-WOOD)', () => {
   it('acepta unit.gather con unidad y bosque', () => {
     const result = parseClientMessage({

@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`. Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -451,13 +451,17 @@ CREATE TABLE units (
     status     text        NOT NULL DEFAULT 'IDLE',
     chunk_x    integer     NOT NULL,
     chunk_y    integer     NOT NULL,
+    loot       integer     NOT NULL DEFAULT 0,      -- desde 000007 (RN-COMBAT-010)
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
 
     CONSTRAINT units_status_valid
         CHECK (status IN ('IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'DEAD')),  -- WORKING desde 000006
     -- INV-UNIT-004: hp nunca supera max_hp.
-    CONSTRAINT units_hp_within_max CHECK (hp <= max_hp)
+    CONSTRAINT units_hp_within_max CHECK (hp <= max_hp),
+    -- Desde 000007: el botín no es negativo, e INV-COMBAT-001 ata la muerte a la vida.
+    CONSTRAINT units_loot_non_negative CHECK (loot >= 0),
+    CONSTRAINT units_dead_iff_zero_hp CHECK ((status = 'DEAD') = (hp = 0))
 );
 
 CREATE TRIGGER units_set_updated_at
@@ -474,9 +478,10 @@ CREATE INDEX units_chunk_idx  ON units (chunk_x, chunk_y) WHERE status <> 'DEAD'
 |---|---|---|
 | `player_id` | `uuid` FK CASCADE | Dueño. Base de la validación `UNIT_NOT_OWNED` |
 | `city_id` | `bigint` FK SET NULL, anulable | Ciudad de origen / hogar. `SET NULL` porque una unidad puede sobrevivir a la destrucción de su ciudad; nunca se borra una unidad en cascada desde `cities` |
-| `unit_type` | `text` | `VILLAGER` en MVP. **Sin `CHECK` de dominio**: el catálogo de tipos vive en `internal/domain/unit` y `unit.Lookup` rechaza un tipo desconocido antes de que llegue a la base. Añadir un tipo no exige migración |
+| `unit_type` | `text` | `VILLAGER` y, desde E2, `WARRIOR`. **Sin `CHECK` de dominio**: el catálogo de tipos vive en `internal/domain/unit` y `unit.Lookup` rechaza un tipo desconocido antes de que llegue a la base. Añadir un tipo no exige migración |
 | `x`, `y` | `integer` | **Posición consolidada.** Autoritativa sólo cuando `status <> 'MOVING'`. Durante un movimiento la posición autoritativa se deriva de la polilínea (§10); esta columna es entonces el último punto volcado por el flush periódico |
-| `hp`, `max_hp` | `integer` + CHECK | `VILLAGER`: 40/40. `hp >= 0`, `max_hp > 0` y `units_hp_within_max` materializa `INV-UNIT-004` |
+| `hp`, `max_hp` | `integer` + CHECK | `VILLAGER`: 40/40; `WARRIOR`: 60/60. `hp >= 0`, `max_hp > 0` y `units_hp_within_max` materializa `INV-UNIT-004`; `units_dead_iff_zero_hp` (desde `000007`), `INV-COMBAT-001`. El `hp` de una herida llega en el volcado periódico (ADR-024 §2) |
+| `loot` | `integer` + CHECK | Desde `000007`: el botín que carga un `WARRIOR` hasta depositarlo (`RN-COMBAT-010`). La carga de un aldeano vive en `unit_tasks.carrying`. Llega en el volcado; la transacción de muerte lo pone a 0 en la víctima |
 | `status` | `text` + CHECK | `IDLE`, `MOVING`, `GARRISONED`, `HIDDEN`, `WORKING`, `DEAD`. `MOVING` implica un `unit_movements` `ACTIVE` (`INV-UNIT-005`); `WORKING` (desde `000006`) implica una fila de `unit_tasks` en fase `WORKING` (`INV-ECON-003`) |
 | `chunk_x`, `chunk_y` | `integer` | Chunk desnormalizado para interest management, calculado por la aplicación como `x / chunk_size` (no `x >> 5`: `EO_CHUNK_SIZE` es configuración y no tiene por qué ser potencia de dos). Es el índice espacial del MVP; ver [indexing.md](./indexing.md) |
 
@@ -998,7 +1003,7 @@ CREATE TABLE city_productions (
     request_id      text        NOT NULL,
     unit_id         bigint      REFERENCES units (id) ON DELETE CASCADE,
     created_at      timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT city_productions_unit_type_valid CHECK (unit_type IN ('VILLAGER'))
+    CONSTRAINT city_productions_unit_type_valid CHECK (unit_type IN ('VILLAGER', 'WARRIOR'))  -- WARRIOR desde 000007
 );
 ```
 

@@ -100,6 +100,10 @@ type State struct {
 	pendingBuilds      map[world.Tile]pendingBuild
 	pendingCompletions map[int64]struct{}
 
+	// Combate (SPEC-COMBAT-RAID, ADR-024): enfrentamientos, tratados de paz y
+	// muertes por reescribir.
+	combat combatState
+
 	tick uint64
 }
 
@@ -128,6 +132,7 @@ func NewState(w *world.World) *State {
 		buildings:          make(map[int64]*building.Building),
 		buildingAt:         make(map[world.Tile]int64),
 		pendingBuilds:      make(map[world.Tile]pendingBuild),
+		combat:             newCombatState(),
 		pendingCompletions: make(map[int64]struct{}),
 	}
 }

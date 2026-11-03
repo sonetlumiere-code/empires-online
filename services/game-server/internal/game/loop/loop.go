@@ -154,7 +154,8 @@ func (l *Loop) Step(nowMs int64) {
 	// Fase 3: avanzar el movimiento.
 	l.sim.AdvanceMovements(nowMs)
 
-	// Fase 4: resolver simulación (combate — fuera del MVP).
+	// Fase 4: resolver simulación: el combate (ADR-024).
+	l.sim.ResolveCombat(nowMs)
 
 	// Fase 5: temporizadores y eventos programados.
 	l.sim.ProcessTimers(time.UnixMilli(nowMs).UTC())

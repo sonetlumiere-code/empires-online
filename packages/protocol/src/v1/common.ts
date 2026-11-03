@@ -53,10 +53,10 @@ export type TimedPath = z.infer<typeof TimedPath>;
  * `WORKING`: parada sobre el tile de un recurso hasta que vence el temporizador de
  * su tarea. Ver ../../../docs/specs/economy-wood.md (RN-ECON-003).
  */
-export const UnitStatus = z.enum(['IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'DEAD']);
+export const UnitStatus = z.enum(['IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'ATTACKING', 'DEAD']);
 export type UnitStatus = z.infer<typeof UnitStatus>;
 
-export const UnitType = z.enum(['VILLAGER']);
+export const UnitType = z.enum(['VILLAGER', 'WARRIOR']);
 export type UnitType = z.infer<typeof UnitType>;
 
 export const PresenceState = z.enum(['ONLINE', 'OFFLINE_PENDING', 'PROTECTED']);

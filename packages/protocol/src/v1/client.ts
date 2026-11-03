@@ -151,6 +151,22 @@ export const CityTrain = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * Ordena a una unidad militar propia atacar a una unidad de otro jugador: la
+ * persigue y la golpea hasta que muera o el enfrentamiento termine. Es la primera
+ * acción hostil (ADR-016). El daño, el alcance y el botín los decide el servidor.
+ * Ver ../../../docs/specs/combat-raid.md
+ */
+export const UnitAttack = z.object({
+  v: V,
+  type: z.literal('unit.attack'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+    targetUnitId: EntityId,
+  }).strict(),
+}).strict();
+
 /** Unión discriminada de todos los mensajes cliente → servidor de la v1. */
 export const ClientMessage = z.discriminatedUnion('type', [
   SessionHello,
@@ -163,6 +179,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   UnitGather,
   CityBuild,
   CityTrain,
+  UnitAttack,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -176,6 +193,7 @@ export type UnitUngarrison = z.infer<typeof UnitUngarrison>;
 export type UnitGather = z.infer<typeof UnitGather>;
 export type CityBuild = z.infer<typeof CityBuild>;
 export type CityTrain = z.infer<typeof CityTrain>;
+export type UnitAttack = z.infer<typeof UnitAttack>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -188,6 +206,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'unit.gather',
   'city.build',
   'city.train',
+  'unit.attack',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

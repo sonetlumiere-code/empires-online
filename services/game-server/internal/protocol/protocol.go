@@ -33,6 +33,8 @@ const (
 	TypeUnitGather = "unit.gather"
 	TypeCityBuild  = "city.build"
 	TypeCityTrain  = "city.train"
+	// Combate (SPEC-COMBAT-RAID).
+	TypeUnitAttack = "unit.attack"
 )
 
 // Mensajes servidor → cliente.
@@ -67,6 +69,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeUnitGather:     true,
 	TypeCityBuild:      true,
 	TypeCityTrain:      true,
+	TypeUnitAttack:     true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -285,6 +288,13 @@ type UnitUngarrisonPayload struct {
 type UnitGatherPayload struct {
 	UnitID int64 `json:"unitId"`
 	Target Tile  `json:"target"`
+}
+
+// UnitAttackPayload ordena a una unidad militar propia atacar a una unidad
+// ajena. Sólo quién y a quién: la ruta, el daño y el botín son del servidor.
+type UnitAttackPayload struct {
+	UnitID       int64 `json:"unitId"`
+	TargetUnitID int64 `json:"targetUnitId"`
 }
 
 // CityBuildPayload encarga un edificio en un tile de la zona urbana.

@@ -499,6 +499,25 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			UnitID:    p.UnitID,
 		})
 
+	// Combate (SPEC-COMBAT-RAID). Sólo quién y a quién: la ruta, el daño y el
+	// botín son del servidor (INV-SEC-001); los rechazos llegan por system.error.
+	case protocol.TypeUnitAttack:
+		var p protocol.UnitAttackPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.AttackUnit{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+			TargetID:  p.TargetUnitID,
+		})
+
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
 	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del
 	// servidor (INV-SEC-001); los rechazos llegan por system.error.

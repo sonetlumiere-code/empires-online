@@ -464,7 +464,7 @@ S4 es la razón de existir del tiempo como valor: con reloj real, comprobar los 
 | # | Test | Escenario | Resultado esperado |
 |---|---|---|---|
 | **S7** | `TestProteccionIndefinidaMientrasSigaOffline` | Entrar en `PROTECTED` | `ProtectionUntil == nil`: en MVP la protección no caduca sola mientras el jugador siga offline (canon §9). Hoy sólo se comprueba el reverso —que reconectar lo limpia— desde `simulation` **Estado (2026-10-21):** ○ sin test; el código lo cumple (nadie asigna `ProtectionUntil`). |
-| **S8** | `TestCiudadProtegidaRechazaAccionesProhibidas` | Acción prohibida sobre ciudad `PROTECTED` | `CITY_PROTECTED`, sin mutación **Estado (2026-10-21):** ○ sin test: en el MVP ninguna acción es hostil y `CITY_PROTECTED` no se emite; lo fija `TestNingunaAccionDelMVPEsHostilNiSeRestringePorTerritorio` ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). |
+| **S8** | `TestCiudadProtegidaRechazaAccionesProhibidas` | Acción prohibida sobre ciudad `PROTECTED` | `CITY_PROTECTED`, sin mutación **Estado (2026-11-02):** ✓ con la primera acción hostil, `unit.attack`: `TestRechazosDelAtaque` (caso «dueño protegido») y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento`, en `internal/game/simulation` ([../specs/combat-raid.md](../specs/combat-raid.md)). |
 
 El ciclo completo en el tiempo (desconexión → margen de 30 s → `OFFLINE_PENDING` → cooldown de 300 s → `PROTECTED` → reconexión) **sí está verificado hoy**, pero en el nivel `simulation`, porque es el game loop quien decide la transición: ver `TestCicloDePresenciaYProteccion` en [simulation-tests.md](./simulation-tests.md) §4.4.
 

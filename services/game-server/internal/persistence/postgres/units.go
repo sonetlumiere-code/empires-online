@@ -21,7 +21,7 @@ func NewUnitRepo(s *Store, chunkSize int32) *UnitRepo {
 	return &UnitRepo{store: s, chunkSize: chunkSize}
 }
 
-const unitColumns = `id, player_id, city_id, unit_type, x, y, hp, max_hp, status`
+const unitColumns = `id, player_id, city_id, unit_type, x, y, hp, max_hp, status, loot`
 
 // ListAlive carga todas las unidades vivas del mundo.
 //
@@ -89,6 +89,10 @@ type PositionUpdate struct {
 	X      int32
 	Y      int32
 	Status unit.Status
+	// HP y Loot son opcionales: nil deja la columna como está. El volcado
+	// periódico los lleva (ADR-024 §2); los cierres de movimiento, no.
+	HP   *int32
+	Loot *int32
 }
 
 // FlushPositions escribe un lote de posiciones en UNA sola consulta.
@@ -108,8 +112,11 @@ func (r *UnitRepo) FlushPositions(ctx context.Context, db DB, updates []Position
 	statuses := make([]string, len(updates))
 	chunkXs := make([]int32, len(updates))
 	chunkYs := make([]int32, len(updates))
+	hps := make([]*int32, len(updates))
+	loots := make([]*int32, len(updates))
 
 	for i, u := range updates {
+		hps[i], loots[i] = u.HP, u.Loot
 		ids[i] = u.UnitID
 		xs[i] = u.X
 		ys[i] = u.Y
@@ -122,13 +129,14 @@ func (r *UnitRepo) FlushPositions(ctx context.Context, db DB, updates []Position
 	// una única ida y vuelta y un único plan de ejecución.
 	_, err := db.Exec(ctx,
 		`UPDATE units u
-		 SET x = v.x, y = v.y, status = v.status, chunk_x = v.chunk_x, chunk_y = v.chunk_y
+		 SET x = v.x, y = v.y, status = v.status, chunk_x = v.chunk_x, chunk_y = v.chunk_y,
+		     hp = COALESCE(v.hp, u.hp), loot = COALESCE(v.loot, u.loot)
 		 FROM (
-		     SELECT * FROM unnest($1::bigint[], $2::int[], $3::int[], $4::text[], $5::int[], $6::int[])
-		         AS t(id, x, y, status, chunk_x, chunk_y)
+		     SELECT * FROM unnest($1::bigint[], $2::int[], $3::int[], $4::text[], $5::int[], $6::int[], $7::int[], $8::int[])
+		         AS t(id, x, y, status, chunk_x, chunk_y, hp, loot)
 		 ) AS v
-		 WHERE u.id = v.id`,
-		ids, xs, ys, statuses, chunkXs, chunkYs)
+		 WHERE u.id = v.id AND u.status <> 'DEAD'`,
+		ids, xs, ys, statuses, chunkXs, chunkYs, hps, loots)
 	if err != nil {
 		return fmt.Errorf("volcar %d posiciones: %w", len(updates), err)
 	}
@@ -157,7 +165,7 @@ func (r *UnitRepo) CountAlive(ctx context.Context) (int64, error) {
 func scanUnit(row rowScanner) (*unit.Unit, error) {
 	var u unit.Unit
 	var unitType, status string
-	if err := row.Scan(&u.ID, &u.PlayerID, &u.CityID, &unitType, &u.X, &u.Y, &u.HP, &u.MaxHP, &status); err != nil {
+	if err := row.Scan(&u.ID, &u.PlayerID, &u.CityID, &unitType, &u.X, &u.Y, &u.HP, &u.MaxHP, &status, &u.Loot); err != nil {
 		if err = normalize(err); err == ErrNotFound {
 			return nil, unit.ErrNotFound
 		}

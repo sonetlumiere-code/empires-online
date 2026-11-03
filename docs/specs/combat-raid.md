@@ -77,6 +77,18 @@ Dominio: `RN-COMBAT`.
 | `RN-COMBAT-010` | **Botín.** Lo que cargaba la víctima pasa al atacante que dio el golpe mortal, hasta su carga máxima; el resto se pierde (Q3). Un `WARRIOR` con carga la deposita al llegar al tile de depósito de su ciudad (el de `RN-ECON-004`). Si muere, su carga pasa a quien lo mate. |
 | `RN-COMBAT-011` | La unidad atacada no responde sola en este slice: defenderse es una orden del jugador (Q8). |
 
+**Precisión (2026-11-02).** Lo que la implementación decide dentro de estas reglas:
+
+- El guerrero se mueve a 600 ms/tile, como el aldeano: así un aldeano no puede escapar a pie.
+- La persecución apunta al tile del objetivo y se detiene en cuanto queda a alcance; el primer golpe cae en
+  el instante del contacto y los siguientes se anclan a él, no al tick.
+- Los tratados de paz se cargan en la RAM al arrancar y su caducidad se evalúa por fecha: hoy no existe vía
+  para crearlos en caliente (backlog Q-04). Al aparecer una, deberá avisar a la simulación.
+- `ATTACKING` sólo existe en la RAM. Tras un reinicio, un tramo de persecución en curso termina como un
+  movimiento normal y el atacante queda `IDLE`.
+- La carga ganada por el asesino viaja en el volcado de su unidad, no en la transacción de la muerte
+  ([ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) §2).
+
 ## 5. Errores
 
 Sólo códigos existentes del catálogo (canon §16); ninguno nuevo salvo que Q5 lo decida.

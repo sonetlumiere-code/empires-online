@@ -18,7 +18,7 @@ Economía: [economy.md](economy.md). Spec: [../specs/combat-raid.md](../specs/co
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E2 |
 | Política ante violación | REJECT (escritura) · REPAIR (arranque) |
-| Cobertura | **Sin cobertura**: se registra antes de implementar SPEC-COMBAT-RAID |
+| Cobertura | **Cubierto**: la DB por `Test_INV_COMBAT_001_LaConstraintRechazaUnaMuertaConVida` y `TestLaMuerteSeEscribeEnUnaTransaccionIdempotente` (integration, `internal/persistence/postgres`); el dominio por `TestElGuerreroPersigueYMataAlAldeano` (`internal/game/simulation`) |
 
 **Enunciado.** Para toda fila de `units`, `status = 'DEAD'` si y sólo si `hp = 0`; y lo mismo para toda unidad
 en la RAM del Game Server.
@@ -33,8 +33,9 @@ entendería.
 - `DOMAIN` — el único camino que deja `hp = 0` es la muerte de la fase 4 (`RN-COMBAT-009`), que pone `DEAD`
   en la misma asignación; la transacción de muerte escribe las dos columnas a la vez.
 
-**Cómo se verifica.** Tests previstos: `Test_INV_COMBAT_001_LaConstraintRechazaUnaMuertaConVida`
-(integration), `TestElGolpeMortalDejaLaUnidadDeadYSinVida` (unit, simulación).
+**Cómo se verifica.** `Test_INV_COMBAT_001_LaConstraintRechazaUnaMuertaConVida` (integration) — **existe y pasa**: el
+motor rechaza las dos mitades del bicondicional por su nombre. `TestLaMuerteSeEscribeEnUnaTransaccionIdempotente`
+(integration) y `TestElGuerreroPersigueYMataAlAldeano` (unit) — **existen y pasan**.
 
 **Violación en runtime.** La base rechaza la escritura; la cola la registra y la compensación vuelve al loop.
 
@@ -49,7 +50,7 @@ entendería.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E2 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: se registra antes de implementar SPEC-COMBAT-RAID |
+| Cobertura | **Cubierto** por `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (`internal/game/simulation`) |
 
 **Enunciado.** Ningún golpe se aplica si, en el instante del golpe, el atacante o el objetivo están sobre un tile
 de Safe Zone, el objetivo está `HIDDEN` o `GARRISONED`, el dueño del objetivo está protegido
@@ -61,9 +62,9 @@ solo golpe que las ignore las vuelve falsas.
 **Cómo se garantiza.** `DOMAIN` — la orden se valida al llegar y **otra vez** en cada golpe de la fase 4, con el
 mismo predicado: el estado puede cambiar durante la persecución.
 
-**Cómo se verifica.** Tests previstos: `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`,
-`TestElAtaqueAUnaUnidadOcultaRespondeComoSiNoExistiera`, `TestUnaCiudadProtegidaRechazaElAtaque`,
-`TestUnTratadoActivoImpideAtacar`.
+**Cómo se verifica.** `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` (objetivo oculto, dueño
+protegido, tratado) y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (la revalidación en cada
+golpe) — **existen y pasan**, en `internal/game/simulation`.
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse en esas condiciones se
 descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.
@@ -79,18 +80,20 @@ descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E2 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: se registra antes de implementar SPEC-COMBAT-RAID |
+| Cobertura | **Cubierto** por `TestElBotinPasaAlAsesinoYSeDeposita` (`internal/game/simulation`) y `TestElVolcadoEscribeVidaYBotinYNoResucita` (integration) |
 
 **Enunciado.** En toda muerte, lo que gana el atacante es como mucho lo que llevaba la víctima; y la madera que
 un `WARRIOR` deposita en su ciudad es exactamente la que llevaba, que pasa a cero.
 
 **Razón.** El botín es una transferencia, no una fuente. Si matar creara madera, el combate sería una granja.
 
-**Cómo se garantiza.** `DOMAIN` — el botín es `min(carga de la víctima, hueco del atacante)`; la transacción de
-muerte escribe a la vez la carga de los dos; el depósito resta del guerrero lo que suma a la ciudad.
+**Cómo se garantiza.** `DOMAIN` — el botín es `min(carga de la víctima, hueco del atacante)`. La transacción de
+muerte deja a la víctima sin carga; la carga del asesino viaja en el volcado de su unidad, así que una caída
+puede perderla pero no duplicarla. El depósito resta del guerrero lo que suma a la ciudad.
 
-**Cómo se verifica.** Tests previstos: `TestElBotinNoSuperaLaCargaDeLaVictima`,
-`TestElDepositoDelBotinVaciaAlGuerrero`.
+**Cómo se verifica.** `TestElBotinPasaAlAsesinoYSeDeposita` (unit) — **existe y pasa**: con cinco de hueco gana
+cinco y se pierden cinco, y al depósito llega exactamente lo que lleva. `TestElVolcadoEscribeVidaYBotinYNoResucita`
+(integration) — **existe y pasa**.
 
 **Violación en runtime.** Se registra `invariant_violation` con `inv_id=INV-COMBAT-003` y no se aplica la
 transferencia.

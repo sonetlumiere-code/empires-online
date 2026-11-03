@@ -183,12 +183,15 @@ type fakeRepos struct {
 	presence         map[int64]city.PresenceState
 	positionFlushes  int
 	unitsFlushed     int
+	// flushed es la última copia volcada de cada unidad.
+	flushed map[int64]unit.Unit
 }
 
 func newFakeRepos() *fakeRepos {
 	return &fakeRepos{
 		movementsFinish: make(map[int64]movement.Status),
 		presence:        make(map[int64]city.PresenceState),
+		flushed:         make(map[int64]unit.Unit),
 	}
 }
 
@@ -213,6 +216,9 @@ func (f *fakeRepos) PersistUnitPositions(_ context.Context, units []*unit.Unit) 
 	defer f.mu.Unlock()
 	f.positionFlushes++
 	f.unitsFlushed += len(units)
+	for _, u := range units {
+		f.flushed[u.ID] = *u
+	}
 	return nil
 }
 
@@ -244,6 +250,7 @@ type harness struct {
 	persister *syncPersister
 	garrisons *fakeGarrisons
 	economy   *fakeEconomy
+	combat    *fakeCombat
 }
 
 // newHarness monta un mundo determinista de 64x64 de hierba con un jugador,
@@ -278,6 +285,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	persister := &syncPersister{}
 	garrisons := &fakeGarrisons{}
 	economia := newFakeEconomy()
+	combate := &fakeCombat{}
 	commands := make(chan simulation.Command, 256)
 	// Las respuestas de la cola vuelven al loop por su buzón, como en cmd/server.
 	inbox := loop.NewInbox(256, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -289,6 +297,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 		Repos:              repos,
 		Garrisons:          garrisons,
 		Economy:            economia,
+		Combat:             combate,
 		Inbox:              inbox.Offer,
 		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ProtectionCooldown: 300 * time.Second,
@@ -308,7 +317,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	h := &harness{
 		t: t, clk: clk, state: state, sim: sim, loop: gameLoop,
 		rec: rec, repos: repos, commands: commands, inbox: inbox, rutas: rutas,
-		persister: persister, garrisons: garrisons, economy: economia,
+		persister: persister, garrisons: garrisons, economy: economia, combat: combate,
 		playerID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
 		cityID:   1,
 	}

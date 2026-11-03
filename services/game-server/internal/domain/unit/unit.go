@@ -27,13 +27,17 @@ const (
 	// temporizador de su tarea (RN-ECON-003). Sólo existe con una tarea en fase
 	// WORKING (INV-ECON-003).
 	StatusWorking Status = "WORKING"
-	StatusDead    Status = "DEAD"
+	// StatusAttacking: en alcance de su objetivo, golpeándolo en la fase 4
+	// (SPEC-COMBAT-RAID §4.2). Sólo existe en la RAM: el enfrentamiento no se
+	// persiste y el volcado la escribe IDLE (ADR-024 §2).
+	StatusAttacking Status = "ATTACKING"
+	StatusDead      Status = "DEAD"
 )
 
 // Valid indica si el estado pertenece al conjunto conocido.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusIdle, StatusMoving, StatusGarrisoned, StatusHidden, StatusWorking, StatusDead:
+	case StatusIdle, StatusMoving, StatusGarrisoned, StatusHidden, StatusWorking, StatusAttacking, StatusDead:
 		return true
 	}
 	return false
@@ -43,8 +47,10 @@ func (s Status) Valid() bool {
 type Type string
 
 const (
-	// TypeVillager es la única unidad del MVP.
+	// TypeVillager recolecta; no ataca.
 	TypeVillager Type = "VILLAGER"
+	// TypeWarrior ataca; no recolecta, pero carga el botín (SPEC-COMBAT-RAID §4.1).
+	TypeWarrior Type = "WARRIOR"
 )
 
 // Definition son las estadísticas inmutables de un tipo de unidad.
@@ -65,6 +71,15 @@ type Definition struct {
 	// GatherCarry lo que carga al terminar (RN-ECON-003). Cero: no recolecta.
 	GatherWorkMs int64
 	GatherCarry  int32
+
+	// AttackDamage es lo que quita cada golpe, AttackIntervalMs lo que tarda
+	// entre golpes y AttackRange el alcance en tiles Chebyshev. Cero: no ataca
+	// (SPEC-COMBAT-RAID §4.1).
+	AttackDamage     int32
+	AttackIntervalMs int64
+	AttackRange      int32
+	// LootCarry es cuánto botín puede cargar (RN-COMBAT-010).
+	LootCarry int32
 }
 
 // CanTrain indica si el tipo se entrena en una ciudad.
@@ -72,6 +87,11 @@ func (d Definition) CanTrain() bool { return d.TrainMs > 0 && d.TrainCost.Amount
 
 // CanGather indica si el tipo recolecta (RN-ECON-001).
 func (d Definition) CanGather() bool { return d.GatherWorkMs > 0 && d.GatherCarry > 0 }
+
+// CanAttack indica si el tipo ataca (RN-COMBAT-001).
+func (d Definition) CanAttack() bool {
+	return d.AttackDamage > 0 && d.AttackIntervalMs > 0 && d.AttackRange > 0
+}
 
 // catalog es la tabla de definiciones. En el MVP vive en código porque sólo hay
 // una unidad; cuando haya decenas se moverá a la base de datos sin cambiar la
@@ -83,6 +103,13 @@ var catalog = map[Type]Definition{
 		Type: TypeVillager, MaxHP: 40, BaseMsPerTile: 600, PopulationCost: 1,
 		TrainCost: economy.Cost{Resource: economy.ResourceWood, Amount: 50}, TrainMs: 20_000,
 		GatherWorkMs: 10_000, GatherCarry: 10,
+	},
+	// SPEC-COMBAT-RAID §4.1: mata a un aldeano en cinco golpes (~7 s) y a otro
+	// guerrero en ocho (~12 s). Parámetros de equilibrio, como los de arriba.
+	TypeWarrior: {
+		Type: TypeWarrior, MaxHP: 60, BaseMsPerTile: 600, PopulationCost: 1,
+		TrainCost: economy.Cost{Resource: economy.ResourceWood, Amount: 60}, TrainMs: 25_000,
+		AttackDamage: 8, AttackIntervalMs: 1_500, AttackRange: 1, LootCarry: 10,
 	},
 }
 
@@ -113,6 +140,9 @@ type Unit struct {
 	HP       int32
 	MaxHP    int32
 	Status   Status
+	// Loot es el botín que carga un WARRIOR hasta depositarlo en su ciudad
+	// (RN-COMBAT-010). La carga de un aldeano vive en su tarea, no aquí.
+	Loot int32
 }
 
 // Tile devuelve la posición consolidada.
@@ -157,6 +187,9 @@ func (u *Unit) EnsureCanMove() error {
 	case StatusWorking:
 		// Una orden de movimiento cancela la tarea y pierde lo cargado
 		// (RN-ECON-003).
+		return nil
+	case StatusAttacking:
+		// Moverse termina el enfrentamiento (RN-COMBAT-008).
 		return nil
 	case StatusDead:
 		return ErrDead

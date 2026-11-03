@@ -234,7 +234,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 	for _, msgType := range []string{
 		protocol.TypeUnitMove, protocol.TypeUnitCancelMove,
 		protocol.TypeUnitGarrison, protocol.TypeUnitUngarrison,
-		protocol.TypeUnitGather, protocol.TypeCityBuild, protocol.TypeCityTrain,
+		protocol.TypeUnitGather, protocol.TypeCityBuild, protocol.TypeCityTrain, protocol.TypeUnitAttack,
 		protocol.TypeSessionPing, protocol.TypeSessionView,
 	} {
 		require.False(t, protocol.IsPreAuth(msgType),
@@ -243,7 +243,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 }
 
 func TestCatalogoDeComandosEsCerrado(t *testing.T) {
-	require.Len(t, protocol.ClientMessageTypes, 10)
+	require.Len(t, protocol.ClientMessageTypes, 11)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)

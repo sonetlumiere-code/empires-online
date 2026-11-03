@@ -89,7 +89,8 @@ func (g *GameStore) PersistUnitPositions(ctx context.Context, units []*unit.Unit
 	}
 	updates := make([]postgres.PositionUpdate, len(units))
 	for i, u := range units {
-		updates[i] = postgres.PositionUpdate{UnitID: u.ID, X: u.X, Y: u.Y, Status: u.Status}
+		hp, loot := u.HP, u.Loot
+		updates[i] = postgres.PositionUpdate{UnitID: u.ID, X: u.X, Y: u.Y, Status: u.Status, HP: &hp, Loot: &loot}
 	}
 	return g.units.FlushPositions(ctx, g.store.Pool(), updates)
 }

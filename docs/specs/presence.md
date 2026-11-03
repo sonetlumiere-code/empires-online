@@ -145,7 +145,7 @@ clasifica todos así ([ADR-016](../decisions/ADR-016-foreign-territory-actions.m
 | ID | Regla |
 |---|---|
 | `RN-PRESENCE-013` | La comprobación vive en **un único predicado de dominio**, `City.IsProtected()` (`internal/domain/city/city.go`), que es cierto si y solo si `presence_state == PROTECTED`, y en el error de dominio `city.ErrProtected`. Hoy `ErrProtected` no tiene llamadores ni traducción: el futuro punto único de rechazo la mapeará a `CITY_PROTECTED` (`protocol.CodeCityProtected`). Es el punto de aplicación futuro y el único lugar donde esta decisión se tomará. |
-| `RN-PRESENCE-014` | En MVP el predicado existe, está testeado y **no lo invoca ningún handler**, porque no hay comandos hostiles. La clasificación exhaustiva de acciones que [`INV-CITY-006`](../invariants/city.md#inv-city-006) exige ya existe (`simulation.ActionPolicyOf`, `TestTodaAccionDelCatalogoEstaClasificada`, ADR-016); lo que queda para el milestone de la primera acción hostil es el punto único que invoque `IsProtected()` y rechace con `CITY_PROTECTED`. |
+| `RN-PRESENCE-014` | En MVP el predicado existe, está testeado y **no lo invoca ningún handler**, porque no hay comandos hostiles. La clasificación exhaustiva de acciones que [`INV-CITY-006`](../invariants/city.md#inv-city-006) exige ya existe (`simulation.ActionPolicyOf`, `TestTodaAccionDelCatalogoEstaClasificada`, ADR-016); lo que queda para el milestone de la primera acción hostil es el punto único que invoque `IsProtected()` y rechace con `CITY_PROTECTED`. **Precisión (2026-11-02):** ya hay una acción hostil, `unit.attack` ([combat-raid.md](combat-raid.md)); su punto único es `Simulation.attackBlocked`, que consulta `City.ProtectedAt(now)` (`RN-PRESENCE-036`) al ordenar y en cada golpe. |
 | `RN-PRESENCE-015` | `PROTECTED` **no** hace ninguna de estas cosas: no congela la ciudad, no detiene el mundo, no oculta la ciudad de `world.snapshot` ni de `city.update`, no vuelve invulnerables a las unidades fuera de la zona urbana, no bloquea el movimiento de terceros por tiles cercanos, y no impide que el propio jugador reconecte. |
 | `RN-PRESENCE-016` | La protección es de la **ciudad**, no del jugador: las unidades del jugador ausente que estén en campo abierto no reciben ninguna protección por el estado de su ciudad. |
 
@@ -381,7 +381,7 @@ por estado es éste:
 
 | Código | Condición exacta | Notas |
 |---|---|---|
-| `CITY_PROTECTED` | Acción hostil contra una ciudad con `presence_state = 'PROTECTED'`, detectada por `City.IsProtected()`. | En MVP sin llamadores reales (`RN-PRESENCE-014`). |
+| `CITY_PROTECTED` | Acción hostil contra una unidad de un jugador protegido, detectada por `City.ProtectedAt(now)`. | Desde 2026-11-02, `unit.attack` ([combat-raid.md](combat-raid.md)). |
 | `CITY_NOT_FOUND` | `unit.garrison` con un `cityId` que no existe. Ningún mensaje consulta el estado de una ciudad. | — |
 | `TREATY_REQUIRED` | Intento de guarnecer en una ciudad ajena sin `treaty` `ACTIVE` con `allows_garrison`. | La protección no se consulta al guarnecer (`RN-PRESENCE-020`). |
 | Cierre `4401` | Ticket inválido o `jti` reutilizado durante el handshake que habría producido `T3`/`T4`. No llega ningún `system.error`: el handshake falla sólo con el código de cierre ([ADR-019](../decisions/ADR-019-handshake-failure-close-code.md)). | El estado de la ciudad no cambia, porque nunca llega a despacharse `PlayerConnected`. |

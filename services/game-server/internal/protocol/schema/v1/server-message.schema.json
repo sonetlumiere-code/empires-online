@@ -319,7 +319,8 @@
                       "unitType": {
                         "type": "string",
                         "enum": [
-                          "VILLAGER"
+                          "VILLAGER",
+                          "WARRIOR"
                         ]
                       },
                       "x": {
@@ -346,6 +347,7 @@
                           "GARRISONED",
                           "HIDDEN",
                           "WORKING",
+                          "ATTACKING",
                           "DEAD"
                         ]
                       },

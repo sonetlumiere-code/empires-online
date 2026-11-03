@@ -396,7 +396,7 @@ func (l *Loop) Step(nowMs int64) {
 
     l.drainCommands()                   // fases 1-2
     l.sim.AdvanceMovements(nowMs)       // fase 3
-    // fase 4: reservada a combate — fuera de MVP, sin llamada
+    l.sim.ResolveCombat(nowMs)          // fase 4: combate (ADR-024)
     l.sim.ProcessTimers(time.UnixMilli(nowMs).UTC())   // fase 5
 
     // Fases 6-7: la membresía de chunk y los deltas ya se aplicaron y emitieron dentro de las
@@ -594,7 +594,8 @@ latencia al presupuesto.
 
 ## 12. Fuera de MVP
 
-- Fase 4 (`resolve simulation`) con combate real: reservada y hoy sin ninguna llamada en `Step`.
+- **Precisión (2026-11-02).** La fase 4 ya no está vacía: resuelve el combate, con los golpes de un tick
+  calculados sobre el estado de fin de la fase 3 y aplicados a la vez ([ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md)).
 - Paralelización de fases o del A* dentro del tick.
 - Métrica dedicada de ticks saltados por catch-up (hoy sólo log + `eo_game_tick_overruns_total`).
 - **Orden durable por unidad**: un único worker de persistencia, o particionado de la cola por

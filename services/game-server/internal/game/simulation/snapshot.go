@@ -91,6 +91,8 @@ func (s *Simulation) UnitView(u *unit.Unit, nowMs int64) protocol.UnitView {
 	}
 	if e, ok := s.state.tasks[u.ID]; ok {
 		view.Carrying = e.Carrying
+	} else if u.Loot > 0 {
+		view.Carrying = u.Loot
 	}
 	if m, ok := s.state.Movement(u.ID); ok {
 		pos := m.PositionAt(nowMs)
