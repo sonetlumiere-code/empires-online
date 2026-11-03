@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las trece specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las catorce specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -53,6 +53,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Implemented | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil; tope de la protección offline |
 | Combate: respuesta automática | [combat-response.md](combat-response.md) | E3 Defensa | Implemented | Un `WARRIOR` parado responde a los golpes sobre él o sobre sus unidades cercanas, con correa y vuelta al puesto; protección simétrica del atacante |
 | Economía: agotamiento del bosque | [economy-forest.md](economy-forest.md) | E4 Bosque | Implemented | Madera finita por tile de bosque en una capa aparte del terreno, regeneración, búsqueda del tile siguiente, fundación con bosque suficiente |
+| Combate: saqueo | [combat-pillage.md](combat-pillage.md) | E5 Saqueo | Draft | Un `WARRIOR` junto a la muralla enemiga roba madera del almacén golpe a golpe hasta un suelo y la lleva a casa; los guerreros de la ciudad defienden |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
@@ -69,7 +70,7 @@ Documentación relacionada que **no** es una spec funcional y por tanto no sigue
 ## 3. Plantilla obligatoria de spec
 
 La plantilla tiene tres partes: una **cabecera** fija, un **núcleo** fijo y un **cuerpo temático** libre.
-Lo que sigue describe lo que las trece specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
+Lo que sigue describe lo que las catorce specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
 
 ### 3.1 Cabecera
 
