@@ -967,6 +967,9 @@
                       "type": "null"
                     }
                   ]
+                },
+                "pillagedAtMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
                 }
               },
               "required": [

@@ -51,3 +51,25 @@ func TestElEstadoAttackingYElGuerreroEstanEnElEsquema(t *testing.T) {
 	root, despawn := serverVariant(t, protocol.TypeEntityDespawn)
 	assert.Contains(t, enumOf(t, dig(t, root, despawn, "properties", "payload", "properties", "reason")), "DEAD")
 }
+
+// Contrato del saqueo (SPEC-COMBAT-PILLAGE §6, §9 «contract»).
+
+// unit.pillage lleva exactamente guerrero y ciudad, los dos obligatorios: el
+// cliente no aporta tile, cantidad ni suelo (INV-SEC-001).
+func TestElComandoDeSaqueoEsElDelEsquema(t *testing.T) {
+	root, variant := clientVariant(t, protocol.TypeUnitPillage)
+	payload := dig(t, root, variant, "properties", "payload").(map[string]any)
+	declaradas := clavesDe(dig(t, root, payload, "properties").(map[string]any))
+	require.Equal(t, declaradas, clavesDe(serializado(t, protocol.UnitPillagePayload{UnitID: 1, CityID: 2})))
+	require.Equal(t, declaradas, requeridas(t, payload), "ningún campo es opcional")
+	require.True(t, protocol.ClientMessageTypes[protocol.TypeUnitPillage])
+}
+
+// city.update declara pillagedAtMs, y el servidor lo serializa con ese nombre.
+func TestElAvisoDeSaqueoEstaEnElEsquemaDeCityUpdate(t *testing.T) {
+	root, update := serverVariant(t, protocol.TypeCityUpdate)
+	props := dig(t, root, update, "properties", "payload", "properties").(map[string]any)
+	assert.Contains(t, props, "pillagedAtMs")
+	at := int64(1_757_376_000_500)
+	assert.Contains(t, serializado(t, protocol.CityUpdatePayload{ID: 7, PillagedAtMs: &at}), "pillagedAtMs")
+}

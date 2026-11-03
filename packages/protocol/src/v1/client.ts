@@ -167,6 +167,22 @@ export const UnitAttack = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * Ordena a un guerrero propio saquear una ciudad de otro jugador: va hasta su
+ * muralla y roba madera del almacén golpe a golpe. Sólo quién y qué ciudad: el
+ * tile de llegada, lo robado y el suelo los decide el servidor.
+ * Ver ../../../docs/specs/combat-pillage.md
+ */
+export const UnitPillage = z.object({
+  v: V,
+  type: z.literal('unit.pillage'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+    cityId: EntityId,
+  }).strict(),
+}).strict();
+
 /** Unión discriminada de todos los mensajes cliente → servidor de la v1. */
 export const ClientMessage = z.discriminatedUnion('type', [
   SessionHello,
@@ -180,6 +196,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   CityBuild,
   CityTrain,
   UnitAttack,
+  UnitPillage,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -194,6 +211,7 @@ export type UnitGather = z.infer<typeof UnitGather>;
 export type CityBuild = z.infer<typeof CityBuild>;
 export type CityTrain = z.infer<typeof CityTrain>;
 export type UnitAttack = z.infer<typeof UnitAttack>;
+export type UnitPillage = z.infer<typeof UnitPillage>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -207,6 +225,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'city.build',
   'city.train',
   'unit.attack',
+  'unit.pillage',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];
