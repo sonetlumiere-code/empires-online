@@ -187,6 +187,20 @@ describe('comandos', () => {
     }
   });
 
+  it('unit.attack y el entrenamiento de un guerrero envían sólo la intención (SPEC-COMBAT-RAID)', async () => {
+    const { client, socket } = await ready();
+    client.attackUnit(42, 77);
+    client.trainUnit(7, 'WARRIOR');
+
+    const [atacar, entrenar] = socket.parsedSent();
+    expect(atacar!.type).toBe('unit.attack');
+    expect(atacar!.payload, 'ni daño, ni ruta, ni botín').toEqual({ unitId: 42, targetUnitId: 77 });
+    expect(entrenar!.payload).toEqual({ cityId: 7, type: 'WARRIOR' });
+    for (const m of [atacar, entrenar]) {
+      expect(v1.parseClientMessage(m).ok, String(m!.type)).toBe(true);
+    }
+  });
+
   it('cada comando lleva un requestId distinto', async () => {
     const { client, socket } = await ready();
     client.moveUnit(1, { x: 1, y: 1 });

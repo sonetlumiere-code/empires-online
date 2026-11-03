@@ -5,9 +5,11 @@ import {
   TERRAIN_FOREST,
   buildingsOf,
   decideTileOrder,
+  decideUnitClick,
   firstFreeHouseTile,
   readableError,
   secondsUntil,
+  unitTypeLabel,
 } from './economy';
 import { useWorldStore } from './world';
 
@@ -170,5 +172,32 @@ describe('el store refleja la economía que cuenta el servidor', () => {
     otro.buildings = [];
     state().applySnapshot(otro);
     expect(state().buildings.size).toBe(0);
+  });
+});
+
+describe('clic sobre una unidad (SPEC-COMBAT-RAID)', () => {
+  const ENEMIGO = '22222222-2222-4222-8222-222222222222';
+  const guerrero = { playerId: PLAYER, unitType: 'WARRIOR' };
+  const aldeano = { playerId: PLAYER, unitType: 'VILLAGER' };
+
+  it('una propia se selecciona, con o sin guerrero', () => {
+    expect(decideUnitClick({ playerId: PLAYER }, guerrero, PLAYER)).toEqual({ kind: 'select' });
+    expect(decideUnitClick({ playerId: PLAYER }, undefined, PLAYER)).toEqual({ kind: 'select' });
+  });
+
+  it('una ajena con un guerrero propio seleccionado es la orden de atacarla', () => {
+    expect(decideUnitClick({ playerId: ENEMIGO }, guerrero, PLAYER)).toEqual({ kind: 'attack' });
+  });
+
+  it('una ajena sin guerrero no hace nada: ni se selecciona ni se ataca', () => {
+    expect(decideUnitClick({ playerId: ENEMIGO }, aldeano, PLAYER)).toEqual({ kind: 'none' });
+    expect(decideUnitClick({ playerId: ENEMIGO }, undefined, PLAYER)).toEqual({ kind: 'none' });
+    expect(decideUnitClick({ playerId: ENEMIGO }, { playerId: ENEMIGO, unitType: 'WARRIOR' }, PLAYER)).toEqual({ kind: 'none' });
+  });
+
+  it('nombres y mensajes del combate', () => {
+    expect(unitTypeLabel('WARRIOR')).toBe('guerrero');
+    expect(unitTypeLabel('VILLAGER')).toBe('aldeano');
+    expect(readableError('CITY_PROTECTED', 'x')).toMatch(/protegido/);
   });
 });

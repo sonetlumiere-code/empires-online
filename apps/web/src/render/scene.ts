@@ -385,7 +385,10 @@ export class IsoScene {
     } else if (
       entry.unit.isOwn !== unit.isOwn ||
       entry.unit.working !== unit.working ||
-      (entry.unit.carrying > 0) !== (unit.carrying > 0)
+      (entry.unit.carrying > 0) !== (unit.carrying > 0) ||
+      entry.unit.warrior !== unit.warrior ||
+      entry.unit.attacking !== unit.attacking ||
+      entry.unit.hpRatio !== unit.hpRatio
     ) {
       paintUnitBody(entry.body, unit);
     }
@@ -557,12 +560,34 @@ function buildChunkGraphics(chunk: ChunkTerrain, chunkSize: number): Graphics {
   return g;
 }
 
-function paintUnitBody(body: Graphics, unit: Pick<SceneUnit, 'isOwn' | 'working' | 'carrying'>): void {
-  body
-    .clear()
-    .circle(0, -TILE_H / 3, 7)
-    .fill({ color: unit.isOwn ? 0x4ea3ff : 0xff6b6b })
-    .stroke({ color: unit.working ? 0x7a4a1e : 0x0b1a2a, width: unit.working ? 3 : 1.5 });
+function paintUnitBody(
+  body: Graphics,
+  unit: Pick<SceneUnit, 'isOwn' | 'working' | 'carrying' | 'warrior' | 'attacking' | 'hpRatio'>,
+): void {
+  const fill = unit.isOwn ? 0x4ea3ff : 0xff6b6b;
+  const stroke = unit.attacking ? 0xffd23f : unit.working ? 0x7a4a1e : 0x0b1a2a;
+  const width = unit.attacking || unit.working ? 3 : 1.5;
+  const cy = -TILE_H / 3;
+  body.clear();
+  if (unit.warrior) {
+    // El guerrero es un rombo: se distingue del aldeano de un vistazo.
+    body
+      .moveTo(0, cy - 9)
+      .lineTo(8, cy)
+      .lineTo(0, cy + 9)
+      .lineTo(-8, cy)
+      .closePath()
+      .fill({ color: fill })
+      .stroke({ color: stroke, width });
+  } else {
+    body.circle(0, cy, 7).fill({ color: fill }).stroke({ color: stroke, width });
+  }
+  if (unit.hpRatio < 1) {
+    // Barra de vida sobre la cabeza: sólo para los heridos.
+    const w = 16;
+    body.rect(-w / 2, cy - 15, w, 3).fill({ color: 0x222222 });
+    body.rect(-w / 2, cy - 15, w * unit.hpRatio, 3).fill({ color: unit.hpRatio > 0.5 ? 0x5bd15b : unit.hpRatio > 0.25 ? 0xf0c040 : 0xe04848 });
+  }
   if (unit.carrying > 0) {
     // Un tronco a la espalda: lleva madera de vuelta a la ciudad.
     body.rect(4, -TILE_H / 3 - 9, 6, 4).fill({ color: 0x8b5a2b }).stroke({ color: 0x3b2410, width: 1 });

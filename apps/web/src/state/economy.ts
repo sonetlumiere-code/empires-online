@@ -41,6 +41,43 @@ export function decideTileOrder(
   return { kind: 'move' };
 }
 
+/** Lo que es un clic sobre una unidad. */
+export type UnitClick =
+  | { readonly kind: 'select' }
+  | { readonly kind: 'attack' }
+  | { readonly kind: 'none' };
+
+/**
+ * Qué es un clic sobre una unidad (SPEC-COMBAT-RAID):
+ *
+ *   1. una propia → seleccionarla;
+ *   2. una ajena, con un guerrero propio seleccionado → atacarla (`unit.attack`);
+ *   3. una ajena sin guerrero seleccionado → nada: no se seleccionan ajenas.
+ *
+ * Si el ataque se puede (protección, Safe Zone, tratado) lo decide el servidor.
+ */
+export function decideUnitClick(
+  clicked: Pick<UnitView, 'playerId'>,
+  selected: Pick<UnitView, 'playerId' | 'unitType'> | undefined,
+  ownPlayerId: string | null,
+): UnitClick {
+  if (clicked.playerId === ownPlayerId) return { kind: 'select' };
+  if (selected && selected.playerId === ownPlayerId && selected.unitType === 'WARRIOR') return { kind: 'attack' };
+  return { kind: 'none' };
+}
+
+/** El nombre de un tipo de unidad en el HUD. */
+export function unitTypeLabel(type: string): string {
+  switch (type) {
+    case 'VILLAGER':
+      return 'aldeano';
+    case 'WARRIOR':
+      return 'guerrero';
+    default:
+      return type.toLowerCase();
+  }
+}
+
 /**
  * El tile donde el botón «Casa» pide construir: el primer hueco libre de la
  * zona urbana 3 × 3 (los ocho tiles que no son el centro), en orden (y, x). Un
@@ -88,11 +125,15 @@ export function readableError(code: string, message: string): string {
     case 'INSUFFICIENT_RESOURCES':
       return 'No hay madera suficiente. Manda aldeanos a un bosque y espera a que la traigan.';
     case 'CITY_BUSY':
-      return 'La ciudad ya está entrenando un aldeano: espera a que termine.';
+      return 'La ciudad ya está entrenando una unidad: espera a que termine.';
+    case 'CITY_PROTECTED':
+      return 'Ese jugador está protegido mientras está desconectado: no se le puede atacar.';
+    case 'UNIT_NOT_FOUND':
+      return 'Esa unidad ya no está: ha muerto, se ha escondido o se ha ido.';
     case 'POPULATION_LIMIT_REACHED':
       return 'No caben más habitantes: construye una casa para subir el límite de población.';
     case 'INVALID_TARGET':
-      return 'Ahí no se puede: elige un bosque para recolectar o un hueco libre junto al centro de la ciudad.';
+      return 'Ahí no se puede: no se ataca en una zona segura, a un aliado ni a una unidad propia; para recolectar, elige un bosque.';
     default:
       return `${code}: ${message}`;
   }

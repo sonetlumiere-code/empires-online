@@ -38,6 +38,9 @@ function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number |
     isSelected: selectedUnitId === u.id,
     working: u.status === 'WORKING',
     carrying: u.carrying,
+    warrior: u.unitType === 'WARRIOR',
+    attacking: u.status === 'ATTACKING',
+    hpRatio: u.maxHp > 0 ? Math.max(0, Math.min(1, u.hp / u.maxHp)) : 1,
   };
 }
 

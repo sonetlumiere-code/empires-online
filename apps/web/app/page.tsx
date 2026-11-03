@@ -20,9 +20,11 @@ import { createHudSelector } from '../src/state/selectors';
 import {
   buildingsOf,
   decideTileOrder,
+  decideUnitClick,
   firstFreeHouseTile,
   readableError,
   secondsUntil,
+  unitTypeLabel,
 } from '../src/state/economy';
 import { ViewSync } from '../src/state/viewSync';
 import type { Point, Tile } from '../src/render/iso';
@@ -151,12 +153,18 @@ export default function Page() {
 
   const handleUnitClick = useCallback(
     (unitId: number) => {
-      const unit = useWorldStore.getState().units.get(unitId);
-      // Sólo se seleccionan unidades propias: el servidor rechazaría cualquier
-      // orden sobre una ajena, así que ni se ofrece.
-      if (unit && unit.playerId === playerId) selectUnit(unitId);
+      const state = useWorldStore.getState();
+      const unit = state.units.get(unitId);
+      if (!unit) return;
+      // Sólo se seleccionan unidades propias; un clic sobre una ajena con un
+      // guerrero seleccionado es la orden de atacarla (SPEC-COMBAT-RAID). Si se
+      // puede lo decide el servidor.
+      const selected = selectedUnitId !== null ? state.units.get(selectedUnitId) : undefined;
+      const click = decideUnitClick(unit, selected, playerId);
+      if (click.kind === 'select') selectUnit(unitId);
+      else if (click.kind === 'attack' && selectedUnitId !== null) clientRef.current?.attackUnit(selectedUnitId, unitId);
     },
-    [playerId, selectUnit],
+    [playerId, selectUnit, selectedUnitId],
   );
 
   if (connection === 'idle' || connection === 'closed') {
@@ -247,9 +255,18 @@ export default function Page() {
             >
               Aldeano
             </button>
+            <button
+              className="secondary"
+              onClick={() => clientRef.current?.trainUnit(ownCity.id, 'WARRIOR')}
+              disabled={ownCity.production !== null}
+              title="Entrena un guerrero en la ciudad: 60 de madera. Selecciónalo y haz clic en una unidad enemiga para atacarla"
+            >
+              Guerrero
+            </button>
             {ownCity.production && (
               <span style={{ color: 'var(--muted)' }}>
-                Entrenando aldeano: {secondsUntil(ownCity.production.completesAtMs, serverTimeMs())} s
+                Entrenando {unitTypeLabel(ownCity.production.unitType)}:{' '}
+                {secondsUntil(ownCity.production.completesAtMs, serverTimeMs())} s
               </span>
             )}
           </>
@@ -266,7 +283,7 @@ export default function Page() {
         ))}
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
           {selectedUnitId !== null
-            ? `Unidad ${selectedUnitId}${describeUnit(selectedUnit)} — clic en el mapa para moverla, en un bosque para recolectar, en una ciudad para guarnecerla`
+            ? `${selectedUnit ? unitTypeLabel(selectedUnit.unitType) : 'Unidad'} ${selectedUnitId}${describeUnit(selectedUnit)} — ${helpFor(selectedUnit)}`
             : `${ownUnitCount} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H vuelve a la ciudad`}
         </span>
       </header>
@@ -289,12 +306,22 @@ export default function Page() {
   );
 }
 
-/** Lo que el HUD dice de la unidad seleccionada: si trabaja y cuánto lleva. */
-function describeUnit(u: { status: string; carrying: number } | undefined): string {
+/** Lo que el HUD dice de la unidad seleccionada: su vida, si trabaja o ataca, y cuánto lleva. */
+function describeUnit(u: { status: string; carrying: number; hp: number; maxHp: number } | undefined): string {
   if (!u) return '';
-  if (u.status === 'WORKING') return ' (recolectando)';
-  if (u.carrying > 0) return ` (lleva ${u.carrying} de madera)`;
-  return '';
+  const vida = u.hp < u.maxHp ? `, vida ${u.hp}/${u.maxHp}` : '';
+  if (u.status === 'WORKING') return ` (recolectando${vida})`;
+  if (u.status === 'ATTACKING') return ` (atacando${vida})`;
+  if (u.carrying > 0) return ` (lleva ${u.carrying} de madera${vida})`;
+  return vida ? ` (${vida.slice(2)})` : '';
+}
+
+/** Qué se puede hacer con la unidad seleccionada. */
+function helpFor(u: { unitType: string } | undefined): string {
+  if (u?.unitType === 'WARRIOR') {
+    return 'clic en una unidad enemiga para atacarla, en el mapa para moverla; con botín, llévala junto a tu ciudad';
+  }
+  return 'clic en el mapa para moverla, en un bosque para recolectar, en una ciudad para guarnecerla';
 }
 
 /** La ciudad cuya zona urbana (su 3 × 3) contiene el tile, si la hay. Se consulta al hacer clic, no por render. */

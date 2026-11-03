@@ -20,13 +20,17 @@
  *   9. unit.gather sobre el bosque más cercano a la ciudad  ->  un viaje completo:
  *      tramo al bosque, WORKING, vuelta y city.update con la madera depositada
  *      (SPEC-ECON-WOOD)
+ *  10. sólo con --incursion (SPEC-COMBAT-RAID): con 60 de madera se entrena un
+ *      guerrero; un segundo jugador acerca un aldeano y el guerrero lo mata. Tarda
+ *      minutos (juntar madera, entrenar, caminar) y mata una unidad de otra cuenta,
+ *      así que no corre por defecto ni tras un despliegue en producción.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--incursion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -47,6 +51,7 @@ const BASE = (flag('--url', process.env.EO_SMOKE_URL || 'http://localhost:8080')
 const WS_URL = BASE.replace(/^http/, 'ws') + '/ws';
 const WEB = (flag('--web', process.env.EO_SMOKE_WEB_URL || 'http://localhost:3000')).replace(/\/+$/, '');
 const VERBOSE = args.includes('--verbose');
+const INCURSION = args.includes('--incursion');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -265,8 +270,8 @@ export function cookieDeSesion(setCookie) {
  * Da de alta al jugador de humo o entra con el que ya existe. Devuelve el cuerpo
  * (con el primer ticket) y la cookie de sesión con la que pedir los siguientes.
  */
-async function abrirSesion() {
-  const cuerpo = JSON.stringify({ username: USUARIO, password: CLAVE });
+async function abrirSesion(usuario = USUARIO) {
+  const cuerpo = JSON.stringify({ username: usuario, password: CLAVE });
   const cabeceras = { 'content-type': 'application/json' };
 
   const alta = await pedir('/api/auth/register', { method: 'POST', headers: cabeceras, body: cuerpo }, WEB);
@@ -279,7 +284,7 @@ async function abrirSesion() {
     );
   }
   if (alta.status === 201 || alta.status === 200) {
-    ok('alta del jugador de humo', `${USUARIO}`);
+    ok('alta del jugador de humo', `${usuario}`);
     return { cuenta: alta.cuerpo, cookie: cookieDeSesion(alta.cookie) };
   }
   if (alta.status !== 409 || alta.cuerpo?.code !== 'USERNAME_TAKEN') {
@@ -288,7 +293,7 @@ async function abrirSesion() {
 
   const login = await pedir('/api/auth/login', { method: 'POST', headers: cabeceras, body: cuerpo }, WEB);
   if (login.status !== 200) fallar(`el login falló con ${login.status}`, login.cuerpo);
-  ok('login del jugador de humo', `${USUARIO} (ya existía)`);
+  ok('login del jugador de humo', `${usuario} (ya existía)`);
   return { cuenta: login.cuerpo, cookie: cookieDeSesion(login.cookie) };
 }
 
@@ -462,11 +467,93 @@ async function main() {
     vueltaMs + 30_000);
   ok('viaje de recolección completo', `madera ${maderaInicial} -> ${deposito.payload.stocks.WOOD}`);
 
+  if (INCURSION) {
+    await incursion(segunda, ciudad, cuenta.playerId, snap2);
+  }
+
   segunda.sesion.cerrar();
   await dormir(200);
 
   console.log(`\n${pasos} comprobaciones superadas. El vertical slice funciona en este despliegue.\n`);
   process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Incursión (SPEC-COMBAT-RAID), sólo con --incursion
+// ─────────────────────────────────────────────────────────────
+
+const VICTIMA = process.env.EO_SMOKE_VICTIM || 'smoke_victim';
+
+/** Espera a que la madera de la ciudad llegue a `n`, mandando a recolectar a todos los aldeanos. */
+async function juntarMadera(sesion, ciudad, playerId, snap, n) {
+  const bosque = elegirBosque(indexarTerreno(snap.terrain), ciudad);
+  for (const u of snap.units.filter((u) => u.playerId === playerId && u.unitType === 'VILLAGER')) {
+    sesion.enviar('unit.gather', { unitId: u.id, target: { x: bosque.x, y: bosque.y } });
+  }
+  let madera = ciudad.stocks?.WOOD ?? 0;
+  while (madera < n) {
+    const m = await sesion.esperarQue('city.update', (m) => m.payload.id === ciudad.id && m.payload.stocks, 120_000);
+    madera = m.payload.stocks.WOOD;
+  }
+  return madera;
+}
+
+/** Lleva una unidad hacia `destino` por tramos: si la ruta es demasiado larga, prueba tiles junto al punto medio. */
+async function acercar(sesion, unidad, destino, cerca) {
+  let pos = { x: unidad.x, y: unidad.y };
+  for (let tramo = 0; tramo < 8; tramo++) {
+    if (Math.max(Math.abs(pos.x - destino.x), Math.abs(pos.y - destino.y)) <= cerca) return pos;
+    let objetivo = destino;
+    let mov = null;
+    for (let intento = 0; intento < 40 && !mov; intento++) {
+      sesion.enviar('unit.move', { unitId: unidad.id, target: objetivo });
+      const r = await sesion.esperar(['unit.move.accepted', 'unit.move.rejected', 'system.error']);
+      if (r.type === 'unit.move.accepted') {
+        mov = (await sesion.esperarQue('unit.movement.started', (m) => m.payload.unitId === unidad.id)).payload.movement;
+        break;
+      }
+      const code = r.payload.code;
+      const medio = { x: Math.round((pos.x + destino.x) / 2), y: Math.round((pos.y + destino.y) / 2) };
+      // Un tile cercano al punto medio, en espiral: si no es transitable, el servidor lo dice.
+      const d = 1 + Math.floor(intento / 8);
+      const giro = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]][intento % 8];
+      objetivo = code === 'TARGET_NOT_WALKABLE' && objetivo === destino
+        ? { x: destino.x + giro[0] * d, y: destino.y + giro[1] * d }
+        : { x: medio.x + giro[0] * d, y: medio.y + giro[1] * d };
+    }
+    if (!mov) fallar('no encontré cómo acercar la unidad', { desde: pos, destino });
+    const espera = mov.arrivalTimeMs - Date.now() + 1500;
+    await sesion.esperarQue('unit.movement.completed', (m) => m.payload.unitId === unidad.id, Math.max(espera, 1000) + 10_000);
+    pos = mov.target;
+  }
+  return pos;
+}
+
+async function incursion(atacante, ciudad, playerId, snap) {
+  const madera = await juntarMadera(atacante.sesion, ciudad, playerId, snap, 60);
+  ok('madera para un guerrero', `${madera}`);
+  atacante.sesion.enviar('city.train', { cityId: ciudad.id, type: 'WARRIOR' });
+  const nace = await atacante.sesion.esperarQue(['entity.spawn', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.unit?.playerId === playerId && m.payload.unit.unitType === 'WARRIOR'), 60_000);
+  if (nace.type === 'system.error') fallar('el servidor rechazó entrenar el guerrero', nace.payload);
+  const guerrero = nace.payload.unit;
+  ok('guerrero entrenado', `unidad ${guerrero.id} en (${guerrero.x}, ${guerrero.y})`);
+
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const aldeano = victima.snapshot.payload.units.find((u) => u.playerId === cuenta.playerId);
+  if (!aldeano) fallar('la víctima no tiene aldeanos', victima.snapshot.payload.units);
+  const destino = { x: guerrero.x + 4, y: guerrero.y };
+  const llegada = await acercar(victima.sesion, aldeano, destino, 6);
+  ok('la víctima se acerca', `aldeano ${aldeano.id} en (${llegada.x}, ${llegada.y})`);
+
+  atacante.sesion.enviar('unit.attack', { unitId: guerrero.id, targetUnitId: aldeano.id });
+  const fin = await atacante.sesion.esperarQue(['entity.despawn', 'system.error'],
+    (m) => m.type === 'system.error' || m.payload.id === aldeano.id, 60_000);
+  if (fin.type === 'system.error') fallar('el servidor rechazó el ataque', fin.payload);
+  if (fin.payload.reason !== 'DEAD') fallar('la víctima desapareció sin morir', fin.payload);
+  ok('incursión completa', `el guerrero ${guerrero.id} mató al aldeano ${aldeano.id}`);
+  victima.sesion.cerrar();
 }
 
 // Sólo se ejecuta el recorrido cuando el script se invoca directamente. Importarlo

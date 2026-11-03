@@ -206,5 +206,11 @@ describe('economía en la escena (SPEC-ECON-WOOD)', () => {
     expect(update.buildings).toEqual([]);
     state().applyServerMessage(server('entity.update', 5, { id: 1, status: 'MOVING', carrying: 10 }));
     expect(projectLast().units.map((u) => [u.working, u.carrying])).toEqual([[false, 10]]);
+
+    // SPEC-COMBAT-RAID: el estado ATTACKING y la vida que queda llegan a la escena.
+    state().applyServerMessage(server('entity.update', 6, { id: 1, status: 'ATTACKING', hp: 10 }));
+    const herida = projectLast().units[0]!;
+    expect([herida.attacking, herida.warrior]).toEqual([true, false]);
+    expect(herida.hpRatio).toBeCloseTo(10 / 40);
   });
 });

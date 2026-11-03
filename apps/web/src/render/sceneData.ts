@@ -20,6 +20,12 @@ export interface SceneUnit {
   readonly working: boolean;
   /** Madera que lleva encima; 0 si nada. */
   readonly carrying: number;
+  /** Unidad militar (`WARRIOR`, SPEC-COMBAT-RAID): se dibuja con otra forma. */
+  readonly warrior: boolean;
+  /** Golpea a su objetivo (`ATTACKING`). */
+  readonly attacking: boolean;
+  /** Vida que le queda, de 0 a 1: por debajo de 1 lleva su barra. */
+  readonly hpRatio: number;
 }
 
 export interface SceneBuilding {

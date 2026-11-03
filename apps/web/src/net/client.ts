@@ -305,7 +305,20 @@ export class GameClient {
 
   /** Encarga el entrenamiento de un aldeano. */
   trainVillager(cityId: number): string {
-    return this.send('city.train', { cityId, type: 'VILLAGER' });
+    return this.trainUnit(cityId, 'VILLAGER');
+  }
+
+  /** Encarga el entrenamiento de una unidad del catálogo (SPEC-COMBAT-RAID: también `WARRIOR`). */
+  trainUnit(cityId: number, type: 'VILLAGER' | 'WARRIOR'): string {
+    return this.send('city.train', { cityId, type });
+  }
+
+  // Combate (SPEC-COMBAT-RAID). Sólo quién y a quién: la persecución, el daño y
+  // el botín los decide el servidor.
+
+  /** Ordena a una unidad militar propia atacar a una unidad ajena. */
+  attackUnit(unitId: number, targetUnitId: number): string {
+    return this.send('unit.attack', { unitId, targetUnitId });
   }
 
   /** Recentra el área de interés (la cámara). */
