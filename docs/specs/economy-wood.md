@@ -38,7 +38,7 @@ real sobre la fase de temporizadores, la cola de persistencia y el presupuesto d
 
 **Fuera (de este slice, no del juego)**
 
-- Otros recursos, agotamiento del bosque, almacén con capacidad, mercado, comercio, tecnologías, eras.
+- Otros recursos, agotamiento del bosque (llega con [economy-forest.md](economy-forest.md)), almacén con capacidad, mercado, comercio, tecnologías, eras.
 - Aldeanos constructores (la casa se construye sola con temporizador), cola de producción, más de un edificio.
 - Edificios fuera de la zona urbana: evitarlo deja intactos el pathfinding y el desplazamiento de unidades.
 - Robar o destruir madera: llegará con el slice de riesgo, que es el siguiente.
@@ -75,7 +75,7 @@ tramo termina (fase 3, llegadas) o cuando vence `phase_until_ms` (fase 5).
 
 | Regla | Enunciado |
 |---|---|
-| `RN-ECON-001` | `unit.gather` sólo acepta un `VILLAGER` propio, vivo, no guarnecido, y un `target` dentro del mundo cuyo terreno sea `FOREST`. El bosque no se agota en este slice. |
+| `RN-ECON-001` | `unit.gather` sólo acepta un `VILLAGER` propio, vivo, no guarnecido, y un `target` dentro del mundo cuyo terreno sea `FOREST`. Desde E4, el tile además tiene que tener madera ([economy-forest.md](economy-forest.md) `RN-ECON-014`). |
 | `RN-ECON-002` | El tile de trabajo es el propio tile `FOREST` (es transitable, coste 16). Si no hay ruta desde la unidad, `PATH_NOT_FOUND`; si la hay pero supera `EO_PATHFINDING_MAX_DISTANCE`, `PATH_TOO_LONG`, como un `unit.move`. |
 | `RN-ECON-003` | Al llegar, la unidad pasa a `WORKING` durante `workMs` y al vencer carga `carry` unidades. Mientras trabaja no se mueve ni se oculta; una orden de movimiento, guarnición o `unit.cancel_move` cancela la tarea y **pierde lo cargado**. |
 | `RN-ECON-004` | El depósito es el primer tile transitable adyacente a la zona urbana de la ciudad de la unidad (`units.city_id`), elegido con el mismo criterio determinista que el emplazamiento de los aldeanos iniciales. Al llegar, `amount += carrying`, `carrying = 0`, `trips_done += 1`. |
@@ -264,7 +264,7 @@ cambiarlas es cambiar la spec.
 |---|---|---|
 | Q1 | ¿Recolectan los aldeanos con el dueño desconectado? | **No más allá del viaje en curso** (RN-ECON-005). «Sí, mientras la ciudad esté `OFFLINE_PENDING`» convertiría los 5 min de margen en 15 madera gratis; «sí, siempre» sería un idle game. |
 | Q2 | ¿Un aldeano cuesta madera? En AoE cuesta comida. | Sí, en este slice: un único recurso evita un segundo ciclo de recolección antes de haber probado el primero. Cambiará a comida cuando exista. |
-| Q3 | ¿Se agota el bosque? | No en este slice. Es la primera cosa que añadir después, porque convierte el espacio en recurso disputado (pilar 5). |
+| Q3 | ¿Se agota el bosque? | No en este slice. Es la primera cosa que añadir después, porque convierte el espacio en recurso disputado (pilar 5). Resuelta por [economy-forest.md](economy-forest.md) (E4, 2026-11-03). |
 | Q4 | ¿Casas sólo en el 3×3? | Sí: ocho huecos bastan para `STONE_AGE` y no toca pathfinding. Crecer la zona urbana es un slice propio. |
 | Q5 | ¿La madera cargada se pierde al cancelar? | Sí: es la regla más simple y hace que interrumpir un viaje cueste algo. |
 | Q6 | Números de §4.5. | Son el punto de partida para que cinco personas los prueben; se ajustan con lo observado, sin tocar la spec mientras sigan siendo parámetros de catálogo. |

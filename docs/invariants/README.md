@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**104 invariantes** —102 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en doce familias y once archivos (las fichas son 105: `INV-GARR-008` está reservado y no tiene fila, ver el recuento final). `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**106 invariantes** —104 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en doce familias y once archivos (las fichas son 107: `INV-GARR-008` está reservado y no tiene fila, ver el recuento final). `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -363,6 +363,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-ECON-004 | `population_limit` es el de la era más cinco por casa completa | ALTO | DOMAIN, TEST | ✓ | `TestElLimiteDePoblacionCuentaLasCasasCompletas`, `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite`, `TestCompletarUnaCasaSumaSuBonoUnaVez` |
 | INV-ECON-005 | Lo que estaba a medias termina, tras un reinicio, en el mismo instante absoluto | ALTO | DOMAIN, TEST | ✓ | `TestReinicioConLaLlegadaAlBosqueVencidaEnLaCaida`, `TestReinicioDuranteUnaConstruccion` y el resto de `economy_recovery_test.go` |
 | INV-ECON-006 | Ningún viaje nuevo empieza con el dueño ausente | ALTO | DOMAIN, TEST | ✓ | `TestConElDuenoAusenteElViajeTerminaYNoEmpiezaOtro`, `TestUnaCiudadOnlineSinSesionNoEmpiezaViajesNuevos` |
+| INV-ECON-007 | La madera de un tile está entre 0 y su capacidad, y sólo existe para tiles `FOREST` | ALTO | DB, DOMAIN, TEST | ○ | Previstos con E4: el `CHECK` por su nombre, la carga parcial y nula |
+| INV-ECON-008 | Una carga nunca crea madera | ALTO | DB, DOMAIN, TEST | ○ | Previstos con E4: transacción de carga con fallo inyectado, golden «tala» |
 
 ### COMBAT — [combat.md](combat.md)
 
@@ -379,9 +381,9 @@ Por severidad:
 | Severidad | Cantidad |
 |---|---|
 | CRITICO | 43 |
-| ALTO | 48 |
+| ALTO | 50 |
 | MEDIO | 11 |
-| **Total** | **102** |
+| **Total** | **104** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -399,7 +401,7 @@ Por familia:
 | `INV-TERR` | 001–009 | 9 | [territory.md](territory.md) |
 | `INV-SAFE` | 001–007 | 7 | [territory.md](territory.md) |
 | `INV-GARR` | 001–009 | 8 | [diplomacy.md](diplomacy.md) |
-| `INV-ECON` | 001–006 | 6 | [economy.md](economy.md) |
+| `INV-ECON` | 001–008 | 8 | [economy.md](economy.md) |
 | `INV-COMBAT` | 001–003 | 3 | [combat.md](combat.md) |
 
 Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Hay dos números quemados, `INV-GARR-003`, derogado por [ADR-017](../decisions/ADR-017-garrison-commands.md), e `INV-CITY-009`, derogado por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md): conservan su fila y su ficha con la marca `DEROGADO`, y no se reutilizan. `INV-GARR-008` está reservado (ver abajo), así que el rango de `INV-GARR` tiene ocho filas para nueve números.
@@ -410,17 +412,17 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 |---|---|---|
 | ✓ Cubierto | 102 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **104** | |
+| **Total** | **106** | |
 
-> **104 filas y 105 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
+> **106 filas y 107 fichas, y la diferencia es deliberada.** [`INV-GARR-008`](diplomacy.md) tiene ficha
 > pero **no** fila en esta tabla: es un ID **reservado** —apartado para que nadie lo reutilice— cuyo
 > enunciado todavía no se puede verificar, porque la gracia de expulsión que describiría no tiene dónde
 > vivir en el esquema. Darle fila implicaría asignarle una marca de cobertura, y no hay nada que cubrir.
 > Si algún recuento automático señala la discrepancia, esta es la explicación.
 
-Ninguna fila queda sin cobertura ni parcial. La familia `INV-COMBAT` se registró el 2026-11-02 antes de escribir su código, como manda §8, y pasó a ✓ con la implementación de SPEC-COMBAT-RAID; con ella, `INV-CITY-006` tiene por fin su test de rechazo: `unit.attack` es la primera acción hostil. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
+Quedan dos filas sin cobertura, `INV-ECON-007` e `INV-ECON-008`: se registraron el 2026-11-03 con SPEC-ECON-FOREST, antes de escribir su código, como manda §8, y pasan a ✓ con su implementación. La familia `INV-COMBAT` se registró el 2026-11-02 antes de escribir su código, como manda §8, y pasó a ✓ con la implementación de SPEC-COMBAT-RAID; con ella, `INV-CITY-006` tiene por fin su test de rechazo: `unit.attack` es la primera acción hostil. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
 La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). `INV-CITY-006`, la última parcial, pasó a ✓ con la primera acción hostil (SPEC-COMBAT-RAID, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas), y con [ADR-020](../decisions/ADR-020-stale-pending-accounts.md), `INV-PLAYER-010` (una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 

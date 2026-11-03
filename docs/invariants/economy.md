@@ -293,3 +293,62 @@ depósito, sin ningún tramo nuevo al bosque; `TestUnaCiudadOnlineSinSesionNoEmp
 del tick 895 como el último.
 
 **Violación en runtime.** No hay estado que detectar: la guarda es la propia transición.
+
+---
+
+<a id="inv-econ-007"></a>
+## INV-ECON-007 — La madera de un tile está entre 0 y su capacidad, y sólo existe para tiles `FOREST`
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E4 |
+| Política ante violación | REJECT (escritura) · REPAIR (arranque) |
+| Cobertura | **Pendiente**: se cubre con la implementación de E4 ([../specs/economy-forest.md](../specs/economy-forest.md)) |
+
+**Enunciado.** Para toda fila de `forest_wood` y toda entrada de la capa de madera en la RAM, `0 ≤ remaining ≤
+forestWood` y el tile `(x, y)` es `FOREST` en el terreno del mundo.
+
+**Razón.** Una madera negativa es madera que alguien se llevó sin que existiera; una entrada sobre un tile que no
+es bosque es un recurso donde el terreno dice que no hay ninguno.
+
+**Cómo se garantiza.**
+
+- `DB` — `CHECK (remaining BETWEEN 0 AND 100)` en `forest_wood` (migración `000008`).
+- `DOMAIN` — la carga es `min(carry, remaining)` (`RN-ECON-013`) y la capa sólo admite tiles `FOREST`; la carga
+  al arrancar descarta, con `invariant_violation`, una fila sobre un tile que no lo es.
+
+**Cómo se verifica.** Se escribirán con la implementación: el `CHECK` por su nombre (integration), la carga
+parcial y nula (unit) y la fila sobre un tile que no es bosque al arrancar (recovery).
+
+**Violación en runtime.** La base rechaza la escritura; al arrancar, la fila mala se descarta y se audita.
+
+---
+
+<a id="inv-econ-008"></a>
+## INV-ECON-008 — Una carga nunca crea madera
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E4 |
+| Política ante violación | REJECT |
+| Cobertura | **Pendiente**: se cubre con la implementación de E4 ([../specs/economy-forest.md](../specs/economy-forest.md)) |
+
+**Enunciado.** En cada carga, lo que gana la unidad es exactamente lo que pierde el tile, en la RAM y en la base.
+
+**Razón.** Es la versión de `INV-COMBAT-003` para el bosque: si la carga y el descuento pudieran separarse, una
+caída dejaría la madera a la vez en la mano del aldeano y en el bosque.
+
+**Cómo se garantiza.**
+
+- `DB` — el descuento del tile va en la misma transacción que la transición `WORKING → TO_DEPOSIT` de la tarea,
+  como delta ([ADR-025](../decisions/ADR-025-forest-wood-layer.md) §2).
+- `DOMAIN` — la RAM descuenta del tile la misma cantidad que pone en `carrying`, en el mismo paso.
+
+**Cómo se verifica.** Se escribirán con la implementación: la transacción de carga con fallo inyectado (ni tile ni
+carga a medias, integration) y la suma tile + cargas constante en el golden «tala» (simulation).
+
+**Violación en runtime.** No hay ruta conocida; la transacción es la garantía.

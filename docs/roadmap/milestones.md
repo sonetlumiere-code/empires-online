@@ -1,6 +1,6 @@
 # Milestones
 
-Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E3): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
+Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E4): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
 
 ## Cómo leer este documento
 
@@ -1427,3 +1427,25 @@ huida de aldeanos, posturas por unidad, salir de la guarnición a defender.
 6. **HECHO** — Prueba en vivo (2026-11-03): humo con incursión en verde; el guardia de la víctima respondió
    sin órdenes y, al golpear al incursor, los guerreros parados del incursor respondieron a su vez y lo
    mataron. `UnitAttacked` con `auto: true` escrito en `world_events`.
+
+## E4 — Bosque
+
+**Estado: EN CURSO en la rama `claude/slice-bosque` (2026-11-03).** Contrato:
+[SPEC-ECON-FOREST](../specs/economy-forest.md), aceptada el 2026-11-03 con sus siete decisiones de producto, y
+[ADR-025](../decisions/ADR-025-forest-wood-layer.md).
+
+**Objetivo.** Que el espacio sea un recurso disputado: cada tile de bosque tiene 100 de madera, la recolección la
+gasta, el aldeano busca el tile siguiente y el bosque talado vuelve a crecer 24 horas después.
+
+**Alcance.** La capa de madera aparte del terreno, su carga exacta y su regeneración; la búsqueda del tile
+siguiente; `forests` y `forest.update` en el protocolo; el dibujo en el cliente; la fundación con al menos diez
+tiles con madera. **No entra** (spec §2): talar para abrir camino, otros recursos, plantar.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-025, `INV-ECON-007` e `INV-ECON-008`.
+2. Simulación: la capa en la RAM, la carga parcial, la búsqueda del tile siguiente y la regeneración.
+3. Persistencia: migración `000008` y el descuento por delta en la transacción de la carga.
+4. Protocolo y cliente: `forests`, `forest.update` y el bosque talado en la escena.
+5. Fundación: diez tiles con madera alcanzables a ≤ 8.
+6. Humo y prueba en vivo.
