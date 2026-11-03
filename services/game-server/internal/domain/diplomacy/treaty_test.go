@@ -37,11 +37,16 @@ func tratado(status Status, allowsGarrison bool) Treaty {
 // Máquina de estados
 // ─────────────────────────────────────────────────────────────
 
-func TestLaMaquinaDeEstadosAceptaExactamenteTresTransiciones(t *testing.T) {
+// SPEC-DIPLOMACY §4.2: una oferta se acepta, se rechaza, se retira o caduca; un
+// tratado vigente caduca o se rompe.
+func TestLaMaquinaDeEstadosAceptaExactamenteSeisTransiciones(t *testing.T) {
 	permitidas := []struct {
 		desde, hasta Status
 	}{
 		{StatusProposed, StatusActive},
+		{StatusProposed, StatusRejected},
+		{StatusProposed, StatusWithdrawn},
+		{StatusProposed, StatusExpired},
 		{StatusActive, StatusExpired},
 		{StatusActive, StatusBroken},
 	}
@@ -57,13 +62,16 @@ func TestLaMaquinaDeEstadosAceptaExactamenteTresTransiciones(t *testing.T) {
 
 func TestLaMaquinaDeEstadosRechazaTodoLoDemas(t *testing.T) {
 	// Se enumeran TODOS los pares posibles y se rechaza cualquiera que no sea uno
-	// de los tres legales. Escribir la lista negra a mano dejaría fuera los casos
+	// de los seis legales. Escribir la lista negra a mano dejaría fuera los casos
 	// que a nadie se le ocurren, que son justo los que rompen.
-	todos := []Status{StatusProposed, StatusActive, StatusExpired, StatusBroken}
+	todos := []Status{StatusProposed, StatusActive, StatusExpired, StatusBroken, StatusRejected, StatusWithdrawn}
 	legales := map[string]bool{
-		string(StatusProposed) + ">" + string(StatusActive): true,
-		string(StatusActive) + ">" + string(StatusExpired):  true,
-		string(StatusActive) + ">" + string(StatusBroken):   true,
+		string(StatusProposed) + ">" + string(StatusActive):    true,
+		string(StatusProposed) + ">" + string(StatusRejected):  true,
+		string(StatusProposed) + ">" + string(StatusWithdrawn): true,
+		string(StatusProposed) + ">" + string(StatusExpired):   true,
+		string(StatusActive) + ">" + string(StatusExpired):     true,
+		string(StatusActive) + ">" + string(StatusBroken):      true,
 	}
 
 	for _, desde := range todos {
@@ -266,4 +274,91 @@ func TestSoloCaducanLosActivos(t *testing.T) {
 				"caducar algo que no está activo produciría una transición ilegal")
 		})
 	}
+}
+
+// ─────────────────────────────────────────────────────────────
+// Órdenes de los jugadores (SPEC-DIPLOMACY §4.3)
+// ─────────────────────────────────────────────────────────────
+
+// oferta es un tratado PROPOSED propuesto por PlayerA.
+func oferta() Treaty {
+	t := tratado(StatusProposed, true)
+	a := t.PlayerA
+	t.ProposedBy = &a
+	return t
+}
+
+// INV-DIPLO-001: sólo responde el firmante que no propuso, y sólo retira quien
+// propuso; un tercero no puede nada.
+func TestSoloRespondeQuienNoPropusoYSoloRetiraQuienPropuso(t *testing.T) {
+	o := oferta()
+	tercero := uuid.New()
+
+	assert.NoError(t, o.CanRespond(o.PlayerB))
+	assert.ErrorIs(t, o.CanRespond(o.PlayerA), ErrNoPuede, "la oferta propia no se responde")
+	assert.ErrorIs(t, o.CanRespond(tercero), ErrNoEsParte)
+
+	assert.NoError(t, o.CanWithdraw(o.PlayerA))
+	assert.ErrorIs(t, o.CanWithdraw(o.PlayerB), ErrNoPuede, "la oferta ajena no se retira")
+	assert.ErrorIs(t, o.CanWithdraw(tercero), ErrNoEsParte)
+
+	vigente := tratado(StatusActive, true)
+	assert.ErrorIs(t, vigente.CanRespond(vigente.PlayerB), ErrNoPuede, "sólo se responde a una oferta")
+	admin := tratado(StatusProposed, true) // sin proposed_by: nadie la responde
+	assert.ErrorIs(t, admin.CanRespond(admin.PlayerB), ErrNoPuede)
+}
+
+// RN-DIPLO-003 y RN-DIPLO-004: cualquiera de los dos rompe un tratado vigente,
+// una sola vez; durante el preaviso la paz sigue y al vencer termina.
+func TestRomperAbreUnPreavisoDuranteElQueLaPazSigue(t *testing.T) {
+	vigente := tratado(StatusActive, true)
+	ahora := time.Now().UTC()
+	assert.NoError(t, vigente.CanBreak(vigente.PlayerA))
+	assert.NoError(t, vigente.CanBreak(vigente.PlayerB))
+	assert.ErrorIs(t, vigente.CanBreak(uuid.New()), ErrNoEsParte)
+	assert.ErrorIs(t, oferta().CanBreak(vigente.PlayerA), ErrNoEsParte)
+
+	fin := ahora.Add(15 * time.Minute)
+	vigente.BreakEffectiveAt = &fin
+	assert.ErrorIs(t, vigente.CanBreak(vigente.PlayerA), ErrNoPuede, "no se rompe dos veces")
+	assert.True(t, vigente.GivesPeaceAt(ahora.Add(14*time.Minute)), "en el preaviso, la paz sigue")
+	assert.False(t, vigente.GivesPeaceAt(fin), "al vencer, termina")
+	cuando, estado, ok := vigente.EndsAt()
+	require.True(t, ok)
+	assert.Equal(t, fin, cuando)
+	assert.Equal(t, StatusBroken, estado)
+}
+
+// EndsAt elige lo que llegue antes entre la caducidad y el fin del preaviso.
+func TestElFinDeUnTratadoEsLoQueLlegueAntes(t *testing.T) {
+	vigente := tratado(StatusActive, false)
+	_, _, ok := vigente.EndsAt()
+	assert.False(t, ok, "sin plazo ni ruptura no termina solo")
+
+	ahora := time.Now().UTC()
+	caduca, rompe := ahora.Add(time.Minute), ahora.Add(time.Hour)
+	vigente.ExpiresAt, vigente.BreakEffectiveAt = &caduca, &rompe
+	cuando, estado, _ := vigente.EndsAt()
+	assert.Equal(t, caduca, cuando)
+	assert.Equal(t, StatusExpired, estado)
+}
+
+// Q1: se proponen el pacto y la alianza; la guarnición la fija el tipo. Una
+// oferta rechazada, retirada o caducada sella su cierre.
+func TestTiposProponiblesYCierreDeLasOfertas(t *testing.T) {
+	assert.True(t, TypeNonAggression.Proposable())
+	assert.True(t, TypeAlliance.Proposable())
+	assert.False(t, TypeTrade.Proposable())
+	assert.True(t, TypeAlliance.GrantsGarrison())
+	assert.False(t, TypeNonAggression.GrantsGarrison())
+
+	for _, fin := range []Status{StatusRejected, StatusWithdrawn, StatusExpired} {
+		cerrada, err := oferta().TransitionTo(fin, time.Now())
+		require.NoError(t, err)
+		assert.NotNil(t, cerrada.ClosedAt, "%s sella closed_at", fin)
+		assert.False(t, cerrada.GivesPeaceAt(time.Now()))
+	}
+	caducado, err := tratado(StatusActive, false).TransitionTo(StatusExpired, time.Now())
+	require.NoError(t, err)
+	assert.Nil(t, caducado.ClosedAt, "un tratado vigente que caduca no es una oferta cerrada")
 }

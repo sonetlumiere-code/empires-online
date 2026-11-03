@@ -101,40 +101,34 @@ func TestElParDelTratadoSeGuardaSiempreEnOrdenCanonico(t *testing.T) {
 	assert.NoError(t, tr.Validate())
 }
 
-func TestSoloPuedeHaberUnTratadoActivoPorParYTipo(t *testing.T) {
-	// El índice único parcial `treaties_one_active_per_pair_and_type`. Es una
-	// garantía de la BASE, no del dominio: comprobarla aquí es la única forma de
-	// saber que existe de verdad.
+// INV-DIPLO-002, mitad DB: como mucho un tratado ACTIVE por par, del tipo que
+// sea —hasta 000009 el índice era por par y tipo y dejaba un TRADE junto a una
+// alianza—, y como mucho una oferta PROPOSED.
+func Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar(t *testing.T) {
 	store, ctx := newTestStore(t)
 	e := nuevoEscenario(t, ctx, store)
 	a, b := e.visitante.Player.ID, e.anfitrion.Player.ID
-
-	// El helper crea una ALLIANCE.
 	tratadoActivo(t, ctx, store, e.treaties, a, b, true)
 
 	ahora := time.Now().UTC()
 	pa, pb := diplomacy.CanonicalPair(a, b)
-
 	_, err := e.treaties.Create(ctx, store.Pool(), diplomacy.Treaty{
 		PlayerA: pa, PlayerB: pb,
 		Type: diplomacy.TypeTrade, Status: diplomacy.StatusActive, AcceptedAt: &ahora,
 	})
-	require.NoError(t, err, "otro TIPO sí puede estar activo a la vez entre el mismo par")
+	assert.ErrorIs(t, err, postgres.ErrConflict, "ni de otro tipo: un vigente por par")
 
-	_, err = e.treaties.Create(ctx, store.Pool(), diplomacy.Treaty{
-		PlayerA: pa, PlayerB: pb,
-		Type: diplomacy.TypeAlliance, Status: diplomacy.StatusActive, AcceptedAt: &ahora,
-	})
-	require.Error(t, err, "una SEGUNDA alianza activa entre el mismo par, no")
-	// Se comprueba contra ErrConflict y no con IsUniqueViolation porque el
-	// repositorio normaliza: `normalize` traduce la violación de unicidad al
-	// error estable del paquete y no conserva el error del driver en la cadena.
-	// Afirmar sobre el error del driver aquí pasaría por casualidad sólo en los
-	// caminos que se saltan la normalización.
-	assert.ErrorIs(t, err, postgres.ErrConflict,
-		"y debe ser precisamente el índice único parcial, no otro error")
+	for vez := 0; vez < 2; vez++ {
+		_, err = e.treaties.Create(ctx, store.Pool(), diplomacy.Treaty{
+			PlayerA: pa, PlayerB: pb, Type: diplomacy.TypeNonAggression, Status: diplomacy.StatusProposed, ProposedBy: &a,
+		})
+		if vez == 0 {
+			require.NoError(t, err, "una oferta puede convivir con el vigente")
+		} else {
+			assert.ErrorIs(t, err, postgres.ErrConflict, "dos ofertas, no")
+		}
+	}
 }
-
 func TestLaTransicionRechazaUnTratadoQueYaCambio(t *testing.T) {
 	// Concurrencia: entre la lectura y la escritura, otro camino rompió el
 	// tratado. Sin la condición `status = $2` del WHERE, la caducidad pisaría la

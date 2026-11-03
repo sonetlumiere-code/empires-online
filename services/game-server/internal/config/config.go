@@ -63,6 +63,12 @@ type Config struct {
 	// el suelo del almacén por debajo del cual no se roba (SPEC-COMBAT-PILLAGE §4.2).
 	PillageWoodPerHit int32
 	PillageStockFloor int64
+	// TreatyOfferTTL es la vida de una oferta sin respuesta, TreatyBreakNotice
+	// el preaviso de una ruptura y TreatyRetry la espera tras un rechazo
+	// (SPEC-DIPLOMACY §10).
+	TreatyOfferTTL    time.Duration
+	TreatyBreakNotice time.Duration
+	TreatyRetry       time.Duration
 
 	PersistenceFlushIntervalTicks int
 
@@ -178,6 +184,9 @@ func Load() (Config, error) {
 		CombatLeashTiles:       int32(v.intRange("EO_COMBAT_LEASH_TILES", 8, 1, 1024)),
 		PillageWoodPerHit:      int32(v.intRange("EO_PILLAGE_WOOD_PER_HIT", 5, 1, 1000)),
 		PillageStockFloor:      int64(v.intRange("EO_PILLAGE_STOCK_FLOOR", 50, 1, 1_000_000)),
+		TreatyOfferTTL:         time.Duration(v.intRange("EO_TREATY_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
+		TreatyBreakNotice:      time.Duration(v.intRange("EO_TREATY_BREAK_NOTICE_MINUTES", 15, 1, 24*60)) * time.Minute,
+		TreatyRetry:            time.Duration(v.intRange("EO_TREATY_RETRY_MINUTES", 10, 1, 24*60)) * time.Minute,
 
 		PersistenceFlushIntervalTicks: v.intRange("EO_PERSISTENCE_FLUSH_INTERVAL_TICKS", 50, 1, 100000),
 

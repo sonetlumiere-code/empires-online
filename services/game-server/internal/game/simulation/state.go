@@ -103,6 +103,8 @@ type State struct {
 	// Combate (SPEC-COMBAT-RAID, ADR-024): enfrentamientos, tratados de paz y
 	// muertes por reescribir.
 	combat combatState
+	// diplo son los tratados abiertos y su reserva (SPEC-DIPLOMACY).
+	diplo diplomacyState
 
 	// Bosque (SPEC-ECON-FOREST, ADR-025): la madera de los tiles tocados.
 	forest forestState
@@ -136,6 +138,7 @@ func NewState(w *world.World) *State {
 		buildingAt:         make(map[world.Tile]int64),
 		pendingBuilds:      make(map[world.Tile]pendingBuild),
 		combat:             newCombatState(),
+		diplo:              newDiplomacyState(),
 		forest:             newForestState(),
 		pendingCompletions: make(map[int64]struct{}),
 	}

@@ -16,7 +16,8 @@ import (
 )
 
 const treatyColumns = `id, player_a_id, player_b_id, treaty_type, status,
-	allows_garrison, proposed_at, accepted_at, expires_at, broken_at`
+	allows_garrison, proposed_at, accepted_at, expires_at, broken_at,
+	proposed_by, request_id, break_effective_at, closed_at`
 
 // TreatyRepo persiste los tratados entre jugadores.
 type TreatyRepo struct {
@@ -28,9 +29,8 @@ func NewTreatyRepo(s *Store) *TreatyRepo { return &TreatyRepo{store: s} }
 
 // Create inserta un tratado.
 //
-// En el MVP no hay negociación desde el cliente: los tratados nacen por vía
-// administrativa o de semilla, y lo que se valida es su EFECTO sobre el dominio.
-// Por eso este método existe y no hay ningún comando de red que lo invoque.
+// Es la vía administrativa o de semilla, sin orden de un jugador. Los que
+// proponen los jugadores entran por ApplyTreaty (SPEC-DIPLOMACY, ADR-027).
 func (r *TreatyRepo) Create(ctx context.Context, db DB, t diplomacy.Treaty) (diplomacy.Treaty, error) {
 	// El par se ordena antes de escribir: el CHECK `treaties_canonical_pair` lo
 	// exige, y dejarlo en manos del llamante convertiría un descuido en un error
@@ -43,11 +43,11 @@ func (r *TreatyRepo) Create(ctx context.Context, db DB, t diplomacy.Treaty) (dip
 	row := db.QueryRow(ctx,
 		`INSERT INTO treaties
 		     (player_a_id, player_b_id, treaty_type, status, allows_garrison,
-		      accepted_at, expires_at, broken_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		      accepted_at, expires_at, broken_at, proposed_by, break_effective_at, closed_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		 RETURNING `+treatyColumns,
 		t.PlayerA, t.PlayerB, string(t.Type), string(t.Status), t.AllowsGarrison,
-		t.AcceptedAt, t.ExpiresAt, t.BrokenAt)
+		t.AcceptedAt, t.ExpiresAt, t.BrokenAt, t.ProposedBy, t.BreakEffectiveAt, t.ClosedAt)
 
 	return scanTreaty(row)
 }
@@ -121,11 +121,11 @@ func (r *TreatyRepo) Transition(
 
 	row := db.QueryRow(ctx,
 		`UPDATE treaties
-		    SET status = $3, accepted_at = $4, broken_at = $5
+		    SET status = $3, accepted_at = $4, broken_at = $5, closed_at = $6
 		  WHERE id = $1 AND status = $2
 		RETURNING `+treatyColumns,
 		t.ID, string(t.Status), string(actualizado.Status),
-		actualizado.AcceptedAt, actualizado.BrokenAt)
+		actualizado.AcceptedAt, actualizado.BrokenAt, actualizado.ClosedAt)
 
 	escrito, err := scanTreaty(row)
 	if err != nil {
@@ -159,15 +159,20 @@ func (r *TreatyRepo) query(ctx context.Context, sql string, args ...any) ([]dipl
 func scanTreaty(s scanner) (diplomacy.Treaty, error) {
 	var t diplomacy.Treaty
 	var tipo, estado string
+	var requestID *string
 
 	if err := s.Scan(
 		&t.ID, &t.PlayerA, &t.PlayerB, &tipo, &estado,
 		&t.AllowsGarrison, &t.ProposedAt, &t.AcceptedAt, &t.ExpiresAt, &t.BrokenAt,
+		&t.ProposedBy, &requestID, &t.BreakEffectiveAt, &t.ClosedAt,
 	); err != nil {
 		return diplomacy.Treaty{}, fmt.Errorf("leer tratado: %w", normalize(err))
 	}
 	t.Type = diplomacy.Type(tipo)
 	t.Status = diplomacy.Status(estado)
+	if requestID != nil {
+		t.RequestID = *requestID
+	}
 	return t, nil
 }
 
@@ -372,47 +377,121 @@ func (r *GarrisonRepo) ListByCity(ctx context.Context, cityID int64) ([]int64, e
 	return out, rows.Err()
 }
 
-// ExpireDue caduca todos los tratados vencidos y devuelve los que cambiaron.
-//
-// Cada tratado va en SU PROPIA transacción, no todos en una. Un tratado cuya
-// transición falle —porque otra vía lo rompió entre la consulta y la escritura—
-// no debe impedir que caduquen los demás: son hechos independientes y agruparlos
-// sólo crearía un fallo compartido.
-func (r *TreatyRepo) ExpireDue(ctx context.Context, now time.Time, tick uint64) ([]diplomacy.Treaty, error) {
-	vencidos, err := r.ListExpirable(ctx, now)
-	if err != nil {
-		return nil, err
-	}
+// ─────────────────────────────────────────────────────────────
+// Tratados en caliente (SPEC-DIPLOMACY, ADR-027)
+// ─────────────────────────────────────────────────────────────
 
-	caducados := make([]diplomacy.Treaty, 0, len(vencidos))
-	for _, t := range vencidos {
-		var escrito diplomacy.Treaty
-		err := r.store.InTx(ctx, func(tx pgx.Tx) error {
-			var err error
-			escrito, err = r.Transition(ctx, tx, t, diplomacy.StatusExpired, now)
-			if err != nil {
-				return err
+// ListOpen devuelve los tratados PROPOSED y ACTIVE, en orden de id: lo que la
+// simulación carga al arrancar (ADR-027 §1).
+func (r *TreatyRepo) ListOpen(ctx context.Context) ([]diplomacy.Treaty, error) {
+	return r.query(ctx,
+		`SELECT `+treatyColumns+` FROM treaties WHERE status IN ('PROPOSED', 'ACTIVE') ORDER BY id`)
+}
+
+// ListRejectedSince devuelve las ofertas rechazadas desde `since`: las que aún
+// frenan una oferta repetida (RN-DIPLO-008).
+func (r *TreatyRepo) ListRejectedSince(ctx context.Context, since time.Time) ([]diplomacy.Treaty, error) {
+	return r.query(ctx,
+		`SELECT `+treatyColumns+` FROM treaties
+		  WHERE status = 'REJECTED' AND closed_at >= $1 ORDER BY id`, since)
+}
+
+// TreatyWrite es una orden o un vencimiento ya decididos por la simulación.
+type TreatyWrite struct {
+	// Insert: es una oferta nueva; Treaty no tiene id todavía.
+	Insert bool
+	// Treaty es el tratado tal como queda.
+	Treaty diplomacy.Treaty
+	// From es el estado que debe tener la fila para aplicar la escritura.
+	From diplomacy.Status
+	// Supersede es el pacto que una alianza aceptada cierra (EXPIRED) en la
+	// misma transacción; nil si no hay.
+	Supersede *diplomacy.Treaty
+	// Event es el world_events de la escritura.
+	Event string
+	Tick  uint64
+}
+
+// ApplyTreaty escribe una orden o un vencimiento con su evento, en una
+// transacción, y devuelve el id del tratado. Es idempotente (ADR-027 §2):
+// una oferta repetida con el mismo (proposed_by, request_id) devuelve la que
+// ya existe, y una actualización que encuentra la fila en el estado de destino
+// termina sin escribir el evento otra vez. Un índice de INV-DIPLO-002 violado
+// es ErrConflict.
+func (r *TreatyRepo) ApplyTreaty(ctx context.Context, w TreatyWrite) (int64, error) {
+	var id int64
+	err := r.store.InTx(ctx, func(tx pgx.Tx) error {
+		t := w.Treaty
+		if w.Insert {
+			switch err := tx.QueryRow(ctx,
+				`SELECT id FROM treaties WHERE proposed_by = $1 AND request_id = $2`,
+				t.ProposedBy, t.RequestID).Scan(&id); {
+			case err == nil:
+				return nil // ya escrita: un reintento
+			case !errors.Is(normalize(err), ErrNotFound):
+				return fmt.Errorf("buscar la oferta %s: %w", t.RequestID, normalize(err))
 			}
-			return appendEvent(ctx, tx, worldEvent{
-				EventType: "TreatyExpired",
-				Tick:      tick,
-				Payload: map[string]any{
-					"treatyId":   escrito.ID,
-					"playerA":    escrito.PlayerA,
-					"playerB":    escrito.PlayerB,
-					"treatyType": string(escrito.Type),
-				},
-			})
-		})
-		if err != nil {
-			// Un conflicto aquí es esperable y no es un fallo: significa que otra
-			// vía ya terminó ese tratado. Se omite y se sigue con el resto.
-			if errors.Is(err, ErrVersionConflict) {
-				continue
+			if err := tx.QueryRow(ctx,
+				`INSERT INTO treaties (player_a_id, player_b_id, treaty_type, status, allows_garrison,
+				                       proposed_at, proposed_by, request_id)
+				 VALUES ($1, $2, $3, 'PROPOSED', $4, $5, $6, $7) RETURNING id`,
+				t.PlayerA, t.PlayerB, string(t.Type), t.AllowsGarrison, t.ProposedAt, t.ProposedBy, t.RequestID,
+			).Scan(&id); err != nil {
+				return fmt.Errorf("insertar la oferta: %w", normalize(err))
 			}
-			return caducados, fmt.Errorf("caducar el tratado %d: %w", t.ID, err)
+			t.ID = id
+			return appendEvent(ctx, tx, treatyEvent(w.Event, w.Tick, t))
 		}
-		caducados = append(caducados, escrito)
+
+		id = t.ID
+		if w.Supersede != nil {
+			if _, err := tx.Exec(ctx,
+				`UPDATE treaties SET status = 'EXPIRED' WHERE id = $1 AND status = 'ACTIVE'`,
+				w.Supersede.ID); err != nil {
+				return fmt.Errorf("cerrar el pacto %d: %w", w.Supersede.ID, normalize(err))
+			}
+		}
+		tag, err := tx.Exec(ctx,
+			`UPDATE treaties
+			    SET status = $3, accepted_at = $4, broken_at = $5, closed_at = $6, break_effective_at = $7
+			  WHERE id = $1 AND status = $2
+			    AND (status <> $3 OR break_effective_at IS DISTINCT FROM $7)`,
+			t.ID, string(w.From), string(t.Status), t.AcceptedAt, t.BrokenAt, t.ClosedAt, t.BreakEffectiveAt)
+		if err != nil {
+			return fmt.Errorf("escribir el tratado %d: %w", t.ID, normalize(err))
+		}
+		if tag.RowsAffected() == 0 {
+			// O ya estaba escrito (un reintento), o la fila cambió por otra vía.
+			var estado string
+			var ruptura *time.Time
+			if err := tx.QueryRow(ctx, `SELECT status, break_effective_at FROM treaties WHERE id = $1`, t.ID).
+				Scan(&estado, &ruptura); err != nil {
+				return fmt.Errorf("leer el tratado %d: %w", t.ID, normalize(err))
+			}
+			if diplomacy.Status(estado) == t.Status && sameInstant(ruptura, t.BreakEffectiveAt) {
+				return nil
+			}
+			return fmt.Errorf("%w: el tratado %d está en %s", ErrVersionConflict, t.ID, estado)
+		}
+		return appendEvent(ctx, tx, treatyEvent(w.Event, w.Tick, t))
+	})
+	return id, err
+}
+
+func sameInstant(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
 	}
-	return caducados, nil
+	return a.Equal(*b)
+}
+
+func treatyEvent(name string, tick uint64, t diplomacy.Treaty) worldEvent {
+	payload := map[string]any{
+		"treatyId": t.ID, "playerA": t.PlayerA, "playerB": t.PlayerB,
+		"treatyType": string(t.Type), "status": string(t.Status),
+	}
+	if t.BreakEffectiveAt != nil {
+		payload["breakEffectiveAt"] = t.BreakEffectiveAt.UTC()
+	}
+	return worldEvent{EventType: name, Tick: tick, PlayerID: t.ProposedBy, Payload: payload}
 }

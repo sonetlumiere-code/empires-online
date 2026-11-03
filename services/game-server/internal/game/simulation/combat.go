@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/empires-online/empires-online/services/game-server/internal/domain/diplomacy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -103,19 +102,9 @@ type returnLeg struct {
 	post       world.Tile
 }
 
-// peaceTreaty es un tratado que impide atacar (RN-COMBAT-006).
-type peaceTreaty struct {
-	id        int64
-	expiresAt *time.Time
-}
-
 // combatState es lo que la simulación sabe del combate.
 type combatState struct {
 	engagements map[int64]*engagement // por atacante
-	// peace son los tratados ACTIVE de no agresión o alianza, por par canónico
-	// de jugadores. Se cargan al arrancar; hoy no hay vía para crearlos en
-	// caliente (backlog Q-04). Su caducidad se evalúa por fecha.
-	peace map[[2]uuid.UUID][]peaceTreaty
 	// pendingDeaths son las muertes cuya escritura se descartó (ADR-022).
 	pendingDeaths map[int64]Death
 	// returning son las vueltas al puesto en curso, por unidad. Una entrada
@@ -131,38 +120,10 @@ type combatState struct {
 func newCombatState() combatState {
 	return combatState{
 		engagements:   make(map[int64]*engagement),
-		peace:         make(map[[2]uuid.UUID][]peaceTreaty),
 		pendingDeaths: make(map[int64]Death),
 		returning:     make(map[int64]returnLeg),
 		pendingLoot:   make(map[int64]int32),
 	}
-}
-
-// SetPeaceTreaties instala los tratados vigentes que impiden atacar.
-func (s *State) SetPeaceTreaties(ts []diplomacy.Treaty) {
-	s.combat.peace = make(map[[2]uuid.UUID][]peaceTreaty)
-	for _, t := range ts {
-		if t.Status != diplomacy.StatusActive {
-			continue
-		}
-		if t.Type != diplomacy.TypeNonAggression && t.Type != diplomacy.TypeAlliance {
-			continue
-		}
-		a, b := diplomacy.CanonicalPair(t.PlayerA, t.PlayerB)
-		k := [2]uuid.UUID{a, b}
-		s.combat.peace[k] = append(s.combat.peace[k], peaceTreaty{id: t.ID, expiresAt: t.ExpiresAt})
-	}
-}
-
-// AtPeace indica si dos jugadores tienen un tratado vigente que impide atacar.
-func (s *State) AtPeace(x, y uuid.UUID, now time.Time) bool {
-	a, b := diplomacy.CanonicalPair(x, y)
-	for _, t := range s.combat.peace[[2]uuid.UUID{a, b}] {
-		if t.expiresAt == nil || now.Before(*t.expiresAt) {
-			return true
-		}
-	}
-	return false
 }
 
 // Engaged dice a quién ataca una unidad (tests).
