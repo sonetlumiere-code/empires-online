@@ -82,6 +82,21 @@ export interface BuildingView {
   completesAtMs: number;
 }
 
+/**
+ * Madera de un tile de bosque que no está lleno (SPEC-ECON-FOREST). Un tile
+ * FOREST que no está en el mapa está lleno. Es una capa aparte del terreno, que
+ * no cambia nunca.
+ */
+export interface ForestView {
+  x: number;
+  y: number;
+  remaining: number;
+  regrowsAtMs: number;
+}
+
+/** Clave de un tile en el mapa de bosque. */
+export const forestKey = (x: number, y: number) => `${x},${y}`;
+
 export interface ChunkTerrain {
   cx: number;
   cy: number;
@@ -120,6 +135,8 @@ export interface WorldChanges {
   readonly buildings: ReadonlySet<number>;
   /** Llegaron chunks de terreno nuevos. */
   readonly terrain: boolean;
+  /** Cambió la madera de algún tile de bosque. */
+  readonly forests: boolean;
 }
 
 export interface WorldState {
@@ -138,6 +155,8 @@ export interface WorldState {
   territories: ReadonlyMap<number, TerritoryView>;
   buildings: ReadonlyMap<number, BuildingView>;
   terrain: ReadonlyMap<string, ChunkTerrain>;
+  /** Tiles de bosque que no están llenos, por `forestKey`. */
+  forests: ReadonlyMap<string, ForestView>;
   changes: WorldChanges;
 
   selectedUnitId: number | null;
@@ -196,6 +215,7 @@ const INITIAL_CHANGES: WorldChanges = {
   territories: NO_IDS,
   buildings: NO_IDS,
   terrain: false,
+  forests: true,
 };
 
 export const useWorldStore = create<WorldState>((set, get) => {
@@ -206,6 +226,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
   const territories = new Map<number, TerritoryView>();
   const buildings = new Map<number, BuildingView>();
   const terrain = new Map<string, ChunkTerrain>();
+  const forests = new Map<string, ForestView>();
 
   let revision = 0;
   const changed = (partial: Partial<Omit<WorldChanges, 'revision'>>): WorldChanges => ({
@@ -216,6 +237,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     territories: NO_IDS,
     buildings: NO_IDS,
     terrain: false,
+    forests: false,
     ...partial,
   });
   const unitChanged = (id: number): WorldChanges => changed({ units: new Set([id]) });
@@ -230,6 +252,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     territories,
     buildings,
     terrain,
+    forests,
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
     lastError: null,
@@ -268,6 +291,12 @@ export const useWorldStore = create<WorldState>((set, get) => {
       buildings.clear();
       for (const b of payload.buildings ?? []) buildings.set(b.id, { ...b });
 
+      // El snapshot trae todo el bosque a medias de su área: lo que no viene está lleno.
+      forests.clear();
+      for (const f of payload.forests ?? []) {
+        if (f.regrowsAtMs !== null) forests.set(forestKey(f.x, f.y), { ...f, regrowsAtMs: f.regrowsAtMs });
+      }
+
       let newTerrain = false;
       for (const t of payload.terrain) {
         terrain.set(chunkKey(t.cx, t.cy), {
@@ -284,7 +313,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
         tick: payload.tick,
         // Si la unidad seleccionada ya no está en el área de interés, se deselecciona.
         selectedUnitId: selected !== null && units.has(selected) ? selected : null,
-        changes: changed({ all: true, terrain: newTerrain }),
+        changes: changed({ all: true, terrain: newTerrain, forests: true }),
       });
     },
 
@@ -388,6 +417,15 @@ export const useWorldStore = create<WorldState>((set, get) => {
           break;
         }
 
+        case 'forest.update': {
+          // Sin instante de regeneración, el tile vuelve a estar lleno y sale de la capa.
+          const f = message.payload;
+          if (f.regrowsAtMs === null) forests.delete(forestKey(f.x, f.y));
+          else forests.set(forestKey(f.x, f.y), { ...f, regrowsAtMs: f.regrowsAtMs });
+          set({ changes: changed({ forests: true }) });
+          break;
+        }
+
         case 'unit.movement.started': {
           const { unitId, movement } = message.payload;
           const existing = units.get(unitId);
@@ -459,6 +497,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
       territories.clear();
       buildings.clear();
       terrain.clear();
+      forests.clear();
       set({
         playerId: null,
         sessionId: null,

@@ -467,6 +467,10 @@ Lo que llega y cómo se guarda:
   de entrenar», no «sin cambio». `entity.update` aplica `status: WORKING` y `carrying`.
 - `building.spawn` trae la vista completa y **añade** un edificio desconocido (como `territory.update`);
   `building.update` sobre uno desconocido se ignora.
+- **Bosque** ([economy-forest.md](../specs/economy-forest.md)): `forests` guarda, por `forestKey(x, y)`, sólo los tiles
+  que no están llenos. El snapshot la reemplaza entera; `forest.update` la cambia tile a tile, y con `regrowsAtMs`
+  nulo saca el tile. Es aparte del terreno, que sigue inmutable: la escena la dibuja en su propia capa, encima del
+  suelo, y la redibuja entera cuando `changes.forests` lo señala (son pocos tiles y cambian despacio).
 
 Las decisiones del cliente son intenciones, puras y probadas en `src/state/economy.ts`:
 

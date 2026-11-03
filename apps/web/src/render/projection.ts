@@ -20,12 +20,20 @@ import {
   type WorldChanges,
   type WorldState,
 } from '../state/world';
-import type { SceneBuilding, SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
+import type {
+  SceneBuilding,
+  SceneCity,
+  SceneForest,
+  SceneTerritory,
+  SceneUnit,
+  SceneUpdate,
+  TerrainSource,
+} from './sceneData';
 
 /** Lo que la proyección lee del store. */
 export type ProjectableState = Pick<
   WorldState,
-  'playerId' | 'world' | 'units' | 'cities' | 'territories' | 'buildings' | 'terrain' | 'selectedUnitId'
+  'playerId' | 'world' | 'units' | 'cities' | 'territories' | 'buildings' | 'terrain' | 'forests' | 'selectedUnitId'
 >;
 
 function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number | null): SceneUnit {
@@ -83,6 +91,13 @@ function toSceneTerritory(t: TerritoryView, ownId: string | null): SceneTerritor
 /** Una unidad guarnecida está dentro de su ciudad, no en el mapa: no se dibuja. */
 const drawable = (u: UnitView): boolean => u.garrisonCityId === null;
 
+/** La capa de bosque entera: los tiles que no están llenos (SPEC-ECON-FOREST). */
+function sceneForests(state: ProjectableState): SceneForest[] {
+  const out: SceneForest[] = [];
+  for (const f of state.forests.values()) out.push({ x: f.x, y: f.y, remaining: f.remaining });
+  return out;
+}
+
 /** La fuente de terreno de la escena, o `null` antes del `session.welcome`. */
 export function terrainSourceOf(state: ProjectableState): TerrainSource | null {
   if (!state.world) return null;
@@ -117,6 +132,7 @@ export function projectAll(state: ProjectableState): SceneUpdate | null {
     buildings,
     removedBuildings: [],
     terrain: terrainSourceOf(state),
+    forests: sceneForests(state),
   };
 }
 
@@ -172,5 +188,6 @@ export function projectChanges(state: ProjectableState, changes: WorldChanges): 
     buildings,
     removedBuildings,
     terrain: changes.terrain ? terrainSourceOf(state) : null,
+    forests: changes.forests ? sceneForests(state) : null,
   };
 }

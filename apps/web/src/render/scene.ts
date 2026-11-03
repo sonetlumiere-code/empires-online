@@ -27,10 +27,31 @@ import {
   type Rect,
 } from './culling';
 import { RenderReconciler } from './reconciler';
-import type { SceneBuilding, SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
+import type {
+  SceneBuilding,
+  SceneCity,
+  SceneForest,
+  SceneTerritory,
+  SceneUnit,
+  SceneUpdate,
+  TerrainSource,
+} from './sceneData';
 import type { ChunkTerrain } from '../state/world';
 
-export type { SceneBuilding, SceneCity, SceneTerritory, SceneUnit, SceneUpdate, TerrainSource } from './sceneData';
+export type {
+  SceneBuilding,
+  SceneCity,
+  SceneForest,
+  SceneTerritory,
+  SceneUnit,
+  SceneUpdate,
+  TerrainSource,
+} from './sceneData';
+
+/** Capacidad de un tile de bosque (forest.Capacity del servidor): sólo para dosificar el dibujo. */
+const FOREST_CAPACITY = 100;
+/** Bosque talado del todo: tierra con tocones. */
+const FOREST_DEPLETED_COLOR = 0x8a6d43;
 
 /** Colores por tipo de terreno (índice = valor del byte de TerrainType). */
 const TERRAIN_COLORS = [
@@ -92,6 +113,8 @@ export class IsoScene {
   private app: Application | null = null;
   private readonly root = new Container();
   private readonly terrainLayer = new Container();
+  /** La madera del bosque, encima del terreno, que no cambia (SPEC-ECON-FOREST). */
+  private readonly forestLayer = new Graphics();
   private readonly territoryLayer = new Container();
   private readonly entityLayer = new Container();
   /** Un `Graphics` por chunk de terreno a la vista (con un chunk de holgura al retirarlos). */
@@ -142,6 +165,7 @@ export class IsoScene {
 
     this.app = app;
     this.root.addChild(this.terrainLayer);
+    this.root.addChild(this.forestLayer);
     // Entre el terreno y las entidades: el overlay tiñe el suelo sin tapar
     // unidades ni ciudades, que es lo que el jugador necesita poder pulsar.
     this.root.addChild(this.territoryLayer);
@@ -199,6 +223,7 @@ export class IsoScene {
       this.terrain = update.terrain;
       this.terrainDirty = true;
     }
+    if (update.forests) this.drawForests(update.forests);
 
     if (update.complete) {
       this.pruneAbsent(this.units, update.units, (id) => this.removeUnit(id));
@@ -302,6 +327,10 @@ export class IsoScene {
   }
 
   /** Recorte de entidades: se decide por su anclaje actual y sólo cuando la cámara cambia de tile. */
+  private drawForests(forests: readonly SceneForest[]): void {
+    paintForests(this.forestLayer, forests);
+  }
+
   private cullEntities(): void {
     for (const entry of this.units.values()) {
       entry.sprite.visible = this.isVisible(entry.sprite.position.x, entry.sprite.position.y);
@@ -532,6 +561,32 @@ export class IsoScene {
     this.territoryShapes.delete(id);
   }
 
+}
+
+/**
+ * El bosque talado, encima de su tile: del todo, tierra con tocones; a medias,
+ * el mismo tono tanto más opaco cuanta menos madera queda. Son pocos tiles y
+ * cambian despacio, así que se redibujan enteros.
+ */
+function paintForests(g: Graphics, forests: readonly SceneForest[]): void {
+  g.clear();
+  for (const f of forests) {
+    const cut = 1 - Math.max(0, Math.min(FOREST_CAPACITY, f.remaining)) / FOREST_CAPACITY;
+    if (cut <= 0) continue;
+    const iso = worldToIso(f.x, f.y);
+    g.moveTo(iso.x, iso.y - TILE_H / 2)
+      .lineTo(iso.x + TILE_W / 2, iso.y)
+      .lineTo(iso.x, iso.y + TILE_H / 2)
+      .lineTo(iso.x - TILE_W / 2, iso.y)
+      .closePath()
+      .fill({ color: FOREST_DEPLETED_COLOR, alpha: f.remaining === 0 ? 1 : 0.25 + 0.6 * cut });
+    if (f.remaining === 0) {
+      // Tres tocones: que se lea como bosque talado y no como otro terreno.
+      for (const [dx, dy] of [[-8, -2], [6, -4], [0, 5]] as const) {
+        g.circle(iso.x + dx, iso.y + dy, 2.5).fill({ color: 0x4a3420 });
+      }
+    }
+  }
 }
 
 /**

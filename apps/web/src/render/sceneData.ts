@@ -84,4 +84,16 @@ export interface SceneUpdate {
   readonly removedBuildings: readonly number[];
   /** Fuente de terreno si hay chunks nuevos o es un cambio completo; `null` si el terreno no cambió. */
   readonly terrain: TerrainSource | null;
+  /**
+   * Todos los tiles de bosque que no están llenos, si la capa cambió; `null` si
+   * no. Son pocos y cambian despacio: la escena los redibuja enteros.
+   */
+  readonly forests: readonly SceneForest[] | null;
+}
+
+/** Un tile de bosque talado del todo o en parte (SPEC-ECON-FOREST). */
+export interface SceneForest {
+  readonly x: number;
+  readonly y: number;
+  readonly remaining: number;
 }
