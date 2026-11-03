@@ -9,6 +9,9 @@
 import { z } from 'zod';
 import { BuildingType, EntityId, PROTOCOL_VERSION, Tile, UnitType, Uuid, WorldCoordinate } from './common.js';
 
+/** Los tipos que un jugador puede proponer (SPEC-DIPLOMACY Q1). */
+const ProposableTreatyType = z.enum(['NON_AGGRESSION', 'ALLIANCE']);
+
 /** Versión del protocolo presente en todo mensaje. */
 const V = z.literal(PROTOCOL_VERSION);
 
@@ -183,6 +186,41 @@ export const UnitPillage = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * Propone un tratado a otro jugador (SPEC-DIPLOMACY). La guarnición la fija el
+ * tipo y el servidor decide si se puede. Ver ../../../docs/specs/diplomacy.md
+ */
+export const TreatyPropose = z.object({
+  v: V,
+  type: z.literal('treaty.propose'),
+  requestId: Uuid,
+  payload: z.object({
+    playerId: Uuid,
+    type: ProposableTreatyType,
+  }).strict(),
+}).strict();
+
+/** Acepta o rechaza una oferta recibida. */
+export const TreatyRespond = z.object({
+  v: V,
+  type: z.literal('treaty.respond'),
+  requestId: Uuid,
+  payload: z.object({
+    treatyId: EntityId,
+    accept: z.boolean(),
+  }).strict(),
+}).strict();
+
+/** Retira la oferta propia o rompe un tratado vigente, que entra en preaviso. */
+export const TreatyCancel = z.object({
+  v: V,
+  type: z.literal('treaty.cancel'),
+  requestId: Uuid,
+  payload: z.object({
+    treatyId: EntityId,
+  }).strict(),
+}).strict();
+
 /** Unión discriminada de todos los mensajes cliente → servidor de la v1. */
 export const ClientMessage = z.discriminatedUnion('type', [
   SessionHello,
@@ -197,6 +235,9 @@ export const ClientMessage = z.discriminatedUnion('type', [
   CityTrain,
   UnitAttack,
   UnitPillage,
+  TreatyPropose,
+  TreatyRespond,
+  TreatyCancel,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -212,6 +253,9 @@ export type CityBuild = z.infer<typeof CityBuild>;
 export type CityTrain = z.infer<typeof CityTrain>;
 export type UnitAttack = z.infer<typeof UnitAttack>;
 export type UnitPillage = z.infer<typeof UnitPillage>;
+export type TreatyPropose = z.infer<typeof TreatyPropose>;
+export type TreatyRespond = z.infer<typeof TreatyRespond>;
+export type TreatyCancel = z.infer<typeof TreatyCancel>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -226,6 +270,9 @@ export const CLIENT_MESSAGE_TYPES = [
   'city.train',
   'unit.attack',
   'unit.pillage',
+  'treaty.propose',
+  'treaty.respond',
+  'treaty.cancel',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

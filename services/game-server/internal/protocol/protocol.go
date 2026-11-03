@@ -37,6 +37,10 @@ const (
 	TypeUnitAttack = "unit.attack"
 	// Saqueo (SPEC-COMBAT-PILLAGE).
 	TypeUnitPillage = "unit.pillage"
+	// Diplomacia (SPEC-DIPLOMACY).
+	TypeTreatyPropose = "treaty.propose"
+	TypeTreatyRespond = "treaty.respond"
+	TypeTreatyCancel  = "treaty.cancel"
 )
 
 // Mensajes servidor → cliente.
@@ -58,6 +62,7 @@ const (
 	TypeBuildingSpawn         = "building.spawn"
 	TypeBuildingUpdate        = "building.update"
 	TypeForestUpdate          = "forest.update"
+	TypeTreatyUpdate          = "treaty.update"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -74,6 +79,9 @@ var ClientMessageTypes = map[string]bool{
 	TypeCityTrain:      true,
 	TypeUnitAttack:     true,
 	TypeUnitPillage:    true,
+	TypeTreatyPropose:  true,
+	TypeTreatyRespond:  true,
+	TypeTreatyCancel:   true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -309,6 +317,41 @@ type UnitPillagePayload struct {
 	CityID int64 `json:"cityId"`
 }
 
+// TreatyProposePayload propone un tratado a otro jugador (SPEC-DIPLOMACY).
+type TreatyProposePayload struct {
+	PlayerID string `json:"playerId"`
+	Type     string `json:"type"`
+}
+
+// TreatyRespondPayload acepta o rechaza una oferta recibida.
+type TreatyRespondPayload struct {
+	TreatyID int64 `json:"treatyId"`
+	Accept   bool  `json:"accept"`
+}
+
+// TreatyCancelPayload retira la oferta propia o rompe un tratado vigente.
+type TreatyCancelPayload struct {
+	TreatyID int64 `json:"treatyId"`
+}
+
+// TreatyView es un tratado visto por uno de sus firmantes: «otro» es relativo
+// a quien lo recibe (SPEC-DIPLOMACY §6).
+type TreatyView struct {
+	ID            int64   `json:"id"`
+	OtherPlayerID string  `json:"otherPlayerId"`
+	OtherCityID   *int64  `json:"otherCityId"`
+	OtherCityName *string `json:"otherCityName"`
+	Type          string  `json:"type"`
+	Status        string  `json:"status"`
+	ProposedByMe  bool    `json:"proposedByMe"`
+	BreaksAtMs    *int64  `json:"breaksAtMs"`
+}
+
+// TreatyUpdatePayload lleva un tratado que cambió a uno de sus firmantes.
+type TreatyUpdatePayload struct {
+	Treaty TreatyView `json:"treaty"`
+}
+
 // CityBuildPayload encarga un edificio en un tile de la zona urbana.
 type CityBuildPayload struct {
 	CityID int64  `json:"cityId"`
@@ -365,6 +408,9 @@ type WorldSnapshotPayload struct {
 	// Forests son los tiles de bosque del área que no están llenos
 	// (SPEC-ECON-FOREST). Opcional en el esquema: se omite si no hay ninguno.
 	Forests []ForestView `json:"forests,omitempty"`
+	// Treaties son los tratados PROPOSED y ACTIVE de quien recibe el snapshot
+	// (SPEC-DIPLOMACY, ADR-027 §5). Se omite si no tiene ninguno.
+	Treaties []TreatyView `json:"treaties,omitempty"`
 }
 
 type EntitySpawnPayload struct {

@@ -17,6 +17,7 @@ import {
   EpochMs,
   ForestView,
   PROTOCOL_VERSION,
+  TreatyView,
   PresenceState,
   ProductionView,
   Stocks,
@@ -119,6 +120,11 @@ export const WorldSnapshot = z.object({
      * aditivo en v1 (R-VER-2); sin él, todo el bosque está lleno.
      */
     forests: z.array(ForestView).optional(),
+    /**
+     * Tratados PROPOSED y ACTIVE del jugador que recibe el snapshot (SPEC-DIPLOMACY).
+     * Opcional: aditivo en v1; como todo el snapshot, reemplaza la lista del cliente.
+     */
+    treaties: z.array(TreatyView).optional(),
   }),
 });
 
@@ -231,6 +237,16 @@ export const ForestUpdate = z.object({
   payload: ForestView,
 });
 
+/**
+ * Cambió un tratado del jugador: una oferta nueva, una respuesta, un preaviso o su
+ * fin. Lo reciben sólo los dos firmantes, cada uno con su vista (SPEC-DIPLOMACY §6).
+ */
+export const TreatyUpdate = z.object({
+  ...serverEnvelope,
+  type: z.literal('treaty.update'),
+  payload: z.object({ treaty: TreatyView }),
+});
+
 // ─────────────────────────────────────────────────────────────
 // Movimiento
 // ─────────────────────────────────────────────────────────────
@@ -316,6 +332,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   BuildingSpawn,
   BuildingUpdate,
   ForestUpdate,
+  TreatyUpdate,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -336,6 +353,7 @@ export type UnitMovementCancelled = z.infer<typeof UnitMovementCancelled>;
 export type BuildingSpawn = z.infer<typeof BuildingSpawn>;
 export type BuildingUpdate = z.infer<typeof BuildingUpdate>;
 export type ForestUpdate = z.infer<typeof ForestUpdate>;
+export type TreatyUpdate = z.infer<typeof TreatyUpdate>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -355,6 +373,7 @@ export const SERVER_MESSAGE_TYPES = [
   'building.spawn',
   'building.update',
   'forest.update',
+  'treaty.update',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];
