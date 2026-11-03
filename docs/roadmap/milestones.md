@@ -1400,7 +1400,7 @@ atacar edificios o ciudades, asedio, respuesta automática, daño a distancia, c
 
 ## E3 — Defensa
 
-**Estado: EN CURSO en la rama `claude/slice-defensa` (2026-11-03).** Contrato:
+**Estado: HECHO en la rama `claude/slice-defensa` (2026-11-03)**, pendiente de fusionar en `main` y de la CI. Contrato:
 [SPEC-COMBAT-RESPONSE](../specs/combat-response.md), aceptada el 2026-11-03 con sus ocho decisiones de producto.
 
 **Objetivo.** Que defender no exija estar delante de la pantalla: un guerrero parado responde a los golpes sobre
@@ -1413,9 +1413,17 @@ huida de aldeanos, posturas por unidad, salir de la guarnición a defender.
 ### Entregables
 
 1. **HECHO** — Aceptación: spec y retirada de `RN-COMBAT-011`.
-2. Simulación: alertas en la fase 4, enfrentamiento automático con puesto y correa, vuelta al puesto,
-   `RN-COMBAT-018` en el predicado de `INV-COMBAT-002`.
-3. Persistencia: `UnitAttacked` en `world_events`, con `auto` en las respuestas.
-4. Configuración: `EO_COMBAT_GUARD_RADIUS_TILES` y `EO_COMBAT_LEASH_TILES`.
-5. Humo: `scripts/smoke.mjs --incursion` con un guardia que responde.
-6. Prueba en vivo.
+2. **HECHO** — Simulación: alertas en la fase 4, enfrentamiento automático con puesto y correa, vuelta al
+   puesto, `RN-COMBAT-018` en el predicado de `INV-COMBAT-002`. Tests en
+   `internal/game/simulation/combat_response_test.go`, con el golden «escolta» y la recuperación.
+3. **HECHO** — Persistencia: `UnitAttacked` en `world_events`, con `auto` en las respuestas
+   (`TestElPrimerGolpeDejaUnitAttacked`, integration). Sin migración.
+4. **HECHO** — Configuración: `EO_COMBAT_GUARD_RADIUS_TILES` y `EO_COMBAT_LEASH_TILES`.
+5. **HECHO** — Humo: `scripts/smoke.mjs --incursion` lleva el aldeano de la víctima escoltado por un guardia
+   que responde solo. La víctima repone guardia y aldeanos si le faltan y busca los que quedaron varados en
+   incursiones anteriores, para que el humo se pueda repetir. De paso se corrigió la cola de mensajes del
+   humo: un mensaje entregado a una espera también se quedaba encolado, y una espera posterior del mismo tipo
+   lo recibía otra vez.
+6. **HECHO** — Prueba en vivo (2026-11-03): humo con incursión en verde; el guardia de la víctima respondió
+   sin órdenes y, al golpear al incursor, los guerreros parados del incursor respondieron a su vez y lo
+   mataron. `UnitAttacked` con `auto: true` escrito en `world_events`.

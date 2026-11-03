@@ -24,6 +24,8 @@
  *      guerrero; un segundo jugador acerca un aldeano y el guerrero lo mata. Tarda
  *      minutos (juntar madera, entrenar, caminar) y mata una unidad de otra cuenta,
  *      así que no corre por defecto ni tras un despliegue en producción.
+ *      El aldeano va escoltado por un guardia de la víctima, que responde solo al
+ *      ataque (SPEC-COMBAT-RESPONSE); si le faltan guardia o aldeanos, los entrena.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
@@ -124,15 +126,16 @@ class Sesion {
         return;
       }
       log('<-', msg.type);
+      // Si alguien esperaba este tipo, el mensaje es suyo y no se encola: si se
+      // quedara en la cola, una espera posterior del mismo tipo lo recibiría
+      // otra vez (p. ej. un world.snapshot viejo tras un session.view nuevo).
+      const espera = this.esperando.find((e) => e.tipos.includes(msg.type));
+      if (espera) {
+        this.esperando = this.esperando.filter((e) => e !== espera);
+        espera.resolver(msg);
+        return;
+      }
       this.recibidos.push(msg);
-      // Despierta a quien estuviera esperando este tipo concreto.
-      this.esperando = this.esperando.filter((e) => {
-        if (e.tipos.includes(msg.type)) {
-          e.resolver(msg);
-          return false;
-        }
-        return true;
-      });
     });
     this.ws.addEventListener('close', (ev) => {
       this.cierre = { code: ev.code, reason: ev.reason };
@@ -540,30 +543,124 @@ async function acercar(sesion, unidad, destino, cerca) {
   return pos;
 }
 
+/**
+ * Unidades propias de un jugador: las de su ciudad y, si no están ahí, las que
+ * quedaron por el camino hacia `hacia` en incursiones anteriores. La vista del
+ * servidor es por área de interés, así que se muestrea la recta cada 40 tiles.
+ * El terreno de cada chunk llega una sola vez por sesión: se acumula.
+ */
+async function unidadesPropias(sesion, playerId, ciudad, hacia, terrenoInicial) {
+  const vistas = [];
+  const dx = hacia.x - ciudad.centerX;
+  const dy = hacia.y - ciudad.centerY;
+  const pasos = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 40);
+  for (let i = 0; i <= pasos; i++) {
+    const t = pasos === 0 ? 0 : i / pasos;
+    vistas.push({ x: Math.round(ciudad.centerX + dx * t), y: Math.round(ciudad.centerY + dy * t) });
+  }
+  const propias = new Map();
+  const terreno = [...terrenoInicial];
+  for (const centro of vistas) {
+    sesion.enviar('session.view', { center: centro });
+    const snap = (await sesion.esperar('world.snapshot')).payload;
+    terreno.push(...snap.terrain);
+    for (const u of snap.units) if (u.playerId === playerId) propias.set(u.id, u);
+  }
+  // Se vuelve a mirar la ciudad: es donde se junta la madera y se entrena.
+  sesion.enviar('session.view', { center: { x: ciudad.centerX, y: ciudad.centerY } });
+  const casa = (await sesion.esperar('world.snapshot')).payload;
+  terreno.push(...casa.terrain);
+  return { unidades: [...propias.values()], casa, terreno };
+}
+
+/** Entrena una unidad y devuelve la que nace. */
+async function entrenar(sesion, ciudad, playerId, tipo) {
+  sesion.enviar('city.train', { cityId: ciudad.id, type: tipo });
+  const nace = await sesion.esperarQue(['entity.spawn', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.unit?.playerId === playerId && m.payload.unit.unitType === tipo), 60_000);
+  if (nace.type === 'system.error') fallar(`el servidor rechazó entrenar ${tipo}`, nace.payload);
+  return nace.payload.unit;
+}
+
 async function incursion(atacante, ciudad, playerId, snap) {
   const madera = await juntarMadera(atacante.sesion, ciudad, playerId, snap, 60);
   ok('madera para un guerrero', `${madera}`);
-  atacante.sesion.enviar('city.train', { cityId: ciudad.id, type: 'WARRIOR' });
-  const nace = await atacante.sesion.esperarQue(['entity.spawn', 'system.error'],
-    (m) => m.type === 'system.error' || (m.payload.unit?.playerId === playerId && m.payload.unit.unitType === 'WARRIOR'), 60_000);
-  if (nace.type === 'system.error') fallar('el servidor rechazó entrenar el guerrero', nace.payload);
-  const guerrero = nace.payload.unit;
+  const guerrero = await entrenar(atacante.sesion, ciudad, playerId, 'WARRIOR');
   ok('guerrero entrenado', `unidad ${guerrero.id} en (${guerrero.x}, ${guerrero.y})`);
 
+  // La víctima se prepara: un guardia y al menos dos aldeanos, para que el humo
+  // se pueda repetir aunque cada incursión le cueste uno.
   const { cuenta } = await abrirSesion(VICTIMA);
   const victima = await conectar(cuenta.ticket);
-  const aldeano = victima.snapshot.payload.units.find((u) => u.playerId === cuenta.playerId);
-  if (!aldeano) fallar('la víctima no tiene aldeanos', victima.snapshot.payload.units);
-  const destino = { x: guerrero.x + 4, y: guerrero.y };
-  const llegada = await acercar(victima.sesion, aldeano, destino, 6);
-  ok('la víctima se acerca', `aldeano ${aldeano.id} en (${llegada.x}, ${llegada.y})`);
+  const ciudadV = victima.snapshot.payload.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
+  const { unidades, casa, terreno } = await unidadesPropias(victima.sesion, cuenta.playerId, ciudadV, guerrero,
+    victima.snapshot.payload.terrain);
+  const aldeanos = unidades.filter((u) => u.unitType === 'VILLAGER');
+  let guardia = unidades.find((u) => u.unitType === 'WARRIOR');
+  if (aldeanos.length === 0) {
+    fallar('la víctima se quedó sin aldeanos',
+      `Usa EO_SMOKE_VICTIM con otra cuenta cuya ciudad esté a menos de ~200 tiles de la de ${USUARIO}.`);
+  }
+  const falta = (guardia ? 0 : 60) + (aldeanos.length < 2 ? 50 : 0);
+  if (falta > 0) {
+    // Un aldeano varado lejos vuelve primero: la ruta al bosque de su ciudad
+    // podría superar el límite del pathfinding.
+    for (const a of aldeanos) {
+      if (Math.max(Math.abs(a.x - ciudadV.centerX), Math.abs(a.y - ciudadV.centerY)) > 12) {
+        await acercar(victima.sesion, a, { x: ciudadV.centerX, y: ciudadV.centerY }, 8);
+      }
+    }
+    victima.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+    await victima.sesion.esperar('world.snapshot');
+    const stockCasa = casa.cities.find((c) => c.id === ciudadV.id) ?? ciudadV;
+    const m = await juntarMadera(victima.sesion, stockCasa, cuenta.playerId, { terrain: terreno, units: aldeanos }, falta);
+    ok('la víctima junta madera', `${m}`);
+    if (!guardia) guardia = await entrenar(victima.sesion, ciudadV, cuenta.playerId, 'WARRIOR');
+    if (aldeanos.length < 2) await entrenar(victima.sesion, ciudadV, cuenta.playerId, 'VILLAGER');
+  }
+  ok('la víctima tiene guardia', `guerrero ${guardia.id}`);
 
+  // Las posiciones de arriba pueden ser viejas (el aldeano volvió a casa y
+  // juntó madera): se leen otra vez, desde donde estén.
+  const actual = new Map();
+  for (const centro of [{ x: ciudadV.centerX, y: ciudadV.centerY }, { x: guardia.x, y: guardia.y }, { x: aldeanos[0].x, y: aldeanos[0].y }]) {
+    victima.sesion.enviar('session.view', { center: centro });
+    for (const u of (await victima.sesion.esperar('world.snapshot')).payload.units) actual.set(u.id, u);
+  }
+  aldeanos[0] = actual.get(aldeanos[0].id) ?? aldeanos[0];
+  guardia = actual.get(guardia.id) ?? guardia;
+
+  // El aldeano se acerca escoltado: el guardia se queda a un par de tiles. Un
+  // unit.move sustituye la recolección, así que no hace falta cancelarla.
+  const aldeano = aldeanos[0];
+  const llegada = await acercar(victima.sesion, aldeano, { x: guerrero.x + 4, y: guerrero.y }, 6);
+  const escolta = await acercar(victima.sesion, guardia, llegada, 2);
+  ok('la víctima se acerca con escolta',
+    `aldeano ${aldeano.id} en (${llegada.x}, ${llegada.y}) · guardia en (${escolta.x}, ${escolta.y})`);
+
+  // El incursor ataca al aldeano. Sin ninguna orden de la víctima, su guardia
+  // responde (SPEC-COMBAT-RESPONSE): el incursor pierde vida. El aldeano muere
+  // igual: el guardia llega tarde para salvarlo, no para castigarlo.
   atacante.sesion.enviar('unit.attack', { unitId: guerrero.id, targetUnitId: aldeano.id });
-  const fin = await atacante.sesion.esperarQue(['entity.despawn', 'system.error'],
-    (m) => m.type === 'system.error' || m.payload.id === aldeano.id, 60_000);
-  if (fin.type === 'system.error') fallar('el servidor rechazó el ataque', fin.payload);
-  if (fin.payload.reason !== 'DEAD') fallar('la víctima desapareció sin morir', fin.payload);
+  let muerto = false;
+  let herido = null;
+  while (!muerto || herido === null) {
+    const m = await atacante.sesion.esperarQue(['entity.despawn', 'entity.update', 'system.error'],
+      (m) => m.type === 'system.error' ||
+        (m.type === 'entity.despawn' && m.payload.id === aldeano.id) ||
+        (m.type === 'entity.update' && m.payload.id === guerrero.id && typeof m.payload.hp === 'number' && m.payload.hp < 60),
+      60_000);
+    if (m.type === 'system.error') fallar('el servidor rechazó el ataque', m.payload);
+    if (m.type === 'entity.despawn') {
+      if (m.payload.reason !== 'DEAD') fallar('la víctima desapareció sin morir', m.payload);
+      muerto = true;
+    } else if (herido === null) {
+      herido = m.payload.hp;
+    }
+  }
   ok('incursión completa', `el guerrero ${guerrero.id} mató al aldeano ${aldeano.id}`);
+  ok('respuesta automática', `el guardia ${guardia.id} respondió sin órdenes: el incursor bajó a ${herido} de vida`);
   victima.sesion.cerrar();
 }
 
