@@ -69,3 +69,24 @@ func (r *UnitRepo) Kill(ctx context.Context, db DB, k Kill) (bool, error) {
 	}
 	return true, nil
 }
+
+// Attacked es el primer golpe de un enfrentamiento (SPEC-COMBAT-RESPONSE Q8).
+type Attacked struct {
+	AttackerID     int64
+	AttackerPlayer uuid.UUID
+	TargetID       int64
+	TargetPlayer   uuid.UUID
+	At             world.Tile
+	Tick           uint64
+	Auto           bool
+}
+
+// Attacked registra el evento UnitAttacked, a nombre del jugador atacado como
+// UnitKilled. Es sólo auditoría: no toca ninguna otra fila.
+func (r *UnitRepo) Attacked(ctx context.Context, db DB, a Attacked) error {
+	target := a.TargetPlayer
+	return appendEvent(ctx, db, worldEvent{EventType: "UnitAttacked", Tick: a.Tick, PlayerID: &target, Payload: map[string]any{
+		"unitId": a.TargetID, "attackerId": a.AttackerID, "attackerPlayerId": a.AttackerPlayer.String(),
+		"x": a.At.X, "y": a.At.Y, "auto": a.Auto,
+	}})
+}

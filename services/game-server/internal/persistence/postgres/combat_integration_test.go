@@ -3,6 +3,7 @@
 package postgres_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -148,4 +149,45 @@ func TestElVolcadoEscribeVidaYBotinYNoResucita(t *testing.T) {
 	var status string
 	require.NoError(t, db.QueryRow(ctx, `SELECT status FROM units WHERE id = $1`, b.ID).Scan(&status))
 	assert.Equal(t, "DEAD", status, "un volcado tardío no resucita a nadie")
+}
+
+// SPEC-COMBAT-RESPONSE Q8: el primer golpe de un enfrentamiento deja un
+// UnitAttacked a nombre del atacado, con auto cuando es una respuesta.
+func TestElPrimerGolpeDejaUnitAttacked(t *testing.T) {
+	store, ctx := newTestStore(t)
+	_, _, units, _, bootstrapper := newRepos(store)
+	atacado, err := bootstrapper.Create(ctx, bootstrapRequest("atacado", world.Tile{X: 20, Y: 20}))
+	require.NoError(t, err)
+	atacante, err := bootstrapper.Create(ctx, bootstrapRequest("atacante", world.Tile{X: 50, Y: 20}))
+	require.NoError(t, err)
+	db := store.Pool()
+
+	for _, auto := range []bool{false, true} {
+		require.NoError(t, units.Attacked(ctx, db, postgres.Attacked{
+			AttackerID: atacante.Units[0].ID, AttackerPlayer: atacante.Player.ID,
+			TargetID: atacado.Units[0].ID, TargetPlayer: atacado.Player.ID,
+			At: world.Tile{X: 21, Y: 22}, Tick: 9, Auto: auto,
+		}))
+	}
+
+	rows, err := db.Query(ctx,
+		`SELECT player_id, tick, payload->>'attackerId', payload->>'x', payload->>'y', (payload->>'auto')::boolean
+		 FROM world_events WHERE event_type = 'UnitAttacked' AND (payload->>'unitId')::bigint = $1 ORDER BY id`,
+		atacado.Units[0].ID)
+	require.NoError(t, err)
+	defer rows.Close()
+	var autos []bool
+	for rows.Next() {
+		var player uuid.UUID
+		var tick int64
+		var attacker, x, y string
+		var auto bool
+		require.NoError(t, rows.Scan(&player, &tick, &attacker, &x, &y, &auto))
+		assert.Equal(t, atacado.Player.ID, player)
+		assert.Equal(t, int64(9), tick)
+		assert.Equal(t, [3]string{fmt.Sprint(atacante.Units[0].ID), "21", "22"}, [3]string{attacker, x, y})
+		autos = append(autos, auto)
+	}
+	require.NoError(t, rows.Err())
+	assert.Equal(t, []bool{false, true}, autos)
 }

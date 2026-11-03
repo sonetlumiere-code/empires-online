@@ -18,6 +18,16 @@ func NewCombatStore(s *postgres.Store, u *postgres.UnitRepo) *CombatStore {
 	return &CombatStore{store: s, units: u}
 }
 
+// PersistAttack escribe el UnitAttacked del primer golpe de un enfrentamiento
+// (SPEC-COMBAT-RESPONSE Q8).
+func (c *CombatStore) PersistAttack(ctx context.Context, a simulation.Attack) error {
+	return c.units.Attacked(ctx, c.store.Pool(), postgres.Attacked{
+		AttackerID: a.AttackerID, AttackerPlayer: a.AttackerPlayer,
+		TargetID: a.TargetID, TargetPlayer: a.TargetPlayer,
+		At: a.At, Tick: a.Tick, Auto: a.Auto,
+	})
+}
+
 // PersistDeath escribe una muerte en una transacción (ADR-024 §2).
 func (c *CombatStore) PersistDeath(ctx context.Context, d simulation.Death) error {
 	return c.store.InTx(ctx, func(tx pgxTx) error {

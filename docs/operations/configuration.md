@@ -125,6 +125,8 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_CITY_PROTECTION_MAX_HOURS` | int | `48` | 0–8760 | No | No | Cuánto dura como mucho la protección offline una vez concedida; 0 = sin tope. Al vencer, la ciudad sigue `PROTECTED` pero ya no frena ataques. Ver [../specs/presence.md](../specs/presence.md) `RN-PRESENCE-036` y [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md). |
 | `EO_COMBAT_REPATH_TICKS` | int | `5` | 1–1000 | No | No | Cada cuántos ticks, como mucho, la persecución recalcula la ruta hacia un objetivo que se movió. Ver [../specs/combat-raid.md](../specs/combat-raid.md) §4.2. |
 | `EO_COMBAT_MAX_CHASE_TILES` | int | `32` | 1–1024 | No | No | Distancia Chebyshev a la que el atacante abandona la persecución. |
+| `EO_COMBAT_GUARD_RADIUS_TILES` | int | `4` | 1–64 | No | No | Radio de guardia: un golpe sobre una unidad despierta a los guerreros parados de su dueño a esta distancia Chebyshev. Ver [../specs/combat-response.md](../specs/combat-response.md) `RN-COMBAT-014`. |
+| `EO_COMBAT_LEASH_TILES` | int | `8` | 1–1024 | No | No | Correa de la respuesta automática: el guerrero abandona cuando el atacante queda más lejos de su puesto y vuelve a él (`RN-COMBAT-017`). |
 | `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` | duration-s | `300` | 0–86400 | No | No | Tiempo en `OFFLINE_PENDING` antes de transicionar a `PROTECTED`. Constante **de gameplay**: define la ventana en la que una ciudad recién abandonada sigue siendo atacable. Ver [../specs/presence.md](../specs/presence.md). |
 
 ### 3.6 Persistencia

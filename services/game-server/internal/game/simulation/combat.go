@@ -60,10 +60,12 @@ type Death struct {
 	Lost int32
 }
 
-// CombatStore escribe las muertes. Opcional: sin él, la muerte sólo existe en
-// la RAM, que es lo que hacen los tests de simulación que no la miran.
+// CombatStore escribe las muertes y el primer golpe de cada enfrentamiento.
+// Opcional: sin él, la muerte sólo existe en la RAM, que es lo que hacen los
+// tests de simulación que no la miran.
 type CombatStore interface {
 	PersistDeath(ctx context.Context, d Death) error
+	PersistAttack(ctx context.Context, a Attack) error
 }
 
 // JobDeath es el nombre del trabajo de la cola que escribe una muerte.
@@ -77,6 +79,21 @@ type engagement struct {
 	nextHitAtMs int64
 	// lastRepathTick es el último tick en que la persecución recalculó ruta.
 	lastRepathTick uint64
+	// announced indica que su primer golpe ya escribió UnitAttacked.
+	announced bool
+	// auto marca una respuesta automática (SPEC-COMBAT-RESPONSE); post es el
+	// tile al que vuelve el guerrero cuando termina y desde el que se mide la
+	// correa.
+	auto bool
+	post world.Tile
+}
+
+// returnLeg es la vuelta al puesto de un guerrero tras una respuesta: el
+// movimiento que la hace y el puesto original, que conserva si vuelve a
+// responder por el camino (RN-COMBAT-013).
+type returnLeg struct {
+	movementID int64
+	post       world.Tile
 }
 
 // peaceTreaty es un tratado que impide atacar (RN-COMBAT-006).
@@ -94,6 +111,10 @@ type combatState struct {
 	peace map[[2]uuid.UUID][]peaceTreaty
 	// pendingDeaths son las muertes cuya escritura se descartó (ADR-022).
 	pendingDeaths map[int64]Death
+	// returning son las vueltas al puesto en curso, por unidad. Una entrada
+	// vale mientras su movimiento sea el de la unidad: State.ClearMovement la
+	// borra cuando ese movimiento termina, se cancela o lo sustituye otro.
+	returning map[int64]returnLeg
 }
 
 func newCombatState() combatState {
@@ -101,6 +122,7 @@ func newCombatState() combatState {
 		engagements:   make(map[int64]*engagement),
 		peace:         make(map[[2]uuid.UUID][]peaceTreaty),
 		pendingDeaths: make(map[int64]Death),
+		returning:     make(map[int64]returnLeg),
 	}
 }
 
@@ -138,6 +160,23 @@ func (s *State) Engaged(attackerID int64) (int64, bool) {
 		return 0, false
 	}
 	return e.targetID, true
+}
+
+// Responding dice si el enfrentamiento de una unidad es una respuesta
+// automática y desde qué puesto (tests).
+func (s *State) Responding(attackerID int64) (world.Tile, bool) {
+	e, ok := s.combat.engagements[attackerID]
+	if !ok || !e.auto {
+		return world.Tile{}, false
+	}
+	return e.post, true
+}
+
+// Returning dice si una unidad vuelve a su puesto tras una respuesta, y a cuál
+// (tests).
+func (s *State) Returning(unitID int64) (world.Tile, bool) {
+	r, ok := s.combat.returning[unitID]
+	return r.post, ok
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -235,6 +274,11 @@ func (s *Simulation) attackBlocked(a, t *unit.Unit, posA, posT world.Tile, now t
 	if c, ok := s.state.CityOf(t.PlayerID); ok && c.ProtectedAt(now) {
 		return protocol.CodeCityProtected, "el dueño de esa unidad está protegido"
 	}
+	// RN-COMBAT-018: la protección es simétrica; quien está protegido tampoco
+	// golpea.
+	if c, ok := s.state.CityOf(a.PlayerID); ok && c.ProtectedAt(now) {
+		return protocol.CodeCityProtected, "estás protegido: no puedes atacar"
+	}
 	if s.state.AtPeace(a.PlayerID, t.PlayerID, now) {
 		return protocol.CodeInvalidTarget, "un tratado de paz impide atacar a ese jugador"
 	}
@@ -282,22 +326,61 @@ func (s *Simulation) startAttacking(a *unit.Unit, e *engagement, nowMs int64) {
 // endEngagement termina el enfrentamiento de un atacante, si lo tiene. Con
 // stop, además lo deja parado e IDLE: es el final por una causa del mundo
 // (RN-COMBAT-008). Sin stop, quien llama le da a continuación otra orden.
+//
+// Una respuesta automática que termina por una causa del mundo vuelve además
+// a su puesto (RN-COMBAT-017). Sin stop, la orden del jugador que llega
+// descarta el puesto.
 func (s *Simulation) endEngagement(a *unit.Unit, stop bool) {
-	if _, ok := s.state.combat.engagements[a.ID]; !ok {
+	e, ok := s.state.combat.engagements[a.ID]
+	if !ok {
 		return
 	}
 	delete(s.state.combat.engagements, a.ID)
 	if !stop {
 		return
 	}
+	nowMs := s.deps.Clock.NowMs()
 	if _, moving := s.state.Movement(a.ID); moving {
-		s.cancelActiveMovement(a, movement.ReasonServer, s.deps.Clock.NowMs())
+		s.cancelActiveMovement(a, movement.ReasonServer, nowMs)
 	}
 	if a.Status == unit.StatusAttacking {
 		a.Status = unit.StatusIdle
 		s.state.MarkDirty(a.ID)
 		s.broadcastStatus(a)
 	}
+	if e.auto && a.IsAlive() {
+		s.returnToPost(a, e.post, nowMs)
+	}
+}
+
+// stopEngagementByPlayer detiene a una unidad que pelea porque su dueño se lo
+// ordena (unit.cancel, o unit.move al tile donde ya está): queda IDLE donde
+// está y, si respondía sola, sin volver a su puesto (SPEC-COMBAT-RESPONSE §4.3).
+func (s *Simulation) stopEngagementByPlayer(u *unit.Unit) {
+	if e, ok := s.state.combat.engagements[u.ID]; ok {
+		e.auto = false
+	}
+	s.endEngagement(u, true)
+}
+
+// returnToPost lleva a un guerrero de vuelta a su puesto con un movimiento
+// normal. Sin ruta, se queda IDLE donde está (RN-COMBAT-017).
+func (s *Simulation) returnToPost(a *unit.Unit, post world.Tile, nowMs int64) {
+	pos := s.authoritativePosition(a, nowMs)
+	if pos == post {
+		return
+	}
+	def, err := unit.Lookup(a.Type)
+	if err != nil {
+		return
+	}
+	path, err := s.chasePath(a, pos, post, def)
+	if err != nil {
+		s.deps.Log.Info("el guerrero no encuentra ruta de vuelta a su puesto", "unit_id", a.ID, "err", err)
+		return
+	}
+	m := s.beginMovement(a, pos, post, path, nowMs, nil)
+	s.state.combat.returning[a.ID] = returnLeg{movementID: m.ID, post: post}
 }
 
 func (s *Simulation) broadcastStatus(u *unit.Unit) {
@@ -315,6 +398,15 @@ type hit struct {
 	attacker *unit.Unit
 	target   *unit.Unit
 	damage   int32
+	e        *engagement
+}
+
+// alert es un golpe aplicado que puede despertar una respuesta automática
+// (RN-COMBAT-014): quién golpeó, a quién y dónde estaba la víctima.
+type alert struct {
+	attacker *unit.Unit
+	victim   *unit.Unit
+	at       world.Tile
 }
 
 // ResolveCombat es la fase 4 del tick (ADR-024 §1).
@@ -362,13 +454,18 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 			s.endEngagement(a, true)
 			continue
 		}
+		// RN-COMBAT-017: la respuesta no se aleja de su puesto más que la correa.
+		if e.auto && chebyshevTiles(e.post, posT) > s.leash() {
+			s.endEngagement(a, true)
+			continue
+		}
 		if d > def.AttackRange {
 			s.chase(a, e, posA, posT, def, nowMs)
 			continue
 		}
 		s.startAttacking(a, e, nowMs)
 		if nowMs >= e.nextHitAtMs {
-			hits = append(hits, hit{attacker: a, target: t, damage: def.AttackDamage})
+			hits = append(hits, hit{attacker: a, target: t, damage: def.AttackDamage, e: e})
 			e.nextHitAtMs += def.AttackIntervalMs
 		}
 	}
@@ -376,10 +473,16 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 	// 2. Aplicar todos a la vez. A igualdad, el golpe mortal es el del
 	// atacante de id menor: el orden de cálculo, que es estable.
 	killers := make(map[int64]*unit.Unit)
+	var alerts []alert
 	for _, h := range hits {
 		if h.target.HP <= 0 {
 			continue
 		}
+		if !h.e.announced {
+			h.e.announced = true
+			s.submitAttack(h, nowMs)
+		}
+		alerts = append(alerts, alert{attacker: h.attacker, victim: h.target, at: s.authoritativePosition(h.target, nowMs)})
 		h.target.HP -= h.damage
 		if h.target.HP < 0 {
 			h.target.HP = 0
@@ -405,6 +508,25 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 			s.kill(v, killers[id], nowMs)
 		}
 	}
+
+	// 4. Las respuestas automáticas, en el orden de los golpes (RN-COMBAT-015).
+	for _, al := range alerts {
+		s.raiseAlarm(al, nowMs)
+	}
+}
+
+func (s *Simulation) guardRadius() int32 {
+	if s.deps.CombatGuardRadiusTiles > 0 {
+		return s.deps.CombatGuardRadiusTiles
+	}
+	return 4
+}
+
+func (s *Simulation) leash() int32 {
+	if s.deps.CombatLeashTiles > 0 {
+		return s.deps.CombatLeashTiles
+	}
+	return 8
 }
 
 func (s *Simulation) maxChase() int32 {

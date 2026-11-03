@@ -27,8 +27,16 @@ import (
 // se colocan a mano en la fila y = 20, lejos de las dos ciudades.
 
 type fakeCombat struct {
-	mu     sync.Mutex
-	deaths []simulation.Death
+	mu      sync.Mutex
+	deaths  []simulation.Death
+	attacks []simulation.Attack
+}
+
+func (f *fakeCombat) PersistAttack(_ context.Context, a simulation.Attack) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.attacks = append(f.attacks, a)
+	return nil
 }
 
 func (f *fakeCombat) PersistDeath(_ context.Context, d simulation.Death) error {

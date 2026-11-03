@@ -55,6 +55,10 @@ type Config struct {
 	// qué distancia Chebyshev se abandona (SPEC-COMBAT-RAID §4.2).
 	CombatRepathTicks   int
 	CombatMaxChaseTiles int32
+	// CombatGuardRadiusTiles es el radio de guardia de la respuesta automática y
+	// CombatLeashTiles su correa, medida desde el puesto (SPEC-COMBAT-RESPONSE).
+	CombatGuardRadiusTiles int32
+	CombatLeashTiles       int32
 
 	PersistenceFlushIntervalTicks int
 
@@ -164,8 +168,10 @@ func Load() (Config, error) {
 		CityOfflineProtectionCooldwn: v.seconds("EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS", 300, 0, 86400),
 		CityProtectionMax:            time.Duration(v.intRange("EO_CITY_PROTECTION_MAX_HOURS", 48, 0, 8760)) * time.Hour,
 
-		CombatRepathTicks:   v.intRange("EO_COMBAT_REPATH_TICKS", 5, 1, 1000),
-		CombatMaxChaseTiles: int32(v.intRange("EO_COMBAT_MAX_CHASE_TILES", 32, 1, 1024)),
+		CombatRepathTicks:      v.intRange("EO_COMBAT_REPATH_TICKS", 5, 1, 1000),
+		CombatMaxChaseTiles:    int32(v.intRange("EO_COMBAT_MAX_CHASE_TILES", 32, 1, 1024)),
+		CombatGuardRadiusTiles: int32(v.intRange("EO_COMBAT_GUARD_RADIUS_TILES", 4, 1, 64)),
+		CombatLeashTiles:       int32(v.intRange("EO_COMBAT_LEASH_TILES", 8, 1, 1024)),
 
 		PersistenceFlushIntervalTicks: v.intRange("EO_PERSISTENCE_FLUSH_INTERVAL_TICKS", 50, 1, 100000),
 

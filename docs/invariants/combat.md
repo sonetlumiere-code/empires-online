@@ -50,7 +50,7 @@ motor rechaza las dos mitades del bicondicional por su nombre. `TestLaMuerteSeEs
 | Aplicación | DOMAIN, TEST |
 | Milestone | E2 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (`internal/game/simulation`) |
+| Cobertura | **Cubierto** por `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque`, `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento`, `TestUnIncursorProtegidoDejaDeGolpear` y `TestUnJugadorProtegidoNoPuedeAtacar` (`internal/game/simulation`) |
 
 **Enunciado.** Ningún golpe se aplica si, en el instante del golpe, el atacante o el objetivo están sobre un tile
 de Safe Zone, el objetivo está `HIDDEN` o `GARRISONED`, el dueño del objetivo o el del atacante está protegido
@@ -65,7 +65,8 @@ mismo predicado: el estado puede cambiar durante la persecución. La respuesta a
 
 **Cómo se verifica.** `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` (objetivo oculto, dueño
 protegido, tratado) y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (la revalidación en cada
-golpe) — **existen y pasan**, en `internal/game/simulation`.
+golpe), y desde E3 `TestUnIncursorProtegidoDejaDeGolpear` y `TestUnJugadorProtegidoNoPuedeAtacar` (la protección del
+atacante, `RN-COMBAT-018`) — **existen y pasan**, en `internal/game/simulation`.
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse en esas condiciones se
 descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.

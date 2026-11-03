@@ -76,6 +76,17 @@ marca `RN-COMBAT-011` como retirada y sustituida por `RN-COMBAT-012` a `RN-COMBA
 Cualquier orden del jugador sobre el guerrero (`unit.move`, `unit.attack`, recolectar, guarnecer) sustituye la
 respuesta y descarta el puesto, como ya sustituye cualquier orden anterior.
 
+**Precisión (2026-11-03).** Lo que la implementación decide dentro de estas reglas:
+
+- Las respuestas se abren en un cuarto paso de la fase 4, después de aplicar los golpes y las muertes del tick:
+  sus golpes se calculan a partir del tick siguiente. Un guardia ya adyacente devuelve el golpe 100 ms después
+  del que lo despertó.
+- Un golpe despierta a los guardias aunque mate a la víctima: el guardia venga a la unidad que no pudo salvar.
+- Tras un reinicio, la vuelta al puesto en curso es un movimiento normal: mientras dura, el guerrero no está
+  disponible, porque la RAM ya no sabe que volvía.
+- `UnitAttacked` es auditoría: si su escritura agota los reintentos de la cola, se registra el error y el evento
+  se pierde, sin compensación. Ningún estado del mundo depende de él.
+
 ## 5. Errores
 
 Ninguno nuevo y ninguno que llegue al cliente: la respuesta no es un comando, así que un bloqueo no produce

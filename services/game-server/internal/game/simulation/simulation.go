@@ -77,6 +77,11 @@ type Deps struct {
 	// (SPEC-COMBAT-RAID §4.2). Cero: los valores por defecto, 5 y 32.
 	CombatRepathTicks   int
 	CombatMaxChaseTiles int32
+	// CombatGuardRadiusTiles y CombatLeashTiles son el radio de guardia y la
+	// correa de la respuesta automática (SPEC-COMBAT-RESPONSE §4). Cero: los
+	// valores por defecto, 4 y 8.
+	CombatGuardRadiusTiles int32
+	CombatLeashTiles       int32
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -244,7 +249,7 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 		// polilíneas degeneradas de un solo punto. Una unidad que trabajaba deja
 		// de hacerlo y pierde lo cargado (RN-ECON-003).
 		s.stopWorking(u)
-		s.endEngagement(u, true)
+		s.stopEngagementByPlayer(u)
 		s.cancelActiveMovement(u, movement.ReasonCancelledByPlayer, nowMs)
 		s.deps.Broadcaster.SendToPlayer(cmd.PlayerID, protocol.TypeUnitMoveAccepted, cmd.RequestID,
 			protocol.UnitMoveAcceptedPayload{UnitID: u.ID, MovementID: 0})
@@ -367,7 +372,7 @@ func (s *Simulation) handleCancelMovement(cmd CancelMovement) {
 	// RN-ECON-003: cancelar detiene también a una unidad que trabaja, y
 	// RN-COMBAT-008 a una que ataca o persigue.
 	s.stopWorking(u)
-	s.endEngagement(u, true)
+	s.stopEngagementByPlayer(u)
 	s.cancelActiveMovement(u, movement.ReasonCancelledByPlayer, nowMs)
 }
 

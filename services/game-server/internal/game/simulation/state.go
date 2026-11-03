@@ -351,7 +351,12 @@ func (s *State) Movement(unitID int64) (*movement.Movement, bool) {
 }
 
 // ClearMovement retira el movimiento activo de una unidad.
-func (s *State) ClearMovement(unitID int64) { delete(s.movements, unitID) }
+func (s *State) ClearMovement(unitID int64) {
+	delete(s.movements, unitID)
+	// La vuelta al puesto es un movimiento: si termina, se cancela o lo
+	// sustituye otro, deja de serlo (RN-COMBAT-013, SPEC-COMBAT-RESPONSE).
+	delete(s.combat.returning, unitID)
+}
 
 // MovementCount es el número de movimientos en curso.
 func (s *State) MovementCount() int { return len(s.movements) }

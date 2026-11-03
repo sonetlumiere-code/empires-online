@@ -310,15 +310,17 @@ func run() error {
 		Combat:      persistence.NewCombatStore(store, unitRepo),
 		// Las compensaciones de la cola vuelven al loop por su buzón, sin
 		// bloquear al worker (ADR-013 §2.4, ADR-022).
-		Inbox:               inbox.Offer,
-		Log:                 log,
-		ProtectionCooldown:  cfg.CityOfflineProtectionCooldwn,
-		ProtectionMax:       cfg.CityProtectionMax,
-		DisconnectGrace:     cfg.PresenceTTL,
-		PathMaxNodes:        cfg.PathfindingMaxNodes,
-		PathMaxDistance:     cfg.PathfindingMaxDistance,
-		CombatRepathTicks:   cfg.CombatRepathTicks,
-		CombatMaxChaseTiles: cfg.CombatMaxChaseTiles,
+		Inbox:                  inbox.Offer,
+		Log:                    log,
+		ProtectionCooldown:     cfg.CityOfflineProtectionCooldwn,
+		ProtectionMax:          cfg.CityProtectionMax,
+		DisconnectGrace:        cfg.PresenceTTL,
+		PathMaxNodes:           cfg.PathfindingMaxNodes,
+		PathMaxDistance:        cfg.PathfindingMaxDistance,
+		CombatRepathTicks:      cfg.CombatRepathTicks,
+		CombatMaxChaseTiles:    cfg.CombatMaxChaseTiles,
+		CombatGuardRadiusTiles: cfg.CombatGuardRadiusTiles,
+		CombatLeashTiles:       cfg.CombatLeashTiles,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje
