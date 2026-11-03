@@ -48,7 +48,8 @@ una vez por segundo —sin consultar la base— y aplica en su instante: la ofer
 preaviso venció (`BROKEN`) y el tratado administrativo con `expires_at` vencido (`EXPIRED`). La RAM cambia primero,
 difunde y, si era una alianza, expulsa las guarniciones (`RN-DIPLO-005`); después encola la transacción, idempotente.
 Si se pierde, la compensación vuelve al loop y el siguiente barrido la reencola. Sustituye al barrido de la base
-(`TreatyExpirer`, `treaty.expire`), que era la única escritura sin compensación de ADR-022.
+(`TreatyExpirer`, `treaty.expire`), que no declaraba compensación (ADR-022). La otra que tampoco compensa es
+`unit.attacked`, auditoría de E3 que se pierde con un log.
 
 **4. Esquema, migración `000009`:**
 
@@ -87,7 +88,7 @@ vencimiento ([garrison.md](../specs/garrison.md) §6.4, precisado por SPEC-DIPLO
 
 - Un tratado aceptado frena ataques y saqueos en el tick en que vuelve su transacción, y una ruptura vuelve a
   permitirlos en su instante exacto.
-- Desaparece la única escritura de la cola sin compensación.
+- Desaparece una de las dos escrituras de la cola sin compensación; queda `unit.attacked`, que es sólo auditoría.
 
 ### Negativas
 

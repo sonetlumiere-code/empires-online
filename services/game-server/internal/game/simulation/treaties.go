@@ -160,6 +160,10 @@ func (s *State) SetTreaties(open, rejected []diplomacy.Treaty) {
 			continue
 		}
 		copia := t
+		// El par se guarda canónico, que es como lo busca openOf: la base ya lo
+		// garantiza (treaties_canonical_pair), pero un llamante que no lo
+		// ordene no debe quedarse sin paz (regresión de la CI de 800a269).
+		copia.PlayerA, copia.PlayerB = diplomacy.CanonicalPair(t.PlayerA, t.PlayerB)
 		s.diplo.open[t.ID] = &copia
 	}
 	for _, t := range rejected {
