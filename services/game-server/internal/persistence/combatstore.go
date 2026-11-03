@@ -40,3 +40,15 @@ func (c *CombatStore) PersistDeath(ctx context.Context, d simulation.Death) erro
 		return err
 	})
 }
+
+// PersistPillage escribe un golpe de saqueo en una transacción (ADR-026 §1).
+func (c *CombatStore) PersistPillage(ctx context.Context, p simulation.Pillage) error {
+	return c.store.InTx(ctx, func(tx pgxTx) error {
+		_, err := c.units.Pillaged(ctx, tx, postgres.Pillaged{
+			AttackerID: p.AttackerID, AttackerPlayer: p.AttackerPlayer,
+			CityID: p.CityID, VictimPlayer: p.VictimPlayer, Amount: p.Amount,
+			Stock: toDelta(p.Stock), At: p.At, Tick: p.Tick,
+		})
+		return err
+	})
+}

@@ -332,6 +332,8 @@ func run() error {
 		CombatMaxChaseTiles:    cfg.CombatMaxChaseTiles,
 		CombatGuardRadiusTiles: cfg.CombatGuardRadiusTiles,
 		CombatLeashTiles:       cfg.CombatLeashTiles,
+		PillageWoodPerHit:      cfg.PillageWoodPerHit,
+		PillageStockFloor:      cfg.PillageStockFloor,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

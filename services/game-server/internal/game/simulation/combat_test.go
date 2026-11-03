@@ -30,6 +30,10 @@ type fakeCombat struct {
 	mu      sync.Mutex
 	deaths  []simulation.Death
 	attacks []simulation.Attack
+	// pillages son los golpes de saqueo escritos; pillageErr, el error que
+	// devuelve PersistPillage si no es nil.
+	pillages   []simulation.Pillage
+	pillageErr error
 }
 
 func (f *fakeCombat) PersistAttack(_ context.Context, a simulation.Attack) error {
@@ -262,7 +266,8 @@ func TestElBotinPasaAlAsesinoYSeDeposita(t *testing.T) {
 	h := newHarness(t)
 	enemigo, _ := conEnemigo(h)
 	g := ponerUnidad(h, guerreroID, h.playerID, h.cityID, unit.TypeWarrior, world.Tile{X: 15, Y: 20}, 60)
-	g.Loot = 5
+	// Carga máxima 20 (SPEC-COMBAT-PILLAGE Q2): con 15, le quedan cinco de hueco.
+	g.Loot = 15
 	v := ponerUnidad(h, enemigoID, enemigo, 2, unit.TypeWarrior, world.Tile{X: 16, Y: 20}, 8)
 	v.Loot = 10
 	madera := h.madera()
@@ -271,7 +276,7 @@ func TestElBotinPasaAlAsesinoYSeDeposita(t *testing.T) {
 	h.tick()
 	_, vive := h.state.Unit(enemigoID)
 	require.False(t, vive, "un golpe de 8 mata a quien tiene 8")
-	assert.Equal(t, int32(10), g.Loot, "cinco de hueco: gana cinco")
+	assert.Equal(t, int32(20), g.Loot, "cinco de hueco: gana cinco")
 	require.Len(t, h.combat.deaths, 1)
 	assert.Equal(t, int32(5), h.combat.deaths[0].Loot)
 	assert.Equal(t, int32(5), h.combat.deaths[0].Lost)
@@ -280,7 +285,7 @@ func TestElBotinPasaAlAsesinoYSeDeposita(t *testing.T) {
 		Target: world.Tile{X: 12, Y: 10}})
 	h.advance(15 * time.Second)
 	assert.Equal(t, int32(0), g.Loot)
-	assert.Equal(t, madera+10, h.madera(), "deposita exactamente lo que llevaba")
+	assert.Equal(t, madera+20, h.madera(), "deposita exactamente lo que llevaba")
 }
 
 // RN-COMBAT-005 e INV-COMBAT-002: no se ataca a una unidad que está en una
@@ -341,4 +346,15 @@ func TestTrasUnReinicioVuelvenLaVidaYElBotinPeroNoElEnfrentamiento(t *testing.T)
 
 	sim := simulation.New(state, simulation.Deps{})
 	assert.Equal(t, int32(7), sim.UnitView(u, epoch).Carrying, "el botín viaja como carga")
+}
+
+// PersistPillage anota el golpe; con pillageErr, falla como pida el test.
+func (f *fakeCombat) PersistPillage(_ context.Context, p simulation.Pillage) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.pillageErr != nil {
+		return f.pillageErr
+	}
+	f.pillages = append(f.pillages, p)
+	return nil
 }

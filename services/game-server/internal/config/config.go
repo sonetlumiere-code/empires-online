@@ -59,6 +59,10 @@ type Config struct {
 	// CombatLeashTiles su correa, medida desde el puesto (SPEC-COMBAT-RESPONSE).
 	CombatGuardRadiusTiles int32
 	CombatLeashTiles       int32
+	// PillageWoodPerHit es la madera de cada golpe de saqueo y PillageStockFloor
+	// el suelo del almacén por debajo del cual no se roba (SPEC-COMBAT-PILLAGE §4.2).
+	PillageWoodPerHit int32
+	PillageStockFloor int64
 
 	PersistenceFlushIntervalTicks int
 
@@ -172,6 +176,8 @@ func Load() (Config, error) {
 		CombatMaxChaseTiles:    int32(v.intRange("EO_COMBAT_MAX_CHASE_TILES", 32, 1, 1024)),
 		CombatGuardRadiusTiles: int32(v.intRange("EO_COMBAT_GUARD_RADIUS_TILES", 4, 1, 64)),
 		CombatLeashTiles:       int32(v.intRange("EO_COMBAT_LEASH_TILES", 8, 1, 1024)),
+		PillageWoodPerHit:      int32(v.intRange("EO_PILLAGE_WOOD_PER_HIT", 5, 1, 1000)),
+		PillageStockFloor:      int64(v.intRange("EO_PILLAGE_STOCK_FLOOR", 50, 1, 1_000_000)),
 
 		PersistenceFlushIntervalTicks: v.intRange("EO_PERSISTENCE_FLUSH_INTERVAL_TICKS", 50, 1, 100000),
 
