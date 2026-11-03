@@ -53,14 +53,15 @@ motor rechaza las dos mitades del bicondicional por su nombre. `TestLaMuerteSeEs
 | Cobertura | **Cubierto** por `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (`internal/game/simulation`) |
 
 **Enunciado.** Ningún golpe se aplica si, en el instante del golpe, el atacante o el objetivo están sobre un tile
-de Safe Zone, el objetivo está `HIDDEN` o `GARRISONED`, el dueño del objetivo está protegido
-(`INV-CITY-006`), o existe un tratado `ACTIVE` de no agresión o alianza entre los dos jugadores.
+de Safe Zone, el objetivo está `HIDDEN` o `GARRISONED`, el dueño del objetivo o el del atacante está protegido
+(`INV-CITY-006`; el del atacante desde E3, `RN-COMBAT-018`), o existe un tratado `ACTIVE` de no agresión o alianza entre los dos jugadores.
 
 **Razón.** Son las promesas que el juego hace a quien se refugia, se esconde, se desconecta o firma la paz. Un
 solo golpe que las ignore las vuelve falsas.
 
 **Cómo se garantiza.** `DOMAIN` — la orden se valida al llegar y **otra vez** en cada golpe de la fase 4, con el
-mismo predicado: el estado puede cambiar durante la persecución.
+mismo predicado: el estado puede cambiar durante la persecución. La respuesta automática de E3
+([../specs/combat-response.md](../specs/combat-response.md)) pasa por el mismo predicado antes de abrirse.
 
 **Cómo se verifica.** `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` (objetivo oculto, dueño
 protegido, tratado) y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (la revalidación en cada

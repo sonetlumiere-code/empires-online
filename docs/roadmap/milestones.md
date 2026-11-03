@@ -1,6 +1,6 @@
 # Milestones
 
-Detalle ejecutable de M0 a M7 y del primer milestone posterior, E1: alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
+Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E3): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
 
 ## Cómo leer este documento
 
@@ -1374,7 +1374,7 @@ terminado y en la rama principal.
 
 ## E2 — Incursión
 
-**Estado: HECHO en la rama `claude/slice-incursion` (2026-11-02)**, pendiente de fusionar en `main` y de la CI. Contrato:
+**Estado: HECHO (2026-11-02)**, fusionado en `main` (`bc87cce`) con la CI en verde el 2026-11-03. Contrato:
 [SPEC-COMBAT-RAID](../specs/combat-raid.md), aceptada el 2026-11-02 con sus ocho decisiones de producto, y
 [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md).
 
@@ -1397,3 +1397,25 @@ atacar edificios o ciudades, asedio, respuesta automática, daño a distancia, c
    `ATTACKING` en la escena; incursión en `scripts/smoke.mjs --incursion`.
 7. **HECHO** — Prueba en vivo (2026-11-02): humo con incursión en verde, ataque y entrenamiento desde el
    navegador, reanclaje al arrancar observado en el servidor.
+
+## E3 — Defensa
+
+**Estado: EN CURSO en la rama `claude/slice-defensa` (2026-11-03).** Contrato:
+[SPEC-COMBAT-RESPONSE](../specs/combat-response.md), aceptada el 2026-11-03 con sus ocho decisiones de producto.
+
+**Objetivo.** Que defender no exija estar delante de la pantalla: un guerrero parado responde a los golpes sobre
+él o sobre sus unidades cercanas, persigue con correa y vuelve a su puesto.
+
+**Alcance.** Respuesta automática disparada por golpes (radio de guardia), correa y vuelta al puesto, protección
+simétrica del atacante y el evento `UnitAttacked` que E2 prometió. **No entra** (spec §2): agresión proactiva,
+huida de aldeanos, posturas por unidad, salir de la guarnición a defender.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec y retirada de `RN-COMBAT-011`.
+2. Simulación: alertas en la fase 4, enfrentamiento automático con puesto y correa, vuelta al puesto,
+   `RN-COMBAT-018` en el predicado de `INV-COMBAT-002`.
+3. Persistencia: `UnitAttacked` en `world_events`, con `auto` en las respuestas.
+4. Configuración: `EO_COMBAT_GUARD_RADIUS_TILES` y `EO_COMBAT_LEASH_TILES`.
+5. Humo: `scripts/smoke.mjs --incursion` con un guardia que responde.
+6. Prueba en vivo.

@@ -28,7 +28,7 @@ primera acción **hostil** de [ADR-016](../decisions/ADR-016-foreign-territory-a
 protección, Safe Zone, ocultamiento y tratado.
 
 **No entra** (`Fuera de MVP` de este slice): atacar edificios o ciudades, asedio y saqueo del almacén; respuesta
-automática del atacado; daño a distancia, armadura, bonos de facción o civilización; curación; formaciones;
+automática del atacado (llega con [combat-response.md](combat-response.md)); daño a distancia, armadura, bonos de facción o civilización; curación; formaciones;
 captura de territorio (`contested` sigue sin productor); romper un tratado atacando.
 
 ## 3. Actores
@@ -75,7 +75,7 @@ Dominio: `RN-COMBAT`.
 | `RN-COMBAT-008` | El enfrentamiento termina, y el atacante queda `IDLE`, cuando el objetivo muere, se oculta, entra en guarnición, pisa una Safe Zone, su dueño pasa a `PROTECTED`, nace un tratado entre ambos o se supera la distancia de persecución. |
 | `RN-COMBAT-009` | **Muerte.** Con `hp = 0`: `status = DEAD`; se cancelan su movimiento y su tarea; la población de su ciudad baja en uno (`INV-CITY-017`); `entity.despawn { DEAD }`. La fila se conserva (Q6). |
 | `RN-COMBAT-010` | **Botín.** Lo que cargaba la víctima pasa al atacante que dio el golpe mortal, hasta su carga máxima; el resto se pierde (Q3). Un `WARRIOR` con carga la deposita al llegar al tile de depósito de su ciudad (el de `RN-ECON-004`). Si muere, su carga pasa a quien lo mate. |
-| `RN-COMBAT-011` | La unidad atacada no responde sola en este slice: defenderse es una orden del jugador (Q8). |
+| `RN-COMBAT-011` | **Retirada** (2026-11-03) · sustituida por `RN-COMBAT-012` a `RN-COMBAT-018` de [combat-response.md](combat-response.md). Decía: la unidad atacada no responde sola; defenderse es una orden del jugador (Q8). |
 
 **Precisión (2026-11-02).** Lo que la implementación decide dentro de estas reglas:
 
@@ -109,6 +109,9 @@ Cliente → servidor: `unit.attack` (nuevo). Servidor → cliente, sin mensajes 
 ATTACKING, hp, carrying }`, `unit.movement.*` para la aproximación, `entity.despawn { reason: DEAD }`,
 `city.update { population, stocks }`. `UnitStatus` gana `ATTACKING` y `UnitType`, `WARRIOR`. Eventos de dominio
 en `world_events`: `UnitAttacked` (primer golpe de un enfrentamiento) y `UnitKilled` (con botín).
+
+**Precisión (2026-11-03).** E2 sólo escribió `UnitKilled`; `UnitAttacked` llega con E3
+([combat-response.md](combat-response.md) Q8).
 
 ## 7. Persistencia
 
@@ -156,7 +159,7 @@ producto, no de ingeniería: cambiarlas es cambiar la spec.
 | Q5 | Tratados: ¿`NON_AGGRESSION` y `ALLIANCE` impiden atacar? ¿Con qué código? | Sí, ambos, con `INVALID_TARGET` y un mensaje claro: no amplía el catálogo. Romper un tratado atacando queda para la diplomacia. |
 | Q6 | ¿Se conserva la fila de una unidad `DEAD` (backlog Q-05)? | Sí, sin cargarla al arrancar: auditoría barata. Archivar es una tarea de mantenimiento posterior. |
 | Q7 | Números de §4.1. | Punto de partida: un guerrero mata a un aldeano en ~7 s y a otro guerrero en ~12 s; se ajustan probando. |
-| Q8 | ¿Responde solo el atacado? | No en este slice: la respuesta automática es la primera mejora del siguiente. |
+| Q8 | ¿Responde solo el atacado? | No en este slice: la respuesta automática es la primera mejora del siguiente. Resuelta por [combat-response.md](combat-response.md) (E3, 2026-11-03). |
 
 ## 11. Documentos relacionados
 
