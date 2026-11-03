@@ -207,3 +207,29 @@ export const ForestView = z.object({
   regrowsAtMs: EpochMs.nullable(),
 });
 export type ForestView = z.infer<typeof ForestView>;
+
+/** Tipo de tratado (SPEC-DIPLOMACY §4.1). `TRADE` sólo existe por vía administrativa. */
+export const TreatyType = z.enum(['NON_AGGRESSION', 'ALLIANCE', 'TRADE']);
+export type TreatyType = z.infer<typeof TreatyType>;
+
+/** Estado de un tratado (SPEC-DIPLOMACY §4.2). */
+export const TreatyStatus = z.enum(['PROPOSED', 'ACTIVE', 'EXPIRED', 'BROKEN', 'REJECTED', 'WITHDRAWN']);
+export type TreatyStatus = z.infer<typeof TreatyStatus>;
+
+/**
+ * Un tratado visto por uno de sus dos firmantes: el «otro» es relativo a quien lo
+ * recibe. Nadie más los recibe (SPEC-DIPLOMACY Q8).
+ */
+export const TreatyView = z.object({
+  id: EntityId,
+  otherPlayerId: Uuid,
+  /** La ciudad del otro firmante, si la tiene. */
+  otherCityId: EntityId.nullable(),
+  otherCityName: z.string().min(1).max(64).nullable(),
+  type: TreatyType,
+  status: TreatyStatus,
+  proposedByMe: z.boolean(),
+  /** Fin del preaviso de una ruptura; `null` si no la hay (RN-DIPLO-004). */
+  breaksAtMs: EpochMs.nullable(),
+});
+export type TreatyView = z.infer<typeof TreatyView>;

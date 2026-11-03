@@ -475,7 +475,10 @@ de un segundo jugador (`smoke_victim`) y lo mata. Tarda minutos y mata una unida
 corre por defecto ni tras un despliegue en producción. Con `--saqueo` ([../specs/combat-pillage.md](../specs/combat-pillage.md)), un
 guerrero propio va hasta la muralla de `smoke_victim`, que se conecta para no estar protegida (y, si le falta,
 junta madera trayendo a casa a sus aldeanos), y la saquea: comprueba el golpe, el aviso `pillagedAtMs` a la
-víctima y la carga del guerrero. También tarda minutos y roba madera de otra cuenta.
+víctima y la carga del guerrero. También tarda minutos y roba madera de otra cuenta. Con `--diplomacia`
+([../specs/diplomacy.md](../specs/diplomacy.md)), `smoke_runner` y `smoke_victim` firman un pacto de no agresión (o
+reutilizan el vigente), se comprueba que el pacto impide el saqueo y `smoke_runner` lo rompe: el tratado queda en
+preaviso 15 minutos. Repetirlo antes falla y dice cuánto falta.
 
 ---
 

@@ -163,6 +163,44 @@ describe('saqueo (SPEC-COMBAT-PILLAGE)', () => {
   });
 });
 
+describe('diplomacia (SPEC-DIPLOMACY)', () => {
+  const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+
+  it('acepta treaty.propose de pacto y de alianza, y rechaza TRADE y el flag suelto', () => {
+    for (const type of ['NON_AGGRESSION', 'ALLIANCE']) {
+      expect(parseClientMessage({ v: 1, type: 'treaty.propose', requestId: uuid, payload: { playerId: otro, type } }).ok).toBe(true);
+    }
+    for (const payload of [
+      { playerId: otro, type: 'TRADE' },
+      { playerId: otro, type: 'ALLIANCE', allowsGarrison: true },
+      { playerId: 'no-es-un-uuid', type: 'ALLIANCE' },
+    ]) {
+      expect(parseClientMessage({ v: 1, type: 'treaty.propose', requestId: uuid, payload })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('acepta treaty.respond y treaty.cancel, y exige el sí o el no', () => {
+    expect(parseClientMessage({ v: 1, type: 'treaty.respond', requestId: uuid, payload: { treatyId: 3, accept: true } }).ok).toBe(true);
+    expect(parseClientMessage({ v: 1, type: 'treaty.respond', requestId: uuid, payload: { treatyId: 3 } }).ok).toBe(false);
+    expect(parseClientMessage({ v: 1, type: 'treaty.cancel', requestId: uuid, payload: { treatyId: 3 } }).ok).toBe(true);
+    expect(parseClientMessage({ v: 1, type: 'treaty.cancel', requestId: uuid, payload: { treatyId: 3, at: 1 } }).ok).toBe(false);
+  });
+
+  it('acepta treaty.update y treaties[] en el snapshot', () => {
+    const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+    const treaty = {
+      id: 3, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Vecinópolis',
+      type: 'ALLIANCE', status: 'ACTIVE', proposedByMe: false, breaksAtMs: 1_757_376_900_000,
+    };
+    expect(parseServerMessage({ ...env, type: 'treaty.update', payload: { treaty } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'treaty.update', payload: { treaty: { ...treaty, status: 'SIGNED' } } }).ok).toBe(false);
+    expect(parseServerMessage({
+      ...env, type: 'world.snapshot',
+      payload: { serverTimeMs: 1, tick: 1, chunks: [], terrain: [], units: [], cities: [], territories: [], buildings: [], treaties: [treaty] },
+    }).ok).toBe(true);
+  });
+});
+
 describe('comandos de economía (SPEC-ECON-WOOD)', () => {
   it('acepta unit.gather con unidad y bosque', () => {
     const result = parseClientMessage({

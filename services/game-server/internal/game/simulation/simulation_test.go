@@ -133,6 +133,7 @@ func (p *syncPersister) Submit(job simulation.Job) {
 	p.mu.Lock()
 	p.jobs = append(p.jobs, job.Name)
 	p.mu.Unlock()
+	anotarTrabajo(job.Name)
 	if err := job.Run(context.Background()); err != nil {
 		p.mu.Lock()
 		p.errs = append(p.errs, err)
@@ -251,6 +252,7 @@ type harness struct {
 	garrisons *fakeGarrisons
 	economy   *fakeEconomy
 	combat    *fakeCombat
+	treaties  *fakeTreaties
 }
 
 // newHarness monta un mundo determinista de 64x64 de hierba con un jugador,
@@ -286,6 +288,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	garrisons := &fakeGarrisons{}
 	economia := newFakeEconomy()
 	combate := &fakeCombat{}
+	tratados := &fakeTreaties{nextID: 1000}
 	commands := make(chan simulation.Command, 256)
 	// Las respuestas de la cola vuelven al loop por su buzón, como en cmd/server.
 	inbox := loop.NewInbox(256, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -298,6 +301,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 		Garrisons:          garrisons,
 		Economy:            economia,
 		Combat:             combate,
+		Treaties:           tratados,
 		Inbox:              inbox.Offer,
 		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ProtectionCooldown: 300 * time.Second,
@@ -317,7 +321,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	h := &harness{
 		t: t, clk: clk, state: state, sim: sim, loop: gameLoop,
 		rec: rec, repos: repos, commands: commands, inbox: inbox, rutas: rutas,
-		persister: persister, garrisons: garrisons, economy: economia, combat: combate,
+		persister: persister, garrisons: garrisons, economy: economia, combat: combate, treaties: tratados,
 		playerID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
 		cityID:   1,
 	}

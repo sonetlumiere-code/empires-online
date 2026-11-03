@@ -153,7 +153,7 @@ type Job struct {
     Key  string                          // entidad que escribe: los trabajos de una clave van en orden (ADR-013)
     Run  func(ctx context.Context) error // debe ser IDEMPOTENTE: puede reintentarse
     // OnPermanentFailure compensa el fallo definitivo: corre fuera del loop y devuelve un
-    // comando por Deps.Inbox. Lo declaran todos los trabajos salvo treaty.expire (ADR-022).
+    // comando por Deps.Inbox. Lo declaran todos los trabajos (ADR-022; desde ADR-027 sin excepción).
     OnPermanentFailure func(err error)
 }
 

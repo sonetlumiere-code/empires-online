@@ -262,13 +262,18 @@ func run() error {
 	}
 	state.SetSafeZones(safeZones)
 
-	// Los tratados que impiden atacar (RN-COMBAT-006). Se cargan una vez: hoy
-	// no hay vía para crearlos en caliente, y su caducidad se evalúa por fecha.
-	paz, err := treatyRepo.ListActive(rootCtx)
+	// Los tratados abiertos y los rechazos recientes (ADR-027 §1): desde aquí
+	// la RAM decide cada orden y la paz que lee el combate. Los vencimientos que
+	// pasaron con el servidor parado los aplica el primer barrido.
+	abiertos, err := treatyRepo.ListOpen(rootCtx)
 	if err != nil {
-		return fmt.Errorf("cargar tratados activos: %w", err)
+		return fmt.Errorf("cargar tratados abiertos: %w", err)
 	}
-	state.SetPeaceTreaties(paz)
+	rechazos, err := treatyRepo.ListRejectedSince(rootCtx, sysClock.Now().Add(-cfg.TreatyRetry))
+	if err != nil {
+		return fmt.Errorf("cargar rechazos recientes: %w", err)
+	}
+	state.SetTreaties(abiertos, rechazos)
 
 	gameStore := persistence.NewGameStore(store, unitRepo, cityRepo, movementRepo)
 	if len(recovery.FinishedMovements) > 0 {
@@ -315,7 +320,7 @@ func run() error {
 		Broadcaster: hub,
 		Persister:   queue,
 		Repos:       gameStore,
-		Treaties:    treatyRepo,
+		Treaties:    persistence.NewTreatyStore(treatyRepo),
 		Garrisons:   postgres.NewGarrisonRepo(store, unitRepo, movementRepo, treatyRepo),
 		Economy:     economyStore,
 		Combat:      persistence.NewCombatStore(store, unitRepo),
@@ -334,6 +339,9 @@ func run() error {
 		CombatLeashTiles:       cfg.CombatLeashTiles,
 		PillageWoodPerHit:      cfg.PillageWoodPerHit,
 		PillageStockFloor:      cfg.PillageStockFloor,
+		TreatyOfferTTL:         cfg.TreatyOfferTTL,
+		TreatyBreakNotice:      cfg.TreatyBreakNotice,
+		TreatyRetry:            cfg.TreatyRetry,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

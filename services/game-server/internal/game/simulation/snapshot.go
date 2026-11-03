@@ -71,6 +71,8 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 		payload.Forests = append(payload.Forests, s.state.forestsInChunk(ch.CX, ch.CY, nowMs)...)
 	}
 
+	// SPEC-DIPLOMACY: los tratados abiertos de quien lo recibe (ADR-027 §5).
+	payload.Treaties = s.treatiesOf(viewer)
 	return payload
 }
 

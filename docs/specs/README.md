@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las catorce specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las quince specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -48,12 +48,13 @@ spec que no aparece en esta tabla, la cita está rota.
 | Safe Zones | [safe-zones.md](safe-zones.md) | M5 Offline protection & Safe Zones | Implemented | Geometría de `safe_zones`, pertenencia de tiles y estado `HIDDEN` |
 | Territory | [territory.md](territory.md) | M6 Territories | Implemented | `territories` y `territory_control`, resolución tile → territorio |
 | Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Implemented | `garrisons`, entrada y salida, tratados con `allows_garrison` |
-| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 12 mensajes cliente→servidor y los 17 servidor→cliente, límites e idempotencia |
+| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 15 mensajes cliente→servidor y los 18 servidor→cliente, límites e idempotencia |
 | Economía: madera | [economy-wood.md](economy-wood.md) | E1 Madera | Implemented | `city_stocks`, tarea de recolección `GATHER_WOOD` y estado `WORKING`, casa en la zona urbana, entrenamiento de aldeanos; primer slice después de M7 |
 | Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Implemented | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil; tope de la protección offline |
 | Combate: respuesta automática | [combat-response.md](combat-response.md) | E3 Defensa | Implemented | Un `WARRIOR` parado responde a los golpes sobre él o sobre sus unidades cercanas, con correa y vuelta al puesto; protección simétrica del atacante |
 | Economía: agotamiento del bosque | [economy-forest.md](economy-forest.md) | E4 Bosque | Implemented | Madera finita por tile de bosque en una capa aparte del terreno, regeneración, búsqueda del tile siguiente, fundación con bosque suficiente |
 | Combate: saqueo | [combat-pillage.md](combat-pillage.md) | E5 Saqueo | Implemented | Un `WARRIOR` junto a la muralla enemiga roba madera del almacén golpe a golpe hasta un suelo y la lleva a casa; los guerreros de la ciudad defienden |
+| Diplomacia en caliente | [diplomacy.md](diplomacy.md) | E6 Diplomacia | Accepted | Proponer, aceptar, rechazar, retirar y romper pactos de no agresión y alianzas desde el cliente; ruptura con preaviso y expulsión de las guarniciones al terminar una alianza |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
@@ -70,7 +71,7 @@ Documentación relacionada que **no** es una spec funcional y por tanto no sigue
 ## 3. Plantilla obligatoria de spec
 
 La plantilla tiene tres partes: una **cabecera** fija, un **núcleo** fijo y un **cuerpo temático** libre.
-Lo que sigue describe lo que las catorce specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
+Lo que sigue describe lo que las quince specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
 
 ### 3.1 Cabecera
 

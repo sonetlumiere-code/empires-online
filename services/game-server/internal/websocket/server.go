@@ -14,6 +14,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/diplomacy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -535,6 +536,55 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			RequestID: msg.RequestID,
 			UnitID:    p.UnitID,
 			CityID:    p.CityID,
+		})
+
+	// Diplomacia (SPEC-DIPLOMACY). El cliente dice a quién y qué tipo, o sobre
+	// qué tratado; el estado, la guarnición y los plazos son del servidor.
+	case protocol.TypeTreatyPropose:
+		var p protocol.TreatyProposePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		target, err := uuid.Parse(p.PlayerID)
+		if err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "playerId inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.ProposeTreaty{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
+			Target: target, Type: diplomacy.Type(p.Type),
+		})
+
+	case protocol.TypeTreatyRespond:
+		var p protocol.TreatyRespondPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.RespondTreaty{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
+			TreatyID: p.TreatyID, Accept: p.Accept,
+		})
+
+	case protocol.TypeTreatyCancel:
+		var p protocol.TreatyCancelPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.CancelTreaty{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
+			TreatyID: p.TreatyID,
 		})
 
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:

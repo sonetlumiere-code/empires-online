@@ -29,6 +29,7 @@ import {
   unitTypeLabel,
 } from '../src/state/economy';
 import { ViewSync } from '../src/state/viewSync';
+import { anyCountdown, treatyActions, treatyLabel, type TreatyAction } from '../src/state/diplomacy';
 import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
@@ -69,6 +70,17 @@ export default function Page() {
 
   // Un segundero mientras la ciudad entrena, para la cuenta atrás del HUD.
   const [, setTick] = useState(0);
+
+  // Diplomacia (SPEC-DIPLOMACY): los tratados abiertos y la ciudad ajena sobre
+  // la que se hizo clic sin unidad seleccionada, para proponerle un tratado.
+  const treaties = useWorldStore((s) => s.treaties);
+  const [diplomacyTarget, setDiplomacyTarget] = useState<CityView | null>(null);
+  const countdown = anyCountdown(treaties);
+  useEffect(() => {
+    if (!countdown) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [countdown]);
   const training = hud.ownCity?.production ?? null;
   useEffect(() => {
     if (!training) return;
@@ -194,7 +206,14 @@ export default function Page() {
   const handleTileClick = useCallback(
     (tile: Tile) => {
       const client = clientRef.current;
-      if (!client || selectedUnitId === null) return;
+      if (!client) return;
+      if (selectedUnitId === null) {
+        // Sin unidad: un clic en una ciudad ajena abre la propuesta de tratado.
+        const c = cityAt(tile);
+        const own = useWorldStore.getState().playerId;
+        setDiplomacyTarget(c && c.ownerPlayerId !== own ? c : null);
+        return;
+      }
       // Un clic sobre la zona urbana de una ciudad (su 3 × 3) es la orden de
       // entrar en ella, como un clic sobre un edificio en la referencia. El
       // cliente sólo elige el objetivo; si se puede lo decide el servidor.
@@ -305,6 +324,19 @@ export default function Page() {
 
   const { ownUnitCount, garrisoned, ownCity } = hud;
 
+  // Órdenes de tratado (SPEC-DIPLOMACY). Romper es irreversible y avisa de su
+  // preaviso: se confirma antes.
+  const runTreatyAction = (action: TreatyAction, treatyId: number) => {
+    const client = clientRef.current;
+    if (!client) return;
+    if (action === 'accept' || action === 'reject') {
+      client.respondTreaty(treatyId, action === 'accept');
+      return;
+    }
+    if (action === 'break' && !window.confirm('¿Romper el tratado? Seguirá vigente 15 minutos y después terminará.')) return;
+    client.cancelTreaty(treatyId);
+  };
+
   // «Casa»: el primer hueco libre del 3 × 3, sin pedir clic (frontend.md §4.4).
   // Un clic en la zona urbana ya es la orden de guarnecerse.
   const buildHouse = () => {
@@ -388,6 +420,33 @@ export default function Page() {
         </button>
       </header>
 
+      {(diplomacyTarget || treaties.length > 0) && (
+        <div style={{ ...styles.hud, flexWrap: 'wrap', gap: '0.75rem' }} aria-label="Diplomacia">
+          {diplomacyTarget && (
+            <>
+              <span>{diplomacyTarget.name}:</span>
+              <button className="secondary" onClick={() => { clientRef.current?.proposeTreaty(diplomacyTarget.ownerPlayerId, 'NON_AGGRESSION'); setDiplomacyTarget(null); }}>
+                Proponer pacto
+              </button>
+              <button className="secondary" onClick={() => { clientRef.current?.proposeTreaty(diplomacyTarget.ownerPlayerId, 'ALLIANCE'); setDiplomacyTarget(null); }}>
+                Proponer alianza
+              </button>
+              <button className="secondary" onClick={() => setDiplomacyTarget(null)} title="Cerrar">×</button>
+            </>
+          )}
+          {treaties.map((tr) => (
+            <span key={tr.id} style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }}>
+              <span>{treatyLabel(tr, serverTimeMs())}</span>
+              {treatyActions(tr).map((a) => (
+                <button key={a} className="secondary" onClick={() => runTreatyAction(a, tr.id)}>
+                  {ACTION_LABEL[a]}
+                </button>
+              ))}
+            </span>
+          ))}
+        </div>
+      )}
+
       {logoutError && (
         <div style={{ ...styles.hud, color: 'var(--danger)' }}>{logoutError}</div>
       )}
@@ -409,6 +468,14 @@ export default function Page() {
     </main>
   );
 }
+
+/** El texto de cada orden de tratado en el HUD. */
+const ACTION_LABEL: Record<TreatyAction, string> = {
+  accept: 'Aceptar',
+  reject: 'Rechazar',
+  withdraw: 'Retirar',
+  break: 'Romper',
+};
 
 /** Lo que el HUD dice de la unidad seleccionada: su vida, si trabaja o ataca, y cuánto lleva. */
 function describeUnit(u: { status: string; carrying: number; hp: number; maxHp: number } | undefined): string {

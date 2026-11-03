@@ -198,10 +198,17 @@ CREATE UNIQUE INDEX unit_movements_one_active_per_unit
     ON unit_movements (unit_id)
     WHERE status = 'ACTIVE';
 
--- Como máximo un tratado vigente de cada tipo entre dos jugadores.
+-- Como máximo un tratado vigente de cada tipo entre dos jugadores (000001; lo
+-- sustituyen en 000009 los dos de abajo, SPEC-DIPLOMACY).
 CREATE UNIQUE INDEX treaties_one_active_per_pair_and_type
     ON treaties (player_a_id, player_b_id, treaty_type)
     WHERE status = 'ACTIVE';
+
+-- 000009: un vigente y una oferta como mucho por par (INV-DIPLO-002), y la
+-- idempotencia de treaty.propose.
+CREATE UNIQUE INDEX treaties_one_active_per_pair ON treaties (player_a_id, player_b_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX treaties_one_offer_per_pair  ON treaties (player_a_id, player_b_id) WHERE status = 'PROPOSED';
+CREATE UNIQUE INDEX treaties_unique_request      ON treaties (proposed_by, request_id) WHERE request_id IS NOT NULL;
 ```
 
 El primero es la garantía física de `INV-MOVE-001` (una unidad tiene como máximo un movimiento `ACTIVE`); su justificación completa está en [schema.md](./schema.md#101-unit_movements_one_active_per_unit-es-la-garantía-física-de-inv-move-001). El segundo aplica el mismo patrón a los tratados, y es directo porque `treaties_canonical_pair` obliga a `player_a_id < player_b_id`: no hace falta normalizar el par con `LEAST`/`GREATEST` dentro del índice. Ambos son parciales, y esa parcialidad es la que los mantiene diminutos: sólo contienen el estado vivo.
@@ -219,7 +226,8 @@ Existen, sirven consultas reales o previstas, y conviene no olvidarlos al medir:
 | `units_city_idx` | `ON units (city_id) WHERE city_id IS NOT NULL` | Recálculo de población: `count(*)` de las unidades vivas de una ciudad (`CityRepo.UpdatePopulation`). Es parcial por `city_id IS NOT NULL`, no por `status`, porque la consulta filtra el estado dentro del `count` |
 | `sessions_player_idx` | `ON sessions (player_id, connected_at DESC)` | Historial de conexiones de un jugador, de la más reciente hacia atrás. Tabla aún sin escritor (§13 de schema.md) |
 | `garrisons_city_idx` | `ON garrisons (city_id)` | Qué unidades hay guarnecidas en una ciudad (`GarrisonRepo.ListByCity`, hoy sólo en tests; el arranque lee la tabla entera) y el `ON DELETE CASCADE` desde `cities`. La guarnición está implementada ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
-| `treaties_one_active_per_pair_and_type` | `UNIQUE ON treaties (player_a_id, player_b_id, treaty_type) WHERE status = 'ACTIVE'` (el par se guarda canónico, `treaties_canonical_pair`) | Además de impedir dos tratados activos iguales, es el índice de acceso de `TreatyRepo.FindAuthorizingGarrison`, la consulta de la transacción de entrada en guarnición |
+| `treaties_one_active_per_pair` | `UNIQUE ON treaties (player_a_id, player_b_id) WHERE status = 'ACTIVE'` (desde `000009`; antes, por par **y tipo**) | Un tratado vigente por par, del tipo que sea ([INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002)). |
+| `treaties_one_offer_per_pair` | `UNIQUE ON treaties (player_a_id, player_b_id) WHERE status = 'PROPOSED'` | Una oferta pendiente por par. |
 | `world_events_type_time_idx` | `ON world_events (event_type, occurred_at DESC)` | Auditoría: los últimos eventos de un tipo |
 | `world_events_player_idx` | `ON world_events (player_id, occurred_at DESC) WHERE player_id IS NOT NULL` | Auditoría: los últimos eventos de un jugador. Parcial porque los eventos sin actor no se consultan por esta vía |
 
@@ -242,7 +250,9 @@ Inventario completo, con los nombres reales de las migraciones `000001` y `00000
 | `cities_unique_center` | `cities` | B-tree único (constraint `UNIQUE`) | Un tile, una ciudad |
 | PK `(chunk_x, chunk_y)` | `world_chunks` | B-tree único compuesto | §2.7 lectura del terreno |
 | `sessions_player_idx` | `sessions` | B-tree compuesto | §2.9 historial de conexiones |
-| `treaties_one_active_per_pair_and_type` | `treaties` | B-tree único parcial | Invariante de tratado |
+| `treaties_one_active_per_pair` | `treaties` | B-tree único parcial | INV-DIPLO-002 (desde `000009`; sustituye a `treaties_one_active_per_pair_and_type`) |
+| `treaties_one_offer_per_pair` | `treaties` | B-tree único parcial | INV-DIPLO-002 |
+| `treaties_unique_request` | `treaties` | B-tree único parcial | Idempotencia de `treaty.propose` |
 | `garrisons_city_idx` | `garrisons` | B-tree | §2.9 guarnición por ciudad |
 | `buildings_unique_tile` | `buildings` | B-tree único (constraint `UNIQUE`) | §2.8 un edificio por tile |
 | `buildings_unique_request` | `buildings` | B-tree único (constraint `UNIQUE`) | §2.8 idempotencia del encargo; edificios de una ciudad |

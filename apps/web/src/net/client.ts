@@ -321,6 +321,21 @@ export class GameClient {
     return this.send('unit.attack', { unitId, targetUnitId });
   }
 
+  /** Propone un tratado a otro jugador (SPEC-DIPLOMACY). */
+  proposeTreaty(playerId: string, type: 'NON_AGGRESSION' | 'ALLIANCE'): string {
+    return this.send('treaty.propose', { playerId, type });
+  }
+
+  /** Acepta o rechaza una oferta recibida. */
+  respondTreaty(treatyId: number, accept: boolean): string {
+    return this.send('treaty.respond', { treatyId, accept });
+  }
+
+  /** Retira la oferta propia o rompe un tratado vigente. */
+  cancelTreaty(treatyId: number): string {
+    return this.send('treaty.cancel', { treatyId });
+  }
+
   /** Ordena a un guerrero saquear una ciudad ajena (SPEC-COMBAT-PILLAGE). */
   pillageCity(unitId: number, cityId: number): string {
     return this.send('unit.pillage', { unitId, cityId });

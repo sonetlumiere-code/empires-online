@@ -175,6 +175,15 @@ func CommandTypes() []string {
 		TaskPersistFailed{}.commandType(),
 		StocksFlushFailed{}.commandType(),
 		BuildingCompletePersistFailed{}.commandType(),
+		AttackUnit{}.commandType(),
+		DeathPersistFailed{}.commandType(),
+		PillageCity{}.commandType(),
+		PillageResolved{}.commandType(),
+		ProposeTreaty{}.commandType(),
+		RespondTreaty{}.commandType(),
+		CancelTreaty{}.commandType(),
+		TreatyResolved{}.commandType(),
+		TreatyEndPersistFailed{}.commandType(),
 	}
 }
 
@@ -190,7 +199,6 @@ const (
 	JobUnitsFlush       = "units.flush"
 	JobGarrisonEnter    = "garrison.enter"
 	JobGarrisonLeave    = "garrison.leave"
-	JobTreatyExpire     = "treaty.expire"
 	// Economía (ADR-023).
 	JobTaskWrite          = "task.write"
 	JobStocksFlush        = "stocks.flush"
@@ -206,9 +214,10 @@ func JobNames() []string {
 		JobMovementStart, JobMovementCancel, JobMovementComplete,
 		JobCityPresence, JobUnitsFlush,
 		JobGarrisonEnter, JobGarrisonLeave,
-		JobTreatyExpire,
 		JobTaskWrite, JobStocksFlush, JobCityBuild, JobCityTrain,
 		JobBuildingComplete, JobProductionComplete,
+		JobDeath, JobAttack, JobPillage,
+		JobTreatyOrder, JobTreatyEnd,
 	}
 }
 
@@ -256,10 +265,10 @@ func PartitionOf(key string, n int) int {
 	return int(h.Sum32() % uint32(n))
 }
 
-// UnitKey, CityKey y TreatyKey son las claves de partición de cada entidad.
-func UnitKey(id int64) string   { return "unit:" + strconv.FormatInt(id, 10) }
-func CityKey(id int64) string   { return "city:" + strconv.FormatInt(id, 10) }
-func TreatyKey(id int64) string { return "treaty:" + strconv.FormatInt(id, 10) }
+// UnitKey y CityKey son las claves de partición de cada entidad; la de un par
+// de jugadores es TreatyKey (treaties.go).
+func UnitKey(id int64) string { return "unit:" + strconv.FormatInt(id, 10) }
+func CityKey(id int64) string { return "city:" + strconv.FormatInt(id, 10) }
 
 // NoopBroadcaster descarta todo. Útil en tests de simulación pura.
 type NoopBroadcaster struct{}

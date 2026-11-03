@@ -1,6 +1,6 @@
 # Milestones
 
-Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E5): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
+Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E6): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
 
 ## Cómo leer este documento
 
@@ -1485,3 +1485,38 @@ casas, que la ciudad caiga, máquinas de asedio, niebla de guerra.
    cruzó el mapa hasta (449, 181), junto a la muralla de (451, 179), y dio cuatro golpes de 5 cada 1,5 s (cuatro
    `CityPillaged` en la base) hasta quedar `IDLE` con 20 de carga. En el navegador, con `smoke_victim` conectado,
    el HUD mostró «¡Están saqueando tu ciudad!» desde el primer golpe hasta cinco segundos después del último.
+
+## E6 — Diplomacia
+
+**Estado: HECHO en la rama** `claude/slice-diplomacia` (2026-11-03), con su suite y la prueba en vivo en verde; falta
+fusionarlo en `main`. Contrato:
+[SPEC-DIPLOMACY](../specs/diplomacy.md), aceptada el 2026-11-03 con sus nueve decisiones de producto, y
+[ADR-027](../decisions/ADR-027-hot-treaties.md).
+
+**Objetivo.** Que el riesgo de E2 a E5 tenga contrapeso: los jugadores proponen, aceptan, rechazan, retiran y rompen
+pactos de no agresión y alianzas mientras juegan, con un preaviso que impide la traición por sorpresa.
+
+**Alcance.** `treaty.propose`, `treaty.respond` y `treaty.cancel`; la RAM como fuente de las órdenes y la paz; los
+vencimientos optimistas en la fase 5 (ofertas, preavisos, `expires_at`); la expulsión de las guarniciones al terminar
+una alianza; `treaty.update` y `treaties[]` en el snapshot; la migración `000009`; el panel del cliente. **No entra**
+(spec §2): `TRADE`, plazos al firmar, chat, alianzas visibles para terceros.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-027, `INV-DIPLO-001`, `INV-DIPLO-002` e `INV-GARR-008` vigente.
+2. **HECHO** — Migración `000009` y dominio `diplomacy` con la máquina de estados ampliada y las reglas de cada orden.
+3. **HECHO** — Protocolo: los tres comandos, `treaty.update` y `treaties[]`, con el JSON Schema y los contract tests
+   (`diplomacy_contract_test.go`).
+4. **HECHO** — Simulación (`treaties.go`): las órdenes en dos fases, los vencimientos, la paz en caliente y la expulsión;
+   golden «alianza» y el resto en `treaties_test.go`. Dos mutaciones (responde quien propuso, sin expulsión) las
+   detecta algún test.
+5. **HECHO** — Persistencia: cada transición, idempotente, índices de `INV-DIPLO-002` y fallo inyectado
+   (`treaty_orders_integration_test.go`); e2e con dos jugadores (`diplomacy_e2e_test.go`).
+6. **HECHO** — Cliente: barra de propuesta, ofertas y tratados con la cuenta atrás del preaviso (`diplomacy.ts`).
+7. **HECHO** — Humo y prueba en vivo (2026-11-03): `scripts/smoke.mjs --diplomacia` en verde (20 comprobaciones):
+   pacto propuesto y aceptado, saqueo rechazado por la paz, ruptura con preaviso. En el navegador, con
+   `smoke_victim`, el HUD mostró la cuenta atrás y la conservó tras reiniciar el servidor. El preaviso venció con el
+   servidor parado: al arrancar, el primer barrido dejó el tratado `BROKEN` con `broken_at` en su instante exacto
+   (19:02:15) y escribió `TreatyBroken`, y el HUD dejó de mostrarlo.
+8. **HECHO** — Fallo encontrado al implementarlo: los catálogos de métricas no tenían los trabajos y comandos de E2
+   y E5; corregido, con un `TestMain` que lo impide.

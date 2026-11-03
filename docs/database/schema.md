@@ -855,7 +855,34 @@ CREATE UNIQUE INDEX treaties_one_active_per_pair_and_type
 | `allows_garrison` | Flag independiente del tipo: un `ALLIANCE` puede no permitir guarnición |
 | `proposed_at`, `accepted_at`, `expires_at`, `broken_at` | Las cuatro marcas del ciclo de vida, todas `timestamptz`. Ningún `CHECK` las liga al `status`: un tratado `PROPOSED` que caduca pasa a `EXPIRED` sin haber tenido nunca `accepted_at`, y ésa es una transición legítima que una restricción de coherencia habría hecho imposible de representar sin falsear la auditoría |
 
-El índice único parcial `treaties_one_active_per_pair_and_type` impide dos tratados `ACTIVE` del mismo tipo entre los mismos dos jugadores. Es directo gracias al orden canónico del par.
+El índice único parcial `treaties_one_active_per_pair_and_type` impedía dos tratados `ACTIVE` del mismo tipo entre los mismos dos jugadores. Es directo gracias al orden canónico del par.
+
+**Migración `000009` (SPEC-DIPLOMACY, [ADR-027](../decisions/ADR-027-hot-treaties.md) §4).** Con los tratados en caliente la tabla gana cuatro columnas y
+cambia dos reglas:
+
+```sql
+ALTER TABLE treaties
+    ADD COLUMN proposed_by        uuid REFERENCES players (id) ON DELETE CASCADE,
+    ADD COLUMN request_id         text,
+    ADD COLUMN break_effective_at timestamptz,
+    ADD COLUMN closed_at          timestamptz;
+-- treaties_status_valid admite además 'REJECTED' y 'WITHDRAWN'.
+-- treaties_proposer_in_pair: proposed_by IS NULL OR proposed_by IN (player_a_id, player_b_id).
+DROP INDEX treaties_one_active_per_pair_and_type;
+CREATE UNIQUE INDEX treaties_one_active_per_pair ON treaties (player_a_id, player_b_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX treaties_one_offer_per_pair  ON treaties (player_a_id, player_b_id) WHERE status = 'PROPOSED';
+CREATE UNIQUE INDEX treaties_unique_request      ON treaties (proposed_by, request_id) WHERE request_id IS NOT NULL;
+```
+
+| Columna | Semántica |
+|---|---|
+| `proposed_by` | Quién propuso: el par canónico no lo dice. `NULL` en los tratados administrativos. Decide quién responde y quién retira ([INV-DIPLO-001](../invariants/diplomacy.md#inv-diplo-001)) |
+| `request_id` | El de la orden `treaty.propose`, para que el reintento no inserte dos ofertas |
+| `break_effective_at` | Con valor, el tratado está en preaviso: sigue `ACTIVE` y deja de valer en ese instante (`RN-DIPLO-004`) |
+| `closed_at` | Cuándo se rechazó, retiró o caducó una oferta; de ella sale la espera tras un rechazo (`RN-DIPLO-008`) |
+
+`treaties_one_active_per_pair` y `treaties_one_offer_per_pair` son [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002):
+un vigente y una oferta como mucho por par, del tipo que sean. El índice por par y tipo de `000001` desaparece.
 
 ### 15.5 `garrisons`
 

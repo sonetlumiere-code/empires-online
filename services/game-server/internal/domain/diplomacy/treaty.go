@@ -1,11 +1,12 @@
-// Package diplomacy implementa el ciclo de vida de los tratados y la única
-// regla que hoy depende de ellos: si autorizan o no una guarnición.
+// Package diplomacy implementa el ciclo de vida de los tratados, quién puede
+// proponerlos, responderlos, retirarlos y romperlos, y lo que autorizan: la paz
+// y la guarnición.
 //
 // Es dominio puro. No consulta la base de datos ni el reloj: recibe el instante
 // como argumento, lo que permite ejercitar la caducidad con un reloj falso y de
 // forma determinista.
 //
-// Spec: ../../../../../docs/specs/garrison.md §6.1
+// Specs: ../../../../../docs/specs/garrison.md §6.1, ../../../../../docs/specs/diplomacy.md
 package diplomacy
 
 import (
@@ -21,6 +22,13 @@ var (
 	ErrTransicionInvalida = errors.New("transición de tratado no permitida")
 	// ErrTratadoInvalido: la fila no cumple sus propias restricciones.
 	ErrTratadoInvalido = errors.New("tratado inválido")
+	// ErrNoEsParte: quien da la orden no es uno de los dos firmantes.
+	ErrNoEsParte = errors.New("no eres parte de ese tratado")
+	// ErrNoPuede: la orden no corresponde a quien la da o al estado del tratado
+	// (responder a la oferta propia, retirar la ajena, romper dos veces).
+	ErrNoPuede = errors.New("esa orden no se puede dar sobre ese tratado")
+	// ErrTipoNoProponible: el tipo no se puede proponer desde el cliente (TRADE).
+	ErrTipoNoProponible = errors.New("ese tipo de tratado no se puede proponer")
 )
 
 // Type es el tipo de tratado. Los valores coinciden con el CHECK
@@ -51,12 +59,15 @@ const (
 	StatusActive   Status = "ACTIVE"
 	StatusExpired  Status = "EXPIRED"
 	StatusBroken   Status = "BROKEN"
+	// Los dos finales de una oferta que no llega a firmarse (SPEC-DIPLOMACY §4.2).
+	StatusRejected  Status = "REJECTED"
+	StatusWithdrawn Status = "WITHDRAWN"
 )
 
 // Valid indica si el estado es uno de los cuatro admitidos.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusProposed, StatusActive, StatusExpired, StatusBroken:
+	case StatusProposed, StatusActive, StatusExpired, StatusBroken, StatusRejected, StatusWithdrawn:
 		return true
 	}
 	return false
@@ -64,16 +75,27 @@ func (s Status) Valid() bool {
 
 // transicionesPermitidas es la máquina de estados COMPLETA.
 //
-// Sólo hay tres saltos legales y todo lo demás se rechaza, incluidas cosas que
-// parecen inocuas: reactivar un tratado roto, caducar uno que nunca llegó a
-// estar activo, o volver a `PROPOSED`. Un tratado terminado es terminado; para
-// volver a aliarse se firma uno nuevo, que además deja rastro de que hubo dos.
+// Una oferta se acepta, se rechaza, se retira o caduca; un tratado vigente
+// caduca o se rompe. Todo lo demás se rechaza, incluidas cosas que parecen
+// inocuas: reactivar un tratado roto o volver a `PROPOSED`. Un tratado
+// terminado es terminado; para volver a aliarse se firma uno nuevo, que además
+// deja rastro de que hubo dos (SPEC-DIPLOMACY §4.2).
 var transicionesPermitidas = map[Status]map[Status]bool{
-	StatusProposed: {StatusActive: true},
-	StatusActive:   {StatusExpired: true, StatusBroken: true},
-	StatusExpired:  {},
-	StatusBroken:   {},
+	StatusProposed:  {StatusActive: true, StatusRejected: true, StatusWithdrawn: true, StatusExpired: true},
+	StatusActive:    {StatusExpired: true, StatusBroken: true},
+	StatusExpired:   {},
+	StatusBroken:    {},
+	StatusRejected:  {},
+	StatusWithdrawn: {},
 }
+
+// Proposable indica si el tipo se puede proponer desde el cliente (Q1): el
+// comercio no existe todavía.
+func (t Type) Proposable() bool { return t == TypeNonAggression || t == TypeAlliance }
+
+// GrantsGarrison es el flag que fija el tipo (Q1): la alianza deja guarnecer y
+// el pacto no.
+func (t Type) GrantsGarrison() bool { return t == TypeAlliance }
 
 // Treaty es un tratado entre dos jugadores.
 //
@@ -91,6 +113,15 @@ type Treaty struct {
 	AcceptedAt     *time.Time
 	ExpiresAt      *time.Time
 	BrokenAt       *time.Time
+	// ProposedBy es quien propuso; nil en los tratados administrativos.
+	ProposedBy *uuid.UUID
+	// RequestID es el de la orden que lo propuso, para la idempotencia.
+	RequestID string
+	// BreakEffectiveAt, con valor, es el fin del preaviso de una ruptura: el
+	// tratado sigue ACTIVE hasta entonces (RN-DIPLO-004).
+	BreakEffectiveAt *time.Time
+	// ClosedAt es cuándo se rechazó, retiró o caducó una oferta.
+	ClosedAt *time.Time
 }
 
 // CanonicalPair ordena dos identificadores de jugador.
@@ -110,6 +141,82 @@ func CanonicalPair(x, y uuid.UUID) (uuid.UUID, uuid.UUID) {
 func (t Treaty) Involves(x, y uuid.UUID) bool {
 	a, b := CanonicalPair(x, y)
 	return t.PlayerA == a && t.PlayerB == b
+}
+
+// HasParty indica si el jugador es uno de los dos firmantes.
+func (t Treaty) HasParty(p uuid.UUID) bool { return t.PlayerA == p || t.PlayerB == p }
+
+// Other devuelve el otro firmante.
+func (t Treaty) Other(p uuid.UUID) uuid.UUID {
+	if t.PlayerA == p {
+		return t.PlayerB
+	}
+	return t.PlayerA
+}
+
+// GivesPeaceAt indica si el tratado impide atacar y saquear entre los dos en
+// `now` (RN-COMBAT-006, RN-COMBAT-020): un pacto o una alianza vigentes, sin la
+// fecha de caducidad ni el fin de un preaviso alcanzados. Durante el preaviso la
+// paz sigue (RN-DIPLO-004).
+func (t Treaty) GivesPeaceAt(now time.Time) bool {
+	if t.Status != StatusActive || (t.Type != TypeNonAggression && t.Type != TypeAlliance) {
+		return false
+	}
+	return !t.endedAt(now)
+}
+
+// EndsAt devuelve cuándo deja de valer un tratado vigente por el reloj: el
+// fin de su preaviso o su caducidad, lo que llegue antes; false si ninguno.
+func (t Treaty) EndsAt() (time.Time, Status, bool) {
+	var fin time.Time
+	var estado Status
+	if t.BreakEffectiveAt != nil {
+		fin, estado = *t.BreakEffectiveAt, StatusBroken
+	}
+	if t.ExpiresAt != nil && (estado == "" || t.ExpiresAt.Before(fin)) {
+		fin, estado = *t.ExpiresAt, StatusExpired
+	}
+	return fin, estado, estado != ""
+}
+
+func (t Treaty) endedAt(now time.Time) bool {
+	fin, _, ok := t.EndsAt()
+	return ok && !fin.After(now)
+}
+
+// CanRespond comprueba que `by` puede aceptar o rechazar la oferta: es el otro
+// firmante, no quien la propuso (INV-DIPLO-001).
+func (t Treaty) CanRespond(by uuid.UUID) error {
+	if !t.HasParty(by) {
+		return ErrNoEsParte
+	}
+	if t.Status != StatusProposed || t.ProposedBy == nil || *t.ProposedBy == by {
+		return ErrNoPuede
+	}
+	return nil
+}
+
+// CanWithdraw comprueba que `by` puede retirar la oferta: sólo quien la propuso.
+func (t Treaty) CanWithdraw(by uuid.UUID) error {
+	if !t.HasParty(by) {
+		return ErrNoEsParte
+	}
+	if t.Status != StatusProposed || t.ProposedBy == nil || *t.ProposedBy != by {
+		return ErrNoPuede
+	}
+	return nil
+}
+
+// CanBreak comprueba que `by` puede romper el tratado: cualquiera de los dos,
+// sobre uno vigente que no esté ya en preaviso (RN-DIPLO-003, RN-DIPLO-004).
+func (t Treaty) CanBreak(by uuid.UUID) error {
+	if !t.HasParty(by) {
+		return ErrNoEsParte
+	}
+	if t.Status != StatusActive || t.BreakEffectiveAt != nil {
+		return ErrNoPuede
+	}
+	return nil
 }
 
 // AuthorizesGarrison indica si este tratado habilita guarnición.
@@ -159,10 +266,16 @@ func (t Treaty) TransitionTo(next Status, at time.Time) (Treaty, error) {
 		t.AcceptedAt = &sello
 	case StatusBroken:
 		t.BrokenAt = &sello
+	case StatusRejected, StatusWithdrawn:
+		t.ClosedAt = &sello
 	case StatusExpired:
-		// EXPIRED no sella nada nuevo: `expires_at` ya decía cuándo iba a pasar,
-		// y sobrescribirlo con el instante en que el tick se dio cuenta borraría
-		// la única prueba de si el servidor llegó tarde.
+		// Una oferta que caduca sella su cierre. Un tratado vigente no sella nada
+		// nuevo: `expires_at` ya decía cuándo iba a pasar, y sobrescribirlo con el
+		// instante en que el tick se dio cuenta borraría la única prueba de si el
+		// servidor llegó tarde.
+		if t.AcceptedAt == nil {
+			t.ClosedAt = &sello
+		}
 	}
 	return t, nil
 }
@@ -191,6 +304,9 @@ func (t Treaty) Validate() error {
 	}
 	if t.Status == StatusBroken && t.BrokenAt == nil {
 		return fmt.Errorf("%w: un tratado BROKEN exige broken_at", ErrTratadoInvalido)
+	}
+	if t.ProposedBy != nil && !t.HasParty(*t.ProposedBy) {
+		return fmt.Errorf("%w: quien propone no es uno de los firmantes", ErrTratadoInvalido)
 	}
 	return nil
 }

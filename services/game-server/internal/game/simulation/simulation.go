@@ -42,9 +42,10 @@ type Deps struct {
 	Broadcaster Broadcaster
 	Persister   Persister
 	Repos       Repositories
-	// Treaties caduca los tratados vencidos. Opcional: sin él, la caducidad
-	// simplemente no se evalúa, que es lo que ocurre en los tests de simulación.
-	Treaties TreatyExpirer
+	// Treaties escribe las órdenes y los vencimientos de los tratados
+	// (ADR-027). Opcional: sin él, las órdenes responden INTERNAL_ERROR y los
+	// vencimientos sólo cambian la RAM.
+	Treaties TreatyStore
 	// Garrisons escribe la entrada y la salida de las guarniciones. Opcional:
 	// sin él, unit.garrison responde INTERNAL_ERROR.
 	Garrisons GarrisonStore
@@ -87,6 +88,12 @@ type Deps struct {
 	// valores por defecto, 5 y 50.
 	PillageWoodPerHit int32
 	PillageStockFloor int64
+	// TreatyOfferTTL, TreatyBreakNotice y TreatyRetry son la vida de una oferta,
+	// el preaviso de una ruptura y la espera tras un rechazo (SPEC-DIPLOMACY
+	// §10). Cero: los valores por defecto, 24 h, 15 min y 10 min.
+	TreatyOfferTTL    time.Duration
+	TreatyBreakNotice time.Duration
+	TreatyRetry       time.Duration
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -202,6 +209,16 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handlePillageCity(c)
 	case PillageResolved:
 		s.handlePillageResolved(c)
+	case ProposeTreaty:
+		s.handleProposeTreaty(c)
+	case RespondTreaty:
+		s.handleRespondTreaty(c)
+	case CancelTreaty:
+		s.handleCancelTreaty(c)
+	case TreatyResolved:
+		s.handleTreatyResolved(c)
+	case TreatyEndPersistFailed:
+		s.handleTreatyEndPersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}

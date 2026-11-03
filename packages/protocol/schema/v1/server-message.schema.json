@@ -699,6 +699,85 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "treaties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "otherPlayerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "otherCityId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "otherCityName": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "NON_AGGRESSION",
+                          "ALLIANCE",
+                          "TRADE"
+                        ]
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "PROPOSED",
+                          "ACTIVE",
+                          "EXPIRED",
+                          "BROKEN",
+                          "REJECTED",
+                          "WITHDRAWN"
+                        ]
+                      },
+                      "proposedByMe": {
+                        "type": "boolean"
+                      },
+                      "breaksAtMs": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "otherPlayerId",
+                      "otherCityId",
+                      "otherCityName",
+                      "type",
+                      "status",
+                      "proposedByMe",
+                      "breaksAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -1384,6 +1463,47 @@
             },
             "payload": {
               "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/forests/items"
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "treaty.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "treaty": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/treaties/items"
+                }
+              },
+              "required": [
+                "treaty"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
