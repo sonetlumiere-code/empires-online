@@ -280,13 +280,13 @@ almacén de identidad— y la comprobación de humo contra el game server y la w
 |---|---|---|
 | `packages/protocol` | Esquemas Zod del protocolo v1, exportación a JSON Schema y catálogo de códigos de error. | Vitest; la CI comprueba además que el esquema exportado no ha derivado. |
 | Mundo y pathfinding | `internal/game/world` (grid, chunks, terreno, ocupación, generador determinista) e `internal/pathfinding` (A\* de 8 direcciones sin corner cutting). | `go test` |
-| Dominio | `movement`, `city` (presencia y protección), `territory`, `safezone`, `diplomacy`, `garrison` y, desde E1, `economy`, `building`, `production` y `task`, en `internal/domain`. | `go test` |
-| Simulación | `internal/game/simulation`: vertical slice, órdenes, presencia, recuperación, territorios, ocultamiento en Safe Zones, caducidad de tratados y, desde E1, la economía de la madera (recolección, casa, aldeano) con su golden `madera`. | `go test` |
+| Dominio | `movement`, `city` (presencia y protección), `territory`, `safezone`, `diplomacy`, `garrison` y, desde E1, `economy`, `building`, `production` y `task`; desde E4, `forest`. En `internal/domain`. | `go test` |
+| Simulación | `internal/game/simulation`: vertical slice, órdenes, presencia, recuperación, territorios, ocultamiento en Safe Zones, caducidad de tratados y, desde E1, la economía de la madera (recolección, casa, aldeano) con su golden `madera`; desde E2 y E3, el combate (incursión y respuesta automática); desde E4, el agotamiento del bosque con su golden `tala`. | `go test` |
 | Bordes | `internal/auth`, `internal/config`, `internal/protocol` (contract), `internal/websocket` (e2e contra un servidor real, que valida contra el JSON Schema cada mensaje que emite), `internal/httpapi` (la fundación, probada desde la suite de integración), `internal/persistence/memory`. | `go test` |
 | Persistencia | `internal/persistence/postgres` e `internal/persistence/redis`, contra PostgreSQL 16 y Redis reales. | Integración con `-race`: en la CI y en local sin Docker ([operations/local-development.md](operations/local-development.md) §3-bis). |
-| Esquema | Migraciones `000001` a `000006`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
-| `apps/web` | Cliente Next.js 15 + React 19 + PixiJS 8: proyección isométrica, interpolación, estado del mundo, cliente WebSocket, overlay de territorios y, desde E1, madera, casa, aldeano y recolección en el HUD y la escena. | Vitest y `next build` en la CI. |
-| Despliegue de punta a punta | Alta, handshake, snapshot, movimiento, desconexión y reconexión contra un servidor vivo; desde E1, un viaje de recolección completo. | `pnpm run smoke`. |
+| Esquema | Migraciones `000001` a `000008`, embebidas y aplicadas con golang-migrate ([ADR-012](decisions/ADR-012-database-migrations.md)). | Las aplican el arranque del servidor y la suite de integración. |
+| `apps/web` | Cliente Next.js 15 + React 19 + PixiJS 8: proyección isométrica, interpolación, estado del mundo, cliente WebSocket, overlay de territorios y, desde E1, madera, casa, aldeano y recolección en el HUD y la escena; desde E2, el guerrero, la orden de ataque y la vida; desde E4, el bosque talado en su propia capa. | Vitest y `next build` en la CI. |
+| Despliegue de punta a punta | Alta, handshake, snapshot, movimiento, desconexión y reconexión contra un servidor vivo; desde E1, un viaje de recolección completo; con `--incursion`, una incursión con un guardia que responde solo (E2, E3), y con `--tala`, un tile agotado en vivo (E4). | `pnpm run smoke`. |
 
 El estado por milestone, entregable a entregable, está en [roadmap/milestones.md](roadmap/milestones.md).
 `go.mod` declara `go 1.25.11` como versión **mínima**, impuesta por las dependencias; el toolchain de la
@@ -294,10 +294,10 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 Madera está en curso** ([roadmap/milestones.md](roadmap/milestones.md) §E1): el primer slice de economía
-  ([specs/economy-wood.md](specs/economy-wood.md)) está implementado con su suite completa en verde en la rama
-  que lo trae, pero la escena y el HUD del cliente y el paso de recolección del humo no se han verificado contra
-  un servidor vivo todavía.
+- **E1 a E4 están en `main`** ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+  automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
+  humo y el navegador. Las specs siguen en `Accepted`: el paso a `Implemented` de §4 de
+  [specs/README.md](specs/README.md) no se ha hecho con ninguno de los cuatro.
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

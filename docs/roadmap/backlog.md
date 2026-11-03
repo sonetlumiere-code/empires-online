@@ -201,8 +201,8 @@ Rango propio a partir de `EO-130`, el siguiente bloque de diez libre: los transv
 | EO-137 | Arranque de la economía | E1 | P0 | M | EO-136 | **Cerrado.** La validación de carga repara `INV-ECON-003`, `INV-ECON-004` e `INV-CITY-017`; los tests de recuperación de cada fase terminan en su instante absoluto (`INV-ECON-005`). |
 | EO-138 | Protocolo v1 de la economía | E1 | P0 | M | EO-132 | **Cerrado.** Tres comandos, dos mensajes, `buildings[]`, `stocks`, `WORKING`, `carrying` y dos códigos en `packages/protocol`; `pnpm run protocol:check` sin deriva y los contract tests de Go en verde. |
 | EO-139 | Manejadores WebSocket de la economía | E1 | P0 | S | EO-138 | **Cerrado.** Los tres flujos de la spec §9 de extremo a extremo, validados contra el JSON Schema, y cada comando clasificado (ADR-016). |
-| EO-140 | Cliente de la economía | E1 | P1 | M | EO-139 | **Abierto: falta verlo en el navegador.** Contador de madera, botones «Casa» y «Aldeano», recolección con un clic en un bosque y render de edificios y de `WORKING`, con tests de lo puro. |
-| EO-141 | Escenario `madera` y humo | E1 | P1 | S | EO-133, EO-140 | **Abierto: falta ejecutar el humo contra un servidor vivo; el golden está hecho.** El golden `madera` se reproduce dos veces igual; `scripts/smoke.mjs` recorre un viaje de recolección completo. |
+| EO-140 | Cliente de la economía | E1 | P1 | M | EO-139 | **Cerrado** (visto en el navegador en las pruebas en vivo de E1 a E4; la última, el 2026-11-03, con el HUD de madera, «Casa», «Aldeano» y «Guerrero» y la recolección en la escena). Contador de madera, botones «Casa» y «Aldeano», recolección con un clic en un bosque y render de edificios y de `WORKING`, con tests de lo puro. |
+| EO-141 | Escenario `madera` y humo | E1 | P1 | S | EO-133, EO-140 | **Cerrado** (el humo con su viaje de recolección pasa contra un servidor vivo desde E1, y con `--incursion` y `--tala` desde E3 y E4). El golden `madera` se reproduce dos veces igual; `scripts/smoke.mjs` recorre un viaje de recolección completo. |
 
 ## Transversales
 

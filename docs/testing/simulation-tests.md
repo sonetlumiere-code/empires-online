@@ -56,7 +56,7 @@ Dentro de `Step`, las fases del canon §6 en orden fijo:
 ```go
 // Fase 1-2: consumir y aplicar comandos.
 // Fase 3: avanzar el movimiento.
-// Fase 4: resolver simulación (combate — fuera del MVP).
+// Fase 4: resolver el combate (ADR-024) y abrir las respuestas automáticas.
 // Fase 5: temporizadores y eventos programados.
 // Fase 6-7: el estado del mundo y los deltas ya se emitieron dentro de las
 //           fases anteriores, según ocurrían los hechos.
@@ -545,6 +545,7 @@ exacta de qué hace ahora distinto la simulación. Regenerarlo sin leer el diff 
 |---|---|
 | `trafico_mixto` | Dos jugadores en hierba con un bosque seguro y una montaña: movimientos simultáneos, un reemplazo a mitad de camino, una cancelación, rechazos (destino en montaña, unidad ajena), entrada y salida de una Safe Zone, y el ciclo de presencia completo (`ONLINE → OFFLINE_PENDING → PROTECTED → ONLINE`) |
 | `madera` | SPEC-ECON-WOOD: un aldeano a diez tiles de un bosque deposita en los ticks 224, 448, 671 y 895 (la línea temporal anclada a los instantes de llegada); otro empieza a recolectar y se le cancela con un `unit.move` a mitad de tramo; la ciudad entrena un aldeano con su madera inicial (nace en el tick 202) y construye una casa con la recolectada (completa en el 830, límite 25); el dueño se desconecta en el 700 y, con la ciudad `OFFLINE_PENDING` desde el 750, el viaje en curso termina con un depósito más y la unidad `IDLE` (`INV-ECON-006`) |
+| `tala` | SPEC-ECON-FOREST: tres aldeanos sobre un bosque de tres tiles con 25, 10 y 0 de madera. El primer tile se agota con una carga parcial y `ForestDepleted`, el viaje siguiente va solo al tile con madera más cercano y, acabado el bosque, cada tarea termina en el depósito; salen exactamente 35 maderas (`INV-ECON-008`). |
 
 ---
 

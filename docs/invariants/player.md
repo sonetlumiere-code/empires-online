@@ -104,7 +104,7 @@ Que sean ejes ortogonales (canon §0) implica una consecuencia concreta: **no ex
 | Aplicación | DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST (rollback de la transacción) |
-| Cobertura | **Cubierto** por `TestBootstrapCreaMundoCompletoDelJugador`, `TestBootstrapFallidoNoDejaNadaAMedias`, `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir` y `TestSinSitioElAltaResponde409YNoEscribe` (integration, `internal/persistence/postgres`) |
+| Cobertura | **Cubierto** por `TestBootstrapCreaMundoCompletoDelJugador`, `TestBootstrapFallidoNoDejaNadaAMedias`, `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir` y `TestSinSitioLaFundacionResponde409YNoEscribe` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** Al completarse la creación de un jugador existen, atómicamente y de forma indivisible: exactamente una fila en `cities` con `owner` igual a ese jugador (con su `TOWN_CENTER` y su zona urbana amurallada inicial), y exactamente tres filas en `units` con `unit_type = VILLAGER` pertenecientes a ese jugador.
 
