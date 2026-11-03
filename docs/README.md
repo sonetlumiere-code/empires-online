@@ -296,8 +296,8 @@ Matices que conviene no maquillar:
 
 - **E1 a E4 están en `main`** ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
-  humo y el navegador. Las specs siguen en `Accepted`: el paso a `Implemented` de §4 de
-  [specs/README.md](specs/README.md) no se ha hecho con ninguno de los cuatro.
+  humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
+  que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

@@ -7,7 +7,7 @@ almacén, un edificio, una producción; nada más.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-ECON-WOOD` |
-| Estado | Accepted (2026-10-27; las preguntas de §10 quedaron decididas ese día). Implementada el mismo día en la rama `claude/slice-madera-0b24a4`, con su suite en verde; pasa a `Implemented` cuando esté en `main` con la CI en verde. Las decisiones de implementación que la spec dejaba abiertas están anotadas como «Precisión (2026-10-27)». |
+| Estado | Implemented (2026-11-03). Aceptada el 2026-10-27 con las preguntas de §10 decididas ese día; en `main` desde la fusión `2ef7aa3`, con la CI en verde. Las decisiones de implementación que la spec dejaba abiertas están anotadas como «Precisión (2026-10-27)». |
 | Milestone | E1 Madera (primero después de M7; la implementación lo añade a milestones.md) |
 | Canon | §12 (persistencia), §16 (errores) |
 | Depende de | [unit.md](unit.md), [city.md](city.md), [movement.md](movement.md), [presence.md](presence.md), [websocket-protocol.md](websocket-protocol.md) |

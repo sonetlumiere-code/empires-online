@@ -40,19 +40,19 @@ spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
 |---|---|---|---|---|
-| Player | [player.md](player.md) | M2 Player & City | Draft | Identidad, autenticación por ticket, alta y bootstrap atómico, Civilization y Global Faction, rasgos data-driven |
-| City | [city.md](city.md) | M2 Player & City | Draft | Ciudad, emplazamiento, zona urbana amurallada, población y límite por era, ownership |
-| Presence & Protection | [presence.md](presence.md) | M5 Offline protection & Safe Zones | Draft | Presencia de jugador en Redis, `presence_state` durable de la ciudad, cooldown de protección |
-| Unit | [unit.md](unit.md) | M2 / M4 | Draft | `units`, estados `IDLE`/`MOVING`/`GARRISONED`/`HIDDEN`/`DEAD`, `VILLAGER` |
-| Movement | [movement.md](movement.md) | M4 Movement | Draft | `unit.move`, A\*, polilínea temporizada, recuperación tras crash |
+| Player | [player.md](player.md) | M2 Player & City | Implemented | Identidad, autenticación por ticket, alta y bootstrap atómico, Civilization y Global Faction, rasgos data-driven |
+| City | [city.md](city.md) | M2 Player & City | Implemented | Ciudad, emplazamiento, zona urbana amurallada, población y límite por era, ownership |
+| Presence & Protection | [presence.md](presence.md) | M5 Offline protection & Safe Zones | Implemented | Presencia de jugador en Redis, `presence_state` durable de la ciudad, cooldown de protección |
+| Unit | [unit.md](unit.md) | M2 / M4 | Implemented | `units`, estados `IDLE`/`MOVING`/`GARRISONED`/`HIDDEN`/`DEAD`, `VILLAGER` |
+| Movement | [movement.md](movement.md) | M4 Movement | Implemented | `unit.move`, A\*, polilínea temporizada, recuperación tras crash |
 | Safe Zones | [safe-zones.md](safe-zones.md) | M5 Offline protection & Safe Zones | Implemented | Geometría de `safe_zones`, pertenencia de tiles y estado `HIDDEN` |
-| Territory | [territory.md](territory.md) | M6 Territories | Draft | `territories` y `territory_control`, resolución tile → territorio |
-| Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Draft | `garrisons`, entrada y salida, tratados con `allows_garrison` |
-| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Draft | Envelopes, los 11 mensajes cliente→servidor y los 17 servidor→cliente, límites e idempotencia |
-| Economía: madera | [economy-wood.md](economy-wood.md) | E1 Madera | Accepted | `city_stocks`, tarea de recolección `GATHER_WOOD` y estado `WORKING`, casa en la zona urbana, entrenamiento de aldeanos; primer slice después de M7 |
-| Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Accepted | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil; tope de la protección offline |
-| Combate: respuesta automática | [combat-response.md](combat-response.md) | E3 Defensa | Accepted | Un `WARRIOR` parado responde a los golpes sobre él o sobre sus unidades cercanas, con correa y vuelta al puesto; protección simétrica del atacante |
-| Economía: agotamiento del bosque | [economy-forest.md](economy-forest.md) | E4 Bosque | Accepted | Madera finita por tile de bosque en una capa aparte del terreno, regeneración, búsqueda del tile siguiente, fundación con bosque suficiente |
+| Territory | [territory.md](territory.md) | M6 Territories | Implemented | `territories` y `territory_control`, resolución tile → territorio |
+| Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Implemented | `garrisons`, entrada y salida, tratados con `allows_garrison` |
+| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 11 mensajes cliente→servidor y los 17 servidor→cliente, límites e idempotencia |
+| Economía: madera | [economy-wood.md](economy-wood.md) | E1 Madera | Implemented | `city_stocks`, tarea de recolección `GATHER_WOOD` y estado `WORKING`, casa en la zona urbana, entrenamiento de aldeanos; primer slice después de M7 |
+| Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Implemented | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil; tope de la protección offline |
+| Combate: respuesta automática | [combat-response.md](combat-response.md) | E3 Defensa | Implemented | Un `WARRIOR` parado responde a los golpes sobre él o sobre sus unidades cercanas, con correa y vuelta al puesto; protección simétrica del atacante |
+| Economía: agotamiento del bosque | [economy-forest.md](economy-forest.md) | E4 Bosque | Implemented | Madera finita por tile de bosque en una capa aparte del terreno, regeneración, búsqueda del tile siguiente, fundación con bosque suficiente |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
@@ -164,6 +164,12 @@ stateDiagram-v2
 
 Reglas del ciclo:
 
+- **Precisión (2026-11-03).** Seis specs anteriores a E1 (`player`, `city`, `presence`, `unit`, `territory` y el
+  protocolo) seguían en `Draft` aunque su código estaba en `main` con la CI en verde, y `garrison` decía
+  «Implementado». Ese día pasaron a `Implemented` sin el paso `Accepted`: el proyecto tiene un solo
+  responsable de producto y un solo revisor, no los dos que pide el diagrama, y cada una se había reconciliado ya
+  con el código, regla por regla, en `EO-118`. Desde entonces, con un solo revisor, `Accepted` lo da el
+  responsable de producto al decidir las preguntas de la spec, como se hizo de E1 a E4.
 - **No se borra una spec.** Se marca `Superseded` y se enlaza a la que la reemplaza, para que el historial de
   decisiones siga siendo legible.
 - **Una spec `Implemented` que deja de describir el código es un bug**, no una discrepancia aceptable. O se

@@ -160,6 +160,18 @@ Consecuencia de diseño: **el ticket nunca se cachea**. Con TTL de 60 s, cada in
 > para las demás. El código de servidor —almacén de identidad, `scrypt`, firma del ticket— vive en
 > `apps/web/src/server/`, bajo `server-only`, y nunca llega al bundle del navegador.
 
+> **Entrar, recargar y salir** (2026-11-03). Al cargar, la página no enseña el formulario: pide un ticket con la
+> cookie (`resumeSession` en `src/net/auth.ts`) mientras dice «Recuperando tu sesión…». Con la cookie viva conecta
+> directamente con ese ticket; con `401` enseña el formulario; cualquier otro fallo (red, `429`, `500`) también
+> enseña el formulario, con «No se pudo recuperar la sesión (código): entra de nuevo.», porque no prueba que la
+> sesión haya muerto. El intento es uno solo aunque Strict Mode monte la página dos veces. El botón «Salir» del
+> HUD llama primero a `POST /api/auth/logout` y, sólo cuando responde `204`, cierra el WebSocket con `1000`,
+> vacía el store y vuelve al formulario; si el logout falla, la partida sigue y el HUD muestra «No se pudo cerrar
+> la sesión: inténtalo de nuevo.», porque con la cookie viva una recarga volvería a entrar. Cerrar el WebSocket
+> es una desconexión normal: la ciudad sigue el camino de [SPEC-PRESENCE](../specs/presence.md) hacia
+> `OFFLINE_PENDING` y `PROTECTED`. Otra pestaña con la misma cookie sigue conectada hasta su próxima reconexión,
+> que ya no consigue ticket y la lleva al formulario (§3.3). Tests: `src/net/auth.test.ts`.
+
 ### 3.3 Reconexión: backoff exponencial con jitter
 
 > **Estado: objetivo.** Lo que hace hoy `GameClient` (`src/net/client.ts`), sin módulo `backoff.ts`:
@@ -1105,7 +1117,7 @@ almacén de identidad, `src/server/store.integration.test.ts`, en local contra e
 
 Runner: **Vitest**, el mismo que usa `packages/protocol`. Esta sección es la batería **objetivo**; la real
 está en `apps/web/src/**/*.test.ts` —coordenadas (`iso.test.ts`), interpolación (`interpolation.test.ts`),
-reconciliación (`reconciler.test.ts`), store (`world.test.ts`), cliente WebSocket (`client.test.ts`) y el
+reconciliación (`reconciler.test.ts`), store (`world.test.ts`), cliente WebSocket (`client.test.ts`), sesión web (`auth.test.ts`) y el
 servidor de Next.js (`src/server/*.test.ts`, `identity/password.test.ts`)— y la ejecuta la CI. Sólo §12.3 está reconciliado con su fichero real y lo dice en el título; los demás
 apartados son objetivo, aunque parte de lo que piden ya lo cubran esos ficheros. Todo lo que sigue es *unit* salvo indicación
 contraria; nada de esto necesita navegador, canvas ni servidor, que es precisamente el objetivo de la

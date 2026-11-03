@@ -33,7 +33,10 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | M5 (EO-080 … EO-089) | **Completado.** `EO-084`, `EO-085` y `EO-086` cerrados: safe zones, `HIDDEN` y su filtrado por destinatario. La geometría de las zonas del mundo canónico es una decisión de diseño pendiente, no un item de este bloque. |
 | M6 (EO-090 … EO-097) | **Completado.** El entregable 8 (`EO-096`) se cerró por decisión: ninguna acción del MVP se restringe por territorio ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). |
 | M7 (EO-100 … EO-108) | **Completado.** Dominio, persistencia, caducidad y, desde [ADR-017](../decisions/ADR-017-garrison-commands.md), los comandos `unit.garrison` y `unit.ungarrison` con su efecto en el interest management (`EO-107`). La expulsión diferida al romperse un tratado sigue fuera del MVP. |
-| E1 (EO-130 … EO-141) | **En curso** desde el 2026-10-27, contra [SPEC-ECON-WOOD](../specs/economy-wood.md). `EO-130` a `EO-139` hechos en la rama `claude/slice-madera-0b24a4`; `EO-140` y `EO-141`, a falta de la verificación en vivo. |
+| E1 (EO-130 … EO-141) | **Completado.** En `main` desde la fusión `2ef7aa3`, contra [SPEC-ECON-WOOD](../specs/economy-wood.md), y probado en vivo con el humo y el navegador. |
+| E2 Incursión | **Completado** (2026-11-03). Sin items `EO-` propios: el detalle está en [milestones.md](milestones.md) §E2 y el contrato en [SPEC-COMBAT-RAID](../specs/combat-raid.md). |
+| E3 Defensa | **Completado** (2026-11-03). Detalle en [milestones.md](milestones.md) §E3; contrato en [SPEC-COMBAT-RESPONSE](../specs/combat-response.md). |
+| E4 Bosque | **Completado** (2026-11-03). Detalle en [milestones.md](milestones.md) §E4; contrato en [SPEC-ECON-FOREST](../specs/economy-forest.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

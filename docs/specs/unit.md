@@ -5,7 +5,7 @@ Especificación funcional y técnica de la entidad `Unit`: modelo de datos, máq
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-UNIT` |
-| Estado | Draft |
+| Estado | Implemented (2026-11-03). Pasó de `Draft` a `Implemented` sin el paso `Accepted`: el código y sus tests están en `main` desde M2 y M4 y la spec se reconcilió con ellos en `EO-118`; ver [README.md](README.md) §4, «Precisión (2026-11-03)». |
 | Milestone | M2 Player & City / M4 Movement |
 | Canon | §1, §10, §11, §12, §13, §16 |
 | Depende de | [player.md](player.md), [city.md](city.md), [movement.md](movement.md) |
@@ -309,10 +309,9 @@ Dominio de reglas: `RN-UNIT` (convención de [README.md](README.md) §5.1).
 - **RN-UNIT-005** El número de unidades vivas de un jugador está acotado por `cities.population_limit`,
   que se toma de `eras.population_cap` (`STONE_AGE` = 20). Cada tipo declara su `PopulationCost`
   (`VILLAGER` = 1) y el dominio expone `city.HasPopulationRoom(n)` como punto único de comprobación.
-  **Estado real:** el único punto de creación del MVP es el alta del jugador (3 `VILLAGER`, muy por
-  debajo del cap), así que `HasPopulationRoom` todavía no tiene ningún llamador en un camino de comando.
-  El código de error `POPULATION_LIMIT_REACHED` existe en el catálogo del protocolo y queda reservado
-  para el primer productor de unidades, que está `Fuera de MVP`.
+  **Estado real:** desde E1, `city.train` crea unidades y comprueba la plaza con `HasPopulationRoom`
+  (`internal/domain/production`), y responde `POPULATION_LIMIT_REACHED` cuando no cabe
+  ([SPEC-ECON-WOOD](economy-wood.md) `RN-ECON-010`, `TestRechazosDeEntrenamiento`).
 - **RN-UNIT-006** `city_id` es nullable por diseño: modela la «unidad sin ciudad de origen» (casos
   administrativos y futuros). Es siempre la ciudad de origen, también durante `GARRISONED`
   ([ADR-017](../decisions/ADR-017-garrison-commands.md) §2.4). La FK es `ON DELETE SET NULL`: borrar una

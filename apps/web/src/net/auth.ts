@@ -8,7 +8,8 @@
  * Las rutas son de este mismo origen (`/api/auth/*`, ADR-018): el alta y el
  * login dejan una cookie de sesión `HttpOnly` que este código no puede leer, y
  * cada ticket nuevo se pide con ella. La contraseña sólo viaja en el alta y en
- * el login, y no se guarda en ninguna parte.
+ * el login, y no se guarda en ninguna parte. Por eso una recarga no pide entrar
+ * otra vez: con la cookie viva basta pedir un ticket (`resumeSession`).
  */
 
 export interface Credentials {
@@ -73,9 +74,30 @@ export async function requestTicket(): Promise<string> {
   return ticket;
 }
 
-/** Cierra la sesión web. */
+/**
+ * Retoma la sesión web al cargar la página: si la cookie sigue viva devuelve un
+ * ticket para conectar sin pasar por el formulario; si no hay sesión
+ * (`UNAUTHORIZED`), `null`. Cualquier otro fallo —red, `429`, `500`— se lanza:
+ * no dice que la sesión haya muerto, sólo que hoy no se pudo comprobar.
+ */
+export async function resumeSession(): Promise<string | null> {
+  try {
+    return await requestTicket();
+  } catch (err) {
+    if (err instanceof AuthError && err.code === 'UNAUTHORIZED') return null;
+    throw err;
+  }
+}
+
+/**
+ * Cierra la sesión web: el servidor la borra y caduca la cookie. Si no lo
+ * confirma, lanza: la cookie podría seguir viva y una recarga volvería a entrar.
+ */
 export async function logout(): Promise<void> {
-  await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+  const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+  if (response.ok) return;
+  const payload = (await response.json().catch(() => null)) as { code?: string; message?: string } | null;
+  throw new AuthError(payload?.code ?? 'INTERNAL_ERROR', payload?.message ?? 'error inesperado');
 }
 
 /**

@@ -7,7 +7,7 @@ y la mecánica mínima de ownership.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TERRITORY` |
-| Estado | Draft |
+| Estado | Implemented (2026-11-03). Pasó de `Draft` a `Implemented` sin el paso `Accepted`: el código y sus tests están en `main` desde M6 y la spec se reconcilió con ellos en `EO-118`; ver [README.md](README.md) §4, «Precisión (2026-11-03)». |
 | Milestone | M6 Territory, Safe Zones & Diplomacy |
 | Canon | §4, §10, §11, §12, §13 |
 | Depende de | [city.md](city.md), [player.md](player.md) |

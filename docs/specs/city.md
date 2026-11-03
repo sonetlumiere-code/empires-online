@@ -5,7 +5,7 @@ Especificación de la entidad `City`: emplazamiento válido, zona urbana amurall
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CITY` |
-| Estado | Draft |
+| Estado | Implemented (2026-11-03). Pasó de `Draft` a `Implemented` sin el paso `Accepted`: el código y sus tests están en `main` desde M2 y la spec se reconcilió con ellos en `EO-118`; ver [README.md](README.md) §4, «Precisión (2026-11-03)». |
 | Milestone | M2 Player & City |
 | Canon | §4, §5, §9, §10, §11, §12, §13, §16, §17 |
 | Depende de | [ADR-008](../decisions/ADR-008-grid-coordinate-system.md), [player.md](player.md), [presence.md](presence.md) |
@@ -441,7 +441,7 @@ Reglas de difusión:
 | `T-CITY-U-004` | unit | Sin terreno transitable: `FindSite` devuelve `ErrNoSite` en lugar de colocar la ciudad. Escrito: `TestSinTerrenoTransitableNoHaySitio`. | `RN-CITY-006` |
 | `T-CITY-U-005` | unit | La fundación marca el 3×3 completo en el overlay, coloca los 3 aldeanos a distancia 2 y no toca el `TerrainType`. Escritos: `TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable` (aldeanos a distancia 2), `TestCapaDeOcupacionNoMutaElTerreno`. | `RN-CITY-007..009` |
 | `T-CITY-U-006` | unit | `population_limit` se calcula desde la fila de `eras`; no hay literal 20 en el dominio. Escritos: `TestElAltaTomaElLimiteDePoblacionDeSuEra`, `TestLasErasDelCatalogoSonLasDelCanon` (integration). | `RN-CITY-014`, `RN-CITY-015` |
-| `T-CITY-U-007` | unit | Con `population_limit` forzado a 3, un cuarto aldeano produce `POPULATION_LIMIT_REACHED` y no escribe nada. **Pendiente**: ninguna operación añade población más allá del alta (`RN-CITY-018`). Lo que hay es el predicado (`TestLimiteDePoblacion`) y el `CHECK` (`TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`). | `RN-CITY-017`, `RN-CITY-018` |
+| `T-CITY-U-007` | unit | Con `population_limit` forzado a 3, un cuarto aldeano produce `POPULATION_LIMIT_REACHED` y no escribe nada. Desde E1 lo cubre `city.train` (`RN-CITY-018`, `RN-ECON-010`): `TestRechazosDeEntrenamiento`, además del predicado (`TestLimiteDePoblacion`) y el `CHECK` (`TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`). | `RN-CITY-017`, `RN-CITY-018` |
 | `T-CITY-I-001` | integration | Bootstrap: fila de `cities` con `population = 3`, `population_limit = 20`, `presence_state = 'ONLINE'`. Escritos: `TestBootstrapCreaMundoCompletoDelJugador`, `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal`. | `INV-CITY-002`, `INV-CITY-003`, `INV-CITY-009` |
 | `T-CITY-I-002` | integration | `INSERT` sin `owner_player_id` o con uuid inexistente falla. Escrito: `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`. | `INV-CITY-001` |
 | `T-CITY-I-003` | integration | Una segunda ciudad con el mismo `(center_x, center_y)` falla por `cities_unique_center`. Escritos: `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestDosCiudadesNoPuedenCompartirCentro`. | `INV-CITY-008` |
