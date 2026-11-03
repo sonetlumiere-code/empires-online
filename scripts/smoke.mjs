@@ -34,13 +34,17 @@
  *      estar protegida, y la saquea: su almacén baja, la víctima recibe el aviso
  *      pillagedAtMs y el guerrero carga lo robado. Tarda minutos y roba madera de
  *      otra cuenta, así que no corre por defecto.
+ *  13. sólo con --diplomacia (SPEC-DIPLOMACY): smoke_runner y smoke_victim firman un
+ *      pacto de no agresión (o reutilizan el vigente), el pacto impide el saqueo, y
+ *      smoke_runner lo rompe: el tratado sigue vigente con su preaviso. Como el preaviso
+ *      dura 15 minutos, repetirlo antes falla con un aviso de cuánto falta.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--saqueo] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--saqueo] [--diplomacia] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -64,6 +68,7 @@ const VERBOSE = args.includes('--verbose');
 const INCURSION = args.includes('--incursion');
 const TALA = args.includes('--tala');
 const SAQUEO = args.includes('--saqueo');
+const DIPLOMACIA = args.includes('--diplomacia');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -498,6 +503,10 @@ async function main() {
     await saqueo(segunda, ciudad, cuenta.playerId, snap2);
   }
 
+  if (DIPLOMACIA) {
+    await diplomacia(segunda, cuenta.playerId, snap2);
+  }
+
   segunda.sesion.cerrar();
   await dormir(200);
 
@@ -784,6 +793,65 @@ async function saqueo(atacante, ciudad, playerId, snap) {
   const carga = await atacante.sesion.esperarQue('entity.update',
     (m) => m.payload.id === guerrero.id && typeof m.payload.carrying === 'number' && m.payload.carrying > cargaAntes, 10_000);
   ok('el guerrero carga lo robado', `${cargaAntes} -> ${carga.payload.carrying}`);
+  victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Diplomacia (SPEC-DIPLOMACY), sólo con --diplomacia
+// ─────────────────────────────────────────────────────────────
+
+/** Espera el treaty.update de un tratado que cumpla `cond`. */
+async function tratado(sesion, cond, ms = 10_000) {
+  return (await sesion.esperarQue('treaty.update', (m) => cond(m.payload.treaty), ms)).payload.treaty;
+}
+
+async function diplomacia(propio, playerId, snap) {
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const ciudadV = victima.snapshot.payload.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
+  const entre = (snap.treaties ?? []).filter((x) => x.otherPlayerId === cuenta.playerId);
+
+  let vigente = entre.find((x) => x.status === 'ACTIVE');
+  if (vigente?.breaksAtMs) {
+    const min = Math.ceil((vigente.breaksAtMs - Date.now()) / 60_000);
+    fallar('el tratado de una pasada anterior sigue en preaviso', `vuelve a probar dentro de ${min} min`);
+  }
+  if (!vigente) {
+    let oferta = entre.find((x) => x.status === 'PROPOSED');
+    if (!oferta) {
+      propio.sesion.enviar('treaty.propose', { playerId: cuenta.playerId, type: 'NON_AGGRESSION' });
+      oferta = await tratado(propio.sesion, (x) => x.otherPlayerId === cuenta.playerId && x.status === 'PROPOSED');
+      ok('pacto propuesto', `tratado ${oferta.id} a ${ciudadV.name}`);
+    }
+    // Responde quien no la propuso (INV-DIPLO-001).
+    const responde = oferta.proposedByMe ? victima.sesion : propio.sesion;
+    responde.enviar('treaty.respond', { treatyId: oferta.id, accept: true });
+    vigente = await tratado(propio.sesion, (x) => x.id === oferta.id && x.status === 'ACTIVE');
+    await tratado(victima.sesion, (x) => x.id === oferta.id && x.status === 'ACTIVE');
+    ok('pacto aceptado', `tratado ${vigente.id} vigente para los dos`);
+  } else {
+    ok('pacto vigente de una pasada anterior', `tratado ${vigente.id}`);
+  }
+
+  // La paz impide el saqueo (RN-COMBAT-020): se rechaza al ordenar, esté donde esté el guerrero.
+  propio.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const alli = (await propio.sesion.esperar('world.snapshot')).payload;
+  const guerrero = [...alli.units, ...snap.units].find((u) => u.playerId === playerId && u.unitType === 'WARRIOR');
+  if (guerrero) {
+    propio.sesion.enviar('unit.pillage', { unitId: guerrero.id, cityId: ciudadV.id });
+    const r = await propio.sesion.esperar('system.error');
+    if (r.payload.code !== 'INVALID_TARGET') fallar('el pacto no impidió el saqueo', r.payload);
+    ok('el pacto impide el saqueo', `INVALID_TARGET: ${r.payload.message}`);
+  } else {
+    ok('sin guerrero a mano: no se comprueba el saqueo', '');
+  }
+
+  // Romper abre el preaviso: el tratado sigue vigente, con su fin.
+  propio.sesion.enviar('treaty.cancel', { treatyId: vigente.id });
+  const roto = await tratado(victima.sesion, (x) => x.id === vigente.id && x.breaksAtMs !== null);
+  if (roto.status !== 'ACTIVE') fallar('romper no dejó el tratado en preaviso', roto);
+  ok('ruptura con preaviso', `sigue ACTIVE hasta ${new Date(roto.breaksAtMs).toISOString()}`);
   victima.sesion.cerrar();
 }
 
