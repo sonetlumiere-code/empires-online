@@ -22,6 +22,8 @@ import {
   decideTileOrder,
   decideUnitClick,
   firstFreeHouseTile,
+  pillageAlertActive,
+  PILLAGE_ALERT_MS,
   readableError,
   secondsUntil,
   unitTypeLabel,
@@ -73,6 +75,16 @@ export default function Page() {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
   }, [training]);
+
+  // El aviso de saqueo se apaga solo: un render más cuando caduca.
+  const pillagedAtMs = hud.ownCity?.pillagedAtMs;
+  useEffect(() => {
+    if (pillagedAtMs === undefined) return;
+    const left = pillagedAtMs + PILLAGE_ALERT_MS - (clientRef.current?.serverTimeMs() ?? Date.now());
+    if (left <= 0) return;
+    const id = setTimeout(() => setTick((n) => n + 1), left + 50);
+    return () => clearTimeout(id);
+  }, [pillagedAtMs]);
 
   useEffect(() => () => clientRef.current?.disconnect(), []);
 
@@ -193,7 +205,12 @@ export default function Page() {
       const unit = state.units.get(selectedUnitId);
       if (!unit) return;
       const terrain = state.world ? terrainAt(state.terrain, state.world.chunkSize, tile.x, tile.y) : undefined;
-      const order = decideTileOrder(tile, unit, terrain, cityAt);
+      const order = decideTileOrder(tile, unit, terrain, cityAt, state.playerId);
+      if (order.kind === 'pillage') {
+        // Un guerrero sobre una ciudad ajena: saquearla (SPEC-COMBAT-PILLAGE).
+        client.pillageCity(selectedUnitId, order.cityId);
+        return;
+      }
       if (order.kind === 'garrison') {
         client.garrisonUnit(selectedUnitId, order.cityId);
         selectUnit(null);
@@ -314,6 +331,11 @@ export default function Page() {
             </span>
             <span style={{ color: 'var(--muted)' }}>Presencia: {ownCity.presenceState}</span>
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
+            {pillageAlertActive(ownCity, serverTimeMs()) && (
+              <span style={{ color: 'var(--danger)', fontWeight: 600 }} role="alert">
+                ¡Están saqueando tu ciudad!
+              </span>
+            )}
             <button className="secondary" onClick={buildHouse} title="Encarga una casa en el primer hueco libre junto al centro: +5 de población al terminar">
               Casa
             </button>
@@ -329,7 +351,7 @@ export default function Page() {
               className="secondary"
               onClick={() => clientRef.current?.trainUnit(ownCity.id, 'WARRIOR')}
               disabled={ownCity.production !== null}
-              title="Entrena un guerrero en la ciudad: 60 de madera. Selecciónalo y haz clic en una unidad enemiga para atacarla"
+              title="Entrena un guerrero en la ciudad: 60 de madera. Selecciónalo y haz clic en una unidad enemiga para atacarla o en una ciudad enemiga para saquearla"
             >
               Guerrero
             </button>
@@ -401,7 +423,7 @@ function describeUnit(u: { status: string; carrying: number; hp: number; maxHp: 
 /** Qué se puede hacer con la unidad seleccionada. */
 function helpFor(u: { unitType: string } | undefined): string {
   if (u?.unitType === 'WARRIOR') {
-    return 'clic en una unidad enemiga para atacarla, en el mapa para moverla; con botín, llévala junto a tu ciudad';
+    return 'clic en una unidad enemiga para atacarla, en una ciudad enemiga para saquearla, en el mapa para moverla; con botín, llévala junto a tu ciudad';
   }
   return 'clic en el mapa para moverla, en un bosque para recolectar, en una ciudad para guarnecerla';
 }

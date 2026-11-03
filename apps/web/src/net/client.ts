@@ -321,6 +321,11 @@ export class GameClient {
     return this.send('unit.attack', { unitId, targetUnitId });
   }
 
+  /** Ordena a un guerrero saquear una ciudad ajena (SPEC-COMBAT-PILLAGE). */
+  pillageCity(unitId: number, cityId: number): string {
+    return this.send('unit.pillage', { unitId, cityId });
+  }
+
   /** Recentra el área de interés (la cámara). */
   setView(center: { x: number; y: number }): string {
     return this.send('session.view', { center: { x: center.x, y: center.y } });
