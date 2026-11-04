@@ -873,7 +873,7 @@ async function asedio(atacante, ciudad, playerId, snap) {
     await maderaDeLaVictima(victima, cuenta.playerId, ciudadV, guerrero, 30);
     const hueco = huecoParaCasa(ciudadV, suyas);
     if (!hueco) fallar('la víctima no tiene hueco para una casa', suyas);
-    victima.sesion.enviar('city.build', { cityId: ciudadV.id, type: 'HOUSE', tile: hueco });
+    victima.sesion.enviar('city.build', { cityId: ciudadV.id, type: 'HOUSE', x: hueco.x, y: hueco.y });
     const spawn = await victima.sesion.esperarQue(['building.spawn', 'system.error'],
       (m) => m.type === 'system.error' ||
         (m.payload.building.cityId === ciudadV.id && m.payload.building.x === hueco.x && m.payload.building.y === hueco.y),
