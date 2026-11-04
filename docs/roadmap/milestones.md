@@ -1779,7 +1779,7 @@ terceros, los sucesos de E9 y lo que ya llega por otra vía (saqueo y asedio suf
 
 ## E12 — Conquista
 
-**Estado: EN CURSO (2026-11-04)**, en la rama `claude/slice-territorio`. Contrato:
+**Estado: HECHO EN LA RAMA (2026-11-04)**, en `claude/slice-territorio`, sin fusionar. Contrato:
 [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md), aceptada el 2026-11-04 con sus once decisiones de
 producto, y [ADR-034](../decisions/ADR-034-territory-claims.md).
 
@@ -1818,4 +1818,21 @@ territorio, perder territorio por abandono, tope de territorios, `control_points
 7. **HECHO** — Cliente: `src/state/conquest.ts`, el botón «Reclamar territorio» con su motivo, la cuenta atrás, el
    territorio en disputa en ámbar, los textos del registro y de los avisos; `conquest.test.ts`, `eventLog.test.ts` y
    `notices.test.ts`.
-8. Humo (`--territorio`) y prueba en vivo.
+8. **HECHO** — Humo y prueba en vivo (2026-11-04). Al arrancar, el servidor llevó la base de desarrollo de la migración 13
+   a la 14 sin hallazgos en la validación de carga; se arrancó con `EO_TERRITORY_CLAIM_FREE_SECONDS=30` y
+   `EO_TERRITORY_CLAIM_SECONDS=60`. `scripts/smoke.mjs --territorio` con `smoke_runner`, 26 comprobaciones: su guerrero 15
+   reclama la Región 7-3, libre, que viaja en disputa con su plazo; a los 30 s es suya y su límite pasa de 55 a 60.
+   `smoke_victim` se la reconquista con su guerrero 45: una segunda sesión de `smoke_runner` con la vista en su ciudad
+   recibe `TERRITORY_CLAIMED` y, a los 60 s, `TERRITORY_LOST`; `smoke_victim`, `TERRITORY_TAKEN`; el límite vuelve a 55.
+   Una pasada anterior con `--registro` conquistó la Región 6-2 (50 → 55) y pasó entera. En la base: cinco
+   reclamaciones `COMPLETED`, ningún territorio en disputa, `smoke_runner` con un conquistado (límite 55) y `smoke_victim`
+   con dos (60). En el navegador, con `smoke_runner`, llegaron «smoke_victimpolis reclamó tu territorio Región 6-3» con
+   «Ir», el punto en «Registro» y el título «(1) Empires Online», y 60 s después «smoke_victimpolis te quitó el
+   territorio Región 6-3», con la población de la cabecera de 60 a 55; «Mientras no estabas» contaba cada suceso de
+   territorio por separado. **No se comprobó en el navegador** el botón «Reclamar territorio» ni el territorio en
+   disputa en ámbar: con el panel oculto no se puede seleccionar una unidad haciendo clic en el mapa ni ver la escena;
+   lo cubren `conquest.test.ts`, el typecheck y el humo.
+9. **HECHO** — Fallo encontrado en el humo: en la reconquista, `smoke_victim` tomó como suya la reclamación anterior de
+   `smoke_runner` sobre el mismo territorio, que seguía en su cola, y esperó la pérdida con un plazo vencido. Sólo vale
+   ya la reclamación de quien reclama (`esReclamacionDe`, con su test en `scripts/smoke.test.mjs`, que falla con la
+   lógica anterior); y si la víctima no tiene guerrero, lo entrena.
