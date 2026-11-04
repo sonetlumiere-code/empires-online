@@ -14,7 +14,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cookieDeSesion, elegirBosque, elegirColina, elegirDestino, huecoParaCasa, indexarTerreno } from './smoke.mjs';
+import {
+  cookieDeSesion,
+  elegirBosque,
+  elegirColina,
+  elegirDestino,
+  huecoParaCasa,
+  indexarTerreno,
+  pactoVigente,
+} from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
 const GRASSLAND = 0;
@@ -170,4 +178,14 @@ test('elegirColina toma la colina más cercana a la ciudad y salta las agotadas 
   assert.deepEqual(elegirColina(mapa, ciudad), { x: 12, y: 20, d: 10 }, 'a igual distancia, la de menor x');
   assert.deepEqual(elegirColina(mapa, ciudad, [{ x: 12, y: 20, remaining: 0 }]), { x: 13, y: 20, d: 10 });
   assert.equal(elegirColina(new Map([['11,11', 1]]), ciudad), null, 'un bosque no es colina');
+});
+
+test('pactoVigente no toma un acuerdo comercial por un pacto: TRADE no da paz (SPEC-TRADE §4.1)', () => {
+  const comercial = { id: 3, type: 'TRADE', status: 'ACTIVE', breaksAtMs: null };
+  assert.equal(pactoVigente([comercial]), undefined, 'con sólo un TRADE vigente hay que proponer el pacto');
+  const pacto = { id: 5, type: 'NON_AGGRESSION', status: 'ACTIVE', breaksAtMs: null };
+  assert.equal(pactoVigente([comercial, pacto]), pacto);
+  const alianza = { id: 6, type: 'ALLIANCE', status: 'ACTIVE', breaksAtMs: null };
+  assert.equal(pactoVigente([alianza]), alianza);
+  assert.equal(pactoVigente([{ ...pacto, status: 'PROPOSED' }]), undefined, 'una oferta no es un tratado');
 });

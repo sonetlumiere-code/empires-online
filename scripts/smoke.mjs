@@ -1082,6 +1082,15 @@ async function asedio(atacante, ciudad, playerId, snap) {
 // Diplomacia (SPEC-DIPLOMACY), sólo con --diplomacia
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * El tratado vigente que da paz entre los dos, si lo hay: un pacto o una alianza.
+ * Un acuerdo comercial (TRADE, de --comercio) deja comerciar pero no da paz, y
+ * proponer el pacto encima es subir de escalón (SPEC-TRADE §4.1).
+ */
+export function pactoVigente(tratados) {
+  return tratados.find((x) => x.status === 'ACTIVE' && (x.type === 'NON_AGGRESSION' || x.type === 'ALLIANCE'));
+}
+
 /** Espera el treaty.update de un tratado que cumpla `cond`. */
 async function tratado(sesion, cond, ms = 10_000) {
   return (await sesion.esperarQue('treaty.update', (m) => cond(m.payload.treaty), ms)).payload.treaty;
@@ -1094,24 +1103,39 @@ async function diplomacia(propio, playerId, snap) {
   if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
   const entre = (snap.treaties ?? []).filter((x) => x.otherPlayerId === cuenta.playerId);
 
-  let vigente = entre.find((x) => x.status === 'ACTIVE');
+  let vigente = pactoVigente(entre);
   if (vigente?.breaksAtMs) {
     const min = Math.ceil((vigente.breaksAtMs - Date.now()) / 60_000);
     fallar('el tratado de una pasada anterior sigue en preaviso', `vuelve a probar dentro de ${min} min`);
+  }
+  const comercial = entre.find((x) => x.status === 'ACTIVE' && x.type === 'TRADE');
+  if (comercial?.breaksAtMs) {
+    const min = Math.ceil((comercial.breaksAtMs - Date.now()) / 60_000);
+    fallar('el acuerdo comercial de una pasada anterior está en preaviso y no se puede subir', `vuelve a probar dentro de ${min} min`);
   }
   if (!vigente) {
     let oferta = entre.find((x) => x.status === 'PROPOSED');
     if (!oferta) {
       propio.sesion.enviar('treaty.propose', { playerId: cuenta.playerId, type: 'NON_AGGRESSION' });
       oferta = await tratado(propio.sesion, (x) => x.otherPlayerId === cuenta.playerId && x.status === 'PROPOSED');
-      ok('pacto propuesto', `tratado ${oferta.id} a ${ciudadV.name}`);
+      ok('pacto propuesto', `tratado ${oferta.id} a ${ciudadV.name}${comercial ? `, encima del acuerdo comercial ${comercial.id}` : ''}`);
     }
     // Responde quien no la propuso (INV-DIPLO-001).
     const responde = oferta.proposedByMe ? victima.sesion : propio.sesion;
     responde.enviar('treaty.respond', { treatyId: oferta.id, accept: true });
-    vigente = await tratado(propio.sesion, (x) => x.id === oferta.id && x.status === 'ACTIVE');
+    // La sustitución llega antes que el pacto: el acuerdo comercial cerrado en la
+    // misma transacción (esperarQue descarta lo que no espera, así que se mira aquí).
+    let sustituido = false;
+    vigente = await tratado(propio.sesion, (x) => {
+      if (comercial && x.id === comercial.id && x.status === 'EXPIRED') sustituido = true;
+      return x.id === oferta.id && x.status === 'ACTIVE';
+    });
     await tratado(victima.sesion, (x) => x.id === oferta.id && x.status === 'ACTIVE');
     ok('pacto aceptado', `tratado ${vigente.id} vigente para los dos`);
+    if (comercial) {
+      if (!sustituido) fallar('el pacto no sustituyó al acuerdo comercial', comercial);
+      ok('el pacto sustituye al acuerdo comercial', `tratado ${comercial.id} EXPIRED`);
+    }
   } else {
     ok('pacto vigente de una pasada anterior', `tratado ${vigente.id}`);
   }
