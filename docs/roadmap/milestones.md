@@ -1729,7 +1729,7 @@ registro; `INV-TRADE-001` a `004`; la migración `000013`; el cliente y `scripts
 
 ## E11 — Avisos
 
-**Estado: HECHO EN LA RAMA (2026-11-04)**, en `claude/slice-avisos`, sin fusionar. Contrato:
+**Estado: HECHO (2026-11-04)**, fusionado en `main` (`d2f7d88`) con la CI en verde el mismo día. Contrato:
 [SPEC-LIVE-NOTICES](../specs/live-notices.md), aceptada el 2026-11-04 con sus ocho decisiones de producto, y
 [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md).
 

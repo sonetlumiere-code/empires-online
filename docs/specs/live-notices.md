@@ -6,7 +6,7 @@ una parte del mapa que no estás mirando, te enteras en el acto, con un aviso en
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-LIVE-NOTICES` |
-| Estado | Accepted (2026-11-04). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-04). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `d2f7d88`, con la CI en verde. |
 | Milestone | E11 Avisos (undécimo slice después de M7) |
 | Canon | §13 (protocolo e interest management), §16 (errores) |
 | Depende de | [event-log.md](event-log.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [websocket-protocol.md](websocket-protocol.md) |
