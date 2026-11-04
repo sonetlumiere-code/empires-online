@@ -1526,7 +1526,7 @@ una alianza; `treaty.update` y `treaties[]` en el snapshot; la migración `00000
 
 ## E7 — Registro
 
-**Estado: EN CURSO** desde el 2026-11-03, en la rama `claude/slice-registro`. Contrato:
+**Estado: HECHO (2026-11-03)**, fusionado en `main` (`a0e2096`) con la CI en verde. Contrato:
 [SPEC-EVENT-LOG](../specs/event-log.md), aceptada el 2026-11-03 con sus seis decisiones de producto, y
 [ADR-028](../decisions/ADR-028-event-log-from-world-events.md).
 

@@ -7,7 +7,7 @@ no lo lee nunca, y quien no estaba mirando no se entera.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-EVENT-LOG` |
-| Estado | Accepted (2026-11-03). Producto aceptó ese día la recomendación de cada pregunta de §10; la implementación va en la rama `claude/slice-registro`. |
+| Estado | Implemented (2026-11-03). Aceptada el 2026-11-03 con las preguntas de §10 decididas ese día con la recomendación de cada una; en `main` desde la fusión `a0e2096`, con la CI en verde. |
 | Milestone | E7 Registro (séptimo slice después de M7) |
 | Canon | §12 (persistencia), §16 (errores) |
 | Depende de | [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [diplomacy.md](diplomacy.md), [presence.md](presence.md), [websocket-protocol.md](websocket-protocol.md) |
