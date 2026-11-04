@@ -1666,3 +1666,63 @@ fundación, niebla de guerra.
    el valor por defecto de `EO_PATHFINDING_MAX_NODES`, el respaldo de `NewAStar`, `.env.example` y los docs que lo
    citan. Con el servidor en su configuración por defecto, `scripts/smoke.mjs --piedra` pasa con `smoke_runner`
    (19 comprobaciones): la colina a 163 tiles, la carga y el depósito (piedra 20 → 30), donde antes se rechazaba.
+
+## E10 — Comercio
+
+**Estado: EN CURSO (2026-11-04)**, en la rama `claude/slice-comercio`. Contrato: [SPEC-TRADE](../specs/trade.md),
+aceptada el 2026-11-04 con sus diez decisiones de producto, y
+[ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md).
+
+**Objetivo.** Que la geografía de E9 se pueda negociar: un trato «doy esto, pido aquello» entre dos ciudades con un
+tratado vigente, que mueve los dos almacenes en el acto.
+
+**Alcance.** El tratado `TRADE` como primer escalón de la diplomacia; `trade.propose`, `trade.respond` y
+`trade.cancel`; la caducidad de las ofertas y su cierre al terminar el tratado; el trato aceptado en una transacción
+que escribe los dos almacenes; el trabajo de la cola con dos claves; `trade.update` y `tradeOffers[]`; los tratos en el
+registro; `INV-TRADE-001` a `004`; la migración `000013`; el cliente y `scripts/smoke.mjs --comercio`. **No entra**
+(spec §2): caravanas, mercados, saquear piedra, que terceros vean los tratos, avisos en vivo.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-032, la familia `INV-TRADE`, y las precisiones de `INV-DIPLO-002` (la escalera)
+   e `INV-ECON-002` (el trato).
+2. **HECHO** — Cola: `Job.Key2`; el trabajo de dos claves entra en las dos particiones o en ninguna y se ejecuta cuando
+   llegan los dos workers (`TestUnTrabajoDeDosClavesEsperaALasDosParticiones`, `TestDosTratosCruzadosNoSeBloquean`,
+   `TestUnTrabajoDeDosClavesQueNoCabeNoEntraEnNinguna`).
+3. **HECHO** — Dominio: la escalera en `diplomacy` (`Rank`, `Supersedes`, `AllowsTradeAt`; `TRADE` proponible) y el
+   paquete `trade` con la oferta, sus líneas, quién puede cerrarla y las patas que conservan cada recurso.
+4. **HECHO** — Migración `000013` y persistencia: `trade_offers`, `trade_offer_lines`, `postgres.TradeRepo` (la oferta
+   con su evento, idempotente; el trato con los deltas de las dos ciudades en una transacción) e integración en
+   `trade_integration_test.go` (seis tests).
+5. **HECHO** — Simulación: `trade.go` con las órdenes en dos fases, la reserva de los dos almacenes (también la versión
+   del recurso que sólo se recibe y los depósitos sin volcar), el crédito al confirmarse, la caducidad en el barrido de
+   los tratados y la carga al arrancar; quince tests en `trade_test.go`, con el golden «comercio» y los de
+   recuperación. Nueve mutaciones, todas detectadas por su test.
+6. **HECHO** — Protocolo y WebSocket: los tres comandos (22 cliente→servidor), `trade.update` (22 servidor→cliente),
+   `tradeOffers[]`, `ResourceAmount` con su cota y `TRADE` en `treaty.propose`; contract tests
+   (`trade_contract_test.go`) y e2e (`trade_e2e_test.go`), con `trade.update` validado contra el esquema.
+7. **HECHO** — Registro: `TradeProposed`, `TradeAccepted`, `TradeRejected`, `TradeWithdrawn` y `TradeExpired` en
+   `eventlog.EventTypes`; cinco tipos de entrada con `tradeGive` y `tradeGet` vistos desde quien lee, sin agrupar.
+8. **HECHO** — Cliente: `src/state/trade.ts` (lista, órdenes, texto, motivo del botón), la escalera de botones
+   (`proposableTypes`), el formulario «Doy … y pido …» y la lista de ofertas en la barra de diplomacia, y los textos del
+   registro; tests en `trade.test.ts`, `diplomacy.test.ts` y `eventLog.test.ts`.
+9. **HECHO** — Humo y prueba en vivo (2026-11-04). El migrador llevó la base de desarrollo de 12 a 13 y
+   `EO_DEVSEED_STOCK_FOR=smoke_victim pnpm run dev:seed` dejó 400 de madera y 200 de piedra a `smoke_victim`.
+   `scripts/smoke.mjs --comercio` con `smoke_runner`, 22 comprobaciones en verde: el acuerdo comercial propuesto y
+   aceptado (TRADE no da paz), la oferta de más madera de la que hay rechazada con `INSUFFICIENT_RESOURCES`, 50 de madera
+   por 10 de piedra visto desde cada lado, la aceptación con el almacén de `smoke_victim` 400 → 450 y 200 → 190, y el
+   registro de `smoke_runner` con `TRADE_ACCEPTED` y sus cantidades. En la base, la oferta `ACCEPTED` con sus líneas y
+   `TradeProposed` y `TradeAccepted`. (La piedra de `smoke_runner` subió 20 y no 10: al arrancar, el servidor cerró con
+   `OWNER_ABSENT` una tarea de piedra de una pasada de E9 y la unidad descargó 10; la madera, igual.) En el navegador, con
+   `smoke_runner`: la barra de diplomacia mostraba el acuerdo vigente, la oferta de tratado de `dev_norte` y la de
+   comercio «smoke_victimpolis te ofrece 20 de piedra por 30 de madera (caduca en 24 h)»; al aceptarla, Madera
+   1400 → 1370 y Piedra 50 → 70 en el HUD y la oferta fuera de la barra; «Mientras no estabas» contaba los tratos con sus
+   cantidades. **No se comprobó en el navegador** el formulario «Ofrecer trato» sobre una ciudad ajena: con el panel
+   oculto no hay frames y el clic se convierte en tile con la cámara del último frame, así que no se puede llegar a otra
+   ciudad; lo cubren los tests de `trade.ts` y el typecheck. `scripts/smoke.mjs --diplomacia` sobre el acuerdo comercial
+   vigente (21 comprobaciones): el pacto se propone encima, sustituye al TRADE (`EXPIRED`) en la misma transacción,
+   impide el saqueo y se rompe con su preaviso.
+10. **HECHO** — Fallo encontrado: `scripts/smoke.mjs --diplomacia` daba por pacto cualquier tratado vigente y, con el
+    acuerdo comercial que deja `--comercio`, habría comprobado que un TRADE impide el saqueo, que no lo impide. Elige
+    ahora sólo un pacto o una alianza (`pactoVigente`, con su test en `scripts/smoke.test.mjs`, que falla con la lógica
+    anterior) y, con un TRADE vigente, propone el pacto como subida de escalón y comprueba la sustitución.

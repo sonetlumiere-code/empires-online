@@ -74,6 +74,8 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 
 	// SPEC-DIPLOMACY: los tratados abiertos de quien lo recibe (ADR-027 §5).
 	payload.Treaties = s.treatiesOf(viewer)
+	// SPEC-TRADE: las ofertas pendientes de quien lo recibe (ADR-032 §7).
+	payload.TradeOffers = s.tradeOffersOf(viewer)
 	return payload
 }
 

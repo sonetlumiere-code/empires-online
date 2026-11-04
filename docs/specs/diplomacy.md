@@ -158,7 +158,7 @@ producto, no de ingeniería: cambiarlas es cambiar la spec.
 
 | # | Pregunta | Decisión |
 |---|---|---|
-| Q1 | ¿Qué tipos se pueden proponer, y la guarnición es una opción aparte? | `NON_AGGRESSION` y `ALLIANCE`, con la guarnición fijada por el tipo (la alianza la permite, el pacto no). `TRADE` no hace nada mientras no haya comercio. Un flag suelto sería una casilla más que explicar. |
+| Q1 | ¿Qué tipos se pueden proponer, y la guarnición es una opción aparte? | `NON_AGGRESSION` y `ALLIANCE`, con la guarnición fijada por el tipo (la alianza la permite, el pacto no). `TRADE` no hace nada mientras no haya comercio. Un flag suelto sería una casilla más que explicar. **Precisión (2026-11-04, [trade.md](trade.md) Q1):** con el comercio, `TRADE` también se propone, y los tres forman una escalera en la que cada escalón incluye el comercio y subir sustituye al vigente (§4.1 de [trade.md](trade.md)); `RN-DIPLO-001` admite, con un tratado vigente, cualquier oferta de un escalón superior. |
 | Q2 | ¿Los tratados tienen plazo? | No en este slice: duran hasta que alguien los rompe. Elegir un plazo al firmar es interfaz y casos de borde para algo que el preaviso ya cubre. Los tratados con `expires_at` que cree la vía administrativa siguen caducando. |
 | Q3 | ¿Cuánto vive una oferta sin respuesta? | 24 horas (`EO_TREATY_OFFER_HOURS`): da tiempo a quien juega una vez al día y limpia las olvidadas. |
 | Q4 | Romper, ¿es inmediato? | No: 15 minutos de preaviso (`EO_TREATY_BREAK_NOTICE_MINUTES`) en los que la paz sigue. Sin preaviso, un aliado rompe y saquea en el mismo segundo; con él, el traicionado ve venir el golpe y saca sus unidades. |

@@ -334,8 +334,23 @@ export class GameClient {
   }
 
   /** Propone un tratado a otro jugador (SPEC-DIPLOMACY). */
-  proposeTreaty(playerId: string, type: 'NON_AGGRESSION' | 'ALLIANCE'): string {
+  proposeTreaty(playerId: string, type: 'NON_AGGRESSION' | 'ALLIANCE' | 'TRADE'): string {
     return this.send('treaty.propose', { playerId, type });
+  }
+
+  /** Ofrece un trato a otro jugador: «doy esto, pido aquello» (SPEC-TRADE). */
+  proposeTrade(playerId: string, give: v1.ResourceAmount[], want: v1.ResourceAmount[]): string {
+    return this.send('trade.propose', { playerId, give, want });
+  }
+
+  /** Acepta o rechaza una oferta de comercio recibida. */
+  respondTrade(offerId: number, accept: boolean): string {
+    return this.send('trade.respond', { offerId, accept });
+  }
+
+  /** Retira la oferta de comercio propia. */
+  cancelTrade(offerId: number): string {
+    return this.send('trade.cancel', { offerId });
   }
 
   /** Acepta o rechaza una oferta recibida. */

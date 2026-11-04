@@ -217,12 +217,12 @@ describe('asedio (SPEC-COMBAT-SIEGE)', () => {
 describe('diplomacia (SPEC-DIPLOMACY)', () => {
   const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 
-  it('acepta treaty.propose de pacto y de alianza, y rechaza TRADE y el flag suelto', () => {
-    for (const type of ['NON_AGGRESSION', 'ALLIANCE']) {
+  it('acepta treaty.propose de los tres escalones (SPEC-TRADE Q1), y rechaza otro tipo y el flag suelto', () => {
+    for (const type of ['TRADE', 'NON_AGGRESSION', 'ALLIANCE']) {
       expect(parseClientMessage({ v: 1, type: 'treaty.propose', requestId: uuid, payload: { playerId: otro, type } }).ok).toBe(true);
     }
     for (const payload of [
-      { playerId: otro, type: 'TRADE' },
+      { playerId: otro, type: 'VASALLAJE' },
       { playerId: otro, type: 'ALLIANCE', allowsGarrison: true },
       { playerId: 'no-es-un-uuid', type: 'ALLIANCE' },
     ]) {
@@ -596,5 +596,49 @@ describe('límites de transporte', () => {
     expect(TRANSPORT_LIMITS.maxMessageBytes).toBe(16_384);
     expect(TRANSPORT_LIMITS.rateLimitPerSecond).toBe(20);
     expect(TRANSPORT_LIMITS.rateLimitBurst).toBe(40);
+  });
+});
+
+describe('comercio (SPEC-TRADE)', () => {
+  const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const propose = (payload: unknown) => parseClientMessage({ v: 1, type: 'trade.propose', requestId: uuid, payload });
+  const linea = (resource: string, amount: number) => [{ resource, amount }];
+
+  it('acepta trade.propose con algo que dar y algo que pedir', () => {
+    expect(propose({ playerId: otro, give: linea('WOOD', 300), want: linea('STONE', 100) }).ok).toBe(true);
+    expect(propose({ playerId: otro, give: linea('STONE', 1), want: linea('WOOD', 1_000_000) }).ok).toBe(true);
+  });
+
+  it('rechaza regalos, cantidades fuera de la cota, recursos inventados y campos de más', () => {
+    for (const payload of [
+      { playerId: otro, give: [], want: linea('STONE', 1) },
+      { playerId: otro, give: linea('WOOD', 1), want: linea('STONE', 0) },
+      { playerId: otro, give: linea('WOOD', 1_000_001), want: linea('STONE', 1) },
+      { playerId: otro, give: linea('WOOD', 1.5), want: linea('STONE', 1) },
+      { playerId: otro, give: linea('GOLD', 1), want: linea('STONE', 1) },
+      { playerId: otro, give: [{ resource: 'WOOD', amount: 1, price: 2 }], want: linea('STONE', 1) },
+      { playerId: otro, give: linea('WOOD', 1), want: [...linea('STONE', 1), ...linea('STONE', 1), ...linea('WOOD', 1)] },
+      { playerId: otro, give: linea('WOOD', 1), want: linea('STONE', 1), expiresAtMs: 5 },
+      { playerId: 'no-es-un-uuid', give: linea('WOOD', 1), want: linea('STONE', 1) },
+    ]) {
+      expect(propose(payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('acepta trade.respond y trade.cancel, y exige el sí o el no', () => {
+    expect(parseClientMessage({ v: 1, type: 'trade.respond', requestId: uuid, payload: { offerId: 3, accept: false } }).ok).toBe(true);
+    expect(parseClientMessage({ v: 1, type: 'trade.respond', requestId: uuid, payload: { offerId: 3 } }).ok).toBe(false);
+    expect(parseClientMessage({ v: 1, type: 'trade.cancel', requestId: uuid, payload: { offerId: 3 } }).ok).toBe(true);
+  });
+
+  it('trade.update lleva la oferta vista por quien la recibe', () => {
+    const offer = {
+      id: 3, otherPlayerId: otro, otherCityId: null, otherCityName: null,
+      give: linea('WOOD', 300), get: linea('STONE', 100), status: 'PROPOSED', proposedByMe: true, expiresAtMs: 1_757_376_000_000,
+    };
+    const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+    expect(parseServerMessage({ ...env, type: 'trade.update', payload: { offer } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'trade.update', payload: { offer: { ...offer, status: 'PERDIDA' } } }).ok).toBe(false);
+    expect(parseServerMessage({ ...env, type: 'trade.update', payload: { offer: { ...offer, give: [] } } }).ok).toBe(false);
   });
 });

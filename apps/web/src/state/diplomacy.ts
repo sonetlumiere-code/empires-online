@@ -70,3 +70,22 @@ export function anyCountdown(list: readonly TreatyView[]): boolean {
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/** La escalera de tratados (SPEC-TRADE §4.1): cada escalón incluye lo del anterior. */
+export const TREATY_LADDER = ['TRADE', 'NON_AGGRESSION', 'ALLIANCE'] as const;
+export type ProposableType = (typeof TREATY_LADDER)[number];
+
+/**
+ * Qué tratados tiene sentido proponer a ese jugador: sin nada, los tres; con uno
+ * vigente, sólo los de un escalón superior, y ninguno si está en preaviso o si ya
+ * hay una oferta pendiente (RN-DIPLO-001, INV-DIPLO-002). El servidor decide.
+ */
+export function proposableTypes(list: readonly TreatyView[], otherPlayerId: string): ProposableType[] {
+  const open = list.filter((t) => t.otherPlayerId === otherPlayerId);
+  if (open.some((t) => t.status === 'PROPOSED')) return [];
+  const active = open.find((t) => t.status === 'ACTIVE');
+  if (!active) return [...TREATY_LADDER];
+  if (active.breaksAtMs !== null) return [];
+  const rank = TREATY_LADDER.indexOf(active.type as ProposableType);
+  return TREATY_LADDER.slice(rank + 1);
+}

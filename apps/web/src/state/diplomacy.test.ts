@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { anyCountdown, applyTreatyUpdate, formatCountdown, treatyActions, treatyLabel, type TreatyView } from './diplomacy';
+import {
+  anyCountdown,
+  applyTreatyUpdate,
+  formatCountdown,
+  proposableTypes,
+  treatyActions,
+  treatyLabel,
+  type TreatyView,
+} from './diplomacy';
 
 // SPEC-DIPLOMACY en el cliente: lo puro (frontend.md §4.5).
 
@@ -40,5 +48,20 @@ describe('treatyLabel y la cuenta atrás del preaviso', () => {
     expect(formatCountdown(-5)).toBe('0:00');
     expect(anyCountdown([base, { ...base, breaksAtMs: 1 }])).toBe(true);
     expect(anyCountdown([base])).toBe(false);
+  });
+});
+
+describe('proposableTypes: la escalera de tratados (SPEC-TRADE §4.1)', () => {
+  const otro = base.otherPlayerId;
+  it('sin tratado, los tres; con uno vigente, sólo los de arriba', () => {
+    expect(proposableTypes([], otro)).toEqual(['TRADE', 'NON_AGGRESSION', 'ALLIANCE']);
+    expect(proposableTypes([{ ...base, type: 'TRADE', status: 'ACTIVE' }], otro)).toEqual(['NON_AGGRESSION', 'ALLIANCE']);
+    expect(proposableTypes([{ ...base, type: 'NON_AGGRESSION', status: 'ACTIVE' }], otro)).toEqual(['ALLIANCE']);
+    expect(proposableTypes([{ ...base, status: 'ACTIVE' }], otro)).toEqual([]);
+  });
+  it('nada con una oferta pendiente o en preaviso; otro jugador no cuenta', () => {
+    expect(proposableTypes([base], otro)).toEqual([]);
+    expect(proposableTypes([{ ...base, type: 'TRADE', status: 'ACTIVE', breaksAtMs: 5 }], otro)).toEqual([]);
+    expect(proposableTypes([{ ...base, status: 'ACTIVE' }], 'otro-jugador')).toHaveLength(3);
   });
 });

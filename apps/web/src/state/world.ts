@@ -15,6 +15,7 @@
  */
 import { create } from 'zustand';
 import { applyTreatyUpdate, type TreatyView } from './diplomacy';
+import { applyTradeUpdate, type TradeOfferView } from './trade';
 import { applyEventLogPage, EMPTY_EVENT_LOG, markSeenLocally, type EventLogState } from './eventLog';
 import type { v1 } from '@empires-online/protocol';
 import type { ActiveMovement } from './interpolation';
@@ -191,6 +192,8 @@ export interface WorldState {
    * mapas de arriba se sustituye en cada cambio: sólo lo lee el HUD.
    */
   treaties: readonly TreatyView[];
+  /** Ofertas de comercio pendientes del jugador (SPEC-TRADE), por id. Sólo las lee el HUD. */
+  tradeOffers: readonly TradeOfferView[];
   /** El registro (SPEC-EVENT-LOG): lo que el servidor contó que pasó. Sólo lo lee el HUD. */
   eventLog: EventLogState;
   changes: WorldChanges;
@@ -306,6 +309,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     forests,
     hills,
     treaties: [],
+    tradeOffers: [],
     eventLog: EMPTY_EVENT_LOG,
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
@@ -375,6 +379,8 @@ export const useWorldStore = create<WorldState>((set, get) => {
         changes: changed({ all: true, terrain: newTerrain, forests: true, hills: true }),
         // Como el resto del snapshot, la lista de tratados se reemplaza (ADR-027 §5).
         treaties: [...(payload.treaties ?? [])].sort((a, b) => a.id - b.id),
+        // Y la de ofertas de comercio, igual (SPEC-TRADE §6).
+        tradeOffers: [...(payload.tradeOffers ?? [])].sort((a, b) => a.id - b.id),
       });
     },
 
@@ -500,6 +506,10 @@ export const useWorldStore = create<WorldState>((set, get) => {
           set({ treaties: applyTreatyUpdate(get().treaties, message.payload.treaty) });
           break;
 
+        case 'trade.update':
+          set({ tradeOffers: applyTradeUpdate(get().tradeOffers, message.payload.offer) });
+          break;
+
         case 'forest.update': {
           // Sin instante de regeneración, el tile vuelve a estar lleno y sale de la capa.
           const f = message.payload;
@@ -616,6 +626,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
         selectedUnitId: null,
         lastError: null,
         treaties: [],
+        tradeOffers: [],
         eventLog: EMPTY_EVENT_LOG,
         changes: changed({ all: true }),
       });

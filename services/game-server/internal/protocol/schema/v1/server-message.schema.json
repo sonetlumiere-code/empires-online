@@ -855,6 +855,99 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "tradeOffers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "otherPlayerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "otherCityId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "otherCityName": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "give": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "resource": {
+                              "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/carryingResource"
+                            },
+                            "amount": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000000
+                            }
+                          },
+                          "required": [
+                            "resource",
+                            "amount"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 1
+                      },
+                      "get": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
+                        },
+                        "minItems": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "PROPOSED",
+                          "ACCEPTED",
+                          "REJECTED",
+                          "WITHDRAWN",
+                          "EXPIRED"
+                        ]
+                      },
+                      "proposedByMe": {
+                        "type": "boolean"
+                      },
+                      "expiresAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "otherPlayerId",
+                      "otherCityId",
+                      "otherCityName",
+                      "give",
+                      "get",
+                      "status",
+                      "proposedByMe",
+                      "expiresAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -1737,7 +1830,12 @@
                           "TREATY_REJECTED",
                           "TREATY_OFFER_EXPIRED",
                           "TREATY_BREAK_ANNOUNCED",
-                          "TREATY_ENDED"
+                          "TREATY_ENDED",
+                          "TRADE_OFFERED",
+                          "TRADE_ACCEPTED",
+                          "TRADE_REJECTED",
+                          "TRADE_WITHDRAWN",
+                          "TRADE_OFFER_EXPIRED"
                         ]
                       },
                       "firstAtMs": {
@@ -1796,6 +1894,18 @@
                       },
                       "breaksAtMs": {
                         "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      },
+                      "tradeGive": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
+                        }
+                      },
+                      "tradeGet": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
+                        }
                       }
                     },
                     "required": [
@@ -1831,6 +1941,47 @@
                 "entries",
                 "seenUpToId",
                 "nextBeforeId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "trade.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "offer": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items"
+                }
+              },
+              "required": [
+                "offer"
               ],
               "additionalProperties": false
             }

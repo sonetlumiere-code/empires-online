@@ -45,6 +45,10 @@ const (
 	TypeTreatyPropose = "treaty.propose"
 	TypeTreatyRespond = "treaty.respond"
 	TypeTreatyCancel  = "treaty.cancel"
+	// Comercio (SPEC-TRADE).
+	TypeTradePropose = "trade.propose"
+	TypeTradeRespond = "trade.respond"
+	TypeTradeCancel  = "trade.cancel"
 	// Registro (SPEC-EVENT-LOG): los atiende la conexión, no la simulación.
 	TypeEventLogFetch = "event_log.fetch"
 	TypeEventLogSeen  = "event_log.seen"
@@ -73,6 +77,7 @@ const (
 	TypeHillUpdate            = "hill.update"
 	TypeTreatyUpdate          = "treaty.update"
 	TypeEventLogPage          = "event_log.page"
+	TypeTradeUpdate           = "trade.update"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -94,6 +99,9 @@ var ClientMessageTypes = map[string]bool{
 	TypeTreatyPropose:  true,
 	TypeTreatyRespond:  true,
 	TypeTreatyCancel:   true,
+	TypeTradePropose:   true,
+	TypeTradeRespond:   true,
+	TypeTradeCancel:    true,
 	TypeEventLogFetch:  true,
 	TypeEventLogSeen:   true,
 }
@@ -392,6 +400,50 @@ type TreatyUpdatePayload struct {
 	Treaty TreatyView `json:"treaty"`
 }
 
+// ResourceAmount es una línea de una oferta de comercio: un recurso y una
+// cantidad (SPEC-TRADE §4.2).
+type ResourceAmount struct {
+	Resource string `json:"resource"`
+	Amount   int64  `json:"amount"`
+}
+
+// TradeProposePayload ofrece un trato a otro jugador (SPEC-TRADE §6).
+type TradeProposePayload struct {
+	PlayerID string           `json:"playerId"`
+	Give     []ResourceAmount `json:"give"`
+	Want     []ResourceAmount `json:"want"`
+}
+
+// TradeRespondPayload acepta o rechaza una oferta recibida.
+type TradeRespondPayload struct {
+	OfferID int64 `json:"offerId"`
+	Accept  bool  `json:"accept"`
+}
+
+// TradeCancelPayload retira la oferta propia.
+type TradeCancelPayload struct {
+	OfferID int64 `json:"offerId"`
+}
+
+// TradeOfferView es una oferta vista por uno de sus dos jugadores: Give es lo
+// que saldría de su almacén y Get lo que entraría (SPEC-TRADE §6).
+type TradeOfferView struct {
+	ID            int64            `json:"id"`
+	OtherPlayerID string           `json:"otherPlayerId"`
+	OtherCityID   *int64           `json:"otherCityId"`
+	OtherCityName *string          `json:"otherCityName"`
+	Give          []ResourceAmount `json:"give"`
+	Get           []ResourceAmount `json:"get"`
+	Status        string           `json:"status"`
+	ProposedByMe  bool             `json:"proposedByMe"`
+	ExpiresAtMs   int64            `json:"expiresAtMs"`
+}
+
+// TradeUpdatePayload lleva una oferta que cambió a uno de sus dos jugadores.
+type TradeUpdatePayload struct {
+	Offer TradeOfferView `json:"offer"`
+}
+
 // EventLogFetchPayload pide una página del registro (SPEC-EVENT-LOG): la más
 // reciente, o la de los eventos con id menor que BeforeID.
 type EventLogFetchPayload struct {
@@ -421,6 +473,10 @@ type EventLogEntry struct {
 	X             *int32  `json:"x,omitempty"`
 	Y             *int32  `json:"y,omitempty"`
 	BreaksAtMs    *int64  `json:"breaksAtMs,omitempty"`
+	// TradeGive y TradeGet, en los tratos: lo que la oferta sacaba del almacén
+	// de quien lee y lo que metía en él (SPEC-TRADE §6).
+	TradeGive []ResourceAmount `json:"tradeGive,omitempty"`
+	TradeGet  []ResourceAmount `json:"tradeGet,omitempty"`
 }
 
 // EventLogPagePayload es una página del registro. NextBeforeID es nil en la
@@ -500,6 +556,9 @@ type WorldSnapshotPayload struct {
 	// Treaties son los tratados PROPOSED y ACTIVE de quien recibe el snapshot
 	// (SPEC-DIPLOMACY, ADR-027 §5). Se omite si no tiene ninguno.
 	Treaties []TreatyView `json:"treaties,omitempty"`
+	// TradeOffers son las ofertas de comercio PROPOSED de quien recibe el
+	// snapshot (SPEC-TRADE §6). Se omite si no tiene ninguna.
+	TradeOffers []TradeOfferView `json:"tradeOffers,omitempty"`
 }
 
 type EntitySpawnPayload struct {

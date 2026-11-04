@@ -27,7 +27,8 @@ var (
 	// ErrNoPuede: la orden no corresponde a quien la da o al estado del tratado
 	// (responder a la oferta propia, retirar la ajena, romper dos veces).
 	ErrNoPuede = errors.New("esa orden no se puede dar sobre ese tratado")
-	// ErrTipoNoProponible: el tipo no se puede proponer desde el cliente (TRADE).
+	// ErrTipoNoProponible: el tipo no se puede proponer desde el cliente (uno
+	// fuera del catálogo). Desde E10 los tres tipos son proponibles.
 	ErrTipoNoProponible = errors.New("ese tipo de tratado no se puede proponer")
 )
 
@@ -89,9 +90,30 @@ var transicionesPermitidas = map[Status]map[Status]bool{
 	StatusWithdrawn: {},
 }
 
-// Proposable indica si el tipo se puede proponer desde el cliente (Q1): el
-// comercio no existe todavía.
-func (t Type) Proposable() bool { return t == TypeNonAggression || t == TypeAlliance }
+// Proposable indica si el tipo se puede proponer desde el cliente. Desde E10
+// lo son los tres (SPEC-TRADE Q1).
+func (t Type) Proposable() bool { return t.Valid() }
+
+// Rank es el escalón del tipo en la escalera de tratados (SPEC-TRADE §4.1):
+// cada escalón incluye lo del anterior. 0 para un tipo desconocido.
+func (t Type) Rank() int {
+	switch t {
+	case TypeTrade:
+		return 1
+	case TypeNonAggression:
+		return 2
+	case TypeAlliance:
+		return 3
+	}
+	return 0
+}
+
+// Supersedes indica si una oferta de este tipo puede convivir con un tratado
+// vigente de tipo `current` y sustituirlo al aceptarse: sólo subiendo de
+// escalón (INV-DIPLO-002, ADR-032 §5).
+func (t Type) Supersedes(current Type) bool {
+	return t.Rank() > 0 && current.Rank() > 0 && t.Rank() > current.Rank()
+}
 
 // GrantsGarrison es el flag que fija el tipo (Q1): la alianza deja guarnecer y
 // el pacto no.
@@ -160,6 +182,16 @@ func (t Treaty) Other(p uuid.UUID) uuid.UUID {
 // paz sigue (RN-DIPLO-004).
 func (t Treaty) GivesPeaceAt(now time.Time) bool {
 	if t.Status != StatusActive || (t.Type != TypeNonAggression && t.Type != TypeAlliance) {
+		return false
+	}
+	return !t.endedAt(now)
+}
+
+// AllowsTradeAt indica si el tratado deja comerciar entre los dos en `now`
+// (SPEC-TRADE §4.1, INV-TRADE-002): uno vigente de cualquier escalón, también
+// durante su preaviso, sin su fin alcanzado.
+func (t Treaty) AllowsTradeAt(now time.Time) bool {
+	if t.Status != StatusActive || t.Type.Rank() == 0 {
 		return false
 	}
 	return !t.endedAt(now)

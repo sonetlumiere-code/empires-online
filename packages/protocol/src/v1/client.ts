@@ -7,10 +7,30 @@
  * Ver ../../../docs/decisions/ADR-002-authoritative-server.md
  */
 import { z } from 'zod';
-import { BuildingType, EntityId, PROTOCOL_VERSION, Tile, UnitType, Uuid, WorldCoordinate } from './common.js';
+import {
+  BuildingType,
+  EntityId,
+  PROTOCOL_VERSION,
+  ResourceAmount,
+  ResourceType,
+  Tile,
+  TreatyType,
+  UnitType,
+  Uuid,
+  WorldCoordinate,
+} from './common.js';
 
-/** Los tipos que un jugador puede proponer (SPEC-DIPLOMACY Q1). */
-const ProposableTreatyType = z.enum(['NON_AGGRESSION', 'ALLIANCE']);
+/**
+ * Los tipos que un jugador puede proponer: los tres desde el comercio (SPEC-DIPLOMACY
+ * Q1, precisada por SPEC-TRADE Q1).
+ */
+const ProposableTreatyType = TreatyType;
+
+/**
+ * Las líneas de un lado de una oferta: de una a tantas como recursos haya. Que un
+ * recurso no se repita ni esté en los dos lados lo decide el servidor (INVALID_TARGET).
+ */
+const TradeLines = z.array(ResourceAmount.strict()).min(1).max(ResourceType.options.length);
 
 /** Versión del protocolo presente en todo mensaje. */
 const V = z.literal(PROTOCOL_VERSION);
@@ -252,6 +272,43 @@ export const TreatyCancel = z.object({
 }).strict();
 
 /**
+ * Ofrece un trato a otro jugador (SPEC-TRADE): «doy esto, pido aquello». El servidor
+ * decide si hay tratado, si alcanza el almacén y qué se mueve. Ver
+ * ../../../docs/specs/trade.md
+ */
+export const TradePropose = z.object({
+  v: V,
+  type: z.literal('trade.propose'),
+  requestId: Uuid,
+  payload: z.object({
+    playerId: Uuid,
+    give: TradeLines,
+    want: TradeLines,
+  }).strict(),
+}).strict();
+
+/** Acepta o rechaza una oferta de comercio recibida. */
+export const TradeRespond = z.object({
+  v: V,
+  type: z.literal('trade.respond'),
+  requestId: Uuid,
+  payload: z.object({
+    offerId: EntityId,
+    accept: z.boolean(),
+  }).strict(),
+}).strict();
+
+/** Retira la oferta de comercio propia. */
+export const TradeCancel = z.object({
+  v: V,
+  type: z.literal('trade.cancel'),
+  requestId: Uuid,
+  payload: z.object({
+    offerId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
  * Pide una página del registro (SPEC-EVENT-LOG): la más reciente, o la de los
  * eventos anteriores a `beforeId`. El jugador es siempre el de la sesión
  * (INV-SEC-009). Ver ../../../docs/specs/event-log.md
@@ -298,6 +355,9 @@ export const ClientMessage = z.discriminatedUnion('type', [
   TreatyPropose,
   TreatyRespond,
   TreatyCancel,
+  TradePropose,
+  TradeRespond,
+  TradeCancel,
   EventLogFetch,
   EventLogSeen,
 ]);
@@ -320,6 +380,9 @@ export type UnitDemolish = z.infer<typeof UnitDemolish>;
 export type TreatyPropose = z.infer<typeof TreatyPropose>;
 export type TreatyRespond = z.infer<typeof TreatyRespond>;
 export type TreatyCancel = z.infer<typeof TreatyCancel>;
+export type TradePropose = z.infer<typeof TradePropose>;
+export type TradeRespond = z.infer<typeof TradeRespond>;
+export type TradeCancel = z.infer<typeof TradeCancel>;
 export type EventLogFetch = z.infer<typeof EventLogFetch>;
 export type EventLogSeen = z.infer<typeof EventLogSeen>;
 
@@ -341,6 +404,9 @@ export const CLIENT_MESSAGE_TYPES = [
   'treaty.propose',
   'treaty.respond',
   'treaty.cancel',
+  'trade.propose',
+  'trade.respond',
+  'trade.cancel',
   'event_log.fetch',
   'event_log.seen',
 ] as const;

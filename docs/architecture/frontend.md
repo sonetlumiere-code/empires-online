@@ -539,9 +539,13 @@ y grueso, y una que carga madera, un tronco a la espalda.
   sustituye en cada cambio, a diferencia de los mapas estables de §4.4: sólo la lee el HUD. `world.snapshot.treaties`
   la reemplaza entera; `treaty.update` la cambia tratado a tratado y, con un estado que no es `PROPOSED` ni
   `ACTIVE`, saca el tratado (`applyTreatyUpdate`).
-- **Proponer.** Un clic en el 3 × 3 de una ciudad ajena **sin unidad seleccionada** abre una barra con «Proponer
-  pacto» y «Proponer alianza» (`treaty.propose` con el `ownerPlayerId` de la ciudad). Con una unidad
+- **Proponer.** Un clic en el 3 × 3 de una ciudad ajena **sin unidad seleccionada** abre una barra con los
+  tratados que tiene sentido proponerle (`treaty.propose` con el `ownerPlayerId` de la ciudad). Con una unidad
   seleccionada, el clic sigue siendo la orden de §4.4.
+  **Precisión (2026-11-04, [../specs/trade.md](../specs/trade.md) §4.1).** Los botones salen de la escalera de
+  tratados (`proposableTypes`): sin tratado, «Proponer comercio», «Proponer pacto» y «Proponer alianza»; con uno
+  vigente, sólo los de un escalón superior; ninguno con una oferta pendiente o en preaviso. Antes de E10 la barra
+  enseñaba siempre el pacto y la alianza y el servidor rechazaba lo que no cabía.
 - **Responder, retirar y romper.** La barra lista cada tratado con su texto (`treatyLabel`) y sus órdenes
   (`treatyActions`): una oferta recibida, «Aceptar» y «Rechazar»; la propia, «Retirar»; una vigente, «Romper», que
   pide confirmación porque no se deshace. En preaviso no hay botón y el texto lleva la cuenta atrás hasta
@@ -566,6 +570,26 @@ y grueso, y una que carga madera, un tronco a la espalda.
   las pérdidas en rojo. «Entendido» manda `event_log.seen` con el mayor `id` nuevo y lo marca en la pestaña.
 - **El botón «Registro».** Lleva el número de entradas nuevas y abre el historial de siete días, con las nuevas en
   negrita y «Ver más» mientras haya `nextBeforeId`. Al cerrarlo, lo da por visto como «Entendido».
+
+### 4.7 Comercio: ofertas y tratos (SPEC-TRADE)
+
+> **Estado (2026-11-04): implementado y con tests de lo puro** (`src/state/trade.ts`).
+
+- El store guarda `tradeOffers`, las ofertas `PROPOSED` del jugador, como `treaties`: una lista inmutable que
+  `world.snapshot.tradeOffers` reemplaza entera y `trade.update` cambia oferta a oferta; con un estado que no es
+  `PROPOSED`, la oferta sale (`applyTradeUpdate`). Cada oferta viene **desde el punto de vista de quien la recibe**:
+  `give` es lo que saldría de su almacén y `get` lo que entraría.
+- **Ofrecer.** En la barra de la ciudad ajena (§4.5), si hay un tratado vigente con su dueño (`canTradeWith`: los
+  tres escalones, también en preaviso) y ninguna oferta pendiente entre los dos (`pendingWith`), aparece el
+  formulario «Doy [cantidad] [madera | piedra] y pido [cantidad] [el otro recurso]» con «Ofrecer trato». Con dos
+  recursos, ofrecer uno es pedir el otro (`otherResource`, Q4). El botón se desactiva con su motivo
+  (`offerBlockReason`) si una cantidad no es un entero de 1 a la cota técnica o si el almacén propio no tiene lo que
+  se da: el mismo patrón que «Casa» y «Aldeano» (§4.4). El cliente no reserva nada ni decide si alcanza al aceptar.
+- **Responder y retirar.** La misma barra lista cada oferta con su texto (`tradeLabel`, con lo que caduca en horas o
+  minutos) y sus órdenes (`tradeActions`): la recibida, «Aceptar» y «Rechazar»; la propia, «Retirar». Al aceptarse,
+  el almacén cambia por el `city.update { stocks }` de siempre.
+- Los rechazos (`INVALID_TARGET`, `TREATY_REQUIRED`, `INSUFFICIENT_RESOURCES`) llegan como `system.error` y se
+  muestran en el pie con su mensaje (§3.6). El registro (§4.6) cuenta los tratos con sus cantidades.
 
 ## 5. Posición autoritativa frente a posición de render
 

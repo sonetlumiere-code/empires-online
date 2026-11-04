@@ -58,6 +58,8 @@ func TestLaPaginaDelRegistroEsLaDelEsquema(t *testing.T) {
 	completa := protocol.EventLogEntry{
 		ID: 1, Kind: "PILLAGED", Count: 1, OtherPlayerID: "x", OtherCityID: &id, OtherCityName: &nombre,
 		UnitType: "VILLAGER", Amount: &n, TreatyType: "ALLIANCE", ProposedByMe: &mia, X: &x, Y: &y, BreaksAtMs: &n,
+		TradeGive: []protocol.ResourceAmount{{Resource: "WOOD", Amount: 1}},
+		TradeGet:  []protocol.ResourceAmount{{Resource: "STONE", Amount: 1}},
 	}
 	require.Equal(t, declaradas, clavesDe(serializado(t, completa)), "con todo, los campos del esquema")
 	minima := clavesDe(serializado(t, protocol.EventLogEntry{ID: 1, Kind: "PILLAGED", Count: 1, OtherPlayerID: "x"}))

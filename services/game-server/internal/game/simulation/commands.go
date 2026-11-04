@@ -190,6 +190,12 @@ func CommandTypes() []string {
 		CancelTreaty{}.commandType(),
 		TreatyResolved{}.commandType(),
 		TreatyEndPersistFailed{}.commandType(),
+		ProposeTrade{}.commandType(),
+		RespondTrade{}.commandType(),
+		CancelTrade{}.commandType(),
+		TradeResolved{}.commandType(),
+		TradeAcceptResolved{}.commandType(),
+		TradeEndPersistFailed{}.commandType(),
 	}
 }
 
@@ -228,6 +234,7 @@ func JobNames() []string {
 		JobCityAdvance, JobAdvanceComplete,
 		JobDeath, JobAttack, JobPillage, JobBuildingDestroy,
 		JobTreatyOrder, JobTreatyEnd,
+		JobTradeOrder, JobTradeAccept, JobTradeEnd,
 	}
 }
 
@@ -241,6 +248,10 @@ type Job struct {
 	// incluidos (ADR-013 §2.2). Vacía, el trabajo no tiene orden respecto a
 	// ningún otro.
 	Key string
+	// Key2 es una segunda entidad que la escritura también toca, por ejemplo
+	// la otra ciudad de un trato. El trabajo se ejecuta en orden respecto a
+	// los de las dos claves (ADR-032 §3). Vacía, el trabajo tiene sólo Key.
+	Key2 string
 	// Run ejecuta la escritura. Debe ser idempotente: puede reintentarse.
 	Run func(ctx context.Context) error
 	// OnPermanentFailure se llama tras agotar los reintentos. Corre en la

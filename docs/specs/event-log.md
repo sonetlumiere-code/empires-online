@@ -60,6 +60,14 @@ jugador se nombra por su ciudad, como en los tratados (`otherCityName`), y el lu
 | Ruptura anunciada por el otro | `TreatyBreakAnnounced` | «Villa Norte rompió el pacto: la paz termina a las 21:15» |
 | Tratado terminado | `TreatyBroken`, o `TreatyExpired` desde `ACTIVE` | «La alianza con Villa Norte terminó; tus unidades guarnecidas salieron de su ciudad» |
 
+**Precisión (2026-11-04, [trade.md](trade.md) Q10, [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) §7).**
+Desde E10 entran también los tratos, con el mismo criterio que los tratados: la oferta recibida (`TradeProposed`, «Villa
+Norte te ofreció 300 de madera por 100 de piedra»), la propia aceptada (`TradeAccepted`, «Villa Norte aceptó tu trato:
+diste 300 de madera y recibiste 100 de piedra») o rechazada (`TradeRejected`), la recibida que el otro retiró
+(`TradeWithdrawn`) y la que caducó, propia o recibida (`TradeExpired`). Son los tipos de entrada `TRADE_OFFERED`,
+`TRADE_ACCEPTED`, `TRADE_REJECTED`, `TRADE_WITHDRAWN` y `TRADE_OFFER_EXPIRED`, con lo que salía del almacén de quien lee
+(`tradeGive`) y lo que entraba (`tradeGet`). Los tratos no se agrupan (§4.2): cada uno es su entrada.
+
 Lo que hizo el propio jugador en la diplomacia (proponer, romper, retirar) no entra: ya lo sabe. `TreatyExpired` desde
 `ACTIVE` sólo lo escriben los tratados administrativos con `expires_at`: el pacto que una alianza sustituye se cierra
 sin evento propio, y lo cuenta el `TreatyAccepted` de la alianza.

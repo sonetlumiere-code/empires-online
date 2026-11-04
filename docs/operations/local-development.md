@@ -496,12 +496,17 @@ de madera y la construye; un guerrero propio la golpea hasta derribarla: comprue
 casa de otra cuenta. Con `--diplomacia`
 ([../specs/diplomacy.md](../specs/diplomacy.md)), `smoke_runner` y `smoke_victim` firman un pacto de no agresión (o
 reutilizan el vigente), se comprueba que el pacto impide el saqueo y `smoke_runner` lo rompe: el tratado queda en
-preaviso 15 minutos. Repetirlo antes falla y dice cuánto falta. Con `--registro`
+preaviso 15 minutos. Repetirlo antes falla y dice cuánto falta. Con `--comercio`
+([../specs/trade.md](../specs/trade.md)), `smoke_runner` y `smoke_victim` usan el tratado vigente entre los dos (también en
+preaviso) o firman uno `TRADE`; se comprueba que ofrecer más madera de la que hay se rechaza con `INSUFFICIENT_RESOURCES`,
+`smoke_runner` ofrece 50 de madera por 10 de piedra, los dos ven la oferta desde su lado, `smoke_victim` la acepta, su
+almacén cambia en el acto y el registro de `smoke_runner` cuenta el trato con sus cantidades. `smoke_victim` necesita
+10 de piedra: con el servidor parado, `EO_DEVSEED_STOCK_FOR=smoke_victim pnpm run dev:seed`. Con `--registro`
 ([../specs/event-log.md](../specs/event-log.md)), `smoke_victim` se conecta y su registro tiene que nombrar a
 `smoke_runner` (el saqueo con `--saqueo`, la casa con `--asedio`, la ruptura con `--diplomacia`), `smoke_runner` ve su lado, y la víctima da
 por visto lo asentado, reconecta con un ticket nuevo y el cursor sigue marcado. Necesita que antes haya pasado algo
 entre los dos, en la misma pasada o en una anterior, y espera hasta 26 s a que lo más reciente se asiente. En una
-misma pasada el orden es saqueo, asedio, diplomacia y registro: el pacto de `--diplomacia` impediría el asedio durante
+misma pasada el orden es saqueo, asedio, diplomacia, comercio y registro: el pacto de `--diplomacia` impediría el asedio durante
 sus 15 minutos de preaviso.
 
 ---

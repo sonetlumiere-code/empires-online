@@ -169,7 +169,7 @@ func TestRechazosDeLaDiplomacia(t *testing.T) {
 		cmd    simulation.Command
 	}{
 		{"conmigo mismo", simulation.ProposeTreaty{PlayerID: h.playerID, Target: h.playerID, Type: diplomacy.TypeAlliance}},
-		{"TRADE no se propone", simulation.ProposeTreaty{PlayerID: h.playerID, Target: tercero, Type: diplomacy.TypeTrade}},
+		{"un tipo fuera del catálogo", simulation.ProposeTreaty{PlayerID: h.playerID, Target: tercero, Type: diplomacy.Type("VASALLAJE")}},
 		{"jugador inexistente", simulation.ProposeTreaty{PlayerID: h.playerID, Target: uuid.New(), Type: diplomacy.TypeAlliance}},
 		{"ya hay una oferta pendiente", simulation.ProposeTreaty{PlayerID: vecino, Target: h.playerID, Type: diplomacy.TypeAlliance}},
 		{"responder a la oferta propia", simulation.RespondTreaty{PlayerID: h.playerID, TreatyID: oferta.ID, Accept: true}},

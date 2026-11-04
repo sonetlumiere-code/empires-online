@@ -70,6 +70,21 @@ export const ResourceType = z.enum(['WOOD', 'STONE']);
 export type ResourceType = z.infer<typeof ResourceType>;
 
 /**
+ * Cota técnica de una línea de comercio (ADR-032 §7): no es una regla de juego.
+ */
+export const TRADE_MAX_AMOUNT = 1_000_000;
+
+/**
+ * Una línea de una oferta de comercio: un recurso y una cantidad (SPEC-TRADE §4.2).
+ * Nada de regalos: la cantidad es al menos 1 (Q3).
+ */
+export const ResourceAmount = z.object({
+  resource: ResourceType,
+  amount: z.number().int().min(1).max(TRADE_MAX_AMOUNT),
+});
+export type ResourceAmount = z.infer<typeof ResourceAmount>;
+
+/**
  * Stock de una ciudad, por recurso. Lo calcula y lo envía el servidor; el cliente
  * jamás lo propone.
  */
@@ -291,6 +306,13 @@ export const EventLogKind = z.enum([
   'TREATY_OFFER_EXPIRED',
   'TREATY_BREAK_ANNOUNCED',
   'TREATY_ENDED',
+  // Comercio (SPEC-TRADE §6): una oferta recibida, la propia aceptada o rechazada, la
+  // recibida que el otro retiró y la que caducó.
+  'TRADE_OFFERED',
+  'TRADE_ACCEPTED',
+  'TRADE_REJECTED',
+  'TRADE_WITHDRAWN',
+  'TRADE_OFFER_EXPIRED',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -323,5 +345,35 @@ export const EventLogEntry = z.object({
   y: WorldCoordinate.optional(),
   /** En una ruptura anunciada: cuándo termina la paz (RN-DIPLO-004). */
   breaksAtMs: EpochMs.optional(),
+  /**
+   * En los tratos (SPEC-TRADE §6): lo que la oferta sacaba del almacén de quien recibe
+   * la entrada y lo que metía en él. Opcionales: aditivos en v1 (R-VER-2).
+   */
+  tradeGive: z.array(ResourceAmount).optional(),
+  tradeGet: z.array(ResourceAmount).optional(),
 });
 export type EventLogEntry = z.infer<typeof EventLogEntry>;
+
+/** Estado de una oferta de comercio (SPEC-TRADE §4.2). */
+export const TradeOfferStatus = z.enum(['PROPOSED', 'ACCEPTED', 'REJECTED', 'WITHDRAWN', 'EXPIRED']);
+export type TradeOfferStatus = z.infer<typeof TradeOfferStatus>;
+
+/**
+ * Una oferta de comercio vista por uno de sus dos jugadores (SPEC-TRADE §6): `give`
+ * es lo que saldría de su almacén y `get` lo que entraría, sea quien sea el que la
+ * propuso.
+ */
+export const TradeOfferView = z.object({
+  id: EntityId,
+  otherPlayerId: Uuid,
+  /** La ciudad del otro jugador, si la tiene. */
+  otherCityId: EntityId.nullable(),
+  otherCityName: z.string().min(1).max(64).nullable(),
+  give: z.array(ResourceAmount).min(1),
+  get: z.array(ResourceAmount).min(1),
+  status: TradeOfferStatus,
+  proposedByMe: z.boolean(),
+  /** Cuándo caduca sin respuesta (RN-TRADE-006). */
+  expiresAtMs: EpochMs,
+});
+export type TradeOfferView = z.infer<typeof TradeOfferView>;

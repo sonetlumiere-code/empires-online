@@ -113,6 +113,9 @@ type State struct {
 	siege siegeState
 	// diplo son los tratados abiertos y su reserva (SPEC-DIPLOMACY).
 	diplo diplomacyState
+	// trade son las ofertas de comercio pendientes y los tratos reservados
+	// (SPEC-TRADE, ADR-032).
+	trade tradeState
 
 	// El recurso de los tiles tocados: la madera del bosque (SPEC-ECON-FOREST,
 	// ADR-025) y la piedra de la colina (SPEC-ECON-STONE, ADR-030).
@@ -149,6 +152,7 @@ func NewState(w *world.World) *State {
 		combat:             newCombatState(),
 		siege:              newSiegeState(),
 		diplo:              newDiplomacyState(),
+		trade:              newTradeState(),
 		deposits:           newDepositState(),
 		pendingCompletions: make(map[int64]struct{}),
 

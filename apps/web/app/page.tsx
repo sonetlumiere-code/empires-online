@@ -37,7 +37,26 @@ import {
   unitTypeLabel,
 } from '../src/state/economy';
 import { ViewSync } from '../src/state/viewSync';
-import { anyCountdown, treatyActions, treatyLabel, type TreatyAction } from '../src/state/diplomacy';
+import {
+  anyCountdown,
+  proposableTypes,
+  treatyActions,
+  treatyLabel,
+  type ProposableType,
+  type TreatyAction,
+} from '../src/state/diplomacy';
+import {
+  canTradeWith,
+  draftLines,
+  offerBlockReason,
+  otherResource,
+  pendingWith,
+  tradeActions,
+  tradeLabel,
+  type ResourceType,
+  type TradeAction,
+  type TradeDraft,
+} from '../src/state/trade';
 import {
   entryText,
   isLoss,
@@ -94,6 +113,9 @@ export default function Page() {
   // la que se hizo clic sin unidad seleccionada, para proponerle un tratado.
   const treaties = useWorldStore((s) => s.treaties);
   const [diplomacyTarget, setDiplomacyTarget] = useState<CityView | null>(null);
+  // Comercio (SPEC-TRADE): las ofertas pendientes y el trato que se está armando.
+  const tradeOffers = useWorldStore((s) => s.tradeOffers);
+  const [draft, setDraft] = useState<TradeDraft>({ giveResource: 'WOOD', giveAmount: 100, wantAmount: 50 });
   const countdown = anyCountdown(treaties);
   useEffect(() => {
     if (!countdown) return;
@@ -413,6 +435,22 @@ export default function Page() {
     client.cancelTreaty(treatyId);
   };
 
+  // Órdenes de comercio (SPEC-TRADE). Aceptar mueve los dos almacenes en el acto.
+  const runTradeAction = (action: TradeAction, offerId: number) => {
+    const client = clientRef.current;
+    if (!client) return;
+    if (action === 'withdraw') {
+      client.cancelTrade(offerId);
+      return;
+    }
+    client.respondTrade(offerId, action === 'accept');
+  };
+  const offerTrade = (target: CityView) => {
+    const { give, want } = draftLines(draft);
+    clientRef.current?.proposeTrade(target.ownerPlayerId, give, want);
+    setDiplomacyTarget(null);
+  };
+
   // «Casa»: el primer hueco libre del 3 × 3, sin pedir clic (frontend.md §4.4).
   // Un clic en la zona urbana ya es la orden de guarnecerse.
   const buildHouse = () => {
@@ -535,17 +573,58 @@ export default function Page() {
         </button>
       </header>
 
-      {(diplomacyTarget || treaties.length > 0) && (
+      {(diplomacyTarget || treaties.length > 0 || tradeOffers.length > 0) && (
         <div style={{ ...styles.hud, flexWrap: 'wrap', gap: '0.75rem' }} aria-label="Diplomacia">
           {diplomacyTarget && (
             <>
               <span>{diplomacyTarget.name}:</span>
-              <button className="secondary" onClick={() => { clientRef.current?.proposeTreaty(diplomacyTarget.ownerPlayerId, 'NON_AGGRESSION'); setDiplomacyTarget(null); }}>
-                Proponer pacto
-              </button>
-              <button className="secondary" onClick={() => { clientRef.current?.proposeTreaty(diplomacyTarget.ownerPlayerId, 'ALLIANCE'); setDiplomacyTarget(null); }}>
-                Proponer alianza
-              </button>
+              {proposableTypes(treaties, diplomacyTarget.ownerPlayerId).map((tipo) => (
+                <button
+                  key={tipo}
+                  className="secondary"
+                  onClick={() => { clientRef.current?.proposeTreaty(diplomacyTarget.ownerPlayerId, tipo); setDiplomacyTarget(null); }}
+                >
+                  {PROPOSE_LABEL[tipo]}
+                </button>
+              ))}
+              {canTradeWith(treaties, diplomacyTarget.ownerPlayerId) &&
+                (pendingWith(tradeOffers, diplomacyTarget.ownerPlayerId) ? (
+                  <span style={{ color: 'var(--muted)' }}>Ya hay una oferta de comercio pendiente</span>
+                ) : (
+                  <span style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }} aria-label="Ofrecer un trato">
+                    <span>Doy</span>
+                    <input
+                      type="number" min={1} step={1} value={draft.giveAmount} style={{ width: '5rem' }} aria-label="Cantidad que doy"
+                      onChange={(e) => setDraft({ ...draft, giveAmount: Number(e.target.value) })}
+                    />
+                    <select
+                      value={draft.giveResource} aria-label="Recurso que doy"
+                      onChange={(e) => setDraft({ ...draft, giveResource: e.target.value as ResourceType })}
+                    >
+                      <option value="WOOD">de madera</option>
+                      <option value="STONE">de piedra</option>
+                    </select>
+                    <span>y pido</span>
+                    <input
+                      type="number" min={1} step={1} value={draft.wantAmount} style={{ width: '5rem' }} aria-label="Cantidad que pido"
+                      onChange={(e) => setDraft({ ...draft, wantAmount: Number(e.target.value) })}
+                    />
+                    <span>{otherResource(draft.giveResource) === 'WOOD' ? 'de madera' : 'de piedra'}</span>
+                    {(() => {
+                      const reason = offerBlockReason(draft, ownCity?.stocks);
+                      return (
+                        <button
+                          className="secondary"
+                          disabled={reason !== null}
+                          title={reason ?? 'El otro jugador lo acepta o lo rechaza; si lo acepta, los dos almacenes cambian en el acto'}
+                          onClick={() => offerTrade(diplomacyTarget)}
+                        >
+                          Ofrecer trato
+                        </button>
+                      );
+                    })()}
+                  </span>
+                ))}
               <button className="secondary" onClick={() => setDiplomacyTarget(null)} title="Cerrar">×</button>
             </>
           )}
@@ -554,6 +633,16 @@ export default function Page() {
               <span>{treatyLabel(tr, serverTimeMs())}</span>
               {treatyActions(tr).map((a) => (
                 <button key={a} className="secondary" onClick={() => runTreatyAction(a, tr.id)}>
+                  {ACTION_LABEL[a]}
+                </button>
+              ))}
+            </span>
+          ))}
+          {tradeOffers.map((o) => (
+            <span key={`trade-${o.id}`} style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }}>
+              <span>{tradeLabel(o, serverTimeMs())}</span>
+              {tradeActions(o).map((a) => (
+                <button key={a} className="secondary" onClick={() => runTradeAction(a, o.id)}>
                   {ACTION_LABEL[a]}
                 </button>
               ))}
@@ -649,8 +738,15 @@ function EventLogList({
   );
 }
 
-/** El texto de cada orden de tratado en el HUD. */
-const ACTION_LABEL: Record<TreatyAction, string> = {
+/** El botón que propone cada escalón de la escalera de tratados (SPEC-TRADE §4.1). */
+const PROPOSE_LABEL: Record<ProposableType, string> = {
+  TRADE: 'Proponer comercio',
+  NON_AGGRESSION: 'Proponer pacto',
+  ALLIANCE: 'Proponer alianza',
+};
+
+/** El texto de cada orden de tratado o de comercio en el HUD. */
+const ACTION_LABEL: Record<TreatyAction | TradeAction, string> = {
   accept: 'Aceptar',
   reject: 'Rechazar',
   withdraw: 'Retirar',

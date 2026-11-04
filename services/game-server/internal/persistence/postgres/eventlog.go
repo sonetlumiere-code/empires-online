@@ -188,6 +188,27 @@ type eventPayload struct {
 	// counterpart_player_id, pero su payload ya nombraba al autor.
 	KillerPlayerID   string `json:"killerPlayerId"`
 	AttackerPlayerID string `json:"attackerPlayerId"`
+	// Los tratos (ADR-032 §7).
+	OfferID int64         `json:"offerId"`
+	Give    []payloadLine `json:"give"`
+	Want    []payloadLine `json:"want"`
+}
+
+// payloadLine es una línea de un trato en el payload.
+type payloadLine struct {
+	Resource string `json:"resource"`
+	Amount   int64  `json:"amount"`
+}
+
+func toLines(ls []payloadLine) []eventlog.Line {
+	if len(ls) == 0 {
+		return nil
+	}
+	out := make([]eventlog.Line, len(ls))
+	for i, l := range ls {
+		out[i] = eventlog.Line{Resource: l.Resource, Amount: l.Amount}
+	}
+	return out
 }
 
 // fillFromPayload copia del payload lo que el registro usa. Con legacy (la fila
@@ -221,6 +242,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	if p.BreakEffectiveAt != nil {
 		e.BreaksAtMs = p.BreakEffectiveAt.UnixMilli()
 	}
+	e.OfferID, e.Give, e.Want = p.OfferID, toLines(p.Give), toLines(p.Want)
 	return nil
 }
 
@@ -265,6 +287,14 @@ func (r *EventLogRepo) citiesOf(ctx context.Context, entries []eventlog.Entry) (
 	return out, normalize(rows.Err())
 }
 
+func fromLines(ls []eventlog.Line) []protocol.ResourceAmount {
+	out := make([]protocol.ResourceAmount, len(ls))
+	for i, l := range ls {
+		out[i] = protocol.ResourceAmount{Resource: l.Resource, Amount: l.Amount}
+	}
+	return out
+}
+
 func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEntry {
 	v := protocol.EventLogEntry{
 		ID: e.ID, Kind: string(e.Kind), FirstAtMs: e.FirstAtMs, LastAtMs: e.LastAtMs, Count: e.Count,
@@ -288,6 +318,12 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 			at := e.BreaksAtMs
 			v.BreaksAtMs = &at
 		}
+	case eventlog.KindTradeOfferExpired:
+		mine := e.ProposedByMe
+		v.ProposedByMe = &mine
+	}
+	if len(e.TradeGive) > 0 || len(e.TradeGet) > 0 {
+		v.TradeGive, v.TradeGet = fromLines(e.TradeGive), fromLines(e.TradeGet)
 	}
 	switch e.Kind {
 	case eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindPillaged, eventlog.KindPillageDone,

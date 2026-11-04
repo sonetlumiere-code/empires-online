@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), y la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), y el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -28,9 +28,10 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `territories` | MVP: **activa** | Sembrada al primer arranque por el Game Server, no por una migración: la geometría debe caber en un mundo cuyas dimensiones son configuración |
 | `territory_control` | MVP: **activa** | Write-through transaccional en la fundación de la ciudad, con concurrencia optimista sobre `version` |
 | `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
-| `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
+| `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick. Desde E10, `TRADE` es el primer escalón de la escalera ([../specs/trade.md](../specs/trade.md) §4.1) |
+| `trade_offers`, `trade_offer_lines` | E10: **activas** | Las ofertas de comercio y sus líneas. La RAM decide; cada transición va con su evento y el trato aceptado mueve los dos almacenes en la misma transacción ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)) |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` y `HillDepleted` al agotarse un tile de bosque o de colina, `EraAdvanceOrdered` y `EraAdvanced` en el avance de era, e `InvariantRepaired` en la validación de carga del arranque |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` y `HillDepleted` al agotarse un tile de bosque o de colina, `EraAdvanceOrdered` y `EraAdvanced` en el avance de era, los cinco `Trade*` en el comercio, e `InvariantRepaired` en la validación de carga del arranque |
 | `city_stocks` | E1: **activa** | Una fila por ciudad y recurso (`WOOD` y, desde `000012`, `STONE`), creada en la fundación (y para las ciudades existentes, por `000006` y `000012`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
 | `unit_tasks` | E1: **activa** | Write-through en cada transición de la tarea de recolección, con su tramo de movimiento y `units.status` en la misma transacción |
 | `buildings` | E1: **activa** | Encargo de `city.build` (con su débito) y finalización en la fase 5 |
@@ -1133,6 +1134,57 @@ El encargo la inserta en la transacción que debita todo el coste (`EraAdvanceOr
 el fin la borra en la transacción que cambia `cities.era` y sube `population_limit` en `cap(to) − cap(from)`, sólo si
 la ciudad seguía en `from_era` (`EraAdvanced`, [INV-CITY-018](../invariants/city.md#inv-city-018)). Mientras exista,
 `city.train` responde `CITY_BUSY`, y una producción en curso impide insertarla.
+
+### 16.8 `trade_offers` y `trade_offer_lines` (`000013`)
+
+Las ofertas de comercio «doy esto, pido aquello» entre dos jugadores ([../specs/trade.md](../specs/trade.md),
+[ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) §6).
+
+```sql
+CREATE TABLE trade_offers (
+    id                  bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    proposer_id         uuid        NOT NULL REFERENCES players (id),
+    target_id           uuid        NOT NULL REFERENCES players (id),
+    proposer_city_id    bigint      NOT NULL REFERENCES cities (id),
+    target_city_id      bigint      NOT NULL REFERENCES cities (id),
+    status              text        NOT NULL,
+    request_id          text        NOT NULL,
+    accepted_request_id text        NULL,
+    created_at          timestamptz NOT NULL,
+    expires_at          timestamptz NOT NULL,
+    closed_at           timestamptz NULL,
+    CONSTRAINT trade_offers_status_valid
+        CHECK (status IN ('PROPOSED', 'ACCEPTED', 'REJECTED', 'WITHDRAWN', 'EXPIRED')),
+    CONSTRAINT trade_offers_distinct_players CHECK (proposer_id <> target_id),
+    CONSTRAINT trade_offers_expiry_after_creation CHECK (expires_at > created_at),
+    CONSTRAINT trade_offers_closed_has_time
+        CHECK ((status = 'PROPOSED') = (closed_at IS NULL)),
+    CONSTRAINT trade_offers_accepted_has_request
+        CHECK ((status = 'ACCEPTED') = (accepted_request_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX trade_offers_one_pending_per_pair
+    ON trade_offers (least(proposer_id, target_id), greatest(proposer_id, target_id))
+    WHERE status = 'PROPOSED';
+CREATE UNIQUE INDEX trade_offers_unique_request ON trade_offers (proposer_id, request_id);
+CREATE INDEX trade_offers_pending_idx ON trade_offers (id) WHERE status = 'PROPOSED';
+
+CREATE TABLE trade_offer_lines (
+    offer_id bigint NOT NULL REFERENCES trade_offers (id) ON DELETE CASCADE,
+    side     text   NOT NULL,
+    resource text   NOT NULL,
+    amount   bigint NOT NULL,
+    PRIMARY KEY (offer_id, resource),
+    CONSTRAINT trade_offer_lines_side_valid CHECK (side IN ('GIVE', 'WANT')),
+    CONSTRAINT trade_offer_lines_resource_valid CHECK (resource IN ('WOOD', 'STONE')),
+    CONSTRAINT trade_offer_lines_amount_positive CHECK (amount > 0 AND amount <= 1000000)
+);
+```
+
+`trade_offers_one_pending_per_pair` es [INV-TRADE-003](../invariants/trade.md#inv-trade-003): una oferta pendiente por
+par, la proponga quien la proponga. La PK de las líneas impide un recurso en los dos lados (SPEC-TRADE Q4). Aceptar
+bloquea la fila, aplica los deltas versionados de los dos almacenes y la pasa a `ACCEPTED` en una transacción
+([INV-TRADE-001](../invariants/trade.md#inv-trade-001)); el `CHECK` de recurso de las líneas es el de `city_stocks`, y un
+recurso nuevo toca los dos.
 
 ---
 

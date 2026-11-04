@@ -23,6 +23,7 @@ import {
   PROTOCOL_VERSION,
   ResourceType,
   TreatyView,
+  TradeOfferView,
   PresenceState,
   ProductionView,
   Stocks,
@@ -135,6 +136,11 @@ export const WorldSnapshot = z.object({
      * Opcional: aditivo en v1; como todo el snapshot, reemplaza la lista del cliente.
      */
     treaties: z.array(TreatyView).optional(),
+    /**
+     * Ofertas de comercio PROPOSED del jugador que recibe el snapshot (SPEC-TRADE §6).
+     * Opcional: aditivo en v1; como los tratados, reemplaza la lista del cliente.
+     */
+    tradeOffers: z.array(TradeOfferView).optional(),
   }),
 });
 
@@ -297,6 +303,16 @@ export const TreatyUpdate = z.object({
 });
 
 /**
+ * Cambió una oferta de comercio del jugador: una nueva, una respuesta, una retirada o
+ * su caducidad. La reciben sólo sus dos jugadores, cada uno con su vista (SPEC-TRADE §6).
+ */
+export const TradeUpdate = z.object({
+  ...serverEnvelope,
+  type: z.literal('trade.update'),
+  payload: z.object({ offer: TradeOfferView }),
+});
+
+/**
  * Una página del registro, en respuesta a `event_log.fetch` y sólo para la sesión que
  * la pidió (SPEC-EVENT-LOG §6). `seenUpToId` es el cursor de lo visto al servirla;
  * `nextBeforeId`, el `beforeId` de la página siguiente, `null` si no hay más.
@@ -400,6 +416,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   HillUpdate,
   TreatyUpdate,
   EventLogPage,
+  TradeUpdate,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -424,6 +441,7 @@ export type ForestUpdate = z.infer<typeof ForestUpdate>;
 export type HillUpdate = z.infer<typeof HillUpdate>;
 export type TreatyUpdate = z.infer<typeof TreatyUpdate>;
 export type EventLogPage = z.infer<typeof EventLogPage>;
+export type TradeUpdate = z.infer<typeof TradeUpdate>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -447,6 +465,7 @@ export const SERVER_MESSAGE_TYPES = [
   'hill.update',
   'treaty.update',
   'event_log.page',
+  'trade.update',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

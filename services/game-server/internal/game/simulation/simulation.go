@@ -46,6 +46,10 @@ type Deps struct {
 	// (ADR-027). Opcional: sin él, las órdenes responden INTERNAL_ERROR y los
 	// vencimientos sólo cambian la RAM.
 	Treaties TreatyStore
+	// Trade escribe las ofertas de comercio y los tratos (ADR-032). Opcional:
+	// sin él, las órdenes de comercio responden INTERNAL_ERROR y las
+	// caducidades sólo cambian la RAM.
+	Trade TradeStore
 	// Garrisons escribe la entrada y la salida de las guarniciones. Opcional:
 	// sin él, unit.garrison responde INTERNAL_ERROR.
 	Garrisons GarrisonStore
@@ -97,6 +101,9 @@ type Deps struct {
 	TreatyOfferTTL    time.Duration
 	TreatyBreakNotice time.Duration
 	TreatyRetry       time.Duration
+	// TradeOfferTTL es la vida de una oferta de comercio sin respuesta
+	// (SPEC-TRADE Q5). Cero: el valor por defecto, 24 h.
+	TradeOfferTTL time.Duration
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -234,6 +241,18 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleTreatyResolved(c)
 	case TreatyEndPersistFailed:
 		s.handleTreatyEndPersistFailed(c)
+	case ProposeTrade:
+		s.handleProposeTrade(c)
+	case RespondTrade:
+		s.handleRespondTrade(c)
+	case CancelTrade:
+		s.handleCancelTrade(c)
+	case TradeResolved:
+		s.handleTradeResolved(c)
+	case TradeAcceptResolved:
+		s.handleTradeAcceptResolved(c)
+	case TradeEndPersistFailed:
+		s.handleTradeEndPersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}

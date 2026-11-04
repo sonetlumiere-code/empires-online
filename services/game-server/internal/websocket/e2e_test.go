@@ -276,6 +276,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		Garrisons:          memoryGarrisons{},
 		Economy:            &memoryEconomy{},
 		Treaties:           &memoryTreaties{nextID: 100},
+		Trade:              &memoryTrade{nextID: 300},
 		Inbox:              inbox.Offer,
 		Log:                log,
 		ProtectionCooldown: 300 * time.Second,

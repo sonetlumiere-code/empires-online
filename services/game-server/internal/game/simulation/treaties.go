@@ -288,13 +288,14 @@ func (s *Simulation) handleProposeTreaty(cmd ProposeTreaty) {
 		return
 	}
 	// RN-DIPLO-001 e INV-DIPLO-002: ninguna oferta pendiente, y como vigente
-	// sólo un pacto que se quiera convertir en alianza.
+	// sólo uno de un escalón inferior al propuesto.
 	for _, t := range s.state.openOf(cmd.PlayerID, cmd.Target) {
 		if t.Status == diplomacy.StatusProposed {
 			s.treatyReject(cmd.PlayerID, cmd.RequestID, "ya hay una oferta pendiente con ese jugador")
 			return
 		}
-		mejora := t.Type == diplomacy.TypeNonAggression && cmd.Type == diplomacy.TypeAlliance && t.BreakEffectiveAt == nil
+		// La escalera (SPEC-TRADE §4.1, ADR-032 §5): sólo se sube de escalón.
+		mejora := cmd.Type.Supersedes(t.Type) && t.BreakEffectiveAt == nil
 		if !mejora {
 			s.treatyReject(cmd.PlayerID, cmd.RequestID, "ya tenéis un tratado vigente")
 			return
@@ -341,7 +342,7 @@ func (s *Simulation) handleRespondTreaty(cmd RespondTreaty) {
 	}
 	w := TreatyWrite{Treaty: after, From: diplomacy.StatusProposed, Event: event}
 	if cmd.Accept {
-		// Una alianza aceptada sustituye al pacto vigente (§4.1).
+		// Un tratado aceptado sustituye al vigente del escalón inferior (§4.1).
 		for _, o := range s.state.openOf(t.PlayerA, t.PlayerB) {
 			if o.ID != t.ID && o.Status == diplomacy.StatusActive {
 				pacto := *o
@@ -528,6 +529,10 @@ func (s *Simulation) sweepTreaties(now time.Time) {
 		w.Tick = s.state.Tick()
 		s.submitTreatyEnd(w)
 	}
+
+	// RN-TRADE-006: las ofertas de comercio de un par que se quedó sin tratado
+	// caen en este mismo tick.
+	s.sweepTrades(now)
 }
 
 func (s *Simulation) submitTreatyEnd(w TreatyWrite) {
