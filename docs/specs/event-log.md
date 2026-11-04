@@ -30,7 +30,8 @@ cinco segundos en el HUD y sólo lo recibe el dueño si está conectado en ese m
 vio (§4.3), dos comandos y un mensaje nuevos (§6), el actor de una ruptura en su evento, la atribución de cada
 suceso a los dos jugadores implicados y, en el cliente, la ventana «Mientras no estabas» y un botón «Registro».
 
-**No entra** (`Fuera de MVP` de este slice): avisos en vivo empujados por el servidor (Q5), correo o notificaciones
+**No entra** (`Fuera de MVP` de este slice): avisos en vivo empujados por el servidor (Q5; desde E11 los hay, sin
+ser entradas: [live-notices.md](live-notices.md)), correo o notificaciones
 del sistema, la economía propia (casas terminadas, aldeanos entrenados, bosque agotado; Q1), los ataques que no
 mataron ni robaron nada (Q1), ir al lugar con un clic, filtros y búsqueda, y borrar o archivar entradas.
 
@@ -106,7 +107,7 @@ Dominio: `RN-LOG`.
 | `RN-LOG-004` | `event_log.seen { upToId }` avanza el cursor hasta `upToId` como mucho, y nunca más allá del tope marcable de la última página que esa sesión sirvió (§4.3); sin página servida, no hace nada. El cursor nunca retrocede: un `upToId` menor no hace nada. |
 | `RN-LOG-005` | La hora de cada entrada es la del suceso en la simulación, no la de su escritura: un reintento de la cola no la retrasa. |
 | `RN-LOG-006` | Leer el registro no pasa por el tick loop ni lo frena. Si PostgreSQL no responde, la página falla con `INTERNAL_ERROR` y la partida sigue. |
-| `RN-LOG-007` | El cliente pide la página al conectar y al volver a la pestaña tras un rato fuera; el servidor no empuja nada (Q5). |
+| `RN-LOG-007` | El cliente pide la página al conectar y al volver a la pestaña tras un rato fuera; el servidor no empuja nada (Q5). **Precisión (2026-11-04, [live-notices.md](live-notices.md) `RN-NOTICE-004`, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)):** el servidor no empuja entradas del registro. Desde E11 empuja avisos (`event_log.notice`), que no son entradas: no llevan `id`, no mueven el cursor y no entran en la lista. El cliente pide además la primera página al abrir el registro. |
 
 ## 5. Errores
 
@@ -202,7 +203,7 @@ producto, no de ingeniería: cambiarlas es cambiar la spec.
 | Q2 | ¿Hasta cuándo atrás? | 7 días (`EO_EVENT_LOG_MAX_DAYS`) en páginas de 50 entradas ya agrupadas (`EO_EVENT_LOG_PAGE_SIZE`). Cubre a quien juega una vez por semana y a quien pasó del tope de 48 h. Lo más viejo sigue en `world_events` como auditoría, pero no se muestra. |
 | Q3 | ¿Cómo se sabe qué ya viste? | Con un cursor en el servidor que avanza al pulsar «Entendido». Recargar no repite la ventana y otro dispositivo tampoco. Las alternativas son peores: «desde la última desconexión» repite o pierde la ventana con cada recarga, según el margen de reconexión, y una marca en el navegador la repite en cada dispositivo. |
 | Q4 | ¿Se agrupan los sucesos? | Sí: mismo tipo y mismo otro jugador, con no más de 10 minutos (`EO_EVENT_LOG_GROUP_GAP_MINUTES`) entre uno y el siguiente. «Villa Norte te robó 85 de madera en 17 golpes» se lee; diecisiete líneas de 5 no. |
-| Q5 | ¿Avisa en vivo mientras juegas? | No en este slice. Conectado ya ves morir la unidad, el aviso de saqueo y `treaty.update`. Para quien está conectado sin mirar, el cliente vuelve a pedir la página al volver a la pestaña (`RN-LOG-007`), y eso basta. Empujar cada suceso al instante obliga a darle un `id` antes de que la base lo asigne, el mismo problema que `EO-120` tuvo con los movimientos. |
+| Q5 | ¿Avisa en vivo mientras juegas? | No en este slice. Conectado ya ves morir la unidad, el aviso de saqueo y `treaty.update`. Para quien está conectado sin mirar, el cliente vuelve a pedir la página al volver a la pestaña (`RN-LOG-007`), y eso basta. Empujar cada suceso al instante obliga a darle un `id` antes de que la base lo asigne, el mismo problema que `EO-120` tuvo con los movimientos. **Precisión (2026-11-04, [live-notices.md](live-notices.md) Q1, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)):** desde E11 sí avisa, pero no con entradas. Quien mira otra parte del mapa no ve morir su unidad lejos, y la respuesta automática de E3 mata sin que nadie lo ordene: el servidor manda en el tick del suceso un aviso efímero sin `id` (`event_log.notice`) de cuatro tipos —`UNIT_LOST`, `ENEMY_KILLED`, `PILLAGE_DONE` y `HOUSE_DESTROYED`—, clasificado con la misma función que el registro. La lista sigue saliendo sólo de la página, así que el problema del `id` no aparece. |
 | Q6 | ¿Se dice quién fue? | Sí, por el nombre de su ciudad. No revela nada nuevo: las unidades ya llevan su `playerId` y su ciudad está en el mapa, y saber quién te saquea es lo que da sentido a proponerle un pacto o devolverle el golpe. |
 
 ## 11. Documentos relacionados

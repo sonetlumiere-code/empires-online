@@ -6,13 +6,13 @@ una parte del mapa que no estás mirando, te enteras en el acto, con un aviso en
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-LIVE-NOTICES` |
-| Estado | Draft (2026-11-04). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-04). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
 | Milestone | E11 Avisos (undécimo slice después de M7) |
 | Canon | §13 (protocolo e interest management), §16 (errores) |
 | Depende de | [event-log.md](event-log.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (la muerte se decide en la RAM y se anuncia antes de escribirse), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro sale de `world_events`). Un ADR nuevo (`ADR-033`, el aviso como mensaje efímero sin `id`) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (la muerte se decide en la RAM y se anuncia antes de escribirse), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro sale de `world_events`), [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md) (el aviso como mensaje efímero sin `id`, enviado desde la fase 4 y clasificado con la misma función que el registro). |
 | Reemplaza a | La Q5 de [event-log.md](event-log.md) («¿Avisa en vivo mientras juegas? No en este slice») y `RN-LOG-007` en su segunda mitad («el servidor no empuja nada»). |
-| Invariantes | Cita [INV-SEC-009](../invariants/security.md#inv-sec-009) (sólo los sucesos en los que es parte) e [INV-SEC-001](../invariants/security.md#inv-sec-001); no asigna ninguno nuevo (§8) |
+| Invariantes | Cita [INV-SEC-009](../invariants/security.md#inv-sec-009) (sólo los sucesos en los que es parte; lo precisa para los avisos) e [INV-SEC-001](../invariants/security.md#inv-sec-001); no asigna ninguno nuevo (§8) |
 
 ## 1. Objetivo
 
@@ -67,10 +67,10 @@ Dominio: `RN-NOTICE`.
 |---|---|
 | `RN-NOTICE-001` | **Cuándo.** El aviso sale en el tick en que la simulación decide el suceso (la fase 4 para los tres de combate), por `SendToPlayer` a todas las sesiones del jugador, esté mirando donde esté. No espera a la base: es el mismo momento en que el chunk recibe `entity.despawn` o `building.destroyed` ([ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md)). Un golpe de saqueo cuya transacción falla después de forma definitiva ([ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md) §1) ya se avisó y no se desavisa: es raro, y el registro, que sale de la base, no lo contará. |
 | `RN-NOTICE-002` | **A quién.** Sólo al jugador del que habla el aviso (§4.1), nunca a un tercero ([INV-SEC-009](../invariants/security.md#inv-sec-009)). Si los dos lados de un suceso tienen aviso (una muerte: `UNIT_LOST` para uno y `ENEMY_KILLED` para el otro), cada uno recibe el suyo. |
-| `RN-NOTICE-003` | **Qué lleva.** Lo mismo que una entrada del registro sin agrupar y sin `id`: el tipo, el instante en la simulación, el otro jugador con su ciudad, y según el tipo la unidad (`unitType`), la madera (`amount`) y el tile (`x`, `y`). Nunca nada que el jugador no vería en el registro. |
+| `RN-NOTICE-003` | **Qué lleva.** Lo mismo que una entrada del registro sin agrupar y sin `id`: el tipo, el instante en la simulación, el otro jugador con su ciudad, según el tipo la unidad (`unitType`) y la madera (`amount`), y en los cuatro el tile (`x`, `y`), también en la casa derribada, que en el registro no lo lleva ([ADR-033](../decisions/ADR-033-live-notices-ephemeral.md) §4). Nunca nada que el jugador no vería en el registro. |
 | `RN-NOTICE-004` | **No es una entrada del registro.** El aviso no tiene `id`, no mueve el cursor de lo visto y el cliente no lo mete en la lista del registro: la lista sigue saliendo sólo de `event_log.page` ([ADR-028](../decisions/ADR-028-event-log-from-world-events.md)). Al abrir el registro con avisos sin leer, el cliente pide la primera página. |
 | `RN-NOTICE-005` | **Sin sesión no hay aviso.** No se guarda ni se reenvía al reconectar (Q6): lo que pasó con la sesión cerrada lo cuenta «Mientras no estabas». |
-| `RN-NOTICE-006` | **Agrupación en el cliente.** Los avisos del mismo tipo con el mismo otro jugador se juntan en uno mientras se ve, con su recuento («Villa Norte mató a 3 de tus aldeanos»), como el registro (Q3). Un saqueo, que da un aviso por golpe, es un solo aviso que crece. |
+| `RN-NOTICE-006` | **Agrupación en el cliente.** Los avisos del mismo tipo con el mismo otro jugador (y, en las muertes, el mismo tipo de unidad) se juntan en uno mientras se ve, con su recuento («Villa Norte mató a 3 de tus aldeanos»), con la misma clave que el registro (Q3). Un saqueo, que da un aviso por golpe, es un solo aviso que crece. |
 
 ## 5. Errores
 
@@ -98,10 +98,10 @@ El catálogo servidor → cliente pasa de 22 a 23 tipos. Ningún comando nuevo y
 hechos ya se escriben en `world_events` (`UnitKilled`, `CityPillaged`, `BuildingDestroyed`) y el registro los sigue
 leyendo de ahí.
 
-Cliente: el aviso aparece en una franja del HUD con su texto (el mismo `entryText` del registro) durante unos
-segundos (Q2), hasta tres a la vez, con «Ir» cuando trae tile, que centra la cámara allí (Q4). El botón «Registro»
-gana un punto mientras haya avisos sin abrir, y el título de la pestaña un contador, «(2) Empires Online», que se
-borra al volver a ella (Q7).
+Cliente: el aviso aparece en una franja del HUD con su texto (el mismo `entryText` del registro) durante 8 s desde
+el último aviso de su grupo (Q2), hasta tres a la vez, con «Ir» cuando trae tile, que centra la cámara allí (Q4). El
+botón «Registro» gana un punto mientras haya avisos sin abrir, y el título de la pestaña un contador de los avisos
+llegados con ella oculta, agrupados, «(2) Empires Online», que se borra al volver a ella (Q7).
 
 ## 7. Persistencia
 
@@ -112,11 +112,12 @@ borra al volver a ella (Q7).
 | Dirty-flag | Nada |
 | Reconstruible / no persistido | El aviso entero: es efímero, no se guarda ni se reenvía (`RN-NOTICE-005`) |
 
-**Por qué hace falta un ADR (`ADR-033`).** La Q5 de [event-log.md](event-log.md) descartó los avisos en vivo porque
+**Por qué hace falta un ADR ([ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)).** La Q5 de [event-log.md](event-log.md) descartó los avisos en vivo porque
 «empujar cada suceso al instante obliga a darle un `id` antes de que la base lo asigne», el mismo problema que
 `EO-120` tuvo con los movimientos. La propuesta lo evita en lugar de resolverlo: el aviso **no es una entrada**
-(`RN-NOTICE-004`), así que no necesita `id`, no toca el cursor y no se mezcla con las páginas del registro. El ADR dejará
-escritas las alternativas:
+(`RN-NOTICE-004`), así que no necesita `id`, no toca el cursor y no se mezcla con las páginas del registro. Qué se
+avisa y a quién lo decide la misma clasificación que el registro (`eventlog.Classify`), así que el aviso no puede
+contar algo que el registro no contaría. El ADR deja escritas, entre otras, estas alternativas descartadas:
 
 1. **Empujar la entrada tras el `COMMIT`**, con su `id`, por el buzón del loop. Exige que cada transacción que escribe
    un evento del registro (muerte, golpe de saqueo, casa derribada) devuelva el `id` y avise; el aviso llega unas
@@ -136,8 +137,9 @@ es parte), que el aviso amplía con el mismo enunciado: un jugador sólo recibe 
 [INV-SEC-001](../invariants/security.md#inv-sec-001) (el aviso no acepta nada del cliente).
 
 **No asigna** invariantes nuevos: el aviso no es estado. Lo que debe cumplir (que no llegue a un tercero, que no se
-repita lo que ya avisa otro mensaje) son reglas que verifican los tests de §9. Al aceptar, la ficha de `INV-SEC-009`
-gana una precisión que extiende su enunciado a los avisos.
+repita lo que ya avisa otro mensaje) son reglas que verifican los tests de §9. La ficha de
+[INV-SEC-009](../invariants/security.md#inv-sec-009) lleva la precisión (2026-11-04) que extiende su enunciado a los
+avisos.
 
 ## 9. Tests esperados
 
@@ -148,12 +150,12 @@ gana una precisión que extiende su enunciado a los avisos.
 | contract / e2e | `event_log.notice` contra el JSON Schema, emitido por un e2e en el mismo commit (`TestMain` de `schema_e2e_test.go`); un jugador con la vista en su ciudad recibe el aviso de una muerte en otro chunk |
 | cliente | La agrupación de los avisos, «Ir» con y sin tile, el punto en «Registro» y el contador del título; que abrir el registro con avisos pide la primera página |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-04)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué se avisa? | **Sólo lo que hoy no llega en vivo** (§4.1): tus unidades muertas y lo que las tuyas hacen fuera de la vista (matar, saquear, derribar). Alternativas: **todo lo que cuenta el registro** duplicaría el aviso de saqueo y de asedio y los tratados que ya están en la barra; **sólo tus muertes** se quedaría corta con la respuesta automática de E3, que mata sin que nadie lo ordene. |
 | Q2 | ¿Cómo se ve, y cuánto dura? | **Una franja de avisos en el HUD, hasta tres a la vez, 8 s cada uno** (renovados si llega otro del mismo grupo), con el mismo texto que el registro. Un aviso modal pararía el juego por algo que ya pasó. |

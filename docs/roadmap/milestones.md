@@ -1726,3 +1726,32 @@ registro; `INV-TRADE-001` a `004`; la migración `000013`; el cliente y `scripts
     acuerdo comercial que deja `--comercio`, habría comprobado que un TRADE impide el saqueo, que no lo impide. Elige
     ahora sólo un pacto o una alianza (`pactoVigente`, con su test en `scripts/smoke.test.mjs`, que falla con la lógica
     anterior) y, con un TRADE vigente, propone el pacto como subida de escalón y comprueba la sustitución.
+
+## E11 — Avisos
+
+**Estado: EN CURSO (2026-11-04)**, en la rama `claude/slice-avisos`. Contrato:
+[SPEC-LIVE-NOTICES](../specs/live-notices.md), aceptada el 2026-11-04 con sus ocho decisiones de producto, y
+[ADR-033](../decisions/ADR-033-live-notices-ephemeral.md).
+
+**Objetivo.** Que el riesgo lejos de casa se note cuando ocurre: si matan a tu aldeano en una colina a 160 tiles, te
+enteras en el acto, aunque estés mirando tu ciudad.
+
+**Alcance.** `event_log.notice`, un aviso efímero sin `id` que la simulación manda en la fase 4 al jugador del suceso:
+tus unidades muertas (`UNIT_LOST`) y lo que las tuyas matan (`ENEMY_KILLED`), saquean (`PILLAGE_DONE`) o derriban
+(`HOUSE_DESTROYED`); la clasificación con la misma función que el registro (`eventlog.Notices`); la precisión de
+`INV-SEC-009`; en el cliente, la franja de avisos del HUD agrupada, «Ir», el punto en «Registro» y el contador en el
+título de la pestaña. **No entra** (spec §2): notificaciones del sistema, sonido, guardar o reenviar avisos, avisos a
+terceros, los sucesos de E9 y lo que ya llega por otra vía (saqueo y asedio sufridos, tratados, tratos).
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-033 y las precisiones de `INV-SEC-009` (los avisos) y de la Q5 y `RN-LOG-007` de
+   [event-log.md](../specs/event-log.md).
+2. Protocolo: `event_log.notice` en Zod y en Go, los dos JSON Schema y su contract test (23 tipos servidor → cliente).
+3. Dominio: `eventlog.Notices` y `eventlog.NoticeKinds`, con sus tests desde los dos lados de cada suceso.
+4. Simulación: el aviso en `kill`, `applyPillage` y `destroyHouse`, con la ciudad del otro jugador y el tile; tests de
+   que llega al dueño fuera de la vista, en el mismo tick, y a nadie más.
+5. WebSocket: el e2e de un aviso a un jugador con la vista en otro chunk, en el mismo commit que el tipo.
+6. Cliente: el estado de los avisos (agrupación, duración, punto, contador), la franja del HUD con «Ir» y el título de
+   la pestaña; tests.
+7. Humo y prueba en vivo.
