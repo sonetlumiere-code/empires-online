@@ -294,7 +294,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E7 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E8 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -304,10 +304,9 @@ Matices que conviene no maquillar:
   humo `--diplomacia` y el navegador el 2026-11-03; [SPEC-DIPLOMACY](specs/diplomacy.md) está en `Implemented`.
 - **E7 Registro está en `main`** desde `a0e2096`, con la CI en verde y una prueba en vivo con el humo `--registro`
   y el navegador el 2026-11-03; [SPEC-EVENT-LOG](specs/event-log.md) está en `Implemented`.
-- **E8 Asedio está hecho en la rama** `claude/slice-e8-asedio`, todavía sin fusionar: verificación completa en verde
-  y prueba en vivo con el humo `--asedio` y el navegador el 2026-11-04. [SPEC-COMBAT-SIEGE](specs/combat-siege.md)
-  está en `Accepted` y pasará a `Implemented` con la fusión y la CI en verde; con ella, la migración `000011` y
-  [ADR-029](decisions/ADR-029-population-over-limit-and-house-destruction.md).
+- **E8 Asedio está en `main`** desde `3b1cd48`, con la CI en verde y una prueba en vivo con el humo `--asedio` y el
+  navegador el 2026-11-04; [SPEC-COMBAT-SIEGE](specs/combat-siege.md) está en `Implemented`, con la migración
+  `000011` y [ADR-029](decisions/ADR-029-population-over-limit-and-house-destruction.md).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

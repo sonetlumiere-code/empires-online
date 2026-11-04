@@ -7,7 +7,7 @@ unidades pero no puede entrenar más. La muralla y el Centro Urbano no se tocan:
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-COMBAT-SIEGE` |
-| Estado | Accepted (2026-11-04), con las preguntas de §10 decididas ese día con la recomendación de cada una. |
+| Estado | Implemented (2026-11-04). Aceptada el 2026-11-04 con las preguntas de §10 decididas ese día con la recomendación de cada una; en `main` desde la fusión `3b1cd48`, con la CI en verde el mismo día. |
 | Milestone | E8 Asedio (octavo slice después de M7) |
 | Canon | §9 (protección), §10 (eras y límite de población), §12 (persistencia), §16 (errores), §21 (fuera de MVP: asedio) |
 | Depende de | [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [economy-wood.md](economy-wood.md), [city.md](city.md), [presence.md](presence.md), [event-log.md](event-log.md) |

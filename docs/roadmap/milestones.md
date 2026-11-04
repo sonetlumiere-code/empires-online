@@ -1567,8 +1567,7 @@ con su tope marcable; la migración `000010`; la ventana «Mientras no estabas»
 
 ## E8 — Asedio
 
-**Estado: HECHO en la rama** `claude/slice-e8-asedio` (2026-11-04), con la verificación completa en verde y la prueba
-en vivo; falta fusionarla en `main` y la CI. Contrato:
+**Estado: HECHO (2026-11-04)**, fusionado en `main` (`3b1cd48`) con la CI en verde el mismo día. Contrato:
 [SPEC-COMBAT-SIEGE](../specs/combat-siege.md), aceptada el 2026-11-04 con sus diez decisiones de producto, y
 [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md).
 
