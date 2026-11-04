@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cookieDeSesion, elegirBosque, elegirDestino, indexarTerreno } from './smoke.mjs';
+import { cookieDeSesion, elegirBosque, elegirDestino, huecoParaCasa, indexarTerreno } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
 const GRASSLAND = 0;
@@ -152,4 +152,14 @@ test('elegirBosque toma el bosque más cercano a la ciudad, fuera de su muralla'
   // SPEC-ECON-FOREST: un tile agotado no se elige; uno a medias, sí.
   assert.deepEqual(elegirBosque(mapa, { centerX: 10, centerY: 10 }, [{ x: 7, y: 7, remaining: 0 }]), { x: 10, y: 13, d: 3 });
   assert.deepEqual(elegirBosque(mapa, { centerX: 10, centerY: 10 }, [{ x: 7, y: 7, remaining: 40 }]), { x: 7, y: 7, d: 3 });
+});
+
+test('huecoParaCasa toma el primer tile libre del 3 × 3, fila a fila y sin el centro', () => {
+  const ciudad = { centerX: 10, centerY: 10 };
+  assert.deepEqual(huecoParaCasa(ciudad, []), { x: 9, y: 9 });
+  assert.deepEqual(huecoParaCasa(ciudad, [{ x: 9, y: 9 }, { x: 10, y: 9 }]), { x: 11, y: 9 });
+  const todos = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) todos.push({ x: 10 + dx, y: 10 + dy });
+  assert.equal(huecoParaCasa(ciudad, todos), null);
+  assert.deepEqual(huecoParaCasa(ciudad, todos.slice(0, 4)), { x: 11, y: 10 }, 'el centro nunca es un hueco');
 });
