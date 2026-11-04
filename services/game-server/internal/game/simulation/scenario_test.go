@@ -144,8 +144,8 @@ type ciudadEconomica struct {
 	Era             city.Era `json:"era,omitempty"`
 	Wood            int64    `json:"wood"`
 	Stone           int64    `json:"stone,omitempty"`
-	Population      int32  `json:"population"`
-	PopulationLimit int32  `json:"populationLimit"`
+	Population      int32    `json:"population"`
+	PopulationLimit int32    `json:"populationLimit"`
 }
 
 type tareaFinal struct {
