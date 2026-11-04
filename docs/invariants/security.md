@@ -417,7 +417,7 @@ token legítimo funde otro id que el que Next.js acaba de autenticar.
 | Aplicación | BOUNDARY, DOMAIN, TEST |
 | Milestone | E7 (los avisos, E11) |
 | Política ante violación | REJECT |
-| Cobertura | **Parcial**: la página, cubierta por `TestUnTerceroNoVeLosSucesosDeOtros` (unit, `internal/domain/eventlog`), `TestElRegistroCuentaCadaLadoYNadaAUnTercero` y `TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload` (integration), `TestElRegistroSeSirveAlJugadorDeLaSesion` y `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e, `internal/websocket`) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract); los avisos de E11, sin test todavía |
+| Cobertura | **Cubierto** por `TestUnTerceroNoVeLosSucesosDeOtros` (unit, `internal/domain/eventlog`), `TestElRegistroCuentaCadaLadoYNadaAUnTercero` y `TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload` (integration), `TestElRegistroSeSirveAlJugadorDeLaSesion` y `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e, `internal/websocket`) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract); los avisos, por `TestSinOtroJugadorNoHayAviso` y `TestCadaSucesoAvisaASusDosLadosSegunElRegistro` (unit), `TestUnaMuerteAvisaALosDosLadosEnElTickDelDespawn` (`internal/game/simulation`) y `TestUnAvisoLlegaConLaVistaEnOtraParteDelMapa` (e2e) |
 
 **Enunciado.** Toda entrada de `event_log.page` que recibe una sesión sale de filas de `world_events` cuyo
 `player_id` o `counterpart_player_id` es el jugador de esa sesión; y todo `event_log.notice` que recibe cuenta un
@@ -455,6 +455,14 @@ están quitando madera.
 - `TestElRegistroSeSirveAlJugadorDeLaSesion` (e2e) — cada página se pide para el jugador de la sesión; y
   `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract) —
   un `playerId` en el comando es `INVALID_MESSAGE` y el esquema no tiene dónde ponerlo.
+- `TestSinOtroJugadorNoHayAviso` (unit) — ningún tipo de evento da un aviso a quien no es parte, y un suceso sin otro
+  jugador, o con el mismo en los dos lados, no avisa a nadie. `TestCadaSucesoAvisaASusDosLadosSegunElRegistro` (unit)
+  — cada aviso es el tipo de entrada que el registro le daría a ese jugador; quitar el filtro de tipos de
+  `eventlog.Notices` lo pone en rojo (verificado por mutación).
+- `TestUnaMuerteAvisaALosDosLadosEnElTickDelDespawn` (simulation) — una muerte da un aviso a la víctima y otro al autor,
+  y a nadie más. `TestUnAvisoLlegaConLaVistaEnOtraParteDelMapa` (e2e) — un testigo con la muerte en su área recibe el
+  `entity.despawn` y ningún aviso; el dueño, que mira otra parte del mapa, recibe el suyo. Mandar el aviso al chunk en
+  lugar de al jugador pone en rojo el e2e (verificado por mutación).
 
 **Violación en runtime.** Indetectable desde el servidor: lo que se envía no vuelve. Por eso el filtro está en la
 consulta y el jugador sale de la sesión.

@@ -1747,11 +1747,21 @@ terceros, los sucesos de E9 y lo que ya llega por otra vía (saqueo y asedio suf
 
 1. **HECHO** — Aceptación: spec, ADR-033 y las precisiones de `INV-SEC-009` (los avisos) y de la Q5 y `RN-LOG-007` de
    [event-log.md](../specs/event-log.md).
-2. Protocolo: `event_log.notice` en Zod y en Go, los dos JSON Schema y su contract test (23 tipos servidor → cliente).
-3. Dominio: `eventlog.Notices` y `eventlog.NoticeKinds`, con sus tests desde los dos lados de cada suceso.
-4. Simulación: el aviso en `kill`, `applyPillage` y `destroyHouse`, con la ciudad del otro jugador y el tile; tests de
-   que llega al dueño fuera de la vista, en el mismo tick, y a nadie más.
-5. WebSocket: el e2e de un aviso a un jugador con la vista en otro chunk, en el mismo commit que el tipo.
-6. Cliente: el estado de los avisos (agrupación, duración, punto, contador), la franja del HUD con «Ir» y el título de
-   la pestaña; tests.
+2. **HECHO** — Protocolo: `event_log.notice` en Zod (`EventLogNoticeKind`, subconjunto de `EventLogKind`) y en Go
+   (`EventLogNoticePayload`), los dos JSON Schema y sus contract tests (23 tipos servidor → cliente):
+   `TestElAvisoEsElDelEsquema` y el bloque «avisos en vivo» de `protocol.test.ts`.
+3. **HECHO** — Dominio: `eventlog.Notices` y `eventlog.NoticeKinds`, que pasan el suceso por `Classify` para sus dos
+   jugadores (`TestCadaSucesoAvisaASusDosLadosSegunElRegistro`, `TestSinOtroJugadorNoHayAviso`,
+   `TestSoloSeAvisanLosCuatroTiposDeCombate`).
+4. **HECHO** — Simulación: `notices.go` y el aviso en `kill`, `applyPillage` y `destroyHouse`, con la ciudad del otro
+   jugador y el tile; cinco tests en `notices_test.go`: los dos lados de una muerte en el tick del despawn, un aviso
+   por golpe de saqueo y ninguno al saqueado, la casa derribada, una muerte y una casa reencoladas que no vuelven a
+   avisar, y un golpe que no se escribe y ya se avisó. Tres mutaciones (el aviso en `submitDeath`, en
+   `submitDestruction` y sin el filtro de tipos), todas detectadas.
+5. **HECHO** — WebSocket: `TestUnAvisoLlegaConLaVistaEnOtraParteDelMapa` (`notices_e2e_test.go`), en un mundo de 8 × 8
+   chunks: el dueño, con la vista en su ciudad, recibe `UNIT_LOST` sin recibir el despawn; el asesino, `ENEMY_KILLED`;
+   un testigo, el despawn y ningún aviso. Mandar el aviso al chunk lo pone en rojo.
+6. **HECHO** — Cliente: `src/state/notices.ts` (agrupación, los 8 s, los tres visibles, el punto, el contador del
+   título) con `notices.test.ts`, `notices` en el store sin tocar `eventLog` (`world.test.ts`), la franja
+   `NoticeStrip` con «Ir» (prop `focus` de `GameCanvas`) y el punto en «Registro».
 7. Humo y prueba en vivo.

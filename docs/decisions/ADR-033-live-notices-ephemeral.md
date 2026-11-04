@@ -66,7 +66,7 @@ sale todo lo demás:
 |---|---|
 | `atMs` | El instante del tick en la simulación: el `atMs` del payload de la fila ([SPEC-EVENT-LOG](../specs/event-log.md) `RN-LOG-005`) |
 | `otherPlayerId` | El otro jugador de la clasificación |
-| `otherCityId`, `otherCityName` | La ciudad de menor `id` del otro jugador en la RAM, la misma regla con la que el registro nombra al otro al leer (SPEC-EVENT-LOG Q6); `null` si no tiene, y el cliente dice «otro jugador» |
+| `otherCityId`, `otherCityName` | La ciudad del otro jugador en la RAM (`State.CityOf`: una por jugador en el MVP, [INV-PLAYER-003](../invariants/player.md#inv-player-003)), la misma con la que el registro lo nombra al leer (SPEC-EVENT-LOG Q6); `null` si no tiene, y el cliente dice «otro jugador» |
 | `unitType` | En las muertes, el de la víctima |
 | `amount` | En el saqueo, la madera de ese golpe |
 | `x`, `y` | El tile de la víctima en una muerte, el del guerrero en un golpe de saqueo (el `At` de su fila) y el de la casa en una casa derribada. Los cuatro tipos lo llevan, también la casa, que en el registro no lo lleva: así «Ir» funciona siempre (Q4) |

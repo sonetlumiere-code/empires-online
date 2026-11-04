@@ -38,6 +38,7 @@ Dentro del scope de v1:
 - El asedio ([combat-siege.md](combat-siege.md)): `unit.demolish` (§7.15), la vida de los edificios (`hp` y `maxHp` en `BuildingView`, `hp` en `building.update`), `building.destroyed` (§8.20) y `besiegedAtMs` en `city.update`.
 - La piedra y el avance de era ([economy-stone.md](economy-stone.md)): `unit.gather` también sobre una colina (§7.8), `city.advance` (§7.16), `hills` en el snapshot y `hill.update` (§8.21), `STONE` en `stocks`, `carryingResource` en las unidades, y `era` y `advance` en las ciudades; todo aditivo (`R-VER-2`, `R-VER-3`).
 - El comercio ([trade.md](trade.md)): `trade.propose`, `trade.respond` y `trade.cancel` (§7.17), `trade.update` (§8.22), `tradeOffers` en el snapshot, `TRADE` como tipo proponible de `treaty.propose` (§7.13) y las cantidades de los tratos en el registro (`tradeGive`, `tradeGet`); todo aditivo (`R-VER-2`, `R-VER-3`).
+- Los avisos en vivo ([live-notices.md](live-notices.md)): `event_log.notice` (§8.23), aditivo (`R-VER-3`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -167,7 +168,7 @@ type Outbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. |
-| `type` | `string` | Sí | Uno de los veintidós tipos servidor→cliente de v1. |
+| `type` | `string` | Sí | Uno de los veintitrés tipos servidor→cliente de v1. |
 | `seq` | `number` (uint64) | Sí | Contador **monótono estrictamente creciente por conexión**, empieza en `1`. Se reinicia en cada conexión nueva. Ver sección 11. |
 | `ts` | `number` | Sí | Epoch ms del reloj del servidor en el momento de encolar el mensaje. Es la referencia temporal del cliente. |
 | `requestId` | `string` | **Se omite** salvo que el mensaje responda a un comando concreto | La etiqueta `json:"requestId,omitempty"` garantiza que el campo **no aparece** cuando no aplica: un broadcast (`entity.*`, `city.update`, `territory.update`, `unit.movement.*` dirigidos al chunk) nunca lleva un `requestId` vacío que el cliente pudiera confundir con una respuesta. Lo verifica el contract test `TestRequestIDSeOmiteCuandoNoAplica`. |
@@ -562,7 +563,7 @@ payload: z.object({ offerId: EntityId }).strict()
 
 ## 8. Mensajes servidor → cliente
 
-Los veintidós tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los veintitrés tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -1126,6 +1127,30 @@ payload: z.object({ offer: TradeOfferView })
 
 `give` es lo que saldría del almacén de quien recibe el mensaje y `get` lo que entraría, sea quien sea el que propuso. Un estado distinto de `PROPOSED` dice que la oferta se cerró, y el cliente la saca de su lista. Las pendientes viajan en `world.snapshot.tradeOffers`, que la reemplaza.
 
+### 8.23 `event_log.notice`
+
+- **Propósito:** un aviso en vivo: algo que les pasó a las unidades del jugador fuera de su vista, en el tick en que la simulación lo decidió ([live-notices.md](live-notices.md) §6). A todas las sesiones del jugador del suceso, por `SendToPlayer`, sin `requestId`. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({
+  kind: EventLogNoticeKind,   // UNIT_LOST | ENEMY_KILLED | PILLAGE_DONE | HOUSE_DESTROYED
+  atMs: EpochMs,              // el instante del suceso en la simulación
+  otherPlayerId: Uuid,
+  otherCityId: EntityId.nullable(),
+  otherCityName: z.string().min(1).max(64).nullable(),
+  unitType: UnitType.optional(),               // en las muertes
+  amount: z.number().int().min(0).optional(),  // en el saqueo: la madera de ese golpe
+  x: WorldCoordinate.optional(),               // dónde ocurrió
+  y: WorldCoordinate.optional(),
+})
+```
+
+```json
+{ "v": 1, "type": "event_log.notice", "seq": 520, "ts": 1788955600000, "payload": { "kind": "UNIT_LOST", "atMs": 1788955600000, "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "unitType": "VILLAGER", "x": 312, "y": 140 } }
+```
+
+**No es una entrada del registro** (`RN-NOTICE-004`, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)): no tiene `id` ni recuento, no mueve el cursor de lo visto y el cliente no lo mete en la lista, que sigue saliendo de `event_log.page` (§8.19). `kind` es un subconjunto de los tipos de entrada: lo que hoy no llega a quien mira otra parte del mapa. Lo que la víctima de un saqueo o de un asedio ya recibe (`pillagedAtMs`, `besiegedAtMs` en `city.update`) no se repite. Un golpe de saqueo es un aviso; el cliente los agrupa. El servidor lo manda en todos los tipos con `x`/`y`, también en `HOUSE_DESTROYED` (el tile de la casa). Efímero: no se guarda ni se reenvía al reconectar.
+
 ## 9. Códigos de error
 
 El catálogo es de **24 códigos** y es cerrado. Vive en `errors.ts` (`ErrorCode`) y en `codes.go` (`AllErrorCodes`); un contract test en Go (`TestCatalogoDeErroresCoincideConElExportado`) compara ambos contra `error-codes.json` y rompe la CI si divergen.
@@ -1223,7 +1248,7 @@ packages/protocol/
 │   ├── common.ts            # Tile, Waypoint, TimedPath, UnitView, CityView, TerritoryView, ChunkRef, ChunkTerrain
 │   ├── errors.ts            # ErrorCode como z.enum, exactamente los 24 códigos, y WS_CLOSE
 │   ├── client.ts            # los 22 mensajes cliente→servidor, TODOS .strict()
-│   ├── server.ts            # los 22 mensajes servidor→cliente, ninguno .strict()
+│   ├── server.ts            # los 23 mensajes servidor→cliente, ninguno .strict()
 │   └── index.ts             # export público de @empires-online/protocol
 ├── src/scripts/export-schema.ts
 └── schema/v1/               # JSON Schema GENERADO — artefacto de build, nunca editado a mano
