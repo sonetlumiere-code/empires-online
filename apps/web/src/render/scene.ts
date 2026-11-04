@@ -52,6 +52,10 @@ export type {
 const FOREST_CAPACITY = 100;
 /** Bosque talado del todo: tierra con tocones. */
 const FOREST_DEPLETED_COLOR = 0x8a6d43;
+/** Capacidad de un tile de colina (deposit.Hill.Capacity del servidor): sólo para dosificar el dibujo. */
+const HILL_CAPACITY = 100;
+/** Colina picada del todo: roca clara con cascotes. */
+const HILL_DEPLETED_COLOR = 0xb9b2a0;
 
 /** Colores por tipo de terreno (índice = valor del byte de TerrainType). */
 const TERRAIN_COLORS = [
@@ -115,6 +119,7 @@ export class IsoScene {
   private readonly terrainLayer = new Container();
   /** La madera del bosque, encima del terreno, que no cambia (SPEC-ECON-FOREST). */
   private readonly forestLayer = new Graphics();
+  private readonly hillLayer = new Graphics();
   private readonly territoryLayer = new Container();
   private readonly entityLayer = new Container();
   /** Un `Graphics` por chunk de terreno a la vista (con un chunk de holgura al retirarlos). */
@@ -166,6 +171,7 @@ export class IsoScene {
     this.app = app;
     this.root.addChild(this.terrainLayer);
     this.root.addChild(this.forestLayer);
+    this.root.addChild(this.hillLayer);
     // Entre el terreno y las entidades: el overlay tiñe el suelo sin tapar
     // unidades ni ciudades, que es lo que el jugador necesita poder pulsar.
     this.root.addChild(this.territoryLayer);
@@ -224,6 +230,7 @@ export class IsoScene {
       this.terrainDirty = true;
     }
     if (update.forests) this.drawForests(update.forests);
+    if (update.hills) paintHills(this.hillLayer, update.hills);
 
     if (update.complete) {
       this.pruneAbsent(this.units, update.units, (id) => this.removeUnit(id));
@@ -588,6 +595,31 @@ function paintForests(g: Graphics, forests: readonly SceneForest[]): void {
       // Tres tocones: que se lea como bosque talado y no como otro terreno.
       for (const [dx, dy] of [[-8, -2], [6, -4], [0, 5]] as const) {
         g.circle(iso.x + dx, iso.y + dy, 2.5).fill({ color: 0x4a3420 });
+      }
+    }
+  }
+}
+
+/**
+ * La colina picada (SPEC-ECON-STONE), encima de su tile: del todo, roca clara con
+ * cascotes; a medias, el mismo tono tanto más opaco cuanta menos piedra queda.
+ */
+function paintHills(g: Graphics, hills: readonly SceneForest[]): void {
+  g.clear();
+  for (const h of hills) {
+    const cut = 1 - Math.max(0, Math.min(HILL_CAPACITY, h.remaining)) / HILL_CAPACITY;
+    if (cut <= 0) continue;
+    const iso = worldToIso(h.x, h.y);
+    g.moveTo(iso.x, iso.y - TILE_H / 2)
+      .lineTo(iso.x + TILE_W / 2, iso.y)
+      .lineTo(iso.x, iso.y + TILE_H / 2)
+      .lineTo(iso.x - TILE_W / 2, iso.y)
+      .closePath()
+      .fill({ color: HILL_DEPLETED_COLOR, alpha: h.remaining === 0 ? 1 : 0.25 + 0.6 * cut });
+    if (h.remaining === 0) {
+      // Cascotes: que se lea como cantera agotada y no como otro terreno.
+      for (const [dx, dy] of [[-7, -3], [5, -2], [-1, 4]] as const) {
+        g.rect(iso.x + dx - 2, iso.y + dy - 2, 4, 3).fill({ color: 0x6e6858 });
       }
     }
   }

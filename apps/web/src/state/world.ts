@@ -33,8 +33,10 @@ export interface UnitView {
   movement: ActiveMovement | null;
   /** Ciudad que la aloja si está GARRISONED; `null` en el mapa. `cityId` es la de origen. */
   garrisonCityId: number | null;
-  /** Madera que lleva encima una unidad que recolecta (SPEC-ECON-WOOD); 0 si nada. */
+  /** Lo que lleva encima una unidad que recolecta (SPEC-ECON-WOOD); 0 si nada. */
   carrying: number;
+  /** El recurso de `carrying`, `WOOD` o `STONE` (SPEC-ECON-STONE); `null` si el servidor no lo dijo. */
+  carryingResource: string | null;
 }
 
 /**
@@ -67,10 +69,12 @@ export interface CityView {
   populationLimit: number;
   presenceState: string;
   protectionUntilMs: number | null;
-  /** Stock de la ciudad, tal cual lo envía el servidor (SPEC-ECON-WOOD). */
-  stocks: { WOOD: number };
+  /** Stock de la ciudad, tal cual lo envía el servidor (SPEC-ECON-WOOD, SPEC-ECON-STONE). */
+  stocks: { WOOD: number; STONE: number };
   /** Entrenamiento en curso, o `null`. */
   production: { unitType: string; completesAtMs: number } | null;
+  /** Avance de era en curso, o `null` (SPEC-ECON-STONE). */
+  advance: { era: string; completesAtMs: number } | null;
   /**
    * Instante del último golpe de saqueo, si lo hubo en esta sesión. Sólo lo
    * recibe el dueño (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
@@ -109,8 +113,14 @@ export interface ForestView {
   regrowsAtMs: number;
 }
 
-/** Clave de un tile en el mapa de bosque. */
+/** Clave de un tile en el mapa de bosque o de colina. */
 export const forestKey = (x: number, y: number) => `${x},${y}`;
+
+/**
+ * Piedra de un tile de colina que no está lleno (SPEC-ECON-STONE): la misma forma
+ * que el bosque, en su propio mapa.
+ */
+export type HillView = ForestView;
 
 export interface ChunkTerrain {
   cx: number;
@@ -152,6 +162,8 @@ export interface WorldChanges {
   readonly terrain: boolean;
   /** Cambió la madera de algún tile de bosque. */
   readonly forests: boolean;
+  /** Cambió la piedra de algún tile de colina. */
+  readonly hills: boolean;
 }
 
 export interface WorldState {
@@ -172,6 +184,8 @@ export interface WorldState {
   terrain: ReadonlyMap<string, ChunkTerrain>;
   /** Tiles de bosque que no están llenos, por `forestKey`. */
   forests: ReadonlyMap<string, ForestView>;
+  /** Tiles de colina que no están llenos, por `forestKey`. */
+  hills: ReadonlyMap<string, HillView>;
   /**
    * Tratados abiertos del jugador (SPEC-DIPLOMACY), por id. A diferencia de los
    * mapas de arriba se sustituye en cada cambio: sólo lo lee el HUD.
@@ -222,14 +236,16 @@ function unitFromView(u: v1.UnitView): UnitView {
     movement: u.movement ?? null,
     garrisonCityId: u.garrisonCityId ?? null,
     carrying: u.carrying ?? 0,
+    carryingResource: u.carryingResource ?? null,
   };
 }
 
 function cityFromView(c: v1.CityView): CityView {
   return {
     ...c,
-    stocks: c.stocks ?? { WOOD: 0 },
+    stocks: { WOOD: c.stocks?.WOOD ?? 0, STONE: c.stocks?.STONE ?? 0 },
     production: c.production ?? null,
+    advance: c.advance ?? null,
   };
 }
 
@@ -245,6 +261,7 @@ const INITIAL_CHANGES: WorldChanges = {
   buildings: NO_IDS,
   terrain: false,
   forests: true,
+  hills: true,
 };
 
 export const useWorldStore = create<WorldState>((set, get) => {
@@ -259,6 +276,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
   const eventLogRequests = new Map<string, number | null>();
   const terrain = new Map<string, ChunkTerrain>();
   const forests = new Map<string, ForestView>();
+  const hills = new Map<string, HillView>();
 
   let revision = 0;
   const changed = (partial: Partial<Omit<WorldChanges, 'revision'>>): WorldChanges => ({
@@ -270,6 +288,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     buildings: NO_IDS,
     terrain: false,
     forests: false,
+    hills: false,
     ...partial,
   });
   const unitChanged = (id: number): WorldChanges => changed({ units: new Set([id]) });
@@ -285,6 +304,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     buildings,
     terrain,
     forests,
+    hills,
     treaties: [],
     eventLog: EMPTY_EVENT_LOG,
     changes: INITIAL_CHANGES,
@@ -330,6 +350,11 @@ export const useWorldStore = create<WorldState>((set, get) => {
       for (const f of payload.forests ?? []) {
         if (f.regrowsAtMs !== null) forests.set(forestKey(f.x, f.y), { ...f, regrowsAtMs: f.regrowsAtMs });
       }
+      // Igual la colina (SPEC-ECON-STONE).
+      hills.clear();
+      for (const h of payload.hills ?? []) {
+        if (h.regrowsAtMs !== null) hills.set(forestKey(h.x, h.y), { ...h, regrowsAtMs: h.regrowsAtMs });
+      }
 
       let newTerrain = false;
       for (const t of payload.terrain) {
@@ -347,7 +372,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
         tick: payload.tick,
         // Si la unidad seleccionada ya no está en el área de interés, se deselecciona.
         selectedUnitId: selected !== null && units.has(selected) ? selected : null,
-        changes: changed({ all: true, terrain: newTerrain, forests: true }),
+        changes: changed({ all: true, terrain: newTerrain, forests: true, hills: true }),
         // Como el resto del snapshot, la lista de tratados se reemplaza (ADR-027 §5).
         treaties: [...(payload.treaties ?? [])].sort((a, b) => a.id - b.id),
       });
@@ -390,6 +415,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
             movement: p.movement !== undefined ? p.movement : existing.movement,
             garrisonCityId: p.garrisonCityId !== undefined ? p.garrisonCityId : existing.garrisonCityId,
             carrying: p.carrying !== undefined ? p.carrying : existing.carrying,
+            carryingResource: p.carryingResource !== undefined ? p.carryingResource : existing.carryingResource,
           });
           set({ changes: unitChanged(p.id) });
           break;
@@ -428,8 +454,14 @@ export const useWorldStore = create<WorldState>((set, get) => {
             populationLimit: p.populationLimit !== undefined ? p.populationLimit : existing.populationLimit,
             presenceState: p.presenceState !== undefined ? p.presenceState : existing.presenceState,
             protectionUntilMs: p.protectionUntilMs !== undefined ? p.protectionUntilMs : existing.protectionUntilMs,
-            stocks: p.stocks !== undefined ? p.stocks : existing.stocks,
+            // Un servidor anterior a la piedra no la manda: se conserva la que había.
+            stocks:
+              p.stocks !== undefined
+                ? { WOOD: p.stocks.WOOD, STONE: p.stocks.STONE ?? existing.stocks.STONE }
+                : existing.stocks,
             production: p.production !== undefined ? p.production : existing.production,
+            era: p.era !== undefined ? p.era : existing.era,
+            advance: p.advance !== undefined ? p.advance : existing.advance,
             pillagedAtMs: p.pillagedAtMs !== undefined ? p.pillagedAtMs : existing.pillagedAtMs,
             besiegedAtMs: p.besiegedAtMs !== undefined ? p.besiegedAtMs : existing.besiegedAtMs,
           });
@@ -474,6 +506,15 @@ export const useWorldStore = create<WorldState>((set, get) => {
           if (f.regrowsAtMs === null) forests.delete(forestKey(f.x, f.y));
           else forests.set(forestKey(f.x, f.y), { ...f, regrowsAtMs: f.regrowsAtMs });
           set({ changes: changed({ forests: true }) });
+          break;
+        }
+
+        case 'hill.update': {
+          // Como el bosque: sin instante de regeneración, la colina vuelve a estar llena.
+          const h = message.payload;
+          if (h.regrowsAtMs === null) hills.delete(forestKey(h.x, h.y));
+          else hills.set(forestKey(h.x, h.y), { ...h, regrowsAtMs: h.regrowsAtMs });
+          set({ changes: changed({ hills: true }) });
           break;
         }
 
@@ -566,6 +607,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
       buildings.clear();
       terrain.clear();
       forests.clear();
+      hills.clear();
       set({
         playerId: null,
         sessionId: null,

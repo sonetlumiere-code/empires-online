@@ -91,6 +91,8 @@ export interface SceneUpdate {
    * no. Son pocos y cambian despacio: la escena los redibuja enteros.
    */
   readonly forests: readonly SceneForest[] | null;
+  /** Igual para la colina picada (SPEC-ECON-STONE); `null` si la capa no cambió. */
+  readonly hills: readonly SceneForest[] | null;
 }
 
 /** Un tile de bosque talado del todo o en parte (SPEC-ECON-FOREST). */

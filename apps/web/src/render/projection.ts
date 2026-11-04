@@ -33,7 +33,16 @@ import type {
 /** Lo que la proyección lee del store. */
 export type ProjectableState = Pick<
   WorldState,
-  'playerId' | 'world' | 'units' | 'cities' | 'territories' | 'buildings' | 'terrain' | 'forests' | 'selectedUnitId'
+  | 'playerId'
+  | 'world'
+  | 'units'
+  | 'cities'
+  | 'territories'
+  | 'buildings'
+  | 'terrain'
+  | 'forests'
+  | 'hills'
+  | 'selectedUnitId'
 >;
 
 function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number | null): SceneUnit {
@@ -99,6 +108,13 @@ function sceneForests(state: ProjectableState): SceneForest[] {
   return out;
 }
 
+/** La capa de colina entera: los tiles que no están llenos (SPEC-ECON-STONE). */
+function sceneHills(state: ProjectableState): SceneForest[] {
+  const out: SceneForest[] = [];
+  for (const h of state.hills.values()) out.push({ x: h.x, y: h.y, remaining: h.remaining });
+  return out;
+}
+
 /** La fuente de terreno de la escena, o `null` antes del `session.welcome`. */
 export function terrainSourceOf(state: ProjectableState): TerrainSource | null {
   if (!state.world) return null;
@@ -134,6 +150,7 @@ export function projectAll(state: ProjectableState): SceneUpdate | null {
     removedBuildings: [],
     terrain: terrainSourceOf(state),
     forests: sceneForests(state),
+    hills: sceneHills(state),
   };
 }
 
@@ -190,5 +207,6 @@ export function projectChanges(state: ProjectableState, changes: WorldChanges): 
     removedBuildings,
     terrain: changes.terrain ? terrainSourceOf(state) : null,
     forests: changes.forests ? sceneForests(state) : null,
+    hills: changes.hills ? sceneHills(state) : null,
   };
 }

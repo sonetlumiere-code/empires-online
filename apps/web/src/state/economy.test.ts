@@ -91,11 +91,11 @@ describe('asedio en el cliente (SPEC-COMBAT-SIEGE)', () => {
   it('una ciudad por encima de su límite no entrena, y el motivo lo dice (RN-COMBAT-034)', () => {
     expect(overPopulationLimit({ population: 23, populationLimit: 20 })).toBe(true);
     expect(overPopulationLimit({ population: 20, populationLimit: 20 })).toBe(false);
-    expect(trainBlockReason({ population: 23, populationLimit: 20, production: null })).toMatch(/perdió casas/);
-    expect(trainBlockReason({ population: 20, populationLimit: 20, production: null })).toMatch(/al tope/);
-    expect(trainBlockReason({ population: 3, populationLimit: 20, production: { unitType: 'VILLAGER', completesAtMs: 1 } }))
+    expect(trainBlockReason({ population: 23, populationLimit: 20, production: null, advance: null })).toMatch(/perdió casas/);
+    expect(trainBlockReason({ population: 20, populationLimit: 20, production: null, advance: null })).toMatch(/al tope/);
+    expect(trainBlockReason({ population: 3, populationLimit: 20, production: { unitType: 'VILLAGER', completesAtMs: 1 }, advance: null }))
       .toMatch(/entrenando/);
-    expect(trainBlockReason({ population: 3, populationLimit: 20, production: null })).toBeNull();
+    expect(trainBlockReason({ population: 3, populationLimit: 20, production: null, advance: null })).toBeNull();
   });
 });
 
