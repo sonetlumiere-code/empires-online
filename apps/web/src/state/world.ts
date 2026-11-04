@@ -15,6 +15,7 @@
  */
 import { create } from 'zustand';
 import { applyTreatyUpdate, type TreatyView } from './diplomacy';
+import { applyEventLogPage, EMPTY_EVENT_LOG, markSeenLocally, type EventLogState } from './eventLog';
 import type { v1 } from '@empires-online/protocol';
 import type { ActiveMovement } from './interpolation';
 
@@ -168,6 +169,8 @@ export interface WorldState {
    * mapas de arriba se sustituye en cada cambio: sólo lo lee el HUD.
    */
   treaties: readonly TreatyView[];
+  /** El registro (SPEC-EVENT-LOG): lo que el servidor contó que pasó. Sólo lo lee el HUD. */
+  eventLog: EventLogState;
   changes: WorldChanges;
 
   selectedUnitId: number | null;
@@ -177,6 +180,13 @@ export interface WorldState {
   applySnapshot: (payload: v1.WorldSnapshot['payload']) => void;
   applyServerMessage: (message: v1.ServerMessage) => void;
   selectUnit: (unitId: number | null) => void;
+  /**
+   * Anota que se pidió una página del registro con ese requestId: `null` para la
+   * primera, o el `beforeId` de una anterior. Sólo se aplican las páginas pedidas.
+   */
+  expectEventLogPage: (requestId: string, beforeId: number | null) => void;
+  /** Lo da por visto en esta pestaña hasta `upToId`. */
+  markEventLogSeen: (upToId: number) => void;
   reset: () => void;
 }
 
@@ -236,6 +246,9 @@ export const useWorldStore = create<WorldState>((set, get) => {
   const cities = new Map<number, CityView>();
   const territories = new Map<number, TerritoryView>();
   const buildings = new Map<number, BuildingView>();
+  // Páginas del registro pedidas y aún sin respuesta: requestId → beforeId (null
+  // para la primera). No es estado observable.
+  const eventLogRequests = new Map<string, number | null>();
   const terrain = new Map<string, ChunkTerrain>();
   const forests = new Map<string, ForestView>();
 
@@ -265,6 +278,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     terrain,
     forests,
     treaties: [],
+    eventLog: EMPTY_EVENT_LOG,
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
     lastError: null,
@@ -484,6 +498,15 @@ export const useWorldStore = create<WorldState>((set, get) => {
           break;
         }
 
+        case 'event_log.page': {
+          const id = message.requestId;
+          const before = id !== undefined ? eventLogRequests.get(id) : undefined;
+          if (id === undefined || before === undefined) break;
+          eventLogRequests.delete(id);
+          set({ eventLog: applyEventLogPage(get().eventLog, message.payload, before) });
+          break;
+        }
+
         case 'unit.move.rejected':
           set({ lastError: { code: message.payload.code, message: message.payload.message } });
           break;
@@ -510,6 +533,14 @@ export const useWorldStore = create<WorldState>((set, get) => {
       set({ selectedUnitId: unitId, changes: changed({ units: ids }) });
     },
 
+    expectEventLogPage: (requestId, beforeId) => {
+      eventLogRequests.set(requestId, beforeId);
+    },
+
+    markEventLogSeen: (upToId) => {
+      set({ eventLog: markSeenLocally(get().eventLog, upToId) });
+    },
+
     reset: () => {
       units.clear();
       cities.clear();
@@ -525,8 +556,10 @@ export const useWorldStore = create<WorldState>((set, get) => {
         selectedUnitId: null,
         lastError: null,
         treaties: [],
+        eventLog: EMPTY_EVENT_LOG,
         changes: changed({ all: true }),
       });
+      eventLogRequests.clear();
     },
   };
 });

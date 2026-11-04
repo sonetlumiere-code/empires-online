@@ -201,6 +201,23 @@ describe('comandos', () => {
     }
   });
 
+  it('el registro sólo pide páginas y marca hasta un id: nunca nombra a otro jugador (SPEC-EVENT-LOG)', async () => {
+    const { client, socket } = await ready();
+    client.fetchEventLog();
+    client.fetchEventLog(12);
+    client.markEventLogSeen(41);
+
+    const [primera, anterior, visto] = socket.parsedSent();
+    expect(primera!.type).toBe('event_log.fetch');
+    expect(primera!.payload).toEqual({});
+    expect(anterior!.payload).toEqual({ beforeId: 12 });
+    expect(visto!.type).toBe('event_log.seen');
+    expect(visto!.payload).toEqual({ upToId: 41 });
+    for (const m of [primera, anterior, visto]) {
+      expect(v1.parseClientMessage(m).ok, String(m!.type)).toBe(true);
+    }
+  });
+
   it('cada comando lleva un requestId distinto', async () => {
     const { client, socket } = await ready();
     client.moveUnit(1, { x: 1, y: 1 });

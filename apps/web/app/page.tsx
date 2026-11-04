@@ -30,6 +30,17 @@ import {
 } from '../src/state/economy';
 import { ViewSync } from '../src/state/viewSync';
 import { anyCountdown, treatyActions, treatyLabel, type TreatyAction } from '../src/state/diplomacy';
+import {
+  entryText,
+  isLoss,
+  isUnseen,
+  markTarget,
+  moreUnseenBeyond,
+  shouldRefetchOnVisible,
+  timeAgo,
+  unseenEntries,
+  type EventLogEntry,
+} from '../src/state/eventLog';
 import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
@@ -99,6 +110,46 @@ export default function Page() {
   }, [pillagedAtMs]);
 
   useEffect(() => () => clientRef.current?.disconnect(), []);
+
+  // Registro (SPEC-EVENT-LOG): se pide al conectar y al volver a la pestaña tras
+  // un rato fuera (RN-LOG-007); el servidor no empuja nada.
+  const eventLog = useWorldStore((s) => s.eventLog);
+  const [logOpen, setLogOpen] = useState(false);
+  const requestEventLog = useCallback((beforeId: number | null) => {
+    const client = clientRef.current;
+    if (!client || client.getState() !== 'ready') return;
+    const requestId = client.fetchEventLog(beforeId ?? undefined);
+    useWorldStore.getState().expectEventLogPage(requestId, beforeId);
+  }, []);
+  useEffect(() => {
+    if (connection === 'ready') requestEventLog(null);
+  }, [connection, requestEventLog]);
+  useEffect(() => {
+    let hiddenSince: number | null = null;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenSince = Date.now();
+        return;
+      }
+      if (shouldRefetchOnVisible(hiddenSince, Date.now())) requestEventLog(null);
+      hiddenSince = null;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [requestEventLog]);
+  // Dar por visto lo cargado: al servidor, que marca hasta donde puede (ADR-028
+  // §6), y a la pestaña, que no lo vuelve a enseñar.
+  const markLogSeen = useCallback(() => {
+    const target = markTarget(useWorldStore.getState().eventLog);
+    if (target === null) return;
+    clientRef.current?.markEventLogSeen(target);
+    useWorldStore.getState().markEventLogSeen(target);
+  }, []);
+  const toggleLog = useCallback(() => {
+    if (logOpen) markLogSeen();
+    else requestEventLog(null);
+    setLogOpen(!logOpen);
+  }, [logOpen, markLogSeen, requestEventLog]);
 
   // Abre el WebSocket con el primer ticket; las reconexiones piden el suyo con
   // la cookie de sesión, porque los tickets son de un solo uso.
@@ -362,6 +413,14 @@ export default function Page() {
               Población {ownCity.population}/{ownCity.populationLimit}
             </span>
             <span style={{ color: 'var(--muted)' }}>Presencia: {ownCity.presenceState}</span>
+            <button
+              className="secondary"
+              onClick={toggleLog}
+              aria-expanded={logOpen}
+              title="Lo que te pasó en los últimos días: muertes, saqueos y cambios en tus tratados"
+            >
+              Registro{unseenEntries(eventLog).length > 0 ? ` (${unseenEntries(eventLog).length})` : ''}
+            </button>
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
             {pillageAlertActive(ownCity, serverTimeMs()) && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }} role="alert">
@@ -447,6 +506,47 @@ export default function Page() {
         </div>
       )}
 
+      {logOpen && (
+        <section style={styles.log} aria-label="Registro">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+            <strong>Registro</strong>
+            <span style={{ color: 'var(--muted)' }}>Los últimos 7 días</span>
+            <button className="secondary" style={{ marginLeft: 'auto' }} onClick={toggleLog}>
+              Cerrar
+            </button>
+          </div>
+          {eventLog.entries.length === 0 ? (
+            <p style={{ margin: 0, color: 'var(--muted)' }}>
+              {eventLog.loaded ? 'No te ha pasado nada en estos días.' : 'Cargando…'}
+            </p>
+          ) : (
+            <EventLogList entries={eventLog.entries} isNew={(e) => isUnseen(eventLog, e)} nowMs={serverTimeMs()} />
+          )}
+          {eventLog.nextBeforeId !== null && (
+            <button className="secondary" style={{ marginTop: '0.5rem' }} onClick={() => requestEventLog(eventLog.nextBeforeId)}>
+              Ver más
+            </button>
+          )}
+        </section>
+      )}
+
+      {!logOpen && unseenEntries(eventLog).length > 0 && (
+        <div style={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="while-away-title">
+          <div style={{ ...styles.panel, width: 'min(480px, 92vw)', maxHeight: '80vh', overflowY: 'auto' }}>
+            <h2 id="while-away-title" style={{ margin: '0 0 0.75rem', fontSize: '1.1rem' }}>
+              Mientras no estabas
+            </h2>
+            <EventLogList entries={unseenEntries(eventLog)} isNew={() => false} nowMs={serverTimeMs()} />
+            {moreUnseenBeyond(eventLog) && (
+              <p style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>Hay más en el Registro.</p>
+            )}
+            <button style={{ marginTop: '0.75rem' }} onClick={markLogSeen} autoFocus>
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
       {logoutError && (
         <div style={{ ...styles.hud, color: 'var(--danger)' }}>{logoutError}</div>
       )}
@@ -466,6 +566,30 @@ export default function Page() {
         </footer>
       )}
     </main>
+  );
+}
+
+/** Las entradas del registro, con cuánto hace; las pérdidas, resaltadas. */
+function EventLogList({
+  entries,
+  isNew,
+  nowMs,
+}: {
+  entries: readonly EventLogEntry[];
+  isNew: (e: EventLogEntry) => boolean;
+  nowMs: number;
+}) {
+  return (
+    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.4rem', fontSize: '0.85rem' }}>
+      {entries.map((e) => (
+        <li key={e.id} style={{ display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
+          <span style={{ color: isLoss(e) ? 'var(--danger)' : undefined, fontWeight: isNew(e) ? 600 : undefined }}>
+            {entryText(e)}
+          </span>
+          <span style={{ color: 'var(--muted)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{timeAgo(e.lastAtMs, nowMs)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -536,6 +660,23 @@ const styles = {
     borderRadius: '10px',
     padding: '1.75rem',
     width: 'min(360px, 92vw)',
+  },
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.55)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  log: {
+    padding: '0.75rem 1rem',
+    background: 'var(--panel)',
+    borderBottom: '1px solid var(--border)',
+    maxHeight: '40vh',
+    overflowY: 'auto',
+    fontSize: '0.82rem',
   },
   hud: {
     display: 'flex',

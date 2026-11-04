@@ -427,3 +427,31 @@ describe('terreno', () => {
     expect(terrainAt(new Map(), 32, 100, 100)).toBeUndefined();
   });
 });
+
+describe('registro (SPEC-EVENT-LOG)', () => {
+  const entry = (id: number) => ({
+    id, kind: 'PILLAGED', firstAtMs: 1, lastAtMs: 2, count: 1,
+    otherPlayerId: OTHER, otherCityId: 20, otherCityName: 'Villa Norte', amount: 5,
+  });
+  const page = (requestId: string | undefined, seq: number, ids: number[], next: number | null) =>
+    ({ ...server('event_log.page', seq, { entries: ids.map(entry), seenUpToId: 0, nextBeforeId: next }), requestId }) as v1.ServerMessage;
+
+  it('sólo aplica las páginas pedidas, añade la anterior y el reset lo vacía', () => {
+    const store = useWorldStore.getState();
+    store.applyServerMessage(page(undefined, 1, [9], null));
+    store.applyServerMessage(page('33333333-3333-4333-8333-333333333333', 2, [9], null));
+    expect(useWorldStore.getState().eventLog.loaded).toBe(false);
+
+    store.expectEventLogPage('44444444-4444-4444-8444-444444444444', null);
+    store.applyServerMessage(page('44444444-4444-4444-8444-444444444444', 3, [9, 8], 8));
+    store.expectEventLogPage('55555555-5555-4555-8555-555555555555', 8);
+    store.applyServerMessage(page('55555555-5555-4555-8555-555555555555', 4, [5], null));
+    expect(useWorldStore.getState().eventLog.entries.map((e) => e.id)).toEqual([9, 8, 5]);
+
+    store.markEventLogSeen(9);
+    expect(useWorldStore.getState().eventLog.localSeenUpToId).toBe(9);
+    store.reset();
+    expect(useWorldStore.getState().eventLog.entries).toEqual([]);
+    expect(useWorldStore.getState().eventLog.loaded).toBe(false);
+  });
+});
