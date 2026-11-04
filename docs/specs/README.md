@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las dieciocho specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las diecinueve specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -58,6 +58,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Registro de sucesos | [event-log.md](event-log.md) | E7 Registro | Implemented | Lo que otros te hicieron y lo que tus unidades hicieron solas, leído de `world_events`, agrupado y con un cursor de lo visto; la ventana «Mientras no estabas» |
 | Combate: asedio | [combat-siege.md](combat-siege.md) | E8 Asedio | Implemented | Un `WARRIOR` junto a la muralla enemiga derriba una casa golpe a golpe; la ciudad pierde plazas y, por encima de su límite, conserva sus unidades pero no entrena |
 | Economía: piedra | [economy-stone.md](economy-stone.md) | E9 Piedra | Implemented | Piedra en los tiles de colina con la misma orden que la madera, su agotamiento y regeneración, y el avance de una ciudad a la Edad de Bronce pagando madera y piedra |
+| Comercio | [trade.md](trade.md) | E10 Comercio | Draft | Tratos «doy esto, pido aquello» entre dos ciudades con un tratado vigente, entregados en el acto en una transacción que mueve los dos almacenes; el tratado `TRADE` como primer escalón de la diplomacia |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
@@ -74,7 +75,7 @@ Documentación relacionada que **no** es una spec funcional y por tanto no sigue
 ## 3. Plantilla obligatoria de spec
 
 La plantilla tiene tres partes: una **cabecera** fija, un **núcleo** fijo y un **cuerpo temático** libre.
-Lo que sigue describe lo que las dieciocho specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
+Lo que sigue describe lo que las diecinueve specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
 
 ### 3.1 Cabecera
 
