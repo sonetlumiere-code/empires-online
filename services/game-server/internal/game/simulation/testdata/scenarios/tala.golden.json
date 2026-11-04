@@ -769,7 +769,8 @@
       "type": "entity.update",
       "payload": {
         "id": 1,
-        "carrying": 10
+        "carrying": 10,
+        "carryingResource": "WOOD"
       }
     },
     {
@@ -883,7 +884,8 @@
       "type": "entity.update",
       "payload": {
         "id": 2,
-        "carrying": 10
+        "carrying": 10,
+        "carryingResource": "WOOD"
       }
     },
     {
@@ -1007,7 +1009,8 @@
       "type": "entity.update",
       "payload": {
         "id": 3,
-        "carrying": 5
+        "carrying": 5,
+        "carryingResource": "WOOD"
       }
     },
     {
@@ -1210,7 +1213,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 10
+          "WOOD": 10,
+          "STONE": 0
         }
       }
     },
@@ -1387,7 +1391,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 20
+          "WOOD": 20,
+          "STONE": 0
         }
       }
     },
@@ -1544,7 +1549,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 25
+          "WOOD": 25,
+          "STONE": 0
         }
       }
     },
@@ -2038,7 +2044,8 @@
       "type": "entity.update",
       "payload": {
         "id": 1,
-        "carrying": 10
+        "carrying": 10,
+        "carryingResource": "WOOD"
       }
     },
     {
@@ -2439,7 +2446,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 35
+          "WOOD": 35,
+          "STONE": 0
         }
       }
     },

@@ -267,6 +267,14 @@ func newHarness(t *testing.T) *harness {
 // fila-mayor de 64 × 64 bytes.
 func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	t.Helper()
+	return newHarnessConDeps(t, pintar, nil)
+}
+
+// newHarnessConDeps es newHarnessConTerreno con la posibilidad de ajustar las
+// dependencias de la simulación antes de crearla (topes del pathfinding, por
+// ejemplo).
+func newHarnessConDeps(t *testing.T, pintar func(terrain []byte), ajustar func(*simulation.Deps)) *harness {
+	t.Helper()
 
 	terrain := make([]byte, 64*64)
 	for i := range terrain {
@@ -292,7 +300,7 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 	commands := make(chan simulation.Command, 256)
 	// Las respuestas de la cola vuelven al loop por su buzón, como en cmd/server.
 	inbox := loop.NewInbox(256, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	sim := simulation.New(state, simulation.Deps{
+	deps := simulation.Deps{
 		Clock:              clk,
 		Pathfinder:         rutas,
 		Broadcaster:        rec,
@@ -309,7 +317,11 @@ func newHarnessConTerreno(t *testing.T, pintar func(terrain []byte)) *harness {
 		DisconnectGrace:    30 * time.Second,
 		PathMaxNodes:       20000,
 		PathMaxDistance:    256,
-	})
+	}
+	if ajustar != nil {
+		ajustar(&deps)
+	}
+	sim := simulation.New(state, deps)
 
 	gameLoop := loop.New(sim, clk, commands, inbox, loop.Config{
 		TickDuration:       100 * time.Millisecond,

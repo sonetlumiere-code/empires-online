@@ -217,6 +217,12 @@ func run() error {
 	// Antes de Hydrate: la rehidratación de movimientos pregunta qué unidades
 	// tienen una tarea (INV-ECON-005).
 	economia.Tasks = tasks
+	if economia.Advances, err = checkAdvances(rootCtx, economyRepo, economia.Advances, cities, log); err != nil {
+		return err
+	}
+	// Los population_cap de cada era, para que un avance suba el límite sin
+	// tener el número en el código (RN-CITY-015, ADR-030 §5).
+	state.SetEras(eras)
 	state.SetEconomy(economia)
 	// La madera del bosque (SPEC-ECON-FOREST). Las filas vencidas son tiles
 	// llenos: no entran, y se borran como limpieza.
@@ -228,6 +234,16 @@ func run() error {
 		return err
 	} else if limpias > 0 || bosque > 0 {
 		log.Info("madera del bosque cargada", "tiles", bosque, "regenerados_borrados", limpias)
+	}
+	// La piedra de la colina (SPEC-ECON-STONE), igual que el bosque.
+	colina := state.SetHills(economia.Hills, sysClock.NowMs(), func(t world.Tile, detail string) {
+		log.Error("invariant_violation", "inv_id", "INV-ECON-007", "severity", "ALTO", "policy", "REPAIR",
+			"entity", fmt.Sprintf("hill:%d,%d", t.X, t.Y), "detail", detail+": se descarta")
+	})
+	if limpias, err := economyRepo.DeleteRegrownHills(rootCtx, sysClock.NowMs()); err != nil {
+		return err
+	} else if limpias > 0 || colina > 0 {
+		log.Info("piedra de la colina cargada", "tiles", colina, "regenerados_borrados", limpias)
 	}
 	recovery := simulation.Hydrate(state, units, cities, movements, sysClock.NowMs(), log)
 	log.Info("mundo rehidratado",

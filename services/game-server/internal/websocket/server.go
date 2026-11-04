@@ -629,7 +629,7 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 		if !s.claimRequest(ctx, session, msg.RequestID) {
 			return
 		}
-		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.GatherWood{
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.Gather{
 			PlayerID:  session.PlayerID,
 			SessionID: session.ID,
 			RequestID: msg.RequestID,
@@ -670,6 +670,24 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			RequestID: msg.RequestID,
 			CityID:    p.CityID,
 			Type:      unit.Type(p.Type),
+		})
+
+	// Avance de era (SPEC-ECON-STONE): sólo la ciudad; la era, el coste y el
+	// tiempo los decide el servidor.
+	case protocol.TypeCityAdvance:
+		var p protocol.CityAdvancePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.AdvanceEra{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			CityID:    p.CityID,
 		})
 	}
 }

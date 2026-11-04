@@ -10,9 +10,9 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/deposit"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
-	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
@@ -33,6 +33,9 @@ const (
 	EventBuildingDestroyed = eventlog.EventBuildingDestroyed
 	EventTrainingOrdered   = "TrainingOrdered"
 	EventUnitTrained       = "UnitTrained"
+	// El avance de era (SPEC-ECON-STONE, ADR-030 §4 y §5).
+	EventEraAdvanceOrdered = "EraAdvanceOrdered"
+	EventEraAdvanced       = "EraAdvanced"
 )
 
 // ErrStaleStock: la base tiene una versión del stock igual o posterior a la del
@@ -195,13 +198,15 @@ type TaskTransition struct {
 	At        world.Tile
 	// Task es la tarea tal como queda; nil la borra.
 	Task *task.Task
-	// Forest es la carga de un tile de bosque que esta transición escribe
-	// (ADR-025 §2); nil si no carga.
-	Forest *ForestTake
+	// Load es la carga de un tile de bosque o de colina que esta transición
+	// escribe (ADR-025 §2, ADR-030 §1); nil si no carga.
+	Load *DepositTake
 }
 
-// ForestTake es la carga de un tile, como delta (ADR-025 §2).
-type ForestTake struct {
+// DepositTake es la carga de un tile, como delta (ADR-025 §2). Layer decide la
+// tabla y el evento de agotamiento; vacía, es el bosque.
+type DepositTake struct {
+	Layer       deposit.Layer
 	Tile        world.Tile
 	Amount      int32
 	AtMs        int64
@@ -226,8 +231,8 @@ func (r *EconomyRepo) PersistTask(ctx context.Context, tr TaskTransition) error 
 		// aplica si la tarea sigue en la fase WORKING que la carga consume. Un
 		// reintento de una transacción ya confirmada la encuentra cambiada y no
 		// descuenta dos veces (ADR-025 §2).
-		if tr.Forest != nil {
-			if err := takeForest(ctx, tx, tr.UnitID, *tr.Forest); err != nil {
+		if tr.Load != nil {
+			if err := takeDeposit(ctx, tx, tr.UnitID, *tr.Load); err != nil {
 				return err
 			}
 		}
@@ -262,10 +267,25 @@ func (r *EconomyRepo) PersistTask(ctx context.Context, tr TaskTransition) error 
 	})
 }
 
-// takeForest descuenta una carga del tile, como delta, si la tarea de la unidad
-// sigue en la fase WORKING que la carga consume (ADR-025 §2, INV-ECON-008).
-// Una fila vencida cuenta como llena: la carga parte de la capacidad.
-func takeForest(ctx context.Context, tx pgx.Tx, unitID int64, f ForestTake) error {
+// layerTable es la tabla y el evento de agotamiento de una capa. Los nombres
+// salen de aquí, nunca de un dato: son SQL.
+func layerTable(l deposit.Layer) (table, depletedEvent string) {
+	if l.Terrain == deposit.Hill.Terrain {
+		return "hill_stone", "HillDepleted"
+	}
+	return "forest_wood", "ForestDepleted"
+}
+
+// takeDeposit descuenta una carga del tile, como delta, si la tarea de la
+// unidad sigue en la fase WORKING que la carga consume (ADR-025 §2,
+// INV-ECON-008). Una fila vencida cuenta como llena: la carga parte de la
+// capacidad. La tabla es la de la capa del tile (ADR-030 §1).
+func takeDeposit(ctx context.Context, tx pgx.Tx, unitID int64, f DepositTake) error {
+	layer := f.Layer
+	if layer.Name == "" {
+		layer = deposit.Forest
+	}
+	table, depletedEvent := layerTable(layer)
 	var trips int32
 	var until *int64
 	var phase string
@@ -279,16 +299,16 @@ func takeForest(ctx context.Context, tx pgx.Tx, unitID int64, f ForestTake) erro
 		return fmt.Errorf("leer la tarea de la unidad %d: %w", unitID, normalize(err))
 	}
 	if phase != string(task.PhaseWorking) || trips != f.FromTrips || until == nil || *until != f.FromUntilMs {
-		// La transición ya se escribió: esta carga ya está en el bosque.
+		// La transición ya se escribió: esta carga ya está en el tile.
 		return nil
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO forest_wood (x, y, remaining, regrows_at_ms) VALUES ($1, $2, $5::integer - $3::integer, $4::bigint)
+		`INSERT INTO `+table+` (x, y, remaining, regrows_at_ms) VALUES ($1, $2, $5::integer - $3::integer, $4::bigint)
 		 ON CONFLICT (x, y) DO UPDATE SET
-		   remaining = CASE WHEN forest_wood.regrows_at_ms <= $6::bigint THEN $5::integer ELSE forest_wood.remaining END - $3::integer,
-		   regrows_at_ms = GREATEST(forest_wood.regrows_at_ms, EXCLUDED.regrows_at_ms)`,
-		f.Tile.X, f.Tile.Y, f.Amount, f.RegrowsAtMs, forest.Capacity, f.AtMs); err != nil {
-		return fmt.Errorf("descontar la madera de %s: %w", f.Tile, normalize(err))
+		   remaining = CASE WHEN `+table+`.regrows_at_ms <= $6::bigint THEN $5::integer ELSE `+table+`.remaining END - $3::integer,
+		   regrows_at_ms = GREATEST(`+table+`.regrows_at_ms, EXCLUDED.regrows_at_ms)`,
+		f.Tile.X, f.Tile.Y, f.Amount, f.RegrowsAtMs, layer.Capacity, f.AtMs); err != nil {
+		return fmt.Errorf("descontar el recurso de %s en %s: %w", f.Tile, table, normalize(err))
 	}
 	if !f.Depleted {
 		return nil
@@ -298,32 +318,46 @@ func takeForest(ctx context.Context, tx pgx.Tx, unitID int64, f ForestTake) erro
 	if f.CityID != nil {
 		payload["cityId"] = *f.CityID
 	}
-	return appendEvent(ctx, tx, worldEvent{EventType: "ForestDepleted", Tick: f.Tick, PlayerID: &player, Payload: payload})
+	return appendEvent(ctx, tx, worldEvent{EventType: depletedEvent, Tick: f.Tick, PlayerID: &player, Payload: payload})
+}
+
+// DepositRow es una fila de forest_wood o de hill_stone.
+type DepositRow struct {
+	Tile  world.Tile
+	State deposit.State
 }
 
 // ForestRow es una fila de forest_wood.
-type ForestRow struct {
-	Tile  world.Tile
-	State forest.State
-}
+type ForestRow = DepositRow
 
-// ListForests lee la capa de madera del bosque, en orden de (y, x).
-func (r *EconomyRepo) ListForests(ctx context.Context) ([]ForestRow, error) {
+// listLayer lee la capa de una tabla, en orden de (y, x).
+func (r *EconomyRepo) listLayer(ctx context.Context, l deposit.Layer) ([]DepositRow, error) {
+	table, _ := layerTable(l)
 	rows, err := r.store.pool.Query(ctx,
-		`SELECT x, y, remaining, regrows_at_ms FROM forest_wood ORDER BY y, x`)
+		`SELECT x, y, remaining, regrows_at_ms FROM `+table+` ORDER BY y, x`)
 	if err != nil {
-		return nil, fmt.Errorf("leer la madera del bosque: %w", normalize(err))
+		return nil, fmt.Errorf("leer %s: %w", table, normalize(err))
 	}
 	defer rows.Close()
-	var out []ForestRow
+	var out []DepositRow
 	for rows.Next() {
-		var f ForestRow
+		var f DepositRow
 		if err := rows.Scan(&f.Tile.X, &f.Tile.Y, &f.State.Remaining, &f.State.RegrowsAtMs); err != nil {
-			return nil, fmt.Errorf("leer una fila de forest_wood: %w", err)
+			return nil, fmt.Errorf("leer una fila de %s: %w", table, err)
 		}
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// ListForests lee la capa de madera del bosque, en orden de (y, x).
+func (r *EconomyRepo) ListForests(ctx context.Context) ([]DepositRow, error) {
+	return r.listLayer(ctx, deposit.Forest)
+}
+
+// ListHills lee la capa de piedra de la colina, en orden de (y, x).
+func (r *EconomyRepo) ListHills(ctx context.Context) ([]DepositRow, error) {
+	return r.listLayer(ctx, deposit.Hill)
 }
 
 // DepletedForests son los tiles agotados en nowMs: la fundación no los cuenta
@@ -346,13 +380,23 @@ func (r *EconomyRepo) DepletedForests(ctx context.Context, nowMs int64) (map[wor
 	return out, rows.Err()
 }
 
-// DeleteRegrownForests borra las filas de los tiles que ya volvieron a crecer
-// en nowMs: están llenos y no aportan nada. Es limpieza de arranque; la lógica
-// ya las trata como llenas.
+// DeleteRegrownForests borra las filas de los tiles de bosque que ya volvieron
+// a crecer en nowMs: están llenos y no aportan nada. Es limpieza de arranque;
+// la lógica ya las trata como llenas.
 func (r *EconomyRepo) DeleteRegrownForests(ctx context.Context, nowMs int64) (int64, error) {
-	tag, err := r.store.pool.Exec(ctx, `DELETE FROM forest_wood WHERE regrows_at_ms <= $1`, nowMs)
+	return r.deleteRegrown(ctx, deposit.Forest, nowMs)
+}
+
+// DeleteRegrownHills es la misma limpieza para la colina.
+func (r *EconomyRepo) DeleteRegrownHills(ctx context.Context, nowMs int64) (int64, error) {
+	return r.deleteRegrown(ctx, deposit.Hill, nowMs)
+}
+
+func (r *EconomyRepo) deleteRegrown(ctx context.Context, l deposit.Layer, nowMs int64) (int64, error) {
+	table, _ := layerTable(l)
+	tag, err := r.store.pool.Exec(ctx, `DELETE FROM `+table+` WHERE regrows_at_ms <= $1`, nowMs)
 	if err != nil {
-		return 0, fmt.Errorf("limpiar el bosque regenerado: %w", normalize(err))
+		return 0, fmt.Errorf("limpiar %s: %w", table, normalize(err))
 	}
 	return tag.RowsAffected(), nil
 }
@@ -535,6 +579,13 @@ func (r *EconomyRepo) Train(
 			}
 		case !errors.Is(normalize(err), ErrNotFound):
 			return fmt.Errorf("leer la producción de la ciudad %d: %w", p.CityID, normalize(err))
+		}
+		// RN-ECON-026: mientras avanza de era, la ciudad no entrena. La RAM lo
+		// decide; la base lo repite como última barrera (ADR-030 §4).
+		if avanzando, err := advanceInProgress(ctx, tx, p.CityID); err != nil {
+			return err
+		} else if avanzando {
+			return production.ErrCityBusy
 		}
 
 		aplicado, err := applyStock(ctx, tx, d)

@@ -53,11 +53,40 @@ func TestCanAfford(t *testing.T) {
 	assert.False(t, s.CanAfford(Cost{Resource: "STONE", Amount: 1}))
 }
 
-// El catálogo de recursos es el mismo conjunto que el CHECK de la migración.
+// El catálogo de recursos es el mismo conjunto que el CHECK de las migraciones
+// 000006 y 000012.
 func TestElCatalogoDeRecursosEsElDelEsquema(t *testing.T) {
-	assert.Equal(t, []Resource{ResourceWood}, Resources())
+	assert.Equal(t, []Resource{ResourceWood, ResourceStone}, Resources())
 	for _, r := range Resources() {
 		assert.True(t, r.Valid())
 	}
 	assert.False(t, Resource("GOLD").Valid())
+}
+
+func piedra(n int64) Cost { return Cost{Resource: ResourceStone, Amount: n} }
+
+// ADR-030 §3, INV-ECON-002: un coste en dos recursos sólo se cubre si alcanzan
+// los dos; con uno solo, no.
+func TestUnCosteEnDosRecursosExigeLosDos(t *testing.T) {
+	cs := Costs{madera(400), piedra(200)}
+	stocks := map[Resource]*Stock{
+		ResourceWood:  {Resource: ResourceWood, Amount: 400},
+		ResourceStone: {Resource: ResourceStone, Amount: 199},
+	}
+	of := func(r Resource) *Stock { return stocks[r] }
+	assert.False(t, cs.CanAfford(of), "falta una piedra")
+	stocks[ResourceStone].Amount = 200
+	assert.True(t, cs.CanAfford(of))
+	delete(stocks, ResourceStone)
+	assert.False(t, cs.CanAfford(of), "sin stock de piedra no se cubre")
+}
+
+// Un coste no puede nombrar dos veces el mismo recurso ni uno inventado.
+func TestUnCosteInvalidoNoSeCubre(t *testing.T) {
+	require.ErrorIs(t, Costs{madera(1), madera(2)}.Validate(), ErrInvalidAmount)
+	require.ErrorIs(t, Costs{{Resource: "GOLD", Amount: 1}}.Validate(), ErrInvalidAmount)
+	require.ErrorIs(t, Costs{madera(-1)}.Validate(), ErrInvalidAmount)
+	require.NoError(t, Costs{madera(400), piedra(200)}.Validate())
+	lleno := func(Resource) *Stock { return &Stock{Resource: ResourceWood, Amount: 1_000} }
+	assert.False(t, Costs{madera(1), madera(2)}.CanAfford(lleno))
 }

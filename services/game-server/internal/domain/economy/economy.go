@@ -5,7 +5,8 @@
 // building.Definition); aquí sólo están el recurso, el coste como valor y el
 // almacén con sus dos operaciones.
 //
-// Spec: ../../../../../docs/specs/economy-wood.md §4.1 · ADR-023.
+// Specs: ../../../../../docs/specs/economy-wood.md §4.1 y economy-stone.md ·
+// ADR-023 · ADR-030.
 package economy
 
 import (
@@ -16,20 +17,58 @@ import (
 // Resource identifica un recurso.
 type Resource string
 
-// ResourceWood es el único recurso del primer slice (SPEC-ECON-WOOD §2).
-const ResourceWood Resource = "WOOD"
+const (
+	// ResourceWood es la madera del bosque (SPEC-ECON-WOOD).
+	ResourceWood Resource = "WOOD"
+	// ResourceStone es la piedra de la colina (SPEC-ECON-STONE).
+	ResourceStone Resource = "STONE"
+)
 
 // Valid indica si el recurso pertenece al catálogo. Es el mismo conjunto que
-// el CHECK city_stocks_resource_valid de la migración 000006.
-func (r Resource) Valid() bool { return r == ResourceWood }
+// el CHECK city_stocks_resource_valid (migraciones 000006 y 000012).
+func (r Resource) Valid() bool { return r == ResourceWood || r == ResourceStone }
 
 // Resources es el catálogo cerrado de recursos, en orden estable.
-func Resources() []Resource { return []Resource{ResourceWood} }
+func Resources() []Resource { return []Resource{ResourceWood, ResourceStone} }
 
 // Cost es lo que cuesta algo, en un recurso.
 type Cost struct {
 	Resource Resource
 	Amount   int64
+}
+
+// Costs es lo que cuesta algo que paga en varios recursos, cada uno como
+// mucho una vez (ADR-030 §3). Se debita entero o no se debita
+// (INV-ECON-002).
+type Costs []Cost
+
+// Validate comprueba que cada recurso es del catálogo, aparece una sola vez y
+// tiene una cantidad no negativa.
+func (cs Costs) Validate() error {
+	seen := make(map[Resource]bool, len(cs))
+	for _, c := range cs {
+		if !c.Resource.Valid() || c.Amount < 0 || seen[c.Resource] {
+			return fmt.Errorf("%w: %d de %q en un coste de %d recursos", ErrInvalidAmount, c.Amount, c.Resource, len(cs))
+		}
+		seen[c.Resource] = true
+	}
+	return nil
+}
+
+// CanAfford indica si los stocks cubren TODOS los recursos del coste. `stock`
+// devuelve el stock de un recurso, o nil si la ciudad no lo tiene, que no
+// cubre nada.
+func (cs Costs) CanAfford(stock func(Resource) *Stock) bool {
+	if cs.Validate() != nil {
+		return false
+	}
+	for _, c := range cs {
+		s := stock(c.Resource)
+		if s == nil || !s.CanAfford(c) {
+			return false
+		}
+	}
+	return true
 }
 
 // Errores de dominio. La capa de aplicación los traduce al catálogo de

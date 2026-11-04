@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/deposit"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
@@ -31,8 +31,8 @@ func (h *harness) cargas() []simulation.ForestLoad {
 	defer h.economy.mu.Unlock()
 	var out []simulation.ForestLoad
 	for _, w := range h.economy.tasks {
-		if w.Forest != nil {
-			out = append(out, *w.Forest)
+		if w.Load != nil {
+			out = append(out, *w.Load)
 		}
 	}
 	return out
@@ -52,13 +52,13 @@ func (h *harness) avisosDeBosque() []protocol.ForestView {
 func TestLaCargaDescuentaElBosqueYViajaEnLaTransaccion(t *testing.T) {
 	h := newHarnessMadera(t)
 	h.conectar()
-	require.Equal(t, forest.Capacity, h.state.ForestAt(bosque, epoch), "un bosque sin tocar está lleno")
+	require.Equal(t, deposit.Forest.Capacity, h.state.ForestAt(bosque, epoch), "un bosque sin tocar está lleno")
 	h.recolectar(1, bosque)
 	h.hasta(epoch + 16_400)
 
 	tk, _ := h.state.Task(1)
 	require.Equal(t, int32(10), tk.Carrying)
-	assert.Equal(t, forest.Capacity-10, h.state.ForestAt(bosque, h.clk.NowMs()))
+	assert.Equal(t, deposit.Forest.Capacity-10, h.state.ForestAt(bosque, h.clk.NowMs()))
 
 	cargas := h.cargas()
 	require.Len(t, cargas, 1)
@@ -66,7 +66,7 @@ func TestLaCargaDescuentaElBosqueYViajaEnLaTransaccion(t *testing.T) {
 	assert.Equal(t, bosque, c.Tile)
 	assert.Equal(t, int32(10), c.Amount, "lo que pierde el tile es lo que gana el aldeano")
 	assert.Equal(t, epoch+16_360, c.AtMs)
-	assert.Equal(t, epoch+16_360+forest.RegrowAfterMs, c.RegrowsAtMs, "vuelve a crecer 24 h después de la carga")
+	assert.Equal(t, epoch+16_360+deposit.Forest.RegrowAfterMs, c.RegrowsAtMs, "vuelve a crecer 24 h después de la carga")
 	assert.Equal(t, int32(0), c.FromTrips)
 	assert.Equal(t, epoch+16_360, c.FromUntilMs, "la fase WORKING que consume")
 	assert.False(t, c.Depleted)
@@ -83,7 +83,7 @@ func TestLaCargaDescuentaElBosqueYViajaEnLaTransaccion(t *testing.T) {
 func TestUnaCargaParcialAgotaElTileYElViajeSiguienteVaAlMasCercano(t *testing.T) {
 	h := newHarnessMadera(t)
 	h.conectar()
-	h.state.SetForest(bosque, forest.State{Remaining: 4, RegrowsAtMs: lejos})
+	h.state.SetForest(bosque, deposit.State{Remaining: 4, RegrowsAtMs: lejos})
 	h.recolectar(1, bosque)
 	h.hasta(epoch + 16_400)
 
@@ -110,7 +110,7 @@ func TestUnaCargaParcialAgotaElTileYElViajeSiguienteVaAlMasCercano(t *testing.T)
 func TestSinBosqueCercaLaTareaTerminaEnElDeposito(t *testing.T) {
 	h := newHarnessConTerreno(t, func(terrain []byte) { terrain[10*64+22] = byte(world.Forest) })
 	h.conectar()
-	h.state.SetForest(bosque, forest.State{Remaining: 10, RegrowsAtMs: lejos})
+	h.state.SetForest(bosque, deposit.State{Remaining: 10, RegrowsAtMs: lejos})
 	h.recolectar(1, bosque)
 	h.hasta(epoch + 22_400)
 
@@ -128,7 +128,7 @@ func TestSinBosqueCercaLaTareaTerminaEnElDeposito(t *testing.T) {
 func TestRecolectarUnBosqueAgotadoSeRechaza(t *testing.T) {
 	h := newHarnessMadera(t)
 	h.conectar()
-	h.state.SetForest(bosque, forest.State{Remaining: 0, RegrowsAtMs: lejos})
+	h.state.SetForest(bosque, deposit.State{Remaining: 0, RegrowsAtMs: lejos})
 	h.recolectar(1, bosque)
 	assert.Equal(t, []string{protocol.CodeInvalidTarget}, h.codigos())
 	_, ok := h.state.Task(1)
@@ -141,11 +141,11 @@ func TestRecolectarUnBosqueAgotadoSeRechaza(t *testing.T) {
 func TestDosAldeanosEnElMismoTileCarganEnOrdenDeId(t *testing.T) {
 	h := newHarnessMadera(t)
 	h.conectar()
-	h.state.SetForest(bosque, forest.State{Remaining: 15, RegrowsAtMs: lejos})
+	h.state.SetForest(bosque, deposit.State{Remaining: 15, RegrowsAtMs: lejos})
 	ponerUnidad(h, 302, h.playerID, h.cityID, unit.TypeVillager, bosque, 40)
 	ponerUnidad(h, 301, h.playerID, h.cityID, unit.TypeVillager, bosque, 40)
-	h.commands <- simulation.GatherWood{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: 302, Target: bosque}
-	h.commands <- simulation.GatherWood{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: 301, Target: bosque}
+	h.commands <- simulation.Gather{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: 302, Target: bosque}
+	h.commands <- simulation.Gather{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: 301, Target: bosque}
 	h.tick()
 	h.hasta(h.clk.NowMs() + 10_100)
 
@@ -168,7 +168,7 @@ func TestSiElBosqueSeAgotaPorElCaminoVaAlSiguiente(t *testing.T) {
 	h.conectar()
 	h.recolectar(1, bosque)
 	h.hasta(epoch + 3_000)
-	h.state.SetForest(bosque, forest.State{Remaining: 0, RegrowsAtMs: lejos})
+	h.state.SetForest(bosque, deposit.State{Remaining: 0, RegrowsAtMs: lejos})
 	h.hasta(epoch + 6_400)
 
 	tk, ok := h.state.Task(1)
@@ -186,22 +186,22 @@ func TestSiElBosqueSeAgotaPorElCaminoVaAlSiguiente(t *testing.T) {
 func TestElBosqueVuelveACrecerEnSuInstante(t *testing.T) {
 	h := newHarnessMadera(t)
 	vence := epoch + 1_000
-	h.state.SetForest(bosque, forest.State{Remaining: 0, RegrowsAtMs: vence})
+	h.state.SetForest(bosque, deposit.State{Remaining: 0, RegrowsAtMs: vence})
 	assert.Equal(t, int32(0), h.state.ForestAt(bosque, vence-1))
-	assert.Equal(t, forest.Capacity, h.state.ForestAt(bosque, vence), "lleno desde el instante exacto")
+	assert.Equal(t, deposit.Forest.Capacity, h.state.ForestAt(bosque, vence), "lleno desde el instante exacto")
 
 	h.hasta(vence + 1_100)
 	assert.Equal(t, 0, h.state.ForestCount(), "el barrido lo saca de la capa")
 	avisos := h.avisosDeBosque()
 	require.Len(t, avisos, 1)
-	assert.Equal(t, protocol.ForestView{X: bosque.X, Y: bosque.Y, Remaining: forest.Capacity}, avisos[0])
+	assert.Equal(t, protocol.ForestView{X: bosque.X, Y: bosque.Y, Remaining: deposit.Forest.Capacity}, avisos[0])
 }
 
 // RN-ECON-018: el snapshot trae los tiles a medias de su área, de cualquiera.
 func TestElSnapshotTraeElBosqueAMedias(t *testing.T) {
 	h := newHarnessMadera(t)
-	h.state.SetForest(bosque, forest.State{Remaining: 30, RegrowsAtMs: lejos})
-	h.state.SetForest(world.Tile{X: 23, Y: 40}, forest.State{Remaining: 0, RegrowsAtMs: epoch}) // ya volvió a crecer
+	h.state.SetForest(bosque, deposit.State{Remaining: 30, RegrowsAtMs: lejos})
+	h.state.SetForest(world.Tile{X: 23, Y: 40}, deposit.State{Remaining: 0, RegrowsAtMs: epoch}) // ya volvió a crecer
 	snap := h.sim.BuildSnapshot(uuid.New(), []world.ChunkCoord{{CX: 0, CY: 0}, {CX: 0, CY: 1}}, epoch+1, false)
 	at := lejos
 	assert.Equal(t, []protocol.ForestView{{X: bosque.X, Y: bosque.Y, Remaining: 30, RegrowsAtMs: &at}}, snap.Forests)
@@ -221,13 +221,13 @@ func TestLaCapaDelArranqueDescartaLoQueNoVale(t *testing.T) {
 	state := simulation.NewState(w)
 	var malas []world.Tile
 	n := state.SetForests([]simulation.ForestRow{
-		{Tile: world.Tile{X: 22, Y: 10}, State: forest.State{Remaining: 40, RegrowsAtMs: lejos}},
-		{Tile: world.Tile{X: 22, Y: 11}, State: forest.State{Remaining: 0, RegrowsAtMs: 5}},
-		{Tile: world.Tile{X: 5, Y: 5}, State: forest.State{Remaining: 10, RegrowsAtMs: lejos}},
-		{Tile: world.Tile{X: 22, Y: 10}, State: forest.State{Remaining: 101, RegrowsAtMs: lejos}},
+		{Tile: world.Tile{X: 22, Y: 10}, State: deposit.State{Remaining: 40, RegrowsAtMs: lejos}},
+		{Tile: world.Tile{X: 22, Y: 11}, State: deposit.State{Remaining: 0, RegrowsAtMs: 5}},
+		{Tile: world.Tile{X: 5, Y: 5}, State: deposit.State{Remaining: 10, RegrowsAtMs: lejos}},
+		{Tile: world.Tile{X: 22, Y: 10}, State: deposit.State{Remaining: 101, RegrowsAtMs: lejos}},
 	}, 10, func(t world.Tile, _ string) { malas = append(malas, t) })
 	assert.Equal(t, 1, n)
 	assert.Equal(t, int32(40), state.ForestAt(world.Tile{X: 22, Y: 10}, 10))
-	assert.Equal(t, forest.Capacity, state.ForestAt(world.Tile{X: 22, Y: 11}, 10), "la vencida está llena")
+	assert.Equal(t, deposit.Forest.Capacity, state.ForestAt(world.Tile{X: 22, Y: 11}, 10), "la vencida está llena")
 	assert.Equal(t, []world.Tile{{X: 5, Y: 5}, {X: 22, Y: 10}}, malas)
 }

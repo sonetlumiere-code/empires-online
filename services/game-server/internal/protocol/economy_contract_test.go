@@ -108,7 +108,8 @@ func TestLaCiudadLlevaSuStockYSuProduccion(t *testing.T) {
 	require.Equal(t, esperados, recursos, "los recursos del esquema son el catálogo del dominio")
 
 	update := serializado(t, protocol.CityUpdatePayload{ID: 1, Stocks: &protocol.Stocks{Wood: 40}})
-	require.Equal(t, map[string]any{"WOOD": float64(40)}, update["stocks"])
+	require.Equal(t, map[string]any{"WOOD": float64(40), "STONE": float64(0)}, update["stocks"],
+		"la piedra viaja siempre, aunque sea 0 (SPEC-ECON-STONE §6)")
 	assert.NotContains(t, update, "production", "sin cambio de producción, la clave no viaja")
 
 	var ninguna *protocol.ProductionView

@@ -320,15 +320,16 @@ func (s *Simulation) applyPillage(h pillageHit, nowMs int64) bool {
 		s.endEngagement(a, true)
 		return false
 	}
-	eco := s.state.economyOf(c.ID)
+	// El saqueo se lleva madera, nunca piedra (SPEC-ECON-STONE Q8).
+	wood := s.state.economyOf(c.ID).of(economy.ResourceWood)
 	room := int64(def.LootCarry - s.state.carrying(a))
-	amount := min(int64(s.pillagePerHit()), room, eco.wood.Amount-s.pillageFloor())
+	amount := min(int64(s.pillagePerHit()), room, wood.stock.Amount-s.pillageFloor())
 	if amount <= 0 {
 		// Carga llena o almacén en el suelo: no hay golpe (RN-COMBAT-021).
 		s.endEngagement(a, true)
 		return false
 	}
-	if eco.wood.Amount-amount < s.pillageFloor() {
+	if wood.stock.Amount-amount < s.pillageFloor() {
 		// INV-COMBAT-004. No hay ruta conocida: el cálculo de arriba lo impide.
 		s.deps.Log.Error("invariant_violation", "inv_id", "INV-COMBAT-004", "city_id", c.ID, "amount", amount)
 		s.endEngagement(a, true)
@@ -337,19 +338,19 @@ func (s *Simulation) applyPillage(h pillageHit, nowMs int64) bool {
 
 	// La reserva (ADR-026 §1): la madera sale ya de la RAM y entra como carga
 	// pendiente; los depósitos sin volcar viajan con el débito.
-	if err := eco.wood.Debit(economy.Cost{Resource: economy.ResourceWood, Amount: amount}); err != nil {
+	if err := wood.stock.Debit(economy.Cost{Resource: economy.ResourceWood, Amount: amount}); err != nil {
 		s.endEngagement(a, true)
 		return false
 	}
-	carried := eco.unflushed
-	eco.unflushed = 0
-	delete(s.state.stockDirty, c.ID)
+	carried := wood.unflushed
+	wood.unflushed = 0
+	s.state.markStockDirty(c.ID)
 	s.state.combat.pendingLoot[a.ID] += int32(amount)
 
 	p := Pillage{
 		AttackerID: a.ID, AttackerPlayer: a.PlayerID, CityID: c.ID, VictimPlayer: c.OwnerPlayerID,
 		Amount: int32(amount), At: s.authoritativePosition(a, nowMs), Tick: s.state.Tick(), AtMs: nowMs,
-		Stock: StockDelta{CityID: c.ID, Resource: economy.ResourceWood, Delta: carried - amount, Version: eco.wood.Version},
+		Stock: StockDelta{CityID: c.ID, Resource: economy.ResourceWood, Delta: carried - amount, Version: wood.stock.Version},
 	}
 	s.submitPillage(p, carried)
 
@@ -439,10 +440,10 @@ func (s *Simulation) handlePillageResolved(cmd PillageResolved) {
 
 	if cmd.Failed {
 		if c, ok := s.state.City(cmd.CityID); ok {
-			eco := s.state.economyOf(c.ID)
-			_ = eco.wood.Credit(int64(cmd.Amount))
-			eco.unflushed += cmd.Carried
-			if eco.unflushed > 0 {
+			wood := s.state.economyOf(c.ID).of(economy.ResourceWood)
+			_ = wood.stock.Credit(int64(cmd.Amount))
+			wood.unflushed += cmd.Carried
+			if wood.unflushed > 0 {
 				s.state.stockDirty[c.ID] = struct{}{}
 			}
 			s.broadcastStocks(c)

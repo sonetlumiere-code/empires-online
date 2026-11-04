@@ -62,8 +62,11 @@ export type UnitType = z.infer<typeof UnitType>;
 export const PresenceState = z.enum(['ONLINE', 'OFFLINE_PENDING', 'PROTECTED']);
 export type PresenceState = z.infer<typeof PresenceState>;
 
-/** Recursos de la economía. Ver ../../../docs/specs/economy-wood.md */
-export const ResourceType = z.enum(['WOOD']);
+/**
+ * Recursos de la economía: la madera del bosque y la piedra de la colina. Ver
+ * ../../../docs/specs/economy-wood.md y economy-stone.md
+ */
+export const ResourceType = z.enum(['WOOD', 'STONE']);
 export type ResourceType = z.infer<typeof ResourceType>;
 
 /**
@@ -72,6 +75,11 @@ export type ResourceType = z.infer<typeof ResourceType>;
  */
 export const Stocks = z.object({
   WOOD: z.number().int().min(0),
+  /**
+   * Piedra (SPEC-ECON-STONE). Opcional: aditivo en v1 (R-VER-2); el servidor de
+   * E9 en adelante siempre la manda.
+   */
+  STONE: z.number().int().min(0).optional(),
 });
 export type Stocks = z.infer<typeof Stocks>;
 
@@ -129,6 +137,8 @@ export const UnitView = z.object({
   garrisonCityId: EntityId.nullable(),
   /** Lo que lleva encima una unidad que recolecta. Ausente si no lleva nada. */
   carrying: z.number().int().min(0).optional(),
+  /** El recurso de `carrying` cuando lo lleva una recolección (SPEC-ECON-STONE §6). */
+  carryingResource: ResourceType.optional(),
 });
 export type UnitView = z.infer<typeof UnitView>;
 
@@ -138,6 +148,13 @@ export const ProductionView = z.object({
   completesAtMs: EpochMs,
 });
 export type ProductionView = z.infer<typeof ProductionView>;
+
+/** Avance de era en curso de una ciudad: a qué era va y cuándo llega (SPEC-ECON-STONE §6). */
+export const AdvanceView = z.object({
+  era: EraCode,
+  completesAtMs: EpochMs,
+});
+export type AdvanceView = z.infer<typeof AdvanceView>;
 
 /** Estado observable de un edificio. */
 export const BuildingView = z.object({
@@ -174,6 +191,8 @@ export const CityView = z.object({
   stocks: Stocks.optional(),
   /** Entrenamiento en curso; `null` si no entrena nada. */
   production: ProductionView.nullable().optional(),
+  /** Avance de era en curso; `null` si no avanza (SPEC-ECON-STONE). */
+  advance: AdvanceView.nullable().optional(),
 });
 export type CityView = z.infer<typeof CityView>;
 
@@ -213,6 +232,19 @@ export const ForestView = z.object({
   regrowsAtMs: EpochMs.nullable(),
 });
 export type ForestView = z.infer<typeof ForestView>;
+
+/**
+ * Piedra de un tile de colina que no está lleno (SPEC-ECON-STONE). Un tile `HILL` que
+ * no aparece está lleno. La misma forma que `ForestView`: `regrowsAtMs` nulo en un
+ * `hill.update` anuncia que el tile vuelve a estar lleno.
+ */
+export const HillView = z.object({
+  x: WorldCoordinate,
+  y: WorldCoordinate,
+  remaining: z.number().int().min(0),
+  regrowsAtMs: EpochMs.nullable(),
+});
+export type HillView = z.infer<typeof HillView>;
 
 /** Tipo de tratado (SPEC-DIPLOMACY §4.1). `TRADE` sólo existe por vía administrativa. */
 export const TreatyType = z.enum(['NON_AGGRESSION', 'ALLIANCE', 'TRADE']);

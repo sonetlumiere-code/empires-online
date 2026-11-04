@@ -395,6 +395,80 @@ describe('comandos de economía (SPEC-ECON-WOOD)', () => {
   });
 });
 
+describe('piedra y avance de era (SPEC-ECON-STONE)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+
+  it('acepta city.advance con la ciudad y nada más: la era la decide el servidor', () => {
+    expect(parseClientMessage({
+      v: 1, type: 'city.advance', requestId: uuid, payload: { cityId: 7 },
+    }).ok).toBe(true);
+    for (const extra of [{ era: 'BRONZE_AGE' }, { cost: 0 }, { completesAtMs: 1 }]) {
+      const result = parseClientMessage({
+        v: 1, type: 'city.advance', requestId: uuid, payload: { cityId: 7, ...extra },
+      });
+      expect(result).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('acepta hill.update a medias y lleno, y rechaza la piedra negativa', () => {
+    expect(parseServerMessage({
+      ...env, type: 'hill.update', payload: { x: 4, y: 5, remaining: 0, regrowsAtMs: 1_757_462_400_000 },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'hill.update', payload: { x: 4, y: 5, remaining: 100, regrowsAtMs: null },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'hill.update', payload: { x: 4, y: 5, remaining: -1, regrowsAtMs: null },
+    }).ok).toBe(false);
+  });
+
+  it('el stock admite piedra, opcional, y la rechaza negativa', () => {
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, stocks: { WOOD: 40, STONE: 15 } },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, stocks: { WOOD: 40 } },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, stocks: { WOOD: 40, STONE: -1 } },
+    }).ok).toBe(false);
+  });
+
+  it('city.update admite la era y el avance, que empieza con una vista y termina en null', () => {
+    expect(parseServerMessage({
+      ...env, type: 'city.update',
+      payload: { id: 7, advance: { era: 'BRONZE_AGE', completesAtMs: 1_757_376_090_000 } },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, era: 'BRONZE_AGE', populationLimit: 50, advance: null },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, era: 'GOLD_AGE' },
+    }).ok).toBe(false);
+  });
+
+  it('la carga de una unidad lleva su recurso, del catálogo', () => {
+    expect(parseServerMessage({
+      ...env, type: 'entity.update', payload: { id: 3, carrying: 10, carryingResource: 'STONE' },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'entity.update', payload: { id: 3, carrying: 10, carryingResource: 'GOLD' },
+    }).ok).toBe(false);
+  });
+
+  it('world.snapshot admite hills opcional', () => {
+    const base = {
+      v: 1, seq: 1, ts: 1, type: 'world.snapshot',
+      payload: {
+        serverTimeMs: 1, tick: 1, chunks: [], terrain: [], units: [], cities: [], territories: [], buildings: [],
+      },
+    };
+    expect(parseServerMessage({
+      ...base, payload: { ...base.payload, hills: [{ x: 1, y: 2, remaining: 40, regrowsAtMs: 5 }] },
+    }).ok).toBe(true);
+  });
+});
+
 describe('envelope servidor → cliente', () => {
   it('acepta unit.movement.started con la polilínea temporizada completa', () => {
     const result = parseServerMessage({

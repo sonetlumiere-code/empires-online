@@ -10,7 +10,7 @@ import (
 	"fmt"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
-	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/deposit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
@@ -112,7 +112,7 @@ func isViable(w *world.World, center world.Tile, existing []world.Tile, hasWood 
 var fourNeighbours = [4][2]int32{{0, -1}, {-1, 0}, {1, 0}, {0, 1}}
 
 // hasReachableForest indica si desde la zona urbana se llega a pie a al menos
-// forest.FoundingTiles tiles FOREST con madera sin salir del cuadrado de
+// deposit.FoundingForestTiles tiles FOREST con madera sin salir del cuadrado de
 // semilado forestRadius (RN-CITY-023, RN-ECON-017).
 //
 // Búsqueda en anchura desde el anillo de nacimiento —que el entorno despejado
@@ -137,7 +137,7 @@ func hasReachableForest(w *world.World, center world.Tile, hasWood HasWood) bool
 		t := queue[i]
 		if w.TerrainAt(t.X, t.Y) == world.Forest && (hasWood == nil || hasWood(t)) {
 			found++
-			if found >= forest.FoundingTiles {
+			if found >= deposit.FoundingForestTiles {
 				return true
 			}
 		}

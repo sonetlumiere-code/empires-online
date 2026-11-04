@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -17,7 +18,9 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
 
-// La tarea de recolección GATHER_WOOD en la simulación (SPEC-ECON-WOOD §4.2).
+// Las tareas de recolección GATHER_WOOD y GATHER_STONE en la simulación
+// (SPEC-ECON-WOOD §4.2, SPEC-ECON-STONE §4.2). Las dos son la misma máquina; el
+// tipo fija la capa del tile de trabajo y el recurso del depósito (ADR-030 §2).
 //
 //	TO_RESOURCE (tramo) → WORKING (workMs) → TO_DEPOSIT (tramo) → depósito → TO_RESOURCE …
 //
@@ -28,8 +31,9 @@ import (
 // y no al tick que los observa: por eso un reinicio no la desplaza
 // (INV-ECON-005).
 
-// GatherWood pone a una unidad a recolectar madera en un tile de bosque.
-type GatherWood struct {
+// Gather pone a una unidad a recolectar en un tile de bosque o de colina: el
+// terreno del tile decide el recurso (RN-ECON-019).
+type Gather struct {
 	PlayerID  uuid.UUID
 	SessionID uuid.UUID
 	RequestID string
@@ -37,7 +41,7 @@ type GatherWood struct {
 	Target    world.Tile
 }
 
-func (GatherWood) commandType() string { return protocol.TypeUnitGather }
+func (Gather) commandType() string { return protocol.TypeUnitGather }
 
 // TaskPersistFailed es la compensación de una transición de tarea que no se
 // escribió (ADR-023 §6). Rev es la revisión de la tarea que escribía: si la RAM
@@ -109,7 +113,7 @@ func (s *Simulation) depositTile(c *city.City) (world.Tile, bool) {
 // unit.gather
 // ─────────────────────────────────────────────────────────────
 
-func (s *Simulation) handleGatherWood(cmd GatherWood) {
+func (s *Simulation) handleGather(cmd Gather) {
 	nowMs := s.deps.Clock.NowMs()
 	u, ok := s.state.Unit(cmd.UnitID)
 	if !ok {
@@ -126,14 +130,30 @@ func (s *Simulation) handleGatherWood(cmd GatherWood) {
 		return
 	}
 	w := s.state.World()
-	if err := task.ValidTarget(w, cmd.Target); err != nil {
+	layer, err := task.ValidTarget(w, cmd.Target)
+	if err != nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, gatherErrorCode(err), err.Error())
 		return
 	}
-	// RN-ECON-014: un tile sin madera no se recolecta.
-	if s.state.ForestAt(cmd.Target, nowMs) == 0 {
-		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "ese bosque está agotado")
+	// RN-ECON-014, RN-ECON-021: un tile sin recurso no se recolecta.
+	if s.state.ResourceAt(cmd.Target, nowMs) == 0 {
+		msg := "ese bosque está agotado"
+		if layer.Terrain == world.Hill {
+			msg = "esa colina está agotada"
+		}
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msg)
 		return
+	}
+	// RN-ECON-020: el depósito tiene que quedar al alcance del pathfinding desde
+	// el tile de trabajo; si no, la unidad cargaría y no podría volver.
+	if c, ok := s.cityOfUnit(u); ok {
+		if depot, ok := s.depositTile(c); ok {
+			if max := s.deps.PathMaxDistance; max > 0 && chebyshevTiles(depot, cmd.Target) > max {
+				s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodePathTooLong,
+					"el depósito de la ciudad queda demasiado lejos de ese tile")
+				return
+			}
+		}
 	}
 	if s.deps.Economy == nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInternalError, "la economía no está disponible")
@@ -163,9 +183,9 @@ func (s *Simulation) handleGatherWood(cmd GatherWood) {
 	s.cancelActiveMovement(u, movement.ReasonReplaced, nowMs)
 
 	wasHidden := u.Status == unit.StatusHidden
-	t := task.NewGather(u.ID, cmd.Target)
+	t := task.NewGatherOf(u.ID, task.KindFor(layer), cmd.Target)
 	if path == nil {
-		// Ya está sobre el bosque: empieza a trabajar ahora.
+		// Ya está sobre el recurso: empieza a trabajar ahora.
 		s.arriveAtResource(u, t, nowMs, nil, wasHidden)
 		return
 	}
@@ -261,13 +281,14 @@ func (s *Simulation) onLegArrived(u *unit.Unit, t task.Task, movementID int64, a
 	}
 }
 
-// arriveAtResource es la llegada al bosque en el instante `arrivedAtMs`:
+// arriveAtResource es la llegada al recurso en el instante `arrivedAtMs`:
 // TO_RESOURCE → WORKING durante workMs (RN-ECON-003). Si el trabajo ya venció
 // —tras un reinicio—, la fase 5 de este mismo tick lo despierta.
 func (s *Simulation) arriveAtResource(u *unit.Unit, t task.Task, arrivedAtMs int64, finish *MovementFinish, wasHidden bool) {
-	// RN-ECON-015: si el bosque se agotó mientras llegaba, no se trabaja en él.
-	if s.state.ForestAt(t.Target, arrivedAtMs) == 0 {
-		s.leaveDepletedForest(u, t, arrivedAtMs, finish, wasHidden)
+	// RN-ECON-015, RN-ECON-022: si el tile se agotó mientras llegaba, no se
+	// trabaja en él.
+	if s.state.taskRemaining(t, t.Target, arrivedAtMs) == 0 {
+		s.leaveDepleted(u, t, arrivedAtMs, finish, wasHidden)
 		return
 	}
 	def, err := unit.Lookup(u.Type)
@@ -316,11 +337,11 @@ func (s *Simulation) leaveResource(u *unit.Unit, t task.Task) {
 		return
 	}
 	leftAtMs := t.PhaseUntilMs
-	// RN-ECON-013: carga lo que quede, hasta su capacidad. Un tile que otra
-	// unidad vació mientras trabajaba no da nada (RN-ECON-015).
-	carry := s.takeForest(u, t, def.GatherCarry, leftAtMs)
+	// RN-ECON-013, RN-ECON-021: carga lo que quede, hasta su capacidad. Un tile
+	// que otra unidad vació mientras trabajaba no da nada (RN-ECON-015).
+	carry := s.takeDeposit(u, t, def.GatherCarry, leftAtMs)
 	if carry == 0 {
-		s.leaveDepletedForest(u, t, leftAtMs, nil, false)
+		s.leaveDepleted(u, t, leftAtMs, nil, false)
 		return
 	}
 	next, err := t.FinishWork(carry)
@@ -330,7 +351,7 @@ func (s *Simulation) leaveResource(u *unit.Unit, t task.Task) {
 	}
 	origin := u.Tile()
 	if origin == depot {
-		// El bosque es el propio tile de depósito: el viaje es instantáneo.
+		// El recurso es el propio tile de depósito: el viaje es instantáneo.
 		s.arriveAtDeposit(u, next, leftAtMs, nil)
 		return
 	}
@@ -341,10 +362,10 @@ func (s *Simulation) leaveResource(u *unit.Unit, t task.Task) {
 	}
 	s.startLeg(u, next, path, depot, origin, leftAtMs, nil, false)
 
-	carga := next.Carrying
+	carga, recurso := next.Carrying, carryingResourceOf(next)
 	cx, cy := s.state.World().ChunkOf(origin.X, origin.Y)
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityUpdate,
-		protocol.EntityUpdatePayload{ID: u.ID, Carrying: &carga})
+		protocol.EntityUpdatePayload{ID: u.ID, Carrying: &carga, CarryingResource: recurso})
 }
 
 // arriveAtDeposit es la llegada al depósito en `arrivedAtMs`: entrega la carga
@@ -362,7 +383,7 @@ func (s *Simulation) arriveAtDeposit(u *unit.Unit, t task.Task, arrivedAtMs int6
 		s.endTask(u, task.EndCancelled, finish)
 		return
 	}
-	s.deposit(c, delivered)
+	s.deposit(c, taskResource(t), delivered)
 	cero := int32(0)
 	cx, cy := s.state.World().ChunkOf(u.X, u.Y)
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityUpdate,
@@ -379,12 +400,13 @@ func (s *Simulation) arriveAtDeposit(u *unit.Unit, t task.Task, arrivedAtMs int6
 		return
 	}
 	origin := u.Tile()
-	// RN-ECON-015: con su bosque agotado, el viaje siguiente va al tile con
-	// madera más cercano; si no hay ninguno, la tarea termina en el depósito.
-	if s.state.ForestAt(next.Target, arrivedAtMs) == 0 {
-		nt, path, ok := s.findForest(u, next.Target, def, arrivedAtMs)
+	// RN-ECON-015, RN-ECON-022: con su tile agotado, el viaje siguiente va al
+	// tile con recurso más cercano de la misma capa; si no hay ninguno, la tarea
+	// termina en el depósito.
+	if s.state.taskRemaining(next, next.Target, arrivedAtMs) == 0 {
+		nt, path, ok := s.findDeposit(u, next, next.Target, def, arrivedAtMs)
 		if !ok {
-			s.endTask(u, task.EndForestDepleted, finish)
+			s.endTask(u, depletedReason(next), finish)
 			return
 		}
 		if next, err = next.Retarget(nt); err != nil {
@@ -410,18 +432,18 @@ func (s *Simulation) arriveAtDeposit(u *unit.Unit, t task.Task, arrivedAtMs int6
 	s.startLeg(u, next, path, next.Target, origin, arrivedAtMs, finish, false)
 }
 
-// leaveDepletedForest saca a una unidad de un bosque agotado (RN-ECON-015):
-// en el instante atMs va al tile con madera más cercano o, si no hay ninguno,
-// al depósito con lo que lleve, y allí la tarea termina. finish es el cierre
-// del tramo que acaba de llegar, si lo hay.
-func (s *Simulation) leaveDepletedForest(u *unit.Unit, t task.Task, atMs int64, finish *MovementFinish, wasHidden bool) {
+// leaveDepleted saca a una unidad de un tile agotado (RN-ECON-015,
+// RN-ECON-022): en el instante atMs va al tile con recurso más cercano de la
+// misma capa o, si no hay ninguno, al depósito con lo que lleve, y allí la
+// tarea termina. finish es el cierre del tramo que acaba de llegar, si lo hay.
+func (s *Simulation) leaveDepleted(u *unit.Unit, t task.Task, atMs int64, finish *MovementFinish, wasHidden bool) {
 	def, err := unit.Lookup(u.Type)
 	if err != nil {
 		s.endTask(u, task.EndCancelled, finish)
 		return
 	}
 	origin := u.Tile()
-	if nt, path, ok := s.findForest(u, t.Target, def, atMs); ok {
+	if nt, path, ok := s.findDeposit(u, t, t.Target, def, atMs); ok {
 		next, err := t.Retarget(nt)
 		if err != nil {
 			s.endTask(u, task.EndCancelled, finish)
@@ -441,12 +463,12 @@ func (s *Simulation) leaveDepletedForest(u *unit.Unit, t task.Task, atMs int64, 
 	}
 	c, ok := s.cityOfUnit(u)
 	if !ok {
-		s.endTask(u, task.EndForestDepleted, finish)
+		s.endTask(u, depletedReason(t), finish)
 		return
 	}
 	depot, ok := s.depositTile(c)
 	if !ok {
-		s.endTask(u, task.EndForestDepleted, finish)
+		s.endTask(u, depletedReason(t), finish)
 		return
 	}
 	if origin == depot {
@@ -562,11 +584,11 @@ func (s *Simulation) advanceTasks(nowMs int64) {
 // submitTask encola una transición de tarea, ordenada con las demás escrituras
 // de su unidad. `rev` es la revisión de la tarea que escribe (0 si la borra).
 func (s *Simulation) submitTask(w TaskWrite, rev uint64) {
-	// La carga del bosque viaja en la primera transición que sigue a la carga,
-	// en su misma transacción (ADR-025 §2, INV-ECON-008).
-	if p := s.state.forest.pending; p != nil {
-		w.Forest = p
-		s.state.forest.pending = nil
+	// La carga del tile viaja en la primera transición que sigue a la carga, en
+	// su misma transacción (ADR-025 §2, INV-ECON-008).
+	if p := s.state.deposits.pending; p != nil {
+		w.Load = p
+		s.state.deposits.pending = nil
 	}
 	if s.deps.Economy == nil {
 		return
@@ -611,4 +633,25 @@ func (s *Simulation) handleTaskPersistFailed(cmd TaskPersistFailed) {
 		return
 	}
 	s.cancelActiveMovement(u, movement.ReasonServer, nowMs)
+}
+
+// taskResource es el recurso que recoge una tarea (ADR-030 §2).
+func taskResource(t task.Task) economy.Resource {
+	l, ok := t.Kind.Layer()
+	if !ok {
+		return economy.ResourceWood
+	}
+	return l.Resource
+}
+
+// carryingResourceOf es el recurso que lleva una tarea, tal como viaja.
+func carryingResourceOf(t task.Task) string { return string(taskResource(t)) }
+
+// depletedReason es el motivo con el que termina una tarea sin recurso cerca.
+func depletedReason(t task.Task) task.EndReason {
+	l, ok := t.Kind.Layer()
+	if !ok {
+		return task.EndForestDepleted
+	}
+	return task.EndDepleted(l)
 }

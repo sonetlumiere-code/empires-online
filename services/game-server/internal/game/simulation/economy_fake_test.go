@@ -18,10 +18,15 @@ type fakeEconomy struct {
 	completions []simulation.BuildingCompletion
 	destroys    []simulation.BuildingDestruction
 	births      []simulation.Birth
+	advances    []simulation.AdvanceOrder
+	advanceEnds []simulation.AdvanceCompletion
 
 	buildErr error
 	trainErr error
 	birthErr error
+	// advanceErr hace fallar el encargo del avance; advanceEndErr, su fin.
+	advanceErr    error
+	advanceEndErr error
 	// destroyErr hace fallar la escritura de una destrucción (ADR-029 §4).
 	destroyErr error
 	flushErr   error
@@ -112,4 +117,24 @@ func (f *fakeEconomy) taskWrites() []simulation.TaskWrite {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]simulation.TaskWrite(nil), f.tasks...)
+}
+
+func (f *fakeEconomy) Advance(_ context.Context, o simulation.AdvanceOrder) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.advanceErr != nil {
+		return f.advanceErr
+	}
+	f.advances = append(f.advances, o)
+	return nil
+}
+
+func (f *fakeEconomy) CompleteAdvance(_ context.Context, c simulation.AdvanceCompletion) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.advanceEndErr != nil {
+		return f.advanceEndErr
+	}
+	f.advanceEnds = append(f.advanceEnds, c)
+	return nil
 }

@@ -38,6 +38,8 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeUnitGather: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeCityBuild:  {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeCityTrain:  {Hostile: false, Territory: TerritoryFree},
+	// Avanzar de era es invertir en la ciudad propia (SPEC-ECON-STONE §6).
+	protocol.TypeCityAdvance: {Hostile: false, Territory: TerritoryFree},
 	// La primera acción hostil (RN-COMBAT-002): la frena la protección del
 	// dueño del objetivo, no el suelo. Su punto único es attackBlocked.
 	protocol.TypeUnitAttack: {Hostile: true, Territory: TerritoryFree},

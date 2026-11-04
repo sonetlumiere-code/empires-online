@@ -68,7 +68,8 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 			payload.Buildings = append(payload.Buildings, s.state.buildingView(b))
 		}
 		// RN-ECON-018: la madera del bosque es pública.
-		payload.Forests = append(payload.Forests, s.state.forestsInChunk(ch.CX, ch.CY, nowMs)...)
+		payload.Forests = append(payload.Forests, s.state.layerInChunk(&s.state.deposits.forest, ch.CX, ch.CY, nowMs)...)
+		payload.Hills = append(payload.Hills, s.state.layerInChunk(&s.state.deposits.hill, ch.CX, ch.CY, nowMs)...)
 	}
 
 	// SPEC-DIPLOMACY: los tratados abiertos de quien lo recibe (ADR-027 §5).
@@ -95,6 +96,9 @@ func (s *Simulation) UnitView(u *unit.Unit, nowMs int64) protocol.UnitView {
 	}
 	if e, ok := s.state.tasks[u.ID]; ok {
 		view.Carrying = e.Carrying
+		if e.Carrying > 0 {
+			view.CarryingResource = carryingResourceOf(e.Task)
+		}
 	} else if c := s.state.carrying(u); c > 0 {
 		// La carga confirmada y la de saqueo pendiente (ADR-026 §2).
 		view.Carrying = c

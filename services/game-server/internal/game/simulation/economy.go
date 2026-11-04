@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/advance"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
@@ -18,11 +19,13 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
 
-// Economía en la simulación: el stock de madera de cada ciudad, los comandos
-// city.build y city.train, la finalización de casas y entrenamientos, y el
-// volcado de los depósitos. La tarea de recolección está en gather.go.
+// Economía en la simulación: el stock de cada recurso de cada ciudad, los
+// comandos city.build y city.train, la finalización de casas y entrenamientos,
+// y el volcado de los depósitos. La tarea de recolección está en gather.go y el
+// avance de era en advance.go.
 //
-// Spec: ../../../../docs/specs/economy-wood.md · ADR-023.
+// Specs: ../../../../docs/specs/economy-wood.md y economy-stone.md · ADR-023 ·
+// ADR-030.
 
 // ErrStaleStock: la escritura de un encargo encontró en la base un stock con
 // una versión igual o posterior a la suya. Con la cola ordenada por ciudad no
@@ -63,6 +66,8 @@ type EconomyStore interface {
 	// DestroyBuilding derriba una casa: DESTROYED, el bono fuera del límite si
 	// en la base estaba completa y BuildingDestroyed, idempotente (ADR-029 §4).
 	DestroyBuilding(ctx context.Context, d BuildingDestruction) error
+	// El avance de era (ADR-030 §4 y §5).
+	AdvanceStore
 }
 
 // StockDelta es una escritura del stock: sumar Delta (negativo en un encargo)
@@ -89,9 +94,10 @@ type TaskWrite struct {
 	// para borrar la tarea de una unidad que sigue con otro movimiento.
 	KeepUnit bool
 	Task     *task.Task
-	// Forest es la carga de un tile de bosque que esta transición escribe en su
-	// transacción, como delta (ADR-025 §2). nil si no carga.
-	Forest *ForestLoad
+	// Load es la carga de un tile de bosque o de colina que esta transición
+	// escribe en su transacción, como delta (ADR-025 §2, ADR-030 §1). nil si no
+	// carga.
+	Load *DepositLoad
 }
 
 // BuildOrder es un encargo de edificio con su débito.
@@ -194,10 +200,12 @@ type BirthResolved struct {
 func (BirthResolved) commandType() string { return "production.birth_resolved" }
 
 // StocksFlushFailed es la compensación de un volcado de depósitos que no se
-// escribió: el delta vuelve a la ciudad y sale en el volcado siguiente.
+// escribió: el delta vuelve a su recurso de la ciudad y sale en el volcado
+// siguiente.
 type StocksFlushFailed struct {
-	CityID int64
-	Delta  int64
+	CityID   int64
+	Resource economy.Resource
+	Delta    int64
 }
 
 func (StocksFlushFailed) commandType() string { return "stocks.flush_failed" }
@@ -214,21 +222,63 @@ func (BuildingCompletePersistFailed) commandType() string { return "building.com
 // Estado
 // ─────────────────────────────────────────────────────────────
 
-// cityEconomy es la economía de una ciudad en la RAM.
-type cityEconomy struct {
-	wood economy.Stock
+// resourceStock es el stock de un recurso de una ciudad en la RAM.
+type resourceStock struct {
+	stock economy.Stock
 	// unflushed son los depósitos todavía no escritos: viajan con el volcado
-	// o con el siguiente encargo de la ciudad (ADR-023 §1).
+	// o con el siguiente encargo de la ciudad que pague en este recurso
+	// (ADR-023 §1).
 	unflushed int64
+}
+
+// cityEconomy es la economía de una ciudad en la RAM: un stock por recurso,
+// cada uno con su versión (ADR-030 §3).
+type cityEconomy struct {
+	stocks map[economy.Resource]*resourceStock
 	// production es el entrenamiento de la ciudad; nil si no tiene.
 	production *productionState
+	// advance es el avance de era de la ciudad; nil si no tiene (advance.go).
+	advance *advanceState
+}
+
+func newCityEconomy() *cityEconomy {
+	e := &cityEconomy{stocks: make(map[economy.Resource]*resourceStock, len(economy.Resources()))}
+	for _, r := range economy.Resources() {
+		e.stocks[r] = &resourceStock{stock: economy.NewStock(r)}
+	}
+	return e
+}
+
+// of es el stock de un recurso de la ciudad.
+func (e *cityEconomy) of(r economy.Resource) *resourceStock {
+	rs, ok := e.stocks[r]
+	if !ok {
+		rs = &resourceStock{stock: economy.NewStock(r)}
+		e.stocks[r] = rs
+	}
+	return rs
+}
+
+// stockOf da el stock de un recurso, como lo piden los guardas de dominio.
+func (e *cityEconomy) stockOf(r economy.Resource) *economy.Stock { return &e.of(r).stock }
+
+// pendingDeposits dice si algún recurso tiene depósitos sin volcar.
+func (e *cityEconomy) pendingDeposits() bool {
+	for _, r := range economy.Resources() {
+		if e.of(r).unflushed != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // productionState es una producción con su situación en el ciclo de dos fases.
 type productionState struct {
 	production.Production
-	cost      economy.Cost
-	popCost   int32
+	cost    economy.Cost
+	popCost int32
+	// carried son los depósitos sin volcar del recurso del coste que viajaron
+	// con el encargo.
 	carried   int64
 	pending   bool // encargada, esperando su transacción
 	birthing  bool // su nacimiento espera la transacción
@@ -251,7 +301,12 @@ type EconomyLoad struct {
 	Productions []production.Production
 	Tasks       []task.Task
 	// Forests son las filas de forest_wood (SPEC-ECON-FOREST).
-	Forests []ForestRow
+	Forests []DepositRow
+	// Hills son las filas de hill_stone (SPEC-ECON-STONE).
+	Hills []DepositRow
+	// Advances son las filas de city_era_advances: avances confirmados y en
+	// curso (ADR-030 §4).
+	Advances []advance.Advance
 }
 
 // StockRow es una fila de city_stocks.
@@ -264,10 +319,10 @@ type StockRow struct {
 // rehidratación de movimientos pregunta qué unidades tienen una tarea.
 func (s *State) SetEconomy(load EconomyLoad) {
 	for _, row := range load.Stocks {
-		if row.Stock.Resource != economy.ResourceWood {
+		if !row.Stock.Resource.Valid() {
 			continue
 		}
-		s.economyOf(row.CityID).wood = row.Stock
+		s.economyOf(row.CityID).of(row.Stock.Resource).stock = row.Stock
 	}
 	for _, b := range load.Buildings {
 		s.addBuilding(b)
@@ -288,6 +343,9 @@ func (s *State) SetEconomy(load EconomyLoad) {
 	for _, t := range load.Tasks {
 		s.setTask(t)
 	}
+	for _, a := range load.Advances {
+		s.setAdvance(a)
+	}
 }
 
 // economyOf devuelve la economía de una ciudad, creándola a cero si aún no
@@ -295,26 +353,44 @@ func (s *State) SetEconomy(load EconomyLoad) {
 func (s *State) economyOf(cityID int64) *cityEconomy {
 	eco, ok := s.economies[cityID]
 	if !ok {
-		eco = &cityEconomy{wood: economy.NewStock(economy.ResourceWood)}
+		eco = newCityEconomy()
 		s.economies[cityID] = eco
 	}
 	return eco
 }
 
 // Stock devuelve el stock de madera de una ciudad (lectura y tests).
-func (s *State) Stock(cityID int64) economy.Stock {
+func (s *State) Stock(cityID int64) economy.Stock { return s.StockOf(cityID, economy.ResourceWood) }
+
+// StockOf devuelve el stock de un recurso de una ciudad.
+func (s *State) StockOf(cityID int64, r economy.Resource) economy.Stock {
 	if eco, ok := s.economies[cityID]; ok {
-		return eco.wood
+		return eco.of(r).stock
 	}
-	return economy.NewStock(economy.ResourceWood)
+	return economy.NewStock(r)
 }
 
 // UnflushedDeposits es la madera depositada que aún no se ha escrito.
 func (s *State) UnflushedDeposits(cityID int64) int64 {
+	return s.UnflushedOf(cityID, economy.ResourceWood)
+}
+
+// UnflushedOf es lo depositado de un recurso que aún no se ha escrito.
+func (s *State) UnflushedOf(cityID int64, r economy.Resource) int64 {
 	if eco, ok := s.economies[cityID]; ok {
-		return eco.unflushed
+		return eco.of(r).unflushed
 	}
 	return 0
+}
+
+// markStockDirty apunta la ciudad para el volcado si le queda algún depósito
+// sin escribir, y la quita si no (un encargo se llevó los de su recurso).
+func (s *State) markStockDirty(cityID int64) {
+	if eco, ok := s.economies[cityID]; ok && eco.pendingDeposits() {
+		s.stockDirty[cityID] = struct{}{}
+		return
+	}
+	delete(s.stockDirty, cityID)
 }
 
 // Production devuelve el entrenamiento en curso de una ciudad y si está
@@ -403,7 +479,7 @@ func BuildingView(b building.Building) protocol.BuildingView {
 
 // stocksView es el stock de una ciudad tal como viaja.
 func (s *State) stocksView(cityID int64) protocol.Stocks {
-	return protocol.Stocks{Wood: s.Stock(cityID).Amount}
+	return protocol.Stocks{Wood: s.Stock(cityID).Amount, Stone: s.StockOf(cityID, economy.ResourceStone).Amount}
 }
 
 // productionView es el entrenamiento CONFIRMADO de una ciudad, o nil: lo que
@@ -421,6 +497,7 @@ func (s *State) cityViewOf(c *city.City) protocol.CityView {
 	v := CityView(c)
 	v.Stocks = s.stocksView(c.ID)
 	v.Production = s.productionView(c.ID)
+	v.Advance = s.advanceView(c.ID)
 	return v
 }
 
@@ -441,20 +518,21 @@ func (s *Simulation) broadcastStocks(c *city.City) {
 // Depósitos y volcado
 // ─────────────────────────────────────────────────────────────
 
-// deposit suma madera a una ciudad: RAM primero, base por volcado (§7).
-func (s *Simulation) deposit(c *city.City, amount int32) {
+// deposit suma un recurso a una ciudad: RAM primero, base por volcado (§7).
+func (s *Simulation) deposit(c *city.City, r economy.Resource, amount int32) {
 	if amount <= 0 {
 		return
 	}
-	eco := s.state.economyOf(c.ID)
-	_ = eco.wood.Credit(int64(amount))
-	eco.unflushed += int64(amount)
+	rs := s.state.economyOf(c.ID).of(r)
+	_ = rs.stock.Credit(int64(amount))
+	rs.unflushed += int64(amount)
 	s.state.stockDirty[c.ID] = struct{}{}
 	s.broadcastStocks(c)
 }
 
 // flushStocks encola, ciudad a ciudad y en orden, los depósitos que no se han
-// escrito. Si uno no se escribe, su delta vuelve a la ciudad (ADR-022).
+// escrito: un delta por recurso, todos los de una ciudad en un trabajo. Si no
+// se escriben, cada delta vuelve a su recurso (ADR-022).
 func (s *Simulation) flushStocks() {
 	if len(s.state.stockDirty) == 0 {
 		return
@@ -472,19 +550,31 @@ func (s *Simulation) flushStocks() {
 	store := s.deps.Economy
 	for _, id := range ids {
 		eco, ok := s.state.economies[id]
-		if !ok || eco.unflushed == 0 {
+		if !ok {
 			continue
 		}
-		d := StockDelta{CityID: id, Resource: economy.ResourceWood, Delta: eco.unflushed, Version: eco.wood.Version}
-		eco.unflushed = 0
+		var deltas []StockDelta
+		for _, r := range economy.Resources() {
+			rs := eco.of(r)
+			if rs.unflushed == 0 {
+				continue
+			}
+			deltas = append(deltas, StockDelta{CityID: id, Resource: r, Delta: rs.unflushed, Version: rs.stock.Version})
+			rs.unflushed = 0
+		}
+		if len(deltas) == 0 {
+			continue
+		}
 		s.deps.Persister.Submit(Job{
 			Name: JobStocksFlush,
 			Key:  CityKey(id),
-			Run:  func(ctx context.Context) error { return store.FlushStocks(ctx, []StockDelta{d}) },
+			Run:  func(ctx context.Context) error { return store.FlushStocks(ctx, deltas) },
 			OnPermanentFailure: func(err error) {
-				s.deps.Log.Error("no se pudieron volcar los depósitos; vuelven a la ciudad",
-					"err", err, "city_id", d.CityID, "delta", d.Delta)
-				s.reinject(StocksFlushFailed{CityID: d.CityID, Delta: d.Delta})
+				for _, d := range deltas {
+					s.deps.Log.Error("no se pudieron volcar los depósitos; vuelven a la ciudad",
+						"err", err, "city_id", d.CityID, "resource", string(d.Resource), "delta", d.Delta)
+					s.reinject(StocksFlushFailed{CityID: d.CityID, Resource: d.Resource, Delta: d.Delta})
+				}
 			},
 		})
 	}
@@ -497,9 +587,13 @@ func (s *Simulation) handleStocksFlushFailed(cmd StocksFlushFailed) {
 	if _, ok := s.state.City(cmd.CityID); !ok {
 		return
 	}
-	eco := s.state.economyOf(cmd.CityID)
-	eco.unflushed += cmd.Delta
-	eco.wood.Version++
+	r := cmd.Resource
+	if r == "" {
+		r = economy.ResourceWood
+	}
+	rs := s.state.economyOf(cmd.CityID).of(r)
+	rs.unflushed += cmd.Delta
+	rs.stock.Version++
 	s.state.stockDirty[cmd.CityID] = struct{}{}
 }
 
@@ -513,7 +607,13 @@ func (s *Simulation) handleBuildBuilding(cmd BuildBuilding) {
 	c, _ := s.state.City(cmd.CityID)
 	var stock *economy.Stock
 	if c != nil {
-		stock = &s.state.economyOf(c.ID).wood
+		// El stock del recurso que cuesta el edificio; si el tipo no existe,
+		// CanBuild lo rechaza antes de mirarlo.
+		r := economy.ResourceWood
+		if def, err := building.Lookup(cmd.Type); err == nil {
+			r = def.Cost.Resource
+		}
+		stock = s.state.economyOf(c.ID).stockOf(r)
 	}
 	// RN-ECON-007, en el orden de la spec. La propiedad primero: una ciudad
 	// ajena responde CITY_NOT_FOUND, igual que una inexistente.
@@ -528,17 +628,17 @@ func (s *Simulation) handleBuildBuilding(cmd BuildBuilding) {
 	}
 
 	nowMs := s.deps.Clock.NowMs()
-	eco := s.state.economyOf(c.ID)
-	// La reserva: la madera sale ya de la RAM para que un segundo encargo del
-	// mismo tick no la cuente dos veces. Los depósitos sin volcar viajan con el
-	// encargo, en su transacción (ADR-023 §1).
-	if err := eco.wood.Debit(def.Cost); err != nil {
+	rs := s.state.economyOf(c.ID).of(def.Cost.Resource)
+	// La reserva: el coste sale ya de la RAM para que un segundo encargo del
+	// mismo tick no lo cuente dos veces. Los depósitos sin volcar de ese recurso
+	// viajan con el encargo, en su transacción (ADR-023 §1).
+	if err := rs.stock.Debit(def.Cost); err != nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, err.Error())
 		return
 	}
-	carried := eco.unflushed
-	eco.unflushed = 0
-	delete(s.state.stockDirty, c.ID)
+	carried := rs.unflushed
+	rs.unflushed = 0
+	s.state.markStockDirty(c.ID)
 
 	b := building.Building{
 		CityID: c.ID, Type: def.Type, X: cmd.Tile.X, Y: cmd.Tile.Y,
@@ -550,7 +650,7 @@ func (s *Simulation) handleBuildBuilding(cmd BuildBuilding) {
 
 	order := BuildOrder{
 		RequestID: cmd.RequestID, PlayerID: cmd.PlayerID, Building: b, Tick: s.state.Tick(),
-		Stock: StockDelta{CityID: c.ID, Resource: def.Cost.Resource, Delta: carried - def.Cost.Amount, Version: eco.wood.Version},
+		Stock: StockDelta{CityID: c.ID, Resource: def.Cost.Resource, Delta: carried - def.Cost.Amount, Version: rs.stock.Version},
 	}
 	resolved := BuildResolved{PlayerID: cmd.PlayerID, RequestID: cmd.RequestID, CityID: c.ID, Tile: cmd.Tile}
 	store := s.deps.Economy
@@ -595,16 +695,13 @@ func (s *Simulation) handleBuildResolved(cmd BuildResolved) {
 	if !ok {
 		return
 	}
-	eco := s.state.economyOf(c.ID)
-
 	if cmd.Code != "" {
-		// La transacción no escribió nada: la madera reservada y los depósitos
-		// que viajaban con ella vuelven a la ciudad.
-		_ = eco.wood.Credit(pb.cost.Amount)
-		eco.unflushed += pb.carried
-		if eco.unflushed > 0 {
-			s.state.stockDirty[c.ID] = struct{}{}
-		}
+		// La transacción no escribió nada: el coste reservado y los depósitos
+		// que viajaban con él vuelven a la ciudad.
+		rs := s.state.economyOf(c.ID).of(pb.cost.Resource)
+		_ = rs.stock.Credit(pb.cost.Amount)
+		rs.unflushed += pb.carried
+		s.state.markStockDirty(c.ID)
 		s.economyError(cmd.PlayerID, cmd.RequestID, cmd.Code, "no se pudo encargar el edificio")
 		s.broadcastStocks(c)
 		return
@@ -631,7 +728,12 @@ func (s *Simulation) handleTrainUnit(cmd TrainUnit) {
 	busy := false
 	if c != nil {
 		eco := s.state.economyOf(c.ID)
-		stock, busy = &eco.wood, eco.production != nil
+		r := economy.ResourceWood
+		if def, err := unit.Lookup(cmd.Type); err == nil {
+			r = def.TrainCost.Resource
+		}
+		// RN-ECON-026: mientras avanza de era, la ciudad no entrena.
+		stock, busy = eco.stockOf(r), eco.production != nil || eco.advance != nil
 	}
 	// RN-ECON-010 en el orden de la spec: ciudad, producción en curso,
 	// población y madera.
@@ -647,13 +749,14 @@ func (s *Simulation) handleTrainUnit(cmd TrainUnit) {
 
 	nowMs := s.deps.Clock.NowMs()
 	eco := s.state.economyOf(c.ID)
-	if err := eco.wood.Debit(def.TrainCost); err != nil {
+	rs := eco.of(def.TrainCost.Resource)
+	if err := rs.stock.Debit(def.TrainCost); err != nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, err.Error())
 		return
 	}
-	carried := eco.unflushed
-	eco.unflushed = 0
-	delete(s.state.stockDirty, c.ID)
+	carried := rs.unflushed
+	rs.unflushed = 0
+	s.state.markStockDirty(c.ID)
 	// RN-ECON-010: la plaza se reserva al ordenar.
 	c.Population += def.PopulationCost
 
@@ -667,7 +770,7 @@ func (s *Simulation) handleTrainUnit(cmd TrainUnit) {
 	order := TrainOrder{
 		RequestID: cmd.RequestID, PlayerID: cmd.PlayerID, Production: p,
 		PopulationCost: def.PopulationCost, Tick: s.state.Tick(),
-		Stock: StockDelta{CityID: c.ID, Resource: def.TrainCost.Resource, Delta: carried - def.TrainCost.Amount, Version: eco.wood.Version},
+		Stock: StockDelta{CityID: c.ID, Resource: def.TrainCost.Resource, Delta: carried - def.TrainCost.Amount, Version: rs.stock.Version},
 	}
 	resolved := TrainResolved{PlayerID: cmd.PlayerID, RequestID: cmd.RequestID, CityID: c.ID}
 	store := s.deps.Economy
@@ -711,11 +814,10 @@ func (s *Simulation) handleTrainResolved(cmd TrainResolved) {
 	}
 
 	if cmd.Code != "" {
-		_ = eco.wood.Credit(p.cost.Amount)
-		eco.unflushed += p.carried
-		if eco.unflushed > 0 {
-			s.state.stockDirty[c.ID] = struct{}{}
-		}
+		rs := eco.of(p.cost.Resource)
+		_ = rs.stock.Credit(p.cost.Amount)
+		rs.unflushed += p.carried
+		s.state.markStockDirty(c.ID)
 		c.Population -= p.popCost
 		eco.production = nil
 		s.economyError(cmd.PlayerID, cmd.RequestID, cmd.Code, "no se pudo encargar el entrenamiento")
@@ -932,6 +1034,9 @@ func economyErrorCode(err error) string {
 		return protocol.CodeInsufficientResources
 	case errors.Is(err, production.ErrCityBusy):
 		return protocol.CodeCityBusy
+	case errors.Is(err, advance.ErrUnavailable):
+		// RN-ECON-024: desde BRONZE_AGE no hay avance en este slice.
+		return protocol.CodeNotImplemented
 	case errors.Is(err, city.ErrPopulationLimit):
 		return protocol.CodePopulationLimitReached
 	case errors.Is(err, building.ErrInvalidSite), errors.Is(err, building.ErrUnknownType),

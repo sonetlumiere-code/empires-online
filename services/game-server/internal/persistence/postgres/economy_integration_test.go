@@ -70,7 +70,8 @@ func debito(cityID, delta, version int64) postgres.StockDelta {
 	return postgres.StockDelta{CityID: cityID, Resource: economy.ResourceWood, Delta: delta, Version: version}
 }
 
-// §4.1: la fundación crea el stock a cero.
+// §4.1: la fundación crea el stock a cero, una fila por recurso: madera y,
+// desde SPEC-ECON-STONE, piedra.
 func TestLaFundacionCreaElStockACero(t *testing.T) {
 	store, ctx := newTestStore(t)
 	e := nuevaEconomia(t, ctx, store)
@@ -79,7 +80,12 @@ func TestLaFundacionCreaElStockACero(t *testing.T) {
 	assert.Equal(t, int64(0), version)
 	filas, err := e.economia.ListStocks(ctx)
 	require.NoError(t, err)
-	require.Len(t, filas, 1)
+	require.Len(t, filas, 2)
+	recursos := []economy.Resource{filas[0].Stock.Resource, filas[1].Stock.Resource}
+	assert.ElementsMatch(t, []economy.Resource{economy.ResourceWood, economy.ResourceStone}, recursos)
+	for _, f := range filas {
+		assert.Zero(t, f.Stock.Amount)
+	}
 }
 
 // ADR-023 §1: el volcado suma deltas condicionados a la versión; un reintento

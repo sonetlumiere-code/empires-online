@@ -136,10 +136,11 @@ func (r rejilla) TerrainAt(x, y int32) world.TerrainType {
 // RN-ECON-001: el destino es un tile FOREST dentro del mundo.
 func TestElDestinoTieneQueSerBosque(t *testing.T) {
 	g := rejilla{forest: map[world.Tile]bool{bosque: true}}
-	assert.NoError(t, ValidTarget(g, bosque))
-	assert.True(t, errors.Is(ValidTarget(g, world.Tile{X: 21, Y: 10}), ErrNotResource))
-	assert.True(t, errors.Is(ValidTarget(g, world.Tile{X: -1, Y: 0}), ErrOutOfBounds))
-	assert.True(t, errors.Is(ValidTarget(g, world.Tile{X: 64, Y: 0}), ErrOutOfBounds))
+	valid := func(tile world.Tile) error { _, err := ValidTarget(g, tile); return err }
+	assert.NoError(t, valid(bosque))
+	assert.True(t, errors.Is(valid(world.Tile{X: 21, Y: 10}), ErrNotResource))
+	assert.True(t, errors.Is(valid(world.Tile{X: -1, Y: 0}), ErrOutOfBounds))
+	assert.True(t, errors.Is(valid(world.Tile{X: 64, Y: 0}), ErrOutOfBounds))
 }
 
 // RN-ECON-015: un bosque agotado cambia el destino de la tarea sin perder la
@@ -168,4 +169,44 @@ func TestCambiarDeBosqueYVolverAlDeposito(t *testing.T) {
 	require.ErrorIs(t, err, ErrBadTransition)
 	_, err = cargado.ReturnToDeposit()
 	require.ErrorIs(t, err, ErrBadTransition)
+}
+
+type rejillaConColina struct{ rejilla }
+
+func (r rejillaConColina) TerrainAt(x, y int32) world.TerrainType {
+	if x == 40 && y == 40 {
+		return world.Hill
+	}
+	return r.rejilla.TerrainAt(x, y)
+}
+
+// RN-ECON-019: una colina también es un destino, y el terreno decide el tipo
+// de la tarea: bosque → madera, colina → piedra. La hierba no da nada.
+func TestElTerrenoDelDestinoDecideElRecurso(t *testing.T) {
+	g := rejillaConColina{rejilla{forest: map[world.Tile]bool{bosque: true}}}
+	l, err := ValidTarget(g, bosque)
+	require.NoError(t, err)
+	assert.Equal(t, KindGatherWood, KindFor(l))
+	l, err = ValidTarget(g, world.Tile{X: 40, Y: 40})
+	require.NoError(t, err)
+	assert.Equal(t, KindGatherStone, KindFor(l))
+	assert.Equal(t, EndHillDepleted, EndDepleted(l))
+	_, err = ValidTarget(g, world.Tile{X: 41, Y: 40})
+	assert.ErrorIs(t, err, ErrNotResource)
+}
+
+// ADR-030 §2: el tipo de una tarea fija su capa, y una fila con un tipo
+// inventado no es válida.
+func TestElTipoDeLaTareaFijaSuCapa(t *testing.T) {
+	piedra := NewGatherOf(1, KindGatherStone, world.Tile{X: 40, Y: 40})
+	require.NoError(t, piedra.Validate())
+	l, ok := piedra.Kind.Layer()
+	require.True(t, ok)
+	assert.Equal(t, world.Hill, l.Terrain)
+	otra, err := piedra.Retarget(world.Tile{X: 41, Y: 41})
+	require.NoError(t, err)
+	assert.Equal(t, KindGatherStone, otra.Kind, "cambiar de tile no cambia de recurso")
+
+	mala := NewGatherOf(1, Kind("GATHER_GOLD"), world.Tile{X: 1, Y: 1})
+	assert.ErrorIs(t, mala.Validate(), ErrInvalidTask)
 }
