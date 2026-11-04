@@ -440,7 +440,7 @@ export default function Page() {
               className="secondary"
               onClick={toggleLog}
               aria-expanded={logOpen}
-              title="Lo que te pasó en los últimos días: muertes, saqueos y cambios en tus tratados"
+              title="Lo que te pasó en los últimos días: muertes, saqueos, casas derribadas y cambios en tus tratados"
             >
               Registro{unseenEntries(eventLog).length > 0 ? ` (${unseenEntries(eventLog).length})` : ''}
             </button>
