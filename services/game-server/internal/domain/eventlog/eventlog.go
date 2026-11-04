@@ -51,6 +51,14 @@ const (
 	// KindTradeOfferExpired es una oferta de comercio, propia o recibida, que
 	// caducó.
 	KindTradeOfferExpired Kind = "TRADE_OFFER_EXPIRED"
+	// KindTerritoryClaimed es un territorio propio que otro empezó a reclamar
+	// (SPEC-TERRITORY-CONQUEST §6).
+	KindTerritoryClaimed Kind = "TERRITORY_CLAIMED"
+	// KindTerritoryLost es un territorio propio que otro conquistó.
+	KindTerritoryLost Kind = "TERRITORY_LOST"
+	// KindTerritoryTaken es un territorio ajeno que las unidades propias
+	// conquistaron.
+	KindTerritoryTaken Kind = "TERRITORY_TAKEN"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -61,16 +69,21 @@ func Kinds() []Kind {
 		KindTreatyOffered, KindTreatyWithdrawn, KindTreatyAccepted, KindTreatyRejected,
 		KindTreatyOfferExpired, KindTreatyBreakAnnounced, KindTreatyEnded,
 		KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired,
+		KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken,
 	}
 }
 
 // NoticeKinds son los tipos de entrada que también se avisan en vivo
 // (SPEC-LIVE-NOTICES §4.1, ADR-033 §3): lo que hoy no le llega a quien mira otra
 // parte del mapa. PILLAGED y HOUSE_LOST no están porque la víctima ya tiene
-// pillagedAtMs y besiegedAtMs (Q1). El enum del aviso en el protocolo es el
-// mismo (lo vigila el contract test).
+// pillagedAtMs y besiegedAtMs (Q1). Desde E12, también lo que pasa con un
+// territorio (SPEC-TERRITORY-CONQUEST Q8). El enum del aviso en el protocolo es
+// el mismo (lo vigila el contract test).
 func NoticeKinds() []Kind {
-	return []Kind{KindUnitLost, KindEnemyKilled, KindPillageDone, KindHouseDestroyed}
+	return []Kind{
+		KindUnitLost, KindEnemyKilled, KindPillageDone, KindHouseDestroyed,
+		KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken,
+	}
 }
 
 // Nombres de los eventos de world_events que el registro lee.
@@ -92,6 +105,12 @@ const (
 	EventTradeRejected  = "TradeRejected"
 	EventTradeWithdrawn = "TradeWithdrawn"
 	EventTradeExpired   = "TradeExpired"
+	// Conquista (SPEC-TERRITORY-CONQUEST §6, ADR-034): en el comienzo,
+	// player_id es el dueño y counterpart_player_id quien reclama; en la
+	// captura, el anterior dueño y el nuevo. Un TerritoryControlChanged sin
+	// counterpart (la fundación, o la captura de uno libre) no cuenta nada.
+	EventTerritoryClaimStarted   = "TerritoryClaimStarted"
+	EventTerritoryControlChanged = "TerritoryControlChanged"
 )
 
 // EventTypes son los event_type que pueden dar una entrada: la consulta sólo
@@ -102,6 +121,7 @@ func EventTypes() []string {
 		EventTreatyProposed, EventTreatyWithdrawn, EventTreatyAccepted, EventTreatyRejected,
 		EventTreatyExpired, EventTreatyBreakAnnounced, EventTreatyBroken,
 		EventTradeProposed, EventTradeAccepted, EventTradeRejected, EventTradeWithdrawn, EventTradeExpired,
+		EventTerritoryClaimStarted, EventTerritoryControlChanged,
 	}
 }
 
@@ -140,6 +160,9 @@ type Event struct {
 	OfferID int64
 	Give    []Line
 	Want    []Line
+	// TerritoryID y TerritoryName, en la conquista.
+	TerritoryID   int64
+	TerritoryName string
 }
 
 // Entry es una entrada del registro: uno o varios sucesos del mismo tipo con el
@@ -168,6 +191,9 @@ type Entry struct {
 	// de quien lee y lo que metía en él.
 	TradeGive []Line
 	TradeGet  []Line
+	// TerritoryID y TerritoryName, en la conquista.
+	TerritoryID   int64
+	TerritoryName string
 }
 
 // Classify dice qué entrada da e para viewer y quién es el otro jugador. ok es
@@ -202,6 +228,17 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindHouseLost, other, true
 		}
 		return KindHouseDestroyed, other, true
+	case EventTerritoryClaimStarted:
+		// Al dueño; a quien reclama no se le cuenta lo que ordenó él.
+		if e.PlayerID == viewer {
+			return KindTerritoryClaimed, other, true
+		}
+		return "", uuid.Nil, false
+	case EventTerritoryControlChanged:
+		if e.PlayerID == viewer {
+			return KindTerritoryLost, other, true
+		}
+		return KindTerritoryTaken, other, true
 	}
 
 	// Un trato (SPEC-TRADE §6): como los tratados, no entra lo que el propio
@@ -384,8 +421,8 @@ func (b *Builder) Add(e Event) bool {
 	if isTreaty(kind) {
 		k.treatyType = e.TreatyType
 	}
-	if isTrade(kind) {
-		k.offerID = e.ID // cada trato, su entrada
+	if isTrade(kind) || isTerritory(kind) {
+		k.offerID = e.ID // cada trato y cada suceso de un territorio, su entrada
 	}
 	if i, abierto := b.open[k]; abierto && e.AtMs >= b.entries[i].FirstAtMs-b.gapMs {
 		g := &b.entries[i]
@@ -415,6 +452,9 @@ func (b *Builder) Add(e Event) bool {
 	case KindTreatyBreakAnnounced:
 		entry.TreatyType = e.TreatyType
 		entry.BreaksAtMs = e.BreaksAtMs
+	case KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken:
+		entry.TerritoryID, entry.TerritoryName = e.TerritoryID, e.TerritoryName
+		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired:
 		// Desde quien lee: si propuso él, da Give y recibe Want; si no, al revés.
 		if e.PlayerID == b.viewer {
@@ -449,5 +489,13 @@ func isTreaty(k Kind) bool {
 	case KindUnitLost, KindEnemyKilled, KindPillaged, KindPillageDone, KindHouseLost, KindHouseDestroyed:
 		return false
 	}
-	return !isTrade(k)
+	return !isTrade(k) && !isTerritory(k)
+}
+
+func isTerritory(k Kind) bool {
+	switch k {
+	case KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken:
+		return true
+	}
+	return false
 }

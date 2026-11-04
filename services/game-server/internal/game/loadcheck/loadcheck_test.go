@@ -300,3 +300,42 @@ func TestUnaUnidadQueTrabajaConSuTareaEsCoherente(t *testing.T) {
 	assert.Empty(t, r.Findings)
 	assert.Len(t, r.Tasks, 1)
 }
+
+// INV-ECON-004 (SPEC-TERRITORY-CONQUEST §4.2): el límite suma 5 por territorio
+// conquistado, y la capital —el territorio con el centro de la ciudad— no
+// cuenta.
+func TestElLimiteDePoblacionCuentaLosTerritoriosConquistados(t *testing.T) {
+	in, ciudad, _ := sano(t)
+	in.Territories = []territory.Territory{
+		{ID: 7, MinX: 0, MinY: 0, MaxX: 31, MaxY: 31},  // la capital: contiene (20,20)
+		{ID: 8, MinX: 32, MinY: 0, MaxX: 63, MaxY: 31}, // libre
+		{ID: 9, MinX: 0, MinY: 32, MaxX: 31, MaxY: 63}, // conquistado
+	}
+	id := ciudad.OwnerPlayerID.String()
+	captura := instante.Add(-time.Minute)
+	in.Controls = append(in.Controls, territory.Control{TerritoryID: 9, OwnerType: territory.OwnerPlayer,
+		OwnerID: &id, CapturedAt: &captura, Version: 1})
+
+	r := loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-ECON-004/REPAIR"}, invs(r))
+	assert.EqualValues(t, 25, ciudad.PopulationLimit, "la era más cinco por el conquistado, nada por la capital")
+
+	ciudad.PopulationLimit = 25
+	assert.Empty(t, loadcheck.Check(in).Findings, "el límite con el territorio ya es el correcto")
+}
+
+// INV-TERR-006 (ADR-034 §4): contested es «hay una reclamación activa»; la carga
+// lo alinea en los dos sentidos.
+func TestContestedSeAlineaConLasReclamacionesActivas(t *testing.T) {
+	in, _, _ := sano(t)
+	in.Controls[0].Contested = true // el 7, sin reclamación
+	in.ActiveClaims = []territory.Claim{{ID: 1, TerritoryID: 8}}
+
+	r := loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-TERR-006/REPAIR", "INV-TERR-006/REPAIR"}, invs(r))
+	require.Len(t, r.Controls, 2)
+	assert.False(t, r.Controls[0].Contested)
+	assert.True(t, r.Controls[1].Contested)
+	assert.Equal(t, []int64{7, 8}, r.ControlRepairs)
+	assert.EqualValues(t, 3, r.Controls[0].Version, "una reparación sube la versión")
+}

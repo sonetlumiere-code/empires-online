@@ -29,6 +29,11 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 			x, y := e.X, e.Y
 			p.X, p.Y = &x, &y
 		}
+		// La conquista nombra el territorio (SPEC-TERRITORY-CONQUEST §6).
+		if e.TerritoryID != 0 {
+			id := e.TerritoryID
+			p.TerritoryID, p.TerritoryName = &id, e.TerritoryName
+		}
 		s.deps.Broadcaster.SendToPlayer(n.To, protocol.TypeEventLogNotice, "", p)
 	}
 }

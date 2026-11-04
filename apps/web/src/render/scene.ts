@@ -540,7 +540,7 @@ export class IsoScene {
    * de ninguna otra cosa (ADR-002).
    */
   private upsertTerritory(t: SceneTerritory): void {
-    const signature = `${t.ownerType}:${t.isOwn}:${t.minX},${t.minY},${t.maxX},${t.maxY}`;
+    const signature = `${t.ownerType}:${t.isOwn}:${t.contested}:${t.minX},${t.minY},${t.maxX},${t.maxY}`;
     const cached = this.territoryShapes.get(t.id);
     if (cached && cached.signature === signature) return;
     if (cached) this.removeTerritory(t.id);
@@ -550,7 +550,7 @@ export class IsoScene {
     const south = worldToIso(t.maxX, t.maxY);
     const west = worldToIso(t.minX, t.maxY);
 
-    const { color, alpha } = territoryStyle(t);
+    const { color, alpha, width } = territoryStyle(t);
     const g = new Graphics();
     g.moveTo(north.x, north.y - TILE_H / 2)
       .lineTo(east.x + TILE_W / 2, east.y)
@@ -558,7 +558,7 @@ export class IsoScene {
       .lineTo(west.x - TILE_W / 2, west.y)
       .closePath()
       .fill({ color, alpha })
-      .stroke({ color, width: 2, alpha: Math.min(1, alpha * 6) });
+      .stroke({ color, width, alpha: Math.min(1, alpha * 6) });
 
     this.territoryLayer.addChild(g);
     this.territoryShapes.set(t.id, { signature, graphic: g });
@@ -731,8 +731,10 @@ function paintCityBody(body: Graphics, isOwn: boolean): void {
  * terreno, porque en el MVP la mayoría del mapa está sin reclamar y un overlay
  * saturado convertiría el mundo en una rejilla ilegible.
  */
-function territoryStyle(t: SceneTerritory): { color: number; alpha: number } {
-  if (t.ownerType === 'NONE') return { color: 0x8a8a8a, alpha: 0.05 };
-  if (t.isOwn) return { color: 0x4ec27a, alpha: 0.13 };
-  return { color: 0xc2544e, alpha: 0.13 };
+function territoryStyle(t: SceneTerritory): { color: number; alpha: number; width: number } {
+  // En disputa, ámbar y con el borde grueso, sea de quien sea (SPEC-TERRITORY-CONQUEST §6).
+  if (t.contested) return { color: 0xe0a030, alpha: 0.18, width: 4 };
+  if (t.ownerType === 'NONE') return { color: 0x8a8a8a, alpha: 0.05, width: 2 };
+  if (t.isOwn) return { color: 0x4ec27a, alpha: 0.13, width: 2 };
+  return { color: 0xc2544e, alpha: 0.13, width: 2 };
 }

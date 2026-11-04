@@ -22,6 +22,7 @@ import {
   huecoParaCasa,
   indexarTerreno,
   pactoVigente,
+  territorioLibreCerca,
 } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
@@ -188,4 +189,20 @@ test('pactoVigente no toma un acuerdo comercial por un pacto: TRADE no da paz (S
   const alianza = { id: 6, type: 'ALLIANCE', status: 'ACTIVE', breaksAtMs: null };
   assert.equal(pactoVigente([alianza]), alianza);
   assert.equal(pactoVigente([{ ...pacto, status: 'PROPOSED' }]), undefined, 'una oferta no es un tratado');
+});
+
+// SPEC-TERRITORY-CONQUEST: el humo --territorio elige el territorio libre más
+// cercano y un tile bien dentro de él.
+test('territorioLibreCerca elige el libre más cercano y un tile dentro de su borde', () => {
+  const t = (id, minX, minY, extra = {}) => ({ id, name: `T${id}`, minX, minY, maxX: minX + 63, maxY: minY + 63, ownerType: 'NONE', ownerId: null, contested: false, ...extra });
+  const territorios = [
+    t(24, 448, 128, { ownerType: 'PLAYER', ownerId: 'x' }),
+    t(32, 448, 192),
+    t(23, 384, 128, { contested: true, claim: { playerId: 'y' } }),
+    t(31, 384, 192),
+  ];
+  const r = territorioLibreCerca(territorios, { x: 451, y: 184 });
+  assert.equal(r.territorio.id, 32);
+  assert.deepEqual(r.destino, { x: 454, y: 198 });
+  assert.equal(territorioLibreCerca([territorios[0], territorios[2]], { x: 0, y: 0 }), null);
 });

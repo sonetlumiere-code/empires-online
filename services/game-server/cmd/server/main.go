@@ -192,19 +192,29 @@ func run() error {
 		return fmt.Errorf("catálogo de eras vacío o ilegible: %w", err)
 	}
 
+	// Las reclamaciones de territorio activas (ADR-034 §5): la validación de
+	// carga las necesita para contested, y la RAM las recupera.
+	conquestRepo := postgres.NewConquestRepo(store)
+	reclamaciones, err := conquestRepo.ListActiveClaims(rootCtx)
+	if err != nil {
+		return fmt.Errorf("cargar reclamaciones de territorio: %w", err)
+	}
+
 	// Validación de carga (EO-119): lo que el esquema no garantiza se comprueba
 	// sobre lo recién leído, antes de construir la RAM. Un fatal aborta sin
 	// escribir nada; lo reparable se corrige en una transacción auditada.
 	units, controls, garrisons, tasks, err := checkLoadedState(rootCtx, postgres.NewLoadCheckRepo(store), loadcheck.Input{
-		World:       gameWorld,
-		EraCaps:     postgres.EraCaps(eras),
-		Cities:      cities,
-		Units:       units,
-		Controls:    controls,
-		Tasks:       economia.Tasks,
-		Buildings:   economia.Buildings,
-		Productions: economia.Productions,
-		Now:         sysClock.Now(),
+		World:        gameWorld,
+		EraCaps:      postgres.EraCaps(eras),
+		Cities:       cities,
+		Units:        units,
+		Controls:     controls,
+		Territories:  territories.All(),
+		ActiveClaims: reclamaciones,
+		Tasks:        economia.Tasks,
+		Buildings:    economia.Buildings,
+		Productions:  economia.Productions,
+		Now:          sysClock.Now(),
 	}, startTick, log)
 	if err != nil {
 		return err
@@ -299,6 +309,9 @@ func run() error {
 		return fmt.Errorf("cargar ofertas de comercio: %w", err)
 	}
 	state.SetTradeOffers(ofertas)
+	// Las reclamaciones activas vuelven con sus guerreros; las que no pueden
+	// seguir, o vencieron con el servidor parado, las resuelve el primer barrido.
+	state.SetClaims(reclamaciones)
 
 	gameStore := persistence.NewGameStore(store, unitRepo, cityRepo, movementRepo)
 	if len(recovery.FinishedMovements) > 0 {
@@ -370,6 +383,9 @@ func run() error {
 		TreatyBreakNotice:      cfg.TreatyBreakNotice,
 		TreatyRetry:            cfg.TreatyRetry,
 		TradeOfferTTL:          cfg.TradeOfferTTL,
+		Conquest:               persistence.NewConquestStore(conquestRepo),
+		TerritoryClaimFree:     cfg.TerritoryClaimFree,
+		TerritoryClaimHeld:     cfg.TerritoryClaimHeld,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

@@ -49,6 +49,9 @@ var actionPolicies = map[string]ActionPolicy{
 	// El asedio (RN-COMBAT-030): hostil contra la ciudad de la casa, con el
 	// mismo predicado que el saqueo, cityAttackBlocked.
 	protocol.TypeUnitDemolish: {Hostile: true, Territory: TerritoryFree},
+	// La conquista (RN-CONQ-003): hostil contra el dueño del territorio, si lo
+	// tiene; la protección se comprueba en claimBlocked.
+	protocol.TypeUnitClaim: {Hostile: true, Territory: TerritoryFree},
 	// La diplomacia no es agresión (RN-DIPLO-010): se propone, se responde y se
 	// rompe aunque el otro esté protegido.
 	protocol.TypeTreatyPropose: {Hostile: false, Territory: TerritoryFree},

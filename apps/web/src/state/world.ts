@@ -57,7 +57,10 @@ export interface TerritoryView {
   maxY: number;
   ownerType: string;
   ownerId: string | null;
+  /** `true` exactamente mientras hay una reclamación activa (SPEC-TERRITORY-CONQUEST §6). */
   contested: boolean;
+  /** La reclamación activa: quién reclama y cuándo termina. Ausente si no la hay. */
+  claim?: { playerId: string; cityId: number | null; cityName: string | null; startedAtMs: number; endsAtMs: number };
 }
 
 export interface CityView {

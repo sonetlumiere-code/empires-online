@@ -38,6 +38,9 @@ export interface NoticeGroup {
   /** El tile del último aviso, para «Ir». */
   readonly x?: number;
   readonly y?: number;
+  /** En la conquista, el territorio. */
+  readonly territoryId?: number;
+  readonly territoryName?: string;
   /** El primero y el último, en la simulación. */
   readonly firstAtMs: number;
   readonly lastAtMs: number;
@@ -56,9 +59,12 @@ export interface NoticeState {
 
 export const EMPTY_NOTICES: NoticeState = { groups: [], sinceLogOpened: 0, hidden: false, hiddenKeys: [] };
 
-/** La clave de agrupación, la del registro sin el lado del cursor (ADR-028 §4). */
-export function noticeKey(n: Pick<Notice, 'kind' | 'otherPlayerId' | 'unitType'>): string {
-  return `${n.kind}|${n.otherPlayerId}|${n.unitType ?? ''}`;
+/**
+ * La clave de agrupación, la del registro sin el lado del cursor (ADR-028 §4); los
+ * avisos de territorio, además, por territorio (SPEC-TERRITORY-CONQUEST).
+ */
+export function noticeKey(n: Pick<Notice, 'kind' | 'otherPlayerId' | 'unitType' | 'territoryId'>): string {
+  return `${n.kind}|${n.otherPlayerId}|${n.unitType ?? ''}|${n.territoryId ?? ''}`;
 }
 
 /**
@@ -87,6 +93,8 @@ export function applyNotice(state: NoticeState, n: Notice): NoticeState {
         otherCityId: n.otherCityId,
         otherCityName: n.otherCityName,
         unitType: n.unitType,
+        territoryId: n.territoryId,
+        territoryName: n.territoryName,
         count: 1,
         amount: n.amount,
         x: n.x,
@@ -148,6 +156,8 @@ function asEntry(g: NoticeGroup): EventLogEntry {
     amount: g.amount,
     x: g.x,
     y: g.y,
+    territoryId: g.territoryId,
+    territoryName: g.territoryName,
   };
 }
 

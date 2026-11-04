@@ -54,6 +54,11 @@ type Input struct {
 	// Garrisons son las filas de garrisons: unidad → ciudad.
 	Garrisons map[int64]int64
 	Controls  []territory.Control
+	// Territories es la geometría, para contar los territorios conquistados
+	// de cada ciudad (INV-ECON-004). ActiveClaims son las reclamaciones
+	// activas, para reparar contested (INV-TERR-006). SPEC-TERRITORY-CONQUEST.
+	Territories  []territory.Territory
+	ActiveClaims []territory.Claim
 	// Economía (SPEC-ECON-WOOD): las tareas, los edificios y las producciones
 	// leídos de la base.
 	Tasks       []task.Task
@@ -266,6 +271,13 @@ func (c *checker) cities() {
 	cities := append([]*city.City(nil), c.in.Cities...)
 	sort.Slice(cities, func(i, j int) bool { return cities[i].ID < cities[j].ID })
 
+	// INV-ECON-004: el control de cada territorio, para el bono de los
+	// conquistados.
+	controles := make(map[int64]territory.Control, len(c.in.Controls))
+	for _, ct := range c.in.Controls {
+		controles[ct.TerritoryID] = ct
+	}
+
 	for _, ci := range cities {
 		entity := fmt.Sprintf("city:%d", ci.ID)
 
@@ -286,10 +298,13 @@ func (c *checker) cities() {
 			c.touchCity(ci.ID)
 		}
 		limit, ok := c.in.EraCaps[ci.Era]
-		bonus := building.PopulationBonus(edificios[ci.ID])
+		conquistados := territory.ConqueredBonus(
+			territory.CountConquered(c.in.Territories, controles, ci.OwnerPlayerID, ci.Center()))
+		bonus := building.PopulationBonus(edificios[ci.ID]) + conquistados
 		if ok {
-			// INV-ECON-004: la era más cinco por casa completa.
-			limit = building.PopulationLimit(limit, edificios[ci.ID])
+			// INV-ECON-004: la era más cinco por casa completa y cinco por
+			// territorio conquistado.
+			limit = building.PopulationLimit(limit, edificios[ci.ID], conquistados)
 		} else {
 			// La FK de cities.era lo impide; si faltara el catálogo, no hay límite
 			// que recomputar.
@@ -305,7 +320,7 @@ func (c *checker) cities() {
 				inv = "INV-ECON-004"
 			}
 			c.find(inv, "ALTO", PolicyRepair, entity,
-				fmt.Sprintf("population_limit %d; el de su era y sus casas es %d", ci.PopulationLimit, limit))
+				fmt.Sprintf("population_limit %d; el de su era, sus casas y sus territorios es %d", ci.PopulationLimit, limit))
 			ci.PopulationLimit = limit
 			c.touchCity(ci.ID)
 		}
@@ -385,10 +400,22 @@ func (c *checker) tasks() {
 // ─────────────────────────────────────────────────────────────
 
 func (c *checker) controls() {
+	reclamados := make(map[int64]bool, len(c.in.ActiveClaims))
+	for _, cl := range c.in.ActiveClaims {
+		reclamados[cl.TerritoryID] = true
+	}
 	for i := range c.res.Controls {
 		ct := &c.res.Controls[i]
 		entity := fmt.Sprintf("territory:%d", ct.TerritoryID)
 		touched := false
+
+		// INV-TERR-006: contested es «hay una reclamación activa» (ADR-034 §4).
+		if ct.Contested != reclamados[ct.TerritoryID] {
+			c.find("INV-TERR-006", "MEDIO", PolicyRepair, entity,
+				fmt.Sprintf("contested %t con %t reclamación activa: se alinea", ct.Contested, reclamados[ct.TerritoryID]))
+			ct.Contested = reclamados[ct.TerritoryID]
+			touched = true
+		}
 
 		// INV-TERR-005: un dueño PLAYER que no existe se libera. Conservarlo
 		// sacaría el territorio del juego para siempre.

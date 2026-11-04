@@ -348,7 +348,8 @@
                           "HIDDEN",
                           "WORKING",
                           "ATTACKING",
-                          "DEAD"
+                          "DEAD",
+                          "CLAIMING"
                         ]
                       },
                       "movement": {
@@ -637,6 +638,50 @@
                       },
                       "contested": {
                         "type": "boolean"
+                      },
+                      "claim": {
+                        "type": "object",
+                        "properties": {
+                          "playerId": {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                          },
+                          "cityId": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cityName": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startedAtMs": {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          "endsAtMs": {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          }
+                        },
+                        "required": [
+                          "playerId",
+                          "cityId",
+                          "cityName",
+                          "startedAtMs",
+                          "endsAtMs"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -1835,7 +1880,10 @@
                           "TRADE_ACCEPTED",
                           "TRADE_REJECTED",
                           "TRADE_WITHDRAWN",
-                          "TRADE_OFFER_EXPIRED"
+                          "TRADE_OFFER_EXPIRED",
+                          "TERRITORY_CLAIMED",
+                          "TERRITORY_LOST",
+                          "TERRITORY_TAKEN"
                         ]
                       },
                       "firstAtMs": {
@@ -1906,6 +1954,14 @@
                         "items": {
                           "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
                         }
+                      },
+                      "territoryId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "territoryName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
                       }
                     },
                     "required": [
@@ -2023,7 +2079,10 @@
                     "UNIT_LOST",
                     "ENEMY_KILLED",
                     "PILLAGE_DONE",
-                    "HOUSE_DESTROYED"
+                    "HOUSE_DESTROYED",
+                    "TERRITORY_CLAIMED",
+                    "TERRITORY_LOST",
+                    "TERRITORY_TAKEN"
                   ]
                 },
                 "atMs": {
@@ -2066,6 +2125,14 @@
                 },
                 "y": {
                   "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                },
+                "territoryId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "territoryName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
                 }
               },
               "required": [

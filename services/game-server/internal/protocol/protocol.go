@@ -41,6 +41,8 @@ const (
 	TypeUnitPillage = "unit.pillage"
 	// Asedio (SPEC-COMBAT-SIEGE).
 	TypeUnitDemolish = "unit.demolish"
+	// Conquista (SPEC-TERRITORY-CONQUEST).
+	TypeUnitClaim = "unit.claim"
 	// Diplomacia (SPEC-DIPLOMACY).
 	TypeTreatyPropose = "treaty.propose"
 	TypeTreatyRespond = "treaty.respond"
@@ -97,6 +99,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeUnitAttack:     true,
 	TypeUnitPillage:    true,
 	TypeUnitDemolish:   true,
+	TypeUnitClaim:      true,
 	TypeTreatyPropose:  true,
 	TypeTreatyRespond:  true,
 	TypeTreatyCancel:   true,
@@ -293,7 +296,20 @@ type TerritoryView struct {
 	MaxY      int32   `json:"maxY"`
 	OwnerType string  `json:"ownerType"`
 	OwnerID   *string `json:"ownerId"`
-	Contested bool    `json:"contested"`
+	// Contested es true exactamente mientras hay una reclamación activa
+	// (SPEC-TERRITORY-CONQUEST §6, INV-TERR-006).
+	Contested bool `json:"contested"`
+	// Claim es la reclamación activa, si la hay.
+	Claim *TerritoryClaimView `json:"claim,omitempty"`
+}
+
+// TerritoryClaimView es una reclamación activa: quién reclama y cuándo termina.
+type TerritoryClaimView struct {
+	PlayerID    string  `json:"playerId"`
+	CityID      *int64  `json:"cityId"`
+	CityName    *string `json:"cityName"`
+	StartedAtMs int64   `json:"startedAtMs"`
+	EndsAtMs    int64   `json:"endsAtMs"`
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -364,6 +380,13 @@ type UnitPillagePayload struct {
 type UnitDemolishPayload struct {
 	UnitID     int64 `json:"unitId"`
 	BuildingID int64 `json:"buildingId"`
+}
+
+// UnitClaimPayload ordena a un guerrero propio reclamar el territorio en que
+// está. Sólo qué guerrero: el territorio, el plazo y si se puede son del
+// servidor (SPEC-TERRITORY-CONQUEST §6).
+type UnitClaimPayload struct {
+	UnitID int64 `json:"unitId"`
 }
 
 // TreatyProposePayload propone un tratado a otro jugador (SPEC-DIPLOMACY).
@@ -478,6 +501,9 @@ type EventLogEntry struct {
 	// de quien lee y lo que metía en él (SPEC-TRADE §6).
 	TradeGive []ResourceAmount `json:"tradeGive,omitempty"`
 	TradeGet  []ResourceAmount `json:"tradeGet,omitempty"`
+	// TerritoryID y TerritoryName, en la conquista (SPEC-TERRITORY-CONQUEST §6).
+	TerritoryID   *int64 `json:"territoryId,omitempty"`
+	TerritoryName string `json:"territoryName,omitempty"`
 }
 
 // EventLogNoticePayload es un aviso en vivo (SPEC-LIVE-NOTICES §6): un suceso
@@ -494,6 +520,9 @@ type EventLogNoticePayload struct {
 	Amount        *int64  `json:"amount,omitempty"`
 	X             *int32  `json:"x,omitempty"`
 	Y             *int32  `json:"y,omitempty"`
+	// TerritoryID y TerritoryName, en la conquista (SPEC-TERRITORY-CONQUEST §6).
+	TerritoryID   *int64 `json:"territoryId,omitempty"`
+	TerritoryName string `json:"territoryName,omitempty"`
 }
 
 // EventLogPagePayload es una página del registro. NextBeforeID es nil en la

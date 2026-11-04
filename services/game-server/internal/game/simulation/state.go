@@ -116,6 +116,9 @@ type State struct {
 	// trade son las ofertas de comercio pendientes y los tratos reservados
 	// (SPEC-TRADE, ADR-032).
 	trade tradeState
+	// conquest son las reclamaciones de territorio activas y sus escrituras
+	// por reintentar (SPEC-TERRITORY-CONQUEST, ADR-034).
+	conquest conquestState
 
 	// El recurso de los tiles tocados: la madera del bosque (SPEC-ECON-FOREST,
 	// ADR-025) y la piedra de la colina (SPEC-ECON-STONE, ADR-030).
@@ -153,6 +156,7 @@ func NewState(w *world.World) *State {
 		siege:              newSiegeState(),
 		diplo:              newDiplomacyState(),
 		trade:              newTradeState(),
+		conquest:           newConquestState(),
 		deposits:           newDepositState(),
 		pendingCompletions: make(map[int64]struct{}),
 

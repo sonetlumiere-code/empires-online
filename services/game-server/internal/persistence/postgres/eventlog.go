@@ -192,6 +192,9 @@ type eventPayload struct {
 	OfferID int64         `json:"offerId"`
 	Give    []payloadLine `json:"give"`
 	Want    []payloadLine `json:"want"`
+	// La conquista (SPEC-TERRITORY-CONQUEST §6).
+	TerritoryID   int64  `json:"territoryId"`
+	TerritoryName string `json:"territoryName"`
 }
 
 // payloadLine es una línea de un trato en el payload.
@@ -243,6 +246,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 		e.BreaksAtMs = p.BreakEffectiveAt.UnixMilli()
 	}
 	e.OfferID, e.Give, e.Want = p.OfferID, toLines(p.Give), toLines(p.Want)
+	e.TerritoryID, e.TerritoryName = p.TerritoryID, p.TerritoryName
 	return nil
 }
 
@@ -334,6 +338,10 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	if e.HasTile {
 		x, y := e.X, e.Y
 		v.X, v.Y = &x, &y
+	}
+	if e.TerritoryID != 0 {
+		id := e.TerritoryID
+		v.TerritoryID, v.TerritoryName = &id, e.TerritoryName
 	}
 	return v
 }

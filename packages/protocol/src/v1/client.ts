@@ -237,6 +237,21 @@ export const UnitDemolish = z.object({
 }).strict();
 
 /**
+ * Un `WARRIOR` reclama el territorio del tile en que está (SPEC-TERRITORY-CONQUEST
+ * §4.1): se planta y, si aguanta el plazo, el territorio pasa a su dueño. Sólo qué
+ * guerrero: el territorio, el plazo y si se puede los decide el servidor.
+ * Ver ../../../docs/specs/territory-conquest.md
+ */
+export const UnitClaim = z.object({
+  v: V,
+  type: z.literal('unit.claim'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
  * Propone un tratado a otro jugador (SPEC-DIPLOMACY). La guarnición la fija el
  * tipo y el servidor decide si se puede. Ver ../../../docs/specs/diplomacy.md
  */
@@ -352,6 +367,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   UnitAttack,
   UnitPillage,
   UnitDemolish,
+  UnitClaim,
   TreatyPropose,
   TreatyRespond,
   TreatyCancel,
@@ -377,6 +393,7 @@ export type CityAdvance = z.infer<typeof CityAdvance>;
 export type UnitAttack = z.infer<typeof UnitAttack>;
 export type UnitPillage = z.infer<typeof UnitPillage>;
 export type UnitDemolish = z.infer<typeof UnitDemolish>;
+export type UnitClaim = z.infer<typeof UnitClaim>;
 export type TreatyPropose = z.infer<typeof TreatyPropose>;
 export type TreatyRespond = z.infer<typeof TreatyRespond>;
 export type TreatyCancel = z.infer<typeof TreatyCancel>;
@@ -409,6 +426,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'trade.cancel',
   'event_log.fetch',
   'event_log.seen',
+  'unit.claim',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];
