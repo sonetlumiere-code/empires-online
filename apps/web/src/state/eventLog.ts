@@ -184,6 +184,10 @@ function rawText(e: EventLogEntry): string {
       return `${who} te robó ${wood} de madera${e.count > 1 ? ` en ${e.count} golpes` : ''}`;
     case 'PILLAGE_DONE':
       return `Tus guerreros robaron ${wood} de madera a ${who}`;
+    case 'HOUSE_LOST':
+      return `${who} derribó ${e.count === 1 ? 'una de tus casas' : `${e.count} de tus casas`}`;
+    case 'HOUSE_DESTROYED':
+      return `Tus guerreros derribaron ${e.count === 1 ? 'una casa' : `${e.count} casas`} de ${who}`;
     case 'TREATY_OFFERED':
       return `${who} te ofreció ${tipo === 'alianza' ? 'una alianza' : `un ${tipo}`}`;
     case 'TREATY_WITHDRAWN':
@@ -209,7 +213,7 @@ function rawText(e: EventLogEntry): string {
 
 /** Si la entrada cuenta una pérdida: el HUD la resalta. */
 export function isLoss(e: EventLogEntry): boolean {
-  return e.kind === 'UNIT_LOST' || e.kind === 'PILLAGED' || e.kind === 'TREATY_BREAK_ANNOUNCED';
+  return e.kind === 'UNIT_LOST' || e.kind === 'PILLAGED' || e.kind === 'HOUSE_LOST' || e.kind === 'TREATY_BREAK_ANNOUNCED';
 }
 
 function capitalize(s: string): string {

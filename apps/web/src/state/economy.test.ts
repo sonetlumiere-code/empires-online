@@ -3,13 +3,17 @@ import type { v1 } from '@empires-online/protocol';
 
 import {
   TERRAIN_FOREST,
+  buildingAt,
   buildingsOf,
   decideTileOrder,
   decideUnitClick,
   firstFreeHouseTile,
+  overPopulationLimit,
   pillageAlertActive,
   readableError,
   secondsUntil,
+  siegeAlertActive,
+  trainBlockReason,
   unitTypeLabel,
 } from './economy';
 import { useWorldStore } from './world';
@@ -49,6 +53,49 @@ describe('decideTileOrder: recolectar, mover o guarnecer', () => {
     expect(decideTileOrder({ x: 6, y: 4 }, guerrero, 0, ajena, PLAYER)).toEqual({ kind: 'pillage', cityId: 20 });
     expect(decideTileOrder({ x: 6, y: 4 }, guerrero, 0, conCiudad, PLAYER)).toEqual({ kind: 'garrison', cityId: 10 });
     expect(decideTileOrder({ x: 6, y: 4 }, aldeano, 0, ajena, PLAYER)).toEqual({ kind: 'garrison', cityId: 20 });
+  });
+});
+
+describe('asedio en el cliente (SPEC-COMBAT-SIEGE)', () => {
+  const guerrero = { unitType: 'WARRIOR' };
+  const aldeano = { unitType: 'VILLAGER' };
+  const ajena = () => ({ id: 20, ownerPlayerId: '22222222-2222-4222-8222-222222222222' });
+
+  it('un guerrero sobre una casa ajena la derriba; en el resto de la ciudad, saquea (Q10)', () => {
+    const casaAjena = (t: { x: number; y: number }) => (t.x === 6 && t.y === 4 ? { id: 77, cityId: 20 } : undefined);
+    expect(decideTileOrder({ x: 6, y: 4 }, guerrero, 0, ajena, PLAYER, casaAjena)).toEqual({ kind: 'demolish', buildingId: 77 });
+    expect(decideTileOrder({ x: 5, y: 5 }, guerrero, 0, ajena, PLAYER, casaAjena)).toEqual({ kind: 'pillage', cityId: 20 });
+    expect(decideTileOrder({ x: 6, y: 4 }, aldeano, 0, ajena, PLAYER, casaAjena), 'el aldeano no derriba').toEqual({ kind: 'garrison', cityId: 20 });
+  });
+
+  it('sobre una casa de su propia ciudad, o de otra ciudad, no derriba', () => {
+    const casaPropia = () => ({ id: 78, cityId: 10 });
+    expect(decideTileOrder({ x: 6, y: 4 }, guerrero, 0, conCiudad, PLAYER, casaPropia)).toEqual({ kind: 'garrison', cityId: 10 });
+    const deOtra = () => ({ id: 79, cityId: 99 });
+    expect(decideTileOrder({ x: 6, y: 4 }, guerrero, 0, ajena, PLAYER, deOtra)).toEqual({ kind: 'pillage', cityId: 20 });
+  });
+
+  it('buildingAt encuentra el edificio de un tile', () => {
+    const edificios = new Map([[4, { id: 4, cityId: 10, type: 'HOUSE', x: 5, y: 4, status: 'COMPLETE', completesAtMs: 1 }]]);
+    expect(buildingAt(edificios, { x: 5, y: 4 })?.id).toBe(4);
+    expect(buildingAt(edificios, { x: 4, y: 4 })).toBeUndefined();
+  });
+
+  it('el aviso de asedio vale cinco segundos desde el último golpe', () => {
+    expect(siegeAlertActive({ besiegedAtMs: 1_000 }, 5_999)).toBe(true);
+    expect(siegeAlertActive({ besiegedAtMs: 1_000 }, 6_000)).toBe(false);
+    expect(siegeAlertActive({}, 1_000)).toBe(false);
+    expect(siegeAlertActive(null, 1_000)).toBe(false);
+  });
+
+  it('una ciudad por encima de su límite no entrena, y el motivo lo dice (RN-COMBAT-034)', () => {
+    expect(overPopulationLimit({ population: 23, populationLimit: 20 })).toBe(true);
+    expect(overPopulationLimit({ population: 20, populationLimit: 20 })).toBe(false);
+    expect(trainBlockReason({ population: 23, populationLimit: 20, production: null })).toMatch(/perdió casas/);
+    expect(trainBlockReason({ population: 20, populationLimit: 20, production: null })).toMatch(/al tope/);
+    expect(trainBlockReason({ population: 3, populationLimit: 20, production: { unitType: 'VILLAGER', completesAtMs: 1 } }))
+      .toMatch(/entrenando/);
+    expect(trainBlockReason({ population: 3, populationLimit: 20, production: null })).toBeNull();
   });
 });
 
@@ -174,6 +221,25 @@ describe('el store refleja la economía que cuenta el servidor', () => {
     expect(state().buildings.get(4)!.status).toBe('COMPLETE');
     state().applyServerMessage(server('building.update', 5, { id: 99, status: 'COMPLETE' }));
     expect(state().buildings.has(99), 'un update de un edificio desconocido se ignora').toBe(false);
+  });
+
+  it('building.update trae la vida, building.destroyed lo quita y city.update el aviso (SPEC-COMBAT-SIEGE)', () => {
+    state().applyServerMessage(server('building.spawn', 3, {
+      building: { id: 4, cityId: 10, type: 'HOUSE', x: 5, y: 4, status: 'COMPLETE', completesAtMs: 2, hp: 150, maxHp: 150 },
+    }));
+    state().applyServerMessage(server('building.update', 4, { id: 4, status: 'COMPLETE', hp: 142 }));
+    expect(state().buildings.get(4)!.hp).toBe(142);
+    expect(state().buildings.get(4)!.maxHp).toBe(150);
+    state().applyServerMessage(server('building.update', 5, { id: 4, status: 'COMPLETE' }));
+    expect(state().buildings.get(4)!.hp, 'sin hp, la vida no cambia').toBe(142);
+
+    state().applyServerMessage(server('building.destroyed', 6, { id: 4, cityId: 10 }));
+    expect(state().buildings.has(4)).toBe(false);
+    expect(state().changes.buildings.has(4), 'la escena lo retira por su id').toBe(true);
+
+    state().applyServerMessage(server('city.update', 7, { id: 10, besiegedAtMs: 1_234, populationLimit: 20 }));
+    expect(state().cities.get(10)!.besiegedAtMs).toBe(1_234);
+    expect(state().cities.get(10)!.populationLimit).toBe(20);
   });
 
   it('entity.update trae WORKING y la carga; un depósito la deja en cero', () => {

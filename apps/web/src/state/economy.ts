@@ -16,14 +16,16 @@ export const TERRAIN_FOREST = 1;
 export type TileOrder =
   | { readonly kind: 'garrison'; readonly cityId: number }
   | { readonly kind: 'pillage'; readonly cityId: number }
+  | { readonly kind: 'demolish'; readonly buildingId: number }
   | { readonly kind: 'gather' }
   | { readonly kind: 'move' };
 
 /**
  * Qué orden es un clic sobre un tile con una unidad propia seleccionada:
  *
- *   1. dentro de la zona urbana (3 × 3) de una ciudad ajena, con un guerrero →
- *      saquearla (`unit.pillage`, SPEC-COMBAT-PILLAGE);
+ *   1. sobre una casa de una ciudad ajena, con un guerrero → derribarla
+ *      (`unit.demolish`, SPEC-COMBAT-SIEGE Q10); en el resto de su zona urbana
+ *      (3 × 3) → saquearla (`unit.pillage`, SPEC-COMBAT-PILLAGE);
  *   2. dentro de la zona urbana de cualquier otra ciudad → guarnecerse en ella;
  *   3. sobre un bosque, con un aldeano → recolectar (`unit.gather`);
  *   4. en cualquier otro caso → moverse (`unit.move`).
@@ -38,10 +40,15 @@ export function decideTileOrder(
   terrain: number | undefined,
   cityAt: (tile: { x: number; y: number }) => Pick<CityView, 'id' | 'ownerPlayerId'> | undefined,
   playerId: string | null,
+  buildingAt: (tile: { x: number; y: number }) => Pick<BuildingView, 'id' | 'cityId'> | undefined = () => undefined,
 ): TileOrder {
   const city = cityAt(tile);
   if (city) {
-    if (unit.unitType === 'WARRIOR' && city.ownerPlayerId !== playerId) return { kind: 'pillage', cityId: city.id };
+    if (unit.unitType === 'WARRIOR' && city.ownerPlayerId !== playerId) {
+      const house = buildingAt(tile);
+      if (house && house.cityId === city.id) return { kind: 'demolish', buildingId: house.id };
+      return { kind: 'pillage', cityId: city.id };
+    }
     return { kind: 'garrison', cityId: city.id };
   }
   if (terrain === TERRAIN_FOREST && unit.unitType === 'VILLAGER') return { kind: 'gather' };
@@ -59,6 +66,48 @@ export const PILLAGE_ALERT_MS = 5_000;
 export function pillageAlertActive(city: Pick<CityView, 'pillagedAtMs'> | null, serverNowMs: number): boolean {
   if (!city || city.pillagedAtMs === undefined) return false;
   return serverNowMs - city.pillagedAtMs < PILLAGE_ALERT_MS;
+}
+
+/** Cuánto dura el aviso de asedio en el HUD tras el último golpe a una casa. */
+export const SIEGE_ALERT_MS = 5_000;
+
+/**
+ * Si el aviso de asedio de una ciudad sigue vigente (SPEC-COMBAT-SIEGE
+ * RN-COMBAT-038): hubo un golpe a una de sus casas hace menos de SIEGE_ALERT_MS.
+ */
+export function siegeAlertActive(city: Pick<CityView, 'besiegedAtMs'> | null, serverNowMs: number): boolean {
+  if (!city || city.besiegedAtMs === undefined) return false;
+  return serverNowMs - city.besiegedAtMs < SIEGE_ALERT_MS;
+}
+
+/** El edificio en pie de un tile, si lo hay. */
+export function buildingAt(
+  buildings: ReadonlyMap<number, BuildingView>,
+  tile: { x: number; y: number },
+): BuildingView | undefined {
+  for (const b of buildings.values()) if (b.x === tile.x && b.y === tile.y) return b;
+  return undefined;
+}
+
+/** Si la ciudad tiene más población que límite: perdió casas (SPEC-COMBAT-SIEGE RN-COMBAT-034). */
+export function overPopulationLimit(city: Pick<CityView, 'population' | 'populationLimit'>): boolean {
+  return city.population > city.populationLimit;
+}
+
+/**
+ * Por qué no se puede entrenar ahora, o `null` si se puede intentar. El cliente
+ * sólo lo explica: quien decide es el servidor (`CITY_BUSY`,
+ * `POPULATION_LIMIT_REACHED`).
+ */
+export function trainBlockReason(
+  city: Pick<CityView, 'population' | 'populationLimit' | 'production'>,
+): string | null {
+  if (city.production !== null) return 'Ya está entrenando una unidad.';
+  if (overPopulationLimit(city)) {
+    return 'La ciudad tiene más población que límite: perdió casas. Reconstrúyelas para volver a entrenar.';
+  }
+  if (city.population >= city.populationLimit) return 'Población al tope: construye una casa para subir el límite.';
+  return null;
 }
 
 /** Lo que es un clic sobre una unidad. */

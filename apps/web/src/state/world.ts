@@ -76,6 +76,11 @@ export interface CityView {
    * recibe el dueño (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
    */
   pillagedAtMs?: number;
+  /**
+   * Instante del último golpe de asedio a una casa de la ciudad, si lo hubo en esta
+   * sesión. Sólo lo recibe el dueño (SPEC-COMBAT-SIEGE RN-COMBAT-038).
+   */
+  besiegedAtMs?: number;
 }
 
 /** Edificio tal y como lo ve el cliente (SPEC-ECON-WOOD §4.3). */
@@ -87,6 +92,9 @@ export interface BuildingView {
   y: number;
   status: string;
   completesAtMs: number;
+  /** Vida frente a un asedio y su máximo (SPEC-COMBAT-SIEGE); un servidor sin asedio no la manda. */
+  hp?: number;
+  maxHp?: number;
 }
 
 /**
@@ -423,6 +431,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
             stocks: p.stocks !== undefined ? p.stocks : existing.stocks,
             production: p.production !== undefined ? p.production : existing.production,
             pillagedAtMs: p.pillagedAtMs !== undefined ? p.pillagedAtMs : existing.pillagedAtMs,
+            besiegedAtMs: p.besiegedAtMs !== undefined ? p.besiegedAtMs : existing.besiegedAtMs,
           });
           set({ changes: changed({ cities: new Set([p.id]) }) });
           break;
@@ -441,7 +450,16 @@ export const useWorldStore = create<WorldState>((set, get) => {
           const p = message.payload;
           const existing = buildings.get(p.id);
           if (!existing) break;
-          buildings.set(p.id, { ...existing, status: p.status });
+          buildings.set(p.id, { ...existing, status: p.status, hp: p.hp !== undefined ? p.hp : existing.hp });
+          set({ changes: changed({ buildings: new Set([p.id]) }) });
+          break;
+        }
+
+        case 'building.destroyed': {
+          // Una casa derribada por un asedio deja de existir, como una unidad
+          // muerta (SPEC-COMBAT-SIEGE §6): la escena la retira por su id.
+          const p = message.payload;
+          if (!buildings.delete(p.id)) break;
           set({ changes: changed({ buildings: new Set([p.id]) }) });
           break;
         }
