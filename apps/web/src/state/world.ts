@@ -17,6 +17,7 @@ import { create } from 'zustand';
 import { applyTreatyUpdate, type TreatyView } from './diplomacy';
 import { applyTradeUpdate, type TradeOfferView } from './trade';
 import { applyEventLogPage, EMPTY_EVENT_LOG, markSeenLocally, type EventLogState } from './eventLog';
+import { applyNotice, EMPTY_NOTICES, markLogOpened, setTabHidden, type NoticeState } from './notices';
 import type { v1 } from '@empires-online/protocol';
 import type { ActiveMovement } from './interpolation';
 
@@ -196,6 +197,11 @@ export interface WorldState {
   tradeOffers: readonly TradeOfferView[];
   /** El registro (SPEC-EVENT-LOG): lo que el servidor contó que pasó. Sólo lo lee el HUD. */
   eventLog: EventLogState;
+  /**
+   * Los avisos en vivo (SPEC-LIVE-NOTICES), aparte del registro: no tienen `id` ni
+   * entran en su lista. Sólo los lee el HUD.
+   */
+  notices: NoticeState;
   changes: WorldChanges;
 
   selectedUnitId: number | null;
@@ -212,6 +218,10 @@ export interface WorldState {
   expectEventLogPage: (requestId: string, beforeId: number | null) => void;
   /** Lo da por visto en esta pestaña hasta `upToId`. */
   markEventLogSeen: (upToId: number) => void;
+  /** Se abrió el registro: «Registro» pierde el punto de avisos (SPEC-LIVE-NOTICES). */
+  markNoticesOpened: () => void;
+  /** La pestaña se ocultó o volvió: el contador del título (SPEC-LIVE-NOTICES Q7). */
+  setTabHidden: (hidden: boolean) => void;
   reset: () => void;
 }
 
@@ -311,6 +321,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     treaties: [],
     tradeOffers: [],
     eventLog: EMPTY_EVENT_LOG,
+    notices: EMPTY_NOTICES,
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
     lastError: null,
@@ -576,6 +587,11 @@ export const useWorldStore = create<WorldState>((set, get) => {
           break;
         }
 
+        case 'event_log.notice':
+          // No es una entrada: no toca la lista ni el cursor (RN-NOTICE-004).
+          set({ notices: applyNotice(get().notices, message.payload) });
+          break;
+
         case 'unit.move.rejected':
           set({ lastError: { code: message.payload.code, message: message.payload.message } });
           break;
@@ -610,6 +626,14 @@ export const useWorldStore = create<WorldState>((set, get) => {
       set({ eventLog: markSeenLocally(get().eventLog, upToId) });
     },
 
+    markNoticesOpened: () => {
+      set({ notices: markLogOpened(get().notices) });
+    },
+
+    setTabHidden: (hidden) => {
+      set({ notices: setTabHidden(get().notices, hidden) });
+    },
+
     reset: () => {
       units.clear();
       cities.clear();
@@ -628,6 +652,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
         treaties: [],
         tradeOffers: [],
         eventLog: EMPTY_EVENT_LOG,
+        notices: EMPTY_NOTICES,
         changes: changed({ all: true }),
       });
       eventLogRequests.clear();

@@ -295,6 +295,40 @@ describe('registro (SPEC-EVENT-LOG)', () => {
   });
 });
 
+describe('avisos en vivo (SPEC-LIVE-NOTICES)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const notice = {
+    kind: 'UNIT_LOST', atMs: 1_757_375_999_900, otherPlayerId: '00000000-0000-4000-8000-000000000002',
+    otherCityId: 7, otherCityName: 'Villa Norte', unitType: 'VILLAGER', x: 451, y: 179,
+  };
+  const parse = (payload: unknown) => parseServerMessage({ ...env, type: 'event_log.notice', payload });
+
+  it('acepta los cuatro tipos que se avisan, con y sin ciudad del otro', () => {
+    expect(parse(notice).ok).toBe(true);
+    expect(parse({ ...notice, kind: 'ENEMY_KILLED', unitType: 'WARRIOR' }).ok).toBe(true);
+    expect(parse({ ...notice, kind: 'PILLAGE_DONE', unitType: undefined, amount: 5 }).ok).toBe(true);
+    expect(parse({ ...notice, kind: 'HOUSE_DESTROYED', unitType: undefined, otherCityId: null, otherCityName: null }).ok).toBe(true);
+    expect(parse({ ...notice, x: undefined, y: undefined }).ok).toBe(true);
+  });
+
+  it('no tiene id ni recuento: no es una entrada del registro (RN-NOTICE-004)', () => {
+    const shape = ServerMessage.options.find((o) => o.shape.type.value === 'event_log.notice')!.shape.payload.shape;
+    expect(Object.keys(shape)).not.toContain('id');
+    expect(Object.keys(shape)).not.toContain('count');
+  });
+
+  it('rechaza los tipos que no se avisan y los datos fuera de rango', () => {
+    // El saqueo y el asedio sufridos ya tienen su aviso (pillagedAtMs, besiegedAtMs), y
+    // los tratados su barra (SPEC-LIVE-NOTICES Q1).
+    for (const kind of ['PILLAGED', 'HOUSE_LOST', 'TREATY_OFFERED', 'TRADE_ACCEPTED', 'UNIT_ATTACKED']) {
+      expect(parse({ ...notice, kind }).ok).toBe(false);
+    }
+    for (const bad of [{ ...notice, amount: -1 }, { ...notice, unitType: 'CATAPULT' }, { ...notice, otherPlayerId: 'x' }, { ...notice, atMs: -1 }]) {
+      expect(parse(bad).ok).toBe(false);
+    }
+  });
+});
+
 describe('comandos de economía (SPEC-ECON-WOOD)', () => {
   it('acepta unit.gather con unidad y bosque', () => {
     const result = parseClientMessage({

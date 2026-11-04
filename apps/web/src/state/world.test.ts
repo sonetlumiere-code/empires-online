@@ -455,3 +455,36 @@ describe('registro (SPEC-EVENT-LOG)', () => {
     expect(useWorldStore.getState().eventLog.loaded).toBe(false);
   });
 });
+
+describe('avisos en vivo (SPEC-LIVE-NOTICES)', () => {
+  const notice = (seq: number, atMs: number) =>
+    server('event_log.notice', seq, {
+      kind: 'UNIT_LOST', atMs, otherPlayerId: OTHER, otherCityId: 20, otherCityName: 'Villa Norte',
+      unitType: 'VILLAGER', x: 40, y: 50,
+    });
+
+  it('un aviso no es una entrada: no toca la lista ni el cursor del registro (RN-NOTICE-004)', () => {
+    const store = useWorldStore.getState();
+    const antes = useWorldStore.getState().eventLog;
+    store.applyServerMessage(notice(1, 1_000));
+    store.applyServerMessage(notice(2, 2_000));
+    const s = useWorldStore.getState();
+    expect(s.eventLog).toBe(antes);
+    expect(s.notices.groups).toHaveLength(1);
+    expect(s.notices.groups[0]?.count).toBe(2);
+    expect(s.notices.sinceLogOpened).toBe(2);
+  });
+
+  it('abrir el registro borra el punto; la pestaña oculta cuenta en el título; el reset lo vacía', () => {
+    const store = useWorldStore.getState();
+    store.setTabHidden(true);
+    store.applyServerMessage(notice(1, 1_000));
+    expect(useWorldStore.getState().notices.hiddenKeys).toHaveLength(1);
+    store.setTabHidden(false);
+    expect(useWorldStore.getState().notices.hiddenKeys).toEqual([]);
+    store.markNoticesOpened();
+    expect(useWorldStore.getState().notices.sinceLogOpened).toBe(0);
+    store.reset();
+    expect(useWorldStore.getState().notices.groups).toEqual([]);
+  });
+});
