@@ -221,6 +221,34 @@ export const TreatyCancel = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * Pide una página del registro (SPEC-EVENT-LOG): la más reciente, o la de los
+ * eventos anteriores a `beforeId`. El jugador es siempre el de la sesión
+ * (INV-SEC-009). Ver ../../../docs/specs/event-log.md
+ */
+export const EventLogFetch = z.object({
+  v: V,
+  type: z.literal('event_log.fetch'),
+  requestId: Uuid,
+  payload: z.object({
+    beforeId: EntityId.optional(),
+  }).strict(),
+}).strict();
+
+/**
+ * Da por visto el registro hasta `upToId`. El servidor no pasa del tope marcable de
+ * la última página que sirvió a esta sesión, y el cursor nunca retrocede
+ * (RN-LOG-004, INV-PERSIST-006).
+ */
+export const EventLogSeen = z.object({
+  v: V,
+  type: z.literal('event_log.seen'),
+  requestId: Uuid,
+  payload: z.object({
+    upToId: EntityId,
+  }).strict(),
+}).strict();
+
 /** Unión discriminada de todos los mensajes cliente → servidor de la v1. */
 export const ClientMessage = z.discriminatedUnion('type', [
   SessionHello,
@@ -238,6 +266,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
   TreatyPropose,
   TreatyRespond,
   TreatyCancel,
+  EventLogFetch,
+  EventLogSeen,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -256,6 +286,8 @@ export type UnitPillage = z.infer<typeof UnitPillage>;
 export type TreatyPropose = z.infer<typeof TreatyPropose>;
 export type TreatyRespond = z.infer<typeof TreatyRespond>;
 export type TreatyCancel = z.infer<typeof TreatyCancel>;
+export type EventLogFetch = z.infer<typeof EventLogFetch>;
+export type EventLogSeen = z.infer<typeof EventLogSeen>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -273,6 +305,8 @@ export const CLIENT_MESSAGE_TYPES = [
   'treaty.propose',
   'treaty.respond',
   'treaty.cancel',
+  'event_log.fetch',
+  'event_log.seen',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

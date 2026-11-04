@@ -46,6 +46,10 @@ type Session struct {
 
 	metrics      *observability.Metrics
 	writeTimeout time.Duration
+
+	// eventLogMarkable es el tope marcable de la última página del registro que
+	// sirvió esta sesión (ADR-028 §6). Sólo lo toca la goroutine de lectura.
+	eventLogMarkable int64
 }
 
 func newSession(id, playerID uuid.UUID, conn *gws.Conn, queueSize int, writeTimeout time.Duration,

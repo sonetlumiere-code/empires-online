@@ -118,6 +118,8 @@ type Server struct {
 	log      *slog.Logger
 	upgrader gws.Upgrader
 	limits   *connLimiter
+	// eventLog es el registro (SPEC-EVENT-LOG); opcional, ver SetEventLog.
+	eventLog EventLog
 }
 
 // NewServer construye el servidor.
@@ -586,6 +588,15 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
 			TreatyID: p.TreatyID,
 		})
+
+	// Registro (SPEC-EVENT-LOG, ADR-028 §1): lo atiende la conexión, como el
+	// ping; ni pasa por el loop ni reclama el requestId (leer no tiene efecto y
+	// marcar es monótono).
+	case protocol.TypeEventLogFetch:
+		s.handleEventLogFetch(ctx, session, msg, log)
+
+	case protocol.TypeEventLogSeen:
+		s.handleEventLogSeen(ctx, session, msg, log)
 
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
 	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del

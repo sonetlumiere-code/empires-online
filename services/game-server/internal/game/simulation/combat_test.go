@@ -132,6 +132,9 @@ func TestElGuerreroPersigueYMataAlAldeano(t *testing.T) {
 	require.Len(t, h.combat.deaths, 1)
 	assert.Equal(t, enemigoID, h.combat.deaths[0].VictimID)
 	assert.Equal(t, guerreroID, h.combat.deaths[0].KillerID)
+	// ADR-028 §3: la muerte dice qué murió y cuándo, para el registro.
+	assert.NotEmpty(t, h.combat.deaths[0].VictimType)
+	assert.Equal(t, h.clk.NowMs(), h.combat.deaths[0].AtMs)
 	assert.Equal(t, unit.StatusIdle, g.Status)
 	_, sigue := h.state.Engaged(guerreroID)
 	assert.False(t, sigue)

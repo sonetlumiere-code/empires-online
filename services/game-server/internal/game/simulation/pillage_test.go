@@ -186,6 +186,9 @@ func TestElSaqueoRespetaElSuelo(t *testing.T) {
 	require.Len(t, h.combat.pillages, 2)
 	assert.Equal(t, int32(5), h.combat.pillages[0].Amount)
 	assert.Equal(t, int32(2), h.combat.pillages[1].Amount)
+	// ADR-028 §3: cada golpe lleva su instante en la simulación, en orden.
+	assert.Positive(t, h.combat.pillages[0].AtMs)
+	assert.Greater(t, h.combat.pillages[1].AtMs, h.combat.pillages[0].AtMs)
 
 	// Un almacén ya en el suelo no es un error al ordenar: el guerrero llega y
 	// el primer golpe no roba nada (§5).

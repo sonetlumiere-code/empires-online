@@ -23,6 +23,7 @@ func NewTreatyStore(t *postgres.TreatyRepo) *TreatyStore { return &TreatyStore{t
 func (s *TreatyStore) ApplyTreaty(ctx context.Context, w simulation.TreatyWrite) (int64, error) {
 	id, err := s.treaties.ApplyTreaty(ctx, postgres.TreatyWrite{
 		Insert: w.Insert, Treaty: w.Treaty, From: w.From, Supersede: w.Supersede, Event: w.Event, Tick: w.Tick,
+		AtMs: w.AtMs, By: w.By,
 	})
 	if errors.Is(err, postgres.ErrConflict) || errors.Is(err, postgres.ErrVersionConflict) {
 		return 0, fmt.Errorf("%w: %v", simulation.ErrTreatyConflict, err)

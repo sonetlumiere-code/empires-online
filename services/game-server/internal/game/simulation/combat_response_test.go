@@ -78,7 +78,9 @@ func TestElGuardiaRespondeMataAlIncursorYVuelveASuPuesto(t *testing.T) {
 
 	require.Len(t, h.combat.attacks, 2)
 	assert.Equal(t, simulation.Attack{AttackerID: guerreroID, AttackerPlayer: h.playerID, TargetID: enemigoID,
-		TargetPlayer: enemigo, At: world.Tile{X: 20, Y: 20}, Tick: h.combat.attacks[0].Tick}, h.combat.attacks[0])
+		TargetPlayer: enemigo, At: world.Tile{X: 20, Y: 20}, Tick: h.combat.attacks[0].Tick,
+		AtMs: h.combat.attacks[0].AtMs}, h.combat.attacks[0])
+	assert.Positive(t, h.combat.attacks[0].AtMs, "lleva el instante de la simulación (ADR-028 §3)")
 	assert.Equal(t, guardiaID, h.combat.attacks[1].AttackerID)
 	assert.Equal(t, guerreroID, h.combat.attacks[1].TargetID)
 	assert.True(t, h.combat.attacks[1].Auto)

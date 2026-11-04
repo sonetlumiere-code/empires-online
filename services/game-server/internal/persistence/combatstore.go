@@ -24,7 +24,7 @@ func (c *CombatStore) PersistAttack(ctx context.Context, a simulation.Attack) er
 	return c.units.Attacked(ctx, c.store.Pool(), postgres.Attacked{
 		AttackerID: a.AttackerID, AttackerPlayer: a.AttackerPlayer,
 		TargetID: a.TargetID, TargetPlayer: a.TargetPlayer,
-		At: a.At, Tick: a.Tick, Auto: a.Auto,
+		At: a.At, Tick: a.Tick, Auto: a.Auto, AtMs: a.AtMs,
 	})
 }
 
@@ -36,6 +36,7 @@ func (c *CombatStore) PersistDeath(ctx context.Context, d simulation.Death) erro
 			KillerID: d.KillerID, KillerPlayer: d.KillerPlayer,
 			CityID: d.CityID, PopulationCost: d.PopulationCost,
 			At: d.At, Tick: d.Tick, Loot: d.Loot, Lost: d.Lost,
+			VictimType: d.VictimType, AtMs: d.AtMs,
 		})
 		return err
 	})
@@ -47,7 +48,7 @@ func (c *CombatStore) PersistPillage(ctx context.Context, p simulation.Pillage) 
 		_, err := c.units.Pillaged(ctx, tx, postgres.Pillaged{
 			AttackerID: p.AttackerID, AttackerPlayer: p.AttackerPlayer,
 			CityID: p.CityID, VictimPlayer: p.VictimPlayer, Amount: p.Amount,
-			Stock: toDelta(p.Stock), At: p.At, Tick: p.Tick,
+			Stock: toDelta(p.Stock), At: p.At, Tick: p.Tick, AtMs: p.AtMs,
 		})
 		return err
 	})

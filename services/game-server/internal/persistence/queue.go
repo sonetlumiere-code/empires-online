@@ -9,6 +9,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/observability"
+	"github.com/empires-online/empires-online/services/game-server/internal/persistence/postgres"
 )
 
 // Queue ejecuta escrituras durables fuera del game loop.
@@ -179,7 +180,9 @@ func (q *Queue) run(ctx context.Context, job simulation.Job) {
 		// El contexto de la escritura NO hereda la cancelación del proceso: si el
 		// servidor se está apagando, la escritura pendiente debe terminar, no
 		// abortarse a medias.
-		runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		// El plazo acota la transacción: el tope marcable del registro cuenta con
+		// él (ADR-028 §6).
+		runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postgres.WriteAttemptTimeout)
 		start := time.Now()
 		err := job.Run(runCtx)
 		cancel()

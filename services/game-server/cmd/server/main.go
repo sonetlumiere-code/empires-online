@@ -385,6 +385,10 @@ func run() error {
 		TrustProxyHeaders:    cfg.TrustProxyHeaders,
 		TrustedProxyCount:    cfg.TrustedProxyCount,
 	}, hub, authenticator, presence, dedupe, commands, inbox.Offer, metrics, log)
+	// El registro lo lee la conexión de PostgreSQL, sin pasar por el loop (ADR-028 §1).
+	wsServer.SetEventLog(postgres.NewEventLogRepo(store, postgres.EventLogConfig{
+		MaxAge: cfg.EventLogMaxAge, PageSize: cfg.EventLogPageSize, GroupGap: cfg.EventLogGroupGap,
+	}))
 
 	// Detrás del reverse proxy del despliegue de referencia, TODAS las
 	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el
