@@ -9,6 +9,7 @@
 import type { v1 } from '@empires-online/protocol';
 
 import { unitTypeLabel } from './economy';
+import { describeLines } from './trade';
 
 export type EventLogEntry = v1.EventLogEntry;
 export type EventLogPage = v1.EventLogPage['payload'];
@@ -201,11 +202,28 @@ function rawText(e: EventLogEntry): string {
         ? `Tu oferta de ${tipo} a ${who} caducó sin respuesta`
         : `La oferta de ${tipo} de ${who} caducó`;
     case 'TREATY_BREAK_ANNOUNCED':
-      return `${who} rompió ${elTipo}: la paz termina${e.breaksAtMs !== undefined ? ` a las ${clockTime(e.breaksAtMs)}` : ''}`;
+      // TRADE no da paz (SPEC-TRADE §4.1): lo que termina es el comercio.
+      return `${who} rompió ${elTipo}: ${e.treatyType === 'TRADE' ? 'el comercio' : 'la paz'} termina${
+        e.breaksAtMs !== undefined ? ` a las ${clockTime(e.breaksAtMs)}` : ''
+      }`;
     case 'TREATY_ENDED':
       return `${capitalize(elTipo)} con ${who} terminó${
         e.treatyType === 'ALLIANCE' ? '; tus unidades guarnecidas salieron de su ciudad' : ''
       }`;
+    // Los tratos (SPEC-TRADE §6): cada uno, su entrada, con lo que salía del
+    // almacén propio (tradeGive) y lo que entraba (tradeGet).
+    case 'TRADE_OFFERED':
+      return `${who} te ofreció ${describeLines(e.tradeGet ?? [])} por ${describeLines(e.tradeGive ?? [])}`;
+    case 'TRADE_ACCEPTED':
+      return `${who} aceptó tu trato: diste ${describeLines(e.tradeGive ?? [])} y recibiste ${describeLines(e.tradeGet ?? [])}`;
+    case 'TRADE_REJECTED':
+      return `${who} rechazó tu oferta de ${describeLines(e.tradeGive ?? [])} por ${describeLines(e.tradeGet ?? [])}`;
+    case 'TRADE_WITHDRAWN':
+      return `${who} retiró su oferta de ${describeLines(e.tradeGet ?? [])} por ${describeLines(e.tradeGive ?? [])}`;
+    case 'TRADE_OFFER_EXPIRED':
+      return e.proposedByMe
+        ? `Tu oferta de comercio a ${who} caducó`
+        : `La oferta de comercio de ${who} caducó`;
     default:
       return `${who}: ${String(e.kind)}`;
   }

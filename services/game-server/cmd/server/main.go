@@ -291,6 +291,15 @@ func run() error {
 	}
 	state.SetTreaties(abiertos, rechazos)
 
+	// Las ofertas de comercio pendientes (ADR-032 §1). Las que caducaron con el
+	// servidor parado, o cuyo tratado terminó, las cierra el primer barrido.
+	tradeRepo := postgres.NewTradeRepo(store)
+	ofertas, err := tradeRepo.ListPending(rootCtx)
+	if err != nil {
+		return fmt.Errorf("cargar ofertas de comercio: %w", err)
+	}
+	state.SetTradeOffers(ofertas)
+
 	gameStore := persistence.NewGameStore(store, unitRepo, cityRepo, movementRepo)
 	if len(recovery.FinishedMovements) > 0 {
 		if err := gameStore.FinishRecoveredMovements(rootCtx, recovery.FinishedMovements); err != nil {
@@ -337,6 +346,7 @@ func run() error {
 		Persister:   queue,
 		Repos:       gameStore,
 		Treaties:    persistence.NewTreatyStore(treatyRepo),
+		Trade:       persistence.NewTradeStore(tradeRepo),
 		Garrisons:   postgres.NewGarrisonRepo(store, unitRepo, movementRepo, treatyRepo),
 		Economy:     economyStore,
 		Combat:      persistence.NewCombatStore(store, unitRepo),
@@ -359,6 +369,7 @@ func run() error {
 		TreatyOfferTTL:         cfg.TreatyOfferTTL,
 		TreatyBreakNotice:      cfg.TreatyBreakNotice,
 		TreatyRetry:            cfg.TreatyRetry,
+		TradeOfferTTL:          cfg.TradeOfferTTL,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

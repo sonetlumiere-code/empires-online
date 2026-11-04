@@ -119,3 +119,32 @@ describe('texto de cada entrada', () => {
     expect(timeAgo(ahora - 2 * 86_400_000, ahora)).toBe('hace 2 días');
   });
 });
+
+describe('entryText: los tratos (SPEC-TRADE §6)', () => {
+  const madera = [{ resource: 'WOOD' as const, amount: 300 }];
+  const piedra = [{ resource: 'STONE' as const, amount: 100 }];
+  it('cada uno, con lo que salía del almacén propio y lo que entraba', () => {
+    expect(entryText(entrada(1, 'TRADE_OFFERED', { tradeGive: piedra, tradeGet: madera }))).toBe(
+      'Villa Norte te ofreció 300 de madera por 100 de piedra',
+    );
+    expect(entryText(entrada(1, 'TRADE_ACCEPTED', { tradeGive: madera, tradeGet: piedra }))).toBe(
+      'Villa Norte aceptó tu trato: diste 300 de madera y recibiste 100 de piedra',
+    );
+    expect(entryText(entrada(1, 'TRADE_REJECTED', { tradeGive: madera, tradeGet: piedra }))).toBe(
+      'Villa Norte rechazó tu oferta de 300 de madera por 100 de piedra',
+    );
+    expect(entryText(entrada(1, 'TRADE_WITHDRAWN', { tradeGive: piedra, tradeGet: madera }))).toBe(
+      'Villa Norte retiró su oferta de 300 de madera por 100 de piedra',
+    );
+    expect(entryText(entrada(1, 'TRADE_OFFER_EXPIRED', { proposedByMe: true }))).toBe('Tu oferta de comercio a Villa Norte caducó');
+    expect(entryText(entrada(1, 'TRADE_OFFER_EXPIRED', { proposedByMe: false }))).toBe('La oferta de comercio de Villa Norte caducó');
+  });
+  it('romper un acuerdo comercial termina el comercio, no la paz', () => {
+    expect(entryText(entrada(1, 'TREATY_BREAK_ANNOUNCED', { treatyType: 'TRADE' }))).toBe(
+      'Villa Norte rompió el acuerdo comercial: el comercio termina',
+    );
+    expect(entryText(entrada(1, 'TREATY_BREAK_ANNOUNCED', { treatyType: 'ALLIANCE' }))).toBe(
+      'Villa Norte rompió la alianza: la paz termina',
+    );
+  });
+});

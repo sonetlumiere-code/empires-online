@@ -53,6 +53,14 @@
  *      pacto de no agresión (o reutilizan el vigente), el pacto impide el saqueo, y
  *      smoke_runner lo rompe: el tratado sigue vigente con su preaviso. Como el preaviso
  *      dura 15 minutos, repetirlo antes falla con un aviso de cuánto falta.
+ *  13b. sólo con --comercio (SPEC-TRADE): smoke_runner y smoke_victim usan el tratado
+ *      vigente entre los dos o firman uno TRADE; una oferta de más madera de la que hay
+ *      se rechaza con INSUFFICIENT_RESOURCES; smoke_runner ofrece 50 de madera por 10 de
+ *      piedra, los dos la ven con su lado, smoke_victim la acepta y los dos almacenes
+ *      cambian en el acto; el registro de smoke_runner lo cuenta. smoke_victim tiene que
+ *      tener 10 de piedra (con el servidor parado, EO_DEVSEED_STOCK_FOR=smoke_victim
+ *      pnpm run dev:seed). Va después de --diplomacia: si su pacto está en preaviso, se
+ *      comercia con él.
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -67,7 +75,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--diplomacia] [--registro] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--diplomacia] [--comercio] [--registro] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -95,6 +103,7 @@ const AVANCE = args.includes('--avance');
 const SAQUEO = args.includes('--saqueo');
 const ASEDIO = args.includes('--asedio');
 const DIPLOMACIA = args.includes('--diplomacia');
+const COMERCIO = args.includes('--comercio');
 const REGISTRO = args.includes('--registro');
 const PROTOCOL_VERSION = 1;
 
@@ -563,6 +572,10 @@ async function main() {
 
   if (DIPLOMACIA) {
     await diplomacia(segunda, cuenta.playerId, snap2);
+  }
+
+  if (COMERCIO) {
+    await comercio(segunda, ciudad);
   }
 
   if (REGISTRO) {
@@ -1121,6 +1134,95 @@ async function diplomacia(propio, playerId, snap) {
   const roto = await tratado(victima.sesion, (x) => x.id === vigente.id && x.breaksAtMs !== null);
   if (roto.status !== 'ACTIVE') fallar('romper no dejó el tratado en preaviso', roto);
   ok('ruptura con preaviso', `sigue ACTIVE hasta ${new Date(roto.breaksAtMs).toISOString()}`);
+  victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Comercio (SPEC-TRADE), sólo con --comercio
+// ─────────────────────────────────────────────────────────────
+
+/** Espera el trade.update de una oferta que cumpla `cond`. */
+async function oferta(sesion, cond, ms = 10_000) {
+  return (await sesion.esperarQue('trade.update', (m) => cond(m.payload.offer), ms)).payload.offer;
+}
+
+async function comercio(propio, ciudad) {
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const ciudadV = victima.snapshot.payload.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
+  const delPar = (victima.snapshot.payload.treaties ?? []).filter((x) => x.otherCityId === ciudad.id);
+
+  // SPEC-TRADE §4.1: cualquier tratado vigente deja comerciar, también en preaviso.
+  let vigente = delPar.find((x) => x.status === 'ACTIVE');
+  if (!vigente) {
+    let ofertaT = delPar.find((x) => x.status === 'PROPOSED');
+    if (!ofertaT) {
+      victima.sesion.enviar('treaty.propose', { playerId: ciudad.ownerPlayerId, type: 'TRADE' });
+      ofertaT = await tratado(victima.sesion, (x) => x.otherCityId === ciudad.id && x.status === 'PROPOSED');
+      ok('acuerdo comercial propuesto', `tratado ${ofertaT.id} a ${ciudad.name}`);
+    }
+    const responde = ofertaT.proposedByMe ? propio.sesion : victima.sesion;
+    responde.enviar('treaty.respond', { treatyId: ofertaT.id, accept: true });
+    vigente = await tratado(victima.sesion, (x) => x.id === ofertaT.id && x.status === 'ACTIVE');
+    ok('acuerdo comercial aceptado', `tratado ${vigente.id}: TRADE no da paz`);
+  } else {
+    ok('tratado vigente que deja comerciar', `tratado ${vigente.id} (${vigente.type})`);
+  }
+
+  // Una oferta pendiente de una pasada anterior (una por par, Q5): la retira quien
+  // la hizo. El snapshot de la víctima trae las suyas, en las dos direcciones.
+  const vieja = (victima.snapshot.payload.tradeOffers ?? []).find((o) => o.otherCityId === ciudad.id);
+  if (vieja) {
+    const quien = vieja.proposedByMe ? victima.sesion : propio.sesion;
+    quien.enviar('trade.cancel', { offerId: vieja.id });
+    await oferta(victima.sesion, (x) => x.id === vieja.id && x.status === 'WITHDRAWN');
+    ok('oferta de una pasada anterior retirada', `oferta ${vieja.id}`);
+  }
+
+  const piedraV = ciudadV.stocks?.STONE ?? 0;
+  const maderaV = ciudadV.stocks?.WOOD ?? 0;
+  if (piedraV < 10) {
+    fallar(`${VICTIMA} tiene ${piedraV} de piedra y el trato pide 10`,
+      'con el servidor parado: EO_DEVSEED_STOCK_FOR=smoke_victim pnpm run dev:seed');
+  }
+
+  // RN-TRADE-001: no se ofrece lo que no se tiene.
+  const id0 = propio.sesion.enviar('trade.propose', {
+    playerId: cuenta.playerId, give: [{ resource: 'WOOD', amount: 1_000_000 }], want: [{ resource: 'STONE', amount: 1 }],
+  });
+  const r0 = await propio.sesion.esperarQue('system.error', (m) => m.requestId === id0);
+  if (r0.payload.code !== 'INSUFFICIENT_RESOURCES') fallar('ofrecer lo que no se tiene no se rechazó', r0.payload);
+  ok('ofrecer lo que no se tiene se rechaza', `INSUFFICIENT_RESOURCES: ${r0.payload.message}`);
+
+  propio.sesion.enviar('trade.propose', {
+    playerId: cuenta.playerId, give: [{ resource: 'WOOD', amount: 50 }], want: [{ resource: 'STONE', amount: 10 }],
+  });
+  const propia = await oferta(propio.sesion, (x) => x.otherPlayerId === cuenta.playerId && x.status === 'PROPOSED');
+  const recibida = await oferta(victima.sesion, (x) => x.id === propia.id);
+  if (!propia.proposedByMe || recibida.proposedByMe) fallar('la oferta no dice quién la hizo', { propia, recibida });
+  if (recibida.give[0]?.resource !== 'STONE' || recibida.get[0]?.resource !== 'WOOD') {
+    fallar('la oferta no se ve desde el lado de quien la recibe', recibida);
+  }
+  ok('oferta de comercio', `${propia.id}: 50 de madera por 10 de piedra; ${ciudadV.name} la ve como 10 de piedra por 50 de madera`);
+
+  // RN-TRADE-004: aceptar mueve los dos almacenes en el acto.
+  victima.sesion.enviar('trade.respond', { offerId: recibida.id, accept: true });
+  await oferta(victima.sesion, (x) => x.id === recibida.id && x.status === 'ACCEPTED');
+  await oferta(propio.sesion, (x) => x.id === propia.id && x.status === 'ACCEPTED');
+  const almacenV = await victima.sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadV.id && m.payload.stocks && m.payload.stocks.WOOD === maderaV + 50);
+  if (almacenV.payload.stocks.STONE !== piedraV - 10) fallar('la piedra de quien acepta no bajó en 10', almacenV.payload);
+  ok('trato aceptado', `${ciudadV.name}: madera ${maderaV} -> ${maderaV + 50}, piedra ${piedraV} -> ${piedraV - 10}`);
+
+  // El registro de quien ofreció lo cuenta, con sus cantidades (SPEC-TRADE §6).
+  const pagina = await paginaDelRegistro(propio.sesion);
+  const entrada = pagina.entries.find((e) => e.kind === 'TRADE_ACCEPTED' && e.otherPlayerId === cuenta.playerId);
+  if (!entrada) fallar('el registro no cuenta el trato aceptado', pagina.entries.slice(0, 5));
+  if (entrada.tradeGive?.[0]?.amount !== 50 || entrada.tradeGet?.[0]?.amount !== 10) {
+    fallar('la entrada del trato no lleva sus cantidades', entrada);
+  }
+  ok('el registro cuenta el trato', `TRADE_ACCEPTED: diste 50 de madera, recibiste 10 de piedra`);
   victima.sesion.cerrar();
 }
 

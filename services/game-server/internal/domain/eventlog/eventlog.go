@@ -40,6 +40,17 @@ const (
 	KindTreatyBreakAnnounced Kind = "TREATY_BREAK_ANNOUNCED"
 	// KindTreatyEnded es un tratado vigente que terminó.
 	KindTreatyEnded Kind = "TREATY_ENDED"
+	// KindTradeOffered es una oferta de comercio recibida (SPEC-TRADE §6).
+	KindTradeOffered Kind = "TRADE_OFFERED"
+	// KindTradeAccepted es una oferta de comercio propia que el otro aceptó.
+	KindTradeAccepted Kind = "TRADE_ACCEPTED"
+	// KindTradeRejected es una oferta de comercio propia que el otro rechazó.
+	KindTradeRejected Kind = "TRADE_REJECTED"
+	// KindTradeWithdrawn es una oferta de comercio recibida que el otro retiró.
+	KindTradeWithdrawn Kind = "TRADE_WITHDRAWN"
+	// KindTradeOfferExpired es una oferta de comercio, propia o recibida, que
+	// caducó.
+	KindTradeOfferExpired Kind = "TRADE_OFFER_EXPIRED"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -49,6 +60,7 @@ func Kinds() []Kind {
 		KindUnitLost, KindEnemyKilled, KindPillaged, KindPillageDone, KindHouseLost, KindHouseDestroyed,
 		KindTreatyOffered, KindTreatyWithdrawn, KindTreatyAccepted, KindTreatyRejected,
 		KindTreatyOfferExpired, KindTreatyBreakAnnounced, KindTreatyEnded,
+		KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired,
 	}
 }
 
@@ -64,6 +76,13 @@ const (
 	EventTreatyExpired        = "TreatyExpired"
 	EventTreatyBreakAnnounced = "TreatyBreakAnnounced"
 	EventTreatyBroken         = "TreatyBroken"
+	// Comercio (SPEC-TRADE, ADR-032 §7): player_id es quien propuso y
+	// counterpart_player_id quien recibió la oferta.
+	EventTradeProposed  = "TradeProposed"
+	EventTradeAccepted  = "TradeAccepted"
+	EventTradeRejected  = "TradeRejected"
+	EventTradeWithdrawn = "TradeWithdrawn"
+	EventTradeExpired   = "TradeExpired"
 )
 
 // EventTypes son los event_type que pueden dar una entrada: la consulta sólo
@@ -73,7 +92,14 @@ func EventTypes() []string {
 		EventUnitKilled, EventCityPillaged, EventBuildingDestroyed,
 		EventTreatyProposed, EventTreatyWithdrawn, EventTreatyAccepted, EventTreatyRejected,
 		EventTreatyExpired, EventTreatyBreakAnnounced, EventTreatyBroken,
+		EventTradeProposed, EventTradeAccepted, EventTradeRejected, EventTradeWithdrawn, EventTradeExpired,
 	}
+}
+
+// Line es una línea de una oferta de comercio: un recurso y una cantidad.
+type Line struct {
+	Resource string
+	Amount   int64
 }
 
 // Event es una fila de world_events ya leída, con lo que el registro usa de su
@@ -100,6 +126,11 @@ type Event struct {
 	// filas anteriores a ADR-028.
 	By         uuid.UUID
 	BreaksAtMs int64
+	// OfferID, Give y Want, en los tratos: la oferta, lo que daba quien la
+	// propuso (PlayerID) y lo que pedía.
+	OfferID int64
+	Give    []Line
+	Want    []Line
 }
 
 // Entry es una entrada del registro: uno o varios sucesos del mismo tipo con el
@@ -124,6 +155,10 @@ type Entry struct {
 	HasTile bool
 	// BreaksAtMs, en una ruptura anunciada.
 	BreaksAtMs int64
+	// TradeGive y TradeGet, en los tratos: lo que la oferta sacaba del almacén
+	// de quien lee y lo que metía en él.
+	TradeGive []Line
+	TradeGet  []Line
 }
 
 // Classify dice qué entrada da e para viewer y quién es el otro jugador. ok es
@@ -158,6 +193,27 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindHouseLost, other, true
 		}
 		return KindHouseDestroyed, other, true
+	}
+
+	// Un trato (SPEC-TRADE §6): como los tratados, no entra lo que el propio
+	// jugador ordenó.
+	if kind, ok := tradeKind(e.Type); ok {
+		if kind == KindTradeOfferExpired {
+			return kind, other, true
+		}
+		actor := e.By
+		if actor == uuid.Nil {
+			switch e.Type {
+			case EventTradeProposed, EventTradeWithdrawn:
+				actor = e.PlayerID // quien propuso
+			default:
+				actor = e.Counterpart // quien respondió
+			}
+		}
+		if actor == viewer {
+			return "", uuid.Nil, false
+		}
+		return kind, other, true
 	}
 
 	// Un tratado: no entra lo que el propio jugador ordenó.
@@ -205,13 +261,41 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 	return kind, other, true
 }
 
+// tradeKind es el tipo de entrada de un evento del comercio.
+func tradeKind(eventType string) (Kind, bool) {
+	switch eventType {
+	case EventTradeProposed:
+		return KindTradeOffered, true
+	case EventTradeAccepted:
+		return KindTradeAccepted, true
+	case EventTradeRejected:
+		return KindTradeRejected, true
+	case EventTradeWithdrawn:
+		return KindTradeWithdrawn, true
+	case EventTradeExpired:
+		return KindTradeOfferExpired, true
+	}
+	return "", false
+}
+
+func isTrade(k Kind) bool {
+	switch k {
+	case KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired:
+		return true
+	}
+	return false
+}
+
 // groupKey decide qué filas se juntan: mismo tipo, mismo otro jugador, mismo
 // tipo de unidad o de tratado, y del mismo lado del cursor (SPEC-EVENT-LOG §4.2).
+// Los tratos no se juntan nunca: cada uno es su propia entrada, porque lo que
+// importa de él son sus cantidades (ADR-032 §7).
 type groupKey struct {
 	kind       Kind
 	other      uuid.UUID
 	unitType   string
 	treatyType string
+	offerID    int64
 	mine       bool
 	unseen     bool
 }
@@ -250,12 +334,15 @@ func (b *Builder) Add(e Event) bool {
 		b.take(e.ID)
 		return true
 	}
-	mine := kind == KindTreatyOfferExpired && e.PlayerID == b.viewer
+	mine := (kind == KindTreatyOfferExpired || kind == KindTradeOfferExpired) && e.PlayerID == b.viewer
 	k := groupKey{
 		kind: kind, other: other, unitType: e.UnitType, mine: mine, unseen: e.ID > b.cursor,
 	}
 	if isTreaty(kind) {
 		k.treatyType = e.TreatyType
+	}
+	if isTrade(kind) {
+		k.offerID = e.ID // cada trato, su entrada
 	}
 	if i, abierto := b.open[k]; abierto && e.AtMs >= b.entries[i].FirstAtMs-b.gapMs {
 		g := &b.entries[i]
@@ -285,6 +372,13 @@ func (b *Builder) Add(e Event) bool {
 	case KindTreatyBreakAnnounced:
 		entry.TreatyType = e.TreatyType
 		entry.BreaksAtMs = e.BreaksAtMs
+	case KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired:
+		// Desde quien lee: si propuso él, da Give y recibe Want; si no, al revés.
+		if e.PlayerID == b.viewer {
+			entry.TradeGive, entry.TradeGet = e.Give, e.Want
+		} else {
+			entry.TradeGive, entry.TradeGet = e.Want, e.Give
+		}
 	default:
 		entry.TreatyType = e.TreatyType
 	}
@@ -312,5 +406,5 @@ func isTreaty(k Kind) bool {
 	case KindUnitLost, KindEnemyKilled, KindPillaged, KindPillageDone, KindHouseLost, KindHouseDestroyed:
 		return false
 	}
-	return true
+	return !isTrade(k)
 }

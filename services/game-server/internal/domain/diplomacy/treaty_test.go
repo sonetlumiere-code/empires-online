@@ -343,12 +343,14 @@ func TestElFinDeUnTratadoEsLoQueLlegueAntes(t *testing.T) {
 	assert.Equal(t, StatusExpired, estado)
 }
 
-// Q1: se proponen el pacto y la alianza; la guarnición la fija el tipo. Una
-// oferta rechazada, retirada o caducada sella su cierre.
+// Q1, precisada por SPEC-TRADE: se proponen los tres tipos; la guarnición la
+// fija el tipo. Una oferta rechazada, retirada o caducada sella su cierre.
 func TestTiposProponiblesYCierreDeLasOfertas(t *testing.T) {
 	assert.True(t, TypeNonAggression.Proposable())
 	assert.True(t, TypeAlliance.Proposable())
-	assert.False(t, TypeTrade.Proposable())
+	assert.True(t, TypeTrade.Proposable())
+	assert.False(t, Type("VASALLAJE").Proposable())
+	assert.False(t, TypeTrade.GrantsGarrison())
 	assert.True(t, TypeAlliance.GrantsGarrison())
 	assert.False(t, TypeNonAggression.GrantsGarrison())
 
@@ -361,4 +363,43 @@ func TestTiposProponiblesYCierreDeLasOfertas(t *testing.T) {
 	caducado, err := tratado(StatusActive, false).TransitionTo(StatusExpired, time.Now())
 	require.NoError(t, err)
 	assert.Nil(t, caducado.ClosedAt, "un tratado vigente que caduca no es una oferta cerrada")
+}
+
+// SPEC-TRADE §4.1: la escalera TRADE < pacto < alianza. Sólo se sube, y un tipo
+// desconocido no sustituye a nada ni es sustituido.
+func TestLaEscaleraDeTratadosSoloSube(t *testing.T) {
+	assert.True(t, TypeNonAggression.Supersedes(TypeTrade))
+	assert.True(t, TypeAlliance.Supersedes(TypeTrade))
+	assert.True(t, TypeAlliance.Supersedes(TypeNonAggression))
+
+	assert.False(t, TypeTrade.Supersedes(TypeTrade), "repetir no es subir")
+	assert.False(t, TypeTrade.Supersedes(TypeNonAggression), "bajar no existe")
+	assert.False(t, TypeNonAggression.Supersedes(TypeAlliance))
+	assert.False(t, Type("VASALLAJE").Supersedes(TypeTrade))
+	assert.False(t, TypeAlliance.Supersedes(Type("VASALLAJE")))
+}
+
+// SPEC-TRADE §4.1 e INV-TRADE-002: los tres tipos vigentes dejan comerciar,
+// también durante el preaviso, y dejan de hacerlo al llegar su fin. Comerciar no
+// da paz.
+func TestQueTratadoDejaComerciar(t *testing.T) {
+	ahora := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	for _, tipo := range []Type{TypeTrade, TypeNonAggression, TypeAlliance} {
+		vigente := oferta()
+		vigente.Type, vigente.Status = tipo, StatusActive
+		assert.True(t, vigente.AllowsTradeAt(ahora), "%s deja comerciar", tipo)
+
+		fin := ahora.Add(15 * time.Minute)
+		vigente.BreakEffectiveAt = &fin
+		assert.True(t, vigente.AllowsTradeAt(ahora), "%s en preaviso sigue dejando comerciar", tipo)
+		assert.False(t, vigente.AllowsTradeAt(fin), "%s deja de valer al vencer el preaviso", tipo)
+	}
+
+	comercio := oferta()
+	comercio.Type, comercio.Status = TypeTrade, StatusActive
+	assert.False(t, comercio.GivesPeaceAt(ahora), "TRADE no da paz")
+
+	propuesto := oferta()
+	propuesto.Type = TypeTrade
+	assert.False(t, propuesto.AllowsTradeAt(ahora), "una oferta no es un tratado")
 }

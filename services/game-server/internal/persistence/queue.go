@@ -23,13 +23,23 @@ import (
 // entidades distintas en paralelo (ADR-013 §2.2). Los trabajos sin clave se
 // reparten por turnos.
 //
+// Un trabajo con dos claves (Job.Key2, ADR-032 §3) entra en las dos
+// particiones o en ninguna, y se ejecuta cuando los workers de las dos han
+// llegado a él: así queda en orden respecto a los de las dos entidades. No hay
+// bloqueo cruzado porque Submit es atómico (q.mu) y todos los trabajos de dos
+// claves quedan en el mismo orden relativo en todas las particiones: el más
+// antiguo sin terminar siempre tiene delante sólo trabajos ya terminados.
+//
 // Contrapresión: si PostgreSQL se ralentiza, la cola crece y la métrica
 // eo_persistence_queue_depth lo delata. Si una partición se llena, el trabajo se
 // descarta antes que bloquear el mundo — y se registra como error y se cuenta
 // en eo_persistence_jobs_dropped_total, porque descartar escrituras nunca es
 // normal (ADR-022).
 type Queue struct {
-	parts   []chan simulation.Job
+	// mu hace atómico Submit (los dos envíos de un trabajo de dos claves) y lo
+	// excluye de Close.
+	mu      sync.Mutex
+	parts   []chan queued
 	log     *slog.Logger
 	metrics *observability.Metrics
 
@@ -39,6 +49,27 @@ type Queue struct {
 
 	wg     sync.WaitGroup
 	closed sync.Once
+}
+
+// queued es un trabajo en el canal de una partición. pair no es nil en las dos
+// mitades de un trabajo de dos claves; sólo la que lleva lead lo ejecuta.
+type queued struct {
+	job  simulation.Job
+	pair *pairBarrier
+	lead bool
+}
+
+// pairBarrier es la cita de los dos workers de un trabajo de dos claves: cada
+// uno llega, espera al otro, y el que no lo ejecuta espera a que termine.
+type pairBarrier struct {
+	arrived sync.WaitGroup
+	done    chan struct{}
+}
+
+func newPairBarrier() *pairBarrier {
+	b := &pairBarrier{done: make(chan struct{})}
+	b.arrived.Add(2)
+	return b
 }
 
 // QueueConfig parametriza la cola.
@@ -70,9 +101,9 @@ func NewQueue(cfg QueueConfig, log *slog.Logger, metrics *observability.Metrics)
 	if porParticion < 1 {
 		porParticion = 1
 	}
-	parts := make([]chan simulation.Job, cfg.Workers)
+	parts := make([]chan queued, cfg.Workers)
 	for i := range parts {
-		parts[i] = make(chan simulation.Job, porParticion)
+		parts[i] = make(chan queued, porParticion)
 	}
 	return &Queue{
 		parts:       parts,
@@ -96,24 +127,57 @@ func (q *Queue) Partitions() int { return len(q.parts) }
 
 // Submit encola un trabajo. NUNCA bloquea: bloquear aquí sería bloquear el tick.
 func (q *Queue) Submit(job simulation.Job) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	var i int
 	if job.Key != "" {
 		i = simulation.PartitionOf(job.Key, len(q.parts))
 	} else {
 		i = int(q.turno.Add(1) % uint64(len(q.parts)))
 	}
+	if job.Key2 != "" {
+		if j := simulation.PartitionOf(job.Key2, len(q.parts)); j != i {
+			q.submitPair(job, i, j)
+			return
+		}
+	}
 	select {
-	case q.parts[i] <- job:
+	case q.parts[i] <- queued{job: job}:
 		q.observeDepth()
 	default:
-		// Partición llena: se descarta y se grita. Que esto aparezca en los logs
-		// significa que la base de datos no sigue el ritmo del mundo.
-		q.log.Error("cola de persistencia saturada: trabajo descartado",
-			"job", job.Name, "key", job.Key, "partition", i, "capacity", cap(q.parts[i]))
-		q.countDropped(job.Name, observability.DropQueueFull)
-		if job.OnPermanentFailure != nil {
-			job.OnPermanentFailure(context.DeadlineExceeded)
-		}
+		q.dropFull(job, i)
+	}
+}
+
+// submitPair encola las dos mitades de un trabajo de dos claves, o ninguna.
+// Con q.mu tomado nadie más encola, y los workers sólo vacían: si caben las
+// dos al comprobarlo, los dos envíos entran sin bloquear.
+func (q *Queue) submitPair(job simulation.Job, i, j int) {
+	if len(q.parts[i]) >= cap(q.parts[i]) {
+		q.dropFull(job, i)
+		return
+	}
+	if len(q.parts[j]) >= cap(q.parts[j]) {
+		q.dropFull(job, j)
+		return
+	}
+	b := newPairBarrier()
+	q.parts[i] <- queued{job: job, pair: b, lead: true}
+	q.parts[j] <- queued{job: job, pair: b}
+	q.observeDepth()
+}
+
+// dropFull descarta un trabajo que no cabe en su partición y llama a su
+// compensación.
+func (q *Queue) dropFull(job simulation.Job, i int) {
+	// Partición llena: se descarta y se grita. Que esto aparezca en los logs
+	// significa que la base de datos no sigue el ritmo del mundo.
+	q.log.Error("cola de persistencia saturada: trabajo descartado",
+		"job", job.Name, "key", job.Key, "key2", job.Key2, "partition", i, "capacity", cap(q.parts[i]))
+	q.countDropped(job.Name, observability.DropQueueFull)
+	if job.OnPermanentFailure != nil {
+		job.OnPermanentFailure(context.DeadlineExceeded)
 	}
 }
 
@@ -125,7 +189,8 @@ func (q *Queue) countDropped(name, reason string) {
 	}
 }
 
-// Depth es la profundidad actual de la cola, sumando todas las particiones.
+// Depth es la profundidad actual de la cola, sumando todas las particiones. Un
+// trabajo de dos claves cuenta dos veces: está en dos canales.
 func (q *Queue) Depth() int {
 	total := 0
 	for _, part := range q.parts {
@@ -157,6 +222,8 @@ func (q *Queue) Drain(timeout time.Duration) bool {
 // Close cierra la cola y espera a que los workers terminen lo pendiente.
 func (q *Queue) Close() {
 	q.closed.Do(func() {
+		q.mu.Lock()
+		defer q.mu.Unlock()
 		for _, part := range q.parts {
 			close(part)
 		}
@@ -164,12 +231,25 @@ func (q *Queue) Close() {
 	q.wg.Wait()
 }
 
-func (q *Queue) worker(ctx context.Context, part <-chan simulation.Job) {
+func (q *Queue) worker(ctx context.Context, part <-chan queued) {
 	defer q.wg.Done()
 
-	for job := range part {
+	for it := range part {
 		q.observeDepth()
-		q.run(ctx, job)
+		if it.pair == nil {
+			q.run(ctx, it.job)
+			continue
+		}
+		// Un trabajo de dos claves: se espera al worker de la otra partición,
+		// y sólo uno de los dos lo ejecuta (ADR-032 §3).
+		it.pair.arrived.Done()
+		it.pair.arrived.Wait()
+		if it.lead {
+			q.run(ctx, it.job)
+			close(it.pair.done)
+		} else {
+			<-it.pair.done
+		}
 	}
 }
 

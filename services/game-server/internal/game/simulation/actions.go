@@ -54,6 +54,11 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeTreatyPropose: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeTreatyRespond: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeTreatyCancel:  {Hostile: false, Territory: TerritoryFree},
+	// El comercio tampoco (RN-TRADE-008): se ofrece y se acepta con el otro
+	// desconectado o protegido.
+	protocol.TypeTradePropose: {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeTradeRespond: {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeTradeCancel:  {Hostile: false, Territory: TerritoryFree},
 }
 
 // sessionMessages son los mensajes que no actúan sobre el mundo. Los del

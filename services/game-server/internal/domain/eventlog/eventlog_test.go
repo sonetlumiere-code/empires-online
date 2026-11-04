@@ -182,7 +182,63 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 13)
+	assert.Len(t, vistos, 18)
+}
+
+// SPEC-TRADE §6 y RN-LOG-001: cada trato le cuenta a cada jugador lo que le
+// hizo el otro, no lo que hizo él; la caducidad, a los dos.
+func TestClasificaLosTratosParaCadaLado(t *testing.T) {
+	quienOfrece, quienRecibe := yo, otro
+	casos := []struct {
+		evento string
+		by     uuid.UUID
+		para   map[uuid.UUID]eventlog.Kind
+	}{
+		{"TradeProposed", quienOfrece, map[uuid.UUID]eventlog.Kind{quienRecibe: eventlog.KindTradeOffered}},
+		{"TradeAccepted", quienRecibe, map[uuid.UUID]eventlog.Kind{quienOfrece: eventlog.KindTradeAccepted}},
+		{"TradeRejected", quienRecibe, map[uuid.UUID]eventlog.Kind{quienOfrece: eventlog.KindTradeRejected}},
+		{"TradeWithdrawn", quienOfrece, map[uuid.UUID]eventlog.Kind{quienRecibe: eventlog.KindTradeWithdrawn}},
+		{"TradeExpired", uuid.Nil, map[uuid.UUID]eventlog.Kind{
+			quienOfrece: eventlog.KindTradeOfferExpired, quienRecibe: eventlog.KindTradeOfferExpired}},
+	}
+	for _, c := range casos {
+		e := eventlog.Event{ID: 1, Type: c.evento, PlayerID: quienOfrece, Counterpart: quienRecibe, By: c.by}
+		for _, viewer := range []uuid.UUID{quienOfrece, quienRecibe, uuid.New()} {
+			kind, other, ok := eventlog.Classify(viewer, e)
+			want, debe := c.para[viewer]
+			assert.Equal(t, debe, ok, "%s para %s", c.evento, viewer)
+			if debe {
+				assert.Equal(t, want, kind, c.evento)
+				assert.NotEqual(t, viewer, other)
+			}
+		}
+	}
+}
+
+// ADR-032 §7: los tratos no se agrupan, y cada lado ve lo que salía de su
+// almacén y lo que entraba.
+func TestLosTratosNoSeAgrupanYSeVenDesdeCadaLado(t *testing.T) {
+	madera := []eventlog.Line{{Resource: "WOOD", Amount: 300}}
+	piedra := []eventlog.Line{{Resource: "STONE", Amount: 100}}
+	aceptado := func(id, at int64) eventlog.Event {
+		return eventlog.Event{ID: id, Type: "TradeAccepted", PlayerID: yo, Counterpart: otro, By: otro, AtMs: at,
+			OfferID: id, Give: madera, Want: piedra}
+	}
+	b := eventlog.NewBuilder(yo, 0, time.Hour, 10)
+	require.True(t, b.Add(aceptado(9, t0)))
+	require.True(t, b.Add(aceptado(8, t0-1)))
+	entradas := b.Entries()
+	require.Len(t, entradas, 2, "dos tratos, dos entradas")
+	assert.Equal(t, madera, entradas[0].TradeGive, "quien propuso dio madera")
+	assert.Equal(t, piedra, entradas[0].TradeGet)
+	assert.Empty(t, entradas[0].TreatyType)
+
+	b = eventlog.NewBuilder(otro, 0, time.Hour, 10)
+	require.True(t, b.Add(eventlog.Event{ID: 3, Type: "TradeProposed", PlayerID: yo, Counterpart: otro, By: yo,
+		AtMs: t0, Give: madera, Want: piedra}))
+	require.Len(t, b.Entries(), 1)
+	assert.Equal(t, piedra, b.Entries()[0].TradeGive, "a quien recibe la oferta le piden piedra")
+	assert.Equal(t, madera, b.Entries()[0].TradeGet)
 }
 
 // SPEC-COMBAT-SIEGE §6: las casas que derriba un mismo atacante seguidas son una

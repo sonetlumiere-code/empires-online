@@ -608,6 +608,62 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			TreatyID: p.TreatyID,
 		})
 
+	// Comercio (SPEC-TRADE). El cliente dice a quién, qué da y qué pide, o
+	// sobre qué oferta; si hay tratado, si alcanzan los almacenes y qué se
+	// mueve son del servidor (INV-SEC-001).
+	case protocol.TypeTradePropose:
+		var p protocol.TradeProposePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		target, err := uuid.Parse(p.PlayerID)
+		if err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "playerId inválido")
+			return
+		}
+		give, okGive := tradeLines(p.Give)
+		want, okWant := tradeLines(p.Want)
+		if !okGive || !okWant {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "líneas de la oferta inválidas")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.ProposeTrade{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
+			Target: target, Give: give, Want: want,
+		})
+
+	case protocol.TypeTradeRespond:
+		var p protocol.TradeRespondPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.RespondTrade{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
+			OfferID: p.OfferID, Accept: p.Accept,
+		})
+
+	case protocol.TypeTradeCancel:
+		var p protocol.TradeCancelPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.CancelTrade{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
+			OfferID: p.OfferID,
+		})
+
 	// Registro (SPEC-EVENT-LOG, ADR-028 §1): lo atiende la conexión, como el
 	// ping; ni pasa por el loop ni reclama el requestId (leer no tiene efecto y
 	// marcar es monótono).

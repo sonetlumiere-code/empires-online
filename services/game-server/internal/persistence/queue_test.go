@@ -244,3 +244,154 @@ func TestLaColaOrdenaPorClaveYNoBloqueaOtrasClaves(t *testing.T) {
 	assert.Equal(t, "ajeno", orden[0], "la otra partición no espera a los reintentos")
 	assert.Equal(t, []string{"inicio", "cierre"}, orden[1:], "la misma clave, en orden")
 }
+
+// dosClavesDeParticionesDistintas devuelve dos claves de ciudad que caen en
+// particiones distintas de una cola de n workers.
+func dosClavesDeParticionesDistintas(t *testing.T, n int) (string, string) {
+	t.Helper()
+	a := simulation.CityKey(1)
+	for i := int64(2); i < 200; i++ {
+		if b := simulation.CityKey(i); simulation.PartitionOf(b, n) != simulation.PartitionOf(a, n) {
+			return a, b
+		}
+	}
+	t.Fatal("no hay dos claves en particiones distintas")
+	return "", ""
+}
+
+// ADR-032 §3: un trabajo de dos claves espera a que la otra partición llegue a
+// él, y lo que se encoló después en cualquiera de las dos espera a que termine.
+func TestUnTrabajoDeDosClavesEsperaALasDosParticiones(t *testing.T) {
+	q := NewQueue(QueueConfig{Capacity: 64, Workers: 4, MaxAttempts: 3, RetryDelay: time.Millisecond},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	q.Start(context.Background())
+	a, b := dosClavesDeParticionesDistintas(t, 4)
+
+	var mu sync.Mutex
+	var orden []string
+	anotar := func(s string) { mu.Lock(); orden = append(orden, s); mu.Unlock() }
+
+	soltar := make(chan struct{})
+	q.Submit(simulation.Job{Name: "volcado B", Key: b, Run: func(context.Context) error {
+		<-soltar
+		anotar("volcado B")
+		return nil
+	}})
+	q.Submit(simulation.Job{Name: "trato", Key: a, Key2: b, Run: func(context.Context) error {
+		anotar("trato")
+		return nil
+	}})
+	q.Submit(simulation.Job{Name: "encargo A", Key: a, Run: func(context.Context) error {
+		anotar("encargo A")
+		return nil
+	}})
+	q.Submit(simulation.Job{Name: "encargo B", Key: b, Run: func(context.Context) error {
+		anotar("encargo B")
+		return nil
+	}})
+
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	assert.Empty(t, orden, "con la partición de B ocupada, ni el trato ni lo que va detrás en A se ejecutan")
+	mu.Unlock()
+
+	close(soltar)
+	q.Close()
+
+	require.Len(t, orden, 4)
+	assert.Equal(t, "volcado B", orden[0])
+	assert.Equal(t, "trato", orden[1], "el trato va después de lo anterior de B y antes de lo posterior de A y de B")
+	assert.ElementsMatch(t, []string{"encargo A", "encargo B"}, orden[2:])
+}
+
+// Dos tratos sobre las mismas dos ciudades, en sentidos opuestos y con
+// trabajos de una clave entre medias, terminan los dos y en el orden en que se
+// encolaron: no hay bloqueo cruzado.
+func TestDosTratosCruzadosNoSeBloquean(t *testing.T) {
+	q := NewQueue(QueueConfig{Capacity: 256, Workers: 4, MaxAttempts: 3, RetryDelay: time.Millisecond},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	q.Start(context.Background())
+	a, b := dosClavesDeParticionesDistintas(t, 4)
+
+	var mu sync.Mutex
+	porClave := map[string][]int{}
+	anotar := func(n int, claves ...string) {
+		mu.Lock()
+		for _, k := range claves {
+			porClave[k] = append(porClave[k], n)
+		}
+		mu.Unlock()
+	}
+
+	for n := 0; n < 40; n++ {
+		n := n
+		switch n % 4 {
+		case 0:
+			q.Submit(simulation.Job{Name: "trato", Key: a, Key2: b, Run: func(context.Context) error { anotar(n, a, b); return nil }})
+		case 1:
+			q.Submit(simulation.Job{Name: "trato", Key: b, Key2: a, Run: func(context.Context) error { anotar(n, a, b); return nil }})
+		case 2:
+			q.Submit(simulation.Job{Name: "volcado", Key: a, Run: func(context.Context) error { anotar(n, a); return nil }})
+		default:
+			q.Submit(simulation.Job{Name: "volcado", Key: b, Run: func(context.Context) error { anotar(n, b); return nil }})
+		}
+	}
+
+	terminado := make(chan struct{})
+	go func() { q.Close(); close(terminado) }()
+	select {
+	case <-terminado:
+	case <-time.After(5 * time.Second):
+		t.Fatal("la cola no terminó: bloqueo cruzado")
+	}
+
+	for _, k := range []string{a, b} {
+		got := porClave[k]
+		require.Len(t, got, 30, "cada clave ve sus 10 volcados y los 20 tratos")
+		for i := 1; i < len(got); i++ {
+			assert.Less(t, got[i-1], got[i], "la clave %s ve sus trabajos en el orden en que se encolaron", k)
+		}
+	}
+}
+
+// Con las dos claves en la misma partición, el trabajo es uno normal.
+func TestUnTrabajoDeDosClavesEnLaMismaParticionEsUnoNormal(t *testing.T) {
+	q := colaDePrueba(8, 1)
+	q.Start(context.Background())
+
+	var veces atomic.Int32
+	q.Submit(simulation.Job{Name: "trato", Key: "city:1", Key2: "city:2", Run: func(context.Context) error {
+		veces.Add(1)
+		return nil
+	}})
+	q.Close()
+
+	assert.EqualValues(t, 1, veces.Load())
+}
+
+// Si una de las dos particiones está llena, el trabajo no entra en ninguna y
+// se compensa una vez; la otra partición no se queda con una mitad huérfana.
+func TestUnTrabajoDeDosClavesQueNoCabeNoEntraEnNinguna(t *testing.T) {
+	m := observability.NewMetrics()
+	q := NewQueue(QueueConfig{Capacity: 4, Workers: 2, MaxAttempts: 1, RetryDelay: time.Millisecond},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), m)
+	a, b := dosClavesDeParticionesDistintas(t, 2)
+
+	// Sin arrancar los workers: la partición de B se llena con dos trabajos.
+	q.Submit(simulation.Job{Name: "relleno", Key: b, Run: func(context.Context) error { return nil }})
+	q.Submit(simulation.Job{Name: "relleno", Key: b, Run: func(context.Context) error { return nil }})
+
+	var compensado, ejecutado atomic.Int32
+	q.Submit(simulation.Job{
+		Name: simulation.JobStocksFlush, Key: a, Key2: b,
+		Run:                func(context.Context) error { ejecutado.Add(1); return nil },
+		OnPermanentFailure: func(error) { compensado.Add(1) },
+	})
+	assert.Equal(t, 2, q.Depth(), "la mitad de A no entró")
+
+	q.Start(context.Background())
+	q.Close()
+	assert.EqualValues(t, 1, compensado.Load())
+	assert.EqualValues(t, 0, ejecutado.Load())
+	assert.InDelta(t, 1, descartes(m, simulation.JobStocksFlush, observability.DropQueueFull), 0)
+}
