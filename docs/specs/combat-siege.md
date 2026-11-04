@@ -1,17 +1,17 @@
 # Combate: asedio de las casas
 
-Propuesta del segundo ataque a una ciudad: un guerrero junto a la muralla enemiga derriba una casa golpe a golpe.
+El segundo ataque a una ciudad: un guerrero junto a la muralla enemiga derriba una casa golpe a golpe.
 La ciudad pierde las plazas de población que daba la casa y, si se queda por encima de su límite, conserva sus
 unidades pero no puede entrenar más. La muralla y el Centro Urbano no se tocan: la ciudad no cae.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-COMBAT-SIEGE` |
-| Estado | Draft (2026-11-04). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-04), con las preguntas de §10 decididas ese día con la recomendación de cada una. |
 | Milestone | E8 Asedio (octavo slice después de M7) |
 | Canon | §9 (protección), §10 (eras y límite de población), §12 (persistencia), §16 (errores), §21 (fuera de MVP: asedio) |
 | Depende de | [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [economy-wood.md](economy-wood.md), [city.md](city.md), [presence.md](presence.md), [event-log.md](event-log.md) |
-| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (acción hostil), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (reserva de la plaza al ordenar), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (fase 4), [ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md) (golpes sobre una ciudad), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (eventos con el otro jugador). Un ADR nuevo (`ADR-029`, la población por encima del límite) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (acción hostil), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (reserva de la plaza al ordenar), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (fase 4), [ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md) (golpes sobre una ciudad), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (eventos con el otro jugador). [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (la población por encima del límite y la escritura de la destrucción). |
 | Reemplaza a | — |
 | Invariantes | Reescribe [INV-CITY-002](../invariants/city.md#inv-city-002), retira la excepción de [INV-ECON-004](../invariants/economy.md#inv-econ-004) y amplía dos de combate (§8) |
 
@@ -137,7 +137,8 @@ barra de vida y desaparece al destruirse. El HUD de población del atacado se po
 | Dirty-flag | Nada nuevo |
 | Reconstruible / no persistido | El daño (un reinicio deja las casas enteras, `RN-COMBAT-032`), el asedio en curso y `ATTACKING`, como en E2 y E5, y `besiegedAtMs` |
 
-**Por qué hace falta un ADR.** Dos cosas cambian contratos que hoy sostienen invariantes:
+**Por qué hace falta un ADR ([ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md)).** Dos
+cosas cambian contratos que hoy sostienen invariantes:
 
 1. **La población por encima del límite.** Hoy el `CHECK cities_population_within_limit` (`000001`) hace imposible
    que una fila tenga `population > population_limit`, y es la última barrera de la reserva de plaza al entrenar
@@ -147,13 +148,16 @@ barra de vida y desaparece al destruirse. El HUD de población del atacado se po
    que bajan el límite. [INV-CITY-002](../invariants/city.md#inv-city-002) pasa de «la población nunca supera el
    límite» a «nada se crea por encima del límite». La validación de carga deja de subir el límite hasta el
    recuento, porque ese exceso ya es legal, y la excepción de [INV-ECON-004](../invariants/economy.md#inv-econ-004)
-   desaparece.
+   desaparece. Su recuento sí puede subir la población por encima del límite sin crear nada, y es la única escritura
+   que el trigger deja pasar (ADR-029 §3).
 2. **Un escritor que baja el límite.** Hasta hoy `population_limit` sólo lo escriben el alta, la casa que se
    completa y la validación de carga. La destrucción lo baja en la RAM en el mismo tick y lo confirma por la cola
-   con la clave de la ciudad, detrás de cualquier encargo de esa ciudad ya encolado. Si la transacción falla de
-   forma definitiva, la casa vuelve a la RAM entera y el límite sube otra vez. Una caída antes del `COMMIT` pierde la
-   destrucción, nunca la duplica. Mientras la destrucción no esté confirmada, el tile sigue ocupado para
-   `city.build`, de modo que una casa nueva no puede chocar con una destrucción que se deshace.
+   con la clave de la ciudad, detrás de cualquier encargo de esa ciudad ya encolado. El bono se resta según el estado
+   de la casa en la base, de modo que una compleción que aún no se había escrito no se resta dos veces. Si la
+   transacción falla de forma definitiva, se reencola en el siguiente volcado, como una compleción descartada
+   ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) §5): la casa no reaparece. Una caída
+   antes del `COMMIT` pierde la destrucción, nunca la duplica. Mientras la destrucción no esté confirmada, el tile
+   sigue ocupado para `city.build`, de modo que una casa nueva en el mismo sitio se escribe siempre después.
 
 **Migración `000011`.** `DESTROYED` en `buildings_status_valid`; `buildings_unique_tile` pasa a ser un índice único
 parcial sobre las casas no destruidas, para poder reconstruir en el mismo tile; el `CHECK` de población se cambia
@@ -184,11 +188,12 @@ propone invariantes nuevos.
 | contract / e2e | `unit.demolish`, `building.destroyed`, `hp`, `maxHp` y `besiegedAtMs` contra el JSON Schema; recorrido completo por WebSocket; `BuildingDestroyed` en el registro de la víctima |
 | cliente | Clic sobre una casa ajena y sobre el resto del 3 × 3; barra de vida; HUD de población por encima del límite; `scripts/smoke.mjs` añade `--asedio` (la víctima construye una casa si no tiene; en una misma pasada va antes de `--diplomacia`, cuyo pacto lo impediría) |
 
-## 10. Preguntas abiertas de producto
+## 10. Decisiones de producto (2026-11-04)
 
-Cada una con mi recomendación. Las decide producto; la spec no pasa a `Accepted` sin ellas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de
+producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | Una casa destruida puede dejar la ciudad con más población que límite, que hoy prohíben [INV-CITY-002](../invariants/city.md#inv-city-002) y el `CHECK` de la base. ¿Qué se hace? | **Permitir el exceso y bloquear sólo los encargos nuevos** (ADR-029, §7): las unidades viven y la ciudad no entrena hasta volver bajo el límite. Las alternativas son peores. **Impedir la destrucción** si dejaría la ciudad por encima haría inmunes justo a las ciudades llenas: cuanto más grande, más segura. **Matar unidades** obliga a elegir víctimas arbitrarias (¿el aldeano que trabaja, el guerrero que defiende?) y castiga dos veces el mismo golpe. Es además lo que hace la referencia: perder casas frena, no mata. |
 | Q2 | ¿Qué se puede derribar? | **Sólo casas**, completas o en obra. Ni la muralla ni el Centro Urbano: que la ciudad caiga o cambie de dueño es una disputa de territorio y merece su spec. Así el daño tiene un fondo: el `population_cap` de la era no depende de ningún edificio. |

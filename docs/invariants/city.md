@@ -75,39 +75,42 @@ El caso «durante una transferencia» merece énfasis: los cambios de ownership 
 ---
 
 <a id="inv-city-002"></a>
-## INV-CITY-002 — `population` nunca supera `population_limit`
+## INV-CITY-002 — Nada se crea por encima de `population_limit`
 
 | Campo | Valor |
 |---|---|
 | Severidad | ALTO |
 | Aplicación | DB, DOMAIN, TEST |
-| Milestone | M2 |
+| Milestone | M2; reescrito en E8 por [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` y `TestEntrenarSinPlazaSeRechazaSinDebitar` (integration); el predicado por `TestLimiteDePoblacion` (`internal/domain/city`), `TestCanTrainRespondeEnElOrdenDeLaSpec` (`internal/domain/production`) y `TestRechazosDeEntrenamiento` (simulation); la carga por `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` (`internal/game/loadcheck`) |
+| Cobertura | **Parcial**: lo que no cambia con E8 lo cubren `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` y `TestEntrenarSinPlazaSeRechazaSinDebitar` (integration), `TestLimiteDePoblacion` (`internal/domain/city`), `TestCanTrainRespondeEnElOrdenDeLaSpec` (`internal/domain/production`) y `TestRechazosDeEntrenamiento` (simulation). Previstos con E8: el trigger deja bajar el límite por debajo de la población y rechaza subirla por encima; una ciudad por encima de su límite no entrena; la carga ya no sube el límite |
 
-**Enunciado.** Para toda ciudad y en todo instante, `0 <= population <= population_limit`.
+**Enunciado.** Para toda ciudad, `population >= 0`, y ninguna transacción que aumente `population` la deja por encima de `population_limit`.
 
-**Razón.** El límite de población es el regulador económico y militar del juego: define cuántas unidades puede sostener un jugador y, por tanto, cuánta ventaja acumula. Si se puede sobrepasar —aunque sea transitoriamente por una condición de carrera entre dos creaciones concurrentes— la progresión por eras deja de significar algo, porque la era ya no restringe.
+**Precisión (2026-11-04, [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md)).** Hasta E8 el enunciado era «en todo instante, `0 <= population <= population_limit`». El asedio ([SPEC-COMBAT-SIEGE](../specs/combat-siege.md)) destruye casas, y cada casa completa sumaba 5 al límite: una ciudad con la población al tope que pierde una casa queda por encima. Producto decidió (SPEC-COMBAT-SIEGE Q1) que sus unidades viven y que sólo deja de crear hasta volver bajo el límite. Lo que el invariante protege —que la era y las casas restrinjan cuánto se puede **crear**— sigue intacto.
+
+**Razón.** El límite de población es el regulador económico y militar del juego: define cuántas unidades puede sostener un jugador y, por tanto, cuánta ventaja acumula. Si se pudiera crear por encima —aunque sea por una condición de carrera entre dos creaciones concurrentes— la progresión por eras dejaría de significar algo, porque la era ya no restringiría.
 
 El fallo típico no es un olvido de comprobar, sino un **TOCTOU**: dos comandos leen `population = 19` con límite 20, ambos comprueban «cabe uno más» y ambos insertan, dejando 21.
 
 **Cómo se garantiza.**
 
-- `DB` — la migración `000001` declara **dos** constraints complementarias sobre `cities`: `population integer NOT NULL DEFAULT 0 CHECK (population >= 0)` en la propia columna, y `CONSTRAINT cities_population_within_limit CHECK (population <= population_limit)`. Juntas cubren el enunciado completo; ésos son sus nombres reales, sin prefijo de convención. Son la última línea de defensa y la que hace imposible el TOCTOU si `population` se actualiza en la misma transacción que la creación de la unidad.
-- `DOMAIN` — **escritores de `population`** (desde E1): el alta, que la recalcula con `CityRepo.UpdatePopulation` como recuento de unidades vivas en la transacción que crea los tres aldeanos; el encargo de `city.train`, que la sube en el coste de la unidad en la transacción del encargo (la reserva de `RN-ECON-010`, `postgres/economy.go`); la muerte de una unidad, que la baja (`postgres/combat.go`); y la validación de carga, que la recuenta ([INV-CITY-017](#inv-city-017)). Después del alta, sólo el encargo la sube.
-- `DOMAIN` — `City.HasPopulationRoom(n int32) bool` (`internal/domain/city`) es el predicado de la creación de unidades: lo aplica `production.CanTrain` al validar `city.train` en el tick, contra la población de la RAM, que ya incluye las reservas de los encargos anteriores. El loop es el único escritor de esa RAM, así que dos encargos no pueden comprobar a la vez «cabe uno más»: el TOCTOU de arriba no tiene dónde ocurrir en el tick.
-- `DOMAIN` — rebasar el límite responde `POPULATION_LIMIT_REACHED` (canon §16) a `city.train`, lo rechace el tick o la base (`city.ErrPopulationLimit`). Que la regla exista no exime de la constraint: la regla protege la experiencia y el `CHECK` protege el dato; es la última barrera de la reserva si la RAM y la base llegaran a divergir.
+- `DB` — `population integer NOT NULL DEFAULT 0 CHECK (population >= 0)` en la columna (`000001`, nombre `cities_population_check`), y desde `000011` el trigger `cities_population_not_raised_over_limit`, que sustituye al `CHECK cities_population_within_limit`: rechaza un `INSERT` con `population > population_limit` y un `UPDATE` que sube `population` y la deja por encima, con `check_violation` y el nombre de restricción `cities_population_within_limit`. Bajar el límite o la población siempre pasa. Es la última línea de defensa de la reserva al entrenar.
+- `DB` — la única escritura exenta es el recuento de la validación de carga, que declara `SET LOCAL eo.population_recount = 'on'`: recuenta unidades que ya existen, no crea ninguna (ADR-029 §3).
+- `DOMAIN` — **escritores de `population`** (desde E1): el alta, que la recalcula con `CityRepo.UpdatePopulation` como recuento de unidades vivas en la transacción que crea los tres aldeanos; el encargo de `city.train`, que la sube en el coste de la unidad en la transacción del encargo (la reserva de `RN-ECON-010`, `postgres/economy.go`); la muerte de una unidad, que la baja (`postgres/combat.go`); y la validación de carga, que la recuenta ([INV-CITY-017](#inv-city-017)). Después del alta, sólo el encargo la sube. Desde E8, la destrucción de una casa baja `population_limit` sin tocar `population`.
+- `DOMAIN` — `City.HasPopulationRoom(n int32) bool` (`internal/domain/city`) es el predicado de la creación de unidades: lo aplica `production.CanTrain` al validar `city.train` en el tick, contra la población de la RAM, que ya incluye las reservas de los encargos anteriores. Con la población por encima del límite es falso para todo `n > 0`. El loop es el único escritor de esa RAM, así que dos encargos no pueden comprobar a la vez «cabe uno más»: el TOCTOU de arriba no tiene dónde ocurrir en el tick.
+- `DOMAIN` — rebasar el límite responde `POPULATION_LIMIT_REACHED` (canon §16) a `city.train`, lo rechace el tick o la base (`city.ErrPopulationLimit`). Que la regla exista no exime de la barrera de la base: la regla protege la experiencia y el trigger protege el dato si la RAM y la base llegaran a divergir.
 - `DB` — `cities.version` permite detectar la escritura concurrente perdida cuando el incremento se hace por lectura-modificación-escritura.
 
 **Cómo se verifica.**
 
-- `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration) — `population > population_limit` falla por `cities_population_within_limit` y `population = -1` por `cities_population_check`, el nombre que PostgreSQL da al `CHECK` de columna.
+- `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration) — `population > population_limit` al insertar falla por `cities_population_within_limit` y `population = -1` por `cities_population_check`, el nombre que PostgreSQL da al `CHECK` de columna. Con E8 añade que bajar el límite por debajo de la población pasa y subir la población por encima no.
 - `TestLimiteDePoblacion` (unit, `internal/domain/city`) — `HasPopulationRoom` deja de admitir unidades exactamente en el límite.
-- `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` (unit, `internal/game/loadcheck`) — con más unidades vivas que el `population_cap` de su era, ninguna se excluye, el límite queda en el recuento y `HasPopulationRoom(1)` es falso.
 - `TestCanTrainRespondeEnElOrdenDeLaSpec` (unit, `internal/domain/production`) y `TestRechazosDeEntrenamiento` (simulation) — sin plaza, `city.train` se rechaza con `POPULATION_LIMIT_REACHED`; el de dominio comprueba además que la población se mira antes que la madera.
-- `TestEntrenarSinPlazaSeRechazaSinDebitar` (integration) — con el límite rebajado a mano por debajo de la reserva, la base rechaza el encargo por el `CHECK` y no debita la madera: es la última barrera.
+- `TestEntrenarSinPlazaSeRechazaSinDebitar` (integration) — con el límite rebajado a mano por debajo de la reserva, la base rechaza el encargo y no debita la madera: es la última barrera.
+- Previstos con E8: una ciudad que pierde una casa con la población al tope conserva sus unidades y no entrena (simulation); la carga de una ciudad por encima de su límite no sube el límite ni pierde unidades (`internal/game/loadcheck`), y su recuento pasa el trigger (integration).
 
-**Violación en runtime.** Imposible en disco: los dos `CHECK` la rechazan, y en el alta eso aborta la transacción entera. Lo que sí puede ocurrir es que el recuento de unidades vivas supere el `population_cap` de la era —bajar un `population_cap` en `eras`, o una fila editada a mano—. La validación de carga lo detecta (log `invariant_violation` con `inv_id=INV-CITY-002`, política `REPAIR`): no destruye unidades, deja `population_limit` en el recuento —el `CHECK` se sigue cumpliendo— y ninguna creación cabe hasta volver bajo el límite. Va acompañado del hallazgo `INV-CITY-003`, porque el límite escrito deja de ser el de la era, y de un `InvariantRepaired` de auditoría por cada uno.
+**Violación en runtime.** Imposible en disco: el trigger y el `CHECK` de columna la rechazan, y en el alta eso aborta la transacción entera. Una ciudad por encima de su límite **no** es una violación: es el estado legal de una ciudad que perdió casas o cuya era bajó de `population_cap` (una fila de `eras` editada). La validación de carga ya no lo repara: deja `population_limit` en el de su era y sus casas ([INV-ECON-004](economy.md#inv-econ-004)) y `population` en el recuento ([INV-CITY-017](#inv-city-017)).
 
 ---
 

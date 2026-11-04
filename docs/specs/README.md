@@ -56,7 +56,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Combate: saqueo | [combat-pillage.md](combat-pillage.md) | E5 Saqueo | Implemented | Un `WARRIOR` junto a la muralla enemiga roba madera del almacén golpe a golpe hasta un suelo y la lleva a casa; los guerreros de la ciudad defienden |
 | Diplomacia en caliente | [diplomacy.md](diplomacy.md) | E6 Diplomacia | Implemented | Proponer, aceptar, rechazar, retirar y romper pactos de no agresión y alianzas desde el cliente; ruptura con preaviso y expulsión de las guarniciones al terminar una alianza |
 | Registro de sucesos | [event-log.md](event-log.md) | E7 Registro | Implemented | Lo que otros te hicieron y lo que tus unidades hicieron solas, leído de `world_events`, agrupado y con un cursor de lo visto; la ventana «Mientras no estabas» |
-| Combate: asedio | [combat-siege.md](combat-siege.md) | E8 Asedio | Draft | Un `WARRIOR` junto a la muralla enemiga derriba una casa golpe a golpe; la ciudad pierde plazas y, por encima de su límite, conserva sus unidades pero no entrena |
+| Combate: asedio | [combat-siege.md](combat-siege.md) | E8 Asedio | Accepted | Un `WARRIOR` junto a la muralla enemiga derriba una casa golpe a golpe; la ciudad pierde plazas y, por encima de su límite, conserva sus unidades pero no entrena |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

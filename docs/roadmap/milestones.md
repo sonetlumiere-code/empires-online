@@ -1564,3 +1564,34 @@ con su tope marcable; la migración `000010`; la ventana «Mientras no estabas»
 8. **HECHO** — Fallo encontrado en el navegador: la mayúscula inicial de cada entrada cambiaba el nombre de la ciudad
    («Smoke_runnerpolis»). Corregido: sólo se pone a «Otro jugador», con
    `el nombre de la ciudad no se toca, tampoco al principio` (`eventLog.test.ts`).
+
+## E8 — Asedio
+
+**Estado: EN CURSO** desde el 2026-11-04, en la rama `claude/slice-e8-asedio`. Contrato:
+[SPEC-COMBAT-SIEGE](../specs/combat-siege.md), aceptada el 2026-11-04 con sus diez decisiones de producto, y
+[ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md).
+
+**Objetivo.** Que la ciudad misma corra riesgo, no sólo lo que guarda: un guerrero junto a la muralla enemiga
+derriba una casa golpe a golpe, la ciudad pierde las plazas que daba y, si queda por encima de su límite, conserva
+sus unidades pero no entrena hasta volver bajo él.
+
+**Alcance.** La orden `unit.demolish`, el alcance junto a la casa, los golpes de asedio en la fase 4 con su vida y
+su olvido, la destrucción optimista con su escritura, `INV-CITY-002` reescrito con su trigger, la carga que ya no
+sube el límite, la defensa con la regla de E5, el aviso `besiegedAtMs`, `BuildingDestroyed` en el registro, la
+migración `000011` y el cliente. **No entra** (spec §2): la muralla y el Centro Urbano, que la ciudad caiga,
+máquinas de asedio, reparar casas, niebla de guerra.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-029, `INV-CITY-002` reescrito, la excepción de `INV-ECON-004` retirada e
+   `INV-COMBAT-002` e `INV-COMBAT-005` ampliados.
+2. Protocolo: `unit.demolish`, `building.destroyed`, `hp` y `maxHp` de los edificios y `besiegedAtMs`, con el JSON
+   Schema y los contract tests.
+3. Migración `000011` y persistencia: el trigger, el único parcial por tile, la destrucción idempotente, la carga sin
+   casas destruidas y el recuento exento; integración con fallo inyectado.
+4. Simulación: la orden, el alcance, los golpes, el olvido del daño, la destrucción con su reencolado, la ciudad por
+   encima del límite, la defensa y el aviso; golden «asedio» y recuperación.
+5. Registro: `BuildingDestroyed` en `eventlog.EventTypes` y `Classify`.
+6. Cliente: clic sobre una casa ajena, barra de vida, HUD de población por encima del límite, aviso y entrada del
+   registro.
+7. Humo `--asedio` y prueba en vivo.
