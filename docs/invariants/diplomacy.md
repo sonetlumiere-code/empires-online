@@ -395,7 +395,7 @@ pasan**. Dejar responder a quien propuso pone en rojo los dos.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E6 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration), `TestRechazosDeLaDiplomacia` y `TestUnaAlianzaSustituyeAlPactoVigente` (`internal/game/simulation`) |
+| Cobertura | **Cubierto** por `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration), `TestRechazosDeLaDiplomacia`, `TestUnaAlianzaSustituyeAlPactoVigente`, `TestLaEscaleraDeTratados` y `TestSubirDeEscalonConservaLaOferta` (`internal/game/simulation`), y `TestLaEscaleraDeTratadosSoloSube` (`internal/domain/diplomacy`) |
 
 **Enunciado.** Para cada par de jugadores existe como mucho un tratado `ACTIVE` y como mucho uno `PROPOSED`; y una
 oferta sólo convive con un tratado vigente si es de un escalón superior al suyo (`TRADE` < `NON_AGGRESSION` <

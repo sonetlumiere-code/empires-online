@@ -1686,12 +1686,24 @@ registro; `INV-TRADE-001` a `004`; la migración `000013`; el cliente y `scripts
 
 1. **HECHO** — Aceptación: spec, ADR-032, la familia `INV-TRADE`, y las precisiones de `INV-DIPLO-002` (la escalera)
    e `INV-ECON-002` (el trato).
-2. Cola: el trabajo de dos claves, con su test de orden y de bloqueo cruzado.
-3. Dominio: la escalera en `diplomacy`; el paquete `trade` con la oferta, sus líneas y quién puede cerrarla.
-4. Migración `000013` y persistencia: `trade_offers`, `trade_offer_lines` y la transacción del trato, con integración.
-5. Simulación: las órdenes en dos fases, la reserva de los dos almacenes, la caducidad, la carga al arrancar; el golden
-   `comercio` y los de recuperación.
-6. Protocolo y WebSocket: los tres comandos, `trade.update` y `tradeOffers[]`, con contract tests y e2e.
-7. Registro: los cinco eventos y sus cinco tipos de entrada.
-8. Cliente: «Proponer comercio», el formulario de la oferta, las ofertas recibidas y enviadas.
+2. **HECHO** — Cola: `Job.Key2`; el trabajo de dos claves entra en las dos particiones o en ninguna y se ejecuta cuando
+   llegan los dos workers (`TestUnTrabajoDeDosClavesEsperaALasDosParticiones`, `TestDosTratosCruzadosNoSeBloquean`,
+   `TestUnTrabajoDeDosClavesQueNoCabeNoEntraEnNinguna`).
+3. **HECHO** — Dominio: la escalera en `diplomacy` (`Rank`, `Supersedes`, `AllowsTradeAt`; `TRADE` proponible) y el
+   paquete `trade` con la oferta, sus líneas, quién puede cerrarla y las patas que conservan cada recurso.
+4. **HECHO** — Migración `000013` y persistencia: `trade_offers`, `trade_offer_lines`, `postgres.TradeRepo` (la oferta
+   con su evento, idempotente; el trato con los deltas de las dos ciudades en una transacción) e integración en
+   `trade_integration_test.go` (seis tests).
+5. **HECHO** — Simulación: `trade.go` con las órdenes en dos fases, la reserva de los dos almacenes (también la versión
+   del recurso que sólo se recibe y los depósitos sin volcar), el crédito al confirmarse, la caducidad en el barrido de
+   los tratados y la carga al arrancar; quince tests en `trade_test.go`, con el golden «comercio» y los de
+   recuperación. Nueve mutaciones, todas detectadas por su test.
+6. **HECHO** — Protocolo y WebSocket: los tres comandos (22 cliente→servidor), `trade.update` (22 servidor→cliente),
+   `tradeOffers[]`, `ResourceAmount` con su cota y `TRADE` en `treaty.propose`; contract tests
+   (`trade_contract_test.go`) y e2e (`trade_e2e_test.go`), con `trade.update` validado contra el esquema.
+7. **HECHO** — Registro: `TradeProposed`, `TradeAccepted`, `TradeRejected`, `TradeWithdrawn` y `TradeExpired` en
+   `eventlog.EventTypes`; cinco tipos de entrada con `tradeGive` y `tradeGet` vistos desde quien lee, sin agrupar.
+8. **HECHO** — Cliente: `src/state/trade.ts` (lista, órdenes, texto, motivo del botón), la escalera de botones
+   (`proposableTypes`), el formulario «Doy … y pido …» y la lista de ofertas en la barra de diplomacia, y los textos del
+   registro; tests en `trade.test.ts`, `diplomacy.test.ts` y `eventLog.test.ts`.
 9. Humo (`--comercio`) y prueba en vivo.

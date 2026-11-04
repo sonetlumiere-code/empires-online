@@ -193,7 +193,7 @@ cuando no se nota. El ADR deja escritas, entre otras, tres alternativas descarta
    Trade. Con un solo escritor que decide en la RAM no hacen falta.
 
 **Migración `000013`.** La tabla `trade_offers` (`id`, `proposer_id` y `target_id` con FK a `players`, sus dos
-ciudades, `status` con `CHECK` de los cinco estados de §4.2, `request_id` con único parcial
+ciudades, `status` con `CHECK` de los cinco estados de §4.2, `request_id` con único
 `(proposer_id, request_id)`, `accepted_request_id`, `created_at`, `expires_at` y `closed_at`) y sus líneas,
 `trade_offer_lines (offer_id, side, resource, amount)`, con `side` en `GIVE` o `WANT`, `amount > 0`, el mismo `CHECK`
 de recurso que `city_stocks` y la PK `(offer_id, resource)`, que impide un recurso en los dos lados. Un índice único

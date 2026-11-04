@@ -107,7 +107,7 @@ cualquier escalón, sin su fin alcanzado.
 | Cambio | Para qué |
 |---|---|
 | `trade_offers (id, proposer_id, target_id, proposer_city_id, target_city_id, status, request_id, accepted_request_id, created_at, expires_at, closed_at)` | La oferta y su ciclo de vida. `status` con `CHECK` de `PROPOSED`, `ACCEPTED`, `REJECTED`, `WITHDRAWN` y `EXPIRED`; `proposer_id <> target_id`. |
-| Único parcial `(proposer_id, request_id)` | Idempotencia de `trade.propose`. |
+| Único `(proposer_id, request_id)` | Idempotencia de `trade.propose`. `request_id` es `NOT NULL`: el índice no necesita ser parcial. |
 | Único parcial `(least(proposer_id, target_id), greatest(proposer_id, target_id)) WHERE status = 'PROPOSED'` | `INV-TRADE-003`: una oferta pendiente por par, en cualquier dirección. |
 | `trade_offer_lines (offer_id, side, resource, amount)`, PK `(offer_id, resource)` | Lo que da y lo que pide. `side` en `GIVE` o `WANT`, `amount > 0`, el `CHECK` de recurso de `city_stocks`; la PK impide un recurso en los dos lados. |
 

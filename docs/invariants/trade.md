@@ -26,7 +26,7 @@ Formato y severidades: [README.md](README.md). Stock: [economy.md](economy.md). 
 | `trade_offers_status_valid` | `trade_offers` | Dominio cerrado de `status` |
 | `trade_offers_distinct_players` | `trade_offers` | `proposer_id <> target_id` |
 | `trade_offers_one_pending_per_pair` | `trade_offers` | Índice **parcial** único sobre el par sin orden `WHERE status = 'PROPOSED'` |
-| `trade_offers_unique_request` | `trade_offers` | Único parcial `(proposer_id, request_id)`: una orden no produce dos ofertas |
+| `trade_offers_unique_request` | `trade_offers` | Único `(proposer_id, request_id)`: una orden no produce dos ofertas |
 | `trade_offer_lines_pkey` | `trade_offer_lines` | `PRIMARY KEY (offer_id, resource)`: un recurso en un solo lado |
 | `trade_offer_lines_amount_positive`, `trade_offer_lines_resource_valid`, `trade_offer_lines_side_valid` | `trade_offer_lines` | `amount > 0`, el recurso del catálogo y `side` en `GIVE` o `WANT` |
 
@@ -46,7 +46,7 @@ Formato y severidades: [README.md](README.md). Stock: [economy.md](economy.md). 
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E10 |
 | Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-04 con SPEC-TRADE, antes de escribir su código |
+| Cobertura | **Cubierto** por `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` y `TestUnTratoMueveLosDosAlmacenesYEsIdempotente` (integration), `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes` y `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y `TestLasPatasDeUnTratoConservanCadaRecurso` (`internal/domain/trade`) |
 
 **Enunciado.** Para todo trato aceptado y para cada recurso, la cantidad que resta del almacén de una ciudad es
 exactamente la que suma al de la otra, y las dos escrituras se confirman en la misma transacción que pasa la oferta a
@@ -59,8 +59,14 @@ forma más directa de hacer trampa en una economía entre jugadores, y la que m�
 un solo `InTx`; cualquier error revierte todo. `DOMAIN` — los deltas de las dos ciudades se calculan de las mismas
 líneas de la oferta; la reserva y su devolución recorren las mismas líneas (ADR-032 §2).
 
-**Cómo se verifica.** Tests previstos: `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` (integration) y, en la
-simulación, el golden `comercio` y la suma de los dos almacenes antes y después de cada trato.
+**Cómo se verifica.** `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` (integration: con la versión de un
+delta ya escrita, o con un débito que dejaría un stock negativo, no se mueve nada y la oferta sigue pendiente),
+`TestUnTratoMueveLosDosAlmacenesYEsIdempotente` (integration: repetirlo no mueve nada otra vez), el golden
+`TestGoldenComercioOfertaAceptacionYLosDosAlmacenes` (simulation: los cuatro deltas suman cero por recurso y cada uno
+lleva una versión mayor que la del stock), `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y
+`TestLasPatasDeUnTratoConservanCadaRecurso` (domain) — **existen y pasan**. Verificado por mutación: confirmar sin
+acreditar lo recibido, un trato fallido que no devuelve la reserva, no llevarse los depósitos sin volcar y no subir la
+versión del recurso que sólo se recibe ponen en rojo su test.
 
 **Violación en runtime.** No hay estado intermedio que detectar: la transacción es la garantía.
 
@@ -75,7 +81,7 @@ simulación, el golden `comercio` y la suma de los dos almacenes antes y despué
 | Aplicación | DOMAIN, TEST |
 | Milestone | E10 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-04 con SPEC-TRADE, antes de escribir su código |
+| Cobertura | **Cubierto** por `TestAceptarSinTratadoSeRechaza`, `TestSinTratadoNoSeComercia` y `TestElFinDelPreavisoCierraLasOfertas` (simulation) y `TestQueTratadoDejaComerciar` (`internal/domain/diplomacy`) |
 
 **Enunciado.** Una oferta pasa a `ACCEPTED` sólo si, en el tick en que se acepta, los dos jugadores tienen un tratado
 `ACTIVE` de cualquier escalón (`TRADE`, `NON_AGGRESSION` o `ALLIANCE`) cuyo fin no ha llegado.
@@ -86,8 +92,9 @@ al terminar su preaviso.
 **Cómo se garantiza.** `DOMAIN` — la validación del tick comprueba `Treaty.AllowsTradeAt(now)` antes de reservar; la
 fase 5 cierra las ofertas de un par sin tratado (`RN-TRADE-006`).
 
-**Cómo se verifica.** Tests previstos: `TestAceptarSinTratadoSeRechaza` y `TestElFinDelPreavisoCierraLasOfertas`
-(simulation).
+**Cómo se verifica.** `TestAceptarSinTratadoSeRechaza`, `TestSinTratadoNoSeComercia` y
+`TestElFinDelPreavisoCierraLasOfertas` (simulation), y `TestQueTratadoDejaComerciar` (domain) — **existen y pasan**.
+Verificado por mutación: aceptar sin mirar el tratado y caducar sin mirarlo ponen en rojo el primero y el tercero.
 
 **Violación en runtime.** La orden se rechaza con `TREATY_REQUIRED` y no se reserva nada.
 
@@ -102,7 +109,7 @@ fase 5 cierra las ofertas de un par sin tratado (`RN-TRADE-006`).
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E10 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-04 con SPEC-TRADE, antes de escribir su código |
+| Cobertura | **Cubierto** por `Test_INV_TRADE_003_UnaOfertaPendientePorPar` (integration) y `TestRechazosDelComercio` (simulation) |
 
 **Enunciado.** Para cada par de jugadores existe como mucho una fila de `trade_offers` con `status = 'PROPOSED'`, sea
 quien sea el que la propuso.
@@ -114,8 +121,8 @@ aceptaciones seguidas podrían vaciar un almacén que el jugador creía comprome
 `(least(proposer_id, target_id), greatest(proposer_id, target_id))` (migración `000013`). `DOMAIN` — `trade.propose` se
 valida contra las ofertas pendientes de la RAM (`RN-TRADE-001`).
 
-**Cómo se verifica.** Tests previstos: `Test_INV_TRADE_003_UnaOfertaPendientePorPar` (integration: el índice, en las
-dos direcciones) y `TestRechazosDelComercio` (simulation).
+**Cómo se verifica.** `Test_INV_TRADE_003_UnaOfertaPendientePorPar` (integration: el índice, en las dos direcciones, y
+otra oferta en cuanto se cierra la primera) y `TestRechazosDelComercio` (simulation) — **existen y pasan**.
 
 **Violación en runtime.** La transacción falla por el índice y la orden se rechaza con `INVALID_TARGET`.
 
@@ -130,7 +137,7 @@ dos direcciones) y `TestRechazosDelComercio` (simulation).
 | Aplicación | DOMAIN, TEST |
 | Milestone | E10 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-04 con SPEC-TRADE, antes de escribir su código |
+| Cobertura | **Cubierto** por `TestSoloRespondeElDestinatarioYSoloRetiraQuienOfrece` (`internal/domain/trade`) y `TestRechazosDelComercio` (simulation) |
 
 **Enunciado.** Una oferta pasa de `PROPOSED` a `ACCEPTED` o a `REJECTED` sólo por una orden de `target_id`, y a
 `WITHDRAWN` sólo por una de `proposer_id`.
@@ -141,8 +148,8 @@ quisiera darle.
 **Cómo se garantiza.** `DOMAIN` — la validación del tick compara al autor de la orden con `proposer_id` y `target_id`
 antes de reservar; la transacción condiciona la escritura al estado esperado.
 
-**Cómo se verifica.** Tests previstos: `TestSoloRespondeElDestinatarioYSoloRetiraQuienOfrece` (`internal/domain/trade`)
-y `TestRechazosDelComercio` (simulation).
+**Cómo se verifica.** `TestSoloRespondeElDestinatarioYSoloRetiraQuienOfrece` (`internal/domain/trade`) y
+`TestRechazosDelComercio` (simulation) — **existen y pasan**.
 
 **Violación en runtime.** La orden se rechaza con `INVALID_TARGET` y no se escribe nada.
 

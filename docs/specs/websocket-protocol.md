@@ -37,11 +37,12 @@ Dentro del scope de v1:
 - El registro ([event-log.md](event-log.md)): `event_log.fetch` y `event_log.seen` (§7.14), que atiende la conexión sin pasar por la simulación, y `event_log.page` (§8.19).
 - El asedio ([combat-siege.md](combat-siege.md)): `unit.demolish` (§7.15), la vida de los edificios (`hp` y `maxHp` en `BuildingView`, `hp` en `building.update`), `building.destroyed` (§8.20) y `besiegedAtMs` en `city.update`.
 - La piedra y el avance de era ([economy-stone.md](economy-stone.md)): `unit.gather` también sobre una colina (§7.8), `city.advance` (§7.16), `hills` en el snapshot y `hill.update` (§8.21), `STONE` en `stocks`, `carryingResource` en las unidades, y `era` y `advance` en las ciudades; todo aditivo (`R-VER-2`, `R-VER-3`).
+- El comercio ([trade.md](trade.md)): `trade.propose`, `trade.respond` y `trade.cancel` (§7.17), `trade.update` (§8.22), `tradeOffers` en el snapshot, `TRADE` como tipo proponible de `treaty.propose` (§7.13) y las cantidades de los tratos en el registro (`tradeGive`, `tradeGet`); todo aditivo (`R-VER-2`, `R-VER-3`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
 
-No forman parte de v1 y **no deben documentarse ni implementarse como si existieran**: combate y resolución de daño, recursos distintos de la madera, edificios distintos de la casa, árbol tecnológico, chat, comercio y caravanas, clanes, ranking, unidades navales, IA de NPC. La fase 4 del tick (`resolve simulation`) está reservada para combate y hoy es un no-op; ver [../architecture/game-loop.md](../architecture/game-loop.md).
+No forman parte de v1 y **no deben documentarse ni implementarse como si existieran**: combate y resolución de daño, recursos distintos de la madera, edificios distintos de la casa, árbol tecnológico, chat, mercados y caravanas, clanes, ranking, unidades navales, IA de NPC. La fase 4 del tick (`resolve simulation`) está reservada para combate y hoy es un no-op; ver [../architecture/game-loop.md](../architecture/game-loop.md).
 
 Tampoco entran en v1:
 
@@ -133,8 +134,8 @@ type Inbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. Distinto de una versión soportada → `UNSUPPORTED_VERSION`. |
-| `type` | `string` | Sí | Uno de los diecinueve tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
-| `requestId` | `string` (UUID) | Sí en los diecinueve tipos, según el esquema Zod. El servidor lo **exige** hoy en los catorce comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond` y `treaty.cancel`), donde es la clave de idempotencia; en los de sesión y en los del registro lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
+| `type` | `string` | Sí | Uno de los veintidós tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
+| `requestId` | `string` (UUID) | Sí en los veintidós tipos, según el esquema Zod. El servidor lo **exige** hoy en los diecisiete comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond` y `trade.cancel`), donde es la clave de idempotencia; en los de sesión y en los del registro lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
 | `payload` | `object` | Sí | Objeto específico del `type`, **estricto**: ninguna propiedad adicional. Nunca `null`. |
 
 El payload se deja sin decodificar (`json.RawMessage`) hasta después de validar versión, tipo y autorización: no se gasta trabajo en mensajes que van a rechazarse.
@@ -166,7 +167,7 @@ type Outbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. |
-| `type` | `string` | Sí | Uno de los veintiún tipos servidor→cliente de v1. |
+| `type` | `string` | Sí | Uno de los veintidós tipos servidor→cliente de v1. |
 | `seq` | `number` (uint64) | Sí | Contador **monótono estrictamente creciente por conexión**, empieza en `1`. Se reinicia en cada conexión nueva. Ver sección 11. |
 | `ts` | `number` | Sí | Epoch ms del reloj del servidor en el momento de encolar el mensaje. Es la referencia temporal del cliente. |
 | `requestId` | `string` | **Se omite** salvo que el mensaje responda a un comando concreto | La etiqueta `json:"requestId,omitempty"` garantiza que el campo **no aparece** cuando no aplica: un broadcast (`entity.*`, `city.update`, `territory.update`, `unit.movement.*` dirigidos al chunk) nunca lleva un `requestId` vacío que el cliente pudiera confundir con una respuesta. Lo verifica el contract test `TestRequestIDSeOmiteCuandoNoAplica`. |
@@ -227,7 +228,7 @@ El cliente de `apps/web` reconecta con backoff exponencial y jitter —0,5 s, 1 
 
 ## 7. Mensajes cliente → servidor
 
-Los diecinueve tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `event_log.fetch` y `event_log.seen`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), y `city.advance`, con [SPEC-ECON-STONE](economy-stone.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
+Los veintidós tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch` y `event_log.seen`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), y los tres `trade.*`, con [SPEC-TRADE](trade.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
 
 ### 7.1 `session.hello`
 
@@ -471,7 +472,7 @@ payload: z.object({ unitId: EntityId, cityId: EntityId }).strict()
 
 ```ts
 // treaty.propose
-payload: z.object({ playerId: Uuid, type: z.enum(['NON_AGGRESSION', 'ALLIANCE']) }).strict()
+payload: z.object({ playerId: Uuid, type: z.enum(['TRADE', 'NON_AGGRESSION', 'ALLIANCE']) }).strict()
 // treaty.respond
 payload: z.object({ treatyId: EntityId, accept: z.boolean() }).strict()
 // treaty.cancel
@@ -482,9 +483,9 @@ payload: z.object({ treatyId: EntityId }).strict()
 { "v": 1, "type": "treaty.propose", "requestId": "1e0f2a3b-4c5d-4b6a-8c9d-7c2a5b1e4f3d", "payload": { "playerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "type": "ALLIANCE" } }
 ```
 
-**Validaciones** (`RN-DIPLO-001` a `RN-DIPLO-003`, `RN-DIPLO-008`): todo rechazo es `system.error INVALID_TARGET` con un mensaje que dice cuál. `treaty.propose`: otro jugador existente, un tipo proponible, ninguna oferta pendiente entre los dos y, como vigente, sólo un pacto que se quiera convertir en alianza; no dentro de los 10 minutos siguientes a un rechazo. `treaty.respond`: una oferta `PROPOSED` que el jugador no propuso (`INV-DIPLO-001`). `treaty.cancel`: la oferta propia, o un tratado `ACTIVE` de los dos que no esté ya en preaviso. Una segunda orden sobre el mismo par antes de que vuelva la transacción de la primera también se rechaza.
+**Validaciones** (`RN-DIPLO-001` a `RN-DIPLO-003`, `RN-DIPLO-008`): todo rechazo es `system.error INVALID_TARGET` con un mensaje que dice cuál. `treaty.propose`: otro jugador existente, un tipo proponible, ninguna oferta pendiente entre los dos y, como vigente, sólo uno de un escalón inferior al propuesto (`TRADE` < `NON_AGGRESSION` < `ALLIANCE`, [trade.md](trade.md) §4.1); no dentro de los 10 minutos siguientes a un rechazo. `treaty.respond`: una oferta `PROPOSED` que el jugador no propuso (`INV-DIPLO-001`). `treaty.cancel`: la oferta propia, o un tratado `ACTIVE` de los dos que no esté ya en preaviso. Una segunda orden sobre el mismo par antes de que vuelva la transacción de la primera también se rechaza.
 
-**Efectos.** No hay `*.accepted`: el resultado llega como `treaty.update` (§8.18) a los dos firmantes, con el `requestId` sólo para quien dio la orden. Aceptar una alianza con un pacto vigente envía también el pacto, en `EXPIRED`. Romper deja el tratado `ACTIVE` con `breaksAtMs`, y al vencer llega en `BROKEN`.
+**Efectos.** No hay `*.accepted`: el resultado llega como `treaty.update` (§8.18) a los dos firmantes, con el `requestId` sólo para quien dio la orden. Aceptar un tratado de un escalón superior envía también el que sustituye, en `EXPIRED`. Romper deja el tratado `ACTIVE` con `breaksAtMs`, y al vencer llega en `BROKEN`.
 
 ### 7.14 `event_log.fetch` y `event_log.seen`
 
@@ -537,9 +538,31 @@ payload: z.object({ cityId: EntityId }).strict()
 
 **Efectos, en dos fases.** El tick reserva los dos recursos; la transacción los debita todos o ninguno y escribe el avance (`RN-ECON-025`). Con éxito, `city.update { stocks, advance: { era, completesAtMs } }`. Mientras dura, `city.train` responde `CITY_BUSY` (`RN-ECON-026`). Al vencer, `city.update { era, populationLimit, advance: null }`: el límite sube en la diferencia de los `population_cap` de las dos eras (`RN-ECON-027`).
 
+### 7.17 `trade.propose`, `trade.respond` y `trade.cancel`
+
+- **Dirección:** cliente → servidor. **Propósito:** ofrecer un trato «doy esto, pido aquello» a otro jugador con un tratado vigente, aceptar o rechazar una oferta recibida, y retirar la propia. No son hostiles (`RN-TRADE-008`). Spec: [trade.md](trade.md); decisión: [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md).
+
+```ts
+// trade.propose: de una a tantas líneas como recursos haya en cada lado
+const ResourceAmount = z.object({ resource: ResourceType, amount: z.number().int().min(1).max(1_000_000) }).strict()
+payload: z.object({ playerId: Uuid, give: z.array(ResourceAmount).min(1).max(2), want: z.array(ResourceAmount).min(1).max(2) }).strict()
+// trade.respond
+payload: z.object({ offerId: EntityId, accept: z.boolean() }).strict()
+// trade.cancel
+payload: z.object({ offerId: EntityId }).strict()
+```
+
+```json
+{ "v": 1, "type": "trade.propose", "requestId": "4b2a1c0d-9e8f-4a7b-8c6d-5e4f3a2b1c0d", "payload": { "playerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "give": [ { "resource": "WOOD", "amount": 300 } ], "want": [ { "resource": "STONE", "amount": 100 } ] } }
+```
+
+**Validaciones** (`RN-TRADE-001` a `RN-TRADE-007`). El esquema rechaza con `INVALID_MESSAGE` una lista vacía, una cantidad que no es un entero de 1 a 1 000 000 o un recurso fuera del catálogo. Después: otro jugador existente y que el recurso no se repita ni esté en los dos lados (`INVALID_TARGET`); ninguna oferta pendiente entre los dos en ninguna dirección, ni otra orden en curso sobre el par (`INVALID_TARGET`); un tratado vigente de cualquier escalón, también en preaviso (`TREATY_REQUIRED`); y que la ciudad de quien ofrece tenga lo que da (`INSUFFICIENT_RESOURCES`), sin reservarlo. `trade.respond`: sólo el destinatario, sobre una oferta `PROPOSED` (`INVALID_TARGET`, `INV-TRADE-004`); al aceptar, el tratado todavía vigente (`TREATY_REQUIRED`) y las **dos** partes cubiertas (`INSUFFICIENT_RESOURCES`, y la oferta sigue pendiente). `trade.cancel`: sólo la oferta propia y pendiente.
+
+**Efectos.** No hay `*.accepted`: el resultado llega como `trade.update` (§8.22) a los dos jugadores, con el `requestId` sólo para quien dio la orden. Aceptar es una orden en dos fases: el tick reserva lo que da cada parte y una sola transacción mueve los dos almacenes; con éxito, `trade.update` con `ACCEPTED` y `city.update { stocks }` al chunk de cada ciudad.
+
 ## 8. Mensajes servidor → cliente
 
-Los veintiún tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los veintidós tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -630,6 +653,7 @@ payload: z.object({
   forests: z.array(ForestView).optional(),  // E4, §8.17
   hills: z.array(HillView).optional(),      // E9, §8.21
   treaties: z.array(TreatyView).optional(), // E6, §8.18: los del jugador que lo recibe
+  tradeOffers: z.array(TradeOfferView).optional(), // E10, §8.22: las ofertas pendientes del jugador
 })
 ```
 
@@ -1031,7 +1055,7 @@ payload: z.object({ treaty: TreatyView })
 { "v": 1, "type": "treaty.update", "seq": 212, "ts": 1788955226000, "payload": { "treaty": { "id": 31, "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "type": "ALLIANCE", "status": "ACTIVE", "proposedByMe": false, "breaksAtMs": 1788956126000 } } }
 ```
 
-Un estado distinto de `PROPOSED` y `ACTIVE` dice que el tratado terminó, y el cliente lo saca de su lista. La lista completa viaja en `world.snapshot.treaties`, que la reemplaza ([ADR-027](../decisions/ADR-027-hot-treaties.md) §5).
+Un estado distinto de `PROPOSED` y `ACTIVE` dice que el tratado terminó, y el cliente lo saca de su lista. La lista completa viaja en `world.snapshot.treaties`, que la reemplaza ([ADR-027](../decisions/ADR-027-hot-treaties.md) §5). Desde [trade.md](trade.md), `type` puede ser también `TRADE`, que deja comerciar y no da paz.
 
 ### 8.19 `event_log.page`
 
@@ -1084,6 +1108,24 @@ payload: HillView  // { x, y, remaining, regrowsAtMs: EpochMs | null }
 
 Con `remaining` igual a la capacidad y `regrowsAtMs` nulo, el tile vuelve a estar lleno y sale de la capa del cliente. El snapshot trae los tiles de colina a medias del área en `hills`.
 
+### 8.22 `trade.update`
+
+- **Propósito:** cambió una oferta de comercio del jugador: una nueva, una respuesta, una retirada o su caducidad ([trade.md](trade.md) §6). Sólo a los dos jugadores, por `SendToPlayer`, cada uno con su vista; con `requestId` para quien dio la orden. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ offer: TradeOfferView })
+// TradeOfferView: { id, otherPlayerId, otherCityId: EntityId | null, otherCityName: string | null,
+//                   give: ResourceAmount[], get: ResourceAmount[],
+//                   status: PROPOSED | ACCEPTED | REJECTED | WITHDRAWN | EXPIRED,
+//                   proposedByMe: boolean, expiresAtMs: EpochMs }
+```
+
+```json
+{ "v": 1, "type": "trade.update", "seq": 318, "ts": 1788955500000, "payload": { "offer": { "id": 17, "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "give": [ { "resource": "STONE", "amount": 100 } ], "get": [ { "resource": "WOOD", "amount": 300 } ], "status": "PROPOSED", "proposedByMe": false, "expiresAtMs": 1789041900000 } } }
+```
+
+`give` es lo que saldría del almacén de quien recibe el mensaje y `get` lo que entraría, sea quien sea el que propuso. Un estado distinto de `PROPOSED` dice que la oferta se cerró, y el cliente la saca de su lista. Las pendientes viajan en `world.snapshot.tradeOffers`, que la reemplaza.
+
 ## 9. Códigos de error
 
 El catálogo es de **24 códigos** y es cerrado. Vive en `errors.ts` (`ErrorCode`) y en `codes.go` (`AllErrorCodes`); un contract test en Go (`TestCatalogoDeErroresCoincideConElExportado`) compara ambos contra `error-codes.json` y rompe la CI si divergen.
@@ -1125,7 +1167,7 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 
 | Regla | Detalle |
 |---|---|
-| I-1 | Los esquemas exigen `requestId` con formato UUID en los diecinueve comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond` y `treaty.cancel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
+| I-1 | Los esquemas exigen `requestId` con formato UUID en los veintidós comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond` y `trade.cancel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
 | I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond` y `treaty.cancel`). `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping`, `session.view` y los dos `event_log.*` no reservan clave: los primeros no crean efectos durables, `event_log.fetch` sólo lee y `event_log.seen` es monótono. |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
@@ -1154,7 +1196,7 @@ Este documento no define invariantes propios: materializa los de la familia `INV
 
 | Invariante | Cómo lo materializa este protocolo |
 |---|---|
-| [INV-SEC-001](../invariants/security.md#inv-sec-001) — el estado del cliente nunca muta el estado autoritativo | Los diecinueve payloads cliente→servidor son **estrictos** (S-7) y ninguno tiene campo para posición, HP, ruta, ETA ni ownership (§7.4) |
+| [INV-SEC-001](../invariants/security.md#inv-sec-001) — el estado del cliente nunca muta el estado autoritativo | Los veintidós payloads cliente→servidor son **estrictos** (S-7) y ninguno tiene campo para posición, HP, ruta, ETA ni ownership (§7.4) |
 | [INV-SEC-002](../invariants/security.md#inv-sec-002) — ninguna conexión ejecuta comandos antes de autenticarse | El lector de la sesión no arranca hasta que el handshake termina; `session.hello` es el único tipo pre-auth (§6, §7.1) |
 | [INV-SEC-003](../invariants/security.md#inv-sec-003) — un ticket solo puede canjearse una vez | `SET ticket:jti:{jti} NX EX 120` en el handshake (§7.1) |
 | [INV-SEC-004](../invariants/security.md#inv-sec-004) — todo comando valida ownership antes de ejecutarse | Validación 2 de `unit.move` y de `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`, antes que cualquier lectura de estado (§7.4–§7.7) |
@@ -1180,8 +1222,8 @@ packages/protocol/
 ├── src/v1/
 │   ├── common.ts            # Tile, Waypoint, TimedPath, UnitView, CityView, TerritoryView, ChunkRef, ChunkTerrain
 │   ├── errors.ts            # ErrorCode como z.enum, exactamente los 24 códigos, y WS_CLOSE
-│   ├── client.ts            # los 19 mensajes cliente→servidor, TODOS .strict()
-│   ├── server.ts            # los 21 mensajes servidor→cliente, ninguno .strict()
+│   ├── client.ts            # los 22 mensajes cliente→servidor, TODOS .strict()
+│   ├── server.ts            # los 22 mensajes servidor→cliente, ninguno .strict()
 │   └── index.ts             # export público de @empires-online/protocol
 ├── src/scripts/export-schema.ts
 └── schema/v1/               # JSON Schema GENERADO — artefacto de build, nunca editado a mano
