@@ -1729,7 +1729,7 @@ registro; `INV-TRADE-001` a `004`; la migración `000013`; el cliente y `scripts
 
 ## E11 — Avisos
 
-**Estado: EN CURSO (2026-11-04)**, en la rama `claude/slice-avisos`. Contrato:
+**Estado: HECHO EN LA RAMA (2026-11-04)**, en `claude/slice-avisos`, sin fusionar. Contrato:
 [SPEC-LIVE-NOTICES](../specs/live-notices.md), aceptada el 2026-11-04 con sus ocho decisiones de producto, y
 [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md).
 
@@ -1764,4 +1764,15 @@ terceros, los sucesos de E9 y lo que ya llega por otra vía (saqueo y asedio suf
 6. **HECHO** — Cliente: `src/state/notices.ts` (agrupación, los 8 s, los tres visibles, el punto, el contador del
    título) con `notices.test.ts`, `notices` en el store sin tocar `eventLog` (`world.test.ts`), la franja
    `NoticeStrip` con «Ir» (prop `focus` de `GameCanvas`) y el punto en «Registro».
-7. Humo y prueba en vivo.
+7. **HECHO** — Humo y prueba en vivo (2026-11-04). Sin migración nueva: la base de desarrollo sigue en la 13, y al
+   arrancar el pacto 5 entre `smoke_runner` y `smoke_victim` pasó a `BROKEN`. `scripts/smoke.mjs --saqueo --asedio
+   --registro` con `smoke_runner`, 40 comprobaciones en verde: una segunda sesión de `smoke_runner` con la vista en su
+   ciudad (291,19), a ~160 tiles y fuera de su área de interés, recibió `PILLAGE_DONE` («5 de madera a
+   smoke_victimpolis en (449, 181)») y `HOUSE_DESTROYED` («en (450, 178)»), y `smoke_victim` ninguno de los dos; el
+   registro de cada lado los cuenta. Una segunda pasada con `--asedio`, 26 comprobaciones. En el navegador, con
+   `smoke_runner` en su ciudad durante esa pasada, un observador del DOM vio llegar el aviso «Tus guerreros derribaron
+   una casa de smoke_victimpolis» con «Ir», el punto en «Registro» y el título «(1) Empires Online» (el panel estaba
+   oculto), y la franja vaciarse sola 8,1 s después; abrir el registro borró el punto y trajo las dos entradas
+   avisadas. **No se comprobó en el navegador** que «Ir» mueva la cámara ni que el título se borre al volver a la
+   pestaña: con el panel oculto no hay frames ni cambio de visibilidad que provocar. Lo cubren `notices.test.ts`,
+   `world.test.ts` y el typecheck.
