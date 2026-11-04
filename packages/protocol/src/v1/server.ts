@@ -16,6 +16,7 @@ import {
   EntityId,
   EpochMs,
   EventLogEntry,
+  EventLogNoticeKind,
   AdvanceView,
   EraCode,
   ForestView,
@@ -30,6 +31,7 @@ import {
   TerritoryView,
   Tile,
   UnitStatus,
+  UnitType,
   UnitView,
   Uuid,
   WorldCoordinate,
@@ -327,6 +329,33 @@ export const EventLogPage = z.object({
   }),
 });
 
+/**
+ * Un aviso en vivo (SPEC-LIVE-NOTICES §6): algo que les pasó a las unidades del jugador
+ * fuera de su vista, en el tick en que pasó. Lo reciben todas sus sesiones, sin
+ * `requestId`. No es una entrada del registro: no tiene `id`, no mueve el cursor y el
+ * cliente no lo mete en la lista (RN-NOTICE-004, ADR-033).
+ */
+export const EventLogNotice = z.object({
+  ...serverEnvelope,
+  type: z.literal('event_log.notice'),
+  payload: z.object({
+    kind: EventLogNoticeKind,
+    /** El instante del suceso en la simulación. */
+    atMs: EpochMs,
+    otherPlayerId: Uuid,
+    /** La ciudad del otro jugador, si la tiene. */
+    otherCityId: EntityId.nullable(),
+    otherCityName: z.string().min(1).max(64).nullable(),
+    /** En las muertes: qué tipo de unidad murió. */
+    unitType: UnitType.optional(),
+    /** En el saqueo: la madera de ese golpe. */
+    amount: z.number().int().min(0).optional(),
+    /** Dónde ocurrió. */
+    x: WorldCoordinate.optional(),
+    y: WorldCoordinate.optional(),
+  }),
+});
+
 // ─────────────────────────────────────────────────────────────
 // Movimiento
 // ─────────────────────────────────────────────────────────────
@@ -417,6 +446,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   TreatyUpdate,
   EventLogPage,
   TradeUpdate,
+  EventLogNotice,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -442,6 +472,7 @@ export type HillUpdate = z.infer<typeof HillUpdate>;
 export type TreatyUpdate = z.infer<typeof TreatyUpdate>;
 export type EventLogPage = z.infer<typeof EventLogPage>;
 export type TradeUpdate = z.infer<typeof TradeUpdate>;
+export type EventLogNotice = z.infer<typeof EventLogNotice>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -466,6 +497,7 @@ export const SERVER_MESSAGE_TYPES = [
   'treaty.update',
   'event_log.page',
   'trade.update',
+  'event_log.notice',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

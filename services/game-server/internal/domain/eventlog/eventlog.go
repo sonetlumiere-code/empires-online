@@ -64,6 +64,15 @@ func Kinds() []Kind {
 	}
 }
 
+// NoticeKinds son los tipos de entrada que también se avisan en vivo
+// (SPEC-LIVE-NOTICES §4.1, ADR-033 §3): lo que hoy no le llega a quien mira otra
+// parte del mapa. PILLAGED y HOUSE_LOST no están porque la víctima ya tiene
+// pillagedAtMs y besiegedAtMs (Q1). El enum del aviso en el protocolo es el
+// mismo (lo vigila el contract test).
+func NoticeKinds() []Kind {
+	return []Kind{KindUnitLost, KindEnemyKilled, KindPillageDone, KindHouseDestroyed}
+}
+
 // Nombres de los eventos de world_events que el registro lee.
 const (
 	EventUnitKilled           = "UnitKilled"
@@ -259,6 +268,40 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 		return "", uuid.Nil, false
 	}
 	return kind, other, true
+}
+
+// Notice es un aviso en vivo para un jugador: el tipo de entrada que el suceso
+// le contaría y quién es el otro.
+type Notice struct {
+	To    uuid.UUID
+	Kind  Kind
+	Other uuid.UUID
+}
+
+// Notices dice qué avisos da un suceso y a quién (SPEC-LIVE-NOTICES RN-NOTICE-002,
+// ADR-033 §3). Lo clasifica como el registro para cada uno de sus dos jugadores,
+// primero la víctima (PlayerID) y después el autor (Counterpart), y se queda con
+// los tipos de NoticeKinds: nadie recibe un aviso que su registro no le
+// contaría, y un tercero nunca recibe ninguno (INV-SEC-009).
+func Notices(e Event) []Notice {
+	var out []Notice
+	for _, viewer := range []uuid.UUID{e.PlayerID, e.Counterpart} {
+		kind, other, ok := Classify(viewer, e)
+		if !ok || !isNotice(kind) {
+			continue
+		}
+		out = append(out, Notice{To: viewer, Kind: kind, Other: other})
+	}
+	return out
+}
+
+func isNotice(k Kind) bool {
+	for _, n := range NoticeKinds() {
+		if n == k {
+			return true
+		}
+	}
+	return false
 }
 
 // tradeKind es el tipo de entrada de un evento del comercio.

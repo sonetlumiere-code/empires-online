@@ -38,16 +38,20 @@
  *      minutos (juntar madera, entrenar, caminar) y mata una unidad de otra cuenta,
  *      así que no corre por defecto ni tras un despliegue en producción.
  *      El aldeano va escoltado por un guardia de la víctima, que responde solo al
- *      ataque (SPEC-COMBAT-RESPONSE); si le faltan guardia o aldeanos, los entrena.
+ *      ataque (SPEC-COMBAT-RESPONSE); si le faltan guardia o aldeanos, los entrena. La
+ *      víctima recibe el aviso en vivo UNIT_LOST y smoke_runner ENEMY_KILLED.
  *  12. sólo con --saqueo (SPEC-COMBAT-PILLAGE): un guerrero propio (el que haya en
  *      casa, o uno nuevo) va hasta la muralla de la víctima, que se conecta para no
  *      estar protegida, y la saquea: su almacén baja, la víctima recibe el aviso
- *      pillagedAtMs y el guerrero carga lo robado. Tarda minutos y roba madera de
- *      otra cuenta, así que no corre por defecto.
+ *      pillagedAtMs y el guerrero carga lo robado. Otra sesión de smoke_runner, con la
+ *      vista en su ciudad, recibe el aviso en vivo PILLAGE_DONE (SPEC-LIVE-NOTICES), y
+ *      el saqueado ninguno. Tarda minutos y roba madera de otra cuenta, así que no
+ *      corre por defecto.
  *  12b. sólo con --asedio (SPEC-COMBAT-SIEGE): la víctima, conectada, tiene una casa
  *      completa (si no, junta 30 de madera y la construye); un guerrero propio la
  *      golpea hasta derribarla: la vida baja, la víctima recibe besiegedAtMs, llega
- *      building.destroyed y su límite de población baja en 5. Tarda minutos y derriba
+ *      building.destroyed y su límite de población baja en 5; smoke_runner, con la vista
+ *      en su ciudad, recibe el aviso en vivo HOUSE_DESTROYED. Tarda minutos y derriba
  *      una casa de otra cuenta, así que no corre por defecto.
  *  13. sólo con --diplomacia (SPEC-DIPLOMACY): smoke_runner y smoke_victim firman un
  *      pacto de no agresión (o reutilizan el vigente), el pacto impide el saqueo, y
@@ -907,6 +911,10 @@ async function incursion(atacante, ciudad, playerId, snap) {
   }
   ok('incursión completa', `el guerrero ${guerrero.id} mató al aldeano ${aldeano.id}`);
   ok('respuesta automática', `el guardia ${guardia.id} respondió sin órdenes: el incursor bajó a ${herido} de vida`);
+  const perdida = await avisoEnVivo(victima.sesion, 'UNIT_LOST', playerId);
+  ok('aviso en vivo a la víctima', `UNIT_LOST ${perdida.payload.unitType} en (${perdida.payload.x}, ${perdida.payload.y})`);
+  const baja = await avisoEnVivo(atacante.sesion, 'ENEMY_KILLED', cuenta.playerId);
+  ok('aviso en vivo al incursor', `ENEMY_KILLED ${baja.payload.unitType} de ${baja.payload.otherCityName ?? 'otro jugador'}`);
   victima.sesion.cerrar();
 }
 
@@ -940,6 +948,7 @@ async function saqueo(atacante, ciudad, playerId, snap) {
   const vista = (await atacante.sesion.esperar('world.snapshot')).payload;
   const antes = vista.cities.find((c) => c.id === ciudadV.id)?.stocks?.WOOD ?? almacen;
   const cargaAntes = vista.units.find((u) => u.id === guerrero.id)?.carrying ?? 0;
+  const casa = await vistaEnCasa(ciudad, ciudadV);
 
   atacante.sesion.enviar('unit.pillage', { unitId: guerrero.id, cityId: ciudadV.id });
   const golpe = await atacante.sesion.esperarQue(['city.update', 'system.error'],
@@ -955,6 +964,13 @@ async function saqueo(atacante, ciudad, playerId, snap) {
   const carga = await atacante.sesion.esperarQue('entity.update',
     (m) => m.payload.id === guerrero.id && typeof m.payload.carrying === 'number' && m.payload.carrying > cargaAntes, 10_000);
   ok('el guerrero carga lo robado', `${cargaAntes} -> ${carga.payload.carrying}`);
+
+  const enVivo = await avisoEnVivo(casa.sesion, 'PILLAGE_DONE', cuenta.playerId);
+  ok('aviso en vivo al saqueador, con la vista en casa',
+    `PILLAGE_DONE ${enVivo.payload.amount} de madera a ${enVivo.payload.otherCityName} en (${enVivo.payload.x}, ${enVivo.payload.y})`);
+  sinAvisos(victima.sesion, 'el saqueado', ['PILLAGE_DONE']);
+  ok('el saqueado no recibe aviso en vivo', 'ya tiene pillagedAtMs');
+  casa.sesion.cerrar();
   victima.sesion.cerrar();
 }
 
@@ -1054,6 +1070,7 @@ async function asedio(atacante, ciudad, playerId, snap) {
   atacante.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
   const vista = (await atacante.sesion.esperar('world.snapshot')).payload;
   const limiteAntes = vista.cities.find((c) => c.id === ciudadV.id)?.populationLimit;
+  const enCasa = await vistaEnCasa(ciudad, ciudadV);
 
   atacante.sesion.enviar('unit.demolish', { unitId: guerrero.id, buildingId: casa.id });
   const golpe = await atacante.sesion.esperarQue(['building.update', 'system.error'],
@@ -1075,7 +1092,47 @@ async function asedio(atacante, ciudad, playerId, snap) {
     fallar('el límite de la víctima no bajó en 5', { antes: limiteAntes, despues: limite.payload.populationLimit });
   }
   ok('el límite de la víctima baja', `${limiteAntes} -> ${limite.payload.populationLimit}`);
+  const derribo = await avisoEnVivo(enCasa.sesion, 'HOUSE_DESTROYED', cuenta.playerId);
+  ok('aviso en vivo al atacante, con la vista en casa', `HOUSE_DESTROYED en (${derribo.payload.x}, ${derribo.payload.y})`);
+  sinAvisos(victima.sesion, 'el asediado', ['HOUSE_DESTROYED']);
+  enCasa.sesion.cerrar();
   victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Avisos en vivo (SPEC-LIVE-NOTICES), en --incursion, --saqueo y --asedio
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Otra sesión de smoke_runner con la vista en su propia ciudad. La de la víctima
+ * le queda fuera del área de interés, así que lo que pasa allí sólo le llega por el
+ * aviso en vivo.
+ */
+async function vistaEnCasa(ciudad, lejos) {
+  const { cuenta } = await abrirSesion(USUARIO);
+  const casa = await conectar(cuenta.ticket);
+  casa.sesion.enviar('session.view', { center: { x: ciudad.centerX, y: ciudad.centerY } });
+  const vista = (await casa.sesion.esperar('world.snapshot')).payload;
+  if (vista.cities.some((c) => c.id === lejos.id)) {
+    fallar('la ciudad de la víctima está en el área de interés de la ciudad propia: el aviso no probaría nada',
+      `propia en (${ciudad.centerX}, ${ciudad.centerY}), víctima en (${lejos.centerX}, ${lejos.centerY})`);
+  }
+  return casa;
+}
+
+/** El primer aviso en vivo de ese tipo sobre el otro jugador. */
+function avisoEnVivo(sesion, kind, otroId, ms = 10_000) {
+  return sesion.esperarQue('event_log.notice', (m) => m.payload.kind === kind && m.payload.otherPlayerId === otroId, ms);
+}
+
+/**
+ * Falla si la sesión recibió un aviso en vivo de esos tipos: el saqueado y el
+ * asediado ya tienen pillagedAtMs y besiegedAtMs (SPEC-LIVE-NOTICES Q1). Una muerte
+ * sí puede llegarles, si sus guardias responden.
+ */
+function sinAvisos(sesion, quien, kinds) {
+  const avisos = sesion.recibidos.filter((m) => m.type === 'event_log.notice' && kinds.includes(m.payload.kind));
+  if (avisos.length > 0) fallar(`${quien} recibió avisos en vivo que no le tocan`, avisos.map((m) => m.payload));
 }
 
 // ─────────────────────────────────────────────────────────────

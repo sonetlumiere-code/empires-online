@@ -317,6 +317,14 @@ export const EventLogKind = z.enum([
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
 /**
+ * Los tipos de entrada que también se avisan en vivo (SPEC-LIVE-NOTICES §4.1): lo que
+ * hoy no llega a quien mira otra parte del mapa. Un subconjunto de `EventLogKind`, para
+ * que el aviso y su entrada se lean igual.
+ */
+export const EventLogNoticeKind = EventLogKind.extract(['UNIT_LOST', 'ENEMY_KILLED', 'PILLAGE_DONE', 'HOUSE_DESTROYED']);
+export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
+
+/**
  * Una entrada del registro: uno o varios sucesos del mismo tipo con el mismo otro
  * jugador, agrupados al leer (SPEC-EVENT-LOG §4.2). `id` es el del último evento del
  * grupo; las entradas con `id` mayor que `seenUpToId` son nuevas.

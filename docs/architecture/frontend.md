@@ -558,7 +558,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
 
 - **Cuándo se pide.** El cliente manda `event_log.fetch` al quedar la sesión `ready` (también tras reconectar) y al
   volver a la pestaña tras un minuto o más oculta (`REFETCH_AFTER_HIDDEN_MS`, `RN-LOG-007`); al abrir el botón
-  «Registro» y con «Ver más», la página siguiente. El servidor no empuja nada.
+  «Registro» y con «Ver más», la página siguiente. El servidor no empuja entradas: los avisos en vivo van aparte
+  (§4.8) y no tocan la lista.
 - **Qué guarda.** El store guarda `eventLog`, sustituido en cada página como `treaties`. Sólo aplica las páginas que
   pidió, por `requestId` (`expectEventLogPage`): la primera **sustituye** la lista, porque un grupo que crece cambia
   de `id`; una anterior se añade si sigue donde se quedó (`applyEventLogPage`). `reset` la vacía.
@@ -590,6 +591,33 @@ y grueso, y una que carga madera, un tronco a la espalda.
   el almacén cambia por el `city.update { stocks }` de siempre.
 - Los rechazos (`INVALID_TARGET`, `TREATY_REQUIRED`, `INSUFFICIENT_RESOURCES`) llegan como `system.error` y se
   muestran en el pie con su mensaje (§3.6). El registro (§4.6) cuenta los tratos con sus cantidades.
+
+### 4.8 Avisos en vivo (SPEC-LIVE-NOTICES)
+
+> **Estado (2026-11-04): implementado y con tests de lo puro** (`src/state/notices.ts`).
+
+- **Qué llega.** `event_log.notice` (protocolo §8.23), en el tick en que el servidor decide el suceso y esté
+  mirando el jugador donde esté: sus unidades muertas (`UNIT_LOST`) y lo que las suyas matan, saquean o derriban
+  (`ENEMY_KILLED`, `PILLAGE_DONE`, `HOUSE_DESTROYED`). **No es una entrada del registro**
+  ([ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)): el store lo guarda en `notices`, aparte de
+  `eventLog`, y no toca ni la lista ni el cursor.
+- **Agrupación** (`applyNotice`). Por tipo, otro jugador y tipo de unidad, la clave del registro sin el lado del
+  cursor; un aviso se suma a su grupo si llega antes de que pasen `NOTICE_VISIBLE_MS` (8 s) desde el último del
+  grupo, con los instantes de la simulación. El grupo suma su recuento y su madera y se queda con el tile del último.
+  El texto es el del registro (`noticeText` llama a `entryText` sobre una entrada equivalente), con las pérdidas en
+  rojo.
+- **La franja.** Encima del lienzo, arriba a la derecha (`NoticeStrip` en `app/page.tsx`): los grupos que se ven
+  (`visibleNotices`), tres como mucho y los más recientes primero. Se apaga sola: un `setTimeout` hasta el siguiente
+  vencimiento (`nextNoticeExpiry`), como el aviso de saqueo. Queda por encima del lienzo (`zIndex` 5) y por debajo
+  de «Mientras no estabas» (10); fuera de sus tarjetas no captura el puntero, así que el mapa sigue respondiendo.
+- **«Ir».** Con tile, el aviso lleva un botón que centra la cámara allí (prop `focus` de `GameCanvas`); la cámara
+  nunca se mueve sola. El siguiente frame avisa del centro nuevo y `ViewSync` manda el `session.view` de siempre
+  (§7.4.1).
+- **El punto en «Registro».** Mientras haya avisos llegados desde que se abrió el registro (`hasUnreadNotices`).
+  Abrirlo pide la primera página, que trae lo avisado, y borra el punto (`markNoticesOpened`).
+- **El título de la pestaña.** Con la pestaña oculta (`setTabHidden`, desde `visibilitychange`), cada grupo que
+  recibe algo suma uno: «(2) Empires Online» (`documentTitle`); un saqueo de treinta golpes cuenta uno. Al volver se
+  borra.
 
 ## 5. Posición autoritativa frente a posición de render
 
@@ -963,6 +991,7 @@ centro en cada frame (`worldToIso`), y el picking usa la misma cámara del frame
 | Teclado | Flechas y `W`/`A`/`S`/`D` desplazan la cámara **en pantalla** (arriba es arriba en la pantalla, no `-y` del mundo) a `CAMERA_PAN_PX_PER_S` = 900 px/s a zoom 1, mientras la tecla esté pulsada. El desplazamiento usa el `deltaMS` del *ticker*, así que no depende de los FPS |
 | Arrastre | Botón **derecho** o **central** sobre el lienzo: el mapa sigue al cursor (la cámara se mueve en sentido contrario al arrastre). El botón izquierdo conserva seleccionar y ordenar; el menú contextual del navegador se suprime sobre el lienzo |
 | Recentrar | `H` vuelve a centrar la cámara en la ciudad propia (en la referencia, la tecla del centro urbano). La cámara **recuerda** la ciudad desde la primera vez que la ve: lejos de casa, el snapshot del área ya no la trae y el store no la tiene |
+| Ir a un aviso | «Ir» en un aviso en vivo (§4.8) centra la cámara en su tile, por la prop `focus` de `GameCanvas`. Es la única otra forma de moverla sin teclado ni arrastre, y sólo con el clic del jugador |
 | Límites | El centro se recorta a `[0, width − 1] × [0, height − 1]` en tiles, con las dimensiones del `session.welcome` |
 | Foco | El teclado se ignora si el foco está en un `input`, `textarea` o `select`, o con `Ctrl`/`Meta`/`Alt` pulsados: no se roban los atajos del navegador |
 

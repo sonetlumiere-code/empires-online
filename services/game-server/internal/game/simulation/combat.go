@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -648,6 +649,13 @@ func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityDespawn,
 		protocol.EntityDespawnPayload{ID: v.ID, Reason: protocol.DespawnDead})
 	s.state.RemoveUnit(v.ID)
+	// El aviso en vivo, a la víctima y al autor estén donde estén, en el mismo
+	// tick que el despawn (SPEC-LIVE-NOTICES RN-NOTICE-001). Aquí y no en
+	// submitDeath, que el volcado repite (ADR-033 §2).
+	s.sendNotices(eventlog.Event{
+		Type: eventlog.EventUnitKilled, PlayerID: d.VictimPlayer, Counterpart: d.KillerPlayer,
+		AtMs: nowMs, UnitType: string(d.VictimType), X: at.X, Y: at.Y, HasTile: true,
+	})
 
 	// Quien atacaba a la víctima se queda sin objetivo.
 	for _, id := range s.attackersOf(v.ID) {

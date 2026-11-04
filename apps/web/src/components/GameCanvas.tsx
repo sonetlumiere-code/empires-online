@@ -27,6 +27,11 @@ export interface GameCanvasProps {
   onUnitClick: (unitId: number) => void;
   /** Centro de la cámara en cada frame, en tiles continuos (frontend.md §7.4.1). */
   onCameraCenter?: (center: Point) => void;
+  /**
+   * Un tile al que llevar la cámara cuando el jugador lo pide («Ir» de un aviso,
+   * SPEC-LIVE-NOTICES Q4). `nonce` distingue dos peticiones del mismo tile.
+   */
+  focus?: { x: number; y: number; nonce: number } | null;
 }
 
 /** La ciudad propia en el store, si la hay. */
@@ -37,7 +42,7 @@ function ownCityCenter(state: WorldState): Tile | null {
   return null;
 }
 
-export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCenter }: GameCanvasProps) {
+export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCenter, focus }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<IsoScene | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -148,6 +153,13 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCen
     push(useWorldStore.getState(), null);
     return useWorldStore.subscribe(push);
   }, []);
+
+  // «Ir»: la cámara se mueve sólo cuando el jugador lo pide; el siguiente frame
+  // avisa del centro nuevo y la vista se sincroniza como con cualquier otro
+  // desplazamiento.
+  useEffect(() => {
+    if (focus) cameraRef.current.centerOn({ x: focus.x, y: focus.y });
+  }, [focus]);
 
   // Teclado y arrastre de la cámara (frontend.md §7.4.1). Viven en el DOM, no en
   // Pixi: el botón izquierdo sigue siendo de la escena (seleccionar y ordenar).

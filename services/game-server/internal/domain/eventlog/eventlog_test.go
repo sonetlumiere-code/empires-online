@@ -261,3 +261,76 @@ func TestLasCasasDerribadasSeAgrupan(t *testing.T) {
 	assert.Equal(t, [2]int32{452, 179}, [2]int32{e.X, e.Y})
 	assert.Empty(t, e.TreatyType)
 }
+
+// SPEC-LIVE-NOTICES §4.1 y RN-NOTICE-002: cada suceso de combate, visto desde sus
+// dos lados. Una muerte avisa a los dos; el saqueo y la casa, sólo al autor,
+// porque la víctima ya tiene pillagedAtMs y besiegedAtMs (Q1).
+func TestCadaSucesoAvisaASusDosLadosSegunElRegistro(t *testing.T) {
+	casos := []struct {
+		nombre string
+		e      eventlog.Event
+		avisos []eventlog.Notice
+	}{
+		{"una muerte, a la víctima y al autor", eventlog.Event{Type: "UnitKilled", PlayerID: yo, Counterpart: otro},
+			[]eventlog.Notice{
+				{To: yo, Kind: eventlog.KindUnitLost, Other: otro},
+				{To: otro, Kind: eventlog.KindEnemyKilled, Other: yo},
+			}},
+		{"un golpe de saqueo, sólo al saqueador", eventlog.Event{Type: "CityPillaged", PlayerID: yo, Counterpart: otro},
+			[]eventlog.Notice{{To: otro, Kind: eventlog.KindPillageDone, Other: yo}}},
+		{"una casa derribada, sólo al atacante", eventlog.Event{Type: "BuildingDestroyed", PlayerID: yo, Counterpart: otro},
+			[]eventlog.Notice{{To: otro, Kind: eventlog.KindHouseDestroyed, Other: yo}}},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			assert.Equal(t, c.avisos, eventlog.Notices(c.e))
+		})
+	}
+}
+
+// RN-NOTICE-002 e INV-SEC-009: un suceso sin otro jugador, o con el mismo en los
+// dos lados, no avisa a nadie; y ningún tipo de evento avisa a quien no es parte.
+func TestSinOtroJugadorNoHayAviso(t *testing.T) {
+	for _, e := range []eventlog.Event{
+		{Type: "UnitKilled", PlayerID: yo},
+		{Type: "UnitKilled", Counterpart: yo},
+		{Type: "UnitKilled", PlayerID: yo, Counterpart: yo},
+		{Type: "CityPillaged", PlayerID: yo},
+		{Type: "BuildingDestroyed", PlayerID: yo, Counterpart: yo},
+	} {
+		assert.Empty(t, eventlog.Notices(e), "%+v", e)
+	}
+	for _, tipo := range eventlog.EventTypes() {
+		for _, n := range eventlog.Notices(eventlog.Event{Type: tipo, PlayerID: yo, Counterpart: otro, From: "ACTIVE", By: yo}) {
+			assert.Contains(t, []uuid.UUID{yo, otro}, n.To, tipo)
+			assert.NotEqual(t, tercero, n.To, tipo)
+		}
+	}
+}
+
+// Q1: los tratados, los tratos y lo que ya tiene su aviso no se avisan; sólo los
+// cuatro tipos de NoticeKinds, que son tipos de entrada del registro.
+func TestSoloSeAvisanLosCuatroTiposDeCombate(t *testing.T) {
+	kinds := map[eventlog.Kind]bool{}
+	for _, k := range eventlog.Kinds() {
+		kinds[k] = true
+	}
+	require.Equal(t, []eventlog.Kind{
+		eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindPillageDone, eventlog.KindHouseDestroyed,
+	}, eventlog.NoticeKinds())
+	for _, k := range eventlog.NoticeKinds() {
+		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
+	}
+	for _, tipo := range eventlog.EventTypes() {
+		switch tipo {
+		case "UnitKilled", "CityPillaged", "BuildingDestroyed":
+			continue
+		}
+		for _, by := range []uuid.UUID{yo, otro, uuid.Nil} {
+			for _, from := range []string{"PROPOSED", "ACTIVE"} {
+				e := eventlog.Event{Type: tipo, PlayerID: yo, Counterpart: otro, By: by, From: from}
+				assert.Empty(t, eventlog.Notices(e), "%s by=%s from=%s", tipo, by, from)
+			}
+		}
+	}
+}

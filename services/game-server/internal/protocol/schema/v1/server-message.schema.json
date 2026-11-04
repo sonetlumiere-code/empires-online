@@ -1994,6 +1994,98 @@
             "payload"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "event_log.notice"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "UNIT_LOST",
+                    "ENEMY_KILLED",
+                    "PILLAGE_DONE",
+                    "HOUSE_DESTROYED"
+                  ]
+                },
+                "atMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                },
+                "otherPlayerId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                },
+                "otherCityId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "otherCityName": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "unitType": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/unitType"
+                },
+                "amount": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "x": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                },
+                "y": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                }
+              },
+              "required": [
+                "kind",
+                "atMs",
+                "otherPlayerId",
+                "otherCityId",
+                "otherCityName"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
         }
       ]
     }

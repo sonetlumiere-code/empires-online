@@ -1726,3 +1726,53 @@ registro; `INV-TRADE-001` a `004`; la migración `000013`; el cliente y `scripts
     acuerdo comercial que deja `--comercio`, habría comprobado que un TRADE impide el saqueo, que no lo impide. Elige
     ahora sólo un pacto o una alianza (`pactoVigente`, con su test en `scripts/smoke.test.mjs`, que falla con la lógica
     anterior) y, con un TRADE vigente, propone el pacto como subida de escalón y comprueba la sustitución.
+
+## E11 — Avisos
+
+**Estado: HECHO EN LA RAMA (2026-11-04)**, en `claude/slice-avisos`, sin fusionar. Contrato:
+[SPEC-LIVE-NOTICES](../specs/live-notices.md), aceptada el 2026-11-04 con sus ocho decisiones de producto, y
+[ADR-033](../decisions/ADR-033-live-notices-ephemeral.md).
+
+**Objetivo.** Que el riesgo lejos de casa se note cuando ocurre: si matan a tu aldeano en una colina a 160 tiles, te
+enteras en el acto, aunque estés mirando tu ciudad.
+
+**Alcance.** `event_log.notice`, un aviso efímero sin `id` que la simulación manda en la fase 4 al jugador del suceso:
+tus unidades muertas (`UNIT_LOST`) y lo que las tuyas matan (`ENEMY_KILLED`), saquean (`PILLAGE_DONE`) o derriban
+(`HOUSE_DESTROYED`); la clasificación con la misma función que el registro (`eventlog.Notices`); la precisión de
+`INV-SEC-009`; en el cliente, la franja de avisos del HUD agrupada, «Ir», el punto en «Registro» y el contador en el
+título de la pestaña. **No entra** (spec §2): notificaciones del sistema, sonido, guardar o reenviar avisos, avisos a
+terceros, los sucesos de E9 y lo que ya llega por otra vía (saqueo y asedio sufridos, tratados, tratos).
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-033 y las precisiones de `INV-SEC-009` (los avisos) y de la Q5 y `RN-LOG-007` de
+   [event-log.md](../specs/event-log.md).
+2. **HECHO** — Protocolo: `event_log.notice` en Zod (`EventLogNoticeKind`, subconjunto de `EventLogKind`) y en Go
+   (`EventLogNoticePayload`), los dos JSON Schema y sus contract tests (23 tipos servidor → cliente):
+   `TestElAvisoEsElDelEsquema` y el bloque «avisos en vivo» de `protocol.test.ts`.
+3. **HECHO** — Dominio: `eventlog.Notices` y `eventlog.NoticeKinds`, que pasan el suceso por `Classify` para sus dos
+   jugadores (`TestCadaSucesoAvisaASusDosLadosSegunElRegistro`, `TestSinOtroJugadorNoHayAviso`,
+   `TestSoloSeAvisanLosCuatroTiposDeCombate`).
+4. **HECHO** — Simulación: `notices.go` y el aviso en `kill`, `applyPillage` y `destroyHouse`, con la ciudad del otro
+   jugador y el tile; cinco tests en `notices_test.go`: los dos lados de una muerte en el tick del despawn, un aviso
+   por golpe de saqueo y ninguno al saqueado, la casa derribada, una muerte y una casa reencoladas que no vuelven a
+   avisar, y un golpe que no se escribe y ya se avisó. Tres mutaciones (el aviso en `submitDeath`, en
+   `submitDestruction` y sin el filtro de tipos), todas detectadas.
+5. **HECHO** — WebSocket: `TestUnAvisoLlegaConLaVistaEnOtraParteDelMapa` (`notices_e2e_test.go`), en un mundo de 8 × 8
+   chunks: el dueño, con la vista en su ciudad, recibe `UNIT_LOST` sin recibir el despawn; el asesino, `ENEMY_KILLED`;
+   un testigo, el despawn y ningún aviso. Mandar el aviso al chunk lo pone en rojo.
+6. **HECHO** — Cliente: `src/state/notices.ts` (agrupación, los 8 s, los tres visibles, el punto, el contador del
+   título) con `notices.test.ts`, `notices` en el store sin tocar `eventLog` (`world.test.ts`), la franja
+   `NoticeStrip` con «Ir» (prop `focus` de `GameCanvas`) y el punto en «Registro».
+7. **HECHO** — Humo y prueba en vivo (2026-11-04). Sin migración nueva: la base de desarrollo sigue en la 13, y al
+   arrancar el pacto 5 entre `smoke_runner` y `smoke_victim` pasó a `BROKEN`. `scripts/smoke.mjs --saqueo --asedio
+   --registro` con `smoke_runner`, 40 comprobaciones en verde: una segunda sesión de `smoke_runner` con la vista en su
+   ciudad (291,19), a ~160 tiles y fuera de su área de interés, recibió `PILLAGE_DONE` («5 de madera a
+   smoke_victimpolis en (449, 181)») y `HOUSE_DESTROYED` («en (450, 178)»), y `smoke_victim` ninguno de los dos; el
+   registro de cada lado los cuenta. Una segunda pasada con `--asedio`, 26 comprobaciones. En el navegador, con
+   `smoke_runner` en su ciudad durante esa pasada, un observador del DOM vio llegar el aviso «Tus guerreros derribaron
+   una casa de smoke_victimpolis» con «Ir», el punto en «Registro» y el título «(1) Empires Online» (el panel estaba
+   oculto), y la franja vaciarse sola 8,1 s después; abrir el registro borró el punto y trajo las dos entradas
+   avisadas. **No se comprobó en el navegador** que «Ir» mueva la cámara ni que el título se borre al volver a la
+   pestaña: con el panel oculto no hay frames ni cambio de visibilidad que provocar. Lo cubren `notices.test.ts`,
+   `world.test.ts` y el typecheck.

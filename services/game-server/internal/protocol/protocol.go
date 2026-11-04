@@ -78,6 +78,7 @@ const (
 	TypeTreatyUpdate          = "treaty.update"
 	TypeEventLogPage          = "event_log.page"
 	TypeTradeUpdate           = "trade.update"
+	TypeEventLogNotice        = "event_log.notice"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -477,6 +478,22 @@ type EventLogEntry struct {
 	// de quien lee y lo que metía en él (SPEC-TRADE §6).
 	TradeGive []ResourceAmount `json:"tradeGive,omitempty"`
 	TradeGet  []ResourceAmount `json:"tradeGet,omitempty"`
+}
+
+// EventLogNoticePayload es un aviso en vivo (SPEC-LIVE-NOTICES §6): un suceso
+// que les pasó a las unidades del jugador, en el tick en que pasó. No es una
+// entrada del registro: no lleva id ni recuento (RN-NOTICE-004, ADR-033 §1).
+// Los campos opcionales sólo van en los tipos que los usan.
+type EventLogNoticePayload struct {
+	Kind          string  `json:"kind"`
+	AtMs          int64   `json:"atMs"`
+	OtherPlayerID string  `json:"otherPlayerId"`
+	OtherCityID   *int64  `json:"otherCityId"`
+	OtherCityName *string `json:"otherCityName"`
+	UnitType      string  `json:"unitType,omitempty"`
+	Amount        *int64  `json:"amount,omitempty"`
+	X             *int32  `json:"x,omitempty"`
+	Y             *int32  `json:"y,omitempty"`
 }
 
 // EventLogPagePayload es una página del registro. NextBeforeID es nil en la

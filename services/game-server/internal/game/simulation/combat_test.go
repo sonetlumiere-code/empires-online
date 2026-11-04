@@ -34,6 +34,8 @@ type fakeCombat struct {
 	// devuelve PersistPillage si no es nil.
 	pillages   []simulation.Pillage
 	pillageErr error
+	// deathErr, si no es nil, es lo que devuelve PersistDeath.
+	deathErr error
 }
 
 func (f *fakeCombat) PersistAttack(_ context.Context, a simulation.Attack) error {
@@ -46,6 +48,9 @@ func (f *fakeCombat) PersistAttack(_ context.Context, a simulation.Attack) error
 func (f *fakeCombat) PersistDeath(_ context.Context, d simulation.Death) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.deathErr != nil {
+		return f.deathErr
+	}
 	f.deaths = append(f.deaths, d)
 	return nil
 }

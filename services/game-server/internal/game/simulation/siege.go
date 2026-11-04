@@ -10,6 +10,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
@@ -420,6 +421,14 @@ func (s *Simulation) destroyHouse(b *building.Building, c *city.City, attacker *
 	cx, cy := s.state.World().ChunkOf(b.X, b.Y)
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeBuildingDestroyed,
 		protocol.BuildingDestroyedPayload{ID: b.ID, CityID: c.ID})
+	// El aviso en vivo, al dueño del atacante; el de la casa ya tiene
+	// besiegedAtMs (SPEC-LIVE-NOTICES Q1). Aquí y no en submitDestruction, que
+	// el volcado repite (ADR-033 §2).
+	tile := b.Tile()
+	s.sendNotices(eventlog.Event{
+		Type: eventlog.EventBuildingDestroyed, PlayerID: c.OwnerPlayerID, Counterpart: attacker.PlayerID,
+		AtMs: nowMs, X: tile.X, Y: tile.Y, HasTile: true,
+	})
 	if wasComplete {
 		limit := c.PopulationLimit
 		s.broadcastCity(c, protocol.CityUpdatePayload{PopulationLimit: &limit})

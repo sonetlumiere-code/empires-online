@@ -68,6 +68,16 @@ import {
   unseenEntries,
   type EventLogEntry,
 } from '../src/state/eventLog';
+import {
+  documentTitle,
+  hasUnreadNotices,
+  nextNoticeExpiry,
+  noticeIsLoss,
+  noticeText,
+  noticeTile,
+  visibleNotices,
+  type NoticeGroup,
+} from '../src/state/notices';
 import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
@@ -154,7 +164,8 @@ export default function Page() {
   useEffect(() => () => clientRef.current?.disconnect(), []);
 
   // Registro (SPEC-EVENT-LOG): se pide al conectar y al volver a la pestaña tras
-  // un rato fuera (RN-LOG-007); el servidor no empuja nada.
+  // un rato fuera (RN-LOG-007). El servidor no empuja entradas: los avisos en vivo
+  // van aparte (SPEC-LIVE-NOTICES) y no tocan la lista.
   const eventLog = useWorldStore((s) => s.eventLog);
   const [logOpen, setLogOpen] = useState(false);
   const requestEventLog = useCallback((beforeId: number | null) => {
@@ -169,6 +180,8 @@ export default function Page() {
   useEffect(() => {
     let hiddenSince: number | null = null;
     const onVisibility = () => {
+      // El contador del título de los avisos (SPEC-LIVE-NOTICES Q7).
+      useWorldStore.getState().setTabHidden(document.visibilityState === 'hidden');
       if (document.visibilityState === 'hidden') {
         hiddenSince = Date.now();
         return;
@@ -189,9 +202,33 @@ export default function Page() {
   }, []);
   const toggleLog = useCallback(() => {
     if (logOpen) markLogSeen();
-    else requestEventLog(null);
+    else {
+      // Abrir el registro pide la primera página, que trae lo avisado
+      // (RN-NOTICE-004), y borra el punto de avisos.
+      requestEventLog(null);
+      useWorldStore.getState().markNoticesOpened();
+    }
     setLogOpen(!logOpen);
   }, [logOpen, markLogSeen, requestEventLog]);
+
+  // Avisos en vivo (SPEC-LIVE-NOTICES): la franja se apaga sola, con un render más
+  // cuando caduca el siguiente grupo; el título cuenta lo llegado con la pestaña
+  // oculta; «Ir» lleva la cámara al tile, nunca sola (Q4).
+  const notices = useWorldStore((s) => s.notices);
+  const [focus, setFocus] = useState<{ x: number; y: number; nonce: number } | null>(null);
+  const goTo = useCallback((tile: { x: number; y: number }) => {
+    setFocus((f) => ({ ...tile, nonce: (f?.nonce ?? 0) + 1 }));
+  }, []);
+  useEffect(() => {
+    const now = clientRef.current?.serverTimeMs() ?? Date.now();
+    const expiry = nextNoticeExpiry(notices, now);
+    if (expiry === null) return;
+    const id = setTimeout(() => setTick((n) => n + 1), expiry - now + 50);
+    return () => clearTimeout(id);
+  }, [notices]);
+  useEffect(() => {
+    document.title = documentTitle(BASE_TITLE, notices);
+  }, [notices]);
 
   // Abre el WebSocket con el primer ticket; las reconexiones piden el suyo con
   // la cookie de sesión, porque los tickets son de un solo uso.
@@ -486,6 +523,11 @@ export default function Page() {
               title="Lo que te pasó en los últimos días: muertes, saqueos, casas derribadas y cambios en tus tratados"
             >
               Registro{unseenEntries(eventLog).length > 0 ? ` (${unseenEntries(eventLog).length})` : ''}
+              {hasUnreadNotices(notices) && (
+                <span style={{ color: 'var(--danger)', marginLeft: '0.3rem' }} aria-label="avisos nuevos" title="Avisos nuevos">
+                  ●
+                </span>
+              )}
             </button>
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
             <span title="Piedra de la ciudad: se recoge en las colinas">Piedra {ownCity.stocks.STONE}</span>
@@ -696,13 +738,15 @@ export default function Page() {
         <div style={{ ...styles.hud, color: 'var(--danger)' }}>{logoutError}</div>
       )}
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <GameCanvas
           serverTimeMs={serverTimeMs}
           onTileClick={handleTileClick}
           onUnitClick={handleUnitClick}
           onCameraCenter={handleCameraCenter}
+          focus={focus}
         />
+        <NoticeStrip groups={visibleNotices(notices, serverTimeMs())} onGo={goTo} />
       </div>
 
       {lastError && (
@@ -711,6 +755,38 @@ export default function Page() {
         </footer>
       )}
     </main>
+  );
+}
+
+/** El título de la pestaña sin avisos (el de app/layout.tsx). */
+const BASE_TITLE = 'Empires Online';
+
+/**
+ * La franja de avisos en vivo sobre el mapa (SPEC-LIVE-NOTICES Q2): tres como
+ * mucho, con el texto del registro y «Ir» cuando traen tile.
+ */
+function NoticeStrip({ groups, onGo }: { groups: readonly NoticeGroup[]; onGo: (tile: { x: number; y: number }) => void }) {
+  return (
+    <ul style={styles.notices} role="status" aria-live="polite" aria-label="Avisos">
+      {groups.map((g) => {
+        const tile = noticeTile(g);
+        return (
+          <li key={`${g.key}-${g.firstAtMs}`} style={styles.notice}>
+            <span style={{ color: noticeIsLoss(g) ? 'var(--danger)' : undefined }}>{noticeText(g)}</span>
+            {tile && (
+              <button
+                className="secondary"
+                style={{ marginLeft: 'auto' }}
+                onClick={() => onGo(tile)}
+                title={`Llevar la cámara a (${tile.x}, ${tile.y})`}
+              >
+                Ir
+              </button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -840,5 +916,30 @@ const styles = {
     background: 'var(--panel)',
     borderBottom: '1px solid var(--border)',
     fontSize: '0.82rem',
+  },
+  // Por encima del lienzo y por debajo de «Mientras no estabas» (zIndex 10).
+  notices: {
+    position: 'absolute',
+    top: '0.75rem',
+    right: '0.75rem',
+    zIndex: 5,
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'grid',
+    gap: '0.4rem',
+    width: 'min(360px, calc(100% - 1.5rem))',
+    pointerEvents: 'none',
+  },
+  notice: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+    padding: '0.5rem 0.75rem',
+    background: 'var(--panel)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    fontSize: '0.82rem',
+    pointerEvents: 'auto',
   },
 } as const;

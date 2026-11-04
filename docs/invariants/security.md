@@ -415,12 +415,19 @@ token legítimo funde otro id que el que Next.js acaba de autenticar.
 |---|---|
 | Severidad | ALTO |
 | Aplicación | BOUNDARY, DOMAIN, TEST |
-| Milestone | E7 |
+| Milestone | E7 (los avisos, E11) |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestUnTerceroNoVeLosSucesosDeOtros` (unit, `internal/domain/eventlog`), `TestElRegistroCuentaCadaLadoYNadaAUnTercero` y `TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload` (integration), `TestElRegistroSeSirveAlJugadorDeLaSesion` y `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e, `internal/websocket`) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract) |
+| Cobertura | **Cubierto** por `TestUnTerceroNoVeLosSucesosDeOtros` (unit, `internal/domain/eventlog`), `TestElRegistroCuentaCadaLadoYNadaAUnTercero` y `TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload` (integration), `TestElRegistroSeSirveAlJugadorDeLaSesion` y `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e, `internal/websocket`) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract); los avisos, por `TestSinOtroJugadorNoHayAviso` y `TestCadaSucesoAvisaASusDosLadosSegunElRegistro` (unit), `TestUnaMuerteAvisaALosDosLadosEnElTickDelDespawn` (`internal/game/simulation`) y `TestUnAvisoLlegaConLaVistaEnOtraParteDelMapa` (e2e) |
 
 **Enunciado.** Toda entrada de `event_log.page` que recibe una sesión sale de filas de `world_events` cuyo
-`player_id` o `counterpart_player_id` es el jugador de esa sesión.
+`player_id` o `counterpart_player_id` es el jugador de esa sesión; y todo `event_log.notice` que recibe cuenta un
+suceso en el que ese jugador es la víctima o el autor.
+
+**Precisión (2026-11-04, [SPEC-LIVE-NOTICES](../specs/live-notices.md) `RN-NOTICE-002`, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md) §3).**
+Hasta E11 el registro sólo se leía. El aviso en vivo no sale de una fila sino del suceso que la simulación acaba de
+decidir, y por eso el enunciado lo nombra aparte; la regla es la misma, porque qué aviso da un suceso y a quién lo
+decide la misma clasificación que la página (`eventlog.Classify`). El aviso no acepta nada del cliente
+([INV-SEC-001](#inv-sec-001)): ningún comando lo pide.
 
 **Razón.** `world_events` guarda los sucesos de todo el mundo: quién saquea a quién, qué tratados se firman. Si un
 jugador pudiera leer las filas de otro, sabría con quién está aliado (SPEC-DIPLOMACY Q8 lo hace privado) y a quién le
@@ -432,6 +439,9 @@ están quitando madera.
   `event_log.fetch` no tiene ningún campo que nombre a un jugador.
 - `DOMAIN` — la consulta filtra por `player_id = P OR counterpart_player_id = P`, y la traducción a entradas
   descarta además lo que el propio jugador hizo en la diplomacia (SPEC-EVENT-LOG §4.1).
+- `DOMAIN` — los avisos: `eventlog.Notices` pasa el suceso por `Classify` para sus dos jugadores, la víctima y el
+  autor, y la simulación sólo manda a esos dos lo que devuelve ([ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)
+  §3).
 
 **Cómo se verifica.**
 
@@ -445,6 +455,14 @@ están quitando madera.
 - `TestElRegistroSeSirveAlJugadorDeLaSesion` (e2e) — cada página se pide para el jugador de la sesión; y
   `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract) —
   un `playerId` en el comando es `INVALID_MESSAGE` y el esquema no tiene dónde ponerlo.
+- `TestSinOtroJugadorNoHayAviso` (unit) — ningún tipo de evento da un aviso a quien no es parte, y un suceso sin otro
+  jugador, o con el mismo en los dos lados, no avisa a nadie. `TestCadaSucesoAvisaASusDosLadosSegunElRegistro` (unit)
+  — cada aviso es el tipo de entrada que el registro le daría a ese jugador; quitar el filtro de tipos de
+  `eventlog.Notices` lo pone en rojo (verificado por mutación).
+- `TestUnaMuerteAvisaALosDosLadosEnElTickDelDespawn` (simulation) — una muerte da un aviso a la víctima y otro al autor,
+  y a nadie más. `TestUnAvisoLlegaConLaVistaEnOtraParteDelMapa` (e2e) — un testigo con la muerte en su área recibe el
+  `entity.despawn` y ningún aviso; el dueño, que mira otra parte del mapa, recibe el suyo. Mandar el aviso al chunk en
+  lugar de al jugador pone en rojo el e2e (verificado por mutación).
 
 **Violación en runtime.** Indetectable desde el servidor: lo que se envía no vuelve. Por eso el filtro está en la
 consulta y el jugador sale de la sesión.
@@ -483,4 +501,4 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | INV-SEC-006 | `internal/config`, `apps/web/src/server` | [../operations/monitoring.md](../operations/monitoring.md) |
 | INV-SEC-007 | `internal/websocket`, `internal/persistence/redis` | [INV-PERSIST-001](persistence.md#inv-persist-001), [INV-PLAYER-003](player.md#inv-player-003) |
 | INV-SEC-008 | `internal/auth`, `internal/httpapi`, `apps/web` | [INV-SEC-003](#inv-sec-003), [INV-PLAYER-009](player.md#inv-player-009) |
-| INV-SEC-009 | `internal/websocket`, `internal/persistence/postgres`, `internal/domain/eventlog` | [INV-SEC-002](#inv-sec-002), [INV-PERSIST-006](persistence.md#inv-persist-006) |
+| INV-SEC-009 | `internal/websocket`, `internal/persistence/postgres`, `internal/domain/eventlog`, `internal/game/simulation` (los avisos) | [INV-SEC-002](#inv-sec-002), [INV-PERSIST-006](persistence.md#inv-persist-006) |

@@ -10,6 +10,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
@@ -363,6 +364,12 @@ func (s *Simulation) applyPillage(h pillageHit, nowMs int64) bool {
 	at := nowMs
 	s.deps.Broadcaster.SendToPlayer(c.OwnerPlayerID, protocol.TypeCityUpdate, "",
 		protocol.CityUpdatePayload{ID: c.ID, PillagedAtMs: &at})
+	// Y el aviso en vivo, al dueño del saqueador; la víctima ya tiene el suyo
+	// (SPEC-LIVE-NOTICES Q1, ADR-033 §3).
+	s.sendNotices(eventlog.Event{
+		Type: eventlog.EventCityPillaged, PlayerID: c.OwnerPlayerID, Counterpart: a.PlayerID,
+		AtMs: nowMs, Amount: amount, X: p.At.X, Y: p.At.Y, HasTile: true,
+	})
 
 	// Carga llena: el saqueo termina y el guerrero queda IDLE junto a la
 	// muralla; volver es decisión de su dueño (RN-COMBAT-025, Q6).

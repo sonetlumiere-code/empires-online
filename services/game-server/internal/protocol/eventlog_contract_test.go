@@ -74,3 +74,37 @@ func TestLaPaginaDelRegistroEsLaDelEsquema(t *testing.T) {
 	sort.Strings(dominio)
 	assert.Equal(t, dominio, kinds)
 }
+
+// El aviso en vivo (SPEC-LIVE-NOTICES §6): los campos que serializa el servidor
+// son los del esquema, los obligatorios siempre y los opcionales sólo cuando
+// están; no lleva id ni recuento, porque no es una entrada (RN-NOTICE-004); y su
+// enum de tipos es el de eventlog.NoticeKinds.
+func TestElAvisoEsElDelEsquema(t *testing.T) {
+	root, notice := serverVariant(t, protocol.TypeEventLogNotice)
+	payload := dig(t, root, notice, "properties", "payload").(map[string]any)
+	declaradas := clavesDe(dig(t, root, payload, "properties").(map[string]any))
+	assert.NotContains(t, declaradas, "id")
+	assert.NotContains(t, declaradas, "count")
+
+	var (
+		id, n  = int64(7), int64(5)
+		x, y   = int32(1), int32(2)
+		nombre = "Villa Norte"
+	)
+	completo := protocol.EventLogNoticePayload{
+		Kind: "PILLAGE_DONE", AtMs: 1, OtherPlayerID: "x", OtherCityID: &id, OtherCityName: &nombre,
+		UnitType: "VILLAGER", Amount: &n, X: &x, Y: &y,
+	}
+	require.Equal(t, declaradas, clavesDe(serializado(t, completo)), "con todo, los campos del esquema")
+	minimo := clavesDe(serializado(t, protocol.EventLogNoticePayload{Kind: "UNIT_LOST", AtMs: 1, OtherPlayerID: "x"}))
+	require.Equal(t, requeridas(t, payload), minimo, "sin opcionales, sólo los obligatorios")
+
+	kinds := enumOf(t, dig(t, root, payload, "properties", "kind"))
+	var dominio []string
+	for _, k := range eventlog.NoticeKinds() {
+		dominio = append(dominio, string(k))
+	}
+	sort.Strings(kinds)
+	sort.Strings(dominio)
+	assert.Equal(t, dominio, kinds)
+}
