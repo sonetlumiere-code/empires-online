@@ -7,7 +7,7 @@ manda expediciones largas o, cuando exista, comercia.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-ECON-STONE` |
-| Estado | Accepted (2026-11-04), con las preguntas de §10 decididas ese día con la recomendación de cada una. |
+| Estado | Implemented (2026-11-04). Aceptada el 2026-11-04 con las preguntas de §10 decididas ese día con la recomendación de cada una; en `main` desde la fusión `d12db5e`, con la CI en verde el mismo día. |
 | Milestone | E9 Piedra (noveno slice después de M7) |
 | Canon | §5 (terreno), §10 (eras y límite de población), §12 (persistencia), §16 (errores) |
 | Depende de | [economy-wood.md](economy-wood.md), [economy-forest.md](economy-forest.md), [city.md](city.md), [combat-siege.md](combat-siege.md), [combat-pillage.md](combat-pillage.md), [movement.md](movement.md), [websocket-protocol.md](websocket-protocol.md) |

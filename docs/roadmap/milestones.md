@@ -1615,7 +1615,7 @@ máquinas de asedio, reparar casas, niebla de guerra.
 
 ## E9 — Piedra
 
-**Estado: HECHO en la rama** `claude/slice-piedra` (2026-11-04), sin fusionar. Contrato:
+**Estado: HECHO (2026-11-04)**, fusionado en `main` (`d12db5e`) con la CI en verde el mismo día. Contrato:
 [SPEC-ECON-STONE](../specs/economy-stone.md), aceptada el 2026-11-04 con sus diez decisiones de producto, y
 [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md).
 

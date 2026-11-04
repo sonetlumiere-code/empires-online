@@ -294,7 +294,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E8 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E9 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -307,6 +307,10 @@ Matices que conviene no maquillar:
 - **E8 Asedio está en `main`** desde `3b1cd48`, con la CI en verde y una prueba en vivo con el humo `--asedio` y el
   navegador el 2026-11-04; [SPEC-COMBAT-SIEGE](specs/combat-siege.md) está en `Implemented`, con la migración
   `000011` y [ADR-029](decisions/ADR-029-population-over-limit-and-house-destruction.md).
+- **E9 Piedra está en `main`** desde `d12db5e`, con la CI en verde y una prueba en vivo con el humo `--piedra` y
+  `--avance` y el navegador el 2026-11-04; [SPEC-ECON-STONE](specs/economy-stone.md) está en `Implemented`, con la
+  migración `000012`, [ADR-030](decisions/ADR-030-stone-layer-and-era-advance.md) y
+  [ADR-031](decisions/ADR-031-pathfinding-node-cap-50k.md), que sube el tope de nodos del A\* a 50 000.
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en
