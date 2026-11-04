@@ -1798,13 +1798,24 @@ territorio, perder territorio por abandono, tope de territorios, `control_points
 
 1. **HECHO** — Aceptación: spec, ADR-034, `INV-TERR-010` e `INV-TERR-011`, las precisiones de `INV-TERR-006`
    (`contested`), `INV-ECON-004` (el bono) y de `RN-TERR-009` y la Q-10 del backlog.
-2. Protocolo: `unit.claim`, `claim` en `TerritoryView`, `CLAIMING`, los tres tipos del registro y de los avisos, con
-   contract tests (23 tipos cliente → servidor).
-3. Dominio: el predicado de la reclamación, los plazos y el bono; la fórmula del límite con los territorios.
-4. Migración `000014` y persistencia: `territory_claims`, el comienzo, el fin y la captura en sus transacciones, la
-   carga; integración.
-5. Simulación: la orden en dos fases, el barrido de la fase 5, la captura con dos claves, la defensa automática, la
-   recuperación; el golden «conquista».
-6. Registro y avisos: `TerritoryClaimStarted` y `TerritoryControlChanged` en el registro, y los tres avisos.
-7. Cliente: el botón con su motivo, la cuenta atrás, el territorio en disputa en el overlay, los textos.
+2. **HECHO** — Protocolo: `unit.claim` (23 tipos cliente → servidor), `claim` en `TerritoryView`, `CLAIMING`, los tres
+   tipos del registro y de los avisos y `territoryId`/`territoryName`; contract tests en Go
+   (`TestTerritoryUpdateSerializaExactamenteLaVistaDelContrato`, `TestCatalogoDeComandosEsCerrado`) y el bloque
+   «conquista» de `protocol.test.ts`.
+3. **HECHO** — Dominio: `territory.CheckClaimable`, `CountConquered`, `CaptureBonus` y la reclamación en
+   `internal/domain/territory/claim.go`; `building.PopulationLimit` con el término de los territorios; `CLAIMING` en
+   `unit`.
+4. **HECHO** — Migración `000014` y persistencia: `postgres.ConquestRepo` (el comienzo idempotente, el fin, la captura de
+   ADR-034 §3 y la carga) y el adaptador; la validación de carga recuenta el límite y repara `contested`; tres tests de
+   integración en `conquest_integration_test.go`.
+5. **HECHO** — Simulación: `conquest.go` con la orden en dos fases, el barrido de la fase 5, la captura con dos claves,
+   la defensa automática, la cancelación y la recarga; once tests en `conquest_test.go`, con el golden «conquista».
+   Tres mutaciones (la capital en el dominio y en la transacción, y otra orden que no rompe la reclamación), todas
+   detectadas.
+6. **HECHO** — Registro y avisos: `TerritoryClaimStarted` y `TerritoryControlChanged` en `eventlog`, con
+   `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN` para cada lado y sin agrupar; el e2e
+   `TestUnaConquistaAvisaAlDuenoConLaVistaEnSuCiudad`.
+7. **HECHO** — Cliente: `src/state/conquest.ts`, el botón «Reclamar territorio» con su motivo, la cuenta atrás, el
+   territorio en disputa en ámbar, los textos del registro y de los avisos; `conquest.test.ts`, `eventLog.test.ts` y
+   `notices.test.ts`.
 8. Humo (`--territorio`) y prueba en vivo.

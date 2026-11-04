@@ -134,6 +134,8 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_TREATY_BREAK_NOTICE_MINUTES` | int | `15` | 1–1440 | No | No | Preaviso de una ruptura: el tratado sigue `ACTIVE`, con la paz y las guarniciones, hasta que vence (`RN-DIPLO-004`). |
 | `EO_TREATY_RETRY_MINUTES` | int | `10` | 1–1440 | No | No | Tras un rechazo, cuánto espera quien propuso para volver a proponer al mismo jugador (`RN-DIPLO-008`). |
 | `EO_TRADE_OFFER_HOURS` | int | `24` | 1–720 | No | No | Vida de una oferta de comercio sin respuesta; al vencer pasa a `EXPIRED` (SPEC-TRADE Q5, `RN-TRADE-006`). |
+| `EO_TERRITORY_CLAIM_FREE_SECONDS` | int | `300` | 1–86400 | No | No | Segundos que un guerrero tiene que aguantar para conquistar un territorio libre (SPEC-TERRITORY-CONQUEST Q3, `RN-CONQ-007`). |
+| `EO_TERRITORY_CLAIM_SECONDS` | int | `600` | 1–86400 | No | No | Lo mismo para un territorio con dueño: da tiempo a que el dueño reciba el aviso y lo defienda (SPEC-TERRITORY-CONQUEST Q3). |
 | `EO_EVENT_LOG_MAX_DAYS` | int | `7` | 1–90 | No | No | Hasta cuántos días atrás lee el registro de un jugador; lo más viejo sigue en `world_events` como auditoría (`RN-LOG-003`). |
 | `EO_EVENT_LOG_PAGE_SIZE` | int | `50` | 1–200 | No | No | Entradas, ya agrupadas, de una página del registro (`RN-LOG-003`). |
 | `EO_EVENT_LOG_GROUP_GAP_MINUTES` | int | `10` | 1–1440 | No | No | Hueco máximo entre dos sucesos del mismo tipo y con el mismo jugador para que formen una entrada (SPEC-EVENT-LOG §4.2). |

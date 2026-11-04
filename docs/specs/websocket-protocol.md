@@ -39,6 +39,7 @@ Dentro del scope de v1:
 - La piedra y el avance de era ([economy-stone.md](economy-stone.md)): `unit.gather` también sobre una colina (§7.8), `city.advance` (§7.16), `hills` en el snapshot y `hill.update` (§8.21), `STONE` en `stocks`, `carryingResource` en las unidades, y `era` y `advance` en las ciudades; todo aditivo (`R-VER-2`, `R-VER-3`).
 - El comercio ([trade.md](trade.md)): `trade.propose`, `trade.respond` y `trade.cancel` (§7.17), `trade.update` (§8.22), `tradeOffers` en el snapshot, `TRADE` como tipo proponible de `treaty.propose` (§7.13) y las cantidades de los tratos en el registro (`tradeGive`, `tradeGet`); todo aditivo (`R-VER-2`, `R-VER-3`).
 - Los avisos en vivo ([live-notices.md](live-notices.md)): `event_log.notice` (§8.23), aditivo (`R-VER-3`).
+- La conquista ([territory-conquest.md](territory-conquest.md)): `unit.claim` (§7.18), `claim` en `TerritoryView` con `contested` como «hay una reclamación activa», el estado `CLAIMING`, los tipos `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN` en el registro y en `event_log.notice`, y `territoryId`/`territoryName` en las dos; todo aditivo (`R-VER-2`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -135,8 +136,8 @@ type Inbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. Distinto de una versión soportada → `UNSUPPORTED_VERSION`. |
-| `type` | `string` | Sí | Uno de los veintidós tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
-| `requestId` | `string` (UUID) | Sí en los veintidós tipos, según el esquema Zod. El servidor lo **exige** hoy en los diecisiete comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond` y `trade.cancel`), donde es la clave de idempotencia; en los de sesión y en los del registro lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
+| `type` | `string` | Sí | Uno de los veintitrés tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
+| `requestId` | `string` (UUID) | Sí en los veintitrés tipos, según el esquema Zod. El servidor lo **exige** hoy en los dieciocho comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond` y `trade.cancel`), donde es la clave de idempotencia; en los de sesión y en los del registro lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
 | `payload` | `object` | Sí | Objeto específico del `type`, **estricto**: ninguna propiedad adicional. Nunca `null`. |
 
 El payload se deja sin decodificar (`json.RawMessage`) hasta después de validar versión, tipo y autorización: no se gasta trabajo en mensajes que van a rechazarse.
@@ -229,7 +230,7 @@ El cliente de `apps/web` reconecta con backoff exponencial y jitter —0,5 s, 1 
 
 ## 7. Mensajes cliente → servidor
 
-Los veintidós tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch` y `event_log.seen`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), y los tres `trade.*`, con [SPEC-TRADE](trade.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
+Los veintitrés tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch` y `event_log.seen`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), los tres `trade.*`, con [SPEC-TRADE](trade.md), y `unit.claim`, con [SPEC-TERRITORY-CONQUEST](territory-conquest.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
 
 ### 7.1 `session.hello`
 
@@ -561,6 +562,22 @@ payload: z.object({ offerId: EntityId }).strict()
 
 **Efectos.** No hay `*.accepted`: el resultado llega como `trade.update` (§8.22) a los dos jugadores, con el `requestId` sólo para quien dio la orden. Aceptar es una orden en dos fases: el tick reserva lo que da cada parte y una sola transacción mueve los dos almacenes; con éxito, `trade.update` con `ACCEPTED` y `city.update { stocks }` al chunk de cada ciudad.
 
+### 7.18 `unit.claim`
+
+- **Dirección:** cliente → servidor. **Propósito:** un guerrero propio reclama el territorio del tile en que está: se planta y, si aguanta el plazo, el territorio pasa a su dueño. Es hostil contra el dueño del territorio, si lo tiene ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). Spec: [territory-conquest.md](territory-conquest.md); persistencia: [ADR-034](../decisions/ADR-034-territory-claims.md).
+
+```ts
+payload: z.object({ unitId: EntityId }).strict()
+```
+
+```json
+{ "v": 1, "type": "unit.claim", "requestId": "8b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e", "payload": { "unitId": 48211 } }
+```
+
+**Validaciones, en este orden** (`RN-CONQ-001` a `003`): la unidad existe (`UNIT_NOT_FOUND`) · ownership (`UNIT_NOT_OWNED`) · viva y no guarnecida (`UNIT_DEAD`, `UNIT_GARRISONED`) · no está entrando en una ciudad y es un guerrero (`UNIT_NOT_MOVABLE`) · su tile pertenece a un territorio y no está en una Safe Zone ni en una zona urbana (`INVALID_TARGET`) · el territorio no tiene otra reclamación activa (`INVALID_TARGET`) · no es del jugador ni la capital de su dueño (`INVALID_TARGET`) · quien reclama no está protegido y, si el territorio tiene dueño, éste tampoco (`CITY_PROTECTED`) · no hay tratado de paz con el dueño (`INVALID_TARGET`). Ni el territorio ni el plazo los manda el cliente. Rechazos como **`system.error`**.
+
+**Efectos, en dos fases.** El tick aparta el territorio y el guerrero, que se planta donde está (se para si se movía); la transacción escribe la reclamación. Con la confirmación, `entity.update { status: "CLAIMING" }` al chunk del guerrero y `territory.update` con `contested: true` y su `claim` a la huella del territorio; si tiene dueño, `event_log.notice { kind: "TERRITORY_CLAIMED" }` al dueño. Se rompe, sin captura, si el guerrero muere, recibe otra orden (`unit.move`, `unit.cancel_move`, …) o la reclamación queda bloqueada: `entity.update { status: "IDLE" }` y `territory.update` sin `claim`. Al vencer el plazo (`EO_TERRITORY_CLAIM_FREE_SECONDS`, `EO_TERRITORY_CLAIM_SECONDS`) y confirmarse la captura: `territory.update` con el dueño nuevo, `city.update { populationLimit }` a las dos ciudades y, si había dueño, `TERRITORY_LOST` y `TERRITORY_TAKEN`.
+
 ## 8. Mensajes servidor → cliente
 
 Los veintitrés tipos de v1. Ninguno de estos payloads es estricto (S-7).
@@ -832,7 +849,11 @@ interface TerritoryView {
   minX: number; minY: number; maxX: number; maxY: number;
   ownerType: 'NONE' | 'PLAYER' | 'CLAN' | 'FACTION';
   ownerId: string | null;      // consistente con ownerType: NONE ⟺ null
-  contested: boolean;
+  contested: boolean;          // desde E12: true exactamente mientras hay una reclamación activa
+  claim?: {                    // la reclamación activa (SPEC-TERRITORY-CONQUEST §6); aditivo
+    playerId: string; cityId: number | null; cityName: string | null;
+    startedAtMs: number; endsAtMs: number;
+  };
 }
 ```
 
@@ -1149,6 +1170,8 @@ payload: z.object({
 { "v": 1, "type": "event_log.notice", "seq": 520, "ts": 1788955600000, "payload": { "kind": "UNIT_LOST", "atMs": 1788955600000, "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "unitType": "VILLAGER", "x": 312, "y": 140 } }
 ```
 
+Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6).
+
 **No es una entrada del registro** (`RN-NOTICE-004`, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)): no tiene `id` ni recuento, no mueve el cursor de lo visto y el cliente no lo mete en la lista, que sigue saliendo de `event_log.page` (§8.19). `kind` es un subconjunto de los tipos de entrada: lo que hoy no llega a quien mira otra parte del mapa. Lo que la víctima de un saqueo o de un asedio ya recibe (`pillagedAtMs`, `besiegedAtMs` en `city.update`) no se repite. Un golpe de saqueo es un aviso; el cliente los agrupa. El servidor lo manda en todos los tipos con `x`/`y`, también en `HOUSE_DESTROYED` (el tile de la casa). Efímero: no se guarda ni se reenvía al reconectar.
 
 ## 9. Códigos de error
@@ -1192,8 +1215,8 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 
 | Regla | Detalle |
 |---|---|
-| I-1 | Los esquemas exigen `requestId` con formato UUID en los veintidós comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond` y `trade.cancel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
-| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond` y `treaty.cancel`). `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping`, `session.view` y los dos `event_log.*` no reservan clave: los primeros no crean efectos durables, `event_log.fetch` sólo lee y `event_log.seen` es monótono. |
+| I-1 | Los esquemas exigen `requestId` con formato UUID en los veintitrés comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond` y `trade.cancel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
+| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond` y `treaty.cancel`). `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping`, `session.view` y los dos `event_log.*` no reservan clave: los primeros no crean efectos durables, `event_log.fetch` sólo lee y `event_log.seen` es monótono. |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
 | I-5 | Un `requestId` repetido dentro de la ventana **no re-ejecuta** el comando. Si el original ya tuvo respuesta directa —`unit.move.accepted`, `unit.move.rejected` o un `system.error` con ese `requestId`—, el duplicado **recibe esa misma respuesta** otra vez, con el mismo payload: es lo que necesita el cliente que reintenta tras perder la conexión justo cuando el servidor contestaba. La respuesta se guarda en la clave `idem:{playerId}:{requestId}` en sustitución del marcador `"pending"`, sin bloquear el game loop, y conserva el TTL de 300 s. Un duplicado que llega mientras el original sigue en curso, o de un comando que no tiene respuesta directa (un `unit.cancel_move` que sale bien sólo produce el `unit.movement.cancelled` del chunk), no recibe nada. |
@@ -1221,7 +1244,7 @@ Este documento no define invariantes propios: materializa los de la familia `INV
 
 | Invariante | Cómo lo materializa este protocolo |
 |---|---|
-| [INV-SEC-001](../invariants/security.md#inv-sec-001) — el estado del cliente nunca muta el estado autoritativo | Los veintidós payloads cliente→servidor son **estrictos** (S-7) y ninguno tiene campo para posición, HP, ruta, ETA ni ownership (§7.4) |
+| [INV-SEC-001](../invariants/security.md#inv-sec-001) — el estado del cliente nunca muta el estado autoritativo | Los veintitrés payloads cliente→servidor son **estrictos** (S-7) y ninguno tiene campo para posición, HP, ruta, ETA ni ownership (§7.4) |
 | [INV-SEC-002](../invariants/security.md#inv-sec-002) — ninguna conexión ejecuta comandos antes de autenticarse | El lector de la sesión no arranca hasta que el handshake termina; `session.hello` es el único tipo pre-auth (§6, §7.1) |
 | [INV-SEC-003](../invariants/security.md#inv-sec-003) — un ticket solo puede canjearse una vez | `SET ticket:jti:{jti} NX EX 120` en el handshake (§7.1) |
 | [INV-SEC-004](../invariants/security.md#inv-sec-004) — todo comando valida ownership antes de ejecutarse | Validación 2 de `unit.move` y de `unit.cancel_move`, `unit.garrison` y `unit.ungarrison`, antes que cualquier lectura de estado (§7.4–§7.7) |
@@ -1247,7 +1270,7 @@ packages/protocol/
 ├── src/v1/
 │   ├── common.ts            # Tile, Waypoint, TimedPath, UnitView, CityView, TerritoryView, ChunkRef, ChunkTerrain
 │   ├── errors.ts            # ErrorCode como z.enum, exactamente los 24 códigos, y WS_CLOSE
-│   ├── client.ts            # los 22 mensajes cliente→servidor, TODOS .strict()
+│   ├── client.ts            # los 23 mensajes cliente→servidor, TODOS .strict()
 │   ├── server.ts            # los 23 mensajes servidor→cliente, ninguno .strict()
 │   └── index.ts             # export público de @empires-online/protocol
 ├── src/scripts/export-schema.ts

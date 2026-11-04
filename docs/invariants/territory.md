@@ -226,7 +226,7 @@ La consecuencia es concreta: si un jugador se borra, sus territorios quedan apun
 | Aplicación | TEST |
 | Milestone | M6 |
 | Política ante violación | Log `error`; sin reparación |
-| Cobertura | **Parcial**: `control_points = 0`, cubierto por `TestLaSiembraCreaUnaFilaDeControlPorTerritorio` y `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration); que `contested` siga a las reclamaciones activas (E12), sin test todavía |
+| Cobertura | **Cubierto**: `control_points = 0` por `TestLaSiembraCreaUnaFilaDeControlPorTerritorio` y `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration); `contested` por `TestUnaReclamacionLibreYSuCapturaSeEscribenUnaVez` y `TestUnFinDeReclamacionEsIdempotente` (integration), `TestConquistaGoldenDeUnTerritorioLibre` (`internal/game/simulation`) y `TestContestedSeAlineaConLasReclamacionesActivas` (`internal/game/loadcheck`) |
 
 **Enunciado.** En MVP, `control_points = 0` para toda fila de `territory_control`; y `contested = true` exactamente
 cuando el territorio tiene una reclamación `ACTIVE` en `territory_claims`.
@@ -376,7 +376,7 @@ La cualificación «a la huella de chunks del territorio» es la parte con conte
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E12 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado con [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md) antes de escribir su código |
+| Cobertura | **Cubierto** por `TestRechazosDeLaReclamacion` (caso «ya en disputa», `internal/game/simulation`) y `TestUnaReclamacionLibreYSuCapturaSeEscribenUnaVez` (integration: el índice rechaza la segunda activa) |
 
 **Enunciado.** Para cada territorio existe como mucho una fila de `territory_claims` con `status = 'ACTIVE'`.
 
@@ -390,8 +390,12 @@ reclama (SPEC-TERRITORY-CONQUEST Q7).
 - `DOMAIN` — el tick aparta el territorio al validar la orden, antes de encolar su escritura, así que una segunda
   orden en el mismo tick o mientras la primera espera su transacción se rechaza con `INVALID_TARGET`.
 
-**Cómo se verifica.** Un test de simulación que ordena dos reclamaciones sobre el mismo territorio, y uno de
-integración que inserta dos filas `ACTIVE` y espera el rechazo del índice.
+**Cómo se verifica.**
+
+- `TestRechazosDeLaReclamacion`, caso «ya en disputa» (simulation) — con una reclamación confirmada, otra sobre el mismo
+  territorio responde `INVALID_TARGET` y no escribe nada.
+- `TestUnaReclamacionLibreYSuCapturaSeEscribenUnaVez` (integration) — la segunda fila `ACTIVE` sobre el mismo territorio
+  es `ErrConflict`; un reintento de la misma petición devuelve la fila que ya había.
 
 **Violación en runtime.** El índice la hace imposible en la base; en la RAM, la transacción de la segunda falla con
 un rechazo de dominio y su reserva se deshace.
@@ -407,7 +411,7 @@ un rechazo de dominio y su reserva se deshace.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E12 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado con [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md) antes de escribir su código |
+| Cobertura | **Cubierto** por `TestQueTerritorioSePuedeReclamar` (unit, `internal/domain/territory`), `TestRechazosDeLaReclamacion` (caso «la capital ajena», simulation) y `TestUnaCapturaAjenaMueveLosDosLimitesYSeRegistra` (integration) |
 
 **Enunciado.** Si el territorio `T` tiene dueño `P` y el centro de una ciudad de `P` está dentro de `T`, ninguna
 transacción cambia el dueño de `T`.
@@ -424,8 +428,14 @@ destruyen ni se mueven, la capital lo es para siempre.
   su centro dentro del territorio, y si la tiene no escribe nada ([ADR-034](../decisions/ADR-034-territory-claims.md)
   §3).
 
-**Cómo se verifica.** Un test de unidad del predicado, uno de simulación que intenta reclamar una capital y uno de
-integración que intenta la captura con la ciudad dentro.
+**Cómo se verifica.**
+
+- `TestQueTerritorioSePuedeReclamar` (unit) — la capital, también con el centro en el borde inclusivo, es `ErrCapital`.
+  Quitar la comprobación del predicado lo pone en rojo, y también el caso de simulación (verificado por mutación).
+- `TestRechazosDeLaReclamacion`, caso «la capital ajena» (simulation) — `INVALID_TARGET` y nada escrito.
+- `TestUnaCapturaAjenaMueveLosDosLimitesYSeRegistra` (integration) — con una reclamación escrita sobre la capital, la
+  captura con la versión y el dueño correctos es `ErrConflict` y el dueño no cambia. Quitar la comprobación de la
+  transacción lo pone en rojo (verificado por mutación).
 
 **Violación en runtime.** Rechazo: la reclamación no empieza o la captura no se escribe, y la reclamación termina sin
 cambio de dueño.

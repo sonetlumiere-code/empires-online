@@ -199,7 +199,7 @@ que no trabaja cargaría madera sin que nadie la viera trabajar.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (al arrancar) |
-| Cobertura | **Parcial**: las casas, cubiertas por `TestElLimiteDePoblacionSumaCincoPorCasaCompleta` (unit), `TestElLimiteDePoblacionCuentaLasCasasCompletas` (`internal/game/loadcheck`), `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` (simulation) y `TestCompletarUnaCasaSumaSuBonoUnaVez` (integration); los territorios conquistados (E12), sin test todavía |
+| Cobertura | **Cubierto** por `TestElLimiteDePoblacionSumaCincoPorCasaCompleta` (unit), `TestElLimiteDePoblacionCuentaLasCasasCompletas` y `TestElLimiteDePoblacionCuentaLosTerritoriosConquistados` (`internal/game/loadcheck`), `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` y `TestConquistaDeUnTerritorioAjenoMueveLosDosLimitesYAvisa` (simulation), `TestCompletarUnaCasaSumaSuBonoUnaVez` y `TestUnaCapturaAjenaMueveLosDosLimitesYSeRegistra` (integration) |
 
 **Enunciado.** Para toda ciudad, `population_limit = eras.population_cap(era) + 5 × (número de filas de
 `buildings` de la ciudad con `type = 'HOUSE'` y `status = 'COMPLETE'`)`, tras cada transacción confirmada. Una

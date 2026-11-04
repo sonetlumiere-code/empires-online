@@ -249,7 +249,7 @@ Nótese qué transición **no existe**: `ONLINE → PROTECTED`. Y qué transici�
 | Aplicación | DOMAIN, TEST |
 | Milestone | M5 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto**: `TestIsProtected` y `TestLaProteccionVenceEnSuTope` (`internal/domain/city`) el predicado y su tope; `TestTodaAccionDelCatalogoEstaClasificada` (`internal/game/simulation`) la clasificación; `TestRechazosDelAtaque` (caso «dueño protegido») y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` el rechazo de la primera acción hostil, `unit.attack`, al ordenarla y en cada golpe |
+| Cobertura | **Cubierto**: `TestIsProtected` y `TestLaProteccionVenceEnSuTope` (`internal/domain/city`) el predicado y su tope; `TestTodaAccionDelCatalogoEstaClasificada` (`internal/game/simulation`) la clasificación; `TestRechazosDelAtaque` (caso «dueño protegido») y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` el rechazo de la primera acción hostil, `unit.attack`, al ordenarla y en cada golpe; `TestRechazosDeLaReclamacion` (caso «dueño protegido») y `TestQueRompeUnaReclamacion` (caso «el dueño queda protegido») el de `unit.claim`, al ordenarla y en cada tick (SPEC-TERRITORY-CONQUEST) |
 
 **Enunciado.** Mientras `presence_state = PROTECTED`, toda acción del conjunto prohibido por la regla de protección dirigida contra esa ciudad o contra su territorio se rechaza con `CITY_PROTECTED`, sin producir ningún efecto sobre el estado.
 
