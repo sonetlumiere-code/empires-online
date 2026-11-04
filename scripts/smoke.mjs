@@ -542,7 +542,7 @@ async function main() {
   }
 
   if (PIEDRA) {
-    await piedra(segunda, ciudad2, cuenta.playerId, snap2);
+    await piedra(segunda, ciudad2, cuenta.playerId, snap2, unidad.id);
   }
 
   if (AVANCE) {
@@ -618,7 +618,7 @@ async function tala(sesion, playerId, snap, bosque) {
  * de la ciudad no hay ninguna, manda a un aldeano a recoger piedra y espera la
  * primera carga y su depósito.
  */
-async function piedra(sesion, ciudad, playerId, snap) {
+async function piedra(sesion, ciudad, playerId, snap, ocupado) {
   const s = sesion.sesion;
   const terreno = indexarTerreno(snap.terrain);
   const aMedias = [...(snap.hills ?? [])];
@@ -641,13 +641,24 @@ async function piedra(sesion, ciudad, playerId, snap) {
   // La orden, con la vista en la ciudad: el tramo empieza en su chunk.
   s.enviar('session.view', { center: centro });
   await s.esperar('world.snapshot');
-  const aldeano = snap.units.find((u) => u.playerId === playerId && u.unitType === 'VILLAGER' && u.garrisonCityId === null);
-  if (!aldeano) fallar('no hay ningún aldeano propio en el mapa', snap.units);
+  // Un aldeano que no sea el que ya recolecta madera (el paso 9): sus tramos de
+  // madera se confundirían con el de la piedra.
+  const aldeano = snap.units.find((u) => u.playerId === playerId && u.unitType === 'VILLAGER' &&
+    u.garrisonCityId === null && u.id !== ocupado && u.status === 'IDLE') ??
+    snap.units.find((u) => u.playerId === playerId && u.unitType === 'VILLAGER' && u.garrisonCityId === null && u.id !== ocupado);
+  if (!aldeano) fallar('no hay ningún aldeano propio libre en el mapa', snap.units);
   const piedraInicial = ciudad.stocks?.STONE ?? 0;
-  s.enviar('unit.gather', { unitId: aldeano.id, target: { x: colina.x, y: colina.y } });
+  const id = s.enviar('unit.gather', { unitId: aldeano.id, target: { x: colina.x, y: colina.y } });
   const ida = await s.esperarQue(['unit.movement.started', 'system.error'],
-    (m) => m.type === 'system.error' || m.payload.unitId === aldeano.id, 30_000);
-  if (ida.type === 'system.error') fallar('el servidor rechazó la orden de recoger piedra', ida.payload);
+    (m) => (m.type === 'system.error' && m.requestId === id) ||
+      (m.type === 'unit.movement.started' && m.payload.unitId === aldeano.id &&
+        m.payload.movement.target.x === colina.x && m.payload.movement.target.y === colina.y), 30_000);
+  if (ida.type === 'system.error') {
+    const pista = ida.payload.code === 'PATH_TOO_LONG'
+      ? ` (la colina está a ${colina.d} tiles: con EO_PATHFINDING_MAX_NODES=20000 el A* no encuentra rutas de más de unos 130; ver SPEC-ECON-STONE §4.1)`
+      : '';
+    fallar(`el servidor rechazó la orden de recoger piedra: ${ida.payload.code}${pista}`, ida.payload);
+  }
   const mov = ida.payload.movement;
   ok('recogida de piedra aceptada', `aldeano ${aldeano.id} -> (${colina.x}, ${colina.y}) · ida de ${mov.path.length} tiles`);
 
