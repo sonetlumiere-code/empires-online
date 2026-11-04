@@ -270,3 +270,26 @@ func TestElSaqueoNoSeLlevaPiedra(t *testing.T) {
 	assert.Less(t, h.state.Stock(c.ID).Amount, int64(100), "el saqueo se llevó madera")
 	assert.Equal(t, int64(500), h.state.StockOf(c.ID, economy.ResourceStone).Amount, "y nada de piedra")
 }
+
+// RN-ECON-020, precisión del 2026-11-04: lo que tiene que quedar al alcance es
+// la RUTA de vuelta, no sólo la distancia. Con el tope de nodos del A* corto,
+// la vuelta de 28 tiles no cabe aunque la distancia sí; un aldeano llevado
+// junto a la colina cargaría y perdería la carga al no poder volver. La orden
+// se rechaza al darla.
+func TestLaVueltaAlDepositoTieneQueTenerRuta(t *testing.T) {
+	pintar := func(terrain []byte) { terrain[10*64+40] = byte(world.Hill) }
+	h := newHarnessConDeps(t, pintar, func(d *simulation.Deps) { d.PathMaxNodes = 20 })
+	h.conectar()
+	u, _ := h.state.Unit(1)
+	u.SetTile(world.Tile{X: 39, Y: 10})
+	h.recolectar(1, world.Tile{X: 40, Y: 10})
+	assert.Equal(t, []string{protocol.CodePathTooLong}, h.codigos(), "la vuelta de 28 tiles no cabe en 20 nodos")
+	_, ok := h.state.Task(1)
+	assert.False(t, ok, "no empieza una tarea que no podría volver")
+
+	cerca := newHarnessConDeps(t, func(terrain []byte) { terrain[10*64+16] = byte(world.Hill) },
+		func(d *simulation.Deps) { d.PathMaxNodes = 20 })
+	cerca.conectar()
+	cerca.recolectar(1, world.Tile{X: 16, Y: 10})
+	assert.Empty(t, cerca.codigos(), "a 4 del depósito la vuelta cabe")
+}

@@ -53,6 +53,11 @@ piedra nunca se pasa a un bosque. `unit.gather` decide el tipo por el terreno de
 comprueba que el tile de trabajo está a una distancia de Chebyshev no mayor que `EO_PATHFINDING_MAX_DISTANCE` del
 depósito (`RN-ECON-020`).
 
+**Precisión (2026-11-04).** La distancia no basta: con el tope de nodos del A\* (`EO_PATHFINDING_MAX_NODES`) una vuelta
+de 165 tiles no tiene ruta aunque quepa en los 256. La orden calcula también la ruta del tile de trabajo al depósito
+con los mismos topes, y sin ella responde `PATH_TOO_LONG` o `PATH_NOT_FOUND`. Cuesta un A\* más por orden de
+recolección, no por viaje.
+
 ### 3. El stock es por recurso, y un coste es una lista
 
 En la RAM, cada ciudad tiene un `economy.Stock` por recurso, cada uno con su versión y sus depósitos sin volcar: es

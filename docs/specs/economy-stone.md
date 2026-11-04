@@ -64,9 +64,26 @@ Datos del mundo canónico (`EO_WORLD_SEED=20260909`, medidos el 2026-11-04 sobre
 | Distancia de la hierba a la colina más cercana | mediana 74, p90 187, máximo 283 |
 | Ciudades de desarrollo | a 30, 54, 62, 163, 194 (smoke_victim) y 216 tiles; smoke_runner, a 163 |
 
-Casi toda la tierra tiene colina dentro del alcance del pathfinding (256 tiles; el tope de nodos del A\* puede cortar
-alguna ruta larga y tortuosa), así que **nadie queda sin acceso a la piedra**: lo que cambia de una ciudad a otra es cuánto tarda y cuánto se expone. Es ventaja comparativa, no
+Casi toda la tierra tiene colina dentro del alcance del pathfinding (256 tiles), así que **nadie queda sin acceso a la
+piedra**: lo que cambia de una ciudad a otra es cuánto tarda y cuánto se expone. Es ventaja comparativa, no
 dependencia absoluta (Q2).
+
+**Precisión (2026-11-04): el tope de nodos del A\* recorta ese alcance.** Medido sobre 388 puntos de hierba del mapa
+canónico con colina a ≤ 256 tiles, buscando la ruta a la colina más cercana:
+
+| Colina a… | Puntos | Con 20 000 nodos (hoy) | Con 50 000 | Con 100 000 | p95 de la búsqueda con 50 000 |
+|---|---|---|---|---|---|
+| 0–95 tiles | 249 | 249 | 249 | 249 | ≤ 5,3 ms |
+| 96–127 | 42 | 39 | 42 | 42 | 7,0 ms |
+| 128–159 | 43 | 18 | 43 | 43 | 10,8 ms |
+| 160–191 | 25 | 4 | 25 | 25 | 12,8 ms |
+| 192–255 | 29 | 0 | 22 | 29 | 21,3 ms |
+| **Total** | **388** | **310 (80 %)** | **381 (98 %)** | **388** | |
+
+Con el tope actual, una de cada cinco ciudades (las que tienen la colina a más de unos 130 tiles; entre ellas
+smoke_runner y smoke_victim) no puede recoger piedra: la orden se rechaza al darla (`RN-ECON-020`) y sólo le queda el
+comercio de E10. Subir el tope es la condición de revisión de la deuda DEBT-04 (A\* plano) y cuesta tiempo de tick;
+la decisión está pendiente de producto.
 
 ### 4.2 Recoger piedra
 
@@ -79,6 +96,23 @@ Dominio: `RN-ECON`, continuando la numeración de [economy-forest.md](economy-fo
 | `RN-ECON-021` | **La piedra de la colina** sigue las reglas de la madera del bosque con sus propios parámetros (§4.3): cada tile `HILL` tiene `hillStone`; la carga se lleva `min(carry, remaining)` en orden de `id` de unidad (`RN-ECON-013`); un tile agotado rechaza `unit.gather` con `INVALID_TARGET` (`RN-ECON-014`); y vuelve a estar lleno `hillRegrowHours` después de su última carga, anclado a instantes absolutos (`RN-ECON-016`) (Q7). |
 | `RN-ECON-022` | **Tile agotado durante la tarea.** Como `RN-ECON-015`, buscando el tile `HILL` con piedra más cercano a ≤ `forestSearchRadius` = 6 del tile de trabajo. Nunca cambia de recurso: un aldeano de piedra no se pasa a un bosque. |
 | `RN-ECON-023` | El depósito suma la carga al stock `STONE` de la ciudad, por el mismo volcado de deltas que la madera ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). La piedra de la colina es **pública**, como la madera del bosque (`RN-ECON-018`). |
+
+**Precisión (2026-11-04).** Lo que la implementación decide dentro de estas reglas:
+
+- **La piedra no es botín.** Hasta E9 la carga de un aldeano que muere pasaba a su asesino como botín de madera
+  (`RN-COMBAT-010`). Con piedra, eso la convertiría en madera ([INV-COMBAT-003](../invariants/combat.md#inv-combat-003)):
+  la piedra que lleva un aldeano muerto se pierde con él, y el botín sigue siendo sólo madera, en la línea de Q8
+  (`TestLaPiedraDeUnAldeanoMuertoNoEsBotin`).
+- **`RN-ECON-020` comprueba la ruta de vuelta, no sólo la distancia.** La primera versión miraba sólo la distancia de
+  Chebyshev, y la prueba en vivo encontró que con el tope de nodos del A\* (`EO_PATHFINDING_MAX_NODES`, 20 000) una
+  vuelta de 165 tiles no tiene ruta aunque quepa en los 256: un aldeano acercado a mano habría cargado y perdido la
+  carga. La orden calcula ahora la ruta del tile de trabajo al depósito con los mismos topes y, si no la hay, responde
+  `PATH_TOO_LONG` (o `PATH_NOT_FOUND`) al darla (`TestLaVueltaAlDepositoTieneQueTenerRuta`).
+- **Una sola capa por terreno.** El dominio `forest` pasó a `deposit`, con una capa para el bosque y otra para la
+  colina con los mismos números ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §1); el golden «tala»
+  no cambió.
+- **La carga viaja con su recurso** sólo cuando existe: `carryingResource` acompaña a `carrying` en la vista de la
+  unidad y en `entity.update`, y falta cuando no hay carga.
 
 ### 4.3 Valores de partida
 
@@ -233,6 +267,10 @@ cierto por vacuidad, porque sólo el alta escribía la era; con este slice tiene
 | integration | Encargo del avance con fallo inyectado (ni piedra ni madera gastadas sin avance, ni avance sin las dos); idempotencia por `requestId`; `CHECK` de `hill_stone` y de los valores nuevos; la carga de piedra con la tarea en una transacción |
 | contract / e2e | `city.advance`, `hill.update`, `hills`, `STONE`, `carryingResource`, `era` y `advance` contra el JSON Schema; recorridos completos por WebSocket. `hill.update` llega en el mismo commit que su e2e (el `TestMain` de `schema_e2e_test.go` lo exige) |
 | cliente | Contador de piedra, era y botón de avanzar con su motivo; clic sobre una colina; dibujo de la colina a medias y agotada. `scripts/smoke.mjs` añade `--piedra`, que llega hasta la primera carga: las ciudades del humo están a 163 y 194 tiles de la colina y un viaje entero dura minutos. El avance en vivo necesita stock: lo siembra `pnpm run dev:seed` en la base de desarrollo, nunca en una migración |
+
+**Precisión (2026-11-04).** `--piedra` espera también el depósito, y el avance en vivo tiene su propia opción,
+`--avance`, que es irreversible por ciudad. La semilla del almacén es `EO_DEVSEED_STOCK_FOR=usuario pnpm run dev:seed`
+([../operations/local-development.md](../operations/local-development.md) §3-bis.8).
 
 ## 10. Decisiones de producto (2026-11-04)
 

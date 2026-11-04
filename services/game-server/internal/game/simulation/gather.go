@@ -144,17 +144,6 @@ func (s *Simulation) handleGather(cmd Gather) {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msg)
 		return
 	}
-	// RN-ECON-020: el depósito tiene que quedar al alcance del pathfinding desde
-	// el tile de trabajo; si no, la unidad cargaría y no podría volver.
-	if c, ok := s.cityOfUnit(u); ok {
-		if depot, ok := s.depositTile(c); ok {
-			if max := s.deps.PathMaxDistance; max > 0 && chebyshevTiles(depot, cmd.Target) > max {
-				s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodePathTooLong,
-					"el depósito de la ciudad queda demasiado lejos de ese tile")
-				return
-			}
-		}
-	}
 	if s.deps.Economy == nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInternalError, "la economía no está disponible")
 		return
@@ -163,6 +152,24 @@ func (s *Simulation) handleGather(cmd Gather) {
 	if err != nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInternalError, "tipo de unidad no catalogado")
 		return
+	}
+	// RN-ECON-020: la vuelta al depósito tiene que tener ruta con los topes del
+	// pathfinding, no sólo caber en su distancia; si no, la unidad cargaría y no
+	// podría volver (precisión del 2026-11-04). La distancia, que es barata, va
+	// primero.
+	if c, ok := s.cityOfUnit(u); ok {
+		if depot, ok := s.depositTile(c); ok && depot != cmd.Target {
+			if max := s.deps.PathMaxDistance; max > 0 && chebyshevTiles(depot, cmd.Target) > max {
+				s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodePathTooLong,
+					"el depósito de la ciudad queda demasiado lejos de ese tile")
+				return
+			}
+			if _, err := s.legPath(cmd.Target, depot, def); err != nil {
+				s.economyError(cmd.PlayerID, cmd.RequestID, pathErrorCode(err),
+					"no hay camino de vuelta desde ese tile al depósito de la ciudad: "+err.Error())
+				return
+			}
+		}
 	}
 
 	// RN-ECON-002: el tile de trabajo es el propio bosque, y la ruta se rechaza
