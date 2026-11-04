@@ -95,6 +95,10 @@ describe('texto de cada entrada', () => {
     expect(entryText(entrada(1, 'TREATY_ENDED', { treatyType: 'NON_AGGRESSION' }))).toBe('El pacto de no agresión con Villa Norte terminó');
   });
 
+  it('el nombre de la ciudad no se toca, tampoco al principio', () => {
+    expect(entryText(entrada(1, 'PILLAGED', { amount: 5, otherCityName: 'smoke_runnerpolis' }))).toBe('smoke_runnerpolis te robó 5 de madera');
+  });
+
   it('sin ciudad, el otro es «otro jugador»', () => {
     expect(entryText(entrada(1, 'PILLAGED', { amount: 5, otherCityId: null, otherCityName: null }))).toBe('Otro jugador te robó 5 de madera');
   });

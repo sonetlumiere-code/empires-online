@@ -156,13 +156,21 @@ export function timeAgo(atMs: number, nowMs: number): string {
   return d === 1 ? 'hace 1 día' : `hace ${d} días`;
 }
 
-/** El texto de una entrada, siempre desde el punto de vista del jugador. */
+/**
+ * El texto de una entrada, siempre desde el punto de vista del jugador. El nombre
+ * de la ciudad va tal cual, también al principio: es un nombre, no una palabra
+ * que se pueda poner en mayúscula.
+ */
 export function entryText(e: EventLogEntry): string {
-  return capitalize(rawText(e));
+  const text = rawText(e);
+  return e.otherCityName === null && text.startsWith(UNKNOWN) ? capitalize(text) : text;
 }
 
+/** Cómo se nombra al otro cuando no tiene ciudad. */
+const UNKNOWN = 'otro jugador';
+
 function rawText(e: EventLogEntry): string {
-  const who = e.otherCityName ?? 'otro jugador';
+  const who = e.otherCityName ?? UNKNOWN;
   const tipo = TREATY_NAME[e.treatyType ?? ''] ?? 'tratado';
   const elTipo = TREATY_WITH_ARTICLE[e.treatyType ?? ''] ?? 'el tratado';
   const where = e.x !== undefined && e.y !== undefined ? ` cerca de (${e.x}, ${e.y})` : '';
