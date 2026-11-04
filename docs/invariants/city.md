@@ -83,7 +83,7 @@ El caso «durante una transferencia» merece énfasis: los cambios de ownership 
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M2 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration); el predicado por `TestLimiteDePoblacion` (`internal/domain/city`); la carga por `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` (`internal/game/loadcheck`) |
+| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` y `TestEntrenarSinPlazaSeRechazaSinDebitar` (integration); el predicado por `TestLimiteDePoblacion` (`internal/domain/city`), `TestCanTrainRespondeEnElOrdenDeLaSpec` (`internal/domain/production`) y `TestRechazosDeEntrenamiento` (simulation); la carga por `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` (`internal/game/loadcheck`) |
 
 **Enunciado.** Para toda ciudad y en todo instante, `0 <= population <= population_limit`.
 
@@ -94,9 +94,9 @@ El fallo típico no es un olvido de comprobar, sino un **TOCTOU**: dos comandos 
 **Cómo se garantiza.**
 
 - `DB` — la migración `000001` declara **dos** constraints complementarias sobre `cities`: `population integer NOT NULL DEFAULT 0 CHECK (population >= 0)` en la propia columna, y `CONSTRAINT cities_population_within_limit CHECK (population <= population_limit)`. Juntas cubren el enunciado completo; ésos son sus nombres reales, sin prefijo de convención. Son la última línea de defensa y la que hace imposible el TOCTOU si `population` se actualiza en la misma transacción que la creación de la unidad.
-- `DOMAIN` — **hoy sólo hay un escritor de `population`**: el alta, que la recalcula con `CityRepo.UpdatePopulation` como recuento de unidades vivas en la misma transacción que crea los tres aldeanos. No existe ninguna ruta que cree unidades después del alta, así que el TOCTOU descrito arriba no tiene todavía dónde ocurrir.
-- `DOMAIN` — `City.HasPopulationRoom(n int32) bool` (`internal/domain/city`) es el predicado para la creación de unidades, y **ningún código lo llama todavía**. Cuando exista esa ruta, tendrá que comprobar la capacidad **dentro de la misma transacción** que inserta en `units` y recalcula `population`, no antes en una lectura suelta.
-- `DOMAIN` — rebasar el límite tiene código estable, `POPULATION_LIMIT_REACHED` (canon §16), que está en el catálogo pero **nadie lo emite** por la misma razón. Que la regla exista no exime de la constraint: la regla protege la experiencia, el `CHECK` protege el dato.
+- `DOMAIN` — **escritores de `population`** (desde E1): el alta, que la recalcula con `CityRepo.UpdatePopulation` como recuento de unidades vivas en la transacción que crea los tres aldeanos; el encargo de `city.train`, que la sube en el coste de la unidad en la transacción del encargo (la reserva de `RN-ECON-010`, `postgres/economy.go`); la muerte de una unidad, que la baja (`postgres/combat.go`); y la validación de carga, que la recuenta ([INV-CITY-017](#inv-city-017)). Después del alta, sólo el encargo la sube.
+- `DOMAIN` — `City.HasPopulationRoom(n int32) bool` (`internal/domain/city`) es el predicado de la creación de unidades: lo aplica `production.CanTrain` al validar `city.train` en el tick, contra la población de la RAM, que ya incluye las reservas de los encargos anteriores. El loop es el único escritor de esa RAM, así que dos encargos no pueden comprobar a la vez «cabe uno más»: el TOCTOU de arriba no tiene dónde ocurrir en el tick.
+- `DOMAIN` — rebasar el límite responde `POPULATION_LIMIT_REACHED` (canon §16) a `city.train`, lo rechace el tick o la base (`city.ErrPopulationLimit`). Que la regla exista no exime de la constraint: la regla protege la experiencia y el `CHECK` protege el dato; es la última barrera de la reserva si la RAM y la base llegaran a divergir.
 - `DB` — `cities.version` permite detectar la escritura concurrente perdida cuando el incremento se hace por lectura-modificación-escritura.
 
 **Cómo se verifica.**
@@ -104,7 +104,8 @@ El fallo típico no es un olvido de comprobar, sino un **TOCTOU**: dos comandos 
 - `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration) — `population > population_limit` falla por `cities_population_within_limit` y `population = -1` por `cities_population_check`, el nombre que PostgreSQL da al `CHECK` de columna.
 - `TestLimiteDePoblacion` (unit, `internal/domain/city`) — `HasPopulationRoom` deja de admitir unidades exactamente en el límite.
 - `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` (unit, `internal/game/loadcheck`) — con más unidades vivas que el `population_cap` de su era, ninguna se excluye, el límite queda en el recuento y `HasPopulationRoom(1)` es falso.
-- El test de concurrencia de la última plaza llegará con la primera ruta que cree unidades; hoy no hay nada que hacer competir.
+- `TestCanTrainRespondeEnElOrdenDeLaSpec` (unit, `internal/domain/production`) y `TestRechazosDeEntrenamiento` (simulation) — sin plaza, `city.train` se rechaza con `POPULATION_LIMIT_REACHED`; el de dominio comprueba además que la población se mira antes que la madera.
+- `TestEntrenarSinPlazaSeRechazaSinDebitar` (integration) — con el límite rebajado a mano por debajo de la reserva, la base rechaza el encargo por el `CHECK` y no debita la madera: es la última barrera.
 
 **Violación en runtime.** Imposible en disco: los dos `CHECK` la rechazan, y en el alta eso aborta la transacción entera. Lo que sí puede ocurrir es que el recuento de unidades vivas supere el `population_cap` de la era —bajar un `population_cap` en `eras`, o una fila editada a mano—. La validación de carga lo detecta (log `invariant_violation` con `inv_id=INV-CITY-002`, política `REPAIR`): no destruye unidades, deja `population_limit` en el recuento —el `CHECK` se sigue cumpliendo— y ninguna creación cabe hasta volver bajo el límite. Va acompañado del hallazgo `INV-CITY-003`, porque el límite escrito deja de ser el de la era, y de un `InvariantRepaired` de auditoría por cada uno.
 
