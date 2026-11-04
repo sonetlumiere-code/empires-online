@@ -90,11 +90,16 @@ compensación restaura la RAM. Si la RAM llegara a negativo —no hay ruta que l
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
-| Cobertura | **Cubierto** por `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` y `TestUnEncargoDeCasaEsIdempotentePorRequestID` (integration), y `TestUnEncargoRechazadoDevuelveLaMadera` (simulation) |
+| Cobertura | **Cubierto** por `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` y `TestUnEncargoDeCasaEsIdempotentePorRequestID` (integration), y `TestUnEncargoRechazadoDevuelveLaMadera` (simulation); el avance de era y el coste en dos recursos, previstos con E9 |
 
 **Enunciado.** Toda reducción de `city_stocks.amount` se confirma en la misma transacción que inserta el
-edificio (`buildings`) o la producción (`city_productions`) que la justifica; y toda fila de `buildings` o de
-`city_productions` se confirmó en una transacción que descontó su coste.
+edificio (`buildings`), la producción (`city_productions`) o el avance de era (`city_era_advances`) que la
+justifica; y toda fila de esas tablas se confirmó en una transacción que descontó su coste entero. Un coste en
+varios recursos se debita entero o no se debita.
+
+**Precisión (2026-11-04, [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)).** Desde E9 un coste es una
+lista de recursos y el avance de era es el primero que paga en dos (madera y piedra). La transacción lleva un delta
+versionado por recurso; si cualquiera de ellos no se aplica, revierte entera.
 
 **Razón.** «Nunca hay madera gastada sin edificio ni edificio sin madera gastada» (`RN-ECON-008`). Si el débito
 y el efecto viajaran en escrituras separadas, una caída entre las dos regalaría el edificio o se comería la
@@ -121,6 +126,9 @@ madera, y ninguna de las dos cosas se puede reconstruir después: el jugador no 
   encargo cuya versión ya está escrita no inserta su efecto.
 - `TestUnEncargoRechazadoDevuelveLaMadera`, `TestUnFalloDefinitivoDelEncargoDevuelveLaReserva`,
   `TestUnEntrenamientoRechazadoDeshaceLaReserva` y `TestElEncargoLlevaLosDepositosSinVolcar` (simulation).
+- Previstos con E9: el encargo del avance con un fallo inyectado no gasta ni madera ni piedra, y con la versión de
+  uno de los dos recursos ya escrita no se aplica ninguno (integration); un avance rechazado devuelve los dos
+  recursos (simulation).
 
 **Violación en runtime.** No hay estado intermedio que detectar: la transacción es la garantía. Un rechazo se
 registra con su código y llega al jugador como `system.error`.
@@ -240,9 +248,9 @@ Política `REPAIR` con `InvariantRepaired`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (la recuperación avanza la máquina de estados) |
-| Cobertura | **Cubierto** por los tests de recuperación de `internal/game/simulation/economy_recovery_test.go` |
+| Cobertura | **Cubierto** por los tests de recuperación de `internal/game/simulation/economy_recovery_test.go`; el avance de era, previsto con E9 |
 
-**Enunciado.** Una tarea, un edificio o una producción a medias en el instante de una caída terminan su fase en
+**Enunciado.** Una tarea, un edificio, una producción o un avance de era a medias en el instante de una caída terminan su fase en
 curso en el mismo instante absoluto (`phase_until_ms`, la llegada de su tramo, `completes_at_ms`) en que habría
 terminado sin la caída; un vencimiento que cayó durante la caída se aplica en el primer tick con su instante
 original, no con el del arranque.
@@ -267,7 +275,8 @@ adelantara las construcciones regalaría o robaría tiempo de forma desigual ent
 `TestReinicioDuranteElTrabajo`, `TestReinicioConLaVueltaVencidaTerminaElViajeSinEmpezarOtro`,
 `TestReinicioDuranteLaVueltaConElDuenoConectado`, `TestReinicioDuranteUnaConstruccion` y
 `TestReinicioDuranteUnEntrenamiento`, cada uno con el vencimiento antes y después del arranque; y
-`TestUnaTareaSinSuTramoTerminaAlArrancar`, `TestUnaProduccionTerminadaNoReservaNada`.
+`TestUnaTareaSinSuTramoTerminaAlArrancar`, `TestUnaProduccionTerminadaNoReservaNada`. Previstos con E9: un avance a
+medias y un avance vencido durante la caída terminan en su instante.
 
 **Violación en runtime.** Una tarea que no puede reanudarse —su tramo desapareció, su unidad dejó el tile— se
 termina con la unidad `IDLE` donde está, y se registra.
@@ -311,49 +320,61 @@ del tick 895 como el último.
 ---
 
 <a id="inv-econ-007"></a>
-## INV-ECON-007 — La madera de un tile está entre 0 y su capacidad, y sólo existe para tiles `FOREST`
+## INV-ECON-007 — El recurso de un tile está entre 0 y su capacidad, y sólo existe para el terreno que lo da
 
 | Campo | Valor |
 |---|---|
 | Severidad | ALTO |
 | Aplicación | DB, DOMAIN, TEST |
-| Milestone | E4 |
+| Milestone | E4 (madera), E9 (piedra) |
 | Política ante violación | REJECT (escritura) · REPAIR (arranque) |
-| Cobertura | **Cubierto** por `Test_INV_ECON_007_ElCheckRechazaMaderaFueraDeRango` (integration), `TestUnaEntradaFueraDeRangoEsInvalida` (`internal/domain/forest`) y `TestLaCapaDelArranqueDescartaLoQueNoVale` (`internal/game/simulation`) |
+| Cobertura | **Cubierto** por `Test_INV_ECON_007_ElCheckRechazaMaderaFueraDeRango` (integration), `TestUnaEntradaFueraDeRangoEsInvalida` (`internal/domain/forest`) y `TestLaCapaDelArranqueDescartaLoQueNoVale` (`internal/game/simulation`); la piedra de la colina, prevista con E9 |
 
 **Enunciado.** Para toda fila de `forest_wood` y toda entrada de la capa de madera en la RAM, `0 ≤ remaining ≤
-forestWood` y el tile `(x, y)` es `FOREST` en el terreno del mundo.
+forestWood` y el tile `(x, y)` es `FOREST` en el terreno del mundo; y para toda fila de `hill_stone` y toda entrada
+de la capa de piedra en la RAM, `0 ≤ remaining ≤ hillStone` y el tile es `HILL`.
 
-**Razón.** Una madera negativa es madera que alguien se llevó sin que existiera; una entrada sobre un tile que no
-es bosque es un recurso donde el terreno dice que no hay ninguno.
+**Precisión (2026-11-04, [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)).** Hasta E9 la ficha
+hablaba sólo de la madera del bosque. Con la piedra la capa de recurso por tile tiene dos instancias, y el terreno
+del tile decide cuál: un tile es bosque o colina, nunca las dos cosas.
+
+**Razón.** Un recurso negativo es algo que alguien se llevó sin que existiera; una entrada sobre un tile de otro
+terreno es un recurso donde el terreno dice que no hay ninguno, o uno distinto.
 
 **Cómo se garantiza.**
 
-- `DB` — `CHECK (remaining BETWEEN 0 AND 100)` en `forest_wood` (migración `000008`).
-- `DOMAIN` — la carga es `min(carry, remaining)` (`RN-ECON-013`) y la capa sólo admite tiles `FOREST`; la carga
-  al arrancar descarta, con `invariant_violation`, una fila sobre un tile que no lo es.
+- `DB` — `CHECK (remaining BETWEEN 0 AND 100)` en `forest_wood` (migración `000008`) y en `hill_stone` (migración
+  `000012`).
+- `DOMAIN` — la carga es `min(carry, remaining)` (`RN-ECON-013`, `RN-ECON-021`) y cada capa sólo admite tiles de su
+  terreno; la carga al arrancar descarta, con `invariant_violation`, una fila sobre un tile que no lo es.
 
 **Cómo se verifica.** `Test_INV_ECON_007_ElCheckRechazaMaderaFueraDeRango` (integration): el motor rechaza −1 y 101
 por el nombre del `CHECK`. `TestUnaCargaNuncaCreaMadera` y `TestUnaEntradaFueraDeRangoEsInvalida` (unit): la carga
 parcial y nula, y el rango. `TestLaCapaDelArranqueDescartaLoQueNoVale` (simulation): al arrancar, una fila fuera de
-rango o sobre un tile que no es bosque se descarta y se señala — **existen y pasan**.
+rango o sobre un tile que no es bosque se descarta y se señala — **existen y pasan**. Previstos con E9: los mismos
+tres sobre `hill_stone` y la capa de piedra.
 
 **Violación en runtime.** La base rechaza la escritura; al arrancar, la fila mala se descarta y se audita.
 
 ---
 
 <a id="inv-econ-008"></a>
-## INV-ECON-008 — Una carga nunca crea madera
+## INV-ECON-008 — Una carga nunca crea recurso
 
 | Campo | Valor |
 |---|---|
 | Severidad | ALTO |
 | Aplicación | DB, DOMAIN, TEST |
-| Milestone | E4 |
+| Milestone | E4 (madera), E9 (piedra) |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestUnaCargaQueFallaNoDejaNadaAMedias`, `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente` (integration), `TestDosAldeanosEnElMismoTileCarganEnOrdenDeId` (simulation) y el golden «tala» |
+| Cobertura | **Cubierto** por `TestUnaCargaQueFallaNoDejaNadaAMedias`, `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente` (integration), `TestDosAldeanosEnElMismoTileCarganEnOrdenDeId` (simulation) y el golden «tala»; la piedra, prevista con E9 |
 
-**Enunciado.** En cada carga, lo que gana la unidad es exactamente lo que pierde el tile, en la RAM y en la base.
+**Enunciado.** En cada carga, lo que gana la unidad es exactamente lo que pierde el tile, en la RAM y en la base,
+sea madera de un bosque o piedra de una colina.
+
+**Precisión (2026-11-04, [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)).** Hasta E9 se llamaba «Una
+carga nunca crea madera». La carga de piedra sigue el mismo camino: su descuento va en la transacción de la tarea,
+como delta sobre `hill_stone`.
 
 **Razón.** Es la versión de `INV-COMBAT-003` para el bosque: si la carga y el descuento pudieran separarse, una
 caída dejaría la madera a la vez en la mano del aldeano y en el bosque.
@@ -368,5 +389,6 @@ caída dejaría la madera a la vez en la mano del aldeano y en el bosque.
 ni el tile ni la tarea cambian. `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente` (integration): un reintento
 no descuenta dos veces. `TestDosAldeanosEnElMismoTileCarganEnOrdenDeId` (simulation): las cargas suman lo que tenía
 el tile. El golden «tala» (`TestLosEscenariosReproducenSuGolden`): 35 maderas salen de 35 — **existen y pasan**.
+Previstos con E9: la carga de piedra con un fallo inyectado y con un reintento (integration), y el golden «cantera».
 
 **Violación en runtime.** No hay ruta conocida; la transacción es la garantía.

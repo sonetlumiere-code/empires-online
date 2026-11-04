@@ -1612,3 +1612,32 @@ máquinas de asedio, reparar casas, niebla de guerra.
 8. **HECHO** — Fallos encontrados: el trigger le quitaba el error al `CHECK` del límite negativo (entregable 3), el
    humo enviaba mal el `city.build` (entregable 7) y el `title` del botón «Registro» no nombraba las casas
    derribadas (`6f6496b`).
+
+## E9 — Piedra
+
+**Estado: EN CURSO** desde el 2026-11-04, en la rama `claude/slice-piedra`. Contrato:
+[SPEC-ECON-STONE](../specs/economy-stone.md), aceptada el 2026-11-04 con sus diez decisiones de producto, y
+[ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md).
+
+**Objetivo.** Que la geografía pese en la economía y que haya algo por lo que comerciar: la piedra sólo está en las
+colinas, que el mapa concentra en siete manchas, y su primer uso es llevar una ciudad a la Edad de Bronce.
+
+**Alcance.** `STONE` en `city_stocks`; `unit.gather` sobre una colina (`GATHER_STONE`); la capa de piedra por tile
+con su agotamiento y su regeneración; el depósito al alcance antes de aceptar un viaje; `city.advance` en dos fases,
+pagando madera y piedra, que no deja entrenar mientras dura y sube el límite al terminar; `INV-CITY-018`; la
+migración `000012`; el cliente. **No entra** (spec §2): comercio, otras eras, saquear piedra, piedra en la
+fundación, niebla de guerra.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-030, `INV-CITY-018` y `INV-ECON-002`, `005`, `007` y `008` ampliados; la
+   tensión «4 vs. 5 (recursos)» en los pilares.
+2. Dominio: la capa de recurso por tile (`deposit`), `STONE`, costes en varios recursos, `GATHER_STONE` y el avance.
+3. Migración `000012` y persistencia: `hill_stone`, `city_era_advances`, el encargo y el fin del avance, la carga de
+   piedra; integración con fallo inyectado.
+4. Simulación: la recolección de piedra con su capa, `RN-ECON-020`, el stock por recurso, `city.advance` y su fin;
+   golden «cantera» y recuperación.
+5. Protocolo y WebSocket: `city.advance`, `hill.update`, `hills`, `STONE`, `carryingResource`, `era` y `advance`, con
+   el JSON Schema, los contract tests y los e2e.
+6. Cliente: contador de piedra, era y botón «Edad de Bronce» con su motivo, clic sobre una colina, colina talada.
+7. Humo `--piedra`, semilla de desarrollo y prueba en vivo.

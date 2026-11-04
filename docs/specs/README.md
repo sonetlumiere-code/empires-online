@@ -57,7 +57,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Diplomacia en caliente | [diplomacy.md](diplomacy.md) | E6 Diplomacia | Implemented | Proponer, aceptar, rechazar, retirar y romper pactos de no agresión y alianzas desde el cliente; ruptura con preaviso y expulsión de las guarniciones al terminar una alianza |
 | Registro de sucesos | [event-log.md](event-log.md) | E7 Registro | Implemented | Lo que otros te hicieron y lo que tus unidades hicieron solas, leído de `world_events`, agrupado y con un cursor de lo visto; la ventana «Mientras no estabas» |
 | Combate: asedio | [combat-siege.md](combat-siege.md) | E8 Asedio | Implemented | Un `WARRIOR` junto a la muralla enemiga derriba una casa golpe a golpe; la ciudad pierde plazas y, por encima de su límite, conserva sus unidades pero no entrena |
-| Economía: piedra | [economy-stone.md](economy-stone.md) | E9 Piedra | Draft | Piedra en los tiles de colina con la misma orden que la madera, su agotamiento y regeneración, y el avance de una ciudad a la Edad de Bronce pagando madera y piedra |
+| Economía: piedra | [economy-stone.md](economy-stone.md) | E9 Piedra | Accepted | Piedra en los tiles de colina con la misma orden que la madera, su agotamiento y regeneración, y el avance de una ciudad a la Edad de Bronce pagando madera y piedra |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

@@ -7,13 +7,13 @@ manda expediciones largas o, cuando exista, comercia.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-ECON-STONE` |
-| Estado | Draft (2026-11-04). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-04), con las preguntas de §10 decididas ese día con la recomendación de cada una. |
 | Milestone | E9 Piedra (noveno slice después de M7) |
 | Canon | §5 (terreno), §10 (eras y límite de población), §12 (persistencia), §16 (errores) |
 | Depende de | [economy-wood.md](economy-wood.md), [economy-forest.md](economy-forest.md), [city.md](city.md), [combat-siege.md](combat-siege.md), [combat-pillage.md](combat-pillage.md), [movement.md](movement.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (stock por deltas versionados, encargos en dos fases), [ADR-025](../decisions/ADR-025-forest-wood-layer.md) (el recurso de un tile en una capa aparte del terreno), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (población por encima del límite). Un ADR nuevo (`ADR-030`, costes en varios recursos y el avance de era como encargo de la ciudad) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (stock por deltas versionados, encargos en dos fases), [ADR-025](../decisions/ADR-025-forest-wood-layer.md) (el recurso de un tile en una capa aparte del terreno), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (población por encima del límite). [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md): la capa de recurso por tile con una instancia por terreno, los costes en varios recursos y el avance de era como encargo de la ciudad con su propia fila. |
 | Reemplaza a | «Otros recursos» y «eras» del no-scope de [economy-wood.md](economy-wood.md) §2; el `NOT_IMPLEMENTED` del avance de era de [city.md](city.md) §8, sólo para el paso de `STONE_AGE` a `BRONZE_AGE`. Responde en parte a Q-11 y Q-12 de [backlog.md](../roadmap/backlog.md). |
-| Invariantes | Amplía [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-ECON-007](../invariants/economy.md#inv-econ-007) e [INV-ECON-008](../invariants/economy.md#inv-econ-008); propone uno nuevo de la familia `INV-CITY` que se registrará al aceptar (§8) |
+| Invariantes | Amplía [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-ECON-007](../invariants/economy.md#inv-econ-007) e [INV-ECON-008](../invariants/economy.md#inv-econ-008); asigna [INV-CITY-018](../invariants/city.md#inv-city-018) (§8) |
 
 ## 1. Objetivo
 
@@ -158,8 +158,9 @@ Servidor → cliente, todo aditivo en v1 ([websocket-protocol.md](websocket-prot
 
 Con ellos, el protocolo v1 pasa a 19 mensajes cliente→servidor y 21 servidor→cliente.
 
-Eventos de dominio en `world_events`: `HillDepleted` cuando un tile llega a 0, como `ForestDepleted`, y
-`EraAdvanced` al terminar el avance, con la ciudad y las dos eras. Ninguno implica a otro jugador y ninguno entra
+Eventos de dominio en `world_events`: `HillDepleted` cuando un tile llega a 0, como `ForestDepleted`;
+`EraAdvanceOrdered` con el encargo, como `TrainingOrdered`; y `EraAdvanced` al terminar el avance, con la ciudad y
+las dos eras. Ninguno implica a otro jugador y ninguno entra
 en el registro de E7: el registro es lo que te hicieron otros y lo que tus unidades hicieron solas
 ([event-log.md](event-log.md)).
 
@@ -178,7 +179,8 @@ ciudad está avanzando de era».
 | Dirty-flag | Los depósitos de piedra, en el volcado de deltas de [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) |
 | Reconstruible / no persistido | La regeneración vencida (un tile cuyo instante pasó se carga lleno y su fila se borra); `population_limit`, de la fórmula con la era; un avance vencido durante una caída termina en el primer tick tras el arranque |
 
-**Por qué hace falta un ADR.** Tres decisiones con alternativas que merecen memoria:
+**Por qué hace falta un ADR.** Tres decisiones con alternativas que merecen memoria, que fija
+[ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md):
 
 1. **Costes en varios recursos.** El débito de ADR-023 es un delta versionado sobre una fila `(ciudad, recurso)`.
    Un encargo que paga en dos lleva dos deltas en la misma transacción, y la compensación tiene que devolver los
@@ -218,9 +220,8 @@ límite sale de la era vigente: con `BRONZE_AGE`, de su `population_cap`),
 [INV-CITY-017](../invariants/city.md#inv-city-017) (el avance no cuenta como población) e
 [INV-WORLD-005](../invariants/world.md#inv-world-005) (el terreno no cambia).
 
-**Propone** un invariante nuevo de la familia `INV-CITY`, con el siguiente número libre al aceptar: *la era de una
-ciudad nunca retrocede*. Hoy es cierto por vacuidad, porque nadie la escribe; con este slice tiene un escritor y
-un test que lo vigile.
+**Asigna** [INV-CITY-018](../invariants/city.md#inv-city-018): *la era de una ciudad nunca retrocede*. Hasta hoy era
+cierto por vacuidad, porque sólo el alta escribía la era; con este slice tiene un escritor y un test que lo vigile.
 
 ## 9. Tests esperados
 
@@ -233,14 +234,15 @@ un test que lo vigile.
 | contract / e2e | `city.advance`, `hill.update`, `hills`, `STONE`, `carryingResource`, `era` y `advance` contra el JSON Schema; recorridos completos por WebSocket. `hill.update` llega en el mismo commit que su e2e (el `TestMain` de `schema_e2e_test.go` lo exige) |
 | cliente | Contador de piedra, era y botón de avanzar con su motivo; clic sobre una colina; dibujo de la colina a medias y agotada. `scripts/smoke.mjs` añade `--piedra`, que llega hasta la primera carga: las ciudades del humo están a 163 y 194 tiles de la colina y un viaje entero dura minutos. El avance en vivo necesita stock: lo siembra `pnpm run dev:seed` en la base de desarrollo, nunca en una migración |
 
-## 10. Preguntas abiertas de producto
+## 10. Decisiones de producto (2026-11-04)
 
-Cada una con mi recomendación. Las decide producto; la spec no pasa a `Accepted` sin ellas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de
+producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Dónde está la piedra? | **En la colina** (§4.1). Las alternativas son peores. Una **capa de yacimientos sembrada desde la semilla** permite ajustar la densidad, pero añade un generador que verificar en cada arranque como el terreno, y un dibujo nuevo, para algo que la colina ya da. **Piedra garantizada junto a cada ciudad** haría a todas iguales y mataría el comercio antes de nacer. |
-| Q2 | ¿Es la geografía una fuente legítima de dependencia? El pilar 4 rechaza la «escasez artificial de recursos aleatoria» y quiere que la dependencia venga de las civilizaciones, que se eligen; el emplazamiento no se elige (sale del nombre de usuario). | **Sí, como complemento.** La colina no es aleatoria ni artificial: sale de la semilla, se ve desde el primer día y no cambia, que es lo que pide el pilar 5. Y no crea dependencia absoluta: el 98,9 % de la tierra tiene colina dentro del alcance del pathfinding, así que todos pueden conseguir piedra, unos en minutos y otros en una sesión. La dependencia por capacidades seguirá siendo la de las civilizaciones. Al aceptar, se anota en la tabla de tensiones de [game-pillars.md](../product/game-pillars.md) como «4 vs. 5». |
+| Q2 | ¿Es la geografía una fuente legítima de dependencia? El pilar 4 rechaza la «escasez artificial de recursos aleatoria» y quiere que la dependencia venga de las civilizaciones, que se eligen; el emplazamiento no se elige (sale del nombre de usuario). | **Sí, como complemento.** La colina no es aleatoria ni artificial: sale de la semilla, se ve desde el primer día y no cambia, que es lo que pide el pilar 5. Y no crea dependencia absoluta: el 98,9 % de la tierra tiene colina dentro del alcance del pathfinding, así que todos pueden conseguir piedra, unos en minutos y otros en una sesión. La dependencia por capacidades seguirá siendo la de las civilizaciones. Al aceptar, se anota en la tabla de tensiones de [game-pillars.md](../product/game-pillars.md) como «4 vs. 5» (hecho el 2026-11-04). |
 | Q3 | ¿Para qué sirve la piedra? | **Para avanzar a la Edad de Bronce** (§4.4): demanda universal y permanente, y el puente a la tecnología. Las alternativas: **fortificar casas** contra el asedio es pequeña y liga con E8, pero su demanda sólo existe bajo amenaza; **una unidad nueva** tocaría el balance de E3, que sigue abierto; **añadirla al coste de la casa, el aldeano o el guerrero** bloquearía el bucle básico a quien vive lejos de una colina. |
 | Q4 | ¿Qué da la Edad de Bronce? | **Sólo el límite**: 50 en vez de 20, hasta 90 con las ocho casas. Lo demás que pueda desbloquear una era es la fase de tecnología y merece su spec. |
 | Q5 | ¿Cuánto cuesta y qué bloquea? | **400 de madera y 200 de piedra, 90 s**, y la ciudad **no entrena mientras avanza**, como el Centro Urbano en la referencia: avanzar es una apuesta, no un trámite. Construir casas sí se puede. No se cancela y ningún ataque lo interrumpe: el asedio ya tiene su castigo y no hace falta otro. Los números son parámetros. |

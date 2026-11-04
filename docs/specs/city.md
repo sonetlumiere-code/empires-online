@@ -41,10 +41,12 @@ y su relación con el resto del modelo.
 - Modificadores de `population_limit` por edificios distintos de la casa: la fórmula los contempla (§6.3) y
   hoy el único es la casa completa, +5 (`RN-ECON-009`).
 - Avance de era, fundación de ciudades adicionales, renombrado, conquista, destrucción y transferencia de
-  ownership: `TBD (fuera de MVP)`.
+  ownership: `TBD (fuera de MVP)`. **Precisión (2026-11-04).** Desde E9 una ciudad avanza de `STONE_AGE` a
+  `BRONZE_AGE` con `city.advance` pagando madera y piedra ([economy-stone.md](economy-stone.md) §4.4); las eras
+  siguientes siguen fuera.
 - Almacenes con capacidad, recursos distintos de la madera y colas de producción: `Fuera de MVP`. Desde E1 la
   ciudad tiene stock de madera (`city_stocks`) y entrena un aldeano a la vez con `city.train`
-  ([economy-wood.md](economy-wood.md)).
+  ([economy-wood.md](economy-wood.md)); desde E9, también de piedra ([economy-stone.md](economy-stone.md)).
 - Asedio y combate sobre ciudades: `Fuera de MVP` (ver [presence.md](presence.md) §6 para la regla de
   protección y su punto de aplicación futuro).
 
@@ -224,7 +226,7 @@ En MVP una ciudad, una vez creada, existe para siempre.
 | `TARGET_OUT_OF_BOUNDS` | Coordenada de ciudad fuera de `[0, EO_WORLD_WIDTH)` × `[0, EO_WORLD_HEIGHT)`. | Aplicable a la validación del emplazamiento. |
 | `TARGET_NOT_WALKABLE` | Tile de emplazamiento sobre `MOUNTAIN` o `WATER`. | |
 | `INTERNAL_ERROR` | Fallo de transacción o violación de invariante detectada en runtime. | |
-| `NOT_IMPLEMENTED` | Fundación adicional, renombrado, avance de era, cesión. | Todo `Fuera de MVP`. |
+| `NOT_IMPLEMENTED` | Fundación adicional, renombrado, avance de era más allá de `BRONZE_AGE`, cesión. | Todo `Fuera de MVP`; el paso de `STONE_AGE` a `BRONZE_AGE` existe desde E9 ([economy-stone.md](economy-stone.md) `RN-ECON-024`). |
 
 Los nueve códigos anteriores pertenecen al catálogo cerrado de 24 del protocolo WebSocket
 (`internal/protocol/codes.go`, verificado contra `@empires-online/protocol` por un contract test). El alta de
