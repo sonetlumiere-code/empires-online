@@ -1,6 +1,6 @@
 # Milestones
 
-Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E6): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
+Detalle ejecutable de M0 a M7 y de los milestones posteriores (E1 a E7): alcance exacto, entregables numerados, tests obligatorios, documentación afectada, invariantes cubiertos y criterios de aceptación verificables.
 
 ## Cómo leer este documento
 
@@ -1523,3 +1523,28 @@ una alianza; `treaty.update` y `treaties[]` en el snapshot; la migración `00000
 9. **HECHO** — Fallo encontrado por la CI de `800a269`: `SetTreaties` guardaba el par tal como llegaba y `AtPeace` lo
    busca ordenado. En producción no pasa (la base lo guarda ordenado), pero dos tests de E2 y E5 fallaban unas 6 veces
    de cada 100. Corregido en `0f96c3b` con `TestUnTratadoConElParSinOrdenarDaPazEnLasDosDirecciones`.
+
+## E7 — Registro
+
+**Estado: EN CURSO** desde el 2026-11-03, en la rama `claude/slice-registro`. Contrato:
+[SPEC-EVENT-LOG](../specs/event-log.md), aceptada el 2026-11-03 con sus seis decisiones de producto, y
+[ADR-028](../decisions/ADR-028-event-log-from-world-events.md).
+
+**Objetivo.** Que el riesgo de E2 a E6 se vea: al volver, el jugador sabe qué unidades perdió, cuánta madera le
+robaron, qué hicieron solas las suyas y qué cambió en sus tratados, también si estaba conectado sin mirar.
+
+**Alcance.** `event_log.fetch`, `event_log.seen` y `event_log.page`, atendidos por la conexión sin pasar por el
+loop; `counterpart_player_id` y los datos que faltaban en los eventos; la agrupación al leer; el cursor de lo visto
+con su tope marcable; la migración `000010`; la ventana «Mientras no estabas» y el botón «Registro». **No entra**
+(spec §2): avisos en vivo, correo, la economía propia, los ataques sin consecuencia.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-028, `INV-SEC-009` e `INV-PERSIST-006`.
+2. Migración `000010` y los escritores de los eventos con el otro jugador y los datos del payload.
+3. Dominio `eventlog`: qué evento entra para quién, la agrupación y el corte de la página.
+4. Persistencia: la lectura de la página, el tope marcable y el cursor; integración con dos transacciones en orden
+   inverso.
+5. Protocolo y conexión: los dos comandos y `event_log.page` con el JSON Schema, los contract tests y un e2e.
+6. Cliente: la ventana «Mientras no estabas», el botón «Registro» con su contador y la paginación.
+7. Humo `--registro` y prueba en vivo.

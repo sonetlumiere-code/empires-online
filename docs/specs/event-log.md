@@ -1,19 +1,19 @@
 # Registro: lo que pasó mientras no estabas
 
-Propuesta para que el jugador se entere, al volver, de lo que otros le hicieron y de lo que sus unidades hicieron
+Que el jugador se entere, al volver, de lo que otros le hicieron y de lo que sus unidades hicieron
 solas: muertes, saqueos y cambios en sus tratados. Hoy todo eso queda escrito en `world_events`, pero el cliente
 no lo lee nunca, y quien no estaba mirando no se entera.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-EVENT-LOG` |
-| Estado | Draft (2026-11-03). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-03). Producto aceptó ese día la recomendación de cada pregunta de §10; la implementación va en la rama `claude/slice-registro`. |
 | Milestone | E7 Registro (séptimo slice después de M7) |
 | Canon | §12 (persistencia), §16 (errores) |
 | Depende de | [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [diplomacy.md](diplomacy.md), [presence.md](presence.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (la cola escribe los sucesos con su efecto), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md) (reintentos), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) §3 (tope de la protección). Un ADR nuevo (`ADR-028`: quién lee el registro, cómo se atribuye un suceso a los dos jugadores y cómo se marca lo visto sin perder nada) acompañará a la aceptación. |
+| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (la cola escribe los sucesos con su efecto), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md) (reintentos), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) §3 (tope de la protección). [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (la conexión lee `world_events`; `counterpart_player_id`; agrupación al leer; página por filas; lo visto sólo cubre lo asentado; migración `000010`). |
 | Reemplaza a | — |
-| Invariantes | Cita los existentes de §8 y propone dos nuevos que se registran al aceptar |
+| Invariantes | Cita los existentes de §8 y asigna `INV-SEC-009` e `INV-PERSIST-006` |
 
 ## 1. Objetivo
 
@@ -58,14 +58,17 @@ jugador se nombra por su ciudad, como en los tratados (`otherCityName`), y el lu
 | Ruptura anunciada por el otro | `TreatyBreakAnnounced` | «Villa Norte rompió el pacto: la paz termina a las 21:15» |
 | Tratado terminado | `TreatyBroken`, o `TreatyExpired` desde `ACTIVE` | «La alianza con Villa Norte terminó; tus unidades guarnecidas salieron de su ciudad» |
 
-Lo que hizo el propio jugador en la diplomacia (proponer, romper, retirar) no entra: ya lo sabe.
+Lo que hizo el propio jugador en la diplomacia (proponer, romper, retirar) no entra: ya lo sabe. `TreatyExpired` desde
+`ACTIVE` sólo lo escriben los tratados administrativos con `expires_at`: el pacto que una alianza sustituye se cierra
+sin evento propio, y lo cuenta el `TreatyAccepted` de la alianza.
 
 ### 4.2 Agrupación
 
 Un saqueo son decenas de golpes de 5 de madera, y una incursión puede matar a varios aldeanos. Los sucesos del
 mismo tipo y con el mismo otro jugador se juntan en una entrada mientras entre uno y el siguiente no pasen más de
 `EO_EVENT_LOG_GROUP_GAP_MINUTES` (Q4): la entrada lleva cuántos fueron, la suma de madera y el primer y el último
-instante. La agrupación se hace al leer; en la base cada golpe sigue siendo su evento.
+instante. La agrupación se hace al leer; en la base cada golpe sigue siendo su evento. Un grupo nunca mezcla lo ya
+visto con lo nuevo: el cursor (§4.3) lo parte.
 
 ### 4.3 Lo ya visto
 
@@ -76,10 +79,10 @@ si hay entradas posteriores al cursor, abre «Mientras no estabas». Al cerrarla
 El cursor no puede ser sin más el `id` más alto mostrado. Los workers de la cola (cuatro por defecto) escriben en
 paralelo y los `id` los asigna PostgreSQL al insertar, así que un evento con `id` menor puede quedar guardado
 después de otro con `id` mayor: si el cursor ya pasó por encima, ese evento no se mostraría nunca. El servidor sólo
-avanza el cursor hasta los eventos **asentados**, los guardados hace más del doble del tope de una escritura de la
+avanza el cursor hasta los eventos **asentados** en el momento de servir la página, los guardados hace más del doble del tope de una escritura de la
 cola (hoy 10 s por intento): pasado ese margen, ninguna transacción con un `id` menor puede seguir abierta. Lo más
 reciente, que el cursor todavía no cubre, se vuelve a mostrar la próxima vez: es mejor repetir que perder. El
-detalle va en `ADR-028`.
+detalle, y por qué basta, en [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) §6.
 
 ### 4.4 Reglas
 
@@ -89,8 +92,8 @@ Dominio: `RN-LOG`.
 |---|---|
 | `RN-LOG-001` | Un jugador sólo recibe entradas de sucesos en los que es parte: la víctima, el autor o uno de los dos firmantes del tratado. |
 | `RN-LOG-002` | Cada entrada sale de un evento de `world_events`. El registro no guarda una copia aparte ni inventa nada que la base no tenga: si la escritura de un efecto falla, su suceso tampoco aparece. |
-| `RN-LOG-003` | `event_log.fetch { beforeId? }` devuelve la página más reciente, o la anterior a `beforeId`, de los últimos `EO_EVENT_LOG_MAX_DAYS` días (Q2), ya agrupada (§4.2), con `EO_EVENT_LOG_PAGE_SIZE` entradas como mucho. |
-| `RN-LOG-004` | `event_log.seen { upToId }` avanza el cursor hasta `upToId` como mucho, y nunca más allá del último evento asentado (§4.3). El cursor nunca retrocede: un `upToId` menor no hace nada. |
+| `RN-LOG-003` | `event_log.fetch { beforeId? }` devuelve la página más reciente, o la de los eventos con `id` menor que `beforeId`, de los últimos `EO_EVENT_LOG_MAX_DAYS` días (Q2), ya agrupada (§4.2), con `EO_EVENT_LOG_PAGE_SIZE` entradas como mucho. La página se corta por eventos, no por grupos (ADR-028 §5): ninguno se salta al paginar, y un grupo en el borde sale en dos entradas, una en cada página. |
+| `RN-LOG-004` | `event_log.seen { upToId }` avanza el cursor hasta `upToId` como mucho, y nunca más allá del tope marcable de la última página que esa sesión sirvió (§4.3); sin página servida, no hace nada. El cursor nunca retrocede: un `upToId` menor no hace nada. |
 | `RN-LOG-005` | La hora de cada entrada es la del suceso en la simulación, no la de su escritura: un reintento de la cola no la retrasa. |
 | `RN-LOG-006` | Leer el registro no pasa por el tick loop ni lo frena. Si PostgreSQL no responde, la página falla con `INTERNAL_ERROR` y la partida sigue. |
 | `RN-LOG-007` | El cliente pide la página al conectar y al volver a la pestaña tras un rato fuera; el servidor no empuja nada (Q5). |
@@ -108,12 +111,12 @@ Sólo códigos existentes del catálogo (canon §16).
 ## 6. Eventos y contratos de red
 
 Cliente → servidor, dos comandos nuevos y estrictos, aditivos en v1 como los `treaty.*` de E6:
-`event_log.fetch { beforeId? }` y `event_log.seen { upToId }`. No llegan a la simulación: los atiende la conexión, como `session.ping`, y por eso no
-entran en `CommandTypes` ni crean trabajos de la cola.
+`event_log.fetch { beforeId? }` y `event_log.seen { upToId }`. No llegan a la simulación: los atiende la conexión,
+como `session.ping`, y por eso no entran en `CommandTypes` ni crean trabajos de la cola.
 
-Servidor → cliente: `event_log.page { entries[], seenUpToId, hasMore }`, tipo nuevo (R-VER-3), sólo a la sesión
-que lo pidió.
-Cada entrada: `{ id, kind, firstAtMs, lastAtMs, count, otherCityId, otherCityName, unitType?, amount?,
+Servidor → cliente: `event_log.page { entries[], seenUpToId, nextBeforeId }`, tipo nuevo (R-VER-3), sólo a la sesión
+que lo pidió. `seenUpToId` es el cursor al servirla (las entradas con `id` mayor son nuevas) y `nextBeforeId`, el
+`beforeId` de la página siguiente, `null` cuando no hay más. Cada entrada: `{ id, kind, firstAtMs, lastAtMs, count, otherPlayerId, otherCityId, otherCityName, unitType?, amount?,
 treatyType?, x?, y?, breaksAtMs? }`. `id` es el del último evento del grupo y sirve para paginar y para el cursor.
 El esquema Zod lo fija la implementación.
 
@@ -123,9 +126,10 @@ Eventos de dominio: ninguno nuevo. Dos cambios en los que ya existen (`ADR-028`)
   `CityPillaged`, y quien propuso en los tratados. Con eso, quien recibe una oferta o sufre una ruptura no
   encuentra el evento. Una columna nueva, `counterpart_player_id`, guarda al otro jugador implicado (el autor de la
   muerte o del saqueo, el otro firmante) sin cambiar lo que ya significa `player_id`.
-- **Quién rompió.** `TreatyBreakAnnounced` no dice quién lo anunció, porque `treaties` no lo guarda. El evento lo
-  llevará en su payload (`byPlayerId`), y los eventos de §4.1 llevarán el instante de la simulación (`atMs`,
-  `RN-LOG-005`).
+- **Lo que falta en el payload.** `TreatyBreakAnnounced` no dice quién lo anunció, porque `treaties` no lo guarda:
+  lo llevará en `byPlayerId`. Los eventos de tratado llevarán `from`, el estado anterior (una oferta que caduca y un
+  tratado que caduca son sucesos distintos); `UnitKilled`, el `unitType` de la víctima; y todos los de §4.1, el
+  instante de la simulación (`atMs`, `RN-LOG-005`).
 
 Cliente: al conectar, si hay entradas sin ver, la ventana «Mientras no estabas» con esas entradas y un botón
 «Entendido»; en el HUD, un botón «Registro» con el número de entradas sin ver, que abre el historial y pagina
@@ -151,12 +155,13 @@ igual.
 Cita [INV-SEC-002](../invariants/security.md#inv-sec-002) (ningún comando antes de autenticarse),
 [INV-SEC-004](../invariants/security.md#inv-sec-004) (el registro que se lee es siempre el del jugador de la sesión:
 ningún campo del comando elige otro), [INV-SEC-005](../invariants/security.md#inv-sec-005) (límites del mensaje) e
-[INV-PERSIST-005](../invariants/persistence.md#inv-persist-005) (la migración `000010`). Propone dos nuevos, que se
-registran al aceptar:
+[INV-PERSIST-005](../invariants/persistence.md#inv-persist-005) (la migración `000010`). Asigna dos, registrados al
+aceptar:
 
-- Ningún jugador recibe una entrada de un suceso en el que no es parte (`RN-LOG-001`).
-- El cursor de un jugador nunca pasa por encima de un evento suyo que aún no estaba guardado cuando se le mostró
-  la página: lo que no pudo ver no se da por visto (§4.3).
+- [INV-SEC-009](../invariants/security.md#inv-sec-009): el registro de un jugador sólo cuenta sucesos en los que es
+  parte (`RN-LOG-001`).
+- [INV-PERSIST-006](../invariants/persistence.md#inv-persist-006): el cursor nunca pasa por encima de un evento que
+  no estaba guardado cuando se sirvió la página que permitió marcarlo, y nunca retrocede (§4.3).
 
 ## 9. Tests esperados
 
@@ -168,11 +173,12 @@ registran al aceptar:
 | simulation | Ninguno nuevo: el loop no cambia. Los golden de saqueo, defensa y diplomacia comprueban que sus eventos llevan al otro jugador |
 | cliente | La ventana «Mientras no estabas», el contador del botón «Registro» y la paginación; `scripts/smoke.mjs --registro` (tras `--saqueo`, `smoke_victim` ve el saqueo) |
 
-## 10. Preguntas abiertas de producto
+## 10. Decisiones de producto (2026-11-03)
 
-Cada una con mi recomendación. Las decide producto; la spec no pasa a `Accepted` sin ellas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de
+producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué sucesos entran? | Los de §4.1: lo que otros te hicieron y lo que tus unidades hicieron solas (muertes y saqueos, en los dos sentidos) y los cambios de tus tratados que no hiciste tú. Fuera: la economía propia, que se ve al volver en el HUD, y los ataques que no mataron ni robaron nada (`UnitAttacked`), que con la respuesta automática de E3 llenarían el registro de ruido. |
 | Q2 | ¿Hasta cuándo atrás? | 7 días (`EO_EVENT_LOG_MAX_DAYS`) en páginas de 50 entradas ya agrupadas (`EO_EVENT_LOG_PAGE_SIZE`). Cubre a quien juega una vez por semana y a quien pasó del tope de 48 h. Lo más viejo sigue en `world_events` como auditoría, pero no se muestra. |

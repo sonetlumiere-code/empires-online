@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**111 invariantes** —109 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en trece familias y once archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**113 invariantes** —111 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en trece familias y once archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -300,6 +300,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-PERSIST-003 | Ningún dato durable existe únicamente en Redis | CRITICO | DOMAIN, TEST | ✓ | `TestNingunaClaveDelServidorQuedaSinCaducidad`, `TestUnAlmacenSinTTLNoSeConstruye` |
 | INV-PERSIST-004 | El flush periódico nunca escribe una posición que contradiga un movimiento `ACTIVE` | ALTO | DOMAIN, TEST | ✓ | `TestUnaUnidadEnMarchaNoSeVuelca`, `TestConLaColaRealElMovimientoLlevaSuIdYCierraConSuPosicion` |
 | INV-PERSIST-005 | Las migraciones son ordenadas, idempotentes en su aplicación e inmutables tras publicarse | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasMigracionesSonCorrelativasYCompletas`, `TestElMigradorEsIdempotente`, `TestUnEsquemaDirtyAbortaElMigrador` |
+| INV-PERSIST-006 | `players.event_log_seen_id` nunca pasa por encima de un evento que no estaba confirmado al servir la página que lo permitió, y nunca retrocede | ALTO | DB, BOUNDARY, TEST | ○ | Previstos con E7: dos transacciones que confirman en orden inverso al de sus `id` |
 
 ### SECURITY — [security.md](security.md)
 
@@ -313,6 +314,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-SEC-006 | Las credenciales de infraestructura nunca llegan al cliente ni al repositorio | CRITICO | BOUNDARY, TEST | ✓ | `TestLosSecretosNoSeImprimenPorNingunaVia`, `TestUnErrorDeInfraestructuraNoLlegaAlCliente`; `scripts/scan-secrets.mjs` (árbol, historia y bundle con canarios, en la CI) |
 | INV-SEC-007 | Un `requestId` repetido nunca produce un segundo efecto | CRITICO | BOUNDARY, TEST | ✓ | `TestComandoDuplicadoSeIgnora`, `TestUnDuplicadoTrasReconectarRecibeLaRespuestaOriginal` |
 | INV-SEC-008 | Un token sólo sirve a su audiencia: un ticket de juego no funda y un token de fundación no abre sesión | CRITICO | BOUNDARY, TEST | ✓ | `TestLasAudienciasSonDisjuntas`, `TestUnTicketDeJuegoNoFundaJugadores`, `TestUnTokenDeFundacionSirveUnaVezYSoloParaSuSub` |
+| INV-SEC-009 | El registro de un jugador sólo cuenta sucesos en los que es parte (`player_id` o `counterpart_player_id`) | ALTO | BOUNDARY, DOMAIN, TEST | ○ | Previstos con E7: un tercer jugador no ve el saqueo ni el tratado de otros dos |
 
 ### TERRITORY — [territory.md](territory.md)
 
@@ -401,8 +403,8 @@ Por familia:
 | `INV-CITY` | 001–017 | 17 | [city.md](city.md) |
 | `INV-UNIT` | 001–011 | 11 | [units.md](units.md) |
 | `INV-MOVE` | 001–014 | 14 | [movement.md](movement.md) |
-| `INV-PERSIST` | 001–005 | 5 | [persistence.md](persistence.md) |
-| `INV-SEC` | 001–008 | 8 | [security.md](security.md) |
+| `INV-PERSIST` | 001–006 | 6 | [persistence.md](persistence.md) |
+| `INV-SEC` | 001–009 | 9 | [security.md](security.md) |
 | `INV-TERR` | 001–009 | 9 | [territory.md](territory.md) |
 | `INV-SAFE` | 001–007 | 7 | [territory.md](territory.md) |
 | `INV-GARR` | 001–009 | 9 | [diplomacy.md](diplomacy.md) |
@@ -418,15 +420,15 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 |---|---|---|
 | ✓ Cubierto | 109 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **111** | |
+| **Total** | **113** | |
 
-> **111 filas y 111 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **113 filas y 113 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-Ninguna fila queda sin cobertura ni parcial. `INV-GARR-008`, `INV-DIPLO-001` e `INV-DIPLO-002` se registraron el 2026-11-03 con SPEC-DIPLOMACY, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-COMBAT-004` e `INV-COMBAT-005` se registraron el 2026-11-03 con SPEC-COMBAT-PILLAGE, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-ECON-007` e `INV-ECON-008` se registraron el 2026-11-03 con SPEC-ECON-FOREST, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación. La familia `INV-COMBAT` se registró el 2026-11-02 antes de escribir su código, como manda §8, y pasó a ✓ con la implementación de SPEC-COMBAT-RAID; con ella, `INV-CITY-006` tiene por fin su test de rechazo: `unit.attack` es la primera acción hostil. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
+`INV-SEC-009` e `INV-PERSIST-006` se registraron el 2026-11-03 con SPEC-EVENT-LOG, antes de escribir su código, como manda §8: son las dos filas sin cobertura hasta que exista. `INV-GARR-008`, `INV-DIPLO-001` e `INV-DIPLO-002` se registraron el 2026-11-03 con SPEC-DIPLOMACY, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-COMBAT-004` e `INV-COMBAT-005` se registraron el 2026-11-03 con SPEC-COMBAT-PILLAGE, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-ECON-007` e `INV-ECON-008` se registraron el 2026-11-03 con SPEC-ECON-FOREST, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación. La familia `INV-COMBAT` se registró el 2026-11-02 antes de escribir su código, como manda §8, y pasó a ✓ con la implementación de SPEC-COMBAT-RAID; con ella, `INV-CITY-006` tiene por fin su test de rechazo: `unit.attack` es la primera acción hostil. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
 La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). `INV-CITY-006`, la última parcial, pasó a ✓ con la primera acción hostil (SPEC-COMBAT-RAID, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas), y con [ADR-020](../decisions/ADR-020-stale-pending-accounts.md), `INV-PLAYER-010` (una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
@@ -452,8 +454,8 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 | [city.md](city.md) | `INV-CITY` | 17 |
 | [units.md](units.md) | `INV-UNIT` | 11 |
 | [movement.md](movement.md) | `INV-MOVE` | 14 |
-| [persistence.md](persistence.md) | `INV-PERSIST` | 5 |
-| [security.md](security.md) | `INV-SEC` | 8 |
+| [persistence.md](persistence.md) | `INV-PERSIST` | 6 |
+| [security.md](security.md) | `INV-SEC` | 9 |
 | [territory.md](territory.md) | `INV-TERR`, `INV-SAFE` | 16 |
 | [diplomacy.md](diplomacy.md) | `INV-GARR` | 8 |
 | [economy.md](economy.md) | `INV-ECON` | 6 |
