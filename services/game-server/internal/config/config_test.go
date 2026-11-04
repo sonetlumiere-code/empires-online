@@ -48,7 +48,7 @@ func TestValoresPorDefectoDelCanon(t *testing.T) {
 	require.Equal(t, 10*time.Second, cfg.PresenceHeartbeat)
 	require.Equal(t, 300*time.Second, cfg.CityOfflineProtectionCooldwn)
 	require.Equal(t, 50, cfg.PersistenceFlushIntervalTicks)
-	require.Equal(t, 20000, cfg.PathfindingMaxNodes)
+	require.Equal(t, 50000, cfg.PathfindingMaxNodes, "ADR-031")
 	require.EqualValues(t, 256, cfg.PathfindingMaxDistance)
 	require.EqualValues(t, 16384, cfg.WSMaxMessageBytes)
 	require.Equal(t, 20, cfg.WSRateLimitPerSec)

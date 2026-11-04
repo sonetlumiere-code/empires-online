@@ -293,7 +293,11 @@ export class GameClient {
   // Economía (SPEC-ECON-WOOD). Igual que el resto: sólo la intención. La ruta,
   // los tiempos, el coste y la cantidad los decide el servidor.
 
-  /** Pone a un aldeano propio a recolectar en un tile de bosque. */
+  /**
+   * Pone a un aldeano propio a recolectar en un tile de bosque (madera) o de
+   * colina (piedra, SPEC-ECON-STONE): el recurso lo decide el servidor por el
+   * terreno.
+   */
   gatherWood(unitId: number, target: { x: number; y: number }): string {
     return this.send('unit.gather', { unitId, target: { x: target.x, y: target.y } });
   }
@@ -311,6 +315,14 @@ export class GameClient {
   /** Encarga el entrenamiento de una unidad del catálogo (SPEC-COMBAT-RAID: también `WARRIOR`). */
   trainUnit(cityId: number, type: 'VILLAGER' | 'WARRIOR'): string {
     return this.send('city.train', { cityId, type });
+  }
+
+  /**
+   * Encarga el avance de una ciudad propia a la era siguiente (SPEC-ECON-STONE).
+   * Sólo la ciudad: la era, el coste y el tiempo los decide el servidor.
+   */
+  advanceEra(cityId: number): string {
+    return this.send('city.advance', { cityId });
   }
 
   // Combate (SPEC-COMBAT-RAID). Sólo quién y a quién: la persecución, el daño y

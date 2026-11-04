@@ -155,6 +155,20 @@ export const CityTrain = z.object({
 }).strict();
 
 /**
+ * Encarga el avance de una ciudad propia a la era siguiente (SPEC-ECON-STONE §4.4).
+ * Sólo la ciudad: la era, el coste en madera y piedra y el tiempo los decide el
+ * servidor.
+ */
+export const CityAdvance = z.object({
+  v: V,
+  type: z.literal('city.advance'),
+  requestId: Uuid,
+  payload: z.object({
+    cityId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
  * Ordena a una unidad militar propia atacar a una unidad de otro jugador: la
  * persigue y la golpea hasta que muera o el enfrentamiento termine. Es la primera
  * acción hostil (ADR-016). El daño, el alcance y el botín los decide el servidor.
@@ -277,6 +291,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   UnitGather,
   CityBuild,
   CityTrain,
+  CityAdvance,
   UnitAttack,
   UnitPillage,
   UnitDemolish,
@@ -298,6 +313,7 @@ export type UnitUngarrison = z.infer<typeof UnitUngarrison>;
 export type UnitGather = z.infer<typeof UnitGather>;
 export type CityBuild = z.infer<typeof CityBuild>;
 export type CityTrain = z.infer<typeof CityTrain>;
+export type CityAdvance = z.infer<typeof CityAdvance>;
 export type UnitAttack = z.infer<typeof UnitAttack>;
 export type UnitPillage = z.infer<typeof UnitPillage>;
 export type UnitDemolish = z.infer<typeof UnitDemolish>;
@@ -318,6 +334,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'unit.gather',
   'city.build',
   'city.train',
+  'city.advance',
   'unit.attack',
   'unit.pillage',
   'unit.demolish',

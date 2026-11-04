@@ -23,8 +23,8 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/deposit"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
-	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -72,6 +72,8 @@ type escenario struct {
 		} `json:"city"`
 		// Wood es la madera inicial de su ciudad (SPEC-ECON-WOOD). Opcional.
 		Wood *int64 `json:"wood"`
+		// Stone es la piedra inicial de su ciudad (SPEC-ECON-STONE). Opcional.
+		Stone *int64 `json:"stone"`
 	} `json:"players"`
 	// Forests fija la madera inicial de algunos tiles de bosque
 	// (SPEC-ECON-FOREST). Opcional; vuelven a crecer un día después de epochMs.
@@ -80,6 +82,13 @@ type escenario struct {
 		Y         int32 `json:"y"`
 		Remaining int32 `json:"remaining"`
 	} `json:"forests"`
+	// Hills fija la piedra inicial de algunos tiles de colina
+	// (SPEC-ECON-STONE). Opcional; vuelven a crecer un día después de epochMs.
+	Hills []struct {
+		X         int32 `json:"x"`
+		Y         int32 `json:"y"`
+		Remaining int32 `json:"remaining"`
+	} `json:"hills"`
 	Units []struct {
 		Ref    string `json:"ref"`
 		Player string `json:"player"`
@@ -124,13 +133,19 @@ type economiaFinal struct {
 	Buildings []edificioFinal   `json:"buildings"`
 	// Forests son los tiles de bosque que no están llenos al final.
 	Forests []simulation.ForestRow `json:"forests,omitempty"`
+	// Hills son los tiles de colina que no están llenos al final.
+	Hills []simulation.DepositRow `json:"hills,omitempty"`
 }
 
 type ciudadEconomica struct {
-	Owner           string `json:"owner"`
-	Wood            int64  `json:"wood"`
-	Population      int32  `json:"population"`
-	PopulationLimit int32  `json:"populationLimit"`
+	Owner string `json:"owner"`
+	// Era sólo aparece si la ciudad dejó la de partida, y Stone si tiene
+	// piedra: así los golden anteriores a SPEC-ECON-STONE no cambian de forma.
+	Era             city.Era `json:"era,omitempty"`
+	Wood            int64    `json:"wood"`
+	Stone           int64    `json:"stone,omitempty"`
+	Population      int32    `json:"population"`
+	PopulationLimit int32    `json:"populationLimit"`
 }
 
 type tareaFinal struct {
@@ -282,7 +297,7 @@ func validarEscenario(esc *escenario) error {
 			if c.Target == nil {
 				return fmt.Errorf("comando %d: city.build necesita el tile en target", i)
 			}
-		case "connect", "disconnect", "city.train":
+		case "connect", "disconnect", "city.train", "city.advance":
 		default:
 			return fmt.Errorf("comando %d: tipo %q no admitido", i, c.Type)
 		}
@@ -372,11 +387,28 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 				{CityID: c.ID, Stock: economy.Stock{Resource: economy.ResourceWood, Amount: *p.Wood}},
 			}})
 		}
+		if p.Stone != nil {
+			conEconomia = true
+			state.SetEconomy(simulation.EconomyLoad{Stocks: []simulation.StockRow{
+				{CityID: c.ID, Stock: economy.Stock{Resource: economy.ResourceStone, Amount: *p.Stone}},
+			}})
+		}
+	}
+	// El catálogo de eras del canon (§10), como lo lee el arranque de la tabla
+	// eras: sin él ningún avance termina.
+	state.SetEras([]city.EraDefinition{
+		{Code: city.EraStone, PopulationCap: 20}, {Code: city.EraBronze, PopulationCap: 50},
+		{Code: city.EraIron, PopulationCap: 100}, {Code: city.EraCastle, PopulationCap: 150},
+	})
+	for _, f := range esc.Hills {
+		conEconomia = true
+		state.SetHill(world.Tile{X: f.X, Y: f.Y},
+			deposit.State{Remaining: f.Remaining, RegrowsAtMs: esc.EpochMs + deposit.Hill.RegrowAfterMs})
 	}
 	for _, f := range esc.Forests {
 		conEconomia = true
 		state.SetForest(world.Tile{X: f.X, Y: f.Y},
-			forest.State{Remaining: f.Remaining, RegrowsAtMs: esc.EpochMs + forest.RegrowAfterMs})
+			deposit.State{Remaining: f.Remaining, RegrowsAtMs: esc.EpochMs + deposit.Forest.RegrowAfterMs})
 	}
 	unidades := map[string]int64{}
 	refDeUnidad := map[int64]string{}
@@ -453,7 +485,7 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 					UnitID: unidades[c.Unit]}
 			case "unit.gather":
 				conEconomia = true
-				commands <- simulation.GatherWood{PlayerID: player, SessionID: sesion, RequestID: requestID,
+				commands <- simulation.Gather{PlayerID: player, SessionID: sesion, RequestID: requestID,
 					UnitID: unidades[c.Unit], Target: *c.Target}
 			case "city.build":
 				conEconomia = true
@@ -463,6 +495,10 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 				conEconomia = true
 				commands <- simulation.TrainUnit{PlayerID: player, SessionID: sesion, RequestID: requestID,
 					CityID: ciudades[c.Player], Type: unit.TypeVillager}
+			case "city.advance":
+				conEconomia = true
+				commands <- simulation.AdvanceEra{PlayerID: player, SessionID: sesion, RequestID: requestID,
+					CityID: ciudades[c.Player]}
 			case "connect":
 				commands <- simulation.PlayerConnected{PlayerID: player, SessionID: sesion}
 			case "disconnect":
@@ -508,8 +544,13 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 	if conEconomia {
 		eco := &economiaFinal{Cities: []ciudadEconomica{}, Tasks: []tareaFinal{}, Buildings: []edificioFinal{}}
 		state.EachCity(func(c *city.City) bool {
-			eco.Cities = append(eco.Cities, ciudadEconomica{Owner: c.OwnerPlayerID.String(),
-				Wood: state.Stock(c.ID).Amount, Population: c.Population, PopulationLimit: c.PopulationLimit})
+			ce := ciudadEconomica{Owner: c.OwnerPlayerID.String(),
+				Wood: state.Stock(c.ID).Amount, Stone: state.StockOf(c.ID, economy.ResourceStone).Amount,
+				Population: c.Population, PopulationLimit: c.PopulationLimit}
+			if c.Era != city.EraStone {
+				ce.Era = c.Era
+			}
+			eco.Cities = append(eco.Cities, ce)
 			for _, b := range state.BuildingsOf(c.ID) {
 				eco.Buildings = append(eco.Buildings, edificioFinal{ID: b.ID, Type: b.Type, X: b.X, Y: b.Y,
 					Status: b.Status, CompletesAtMs: b.CompletesAtMs})
@@ -524,6 +565,7 @@ func ejecutarEscenario(t *testing.T, esc *escenario) []byte {
 			return true
 		})
 		eco.Forests = state.Forests(clk.NowMs())
+		eco.Hills = state.Hills(clk.NowMs())
 		res.Final.Economy = eco
 	}
 	// Los recorridos del estado ya son estables; ordenar aquí hace que el golden

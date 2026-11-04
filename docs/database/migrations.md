@@ -139,7 +139,7 @@ Corolario: **todo arreglo es una migración nueva**. Si `000001_initial_schema.u
 
 ### 2.2 Siempre se escribe el `.down.sql`
 
-Cada `NNNNNN_nombre.up.sql` tiene su `NNNNNN_nombre.down.sql` que deshace exactamente sus efectos, en orden inverso. Sin excepciones, ni siquiera para migraciones "obviamente irreversibles". Las seis migraciones existentes cumplen la regla, y `TestLasMigracionesSonCorrelativasYCompletas` exige el par en cada una: `000001_initial_schema.down.sql` hace `DROP TABLE` de las diecisiete tablas en orden inverso al de dependencias y luego `DROP FUNCTION set_updated_at()`, `000002_seed_catalogs.down.sql` borra las filas de semilla por su `code`, `000003` quita la columna `version`, `000004` recrea `idempotency_keys` vacía `000005` recrea `players.password_hash` anulable y vacía, declarándolo en su primera línea como pide el párrafo siguiente, y `000006` recuenta población y límite desde sus fuentes de antes de la economía, borra sus cuatro tablas, devuelve a `IDLE` las unidades `WORKING` y restaura el `CHECK` de cinco estados.
+Cada `NNNNNN_nombre.up.sql` tiene su `NNNNNN_nombre.down.sql` que deshace exactamente sus efectos, en orden inverso. Sin excepciones, ni siquiera para migraciones "obviamente irreversibles". Las doce migraciones existentes cumplen la regla, y `TestLasMigracionesSonCorrelativasYCompletas` exige el par en cada una: `000001_initial_schema.down.sql` hace `DROP TABLE` de las diecisiete tablas en orden inverso al de dependencias y luego `DROP FUNCTION set_updated_at()`, `000002_seed_catalogs.down.sql` borra las filas de semilla por su `code`, `000003` quita la columna `version`, `000004` recrea `idempotency_keys` vacía `000005` recrea `players.password_hash` anulable y vacía, declarándolo en su primera línea como pide el párrafo siguiente, y `000006` recuenta población y límite desde sus fuentes de antes de la economía, borra sus cuatro tablas, devuelve a `IDLE` las unidades `WORKING` y restaura el `CHECK` de cinco estados.
 
 El `down` cumple tres funciones, y sólo una de ellas es el rollback:
 
@@ -331,7 +331,13 @@ services/game-server/migrations/
 ├── 000003_territory_control_version.up.sql   / .down.sql
 ├── 000004_drop_idempotency_keys.up.sql       / .down.sql
 ├── 000005_players_without_credentials.up.sql / .down.sql
-├── 000006_economy_wood.up.sql / .down.sql
+├── 000006_economy_wood.up.sql                / .down.sql
+├── 000007_combat_raid.up.sql                 / .down.sql
+├── 000008_economy_forest.up.sql              / .down.sql
+├── 000009_diplomacy.up.sql                   / .down.sql
+├── 000010_event_log.up.sql                   / .down.sql
+├── 000011_siege.up.sql                       / .down.sql
+├── 000012_stone_and_era_advance.up.sql       / .down.sql
 ├── embed.go
 └── migrations_test.go      # TestLasMigracionesSonCorrelativasYCompletas
 ```
@@ -344,7 +350,7 @@ services/game-server/migrations/
 
 ## 6. Migraciones del MVP
 
-Son **seis**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
+Son **doce**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
 
 | # | Fichero | Contenido |
 |---|---|---|
@@ -354,6 +360,12 @@ Son **seis**, todas embebidas en el binario. Juntas materializan lo descrito en 
 | `000004` | `drop_idempotency_keys` | Elimina `idempotency_keys`, que nunca tuvo escritor ([ADR-014](../decisions/ADR-014-command-idempotency.md)). Su `.down.sql` la recrea. |
 | `000005` | `players_without_credentials` | Borra `players.password_hash`: la identidad sale del esquema del juego ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Su `.down.sql` recrea la columna **anulable** y vacía: los hashes no se recuperan, y así lo dice el fichero. |
 | `000006` | `economy_wood` | El primer slice de economía ([SPEC-ECON-WOOD](../specs/economy-wood.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)): `WORKING` en `units_status_valid` (el patrón de §3.2, aditivo); `city_stocks`, con una fila a cero para cada ciudad existente; `unit_tasks`, `buildings` y `city_productions`, cada una con sus `CHECK` y su índice único. Todo en la misma migración porque es un solo propósito: ninguna de las cuatro tablas tiene sentido sin las otras. Su `.down.sql` recuenta `population` desde `units` y deja `population_limit` en el de la era o en el recuento si es mayor (no destruye unidades, `INV-CITY-002`), borra las cuatro tablas, devuelve a `IDLE` las unidades `WORKING` y restaura el `CHECK` de cinco estados. Lo que se pierde al bajar —madera, casas, producciones— lo dice el fichero. |
+| `000007` | `combat_raid` | El primer combate ([SPEC-COMBAT-RAID](../specs/combat-raid.md), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md)): `units.loot` y su `CHECK`, `units_dead_iff_zero_hp` (`INV-COMBAT-001`) y `WARRIOR` en `city_productions`. Su `.down.sql` borra la producción de guerrero en curso y devuelve su plaza; los guerreros que existan se quedan como filas. |
+| `000008` | `economy_forest` | La madera del bosque en una capa aparte del terreno ([SPEC-ECON-FOREST](../specs/economy-forest.md), [ADR-025](../decisions/ADR-025-forest-wood-layer.md)): `forest_wood`. Su `.down.sql` la borra: todo el bosque vuelve a estar lleno. |
+| `000009` | `diplomacy` | Tratados en caliente ([SPEC-DIPLOMACY](../specs/diplomacy.md), [ADR-027](../decisions/ADR-027-hot-treaties.md) §4): `proposed_by`, `request_id`, `break_effective_at`, `closed_at`, los estados `REJECTED` y `WITHDRAWN` y los únicos por par. Su `.down.sql` borra las filas en los estados nuevos. |
+| `000010` | `event_log` | El registro ([SPEC-EVENT-LOG](../specs/event-log.md), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) §7): `world_events.counterpart_player_id` con su índice y `players.event_log_seen_id`. |
+| `000011` | `siege` | El asedio ([SPEC-COMBAT-SIEGE](../specs/combat-siege.md), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md)): el `CHECK` de población se cambia por el trigger `cities_population_not_raised_over_limit`, `DESTROYED` en `buildings_status_valid` y el único por tile pasa a parcial. Su `.down.sql` borra las casas destruidas y, si una ciudad quedó por encima de su límite, lo sube a su población. |
+| `000012` | `stone_and_era_advance` | La piedra y el avance de era ([SPEC-ECON-STONE](../specs/economy-stone.md), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)): `STONE` en `city_stocks_resource_valid` con su fila a cero para cada ciudad, `GATHER_STONE` en `unit_tasks_kind_valid`, `hill_stone` y `city_era_advances`. Su `.down.sql` pierde la piedra, las colinas picadas, las tareas de piedra y los avances en curso; la era de una ciudad que ya avanzó se queda, porque `BRONZE_AGE` existe desde `000002`. |
 
 Por qué el esquema inicial cabe en una sola migración y no en una por tabla: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido diecisiete oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
 

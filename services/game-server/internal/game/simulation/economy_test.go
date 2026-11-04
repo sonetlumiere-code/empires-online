@@ -80,7 +80,7 @@ func (h *harness) tick() {
 
 func (h *harness) recolectar(unitID int64, target world.Tile) {
 	h.t.Helper()
-	h.send(simulation.GatherWood{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: unitID, Target: target})
+	h.send(simulation.Gather{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: unitID, Target: target})
 }
 
 func (h *harness) codigos() []string {
@@ -366,7 +366,7 @@ func TestRechazosDeRecoleccion(t *testing.T) {
 	}
 	for _, c := range casos {
 		h.rec.reset()
-		h.send(simulation.GatherWood{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: c.unidad, Target: c.target})
+		h.send(simulation.Gather{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: c.unidad, Target: c.target})
 		assert.Equal(t, []string{c.code}, h.codigos(), c.nombre)
 	}
 	assert.Equal(t, 0, h.state.TaskCount())

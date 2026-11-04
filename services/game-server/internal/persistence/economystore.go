@@ -32,9 +32,9 @@ func toTransition(w simulation.TaskWrite) postgres.TaskTransition {
 	if w.Finish != nil {
 		tr.FinishMovementID, tr.FinishStatus = w.Finish.MovementID, w.Finish.Status
 	}
-	if f := w.Forest; f != nil {
-		tr.Forest = &postgres.ForestTake{
-			Tile: f.Tile, Amount: f.Amount, AtMs: f.AtMs, RegrowsAtMs: f.RegrowsAtMs,
+	if f := w.Load; f != nil {
+		tr.Load = &postgres.DepositTake{
+			Layer: f.Layer, Tile: f.Tile, Amount: f.Amount, AtMs: f.AtMs, RegrowsAtMs: f.RegrowsAtMs,
 			FromTrips: f.FromTrips, FromUntilMs: f.FromUntilMs,
 			Depleted: f.Depleted, PlayerID: f.PlayerID, CityID: f.CityID, Tick: f.Tick,
 		}
@@ -72,6 +72,20 @@ func (e *EconomyStore) Build(ctx context.Context, o simulation.BuildOrder) (int6
 // Train debita, reserva y encarga el entrenamiento (RN-ECON-010).
 func (e *EconomyStore) Train(ctx context.Context, o simulation.TrainOrder) error {
 	return stale(e.repo.Train(ctx, o.RequestID, o.PlayerID, o.Production, o.PopulationCost, toDelta(o.Stock), o.Tick))
+}
+
+// Advance debita todo el coste y encarga el avance de era (RN-ECON-025).
+func (e *EconomyStore) Advance(ctx context.Context, o simulation.AdvanceOrder) error {
+	out := make([]postgres.StockDelta, len(o.Stocks))
+	for i, d := range o.Stocks {
+		out[i] = toDelta(d)
+	}
+	return stale(e.repo.Advance(ctx, o.RequestID, o.PlayerID, o.Advance, out, o.Tick))
+}
+
+// CompleteAdvance termina el avance de era (RN-ECON-027).
+func (e *EconomyStore) CompleteAdvance(ctx context.Context, c simulation.AdvanceCompletion) error {
+	return e.repo.CompleteAdvance(ctx, c.CityID, c.PlayerID, c.From, c.To, c.Tick)
 }
 
 // CompleteBuilding completa el edificio y sube el límite (RN-ECON-009).

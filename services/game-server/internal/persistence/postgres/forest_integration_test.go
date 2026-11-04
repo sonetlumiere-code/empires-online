@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/deposit"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -18,7 +18,7 @@ import (
 
 // Persistencia de la madera del bosque (SPEC-ECON-FOREST §7 y §9, ADR-025 §2).
 
-const dia = forest.RegrowAfterMs
+var dia = deposit.Forest.RegrowAfterMs
 
 // trabajando deja la tarea de una unidad en WORKING, con vencimiento `until`,
 // como la deja la llegada al bosque.
@@ -38,7 +38,7 @@ func carga(e escenarioEconomico, u *unit.Unit, tk task.Task, amount int32, atMs 
 	next.Phase, next.PhaseUntilMs, next.Carrying = task.PhaseToDeposit, 0, amount
 	return postgres.TaskTransition{
 		UnitID: u.ID, WriteUnit: true, Status: unit.StatusWorking, At: tk.Target, Task: &next,
-		Forest: &postgres.ForestTake{
+		Load: &postgres.DepositTake{
 			Tile: tk.Target, Amount: amount, AtMs: atMs, RegrowsAtMs: atMs + dia,
 			FromTrips: tk.TripsDone, FromUntilMs: tk.PhaseUntilMs,
 			Depleted: depleted, PlayerID: e.jugador.Player.ID, CityID: &e.jugador.City.ID, Tick: 7,

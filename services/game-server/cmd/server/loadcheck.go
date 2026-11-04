@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/advance"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -45,8 +48,9 @@ func checkLoadedState(
 	return res.Units, res.Controls, res.Garrisons, res.Tasks, nil
 }
 
-// loadEconomy lee la economía durable: stocks, tareas, edificios y
-// producciones. Las tareas pasan después por la validación de carga.
+// loadEconomy lee la economía durable: stocks, tareas, edificios,
+// producciones, avances de era y las capas de bosque y colina. Las tareas pasan
+// después por la validación de carga.
 func loadEconomy(ctx context.Context, repo *postgres.EconomyRepo) (simulation.EconomyLoad, error) {
 	var out simulation.EconomyLoad
 	stocks, err := repo.ListStocks(ctx)
@@ -70,7 +74,43 @@ func loadEconomy(ctx context.Context, repo *postgres.EconomyRepo) (simulation.Ec
 		return out, err
 	}
 	for _, f := range forests {
-		out.Forests = append(out.Forests, simulation.ForestRow{Tile: f.Tile, State: f.State})
+		out.Forests = append(out.Forests, simulation.DepositRow{Tile: f.Tile, State: f.State})
+	}
+	hills, err := repo.ListHills(ctx)
+	if err != nil {
+		return out, err
+	}
+	for _, h := range hills {
+		out.Hills = append(out.Hills, simulation.DepositRow{Tile: h.Tile, State: h.State})
+	}
+	if out.Advances, err = repo.ListAdvances(ctx); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// checkAdvances descarta, con su invariant_violation, los avances que no son
+// un paso del catálogo o no salen de la era de su ciudad (INV-CITY-018), y los
+// borra de la base: aplicarlos haría retroceder o saltar la era.
+func checkAdvances(ctx context.Context, repo *postgres.EconomyRepo, advances []advance.Advance,
+	cities []*city.City, log *slog.Logger) ([]advance.Advance, error) {
+	eraOf := make(map[int64]city.Era, len(cities))
+	for _, c := range cities {
+		eraOf[c.ID] = c.Era
+	}
+	var out []advance.Advance
+	for _, a := range advances {
+		era, ok := eraOf[a.CityID]
+		if err := a.Validate(); err == nil && ok && era == a.From {
+			out = append(out, a)
+			continue
+		}
+		log.Error("invariant_violation", "inv_id", "INV-CITY-018", "severity", "ALTO", "policy", "REJECT",
+			"entity", fmt.Sprintf("city:%d", a.CityID),
+			"detail", fmt.Sprintf("avance de %s a %s con la ciudad en %s: se descarta", a.From, a.To, era))
+		if err := repo.DeleteAdvance(ctx, a.CityID); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }

@@ -186,14 +186,20 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleGarrisonEntryResolved(c)
 	case GarrisonExitFailed:
 		s.handleGarrisonExitFailed(c)
-	case GatherWood:
-		s.handleGatherWood(c)
+	case Gather:
+		s.handleGather(c)
 	case BuildBuilding:
 		s.handleBuildBuilding(c)
 	case TrainUnit:
 		s.handleTrainUnit(c)
 	case BuildResolved:
 		s.handleBuildResolved(c)
+	case AdvanceEra:
+		s.handleAdvanceEra(c)
+	case AdvanceResolved:
+		s.handleAdvanceResolved(c)
+	case AdvanceCompletePersistFailed:
+		s.handleAdvanceCompletePersistFailed(c)
 	case TrainResolved:
 		s.handleTrainResolved(c)
 	case BirthResolved:
@@ -677,8 +683,10 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	// Las casas dañadas que llevan un rato sin golpes (RN-COMBAT-032).
 	s.forgetSiegeDamage(nowMs)
 	s.completeProductions(nowMs)
-	// El bosque que vuelve a crecer (RN-ECON-016).
-	s.regrowForests(nowMs)
+	// Los avances de era que vencen (RN-ECON-027).
+	s.completeAdvances(nowMs)
+	// El bosque y la colina que vuelven a crecer (RN-ECON-016, RN-ECON-021).
+	s.regrowDeposits(nowMs)
 
 	// 5. Ocultamiento en Safe Zones (docs/specs/safe-zones.md §6.4). Va después
 	// de la fase 3 del mismo tick, así que una unidad que llega a una zona pasa
@@ -848,6 +856,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushFinishes()
 	s.flushStocks()
 	s.flushCompletions()
+	s.flushAdvanceCompletions()
 	s.flushDestructions()
 	s.flushDeaths()
 

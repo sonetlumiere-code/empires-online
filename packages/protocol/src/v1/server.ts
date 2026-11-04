@@ -16,8 +16,12 @@ import {
   EntityId,
   EpochMs,
   EventLogEntry,
+  AdvanceView,
+  EraCode,
   ForestView,
+  HillView,
   PROTOCOL_VERSION,
+  ResourceType,
   TreatyView,
   PresenceState,
   ProductionView,
@@ -122,6 +126,11 @@ export const WorldSnapshot = z.object({
      */
     forests: z.array(ForestView).optional(),
     /**
+     * Tiles de colina de esos chunks que no están llenos (SPEC-ECON-STONE). Opcional,
+     * como `forests`: sin él, toda la colina está llena.
+     */
+    hills: z.array(HillView).optional(),
+    /**
      * Tratados PROPOSED y ACTIVE del jugador que recibe el snapshot (SPEC-DIPLOMACY).
      * Opcional: aditivo en v1; como todo el snapshot, reemplaza la lista del cliente.
      */
@@ -156,6 +165,8 @@ export const EntityUpdate = z.object({
     garrisonCityId: EntityId.nullable().optional(),
     /** Lo que lleva encima; 0 cuando lo deposita o lo pierde. */
     carrying: z.number().int().min(0).optional(),
+    /** El recurso de `carrying` cuando lo lleva una recolección (SPEC-ECON-STONE §6). */
+    carryingResource: ResourceType.optional(),
   }),
 });
 
@@ -184,6 +195,10 @@ export const CityUpdate = z.object({
     stocks: Stocks.optional(),
     /** Entrenamiento en curso; `null` cuando termina. */
     production: ProductionView.nullable().optional(),
+    /** Era nueva de la ciudad al terminar un avance (SPEC-ECON-STONE RN-ECON-027). */
+    era: EraCode.optional(),
+    /** Avance de era: empieza (vista) o termina (`null`). */
+    advance: AdvanceView.nullable().optional(),
     /**
      * Instante del último golpe de saqueo sobre la ciudad. Sólo lo recibe su
      * dueño, para avisarle (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
@@ -258,6 +273,17 @@ export const ForestUpdate = z.object({
   ...serverEnvelope,
   type: z.literal('forest.update'),
   payload: ForestView,
+});
+
+/**
+ * Cambió la piedra de un tile de colina: una carga la gastó, o volvió a crecer
+ * (SPEC-ECON-STONE §6). Con `remaining` igual a la capacidad y `regrowsAtMs` nulo, el
+ * tile está lleno.
+ */
+export const HillUpdate = z.object({
+  ...serverEnvelope,
+  type: z.literal('hill.update'),
+  payload: HillView,
 });
 
 /**
@@ -371,6 +397,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   BuildingUpdate,
   BuildingDestroyed,
   ForestUpdate,
+  HillUpdate,
   TreatyUpdate,
   EventLogPage,
 ]);
@@ -394,6 +421,7 @@ export type BuildingSpawn = z.infer<typeof BuildingSpawn>;
 export type BuildingUpdate = z.infer<typeof BuildingUpdate>;
 export type BuildingDestroyed = z.infer<typeof BuildingDestroyed>;
 export type ForestUpdate = z.infer<typeof ForestUpdate>;
+export type HillUpdate = z.infer<typeof HillUpdate>;
 export type TreatyUpdate = z.infer<typeof TreatyUpdate>;
 export type EventLogPage = z.infer<typeof EventLogPage>;
 
@@ -416,6 +444,7 @@ export const SERVER_MESSAGE_TYPES = [
   'building.update',
   'building.destroyed',
   'forest.update',
+  'hill.update',
   'treaty.update',
   'event_log.page',
 ] as const;

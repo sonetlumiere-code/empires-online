@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cookieDeSesion, elegirBosque, elegirDestino, huecoParaCasa, indexarTerreno } from './smoke.mjs';
+import { cookieDeSesion, elegirBosque, elegirColina, elegirDestino, huecoParaCasa, indexarTerreno } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
 const GRASSLAND = 0;
@@ -162,4 +162,12 @@ test('huecoParaCasa toma el primer tile libre del 3 × 3, fila a fila y sin el c
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) todos.push({ x: 10 + dx, y: 10 + dy });
   assert.equal(huecoParaCasa(ciudad, todos), null);
   assert.deepEqual(huecoParaCasa(ciudad, todos.slice(0, 4)), { x: 11, y: 10 }, 'el centro nunca es un hueco');
+});
+
+test('elegirColina toma la colina más cercana a la ciudad y salta las agotadas (SPEC-ECON-STONE)', () => {
+  const mapa = new Map([['30,10', 2], ['12,20', 2], ['13,20', 2], ['11,11', 1]]);
+  const ciudad = { centerX: 10, centerY: 10 };
+  assert.deepEqual(elegirColina(mapa, ciudad), { x: 12, y: 20, d: 10 }, 'a igual distancia, la de menor x');
+  assert.deepEqual(elegirColina(mapa, ciudad, [{ x: 12, y: 20, remaining: 0 }]), { x: 13, y: 20, d: 10 });
+  assert.equal(elegirColina(new Map([['11,11', 1]]), ciudad), null, 'un bosque no es colina');
 });

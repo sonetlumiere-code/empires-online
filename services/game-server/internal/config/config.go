@@ -208,7 +208,7 @@ func Load() (Config, error) {
 		// en el sitio donde olvidarlo hace daño.
 		MigrateOnStart: v.boolean("EO_MIGRATE_ON_START", env != EnvProduction),
 
-		PathfindingMaxNodes:    v.intRange("EO_PATHFINDING_MAX_NODES", 20000, 100, 10_000_000),
+		PathfindingMaxNodes:    v.intRange("EO_PATHFINDING_MAX_NODES", 50000, 100, 10_000_000),
 		PathfindingMaxDistance: int32(v.intRange("EO_PATHFINDING_MAX_DISTANCE", 256, 1, 65536)),
 
 		WSMaxMessageBytes:   int64(v.intRange("EO_WS_MAX_MESSAGE_BYTES", 16384, 256, 1<<22)),

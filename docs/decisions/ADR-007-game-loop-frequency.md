@@ -7,6 +7,7 @@ Propósito: justificar por qué el bucle de simulación autoritativo corre a 10 
 - **Decisores:** equipo de arquitectura
 - **Relacionados:** [ADR-002](ADR-002-authoritative-server.md), [ADR-008](ADR-008-grid-coordinate-system.md), [ADR-011](ADR-011-movement-timed-polyline.md)
 - **Ámbito:** `services/game-server/internal/game/loop`
+- **Sustitución parcial:** el razonamiento del presupuesto con `EO_PATHFINDING_MAX_NODES=20000` (§«Diseñar para consumir menos de la mitad») lo actualiza [ADR-031](ADR-031-pathfinding-node-cap-50k.md): desde el 2026-11-04 el tope es 50 000 y una búsqueda que lo agota cuesta ~20 ms.
 
 ---
 

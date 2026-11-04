@@ -434,6 +434,13 @@
                       "carrying": {
                         "type": "integer",
                         "minimum": 0
+                      },
+                      "carryingResource": {
+                        "type": "string",
+                        "enum": [
+                          "WOOD",
+                          "STONE"
+                        ]
                       }
                     },
                     "required": [
@@ -515,6 +522,10 @@
                           "WOOD": {
                             "type": "integer",
                             "minimum": 0
+                          },
+                          "STONE": {
+                            "type": "integer",
+                            "minimum": 0
                           }
                         },
                         "required": [
@@ -536,6 +547,29 @@
                             },
                             "required": [
                               "unitType",
+                              "completesAtMs"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "advance": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "era": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/era"
+                              },
+                              "completesAtMs": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                              }
+                            },
+                            "required": [
+                              "era",
                               "completesAtMs"
                             ],
                             "additionalProperties": false
@@ -674,6 +708,41 @@
                   }
                 },
                 "forests": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "y": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "remaining": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "regrowsAtMs": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "remaining",
+                      "regrowsAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "hills": {
                   "type": "array",
                   "items": {
                     "type": "object",
@@ -922,6 +991,9 @@
                 "carrying": {
                   "type": "integer",
                   "minimum": 0
+                },
+                "carryingResource": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/carryingResource"
                 }
               },
               "required": [
@@ -1049,6 +1121,19 @@
                   "anyOf": [
                     {
                       "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/production/anyOf/0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "era": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/era"
+                },
+                "advance": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/advance/anyOf/0"
                     },
                     {
                       "type": "null"
@@ -1523,6 +1608,38 @@
             },
             "payload": {
               "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/forests/items"
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "hill.update"
+            },
+            "payload": {
+              "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/hills/items"
             }
           },
           "required": [

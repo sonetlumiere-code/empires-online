@@ -626,6 +626,37 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 
 ---
 
+<a id="inv-city-018"></a>
+## INV-CITY-018 — La era de una ciudad nunca retrocede
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E9 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestElFinDelAvanceSubeElLimiteUnaVez` y `TestUnAvanceDesdeOtraEraSeRechaza` (integration), `TestUnAvanceFueraDelCatalogoEsInvalido` (unit, `internal/domain/advance`) y `TestLaEraNoRetrocede` (simulation) |
+
+**Enunciado.** Para toda ciudad y toda transacción confirmada, el `ordinal` de `cities.era` en `eras` es mayor o igual que el que tenía antes de la transacción; y en la RAM del Game Server, la era de una ciudad sólo cambia a la siguiente del catálogo, al terminar un avance.
+
+**Razón.** La era fija el suelo del límite de población (`population_cap`, [INV-CITY-003](#inv-city-003)) y es lo que el jugador pagó con madera y piedra ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)). Hasta E9 era cierto por vacuidad: sólo el alta escribía la era. Desde E9 tiene un escritor, y una era que bajara quitaría plazas que ningún asedio puede quitar ([ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md)) y se comería lo pagado.
+
+**Cómo se garantiza.**
+
+- `DB` — el fin del avance escribe la era sólo `WHERE era = from_era`, y `from_era` y `to_era` vienen de la fila de `city_era_advances`, que el encargo creó con la siguiente del catálogo ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §5).
+- `DOMAIN` — `city.advance` sólo admite el paso de `STONE_AGE` a `BRONZE_AGE` (`RN-ECON-024`); ninguna otra orden, golpe ni ausencia escribe la era (`RN-ECON-028`).
+
+**Cómo se verifica.**
+
+- `TestElFinDelAvanceSubeElLimiteUnaVez` (integration) — el fin, repetido, no cambia nada, y un reintento tardío del encargo con la ciudad ya en Bronce no debita. Verificado por mutación: sin `AND era = from_era`, el límite sube dos veces y el test falla.
+- `TestUnAvanceDesdeOtraEraSeRechaza` (integration) — un avance que no sale de la era de la ciudad se rechaza sin debitar, y `city_era_advances_forward` no admite uno que se quede en el sitio.
+- `TestUnAvanceFueraDelCatalogoEsInvalido` (unit) — ni hacia atrás ni saltando eras.
+- `TestLaEraNoRetrocede` (simulation) — una ciudad en Bronce que se ausenta y pasa a `PROTECTED` conserva su era y su límite.
+
+**Violación en runtime.** No hay ruta que la produzca: la escritura condicionada es la guarda. Una fila de `city_era_advances` cuyo `from_era` no es la era de su ciudad la descarta la validación de carga con `invariant_violation`, `inv_id=INV-CITY-018`.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -647,3 +678,4 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 | INV-CITY-015 | `internal/game/simulation` | [INV-WORLD-004](world.md#inv-world-004) |
 | INV-CITY-016 | `internal/game/simulation` | [INV-PERSIST-002](persistence.md#inv-persist-002) |
 | INV-CITY-017 | `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-CITY-002](#inv-city-002), [RN-ECON-010](../specs/economy-wood.md) |
+| INV-CITY-018 | `internal/domain/advance`, `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-003](#inv-city-003), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) |

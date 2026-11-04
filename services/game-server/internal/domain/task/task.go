@@ -1,7 +1,7 @@
 // Package task modela lo que una unidad hace a lo largo de varios tramos.
 //
-// En el primer slice de economía existe una sola tarea, GATHER_WOOD, que
-// encadena tramos de movimiento y esperas:
+// Hay una tarea por recurso de terreno, GATHER_WOOD y GATHER_STONE (ADR-030
+// §2), y las dos encadenan los mismos tramos de movimiento y esperas:
 //
 //	TO_RESOURCE (movimiento) → WORKING (workMs) → TO_DEPOSIT (movimiento) → depósito → TO_RESOURCE …
 //
@@ -11,7 +11,7 @@
 // escribe nada. No es un patrón general para cualquier acción de varios tramos
 // (ADR-023, «Fuera de esta decisión»).
 //
-// Spec: ../../../../../docs/specs/economy-wood.md §4.2.
+// Specs: ../../../../../docs/specs/economy-wood.md §4.2 y economy-stone.md §4.2.
 package task
 
 import (
@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/deposit"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
@@ -27,8 +28,37 @@ import (
 // Kind identifica el tipo de tarea.
 type Kind string
 
-// KindGatherWood es la recolección de madera.
-const KindGatherWood Kind = "GATHER_WOOD"
+const (
+	// KindGatherWood es la recolección de madera en un bosque.
+	KindGatherWood Kind = "GATHER_WOOD"
+	// KindGatherStone es la recolección de piedra en una colina.
+	KindGatherStone Kind = "GATHER_STONE"
+)
+
+// Valid indica si el tipo pertenece al conjunto del esquema
+// (unit_tasks_kind_valid).
+func (k Kind) Valid() bool { return k == KindGatherWood || k == KindGatherStone }
+
+// Layer es la capa de recurso que gasta la tarea: la del terreno de su tile de
+// trabajo (ADR-030 §2).
+func (k Kind) Layer() (deposit.Layer, bool) {
+	switch k {
+	case KindGatherWood:
+		return deposit.Forest, true
+	case KindGatherStone:
+		return deposit.Hill, true
+	default:
+		return deposit.Layer{}, false
+	}
+}
+
+// KindFor es la tarea que gasta una capa.
+func KindFor(l deposit.Layer) Kind {
+	if l.Terrain == deposit.Hill.Terrain {
+		return KindGatherStone
+	}
+	return KindGatherWood
+}
 
 // Phase es la fase de una tarea.
 type Phase string
@@ -65,7 +95,18 @@ const (
 	// EndForestDepleted: el bosque se agotó y no hay otro tile con madera
 	// cerca (RN-ECON-015).
 	EndForestDepleted EndReason = "FOREST_DEPLETED"
+	// EndHillDepleted: la colina se agotó y no hay otro tile con piedra cerca
+	// (RN-ECON-022).
+	EndHillDepleted EndReason = "HILL_DEPLETED"
 )
+
+// EndDepleted es el motivo con el que termina una tarea cuyo recurso se agotó.
+func EndDepleted(l deposit.Layer) EndReason {
+	if l.Terrain == deposit.Hill.Terrain {
+		return EndHillDepleted
+	}
+	return EndForestDepleted
+}
 
 // Errores de dominio.
 var (
@@ -81,7 +122,8 @@ var (
 type Task struct {
 	UnitID int64
 	Kind   Kind
-	// Target es el tile de trabajo: el propio tile FOREST (RN-ECON-002).
+	// Target es el tile de trabajo: el propio tile FOREST o HILL (RN-ECON-002,
+	// RN-ECON-019).
 	Target world.Tile
 	Phase  Phase
 	// PhaseUntilMs es cuándo vence la fase WORKING; 0 en las demás
@@ -93,9 +135,14 @@ type Task struct {
 	TripsDone int32
 }
 
-// NewGather empieza una recolección: el primer tramo va al recurso.
+// NewGather empieza una recolección de madera: el primer tramo va al recurso.
 func NewGather(unitID int64, target world.Tile) Task {
-	return Task{UnitID: unitID, Kind: KindGatherWood, Target: target, Phase: PhaseToResource}
+	return NewGatherOf(unitID, KindGatherWood, target)
+}
+
+// NewGatherOf empieza una recolección del tipo dado.
+func NewGatherOf(unitID int64, kind Kind, target world.Tile) Task {
+	return Task{UnitID: unitID, Kind: kind, Target: target, Phase: PhaseToResource}
 }
 
 // StartWork es la llegada al recurso: TO_RESOURCE → WORKING durante `workMs`
@@ -127,9 +174,10 @@ func (t Task) FinishWork(carry int32) (Task, error) {
 	return t, nil
 }
 
-// Retarget cambia el tile de trabajo porque el suyo se agotó (RN-ECON-015):
-// desde TO_RESOURCE o WORKING, la tarea vuelve a TO_RESOURCE hacia `target`,
-// sin carga nueva y sin perder la que lleve.
+// Retarget cambia el tile de trabajo porque el suyo se agotó (RN-ECON-015,
+// RN-ECON-022): desde TO_RESOURCE o WORKING, la tarea vuelve a TO_RESOURCE
+// hacia `target`, sin carga nueva y sin perder la que lleve. El tipo no cambia:
+// quien llama elige un tile de la misma capa.
 func (t Task) Retarget(target world.Tile) (Task, error) {
 	if t.Phase != PhaseToResource && t.Phase != PhaseWorking {
 		return t, fmt.Errorf("%w: cambiar de bosque desde %s", ErrBadTransition, t.Phase)
@@ -164,7 +212,7 @@ func (t Task) Deposit() (Task, int32, error) {
 
 // Validate comprueba una fila leída de la base.
 func (t Task) Validate() error {
-	if t.Kind != KindGatherWood {
+	if !t.Kind.Valid() {
 		return fmt.Errorf("%w: tipo %q", ErrInvalidTask, t.Kind)
 	}
 	if !t.Phase.Valid() {
@@ -205,15 +253,18 @@ type Grid interface {
 	TerrainAt(x, y int32) world.TerrainType
 }
 
-// ValidTarget aplica la parte de RN-ECON-001 que depende del destino: dentro
-// del mundo y sobre terreno FOREST. Que al tile le quede madera
-// (RN-ECON-014) lo comprueba la simulación, que tiene la capa del bosque.
-func ValidTarget(g Grid, target world.Tile) error {
+// ValidTarget aplica la parte de RN-ECON-001 y RN-ECON-019 que depende del
+// destino: dentro del mundo y sobre un terreno que dé recurso (FOREST o HILL).
+// Devuelve la capa de ese terreno, que fija el tipo de la tarea. Que al tile le
+// quede recurso (RN-ECON-014, RN-ECON-021) lo comprueba la simulación, que
+// tiene la capa.
+func ValidTarget(g Grid, target world.Tile) (deposit.Layer, error) {
 	if !g.InBounds(target.X, target.Y) {
-		return ErrOutOfBounds
+		return deposit.Layer{}, ErrOutOfBounds
 	}
-	if g.TerrainAt(target.X, target.Y) != world.Forest {
-		return fmt.Errorf("%w: %s es %s", ErrNotResource, target, g.TerrainAt(target.X, target.Y))
+	l, ok := deposit.ForTerrain(g.TerrainAt(target.X, target.Y))
+	if !ok {
+		return deposit.Layer{}, fmt.Errorf("%w: %s es %s", ErrNotResource, target, g.TerrainAt(target.X, target.Y))
 	}
-	return nil
+	return l, nil
 }

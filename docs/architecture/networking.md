@@ -236,6 +236,8 @@ hecho de la simulación  --(mapeo)-->  tipo de mensaje v1  --(chunk o jugador)--
 | Encargo rechazado por la transacción | `system.error` y `city.update` (con `stocks`, la madera devuelta) | Emisor; chunk del centro |
 | Casa completa | `building.update` (con `status: COMPLETE`) y `city.update` (con `populationLimit`) | Chunk del edificio; chunk del centro |
 | Carga de bosque o regeneración | `forest.update` ([economy-forest.md](../specs/economy-forest.md)): el terreno no se reenvía, cambia la capa de madera | Chunk del tile |
+| Carga de colina o regeneración | `hill.update` ([economy-stone.md](../specs/economy-stone.md)): igual que el bosque, en la capa de piedra | Chunk del tile |
+| Avance de era encargado o terminado | `city.update { advance }` y, al terminar, `{ era, populationLimit, advance: null }` ([economy-stone.md](../specs/economy-stone.md)) | Chunk de la ciudad |
 | Entrenamiento confirmado | `city.update` (con `stocks`, `population` y `production`) | Chunk del centro |
 | Nacimiento del aldeano | `entity.spawn` y `city.update` (con `production: null`) | Chunk del tile de nacimiento; chunk del centro |
 
@@ -436,7 +438,7 @@ Agrupar los frames de un mismo tick en una sola pasada de escritura, coalescer v
 Dos mensajes salientes merecen atención por tamaño:
 
 - **`world.snapshot`**, que en su primera emisión lleva el terreno de hasta 25 chunks en base64: ~34 KB. Excede los 16 KiB nominales, aunque el límite entrante no se le aplica. El terreno sólo viaja la primera vez que la sesión ve cada chunk.
-- **`unit.movement.started`**, que transporta la polilínea completa `[{x, y, tMs}, ...]`. `EO_PATHFINDING_MAX_DISTANCE` = 256 acota la **distancia Chebyshev** entre origen y destino, no la longitud del camino: un rodeo por terreno laberíntico puede producir bastantes más waypoints que la distancia en línea recta. La cota dura de waypoints es **TBD (fuera de MVP)**; hoy el límite efectivo lo pone `EO_PATHFINDING_MAX_NODES` = 20000.
+- **`unit.movement.started`**, que transporta la polilínea completa `[{x, y, tMs}, ...]`. `EO_PATHFINDING_MAX_DISTANCE` = 256 acota la **distancia Chebyshev** entre origen y destino, no la longitud del camino: un rodeo por terreno laberíntico puede producir bastantes más waypoints que la distancia en línea recta. La cota dura de waypoints es **TBD (fuera de MVP)**; hoy el límite efectivo lo pone `EO_PATHFINDING_MAX_NODES` = 50000 (ADR-031).
 
 ---
 

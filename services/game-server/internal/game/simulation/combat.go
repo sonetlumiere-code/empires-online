@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -592,7 +593,12 @@ func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
 	s.state.ClearMovement(v.ID)
 	carried := v.Loot
 	if e, ok := s.state.tasks[v.ID]; ok {
-		carried += e.Carrying
+		// El botín es madera (RN-COMBAT-010): la piedra que llevaba se pierde con
+		// ella, porque convertirla en madera la crearía (INV-COMBAT-003,
+		// SPEC-ECON-STONE §4.2).
+		if taskResource(e.Task) == economy.ResourceWood {
+			carried += e.Carrying
+		}
 		delete(s.state.tasks, v.ID)
 	}
 	delete(s.state.combat.engagements, v.ID)
@@ -729,7 +735,7 @@ func (s *Simulation) depositLoot(u *unit.Unit, at world.Tile) {
 	amount := u.Loot
 	u.Loot = 0
 	s.state.MarkDirty(u.ID)
-	s.deposit(c, amount)
+	s.deposit(c, economy.ResourceWood, amount)
 	// Lo que quede es carga de saqueo pendiente de confirmar (ADR-026 §4).
 	left := s.state.carrying(u)
 	cx, cy := s.state.World().ChunkOf(u.X, u.Y)

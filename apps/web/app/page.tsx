@@ -18,10 +18,13 @@ import type { v1 } from '@empires-online/protocol';
 import { terrainAt, useWorldStore, type CityView } from '../src/state/world';
 import { createHudSelector } from '../src/state/selectors';
 import {
+  advanceBlockReason,
+  BRONZE_AGE_COST,
   buildingAt,
   buildingsOf,
   decideTileOrder,
   decideUnitClick,
+  eraLabel,
   firstFreeHouseTile,
   overPopulationLimit,
   pillageAlertActive,
@@ -98,11 +101,13 @@ export default function Page() {
     return () => clearInterval(id);
   }, [countdown]);
   const training = hud.ownCity?.production ?? null;
+  // El avance de era también lleva cuenta atrás (SPEC-ECON-STONE).
+  const advancing = hud.ownCity?.advance ?? null;
   useEffect(() => {
-    if (!training) return;
+    if (!training && !advancing) return;
     const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
-  }, [training]);
+  }, [training, advancing]);
 
   // El aviso de saqueo se apaga solo: un render más cuando caduca.
   const pillagedAtMs = hud.ownCity?.pillagedAtMs;
@@ -427,7 +432,7 @@ export default function Page() {
         {ownCity && (
           <>
             <span style={{ color: 'var(--muted)' }}>
-              {ownCity.name} — {ownCity.era}
+              {ownCity.name} — {eraLabel(ownCity.era)}
             </span>
             <span
               style={{ color: overPopulationLimit(ownCity) ? 'var(--danger)' : 'var(--muted)' }}
@@ -445,6 +450,7 @@ export default function Page() {
               Registro{unseenEntries(eventLog).length > 0 ? ` (${unseenEntries(eventLog).length})` : ''}
             </button>
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
+            <span title="Piedra de la ciudad: se recoge en las colinas">Piedra {ownCity.stocks.STONE}</span>
             {pillageAlertActive(ownCity, serverTimeMs()) && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }} role="alert">
                 ¡Están saqueando tu ciudad!
@@ -481,6 +487,25 @@ export default function Page() {
               <span style={{ color: 'var(--muted)' }}>
                 Entrenando {unitTypeLabel(ownCity.production.unitType)}:{' '}
                 {secondsUntil(ownCity.production.completesAtMs, serverTimeMs())} s
+              </span>
+            )}
+            {ownCity.era === 'STONE_AGE' && !ownCity.advance && (
+              <button
+                className="secondary"
+                onClick={() => clientRef.current?.advanceEra(ownCity.id)}
+                disabled={advanceBlockReason(ownCity) !== null}
+                title={
+                  advanceBlockReason(ownCity) ??
+                  `Avanza a la Edad de Bronce: ${BRONZE_AGE_COST.WOOD} de madera y ${BRONZE_AGE_COST.STONE} de piedra, 90 s sin entrenar. El límite de población sube de 20 a 50`
+                }
+              >
+                Edad de Bronce
+              </button>
+            )}
+            {ownCity.advance && (
+              <span style={{ color: 'var(--muted)' }}>
+                Avanzando a la {eraLabel(ownCity.advance.era)}:{' '}
+                {secondsUntil(ownCity.advance.completesAtMs, serverTimeMs())} s
               </span>
             )}
           </>
@@ -633,12 +658,14 @@ const ACTION_LABEL: Record<TreatyAction, string> = {
 };
 
 /** Lo que el HUD dice de la unidad seleccionada: su vida, si trabaja o ataca, y cuánto lleva. */
-function describeUnit(u: { status: string; carrying: number; hp: number; maxHp: number } | undefined): string {
+function describeUnit(
+  u: { status: string; carrying: number; carryingResource: string | null; hp: number; maxHp: number } | undefined,
+): string {
   if (!u) return '';
   const vida = u.hp < u.maxHp ? `, vida ${u.hp}/${u.maxHp}` : '';
   if (u.status === 'WORKING') return ` (recolectando${vida})`;
   if (u.status === 'ATTACKING') return ` (atacando${vida})`;
-  if (u.carrying > 0) return ` (lleva ${u.carrying} de madera${vida})`;
+  if (u.carrying > 0) return ` (lleva ${u.carrying} de ${u.carryingResource === 'STONE' ? 'piedra' : 'madera'}${vida})`;
   return vida ? ` (${vida.slice(2)})` : '';
 }
 
@@ -647,7 +674,7 @@ function helpFor(u: { unitType: string } | undefined): string {
   if (u?.unitType === 'WARRIOR') {
     return 'clic en una unidad enemiga para atacarla, en una ciudad enemiga para saquearla, en el mapa para moverla; con botín, llévala junto a tu ciudad';
   }
-  return 'clic en el mapa para moverla, en un bosque para recolectar, en una ciudad para guarnecerla';
+  return 'clic en el mapa para moverla, en un bosque o una colina para recolectar, en una ciudad para guarnecerla';
 }
 
 /** La ciudad cuya zona urbana (su 3 × 3) contiene el tile, si la hay. Se consulta al hacer clic, no por render. */

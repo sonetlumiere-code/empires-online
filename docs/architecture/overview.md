@@ -338,7 +338,7 @@ sequenceDiagram
 | `0 ≤ x < EO_WORLD_WIDTH` y `0 ≤ y < EO_WORLD_HEIGHT` | `TARGET_OUT_OF_BOUNDS` |
 | El tile destino es transitable (terreno + capa de ocupación) | `TARGET_NOT_WALKABLE` |
 | Distancia Chebyshev ≤ `EO_PATHFINDING_MAX_DISTANCE=256`, comprobada dentro del A\* **antes** de expandir nodos | `PATH_TOO_LONG` |
-| El A\* no agota el presupuesto `EO_PATHFINDING_MAX_NODES=20000` | `PATH_TOO_LONG` |
+| El A\* no agota el presupuesto `EO_PATHFINDING_MAX_NODES=50000` | `PATH_TOO_LONG` |
 | El A\* alcanza el destino (el conjunto abierto no se vacía antes) | `PATH_NOT_FOUND` |
 
 Detalles que el código fija y que conviene no idealizar:

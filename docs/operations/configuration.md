@@ -149,7 +149,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
 |---|---|---|---|---|---|---|
-| `EO_PATHFINDING_MAX_NODES` | int | `20000` | 100–10000000 | No | No | Tope de nodos expandidos por búsqueda A\*. Al excederse se rechaza con `PATH_TOO_LONG`. Es la defensa principal contra que un jugador consuma CPU del tick con destinos patológicos. |
+| `EO_PATHFINDING_MAX_NODES` | int | `50000` | 100–10000000 | No | No | Tope de nodos expandidos por búsqueda A\*: 20 000 hasta [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md), que lo subió para que las rutas a la colina quepan. Al excederse se rechaza con `PATH_TOO_LONG`. Es la defensa principal contra que un jugador consuma CPU del tick con destinos patológicos. |
 | `EO_PATHFINDING_MAX_DISTANCE` | int | `256` | 1–65536 | No | No | Distancia máxima admitida entre origen y destino, en tiles. Al excederse: `PATH_TOO_LONG`, **antes** de ejecutar la búsqueda. |
 
 ### 3.8 WebSocket

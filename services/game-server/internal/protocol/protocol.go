@@ -33,6 +33,8 @@ const (
 	TypeUnitGather = "unit.gather"
 	TypeCityBuild  = "city.build"
 	TypeCityTrain  = "city.train"
+	// Avance de era (SPEC-ECON-STONE).
+	TypeCityAdvance = "city.advance"
 	// Combate (SPEC-COMBAT-RAID).
 	TypeUnitAttack = "unit.attack"
 	// Saqueo (SPEC-COMBAT-PILLAGE).
@@ -68,6 +70,7 @@ const (
 	TypeBuildingUpdate        = "building.update"
 	TypeBuildingDestroyed     = "building.destroyed"
 	TypeForestUpdate          = "forest.update"
+	TypeHillUpdate            = "hill.update"
 	TypeTreatyUpdate          = "treaty.update"
 	TypeEventLogPage          = "event_log.page"
 )
@@ -84,6 +87,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeUnitGather:     true,
 	TypeCityBuild:      true,
 	TypeCityTrain:      true,
+	TypeCityAdvance:    true,
 	TypeUnitAttack:     true,
 	TypeUnitPillage:    true,
 	TypeUnitDemolish:   true,
@@ -210,16 +214,29 @@ type UnitView struct {
 	GarrisonCityID *int64 `json:"garrisonCityId"`
 	// Carrying es lo que lleva encima una unidad que recolecta; ausente si nada.
 	Carrying int32 `json:"carrying,omitempty"`
+	// CarryingResource es el recurso de Carrying cuando lo lleva una tarea de
+	// recolección (WOOD, STONE); ausente si no (SPEC-ECON-STONE §6).
+	CarryingResource string `json:"carryingResource,omitempty"`
 }
 
 // Stocks es el stock de una ciudad, por recurso (SPEC-ECON-WOOD §6).
 type Stocks struct {
 	Wood int64 `json:"WOOD"`
+	// Stone es la piedra (SPEC-ECON-STONE). Opcional en el esquema para que
+	// un cliente nuevo lea un servidor anterior; este servidor siempre la manda.
+	Stone int64 `json:"STONE"`
 }
 
 // ProductionView es el entrenamiento en curso de una ciudad.
 type ProductionView struct {
 	UnitType      string `json:"unitType"`
+	CompletesAtMs int64  `json:"completesAtMs"`
+}
+
+// AdvanceView es el avance de era en curso de una ciudad: a qué era va y
+// cuándo llega (SPEC-ECON-STONE §6).
+type AdvanceView struct {
+	Era           string `json:"era"`
 	CompletesAtMs int64  `json:"completesAtMs"`
 }
 
@@ -253,6 +270,8 @@ type CityView struct {
 	// entrenamiento en curso, o null.
 	Stocks     Stocks          `json:"stocks"`
 	Production *ProductionView `json:"production"`
+	// Advance es el avance de era en curso, o null (SPEC-ECON-STONE §6).
+	Advance *AdvanceView `json:"advance"`
 }
 
 // TerritoryView es el estado observable de un territorio.
@@ -426,6 +445,13 @@ type CityTrainPayload struct {
 	Type   string `json:"type"`
 }
 
+// CityAdvancePayload encarga el avance de una ciudad a la era siguiente. Sólo
+// nombra la ciudad: la era, el coste y el tiempo son del servidor
+// (SPEC-ECON-STONE RN-ECON-024, INV-SEC-001).
+type CityAdvancePayload struct {
+	CityID int64 `json:"cityId"`
+}
+
 // ─────────────────────────────────────────────────────────────
 // Payloads servidor → cliente
 // ─────────────────────────────────────────────────────────────
@@ -468,6 +494,9 @@ type WorldSnapshotPayload struct {
 	// Forests son los tiles de bosque del área que no están llenos
 	// (SPEC-ECON-FOREST). Opcional en el esquema: se omite si no hay ninguno.
 	Forests []ForestView `json:"forests,omitempty"`
+	// Hills son los tiles de colina del área que no están llenos
+	// (SPEC-ECON-STONE). Opcional en el esquema, como Forests.
+	Hills []HillView `json:"hills,omitempty"`
 	// Treaties son los tratados PROPOSED y ACTIVE de quien recibe el snapshot
 	// (SPEC-DIPLOMACY, ADR-027 §5). Se omite si no tiene ninguno.
 	Treaties []TreatyView `json:"treaties,omitempty"`
@@ -492,6 +521,8 @@ type EntityUpdatePayload struct {
 	GarrisonCityID **int64 `json:"garrisonCityId,omitempty"`
 	// Carrying: nil si no cambia; 0 al depositar o al perder la carga.
 	Carrying *int32 `json:"carrying,omitempty"`
+	// CarryingResource acompaña a una carga de recolección (SPEC-ECON-STONE §6).
+	CarryingResource string `json:"carryingResource,omitempty"`
 }
 
 type EntityDespawnPayload struct {
@@ -511,6 +542,11 @@ type CityUpdatePayload struct {
 	// Production: nil si no cambia; apuntando a nil, la ciudad deja de
 	// entrenar; apuntando a una vista, empieza.
 	Production **ProductionView `json:"production,omitempty"`
+	// Era es la era nueva de la ciudad al terminar un avance (SPEC-ECON-STONE).
+	Era *string `json:"era,omitempty"`
+	// Advance: nil si no cambia; apuntando a nil, el avance terminó o se
+	// deshizo; apuntando a una vista, empieza.
+	Advance **AdvanceView `json:"advance,omitempty"`
 	// PillagedAtMs es el instante del último golpe de saqueo. Sólo lo recibe
 	// el dueño de la ciudad (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
 	PillagedAtMs *int64 `json:"pillagedAtMs,omitempty"`
@@ -533,6 +569,10 @@ type ForestView struct {
 	Remaining   int32  `json:"remaining"`
 	RegrowsAtMs *int64 `json:"regrowsAtMs"`
 }
+
+// HillView es la piedra de un tile de colina que no está lleno, y el payload de
+// hill.update: la misma forma que ForestView (SPEC-ECON-STONE §6).
+type HillView = ForestView
 
 // BuildingUpdatePayload es el cambio de estado de un edificio conocido.
 type BuildingUpdatePayload struct {

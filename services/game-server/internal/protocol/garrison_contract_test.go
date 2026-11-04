@@ -71,11 +71,13 @@ func TestUnitViewLlevaLaCiudadAnfitrionaSiempre(t *testing.T) {
 
 	origen, anfitriona := int64(3), int64(9)
 	fuera := serializado(t, protocol.UnitView{ID: 1, CityID: &origen, Status: string(unit.StatusIdle)})
-	// Todo lo obligatorio viaja y nada viaja sin declarar. La única clave
-	// opcional es `carrying` (SPEC-ECON-WOOD), que sólo viaja si hay carga.
+	// Todo lo obligatorio viaja y nada viaja sin declarar. Las únicas claves
+	// opcionales son `carrying` (SPEC-ECON-WOOD) y su recurso, `carryingResource`
+	// (SPEC-ECON-STONE), que sólo viajan si hay carga.
 	require.Equal(t, requeridas(t, item), clavesDe(fuera))
 	require.Subset(t, declaradas, clavesDe(fuera))
-	conCarga := serializado(t, protocol.UnitView{ID: 1, CityID: &origen, Status: string(unit.StatusMoving), Carrying: 10})
+	conCarga := serializado(t, protocol.UnitView{ID: 1, CityID: &origen, Status: string(unit.StatusMoving), Carrying: 10,
+		CarryingResource: "WOOD"})
 	require.Equal(t, declaradas, clavesDe(conCarga))
 	require.Contains(t, requeridas(t, item), "garrisonCityId")
 	require.Nil(t, fuera["garrisonCityId"])

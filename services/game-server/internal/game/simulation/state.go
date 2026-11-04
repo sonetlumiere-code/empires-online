@@ -99,6 +99,11 @@ type State struct {
 	buildingIDs        []int64
 	pendingBuilds      map[world.Tile]pendingBuild
 	pendingCompletions map[int64]struct{}
+	// eraCaps es el population_cap de cada era, leído de la tabla eras
+	// (RN-CITY-015); pendingAdvanceCompletions son los fines de avance que la
+	// cola descartó (ADR-030 §5).
+	eraCaps                   map[city.Era]int32
+	pendingAdvanceCompletions map[int64]AdvanceCompletion
 
 	// Combate (SPEC-COMBAT-RAID, ADR-024): enfrentamientos, tratados de paz y
 	// muertes por reescribir.
@@ -109,8 +114,9 @@ type State struct {
 	// diplo son los tratados abiertos y su reserva (SPEC-DIPLOMACY).
 	diplo diplomacyState
 
-	// Bosque (SPEC-ECON-FOREST, ADR-025): la madera de los tiles tocados.
-	forest forestState
+	// El recurso de los tiles tocados: la madera del bosque (SPEC-ECON-FOREST,
+	// ADR-025) y la piedra de la colina (SPEC-ECON-STONE, ADR-030).
+	deposits depositState
 
 	tick uint64
 }
@@ -143,8 +149,11 @@ func NewState(w *world.World) *State {
 		combat:             newCombatState(),
 		siege:              newSiegeState(),
 		diplo:              newDiplomacyState(),
-		forest:             newForestState(),
+		deposits:           newDepositState(),
 		pendingCompletions: make(map[int64]struct{}),
+
+		eraCaps:                   make(map[city.Era]int32),
+		pendingAdvanceCompletions: make(map[int64]AdvanceCompletion),
 	}
 }
 

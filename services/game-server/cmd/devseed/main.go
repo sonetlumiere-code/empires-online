@@ -18,6 +18,11 @@
 //   - El servidor tiene que haber arrancado al menos una vez contra esta base:
 //     es él quien crea world_state, los chunks y los territorios.
 //
+// Con EO_DEVSEED_STOCK_FOR=usuario[,usuario…] sube además el almacén de la
+// ciudad de cada uno hasta el coste del avance a la Edad de Bronce
+// (SPEC-ECON-STONE §9): la colina de las ciudades de desarrollo está lejos, y la
+// prueba en vivo del avance no tiene que esperar a una sesión de recolección.
+//
 // Nunca toca el mundo canónico: no hay migración, y las zonas sólo existen en la
 // base a la que apunta EO_POSTGRES_URL. La siembra de zonas del mundo canónico
 // es una decisión de diseño pendiente (docs/specs/safe-zones.md §2).
@@ -35,6 +40,8 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
 	"github.com/empires-online/empires-online/services/game-server/internal/devseed"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/advance"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
@@ -217,6 +224,38 @@ func run() error {
 	}
 	if sinCaverna > 0 {
 		fmt.Printf("  · ninguna CAVERN: no hay montañas a menos de %d tiles de estas ciudades\n", devseed.MaxRing)
+	}
+
+	// ── Almacén para probar el avance de era (SPEC-ECON-STONE) ──
+	if lista := strings.TrimSpace(os.Getenv("EO_DEVSEED_STOCK_FOR")); lista != "" {
+		paso, ok := advance.Next(city.EraStone)
+		if !ok {
+			return errors.New("el catálogo de avances no tiene el paso de la Edad de Piedra")
+		}
+		fmt.Println()
+		for _, nombre := range strings.Split(lista, ",") {
+			nombre = strings.TrimSpace(nombre)
+			p, err := players.GetByUsername(ctx, nombre)
+			if err != nil {
+				return fmt.Errorf("EO_DEVSEED_STOCK_FOR: %s: %w", nombre, err)
+			}
+			c, err := cities.GetByOwner(ctx, p.ID)
+			if err != nil {
+				return fmt.Errorf("EO_DEVSEED_STOCK_FOR: la ciudad de %s: %w", nombre, err)
+			}
+			for _, coste := range paso.Costs {
+				// Sólo sube: lo que ya tuviera de más se queda. La versión sube para
+				// que ninguna escritura vieja de la RAM pise esta (ADR-023 §1).
+				if _, err := store.Pool().Exec(ctx,
+					`UPDATE city_stocks SET amount = GREATEST(amount, $3), version = version + 1
+					  WHERE city_id = $1 AND resource = $2`,
+					c.ID, string(coste.Resource), coste.Amount); err != nil {
+					return fmt.Errorf("subir el almacén de %s: %w", nombre, err)
+				}
+			}
+			fmt.Printf("  + %s: almacén con al menos %d de madera y %d de piedra\n",
+				nombre, paso.Costs[0].Amount, paso.Costs[1].Amount)
+		}
 	}
 
 	// ── Comprobación final: lo que verá el servidor al arrancar ──

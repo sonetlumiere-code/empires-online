@@ -1,0 +1,33 @@
+{
+  "name": "cantera",
+  "description": "SPEC-ECON-STONE: un aldeano recoge piedra en una colina de tres tiles con 10, 25 y 0. La tercera carga, parcial, agota el tile (HillDepleted) y el viaje siguiente va al tile de colina con piedra más cercano, nunca al bosque de al lado. Con 400 de madera y 175 + 25 de piedra, la ciudad avanza a la Edad de Bronce en el tick 700: paga las dos cosas, no entrena mientras dura (CITY_BUSY en el 701) y en el tick 1600 pasa a BRONZE_AGE con el límite de 20 a 50.",
+  "epochMs": 1757376000000,
+  "runTicks": 1620,
+  "config": { "protectionCooldownSec": 300, "disconnectGraceSec": 5 },
+  "world": {
+    "width": 64,
+    "height": 64,
+    "terrain": "grassland",
+    "paint": [
+      { "terrain": "HILL", "minX": 22, "minY": 9, "maxX": 22, "maxY": 11 },
+      { "terrain": "FOREST", "minX": 23, "minY": 9, "maxX": 23, "maxY": 11 }
+    ]
+  },
+  "players": [
+    { "ref": "p1", "city": { "x": 10, "y": 10 }, "wood": 400, "stone": 175 }
+  ],
+  "hills": [
+    { "x": 22, "y": 9, "remaining": 10 },
+    { "x": 22, "y": 10, "remaining": 25 },
+    { "x": 22, "y": 11, "remaining": 0 }
+  ],
+  "units": [
+    { "ref": "u1", "player": "p1", "x": 12, "y": 10 }
+  ],
+  "commands": [
+    { "tick": 0, "type": "connect", "player": "p1" },
+    { "tick": 0, "type": "unit.gather", "player": "p1", "unit": "u1", "target": { "x": 22, "y": 10 } },
+    { "tick": 700, "type": "city.advance", "player": "p1" },
+    { "tick": 701, "type": "city.train", "player": "p1" }
+  ]
+}

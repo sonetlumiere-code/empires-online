@@ -82,7 +82,8 @@
         "id": 1,
         "population": 3,
         "stocks": {
-          "WOOD": 0
+          "WOOD": 0,
+          "STONE": 0
         },
         "production": {
           "unitType": "VILLAGER",
@@ -558,7 +559,8 @@
       "type": "entity.update",
       "payload": {
         "id": 1,
-        "carrying": 10
+        "carrying": 10,
+        "carryingResource": "WOOD"
       }
     },
     {
@@ -710,7 +712,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 10
+          "WOOD": 10,
+          "STONE": 0
         }
       }
     },
@@ -1010,7 +1013,8 @@
       "type": "entity.update",
       "payload": {
         "id": 1,
-        "carrying": 10
+        "carrying": 10,
+        "carryingResource": "WOOD"
       }
     },
     {
@@ -1133,7 +1137,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 20
+          "WOOD": 20,
+          "STONE": 0
         }
       }
     },
@@ -1433,7 +1438,8 @@
       "type": "entity.update",
       "payload": {
         "id": 1,
-        "carrying": 10
+        "carrying": 10,
+        "carryingResource": "WOOD"
       }
     },
     {
@@ -1556,7 +1562,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 30
+          "WOOD": 30,
+          "STONE": 0
         }
       }
     },
@@ -1678,7 +1685,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 0
+          "WOOD": 0,
+          "STONE": 0
         }
       }
     },
@@ -1912,7 +1920,8 @@
       "type": "entity.update",
       "payload": {
         "id": 1,
-        "carrying": 10
+        "carrying": 10,
+        "carryingResource": "WOOD"
       }
     },
     {
@@ -2035,7 +2044,8 @@
       "payload": {
         "id": 1,
         "stocks": {
-          "WOOD": 10
+          "WOOD": 10,
+          "STONE": 0
         }
       }
     },

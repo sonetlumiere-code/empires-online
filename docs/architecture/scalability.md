@@ -59,7 +59,7 @@ Derivadas de las structs reales de `internal/domain/*` e `internal/websocket`, m
 | Estructura | Coste unitario estimado | Desglose |
 |---|---|---|
 | `unit.Unit` en RAM | **≈ 150 B** | struct ~80 B (`ID int64`, `PlayerID uuid.UUID` [16]B, `CityID *int64`, `Type`/`Status` como `string`, `X`/`Y` int32, `HP`/`MaxHP` int32) + entrada de `map[int64]*unit.Unit` (~50 B) + fragmentación. La struct **no** lleva `version` ni `chunkId`: `version` solo existe en la tabla `cities`, y `chunk_x`/`chunk_y` están desnormalizados en la tabla `units`, no en la entidad de RAM |
-| `movement.Movement` `ACTIVE` | **≈ 750 B típico** | Cabecera ~72 B (`ID`, `UnitID`, `Target`, `StartTimeMs`, `ArrivalTimeMs`, `Status`) + polilínea de `movement.Waypoint{X int32, Y int32, TMs int64}` = **16 B** cada uno. Path medio de 40 tiles → 640 B. `EO_PATHFINDING_MAX_DISTANCE=256` acota la distancia **Chebyshev** origen→destino, no el número de waypoints, así que el peor caso de longitud de polilínea es `TBD (fuera de MVP)`; el límite operativo real es `EO_PATHFINDING_MAX_NODES=20000` |
+| `movement.Movement` `ACTIVE` | **≈ 750 B típico** | Cabecera ~72 B (`ID`, `UnitID`, `Target`, `StartTimeMs`, `ArrivalTimeMs`, `Status`) + polilínea de `movement.Waypoint{X int32, Y int32, TMs int64}` = **16 B** cada uno. Path medio de 40 tiles → 640 B. `EO_PATHFINDING_MAX_DISTANCE=256` acota la distancia **Chebyshev** origen→destino, no el número de waypoints, así que el peor caso de longitud de polilínea es `TBD (fuera de MVP)`; el límite operativo real es `EO_PATHFINDING_MAX_NODES=50000` (ADR-031) |
 | Sesión WS | **≈ 40 KiB** | Buffers de lectura/escritura de `gorilla/websocket`, cola de salida `out chan protocol.Outbound` de `EO_WS_OUTBOUND_QUEUE_SIZE` (256 por defecto) entradas, `chunks` (25 suscripciones), `terrainSent` y bookkeeping (`seq atomic.Uint64`, `closed`, `done`) |
 
 ### 2.3 Escenarios
@@ -85,7 +85,7 @@ Período de tick a `EO_TICK_RATE_HZ=10` = **100 ms**. Presupuesto operativo obje
 |---|---|---|
 | 1. `drain commands` | ~0.5 µs / comando | comandos/tick |
 | 2. `validate & apply` — A\* típico (~1 500 nodos expandidos) | **~0.5 ms / path** | peticiones `unit.move`/tick |
-| 2. `validate & apply` — A\* peor caso (`EO_PATHFINDING_MAX_NODES=20000`) | **~6–8 ms / path** | picos |
+| 2. `validate & apply` — A\* peor caso (`EO_PATHFINDING_MAX_NODES=50000`, [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md)) | **~15–20 ms / path** | picos |
 | 3. `advance movement` | ~40 ns / unidad en movimiento | unidades `MOVING` |
 | 4. `resolve simulation` | 0 (reservado, fuera de MVP) | — |
 | 5. `timers/scheduled events` | ~1 µs / evento vencido (heap) | eventos vencidos |

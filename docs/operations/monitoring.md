@@ -513,7 +513,7 @@ que mirar, no una lista de sugerencias.
    crecido proporcionalmente, es un problema de capacidad, no un bug.
 2. **`eo_pathfinding_duration_seconds` p99** (tiempo de A\* por tick). El A\* corre dentro del tick: si su
    p99 se ha disparado, es el sospechoso principal. No hay métrica que distinga los fallos (`PATH_TOO_LONG`
-   al límite de `EO_PATHFINDING_MAX_DISTANCE` = 256 o de `EO_PATHFINDING_MAX_NODES` = 20000): el volumen de
+   al límite de `EO_PATHFINDING_MAX_DISTANCE` = 256 o de `EO_PATHFINDING_MAX_NODES` = 50000): el volumen de
    `unit.move.rejected` salientes es la única pista.
 3. **`eo_persistence_queue_depth`.** Si la cola también crece, el problema probablemente **no** está en el
    tick sino aguas abajo, y la presión de memoria está afectando a todo.

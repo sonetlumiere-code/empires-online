@@ -55,6 +55,17 @@ func (m *memoryEconomy) Train(context.Context, simulation.TrainOrder) error {
 	return nil
 }
 
+func (m *memoryEconomy) Advance(context.Context, simulation.AdvanceOrder) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.encargos++
+	return nil
+}
+
+func (m *memoryEconomy) CompleteAdvance(context.Context, simulation.AdvanceCompletion) error {
+	return nil
+}
+
 func (m *memoryEconomy) BirthUnit(context.Context, simulation.Birth) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -25,9 +25,10 @@ type AStar struct {
 }
 
 // NewAStar crea el pathfinder con los límites por defecto de la configuración.
+// Sin ellos usa los del canon: 50 000 nodos (ADR-031) y 256 tiles.
 func NewAStar(maxNodes int, maxDistance int32) *AStar {
 	if maxNodes <= 0 {
-		maxNodes = 20000
+		maxNodes = 50000
 	}
 	if maxDistance <= 0 {
 		maxDistance = 256

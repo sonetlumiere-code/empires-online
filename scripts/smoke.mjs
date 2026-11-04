@@ -23,6 +23,16 @@
  *  10. sólo con --tala (SPEC-ECON-FOREST): todos los aldeanos recolectan del mismo
  *      tile hasta agotarlo, y al menos uno pasa solo a otro tile con madera a 6 o
  *      menos. Tarda minutos y gasta bosque de verdad, así que no corre por defecto.
+ *  10b. sólo con --piedra (SPEC-ECON-STONE): busca la colina más cercana a la ciudad
+ *      moviendo la vista (las de desarrollo quedan a 160 tiles o más, fuera del área
+ *      de interés), manda un aldeano a recoger piedra y espera la primera carga
+ *      (hill.update y la carga con carryingResource STONE) y su depósito en la
+ *      piedra de la ciudad. Tarda minutos, así que no corre por defecto.
+ *  10c. sólo con --avance (SPEC-ECON-STONE): con 400 de madera y 200 de piedra en la
+ *      ciudad (EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed los siembra en
+ *      desarrollo), encarga el avance a la Edad de Bronce, comprueba que no entrena
+ *      mientras dura y espera los 90 s hasta la era nueva con el límite subido. Es
+ *      irreversible: una ciudad en Bronce no puede repetirlo.
  *  11. sólo con --incursion (SPEC-COMBAT-RAID): con 60 de madera se entrena un
  *      guerrero; un segundo jugador acerca un aldeano y el guerrero lo mata. Tarda
  *      minutos (juntar madera, entrenar, caminar) y mata una unidad de otra cuenta,
@@ -57,7 +67,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--saqueo] [--asedio] [--diplomacia] [--registro] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--diplomacia] [--registro] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -80,6 +90,8 @@ const WEB = (flag('--web', process.env.EO_SMOKE_WEB_URL || 'http://localhost:300
 const VERBOSE = args.includes('--verbose');
 const INCURSION = args.includes('--incursion');
 const TALA = args.includes('--tala');
+const PIEDRA = args.includes('--piedra');
+const AVANCE = args.includes('--avance');
 const SAQUEO = args.includes('--saqueo');
 const ASEDIO = args.includes('--asedio');
 const DIPLOMACIA = args.includes('--diplomacia');
@@ -89,8 +101,9 @@ const PROTOCOL_VERSION = 1;
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
 // MOUNTAIN y WATER no son transitables (internal/game/world/tile.go).
 const NO_TRANSITABLE = new Set([3, 4]);
-// FOREST: el único terreno que se recolecta (RN-ECON-001).
+// FOREST da madera (RN-ECON-001) y HILL piedra (SPEC-ECON-STONE, RN-ECON-019).
 const FOREST = 1;
+const HILL = 2;
 
 let pasos = 0;
 const log = (...a) => VERBOSE && console.log('   ', ...a);
@@ -282,6 +295,24 @@ export function elegirBosque(terreno, ciudad, bosqueAMedias = []) {
     const [x, y] = clave.split(',').map(Number);
     const d = Math.max(Math.abs(x - ciudad.centerX), Math.abs(y - ciudad.centerY));
     if (d <= 1) continue; // la zona urbana es muralla
+    if (!mejor || d < mejor.d || (d === mejor.d && (y < mejor.y || (y === mejor.y && x < mejor.x)))) {
+      mejor = { x, y, d };
+    }
+  }
+  return mejor;
+}
+
+/**
+ * La colina más cercana al centro de la ciudad (Chebyshev), sin contar las
+ * agotadas. Determinista: a igual distancia, la de menor (y, x).
+ */
+export function elegirColina(terreno, ciudad, colinaAMedias = []) {
+  const agotadas = new Set(colinaAMedias.filter((h) => h.remaining === 0).map((h) => `${h.x},${h.y}`));
+  let mejor = null;
+  for (const [clave, tipo] of terreno) {
+    if (tipo !== HILL || agotadas.has(clave)) continue;
+    const [x, y] = clave.split(',').map(Number);
+    const d = Math.max(Math.abs(x - ciudad.centerX), Math.abs(y - ciudad.centerY));
     if (!mejor || d < mejor.d || (d === mejor.d && (y < mejor.y || (y === mejor.y && x < mejor.x)))) {
       mejor = { x, y, d };
     }
@@ -510,6 +541,14 @@ async function main() {
     await tala(segunda, cuenta.playerId, snap2, bosque);
   }
 
+  if (PIEDRA) {
+    await piedra(segunda, ciudad2, cuenta.playerId, snap2, unidad.id);
+  }
+
+  if (AVANCE) {
+    await avance(segunda, ciudad);
+  }
+
   if (INCURSION) {
     await incursion(segunda, ciudad, cuenta.playerId, snap2);
   }
@@ -568,6 +607,115 @@ async function tala(sesion, playerId, snap, bosque) {
   }, 120_000);
   const t = otro.payload.movement.target;
   ok('un aldeano pasa solo al tile siguiente', `unidad ${otro.payload.unitId} -> (${t.x}, ${t.y})`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Piedra y avance de era (SPEC-ECON-STONE), sólo con --piedra y --avance
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Busca la colina más cercana a la ciudad, moviendo la vista en anillos si en la
+ * de la ciudad no hay ninguna, manda a un aldeano a recoger piedra y espera la
+ * primera carga y su depósito.
+ */
+async function piedra(sesion, ciudad, playerId, snap, ocupado) {
+  const s = sesion.sesion;
+  const terreno = indexarTerreno(snap.terrain);
+  const aMedias = [...(snap.hills ?? [])];
+  let colina = elegirColina(terreno, ciudad, aMedias);
+  const centro = { x: ciudad.centerX, y: ciudad.centerY };
+  for (const r of [96, 160, 224]) {
+    if (colina && colina.d <= r - 64) break;
+    for (const [dx, dy] of [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]) {
+      const c = { x: Math.min(511, Math.max(0, centro.x + dx * r)), y: Math.min(511, Math.max(0, centro.y + dy * r)) };
+      s.enviar('session.view', { center: c });
+      const vista = (await s.esperar('world.snapshot')).payload;
+      for (const [k, v] of indexarTerreno(vista.terrain)) terreno.set(k, v);
+      aMedias.push(...(vista.hills ?? []));
+    }
+    colina = elegirColina(terreno, ciudad, aMedias);
+  }
+  if (!colina) fallar('no encontré ninguna colina a 288 tiles de la ciudad', centro);
+  ok('colina encontrada', `(${colina.x}, ${colina.y}), a ${colina.d} tiles de la ciudad`);
+
+  // La orden, con la vista en la ciudad: el tramo empieza en su chunk.
+  s.enviar('session.view', { center: centro });
+  await s.esperar('world.snapshot');
+  // Un aldeano que no sea el que ya recolecta madera (el paso 9): sus tramos de
+  // madera se confundirían con el de la piedra.
+  const aldeano = snap.units.find((u) => u.playerId === playerId && u.unitType === 'VILLAGER' &&
+    u.garrisonCityId === null && u.id !== ocupado && u.status === 'IDLE') ??
+    snap.units.find((u) => u.playerId === playerId && u.unitType === 'VILLAGER' && u.garrisonCityId === null && u.id !== ocupado);
+  if (!aldeano) fallar('no hay ningún aldeano propio libre en el mapa', snap.units);
+  const piedraInicial = ciudad.stocks?.STONE ?? 0;
+  const id = s.enviar('unit.gather', { unitId: aldeano.id, target: { x: colina.x, y: colina.y } });
+  const ida = await s.esperarQue(['unit.movement.started', 'system.error'],
+    (m) => (m.type === 'system.error' && m.requestId === id) ||
+      (m.type === 'unit.movement.started' && m.payload.unitId === aldeano.id &&
+        m.payload.movement.target.x === colina.x && m.payload.movement.target.y === colina.y), 30_000);
+  if (ida.type === 'system.error') {
+    const pista = ida.payload.code === 'PATH_TOO_LONG'
+      ? ` (la colina está a ${colina.d} tiles: el tope de nodos del A*, EO_PATHFINDING_MAX_NODES, no alcanza esa ruta; con el de ADR-031, 50 000, llega el 98 % de la tierra; ver SPEC-ECON-STONE §4.1)`
+      : '';
+    fallar(`el servidor rechazó la orden de recoger piedra: ${ida.payload.code}${pista}`, ida.payload);
+  }
+  const mov = ida.payload.movement;
+  ok('recogida de piedra aceptada', `aldeano ${aldeano.id} -> (${colina.x}, ${colina.y}) · ida de ${mov.path.length} tiles`);
+
+  // La carga ocurre lejos: la vista se lleva a la colina para verla.
+  s.enviar('session.view', { center: { x: colina.x, y: colina.y } });
+  await s.esperar('world.snapshot');
+  const plazo = Math.max(0, mov.arrivalTimeMs - Date.now()) + 10_000 + 30_000;
+  const carga = await s.esperarQue('hill.update', (m) => m.payload.x === colina.x && m.payload.y === colina.y, plazo);
+  const lleva = await s.esperarQue('entity.update',
+    (m) => m.payload.id === aldeano.id && m.payload.carrying > 0, 15_000);
+  if (lleva.payload.carryingResource !== 'STONE') fallar('la carga no es piedra', lleva.payload);
+  ok('primera carga de piedra', `quedan ${carga.payload.remaining} en la colina · el aldeano lleva ${lleva.payload.carrying} de STONE`);
+
+  // La vuelta, con la vista otra vez en la ciudad.
+  s.enviar('session.view', { center: centro });
+  await s.esperar('world.snapshot');
+  const vuelta = mov.arrivalTimeMs - mov.startTimeMs;
+  const deposito = await s.esperarQue('city.update',
+    (m) => m.payload.id === ciudad.id && m.payload.stocks && (m.payload.stocks.STONE ?? 0) > piedraInicial,
+    vuelta + 60_000);
+  ok('piedra depositada', `piedra ${piedraInicial} -> ${deposito.payload.stocks.STONE}`);
+}
+
+/**
+ * Encarga el avance a la Edad de Bronce, comprueba que la ciudad no entrena
+ * mientras dura y espera a la era nueva.
+ */
+async function avance(sesion, ciudadInicial) {
+  const s = sesion.sesion;
+  const cityId = ciudadInicial.id;
+  s.enviar('session.view', { center: { x: ciudadInicial.centerX, y: ciudadInicial.centerY } });
+  const vista = (await s.esperar('world.snapshot')).payload;
+  const ciudad = vista.cities.find((c) => c.id === cityId);
+  if (!ciudad) fallar('la ciudad no está en el snapshot', vista.cities.map((c) => c.id));
+  if (ciudad.era !== 'STONE_AGE') fallar(`la ciudad ya está en ${ciudad.era}: el avance no se repite`, ciudad);
+  const stocks = ciudad.stocks ?? {};
+  if ((stocks.WOOD ?? 0) < 400 || (stocks.STONE ?? 0) < 200) {
+    fallar('faltan recursos para el avance: EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed los siembra', stocks);
+  }
+  if (ciudad.production) {
+    await s.esperarQue('city.update', (m) => m.payload.id === cityId && m.payload.production === null, 60_000);
+  }
+  s.enviar('city.advance', { cityId });
+  const inicio = await s.esperarQue(['city.update', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.id === cityId && m.payload.advance), 15_000);
+  if (inicio.type === 'system.error') fallar('el servidor rechazó el avance', inicio.payload);
+  const fin = inicio.payload.advance.completesAtMs;
+  ok('avance encargado', `a ${inicio.payload.advance.era} · madera ${inicio.payload.stocks.WOOD}, piedra ${inicio.payload.stocks.STONE}`);
+
+  s.enviar('city.train', { cityId, type: 'VILLAGER' });
+  const ocupada = await s.esperar('system.error');
+  if (ocupada.payload.code !== 'CITY_BUSY') fallar('la ciudad entrenó durante el avance', ocupada.payload);
+  ok('mientras avanza, no entrena', 'CITY_BUSY');
+
+  const nueva = await s.esperarQue('city.update', (m) => m.payload.id === cityId && m.payload.era, Math.max(0, fin - Date.now()) + 15_000);
+  if (nueva.payload.era !== 'BRONZE_AGE' || nueva.payload.advance !== null) fallar('el fin del avance no es el esperado', nueva.payload);
+  ok('Edad de Bronce', `límite de población ${nueva.payload.populationLimit}`);
 }
 
 // ─────────────────────────────────────────────────────────────
