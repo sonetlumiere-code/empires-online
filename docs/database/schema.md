@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), y la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -30,12 +30,14 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` al agotarse un tile de bosque, e `InvariantRepaired` en la validación de carga del arranque |
-| `city_stocks` | E1: **activa** | Una fila por ciudad y recurso, creada en la fundación (y para las ciudades existentes, por `000006`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` y `HillDepleted` al agotarse un tile de bosque o de colina, `EraAdvanceOrdered` y `EraAdvanced` en el avance de era, e `InvariantRepaired` en la validación de carga del arranque |
+| `city_stocks` | E1: **activa** | Una fila por ciudad y recurso (`WOOD` y, desde `000012`, `STONE`), creada en la fundación (y para las ciudades existentes, por `000006` y `000012`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
 | `unit_tasks` | E1: **activa** | Write-through en cada transición de la tarea de recolección, con su tramo de movimiento y `units.status` en la misma transacción |
 | `buildings` | E1: **activa** | Encargo de `city.build` (con su débito) y finalización en la fase 5 |
 | `forest_wood` | E4: **activa** | La madera de los tiles de bosque tocados, aparte del terreno ([ADR-025](../decisions/ADR-025-forest-wood-layer.md)). Una carga descuenta un delta en la transacción de la tarea; una fila vencida cuenta como llena |
 | `city_productions` | E1: **activa** | Encargo de `city.train` (con su débito y la reserva de población) y nacimiento del aldeano |
+| `hill_stone` | E9: **activa** | La piedra de los tiles de colina tocados, hermana de `forest_wood` ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §1) |
+| `city_era_advances` | E9: **activa** | Avances de era confirmados y en curso: una fila por ciudad, borrada en la transacción que cambia la era ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §4 y §5) |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
@@ -969,7 +971,7 @@ CREATE TABLE city_stocks (
     amount    bigint NOT NULL DEFAULT 0,
     version   bigint NOT NULL DEFAULT 0,
     PRIMARY KEY (city_id, resource),
-    CONSTRAINT city_stocks_resource_valid CHECK (resource IN ('WOOD')),
+    CONSTRAINT city_stocks_resource_valid CHECK (resource IN ('WOOD')),  -- 000012: ('WOOD', 'STONE')
     CONSTRAINT city_stocks_amount_non_negative CHECK (amount >= 0),
     CONSTRAINT city_stocks_version_non_negative CHECK (version >= 0)
 );
@@ -996,7 +998,7 @@ CREATE TABLE unit_tasks (
     carrying       integer     NOT NULL DEFAULT 0,
     trips_done     integer     NOT NULL DEFAULT 0,
     created_at     timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT unit_tasks_kind_valid CHECK (kind IN ('GATHER_WOOD')),
+    CONSTRAINT unit_tasks_kind_valid CHECK (kind IN ('GATHER_WOOD')),  -- 000012: ('GATHER_WOOD', 'GATHER_STONE')
     CONSTRAINT unit_tasks_phase_valid CHECK (phase IN ('TO_RESOURCE', 'WORKING', 'TO_DEPOSIT')),
     CONSTRAINT unit_tasks_working_has_deadline
         CHECK ((phase = 'WORKING') = (phase_until_ms IS NOT NULL)),
@@ -1091,6 +1093,46 @@ Una carga la escribe como **delta** en la transacción de la transición de la t
 fase `WORKING` que la carga consume (así un reintento no descuenta dos veces). Una fila con `regrows_at_ms` vencido
 cuenta como llena: la carga siguiente parte de 100 y `GREATEST` conserva la regeneración más tardía. El arranque
 borra las vencidas como limpieza.
+
+### 16.6 `hill_stone` (`000012`)
+
+La piedra de los tiles de colina que alguien ha empezado a picar ([../specs/economy-stone.md](../specs/economy-stone.md),
+[ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §1). La misma forma y las mismas reglas de escritura que
+`forest_wood`: un tile es bosque o colina, nunca las dos cosas, y el terreno decide la tabla.
+
+```sql
+CREATE TABLE hill_stone (
+    x             integer NOT NULL,
+    y             integer NOT NULL,
+    remaining     integer NOT NULL,
+    regrows_at_ms bigint  NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT hill_stone_pkey PRIMARY KEY (x, y),
+    CONSTRAINT hill_stone_remaining_range CHECK (remaining BETWEEN 0 AND 100)
+);
+```
+
+### 16.7 `city_era_advances` (`000012`)
+
+El avance de una ciudad a la era siguiente, confirmado y en curso ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)
+§4). No es una fila de `city_productions`: el avance no reserva población ([INV-CITY-017](../invariants/city.md#inv-city-017)).
+
+```sql
+CREATE TABLE city_era_advances (
+    city_id         bigint      PRIMARY KEY REFERENCES cities (id) ON DELETE CASCADE,
+    from_era        text        NOT NULL REFERENCES eras (code),
+    to_era          text        NOT NULL REFERENCES eras (code),
+    completes_at_ms bigint      NOT NULL,
+    request_id      text        NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT city_era_advances_forward CHECK (from_era <> to_era)
+);
+```
+
+El encargo la inserta en la transacción que debita todo el coste (`EraAdvanceOrdered`), idempotente por `request_id`;
+el fin la borra en la transacción que cambia `cities.era` y sube `population_limit` en `cap(to) − cap(from)`, sólo si
+la ciudad seguía en `from_era` (`EraAdvanced`, [INV-CITY-018](../invariants/city.md#inv-city-018)). Mientras exista,
+`city.train` responde `CITY_BUSY`, y una producción en curso impide insertarla.
 
 ---
 

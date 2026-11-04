@@ -90,7 +90,7 @@ compensación restaura la RAM. Si la RAM llegara a negativo —no hay ruta que l
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
-| Cobertura | **Cubierto** por `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` y `TestUnEncargoDeCasaEsIdempotentePorRequestID` (integration), y `TestUnEncargoRechazadoDevuelveLaMadera` (simulation); el avance de era y el coste en dos recursos, previstos con E9 |
+| Cobertura | **Cubierto** por `Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera` y `TestUnEncargoDeCasaEsIdempotentePorRequestID` (integration), y `TestUnEncargoRechazadoDevuelveLaMadera` (simulation); el avance de era y el coste en dos recursos, por `Test_INV_ECON_002_UnAvanceSinPiedraNoGastaMadera` y `TestElAvanceDebitaLosDosRecursosYEsIdempotente` (integration) y `TestUnAvanceRechazadoDevuelveLosDosRecursos` (simulation) |
 
 **Enunciado.** Toda reducción de `city_stocks.amount` se confirma en la misma transacción que inserta el
 edificio (`buildings`), la producción (`city_productions`) o el avance de era (`city_era_advances`) que la
@@ -126,9 +126,11 @@ madera, y ninguna de las dos cosas se puede reconstruir después: el jugador no 
   encargo cuya versión ya está escrita no inserta su efecto.
 - `TestUnEncargoRechazadoDevuelveLaMadera`, `TestUnFalloDefinitivoDelEncargoDevuelveLaReserva`,
   `TestUnEntrenamientoRechazadoDeshaceLaReserva` y `TestElEncargoLlevaLosDepositosSinVolcar` (simulation).
-- Previstos con E9: el encargo del avance con un fallo inyectado no gasta ni madera ni piedra, y con la versión de
-  uno de los dos recursos ya escrita no se aplica ninguno (integration); un avance rechazado devuelve los dos
-  recursos (simulation).
+- `Test_INV_ECON_002_UnAvanceSinPiedraNoGastaMadera` (integration) — sin piedra suficiente el avance no gasta
+  tampoco la madera, y con la versión de la piedra ya escrita no se aplica ninguno de los dos;
+  `TestElAvanceDebitaLosDosRecursosYEsIdempotente`, un reintento no debita otra vez; `TestUnAvanceRechazadoDevuelveLosDosRecursos`
+  y `TestElAvanceLlevaLosDepositosSinVolcar` (simulation). Verificado por mutación: con el débito de un recurso
+  aplicado aunque el otro no, el primero falla.
 
 **Violación en runtime.** No hay estado intermedio que detectar: la transacción es la garantía. Un rechazo se
 registra con su código y llega al jugador como `system.error`.
@@ -248,7 +250,7 @@ Política `REPAIR` con `InvariantRepaired`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (la recuperación avanza la máquina de estados) |
-| Cobertura | **Cubierto** por los tests de recuperación de `internal/game/simulation/economy_recovery_test.go`; el avance de era, previsto con E9 |
+| Cobertura | **Cubierto** por los tests de recuperación de `internal/game/simulation/economy_recovery_test.go` y, para el avance de era, `TestReinicioConUnAvanceAMedias` (`advance_test.go`) |
 
 **Enunciado.** Una tarea, un edificio, una producción o un avance de era a medias en el instante de una caída terminan su fase en
 curso en el mismo instante absoluto (`phase_until_ms`, la llegada de su tramo, `completes_at_ms`) en que habría
@@ -275,8 +277,8 @@ adelantara las construcciones regalaría o robaría tiempo de forma desigual ent
 `TestReinicioDuranteElTrabajo`, `TestReinicioConLaVueltaVencidaTerminaElViajeSinEmpezarOtro`,
 `TestReinicioDuranteLaVueltaConElDuenoConectado`, `TestReinicioDuranteUnaConstruccion` y
 `TestReinicioDuranteUnEntrenamiento`, cada uno con el vencimiento antes y después del arranque; y
-`TestUnaTareaSinSuTramoTerminaAlArrancar`, `TestUnaProduccionTerminadaNoReservaNada`. Previstos con E9: un avance a
-medias y un avance vencido durante la caída terminan en su instante.
+`TestUnaTareaSinSuTramoTerminaAlArrancar`, `TestUnaProduccionTerminadaNoReservaNada`. `TestReinicioConUnAvanceAMedias`
+(simulation): un avance a medias termina en su instante y uno vencido durante la caída, en el primer tick.
 
 **Violación en runtime.** Una tarea que no puede reanudarse —su tramo desapareció, su unidad dejó el tile— se
 termina con la unidad `IDLE` donde está, y se registra.
@@ -328,7 +330,7 @@ del tick 895 como el último.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E4 (madera), E9 (piedra) |
 | Política ante violación | REJECT (escritura) · REPAIR (arranque) |
-| Cobertura | **Cubierto** por `Test_INV_ECON_007_ElCheckRechazaMaderaFueraDeRango` (integration), `TestUnaEntradaFueraDeRangoEsInvalida` (`internal/domain/forest`) y `TestLaCapaDelArranqueDescartaLoQueNoVale` (`internal/game/simulation`); la piedra de la colina, prevista con E9 |
+| Cobertura | **Cubierto** por `Test_INV_ECON_007_ElCheckRechazaMaderaFueraDeRango` (integration), `TestUnaEntradaFueraDeRangoEsInvalida` (`internal/domain/deposit`, las dos capas) y `TestLaCapaDelArranqueDescartaLoQueNoVale` (`internal/game/simulation`); la piedra, por `Test_INV_ECON_007_ElCheckRechazaPiedraFueraDeRango` (integration) y `TestLaCapaDePiedraDelArranqueDescartaLoQueNoVale` (simulation) |
 
 **Enunciado.** Para toda fila de `forest_wood` y toda entrada de la capa de madera en la RAM, `0 ≤ remaining ≤
 forestWood` y el tile `(x, y)` es `FOREST` en el terreno del mundo; y para toda fila de `hill_stone` y toda entrada
@@ -351,8 +353,9 @@ terreno es un recurso donde el terreno dice que no hay ninguno, o uno distinto.
 **Cómo se verifica.** `Test_INV_ECON_007_ElCheckRechazaMaderaFueraDeRango` (integration): el motor rechaza −1 y 101
 por el nombre del `CHECK`. `TestUnaCargaNuncaCreaMadera` y `TestUnaEntradaFueraDeRangoEsInvalida` (unit): la carga
 parcial y nula, y el rango. `TestLaCapaDelArranqueDescartaLoQueNoVale` (simulation): al arrancar, una fila fuera de
-rango o sobre un tile que no es bosque se descarta y se señala — **existen y pasan**. Previstos con E9: los mismos
-tres sobre `hill_stone` y la capa de piedra.
+rango o sobre un tile que no es bosque se descarta y se señala — **existen y pasan**. Para la piedra,
+`Test_INV_ECON_007_ElCheckRechazaPiedraFueraDeRango` (integration) y `TestLaCapaDePiedraDelArranqueDescartaLoQueNoVale`
+(simulation), y `TestUnaEntradaFueraDeRangoEsInvalida` recorre las dos capas.
 
 **Violación en runtime.** La base rechaza la escritura; al arrancar, la fila mala se descarta y se audita.
 
@@ -367,7 +370,7 @@ tres sobre `hill_stone` y la capa de piedra.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E4 (madera), E9 (piedra) |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestUnaCargaQueFallaNoDejaNadaAMedias`, `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente` (integration), `TestDosAldeanosEnElMismoTileCarganEnOrdenDeId` (simulation) y el golden «tala»; la piedra, prevista con E9 |
+| Cobertura | **Cubierto** por `TestUnaCargaQueFallaNoDejaNadaAMedias`, `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente` (integration), `TestDosAldeanosEnElMismoTileCarganEnOrdenDeId` (simulation) y el golden «tala»; la piedra, por `TestLaCargaDePiedraDescuentaLaColinaUnaSolaVez`, `TestUnaCargaDePiedraQueFallaNoDejaNadaAMedias` (integration) y el golden «cantera» |
 
 **Enunciado.** En cada carga, lo que gana la unidad es exactamente lo que pierde el tile, en la RAM y en la base,
 sea madera de un bosque o piedra de una colina.
@@ -389,6 +392,7 @@ caída dejaría la madera a la vez en la mano del aldeano y en el bosque.
 ni el tile ni la tarea cambian. `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente` (integration): un reintento
 no descuenta dos veces. `TestDosAldeanosEnElMismoTileCarganEnOrdenDeId` (simulation): las cargas suman lo que tenía
 el tile. El golden «tala» (`TestLosEscenariosReproducenSuGolden`): 35 maderas salen de 35 — **existen y pasan**.
-Previstos con E9: la carga de piedra con un fallo inyectado y con un reintento (integration), y el golden «cantera».
+Para la piedra, `TestLaCargaDePiedraDescuentaLaColinaUnaSolaVez` y `TestUnaCargaDePiedraQueFallaNoDejaNadaAMedias`
+(integration), y el golden «cantera»: 25 piedras salen de una colina de 25.
 
 **Violación en runtime.** No hay ruta conocida; la transacción es la garantía.

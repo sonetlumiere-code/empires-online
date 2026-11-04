@@ -75,7 +75,7 @@ tramo termina (fase 3, llegadas) o cuando vence `phase_until_ms` (fase 5).
 
 | Regla | Enunciado |
 |---|---|
-| `RN-ECON-001` | `unit.gather` sólo acepta un `VILLAGER` propio, vivo, no guarnecido, y un `target` dentro del mundo cuyo terreno sea `FOREST`. Desde E4, el tile además tiene que tener madera ([economy-forest.md](economy-forest.md) `RN-ECON-014`). |
+| `RN-ECON-001` | `unit.gather` sólo acepta un `VILLAGER` propio, vivo, no guarnecido, y un `target` dentro del mundo cuyo terreno sea `FOREST`. Desde E4, el tile además tiene que tener madera ([economy-forest.md](economy-forest.md) `RN-ECON-014`). Desde E9, también un tile `HILL` con piedra ([economy-stone.md](economy-stone.md) `RN-ECON-019`). |
 | `RN-ECON-002` | El tile de trabajo es el propio tile `FOREST` (es transitable, coste 16). Si no hay ruta desde la unidad, `PATH_NOT_FOUND`; si la hay pero supera `EO_PATHFINDING_MAX_DISTANCE`, `PATH_TOO_LONG`, como un `unit.move`. |
 | `RN-ECON-003` | Al llegar, la unidad pasa a `WORKING` durante `workMs` y al vencer carga `carry` unidades. Mientras trabaja no se mueve ni se oculta; una orden de movimiento, guarnición o `unit.cancel_move` cancela la tarea y **pierde lo cargado**. |
 | `RN-ECON-004` | El depósito es el primer tile transitable adyacente a la zona urbana de la ciudad de la unidad (`units.city_id`), elegido con el mismo criterio determinista que el emplazamiento de los aldeanos iniciales. Al llegar, `amount += carrying`, `carrying = 0`, `trips_done += 1`. |

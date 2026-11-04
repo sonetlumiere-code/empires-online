@@ -635,7 +635,7 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E9 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-04 con [SPEC-ECON-STONE](../specs/economy-stone.md) antes de escribir su código; previstos con E9 un test de integración del fin del avance y uno de simulación |
+| Cobertura | **Cubierto** por `TestElFinDelAvanceSubeElLimiteUnaVez` y `TestUnAvanceDesdeOtraEraSeRechaza` (integration), `TestUnAvanceFueraDelCatalogoEsInvalido` (unit, `internal/domain/advance`) y `TestLaEraNoRetrocede` (simulation) |
 
 **Enunciado.** Para toda ciudad y toda transacción confirmada, el `ordinal` de `cities.era` en `eras` es mayor o igual que el que tenía antes de la transacción; y en la RAM del Game Server, la era de una ciudad sólo cambia a la siguiente del catálogo, al terminar un avance.
 
@@ -646,7 +646,12 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 - `DB` — el fin del avance escribe la era sólo `WHERE era = from_era`, y `from_era` y `to_era` vienen de la fila de `city_era_advances`, que el encargo creó con la siguiente del catálogo ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §5).
 - `DOMAIN` — `city.advance` sólo admite el paso de `STONE_AGE` a `BRONZE_AGE` (`RN-ECON-024`); ninguna otra orden, golpe ni ausencia escribe la era (`RN-ECON-028`).
 
-**Cómo se verifica.** Previstos con E9: el fin del avance, repetido o con la ciudad ya en la era siguiente, no cambia nada (integration); una ciudad que pierde casas, se ausenta o pasa a `PROTECTED` conserva su era (simulation).
+**Cómo se verifica.**
+
+- `TestElFinDelAvanceSubeElLimiteUnaVez` (integration) — el fin, repetido, no cambia nada, y un reintento tardío del encargo con la ciudad ya en Bronce no debita. Verificado por mutación: sin `AND era = from_era`, el límite sube dos veces y el test falla.
+- `TestUnAvanceDesdeOtraEraSeRechaza` (integration) — un avance que no sale de la era de la ciudad se rechaza sin debitar, y `city_era_advances_forward` no admite uno que se quede en el sitio.
+- `TestUnAvanceFueraDelCatalogoEsInvalido` (unit) — ni hacia atrás ni saltando eras.
+- `TestLaEraNoRetrocede` (simulation) — una ciudad en Bronce que se ausenta y pasa a `PROTECTED` conserva su era y su límite.
 
 **Violación en runtime.** No hay ruta que la produzca: la escritura condicionada es la guarda. Una fila de `city_era_advances` cuyo `from_era` no es la era de su ciudad la descarta la validación de carga con `invariant_violation`, `inv_id=INV-CITY-018`.
 

@@ -182,7 +182,11 @@ Determina el techo de población de la ciudad.
 | `IRON_AGE` | 100 |
 | `CASTLE_AGE` | 150 |
 
-Ver: [../specs/city.md](../specs/city.md).
+Desde E9 una ciudad avanza de `STONE_AGE` a `BRONZE_AGE` con `city.advance`, pagando 400 de madera y 200 de piedra
+en 90 s, y su límite sube en la diferencia de los `population_cap`; las demás eras no tienen avance todavía. La era
+nunca retrocede ([INV-CITY-018](../invariants/city.md#inv-city-018)).
+
+Ver: [../specs/city.md](../specs/city.md), [../specs/economy-stone.md](../specs/economy-stone.md).
 
 ### Event
 

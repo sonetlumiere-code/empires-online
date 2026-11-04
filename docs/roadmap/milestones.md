@@ -1615,7 +1615,7 @@ máquinas de asedio, reparar casas, niebla de guerra.
 
 ## E9 — Piedra
 
-**Estado: EN CURSO** desde el 2026-11-04, en la rama `claude/slice-piedra`. Contrato:
+**Estado: HECHO en la rama** `claude/slice-piedra` (2026-11-04), sin fusionar. Contrato:
 [SPEC-ECON-STONE](../specs/economy-stone.md), aceptada el 2026-11-04 con sus diez decisiones de producto, y
 [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md).
 
@@ -1632,12 +1632,33 @@ fundación, niebla de guerra.
 
 1. **HECHO** — Aceptación: spec, ADR-030, `INV-CITY-018` y `INV-ECON-002`, `005`, `007` y `008` ampliados; la
    tensión «4 vs. 5 (recursos)» en los pilares.
-2. Dominio: la capa de recurso por tile (`deposit`), `STONE`, costes en varios recursos, `GATHER_STONE` y el avance.
-3. Migración `000012` y persistencia: `hill_stone`, `city_era_advances`, el encargo y el fin del avance, la carga de
-   piedra; integración con fallo inyectado.
-4. Simulación: la recolección de piedra con su capa, `RN-ECON-020`, el stock por recurso, `city.advance` y su fin;
-   golden «cantera» y recuperación.
-5. Protocolo y WebSocket: `city.advance`, `hill.update`, `hills`, `STONE`, `carryingResource`, `era` y `advance`, con
-   el JSON Schema, los contract tests y los e2e.
-6. Cliente: contador de piedra, era y botón «Edad de Bronce» con su motivo, clic sobre una colina, colina talada.
-7. Humo `--piedra`, semilla de desarrollo y prueba en vivo.
+2. **HECHO** — Dominio: `forest` pasa a `deposit`, con una capa por terreno; `STONE` y `Costs` en `economy`;
+   `GATHER_STONE` en `task`; el paquete `advance` con el único paso del catálogo.
+3. **HECHO** — Migración `000012` y persistencia: `hill_stone`, `city_era_advances`, el encargo que debita todos los
+   recursos o ninguno, el fin idempotente que nunca baja la era, `Train` que no entrena durante un avance; integración en
+   `stone_integration_test.go`. La tabla de migraciones de `migrations.md`, que llegaba a `000006`, llega ya a `000012`.
+4. **HECHO** — Simulación: la capa compartida, la recolección de piedra, `RN-ECON-020`, el stock por recurso,
+   `city.advance` y su fin; `stone_test.go`, `advance_test.go` y el golden «cantera» (los de «madera» y «tala» sólo
+   ganan `STONE: 0` y `carryingResource`). Ocho mutaciones las detecta su test.
+5. **HECHO** — Protocolo y WebSocket: `city.advance`, `hill.update` y los campos nuevos, con contract tests
+   (`stone_contract_test.go`) y e2e (`stone_e2e_test.go`).
+6. **HECHO** — Cliente: contador de piedra, era, botón «Edad de Bronce» con su motivo y su cuenta atrás, colina como
+   destino de recolección y capa de colina picada (`stone.test.ts`).
+7. **HECHO** — Humo y prueba en vivo (2026-11-04). El migrador llevó la base de desarrollo de 11 a 12, la carga no
+   encontró nada y `EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed` dejó 200 de piedra en las dos
+   ciudades. En el navegador, con `smoke_victim`: el HUD mostraba «Edad de Piedra», Madera 400 y Piedra 200 y el botón
+   «Edad de Bronce» con su coste; al pulsarlo, los dos recursos a 0, «Aldeano» y «Guerrero» desactivados con «La ciudad
+   está avanzando de era» y la cuenta atrás; a los 90 s, «Edad de Bronce», población 1/50 y los botones otra vez
+   activos. `scripts/smoke.mjs --piedra --avance` con `smoke_runner`: con el tope por defecto, la orden de piedra se
+   rechaza con `PATH_TOO_LONG` (entregable 8); con `EO_PATHFINDING_MAX_NODES=50000`, 22 comprobaciones en verde: la
+   colina (169, 182) a 163 tiles, una ida de 165, la carga con `hill.update` (quedan 90) y `carryingResource: STONE`, el
+   depósito (piedra 200 → 210), el avance con `CITY_BUSY` al entrenar y la Edad de Bronce con límite 50. En la base, las
+   dos ciudades en `BRONZE_AGE` con límite 50, sus `EraAdvanceOrdered` y `EraAdvanced`, ningún avance colgado y la colina
+   en 90. No se comprobó en el navegador el dibujo de la colina picada, que queda a cientos de tiles de las ciudades
+   de prueba; lo cubren los tests del store y de la proyección.
+8. **HECHO** — Fallos encontrados: el humo tomaba como aldeano de la piedra el que ya recolectaba madera y confundía sus
+   tramos (corregido en el propio humo); y `RN-ECON-020` miraba sólo la distancia: con el tope de nodos del A\*
+   (20 000) una vuelta de 165 tiles no tiene ruta aunque quepa en los 256 tiles, y un aldeano acercado a mano habría
+   cargado y perdido la carga. La orden calcula ahora la ruta de vuelta (`TestLaVueltaAlDepositoTieneQueTenerRuta`,
+   precisión en la spec §4.2). Medido sobre el mapa canónico, con el tope actual sólo el 80 % de la tierra llega a su
+   colina (el 98 % con 50 000 nodos): la decisión de subir el tope está pendiente de producto (spec §4.1).
