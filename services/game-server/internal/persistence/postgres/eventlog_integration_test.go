@@ -283,3 +283,29 @@ func TestLaPaginaSeCortaYLaSiguienteSigueDondeQuedo(t *testing.T) {
 	assert.Equal(t, ids[0], segunda.Entries[0].ID)
 	assert.Nil(t, segunda.NextBeforeID, "la de hace ocho días no cuenta")
 }
+
+// Las filas de muertes y saqueos anteriores a la migración 000010 no tienen
+// counterpart_player_id: la víctima las ve igual, con el autor que ya nombraba
+// su payload; el autor no, porque nada en la fila le apunta (INV-SEC-009).
+func TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload(t *testing.T) {
+	store, ctx := newTestStore(t)
+	e := nuevoSaqueo(t, ctx, store, 100)
+	victima, autor := e.victima.Player.ID, e.saqueador.Player.ID
+	_, err := store.Pool().Exec(ctx,
+		`INSERT INTO world_events (event_type, tick, player_id, payload)
+		 VALUES ('CityPillaged', 1, $1, jsonb_build_object('amount', 5, 'attackerPlayerId', $2::text))`,
+		victima, autor.String())
+	require.NoError(t, err)
+
+	r := registro(store, 50)
+	page, _, err := r.Page(ctx, victima, 0)
+	require.NoError(t, err)
+	require.Len(t, page.Entries, 1)
+	assert.Equal(t, "PILLAGED", page.Entries[0].Kind)
+	assert.Equal(t, autor.String(), page.Entries[0].OtherPlayerID)
+	assert.Equal(t, "saqueadorpolis", *page.Entries[0].OtherCityName)
+
+	ajena, _, err := r.Page(ctx, autor, 0)
+	require.NoError(t, err)
+	assert.Empty(t, ajena.Entries)
+}

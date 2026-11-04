@@ -161,7 +161,7 @@ func (r *EventLogRepo) chunk(ctx context.Context, viewer uuid.UUID, before int64
 		if other != nil {
 			e.Counterpart = *other
 		}
-		if err := fillFromPayload(&e, rawFields); err != nil {
+		if err := fillFromPayload(&e, rawFields, other == nil); err != nil {
 			return nil, fmt.Errorf("el payload del evento %d: %w", e.ID, err)
 		}
 		if e.AtMs == 0 {
@@ -184,12 +184,28 @@ type eventPayload struct {
 	From             string     `json:"from"`
 	ByPlayerID       string     `json:"byPlayerId"`
 	BreakEffectiveAt *time.Time `json:"breakEffectiveAt"`
+	// Las filas de muertes y saqueos anteriores a ADR-028 no tienen
+	// counterpart_player_id, pero su payload ya nombraba al autor.
+	KillerPlayerID   string `json:"killerPlayerId"`
+	AttackerPlayerID string `json:"attackerPlayerId"`
 }
 
-func fillFromPayload(e *eventlog.Event, raw []byte) error {
+// fillFromPayload copia del payload lo que el registro usa. Con legacy (la fila
+// no tiene counterpart_player_id), toma el autor de la muerte o del saqueo del
+// payload. No amplía lo que se lee: la fila ya era del jugador por player_id.
+func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	var p eventPayload
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return err
+	}
+	if legacy {
+		autor := p.KillerPlayerID
+		if e.Type == eventlog.EventCityPillaged {
+			autor = p.AttackerPlayerID
+		}
+		if id, err := uuid.Parse(autor); err == nil && id != uuid.Nil {
+			e.Counterpart = id
+		}
 	}
 	e.AtMs, e.UnitType, e.Amount, e.TreatyType, e.From = p.AtMs, p.UnitType, p.Amount, p.TreatyType, p.From
 	if p.X != nil && p.Y != nil {
