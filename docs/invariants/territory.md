@@ -226,9 +226,16 @@ La consecuencia es concreta: si un jugador se borra, sus territorios quedan apun
 | Aplicación | TEST |
 | Milestone | M6 |
 | Política ante violación | Log `error`; sin reparación |
-| Cobertura | **Cubierto** por `TestLaSiembraCreaUnaFilaDeControlPorTerritorio` y `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration): los dos únicos escritores de `territory_control` dejan `control_points = 0` y `contested = false` |
+| Cobertura | **Parcial**: `control_points = 0`, cubierto por `TestLaSiembraCreaUnaFilaDeControlPorTerritorio` y `TestFundarReclamaElTerritorioDelCentroYRegistraElEvento` (integration); que `contested` siga a las reclamaciones activas (E12), sin test todavía |
 
-**Enunciado.** En MVP, `control_points = 0` y `contested = false` para toda fila de `territory_control`.
+**Enunciado.** En MVP, `control_points = 0` para toda fila de `territory_control`; y `contested = true` exactamente
+cuando el territorio tiene una reclamación `ACTIVE` en `territory_claims`.
+
+**Precisión (2026-11-04, [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md), [ADR-034](../decisions/ADR-034-territory-claims.md) §4).**
+La captura llegó sin progreso por puntos: un guerrero reclama y aguanta un plazo. `control_points` sigue dormida y
+este invariante la sigue vigilando, así que no hace falta derogarlo, como preveía el último párrafo de la ficha.
+`contested` se despierta: la escriben el comienzo, el fin y la captura de una reclamación, y la validación de carga la
+repara si no coincide con las reclamaciones activas.
 
 **Razón.** Es un invariante de **alcance**, no de corrección: declara explícitamente qué parte del modelo está dormida. Las columnas `control_points` y `contested` existen para una mecánica de captura progresiva que el MVP no implementa, y su valor por defecto (`0` y `false`) es el único coherente con esa ausencia.
 
@@ -357,6 +364,71 @@ La cualificación «a la huella de chunks del territorio» es la parte con conte
 - `TestBroadcastChunksEntregaUnaSolaVezAQuienEstaSuscritoAVarios`, `TestBroadcastChunksNoAlcanzaASesionesNoSuscritas` y `TestUnaSesionQueDejaDeMirarUnChunkYaNoRecibeSuTerritorio` (`internal/websocket`) — la entrega por chunk.
 
 **Violación en runtime.** No hay detección en runtime ni reemisión: la garantía es que mutar y emitir son la misma función. Si una sesión pierde el mensaje —por ejemplo, porque su cola de salida estaba llena—, el control correcto le llega en el siguiente `world.snapshot`. Reemitir `territory.update` sería seguro, porque transporta el estado completo del control y no un incremento.
+
+---
+
+<a id="inv-terr-010"></a>
+## INV-TERR-010 — Un territorio tiene como mucho una reclamación activa
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E12 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: registrado con [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md) antes de escribir su código |
+
+**Enunciado.** Para cada territorio existe como mucho una fila de `territory_claims` con `status = 'ACTIVE'`.
+
+**Razón.** Dos plazos en paralelo sobre el mismo suelo obligan a decidir quién gana en un empate, y dos capturas en
+vuelo escribirían el mismo control dos veces. Quien quiere un territorio en disputa tiene que matar al que lo
+reclama (SPEC-TERRITORY-CONQUEST Q7).
+
+**Cómo se garantiza.**
+
+- `DB` — índice parcial único `(territory_id) WHERE status = 'ACTIVE'` en `territory_claims` (migración `000014`).
+- `DOMAIN` — el tick aparta el territorio al validar la orden, antes de encolar su escritura, así que una segunda
+  orden en el mismo tick o mientras la primera espera su transacción se rechaza con `INVALID_TARGET`.
+
+**Cómo se verifica.** Un test de simulación que ordena dos reclamaciones sobre el mismo territorio, y uno de
+integración que inserta dos filas `ACTIVE` y espera el rechazo del índice.
+
+**Violación en runtime.** El índice la hace imposible en la base; en la RAM, la transacción de la segunda falla con
+un rechazo de dominio y su reserva se deshace.
+
+---
+
+<a id="inv-terr-011"></a>
+## INV-TERR-011 — La capital de un jugador no cambia de dueño
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E12 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: registrado con [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md) antes de escribir su código |
+
+**Enunciado.** Si el territorio `T` tiene dueño `P` y el centro de una ciudad de `P` está dentro de `T`, ninguna
+transacción cambia el dueño de `T`.
+
+**Razón.** Perder el suelo de casa sería empezar a perder la ciudad, y que una ciudad caiga es otra spec
+(SPEC-TERRITORY-CONQUEST Q4, [combat-siege.md](../specs/combat-siege.md) Q2). Como en el MVP las ciudades no se
+destruyen ni se mueven, la capital lo es para siempre.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — el predicado de la reclamación rechaza un territorio que contiene el centro de la ciudad de su dueño
+  (`RN-CONQ-002`), al ordenar y en cada tick.
+- `DB` — la transacción de la captura comprueba, antes de cambiar el dueño, que ninguna ciudad del dueño actual tiene
+  su centro dentro del territorio, y si la tiene no escribe nada ([ADR-034](../decisions/ADR-034-territory-claims.md)
+  §3).
+
+**Cómo se verifica.** Un test de unidad del predicado, uno de simulación que intenta reclamar una capital y uno de
+integración que intenta la captura con la ciudad dentro.
+
+**Violación en runtime.** Rechazo: la reclamación no empieza o la captura no se escribe, y la reclamación termina sin
+cambio de dueño.
 
 ---
 
@@ -612,6 +684,8 @@ Enumerar las dos entradas en el enunciado no es pedantería: dice exactamente qu
 | INV-TERR-007 | `internal/persistence/postgres`, `internal/domain/territory` | [INV-CITY-011](city.md#inv-city-011) |
 | INV-TERR-008 | `internal/domain/territory` | [INV-WORLD-005](world.md#inv-world-005) |
 | INV-TERR-009 | `internal/websocket`, `internal/game/simulation` | [INV-WORLD-006](world.md#inv-world-006) |
+| INV-TERR-010 | `migrations/`, `internal/game/simulation` | [INV-TERR-006](#inv-terr-006) |
+| INV-TERR-011 | `internal/domain/territory`, `internal/persistence/postgres` | [INV-CITY-006](city.md#inv-city-006) |
 | INV-SAFE-001 | `internal/domain/safezone`, `cmd/server` | [INV-TERR-002](#inv-terr-002) |
 | INV-SAFE-002 | `internal/domain/safezone`, `internal/game/simulation` | [INV-WORLD-003](world.md#inv-world-003) |
 | INV-SAFE-003 | `internal/domain/safezone`, `internal/game/simulation` | [INV-UNIT-008](units.md#inv-unit-008), [INV-UNIT-005](units.md#inv-unit-005) |

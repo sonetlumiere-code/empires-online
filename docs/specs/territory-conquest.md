@@ -6,13 +6,13 @@ aguanta unos minutos y, si nadie lo impide, el territorio cambia de manos y da p
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TERRITORY-CONQUEST` |
-| Estado | Draft (2026-11-04). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-04). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
 | Milestone | E12 Conquista (duodécimo slice después de M7) |
 | Canon | §4 y §10 (territorios, población), §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [territory.md](territory.md), [city.md](city.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-siege.md](combat-siege.md), [diplomacy.md](diplomacy.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (clasificación de acciones; el territorio no restringe acciones), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (encargos en dos fases), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (población por encima del límite), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (el avance de era como encargo con su fila), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (trabajos de la cola con dos claves), [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md) (avisos en vivo). Un ADR nuevo (`ADR-034`, la reclamación como encargo durable y la captura que escribe dos ciudades) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (clasificación de acciones; el territorio no restringe acciones), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (encargos en dos fases), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (población por encima del límite), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (el avance de era como encargo con su fila), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (trabajos de la cola con dos claves), [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md) (avisos en vivo), [ADR-034](../decisions/ADR-034-territory-claims.md) (la reclamación como encargo durable en dos fases y la captura como orden en dos fases que escribe el control y el límite de dos ciudades; migración `000014`). |
 | Reemplaza a | En [territory.md](territory.md): «captura por combate, asedio o presencia militar» y el estado `contested` de §2 (fuera de MVP), y `RN-TERR-007` a `RN-TERR-009` en lo que dicen de que la fundación es el único productor y de que no existe la pérdida de control. Responde a la pregunta `Q-10` del [backlog](../roadmap/backlog.md) («¿cómo se reclama y cómo se pierde un territorio?») y a la «disputa de territorio» que la Q2 de [combat-siege.md](combat-siege.md) dejó para su propia spec. |
-| Invariantes | Cita [INV-TERR-006](../invariants/territory.md#inv-terr-006) (lo precisa: `contested` deja de ser siempre `false`), [INV-TERR-009](../invariants/territory.md#inv-terr-009), [INV-ECON-004](../invariants/economy.md#inv-econ-004) (lo amplía: la fórmula del límite), [INV-CITY-006](../invariants/city.md#inv-city-006) y [INV-SEC-009](../invariants/security.md#inv-sec-009); propone dos nuevos de la familia `INV-TERR`, que se registrarán al aceptar (§8) |
+| Invariantes | Cita [INV-TERR-006](../invariants/territory.md#inv-terr-006) (lo precisa: `contested` deja de ser siempre `false`), [INV-TERR-009](../invariants/territory.md#inv-terr-009), [INV-ECON-004](../invariants/economy.md#inv-econ-004) (lo amplía: la fórmula del límite), [INV-CITY-006](../invariants/city.md#inv-city-006) y [INV-SEC-009](../invariants/security.md#inv-sec-009); asigna [INV-TERR-010](../invariants/territory.md#inv-terr-010) e [INV-TERR-011](../invariants/territory.md#inv-terr-011) (§8) |
 
 ## 1. Objetivo
 
@@ -77,11 +77,11 @@ Dominio: `RN-CONQ`.
 | `RN-CONQ-001` | **La orden.** `unit.claim { unitId }` sobre un `WARRIOR` propio, vivo y en el mapa (ni guarnecido ni oculto). Sustituye cualquier otra tarea del guerrero (movimiento, recolección, ataque) y lo planta en su posición autoritativa de ese tick; reclama el territorio de ese tile. Sólo los guerreros reclaman (Q2). |
 | `RN-CONQ-002` | **Qué se puede reclamar.** El territorio del tile existe, no es ya del jugador, no es la capital de su dueño —no contiene el centro de la ciudad de quien lo posee (Q4)— y no tiene otra reclamación activa (Q7). El tile no está en una Safe Zone ni en la zona urbana (3 × 3) de ninguna ciudad. Si falla algo, `INVALID_TARGET` con el motivo. |
 | `RN-CONQ-003` | **Hostilidad** (Q5). Reclamar un territorio con dueño es una acción hostil contra él: la impiden un pacto o una alianza vigentes entre los dos (`INVALID_TARGET`, como el ataque, [combat-raid.md](combat-raid.md) Q5) y la protección offline de cualquiera de los dos (`CITY_PROTECTED`, `RN-COMBAT-018`). El acuerdo comercial no da paz ([trade.md](trade.md) §4.1) y no la impide. Reclamar un territorio libre no es hostil: no hay a quién proteger. |
-| `RN-CONQ-004` | **Mientras dura.** El territorio está en disputa: `contested = true` y su reclamación viaja en `TerritoryView` a todas las sesiones con el territorio en su área (§6). Hay como mucho una reclamación activa por territorio (§8); un jugador puede tener varias en territorios distintos (Q9). |
-| `RN-CONQ-005` | **Qué la rompe** (Q6). En cada tick se vuelve a comprobar el mismo predicado que al ordenar, como un enfrentamiento ([INV-COMBAT-002](../invariants/combat.md#inv-combat-002)). Termina sin captura si el guerrero muere, recibe otra orden de su dueño, o la reclamación queda bloqueada: los dos firman la paz, o uno de los dos pasa a `PROTECTED`. Que le peguen no la rompe: hay que matarlo. El guerrero vuelve a `IDLE` donde está. |
+| `RN-CONQ-004` | **Mientras dura.** El territorio está en disputa: `contested = true` y su reclamación viaja en `TerritoryView` a todas las sesiones con el territorio en su área (§6). Hay como mucho una reclamación activa por territorio ([INV-TERR-010](../invariants/territory.md#inv-terr-010)); un jugador puede tener varias en territorios distintos (Q9). |
+| `RN-CONQ-005` | **Qué la rompe** (Q6). En cada tick, en la fase 5, se vuelve a comprobar el mismo predicado que al ordenar, como un enfrentamiento ([INV-COMBAT-002](../invariants/combat.md#inv-combat-002)). Termina sin captura si el guerrero muere, recibe otra orden de su dueño, o la reclamación queda bloqueada: los dos firman la paz, o uno de los dos pasa a `PROTECTED`; en un territorio libre, quien reclama, porque su guerrero sería invulnerable ([ADR-034](../decisions/ADR-034-territory-claims.md) §7). Que le peguen no la rompe: hay que matarlo. El guerrero vuelve a `IDLE` donde está. |
 | `RN-CONQ-006` | **Defensa automática** (Q11). Al empezar una reclamación sobre un territorio con dueño, los `WARRIOR` parados de ese dueño a ≤ `EO_COMBAT_GUARD_RADIUS_TILES` del reclamante responden como a un golpe sobre una unidad suya en ese tile (`RN-COMBAT-014` a `RN-COMBAT-017`: correa, vuelta al puesto, simetría de la protección). |
-| `RN-CONQ-007` | **La captura.** Cumplido el plazo, el territorio pasa al dueño del guerrero (`owner_type = PLAYER`, `captured_at`), deja de estar en disputa y el guerrero vuelve a `IDLE`. La ciudad del nuevo dueño suma 5 a su límite y la del anterior, si lo había, resta 5 (§4.2). Viajan `territory.update` al área del territorio y `city.update { populationLimit }` al chunk de cada ciudad. |
-| `RN-CONQ-008` | **La capital es intocable** (Q4). El territorio que contiene el centro de la ciudad de su dueño nunca cambia de manos (§8). Como en el MVP las ciudades no se destruyen ni se mueven, lo es para siempre. |
+| `RN-CONQ-007` | **La captura.** Cumplido el plazo, el territorio pasa al dueño del guerrero (`owner_type = PLAYER`, `captured_at`), deja de estar en disputa y el guerrero vuelve a `IDLE`. Es una orden en dos fases: la RAM aplica el cambio cuando la base lo ha confirmado, unos milisegundos después ([ADR-034](../decisions/ADR-034-territory-claims.md) §3). La ciudad del nuevo dueño suma 5 a su límite y la del anterior, si lo había, resta 5 (§4.2). Viajan `territory.update` al área del territorio y `city.update { populationLimit }` al chunk de cada ciudad. |
+| `RN-CONQ-008` | **La capital es intocable** (Q4). El territorio que contiene el centro de la ciudad de su dueño nunca cambia de manos ([INV-TERR-011](../invariants/territory.md#inv-terr-011)). Como en el MVP las ciudades no se destruyen ni se mueven, lo es para siempre. |
 | `RN-CONQ-009` | **Sin abandono** (Q10). Un territorio sólo cambia de manos por una reclamación completada o, como hasta ahora, por la fundación sobre uno libre. No decae, no caduca y no se pierde por no conectarse: estando `PROTECTED`, nadie puede reclamarle nada. |
 | `RN-CONQ-010` | **Avisos y registro** (Q8). Una reclamación sobre un territorio con dueño se lo cuenta al dueño al empezar (`TERRITORY_CLAIMED`) y, si se completa, al dueño (`TERRITORY_LOST`) y al conquistador (`TERRITORY_TAKEN`): en vivo, con `event_log.notice`, y en el registro. Reclamar un territorio libre no avisa ni entra en el registro: no hay otro jugador, y es lo que el propio jugador ordenó ([event-log.md](event-log.md) §4.1). |
 
@@ -90,8 +90,10 @@ Dominio: `RN-CONQ`.
 | Origen | Destino | Disparador | Fase |
 |---|---|---|---|
 | sin reclamación | reclamación activa (`contested`) | `unit.claim` válido (`RN-CONQ-001` a `003`) | 2 |
-| reclamación activa | sin reclamación, mismo dueño | Muerte, otra orden o bloqueo del guerrero (`RN-CONQ-005`) | 2 o 4 |
-| reclamación activa | sin reclamación, dueño nuevo | Plazo cumplido (`RN-CONQ-007`) | 5 |
+| reclamación activa | sin reclamación, mismo dueño | Muerte, otra orden o bloqueo del guerrero (`RN-CONQ-005`) | 5 |
+| reclamación activa | capturando | Plazo cumplido (`RN-CONQ-007`): la transacción en vuelo | 5 |
+| capturando | sin reclamación, dueño nuevo | La base confirma la captura | buzón |
+| capturando | sin reclamación, mismo dueño | La base la rechaza: una fundación simultánea le dio dueño | buzón |
 
 ## 5. Errores
 
@@ -145,15 +147,16 @@ se dibuja distinto en el overlay y muestra su cuenta atrás; el del jugador, con
 | Dirty-flag | Nada nuevo |
 | Reconstruible / no persistido | El índice tile → territorio y la huella de chunks, como hasta ahora |
 
-**Por qué hace falta un ADR (`ADR-034`).** Hasta hoy el control de un territorio sólo lo escribía el alta del jugador,
+**Por qué hace falta un ADR ([ADR-034](../decisions/ADR-034-territory-claims.md)).** Hasta hoy el control de un territorio sólo lo escribía el alta del jugador,
 en la goroutine HTTP y en la misma transacción que la ciudad (`RN-TERR-007`, territory.md §10). Ahora lo escribe la
 simulación, y la captura toca a la vez `territory_control`, el `population_limit` de **dos** ciudades y dos eventos:
 las dos ciudades tienen que quedar en el orden de la cola de cada una, el mismo problema que el trato de E10. La
 propuesta: la reclamación es un **encargo durable en dos fases** con su fila (`territory_claims`, migración `000014`),
 como el avance de era ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)), que se recarga al arrancar; y
-la captura es un trabajo con las dos ciudades como claves ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)),
-optimista en la RAM como la destrucción de una casa ([ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md)
-§4). El ADR dejará escritas las alternativas:
+la captura es una orden en dos fases con las dos ciudades como claves ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)):
+la RAM cambia el dueño después del `COMMIT`, como pide el canon para el dueño. Lo que rompe una reclamación, en
+cambio, se decide en la RAM y se escribe después, como una muerte. El ADR deja escritas, entre otras, estas
+alternativas descartadas:
 
 1. **Presencia militar automática** (`control_points` que suben por tick con los guerreros de un jugador en el
    territorio): es lo que preveía la columna, pero captura sin que nadie lo ordene, se lee mal («¿por qué ha cambiado
@@ -179,10 +182,12 @@ deja de ser siempre `false`; pasa a ser `true` exactamente mientras el territori
 **amplía** [INV-ECON-004](../invariants/economy.md#inv-econ-004) con el término de los territorios conquistados de §4.2,
 que la validación de carga recuenta al arrancar.
 
-**Propone** dos invariantes nuevos de la familia `INV-TERR`, que se registrarán con su número al aceptar:
+**Asigna** dos invariantes nuevos de la familia `INV-TERR`, registrados en [../invariants/territory.md](../invariants/territory.md):
 
-- Un territorio tiene como mucho una reclamación activa (índice parcial único en `territory_claims`).
-- El territorio que contiene el centro de la ciudad de su dueño no cambia de dueño.
+- [INV-TERR-010](../invariants/territory.md#inv-terr-010) — un territorio tiene como mucho una reclamación activa
+  (índice parcial único en `territory_claims`).
+- [INV-TERR-011](../invariants/territory.md#inv-terr-011) — el territorio que contiene el centro de la ciudad de su
+  dueño no cambia de dueño.
 
 ## 9. Tests esperados
 
@@ -195,12 +200,12 @@ que la validación de carga recuenta al arrancar.
 | contract / e2e | `unit.claim`, `claim` en `TerritoryView`, `CLAIMING` y los tres tipos nuevos contra el JSON Schema; un dueño con la vista en su ciudad recibe `TERRITORY_CLAIMED` y, al completarse, `TERRITORY_LOST` |
 | cliente | El botón con su motivo deshabilitado, la cuenta atrás, el territorio en disputa en el overlay, los textos del registro y de los avisos; `scripts/smoke.mjs --territorio` |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-04)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué da poseer un territorio? | **+5 de límite de población por territorio conquistado, sin contar la capital** (§4.2): es la misma moneda que una casa, se gana y se pierde en el acto, y [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) ya resuelve qué pasa al perderla. Alternativas: **recolectar sólo en territorio propio o aliado** dejaría sin bosque a las 4 ciudades de 10 que viven en territorio ajeno; **más rendimiento al recolectar** en lo propio es más difícil de ver y de equilibrar; **un tributo** sobre lo que otros recogen allí exige repartir cada depósito entre dos almacenes; **nada todavía** (sólo el color del mapa) dejaría la conquista sin motivo. Que la capital no cuente evita premiar a quien fundó antes. |
 | Q2 | ¿Cómo se reclama y quién puede? | **Una orden explícita a un guerrero**, `unit.claim`, que se planta donde está y aguanta. Los aldeanos no reclaman. Alternativas en §7: la presencia automática captura sin que nadie lo ordene; un edificio estandarte es más caro de construir y de implementar. |
