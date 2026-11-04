@@ -275,8 +275,9 @@ func (c *checker) cities() {
 				fmt.Sprintf("centro (%d,%d) fuera del mundo o sobre terreno intransitable", ci.CenterX, ci.CenterY))
 		}
 
-		// INV-CITY-017 e INV-CITY-003, juntos porque el CHECK de la base
-		// (population <= population_limit) los ata en la misma fila.
+		// INV-CITY-017 e INV-CITY-003. Desde ADR-029 la población puede quedar
+		// por encima del límite (INV-CITY-002 sólo prohíbe crear por encima):
+		// cada uno se repara desde su fuente, sin tocar el otro.
 		real := population[ci.ID]
 		if ci.Population != real {
 			c.find("INV-CITY-017", "ALTO", PolicyRepair, entity,
@@ -294,14 +295,8 @@ func (c *checker) cities() {
 			// que recomputar.
 			limit = ci.PopulationLimit
 		}
-		if ci.Population > limit {
-			// INV-CITY-002: no se destruyen unidades. El límite sube hasta el
-			// recuento, el CHECK se cumple y ninguna creación cabe hasta volver
-			// bajo el límite de la era.
-			c.find("INV-CITY-002", "ALTO", PolicyRepair, entity,
-				fmt.Sprintf("%d unidades vivas sobre un límite de era de %d: el límite queda en el recuento", ci.Population, limit))
-			limit = ci.Population
-		}
+		// Una ciudad por encima de su límite no es un hallazgo: conserva sus
+		// unidades y no crea ninguna hasta volver bajo él (ADR-029 §1, §3).
 		if ci.PopulationLimit != limit {
 			// Sin casas es la regla de la era (INV-CITY-003); con casas, su
 			// fórmula concreta (INV-ECON-004).

@@ -101,6 +101,12 @@ func (r *LoadCheckRepo) ApplyLoadRepairs(
 	}
 
 	return r.store.InTx(ctx, func(tx pgx.Tx) error {
+		// ADR-029 §3: el recuento de INV-CITY-017 puede dejar la población por
+		// encima del límite sin crear nada; es la única escritura que el trigger
+		// de INV-CITY-002 deja pasar, y sólo dentro de esta transacción.
+		if _, err := tx.Exec(ctx, `SET LOCAL eo.population_recount = 'on'`); err != nil {
+			return fmt.Errorf("declarar el recuento de población: %w", err)
+		}
 		for _, id := range res.GarrisonDeletes {
 			if _, err := tx.Exec(ctx, `DELETE FROM garrisons WHERE unit_id = $1`, id); err != nil {
 				return fmt.Errorf("borrar la guarnición de la unidad %d: %w", id, err)

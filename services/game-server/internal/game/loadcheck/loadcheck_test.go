@@ -105,17 +105,36 @@ func TestLasCiudadesSeReparanDesdeSusFuentes(t *testing.T) {
 	assert.Nil(t, online.ProtectionUntil)
 }
 
-// INV-CITY-002: si las unidades vivas superan el límite de la era no se
-// destruye ninguna: el límite queda en el recuento.
+// INV-CITY-002 (ADR-029): si las unidades vivas superan el límite de la era
+// no se destruye ninguna, y el límite tampoco sube hasta el recuento: queda en
+// el de su era y la ciudad no crea nada hasta volver bajo él.
 func TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades(t *testing.T) {
 	in, ciudad, _ := sano(t)
 	in.EraCaps[city.EraStone] = 2
 
 	r := loadcheck.Check(in)
 
-	assert.Equal(t, []string{"INV-CITY-002/REPAIR", "INV-CITY-003/REPAIR"}, invs(r))
-	assert.EqualValues(t, 3, ciudad.PopulationLimit)
+	assert.Equal(t, []string{"INV-CITY-003/REPAIR"}, invs(r))
+	assert.EqualValues(t, 2, ciudad.PopulationLimit, "el límite es el de la era, no el recuento")
+	assert.EqualValues(t, 3, ciudad.Population)
 	assert.False(t, ciudad.HasPopulationRoom(1), "ninguna creación cabe hasta volver bajo el límite")
+	assert.Len(t, r.Units, 3)
+}
+
+// ADR-029 §1: una ciudad que perdió casas y quedó por encima de su límite es
+// legal. Con el límite ya en el de su era y sus casas, la carga no encuentra
+// nada: ni sube el límite ni toca la población.
+func TestUnaCiudadPorEncimaDeSuLimiteNoEsUnHallazgo(t *testing.T) {
+	in, ciudad, _ := sano(t)
+	in.EraCaps[city.EraStone] = 2
+	ciudad.PopulationLimit = 2
+
+	r := loadcheck.Check(in)
+
+	assert.Empty(t, invs(r))
+	assert.Empty(t, r.CityRepairs)
+	assert.EqualValues(t, 2, ciudad.PopulationLimit)
+	assert.EqualValues(t, 3, ciudad.Population)
 	assert.Len(t, r.Units, 3)
 }
 
