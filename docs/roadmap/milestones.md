@@ -1567,7 +1567,8 @@ con su tope marcable; la migración `000010`; la ventana «Mientras no estabas»
 
 ## E8 — Asedio
 
-**Estado: EN CURSO** desde el 2026-11-04, en la rama `claude/slice-e8-asedio`. Contrato:
+**Estado: HECHO en la rama** `claude/slice-e8-asedio` (2026-11-04), con la verificación completa en verde y la prueba
+en vivo; falta fusionarla en `main` y la CI. Contrato:
 [SPEC-COMBAT-SIEGE](../specs/combat-siege.md), aceptada el 2026-11-04 con sus diez decisiones de producto, y
 [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md).
 
@@ -1585,13 +1586,30 @@ máquinas de asedio, reparar casas, niebla de guerra.
 
 1. **HECHO** — Aceptación: spec, ADR-029, `INV-CITY-002` reescrito, la excepción de `INV-ECON-004` retirada e
    `INV-COMBAT-002` e `INV-COMBAT-005` ampliados.
-2. Protocolo: `unit.demolish`, `building.destroyed`, `hp` y `maxHp` de los edificios y `besiegedAtMs`, con el JSON
-   Schema y los contract tests.
-3. Migración `000011` y persistencia: el trigger, el único parcial por tile, la destrucción idempotente, la carga sin
-   casas destruidas y el recuento exento; integración con fallo inyectado.
-4. Simulación: la orden, el alcance, los golpes, el olvido del daño, la destrucción con su reencolado, la ciudad por
-   encima del límite, la defensa y el aviso; golden «asedio» y recuperación.
-5. Registro: `BuildingDestroyed` en `eventlog.EventTypes` y `Classify`.
-6. Cliente: clic sobre una casa ajena, barra de vida, HUD de población por encima del límite, aviso y entrada del
-   registro.
-7. Humo `--asedio` y prueba en vivo.
+2. **HECHO** — Protocolo: `unit.demolish`, `building.destroyed`, `hp` y `maxHp` de los edificios y `besiegedAtMs`,
+   con el JSON Schema y los contract tests (`siege_contract_test.go`); `HOUSE_LOST` y `HOUSE_DESTROYED` en el registro.
+3. **HECHO** — Migración `000011` y persistencia: el trigger, el único parcial por tile, la destrucción idempotente, la
+   carga sin casas destruidas y el recuento exento; integración con fallo inyectado (`siege_integration_test.go`, 8
+   tests). Fallo encontrado al probarlo: el trigger, que corre antes que los `CHECK`, le quitaba el error a
+   `cities_population_limit_check` con un límite negativo; corregido en la migración antes de aplicarse fuera de los
+   tests.
+4. **HECHO** — Simulación (`siege.go`): la orden, el alcance, los golpes, el olvido del daño, la destrucción con su
+   reencolado, la ciudad por encima del límite, la defensa y el aviso; golden «asedio» y recuperación, 15 tests en
+   `siege_test.go` y un e2e por WebSocket (`siege_e2e_test.go`). Seis mutaciones (sin presencia, sin revalidar, sin
+   defensa, sin olvido, bono siempre restado, tile libre al instante) las detecta su test.
+5. **HECHO** — Registro: `BuildingDestroyed` en `eventlog.EventTypes` y `Classify`, para la víctima y para el autor.
+6. **HECHO** — Cliente: clic sobre una casa ajena, barra de vida, HUD de población por encima del límite, botones de
+   entrenar con su motivo, aviso y entradas del registro, con sus tests.
+7. **HECHO** — Humo y prueba en vivo (2026-11-04). El servidor aplicó la migración 10 → 11 al arrancar, y la validación de
+   carga no encontró nada. `scripts/smoke.mjs --saqueo --asedio --registro`: la primera pasada, con el saqueo ya en
+   verde, encontró un fallo del propio humo (el `city.build` de la víctima llevaba `tile` en vez de `x` e `y`;
+   corregido en `27855fd`); la segunda, `--asedio --registro`, en verde (29 comprobaciones). `smoke_victim` construyó
+   una casa en (450, 178), el guerrero 15 la golpeó (150 → 142, con el aviso `besiegedAtMs`), la casa cayó
+   (`building.destroyed`) y el límite bajó de 25 a 20; el registro de la víctima tiene `HOUSE_LOST` y el de
+   `smoke_runner`, `HOUSE_DESTROYED`. En el navegador, con `smoke_victim` conectado, el HUD mostró «¡Están
+   derribando tus casas!», la población en 1/25 y la barra de vida sobre la casa; tras la caída, 1/20, y al recargar
+   el registro decía «smoke_runnerpolis derribó una de tus casas». En la base, la casa 3 quedó `DESTROYED` con su
+   `BuildingDestroyed`, que nombra a la víctima y al autor.
+8. **HECHO** — Fallos encontrados: el trigger le quitaba el error al `CHECK` del límite negativo (entregable 3), el
+   humo enviaba mal el `city.build` (entregable 7) y el `title` del botón «Registro» no nombraba las casas
+   derribadas (`6f6496b`).
