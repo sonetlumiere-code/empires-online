@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son diecinueve, del 001
-al 019, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son treinta y dos, del 001
+al 032, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -294,7 +294,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E9 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E10 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -311,6 +311,10 @@ Matices que conviene no maquillar:
   `--avance` y el navegador el 2026-11-04; [SPEC-ECON-STONE](specs/economy-stone.md) está en `Implemented`, con la
   migración `000012`, [ADR-030](decisions/ADR-030-stone-layer-and-era-advance.md) y
   [ADR-031](decisions/ADR-031-pathfinding-node-cap-50k.md), que sube el tope de nodos del A\* a 50 000.
+- **E10 Comercio está en `main`** desde `84e6f67`, con la CI en verde y una prueba en vivo con el humo `--comercio` y
+  `--diplomacia` y el navegador el 2026-11-04; [SPEC-TRADE](specs/trade.md) está en `Implemented`, con la migración
+  `000013` y [ADR-032](decisions/ADR-032-trade-offers-and-two-key-jobs.md). No se comprobó en el navegador el
+  formulario «Ofrecer trato» sobre una ciudad ajena ([roadmap/milestones.md](roadmap/milestones.md) §E10).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

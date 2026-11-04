@@ -1669,7 +1669,7 @@ fundación, niebla de guerra.
 
 ## E10 — Comercio
 
-**Estado: EN CURSO (2026-11-04)**, en la rama `claude/slice-comercio`. Contrato: [SPEC-TRADE](../specs/trade.md),
+**Estado: HECHO (2026-11-04)**, fusionado en `main` (`84e6f67`) con la CI en verde el mismo día. Contrato: [SPEC-TRADE](../specs/trade.md),
 aceptada el 2026-11-04 con sus diez decisiones de producto, y
 [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md).
 

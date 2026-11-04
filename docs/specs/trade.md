@@ -7,7 +7,7 @@ viajan por el mapa y se pueden interceptar quedan para su propia fase.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TRADE` |
-| Estado | Accepted (2026-11-04). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-04). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `84e6f67`, con la CI en verde. |
 | Milestone | E10 Comercio (décimo slice después de M7) |
 | Canon | §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [diplomacy.md](diplomacy.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [combat-pillage.md](combat-pillage.md), [event-log.md](event-log.md), [websocket-protocol.md](websocket-protocol.md) |

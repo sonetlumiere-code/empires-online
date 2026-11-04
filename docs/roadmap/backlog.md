@@ -42,6 +42,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E7 Registro | **Completado** (2026-11-03). En `main` desde la fusión `a0e2096`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E7; contrato en [SPEC-EVENT-LOG](../specs/event-log.md). |
 | E8 Asedio | **Completado** (2026-11-04). En `main` desde la fusión `3b1cd48`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E8; contrato en [SPEC-COMBAT-SIEGE](../specs/combat-siege.md) y [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md). |
 | E9 Piedra | **Completado** (2026-11-04). En `main` desde la fusión `d12db5e`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E9; contrato en [SPEC-ECON-STONE](../specs/economy-stone.md), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) y [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md). |
+| E10 Comercio | **Completado** (2026-11-04). En `main` desde la fusión `84e6f67`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E10; contrato en [SPEC-TRADE](../specs/trade.md) y [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se
