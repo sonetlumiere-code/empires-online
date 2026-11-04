@@ -57,7 +57,7 @@
  *      junto a la víctima (el que dejan --saqueo o --asedio) va al territorio libre más
  *      cercano y lo reclama: llega territory.update en disputa y, al vencer el plazo, el
  *      territorio es suyo y su ciudad gana 5 de población. Después smoke_victim, con un
- *      guerrero suyo, se lo reconquista: smoke_runner, con la vista en su ciudad,
+ *      guerrero suyo (si no tiene, lo entrena), se lo reconquista: smoke_runner, con la vista en su ciudad,
  *      recibe TERRITORY_CLAIMED y TERRITORY_LOST, su límite vuelve, y smoke_victim recibe
  *      TERRITORY_TAKEN. Con los plazos por defecto tarda unos 16 minutos: en
  *      desarrollo, EO_TERRITORY_CLAIM_FREE_SECONDS y EO_TERRITORY_CLAIM_SECONDS al
@@ -1190,11 +1190,22 @@ async function posicionDe(sesion, unitId, cerca) {
   return { vista, unidad: vista.units.find((u) => u.id === unitId) };
 }
 
+/**
+ * Si el mensaje es el territory.update de `territoryId` con una reclamación de
+ * `playerId`. Sólo ésa confirma la propia: la sesión puede tener en la cola el
+ * territory.update de una reclamación anterior de otro jugador sobre el mismo
+ * territorio, y su plazo no es el nuestro.
+ */
+export function esReclamacionDe(m, territoryId, playerId) {
+  return m.type === 'territory.update' && m.payload.territory.id === territoryId &&
+    m.payload.territory.claim?.playerId === playerId;
+}
+
 /** Reclama con `unidad` el territorio en que está y espera la confirmación con su plazo. */
-async function reclamar(sesion, unidad, t) {
+async function reclamar(sesion, unidad, t, playerId) {
   sesion.enviar('unit.claim', { unitId: unidad.id });
   const m = await sesion.esperarQue(['territory.update', 'system.error'],
-    (m) => m.type === 'system.error' || (m.payload.territory.id === t.id && m.payload.territory.claim), 15_000);
+    (m) => m.type === 'system.error' || esReclamacionDe(m, t.id, playerId), 15_000);
   if (m.type === 'system.error') fallar('el servidor rechazó la reclamación', m.payload);
   return m.payload.territory.claim;
 }
@@ -1232,7 +1243,7 @@ async function territorio(propio, ciudad, playerId) {
   if (!plantado || plantado.x < t.minX || plantado.x > t.maxX || plantado.y < t.minY || plantado.y > t.maxY) {
     fallar('el guerrero no llegó al territorio', { guerrero: plantado, territorio: t });
   }
-  const claim = await reclamar(propio.sesion, plantado, t);
+  const claim = await reclamar(propio.sesion, plantado, t, playerId);
   ok('reclamación en disputa', `el guerrero ${plantado.id} en (${plantado.x}, ${plantado.y}); vence en ${Math.round((claim.endsAtMs - Date.now()) / 1000)} s`);
   await propio.sesion.esperarQue('territory.update',
     (m) => m.payload.territory.id === t.id && m.payload.territory.ownerId === playerId && !m.payload.territory.contested,
@@ -1244,19 +1255,20 @@ async function territorio(propio, ciudad, playerId) {
 
   // smoke_victim se lo reconquista, con smoke_runner mirando su ciudad.
   victima.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
-  const suyas = (await victima.sesion.esperar('world.snapshot')).payload.units;
-  const guardia = suyas.find((u) => u.playerId === cuenta.playerId && u.unitType === 'WARRIOR' && u.status !== 'GARRISONED');
+  const vistaV = (await victima.sesion.esperar('world.snapshot')).payload;
+  let guardia = vistaV.units.find((u) => u.playerId === cuenta.playerId && u.unitType === 'WARRIOR' && u.status !== 'GARRISONED');
   if (!guardia) {
-    ok('la víctima no tiene guerrero: no se comprueba la reconquista', '');
-    casa.sesion.cerrar();
-    victima.sesion.cerrar();
-    return;
+    // Sin guerrero, la víctima entrena uno: con 60 de madera en el almacén basta.
+    const madera = vistaV.cities.find((c) => c.id === ciudadV.id)?.stocks?.WOOD ?? 0;
+    if (madera < 60) fallar('la víctima no tiene guerrero ni madera para entrenarlo', { madera });
+    guardia = await entrenar(victima.sesion, ciudadV, cuenta.playerId, 'WARRIOR');
+    ok('la víctima entrena un guerrero', `unidad ${guardia.id}`);
   }
   // El guerrero de smoke_runner se aparta, para que no responda solo (Q11).
   await acercar(propio.sesion, plantado, { x: ciudadV.centerX, y: ciudadV.centerY + 5 }, 4);
   const llegadaV = await acercar(victima.sesion, guardia, libre.destino, 1);
   const { unidad: plantadoV } = await posicionDe(victima.sesion, guardia.id, llegadaV);
-  const claimV = await reclamar(victima.sesion, plantadoV, t);
+  const claimV = await reclamar(victima.sesion, plantadoV, t, cuenta.playerId);
   ok('la víctima reclama el territorio', `guerrero ${plantadoV.id}; vence en ${Math.round((claimV.endsAtMs - Date.now()) / 1000)} s`);
   const reclamado = await avisoEnVivo(casa.sesion, 'TERRITORY_CLAIMED', cuenta.playerId, 15_000);
   ok('aviso en vivo al dueño, con la vista en casa', `TERRITORY_CLAIMED ${reclamado.payload.territoryName}`);

@@ -21,6 +21,7 @@ import {
   elegirDestino,
   huecoParaCasa,
   indexarTerreno,
+  esReclamacionDe,
   pactoVigente,
   territorioLibreCerca,
 } from './smoke.mjs';
@@ -205,4 +206,19 @@ test('territorioLibreCerca elige el libre más cercano y un tile dentro de su bo
   assert.equal(r.territorio.id, 32);
   assert.deepEqual(r.destino, { x: 454, y: 198 });
   assert.equal(territorioLibreCerca([territorios[0], territorios[2]], { x: 0, y: 0 }), null);
+});
+
+// Fallo del humo --territorio (2026-11-04): la víctima tomó como suya la
+// reclamación anterior de smoke_runner, que seguía en su cola, y esperó la
+// pérdida con un plazo ya vencido. Sólo vale la reclamación de quien reclama.
+test('esReclamacionDe no toma la reclamación de otro jugador que quedó en la cola', () => {
+  const msg = (id, quien) => ({
+    type: 'territory.update',
+    payload: { territory: { id, contested: quien !== null, ...(quien ? { claim: { playerId: quien, endsAtMs: 1 } } : {}) } },
+  });
+  assert.equal(esReclamacionDe(msg(31, 'victima'), 31, 'victima'), true);
+  assert.equal(esReclamacionDe(msg(31, 'runner'), 31, 'victima'), false, 'la de otro jugador no confirma la propia');
+  assert.equal(esReclamacionDe(msg(31, null), 31, 'victima'), false);
+  assert.equal(esReclamacionDe(msg(30, 'victima'), 31, 'victima'), false);
+  assert.equal(esReclamacionDe({ type: 'system.error', payload: {} }, 31, 'victima'), false);
 });
