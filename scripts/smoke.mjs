@@ -38,13 +38,18 @@
  *      pacto de no agresión (o reutilizan el vigente), el pacto impide el saqueo, y
  *      smoke_runner lo rompe: el tratado sigue vigente con su preaviso. Como el preaviso
  *      dura 15 minutos, repetirlo antes falla con un aviso de cuánto falta.
+ *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
+ *      nombra a smoke_runner (el saqueo, con --saqueo; la ruptura, con --diplomacia);
+ *      smoke_runner ve su lado; la víctima da por visto lo asentado, reconecta con un
+ *      ticket nuevo y el cursor sigue marcado. Necesita que antes haya pasado algo
+ *      entre los dos: en la misma pasada con --saqueo o --diplomacia, o en una anterior.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--saqueo] [--diplomacia] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--saqueo] [--diplomacia] [--registro] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -69,6 +74,7 @@ const INCURSION = args.includes('--incursion');
 const TALA = args.includes('--tala');
 const SAQUEO = args.includes('--saqueo');
 const DIPLOMACIA = args.includes('--diplomacia');
+const REGISTRO = args.includes('--registro');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -507,6 +513,10 @@ async function main() {
     await diplomacia(segunda, cuenta.playerId, snap2);
   }
 
+  if (REGISTRO) {
+    await registro(segunda, cuenta.playerId);
+  }
+
   segunda.sesion.cerrar();
   await dormir(200);
 
@@ -852,6 +862,68 @@ async function diplomacia(propio, playerId, snap) {
   const roto = await tratado(victima.sesion, (x) => x.id === vigente.id && x.breaksAtMs !== null);
   if (roto.status !== 'ACTIVE') fallar('romper no dejó el tratado en preaviso', roto);
   ok('ruptura con preaviso', `sigue ACTIVE hasta ${new Date(roto.breaksAtMs).toISOString()}`);
+  victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Registro (SPEC-EVENT-LOG), sólo con --registro
+// ─────────────────────────────────────────────────────────────
+
+/** Pide una página del registro (la primera, o la anterior a beforeId) y la devuelve. */
+async function paginaDelRegistro(sesion, beforeId) {
+  const id = sesion.enviar('event_log.fetch', beforeId === undefined ? {} : { beforeId });
+  const r = await sesion.esperarQue(['event_log.page', 'system.error'], (m) => m.requestId === id, 10_000);
+  if (r.type === 'system.error') fallar('el servidor no sirvió el registro', r.payload);
+  return r.payload;
+}
+
+// ADR-028 §6: el servidor sólo marca lo guardado hace más de 25 s; uno de holgura.
+const ASENTADO_MS = 26_000;
+
+async function registro(propio, playerId) {
+  const { cuenta, cookie } = await abrirSesion(VICTIMA);
+  let victima = await conectar(cuenta.ticket);
+  const pagina = await paginaDelRegistro(victima.sesion);
+  const suyas = pagina.entries.filter((e) => e.otherPlayerId === playerId);
+  if (suyas.length === 0) {
+    fallar(`el registro de ${VICTIMA} no nombra a ${USUARIO}`,
+      `Corre antes --saqueo o --diplomacia (o los dos en la misma pasada). Primeras entradas: ${JSON.stringify(pagina.entries.slice(0, 5), null, 2)}`);
+  }
+  const tipos = new Set(suyas.map((e) => e.kind));
+  if (SAQUEO && !tipos.has('PILLAGED')) fallar('el registro de la víctima no tiene el saqueo', suyas);
+  if (DIPLOMACIA && !tipos.has('TREATY_BREAK_ANNOUNCED')) fallar('el registro de la víctima no tiene la ruptura', suyas);
+  ok(`la víctima ve lo que le hizo ${USUARIO}`, `${[...tipos].join(', ')} · «${suyas[0].otherCityName}»`);
+
+  const propia = (await paginaDelRegistro(propio.sesion)).entries.filter((e) => e.otherPlayerId === cuenta.playerId);
+  if (SAQUEO && !propia.some((e) => e.kind === 'PILLAGE_DONE')) fallar(`el registro de ${USUARIO} no tiene su saqueo`, propia);
+  if (DIPLOMACIA && !propia.some((e) => e.kind === 'TREATY_ACCEPTED')) fallar(`el registro de ${USUARIO} no tiene la aceptación`, propia);
+  if (propia.length > 0) ok(`${USUARIO} ve su lado`, [...new Set(propia.map((e) => e.kind))].join(', '));
+
+  // Lo visto sólo cubre lo asentado: se espera a que lo más reciente lo esté y se
+  // pide otra página, que es la que le da a la sesión su tope marcable.
+  let fresca = pagina;
+  for (;;) {
+    const espera = fresca.entries[0].lastAtMs + ASENTADO_MS - Date.now();
+    if (espera <= 0) break;
+    ok('esperando a que lo más reciente se asiente', `${Math.ceil(espera / 1000)} s`);
+    await dormir(espera);
+    fresca = await paginaDelRegistro(victima.sesion);
+  }
+  if (fresca === pagina) fresca = await paginaDelRegistro(victima.sesion);
+  const hasta = fresca.entries[0].id;
+  victima.sesion.enviar('event_log.seen', { upToId: hasta });
+  await dormir(500);
+  victima.sesion.cerrar();
+
+  // Una recarga: ticket nuevo con la cookie y otra conexión.
+  const { ticket } = await ticketConCookie(cookie);
+  victima = await conectar(ticket);
+  const despues = await paginaDelRegistro(victima.sesion);
+  if (despues.seenUpToId < hasta) {
+    fallar('al reconectar, lo visto no quedó marcado', { hasta, seenUpToId: despues.seenUpToId });
+  }
+  const nuevas = despues.entries.filter((e) => e.id > despues.seenUpToId).length;
+  ok('lo visto sigue marcado al reconectar', `cursor ${despues.seenUpToId} ≥ ${hasta} · ${nuevas} entradas nuevas`);
   victima.sesion.cerrar();
 }
 
