@@ -41,6 +41,9 @@ const (
 	TypeTreatyPropose = "treaty.propose"
 	TypeTreatyRespond = "treaty.respond"
 	TypeTreatyCancel  = "treaty.cancel"
+	// Registro (SPEC-EVENT-LOG): los atiende la conexión, no la simulación.
+	TypeEventLogFetch = "event_log.fetch"
+	TypeEventLogSeen  = "event_log.seen"
 )
 
 // Mensajes servidor → cliente.
@@ -63,6 +66,7 @@ const (
 	TypeBuildingUpdate        = "building.update"
 	TypeForestUpdate          = "forest.update"
 	TypeTreatyUpdate          = "treaty.update"
+	TypeEventLogPage          = "event_log.page"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -82,6 +86,8 @@ var ClientMessageTypes = map[string]bool{
 	TypeTreatyPropose:  true,
 	TypeTreatyRespond:  true,
 	TypeTreatyCancel:   true,
+	TypeEventLogFetch:  true,
+	TypeEventLogSeen:   true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -350,6 +356,45 @@ type TreatyView struct {
 // TreatyUpdatePayload lleva un tratado que cambió a uno de sus firmantes.
 type TreatyUpdatePayload struct {
 	Treaty TreatyView `json:"treaty"`
+}
+
+// EventLogFetchPayload pide una página del registro (SPEC-EVENT-LOG): la más
+// reciente, o la de los eventos con id menor que BeforeID.
+type EventLogFetchPayload struct {
+	BeforeID *int64 `json:"beforeId,omitempty"`
+}
+
+// EventLogSeenPayload da por visto el registro hasta UpToID (RN-LOG-004).
+type EventLogSeenPayload struct {
+	UpToID int64 `json:"upToId"`
+}
+
+// EventLogEntry es una entrada del registro vista por quien la recibe
+// (SPEC-EVENT-LOG §6). Los campos opcionales sólo van en los tipos que los usan.
+type EventLogEntry struct {
+	ID            int64   `json:"id"`
+	Kind          string  `json:"kind"`
+	FirstAtMs     int64   `json:"firstAtMs"`
+	LastAtMs      int64   `json:"lastAtMs"`
+	Count         int     `json:"count"`
+	OtherPlayerID string  `json:"otherPlayerId"`
+	OtherCityID   *int64  `json:"otherCityId"`
+	OtherCityName *string `json:"otherCityName"`
+	UnitType      string  `json:"unitType,omitempty"`
+	Amount        *int64  `json:"amount,omitempty"`
+	TreatyType    string  `json:"treatyType,omitempty"`
+	ProposedByMe  *bool   `json:"proposedByMe,omitempty"`
+	X             *int32  `json:"x,omitempty"`
+	Y             *int32  `json:"y,omitempty"`
+	BreaksAtMs    *int64  `json:"breaksAtMs,omitempty"`
+}
+
+// EventLogPagePayload es una página del registro. NextBeforeID es nil en la
+// última.
+type EventLogPagePayload struct {
+	Entries      []EventLogEntry `json:"entries"`
+	SeenUpToID   int64           `json:"seenUpToId"`
+	NextBeforeID *int64          `json:"nextBeforeId"`
 }
 
 // CityBuildPayload encarga un edificio en un tile de la zona urbana.

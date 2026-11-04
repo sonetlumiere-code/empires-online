@@ -17,7 +17,18 @@ type worldEvent struct {
 	EventType string
 	Tick      uint64
 	PlayerID  *uuid.UUID
-	Payload   map[string]any
+	// CounterpartID es el otro jugador implicado (ADR-028 §2): el autor de una
+	// muerte o de un saqueo, el otro firmante de un tratado. nil si no hay.
+	CounterpartID *uuid.UUID
+	Payload       map[string]any
+}
+
+// counterpart devuelve el jugador como otro implicado, o nil si no lo hay.
+func counterpart(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
 }
 
 func appendEvent(ctx context.Context, db DB, ev worldEvent) error {
@@ -26,8 +37,9 @@ func appendEvent(ctx context.Context, db DB, ev worldEvent) error {
 		return fmt.Errorf("serializar el evento %s: %w", ev.EventType, err)
 	}
 	_, err = db.Exec(ctx,
-		`INSERT INTO world_events (event_type, tick, player_id, payload) VALUES ($1, $2, $3, $4)`,
-		ev.EventType, ev.Tick, ev.PlayerID, payload)
+		`INSERT INTO world_events (event_type, tick, player_id, counterpart_player_id, payload)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		ev.EventType, ev.Tick, ev.PlayerID, ev.CounterpartID, payload)
 	if err != nil {
 		return fmt.Errorf("registrar el evento %s: %w", ev.EventType, err)
 	}

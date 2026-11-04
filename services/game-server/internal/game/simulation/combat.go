@@ -51,6 +51,10 @@ type Death struct {
 	PopulationCost int32
 	At             world.Tile
 	Tick           uint64
+	// VictimType y AtMs son para el registro (SPEC-EVENT-LOG, ADR-028 §3):
+	// qué murió y cuándo en la simulación, no cuándo se escribió.
+	VictimType unit.Type
+	AtMs       int64
 	// Loot es lo que pasó al asesino y Lost lo que se perdió por falta de
 	// hueco. La carga del asesino NO va en esta transacción: viaja en el
 	// volcado de su unidad, así que una caída puede perderla pero nunca
@@ -592,6 +596,7 @@ func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
 	d := Death{
 		VictimID: v.ID, VictimPlayer: v.PlayerID, At: at, Tick: s.state.Tick(),
 		Loot: gained, Lost: carried - gained, CityID: v.CityID,
+		VictimType: v.Type, AtMs: nowMs,
 	}
 	if def, err := unit.Lookup(v.Type); err == nil {
 		d.PopulationCost = def.PopulationCost

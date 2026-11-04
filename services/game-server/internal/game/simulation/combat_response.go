@@ -29,6 +29,8 @@ type Attack struct {
 	Tick           uint64
 	// Auto marca una respuesta automática.
 	Auto bool
+	// AtMs es el instante del golpe en la simulación (ADR-028 §3).
+	AtMs int64
 }
 
 // JobAttack es el nombre del trabajo de la cola que escribe UnitAttacked.
@@ -45,6 +47,7 @@ func (s *Simulation) submitAttack(h hit, nowMs int64) {
 		AttackerID: h.attacker.ID, AttackerPlayer: h.attacker.PlayerID,
 		TargetID: h.target.ID, TargetPlayer: h.target.PlayerID,
 		At: s.authoritativePosition(h.target, nowMs), Tick: s.state.Tick(), Auto: h.e.auto,
+		AtMs: nowMs,
 	}
 	store := s.deps.Combat
 	s.deps.Persister.Submit(Job{

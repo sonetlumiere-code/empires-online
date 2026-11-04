@@ -201,6 +201,46 @@ describe('diplomacia (SPEC-DIPLOMACY)', () => {
   });
 });
 
+describe('registro (SPEC-EVENT-LOG)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const entry = {
+    id: 41, kind: 'PILLAGED', firstAtMs: 1_757_375_000_000, lastAtMs: 1_757_375_060_000, count: 17,
+    otherPlayerId: '00000000-0000-4000-8000-000000000002', otherCityId: 7, otherCityName: 'Villa Norte',
+    amount: 85, x: 451, y: 179,
+  };
+
+  it('acepta event_log.fetch con y sin beforeId, y nada que elija a otro jugador', () => {
+    expect(parseClientMessage({ v: 1, type: 'event_log.fetch', requestId: uuid, payload: {} }).ok).toBe(true);
+    expect(parseClientMessage({ v: 1, type: 'event_log.fetch', requestId: uuid, payload: { beforeId: 41 } }).ok).toBe(true);
+    for (const payload of [{ beforeId: 0 }, { beforeId: -1 }, { beforeId: 1.5 }, { playerId: uuid }]) {
+      expect(parseClientMessage({ v: 1, type: 'event_log.fetch', requestId: uuid, payload })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('acepta event_log.seen con un id positivo y nada más', () => {
+    expect(parseClientMessage({ v: 1, type: 'event_log.seen', requestId: uuid, payload: { upToId: 41 } }).ok).toBe(true);
+    for (const payload of [{}, { upToId: 0 }, { upToId: 41, playerId: uuid }]) {
+      expect(parseClientMessage({ v: 1, type: 'event_log.seen', requestId: uuid, payload })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('acepta event_log.page con entradas de cada tipo y la última página', () => {
+    expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [entry], seenUpToId: 0, nextBeforeId: 12 } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [], seenUpToId: 41, nextBeforeId: null } }).ok).toBe(true);
+    const otras = [
+      { ...entry, kind: 'UNIT_LOST', unitType: 'VILLAGER', amount: undefined },
+      { ...entry, kind: 'TREATY_BREAK_ANNOUNCED', treatyType: 'NON_AGGRESSION', breaksAtMs: 1_757_376_900_000, otherCityId: null, otherCityName: null },
+      { ...entry, kind: 'TREATY_OFFER_EXPIRED', treatyType: 'ALLIANCE', proposedByMe: true },
+    ];
+    for (const e of otras) {
+      expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [e], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(true);
+    }
+    for (const e of [{ ...entry, kind: 'UNIT_ATTACKED' }, { ...entry, count: 0 }, { ...entry, unitType: 'CATAPULT' }]) {
+      expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [e], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(false);
+    }
+  });
+});
+
 describe('comandos de economía (SPEC-ECON-WOOD)', () => {
   it('acepta unit.gather con unidad y bosque', () => {
     const result = parseClientMessage({

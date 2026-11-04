@@ -15,6 +15,7 @@ import {
   CityView,
   EntityId,
   EpochMs,
+  EventLogEntry,
   ForestView,
   PROTOCOL_VERSION,
   TreatyView,
@@ -247,6 +248,21 @@ export const TreatyUpdate = z.object({
   payload: z.object({ treaty: TreatyView }),
 });
 
+/**
+ * Una página del registro, en respuesta a `event_log.fetch` y sólo para la sesión que
+ * la pidió (SPEC-EVENT-LOG §6). `seenUpToId` es el cursor de lo visto al servirla;
+ * `nextBeforeId`, el `beforeId` de la página siguiente, `null` si no hay más.
+ */
+export const EventLogPage = z.object({
+  ...serverEnvelope,
+  type: z.literal('event_log.page'),
+  payload: z.object({
+    entries: z.array(EventLogEntry),
+    seenUpToId: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    nextBeforeId: EntityId.nullable(),
+  }),
+});
+
 // ─────────────────────────────────────────────────────────────
 // Movimiento
 // ─────────────────────────────────────────────────────────────
@@ -333,6 +349,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   BuildingUpdate,
   ForestUpdate,
   TreatyUpdate,
+  EventLogPage,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -354,6 +371,7 @@ export type BuildingSpawn = z.infer<typeof BuildingSpawn>;
 export type BuildingUpdate = z.infer<typeof BuildingUpdate>;
 export type ForestUpdate = z.infer<typeof ForestUpdate>;
 export type TreatyUpdate = z.infer<typeof TreatyUpdate>;
+export type EventLogPage = z.infer<typeof EventLogPage>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -374,6 +392,7 @@ export const SERVER_MESSAGE_TYPES = [
   'building.update',
   'forest.update',
   'treaty.update',
+  'event_log.page',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

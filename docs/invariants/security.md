@@ -408,6 +408,49 @@ token legítimo funde otro id que el que Next.js acaba de autenticar.
 
 ---
 
+<a id="inv-sec-009"></a>
+## INV-SEC-009 — El registro de un jugador sólo cuenta sucesos en los que es parte
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | BOUNDARY, DOMAIN, TEST |
+| Milestone | E7 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestUnTerceroNoVeLosSucesosDeOtros` (unit, `internal/domain/eventlog`), `TestElRegistroCuentaCadaLadoYNadaAUnTercero` y `TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload` (integration), `TestElRegistroSeSirveAlJugadorDeLaSesion` y `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e, `internal/websocket`) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract) |
+
+**Enunciado.** Toda entrada de `event_log.page` que recibe una sesión sale de filas de `world_events` cuyo
+`player_id` o `counterpart_player_id` es el jugador de esa sesión.
+
+**Razón.** `world_events` guarda los sucesos de todo el mundo: quién saquea a quién, qué tratados se firman. Si un
+jugador pudiera leer las filas de otro, sabría con quién está aliado (SPEC-DIPLOMACY Q8 lo hace privado) y a quién le
+están quitando madera.
+
+**Cómo se garantiza.**
+
+- `BOUNDARY` — el jugador sale de la sesión autenticada ([INV-SEC-002](#inv-sec-002)), nunca del comando:
+  `event_log.fetch` no tiene ningún campo que nombre a un jugador.
+- `DOMAIN` — la consulta filtra por `player_id = P OR counterpart_player_id = P`, y la traducción a entradas
+  descarta además lo que el propio jugador hizo en la diplomacia (SPEC-EVENT-LOG §4.1).
+
+**Cómo se verifica.**
+
+- `TestUnTerceroNoVeLosSucesosDeOtros` (unit) — ninguna fila de un suceso entre otros dos da entrada a un tercero,
+  sea cual sea su tipo, ni a una sesión sin jugador.
+- `TestElRegistroCuentaCadaLadoYNadaAUnTercero` (integration) — tras un saqueo, una muerte y una oferta entre dos
+  jugadores, el tercero recibe una página vacía. El filtro está dos veces, en la consulta y en la clasificación del
+  dominio: quitar sólo uno no lo hace fallar, y por eso cada uno tiene su test.
+- `TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload` (integration) — una fila sin
+  `counterpart_player_id` llega a la víctima, y no al autor, al que nada en la fila apunta.
+- `TestElRegistroSeSirveAlJugadorDeLaSesion` (e2e) — cada página se pide para el jugador de la sesión; y
+  `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract) —
+  un `playerId` en el comando es `INVALID_MESSAGE` y el esquema no tiene dónde ponerlo.
+
+**Violación en runtime.** Indetectable desde el servidor: lo que se envía no vuelve. Por eso el filtro está en la
+consulta y el jugador sale de la sesión.
+
+---
+
 
 ## Modelo de amenazas del MVP
 
@@ -440,3 +483,4 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | INV-SEC-006 | `internal/config`, `apps/web/src/server` | [../operations/monitoring.md](../operations/monitoring.md) |
 | INV-SEC-007 | `internal/websocket`, `internal/persistence/redis` | [INV-PERSIST-001](persistence.md#inv-persist-001), [INV-PLAYER-003](player.md#inv-player-003) |
 | INV-SEC-008 | `internal/auth`, `internal/httpapi`, `apps/web` | [INV-SEC-003](#inv-sec-003), [INV-PLAYER-009](player.md#inv-player-009) |
+| INV-SEC-009 | `internal/websocket`, `internal/persistence/postgres`, `internal/domain/eventlog` | [INV-SEC-002](#inv-sec-002), [INV-PERSIST-006](persistence.md#inv-persist-006) |

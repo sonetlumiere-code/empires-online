@@ -267,6 +267,50 @@ Precisión sobre «idempotente»: el requisito es que la **aplicación del conju
 
 ---
 
+<a id="inv-persist-006"></a>
+## INV-PERSIST-006 — Lo visto nunca pasa por encima de un evento que no estaba guardado
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, BOUNDARY, TEST |
+| Milestone | E7 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestUnaFilaQueSeConfirmaTardeNoQuedaEscondida` y `TestElTopeMarcableSoloCubreLoAsentado` (integration), `TestLoVistoNoPasaDelTopeDeLaUltimaPagina` (e2e, `internal/websocket`) y `TestElAsentadoCubreDosIntentosDeLaCola` (unit) |
+
+**Enunciado.** Cuando `players.event_log_seen_id` de un jugador pasa a valer `C`, toda fila de `world_events` con
+`id <= C` estaba confirmada en la base cuando a ese jugador se le sirvió la página que permitió marcarla. El cursor
+nunca retrocede.
+
+**Razón.** Los `id` los asigna PostgreSQL al insertar y los workers de la cola escriben en paralelo: una fila puede
+confirmarse después que otra con `id` mayor. Un cursor que pasara por encima de ella la daría por vista sin que el
+jugador la hubiera tenido delante, y no volvería a salir nunca en «Mientras no estabas».
+
+**Cómo se garantiza.**
+
+- `BOUNDARY` — al servir una página, la sesión guarda el tope marcable: el mayor `id` de las filas del jugador con
+  `occurred_at <= now() − S`, con `S` el doble del plazo de un intento de la cola más una holgura
+  ([ADR-028](../decisions/ADR-028-event-log-from-world-events.md) §6). `event_log.seen` no puede pasar de ese tope.
+- `DB` — la escritura es `GREATEST(event_log_seen_id, …)`: el cursor no retrocede aunque lleguen dos marcas
+  desordenadas desde dos sesiones.
+
+**Cómo se verifica.**
+
+- `TestUnaFilaQueSeConfirmaTardeNoQuedaEscondida` (integration) — una transacción toma un `id` y queda abierta;
+  otra con `id` mayor confirma y ya sale en la página; la marca hasta ella se queda en el tope, por debajo de la
+  lenta; al confirmar ésta, sale como nueva. Verificado por mutación: con el margen de asentado a cero, falla.
+- `TestElTopeMarcableSoloCubreLoAsentado` (integration) — una fila de hace un segundo no sube el tope, la de hace
+  un minuto sí, también por `counterpart_player_id`; y una marca menor no hace retroceder el cursor.
+- `TestLoVistoNoPasaDelTopeDeLaUltimaPagina` (e2e) — sin página servida no se marca nada, y con ella la marca se
+  acota a su tope.
+- `TestElAsentadoCubreDosIntentosDeLaCola` (unit) — el margen de asentado es mayor que dos intentos de la cola, que
+  es lo que la prueba de ADR-028 §6 necesita.
+
+**Violación en runtime.** Indetectable después: una fila escondida no deja rastro. Por eso la garantía está en el
+cálculo del tope y no en una comprobación posterior.
+
+---
+
 ## Qué es autoritativo, qué se persiste y qué se reconstruye
 
 Resumen consolidado que responde a las cuatro preguntas obligatorias del canon §12 para el MVP:
@@ -299,3 +343,4 @@ Resumen consolidado que responde a las cuatro preguntas obligatorias del canon �
 | INV-PERSIST-003 | `internal/persistence/redis` | [INV-CITY-005](city.md#inv-city-005), [INV-SEC-007](security.md#inv-sec-007) |
 | INV-PERSIST-004 | `internal/persistence/postgres`, `internal/domain/movement` | [INV-MOVE-006](movement.md#inv-move-006) |
 | INV-PERSIST-005 | `migrations/`, `internal/persistence/postgres` | [../database/schema.md](../database/schema.md), [../decisions/ADR-012-database-migrations.md](../decisions/ADR-012-database-migrations.md) |
+| INV-PERSIST-006 | `internal/websocket`, `internal/persistence/postgres` | [INV-SEC-009](security.md#inv-sec-009), [../decisions/ADR-028-event-log-from-world-events.md](../decisions/ADR-028-event-log-from-world-events.md) |

@@ -94,7 +94,7 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Veintisiete decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Veintiocho decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
@@ -105,8 +105,9 @@ ningún comando del propio servidor se pierda en silencio, el otro hallazgo de e
 mismo día, de cómo el primer slice de economía escribe la madera y sus encargos sin gastar dos veces;
 ADR-024, del **2026-11-02**, de cómo el slice de incursión resuelve los golpes y qué persiste de un combate;
 ADR-025, del **2026-11-03**, de cómo el slice de agotamiento guarda la madera del bosque sin tocar el terreno;
-ADR-026, del mismo día, de cómo el saqueo resta del almacén sin poder duplicar madera; y ADR-027, también del
-2026-11-03, de cómo los jugadores firman y rompen tratados en caliente.
+ADR-026, del mismo día, de cómo el saqueo resta del almacén sin poder duplicar madera; ADR-027, también del
+2026-11-03, de cómo los jugadores firman y rompen tratados en caliente; y ADR-028, del mismo día, de cómo el
+jugador lee lo que le pasó mientras no estaba sin que el cursor esconda nada.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-019, ADR-013 y
 ADR-018).
@@ -140,6 +141,7 @@ ADR-018).
 | [025](ADR-025-forest-wood-layer.md) | La madera del bosque es una capa aparte del terreno, escrita por deltas con la carga | Aceptado | El terreno no cambia: un tile agotado sigue `FOREST`. La madera vive en `forest_wood`, sólo para los tiles tocados; la carga descuenta un delta en la transacción de la tarea, con la regeneración aplicada perezosamente y `GREATEST` en su instante; la RAM regenera por barrido de un segundo; `forests` y `forest.update` son aditivos en v1. |
 | [026](ADR-026-pillage-two-phase-stock-debit.md) | El golpe de saqueo es un débito del stock en dos fases, y la carga robada no se vuelca hasta confirmarlo | Aceptado | Tercer escritor que resta del stock: el tick reserva (stock −, carga pendiente +), la transacción con la clave de la ciudad víctima escribe el delta versionado y `CityPillaged`, y el buzón confirma o devuelve; el volcado de unidades sólo escribe la carga confirmada, así que una caída pierde lo robado y nunca lo duplica; idempotencia por versión; la carga pendiente no se hereda al morir; `pillagedAtMs` no se persiste. |
 | [027](ADR-027-hot-treaties.md) | Los tratados en caliente los decide la RAM de la simulación; las órdenes van en dos fases y los vencimientos son optimistas | Aceptado | La RAM carga los tratados abiertos y decide cada orden; `treaty.propose`, `respond` y `cancel` reservan el par, escriben con la clave `treaty:<a>:<b>` y confirman por el buzón; ofertas caducadas, preavisos vencidos y `expires_at` se aplican en la fase 5 sin consultar la base y se escriben después, con compensación (sustituye al barrido `treaty.expire`); migración `000009` con `proposed_by`, `request_id`, `break_effective_at`, `closed_at`, `REJECTED`, `WITHDRAWN` y un único por par para `ACTIVE` y otro para `PROPOSED`; los tratados viajan en `world.snapshot`; al terminar una alianza las guarniciones salen por la salida normal. |
+| [028](ADR-028-event-log-from-world-events.md) | El registro se lee de `world_events` desde la conexión; cada suceso nombra a los dos jugadores y lo visto sólo cubre lo asentado | Aceptado | `event_log.fetch` y `event_log.seen` los atiende la goroutine de la sesión, sin pasar por el loop; `counterpart_player_id` nombra al otro jugador de cada suceso; `atMs`, `unitType`, `from` y `byPlayerId` en el payload; agrupación al leer; la página se corta por filas; el cursor `players.event_log_seen_id` nunca pasa del tope marcable de la última página, el mayor `id` con más de 25 s; migración `000010`. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y

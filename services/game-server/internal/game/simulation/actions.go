@@ -51,11 +51,14 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeTreatyCancel:  {Hostile: false, Territory: TerritoryFree},
 }
 
-// sessionMessages son los mensajes que no actúan sobre el mundo.
+// sessionMessages son los mensajes que no actúan sobre el mundo. Los del
+// registro sólo leen la historia y marcan lo visto (SPEC-EVENT-LOG, ADR-028 §1).
 var sessionMessages = map[string]bool{
-	protocol.TypeSessionHello: true,
-	protocol.TypeSessionPing:  true,
-	protocol.TypeSessionView:  true,
+	protocol.TypeSessionHello:  true,
+	protocol.TypeSessionPing:   true,
+	protocol.TypeSessionView:   true,
+	protocol.TypeEventLogFetch: true,
+	protocol.TypeEventLogSeen:  true,
 }
 
 // ActionPolicyOf devuelve la clasificación de un mensaje que actúa sobre el

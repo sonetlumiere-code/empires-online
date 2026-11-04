@@ -341,6 +341,19 @@ export class GameClient {
     return this.send('unit.pillage', { unitId, cityId });
   }
 
+  /**
+   * Pide una página del registro (SPEC-EVENT-LOG): la más reciente, o la anterior
+   * a `beforeId`. Siempre la del jugador de la sesión: el comando no nombra a nadie.
+   */
+  fetchEventLog(beforeId?: number): string {
+    return this.send('event_log.fetch', beforeId === undefined ? {} : { beforeId });
+  }
+
+  /** Da por visto el registro hasta `upToId`. El servidor decide hasta dónde marca. */
+  markEventLogSeen(upToId: number): string {
+    return this.send('event_log.seen', { upToId });
+  }
+
   /** Recentra el área de interés (la cámara). */
   setView(center: { x: number; y: number }): string {
     return this.send('session.view', { center: { x: center.x, y: center.y } });

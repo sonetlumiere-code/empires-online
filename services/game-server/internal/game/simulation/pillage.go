@@ -48,6 +48,8 @@ type Pillage struct {
 	Stock  StockDelta
 	At     world.Tile
 	Tick   uint64
+	// AtMs es el instante del golpe en la simulación (ADR-028 §3).
+	AtMs int64
 }
 
 // PillageResolved lo devuelve la cola con el resultado de un golpe de saqueo.
@@ -329,7 +331,7 @@ func (s *Simulation) applyPillage(h pillageHit, nowMs int64) bool {
 
 	p := Pillage{
 		AttackerID: a.ID, AttackerPlayer: a.PlayerID, CityID: c.ID, VictimPlayer: c.OwnerPlayerID,
-		Amount: int32(amount), At: s.authoritativePosition(a, nowMs), Tick: s.state.Tick(),
+		Amount: int32(amount), At: s.authoritativePosition(a, nowMs), Tick: s.state.Tick(), AtMs: nowMs,
 		Stock: StockDelta{CityID: c.ID, Resource: economy.ResourceWood, Delta: carried - amount, Version: eco.wood.Version},
 	}
 	s.submitPillage(p, carried)

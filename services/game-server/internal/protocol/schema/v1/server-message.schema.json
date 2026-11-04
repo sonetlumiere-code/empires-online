@@ -1514,6 +1514,156 @@
             "payload"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "event_log.page"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "entries": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "UNIT_LOST",
+                          "ENEMY_KILLED",
+                          "PILLAGED",
+                          "PILLAGE_DONE",
+                          "TREATY_OFFERED",
+                          "TREATY_WITHDRAWN",
+                          "TREATY_ACCEPTED",
+                          "TREATY_REJECTED",
+                          "TREATY_OFFER_EXPIRED",
+                          "TREATY_BREAK_ANNOUNCED",
+                          "TREATY_ENDED"
+                        ]
+                      },
+                      "firstAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      },
+                      "lastAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "otherPlayerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "otherCityId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "otherCityName": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "unitType": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/unitType"
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "treatyType": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/treaties/items/properties/type"
+                      },
+                      "proposedByMe": {
+                        "type": "boolean"
+                      },
+                      "x": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "y": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "breaksAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "firstAtMs",
+                      "lastAtMs",
+                      "count",
+                      "otherPlayerId",
+                      "otherCityId",
+                      "otherCityName"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "seenUpToId": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "nextBeforeId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "entries",
+                "seenUpToId",
+                "nextBeforeId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
         }
       ]
     }

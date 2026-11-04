@@ -57,6 +57,11 @@ type TreatyWrite struct {
 	Supersede *diplomacy.Treaty
 	Event     string
 	Tick      uint64
+	// AtMs es el instante de la transición en la simulación, y By quien dio la
+	// orden (uuid.Nil en un vencimiento): los dos van al payload del evento
+	// para el registro (ADR-028 §3).
+	AtMs int64
+	By   uuid.UUID
 }
 
 // Comandos de los jugadores (protocolo v1).
@@ -385,6 +390,7 @@ func (s *Simulation) handleCancelTreaty(cmd CancelTreaty) {
 // submitTreatyOrder reserva el par y encola la transacción de una orden.
 func (s *Simulation) submitTreatyOrder(w TreatyWrite, playerID uuid.UUID, requestID string) {
 	w.Tick = s.state.Tick()
+	w.AtMs, w.By = s.deps.Clock.NowMs(), playerID
 	k := pairKey(w.Treaty.PlayerA, w.Treaty.PlayerB)
 	s.state.diplo.busy[k] = struct{}{}
 	resolved := TreatyResolved{PlayerID: playerID, RequestID: requestID, Write: w}
@@ -495,7 +501,7 @@ func (s *Simulation) sweepTreaties(now time.Time) {
 			if err != nil {
 				continue
 			}
-			w = TreatyWrite{Treaty: after, From: diplomacy.StatusProposed, Event: "TreatyExpired"}
+			w = TreatyWrite{Treaty: after, From: diplomacy.StatusProposed, Event: "TreatyExpired", AtMs: now.UnixMilli()}
 		case diplomacy.StatusActive:
 			fin, estado, ok := t.EndsAt()
 			if !ok || fin.After(now) {
@@ -509,7 +515,7 @@ func (s *Simulation) sweepTreaties(now time.Time) {
 			if estado == diplomacy.StatusBroken {
 				event = "TreatyBroken"
 			}
-			w = TreatyWrite{Treaty: after, From: diplomacy.StatusActive, Event: event}
+			w = TreatyWrite{Treaty: after, From: diplomacy.StatusActive, Event: event, AtMs: fin.UnixMilli()}
 		default:
 			continue
 		}

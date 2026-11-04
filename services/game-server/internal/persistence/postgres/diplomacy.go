@@ -410,6 +410,10 @@ type TreatyWrite struct {
 	// Event es el world_events de la escritura.
 	Event string
 	Tick  uint64
+	// AtMs y By van al payload del evento (ADR-028 §3): el instante de la
+	// transición en la simulación y quien dio la orden (uuid.Nil si ninguno).
+	AtMs int64
+	By   uuid.UUID
 }
 
 // ApplyTreaty escribe una orden o un vencimiento con su evento, en una
@@ -440,7 +444,7 @@ func (r *TreatyRepo) ApplyTreaty(ctx context.Context, w TreatyWrite) (int64, err
 				return fmt.Errorf("insertar la oferta: %w", normalize(err))
 			}
 			t.ID = id
-			return appendEvent(ctx, tx, treatyEvent(w.Event, w.Tick, t))
+			return appendEvent(ctx, tx, treatyEvent(w, t))
 		}
 
 		id = t.ID
@@ -473,7 +477,7 @@ func (r *TreatyRepo) ApplyTreaty(ctx context.Context, w TreatyWrite) (int64, err
 			}
 			return fmt.Errorf("%w: el tratado %d está en %s", ErrVersionConflict, t.ID, estado)
 		}
-		return appendEvent(ctx, tx, treatyEvent(w.Event, w.Tick, t))
+		return appendEvent(ctx, tx, treatyEvent(w, t))
 	})
 	return id, err
 }
@@ -485,13 +489,36 @@ func sameInstant(a, b *time.Time) bool {
 	return a.Equal(*b)
 }
 
-func treatyEvent(name string, tick uint64, t diplomacy.Treaty) worldEvent {
+// treatyEvent es el world_events de una transición. player_id es quien propuso,
+// o player_a en un tratado administrativo, que no tiene; counterpart_player_id,
+// el otro firmante (ADR-028 §2). from, atMs y byPlayerId son para el registro:
+// distinguen una oferta que caduca de un tratado que caduca, fechan el suceso
+// en la simulación y dicen quién rompió (ADR-028 §3).
+func treatyEvent(w TreatyWrite, t diplomacy.Treaty) worldEvent {
 	payload := map[string]any{
 		"treatyId": t.ID, "playerA": t.PlayerA, "playerB": t.PlayerB,
-		"treatyType": string(t.Type), "status": string(t.Status),
+		"treatyType": string(t.Type), "status": string(t.Status), "from": string(w.From),
 	}
 	if t.BreakEffectiveAt != nil {
 		payload["breakEffectiveAt"] = t.BreakEffectiveAt.UTC()
 	}
-	return worldEvent{EventType: name, Tick: tick, PlayerID: t.ProposedBy, Payload: payload}
+	if w.AtMs != 0 {
+		payload["atMs"] = w.AtMs
+	}
+	if w.By != uuid.Nil {
+		payload["byPlayerId"] = w.By.String()
+	}
+	if w.Insert {
+		// Una oferta nueva nace PROPOSED: no viene de ningún estado.
+		delete(payload, "from")
+	}
+	owner := t.PlayerA
+	if t.ProposedBy != nil {
+		owner = *t.ProposedBy
+	}
+	other := t.PlayerB
+	if owner == t.PlayerB {
+		other = t.PlayerA
+	}
+	return worldEvent{EventType: w.Event, Tick: w.Tick, PlayerID: &owner, CounterpartID: &other, Payload: payload}
 }

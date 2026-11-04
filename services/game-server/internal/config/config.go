@@ -69,6 +69,12 @@ type Config struct {
 	TreatyOfferTTL    time.Duration
 	TreatyBreakNotice time.Duration
 	TreatyRetry       time.Duration
+	// EventLogMaxAge es hasta cuándo atrás lee el registro, EventLogPageSize
+	// cuántas entradas trae una página y EventLogGroupGap el hueco máximo entre
+	// dos sucesos de una misma entrada (SPEC-EVENT-LOG §10).
+	EventLogMaxAge   time.Duration
+	EventLogPageSize int
+	EventLogGroupGap time.Duration
 
 	PersistenceFlushIntervalTicks int
 
@@ -187,6 +193,9 @@ func Load() (Config, error) {
 		TreatyOfferTTL:         time.Duration(v.intRange("EO_TREATY_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
 		TreatyBreakNotice:      time.Duration(v.intRange("EO_TREATY_BREAK_NOTICE_MINUTES", 15, 1, 24*60)) * time.Minute,
 		TreatyRetry:            time.Duration(v.intRange("EO_TREATY_RETRY_MINUTES", 10, 1, 24*60)) * time.Minute,
+		EventLogMaxAge:         time.Duration(v.intRange("EO_EVENT_LOG_MAX_DAYS", 7, 1, 90)) * 24 * time.Hour,
+		EventLogPageSize:       v.intRange("EO_EVENT_LOG_PAGE_SIZE", 50, 1, 200),
+		EventLogGroupGap:       time.Duration(v.intRange("EO_EVENT_LOG_GROUP_GAP_MINUTES", 10, 1, 24*60)) * time.Minute,
 
 		PersistenceFlushIntervalTicks: v.intRange("EO_PERSISTENCE_FLUSH_INTERVAL_TICKS", 50, 1, 100000),
 

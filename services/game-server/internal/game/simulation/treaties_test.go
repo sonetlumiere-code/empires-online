@@ -137,6 +137,18 @@ func TestGoldenAlianzaPropuestaAceptacionRupturaYExpulsion(t *testing.T) {
 	_, sigue := h.state.GarrisonCity(u.ID)
 	assert.False(t, sigue)
 	assert.Equal(t, []string{"TreatyProposed", "TreatyAccepted", "TreatyBreakAnnounced", "TreatyBroken"}, h.treaties.events())
+	// ADR-028 §3: cada escritura lleva su instante y quién dio la orden; el
+	// vencimiento no tiene autor y lleva el fin exacto del preaviso.
+	escrituras := h.treaties.writes
+	require.Len(t, escrituras, 4)
+	assert.Equal(t, h.playerID, escrituras[0].By, "propuso")
+	assert.Equal(t, vecino, escrituras[1].By, "aceptó")
+	assert.Equal(t, vecino, escrituras[2].By, "rompió")
+	assert.Equal(t, uuid.Nil, escrituras[3].By, "el preaviso vence solo")
+	assert.Equal(t, enPreaviso.BreakEffectiveAt.UnixMilli(), escrituras[3].AtMs)
+	for _, w := range escrituras[:3] {
+		assert.Positive(t, w.AtMs)
+	}
 	ultima := h.actualizacionesPara(h.playerID)
 	assert.Equal(t, string(diplomacy.StatusBroken), ultima[len(ultima)-1].Status)
 }

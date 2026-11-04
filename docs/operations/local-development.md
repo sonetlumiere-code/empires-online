@@ -478,7 +478,11 @@ junta madera trayendo a casa a sus aldeanos), y la saquea: comprueba el golpe, e
 víctima y la carga del guerrero. También tarda minutos y roba madera de otra cuenta. Con `--diplomacia`
 ([../specs/diplomacy.md](../specs/diplomacy.md)), `smoke_runner` y `smoke_victim` firman un pacto de no agresión (o
 reutilizan el vigente), se comprueba que el pacto impide el saqueo y `smoke_runner` lo rompe: el tratado queda en
-preaviso 15 minutos. Repetirlo antes falla y dice cuánto falta.
+preaviso 15 minutos. Repetirlo antes falla y dice cuánto falta. Con `--registro`
+([../specs/event-log.md](../specs/event-log.md)), `smoke_victim` se conecta y su registro tiene que nombrar a
+`smoke_runner` (el saqueo con `--saqueo`, la ruptura con `--diplomacia`), `smoke_runner` ve su lado, y la víctima da
+por visto lo asentado, reconecta con un ticket nuevo y el cursor sigue marcado. Necesita que antes haya pasado algo
+entre los dos, en la misma pasada o en una anterior, y espera hasta 26 s a que lo más reciente se asiente.
 
 ---
 

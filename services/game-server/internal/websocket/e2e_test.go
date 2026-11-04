@@ -200,6 +200,9 @@ type e2e struct {
 	logs *safeBuffer
 	// metrics son las del servidor WebSocket, en un registro propio del test.
 	metrics *observability.Metrics
+	// ws es el servidor, para los tests que le conectan piezas opcionales
+	// (el registro).
+	ws *ws.Server
 }
 
 // safeBuffer es un bytes.Buffer que admite escrituras desde varias goroutines:
@@ -342,7 +345,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		state:    state,
 		playerID: playerID, unitIDs: unitIDs,
 		dedupe: dedupe, commands: commands, inbox: inbox, sim: sim,
-		logs: logs, metrics: metrics,
+		logs: logs, metrics: metrics, ws: wsServer,
 	}
 	env.stop = func() { httpServer.Close() }
 	t.Cleanup(env.stop)

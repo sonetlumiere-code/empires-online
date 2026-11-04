@@ -233,3 +233,55 @@ export const TreatyView = z.object({
   breaksAtMs: EpochMs.nullable(),
 });
 export type TreatyView = z.infer<typeof TreatyView>;
+
+/**
+ * Tipo de una entrada del registro (SPEC-EVENT-LOG §4.1), siempre desde el punto de
+ * vista de quien la recibe: `UNIT_LOST` es una unidad suya muerta; `ENEMY_KILLED`,
+ * una ajena que mataron las suyas.
+ */
+export const EventLogKind = z.enum([
+  'UNIT_LOST',
+  'ENEMY_KILLED',
+  'PILLAGED',
+  'PILLAGE_DONE',
+  'TREATY_OFFERED',
+  'TREATY_WITHDRAWN',
+  'TREATY_ACCEPTED',
+  'TREATY_REJECTED',
+  'TREATY_OFFER_EXPIRED',
+  'TREATY_BREAK_ANNOUNCED',
+  'TREATY_ENDED',
+]);
+export type EventLogKind = z.infer<typeof EventLogKind>;
+
+/**
+ * Una entrada del registro: uno o varios sucesos del mismo tipo con el mismo otro
+ * jugador, agrupados al leer (SPEC-EVENT-LOG §4.2). `id` es el del último evento del
+ * grupo; las entradas con `id` mayor que `seenUpToId` son nuevas.
+ */
+export const EventLogEntry = z.object({
+  id: EntityId,
+  kind: EventLogKind,
+  /** Primer y último suceso del grupo, en la simulación (RN-LOG-005). */
+  firstAtMs: EpochMs,
+  lastAtMs: EpochMs,
+  count: z.number().int().min(1),
+  otherPlayerId: Uuid,
+  /** La ciudad del otro jugador, si la tiene. */
+  otherCityId: EntityId.nullable(),
+  otherCityName: z.string().min(1).max(64).nullable(),
+  /** En las muertes: qué tipo de unidad murió. */
+  unitType: UnitType.optional(),
+  /** En los saqueos: la madera del grupo. */
+  amount: z.number().int().min(0).optional(),
+  /** En los tratados. */
+  treatyType: TreatyType.optional(),
+  /** En una oferta que caducó: si la había hecho quien recibe la entrada. */
+  proposedByMe: z.boolean().optional(),
+  /** Dónde ocurrió el último suceso del grupo, en las muertes y los saqueos. */
+  x: WorldCoordinate.optional(),
+  y: WorldCoordinate.optional(),
+  /** En una ruptura anunciada: cuándo termina la paz (RN-DIPLO-004). */
+  breaksAtMs: EpochMs.optional(),
+});
+export type EventLogEntry = z.infer<typeof EventLogEntry>;

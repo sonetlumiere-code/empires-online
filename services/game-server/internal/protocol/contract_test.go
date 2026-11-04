@@ -65,7 +65,7 @@ func TestTiposDeMensajePresentesEnElEsquema(t *testing.T) {
 		protocol.TypeUnitMovementStarted, protocol.TypeUnitMovementCompleted,
 		protocol.TypeUnitMovementCancelled,
 		protocol.TypeBuildingSpawn, protocol.TypeBuildingUpdate,
-		protocol.TypeForestUpdate, protocol.TypeTreatyUpdate,
+		protocol.TypeForestUpdate, protocol.TypeTreatyUpdate, protocol.TypeEventLogPage,
 	}
 	for _, msgType := range serverTypes {
 		require.Contains(t, server, `"`+msgType+`"`,
@@ -245,7 +245,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 }
 
 func TestCatalogoDeComandosEsCerrado(t *testing.T) {
-	require.Len(t, protocol.ClientMessageTypes, 15)
+	require.Len(t, protocol.ClientMessageTypes, 17)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)

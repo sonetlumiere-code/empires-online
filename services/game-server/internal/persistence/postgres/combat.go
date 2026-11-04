@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
 
@@ -22,6 +23,8 @@ type Kill struct {
 	Tick           uint64
 	Loot           int32
 	Lost           int32
+	VictimType     unit.Type
+	AtMs           int64
 }
 
 // Kill escribe una muerte dentro de la transacción `db`: la víctima DEAD, sin
@@ -62,9 +65,12 @@ func (r *UnitRepo) Kill(ctx context.Context, db DB, k Kill) (bool, error) {
 	payload := map[string]any{
 		"unitId": k.VictimID, "killerId": k.KillerID, "killerPlayerId": k.KillerPlayer.String(),
 		"x": k.At.X, "y": k.At.Y, "loot": k.Loot, "lost": k.Lost,
+		"unitType": string(k.VictimType), "atMs": k.AtMs,
 	}
 	victim := k.VictimPlayer
-	if err := appendEvent(ctx, db, worldEvent{EventType: "UnitKilled", Tick: k.Tick, PlayerID: &victim, Payload: payload}); err != nil {
+	if err := appendEvent(ctx, db, worldEvent{
+		EventType: "UnitKilled", Tick: k.Tick, PlayerID: &victim, CounterpartID: counterpart(k.KillerPlayer), Payload: payload,
+	}); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -79,16 +85,20 @@ type Attacked struct {
 	At             world.Tile
 	Tick           uint64
 	Auto           bool
+	AtMs           int64
 }
 
 // Attacked registra el evento UnitAttacked, a nombre del jugador atacado como
 // UnitKilled. Es sólo auditoría: no toca ninguna otra fila.
 func (r *UnitRepo) Attacked(ctx context.Context, db DB, a Attacked) error {
 	target := a.TargetPlayer
-	return appendEvent(ctx, db, worldEvent{EventType: "UnitAttacked", Tick: a.Tick, PlayerID: &target, Payload: map[string]any{
-		"unitId": a.TargetID, "attackerId": a.AttackerID, "attackerPlayerId": a.AttackerPlayer.String(),
-		"x": a.At.X, "y": a.At.Y, "auto": a.Auto,
-	}})
+	return appendEvent(ctx, db, worldEvent{
+		EventType: "UnitAttacked", Tick: a.Tick, PlayerID: &target, CounterpartID: counterpart(a.AttackerPlayer),
+		Payload: map[string]any{
+			"unitId": a.TargetID, "attackerId": a.AttackerID, "attackerPlayerId": a.AttackerPlayer.String(),
+			"x": a.At.X, "y": a.At.Y, "auto": a.Auto, "atMs": a.AtMs,
+		},
+	})
 }
 
 // Pillaged es un golpe de saqueo (SPEC-COMBAT-PILLAGE, ADR-026): el débito del
@@ -103,6 +113,7 @@ type Pillaged struct {
 	Stock          StockDelta
 	At             world.Tile
 	Tick           uint64
+	AtMs           int64
 }
 
 // Pillaged escribe un golpe de saqueo dentro de la transacción `db` y dice si
@@ -117,8 +128,11 @@ func (r *UnitRepo) Pillaged(ctx context.Context, db DB, p Pillaged) (bool, error
 		return false, err
 	}
 	victim := p.VictimPlayer
-	return true, appendEvent(ctx, db, worldEvent{EventType: "CityPillaged", Tick: p.Tick, PlayerID: &victim, Payload: map[string]any{
-		"cityId": p.CityID, "attackerId": p.AttackerID, "attackerPlayerId": p.AttackerPlayer.String(),
-		"amount": p.Amount, "x": p.At.X, "y": p.At.Y,
-	}})
+	return true, appendEvent(ctx, db, worldEvent{
+		EventType: "CityPillaged", Tick: p.Tick, PlayerID: &victim, CounterpartID: counterpart(p.AttackerPlayer),
+		Payload: map[string]any{
+			"cityId": p.CityID, "attackerId": p.AttackerID, "attackerPlayerId": p.AttackerPlayer.String(),
+			"amount": p.Amount, "x": p.At.X, "y": p.At.Y, "atMs": p.AtMs,
+		},
+	})
 }
