@@ -424,9 +424,9 @@ Reglas de difusión:
   antiguos. Los de cliente→servidor sí lo son (`additionalProperties: false`).
 - El cliente **nunca** envía `city.update` ni ningún estado de la ciudad. Desde E1 hay dos comandos que la
   afectan, `city.build` y `city.train`, y ninguno lleva cantidades, costes ni tiempos: sólo el tipo y, al
-  construir, el tile ([economy-wood.md](economy-wood.md)). Los quince mensajes cliente→servidor de la v1 son
+  construir, el tile ([economy-wood.md](economy-wood.md)). Los diecisiete mensajes cliente→servidor de la v1 son
   `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`,
-  `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack`, `unit.pillage` y los tres `treaty.*`; la muerte de una unidad
+  `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `unit.attack`, `unit.pillage`, los tres `treaty.*` y los dos `event_log.*`; la muerte de una unidad
   baja la población de su ciudad y emite `city.update` ([combat-raid.md](combat-raid.md)), y un golpe de saqueo
   baja su almacén ([combat-pillage.md](combat-pillage.md)). Guarnecer tampoco la altera: la unidad sigue
   contando en la población de su ciudad de origen, y no se emite `city.update`

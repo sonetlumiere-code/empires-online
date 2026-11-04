@@ -276,7 +276,7 @@ Precisión sobre «idempotente»: el requisito es que la **aplicación del conju
 | Aplicación | DB, BOUNDARY, TEST |
 | Milestone | E7 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-03, antes de su código |
+| Cobertura | **Cubierto** por `TestUnaFilaQueSeConfirmaTardeNoQuedaEscondida` y `TestElTopeMarcableSoloCubreLoAsentado` (integration), `TestLoVistoNoPasaDelTopeDeLaUltimaPagina` (e2e, `internal/websocket`) y `TestElAsentadoCubreDosIntentosDeLaCola` (unit) |
 
 **Enunciado.** Cuando `players.event_log_seen_id` de un jugador pasa a valer `C`, toda fila de `world_events` con
 `id <= C` estaba confirmada en la base cuando a ese jugador se le sirvió la página que permitió marcarla. El cursor
@@ -294,8 +294,17 @@ jugador la hubiera tenido delante, y no volvería a salir nunca en «Mientras no
 - `DB` — la escritura es `GREATEST(event_log_seen_id, …)`: el cursor no retrocede aunque lleguen dos marcas
   desordenadas desde dos sesiones.
 
-**Cómo se verifica.** Previstos con E7: dos transacciones que confirman en orden inverso al de sus `id` y una marca
-entre medias (integration); el tope de la sesión y la marca que no retrocede (e2e).
+**Cómo se verifica.**
+
+- `TestUnaFilaQueSeConfirmaTardeNoQuedaEscondida` (integration) — una transacción toma un `id` y queda abierta;
+  otra con `id` mayor confirma y ya sale en la página; la marca hasta ella se queda en el tope, por debajo de la
+  lenta; al confirmar ésta, sale como nueva. Verificado por mutación: con el margen de asentado a cero, falla.
+- `TestElTopeMarcableSoloCubreLoAsentado` (integration) — una fila de hace un segundo no sube el tope, la de hace
+  un minuto sí, también por `counterpart_player_id`; y una marca menor no hace retroceder el cursor.
+- `TestLoVistoNoPasaDelTopeDeLaUltimaPagina` (e2e) — sin página servida no se marca nada, y con ella la marca se
+  acota a su tope.
+- `TestElAsentadoCubreDosIntentosDeLaCola` (unit) — el margen de asentado es mayor que dos intentos de la cola, que
+  es lo que la prueba de ADR-028 §6 necesita.
 
 **Violación en runtime.** Indetectable después: una fila escondida no deja rastro. Por eso la garantía está en el
 cálculo del tope y no en una comprobación posterior.

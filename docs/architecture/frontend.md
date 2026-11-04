@@ -528,6 +528,25 @@ y grueso, y una que carga madera, un tronco a la espalda.
   `breaksAtMs`, medida con el reloj del servidor y refrescada una vez por segundo sólo mientras haya alguna.
 - Los rechazos llegan como `system.error INVALID_TARGET` y se muestran en el pie con su mensaje (§3.6).
 
+### 4.6 Registro: «Mientras no estabas» (SPEC-EVENT-LOG)
+
+> **Estado (2026-11-03): implementado y con tests de lo puro** (`src/state/eventLog.ts`).
+
+- **Cuándo se pide.** El cliente manda `event_log.fetch` al quedar la sesión `ready` (también tras reconectar) y al
+  volver a la pestaña tras un minuto o más oculta (`REFETCH_AFTER_HIDDEN_MS`, `RN-LOG-007`); al abrir el botón
+  «Registro» y con «Ver más», la página siguiente. El servidor no empuja nada.
+- **Qué guarda.** El store guarda `eventLog`, sustituido en cada página como `treaties`. Sólo aplica las páginas que
+  pidió, por `requestId` (`expectEventLogPage`): la primera **sustituye** la lista, porque un grupo que crece cambia
+  de `id`; una anterior se añade si sigue donde se quedó (`applyEventLogPage`). `reset` la vacía.
+- **Qué es nuevo.** Una entrada es nueva si su `id` pasa del mayor de dos cursores: `seenUpToId`, el del servidor, y
+  `localSeenUpToId`, el de la pestaña. El servidor no marca lo de los últimos 25 s ([ADR-028](../decisions/ADR-028-event-log-from-world-events.md)
+  §6); la pestaña sí, así que no vuelve a enseñarlo, y la próxima sesión puede repetirlo.
+- **La ventana.** Con entradas nuevas y el panel cerrado, una ventana «Mientras no estabas» las lista con su texto
+  (`entryText`, siempre desde el punto de vista del jugador y con el otro por su ciudad) y cuánto hace (`timeAgo`);
+  las pérdidas en rojo. «Entendido» manda `event_log.seen` con el mayor `id` nuevo y lo marca en la pestaña.
+- **El botón «Registro».** Lleva el número de entradas nuevas y abre el historial de siete días, con las nuevas en
+  negrita y «Ver más» mientras haya `nextBeforeId`. Al cerrarlo, lo da por visto como «Entendido».
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

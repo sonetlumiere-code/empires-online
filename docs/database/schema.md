@@ -30,7 +30,7 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, `TreatyExpired` en la caducidad, `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática) y `UnitKilled` en el combate, `ForestDepleted` al agotarse un tile de bosque, e `InvariantRepaired` en la validación de carga del arranque |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` al agotarse un tile de bosque, e `InvariantRepaired` en la validación de carga del arranque |
 | `city_stocks` | E1: **activa** | Una fila por ciudad y recurso, creada en la fundación (y para las ciudades existentes, por `000006`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
 | `unit_tasks` | E1: **activa** | Write-through en cada transición de la tarea de recolección, con su tramo de movimiento y `units.status` en la misma transacción |
 | `buildings` | E1: **activa** | Encargo de `city.build` (con su débito) y finalización en la fase 5 |
@@ -72,6 +72,7 @@ erDiagram
         integer civilization_id FK
         integer faction_id FK
         timestamptz last_seen_at
+        bigint event_log_seen_id
     }
     civilizations {
         integer id PK
@@ -155,6 +156,7 @@ erDiagram
         text event_type
         bigint tick
         uuid player_id FK
+        uuid counterpart_player_id FK
         jsonb payload
     }
 ```
@@ -175,7 +177,7 @@ Estas reglas aplican a **todas** las tablas y no se repiten en cada ficha:
 4. **Enums de dominio como `text` + `CHECK`**, nunca tipos `ENUM` de PostgreSQL: añadir un valor a un `CHECK` es un `ALTER TABLE ... ADD CONSTRAINT ... NOT VALID` seguido de `VALIDATE`, sin lock exclusivo prolongado ni el problema de `ALTER TYPE ... ADD VALUE` dentro de transacción.
 5. **Concurrencia optimista**: `version integer NOT NULL DEFAULT 0` en `cities`, mutable desde dos caminos de escritura (la máquina de presencia y el recálculo de población), y en `territory_control`, cuyo cambio de dueño lo exige la spec de territorio (añadida por `000003`, §15.2). `units` **no** tiene `version`: su única escritura concurrente es el lote de flush, que es de un solo escritor. Añadir `version` a `units` sería pagar una columna y un conflicto que hoy nadie puede producir.
 6. **Sin bounds de mundo hardcodeados**: ningún `CHECK` de coordenadas de entidad fija un límite superior. `EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT` son configuración y el dominio los valida contra `world_state`. Poner `512` en un `CHECK` congelaría un valor de gameplay dentro del esquema y contradiría la regla de configuración única.
-7. **`ON DELETE`**: se elige explícitamente donde importa. `CASCADE` desde el agregado raíz hacia sus hijos estrictos (`players` → `cities`, `units`, `sessions`, `treaties`; `units` → `unit_movements`, `garrisons`; `cities` → `garrisons`; `territories` → `territory_control`), `SET NULL` en referencias opcionales (`units.city_id`, `world_events.player_id`) y **sin cláusula** —es decir `NO ACTION`— hacia los catálogos (`players.civilization_id`, `players.faction_id`, `cities.era`): borrar una civilización que tiene jugadores debe fallar, y `NO ACTION` ya lo impide.
+7. **`ON DELETE`**: se elige explícitamente donde importa. `CASCADE` desde el agregado raíz hacia sus hijos estrictos (`players` → `cities`, `units`, `sessions`, `treaties`; `units` → `unit_movements`, `garrisons`; `cities` → `garrisons`; `territories` → `territory_control`), `SET NULL` en referencias opcionales (`units.city_id`, `world_events.player_id`, `world_events.counterpart_player_id`) y **sin cláusula** —es decir `NO ACTION`— hacia los catálogos (`players.civilization_id`, `players.faction_id`, `cities.era`): borrar una civilización que tiene jugadores debe fallar, y `NO ACTION` ya lo impide.
 
 ### 3.1 Función de trigger compartida
 
@@ -337,6 +339,7 @@ CREATE TABLE players (
     civilization_id   integer     NOT NULL REFERENCES civilizations (id),
     faction_id        integer     NOT NULL REFERENCES factions (id),
     last_seen_at      timestamptz,
+    event_log_seen_id bigint      NOT NULL DEFAULT 0 CHECK (event_log_seen_id >= 0),  -- 000010
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
 
@@ -355,6 +358,7 @@ CREATE TRIGGER players_set_updated_at
 | `civilization_id` | `integer` FK | Civilización elegida. Sin `ON DELETE`: el `NO ACTION` por defecto impide borrar un catálogo referenciado |
 | `faction_id` | `integer` FK | Facción global. Ortogonal a la civilización: cualquier combinación es válida |
 | `last_seen_at` | `timestamptz` | Última actividad observada. `PlayerRepo.TouchLastSeen` existe pero **ninguna ruta la llama**: hoy la columna queda `NULL` |
+| `event_log_seen_id` | `bigint` | Desde `000010` ([SPEC-EVENT-LOG](../specs/event-log.md)): el último `world_events.id` que el jugador dio por visto en su registro. Sólo avanza (`GREATEST`) y nunca más allá del tope marcable de la página que lo permitió ([INV-PERSIST-006](../invariants/persistence.md#inv-persist-006)); `0` es «nada visto» |
 
 **Credenciales.** Ninguna, desde la migración `000005_players_without_credentials` ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Hasta entonces el Game Server guardaba aquí `password_hash` (bcrypt) y servía el alta y el login, como provisional. Ahora la identidad —nombre de acceso, hash `scrypt` y sesiones web— vive en el almacén propio de `apps/web` (base `empires_identity`, tablas `accounts` y `web_sessions`), que este documento no describe porque no es el esquema del juego: su DDL está en `apps/web/identity/migrations.mjs`. Los hashes que había no se migraron: eran de cuentas de humo y de la siembra de desarrollo. El contrato del ticket está en [../specs/websocket-protocol.md](../specs/websocket-protocol.md).
 
@@ -913,23 +917,28 @@ CREATE TABLE world_events (
     tick        bigint      NOT NULL,
     occurred_at timestamptz NOT NULL DEFAULT now(),
     player_id   uuid        REFERENCES players (id) ON DELETE SET NULL,
-    payload     jsonb       NOT NULL DEFAULT '{}'::jsonb
+    payload     jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    -- 000010 (SPEC-EVENT-LOG, ADR-028 §2)
+    counterpart_player_id uuid REFERENCES players (id) ON DELETE SET NULL
 );
 
 CREATE INDEX world_events_type_time_idx  ON world_events (event_type, occurred_at DESC);
 CREATE INDEX world_events_player_idx     ON world_events (player_id, occurred_at DESC)
     WHERE player_id IS NOT NULL;
+CREATE INDEX world_events_counterpart_idx ON world_events (counterpart_player_id, occurred_at DESC)
+    WHERE counterpart_player_id IS NOT NULL;
 ```
 
 | Columna | Semántica |
 |---|---|
-| `event_type` | Nombre del evento de dominio en **pasado**. Los que se escriben hoy: `PlayerBootstrapped`, `TerritoryControlChanged`, `UnitGarrisoned`, `UnitUngarrisoned`, `TreatyExpired` e `InvariantRepaired`. El movimiento y la presencia no escriben eventos por decisión ([../specs/movement.md](../specs/movement.md) §11, [../specs/presence.md](../specs/presence.md) §11). Sin `CHECK` de formato: el conjunto crece constantemente y una expresión regular en el esquema sólo añadiría una migración por cada convención nueva |
+| `event_type` | Nombre del evento de dominio en **pasado**. Los que se escriben hoy están en el párrafo de abajo. El movimiento y la presencia no escriben eventos por decisión ([../specs/movement.md](../specs/movement.md) §11, [../specs/presence.md](../specs/presence.md) §11). Sin `CHECK` de formato: el conjunto crece constantemente y una expresión regular en el esquema sólo añadiría una migración por cada convención nueva |
 | `tick` | `tickNumber` en que ocurrió. Permite reproducir el orden exacto dentro de un mismo milisegundo |
 | `occurred_at` | Instante del hecho, `now()` por defecto. **No hay `occurred_at_ms`**: el orden fino ya lo da `tick`, y nada compara este instante con aritmética entera |
-| `player_id` | Actor, cuando lo hay. `SET NULL` para no perder el evento al borrar un jugador. El índice por jugador es parcial, porque los eventos sin actor no se consultan por esta vía |
+| `player_id` | El jugador al que se atribuye el evento: el actor en la mayoría, la víctima en `UnitKilled`, `CityPillaged` y `UnitAttacked`, y quien propuso en los de tratado (`player_a` en los administrativos, desde `000010`). `SET NULL` para no perder el evento al borrar un jugador. El índice por jugador es parcial, porque los eventos sin jugador no se consultan por esta vía |
+| `counterpart_player_id` | Desde `000010` ([ADR-028](../decisions/ADR-028-event-log-from-world-events.md) §2): el otro jugador implicado, sin cambiar lo que significa `player_id`: el autor en `UnitKilled`, `CityPillaged` y `UnitAttacked`, el otro firmante en los de tratado; `NULL` en los demás y en las filas anteriores. El registro de un jugador es `player_id = P OR counterpart_player_id = P`, con un índice parcial por cada columna |
 | `payload` | Cuerpo del evento, `{}` por defecto. `jsonb` y no columnas tipadas porque cada evento tiene forma propia |
 
-**Append-only** significa: sin `UPDATE`, sin `DELETE`, sin trigger `updated_at`. Sólo la retención por antigüedad puede borrar filas, y es una operación de mantenimiento explícita. En MVP la escriben estos tipos de evento: `PlayerBootstrapped` y `TerritoryControlChanged`, dentro de la transacción de alta; desde E1, `BuildingOrdered` (`{buildingId, cityId, type, x, y, requestId}`), `BuildingCompleted` (`{buildingId, cityId}`), `TrainingOrdered` (`{cityId, unitType, requestId}`) y `UnitTrained` (`{cityId, unitId}`), cada uno en la transacción de su hecho; `UnitGarrisoned` (`{unitId, cityId, cancelledMovement, treatyId?}`) y `UnitUngarrisoned` (`{unitId, x, y}`), en la transacción de entrada y de salida de una guarnición ([ADR-017](../decisions/ADR-017-garrison-commands.md)); `TreatyExpired`, en el barrido de caducidad; e `InvariantRepaired`, uno por cada corrección de la validación de carga del arranque (`EO-119`), con `{inv_id, severity, entity, detail}` en el `payload` y el tick de arranque. El volumen se controla antes de convertir esta tabla en el bus principal.
+**Append-only** significa: sin `UPDATE`, sin `DELETE`, sin trigger `updated_at`. Sólo la retención por antigüedad puede borrar filas, y es una operación de mantenimiento explícita. En MVP la escriben estos tipos de evento: `PlayerBootstrapped` y `TerritoryControlChanged`, dentro de la transacción de alta; desde E1, `BuildingOrdered` (`{buildingId, cityId, type, x, y, requestId}`), `BuildingCompleted` (`{buildingId, cityId}`), `TrainingOrdered` (`{cityId, unitType, requestId}`) y `UnitTrained` (`{cityId, unitId}`), cada uno en la transacción de su hecho; `UnitGarrisoned` (`{unitId, cityId, cancelledMovement, treatyId?}`) y `UnitUngarrisoned` (`{unitId, x, y}`), en la transacción de entrada y de salida de una guarnición ([ADR-017](../decisions/ADR-017-garrison-commands.md)); los siete de tratado (`TreatyProposed`, `TreatyAccepted`, `TreatyRejected`, `TreatyWithdrawn`, `TreatyBreakAnnounced`, `TreatyBroken` y `TreatyExpired`, con `{treatyId, playerA, playerB, treatyType, status, from?, breakEffectiveAt?, atMs?, byPlayerId?}`), en la transacción de cada transición ([ADR-027](../decisions/ADR-027-hot-treaties.md)); `UnitKilled` (`{unitId, killerId, killerPlayerId, x, y, loot, lost, unitType, atMs}`), `UnitAttacked` (`{unitId, attackerId, attackerPlayerId, x, y, auto, atMs}`) y `CityPillaged` (`{cityId, attackerId, attackerPlayerId, amount, x, y, atMs}`), del combate y el saqueo; `ForestDepleted`, al agotarse un tile de bosque; e `InvariantRepaired`, uno por cada corrección de la validación de carga del arranque (`EO-119`), con `{inv_id, severity, entity, detail}` en el `payload` y el tick de arranque. El volumen se controla antes de convertir esta tabla en el bus principal. Desde E7 la lee el registro de cada jugador ([SPEC-EVENT-LOG](../specs/event-log.md)), que no la modifica: `atMs` es el instante del suceso en la simulación y `occurred_at` el de su escritura, que un reintento de la cola retrasa.
 
 ---
 

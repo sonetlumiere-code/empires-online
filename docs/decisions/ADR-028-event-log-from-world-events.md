@@ -49,8 +49,12 @@ implicado, sin cambiar lo que significa `player_id`:
 Un registro es `player_id = P OR counterpart_player_id = P`, con un índice por cada columna.
 
 **3. Lo que falta, en el payload** (aditivo: `jsonb`, sin migración): `atMs`, el instante de la simulación, en todos
-los de la tabla; `unitType` de la víctima en `UnitKilled`; `from`, el estado anterior, en los de tratado; y `byPlayerId`
-en `TreatyBreakAnnounced`. La hora que se muestra es `atMs`, o `occurred_at` en las filas anteriores a este ADR.
+los de la tabla; `unitType` de la víctima en `UnitKilled`; `from`, el estado anterior, en los de tratado; y `byPlayerId`,
+quien dio la orden, en los de tratado que vienen de una (un vencimiento no la tiene): `TreatyBreakAnnounced` lo
+necesita, y en los demás sobra pero no estorba. La hora que se muestra es `atMs`, o `occurred_at` en las filas
+anteriores a este ADR. Las muertes y los saqueos anteriores no tienen `counterpart_player_id`, pero su payload ya
+nombraba al autor (`killerPlayerId`, `attackerPlayerId`): la lectura lo toma de ahí, así que la víctima las ve; el
+autor no, porque la consulta no lo encuentra.
 
 **4. La agrupación se hace al leer, en `internal/domain/eventlog`, sin estado.** Cada fila se traduce, para quien
 lee, en un tipo de entrada (víctima o autor de una muerte, de un saqueo; oferta recibida, respondida o caducada;
@@ -112,7 +116,8 @@ y vuelve a salir la próxima vez: mejor repetir que perder.
 - Una página lee varias filas por entrada (un saqueo son decenas). El recorrido va en bloques de 500 filas hasta
   completar la página, con un tope de 5.000 filas: un registro patológico corta la página antes y la siguiente sigue
   desde ahí.
-- Los eventos de tratado anteriores a la migración no llegan al otro firmante.
+- Los eventos de tratado anteriores a la migración no llegan al otro firmante, ni las muertes y los saqueos
+  anteriores a su autor.
 
 ### Neutras
 

@@ -417,7 +417,7 @@ token legítimo funde otro id que el que Next.js acaba de autenticar.
 | Aplicación | BOUNDARY, DOMAIN, TEST |
 | Milestone | E7 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-03, antes de su código |
+| Cobertura | **Cubierto** por `TestUnTerceroNoVeLosSucesosDeOtros` (unit, `internal/domain/eventlog`), `TestElRegistroCuentaCadaLadoYNadaAUnTercero` y `TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload` (integration), `TestElRegistroSeSirveAlJugadorDeLaSesion` y `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e, `internal/websocket`) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract) |
 
 **Enunciado.** Toda entrada de `event_log.page` que recibe una sesión sale de filas de `world_events` cuyo
 `player_id` o `counterpart_player_id` es el jugador de esa sesión.
@@ -433,8 +433,18 @@ están quitando madera.
 - `DOMAIN` — la consulta filtra por `player_id = P OR counterpart_player_id = P`, y la traducción a entradas
   descarta además lo que el propio jugador hizo en la diplomacia (SPEC-EVENT-LOG §4.1).
 
-**Cómo se verifica.** Previstos con E7: un tercer jugador no ve el saqueo ni el tratado de otros dos (integration y
-e2e).
+**Cómo se verifica.**
+
+- `TestUnTerceroNoVeLosSucesosDeOtros` (unit) — ninguna fila de un suceso entre otros dos da entrada a un tercero,
+  sea cual sea su tipo, ni a una sesión sin jugador.
+- `TestElRegistroCuentaCadaLadoYNadaAUnTercero` (integration) — tras un saqueo, una muerte y una oferta entre dos
+  jugadores, el tercero recibe una página vacía. El filtro está dos veces, en la consulta y en la clasificación del
+  dominio: quitar sólo uno no lo hace fallar, y por eso cada uno tiene su test.
+- `TestUnaFilaAnteriorAlRegistroSeLeeConElAutorDeSuPayload` (integration) — una fila sin
+  `counterpart_player_id` llega a la víctima, y no al autor, al que nada en la fila apunta.
+- `TestElRegistroSeSirveAlJugadorDeLaSesion` (e2e) — cada página se pide para el jugador de la sesión; y
+  `TestElRegistroRechazaLoQueElEsquemaRechaza` (e2e) y `TestLosComandosDelRegistroSonLosDelEsquema` (contract) —
+  un `playerId` en el comando es `INVALID_MESSAGE` y el esquema no tiene dónde ponerlo.
 
 **Violación en runtime.** Indetectable desde el servidor: lo que se envía no vuelve. Por eso el filtro está en la
 consulta y el jugador sale de la sesión.

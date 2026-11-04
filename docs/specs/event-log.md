@@ -147,8 +147,8 @@ hacia atrás.
 Migración `000010`: `world_events.counterpart_player_id` (`uuid`, `REFERENCES players ON DELETE SET NULL`) con un
 índice parcial `(counterpart_player_id, occurred_at DESC)`, el par del índice que ya existe por `player_id`; y
 `players.event_log_seen_id` (`bigint NOT NULL DEFAULT 0`). Los eventos anteriores a la migración no tienen el otro
-jugador, así que quien recibió una oferta antes de ella no la verá en el registro; en la base de desarrollo da
-igual.
+jugador, así que quien recibió una oferta antes de ella no la verá en el registro. Las muertes y los saqueos
+anteriores sí le llegan a la víctima, con el autor que ya nombraba su payload (ADR-028 §3).
 
 ## 8. Invariantes
 
@@ -172,6 +172,14 @@ aceptar:
 | contract / e2e | Los dos comandos y `event_log.page` contra el JSON Schema; un saqueo a un jugador desconectado que, al conectar, ve la entrada, la da por vista y no la vuelve a ver al recargar |
 | simulation | Ninguno nuevo: el loop no cambia. Los golden de saqueo, defensa y diplomacia comprueban que sus eventos llevan al otro jugador |
 | cliente | La ventana «Mientras no estabas», el contador del botón «Registro» y la paginación; `scripts/smoke.mjs --registro` (tras `--saqueo`, `smoke_victim` ve el saqueo) |
+
+**Precisión (2026-11-03), al implementar.** Los e2e del Game Server corren contra el arnés en memoria, sin
+PostgreSQL, así que el recorrido de la fila «contract / e2e» se reparte en tres niveles: el e2e de
+`internal/websocket` prueba la conexión con un registro falso (la página es la de la sesión, el tope acota la
+marca, un fallo de la base es `INTERNAL_ERROR` y la sesión sigue, que es «el cursor con fallo inyectado»); la
+integración prueba la consulta, la atribución y el cursor contra la base; y `scripts/smoke.mjs --registro` hace el
+recorrido entero contra el servidor vivo: la víctima ve el saqueo al conectar, lo da por visto, reconecta con un
+ticket nuevo y el cursor sigue marcado.
 
 ## 10. Decisiones de producto (2026-11-03)
 

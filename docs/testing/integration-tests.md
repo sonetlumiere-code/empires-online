@@ -12,6 +12,7 @@ Cómo se verifica la capa de persistencia contra PostgreSQL y Redis **reales**: 
 > | `internal/persistence/postgres/combat_integration_test.go` | 5 | ídem (E2: la muerte, el volcado de vida y botín, UnitAttacked) |
 > | `internal/persistence/postgres/diplomacy_integration_test.go` | 14 | ídem |
 > | `internal/persistence/postgres/economy_integration_test.go` | 13 | ídem (E1: stock por deltas, encargos, nacimiento, tareas) |
+> | `internal/persistence/postgres/eventlog_integration_test.go` | 6 | ídem (E7: el registro, la atribución a los dos jugadores y el cursor de lo visto) |
 > | `internal/persistence/postgres/forest_integration_test.go` | 5 | ídem (E4: la capa de madera) |
 > | `internal/persistence/postgres/fundacion_integration_test.go` | 11 | ídem (también `internal/httpapi`: la fundación y, desde ADR-020, la consulta) |
 > | `internal/persistence/postgres/garrison_integration_test.go` | 4 | ídem |
@@ -27,13 +28,13 @@ Cómo se verifica la capa de persistencia contra PostgreSQL y Redis **reales**: 
 > | `internal/persistence/postgres/testenv_integration_test.go` | — | montaje y limpieza |
 > | `internal/persistence/redis/redis_integration_test.go` | 11 | Redis real |
 >
-> Son 126, y pasan con el detector de carreras activo. Aparte, `apps/web/src/server/store.integration.test.ts`
+> Son 132, y pasan con el detector de carreras activo. Aparte, `apps/web/src/server/store.integration.test.ts`
 > (13 tests, Vitest) prueba el almacén de identidad contra PostgreSQL real. **No se ejecutan con Docker**: la máquina de
 > desarrollo lo tiene descartado (provoca pantallazos azules por consumo de RAM). PostgreSQL es un
 > cluster propio en `.pgdata/` (puerto 5433 en Windows, 5434 en macOS, `EO_PG_PORT`), y Redis vive en WSL o en
 > Homebrew. El procedimiento exacto está en
 > [local-development.md](../operations/local-development.md) §3-bis. El job `integration` de la CI sí
-> usa contenedores, y desde que el repositorio es público esos tests —126 de Go a 2026-11-03, más los 13 del almacén de identidad de `apps/web`— **también pasan allí**, con
+> usa contenedores, y desde que el repositorio es público esos tests —132 de Go a 2026-11-03, más los 13 del almacén de identidad de `apps/web`— **también pasan allí**, con
 > `-race`, contra `postgres:16-alpine` y `redis:7-alpine`.
 >
 > Los nombres de las tablas I/R de este documento son el **plan** original y ninguno existe con ese nombre:
