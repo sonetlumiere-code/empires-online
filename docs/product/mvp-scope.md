@@ -61,7 +61,7 @@ lugar de completar una capa entera. Ver [glossary.md](glossary.md) → *Vertical
 | OUT-05 | **Crafting** | Depende de la economía (OUT-02). Sin recursos no hay nada que fabricar. |
 | OUT-06 | **Quests** | Contenido dirigido; irrelevante para validar el mundo persistente y costoso en herramientas de autoría. |
 | OUT-07 | **NPCs complejos** | Requieren IA y simulación adicional dentro del tick, justo el punto donde el presupuesto de 100 ms es más sensible. |
-| OUT-08 | **Marketplace** | `markets`, `trade_routes`, `caravans` y `trade_transactions` son solo diseño. El comercio necesita antes economía y tecnologías exclusivas. |
+| OUT-08 | **Marketplace** | `markets`, `trade_routes`, `caravans` y `trade_transactions` son solo diseño. El comercio necesita antes economía y tecnologías exclusivas. **Precisión (2026-11-04):** el trato directo entre dos ciudades con un tratado vigente sí existe desde E10 ([SPEC-TRADE](../specs/trade.md)), en `trade_offers`; los mercados, las rutas y las caravanas siguen fuera. |
 | OUT-09 | **Chat avanzado** | Canales, moderación e historial son un subsistema propio con sus propios problemas de persistencia y abuso; no valida ninguna hipótesis del slice. |
 | OUT-10 | **Ranking** | Requiere métricas de juego estables que todavía no existen; un ranking sobre reglas provisionales genera expectativas difíciles de retirar. |
 | OUT-11 | **IA avanzada** | Mismo motivo que OUT-07, con mayor coste de CPU dentro del tick determinista. |

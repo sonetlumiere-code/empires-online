@@ -398,7 +398,13 @@ pasan**. Dejar responder a quien propuso pone en rojo los dos.
 | Cobertura | **Cubierto** por `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration), `TestRechazosDeLaDiplomacia` y `TestUnaAlianzaSustituyeAlPactoVigente` (`internal/game/simulation`) |
 
 **Enunciado.** Para cada par de jugadores existe como mucho un tratado `ACTIVE` y como mucho uno `PROPOSED`; y una
-oferta sólo convive con un tratado vigente si éste es un pacto y la oferta es una alianza.
+oferta sólo convive con un tratado vigente si es de un escalón superior al suyo (`TRADE` < `NON_AGGRESSION` <
+`ALLIANCE`).
+
+**Precisión (2026-11-04, [SPEC-TRADE](../specs/trade.md) §4.1, [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) §5).**
+Hasta E10 la única oferta que convivía con un vigente era la de una alianza sobre un pacto. Con el tratado de comercio
+la sustitución se generaliza a la escalera: `TRADE` puede subir a pacto o a alianza, y un pacto a alianza. Los índices
+no cambian.
 
 **Razón.** Dos tratados vigentes entre los mismos jugadores harían ambigua la paz y la guarnición; dos ofertas
 abiertas, ambigua la respuesta.

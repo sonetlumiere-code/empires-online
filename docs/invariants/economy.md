@@ -101,6 +101,11 @@ varios recursos se debita entero o no se debita.
 lista de recursos y el avance de era es el primero que paga en dos (madera y piedra). La transacción lleva un delta
 versionado por recurso; si cualquiera de ellos no se aplica, revierte entera.
 
+**Precisión (2026-11-04, [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)).** Desde E10 hay un débito
+cuyo efecto está en otra ciudad: lo que una ciudad da en un trato se confirma en la misma transacción que lo acredita
+en la otra y pasa la oferta a `ACCEPTED`. Un trato se paga entero o no se paga, en las dos ciudades a la vez; lo que
+mueve lo vigila [INV-TRADE-001](trade.md#inv-trade-001).
+
 **Razón.** «Nunca hay madera gastada sin edificio ni edificio sin madera gastada» (`RN-ECON-008`). Si el débito
 y el efecto viajaran en escrituras separadas, una caída entre las dos regalaría el edificio o se comería la
 madera, y ninguna de las dos cosas se puede reconstruir después: el jugador no tiene cómo demostrar qué pagó.

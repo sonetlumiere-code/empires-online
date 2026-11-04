@@ -1666,3 +1666,32 @@ fundación, niebla de guerra.
    el valor por defecto de `EO_PATHFINDING_MAX_NODES`, el respaldo de `NewAStar`, `.env.example` y los docs que lo
    citan. Con el servidor en su configuración por defecto, `scripts/smoke.mjs --piedra` pasa con `smoke_runner`
    (19 comprobaciones): la colina a 163 tiles, la carga y el depósito (piedra 20 → 30), donde antes se rechazaba.
+
+## E10 — Comercio
+
+**Estado: EN CURSO (2026-11-04)**, en la rama `claude/slice-comercio`. Contrato: [SPEC-TRADE](../specs/trade.md),
+aceptada el 2026-11-04 con sus diez decisiones de producto, y
+[ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md).
+
+**Objetivo.** Que la geografía de E9 se pueda negociar: un trato «doy esto, pido aquello» entre dos ciudades con un
+tratado vigente, que mueve los dos almacenes en el acto.
+
+**Alcance.** El tratado `TRADE` como primer escalón de la diplomacia; `trade.propose`, `trade.respond` y
+`trade.cancel`; la caducidad de las ofertas y su cierre al terminar el tratado; el trato aceptado en una transacción
+que escribe los dos almacenes; el trabajo de la cola con dos claves; `trade.update` y `tradeOffers[]`; los tratos en el
+registro; `INV-TRADE-001` a `004`; la migración `000013`; el cliente y `scripts/smoke.mjs --comercio`. **No entra**
+(spec §2): caravanas, mercados, saquear piedra, que terceros vean los tratos, avisos en vivo.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-032, la familia `INV-TRADE`, y las precisiones de `INV-DIPLO-002` (la escalera)
+   e `INV-ECON-002` (el trato).
+2. Cola: el trabajo de dos claves, con su test de orden y de bloqueo cruzado.
+3. Dominio: la escalera en `diplomacy`; el paquete `trade` con la oferta, sus líneas y quién puede cerrarla.
+4. Migración `000013` y persistencia: `trade_offers`, `trade_offer_lines` y la transacción del trato, con integración.
+5. Simulación: las órdenes en dos fases, la reserva de los dos almacenes, la caducidad, la carga al arrancar; el golden
+   `comercio` y los de recuperación.
+6. Protocolo y WebSocket: los tres comandos, `trade.update` y `tradeOffers[]`, con contract tests y e2e.
+7. Registro: los cinco eventos y sus cinco tipos de entrada.
+8. Cliente: «Proponer comercio», el formulario de la oferta, las ofertas recibidas y enviadas.
+9. Humo (`--comercio`) y prueba en vivo.

@@ -7,13 +7,13 @@ viajan por el mapa y se pueden interceptar quedan para su propia fase.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TRADE` |
-| Estado | Draft (2026-11-04). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-04). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
 | Milestone | E10 Comercio (décimo slice después de M7) |
 | Canon | §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [diplomacy.md](diplomacy.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [combat-pillage.md](combat-pillage.md), [event-log.md](event-log.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola ordenada por clave), [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (clasificación de acciones), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md) (toda escritura declara compensación), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (stock por deltas versionados, órdenes en dos fases), [ADR-027](../decisions/ADR-027-hot-treaties.md) (la RAM decide las órdenes de los tratados), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro sale de `world_events`), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (costes en varios recursos). Un ADR nuevo (`ADR-032`, el trabajo de la cola con dos claves y el trato como orden en dos fases) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola ordenada por clave), [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (clasificación de acciones), [ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md) (toda escritura declara compensación), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (stock por deltas versionados, órdenes en dos fases), [ADR-027](../decisions/ADR-027-hot-treaties.md) (la RAM decide las órdenes de los tratados), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro sale de `world_events`), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (costes en varios recursos), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (el trato como orden en dos fases que escribe dos almacenes, el trabajo de la cola con dos claves, la escalera de tratados; migración `000013`). |
 | Reemplaza a | Los «tratados `TRADE` (no hay comercio)» del no-scope de [diplomacy.md](diplomacy.md) §2 y su Q1; `OUT-08` de [mvp-scope.md](../product/mvp-scope.md), sólo en las transacciones entre dos jugadores (sin mercados ni caravanas). Responde a la Q8 de [economy-stone.md](economy-stone.md), que dejó para E10 decidir si la piedra se saquea. |
-| Invariantes | Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002) (lo amplía), [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002) (precisa su enunciado con la escalera) e [INV-SEC-001](../invariants/security.md#inv-sec-001); propone una familia nueva, `INV-TRADE`, que se registrará al aceptar (§8) |
+| Invariantes | Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002) (lo amplía), [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002) (precisa su enunciado con la escalera) e [INV-SEC-001](../invariants/security.md#inv-sec-001); asigna la familia nueva `INV-TRADE`, de [INV-TRADE-001](../invariants/trade.md#inv-trade-001) a [INV-TRADE-004](../invariants/trade.md#inv-trade-004) (§8) |
 
 ## 1. Objetivo
 
@@ -76,7 +76,9 @@ Una oferta va de una ciudad a otra (en el MVP cada jugador tiene una): **doy** u
 
 - Cada recurso de `economy.Resources()` aparece como mucho una vez y en un solo lado (Q4). Con dos recursos, eso es
   madera por piedra o piedra por madera; las listas admiten más recursos cuando los haya.
-- Cantidades enteras mayores que 0 en los dos lados (Q3): no hay regalos.
+- Cantidades enteras mayores que 0 en los dos lados (Q3): no hay regalos. El protocolo las acota a 1 000 000 por
+  línea, una cota técnica sin significado de juego ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)
+  §7).
 - Una oferta pendiente por par, en cualquier dirección (Q5). Vive `EO_TRADE_OFFER_HOURS` y caduca.
 - Proponer no reserva nada (Q2): se comprueba que quien ofrece tiene lo que da al proponer, y otra vez al aceptar.
   Mientras tanto puede gastarlo, y se lo pueden saquear.
@@ -120,7 +122,7 @@ Sólo códigos que ya existen en el catálogo (canon §16).
 | `INVALID_TARGET` | Jugador inexistente o propio; oferta inexistente, ajena o fuera de `PROPOSED`; responder a la oferta propia; retirar la ajena; ya hay una oferta pendiente entre los dos; otra orden en curso (`RN-TRADE-007`); un recurso repetido o en los dos lados. En `treaty.propose`, un tipo igual o inferior al tratado vigente (§4.1). El mensaje dice cuál. |
 | `TREATY_REQUIRED` | Proponer o aceptar sin un tratado `ACTIVE` entre los dos. Existe desde M7 con el mismo sentido: la orden necesita un tratado que no hay. |
 | `INSUFFICIENT_RESOURCES` | Al proponer, la ciudad de quien ofrece no tiene lo que da; al aceptar, alguna de las dos partes no alcanza (`RN-TRADE-003`). |
-| `INVALID_MESSAGE` | Una lista vacía, una cantidad que no es un entero positivo o un recurso fuera del catálogo: lo rechaza el esquema estricto antes de llegar al tick. |
+| `INVALID_MESSAGE` | Una lista vacía, una cantidad que no es un entero entre 1 y 1 000 000 o un recurso fuera del catálogo: lo rechaza el esquema estricto antes de llegar al tick. |
 
 ## 6. Eventos y contratos de red
 
@@ -172,7 +174,7 @@ cada ciudad lo que recibe y difunde `trade.update` y `city.update`; con un recha
 reservado y los depósitos. Lo que recibe una ciudad no se puede gastar hasta que la base lo confirma: nada se
 anuncia antes de existir.
 
-**Por qué hace falta un ADR (`ADR-032`).** La cola ordena los trabajos por clave y manda cada clave a una partición
+**Por qué hace falta un ADR ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)).** La cola ordena los trabajos por clave y manda cada clave a una partición
 ([ADR-013](../decisions/ADR-013-persistence-pipeline.md) §2.2): todo lo que escribe el almacén de una ciudad va por
 `city:<id>` y se ejecuta en el orden en que se encoló. Ese orden es lo que hace seguros los deltas versionados
 ([ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md) §3) y lo que evita un débito que la base todavía no
@@ -181,7 +183,7 @@ en particiones distintas. La propuesta es **un trabajo con dos claves**: la cola
 ejecuta cuando llega a la cabeza de las dos; la que llega antes espera a la otra. No puede haber un bloqueo cruzado
 porque todos los trabajos los encola el loop, uno detrás de otro: dos tratos que comparten ciudades quedan en el
 mismo orden en las dos particiones. El precio es que un worker espera mientras el otro llega, y con tratos de vez en
-cuando no se nota. El ADR dejará escritas tres alternativas descartadas:
+cuando no se nota. El ADR deja escritas, entre otras, tres alternativas descartadas:
 
 1. **Dos transacciones, una por ciudad**, con un estado intermedio durable. Una caída entre las dos deja recursos
    pagados y sin entregar, y el arranque tiene que terminar el trato y rehacer las reservas.
@@ -212,13 +214,15 @@ acepta) e [INV-SEC-001](../invariants/security.md#inv-sec-001) (el cliente nunca
 **Precisa** [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002): una oferta de tratado sólo convive con un
 tratado vigente si es de un escalón superior (§4.1), no sólo «si éste es un pacto y la oferta es una alianza».
 
-**Propone** una familia nueva, `INV-TRADE`, con su registro en `docs/invariants/trade.md` al aceptar:
+**Asigna** la familia nueva `INV-TRADE`, registrada en [../invariants/trade.md](../invariants/trade.md):
 
-- Un trato nunca crea ni destruye recursos: para cada recurso, lo que sale de una ciudad es exactamente lo que entra
-  en la otra, en la misma transacción.
-- Toda oferta `ACCEPTED` se aceptó con un tratado `ACTIVE` entre los dos, de cualquier escalón.
-- Entre dos jugadores hay como mucho una oferta `PROPOSED`.
-- Una oferta sólo la acepta o la rechaza el jugador que no la propuso, y sólo la retira quien la propuso.
+- [INV-TRADE-001](../invariants/trade.md#inv-trade-001) — un trato nunca crea ni destruye recursos: para cada
+  recurso, lo que sale de una ciudad es exactamente lo que entra en la otra, en la misma transacción.
+- [INV-TRADE-002](../invariants/trade.md#inv-trade-002) — toda oferta `ACCEPTED` se aceptó con un tratado `ACTIVE`
+  entre los dos, de cualquier escalón.
+- [INV-TRADE-003](../invariants/trade.md#inv-trade-003) — entre dos jugadores hay como mucho una oferta `PROPOSED`.
+- [INV-TRADE-004](../invariants/trade.md#inv-trade-004) — una oferta sólo la acepta o la rechaza el jugador que no la
+  propuso, y sólo la retira quien la propuso.
 
 ## 9. Tests esperados
 
@@ -231,12 +235,12 @@ tratado vigente si es de un escalón superior (§4.1), no sólo «si éste es un
 | contract / e2e | Los tres comandos, `trade.update` y `tradeOffers[]` contra el JSON Schema; un trato de punta a punta por WebSocket con dos jugadores, en el mismo commit que `trade.update` |
 | cliente | El formulario de la oferta con su motivo cuando está deshabilitado, la lista de ofertas y su caducidad; `scripts/smoke.mjs --comercio` |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-04)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué tratado deja comerciar? | **La escalera de §4.1**: `TRADE`, pacto y alianza dejan comerciar, y `TRADE` sólo no da paz. Alternativas: **un eje aparte**, con `TRADE` conviviendo con un pacto o una alianza, obliga a cambiar `INV-DIPLO-002` y su índice y a explicar dos tratados y dos preavisos por par; **comerciar sin tratado** con cualquiera es lo más simple, pero `TRADE` seguiría sin hacer nada y la diplomacia perdería su primer escalón. Comerciar sin paz es a propósito: puedes comprarle piedra a quien te saquea, que es el riesgo de Argentum. |
 | Q2 | ¿Se reserva lo que se ofrece? | **No.** Se comprueba al proponer y al aceptar; si al aceptar no alcanza, la aceptación falla y la oferta sigue pendiente. Reservar daría ofertas que nunca fallan, pero apartaría stock durante horas: el saqueo, las casas y el avance tendrían que saber qué parte del almacén está comprometida, y el suelo del saqueo (50) dejaría de significar lo que dice. |

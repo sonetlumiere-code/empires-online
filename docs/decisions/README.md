@@ -94,7 +94,7 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Treinta y una decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Treinta y dos decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
@@ -109,8 +109,9 @@ ADR-026, del mismo día, de cómo el saqueo resta del almacén sin poder duplica
 2026-11-03, de cómo los jugadores firman y rompen tratados en caliente; ADR-028, del mismo día, de cómo el
 jugador lee lo que le pasó mientras no estaba sin que el cursor esconda nada; ADR-029, del **2026-11-04**, de
 qué pasa con el límite de población cuando el asedio destruye una casa; ADR-030, del mismo día, de cómo la piedra
-comparte la capa del bosque y cómo una ciudad paga en dos recursos su avance de era; y ADR-031, también del
-2026-11-04, de por qué el tope de nodos del A\* sube a 50 000.
+comparte la capa del bosque y cómo una ciudad paga en dos recursos su avance de era; ADR-031, también del
+2026-11-04, de por qué el tope de nodos del A\* sube a 50 000; y ADR-032, del mismo día, de cómo un trato mueve
+los almacenes de dos ciudades en una transacción sin que la cola desordene sus escrituras.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-007, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-031,
 ADR-019, ADR-013 y ADR-018).
@@ -148,6 +149,7 @@ ADR-019, ADR-013 y ADR-018).
 | [029](ADR-029-population-over-limit-and-house-destruction.md) | Una ciudad puede quedar por encima de su límite de población; la base sólo impide crear por encima, y la destrucción de una casa baja el límite | Aceptado | `INV-CITY-002` pasa a «nada se crea por encima del límite»; el `CHECK` de población se cambia por un trigger que sólo rechaza subir la población por encima, con el mismo nombre de restricción; la carga deja de subir el límite y su recuento se exime con `eo.population_recount`; la destrucción es optimista, resta el bono según el estado en la base y se reencola si falla; el tile se libera con la confirmación; las casas `DESTROYED` conservan su fila y el único por tile pasa a parcial; el daño no se persiste; migración `000011`. |
 | [030](ADR-030-stone-layer-and-era-advance.md) | El terreno del tile decide su recurso; un coste puede ser de varios recursos, y el avance de era es un encargo de la ciudad con su propia fila | Aceptado | La capa de ADR-025 se generaliza a una instancia por terreno (`FOREST → WOOD`, `HILL → STONE`), con `hill_stone` hermana de `forest_wood`; `GATHER_STONE`; el stock de la RAM es por recurso y un coste es una lista que se debita entera o no se debita; `city_era_advances` en dos fases, con `CITY_BUSY` cruzado con el entrenamiento; el fin es optimista y sube el límite en `cap(to) − cap(from)` sólo si la ciudad seguía en `from`; la era nunca retrocede; migración `000012`. |
 | [031](ADR-031-pathfinding-node-cap-50k.md) | El tope de nodos del A\* pasa de 20 000 a 50 000 | Aceptado | Con 20 000 sólo el 80 % de la tierra llega a su colina más cercana; con 50 000, el 98 %. El peor caso de una búsqueda pasa de ~8 a ~20 ms, una orden de recoger lejana con su vuelta puede llevarse ~40 ms de un tick y la amplificación por conexión crece 2,5 veces; si el tick se resiente, lo siguiente es el A\* jerárquico (DEBT-04) o el pathfinding fuera del tick, no subir más el tope. Sustituye en parte a ADR-007. |
+| [032](ADR-032-trade-offers-and-two-key-jobs.md) | Un trato aceptado es una orden en dos fases que escribe dos almacenes en una transacción, y la cola admite trabajos con dos claves | Aceptado | La RAM decide las ofertas y reserva el par, como los tratados; aceptar reserva lo que da cada parte y lleva un delta versionado por ciudad y recurso en una sola transacción, que acredita en la RAM al confirmarse; un `Job` con dos claves entra en las dos particiones o en ninguna y se ejecuta cuando llega a la cabeza de las dos, sin bloqueo cruzado porque sólo encola el loop; caducidad optimista en la fase 5; la escalera `TRADE` < pacto < alianza; `trade_offers` y sus líneas en la migración `000013`; cantidades de 1 a 1 000 000. Amplía ADR-013 §2.2. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y

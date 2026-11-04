@@ -29,12 +29,12 @@ Corolario operativo: **un invariante nunca se comunica al jugador**. Si el servi
 INV-<AREA>-<NNN>
 ```
 
-- `<AREA>` ∈ `WORLD`, `PLAYER`, `CITY`, `UNIT`, `MOVE`, `PERSIST`, `SEC`, `TERR`, `SAFE`, `GARR`, `ECON`, `COMBAT`.
+- `<AREA>` ∈ `WORLD`, `PLAYER`, `CITY`, `UNIT`, `MOVE`, `PERSIST`, `SEC`, `TERR`, `SAFE`, `GARR`, `DIPLO`, `ECON`, `COMBAT`, `TRADE`.
 - `<NNN>` es un correlativo de tres dígitos con ceros a la izquierda, **asignado una sola vez y jamás reutilizado**.
 - Un invariante que deja de aplicar no se borra ni se renumera: se marca `DEROGADO` con la fecha y el ADR que lo deroga, y su número queda quemado.
 - Un invariante nuevo toma el siguiente número libre del área, aunque el catálogo quede desordenado temáticamente.
 
-Las siete primeras familias son las del canon §22. Las tres últimas —`TERR`, `SAFE`, `GARR`— se añadieron al aparecer las specs de territorio, safe zones y guarnición, que necesitaban propiedades que ninguna familia existente expresaba: la geometría de una región no es la del mundo, y el ocultamiento de una unidad no es su posición. Se registran en dos archivos nuevos, [territory.md](territory.md) (`TERR` y `SAFE`) y [diplomacy.md](diplomacy.md) (`GARR`), y quedan enlazadas desde este índice. La undécima, `ECON`, llegó con el primer slice de economía ([../specs/economy-wood.md](../specs/economy-wood.md)) y vive en [economy.md](economy.md): el stock de un recurso, la tarea de recolección y el límite de población que suben las casas no son propiedades de ninguna familia anterior. La duodécima, `COMBAT`, llegó con el slice de incursión ([../specs/combat-raid.md](../specs/combat-raid.md)) y vive en [combat.md](combat.md): la vida y la muerte de una unidad y el botín.
+Las siete primeras familias son las del canon §22. Las tres últimas —`TERR`, `SAFE`, `GARR`— se añadieron al aparecer las specs de territorio, safe zones y guarnición, que necesitaban propiedades que ninguna familia existente expresaba: la geometría de una región no es la del mundo, y el ocultamiento de una unidad no es su posición. Se registran en dos archivos nuevos, [territory.md](territory.md) (`TERR` y `SAFE`) y [diplomacy.md](diplomacy.md) (`GARR`), y quedan enlazadas desde este índice. La undécima, `ECON`, llegó con el primer slice de economía ([../specs/economy-wood.md](../specs/economy-wood.md)) y vive en [economy.md](economy.md): el stock de un recurso, la tarea de recolección y el límite de población que suben las casas no son propiedades de ninguna familia anterior. La duodécima, `COMBAT`, llegó con el slice de incursión ([../specs/combat-raid.md](../specs/combat-raid.md)) y vive en [combat.md](combat.md): la vida y la muerte de una unidad y el botín. `DIPLO` llegó con la diplomacia en caliente ([../specs/diplomacy.md](../specs/diplomacy.md)) y comparte archivo con `GARR`. La decimocuarta, `TRADE`, llegó con el slice de comercio ([../specs/trade.md](../specs/trade.md)) y vive en [trade.md](trade.md): lo que un trato mueve entre dos almacenes no es una propiedad del stock de una ciudad ni de un tratado.
 
 > **Regla de resolución de colisiones.** Este catálogo es el **único registro** de invariantes del proyecto. Un ID estable designa un solo invariante, aquí y en cualquier documento que lo cite. Las specs de `docs/specs/` **citan IDs, no los redefinen** (§8): si una spec necesita una propiedad nueva, se añade aquí primero y se numera continuando la familia por encima del máximo ya asignado. Un ID reutilizado con otro significado es un defecto de documentación tan grave como un invariante roto, porque hace que dos equipos lean lo mismo y entiendan cosas distintas.
 
@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**114 invariantes** —112 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en trece familias y once archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**118 invariantes** —116 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en catorce familias y doce archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -382,16 +382,25 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-COMBAT-004 | Ningún saqueo deja el almacén de una ciudad por debajo del suelo | ALTO | DOMAIN, TEST | ✓ | `TestElSaqueoRespetaElSuelo`, `TestDosSaqueadoresSeRepartenLoQueQuedaPorEncimaDelSuelo` |
 | INV-COMBAT-005 | Ningún golpe de saqueo o de asedio cae con el dueño del atacante ausente | ALTO | DOMAIN, TEST | ✓ | `TestElSaqueoTerminaConElDuenoAusente`, `TestElAsedioTerminaConElDuenoAusente` |
 
+### TRADE — [trade.md](trade.md)
+
+| ID | Invariante | Sev | Aplicación | Cob. | Test |
+|---|---|---|---|---|---|
+| INV-TRADE-001 | Un trato nunca crea ni destruye recursos | CRITICO | DB, DOMAIN, TEST | ○ | `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` (previsto) |
+| INV-TRADE-002 | Toda oferta aceptada se aceptó con un tratado vigente entre los dos | ALTO | DOMAIN, TEST | ○ | `TestAceptarSinTratadoSeRechaza` (previsto) |
+| INV-TRADE-003 | Entre dos jugadores, como mucho una oferta pendiente | ALTO | DB, DOMAIN, TEST | ○ | `Test_INV_TRADE_003_UnaOfertaPendientePorPar` (previsto) |
+| INV-TRADE-004 | Una oferta sólo la acepta o la rechaza su destinatario, y sólo la retira quien la hizo | CRITICO | DOMAIN, TEST | ○ | `TestSoloRespondeElDestinatarioYSoloRetiraQuienOfrece` (previsto) |
+
 ### Distribución
 
 Por severidad:
 
 | Severidad | Cantidad |
 |---|---|
-| CRITICO | 44 |
-| ALTO | 57 |
+| CRITICO | 46 |
+| ALTO | 59 |
 | MEDIO | 11 |
-| **Total** | **112** |
+| **Total** | **116** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -412,6 +421,7 @@ Por familia:
 | `INV-DIPLO` | 001–002 | 2 | [diplomacy.md](diplomacy.md) |
 | `INV-ECON` | 001–008 | 8 | [economy.md](economy.md) |
 | `INV-COMBAT` | 001–005 | 5 | [combat.md](combat.md) |
+| `INV-TRADE` | 001–004 | 4 | [trade.md](trade.md) |
 
 Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Hay dos números quemados, `INV-GARR-003`, derogado por [ADR-017](../decisions/ADR-017-garrison-commands.md), e `INV-CITY-009`, derogado por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md): conservan su fila y su ficha con la marca `DEROGADO`, y no se reutilizan. `INV-GARR-008` estuvo reservado hasta el 2026-11-03 y desde entonces es vigente, con fila y ficha.
 
@@ -421,15 +431,15 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 |---|---|---|
 | ✓ Cubierto | 112 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 4 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **114** | |
+| **Total** | **118** | |
 
-> **114 filas y 114 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **118 filas y 118 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-CITY-018` se registró el 2026-11-04 con SPEC-ECON-STONE y [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md), antes de escribir su código, como manda §8, y pasó a ✓ con su implementación ese mismo día; ese día también se amplió el enunciado de `INV-ECON-002`, `INV-ECON-005`, `INV-ECON-007` e `INV-ECON-008` a la piedra y al avance de era, y la distribución por severidad, que se había quedado en 109 vigentes, se recontó. Ninguna fila queda sin cobertura ni parcial. `INV-CITY-002` se reescribió el 2026-11-04 con [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) y SPEC-COMBAT-SIEGE, antes de escribir su código, como manda §8, y volvió a ✓ con su implementación ese mismo día. `INV-SEC-009` e `INV-PERSIST-006` se registraron el 2026-11-03 con SPEC-EVENT-LOG, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-GARR-008`, `INV-DIPLO-001` e `INV-DIPLO-002` se registraron el 2026-11-03 con SPEC-DIPLOMACY, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-COMBAT-004` e `INV-COMBAT-005` se registraron el 2026-11-03 con SPEC-COMBAT-PILLAGE, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-ECON-007` e `INV-ECON-008` se registraron el 2026-11-03 con SPEC-ECON-FOREST, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación. La familia `INV-COMBAT` se registró el 2026-11-02 antes de escribir su código, como manda §8, y pasó a ✓ con la implementación de SPEC-COMBAT-RAID; con ella, `INV-CITY-006` tiene por fin su test de rechazo: `unit.attack` es la primera acción hostil. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
+La familia `INV-TRADE` se registró el 2026-11-04 con SPEC-TRADE y [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md), antes de escribir su código, como manda §8: son las cuatro únicas filas sin cobertura, y pasarán a ✓ con la implementación de E10. El mismo día se precisaron `INV-DIPLO-002` (la escalera de tratados) e `INV-ECON-002` (el trato como débito con su efecto en otra ciudad). `INV-CITY-018` se registró el 2026-11-04 con SPEC-ECON-STONE y [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md), antes de escribir su código, como manda §8, y pasó a ✓ con su implementación ese mismo día; ese día también se amplió el enunciado de `INV-ECON-002`, `INV-ECON-005`, `INV-ECON-007` e `INV-ECON-008` a la piedra y al avance de era, y la distribución por severidad, que se había quedado en 109 vigentes, se recontó. `INV-CITY-002` se reescribió el 2026-11-04 con [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) y SPEC-COMBAT-SIEGE, antes de escribir su código, como manda §8, y volvió a ✓ con su implementación ese mismo día. `INV-SEC-009` e `INV-PERSIST-006` se registraron el 2026-11-03 con SPEC-EVENT-LOG, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-GARR-008`, `INV-DIPLO-001` e `INV-DIPLO-002` se registraron el 2026-11-03 con SPEC-DIPLOMACY, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-COMBAT-004` e `INV-COMBAT-005` se registraron el 2026-11-03 con SPEC-COMBAT-PILLAGE, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. `INV-ECON-007` e `INV-ECON-008` se registraron el 2026-11-03 con SPEC-ECON-FOREST, antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación. La familia `INV-COMBAT` se registró el 2026-11-02 antes de escribir su código, como manda §8, y pasó a ✓ con la implementación de SPEC-COMBAT-RAID; con ella, `INV-CITY-006` tiene por fin su test de rechazo: `unit.attack` es la primera acción hostil. Las siete de E1 —la familia `INV-ECON` e `INV-CITY-017`— se registraron antes de escribir su código, como manda §8, y pasaron a ✓ con la implementación de SPEC-ECON-WOOD, cada una con sus tests reales. Antes de ellas, las cinco que lo estaban eran de `INV-GARR` y describían efectos de una guarnición que ningún comando de red podía producir; con `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) la familia se reconcilió ficha por ficha, y sus filas citan ya los tests reales en lugar de los nombres `Test_INV_*` previstos. El proyecto nombra los tests en español y pone el ID del invariante en un comentario ([../testing/strategy.md](../testing/strategy.md)).
 
 La familia `INV-SAFE` y `INV-UNIT-008` pasaron de ○ a ✓ al implementarse las Safe Zones. Las familias `INV-TERR`, `INV-CITY`, `INV-PLAYER`, `INV-PERSIST`, `INV-UNIT`, `INV-SEC`, `INV-MOVE` e `INV-WORLD` se reconciliaron ficha por ficha con `EO-118`, y `INV-GARR` con los comandos de guarnición: el catálogo entero está reconciliado. La detección y la reparación al arrancar que prometían once fichas las hace desde `EO-119` la validación de carga (`internal/game/loadcheck`). `INV-CITY-006`, la última parcial, pasó a ✓ con la primera acción hostil (SPEC-COMBAT-RAID, [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). `INV-SEC-006` pasó a ✓ con el escaneo de secretos del repositorio, de su historia y del bundle del cliente (`scripts/scan-secrets.mjs`, en la CI). `INV-PLAYER-007` pasó a ✓ con [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md), que sacó la identidad del Game Server y trajo el test de los logs del handshake que le faltaba; con el mismo ADR nacieron `INV-PLAYER-009` (una cuenta sólo entra si su jugador existe) e `INV-SEC-008` (audiencias disjuntas), y con [ADR-020](../decisions/ADR-020-stale-pending-accounts.md), `INV-PLAYER-010` (una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe). En las familias reconciliadas, tabla y fichas nombran los mismos tests reales.
 
@@ -452,15 +462,16 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 |---|---|---|
 | [world.md](world.md) | `INV-WORLD` | 6 |
 | [player.md](player.md) | `INV-PLAYER` | 10 |
-| [city.md](city.md) | `INV-CITY` | 17 |
+| [city.md](city.md) | `INV-CITY` | 18 |
 | [units.md](units.md) | `INV-UNIT` | 11 |
 | [movement.md](movement.md) | `INV-MOVE` | 14 |
 | [persistence.md](persistence.md) | `INV-PERSIST` | 6 |
 | [security.md](security.md) | `INV-SEC` | 9 |
 | [territory.md](territory.md) | `INV-TERR`, `INV-SAFE` | 16 |
-| [diplomacy.md](diplomacy.md) | `INV-GARR` | 8 |
-| [economy.md](economy.md) | `INV-ECON` | 6 |
-| [combat.md](combat.md) | `INV-COMBAT` | 3 |
+| [diplomacy.md](diplomacy.md) | `INV-GARR`, `INV-DIPLO` | 11 |
+| [economy.md](economy.md) | `INV-ECON` | 8 |
+| [combat.md](combat.md) | `INV-COMBAT` | 5 |
+| [trade.md](trade.md) | `INV-TRADE` | 4 |
 
 ## 10. Documentos relacionados
 

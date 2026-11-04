@@ -58,7 +58,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Registro de sucesos | [event-log.md](event-log.md) | E7 Registro | Implemented | Lo que otros te hicieron y lo que tus unidades hicieron solas, leído de `world_events`, agrupado y con un cursor de lo visto; la ventana «Mientras no estabas» |
 | Combate: asedio | [combat-siege.md](combat-siege.md) | E8 Asedio | Implemented | Un `WARRIOR` junto a la muralla enemiga derriba una casa golpe a golpe; la ciudad pierde plazas y, por encima de su límite, conserva sus unidades pero no entrena |
 | Economía: piedra | [economy-stone.md](economy-stone.md) | E9 Piedra | Implemented | Piedra en los tiles de colina con la misma orden que la madera, su agotamiento y regeneración, y el avance de una ciudad a la Edad de Bronce pagando madera y piedra |
-| Comercio | [trade.md](trade.md) | E10 Comercio | Draft | Tratos «doy esto, pido aquello» entre dos ciudades con un tratado vigente, entregados en el acto en una transacción que mueve los dos almacenes; el tratado `TRADE` como primer escalón de la diplomacia |
+| Comercio | [trade.md](trade.md) | E10 Comercio | Accepted | Tratos «doy esto, pido aquello» entre dos ciudades con un tratado vigente, entregados en el acto en una transacción que mueve los dos almacenes; el tratado `TRADE` como primer escalón de la diplomacia |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
@@ -228,6 +228,9 @@ registrar** y ninguna spec debe darlas por definidas.
 La familia `INV-ECON`, de [economy-wood.md](economy-wood.md), se registra en
 [../invariants/economy.md](../invariants/economy.md): stock de recursos, tareas de recolección y el límite de
 población que suben los edificios.
+
+La familia `INV-TRADE`, de [trade.md](trade.md), se registra en [../invariants/trade.md](../invariants/trade.md): lo
+que un trato mueve entre dos almacenes y quién puede cerrar una oferta.
 
 **No existe `INV-PRESENCE`**: los invariantes de presencia se reparten entre `INV-PLAYER` (presencia del
 jugador, volátil, Redis) e `INV-CITY` (`presence_state` durable, PostgreSQL). Ver
