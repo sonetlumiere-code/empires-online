@@ -64,7 +64,7 @@ func TestTiposDeMensajePresentesEnElEsquema(t *testing.T) {
 		protocol.TypeUnitMoveAccepted, protocol.TypeUnitMoveRejected,
 		protocol.TypeUnitMovementStarted, protocol.TypeUnitMovementCompleted,
 		protocol.TypeUnitMovementCancelled,
-		protocol.TypeBuildingSpawn, protocol.TypeBuildingUpdate,
+		protocol.TypeBuildingSpawn, protocol.TypeBuildingUpdate, protocol.TypeBuildingDestroyed,
 		protocol.TypeForestUpdate, protocol.TypeTreatyUpdate, protocol.TypeEventLogPage,
 	}
 	for _, msgType := range serverTypes {
@@ -236,6 +236,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 		protocol.TypeUnitMove, protocol.TypeUnitCancelMove,
 		protocol.TypeUnitGarrison, protocol.TypeUnitUngarrison,
 		protocol.TypeUnitGather, protocol.TypeCityBuild, protocol.TypeCityTrain, protocol.TypeUnitAttack, protocol.TypeUnitPillage,
+		protocol.TypeUnitDemolish,
 		protocol.TypeTreatyPropose, protocol.TypeTreatyRespond, protocol.TypeTreatyCancel,
 		protocol.TypeSessionPing, protocol.TypeSessionView,
 	} {
@@ -245,7 +246,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 }
 
 func TestCatalogoDeComandosEsCerrado(t *testing.T) {
-	require.Len(t, protocol.ClientMessageTypes, 17)
+	require.Len(t, protocol.ClientMessageTypes, 18)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)

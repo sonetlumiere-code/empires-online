@@ -37,6 +37,8 @@ func TestClasificaCadaFilaParaQuienLaLee(t *testing.T) {
 		{"las mías matan una ajena", yo, eventlog.Event{Type: "UnitKilled", PlayerID: otro, Counterpart: yo}, eventlog.KindEnemyKilled, true},
 		{"me saquean", yo, eventlog.Event{Type: "CityPillaged", PlayerID: yo, Counterpart: otro}, eventlog.KindPillaged, true},
 		{"saqueo yo", yo, eventlog.Event{Type: "CityPillaged", PlayerID: otro, Counterpart: yo}, eventlog.KindPillageDone, true},
+		{"me derriban una casa", yo, eventlog.Event{Type: "BuildingDestroyed", PlayerID: yo, Counterpart: otro}, eventlog.KindHouseLost, true},
+		{"derribo yo", yo, eventlog.Event{Type: "BuildingDestroyed", PlayerID: otro, Counterpart: yo}, eventlog.KindHouseDestroyed, true},
 		{"una muerte sin autor", yo, eventlog.Event{Type: "UnitKilled", PlayerID: yo}, "", false},
 		{"un ataque sin consecuencia no entra (Q1)", yo, eventlog.Event{Type: "UnitAttacked", PlayerID: yo, Counterpart: otro}, "", false},
 
@@ -180,5 +182,26 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 11)
+	assert.Len(t, vistos, 13)
+}
+
+// SPEC-COMBAT-SIEGE §6: las casas que derriba un mismo atacante seguidas son una
+// entrada con cuántas fueron y el tile de la última; no llevan madera.
+func TestLasCasasDerribadasSeAgrupan(t *testing.T) {
+	b := eventlog.NewBuilder(yo, 0, 10*time.Minute, 50)
+	casa := func(id, at int64, x int32) eventlog.Event {
+		return eventlog.Event{ID: id, Type: "BuildingDestroyed", PlayerID: yo, Counterpart: otro, AtMs: at, X: x, Y: 179, HasTile: true}
+	}
+	require.True(t, b.Add(casa(12, t0, 452)))
+	require.True(t, b.Add(casa(11, t0-30_000, 450)))
+
+	entradas := b.Entries()
+	require.Len(t, entradas, 1)
+	e := entradas[0]
+	assert.Equal(t, eventlog.KindHouseLost, e.Kind)
+	assert.Equal(t, 2, e.Count)
+	assert.Equal(t, int64(12), e.ID)
+	assert.Equal(t, int64(0), e.Amount)
+	assert.Equal(t, [2]int32{452, 179}, [2]int32{e.X, e.Y})
+	assert.Empty(t, e.TreatyType)
 }

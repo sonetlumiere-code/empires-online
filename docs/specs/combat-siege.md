@@ -110,18 +110,27 @@ Cliente → servidor: `unit.demolish { unitId, buildingId }`, comando nuevo y es
 - `unit.movement.*` para la aproximación y `entity.update { status: ATTACKING }` del guerrero, sin cambios.
 - `building.update` gana el campo opcional `hp`, y `BuildingView` los opcionales `hp` y `maxHp` para el snapshot
   (`R-VER-2`): el cliente dibuja la vida de una casa dañada.
-- `building.destroyed { id, cityId }`, mensaje nuevo (`R-VER-3`), al chunk de la casa. No se añade `DESTROYED` a
-  `BuildingStatus`: un valor nuevo en un enum que el cliente ya valida cambia el contrato (`R-VER-4`).
+- `building.destroyed { id, cityId }`, mensaje nuevo (`R-VER-3`), al chunk de la casa. La destrucción no viaja como
+  un estado más de `BuildingStatus`: la casa deja de existir para el cliente, como una unidad muerta sale con
+  `entity.despawn`.
 - `city.update { populationLimit }` de la víctima, sin cambios, y el campo opcional nuevo `besiegedAtMs`, que sólo
   recibe el dueño, como `pillagedAtMs` (Q9).
 
 Con ellos, el protocolo v1 pasa a 18 mensajes cliente→servidor y 20 servidor→cliente.
 
 Evento de dominio en `world_events`: `BuildingDestroyed` al destruirse, con el guerrero, la casa, su tile, si
-estaba completa, `counterpart_player_id` (el atacante) y `atMs`, `unitType` y `byPlayerId` en el payload
-([ADR-028](../decisions/ADR-028-event-log-from-world-events.md)). Entra en `eventlog.EventTypes` y en `Classify`:
-la víctima ve «smoke_runner derribó 2 casas de tu ciudad», agrupado como los saqueos. Los golpes que no destruyen
-no se escriben, como `UnitAttacked` no sale en el registro (SPEC-EVENT-LOG Q1).
+estaba completa, `counterpart_player_id` (el atacante) y `atMs` y `attackerPlayerId` en el payload, como
+`CityPillaged` ([ADR-028](../decisions/ADR-028-event-log-from-world-events.md)). Entra en `eventlog.EventTypes` y en
+`Classify`, con dos tipos de entrada, como los saqueos: `HOUSE_LOST` para la víctima («Villa Norte derribó 2 de tus
+casas») y `HOUSE_DESTROYED` para el autor («Tus guerreros derribaron 1 casa de Villa Norte»), agrupadas por otro
+jugador. Los golpes que no destruyen no se escriben, como `UnitAttacked` no sale en el registro (SPEC-EVENT-LOG Q1).
+
+**Precisión (2026-11-04).** La propuesta decía que `DESTROYED` no podía entrar en `BuildingStatus` porque un valor
+nuevo de enum rompe v1 (`R-VER-4`); el proyecto ya había añadido valores así como aditivos (`ATTACKING`, `WARRIOR`,
+`DEAD` en E2), así que el motivo real del mensaje propio es el de arriba. También decía que el payload llevaría
+`unitType` y `byPlayerId`: lleva `attackerPlayerId`, la clave que ya usa `CityPillaged`, y el registro no necesita el
+tipo de unidad del atacante. Y sólo nombraba la entrada de la víctima: la del autor la exige `RN-LOG-001`, que da
+las muertes y los saqueos a los dos.
 
 Cliente: con un guerrero seleccionado, un clic sobre una casa de una ciudad **ajena** es la orden de derribarla; un
 clic sobre el resto de su 3 × 3 (el centro o un tile sin casa) sigue siendo saquear (Q10). La casa dañada lleva una

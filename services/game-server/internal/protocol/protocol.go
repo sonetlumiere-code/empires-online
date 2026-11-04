@@ -37,6 +37,8 @@ const (
 	TypeUnitAttack = "unit.attack"
 	// Saqueo (SPEC-COMBAT-PILLAGE).
 	TypeUnitPillage = "unit.pillage"
+	// Asedio (SPEC-COMBAT-SIEGE).
+	TypeUnitDemolish = "unit.demolish"
 	// Diplomacia (SPEC-DIPLOMACY).
 	TypeTreatyPropose = "treaty.propose"
 	TypeTreatyRespond = "treaty.respond"
@@ -64,6 +66,7 @@ const (
 	TypeUnitMovementCancelled = "unit.movement.cancelled"
 	TypeBuildingSpawn         = "building.spawn"
 	TypeBuildingUpdate        = "building.update"
+	TypeBuildingDestroyed     = "building.destroyed"
 	TypeForestUpdate          = "forest.update"
 	TypeTreatyUpdate          = "treaty.update"
 	TypeEventLogPage          = "event_log.page"
@@ -83,6 +86,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeCityTrain:      true,
 	TypeUnitAttack:     true,
 	TypeUnitPillage:    true,
+	TypeUnitDemolish:   true,
 	TypeTreatyPropose:  true,
 	TypeTreatyRespond:  true,
 	TypeTreatyCancel:   true,
@@ -228,6 +232,9 @@ type BuildingView struct {
 	Y             int32  `json:"y"`
 	Status        string `json:"status"`
 	CompletesAtMs int64  `json:"completesAtMs"`
+	// HP y MaxHP son su vida frente a un asedio (SPEC-COMBAT-SIEGE §4.2).
+	HP    int32 `json:"hp"`
+	MaxHP int32 `json:"maxHp"`
 }
 
 // CityView es el estado observable de una ciudad.
@@ -321,6 +328,14 @@ type UnitAttackPayload struct {
 type UnitPillagePayload struct {
 	UnitID int64 `json:"unitId"`
 	CityID int64 `json:"cityId"`
+}
+
+// UnitDemolishPayload ordena a un guerrero propio derribar una casa ajena.
+// Sólo quién y qué casa: el tile de llegada, la vida y el daño son del
+// servidor (SPEC-COMBAT-SIEGE).
+type UnitDemolishPayload struct {
+	UnitID     int64 `json:"unitId"`
+	BuildingID int64 `json:"buildingId"`
 }
 
 // TreatyProposePayload propone un tratado a otro jugador (SPEC-DIPLOMACY).
@@ -499,6 +514,9 @@ type CityUpdatePayload struct {
 	// PillagedAtMs es el instante del último golpe de saqueo. Sólo lo recibe
 	// el dueño de la ciudad (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
 	PillagedAtMs *int64 `json:"pillagedAtMs,omitempty"`
+	// BesiegedAtMs es el instante del último golpe de asedio a una casa de la
+	// ciudad. Sólo lo recibe su dueño (SPEC-COMBAT-SIEGE RN-COMBAT-038).
+	BesiegedAtMs *int64 `json:"besiegedAtMs,omitempty"`
 }
 
 // BuildingSpawnPayload anuncia un edificio.
@@ -520,6 +538,15 @@ type ForestView struct {
 type BuildingUpdatePayload struct {
 	ID     int64  `json:"id"`
 	Status string `json:"status"`
+	// HP es su vida tras un golpe de asedio, o al olvidarse el daño.
+	HP *int32 `json:"hp,omitempty"`
+}
+
+// BuildingDestroyedPayload anuncia un edificio derribado: el cliente lo quita
+// (SPEC-COMBAT-SIEGE §6).
+type BuildingDestroyedPayload struct {
+	ID     int64 `json:"id"`
+	CityID int64 `json:"cityId"`
 }
 
 type TerritoryUpdatePayload struct {

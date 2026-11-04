@@ -83,7 +83,7 @@ El caso «durante una transferencia» merece énfasis: los cambios de ownership 
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | M2; reescrito en E8 por [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) |
 | Política ante violación | REJECT |
-| Cobertura | **Parcial**: lo que no cambia con E8 lo cubren `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` y `TestEntrenarSinPlazaSeRechazaSinDebitar` (integration), `TestLimiteDePoblacion` (`internal/domain/city`), `TestCanTrainRespondeEnElOrdenDeLaSpec` (`internal/domain/production`) y `TestRechazosDeEntrenamiento` (simulation). Previstos con E8: el trigger deja bajar el límite por debajo de la población y rechaza subirla por encima; una ciudad por encima de su límite no entrena; la carga ya no sube el límite |
+| Cobertura | **Cubierto**: `DB` por `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas`, `TestEntrenarSinPlazaSeRechazaSinDebitar`, `TestElTriggerDejaBajarElLimiteYNoSubirLaPoblacionPorEncima`, `TestSoloElRecuentoDeclaradoSubeLaPoblacionPorEncima` y `TestLaCargaRecuentaPorEncimaDelLimiteSinSubirlo` (integration); el predicado por `TestLimiteDePoblacion` (`internal/domain/city`), `TestCanTrainRespondeEnElOrdenDeLaSpec` (`internal/domain/production`), `TestRechazosDeEntrenamiento` y `TestUnaCiudadPorEncimaDeSuLimiteConservaYNoEntrena` (simulation); la carga por `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` y `TestUnaCiudadPorEncimaDeSuLimiteNoEsUnHallazgo` (`internal/game/loadcheck`) |
 
 **Enunciado.** Para toda ciudad, `population >= 0`, y ninguna transacción que aumente `population` la deja por encima de `population_limit`.
 
@@ -104,11 +104,14 @@ El fallo típico no es un olvido de comprobar, sino un **TOCTOU**: dos comandos 
 
 **Cómo se verifica.**
 
-- `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration) — `population > population_limit` al insertar falla por `cities_population_within_limit` y `population = -1` por `cities_population_check`, el nombre que PostgreSQL da al `CHECK` de columna. Con E8 añade que bajar el límite por debajo de la población pasa y subir la población por encima no.
+- `TestLasRestriccionesDeCiudadesRechazanFilasInvalidas` (integration) — `population > population_limit` al insertar falla por `cities_population_within_limit` y `population = -1` por `cities_population_check`, el nombre que PostgreSQL da al `CHECK` de columna; un límite negativo sigue fallando por su propio `CHECK`, aunque el trigger vaya antes.
+- `TestElTriggerDejaBajarElLimiteYNoSubirLaPoblacionPorEncima` (integration) — bajar el límite por debajo de la población pasa, bajar la población pasa, subirla mientras siga por encima falla con `cities_population_within_limit`, y entrenar en esa ciudad es `city.ErrPopulationLimit` sin debitar.
 - `TestLimiteDePoblacion` (unit, `internal/domain/city`) — `HasPopulationRoom` deja de admitir unidades exactamente en el límite.
 - `TestCanTrainRespondeEnElOrdenDeLaSpec` (unit, `internal/domain/production`) y `TestRechazosDeEntrenamiento` (simulation) — sin plaza, `city.train` se rechaza con `POPULATION_LIMIT_REACHED`; el de dominio comprueba además que la población se mira antes que la madera.
 - `TestEntrenarSinPlazaSeRechazaSinDebitar` (integration) — con el límite rebajado a mano por debajo de la reserva, la base rechaza el encargo y no debita la madera: es la última barrera.
-- Previstos con E8: una ciudad que pierde una casa con la población al tope conserva sus unidades y no entrena (simulation); la carga de una ciudad por encima de su límite no sube el límite ni pierde unidades (`internal/game/loadcheck`), y su recuento pasa el trigger (integration).
+- `TestUnaCiudadPorEncimaDeSuLimiteConservaYNoEntrena` (simulation) — con la población al tope, perder una casa deja 25 sobre 20: nadie muere, la producción en curso nace y un `city.train` nuevo es `POPULATION_LIMIT_REACHED`.
+- `TestUnaCiudadPorEncimaDelLimiteDeSuEraNoPierdeUnidades` y `TestUnaCiudadPorEncimaDeSuLimiteNoEsUnHallazgo` (`internal/game/loadcheck`) — la carga deja el límite en el de su era y sus casas, no en el recuento, y una ciudad por encima no es un hallazgo.
+- `TestSoloElRecuentoDeclaradoSubeLaPoblacionPorEncima` y `TestLaCargaRecuentaPorEncimaDelLimiteSinSubirlo` (integration) — sólo la transacción que declara el recuento sube la población por encima del límite, y la carga real de una ciudad con 23 unidades y límite 20 la deja en 23 y 20.
 
 **Violación en runtime.** Imposible en disco: el trigger y el `CHECK` de columna la rechazan, y en el alta eso aborta la transacción entera. Una ciudad por encima de su límite **no** es una violación: es el estado legal de una ciudad que perdió casas o cuya era bajó de `population_cap` (una fila de `eras` editada). La validación de carga ya no lo repara: deja `population_limit` en el de su era y sus casas ([INV-ECON-004](economy.md#inv-econ-004)) y `population` en el recuento ([INV-CITY-017](#inv-city-017)).
 

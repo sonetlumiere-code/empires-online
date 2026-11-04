@@ -149,6 +149,12 @@ export const BuildingView = z.object({
   status: BuildingStatus,
   /** Instante absoluto en que la obra termina (o terminó). */
   completesAtMs: EpochMs,
+  /**
+   * Vida frente a un asedio y su máximo (SPEC-COMBAT-SIEGE §4.2). El daño se olvida
+   * a los minutos sin golpes: con `hp < maxHp` la casa está dañada.
+   */
+  hp: z.number().int().min(0).optional(),
+  maxHp: z.number().int().min(1).optional(),
 });
 export type BuildingView = z.infer<typeof BuildingView>;
 
@@ -244,6 +250,8 @@ export const EventLogKind = z.enum([
   'ENEMY_KILLED',
   'PILLAGED',
   'PILLAGE_DONE',
+  'HOUSE_LOST',
+  'HOUSE_DESTROYED',
   'TREATY_OFFERED',
   'TREATY_WITHDRAWN',
   'TREATY_ACCEPTED',

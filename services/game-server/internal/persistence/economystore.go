@@ -84,6 +84,21 @@ func (e *EconomyStore) BirthUnit(ctx context.Context, b simulation.Birth) (int64
 	return e.repo.BirthUnit(ctx, b.CityID, b.PlayerID, b.Type, b.At, b.HP, b.Tick)
 }
 
+// DestroyBuilding derriba una casa (ADR-029 §4). Una casa que la base no tiene
+// no hay que derribarla: la escritura termina sin error en vez de reintentarse
+// en cada volcado.
+func (e *EconomyStore) DestroyBuilding(ctx context.Context, d simulation.BuildingDestruction) error {
+	err := e.repo.DestroyBuilding(ctx, postgres.BuildingDestruction{
+		BuildingID: d.BuildingID, CityID: d.CityID, VictimPlayer: d.VictimPlayer,
+		AttackerPlayer: d.AttackerPlayer, AttackerID: d.AttackerID, Type: d.Type,
+		At: d.At, Bonus: d.Bonus, Tick: d.Tick, AtMs: d.AtMs,
+	})
+	if errors.Is(err, postgres.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
 // FinishRecoveredTasks escribe, al arrancar, las tareas que la recuperación
 // terminó (simulation.ReconcileTasks).
 func (e *EconomyStore) FinishRecoveredTasks(ctx context.Context, writes []simulation.TaskWrite) error {

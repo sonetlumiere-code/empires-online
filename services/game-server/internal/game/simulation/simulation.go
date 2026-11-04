@@ -88,6 +88,9 @@ type Deps struct {
 	// valores por defecto, 5 y 50.
 	PillageWoodPerHit int32
 	PillageStockFloor int64
+	// SiegeDamageReset es lo que tarda en olvidarse el daño de una casa sin
+	// golpes (SPEC-COMBAT-SIEGE RN-COMBAT-032). Cero: el valor por defecto, 5 min.
+	SiegeDamageReset time.Duration
 	// TreatyOfferTTL, TreatyBreakNotice y TreatyRetry son la vida de una oferta,
 	// el preaviso de una ruptura y la espera tras un rechazo (SPEC-DIPLOMACY
 	// §10). Cero: los valores por defecto, 24 h, 15 min y 10 min.
@@ -209,6 +212,12 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handlePillageCity(c)
 	case PillageResolved:
 		s.handlePillageResolved(c)
+	case DemolishBuilding:
+		s.handleDemolishBuilding(c)
+	case BuildingDestroyResolved:
+		s.handleBuildingDestroyResolved(c)
+	case BuildingDestroyPersistFailed:
+		s.handleBuildingDestroyPersistFailed(c)
 	case ProposeTreaty:
 		s.handleProposeTreaty(c)
 	case RespondTreaty:
@@ -665,6 +674,8 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	nowMs := now.UnixMilli()
 	s.advanceTasks(nowMs)
 	s.completeBuildings(nowMs)
+	// Las casas dañadas que llevan un rato sin golpes (RN-COMBAT-032).
+	s.forgetSiegeDamage(nowMs)
 	s.completeProductions(nowMs)
 	// El bosque que vuelve a crecer (RN-ECON-016).
 	s.regrowForests(nowMs)
@@ -837,6 +848,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushFinishes()
 	s.flushStocks()
 	s.flushCompletions()
+	s.flushDestructions()
 	s.flushDeaths()
 
 	dirty := s.state.DrainDirty()

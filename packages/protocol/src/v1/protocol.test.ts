@@ -163,6 +163,57 @@ describe('saqueo (SPEC-COMBAT-PILLAGE)', () => {
   });
 });
 
+describe('asedio (SPEC-COMBAT-SIEGE)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+
+  it('acepta unit.demolish con guerrero y casa, y nada más', () => {
+    expect(parseClientMessage({
+      v: 1, type: 'unit.demolish', requestId: uuid, payload: { unitId: 42, buildingId: 3 },
+    }).ok).toBe(true);
+    for (const extra of [{ damage: 150 }, { target: { x: 1, y: 1 } }, { cityId: 7 }]) {
+      expect(parseClientMessage({
+        v: 1, type: 'unit.demolish', requestId: uuid, payload: { unitId: 42, buildingId: 3, ...extra },
+      })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+    expect(parseClientMessage({
+      v: 1, type: 'unit.demolish', requestId: uuid, payload: { unitId: 42 },
+    }).ok).toBe(false);
+  });
+
+  it('acepta la vida en building.update y en la vista, y rechaza la negativa', () => {
+    expect(parseServerMessage({
+      ...env, type: 'building.update', payload: { id: 1, status: 'COMPLETE', hp: 142 },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'building.update', payload: { id: 1, status: 'COMPLETE', hp: -1 },
+    }).ok).toBe(false);
+    expect(parseServerMessage({
+      ...env, type: 'building.spawn',
+      payload: {
+        building: {
+          id: 1, cityId: 7, type: 'HOUSE', x: 9, y: 10, status: 'COMPLETE',
+          completesAtMs: 1_757_376_015_000, hp: 150, maxHp: 150,
+        },
+      },
+    }).ok).toBe(true);
+  });
+
+  it('acepta building.destroyed y el aviso besiegedAtMs', () => {
+    expect(parseServerMessage({
+      ...env, type: 'building.destroyed', payload: { id: 1, cityId: 7 },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'building.destroyed', payload: { id: 1 },
+    }).ok).toBe(false);
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, besiegedAtMs: 1_757_376_000_500 },
+    }).ok).toBe(true);
+    expect(parseServerMessage({
+      ...env, type: 'city.update', payload: { id: 7, besiegedAtMs: -1 },
+    }).ok).toBe(false);
+  });
+});
+
 describe('diplomacia (SPEC-DIPLOMACY)', () => {
   const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 
@@ -231,6 +282,9 @@ describe('registro (SPEC-EVENT-LOG)', () => {
       { ...entry, kind: 'UNIT_LOST', unitType: 'VILLAGER', amount: undefined },
       { ...entry, kind: 'TREATY_BREAK_ANNOUNCED', treatyType: 'NON_AGGRESSION', breaksAtMs: 1_757_376_900_000, otherCityId: null, otherCityName: null },
       { ...entry, kind: 'TREATY_OFFER_EXPIRED', treatyType: 'ALLIANCE', proposedByMe: true },
+      // SPEC-COMBAT-SIEGE: casas derribadas, sufridas y hechas.
+      { ...entry, kind: 'HOUSE_LOST', amount: undefined, count: 2 },
+      { ...entry, kind: 'HOUSE_DESTROYED', amount: undefined },
     ];
     for (const e of otras) {
       expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [e], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(true);

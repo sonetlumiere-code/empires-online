@@ -22,6 +22,10 @@ const (
 	KindPillaged Kind = "PILLAGED"
 	// KindPillageDone es madera que una unidad propia robó a otro.
 	KindPillageDone Kind = "PILLAGE_DONE"
+	// KindHouseLost es una casa propia derribada (SPEC-COMBAT-SIEGE).
+	KindHouseLost Kind = "HOUSE_LOST"
+	// KindHouseDestroyed es una casa ajena que derribaron las unidades propias.
+	KindHouseDestroyed Kind = "HOUSE_DESTROYED"
 	// KindTreatyOffered es una oferta recibida.
 	KindTreatyOffered Kind = "TREATY_OFFERED"
 	// KindTreatyWithdrawn es una oferta recibida que el otro retiró.
@@ -42,7 +46,7 @@ const (
 // del protocolo es el mismo (lo vigila el contract test).
 func Kinds() []Kind {
 	return []Kind{
-		KindUnitLost, KindEnemyKilled, KindPillaged, KindPillageDone,
+		KindUnitLost, KindEnemyKilled, KindPillaged, KindPillageDone, KindHouseLost, KindHouseDestroyed,
 		KindTreatyOffered, KindTreatyWithdrawn, KindTreatyAccepted, KindTreatyRejected,
 		KindTreatyOfferExpired, KindTreatyBreakAnnounced, KindTreatyEnded,
 	}
@@ -52,6 +56,7 @@ func Kinds() []Kind {
 const (
 	EventUnitKilled           = "UnitKilled"
 	EventCityPillaged         = "CityPillaged"
+	EventBuildingDestroyed    = "BuildingDestroyed"
 	EventTreatyProposed       = "TreatyProposed"
 	EventTreatyWithdrawn      = "TreatyWithdrawn"
 	EventTreatyAccepted       = "TreatyAccepted"
@@ -65,7 +70,7 @@ const (
 // lee éstos. UnitAttacked no está (SPEC-EVENT-LOG Q1).
 func EventTypes() []string {
 	return []string{
-		EventUnitKilled, EventCityPillaged,
+		EventUnitKilled, EventCityPillaged, EventBuildingDestroyed,
 		EventTreatyProposed, EventTreatyWithdrawn, EventTreatyAccepted, EventTreatyRejected,
 		EventTreatyExpired, EventTreatyBreakAnnounced, EventTreatyBroken,
 	}
@@ -148,6 +153,11 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindPillaged, other, true
 		}
 		return KindPillageDone, other, true
+	case EventBuildingDestroyed:
+		if e.PlayerID == viewer {
+			return KindHouseLost, other, true
+		}
+		return KindHouseDestroyed, other, true
 	}
 
 	// Un tratado: no entra lo que el propio jugador ordenó.
@@ -270,6 +280,8 @@ func (b *Builder) Add(e Event) bool {
 	case KindPillaged, KindPillageDone:
 		entry.Amount = e.Amount
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
+	case KindHouseLost, KindHouseDestroyed:
+		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindTreatyBreakAnnounced:
 		entry.TreatyType = e.TreatyType
 		entry.BreaksAtMs = e.BreaksAtMs
@@ -297,7 +309,7 @@ func (b *Builder) MinID() int64 { return b.minID }
 
 func isTreaty(k Kind) bool {
 	switch k {
-	case KindUnitLost, KindEnemyKilled, KindPillaged, KindPillageDone:
+	case KindUnitLost, KindEnemyKilled, KindPillaged, KindPillageDone, KindHouseLost, KindHouseDestroyed:
 		return false
 	}
 	return true

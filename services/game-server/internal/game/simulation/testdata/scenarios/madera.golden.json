@@ -1665,7 +1665,9 @@
           "x": 9,
           "y": 9,
           "status": "UNDER_CONSTRUCTION",
-          "completesAtMs": 1757376083000
+          "completesAtMs": 1757376083000,
+          "hp": 150,
+          "maxHp": 150
         }
       }
     },

@@ -11,6 +11,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
@@ -29,7 +30,7 @@ const (
 	EventBuildingCompleted = "BuildingCompleted"
 	// EventBuildingDestroyed es una casa derribada por un asedio
 	// (SPEC-COMBAT-SIEGE, ADR-029 §4). Entra en el registro (ADR-028).
-	EventBuildingDestroyed = "BuildingDestroyed"
+	EventBuildingDestroyed = eventlog.EventBuildingDestroyed
 	EventTrainingOrdered   = "TrainingOrdered"
 	EventUnitTrained       = "UnitTrained"
 )

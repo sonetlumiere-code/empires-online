@@ -52,6 +52,8 @@ jugador se nombra por su ciudad, como en los tratados (`otherCityName`), y el lu
 | Unidad ajena abatida por las tuyas | `UnitKilled`, autor tú | «Tus guerreros mataron a 1 guerrero de Villa Norte» |
 | Saqueo sufrido | `CityPillaged`, víctima tú | «Villa Norte te robó 85 de madera» |
 | Saqueo hecho | `CityPillaged`, autor tú | «Tu guerrero robó 40 de madera a Villa Norte» |
+| Casa derribada (desde E8) | `BuildingDestroyed`, víctima tú | «Villa Norte derribó 2 de tus casas» |
+| Casa derribada por los tuyos (desde E8) | `BuildingDestroyed`, autor tú | «Tus guerreros derribaron 1 casa de Villa Norte» |
 | Oferta recibida o retirada | `TreatyProposed` y `TreatyWithdrawn` de la otra parte | «Villa Norte te ofrece un pacto de no agresión» |
 | Respuesta a tu oferta | `TreatyAccepted`, `TreatyRejected` | «Villa Norte aceptó tu alianza» |
 | Oferta caducada | `TreatyExpired` desde `PROPOSED` | «Tu oferta a Villa Norte caducó sin respuesta» |

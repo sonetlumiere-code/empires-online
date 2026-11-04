@@ -339,6 +339,7 @@ func run() error {
 		CombatLeashTiles:       cfg.CombatLeashTiles,
 		PillageWoodPerHit:      cfg.PillageWoodPerHit,
 		PillageStockFloor:      cfg.PillageStockFloor,
+		SiegeDamageReset:       cfg.SiegeDamageReset,
 		TreatyOfferTTL:         cfg.TreatyOfferTTL,
 		TreatyBreakNotice:      cfg.TreatyBreakNotice,
 		TreatyRetry:            cfg.TreatyRetry,

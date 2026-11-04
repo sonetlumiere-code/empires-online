@@ -71,8 +71,8 @@ ciudad de la casa como objetivo.
 **Cómo se verifica.** `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` (objetivo oculto, dueño
 protegido, tratado) y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (la revalidación en cada
 golpe), y desde E3 `TestUnIncursorProtegidoDejaDeGolpear` y `TestUnJugadorProtegidoNoPuedeAtacar` (la protección del
-atacante, `RN-COMBAT-018`) — **existen y pasan**, en `internal/game/simulation`. El asedio, previsto con E8: rechazos
-de `unit.demolish` y revalidación en cada golpe.
+atacante, `RN-COMBAT-018`) — **existen y pasan**, en `internal/game/simulation`. Desde E8, `TestRechazosDelAsedio` y
+`TestLaProteccionAMitadDelAsedioLoTermina` (la revalidación en cada golpe de asedio; quitarla lo pone en rojo).
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse en esas condiciones se
 descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.
@@ -164,7 +164,8 @@ termina el saqueo (`RN-COMBAT-025`). Desde E8 hace lo mismo antes de cada golpe 
 
 **Cómo se verifica.** `TestElSaqueoTerminaConElDuenoAusente` — **existe y pasa**: dentro del margen de reconexión el
 saqueo sigue; con la ciudad del saqueador `OFFLINE_PENDING`, termina y no hay más golpes. Quitar la comprobación lo
-pone en rojo. El asedio, previsto con E8: termina al ausentarse el dueño del atacante.
+pone en rojo. Desde E8, `TestElAsedioTerminaConElDuenoAusente` hace lo mismo con el asedio, y quitar la comprobación
+también lo pone en rojo.
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse con el dueño ausente se descarta
 y se registra `invariant_violation` con `inv_id=INV-COMBAT-005`.

@@ -65,7 +65,7 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 			payload.Cities = append(payload.Cities, s.state.cityViewOf(c))
 		}
 		for _, b := range s.state.buildingsInChunk(ch.CX, ch.CY) {
-			payload.Buildings = append(payload.Buildings, BuildingView(b))
+			payload.Buildings = append(payload.Buildings, s.state.buildingView(b))
 		}
 		// RN-ECON-018: la madera del bosque es pública.
 		payload.Forests = append(payload.Forests, s.state.forestsInChunk(ch.CX, ch.CY, nowMs)...)

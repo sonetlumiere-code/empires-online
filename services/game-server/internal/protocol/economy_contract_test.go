@@ -66,9 +66,10 @@ func TestLosMensajesDeEdificioSonLosDelEsquema(t *testing.T) {
 	vista := dig(t, root, spawn, "properties", "payload", "properties", "building").(map[string]any)
 	declaradas := clavesDe(dig(t, root, vista, "properties").(map[string]any))
 	b := protocol.BuildingView{ID: 1, CityID: 2, Type: string(building.TypeHouse), X: 3, Y: 4,
-		Status: string(building.StatusUnderConstruction), CompletesAtMs: 5}
+		Status: string(building.StatusUnderConstruction), CompletesAtMs: 5, HP: 150, MaxHP: 150}
 	require.Equal(t, declaradas, clavesDe(serializado(t, b)))
-	require.Equal(t, declaradas, requeridas(t, vista))
+	// La vida (SPEC-COMBAT-SIEGE) es opcional en el esquema; el resto, obligatorio.
+	require.Equal(t, []string{"cityId", "completesAtMs", "id", "status", "type", "x", "y"}, requeridas(t, vista))
 
 	estados := enumOf(t, dig(t, root, vista, "properties", "status"))
 	sort.Strings(estados)
@@ -79,8 +80,9 @@ func TestLosMensajesDeEdificioSonLosDelEsquema(t *testing.T) {
 
 	root, update := serverVariant(t, protocol.TypeBuildingUpdate)
 	payload := dig(t, root, update, "properties", "payload").(map[string]any)
+	hp := int32(142)
 	require.Equal(t, clavesDe(dig(t, root, payload, "properties").(map[string]any)),
-		clavesDe(serializado(t, protocol.BuildingUpdatePayload{ID: 1, Status: string(building.StatusComplete)})))
+		clavesDe(serializado(t, protocol.BuildingUpdatePayload{ID: 1, Status: string(building.StatusComplete), HP: &hp})))
 
 	// El snapshot trae la misma vista de edificio.
 	root, snapshot := serverVariant(t, protocol.TypeWorldSnapshot)

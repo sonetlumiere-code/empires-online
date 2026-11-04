@@ -129,6 +129,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_COMBAT_LEASH_TILES` | int | `8` | 1–1024 | No | No | Correa de la respuesta automática: el guerrero abandona cuando el atacante queda más lejos de su puesto y vuelve a él (`RN-COMBAT-017`). |
 | `EO_PILLAGE_WOOD_PER_HIT` | int | `5` | 1–1000 | No | No | Madera que roba cada golpe de saqueo (SPEC-COMBAT-PILLAGE §4.2, `RN-COMBAT-021`). |
 | `EO_PILLAGE_STOCK_FLOOR` | int | `50` | 1–1000000 | No | No | Suelo del almacén: ningún saqueo lo deja por debajo (`RN-COMBAT-023`, `INV-COMBAT-004`). |
+| `EO_SIEGE_DAMAGE_RESET_SECONDS` | int | `300` | 1–86400 | No | No | Segundos sin golpes tras los que una casa dañada por un asedio vuelve a estar entera; un reinicio también la deja entera (SPEC-COMBAT-SIEGE `RN-COMBAT-032`). |
 | `EO_TREATY_OFFER_HOURS` | int | `24` | 1–720 | No | No | Vida de una oferta de tratado sin respuesta; al vencer pasa a `EXPIRED` (`RN-DIPLO-007`). |
 | `EO_TREATY_BREAK_NOTICE_MINUTES` | int | `15` | 1–1440 | No | No | Preaviso de una ruptura: el tratado sigue `ACTIVE`, con la paz y las guarniciones, hasta que vence (`RN-DIPLO-004`). |
 | `EO_TREATY_RETRY_MINUTES` | int | `10` | 1–1440 | No | No | Tras un rechazo, cuánto espera quien propuso para volver a proponer al mismo jugador (`RN-DIPLO-008`). |

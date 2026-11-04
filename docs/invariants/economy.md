@@ -219,8 +219,11 @@ escribir suelto, una casa se podría cobrar dos veces o no cobrarse nunca.
   completas y el límite de su era vuelve a `cap + 10`; una en obras no cuenta.
 - `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` (simulation) — en el tick previsto, una sola vez.
 - `TestCompletarUnaCasaSumaSuBonoUnaVez` (integration) — completar dos veces la misma casa sólo suma una.
-- Previstos con E8: destruir una casa completa resta su bono una vez y una en obras no resta (integration); la casa
-  destruida no cuenta al cargar (`internal/game/loadcheck`).
+- `TestDerribarUnaCasaEsTerminalYQuitaSuBono` (unit, `internal/domain/building`) — una casa `DESTROYED` no cuenta
+  y no vuelve a completarse.
+- `TestDerribarUnaCasaCompletaRestaSuBonoUnaVez` y `TestDerribarUnaCasaEnObraNoTocaElLimiteNiDejaQueSeComplete`
+  (integration) — el bono sale una vez y sólo si en la base estaba completa; la derribada no se carga.
+- `TestElAsedioGoldenDerribaUnaCasa` y `TestUnaCasaEnObraSeDerribaSinTocarElLimite` (simulation) — lo mismo en la RAM.
 
 **Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con
 `inv_id=INV-ECON-004` (`INV-CITY-003` si la ciudad no tiene casas), el límite persistido y el calculado.
