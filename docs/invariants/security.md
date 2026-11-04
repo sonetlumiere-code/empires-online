@@ -190,7 +190,7 @@ El TTL de 120 s de la clave es deliberadamente el doble del TTL del ticket: gara
 El orden importa por dos razones concretas:
 
 - **Efectos parciales** — validar después de mutar deja el sistema con un cambio que hay que deshacer. La compensación es código adicional, se ejecuta poco y por tanto es donde viven los bugs.
-- **Amplificación** — el A\* tiene un presupuesto de `EO_PATHFINDING_MAX_NODES = 20000` nodos. Ejecutarlo antes de validar ownership permite a un atacante consumir ese presupuesto 20 veces por segundo (`EO_WS_RATE_LIMIT_PER_SECOND`) con unidades ajenas: gasto de CPU dentro del tick del juego, que se traduce en `eo_game_tick_overruns_total` para todos los jugadores.
+- **Amplificación** — el A\* tiene un presupuesto de `EO_PATHFINDING_MAX_NODES = 50000` nodos ([ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md)). Ejecutarlo antes de validar ownership permite a un atacante consumir ese presupuesto 20 veces por segundo (`EO_WS_RATE_LIMIT_PER_SECOND`) con unidades ajenas: gasto de CPU dentro del tick del juego, que se traduce en `eo_game_tick_overruns_total` para todos los jugadores.
 
 El canon §7 fija el orden explícitamente: **validar ownership → validar estado de unidad → validar destino → ejecutar A\* → crear el movimiento → simular → notificar**.
 

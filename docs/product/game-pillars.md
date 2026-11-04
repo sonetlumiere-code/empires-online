@@ -321,7 +321,7 @@ seis.
   **ponderada por `MinTerrainCostUnits`, que vale 6 (`ROAD`)**: usar el coste de la hierba la volvería
   inadmisible en un mundo con caminos más baratos y A\* dejaría de garantizar la ruta óptima. Sin
   aritmética de coma flotante en el corazón del algoritmo. Límites duros
-  `EO_PATHFINDING_MAX_NODES=20000` y `EO_PATHFINDING_MAX_DISTANCE=256`, con `PATH_TOO_LONG` al excederse.
+  `EO_PATHFINDING_MAX_NODES=50000` y `EO_PATHFINDING_MAX_DISTANCE=256`, con `PATH_TOO_LONG` al excederse.
 - **Tiempo del mundo en milisegundos enteros**: los instantes de simulación se guardan como `bigint`
   epoch ms (`*_time_ms`) además del `timestamptz`, para aritmética exacta. La duración de un segmento se
   calcula íntegramente en enteros, con √2 en punto fijo (`1414214/1000000`):

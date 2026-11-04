@@ -1661,4 +1661,8 @@ fundación, niebla de guerra.
    (20 000) una vuelta de 165 tiles no tiene ruta aunque quepa en los 256 tiles, y un aldeano acercado a mano habría
    cargado y perdido la carga. La orden calcula ahora la ruta de vuelta (`TestLaVueltaAlDepositoTieneQueTenerRuta`,
    precisión en la spec §4.2). Medido sobre el mapa canónico, con el tope actual sólo el 80 % de la tierra llega a su
-   colina (el 98 % con 50 000 nodos): la decisión de subir el tope está pendiente de producto (spec §4.1).
+   colina (el 98 % con 50 000 nodos).
+9. **HECHO** — Producto decidió subir el tope del A\* a 50 000 nodos ([ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md)):
+   el valor por defecto de `EO_PATHFINDING_MAX_NODES`, el respaldo de `NewAStar`, `.env.example` y los docs que lo
+   citan. Con el servidor en su configuración por defecto, `scripts/smoke.mjs --piedra` pasa con `smoke_runner`
+   (19 comprobaciones): la colina a 163 tiles, la carga y el depósito (piedra 20 → 30), donde antes se rechazaba.

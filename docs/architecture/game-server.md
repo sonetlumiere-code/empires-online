@@ -598,7 +598,7 @@ Todo pasa por `internal/config`; ningún valor de gameplay se hardcodea en más 
 | `EO_CHUNK_SIZE` | 32 (1–256) | Lado del chunk. |
 | `EO_INTEREST_RADIUS_CHUNKS` | 2 (0–64) | Radio de suscripción por chunk del interest management. |
 | `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` | 50 (1–100000) | Cadencia del volcado por lotes de posiciones (5 s a 10 Hz). |
-| `EO_PATHFINDING_MAX_NODES` | 20000 (100–10 000 000) | Cota de CPU del A\* dentro del tick. |
+| `EO_PATHFINDING_MAX_NODES` | 50000 (100–10 000 000; [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md)) | Cota de CPU del A\* dentro del tick. |
 | `EO_PATHFINDING_MAX_DISTANCE` | 256 (1–65536) | Distancia de Chebyshev máxima admitida por consulta. |
 | `EO_WS_MAX_MESSAGE_BYTES` | 16384 (256–4 194 304) | Tamaño máximo de un mensaje entrante. |
 | `EO_WS_RATE_LIMIT_PER_SECOND` / `_BURST` | 20 / 40 | *Token bucket* por conexión. El burst no puede ser menor que la tasa. |

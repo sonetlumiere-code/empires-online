@@ -326,7 +326,7 @@ El cliente **nunca** envía una secuencia de posiciones ni un path: la estructur
 | 4 | `target` dentro de `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)` | `TARGET_OUT_OF_BOUNDS` |
 | 5 | `target` transitable: terreno `walkable` **y** sin marca en la capa de ocupación (`IsWalkable` comprueba las dos cosas) | `TARGET_NOT_WALKABLE` |
 | 6 | El tipo de unidad está en el catálogo (`unit.Lookup`) | `INTERNAL_ERROR` |
-| 7 | A\* encuentra camino dentro de `EO_PATHFINDING_MAX_NODES` (20000) y `EO_PATHFINDING_MAX_DISTANCE` (256) | `PATH_NOT_FOUND` / `PATH_TOO_LONG` / `TARGET_OUT_OF_BOUNDS` / `TARGET_NOT_WALKABLE`, según el error del pathfinder; cualquier otro → `INTERNAL_ERROR` |
+| 7 | A\* encuentra camino dentro de `EO_PATHFINDING_MAX_NODES` (50000) y `EO_PATHFINDING_MAX_DISTANCE` (256) | `PATH_NOT_FOUND` / `PATH_TOO_LONG` / `TARGET_OUT_OF_BOUNDS` / `TARGET_NOT_WALKABLE`, según el error del pathfinder; cualquier otro → `INTERNAL_ERROR` |
 | 8 | La polilínea temporizada se construye sin error | `INTERNAL_ERROR` |
 
 `IDLE`, `MOVING` y `HIDDEN` **pasan** la validación 3. Que `MOVING` la pase es lo que permite reemplazar una orden en curso. Que `HIDDEN` la pase es deliberado: salir de una Safe Zone es legítimo y moverse revela la unidad.
@@ -901,7 +901,7 @@ El ejemplo es el **caso numérico canónico** del modelo de movimiento: GRASSLAN
 
 **Restricciones de la polilínea:** `path` nunca está vacío (`TimedPath` exige `min(1)`); `path[0]` es siempre el origen con `tMs = 0`; `tMs` es estrictamente creciente; `arrivalTimeMs = startTimeMs + path[last].tMs`; `target` coincide con el último waypoint.
 
-**No hay cota máxima de waypoints.** `EO_PATHFINDING_MAX_DISTANCE` (256) acota la distancia Chebyshev origen→destino y `EO_PATHFINDING_MAX_NODES` (20000) el trabajo del A\*, pero **ninguno acota la longitud del camino**: un rodeo alrededor de un obstáculo entre dos tiles vecinos puede producir decenas de waypoints. Una cota explícita de la polilínea es `TBD (fuera de MVP)`; ver [../decisions/ADR-011-movement-timed-polyline.md](../decisions/ADR-011-movement-timed-polyline.md).
+**No hay cota máxima de waypoints.** `EO_PATHFINDING_MAX_DISTANCE` (256) acota la distancia Chebyshev origen→destino y `EO_PATHFINDING_MAX_NODES` (50000) el trabajo del A\*, pero **ninguno acota la longitud del camino**: un rodeo alrededor de un obstáculo entre dos tiles vecinos puede producir decenas de waypoints. Una cota explícita de la polilínea es `TBD (fuera de MVP)`; ver [../decisions/ADR-011-movement-timed-polyline.md](../decisions/ADR-011-movement-timed-polyline.md).
 
 **Duración de cada segmento** (aritmética exacta, `movement.StepDurationMs`), redondeando **cada** segmento al milisegundo más cercano antes de acumular —truncar regalaría casi un segundo de ventaja en mil pasos—:
 
@@ -1107,7 +1107,7 @@ El formato es siempre `{ code, message, details? }` dentro de `system.error`, o 
 | `TARGET_OUT_OF_BOUNDS` | 400 | No | Tile fuera de `[0, EO_WORLD_WIDTH) × [0, EO_WORLD_HEIGHT)`. **No** aplica a `session.view`, cuyo centro se recorta |
 | `TARGET_NOT_WALKABLE` | 409 | No | Terreno `MOUNTAIN`/`WATER` o tile marcado en la capa de ocupación. El MVP **rechaza**, no busca tile cercano |
 | `PATH_NOT_FOUND` | 409 | No | A\* agotó el frontier sin alcanzar el destino (destino encerrado) |
-| `PATH_TOO_LONG` | 409 | No | Se excedió `EO_PATHFINDING_MAX_NODES` (20000) o `EO_PATHFINDING_MAX_DISTANCE` (256) |
+| `PATH_TOO_LONG` | 409 | No | Se excedió `EO_PATHFINDING_MAX_NODES` (50000) o `EO_PATHFINDING_MAX_DISTANCE` (256) |
 | `CITY_NOT_FOUND` | 404 | No | `unit.garrison` con una ciudad inexistente; `city.build` o `city.train` sobre una ciudad inexistente o ajena (misma respuesta: no se revela su existencia) |
 | `CITY_PROTECTED` | 409 | No | Reservado: operación bloqueada por `presence_state = PROTECTED` |
 | `TREATY_REQUIRED` | 409 | No | `unit.garrison` en una ciudad ajena sin `treaty` `ACTIVE` con `allows_garrison`; lo decide la transacción (§7.6) |

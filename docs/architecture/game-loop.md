@@ -147,7 +147,7 @@ de qué error recibe.
 | Tile destino `walkable` y no bloqueado por el *overlay* | `TARGET_NOT_WALKABLE` |
 | El tipo de unidad está en el catálogo (`unit.Lookup`) | `INTERNAL_ERROR` |
 | Distancia Chebyshev ≤ `EO_PATHFINDING_MAX_DISTANCE` (256), comprobada dentro del A\* **antes** de expandir nodos | `PATH_TOO_LONG` |
-| El A\* no agota el presupuesto `EO_PATHFINDING_MAX_NODES` (20000) | `PATH_TOO_LONG` |
+| El A\* no agota el presupuesto `EO_PATHFINDING_MAX_NODES` (50000) | `PATH_TOO_LONG` |
 | El A\* alcanza el destino (el conjunto abierto no se vacía antes) | `PATH_NOT_FOUND` |
 | La polilínea se construye sobre el mundo actual (`BuildTimedPath`) | `INTERNAL_ERROR` |
 

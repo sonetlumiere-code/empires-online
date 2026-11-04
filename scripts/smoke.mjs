@@ -655,7 +655,7 @@ async function piedra(sesion, ciudad, playerId, snap, ocupado) {
         m.payload.movement.target.x === colina.x && m.payload.movement.target.y === colina.y), 30_000);
   if (ida.type === 'system.error') {
     const pista = ida.payload.code === 'PATH_TOO_LONG'
-      ? ` (la colina está a ${colina.d} tiles: con EO_PATHFINDING_MAX_NODES=20000 el A* no encuentra rutas de más de unos 130; ver SPEC-ECON-STONE §4.1)`
+      ? ` (la colina está a ${colina.d} tiles: el tope de nodos del A*, EO_PATHFINDING_MAX_NODES, no alcanza esa ruta; con el de ADR-031, 50 000, llega el 98 % de la tierra; ver SPEC-ECON-STONE §4.1)`
       : '';
     fallar(`el servidor rechazó la orden de recoger piedra: ${ida.payload.code}${pista}`, ida.payload);
   }

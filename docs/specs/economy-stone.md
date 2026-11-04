@@ -71,7 +71,7 @@ dependencia absoluta (Q2).
 **Precisión (2026-11-04): el tope de nodos del A\* recorta ese alcance.** Medido sobre 388 puntos de hierba del mapa
 canónico con colina a ≤ 256 tiles, buscando la ruta a la colina más cercana:
 
-| Colina a… | Puntos | Con 20 000 nodos (hoy) | Con 50 000 | Con 100 000 | p95 de la búsqueda con 50 000 |
+| Colina a… | Puntos | Con 20 000 nodos (hasta ADR-031) | Con 50 000 (desde ADR-031) | Con 100 000 | p95 de la búsqueda con 50 000 |
 |---|---|---|---|---|---|
 | 0–95 tiles | 249 | 249 | 249 | 249 | ≤ 5,3 ms |
 | 96–127 | 42 | 39 | 42 | 42 | 7,0 ms |
@@ -80,10 +80,12 @@ canónico con colina a ≤ 256 tiles, buscando la ruta a la colina más cercana:
 | 192–255 | 29 | 0 | 22 | 29 | 21,3 ms |
 | **Total** | **388** | **310 (80 %)** | **381 (98 %)** | **388** | |
 
-Con el tope actual, una de cada cinco ciudades (las que tienen la colina a más de unos 130 tiles; entre ellas
-smoke_runner y smoke_victim) no puede recoger piedra: la orden se rechaza al darla (`RN-ECON-020`) y sólo le queda el
-comercio de E10. Subir el tope es la condición de revisión de la deuda DEBT-04 (A\* plano) y cuesta tiempo de tick;
-la decisión está pendiente de producto.
+Con 20 000 nodos, una de cada cinco ciudades (las que tienen la colina a más de unos 130 tiles; entre ellas
+smoke_runner y smoke_victim) no podía recoger piedra: la orden se rechaza al darla (`RN-ECON-020`) y sólo le quedaba el
+comercio de E10. Producto decidió el mismo día subir el tope a **50 000**
+([ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md)): llega el 98 % de la tierra, a cambio de que la búsqueda
+más cara pase de ~8 a ~20 ms y de que una orden de recoger lejana, con su ida y su vuelta, pueda llevarse unos 40 ms
+de un tick. Si el tick se resiente, lo siguiente es el A\* jerárquico de la deuda DEBT-04, no subir más el tope.
 
 ### 4.2 Recoger piedra
 

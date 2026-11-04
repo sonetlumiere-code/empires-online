@@ -53,7 +53,7 @@ Estos valores **no se eligen**: se siguen de constantes que ya están fijadas. S
 | Cola de salida por conexión | **256** mensajes (rango 8–65536) | `EO_WS_OUTBOUND_QUEUE_SIZE`. Al llenarse, la sesión se cierra con **4500** y el cliente reconecta con un snapshot limpio: es una de las formas de degradación que el perfil de **pico** debe provocar y observar |
 | Tráfico mínimo de fondo por conexión | ~**0,1 msg/s** de heartbeat | `EO_PRESENCE_HEARTBEAT_SECONDS = 10` (canon §9) |
 | Chunks por conjunto de interés | **25** (5 × 5) | `EO_INTEREST_RADIUS_CHUNKS = 2` (canon §13) |
-| Coste máximo de una consulta A\* | **20 000 nodos** | `EO_PATHFINDING_MAX_NODES` (canon §8) |
+| Coste máximo de una consulta A\* | **50 000 nodos** | `EO_PATHFINDING_MAX_NODES` (canon §8, [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md)) |
 | Cadencia del flush de posiciones | cada **50 ticks** = 5 s | `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` (canon §12) |
 
 **Latencia comando → confirmación: cota inferior estructural.** Un comando se drena en la fase 1 del siguiente tick y se aplica en la fase 2 (canon §6). Por tanto, incluso con carga cero y red de latencia nula, la confirmación tarda entre 0 y 100 ms según dónde caiga el comando dentro del período, con una media de ~50 ms. Cualquier objetivo de latencia se expresa **en ticks**, no en milisegundos absolutos, y el RTT de red se mide y se resta por separado. Un objetivo de "p99 < 30 ms" sería una imposibilidad aritmética, no una meta ambiciosa.
@@ -220,7 +220,7 @@ Todas las métricas son las del canon §18, expuestas en `EO_METRICS_ADDR/metric
 | `eo_persistence_queue_depth` | Los workers no drenan al ritmo del loop. Deuda de escritura acumulada | Tendencia creciente sostenida |
 | `eo_database_latency_seconds` | PostgreSQL es el cuello de botella; suele ser la causa de la métrica anterior | Crecimiento correlacionado con la carga |
 | `eo_redis_latency_seconds` | Redis satura: presencia, idempotencia y locks se degradan | Ídem |
-| `eo_pathfinding_duration_seconds` | A\* consume el presupuesto del tick. Con `EO_PATHFINDING_MAX_NODES = 20000`, unas pocas consultas patológicas simultáneas bastan | p99 comparado con el presupuesto del tick |
+| `eo_pathfinding_duration_seconds` | A\* consume el presupuesto del tick. Con `EO_PATHFINDING_MAX_NODES = 50000`, unas pocas consultas patológicas simultáneas bastan | p99 comparado con el presupuesto del tick |
 | `eo_pathfinding_requests_total` | Volumen de búsquedas; se cruza con la métrica anterior para separar "muchas baratas" de "pocas caras" | — |
 | `eo_commands_total` | Carga real aceptada. Si se aplana mientras el generador sube, el rate limiter está actuando | Aplanamiento inesperado |
 | `eo_ws_messages_total` | Volumen total de frames, entrada y salida. Su crecimiento superlineal respecto a `eo_connected_websockets` delata un problema de *interest management* | Crecimiento superlineal |

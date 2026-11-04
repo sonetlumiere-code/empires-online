@@ -438,7 +438,7 @@ Agrupar los frames de un mismo tick en una sola pasada de escritura, coalescer v
 Dos mensajes salientes merecen atención por tamaño:
 
 - **`world.snapshot`**, que en su primera emisión lleva el terreno de hasta 25 chunks en base64: ~34 KB. Excede los 16 KiB nominales, aunque el límite entrante no se le aplica. El terreno sólo viaja la primera vez que la sesión ve cada chunk.
-- **`unit.movement.started`**, que transporta la polilínea completa `[{x, y, tMs}, ...]`. `EO_PATHFINDING_MAX_DISTANCE` = 256 acota la **distancia Chebyshev** entre origen y destino, no la longitud del camino: un rodeo por terreno laberíntico puede producir bastantes más waypoints que la distancia en línea recta. La cota dura de waypoints es **TBD (fuera de MVP)**; hoy el límite efectivo lo pone `EO_PATHFINDING_MAX_NODES` = 20000.
+- **`unit.movement.started`**, que transporta la polilínea completa `[{x, y, tMs}, ...]`. `EO_PATHFINDING_MAX_DISTANCE` = 256 acota la **distancia Chebyshev** entre origen y destino, no la longitud del camino: un rodeo por terreno laberíntico puede producir bastantes más waypoints que la distancia en línea recta. La cota dura de waypoints es **TBD (fuera de MVP)**; hoy el límite efectivo lo pone `EO_PATHFINDING_MAX_NODES` = 50000 (ADR-031).
 
 ---
 

@@ -30,7 +30,7 @@ juego: el cliente nunca calcula ni envía un path.
 Restricciones canónicas: costes en enteros escalados —`costScaleOrtho = 1000` y `costScaleDiag = 1414`,
 multiplicados por el `costUnits` del terreno— para garantizar admisibilidad y determinismo; desempate
 estable por `(f, h, y, x)`; prohibido iterar mapas de Go sin ordenar. Límites
-`EO_PATHFINDING_MAX_NODES` (20000) y `EO_PATHFINDING_MAX_DISTANCE` (256 tiles); al excederse se devuelve
+`EO_PATHFINDING_MAX_NODES` (50000) y `EO_PATHFINDING_MAX_DISTANCE` (256 tiles); al excederse se devuelve
 `PATH_TOO_LONG`. Si no existe camino, `PATH_NOT_FOUND`. La ruta devuelta **incluye el tile de origen**
 como primer elemento, y `from == to` devuelve una ruta de un solo tile sin error.
 

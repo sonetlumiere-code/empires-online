@@ -122,7 +122,7 @@ contra el JSON Schema embebido se ejerce hoy en los *contract tests*, no en cada
 |---|---|---|
 | `EO_TICK_RATE_HZ` | 10 | Granularidad de la emisión de posición (100 ms) |
 | `EO_PATHFINDING_MAX_DISTANCE` | 256 | Distancia Chebyshev máxima origen→destino; se comprueba **antes** de expandir un solo nodo |
-| `EO_PATHFINDING_MAX_NODES` | 20000 | Nodos expandidos máximos por consulta |
+| `EO_PATHFINDING_MAX_NODES` | 50000 ([ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md); 20000 hasta E9) | Nodos expandidos máximos por consulta |
 | `EO_WS_MAX_MESSAGE_BYTES` | 16384 | `SetReadLimit` de la conexión: acota el mensaje **entrante** |
 | `EO_PERSISTENCE_FLUSH_INTERVAL_TICKS` | 50 | Volcado periódico de la posición consolidada (5 s a 10 Hz) |
 | `EO_INTEREST_RADIUS_CHUNKS` | 2 | Radio de suscripción por chunk que decide quién ve los eventos |

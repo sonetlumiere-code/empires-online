@@ -154,7 +154,7 @@ El coste de un paso se imputa **al tile de destino** del paso, coherentemente co
 3. Los tests de simulación pueden afirmar el `Path` **exacto**, no una tolerancia.
 4. El resultado es reproducible entre el servidor y cualquier herramienta offline de auditoría.
 
-**Rango.** Coste máximo por paso = 25 452 (HILL diagonal). Con `EO_PATHFINDING_MAX_NODES=20000`, el `g` acumulado máximo concebible es `20000 × 25 452 = 509 040 000`, todavía muy por debajo del máximo de `int32` (2 147 483 647). No hay riesgo de desbordamiento en la configuración por defecto; si algún día `EO_PATHFINDING_MAX_NODES` subiera a más de ~84 000 con ruta íntegramente de colinas en diagonal, habría que pasar a `int64`. Está anotado como límite conocido, no como suposición.
+**Rango.** Coste máximo por paso = 25 452 (HILL diagonal). Con `EO_PATHFINDING_MAX_NODES=50000` ([ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md); 20 000 antes), el `g` acumulado máximo concebible es `50000 × 25 452 = 1 272 600 000`, todavía por debajo del máximo de `int32` (2 147 483 647). No hay riesgo de desbordamiento en la configuración por defecto; si algún día `EO_PATHFINDING_MAX_NODES` subiera a más de ~84 000 con ruta íntegramente de colinas en diagonal, habría que pasar a `int64`. Está anotado como límite conocido, no como suposición.
 
 **Separación explícita entre coste de búsqueda y coste de tiempo.** Son dos escalas distintas y no deben confundirse:
 
@@ -366,7 +366,7 @@ func (a *AStar) FindPath(ctx context.Context, grid Grid, from, to world.Tile, op
 }
 ```
 
-- El `AStar` **no guarda el `Grid`**: solo los límites por defecto (`NewAStar(maxNodes, maxDistance)`, con respaldo a 20000 / 256 si se le pasan valores ≤ 0) y el pool.
+- El `AStar` **no guarda el `Grid`**: solo los límites por defecto (`NewAStar(maxNodes, maxDistance)`, con respaldo a 50000 / 256 si se le pasan valores ≤ 0) y el pool.
 - En MVP el pathfinding se ejecuta **exclusivamente en la goroutine del game loop**, por lo que en la práctica hay un único `workspace` vivo y el `sync.Pool` no llega a contender.
 - El `sync.Pool` se introduce desde el principio porque es la pieza que hace segura la evolución al pool de workers (§9.2): cada goroutine obtiene su propio buffer sin sincronización adicional.
 - **La propiedad honesta es «sin asignaciones amortizado», no «cero asignaciones».** `sync.Pool` puede liberar su contenido con el GC (con la caché víctima, un objeto sin uso sobrevive a un ciclo y se pierde en el siguiente), así que la primera consulta posterior puede reasignar los 4 MiB del `workspace` dentro de la fase 2 del tick. En régimen estacionario entre GCs no se asigna nada fuera de la ruta devuelta; el peor caso por ciclo de GC es una reasignación de 4 MiB. Si esa reasignación llegara a aparecer en el presupuesto de §8.3, la corrección es dar al `AStar` un `*workspace` propio mientras el pathfinding siga siendo de una sola goroutine, y reservar el pool para §9.2.
@@ -438,7 +438,7 @@ Detalles que no son adorno:
 
 | Límite | Variable | Valor por defecto | Comprobación | Error centinela |
 |---|---|---|---|---|
-| Nodos expandidos | `EO_PATHFINDING_MAX_NODES` | 20000 (rango 100 – 10 000 000) | durante el bucle, tras cada expansión | `ErrPathTooLong` |
+| Nodos expandidos | `EO_PATHFINDING_MAX_NODES` | 50000 (rango 100 – 10 000 000) | durante el bucle, tras cada expansión | `ErrPathTooLong` |
 | Distancia origen-destino | `EO_PATHFINDING_MAX_DISTANCE` | 256 tiles (rango 1 – 65536) | Chebyshev, **antes** de iniciar la búsqueda | `ErrPathTooLong` |
 | Destino intransitable | — | — | antes de la búsqueda | `ErrTargetNotWalkable` |
 | Origen intransitable | — | — | antes de la búsqueda | `ErrOriginNotWalkable` |
@@ -461,7 +461,7 @@ Sea `N` el número de nodos expandidos, acotado por `min(width*height, MaxNodes)
 |---|---|
 | Tiempo | `O(N · 8 · log N)` — 8 relajaciones por expansión, cada `push` es `O(log N)` |
 | Memoria de trabajo | `O(width · height)` fija: 4 MiB en el mundo 512 × 512, reutilizada entre consultas |
-| Memoria del heap | `O(8N)` nodos de 20 B en el peor caso con duplicados perezosos: ≤ 3,05 MiB (3,2 MB) con `N = 20000` |
+| Memoria del heap | `O(8N)` nodos de 20 B en el peor caso con duplicados perezosos: ≤ 7,63 MiB (8 MB) con `N = 50000` |
 | Salida | `O(L)` con `L` = longitud de la ruta |
 
 ### 8.3 Presupuesto temporal objetivo
@@ -472,7 +472,7 @@ Con `EO_TICK_RATE_HZ=10` el período de tick es **100 ms**. Los siguientes son *
 |---|---|---|
 | Ruta corta en terreno abierto (≤ 20 tiles) | ~300 | p50 ≤ 60 µs |
 | Ruta media con obstáculos (60 tiles) | ~2 500 | p99 ≤ 1,5 ms |
-| Peor caso admitido (`MaxNodes` agotado) | 20 000 | ≤ 8 ms |
+| Peor caso admitido (`MaxNodes` agotado) | 50 000 ([ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md)) | ≤ 20 ms: medidos ~21 ms en el p95 de las rutas de 192–255 tiles |
 | **Presupuesto agregado de pathfinding por tick** | — | **≤ 20 ms (20 % del período)** |
 
 Si `eo_pathfinding_duration_seconds` o `eo_game_tick_overruns_total` muestran que el presupuesto agregado se supera de forma sostenida, se activa la evolución descrita en §9.2. La regla operativa es: **el pathfinding nunca puede ser la causa de un overrun de tick**.

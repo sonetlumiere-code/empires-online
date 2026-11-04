@@ -94,7 +94,7 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Treinta decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Treinta y una decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
@@ -108,11 +108,12 @@ ADR-025, del **2026-11-03**, de cómo el slice de agotamiento guarda la madera d
 ADR-026, del mismo día, de cómo el saqueo resta del almacén sin poder duplicar madera; ADR-027, también del
 2026-11-03, de cómo los jugadores firman y rompen tratados en caliente; ADR-028, del mismo día, de cómo el
 jugador lee lo que le pasó mientras no estaba sin que el cursor esconda nada; ADR-029, del **2026-11-04**, de
-qué pasa con el límite de población cuando el asedio destruye una casa; y ADR-030, del mismo día, de cómo la piedra
-comparte la capa del bosque y cómo una ciudad paga en dos recursos su avance de era.
+qué pasa con el límite de población cuando el asedio destruye una casa; ADR-030, del mismo día, de cómo la piedra
+comparte la capa del bosque y cómo una ciudad paga en dos recursos su avance de era; y ADR-031, también del
+2026-11-04, de por qué el tope de nodos del A\* sube a 50 000.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
-ADR-004, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-019, ADR-013 y
-ADR-018).
+ADR-004, ADR-007, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-031,
+ADR-019, ADR-013 y ADR-018).
 
 | ADR | Título | Estado | Resumen |
 |---|---|---|---|
@@ -146,6 +147,7 @@ ADR-018).
 | [028](ADR-028-event-log-from-world-events.md) | El registro se lee de `world_events` desde la conexión; cada suceso nombra a los dos jugadores y lo visto sólo cubre lo asentado | Aceptado | `event_log.fetch` y `event_log.seen` los atiende la goroutine de la sesión, sin pasar por el loop; `counterpart_player_id` nombra al otro jugador de cada suceso; `atMs`, `unitType`, `from` y `byPlayerId` en el payload; agrupación al leer; la página se corta por filas; el cursor `players.event_log_seen_id` nunca pasa del tope marcable de la última página, el mayor `id` con más de 25 s; migración `000010`. |
 | [029](ADR-029-population-over-limit-and-house-destruction.md) | Una ciudad puede quedar por encima de su límite de población; la base sólo impide crear por encima, y la destrucción de una casa baja el límite | Aceptado | `INV-CITY-002` pasa a «nada se crea por encima del límite»; el `CHECK` de población se cambia por un trigger que sólo rechaza subir la población por encima, con el mismo nombre de restricción; la carga deja de subir el límite y su recuento se exime con `eo.population_recount`; la destrucción es optimista, resta el bono según el estado en la base y se reencola si falla; el tile se libera con la confirmación; las casas `DESTROYED` conservan su fila y el único por tile pasa a parcial; el daño no se persiste; migración `000011`. |
 | [030](ADR-030-stone-layer-and-era-advance.md) | El terreno del tile decide su recurso; un coste puede ser de varios recursos, y el avance de era es un encargo de la ciudad con su propia fila | Aceptado | La capa de ADR-025 se generaliza a una instancia por terreno (`FOREST → WOOD`, `HILL → STONE`), con `hill_stone` hermana de `forest_wood`; `GATHER_STONE`; el stock de la RAM es por recurso y un coste es una lista que se debita entera o no se debita; `city_era_advances` en dos fases, con `CITY_BUSY` cruzado con el entrenamiento; el fin es optimista y sube el límite en `cap(to) − cap(from)` sólo si la ciudad seguía en `from`; la era nunca retrocede; migración `000012`. |
+| [031](ADR-031-pathfinding-node-cap-50k.md) | El tope de nodos del A\* pasa de 20 000 a 50 000 | Aceptado | Con 20 000 sólo el 80 % de la tierra llega a su colina más cercana; con 50 000, el 98 %. El peor caso de una búsqueda pasa de ~8 a ~20 ms, una orden de recoger lejana con su vuelta puede llevarse ~40 ms de un tick y la amplificación por conexión crece 2,5 veces; si el tick se resiente, lo siguiente es el A\* jerárquico (DEBT-04) o el pathfinding fuera del tick, no subir más el tope. Sustituye en parte a ADR-007. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y
