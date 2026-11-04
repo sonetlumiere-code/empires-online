@@ -170,21 +170,38 @@ func (s *Simulation) handlePillageCity(cmd PillageCity) {
 // (INV-CITY-006): la ciudad cuenta como objetivo y su dueño como el de la
 // víctima.
 func (s *Simulation) pillageBlocked(a *unit.Unit, c *city.City, posA world.Tile, now time.Time) (string, string) {
+	return s.cityAttackBlocked(a, c, posA, now, pillageMessages)
+}
+
+// cityAttackMessages son los mensajes de rechazo de una acción hostil contra
+// una ciudad; el código es el mismo para todas.
+type cityAttackMessages struct{ own, selfProtected, peace, safeZone string }
+
+var pillageMessages = cityAttackMessages{
+	own:           "no puedes saquear tu propia ciudad",
+	selfProtected: "estás protegido: no puedes saquear",
+	peace:         "un tratado de paz impide saquear a ese jugador",
+	safeZone:      "no se saquea desde una zona segura",
+}
+
+// cityAttackBlocked es el predicado de toda acción hostil contra una ciudad:
+// el saqueo y, desde E8, el asedio de sus casas (RN-COMBAT-030).
+func (s *Simulation) cityAttackBlocked(a *unit.Unit, c *city.City, posA world.Tile, now time.Time, m cityAttackMessages) (string, string) {
 	if c.OwnerPlayerID == a.PlayerID {
-		return protocol.CodeInvalidTarget, "no puedes saquear tu propia ciudad"
+		return protocol.CodeInvalidTarget, m.own
 	}
 	if c.ProtectedAt(now) {
 		return protocol.CodeCityProtected, "esa ciudad está protegida"
 	}
-	// RN-COMBAT-018: quien está protegido tampoco saquea.
+	// RN-COMBAT-018: quien está protegido tampoco ataca una ciudad.
 	if own, ok := s.state.CityOf(a.PlayerID); ok && own.ProtectedAt(now) {
-		return protocol.CodeCityProtected, "estás protegido: no puedes saquear"
+		return protocol.CodeCityProtected, m.selfProtected
 	}
 	if s.state.AtPeace(a.PlayerID, c.OwnerPlayerID, now) {
-		return protocol.CodeInvalidTarget, "un tratado de paz impide saquear a ese jugador"
+		return protocol.CodeInvalidTarget, m.peace
 	}
 	if _, ok := s.state.SafeZoneAt(posA.X, posA.Y); ok {
-		return protocol.CodeInvalidTarget, "no se saquea desde una zona segura"
+		return protocol.CodeInvalidTarget, m.safeZone
 	}
 	return "", ""
 }

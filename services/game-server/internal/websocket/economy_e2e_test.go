@@ -36,6 +36,10 @@ func (m *memoryEconomy) CompleteBuilding(context.Context, simulation.BuildingCom
 	return nil
 }
 
+func (m *memoryEconomy) DestroyBuilding(context.Context, simulation.BuildingDestruction) error {
+	return nil
+}
+
 func (m *memoryEconomy) Build(context.Context, simulation.BuildOrder) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

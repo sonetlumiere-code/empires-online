@@ -4,6 +4,7 @@ import {
   applyEventLogPage,
   EMPTY_EVENT_LOG,
   entryText,
+  isLoss,
   markSeenLocally,
   markTarget,
   moreUnseenBeyond,
@@ -79,6 +80,12 @@ describe('texto de cada entrada', () => {
     expect(entryText(entrada(1, 'ENEMY_KILLED', { unitType: 'WARRIOR' }))).toBe('Tus unidades mataron a un guerrero de Villa Norte');
     expect(entryText(entrada(1, 'PILLAGED', { count: 17, amount: 85 }))).toBe('Villa Norte te robó 85 de madera en 17 golpes');
     expect(entryText(entrada(1, 'PILLAGE_DONE', { amount: 40 }))).toBe('Tus guerreros robaron 40 de madera a Villa Norte');
+    expect(entryText(entrada(1, 'HOUSE_LOST', { count: 2 }))).toBe('Villa Norte derribó 2 de tus casas');
+    expect(entryText(entrada(1, 'HOUSE_LOST'))).toBe('Villa Norte derribó una de tus casas');
+    expect(entryText(entrada(1, 'HOUSE_DESTROYED'))).toBe('Tus guerreros derribaron una casa de Villa Norte');
+    expect(entryText(entrada(1, 'HOUSE_DESTROYED', { count: 3 }))).toBe('Tus guerreros derribaron 3 casas de Villa Norte');
+    expect(isLoss(entrada(1, 'HOUSE_LOST')), 'perder una casa se resalta').toBe(true);
+    expect(isLoss(entrada(1, 'HOUSE_DESTROYED'))).toBe(false);
     expect(entryText(entrada(1, 'TREATY_OFFERED', { treatyType: 'NON_AGGRESSION' }))).toBe('Villa Norte te ofreció un pacto de no agresión');
     expect(entryText(entrada(1, 'TREATY_OFFERED', { treatyType: 'ALLIANCE' }))).toBe('Villa Norte te ofreció una alianza');
     expect(entryText(entrada(1, 'TREATY_ACCEPTED', { treatyType: 'ALLIANCE' }))).toBe('Villa Norte aceptó tu oferta de alianza');

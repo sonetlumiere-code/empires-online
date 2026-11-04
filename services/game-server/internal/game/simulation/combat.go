@@ -85,6 +85,9 @@ type engagement struct {
 	// cityID es la ciudad saqueada; distinto de cero, el enfrentamiento es un
 	// saqueo y targetID no se usa (SPEC-COMBAT-PILLAGE).
 	cityID int64
+	// buildingID es la casa asediada; distinto de cero, el enfrentamiento es un
+	// asedio y targetID no se usa (SPEC-COMBAT-SIEGE).
+	buildingID int64
 	// nextHitAtMs es el instante del próximo golpe; 0 hasta el primer contacto.
 	nextHitAtMs int64
 	// lastRepathTick es el último tick en que la persecución recalculó ruta.
@@ -133,7 +136,7 @@ func newCombatState() combatState {
 // Engaged dice a quién ataca una unidad (tests).
 func (s *State) Engaged(attackerID int64) (int64, bool) {
 	e, ok := s.combat.engagements[attackerID]
-	if !ok || e.cityID != 0 {
+	if !ok || e.cityID != 0 || e.buildingID != 0 {
 		return 0, false
 	}
 	return e.targetID, true
@@ -401,6 +404,7 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 	// 1. Calcular, con el estado de fin de la fase 3.
 	var hits []hit
 	var pillages []pillageHit
+	var sieges []siegeHit
 	for _, id := range ids {
 		e, ok := s.state.combat.engagements[id]
 		if !ok {
@@ -414,6 +418,12 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 		if e.cityID != 0 {
 			if ph, due := s.stepPillage(a, e, nowMs, now); due {
 				pillages = append(pillages, ph)
+			}
+			continue
+		}
+		if e.buildingID != 0 {
+			if sh, due := s.stepSiege(a, e, nowMs, now); due {
+				sieges = append(sieges, sh)
 			}
 			continue
 		}
@@ -502,13 +512,26 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 		}
 	}
 
+	// 4b. Los golpes de asedio, después de los de saqueo y en orden de
+	// guerrero, cada uno contra la vida que dejó el anterior (RN-COMBAT-031).
+	var besieged []siegeHit
+	for _, sh := range sieges {
+		if s.applySiege(sh, nowMs) {
+			besieged = append(besieged, sh)
+		}
+	}
+
 	// 5. Las respuestas automáticas, en el orden de los golpes (RN-COMBAT-015):
-	// primero los golpes a unidades y después los saqueos (RN-COMBAT-027).
+	// primero los golpes a unidades, después los saqueos (RN-COMBAT-027) y por
+	// último los golpes de asedio (RN-COMBAT-037).
 	for _, al := range alerts {
 		s.raiseAlarm(al, nowMs)
 	}
 	for _, ph := range robbed {
 		s.raiseCityAlarm(ph.attacker, ph.city, nowMs)
+	}
+	for _, sh := range besieged {
+		s.raiseCityAlarm(sh.attacker, sh.city, nowMs)
 	}
 }
 

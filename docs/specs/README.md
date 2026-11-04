@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las dieciséis specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las diecisiete specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -56,6 +56,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Combate: saqueo | [combat-pillage.md](combat-pillage.md) | E5 Saqueo | Implemented | Un `WARRIOR` junto a la muralla enemiga roba madera del almacén golpe a golpe hasta un suelo y la lleva a casa; los guerreros de la ciudad defienden |
 | Diplomacia en caliente | [diplomacy.md](diplomacy.md) | E6 Diplomacia | Implemented | Proponer, aceptar, rechazar, retirar y romper pactos de no agresión y alianzas desde el cliente; ruptura con preaviso y expulsión de las guarniciones al terminar una alianza |
 | Registro de sucesos | [event-log.md](event-log.md) | E7 Registro | Implemented | Lo que otros te hicieron y lo que tus unidades hicieron solas, leído de `world_events`, agrupado y con un cursor de lo visto; la ventana «Mientras no estabas» |
+| Combate: asedio | [combat-siege.md](combat-siege.md) | E8 Asedio | Accepted | Un `WARRIOR` junto a la muralla enemiga derriba una casa golpe a golpe; la ciudad pierde plazas y, por encima de su límite, conserva sus unidades pero no entrena |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
@@ -72,7 +73,7 @@ Documentación relacionada que **no** es una spec funcional y por tanto no sigue
 ## 3. Plantilla obligatoria de spec
 
 La plantilla tiene tres partes: una **cabecera** fija, un **núcleo** fijo y un **cuerpo temático** libre.
-Lo que sigue describe lo que las dieciséis specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
+Lo que sigue describe lo que las diecisiete specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
 
 ### 3.1 Cabecera
 

@@ -475,14 +475,20 @@ de un segundo jugador (`smoke_victim`) y lo mata. Tarda minutos y mata una unida
 corre por defecto ni tras un despliegue en producción. Con `--saqueo` ([../specs/combat-pillage.md](../specs/combat-pillage.md)), un
 guerrero propio va hasta la muralla de `smoke_victim`, que se conecta para no estar protegida (y, si le falta,
 junta madera trayendo a casa a sus aldeanos), y la saquea: comprueba el golpe, el aviso `pillagedAtMs` a la
-víctima y la carga del guerrero. También tarda minutos y roba madera de otra cuenta. Con `--diplomacia`
+víctima y la carga del guerrero. También tarda minutos y roba madera de otra cuenta. Con `--asedio`
+([../specs/combat-siege.md](../specs/combat-siege.md)), `smoke_victim` se conecta y, si no tiene una casa completa, junta 30
+de madera y la construye; un guerrero propio la golpea hasta derribarla: comprueba la vida que baja, el aviso
+`besiegedAtMs`, `building.destroyed` y el límite de población de la víctima 5 más bajo. Tarda minutos y derriba una
+casa de otra cuenta. Con `--diplomacia`
 ([../specs/diplomacy.md](../specs/diplomacy.md)), `smoke_runner` y `smoke_victim` firman un pacto de no agresión (o
 reutilizan el vigente), se comprueba que el pacto impide el saqueo y `smoke_runner` lo rompe: el tratado queda en
 preaviso 15 minutos. Repetirlo antes falla y dice cuánto falta. Con `--registro`
 ([../specs/event-log.md](../specs/event-log.md)), `smoke_victim` se conecta y su registro tiene que nombrar a
-`smoke_runner` (el saqueo con `--saqueo`, la ruptura con `--diplomacia`), `smoke_runner` ve su lado, y la víctima da
+`smoke_runner` (el saqueo con `--saqueo`, la casa con `--asedio`, la ruptura con `--diplomacia`), `smoke_runner` ve su lado, y la víctima da
 por visto lo asentado, reconecta con un ticket nuevo y el cursor sigue marcado. Necesita que antes haya pasado algo
-entre los dos, en la misma pasada o en una anterior, y espera hasta 26 s a que lo más reciente se asiente.
+entre los dos, en la misma pasada o en una anterior, y espera hasta 26 s a que lo más reciente se asiente. En una
+misma pasada el orden es saqueo, asedio, diplomacia y registro: el pacto de `--diplomacia` impediría el asedio durante
+sus 15 minutos de preaviso.
 
 ---
 

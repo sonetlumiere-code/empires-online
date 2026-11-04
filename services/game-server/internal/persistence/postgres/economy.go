@@ -11,6 +11,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/forest"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
@@ -27,6 +28,9 @@ import (
 const (
 	EventBuildingOrdered   = "BuildingOrdered"
 	EventBuildingCompleted = "BuildingCompleted"
+	// EventBuildingDestroyed es una casa derribada por un asedio
+	// (SPEC-COMBAT-SIEGE, ADR-029 §4). Entra en el registro (ADR-028).
+	EventBuildingDestroyed = eventlog.EventBuildingDestroyed
 	EventTrainingOrdered   = "TrainingOrdered"
 	EventUnitTrained       = "UnitTrained"
 )
@@ -127,10 +131,12 @@ func (r *EconomyRepo) ListTasks(ctx context.Context) ([]task.Task, error) {
 	return out, rows.Err()
 }
 
-// ListBuildings lee todos los edificios en orden de id.
+// ListBuildings lee los edificios en pie en orden de id. Los derribados
+// conservan su fila pero no se cargan (ADR-029 §6).
 func (r *EconomyRepo) ListBuildings(ctx context.Context) ([]building.Building, error) {
 	rows, err := r.store.pool.Query(ctx,
-		`SELECT id, city_id, type, x, y, status, completes_at_ms FROM buildings ORDER BY id`)
+		`SELECT id, city_id, type, x, y, status, completes_at_ms FROM buildings
+		  WHERE status <> 'DESTROYED' ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("leer edificios: %w", err)
 	}
@@ -583,6 +589,66 @@ func (r *EconomyRepo) CompleteBuilding(
 		return appendEvent(ctx, tx, worldEvent{
 			EventType: EventBuildingCompleted, Tick: tick, PlayerID: &playerID,
 			Payload: map[string]any{"buildingId": buildingID, "cityId": cityID},
+		})
+	})
+}
+
+// BuildingDestruction es lo que escribe la destrucción de una casa
+// (ADR-029 §4).
+type BuildingDestruction struct {
+	BuildingID int64
+	CityID     int64
+	// VictimPlayer es el dueño de la ciudad; AttackerPlayer y AttackerID, quien
+	// la derribó.
+	VictimPlayer   uuid.UUID
+	AttackerPlayer uuid.UUID
+	AttackerID     int64
+	Type           building.Type
+	At             world.Tile
+	// Bonus es lo que la casa suma al límite si en la base está completa.
+	Bonus int32
+	Tick  uint64
+	// AtMs es el instante del golpe en la simulación (ADR-028 §3).
+	AtMs int64
+}
+
+// DestroyBuilding derriba una casa en UNA transacción (ADR-029 §4): la marca
+// DESTROYED, resta su bono del límite si en la base estaba COMPLETE y escribe
+// BuildingDestroyed. El bono sale según el estado de la base, no el de la
+// RAM: si la compleción aún no se había escrito, la base nunca lo sumó, y esa
+// compleción, al reintentarse, ya no la encuentra en obras. Idempotente: una
+// casa ya derribada no se toca. Una casa que no existe es ErrNotFound.
+func (r *EconomyRepo) DestroyBuilding(ctx context.Context, d BuildingDestruction) error {
+	return r.store.InTx(ctx, func(tx pgx.Tx) error {
+		var estado string
+		if err := tx.QueryRow(ctx,
+			`SELECT status FROM buildings WHERE id = $1 FOR UPDATE`, d.BuildingID).Scan(&estado); err != nil {
+			return fmt.Errorf("leer el edificio %d: %w", d.BuildingID, normalize(err))
+		}
+		if building.Status(estado) == building.StatusDestroyed {
+			return nil // ya escrito: un reintento
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE buildings SET status = 'DESTROYED' WHERE id = $1`, d.BuildingID); err != nil {
+			return fmt.Errorf("derribar el edificio %d: %w", d.BuildingID, normalize(err))
+		}
+		completa := building.Status(estado) == building.StatusComplete
+		if completa && d.Bonus > 0 {
+			if _, err := tx.Exec(ctx,
+				`UPDATE cities SET population_limit = population_limit - $2, version = version + 1 WHERE id = $1`,
+				d.CityID, d.Bonus); err != nil {
+				return fmt.Errorf("bajar el límite de la ciudad %d: %w", d.CityID, normalize(err))
+			}
+		}
+		victim := d.VictimPlayer
+		return appendEvent(ctx, tx, worldEvent{
+			EventType: EventBuildingDestroyed, Tick: d.Tick, PlayerID: &victim,
+			CounterpartID: counterpart(d.AttackerPlayer),
+			Payload: map[string]any{
+				"buildingId": d.BuildingID, "cityId": d.CityID, "type": string(d.Type),
+				"x": d.At.X, "y": d.At.Y, "wasComplete": completa,
+				"attackerId": d.AttackerID, "attackerPlayerId": d.AttackerPlayer.String(), "atMs": d.AtMs,
+			},
 		})
 	})
 }

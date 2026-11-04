@@ -31,11 +31,16 @@ type Status string
 const (
 	StatusUnderConstruction Status = "UNDER_CONSTRUCTION"
 	StatusComplete          Status = "COMPLETE"
+	// StatusDestroyed es una casa derribada por un asedio (SPEC-COMBAT-SIEGE).
+	// Conserva su fila, no aporta y no se carga al arrancar (ADR-029 §6).
+	StatusDestroyed Status = "DESTROYED"
 )
 
 // Valid indica si el estado pertenece al conjunto del esquema
 // (buildings_status_valid).
-func (s Status) Valid() bool { return s == StatusUnderConstruction || s == StatusComplete }
+func (s Status) Valid() bool {
+	return s == StatusUnderConstruction || s == StatusComplete || s == StatusDestroyed
+}
 
 // Definition son las propiedades inmutables de un tipo de edificio.
 type Definition struct {
@@ -47,6 +52,8 @@ type Definition struct {
 	// PopulationBonus es lo que suma al population_limit de su ciudad una vez
 	// completo (RN-ECON-009).
 	PopulationBonus int32
+	// MaxHP es su vida entera frente a un asedio (SPEC-COMBAT-SIEGE §4.2).
+	MaxHP int32
 }
 
 // catalog vive en código mientras haya un solo edificio, como el de unidades
@@ -57,6 +64,7 @@ var catalog = map[Type]Definition{
 		Cost:            economy.Cost{Resource: economy.ResourceWood, Amount: 30},
 		BuildMs:         15_000,
 		PopulationBonus: 5,
+		MaxHP:           150,
 	},
 }
 
@@ -110,6 +118,21 @@ func (b *Building) Complete() error {
 	}
 	b.Status = StatusComplete
 	return nil
+}
+
+// IsStanding indica si sigue en pie: en obra o completo.
+func (b *Building) IsStanding() bool { return b.Status != StatusDestroyed }
+
+// Destroy la derriba (SPEC-COMBAT-SIEGE RN-COMBAT-033) y dice si estaba
+// completa, que es lo que decide si su bono sale del límite. DESTROYED es
+// terminal: una casa derribada no vuelve a completarse ni se derriba dos veces.
+func (b *Building) Destroy() (wasComplete bool, err error) {
+	if b.Status == StatusDestroyed {
+		return false, fmt.Errorf("%w: edificio %d ya derribado", ErrInvalidBuilding, b.ID)
+	}
+	wasComplete = b.Status == StatusComplete
+	b.Status = StatusDestroyed
+	return wasComplete, nil
 }
 
 // Validate comprueba una fila leída de la base contra el catálogo.

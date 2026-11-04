@@ -213,4 +213,20 @@ describe('economía en la escena (SPEC-ECON-WOOD)', () => {
     expect([herida.attacking, herida.warrior]).toEqual([true, false]);
     expect(herida.hpRatio).toBeCloseTo(10 / 40);
   });
+
+  it('una casa asediada lleva su vida a la escena, y la derribada sale (SPEC-COMBAT-SIEGE)', () => {
+    state().applySnapshot(snapshot({ buildings: [casa({ status: 'COMPLETE', hp: 150, maxHp: 150 })] }));
+    expect(projectLast().buildings.map((b) => b.hpRatio)).toEqual([1]);
+    state().applyServerMessage(server('building.update', 3, { id: 40, status: 'COMPLETE', hp: 75 }));
+    expect(projectLast().buildings.map((b) => b.hpRatio)).toEqual([0.5]);
+    state().applyServerMessage(server('building.destroyed', 4, { id: 40, cityId: 10 }));
+    const update = projectLast();
+    expect(update.buildings).toEqual([]);
+    expect(update.removedBuildings).toEqual([40]);
+  });
+
+  it('una casa de un servidor sin asedio, sin vida, se pinta entera', () => {
+    state().applySnapshot(snapshot({ buildings: [casa()] }));
+    expect(projectLast().buildings.map((b) => b.hpRatio)).toEqual([1]);
+  });
 });

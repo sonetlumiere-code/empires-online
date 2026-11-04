@@ -36,6 +36,8 @@ export interface SceneBuilding {
   /** `UNDER_CONSTRUCTION` o `COMPLETE`, tal cual lo envió el servidor. */
   readonly status: string;
   readonly isOwn: boolean;
+  /** Vida que le queda frente a un asedio, de 0 a 1: por debajo de 1 lleva su barra. */
+  readonly hpRatio: number;
 }
 
 export interface SceneCity {

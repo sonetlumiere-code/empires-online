@@ -16,13 +16,16 @@ type fakeEconomy struct {
 	builds      []simulation.BuildOrder
 	trains      []simulation.TrainOrder
 	completions []simulation.BuildingCompletion
+	destroys    []simulation.BuildingDestruction
 	births      []simulation.Birth
 
 	buildErr error
 	trainErr error
 	birthErr error
-	flushErr error
-	taskErr  error
+	// destroyErr hace fallar la escritura de una destrucción (ADR-029 §4).
+	destroyErr error
+	flushErr   error
+	taskErr    error
 
 	nextBuildingID int64
 	nextUnitID     int64
@@ -75,6 +78,16 @@ func (f *fakeEconomy) CompleteBuilding(_ context.Context, c simulation.BuildingC
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.completions = append(f.completions, c)
+	return nil
+}
+
+func (f *fakeEconomy) DestroyBuilding(_ context.Context, d simulation.BuildingDestruction) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.destroyErr != nil {
+		return f.destroyErr
+	}
+	f.destroys = append(f.destroys, d)
 	return nil
 }
 

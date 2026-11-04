@@ -189,6 +189,11 @@ export const CityUpdate = z.object({
      * dueño, para avisarle (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
      */
     pillagedAtMs: EpochMs.optional(),
+    /**
+     * Instante del último golpe de asedio sobre una casa de la ciudad. Sólo lo
+     * recibe su dueño, para avisarle (SPEC-COMBAT-SIEGE RN-COMBAT-038).
+     */
+    besiegedAtMs: EpochMs.optional(),
   }),
 });
 
@@ -214,13 +219,30 @@ export const BuildingSpawn = z.object({
   }),
 });
 
-/** Cambio de estado de un edificio conocido: hoy, que se completa. */
+/**
+ * Cambio de un edificio conocido: que se completa, o su vida en un asedio
+ * (`hp`, SPEC-COMBAT-SIEGE), con su estado de siempre.
+ */
 export const BuildingUpdate = z.object({
   ...serverEnvelope,
   type: z.literal('building.update'),
   payload: z.object({
     id: EntityId,
     status: BuildingStatus,
+    hp: z.number().int().min(0).optional(),
+  }),
+});
+
+/**
+ * Un edificio derribado por un asedio: el cliente lo quita, como `entity.despawn`
+ * quita una unidad muerta (SPEC-COMBAT-SIEGE §6). Al chunk de la casa.
+ */
+export const BuildingDestroyed = z.object({
+  ...serverEnvelope,
+  type: z.literal('building.destroyed'),
+  payload: z.object({
+    id: EntityId,
+    cityId: EntityId,
   }),
 });
 
@@ -347,6 +369,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   UnitMovementCancelled,
   BuildingSpawn,
   BuildingUpdate,
+  BuildingDestroyed,
   ForestUpdate,
   TreatyUpdate,
   EventLogPage,
@@ -369,6 +392,7 @@ export type UnitMovementCompleted = z.infer<typeof UnitMovementCompleted>;
 export type UnitMovementCancelled = z.infer<typeof UnitMovementCancelled>;
 export type BuildingSpawn = z.infer<typeof BuildingSpawn>;
 export type BuildingUpdate = z.infer<typeof BuildingUpdate>;
+export type BuildingDestroyed = z.infer<typeof BuildingDestroyed>;
 export type ForestUpdate = z.infer<typeof ForestUpdate>;
 export type TreatyUpdate = z.infer<typeof TreatyUpdate>;
 export type EventLogPage = z.infer<typeof EventLogPage>;
@@ -390,6 +414,7 @@ export const SERVER_MESSAGE_TYPES = [
   'unit.movement.cancelled',
   'building.spawn',
   'building.update',
+  'building.destroyed',
   'forest.update',
   'treaty.update',
   'event_log.page',

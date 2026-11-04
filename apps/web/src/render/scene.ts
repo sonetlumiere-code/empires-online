@@ -490,7 +490,11 @@ export class IsoScene {
       this.buildings.set(building.id, entry);
       this.entityLayer.addChild(sprite);
       this.sortDirty = true;
-    } else if (entry.building.status !== building.status || entry.building.isOwn !== building.isOwn) {
+    } else if (
+      entry.building.status !== building.status ||
+      entry.building.isOwn !== building.isOwn ||
+      entry.building.hpRatio !== building.hpRatio
+    ) {
       paintBuildingBody(entry.body, building);
     }
     entry.building = building;
@@ -649,7 +653,7 @@ function paintUnitBody(
   }
 }
 
-function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'status' | 'isOwn'>): void {
+function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'status' | 'isOwn' | 'hpRatio'>): void {
   const color = building.isOwn ? 0xd8b36a : 0x9c7a55;
   const w = TILE_W * 0.45;
   const h = TILE_H * 0.7;
@@ -668,6 +672,15 @@ function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'status
   } else {
     // En obras: el andamio, sin relleno.
     body.rect(-w / 2, -h, w, h).stroke({ color, width: 1.5, alpha: 0.9 });
+  }
+  if (building.hpRatio < 1) {
+    // Una casa asediada lleva su barra de vida, como una unidad herida (SPEC-COMBAT-SIEGE).
+    const bw = 18;
+    const top = -h - TILE_H * 0.45 - 6;
+    body.rect(-bw / 2, top, bw, 3).fill({ color: 0x222222 });
+    body
+      .rect(-bw / 2, top, bw * building.hpRatio, 3)
+      .fill({ color: building.hpRatio > 0.5 ? 0x5bd15b : building.hpRatio > 0.25 ? 0xf0c040 : 0xe04848 });
   }
 }
 

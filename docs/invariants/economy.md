@@ -187,8 +187,13 @@ que no trabaja cargaría madera sin que nadie la viera trabajar.
 | Cobertura | **Cubierto** por `TestElLimiteDePoblacionSumaCincoPorCasaCompleta` (unit), `TestElLimiteDePoblacionCuentaLasCasasCompletas` (`internal/game/loadcheck`), `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` (simulation) y `TestCompletarUnaCasaSumaSuBonoUnaVez` (integration) |
 
 **Enunciado.** Para toda ciudad, `population_limit = eras.population_cap(era) + 5 × (número de filas de
-`buildings` de la ciudad con `type = 'HOUSE'` y `status = 'COMPLETE'`)`, tras cada transacción confirmada; salvo
-la excepción de [INV-CITY-002](city.md#inv-city-002), que nunca destruye unidades.
+`buildings` de la ciudad con `type = 'HOUSE'` y `status = 'COMPLETE'`)`, tras cada transacción confirmada. Una
+casa `DESTROYED` no cuenta.
+
+**Precisión (2026-11-04, [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md)).** Hasta E8 el
+enunciado tenía una excepción: cuando las unidades vivas superaban la fórmula, la validación de carga subía el límite
+hasta el recuento para cumplir el `CHECK` de [INV-CITY-002](city.md#inv-city-002). Desde E8 una ciudad puede estar por
+encima de su límite, la carga ya no lo sube y la fórmula vale sin excepciones.
 
 **Razón.** Es la instancia concreta de [INV-CITY-003](city.md#inv-city-003), cuyo conjunto de modificadores
 de edificios deja de estar vacío con la casa. El límite sigue siendo un valor **derivado**: si se pudiera
@@ -201,6 +206,10 @@ escribir suelto, una casa se podría cobrar dos veces o no cobrarse nunca.
 - `DOMAIN` — completar una casa escribe `status = 'COMPLETE'` y `population_limit + 5` en la misma
   transacción, condicionada a que la fila siga `UNDER_CONSTRUCTION`: un reintento no suma dos veces.
 - `DOMAIN` — la validación de carga recomputa el límite con la fórmula y lo repara.
+- `DOMAIN` — desde E8, destruir una casa escribe `status = 'DESTROYED'` y, si en la base estaba `COMPLETE`,
+  `population_limit - 5`, en la misma transacción y sólo si no estaba ya destruida
+  ([ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) §4). Una compleción que se reintenta
+  después ya no la encuentra en obras y no suma.
 
 **Cómo se verifica.**
 
@@ -210,6 +219,11 @@ escribir suelto, una casa se podría cobrar dos veces o no cobrarse nunca.
   completas y el límite de su era vuelve a `cap + 10`; una en obras no cuenta.
 - `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` (simulation) — en el tick previsto, una sola vez.
 - `TestCompletarUnaCasaSumaSuBonoUnaVez` (integration) — completar dos veces la misma casa sólo suma una.
+- `TestDerribarUnaCasaEsTerminalYQuitaSuBono` (unit, `internal/domain/building`) — una casa `DESTROYED` no cuenta
+  y no vuelve a completarse.
+- `TestDerribarUnaCasaCompletaRestaSuBonoUnaVez` y `TestDerribarUnaCasaEnObraNoTocaElLimiteNiDejaQueSeComplete`
+  (integration) — el bono sale una vez y sólo si en la base estaba completa; la derribada no se carga.
+- `TestElAsedioGoldenDerribaUnaCasa` y `TestUnaCasaEnObraSeDerribaSinTocarElLimite` (simulation) — lo mismo en la RAM.
 
 **Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con
 `inv_id=INV-ECON-004` (`INV-CITY-003` si la ciudad no tiene casas), el límite persistido y el calculado.

@@ -341,6 +341,11 @@ export class GameClient {
     return this.send('unit.pillage', { unitId, cityId });
   }
 
+  /** Ordena a un guerrero derribar una casa ajena (SPEC-COMBAT-SIEGE). */
+  demolishBuilding(unitId: number, buildingId: number): string {
+    return this.send('unit.demolish', { unitId, buildingId });
+  }
+
   /**
    * Pide una página del registro (SPEC-EVENT-LOG): la más reciente, o la anterior
    * a `beforeId`. Siempre la del jugador de la sesión: el comando no nombra a nadie.

@@ -18,14 +18,19 @@ import type { v1 } from '@empires-online/protocol';
 import { terrainAt, useWorldStore, type CityView } from '../src/state/world';
 import { createHudSelector } from '../src/state/selectors';
 import {
+  buildingAt,
   buildingsOf,
   decideTileOrder,
   decideUnitClick,
   firstFreeHouseTile,
+  overPopulationLimit,
   pillageAlertActive,
   PILLAGE_ALERT_MS,
   readableError,
   secondsUntil,
+  siegeAlertActive,
+  SIEGE_ALERT_MS,
+  trainBlockReason,
   unitTypeLabel,
 } from '../src/state/economy';
 import { ViewSync } from '../src/state/viewSync';
@@ -108,6 +113,16 @@ export default function Page() {
     const id = setTimeout(() => setTick((n) => n + 1), left + 50);
     return () => clearTimeout(id);
   }, [pillagedAtMs]);
+
+  // El aviso de asedio, igual (SPEC-COMBAT-SIEGE RN-COMBAT-038).
+  const besiegedAtMs = hud.ownCity?.besiegedAtMs;
+  useEffect(() => {
+    if (besiegedAtMs === undefined) return;
+    const left = besiegedAtMs + SIEGE_ALERT_MS - (clientRef.current?.serverTimeMs() ?? Date.now());
+    if (left <= 0) return;
+    const id = setTimeout(() => setTick((n) => n + 1), left + 50);
+    return () => clearTimeout(id);
+  }, [besiegedAtMs]);
 
   useEffect(() => () => clientRef.current?.disconnect(), []);
 
@@ -275,7 +290,12 @@ export default function Page() {
       const unit = state.units.get(selectedUnitId);
       if (!unit) return;
       const terrain = state.world ? terrainAt(state.terrain, state.world.chunkSize, tile.x, tile.y) : undefined;
-      const order = decideTileOrder(tile, unit, terrain, cityAt, state.playerId);
+      const order = decideTileOrder(tile, unit, terrain, cityAt, state.playerId, (t) => buildingAt(state.buildings, t));
+      if (order.kind === 'demolish') {
+        // Un guerrero sobre una casa ajena: derribarla (SPEC-COMBAT-SIEGE Q10).
+        client.demolishBuilding(selectedUnitId, order.buildingId);
+        return;
+      }
       if (order.kind === 'pillage') {
         // Un guerrero sobre una ciudad ajena: saquearla (SPEC-COMBAT-PILLAGE).
         client.pillageCity(selectedUnitId, order.cityId);
@@ -409,7 +429,10 @@ export default function Page() {
             <span style={{ color: 'var(--muted)' }}>
               {ownCity.name} — {ownCity.era}
             </span>
-            <span style={{ color: 'var(--muted)' }}>
+            <span
+              style={{ color: overPopulationLimit(ownCity) ? 'var(--danger)' : 'var(--muted)' }}
+              title={overPopulationLimit(ownCity) ? 'Perdiste casas: no puedes entrenar hasta volver bajo el límite' : undefined}
+            >
               Población {ownCity.population}/{ownCity.populationLimit}
             </span>
             <span style={{ color: 'var(--muted)' }}>Presencia: {ownCity.presenceState}</span>
@@ -417,7 +440,7 @@ export default function Page() {
               className="secondary"
               onClick={toggleLog}
               aria-expanded={logOpen}
-              title="Lo que te pasó en los últimos días: muertes, saqueos y cambios en tus tratados"
+              title="Lo que te pasó en los últimos días: muertes, saqueos, casas derribadas y cambios en tus tratados"
             >
               Registro{unseenEntries(eventLog).length > 0 ? ` (${unseenEntries(eventLog).length})` : ''}
             </button>
@@ -427,22 +450,30 @@ export default function Page() {
                 ¡Están saqueando tu ciudad!
               </span>
             )}
+            {siegeAlertActive(ownCity, serverTimeMs()) && (
+              <span style={{ color: 'var(--danger)', fontWeight: 600 }} role="alert">
+                ¡Están derribando tus casas!
+              </span>
+            )}
             <button className="secondary" onClick={buildHouse} title="Encarga una casa en el primer hueco libre junto al centro: +5 de población al terminar">
               Casa
             </button>
             <button
               className="secondary"
               onClick={() => clientRef.current?.trainVillager(ownCity.id)}
-              disabled={ownCity.production !== null}
-              title="Entrena un aldeano en la ciudad"
+              disabled={trainBlockReason(ownCity) !== null}
+              title={trainBlockReason(ownCity) ?? 'Entrena un aldeano en la ciudad'}
             >
               Aldeano
             </button>
             <button
               className="secondary"
               onClick={() => clientRef.current?.trainUnit(ownCity.id, 'WARRIOR')}
-              disabled={ownCity.production !== null}
-              title="Entrena un guerrero en la ciudad: 60 de madera. Selecciónalo y haz clic en una unidad enemiga para atacarla o en una ciudad enemiga para saquearla"
+              disabled={trainBlockReason(ownCity) !== null}
+              title={
+                trainBlockReason(ownCity) ??
+                'Entrena un guerrero en la ciudad: 60 de madera. Selecciónalo y haz clic en una unidad enemiga para atacarla, en una casa enemiga para derribarla o en el resto de una ciudad enemiga para saquearla'
+              }
             >
               Guerrero
             </button>

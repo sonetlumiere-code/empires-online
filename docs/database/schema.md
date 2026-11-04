@@ -389,7 +389,9 @@ CREATE TABLE cities (
     -- INV-CITY-004: el autómata de presencia sólo admite estos tres valores.
     CONSTRAINT cities_presence_state_valid
         CHECK (presence_state IN ('ONLINE', 'OFFLINE_PENDING', 'PROTECTED')),
-    -- INV-CITY-002: la población nunca supera el límite.
+    -- INV-CITY-002 hasta 000011: la población nunca supera el límite. Desde
+    -- 000011 lo sustituye el trigger cities_population_not_raised_over_limit
+    -- (abajo, ADR-029).
     CONSTRAINT cities_population_within_limit
         CHECK (population <= population_limit),
     -- Dos ciudades no pueden compartir el mismo centro.
@@ -401,6 +403,15 @@ CREATE TRIGGER cities_set_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE INDEX cities_owner_idx ON cities (owner_player_id);
+
+-- 000011 (SPEC-COMBAT-SIEGE, ADR-029 §2): quita cities_population_within_limit
+-- y pone en su lugar un trigger que sólo rechaza SUBIR la población por encima
+-- del límite, con check_violation y el mismo nombre de restricción. Bajar el
+-- límite (una casa derribada) o la población siempre pasa; el recuento de la
+-- carga se exime con SET LOCAL eo.population_recount = 'on' (ADR-029 §3).
+CREATE TRIGGER cities_population_not_raised_over_limit
+    BEFORE INSERT OR UPDATE OF population, population_limit ON cities
+    FOR EACH ROW EXECUTE FUNCTION cities_population_not_raised_over_limit();
 -- Consulta del barrido de timers: ciudades cuyo cooldown puede haber vencido.
 CREATE INDEX cities_offline_pending_idx
     ON cities (last_offline_at)
@@ -414,7 +425,7 @@ CREATE INDEX cities_offline_pending_idx
 | `center_x`, `center_y` | `integer` | Tile del centro urbano. `int32` lógico del canon; `integer` de PostgreSQL es exactamente int32 |
 | `era` | `text` FK → `eras (code)` | Era actual de la ciudad, por **código** (`STONE_AGE` al crearse). Referenciar el código y no el `id` hace la fila legible sin join |
 | `population` | `integer` DEFAULT 0, CHECK `>= 0` | Población actual. **No se lleva a mano**: `CityRepo.UpdatePopulation` la recalcula como `count(*)` de las unidades vivas de la ciudad y devuelve el valor, de modo que la columna no puede desincronizarse del mundo real |
-| `population_limit` | `integer` CHECK `>= 0` | Materializado desde `eras.population_cap`. En MVP no hay modificadores de edificios, así que coinciden. Se materializa para no unir contra `eras` en cada validación de `POPULATION_LIMIT_REACHED` |
+| `population_limit` | `integer` CHECK `>= 0` | Materializado desde `eras.population_cap` más 5 por casa completa en pie ([INV-ECON-004](../invariants/economy.md#inv-econ-004)). Se materializa para no unir contra `eras` y `buildings` en cada validación de `POPULATION_LIMIT_REACHED`. Desde `000011` puede quedar por debajo de `population`: una ciudad que pierde casas conserva sus unidades y no crea ninguna hasta volver bajo el límite ([INV-CITY-002](../invariants/city.md#inv-city-002), ADR-029) |
 | `presence_state` | `text` + CHECK | `ONLINE` / `OFFLINE_PENDING` / `PROTECTED`. Sólo el servidor lo escribe; el cliente lo observa |
 | `last_online_at` | `timestamptz` | Última vez que la ciudad pasó a `ONLINE`. Lo escribe `SetPresence` |
 | `last_offline_at` | `timestamptz` | Instante en que la ciudad pasó a `OFFLINE_PENDING`. Es la columna indexada por `cities_offline_pending_idx` y contra la que se compara el cooldown |
@@ -1019,11 +1030,18 @@ CREATE TABLE buildings (
     CONSTRAINT buildings_unique_tile UNIQUE (x, y),
     CONSTRAINT buildings_unique_request UNIQUE (city_id, request_id)
 );
+
+-- 000011 (SPEC-COMBAT-SIEGE, ADR-029 §6): DESTROYED entra en el CHECK de
+-- estado, y el único por tile pasa a valer sólo para las casas en pie, para
+-- poder reconstruir en el mismo sitio.
+--   buildings_status_valid CHECK (status IN ('UNDER_CONSTRUCTION', 'COMPLETE', 'DESTROYED'))
+--   CREATE UNIQUE INDEX buildings_unique_tile ON buildings (x, y) WHERE status <> 'DESTROYED';
 ```
 
 | Columna | Semántica |
 |---|---|
-| `x`, `y` | Un tile de la zona urbana 3×3 que no es el centro (`RN-ECON-007`). Sin `CHECK` de geometría: la zona urbana se calcula desde `cities`, y eso es dominio. `buildings_unique_tile` impide dos edificios en un tile |
+| `x`, `y` | Un tile de la zona urbana 3×3 que no es el centro (`RN-ECON-007`). Sin `CHECK` de geometría: la zona urbana se calcula desde `cities`, y eso es dominio. `buildings_unique_tile` impide dos edificios en pie en un tile |
+| `status` | `UNDER_CONSTRUCTION`, `COMPLETE` y, desde `000011`, `DESTROYED`: una casa derribada por un asedio conserva su fila, no se carga al arrancar y no cuenta para el límite ([ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) §6) |
 | `completes_at_ms` | Instante absoluto en que termina la obra, fijado al ordenar; la fase 5 lo compara con el reloj del tick (`INV-ECON-005`) |
 | `request_id` | El `requestId` del `city.build` que lo encargó. Con `buildings_unique_request`, un reintento tras perder el `COMMIT` encuentra su fila y no debita dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md)) |
 

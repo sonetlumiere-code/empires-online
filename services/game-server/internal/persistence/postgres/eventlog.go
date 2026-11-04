@@ -289,8 +289,10 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 			v.BreaksAtMs = &at
 		}
 	}
-	if e.Kind != eventlog.KindUnitLost && e.Kind != eventlog.KindEnemyKilled &&
-		e.Kind != eventlog.KindPillaged && e.Kind != eventlog.KindPillageDone {
+	switch e.Kind {
+	case eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindPillaged, eventlog.KindPillageDone,
+		eventlog.KindHouseLost, eventlog.KindHouseDestroyed:
+	default:
 		v.TreatyType = e.TreatyType
 	}
 	if e.HasTile {

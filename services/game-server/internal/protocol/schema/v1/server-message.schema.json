@@ -651,6 +651,14 @@
                       },
                       "completesAtMs": {
                         "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      },
+                      "hp": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "maxHp": {
+                        "type": "integer",
+                        "minimum": 1
                       }
                     },
                     "required": [
@@ -1049,6 +1057,9 @@
                 },
                 "pillagedAtMs": {
                   "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                },
+                "besiegedAtMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
                 }
               },
               "required": [
@@ -1424,11 +1435,60 @@
                 },
                 "status": {
                   "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/buildings/items/properties/status"
+                },
+                "hp": {
+                  "type": "integer",
+                  "minimum": 0
                 }
               },
               "required": [
                 "id",
                 "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "building.destroyed"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "cityId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                }
+              },
+              "required": [
+                "id",
+                "cityId"
               ],
               "additionalProperties": false
             }
@@ -1552,6 +1612,8 @@
                           "ENEMY_KILLED",
                           "PILLAGED",
                           "PILLAGE_DONE",
+                          "HOUSE_LOST",
+                          "HOUSE_DESTROYED",
                           "TREATY_OFFERED",
                           "TREATY_WITHDRAWN",
                           "TREATY_ACCEPTED",

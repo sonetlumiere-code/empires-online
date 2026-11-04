@@ -60,6 +60,9 @@ type EconomyStore interface {
 	// BirthUnit inserta la unidad entrenada y la apunta en su producción.
 	// Devuelve el id que le dio la base (ADR-023 §3).
 	BirthUnit(ctx context.Context, b Birth) (int64, error)
+	// DestroyBuilding derriba una casa: DESTROYED, el bono fuera del límite si
+	// en la base estaba completa y BuildingDestroyed, idempotente (ADR-029 §4).
+	DestroyBuilding(ctx context.Context, d BuildingDestruction) error
 }
 
 // StockDelta es una escritura del stock: sumar Delta (negativo en un encargo)
@@ -361,9 +364,13 @@ func (s *State) BuildingsOf(cityID int64) []building.Building {
 }
 
 // buildingOccupied dice si un tile tiene edificio, confirmado o encargado
-// (RN-ECON-007).
+// (RN-ECON-007), o una casa derribada cuya destrucción aún no está escrita
+// (ADR-029 §5).
 func (s *State) buildingOccupied(t world.Tile) bool {
 	if _, ok := s.buildingAt[t]; ok {
+		return true
+	}
+	if _, ok := s.siege.destroying[t]; ok {
 		return true
 	}
 	_, ok := s.pendingBuilds[t]
@@ -608,7 +615,7 @@ func (s *Simulation) handleBuildResolved(cmd BuildResolved) {
 	s.state.addBuilding(b)
 	cx, cy := s.state.World().ChunkOf(b.X, b.Y)
 	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeBuildingSpawn,
-		protocol.BuildingSpawnPayload{Building: BuildingView(b)})
+		protocol.BuildingSpawnPayload{Building: s.state.buildingView(b)})
 	s.broadcastStocks(c)
 }
 

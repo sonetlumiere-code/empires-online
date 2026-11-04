@@ -179,6 +179,9 @@ func CommandTypes() []string {
 		DeathPersistFailed{}.commandType(),
 		PillageCity{}.commandType(),
 		PillageResolved{}.commandType(),
+		DemolishBuilding{}.commandType(),
+		BuildingDestroyResolved{}.commandType(),
+		BuildingDestroyPersistFailed{}.commandType(),
 		ProposeTreaty{}.commandType(),
 		RespondTreaty{}.commandType(),
 		CancelTreaty{}.commandType(),
@@ -216,7 +219,7 @@ func JobNames() []string {
 		JobGarrisonEnter, JobGarrisonLeave,
 		JobTaskWrite, JobStocksFlush, JobCityBuild, JobCityTrain,
 		JobBuildingComplete, JobProductionComplete,
-		JobDeath, JobAttack, JobPillage,
+		JobDeath, JobAttack, JobPillage, JobBuildingDestroy,
 		JobTreatyOrder, JobTreatyEnd,
 	}
 }

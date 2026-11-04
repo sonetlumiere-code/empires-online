@@ -65,12 +65,14 @@ solo golpe que las ignore las vuelve falsas.
 mismo predicado: el estado puede cambiar durante la persecución. La respuesta automática de E3
 ([../specs/combat-response.md](../specs/combat-response.md)) pasa por el mismo predicado antes de abrirse. Desde E5,
 el golpe de saqueo sobre una ciudad también (`RN-COMBAT-020`): la ciudad cuenta como objetivo y su dueño como el
-de la víctima.
+de la víctima. Desde E8, el golpe de asedio sobre una casa pasa por ese mismo predicado (`RN-COMBAT-030`), con la
+ciudad de la casa como objetivo.
 
 **Cómo se verifica.** `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque` (objetivo oculto, dueño
 protegido, tratado) y `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` (la revalidación en cada
 golpe), y desde E3 `TestUnIncursorProtegidoDejaDeGolpear` y `TestUnJugadorProtegidoNoPuedeAtacar` (la protección del
-atacante, `RN-COMBAT-018`) — **existen y pasan**, en `internal/game/simulation`.
+atacante, `RN-COMBAT-018`) — **existen y pasan**, en `internal/game/simulation`. Desde E8, `TestRechazosDelAsedio` y
+`TestLaProteccionAMitadDelAsedioLoTermina` (la revalidación en cada golpe de asedio; quitarla lo pone en rojo).
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse en esas condiciones se
 descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.
@@ -139,7 +141,7 @@ de guerrero) — **existen y pasan**, en `internal/game/simulation`. Quitar el s
 ---
 
 <a id="inv-combat-005"></a>
-## INV-COMBAT-005 — Ningún golpe de saqueo cae con el dueño del saqueador ausente
+## INV-COMBAT-005 — Ningún golpe de saqueo o de asedio cae con el dueño del atacante ausente
 
 | Campo | Valor |
 |---|---|
@@ -149,19 +151,21 @@ de guerrero) — **existen y pasan**, en `internal/game/simulation`. Quitar el s
 | Política ante violación | REJECT |
 | Cobertura | **Cubierto** por `TestElSaqueoTerminaConElDuenoAusente` (`internal/game/simulation`) |
 
-**Enunciado.** Un golpe de saqueo sólo se aplica si el dueño del guerrero está presente: su ciudad `ONLINE` y su
+**Enunciado.** Un golpe de saqueo o de asedio sólo se aplica si el dueño del guerrero está presente: su ciudad `ONLINE` y su
 sesión viva o dentro del margen de reconexión, el mismo predicado que
 [INV-ECON-006](economy.md#inv-econ-006) aplica a los viajes de recolección.
 
 **Razón.** Saquear es una acción del jugador presente (SPEC-COMBAT-PILLAGE Q4). Sin esta regla bastaría dejar
-guerreros pegados a una muralla y apagar el ordenador.
+guerreros pegados a una muralla y apagar el ordenador. El asedio la hereda (SPEC-COMBAT-SIEGE Q6).
 
 **Cómo se garantiza.** `DOMAIN` — la fase 4 comprueba la presencia antes de cada golpe de saqueo y, si falta,
-termina el saqueo (`RN-COMBAT-025`).
+termina el saqueo (`RN-COMBAT-025`). Desde E8 hace lo mismo antes de cada golpe de asedio (`RN-COMBAT-035`,
+`RN-COMBAT-036`).
 
 **Cómo se verifica.** `TestElSaqueoTerminaConElDuenoAusente` — **existe y pasa**: dentro del margen de reconexión el
 saqueo sigue; con la ciudad del saqueador `OFFLINE_PENDING`, termina y no hay más golpes. Quitar la comprobación lo
-pone en rojo.
+pone en rojo. Desde E8, `TestElAsedioTerminaConElDuenoAusente` hace lo mismo con el asedio, y quitar la comprobación
+también lo pone en rojo.
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse con el dueño ausente se descarta
 y se registra `invariant_violation` con `inv_id=INV-COMBAT-005`.

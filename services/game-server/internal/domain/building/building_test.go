@@ -113,3 +113,34 @@ func TestValidateRechazaFilasFueraDelCatalogo(t *testing.T) {
 	assert.Error(t, (&Building{Type: "CASTLE", Status: StatusComplete}).Validate())
 	assert.Error(t, (&Building{Type: TypeHouse, Status: "RUINED"}).Validate())
 }
+
+// SPEC-COMBAT-SIEGE §4.2: la casa tiene 150 de vida.
+func TestLaCasaTieneVidaDeAsedio(t *testing.T) {
+	def, err := Lookup(TypeHouse)
+	require.NoError(t, err)
+	assert.Equal(t, int32(150), def.MaxHP)
+}
+
+// RN-COMBAT-033 e INV-ECON-004: derribar dice si estaba completa (si su bono
+// sale del límite), DESTROYED es terminal y una casa derribada no cuenta.
+func TestDerribarUnaCasaEsTerminalYQuitaSuBono(t *testing.T) {
+	completa := Building{ID: 1, Type: TypeHouse, Status: StatusComplete}
+	enObra := Building{ID: 2, Type: TypeHouse, Status: StatusUnderConstruction, CompletesAtMs: 1000}
+
+	era, err := completa.Destroy()
+	require.NoError(t, err)
+	assert.True(t, era, "estaba completa")
+	era, err = enObra.Destroy()
+	require.NoError(t, err)
+	assert.False(t, era, "estaba en obras")
+
+	for _, b := range []Building{completa, enObra} {
+		assert.False(t, b.IsStanding())
+		assert.False(t, b.Due(5000), "una casa derribada no vence")
+		assert.True(t, errors.Is(b.Complete(), ErrAlreadyDone), "ni se completa")
+		_, err := b.Destroy()
+		assert.True(t, errors.Is(err, ErrInvalidBuilding), "ni se derriba dos veces")
+	}
+	assert.Equal(t, int32(20), PopulationLimit(20, []Building{completa, enObra}))
+	assert.NoError(t, (&Building{Type: TypeHouse, Status: StatusDestroyed}).Validate())
+}

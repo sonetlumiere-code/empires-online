@@ -187,6 +187,22 @@ export const UnitPillage = z.object({
 }).strict();
 
 /**
+ * Ordena a un guerrero propio derribar una casa de una ciudad de otro jugador: va
+ * hasta un tile junto a ella y la golpea hasta destruirla. Sólo quién y qué casa:
+ * el tile de llegada, la vida y el daño los decide el servidor.
+ * Ver ../../../docs/specs/combat-siege.md
+ */
+export const UnitDemolish = z.object({
+  v: V,
+  type: z.literal('unit.demolish'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+    buildingId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
  * Propone un tratado a otro jugador (SPEC-DIPLOMACY). La guarnición la fija el
  * tipo y el servidor decide si se puede. Ver ../../../docs/specs/diplomacy.md
  */
@@ -263,6 +279,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   CityTrain,
   UnitAttack,
   UnitPillage,
+  UnitDemolish,
   TreatyPropose,
   TreatyRespond,
   TreatyCancel,
@@ -283,6 +300,7 @@ export type CityBuild = z.infer<typeof CityBuild>;
 export type CityTrain = z.infer<typeof CityTrain>;
 export type UnitAttack = z.infer<typeof UnitAttack>;
 export type UnitPillage = z.infer<typeof UnitPillage>;
+export type UnitDemolish = z.infer<typeof UnitDemolish>;
 export type TreatyPropose = z.infer<typeof TreatyPropose>;
 export type TreatyRespond = z.infer<typeof TreatyRespond>;
 export type TreatyCancel = z.infer<typeof TreatyCancel>;
@@ -302,6 +320,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'city.train',
   'unit.attack',
   'unit.pillage',
+  'unit.demolish',
   'treaty.propose',
   'treaty.respond',
   'treaty.cancel',

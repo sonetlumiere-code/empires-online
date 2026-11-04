@@ -34,22 +34,30 @@
  *      estar protegida, y la saquea: su almacén baja, la víctima recibe el aviso
  *      pillagedAtMs y el guerrero carga lo robado. Tarda minutos y roba madera de
  *      otra cuenta, así que no corre por defecto.
+ *  12b. sólo con --asedio (SPEC-COMBAT-SIEGE): la víctima, conectada, tiene una casa
+ *      completa (si no, junta 30 de madera y la construye); un guerrero propio la
+ *      golpea hasta derribarla: la vida baja, la víctima recibe besiegedAtMs, llega
+ *      building.destroyed y su límite de población baja en 5. Tarda minutos y derriba
+ *      una casa de otra cuenta, así que no corre por defecto.
  *  13. sólo con --diplomacia (SPEC-DIPLOMACY): smoke_runner y smoke_victim firman un
  *      pacto de no agresión (o reutilizan el vigente), el pacto impide el saqueo, y
  *      smoke_runner lo rompe: el tratado sigue vigente con su preaviso. Como el preaviso
  *      dura 15 minutos, repetirlo antes falla con un aviso de cuánto falta.
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
- *      nombra a smoke_runner (el saqueo, con --saqueo; la ruptura, con --diplomacia);
+ *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
+ *      ruptura, con --diplomacia);
  *      smoke_runner ve su lado; la víctima da por visto lo asentado, reconecta con un
  *      ticket nuevo y el cursor sigue marcado. Necesita que antes haya pasado algo
- *      entre los dos: en la misma pasada con --saqueo o --diplomacia, o en una anterior.
+ *      entre los dos: en la misma pasada con --saqueo, --asedio o --diplomacia, o en
+ *      una anterior. En una misma pasada el orden es saqueo, asedio, diplomacia y
+ *      registro: el pacto de --diplomacia impediría el asedio durante su preaviso.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--saqueo] [--diplomacia] [--registro] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--incursion] [--saqueo] [--asedio] [--diplomacia] [--registro] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -73,6 +81,7 @@ const VERBOSE = args.includes('--verbose');
 const INCURSION = args.includes('--incursion');
 const TALA = args.includes('--tala');
 const SAQUEO = args.includes('--saqueo');
+const ASEDIO = args.includes('--asedio');
 const DIPLOMACIA = args.includes('--diplomacia');
 const REGISTRO = args.includes('--registro');
 const PROTOCOL_VERSION = 1;
@@ -509,6 +518,10 @@ async function main() {
     await saqueo(segunda, ciudad, cuenta.playerId, snap2);
   }
 
+  if (ASEDIO) {
+    await asedio(segunda, ciudad, cuenta.playerId, snap2);
+  }
+
   if (DIPLOMACIA) {
     await diplomacia(segunda, cuenta.playerId, snap2);
   }
@@ -756,29 +769,7 @@ async function saqueo(atacante, ciudad, playerId, snap) {
   const victima = await conectar(cuenta.ticket);
   const ciudadV = victima.snapshot.payload.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
   if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
-  let almacen = ciudadV.stocks?.WOOD ?? 0;
-  if (almacen < 70) {
-    // Sus aldeanos pueden haberse quedado por el camino hacia el atacante en
-    // incursiones anteriores: vuelven a casa y recolectan.
-    const { unidades, casa, terreno } = await unidadesPropias(victima.sesion, cuenta.playerId, ciudadV, guerrero,
-      victima.snapshot.payload.terrain);
-    const aldeanos = unidades.filter((u) => u.unitType === 'VILLAGER');
-    if (aldeanos.length === 0) {
-      fallar('la víctima no tiene madera ni aldeanos para juntarla',
-        `Usa EO_SMOKE_VICTIM con otra cuenta cuya ciudad esté a menos de ~200 tiles de la de ${USUARIO}.`);
-    }
-    for (const a of aldeanos) {
-      if (Math.max(Math.abs(a.x - ciudadV.centerX), Math.abs(a.y - ciudadV.centerY)) > 12) {
-        await acercar(victima.sesion, a, { x: ciudadV.centerX, y: ciudadV.centerY }, 8);
-      }
-    }
-    victima.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
-    await victima.sesion.esperar('world.snapshot');
-    const stockCasa = casa.cities.find((c) => c.id === ciudadV.id) ?? ciudadV;
-    almacen = await juntarMadera(victima.sesion, stockCasa, cuenta.playerId,
-      { terrain: terreno, units: aldeanos, forests: casa.forests }, 70);
-    ok('la víctima junta madera', `${almacen}`);
-  }
+  const almacen = await maderaDeLaVictima(victima, cuenta.playerId, ciudadV, guerrero, 70);
 
   // El guerrero va por tramos hasta cerca de la muralla y desde ahí se ordena el
   // saqueo: el servidor elige el tile del anillo.
@@ -803,6 +794,126 @@ async function saqueo(atacante, ciudad, playerId, snap) {
   const carga = await atacante.sesion.esperarQue('entity.update',
     (m) => m.payload.id === guerrero.id && typeof m.payload.carrying === 'number' && m.payload.carrying > cargaAntes, 10_000);
   ok('el guerrero carga lo robado', `${cargaAntes} -> ${carga.payload.carrying}`);
+  victima.sesion.cerrar();
+}
+
+/**
+ * Deja el almacén de la víctima en `minimo` de madera como poco y lo devuelve. Sus
+ * aldeanos pueden haberse quedado por el camino hacia el atacante en incursiones
+ * anteriores: vuelven a casa y recolectan.
+ */
+async function maderaDeLaVictima(victima, victimaId, ciudadV, hacia, minimo) {
+  let almacen = ciudadV.stocks?.WOOD ?? 0;
+  if (almacen >= minimo) return almacen;
+  const { unidades, casa, terreno } = await unidadesPropias(victima.sesion, victimaId, ciudadV, hacia,
+    victima.snapshot.payload.terrain);
+  const aldeanos = unidades.filter((u) => u.unitType === 'VILLAGER');
+  if (aldeanos.length === 0) {
+    fallar('la víctima no tiene madera ni aldeanos para juntarla',
+      `Usa EO_SMOKE_VICTIM con otra cuenta cuya ciudad esté a menos de ~200 tiles de la de ${USUARIO}.`);
+  }
+  for (const a of aldeanos) {
+    if (Math.max(Math.abs(a.x - ciudadV.centerX), Math.abs(a.y - ciudadV.centerY)) > 12) {
+      await acercar(victima.sesion, a, { x: ciudadV.centerX, y: ciudadV.centerY }, 8);
+    }
+  }
+  victima.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  await victima.sesion.esperar('world.snapshot');
+  const stockCasa = casa.cities.find((c) => c.id === ciudadV.id) ?? ciudadV;
+  almacen = await juntarMadera(victima.sesion, stockCasa, victimaId,
+    { terrain: terreno, units: aldeanos, forests: casa.forests }, minimo);
+  ok('la víctima junta madera', `${almacen}`);
+  return almacen;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Asedio (SPEC-COMBAT-SIEGE), sólo con --asedio
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * El primer tile libre de la zona urbana 3 × 3 de una ciudad, fila a fila y sin el
+ * centro, como encarga casas el cliente; `null` si no queda ninguno.
+ */
+export function huecoParaCasa(ciudad, edificios) {
+  const ocupados = new Set(edificios.map((b) => `${b.x},${b.y}`));
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const x = ciudad.centerX + dx;
+      const y = ciudad.centerY + dy;
+      if (!ocupados.has(`${x},${y}`)) return { x, y };
+    }
+  }
+  return null;
+}
+
+async function asedio(atacante, ciudad, playerId, snap) {
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const vistaV = victima.snapshot.payload;
+  const ciudadV = vistaV.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', vistaV.cities);
+
+  // El guerrero: el que quedó junto a la víctima tras --saqueo, el de casa, o uno nuevo.
+  atacante.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const cerca = (await atacante.sesion.esperar('world.snapshot')).payload;
+  let guerrero = cerca.units.find((u) => u.playerId === playerId && u.unitType === 'WARRIOR')
+    ?? snap.units.find((u) => u.playerId === playerId && u.unitType === 'WARRIOR');
+  if (!guerrero) {
+    const madera = await juntarMadera(atacante.sesion, ciudad, playerId, snap, 60);
+    ok('madera para un guerrero', `${madera}`);
+    guerrero = await entrenar(atacante.sesion, ciudad, playerId, 'WARRIOR');
+  }
+  ok('guerrero para asediar', `unidad ${guerrero.id} en (${guerrero.x}, ${guerrero.y})`);
+
+  // Una casa completa de la víctima; si no la tiene, la construye.
+  const suyas = vistaV.buildings.filter((b) => b.cityId === ciudadV.id);
+  let casa = suyas.find((b) => b.status === 'COMPLETE');
+  if (!casa) {
+    await maderaDeLaVictima(victima, cuenta.playerId, ciudadV, guerrero, 30);
+    const hueco = huecoParaCasa(ciudadV, suyas);
+    if (!hueco) fallar('la víctima no tiene hueco para una casa', suyas);
+    victima.sesion.enviar('city.build', { cityId: ciudadV.id, type: 'HOUSE', x: hueco.x, y: hueco.y });
+    const spawn = await victima.sesion.esperarQue(['building.spawn', 'system.error'],
+      (m) => m.type === 'system.error' ||
+        (m.payload.building.cityId === ciudadV.id && m.payload.building.x === hueco.x && m.payload.building.y === hueco.y),
+      15_000);
+    if (spawn.type === 'system.error') fallar('la víctima no pudo encargar la casa', spawn.payload);
+    await victima.sesion.esperarQue('building.update',
+      (m) => m.payload.id === spawn.payload.building.id && m.payload.status === 'COMPLETE', 30_000);
+    casa = { ...spawn.payload.building, status: 'COMPLETE' };
+    ok('la víctima construye una casa', `(${casa.x}, ${casa.y})`);
+  }
+  ok('casa que derribar', `id ${casa.id} en (${casa.x}, ${casa.y}), vida ${casa.hp ?? 150}/${casa.maxHp ?? 150}`);
+
+  // El guerrero va por tramos hasta cerca de la ciudad y desde ahí se ordena el
+  // derribo: el servidor elige el tile junto a la casa.
+  const junto = await acercar(atacante.sesion, guerrero, { x: ciudadV.centerX, y: ciudadV.centerY + 5 }, 4);
+  ok('el guerrero llega junto a la ciudad', `(${junto.x}, ${junto.y})`);
+  atacante.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const vista = (await atacante.sesion.esperar('world.snapshot')).payload;
+  const limiteAntes = vista.cities.find((c) => c.id === ciudadV.id)?.populationLimit;
+
+  atacante.sesion.enviar('unit.demolish', { unitId: guerrero.id, buildingId: casa.id });
+  const golpe = await atacante.sesion.esperarQue(['building.update', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.id === casa.id && typeof m.payload.hp === 'number' && m.payload.hp < (casa.maxHp ?? 150)),
+    60_000);
+  if (golpe.type === 'system.error') fallar('el servidor rechazó el derribo', golpe.payload);
+  ok('golpe de asedio', `vida de la casa ${golpe.payload.hp}`);
+
+  const aviso = await victima.sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadV.id && typeof m.payload.besiegedAtMs === 'number', 10_000);
+  ok('aviso al asediado', `besiegedAtMs ${aviso.payload.besiegedAtMs}`);
+
+  // 150 de vida a 8 cada 1,5 s: unos 27 s con un solo guerrero.
+  await atacante.sesion.esperarQue('building.destroyed', (m) => m.payload.id === casa.id, 60_000);
+  ok('la casa cae', `building.destroyed ${casa.id}`);
+  const limite = await victima.sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadV.id && typeof m.payload.populationLimit === 'number', 10_000);
+  if (limiteAntes !== undefined && limite.payload.populationLimit !== limiteAntes - 5) {
+    fallar('el límite de la víctima no bajó en 5', { antes: limiteAntes, despues: limite.payload.populationLimit });
+  }
+  ok('el límite de la víctima baja', `${limiteAntes} -> ${limite.payload.populationLimit}`);
   victima.sesion.cerrar();
 }
 
@@ -887,15 +998,17 @@ async function registro(propio, playerId) {
   const suyas = pagina.entries.filter((e) => e.otherPlayerId === playerId);
   if (suyas.length === 0) {
     fallar(`el registro de ${VICTIMA} no nombra a ${USUARIO}`,
-      `Corre antes --saqueo o --diplomacia (o los dos en la misma pasada). Primeras entradas: ${JSON.stringify(pagina.entries.slice(0, 5), null, 2)}`);
+      `Corre antes --saqueo, --asedio o --diplomacia (o varios en la misma pasada). Primeras entradas: ${JSON.stringify(pagina.entries.slice(0, 5), null, 2)}`);
   }
   const tipos = new Set(suyas.map((e) => e.kind));
   if (SAQUEO && !tipos.has('PILLAGED')) fallar('el registro de la víctima no tiene el saqueo', suyas);
+  if (ASEDIO && !tipos.has('HOUSE_LOST')) fallar('el registro de la víctima no tiene la casa derribada', suyas);
   if (DIPLOMACIA && !tipos.has('TREATY_BREAK_ANNOUNCED')) fallar('el registro de la víctima no tiene la ruptura', suyas);
   ok(`la víctima ve lo que le hizo ${USUARIO}`, `${[...tipos].join(', ')} · «${suyas[0].otherCityName}»`);
 
   const propia = (await paginaDelRegistro(propio.sesion)).entries.filter((e) => e.otherPlayerId === cuenta.playerId);
   if (SAQUEO && !propia.some((e) => e.kind === 'PILLAGE_DONE')) fallar(`el registro de ${USUARIO} no tiene su saqueo`, propia);
+  if (ASEDIO && !propia.some((e) => e.kind === 'HOUSE_DESTROYED')) fallar(`el registro de ${USUARIO} no tiene su derribo`, propia);
   if (DIPLOMACIA && !propia.some((e) => e.kind === 'TREATY_ACCEPTED')) fallar(`el registro de ${USUARIO} no tiene la aceptación`, propia);
   if (propia.length > 0) ok(`${USUARIO} ve su lado`, [...new Set(propia.map((e) => e.kind))].join(', '));
 

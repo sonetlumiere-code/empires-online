@@ -540,6 +540,25 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			CityID:    p.CityID,
 		})
 
+	// Asedio (SPEC-COMBAT-SIEGE). Sólo quién y qué casa: el tile de llegada,
+	// la vida y el daño son del servidor (INV-SEC-001).
+	case protocol.TypeUnitDemolish:
+		var p protocol.UnitDemolishPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.DemolishBuilding{
+			PlayerID:   session.PlayerID,
+			SessionID:  session.ID,
+			RequestID:  msg.RequestID,
+			UnitID:     p.UnitID,
+			BuildingID: p.BuildingID,
+		})
+
 	// Diplomacia (SPEC-DIPLOMACY). El cliente dice a quién y qué tipo, o sobre
 	// qué tratado; el estado, la guarnición y los plazos son del servidor.
 	case protocol.TypeTreatyPropose:
