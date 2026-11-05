@@ -20,6 +20,11 @@
  *   9. unit.gather sobre el bosque más cercano a la ciudad  ->  un viaje completo:
  *      tramo al bosque, WORKING, vuelta y city.update con la madera depositada
  *      (SPEC-ECON-WOOD)
+ *   9b. sólo con --civilizacion (SPEC-CIVILIZATION): un alta sin civilización o con una
+ *      desconocida se rechaza; smoke_norse (que se da de alta NORSE la primera vez) ve
+ *      su ciudad nórdica y mueve un aldeano a la velocidad nórdica; y una casa de la
+ *      ciudad del humo tiene el plazo de su civilización. En todas las pasadas, además,
+ *      la ciudad lleva su civilización y la polilínea del paso 5 va a su velocidad.
  *  10. sólo con --tala (SPEC-ECON-FOREST): todos los aldeanos recolectan del mismo
  *      tile hasta agotarlo, y al menos uno pasa solo a otro tile con madera a 6 o
  *      menos. Tarda minutos y gasta bosque de verdad, así que no corre por defecto.
@@ -90,7 +95,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--registro] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--registro] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -99,6 +104,7 @@
  * dependencias. Sale con código 1 al primer fallo.
  */
 
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const args = process.argv.slice(2);
@@ -121,6 +127,7 @@ const DIPLOMACIA = args.includes('--diplomacia');
 const COMERCIO = args.includes('--comercio');
 const TERRITORIO = args.includes('--territorio');
 const REGISTRO = args.includes('--registro');
+const CIVILIZACION = args.includes('--civilizacion');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -129,6 +136,65 @@ const NO_TRANSITABLE = new Set([3, 4]);
 // FOREST da madera (RN-ECON-001) y HILL piedra (SPEC-ECON-STONE, RN-ECON-019).
 const FOREST = 1;
 const HILL = 2;
+// Coste de cada terreno transitable en décimas del base (world.CostBase = 10).
+const COSTE_TERRENO = new Map([[0, 10], [1, 16], [2, 18], [5, 6]]);
+
+/**
+ * El catálogo de presentación de las civilizaciones (SPEC-CIVILIZATION §6), el
+ * mismo que embebe el Game Server y que un test de integración ata a la tabla.
+ * Con él, el humo calcula lo que tarda cada paso sin copiar ningún número.
+ */
+const CATALOGO = JSON.parse(
+  readFileSync(new URL('../packages/protocol/schema/v1/civilizations.json', import.meta.url), 'utf8'),
+).civilizations;
+
+/** El rasgo por mil de una civilización; 1000 si no lo declara (RN-CIV-003). */
+export function rasgo(catalogo, codigo, clave) {
+  const c = catalogo.find((x) => x.code === codigo);
+  if (!c) throw new Error(`civilización desconocida: ${codigo}`);
+  return c.traits[clave] ?? 1000;
+}
+
+/** player.ScaleDuration: divide por el rasgo, redondeando al más cercano, mínimo 1. */
+export function escalarDuracion(base, porMil) {
+  return Math.max(1, Math.floor((base * 1000 + Math.floor(porMil / 2)) / porMil));
+}
+
+/**
+ * Los tMs que el servidor tiene que poner en una polilínea con `msPorTile`: la
+ * misma aritmética entera que movement.StepDurationMs, paso a paso.
+ */
+export function tiemposDePolilinea(path, terreno, msPorTile) {
+  const out = [0];
+  let acc = 0;
+  for (let i = 1; i < path.length; i++) {
+    const coste = COSTE_TERRENO.get(terreno.get(`${path[i].x},${path[i].y}`));
+    if (coste === undefined) return null; // fuera del área conocida o intransitable
+    let ms = Math.floor((msPorTile * coste + 5) / 10);
+    if (path[i].x !== path[i - 1].x && path[i].y !== path[i - 1].y) {
+      ms = Math.floor((ms * 1414214 + 500000) / 1000000);
+    }
+    acc += Math.max(1, ms);
+    out.push(acc);
+  }
+  return out;
+}
+
+/** Comprueba que una polilínea va a la velocidad de la civilización de su dueño. */
+function comprobarVelocidad(mov, terreno, civilizacion, quien) {
+  const msPorTile = escalarDuracion(600, rasgo(CATALOGO, civilizacion, 'unit.move_speed'));
+  const esperados = tiemposDePolilinea(mov.path, terreno, msPorTile);
+  if (!esperados) {
+    ok(`velocidad de ${quien}: sin terreno para recalcularla`, 'la ruta sale del área cargada');
+    return;
+  }
+  const reales = mov.path.map((w) => w.tMs);
+  if (JSON.stringify(reales) !== JSON.stringify(esperados)) {
+    fallar(`la polilínea de ${quien} no va a la velocidad de su civilización (${civilizacion}, ${msPorTile} ms por tile)`,
+      `esperados ${JSON.stringify(esperados)}\nrecibidos ${JSON.stringify(reales)}`);
+  }
+  ok(`la polilínea de ${quien} va a la velocidad de su civilización`, `${civilizacion}: ${msPorTile} ms por tile de hierba`);
+}
 
 let pasos = 0;
 const log = (...a) => VERBOSE && console.log('   ', ...a);
@@ -351,6 +417,10 @@ export function elegirColina(terreno, ciudad, colinaAMedias = []) {
 
 const USUARIO = process.env.EO_SMOKE_USER || 'smoke_runner';
 const CLAVE = process.env.EO_SMOKE_PASSWORD || 'smoke-password-1234';
+/** La civilización con que se da de alta una cuenta de humo nueva (SPEC-CIVILIZATION). */
+const CIVILIZACION_DEL_ALTA = process.env.EO_SMOKE_CIVILIZATION || 'ROMAN';
+/** La cuenta nórdica de --civilizacion. */
+const NORDICA = 'smoke_norse';
 
 /** Sólo `nombre=valor` de un Set-Cookie: lo que el navegador devolvería. */
 export function cookieDeSesion(setCookie) {
@@ -361,8 +431,9 @@ export function cookieDeSesion(setCookie) {
  * Da de alta al jugador de humo o entra con el que ya existe. Devuelve el cuerpo
  * (con el primer ticket) y la cookie de sesión con la que pedir los siguientes.
  */
-async function abrirSesion(usuario = USUARIO) {
-  const cuerpo = JSON.stringify({ username: usuario, password: CLAVE });
+async function abrirSesion(usuario = USUARIO, civilizacion = CIVILIZACION_DEL_ALTA) {
+  // El login ignora la civilización; el alta la exige (RN-CIV-001).
+  const cuerpo = JSON.stringify({ username: usuario, password: CLAVE, civilization: civilizacion });
   const cabeceras = { 'content-type': 'application/json' };
 
   const alta = await pedir('/api/auth/register', { method: 'POST', headers: cabeceras, body: cuerpo }, WEB);
@@ -455,6 +526,10 @@ async function main() {
   const ciudad = snap.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
   if (!ciudad) fallar('el snapshot no trae la ciudad del jugador: la fundación no llegó al mundo', snap.cities);
   ok('ciudad propia en el snapshot', `"${ciudad.name}" en (${ciudad.centerX}, ${ciudad.centerY})`);
+  if (!CATALOGO.some((c) => c.code === ciudad.civilization)) {
+    fallar('la ciudad no lleva una civilización del catálogo (SPEC-CIVILIZATION RN-CIV-009)', ciudad);
+  }
+  ok('la ciudad lleva su civilización', ciudad.civilization);
 
   const propias = snap.units.filter((u) => u.playerId === cuenta.playerId);
   if (propias.length === 0) fallar('el snapshot no trae ninguna unidad propia', snap.units);
@@ -492,6 +567,8 @@ async function main() {
     `unidad ${unidad.id}: (${unidad.x},${unidad.y}) -> (${destino.x},${destino.y}) · ` +
       `${mov.path.length} tiles · ${duracionMs} ms`,
   );
+
+  comprobarVelocidad(mov, terreno, ciudad.civilization, USUARIO);
 
   if (duracionMs < 2000) {
     fallar(
@@ -562,6 +639,10 @@ async function main() {
     vueltaMs + 30_000);
   ok('viaje de recolección completo', `madera ${maderaInicial} -> ${deposito.payload.stocks.WOOD}`);
 
+  if (CIVILIZACION) {
+    await civilizaciones(segunda, ciudad2);
+  }
+
   if (TALA) {
     await tala(segunda, cuenta.playerId, snap2, bosque);
   }
@@ -607,6 +688,72 @@ async function main() {
 
   console.log(`\n${pasos} comprobaciones superadas. El vertical slice funciona en este despliegue.\n`);
   process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Civilizaciones (SPEC-CIVILIZATION), sólo con --civilizacion
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * El alta sin civilización se rechaza sin crear cuenta; una cuenta nórdica
+ * (smoke_norse, que se da de alta la primera vez) ve su ciudad nórdica y mueve
+ * un aldeano a 545 ms por tile; y una casa de la ciudad del humo tiene el plazo
+ * de su civilización (13 636 ms la romana).
+ */
+async function civilizaciones(propia, ciudad) {
+  const cabeceras = { 'content-type': 'application/json' };
+  for (const civilization of [undefined, 'AZTEC']) {
+    const r = await pedir('/api/auth/register', {
+      method: 'POST', headers: cabeceras,
+      body: JSON.stringify({ username: 'smoke_sin_civ', password: CLAVE, civilization }),
+    }, WEB);
+    if (r.status !== 400 || r.cuerpo?.code !== 'INVALID_MESSAGE') {
+      fallar(`un alta con civilización ${civilization ?? '(ninguna)'} no se rechazó con 400 INVALID_MESSAGE`, r);
+    }
+  }
+  ok('el alta sin una civilización del catálogo se rechaza', '400 INVALID_MESSAGE');
+
+  const { cuenta } = await abrirSesion(NORDICA, 'NORSE');
+  const nordica = await conectar(cuenta.ticket);
+  const vista = nordica.snapshot.payload;
+  const suya = vista.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!suya) fallar(`${NORDICA} no tiene ciudad en su snapshot`, vista.cities);
+  if (suya.civilization !== 'NORSE') fallar(`la ciudad de ${NORDICA} no es nórdica`, suya);
+  ok(`la ciudad de ${NORDICA} es nórdica`, `"${suya.name}" en (${suya.centerX}, ${suya.centerY})`);
+  const aldeano = vista.units.find((u) => u.playerId === cuenta.playerId && u.unitType === 'VILLAGER' && !u.movement);
+  if (!aldeano) fallar(`${NORDICA} no tiene un aldeano parado`, vista.units);
+  const terreno = indexarTerreno(vista.terrain);
+  const destino = elegirDestino(terreno, aldeano);
+  if (!destino) fallar(`no hay un destino transitable cerca del aldeano de ${NORDICA}`, aldeano);
+  nordica.sesion.enviar('unit.move', { unitId: aldeano.id, target: { x: destino.x, y: destino.y } });
+  const iniciado = await nordica.sesion.esperarQue(['unit.movement.started', 'unit.move.rejected', 'system.error'],
+    (m) => m.type !== 'unit.movement.started' || m.payload.unitId === aldeano.id);
+  if (iniciado.type !== 'unit.movement.started') fallar(`${NORDICA} no pudo mover su aldeano`, iniciado.payload);
+  comprobarVelocidad(iniciado.payload.movement, terreno, 'NORSE', NORDICA);
+  nordica.sesion.cerrar();
+
+  // Una casa en la ciudad del humo: su plazo es el de su civilización. Se mide
+  // contra el ts del building.spawn, que sale un tick o dos después de la orden.
+  const edificios = propia.snapshot.payload.buildings.filter((b) => b.cityId === ciudad.id);
+  const hueco = huecoParaCasa(ciudad, edificios);
+  const madera = ciudad.stocks?.WOOD ?? 0;
+  if (!hueco || madera < 30) {
+    ok('plazo de la casa: se omite', hueco ? `sólo hay ${madera} de madera` : 'no queda hueco junto al centro');
+    return;
+  }
+  propia.sesion.enviar('city.build', { cityId: ciudad.id, type: 'HOUSE', x: hueco.x, y: hueco.y });
+  const spawn = await propia.sesion.esperarQue(['building.spawn', 'system.error'],
+    (m) => m.type === 'system.error' ||
+      (m.payload.building.cityId === ciudad.id && m.payload.building.x === hueco.x && m.payload.building.y === hueco.y),
+    15_000);
+  if (spawn.type === 'system.error') fallar('no se pudo encargar la casa', spawn.payload);
+  const plazo = escalarDuracion(15_000, rasgo(CATALOGO, ciudad.civilization, 'production.speed'));
+  const queda = spawn.payload.building.completesAtMs - spawn.ts;
+  if (queda > plazo || queda < plazo - 2_000) {
+    fallar(`la casa no tiene el plazo de su civilización (${ciudad.civilization}: ${plazo} ms)`,
+      `completesAtMs - ts = ${queda} ms`);
+  }
+  ok('la casa tiene el plazo de su civilización', `${ciudad.civilization}: ${plazo} ms (quedaban ${queda} al anunciarse)`);
 }
 
 // ─────────────────────────────────────────────────────────────
