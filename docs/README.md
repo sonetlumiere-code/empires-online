@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son treinta y tres, del 001
-al 033, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son treinta y cuatro, del 001
+al 034, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -294,7 +294,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E11 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E12 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -320,6 +320,11 @@ Matices que conviene no maquillar:
   `Implemented`, sin migración, con [ADR-033](decisions/ADR-033-live-notices-ephemeral.md). No se comprobó en el
   navegador que «Ir» mueva la cámara ni que el título de la pestaña se borre al volver
   ([roadmap/milestones.md](roadmap/milestones.md) §E11).
+- **E12 Conquista está en `main`** desde `a2c3378`, con la CI en verde el 2026-11-05 y una prueba en vivo con el humo
+  `--territorio` y el navegador el 2026-11-04; [SPEC-TERRITORY-CONQUEST](specs/territory-conquest.md) está en
+  `Implemented`, con la migración `000014` y [ADR-034](decisions/ADR-034-territory-claims.md). No se comprobó en el
+  navegador el botón «Reclamar territorio» ni el territorio en disputa en ámbar
+  ([roadmap/milestones.md](roadmap/milestones.md) §E12).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

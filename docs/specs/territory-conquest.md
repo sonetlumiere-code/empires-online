@@ -6,7 +6,7 @@ aguanta unos minutos y, si nadie lo impide, el territorio cambia de manos y da p
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TERRITORY-CONQUEST` |
-| Estado | Accepted (2026-11-04). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-05). Propuesta en `Draft` y aceptada el 2026-11-04, con la recomendación de cada pregunta de §10; en `main` desde la fusión `a2c3378`, con la CI en verde. |
 | Milestone | E12 Conquista (duodécimo slice después de M7) |
 | Canon | §4 y §10 (territorios, población), §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [territory.md](territory.md), [city.md](city.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-siege.md](combat-siege.md), [diplomacy.md](diplomacy.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |

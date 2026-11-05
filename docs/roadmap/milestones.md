@@ -1779,7 +1779,7 @@ terceros, los sucesos de E9 y lo que ya llega por otra vía (saqueo y asedio suf
 
 ## E12 — Conquista
 
-**Estado: HECHO EN LA RAMA (2026-11-04)**, en `claude/slice-territorio`, sin fusionar. Contrato:
+**Estado: HECHO (2026-11-04)**, fusionado en `main` (`a2c3378`) con la CI en verde el 2026-11-05. Contrato:
 [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md), aceptada el 2026-11-04 con sus once decisiones de
 producto, y [ADR-034](../decisions/ADR-034-territory-claims.md).
 
