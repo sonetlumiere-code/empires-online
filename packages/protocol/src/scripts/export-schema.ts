@@ -20,6 +20,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ClientMessage } from '../v1/client.js';
 import { ServerMessage } from '../v1/server.js';
 import { ERROR_CODES } from '../v1/errors.js';
+import { CIVILIZATIONS } from '../v1/civilizations.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDir, '..', '..');
@@ -53,6 +54,12 @@ function buildArtifacts(): Artifact[] {
     {
       filename: 'error-codes.json',
       content: `${JSON.stringify({ version: 1, codes: ERROR_CODES }, null, 2)}\n`,
+    },
+    {
+      // Catálogo de presentación (ADR-035 §7): el Game Server lo compara con la
+      // tabla `civilizations` en un test de integración.
+      filename: 'civilizations.json',
+      content: `${JSON.stringify({ version: 1, civilizations: CIVILIZATIONS }, null, 2)}\n`,
     },
   ];
 }

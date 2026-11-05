@@ -491,6 +491,15 @@
                           "CASTLE_AGE"
                         ]
                       },
+                      "civilization": {
+                        "type": "string",
+                        "enum": [
+                          "ROMAN",
+                          "BYZANTINE",
+                          "PERSIAN",
+                          "NORSE"
+                        ]
+                      },
                       "population": {
                         "type": "integer",
                         "minimum": 0
@@ -588,6 +597,7 @@
                       "centerX",
                       "centerY",
                       "era",
+                      "civilization",
                       "population",
                       "populationLimit",
                       "presenceState",

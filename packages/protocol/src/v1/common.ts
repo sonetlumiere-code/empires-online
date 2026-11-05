@@ -110,6 +110,14 @@ export type TerrainType = z.infer<typeof TerrainType>;
 export const EraCode = z.enum(['STONE_AGE', 'BRONZE_AGE', 'IRON_AGE', 'CASTLE_AGE']);
 export type EraCode = z.infer<typeof EraCode>;
 
+/**
+ * Civilización de un jugador: la elige al registrarse y no cambia nunca
+ * (SPEC-CIVILIZATION RN-CIV-001, RN-CIV-002). Viaja el código; los rasgos los
+ * aplica el servidor (ADR-035 §7).
+ */
+export const CivilizationCode = z.enum(['ROMAN', 'BYZANTINE', 'PERSIAN', 'NORSE']);
+export type CivilizationCode = z.infer<typeof CivilizationCode>;
+
 export const TerritoryOwnerType = z.enum(['NONE', 'PLAYER', 'CLAN', 'FACTION']);
 export type TerritoryOwnerType = z.infer<typeof TerritoryOwnerType>;
 
@@ -198,6 +206,8 @@ export const CityView = z.object({
   centerX: WorldCoordinate,
   centerY: WorldCoordinate,
   era: EraCode,
+  /** Civilización de su dueño, pública para todo el que ve la ciudad (RN-CIV-009). No cambia: no va en `city.update`. */
+  civilization: CivilizationCode,
   population: z.number().int().min(0),
   populationLimit: z.number().int().min(0),
   presenceState: PresenceState,

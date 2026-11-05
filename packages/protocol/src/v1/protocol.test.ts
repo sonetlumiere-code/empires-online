@@ -18,6 +18,8 @@ import { ClientMessage, CLIENT_MESSAGE_TYPES } from './client.js';
 import { ServerMessage, SERVER_MESSAGE_TYPES } from './server.js';
 import { ERROR_CODES } from './errors.js';
 import { parseClientMessage, parseServerMessage, TRANSPORT_LIMITS } from './index.js';
+import { CityView, CivilizationCode } from './common.js';
+import { CIVILIZATIONS, CIVILIZATION_TRAIT_KEYS } from './civilizations.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaDir = resolve(here, '..', '..', 'schema', 'v1');
@@ -712,5 +714,46 @@ describe('conquista (SPEC-TERRITORY-CONQUEST)', () => {
       expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
       expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...notice, territoryId: 0 } }).ok).toBe(false);
     }
+  });
+});
+
+describe('civilizaciones (SPEC-CIVILIZATION)', () => {
+  const ciudad = {
+    id: 7,
+    ownerPlayerId: uuid,
+    name: 'Roma',
+    centerX: 10,
+    centerY: 12,
+    era: 'STONE_AGE',
+    civilization: 'NORSE',
+    population: 3,
+    populationLimit: 20,
+    presenceState: 'ONLINE',
+    protectionUntilMs: null,
+  };
+
+  it('CityView exige la civilización y sólo admite las del catálogo', () => {
+    expect(CityView.safeParse(ciudad).success).toBe(true);
+    const { civilization: _, ...sin } = ciudad;
+    expect(CityView.safeParse(sin).success).toBe(false);
+    expect(CityView.safeParse({ ...ciudad, civilization: 'AZTEC' }).success).toBe(false);
+  });
+
+  it('el catálogo de presentación tiene una entrada por código, en el orden del enum', () => {
+    expect(CIVILIZATIONS.map((c) => c.code)).toEqual(CivilizationCode.options);
+  });
+
+  it('todo rasgo del catálogo es un entero positivo por mil de una clave conocida (RN-CIV-003)', () => {
+    for (const c of CIVILIZATIONS) {
+      for (const [clave, valor] of Object.entries(c.traits)) {
+        expect(CIVILIZATION_TRAIT_KEYS, `${c.code}: ${clave}`).toContain(clave);
+        expect(Number.isInteger(valor) && (valor as number) > 0, `${c.code}: ${clave} = ${valor}`).toBe(true);
+      }
+    }
+  });
+
+  it('civilizations.json exportado coincide con el catálogo', () => {
+    const exportado = JSON.parse(readFileSync(join(schemaDir, 'civilizations.json'), 'utf8'));
+    expect(exportado).toEqual({ version: 1, civilizations: CIVILIZATIONS });
   });
 });

@@ -192,6 +192,13 @@ func run() error {
 		return fmt.Errorf("catálogo de eras vacío o ilegible: %w", err)
 	}
 
+	// El catálogo de civilizaciones con sus rasgos enteros (SPEC-CIVILIZATION,
+	// ADR-035): uno inválido impide arrancar (INV-PLAYER-012).
+	civilizaciones, err := playerRepo.ListCivilizations(rootCtx)
+	if err != nil || len(civilizaciones) == 0 {
+		return fmt.Errorf("catálogo de civilizaciones vacío o ilegible: %w", err)
+	}
+
 	// Las reclamaciones de territorio activas (ADR-034 §5): la validación de
 	// carga las necesita para contested, y la RAM las recupera.
 	conquestRepo := postgres.NewConquestRepo(store)
@@ -204,17 +211,18 @@ func run() error {
 	// sobre lo recién leído, antes de construir la RAM. Un fatal aborta sin
 	// escribir nada; lo reparable se corrige en una transacción auditada.
 	units, controls, garrisons, tasks, err := checkLoadedState(rootCtx, postgres.NewLoadCheckRepo(store), loadcheck.Input{
-		World:        gameWorld,
-		EraCaps:      postgres.EraCaps(eras),
-		Cities:       cities,
-		Units:        units,
-		Controls:     controls,
-		Territories:  territories.All(),
-		ActiveClaims: reclamaciones,
-		Tasks:        economia.Tasks,
-		Buildings:    economia.Buildings,
-		Productions:  economia.Productions,
-		Now:          sysClock.Now(),
+		World:         gameWorld,
+		EraCaps:       postgres.EraCaps(eras),
+		Civilizations: civilizaciones,
+		Cities:        cities,
+		Units:         units,
+		Controls:      controls,
+		Territories:   territories.All(),
+		ActiveClaims:  reclamaciones,
+		Tasks:         economia.Tasks,
+		Buildings:     economia.Buildings,
+		Productions:   economia.Productions,
+		Now:           sysClock.Now(),
 	}, startTick, log)
 	if err != nil {
 		return err
@@ -233,6 +241,9 @@ func run() error {
 	// Los population_cap de cada era, para que un avance suba el límite sin
 	// tener el número en el código (RN-CITY-015, ADR-030 §5).
 	state.SetEras(eras)
+	// Los rasgos de cada civilización, que la simulación aplica al dar cada
+	// orden (ADR-035 §3 y §4).
+	state.SetCivilizations(civilizaciones)
 	state.SetEconomy(economia)
 	// La madera del bosque (SPEC-ECON-FOREST). Las filas vencidas son tiles
 	// llenos: no entran, y se borran como limpieza.
@@ -451,13 +462,13 @@ func run() error {
 	foundingAPI := httpapi.NewFoundingAPI(playerRepo, cityRepo, bootstrapper,
 		httpapi.NewFoundingAuthenticator(cfg.AuthJWTSecret.Reveal(), sysClock, hot.Tickets()),
 		gameWorld, commands, httpapi.Options{
-			DefaultEra:     firstEra.Code,
-			CivilizationID: 1,
-			FactionID:      3, // NEUTRAL
-			Territories:    territories,
-			Tick:           gameLoop.Tick,
-			Clock:          sysClock,
-			Forests:        economyRepo,
+			DefaultEra:    firstEra.Code,
+			Civilizations: civilizaciones,
+			FactionID:     3, // NEUTRAL hasta la spec de facciones (SPEC-CIVILIZATION Q10)
+			Territories:   territories,
+			Tick:          gameLoop.Tick,
+			Clock:         sysClock,
+			Forests:       economyRepo,
 		}, log)
 
 	// Superficie pública, la que publica el reverse proxy: el juego y la salud.

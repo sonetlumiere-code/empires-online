@@ -36,6 +36,9 @@ type persistido struct {
 	movimiento *movement.Movement
 	economia   simulation.EconomyLoad
 	poblacion  int32
+	// civilizacion, si no está vacía, instala el catálogo de civilizaciones y
+	// se la da a la ciudad (SPEC-CIVILIZATION).
+	civilizacion string
 }
 
 func mundoMadera(t *testing.T) *world.World {
@@ -90,7 +93,11 @@ func arrancar(t *testing.T, p persistido, nowMs int64) (*harness, []simulation.T
 		poblacion = 1
 	}
 	c := &city.City{ID: 1, OwnerPlayerID: playerID, Name: "Testópolis", CenterX: 10, CenterY: 10,
-		Era: city.EraStone, Population: poblacion, PopulationLimit: 20, PresenceState: city.PresenceOnline}
+		Era: city.EraStone, Population: poblacion, PopulationLimit: 20, PresenceState: city.PresenceOnline,
+		Civilization: p.civilizacion}
+	if p.civilizacion != "" {
+		state.SetCivilizations(catalogoDeCivilizaciones())
+	}
 	var movs []*movement.Movement
 	if p.movimiento != nil {
 		movs = append(movs, p.movimiento)
@@ -305,6 +312,37 @@ func TestReinicioDuranteUnaConstruccion(t *testing.T) {
 	assert.Equal(t, building.StatusComplete, b.Status)
 	assert.Equal(t, int32(25), h2.ciudad().PopulationLimit)
 	require.Len(t, h2.economy.completions, 1)
+}
+
+// RN-CIV-005 e INV-ECON-005 (SPEC-CIVILIZATION §9, recovery): lo que se encargó
+// con un rasgo termina tras un reinicio en el mismo instante absoluto. El plazo
+// está en la fila; la carga no lo recalcula con el rasgo, ni con el que hay
+// ahora ni con el que había.
+func TestReinicioConUnaObraYUnEntrenamientoConRasgo(t *testing.T) {
+	p := persistido{
+		civilizacion: "ROMAN",
+		poblacion:    2,
+		unidad:       aldeano(unit.StatusIdle, deposito),
+		economia: simulation.EconomyLoad{
+			Buildings: []building.Building{{ID: 7, CityID: 1, Type: building.TypeHouse, X: 9, Y: 9,
+				Status: building.StatusUnderConstruction, CompletesAtMs: epoch + 13_636}},
+			Productions: []production.Production{
+				{CityID: 1, UnitType: unit.TypeVillager, CompletesAtMs: epoch + 18_182, RequestID: "r"},
+			},
+		},
+	}
+	h, _ := arrancar(t, p, epoch+10_000)
+	h.hasta(epoch + 13_600)
+	b, _ := h.state.Building(7)
+	assert.Equal(t, building.StatusUnderConstruction, b.Status)
+	h.hasta(epoch + 13_700)
+	b, _ = h.state.Building(7)
+	assert.Equal(t, building.StatusComplete, b.Status)
+
+	h.hasta(epoch + 18_100)
+	assert.Empty(t, h.economy.births)
+	h.hasta(epoch + 18_200)
+	require.Len(t, h.economy.births, 1)
 }
 
 // Un entrenamiento a medias sobrevive al reinicio: la plaza sigue reservada y

@@ -9,6 +9,7 @@ package player
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,24 +29,101 @@ type Player struct {
 //
 // Traits es un mapa de rasgos data-driven. Existe precisamente para que NO haya
 // condicionales del tipo `if civilization == "ROMAN"` repartidos por el código:
-// los sistemas consultan el rasgo que les concierne y aplican el modificador.
+// los sistemas consultan el rasgo que les concierne y aplican el modificador
+// (RN-PLAYER-012).
+//
+// Cada rasgo es un entero por mil: 1000 es «sin efecto», 1100 es +10 % y 950 es
+// −5 % (SPEC-CIVILIZATION RN-CIV-003, ADR-035 §1). La civilización cero —sin
+// rasgos— es neutra: todo vale 1000.
 type Civilization struct {
 	ID     int32
 	Code   string
 	Name   string
-	Traits map[string]float64
+	Traits map[string]int32
 }
 
-// Trait devuelve el valor de un rasgo, o el valor por defecto si la civilización
-// no lo define. Ésta es la ÚNICA vía admitida para consultar bonos culturales.
-func (c Civilization) Trait(key string, def float64) float64 {
-	if c.Traits == nil {
-		return def
-	}
+// Claves de los rasgos que aplica el servidor (SPEC-CIVILIZATION §4.2).
+const (
+	// TraitMoveSpeed divide lo que tarda cada paso de toda unidad del jugador.
+	TraitMoveSpeed = "unit.move_speed"
+	// TraitProductionSpeed divide lo que tarda una obra y un entrenamiento.
+	TraitProductionSpeed = "production.speed"
+	// TraitHouseHP multiplica la vida de una casa frente al asedio.
+	TraitHouseHP = "building.house_hp"
+	// TraitLootCarry multiplica lo que carga un guerrero al saquear o al
+	// recoger botín.
+	TraitLootCarry = "combat.loot_carry"
+	// TraitGatherSpeed divide lo que tarda el trabajo en el tile de cada viaje
+	// de recolección.
+	TraitGatherSpeed = "economy.gather_speed"
+)
+
+// TraitNeutral es el valor de un rasgo sin efecto, y el de una clave ausente.
+const TraitNeutral int32 = 1000
+
+// TraitKeys devuelve las claves conocidas, en orden estable.
+func TraitKeys() []string {
+	return []string{TraitMoveSpeed, TraitProductionSpeed, TraitHouseHP, TraitLootCarry, TraitGatherSpeed}
+}
+
+// ErrInvalidTrait marca un catálogo con un rasgo que no se puede aplicar.
+var ErrInvalidTrait = errors.New("rasgo de civilización inválido")
+
+// Trait devuelve el rasgo por mil de una clave, o TraitNeutral si la
+// civilización no la declara. Ésta es la ÚNICA vía admitida para consultar
+// bonos culturales.
+func (c Civilization) Trait(key string) int32 {
 	if v, ok := c.Traits[key]; ok {
 		return v
 	}
-	return def
+	return TraitNeutral
+}
+
+// Validate comprueba que todo rasgo sea de una clave conocida y un entero
+// positivo (INV-PLAYER-012). Que sea entero lo garantiza el tipo: un `1.1` en el
+// jsonb no se puede leer como int32.
+func (c Civilization) Validate() error {
+	known := make(map[string]bool, 5)
+	for _, k := range TraitKeys() {
+		known[k] = true
+	}
+	for k, v := range c.Traits {
+		if !known[k] {
+			return fmt.Errorf("%w: %s declara la clave desconocida %q", ErrInvalidTrait, c.Code, k)
+		}
+		if v <= 0 {
+			return fmt.Errorf("%w: %s.%s = %d, debe ser positivo", ErrInvalidTrait, c.Code, k, v)
+		}
+	}
+	return nil
+}
+
+// ScaleDuration aplica un rasgo de velocidad a una duración: la divide, con
+// redondeo al más cercano y un mínimo de 1 (RN-CIV-004, ADR-035 §2). Con 1000
+// devuelve la base tal cual.
+func ScaleDuration(base int64, perMille int32) int64 {
+	if perMille <= 0 || base <= 0 {
+		return base
+	}
+	r := int64(perMille)
+	out := (base*int64(TraitNeutral) + r/2) / r
+	if out < 1 {
+		return 1
+	}
+	return out
+}
+
+// ScaleAmount aplica un rasgo de cantidad a un valor: lo multiplica, con
+// redondeo al más cercano y un mínimo de 1 (RN-CIV-004, ADR-035 §2).
+func ScaleAmount(base int32, perMille int32) int32 {
+	if perMille <= 0 || base <= 0 {
+		return base
+	}
+	out := (int64(base)*int64(perMille) + int64(TraitNeutral)/2) / int64(TraitNeutral)
+	if out < 1 {
+		return 1
+	}
+	return int32(out)
 }
 
 // Faction es un bando global del mundo.

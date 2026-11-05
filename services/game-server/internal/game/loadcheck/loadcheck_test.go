@@ -10,6 +10,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
@@ -38,7 +39,7 @@ func sano(t *testing.T) (loadcheck.Input, *city.City, []*unit.Unit) {
 	t.Helper()
 	dueno := uuid.New()
 	ciudad := &city.City{ID: 1, OwnerPlayerID: dueno, CenterX: 20, CenterY: 20, Era: city.EraStone,
-		Population: 3, PopulationLimit: 20, PresenceState: city.PresenceOnline}
+		Population: 3, PopulationLimit: 20, PresenceState: city.PresenceOnline, Civilization: "NORSE"}
 	var aldeanos []*unit.Unit
 	for i := int64(1); i <= 3; i++ {
 		aldeanos = append(aldeanos, &unit.Unit{ID: i, PlayerID: dueno, CityID: &ciudad.ID, Type: unit.TypeVillager,
@@ -47,8 +48,11 @@ func sano(t *testing.T) (loadcheck.Input, *city.City, []*unit.Unit) {
 	captura := instante.Add(-time.Hour)
 	id := dueno.String()
 	return loadcheck.Input{
-		World:     mundo(t),
-		EraCaps:   map[city.Era]int32{city.EraStone: 20},
+		World:   mundo(t),
+		EraCaps: map[city.Era]int32{city.EraStone: 20},
+		Civilizations: []player.Civilization{
+			{ID: 4, Code: "NORSE", Traits: map[string]int32{player.TraitMoveSpeed: 1100, player.TraitLootCarry: 1150}},
+		},
 		Players:   map[uuid.UUID]struct{}{dueno: {}},
 		Cities:    []*city.City{ciudad},
 		Units:     aldeanos,
@@ -79,6 +83,28 @@ func TestUnEstadoSanoNoProduceHallazgos(t *testing.T) {
 	assert.Empty(t, r.UnitRepairs)
 	assert.Empty(t, r.ControlRepairs)
 	assert.Empty(t, r.GarrisonDeletes)
+}
+
+// INV-PLAYER-002 (SPEC-CIVILIZATION): una ciudad sin una civilización del
+// catálogo aborta el arranque; tener rasgos neutros sería una civilización por
+// defecto asignada en silencio.
+func TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque(t *testing.T) {
+	for _, codigo := range []string{"", "AZTEC"} {
+		in, ciudad, _ := sano(t)
+		ciudad.Civilization = codigo
+		r := loadcheck.Check(in)
+		assert.Equal(t, []string{"INV-PLAYER-002/FAIL_FAST"}, invs(r), "civilización %q", codigo)
+		assert.True(t, r.Fatal())
+	}
+}
+
+// INV-PLAYER-012: un rasgo que no se puede aplicar aborta el arranque.
+func TestUnRasgoInvalidoEnElCatalogoAbortaElArranque(t *testing.T) {
+	in, _, _ := sano(t)
+	in.Civilizations[0].Traits[player.TraitHouseHP] = 0
+	r := loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-PLAYER-012/FAIL_FAST"}, invs(r))
+	assert.True(t, r.Fatal())
 }
 
 // INV-CITY-003, 017, 011 y 012: se reparan en la ciudad en memoria.

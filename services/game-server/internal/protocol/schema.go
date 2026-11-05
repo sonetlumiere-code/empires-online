@@ -44,3 +44,32 @@ func ExportedErrorCodes() ([]string, error) {
 	}
 	return doc.Codes, nil
 }
+
+// CivilizationInfo es una entrada del catálogo de presentación de las
+// civilizaciones que exporta el paquete TypeScript (ADR-035 §7).
+type CivilizationInfo struct {
+	Code   string           `json:"code"`
+	Name   string           `json:"name"`
+	Traits map[string]int32 `json:"traits"`
+}
+
+// ExportedCivilizations lee el catálogo de presentación de las civilizaciones.
+// No es la fuente de los rasgos (lo es la tabla civilizations): un test de
+// integración lo compara con ella para que el formulario de registro no mienta.
+func ExportedCivilizations() ([]CivilizationInfo, error) {
+	data, err := SchemaFile("civilizations.json")
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Version       int                `json:"version"`
+		Civilizations []CivilizationInfo `json:"civilizations"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("civilizations.json malformado: %w", err)
+	}
+	if doc.Version != Version {
+		return nil, fmt.Errorf("civilizations.json declara la versión %d y el servidor habla la %d", doc.Version, Version)
+	}
+	return doc.Civilizations, nil
+}

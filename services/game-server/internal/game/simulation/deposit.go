@@ -344,7 +344,7 @@ func (s *Simulation) findDeposit(u *unit.Unit, t task.Task, from world.Tile, def
 		if c == origin {
 			return c, nil, true
 		}
-		path, err := s.legPath(origin, c, def)
+		path, err := s.legPath(u, origin, c, def)
 		if err == nil {
 			return c, path, true
 		}

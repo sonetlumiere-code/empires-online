@@ -76,7 +76,7 @@ func TestUnaConquistaAvisaAlDuenoConLaVistaEnSuCiudad(t *testing.T) {
 	env := newE2EDeLado(t, 256, nil, nil)
 	ajeno := uuid.New()
 	rejillaDe256(t, env, map[int64]uuid.UUID{1: env.playerID, 16: env.playerID})
-	env.state.AddCity(&city.City{ID: 2, OwnerPlayerID: ajeno, Name: "Ajenópolis", CenterX: 150, CenterY: 40,
+	env.state.AddCity(&city.City{Civilization: "NORSE", ID: 2, OwnerPlayerID: ajeno, Name: "Ajenópolis", CenterX: 150, CenterY: 40,
 		Era: city.EraStone, Population: 1, PopulationLimit: 20, PresenceState: city.PresenceOnline})
 	propia, ok := env.state.City(1)
 	require.True(t, ok)

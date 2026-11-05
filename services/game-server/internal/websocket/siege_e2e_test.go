@@ -36,7 +36,8 @@ func TestDerribarPorLaRedQuitaLaCasaYAvisaAlDueno(t *testing.T) {
 	sitiador := uuid.New()
 	propia := int64(2)
 	env.state.AddCity(&city.City{
-		ID: propia, OwnerPlayerID: sitiador, Name: "Sitiópolis",
+		Civilization: "BYZANTINE",
+		ID:           propia, OwnerPlayerID: sitiador, Name: "Sitiópolis",
 		CenterX: 80, CenterY: 40, Era: city.EraStone,
 		Population: 1, PopulationLimit: 25, PresenceState: city.PresenceOnline,
 	})

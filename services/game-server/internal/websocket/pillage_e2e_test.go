@@ -35,7 +35,8 @@ func TestSaquearPorLaRedRobaYAvisaAlDueno(t *testing.T) {
 	saqueador := uuid.New()
 	propia := int64(2)
 	env.state.AddCity(&city.City{
-		ID: propia, OwnerPlayerID: saqueador, Name: "Saqueópolis",
+		Civilization: "NORSE",
+		ID:           propia, OwnerPlayerID: saqueador, Name: "Saqueópolis",
 		CenterX: 80, CenterY: 40, Era: city.EraStone,
 		Population: 1, PopulationLimit: 20, PresenceState: city.PresenceOnline,
 	})

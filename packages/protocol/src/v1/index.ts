@@ -15,6 +15,7 @@ export * from './common.js';
 export * from './errors.js';
 export * from './client.js';
 export * from './server.js';
+export * from './civilizations.js';
 
 /** Límites del transporte. Deben coincidir con la configuración `EO_WS_*` del servidor. */
 export const TRANSPORT_LIMITS = {

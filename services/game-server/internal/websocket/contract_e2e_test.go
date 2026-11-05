@@ -57,7 +57,8 @@ func TestUnaFundacionVecinaLlegaComoCityUpdateYTerritoryUpdate(t *testing.T) {
 	capturado := time.UnixMilli(testEpoch).UTC()
 	env.commands <- simulation.IntroducePlayer{
 		City: &city.City{
-			ID: 2, OwnerPlayerID: dueño, Name: "Vecinópolis",
+			Civilization: "ROMAN",
+			ID:           2, OwnerPlayerID: dueño, Name: "Vecinópolis",
 			CenterX: 55, CenterY: 55, Era: city.EraStone,
 			PopulationLimit: 20, PresenceState: city.PresenceOnline,
 		},

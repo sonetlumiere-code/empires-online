@@ -26,6 +26,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
@@ -45,6 +46,10 @@ type Input struct {
 	World *world.World
 	// EraCaps es el population_cap de cada era del catálogo.
 	EraCaps map[city.Era]int32
+	// Civilizations es el catálogo de civilizaciones (SPEC-CIVILIZATION). Con él,
+	// toda ciudad tiene que llevar una de sus civilizaciones y todo rasgo tiene
+	// que ser válido; nil no comprueba nada, para los tests que no lo usan.
+	Civilizations []player.Civilization
 	// Players es el conjunto de players.id existentes.
 	Players map[uuid.UUID]struct{}
 	Cities  []*city.City
@@ -121,6 +126,7 @@ func Check(in Input) Result {
 	c := checker{in: in, res: Result{Controls: controls}}
 	c.units()
 	c.tasks()
+	c.civilizations()
 	c.cities()
 	c.controls()
 	return c.res
@@ -246,6 +252,35 @@ func terrainWalkable(w *world.World, x, y int32) bool {
 // ─────────────────────────────────────────────────────────────
 // Ciudades
 // ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+// Civilizaciones
+// ─────────────────────────────────────────────────────────────
+
+// civilizations comprueba el catálogo y que toda ciudad tenga una civilización
+// suya. Los dos son FAIL_FAST: un rasgo inválido no se puede aplicar
+// (INV-PLAYER-012), y una ciudad sin civilización tendría rasgos neutros, que
+// es asignar una por defecto en silencio (INV-PLAYER-002, ADR-035 §4).
+func (c *checker) civilizations() {
+	if c.in.Civilizations == nil {
+		return
+	}
+	known := make(map[string]bool, len(c.in.Civilizations))
+	for _, civ := range c.in.Civilizations {
+		known[civ.Code] = true
+		if err := civ.Validate(); err != nil {
+			c.find("INV-PLAYER-012", "ALTO", PolicyFailFast, "civilization:"+civ.Code, err.Error())
+		}
+	}
+	cities := append([]*city.City(nil), c.in.Cities...)
+	sort.Slice(cities, func(i, j int) bool { return cities[i].ID < cities[j].ID })
+	for _, ci := range cities {
+		if !known[ci.Civilization] {
+			c.find("INV-PLAYER-002", "ALTO", PolicyFailFast, fmt.Sprintf("city:%d", ci.ID),
+				fmt.Sprintf("la ciudad lleva la civilización %q, que no está en el catálogo", ci.Civilization))
+		}
+	}
+}
 
 func (c *checker) cities() {
 	// INV-CITY-017 se cuenta sobre todas las unidades vivas de la base, también

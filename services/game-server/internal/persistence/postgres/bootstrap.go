@@ -207,6 +207,13 @@ func (b *Bootstrapper) create(ctx context.Context, req BootstrapRequest, def uni
 		if err := b.players.Create(ctx, tx, p); err != nil {
 			return err
 		}
+		// La ciudad lleva el código de la civilización de su dueño, que la RAM
+		// necesita para aplicar sus rasgos (SPEC-CIVILIZATION, ADR-035 §4).
+		var civilizacion string
+		if err := tx.QueryRow(ctx, `SELECT code FROM civilizations WHERE id = $1`, req.CivilizationID).
+			Scan(&civilizacion); err != nil {
+			return fmt.Errorf("civilización %d del alta: %w", req.CivilizationID, normalize(err))
+		}
 
 		populationCap, err := b.cities.PopulationCapOf(ctx, tx, req.Era)
 		if err != nil {
@@ -222,6 +229,7 @@ func (b *Bootstrapper) create(ctx context.Context, req BootstrapRequest, def uni
 			Population:      0,
 			PopulationLimit: populationCap,
 			PresenceState:   city.PresenceOnline,
+			Civilization:    civilizacion,
 			LastOnlineAt:    &fundada,
 		}
 		if _, err := b.cities.Create(ctx, tx, c); err != nil {

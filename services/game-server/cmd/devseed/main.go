@@ -132,7 +132,7 @@ func run() error {
 		centro world.Tile
 	}
 	var jugadores []sembrado
-	for _, nombre := range devseed.Players {
+	for i, nombre := range devseed.Players {
 		if p, err := players.GetByUsername(ctx, nombre); err == nil {
 			c, err := cities.GetByOwner(ctx, p.ID)
 			if err != nil {
@@ -161,9 +161,12 @@ func run() error {
 			territorioID = t.ID
 		}
 		if _, err := bootstrapper.Create(ctx, postgres.BootstrapRequest{
-			PlayerID:       devseed.PlayerID(nombre),
-			Username:       nombre,
-			CivilizationID: 1,
+			PlayerID: devseed.PlayerID(nombre),
+			Username: nombre,
+			// Las cuatro civilizaciones, por turno, para poder probar sus rasgos
+			// (SPEC-CIVILIZATION). Sólo al crear: después no cambian
+			// (INV-PLAYER-011).
+			CivilizationID: int32(i%4) + 1,
 			FactionID:      3, // NEUTRAL, como el alta por la API
 			CityName:       nombre + "polis",
 			CityCenter:     site.Center,
