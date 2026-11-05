@@ -40,7 +40,7 @@ function snapshot(extra: Partial<v1.WorldSnapshot['payload']> = {}): v1.WorldSna
     ],
     cities: [
       {
-        id: 10, ownerPlayerId: PLAYER, name: 'Testópolis', centerX: 5, centerY: 5, era: 'STONE_AGE',
+        id: 10, ownerPlayerId: PLAYER, name: 'Testópolis', centerX: 5, centerY: 5, era: 'STONE_AGE', civilization: 'ROMAN',
         population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
         stocks: { WOOD: 40, STONE: 15 }, production: null, advance: null,
       },
@@ -52,7 +52,7 @@ function snapshot(extra: Partial<v1.WorldSnapshot['payload']> = {}): v1.WorldSna
 }
 
 const ciudad = (over: Partial<{ era: string; stocks: { WOOD: number; STONE: number } }> = {}) => ({
-  era: 'STONE_AGE',
+  era: 'STONE_AGE', civilization: 'ROMAN',
   production: null as { unitType: string; completesAtMs: number } | null,
   advance: null as { era: string; completesAtMs: number } | null,
   stocks: { WOOD: 400, STONE: 200 },

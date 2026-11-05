@@ -159,11 +159,11 @@ describe('createGameServerClient', () => {
     const seen: Request[] = [];
     const city = { id: 1, name: 'xpolis', centerX: 2, centerY: 3 };
     const c = createGameServerClient({ ...fixed, fetch: fakeFetch(201, { playerId: 'p', city }, seen) });
-    expect(await c.found('p-1', 'x')).toEqual({ kind: 'founded', city });
+    expect(await c.found('p-1', 'x', 'NORSE')).toEqual({ kind: 'founded', city });
 
     const req = seen[0]!;
     expect(req.url).toBe('http://gs/internal/players');
-    expect(await req.json()).toEqual({ playerId: 'p-1', username: 'x' });
+    expect(await req.json()).toEqual({ playerId: 'p-1', username: 'x', civilizationCode: 'NORSE' });
     const token = req.headers.get('authorization')!.replace('Bearer ', '');
     const [h, p, s] = token.split('.');
     expect(s).toBe(createHmac('sha256', SECRET).update(`${h}.${p}`).digest('base64url'));
@@ -177,7 +177,7 @@ describe('createGameServerClient', () => {
   it('200 de un jugador que ya existía también es fundado', async () => {
     const city = { id: 1, name: 'x', centerX: 0, centerY: 0 };
     const c = createGameServerClient({ ...fixed, fetch: fakeFetch(200, { city }) });
-    expect((await c.found('p', 'x')).kind).toBe('founded');
+    expect((await c.found('p', 'x', 'NORSE')).kind).toBe('founded');
   });
 
   it.each([
@@ -185,9 +185,10 @@ describe('createGameServerClient', () => {
     [409, 'NO_SITE_AVAILABLE'],
     [503, 'SITE_CONTENDED'],
     [400, 'INVALID_USERNAME'],
+    [400, 'INVALID_MESSAGE'], // una civilización fuera del catálogo del mundo (SPEC-CIVILIZATION §5)
   ])('%i %s es un rechazo definitivo', async (status, code) => {
     const c = createGameServerClient({ ...fixed, fetch: fakeFetch(status, { code, message: 'm' }) });
-    expect(await c.found('p', 'x')).toEqual({ kind: 'rejected', status, code, message: 'm' });
+    expect(await c.found('p', 'x', 'NORSE')).toEqual({ kind: 'rejected', status, code, message: 'm' });
   });
 
   it.each([
@@ -197,7 +198,7 @@ describe('createGameServerClient', () => {
     [503, 'INTERNAL_ERROR'],
   ])('%i %s deja la cuenta pendiente', async (status, code) => {
     const c = createGameServerClient({ ...fixed, fetch: fakeFetch(status, { code }) });
-    expect((await c.found('p', 'x')).kind).toBe('unavailable');
+    expect((await c.found('p', 'x', 'NORSE')).kind).toBe('unavailable');
   });
 
   it('sin red, indisponible', async () => {
@@ -207,7 +208,7 @@ describe('createGameServerClient', () => {
         throw new TypeError('fetch failed');
       }) as unknown as typeof fetch,
     });
-    expect((await c.found('p', 'x')).kind).toBe('unavailable');
+    expect((await c.found('p', 'x', 'NORSE')).kind).toBe('unavailable');
   });
 });
 
@@ -231,7 +232,7 @@ describe('capa HTTP', () => {
     const calls: string[] = [];
     const warnings: Array<Record<string, unknown>> = [];
     const service = {
-      register: async (u: string) => (calls.push(`register:${u}`), result),
+      register: async (u: string, _p: string, civ: unknown) => (calls.push(`register:${u}:${String(civ)}`), result),
       login: async (u: string) => (calls.push(`login:${u}`), result),
       ticket: async (t?: string) => (calls.push(`ticket:${t}`), result),
       logout: async (t?: string) => void calls.push(`logout:${t}`),
@@ -256,6 +257,13 @@ describe('capa HTTP', () => {
 
   const login = (d: HttpDeps, username: string, headers: Record<string, string> = {}) =>
     handleCredentials(post('/api/auth/login', { username, password: 'b' }, headers), d, 'login');
+
+  it('el alta pasa al servicio la civilización del cuerpo, que es quien la valida', async () => {
+    const { d, calls } = deps();
+    await handleCredentials(post('/api/auth/register', { username: 'a', password: 'b', civilization: 'NORSE' }), d, 'register');
+    await handleCredentials(post('/api/auth/register', { username: 'c', password: 'b' }), d, 'register');
+    expect(calls).toEqual(['register:a:NORSE', 'register:c:undefined']);
+  });
 
   it('el alta deja una cookie HttpOnly, SameSite=Strict y limitada a /api/auth', async () => {
     const { d } = deps();

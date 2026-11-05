@@ -37,6 +37,7 @@ import {
   unitTypeLabel,
 } from '../src/state/economy';
 import { ViewSync } from '../src/state/viewSync';
+import { CIVILIZATIONS, civilizationLabel, traitLines, traitSummary } from '../src/state/civilizations';
 import {
   anyCountdown,
   proposableTypes,
@@ -93,6 +94,8 @@ const SESSION_ENDED_MESSAGE = 'Tu sesión ha caducado o ya no es válida. Vuelve
 export default function Page() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // La civilización sólo la pide el alta; no hay ninguna elegida de antemano (Q1).
+  const [civilization, setCivilization] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('idle');
@@ -303,7 +306,9 @@ export default function Page() {
         const creds = { username, password };
         // El alta y el inicio de sesión devuelven un ticket y dejan una cookie de
         // sesión. La contraseña no se guarda.
-        const { ticket } = await (mode === 'register' ? register(creds) : login(creds));
+        const { ticket } = await (mode === 'register'
+          ? register({ ...creds, civilization: civilization ?? '' })
+          : login(creds));
         setPassword('');
         await connectWith(ticket);
       } catch (err) {
@@ -312,7 +317,7 @@ export default function Page() {
         setBusy(false);
       }
     },
-    [username, password, connectWith],
+    [username, password, civilization, connectWith],
   );
 
   // «Salir»: primero se borra la sesión web en el servidor y sólo después se
@@ -455,11 +460,42 @@ export default function Page() {
             />
           </div>
 
+          <fieldset style={styles.civilizations} aria-label="Civilización">
+            <legend style={{ fontSize: '0.8rem', padding: 0, marginBottom: '0.4rem' }}>
+              Para fundar un imperio, elige tu civilización. <strong>Es para siempre.</strong>
+            </legend>
+            {CIVILIZATIONS.map((c) => (
+              <label key={c.code} style={styles.civilization} title={traitSummary(c.code)}>
+                <input
+                  type="radio"
+                  name="civilization"
+                  value={c.code}
+                  checked={civilization === c.code}
+                  onChange={() => setCivilization(c.code)}
+                  style={{ width: 'auto', margin: '0.15rem 0 0', padding: 0 }}
+                />
+                <span>
+                  <strong>{c.name}</strong>
+                  {traitLines(c).map((l) => (
+                    <span key={l.text} style={{ display: 'block', color: l.good ? 'var(--ok)' : 'var(--danger)' }}>
+                      {l.text}
+                    </span>
+                  ))}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+
           <div style={{ display: 'flex', gap: '0.6rem' }}>
             <button onClick={() => void startSession('login')} disabled={busy}>
               Entrar
             </button>
-            <button className="secondary" onClick={() => void startSession('register')} disabled={busy}>
+            <button
+              className="secondary"
+              onClick={() => void startSession('register')}
+              disabled={busy || civilization === null}
+              title={civilization === null ? 'Elige antes tu civilización: no se puede cambiar después' : undefined}
+            >
               Fundar imperio
             </button>
           </div>
@@ -534,7 +570,8 @@ export default function Page() {
         {ownCity && (
           <>
             <span style={{ color: 'var(--muted)' }}>
-              {ownCity.name} — {eraLabel(ownCity.era)}
+              {ownCity.name} — <span title={traitSummary(ownCity.civilization)}>{civilizationLabel(ownCity.civilization)}</span>{' '}
+              — {eraLabel(ownCity.era)}
             </span>
             <span
               style={{ color: overPopulationLimit(ownCity) ? 'var(--danger)' : 'var(--muted)' }}
@@ -665,7 +702,9 @@ export default function Page() {
         <div style={{ ...styles.hud, flexWrap: 'wrap', gap: '0.75rem' }} aria-label="Diplomacia">
           {diplomacyTarget && (
             <>
-              <span>{diplomacyTarget.name}:</span>
+              <span title={traitSummary(diplomacyTarget.civilization)}>
+                {diplomacyTarget.name} ({civilizationLabel(diplomacyTarget.civilization)}, {eraLabel(diplomacyTarget.era)}):
+              </span>
               {proposableTypes(treaties, diplomacyTarget.ownerPlayerId).map((tipo) => (
                 <button
                   key={tipo}
@@ -925,6 +964,22 @@ function trackSession(sync: ViewSync, message: v1.ServerMessage): void {
 }
 
 const styles = {
+  civilizations: {
+    border: '1px solid var(--border)',
+    borderRadius: '6px',
+    padding: '0.6rem 0.75rem',
+    margin: '0 0 1.1rem',
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '0.5rem',
+  },
+  civilization: {
+    display: 'flex',
+    gap: '0.4rem',
+    alignItems: 'flex-start',
+    fontSize: '0.75rem',
+    cursor: 'pointer',
+  },
   center: {
     display: 'flex',
     alignItems: 'center',

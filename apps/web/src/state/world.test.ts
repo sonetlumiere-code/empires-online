@@ -30,7 +30,7 @@ function cityView(over: Partial<v1.CityView> = {}): v1.CityView {
     name: 'Testópolis',
     centerX: 5,
     centerY: 5,
-    era: 'STONE_AGE',
+    era: 'STONE_AGE', civilization: 'ROMAN',
     population: 3,
     populationLimit: 20,
     presenceState: 'ONLINE',

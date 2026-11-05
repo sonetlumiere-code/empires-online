@@ -11,6 +11,8 @@
  */
 import 'server-only';
 
+import type { v1 } from '@empires-online/protocol';
+
 import { lookupPlayer } from '../../identity/pending.mjs';
 import { issueFoundingToken } from './tokens';
 
@@ -33,7 +35,8 @@ export type LookupResult =
   | { readonly kind: 'unavailable'; readonly reason: string };
 
 export interface GameServerClient {
-  found(playerId: string, username: string): Promise<FoundResult>;
+  /** Funda con la civilización que el jugador eligió al registrarse (SPEC-CIVILIZATION §4.1). */
+  found(playerId: string, username: string, civilization: v1.CivilizationCode): Promise<FoundResult>;
   /** Si el jugador existe en el mundo. Para resolver cuentas PENDING abandonadas. */
   lookup(playerId: string): Promise<LookupResult>;
 }
@@ -48,12 +51,15 @@ export interface GameServerClientOptions {
 }
 
 /** Códigos con los que el Game Server rechaza de forma definitiva. */
-const DEFINITIVE = new Set(['USERNAME_TAKEN', 'NO_SITE_AVAILABLE', 'SITE_CONTENDED', 'INVALID_USERNAME']);
+// INVALID_MESSAGE es el de una civilización fuera del catálogo del mundo
+// (SPEC-CIVILIZATION §5): repetir con la misma, que es la de la cuenta, no
+// cambia nada.
+const DEFINITIVE = new Set(['USERNAME_TAKEN', 'NO_SITE_AVAILABLE', 'SITE_CONTENDED', 'INVALID_USERNAME', 'INVALID_MESSAGE']);
 
 export function createGameServerClient(opts: GameServerClientOptions): GameServerClient {
   const doFetch = opts.fetch ?? fetch;
   return {
-    async found(playerId, username) {
+    async found(playerId, username, civilization) {
       const token = issueFoundingToken({
         playerId,
         secret: opts.secret,
@@ -65,7 +71,7 @@ export function createGameServerClient(opts: GameServerClientOptions): GameServe
         response = await doFetch(`${opts.baseUrl}/internal/players`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ playerId, username }),
+          body: JSON.stringify({ playerId, username, civilizationCode: civilization }),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 10_000),
         });
       } catch (err) {

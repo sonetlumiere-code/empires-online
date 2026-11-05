@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { AuthService, SESSION_TTL_MS, hashSessionToken, type Logger } from './authService';
 import type { FoundResult, GameServerClient, LookupResult } from './gameServer';
-import type { Account, IdentityStore } from './store';
+import type { Account, IdentityStore, NewAccount } from './store';
 
 const SECRET = 'secreto-de-los-tests-del-servicio-de-identidad';
 const T0 = 1_760_000_000_000;
@@ -21,7 +21,7 @@ class MemoryStore implements IdentityStore {
   sessions = new Map<string, { accountId: string; expiresAt: Date }>();
   dbNow = T0;
 
-  async createAccount(a: { id: string; username: string; passwordHash: string }) {
+  async createAccount(a: NewAccount) {
     if ([...this.accounts.values()].some((x) => x.username === a.username)) return 'taken' as const;
     this.accounts.set(a.id, { ...a, status: 'PENDING' });
     this.attempts.set(a.id, this.dbNow);
@@ -84,7 +84,13 @@ class MemoryStore implements IdentityStore {
 
 /** Game Server falso: responde lo que se le programe y anota cada llamada. */
 class FakeGame implements GameServerClient {
-  calls: Array<{ playerId: string; username: string; accountStatusAtCall?: string; attemptAtCall?: number }> = [];
+  calls: Array<{
+    playerId: string;
+    username: string;
+    civilization?: string;
+    accountStatusAtCall?: string;
+    attemptAtCall?: number;
+  }> = [];
   next: FoundResult[] = [];
   /** Jugadores que el mundo tiene; `lookup` responde según esto. */
   players = new Map<string, string>();
@@ -93,10 +99,11 @@ class FakeGame implements GameServerClient {
   /** Lo que ocurre en la identidad mientras el mundo contesta a una consulta. */
   duringLookup: (() => void) | null = null;
   constructor(private readonly store: MemoryStore) {}
-  async found(playerId: string, username: string): Promise<FoundResult> {
+  async found(playerId: string, username: string, civilization: string): Promise<FoundResult> {
     this.calls.push({
       playerId,
       username,
+      civilization,
       accountStatusAtCall: this.store.accounts.get(playerId)?.status,
       attemptAtCall: this.store.attempts.get(playerId),
     });
@@ -152,7 +159,7 @@ function payloadOf(ticket: string): Record<string, unknown> {
 
 describe('AuthService.register', () => {
   it('funda el jugador, activa la cuenta DESPUÉS y entrega sesión y ticket', async () => {
-    const r = await service.register('nueva', 'contrasena-larga');
+    const r = await service.register('nueva', 'contrasena-larga', 'ROMAN');
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.status).toBe(201);
@@ -160,7 +167,13 @@ describe('AuthService.register', () => {
 
     // INV-PLAYER-009: la cuenta estaba PENDING mientras el Game Server fundaba.
     expect(game.calls).toEqual([
-      { playerId: r.body.playerId, username: 'nueva', accountStatusAtCall: 'PENDING', attemptAtCall: T0 },
+      {
+        playerId: r.body.playerId,
+        username: 'nueva',
+        civilization: 'ROMAN',
+        accountStatusAtCall: 'PENDING',
+        attemptAtCall: T0,
+      },
     ]);
     expect(store.accounts.get(r.body.playerId)?.status).toBe('ACTIVE');
 
@@ -182,7 +195,7 @@ describe('AuthService.register', () => {
       ['valido', 'corta', 'WEAK_PASSWORD'],
       ['valido', 'x'.repeat(257), 'INVALID_MESSAGE'],
     ] as const) {
-      const r = await service.register(u, p);
+      const r = await service.register(u, p, 'ROMAN');
       expect(r).toMatchObject({ ok: false, status: 400, code });
     }
     expect(store.accounts.size).toBe(0);
@@ -190,26 +203,26 @@ describe('AuthService.register', () => {
   });
 
   it('un nombre ya tomado no llega al Game Server', async () => {
-    await service.register('tomado', 'contrasena-larga');
-    const r = await service.register('tomado', 'otra-contrasena');
+    await service.register('tomado', 'contrasena-larga', 'ROMAN');
+    const r = await service.register('tomado', 'otra-contrasena', 'ROMAN');
     expect(r).toMatchObject({ ok: false, status: 409, code: 'USERNAME_TAKEN' });
     expect(game.calls).toHaveLength(1);
   });
 
   it('un rechazo definitivo del mundo borra la cuenta pendiente y libera el nombre', async () => {
     game.next.push({ kind: 'rejected', status: 409, code: 'NO_SITE_AVAILABLE', message: 'sin sitio' });
-    const r = await service.register('sinsitio', 'contrasena-larga');
+    const r = await service.register('sinsitio', 'contrasena-larga', 'ROMAN');
     expect(r).toMatchObject({ ok: false, status: 409, code: 'NO_SITE_AVAILABLE' });
     expect(store.accounts.size).toBe(0);
     expect(store.sessions.size).toBe(0);
 
-    const otra = await service.register('sinsitio', 'contrasena-larga');
+    const otra = await service.register('sinsitio', 'contrasena-larga', 'ROMAN');
     expect(otra.ok).toBe(true);
   });
 
   it('sin respuesta del mundo la cuenta queda PENDING, sin sesión, y el login la termina', async () => {
     game.next.push({ kind: 'unavailable', reason: 'red' });
-    const r = await service.register('paciente', 'contrasena-larga');
+    const r = await service.register('paciente', 'contrasena-larga', 'ROMAN');
     expect(r).toMatchObject({ ok: false, status: 503, code: 'GAME_SERVER_UNAVAILABLE' });
     const cuenta = await store.findAccountByUsername('paciente');
     expect(cuenta?.status).toBe('PENDING');
@@ -227,9 +240,37 @@ describe('AuthService.register', () => {
   });
 });
 
+describe('AuthService.register: la civilización (SPEC-CIVILIZATION)', () => {
+  it.each([undefined, '', 'AZTEC', 'norse', 4, null])(
+    'sin una civilización del catálogo (%s) no crea la cuenta ni llama al mundo',
+    async (civ) => {
+      const r = await service.register('sin_civ', 'contrasena-larga', civ);
+      expect(r).toMatchObject({ ok: false, status: 400, code: 'INVALID_MESSAGE' });
+      expect(store.accounts.size).toBe(0);
+      expect(game.calls).toHaveLength(0);
+    },
+  );
+
+  it('la elegida se guarda en la cuenta y llega a la fundación', async () => {
+    const r = await service.register('vikinga', 'contrasena-larga', 'NORSE');
+    expect(r.ok).toBe(true);
+    expect((await store.findAccountByUsername('vikinga'))?.civilization).toBe('NORSE');
+    expect(game.calls.map((c) => c.civilization)).toEqual(['NORSE']);
+  });
+
+  it('el reintento de una fundación que no terminó usa la de la cuenta (ADR-035 §5)', async () => {
+    game.next.push({ kind: 'unavailable', reason: 'red' });
+    await service.register('persa', 'contrasena-larga', 'PERSIAN');
+    expect((await store.findAccountByUsername('persa'))?.status).toBe('PENDING');
+
+    expect(await service.login('persa', 'contrasena-larga')).toMatchObject({ ok: true, status: 200 });
+    expect(game.calls.map((c) => c.civilization)).toEqual(['PERSIAN', 'PERSIAN']);
+  });
+});
+
 describe('AuthService.login', () => {
   it('una cuenta activa entra sin volver a fundar', async () => {
-    await service.register('activa', 'contrasena-larga');
+    await service.register('activa', 'contrasena-larga', 'ROMAN');
     const r = await service.login('activa', 'contrasena-larga');
     expect(r).toMatchObject({ ok: true, status: 200 });
     expect(game.calls).toHaveLength(1);
@@ -237,7 +278,7 @@ describe('AuthService.login', () => {
   });
 
   it('contraseña equivocada y usuario inexistente responden exactamente lo mismo', async () => {
-    await service.register('alguien', 'contrasena-larga');
+    await service.register('alguien', 'contrasena-larga', 'ROMAN');
     const mala = await service.login('alguien', 'equivocada-del-todo');
     const nadie = await service.login('nadie_existe', 'contrasena-larga');
     const raro = await service.login('no válido!', 'contrasena-larga');
@@ -248,7 +289,7 @@ describe('AuthService.login', () => {
 
   it('una cuenta pendiente cuyo nombre ya es de otro jugador se borra', async () => {
     game.next.push({ kind: 'unavailable', reason: 'red' });
-    await service.register('heredado', 'contrasena-larga');
+    await service.register('heredado', 'contrasena-larga', 'ROMAN');
     game.next.push({ kind: 'rejected', status: 409, code: 'USERNAME_TAKEN', message: 'ocupado' });
     expect(await service.login('heredado', 'contrasena-larga')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
     expect(store.accounts.size).toBe(0);
@@ -261,7 +302,7 @@ describe('cuentas PENDING abandonadas', () => {
   /** Alta que se queda PENDING porque el mundo no contestó. */
   async function abandoned(username: string): Promise<string> {
     game.next.push({ kind: 'unavailable', reason: 'red' });
-    await service.register(username, 'contrasena-larga');
+    await service.register(username, 'contrasena-larga', 'ROMAN');
     return (await store.findAccountByUsername(username))!.id;
   }
 
@@ -299,14 +340,14 @@ describe('cuentas PENDING abandonadas', () => {
   it('un nombre retenido por un alta reciente sigue ocupado y no se consulta al mundo', async () => {
     await abandoned('reciente');
     store.dbNow = T0 + STALE_MS; // justo en el corte: aún no es abandonada
-    expect(await service.register('reciente', 'otra-contrasena')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
+    expect(await service.register('reciente', 'otra-contrasena', 'ROMAN')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
     expect(game.lookups).toHaveLength(0);
   });
 
   it('un nombre retenido por un alta abandonada sin jugador se libera para la nueva', async () => {
     const vieja = await abandoned('liberable');
     store.dbNow = T0 + STALE_MS + 1;
-    const r = await service.register('liberable', 'otra-contrasena');
+    const r = await service.register('liberable', 'otra-contrasena', 'ROMAN');
     expect(r).toMatchObject({ ok: true, status: 201 });
     expect(game.lookups).toEqual([vieja]);
     expect(store.accounts.has(vieja)).toBe(false);
@@ -317,7 +358,7 @@ describe('cuentas PENDING abandonadas', () => {
     const vieja = await abandoned('fundada');
     game.players.set(vieja, 'fundada'); // la fundación sí terminó; sólo se perdió la respuesta
     store.dbNow = T0 + STALE_MS + 1;
-    expect(await service.register('fundada', 'otra-contrasena')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
+    expect(await service.register('fundada', 'otra-contrasena', 'ROMAN')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
     expect(store.accounts.get(vieja)?.status).toBe('ACTIVE');
     expect(await service.login('fundada', 'contrasena-larga')).toMatchObject({ ok: true, status: 200 });
   });
@@ -326,7 +367,7 @@ describe('cuentas PENDING abandonadas', () => {
     const vieja = await abandoned('dudosa');
     game.lookupDown = true;
     store.dbNow = T0 + STALE_MS + 1;
-    expect(await service.register('dudosa', 'otra-contrasena')).toMatchObject({ status: 503, code: 'GAME_SERVER_UNAVAILABLE' });
+    expect(await service.register('dudosa', 'otra-contrasena', 'ROMAN')).toMatchObject({ status: 503, code: 'GAME_SERVER_UNAVAILABLE' });
     expect(store.accounts.get(vieja)?.status).toBe('PENDING');
     expect(store.accounts.size).toBe(1);
   });
@@ -335,7 +376,7 @@ describe('cuentas PENDING abandonadas', () => {
     const vieja = await abandoned('disputada');
     store.dbNow = T0 + STALE_MS + 1;
     game.duringLookup = () => void store.markFoundingAttempt(vieja);
-    expect(await service.register('disputada', 'otra-contrasena')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
+    expect(await service.register('disputada', 'otra-contrasena', 'ROMAN')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
     expect(store.accounts.get(vieja)?.status).toBe('PENDING');
   });
 
@@ -345,10 +386,10 @@ describe('cuentas PENDING abandonadas', () => {
     const realDelete = store.deleteStalePending.bind(store);
     store.deleteStalePending = async (id) => {
       const borrada = await realDelete(id);
-      await store.createAccount({ id: 'intrusa', username: 'carrera', passwordHash: 'scrypt$x' });
+      await store.createAccount({ id: 'intrusa', username: 'carrera', passwordHash: 'scrypt$x', civilization: 'ROMAN' });
       return borrada;
     };
-    expect(await service.register('carrera', 'otra-contrasena')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
+    expect(await service.register('carrera', 'otra-contrasena', 'ROMAN')).toMatchObject({ status: 409, code: 'USERNAME_TAKEN' });
     expect(store.accounts.has(vieja)).toBe(false);
     expect(game.calls).toHaveLength(1); // sólo la primera alta
   });
@@ -359,7 +400,7 @@ describe('cuentas PENDING abandonadas', () => {
     game.players.set(conJugador, 'con_jugador');
     store.dbNow = T0 + 10_000;
     await abandoned('reciente_aun');
-    await service.register('activa_ya', 'contrasena-larga');
+    await service.register('activa_ya', 'contrasena-larga', 'ROMAN');
     store.dbNow = T0 + STALE_MS + 1;
 
     expect(await service.sweepStalePending()).toEqual({ activated: 1, deleted: 1, kept: 0, unavailable: 0 });
@@ -386,7 +427,7 @@ describe('cuentas PENDING abandonadas', () => {
 
 describe('AuthService.ticket y logout', () => {
   it('la cookie de sesión da un ticket nuevo en cada (re)conexión', async () => {
-    const r = await service.register('conectada', 'contrasena-larga');
+    const r = await service.register('conectada', 'contrasena-larga', 'ROMAN');
     if (!r.ok) throw new Error('alta');
     const a = await service.ticket(r.sessionToken);
     const b = await service.ticket(r.sessionToken);
@@ -401,7 +442,7 @@ describe('AuthService.ticket y logout', () => {
     expect(await service.ticket(undefined)).toMatchObject({ ok: false, status: 401 });
     expect(await service.ticket('inventado')).toMatchObject({ ok: false, status: 401 });
 
-    const r = await service.register('efimera', 'contrasena-larga');
+    const r = await service.register('efimera', 'contrasena-larga', 'ROMAN');
     if (!r.ok) throw new Error('alta');
     now = T0 + SESSION_TTL_MS;
     expect(await service.ticket(r.sessionToken)).toMatchObject({ ok: false, status: 401 });
@@ -414,7 +455,7 @@ describe('AuthService.ticket y logout', () => {
   });
 
   it('abrir una sesión barre las caducadas', async () => {
-    await service.register('barrendera', 'contrasena-larga');
+    await service.register('barrendera', 'contrasena-larga', 'ROMAN');
     now = T0 + SESSION_TTL_MS + 1;
     await service.login('barrendera', 'contrasena-larga');
     expect(store.sessions.size).toBe(1);
@@ -426,16 +467,16 @@ describe('AuthService.ticket y logout', () => {
 describe('los logs de la identidad', () => {
   it('no contienen secretos', async () => {
     const contrasena = 'contrasena-que-no-debe-salir';
-    const alta = await service.register('discreta', contrasena);
+    const alta = await service.register('discreta', contrasena, 'ROMAN');
     if (!alta.ok) throw new Error('alta');
     await service.login('discreta', 'equivocada-del-todo');
     await service.login('nadie_existe', contrasena);
     const login = await service.login('discreta', contrasena);
     if (!login.ok) throw new Error('login');
     game.next.push({ kind: 'rejected', status: 409, code: 'NO_SITE_AVAILABLE', message: 'x' });
-    await service.register('rechazada', contrasena);
+    await service.register('rechazada', contrasena, 'ROMAN');
     game.next.push({ kind: 'unavailable', reason: 'red' });
-    await service.register('colgada', contrasena);
+    await service.register('colgada', contrasena, 'ROMAN');
     const ticket = await service.ticket(login.sessionToken);
     if (!ticket.ok) throw new Error('ticket');
 

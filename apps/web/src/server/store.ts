@@ -7,6 +7,7 @@
  */
 import 'server-only';
 
+import type { v1 } from '@empires-online/protocol';
 import { Client, Pool } from 'pg';
 
 import { migrateIdentity } from '../../identity/migrations.mjs';
@@ -26,6 +27,16 @@ export interface Account {
   readonly username: string;
   readonly passwordHash: string;
   readonly status: AccountStatus;
+  /** La que eligió al registrarse; el reintento de la fundación la usa (ADR-035 §5). */
+  readonly civilization: v1.CivilizationCode;
+}
+
+/** Lo que guarda el alta de una cuenta nueva. */
+export interface NewAccount {
+  readonly id: string;
+  readonly username: string;
+  readonly passwordHash: string;
+  readonly civilization: v1.CivilizationCode;
 }
 
 /** Una cuenta PENDING abandonada (ADR-020): lo justo para resolverla. */
@@ -36,7 +47,7 @@ export interface PendingAccount {
 
 export interface IdentityStore {
   /** Crea una cuenta PENDING. `taken` si el nombre ya existe. */
-  createAccount(account: { id: string; username: string; passwordHash: string }): Promise<'created' | 'taken'>;
+  createAccount(account: NewAccount): Promise<'created' | 'taken'>;
   findAccountByUsername(username: string): Promise<Account | null>;
   /** PENDING → ACTIVE. Sólo después de que el Game Server confirme el jugador. */
   activateAccount(id: string): Promise<void>;
@@ -65,6 +76,7 @@ interface AccountRow {
   username: string;
   password_hash: string;
   status: AccountStatus;
+  civilization: v1.CivilizationCode;
 }
 
 const toAccount = (r: AccountRow): Account => ({
@@ -72,6 +84,7 @@ const toAccount = (r: AccountRow): Account => ({
   username: r.username,
   passwordHash: r.password_hash,
   status: r.status,
+  civilization: r.civilization,
 });
 
 /**
@@ -155,13 +168,12 @@ export class PgIdentityStore implements IdentityStore {
     await this.pool.end();
   }
 
-  async createAccount(a: { id: string; username: string; passwordHash: string }): Promise<'created' | 'taken'> {
+  async createAccount(a: NewAccount): Promise<'created' | 'taken'> {
     try {
-      await this.pool.query('INSERT INTO accounts (id, username, password_hash) VALUES ($1, $2, $3)', [
-        a.id,
-        a.username,
-        a.passwordHash,
-      ]);
+      await this.pool.query(
+        'INSERT INTO accounts (id, username, password_hash, civilization) VALUES ($1, $2, $3, $4)',
+        [a.id, a.username, a.passwordHash, a.civilization],
+      );
       return 'created';
     } catch (err) {
       if ((err as { code?: string }).code === '23505') return 'taken';
@@ -171,7 +183,7 @@ export class PgIdentityStore implements IdentityStore {
 
   async findAccountByUsername(username: string): Promise<Account | null> {
     const { rows } = await this.pool.query<AccountRow>(
-      'SELECT id, username, password_hash, status FROM accounts WHERE username = $1',
+      'SELECT id, username, password_hash, status, civilization FROM accounts WHERE username = $1',
       [username],
     );
     return rows[0] ? toAccount(rows[0]) : null;
@@ -195,7 +207,7 @@ export class PgIdentityStore implements IdentityStore {
 
   async findSessionAccount(tokenHash: Buffer, now: Date): Promise<Account | null> {
     const { rows } = await this.pool.query<AccountRow>(
-      `SELECT a.id, a.username, a.password_hash, a.status
+      `SELECT a.id, a.username, a.password_hash, a.status, a.civilization
          FROM web_sessions s JOIN accounts a ON a.id = s.account_id
         WHERE s.token_hash = $1 AND s.expires_at > $2 AND a.status = 'ACTIVE'`,
       [tokenHash, now],

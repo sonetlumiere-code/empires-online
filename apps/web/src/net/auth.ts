@@ -17,6 +17,11 @@ export interface Credentials {
   readonly password: string;
 }
 
+/** El alta lleva además la civilización, obligatoria y para siempre (SPEC-CIVILIZATION §4.1). */
+export interface Registration extends Credentials {
+  readonly civilization: string;
+}
+
 export interface TicketResponse {
   readonly playerId: string;
   readonly ticket: string;
@@ -59,7 +64,7 @@ async function post(path: string, body?: unknown): Promise<TicketResponse> {
 }
 
 /** Da de alta un jugador: crea su ciudad y sus tres aldeanos, y abre la sesión web. */
-export function register(creds: Credentials): Promise<TicketResponse> {
+export function register(creds: Registration): Promise<TicketResponse> {
   return post('/api/auth/register', creds);
 }
 

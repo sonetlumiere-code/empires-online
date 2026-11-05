@@ -70,6 +70,8 @@ export interface CityView {
   centerX: number;
   centerY: number;
   era: string;
+  /** Civilización de su dueño, pública y fija (SPEC-CIVILIZATION RN-CIV-009). */
+  civilization: string;
   population: number;
   populationLimit: number;
   presenceState: string;
