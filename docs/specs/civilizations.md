@@ -7,7 +7,7 @@ lo que se lleva al saquear y lo que tarda en recolectar).
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CIVILIZATION` |
-| Estado | Accepted (2026-11-05). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-05). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `e3e9db1`, con la CI en verde. |
 | Milestone | E13 Civilizaciones (decimotercer slice después de M7) |
 | Canon | §0 (civilización y facción como ejes), §1.5 (determinismo), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [player.md](player.md), [movement.md](movement.md), [economy-wood.md](economy-wood.md), [economy-forest.md](economy-forest.md), [economy-stone.md](economy-stone.md), [combat-raid.md](combat-raid.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [trade.md](trade.md), [websocket-protocol.md](websocket-protocol.md) |

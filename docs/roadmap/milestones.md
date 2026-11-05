@@ -1839,7 +1839,7 @@ territorio, perder territorio por abandono, tope de territorios, `control_points
 
 ## E13 — Civilizaciones
 
-**Estado: HECHO EN LA RAMA (2026-11-05)**, en `claude/slice-civilizaciones`, con su prueba en vivo; falta fusionarlo con la CI en verde. Contrato:
+**Estado: HECHO (2026-11-05)**, fusionado en `main` (`e3e9db1`) con la CI en verde el mismo día. Contrato:
 [SPEC-CIVILIZATION](../specs/civilizations.md), aceptada el 2026-11-05 con sus diez decisiones de producto, y
 [ADR-035](../decisions/ADR-035-civilization-traits.md).
 

@@ -45,6 +45,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E10 Comercio | **Completado** (2026-11-04). En `main` desde la fusión `84e6f67`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E10; contrato en [SPEC-TRADE](../specs/trade.md) y [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md). |
 | E11 Avisos | **Completado** (2026-11-04). En `main` desde la fusión `d2f7d88`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E11; contrato en [SPEC-LIVE-NOTICES](../specs/live-notices.md) y [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md). |
 | E12 Conquista | **Completado** (2026-11-05). En `main` desde la fusión `a2c3378`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E12; contrato en [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md) y [ADR-034](../decisions/ADR-034-territory-claims.md). |
+| E13 Civilizaciones | **Completado** (2026-11-05). En `main` desde la fusión `e3e9db1`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E13; contrato en [SPEC-CIVILIZATION](../specs/civilizations.md) y [ADR-035](../decisions/ADR-035-civilization-traits.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se
