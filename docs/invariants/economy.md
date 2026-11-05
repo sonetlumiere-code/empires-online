@@ -199,7 +199,7 @@ que no trabaja cargaría madera sin que nadie la viera trabajar.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (al arrancar) |
-| Cobertura | **Cubierto** por `TestElLimiteDePoblacionSumaCincoPorCasaCompleta` (unit), `TestElLimiteDePoblacionCuentaLasCasasCompletas` (`internal/game/loadcheck`), `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` (simulation) y `TestCompletarUnaCasaSumaSuBonoUnaVez` (integration) |
+| Cobertura | **Cubierto** por `TestElLimiteDePoblacionSumaCincoPorCasaCompleta` (unit), `TestElLimiteDePoblacionCuentaLasCasasCompletas` y `TestElLimiteDePoblacionCuentaLosTerritoriosConquistados` (`internal/game/loadcheck`), `TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite` y `TestConquistaDeUnTerritorioAjenoMueveLosDosLimitesYAvisa` (simulation), `TestCompletarUnaCasaSumaSuBonoUnaVez` y `TestUnaCapturaAjenaMueveLosDosLimitesYSeRegistra` (integration) |
 
 **Enunciado.** Para toda ciudad, `population_limit = eras.population_cap(era) + 5 × (número de filas de
 `buildings` de la ciudad con `type = 'HOUSE'` y `status = 'COMPLETE'`)`, tras cada transacción confirmada. Una
@@ -209,6 +209,11 @@ casa `DESTROYED` no cuenta.
 enunciado tenía una excepción: cuando las unidades vivas superaban la fórmula, la validación de carga subía el límite
 hasta el recuento para cumplir el `CHECK` de [INV-CITY-002](city.md#inv-city-002). Desde E8 una ciudad puede estar por
 encima de su límite, la carga ya no lo sube y la fórmula vale sin excepciones.
+
+**Precisión (2026-11-04, [SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md) §4.2, [ADR-034](../decisions/ADR-034-territory-claims.md) §6).**
+Desde E12 la fórmula tiene un término más: `+ 5 × territorios conquistados`, los territorios del dueño de la ciudad
+que no contienen su centro. La capital no cuenta. Al aceptarse ningún jugador poseía un territorio que no fuera su
+capital, así que la fórmula nueva no cambió ningún límite.
 
 **Razón.** Es la instancia concreta de [INV-CITY-003](city.md#inv-city-003), cuyo conjunto de modificadores
 de edificios deja de estar vacío con la casa. El límite sigue siendo un valor **derivado**: si se pudiera

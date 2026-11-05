@@ -208,7 +208,9 @@ func PopulationBonus(bs []Building) int32 {
 }
 
 // PopulationLimit es RN-ECON-009 e INV-ECON-004: el population_cap de la era
-// más el bono de los edificios completos. Es el único sitio donde se calcula.
-func PopulationLimit(eraCap int32, bs []Building) int32 {
-	return eraCap + PopulationBonus(bs)
+// más el bono de los edificios completos y el de los territorios conquistados
+// (SPEC-TERRITORY-CONQUEST §4.2, territory.ConqueredBonus). Es el único sitio
+// donde se calcula.
+func PopulationLimit(eraCap int32, bs []Building, territoryBonus int32) int32 {
+	return eraCap + PopulationBonus(bs) + territoryBonus
 }

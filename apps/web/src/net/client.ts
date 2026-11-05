@@ -369,6 +369,11 @@ export class GameClient {
   }
 
   /** Ordena a un guerrero derribar una casa ajena (SPEC-COMBAT-SIEGE). */
+  /** Un guerrero reclama el territorio en que está (SPEC-TERRITORY-CONQUEST). */
+  claimTerritory(unitId: number): string {
+    return this.send('unit.claim', { unitId });
+  }
+
   demolishBuilding(unitId: number, buildingId: number): string {
     return this.send('unit.demolish', { unitId, buildingId });
   }

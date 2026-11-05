@@ -104,6 +104,14 @@ type Deps struct {
 	// TradeOfferTTL es la vida de una oferta de comercio sin respuesta
 	// (SPEC-TRADE Q5). Cero: el valor por defecto, 24 h.
 	TradeOfferTTL time.Duration
+	// Conquest escribe las reclamaciones y las capturas de territorio
+	// (ADR-034). Opcional: sin él, unit.claim responde INTERNAL_ERROR.
+	Conquest ConquestStore
+	// TerritoryClaimFree y TerritoryClaimHeld son el plazo de una reclamación
+	// sobre un territorio libre y sobre uno con dueño (SPEC-TERRITORY-CONQUEST
+	// Q3). Cero: los valores por defecto, 5 y 10 min.
+	TerritoryClaimFree time.Duration
+	TerritoryClaimHeld time.Duration
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -253,6 +261,14 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleTradeAcceptResolved(c)
 	case TradeEndPersistFailed:
 		s.handleTradeEndPersistFailed(c)
+	case ClaimTerritory:
+		s.handleClaimTerritory(c)
+	case ClaimResolved:
+		s.handleClaimResolved(c)
+	case ClaimEndPersistFailed:
+		s.handleClaimEndPersistFailed(c)
+	case CaptureResolved:
+		s.handleCaptureResolved(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -429,10 +445,12 @@ func (s *Simulation) handleCancelMovement(cmd CancelMovement) {
 			protocol.SystemErrorPayload{Code: protocol.CodeUnitNotOwned, Message: "la unidad no te pertenece"})
 		return
 	}
-	// RN-ECON-003: cancelar detiene también a una unidad que trabaja, y
-	// RN-COMBAT-008 a una que ataca o persigue.
+	// RN-ECON-003: cancelar detiene también a una unidad que trabaja,
+	// RN-COMBAT-008 a una que ataca o persigue, y RN-CONQ-005 a una que
+	// reclama.
 	s.stopWorking(u)
 	s.stopEngagementByPlayer(u)
+	s.abandonClaim(u)
 	s.cancelActiveMovement(u, movement.ReasonCancelledByPlayer, nowMs)
 }
 
@@ -704,6 +722,10 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	s.completeProductions(nowMs)
 	// Los avances de era que vencen (RN-ECON-027).
 	s.completeAdvances(nowMs)
+	// Las reclamaciones de territorio que se rompen o vencen (RN-CONQ-005,
+	// RN-CONQ-007), después de la presencia: un dueño que acaba de quedar
+	// protegido ya la frena en este tick.
+	s.sweepClaims(now)
 	// El bosque y la colina que vuelven a crecer (RN-ECON-016, RN-ECON-021).
 	s.regrowDeposits(nowMs)
 
@@ -878,6 +900,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushAdvanceCompletions()
 	s.flushDestructions()
 	s.flushDeaths()
+	s.flushClaims()
 
 	dirty := s.state.DrainDirty()
 	if len(dirty) == 0 {
@@ -903,9 +926,10 @@ func (s *Simulation) FlushDirty() int {
 			continue
 		}
 		cp := *u
-		if cp.Status == unit.StatusAttacking {
-			// El enfrentamiento no se persiste: en la base, la unidad está
-			// parada (ADR-024 §2).
+		if cp.Status == unit.StatusAttacking || cp.Status == unit.StatusClaiming {
+			// Ni el enfrentamiento ni el estandarte se persisten en la fila de
+			// la unidad: en la base está parada (ADR-024 §2, ADR-034 §5); la
+			// reclamación vive en su propia fila.
 			cp.Status = unit.StatusIdle
 		}
 		p := PartitionOf(UnitKey(u.ID), n)

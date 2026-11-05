@@ -26,6 +26,12 @@ transaccionalmente y viaja a las sesiones interesadas, y el cliente lo pinta.
 Lo que sigue fuera de MVP es la **mecánica de conquista**: no hay forma de ganar ni perder un
 territorio salvo fundando en uno sin dueño. La lista completa está en §2.
 
+**Precisión (2026-11-04, [territory-conquest.md](territory-conquest.md), [ADR-034](../decisions/ADR-034-territory-claims.md)).**
+Desde E12 hay conquista: un guerrero reclama el territorio donde está con `unit.claim` y, si aguanta el plazo, el
+territorio cambia de manos; la capital de cada jugador es intocable. `contested` pasa a ser «hay una reclamación
+activa»; `control_points` sigue dormida. Lo que esta spec dice de la fundación sigue valiendo; lo que dice de que no
+hay captura ni pérdida de control lo reemplaza [territory-conquest.md](territory-conquest.md).
+
 ## 2. Scope
 
 **Dentro de MVP**
@@ -259,7 +265,7 @@ Ownership simple y nada más. **Todo este apartado está implementado.**
 | `RN-TERR-006` | La siembra de mundo crea una fila de `territory_control` por territorio con `owner_type = 'NONE'`, `owner_id = NULL`, `control_points = 0`, `contested = false` (`INV-TERR-003`). Los `DEFAULT` del DDL producen exactamente ese estado. |
 | `RN-TERR-007` | **Único productor de cambio de dueño:** la fundación de la ciudad inicial de un jugador. Si el tile central de la ciudad pertenece a un territorio cuyo `owner_type` es `'NONE'`, ese territorio pasa a `owner_type = 'PLAYER'` con `owner_id` = `players.id` del fundador, y se sella `captured_at`. |
 | `RN-TERR-008` | Si el territorio ya tiene dueño, **no** cambia de manos: no existe la pérdida de control. Fundar dentro del territorio de otro jugador es válido y no altera el ownership. |
-| `RN-TERR-009` | No hay disputa, ni progreso, ni decaimiento, ni caducidad por inactividad. Un jugador que no se conecta nunca pierde territorio: el mundo persiste y la protección offline (canon §9) hace de contrapeso. |
+| `RN-TERR-009` | No hay disputa, ni progreso, ni decaimiento, ni caducidad por inactividad. Un jugador que no se conecta nunca pierde territorio: el mundo persiste y la protección offline (canon §9) hace de contrapeso. **Precisión (2026-11-04, [territory-conquest.md](territory-conquest.md) Q10):** desde E12 hay disputa y pérdida de control por reclamación (`RN-CONQ-001` a `010`), y la fundación deja de ser el único productor de cambio de dueño (`RN-TERR-007`); siguen sin existir el progreso, el decaimiento y la caducidad, y estando `PROTECTED` nadie puede reclamarle nada a un jugador. |
 | `RN-TERR-010` | Todo cambio de `territory_control` emite `territory.update` a las sesiones cuya área de interés intersecta la huella de chunks del territorio (`INV-TERR-009`). |
 
 Esta mecánica es deliberadamente pobre. Su función es cerrar el circuito completo —dato persistido,
@@ -277,7 +283,7 @@ simulado. El estado es el par (`owner_type`, `contested`).
 | `'NONE'` | `'PLAYER'` | Fundación de la ciudad inicial sobre ese territorio (`RN-TERR-007`) | Fase 2 (comandos), misma transacción que la ciudad |
 | `'PLAYER'` | `'PLAYER'` (mismo dueño) | Fundación de otro jugador dentro: **no hay transición** (`RN-TERR-008`) | — |
 | `'PLAYER'` | `'NONE'` | Pérdida de control: **no existe** en MVP (`RN-TERR-009`) | — |
-| `contested = false` | `contested = true` | Sistema de combate: **sin productor**, `TBD (fuera de MVP)` | — |
+| `contested = false` | `contested = true` | Sistema de combate: **sin productor**, `TBD (fuera de MVP)`. **Precisión (2026-11-04):** desde E12, una reclamación confirmada; y `'NONE'` o `'PLAYER'` → `'PLAYER'` de otro jugador, una captura ([territory-conquest.md](territory-conquest.md) §4.4) | 5 |
 
 ```
    siembra                fundación de ciudad

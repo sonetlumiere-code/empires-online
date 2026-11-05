@@ -94,7 +94,7 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Treinta y tres decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Treinta y cuatro decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
@@ -111,9 +111,10 @@ jugador lee lo que le pasó mientras no estaba sin que el cursor esconda nada; A
 qué pasa con el límite de población cuando el asedio destruye una casa; ADR-030, del mismo día, de cómo la piedra
 comparte la capa del bosque y cómo una ciudad paga en dos recursos su avance de era; ADR-031, también del
 2026-11-04, de por qué el tope de nodos del A\* sube a 50 000; ADR-032, del mismo día, de cómo un trato mueve
-los almacenes de dos ciudades en una transacción sin que la cola desordene sus escrituras; y ADR-033, también del
+los almacenes de dos ciudades en una transacción sin que la cola desordene sus escrituras; ADR-033, también del
 2026-11-04, de cómo el jugador se entera en el acto de lo que les pasa a sus unidades lejos sin que nada necesite un
-`id` antes de la base.
+`id` antes de la base; y ADR-034, del mismo día, de cómo un guerrero reclama un territorio y su captura cambia el
+dueño y el límite de dos ciudades sin que la RAM y la base discrepen.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-007, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-031,
 ADR-019, ADR-013 y ADR-018).
@@ -153,6 +154,7 @@ ADR-019, ADR-013 y ADR-018).
 | [031](ADR-031-pathfinding-node-cap-50k.md) | El tope de nodos del A\* pasa de 20 000 a 50 000 | Aceptado | Con 20 000 sólo el 80 % de la tierra llega a su colina más cercana; con 50 000, el 98 %. El peor caso de una búsqueda pasa de ~8 a ~20 ms, una orden de recoger lejana con su vuelta puede llevarse ~40 ms de un tick y la amplificación por conexión crece 2,5 veces; si el tick se resiente, lo siguiente es el A\* jerárquico (DEBT-04) o el pathfinding fuera del tick, no subir más el tope. Sustituye en parte a ADR-007. |
 | [032](ADR-032-trade-offers-and-two-key-jobs.md) | Un trato aceptado es una orden en dos fases que escribe dos almacenes en una transacción, y la cola admite trabajos con dos claves | Aceptado | La RAM decide las ofertas y reserva el par, como los tratados; aceptar reserva lo que da cada parte y lleva un delta versionado por ciudad y recurso en una sola transacción, que acredita en la RAM al confirmarse; un `Job` con dos claves entra en las dos particiones o en ninguna y se ejecuta cuando llega a la cabeza de las dos, sin bloqueo cruzado porque sólo encola el loop; caducidad optimista en la fase 5; la escalera `TRADE` < pacto < alianza; `trade_offers` y sus líneas en la migración `000013`; cantidades de 1 a 1 000 000. Amplía ADR-013 §2.2. |
 | [033](ADR-033-live-notices-ephemeral.md) | El aviso en vivo es un mensaje efímero sin `id` que la simulación manda al decidir el suceso, clasificado con la misma función que el registro | Aceptado | `event_log.notice` no es una entrada: sin `id`, sin cursor y fuera de la lista, que sigue saliendo de la página; sale en la fase 4 por `SendToPlayer` desde `kill`, `applyPillage` y `destroyHouse` (no desde las escrituras, que se reencolan); `eventlog.Notices` pasa el suceso por `Classify` para sus dos jugadores y se queda con `UNIT_LOST`, `ENEMY_KILLED`, `PILLAGE_DONE` y `HOUSE_DESTROYED`; los datos salen de la RAM del tick, con tile en los cuatro; efímero y sin reenvío; un golpe de saqueo que falla después no se desavisa. Sin migración, comando, trabajo ni evento nuevos. |
+| [034](ADR-034-territory-claims.md) | La reclamación de un territorio es un encargo durable en dos fases, y la captura una orden en dos fases que escribe el control y el límite de dos ciudades | Aceptado | `territory_claims` (migración `000014`) con una activa por territorio y por guerrero; la reclamación empieza al confirmarse su fila y se rompe en la RAM (escritura idempotente después); la captura es write-through con las dos ciudades como claves: cierra la reclamación, comprueba la capital, cambia el dueño con su versión, mueve ±5 de límite y escribe `TerritoryControlChanged`, y la RAM la aplica tras el `COMMIT`; `contested` es «hay una reclamación activa»; el límite suma 5 por territorio conquistado; `CLAIMING` se vuelca como `IDLE` y la carga recupera las reclamaciones. Descarta la presencia automática, el estandarte como edificio, la reclamación sólo en la RAM y la captura optimista. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y

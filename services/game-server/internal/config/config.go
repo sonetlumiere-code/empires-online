@@ -75,6 +75,10 @@ type Config struct {
 	// TradeOfferTTL es la vida de una oferta de comercio sin respuesta
 	// (SPEC-TRADE Q5).
 	TradeOfferTTL time.Duration
+	// TerritoryClaimFree y TerritoryClaimHeld son el plazo de una reclamación
+	// de territorio libre y con dueño (SPEC-TERRITORY-CONQUEST Q3).
+	TerritoryClaimFree time.Duration
+	TerritoryClaimHeld time.Duration
 	// EventLogMaxAge es hasta cuándo atrás lee el registro, EventLogPageSize
 	// cuántas entradas trae una página y EventLogGroupGap el hueco máximo entre
 	// dos sucesos de una misma entrada (SPEC-EVENT-LOG §10).
@@ -201,6 +205,8 @@ func Load() (Config, error) {
 		TreatyBreakNotice:      time.Duration(v.intRange("EO_TREATY_BREAK_NOTICE_MINUTES", 15, 1, 24*60)) * time.Minute,
 		TreatyRetry:            time.Duration(v.intRange("EO_TREATY_RETRY_MINUTES", 10, 1, 24*60)) * time.Minute,
 		TradeOfferTTL:          time.Duration(v.intRange("EO_TRADE_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
+		TerritoryClaimFree:     time.Duration(v.intRange("EO_TERRITORY_CLAIM_FREE_SECONDS", 300, 1, 24*3600)) * time.Second,
+		TerritoryClaimHeld:     time.Duration(v.intRange("EO_TERRITORY_CLAIM_SECONDS", 600, 1, 24*3600)) * time.Second,
 		EventLogMaxAge:         time.Duration(v.intRange("EO_EVENT_LOG_MAX_DAYS", 7, 1, 90)) * 24 * time.Hour,
 		EventLogPageSize:       v.intRange("EO_EVENT_LOG_PAGE_SIZE", 50, 1, 200),
 		EventLogGroupGap:       time.Duration(v.intRange("EO_EVENT_LOG_GROUP_GAP_MINUTES", 10, 1, 24*60)) * time.Minute,

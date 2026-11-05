@@ -95,6 +95,7 @@ function toSceneTerritory(t: TerritoryView, ownId: string | null): SceneTerritor
     maxY: t.maxY,
     ownerType: t.ownerType,
     isOwn: t.ownerType === 'PLAYER' && t.ownerId === ownId,
+    contested: t.contested,
   };
 }
 

@@ -559,6 +559,24 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			BuildingID: p.BuildingID,
 		})
 
+	// Conquista (SPEC-TERRITORY-CONQUEST). Sólo qué guerrero: el territorio es
+	// el del tile en que está, y el plazo y si se puede son del servidor.
+	case protocol.TypeUnitClaim:
+		var p protocol.UnitClaimPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.ClaimTerritory{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+		})
+
 	// Diplomacia (SPEC-DIPLOMACY). El cliente dice a quién y qué tipo, o sobre
 	// qué tratado; el estado, la guarnición y los plazos son del servidor.
 	case protocol.TypeTreatyPropose:

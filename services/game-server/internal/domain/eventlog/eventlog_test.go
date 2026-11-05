@@ -40,6 +40,11 @@ func TestClasificaCadaFilaParaQuienLaLee(t *testing.T) {
 		{"me derriban una casa", yo, eventlog.Event{Type: "BuildingDestroyed", PlayerID: yo, Counterpart: otro}, eventlog.KindHouseLost, true},
 		{"derribo yo", yo, eventlog.Event{Type: "BuildingDestroyed", PlayerID: otro, Counterpart: yo}, eventlog.KindHouseDestroyed, true},
 		{"una muerte sin autor", yo, eventlog.Event{Type: "UnitKilled", PlayerID: yo}, "", false},
+		{"me reclaman un territorio", yo, eventlog.Event{Type: "TerritoryClaimStarted", PlayerID: yo, Counterpart: otro}, eventlog.KindTerritoryClaimed, true},
+		{"mi propia reclamación no", yo, eventlog.Event{Type: "TerritoryClaimStarted", PlayerID: otro, Counterpart: yo}, "", false},
+		{"me quitan un territorio", yo, eventlog.Event{Type: "TerritoryControlChanged", PlayerID: yo, Counterpart: otro}, eventlog.KindTerritoryLost, true},
+		{"conquisto uno ajeno", yo, eventlog.Event{Type: "TerritoryControlChanged", PlayerID: otro, Counterpart: yo}, eventlog.KindTerritoryTaken, true},
+		{"fundar o conquistar uno libre no cuenta", yo, eventlog.Event{Type: "TerritoryControlChanged", PlayerID: yo}, "", false},
 		{"un ataque sin consecuencia no entra (Q1)", yo, eventlog.Event{Type: "UnitAttacked", PlayerID: yo, Counterpart: otro}, "", false},
 
 		{"me ofrecen", yo, tratado("TreatyProposed", otro, yo, otro, ""), eventlog.KindTreatyOffered, true},
@@ -182,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 18)
+	assert.Len(t, vistos, 21)
 }
 
 // SPEC-TRADE §6 y RN-LOG-001: cada trato le cuenta a cada jugador lo que le
@@ -309,21 +314,23 @@ func TestSinOtroJugadorNoHayAviso(t *testing.T) {
 }
 
 // Q1: los tratados, los tratos y lo que ya tiene su aviso no se avisan; sólo los
-// cuatro tipos de NoticeKinds, que son tipos de entrada del registro.
-func TestSoloSeAvisanLosCuatroTiposDeCombate(t *testing.T) {
+// tipos de NoticeKinds —los cuatro de combate y, desde E12, los tres de
+// territorio—, que son tipos de entrada del registro.
+func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 	kinds := map[eventlog.Kind]bool{}
 	for _, k := range eventlog.Kinds() {
 		kinds[k] = true
 	}
 	require.Equal(t, []eventlog.Kind{
 		eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindPillageDone, eventlog.KindHouseDestroyed,
+		eventlog.KindTerritoryClaimed, eventlog.KindTerritoryLost, eventlog.KindTerritoryTaken,
 	}, eventlog.NoticeKinds())
 	for _, k := range eventlog.NoticeKinds() {
 		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
 	}
 	for _, tipo := range eventlog.EventTypes() {
 		switch tipo {
-		case "UnitKilled", "CityPillaged", "BuildingDestroyed":
+		case "UnitKilled", "CityPillaged", "BuildingDestroyed", "TerritoryClaimStarted", "TerritoryControlChanged":
 			continue
 		}
 		for _, by := range []uuid.UUID{yo, otro, uuid.Nil} {
@@ -333,4 +340,31 @@ func TestSoloSeAvisanLosCuatroTiposDeCombate(t *testing.T) {
 			}
 		}
 	}
+}
+
+// SPEC-TERRITORY-CONQUEST Q8: el comienzo avisa sólo al dueño; la captura, al
+// anterior dueño y al conquistador; un cambio sin otro jugador, a nadie. Cada
+// suceso de un territorio es su propia entrada, con el territorio.
+func TestLosSucesosDeUnTerritorioAvisanYNoSeAgrupan(t *testing.T) {
+	empieza := eventlog.Event{Type: "TerritoryClaimStarted", PlayerID: yo, Counterpart: otro, TerritoryID: 12, TerritoryName: "Llanura"}
+	assert.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindTerritoryClaimed, Other: otro}}, eventlog.Notices(empieza))
+	captura := eventlog.Event{Type: "TerritoryControlChanged", PlayerID: yo, Counterpart: otro, TerritoryID: 12}
+	assert.Equal(t, []eventlog.Notice{
+		{To: yo, Kind: eventlog.KindTerritoryLost, Other: otro},
+		{To: otro, Kind: eventlog.KindTerritoryTaken, Other: yo},
+	}, eventlog.Notices(captura))
+	assert.Empty(t, eventlog.Notices(eventlog.Event{Type: "TerritoryControlChanged", PlayerID: yo}))
+
+	b := eventlog.NewBuilder(yo, 0, 10*time.Minute, 50)
+	for i, id := range []int64{3, 2, 1} {
+		b.Add(eventlog.Event{ID: id, Type: "TerritoryClaimStarted", PlayerID: yo, Counterpart: otro,
+			AtMs: t0 - int64(i)*1000, TerritoryID: 12, TerritoryName: "Llanura", X: 70, Y: 5, HasTile: true})
+	}
+	require.Len(t, b.Entries(), 3, "cada reclamación, su entrada")
+	e := b.Entries()[0]
+	assert.Equal(t, eventlog.KindTerritoryClaimed, e.Kind)
+	assert.Equal(t, int64(12), e.TerritoryID)
+	assert.Equal(t, "Llanura", e.TerritoryName)
+	assert.Empty(t, e.TreatyType)
+	assert.True(t, e.HasTile)
 }

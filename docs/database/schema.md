@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), y el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), y la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -30,6 +30,7 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `safe_zones` | MVP: **activa, vacía** | La lee `postgres.SafeZoneRepo` al arrancar para construir el índice en RAM. Ninguna migración la siembra: la geometría del mundo canónico es `TBD` ([../specs/safe-zones.md](../specs/safe-zones.md) §2) |
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick. Desde E10, `TRADE` es el primer escalón de la escalera ([../specs/trade.md](../specs/trade.md) §4.1) |
 | `trade_offers`, `trade_offer_lines` | E10: **activas** | Las ofertas de comercio y sus líneas. La RAM decide; cada transición va con su evento y el trato aceptado mueve los dos almacenes en la misma transacción ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)) |
+| `territory_claims` | E12: **activa** | Las reclamaciones de territorio de los guerreros y su ciclo de vida. La RAM decide; la base la recupera tras un reinicio, y la captura cambia el control y el límite de dos ciudades en una transacción ([ADR-034](../decisions/ADR-034-territory-claims.md)) |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
 | `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` y `HillDepleted` al agotarse un tile de bosque o de colina, `EraAdvanceOrdered` y `EraAdvanced` en el avance de era, los cinco `Trade*` en el comercio, e `InvariantRepaired` en la validación de carga del arranque |
 | `city_stocks` | E1: **activa** | Una fila por ciudad y recurso (`WOOD` y, desde `000012`, `STONE`), creada en la fundación (y para las ciudades existentes, por `000006` y `000012`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
@@ -1185,6 +1186,45 @@ par, la proponga quien la proponga. La PK de las líneas impide un recurso en lo
 bloquea la fila, aplica los deltas versionados de los dos almacenes y la pasa a `ACCEPTED` en una transacción
 ([INV-TRADE-001](../invariants/trade.md#inv-trade-001)); el `CHECK` de recurso de las líneas es el de `city_stocks`, y un
 recurso nuevo toca los dos.
+
+### 16.9 `territory_claims` (`000014`)
+
+Las reclamaciones de territorio ([../specs/territory-conquest.md](../specs/territory-conquest.md),
+[ADR-034](../decisions/ADR-034-territory-claims.md) §7).
+
+```sql
+CREATE TABLE territory_claims (
+    id               bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    territory_id     bigint      NOT NULL REFERENCES territories (id) ON DELETE CASCADE,
+    unit_id          bigint      NOT NULL REFERENCES units (id),
+    player_id        uuid        NOT NULL REFERENCES players (id),
+    city_id          bigint      NOT NULL REFERENCES cities (id),
+    owner_player_id  uuid        NULL REFERENCES players (id) ON DELETE SET NULL,
+    x                integer     NOT NULL,
+    y                integer     NOT NULL,
+    started_at_ms    bigint      NOT NULL,
+    completes_at_ms  bigint      NOT NULL,
+    status           text        NOT NULL,
+    end_reason       text        NULL,
+    request_id       text        NOT NULL,
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    ended_at         timestamptz NULL,
+    CONSTRAINT territory_claims_status_valid CHECK (status IN ('ACTIVE', 'COMPLETED', 'FAILED')),
+    CONSTRAINT territory_claims_after_start CHECK (completes_at_ms > started_at_ms),
+    CONSTRAINT territory_claims_ended_has_time CHECK ((status = 'ACTIVE') = (ended_at IS NULL)),
+    CONSTRAINT territory_claims_not_own CHECK (owner_player_id IS NULL OR owner_player_id <> player_id)
+);
+CREATE UNIQUE INDEX territory_claims_one_active_per_territory
+    ON territory_claims (territory_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX territory_claims_one_active_per_unit
+    ON territory_claims (unit_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX territory_claims_unique_request ON territory_claims (player_id, request_id);
+```
+
+`territory_claims_one_active_per_territory` es [INV-TERR-010](../invariants/territory.md#inv-terr-010). La captura
+cierra la fila, comprueba la capital ([INV-TERR-011](../invariants/territory.md#inv-terr-011)), cambia
+`territory_control` con su versión y mueve el `population_limit` de las dos ciudades en una transacción.
+`territory_control.contested` es «hay una fila `ACTIVE`» ([INV-TERR-006](../invariants/territory.md#inv-terr-006)).
 
 ---
 

@@ -560,6 +560,40 @@
             },
             "type": {
               "type": "string",
+              "const": "unit.claim"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                }
+              },
+              "required": [
+                "unitId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
               "const": "treaty.propose"
             },
             "requestId": {
@@ -714,7 +748,7 @@
                   "maxItems": 2
                 },
                 "want": {
-                  "$ref": "#/definitions/ClientMessage/anyOf/17/properties/payload/properties/give"
+                  "$ref": "#/definitions/ClientMessage/anyOf/18/properties/payload/properties/give"
                 }
               },
               "required": [

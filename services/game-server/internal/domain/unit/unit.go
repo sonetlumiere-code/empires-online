@@ -31,13 +31,18 @@ const (
 	// (SPEC-COMBAT-RAID §4.2). Sólo existe en la RAM: el enfrentamiento no se
 	// persiste y el volcado la escribe IDLE (ADR-024 §2).
 	StatusAttacking Status = "ATTACKING"
-	StatusDead      Status = "DEAD"
+	// StatusClaiming: plantada con el estandarte de su dueño, reclamando el
+	// territorio en que está (SPEC-TERRITORY-CONQUEST §4.1). No se mueve ni
+	// responde a ataques. Sólo existe en la RAM, como ATTACKING: el volcado la
+	// escribe IDLE y lo que dura es la fila de la reclamación (ADR-034 §5).
+	StatusClaiming Status = "CLAIMING"
+	StatusDead     Status = "DEAD"
 )
 
 // Valid indica si el estado pertenece al conjunto conocido.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusIdle, StatusMoving, StatusGarrisoned, StatusHidden, StatusWorking, StatusAttacking, StatusDead:
+	case StatusIdle, StatusMoving, StatusGarrisoned, StatusHidden, StatusWorking, StatusAttacking, StatusClaiming, StatusDead:
 		return true
 	}
 	return false
@@ -190,6 +195,9 @@ func (u *Unit) EnsureCanMove() error {
 		return nil
 	case StatusAttacking:
 		// Moverse termina el enfrentamiento (RN-COMBAT-008).
+		return nil
+	case StatusClaiming:
+		// Moverse termina la reclamación (RN-CONQ-005).
 		return nil
 	case StatusDead:
 		return ErrDead

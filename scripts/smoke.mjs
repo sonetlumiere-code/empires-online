@@ -53,6 +53,16 @@
  *      building.destroyed y su límite de población baja en 5; smoke_runner, con la vista
  *      en su ciudad, recibe el aviso en vivo HOUSE_DESTROYED. Tarda minutos y derriba
  *      una casa de otra cuenta, así que no corre por defecto.
+ *  12c. sólo con --territorio (SPEC-TERRITORY-CONQUEST): un guerrero de smoke_runner
+ *      junto a la víctima (el que dejan --saqueo o --asedio) va al territorio libre más
+ *      cercano y lo reclama: llega territory.update en disputa y, al vencer el plazo, el
+ *      territorio es suyo y su ciudad gana 5 de población. Después smoke_victim, con un
+ *      guerrero suyo (si no tiene, lo entrena), se lo reconquista: smoke_runner, con la vista en su ciudad,
+ *      recibe TERRITORY_CLAIMED y TERRITORY_LOST, su límite vuelve, y smoke_victim recibe
+ *      TERRITORY_TAKEN. Con los plazos por defecto tarda unos 16 minutos: en
+ *      desarrollo, EO_TERRITORY_CLAIM_FREE_SECONDS y EO_TERRITORY_CLAIM_SECONDS al
+ *      arrancar el servidor. Va antes de --diplomacia, cuyo pacto impediría la
+ *      reconquista.
  *  13. sólo con --diplomacia (SPEC-DIPLOMACY): smoke_runner y smoke_victim firman un
  *      pacto de no agresión (o reutilizan el vigente), el pacto impide el saqueo, y
  *      smoke_runner lo rompe: el tratado sigue vigente con su preaviso. Como el preaviso
@@ -71,15 +81,16 @@
  *      smoke_runner ve su lado; la víctima da por visto lo asentado, reconecta con un
  *      ticket nuevo y el cursor sigue marcado. Necesita que antes haya pasado algo
  *      entre los dos: en la misma pasada con --saqueo, --asedio o --diplomacia, o en
- *      una anterior. En una misma pasada el orden es saqueo, asedio, diplomacia y
- *      registro: el pacto de --diplomacia impediría el asedio durante su preaviso.
+ *      una anterior. En una misma pasada el orden es saqueo, asedio, territorio,
+ *      diplomacia, comercio y registro: el pacto de --diplomacia impediría el asedio y
+ *      la reconquista durante su preaviso.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--diplomacia] [--comercio] [--registro] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--registro] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -108,6 +119,7 @@ const SAQUEO = args.includes('--saqueo');
 const ASEDIO = args.includes('--asedio');
 const DIPLOMACIA = args.includes('--diplomacia');
 const COMERCIO = args.includes('--comercio');
+const TERRITORIO = args.includes('--territorio');
 const REGISTRO = args.includes('--registro');
 const PROTOCOL_VERSION = 1;
 
@@ -572,6 +584,10 @@ async function main() {
 
   if (ASEDIO) {
     await asedio(segunda, ciudad, cuenta.playerId, snap2);
+  }
+
+  if (TERRITORIO) {
+    await territorio(segunda, ciudad, cuenta.playerId);
   }
 
   if (DIPLOMACIA) {
@@ -1133,6 +1149,139 @@ function avisoEnVivo(sesion, kind, otroId, ms = 10_000) {
 function sinAvisos(sesion, quien, kinds) {
   const avisos = sesion.recibidos.filter((m) => m.type === 'event_log.notice' && kinds.includes(m.payload.kind));
   if (avisos.length > 0) fallar(`${quien} recibió avisos en vivo que no le tocan`, avisos.map((m) => m.payload));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Conquista (SPEC-TERRITORY-CONQUEST), sólo con --territorio
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * El territorio libre (sin dueño ni reclamación) más cercano a `desde`, y un tile
+ * `margen` tiles dentro de él lo más cerca posible de `desde`: lo bastante dentro
+ * para que el guerrero quede en el territorio aunque se pare un tile antes, y para
+ * que los guerreros de alrededor no lo tengan a su alcance. Determinista: a igual
+ * distancia (Chebyshev, la de los pasos), el de menor distancia Manhattan y después
+ * el de menor id.
+ */
+export function territorioLibreCerca(territorios, desde, margen = 6) {
+  let mejor = null;
+  for (const t of territorios) {
+    if (t.ownerType !== 'NONE' || t.claim) continue;
+    if (t.maxX - t.minX < 2 * margen || t.maxY - t.minY < 2 * margen) continue;
+    const destino = {
+      x: Math.min(Math.max(desde.x, t.minX + margen), t.maxX - margen),
+      y: Math.min(Math.max(desde.y, t.minY + margen), t.maxY - margen),
+    };
+    const dx = Math.abs(destino.x - desde.x);
+    const dy = Math.abs(destino.y - desde.y);
+    const d = Math.max(dx, dy);
+    const m = dx + dy;
+    if (!mejor || d < mejor.d || (d === mejor.d && (m < mejor.m || (m === mejor.m && t.id < mejor.territorio.id)))) {
+      mejor = { territorio: t, destino, d, m };
+    }
+  }
+  return mejor && { territorio: mejor.territorio, destino: mejor.destino };
+}
+
+/** La posición actual de una unidad, leída de un snapshot centrado en `cerca`. */
+async function posicionDe(sesion, unitId, cerca) {
+  sesion.enviar('session.view', { center: cerca });
+  const vista = (await sesion.esperar('world.snapshot')).payload;
+  return { vista, unidad: vista.units.find((u) => u.id === unitId) };
+}
+
+/**
+ * Si el mensaje es el territory.update de `territoryId` con una reclamación de
+ * `playerId`. Sólo ésa confirma la propia: la sesión puede tener en la cola el
+ * territory.update de una reclamación anterior de otro jugador sobre el mismo
+ * territorio, y su plazo no es el nuestro.
+ */
+export function esReclamacionDe(m, territoryId, playerId) {
+  return m.type === 'territory.update' && m.payload.territory.id === territoryId &&
+    m.payload.territory.claim?.playerId === playerId;
+}
+
+/** Reclama con `unidad` el territorio en que está y espera la confirmación con su plazo. */
+async function reclamar(sesion, unidad, t, playerId) {
+  sesion.enviar('unit.claim', { unitId: unidad.id });
+  const m = await sesion.esperarQue(['territory.update', 'system.error'],
+    (m) => m.type === 'system.error' || esReclamacionDe(m, t.id, playerId), 15_000);
+  if (m.type === 'system.error') fallar('el servidor rechazó la reclamación', m.payload);
+  return m.payload.territory.claim;
+}
+
+async function limiteDe(sesion, ciudadId, ms) {
+  const m = await sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadId && typeof m.payload.populationLimit === 'number', ms);
+  return m.payload.populationLimit;
+}
+
+async function territorio(propio, ciudad, playerId) {
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const ciudadV = victima.snapshot.payload.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
+
+  // El guerrero de smoke_runner que quedó junto a la víctima.
+  propio.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const cerca = (await propio.sesion.esperar('world.snapshot')).payload;
+  const guerrero = cerca.units.find((u) => u.playerId === playerId && u.unitType === 'WARRIOR');
+  if (!guerrero) fallar(`${USUARIO} no tiene guerreros junto a la víctima`, 'Corre antes --saqueo o --asedio.');
+  const libre = territorioLibreCerca(cerca.territories, guerrero);
+  if (!libre) fallar('no hay territorios libres cerca de la víctima', cerca.territories);
+  const t = libre.territorio;
+  ok('territorio libre que reclamar', `${t.name} (${t.id}), (${t.minX},${t.minY})-(${t.maxX},${t.maxY})`);
+
+  const casa = await vistaEnCasa(ciudad, ciudadV);
+  casa.sesion.enviar('session.view', { center: { x: ciudad.centerX, y: ciudad.centerY } });
+  const limiteAntes = (await casa.sesion.esperar('world.snapshot')).payload.cities
+    .find((c) => c.id === ciudad.id)?.populationLimit;
+
+  // smoke_runner lo conquista.
+  const llegada = await acercar(propio.sesion, guerrero, libre.destino, 1);
+  const { unidad: plantado } = await posicionDe(propio.sesion, guerrero.id, llegada);
+  if (!plantado || plantado.x < t.minX || plantado.x > t.maxX || plantado.y < t.minY || plantado.y > t.maxY) {
+    fallar('el guerrero no llegó al territorio', { guerrero: plantado, territorio: t });
+  }
+  const claim = await reclamar(propio.sesion, plantado, t, playerId);
+  ok('reclamación en disputa', `el guerrero ${plantado.id} en (${plantado.x}, ${plantado.y}); vence en ${Math.round((claim.endsAtMs - Date.now()) / 1000)} s`);
+  await propio.sesion.esperarQue('territory.update',
+    (m) => m.payload.territory.id === t.id && m.payload.territory.ownerId === playerId && !m.payload.territory.contested,
+    Math.max(0, claim.endsAtMs - Date.now()) + 30_000);
+  ok('territorio conquistado', `${t.name} es de ${USUARIO}`);
+  const limite = await limiteDe(casa.sesion, ciudad.id, 15_000);
+  if (limiteAntes !== undefined && limite !== limiteAntes + 5) fallar('el límite no subió en 5', { antes: limiteAntes, despues: limite });
+  ok('+5 de población por el territorio', `${limiteAntes} -> ${limite}`);
+
+  // smoke_victim se lo reconquista, con smoke_runner mirando su ciudad.
+  victima.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const vistaV = (await victima.sesion.esperar('world.snapshot')).payload;
+  let guardia = vistaV.units.find((u) => u.playerId === cuenta.playerId && u.unitType === 'WARRIOR' && u.status !== 'GARRISONED');
+  if (!guardia) {
+    // Sin guerrero, la víctima entrena uno: con 60 de madera en el almacén basta.
+    const madera = vistaV.cities.find((c) => c.id === ciudadV.id)?.stocks?.WOOD ?? 0;
+    if (madera < 60) fallar('la víctima no tiene guerrero ni madera para entrenarlo', { madera });
+    guardia = await entrenar(victima.sesion, ciudadV, cuenta.playerId, 'WARRIOR');
+    ok('la víctima entrena un guerrero', `unidad ${guardia.id}`);
+  }
+  // El guerrero de smoke_runner se aparta, para que no responda solo (Q11).
+  await acercar(propio.sesion, plantado, { x: ciudadV.centerX, y: ciudadV.centerY + 5 }, 4);
+  const llegadaV = await acercar(victima.sesion, guardia, libre.destino, 1);
+  const { unidad: plantadoV } = await posicionDe(victima.sesion, guardia.id, llegadaV);
+  const claimV = await reclamar(victima.sesion, plantadoV, t, cuenta.playerId);
+  ok('la víctima reclama el territorio', `guerrero ${plantadoV.id}; vence en ${Math.round((claimV.endsAtMs - Date.now()) / 1000)} s`);
+  const reclamado = await avisoEnVivo(casa.sesion, 'TERRITORY_CLAIMED', cuenta.playerId, 15_000);
+  ok('aviso en vivo al dueño, con la vista en casa', `TERRITORY_CLAIMED ${reclamado.payload.territoryName}`);
+  const perdido = await avisoEnVivo(casa.sesion, 'TERRITORY_LOST', cuenta.playerId,
+    Math.max(0, claimV.endsAtMs - Date.now()) + 30_000);
+  ok('aviso en vivo de la pérdida', `TERRITORY_LOST ${perdido.payload.territoryName}`);
+  const ganado = await avisoEnVivo(victima.sesion, 'TERRITORY_TAKEN', playerId, 15_000);
+  ok('aviso en vivo al conquistador', `TERRITORY_TAKEN ${ganado.payload.territoryName}`);
+  const limiteFinal = await limiteDe(casa.sesion, ciudad.id, 15_000);
+  if (limiteFinal !== limite - 5) fallar('el límite no bajó en 5', { antes: limite, despues: limiteFinal });
+  ok('el límite de smoke_runner baja', `${limite} -> ${limiteFinal}`);
+  casa.sesion.cerrar();
+  victima.sesion.cerrar();
 }
 
 // ─────────────────────────────────────────────────────────────

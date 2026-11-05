@@ -224,6 +224,13 @@ function rawText(e: EventLogEntry): string {
       return e.proposedByMe
         ? `Tu oferta de comercio a ${who} caducó`
         : `La oferta de comercio de ${who} caducó`;
+    // La conquista (SPEC-TERRITORY-CONQUEST §6), con el territorio por su nombre.
+    case 'TERRITORY_CLAIMED':
+      return `${who} reclamó tu territorio ${e.territoryName ?? ''}`.trimEnd();
+    case 'TERRITORY_LOST':
+      return `${who} te quitó el territorio ${e.territoryName ?? ''}`.trimEnd();
+    case 'TERRITORY_TAKEN':
+      return `Tus guerreros conquistaron ${e.territoryName ?? 'un territorio'} a ${who}`;
     default:
       return `${who}: ${String(e.kind)}`;
   }
@@ -231,7 +238,14 @@ function rawText(e: EventLogEntry): string {
 
 /** Si la entrada cuenta una pérdida: el HUD la resalta. */
 export function isLoss(e: EventLogEntry): boolean {
-  return e.kind === 'UNIT_LOST' || e.kind === 'PILLAGED' || e.kind === 'HOUSE_LOST' || e.kind === 'TREATY_BREAK_ANNOUNCED';
+  return (
+    e.kind === 'UNIT_LOST' ||
+    e.kind === 'PILLAGED' ||
+    e.kind === 'HOUSE_LOST' ||
+    e.kind === 'TREATY_BREAK_ANNOUNCED' ||
+    e.kind === 'TERRITORY_CLAIMED' ||
+    e.kind === 'TERRITORY_LOST'
+  );
 }
 
 function capitalize(s: string): string {

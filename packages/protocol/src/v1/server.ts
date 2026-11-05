@@ -353,6 +353,9 @@ export const EventLogNotice = z.object({
     /** Dónde ocurrió. */
     x: WorldCoordinate.optional(),
     y: WorldCoordinate.optional(),
+    /** En la conquista: el territorio (SPEC-TERRITORY-CONQUEST §6). */
+    territoryId: EntityId.optional(),
+    territoryName: z.string().min(1).max(64).optional(),
   }),
 });
 

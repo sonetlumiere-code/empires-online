@@ -148,3 +148,15 @@ describe('entryText: los tratos (SPEC-TRADE §6)', () => {
     );
   });
 });
+
+describe('entryText: la conquista (SPEC-TERRITORY-CONQUEST §6)', () => {
+  it('nombra el territorio, y la reclamación y la pérdida se resaltan', () => {
+    const t = { territoryId: 12, territoryName: 'Llanuras' };
+    expect(entryText(entrada(1, 'TERRITORY_CLAIMED', t))).toBe('Villa Norte reclamó tu territorio Llanuras');
+    expect(entryText(entrada(2, 'TERRITORY_LOST', t))).toBe('Villa Norte te quitó el territorio Llanuras');
+    expect(entryText(entrada(3, 'TERRITORY_TAKEN', t))).toBe('Tus guerreros conquistaron Llanuras a Villa Norte');
+    expect(isLoss(entrada(1, 'TERRITORY_CLAIMED', t))).toBe(true);
+    expect(isLoss(entrada(2, 'TERRITORY_LOST', t))).toBe(true);
+    expect(isLoss(entrada(3, 'TERRITORY_TAKEN', t))).toBe(false);
+  });
+});

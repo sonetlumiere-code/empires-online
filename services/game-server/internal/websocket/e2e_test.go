@@ -268,15 +268,19 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 	inbox := loop.NewInbox(256, nil, log)
 
 	sim := simulation.New(state, simulation.Deps{
-		Clock:              clk,
-		Pathfinder:         pathfinding.NewAStar(20000, 256),
-		Broadcaster:        hub,
-		Persister:          syncPersister{},
-		Repos:              &memoryRepos{},
-		Garrisons:          memoryGarrisons{},
-		Economy:            &memoryEconomy{},
-		Treaties:           &memoryTreaties{nextID: 100},
-		Trade:              &memoryTrade{nextID: 300},
+		Clock:       clk,
+		Pathfinder:  pathfinding.NewAStar(20000, 256),
+		Broadcaster: hub,
+		Persister:   syncPersister{},
+		Repos:       &memoryRepos{},
+		Garrisons:   memoryGarrisons{},
+		Economy:     &memoryEconomy{},
+		Treaties:    &memoryTreaties{nextID: 100},
+		Trade:       &memoryTrade{nextID: 300},
+		Conquest:    &memoryConquest{},
+		// Plazos cortos: los e2e de la conquista no esperan minutos.
+		TerritoryClaimFree: 2 * time.Second,
+		TerritoryClaimHeld: 2 * time.Second,
 		Inbox:              inbox.Offer,
 		Log:                log,
 		ProtectionCooldown: 300 * time.Second,

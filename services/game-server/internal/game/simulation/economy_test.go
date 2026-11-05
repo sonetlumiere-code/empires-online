@@ -514,7 +514,7 @@ func TestLaCasaSeCompletaEnElTickPrevistoYSubeElLimite(t *testing.T) {
 	b, _ = h.state.BuildingAt(world.Tile{X: 9, Y: 9})
 	assert.Equal(t, building.StatusComplete, b.Status)
 	assert.Equal(t, int32(25), h.ciudad().PopulationLimit)
-	assert.Equal(t, building.PopulationLimit(20, h.state.BuildingsOf(h.cityID)), h.ciudad().PopulationLimit,
+	assert.Equal(t, building.PopulationLimit(20, h.state.BuildingsOf(h.cityID), 0), h.ciudad().PopulationLimit,
 		"INV-ECON-004: el límite es la fórmula")
 	updates := h.rec.byType(protocol.TypeBuildingUpdate)
 	require.Len(t, updates, 1)

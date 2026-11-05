@@ -160,9 +160,9 @@ func (r *LoadCheckRepo) ApplyLoadRepairs(
 			// y se condiciona a la anterior, como cualquier otro cambio de control.
 			tag, err := tx.Exec(ctx,
 				`UPDATE territory_control
-				 SET owner_type = $2, owner_id = $3, captured_at = $4, version = $5
+				 SET owner_type = $2, owner_id = $3, captured_at = $4, version = $5, contested = $7
 				 WHERE territory_id = $1 AND version = $6`,
-				c.TerritoryID, string(c.OwnerType), c.OwnerID, c.CapturedAt, c.Version, c.Version-1)
+				c.TerritoryID, string(c.OwnerType), c.OwnerID, c.CapturedAt, c.Version, c.Version-1, c.Contested)
 			if err != nil {
 				return fmt.Errorf("reparar el control del territorio %d: %w", id, normalize(err))
 			}

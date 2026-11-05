@@ -42,15 +42,26 @@ func TestTerritoryUpdateSerializaExactamenteLaVistaDelContrato(t *testing.T) {
 	vista := dig(t, root, update, "properties", "payload", "properties", "territory").(map[string]any)
 	declaradas := dig(t, root, vista, "properties").(map[string]any)
 	require.Equal(t, false, vista["additionalProperties"])
-	require.Equal(t, clavesDe(declaradas), requeridas(t, vista),
-		"todas las claves de la vista son obligatorias")
+	// Todas las claves son obligatorias salvo la reclamación, que sólo viaja
+	// mientras hay una (SPEC-TERRITORY-CONQUEST §6).
+	obligatorias := make([]string, 0, len(declaradas))
+	for _, k := range clavesDe(declaradas) {
+		if k != "claim" {
+			obligatorias = append(obligatorias, k)
+		}
+	}
+	require.Equal(t, obligatorias, requeridas(t, vista))
 
 	dueño := "11111111-1111-4111-8111-111111111111"
+	ciudad, nombre := int64(7), "Villa Norte"
+	reclamacion := &protocol.TerritoryClaimView{PlayerID: dueño, CityID: &ciudad, CityName: &nombre, StartedAtMs: 1, EndsAtMs: 2}
 	casos := map[string]protocol.TerritoryView{
 		// RN-TERR-011: sin dueño, ownerId viaja como null explícito, no se omite.
 		"sin dueño": {ID: 1, Name: "Llanura", MinX: 0, MinY: 0, MaxX: 31, MaxY: 31, OwnerType: "NONE"},
 		"con dueño": {ID: 2, Name: "Colina", MinX: 32, MinY: 0, MaxX: 63, MaxY: 31,
 			OwnerType: "PLAYER", OwnerID: &dueño},
+		"en disputa": {ID: 3, Name: "Vega", MinX: 64, MinY: 0, MaxX: 95, MaxY: 31,
+			OwnerType: "NONE", Contested: true, Claim: reclamacion},
 	}
 	for nombre, v := range casos {
 		t.Run(nombre, func(t *testing.T) {
@@ -61,7 +72,14 @@ func TestTerritoryUpdateSerializaExactamenteLaVistaDelContrato(t *testing.T) {
 			}
 			require.NoError(t, json.Unmarshal(data, &emitido))
 
-			assert.Equal(t, clavesDe(declaradas), clavesDe(emitido.Territory),
+			esperadas := obligatorias
+			if v.Claim != nil {
+				esperadas = clavesDe(declaradas)
+				claim := dig(t, root, declaradas, "claim").(map[string]any)
+				assert.Equal(t, clavesDe(dig(t, root, claim, "properties").(map[string]any)),
+					clavesDe(emitido.Territory["claim"].(map[string]any)), "la reclamación, con las claves del esquema")
+			}
+			assert.Equal(t, esperadas, clavesDe(emitido.Territory),
 				"ni una clave de más ni una de menos: el esquema es additionalProperties: false")
 			_, presente := emitido.Territory["ownerId"]
 			assert.True(t, presente, "ownerId es obligatorio aunque sea null")

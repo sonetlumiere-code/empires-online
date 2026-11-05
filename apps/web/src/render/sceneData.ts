@@ -58,6 +58,8 @@ export interface SceneTerritory {
   /** Tal cual lo envió el servidor. El cliente NO deduce ownership. */
   readonly ownerType: string;
   readonly isOwn: boolean;
+  /** En disputa: hay una reclamación activa (SPEC-TERRITORY-CONQUEST). */
+  readonly contested: boolean;
 }
 
 /** De dónde saca la escena el terreno. El mapa de chunks del store es estable, así que basta con consultarlo. */

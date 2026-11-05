@@ -87,13 +87,13 @@ func TestCanBuildRespondeEnOrden(t *testing.T) {
 // RN-ECON-009 e INV-ECON-004: el límite es la era más cinco por casa completa;
 // las que están en obras no cuentan.
 func TestElLimiteDePoblacionSumaCincoPorCasaCompleta(t *testing.T) {
-	assert.Equal(t, int32(20), PopulationLimit(20, nil))
+	assert.Equal(t, int32(20), PopulationLimit(20, nil, 0))
 	casas := []Building{
 		{Type: TypeHouse, Status: StatusComplete},
 		{Type: TypeHouse, Status: StatusUnderConstruction},
 		{Type: TypeHouse, Status: StatusComplete},
 	}
-	assert.Equal(t, int32(30), PopulationLimit(20, casas))
+	assert.Equal(t, int32(30), PopulationLimit(20, casas, 0))
 	assert.Equal(t, int32(10), PopulationBonus(casas))
 }
 
@@ -141,6 +141,6 @@ func TestDerribarUnaCasaEsTerminalYQuitaSuBono(t *testing.T) {
 		_, err := b.Destroy()
 		assert.True(t, errors.Is(err, ErrInvalidBuilding), "ni se derriba dos veces")
 	}
-	assert.Equal(t, int32(20), PopulationLimit(20, []Building{completa, enObra}))
+	assert.Equal(t, int32(20), PopulationLimit(20, []Building{completa, enObra}, 0))
 	assert.NoError(t, (&Building{Type: TypeHouse, Status: StatusDestroyed}).Validate())
 }

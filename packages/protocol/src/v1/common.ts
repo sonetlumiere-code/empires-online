@@ -53,7 +53,7 @@ export type TimedPath = z.infer<typeof TimedPath>;
  * `WORKING`: parada sobre el tile de un recurso hasta que vence el temporizador de
  * su tarea. Ver ../../../docs/specs/economy-wood.md (RN-ECON-003).
  */
-export const UnitStatus = z.enum(['IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'ATTACKING', 'DEAD']);
+export const UnitStatus = z.enum(['IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'ATTACKING', 'DEAD', 'CLAIMING']);
 export type UnitStatus = z.infer<typeof UnitStatus>;
 
 export const UnitType = z.enum(['VILLAGER', 'WARRIOR']);
@@ -212,6 +212,16 @@ export const CityView = z.object({
 export type CityView = z.infer<typeof CityView>;
 
 /** Estado observable de un territorio y su control. */
+/** Una reclamación activa sobre un territorio (SPEC-TERRITORY-CONQUEST §6). */
+export const TerritoryClaimView = z.object({
+  playerId: Uuid,
+  cityId: EntityId.nullable(),
+  cityName: z.string().min(1).max(64).nullable(),
+  startedAtMs: EpochMs,
+  endsAtMs: EpochMs,
+});
+export type TerritoryClaimView = z.infer<typeof TerritoryClaimView>;
+
 export const TerritoryView = z.object({
   id: EntityId,
   name: z.string().min(1).max(64),
@@ -221,7 +231,10 @@ export const TerritoryView = z.object({
   maxY: WorldCoordinate,
   ownerType: TerritoryOwnerType,
   ownerId: z.string().nullable(),
+  /** `true` exactamente mientras hay una reclamación activa (SPEC-TERRITORY-CONQUEST §6). */
   contested: z.boolean(),
+  /** La reclamación activa, si la hay: quién reclama y cuándo termina. Aditivo en v1 (R-VER-2). */
+  claim: TerritoryClaimView.optional(),
 });
 export type TerritoryView = z.infer<typeof TerritoryView>;
 
@@ -313,6 +326,11 @@ export const EventLogKind = z.enum([
   'TRADE_REJECTED',
   'TRADE_WITHDRAWN',
   'TRADE_OFFER_EXPIRED',
+  // Conquista (SPEC-TERRITORY-CONQUEST §6): reclaman el territorio de quien lee, se
+  // lo quitan, o sus guerreros conquistan el de otro.
+  'TERRITORY_CLAIMED',
+  'TERRITORY_LOST',
+  'TERRITORY_TAKEN',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -321,7 +339,16 @@ export type EventLogKind = z.infer<typeof EventLogKind>;
  * hoy no llega a quien mira otra parte del mapa. Un subconjunto de `EventLogKind`, para
  * que el aviso y su entrada se lean igual.
  */
-export const EventLogNoticeKind = EventLogKind.extract(['UNIT_LOST', 'ENEMY_KILLED', 'PILLAGE_DONE', 'HOUSE_DESTROYED']);
+export const EventLogNoticeKind = EventLogKind.extract([
+  'UNIT_LOST',
+  'ENEMY_KILLED',
+  'PILLAGE_DONE',
+  'HOUSE_DESTROYED',
+  // SPEC-TERRITORY-CONQUEST Q8: lo que pasa con un territorio, esté donde esté quien lee.
+  'TERRITORY_CLAIMED',
+  'TERRITORY_LOST',
+  'TERRITORY_TAKEN',
+]);
 export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
 
 /**
@@ -359,6 +386,9 @@ export const EventLogEntry = z.object({
    */
   tradeGive: z.array(ResourceAmount).optional(),
   tradeGet: z.array(ResourceAmount).optional(),
+  /** En la conquista (SPEC-TERRITORY-CONQUEST §6): el territorio. Opcionales: aditivos en v1. */
+  territoryId: EntityId.optional(),
+  territoryName: z.string().min(1).max(64).optional(),
 });
 export type EventLogEntry = z.infer<typeof EventLogEntry>;
 

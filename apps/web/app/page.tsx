@@ -78,6 +78,7 @@ import {
   visibleNotices,
   type NoticeGroup,
 } from '../src/state/notices';
+import { claimBlockReason, claimLabel, territoryAt, territoryOwnerLabel } from '../src/state/conquest';
 import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
@@ -127,6 +128,20 @@ export default function Page() {
   const tradeOffers = useWorldStore((s) => s.tradeOffers);
   const [draft, setDraft] = useState<TradeDraft>({ giveResource: 'WOOD', giveAmount: 100, wantAmount: 50 });
   const countdown = anyCountdown(treaties);
+  // Conquista (SPEC-TERRITORY-CONQUEST): el territorio del guerrero seleccionado.
+  // Cada TerritoryView se sustituye al cambiar, así que la suscripción a él sólo
+  // re-renderiza con sus propios cambios.
+  const claimTerritory = useWorldStore((s) =>
+    selectedUnit && selectedUnit.unitType === 'WARRIOR' && selectedUnit.playerId === s.playerId
+      ? territoryAt(s.territories.values(), selectedUnit.x, selectedUnit.y)
+      : undefined,
+  );
+  const claimEndsAtMs = claimTerritory?.claim?.endsAtMs;
+  useEffect(() => {
+    if (claimEndsAtMs === undefined) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [claimEndsAtMs]);
   useEffect(() => {
     if (!countdown) return;
     const id = setInterval(() => setTick((n) => n + 1), 1000);
@@ -497,6 +512,18 @@ export default function Page() {
     if (tile) clientRef.current?.buildHouse(ownCity.id, tile);
   };
 
+  // Por qué no se puede reclamar con el guerrero seleccionado (SPEC-TERRITORY-CONQUEST §5).
+  const claimReason = claimTerritory
+    ? claimBlockReason({
+        unit: selectedUnit,
+        playerId,
+        territory: claimTerritory,
+        cities: useWorldStore.getState().cities.values(),
+        treaties,
+        nowMs: serverTimeMs(),
+      })
+    : null;
+
   return (
     <main style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <header style={styles.hud}>
@@ -600,6 +627,25 @@ export default function Page() {
             Sacar unidad {u.id}
           </button>
         ))}
+        {claimTerritory && selectedUnit && (
+          <>
+            <span style={{ color: claimTerritory.claim ? 'var(--danger)' : 'var(--muted)' }}>
+              {claimLabel(claimTerritory, playerId, serverTimeMs()) ??
+                `${claimTerritory.name}: ${territoryOwnerLabel(claimTerritory, playerId, useWorldStore.getState().cities.values())}`}
+            </span>
+            <button
+              className="secondary"
+              onClick={() => clientRef.current?.claimTerritory(selectedUnit.id)}
+              disabled={claimReason !== null}
+              title={
+                claimReason ??
+                'El guerrero planta su estandarte aquí: si aguanta 5 minutos (10 si el territorio tiene dueño), el territorio es tuyo y tu ciudad gana 5 de población'
+              }
+            >
+              Reclamar territorio
+            </button>
+          </>
+        )}
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
           {selectedUnitId !== null
             ? `${selectedUnit ? unitTypeLabel(selectedUnit.unitType) : 'Unidad'} ${selectedUnitId}${describeUnit(selectedUnit)} — ${helpFor(selectedUnit)}`
@@ -837,6 +883,7 @@ function describeUnit(
   const vida = u.hp < u.maxHp ? `, vida ${u.hp}/${u.maxHp}` : '';
   if (u.status === 'WORKING') return ` (recolectando${vida})`;
   if (u.status === 'ATTACKING') return ` (atacando${vida})`;
+  if (u.status === 'CLAIMING') return ` (reclamando el territorio${vida})`;
   if (u.carrying > 0) return ` (lleva ${u.carrying} de ${u.carryingResource === 'STONE' ? 'piedra' : 'madera'}${vida})`;
   return vida ? ` (${vida.slice(2)})` : '';
 }
@@ -844,7 +891,7 @@ function describeUnit(
 /** Qué se puede hacer con la unidad seleccionada. */
 function helpFor(u: { unitType: string } | undefined): string {
   if (u?.unitType === 'WARRIOR') {
-    return 'clic en una unidad enemiga para atacarla, en una ciudad enemiga para saquearla, en el mapa para moverla; con botín, llévala junto a tu ciudad';
+    return 'clic en una unidad enemiga para atacarla, en una ciudad enemiga para saquearla, en el mapa para moverla; con botín, llévala junto a tu ciudad; «Reclamar territorio» planta su estandarte donde está';
   }
   return 'clic en el mapa para moverla, en un bosque o una colina para recolectar, en una ciudad para guarnecerla';
 }

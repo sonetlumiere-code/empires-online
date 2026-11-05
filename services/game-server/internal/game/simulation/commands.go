@@ -196,6 +196,10 @@ func CommandTypes() []string {
 		TradeResolved{}.commandType(),
 		TradeAcceptResolved{}.commandType(),
 		TradeEndPersistFailed{}.commandType(),
+		ClaimTerritory{}.commandType(),
+		ClaimResolved{}.commandType(),
+		ClaimEndPersistFailed{}.commandType(),
+		CaptureResolved{}.commandType(),
 	}
 }
 
@@ -235,6 +239,7 @@ func JobNames() []string {
 		JobDeath, JobAttack, JobPillage, JobBuildingDestroy,
 		JobTreatyOrder, JobTreatyEnd,
 		JobTradeOrder, JobTradeAccept, JobTradeEnd,
+		JobTerritoryClaim, JobTerritoryClaimEnd, JobTerritoryCapture,
 	}
 }
 

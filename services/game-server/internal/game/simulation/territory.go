@@ -73,7 +73,12 @@ func (s *State) TerritoryView(t territory.Territory) protocol.TerritoryView {
 	if c, ok := s.control[t.ID]; ok {
 		v.OwnerType = string(c.OwnerType)
 		v.OwnerID = c.OwnerID
-		v.Contested = c.Contested
+	}
+	// contested es «hay una reclamación activa» (INV-TERR-006, ADR-034 §4): la
+	// RAM lo deriva de sus reclamaciones confirmadas, no de la columna.
+	if claim := s.claimView(t.ID); claim != nil {
+		v.Contested = true
+		v.Claim = claim
 	}
 	return v
 }

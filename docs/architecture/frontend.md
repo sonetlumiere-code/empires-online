@@ -619,6 +619,26 @@ y grueso, y una que carga madera, un tronco a la espalda.
   recibe algo suma uno: «(2) Empires Online» (`documentTitle`); un saqueo de treinta golpes cuenta uno. Al volver se
   borra.
 
+### 4.9 Conquista: reclamar un territorio (SPEC-TERRITORY-CONQUEST)
+
+> **Estado (2026-11-04): implementado y con tests de lo puro** (`src/state/conquest.ts`).
+
+- **Qué llega.** `TerritoryView` trae `contested` y, mientras hay una reclamación activa, `claim` (quién, su ciudad y
+  cuándo vence). El store lo guarda tal cual en `territories`; cada `territory.update` sustituye la vista entera, así
+  que una reclamación que termina desaparece sola. `CLAIMING` es un estado más de las unidades.
+- **El HUD.** Con un guerrero propio seleccionado, la cabecera dice en qué territorio está (`territoryAt`) y de quién
+  es (`territoryOwnerLabel`: «libre», «tuyo» o la ciudad de su dueño) o, si está en disputa, la reclamación con su
+  cuenta atrás (`claimLabel`, refrescada cada segundo mientras dura). Al lado, «Reclamar territorio», deshabilitado con
+  su motivo (`claimBlockReason`) como «Casa» y «Aldeano» (§4.4): no es un guerrero, ya reclama, no hay territorio, ya
+  hay una reclamación, es suyo, es la capital de su dueño, un tratado de paz, su dueño protegido, dentro de una ciudad.
+  Lo que el cliente no sabe (una Safe Zone, la protección de una ciudad que no tiene cargada) lo dice el servidor con
+  su `system.error`. La orden es `GameClient.claimTerritory(unitId)`.
+- **El overlay.** Un territorio en disputa se dibuja ámbar y con el borde grueso, sea de quien sea (`territoryStyle`
+  en `src/render/scene.ts`; la firma de la forma incluye `contested`, así que cambia sin redibujar los demás).
+- **Avisos y registro.** `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN` llegan como avisos en vivo (§4.8),
+  agrupados además por territorio (`noticeKey`), y en el registro con el nombre del territorio (`entryText`); los dos
+  primeros se resaltan como pérdidas.
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

@@ -676,3 +676,41 @@ describe('comercio (SPEC-TRADE)', () => {
     expect(parseServerMessage({ ...env, type: 'trade.update', payload: { offer: { ...offer, give: [] } } }).ok).toBe(false);
   });
 });
+
+describe('conquista (SPEC-TERRITORY-CONQUEST)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '00000000-0000-4000-8000-000000000002';
+  const territory = {
+    id: 12, name: 'Llanuras del Norte', minX: 128, minY: 64, maxX: 191, maxY: 127,
+    ownerType: 'PLAYER', ownerId: otro, contested: false,
+  };
+  const claim = { playerId: uuid, cityId: 7, cityName: 'Villa Norte', startedAtMs: 1_757_376_000_000, endsAtMs: 1_757_376_600_000 };
+
+  it('acepta unit.claim con sólo el guerrero, y nada más', () => {
+    expect(parseClientMessage({ v: 1, type: 'unit.claim', requestId: uuid, payload: { unitId: 42 } }).ok).toBe(true);
+    for (const payload of [{}, { unitId: 0 }, { unitId: 42, territoryId: 12 }, { unitId: 42, x: 1, y: 2 }]) {
+      expect(parseClientMessage({ v: 1, type: 'unit.claim', requestId: uuid, payload })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('TerritoryView lleva la reclamación activa, opcional, y CLAIMING es un estado de unidad', () => {
+    expect(parseServerMessage({ ...env, type: 'territory.update', payload: { territory } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'territory.update', payload: { territory: { ...territory, contested: true, claim } } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'territory.update', payload: { territory: { ...territory, contested: true, claim: { ...claim, cityId: null, cityName: null } } } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'territory.update', payload: { territory: { ...territory, claim: { ...claim, playerId: 'x' } } } }).ok).toBe(false);
+    expect(parseServerMessage({ ...env, type: 'entity.update', payload: { id: 42, status: 'CLAIMING' } }).ok).toBe(true);
+  });
+
+  it('los tres tipos de territorio son entradas del registro y avisos, con el territorio', () => {
+    for (const kind of ['TERRITORY_CLAIMED', 'TERRITORY_LOST', 'TERRITORY_TAKEN']) {
+      const entry = {
+        id: 41, kind, firstAtMs: 1, lastAtMs: 2, count: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte',
+        territoryId: 12, territoryName: 'Llanuras del Norte',
+      };
+      expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [entry], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(true);
+      const notice = { kind, atMs: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', territoryId: 12, territoryName: 'Llanuras del Norte', x: 150, y: 90 };
+      expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
+      expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...notice, territoryId: 0 } }).ok).toBe(false);
+    }
+  });
+});

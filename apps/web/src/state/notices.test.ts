@@ -149,3 +149,15 @@ describe('el título de la pestaña (Q7)', () => {
     expect(documentTitle('Empires Online', s)).toBe('Empires Online');
   });
 });
+
+describe('avisos de territorio (SPEC-TERRITORY-CONQUEST Q8)', () => {
+  it('se agrupan por territorio: dos territorios distintos son dos avisos, con su nombre', () => {
+    const s = con(
+      aviso('TERRITORY_LOST', t0, { territoryId: 12, territoryName: 'Llanuras' }),
+      aviso('TERRITORY_LOST', t0 + 100, { territoryId: 13, territoryName: 'Colinas' }),
+    );
+    expect(s.groups).toHaveLength(2);
+    expect(noticeText(primero(s))).toBe('Villa Norte te quitó el territorio Colinas');
+    expect(noticeIsLoss(primero(s))).toBe(true);
+  });
+});

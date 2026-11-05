@@ -339,6 +339,7 @@ services/game-server/migrations/
 ├── 000011_siege.up.sql                       / .down.sql
 ├── 000012_stone_and_era_advance.up.sql       / .down.sql
 ├── 000013_trade.up.sql                       / .down.sql
+├── 000014_territory_claims.up.sql            / .down.sql
 ├── embed.go
 └── migrations_test.go      # TestLasMigracionesSonCorrelativasYCompletas
 ```
@@ -368,6 +369,7 @@ Son **doce**, todas embebidas en el binario. Juntas materializan lo descrito en 
 | `000011` | `siege` | El asedio ([SPEC-COMBAT-SIEGE](../specs/combat-siege.md), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md)): el `CHECK` de población se cambia por el trigger `cities_population_not_raised_over_limit`, `DESTROYED` en `buildings_status_valid` y el único por tile pasa a parcial. Su `.down.sql` borra las casas destruidas y, si una ciudad quedó por encima de su límite, lo sube a su población. |
 | `000012` | `stone_and_era_advance` | La piedra y el avance de era ([SPEC-ECON-STONE](../specs/economy-stone.md), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)): `STONE` en `city_stocks_resource_valid` con su fila a cero para cada ciudad, `GATHER_STONE` en `unit_tasks_kind_valid`, `hill_stone` y `city_era_advances`. Su `.down.sql` pierde la piedra, las colinas picadas, las tareas de piedra y los avances en curso; la era de una ciudad que ya avanzó se queda, porque `BRONZE_AGE` existe desde `000002`. |
 | `000013` | `trade` | El comercio ([SPEC-TRADE](../specs/trade.md), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)): `trade_offers`, con un único parcial de una oferta pendiente por par y un único de idempotencia por `(proposer_id, request_id)`, y `trade_offer_lines`, con el `CHECK` de recurso de `city_stocks`. Su `.down.sql` pierde las ofertas, también las pendientes; lo que ya movieron los tratos se queda en `city_stocks`. |
+| `000014` | `territory_claims` | La conquista ([SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md), [ADR-034](../decisions/ADR-034-territory-claims.md)): `territory_claims`, con un único parcial de una reclamación activa por territorio (`INV-TERR-010`), otro por guerrero y uno de idempotencia por `(player_id, request_id)`. `units.status` y `territory_control` no cambian. Su `.down.sql` pierde las reclamaciones y deja `contested` a `false`; los territorios conquistados conservan su dueño. |
 
 Por qué el esquema inicial cabe en una sola migración y no en una por tabla: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido diecisiete oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
 
