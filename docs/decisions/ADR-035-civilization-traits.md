@@ -60,6 +60,14 @@ jugador nuevo. Un dueño de ciudad sin civilización conocida es un error de la 
 existen crean el estado con una civilización neutra de test (todo a `1000`) para que sus golden no cambien; los
 nuevos fijan la suya.
 
+**Precisión (2026-11-05, al implementarlo).** El mapa jugador → civilización es la ciudad: `city.City` lleva el código
+de la civilización de su dueño (`Civilization`), que `CityRepo` lee de `players` en cada carga y el alta resuelve en su
+transacción, y `State` instala el catálogo con `SetCivilizations`. Así `CityView.civilization` y los rasgos salen del
+mismo dato, y en el MVP cada jugador tiene una ciudad. Sin catálogo instalado, o con un código que no está en él, los
+rasgos son neutros: es lo que hacen los tests de simulación que no lo fijan, y por eso sus golden no cambian. En
+producción no ocurre, porque la validación de carga aborta el arranque si una ciudad no lleva una civilización del
+catálogo o un rasgo es inválido (`INV-PLAYER-002`, `INV-PLAYER-012`).
+
 **5. La elección viaja del registro a la fundación, y se guarda en la cuenta.** `POST /api/auth/register` exige
 `civilization`, que la web valida contra `CivilizationCode` (Zod) antes de crear la cuenta; la migración 3 del
 almacén de identidad añade `accounts.civilization` (`ROMAN` para las cuentas que ya existen), que se escribe con la

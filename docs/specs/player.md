@@ -78,8 +78,9 @@ comando del protocolo v1. Desde [ADR-018](../decisions/ADR-018-identity-store-an
 |---|---|---|---|
 | `username` | `string` | jugador | Misma regla que `RN-PLAYER-003`, comprobada en `apps/web` y otra vez en el game server. |
 | `password` | `string` | jugador | De 8 a 256 caracteres. Se deriva con `scrypt` (`N = 2^15, r = 8, p = 3`) y **nunca** se almacena en claro ni sale de `apps/web`. |
+| `civilization` | `string` | jugador | Desde E13 ([civilizations.md](civilizations.md) §4.1): uno de los códigos de `CivilizationCode`, obligatorio y sin valor por defecto; si falta o no está en el catálogo, `400 INVALID_MESSAGE` sin crear la cuenta. Se guarda en `accounts.civilization` y no cambia nunca. |
 
-`POST /api/auth/login` — mismo cuerpo `{ username, password }`.
+`POST /api/auth/login` — mismo cuerpo `{ username, password }`; si trae `civilization`, se ignora.
 
 `POST /api/auth/ticket` — sin cuerpo: un ticket nuevo para la sesión de la cookie `eo_session`. Es lo que pide
 el cliente en cada (re)conexión, porque el ticket es de un solo uso.
@@ -109,7 +110,7 @@ la trae, y el cliente la encuentra en el `world.snapshot`.
 
 **Fundación.** El alta crea la cuenta en el almacén de identidad como `PENDING`, con un `playerId` nuevo
 (`crypto.randomUUID()`), y llama a `POST /internal/players` del game server con
-`{ playerId, username }` y un token de fundación (JWT HS256 firmado con `EO_AUTH_JWT_SECRET`,
+`{ playerId, username, civilizationCode }` (desde E13, la civilización de la cuenta) y un token de fundación (JWT HS256 firmado con `EO_AUTH_JWT_SECRET`,
 `aud = "game-server-internal"`, `sub = playerId`, TTL 60 s, `jti` de un solo uso). El game server ejecuta el
 bootstrap de §6 y responde `201` con la ciudad, o `200` si ese jugador ya existía. Sólo entonces la cuenta pasa a
 `ACTIVE` y se abre la sesión (`INV-PLAYER-009`). Si el game server rechaza de forma definitiva, la cuenta

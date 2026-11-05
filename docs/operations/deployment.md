@@ -621,7 +621,8 @@ despliegue. Necesita Node 22 o superior y no tiene dependencias. Con `--verbose`
 protocolo, que es lo que se quiere cuando falla.
 
 Crea un jugador `smoke_runner` con su ciudad la primera vez y lo reutiliza después; en producción conviene
-darle un nombre propio con `EO_SMOKE_USER` y `EO_SMOKE_PASSWORD`, y tener presente que **funda una ciudad
+darle un nombre propio con `EO_SMOKE_USER` y `EO_SMOKE_PASSWORD` (y, si se quiere, su civilización con
+`EO_SMOKE_CIVILIZATION`, `ROMAN` por defecto), y tener presente que **funda una ciudad
 real en el mundo real**. No es un jugador de mentira: el sistema no tiene ninguna noción de eso.
 
 ### Paso 6 — Observar 15 minutos

@@ -39,6 +39,7 @@ Dentro del scope de v1:
 - La piedra y el avance de era ([economy-stone.md](economy-stone.md)): `unit.gather` también sobre una colina (§7.8), `city.advance` (§7.16), `hills` en el snapshot y `hill.update` (§8.21), `STONE` en `stocks`, `carryingResource` en las unidades, y `era` y `advance` en las ciudades; todo aditivo (`R-VER-2`, `R-VER-3`).
 - El comercio ([trade.md](trade.md)): `trade.propose`, `trade.respond` y `trade.cancel` (§7.17), `trade.update` (§8.22), `tradeOffers` en el snapshot, `TRADE` como tipo proponible de `treaty.propose` (§7.13) y las cantidades de los tratos en el registro (`tradeGive`, `tradeGet`); todo aditivo (`R-VER-2`, `R-VER-3`).
 - Los avisos en vivo ([live-notices.md](live-notices.md)): `event_log.notice` (§8.23), aditivo (`R-VER-3`).
+- Las civilizaciones ([civilizations.md](civilizations.md)): `civilization` en `CityView` (un `CivilizationCode`), obligatorio porque toda ciudad tiene una y fija porque no cambia, así que `city.update` no lo lleva; sin mensajes nuevos. Los rasgos no viajan: los plazos y la vida llegan resueltos ([ADR-035](../decisions/ADR-035-civilization-traits.md) §7).
 - La conquista ([territory-conquest.md](territory-conquest.md)): `unit.claim` (§7.18), `claim` en `TerritoryView` con `contested` como «hay una reclamación activa», el estado `CLAIMING`, los tipos `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN` en el registro y en `event_log.notice`, y `territoryId`/`territoryName` en las dos; todo aditivo (`R-VER-2`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
@@ -717,7 +718,7 @@ interface ChunkTerrain {
       { "id": 48212, "playerId": "b61f3a82-3e44-4d90-921b-0caa774bc102", "cityId": 1204, "unitType": "VILLAGER", "x": 101, "y": 99, "hp": 40, "maxHp": 40, "status": "MOVING",
         "movement": { "movementId": 77301, "path": [ { "x": 100, "y": 99, "tMs": 0 }, { "x": 101, "y": 99, "tMs": 600 }, { "x": 102, "y": 99, "tMs": 1200 } ], "startTimeMs": 1788955198800, "arrivalTimeMs": 1788955200000, "target": { "x": 102, "y": 99 } } }
     ],
-    "cities": [ { "id": 1204, "ownerPlayerId": "b61f3a82-3e44-4d90-921b-0caa774bc102", "name": "Roma Nova", "centerX": 98, "centerY": 99, "era": "STONE_AGE", "population": 3, "populationLimit": 20, "presenceState": "ONLINE", "protectionUntilMs": null } ],
+    "cities": [ { "id": 1204, "ownerPlayerId": "b61f3a82-3e44-4d90-921b-0caa774bc102", "name": "Roma Nova", "centerX": 98, "centerY": 99, "era": "STONE_AGE", "civilization": "ROMAN", "population": 3, "populationLimit": 20, "presenceState": "ONLINE", "protectionUntilMs": null } ],
     "territories": []
   }
 }
@@ -832,7 +833,7 @@ payload: z.object({
 { "v": 1, "type": "city.update", "seq": 63, "ts": 1788955500000, "payload": { "id": 1204, "presenceState": "PROTECTED" } }
 ```
 
-Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`); desde E5, en cada golpe de saqueo, `stocks` al chunk y `pillagedAtMs` sólo al dueño de la ciudad, por `SendToPlayer` ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-028`); desde E8, en cada golpe de asedio, `besiegedAtMs` sólo al dueño, y al caer una casa completa, `populationLimit` al chunk ([combat-siege.md](combat-siege.md) `RN-COMBAT-033` y `RN-COMBAT-038`); desde E9, al confirmarse un avance de era, `stocks` y `advance`, y al terminar, `era`, `populationLimit` y `advance: null` ([economy-stone.md](economy-stone.md) `RN-ECON-025` y `RN-ECON-027`). `CityView` lleva también `advance`, o `null`. Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
+Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`); desde E5, en cada golpe de saqueo, `stocks` al chunk y `pillagedAtMs` sólo al dueño de la ciudad, por `SendToPlayer` ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-028`); desde E8, en cada golpe de asedio, `besiegedAtMs` sólo al dueño, y al caer una casa completa, `populationLimit` al chunk ([combat-siege.md](combat-siege.md) `RN-COMBAT-033` y `RN-COMBAT-038`); desde E9, al confirmarse un avance de era, `stocks` y `advance`, y al terminar, `era`, `populationLimit` y `advance: null` ([economy-stone.md](economy-stone.md) `RN-ECON-025` y `RN-ECON-027`). `CityView` lleva también `advance`, o `null`, y desde E13 `civilization`, que no cambia y por eso nunca va en `city.update` ([civilizations.md](civilizations.md) §6). Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
 
 El estado de presencia lo decide **exclusivamente el servidor** (transición a `PROTECTED` tras `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` = 300 s). El cliente lo observa; nunca lo propone.
 
@@ -1272,12 +1273,14 @@ packages/protocol/
 │   ├── errors.ts            # ErrorCode como z.enum, exactamente los 24 códigos, y WS_CLOSE
 │   ├── client.ts            # los 23 mensajes cliente→servidor, TODOS .strict()
 │   ├── server.ts            # los 23 mensajes servidor→cliente, ninguno .strict()
+│   ├── civilizations.ts     # catálogo de presentación de las civilizaciones (ADR-035 §7)
 │   └── index.ts             # export público de @empires-online/protocol
 ├── src/scripts/export-schema.ts
 └── schema/v1/               # JSON Schema GENERADO — artefacto de build, nunca editado a mano
     ├── client-message.schema.json
     ├── server-message.schema.json
-    └── error-codes.json     # { version: 1, codes: [...] }
+    ├── error-codes.json     # { version: 1, codes: [...] }
+    └── civilizations.json   # { version: 1, civilizations: [...] }; un test de integración lo ata a la tabla
 ```
 
 Cadena de propagación:
