@@ -258,7 +258,7 @@ CREATE TABLE civilizations (
 | `id` | `integer` PK explícita | Clave sustituta fijada por la semilla (`1..4`), referenciada por `players.civilization_id`. No es `IDENTITY`: los números deben ser idénticos en local, CI y producción |
 | `code` | `text` UNIQUE | Identificador estable en inglés (`ROMAN`). Es lo que viaja por el protocolo y lo que usa la lógica; el `id` es interno |
 | `name` | `text` | Nombre presentable, sin traducción en MVP |
-| `traits` | `jsonb` | **Rasgos data-driven**, objeto clave → multiplicador (`{"unit.move_speed": 1.05, ...}`, `1.0` = sin efecto). Existe precisamente para que ningún sistema compare `code`: cada sistema consulta la clave que le concierne. `PlayerRepo.ListCivilizations` lo deserializa en `player.Civilization.Traits` |
+| `traits` | `jsonb` | **Rasgos data-driven**, objeto clave → entero por mil desde `000015` (`{"unit.move_speed": 1100, ...}`, `1000` = sin efecto; antes, multiplicadores en coma flotante). Existe precisamente para que ningún sistema compare `code`: cada sistema consulta la clave que le concierne. `PlayerRepo.ListCivilizations` lo deserializa en `player.Civilization.Traits` (`map[string]int32`) y rechaza un decimal, un valor no positivo o una clave desconocida ([INV-PLAYER-012](../invariants/player.md#inv-player-012)) |
 
 ### 6.2 `factions`
 
@@ -328,7 +328,14 @@ ON CONFLICT (id) DO NOTHING;
 
 Nótese que `name` está en español (es la etiqueta presentable) mientras `code` está en inglés (es el identificador). Los `ordinal` empiezan en **1**, no en 0. Añadir una quinta civilización es una migración nueva, no una edición de `000002`: las migraciones publicadas son inmutables ([migrations.md](./migrations.md) §2.1).
 
-Los multiplicadores de `traits` están declarados pero **el MVP todavía no los consume**: `unit.move_speed` no participa aún en el cálculo de la polilínea, que usa el `BaseMsPerTile` del catálogo de tipos de unidad en código. Aplicar el rasgo es trabajo pendiente, no una regla implementada.
+Los multiplicadores de `000002` no los consumió nunca ningún sistema. **Desde `000015`** ([SPEC-CIVILIZATION](../specs/civilizations.md), [ADR-035](../decisions/ADR-035-civilization-traits.md)) los `traits` son enteros por mil con claves nuevas y se aplican al dar cada orden: la velocidad de las unidades, la duración de obras y entrenamiento, la vida de las casas, la carga de botín y el trabajo en el tile. Los valores vigentes son éstos:
+
+| `code` | `traits` (`000015`) |
+|---|---|
+| `ROMAN` | `{"unit.move_speed": 1000, "production.speed": 1100}` |
+| `BYZANTINE` | `{"unit.move_speed": 950, "production.speed": 1000, "building.house_hp": 1200}` |
+| `PERSIAN` | `{"unit.move_speed": 1050, "production.speed": 950, "economy.gather_speed": 1100}` |
+| `NORSE` | `{"unit.move_speed": 1100, "production.speed": 900, "combat.loot_carry": 1150}` |
 
 ---
 
@@ -359,7 +366,7 @@ CREATE TRIGGER players_set_updated_at
 |---|---|---|
 | `id` | `uuid` PK | Identificador público del jugador. Es el claim `sub` del game ticket JWT y el campo `player_id` de los logs estructurados. UUID y no `bigint` porque se expone al cliente y no debe ser enumerable. **Sin `DEFAULT`**: lo elige `apps/web` al crear la cuenta (es también `accounts.id` del almacén de identidad, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) y llega en la fundación, de modo que la aplicación conoce el id antes del `COMMIT` y puede crear ciudad y unidades en la misma transacción |
 | `username` | `text` UNIQUE | Nombre visible del jugador y semilla de su emplazamiento; el nombre de acceso vive en `accounts.username`, con la misma regla. El `CHECK` admite mayúsculas, minúsculas, dígitos, `_` y `-`, de 3 a 24 caracteres: `^[A-Za-z0-9_-]{3,24}$` |
-| `civilization_id` | `integer` FK | Civilización elegida. Sin `ON DELETE`: el `NO ACTION` por defecto impide borrar un catálogo referenciado |
+| `civilization_id` | `integer` FK | Civilización elegida por el jugador al registrarse. Sin `ON DELETE`: el `NO ACTION` por defecto impide borrar un catálogo referenciado. Desde `000015` no cambia después del alta: el trigger `players_civilization_immutable` rechaza un `UPDATE` que la cambie ([INV-PLAYER-011](../invariants/player.md#inv-player-011)). La carga la lee con cada ciudad (`city.City.Civilization`, el código) |
 | `faction_id` | `integer` FK | Facción global. Ortogonal a la civilización: cualquier combinación es válida |
 | `last_seen_at` | `timestamptz` | Última actividad observada. `PlayerRepo.TouchLastSeen` existe pero **ninguna ruta la llama**: hoy la columna queda `NULL` |
 | `event_log_seen_id` | `bigint` | Desde `000010` ([SPEC-EVENT-LOG](../specs/event-log.md)): el último `world_events.id` que el jugador dio por visto en su registro. Sólo avanza (`GREATEST`) y nunca más allá del tope marcable de la página que lo permitió ([INV-PERSIST-006](../invariants/persistence.md#inv-persist-006)); `0` es «nada visto» |

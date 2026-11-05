@@ -65,6 +65,11 @@ type City struct {
 	Population      int32
 	PopulationLimit int32
 	PresenceState   PresenceState
+	// Civilization es el código de la civilización de su dueño
+	// (SPEC-CIVILIZATION). No es una columna de cities: la carga la lee de
+	// players, y no cambia nunca (INV-PLAYER-011). Vacía sólo en los tests que
+	// no la fijan, y entonces sus rasgos son neutros.
+	Civilization    string
 	LastOnlineAt    *time.Time
 	LastOfflineAt   *time.Time
 	ProtectionUntil *time.Time

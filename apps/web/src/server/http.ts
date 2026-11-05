@@ -105,16 +105,19 @@ async function readBoundedBody(req: Request, maxBytes: number): Promise<string |
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function readCredentials(req: Request): Promise<{ username: string; password: string } | null> {
+/** `civilization` sólo la usa el alta, que la valida (SPEC-CIVILIZATION RN-CIV-001). */
+async function readCredentials(
+  req: Request,
+): Promise<{ username: string; password: string; civilization: unknown } | null> {
   if (!(req.headers.get('content-type') ?? '').toLowerCase().startsWith('application/json')) return null;
   const text = await readBoundedBody(req, MAX_BODY_BYTES);
   if (text === null) return null;
   try {
     const body = JSON.parse(text) as unknown;
     if (typeof body !== 'object' || body === null) return null;
-    const { username, password } = body as Record<string, unknown>;
+    const { username, password, civilization } = body as Record<string, unknown>;
     if (typeof username !== 'string' || typeof password !== 'string') return null;
-    return { username, password };
+    return { username, password, civilization };
   } catch {
     return null;
   }
@@ -147,7 +150,7 @@ export async function handleCredentials(
   try {
     const result =
       action === 'register'
-        ? await deps.service.register(creds.username, creds.password)
+        ? await deps.service.register(creds.username, creds.password, creds.civilization)
         : await deps.service.login(creds.username, creds.password);
     return toResponse(result, deps.secureCookies);
   } catch (err) {

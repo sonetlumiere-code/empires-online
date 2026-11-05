@@ -323,7 +323,7 @@ func (s *Simulation) applyPillage(h pillageHit, nowMs int64) bool {
 	}
 	// El saqueo se lleva madera, nunca piedra (SPEC-ECON-STONE Q8).
 	wood := s.state.economyOf(c.ID).of(economy.ResourceWood)
-	room := int64(def.LootCarry - s.state.carrying(a))
+	room := int64(s.state.lootCarry(a, def) - s.state.carrying(a))
 	amount := min(int64(s.pillagePerHit()), room, wood.stock.Amount-s.pillageFloor())
 	if amount <= 0 {
 		// Carga llena o almacén en el suelo: no hay golpe (RN-COMBAT-021).
@@ -373,7 +373,7 @@ func (s *Simulation) applyPillage(h pillageHit, nowMs int64) bool {
 
 	// Carga llena: el saqueo termina y el guerrero queda IDLE junto a la
 	// muralla; volver es decisión de su dueño (RN-COMBAT-025, Q6).
-	if carry >= def.LootCarry {
+	if carry >= s.state.lootCarry(a, def) {
 		s.endEngagement(a, true)
 	}
 	return true

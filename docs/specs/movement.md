@@ -54,7 +54,7 @@ Código de referencia: `internal/domain/movement/{path.go,movement.go}` (dominio
 | Órdenes encoladas (waypoints múltiples, patrullas) | Fuera de MVP |
 | Movimiento naval sobre WATER | Fuera de MVP (canon §5) |
 | Interrupción del movimiento por combate | Fuera de MVP (canon §6 fase 4 reservada) |
-| Modificadores de velocidad por tecnología o civilización | Fuera de MVP |
+| Modificadores de velocidad por tecnología o civilización | Fuera de MVP la tecnología. **Precisión (2026-11-05, [civilizations.md](civilizations.md) §4.2):** desde E13 la civilización del dueño escala `BaseMsPerTile` con `unit.move_speed` al construir cada polilínea ([ADR-035](../decisions/ADR-035-civilization-traits.md)) |
 | Búsqueda del tile libre más cercano si el destino está bloqueado | Fuera de MVP (canon §8: se rechaza) |
 | Cota dura de waypoints por polilínea | `TBD (fuera de MVP)` — ver RN-MOVE-014 |
 | Registro del movimiento en `world_events` | Fuera de MVP por decisión (§11): el historial es `unit_movements` |

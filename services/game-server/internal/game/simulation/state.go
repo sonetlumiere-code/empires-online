@@ -14,6 +14,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -52,9 +53,12 @@ type State struct {
 	// activo por unidad, que es justamente INV-MOVE-001.
 	movements map[int64]*movement.Movement
 
-	cities       map[int64]*city.City
-	cityByOwner  map[uuid.UUID]int64
-	unitsByChunk map[chunkKey]map[int64]struct{}
+	cities      map[int64]*city.City
+	cityByOwner map[uuid.UUID]int64
+	// civilizations es el catálogo por código (SPEC-CIVILIZATION); nil en los
+	// tests que no lo instalan, y entonces los rasgos son neutros.
+	civilizations map[string]player.Civilization
+	unitsByChunk  map[chunkKey]map[int64]struct{}
 
 	// La geometría de los territorios es inmutable en runtime; sólo cambia el
 	// control. Por eso van separados: `territories` se instala una vez y

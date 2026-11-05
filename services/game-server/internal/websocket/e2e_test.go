@@ -290,7 +290,8 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 	playerID := uuid.New()
 	cityID := int64(1)
 	state.AddCity(&city.City{
-		ID: cityID, OwnerPlayerID: playerID, Name: "Testópolis",
+		Civilization: "ROMAN",
+		ID:           cityID, OwnerPlayerID: playerID, Name: "Testópolis",
 		CenterX: 40, CenterY: 40, Era: city.EraStone,
 		Population: 3, PopulationLimit: 20, PresenceState: city.PresenceOnline,
 	})

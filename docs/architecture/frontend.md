@@ -639,6 +639,22 @@ y grueso, y una que carga madera, un tronco a la espalda.
   agrupados además por territorio (`noticeKey`), y en el registro con el nombre del territorio (`entryText`); los dos
   primeros se resaltan como pérdidas.
 
+### 4.10 Civilizaciones: la elección y lo que se ve (SPEC-CIVILIZATION)
+
+> **Estado (2026-11-05): implementado y con tests de lo puro** (`src/state/civilizations.ts`).
+
+- **El formulario.** Además del nombre y la contraseña, cuatro opciones con su nombre y lo que da y cuesta cada una
+  en porcentajes (`traitLines`: ventajas en verde primero, costes en rojo, sin los rasgos neutros), sin ninguna
+  elegida. «Fundar imperio» está deshabilitado hasta elegir, con un `title` que dice que no se puede cambiar
+  después; «Entrar» no la necesita. El alta manda `civilization` (`register` de `src/net/auth.ts`).
+- **De dónde salen los textos.** Del catálogo de presentación `v1.CIVILIZATIONS` de `@empires-online/protocol`, que
+  un test de integración del Game Server ata a la tabla `civilizations`. El cliente no aplica ningún rasgo: los
+  plazos de obras, entrenamientos y movimientos y la vida de las casas (`maxHp`) llegan resueltos (ADR-035 §7).
+- **El HUD.** La cabecera dice «ciudad — civilización — era», con el resumen de rasgos (`traitSummary`) en el
+  `title` de la civilización.
+- **La ciudad ajena.** La barra de diplomacia que abre un clic en una ciudad ajena (§4.5) dice su nombre, su
+  civilización y su era, con los rasgos en el `title`: la civilización es pública (RN-CIV-009).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

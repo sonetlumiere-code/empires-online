@@ -159,7 +159,7 @@ function snapshot(): v1.WorldSnapshot['payload'] {
     ],
     cities: [
       {
-        id: 10, ownerPlayerId: PLAYER, name: 'Testópolis', centerX: 5, centerY: 5, era: 'STONE_AGE',
+        id: 10, ownerPlayerId: PLAYER, name: 'Testópolis', centerX: 5, centerY: 5, era: 'STONE_AGE', civilization: 'ROMAN',
         population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
         stocks: { WOOD: 40 }, production: null,
       },

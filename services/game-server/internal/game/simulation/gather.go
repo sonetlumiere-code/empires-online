@@ -164,7 +164,7 @@ func (s *Simulation) handleGather(cmd Gather) {
 					"el depósito de la ciudad queda demasiado lejos de ese tile")
 				return
 			}
-			if _, err := s.legPath(cmd.Target, depot, def); err != nil {
+			if _, err := s.legPath(u, cmd.Target, depot, def); err != nil {
 				s.economyError(cmd.PlayerID, cmd.RequestID, pathErrorCode(err),
 					"no hay camino de vuelta desde ese tile al depósito de la ciudad: "+err.Error())
 				return
@@ -177,7 +177,7 @@ func (s *Simulation) handleGather(cmd Gather) {
 	origin := s.authoritativePosition(u, nowMs)
 	var path movement.TimedPath
 	if origin != cmd.Target {
-		path, err = s.legPath(origin, cmd.Target, def)
+		path, err = s.legPath(u, origin, cmd.Target, def)
 		if err != nil {
 			s.economyError(cmd.PlayerID, cmd.RequestID, pathErrorCode(err), err.Error())
 			return
@@ -220,7 +220,7 @@ func gatherErrorCode(err error) string {
 
 // legPath calcula la polilínea de un tramo con el mismo A* y los mismos topes
 // que un unit.move.
-func (s *Simulation) legPath(from, to world.Tile, def unit.Definition) (movement.TimedPath, error) {
+func (s *Simulation) legPath(u *unit.Unit, from, to world.Tile, def unit.Definition) (movement.TimedPath, error) {
 	w := s.state.World()
 	start := time.Now() //lint:reloj-real mide la duración del A* para la métrica; no afecta al resultado
 	tiles, err := s.deps.Pathfinder.FindPath(context.Background(), w, from, to, pathfinding.Options{
@@ -232,7 +232,7 @@ func (s *Simulation) legPath(from, to world.Tile, def unit.Definition) (movement
 	if err != nil {
 		return nil, err
 	}
-	return movement.BuildTimedPath(tiles, w, def.BaseMsPerTile)
+	return movement.BuildTimedPath(tiles, w, s.state.msPerTile(u, def))
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ func (s *Simulation) arriveAtResource(u *unit.Unit, t task.Task, arrivedAtMs int
 		s.endTask(u, task.EndCancelled, finish)
 		return
 	}
-	next, err := t.StartWork(arrivedAtMs, def.GatherWorkMs)
+	next, err := t.StartWork(arrivedAtMs, s.state.gatherWorkMs(u, def))
 	if err != nil {
 		s.endTask(u, task.EndCancelled, finish)
 		return
@@ -362,7 +362,7 @@ func (s *Simulation) leaveResource(u *unit.Unit, t task.Task) {
 		s.arriveAtDeposit(u, next, leftAtMs, nil)
 		return
 	}
-	path, err := s.legPath(origin, depot, def)
+	path, err := s.legPath(u, origin, depot, def)
 	if err != nil {
 		s.endTask(u, task.EndNoPath, nil)
 		return
@@ -431,7 +431,7 @@ func (s *Simulation) arriveAtDeposit(u *unit.Unit, t task.Task, arrivedAtMs int6
 		s.arriveAtResource(u, next, arrivedAtMs, finish, false)
 		return
 	}
-	path, err := s.legPath(origin, next.Target, def)
+	path, err := s.legPath(u, origin, next.Target, def)
 	if err != nil {
 		s.endTask(u, task.EndNoPath, finish)
 		return
@@ -482,7 +482,7 @@ func (s *Simulation) leaveDepleted(u *unit.Unit, t task.Task, atMs int64, finish
 		s.arriveAtDeposit(u, next, atMs, finish)
 		return
 	}
-	path, err := s.legPath(origin, depot, def)
+	path, err := s.legPath(u, origin, depot, def)
 	if err != nil {
 		s.endTask(u, task.EndNoPath, finish)
 		return

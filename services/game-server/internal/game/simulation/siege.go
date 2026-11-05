@@ -137,14 +137,29 @@ func (s *State) BuildingHP(id int64) (hp, maxHP int32, ok bool) {
 
 // houseHP es la vida de una casa en pie: la de su daño, o la entera.
 func (s *State) houseHP(b *building.Building) (hp, maxHP int32) {
-	def, err := building.Lookup(b.Type)
-	if err != nil {
+	maxHP, ok := s.buildingMaxHP(*b)
+	if !ok {
 		return 0, 0
 	}
 	if d, ok := s.siege.damage[b.ID]; ok {
-		return d.hp, def.MaxHP
+		return d.hp, maxHP
 	}
-	return def.MaxHP, def.MaxHP
+	return maxHP, maxHP
+}
+
+// buildingMaxHP es la vida entera de un edificio: la de su tipo por el rasgo
+// building.house_hp de la civilización del dueño de su ciudad, leída cada vez
+// (SPEC-CIVILIZATION RN-CIV-006). El daño ya hecho no se reescala.
+func (s *State) buildingMaxHP(b building.Building) (int32, bool) {
+	def, err := building.Lookup(b.Type)
+	if err != nil {
+		return 0, false
+	}
+	c, ok := s.cities[b.CityID]
+	if !ok {
+		return def.MaxHP, true
+	}
+	return s.houseMaxHP(c.OwnerPlayerID, def.MaxHP), true
 }
 
 // buildingView es la vista de red de un edificio en pie, con su vida.
@@ -152,8 +167,8 @@ func (s *State) buildingView(b building.Building) protocol.BuildingView {
 	v := BuildingView(b)
 	if cur, ok := s.buildings[b.ID]; ok {
 		v.HP, v.MaxHP = s.houseHP(cur)
-	} else if def, err := building.Lookup(b.Type); err == nil {
-		v.HP, v.MaxHP = def.MaxHP, def.MaxHP
+	} else if maxHP, ok := s.buildingMaxHP(b); ok {
+		v.HP, v.MaxHP = maxHP, maxHP
 	}
 	return v
 }

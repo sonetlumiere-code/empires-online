@@ -268,12 +268,15 @@ type BuildingView struct {
 
 // CityView es el estado observable de una ciudad.
 type CityView struct {
-	ID                int64  `json:"id"`
-	OwnerPlayerID     string `json:"ownerPlayerId"`
-	Name              string `json:"name"`
-	CenterX           int32  `json:"centerX"`
-	CenterY           int32  `json:"centerY"`
-	Era               string `json:"era"`
+	ID            int64  `json:"id"`
+	OwnerPlayerID string `json:"ownerPlayerId"`
+	Name          string `json:"name"`
+	CenterX       int32  `json:"centerX"`
+	CenterY       int32  `json:"centerY"`
+	Era           string `json:"era"`
+	// Civilization es el código de la civilización de su dueño, pública para
+	// todo el que ve la ciudad (SPEC-CIVILIZATION RN-CIV-009).
+	Civilization      string `json:"civilization"`
 	Population        int32  `json:"population"`
 	PopulationLimit   int32  `json:"populationLimit"`
 	PresenceState     string `json:"presenceState"`

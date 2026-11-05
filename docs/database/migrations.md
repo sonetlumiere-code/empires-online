@@ -122,7 +122,10 @@ Lo que `apps/web` **sí** tiene, desde [ADR-018](../decisions/ADR-018-identity-s
 identidad no puede usar para abrir la base del juego. Tiene su propio ciclo de migración, con el mismo modelo
 que este documento y otro dueño: SQL versionado en `apps/web/identity/migrations.mjs`, registro en
 `identity_schema_migrations`, un *advisory lock* para que dos procesos no migren a la vez, y lo aplican el
-arranque del servidor de Next.js (`instrumentation.ts`) y `pnpm run identity:migrate`. Esta regla precisa la
+arranque del servidor de Next.js (`instrumentation.ts`) y `pnpm run identity:migrate`. Van tres: `accounts` y
+`web_sessions` (1), `accounts.founding_attempted_at` ([ADR-020](../decisions/ADR-020-stale-pending-accounts.md), 2) y
+`accounts.civilization`, la que eligió el jugador al registrarse, sin valor por defecto y con `ROMAN` para las cuentas
+que ya existían ([ADR-035](../decisions/ADR-035-civilization-traits.md) §5, 3). Esta regla precisa la
 de [ADR-012](../decisions/ADR-012-database-migrations.md) §4.2, que estaba escrita más ancha que su motivo.
 
 ---
@@ -340,6 +343,7 @@ services/game-server/migrations/
 ├── 000012_stone_and_era_advance.up.sql       / .down.sql
 ├── 000013_trade.up.sql                       / .down.sql
 ├── 000014_territory_claims.up.sql            / .down.sql
+├── 000015_civilization_traits.up.sql         / .down.sql
 ├── embed.go
 └── migrations_test.go      # TestLasMigracionesSonCorrelativasYCompletas
 ```
@@ -352,7 +356,7 @@ services/game-server/migrations/
 
 ## 6. Migraciones del MVP
 
-Son **doce**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
+Son **quince**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
 
 | # | Fichero | Contenido |
 |---|---|---|
@@ -370,6 +374,7 @@ Son **doce**, todas embebidas en el binario. Juntas materializan lo descrito en 
 | `000012` | `stone_and_era_advance` | La piedra y el avance de era ([SPEC-ECON-STONE](../specs/economy-stone.md), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md)): `STONE` en `city_stocks_resource_valid` con su fila a cero para cada ciudad, `GATHER_STONE` en `unit_tasks_kind_valid`, `hill_stone` y `city_era_advances`. Su `.down.sql` pierde la piedra, las colinas picadas, las tareas de piedra y los avances en curso; la era de una ciudad que ya avanzó se queda, porque `BRONZE_AGE` existe desde `000002`. |
 | `000013` | `trade` | El comercio ([SPEC-TRADE](../specs/trade.md), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)): `trade_offers`, con un único parcial de una oferta pendiente por par y un único de idempotencia por `(proposer_id, request_id)`, y `trade_offer_lines`, con el `CHECK` de recurso de `city_stocks`. Su `.down.sql` pierde las ofertas, también las pendientes; lo que ya movieron los tratos se queda en `city_stocks`. |
 | `000014` | `territory_claims` | La conquista ([SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md), [ADR-034](../decisions/ADR-034-territory-claims.md)): `territory_claims`, con un único parcial de una reclamación activa por territorio (`INV-TERR-010`), otro por guerrero y uno de idempotencia por `(player_id, request_id)`. `units.status` y `territory_control` no cambian. Su `.down.sql` pierde las reclamaciones y deja `contested` a `false`; los territorios conquistados conservan su dueño. |
+| `000015` | `civilization_traits` | Las civilizaciones ([SPEC-CIVILIZATION](../specs/civilizations.md), [ADR-035](../decisions/ADR-035-civilization-traits.md)): reescribe `civilizations.traits` en enteros por mil con las claves que se aplican (`unit.move_speed`, `production.speed`, `building.house_hp`, `combat.loot_carry`, `economy.gather_speed`; el persa con `economy.gather_speed` en lugar de `economy.trade_yield`, Q5) y añade el trigger `players_civilization_immutable` (`INV-PLAYER-011`). Su `.down.sql` quita el trigger y restaura los `traits` de `000002`; los jugadores conservan la civilización que eligieron. |
 
 Por qué el esquema inicial cabe en una sola migración y no en una por tabla: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido diecisiete oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
 

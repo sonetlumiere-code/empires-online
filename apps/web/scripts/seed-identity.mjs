@@ -21,6 +21,14 @@ import { hashPassword } from '../identity/password.mjs';
 /** Los de internal/devseed.Players. */
 export const DEV_PLAYERS = ['dev_norte', 'dev_sur', 'dev_este', 'dev_oeste'];
 
+/**
+ * La civilización de cada uno, la misma que les da cmd/devseed en una base nueva:
+ * las cuatro, por turno (SPEC-CIVILIZATION). En la base de desarrollo anterior a
+ * E13 los jugadores son ROMAN; la cuenta, ya ACTIVE, nunca vuelve a fundar, así
+ * que lo que diga aquí no cambia su jugador.
+ */
+export const DEV_CIVILIZATIONS = ['ROMAN', 'BYZANTINE', 'PERSIAN', 'NORSE'];
+
 /** El de internal/devseed.Namespace. */
 export const DEV_NAMESPACE = '5eed0114-0000-4000-8000-000000000000';
 
@@ -55,7 +63,7 @@ async function main() {
     await migrateIdentity(client);
     const hash = await hashPassword(DEV_PASSWORD);
     console.log('\nCuentas de desarrollo (almacén de identidad)\n');
-    for (const username of DEV_PLAYERS) {
+    for (const [i, username] of DEV_PLAYERS.entries()) {
       const id = uuidV5(username);
       const { rows } = await client.query('SELECT id FROM accounts WHERE username = $1', [username]);
       if (rows[0]) {
@@ -63,8 +71,9 @@ async function main() {
         continue;
       }
       await client.query(
-        `INSERT INTO accounts (id, username, password_hash, status, activated_at) VALUES ($1, $2, $3, 'ACTIVE', now())`,
-        [id, username, hash],
+        `INSERT INTO accounts (id, username, password_hash, status, activated_at, civilization)
+         VALUES ($1, $2, $3, 'ACTIVE', now(), $4)`,
+        [id, username, hash, DEV_CIVILIZATIONS[i % DEV_CIVILIZATIONS.length]],
       );
       console.log(`  + ${username}`);
     }

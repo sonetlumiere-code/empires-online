@@ -1836,3 +1836,49 @@ territorio, perder territorio por abandono, tope de territorios, `control_points
    `smoke_runner` sobre el mismo territorio, que seguía en su cola, y esperó la pérdida con un plazo vencido. Sólo vale
    ya la reclamación de quien reclama (`esReclamacionDe`, con su test en `scripts/smoke.test.mjs`, que falla con la
    lógica anterior); y si la víctima no tiene guerrero, lo entrena.
+
+## E13 — Civilizaciones
+
+**Estado: HECHO EN LA RAMA (2026-11-05)**, en `claude/slice-civilizaciones`, con su prueba en vivo; falta fusionarlo con la CI en verde. Contrato:
+[SPEC-CIVILIZATION](../specs/civilizations.md), aceptada el 2026-11-05 con sus diez decisiones de producto, y
+[ADR-035](../decisions/ADR-035-civilization-traits.md).
+
+**Objetivo.** Que el pilar 4 tenga su primera mecánica: la civilización se elige al nacer y cambia cómo se juega.
+
+**Alcance.** La civilización se elige en el registro, obligatoria y sin preselección, se guarda en la cuenta pendiente
+y no cambia nunca; los jugadores que ya existían siguen `ROMAN`. Los rasgos pasan a enteros por mil (migración
+`000015`) y se aplican en cinco sistemas: velocidad de las unidades, duración de obras y entrenamiento, vida de las
+casas, carga de botín y tiempo de recolección; el rasgo persa de comercio se sustituye por recolección. La
+civilización viaja en `CityView` y se ve en el HUD y en el panel de una ciudad ajena; `INV-PLAYER-011` e
+`INV-PLAYER-012`. **No entra** (spec §2): capacidades exclusivas, cambiar de civilización, elegir la facción, rasgos
+sobre el combate, el avance de era o el comercio, el pipeline completo de modificadores.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-035, `INV-PLAYER-011` e `INV-PLAYER-012`, la precisión de `INV-PLAYER-002`, las de
+   [player.md](../specs/player.md) y [movement.md](../specs/movement.md), y la Q-02 del backlog.
+2. **HECHO** — Protocolo: `CivilizationCode`, `CityView.civilization` (obligatoria; no va en `city.update`) y el
+   catálogo de presentación `CIVILIZATIONS`, exportado a `civilizations.json` y embebido en Go; contract tests en los
+   dos lados (`TestLaCiudadLlevaUnaCivilizacionDelCatalogo`).
+3. **HECHO** — Dominio: `Civilization.Traits` en enteros, `Trait`, `Validate`, `ScaleDuration` y `ScaleAmount`
+   (`TestLasFormulasDeLosRasgosDanLosValoresDeLaSpec`).
+4. **HECHO** — Migración `000015` y persistencia: los rasgos por mil, el trigger `players_civilization_immutable`, la
+   ciudad con el código de su civilización, la fundación con `civilizationCode` (sin el parámetro de arranque) y la
+   carga que rechaza un catálogo inválido; cinco tests de integración nuevos.
+5. **HECHO** — Simulación: los cinco puntos de consumo (`civilization.go`), la vida de la casa leída con la
+   civilización del dueño, la validación de carga; los golden por rasgo, verificados por mutación uno a uno, y un
+   reinicio que no recalcula los plazos fijados.
+6. **HECHO** — Web: el registro con `civilization` (validada en `AuthService`), la migración 3 de identidad
+   (`accounts.civilization`), el reintento de la fundación con la de la cuenta (verificado por mutación), un
+   `INVALID_MESSAGE` de la fundación como rechazo definitivo y la semilla de identidad.
+7. **HECHO** — Cliente: `src/state/civilizations.ts`, la elección en el formulario con sus porcentajes y sin ninguna
+   preseleccionada, la civilización en el HUD y en la barra de una ciudad ajena (frontend.md §4.10).
+8. **HECHO** — Semilla, humo y prueba en vivo (2026-11-05): `cmd/devseed` reparte las cuatro civilizaciones en una
+   base nueva. Contra la base de desarrollo, el servidor aplicó `000015` al arrancar y la validación de carga aceptó
+   las diez ciudades (todas `ROMAN`). `node scripts/smoke.mjs --web http://localhost:3001 --civilizacion` pasó sus 22
+   comprobaciones: la ciudad de smoke_runner lleva `ROMAN` y su polilínea va a 600 ms por tile; un alta sin
+   civilización y otra con `AZTEC` se rechazan con 400; `smoke_norse` se dio de alta `NORSE` y su aldeano anda a 545 ms
+   por tile; y una casa romana se anunció con su plazo de 13 636 ms. En el navegador integrado, el formulario enseña
+   las cuatro con sus porcentajes y «Fundar imperio» no se puede pulsar hasta elegir; el HUD dice «smoke_runnerpolis —
+   Romanos — Edad de Bronce», y la barra de dev_nortepolis, «dev_nortepolis (Romanos, Edad de Piedra)», con el
+   formulario «Ofrecer trato» de E10 debajo.

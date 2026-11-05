@@ -118,6 +118,7 @@ func TestLosDosEjesSonOrtogonales(t *testing.T) {
 			require.NoError(t, err, "%s × %s", c.Code, f.Code)
 			assert.Equal(t, c.ID, alta.Player.CivilizationID)
 			assert.Equal(t, f.ID, alta.Player.FactionID)
+			assert.Equal(t, c.Code, alta.City.Civilization, "la ciudad lleva la civilización de su dueño")
 			i++
 		}
 	}

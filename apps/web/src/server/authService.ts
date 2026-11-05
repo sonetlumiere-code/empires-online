@@ -16,6 +16,8 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 
+import { v1 } from '@empires-online/protocol';
+
 import { dummyHash, hashPassword, verifyPassword } from '../../identity/password.mjs';
 import { settleStalePending, sweepStalePending } from '../../identity/pending.mjs';
 import type { CityInfo, GameServerClient } from './gameServer';
@@ -74,7 +76,7 @@ export function hashSessionToken(token: string): Buffer {
 export class AuthService {
   constructor(private readonly deps: AuthDeps) {}
 
-  async register(username: string, password: string): Promise<AuthResult> {
+  async register(username: string, password: string, civilization: unknown): Promise<AuthResult> {
     if (!USERNAME_RE.test(username)) {
       return fail(400, 'INVALID_USERNAME', 'el nombre debe tener entre 3 y 24 caracteres alfanuméricos, guion o guion bajo');
     }
@@ -84,11 +86,18 @@ export class AuthService {
     if (password.length > MAX_PASSWORD) {
       return fail(400, 'INVALID_MESSAGE', `la contraseña no puede pasar de ${MAX_PASSWORD} caracteres`);
     }
+    // La civilización es obligatoria y sin valor por defecto (SPEC-CIVILIZATION
+    // RN-CIV-001): una que no está en el catálogo no crea la cuenta.
+    const civ = v1.CivilizationCode.safeParse(civilization);
+    if (!civ.success) {
+      return fail(400, 'INVALID_MESSAGE', 'elige una de las civilizaciones');
+    }
 
     const { store, log } = this.deps;
     const id = this.deps.randomUUID();
     const passwordHash = await hashPassword(password);
-    if ((await store.createAccount({ id, username, passwordHash })) === 'taken') {
+    const nueva = { id, username, passwordHash, civilization: civ.data };
+    if ((await store.createAccount(nueva)) === 'taken') {
       // Un alta abandonada no retiene el nombre para siempre: si lo ocupa una
       // cuenta PENDING sin intento en la última hora, se resuelve ahora (ADR-020).
       const freed = await this.freeAbandonedName(username);
@@ -96,13 +105,13 @@ export class AuthService {
         return fail(503, 'GAME_SERVER_UNAVAILABLE', 'ese nombre lo retiene un alta sin terminar y el mundo no responde: vuelve a intentarlo en un momento');
       }
       // Un solo reintento: si otra alta lo tomó entretanto, el nombre está en uso.
-      if (freed !== 'deleted' || (await store.createAccount({ id, username, passwordHash })) === 'taken') {
+      if (freed !== 'deleted' || (await store.createAccount(nueva)) === 'taken') {
         return fail(409, 'USERNAME_TAKEN', 'ese nombre ya está en uso');
       }
     }
-    log.info('cuenta creada, pendiente de fundación', { player_id: id, username });
+    log.info('cuenta creada, pendiente de fundación', { player_id: id, username, civilization: civ.data });
 
-    const founded = await this.found(id, username);
+    const founded = await this.found(id, username, civ.data);
     if (!founded.ok) return founded.result;
     return this.signIn(id, 201, founded.city);
   }
@@ -131,7 +140,8 @@ export class AuthService {
       return fail(401, 'UNAUTHORIZED', 'credenciales inválidas');
     }
     log.info('login de una cuenta pendiente: se completa la fundación', { player_id: account.id, username });
-    const founded = await this.found(account.id, account.username);
+    // Con la civilización que la cuenta guarda, nunca con otra (ADR-035 §5).
+    const founded = await this.found(account.id, account.username, account.civilization);
     if (!founded.ok) return founded.result;
     return this.signIn(account.id, 200, founded.city);
   }
@@ -184,9 +194,10 @@ export class AuthService {
   private async found(
     id: string,
     username: string,
+    civilization: v1.CivilizationCode,
   ): Promise<{ ok: true; city: CityInfo } | { ok: false; result: AuthResult }> {
     const { store, game, log } = this.deps;
-    const outcome = await game.found(id, username);
+    const outcome = await game.found(id, username, civilization);
 
     if (outcome.kind === 'founded') {
       await store.activateAccount(id);

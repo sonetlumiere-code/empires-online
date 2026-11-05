@@ -75,7 +75,8 @@ func TestUnTratadoDePuntaAPuntaConDosJugadores(t *testing.T) {
 	env := newE2E(t)
 	otro := uuid.New()
 	env.state.AddCity(&city.City{
-		ID: 2, OwnerPlayerID: otro, Name: "Vecinópolis",
+		Civilization: "BYZANTINE",
+		ID:           2, OwnerPlayerID: otro, Name: "Vecinópolis",
 		CenterX: 80, CenterY: 40, Era: city.EraStone,
 		Population: 1, PopulationLimit: 20, PresenceState: city.PresenceOnline,
 	})

@@ -19,11 +19,14 @@ import {
   elegirBosque,
   elegirColina,
   elegirDestino,
+  escalarDuracion,
   huecoParaCasa,
   indexarTerreno,
   esReclamacionDe,
   pactoVigente,
+  rasgo,
   territorioLibreCerca,
+  tiemposDePolilinea,
 } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
@@ -222,3 +225,29 @@ test('esReclamacionDe no toma la reclamación de otro jugador que quedó en la c
   assert.equal(esReclamacionDe(msg(30, 'victima'), 31, 'victima'), false);
   assert.equal(esReclamacionDe({ type: 'system.error', payload: {} }, 31, 'victima'), false);
 });
+
+// SPEC-CIVILIZATION: el humo recalcula la polilínea con la misma aritmética
+// entera que el servidor (player.ScaleDuration y movement.StepDurationMs).
+test('escalarDuracion es player.ScaleDuration', () => {
+  assert.equal(escalarDuracion(600, 1000), 600);
+  assert.equal(escalarDuracion(600, 1100), 545);
+  assert.equal(escalarDuracion(600, 950), 632);
+  assert.equal(escalarDuracion(15_000, 1100), 13_636);
+  assert.equal(escalarDuracion(1, 1_000_000), 1);
+});
+
+test('rasgo lee el catálogo y una clave ausente vale 1000', () => {
+  const catalogo = [{ code: 'NORSE', name: 'Nórdicos', traits: { 'unit.move_speed': 1100 } }];
+  assert.equal(rasgo(catalogo, 'NORSE', 'unit.move_speed'), 1100);
+  assert.equal(rasgo(catalogo, 'NORSE', 'building.house_hp'), 1000);
+  assert.throws(() => rasgo(catalogo, 'AZTEC', 'unit.move_speed'));
+});
+
+test('tiemposDePolilinea suma pasos de hierba, bosque y diagonal como el servidor', () => {
+  const terreno = new Map([['1,0', GRASSLAND], ['2,0', 1], ['3,1', GRASSLAND]]);
+  const path = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 1 }];
+  // 545 en hierba; 872 en bosque (545 × 16 / 10); la diagonal, 545 × √2 = 771.
+  assert.deepEqual(tiemposDePolilinea(path, terreno, 545), [0, 545, 1417, 2188]);
+  assert.equal(tiemposDePolilinea([{ x: 0, y: 0 }, { x: 9, y: 9 }], terreno, 545), null, 'sin terreno conocido');
+});
+

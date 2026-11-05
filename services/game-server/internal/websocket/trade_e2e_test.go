@@ -53,7 +53,8 @@ func TestUnTratoDePuntaAPuntaConDosJugadores(t *testing.T) {
 	env := newE2E(t)
 	otro := uuid.New()
 	env.state.AddCity(&city.City{
-		ID: 2, OwnerPlayerID: otro, Name: "Vecinópolis",
+		Civilization: "PERSIAN",
+		ID:           2, OwnerPlayerID: otro, Name: "Vecinópolis",
 		CenterX: 80, CenterY: 40, Era: city.EraStone,
 		Population: 1, PopulationLimit: 20, PresenceState: city.PresenceOnline,
 	})
@@ -122,7 +123,8 @@ func TestRetirarUnaOfertaPorLaRed(t *testing.T) {
 	env := newE2E(t)
 	otro := uuid.New()
 	env.state.AddCity(&city.City{
-		ID: 2, OwnerPlayerID: otro, Name: "Vecinópolis",
+		Civilization: "PERSIAN",
+		ID:           2, OwnerPlayerID: otro, Name: "Vecinópolis",
 		CenterX: 80, CenterY: 40, Era: city.EraStone,
 		Population: 1, PopulationLimit: 20, PresenceState: city.PresenceOnline,
 	})

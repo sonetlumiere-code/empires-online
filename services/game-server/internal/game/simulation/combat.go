@@ -285,7 +285,7 @@ func (s *Simulation) chasePath(a *unit.Unit, from, to world.Tile, def unit.Defin
 	if err != nil {
 		return movement.TimedPath{}, err
 	}
-	return movement.BuildTimedPath(tiles, s.state.World(), def.BaseMsPerTile)
+	return movement.BuildTimedPath(tiles, s.state.World(), s.state.msPerTile(a, def))
 }
 
 // startAttacking planta al atacante en ATTACKING. El primer golpe cae en el
@@ -611,7 +611,7 @@ func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
 	var gained int32
 	if killer != nil && killer.IsAlive() && carried > 0 {
 		if def, err := unit.Lookup(killer.Type); err == nil {
-			room := def.LootCarry - s.state.carrying(killer)
+			room := s.state.lootCarry(killer, def) - s.state.carrying(killer)
 			if room > 0 {
 				gained = min(carried, room)
 			}

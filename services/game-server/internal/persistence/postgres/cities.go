@@ -19,8 +19,12 @@ type CityRepo struct{ store *Store }
 // NewCityRepo crea el repositorio.
 func NewCityRepo(s *Store) *CityRepo { return &CityRepo{store: s} }
 
+// La última columna es el código de la civilización del dueño (SPEC-CIVILIZATION):
+// no vive en cities, pero toda ciudad que se lee la lleva.
 const cityColumns = `id, owner_player_id, name, center_x, center_y, era, population,
-	population_limit, presence_state, last_online_at, last_offline_at, protection_until, version`
+	population_limit, presence_state, last_online_at, last_offline_at, protection_until, version,
+	(SELECT cv.code FROM players p JOIN civilizations cv ON cv.id = p.civilization_id
+	  WHERE p.id = cities.owner_player_id) AS civilization`
 
 // GetByID recupera una ciudad.
 func (r *CityRepo) GetByID(ctx context.Context, id int64) (*city.City, error) {
@@ -231,7 +235,7 @@ func scanCity(row rowScanner) (*city.City, error) {
 	var era, presence string
 	err := row.Scan(&c.ID, &c.OwnerPlayerID, &c.Name, &c.CenterX, &c.CenterY, &era,
 		&c.Population, &c.PopulationLimit, &presence,
-		&c.LastOnlineAt, &c.LastOfflineAt, &c.ProtectionUntil, &c.Version)
+		&c.LastOnlineAt, &c.LastOfflineAt, &c.ProtectionUntil, &c.Version, &c.Civilization)
 	if err != nil {
 		if err = normalize(err); err == ErrNotFound {
 			return nil, city.ErrNotFound

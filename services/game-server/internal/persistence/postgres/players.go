@@ -75,10 +75,16 @@ func (r *PlayerRepo) ListCivilizations(ctx context.Context) ([]player.Civilizati
 		if err := rows.Scan(&c.ID, &c.Code, &c.Name, &traits); err != nil {
 			return nil, err
 		}
+		// Enteros por mil (INV-PLAYER-012): un decimal no se puede leer como
+		// int32, y Validate rechaza las claves desconocidas y lo que no sea
+		// positivo. Un catálogo inválido impide arrancar.
 		if len(traits) > 0 {
 			if err := json.Unmarshal(traits, &c.Traits); err != nil {
-				return nil, fmt.Errorf("traits de la civilización %s malformados: %w", c.Code, err)
+				return nil, fmt.Errorf("%w: traits de la civilización %s: %v", player.ErrInvalidTrait, c.Code, err)
 			}
+		}
+		if err := c.Validate(); err != nil {
+			return nil, err
 		}
 		out = append(out, c)
 	}

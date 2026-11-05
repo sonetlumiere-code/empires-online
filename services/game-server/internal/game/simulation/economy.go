@@ -642,7 +642,7 @@ func (s *Simulation) handleBuildBuilding(cmd BuildBuilding) {
 
 	b := building.Building{
 		CityID: c.ID, Type: def.Type, X: cmd.Tile.X, Y: cmd.Tile.Y,
-		Status: building.StatusUnderConstruction, CompletesAtMs: nowMs + def.BuildMs,
+		Status: building.StatusUnderConstruction, CompletesAtMs: nowMs + s.state.productionMs(cmd.PlayerID, def.BuildMs),
 	}
 	s.state.pendingBuilds[cmd.Tile] = pendingBuild{
 		playerID: cmd.PlayerID, requestID: cmd.RequestID, building: b, cost: def.Cost, carried: carried,
@@ -761,7 +761,7 @@ func (s *Simulation) handleTrainUnit(cmd TrainUnit) {
 	c.Population += def.PopulationCost
 
 	p := production.Production{
-		CityID: c.ID, UnitType: def.Type, CompletesAtMs: nowMs + def.TrainMs, RequestID: cmd.RequestID,
+		CityID: c.ID, UnitType: def.Type, CompletesAtMs: nowMs + s.state.productionMs(cmd.PlayerID, def.TrainMs), RequestID: cmd.RequestID,
 	}
 	eco.production = &productionState{
 		Production: p, cost: def.TrainCost, popCost: def.PopulationCost, carried: carried, pending: true,

@@ -72,6 +72,20 @@ ALTER TABLE accounts ALTER COLUMN founding_attempted_at SET NOT NULL;
 CREATE INDEX accounts_pending_attempt_idx ON accounts (founding_attempted_at) WHERE status = 'PENDING';
 `,
   },
+  {
+    version: 3,
+    name: 'accounts_civilization',
+    up: `
+-- SPEC-CIVILIZATION, ADR-035 §5: la civilización que eligió el jugador al
+-- registrarse. Se guarda con la cuenta PENDING para que el reintento de una
+-- fundación que no terminó funde con la misma, nunca con otra por defecto.
+-- Las cuentas que ya existían son de jugadores ROMAN (SPEC-CIVILIZATION Q3).
+-- El código lo valida el borde contra CivilizationCode; el catálogo vive en la
+-- base del juego, así que aquí no hay CHECK que se pueda desincronizar.
+ALTER TABLE accounts ADD COLUMN civilization text NOT NULL DEFAULT 'ROMAN';
+ALTER TABLE accounts ALTER COLUMN civilization DROP DEFAULT;
+`,
+  },
 ];
 
 /**

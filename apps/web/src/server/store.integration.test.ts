@@ -49,6 +49,7 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
     expect(rows).toEqual([
       { version: 1, name: 'accounts_and_sessions' },
       { version: 2, name: 'accounts_founding_attempted_at' },
+      { version: 3, name: 'accounts_civilization' },
     ]);
   });
 
@@ -64,28 +65,43 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
   });
 
   it('una cuenta nace PENDING y el nombre es único', async () => {
-    expect(await store.createAccount({ id: id(1), username: 'unica', passwordHash: hash })).toBe('created');
-    expect(await store.createAccount({ id: id(2), username: 'unica', passwordHash: hash })).toBe('taken');
+    expect(await store.createAccount({ id: id(1), username: 'unica', passwordHash: hash, civilization: 'ROMAN' })).toBe('created');
+    expect(await store.createAccount({ id: id(2), username: 'unica', passwordHash: hash, civilization: 'ROMAN' })).toBe('taken');
     expect(await store.findAccountByUsername('unica')).toEqual({
       id: id(1),
       username: 'unica',
       passwordHash: hash,
       status: 'PENDING',
+      civilization: 'ROMAN',
     });
     expect(await store.findAccountByUsername('nadie')).toBeNull();
   });
 
+  // SPEC-CIVILIZATION, ADR-035 §5: la cuenta guarda la civilización elegida, la
+  // devuelve con la sesión y no tiene valor por defecto.
+  it('la cuenta guarda la civilización que se eligió, sin valor por defecto', async () => {
+    await store.createAccount({ id: id(1), username: 'vikinga', passwordHash: hash, civilization: 'NORSE' });
+    expect((await store.findAccountByUsername('vikinga'))?.civilization).toBe('NORSE');
+    await store.activateAccount(id(1));
+    await store.createSession(token(1), id(1), new Date(Date.now() + 60_000));
+    expect((await store.findSessionAccount(token(1), new Date()))?.civilization).toBe('NORSE');
+
+    await expect(
+      pool.query(`INSERT INTO accounts (id, username, password_hash) VALUES ($1, 'sin_civ', $2)`, [id(2), hash]),
+    ).rejects.toMatchObject({ code: '23502' });
+  });
+
   it('las restricciones rechazan lo que el dominio nunca escribe', async () => {
     const malas = [
-      [`INSERT INTO accounts (id, username, password_hash) VALUES ($1, 'con espacio', $2)`, [id(3), hash]],
-      [`INSERT INTO accounts (id, username, password_hash, status) VALUES ($1, 'rara', $2, 'BANEADA')`, [id(4), hash]],
-      [`INSERT INTO accounts (id, username, password_hash, status) VALUES ($1, 'sinfecha', $2, 'ACTIVE')`, [id(5), hash]],
-      [`INSERT INTO accounts (id, username, password_hash) VALUES ($1, 'enclaro', 'contrasena-larga')`, [id(6)]],
+      [`INSERT INTO accounts (id, username, password_hash, civilization) VALUES ($1, 'con espacio', $2, 'ROMAN')`, [id(3), hash]],
+      [`INSERT INTO accounts (id, username, password_hash, status, civilization) VALUES ($1, 'rara', $2, 'BANEADA', 'ROMAN')`, [id(4), hash]],
+      [`INSERT INTO accounts (id, username, password_hash, status, civilization) VALUES ($1, 'sinfecha', $2, 'ACTIVE', 'ROMAN')`, [id(5), hash]],
+      [`INSERT INTO accounts (id, username, password_hash, civilization) VALUES ($1, 'enclaro', 'contrasena-larga', 'ROMAN')`, [id(6)]],
     ] as const;
     for (const [sql, values] of malas) {
       await expect(pool.query(sql, [...values])).rejects.toMatchObject({ code: '23514' });
     }
-    await store.createAccount({ id: id(7), username: 'consesion', passwordHash: hash });
+    await store.createAccount({ id: id(7), username: 'consesion', passwordHash: hash, civilization: 'ROMAN' });
     await expect(
       pool.query(`INSERT INTO web_sessions (token_hash, account_id, expires_at) VALUES ($1, $2, now() + interval '1 day')`, [
         Buffer.alloc(16),
@@ -95,13 +111,13 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
   });
 
   it('activar sólo mueve PENDING a ACTIVE, y una ACTIVE no se borra como pendiente', async () => {
-    await store.createAccount({ id: id(1), username: 'activa', passwordHash: hash });
+    await store.createAccount({ id: id(1), username: 'activa', passwordHash: hash, civilization: 'ROMAN' });
     await store.activateAccount(id(1));
     expect((await store.findAccountByUsername('activa'))?.status).toBe('ACTIVE');
     await store.deletePendingAccount(id(1));
     expect(await store.findAccountByUsername('activa')).not.toBeNull();
 
-    await store.createAccount({ id: id(2), username: 'pendiente', passwordHash: hash });
+    await store.createAccount({ id: id(2), username: 'pendiente', passwordHash: hash, civilization: 'ROMAN' });
     await store.deletePendingAccount(id(2));
     expect(await store.findAccountByUsername('pendiente')).toBeNull();
   });
@@ -113,7 +129,7 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
     // test caducaba él solo el día que esa fecha quedaba en el pasado.
     const ahora = new Date(Date.now() + 60 * 60_000);
     const despues = new Date(ahora.getTime() + 60_000);
-    await store.createAccount({ id: id(1), username: 'conectada', passwordHash: hash });
+    await store.createAccount({ id: id(1), username: 'conectada', passwordHash: hash, civilization: 'ROMAN' });
     await store.createSession(token(1), id(1), despues);
     expect(await store.findSessionAccount(token(1), ahora)).toBeNull(); // PENDING
 
@@ -130,7 +146,7 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
   });
 
   it('borrar la cuenta borra sus sesiones', async () => {
-    await store.createAccount({ id: id(1), username: 'efimera', passwordHash: hash });
+    await store.createAccount({ id: id(1), username: 'efimera', passwordHash: hash, civilization: 'ROMAN' });
     await store.createSession(token(1), id(1), new Date(Date.now() + 60_000));
     await store.deletePendingAccount(id(1));
     const { rows } = await pool.query('SELECT count(*)::int AS n FROM web_sessions');
@@ -142,7 +158,7 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
     pool.query(`UPDATE accounts SET founding_attempted_at = now() - $2::interval WHERE id = $1`, [accountId, interval]);
 
   it('el alta fija el intento de fundación y el login lo renueva sólo si sigue PENDING', async () => {
-    await store.createAccount({ id: id(1), username: 'intento', passwordHash: hash });
+    await store.createAccount({ id: id(1), username: 'intento', passwordHash: hash, civilization: 'ROMAN' });
     const { rows } = await pool.query(`SELECT founding_attempted_at > now() - interval '1 minute' AS reciente FROM accounts`);
     expect(rows[0].reciente).toBe(true);
 
@@ -160,10 +176,10 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
   });
 
   it('abandonada es PENDING con el intento de hace más de una hora, por orden de antigüedad', async () => {
-    await store.createAccount({ id: id(1), username: 'vieja', passwordHash: hash });
-    await store.createAccount({ id: id(2), username: 'mas_vieja', passwordHash: hash });
-    await store.createAccount({ id: id(3), username: 'reciente', passwordHash: hash });
-    await store.createAccount({ id: id(4), username: 'activa', passwordHash: hash });
+    await store.createAccount({ id: id(1), username: 'vieja', passwordHash: hash, civilization: 'ROMAN' });
+    await store.createAccount({ id: id(2), username: 'mas_vieja', passwordHash: hash, civilization: 'ROMAN' });
+    await store.createAccount({ id: id(3), username: 'reciente', passwordHash: hash, civilization: 'ROMAN' });
+    await store.createAccount({ id: id(4), username: 'activa', passwordHash: hash, civilization: 'ROMAN' });
     await age(id(1), '61 minutes');
     await age(id(2), '3 hours');
     await age(id(3), '59 minutes');
@@ -183,16 +199,16 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
   it('a igual antigüedad, el barrido desempata por id', async () => {
     // Insertadas al revés del orden por id, y con el mismo instante: sólo el
     // ORDER BY decide, no el índice ni el orden físico.
-    await store.createAccount({ id: id(6), username: 'seis', passwordHash: hash });
-    await store.createAccount({ id: id(5), username: 'cinco', passwordHash: hash });
+    await store.createAccount({ id: id(6), username: 'seis', passwordHash: hash, civilization: 'ROMAN' });
+    await store.createAccount({ id: id(5), username: 'cinco', passwordHash: hash, civilization: 'ROMAN' });
     await pool.query(`UPDATE accounts SET founding_attempted_at = '2026-01-01T00:00:00Z'`);
     expect(await store.listStalePending(1)).toEqual([{ id: id(5), username: 'cinco' }]);
   });
 
   it('el borrado de una abandonada lleva la guarda en la sentencia', async () => {
-    await store.createAccount({ id: id(1), username: 'reciente', passwordHash: hash });
-    await store.createAccount({ id: id(2), username: 'activa', passwordHash: hash });
-    await store.createAccount({ id: id(3), username: 'abandonada', passwordHash: hash });
+    await store.createAccount({ id: id(1), username: 'reciente', passwordHash: hash, civilization: 'ROMAN' });
+    await store.createAccount({ id: id(2), username: 'activa', passwordHash: hash, civilization: 'ROMAN' });
+    await store.createAccount({ id: id(3), username: 'abandonada', passwordHash: hash, civilization: 'ROMAN' });
     await store.createSession(token(3), id(3), new Date(Date.now() + 60_000));
     await store.activateAccount(id(2));
     await age(id(2), '3 hours');
@@ -209,7 +225,7 @@ describe.skipIf(!enabled)('PgIdentityStore (integración)', () => {
   });
 
   it('un intento renovado entre la consulta y el borrado lo impide', async () => {
-    await store.createAccount({ id: id(1), username: 'disputada', passwordHash: hash });
+    await store.createAccount({ id: id(1), username: 'disputada', passwordHash: hash, civilization: 'ROMAN' });
     await age(id(1), '3 hours');
     expect(await store.findStalePending('disputada')).not.toBeNull();
     await store.markFoundingAttempt(id(1)); // el login llega mientras se pregunta al mundo

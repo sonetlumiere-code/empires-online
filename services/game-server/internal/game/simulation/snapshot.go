@@ -123,6 +123,7 @@ func CityView(c *city.City) protocol.CityView {
 		CenterX:         c.CenterX,
 		CenterY:         c.CenterY,
 		Era:             string(c.Era),
+		Civilization:    c.Civilization,
 		Population:      c.Population,
 		PopulationLimit: c.PopulationLimit,
 		PresenceState:   string(c.PresenceState),

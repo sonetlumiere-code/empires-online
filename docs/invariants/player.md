@@ -69,7 +69,7 @@ Nótese la relación con [INV-SEC-004](security.md#inv-sec-004): aquel invariant
 | Aplicación | DB, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST en escritura (constraint) |
-| Cobertura | **Cubierto** por `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon` y `TestLosDosEjesSonOrtogonales` (integration, `internal/persistence/postgres`) |
+| Cobertura | **Cubierto** por `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon`, `TestLosDosEjesSonOrtogonales`, `TestLaFundacionEscribeLaCivilizacionElegida` y `TestUnaFundacionSinCivilizacionDelCatalogoSeRechazaSinEscribir` (integration, `internal/persistence/postgres`), `TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque` (`internal/game/loadcheck`) y, en `apps/web`, los de la civilización de `authService.test.ts` y `store.integration.test.ts` |
 
 **Enunciado.** Toda fila de `players` tiene `civilization_id` no nulo referenciando una fila existente de `civilizations`, y `faction_id` no nulo referenciando una fila existente de `factions`; ninguna de las dos columnas admite valores múltiples ni nulos.
 
@@ -87,11 +87,20 @@ Que sean ejes ortogonales (canon §0) implica una consecuencia concreta: **no ex
 
 - `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas` (integration) — una civilización o una facción inexistente falla por `players_civilization_id_fkey` o `players_faction_id_fkey`, y una nula por `NOT NULL` (SQLSTATE `23502`).
 - `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon` (integration) — las civilizaciones son exactamente `{BYZANTINE, NORSE, PERSIAN, ROMAN}` y las facciones `{CHAOS, NEUTRAL, ORDER}`.
-- `TestLosDosEjesSonOrtogonales` (integration) — las doce combinaciones civilización × facción dan de alta un jugador. Falla si alguien acopla los ejes.
+- `TestLosDosEjesSonOrtogonales` (integration) — las doce combinaciones civilización × facción dan de alta un jugador, y su ciudad lleva el código de la civilización. Falla si alguien acopla los ejes.
+- Desde E13: `TestLaFundacionEscribeLaCivilizacionElegida` y `TestUnaFundacionSinCivilizacionDelCatalogoSeRechazaSinEscribir` (integration) — la fundación escribe la civilización que llega en `civilizationCode` y rechaza con 400, sin escribir nada, una vacía, desconocida o en minúsculas; `TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque` (`loadcheck`) — una ciudad sin una civilización del catálogo aborta el arranque, en lugar de tener rasgos neutros. Verificado por mutación. En `apps/web`: el alta sin una civilización del catálogo no crea cuenta, la elegida se guarda en la cuenta y el reintento de una fundación que no terminó funda con ella (`authService.test.ts`, verificado por mutación); la cuenta la guarda sin valor por defecto (`store.integration.test.ts`).
 
 **Violación en runtime.** Imposible en disco: las claves foráneas impiden incluso borrar una civilización o una facción que algún jugador use. Por eso no hay validación al cargar ni al hacer login. No se asigna nunca una civilización por defecto: eso convertiría un problema de datos visible en un cambio silencioso de gameplay.
 
 > **Cambio de civilización o facción.** El MVP no ofrece ninguna vía para cambiarlas después de la creación. Las reglas, costes y cooldowns de un eventual cambio son **TBD (fuera de MVP)**.
+
+**Precisión (2026-11-05, [SPEC-CIVILIZATION](../specs/civilizations.md) §4.1, [ADR-035](../decisions/ADR-035-civilization-traits.md) §5).**
+Hasta E13 la civilización la fijaba un parámetro de arranque del Game Server (`CivilizationID: 1`): todos los jugadores
+nacían `ROMAN`, que en la práctica era un valor por defecto. Desde E13 la elige el jugador en el registro, se guarda en
+su cuenta `PENDING` (migración 3 del almacén de identidad) y llega a la fundación como `civilizationCode`; el reintento
+de una fundación que no terminó funda con la de la cuenta, nunca con otra. Un código que no está en el catálogo se
+rechaza sin crear nada. La facción sigue fijada por el parámetro de arranque (`NEUTRAL`) hasta su spec. Que la
+civilización no cambie después del alta lo garantiza ahora [INV-PLAYER-011](#inv-player-011).
 
 ---
 
@@ -417,3 +426,81 @@ libre en `accounts`; la reparación es manual.
 | INV-PLAYER-008 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-PERSIST-001](persistence.md#inv-persist-001) |
 | INV-PLAYER-009 | `apps/web` (identidad), `internal/httpapi` | [INV-PLAYER-008](#inv-player-008), [INV-SEC-008](security.md#inv-sec-008) |
 | INV-PLAYER-010 | `apps/web` (identidad), `internal/httpapi` | [INV-PLAYER-009](#inv-player-009), [ADR-020](../decisions/ADR-020-stale-pending-accounts.md) |
+
+---
+
+<a id="inv-player-011"></a>
+## INV-PLAYER-011 — La civilización de un jugador no cambia después del alta
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, TEST |
+| Milestone | E13 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestLaCivilizacionDeUnJugadorNoCambia` (integration, `internal/persistence/postgres`) |
+
+**Enunciado.** `players.civilization_id` conserva el valor que escribió la transacción del alta durante toda la vida
+del jugador: ningún `UPDATE` lo cambia.
+
+**Razón.** La elección es para siempre (SPEC-CIVILIZATION Q2): es lo que le da peso y lo que hará que las capacidades
+exclusivas creen dependencia entre jugadores. Un cambio silencioso cambiaría los rasgos de todas sus órdenes
+siguientes sin que nadie lo hubiera decidido; un cambio de civilización con su coste, si algún día existe, será otra
+spec que derogue o precise éste.
+
+**Cómo se garantiza.**
+
+- `DB` — el trigger `players_civilization_immutable` (`BEFORE UPDATE OF civilization_id ON players`, migración
+  `000015`) rechaza cualquier valor distinto del anterior.
+- `DOMAIN` — ninguna ruta del Game Server ni de `apps/web` escribe `civilization_id` fuera del alta.
+
+**Cómo se verifica.** `TestLaCivilizacionDeUnJugadorNoCambia` (integration) da de alta un jugador, intenta cambiarle
+la civilización y espera el rechazo del trigger (`23514`, con el ID en el mensaje), y comprueba que un `UPDATE` con el
+mismo valor y de otras columnas sigue funcionando. Verificado por mutación: con el trigger desactivado, falla.
+
+**Violación en runtime.** El trigger la hace imposible en la base. La RAM la carga una vez al arrancar y la del
+jugador nuevo llega con `IntroducePlayer`, así que tampoco puede cambiar en caliente.
+
+---
+
+<a id="inv-player-012"></a>
+## INV-PLAYER-012 — Todo rasgo de civilización es un entero positivo por mil y se aplica sólo con aritmética entera
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E13 |
+| Política ante violación | FAIL_FAST (al arrancar) |
+| Cobertura | **Cubierto** por `TestLasFormulasDeLosRasgosDanLosValoresDeLaSpec` y `TestUnCatalogoConUnRasgoInvalidoSeRechaza` (unit, `internal/domain/player`), `TestUnRasgoInvalidoEnElCatalogoAbortaElArranque` (`internal/game/loadcheck`), `TestUnCatalogoConUnRasgoInvalidoNoSeCarga` y `TestElCatalogoDeCivilizacionesEsElDePresentacion` (integration) y los golden por rasgo de `civilization_test.go` (simulation) |
+
+**Enunciado.** Todo valor de `civilizations.traits` es un entero mayor que 0, donde `1000` es «sin efecto», y todo
+efecto de un rasgo se calcula con `player.ScaleDuration` o `player.ScaleAmount` en `int64`, con redondeo al más
+cercano y un mínimo de 1 ([ADR-035](../decisions/ADR-035-civilization-traits.md) §1 y §2).
+
+**Razón.** Los sistemas que un rasgo modifica —la polilínea, los plazos de obras, entrenamientos y trabajos, la vida
+de la casa y el botín— son aritmética entera exacta, y sus golden afirman milisegundos. Un multiplicador en coma
+flotante puede diferir en el último bit entre plataformas y, tras redondear, en un milisegundo
+([INV-MOVE-009](movement.md#inv-move-009)); un rasgo en cero o negativo dividiría por cero o invertiría el efecto.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — la carga del catálogo rechaza un valor que no sea un entero positivo, y el Game Server no arranca.
+- `DOMAIN` — `Civilization.Trait` devuelve `int32` y las dos fórmulas son las únicas operaciones sobre un rasgo
+  (`RN-PLAYER-012`, SPEC-CIVILIZATION `RN-CIV-004`).
+
+**Cómo se verifica.**
+
+- `TestLasFormulasDeLosRasgosDanLosValoresDeLaSpec` (unit) — las dos fórmulas con todos los valores de la tabla de
+  SPEC-CIVILIZATION §4.2, el redondeo al más cercano y el mínimo de 1.
+- `TestUnCatalogoConUnRasgoInvalidoSeRechaza` (unit), `TestUnRasgoInvalidoEnElCatalogoAbortaElArranque` (`loadcheck`,
+  verificado por mutación) y `TestUnCatalogoConUnRasgoInvalidoNoSeCarga` (integration) — cero, negativo, decimal, texto
+  y una clave desconocida no se cargan.
+- `TestElCatalogoDeCivilizacionesEsElDePresentacion` (integration) — el catálogo de `000015` se lee en enteros y es el
+  de presentación de `packages/protocol`.
+- Los golden de `civilization_test.go` (simulation) — 545, 571 y 632 ms por paso, la casa romana a los 13 636 ms y el
+  aldeano a los 18 182, la casa nórdica a los 16 667, el trabajo persa de 9 091, la casa bizantina de 180 y el saqueo
+  nórdico de 23. Verificados por mutación, rasgo a rasgo: con cada rasgo neutro, falla su golden.
+
+**Violación en runtime.** Un catálogo inválido impide arrancar: no hay un rasgo «a medias» que aplicar. Una
+multiplicación por su cuenta en un sistema sería un bono que diverge de su golden por rasgo.

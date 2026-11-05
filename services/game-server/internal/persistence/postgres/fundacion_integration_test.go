@@ -10,6 +10,7 @@ package postgres_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -51,10 +52,12 @@ func montarFundacion(t *testing.T, store *postgres.Store, w *world.World, era ci
 	hot := memory.New(clk, 30*time.Second, 10*time.Second, 120*time.Second, 300*time.Second)
 	t.Cleanup(func() { _ = hot.Close() })
 	logs := &bytes.Buffer{}
+	civilizaciones, err := players.ListCivilizations(context.Background())
+	require.NoError(t, err)
 	api := httpapi.NewFoundingAPI(players, cities, bootstrapper,
 		httpapi.NewFoundingAuthenticator(secretoDePrueba, clk, hot.Tickets()),
 		w, commands,
-		httpapi.Options{DefaultEra: era, CivilizationID: 1, FactionID: 3, Clock: clk},
+		httpapi.Options{DefaultEra: era, Civilizations: civilizaciones, FactionID: 3, Clock: clk},
 		slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	return fundacion{
 		api: api, commands: commands, logs: logs,
@@ -96,8 +99,10 @@ func (f fundacion) consultar(token string, id string) *httptest.ResponseRecorder
 	return rec
 }
 
+// cuerpo es la petición de fundación de apps/web, con la civilización romana:
+// la que tenían todos antes de E13 (SPEC-CIVILIZATION Q3).
 func cuerpo(id uuid.UUID, username string) map[string]string {
-	return map[string]string{"playerId": id.String(), "username": username}
+	return map[string]string{"playerId": id.String(), "username": username, "civilizationCode": "ROMAN"}
 }
 
 func codigoHTTP(t *testing.T, rec *httptest.ResponseRecorder) string {

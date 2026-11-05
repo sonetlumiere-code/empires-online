@@ -351,7 +351,7 @@ func (s *Simulation) handleMoveUnit(cmd MoveUnit) {
 		return
 	}
 
-	path, err := movement.BuildTimedPath(tiles, w, def.BaseMsPerTile)
+	path, err := movement.BuildTimedPath(tiles, w, s.state.msPerTile(u, def))
 	if err != nil {
 		s.deps.Log.Error("no se pudo construir la polilínea", "err", err, "unit_id", u.ID)
 		s.rejectMove(cmd, protocol.CodeInternalError, "no se pudo construir la ruta")

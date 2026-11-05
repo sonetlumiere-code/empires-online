@@ -49,13 +49,15 @@ type FoundingAPI struct {
 	commands     chan<- simulation.Command
 	log          *slog.Logger
 
-	defaultEra   city.Era
-	territories  *territory.Set
-	tick         func() uint64
-	clock        clock.Clock
-	civilization int32
-	faction      int32
-	forests      ForestReader
+	defaultEra  city.Era
+	territories *territory.Set
+	tick        func() uint64
+	clock       clock.Clock
+	// civilizations resuelve el código que elige el jugador a su id del
+	// catálogo (SPEC-CIVILIZATION RN-CIV-001).
+	civilizations map[string]int32
+	faction       int32
+	forests       ForestReader
 }
 
 // ForestReader lee de la base los tiles de bosque agotados (SPEC-ECON-FOREST).
@@ -67,9 +69,14 @@ type ForestReader interface {
 
 // Options configura la API.
 type Options struct {
-	DefaultEra     city.Era
-	CivilizationID int32
-	FactionID      int32
+	DefaultEra city.Era
+	// Civilizations es el catálogo cargado al arrancar: la fundación sólo
+	// admite sus códigos. La civilización la elige el jugador en el registro
+	// (SPEC-CIVILIZATION §4.1); ya no hay una por defecto.
+	Civilizations []player.Civilization
+	// FactionID es la facción de todo jugador nuevo: hasta su spec, NEUTRAL
+	// (SPEC-CIVILIZATION Q10).
+	FactionID int32
 	// Territories es la geometría de los territorios. Es INMUTABLE tras la
 	// hidratación, así que leerla desde una goroutine de HTTP no compite con el
 	// game loop; el control, que sí muta, no se lee aquí.
@@ -107,11 +114,15 @@ func NewFoundingAPI(
 	if opts.Clock == nil {
 		opts.Clock = clock.NewSystemClock()
 	}
+	civs := make(map[string]int32, len(opts.Civilizations))
+	for _, c := range opts.Civilizations {
+		civs[c.Code] = c.ID
+	}
 	return &FoundingAPI{
 		players: players, cities: cities, bootstrapper: bootstrapper,
 		authn: authn, world: w, commands: commands, log: log,
-		defaultEra:   opts.DefaultEra,
-		civilization: opts.CivilizationID, faction: opts.FactionID,
+		defaultEra:    opts.DefaultEra,
+		civilizations: civs, faction: opts.FactionID,
 		territories: opts.Territories,
 		tick:        opts.Tick,
 		clock:       opts.Clock,
@@ -122,6 +133,9 @@ func NewFoundingAPI(
 type foundRequest struct {
 	PlayerID string `json:"playerId"`
 	Username string `json:"username"`
+	// CivilizationCode es la civilización que eligió el jugador en el registro
+	// y que su cuenta guarda para el reintento (ADR-035 §5).
+	CivilizationCode string `json:"civilizationCode"`
 }
 
 type foundResponse struct {
@@ -177,6 +191,14 @@ func (a *FoundingAPI) Found() http.HandlerFunc {
 			return
 		}
 
+		// Un código que no está en el catálogo es un rechazo definitivo: la web
+		// borra la cuenta pendiente y el nombre queda libre (SPEC-CIVILIZATION §5).
+		civilizationID, ok := a.civilizations[req.CivilizationCode]
+		if !ok {
+			writeError(w, http.StatusBadRequest, "INVALID_MESSAGE", "civilizationCode no es una civilización del catálogo")
+			return
+		}
+
 		// Idempotencia: una repetición tras un fallo intermedio encuentra el
 		// jugador ya confirmado y no lo vuelve a introducir en el mundo.
 		if done, ok := a.existing(ctx, w, playerID, req.Username); ok || done {
@@ -192,7 +214,7 @@ func (a *FoundingAPI) Found() http.HandlerFunc {
 		result, err := a.bootstrapper.Create(ctx, postgres.BootstrapRequest{
 			PlayerID:       playerID,
 			Username:       req.Username,
-			CivilizationID: a.civilization,
+			CivilizationID: civilizationID,
 			FactionID:      a.faction,
 			CityName:       req.Username + "polis",
 			Era:            a.defaultEra,
