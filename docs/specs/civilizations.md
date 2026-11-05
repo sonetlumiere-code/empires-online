@@ -1,19 +1,19 @@
 # Civilizaciones: elegir una al nacer y jugar con sus rasgos
 
-Propuesta para que la civilización deje de ser una columna muerta: el jugador la elige al registrarse, no cambia
+La civilización deja de ser una columna muerta: el jugador la elige al registrarse, no cambia
 nunca y sus rasgos cambian de verdad cómo juega (lo rápido que anda, construye y entrena, lo que aguantan sus casas,
 lo que se lleva al saquear y lo que tarda en recolectar).
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CIVILIZATION` |
-| Estado | Draft (2026-11-05). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-05). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
 | Milestone | E13 Civilizaciones (decimotercer slice después de M7) |
 | Canon | §0 (civilización y facción como ejes), §1.5 (determinismo), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [player.md](player.md), [movement.md](movement.md), [economy-wood.md](economy-wood.md), [economy-forest.md](economy-forest.md), [economy-stone.md](economy-stone.md), [combat-raid.md](combat-raid.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [trade.md](trade.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) (la identidad vive en `apps/web`), [ADR-020](../decisions/ADR-020-stale-pending-accounts.md) (la cuenta pendiente y el reintento de la fundación), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (la vida de la casa). Un ADR nuevo (`ADR-035`, los rasgos como enteros por mil aplicados en el punto de consumo con la civilización del dueño en la RAM) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) (la identidad vive en `apps/web`), [ADR-020](../decisions/ADR-020-stale-pending-accounts.md) (la cuenta pendiente y el reintento de la fundación), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (la vida de la casa). [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos como enteros por mil aplicados en el punto de consumo con la civilización del dueño en la RAM; migración `000015` y la 3 del almacén de identidad). |
 | Reemplaza a | En [player.md](player.md): «`civilizationCode` / `factionCode` son parámetros de arranque» (§4) en lo que toca a la civilización, «Elección de civilización por parte del jugador en el alta» y «Efecto de gameplay de los traits» de su no-scope (§2), y el «Estado real en MVP: los traits están sembrados pero ningún sistema los lee» de §6.2 con su tabla de puntos de consumo. En [movement.md](movement.md), «Modificadores de velocidad por civilización: Fuera de MVP». Responde a la pregunta `Q-02` del [backlog](../roadmap/backlog.md) («¿la civilización se elige al crear el jugador y es inmutable?»). |
-| Invariantes | Cita [INV-PLAYER-002](../invariants/player.md#inv-player-002) (lo precisa: la civilización la elige el jugador), [INV-PLAYER-003](../invariants/player.md#inv-player-003), [INV-MOVE-009](../invariants/movement.md#inv-move-009), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-ECON-008](../invariants/economy.md#inv-econ-008) e [INV-SEC-001](../invariants/security.md#inv-sec-001); propone dos nuevos de la familia `INV-PLAYER`, que se registrarán al aceptar (§8) |
+| Invariantes | Cita [INV-PLAYER-002](../invariants/player.md#inv-player-002) (lo precisa: la civilización la elige el jugador), [INV-PLAYER-003](../invariants/player.md#inv-player-003), [INV-MOVE-009](../invariants/movement.md#inv-move-009), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-ECON-008](../invariants/economy.md#inv-econ-008) e [INV-SEC-001](../invariants/security.md#inv-sec-001); asigna [INV-PLAYER-011](../invariants/player.md#inv-player-011) e [INV-PLAYER-012](../invariants/player.md#inv-player-012) (§8) |
 
 ## 1. Objetivo
 
@@ -156,9 +156,10 @@ test de integración compara con la tabla `civilizations` para que no se desvíe
 | Dirty-flag | Nada nuevo |
 | Reconstruible / no persistido | Los valores efectivos (ms por tile, vida máxima, carga): se recalculan de la base y del rasgo; sólo los plazos ya fijados se guardan, como hoy |
 
-**Por qué hace falta un ADR (`ADR-035`).** Es el primer sistema de modificadores y fija dónde vive cada número. La
+**Por qué hace falta un ADR ([ADR-035](../decisions/ADR-035-civilization-traits.md)).** Es el primer sistema de modificadores y fija dónde vive cada número. La
 propuesta: rasgos **enteros por mil** en `civilizations.traits`, aplicados **en el punto de consumo** con la
-civilización del dueño, que la simulación tiene en la RAM. El ADR dejará escritas las alternativas:
+civilización del dueño, que la simulación tiene en la RAM. El ADR deja escritas, entre otras, estas alternativas
+descartadas:
 
 1. **Mantener los `float64` de hoy** y multiplicar al aplicar: un `1.1 × 15 000` en coma flotante puede diferir en el
    último bit entre plataformas y, tras redondear, en un milisegundo, que rompe los golden y la reproducibilidad
@@ -187,11 +188,12 @@ sus datos), [INV-ECON-005](../invariants/economy.md#inv-econ-005) (lo que está 
 arranque y la elige el jugador; su «no se asigna nunca una civilización por defecto» pasa a ser cierto también en el
 reintento de la fundación.
 
-**Propone** dos invariantes nuevos de la familia `INV-PLAYER`, que se registrarán con su número al aceptar:
+**Asigna** dos invariantes nuevos de la familia `INV-PLAYER`, registrados en [../invariants/player.md](../invariants/player.md):
 
-- La civilización de un jugador no cambia después del alta (trigger de `000015`).
-- Todo rasgo de civilización es un entero positivo por mil y se aplica sólo con aritmética entera (validación de
-  carga y tests de la fórmula).
+- [INV-PLAYER-011](../invariants/player.md#inv-player-011) — la civilización de un jugador no cambia después del
+  alta (trigger de `000015`).
+- [INV-PLAYER-012](../invariants/player.md#inv-player-012) — todo rasgo de civilización es un entero positivo por mil
+  y se aplica sólo con aritmética entera (validación de carga y tests de la fórmula).
 
 ## 9. Tests esperados
 
@@ -204,12 +206,12 @@ reintento de la fundación.
 | contract / e2e | `CityView.civilization` contra el JSON Schema; el registro y la fundación con y sin código (web: `authService` y `edges`; Go: la fundación interna); el reintento de una cuenta pendiente funda con la civilización guardada |
 | cliente | El formulario no se envía sin elegir; los textos de cada opción; la civilización en el HUD y en el panel de una ciudad ajena; el humo comprueba la civilización en la vista y el plazo de una casa romana |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-05)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Cuándo y cómo se elige la civilización? | **En el formulario de registro, obligatoria y sin ninguna preseleccionada.** Elegirla después (en la primera partida) dejaría un jugador sin civilización mientras tanto, que [INV-PLAYER-002](../invariants/player.md#inv-player-002) no admite; preseleccionar una haría que la mayoría la aceptara sin leer, y la elección es para siempre. |
 | Q2 | ¿Se puede cambiar después? | **No, nunca en este slice** (responde `Q-02`). Es lo que da peso a la elección y lo que hará que las capacidades exclusivas creen dependencia ([vision.md](../product/vision.md) §5). Un cambio con coste y espera, si algún día hace falta, es otra spec. |

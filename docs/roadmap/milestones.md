@@ -1836,3 +1836,34 @@ territorio, perder territorio por abandono, tope de territorios, `control_points
    `smoke_runner` sobre el mismo territorio, que seguía en su cola, y esperó la pérdida con un plazo vencido. Sólo vale
    ya la reclamación de quien reclama (`esReclamacionDe`, con su test en `scripts/smoke.test.mjs`, que falla con la
    lógica anterior); y si la víctima no tiene guerrero, lo entrena.
+
+## E13 — Civilizaciones
+
+**Estado: EN CURSO (2026-11-05)**, en la rama `claude/slice-civilizaciones`. Contrato:
+[SPEC-CIVILIZATION](../specs/civilizations.md), aceptada el 2026-11-05 con sus diez decisiones de producto, y
+[ADR-035](../decisions/ADR-035-civilization-traits.md).
+
+**Objetivo.** Que el pilar 4 tenga su primera mecánica: la civilización se elige al nacer y cambia cómo se juega.
+
+**Alcance.** La civilización se elige en el registro, obligatoria y sin preselección, se guarda en la cuenta pendiente
+y no cambia nunca; los jugadores que ya existían siguen `ROMAN`. Los rasgos pasan a enteros por mil (migración
+`000015`) y se aplican en cinco sistemas: velocidad de las unidades, duración de obras y entrenamiento, vida de las
+casas, carga de botín y tiempo de recolección; el rasgo persa de comercio se sustituye por recolección. La
+civilización viaja en `CityView` y se ve en el HUD y en el panel de una ciudad ajena; `INV-PLAYER-011` e
+`INV-PLAYER-012`. **No entra** (spec §2): capacidades exclusivas, cambiar de civilización, elegir la facción, rasgos
+sobre el combate, el avance de era o el comercio, el pipeline completo de modificadores.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-035, `INV-PLAYER-011` e `INV-PLAYER-012`, la precisión de `INV-PLAYER-002`, las de
+   [player.md](../specs/player.md) y [movement.md](../specs/movement.md), y la Q-02 del backlog.
+2. Protocolo: `CivilizationCode`, `CityView.civilization` y el catálogo de presentación, con contract tests.
+3. Dominio: el catálogo en enteros, `Trait`, `ScaleDuration` y `ScaleAmount`, y su validación.
+4. Migración `000015` y persistencia: los rasgos, el trigger, el alta con `civilizationCode`, la carga de la
+   civilización de cada jugador; integración.
+5. Simulación: los cinco puntos de consumo, `IntroducePlayer`, la validación de carga; golden por rasgo y recuperación.
+6. Web: el registro con `civilization`, la migración 3 de identidad y el reintento de la fundación; tests de
+   `authService`, `edges` y del almacén.
+7. Cliente: la elección en el registro con sus porcentajes, la civilización en el HUD y en el panel de una ciudad
+   ajena.
+8. Semilla de desarrollo, humo y prueba en vivo.

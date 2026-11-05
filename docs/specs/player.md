@@ -43,6 +43,10 @@ transacción, un jugador jugable con ciudad y unidades.
   **ningún sistema los lee todavía**.
 - Elección de civilización y de facción por parte del jugador en el alta: hoy son parámetros de arranque del
   servidor, no campos del formulario (§4.1).
+  **Precisión (2026-11-05, [civilizations.md](civilizations.md), [ADR-035](../decisions/ADR-035-civilization-traits.md)):**
+  desde E13 la civilización la elige el jugador en el registro y no cambia nunca, y cinco rasgos se aplican en el
+  juego (§6.2); el punto anterior sobre los traits deja de valer para ellos. La facción sigue siendo un parámetro de
+  arranque.
 - Estados de moderación de cuenta (suspensión, baneo, borrado), renombrado, cambio de civilización o de
   facción, múltiples ciudades por jugador, clanes, ranking: `TBD (fuera de MVP)`.
 - Mecánica de facciones (bonos, guerra ORDER/CHAOS, reputación): `Fuera de MVP`. En MVP la facción es un
@@ -129,7 +133,8 @@ Lo que el cuerpo del alta **no** lleva, y por qué:
 - **`civilizationCode` / `factionCode`.** En MVP son parámetros de arranque del game server
   (`httpapi.Options.CivilizationID` = 1 → `ROMAN`, `FactionID` = 3 → `NEUTRAL`), no elección del jugador.
   Exponerlos en el formulario es `Fuera de MVP`; el modelo de datos ya soporta cualquier combinación
-  (`RN-PLAYER-005`).
+  (`RN-PLAYER-005`). **Precisión (2026-11-05, [civilizations.md](civilizations.md) §4.1):** desde E13 el cuerpo lleva
+  `civilizationCode`, el que el jugador eligió en el registro y su cuenta guarda; `factionCode` sigue sin viajar.
 - **`requestId`.** El alta HTTP **no es idempotente por clave de petición**: ver `RN-PLAYER-006`.
 
 Errores del alta (Next.js), con su código HTTP: `INVALID_MESSAGE` (400: cuerpo que no es JSON, sin
@@ -336,6 +341,11 @@ Las claves son cadenas estables en minúsculas con punto (`dominio.propiedad`). 
 `source` por trait —el modelo de pipeline de modificadores con `ADD`/`MUL`/`SET_MIN`/`SET_MAX`— son
 `Fuera de MVP`: hoy el único operador es la multiplicación implícita sobre un valor base y el `scope` es
 siempre global a la civilización.
+
+**Precisión (2026-11-05, [civilizations.md](civilizations.md) §4.2, [ADR-035](../decisions/ADR-035-civilization-traits.md)).**
+Desde E13 los traits son enteros por mil con claves nuevas (migración `000015`), `Trait` devuelve el entero y se
+aplican cinco: `unit.move_speed`, `production.speed`, `building.house_hp`, `combat.loot_carry` y
+`economy.gather_speed`. Lo que sigue describe el estado anterior y la tabla de semillas de `000002`.
 
 **Estado real en MVP: los traits están sembrados pero ningún sistema los lee.** `unit.move_speed` no se
 aplica al construir la polilínea: el coste por segmento sale de `unit.Lookup(unitType).BaseMsPerTile`
