@@ -94,7 +94,7 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Treinta y cinco decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Treinta y seis decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
@@ -114,8 +114,9 @@ comparte la capa del bosque y cómo una ciudad paga en dos recursos su avance de
 los almacenes de dos ciudades en una transacción sin que la cola desordene sus escrituras; ADR-033, también del
 2026-11-04, de cómo el jugador se entera en el acto de lo que les pasa a sus unidades lejos sin que nada necesite un
 `id` antes de la base; ADR-034, del mismo día, de cómo un guerrero reclama un territorio y su captura cambia el
-dueño y el límite de dos ciudades sin que la RAM y la base discrepen; y ADR-035, del **2026-11-05**, de cómo los
-rasgos de cada civilización cambian el juego sin romper el determinismo.
+dueño y el límite de dos ciudades sin que la RAM y la base discrepen; ADR-035, del **2026-11-05**, de cómo los
+rasgos de cada civilización cambian el juego sin romper el determinismo; y ADR-036, del **2026-11-06**, de cómo cada
+civilización elabora un bien que las demás necesitan para llegar a la Edad de Hierro.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-007, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-031,
 ADR-019, ADR-013 y ADR-018).
@@ -157,6 +158,7 @@ ADR-019, ADR-013 y ADR-018).
 | [033](ADR-033-live-notices-ephemeral.md) | El aviso en vivo es un mensaje efímero sin `id` que la simulación manda al decidir el suceso, clasificado con la misma función que el registro | Aceptado | `event_log.notice` no es una entrada: sin `id`, sin cursor y fuera de la lista, que sigue saliendo de la página; sale en la fase 4 por `SendToPlayer` desde `kill`, `applyPillage` y `destroyHouse` (no desde las escrituras, que se reencolan); `eventlog.Notices` pasa el suceso por `Classify` para sus dos jugadores y se queda con `UNIT_LOST`, `ENEMY_KILLED`, `PILLAGE_DONE` y `HOUSE_DESTROYED`; los datos salen de la RAM del tick, con tile en los cuatro; efímero y sin reenvío; un golpe de saqueo que falla después no se desavisa. Sin migración, comando, trabajo ni evento nuevos. |
 | [034](ADR-034-territory-claims.md) | La reclamación de un territorio es un encargo durable en dos fases, y la captura una orden en dos fases que escribe el control y el límite de dos ciudades | Aceptado | `territory_claims` (migración `000014`) con una activa por territorio y por guerrero; la reclamación empieza al confirmarse su fila y se rompe en la RAM (escritura idempotente después); la captura es write-through con las dos ciudades como claves: cierra la reclamación, comprueba la capital, cambia el dueño con su versión, mueve ±5 de límite y escribe `TerritoryControlChanged`, y la RAM la aplica tras el `COMMIT`; `contested` es «hay una reclamación activa»; el límite suma 5 por territorio conquistado; `CLAIMING` se vuelca como `IDLE` y la carga recupera las reclamaciones. Descarta la presencia automática, el estandarte como edificio, la reclamación sólo en la RAM y la captura optimista. |
 | [035](ADR-035-civilization-traits.md) | Los rasgos de civilización son enteros por mil, aplicados al dar cada orden con la civilización del dueño en la RAM | Aceptado | `civilizations.traits` en enteros por mil con claves nuevas (migración `000015`; el rasgo persa de comercio se sustituye por recolección); dos fórmulas enteras en el dominio, `ScaleDuration` y `ScaleAmount`, con redondeo al más cercano; aplicadas en la polilínea, las obras, el entrenamiento, el trabajo en el tile, la vida de la casa y el botín, sin escribir valores efectivos en las filas; la simulación guarda la civilización de cada jugador; la elección viaja del registro (migración 3 de identidad, `accounts.civilization`) a la fundación; un trigger impide cambiarla; `CityView.civilization` y un catálogo de presentación atado a la tabla por un test. Descarta los `float64`, el pipeline completo, congelar los valores en las filas, mandar los rasgos en el protocolo y aplicar `trade_yield`. |
+| [036](ADR-036-civilization-goods.md) | El bien de cada civilización es un recurso de catálogo, el taller lo elabora con un encargo con su fila, y la Edad de Hierro cobra bienes ajenos en el orden del catálogo | Aceptado | `WINE`, `SILK`, `SPICES` y `FURS` como recursos del almacén y del comercio, con `civilizations.good`; el taller (`WORKSHOP`) con costes en varios recursos, Bronce y uno por ciudad (índice único parcial); la elaboración como encargo en dos fases con su fila `city_crafts`, cuya entrega borra la fila y acredita el bien en una transacción; el paso de Bronce a Hierro con 60 bienes ajenos que `advance.Resolve` convierte en costes concretos en el orden del catálogo, saltándose el propio; migración `000016`. Descarta la unidad exclusiva, el recurso de terreno, el recurso único con origen, la producción pasiva, reutilizar `city_productions`, elegir qué se paga y el coste fijo de cada bien. |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y

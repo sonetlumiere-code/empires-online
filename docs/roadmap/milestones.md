@@ -1882,3 +1882,36 @@ sobre el combate, el avance de era o el comercio, el pipeline completo de modifi
    las cuatro con sus porcentajes y «Fundar imperio» no se puede pulsar hasta elegir; el HUD dice «smoke_runnerpolis —
    Romanos — Edad de Bronce», y la barra de dev_nortepolis, «dev_nortepolis (Romanos, Edad de Piedra)», con el
    formulario «Ofrecer trato» de E10 debajo.
+
+## E14 — Bienes
+
+**Estado: EN CURSO (2026-11-06)**, en la rama `claude/slice-capacidades`. Contrato:
+[SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md), aceptada el 2026-11-06 con sus doce decisiones de producto,
+y [ADR-036](../decisions/ADR-036-civilization-goods.md).
+
+**Objetivo.** Que ningún jugador sea autosuficiente (pilar 4): cada civilización produce algo que las demás necesitan.
+
+**Alcance.** Un bien por civilización (vino, seda, especias, pieles) como recurso del almacén y del comercio; el taller,
+que pide Bronce y es único por ciudad; `city.craft`, que elabora 5 del bien propio por 30 de madera y 15 de piedra en
+30 s, sin bloquear el entrenamiento; el avance de Bronce a Hierro con 800 de madera, 400 de piedra y 60 bienes ajenos;
+los rasgos de producción de E13 sobre el taller y la elaboración; `INV-ECON-009` a `011`; migración `000016`; el
+cliente y `scripts/smoke.mjs --bienes`. **No entra** (spec §2): unidades o tecnologías exclusivas, la Edad de los
+Castillos, otros usos de los bienes, saquearlos, la producción pasiva.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-036, `INV-ECON-009` a `011`, las precisiones de [economy-stone.md](../specs/economy-stone.md)
+   Q6, [trade.md](../specs/trade.md) Q4, [economy-wood.md](../specs/economy-wood.md) §4.5 y
+   [civilizations.md](../specs/civilizations.md) Q6, y la `Q-12` del backlog.
+2. Protocolo: `city.craft` (24 tipos cliente → servidor), `craft` en `CityView` y `city.update`, `WORKSHOP`, los cuatro
+   recursos en `Stocks` y en las líneas de un trato, `good` en el catálogo de presentación; contract tests.
+3. Dominio: los recursos, `Civilization.Good`, el taller con costes en varios recursos, `internal/domain/craft`,
+   `advance.Resolve` y el paso a Hierro.
+4. Migración `000016` y persistencia: los `CHECK`, `civilizations.good`, el único parcial del taller, `city_crafts`, el
+   encargo y la entrega, el cobro del avance; integración.
+5. Simulación: la orden en dos fases, el plazo y la entrega, el derribo del taller, el avance; el golden «bienes» y la
+   recuperación.
+6. Cliente: «Taller», «Elaborar» con su cuenta atrás, los bienes en el HUD y en el formulario de trato, el texto del
+   avance a Hierro.
+7. Humo (`--bienes`) y prueba en vivo.
+

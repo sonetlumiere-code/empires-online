@@ -1,19 +1,19 @@
 # Bienes de civilización: lo que sólo tu civilización produce y los demás necesitan
 
-Propuesta para que la civilización cree dependencia entre jugadores: cada una elabora en su taller un bien que
+La civilización crea dependencia entre jugadores: cada una elabora en su taller un bien que
 ninguna otra puede producir, y la Edad de Hierro exige bienes de otras civilizaciones. Para progresar hay que
 comerciar.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CIVILIZATION-GOODS` |
-| Estado | Draft (2026-11-06). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-06). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
 | Milestone | E14 Bienes (decimocuarto slice después de M7) |
 | Canon | §0 (civilización como identidad), §10 (eras y población), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [civilizations.md](civilizations.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [trade.md](trade.md), [combat-siege.md](combat-siege.md), [combat-pillage.md](combat-pillage.md), [city.md](city.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (encargos en dos fases y deltas de stock), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (el asedio de un edificio), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (el avance de era como encargo con su fila), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (el trato que mueve dos almacenes), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos de civilización). Un ADR nuevo (`ADR-036`, el bien de cada civilización como recurso de catálogo, el taller y la elaboración, y el coste en bienes ajenos) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (encargos en dos fases y deltas de stock), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (el asedio de un edificio), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (el avance de era como encargo con su fila), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (el trato que mueve dos almacenes), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos de civilización). [ADR-036](../decisions/ADR-036-civilization-goods.md) (el bien de cada civilización como recurso de catálogo, el taller y la elaboración como encargo con su fila, y el coste en bienes ajenos; migración `000016`). |
 | Reemplaza a | En [economy-stone.md](economy-stone.md), la Q6 («sólo de Piedra a Bronce»): desde E14 hay avance de Bronce a Hierro. En [trade.md](trade.md), la Q4 en lo que dice de que sólo se comercia madera y piedra. En [economy-wood.md](economy-wood.md) §4.5, que la casa es el único edificio. Responde a la Q6 de [civilizations.md](civilizations.md) («capacidades exclusivas en el siguiente slice») y, en parte, a la `Q-12` del [backlog](../roadmap/backlog.md) (cómo se avanza más allá de Bronce). |
-| Invariantes | Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-CITY-018](../invariants/city.md#inv-city-018), [INV-TRADE-001](../invariants/trade.md#inv-trade-001) y [INV-PLAYER-012](../invariants/player.md#inv-player-012); propone tres nuevos de la familia `INV-ECON`, que se registrarán al aceptar (§8) |
+| Invariantes | Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-CITY-018](../invariants/city.md#inv-city-018), [INV-TRADE-001](../invariants/trade.md#inv-trade-001) y [INV-PLAYER-012](../invariants/player.md#inv-player-012); asigna [INV-ECON-009](../invariants/economy.md#inv-econ-009), [INV-ECON-010](../invariants/economy.md#inv-econ-010) e [INV-ECON-011](../invariants/economy.md#inv-econ-011) (§8) |
 
 ## 1. Objetivo
 
@@ -167,7 +167,7 @@ que el formulario de registro diga qué producirá el jugador.
 | Dirty-flag | Nada nuevo |
 | Reconstruible / no persistido | Qué bien elabora cada taller: sale de la civilización del dueño y del catálogo |
 
-**Por qué hace falta un ADR (`ADR-036`).** Tres cosas nuevas que fijan dónde vive cada dato:
+**Por qué hace falta un ADR ([ADR-036](../decisions/ADR-036-civilization-goods.md)).** Tres cosas nuevas que fijan dónde vive cada dato:
 
 1. **El bien como recurso de catálogo.** Cuatro recursos nuevos a la vez en `city_stocks`, en las líneas de los
    tratos, en `Stocks` de Zod y de Go y en `economy.Resources()`; y una columna `civilizations.good` que dice cuál
@@ -178,7 +178,7 @@ que el formulario de registro diga qué producirá el jugador.
    en una lista concreta de deltas, en el orden del catálogo, en el tick que reserva el avance; la transacción sigue
    cobrando deltas versionados como hoy.
 
-El ADR dejará escritas las alternativas: una unidad exclusiva por civilización (Q1); un recurso de terreno por
+El ADR deja escritas, entre otras, estas alternativas descartadas: una unidad exclusiva por civilización (Q1); un recurso de terreno por
 civilización, que obligaría a cambiar el mapa canónico y ataría la capacidad a la geografía, que el pilar rechaza;
 la producción pasiva del taller, que escribe el stock en cada tick o pide un volcado periódico de algo que nadie
 ordenó; y un coste fijo de 20 de cada uno de los otros tres bienes, que bloquea a todos si falta una civilización.
@@ -197,11 +197,14 @@ en su instante), [INV-CITY-018](../invariants/city.md#inv-city-018) (de Bronce a
 [INV-TRADE-001](../invariants/trade.md#inv-trade-001) (un trato con bienes tampoco crea ni destruye nada) e
 [INV-PLAYER-012](../invariants/player.md#inv-player-012) (el rasgo de producción sobre el taller y la elaboración).
 
-**Propone** tres invariantes nuevos de la familia `INV-ECON`, que se registrarán con su número al aceptar:
+**Asigna** tres invariantes nuevos de la familia `INV-ECON`, registrados en [../invariants/economy.md](../invariants/economy.md):
 
-- Un bien sólo nace en el taller de la civilización que lo produce (`RN-GOODS-002`).
-- Una ciudad tiene como mucho un taller en pie y una elaboración en curso (único parcial y fila de `city_crafts`).
-- El avance a la Edad de Hierro nunca cobra el bien de la civilización de la ciudad.
+- [INV-ECON-009](../invariants/economy.md#inv-econ-009) — un bien sólo nace en el taller de la civilización que lo
+  produce (`RN-GOODS-002`).
+- [INV-ECON-010](../invariants/economy.md#inv-econ-010) — una ciudad tiene como mucho un taller en pie y una
+  elaboración en curso (único parcial y clave de `city_crafts`).
+- [INV-ECON-011](../invariants/economy.md#inv-econ-011) — el avance a la Edad de Hierro nunca cobra el bien de la
+  civilización de la ciudad.
 
 ## 9. Tests esperados
 
@@ -214,12 +217,12 @@ en su instante), [INV-CITY-018](../invariants/city.md#inv-city-018) (de Bronce a
 | contract / e2e | `city.craft`, `craft` en `CityView` y `city.update`, `WORKSHOP` y los cuatro recursos contra el JSON Schema; un e2e de elaborar por la red |
 | cliente | Los botones con sus motivos, la cuenta atrás, los bienes en el HUD y en el formulario de trato, el texto del avance; `scripts/smoke.mjs --bienes` (smoke_runner, romano, y smoke_norse, nórdica, elaboran y se cambian vino por pieles) |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-06)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué forma toma la capacidad exclusiva? | **Un bien que sólo tu civilización produce y que los demás necesitan para progresar.** Es lo que convierte el comercio en necesario: el pilar 4 quiere que la dependencia venga de capacidades, y un bien se cambia por otro. Alternativas: **una unidad exclusiva** por civilización (legionario, catafracto…) es más vistosa pero sólo crea diferencias militares, nadie necesita la unidad de otro; **una tecnología exclusiva** necesita antes un árbol tecnológico, que no existe. |
 | Q2 | ¿Qué bien produce cada una? | **Vino (romanos), seda (bizantinos), especias (persas) y pieles (nórdicos).** Son legibles, históricos y no se confunden con la madera y la piedra. Los nombres son un dato del catálogo y se pueden cambiar. |

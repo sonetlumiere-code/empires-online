@@ -406,3 +406,100 @@ Para la piedra, `TestLaCargaDePiedraDescuentaLaColinaUnaSolaVez` y `TestUnaCarga
 (integration), y el golden «cantera»: 25 piedras salen de una colina de 25.
 
 **Violación en runtime.** No hay ruta conocida; la transacción es la garantía.
+
+---
+
+<a id="inv-econ-009"></a>
+## INV-ECON-009 — Un bien sólo nace en el taller de la civilización que lo produce
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E14 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: registrado con [SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md) antes de escribir su código |
+
+**Enunciado.** Ningún camino suma `WINE`, `SILK`, `SPICES` o `FURS` al almacén de una ciudad salvo dos: la entrega de
+una elaboración del taller de esa ciudad, que es siempre el bien de la civilización de su dueño
+(`civilizations.good`), y un trato (E10), que lo mueve de una ciudad a otra sin crearlo
+([INV-TRADE-001](trade.md#inv-trade-001)). La recolección, el saqueo y el botín no crean bienes.
+
+**Razón.** Es la capacidad exclusiva del pilar 4 (SPEC-CIVILIZATION-GOODS `RN-GOODS-002`): si un romano pudiera
+conseguir seda sin un bizantino, la dependencia desaparecería.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — la orden fija el bien al ordenar, con el `good` de la civilización del dueño, y lo guarda en la fila de
+  `city_crafts`; la entrega acredita el bien de la fila, nunca otro ([ADR-036](../decisions/ADR-036-civilization-goods.md) §4).
+- `DOMAIN` — la recolección y el saqueo sólo tocan madera y piedra (tareas `GATHER_WOOD`, `GATHER_STONE`; el saqueo,
+  madera).
+- `DB` — `city_crafts.good` sólo admite bienes.
+
+**Cómo se verifica.** Tests de simulación: un romano elabora vino y un nórdico pieles; ninguna otra orden suma bienes.
+Un test de integración: la entrega acredita el bien de la fila.
+
+**Violación en runtime.** No hay ruta conocida; un bien que apareciera fuera de estos caminos sería un defecto del
+dominio.
+
+---
+
+<a id="inv-econ-010"></a>
+## INV-ECON-010 — Una ciudad tiene como mucho un taller en pie y una elaboración en curso
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E14 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: registrado con [SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md) antes de escribir su código |
+
+**Enunciado.** Para cada ciudad, hay como mucho una fila de `buildings` con `type = 'WORKSHOP'` y `status <> 'DESTROYED'`,
+y como mucho una fila de `city_crafts`.
+
+**Razón.** Un taller por ciudad evita que el más rico multiplique su producción (SPEC-CIVILIZATION-GOODS Q6); una
+elaboración a la vez la mantiene como una orden con su plazo, como el entrenamiento.
+
+**Cómo se garantiza.**
+
+- `DB` — el índice único parcial `buildings_one_workshop_per_city` y la clave primaria `city_id` de `city_crafts`
+  (migración `000016`).
+- `DOMAIN` — el tick reserva el taller y la elaboración al validar la orden, antes de encolar su escritura, así que una
+  segunda orden se rechaza (`INVALID_TARGET` para el taller, `CITY_BUSY` para la elaboración).
+
+**Cómo se verifica.** Tests de simulación que ordenan dos talleres y dos elaboraciones, y de integración que insertan
+dos filas y esperan el rechazo del índice o de la clave.
+
+**Violación en runtime.** La base la hace imposible; en la RAM, la transacción de la segunda falla con un rechazo de
+dominio y su reserva se deshace.
+
+---
+
+<a id="inv-econ-011"></a>
+## INV-ECON-011 — El avance a la Edad de Hierro nunca cobra el bien de la civilización de la ciudad
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E14 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: registrado con [SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md) antes de escribir su código |
+
+**Enunciado.** Los costes que cobra el avance de `BRONZE_AGE` a `IRON_AGE` son 800 de madera, 400 de piedra y 60 bienes
+que no son el `good` de la civilización del dueño de la ciudad, tomados en el orden del catálogo de civilizaciones.
+
+**Razón.** Es lo que hace necesario el comercio (SPEC-CIVILIZATION-GOODS Q8): si el bien propio contara, nadie
+necesitaría a nadie.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — `advance.Resolve` convierte el paso en costes concretos saltándose el bien propio, y la reserva y la
+  transacción cobran exactamente esa lista ([ADR-036](../decisions/ADR-036-civilization-goods.md) §5).
+
+**Cómo se verifica.** Tests unitarios de la resolución con el bien propio en el almacén (no cuenta) y con mezclas que
+llegan y que no; un golden de simulación que avanza a Hierro y comprueba qué se cobró.
+
+**Violación en runtime.** No hay ruta conocida: la lista cobrada es la resuelta.
+
