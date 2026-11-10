@@ -418,7 +418,7 @@ Para la piedra, `TestLaCargaDePiedraDescuentaLaColinaUnaSolaVez` y `TestUnaCarga
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E14 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado con [SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md) antes de escribir su código |
+| Cobertura | **Cubierto** por `TestUnRomanoElaboraVino`, `TestUnNordicoElaboraPieles` (simulation), `TestLaEntregaAcreditaElBienUnaSolaVez`, `TestLosCheckDeLosBienes` (integration), `TestUnaElaboracionLeidaTieneQueSerDeUnBien` (unit) y `TestUnCatalogoSinUnBienDistintoPorCivilizacionAbortaElArranque` (`loadcheck`) |
 
 **Enunciado.** Ningún camino suma `WINE`, `SILK`, `SPICES` o `FURS` al almacén de una ciudad salvo dos: la entrega de
 una elaboración del taller de esa ciudad, que es siempre el bien de la civilización de su dueño
@@ -436,8 +436,11 @@ conseguir seda sin un bizantino, la dependencia desaparecería.
   madera).
 - `DB` — `city_crafts.good` sólo admite bienes.
 
-**Cómo se verifica.** Tests de simulación: un romano elabora vino y un nórdico pieles; ninguna otra orden suma bienes.
-Un test de integración: la entrega acredita el bien de la fila.
+**Cómo se verifica.** `TestUnRomanoElaboraVino` y `TestUnNordicoElaboraPieles` (simulation): un romano elabora vino y
+un nórdico pieles, y ningún otro bien. `TestLaEntregaAcreditaElBienUnaSolaVez` (integration): la entrega acredita el
+bien de la fila una sola vez, aunque se reintente. `TestLosCheckDeLosBienes` (integration): `city_crafts` sólo admite
+bienes y una cantidad positiva, y dos civilizaciones no comparten bien. `TestUnCatalogoSinUnBienDistintoPorCivilizacionAbortaElArranque`
+(`loadcheck`): un catálogo sin bien o con uno repetido aborta el arranque.
 
 **Violación en runtime.** No hay ruta conocida; un bien que apareciera fuera de estos caminos sería un defecto del
 dominio.
@@ -453,7 +456,7 @@ dominio.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E14 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado con [SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md) antes de escribir su código |
+| Cobertura | **Cubierto** por `Test_INV_ECON_010_UnTallerEnPiePorCiudad`, `TestLaElaboracionSeEncargaEnUnaTransaccion`, `TestLosCheckDeLosBienes` (integration), `TestElTallerPideBronceCuestaDosRecursosYEsUnico` y `TestRechazosDeLaElaboracionYQueNoBloqueaElEntrenamiento` (simulation) |
 
 **Enunciado.** Para cada ciudad, hay como mucho una fila de `buildings` con `type = 'WORKSHOP'` y `status <> 'DESTROYED'`,
 y como mucho una fila de `city_crafts`.
@@ -468,8 +471,12 @@ elaboración a la vez la mantiene como una orden con su plazo, como el entrenami
 - `DOMAIN` — el tick reserva el taller y la elaboración al validar la orden, antes de encolar su escritura, así que una
   segunda orden se rechaza (`INVALID_TARGET` para el taller, `CITY_BUSY` para la elaboración).
 
-**Cómo se verifica.** Tests de simulación que ordenan dos talleres y dos elaboraciones, y de integración que insertan
-dos filas y esperan el rechazo del índice o de la clave.
+**Cómo se verifica.** `TestElTallerPideBronceCuestaDosRecursosYEsUnico` y `TestRechazosDeLaElaboracionYQueNoBloqueaElEntrenamiento`
+(simulation): el segundo taller y la segunda elaboración se rechazan en el tick, con `INVALID_TARGET` y `CITY_BUSY`;
+verificado por mutación, sin la comprobación del único el primero falla. `Test_INV_ECON_010_UnTallerEnPiePorCiudad`
+y `TestLaElaboracionSeEncargaEnUnaTransaccion` (integration): la base rechaza el segundo taller y la segunda
+elaboración sin debitar, y admite otro taller cuando el primero se derriba. `TestLosCheckDeLosBienes`: dos filas de
+`city_crafts` de la misma ciudad violan la clave.
 
 **Violación en runtime.** La base la hace imposible; en la RAM, la transacción de la segunda falla con un rechazo de
 dominio y su reserva se deshace.
@@ -485,7 +492,7 @@ dominio y su reserva se deshace.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E14 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado con [SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md) antes de escribir su código |
+| Cobertura | **Cubierto** por `TestResolveTomaBienesAjenosEnOrdenYNuncaElPropio`, `TestCanAdvanceAHierroResuelveLosBienes` (unit) y `TestElAvanceAHierroCobraBienesAjenosYNuncaElPropio` (simulation) |
 
 **Enunciado.** Los costes que cobra el avance de `BRONZE_AGE` a `IRON_AGE` son 800 de madera, 400 de piedra y 60 bienes
 que no son el `good` de la civilización del dueño de la ciudad, tomados en el orden del catálogo de civilizaciones.
@@ -498,8 +505,11 @@ necesitaría a nadie.
 - `DOMAIN` — `advance.Resolve` convierte el paso en costes concretos saltándose el bien propio, y la reserva y la
   transacción cobran exactamente esa lista ([ADR-036](../decisions/ADR-036-civilization-goods.md) §5).
 
-**Cómo se verifica.** Tests unitarios de la resolución con el bien propio en el almacén (no cuenta) y con mezclas que
-llegan y que no; un golden de simulación que avanza a Hierro y comprueba qué se cobró.
+**Cómo se verifica.** `TestResolveTomaBienesAjenosEnOrdenYNuncaElPropio` y `TestCanAdvanceAHierroResuelveLosBienes`
+(unit): con el bien propio en el almacén no cuenta, y las mezclas se toman en el orden del catálogo. `TestElAvanceAHierroCobraBienesAjenosYNuncaElPropio`
+(simulation): un romano con 100 de vino, 25 de seda y 50 de pieles paga 25 de seda y 35 de pieles, nunca vino, y a
+los 180 s está en Hierro con límite 100; con 500 de vino y 59 de especias se rechaza. Verificado por mutación: si la
+resolución no salta el bien propio, fallan los tres.
 
 **Violación en runtime.** No hay ruta conocida: la lista cobrada es la resuelta.
 

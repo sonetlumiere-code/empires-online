@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), y la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), y los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -40,6 +40,7 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `city_productions` | E1: **activa** | Encargo de `city.train` (con su débito y la reserva de población) y nacimiento del aldeano |
 | `hill_stone` | E9: **activa** | La piedra de los tiles de colina tocados, hermana de `forest_wood` ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §1) |
 | `city_era_advances` | E9: **activa** | Avances de era confirmados y en curso: una fila por ciudad, borrada en la transacción que cambia la era ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §4 y §5) |
+| `city_crafts` | E14: **activa** | Elaboraciones del taller en curso: una fila por ciudad, borrada en la transacción que entrega el bien ([ADR-036](../decisions/ADR-036-civilization-goods.md) §4) |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
@@ -980,7 +981,7 @@ CREATE TABLE city_stocks (
     amount    bigint NOT NULL DEFAULT 0,
     version   bigint NOT NULL DEFAULT 0,
     PRIMARY KEY (city_id, resource),
-    CONSTRAINT city_stocks_resource_valid CHECK (resource IN ('WOOD')),  -- 000012: ('WOOD', 'STONE')
+    CONSTRAINT city_stocks_resource_valid CHECK (resource IN ('WOOD')),  -- 000012: ('WOOD', 'STONE'); 000016: y los cuatro bienes
     CONSTRAINT city_stocks_amount_non_negative CHECK (amount >= 0),
     CONSTRAINT city_stocks_version_non_negative CHECK (version >= 0)
 );
@@ -988,7 +989,7 @@ CREATE TABLE city_stocks (
 
 | Columna | Semántica |
 |---|---|
-| `resource` | `WOOD` en E1. El dominio cerrado vive también en `economy.Resources()` |
+| `resource` | `WOOD` en E1, `STONE` desde `000012` y `WINE`, `SILK`, `SPICES` y `FURS` (los bienes de civilización) desde `000016`. El dominio cerrado vive también en `economy.Resources()` |
 | `amount` | Madera de la ciudad. `city_stocks_amount_non_negative` es la mitad `DB` de `INV-ECON-001` |
 | `version` | Sube con cada cambio en la RAM. Toda escritura es `amount = amount + delta, version = v WHERE version < v`: un reintento no aplica dos veces el mismo delta y una escritura vieja no pisa una nueva |
 
@@ -1047,6 +1048,12 @@ CREATE TABLE buildings (
 -- poder reconstruir en el mismo sitio.
 --   buildings_status_valid CHECK (status IN ('UNDER_CONSTRUCTION', 'COMPLETE', 'DESTROYED'))
 --   CREATE UNIQUE INDEX buildings_unique_tile ON buildings (x, y) WHERE status <> 'DESTROYED';
+
+-- 000016 (SPEC-CIVILIZATION-GOODS, ADR-036 §3): el taller, y como mucho uno en
+-- pie por ciudad (INV-ECON-010).
+--   buildings_type_valid CHECK (type IN ('HOUSE', 'WORKSHOP'))
+--   CREATE UNIQUE INDEX buildings_one_workshop_per_city ON buildings (city_id)
+--       WHERE type = 'WORKSHOP' AND status <> 'DESTROYED';
 ```
 
 | Columna | Semántica |
@@ -1234,6 +1241,41 @@ cierra la fila, comprueba la capital ([INV-TERR-011](../invariants/territory.md#
 `territory_control.contested` es «hay una fila `ACTIVE`» ([INV-TERR-006](../invariants/territory.md#inv-terr-006)).
 
 ---
+
+### 16.10 Bienes de civilización (`000016`)
+
+Los bienes de civilización ([../specs/civilization-goods.md](../specs/civilization-goods.md),
+[ADR-036](../decisions/ADR-036-civilization-goods.md) §7). Cuatro recursos nuevos en `city_stocks` y en
+`trade_offer_lines` (con su fila a cero para cada ciudad que ya existía), `WORKSHOP` en `buildings` (§16.3),
+qué bien es de qué civilización y la elaboración en curso de cada taller:
+
+```sql
+ALTER TABLE civilizations ADD COLUMN good text;   -- WINE, SILK, SPICES, FURS para ROMAN, BYZANTINE, PERSIAN, NORSE
+ALTER TABLE civilizations ALTER COLUMN good SET NOT NULL;
+ALTER TABLE civilizations ADD CONSTRAINT civilizations_good_unique UNIQUE (good);
+ALTER TABLE civilizations ADD CONSTRAINT civilizations_good_valid CHECK (good IN ('WINE', 'SILK', 'SPICES', 'FURS'));
+
+CREATE TABLE city_crafts (
+    city_id         bigint      PRIMARY KEY REFERENCES cities (id) ON DELETE CASCADE,
+    good            text        NOT NULL,
+    amount          integer     NOT NULL,
+    completes_at_ms bigint      NOT NULL,
+    request_id      text        NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT city_crafts_good_valid CHECK (good IN ('WINE', 'SILK', 'SPICES', 'FURS')),
+    CONSTRAINT city_crafts_amount_positive CHECK (amount > 0)
+);
+```
+
+| Columna | Semántica |
+|---|---|
+| `civilizations.good` | El bien que sólo elabora el taller de esa civilización (`RN-GOODS-001`). Único: dos civilizaciones no comparten bien. El taller lo pregunta aquí, nunca por el código de la civilización (`RN-PLAYER-012`) |
+| `city_crafts.city_id` | Una elaboración en curso por ciudad (`INV-ECON-010`); convive con `city_productions` y `city_era_advances` |
+| `good`, `amount` | El bien y la cantidad, fijados al ordenar con la civilización del dueño (`INV-ECON-009`); la carga no los recalcula |
+| `completes_at_ms` | Instante absoluto de la entrega, con el rasgo `production.speed` ya aplicado (`INV-ECON-005`) |
+| `request_id` | El `requestId` del `city.craft`: un reintento del encargo encuentra su fila y no debita dos veces. La entrega borra la fila y acredita el bien en una transacción; un reintento sin fila no acredita nada |
+
+Derribar el taller borra su fila en la transacción del derribo (`RN-GOODS-007`).
 
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 
