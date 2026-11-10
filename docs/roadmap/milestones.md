@@ -1885,7 +1885,7 @@ sobre el combate, el avance de era o el comercio, el pipeline completo de modifi
 
 ## E14 — Bienes
 
-**Estado: HECHO EN LA RAMA (2026-11-10)**, en `claude/slice-capacidades`, con su prueba en vivo; falta fusionarlo con la CI en verde. Contrato:
+**Estado: HECHO (2026-11-10)**, fusionado en `main` (`da11ac2`) con la CI en verde el mismo día. Contrato:
 [SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md), aceptada el 2026-11-06 con sus doce decisiones de producto,
 y [ADR-036](../decisions/ADR-036-civilization-goods.md).
 

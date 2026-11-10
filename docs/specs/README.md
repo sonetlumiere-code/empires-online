@@ -62,7 +62,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Avisos en vivo | [live-notices.md](live-notices.md) | E11 Avisos | Implemented | `event_log.notice`: lo que les pasa a tus unidades fuera de la vista (muertes, y lo que matan, saquean o derriban solas), avisado en el HUD en el tick en que pasa, sin `id` y sin tocar el registro |
 | Conquista de territorio | [territory-conquest.md](territory-conquest.md) | E12 Conquista | Implemented | `unit.claim`: un guerrero planta el estandarte y, si aguanta, el territorio cambia de manos; +5 de población por territorio conquistado, la capital intocable, reclamar lo ajeno es hostil y avisa al dueño |
 | Civilizaciones | [civilizations.md](civilizations.md) | E13 Civilizaciones | Implemented | La civilización se elige al registrarse y no cambia; sus rasgos, en enteros por mil, cambian la velocidad de las unidades, la de obras y entrenamiento, la vida de las casas, el botín y el tiempo de recolección |
-| Bienes de civilización | [civilization-goods.md](civilization-goods.md) | E14 Bienes | Accepted | Un bien por civilización (vino, seda, especias, pieles) que sólo elabora su taller con `city.craft`; la Edad de Hierro pide 60 bienes ajenos, así que para progresar hay que comerciar |
+| Bienes de civilización | [civilization-goods.md](civilization-goods.md) | E14 Bienes | Implemented | Un bien por civilización (vino, seda, especias, pieles) que sólo elabora su taller con `city.craft`; la Edad de Hierro pide 60 bienes ajenos, así que para progresar hay que comerciar |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

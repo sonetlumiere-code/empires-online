@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son treinta y cinco, del 001
-al 035, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son treinta y seis, del 001
+al 036, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -294,7 +294,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E13 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E14 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -330,6 +330,11 @@ Matices que conviene no maquillar:
   `Implemented`, con la migración `000015`, la 3 del almacén de identidad y
   [ADR-035](decisions/ADR-035-civilization-traits.md). Los jugadores anteriores siguen `ROMAN`, y no pueden cambiarla
   ([roadmap/milestones.md](roadmap/milestones.md) §E13).
+- **E14 Bienes está en `main`** desde `da11ac2`, con la CI en verde el 2026-11-10 y una prueba en vivo con el humo
+  `--comercio --bienes` y el navegador ese mismo día; [SPEC-CIVILIZATION-GOODS](specs/civilization-goods.md) está en
+  `Implemented`, con la migración `000016` y [ADR-036](decisions/ADR-036-civilization-goods.md). Hasta que haya
+  jugadores de otras civilizaciones, la Edad de Hierro sólo se alcanza con los bienes de smoke_norse o de una cuenta
+  nueva ([roadmap/milestones.md](roadmap/milestones.md) §E14).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

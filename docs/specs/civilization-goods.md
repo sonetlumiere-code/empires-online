@@ -7,7 +7,7 @@ comerciar.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CIVILIZATION-GOODS` |
-| Estado | Accepted (2026-11-06). Propuesta en `Draft` ese mismo día; producto aceptó la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-10). Propuesta en `Draft` y aceptada el 2026-11-06, con la recomendación de cada pregunta de §10; en `main` desde la fusión `da11ac2`, con la CI en verde. |
 | Milestone | E14 Bienes (decimocuarto slice después de M7) |
 | Canon | §0 (civilización como identidad), §10 (eras y población), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [civilizations.md](civilizations.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [trade.md](trade.md), [combat-siege.md](combat-siege.md), [combat-pillage.md](combat-pillage.md), [city.md](city.md), [websocket-protocol.md](websocket-protocol.md) |
