@@ -395,7 +395,8 @@ func TestConstruirUnaCasaEnDosFases(t *testing.T) {
 	assert.Empty(t, h.rec.byType(protocol.TypeBuildingSpawn), "nada se anuncia antes de existir")
 	require.Len(t, h.economy.builds, 1)
 	orden := h.economy.builds[0]
-	assert.Equal(t, int64(-30), orden.Stock.Delta)
+	require.Len(t, orden.Stocks, 1)
+	assert.Equal(t, int64(-30), orden.Stocks[0].Delta)
 	assert.Equal(t, building.StatusUnderConstruction, orden.Building.Status)
 	assert.Equal(t, epoch+15_000, orden.Building.CompletesAtMs)
 
@@ -421,7 +422,7 @@ func TestElEncargoLlevaLosDepositosSinVolcar(t *testing.T) {
 	require.Equal(t, int64(10), h.state.UnflushedDeposits(h.cityID))
 	h.construir(world.Tile{X: 11, Y: 11})
 	require.Len(t, h.economy.builds, 1)
-	assert.Equal(t, int64(10-30), h.economy.builds[0].Stock.Delta)
+	assert.Equal(t, int64(10-30), h.economy.builds[0].Stocks[0].Delta)
 	assert.Equal(t, int64(0), h.state.UnflushedDeposits(h.cityID))
 	assert.Equal(t, int64(5), h.madera())
 }

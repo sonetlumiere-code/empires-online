@@ -763,6 +763,24 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			RequestID: msg.RequestID,
 			CityID:    p.CityID,
 		})
+
+	// Elaboración del taller (SPEC-CIVILIZATION-GOODS): sólo la ciudad; el
+	// bien, la cantidad, el coste y el tiempo los decide el servidor.
+	case protocol.TypeCityCraft:
+		var p protocol.CityCraftPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.CraftGoods{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			CityID:    p.CityID,
+		})
 	}
 }
 

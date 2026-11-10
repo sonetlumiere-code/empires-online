@@ -26,11 +26,15 @@ type Step struct {
 	To         city.Era
 	Costs      economy.Costs
 	DurationMs int64
+	// ForeignGoods son los bienes ajenos que pide además, en cualquier mezcla
+	// (SPEC-CIVILIZATION-GOODS §4.4); 0 si ninguno. Resolve los convierte en
+	// costes concretos.
+	ForeignGoods int64
 }
 
 // catalog son los pasos disponibles. Parámetros de equilibrio
-// (SPEC-ECON-STONE Q5): se ajustan aquí sin tocar la spec. Sólo existe el
-// primero (Q6): desde BRONZE_AGE no hay avance.
+// (SPEC-ECON-STONE Q5, SPEC-CIVILIZATION-GOODS Q5): se ajustan aquí sin tocar
+// la spec. Desde IRON_AGE no hay avance (Q11).
 var catalog = map[city.Era]Step{
 	city.EraStone: {
 		From: city.EraStone, To: city.EraBronze,
@@ -39,6 +43,15 @@ var catalog = map[city.Era]Step{
 			{Resource: economy.ResourceStone, Amount: 200},
 		},
 		DurationMs: 90_000,
+	},
+	city.EraBronze: {
+		From: city.EraBronze, To: city.EraIron,
+		Costs: economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 800},
+			{Resource: economy.ResourceStone, Amount: 400},
+		},
+		ForeignGoods: 60,
+		DurationMs:   180_000,
 	},
 }
 
@@ -88,11 +101,45 @@ func (a Advance) Validate() error {
 	return nil
 }
 
+// Resolve convierte los bienes ajenos de un paso en costes concretos
+// (ADR-036 §5): los bienes de `order` que no son `own`, en ese orden, tomando
+// de cada uno lo que haya hasta completar ForeignGoods. El propio nunca entra
+// (INV-ECON-011). Devuelve los costes fijos más los de los bienes, o
+// ErrInsufficientResources si no llega.
+func Resolve(step Step, own economy.Resource, order []economy.Resource, stock func(economy.Resource) *economy.Stock) (economy.Costs, error) {
+	out := append(economy.Costs(nil), step.Costs...)
+	left := step.ForeignGoods
+	for _, g := range order {
+		if left <= 0 {
+			break
+		}
+		if g == own || !g.IsGood() {
+			continue
+		}
+		var have int64
+		if st := stock(g); st != nil {
+			have = st.Amount
+		}
+		take := min(have, left)
+		if take <= 0 {
+			continue
+		}
+		out = append(out, economy.Cost{Resource: g, Amount: take})
+		left -= take
+	}
+	if left > 0 {
+		return nil, fmt.Errorf("%w: faltan %d bienes de otras civilizaciones", economy.ErrInsufficientResources, left)
+	}
+	return out, nil
+}
+
 // CanAdvance aplica RN-ECON-024 en el orden de la spec: ciudad propia, avance
 // disponible desde su era, ciudad libre y stock suficiente en CADA recurso del
 // coste. `busy` dice si la ciudad entrena o avanza ya; `stock` da el stock de
-// un recurso de la ciudad.
-func CanAdvance(c *city.City, requester uuid.UUID, busy bool, stock func(economy.Resource) *economy.Stock) (Step, error) {
+// un recurso de la ciudad. `own` es el bien de la civilización de la ciudad y
+// `order` el de todas en el orden del catálogo: el paso devuelto lleva los
+// bienes ajenos ya resueltos en Costs (RN-GOODS-006).
+func CanAdvance(c *city.City, requester uuid.UUID, busy bool, own economy.Resource, order []economy.Resource, stock func(economy.Resource) *economy.Stock) (Step, error) {
 	if c == nil || c.OwnerPlayerID != requester {
 		return Step{}, ErrCityNotFound
 	}
@@ -105,6 +152,13 @@ func CanAdvance(c *city.City, requester uuid.UUID, busy bool, stock func(economy
 	}
 	if !step.Costs.CanAfford(stock) {
 		return Step{}, economy.ErrInsufficientResources
+	}
+	if step.ForeignGoods > 0 {
+		costs, err := Resolve(step, own, order, stock)
+		if err != nil {
+			return Step{}, err
+		}
+		step.Costs = costs
 	}
 	return step, nil
 }

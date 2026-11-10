@@ -86,6 +86,11 @@ func loadEconomy(ctx context.Context, repo *postgres.EconomyRepo) (simulation.Ec
 	if out.Advances, err = repo.ListAdvances(ctx); err != nil {
 		return out, err
 	}
+	// Las elaboraciones en curso (ADR-036 §4): una vencida durante la caída
+	// se entrega en el primer tick.
+	if out.Crafts, err = repo.ListCrafts(ctx); err != nil {
+		return out, err
+	}
 	return out, nil
 }
 

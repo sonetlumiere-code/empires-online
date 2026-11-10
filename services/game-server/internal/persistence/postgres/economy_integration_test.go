@@ -80,9 +80,13 @@ func TestLaFundacionCreaElStockACero(t *testing.T) {
 	assert.Equal(t, int64(0), version)
 	filas, err := e.economia.ListStocks(ctx)
 	require.NoError(t, err)
-	require.Len(t, filas, 2)
-	recursos := []economy.Resource{filas[0].Stock.Resource, filas[1].Stock.Resource}
-	assert.ElementsMatch(t, []economy.Resource{economy.ResourceWood, economy.ResourceStone}, recursos)
+	// Desde SPEC-CIVILIZATION-GOODS, también los cuatro bienes.
+	require.Len(t, filas, len(economy.Resources()))
+	recursos := make([]economy.Resource, 0, len(filas))
+	for _, f := range filas {
+		recursos = append(recursos, f.Stock.Resource)
+	}
+	assert.ElementsMatch(t, economy.Resources(), recursos)
 	for _, f := range filas {
 		assert.Zero(t, f.Stock.Amount)
 	}
@@ -113,7 +117,7 @@ func Test_INV_ECON_001_UnDebitoMayorQueElStockNoSeEscribe(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, postgres.IsCheckViolation(err), "city_stocks_amount_non_negative")
 
-	_, err = e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), debito(e.ciudad(), -30, 2), 1)
+	_, err = e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), []postgres.StockDelta{debito(e.ciudad(), -30, 2)}, 1)
 	require.True(t, errors.Is(err, economy.ErrInsufficientResources), "%v", err)
 	amount, version := stockEnBase(t, ctx, store, e.ciudad())
 	assert.Equal(t, int64(20), amount)
@@ -133,7 +137,7 @@ func Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera(t *testing.T) {
 
 	rota := casa(e.ciudad(), 19, 19)
 	rota.Type = "CASTLE"
-	_, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, rota, debito(e.ciudad(), -30, 2), 1)
+	_, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, rota, []postgres.StockDelta{debito(e.ciudad(), -30, 2)}, 1)
 	require.Error(t, err)
 	amount, version := stockEnBase(t, ctx, store, e.ciudad())
 	assert.Equal(t, int64(40), amount, "la madera no se gastó")
@@ -148,9 +152,9 @@ func TestUnEncargoDeCasaEsIdempotentePorRequestID(t *testing.T) {
 	e := nuevaEconomia(t, ctx, store)
 	e.depositar(t, ctx, 40, 1)
 
-	id, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), debito(e.ciudad(), -30, 2), 7)
+	id, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), []postgres.StockDelta{debito(e.ciudad(), -30, 2)}, 7)
 	require.NoError(t, err)
-	otra, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), debito(e.ciudad(), -30, 2), 7)
+	otra, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), []postgres.StockDelta{debito(e.ciudad(), -30, 2)}, 7)
 	require.NoError(t, err)
 	assert.Equal(t, id, otra)
 	amount, _ := stockEnBase(t, ctx, store, e.ciudad())
@@ -169,9 +173,9 @@ func TestUnTileNoAdmiteDosEdificios(t *testing.T) {
 	store, ctx := newTestStore(t)
 	e := nuevaEconomia(t, ctx, store)
 	e.depositar(t, ctx, 100, 1)
-	_, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), debito(e.ciudad(), -30, 2), 1)
+	_, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), []postgres.StockDelta{debito(e.ciudad(), -30, 2)}, 1)
 	require.NoError(t, err)
-	_, err = e.economia.Build(ctx, "req-2", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), debito(e.ciudad(), -30, 3), 1)
+	_, err = e.economia.Build(ctx, "req-2", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), []postgres.StockDelta{debito(e.ciudad(), -30, 3)}, 1)
 	require.True(t, errors.Is(err, building.ErrInvalidSite), "%v", err)
 	amount, _ := stockEnBase(t, ctx, store, e.ciudad())
 	assert.Equal(t, int64(70), amount)
@@ -182,7 +186,7 @@ func TestUnEncargoConElStockAdelantadoSeRechaza(t *testing.T) {
 	store, ctx := newTestStore(t)
 	e := nuevaEconomia(t, ctx, store)
 	e.depositar(t, ctx, 100, 5)
-	_, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), debito(e.ciudad(), -30, 5), 1)
+	_, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), []postgres.StockDelta{debito(e.ciudad(), -30, 5)}, 1)
 	require.True(t, errors.Is(err, postgres.ErrStaleStock), "%v", err)
 	edificios, _ := e.economia.ListBuildings(ctx)
 	assert.Empty(t, edificios)
@@ -193,7 +197,7 @@ func TestCompletarUnaCasaSumaSuBonoUnaVez(t *testing.T) {
 	store, ctx := newTestStore(t)
 	e := nuevaEconomia(t, ctx, store)
 	e.depositar(t, ctx, 30, 1)
-	id, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), debito(e.ciudad(), -30, 2), 1)
+	id, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, casa(e.ciudad(), 19, 19), []postgres.StockDelta{debito(e.ciudad(), -30, 2)}, 1)
 	require.NoError(t, err)
 
 	require.NoError(t, e.economia.CompleteBuilding(ctx, id, e.ciudad(), e.jugador.Player.ID, 5, 2))

@@ -412,7 +412,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 400,
-          "STONE": 185
+          "STONE": 185,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },
@@ -837,7 +841,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 400,
-          "STONE": 195
+          "STONE": 195,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },
@@ -1262,7 +1270,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 400,
-          "STONE": 200
+          "STONE": 200,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },
@@ -1397,7 +1409,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 0,
-          "STONE": 0
+          "STONE": 0,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         },
         "advance": {
           "era": "BRONZE_AGE",
@@ -1713,7 +1729,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 0,
-          "STONE": 10
+          "STONE": 10,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },

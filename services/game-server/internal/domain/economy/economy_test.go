@@ -54,13 +54,19 @@ func TestCanAfford(t *testing.T) {
 }
 
 // El catálogo de recursos es el mismo conjunto que el CHECK de las migraciones
-// 000006 y 000012.
+// 000006, 000012 y 000016; los bienes son los cuatro últimos.
 func TestElCatalogoDeRecursosEsElDelEsquema(t *testing.T) {
-	assert.Equal(t, []Resource{ResourceWood, ResourceStone}, Resources())
+	assert.Equal(t, []Resource{ResourceWood, ResourceStone, ResourceWine, ResourceSilk, ResourceSpices, ResourceFurs}, Resources())
 	for _, r := range Resources() {
 		assert.True(t, r.Valid())
 	}
 	assert.False(t, Resource("GOLD").Valid())
+	assert.Equal(t, []Resource{ResourceWine, ResourceSilk, ResourceSpices, ResourceFurs}, Goods())
+	for _, r := range Goods() {
+		assert.True(t, r.IsGood())
+	}
+	assert.False(t, ResourceWood.IsGood())
+	assert.False(t, ResourceStone.IsGood())
 }
 
 func piedra(n int64) Cost { return Cost{Resource: ResourceStone, Amount: n} }

@@ -269,6 +269,12 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleClaimEndPersistFailed(c)
 	case CaptureResolved:
 		s.handleCaptureResolved(c)
+	case CraftGoods:
+		s.handleCraftGoods(c)
+	case CraftResolved:
+		s.handleCraftResolved(c)
+	case CraftDeliverPersistFailed:
+		s.handleCraftDeliverPersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -722,6 +728,8 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	s.completeProductions(nowMs)
 	// Los avances de era que vencen (RN-ECON-027).
 	s.completeAdvances(nowMs)
+	// Las elaboraciones del taller que vencen (RN-GOODS-004).
+	s.completeCrafts(nowMs)
 	// Las reclamaciones de territorio que se rompen o vencen (RN-CONQ-005,
 	// RN-CONQ-007), después de la presencia: un dueño que acaba de quedar
 	// protegido ya la frena en este tick.
@@ -897,6 +905,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushFinishes()
 	s.flushStocks()
 	s.flushCompletions()
+	s.flushCraftDeliveries()
 	s.flushAdvanceCompletions()
 	s.flushDestructions()
 	s.flushDeaths()

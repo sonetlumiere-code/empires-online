@@ -18,7 +18,7 @@ import { ClientMessage, CLIENT_MESSAGE_TYPES } from './client.js';
 import { ServerMessage, SERVER_MESSAGE_TYPES } from './server.js';
 import { ERROR_CODES } from './errors.js';
 import { parseClientMessage, parseServerMessage, TRANSPORT_LIMITS } from './index.js';
-import { CityView, CivilizationCode } from './common.js';
+import { CityView, CivilizationCode, GoodType } from './common.js';
 import { CIVILIZATIONS, CIVILIZATION_TRAIT_KEYS } from './civilizations.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -653,7 +653,8 @@ describe('comercio (SPEC-TRADE)', () => {
       { playerId: otro, give: linea('WOOD', 1.5), want: linea('STONE', 1) },
       { playerId: otro, give: linea('GOLD', 1), want: linea('STONE', 1) },
       { playerId: otro, give: [{ resource: 'WOOD', amount: 1, price: 2 }], want: linea('STONE', 1) },
-      { playerId: otro, give: linea('WOOD', 1), want: [...linea('STONE', 1), ...linea('STONE', 1), ...linea('WOOD', 1)] },
+      // Más líneas que recursos (seis desde E14).
+      { playerId: otro, give: linea('WOOD', 1), want: ['WOOD', 'STONE', 'WINE', 'SILK', 'SPICES', 'FURS', 'WOOD'].flatMap((r) => linea(r, 1)) },
       { playerId: otro, give: linea('WOOD', 1), want: linea('STONE', 1), expiresAtMs: 5 },
       { playerId: 'no-es-un-uuid', give: linea('WOOD', 1), want: linea('STONE', 1) },
     ]) {
@@ -757,3 +758,46 @@ describe('civilizaciones (SPEC-CIVILIZATION)', () => {
     expect(exportado).toEqual({ version: 1, civilizations: CIVILIZATIONS });
   });
 });
+
+describe('bienes de civilización (SPEC-CIVILIZATION-GOODS)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+
+  it('city.craft sólo nombra la ciudad', () => {
+    const craft = (payload: unknown) => parseClientMessage({ v: 1, type: 'city.craft', requestId: uuid, payload });
+    expect(craft({ cityId: 7 }).ok).toBe(true);
+    for (const payload of [{}, { cityId: 0 }, { cityId: 7, good: 'WINE' }, { cityId: 7, amount: 50 }]) {
+      expect(craft(payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('city.update y la ciudad llevan la elaboración, que empieza con una vista y termina en null', () => {
+    const vista = { good: 'WINE', amount: 5, completesAtMs: 1_757_376_030_000 };
+    expect(parseServerMessage({ ...env, type: 'city.update', payload: { id: 7, craft: vista } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'city.update', payload: { id: 7, craft: null } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'city.update', payload: { id: 7, craft: { ...vista, good: 'WOOD' } } }).ok).toBe(false);
+    expect(parseServerMessage({ ...env, type: 'city.update', payload: { id: 7, craft: { ...vista, amount: 0 } } }).ok).toBe(false);
+  });
+
+  it('el almacén lleva los cuatro bienes y el taller es un edificio', () => {
+    const stocks = { WOOD: 40, STONE: 15, WINE: 5, SILK: 0, SPICES: 0, FURS: 20 };
+    expect(parseServerMessage({ ...env, type: 'city.update', payload: { id: 7, stocks } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'city.update', payload: { id: 7, stocks: { ...stocks, FURS: -1 } } }).ok).toBe(false);
+    const taller = { id: 9, cityId: 7, type: 'WORKSHOP', x: 11, y: 10, status: 'UNDER_CONSTRUCTION', completesAtMs: 1 };
+    expect(parseServerMessage({ ...env, type: 'building.spawn', payload: { building: taller } }).ok).toBe(true);
+    expect(
+      parseClientMessage({ v: 1, type: 'city.build', requestId: uuid, payload: { cityId: 7, type: 'WORKSHOP', x: 11, y: 10 } }).ok,
+    ).toBe(true);
+  });
+
+  it('un trato puede dar o pedir bienes', () => {
+    const propose = (payload: unknown) => parseClientMessage({ v: 1, type: 'trade.propose', requestId: uuid, payload });
+    expect(propose({ playerId: otro, give: [{ resource: 'WINE', amount: 30 }], want: [{ resource: 'FURS', amount: 30 }] }).ok).toBe(true);
+  });
+
+  it('cada civilización tiene un bien distinto, y entre todas los cuatro', () => {
+    const bienes = CIVILIZATIONS.map((c) => c.good);
+    expect([...bienes].sort()).toEqual([...GoodType.options].sort());
+  });
+});
+

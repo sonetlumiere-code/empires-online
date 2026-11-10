@@ -46,6 +46,25 @@ const (
 	EraCastle Era = "CASTLE_AGE"
 )
 
+// eraOrder es el orden de las eras: el mismo que `eras.ordinal`. El límite de
+// población sigue en la tabla; aquí sólo está cuál va antes.
+var eraOrder = []Era{EraStone, EraBronze, EraIron, EraCastle}
+
+// AtLeast indica si la era es `other` o una posterior. Una era desconocida no
+// alcanza ninguna.
+func (e Era) AtLeast(other Era) bool {
+	ie, io := -1, -1
+	for i, x := range eraOrder {
+		if x == e {
+			ie = i
+		}
+		if x == other {
+			io = i
+		}
+	}
+	return ie >= 0 && io >= 0 && ie >= io
+}
+
 // EraDefinition es una fila del catálogo de eras.
 type EraDefinition struct {
 	Code          Era

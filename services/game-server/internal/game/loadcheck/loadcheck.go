@@ -18,6 +18,7 @@
 package loadcheck
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -271,6 +272,11 @@ func (c *checker) civilizations() {
 		if err := civ.Validate(); err != nil {
 			c.find("INV-PLAYER-012", "ALTO", PolicyFailFast, "civilization:"+civ.Code, err.Error())
 		}
+	}
+	// RN-GOODS-001: un bien distinto por civilización; sin él, un taller no
+	// sabría qué elaborar (INV-ECON-009).
+	if err := player.ValidateCatalog(c.in.Civilizations); err != nil && errors.Is(err, player.ErrInvalidGood) {
+		c.find("INV-ECON-009", "ALTO", PolicyFailFast, "civilizations", err.Error())
 	}
 	cities := append([]*city.City(nil), c.in.Cities...)
 	sort.Slice(cities, func(i, j int) bool { return cities[i].ID < cities[j].ID })

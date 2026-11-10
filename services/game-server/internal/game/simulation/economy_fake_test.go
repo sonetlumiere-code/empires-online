@@ -20,6 +20,8 @@ type fakeEconomy struct {
 	births      []simulation.Birth
 	advances    []simulation.AdvanceOrder
 	advanceEnds []simulation.AdvanceCompletion
+	crafts      []simulation.CraftOrder
+	deliveries  []simulation.CraftDelivery
 
 	buildErr error
 	trainErr error
@@ -27,6 +29,10 @@ type fakeEconomy struct {
 	// advanceErr hace fallar el encargo del avance; advanceEndErr, su fin.
 	advanceErr    error
 	advanceEndErr error
+	// craftErr hace fallar el encargo de una elaboración; deliverErr, su
+	// entrega (ADR-036 §4).
+	craftErr   error
+	deliverErr error
 	// destroyErr hace fallar la escritura de una destrucción (ADR-029 §4).
 	destroyErr error
 	flushErr   error
@@ -137,4 +143,30 @@ func (f *fakeEconomy) CompleteAdvance(_ context.Context, c simulation.AdvanceCom
 	}
 	f.advanceEnds = append(f.advanceEnds, c)
 	return nil
+}
+
+func (f *fakeEconomy) Craft(_ context.Context, o simulation.CraftOrder) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.craftErr != nil {
+		return f.craftErr
+	}
+	f.crafts = append(f.crafts, o)
+	return nil
+}
+
+func (f *fakeEconomy) CompleteCraft(_ context.Context, d simulation.CraftDelivery) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.deliverErr != nil {
+		return f.deliverErr
+	}
+	f.deliveries = append(f.deliveries, d)
+	return nil
+}
+
+func (f *fakeEconomy) craftDeliveries() []simulation.CraftDelivery {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]simulation.CraftDelivery(nil), f.deliveries...)
 }

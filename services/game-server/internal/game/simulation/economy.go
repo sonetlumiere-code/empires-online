@@ -10,6 +10,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/advance"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/craft"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
@@ -68,6 +69,8 @@ type EconomyStore interface {
 	DestroyBuilding(ctx context.Context, d BuildingDestruction) error
 	// El avance de era (ADR-030 §4 y §5).
 	AdvanceStore
+	// La elaboración del taller (ADR-036 §4).
+	CraftStore
 }
 
 // StockDelta es una escritura del stock: sumar Delta (negativo en un encargo)
@@ -100,12 +103,13 @@ type TaskWrite struct {
 	Load *DepositLoad
 }
 
-// BuildOrder es un encargo de edificio con su débito.
+// BuildOrder es un encargo de edificio con su débito, uno por recurso del
+// coste (ADR-036 §3).
 type BuildOrder struct {
 	RequestID string
 	PlayerID  uuid.UUID
 	Building  building.Building
-	Stock     StockDelta
+	Stocks    []StockDelta
 	Tick      uint64
 }
 
@@ -239,6 +243,8 @@ type cityEconomy struct {
 	production *productionState
 	// advance es el avance de era de la ciudad; nil si no tiene (advance.go).
 	advance *advanceState
+	// craft es la elaboración del taller; nil si no tiene (craft.go).
+	craft *craftState
 }
 
 func newCityEconomy() *cityEconomy {
@@ -290,8 +296,8 @@ type pendingBuild struct {
 	playerID  uuid.UUID
 	requestID string
 	building  building.Building
-	cost      economy.Cost
-	carried   int64
+	costs     economy.Costs
+	carried   map[economy.Resource]int64
 }
 
 // EconomyLoad es la economía leída de la base al arrancar.
@@ -307,6 +313,8 @@ type EconomyLoad struct {
 	// Advances son las filas de city_era_advances: avances confirmados y en
 	// curso (ADR-030 §4).
 	Advances []advance.Advance
+	// Crafts son las filas de city_crafts: elaboraciones en curso (ADR-036 §4).
+	Crafts []craft.Craft
 }
 
 // StockRow es una fila de city_stocks.
@@ -345,6 +353,12 @@ func (s *State) SetEconomy(load EconomyLoad) {
 	}
 	for _, a := range load.Advances {
 		s.setAdvance(a)
+	}
+	for _, c := range load.Crafts {
+		if c.Validate() != nil {
+			continue
+		}
+		s.setCraft(c)
 	}
 }
 
@@ -439,6 +453,22 @@ func (s *State) BuildingsOf(cityID int64) []building.Building {
 	return out
 }
 
+// hasStanding dice si una ciudad tiene en pie, o encargado, un edificio del
+// tipo (RN-GOODS-003): los confirmados y los que esperan su transacción.
+func (s *State) hasStanding(cityID int64, t building.Type) bool {
+	for _, b := range s.BuildingsOf(cityID) {
+		if b.Type == t && b.IsStanding() {
+			return true
+		}
+	}
+	for _, pb := range s.pendingBuilds {
+		if pb.building.CityID == cityID && pb.building.Type == t {
+			return true
+		}
+	}
+	return false
+}
+
 // buildingOccupied dice si un tile tiene edificio, confirmado o encargado
 // (RN-ECON-007), o una casa derribada cuya destrucción aún no está escrita
 // (ADR-029 §5).
@@ -479,7 +509,14 @@ func BuildingView(b building.Building) protocol.BuildingView {
 
 // stocksView es el stock de una ciudad tal como viaja.
 func (s *State) stocksView(cityID int64) protocol.Stocks {
-	return protocol.Stocks{Wood: s.Stock(cityID).Amount, Stone: s.StockOf(cityID, economy.ResourceStone).Amount}
+	return protocol.Stocks{
+		Wood:   s.Stock(cityID).Amount,
+		Stone:  s.StockOf(cityID, economy.ResourceStone).Amount,
+		Wine:   s.StockOf(cityID, economy.ResourceWine).Amount,
+		Silk:   s.StockOf(cityID, economy.ResourceSilk).Amount,
+		Spices: s.StockOf(cityID, economy.ResourceSpices).Amount,
+		Furs:   s.StockOf(cityID, economy.ResourceFurs).Amount,
+	}
 }
 
 // productionView es el entrenamiento CONFIRMADO de una ciudad, o nil: lo que
@@ -498,6 +535,7 @@ func (s *State) cityViewOf(c *city.City) protocol.CityView {
 	v.Stocks = s.stocksView(c.ID)
 	v.Production = s.productionView(c.ID)
 	v.Advance = s.advanceView(c.ID)
+	v.Craft = s.craftView(c.ID)
 	return v
 }
 
@@ -605,19 +643,17 @@ func (s *Simulation) handleStocksFlushFailed(cmd StocksFlushFailed) {
 // debita y escribe el edificio (ADR-023 §2).
 func (s *Simulation) handleBuildBuilding(cmd BuildBuilding) {
 	c, _ := s.state.City(cmd.CityID)
-	var stock *economy.Stock
+	stock := func(economy.Resource) *economy.Stock { return nil }
+	standing := func(building.Type) bool { return false }
 	if c != nil {
-		// El stock del recurso que cuesta el edificio; si el tipo no existe,
-		// CanBuild lo rechaza antes de mirarlo.
-		r := economy.ResourceWood
-		if def, err := building.Lookup(cmd.Type); err == nil {
-			r = def.Cost.Resource
-		}
-		stock = s.state.economyOf(c.ID).stockOf(r)
+		stock = s.state.economyOf(c.ID).stockOf
+		cityID := c.ID
+		standing = func(t building.Type) bool { return s.state.hasStanding(cityID, t) }
 	}
-	// RN-ECON-007, en el orden de la spec. La propiedad primero: una ciudad
-	// ajena responde CITY_NOT_FOUND, igual que una inexistente.
-	def, err := building.CanBuild(c, cmd.PlayerID, cmd.Type, cmd.Tile, s.state.buildingOccupied, stock)
+	// RN-ECON-007 y RN-GOODS-003, en el orden de la spec. La propiedad
+	// primero: una ciudad ajena responde CITY_NOT_FOUND, igual que una
+	// inexistente.
+	def, err := building.CanBuild(c, cmd.PlayerID, cmd.Type, cmd.Tile, s.state.buildingOccupied, standing, stock)
 	if err != nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, economyErrorCode(err), err.Error())
 		return
@@ -628,29 +664,25 @@ func (s *Simulation) handleBuildBuilding(cmd BuildBuilding) {
 	}
 
 	nowMs := s.deps.Clock.NowMs()
-	rs := s.state.economyOf(c.ID).of(def.Cost.Resource)
 	// La reserva: el coste sale ya de la RAM para que un segundo encargo del
-	// mismo tick no lo cuente dos veces. Los depósitos sin volcar de ese recurso
-	// viajan con el encargo, en su transacción (ADR-023 §1).
-	if err := rs.stock.Debit(def.Cost); err != nil {
-		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, err.Error())
+	// mismo tick no lo cuente dos veces. Los depósitos sin volcar de cada
+	// recurso viajan con el encargo, en su transacción (ADR-023 §1).
+	carried, deltas, ok := s.reserve(c, s.state.economyOf(c.ID), def.Costs)
+	if !ok {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, "recursos insuficientes")
 		return
 	}
-	carried := rs.unflushed
-	rs.unflushed = 0
-	s.state.markStockDirty(c.ID)
 
 	b := building.Building{
 		CityID: c.ID, Type: def.Type, X: cmd.Tile.X, Y: cmd.Tile.Y,
 		Status: building.StatusUnderConstruction, CompletesAtMs: nowMs + s.state.productionMs(cmd.PlayerID, def.BuildMs),
 	}
 	s.state.pendingBuilds[cmd.Tile] = pendingBuild{
-		playerID: cmd.PlayerID, requestID: cmd.RequestID, building: b, cost: def.Cost, carried: carried,
+		playerID: cmd.PlayerID, requestID: cmd.RequestID, building: b, costs: def.Costs, carried: carried,
 	}
 
 	order := BuildOrder{
-		RequestID: cmd.RequestID, PlayerID: cmd.PlayerID, Building: b, Tick: s.state.Tick(),
-		Stock: StockDelta{CityID: c.ID, Resource: def.Cost.Resource, Delta: carried - def.Cost.Amount, Version: rs.stock.Version},
+		RequestID: cmd.RequestID, PlayerID: cmd.PlayerID, Building: b, Tick: s.state.Tick(), Stocks: deltas,
 	}
 	resolved := BuildResolved{PlayerID: cmd.PlayerID, RequestID: cmd.RequestID, CityID: c.ID, Tile: cmd.Tile}
 	store := s.deps.Economy
@@ -698,9 +730,7 @@ func (s *Simulation) handleBuildResolved(cmd BuildResolved) {
 	if cmd.Code != "" {
 		// La transacción no escribió nada: el coste reservado y los depósitos
 		// que viajaban con él vuelven a la ciudad.
-		rs := s.state.economyOf(c.ID).of(pb.cost.Resource)
-		_ = rs.stock.Credit(pb.cost.Amount)
-		rs.unflushed += pb.carried
+		s.refund(s.state.economyOf(c.ID), pb.costs, pb.carried)
 		s.state.markStockDirty(c.ID)
 		s.economyError(cmd.PlayerID, cmd.RequestID, cmd.Code, "no se pudo encargar el edificio")
 		s.broadcastStocks(c)
@@ -1039,7 +1069,7 @@ func economyErrorCode(err error) string {
 		return protocol.CodeNotImplemented
 	case errors.Is(err, city.ErrPopulationLimit):
 		return protocol.CodePopulationLimitReached
-	case errors.Is(err, building.ErrInvalidSite), errors.Is(err, building.ErrUnknownType),
+	case errors.Is(err, building.ErrInvalidSite), errors.Is(err, building.ErrUnknownType), errors.Is(err, craft.ErrNoWorkshop),
 		errors.Is(err, unit.ErrUnknownType), errors.Is(err, production.ErrNotTrainable):
 		return protocol.CodeInvalidTarget
 	default:

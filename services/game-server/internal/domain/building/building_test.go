@@ -19,13 +19,25 @@ func ciudad() *city.City {
 	return &city.City{ID: 7, OwnerPlayerID: dueno, CenterX: 10, CenterY: 10, Era: city.EraStone, PopulationLimit: 20}
 }
 
-func madera(n int64) *economy.Stock { return &economy.Stock{Resource: economy.ResourceWood, Amount: n} }
+func madera(n int64) func(economy.Resource) *economy.Stock {
+	return recursos(n, 0)
+}
+
+func recursos(madera, piedra int64) func(economy.Resource) *economy.Stock {
+	m := map[economy.Resource]*economy.Stock{
+		economy.ResourceWood:  {Resource: economy.ResourceWood, Amount: madera},
+		economy.ResourceStone: {Resource: economy.ResourceStone, Amount: piedra},
+	}
+	return func(r economy.Resource) *economy.Stock { return m[r] }
+}
 
 // SPEC-ECON-WOOD §4.5: la casa cuesta 30, tarda 15 s y suma 5.
 func TestLaCasaTieneLosValoresDelCatalogo(t *testing.T) {
 	def, err := Lookup(TypeHouse)
 	require.NoError(t, err)
-	assert.Equal(t, economy.Cost{Resource: economy.ResourceWood, Amount: 30}, def.Cost)
+	assert.Equal(t, economy.Costs{{Resource: economy.ResourceWood, Amount: 30}}, def.Costs)
+	assert.Empty(t, def.RequiresEra)
+	assert.False(t, def.UniquePerCity)
 	assert.Equal(t, int64(15_000), def.BuildMs)
 	assert.Equal(t, int32(5), def.PopulationBonus)
 
@@ -65,21 +77,21 @@ func TestUnTileConEdificioNoAdmiteOtro(t *testing.T) {
 func TestCanBuildRespondeEnOrden(t *testing.T) {
 	hueco := world.Tile{X: 9, Y: 10}
 
-	_, err := CanBuild(nil, dueno, TypeHouse, hueco, nil, madera(100))
+	_, err := CanBuild(nil, dueno, TypeHouse, hueco, nil, nil, madera(100))
 	assert.True(t, errors.Is(err, ErrCityNotFound))
-	_, err = CanBuild(ciudad(), uuid.New(), TypeHouse, world.Tile{X: 0, Y: 0}, nil, madera(0))
+	_, err = CanBuild(ciudad(), uuid.New(), TypeHouse, world.Tile{X: 0, Y: 0}, nil, nil, madera(0))
 	assert.True(t, errors.Is(err, ErrCityNotFound), "ciudad ajena: ni el sitio ni la madera se miran")
 
-	_, err = CanBuild(ciudad(), dueno, "TOWER", hueco, nil, madera(100))
+	_, err = CanBuild(ciudad(), dueno, "TOWER", hueco, nil, nil, madera(100))
 	assert.True(t, errors.Is(err, ErrUnknownType))
 
-	_, err = CanBuild(ciudad(), dueno, TypeHouse, world.Tile{X: 10, Y: 10}, nil, madera(0))
+	_, err = CanBuild(ciudad(), dueno, TypeHouse, world.Tile{X: 10, Y: 10}, nil, nil, madera(0))
 	assert.True(t, errors.Is(err, ErrInvalidSite), "el sitio antes que la madera")
 
-	_, err = CanBuild(ciudad(), dueno, TypeHouse, hueco, nil, madera(29))
+	_, err = CanBuild(ciudad(), dueno, TypeHouse, hueco, nil, nil, madera(29))
 	assert.True(t, errors.Is(err, economy.ErrInsufficientResources))
 
-	def, err := CanBuild(ciudad(), dueno, TypeHouse, hueco, nil, madera(30))
+	def, err := CanBuild(ciudad(), dueno, TypeHouse, hueco, nil, nil, madera(30))
 	require.NoError(t, err)
 	assert.Equal(t, TypeHouse, def.Type)
 }
@@ -143,4 +155,43 @@ func TestDerribarUnaCasaEsTerminalYQuitaSuBono(t *testing.T) {
 	}
 	assert.Equal(t, int32(20), PopulationLimit(20, []Building{completa, enObra}, 0))
 	assert.NoError(t, (&Building{Type: TypeHouse, Status: StatusDestroyed}).Validate())
+}
+
+// SPEC-CIVILIZATION-GOODS Q6: el taller cuesta 100 de madera y 50 de piedra,
+// tarda 45 s, no da población, aguanta 200, pide Bronce y es único.
+func TestElTallerTieneLosValoresDelCatalogo(t *testing.T) {
+	def, err := Lookup(TypeWorkshop)
+	require.NoError(t, err)
+	assert.Equal(t, economy.Costs{
+		{Resource: economy.ResourceWood, Amount: 100},
+		{Resource: economy.ResourceStone, Amount: 50},
+	}, def.Costs)
+	assert.Equal(t, int64(45_000), def.BuildMs)
+	assert.Zero(t, def.PopulationBonus)
+	assert.Equal(t, int32(200), def.MaxHP)
+	assert.Equal(t, city.EraBronze, def.RequiresEra)
+	assert.True(t, def.UniquePerCity)
+}
+
+// RN-GOODS-003: el taller pide Bronce y no admite otro en pie; después, el
+// sitio y los dos recursos.
+func TestElTallerPideBronceYEsUnico(t *testing.T) {
+	hueco := world.Tile{X: 9, Y: 10}
+	bronce := ciudad()
+	bronce.Era = city.EraBronze
+	ninguno := func(Type) bool { return false }
+	uno := func(t Type) bool { return t == TypeWorkshop }
+
+	_, err := CanBuild(ciudad(), dueno, TypeWorkshop, hueco, nil, ninguno, recursos(100, 50))
+	assert.ErrorIs(t, err, ErrInvalidSite, "en Piedra no hay taller")
+	_, err = CanBuild(bronce, dueno, TypeWorkshop, hueco, nil, uno, recursos(100, 50))
+	assert.ErrorIs(t, err, ErrInvalidSite, "uno por ciudad")
+	_, err = CanBuild(bronce, dueno, TypeWorkshop, hueco, nil, ninguno, recursos(100, 49))
+	assert.ErrorIs(t, err, economy.ErrInsufficientResources)
+	_, err = CanBuild(bronce, dueno, TypeHouse, world.Tile{X: 11, Y: 10}, nil, uno, recursos(30, 0))
+	assert.NoError(t, err, "la casa no es única")
+
+	def, err := CanBuild(bronce, dueno, TypeWorkshop, hueco, nil, ninguno, recursos(100, 50))
+	require.NoError(t, err)
+	assert.Equal(t, TypeWorkshop, def.Type)
 }

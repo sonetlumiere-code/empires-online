@@ -48,8 +48,10 @@ func ExportedErrorCodes() ([]string, error) {
 // CivilizationInfo es una entrada del catálogo de presentación de las
 // civilizaciones que exporta el paquete TypeScript (ADR-035 §7).
 type CivilizationInfo struct {
-	Code   string           `json:"code"`
-	Name   string           `json:"name"`
+	Code string `json:"code"`
+	Name string `json:"name"`
+	// Good es el bien que sólo elabora su taller (SPEC-CIVILIZATION-GOODS).
+	Good   string           `json:"good"`
 	Traits map[string]int32 `json:"traits"`
 }
 

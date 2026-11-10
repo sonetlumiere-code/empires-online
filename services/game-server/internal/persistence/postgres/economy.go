@@ -506,10 +506,13 @@ func (r *EconomyRepo) FlushStocks(ctx context.Context, deltas []StockDelta) erro
 // ─────────────────────────────────────────────────────────────
 
 // Build debita el coste y encarga el edificio en UNA transacción
-// (RN-ECON-008, INV-ECON-002), y devuelve su id. Idempotente por
-// (city_id, request_id): un reintento encuentra su fila y no debita otra vez.
+// (RN-ECON-008, INV-ECON-002), y devuelve su id. El coste puede ser de varios
+// recursos (ADR-036 §3): un delta versionado por recurso; si alguno no se
+// aplica, no se aplica ninguno. Idempotente por (city_id, request_id): un
+// reintento encuentra su fila y no debita otra vez. El único parcial del taller
+// (INV-ECON-010) y el del tile rechazan con building.ErrInvalidSite.
 func (r *EconomyRepo) Build(
-	ctx context.Context, requestID string, playerID uuid.UUID, b building.Building, d StockDelta, tick uint64,
+	ctx context.Context, requestID string, playerID uuid.UUID, b building.Building, deltas []StockDelta, tick uint64,
 ) (int64, error) {
 	var id int64
 	err := r.store.InTx(ctx, func(tx pgx.Tx) error {
@@ -521,21 +524,23 @@ func (r *EconomyRepo) Build(
 			return fmt.Errorf("buscar el encargo %s: %w", requestID, normalize(err))
 		}
 
-		aplicado, err := applyStock(ctx, tx, d)
-		if err != nil {
-			return err
+		for _, d := range deltas {
+			aplicado, err := applyStock(ctx, tx, d)
+			if err != nil {
+				return err
+			}
+			if !aplicado {
+				return ErrStaleStock
+			}
 		}
-		if !aplicado {
-			return ErrStaleStock
-		}
-		err = tx.QueryRow(ctx,
+		err := tx.QueryRow(ctx,
 			`INSERT INTO buildings (city_id, type, x, y, status, completes_at_ms, request_id)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
 			b.CityID, string(b.Type), b.X, b.Y, string(building.StatusUnderConstruction), b.CompletesAtMs, requestID,
 		).Scan(&id)
 		if err != nil {
 			if IsUniqueViolation(err) {
-				return fmt.Errorf("%w: (%d,%d) ya tiene un edificio", building.ErrInvalidSite, b.X, b.Y)
+				return fmt.Errorf("%w: (%d,%d) ya tiene un edificio, o la ciudad ya tiene %s", building.ErrInvalidSite, b.X, b.Y, b.Type)
 			}
 			return fmt.Errorf("insertar el edificio: %w", normalize(err))
 		}
@@ -684,6 +689,13 @@ func (r *EconomyRepo) DestroyBuilding(ctx context.Context, d BuildingDestruction
 			return fmt.Errorf("derribar el edificio %d: %w", d.BuildingID, normalize(err))
 		}
 		completa := building.Status(estado) == building.StatusComplete
+		// RN-GOODS-007: derribar el taller pierde la elaboración en curso, sin
+		// devolver lo pagado.
+		if d.Type == building.TypeWorkshop {
+			if _, err := tx.Exec(ctx, `DELETE FROM city_crafts WHERE city_id = $1`, d.CityID); err != nil {
+				return fmt.Errorf("perder la elaboración de la ciudad %d: %w", d.CityID, normalize(err))
+			}
+		}
 		if completa && d.Bonus > 0 {
 			if _, err := tx.Exec(ctx,
 				`UPDATE cities SET population_limit = population_limit - $2, version = version + 1 WHERE id = $1`,

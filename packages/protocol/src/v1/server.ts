@@ -18,6 +18,7 @@ import {
   EventLogEntry,
   EventLogNoticeKind,
   AdvanceView,
+  CraftView,
   EraCode,
   ForestView,
   HillView,
@@ -207,6 +208,8 @@ export const CityUpdate = z.object({
     era: EraCode.optional(),
     /** Avance de era: empieza (vista) o termina (`null`). */
     advance: AdvanceView.nullable().optional(),
+    /** Elaboración del taller: empieza (vista) o termina (`null`) (SPEC-CIVILIZATION-GOODS). */
+    craft: CraftView.nullable().optional(),
     /**
      * Instante del último golpe de saqueo sobre la ciudad. Sólo lo recibe su
      * dueño, para avisarle (SPEC-COMBAT-PILLAGE RN-COMBAT-028).

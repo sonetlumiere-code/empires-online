@@ -55,6 +55,14 @@ func toDelta(d simulation.StockDelta) postgres.StockDelta {
 	return postgres.StockDelta{CityID: d.CityID, Resource: d.Resource, Delta: d.Delta, Version: d.Version}
 }
 
+func toDeltas(ds []simulation.StockDelta) []postgres.StockDelta {
+	out := make([]postgres.StockDelta, len(ds))
+	for i, d := range ds {
+		out[i] = toDelta(d)
+	}
+	return out
+}
+
 // stale traduce el rechazo por stock adelantado.
 func stale(err error) error {
 	if errors.Is(err, postgres.ErrStaleStock) {
@@ -65,7 +73,7 @@ func stale(err error) error {
 
 // Build debita y encarga el edificio (RN-ECON-008).
 func (e *EconomyStore) Build(ctx context.Context, o simulation.BuildOrder) (int64, error) {
-	id, err := e.repo.Build(ctx, o.RequestID, o.PlayerID, o.Building, toDelta(o.Stock), o.Tick)
+	id, err := e.repo.Build(ctx, o.RequestID, o.PlayerID, o.Building, toDeltas(o.Stocks), o.Tick)
 	return id, stale(err)
 }
 
@@ -86,6 +94,16 @@ func (e *EconomyStore) Advance(ctx context.Context, o simulation.AdvanceOrder) e
 // CompleteAdvance termina el avance de era (RN-ECON-027).
 func (e *EconomyStore) CompleteAdvance(ctx context.Context, c simulation.AdvanceCompletion) error {
 	return e.repo.CompleteAdvance(ctx, c.CityID, c.PlayerID, c.From, c.To, c.Tick)
+}
+
+// Craft debita y encarga la elaboración del taller (RN-GOODS-004).
+func (e *EconomyStore) Craft(ctx context.Context, o simulation.CraftOrder) error {
+	return stale(e.repo.Craft(ctx, o.RequestID, o.PlayerID, o.Craft, toDeltas(o.Stocks), o.Tick))
+}
+
+// CompleteCraft entrega la elaboración: borra su fila y acredita el bien.
+func (e *EconomyStore) CompleteCraft(ctx context.Context, d simulation.CraftDelivery) error {
+	return stale(e.repo.CompleteCraft(ctx, d.CityID, d.RequestID, d.PlayerID, toDelta(d.Stock), d.Tick))
 }
 
 // CompleteBuilding completa el edificio y sube el límite (RN-ECON-009).
