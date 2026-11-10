@@ -8,7 +8,7 @@ import {
   draftLines,
   formatHours,
   offerBlockReason,
-  otherResource,
+  TRADE_RESOURCES,
   pendingWith,
   tradeActions,
   tradeLabel,
@@ -81,26 +81,37 @@ describe('canTradeWith y pendingWith: qué botones enseñar', () => {
 });
 
 describe('el formulario del trato', () => {
-  it('ofrecer un recurso es pedir el otro', () => {
-    expect(otherResource('WOOD')).toBe('STONE');
-    expect(draftLines({ giveResource: 'STONE', giveAmount: 20, wantAmount: 80 })).toEqual({
+  it('se da un recurso y se pide otro, también un bien (RN-GOODS-008)', () => {
+    expect(draftLines({ giveResource: 'STONE', giveAmount: 20, wantResource: 'WOOD', wantAmount: 80 })).toEqual({
       give: [{ resource: 'STONE', amount: 20 }],
       want: [{ resource: 'WOOD', amount: 80 }],
     });
+    expect(draftLines({ giveResource: 'WINE', giveAmount: 30, wantResource: 'FURS', wantAmount: 20 })).toEqual({
+      give: [{ resource: 'WINE', amount: 30 }],
+      want: [{ resource: 'FURS', amount: 20 }],
+    });
+    expect(TRADE_RESOURCES).toEqual(['WOOD', 'STONE', 'WINE', 'SILK', 'SPICES', 'FURS']);
+    expect(describeLines([{ resource: 'SPICES', amount: 5 }])).toBe('5 de especias');
   });
   it('se bloquea con su motivo lo que el servidor rechazaría seguro', () => {
     const stocks = { WOOD: 300, STONE: 5 };
-    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 300, wantAmount: 100 }, stocks)).toBeNull();
-    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 301, wantAmount: 100 }, stocks)).toBe(
+    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 300, wantResource: 'STONE', wantAmount: 100 }, stocks)).toBeNull();
+    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 301, wantResource: 'STONE', wantAmount: 100 }, stocks)).toBe(
       'No tienes 301 de madera',
     );
-    expect(offerBlockReason({ giveResource: 'STONE', giveAmount: 6, wantAmount: 1 }, stocks)).toBe('No tienes 6 de piedra');
-    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 0, wantAmount: 1 }, stocks)).toMatch(/mayores que 0/);
-    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 10, wantAmount: 1.5 }, stocks)).toMatch(/enteros/);
+    expect(offerBlockReason({ giveResource: 'STONE', giveAmount: 6, wantResource: 'WOOD', wantAmount: 1 }, stocks)).toBe('No tienes 6 de piedra');
+    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 0, wantResource: 'STONE', wantAmount: 1 }, stocks)).toMatch(/mayores que 0/);
+    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 10, wantResource: 'STONE', wantAmount: 1.5 }, stocks)).toMatch(/enteros/);
     expect(
-      offerBlockReason({ giveResource: 'WOOD', giveAmount: 1, wantAmount: TRADE_MAX_AMOUNT + 1 }, stocks),
+      offerBlockReason({ giveResource: 'WOOD', giveAmount: 1, wantResource: 'STONE', wantAmount: TRADE_MAX_AMOUNT + 1 }, stocks),
     ).toMatch(/Como mucho/);
-    expect(offerBlockReason({ giveResource: 'STONE', giveAmount: 1, wantAmount: 1 }, { WOOD: 0 })).toBe(
+    expect(offerBlockReason({ giveResource: 'WOOD', giveAmount: 1, wantResource: 'WOOD', wantAmount: 1 }, stocks)).toBe(
+      'No se pide lo mismo que se da',
+    );
+    expect(offerBlockReason({ giveResource: 'WINE', giveAmount: 31, wantResource: 'FURS', wantAmount: 1 }, { WINE: 30 })).toBe(
+      'No tienes 31 de vino',
+    );
+    expect(offerBlockReason({ giveResource: 'STONE', giveAmount: 1, wantResource: 'WOOD', wantAmount: 1 }, { WOOD: 0 })).toBe(
       'No tienes 1 de piedra',
     );
   });

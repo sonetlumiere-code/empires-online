@@ -63,6 +63,9 @@ export interface TerritoryView {
   claim?: { playerId: string; cityId: number | null; cityName: string | null; startedAtMs: number; endsAtMs: number };
 }
 
+/** El almacén de una ciudad: madera, piedra y los cuatro bienes de civilización. */
+export type CityStocks = { WOOD: number; STONE: number; WINE: number; SILK: number; SPICES: number; FURS: number };
+
 export interface CityView {
   id: number;
   ownerPlayerId: string;
@@ -76,12 +79,17 @@ export interface CityView {
   populationLimit: number;
   presenceState: string;
   protectionUntilMs: number | null;
-  /** Stock de la ciudad, tal cual lo envía el servidor (SPEC-ECON-WOOD, SPEC-ECON-STONE). */
-  stocks: { WOOD: number; STONE: number };
+  /**
+   * Stock de la ciudad, tal cual lo envía el servidor (SPEC-ECON-WOOD,
+   * SPEC-ECON-STONE, SPEC-CIVILIZATION-GOODS).
+   */
+  stocks: CityStocks;
   /** Entrenamiento en curso, o `null`. */
   production: { unitType: string; completesAtMs: number } | null;
   /** Avance de era en curso, o `null` (SPEC-ECON-STONE). */
   advance: { era: string; completesAtMs: number } | null;
+  /** Elaboración en curso del taller, o `null` (SPEC-CIVILIZATION-GOODS). */
+  craft: { good: string; amount: number; completesAtMs: number } | null;
   /**
    * Instante del último golpe de saqueo, si lo hubo en esta sesión. Sólo lo
    * recibe el dueño (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
@@ -258,12 +266,25 @@ function unitFromView(u: v1.UnitView): UnitView {
   };
 }
 
+/** Un recurso que el servidor no manda (uno anterior) vale lo que había, o 0. */
+function stocksFrom(s: v1.Stocks | undefined, prev?: CityStocks): CityStocks {
+  return {
+    WOOD: s?.WOOD ?? prev?.WOOD ?? 0,
+    STONE: s?.STONE ?? prev?.STONE ?? 0,
+    WINE: s?.WINE ?? prev?.WINE ?? 0,
+    SILK: s?.SILK ?? prev?.SILK ?? 0,
+    SPICES: s?.SPICES ?? prev?.SPICES ?? 0,
+    FURS: s?.FURS ?? prev?.FURS ?? 0,
+  };
+}
+
 function cityFromView(c: v1.CityView): CityView {
   return {
     ...c,
-    stocks: { WOOD: c.stocks?.WOOD ?? 0, STONE: c.stocks?.STONE ?? 0 },
+    stocks: stocksFrom(c.stocks),
     production: c.production ?? null,
     advance: c.advance ?? null,
+    craft: c.craft ?? null,
   };
 }
 
@@ -476,14 +497,13 @@ export const useWorldStore = create<WorldState>((set, get) => {
             populationLimit: p.populationLimit !== undefined ? p.populationLimit : existing.populationLimit,
             presenceState: p.presenceState !== undefined ? p.presenceState : existing.presenceState,
             protectionUntilMs: p.protectionUntilMs !== undefined ? p.protectionUntilMs : existing.protectionUntilMs,
-            // Un servidor anterior a la piedra no la manda: se conserva la que había.
-            stocks:
-              p.stocks !== undefined
-                ? { WOOD: p.stocks.WOOD, STONE: p.stocks.STONE ?? existing.stocks.STONE }
-                : existing.stocks,
+            // Un servidor anterior a la piedra o a los bienes no los manda: se
+            // conserva lo que había.
+            stocks: p.stocks !== undefined ? stocksFrom(p.stocks, existing.stocks) : existing.stocks,
             production: p.production !== undefined ? p.production : existing.production,
             era: p.era !== undefined ? p.era : existing.era,
             advance: p.advance !== undefined ? p.advance : existing.advance,
+            craft: p.craft !== undefined ? p.craft : existing.craft,
             pillagedAtMs: p.pillagedAtMs !== undefined ? p.pillagedAtMs : existing.pillagedAtMs,
             besiegedAtMs: p.besiegedAtMs !== undefined ? p.besiegedAtMs : existing.besiegedAtMs,
           });

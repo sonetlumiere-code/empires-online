@@ -36,7 +36,22 @@ export function tradeActions(o: TradeOfferView): TradeAction[] {
   return o.proposedByMe ? ['withdraw'] : ['accept', 'reject'];
 }
 
-const RESOURCE_NAME: Record<string, string> = { WOOD: 'madera', STONE: 'piedra' };
+const RESOURCE_NAME: Record<string, string> = {
+  WOOD: 'madera',
+  STONE: 'piedra',
+  WINE: 'vino',
+  SILK: 'seda',
+  SPICES: 'especias',
+  FURS: 'pieles',
+};
+
+/** El nombre de un recurso en el formulario y en las ofertas. */
+export function resourceName(r: string): string {
+  return RESOURCE_NAME[r] ?? r.toLowerCase();
+}
+
+/** Los recursos que se pueden ofrecer y pedir, en el orden del protocolo. */
+export const TRADE_RESOURCES: readonly ResourceType[] = v1.ResourceType.options;
 
 /** «300 de madera», «300 de madera y 20 de piedra». */
 export function describeLines(lines: readonly ResourceAmount[]): string {
@@ -75,23 +90,22 @@ export function pendingWith(offers: readonly TradeOfferView[], otherPlayerId: st
   return offers.find((o) => o.otherPlayerId === otherPlayerId && o.status === 'PROPOSED');
 }
 
-/** Lo que el formulario arma: doy `give` de un recurso, pido `want` del otro. */
+/**
+ * Lo que el formulario arma: doy `give` de un recurso, pido `want` de otro. Desde
+ * E14 se elige también el que se pide: con los bienes hay seis (RN-GOODS-008).
+ */
 export interface TradeDraft {
   giveResource: ResourceType;
   giveAmount: number;
+  wantResource: ResourceType;
   wantAmount: number;
-}
-
-/** El otro recurso: con dos, ofrecer uno es pedir el otro (Q4). */
-export function otherResource(r: ResourceType): ResourceType {
-  return r === 'WOOD' ? 'STONE' : 'WOOD';
 }
 
 /** Las dos listas que viajan en trade.propose. */
 export function draftLines(d: TradeDraft): { give: ResourceAmount[]; want: ResourceAmount[] } {
   return {
     give: [{ resource: d.giveResource, amount: d.giveAmount }],
-    want: [{ resource: otherResource(d.giveResource), amount: d.wantAmount }],
+    want: [{ resource: d.wantResource, amount: d.wantAmount }],
   };
 }
 
@@ -100,12 +114,14 @@ export function draftLines(d: TradeDraft): { give: ResourceAmount[]; want: Resou
  * rechazaría seguro, para no mandarlo. Cantidades enteras de 1 a la cota (Q3), y lo
  * que se da tiene que estar en el almacén (RN-TRADE-001).
  */
-export function offerBlockReason(d: TradeDraft, stocks: { WOOD: number; STONE?: number } | undefined): string | null {
+export function offerBlockReason(d: TradeDraft, stocks: Readonly<Partial<Record<string, number>>> | undefined): string | null {
   for (const n of [d.giveAmount, d.wantAmount]) {
     if (!Number.isInteger(n) || n < 1) return 'Las cantidades tienen que ser enteros mayores que 0';
     if (n > TRADE_MAX_AMOUNT) return `Como mucho ${TRADE_MAX_AMOUNT} por línea`;
   }
-  const have = d.giveResource === 'WOOD' ? (stocks?.WOOD ?? 0) : (stocks?.STONE ?? 0);
-  if (have < d.giveAmount) return `No tienes ${d.giveAmount} de ${RESOURCE_NAME[d.giveResource]}`;
+  // SPEC-TRADE Q4: cada recurso en un solo lado.
+  if (d.giveResource === d.wantResource) return 'No se pide lo mismo que se da';
+  const have = stocks?.[d.giveResource] ?? 0;
+  if (have < d.giveAmount) return `No tienes ${d.giveAmount} de ${resourceName(d.giveResource)}`;
   return null;
 }

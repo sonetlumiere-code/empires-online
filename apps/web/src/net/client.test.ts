@@ -169,6 +169,18 @@ describe('comandos', () => {
     expect(salir!.payload, 'el tile de salida lo elige el servidor').toEqual({ unitId: 42 });
   });
 
+  it('el taller y la elaboración envían sólo la ciudad y el tile (SPEC-CIVILIZATION-GOODS)', async () => {
+    const { client, socket } = await ready();
+    client.buildWorkshop(7, { x: 11, y: 11 });
+    client.craft(7);
+    const [taller, elaborar] = socket.parsedSent();
+    expect(taller!.type).toBe('city.build');
+    expect(taller!.payload).toEqual({ cityId: 7, type: 'WORKSHOP', x: 11, y: 11 });
+    expect(elaborar!.type).toBe('city.craft');
+    expect(elaborar!.payload, 'ni bien, ni cantidad, ni tiempo').toEqual({ cityId: 7 });
+    for (const m of [taller, elaborar]) expect(v1.ClientMessage.safeParse(m).success).toBe(true);
+  });
+
   it('los comandos de economía envían sólo la intención y validan contra el contrato', async () => {
     const { client, socket } = await ready();
     client.gatherWood(42, { x: 22, y: 10, terrain: 'FOREST' } as { x: number; y: number });
