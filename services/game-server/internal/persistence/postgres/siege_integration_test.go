@@ -42,7 +42,7 @@ func nuevoAsedio(t *testing.T, ctx context.Context, store *postgres.Store) asedi
 func (a asedio) casaEn(t *testing.T, ctx context.Context, completa bool) int64 {
 	t.Helper()
 	a.depositar(t, ctx, 30, 1)
-	id, err := a.economia.Build(ctx, "req-casa", a.jugador.Player.ID, casa(a.ciudad(), 19, 19), debito(a.ciudad(), -30, 2), 1)
+	id, err := a.economia.Build(ctx, "req-casa", a.jugador.Player.ID, casa(a.ciudad(), 19, 19), []postgres.StockDelta{debito(a.ciudad(), -30, 2)}, 1)
 	require.NoError(t, err)
 	if completa {
 		require.NoError(t, a.economia.CompleteBuilding(ctx, id, a.ciudad(), a.jugador.Player.ID, 5, 2))
@@ -134,12 +134,12 @@ func TestSeReconstruyeEnElTileDeUnaCasaDerribada(t *testing.T) {
 	require.NoError(t, a.economia.DestroyBuilding(ctx, a.derribo(vieja)))
 
 	a.depositar(t, ctx, 30, 3)
-	nueva, err := a.economia.Build(ctx, "req-otra", a.jugador.Player.ID, casa(a.ciudad(), 19, 19), debito(a.ciudad(), -30, 4), 4)
+	nueva, err := a.economia.Build(ctx, "req-otra", a.jugador.Player.ID, casa(a.ciudad(), 19, 19), []postgres.StockDelta{debito(a.ciudad(), -30, 4)}, 4)
 	require.NoError(t, err)
 	assert.NotEqual(t, vieja, nueva)
 
 	a.depositar(t, ctx, 30, 5)
-	_, err = a.economia.Build(ctx, "req-tercera", a.jugador.Player.ID, casa(a.ciudad(), 19, 19), debito(a.ciudad(), -30, 6), 6)
+	_, err = a.economia.Build(ctx, "req-tercera", a.jugador.Player.ID, casa(a.ciudad(), 19, 19), []postgres.StockDelta{debito(a.ciudad(), -30, 6)}, 6)
 	assert.True(t, errors.Is(err, building.ErrInvalidSite), "con una en pie, el tile sigue ocupado: %v", err)
 
 	edificios, err := a.economia.ListBuildings(ctx)

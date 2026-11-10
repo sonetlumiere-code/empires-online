@@ -143,7 +143,7 @@ func truncateAll(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	_, err := pool.Exec(ctx, `
 		TRUNCATE TABLE
 			world_events, garrisons, treaties, trade_offer_lines, trade_offers, territory_claims, safe_zones,
-			unit_tasks, city_productions, city_era_advances, buildings, city_stocks, forest_wood, hill_stone,
+			unit_tasks, city_productions, city_era_advances, city_crafts, buildings, city_stocks, forest_wood, hill_stone,
 			territory_control, territories, sessions,
 			unit_movements, units, cities, world_chunks, world_state, players
 		RESTART IDENTITY CASCADE`)

@@ -57,6 +57,30 @@ export function traitLines(info: v1.CivilizationInfo): TraitLine[] {
   return [...lines.filter((l) => l.good), ...lines.filter((l) => !l.good)];
 }
 
+const GOOD_NAME: Readonly<Record<string, string>> = { WINE: 'vino', SILK: 'seda', SPICES: 'especias', FURS: 'pieles' };
+
+/** Los bienes, en el orden del catálogo (SPEC-CIVILIZATION-GOODS §4.1). */
+export const GOODS: readonly v1.GoodType[] = CIVILIZATIONS.map((c) => c.good);
+
+/** El nombre de un bien («vino»), o el código si no se conoce. */
+export function goodLabel(good: string): string {
+  return GOOD_NAME[good] ?? good.toLowerCase();
+}
+
+/** El bien que elabora el taller de una civilización, o `null`. */
+export function goodOf(code: string): v1.GoodType | null {
+  return CIVILIZATIONS.find((c) => c.code === code)?.good ?? null;
+}
+
+/**
+ * Los bienes que no son el de la civilización: los que cuentan para la Edad de
+ * Hierro (RN-GOODS-006). El propio nunca cuenta.
+ */
+export function foreignGoods(stocks: Readonly<Record<string, number>>, code: string): number {
+  const own = goodOf(code);
+  return GOODS.filter((g) => g !== own).reduce((n, g) => n + (stocks[g] ?? 0), 0);
+}
+
 /** Una línea con todo, para un `title` o un texto corto. */
 export function traitSummary(code: string): string {
   const info = CIVILIZATIONS.find((c) => c.code === code);

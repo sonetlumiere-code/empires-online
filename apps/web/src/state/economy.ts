@@ -122,6 +122,58 @@ export function trainBlockReason(
  */
 export const BRONZE_AGE_COST = { WOOD: 400, STONE: 200 } as const;
 
+/**
+ * Lo que cuesta llegar a la Edad de Hierro (SPEC-CIVILIZATION-GOODS §4.4): madera,
+ * piedra y bienes de otras civilizaciones, en cualquier mezcla. Como el de Bronce,
+ * es sólo para explicarlo: lo cobra y lo decide el servidor.
+ */
+export const IRON_AGE_COST = { WOOD: 800, STONE: 400, FOREIGN_GOODS: 60 } as const;
+
+/** Lo que cuesta el taller (SPEC-CIVILIZATION-GOODS Q6). */
+export const WORKSHOP_COST = { WOOD: 100, STONE: 50 } as const;
+
+/** Lo que cuesta y da una elaboración (SPEC-CIVILIZATION-GOODS Q7). */
+export const CRAFT_COST = { WOOD: 30, STONE: 15 } as const;
+export const CRAFT_AMOUNT = 5;
+
+/** «Faltan 20 de madera y 5 de piedra», o `null` si alcanza. */
+function missing(stocks: { WOOD: number; STONE: number }, cost: { WOOD: number; STONE: number }): string | null {
+  const faltan: string[] = [];
+  if (stocks.WOOD < cost.WOOD) faltan.push(`${cost.WOOD - stocks.WOOD} de madera`);
+  if (stocks.STONE < cost.STONE) faltan.push(`${cost.STONE - stocks.STONE} de piedra`);
+  return faltan.length > 0 ? `Faltan ${faltan.join(' y ')}.` : null;
+}
+
+/**
+ * Por qué no se puede encargar el taller, o `null` si se puede intentar
+ * (RN-GOODS-003): pide Bronce, uno por ciudad, un hueco y 100 de madera y 50 de
+ * piedra. Lo decide el servidor (INVALID_TARGET, INSUFFICIENT_RESOURCES).
+ */
+export function workshopBlockReason(
+  city: Pick<CityView, 'era' | 'stocks' | 'centerX' | 'centerY' | 'id'>,
+  cityBuildings: readonly Pick<BuildingView, 'type' | 'x' | 'y'>[],
+): string | null {
+  if (city.era === 'STONE_AGE') return 'El taller pide la Edad de Bronce.';
+  if (cityBuildings.some((b) => b.type === 'WORKSHOP')) return 'La ciudad ya tiene un taller.';
+  if (firstFreeHouseTile(city, cityBuildings) === null) return 'No queda hueco en la zona urbana.';
+  return missing(city.stocks, WORKSHOP_COST);
+}
+
+/**
+ * Por qué no se puede elaborar, o `null` si se puede intentar (RN-GOODS-004): un
+ * taller completo, ninguna elaboración en curso y 30 de madera y 15 de piedra.
+ */
+export function craftBlockReason(
+  city: Pick<CityView, 'stocks' | 'craft'>,
+  cityBuildings: readonly Pick<BuildingView, 'type' | 'status'>[],
+): string | null {
+  const taller = cityBuildings.find((b) => b.type === 'WORKSHOP');
+  if (!taller) return 'Construye antes un taller.';
+  if (taller.status !== 'COMPLETE') return 'El taller está en obras.';
+  if (city.craft !== null) return 'El taller ya está elaborando.';
+  return missing(city.stocks, CRAFT_COST);
+}
+
 /** El nombre de una era en el HUD. */
 export function eraLabel(era: string): string {
   switch (era) {
@@ -138,22 +190,38 @@ export function eraLabel(era: string): string {
   }
 }
 
+/** La era a la que avanza una ciudad, o `null` si no hay más (RN-ECON-024, Q11). */
+export function nextEra(era: string): string | null {
+  if (era === 'STONE_AGE') return 'BRONZE_AGE';
+  if (era === 'BRONZE_AGE') return 'IRON_AGE';
+  return null;
+}
+
 /**
  * Por qué no se puede avanzar de era ahora, o `null` si se puede intentar
- * (RN-ECON-024): sólo hay paso de Piedra a Bronce, la ciudad no puede estar
- * entrenando ni avanzando, y hacen falta las dos cosas del coste.
+ * (RN-ECON-024): de Piedra a Bronce y de Bronce a Hierro, la ciudad no puede estar
+ * entrenando ni avanzando, y hace falta todo el coste; para Hierro, también 60
+ * bienes de otras civilizaciones (RN-GOODS-006). `foreign` es cuántos tiene.
  */
 export function advanceBlockReason(
   city: Pick<CityView, 'era' | 'production' | 'advance' | 'stocks'>,
+  foreign = 0,
 ): string | null {
-  if (city.era !== 'STONE_AGE') return 'No hay más eras por ahora.';
+  const next = nextEra(city.era);
+  if (next === null) return 'No hay más eras por ahora.';
   if (city.advance !== null) return 'La ciudad ya está avanzando de era.';
   if (city.production !== null) return 'La ciudad está entrenando una unidad: espera a que termine.';
-  const faltan: string[] = [];
-  if (city.stocks.WOOD < BRONZE_AGE_COST.WOOD) faltan.push(`${BRONZE_AGE_COST.WOOD - city.stocks.WOOD} de madera`);
-  if (city.stocks.STONE < BRONZE_AGE_COST.STONE) faltan.push(`${BRONZE_AGE_COST.STONE - city.stocks.STONE} de piedra`);
-  if (faltan.length > 0) return `Faltan ${faltan.join(' y ')}. La piedra está en las colinas.`;
-  return null;
+  if (next === 'BRONZE_AGE') {
+    const falta = missing(city.stocks, BRONZE_AGE_COST);
+    return falta && `${falta} La piedra está en las colinas.`;
+  }
+  const falta = missing(city.stocks, IRON_AGE_COST);
+  const bienes = IRON_AGE_COST.FOREIGN_GOODS - foreign;
+  if (bienes > 0) {
+    const otros = `${bienes} bienes de otras civilizaciones: cómpralos con un trato.`;
+    return falta ? `${falta.slice(0, -1)} y ${otros}` : `Faltan ${otros}`;
+  }
+  return falta;
 }
 
 /** Lo que es un clic sobre una unidad. */

@@ -80,6 +80,12 @@
  *      tener 10 de piedra (con el servidor parado, EO_DEVSEED_STOCK_FOR=smoke_victim
  *      pnpm run dev:seed). Va después de --diplomacia: si su pacto está en preaviso, se
  *      comercia con él.
+ *  13c. sólo con --bienes (SPEC-CIVILIZATION-GOODS): la ciudad del humo, en Bronce, tiene un
+ *      taller (si no, lo construye con su plazo, el de su civilización) y elabora 5 de su bien
+ *      (vino si es romana) con su plazo; el avance a Hierro se rechaza sin bienes de otras
+ *      civilizaciones; y, si hay un tratado vigente con smoke_victim (lo deja --comercio), le
+ *      cambia 5 de su bien por 1 de madera. Va después de --comercio. Necesita 130 de madera
+ *      y 65 de piedra si no hay taller (EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed).
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -95,7 +101,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--registro] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--registro] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -128,6 +134,7 @@ const COMERCIO = args.includes('--comercio');
 const TERRITORIO = args.includes('--territorio');
 const REGISTRO = args.includes('--registro');
 const CIVILIZACION = args.includes('--civilizacion');
+const BIENES = args.includes('--bienes');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -679,6 +686,10 @@ async function main() {
     await comercio(segunda, ciudad);
   }
 
+  if (BIENES) {
+    await bienes(segunda, ciudad);
+  }
+
   if (REGISTRO) {
     await registro(segunda, cuenta.playerId);
   }
@@ -754,6 +765,113 @@ async function civilizaciones(propia, ciudad) {
       `completesAtMs - ts = ${queda} ms`);
   }
   ok('la casa tiene el plazo de su civilización', `${ciudad.civilization}: ${plazo} ms (quedaban ${queda} al anunciarse)`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bienes de civilización (SPEC-CIVILIZATION-GOODS), sólo con --bienes
+// ─────────────────────────────────────────────────────────────
+
+/** El bien de una civilización del catálogo de presentación. */
+export function bienDe(catalogo, codigo) {
+  return catalogo.find((c) => c.code === codigo)?.good ?? null;
+}
+
+/** Comprueba un plazo anunciado contra el de la civilización, con margen por el tick. */
+function comprobarPlazo(que, completesAtMs, ts, plazo) {
+  const queda = completesAtMs - ts;
+  if (queda > plazo || queda < plazo - 2_000) {
+    fallar(`${que} no tiene el plazo de su civilización (${plazo} ms)`, `completesAtMs - ts = ${queda} ms`);
+  }
+  return queda;
+}
+
+async function bienes(propio, ciudad) {
+  propio.sesion.enviar('session.view', { center: { x: ciudad.centerX, y: ciudad.centerY } });
+  const vista = (await propio.sesion.esperar('world.snapshot')).payload;
+  const c = vista.cities.find((x) => x.id === ciudad.id) ?? ciudad;
+  if (c.era === 'STONE_AGE') {
+    ok('bienes: se omite', 'la ciudad del humo sigue en la Edad de Piedra y el taller pide Bronce (--avance)');
+    return;
+  }
+  const bien = bienDe(CATALOGO, c.civilization);
+  const velocidad = rasgo(CATALOGO, c.civilization, 'production.speed');
+  let stocks = { ...c.stocks };
+
+  // El taller: el que haya, o uno nuevo con su plazo (RN-GOODS-003).
+  const edificios = vista.buildings.filter((b) => b.cityId === c.id);
+  let taller = edificios.find((b) => b.type === 'WORKSHOP');
+  if (!taller) {
+    if ((stocks.WOOD ?? 0) < 130 || (stocks.STONE ?? 0) < 65) {
+      fallar('la ciudad del humo no tiene para el taller y una elaboración (130 de madera y 65 de piedra)',
+        'con el servidor parado: EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed');
+    }
+    const hueco = huecoParaCasa(c, edificios);
+    if (!hueco) fallar('no queda hueco para el taller junto al centro', edificios);
+    propio.sesion.enviar('city.build', { cityId: c.id, type: 'WORKSHOP', x: hueco.x, y: hueco.y });
+    const spawn = await propio.sesion.esperarQue(['building.spawn', 'system.error'],
+      (m) => m.type === 'system.error' || (m.payload.building.cityId === c.id && m.payload.building.type === 'WORKSHOP'), 15_000);
+    if (spawn.type === 'system.error') fallar('no se pudo encargar el taller', spawn.payload);
+    const plazo = escalarDuracion(45_000, velocidad);
+    const queda = comprobarPlazo('el taller', spawn.payload.building.completesAtMs, spawn.ts, plazo);
+    ok('taller encargado con el plazo de su civilización', `${c.civilization}: ${plazo} ms (quedaban ${queda})`);
+    taller = spawn.payload.building;
+  }
+  if (taller.status !== 'COMPLETE') {
+    await propio.sesion.esperarQue('building.update', (m) => m.payload.id === taller.id && m.payload.status === 'COMPLETE', 60_000);
+  }
+  ok('taller completo', `(${taller.x}, ${taller.y})`);
+
+  // La elaboración: 5 del bien de la civilización, con su plazo (RN-GOODS-002, RN-GOODS-004).
+  if (c.craft) {
+    await propio.sesion.esperarQue('city.update', (m) => m.payload.id === c.id && m.payload.craft === null, 45_000);
+  }
+  propio.sesion.enviar('city.craft', { cityId: c.id });
+  const encargo = await propio.sesion.esperarQue(['city.update', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.id === c.id && m.payload.craft), 15_000);
+  if (encargo.type === 'system.error') fallar('no se pudo elaborar', encargo.payload);
+  const cr = encargo.payload.craft;
+  if (cr.good !== bien || cr.amount !== 5) fallar(`el taller no elabora 5 de ${bien}`, cr);
+  const plazo = escalarDuracion(30_000, velocidad);
+  const queda = comprobarPlazo('la elaboración', cr.completesAtMs, encargo.ts, plazo);
+  const antes = encargo.payload.stocks?.[bien] ?? stocks[bien] ?? 0;
+  ok('elaboración encargada', `5 de ${bien} en ${plazo} ms (${c.civilization}; quedaban ${queda})`);
+  const fin = await propio.sesion.esperarQue('city.update',
+    (m) => m.payload.id === c.id && m.payload.craft === null, plazo + 10_000);
+  if (fin.payload.stocks?.[bien] !== antes + 5) fallar(`la entrega no sumó 5 de ${bien}`, fin.payload);
+  stocks = { ...stocks, ...fin.payload.stocks };
+  ok('elaboración entregada', `${bien}: ${antes} -> ${antes + 5}`);
+
+  // La Edad de Hierro: sin bienes ajenos, rechazada (RN-GOODS-006).
+  const ajenos = CATALOGO.map((x) => x.good).filter((g) => g !== bien).reduce((n, g) => n + (stocks[g] ?? 0), 0);
+  if (c.era === 'BRONZE_AGE' && ajenos < 60 && !c.advance) {
+    const id = propio.sesion.enviar('city.advance', { cityId: c.id });
+    const r = await propio.sesion.esperarQue('system.error', (m) => m.requestId === id, 10_000);
+    if (r.payload.code !== 'INSUFFICIENT_RESOURCES') fallar('el avance a Hierro sin bienes ajenos no se rechazó', r.payload);
+    ok('Hierro sin bienes de otras civilizaciones se rechaza', `${ajenos}/60: ${r.payload.message}`);
+  }
+
+  // Un trato con el bien (RN-GOODS-008), si hay tratado vigente con la víctima.
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const ciudadV = victima.snapshot.payload.cities.find((x) => x.ownerPlayerId === cuenta.playerId);
+  const vigente = (victima.snapshot.payload.treaties ?? []).find((t) => t.otherCityId === c.id && t.status === 'ACTIVE');
+  const pendiente = (victima.snapshot.payload.tradeOffers ?? []).find((o) => o.otherCityId === c.id && o.status === 'PROPOSED');
+  if (!ciudadV || !vigente || pendiente || (ciudadV.stocks?.WOOD ?? 0) < 1) {
+    ok('trato con bienes: se omite', 'sin tratado vigente con smoke_victim, con una oferta pendiente o sin madera (--comercio)');
+    victima.sesion.cerrar();
+    return;
+  }
+  propio.sesion.enviar('trade.propose', {
+    playerId: cuenta.playerId, give: [{ resource: bien, amount: 5 }], want: [{ resource: 'WOOD', amount: 1 }],
+  });
+  const propia = await oferta(propio.sesion, (x) => x.otherPlayerId === cuenta.playerId && x.status === 'PROPOSED');
+  victima.sesion.enviar('trade.respond', { offerId: propia.id, accept: true });
+  await oferta(victima.sesion, (x) => x.id === propia.id && x.status === 'ACCEPTED');
+  const tenia = ciudadV.stocks?.[bien] ?? 0;
+  const almacenV = await victima.sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadV.id && m.payload.stocks && m.payload.stocks[bien] === tenia + 5);
+  ok('trato con bienes aceptado', `${ciudadV.name}: ${bien} ${tenia} -> ${almacenV.payload.stocks[bien]}`);
+  victima.sesion.cerrar();
 }
 
 // ─────────────────────────────────────────────────────────────

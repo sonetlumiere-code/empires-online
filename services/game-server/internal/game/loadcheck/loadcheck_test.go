@@ -10,6 +10,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
@@ -51,7 +52,7 @@ func sano(t *testing.T) (loadcheck.Input, *city.City, []*unit.Unit) {
 		World:   mundo(t),
 		EraCaps: map[city.Era]int32{city.EraStone: 20},
 		Civilizations: []player.Civilization{
-			{ID: 4, Code: "NORSE", Traits: map[string]int32{player.TraitMoveSpeed: 1100, player.TraitLootCarry: 1150}},
+			{ID: 4, Code: "NORSE", Good: economy.ResourceFurs, Traits: map[string]int32{player.TraitMoveSpeed: 1100, player.TraitLootCarry: 1150}},
 		},
 		Players:   map[uuid.UUID]struct{}{dueno: {}},
 		Cities:    []*city.City{ciudad},
@@ -104,6 +105,21 @@ func TestUnRasgoInvalidoEnElCatalogoAbortaElArranque(t *testing.T) {
 	in.Civilizations[0].Traits[player.TraitHouseHP] = 0
 	r := loadcheck.Check(in)
 	assert.Equal(t, []string{"INV-PLAYER-012/FAIL_FAST"}, invs(r))
+	assert.True(t, r.Fatal())
+}
+
+// INV-ECON-009 (SPEC-CIVILIZATION-GOODS): una civilización sin bien, o dos con
+// el mismo, abortan el arranque.
+func TestUnCatalogoSinUnBienDistintoPorCivilizacionAbortaElArranque(t *testing.T) {
+	in, _, _ := sano(t)
+	in.Civilizations[0].Good = ""
+	r := loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-ECON-009/FAIL_FAST"}, invs(r))
+
+	in, _, _ = sano(t)
+	in.Civilizations = append(in.Civilizations, player.Civilization{ID: 1, Code: "ROMAN", Good: economy.ResourceFurs})
+	r = loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-ECON-009/FAIL_FAST"}, invs(r))
 	assert.True(t, r.Fatal())
 }
 

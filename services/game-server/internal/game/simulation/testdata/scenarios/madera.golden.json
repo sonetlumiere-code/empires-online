@@ -83,7 +83,11 @@
         "population": 3,
         "stocks": {
           "WOOD": 0,
-          "STONE": 0
+          "STONE": 0,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         },
         "production": {
           "unitType": "VILLAGER",
@@ -713,7 +717,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 10,
-          "STONE": 0
+          "STONE": 0,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },
@@ -1138,7 +1146,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 20,
-          "STONE": 0
+          "STONE": 0,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },
@@ -1563,7 +1575,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 30,
-          "STONE": 0
+          "STONE": 0,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },
@@ -1686,7 +1702,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 0,
-          "STONE": 0
+          "STONE": 0,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },
@@ -2045,7 +2065,11 @@
         "id": 1,
         "stocks": {
           "WOOD": 10,
-          "STONE": 0
+          "STONE": 0,
+          "WINE": 0,
+          "SILK": 0,
+          "SPICES": 0,
+          "FURS": 0
         }
       }
     },

@@ -189,6 +189,20 @@ export const CityAdvance = z.object({
 }).strict();
 
 /**
+ * Encarga al taller de una ciudad propia una elaboración del bien de su
+ * civilización (SPEC-CIVILIZATION-GOODS §4.3). Sólo la ciudad: el bien, la
+ * cantidad, el coste y el tiempo los decide el servidor.
+ */
+export const CityCraft = z.object({
+  v: V,
+  type: z.literal('city.craft'),
+  requestId: Uuid,
+  payload: z.object({
+    cityId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
  * Ordena a una unidad militar propia atacar a una unidad de otro jugador: la
  * persigue y la golpea hasta que muera o el enfrentamiento termine. Es la primera
  * acción hostil (ADR-016). El daño, el alcance y el botín los decide el servidor.
@@ -368,6 +382,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   UnitPillage,
   UnitDemolish,
   UnitClaim,
+  CityCraft,
   TreatyPropose,
   TreatyRespond,
   TreatyCancel,
@@ -390,6 +405,7 @@ export type UnitGather = z.infer<typeof UnitGather>;
 export type CityBuild = z.infer<typeof CityBuild>;
 export type CityTrain = z.infer<typeof CityTrain>;
 export type CityAdvance = z.infer<typeof CityAdvance>;
+export type CityCraft = z.infer<typeof CityCraft>;
 export type UnitAttack = z.infer<typeof UnitAttack>;
 export type UnitPillage = z.infer<typeof UnitPillage>;
 export type UnitDemolish = z.infer<typeof UnitDemolish>;
@@ -427,6 +443,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'event_log.fetch',
   'event_log.seen',
   'unit.claim',
+  'city.craft',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

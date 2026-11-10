@@ -19,6 +19,13 @@ import { terrainAt, useWorldStore, type CityView } from '../src/state/world';
 import { createHudSelector } from '../src/state/selectors';
 import {
   advanceBlockReason,
+  craftBlockReason,
+  CRAFT_AMOUNT,
+  CRAFT_COST,
+  IRON_AGE_COST,
+  nextEra,
+  workshopBlockReason,
+  WORKSHOP_COST,
   BRONZE_AGE_COST,
   buildingAt,
   buildingsOf,
@@ -37,7 +44,16 @@ import {
   unitTypeLabel,
 } from '../src/state/economy';
 import { ViewSync } from '../src/state/viewSync';
-import { CIVILIZATIONS, civilizationLabel, traitLines, traitSummary } from '../src/state/civilizations';
+import {
+  CIVILIZATIONS,
+  civilizationLabel,
+  foreignGoods,
+  GOODS,
+  goodLabel,
+  goodOf,
+  traitLines,
+  traitSummary,
+} from '../src/state/civilizations';
 import {
   anyCountdown,
   proposableTypes,
@@ -50,7 +66,8 @@ import {
   canTradeWith,
   draftLines,
   offerBlockReason,
-  otherResource,
+  resourceName,
+  TRADE_RESOURCES,
   pendingWith,
   tradeActions,
   tradeLabel,
@@ -129,7 +146,7 @@ export default function Page() {
   const [diplomacyTarget, setDiplomacyTarget] = useState<CityView | null>(null);
   // Comercio (SPEC-TRADE): las ofertas pendientes y el trato que se está armando.
   const tradeOffers = useWorldStore((s) => s.tradeOffers);
-  const [draft, setDraft] = useState<TradeDraft>({ giveResource: 'WOOD', giveAmount: 100, wantAmount: 50 });
+  const [draft, setDraft] = useState<TradeDraft>({ giveResource: 'WOOD', giveAmount: 100, wantResource: 'STONE', wantAmount: 50 });
   const countdown = anyCountdown(treaties);
   // Conquista (SPEC-TERRITORY-CONQUEST): el territorio del guerrero seleccionado.
   // Cada TerritoryView se sustituye al cambiar, así que la suscripción a él sólo
@@ -548,6 +565,17 @@ export default function Page() {
     if (tile) clientRef.current?.buildHouse(ownCity.id, tile);
   };
 
+  // «Taller»: como «Casa», en el primer hueco libre (SPEC-CIVILIZATION-GOODS §4.6).
+  const buildWorkshop = () => {
+    const state = useWorldStore.getState();
+    if (!ownCity) return;
+    const tile = firstFreeHouseTile(ownCity, buildingsOf(state.buildings, ownCity.id));
+    if (tile) clientRef.current?.buildWorkshop(ownCity.id, tile);
+  };
+  // Los edificios de la ciudad propia, para los motivos del taller y de la elaboración.
+  const ownBuildings = ownCity ? buildingsOf(useWorldStore.getState().buildings, ownCity.id) : [];
+  const ownGood = ownCity ? goodOf(ownCity.civilization) : null;
+
   // Por qué no se puede reclamar con el guerrero seleccionado (SPEC-TERRITORY-CONQUEST §5).
   const claimReason = claimTerritory
     ? claimBlockReason({
@@ -595,6 +623,21 @@ export default function Page() {
             </button>
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
             <span title="Piedra de la ciudad: se recoge en las colinas">Piedra {ownCity.stocks.STONE}</span>
+            {/* Los bienes: el propio siempre, los ajenos si hay (SPEC-CIVILIZATION-GOODS §4.6). */}
+            {GOODS.filter((g) => g === ownGood || ownCity.stocks[g] > 0)
+              .sort((a, b) => (a === ownGood ? -1 : b === ownGood ? 1 : 0))
+              .map((g) => (
+                <span
+                  key={g}
+                  title={
+                    g === ownGood
+                      ? 'Tu bien: sólo lo elabora tu taller y sólo sirve para comerciar'
+                      : 'Bien de otra civilización: cuenta para la Edad de Hierro'
+                  }
+                >
+                  {goodLabel(g).charAt(0).toUpperCase() + goodLabel(g).slice(1)} {ownCity.stocks[g]}
+                </span>
+              ))}
             {pillageAlertActive(ownCity, serverTimeMs()) && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }} role="alert">
                 ¡Están saqueando tu ciudad!
@@ -608,6 +651,36 @@ export default function Page() {
             <button className="secondary" onClick={buildHouse} title="Encarga una casa en el primer hueco libre junto al centro: +5 de población al terminar">
               Casa
             </button>
+            <button
+              className="secondary"
+              onClick={buildWorkshop}
+              disabled={workshopBlockReason(ownCity, ownBuildings) !== null}
+              title={
+                workshopBlockReason(ownCity, ownBuildings) ??
+                `Encarga el taller: ${WORKSHOP_COST.WOOD} de madera y ${WORKSHOP_COST.STONE} de piedra. Elabora ${ownGood ? goodLabel(ownGood) : 'tu bien'}, que sólo produce tu civilización`
+              }
+            >
+              Taller
+            </button>
+            {ownBuildings.some((b) => b.type === 'WORKSHOP') &&
+              (ownCity.craft ? (
+                <span style={{ color: 'var(--muted)' }}>
+                  Elaborando {ownCity.craft.amount} de {goodLabel(ownCity.craft.good)}:{' '}
+                  {secondsUntil(ownCity.craft.completesAtMs, serverTimeMs())} s
+                </span>
+              ) : (
+                <button
+                  className="secondary"
+                  onClick={() => clientRef.current?.craft(ownCity.id)}
+                  disabled={craftBlockReason(ownCity, ownBuildings) !== null}
+                  title={
+                    craftBlockReason(ownCity, ownBuildings) ??
+                    `Elabora ${CRAFT_AMOUNT} de ${ownGood ? goodLabel(ownGood) : 'tu bien'}: ${CRAFT_COST.WOOD} de madera y ${CRAFT_COST.STONE} de piedra, unos 30 s. No impide entrenar`
+                  }
+                >
+                  Elaborar ({CRAFT_AMOUNT} de {ownGood ? goodLabel(ownGood) : 'tu bien'})
+                </button>
+              ))}
             <button
               className="secondary"
               onClick={() => clientRef.current?.trainVillager(ownCity.id)}
@@ -633,19 +706,26 @@ export default function Page() {
                 {secondsUntil(ownCity.production.completesAtMs, serverTimeMs())} s
               </span>
             )}
-            {ownCity.era === 'STONE_AGE' && !ownCity.advance && (
-              <button
-                className="secondary"
-                onClick={() => clientRef.current?.advanceEra(ownCity.id)}
-                disabled={advanceBlockReason(ownCity) !== null}
-                title={
-                  advanceBlockReason(ownCity) ??
-                  `Avanza a la Edad de Bronce: ${BRONZE_AGE_COST.WOOD} de madera y ${BRONZE_AGE_COST.STONE} de piedra, 90 s sin entrenar. El límite de población sube de 20 a 50`
-                }
-              >
-                Edad de Bronce
-              </button>
-            )}
+            {nextEra(ownCity.era) !== null && !ownCity.advance && (() => {
+              const foreign = foreignGoods(ownCity.stocks, ownCity.civilization);
+              const reason = advanceBlockReason(ownCity, foreign);
+              const next = nextEra(ownCity.era)!;
+              const what =
+                next === 'BRONZE_AGE'
+                  ? `Avanza a la Edad de Bronce: ${BRONZE_AGE_COST.WOOD} de madera y ${BRONZE_AGE_COST.STONE} de piedra, 90 s sin entrenar. El límite de población sube de 20 a 50`
+                  : `Avanza a la Edad de Hierro: ${IRON_AGE_COST.WOOD} de madera, ${IRON_AGE_COST.STONE} de piedra y ${IRON_AGE_COST.FOREIGN_GOODS} bienes de otras civilizaciones (se cobran en el orden vino, seda, especias, pieles; el tuyo nunca), 180 s sin entrenar. El límite sube de 50 a 100`;
+              return (
+                <button
+                  className="secondary"
+                  onClick={() => clientRef.current?.advanceEra(ownCity.id)}
+                  disabled={reason !== null}
+                  title={reason ?? what}
+                >
+                  {eraLabel(next)}
+                  {next === 'IRON_AGE' && ` (${foreign}/${IRON_AGE_COST.FOREIGN_GOODS} bienes)`}
+                </button>
+              );
+            })()}
             {ownCity.advance && (
               <span style={{ color: 'var(--muted)' }}>
                 Avanzando a la {eraLabel(ownCity.advance.era)}:{' '}
@@ -728,15 +808,23 @@ export default function Page() {
                       value={draft.giveResource} aria-label="Recurso que doy"
                       onChange={(e) => setDraft({ ...draft, giveResource: e.target.value as ResourceType })}
                     >
-                      <option value="WOOD">de madera</option>
-                      <option value="STONE">de piedra</option>
+                      {TRADE_RESOURCES.map((r) => (
+                        <option key={r} value={r}>de {resourceName(r)}</option>
+                      ))}
                     </select>
                     <span>y pido</span>
                     <input
                       type="number" min={1} step={1} value={draft.wantAmount} style={{ width: '5rem' }} aria-label="Cantidad que pido"
                       onChange={(e) => setDraft({ ...draft, wantAmount: Number(e.target.value) })}
                     />
-                    <span>{otherResource(draft.giveResource) === 'WOOD' ? 'de madera' : 'de piedra'}</span>
+                    <select
+                      value={draft.wantResource} aria-label="Recurso que pido"
+                      onChange={(e) => setDraft({ ...draft, wantResource: e.target.value as ResourceType })}
+                    >
+                      {TRADE_RESOURCES.map((r) => (
+                        <option key={r} value={r}>de {resourceName(r)}</option>
+                      ))}
+                    </select>
                     {(() => {
                       const reason = offerBlockReason(draft, ownCity?.stocks);
                       return (

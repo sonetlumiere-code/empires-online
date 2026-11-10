@@ -13,6 +13,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
@@ -58,7 +59,13 @@ type State struct {
 	// civilizations es el catálogo por código (SPEC-CIVILIZATION); nil en los
 	// tests que no lo instalan, y entonces los rasgos son neutros.
 	civilizations map[string]player.Civilization
-	unitsByChunk  map[chunkKey]map[int64]struct{}
+	// goodsOrder son los bienes en el orden del catálogo de civilizaciones
+	// (SPEC-CIVILIZATION-GOODS RN-GOODS-006).
+	goodsOrder []economy.Resource
+	// pendingCraftDeliveries son las entregas de elaboración descartadas, por
+	// request_id: el siguiente volcado las reintenta (craft.go).
+	pendingCraftDeliveries map[string]CraftDelivery
+	unitsByChunk           map[chunkKey]map[int64]struct{}
 
 	// La geometría de los territorios es inmutable en runtime; sólo cambia el
 	// control. Por eso van separados: `territories` se instala una vez y
@@ -150,19 +157,20 @@ func NewState(w *world.World) *State {
 		entering:          make(map[int64]struct{}),
 		pendingExits:      make(map[int64]exitRequest),
 
-		economies:          make(map[int64]*cityEconomy),
-		stockDirty:         make(map[int64]struct{}),
-		tasks:              make(map[int64]*taskEntry),
-		buildings:          make(map[int64]*building.Building),
-		buildingAt:         make(map[world.Tile]int64),
-		pendingBuilds:      make(map[world.Tile]pendingBuild),
-		combat:             newCombatState(),
-		siege:              newSiegeState(),
-		diplo:              newDiplomacyState(),
-		trade:              newTradeState(),
-		conquest:           newConquestState(),
-		deposits:           newDepositState(),
-		pendingCompletions: make(map[int64]struct{}),
+		economies:              make(map[int64]*cityEconomy),
+		stockDirty:             make(map[int64]struct{}),
+		tasks:                  make(map[int64]*taskEntry),
+		buildings:              make(map[int64]*building.Building),
+		buildingAt:             make(map[world.Tile]int64),
+		pendingBuilds:          make(map[world.Tile]pendingBuild),
+		combat:                 newCombatState(),
+		siege:                  newSiegeState(),
+		diplo:                  newDiplomacyState(),
+		trade:                  newTradeState(),
+		conquest:               newConquestState(),
+		deposits:               newDepositState(),
+		pendingCompletions:     make(map[int64]struct{}),
+		pendingCraftDeliveries: make(map[string]CraftDelivery),
 
 		eraCaps:                   make(map[city.Era]int32),
 		pendingAdvanceCompletions: make(map[int64]AdvanceCompletion),

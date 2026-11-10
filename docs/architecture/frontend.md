@@ -655,6 +655,22 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **La ciudad ajena.** La barra de diplomacia que abre un clic en una ciudad ajena (§4.5) dice su nombre, su
   civilización y su era, con los rasgos en el `title`: la civilización es pública (RN-CIV-009).
 
+### 4.11 Bienes de civilización: el taller, la elaboración y Hierro (SPEC-CIVILIZATION-GOODS)
+
+> **Estado (2026-11-10): implementado y con tests de lo puro** (`src/state/economy.ts`, `src/state/civilizations.ts`,
+> `src/state/trade.ts`).
+
+- **El almacén.** `CityStocks` lleva los seis recursos; los que un servidor anterior no manda valen lo que había, o 0
+  (`stocksFrom`). La ciudad lleva su `craft` (o `null`), que `city.update` empieza con una vista y termina en `null`.
+- **El HUD.** Tras la madera y la piedra, el bien propio siempre y los ajenos si hay (`goodOf`, `goodLabel`). Junto a
+  «Casa», «Taller» en el primer hueco libre, deshabilitado con su motivo (`workshopBlockReason`: sin Bronce, ya hay
+  uno, sin hueco, faltan recursos); con el taller en pie, «Elaborar (5 de vino)» con su motivo (`craftBlockReason`) o,
+  mientras elabora, su cuenta atrás. Las órdenes son `GameClient.buildWorkshop` y `GameClient.craft`.
+- **El avance.** Un solo botón para la era siguiente (`nextEra`): a Bronce o a Hierro. El de Hierro dice cuántos bienes
+  ajenos lleva (`foreignGoods`, sin el propio) y su `title`, en qué orden se cobran; `advanceBlockReason` dice qué falta.
+- **El trato.** El formulario elige el recurso que se da y el que se pide entre los seis (`TRADE_RESOURCES`), y no deja
+  pedir lo mismo que se da (`offerBlockReason`).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

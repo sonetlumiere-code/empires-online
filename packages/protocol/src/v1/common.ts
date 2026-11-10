@@ -63,11 +63,19 @@ export const PresenceState = z.enum(['ONLINE', 'OFFLINE_PENDING', 'PROTECTED']);
 export type PresenceState = z.infer<typeof PresenceState>;
 
 /**
- * Recursos de la economía: la madera del bosque y la piedra de la colina. Ver
- * ../../../docs/specs/economy-wood.md y economy-stone.md
+ * Recursos de la economía: la madera del bosque y la piedra de la colina, y desde
+ * E14 los cuatro bienes de civilización. Ver ../../../docs/specs/economy-wood.md,
+ * economy-stone.md y civilization-goods.md
  */
-export const ResourceType = z.enum(['WOOD', 'STONE']);
+export const ResourceType = z.enum(['WOOD', 'STONE', 'WINE', 'SILK', 'SPICES', 'FURS']);
 export type ResourceType = z.infer<typeof ResourceType>;
+
+/**
+ * Los bienes de civilización (SPEC-CIVILIZATION-GOODS §4.1): cada uno lo elabora
+ * sólo el taller de una civilización. Qué bien es de quién lo dice el catálogo.
+ */
+export const GoodType = z.enum(['WINE', 'SILK', 'SPICES', 'FURS']);
+export type GoodType = z.infer<typeof GoodType>;
 
 /**
  * Cota técnica de una línea de comercio (ADR-032 §7): no es una regla de juego.
@@ -95,10 +103,16 @@ export const Stocks = z.object({
    * E9 en adelante siempre la manda.
    */
   STONE: z.number().int().min(0).optional(),
+  /** Bienes de civilización (SPEC-CIVILIZATION-GOODS). Opcionales: aditivo (R-VER-2). */
+  WINE: z.number().int().min(0).optional(),
+  SILK: z.number().int().min(0).optional(),
+  SPICES: z.number().int().min(0).optional(),
+  FURS: z.number().int().min(0).optional(),
 });
 export type Stocks = z.infer<typeof Stocks>;
 
-export const BuildingType = z.enum(['HOUSE']);
+/** El taller (`WORKSHOP`) llega con SPEC-CIVILIZATION-GOODS §4.2. */
+export const BuildingType = z.enum(['HOUSE', 'WORKSHOP']);
 export type BuildingType = z.infer<typeof BuildingType>;
 
 export const BuildingStatus = z.enum(['UNDER_CONSTRUCTION', 'COMPLETE']);
@@ -172,6 +186,17 @@ export const ProductionView = z.object({
 });
 export type ProductionView = z.infer<typeof ProductionView>;
 
+/**
+ * Elaboración en curso del taller de una ciudad: qué bien, cuánto y cuándo se
+ * entrega (SPEC-CIVILIZATION-GOODS §4.3).
+ */
+export const CraftView = z.object({
+  good: GoodType,
+  amount: z.number().int().min(1),
+  completesAtMs: EpochMs,
+});
+export type CraftView = z.infer<typeof CraftView>;
+
 /** Avance de era en curso de una ciudad: a qué era va y cuándo llega (SPEC-ECON-STONE §6). */
 export const AdvanceView = z.object({
   era: EraCode,
@@ -218,6 +243,8 @@ export const CityView = z.object({
   production: ProductionView.nullable().optional(),
   /** Avance de era en curso; `null` si no avanza (SPEC-ECON-STONE). */
   advance: AdvanceView.nullable().optional(),
+  /** Elaboración en curso del taller; `null` si no elabora (SPEC-CIVILIZATION-GOODS). */
+  craft: CraftView.nullable().optional(),
 });
 export type CityView = z.infer<typeof CityView>;
 

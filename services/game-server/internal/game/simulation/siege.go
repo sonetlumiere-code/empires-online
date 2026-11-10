@@ -147,16 +147,18 @@ func (s *State) houseHP(b *building.Building) (hp, maxHP int32) {
 	return maxHP, maxHP
 }
 
-// buildingMaxHP es la vida entera de un edificio: la de su tipo por el rasgo
-// building.house_hp de la civilización del dueño de su ciudad, leída cada vez
-// (SPEC-CIVILIZATION RN-CIV-006). El daño ya hecho no se reescala.
+// buildingMaxHP es la vida entera de un edificio: la de su tipo y, si es una
+// casa, por el rasgo building.house_hp de la civilización del dueño de su
+// ciudad, leída cada vez (SPEC-CIVILIZATION RN-CIV-006). El rasgo es de las
+// casas: el taller aguanta lo de su tipo (SPEC-CIVILIZATION-GOODS Q6). El daño
+// ya hecho no se reescala.
 func (s *State) buildingMaxHP(b building.Building) (int32, bool) {
 	def, err := building.Lookup(b.Type)
 	if err != nil {
 		return 0, false
 	}
 	c, ok := s.cities[b.CityID]
-	if !ok {
+	if !ok || b.Type != building.TypeHouse {
 		return def.MaxHP, true
 	}
 	return s.houseMaxHP(c.OwnerPlayerID, def.MaxHP), true
@@ -431,6 +433,10 @@ func (s *Simulation) destroyHouse(b *building.Building, c *city.City, attacker *
 	// completa; la población no cambia y puede quedar por encima (ADR-029 §1).
 	if wasComplete {
 		c.PopulationLimit -= def.PopulationBonus
+	}
+	// RN-GOODS-007: con el taller cae la elaboración en curso.
+	if b.Type == building.TypeWorkshop {
+		s.loseCraft(c)
 	}
 
 	cx, cy := s.state.World().ChunkOf(b.X, b.Y)

@@ -150,6 +150,10 @@ Son parámetros de equilibrio, no decisiones de diseño: viven en los catálogos
 | `HOUSE` | coste 30, 15 s, +5 población | La primera decisión del jugador llega antes del minuto. |
 | `VILLAGER` | coste 50, 20 s | Más caro que la casa para que el orden casa → aldeano sea una elección. |
 
+**Precisión (2026-11-06, [civilization-goods.md](civilization-goods.md) §4.2, [ADR-036](../decisions/ADR-036-civilization-goods.md) §3).**
+La casa deja de ser el único edificio: desde E14 está el taller (`WORKSHOP`), que cuesta en dos recursos. El catálogo
+sigue en código, y el coste de un edificio pasa a ser una lista de recursos (la casa, con una sola línea).
+
 **Precisión (2026-11-02).** La tabla supone que hay un bosque cerca de la ciudad, y la fundación no lo
 garantizaba. En la primera prueba en vivo, la ciudad del humo nació con el bosque más cercano a 74 tiles,
 fuera de su área de interés; sobre el mundo canónico, una de cada tres ciudades nacía sin bosque a menos de

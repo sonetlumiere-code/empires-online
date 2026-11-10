@@ -22,14 +22,45 @@ const (
 	ResourceWood Resource = "WOOD"
 	// ResourceStone es la piedra de la colina (SPEC-ECON-STONE).
 	ResourceStone Resource = "STONE"
+	// Los bienes de civilización (SPEC-CIVILIZATION-GOODS §4.1): cada uno lo
+	// elabora sólo el taller de una civilización. Qué bien es de quién lo dice
+	// el catálogo de civilizaciones, no este paquete.
+	ResourceWine   Resource = "WINE"
+	ResourceSilk   Resource = "SILK"
+	ResourceSpices Resource = "SPICES"
+	ResourceFurs   Resource = "FURS"
 )
 
 // Valid indica si el recurso pertenece al catálogo. Es el mismo conjunto que
-// el CHECK city_stocks_resource_valid (migraciones 000006 y 000012).
-func (r Resource) Valid() bool { return r == ResourceWood || r == ResourceStone }
+// el CHECK city_stocks_resource_valid (migraciones 000006, 000012 y 000016).
+func (r Resource) Valid() bool {
+	for _, x := range Resources() {
+		if r == x {
+			return true
+		}
+	}
+	return false
+}
+
+// IsGood indica si el recurso es un bien de civilización.
+func (r Resource) IsGood() bool {
+	for _, g := range Goods() {
+		if r == g {
+			return true
+		}
+	}
+	return false
+}
 
 // Resources es el catálogo cerrado de recursos, en orden estable.
-func Resources() []Resource { return []Resource{ResourceWood, ResourceStone} }
+func Resources() []Resource {
+	return []Resource{ResourceWood, ResourceStone, ResourceWine, ResourceSilk, ResourceSpices, ResourceFurs}
+}
+
+// Goods son los bienes de civilización, en orden estable.
+func Goods() []Resource {
+	return []Resource{ResourceWine, ResourceSilk, ResourceSpices, ResourceFurs}
+}
 
 // Cost es lo que cuesta algo, en un recurso.
 type Cost struct {

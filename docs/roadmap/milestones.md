@@ -1882,3 +1882,46 @@ sobre el combate, el avance de era o el comercio, el pipeline completo de modifi
    las cuatro con sus porcentajes y «Fundar imperio» no se puede pulsar hasta elegir; el HUD dice «smoke_runnerpolis —
    Romanos — Edad de Bronce», y la barra de dev_nortepolis, «dev_nortepolis (Romanos, Edad de Piedra)», con el
    formulario «Ofrecer trato» de E10 debajo.
+
+## E14 — Bienes
+
+**Estado: HECHO EN LA RAMA (2026-11-10)**, en `claude/slice-capacidades`, con su prueba en vivo; falta fusionarlo con la CI en verde. Contrato:
+[SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md), aceptada el 2026-11-06 con sus doce decisiones de producto,
+y [ADR-036](../decisions/ADR-036-civilization-goods.md).
+
+**Objetivo.** Que ningún jugador sea autosuficiente (pilar 4): cada civilización produce algo que las demás necesitan.
+
+**Alcance.** Un bien por civilización (vino, seda, especias, pieles) como recurso del almacén y del comercio; el taller,
+que pide Bronce y es único por ciudad; `city.craft`, que elabora 5 del bien propio por 30 de madera y 15 de piedra en
+30 s, sin bloquear el entrenamiento; el avance de Bronce a Hierro con 800 de madera, 400 de piedra y 60 bienes ajenos;
+los rasgos de producción de E13 sobre el taller y la elaboración; `INV-ECON-009` a `011`; migración `000016`; el
+cliente y `scripts/smoke.mjs --bienes`. **No entra** (spec §2): unidades o tecnologías exclusivas, la Edad de los
+Castillos, otros usos de los bienes, saquearlos, la producción pasiva.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-036, `INV-ECON-009` a `011`, las precisiones de [economy-stone.md](../specs/economy-stone.md)
+   Q6, [trade.md](../specs/trade.md) Q4, [economy-wood.md](../specs/economy-wood.md) §4.5 y
+   [civilizations.md](../specs/civilizations.md) Q6, y la `Q-12` del backlog.
+2. **HECHO** — Protocolo: `city.craft` (24 tipos cliente → servidor), `craft` en `CityView` y `city.update`,
+   `WORKSHOP`, los cuatro recursos en `Stocks` y en las líneas de un trato, `good` en el catálogo de presentación;
+   contract tests en los dos lados.
+3. **HECHO** — Dominio: los recursos y `economy.Goods()`, `Civilization.Good` y `ValidateCatalog`, el taller con costes
+   en varios recursos, `RequiresEra` y `UniquePerCity`, `internal/domain/craft`, `advance.Resolve` y el paso a Hierro.
+4. **HECHO** — Migración `000016` y persistencia: los `CHECK`, `civilizations.good`, el único parcial del taller,
+   `city_crafts`, el encargo y la entrega idempotentes, el derribo que borra la elaboración; seis tests de
+   integración nuevos.
+5. **HECHO** — Simulación: la orden en dos fases, la entrega optimista con su reintento a versión nueva, el taller
+   único también contra los encargos en vuelo, el derribo, el avance con los bienes resueltos; los golden «bienes»,
+   verificados por mutación, y un e2e de elaborar por la red. Fallo encontrado: el rasgo `building.house_hp` se
+   aplicaba a cualquier edificio y un taller bizantino salía con 240 de vida; ahora sólo a las casas.
+6. **HECHO** — Cliente: «Taller», «Elaborar» con su cuenta atrás, los bienes en el HUD, el formulario de trato con los
+   seis recursos y el avance a Hierro con sus bienes (frontend.md §4.11).
+7. **HECHO** — Humo y prueba en vivo (2026-11-10): el servidor aplicó `000016` al arrancar y la validación de carga
+   aceptó las once ciudades. `node scripts/smoke.mjs --web http://localhost:3001 --comercio --bienes` pasó sus 31
+   comprobaciones: smoke_runner (romana, en Bronce) encargó el taller con su plazo de 40 909 ms, elaboró 5 de vino con
+   el de 27 273, el avance a Hierro sin bienes ajenos se rechazó, y con el acuerdo comercial que firmó `--comercio`
+   cambió 5 de vino por 1 de madera a smoke_victim. En el navegador integrado, el HUD enseña «Vino», «Taller»
+   deshabilitado porque ya hay uno, «Elaborar (5 de vino)» y «Edad de Hierro (0/60 bienes)» con lo que falta; pulsar
+   «Elaborar» puso la cuenta atrás y, al vencer, el vino subió a 5.
+

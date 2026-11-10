@@ -335,7 +335,8 @@
                 "type": {
                   "type": "string",
                   "enum": [
-                    "HOUSE"
+                    "HOUSE",
+                    "WORKSHOP"
                   ]
                 },
                 "x": {
@@ -594,6 +595,40 @@
             },
             "type": {
               "type": "string",
+              "const": "city.craft"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "cityId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                }
+              },
+              "required": [
+                "cityId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
               "const": "treaty.propose"
             },
             "requestId": {
@@ -729,7 +764,11 @@
                         "type": "string",
                         "enum": [
                           "WOOD",
-                          "STONE"
+                          "STONE",
+                          "WINE",
+                          "SILK",
+                          "SPICES",
+                          "FURS"
                         ]
                       },
                       "amount": {
@@ -745,10 +784,10 @@
                     "additionalProperties": false
                   },
                   "minItems": 1,
-                  "maxItems": 2
+                  "maxItems": 6
                 },
                 "want": {
-                  "$ref": "#/definitions/ClientMessage/anyOf/18/properties/payload/properties/give"
+                  "$ref": "#/definitions/ClientMessage/anyOf/19/properties/payload/properties/give"
                 }
               },
               "required": [

@@ -12,7 +12,7 @@ import {
   TERRAIN_HILL,
   trainBlockReason,
 } from './economy';
-import { forestKey, useWorldStore } from './world';
+import { forestKey, useWorldStore, type CityStocks } from './world';
 
 // SPEC-ECON-STONE en el cliente: la colina se recolecta con la misma orden que
 // el bosque, la piedra viaja en el stock, la colina picada es una capa aparte y
@@ -51,12 +51,11 @@ function snapshot(extra: Partial<v1.WorldSnapshot['payload']> = {}): v1.WorldSna
   } as v1.WorldSnapshot['payload'];
 }
 
-const ciudad = (over: Partial<{ era: string; stocks: { WOOD: number; STONE: number } }> = {}) => ({
-  era: 'STONE_AGE', civilization: 'ROMAN',
+const ciudad = (over: { era?: string; stocks?: Partial<CityStocks> } = {}) => ({
+  era: over.era ?? 'STONE_AGE', civilization: 'ROMAN',
   production: null as { unitType: string; completesAtMs: number } | null,
   advance: null as { era: string; completesAtMs: number } | null,
-  stocks: { WOOD: 400, STONE: 200 },
-  ...over,
+  stocks: { WOOD: 400, STONE: 200, WINE: 0, SILK: 0, SPICES: 0, FURS: 0, ...over.stocks } as CityStocks,
 });
 
 describe('decisiones de la piedra y del avance', () => {
@@ -73,7 +72,7 @@ describe('decisiones de la piedra y del avance', () => {
 
   it('el botón «Edad de Bronce» dice por qué no responde, en el orden de RN-ECON-024', () => {
     expect(advanceBlockReason(ciudad())).toBeNull();
-    expect(advanceBlockReason(ciudad({ era: 'BRONZE_AGE' }))).toMatch(/más eras/);
+    expect(advanceBlockReason(ciudad({ era: 'IRON_AGE' }))).toMatch(/más eras/);
     expect(advanceBlockReason({ ...ciudad(), advance: { era: 'BRONZE_AGE', completesAtMs: 1 } })).toMatch(/avanzando/);
     expect(advanceBlockReason({ ...ciudad(), production: { unitType: 'VILLAGER', completesAtMs: 1 } }))
       .toMatch(/entrenando/);
@@ -116,7 +115,7 @@ describe('el store refleja la piedra y el avance que cuenta el servidor', () => 
 
   it('el snapshot trae la piedra, el avance y la carga con su recurso', () => {
     const c = state().cities.get(10)!;
-    expect(c.stocks).toEqual({ WOOD: 40, STONE: 15 });
+    expect(c.stocks).toEqual({ WOOD: 40, STONE: 15, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 });
     expect(c.advance).toBeNull();
     expect(state().units.get(1)!.carryingResource).toBe('STONE');
   });
@@ -125,7 +124,7 @@ describe('el store refleja la piedra y el avance que cuenta el servidor', () => 
     const viejo = snapshot();
     viejo.cities = viejo.cities.map(({ advance: _a, ...c }) => ({ ...c, stocks: { WOOD: 40 } }) as v1.CityView);
     state().applySnapshot(viejo);
-    expect(state().cities.get(10)!.stocks).toEqual({ WOOD: 40, STONE: 0 });
+    expect(state().cities.get(10)!.stocks).toEqual({ WOOD: 40, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 });
     expect(state().cities.get(10)!.advance).toBeNull();
   });
 
@@ -137,7 +136,7 @@ describe('el store refleja la piedra y el avance que cuenta el servidor', () => 
     expect(state().cities.get(10)!.stocks.STONE).toBe(0);
 
     state().applyServerMessage(server('city.update', 3, { id: 10, stocks: { WOOD: 5 } }));
-    expect(state().cities.get(10)!.stocks, 'un servidor anterior no manda STONE').toEqual({ WOOD: 5, STONE: 0 });
+    expect(state().cities.get(10)!.stocks, 'un servidor anterior no manda STONE').toEqual({ WOOD: 5, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 });
 
     state().applyServerMessage(server('city.update', 4, {
       id: 10, era: 'BRONZE_AGE', populationLimit: 50, advance: null,

@@ -440,7 +440,11 @@
                         "type": "string",
                         "enum": [
                           "WOOD",
-                          "STONE"
+                          "STONE",
+                          "WINE",
+                          "SILK",
+                          "SPICES",
+                          "FURS"
                         ]
                       }
                     },
@@ -536,6 +540,22 @@
                           "STONE": {
                             "type": "integer",
                             "minimum": 0
+                          },
+                          "WINE": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "SILK": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "SPICES": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "FURS": {
+                            "type": "integer",
+                            "minimum": 0
                           }
                         },
                         "required": [
@@ -580,6 +600,40 @@
                             },
                             "required": [
                               "era",
+                              "completesAtMs"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "craft": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "good": {
+                                "type": "string",
+                                "enum": [
+                                  "WINE",
+                                  "SILK",
+                                  "SPICES",
+                                  "FURS"
+                                ]
+                              },
+                              "amount": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "completesAtMs": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                              }
+                            },
+                            "required": [
+                              "good",
+                              "amount",
                               "completesAtMs"
                             ],
                             "additionalProperties": false
@@ -722,7 +776,8 @@
                       "type": {
                         "type": "string",
                         "enum": [
-                          "HOUSE"
+                          "HOUSE",
+                          "WORKSHOP"
                         ]
                       },
                       "x": {
@@ -1282,6 +1337,16 @@
                   "anyOf": [
                     {
                       "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/advance/anyOf/0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "craft": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/craft/anyOf/0"
                     },
                     {
                       "type": "null"

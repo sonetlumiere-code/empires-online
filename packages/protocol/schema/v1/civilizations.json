@@ -4,6 +4,7 @@
     {
       "code": "ROMAN",
       "name": "Romanos",
+      "good": "WINE",
       "traits": {
         "unit.move_speed": 1000,
         "production.speed": 1100
@@ -12,6 +13,7 @@
     {
       "code": "BYZANTINE",
       "name": "Bizantinos",
+      "good": "SILK",
       "traits": {
         "unit.move_speed": 950,
         "production.speed": 1000,
@@ -21,6 +23,7 @@
     {
       "code": "PERSIAN",
       "name": "Persas",
+      "good": "SPICES",
       "traits": {
         "unit.move_speed": 1050,
         "production.speed": 950,
@@ -30,6 +33,7 @@
     {
       "code": "NORSE",
       "name": "Nórdicos",
+      "good": "FURS",
       "traits": {
         "unit.move_speed": 1100,
         "production.speed": 900,

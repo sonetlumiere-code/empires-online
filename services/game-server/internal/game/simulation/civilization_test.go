@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -24,10 +25,10 @@ import (
 
 func catalogoDeCivilizaciones() []player.Civilization {
 	return []player.Civilization{
-		{ID: 1, Code: "ROMAN", Traits: map[string]int32{player.TraitMoveSpeed: 1000, player.TraitProductionSpeed: 1100}},
-		{ID: 2, Code: "BYZANTINE", Traits: map[string]int32{player.TraitMoveSpeed: 950, player.TraitProductionSpeed: 1000, player.TraitHouseHP: 1200}},
-		{ID: 3, Code: "PERSIAN", Traits: map[string]int32{player.TraitMoveSpeed: 1050, player.TraitProductionSpeed: 950, player.TraitGatherSpeed: 1100}},
-		{ID: 4, Code: "NORSE", Traits: map[string]int32{player.TraitMoveSpeed: 1100, player.TraitProductionSpeed: 900, player.TraitLootCarry: 1150}},
+		{ID: 1, Code: "ROMAN", Good: economy.ResourceWine, Traits: map[string]int32{player.TraitMoveSpeed: 1000, player.TraitProductionSpeed: 1100}},
+		{ID: 2, Code: "BYZANTINE", Good: economy.ResourceSilk, Traits: map[string]int32{player.TraitMoveSpeed: 950, player.TraitProductionSpeed: 1000, player.TraitHouseHP: 1200}},
+		{ID: 3, Code: "PERSIAN", Good: economy.ResourceSpices, Traits: map[string]int32{player.TraitMoveSpeed: 1050, player.TraitProductionSpeed: 950, player.TraitGatherSpeed: 1100}},
+		{ID: 4, Code: "NORSE", Good: economy.ResourceFurs, Traits: map[string]int32{player.TraitMoveSpeed: 1100, player.TraitProductionSpeed: 900, player.TraitLootCarry: 1150}},
 	}
 }
 

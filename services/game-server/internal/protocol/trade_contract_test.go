@@ -48,7 +48,7 @@ func TestUnaLineaDeComercioEsLaDelEsquema(t *testing.T) {
 	cantidad := dig(t, root, linea, "properties", "amount").(map[string]any)
 	assert.EqualValues(t, 1, cantidad["minimum"])
 	assert.EqualValues(t, 1_000_000, cantidad["maximum"])
-	assert.ElementsMatch(t, []string{"WOOD", "STONE"}, enumOf(t, dig(t, root, linea, "properties", "resource")))
+	assert.ElementsMatch(t, []string{"WOOD", "STONE", "WINE", "SILK", "SPICES", "FURS"}, enumOf(t, dig(t, root, linea, "properties", "resource")))
 }
 
 // La vista de una oferta que serializa el servidor tiene exactamente los campos

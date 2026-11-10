@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 )
 
 // Player es la identidad durable de un jugador.
@@ -36,9 +38,12 @@ type Player struct {
 // −5 % (SPEC-CIVILIZATION RN-CIV-003, ADR-035 §1). La civilización cero —sin
 // rasgos— es neutra: todo vale 1000.
 type Civilization struct {
-	ID     int32
-	Code   string
-	Name   string
+	ID   int32
+	Code string
+	Name string
+	// Good es el bien que sólo elabora el taller de esta civilización
+	// (SPEC-CIVILIZATION-GOODS RN-GOODS-001, ADR-036 §2).
+	Good   economy.Resource
 	Traits map[string]int32
 }
 
@@ -77,6 +82,28 @@ func (c Civilization) Trait(key string) int32 {
 		return v
 	}
 	return TraitNeutral
+}
+
+// ErrInvalidGood marca un catálogo cuyos bienes no son uno por civilización.
+var ErrInvalidGood = errors.New("bien de civilización inválido")
+
+// ValidateCatalog comprueba cada civilización con Validate y, además, que cada
+// una tenga un bien de civilización y que ninguno se repita (RN-GOODS-001).
+func ValidateCatalog(cs []Civilization) error {
+	seen := make(map[economy.Resource]string, len(cs))
+	for _, c := range cs {
+		if err := c.Validate(); err != nil {
+			return err
+		}
+		if !c.Good.IsGood() {
+			return fmt.Errorf("%w: %s produce %q, que no es un bien", ErrInvalidGood, c.Code, c.Good)
+		}
+		if other, dup := seen[c.Good]; dup {
+			return fmt.Errorf("%w: %s y %s producen %s", ErrInvalidGood, other, c.Code, c.Good)
+		}
+		seen[c.Good] = c.Code
+	}
+	return nil
 }
 
 // Validate comprueba que todo rasgo sea de una clave conocida y un entero

@@ -151,7 +151,13 @@ func (s *Simulation) handleAdvanceEra(cmd AdvanceEra) {
 		busy = eco.production != nil || eco.advance != nil
 		stock = eco.stockOf
 	}
-	step, err := advance.CanAdvance(c, cmd.PlayerID, busy, stock)
+	// SPEC-CIVILIZATION-GOODS RN-GOODS-006: los bienes ajenos se resuelven con
+	// el bien de la civilización del dueño y el orden del catálogo.
+	var own economy.Resource
+	if c != nil {
+		own = s.state.civilizationOf(c.OwnerPlayerID).Good
+	}
+	step, err := advance.CanAdvance(c, cmd.PlayerID, busy, own, s.state.goodsOrder, stock)
 	if err != nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, economyErrorCode(err), err.Error())
 		return

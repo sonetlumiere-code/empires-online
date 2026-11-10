@@ -3,6 +3,7 @@ package simulation
 import (
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 )
@@ -24,8 +25,12 @@ import (
 // el proceso vive.
 func (s *State) SetCivilizations(cs []player.Civilization) {
 	s.civilizations = make(map[string]player.Civilization, len(cs))
+	s.goodsOrder = make([]economy.Resource, 0, len(cs))
 	for _, c := range cs {
 		s.civilizations[c.Code] = c
+		// El orden del catálogo, en que se cobran los bienes ajenos
+		// (SPEC-CIVILIZATION-GOODS RN-GOODS-006).
+		s.goodsOrder = append(s.goodsOrder, c.Good)
 	}
 }
 

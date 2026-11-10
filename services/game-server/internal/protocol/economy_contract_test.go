@@ -45,7 +45,7 @@ func TestLosComandosDeEconomiaSonLosDelEsquema(t *testing.T) {
 func TestLosCatalogosDeLosComandosSonLosDelDominio(t *testing.T) {
 	root, build := clientVariant(t, protocol.TypeCityBuild)
 	tipos := enumOf(t, dig(t, root, build, "properties", "payload", "properties", "type"))
-	require.Equal(t, []string{string(building.TypeHouse)}, tipos)
+	require.Equal(t, []string{string(building.TypeHouse), string(building.TypeWorkshop)}, tipos)
 	for _, tipo := range tipos {
 		_, err := building.Lookup(building.Type(tipo))
 		assert.NoError(t, err, "%s", tipo)
@@ -108,8 +108,10 @@ func TestLaCiudadLlevaSuStockYSuProduccion(t *testing.T) {
 	require.Equal(t, esperados, recursos, "los recursos del esquema son el catálogo del dominio")
 
 	update := serializado(t, protocol.CityUpdatePayload{ID: 1, Stocks: &protocol.Stocks{Wood: 40}})
-	require.Equal(t, map[string]any{"WOOD": float64(40), "STONE": float64(0)}, update["stocks"],
-		"la piedra viaja siempre, aunque sea 0 (SPEC-ECON-STONE §6)")
+	require.Equal(t, map[string]any{
+		"WOOD": float64(40), "STONE": float64(0),
+		"WINE": float64(0), "SILK": float64(0), "SPICES": float64(0), "FURS": float64(0),
+	}, update["stocks"], "la piedra y los bienes viajan siempre, aunque sean 0 (SPEC-ECON-STONE §6, SPEC-CIVILIZATION-GOODS §6)")
 	assert.NotContains(t, update, "production", "sin cambio de producción, la clave no viaja")
 
 	var ninguna *protocol.ProductionView

@@ -307,6 +307,22 @@ export class GameClient {
     return this.send('city.build', { cityId, type: 'HOUSE', x: tile.x, y: tile.y });
   }
 
+  /**
+   * Encarga el taller en un tile de la zona urbana de una ciudad propia
+   * (SPEC-CIVILIZATION-GOODS §4.2).
+   */
+  buildWorkshop(cityId: number, tile: { x: number; y: number }): string {
+    return this.send('city.build', { cityId, type: 'WORKSHOP', x: tile.x, y: tile.y });
+  }
+
+  /**
+   * Encarga al taller una elaboración (SPEC-CIVILIZATION-GOODS §4.3). Sólo la
+   * ciudad: el bien, la cantidad, el coste y el tiempo los decide el servidor.
+   */
+  craft(cityId: number): string {
+    return this.send('city.craft', { cityId });
+  }
+
   /** Encarga el entrenamiento de un aldeano. */
   trainVillager(cityId: number): string {
     return this.trainUnit(cityId, 'VILLAGER');

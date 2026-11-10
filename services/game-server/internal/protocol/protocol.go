@@ -35,6 +35,8 @@ const (
 	TypeCityTrain  = "city.train"
 	// Avance de era (SPEC-ECON-STONE).
 	TypeCityAdvance = "city.advance"
+	// Elaboración del taller (SPEC-CIVILIZATION-GOODS).
+	TypeCityCraft = "city.craft"
 	// Combate (SPEC-COMBAT-RAID).
 	TypeUnitAttack = "unit.attack"
 	// Saqueo (SPEC-COMBAT-PILLAGE).
@@ -96,6 +98,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeCityBuild:      true,
 	TypeCityTrain:      true,
 	TypeCityAdvance:    true,
+	TypeCityCraft:      true,
 	TypeUnitAttack:     true,
 	TypeUnitPillage:    true,
 	TypeUnitDemolish:   true,
@@ -237,6 +240,20 @@ type Stocks struct {
 	// Stone es la piedra (SPEC-ECON-STONE). Opcional en el esquema para que
 	// un cliente nuevo lea un servidor anterior; este servidor siempre la manda.
 	Stone int64 `json:"STONE"`
+	// Los bienes de civilización (SPEC-CIVILIZATION-GOODS). Opcionales en el
+	// esquema, como la piedra; este servidor siempre los manda.
+	Wine   int64 `json:"WINE"`
+	Silk   int64 `json:"SILK"`
+	Spices int64 `json:"SPICES"`
+	Furs   int64 `json:"FURS"`
+}
+
+// CraftView es la elaboración en curso del taller de una ciudad: qué bien,
+// cuánto y cuándo se entrega (SPEC-CIVILIZATION-GOODS §4.3).
+type CraftView struct {
+	Good          string `json:"good"`
+	Amount        int32  `json:"amount"`
+	CompletesAtMs int64  `json:"completesAtMs"`
 }
 
 // ProductionView es el entrenamiento en curso de una ciudad.
@@ -287,6 +304,9 @@ type CityView struct {
 	Production *ProductionView `json:"production"`
 	// Advance es el avance de era en curso, o null (SPEC-ECON-STONE §6).
 	Advance *AdvanceView `json:"advance"`
+	// Craft es la elaboración en curso del taller, o null
+	// (SPEC-CIVILIZATION-GOODS §6).
+	Craft *CraftView `json:"craft"`
 }
 
 // TerritoryView es el estado observable de un territorio.
@@ -557,6 +577,13 @@ type CityAdvancePayload struct {
 	CityID int64 `json:"cityId"`
 }
 
+// CityCraftPayload encarga al taller de una ciudad una elaboración. Sólo
+// nombra la ciudad: el bien, la cantidad, el coste y el tiempo son del
+// servidor (SPEC-CIVILIZATION-GOODS RN-GOODS-004, INV-SEC-001).
+type CityCraftPayload struct {
+	CityID int64 `json:"cityId"`
+}
+
 // ─────────────────────────────────────────────────────────────
 // Payloads servidor → cliente
 // ─────────────────────────────────────────────────────────────
@@ -655,6 +682,9 @@ type CityUpdatePayload struct {
 	// Advance: nil si no cambia; apuntando a nil, el avance terminó o se
 	// deshizo; apuntando a una vista, empieza.
 	Advance **AdvanceView `json:"advance,omitempty"`
+	// Craft: nil si no cambia; apuntando a nil, la elaboración terminó o se
+	// perdió; apuntando a una vista, empieza (SPEC-CIVILIZATION-GOODS §6).
+	Craft **CraftView `json:"craft,omitempty"`
 	// PillagedAtMs es el instante del último golpe de saqueo. Sólo lo recibe
 	// el dueño de la ciudad (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
 	PillagedAtMs *int64 `json:"pillagedAtMs,omitempty"`

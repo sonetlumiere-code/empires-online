@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 )
 
 // INV-PLAYER-006, mitad del borde: la regla es ^[A-Za-z0-9_-]{3,24}$. La misma
@@ -86,4 +88,17 @@ func TestUnCatalogoConUnRasgoInvalidoSeRechaza(t *testing.T) {
 		err := Civilization{Code: "X", Traits: traits}.Validate()
 		assert.True(t, errors.Is(err, ErrInvalidTrait), "%s: se esperaba ErrInvalidTrait, llegó %v", nombre, err)
 	}
+}
+
+// RN-GOODS-001: cada civilización tiene un bien de civilización, y ninguno se
+// repite.
+func TestElCatalogoTieneUnBienDistintoPorCivilizacion(t *testing.T) {
+	bien := func(code string, g economy.Resource) Civilization { return Civilization{Code: code, Good: g} }
+	assert.NoError(t, ValidateCatalog([]Civilization{bien("ROMAN", economy.ResourceWine), bien("NORSE", economy.ResourceFurs)}))
+	assert.ErrorIs(t, ValidateCatalog([]Civilization{bien("ROMAN", economy.ResourceWood)}), ErrInvalidGood)
+	assert.ErrorIs(t, ValidateCatalog([]Civilization{bien("ROMAN", "")}), ErrInvalidGood)
+	assert.ErrorIs(t, ValidateCatalog([]Civilization{bien("ROMAN", economy.ResourceWine), bien("PERSIAN", economy.ResourceWine)}), ErrInvalidGood)
+	conRasgoMalo := bien("NORSE", economy.ResourceFurs)
+	conRasgoMalo.Traits = map[string]int32{TraitMoveSpeed: 0}
+	assert.ErrorIs(t, ValidateCatalog([]Civilization{conRasgoMalo}), ErrInvalidTrait)
 }

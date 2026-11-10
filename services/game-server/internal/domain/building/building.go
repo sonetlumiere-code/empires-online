@@ -22,8 +22,14 @@ import (
 // Type identifica un tipo de edificio del catálogo.
 type Type string
 
-// TypeHouse es el único edificio del primer slice.
-const TypeHouse Type = "HOUSE"
+// Tipos de edificio del catálogo.
+const (
+	// TypeHouse es la casa del primer slice (SPEC-ECON-WOOD).
+	TypeHouse Type = "HOUSE"
+	// TypeWorkshop es el taller, que elabora el bien de la civilización de su
+	// dueño (SPEC-CIVILIZATION-GOODS §4.2).
+	TypeWorkshop Type = "WORKSHOP"
+)
 
 // Status es el estado de un edificio.
 type Status string
@@ -45,8 +51,9 @@ func (s Status) Valid() bool {
 // Definition son las propiedades inmutables de un tipo de edificio.
 type Definition struct {
 	Type Type
-	// Cost se debita en la transacción que inserta el edificio (RN-ECON-008).
-	Cost economy.Cost
+	// Costs se debita en la transacción que inserta el edificio (RN-ECON-008),
+	// en uno o varios recursos (ADR-036 §3).
+	Costs economy.Costs
 	// BuildMs es lo que tarda en completarse desde el encargo.
 	BuildMs int64
 	// PopulationBonus es lo que suma al population_limit de su ciudad una vez
@@ -54,17 +61,33 @@ type Definition struct {
 	PopulationBonus int32
 	// MaxHP es su vida entera frente a un asedio (SPEC-COMBAT-SIEGE §4.2).
 	MaxHP int32
+	// RequiresEra es la era mínima de la ciudad; "" si no pide ninguna.
+	RequiresEra city.Era
+	// UniquePerCity: como mucho uno en pie por ciudad (INV-ECON-010).
+	UniquePerCity bool
 }
 
-// catalog vive en código mientras haya un solo edificio, como el de unidades
-// (SPEC-ECON-WOOD §4.5). Los valores son parámetros de equilibrio.
+// catalog vive en código, como el de unidades (SPEC-ECON-WOOD §4.5). Los
+// valores son parámetros de equilibrio.
 var catalog = map[Type]Definition{
 	TypeHouse: {
 		Type:            TypeHouse,
-		Cost:            economy.Cost{Resource: economy.ResourceWood, Amount: 30},
+		Costs:           economy.Costs{{Resource: economy.ResourceWood, Amount: 30}},
 		BuildMs:         15_000,
 		PopulationBonus: 5,
 		MaxHP:           150,
+	},
+	// SPEC-CIVILIZATION-GOODS Q6.
+	TypeWorkshop: {
+		Type: TypeWorkshop,
+		Costs: economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 100},
+			{Resource: economy.ResourceStone, Amount: 50},
+		},
+		BuildMs:       45_000,
+		MaxHP:         200,
+		RequiresEra:   city.EraBronze,
+		UniquePerCity: true,
 	},
 }
 
@@ -86,6 +109,7 @@ func Lookup(t Type) (Definition, error) {
 	if !ok {
 		return Definition{}, fmt.Errorf("%w: %q", ErrUnknownType, t)
 	}
+	d.Costs = append(economy.Costs(nil), d.Costs...)
 	return d, nil
 }
 
@@ -167,14 +191,16 @@ func CanPlace(c *city.City, t world.Tile, occupied func(world.Tile) bool) error 
 }
 
 // CanBuild aplica RN-ECON-007 completa, en el orden en que responde: ciudad
-// propia, tipo del catálogo, sitio y madera. Devuelve la definición, que lleva
-// el coste y el tiempo.
+// propia, tipo del catálogo, era y único por ciudad (RN-GOODS-003), sitio y
+// recursos. Devuelve la definición, que lleva los costes y el tiempo.
+// `standing` dice si la ciudad tiene ya en pie, o encargado, un edificio del
+// tipo; `stock` da el stock de un recurso.
 //
 // La propiedad va primero: un jugador no puede deducir nada de una ciudad
 // ajena por el error que recibe.
 func CanBuild(
 	c *city.City, requester uuid.UUID, t Type, tile world.Tile,
-	occupied func(world.Tile) bool, stock *economy.Stock,
+	occupied func(world.Tile) bool, standing func(Type) bool, stock func(economy.Resource) *economy.Stock,
 ) (Definition, error) {
 	if c == nil || c.OwnerPlayerID != requester {
 		return Definition{}, ErrCityNotFound
@@ -183,10 +209,16 @@ func CanBuild(
 	if err != nil {
 		return Definition{}, err
 	}
+	if def.RequiresEra != "" && !c.Era.AtLeast(def.RequiresEra) {
+		return Definition{}, fmt.Errorf("%w: %s pide %s", ErrInvalidSite, t, def.RequiresEra)
+	}
+	if def.UniquePerCity && standing != nil && standing(t) {
+		return Definition{}, fmt.Errorf("%w: la ciudad ya tiene %s", ErrInvalidSite, t)
+	}
 	if err := CanPlace(c, tile, occupied); err != nil {
 		return Definition{}, err
 	}
-	if stock == nil || !stock.CanAfford(def.Cost) {
+	if stock == nil || !def.Costs.CanAfford(stock) {
 		return Definition{}, economy.ErrInsufficientResources
 	}
 	return def, nil

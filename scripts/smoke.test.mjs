@@ -15,6 +15,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  bienDe,
   cookieDeSesion,
   elegirBosque,
   elegirColina,
@@ -249,5 +250,12 @@ test('tiemposDePolilinea suma pasos de hierba, bosque y diagonal como el servido
   // 545 en hierba; 872 en bosque (545 × 16 / 10); la diagonal, 545 × √2 = 771.
   assert.deepEqual(tiemposDePolilinea(path, terreno, 545), [0, 545, 1417, 2188]);
   assert.equal(tiemposDePolilinea([{ x: 0, y: 0 }, { x: 9, y: 9 }], terreno, 545), null, 'sin terreno conocido');
+});
+
+test('bienDe da el bien de cada civilización del catálogo (SPEC-CIVILIZATION-GOODS)', () => {
+  const catalogo = [{ code: 'ROMAN', good: 'WINE' }, { code: 'NORSE', good: 'FURS' }];
+  assert.equal(bienDe(catalogo, 'ROMAN'), 'WINE');
+  assert.equal(bienDe(catalogo, 'NORSE'), 'FURS');
+  assert.equal(bienDe(catalogo, 'AZTEC'), null);
 });
 
