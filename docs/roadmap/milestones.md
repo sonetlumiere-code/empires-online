@@ -1925,3 +1925,41 @@ Castillos, otros usos de los bienes, saquearlos, la producción pasiva.
    deshabilitado porque ya hay uno, «Elaborar (5 de vino)» y «Edad de Hierro (0/60 bienes)» con lo que falta; pulsar
    «Elaborar» puso la cuenta atrás y, al vencer, el vino subió a 5.
 
+
+## E15 — Caravanas
+
+**Estado: EN CURSO (2026-11-13)**, en la rama `claude/slice-caravanas`. Contrato:
+[SPEC-CARAVANS](../specs/caravans.md), aceptada el 2026-11-13 con sus doce decisiones de producto, y
+[ADR-037](../decisions/ADR-037-caravans-as-units.md).
+
+**Objetivo.** Que el comercio recorra el mapa y se pueda interceptar: la interdependencia del pilar 4 con la distancia
+del pilar 5 y el riesgo del camino.
+
+**Alcance.** Cada trato aceptado sale en dos caravanas, una por sentido, desde el depósito de cada ciudad; el tipo de
+unidad `CARAVAN` (80 de vida, 1 200 ms por tile, sin población ni órdenes); la ruta buscada al proponer y al aceptar,
+con `PATH_NOT_FOUND` y `PATH_TOO_LONG` si no la hay; la entrega optimista al llegar; la captura con el golpe mortal,
+que la lleva con su carga entera a la ciudad del captor, y la recaptura; la protección del dueño no la cubre;
+`caravan.update`, `caravans[]` y `CARAVAN_CAPTURED`; las llegadas y capturas en el registro; `INV-TRADE-005` a `007`;
+migración `000017`; el cliente y `scripts/smoke.mjs --caravana`. **No entra** (spec §2): rutas permanentes, envíos sin
+trato, mercados, órdenes de escolta o de dirigir la caravana, varias caravanas por sentido, caravanas por agua, el A\*
+jerárquico.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-037, `INV-TRADE-005` a `007`, las precisiones de `INV-TRADE-001`,
+   `INV-COMBAT-002` e `INV-CITY-017`, de [trade.md](../specs/trade.md) (`RN-TRADE-004`, Q7 y Q8),
+   [combat-raid.md](../specs/combat-raid.md) (`RN-COMBAT-003`), [civilization-goods.md](../specs/civilization-goods.md)
+   (`RN-GOODS-008` y Q9) y [economy-stone.md](../specs/economy-stone.md) (Q8), y la nota de `DEBT-04` en el backlog.
+2. **PENDIENTE** — Protocolo: `CARAVAN` en `UnitType`, `caravan.update` (24 tipos servidor → cliente) con su e2e,
+   `caravans[]` en `world.snapshot`, `CARAVAN_CAPTURED` y las entradas nuevas del registro; contract tests en los dos
+   lados.
+3. **PENDIENTE** — Dominio: el catálogo de `CARAVAN`, `internal/domain/caravan` (carga, llegada, captura), la ruta
+   inversa, la población sin caravanas y la excepción de la protección en el predicado hostil.
+4. **PENDIENTE** — Migración `000017` y persistencia: `caravans` y `caravan_cargo`, el trato que crea las caravanas,
+   la entrega idempotente, la captura y la pérdida; la carga y la validación de carga.
+5. **PENDIENTE** — Simulación: la ruta en la propuesta y la aceptación, las caravanas al volver la confirmación, la
+   llegada en la fase 5, la captura en la fase 4, la recuperación; el golden «caravanas» y los e2e.
+6. **PENDIENTE** — Cliente: el dibujo y la ruta de la caravana, «Caravanas en camino», «Capturar», el motivo sin ruta
+   en el formulario del trato y el aviso de captura.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --caravana`, y `--comercio` y `--bienes` esperando la
+   llegada.

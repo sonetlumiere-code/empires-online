@@ -52,7 +52,7 @@ motor rechaza las dos mitades del bicondicional por su nombre. `TestLaMuerteSeEs
 | Aplicación | DOMAIN, TEST |
 | Milestone | E2 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque`, `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento`, `TestUnIncursorProtegidoDejaDeGolpear` y `TestUnJugadorProtegidoNoPuedeAtacar` (`internal/game/simulation`) |
+| Cobertura | **Parcial**: los golpes sobre unidades, ciudades y casas, cubiertos por `TestNingunGolpeCaeSobreUnaUnidadEnSafeZone`, `TestRechazosDelAtaque`, `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento`, `TestUnIncursorProtegidoDejaDeGolpear` y `TestUnJugadorProtegidoNoPuedeAtacar` (`internal/game/simulation`); la excepción de las caravanas (E15), sin test todavía |
 
 **Enunciado.** Ningún golpe se aplica si, en el instante del golpe, el atacante o el objetivo están sobre un tile
 de Safe Zone, el objetivo está `HIDDEN` o `GARRISONED`, el dueño del objetivo o el del atacante está protegido
@@ -76,6 +76,12 @@ atacante, `RN-COMBAT-018`) — **existen y pasan**, en `internal/game/simulation
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse en esas condiciones se
 descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-002`.
+
+**Precisión (2026-11-13, [SPEC-CARAVANS](../specs/caravans.md) §4.4 y Q7, [ADR-037](../decisions/ADR-037-caravans-as-units.md) §6).**
+La protección del dueño del objetivo no cuenta cuando el objetivo es una caravana: una caravana se puede golpear
+aunque su dueño esté protegido. El resto del enunciado vale también para ella (Safe Zone bajo el atacante o bajo la
+caravana, tratado de paz, protección del atacante), y la excepción vive en el mismo predicado, revalidado en cada
+golpe. La ficha queda parcial hasta que el test de la excepción exista.
 
 ---
 

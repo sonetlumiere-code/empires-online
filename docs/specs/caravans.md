@@ -6,13 +6,13 @@ mapa hasta la otra ciudad, y quien la mate por el camino se la queda.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CARAVANS` |
-| Estado | Draft (2026-11-13). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-13). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E15 Caravanas (decimoquinto slice después de M7) |
 | Canon | §9 (unidades), §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [trade.md](trade.md), [movement.md](movement.md), [unit.md](unit.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [civilization-goods.md](civilization-goods.md), [civilizations.md](civilizations.md), [safe-zones.md](safe-zones.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola ordenada por clave), [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (acciones hostiles), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (deltas de stock y órdenes en dos fases), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (el combate en la fase 4), [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) (el tope de nodos del A\*), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (el trato y el trabajo de dos claves), [ADR-036](../decisions/ADR-036-civilization-goods.md) (la entrega optimista de la elaboración). Un ADR nuevo (`ADR-037`, la caravana como tipo de unidad con su carga en una tabla aparte, el trato que carga en lugar de acreditar, la entrega optimista y la captura como cambio de dueño) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola ordenada por clave), [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (acciones hostiles), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (deltas de stock y órdenes en dos fases), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (el combate en la fase 4), [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) (el tope de nodos del A\*), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (el trato y el trabajo de dos claves), [ADR-036](../decisions/ADR-036-civilization-goods.md) (la entrega optimista de la elaboración). [ADR-037](../decisions/ADR-037-caravans-as-units.md) (la caravana como tipo de unidad con su carga en una tabla aparte, el trato que carga en lugar de acreditar, la entrega optimista y la captura como cambio de dueño; migración `000017`). |
 | Reemplaza a | En [trade.md](trade.md), `RN-TRADE-004` («entrega en el acto») y la Q7 («entrega instantánea, a cualquier distancia»). En [combat-raid.md](combat-raid.md), `RN-COMBAT-003` sólo para las caravanas (Q7). En [trade.md](trade.md) Q8, [economy-stone.md](economy-stone.md) §4 y [civilization-goods.md](civilization-goods.md) §4.5, que la piedra y los bienes nunca cambian de manos por la fuerza: la captura de una caravana es la excepción (Q6). Abre la fase Caravans de [roadmap.md](../roadmap/roadmap.md), sin rutas permanentes. |
-| Invariantes | Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-UNIT-005](../invariants/units.md#inv-unit-005), [INV-COMBAT-001](../invariants/combat.md#inv-combat-001) e [INV-SAFE-004](../invariants/territory.md#inv-safe-004); precisa [INV-TRADE-001](../invariants/trade.md#inv-trade-001), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002) e [INV-CITY-017](../invariants/city.md#inv-city-017); propone tres nuevos de la familia `INV-TRADE`, que se registrarán al aceptar (§8) |
+| Invariantes | Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-UNIT-005](../invariants/units.md#inv-unit-005), [INV-COMBAT-001](../invariants/combat.md#inv-combat-001) e [INV-SAFE-004](../invariants/territory.md#inv-safe-004); precisa [INV-TRADE-001](../invariants/trade.md#inv-trade-001), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002) e [INV-CITY-017](../invariants/city.md#inv-city-017); asigna [INV-TRADE-005](../invariants/trade.md#inv-trade-005), [INV-TRADE-006](../invariants/trade.md#inv-trade-006) e [INV-TRADE-007](../invariants/trade.md#inv-trade-007) (§8) |
 
 ## 1. Objetivo
 
@@ -207,7 +207,7 @@ que causaste con una orden. Los tipos de entrada nuevos se suman a `eventlog.Kin
 | Dirty-flag | Nada nuevo: el crédito de la llegada viaja con la entrega y, si ésta se descarta, con el volcado del almacén |
 | Reconstruible / no persistido | La posición en camino, de la polilínea; al arrancar se cargan las caravanas `IN_TRANSIT` con su movimiento, y las que llegaron durante la caída se entregan en el primer tick |
 
-**Por qué hace falta un ADR (`ADR-037`).** Cuatro decisiones estructurales:
+**Por qué hace falta un ADR ([ADR-037](../decisions/ADR-037-caravans-as-units.md)).** Cuatro decisiones estructurales:
 
 1. **La caravana es un tipo de unidad**, no una entidad aparte. Hereda el movimiento, la recuperación, el interés por
    chunks, los golpes y el dibujo. Su carga va en una tabla aparte, `caravan_cargo`, porque `units.loot` es un
@@ -222,7 +222,7 @@ que causaste con una orden. Los tipos de entrada nuevos se suman a `eventlog.Kin
    en la población (`RN-CARAVAN-003`), así que cambiar `units.player_id` y `units.city_id` no mueve el límite de
    ninguna ciudad.
 
-Alternativas descartadas que el ADR dejará escritas: **una entidad aparte** (`caravans` con su propia posición, su
+Alternativas descartadas que el ADR deja escritas, entre otras: **una entidad aparte** (`caravans` con su propia posición, su
 propio mensaje de mapa y su propio interés) duplica el movimiento y la recuperación; **acreditar al aceptar y dibujar
 la caravana como adorno** no tiene riesgo, que es lo que el slice quiere; **matarla y repartir la carga como botín** pide
 botín de seis recursos en el guerrero (Q5); **una ruta continua** (que se recalcula al moverse) es lo que reabre
@@ -254,11 +254,14 @@ llena) e [INV-SAFE-004](../invariants/territory.md#inv-safe-004).
   las caravanas.
 - [INV-CITY-017](../invariants/city.md#inv-city-017): `population` cuenta las unidades vivas que no son caravanas.
 
-**Propone** tres invariantes nuevos de la familia `INV-TRADE`, que se registrarán con su número al aceptar:
+**Asigna** tres invariantes nuevos de la familia `INV-TRADE`, registrados en [../invariants/trade.md](../invariants/trade.md):
 
-- La carga de una caravana no cambia desde que sale hasta que se entrega o se pierde, ni siquiera al capturarla.
-- Una caravana se entrega como mucho una vez, y su carga entra en un solo almacén.
-- Toda caravana nace de un trato aceptado, y cada trato aceptado tiene exactamente dos.
+- [INV-TRADE-005](../invariants/trade.md#inv-trade-005) — la carga de una caravana no cambia desde que sale hasta que
+  se entrega o se pierde, ni siquiera al capturarla.
+- [INV-TRADE-006](../invariants/trade.md#inv-trade-006) — una caravana se entrega como mucho una vez, y su carga entra
+  en un solo almacén.
+- [INV-TRADE-007](../invariants/trade.md#inv-trade-007) — toda caravana nace de un trato aceptado, y cada trato
+  aceptado tiene exactamente dos.
 
 ## 9. Tests esperados
 
@@ -271,12 +274,12 @@ llena) e [INV-SAFE-004](../invariants/territory.md#inv-safe-004).
 | contract / e2e | `caravan.update`, `caravans[]`, `CARAVAN` y `CARAVAN_CAPTURED` contra el JSON Schema; un trato de punta a punta por WebSocket hasta la llegada, y una captura, en el mismo commit que `caravan.update` |
 | cliente | La lista «Caravanas en camino», el dibujo y la ruta, «Capturar», el motivo sin ruta en el formulario; `scripts/smoke.mjs --caravana` (un trato de smoke_runner con smoke_victim por el `TRADE` vigente, la llegada medida contra la distancia y la civilización, y la captura de la caravana de smoke_victim por uno de los guerreros de smoke_runner que están junto a su ciudad) |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-13)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Viaja en caravana todo trato? | **Sí, todos.** Dos reglas (instantáneo cerca y caravana lejos, o caravana opcional) se explican peor, y la opcional nadie la elegiría: con la distancia como única diferencia, el riesgo desaparece. Entre vecinos la caravana tarda poco y casi no corre peligro, que es la ventaja de tener el socio cerca. |
 | Q2 | ¿Qué es una caravana y quién la paga? | **Una unidad `CARAVAN` que nace sola del trato, gratis y sin población.** Alternativas: **entrenarla** (o construir antes un mercado) añade un coste y un edificio sin decisión nueva: el trato ya cuesta lo que das; **sacarla de la población** castigaría el comercio de las ciudades llenas y haría que un trato aceptado mientras no estás fallara por un límite que no controlas. |

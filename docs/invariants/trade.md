@@ -1,12 +1,13 @@
 # Invariantes de Comercio (INV-TRADE-xxx)
 
-Propiedades del comercio entre dos ciudades: lo que un trato mueve, quién puede cerrar una oferta y cuántas puede
-haber entre dos jugadores.
+Propiedades del comercio entre dos ciudades: lo que un trato mueve, quién puede cerrar una oferta, cuántas puede
+haber entre dos jugadores y, desde E15, las caravanas que llevan lo que se movió.
 
 Formato y severidades: [README.md](README.md). Stock: [economy.md](economy.md). Tratados:
-[diplomacy.md](diplomacy.md). Spec: [../specs/trade.md](../specs/trade.md). Decisiones:
-[ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md),
-[ADR-027](../decisions/ADR-027-hot-treaties.md), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md).
+[diplomacy.md](diplomacy.md). Specs: [../specs/trade.md](../specs/trade.md), [../specs/caravans.md](../specs/caravans.md).
+Decisiones: [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md),
+[ADR-027](../decisions/ADR-027-hot-treaties.md), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md),
+[ADR-037](../decisions/ADR-037-caravans-as-units.md).
 
 ---
 
@@ -29,6 +30,9 @@ Formato y severidades: [README.md](README.md). Stock: [economy.md](economy.md). 
 | `trade_offers_unique_request` | `trade_offers` | Único `(proposer_id, request_id)`: una orden no produce dos ofertas |
 | `trade_offer_lines_pkey` | `trade_offer_lines` | `PRIMARY KEY (offer_id, resource)`: un recurso en un solo lado |
 | `trade_offer_lines_amount_positive`, `trade_offer_lines_resource_valid`, `trade_offer_lines_side_valid` | `trade_offer_lines` | `amount > 0`, el recurso del catálogo y `side` en `GIVE` o `WANT` |
+| `caravans_status_valid`, `caravans_unit_while_in_transit` | `caravans` | Dominio cerrado de `status`; una caravana tiene unidad si y sólo si está `IN_TRANSIT` (E15, ADR-037 §8) |
+| `caravans_two_per_offer` | `caravans` | Único `(offer_id, from_city_id)`: como mucho una caravana por sentido de cada trato |
+| `caravan_cargo_pkey`, `caravan_cargo_amount_positive`, `caravan_cargo_resource_valid` | `caravan_cargo` | Un recurso una vez por caravana, `amount > 0` y el recurso del catálogo |
 
 > **Lo que el esquema NO garantiza.** Que una oferta aceptada tuviera un tratado vigente cruza `trade_offers` y
 > `treaties`, y lo decide la RAM, que es la fuente de verdad de los tratados (ADR-027 §1); que lo que sale de una
@@ -46,7 +50,7 @@ Formato y severidades: [README.md](README.md). Stock: [economy.md](economy.md). 
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E10 |
 | Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
-| Cobertura | **Cubierto** por `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` y `TestUnTratoMueveLosDosAlmacenesYEsIdempotente` (integration), `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes` y `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y `TestLasPatasDeUnTratoConservanCadaRecurso` (`internal/domain/trade`) |
+| Cobertura | **Parcial**: el trato instantáneo de E10, cubierto por `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` y `TestUnTratoMueveLosDosAlmacenesYEsIdempotente` (integration), `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes` y `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y `TestLasPatasDeUnTratoConservanCadaRecurso` (`internal/domain/trade`); el trato que carga dos caravanas (E15), sin test todavía |
 
 **Enunciado.** Para todo trato aceptado y para cada recurso, la cantidad que resta del almacén de una ciudad es
 exactamente la que suma al de la otra, y las dos escrituras se confirman en la misma transacción que pasa la oferta a
@@ -69,6 +73,14 @@ acreditar lo recibido, un trato fallido que no devuelve la reserva, no llevarse 
 versión del recurso que sólo se recibe ponen en rojo su test.
 
 **Violación en runtime.** No hay estado intermedio que detectar: la transacción es la garantía.
+
+**Precisión (2026-11-13, [SPEC-CARAVANS](../specs/caravans.md) §4.2, [ADR-037](../decisions/ADR-037-caravans-as-units.md) §3).**
+Desde E15 un trato no acredita en el acto: lo que resta del almacén de cada ciudad entra en la carga de su caravana
+en la misma transacción que pasa la oferta a `ACCEPTED`, y lo que lleva una caravana entra entero en un almacén al
+llegar ([INV-TRADE-005](#inv-trade-005), [INV-TRADE-006](#inv-trade-006)). Un trato sigue sin crear recursos nunca; el
+único camino por el que los destruye es la pérdida de una caravana capturada sin ruta a la ciudad del captor
+(`RN-CARAVAN-006`), que queda en `world_events` como `CaravanLost`. La ficha queda parcial hasta que los tests del trato
+que carga existan.
 
 ---
 
@@ -155,6 +167,98 @@ antes de reservar; la transacción condiciona la escritura al estado esperado.
 
 ---
 
+<a id="inv-trade-005"></a>
+## INV-TRADE-005 — La carga de una caravana no cambia en el camino
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E15 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** todavía (E15) |
+
+**Enunciado.** Las filas de `caravan_cargo` de una caravana son, recurso a recurso, las líneas del lado del trato que
+da su ciudad de origen, y no cambian desde la transacción que la crea hasta la que la entrega o la pierde, tampoco al
+capturarla. En la RAM, la carga de una caravana `IN_TRANSIT` es la misma que en la base.
+
+**Razón.** La caravana es el único sitio donde un recurso existe fuera de un almacén. Si su carga pudiera cambiar en
+el camino, una captura, un reinicio o una entrega repetida crearían o borrarían recursos sin que ningún almacén lo
+reflejara.
+
+**Cómo se garantiza.** `DB` — la carga sólo se escribe al insertar la caravana en la transacción del trato; la
+captura y la entrega no tocan `caravan_cargo` (ADR-037 §5 y §4). `DOMAIN` — la carga de la RAM se construye de las
+mismas líneas de la oferta y la captura sólo cambia el dueño, la vida y el destino.
+
+**Cómo se verifica.** Previstos: un test de dominio que compara la carga de las dos caravanas con las líneas de la
+oferta; el golden «caravanas» con una captura y una recaptura que llegan con la carga intacta; un test de integración
+que captura una caravana y comprueba que `caravan_cargo` no cambió.
+
+**Violación en runtime.** La validación de carga compara la carga de cada caravana `IN_TRANSIT` con las líneas de su
+oferta; una discrepancia se registra como `invariant_violation` con `inv_id=INV-TRADE-005` y la carga no arranca.
+
+---
+
+<a id="inv-trade-006"></a>
+## INV-TRADE-006 — Una caravana se entrega como mucho una vez
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E15 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** todavía (E15) |
+
+**Enunciado.** Una caravana pasa de `IN_TRANSIT` a `DELIVERED` o a `LOST` una sola vez. El paso a `DELIVERED` y el
+crédito de su carga en el almacén de un único destino se confirman en la misma transacción; una transacción que la
+encuentra fuera de `IN_TRANSIT` no acredita nada.
+
+**Razón.** La entrega es optimista y se reintenta: sin esta propiedad, un reintento acreditaría dos veces y un trato
+crearía recursos.
+
+**Cómo se garantiza.** `DB` — la entrega condiciona la transición a `status = 'IN_TRANSIT'` y aplica los deltas en la
+misma transacción; `caravans_unit_while_in_transit` impide una caravana cerrada con unidad. `DOMAIN` — la RAM quita
+la caravana del mapa en el tick en que la entrega, así que no la vuelve a entregar.
+
+**Cómo se verifica.** Previstos: un test de integración que repite la entrega y comprueba un solo crédito; el test de
+recuperación con una entrega encolada y sin confirmar; el golden «caravanas» con la llegada en el tick exacto.
+
+**Violación en runtime.** La transacción repetida no escribe nada; la ventana de una entrega que falla del todo tras
+el `COMMIT` es la documentada en ADR-037 §4.
+
+---
+
+<a id="inv-trade-007"></a>
+## INV-TRADE-007 — Toda caravana nace de un trato aceptado, dos por trato
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E15 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** todavía (E15) |
+
+**Enunciado.** Toda fila de `caravans` apunta a una oferta `ACCEPTED`, y toda oferta aceptada desde E15 tiene
+exactamente dos caravanas, una que sale de cada ciudad, creadas en la misma transacción que la acepta. Ninguna otra
+orden ni ningún otro trabajo crea una unidad `CARAVAN`.
+
+**Razón.** Si una caravana pudiera nacer sin trato, sería un envío sin contrapartida (lo que la Q12 de SPEC-CARAVANS
+deja fuera) o un recurso salido de la nada.
+
+**Cómo se garantiza.** `DB` — `caravans.offer_id` con FK a `trade_offers` y `caravans_two_per_offer`; `TradeRepo.Accept`
+inserta las dos en la transacción de la aceptación. `DOMAIN` — `CARAVAN` no se entrena y ninguna orden la crea.
+
+**Cómo se verifica.** Previstos: un test de integración de la aceptación (dos caravanas, una por sentido, o ninguna si
+falla); un test de dominio que rechaza `CARAVAN` en `city.train`; la validación de carga contra una caravana sin oferta
+aceptada.
+
+**Violación en runtime.** La validación de carga rechaza una caravana cuya oferta no esté `ACCEPTED` y lo registra con
+`inv_id=INV-TRADE-007`.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -163,3 +267,6 @@ antes de reservar; la transacción condiciona la escritura al estado esperado.
 | INV-TRADE-002 | `internal/game/simulation`, `internal/domain/diplomacy` | [INV-DIPLO-002](diplomacy.md#inv-diplo-002) |
 | INV-TRADE-003 | `migrations/`, `internal/game/simulation` | [INV-DIPLO-002](diplomacy.md#inv-diplo-002) |
 | INV-TRADE-004 | `internal/domain/trade`, `internal/game/simulation` | [INV-DIPLO-001](diplomacy.md#inv-diplo-001), [INV-SEC-004](security.md#inv-sec-004) |
+| INV-TRADE-005 | `internal/domain/caravan`, `postgres.TradeRepo`, `internal/game/loadcheck` | [INV-TRADE-001](#inv-trade-001) |
+| INV-TRADE-006 | `postgres` (la entrega), `internal/game/simulation` | [INV-TRADE-001](#inv-trade-001), [INV-ECON-002](economy.md#inv-econ-002) |
+| INV-TRADE-007 | `postgres.TradeRepo`, `internal/domain/unit`, `internal/game/loadcheck` | [INV-TRADE-001](#inv-trade-001) |

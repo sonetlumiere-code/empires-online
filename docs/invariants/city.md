@@ -602,7 +602,7 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (recontar desde `units` y `city_productions`) |
-| Cobertura | **Cubierto** por `TestLaPoblacionCuentaLasProduccionesEnCurso` (`internal/game/loadcheck`), `TestEntrenarReservaLaPlazaYEsIdempotente` y `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad` (integration), y `TestEntrenarUnAldeanoReservaYNaceAlVencer` (simulation) |
+| Cobertura | **Parcial**: las unidades y las producciones, cubiertas por `TestLaPoblacionCuentaLasProduccionesEnCurso` (`internal/game/loadcheck`), `TestEntrenarReservaLaPlazaYEsIdempotente` y `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad` (integration), y `TestEntrenarUnAldeanoReservaYNaceAlVencer` (simulation); las caravanas fuera del recuento (E15), sin test todavía |
 
 **Enunciado.** Para toda ciudad, `cities.population` es igual al número de filas de `units` con `city_id` de esa ciudad y `status <> 'DEAD'`, más el número de filas de `city_productions` de esa ciudad con `unit_id IS NULL` (en curso), tras cada transacción confirmada.
 
@@ -623,6 +623,11 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 - Siguen valiendo para la parte del alta `TestLaCiudadNaceConLaMarcaDelRelojYSuPoblacionReal` y `TestBootstrapCreaMundoCompletoDelJugador` (integration).
 
 **Violación en runtime.** Detección en la validación de carga. Log `invariant_violation` con `inv_id=INV-CITY-017`, `entity=city:<id>` y el contador persistido frente al recuento. Política `REPAIR` con un `InvariantRepaired` de auditoría.
+
+**Precisión (2026-11-13, [SPEC-CARAVANS](../specs/caravans.md) `RN-CARAVAN-003`, [ADR-037](../decisions/ADR-037-caravans-as-units.md) §1).**
+Las unidades `CARAVAN` no cuentan: `population` es el número de unidades vivas de la ciudad **que no son caravanas**
+más sus producciones en curso. Así la captura, que cambia el `city_id` de una caravana, no mueve el contador de
+ninguna ciudad. La ficha queda parcial hasta que el recuento con caravanas tenga su test.
 
 ---
 

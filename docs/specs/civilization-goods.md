@@ -115,7 +115,7 @@ bloquea a nadie (Q4).
 | `RN-GOODS-005` | La elaboración no bloquea el entrenamiento ni el avance, ni ellos a ella. |
 | `RN-GOODS-006` | El avance de Bronce a Hierro cobra madera, piedra y 60 bienes ajenos, nunca el propio, en el orden del catálogo. |
 | `RN-GOODS-007` | Derribar el taller pierde la elaboración en curso, sin devolver lo pagado. |
-| `RN-GOODS-008` | Los bienes se comercian como la madera y la piedra (E10) y se ven en el almacén como ellas; el saqueo no se los lleva. |
+| `RN-GOODS-008` | Los bienes se comercian como la madera y la piedra (E10) y se ven en el almacén como ellas; el saqueo no se los lleva. **Precisión (2026-11-13, [caravans.md](caravans.md) Q6):** quien captura una caravana se lleva su carga entera, también los bienes; el saqueo del almacén sigue sin llevárselos. |
 
 ### 4.6 Qué ve el jugador
 
@@ -232,7 +232,7 @@ no de ingeniería: cambiarlas es cambiar la spec.
 | Q6 | ¿Cómo es el taller? | **Pide Bronce, uno por ciudad, 100 de madera y 50 de piedra, 45 s, sin población, 200 de vida.** Pedir Bronce ordena la progresión (Piedra → Bronce → taller → comercio → Hierro); uno por ciudad evita que el más rico multiplique su producción. |
 | Q7 | ¿Cómo es la elaboración? | **30 de madera y 15 de piedra por 5 del bien, 30 s, una a la vez, sin bloquear el entrenamiento ni el avance.** 60 bienes son 12 elaboraciones, seis minutos de taller y 360 de madera y 180 de piedra de quien los produce: un precio que se negocia. |
 | Q8 | ¿Sirven los bienes propios para algo? | **No, sólo para comerciar.** Si sirvieran para el propio avance, no harían falta los demás. |
-| Q9 | ¿Se saquean los bienes? | **No en este slice.** El saqueo sigue llevándose madera, como decidieron la Q8 de E9 y la de E10; robar bienes cambiaría el equilibrio del saqueo sin datos. |
+| Q9 | ¿Se saquean los bienes? | **No en este slice.** El saqueo sigue llevándose madera, como decidieron la Q8 de E9 y la de E10; robar bienes cambiaría el equilibrio del saqueo sin datos. **Precisión (2026-11-13, [caravans.md](caravans.md) Q6):** el saqueo sigue sin llevarse bienes, pero la captura de una caravana sí se los lleva: es el riesgo del camino. |
 | Q10 | ¿Se puede derribar el taller? | **Sí, con un asedio como una casa** (200 de vida), y se pierde la elaboración en curso. Es la forma de presionar a un vecino que acapara un bien; volver a construirlo cuesta lo mismo. |
 | Q11 | ¿Más eras en este slice? | **No: sólo de Bronce a Hierro.** `CASTLE_AGE` sigue sin coste y `city.advance` desde Hierro responde `NOT_IMPLEMENTED`, como Bronce hasta ahora. |
 | Q12 | ¿Aplican los rasgos de E13? | **Sí, `production.speed` al taller y a la elaboración**: son obra y producción. Así el romano elabora un 10 % más rápido y el nórdico un 10 % más lento. Ningún rasgo cambia cuántos bienes salen. |
