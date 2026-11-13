@@ -602,7 +602,7 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E1 |
 | Política ante violación | REPAIR (recontar desde `units` y `city_productions`) |
-| Cobertura | **Parcial**: las unidades y las producciones, cubiertas por `TestLaPoblacionCuentaLasProduccionesEnCurso` (`internal/game/loadcheck`), `TestEntrenarReservaLaPlazaYEsIdempotente` y `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad` (integration), y `TestEntrenarUnAldeanoReservaYNaceAlVencer` (simulation); las caravanas fuera del recuento (E15), sin test todavía |
+| Cobertura | **Cubierto**: las unidades y las producciones, por `TestLaPoblacionCuentaLasProduccionesEnCurso` (`internal/game/loadcheck`), `TestEntrenarReservaLaPlazaYEsIdempotente` y `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad` (integration), y `TestEntrenarUnAldeanoReservaYNaceAlVencer` (simulation); y las caravanas fuera del recuento (E15), por `TestLaPoblacionNoCuentaLasCaravanas` (`internal/game/loadcheck`) y `TestGoldenCaravanasDelTratoALaLlegada` (simulation) |
 
 **Enunciado.** Para toda ciudad, `cities.population` es igual al número de filas de `units` con `city_id` de esa ciudad y `status <> 'DEAD'`, más el número de filas de `city_productions` de esa ciudad con `unit_id IS NULL` (en curso), tras cada transacción confirmada.
 
@@ -627,7 +627,9 @@ La presencia es un hecho sobre **el jugador**, no sobre el proceso. Reconstruirl
 **Precisión (2026-11-13, [SPEC-CARAVANS](../specs/caravans.md) `RN-CARAVAN-003`, [ADR-037](../decisions/ADR-037-caravans-as-units.md) §1).**
 Las unidades `CARAVAN` no cuentan: `population` es el número de unidades vivas de la ciudad **que no son caravanas**
 más sus producciones en curso. Así la captura, que cambia el `city_id` de una caravana, no mueve el contador de
-ninguna ciudad. La ficha queda parcial hasta que el recuento con caravanas tenga su test.
+ninguna ciudad. `TestLaPoblacionNoCuentaLasCaravanas` (unit, `internal/game/loadcheck`: una caravana viva de la ciudad
+no se cuenta) y el golden `TestGoldenCaravanasDelTratoALaLlegada` (la población no cambia al salir las caravanas) —
+**existen y pasan**. Verificado por mutación: contar también las caravanas pone en rojo el primero.
 
 ---
 

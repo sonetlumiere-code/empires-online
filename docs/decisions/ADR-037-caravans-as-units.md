@@ -76,9 +76,10 @@ polilínea terminó en el depósito de su destino vigente se entrega: la RAM sum
 `unit:<id>` y `city:<destino>`. La primera la ordena detrás de cualquier escritura pendiente de la caravana (su
 captura, por ejemplo); la segunda, detrás de los volcados y los encargos de ese almacén, como cualquier delta
 versionado. La transacción pasa la caravana de `IN_TRANSIT` a `DELIVERED` (condicionado), aplica el delta de cada
-recurso, borra la fila de `units` (`caravans.unit_id` queda a `NULL` por la FK) y escribe `CaravanArrived`. Un
-reintento que ya no encuentra la caravana en `IN_TRANSIT` no acredita nada. Si se descarta del todo, el crédito ya
-está en la RAM y viaja en el siguiente volcado de ese almacén con versión nueva; la ventana en la que un fallo total
+recurso, pone `caravans.unit_id` a `NULL`, borra la fila de `units` y escribe `CaravanArrived`. Un reintento que
+ya no encuentra la caravana en `IN_TRANSIT` no acredita nada. Si se descarta del todo, el crédito ya está en la RAM y
+la entrega se reintenta en el siguiente volcado con una versión nueva de cada stock, como la de la elaboración; la
+ventana en la que un fallo total
 tras el `COMMIT` acreditaría dos veces al reiniciar es la misma que la de la elaboración, y queda documentada igual.
 
 La entrega en dos fases (esperar al `COMMIT` para acreditar) se descarta: dejaría la caravana visible y atacable en el
@@ -92,8 +93,8 @@ Se encola `caravan.capture` con la clave `unit:<id>`: en una transacción cambia
 `units.hp`, cancela el movimiento anterior e inserta el nuevo, cambia `caravans.to_city_id` y escribe
 `CaravanCaptured` (y `CaravanIntercepted` si el destinatario original es un tercero). Como la caravana no cuenta en la
 población de nadie, cambiar `city_id` no mueve el contador de ninguna ciudad. Si no hay ruta, la caravana se pierde:
-`caravan.lose` borra la unidad, pasa la caravana a `LOST` y escribe `CaravanLost`; la carga desaparece, y es el único
-camino por el que un trato destruye recursos.
+el mismo trabajo, sin movimiento nuevo, pasa la caravana a `LOST`, borra la unidad y escribe `CaravanLost` (y
+`CaravanIntercepted` si toca); la carga desaparece, y es el único camino por el que un trato destruye recursos.
 
 La captura es optimista, como la muerte: la RAM la aplica en el tick y la transacción la confirma después. Si falla
 del todo, se reintenta con el estado de la RAM, que es la fuente de verdad de la unidad.
@@ -105,10 +106,11 @@ no cambia. Es una rama por tipo de objetivo en la misma función, no un predicad
 cada golpe siga siendo una sola.
 
 **7. Quién se entera.** Las caravanas viajan en los mensajes de entidad, sin la carga, a todo el chunk.
-`caravan.update { caravan }` va por `SendToPlayer` a los implicados (el dueño, el destinatario original y el captor)
+`caravan.update { caravan }` va por `SendToPlayer` a los implicados (el dueño de ahora, quien la mandó, el
+destinatario original, el dueño de su destino y, en una captura, quien la pierde)
 en cada salida, captura, llegada o pérdida, y `world.snapshot` lleva `caravans[]` con las `IN_TRANSIT` que salen de la
-ciudad del jugador, van a ella o son suyas. Las capturas salen además como `event_log.notice` con
-`CARAVAN_CAPTURED` para quien la pierde y para el destinatario original
+ciudad del jugador, van a ella o son suyas. Las capturas salen además como `event_log.notice`: `CARAVAN_CAPTURED` o,
+sin ruta, `CARAVAN_LOST` para quien la pierde, y `CARAVAN_INTERCEPTED` para el destinatario original
 ([ADR-033](ADR-033-live-notices-ephemeral.md)). En `world_events`, `CaravanArrived`, `CaravanCaptured`,
 `CaravanIntercepted` y `CaravanLost` llevan `counterpart_player_id` y `atMs` cuando implican a dos jugadores; los
 cuatro entran en `eventlog.EventTypes()` y en `Classify` ([ADR-028](ADR-028-event-log-from-world-events.md)).
@@ -143,10 +145,13 @@ CREATE TABLE caravan_cargo (
 ```
 
 El tipo de unidad no tiene `CHECK` en `units` y no lo gana aquí; `city_productions_unit_type_valid` sigue con
-`VILLAGER` y `WARRIOR`. La carga de la simulación lee las caravanas `IN_TRANSIT` con su carga y su unidad; la
-validación de carga rechaza una caravana `IN_TRANSIT` sin unidad viva, con una carga distinta de las líneas de su
-lado del trato, con una oferta que no está `ACCEPTED` o con un movimiento que no termina en el depósito de su destino. Los trabajos nuevos (`caravan.deliver`, `caravan.capture`, `caravan.lose`)
-entran en `simulation.JobNames`; las dos tablas, en el `TRUNCATE` de los tests de integración. La migración de vuelta
+`VILLAGER` y `WARRIOR`. La carga de la simulación lee las caravanas `IN_TRANSIT` con su carga
+(`CaravanRepo.ListInTransit`) después de `Hydrate`; antes, una comprobación del arranque (`CaravanRepo.Violations`)
+señala y deja fuera una caravana con una oferta que no está `ACCEPTED`, sin su unidad `CARAVAN` viva
+(`INV-TRADE-007`) o con una carga distinta de las líneas de su lado del trato (`INV-TRADE-005`). Una caravana parada
+fuera del depósito de su destino —un movimiento que no se pudo recuperar— vuelve a buscar ruta cada minuto. Los
+trabajos nuevos (`caravan.deliver`, con las claves `unit:<id>` y `city:<destino>`, y `caravan.capture`, que escribe
+también la pérdida) entran en `simulation.JobNames`; las dos tablas, en el `TRUNCATE` de los tests de integración. La migración de vuelta
 devuelve la carga de cada caravana `IN_TRANSIT` al almacén de su destino vigente (nada se pierde al bajar), borra sus
 unidades y las dos tablas.
 

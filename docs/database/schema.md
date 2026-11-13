@@ -1277,6 +1277,49 @@ CREATE TABLE city_crafts (
 
 Derribar el taller borra su fila en la transacción del derribo (`RN-GOODS-007`).
 
+### 16.11 `caravans` y `caravan_cargo` (`000017`)
+
+Las caravanas que llevan la mercancía de un trato ([../specs/caravans.md](../specs/caravans.md),
+[ADR-037](../decisions/ADR-037-caravans-as-units.md) §8). La caravana es una unidad: su posición, su vida y su
+movimiento están en `units` (con `unit_type = 'CARAVAN'`) y en `unit_movements`, como los de cualquier otra. Estas
+dos tablas guardan lo demás:
+
+```sql
+CREATE TABLE caravans (
+    id                  bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    unit_id             bigint      REFERENCES units (id) ON DELETE SET NULL,
+    offer_id            bigint      NOT NULL REFERENCES trade_offers (id),
+    sender_player_id    uuid        NOT NULL REFERENCES players (id),
+    from_city_id        bigint      NOT NULL REFERENCES cities (id),
+    to_city_id          bigint      NOT NULL REFERENCES cities (id),
+    original_to_city_id bigint      NOT NULL REFERENCES cities (id),
+    status              text        NOT NULL DEFAULT 'IN_TRANSIT',
+    departed_at         timestamptz NOT NULL,
+    closed_at           timestamptz,
+    CONSTRAINT caravans_status_valid CHECK (status IN ('IN_TRANSIT', 'DELIVERED', 'LOST')),
+    CONSTRAINT caravans_unit_while_in_transit CHECK ((status = 'IN_TRANSIT') = (unit_id IS NOT NULL)),
+    CONSTRAINT caravans_closed_when_done CHECK ((status = 'IN_TRANSIT') = (closed_at IS NULL))
+);
+CREATE UNIQUE INDEX caravans_one_per_unit ON caravans (unit_id) WHERE status = 'IN_TRANSIT';
+CREATE UNIQUE INDEX caravans_two_per_offer ON caravans (offer_id, from_city_id);
+
+CREATE TABLE caravan_cargo (
+    caravan_id bigint  NOT NULL REFERENCES caravans (id) ON DELETE CASCADE,
+    resource   text    NOT NULL,   -- el CHECK de city_stocks
+    amount     integer NOT NULL CHECK (amount > 0),
+    PRIMARY KEY (caravan_id, resource)
+);
+```
+
+| Columna | Semántica |
+|---|---|
+| `unit_id` | La unidad `CARAVAN` mientras está en camino; `NULL` al cerrarse, cuando su unidad se borra en la misma transacción. Por el `CHECK` y la FK, la unidad de una caravana en camino no se puede borrar sola |
+| `offer_id`, `from_city_id` | El trato del que nace y la ciudad de la que sale: dos por trato, una por sentido, creadas en la transacción de la aceptación (`INV-TRADE-007`) |
+| `sender_player_id` | Quien la mandó: el que dio esa mitad del trato. El dueño de ahora es `units.player_id`, que cambia al capturarla |
+| `to_city_id`, `original_to_city_id` | Adónde va ahora (la ciudad del captor tras una captura) y adónde iba al salir |
+| `status` | `IN_TRANSIT`, `DELIVERED` (su carga entró en `to_city_id` una sola vez, `INV-TRADE-006`) o `LOST` (capturada sin ruta: la carga se perdió) |
+| `caravan_cargo` | Lo que lleva, una fila por recurso: exactamente las líneas de su lado del trato, que no cambian ni al capturarla (`INV-TRADE-005`). La comprobación del arranque (`CaravanRepo.Violations`) no incorpora una caravana que no cuadre |
+
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 
 Sin DDL definitivo y **sin migración**. Se documenta la forma prevista para verificar que encaja sin romper el esquema del MVP. Todas estas tablas son **aditivas**: no exigen modificar ninguna columna existente. Las únicas intrusiones previstas sobre tablas MVP son columnas nuevas y anulables, introducidas mediante el patrón *expand* descrito en [migrations.md](./migrations.md).

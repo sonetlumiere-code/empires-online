@@ -50,7 +50,7 @@ Decisiones: [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-or
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E10 |
 | Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
-| Cobertura | **Parcial**: el trato instantáneo de E10, cubierto por `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` y `TestUnTratoMueveLosDosAlmacenesYEsIdempotente` (integration), `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes` y `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y `TestLasPatasDeUnTratoConservanCadaRecurso` (`internal/domain/trade`); el trato que carga dos caravanas (E15), sin test todavía |
+| Cobertura | **Cubierto** por `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada`, `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez` y `TestUnaCapturaSinRutaPierdeLaCaravana` (integration), `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes`, `TestGoldenCaravanasDelTratoALaLlegada`, `TestCapturadaSinRutaSePierde` y `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y `TestLasPatasDeUnTratoConservanCadaRecurso` (`internal/domain/trade`) |
 
 **Enunciado.** Para todo trato aceptado y para cada recurso, la cantidad que resta del almacén de una ciudad es
 exactamente la que suma al de la otra, y las dos escrituras se confirman en la misma transacción que pasa la oferta a
@@ -65,7 +65,8 @@ líneas de la oferta; la reserva y su devolución recorren las mismas líneas (A
 
 **Cómo se verifica.** `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` (integration: con la versión de un
 delta ya escrita, o con un débito que dejaría un stock negativo, no se mueve nada y la oferta sigue pendiente),
-`TestUnTratoMueveLosDosAlmacenesYEsIdempotente` (integration: repetirlo no mueve nada otra vez), el golden
+`TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez` (integration, desde E15: repetirlo no mueve nada otra
+vez y devuelve las mismas caravanas), el golden
 `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes` (simulation: los cuatro deltas suman cero por recurso y cada uno
 lleva una versión mayor que la del stock), `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y
 `TestLasPatasDeUnTratoConservanCadaRecurso` (domain) — **existen y pasan**. Verificado por mutación: confirmar sin
@@ -80,7 +81,9 @@ en la misma transacción que pasa la oferta a `ACCEPTED`, y lo que lleva una car
 llegar ([INV-TRADE-005](#inv-trade-005), [INV-TRADE-006](#inv-trade-006)). Un trato sigue sin crear recursos nunca; el
 único camino por el que los destruye es la pérdida de una caravana capturada sin ruta a la ciudad del captor
 (`RN-CARAVAN-006`), que queda en `world_events` como `CaravanLost`. La ficha queda parcial hasta que los tests del trato
-que carga existan.
+que carga existan. **Desde el mismo día, cubierta:** `TestGoldenCaravanasDelTratoALaLlegada` (simulation) comprueba
+que lo debitado es lo que cargan las dos caravanas y lo que entra en cada almacén al llegar, y
+`TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez` (integration), que la transacción crea las dos con su carga.
 
 ---
 
@@ -176,7 +179,7 @@ antes de reservar; la transacción condiciona la escritura al estado esperado.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E15 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E15) |
+| Cobertura | **Cubierto** por `TestUnaCapturaCambiaElDuenoYNoLaCarga` y `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration) y `TestUnTerceroCapturaLaCaravanaYSeLaLleva` (simulation) |
 
 **Enunciado.** Las filas de `caravan_cargo` de una caravana son, recurso a recurso, las líneas del lado del trato que
 da su ciudad de origen, y no cambian desde la transacción que la crea hasta la que la entrega o la pierde, tampoco al
@@ -190,12 +193,14 @@ reflejara.
 captura y la entrega no tocan `caravan_cargo` (ADR-037 §5 y §4). `DOMAIN` — la carga de la RAM se construye de las
 mismas líneas de la oferta y la captura sólo cambia el dueño, la vida y el destino.
 
-**Cómo se verifica.** Previstos: un test de dominio que compara la carga de las dos caravanas con las líneas de la
-oferta; el golden «caravanas» con una captura y una recaptura que llegan con la carga intacta; un test de integración
-que captura una caravana y comprueba que `caravan_cargo` no cambió.
+**Cómo se verifica.** `TestUnaCapturaCambiaElDuenoYNoLaCarga` (integration: capturar, también dos veces, no toca
+`caravan_cargo`), `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration: una carga alterada a mano sale en la
+comprobación del arranque) y `TestUnTerceroCapturaLaCaravanaYSeLaLleva` y `TestElDestinatarioRecuperaLaCaravana`
+(simulation: la caravana capturada y recapturada llega con su carga) — **existen y pasan**.
 
-**Violación en runtime.** La validación de carga compara la carga de cada caravana `IN_TRANSIT` con las líneas de su
-oferta; una discrepancia se registra como `invariant_violation` con `inv_id=INV-TRADE-005` y la carga no arranca.
+**Violación en runtime.** La comprobación del arranque (`CaravanRepo.Violations`) compara la carga de cada caravana
+`IN_TRANSIT` con las líneas de su lado del trato; una discrepancia se registra como `invariant_violation` con
+`inv_id=INV-TRADE-005` y esa caravana no se incorpora a la simulación: queda en la base para revisarla a mano.
 
 ---
 
@@ -208,7 +213,7 @@ oferta; una discrepancia se registra como `invariant_violation` con `inv_id=INV-
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E15 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E15) |
+| Cobertura | **Cubierto** por `Test_INV_TRADE_006_UnaCaravanaSeEntregaUnaSolaVez` y `TestUnaEntregaAdelantadaNoEscribeNada` (integration) y `TestGoldenCaravanasDelTratoALaLlegada`, `TestUnaEntregaDescartadaSeReintentaConVersionNueva` y `TestTrasUnReinicioLasCaravanasLleganASuHora` (simulation) |
 
 **Enunciado.** Una caravana pasa de `IN_TRANSIT` a `DELIVERED` o a `LOST` una sola vez. El paso a `DELIVERED` y el
 crédito de su carga en el almacén de un único destino se confirman en la misma transacción; una transacción que la
@@ -221,8 +226,12 @@ crearía recursos.
 misma transacción; `caravans_unit_while_in_transit` impide una caravana cerrada con unidad. `DOMAIN` — la RAM quita
 la caravana del mapa en el tick en que la entrega, así que no la vuelve a entregar.
 
-**Cómo se verifica.** Previstos: un test de integración que repite la entrega y comprueba un solo crédito; el test de
-recuperación con una entrega encolada y sin confirmar; el golden «caravanas» con la llegada en el tick exacto.
+**Cómo se verifica.** `Test_INV_TRADE_006_UnaCaravanaSeEntregaUnaSolaVez` (integration: la segunda entrega no
+acredita nada, la unidad y su movimiento se borran), `TestUnaEntregaAdelantadaNoEscribeNada` (integration),
+`TestUnaEntregaDescartadaSeReintentaConVersionNueva` (simulation: la RAM acredita una vez y el volcado reintenta con
+versión nueva), `TestTrasUnReinicioLasCaravanasLleganASuHora` (simulation, recovery) y el golden
+`TestGoldenCaravanasDelTratoALaLlegada` — **existen y pasan**. Verificado por mutación: sin la condición
+`status = 'IN_TRANSIT'` de la entrega, el primero se pone en rojo (la madera se acredita dos veces).
 
 **Violación en runtime.** La transacción repetida no escribe nada; la ventana de una entrega que falla del todo tras
 el `COMMIT` es la documentada en ADR-037 §4.
@@ -238,7 +247,7 @@ el `COMMIT` es la documentada en ADR-037 §4.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E15 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E15) |
+| Cobertura | **Cubierto** por `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez`, `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada`, `TestLasRestriccionesDeLasCaravanas` y `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration), `TestGoldenCaravanasDelTratoALaLlegada` (simulation) y, en TypeScript, «city.train no admite CARAVAN» (`packages/protocol`) |
 
 **Enunciado.** Toda fila de `caravans` apunta a una oferta `ACCEPTED`, y toda oferta aceptada desde E15 tiene
 exactamente dos caravanas, una que sale de cada ciudad, creadas en la misma transacción que la acepta. Ninguna otra
@@ -250,12 +259,14 @@ deja fuera) o un recurso salido de la nada.
 **Cómo se garantiza.** `DB` — `caravans.offer_id` con FK a `trade_offers` y `caravans_two_per_offer`; `TradeRepo.Accept`
 inserta las dos en la transacción de la aceptación. `DOMAIN` — `CARAVAN` no se entrena y ninguna orden la crea.
 
-**Cómo se verifica.** Previstos: un test de integración de la aceptación (dos caravanas, una por sentido, o ninguna si
-falla); un test de dominio que rechaza `CARAVAN` en `city.train`; la validación de carga contra una caravana sin oferta
-aceptada.
+**Cómo se verifica.** `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez` (integration: dos caravanas, una por
+sentido, en la transacción de la aceptación), `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada` (integration:
+un trato que no se escribe no crea ninguna), `TestLasRestriccionesDeLasCaravanas` (integration: una tercera del mismo
+sentido se rechaza), `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration) y el test de contrato que
+rechaza `CARAVAN` en `city.train` — **existen y pasan**.
 
-**Violación en runtime.** La validación de carga rechaza una caravana cuya oferta no esté `ACCEPTED` y lo registra con
-`inv_id=INV-TRADE-007`.
+**Violación en runtime.** La comprobación del arranque (`CaravanRepo.Violations`) señala una caravana cuya oferta no
+esté `ACCEPTED` o sin su unidad `CARAVAN` viva, con `inv_id=INV-TRADE-007`, y no la incorpora.
 
 ---
 

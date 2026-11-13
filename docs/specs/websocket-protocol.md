@@ -41,6 +41,7 @@ Dentro del scope de v1:
 - Los avisos en vivo ([live-notices.md](live-notices.md)): `event_log.notice` (§8.23), aditivo (`R-VER-3`).
 - Las civilizaciones ([civilizations.md](civilizations.md)): `civilization` en `CityView` (un `CivilizationCode`), obligatorio porque toda ciudad tiene una y fija porque no cambia, así que `city.update` no lo lleva; sin mensajes nuevos. Los rasgos no viajan: los plazos y la vida llegan resueltos ([ADR-035](../decisions/ADR-035-civilization-traits.md) §7).
 - Los bienes de civilización ([civilization-goods.md](civilization-goods.md)): `city.craft` (§7.19), `craft` en `CityView` y en `city.update` (`{ good, amount, completesAtMs }` o `null`), `WINE`, `SILK`, `SPICES` y `FURS` en `Stocks` y en las líneas de un trato, y `WORKSHOP` en `BuildingType`; todo aditivo (`R-VER-2`, `R-VER-3`).
+- Las caravanas ([caravans.md](caravans.md)): la unidad `CARAVAN` en `UnitType` (no en `city.train`), `caravan.update` (§8.24) y `caravans` en el snapshot, los tipos `CARAVAN_ARRIVED`, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST` en el registro (los tres últimos también en `event_log.notice`) y `cargo` en los dos; sin mensajes cliente → servidor nuevos: se ataca con `unit.attack`. Todo aditivo (`R-VER-2`, `R-VER-3`).
 - La conquista ([territory-conquest.md](territory-conquest.md)): `unit.claim` (§7.18), `claim` en `TerritoryView` con `contested` como «hay una reclamación activa», el estado `CLAIMING`, los tipos `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN` en el registro y en `event_log.notice`, y `territoryId`/`territoryName` en las dos; todo aditivo (`R-VER-2`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
@@ -171,7 +172,7 @@ type Outbound struct {
 | Campo | Tipo | Obligatorio | Significado |
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. |
-| `type` | `string` | Sí | Uno de los veintitrés tipos servidor→cliente de v1. |
+| `type` | `string` | Sí | Uno de los veinticuatro tipos servidor→cliente de v1. |
 | `seq` | `number` (uint64) | Sí | Contador **monótono estrictamente creciente por conexión**, empieza en `1`. Se reinicia en cada conexión nueva. Ver sección 11. |
 | `ts` | `number` | Sí | Epoch ms del reloj del servidor en el momento de encolar el mensaje. Es la referencia temporal del cliente. |
 | `requestId` | `string` | **Se omite** salvo que el mensaje responda a un comando concreto | La etiqueta `json:"requestId,omitempty"` garantiza que el campo **no aparece** cuando no aplica: un broadcast (`entity.*`, `city.update`, `territory.update`, `unit.movement.*` dirigidos al chunk) nunca lleva un `requestId` vacío que el cliente pudiera confundir con una respuesta. Lo verifica el contract test `TestRequestIDSeOmiteCuandoNoAplica`. |
@@ -431,7 +432,7 @@ payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y:
 - **Dirección:** cliente → servidor. **Propósito:** encargar el entrenamiento de una unidad en una ciudad propia. Una producción por ciudad, sin cola ni cancelación.
 
 ```ts
-payload: z.object({ cityId: EntityId, type: UnitType }).strict()  // UnitType = 'VILLAGER' | 'WARRIOR'
+payload: z.object({ cityId: EntityId, type: TrainableUnitType }).strict()  // 'VILLAGER' | 'WARRIOR': la caravana no se entrena (E15)
 ```
 
 **Validaciones, en este orden** (`RN-ECON-010`): la ciudad existe y es propia (`CITY_NOT_FOUND`) · no tiene producción en curso (`CITY_BUSY`) · `population + 1 <= populationLimit` (`POPULATION_LIMIT_REACHED`) · el stock cubre el coste (`INSUFFICIENT_RESOURCES`). Rechazos como **`system.error`**.
@@ -564,6 +565,8 @@ payload: z.object({ offerId: EntityId }).strict()
 
 **Efectos.** No hay `*.accepted`: el resultado llega como `trade.update` (§8.22) a los dos jugadores, con el `requestId` sólo para quien dio la orden. Aceptar es una orden en dos fases: el tick reserva lo que da cada parte y una sola transacción mueve los dos almacenes; con éxito, `trade.update` con `ACCEPTED` y `city.update { stocks }` al chunk de cada ciudad.
 
+**Desde E15** ([caravans.md](caravans.md), [ADR-037](../decisions/ADR-037-caravans-as-units.md)): `trade.propose` y la aceptación exigen además un camino entre los depósitos de las dos ciudades (`PATH_NOT_FOUND`, `PATH_TOO_LONG`). La transacción de la aceptación sólo debita: crea dos caravanas, una por sentido, que llegan como `entity.spawn` de una unidad `CARAVAN` al chunk de cada ciudad y como `caravan.update` (§8.24) a los dos jugadores. Lo que recibe cada uno entra en su almacén (`city.update { stocks }`) cuando llega su caravana.
+
 ### 7.18 `unit.claim`
 
 - **Dirección:** cliente → servidor. **Propósito:** un guerrero propio reclama el territorio del tile en que está: se planta y, si aguanta el plazo, el territorio pasa a su dueño. Es hostil contra el dueño del territorio, si lo tiene ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). Spec: [territory-conquest.md](territory-conquest.md); persistencia: [ADR-034](../decisions/ADR-034-territory-claims.md).
@@ -600,7 +603,7 @@ payload: z.object({ cityId: EntityId }).strict()
 
 ## 8. Mensajes servidor → cliente
 
-Los veintitrés tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los veinticuatro tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -692,6 +695,7 @@ payload: z.object({
   hills: z.array(HillView).optional(),      // E9, §8.21
   treaties: z.array(TreatyView).optional(), // E6, §8.18: los del jugador que lo recibe
   tradeOffers: z.array(TradeOfferView).optional(), // E10, §8.22: las ofertas pendientes del jugador
+  caravans: z.array(CaravanView).optional(), // E15, §8.24: las que el jugador ve con su carga
 })
 ```
 
@@ -1190,9 +1194,27 @@ payload: z.object({
 { "v": 1, "type": "event_log.notice", "seq": 520, "ts": 1788955600000, "payload": { "kind": "UNIT_LOST", "atMs": 1788955600000, "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "unitType": "VILLAGER", "x": 312, "y": 140 } }
 ```
 
-Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6).
+Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6). Desde E15, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con `cargo` (lo que llevaba la caravana) y `x`/`y` ([caravans.md](caravans.md) §6); la llegada (`CARAVAN_ARRIVED`) va sólo al registro.
 
 **No es una entrada del registro** (`RN-NOTICE-004`, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)): no tiene `id` ni recuento, no mueve el cursor de lo visto y el cliente no lo mete en la lista, que sigue saliendo de `event_log.page` (§8.19). `kind` es un subconjunto de los tipos de entrada: lo que hoy no llega a quien mira otra parte del mapa. Lo que la víctima de un saqueo o de un asedio ya recibe (`pillagedAtMs`, `besiegedAtMs` en `city.update`) no se repite. Un golpe de saqueo es un aviso; el cliente los agrupa. El servidor lo manda en todos los tipos con `x`/`y`, también en `HOUSE_DESTROYED` (el tile de la casa). Efímero: no se guarda ni se reenvía al reconectar.
+
+### 8.24 `caravan.update`
+
+- **Propósito:** cambió una caravana del jugador: salió, la capturaron, llegó o se perdió ([caravans.md](caravans.md) §6). Sólo a sus implicados —el dueño de ahora, quien la mandó, el destinatario original y el dueño de su destino—, por `SendToPlayer`, sin `requestId`. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ caravan: CaravanView })
+// CaravanView: { id, unitId, ownerPlayerId, senderPlayerId,
+//                fromCityId, fromCityName: string | null, toCityId, toCityName: string | null,
+//                originalToCityId, cargo: ResourceAmount[] (≥ 1),
+//                status: IN_TRANSIT | DELIVERED | LOST, arrivesAtMs: EpochMs | null }
+```
+
+```json
+{ "v": 1, "type": "caravan.update", "seq": 640, "ts": 1788955700000, "payload": { "caravan": { "id": 5, "unitId": 9001, "ownerPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "senderPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "fromCityId": 12, "fromCityName": "Vecinópolis", "toCityId": 3, "toCityName": "Testópolis", "originalToCityId": 3, "cargo": [ { "resource": "SILK", "amount": 30 } ], "status": "IN_TRANSIT", "arrivesAtMs": 1788955900000 } } }
+```
+
+La caravana es además una unidad `CARAVAN` del mapa, que viaja en `entity.spawn`, `entity.update` y `entity.despawn` a todo su chunk **sin la carga** (`RN-CARAVAN-009`). `toCityId` distinto de `originalToCityId` dice que la capturaron; una captura cambia el dueño de la unidad, y el chunk la recibe otra vez entera (`entity.despawn { REMOVED }` y `entity.spawn`), porque `entity.update` no lleva el dueño. Un estado distinto de `IN_TRANSIT` dice que la caravana terminó (y su unidad sale con `entity.despawn { REMOVED }`); el cliente la saca de su lista. Las que siguen en camino viajan en `world.snapshot.caravans`, que la reemplaza.
 
 ## 9. Códigos de error
 
@@ -1291,7 +1313,7 @@ packages/protocol/
 │   ├── common.ts            # Tile, Waypoint, TimedPath, UnitView, CityView, TerritoryView, ChunkRef, ChunkTerrain
 │   ├── errors.ts            # ErrorCode como z.enum, exactamente los 24 códigos, y WS_CLOSE
 │   ├── client.ts            # los 24 mensajes cliente→servidor, TODOS .strict()
-│   ├── server.ts            # los 23 mensajes servidor→cliente, ninguno .strict()
+│   ├── server.ts            # los 24 mensajes servidor→cliente, ninguno .strict()
 │   ├── civilizations.ts     # catálogo de presentación de las civilizaciones (ADR-035 §7)
 │   └── index.ts             # export público de @empires-online/protocol
 ├── src/scripts/export-schema.ts

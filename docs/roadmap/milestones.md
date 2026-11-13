@@ -1939,7 +1939,7 @@ del pilar 5 y el riesgo del camino.
 unidad `CARAVAN` (80 de vida, 1 200 ms por tile, sin población ni órdenes); la ruta buscada al proponer y al aceptar,
 con `PATH_NOT_FOUND` y `PATH_TOO_LONG` si no la hay; la entrega optimista al llegar; la captura con el golpe mortal,
 que la lleva con su carga entera a la ciudad del captor, y la recaptura; la protección del dueño no la cubre;
-`caravan.update`, `caravans[]` y `CARAVAN_CAPTURED`; las llegadas y capturas en el registro; `INV-TRADE-005` a `007`;
+`caravan.update`, `caravans[]` y los cuatro tipos de caravana del registro, tres de ellos avisados; `INV-TRADE-005` a `007`;
 migración `000017`; el cliente y `scripts/smoke.mjs --caravana`. **No entra** (spec §2): rutas permanentes, envíos sin
 trato, mercados, órdenes de escolta o de dirigir la caravana, varias caravanas por sentido, caravanas por agua, el A\*
 jerárquico.
@@ -1950,16 +1950,23 @@ jerárquico.
    `INV-COMBAT-002` e `INV-CITY-017`, de [trade.md](../specs/trade.md) (`RN-TRADE-004`, Q7 y Q8),
    [combat-raid.md](../specs/combat-raid.md) (`RN-COMBAT-003`), [civilization-goods.md](../specs/civilization-goods.md)
    (`RN-GOODS-008` y Q9) y [economy-stone.md](../specs/economy-stone.md) (Q8), y la nota de `DEBT-04` en el backlog.
-2. **PENDIENTE** — Protocolo: `CARAVAN` en `UnitType`, `caravan.update` (24 tipos servidor → cliente) con su e2e,
-   `caravans[]` en `world.snapshot`, `CARAVAN_CAPTURED` y las entradas nuevas del registro; contract tests en los dos
-   lados.
-3. **PENDIENTE** — Dominio: el catálogo de `CARAVAN`, `internal/domain/caravan` (carga, llegada, captura), la ruta
-   inversa, la población sin caravanas y la excepción de la protección en el predicado hostil.
-4. **PENDIENTE** — Migración `000017` y persistencia: `caravans` y `caravan_cargo`, el trato que crea las caravanas,
-   la entrega idempotente, la captura y la pérdida; la carga y la validación de carga.
-5. **PENDIENTE** — Simulación: la ruta en la propuesta y la aceptación, las caravanas al volver la confirmación, la
-   llegada en la fase 5, la captura en la fase 4, la recuperación; el golden «caravanas» y los e2e.
-6. **PENDIENTE** — Cliente: el dibujo y la ruta de la caravana, «Caravanas en camino», «Capturar», el motivo sin ruta
-   en el formulario del trato y el aviso de captura.
+2. **HECHO** — Protocolo: `CARAVAN` en `UnitType` (no en `city.train`: `TrainableUnitType`), `caravan.update` (24
+   tipos servidor → cliente) con su e2e (`TestUnaCaravanaDePuntaAPunta`), `caravans[]` en `world.snapshot`, los tipos
+   `CARAVAN_ARRIVED`, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST` en el registro (los tres últimos en
+   `event_log.notice`) y `cargo` en los dos; contract tests en los dos lados.
+3. **HECHO** — Dominio: `CARAVAN` en el catálogo de unidades (`Autonomous`, `EnsureOrderable`), `internal/domain/caravan`
+   (las dos mitades de un trato, la carga, la ruta inversa, quién ve la carga), las caravanas en `eventlog`, la
+   población sin caravanas en la validación de carga y la excepción de la protección en el predicado hostil.
+4. **HECHO** — Migración `000017` y persistencia: `caravans` y `caravan_cargo`; `TradeRepo.Accept` debita y crea las
+   dos caravanas con sus unidades y movimientos; `CaravanRepo` con la entrega idempotente, la captura y la pérdida, la
+   carga al arrancar y la comprobación del arranque (`Violations`); seis tests de integración nuevos y los del trato
+   reescritos.
+5. **HECHO** — Simulación: la ruta en la propuesta y la aceptación (una búsqueda, la vuelta al revés), las caravanas al
+   volver la confirmación, la llegada en la fase 5, la captura en la fase 4 con la escolta de E3, la pérdida sin ruta,
+   el reintento de una entrega descartada y la recuperación; el golden «caravanas» y once tests más. Fallo encontrado:
+   el aviso de una captura salía sin su carga (`sendNotices` no la copiaba).
+6. **HECHO** — Cliente: el carro en la escena, «Caravanas en camino» con su llegada e «Ir», ninguna orden con una
+   caravana seleccionada, los textos de las cuatro entradas y de los avisos, y los mensajes de `PATH_NOT_FOUND` y
+   `UNIT_NOT_MOVABLE` (frontend.md §4.12).
 7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --caravana`, y `--comercio` y `--bienes` esperando la
    llegada.

@@ -96,8 +96,10 @@ Cuando llega al depósito de su ciudad de destino, en ese mismo tick: la RAM acr
 destino, la caravana desaparece (`entity.despawn { REMOVED }`) y se encola la entrega. La entrega es **optimista**,
 como la de la elaboración de E14: su transacción pasa la caravana a `DELIVERED` (condicionado a `IN_TRANSIT`), aplica
 el delta versionado de cada recurso en el almacén del destino y borra su fila de `units`. Un reintento sin la
-caravana en `IN_TRANSIT` no acredita nada. Si la entrega se descarta del todo, el crédito ya aplicado en la RAM se
-vuelca en el siguiente volcado con versión nueva, como en E14.
+caravana en `IN_TRANSIT` no acredita nada. Si la entrega se descarta del todo, el crédito ya está en la RAM y la
+entrega se reintenta en el siguiente volcado con una versión nueva de cada stock, como la de la elaboración de E14.
+Una caravana parada fuera del depósito de su destino (tras un reinicio con un movimiento que no se pudo recuperar)
+vuelve a buscar ruta, como mucho una vez por minuto.
 
 Que el tratado termine con caravanas en camino no las detiene: ya están pagadas, y llegan (Q10).
 
@@ -145,15 +147,19 @@ Dominio: `RN-CARAVAN`.
 
 ### 4.6 Qué ve el jugador
 
-- En el mapa, la caravana con su sprite, del color de su dueño, como cualquier unidad. Los implicados ven además su
-  ruta (la polilínea que hoy se dibuja para las unidades propias).
-- En el HUD, «Caravanas en camino»: las que salen de tu ciudad y las que vienen a ella, con el otro jugador, la carga,
-  la vida y la llegada estimada; un clic centra la cámara en la caravana.
-- Con un guerrero seleccionado, un clic en una caravana ajena la ataca, como en cualquier unidad enemiga. El panel de
-  la caravana dice «Capturar» en lugar de «Atacar».
-- Al aceptar o ver aceptado un trato, el aviso dice que la mercancía está en camino y cuándo llega, no que ya está en
-  el almacén. El formulario «Ofrecer un trato» se deshabilita con su motivo si no hay ruta.
+- En el mapa, la caravana como un carro, del color de su dueño, como cualquier unidad.
+- En el HUD, «Caravanas en camino»: las que salen de tu ciudad, las que vienen a ella y las que capturaste, con el otro
+  jugador, la carga y la llegada estimada; «Ir» centra la cámara en la caravana.
+- Con un guerrero seleccionado, un clic en una caravana ajena la ataca, como en cualquier unidad enemiga; la ayuda del
+  guerrero dice que así se captura. Con la caravana propia seleccionada, un clic no manda nada.
+- Al aceptar o ver aceptado un trato, la mercancía aparece en «Caravanas en camino» con su llegada, no en el almacén.
 - Un aviso en vivo cuando te capturan una caravana, tuya o que venía a ti (Q11).
+
+**Precisión (2026-11-13, implementación).** Tres cosas de esta lista no se hacen como decía la propuesta: el cliente no
+puede saber si hay camino entre las dos ciudades, así que el formulario no se deshabilita por eso; el servidor
+rechaza el trato con `PATH_NOT_FOUND` o `PATH_TOO_LONG` y el pie lo explica. La ruta de una caravana se dibuja como la
+de cualquier unidad, sin un trazado aparte para los implicados. Y no hay un panel propio de la caravana con
+«Capturar»: el ataque es el clic de siempre, y la ayuda lo dice.
 
 ## 5. Errores
 
@@ -175,17 +181,19 @@ Servidor → cliente:
 
 - `UnitType` suma `CARAVAN`. Las caravanas viajan en `entity.spawn`, `entity.update` y `entity.despawn` como cualquier
   unidad, **sin la carga**: esos mensajes van a todo el chunk.
-- `caravan.update { caravan }`, tipo nuevo (R-VER-3), a las sesiones de los implicados (dueño, destinatario original y
-  captor) cuando una caravana sale, cambia de dueño, llega o se pierde; y `caravans[]`, campo opcional de
-  `world.snapshot` (R-VER-2), con las caravanas `IN_TRANSIT` que salen de tu ciudad, vienen a ella o son tuyas. La
-  vista: `{ unitId, ownerPlayerId, fromCityId, toCityId, toCityName, originalToCityId, cargo, status, arrivesAtMs }`.
-  El catálogo pasa de 23 a 24 tipos, y su e2e llega en el mismo commit.
-- `EventLogNoticeKind` suma `CARAVAN_CAPTURED`.
+- `caravan.update { caravan }`, tipo nuevo (R-VER-3), a las sesiones de los implicados (el dueño de ahora, quien la
+  mandó, el destinatario original, el dueño de su destino y, en una captura, quien la pierde) cuando una caravana
+  sale, cambia de dueño, llega o se pierde; y `caravans[]`, campo opcional de `world.snapshot` (R-VER-2), con las
+  caravanas `IN_TRANSIT` que el jugador ve con su carga. La vista: `{ id, unitId, ownerPlayerId, senderPlayerId,
+  fromCityId, fromCityName, toCityId, toCityName, originalToCityId, cargo, status, arrivesAtMs }`. El catálogo pasa
+  de 23 a 24 tipos, y su e2e llega en el mismo commit.
+- `EventLogKind` suma `CARAVAN_ARRIVED`, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, y
+  `EventLogNoticeKind` los tres últimos; las entradas y los avisos llevan `cargo`.
 
 Eventos de dominio en `world_events`, con `counterpart_player_id` y `atMs` cuando implican a dos jugadores
 ([ADR-028](../decisions/ADR-028-event-log-from-world-events.md)):
 
-- `TradeAccepted` (el de E10) pasa a llevar los dos `caravanId` y la llegada estimada de cada una.
+- `TradeAccepted` (el de E10) pasa a llevar los dos `caravanIds`.
 - `CaravanArrived`: jugador el destinatario, contraparte el remitente, con la carga.
 - `CaravanCaptured`: jugador el dueño que la pierde, contraparte el captor, con la carga y la ciudad adonde va ahora.
   Si el destinatario original es un tercero (ni el que la pierde ni el captor), una segunda fila
@@ -195,8 +203,8 @@ Eventos de dominio en `world_events`, con `counterpart_player_id` y `atMs` cuand
 Registro ([event-log.md](event-log.md)), sin lo que hizo el propio jugador (`RN-LOG-001`): la caravana que te llegó,
 la tuya capturada, la que venía a ti capturada y la que se perdió. La captura que hiciste tú no entra, como la muerte
 que causaste con una orden. Los tipos de entrada nuevos se suman a `eventlog.Kinds()`, al enum del protocolo y a
-`Classify`; los eventos, a `eventlog.EventTypes()`; y `CaravanCaptured` y `CaravanIntercepted`, a
-`eventlog.NoticeKinds` (Q11).
+`Classify`; los eventos, a `eventlog.EventTypes()`; y los tipos de `CaravanCaptured`, `CaravanIntercepted` y
+`CaravanLost`, a `eventlog.NoticeKinds` (Q11: las capturas que te afectan, también la que se pierde).
 
 ## 7. Persistencia
 
@@ -204,7 +212,7 @@ que causaste con una orden. Los tipos de entrada nuevos se suman a `eventlog.Kin
 |---|---|
 | Autoritativo en RAM | Cada caravana `IN_TRANSIT`: su unidad, su movimiento, su dueño, su destino y su carga |
 | Write-through | La salida, en la transacción del trato; la captura (dueño, ciudad, vida, movimiento nuevo y eventos) y la pérdida, cada una en su transacción; la entrega, en una transacción con el delta del almacén del destino |
-| Dirty-flag | Nada nuevo: el crédito de la llegada viaja con la entrega y, si ésta se descarta, con el volcado del almacén |
+| Dirty-flag | Nada nuevo: el crédito de la llegada viaja con la entrega, que se reintenta en el volcado si se descarta |
 | Reconstruible / no persistido | La posición en camino, de la polilínea; al arrancar se cargan las caravanas `IN_TRANSIT` con su movimiento, y las que llegaron durante la caída se entregan en el primer tick |
 
 **Por qué hace falta un ADR ([ADR-037](../decisions/ADR-037-caravans-as-units.md)).** Cuatro decisiones estructurales:
@@ -234,7 +242,7 @@ botín de seis recursos en el guerrero (Q5); **una ruta continua** (que se recal
 de `unit_id` para las `IN_TRANSIT`; y `caravan_cargo (caravan_id, resource, amount)`, con `amount > 0`, el mismo
 `CHECK` de recurso que `city_stocks` y la PK `(caravan_id, resource)`. `city_productions` no admite `CARAVAN` (no se
 entrena). Las dos tablas se suman al `TRUNCATE` de los tests de integración; un recurso nuevo tocará también el `CHECK`
-de `caravan_cargo`. Los trabajos nuevos de la cola (la entrega, la captura y la pérdida) se suman a
+de `caravan_cargo`. Los trabajos nuevos de la cola (`caravan.deliver`, la entrega, y `caravan.capture`, la captura o la pérdida) se suman a
 `simulation.JobNames`. La siguiente migración libre pasará a ser `000018`.
 
 ## 8. Invariantes

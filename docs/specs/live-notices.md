@@ -59,6 +59,13 @@ Lo que ya tiene su aviso no se repite: el saqueo y el asedio sufridos llevan `pi
 de la ciudad esté donde esté, y los tratados y los tratos llegan por `treaty.update` y `trade.update` a la barra de
 diplomacia.
 
+**Precisión (2026-11-13, [caravans.md](caravans.md) Q11, [ADR-037](../decisions/ADR-037-caravans-as-units.md) §7).**
+Desde E15 se avisan también las capturas de caravanas que le tocan a quien lee: `CARAVAN_CAPTURED` (te capturaron
+una caravana), `CARAVAN_LOST` (te la capturaron y se perdió por falta de camino) y `CARAVAN_INTERCEPTED` (capturaron
+la que venía a ti), con la carga (`cargo`) y el tile. La llegada (`CARAVAN_ARRIVED`) no se avisa: el almacén ya
+cambia a la vista y la lista «Caravanas en camino» la quita. Al captor no le llega nada, como no le llega su propia
+orden.
+
 ### 4.2 Reglas
 
 Dominio: `RN-NOTICE`.
