@@ -6,7 +6,7 @@ mapa hasta la otra ciudad, y quien la mate por el camino se la queda.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CARAVANS` |
-| Estado | Accepted (2026-11-13). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-13). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `38faac9`, con la CI en verde. |
 | Milestone | E15 Caravanas (decimoquinto slice después de M7) |
 | Canon | §9 (unidades), §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [trade.md](trade.md), [movement.md](movement.md), [unit.md](unit.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [civilization-goods.md](civilization-goods.md), [civilizations.md](civilizations.md), [safe-zones.md](safe-zones.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |

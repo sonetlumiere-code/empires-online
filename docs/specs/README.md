@@ -63,7 +63,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Conquista de territorio | [territory-conquest.md](territory-conquest.md) | E12 Conquista | Implemented | `unit.claim`: un guerrero planta el estandarte y, si aguanta, el territorio cambia de manos; +5 de población por territorio conquistado, la capital intocable, reclamar lo ajeno es hostil y avisa al dueño |
 | Civilizaciones | [civilizations.md](civilizations.md) | E13 Civilizaciones | Implemented | La civilización se elige al registrarse y no cambia; sus rasgos, en enteros por mil, cambian la velocidad de las unidades, la de obras y entrenamiento, la vida de las casas, el botín y el tiempo de recolección |
 | Bienes de civilización | [civilization-goods.md](civilization-goods.md) | E14 Bienes | Implemented | Un bien por civilización (vino, seda, especias, pieles) que sólo elabora su taller con `city.craft`; la Edad de Hierro pide 60 bienes ajenos, así que para progresar hay que comerciar |
-| Caravanas | [caravans.md](caravans.md) | E15 Caravanas | Accepted | Cada trato aceptado sale en dos caravanas, una por sentido, que recorren el mapa hasta la otra ciudad; un guerrero que mata una caravana la captura con su carga y se la lleva a su ciudad |
+| Caravanas | [caravans.md](caravans.md) | E15 Caravanas | Implemented | Cada trato aceptado sale en dos caravanas, una por sentido, que recorren el mapa hasta la otra ciudad; un guerrero que mata una caravana la captura con su carga y se la lleva a su ciudad |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

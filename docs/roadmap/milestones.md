@@ -1928,7 +1928,7 @@ Castillos, otros usos de los bienes, saquearlos, la producción pasiva.
 
 ## E15 — Caravanas
 
-**Estado: HECHO EN LA RAMA (2026-11-13)**, en `claude/slice-caravanas`, pendiente de fusión y CI. Contrato:
+**Estado: HECHO (2026-11-13)**, fusionado en `main` (`38faac9`) con la CI en verde el mismo día. Contrato:
 [SPEC-CARAVANS](../specs/caravans.md), aceptada el 2026-11-13 con sus doce decisiones de producto, y
 [ADR-037](../decisions/ADR-037-caravans-as-units.md).
 
