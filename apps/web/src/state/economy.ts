@@ -20,7 +20,8 @@ export type TileOrder =
   | { readonly kind: 'pillage'; readonly cityId: number }
   | { readonly kind: 'demolish'; readonly buildingId: number }
   | { readonly kind: 'gather' }
-  | { readonly kind: 'move' };
+  | { readonly kind: 'move' }
+  | { readonly kind: 'none' };
 
 /**
  * Qué orden es un clic sobre un tile con una unidad propia seleccionada:
@@ -32,6 +33,9 @@ export type TileOrder =
  *   3. sobre un bosque o una colina, con un aldeano → recolectar
  *      (`unit.gather`): el servidor decide por el terreno si es madera o piedra;
  *   4. en cualquier otro caso → moverse (`unit.move`).
+ *
+ * Una caravana no admite órdenes (SPEC-CARAVANS RN-CARAVAN-003): un clic con una
+ * seleccionada no manda nada.
  *
  * Un aldeano que ya recolecta y recibe un clic en otro bosque cambia de
  * bosque (RN-ECON-006); en hierba deja de recolectar y se mueve (RN-ECON-003).
@@ -45,6 +49,7 @@ export function decideTileOrder(
   playerId: string | null,
   buildingAt: (tile: { x: number; y: number }) => Pick<BuildingView, 'id' | 'cityId'> | undefined = () => undefined,
 ): TileOrder {
+  if (unit.unitType === 'CARAVAN') return { kind: 'none' };
   const city = cityAt(tile);
   if (city) {
     if (unit.unitType === 'WARRIOR' && city.ownerPlayerId !== playerId) {
@@ -256,6 +261,8 @@ export function unitTypeLabel(type: string): string {
       return 'aldeano';
     case 'WARRIOR':
       return 'guerrero';
+    case 'CARAVAN':
+      return 'caravana';
     default:
       return type.toLowerCase();
   }
@@ -312,7 +319,11 @@ export function readableError(code: string, message: string): string {
     case 'NOT_IMPLEMENTED':
       return 'Eso todavía no existe en el juego.';
     case 'PATH_TOO_LONG':
-      return 'Demasiado lejos: el camino, o la vuelta a la ciudad con la carga, supera lo que una unidad puede recorrer de una vez.';
+      return 'Demasiado lejos: el camino, o la vuelta a la ciudad con la carga, supera lo que una unidad puede recorrer de una vez. Un trato necesita que las caravanas puedan ir de una ciudad a la otra.';
+    case 'PATH_NOT_FOUND':
+      return 'No hay camino hasta ahí. Un trato necesita un camino por tierra entre las dos ciudades para sus caravanas.';
+    case 'UNIT_NOT_MOVABLE':
+      return 'Esa unidad no puede recibir esa orden ahora. Las caravanas no obedecen órdenes: van solas a su destino.';
     case 'CITY_PROTECTED':
       return 'Ese jugador está protegido mientras está desconectado: no se le puede atacar.';
     case 'UNIT_NOT_FOUND':

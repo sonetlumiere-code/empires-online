@@ -423,6 +423,7 @@ export class IsoScene {
       entry.unit.working !== unit.working ||
       (entry.unit.carrying > 0) !== (unit.carrying > 0) ||
       entry.unit.warrior !== unit.warrior ||
+      entry.unit.caravan !== unit.caravan ||
       entry.unit.attacking !== unit.attacking ||
       entry.unit.hpRatio !== unit.hpRatio
     ) {
@@ -653,14 +654,27 @@ function buildChunkGraphics(chunk: ChunkTerrain, chunkSize: number): Graphics {
 
 function paintUnitBody(
   body: Graphics,
-  unit: Pick<SceneUnit, 'isOwn' | 'working' | 'carrying' | 'warrior' | 'attacking' | 'hpRatio'>,
+  unit: Pick<SceneUnit, 'isOwn' | 'working' | 'carrying' | 'warrior' | 'caravan' | 'attacking' | 'hpRatio'>,
 ): void {
   const fill = unit.isOwn ? 0x4ea3ff : 0xff6b6b;
   const stroke = unit.attacking ? 0xffd23f : unit.working ? 0x7a4a1e : 0x0b1a2a;
   const width = unit.attacking || unit.working ? 3 : 1.5;
   const cy = -TILE_H / 3;
   body.clear();
-  if (unit.warrior) {
+  if (unit.caravan) {
+    // La caravana es un carro: una caja con su carga encima y dos ruedas.
+    body
+      .rect(-10, cy - 5, 20, 10)
+      .fill({ color: fill })
+      .stroke({ color: stroke, width })
+      .rect(-7, cy - 10, 14, 5)
+      .fill({ color: 0xc89b5a })
+      .stroke({ color: 0x3b2410, width: 1 })
+      .circle(-6, cy + 6, 3)
+      .fill({ color: 0x2a1a0a })
+      .circle(6, cy + 6, 3)
+      .fill({ color: 0x2a1a0a });
+  } else if (unit.warrior) {
     // El guerrero es un rombo: se distingue del aldeano de un vistazo.
     body
       .moveTo(0, cy - 9)

@@ -56,6 +56,7 @@ function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number |
     working: u.status === 'WORKING',
     carrying: u.carrying,
     warrior: u.unitType === 'WARRIOR',
+    caravan: u.unitType === 'CARAVAN',
     attacking: u.status === 'ATTACKING',
     hpRatio: u.maxHp > 0 ? Math.max(0, Math.min(1, u.hp / u.maxHp)) : 1,
   };

@@ -102,6 +102,21 @@ describe('texto de cada entrada', () => {
     expect(entryText(entrada(1, 'TREATY_ENDED', { treatyType: 'NON_AGGRESSION' }))).toBe('El pacto de no agresión con Villa Norte terminó');
   });
 
+  it('las caravanas, con lo que llevaban; perderlas se resalta (SPEC-CARAVANS §6)', () => {
+    const cargo = [{ resource: 'STONE' as const, amount: 100 }];
+    expect(entryText(entrada(1, 'CARAVAN_ARRIVED', { cargo }))).toBe('Llegó la caravana de Villa Norte con 100 de piedra');
+    expect(entryText(entrada(1, 'CARAVAN_CAPTURED', { cargo, x: 30, y: 31 })))
+      .toBe('Villa Norte capturó tu caravana con 100 de piedra cerca de (30, 31)');
+    expect(entryText(entrada(1, 'CARAVAN_INTERCEPTED', { cargo })))
+      .toBe('Villa Norte capturó la caravana que te traía 100 de piedra');
+    expect(entryText(entrada(1, 'CARAVAN_LOST', { cargo })))
+      .toBe('Villa Norte capturó tu caravana con 100 de piedra, y se perdió: no había camino hasta su ciudad');
+    expect(isLoss(entrada(1, 'CARAVAN_ARRIVED', { cargo }))).toBe(false);
+    for (const kind of ['CARAVAN_CAPTURED', 'CARAVAN_INTERCEPTED', 'CARAVAN_LOST'] as const) {
+      expect(isLoss(entrada(1, kind, { cargo })), kind).toBe(true);
+    }
+  });
+
   it('el nombre de la ciudad no se toca, tampoco al principio', () => {
     expect(entryText(entrada(1, 'PILLAGED', { amount: 5, otherCityName: 'smoke_runnerpolis' }))).toBe('smoke_runnerpolis te robó 5 de madera');
   });

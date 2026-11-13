@@ -97,6 +97,7 @@ import {
   type NoticeGroup,
 } from '../src/state/notices';
 import { claimBlockReason, claimLabel, territoryAt, territoryOwnerLabel } from '../src/state/conquest';
+import { caravanLabel } from '../src/state/caravans';
 import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
@@ -148,6 +149,14 @@ export default function Page() {
   const tradeOffers = useWorldStore((s) => s.tradeOffers);
   const [draft, setDraft] = useState<TradeDraft>({ giveResource: 'WOOD', giveAmount: 100, wantResource: 'STONE', wantAmount: 50 });
   const countdown = anyCountdown(treaties);
+  // Caravanas (SPEC-CARAVANS): las que el jugador ve con su carga, con su llegada.
+  const caravans = useWorldStore((s) => s.caravans);
+  const travelling = caravans.length > 0;
+  useEffect(() => {
+    if (!travelling) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [travelling]);
   // Conquista (SPEC-TERRITORY-CONQUEST): el territorio del guerrero seleccionado.
   // Cada TerritoryView se sustituye al cambiar, así que la suscripción a él sólo
   // re-renderiza con sus propios cambios.
@@ -392,6 +401,8 @@ export default function Page() {
       if (!unit) return;
       const terrain = state.world ? terrainAt(state.terrain, state.world.chunkSize, tile.x, tile.y) : undefined;
       const order = decideTileOrder(tile, unit, terrain, cityAt, state.playerId, (t) => buildingAt(state.buildings, t));
+      // Una caravana no admite órdenes (RN-CARAVAN-003): no se manda nada.
+      if (order.kind === 'none') return;
       if (order.kind === 'demolish') {
         // Un guerrero sobre una casa ajena: derribarla (SPEC-COMBAT-SIEGE Q10).
         client.demolishBuilding(selectedUnitId, order.buildingId);
@@ -831,7 +842,7 @@ export default function Page() {
                         <button
                           className="secondary"
                           disabled={reason !== null}
-                          title={reason ?? 'El otro jugador lo acepta o lo rechaza; si lo acepta, los dos almacenes cambian en el acto'}
+                          title={reason ?? 'El otro jugador lo acepta o lo rechaza; si lo acepta, cada uno manda en una caravana lo que da, y llega cuando llega su caravana'}
                           onClick={() => offerTrade(diplomacyTarget)}
                         >
                           Ofrecer trato
@@ -861,6 +872,30 @@ export default function Page() {
                   {ACTION_LABEL[a]}
                 </button>
               ))}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {caravans.length > 0 && (
+        <div style={{ ...styles.hud, flexWrap: 'wrap', gap: '0.75rem' }} aria-label="Caravanas en camino">
+          <strong>Caravanas en camino:</strong>
+          {caravans.map((c) => (
+            <span key={`caravan-${c.unitId}`} style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }}>
+              <span>{caravanLabel(c, playerId, serverTimeMs())}</span>
+              <button
+                className="secondary"
+                title="Lleva la cámara a la caravana, si está a la vista, o a la ciudad de la que salió"
+                onClick={() => {
+                  const state = useWorldStore.getState();
+                  const u = state.units.get(c.unitId);
+                  const from = state.cities.get(c.fromCityId);
+                  if (u) goTo({ x: u.x, y: u.y });
+                  else if (from) goTo({ x: from.centerX, y: from.centerY });
+                }}
+              >
+                Ir
+              </button>
             </span>
           ))}
         </div>
@@ -1018,7 +1053,10 @@ function describeUnit(
 /** Qué se puede hacer con la unidad seleccionada. */
 function helpFor(u: { unitType: string } | undefined): string {
   if (u?.unitType === 'WARRIOR') {
-    return 'clic en una unidad enemiga para atacarla, en una ciudad enemiga para saquearla, en el mapa para moverla; con botín, llévala junto a tu ciudad; «Reclamar territorio» planta su estandarte donde está';
+    return 'clic en una unidad enemiga para atacarla (a una caravana, para capturarla), en una ciudad enemiga para saquearla, en el mapa para moverla; con botín, llévala junto a tu ciudad; «Reclamar territorio» planta su estandarte donde está';
+  }
+  if (u?.unitType === 'CARAVAN') {
+    return 'las caravanas no admiten órdenes: van solas a su destino; tus guerreros cercanos la defienden si la atacan';
   }
   return 'clic en el mapa para moverla, en un bosque o una colina para recolectar, en una ciudad para guarnecerla';
 }

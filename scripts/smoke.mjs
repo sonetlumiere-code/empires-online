@@ -86,6 +86,13 @@
  *      civilizaciones; y, si hay un tratado vigente con smoke_victim (lo deja --comercio), le
  *      cambia 5 de su bien por 1 de madera. Va después de --comercio. Necesita 130 de madera
  *      y 65 de piedra si no hay taller (EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed).
+ *  13d. sólo con --caravana (SPEC-CARAVANS): con el tratado vigente entre smoke_runner y
+ *      smoke_victim (el de --comercio), un trato de 1 de madera por 1 de piedra saca dos
+ *      caravanas; los guerreros de smoke_runner que están junto a la ciudad de la víctima
+ *      (los de --saqueo o --asedio) atacan la de piedra y la capturan, la víctima recibe el
+ *      aviso CARAVAN_CAPTURED y la caravana llega a la ciudad de smoke_runner. Va después de
+ *      --bienes. Desde E15, --comercio y --bienes esperan además a que llegue la caravana de
+ *      su trato (unos minutos entre las dos ciudades del humo).
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -101,7 +108,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--registro] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -135,6 +142,7 @@ const TERRITORIO = args.includes('--territorio');
 const REGISTRO = args.includes('--registro');
 const CIVILIZACION = args.includes('--civilizacion');
 const BIENES = args.includes('--bienes');
+const CARAVANA = args.includes('--caravana');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -187,9 +195,12 @@ export function tiemposDePolilinea(path, terreno, msPorTile) {
   return out;
 }
 
-/** Comprueba que una polilínea va a la velocidad de la civilización de su dueño. */
-function comprobarVelocidad(mov, terreno, civilizacion, quien) {
-  const msPorTile = escalarDuracion(600, rasgo(CATALOGO, civilizacion, 'unit.move_speed'));
+/**
+ * Comprueba que una polilínea va a la velocidad de la civilización de su dueño;
+ * `base` es la del tipo de unidad: 600 ms por tile, 1 200 una caravana.
+ */
+function comprobarVelocidad(mov, terreno, civilizacion, quien, base = 600) {
+  const msPorTile = escalarDuracion(base, rasgo(CATALOGO, civilizacion, 'unit.move_speed'));
   const esperados = tiemposDePolilinea(mov.path, terreno, msPorTile);
   if (!esperados) {
     ok(`velocidad de ${quien}: sin terreno para recalcularla`, 'la ruta sale del área cargada');
@@ -690,6 +701,10 @@ async function main() {
     await bienes(segunda, ciudad);
   }
 
+  if (CARAVANA) {
+    await caravana(segunda, ciudad, cuenta.playerId);
+  }
+
   if (REGISTRO) {
     await registro(segunda, cuenta.playerId);
   }
@@ -868,9 +883,10 @@ async function bienes(propio, ciudad) {
   victima.sesion.enviar('trade.respond', { offerId: propia.id, accept: true });
   await oferta(victima.sesion, (x) => x.id === propia.id && x.status === 'ACCEPTED');
   const tenia = ciudadV.stocks?.[bien] ?? 0;
-  const almacenV = await victima.sesion.esperarQue('city.update',
-    (m) => m.payload.id === ciudadV.id && m.payload.stocks && m.payload.stocks[bien] === tenia + 5);
-  ok('trato con bienes aceptado', `${ciudadV.name}: ${bien} ${tenia} -> ${almacenV.payload.stocks[bien]}`);
+  // Desde E15 el bien viaja en una caravana (RN-CARAVAN-001).
+  const deBienes = await caravanaDe(victima.sesion, (x) => x.senderPlayerId === c.ownerPlayerId && x.toCityId === ciudadV.id);
+  ok('trato con bienes aceptado', `5 de ${bien} en camino hacia ${ciudadV.name}, llegan en ${segundosHasta(deBienes.arrivesAtMs)} s`);
+  await llegada(victima.sesion, deBienes, ciudadV.id, bien, tenia + 5);
   victima.sesion.cerrar();
 }
 
@@ -1690,6 +1706,10 @@ async function comercio(propio, ciudad) {
   if (r0.payload.code !== 'INSUFFICIENT_RESOURCES') fallar('ofrecer lo que no se tiene no se rechazó', r0.payload);
   ok('ofrecer lo que no se tiene se rechaza', `INSUFFICIENT_RESOURCES: ${r0.payload.message}`);
 
+  // La vista de smoke_runner, en su ciudad: ahí nace su caravana (pasos anteriores
+  // pueden haberla llevado a la de la víctima).
+  propio.sesion.enviar('session.view', { center: { x: ciudad.centerX, y: ciudad.centerY } });
+  await propio.sesion.esperar('world.snapshot');
   propio.sesion.enviar('trade.propose', {
     playerId: cuenta.playerId, give: [{ resource: 'WOOD', amount: 50 }], want: [{ resource: 'STONE', amount: 10 }],
   });
@@ -1701,14 +1721,23 @@ async function comercio(propio, ciudad) {
   }
   ok('oferta de comercio', `${propia.id}: 50 de madera por 10 de piedra; ${ciudadV.name} la ve como 10 de piedra por 50 de madera`);
 
-  // RN-TRADE-004: aceptar mueve los dos almacenes en el acto.
+  // RN-CARAVAN-001: aceptar sólo debita; lo que da cada parte sale en su caravana.
   victima.sesion.enviar('trade.respond', { offerId: recibida.id, accept: true });
   await oferta(victima.sesion, (x) => x.id === recibida.id && x.status === 'ACCEPTED');
   await oferta(propio.sesion, (x) => x.id === propia.id && x.status === 'ACCEPTED');
-  const almacenV = await victima.sesion.esperarQue('city.update',
-    (m) => m.payload.id === ciudadV.id && m.payload.stocks && m.payload.stocks.WOOD === maderaV + 50);
-  if (almacenV.payload.stocks.STONE !== piedraV - 10) fallar('la piedra de quien acepta no bajó en 10', almacenV.payload);
-  ok('trato aceptado', `${ciudadV.name}: madera ${maderaV} -> ${maderaV + 50}, piedra ${piedraV} -> ${piedraV - 10}`);
+  const debito = await victima.sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadV.id && m.payload.stocks && m.payload.stocks.STONE === piedraV - 10);
+  if (debito.payload.stocks.WOOD !== maderaV) fallar('la madera llegó a quien acepta sin caravana', debito.payload);
+  ok('trato aceptado: cada parte paga lo suyo', `${ciudadV.name}: piedra ${piedraV} -> ${piedraV - 10}; la madera viene en camino`);
+
+  // La caravana de madera, a la velocidad de una caravana romana, y su llegada.
+  const deMadera = await caravanaDe(victima.sesion, (c) => c.senderPlayerId === ciudad.ownerPlayerId && c.toCityId === ciudadV.id);
+  const salida = await propio.sesion.esperarQue('entity.spawn',
+    (m) => m.payload.unit.id === deMadera.unitId && m.payload.unit.movement, 15_000);
+  comprobarVelocidad(salida.payload.unit.movement, indexarTerreno(propio.snapshot.payload.terrain), ciudad.civilization,
+    'la caravana', 1_200);
+  ok('caravana en camino', `${deMadera.unitId}: 50 de madera hacia ${ciudadV.name}, llega en ${segundosHasta(deMadera.arrivesAtMs)} s`);
+  await llegada(victima.sesion, deMadera, ciudadV.id, 'WOOD', maderaV + 50);
 
   // El registro de quien ofreció lo cuenta, con sus cantidades (SPEC-TRADE §6).
   const pagina = await paginaDelRegistro(propio.sesion);
@@ -1718,6 +1747,99 @@ async function comercio(propio, ciudad) {
     fallar('la entrada del trato no lleva sus cantidades', entrada);
   }
   ok('el registro cuenta el trato', `TRADE_ACCEPTED: diste 50 de madera, recibiste 10 de piedra`);
+  const paginaV = await paginaDelRegistro(victima.sesion);
+  const llego = paginaV.entries.find((e) => e.kind === 'CARAVAN_ARRIVED' && e.otherPlayerId === ciudad.ownerPlayerId);
+  if (!llego || llego.cargo?.[0]?.amount !== 50) fallar('el registro de quien recibe no cuenta la caravana', paginaV.entries.slice(0, 5));
+  ok('el registro cuenta la caravana', `CARAVAN_ARRIVED: 50 de madera de ${ciudad.name}`);
+  victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Caravanas (SPEC-CARAVANS), en --comercio, --bienes y --caravana
+// ─────────────────────────────────────────────────────────────
+
+/** Espera el caravan.update de una caravana en camino que cumpla `cond`. */
+async function caravanaDe(sesion, cond, ms = 15_000) {
+  return (await sesion.esperarQue('caravan.update',
+    (m) => m.payload.caravan.status === 'IN_TRANSIT' && cond(m.payload.caravan), ms)).payload.caravan;
+}
+
+function segundosHasta(ms) {
+  return ms === null ? '?' : Math.max(0, Math.round((ms - Date.now()) / 1000));
+}
+
+/**
+ * Espera la llegada de una caravana (RN-CARAVAN-004): su caravan.update DELIVERED y
+ * el almacén de su destino con `recurso` en `esperado`, cerca de su hora.
+ */
+async function llegada(sesion, c, ciudadId, recurso, esperado) {
+  const margen = Math.max(0, (c.arrivesAtMs ?? Date.now()) - Date.now()) + 30_000;
+  await sesion.esperarQue('caravan.update',
+    (m) => m.payload.caravan.unitId === c.unitId && m.payload.caravan.status === 'DELIVERED', margen);
+  const tarde = Date.now() - (c.arrivesAtMs ?? Date.now());
+  const almacen = await sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadId && m.payload.stocks && m.payload.stocks[recurso] === esperado, 15_000);
+  if (tarde > 5_000) fallar(`la caravana ${c.unitId} llegó ${tarde} ms tarde`, c);
+  ok('la caravana llegó a su hora', `${c.toCityName}: ${recurso} -> ${almacen.payload.stocks[recurso]} (${tarde} ms después de lo anunciado)`);
+}
+
+async function caravana(propio, ciudad, playerId) {
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const ciudadV = victima.snapshot.payload.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
+  const vigente = (victima.snapshot.payload.treaties ?? []).find((t) => t.otherCityId === ciudad.id && t.status === 'ACTIVE');
+  if (!vigente) fallar(`${USUARIO} y ${VICTIMA} no tienen un tratado vigente`, 'Corre antes --comercio.');
+  if (vigente.type !== 'TRADE') fallar(`el tratado vigente es ${vigente.type}: con paz no se captura nada`, vigente);
+  const vieja = (victima.snapshot.payload.tradeOffers ?? []).find((o) => o.otherCityId === ciudad.id);
+  if (vieja) {
+    (vieja.proposedByMe ? victima.sesion : propio.sesion).enviar('trade.cancel', { offerId: vieja.id });
+    await oferta(victima.sesion, (x) => x.id === vieja.id && x.status === 'WITHDRAWN');
+  }
+  if ((ciudadV.stocks?.STONE ?? 0) < 1) fallar(`${VICTIMA} no tiene piedra`, 'con el servidor parado: EO_DEVSEED_STOCK_FOR=smoke_victim pnpm run dev:seed');
+
+  // Los guerreros de smoke_runner junto a la víctima, mirando su ciudad.
+  propio.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const cerca = (await propio.sesion.esperar('world.snapshot')).payload;
+  const guerreros = cerca.units.filter((u) => u.playerId === playerId && u.unitType === 'WARRIOR' && u.status !== 'GARRISONED');
+  if (guerreros.length === 0) fallar(`${USUARIO} no tiene guerreros junto a la víctima`, 'Corre antes --saqueo o --asedio.');
+
+  // Un trato pequeño: dos caravanas en camino.
+  propio.sesion.enviar('trade.propose', {
+    playerId: cuenta.playerId, give: [{ resource: 'WOOD', amount: 1 }], want: [{ resource: 'STONE', amount: 1 }],
+  });
+  const propia = await oferta(propio.sesion, (x) => x.otherPlayerId === cuenta.playerId && x.status === 'PROPOSED');
+  victima.sesion.enviar('trade.respond', { offerId: propia.id, accept: true });
+  const dePiedra = await caravanaDe(propio.sesion, (c) => c.senderPlayerId === cuenta.playerId);
+  ok('dos caravanas en camino', `la de piedra de ${ciudadV.name} es la unidad ${dePiedra.unitId}`);
+
+  // RN-CARAVAN-006: los guerreros la atacan y el golpe mortal la captura.
+  for (const g of guerreros) propio.sesion.enviar('unit.attack', { unitId: g.id, targetId: dePiedra.unitId });
+  const capturada = await propio.sesion.esperarQue(['caravan.update', 'system.error'],
+    (m) => m.type === 'system.error' ||
+      (m.payload.caravan.unitId === dePiedra.unitId && m.payload.caravan.ownerPlayerId === playerId), 60_000);
+  if (capturada.type === 'system.error') fallar('el servidor rechazó el ataque a la caravana', capturada.payload);
+  const c = capturada.payload.caravan;
+  if (c.toCityId !== ciudad.id || c.originalToCityId !== ciudad.id) {
+    // La caravana iba a la ciudad de smoke_runner: capturarla no cambia su destino.
+    fallar('la caravana capturada no va a la ciudad del captor', c);
+  }
+  if (c.cargo?.[0]?.resource !== 'STONE' || c.cargo[0].amount !== 1) fallar('la carga cambió al capturarla', c);
+  ok('caravana capturada', `${guerreros.length} guerrero(s); ahora es de ${USUARIO} y va a ${ciudad.name} con su carga`);
+
+  const aviso = await victima.sesion.esperarQue('event_log.notice',
+    (m) => m.payload.kind === 'CARAVAN_CAPTURED' && m.payload.otherPlayerId === playerId, 15_000);
+  ok('la víctima recibe el aviso', `CARAVAN_CAPTURED con ${aviso.payload.cargo?.[0]?.amount} de piedra`);
+  await propio.sesion.esperarQue('caravan.update',
+    (m) => m.payload.caravan.unitId === c.unitId && m.payload.caravan.status === 'DELIVERED',
+    Math.max(0, (c.arrivesAtMs ?? Date.now()) - Date.now()) + 30_000);
+  ok('la caravana capturada llega a la ciudad del captor', ciudad.name);
+
+  const pagina = await paginaDelRegistro(victima.sesion);
+  if (!pagina.entries.some((e) => e.kind === 'CARAVAN_CAPTURED' && e.otherPlayerId === playerId)) {
+    fallar('el registro de la víctima no cuenta la captura', pagina.entries.slice(0, 5));
+  }
+  ok('el registro de la víctima cuenta la captura', 'CARAVAN_CAPTURED');
   victima.sesion.cerrar();
 }
 

@@ -231,6 +231,15 @@ function rawText(e: EventLogEntry): string {
       return `${who} te quitó el territorio ${e.territoryName ?? ''}`.trimEnd();
     case 'TERRITORY_TAKEN':
       return `Tus guerreros conquistaron ${e.territoryName ?? 'un territorio'} a ${who}`;
+    // Las caravanas (SPEC-CARAVANS §6), cada una con lo que llevaba.
+    case 'CARAVAN_ARRIVED':
+      return `Llegó la caravana de ${who} con ${describeLines(e.cargo ?? [])}`;
+    case 'CARAVAN_CAPTURED':
+      return `${who} capturó ${e.count === 1 ? 'tu caravana' : `${e.count} de tus caravanas`} con ${describeLines(e.cargo ?? [])}${where}`;
+    case 'CARAVAN_INTERCEPTED':
+      return `${who} capturó la caravana que te traía ${describeLines(e.cargo ?? [])}${where}`;
+    case 'CARAVAN_LOST':
+      return `${who} capturó tu caravana con ${describeLines(e.cargo ?? [])}${where}, y se perdió: no había camino hasta su ciudad`;
     default:
       return `${who}: ${String(e.kind)}`;
   }
@@ -244,7 +253,10 @@ export function isLoss(e: EventLogEntry): boolean {
     e.kind === 'HOUSE_LOST' ||
     e.kind === 'TREATY_BREAK_ANNOUNCED' ||
     e.kind === 'TERRITORY_CLAIMED' ||
-    e.kind === 'TERRITORY_LOST'
+    e.kind === 'TERRITORY_LOST' ||
+    e.kind === 'CARAVAN_CAPTURED' ||
+    e.kind === 'CARAVAN_INTERCEPTED' ||
+    e.kind === 'CARAVAN_LOST'
   );
 }
 
