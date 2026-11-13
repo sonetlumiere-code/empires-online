@@ -29,6 +29,8 @@ type fakeTrade struct {
 	log       []string
 	err       error
 	acceptErr error
+	// caravans es cuántas caravanas creó.
+	caravans int64
 }
 
 func (f *fakeTrade) ApplyOffer(_ context.Context, w simulation.TradeWrite) (int64, error) {
@@ -46,15 +48,22 @@ func (f *fakeTrade) ApplyOffer(_ context.Context, w simulation.TradeWrite) (int6
 	return w.Offer.ID, nil
 }
 
-func (f *fakeTrade) AcceptTrade(_ context.Context, a simulation.TradeAcceptance) error {
+// AcceptTrade anota el trato y da ids a sus caravanas: las unidades desde
+// primeraCaravana y las filas desde 1, en el orden en que llegan.
+func (f *fakeTrade) AcceptTrade(_ context.Context, a simulation.TradeAcceptance) ([]simulation.CaravanCreated, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.acceptErr != nil {
-		return f.acceptErr
+		return nil, f.acceptErr
 	}
 	f.accepts = append(f.accepts, a)
 	f.log = append(f.log, simulation.EventTradeAccepted)
-	return nil
+	out := make([]simulation.CaravanCreated, len(a.Caravans))
+	for i := range a.Caravans {
+		f.caravans++
+		out[i] = simulation.CaravanCreated{CaravanID: f.caravans, UnitID: primeraCaravana - 1 + f.caravans}
+	}
+	return out, nil
 }
 
 func (f *fakeTrade) events() []string {
@@ -129,10 +138,14 @@ func (h *harness) tratosPara(p uuid.UUID) []protocol.TradeOfferView {
 // primeraOferta es el id que el almacén falso da a la primera oferta.
 const primeraOferta int64 = 2001
 
+// primeraCaravana es el id de la unidad de la primera caravana que crea el
+// almacén falso; la segunda es la siguiente.
+const primeraCaravana int64 = 9001
+
 // Golden «comercio» (RN-TRADE-001 a RN-TRADE-004, INV-TRADE-001): con un tratado
 // TRADE, una oferta de 300 de madera por 100 de piedra, su aceptación, y los dos
-// almacenes en el tick exacto. Lo recibido no se puede gastar hasta que la base
-// confirma; lo que se mueve se conserva.
+// almacenes en el tick exacto. Desde E15 (RN-CARAVAN-001) aceptar sólo debita:
+// lo que recibe cada uno viaja en su caravana (caravans_test.go sigue el viaje).
 func TestGoldenComercioOfertaAceptacionYLosDosAlmacenes(t *testing.T) {
 	h := newHarness(t)
 	vecino := conComercio(h, diplomacy.TypeTrade)
@@ -159,9 +172,8 @@ func TestGoldenComercioOfertaAceptacionYLosDosAlmacenes(t *testing.T) {
 	assert.Equal(t, []protocol.ResourceAmount{{Resource: "STONE", Amount: 100}}, ajena[0].Give, "la vista desde cada lado")
 	assert.Equal(t, []protocol.ResourceAmount{{Resource: "WOOD", Amount: 300}}, ajena[0].Get)
 
-	// Las versiones de los cuatro stocks antes de aceptar: cada delta del trato
-	// tiene que llevar una mayor, también el recurso que una ciudad sólo recibe,
-	// o la base lo daría por escrito (ADR-032 §2).
+	// Las versiones de los stocks antes de aceptar: cada débito del trato tiene
+	// que llevar una mayor, o la base lo daría por escrito (ADR-032 §2).
 	antes := map[[2]any]int64{}
 	for _, c := range []int64{1, 2} {
 		for _, r := range economy.Resources() {
@@ -180,14 +192,15 @@ func TestGoldenComercioOfertaAceptacionYLosDosAlmacenes(t *testing.T) {
 	h.tick()
 	require.Empty(t, h.codigos())
 	w, s = h.recursos(1)
-	assert.Equal(t, [2]int64{0, 100}, [2]int64{w, s})
+	assert.Equal(t, [2]int64{0, 0}, [2]int64{w, s}, "la piedra viene en camino")
 	w, s = h.recursos(2)
-	assert.Equal(t, [2]int64{300, 0}, [2]int64{w, s})
+	assert.Equal(t, [2]int64{0, 0}, [2]int64{w, s}, "la madera viene en camino")
+	assert.Equal(t, 2, h.state.CaravanCount())
 	_, sigue := h.state.TradeOffer(primeraOferta)
 	assert.False(t, sigue, "la oferta aceptada sale de la RAM")
 	assert.Equal(t, []string{simulation.EventTradeProposed, simulation.EventTradeAccepted}, h.trade.events())
 
-	// INV-TRADE-001: los deltas del trato conservan cada recurso.
+	// INV-TRADE-001: lo que se debita es lo que cargan las caravanas.
 	require.Len(t, h.trade.accepts, 1)
 	a := h.trade.accepts[0]
 	assert.Equal(t, trade.StatusAccepted, a.Offer.Status)
@@ -197,8 +210,15 @@ func TestGoldenComercioOfertaAceptacionYLosDosAlmacenes(t *testing.T) {
 	for _, d := range a.Stocks {
 		neto[d.Resource] += d.Delta
 	}
-	assert.Equal(t, map[economy.Resource]int64{economy.ResourceWood: 0, economy.ResourceStone: 0}, neto)
-	assert.Len(t, a.Stocks, 4, "dos recursos en dos ciudades")
+	assert.Equal(t, map[economy.Resource]int64{economy.ResourceWood: -300, economy.ResourceStone: -100}, neto)
+	assert.Len(t, a.Stocks, 2, "un débito por ciudad")
+	carga := map[economy.Resource]int64{}
+	for _, c := range a.Caravans {
+		for _, l := range c.Half.Cargo {
+			carga[l.Resource] += l.Amount
+		}
+	}
+	assert.Equal(t, map[economy.Resource]int64{economy.ResourceWood: 300, economy.ResourceStone: 100}, carga)
 	for _, d := range a.Stocks {
 		assert.Greater(t, d.Version, antes[[2]any{d.CityID, d.Resource}],
 			"la escritura de %s en la ciudad %d va por delante de la última", d.Resource, d.CityID)
@@ -480,37 +500,42 @@ func TestUnTratoQueNoSeEscribeDevuelveLoReservado(t *testing.T) {
 	_, sigue := h.state.TradeOffer(primeraOferta)
 	assert.True(t, sigue)
 
-	// Y con la base de vuelta, se acepta.
+	// Y con la base de vuelta, se acepta: se paga, y la piedra sale en camino.
 	h.trade.acceptErr = nil
 	h.responderTrato(vecino, primeraOferta, true)
 	w, s = h.recursos(1)
-	assert.Equal(t, [2]int64{0, 100}, [2]int64{w, s})
+	assert.Equal(t, [2]int64{0, 0}, [2]int64{w, s})
+	assert.Equal(t, 2, h.state.CaravanCount())
 }
 
-// ADR-032 §2: los depósitos sin volcar de cada recurso tocado viajan con el
-// trato; la ciudad que sólo recibe ese recurso también los lleva.
+// ADR-032 §2: los depósitos sin volcar del recurso que una ciudad paga viajan
+// con su débito. Desde E15 lo que recibe no se toca al aceptar: llega con su
+// caravana (ADR-037 §3).
 func TestElTratoLlevaLosDepositosSinVolcar(t *testing.T) {
 	h := newHarnessPiedra(t)
 	vecino := conComercio(h, diplomacy.TypeTrade)
 	h.almacen(1, 300, 190)
-	h.almacen(2, 0, 100)
+	h.almacen(2, 300, 0)
 	h.conectar()
 	h.recolectar(1, colina)
 	h.hasta(epoch + 22_500)
 	require.Equal(t, int64(10), h.state.UnflushedOf(h.cityID, economy.ResourceStone))
 
-	h.ofrecer(h.playerID, vecino, economy.Costs{madera(300)}, economy.Costs{piedra(100)})
+	h.ofrecer(h.playerID, vecino, economy.Costs{piedra(100)}, economy.Costs{madera(50)})
 	h.responderTrato(vecino, primeraOferta, true)
 	require.Len(t, h.trade.accepts, 1)
 	var piedraPropia simulation.StockDelta
 	for _, d := range h.trade.accepts[0].Stocks {
+		if d.CityID == h.cityID {
+			assert.NotEqual(t, economy.ResourceWood, d.Resource, "la madera que recibe no se toca al aceptar")
+		}
 		if d.CityID == h.cityID && d.Resource == economy.ResourceStone {
 			piedraPropia = d
 		}
 	}
-	assert.Equal(t, int64(10+100), piedraPropia.Delta, "los 10 depositados viajan con los 100 recibidos")
+	assert.Equal(t, int64(10-100), piedraPropia.Delta, "los 10 depositados viajan con los 100 pagados")
 	assert.Zero(t, h.state.UnflushedOf(h.cityID, economy.ResourceStone))
-	assert.Equal(t, int64(200+100), h.state.StockOf(h.cityID, economy.ResourceStone).Amount)
+	assert.Equal(t, int64(200-100), h.state.StockOf(h.cityID, economy.ResourceStone).Amount)
 }
 
 // El snapshot trae las ofertas pendientes de quien lo recibe, y de nadie más.

@@ -127,6 +127,8 @@ type State struct {
 	// trade son las ofertas de comercio pendientes y los tratos reservados
 	// (SPEC-TRADE, ADR-032).
 	trade tradeState
+	// caravans son las caravanas en camino (SPEC-CARAVANS, ADR-037).
+	caravans caravanState
 	// conquest son las reclamaciones de territorio activas y sus escrituras
 	// por reintentar (SPEC-TERRITORY-CONQUEST, ADR-034).
 	conquest conquestState
@@ -167,6 +169,7 @@ func NewState(w *world.World) *State {
 		siege:                  newSiegeState(),
 		diplo:                  newDiplomacyState(),
 		trade:                  newTradeState(),
+		caravans:               newCaravanState(),
 		conquest:               newConquestState(),
 		deposits:               newDepositState(),
 		pendingCompletions:     make(map[int64]struct{}),

@@ -314,12 +314,44 @@ func run() error {
 
 	// Las ofertas de comercio pendientes (ADR-032 §1). Las que caducaron con el
 	// servidor parado, o cuyo tratado terminó, las cierra el primer barrido.
-	tradeRepo := postgres.NewTradeRepo(store)
+	tradeRepo := postgres.NewTradeRepo(store, cfg.ChunkSize)
 	ofertas, err := tradeRepo.ListPending(rootCtx)
 	if err != nil {
 		return fmt.Errorf("cargar ofertas de comercio: %w", err)
 	}
 	state.SetTradeOffers(ofertas)
+	// Las caravanas en camino (ADR-037 §8), después de Hydrate: sus unidades y
+	// sus movimientos ya están en la RAM. Las que llegaron con el servidor
+	// parado las entrega la fase 5 del primer tick.
+	caravanRepo := postgres.NewCaravanRepo(store, cfg.ChunkSize)
+	caravanas, err := caravanRepo.ListInTransit(rootCtx)
+	if err != nil {
+		return fmt.Errorf("cargar caravanas: %w", err)
+	}
+	// INV-TRADE-005 e INV-TRADE-007: una caravana que no cuadra con su trato o
+	// con su unidad no se incorpora; queda en la base para revisarla a mano.
+	malas, err := caravanRepo.Violations(rootCtx)
+	if err != nil {
+		return fmt.Errorf("comprobar caravanas: %w", err)
+	}
+	excluidas := make(map[int64]bool, len(malas))
+	for _, v := range malas {
+		excluidas[v.CaravanID] = true
+		log.Error("invariant_violation", "inv_id", v.InvID, "severity", "CRITICO", "policy", "REJECT",
+			"entity", fmt.Sprintf("caravan:%d", v.CaravanID), "detail", v.Detail+": no se incorpora")
+	}
+	validas := caravanas[:0]
+	for _, c := range caravanas {
+		if !excluidas[c.ID] {
+			validas = append(validas, c)
+		}
+	}
+	caravanas = validas
+	state.SetCaravans(caravanas)
+	if n := state.CaravanCount(); n != len(caravanas) {
+		log.Error("invariant_violation", "inv_id", "INV-TRADE-007", "severity", "ALTO", "policy", "REJECT",
+			"detail", fmt.Sprintf("%d caravanas en camino sin su unidad CARAVAN viva: no se incorporan", len(caravanas)-n))
+	}
 	// Las reclamaciones activas vuelven con sus guerreros; las que no pueden
 	// seguir, o vencieron con el servidor parado, las resuelve el primer barrido.
 	state.SetClaims(reclamaciones)
@@ -371,6 +403,7 @@ func run() error {
 		Repos:       gameStore,
 		Treaties:    persistence.NewTreatyStore(treatyRepo),
 		Trade:       persistence.NewTradeStore(tradeRepo),
+		Caravans:    persistence.NewCaravanStore(caravanRepo),
 		Garrisons:   postgres.NewGarrisonRepo(store, unitRepo, movementRepo, treatyRepo),
 		Economy:     economyStore,
 		Combat:      persistence.NewCombatStore(store, unitRepo),

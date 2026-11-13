@@ -34,6 +34,10 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 			id := e.TerritoryID
 			p.TerritoryID, p.TerritoryName = &id, e.TerritoryName
 		}
+		// Una caravana, lo que llevaba (SPEC-CARAVANS §6).
+		for _, l := range e.Cargo {
+			p.Cargo = append(p.Cargo, protocol.ResourceAmount{Resource: l.Resource, Amount: l.Amount})
+		}
 		s.deps.Broadcaster.SendToPlayer(n.To, protocol.TypeEventLogNotice, "", p)
 	}
 }

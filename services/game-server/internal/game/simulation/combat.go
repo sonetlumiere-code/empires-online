@@ -253,7 +253,9 @@ func (s *Simulation) attackBlocked(a, t *unit.Unit, posA, posT world.Tile, now t
 	if !s.visibleTo(t, a.PlayerID) {
 		return protocol.CodeUnitNotFound, "la unidad objetivo no existe"
 	}
-	if c, ok := s.state.CityOf(t.PlayerID); ok && c.ProtectedAt(now) {
+	// RN-CARAVAN-005 (Q7): la protección offline del dueño no cubre a una
+	// caravana; lo demás del predicado, sí.
+	if c, ok := s.state.CityOf(t.PlayerID); ok && c.ProtectedAt(now) && t.Type != unit.TypeCaravan {
 		return protocol.CodeCityProtected, "el dueño de esa unidad está protegido"
 	}
 	// RN-COMBAT-018: la protección es simétrica; quien está protegido tampoco
@@ -389,6 +391,10 @@ type alert struct {
 	attacker *unit.Unit
 	victim   *unit.Unit
 	at       world.Tile
+	// victimOwner es el dueño de la víctima al recibir el golpe: el de una
+	// caravana cambia si ese golpe la captura, y sus guardias responden igual
+	// (RN-CARAVAN-005, la escolta).
+	victimOwner uuid.UUID
 }
 
 // ResolveCombat es la fase 4 del tick (ADR-024 §1).
@@ -478,7 +484,8 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 			h.e.announced = true
 			s.submitAttack(h, nowMs)
 		}
-		alerts = append(alerts, alert{attacker: h.attacker, victim: h.target, at: s.authoritativePosition(h.target, nowMs)})
+		alerts = append(alerts, alert{attacker: h.attacker, victim: h.target, at: s.authoritativePosition(h.target, nowMs),
+			victimOwner: h.target.PlayerID})
 		h.target.HP -= h.damage
 		if h.target.HP < 0 {
 			h.target.HP = 0
@@ -501,6 +508,11 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 	sort.Slice(victims, func(i, j int) bool { return victims[i] < victims[j] })
 	for _, id := range victims {
 		if v, ok := s.state.Unit(id); ok {
+			if v.Type == unit.TypeCaravan {
+				// RN-CARAVAN-006: el golpe mortal la captura.
+				s.captureCaravan(v, killers[id], nowMs)
+				continue
+			}
 			s.kill(v, killers[id], nowMs)
 		}
 	}

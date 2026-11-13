@@ -56,8 +56,13 @@ export type TimedPath = z.infer<typeof TimedPath>;
 export const UnitStatus = z.enum(['IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'ATTACKING', 'DEAD', 'CLAIMING']);
 export type UnitStatus = z.infer<typeof UnitStatus>;
 
-export const UnitType = z.enum(['VILLAGER', 'WARRIOR']);
+/** `CARAVAN` lleva la mercancía de un trato (SPEC-CARAVANS §4.1): no se entrena ni admite órdenes. */
+export const UnitType = z.enum(['VILLAGER', 'WARRIOR', 'CARAVAN']);
 export type UnitType = z.infer<typeof UnitType>;
+
+/** Los tipos que se entrenan en una ciudad (`city.train`): la caravana no (RN-CARAVAN-001). */
+export const TrainableUnitType = UnitType.extract(['VILLAGER', 'WARRIOR']);
+export type TrainableUnitType = z.infer<typeof TrainableUnitType>;
 
 export const PresenceState = z.enum(['ONLINE', 'OFFLINE_PENDING', 'PROTECTED']);
 export type PresenceState = z.infer<typeof PresenceState>;
@@ -368,6 +373,12 @@ export const EventLogKind = z.enum([
   'TERRITORY_CLAIMED',
   'TERRITORY_LOST',
   'TERRITORY_TAKEN',
+  // Caravanas (SPEC-CARAVANS §6): la que llegó a quien lee, la suya que le capturaron,
+  // la que iba a él y capturaron, y la suya que se perdió al capturarla.
+  'CARAVAN_ARRIVED',
+  'CARAVAN_CAPTURED',
+  'CARAVAN_INTERCEPTED',
+  'CARAVAN_LOST',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -385,6 +396,10 @@ export const EventLogNoticeKind = EventLogKind.extract([
   'TERRITORY_CLAIMED',
   'TERRITORY_LOST',
   'TERRITORY_TAKEN',
+  // SPEC-CARAVANS Q11: las capturas que le tocan a quien lee; la llegada no se avisa.
+  'CARAVAN_CAPTURED',
+  'CARAVAN_INTERCEPTED',
+  'CARAVAN_LOST',
 ]);
 export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
 
@@ -426,6 +441,8 @@ export const EventLogEntry = z.object({
   /** En la conquista (SPEC-TERRITORY-CONQUEST §6): el territorio. Opcionales: aditivos en v1. */
   territoryId: EntityId.optional(),
   territoryName: z.string().min(1).max(64).optional(),
+  /** En las caravanas (SPEC-CARAVANS §6): lo que llevaba. Opcional: aditivo en v1. */
+  cargo: z.array(ResourceAmount).optional(),
 });
 export type EventLogEntry = z.infer<typeof EventLogEntry>;
 
@@ -452,3 +469,29 @@ export const TradeOfferView = z.object({
   expiresAtMs: EpochMs,
 });
 export type TradeOfferView = z.infer<typeof TradeOfferView>;
+
+/** Estado de una caravana (SPEC-CARAVANS §7). */
+export const CaravanStatus = z.enum(['IN_TRANSIT', 'DELIVERED', 'LOST']);
+export type CaravanStatus = z.infer<typeof CaravanStatus>;
+
+/**
+ * Una caravana vista por uno de sus implicados (SPEC-CARAVANS §6): su dueño, quien la
+ * mandó, el destinatario original y quien la capturó. Los demás sólo ven su unidad, sin
+ * la carga (RN-CARAVAN-009). `toCityId` es adonde va ahora; `originalToCityId`, adonde
+ * iba al salir. `arrivesAtMs` es `null` mientras no tiene movimiento.
+ */
+export const CaravanView = z.object({
+  id: EntityId,
+  unitId: EntityId,
+  ownerPlayerId: Uuid,
+  senderPlayerId: Uuid,
+  fromCityId: EntityId,
+  fromCityName: z.string().min(1).max(64).nullable(),
+  toCityId: EntityId,
+  toCityName: z.string().min(1).max(64).nullable(),
+  originalToCityId: EntityId,
+  cargo: z.array(ResourceAmount).min(1),
+  status: CaravanStatus,
+  arrivesAtMs: EpochMs.nullable(),
+});
+export type CaravanView = z.infer<typeof CaravanView>;

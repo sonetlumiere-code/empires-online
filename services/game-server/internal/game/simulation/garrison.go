@@ -132,6 +132,11 @@ func (s *Simulation) handleGarrisonUnit(cmd GarrisonUnit) {
 		s.garrisonError(cmd.PlayerID, cmd.RequestID, protocol.CodeUnitNotOwned, "la unidad no te pertenece")
 		return
 	}
+	// RN-CARAVAN-003: una caravana no se guarnece ni sale de ninguna parte.
+	if err := u.EnsureOrderable(); err != nil {
+		s.garrisonError(cmd.PlayerID, cmd.RequestID, protocol.CodeUnitNotMovable, err.Error())
+		return
+	}
 	if s.state.IsEntering(u.ID) {
 		s.garrisonError(cmd.PlayerID, cmd.RequestID, protocol.CodeUnitNotMovable, "la unidad ya está entrando en una ciudad")
 		return
@@ -229,6 +234,11 @@ func (s *Simulation) handleUngarrisonUnit(cmd UngarrisonUnit) {
 	}
 	if err := u.EnsureOwnedBy(cmd.PlayerID); err != nil {
 		s.garrisonError(cmd.PlayerID, cmd.RequestID, protocol.CodeUnitNotOwned, "la unidad no te pertenece")
+		return
+	}
+	// RN-CARAVAN-003: una caravana no se guarnece ni sale de ninguna parte.
+	if err := u.EnsureOrderable(); err != nil {
+		s.garrisonError(cmd.PlayerID, cmd.RequestID, protocol.CodeUnitNotMovable, err.Error())
 		return
 	}
 	if s.state.IsEntering(u.ID) {

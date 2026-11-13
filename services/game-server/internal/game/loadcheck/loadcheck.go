@@ -291,10 +291,11 @@ func (c *checker) civilizations() {
 func (c *checker) cities() {
 	// INV-CITY-017 se cuenta sobre todas las unidades vivas de la base, también
 	// las excluidas —existen, y consumen población—, más las producciones en
-	// curso, cuya plaza se reservó al ordenar (RN-ECON-010).
+	// curso, cuya plaza se reservó al ordenar (RN-ECON-010). Las caravanas no
+	// cuentan (RN-CARAVAN-003): su coste de población es cero.
 	population := make(map[int64]int32)
 	for _, u := range c.in.Units {
-		if u.CityID != nil {
+		if u.CityID != nil && u.Type != unit.TypeCaravan {
 			population[*u.CityID]++
 		}
 	}

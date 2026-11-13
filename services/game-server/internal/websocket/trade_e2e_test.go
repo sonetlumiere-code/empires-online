@@ -25,8 +25,9 @@ import (
 // memoryTrade hace de base del comercio: da ids a las ofertas y acepta los
 // tratos.
 type memoryTrade struct {
-	mu     sync.Mutex
-	nextID int64
+	mu       sync.Mutex
+	nextID   int64
+	caravans int64
 }
 
 func (m *memoryTrade) ApplyOffer(_ context.Context, w simulation.TradeWrite) (int64, error) {
@@ -39,15 +40,25 @@ func (m *memoryTrade) ApplyOffer(_ context.Context, w simulation.TradeWrite) (in
 	return w.Offer.ID, nil
 }
 
-func (m *memoryTrade) AcceptTrade(context.Context, simulation.TradeAcceptance) error { return nil }
+// AcceptTrade acepta el trato y da ids a sus caravanas, desde la unidad 900.
+func (m *memoryTrade) AcceptTrade(_ context.Context, a simulation.TradeAcceptance) ([]simulation.CaravanCreated, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]simulation.CaravanCreated, len(a.Caravans))
+	for i := range a.Caravans {
+		m.caravans++
+		out[i] = simulation.CaravanCreated{CaravanID: m.caravans, UnitID: 899 + m.caravans}
+	}
+	return out, nil
+}
 
 type tradeUpdate struct {
 	Offer protocol.TradeOfferView `json:"offer"`
 }
 
 // Con un tratado TRADE: trade.propose → trade.update a los dos, cada uno con su
-// vista → trade.respond → trade.update ACCEPTED a los dos y los dos almacenes
-// movidos. Unas líneas inválidas son INVALID_MESSAGE; ofrecer lo que no se tiene,
+// vista → trade.respond → trade.update ACCEPTED a los dos, los dos almacenes
+// debitados y las dos caravanas en camino. Unas líneas inválidas son INVALID_MESSAGE; ofrecer lo que no se tiene,
 // INSUFFICIENT_RESOURCES.
 func TestUnTratoDePuntaAPuntaConDosJugadores(t *testing.T) {
 	env := newE2E(t)
@@ -112,10 +123,13 @@ func TestUnTratoDePuntaAPuntaConDosJugadores(t *testing.T) {
 			}, 5*time.Second)
 		}
 	})
-	assert.Equal(t, int64(100), env.state.StockOf(1, economy.ResourceStone).Amount)
+	// Desde E15 (RN-CARAVAN-001) aceptar sólo debita: lo que recibe cada uno
+	// viaja en su caravana (caravan_e2e_test.go sigue el viaje).
+	assert.Equal(t, int64(0), env.state.StockOf(1, economy.ResourceStone).Amount)
 	assert.Equal(t, int64(0), env.state.StockOf(1, economy.ResourceWood).Amount)
-	assert.Equal(t, int64(300), env.state.StockOf(2, economy.ResourceWood).Amount)
+	assert.Equal(t, int64(0), env.state.StockOf(2, economy.ResourceWood).Amount)
 	assert.Equal(t, int64(0), env.state.StockOf(2, economy.ResourceStone).Amount)
+	assert.Equal(t, 2, env.state.CaravanCount())
 }
 
 // trade.cancel retira la oferta propia: los dos reciben WITHDRAWN.

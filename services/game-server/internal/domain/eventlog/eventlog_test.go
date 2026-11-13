@@ -187,7 +187,42 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 21)
+	assert.Len(t, vistos, 25)
+}
+
+// SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
+// a quien le pasa (player_id); al captor o a quien la mandó, nada. Las capturas
+// también se avisan; la llegada, no (Q11).
+func TestClasificaLasCaravanasSoloParaQuienLesPasa(t *testing.T) {
+	casos := map[string]eventlog.Kind{
+		eventlog.EventCaravanArrived:     eventlog.KindCaravanArrived,
+		eventlog.EventCaravanCaptured:    eventlog.KindCaravanCaptured,
+		eventlog.EventCaravanIntercepted: eventlog.KindCaravanIntercepted,
+		eventlog.EventCaravanLost:        eventlog.KindCaravanLost,
+	}
+	for tipo, kind := range casos {
+		e := eventlog.Event{Type: tipo, PlayerID: yo, Counterpart: otro, AtMs: 1,
+			Cargo: []eventlog.Line{{Resource: "WOOD", Amount: 300}}}
+		k, other, ok := eventlog.Classify(yo, e)
+		require.True(t, ok, tipo)
+		assert.Equal(t, kind, k)
+		assert.Equal(t, otro, other)
+		_, _, ok = eventlog.Classify(otro, e)
+		assert.False(t, ok, "%s: al otro no le cuenta nada", tipo)
+
+		avisos := eventlog.Notices(e)
+		if kind == eventlog.KindCaravanArrived {
+			assert.Empty(t, avisos, "la llegada no se avisa")
+			continue
+		}
+		require.Len(t, avisos, 1, tipo)
+		assert.Equal(t, yo, avisos[0].To)
+
+		b := eventlog.NewBuilder(yo, 0, time.Minute, 10)
+		require.True(t, b.Add(e))
+		require.True(t, b.Add(eventlog.Event{ID: 2, Type: tipo, PlayerID: yo, Counterpart: otro, AtMs: 2}))
+		assert.Len(t, b.Entries(), 2, "%s: cada caravana, su entrada", tipo)
+	}
 }
 
 // SPEC-TRADE §6 y RN-LOG-001: cada trato le cuenta a cada jugador lo que le
@@ -324,13 +359,15 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 	require.Equal(t, []eventlog.Kind{
 		eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindPillageDone, eventlog.KindHouseDestroyed,
 		eventlog.KindTerritoryClaimed, eventlog.KindTerritoryLost, eventlog.KindTerritoryTaken,
+		eventlog.KindCaravanCaptured, eventlog.KindCaravanIntercepted, eventlog.KindCaravanLost,
 	}, eventlog.NoticeKinds())
 	for _, k := range eventlog.NoticeKinds() {
 		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
 	}
 	for _, tipo := range eventlog.EventTypes() {
 		switch tipo {
-		case "UnitKilled", "CityPillaged", "BuildingDestroyed", "TerritoryClaimStarted", "TerritoryControlChanged":
+		case "UnitKilled", "CityPillaged", "BuildingDestroyed", "TerritoryClaimStarted", "TerritoryControlChanged",
+			"CaravanCaptured", "CaravanIntercepted", "CaravanLost":
 			continue
 		}
 		for _, by := range []uuid.UUID{yo, otro, uuid.Nil} {

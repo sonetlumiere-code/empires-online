@@ -29,14 +29,27 @@ func (s *TradeStore) ApplyOffer(ctx context.Context, w simulation.TradeWrite) (i
 	return id, tradeConflict(err)
 }
 
-// AcceptTrade mueve un trato aceptado en una transacción.
-func (s *TradeStore) AcceptTrade(ctx context.Context, a simulation.TradeAcceptance) error {
-	deltas := make([]postgres.StockDelta, len(a.Stocks))
-	for i, d := range a.Stocks {
-		deltas[i] = toDelta(d)
+// AcceptTrade cierra un trato aceptado en una transacción: los débitos y las
+// dos caravanas (ADR-037 §3).
+func (s *TradeStore) AcceptTrade(ctx context.Context, a simulation.TradeAcceptance) ([]simulation.CaravanCreated, error) {
+	spawns := make([]postgres.CaravanSpawn, len(a.Caravans))
+	for i, c := range a.Caravans {
+		spawns[i] = postgres.CaravanSpawn{
+			Sender: c.Half.Sender, FromCity: c.Half.FromCity, ToCity: c.Half.ToCity, Cargo: c.Half.Cargo,
+			Origin: c.Origin, MaxHP: c.MaxHP, Movement: c.Movement,
+		}
 	}
-	err := s.repo.Accept(ctx, postgres.TradeAcceptance{Offer: a.Offer, Stocks: deltas, Tick: a.Tick, AtMs: a.AtMs, By: a.By})
-	return stale(tradeConflict(err))
+	created, err := s.repo.Accept(ctx, postgres.TradeAcceptance{
+		Offer: a.Offer, Stocks: toDeltas(a.Stocks), Caravans: spawns, Tick: a.Tick, AtMs: a.AtMs, By: a.By,
+	})
+	if err != nil {
+		return nil, stale(tradeConflict(err))
+	}
+	out := make([]simulation.CaravanCreated, len(created))
+	for i, c := range created {
+		out[i] = simulation.CaravanCreated{CaravanID: c.CaravanID, UnitID: c.UnitID}
+	}
+	return out, nil
 }
 
 func tradeConflict(err error) error {
