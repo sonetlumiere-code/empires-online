@@ -320,7 +320,8 @@
                         "type": "string",
                         "enum": [
                           "VILLAGER",
-                          "WARRIOR"
+                          "WARRIOR",
+                          "CARAVAN"
                         ]
                       },
                       "x": {
@@ -1055,6 +1056,99 @@
                       "status",
                       "proposedByMe",
                       "expiresAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "caravans": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "unitId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "ownerPlayerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "senderPlayerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "fromCityId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "fromCityName": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "toCityId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "toCityName": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "originalToCityId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "cargo": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
+                        },
+                        "minItems": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "IN_TRANSIT",
+                          "DELIVERED",
+                          "LOST"
+                        ]
+                      },
+                      "arrivesAtMs": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "unitId",
+                      "ownerPlayerId",
+                      "senderPlayerId",
+                      "fromCityId",
+                      "fromCityName",
+                      "toCityId",
+                      "toCityName",
+                      "originalToCityId",
+                      "cargo",
+                      "status",
+                      "arrivesAtMs"
                     ],
                     "additionalProperties": false
                   }
@@ -1958,7 +2052,11 @@
                           "TRADE_OFFER_EXPIRED",
                           "TERRITORY_CLAIMED",
                           "TERRITORY_LOST",
-                          "TERRITORY_TAKEN"
+                          "TERRITORY_TAKEN",
+                          "CARAVAN_ARRIVED",
+                          "CARAVAN_CAPTURED",
+                          "CARAVAN_INTERCEPTED",
+                          "CARAVAN_LOST"
                         ]
                       },
                       "firstAtMs": {
@@ -2037,6 +2135,12 @@
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 64
+                      },
+                      "cargo": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
+                        }
                       }
                     },
                     "required": [
@@ -2157,7 +2261,10 @@
                     "HOUSE_DESTROYED",
                     "TERRITORY_CLAIMED",
                     "TERRITORY_LOST",
-                    "TERRITORY_TAKEN"
+                    "TERRITORY_TAKEN",
+                    "CARAVAN_CAPTURED",
+                    "CARAVAN_INTERCEPTED",
+                    "CARAVAN_LOST"
                   ]
                 },
                 "atMs": {
@@ -2208,6 +2315,12 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 64
+                },
+                "cargo": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
+                  }
                 }
               },
               "required": [
@@ -2216,6 +2329,47 @@
                 "otherPlayerId",
                 "otherCityId",
                 "otherCityName"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "caravan.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "caravan": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/caravans/items"
+                }
+              },
+              "required": [
+                "caravan"
               ],
               "additionalProperties": false
             }

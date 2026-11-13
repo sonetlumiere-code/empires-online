@@ -41,6 +41,8 @@ export interface NoticeGroup {
   /** En la conquista, el territorio. */
   readonly territoryId?: number;
   readonly territoryName?: string;
+  /** En las caravanas, lo que llevaba la última (SPEC-CARAVANS §6). */
+  readonly cargo?: Notice['cargo'];
   /** El primero y el último, en la simulación. */
   readonly firstAtMs: number;
   readonly lastAtMs: number;
@@ -84,6 +86,7 @@ export function applyNotice(state: NoticeState, n: Notice): NoticeState {
         y: n.y ?? open.y,
         otherCityId: n.otherCityId,
         otherCityName: n.otherCityName,
+        cargo: n.cargo ?? open.cargo,
         lastAtMs: Math.max(open.lastAtMs, n.atMs),
       }
     : {
@@ -95,6 +98,7 @@ export function applyNotice(state: NoticeState, n: Notice): NoticeState {
         unitType: n.unitType,
         territoryId: n.territoryId,
         territoryName: n.territoryName,
+        cargo: n.cargo,
         count: 1,
         amount: n.amount,
         x: n.x,
@@ -158,6 +162,7 @@ function asEntry(g: NoticeGroup): EventLogEntry {
     y: g.y,
     territoryId: g.territoryId,
     territoryName: g.territoryName,
+    cargo: g.cargo,
   };
 }
 

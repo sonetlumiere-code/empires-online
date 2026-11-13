@@ -104,6 +104,9 @@ type Deps struct {
 	// TradeOfferTTL es la vida de una oferta de comercio sin respuesta
 	// (SPEC-TRADE Q5). Cero: el valor por defecto, 24 h.
 	TradeOfferTTL time.Duration
+	// Caravans escribe las llegadas y las capturas de las caravanas (ADR-037).
+	// Opcional: sin él, sólo existen en la RAM.
+	Caravans CaravanStore
 	// Conquest escribe las reclamaciones y las capturas de territorio
 	// (ADR-034). Opcional: sin él, unit.claim responde INTERNAL_ERROR.
 	Conquest ConquestStore
@@ -275,6 +278,10 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleCraftResolved(c)
 	case CraftDeliverPersistFailed:
 		s.handleCraftDeliverPersistFailed(c)
+	case CaravanDeliverPersistFailed:
+		s.handleCaravanDeliverPersistFailed(c)
+	case CaravanCapturePersistFailed:
+		s.handleCaravanCapturePersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -449,6 +456,12 @@ func (s *Simulation) handleCancelMovement(cmd CancelMovement) {
 	if err := u.EnsureOwnedBy(cmd.PlayerID); err != nil {
 		s.deps.Broadcaster.SendToPlayer(cmd.PlayerID, protocol.TypeSystemError, cmd.RequestID,
 			protocol.SystemErrorPayload{Code: protocol.CodeUnitNotOwned, Message: "la unidad no te pertenece"})
+		return
+	}
+	// RN-CARAVAN-003: nadie detiene una caravana.
+	if err := u.EnsureOrderable(); err != nil {
+		s.deps.Broadcaster.SendToPlayer(cmd.PlayerID, protocol.TypeSystemError, cmd.RequestID,
+			protocol.SystemErrorPayload{Code: protocol.CodeUnitNotMovable, Message: err.Error()})
 		return
 	}
 	// RN-ECON-003: cancelar detiene también a una unidad que trabaja,
@@ -730,6 +743,10 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	s.completeAdvances(nowMs)
 	// Las elaboraciones del taller que vencen (RN-GOODS-004).
 	s.completeCrafts(nowMs)
+	// Las caravanas que llegaron a su destino (RN-CARAVAN-004), después del
+	// combate: una capturada en este tick ya va hacia otra parte
+	// (RN-CARAVAN-007).
+	s.deliverCaravans(nowMs)
 	// Las reclamaciones de territorio que se rompen o vencen (RN-CONQ-005,
 	// RN-CONQ-007), después de la presencia: un dueño que acaba de quedar
 	// protegido ya la frena en este tick.
@@ -906,6 +923,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushStocks()
 	s.flushCompletions()
 	s.flushCraftDeliveries()
+	s.flushCaravanWrites()
 	s.flushAdvanceCompletions()
 	s.flushDestructions()
 	s.flushDeaths()

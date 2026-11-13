@@ -1925,3 +1925,56 @@ Castillos, otros usos de los bienes, saquearlos, la producción pasiva.
    deshabilitado porque ya hay uno, «Elaborar (5 de vino)» y «Edad de Hierro (0/60 bienes)» con lo que falta; pulsar
    «Elaborar» puso la cuenta atrás y, al vencer, el vino subió a 5.
 
+
+## E15 — Caravanas
+
+**Estado: HECHO EN LA RAMA (2026-11-13)**, en `claude/slice-caravanas`, pendiente de fusión y CI. Contrato:
+[SPEC-CARAVANS](../specs/caravans.md), aceptada el 2026-11-13 con sus doce decisiones de producto, y
+[ADR-037](../decisions/ADR-037-caravans-as-units.md).
+
+**Objetivo.** Que el comercio recorra el mapa y se pueda interceptar: la interdependencia del pilar 4 con la distancia
+del pilar 5 y el riesgo del camino.
+
+**Alcance.** Cada trato aceptado sale en dos caravanas, una por sentido, desde el depósito de cada ciudad; el tipo de
+unidad `CARAVAN` (80 de vida, 1 200 ms por tile, sin población ni órdenes); la ruta buscada al proponer y al aceptar,
+con `PATH_NOT_FOUND` y `PATH_TOO_LONG` si no la hay; la entrega optimista al llegar; la captura con el golpe mortal,
+que la lleva con su carga entera a la ciudad del captor, y la recaptura; la protección del dueño no la cubre;
+`caravan.update`, `caravans[]` y los cuatro tipos de caravana del registro, tres de ellos avisados; `INV-TRADE-005` a `007`;
+migración `000017`; el cliente y `scripts/smoke.mjs --caravana`. **No entra** (spec §2): rutas permanentes, envíos sin
+trato, mercados, órdenes de escolta o de dirigir la caravana, varias caravanas por sentido, caravanas por agua, el A\*
+jerárquico.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-037, `INV-TRADE-005` a `007`, las precisiones de `INV-TRADE-001`,
+   `INV-COMBAT-002` e `INV-CITY-017`, de [trade.md](../specs/trade.md) (`RN-TRADE-004`, Q7 y Q8),
+   [combat-raid.md](../specs/combat-raid.md) (`RN-COMBAT-003`), [civilization-goods.md](../specs/civilization-goods.md)
+   (`RN-GOODS-008` y Q9) y [economy-stone.md](../specs/economy-stone.md) (Q8), y la nota de `DEBT-04` en el backlog.
+2. **HECHO** — Protocolo: `CARAVAN` en `UnitType` (no en `city.train`: `TrainableUnitType`), `caravan.update` (24
+   tipos servidor → cliente) con su e2e (`TestUnaCaravanaDePuntaAPunta`), `caravans[]` en `world.snapshot`, los tipos
+   `CARAVAN_ARRIVED`, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST` en el registro (los tres últimos en
+   `event_log.notice`) y `cargo` en los dos; contract tests en los dos lados.
+3. **HECHO** — Dominio: `CARAVAN` en el catálogo de unidades (`Autonomous`, `EnsureOrderable`), `internal/domain/caravan`
+   (las dos mitades de un trato, la carga, la ruta inversa, quién ve la carga), las caravanas en `eventlog`, la
+   población sin caravanas en la validación de carga y la excepción de la protección en el predicado hostil.
+4. **HECHO** — Migración `000017` y persistencia: `caravans` y `caravan_cargo`; `TradeRepo.Accept` debita y crea las
+   dos caravanas con sus unidades y movimientos; `CaravanRepo` con la entrega idempotente, la captura y la pérdida, la
+   carga al arrancar y la comprobación del arranque (`Violations`); seis tests de integración nuevos y los del trato
+   reescritos.
+5. **HECHO** — Simulación: la ruta en la propuesta y la aceptación (una búsqueda, la vuelta al revés), las caravanas al
+   volver la confirmación, la llegada en la fase 5, la captura en la fase 4 con la escolta de E3, la pérdida sin ruta,
+   el reintento de una entrega descartada y la recuperación; el golden «caravanas» y once tests más. Fallo encontrado:
+   el aviso de una captura salía sin su carga (`sendNotices` no la copiaba).
+6. **HECHO** — Cliente: el carro en la escena, «Caravanas en camino» con su llegada e «Ir», ninguna orden con una
+   caravana seleccionada, los textos de las cuatro entradas y de los avisos, y los mensajes de `PATH_NOT_FOUND` y
+   `UNIT_NOT_MOVABLE` (frontend.md §4.12).
+7. **HECHO** — Humo y prueba en vivo (2026-11-13): el servidor aplicó `000017` al arrancar. `node scripts/smoke.mjs
+   --web http://localhost:3001 --comercio --bienes` pasó: el trato de 50 de madera por 10 de piedra sólo debitó, y las
+   dos caravanas llegaron unos 4 min 33 s después, a 55 ms de lo anunciado, con `CARAVAN_ARRIVED` en el registro de
+   smoke_victim; el vino de `--bienes` llegó igual. `--caravana` pasó sus 23 comprobaciones: cuatro guerreros de
+   smoke_runner capturaron la caravana de piedra de smoke_victim junto a su ciudad, la víctima recibió
+   `CARAVAN_CAPTURED` con su carga y la caravana llegó a smoke_runnerpolis. En el navegador integrado, smoke_victim vio
+   «Caravanas en camino» con las dos caravanas desde su lado y el carro en el mapa con su ruta, y «Mientras no estabas»
+   contó la captura en rojo y las llegadas. Dos fallos del humo, no del juego: leía el registro antes de que la entrega
+   optimista se confirmara (ahora espera la entrada hasta 5 s, y la spec documenta esa ventana) y mandaba
+   `targetId` en lugar de `targetUnitId`.

@@ -39,6 +39,13 @@ describe('decideTileOrder: recolectar, mover o guarnecer', () => {
     expect(decideTileOrder({ x: 20, y: 10 }, aldeano, undefined, sinCiudad, PLAYER)).toEqual({ kind: 'move' });
   });
 
+  it('una caravana no admite órdenes: un clic no manda nada (RN-CARAVAN-003)', () => {
+    const caravana = { unitType: 'CARAVAN' };
+    expect(decideTileOrder({ x: 20, y: 10 }, caravana, 0, sinCiudad, PLAYER)).toEqual({ kind: 'none' });
+    expect(decideTileOrder({ x: 5, y: 5 }, caravana, 0, conCiudad, PLAYER)).toEqual({ kind: 'none' });
+    expect(unitTypeLabel('CARAVAN')).toBe('caravana');
+  });
+
   it('un tipo que no recolecta va al bosque andando', () => {
     expect(decideTileOrder({ x: 20, y: 10 }, { unitType: 'KNIGHT' }, TERRAIN_FOREST, sinCiudad, PLAYER)).toEqual({ kind: 'move' });
   });
@@ -127,7 +134,9 @@ describe('textos', () => {
   it('los dos códigos nuevos tienen un mensaje para personas; el resto conserva el código', () => {
     expect(readableError('INSUFFICIENT_RESOURCES', 'x')).toMatch(/madera/);
     expect(readableError('CITY_BUSY', 'x')).toMatch(/entrenando/);
-    expect(readableError('PATH_NOT_FOUND', 'sin ruta')).toBe('PATH_NOT_FOUND: sin ruta');
+    expect(readableError('TARGET_NOT_WALKABLE', 'agua')).toBe('TARGET_NOT_WALKABLE: agua');
+    // SPEC-CARAVANS RN-CARAVAN-002: sin camino entre las dos ciudades no hay trato.
+    expect(readableError('PATH_NOT_FOUND', 'sin ruta')).toMatch(/caravanas/);
   });
 
   it('la cuenta atrás redondea hacia arriba y no baja de cero', () => {

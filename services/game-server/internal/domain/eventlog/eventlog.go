@@ -59,6 +59,13 @@ const (
 	// KindTerritoryTaken es un territorio ajeno que las unidades propias
 	// conquistaron.
 	KindTerritoryTaken Kind = "TERRITORY_TAKEN"
+	// Caravanas (SPEC-CARAVANS §6): la que llegó a quien lee, la suya que le
+	// capturaron, la que iba a él y capturaron, y la suya que se perdió al
+	// capturarla.
+	KindCaravanArrived     Kind = "CARAVAN_ARRIVED"
+	KindCaravanCaptured    Kind = "CARAVAN_CAPTURED"
+	KindCaravanIntercepted Kind = "CARAVAN_INTERCEPTED"
+	KindCaravanLost        Kind = "CARAVAN_LOST"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -70,6 +77,7 @@ func Kinds() []Kind {
 		KindTreatyOfferExpired, KindTreatyBreakAnnounced, KindTreatyEnded,
 		KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired,
 		KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken,
+		KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost,
 	}
 }
 
@@ -77,12 +85,14 @@ func Kinds() []Kind {
 // (SPEC-LIVE-NOTICES §4.1, ADR-033 §3): lo que hoy no le llega a quien mira otra
 // parte del mapa. PILLAGED y HOUSE_LOST no están porque la víctima ya tiene
 // pillagedAtMs y besiegedAtMs (Q1). Desde E12, también lo que pasa con un
-// territorio (SPEC-TERRITORY-CONQUEST Q8). El enum del aviso en el protocolo es
-// el mismo (lo vigila el contract test).
+// territorio (SPEC-TERRITORY-CONQUEST Q8), y desde E15 las caravanas
+// capturadas que le tocan, pero no las que llegan (SPEC-CARAVANS Q11). El enum
+// del aviso en el protocolo es el mismo (lo vigila el contract test).
 func NoticeKinds() []Kind {
 	return []Kind{
 		KindUnitLost, KindEnemyKilled, KindPillageDone, KindHouseDestroyed,
 		KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken,
+		KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost,
 	}
 }
 
@@ -111,6 +121,15 @@ const (
 	// counterpart (la fundación, o la captura de uno libre) no cuenta nada.
 	EventTerritoryClaimStarted   = "TerritoryClaimStarted"
 	EventTerritoryControlChanged = "TerritoryControlChanged"
+	// Caravanas (SPEC-CARAVANS §6, ADR-037 §7): player_id es a quien le pasa
+	// —el destinatario en la llegada, el dueño que la pierde en la captura y la
+	// pérdida, el destinatario original en la intercepción— y
+	// counterpart_player_id el otro: quien la mandó o quien la capturó. Sólo
+	// cuenta algo a player_id: lo que hizo el captor no entra (RN-LOG-001).
+	EventCaravanArrived     = "CaravanArrived"
+	EventCaravanCaptured    = "CaravanCaptured"
+	EventCaravanIntercepted = "CaravanIntercepted"
+	EventCaravanLost        = "CaravanLost"
 )
 
 // EventTypes son los event_type que pueden dar una entrada: la consulta sólo
@@ -122,6 +141,7 @@ func EventTypes() []string {
 		EventTreatyExpired, EventTreatyBreakAnnounced, EventTreatyBroken,
 		EventTradeProposed, EventTradeAccepted, EventTradeRejected, EventTradeWithdrawn, EventTradeExpired,
 		EventTerritoryClaimStarted, EventTerritoryControlChanged,
+		EventCaravanArrived, EventCaravanCaptured, EventCaravanIntercepted, EventCaravanLost,
 	}
 }
 
@@ -163,6 +183,8 @@ type Event struct {
 	// TerritoryID y TerritoryName, en la conquista.
 	TerritoryID   int64
 	TerritoryName string
+	// Cargo, en las caravanas: lo que llevaba.
+	Cargo []Line
 }
 
 // Entry es una entrada del registro: uno o varios sucesos del mismo tipo con el
@@ -194,6 +216,8 @@ type Entry struct {
 	// TerritoryID y TerritoryName, en la conquista.
 	TerritoryID   int64
 	TerritoryName string
+	// Cargo, en las caravanas: lo que llevaba.
+	Cargo []Line
 }
 
 // Classify dice qué entrada da e para viewer y quién es el otro jugador. ok es
@@ -239,6 +263,15 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindTerritoryLost, other, true
 		}
 		return KindTerritoryTaken, other, true
+	}
+
+	// Una caravana: sólo a quien le pasa (player_id); al captor no se le cuenta
+	// su captura, como a nadie lo que ordenó él.
+	if kind, ok := caravanKind(e.Type); ok {
+		if e.PlayerID == viewer {
+			return kind, other, true
+		}
+		return "", uuid.Nil, false
 	}
 
 	// Un trato (SPEC-TRADE §6): como los tratados, no entra lo que el propio
@@ -332,6 +365,29 @@ func Notices(e Event) []Notice {
 	return out
 }
 
+// caravanKind es el tipo de entrada de un evento de las caravanas.
+func caravanKind(eventType string) (Kind, bool) {
+	switch eventType {
+	case EventCaravanArrived:
+		return KindCaravanArrived, true
+	case EventCaravanCaptured:
+		return KindCaravanCaptured, true
+	case EventCaravanIntercepted:
+		return KindCaravanIntercepted, true
+	case EventCaravanLost:
+		return KindCaravanLost, true
+	}
+	return "", false
+}
+
+func isCaravan(k Kind) bool {
+	switch k {
+	case KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost:
+		return true
+	}
+	return false
+}
+
 func isNotice(k Kind) bool {
 	for _, n := range NoticeKinds() {
 		if n == k {
@@ -421,8 +477,8 @@ func (b *Builder) Add(e Event) bool {
 	if isTreaty(kind) {
 		k.treatyType = e.TreatyType
 	}
-	if isTrade(kind) || isTerritory(kind) {
-		k.offerID = e.ID // cada trato y cada suceso de un territorio, su entrada
+	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) {
+		k.offerID = e.ID // cada trato, cada suceso de un territorio y cada caravana, su entrada
 	}
 	if i, abierto := b.open[k]; abierto && e.AtMs >= b.entries[i].FirstAtMs-b.gapMs {
 		g := &b.entries[i]
@@ -454,6 +510,9 @@ func (b *Builder) Add(e Event) bool {
 		entry.BreaksAtMs = e.BreaksAtMs
 	case KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken:
 		entry.TerritoryID, entry.TerritoryName = e.TerritoryID, e.TerritoryName
+		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
+	case KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost:
+		entry.Cargo = e.Cargo
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired:
 		// Desde quien lee: si propuso él, da Give y recibe Want; si no, al revés.
@@ -489,7 +548,7 @@ func isTreaty(k Kind) bool {
 	case KindUnitLost, KindEnemyKilled, KindPillaged, KindPillageDone, KindHouseLost, KindHouseDestroyed:
 		return false
 	}
-	return !isTrade(k) && !isTerritory(k)
+	return !isTrade(k) && !isTerritory(k) && !isCaravan(k)
 }
 
 func isTerritory(k Kind) bool {

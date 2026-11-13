@@ -214,6 +214,21 @@ describe('economía en la escena (SPEC-ECON-WOOD)', () => {
     expect(herida.hpRatio).toBeCloseTo(10 / 40);
   });
 
+  it('una caravana llega a la escena con su forma, y la lista de caravanas al HUD (SPEC-CARAVANS)', () => {
+    const caravana = unitView({ id: 77, unitType: 'CARAVAN', playerId: OTHER, hp: 80, maxHp: 80, status: 'MOVING' });
+    const vista = {
+      id: 5, unitId: 77, ownerPlayerId: OTHER, senderPlayerId: OTHER, fromCityId: 2, fromCityName: 'Bizancio',
+      toCityId: 1, toCityName: 'Roma', originalToCityId: 1, cargo: [{ resource: 'SILK' as const, amount: 30 }],
+      status: 'IN_TRANSIT' as const, arrivesAtMs: 1_000,
+    };
+    state().applySnapshot(snapshot({ units: [caravana], caravans: [vista] }));
+    const u = projectLast().units.find((x) => x.id === 77)!;
+    expect([u.caravan, u.warrior, u.isOwn]).toEqual([true, false, false]);
+    expect(state().caravans.map((c) => c.unitId)).toEqual([77]);
+    state().applyServerMessage(server('caravan.update', 9, { caravan: { ...vista, status: 'DELIVERED', arrivesAtMs: null } }));
+    expect(state().caravans).toEqual([]);
+  });
+
   it('una casa asediada lleva su vida a la escena, y la derribada sale (SPEC-COMBAT-SIEGE)', () => {
     state().applySnapshot(snapshot({ buildings: [casa({ status: 'COMPLETE', hp: 150, maxHp: 150 })] }));
     expect(projectLast().buildings.map((b) => b.hpRatio)).toEqual([1]);

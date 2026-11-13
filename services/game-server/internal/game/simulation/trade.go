@@ -38,10 +38,11 @@ type TradeStore interface {
 	// ApplyOffer escribe una transición que no toca almacenes y devuelve el id
 	// de la oferta.
 	ApplyOffer(ctx context.Context, w TradeWrite) (int64, error)
-	// AcceptTrade mueve un trato aceptado en una transacción (RN-TRADE-004). Un
-	// rechazo de dominio es ErrTradeConflict, ErrStaleStock o
-	// economy.ErrInsufficientResources.
-	AcceptTrade(ctx context.Context, a TradeAcceptance) error
+	// AcceptTrade cierra un trato aceptado en una transacción: debita lo que da
+	// cada parte y crea sus dos caravanas (RN-CARAVAN-001). Devuelve sus ids en
+	// el orden de a.Caravans, también en un reintento. Un rechazo de dominio es
+	// ErrTradeConflict, ErrStaleStock o economy.ErrInsufficientResources.
+	AcceptTrade(ctx context.Context, a TradeAcceptance) ([]CaravanCreated, error)
 }
 
 // TradeWrite es una transición de una oferta ya decidida por la simulación:
@@ -61,14 +62,16 @@ type TradeWrite struct {
 	Reason string
 }
 
-// TradeAcceptance es un trato aceptado con sus deltas, uno por ciudad y
-// recurso que toca (ADR-032 §2).
+// TradeAcceptance es un trato aceptado con sus débitos, uno por ciudad y
+// recurso que da (ADR-032 §2), y las dos caravanas que se llevan lo debitado
+// (ADR-037 §3).
 type TradeAcceptance struct {
-	Offer  trade.Offer
-	Stocks []StockDelta
-	Tick   uint64
-	AtMs   int64
-	By     uuid.UUID
+	Offer    trade.Offer
+	Stocks   []StockDelta
+	Caravans []CaravanSpawn
+	Tick     uint64
+	AtMs     int64
+	By       uuid.UUID
 }
 
 // Eventos del comercio en world_events.
@@ -136,11 +139,13 @@ type TradeResolved struct {
 
 func (TradeResolved) commandType() string { return "trade.resolved" }
 
-// TradeAcceptResolved lo devuelve la cola con el resultado de un trato.
+// TradeAcceptResolved lo devuelve la cola con el resultado de un trato y los
+// ids de sus caravanas.
 type TradeAcceptResolved struct {
 	PlayerID  uuid.UUID
 	RequestID string
 	OfferID   int64
+	Caravans  []CaravanCreated
 	Code      string
 }
 
@@ -159,11 +164,13 @@ func TradeKey(x, y uuid.UUID) string {
 }
 
 // tradeReservation es lo que un trato aceptado apartó mientras su transacción
-// no vuelve: las patas y los depósitos sin volcar que viajan con cada una.
+// no vuelve: las patas que pagan, los depósitos sin volcar que viajan con cada
+// una y las caravanas que se llevarán lo pagado.
 type tradeReservation struct {
 	offer   trade.Offer
 	legs    []trade.Leg
 	carried []int64 // por pata, en el orden de legs
+	spawns  []CaravanSpawn
 }
 
 // tradeState es lo que la simulación sabe del comercio.
@@ -287,6 +294,12 @@ func (s *Simulation) handleProposeTrade(cmd ProposeTrade) {
 		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, "no tienes lo que ofreces")
 		return
 	}
+	// RN-CARAVAN-002: sin ruta entre las dos ciudades no hay caravanas, y una
+	// oferta que nunca se podría aceptar no se admite.
+	if _, err := s.tradeRoute(propia, ajena); err != nil {
+		s.tradeReject(cmd.PlayerID, cmd.RequestID, pathErrorCode(err), "no hay camino para las caravanas entre las dos ciudades")
+		return
+	}
 
 	o := trade.Offer{
 		Proposer: cmd.PlayerID, Target: cmd.Target, ProposerCity: propia.ID, TargetCity: ajena.ID,
@@ -340,11 +353,13 @@ func (s *Simulation) acceptTrade(cmd RespondTrade, o trade.Offer, now time.Time)
 		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeTreatyRequired, "ya no tenéis un tratado que deje comerciar")
 		return
 	}
-	if _, ok := s.state.City(o.ProposerCity); !ok {
+	origen, ok := s.state.City(o.ProposerCity)
+	if !ok {
 		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "la ciudad de quien ofrece ya no existe")
 		return
 	}
-	if _, ok := s.state.City(o.TargetCity); !ok {
+	destino, ok := s.state.City(o.TargetCity)
+	if !ok {
 		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeCityNotFound, "no tienes ciudad")
 		return
 	}
@@ -358,31 +373,44 @@ func (s *Simulation) acceptTrade(cmd RespondTrade, o trade.Offer, now time.Time)
 		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, "no tienes lo que te piden")
 		return
 	}
+	// RN-CARAVAN-002: la ruta de las dos caravanas, buscada una vez.
+	route, err := s.tradeRoute(origen, destino)
+	if err != nil {
+		s.tradeReject(cmd.PlayerID, cmd.RequestID, pathErrorCode(err), "no hay camino para las caravanas entre las dos ciudades")
+		return
+	}
+	nowMs := s.deps.Clock.NowMs()
+	spawns, err := s.caravanSpawns(o, route, nowMs)
+	if err != nil {
+		s.deps.Log.Error("no se pudo construir la ruta de las caravanas", "err", err, "offer_id", o.ID)
+		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeInternalError, "no se pudo construir la ruta de las caravanas")
+		return
+	}
 
-	// La reserva: lo que da cada parte sale ya de la RAM; en un recurso que sólo
-	// recibe, la versión sube igual, para que la escritura del trato quede
-	// ordenada respecto de las siguientes. Los depósitos sin volcar de cada
-	// recurso tocado viajan con el trato (ADR-032 §2).
-	legs := o.Legs()
-	r := &tradeReservation{offer: o, legs: legs, carried: make([]int64, len(legs))}
+	// La reserva: lo que da cada parte sale ya de la RAM, con los depósitos sin
+	// volcar de ese recurso (ADR-032 §2). Lo que recibe no se toca: llega con
+	// su caravana (ADR-037 §3).
+	var legs []trade.Leg
+	for _, l := range o.Legs() {
+		if l.Pays > 0 {
+			legs = append(legs, l)
+		}
+	}
+	r := &tradeReservation{offer: o, legs: legs, carried: make([]int64, len(legs)), spawns: spawns}
 	deltas := make([]StockDelta, 0, len(legs))
 	for i, l := range legs {
 		rs := s.state.economyOf(l.CityID).of(l.Resource)
-		if l.Pays > 0 {
-			if err := rs.stock.Debit(economy.Cost{Resource: l.Resource, Amount: l.Pays}); err != nil {
-				// No hay ruta que llegue aquí: CanAfford lo comprobó. Se deshace lo
-				// ya reservado.
-				s.releaseTrade(r, i)
-				s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, err.Error())
-				return
-			}
-		} else {
-			rs.stock.Version++
+		if err := rs.stock.Debit(economy.Cost{Resource: l.Resource, Amount: l.Pays}); err != nil {
+			// No hay ruta que llegue aquí: CanAfford lo comprobó. Se deshace lo
+			// ya reservado.
+			s.releaseTrade(r, i)
+			s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, err.Error())
+			return
 		}
 		r.carried[i] = rs.unflushed
 		rs.unflushed = 0
 		deltas = append(deltas, StockDelta{
-			CityID: l.CityID, Resource: l.Resource, Delta: r.carried[i] - l.Pays + l.Gets, Version: rs.stock.Version,
+			CityID: l.CityID, Resource: l.Resource, Delta: r.carried[i] - l.Pays, Version: rs.stock.Version,
 		})
 	}
 	s.state.markStockDirty(o.ProposerCity)
@@ -401,7 +429,7 @@ func (s *Simulation) acceptTrade(cmd RespondTrade, o trade.Offer, now time.Time)
 	s.state.trade.busy[k] = struct{}{}
 	s.state.trade.reserved[o.ID] = r
 
-	a := TradeAcceptance{Offer: accepted, Stocks: deltas, Tick: s.state.Tick(), AtMs: s.deps.Clock.NowMs(), By: cmd.PlayerID}
+	a := TradeAcceptance{Offer: accepted, Stocks: deltas, Caravans: spawns, Tick: s.state.Tick(), AtMs: nowMs, By: cmd.PlayerID}
 	resolved := TradeAcceptResolved{PlayerID: cmd.PlayerID, RequestID: cmd.RequestID, OfferID: o.ID}
 	store := s.deps.Trade
 	s.deps.Persister.Submit(Job{
@@ -409,9 +437,11 @@ func (s *Simulation) acceptTrade(cmd RespondTrade, o trade.Offer, now time.Time)
 		Key:  CityKey(o.ProposerCity),
 		Key2: CityKey(o.TargetCity),
 		Run: func(ctx context.Context) error {
-			err := store.AcceptTrade(ctx, a)
+			created, err := store.AcceptTrade(ctx, a)
 			if err == nil {
-				s.reinject(resolved)
+				r := resolved
+				r.Caravans = created
+				s.reinject(r)
 				return nil
 			}
 			if code := tradeErrorCode(err); code != "" {
@@ -479,16 +509,12 @@ func (s *Simulation) handleTradeAcceptResolved(cmd TradeAcceptResolved) {
 		return
 	}
 
-	// INV-TRADE-001: lo que entra en cada ciudad sale de las mismas patas que
-	// lo que salió de la otra.
-	for _, l := range r.legs {
-		if l.Gets > 0 {
-			_ = s.state.economyOf(l.CityID).of(l.Resource).stock.Credit(l.Gets)
-		}
-	}
+	// INV-TRADE-001: lo que salió de cada ciudad va en su caravana; nada entra
+	// en ningún almacén hasta que llegue (RN-CARAVAN-004).
 	delete(s.state.trade.open, r.offer.ID)
 	s.broadcastTrade(r.offer, cmd.PlayerID, cmd.RequestID)
 	s.broadcastTradeStocks(r.offer)
+	s.spawnCaravans(r.spawns, cmd.Caravans, r.offer.ID)
 }
 
 // broadcastTradeStocks difunde el almacén de las dos ciudades de un trato.

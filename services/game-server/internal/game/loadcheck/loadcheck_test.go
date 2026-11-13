@@ -310,6 +310,20 @@ func TestLaPoblacionCuentaLasProduccionesEnCurso(t *testing.T) {
 	assert.Empty(t, loadcheck.Check(in2).Findings, "una producción terminada no reserva nada")
 }
 
+// INV-CITY-017 (precisión de SPEC-CARAVANS, RN-CARAVAN-003): una caravana viva
+// de la ciudad no cuenta en su población.
+func TestLaPoblacionNoCuentaLasCaravanas(t *testing.T) {
+	in, ciudad, aldeanos := sano(t)
+	cid := ciudad.ID
+	in.Units = append(in.Units, &unit.Unit{
+		ID: 50, PlayerID: aldeanos[0].PlayerID, CityID: &cid, Type: unit.TypeCaravan,
+		X: aldeanos[0].X, Y: aldeanos[0].Y, HP: 80, MaxHP: 80, Status: unit.StatusMoving,
+	})
+	r := loadcheck.Check(in)
+	assert.NotContains(t, invs(r), "INV-CITY-017/REPAIR")
+	assert.EqualValues(t, 3, ciudad.Population, "los tres aldeanos; la caravana no")
+}
+
 // INV-ECON-003: se repara siempre hacia el lado sin tarea.
 func TestLasTareasIncoherentesSeReparanHaciaElLadoSinTarea(t *testing.T) {
 	in, _, aldeanos := sano(t)

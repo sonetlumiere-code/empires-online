@@ -59,7 +59,9 @@ func (s *Simulation) evaluateConcealment() {
 
 	for _, id := range ids {
 		u, ok := s.state.Unit(id)
-		if !ok {
+		if !ok || u.Type == unit.TypeCaravan {
+			// Una caravana no se oculta: pasa por la zona segura sin pararse, y
+			// parada sólo está en el depósito de su destino (SPEC-CARAVANS §4.3).
 			continue
 		}
 		_, moving := s.state.Movement(id)

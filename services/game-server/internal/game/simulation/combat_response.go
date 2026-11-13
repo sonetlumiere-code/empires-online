@@ -67,10 +67,14 @@ func (s *Simulation) raiseAlarm(al alert, nowMs int64) {
 	if !al.attacker.IsAlive() {
 		return
 	}
-	if al.victim.IsAlive() {
+	if al.victim.IsAlive() && al.victim.PlayerID == al.victimOwner {
 		s.respond(al.victim, al.attacker, nowMs)
 	}
-	for _, g := range s.guardsNear(al.victim.PlayerID, al.at) {
+	owner := al.victimOwner
+	if owner == uuid.Nil {
+		owner = al.victim.PlayerID
+	}
+	for _, g := range s.guardsNear(owner, al.at) {
 		if g.ID != al.victim.ID {
 			s.respond(g, al.attacker, nowMs)
 		}

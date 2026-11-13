@@ -68,7 +68,7 @@ Dominio: `RN-COMBAT`.
 |---|---|
 | `RN-COMBAT-001` | Sólo un `WARRIOR` propio, vivo y no guarnecido puede atacar. El objetivo es una unidad **de otro jugador**, viva y en el mapa. |
 | `RN-COMBAT-002` | `unit.attack` es **hostil** (ADR-016) y su territorio es `LIBRE`: el suelo no restringe, la protección sí. Pasa por el punto único de `INV-CITY-006`. |
-| `RN-COMBAT-003` | Si el dueño del objetivo tiene su ciudad `PROTECTED`, se rechaza con `CITY_PROTECTED` (Q1, Q2). `OFFLINE_PENDING` **no** protege: es la ventana de riesgo de la desconexión. |
+| `RN-COMBAT-003` | Si el dueño del objetivo tiene su ciudad `PROTECTED`, se rechaza con `CITY_PROTECTED` (Q1, Q2). `OFFLINE_PENDING` **no** protege: es la ventana de riesgo de la desconexión. **Precisión (2026-11-13, [caravans.md](caravans.md) `RN-CARAVAN-005` y Q7):** no vale para las caravanas: una caravana se puede atacar aunque la ciudad de su dueño esté `PROTECTED`. |
 | `RN-COMBAT-004` | Una unidad `HIDDEN` no existe para el atacante: se responde `UNIT_NOT_FOUND`, igual que si no existiera, para no filtrar su presencia (`INV-SAFE-004`). |
 | `RN-COMBAT-005` | No hay golpe si el atacante o el objetivo están sobre un tile de Safe Zone. Al ordenar, `INVALID_TARGET`; durante la persecución, el enfrentamiento termina en cuanto el objetivo pisa una (Q4). |
 | `RN-COMBAT-006` | Con un tratado `ACTIVE` de tipo `NON_AGGRESSION` o `ALLIANCE` entre los dos jugadores, `INVALID_TARGET` (Q5). |

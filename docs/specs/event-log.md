@@ -69,6 +69,13 @@ diste 300 de madera y recibiste 100 de piedra») o rechazada (`TradeRejected`), 
 `TRADE_ACCEPTED`, `TRADE_REJECTED`, `TRADE_WITHDRAWN` y `TRADE_OFFER_EXPIRED`, con lo que salía del almacén de quien lee
 (`tradeGive`) y lo que entraba (`tradeGet`). Los tratos no se agrupan (§4.2): cada uno es su entrada.
 
+**Precisión (2026-11-13, [caravans.md](caravans.md) §6, [ADR-037](../decisions/ADR-037-caravans-as-units.md) §7).**
+Desde E15 entran las caravanas que le pasan a quien lee: la que le llegó (`CaravanArrived`, «Llegó la caravana de
+Villa Norte con 100 de piedra»), la suya capturada (`CaravanCaptured`), la que venía a él capturada
+(`CaravanIntercepted`) y la suya capturada que se perdió (`CaravanLost`). Son los tipos `CARAVAN_ARRIVED`,
+`CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con lo que llevaba (`cargo`) y el tile. Como los tratos, no
+se agrupan; y la captura que hizo el propio jugador no entra (`RN-LOG-001`).
+
 Lo que hizo el propio jugador en la diplomacia (proponer, romper, retirar) no entra: ya lo sabe. `TreatyExpired` desde
 `ACTIVE` sólo lo escriben los tratados administrativos con `expires_at`: el pacto que una alianza sustituye se cierra
 sin evento propio, y lo cuenta el `TreatyAccepted` de la alianza.

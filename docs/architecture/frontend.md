@@ -493,7 +493,7 @@ Las decisiones del cliente son intenciones, puras y probadas en `src/state/econo
 
 | Decisión | Criterio | Por qué |
 |---|---|---|
-| Clic en el mapa con una unidad propia seleccionada | Sobre una casa de una ciudad **ajena** con un `WARRIOR` → `unit.demolish` (desde E8, [combat-siege.md](../specs/combat-siege.md) Q10); en el resto del 3 × 3 de una ciudad ajena con un `WARRIOR` → `unit.pillage` (desde E5, [combat-pillage.md](../specs/combat-pillage.md)); dentro del 3 × 3 de cualquier otra ciudad → `unit.garrison`; si no, sobre un tile `FOREST` (byte 1 del terreno ya cargado) o, desde E9, `HILL` (byte 2) con un `VILLAGER` → `unit.gather`, y el servidor decide por el terreno si es madera o piedra; en cualquier otro caso → `unit.move` (`decideTileOrder`). | Es la orden contextual de la referencia: el destino decide la orden. La zona urbana va primero porque es muralla: no hay bosque que recolectar ahí. Un aldeano que ya recolecta y recibe un clic en otro bosque cambia de bosque (RN-ECON-006); en hierba deja de recolectar (RN-ECON-003). |
+| Clic en el mapa con una unidad propia seleccionada | Sobre una casa de una ciudad **ajena** con un `WARRIOR` → `unit.demolish` (desde E8, [combat-siege.md](../specs/combat-siege.md) Q10); en el resto del 3 × 3 de una ciudad ajena con un `WARRIOR` → `unit.pillage` (desde E5, [combat-pillage.md](../specs/combat-pillage.md)); dentro del 3 × 3 de cualquier otra ciudad → `unit.garrison`; si no, sobre un tile `FOREST` (byte 1 del terreno ya cargado) o, desde E9, `HILL` (byte 2) con un `VILLAGER` → `unit.gather`, y el servidor decide por el terreno si es madera o piedra; en cualquier otro caso → `unit.move` (`decideTileOrder`). Con una `CARAVAN` seleccionada, ninguna orden (`none`, desde E15: la caravana no admite órdenes, [caravans.md](../specs/caravans.md) `RN-CARAVAN-003`). | Es la orden contextual de la referencia: el destino decide la orden. La zona urbana va primero porque es muralla: no hay bosque que recolectar ahí. Un aldeano que ya recolecta y recibe un clic en otro bosque cambia de bosque (RN-ECON-006); en hierba deja de recolectar (RN-ECON-003). |
 | Botón «Casa» | Pide construir en el **primer hueco libre** del 3 × 3 en orden `(y, x)` según los edificios que el store conoce (`firstFreeHouseTile`), sin pedir clic. Sin huecos, no envía nada. | Un clic en la zona urbana ya significa «guarnecerse»: pedir un segundo modo de clic sobre los mismos tiles añadiría un estado de interfaz para elegir entre ocho huecos equivalentes en este slice. Si otro encargo ocupa el tile entre tanto, el servidor responde `INVALID_TARGET`. |
 | Botón «Aldeano» | `city.train { VILLAGER }`; deshabilitado mientras `production` no es `null`. | El servidor respondería `CITY_BUSY`; deshabilitarlo ahorra el viaje, no decide nada. |
 | Costes | **No** se muestran ni se comprueban en el cliente, salvo dos excepciones: el `title` del botón «Guerrero» dice su coste, y desde E9 el botón «Edad de Bronce» dice el suyo y se desactiva con lo que falta (`BRONZE_AGE_COST`, `advanceBlockReason`), porque la spec pide explicarlo (SPEC-ECON-STONE §6). | Viven en los catálogos del servidor (spec §4.5) y cambian sin tocar el cliente; el servidor responde `INSUFFICIENT_RESOURCES`. **Precisión (2026-11-04).** `BRONZE_AGE_COST` es una copia del catálogo de `internal/domain/advance`: si el servidor lo cambiara sin tocar el cliente, el botón podría desactivarse con recursos suficientes. Que el servidor mande el coste en el protocolo está pendiente. |
@@ -588,7 +588,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
   se da: el mismo patrón que «Casa» y «Aldeano» (§4.4). El cliente no reserva nada ni decide si alcanza al aceptar.
 - **Responder y retirar.** La misma barra lista cada oferta con su texto (`tradeLabel`, con lo que caduca en horas o
   minutos) y sus órdenes (`tradeActions`): la recibida, «Aceptar» y «Rechazar»; la propia, «Retirar». Al aceptarse,
-  el almacén cambia por el `city.update { stocks }` de siempre.
+  el almacén cambia por el `city.update { stocks }` de siempre. **Desde E15** el almacén propio sólo baja al aceptar:
+  lo que se recibe llega con su caravana (§4.12).
 - Los rechazos (`INVALID_TARGET`, `TREATY_REQUIRED`, `INSUFFICIENT_RESOURCES`) llegan como `system.error` y se
   muestran en el pie con su mensaje (§3.6). El registro (§4.6) cuenta los tratos con sus cantidades.
 
@@ -670,6 +671,28 @@ y grueso, y una que carga madera, un tronco a la espalda.
   ajenos lleva (`foreignGoods`, sin el propio) y su `title`, en qué orden se cobran; `advanceBlockReason` dice qué falta.
 - **El trato.** El formulario elige el recurso que se da y el que se pide entre los seis (`TRADE_RESOURCES`), y no deja
   pedir lo mismo que se da (`offerBlockReason`).
+
+### 4.12 Caravanas: en camino, en el mapa y capturadas (SPEC-CARAVANS)
+
+> **Estado (2026-11-13): implementado y con tests de lo puro** (`src/state/caravans.ts`, `src/state/economy.ts`,
+> `src/state/eventLog.ts`, `src/render/projection.ts`).
+
+- **El store** guarda `caravans`, las caravanas en camino que el jugador ve con su carga (las suyas, las que le traen
+  algo y las que capturó), como `tradeOffers`: `world.snapshot.caravans` la reemplaza y `caravan.update` la cambia una a
+  una (`applyCaravanUpdate`); con un estado que no es `IN_TRANSIT`, la caravana sale.
+- **«Caravanas en camino».** Una barra bajo la de diplomacia lista cada una con su texto desde el punto de vista del
+  jugador (`caravanLabel`: la suya, la que le traen, la que capturó o la que le capturaron) y lo que falta para su
+  llegada (`formatEta`), con un segundero mientras haya alguna. «Ir» lleva la cámara a la unidad si está en el área
+  cargada, o a la ciudad de la que salió.
+- **En el mapa** la caravana es una unidad `CARAVAN` más, que la escena dibuja como un carro con su carga encima y dos
+  ruedas (`SceneUnit.caravan`), del color de su dueño. Sin carga en su vista: la carga sólo está en la lista.
+- **Órdenes.** Con una caravana propia seleccionada, un clic en el mapa no manda nada (`decideTileOrder` → `none`) y la
+  ayuda lo dice; un clic en una caravana ajena con un guerrero seleccionado es `unit.attack`, como en cualquier unidad
+  enemiga, y la ayuda del guerrero dice que así se captura. El formulario del trato no puede saber si hay camino entre
+  las dos ciudades: el servidor lo rechaza con `PATH_NOT_FOUND` o `PATH_TOO_LONG`, y el pie lo explica
+  (`readableError`).
+- **Registro y avisos.** Las entradas `CARAVAN_ARRIVED`, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`
+  cuentan la carga; las tres últimas se resaltan como pérdidas y llegan también como avisos en vivo, con su carga.
 
 ## 5. Posición autoritativa frente a posición de render
 

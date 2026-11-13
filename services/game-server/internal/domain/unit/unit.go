@@ -56,6 +56,10 @@ const (
 	TypeVillager Type = "VILLAGER"
 	// TypeWarrior ataca; no recolecta, pero carga el botín (SPEC-COMBAT-RAID §4.1).
 	TypeWarrior Type = "WARRIOR"
+	// TypeCaravan lleva la mercancía de un trato de una ciudad a otra
+	// (SPEC-CARAVANS §4.1). No se entrena ni obedece órdenes: la crea un trato
+	// aceptado y camina sola.
+	TypeCaravan Type = "CARAVAN"
 )
 
 // Definition son las estadísticas inmutables de un tipo de unidad.
@@ -85,6 +89,8 @@ type Definition struct {
 	AttackRange      int32
 	// LootCarry es cuánto botín puede cargar (RN-COMBAT-010).
 	LootCarry int32
+	// Autonomous: nadie le da órdenes, ni su dueño (RN-CARAVAN-003).
+	Autonomous bool
 }
 
 // CanTrain indica si el tipo se entrena en una ciudad.
@@ -115,6 +121,12 @@ var catalog = map[Type]Definition{
 		Type: TypeWarrior, MaxHP: 60, BaseMsPerTile: 600, PopulationCost: 1,
 		TrainCost: economy.Cost{Resource: economy.ResourceWood, Amount: 60}, TrainMs: 25_000,
 		AttackDamage: 8, AttackIntervalMs: 1_500, AttackRange: 1, LootCarry: 20,
+	},
+	// SPEC-CARAVANS §4.1 (Q4): un guerrero solo la captura en diez golpes (15 s)
+	// y, al doble de su velocidad, la alcanza siempre. No ocupa población.
+	TypeCaravan: {
+		Type: TypeCaravan, MaxHP: 80, BaseMsPerTile: 1_200, PopulationCost: 0,
+		Autonomous: true,
 	},
 }
 
@@ -169,6 +181,8 @@ var (
 	ErrNotFound    = errors.New("unidad no encontrada")
 	ErrPopulation  = errors.New("se alcanzó el límite de población")
 	ErrInvalidType = errors.New("tipo de unidad inválido para esta operación")
+	// ErrAutonomous: la unidad no admite órdenes de nadie (RN-CARAVAN-003).
+	ErrAutonomous = errors.New("la caravana no admite órdenes")
 )
 
 // EnsureOwnedBy comprueba la propiedad de la unidad.
@@ -183,8 +197,20 @@ func (u *Unit) EnsureOwnedBy(playerID uuid.UUID) error {
 	return nil
 }
 
+// EnsureOrderable comprueba que la unidad admite órdenes: una caravana no
+// admite ninguna, ni de su dueño (RN-CARAVAN-003).
+func (u *Unit) EnsureOrderable() error {
+	if d, err := Lookup(u.Type); err == nil && d.Autonomous {
+		return ErrAutonomous
+	}
+	return nil
+}
+
 // EnsureCanMove comprueba que el estado de la unidad admite una orden de movimiento.
 func (u *Unit) EnsureCanMove() error {
+	if err := u.EnsureOrderable(); err != nil {
+		return err
+	}
 	switch u.Status {
 	case StatusIdle, StatusMoving:
 		// Moverse mientras se mueve es válido: reemplaza el movimiento anterior.

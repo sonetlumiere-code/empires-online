@@ -83,6 +83,7 @@ const (
 	TypeEventLogPage          = "event_log.page"
 	TypeTradeUpdate           = "trade.update"
 	TypeEventLogNotice        = "event_log.notice"
+	TypeCaravanUpdate         = "caravan.update"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -491,6 +492,30 @@ type TradeUpdatePayload struct {
 	Offer TradeOfferView `json:"offer"`
 }
 
+// CaravanView es una caravana vista por uno de sus implicados (SPEC-CARAVANS
+// §6): su dueño, quien la mandó, el destinatario original y el captor. ToCityID
+// es adonde va ahora y OriginalToCityID adonde iba al salir. ArrivesAtMs es nil
+// mientras no tiene movimiento.
+type CaravanView struct {
+	ID               int64            `json:"id"`
+	UnitID           int64            `json:"unitId"`
+	OwnerPlayerID    string           `json:"ownerPlayerId"`
+	SenderPlayerID   string           `json:"senderPlayerId"`
+	FromCityID       int64            `json:"fromCityId"`
+	FromCityName     *string          `json:"fromCityName"`
+	ToCityID         int64            `json:"toCityId"`
+	ToCityName       *string          `json:"toCityName"`
+	OriginalToCityID int64            `json:"originalToCityId"`
+	Cargo            []ResourceAmount `json:"cargo"`
+	Status           string           `json:"status"`
+	ArrivesAtMs      *int64           `json:"arrivesAtMs"`
+}
+
+// CaravanUpdatePayload lleva una caravana que cambió a uno de sus implicados.
+type CaravanUpdatePayload struct {
+	Caravan CaravanView `json:"caravan"`
+}
+
 // EventLogFetchPayload pide una página del registro (SPEC-EVENT-LOG): la más
 // reciente, o la de los eventos con id menor que BeforeID.
 type EventLogFetchPayload struct {
@@ -527,6 +552,8 @@ type EventLogEntry struct {
 	// TerritoryID y TerritoryName, en la conquista (SPEC-TERRITORY-CONQUEST §6).
 	TerritoryID   *int64 `json:"territoryId,omitempty"`
 	TerritoryName string `json:"territoryName,omitempty"`
+	// Cargo, en las caravanas: lo que llevaba (SPEC-CARAVANS §6).
+	Cargo []ResourceAmount `json:"cargo,omitempty"`
 }
 
 // EventLogNoticePayload es un aviso en vivo (SPEC-LIVE-NOTICES §6): un suceso
@@ -546,6 +573,8 @@ type EventLogNoticePayload struct {
 	// TerritoryID y TerritoryName, en la conquista (SPEC-TERRITORY-CONQUEST §6).
 	TerritoryID   *int64 `json:"territoryId,omitempty"`
 	TerritoryName string `json:"territoryName,omitempty"`
+	// Cargo, en las caravanas: lo que llevaba (SPEC-CARAVANS §6).
+	Cargo []ResourceAmount `json:"cargo,omitempty"`
 }
 
 // EventLogPagePayload es una página del registro. NextBeforeID es nil en la
@@ -635,6 +664,10 @@ type WorldSnapshotPayload struct {
 	// TradeOffers son las ofertas de comercio PROPOSED de quien recibe el
 	// snapshot (SPEC-TRADE §6). Se omite si no tiene ninguna.
 	TradeOffers []TradeOfferView `json:"tradeOffers,omitempty"`
+	// Caravans son las caravanas en camino que salen de la ciudad de quien
+	// recibe el snapshot, van a ella o son suyas (SPEC-CARAVANS §6). Se omite si
+	// no hay ninguna.
+	Caravans []CaravanView `json:"caravans,omitempty"`
 }
 
 type EntitySpawnPayload struct {

@@ -26,6 +26,8 @@ import {
   ResourceType,
   TreatyView,
   TradeOfferView,
+  CaravanView,
+  ResourceAmount,
   PresenceState,
   ProductionView,
   Stocks,
@@ -144,6 +146,11 @@ export const WorldSnapshot = z.object({
      * Opcional: aditivo en v1; como los tratados, reemplaza la lista del cliente.
      */
     tradeOffers: z.array(TradeOfferView).optional(),
+    /**
+     * Caravanas en camino que salen de la ciudad del jugador, van a ella o son suyas
+     * (SPEC-CARAVANS §6). Opcional: aditivo en v1; reemplaza la lista del cliente.
+     */
+    caravans: z.array(CaravanView).optional(),
   }),
 });
 
@@ -318,6 +325,17 @@ export const TradeUpdate = z.object({
 });
 
 /**
+ * Cambió una caravana del jugador: salió, la capturaron, llegó o se perdió. La reciben
+ * sólo sus implicados —dueño, quien la mandó, el destinatario original y el captor—,
+ * con la carga (SPEC-CARAVANS §6, RN-CARAVAN-009).
+ */
+export const CaravanUpdate = z.object({
+  ...serverEnvelope,
+  type: z.literal('caravan.update'),
+  payload: z.object({ caravan: CaravanView }),
+});
+
+/**
  * Una página del registro, en respuesta a `event_log.fetch` y sólo para la sesión que
  * la pidió (SPEC-EVENT-LOG §6). `seenUpToId` es el cursor de lo visto al servirla;
  * `nextBeforeId`, el `beforeId` de la página siguiente, `null` si no hay más.
@@ -359,6 +377,8 @@ export const EventLogNotice = z.object({
     /** En la conquista: el territorio (SPEC-TERRITORY-CONQUEST §6). */
     territoryId: EntityId.optional(),
     territoryName: z.string().min(1).max(64).optional(),
+    /** En las caravanas (SPEC-CARAVANS §6): lo que llevaba. */
+    cargo: z.array(ResourceAmount).optional(),
   }),
 });
 
@@ -453,6 +473,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   EventLogPage,
   TradeUpdate,
   EventLogNotice,
+  CaravanUpdate,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -479,6 +500,7 @@ export type TreatyUpdate = z.infer<typeof TreatyUpdate>;
 export type EventLogPage = z.infer<typeof EventLogPage>;
 export type TradeUpdate = z.infer<typeof TradeUpdate>;
 export type EventLogNotice = z.infer<typeof EventLogNotice>;
+export type CaravanUpdate = z.infer<typeof CaravanUpdate>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -504,6 +526,7 @@ export const SERVER_MESSAGE_TYPES = [
   'event_log.page',
   'trade.update',
   'event_log.notice',
+  'caravan.update',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

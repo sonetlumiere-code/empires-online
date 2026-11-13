@@ -345,6 +345,7 @@ services/game-server/migrations/
 ├── 000014_territory_claims.up.sql            / .down.sql
 ├── 000015_civilization_traits.up.sql         / .down.sql
 ├── 000016_civilization_goods.up.sql          / .down.sql
+├── 000017_caravans.up.sql                    / .down.sql
 ├── embed.go
 └── migrations_test.go      # TestLasMigracionesSonCorrelativasYCompletas
 ```
@@ -357,7 +358,7 @@ services/game-server/migrations/
 
 ## 6. Migraciones del MVP
 
-Son **dieciséis**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
+Son **diecisiete**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
 
 | # | Fichero | Contenido |
 |---|---|---|
@@ -377,6 +378,7 @@ Son **dieciséis**, todas embebidas en el binario. Juntas materializan lo descri
 | `000014` | `territory_claims` | La conquista ([SPEC-TERRITORY-CONQUEST](../specs/territory-conquest.md), [ADR-034](../decisions/ADR-034-territory-claims.md)): `territory_claims`, con un único parcial de una reclamación activa por territorio (`INV-TERR-010`), otro por guerrero y uno de idempotencia por `(player_id, request_id)`. `units.status` y `territory_control` no cambian. Su `.down.sql` pierde las reclamaciones y deja `contested` a `false`; los territorios conquistados conservan su dueño. |
 | `000015` | `civilization_traits` | Las civilizaciones ([SPEC-CIVILIZATION](../specs/civilizations.md), [ADR-035](../decisions/ADR-035-civilization-traits.md)): reescribe `civilizations.traits` en enteros por mil con las claves que se aplican (`unit.move_speed`, `production.speed`, `building.house_hp`, `combat.loot_carry`, `economy.gather_speed`; el persa con `economy.gather_speed` en lugar de `economy.trade_yield`, Q5) y añade el trigger `players_civilization_immutable` (`INV-PLAYER-011`). Su `.down.sql` quita el trigger y restaura los `traits` de `000002`; los jugadores conservan la civilización que eligieron. |
 | `000016` | `civilization_goods` | Los bienes de civilización ([SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md), [ADR-036](../decisions/ADR-036-civilization-goods.md)): `WINE`, `SILK`, `SPICES` y `FURS` en los `CHECK` de `city_stocks` y de `trade_offer_lines`, con su fila a cero para cada ciudad; `civilizations.good`, único; `WORKSHOP` en `buildings_type_valid` con el único parcial `buildings_one_workshop_per_city` (`INV-ECON-010`); y `city_crafts`. Su `.down.sql` pierde los bienes, los talleres, las elaboraciones, las ofertas con bienes y los avances a Hierro en curso; las ciudades que llegaron a Hierro se quedan en Hierro. |
+| `000017` | `caravans` | Las caravanas ([SPEC-CARAVANS](../specs/caravans.md), [ADR-037](../decisions/ADR-037-caravans-as-units.md)): `caravans`, con su unidad (`unit_id`, `ON DELETE SET NULL`) si y sólo si está en camino (`caravans_unit_while_in_transit`), una por unidad en camino y como mucho una por sentido de cada trato (`caravans_two_per_offer`, `INV-TRADE-007`), y `caravan_cargo`, con el `CHECK` de recurso de `city_stocks`. La unidad es una fila de `units` con `unit_type = 'CARAVAN'`, que no tiene `CHECK`. Su `.down.sql` no pierde nada: la carga de cada caravana en camino entra en el almacén de su destino de ahora, y sus unidades se borran. |
 
 Por qué el esquema inicial cabe en una sola migración y no en una por tabla: las claves foráneas forman un grafo (catálogos → `players` → `cities` → `units` → `unit_movements`), la base se crea vacía, y trocear el fichero sólo habría añadido diecisiete oportunidades de equivocarse con el orden sin ganar nada revisable. Los índices no se separan en una migración de "rutas calientes" por la misma razón: sobre una tabla vacía, un índice no es una optimización posterior sino parte de la definición — y el índice único parcial `unit_movements_one_active_per_unit` **debe** existir desde la primera fila, porque es la garantía física de `INV-MOVE-001`.
 

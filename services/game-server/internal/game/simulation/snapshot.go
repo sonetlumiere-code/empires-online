@@ -76,6 +76,8 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 	payload.Treaties = s.treatiesOf(viewer)
 	// SPEC-TRADE: las ofertas pendientes de quien lo recibe (ADR-032 §7).
 	payload.TradeOffers = s.tradeOffersOf(viewer)
+	// SPEC-CARAVANS: las caravanas que ve con su carga (RN-CARAVAN-009).
+	payload.Caravans = s.caravansOf(viewer)
 	return payload
 }
 

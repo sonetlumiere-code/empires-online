@@ -15,7 +15,7 @@ import {
   ResourceType,
   Tile,
   TreatyType,
-  UnitType,
+  TrainableUnitType,
   Uuid,
   WorldCoordinate,
 } from './common.js';
@@ -170,7 +170,7 @@ export const CityTrain = z.object({
   requestId: Uuid,
   payload: z.object({
     cityId: EntityId,
-    type: UnitType,
+    type: TrainableUnitType,
   }).strict(),
 }).strict();
 

@@ -16,6 +16,7 @@
 import { create } from 'zustand';
 import { applyTreatyUpdate, type TreatyView } from './diplomacy';
 import { applyTradeUpdate, type TradeOfferView } from './trade';
+import { applyCaravanUpdate, type CaravanView } from './caravans';
 import { applyEventLogPage, EMPTY_EVENT_LOG, markSeenLocally, type EventLogState } from './eventLog';
 import { applyNotice, EMPTY_NOTICES, markLogOpened, setTabHidden, type NoticeState } from './notices';
 import type { v1 } from '@empires-online/protocol';
@@ -208,6 +209,11 @@ export interface WorldState {
   treaties: readonly TreatyView[];
   /** Ofertas de comercio pendientes del jugador (SPEC-TRADE), por id. Sólo las lee el HUD. */
   tradeOffers: readonly TradeOfferView[];
+  /**
+   * Caravanas en camino que el jugador ve con su carga (SPEC-CARAVANS), por unidad.
+   * Sólo las lee el HUD: en el mapa son unidades `CARAVAN` como cualquier otra.
+   */
+  caravans: readonly CaravanView[];
   /** El registro (SPEC-EVENT-LOG): lo que el servidor contó que pasó. Sólo lo lee el HUD. */
   eventLog: EventLogState;
   /**
@@ -346,6 +352,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     hills,
     treaties: [],
     tradeOffers: [],
+    caravans: [],
     eventLog: EMPTY_EVENT_LOG,
     notices: EMPTY_NOTICES,
     changes: INITIAL_CHANGES,
@@ -418,6 +425,8 @@ export const useWorldStore = create<WorldState>((set, get) => {
         treaties: [...(payload.treaties ?? [])].sort((a, b) => a.id - b.id),
         // Y la de ofertas de comercio, igual (SPEC-TRADE §6).
         tradeOffers: [...(payload.tradeOffers ?? [])].sort((a, b) => a.id - b.id),
+        // Y la de caravanas (SPEC-CARAVANS §6).
+        caravans: [...(payload.caravans ?? [])].sort((a, b) => a.unitId - b.unitId),
       });
     },
 
@@ -544,6 +553,10 @@ export const useWorldStore = create<WorldState>((set, get) => {
 
         case 'trade.update':
           set({ tradeOffers: applyTradeUpdate(get().tradeOffers, message.payload.offer) });
+          break;
+
+        case 'caravan.update':
+          set({ caravans: applyCaravanUpdate(get().caravans, message.payload.caravan) });
           break;
 
         case 'forest.update': {
@@ -676,6 +689,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
         lastError: null,
         treaties: [],
         tradeOffers: [],
+        caravans: [],
         eventLog: EMPTY_EVENT_LOG,
         notices: EMPTY_NOTICES,
         changes: changed({ all: true }),

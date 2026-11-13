@@ -66,7 +66,7 @@ func TestTiposDeMensajePresentesEnElEsquema(t *testing.T) {
 		protocol.TypeUnitMovementCancelled,
 		protocol.TypeBuildingSpawn, protocol.TypeBuildingUpdate, protocol.TypeBuildingDestroyed,
 		protocol.TypeForestUpdate, protocol.TypeTreatyUpdate, protocol.TypeEventLogPage,
-		protocol.TypeEventLogNotice,
+		protocol.TypeEventLogNotice, protocol.TypeCaravanUpdate,
 	}
 	for _, msgType := range serverTypes {
 		require.Contains(t, server, `"`+msgType+`"`,

@@ -195,6 +195,8 @@ type eventPayload struct {
 	// La conquista (SPEC-TERRITORY-CONQUEST §6).
 	TerritoryID   int64  `json:"territoryId"`
 	TerritoryName string `json:"territoryName"`
+	// Las caravanas (SPEC-CARAVANS §6): lo que llevaba.
+	Cargo []payloadLine `json:"cargo"`
 }
 
 // payloadLine es una línea de un trato en el payload.
@@ -247,6 +249,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	}
 	e.OfferID, e.Give, e.Want = p.OfferID, toLines(p.Give), toLines(p.Want)
 	e.TerritoryID, e.TerritoryName = p.TerritoryID, p.TerritoryName
+	e.Cargo = toLines(p.Cargo)
 	return nil
 }
 
@@ -331,7 +334,8 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	}
 	switch e.Kind {
 	case eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindPillaged, eventlog.KindPillageDone,
-		eventlog.KindHouseLost, eventlog.KindHouseDestroyed:
+		eventlog.KindHouseLost, eventlog.KindHouseDestroyed,
+		eventlog.KindCaravanArrived, eventlog.KindCaravanCaptured, eventlog.KindCaravanIntercepted, eventlog.KindCaravanLost:
 	default:
 		v.TreatyType = e.TreatyType
 	}
@@ -342,6 +346,9 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	if e.TerritoryID != 0 {
 		id := e.TerritoryID
 		v.TerritoryID, v.TerritoryName = &id, e.TerritoryName
+	}
+	if len(e.Cargo) > 0 {
+		v.Cargo = fromLines(e.Cargo)
 	}
 	return v
 }

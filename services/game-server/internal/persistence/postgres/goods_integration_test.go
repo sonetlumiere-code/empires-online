@@ -180,8 +180,8 @@ func TestLosCheckDeLosBienes(t *testing.T) {
 	assert.True(t, postgres.IsCheckViolation(err), "GOLD no es un recurso: %v", err)
 }
 
-// RN-GOODS-008 e INV-TRADE-001: un trato de vino por pieles mueve los dos
-// almacenes como uno de madera por piedra.
+// RN-GOODS-008 e INV-TRADE-001: un trato de vino por pieles sale en dos
+// caravanas como uno de madera por piedra, y cada una entrega su bien.
 func TestUnTratoDeVinoPorPieles(t *testing.T) {
 	store, ctx := newTestStore(t)
 	e := nuevoEscenarioComercial(t, ctx, store)
@@ -199,14 +199,27 @@ func TestUnTratoDeVinoPorPieles(t *testing.T) {
 	})
 	cerrada, _ := o.TransitionTo(trade.StatusAccepted, ahora)
 	cerrada.AcceptedRequestID = uuid.NewString()
-	require.NoError(t, e.trade.Accept(ctx, postgres.TradeAcceptance{
+	creadas, err := e.trade.Accept(ctx, postgres.TradeAcceptance{
 		Offer: cerrada, AtMs: ahora.UnixMilli(), By: o.Target,
 		Stocks: []postgres.StockDelta{
-			{CityID: o.ProposerCity, Resource: economy.ResourceFurs, Delta: 20, Version: 1},
 			{CityID: o.ProposerCity, Resource: economy.ResourceWine, Delta: -30, Version: 2},
 			{CityID: o.TargetCity, Resource: economy.ResourceFurs, Delta: -20, Version: 2},
-			{CityID: o.TargetCity, Resource: economy.ResourceWine, Delta: 30, Version: 1},
 		},
+		Caravans: caravanasDe(o, 1001),
+	})
+	require.NoError(t, err)
+	require.Len(t, creadas, 2)
+
+	caravanas := postgres.NewCaravanRepo(store, 32)
+	require.NoError(t, caravanas.Deliver(ctx, postgres.CaravanDelivery{
+		CaravanID: creadas[0].CaravanID, UnitID: creadas[0].UnitID, CityID: o.TargetCity,
+		Recipient: o.Target, Counterpart: o.Proposer, Cargo: o.Give,
+		Stocks: []postgres.StockDelta{{CityID: o.TargetCity, Resource: economy.ResourceWine, Delta: 30, Version: 1}},
+	}))
+	require.NoError(t, caravanas.Deliver(ctx, postgres.CaravanDelivery{
+		CaravanID: creadas[1].CaravanID, UnitID: creadas[1].UnitID, CityID: o.ProposerCity,
+		Recipient: o.Proposer, Counterpart: o.Target, Cargo: o.Want,
+		Stocks: []postgres.StockDelta{{CityID: o.ProposerCity, Resource: economy.ResourceFurs, Delta: 20, Version: 1}},
 	}))
 	vino, _ := stockDe(t, ctx, store, o.TargetCity, economy.ResourceWine)
 	pieles, _ := stockDe(t, ctx, store, o.ProposerCity, economy.ResourceFurs)

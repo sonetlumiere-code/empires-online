@@ -28,10 +28,17 @@ const (
 )
 
 // TradeRepo escribe y lee las ofertas de comercio.
-type TradeRepo struct{ store *Store }
+type TradeRepo struct {
+	store *Store
+	// chunkSize es el de units.chunk_x/y, para las caravanas que crea un trato.
+	chunkSize int32
+}
 
-// NewTradeRepo crea el repositorio.
-func NewTradeRepo(s *Store) *TradeRepo { return &TradeRepo{store: s} }
+// NewTradeRepo crea el repositorio. chunkSize es el del mundo: las unidades de
+// las caravanas que crea un trato lo necesitan (ADR-037 §3).
+func NewTradeRepo(s *Store, chunkSize int32) *TradeRepo {
+	return &TradeRepo{store: s, chunkSize: chunkSize}
+}
 
 // TradeWrite es una transición de una oferta que no toca almacenes: la
 // propuesta, el rechazo, la retirada o la caducidad.
@@ -51,15 +58,17 @@ type TradeWrite struct {
 	Reason string
 }
 
-// TradeAcceptance es un trato aceptado con sus deltas versionados, uno por
-// ciudad y recurso que toca (ADR-032 §2).
+// TradeAcceptance es un trato aceptado con sus débitos versionados, uno por
+// ciudad y recurso que da (ADR-032 §2), y las dos caravanas que se llevan lo
+// debitado (ADR-037 §3).
 type TradeAcceptance struct {
 	// Offer es la oferta ya ACCEPTED, con AcceptedRequestID y ClosedAt.
-	Offer  trade.Offer
-	Stocks []StockDelta
-	Tick   uint64
-	AtMs   int64
-	By     uuid.UUID
+	Offer    trade.Offer
+	Stocks   []StockDelta
+	Caravans []CaravanSpawn
+	Tick     uint64
+	AtMs     int64
+	By       uuid.UUID
 }
 
 // ApplyOffer escribe una transición con su evento y devuelve el id de la
@@ -128,16 +137,19 @@ func (r *TradeRepo) ApplyOffer(ctx context.Context, w TradeWrite) (int64, error)
 	return id, err
 }
 
-// Accept mueve un trato aceptado en UNA transacción (RN-TRADE-004,
-// INV-TRADE-001): bloquea la oferta, aplica todos los deltas de los dos
-// almacenes, pasa la oferta a ACCEPTED y escribe TradeAccepted. Si un delta no
-// se aplica (ErrStaleStock) o dejaría un stock negativo
-// (economy.ErrInsufficientResources), no se escribe nada. Un reintento que
-// encuentra la oferta ya aceptada por la misma orden termina con éxito; una
-// oferta en otro estado es ErrVersionConflict.
-func (r *TradeRepo) Accept(ctx context.Context, a TradeAcceptance) error {
+// Accept cierra un trato aceptado en UNA transacción (RN-CARAVAN-001,
+// INV-TRADE-001, INV-TRADE-007): bloquea la oferta, aplica los débitos de los
+// dos almacenes, crea las dos caravanas con lo debitado, pasa la oferta a
+// ACCEPTED y escribe TradeAccepted. Devuelve los ids de las caravanas en el
+// orden de a.Caravans. Si un delta no se aplica (ErrStaleStock) o dejaría un
+// stock negativo (economy.ErrInsufficientResources), no se escribe nada. Un
+// reintento que encuentra la oferta ya aceptada por la misma orden devuelve
+// las caravanas que ya creó; una oferta en otro estado es ErrVersionConflict.
+func (r *TradeRepo) Accept(ctx context.Context, a TradeAcceptance) ([]CaravanCreated, error) {
 	o := a.Offer
-	return r.store.InTx(ctx, func(tx pgx.Tx) error {
+	var created []CaravanCreated
+	err := r.store.InTx(ctx, func(tx pgx.Tx) error {
+		created = nil
 		var estado string
 		var aceptadaPor *string
 		switch err := tx.QueryRow(ctx,
@@ -149,7 +161,10 @@ func (r *TradeRepo) Accept(ctx context.Context, a TradeAcceptance) error {
 			return fmt.Errorf("leer la oferta %d: %w", o.ID, normalize(err))
 		}
 		if trade.Status(estado) == trade.StatusAccepted && aceptadaPor != nil && *aceptadaPor == o.AcceptedRequestID {
-			return nil // ya escrito: un reintento
+			// Ya escrito: un reintento. Devuelve las caravanas que creó.
+			var err error
+			created, err = caravansOfOffer(ctx, tx, o.ID)
+			return err
 		}
 		if trade.Status(estado) != trade.StatusProposed {
 			return fmt.Errorf("%w: la oferta %d está en %s", ErrVersionConflict, o.ID, estado)
@@ -169,8 +184,26 @@ func (r *TradeRepo) Accept(ctx context.Context, a TradeAcceptance) error {
 			o.ID, o.AcceptedRequestID, o.ClosedAt); err != nil {
 			return fmt.Errorf("aceptar la oferta %d: %w", o.ID, normalize(err))
 		}
-		return appendEvent(ctx, tx, tradeEvent(EventTradeAccepted, o, a.Tick, a.AtMs, a.By, ""))
+		departed := time.UnixMilli(a.AtMs).UTC()
+		ids := make([]int64, 0, len(a.Caravans))
+		for _, sp := range a.Caravans {
+			c, err := insertCaravan(ctx, tx, r.chunkSize, o.ID, departed, sp)
+			if err != nil {
+				return err
+			}
+			created = append(created, c)
+			ids = append(ids, c.CaravanID)
+		}
+		ev := tradeEvent(EventTradeAccepted, o, a.Tick, a.AtMs, a.By, "")
+		if len(ids) > 0 {
+			ev.Payload["caravanIds"] = ids
+		}
+		return appendEvent(ctx, tx, ev)
 	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
 }
 
 // ListPending devuelve las ofertas PROPOSED con sus líneas, en orden de id: lo

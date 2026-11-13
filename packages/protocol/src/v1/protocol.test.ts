@@ -801,3 +801,59 @@ describe('bienes de civilización (SPEC-CIVILIZATION-GOODS)', () => {
   });
 });
 
+
+describe('caravanas (SPEC-CARAVANS)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const caravan = {
+    id: 5, unitId: 77, ownerPlayerId: uuid, senderPlayerId: uuid,
+    fromCityId: 1, fromCityName: 'Roma', toCityId: 2, toCityName: 'Bizancio', originalToCityId: 2,
+    cargo: [{ resource: 'WINE', amount: 30 }], status: 'IN_TRANSIT', arrivesAtMs: 1_757_376_200_000,
+  };
+
+  it('CARAVAN es un tipo de unidad que viaja en los mensajes de entidad', () => {
+    const unidad = {
+      id: 77, playerId: uuid, cityId: 1, unitType: 'CARAVAN', x: 10, y: 12, hp: 80, maxHp: 80,
+      status: 'MOVING', movement: null, garrisonCityId: null,
+    };
+    expect(parseServerMessage({ ...env, type: 'entity.spawn', payload: { unit: unidad } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'entity.despawn', payload: { id: 77, reason: 'REMOVED' } }).ok).toBe(true);
+  });
+
+  it('city.train no admite CARAVAN: sólo la crea un trato (RN-CARAVAN-001)', () => {
+    const train = (type: string) => parseClientMessage({ v: 1, type: 'city.train', requestId: uuid, payload: { cityId: 7, type } });
+    expect(train('WARRIOR').ok).toBe(true);
+    expect(train('CARAVAN')).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
+  it('caravan.update lleva la caravana con su carga, y exige carga y estado del catálogo', () => {
+    expect(parseServerMessage({ ...env, type: 'caravan.update', payload: { caravan } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'caravan.update', payload: { caravan: { ...caravan, status: 'DELIVERED', arrivesAtMs: null } } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'caravan.update', payload: { caravan: { ...caravan, cargo: [] } } }).ok).toBe(false);
+    expect(parseServerMessage({ ...env, type: 'caravan.update', payload: { caravan: { ...caravan, status: 'ROBADA' } } }).ok).toBe(false);
+    const { cargo: _, ...sinCarga } = caravan;
+    expect(parseServerMessage({ ...env, type: 'caravan.update', payload: { caravan: sinCarga } }).ok).toBe(false);
+  });
+
+  it('el snapshot lleva las caravanas del jugador, opcionales', () => {
+    const snapshot = { serverTimeMs: 1, tick: 1, chunks: [], terrain: [], units: [], cities: [], territories: [], buildings: [] };
+    expect(parseServerMessage({ ...env, type: 'world.snapshot', payload: snapshot }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'world.snapshot', payload: { ...snapshot, caravans: [caravan] } }).ok).toBe(true);
+  });
+
+  it('las caravanas son entradas del registro con su carga, y las capturas también avisos', () => {
+    for (const kind of ['CARAVAN_ARRIVED', 'CARAVAN_CAPTURED', 'CARAVAN_INTERCEPTED', 'CARAVAN_LOST']) {
+      const entry = {
+        id: 41, kind, firstAtMs: 1, lastAtMs: 2, count: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte',
+        cargo: [{ resource: 'STONE', amount: 100 }], x: 150, y: 90,
+      };
+      expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [entry], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(true);
+    }
+    for (const kind of ['CARAVAN_CAPTURED', 'CARAVAN_INTERCEPTED', 'CARAVAN_LOST']) {
+      const notice = { kind, atMs: 1, otherPlayerId: otro, otherCityId: null, otherCityName: null, cargo: [{ resource: 'WOOD', amount: 3 }] };
+      expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
+    }
+    const llegada = { kind: 'CARAVAN_ARRIVED', atMs: 1, otherPlayerId: otro, otherCityId: null, otherCityName: null };
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: llegada }).ok, 'Q11: la llegada no se avisa').toBe(false);
+  });
+});
