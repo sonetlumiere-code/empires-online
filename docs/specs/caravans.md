@@ -202,7 +202,9 @@ Eventos de dominio en `world_events`, con `counterpart_player_id` y `atMs` cuand
 
 Registro ([event-log.md](event-log.md)), sin lo que hizo el propio jugador (`RN-LOG-001`): la caravana que te llegó,
 la tuya capturada, la que venía a ti capturada y la que se perdió. La captura que hiciste tú no entra, como la muerte
-que causaste con una orden. Los tipos de entrada nuevos se suman a `eventlog.Kinds()`, al enum del protocolo y a
+que causaste con una orden. Como la entrega y la captura son optimistas, su entrada aparece en el registro cuando su
+transacción se confirma, unos milisegundos después del cambio en el almacén y del aviso: la misma ventana que el
+aviso de saqueo ([ADR-033](../decisions/ADR-033-live-notices-ephemeral.md) §6). Los tipos de entrada nuevos se suman a `eventlog.Kinds()`, al enum del protocolo y a
 `Classify`; los eventos, a `eventlog.EventTypes()`; y los tipos de `CaravanCaptured`, `CaravanIntercepted` y
 `CaravanLost`, a `eventlog.NoticeKinds` (Q11: las capturas que te afectan, también la que se pierde).
 

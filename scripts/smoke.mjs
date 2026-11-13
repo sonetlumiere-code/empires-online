@@ -1747,8 +1747,8 @@ async function comercio(propio, ciudad) {
     fallar('la entrada del trato no lleva sus cantidades', entrada);
   }
   ok('el registro cuenta el trato', `TRADE_ACCEPTED: diste 50 de madera, recibiste 10 de piedra`);
-  const paginaV = await paginaDelRegistro(victima.sesion);
-  const llego = paginaV.entries.find((e) => e.kind === 'CARAVAN_ARRIVED' && e.otherPlayerId === ciudad.ownerPlayerId);
+  const { entrada: llego, pagina: paginaV } = await entradaDelRegistro(victima.sesion,
+    (e) => e.kind === 'CARAVAN_ARRIVED' && e.otherPlayerId === ciudad.ownerPlayerId);
   if (!llego || llego.cargo?.[0]?.amount !== 50) fallar('el registro de quien recibe no cuenta la caravana', paginaV.entries.slice(0, 5));
   ok('el registro cuenta la caravana', `CARAVAN_ARRIVED: 50 de madera de ${ciudad.name}`);
   victima.sesion.cerrar();
@@ -1814,7 +1814,7 @@ async function caravana(propio, ciudad, playerId) {
   ok('dos caravanas en camino', `la de piedra de ${ciudadV.name} es la unidad ${dePiedra.unitId}`);
 
   // RN-CARAVAN-006: los guerreros la atacan y el golpe mortal la captura.
-  for (const g of guerreros) propio.sesion.enviar('unit.attack', { unitId: g.id, targetId: dePiedra.unitId });
+  for (const g of guerreros) propio.sesion.enviar('unit.attack', { unitId: g.id, targetUnitId: dePiedra.unitId });
   const capturada = await propio.sesion.esperarQue(['caravan.update', 'system.error'],
     (m) => m.type === 'system.error' ||
       (m.payload.caravan.unitId === dePiedra.unitId && m.payload.caravan.ownerPlayerId === playerId), 60_000);
@@ -1835,10 +1835,9 @@ async function caravana(propio, ciudad, playerId) {
     Math.max(0, (c.arrivesAtMs ?? Date.now()) - Date.now()) + 30_000);
   ok('la caravana capturada llega a la ciudad del captor', ciudad.name);
 
-  const pagina = await paginaDelRegistro(victima.sesion);
-  if (!pagina.entries.some((e) => e.kind === 'CARAVAN_CAPTURED' && e.otherPlayerId === playerId)) {
-    fallar('el registro de la víctima no cuenta la captura', pagina.entries.slice(0, 5));
-  }
+  const { entrada: captura, pagina } = await entradaDelRegistro(victima.sesion,
+    (e) => e.kind === 'CARAVAN_CAPTURED' && e.otherPlayerId === playerId);
+  if (!captura) fallar('el registro de la víctima no cuenta la captura', pagina.entries.slice(0, 5));
   ok('el registro de la víctima cuenta la captura', 'CARAVAN_CAPTURED');
   victima.sesion.cerrar();
 }
@@ -1853,6 +1852,21 @@ async function paginaDelRegistro(sesion, beforeId) {
   const r = await sesion.esperarQue(['event_log.page', 'system.error'], (m) => m.requestId === id, 10_000);
   if (r.type === 'system.error') fallar('el servidor no sirvió el registro', r.payload);
   return r.payload;
+}
+
+/**
+ * Espera a que la primera página del registro tenga una entrada que cumpla `cond`.
+ * Lo de una caravana se escribe de forma optimista (ADR-037 §4 y §5): el almacén y el
+ * aviso llegan en el tick, y la fila de world_events unos milisegundos después.
+ */
+async function entradaDelRegistro(sesion, cond, ms = 5_000) {
+  const limite = Date.now() + ms;
+  for (;;) {
+    const pagina = await paginaDelRegistro(sesion);
+    const e = pagina.entries.find(cond);
+    if (e || Date.now() > limite) return { entrada: e, pagina };
+    await dormir(250);
+  }
 }
 
 // ADR-028 §6: el servidor sólo marca lo guardado hace más de 25 s; uno de holgura.

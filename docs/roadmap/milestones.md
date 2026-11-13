@@ -1928,7 +1928,7 @@ Castillos, otros usos de los bienes, saquearlos, la producción pasiva.
 
 ## E15 — Caravanas
 
-**Estado: EN CURSO (2026-11-13)**, en la rama `claude/slice-caravanas`. Contrato:
+**Estado: HECHO EN LA RAMA (2026-11-13)**, en `claude/slice-caravanas`, pendiente de fusión y CI. Contrato:
 [SPEC-CARAVANS](../specs/caravans.md), aceptada el 2026-11-13 con sus doce decisiones de producto, y
 [ADR-037](../decisions/ADR-037-caravans-as-units.md).
 
@@ -1968,5 +1968,13 @@ jerárquico.
 6. **HECHO** — Cliente: el carro en la escena, «Caravanas en camino» con su llegada e «Ir», ninguna orden con una
    caravana seleccionada, los textos de las cuatro entradas y de los avisos, y los mensajes de `PATH_NOT_FOUND` y
    `UNIT_NOT_MOVABLE` (frontend.md §4.12).
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --caravana`, y `--comercio` y `--bienes` esperando la
-   llegada.
+7. **HECHO** — Humo y prueba en vivo (2026-11-13): el servidor aplicó `000017` al arrancar. `node scripts/smoke.mjs
+   --web http://localhost:3001 --comercio --bienes` pasó: el trato de 50 de madera por 10 de piedra sólo debitó, y las
+   dos caravanas llegaron unos 4 min 33 s después, a 55 ms de lo anunciado, con `CARAVAN_ARRIVED` en el registro de
+   smoke_victim; el vino de `--bienes` llegó igual. `--caravana` pasó sus 23 comprobaciones: cuatro guerreros de
+   smoke_runner capturaron la caravana de piedra de smoke_victim junto a su ciudad, la víctima recibió
+   `CARAVAN_CAPTURED` con su carga y la caravana llegó a smoke_runnerpolis. En el navegador integrado, smoke_victim vio
+   «Caravanas en camino» con las dos caravanas desde su lado y el carro en el mapa con su ruta, y «Mientras no estabas»
+   contó la captura en rojo y las llegadas. Dos fallos del humo, no del juego: leía el registro antes de que la entrega
+   optimista se confirmara (ahora espera la entrada hasta 5 s, y la spec documenta esa ventana) y mandaba
+   `targetId` en lugar de `targetUnitId`.
