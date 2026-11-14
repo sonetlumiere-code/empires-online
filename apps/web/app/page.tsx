@@ -324,6 +324,10 @@ export default function Page() {
     if (!messagesOpen) {
       requestInbox();
       useWorldStore.getState().dismissMessagesWhileAway();
+    } else {
+      // Con el panel cerrado no hay conversación a la vista: lo que llegue cuenta
+      // como no leído y avisa (SPEC-MESSAGES Q7).
+      useWorldStore.getState().closeConversation();
     }
     setMessagesOpen(!messagesOpen);
   }, [messagesOpen, requestInbox]);
