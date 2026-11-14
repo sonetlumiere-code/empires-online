@@ -98,6 +98,20 @@ import {
 } from '../src/state/notices';
 import { claimBlockReason, claimLabel, territoryAt, territoryOwnerLabel } from '../src/state/conquest';
 import { caravanLabel } from '../src/state/caravans';
+import {
+  MESSAGE_MAX_CHARS,
+  MESSAGE_NOTICE_MS,
+  bodyLength,
+  messageTime,
+  otherName,
+  readTarget,
+  sendBlockReason,
+  sendErrorText,
+  unreadTotal,
+  visibleIncoming,
+  whileAwayText,
+  type MessagesState,
+} from '../src/state/messages';
 import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
@@ -230,7 +244,12 @@ export default function Page() {
         hiddenSince = Date.now();
         return;
       }
-      if (shouldRefetchOnVisible(hiddenSince, Date.now())) requestEventLog(null);
+      if (shouldRefetchOnVisible(hiddenSince, Date.now())) {
+        requestEventLog(null);
+        // La bandeja también (SPEC-MESSAGES §4.3).
+        const client = clientRef.current;
+        if (client && client.getState() === 'ready') client.listMessages();
+      }
       hiddenSince = null;
     };
     document.addEventListener('visibilitychange', onVisibility);
@@ -270,9 +289,78 @@ export default function Page() {
     const id = setTimeout(() => setTick((n) => n + 1), expiry - now + 50);
     return () => clearTimeout(id);
   }, [notices]);
+  // Mensajes (SPEC-MESSAGES): la bandeja se pide al conectar y al volver a la
+  // pestaña, como el registro; la conversación abierta se da por leída al verla.
+  const messages = useWorldStore((s) => s.messages);
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [messageDraft, setMessageDraft] = useState('');
+  const requestInbox = useCallback(() => {
+    const client = clientRef.current;
+    if (!client || client.getState() !== 'ready') return;
+    client.listMessages();
+  }, []);
   useEffect(() => {
-    document.title = documentTitle(BASE_TITLE, notices);
-  }, [notices]);
+    if (connection === 'ready') requestInbox();
+  }, [connection, requestInbox]);
+  const requestConversation = useCallback((otherPlayerId: string, beforeId: number | null) => {
+    const client = clientRef.current;
+    if (!client || client.getState() !== 'ready') return;
+    const requestId = client.fetchMessages(otherPlayerId, beforeId ?? undefined);
+    useWorldStore.getState().expectMessagePage(requestId, otherPlayerId, beforeId);
+  }, []);
+  // «Escribir»: abre el panel en la conversación con ese jugador.
+  const writeTo = useCallback(
+    (otherPlayerId: string, otherCityId: number | null, otherCityName: string | null) => {
+      if (otherPlayerId === useWorldStore.getState().playerId) return;
+      useWorldStore.getState().openConversation(otherPlayerId, otherCityId, otherCityName);
+      useWorldStore.getState().dismissMessagesWhileAway();
+      setMessageDraft('');
+      setMessagesOpen(true);
+      requestConversation(otherPlayerId, null);
+    },
+    [requestConversation],
+  );
+  const toggleMessages = useCallback(() => {
+    if (!messagesOpen) {
+      requestInbox();
+      useWorldStore.getState().dismissMessagesWhileAway();
+    } else {
+      // Con el panel cerrado no hay conversación a la vista: lo que llegue cuenta
+      // como no leído y avisa (SPEC-MESSAGES Q7).
+      useWorldStore.getState().closeConversation();
+    }
+    setMessagesOpen(!messagesOpen);
+  }, [messagesOpen, requestInbox]);
+  const openConv = messagesOpen ? messages.open : null;
+  const lastOpenId = openConv?.loaded ? (openConv.messages.at(-1)?.id ?? 0) : 0;
+  useEffect(() => {
+    if (lastOpenId === 0 || document.visibilityState === 'hidden') return;
+    const target = readTarget(useWorldStore.getState().messages);
+    if (!target) return;
+    clientRef.current?.markMessagesRead(target.otherPlayerId, target.upToId);
+    useWorldStore.getState().markConversationRead(target.otherPlayerId);
+  }, [lastOpenId]);
+  const sendDraft = () => {
+    const client = clientRef.current;
+    const open = useWorldStore.getState().messages.open;
+    if (!client || !open || sendBlockReason(messageDraft) !== null) return;
+    const requestId = client.sendMessage(open.otherPlayerId, messageDraft);
+    useWorldStore.getState().expectMessageSend(requestId, open.otherPlayerId);
+    setMessageDraft('');
+  };
+  const incomingMessage = visibleIncoming(messages, clientRef.current?.serverTimeMs() ?? Date.now());
+  useEffect(() => {
+    const n = messages.incoming;
+    if (!n) return;
+    const left = n.sentAtMs + MESSAGE_NOTICE_MS - (clientRef.current?.serverTimeMs() ?? Date.now());
+    if (left <= 0) return;
+    const id = setTimeout(() => setTick((t) => t + 1), left + 50);
+    return () => clearTimeout(id);
+  }, [messages.incoming]);
+
+  useEffect(() => {
+    document.title = documentTitle(BASE_TITLE, notices, messages.hiddenIncoming);
+  }, [notices, messages.hiddenIncoming]);
 
   // Abre el WebSocket con el primer ticket; las reconexiones piden el suyo con
   // la cookie de sesión, porque los tickets son de un solo uso.
@@ -632,6 +720,14 @@ export default function Page() {
                 </span>
               )}
             </button>
+            <button
+              className="secondary"
+              onClick={toggleMessages}
+              aria-expanded={messagesOpen}
+              title="Tus conversaciones con otros jugadores"
+            >
+              Mensajes{unreadTotal(messages) > 0 ? ` (${unreadTotal(messages)})` : ''}
+            </button>
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
             <span title="Piedra de la ciudad: se recoge en las colinas">Piedra {ownCity.stocks.STONE}</span>
             {/* Los bienes: el propio siempre, los ajenos si hay (SPEC-CIVILIZATION-GOODS §4.6). */}
@@ -851,6 +947,13 @@ export default function Page() {
                     })()}
                   </span>
                 ))}
+              <button
+                className="secondary"
+                title="Escribe un mensaje al dueño de esta ciudad"
+                onClick={() => { writeTo(diplomacyTarget.ownerPlayerId, diplomacyTarget.id, diplomacyTarget.name); setDiplomacyTarget(null); }}
+              >
+                Escribir
+              </button>
               <button className="secondary" onClick={() => setDiplomacyTarget(null)} title="Cerrar">×</button>
             </>
           )}
@@ -862,6 +965,9 @@ export default function Page() {
                   {ACTION_LABEL[a]}
                 </button>
               ))}
+              <button className="secondary" onClick={() => writeTo(tr.otherPlayerId, tr.otherCityId, tr.otherCityName)}>
+                Escribir
+              </button>
             </span>
           ))}
           {tradeOffers.map((o) => (
@@ -872,6 +978,9 @@ export default function Page() {
                   {ACTION_LABEL[a]}
                 </button>
               ))}
+              <button className="secondary" onClick={() => writeTo(o.otherPlayerId, o.otherCityId, o.otherCityName)}>
+                Escribir
+              </button>
             </span>
           ))}
         </div>
@@ -896,9 +1005,33 @@ export default function Page() {
               >
                 Ir
               </button>
+              {(() => {
+                const other = caravanCounterpart(c, playerId, useWorldStore.getState().cities);
+                return other ? (
+                  <button className="secondary" onClick={() => writeTo(other.playerId, other.cityId, other.cityName)}>
+                    Escribir
+                  </button>
+                ) : null;
+              })()}
             </span>
           ))}
         </div>
+      )}
+
+      {messagesOpen && (
+        <MessagesPanel
+          messages={messages}
+          playerId={playerId}
+          nowMs={serverTimeMs()}
+          draft={messageDraft}
+          onDraft={setMessageDraft}
+          onSend={sendDraft}
+          onOpen={(c) => writeTo(c.otherPlayerId, c.otherCityId, c.otherCityName)}
+          onBack={() => { useWorldStore.getState().closeConversation(); requestInbox(); }}
+          onOlder={(before) => openConv && requestConversation(openConv.otherPlayerId, before)}
+          onBlock={(other, blocked) => clientRef.current?.blockPlayer(other, blocked)}
+          onClose={toggleMessages}
+        />
       )}
 
       {logOpen && (
@@ -915,7 +1048,7 @@ export default function Page() {
               {eventLog.loaded ? 'No te ha pasado nada en estos días.' : 'Cargando…'}
             </p>
           ) : (
-            <EventLogList entries={eventLog.entries} isNew={(e) => isUnseen(eventLog, e)} nowMs={serverTimeMs()} />
+            <EventLogList entries={eventLog.entries} isNew={(e) => isUnseen(eventLog, e)} nowMs={serverTimeMs()} onWrite={writeTo} />
           )}
           {eventLog.nextBeforeId !== null && (
             <button className="secondary" style={{ marginTop: '0.5rem' }} onClick={() => requestEventLog(eventLog.nextBeforeId)}>
@@ -925,17 +1058,32 @@ export default function Page() {
         </section>
       )}
 
-      {!logOpen && unseenEntries(eventLog).length > 0 && (
+      {!logOpen && (unseenEntries(eventLog).length > 0 || messages.whileAway !== null) && (
         <div style={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="while-away-title">
           <div style={{ ...styles.panel, width: 'min(480px, 92vw)', maxHeight: '80vh', overflowY: 'auto' }}>
             <h2 id="while-away-title" style={{ margin: '0 0 0.75rem', fontSize: '1.1rem' }}>
               Mientras no estabas
             </h2>
+            {messages.whileAway && (
+              <p style={{ margin: '0 0 0.75rem', display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                <span>{whileAwayText(messages.whileAway)}</span>
+                <button
+                  className="secondary"
+                  onClick={() => { markLogSeen(); useWorldStore.getState().dismissMessagesWhileAway(); requestInbox(); setMessagesOpen(true); }}
+                >
+                  Leer
+                </button>
+              </p>
+            )}
             <EventLogList entries={unseenEntries(eventLog)} isNew={() => false} nowMs={serverTimeMs()} />
             {moreUnseenBeyond(eventLog) && (
               <p style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>Hay más en el Registro.</p>
             )}
-            <button style={{ marginTop: '0.75rem' }} onClick={markLogSeen} autoFocus>
+            <button
+              style={{ marginTop: '0.75rem' }}
+              onClick={() => { markLogSeen(); useWorldStore.getState().dismissMessagesWhileAway(); }}
+              autoFocus
+            >
               Entendido
             </button>
           </div>
@@ -954,7 +1102,13 @@ export default function Page() {
           onCameraCenter={handleCameraCenter}
           focus={focus}
         />
-        <NoticeStrip groups={visibleNotices(notices, serverTimeMs())} onGo={goTo} />
+        <NoticeStrip
+          groups={visibleNotices(notices, serverTimeMs())}
+          onGo={goTo}
+          onWrite={writeTo}
+          incoming={incomingMessage}
+          onRead={() => incomingMessage && writeTo(incomingMessage.otherPlayerId, null, incomingMessage.otherCityName)}
+        />
       </div>
 
       {lastError && (
@@ -973,9 +1127,29 @@ const BASE_TITLE = 'Empires Online';
  * La franja de avisos en vivo sobre el mapa (SPEC-LIVE-NOTICES Q2): tres como
  * mucho, con el texto del registro y «Ir» cuando traen tile.
  */
-function NoticeStrip({ groups, onGo }: { groups: readonly NoticeGroup[]; onGo: (tile: { x: number; y: number }) => void }) {
+function NoticeStrip({
+  groups,
+  onGo,
+  onWrite,
+  incoming,
+  onRead,
+}: {
+  groups: readonly NoticeGroup[];
+  onGo: (tile: { x: number; y: number }) => void;
+  onWrite: (otherPlayerId: string, otherCityId: number | null, otherCityName: string | null) => void;
+  incoming: MessagesState['incoming'];
+  onRead: () => void;
+}) {
   return (
     <ul style={styles.notices} role="status" aria-live="polite" aria-label="Avisos">
+      {incoming && (
+        <li key={`message-${incoming.otherPlayerId}-${incoming.sentAtMs}`} style={styles.notice}>
+          <span>{otherName(incoming.otherCityName)} te ha escrito</span>
+          <button className="secondary" style={{ marginLeft: 'auto' }} onClick={onRead}>
+            Leer
+          </button>
+        </li>
+      )}
       {groups.map((g) => {
         const tile = noticeTile(g);
         return (
@@ -991,6 +1165,14 @@ function NoticeStrip({ groups, onGo }: { groups: readonly NoticeGroup[]; onGo: (
                 Ir
               </button>
             )}
+            <button
+              className="secondary"
+              style={tile ? undefined : { marginLeft: 'auto' }}
+              onClick={() => onWrite(g.otherPlayerId, g.otherCityId, g.otherCityName)}
+              title="Escribe un mensaje a este jugador"
+            >
+              Escribir
+            </button>
           </li>
         );
       })}
@@ -1003,10 +1185,12 @@ function EventLogList({
   entries,
   isNew,
   nowMs,
+  onWrite,
 }: {
   entries: readonly EventLogEntry[];
   isNew: (e: EventLogEntry) => boolean;
   nowMs: number;
+  onWrite?: (otherPlayerId: string, otherCityId: number | null, otherCityName: string | null) => void;
 }) {
   return (
     <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.4rem', fontSize: '0.85rem' }}>
@@ -1016,9 +1200,205 @@ function EventLogList({
             {entryText(e)}
           </span>
           <span style={{ color: 'var(--muted)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{timeAgo(e.lastAtMs, nowMs)}</span>
+          {onWrite && (
+            <button
+              className="secondary"
+              style={{ fontSize: '0.72rem', padding: '0.1rem 0.4rem' }}
+              onClick={() => onWrite(e.otherPlayerId, e.otherCityId, e.otherCityName)}
+            >
+              Escribir
+            </button>
+          )}
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * El otro jugador de una caravana, para «Escribir»: quien la mandó, si no eres tú;
+ * si es tuya, el dueño de la ciudad adonde va, si está en el mapa.
+ */
+function caravanCounterpart(
+  c: { senderPlayerId: string; ownerPlayerId: string; fromCityId: number; fromCityName: string | null; toCityId: number; toCityName: string | null },
+  playerId: string | null,
+  cities: ReadonlyMap<number, CityView>,
+): { playerId: string; cityId: number | null; cityName: string | null } | null {
+  if (c.senderPlayerId !== playerId) return { playerId: c.senderPlayerId, cityId: c.fromCityId, cityName: c.fromCityName };
+  if (c.ownerPlayerId !== playerId) return { playerId: c.ownerPlayerId, cityId: null, cityName: null };
+  const to = cities.get(c.toCityId);
+  return to && to.ownerPlayerId !== playerId ? { playerId: to.ownerPlayerId, cityId: to.id, cityName: to.name } : null;
+}
+
+/**
+ * El panel de mensajes (SPEC-MESSAGES §4.6): la bandeja o, con una conversación
+ * abierta, su historial y el cuadro de texto. El texto se pinta como texto.
+ */
+function MessagesPanel({
+  messages,
+  playerId,
+  nowMs,
+  draft,
+  onDraft,
+  onSend,
+  onOpen,
+  onBack,
+  onOlder,
+  onBlock,
+  onClose,
+}: {
+  messages: MessagesState;
+  playerId: string | null;
+  nowMs: number;
+  draft: string;
+  onDraft: (text: string) => void;
+  onSend: () => void;
+  onOpen: (c: { otherPlayerId: string; otherCityId: number | null; otherCityName: string | null }) => void;
+  onBack: () => void;
+  onOlder: (beforeId: number) => void;
+  onBlock: (otherPlayerId: string, blocked: boolean) => void;
+  onClose: () => void;
+}) {
+  const open = messages.open;
+  const reason = sendBlockReason(draft);
+  return (
+    <section style={styles.log} aria-label="Mensajes">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        {open ? (
+          <>
+            <button className="secondary" onClick={onBack}>← Bandeja</button>
+            <strong>{otherName(open.otherCityName)}</strong>
+            <button
+              className="secondary"
+              onClick={() => onBlock(open.otherPlayerId, !open.blockedByMe)}
+              title={open.blockedByMe ? 'Volver a aceptar sus mensajes' : 'No recibirás sus mensajes ni podrás escribirle; no cambia tratados ni tratos'}
+            >
+              {open.blockedByMe ? 'Desbloquear' : 'Bloquear'}
+            </button>
+          </>
+        ) : (
+          <>
+            <strong>Mensajes</strong>
+            <span style={{ color: 'var(--muted)' }}>Los últimos 30 días</span>
+          </>
+        )}
+        <button className="secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+
+      {open ? (
+        <>
+          {open.nextBeforeId !== null && (
+            <button className="secondary" style={{ marginBottom: '0.5rem' }} onClick={() => onOlder(open.nextBeforeId!)}>
+              Ver anteriores
+            </button>
+          )}
+          {!open.loaded ? (
+            <p style={{ margin: 0, color: 'var(--muted)' }}>Cargando…</p>
+          ) : open.messages.length === 0 ? (
+            <p style={{ margin: 0, color: 'var(--muted)' }}>Todavía no os habéis escrito.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.35rem' }} aria-label="Conversación">
+              {open.messages.map((m) => {
+                const mine = m.fromPlayerId === playerId;
+                return (
+                  <li key={m.id} style={{ justifySelf: mine ? 'end' : 'start', maxWidth: '80%' }}>
+                    <div
+                      style={{
+                        whiteSpace: 'pre-wrap',
+                        overflowWrap: 'anywhere',
+                        padding: '0.35rem 0.6rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        background: mine ? 'var(--border)' : 'transparent',
+                      }}
+                    >
+                      {m.body}
+                    </div>
+                    <div style={{ color: 'var(--muted)', fontSize: '0.7rem', textAlign: mine ? 'right' : 'left' }}>
+                      {messageTime(m.sentAtMs, nowMs)}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {open.blockedByMe ? (
+            <p style={{ color: 'var(--muted)', marginBottom: 0 }}>Lo tienes bloqueado: desbloquéalo para escribirle.</p>
+          ) : (
+            <form
+              style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', marginTop: '0.6rem' }}
+              onSubmit={(e) => { e.preventDefault(); onSend(); }}
+            >
+              <textarea
+                value={draft}
+                onChange={(e) => onDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
+                }}
+                rows={2}
+                style={{ flex: 1, resize: 'vertical' }}
+                aria-label="Mensaje"
+                placeholder="Escribe un mensaje (Intro envía, Mayús+Intro salta de línea)"
+              />
+              <span style={{ color: bodyLength(draft) > MESSAGE_MAX_CHARS ? 'var(--danger)' : 'var(--muted)', fontSize: '0.75rem' }}>
+                {bodyLength(draft)}/{MESSAGE_MAX_CHARS}
+              </span>
+              <button type="submit" disabled={reason !== null} title={reason ?? 'Enviar'}>
+                Enviar
+              </button>
+            </form>
+          )}
+          {messages.sendError?.otherPlayerId === open.otherPlayerId && (
+            <p style={{ color: 'var(--danger)', margin: '0.4rem 0 0' }} role="alert">
+              {sendErrorText(messages.sendError.code, messages.sendError.message)}
+            </p>
+          )}
+        </>
+      ) : !messages.inboxLoaded ? (
+        <p style={{ margin: 0, color: 'var(--muted)' }}>Cargando…</p>
+      ) : messages.conversations.length === 0 ? (
+        <p style={{ margin: 0, color: 'var(--muted)' }}>
+          No tienes conversaciones. Para escribir a alguien, haz clic en su ciudad y pulsa «Escribir».
+        </p>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.3rem' }} aria-label="Bandeja">
+          {messages.conversations.map((c) => (
+            <li key={c.otherPlayerId}>
+              <button
+                className="secondary"
+                style={{ width: '100%', display: 'flex', gap: '0.6rem', alignItems: 'baseline', textAlign: 'left' }}
+                onClick={() => onOpen(c)}
+              >
+                <strong style={{ whiteSpace: 'nowrap' }}>{otherName(c.otherCityName)}</strong>
+                <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                  {c.lastFromMe ? 'Tú: ' : ''}
+                  {c.lastBody}
+                </span>
+                {c.blockedByMe && <span style={{ color: 'var(--muted)' }}>(bloqueado)</span>}
+                {c.unread > 0 && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>{c.unread}</span>}
+                <span style={{ color: 'var(--muted)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{messageTime(c.lastAtMs, nowMs)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {!open && messages.blocked.length > 0 && (
+        <div style={{ marginTop: '0.75rem' }}>
+          <span style={{ color: 'var(--muted)' }}>Bloqueados: </span>
+          {messages.blocked.map((b) => (
+            <span key={b.playerId} style={{ display: 'inline-flex', gap: '0.3rem', alignItems: 'center', marginRight: '0.75rem' }}>
+              {otherName(b.cityName)}
+              <button className="secondary" onClick={() => onBlock(b.playerId, false)}>
+                Desbloquear
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

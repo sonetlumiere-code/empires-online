@@ -469,6 +469,85 @@ consulta y el jugador sale de la sesión.
 
 ---
 
+<a id="inv-sec-010"></a>
+## INV-SEC-010 — Una sesión sólo recibe mensajes de las conversaciones de su jugador
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | BOUNDARY, DB, TEST |
+| Milestone | E16 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `Test_INV_SEC_010_UnTerceroNoVeLaConversacionDeOtros` (integration), `TestUnMensajeLlegaATodasLasSesionesDeLosDos` y `TestLosMensajesRechazanLoInvalido` (e2e, `internal/websocket`) y `TestLosComandosDeMensajesSonLosDelEsquema` (contract) |
+
+**Enunciado.** Todo mensaje que llega a una sesión en `message.new`, `message.page` o `message.inbox` es una fila de
+`player_messages` cuyo `sender_player_id` o `recipient_player_id` es el jugador de esa sesión; y todo mensaje guardado
+tiene como `sender_player_id` al jugador de la sesión que lo envió.
+
+**Razón.** Los mensajes son texto privado entre dos personas: con quién negocias, qué ofreces, a quién amenazas. Si
+una sesión pudiera leer una conversación ajena, o escribir en nombre de otro, la diplomacia de todo el mundo quedaría
+a la vista y cualquiera podría suplantar a cualquiera.
+
+**Cómo se garantiza.**
+
+- `BOUNDARY` — ningún comando nombra al jugador que lee o que envía: se toma de la sesión autenticada. Lo que el
+  comando elige es el otro (`toPlayerId`, `otherPlayerId`), y la conversación es siempre la pareja que forma con el
+  jugador de la sesión ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §7).
+- `DB` — las consultas filtran por la pareja `(player_low, player_high)` que contiene al jugador de la sesión; la
+  bandeja, por `player_low` o `player_high` igual a él.
+- `BOUNDARY` — `message.new` se entrega con `Hub.SendToPlayer` sólo al remitente y al destinatario de la fila.
+
+**Cómo se verifica.**
+
+- `Test_INV_SEC_010_UnTerceroNoVeLaConversacionDeOtros` (integration) — la bandeja de un tercero está vacía y su
+  conversación con cada uno de los otros dos no trae ningún mensaje de la de ellos.
+- `TestUnMensajeLlegaATodasLasSesionesDeLosDos` (e2e) — un tercero conectado no recibe el `message.new` de los otros
+  dos, y cada lado ve como «el otro» al otro.
+- `TestLosMensajesRechazanLoInvalido` (e2e) — un `fromPlayerId` en `message.send` es `INVALID_MESSAGE`.
+- `TestLosComandosDeMensajesSonLosDelEsquema` (contract) — ningún comando declara al remitente ni a quien lee.
+
+**Violación en runtime.** Indetectable después: un mensaje leído por quien no debía no deja rastro. Por eso la garantía
+está en cómo se construye cada consulta, no en una comprobación posterior.
+
+---
+
+<a id="inv-sec-011"></a>
+## INV-SEC-011 — Ningún mensaje cruza un bloqueo
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, BOUNDARY, TEST |
+| Milestone | E16 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `Test_INV_SEC_011_NingunMensajeCruzaUnBloqueo` y `TestUnEnvioQueEsperaAlCandadoVeElBloqueo` (integration) y `TestElBloqueoCortaLosMensajesEnLosDosSentidos` (e2e, `internal/websocket`) |
+
+**Enunciado.** No existe una fila de `player_messages` entre dos jugadores cuya transacción confirmó mientras uno de
+los dos tenía bloqueado al otro en `player_blocks`.
+
+**Razón.** Bloquear es la única moderación del juego ([SPEC-MESSAGES](../specs/messages.md) Q5). Si un mensaje se
+colara por una carrera entre el bloqueo y el envío, el bloqueo no protegería justo en el momento en que se usa: cuando
+alguien está escribiendo sin parar.
+
+**Cómo se garantiza.** `DB` — el envío y el bloqueo toman el mismo candado de transacción por pareja; el envío
+comprueba `player_blocks` en los dos sentidos con el candado tomado y antes de insertar
+([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §3). `BOUNDARY` — un envío bloqueado responde
+`INVALID_TARGET` y no escribe nada.
+
+**Cómo se verifica.**
+
+- `Test_INV_SEC_011_NingunMensajeCruzaUnBloqueo` (integration) — con el bloqueo en un sentido, ni el bloqueado ni
+  quien bloquea pueden escribir, y no queda fila; al desbloquear, sí.
+- `TestUnEnvioQueEsperaAlCandadoVeElBloqueo` (integration) — con el candado de la pareja tomado por una transacción
+  que inserta el bloqueo, un envío espera y, al confirmar el bloqueo, se rechaza sin fila. Verificado por mutación: sin
+  el candado en el envío, el envío no espera y el test falla.
+- `TestElBloqueoCortaLosMensajesEnLosDosSentidos` (e2e) — `INVALID_TARGET` con el motivo de cada lado y la métrica
+  `blocked`.
+
+**Violación en runtime.** Un mensaje que cruzara el bloqueo se vería en la bandeja de quien bloqueó; se puede buscar
+después cruzando `sent_at` con `player_blocks.created_at`.
+
+---
 
 ## Modelo de amenazas del MVP
 
@@ -482,6 +561,8 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | Falsificación de posición, velocidad o path | [INV-SEC-001](#inv-sec-001), [INV-MOVE-004](movement.md#inv-move-004), [INV-MOVE-006](movement.md#inv-move-006) |
 | Replay de ticket | [INV-SEC-003](#inv-sec-003) |
 | Duplicación de efectos por reintento | [INV-SEC-007](#inv-sec-007) |
+| Lectura de conversaciones ajenas o mensajes en nombre de otro | [INV-SEC-010](#inv-sec-010), [INV-SEC-004](#inv-sec-004) |
+| Acoso o spam por mensajes | [INV-SEC-011](#inv-sec-011) (bloqueo), [INV-SEC-005](#inv-sec-005) y los límites de ritmo de [SPEC-MESSAGES](../specs/messages.md) `RN-MSG-005` |
 | Agotamiento de recursos por mensajes | [INV-SEC-005](#inv-sec-005), [INV-SEC-002](#inv-sec-002) (timeout de handshake) |
 | Agotamiento de recursos por sockets abiertos | [INV-SEC-005](#inv-sec-005) (topes de conexiones y plazos del servidor HTTP, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) |
 | Fuga de credenciales | [INV-SEC-006](#inv-sec-006) |
@@ -502,3 +583,5 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | INV-SEC-007 | `internal/websocket`, `internal/persistence/redis` | [INV-PERSIST-001](persistence.md#inv-persist-001), [INV-PLAYER-003](player.md#inv-player-003) |
 | INV-SEC-008 | `internal/auth`, `internal/httpapi`, `apps/web` | [INV-SEC-003](#inv-sec-003), [INV-PLAYER-009](player.md#inv-player-009) |
 | INV-SEC-009 | `internal/websocket`, `internal/persistence/postgres`, `internal/domain/eventlog`, `internal/game/simulation` (los avisos) | [INV-SEC-002](#inv-sec-002), [INV-PERSIST-006](persistence.md#inv-persist-006) |
+| INV-SEC-010 | `internal/websocket`, `internal/persistence/postgres`, `internal/domain/message` | [INV-SEC-004](#inv-sec-004), [INV-PERSIST-007](persistence.md#inv-persist-007), [../decisions/ADR-038-player-messages-session-subsystem.md](../decisions/ADR-038-player-messages-session-subsystem.md) |
+| INV-SEC-011 | `internal/persistence/postgres`, `internal/websocket` | [INV-SEC-010](#inv-sec-010), [../decisions/ADR-038-player-messages-session-subsystem.md](../decisions/ADR-038-player-messages-session-subsystem.md) |

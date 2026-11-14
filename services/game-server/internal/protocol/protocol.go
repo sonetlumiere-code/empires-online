@@ -56,6 +56,13 @@ const (
 	// Registro (SPEC-EVENT-LOG): los atiende la conexión, no la simulación.
 	TypeEventLogFetch = "event_log.fetch"
 	TypeEventLogSeen  = "event_log.seen"
+	// Mensajes entre jugadores (SPEC-MESSAGES): los atiende la conexión, no la
+	// simulación (ADR-038 §1).
+	TypeMessageSend  = "message.send"
+	TypeMessageList  = "message.list"
+	TypeMessageFetch = "message.fetch"
+	TypeMessageRead  = "message.read"
+	TypeMessageBlock = "message.block"
 )
 
 // Mensajes servidor → cliente.
@@ -84,6 +91,9 @@ const (
 	TypeTradeUpdate           = "trade.update"
 	TypeEventLogNotice        = "event_log.notice"
 	TypeCaravanUpdate         = "caravan.update"
+	TypeMessageNew            = "message.new"
+	TypeMessageInbox          = "message.inbox"
+	TypeMessagePage           = "message.page"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -112,6 +122,11 @@ var ClientMessageTypes = map[string]bool{
 	TypeTradeCancel:    true,
 	TypeEventLogFetch:  true,
 	TypeEventLogSeen:   true,
+	TypeMessageSend:    true,
+	TypeMessageList:    true,
+	TypeMessageFetch:   true,
+	TypeMessageRead:    true,
+	TypeMessageBlock:   true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -583,6 +598,91 @@ type EventLogPagePayload struct {
 	Entries      []EventLogEntry `json:"entries"`
 	SeenUpToID   int64           `json:"seenUpToId"`
 	NextBeforeID *int64          `json:"nextBeforeId"`
+}
+
+// MessageSendPayload escribe a otro jugador (SPEC-MESSAGES §4.2). El remitente
+// es siempre el jugador de la sesión (RN-MSG-001).
+type MessageSendPayload struct {
+	ToPlayerID string `json:"toPlayerId"`
+	Body       string `json:"body"`
+}
+
+// MessageListPayload pide la bandeja; no lleva nada.
+type MessageListPayload struct{}
+
+// MessageFetchPayload pide una página de la conversación con OtherPlayerID: la
+// más reciente, o la de los mensajes con id menor que BeforeID.
+type MessageFetchPayload struct {
+	OtherPlayerID string `json:"otherPlayerId"`
+	BeforeID      *int64 `json:"beforeId,omitempty"`
+}
+
+// MessageReadPayload marca leída la conversación hasta UpToID (RN-MSG-008).
+type MessageReadPayload struct {
+	OtherPlayerID string `json:"otherPlayerId"`
+	UpToID        int64  `json:"upToId"`
+}
+
+// MessageBlockPayload bloquea o desbloquea los mensajes con PlayerID.
+type MessageBlockPayload struct {
+	PlayerID string `json:"playerId"`
+	Blocked  bool   `json:"blocked"`
+}
+
+// MessageView es un mensaje visto por uno de sus dos jugadores (SPEC-MESSAGES
+// §6): «el otro» es el que no es el de la sesión, nombrado por su ciudad.
+type MessageView struct {
+	ID            int64   `json:"id"`
+	FromPlayerID  string  `json:"fromPlayerId"`
+	ToPlayerID    string  `json:"toPlayerId"`
+	OtherPlayerID string  `json:"otherPlayerId"`
+	OtherCityID   *int64  `json:"otherCityId"`
+	OtherCityName *string `json:"otherCityName"`
+	Body          string  `json:"body"`
+	SentAtMs      int64   `json:"sentAtMs"`
+}
+
+// MessageNewPayload lleva un mensaje recién guardado a las sesiones de los dos.
+type MessageNewPayload struct {
+	Message MessageView `json:"message"`
+}
+
+// ConversationView es una conversación de la bandeja de quien mira.
+type ConversationView struct {
+	OtherPlayerID string  `json:"otherPlayerId"`
+	OtherCityID   *int64  `json:"otherCityId"`
+	OtherCityName *string `json:"otherCityName"`
+	LastBody      string  `json:"lastBody"`
+	LastFromMe    bool    `json:"lastFromMe"`
+	LastAtMs      int64   `json:"lastAtMs"`
+	Unread        int     `json:"unread"`
+	BlockedByMe   bool    `json:"blockedByMe"`
+}
+
+// BlockedPlayerView es un jugador bloqueado por quien mira.
+type BlockedPlayerView struct {
+	PlayerID string  `json:"playerId"`
+	CityID   *int64  `json:"cityId"`
+	CityName *string `json:"cityName"`
+}
+
+// MessageInboxPayload es la bandeja: las conversaciones, de la más reciente a la
+// más antigua, y los bloqueados.
+type MessageInboxPayload struct {
+	Conversations []ConversationView  `json:"conversations"`
+	Blocked       []BlockedPlayerView `json:"blocked"`
+}
+
+// MessagePagePayload es una página de una conversación, de más antiguo a más
+// reciente. NextBeforeID es nil cuando no hay mensajes anteriores.
+type MessagePagePayload struct {
+	OtherPlayerID string        `json:"otherPlayerId"`
+	OtherCityID   *int64        `json:"otherCityId"`
+	OtherCityName *string       `json:"otherCityName"`
+	Messages      []MessageView `json:"messages"`
+	ReadUpToID    int64         `json:"readUpToId"`
+	NextBeforeID  *int64        `json:"nextBeforeId"`
+	BlockedByMe   bool          `json:"blockedByMe"`
 }
 
 // CityBuildPayload encarga un edificio en un tile de la zona urbana.

@@ -139,6 +139,7 @@ describe('el título de la pestaña (Q7)', () => {
     expect(documentTitle('Empires Online', s)).toBe('(1) Empires Online');
     s = applyNotice(s, aviso('ENEMY_KILLED', t0 + 50_000, { unitType: 'VILLAGER' }));
     expect(documentTitle('Empires Online', s)).toBe('(2) Empires Online');
+    expect(documentTitle('Empires Online', s, 3), 'y suma los mensajes (SPEC-MESSAGES Q7)').toBe('(5) Empires Online');
     s = setTabHidden(s, false);
     expect(documentTitle('Empires Online', s)).toBe('Empires Online');
     expect(s.groups.length).toBeGreaterThan(0);

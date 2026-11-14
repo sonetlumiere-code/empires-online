@@ -15,6 +15,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/diplomacy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/message"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -120,6 +121,10 @@ type Server struct {
 	limits   *connLimiter
 	// eventLog es el registro (SPEC-EVENT-LOG); opcional, ver SetEventLog.
 	eventLog EventLog
+	// messages son los mensajes entre jugadores y messageLimiter su límite de
+	// ritmo (SPEC-MESSAGES); opcionales, ver SetMessages.
+	messages       Messages
+	messageLimiter *message.Limiter
 }
 
 // NewServer construye el servidor.
@@ -690,6 +695,23 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 
 	case protocol.TypeEventLogSeen:
 		s.handleEventLogSeen(ctx, session, msg, log)
+
+	// Mensajes entre jugadores (SPEC-MESSAGES): los atiende la conexión, como
+	// el registro, y la simulación no los ve (ADR-038 §1).
+	case protocol.TypeMessageSend:
+		s.handleMessageSend(ctx, session, msg, log)
+
+	case protocol.TypeMessageList:
+		s.handleMessageList(ctx, session, msg, log)
+
+	case protocol.TypeMessageFetch:
+		s.handleMessageFetch(ctx, session, msg, log)
+
+	case protocol.TypeMessageRead:
+		s.handleMessageRead(ctx, session, msg, log)
+
+	case protocol.TypeMessageBlock:
+		s.handleMessageBlock(ctx, session, msg, log)
 
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
 	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del

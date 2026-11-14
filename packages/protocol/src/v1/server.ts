@@ -27,6 +27,9 @@ import {
   TreatyView,
   TradeOfferView,
   CaravanView,
+  MessageView,
+  ConversationView,
+  BlockedPlayerView,
   ResourceAmount,
   PresenceState,
   ProductionView,
@@ -448,6 +451,49 @@ export const UnitMovementCancelled = z.object({
   }),
 });
 
+/**
+ * Un mensaje nuevo entre dos jugadores (SPEC-MESSAGES §6), tras guardarse: lo reciben
+ * todas las sesiones de los dos; la que lo envió, con su `requestId` como confirmación.
+ */
+export const MessageNew = z.object({
+  ...serverEnvelope,
+  type: z.literal('message.new'),
+  payload: z.object({ message: MessageView }),
+});
+
+/**
+ * La bandeja, en respuesta a `message.list` o a `message.block` y sólo para la sesión que
+ * la pidió: las conversaciones, de la más reciente a la más antigua, y los bloqueados.
+ */
+export const MessageInbox = z.object({
+  ...serverEnvelope,
+  type: z.literal('message.inbox'),
+  payload: z.object({
+    conversations: z.array(ConversationView),
+    blocked: z.array(BlockedPlayerView),
+  }),
+});
+
+/**
+ * Una página de una conversación, en respuesta a `message.fetch` y sólo para la sesión
+ * que la pidió (SPEC-MESSAGES §6): los mensajes de más antiguo a más reciente,
+ * `readUpToId` (lo leído por quien mira al servirla) y `nextBeforeId`, el `beforeId` de
+ * la página anterior, `null` si no hay más.
+ */
+export const MessagePage = z.object({
+  ...serverEnvelope,
+  type: z.literal('message.page'),
+  payload: z.object({
+    otherPlayerId: Uuid,
+    otherCityId: EntityId.nullable(),
+    otherCityName: z.string().min(1).max(64).nullable(),
+    messages: z.array(MessageView),
+    readUpToId: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    nextBeforeId: EntityId.nullable(),
+    blockedByMe: z.boolean(),
+  }),
+});
+
 /** Unión discriminada de todos los mensajes servidor → cliente de la v1. */
 export const ServerMessage = z.discriminatedUnion('type', [
   SessionWelcome,
@@ -474,6 +520,9 @@ export const ServerMessage = z.discriminatedUnion('type', [
   TradeUpdate,
   EventLogNotice,
   CaravanUpdate,
+  MessageNew,
+  MessageInbox,
+  MessagePage,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -501,6 +550,9 @@ export type EventLogPage = z.infer<typeof EventLogPage>;
 export type TradeUpdate = z.infer<typeof TradeUpdate>;
 export type EventLogNotice = z.infer<typeof EventLogNotice>;
 export type CaravanUpdate = z.infer<typeof CaravanUpdate>;
+export type MessageNew = z.infer<typeof MessageNew>;
+export type MessageInbox = z.infer<typeof MessageInbox>;
+export type MessagePage = z.infer<typeof MessagePage>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -527,6 +579,9 @@ export const SERVER_MESSAGE_TYPES = [
   'trade.update',
   'event_log.notice',
   'caravan.update',
+  'message.new',
+  'message.inbox',
+  'message.page',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

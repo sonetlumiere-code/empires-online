@@ -1978,3 +1978,47 @@ jerárquico.
    contó la captura en rojo y las llegadas. Dos fallos del humo, no del juego: leía el registro antes de que la entrega
    optimista se confirmara (ahora espera la entrada hasta 5 s, y la spec documenta esa ventana) y mandaba
    `targetId` en lugar de `targetUnitId`.
+
+## E16 — Mensajes
+
+**Estado: EN CURSO (2026-11-14)**, en la rama `claude/slice-mensajes`. Contrato:
+[SPEC-MESSAGES](../specs/messages.md), aceptada el 2026-11-14 con sus nueve decisiones de producto, y
+[ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md).
+
+**Objetivo.** Que los jugadores puedan negociar la diplomacia y el comercio hablando: la comunicación que pedía
+`Q-16` para que la interdependencia del pilar 4 sea jugable.
+
+**Alcance.** Mensajes de texto plano de hasta 500 caracteres entre dos jugadores, sin tratado previo, con el otro
+nombrado por su ciudad; guardados antes de entregarse y entregados en vivo a todas las sesiones de los dos, o en la
+bandeja al volver; la bandeja, el historial de 30 días paginado y lo leído por conversación; bloquear en los dos
+sentidos; 10 mensajes por minuto y 10 conversaciones nuevas por hora, con `RATE_LIMITED` sin cierre; cinco comandos
+de sesión y `message.new`, `message.inbox` y `message.page`, fuera del tick; `INV-SEC-010`, `INV-SEC-011` e
+`INV-PERSIST-007`; migración `000018`; el cliente y `scripts/smoke.mjs --mensajes`. **No entra** (spec §2): canales,
+grupos, clanes, denuncias, moderadores y filtros, editar o borrar, adjuntos y formato, un directorio de jugadores, el
+«visto», el borrado de los mensajes viejos y la entrega entre varios procesos.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-038, `INV-SEC-010`, `INV-SEC-011` e `INV-PERSIST-007`, la precisión de
+   [websocket-protocol.md](../specs/websocket-protocol.md) §4.2, la de `OUT-09` en
+   [mvp-scope.md](../product/mvp-scope.md) y `Q-16` en parte respondida en el backlog.
+2. **HECHO** — Protocolo: los cinco comandos (29 cliente → servidor) y los tres tipos (27 servidor → cliente), cada
+   uno con su e2e; contract tests en los dos lados.
+3. **HECHO** — Dominio: `internal/domain/message` (validación del texto, la pareja canónica, la vista previa y los
+   límites de ritmo).
+4. **HECHO** — Migración `000018` y persistencia: `player_messages`, `message_reads` y `player_blocks`, el envío
+   con el candado por pareja (verificado por mutación), la unicidad del `requestId`, la bandeja y lo leído.
+5. **HECHO** — Conexión: los comandos como mensajes de sesión, la entrega tras el `COMMIT`, el tope de lo leído
+   por conversación, el reintento que no choca con el ritmo y las métricas.
+6. **HECHO** — Cliente: el botón «Mensajes» con su contador, la bandeja, la conversación, «Escribir» desde la
+   barra de diplomacia y las demás listas, el aviso, la línea de «Mientras no estabas» y el bloqueo.
+7. **HECHO** — Humo y prueba en vivo (2026-11-14): `scripts/smoke.mjs --mensajes` pasó entero contra el servidor con
+   la migración `000018` recién aplicada (23 comprobaciones: la entrega en vivo con smoke_runner nombrado por su
+   ciudad, el no leído que espera con smoke_victim desconectada y desaparece al leer, el bloqueo en los dos sentidos y
+   la vuelta al desbloquear). En el navegador integrado, como smoke_victim: «Mientras no estabas» con la línea de
+   mensajes y «Leer», la bandeja y la conversación, el contador a cero al leer, una respuesta con `<b>` pintada como
+   texto, «Bloquear» y «Desbloquear», «Escribir» desde el tratado y desde el registro, y el aviso «… te ha escrito» con
+   «Mensajes (2)». Los logs del servidor no llevan el texto. Un fallo del cliente, corregido: «Cerrar» dejaba la
+   conversación abierta en el store y lo que llegaba después no contaba como no leído ni avisaba. Sin comprobar en el
+   navegador: «Escribir» desde la barra de una ciudad ajena tras un clic en el mapa (es el mismo `writeTo` que el del
+   tratado) y el contador del título con la pestaña oculta (cubierto por los tests de `notices` y `messages`).

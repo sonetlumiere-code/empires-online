@@ -264,6 +264,21 @@ func (h *Hub) SendToPlayer(playerID uuid.UUID, msgType, requestID string, payloa
 	}
 }
 
+// forEachSessionOf llama a fn con cada sesión abierta del jugador en este
+// proceso, fuera del lock del Hub.
+func (h *Hub) forEachSessionOf(playerID uuid.UUID, fn func(*Session)) {
+	h.mu.RLock()
+	set := h.byPlayer[playerID]
+	targets := make([]*Session, 0, len(set))
+	for _, s := range set {
+		targets = append(targets, s)
+	}
+	h.mu.RUnlock()
+	for _, s := range targets {
+		fn(s)
+	}
+}
+
 // SessionCount es el número de conexiones abiertas.
 func (h *Hub) SessionCount() int {
 	h.mu.RLock()

@@ -10,6 +10,7 @@ import { z } from 'zod';
 import {
   BuildingType,
   EntityId,
+  MESSAGE_MAX_CHARS,
   PROTOCOL_VERSION,
   ResourceAmount,
   ResourceType,
@@ -365,6 +366,68 @@ export const EventLogSeen = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * Escribe a otro jugador (SPEC-MESSAGES §4.2). El remitente es siempre el jugador de la
+ * sesión (RN-MSG-001). El esquema acota el texto en unidades UTF-16; el servidor lo
+ * recorta y lo cuenta en caracteres (RN-MSG-003). Ver ../../../docs/specs/messages.md
+ */
+export const MessageSend = z.object({
+  v: V,
+  type: z.literal('message.send'),
+  requestId: Uuid,
+  payload: z.object({
+    toPlayerId: Uuid,
+    body: z.string().min(1).max(2 * MESSAGE_MAX_CHARS),
+  }).strict(),
+}).strict();
+
+/** Pide la bandeja: las conversaciones del jugador y sus bloqueados (SPEC-MESSAGES §4.3). */
+export const MessageList = z.object({
+  v: V,
+  type: z.literal('message.list'),
+  requestId: Uuid,
+  payload: z.object({}).strict(),
+}).strict();
+
+/**
+ * Pide una página de la conversación con `otherPlayerId`: la más reciente, o la de los
+ * mensajes anteriores a `beforeId` (SPEC-MESSAGES §4.3).
+ */
+export const MessageFetch = z.object({
+  v: V,
+  type: z.literal('message.fetch'),
+  requestId: Uuid,
+  payload: z.object({
+    otherPlayerId: Uuid,
+    beforeId: EntityId.optional(),
+  }).strict(),
+}).strict();
+
+/**
+ * Marca leída la conversación hasta `upToId`, sin pasar de lo que esta sesión recibió de
+ * ella ni retroceder nunca (RN-MSG-008, INV-PERSIST-007).
+ */
+export const MessageRead = z.object({
+  v: V,
+  type: z.literal('message.read'),
+  requestId: Uuid,
+  payload: z.object({
+    otherPlayerId: Uuid,
+    upToId: EntityId,
+  }).strict(),
+}).strict();
+
+/** Bloquea o desbloquea los mensajes con otro jugador (SPEC-MESSAGES §4.4). */
+export const MessageBlock = z.object({
+  v: V,
+  type: z.literal('message.block'),
+  requestId: Uuid,
+  payload: z.object({
+    playerId: Uuid,
+    blocked: z.boolean(),
+  }).strict(),
+}).strict();
+
 /** Unión discriminada de todos los mensajes cliente → servidor de la v1. */
 export const ClientMessage = z.discriminatedUnion('type', [
   SessionHello,
@@ -391,6 +454,11 @@ export const ClientMessage = z.discriminatedUnion('type', [
   TradeCancel,
   EventLogFetch,
   EventLogSeen,
+  MessageSend,
+  MessageList,
+  MessageFetch,
+  MessageRead,
+  MessageBlock,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -418,6 +486,11 @@ export type TradeRespond = z.infer<typeof TradeRespond>;
 export type TradeCancel = z.infer<typeof TradeCancel>;
 export type EventLogFetch = z.infer<typeof EventLogFetch>;
 export type EventLogSeen = z.infer<typeof EventLogSeen>;
+export type MessageSend = z.infer<typeof MessageSend>;
+export type MessageList = z.infer<typeof MessageList>;
+export type MessageFetch = z.infer<typeof MessageFetch>;
+export type MessageRead = z.infer<typeof MessageRead>;
+export type MessageBlock = z.infer<typeof MessageBlock>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -444,6 +517,11 @@ export const CLIENT_MESSAGE_TYPES = [
   'event_log.seen',
   'unit.claim',
   'city.craft',
+  'message.send',
+  'message.list',
+  'message.fetch',
+  'message.read',
+  'message.block',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

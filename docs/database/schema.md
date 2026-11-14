@@ -41,10 +41,11 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `hill_stone` | E9: **activa** | La piedra de los tiles de colina tocados, hermana de `forest_wood` ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §1) |
 | `city_era_advances` | E9: **activa** | Avances de era confirmados y en curso: una fila por ciudad, borrada en la transacción que cambia la era ([ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) §4 y §5) |
 | `city_crafts` | E14: **activa** | Elaboraciones del taller en curso: una fila por ciudad, borrada en la transacción que entrega el bien ([ADR-036](../decisions/ADR-036-civilization-goods.md) §4) |
+| `caravans`, `caravan_cargo` | E15: **activas** | Las caravanas de un trato aceptado y su carga, creadas en la transacción de la aceptación y cerradas en la de su entrega o su pérdida ([ADR-037](../decisions/ADR-037-caravans-as-units.md), §16.11). **Precisión (2026-11-14):** hasta E16 esta tabla las seguía dando como «solo diseño» |
+| `player_messages`, `message_reads`, `player_blocks` | E16: **activas** | Los mensajes entre jugadores, lo leído y los bloqueos. Los escribe la conexión del Game Server en su propia transacción, nunca la simulación ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md), §16.12) |
 | `technologies` | Fuera de MVP: solo diseño | — |
 | `civilization_technologies` | Fuera de MVP: solo diseño | — |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
-| `caravans` | Fuera de MVP: solo diseño | — |
 | `markets` | Fuera de MVP: solo diseño | — |
 | `trade_transactions` | Fuera de MVP: solo diseño | — |
 | `clans` | Fuera de MVP: solo diseño | — |
@@ -1320,6 +1321,60 @@ CREATE TABLE caravan_cargo (
 | `status` | `IN_TRANSIT`, `DELIVERED` (su carga entró en `to_city_id` una sola vez, `INV-TRADE-006`) o `LOST` (capturada sin ruta: la carga se perdió) |
 | `caravan_cargo` | Lo que lleva, una fila por recurso: exactamente las líneas de su lado del trato, que no cambian ni al capturarla (`INV-TRADE-005`). La comprobación del arranque (`CaravanRepo.Violations`) no incorpora una caravana que no cuadre |
 
+### 16.12 Mensajes entre jugadores (`000018`)
+
+Los mensajes de texto entre dos jugadores, lo leído de cada conversación y los bloqueos
+([../specs/messages.md](../specs/messages.md), [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md)).
+No son estado del mundo: los escribe y los lee la conexión del Game Server, nunca la simulación, y no van a
+`world_events`.
+
+```sql
+CREATE TABLE player_messages (
+    id                  bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sender_player_id    uuid        NOT NULL REFERENCES players (id) ON DELETE CASCADE,
+    recipient_player_id uuid        NOT NULL REFERENCES players (id) ON DELETE CASCADE,
+    player_low          uuid        NOT NULL,
+    player_high         uuid        NOT NULL,
+    body                text        NOT NULL,
+    request_id          uuid        NOT NULL,
+    sent_at             timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT player_messages_pair_canonical CHECK (player_low < player_high),
+    CONSTRAINT player_messages_pair_matches CHECK (
+        (player_low = sender_player_id AND player_high = recipient_player_id)
+        OR (player_low = recipient_player_id AND player_high = sender_player_id)),
+    CONSTRAINT player_messages_body_length CHECK (char_length(body) BETWEEN 1 AND 500),
+    CONSTRAINT player_messages_request_once UNIQUE (sender_player_id, request_id)
+);
+CREATE INDEX player_messages_pair_idx ON player_messages (player_low, player_high, id DESC);
+CREATE INDEX player_messages_high_idx ON player_messages (player_high, player_low, id DESC);
+
+CREATE TABLE message_reads (
+    player_id       uuid   NOT NULL REFERENCES players (id) ON DELETE CASCADE,
+    other_player_id uuid   NOT NULL REFERENCES players (id) ON DELETE CASCADE,
+    read_up_to_id   bigint NOT NULL DEFAULT 0 CHECK (read_up_to_id >= 0),
+    PRIMARY KEY (player_id, other_player_id),
+    CHECK (player_id <> other_player_id)
+);
+
+CREATE TABLE player_blocks (
+    player_id         uuid        NOT NULL REFERENCES players (id) ON DELETE CASCADE,
+    blocked_player_id uuid        NOT NULL REFERENCES players (id) ON DELETE CASCADE,
+    created_at        timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (player_id, blocked_player_id),
+    CHECK (player_id <> blocked_player_id)
+);
+CREATE INDEX player_blocks_blocked_idx ON player_blocks (blocked_player_id, player_id);
+```
+
+| Columna | Semántica |
+|---|---|
+| `player_low`, `player_high` | La pareja del remitente y el destinatario en el orden de `uuid` de PostgreSQL: la conversación de A con B es la de B con A. Su índice sirve una conversación; el de `player_high`, la otra mitad de la bandeja. El envío y el bloqueo toman un candado de transacción por la pareja (`pg_advisory_xact_lock(int4, int4)`), así que los `id` de una conversación se confirman en orden (`INV-PERSIST-007`) y ningún mensaje cruza un bloqueo (`INV-SEC-011`) |
+| `body` | El texto ya recortado y validado, de 1 a 500 caracteres (`RN-MSG-003`). Se guarda tal cual: el cliente lo pinta como texto |
+| `request_id` | El `requestId` del envío: un reintento encuentra la fila y recibe el mismo mensaje (`INV-SEC-007`), sin pasar por Redis |
+| `sent_at` | Cuándo se guardó (el `now()` de la transacción). La bandeja y las páginas muestran los últimos `EO_MESSAGE_MAX_DAYS` días; lo más viejo sigue en la tabla hasta que la operación 24/7 añada el borrado |
+| `message_reads.read_up_to_id` | Hasta qué mensaje leyó `player_id` su conversación con `other_player_id`. Sólo avanza (`GREATEST`) y nunca pasa de lo que se sirvió a la sesión que marca (`INV-PERSIST-007`) |
+| `player_blocks` | `player_id` tiene bloqueado a `blocked_player_id`: no hay mensajes entre ellos en ningún sentido (`RN-MSG-004`) |
+
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 
 Sin DDL definitivo y **sin migración**. Se documenta la forma prevista para verificar que encaja sin romper el esquema del MVP. Todas estas tablas son **aditivas**: no exigen modificar ninguna columna existente. Las únicas intrusiones previstas sobre tablas MVP son columnas nuevas y anulables, introducidas mediante el patrón *expand* descrito en [migrations.md](./migrations.md).
@@ -1376,6 +1431,7 @@ Respuesta explícita a las cuatro preguntas del canon §12 para el esquema del M
 | Terreno | Sí (mapa regenerado desde la semilla) | Una vez, `COPY` en el bootstrap | — | **Sí**, desde `seed` |
 | `world_events` | No | Sí, junto al hecho que lo origina | — | No |
 | `sessions` | Sí / Redis | **Todavía no se escribe** (§13) | — | — |
+| `player_messages`, `message_reads`, `player_blocks` | No: el loop no los ve | Sí, transacción **síncrona desde la conexión**, antes de entregar el mensaje (ADR-038) | — | No; la bandeja y los no leídos se derivan al leer |
 
 ---
 

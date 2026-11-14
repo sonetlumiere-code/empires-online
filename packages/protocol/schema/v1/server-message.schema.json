@@ -2382,6 +2382,333 @@
             "payload"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "message.new"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    "fromPlayerId": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                    },
+                    "toPlayerId": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                    },
+                    "otherPlayerId": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                    },
+                    "otherCityId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "otherCityName": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "body": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "sentAtMs": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "fromPlayerId",
+                    "toPlayerId",
+                    "otherPlayerId",
+                    "otherCityId",
+                    "otherCityName",
+                    "body",
+                    "sentAtMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "message.inbox"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "conversations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "otherPlayerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "otherCityId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "otherCityName": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "lastBody": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/24/properties/payload/properties/message/properties/body"
+                      },
+                      "lastFromMe": {
+                        "type": "boolean"
+                      },
+                      "lastAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      },
+                      "unread": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "blockedByMe": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "otherPlayerId",
+                      "otherCityId",
+                      "otherCityName",
+                      "lastBody",
+                      "lastFromMe",
+                      "lastAtMs",
+                      "unread",
+                      "blockedByMe"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "blocked": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "playerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "cityId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cityName": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "playerId",
+                      "cityId",
+                      "cityName"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "conversations",
+                "blocked"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "message.page"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "otherPlayerId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                },
+                "otherCityId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "otherCityName": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "messages": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ServerMessage/anyOf/24/properties/payload/properties/message"
+                  }
+                },
+                "readUpToId": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "nextBeforeId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "blockedByMe": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "otherPlayerId",
+                "otherCityId",
+                "otherCityName",
+                "messages",
+                "readUpToId",
+                "nextBeforeId",
+                "blockedByMe"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
         }
       ]
     }

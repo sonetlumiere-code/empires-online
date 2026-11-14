@@ -495,3 +495,53 @@ export const CaravanView = z.object({
   arrivesAtMs: EpochMs.nullable(),
 });
 export type CaravanView = z.infer<typeof CaravanView>;
+
+/**
+ * Máximo de caracteres (puntos de código) de un mensaje entre jugadores tras recortar los
+ * extremos (SPEC-MESSAGES RN-MSG-003, Q3). El servidor lo cuenta en caracteres; el
+ * esquema acota el texto en unidades UTF-16, el doble, porque un carácter fuera del plano
+ * básico ocupa dos.
+ */
+export const MESSAGE_MAX_CHARS = 500;
+const MessageBody = z.string().min(1).max(2 * MESSAGE_MAX_CHARS);
+
+/**
+ * Un mensaje visto por uno de sus dos jugadores (SPEC-MESSAGES §6). «El otro» es siempre
+ * el jugador que no es el de la sesión, se llame remitente o destinatario; se le nombra
+ * por su ciudad, nunca por su usuario (RN-MSG-010).
+ */
+export const MessageView = z.object({
+  id: EntityId,
+  fromPlayerId: Uuid,
+  toPlayerId: Uuid,
+  otherPlayerId: Uuid,
+  otherCityId: EntityId.nullable(),
+  otherCityName: z.string().min(1).max(64).nullable(),
+  body: MessageBody,
+  sentAtMs: EpochMs,
+});
+export type MessageView = z.infer<typeof MessageView>;
+
+/**
+ * Una conversación de la bandeja (SPEC-MESSAGES §4.3): el otro jugador, el último
+ * mensaje recortado, cuántos no leídos tiene quien mira y si lo tiene bloqueado.
+ */
+export const ConversationView = z.object({
+  otherPlayerId: Uuid,
+  otherCityId: EntityId.nullable(),
+  otherCityName: z.string().min(1).max(64).nullable(),
+  lastBody: MessageBody,
+  lastFromMe: z.boolean(),
+  lastAtMs: EpochMs,
+  unread: z.number().int().min(0),
+  blockedByMe: z.boolean(),
+});
+export type ConversationView = z.infer<typeof ConversationView>;
+
+/** Un jugador bloqueado por quien mira (SPEC-MESSAGES §4.4). */
+export const BlockedPlayerView = z.object({
+  playerId: Uuid,
+  cityId: EntityId.nullable(),
+  cityName: z.string().min(1).max(64).nullable(),
+});
+export type BlockedPlayerView = z.infer<typeof BlockedPlayerView>;

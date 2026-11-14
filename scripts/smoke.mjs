@@ -102,13 +102,19 @@
  *      una anterior. En una misma pasada el orden es saqueo, asedio, territorio,
  *      diplomacia, comercio y registro: el pacto de --diplomacia impediría el asedio y
  *      la reconquista durante su preaviso.
+ *  15. sólo con --mensajes (SPEC-MESSAGES): smoke_runner escribe a smoke_victim, que lo
+ *      recibe en vivo con smoke_runner nombrado por su ciudad; con smoke_victim
+ *      desconectado, el segundo mensaje le espera en la bandeja como no leído, lo lee y
+ *      deja de estarlo; smoke_victim bloquea a smoke_runner y ninguno de los dos puede
+ *      escribir al otro; al desbloquear, vuelve a llegar. No depende de las demás
+ *      opciones y puede ir al final de cualquier pasada.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--mensajes] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -143,6 +149,7 @@ const REGISTRO = args.includes('--registro');
 const CIVILIZACION = args.includes('--civilizacion');
 const BIENES = args.includes('--bienes');
 const CARAVANA = args.includes('--caravana');
+const MENSAJES = args.includes('--mensajes');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -707,6 +714,10 @@ async function main() {
 
   if (REGISTRO) {
     await registro(segunda, cuenta.playerId);
+  }
+
+  if (MENSAJES) {
+    await mensajes(segunda, cuenta.playerId, ciudad);
   }
 
   segunda.sesion.cerrar();
@@ -1918,6 +1929,89 @@ async function registro(propio, playerId) {
   }
   const nuevas = despues.entries.filter((e) => e.id > despues.seenUpToId).length;
   ok('lo visto sigue marcado al reconectar', `cursor ${despues.seenUpToId} ≥ ${hasta} · ${nuevas} entradas nuevas`);
+  victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Mensajes entre jugadores (SPEC-MESSAGES), sólo con --mensajes
+// ─────────────────────────────────────────────────────────────
+
+/** Envía un mensaje y espera su message.new o su rechazo, por el requestId. */
+async function escribirA(sesion, toPlayerId, body) {
+  const id = sesion.enviar('message.send', { toPlayerId, body });
+  return sesion.esperarQue(['message.new', 'system.error'], (m) => m.requestId === id, 10_000);
+}
+
+/** Pide la bandeja (o bloquea, que también responde con ella). */
+async function bandeja(sesion, tipo = 'message.list', payload = {}) {
+  const id = sesion.enviar(tipo, payload);
+  const r = await sesion.esperarQue(['message.inbox', 'system.error'], (m) => m.requestId === id, 10_000);
+  if (r.type === 'system.error') fallar(`el servidor no sirvió la bandeja (${tipo})`, r.payload);
+  return r.payload;
+}
+
+async function mensajes(propio, playerId, ciudad) {
+  const { cuenta, cookie } = await abrirSesion(VICTIMA);
+  let victima = await conectar(cuenta.ticket);
+  const victimaId = cuenta.playerId;
+  // De una pasada anterior que se cortara a medias, el bloqueo podría seguir puesto.
+  await bandeja(victima.sesion, 'message.block', { playerId, blocked: false });
+
+  // 1. En vivo: llega a la víctima con el remitente nombrado por su ciudad.
+  const texto = `  ¿60 de vino por 200 de piedra? (humo ${new Date().toISOString()})\n`;
+  const enviado = await escribirA(propio.sesion, victimaId, texto);
+  if (enviado.type === 'system.error') fallar('el envío fue rechazado', enviado.payload);
+  const m1 = enviado.payload.message;
+  if (m1.body !== texto.trim()) fallar('el servidor no recortó el texto', { enviado: texto, guardado: m1.body });
+  const enVivo = await victima.sesion.esperarQue(['message.new'], (m) => m.payload.message.id === m1.id, 10_000);
+  const visto = enVivo.payload.message;
+  if (visto.otherPlayerId !== playerId || visto.otherCityName !== ciudad.name) {
+    fallar('la víctima no ve al remitente por su ciudad', { visto, ciudad: ciudad.name });
+  }
+  ok('un mensaje llega en vivo al otro jugador', `id ${m1.id} · de «${visto.otherCityName}»`);
+
+  // 2. Desconectada: el segundo le espera en la bandeja como no leído.
+  victima.sesion.cerrar();
+  await dormir(300);
+  const segundo = await escribirA(propio.sesion, victimaId, 'Contesta cuando vuelvas.');
+  if (segundo.type === 'system.error') fallar('el segundo envío fue rechazado', segundo.payload);
+  const m2 = segundo.payload.message;
+  const { ticket } = await ticketConCookie(cookie);
+  victima = await conectar(ticket);
+  let inbox = await bandeja(victima.sesion);
+  let conv = inbox.conversations.find((c) => c.otherPlayerId === playerId);
+  if (!conv || conv.unread < 1 || conv.lastFromMe) fallar('al volver, el mensaje no está en la bandeja como no leído', inbox);
+  ok('al volver, el mensaje espera en la bandeja', `${conv.unread} sin leer · «${conv.lastBody}»`);
+
+  const pid = victima.sesion.enviar('message.fetch', { otherPlayerId: playerId });
+  const pagina = await victima.sesion.esperarQue(['message.page', 'system.error'], (m) => m.requestId === pid, 10_000);
+  if (pagina.type === 'system.error') fallar('no se sirvió la conversación', pagina.payload);
+  const ids = pagina.payload.messages.map((m) => m.id);
+  if (!ids.includes(m1.id) || ids.at(-1) !== m2.id) fallar('la conversación no tiene los dos mensajes en orden', ids);
+  victima.sesion.enviar('message.read', { otherPlayerId: playerId, upToId: m2.id });
+  await dormir(300);
+  inbox = await bandeja(victima.sesion);
+  conv = inbox.conversations.find((c) => c.otherPlayerId === playerId);
+  if (!conv || conv.unread !== 0) fallar('leída la conversación, sigue con no leídos', conv);
+  ok('leer la conversación la deja sin no leídos', `${ids.length} mensajes en la página`);
+
+  // 3. Bloqueo: ninguno de los dos escribe al otro; al desbloquear, vuelve a llegar.
+  inbox = await bandeja(victima.sesion, 'message.block', { playerId, blocked: true });
+  if (!inbox.blocked.some((b) => b.playerId === playerId)) fallar('el bloqueo no sale en la bandeja', inbox.blocked);
+  const rechazado = await escribirA(propio.sesion, victimaId, 'esto no debe llegar');
+  if (rechazado.type !== 'system.error' || rechazado.payload.code !== 'INVALID_TARGET') {
+    fallar('con el bloqueo, el mensaje no se rechazó con INVALID_TARGET', rechazado);
+  }
+  const alReves = await escribirA(victima.sesion, playerId, 'tampoco esto');
+  if (alReves.type !== 'system.error' || alReves.payload.code !== 'INVALID_TARGET') {
+    fallar('quien bloquea tampoco debería poder escribir', alReves);
+  }
+  ok('con un bloqueo nadie escribe a nadie', `«${rechazado.payload.message}» · «${alReves.payload.message}»`);
+  await bandeja(victima.sesion, 'message.block', { playerId, blocked: false });
+  const otraVez = await escribirA(propio.sesion, victimaId, 'Desbloqueado: ¿hablamos?');
+  if (otraVez.type === 'system.error') fallar('al desbloquear, el envío sigue rechazado', otraVez.payload);
+  await victima.sesion.esperarQue(['message.new'], (m) => m.payload.message.id === otraVez.payload.message.id, 10_000);
+  ok('al desbloquear, los mensajes vuelven a llegar');
   victima.sesion.cerrar();
 }
 

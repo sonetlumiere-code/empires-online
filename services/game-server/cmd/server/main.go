@@ -20,6 +20,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/message"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loadcheck"
@@ -477,6 +478,11 @@ func run() error {
 	wsServer.SetEventLog(postgres.NewEventLogRepo(store, postgres.EventLogConfig{
 		MaxAge: cfg.EventLogMaxAge, PageSize: cfg.EventLogPageSize, GroupGap: cfg.EventLogGroupGap,
 	}))
+	// Los mensajes entre jugadores también: los guarda y los lee la conexión,
+	// y la simulación no los ve (ADR-038 §1).
+	wsServer.SetMessages(postgres.NewMessageRepo(store, postgres.MessagesConfig{
+		MaxAge: cfg.MessageMaxAge, PageSize: cfg.MessagePageSize,
+	}), message.NewLimiter(cfg.MessageRatePerMinute, cfg.MessageNewRecipientsPerHour))
 
 	// Detrás del reverse proxy del despliegue de referencia, TODAS las
 	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el

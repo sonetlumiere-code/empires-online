@@ -50,6 +50,34 @@ type Session struct {
 	// eventLogMarkable es el tope marcable de la última página del registro que
 	// sirvió esta sesión (ADR-028 §6). Sólo lo toca la goroutine de lectura.
 	eventLogMarkable int64
+
+	// messagesServed es, por conversación (el otro jugador), el mayor id de
+	// mensaje que recibió esta sesión: el tope de message.read (INV-PERSIST-007).
+	// Lo escriben su goroutine de lectura (páginas) y la de quien envía
+	// (message.new), así que va con su lock.
+	messagesMu     sync.Mutex
+	messagesServed map[uuid.UUID]int64
+}
+
+// noteMessageServed apunta que esta sesión recibió el mensaje id de su
+// conversación con other.
+func (s *Session) noteMessageServed(other uuid.UUID, id int64) {
+	s.messagesMu.Lock()
+	defer s.messagesMu.Unlock()
+	if s.messagesServed == nil {
+		s.messagesServed = make(map[uuid.UUID]int64)
+	}
+	if id > s.messagesServed[other] {
+		s.messagesServed[other] = id
+	}
+}
+
+// messageServedUpTo es el mayor id que esta sesión recibió de su conversación
+// con other, 0 si ninguno.
+func (s *Session) messageServedUpTo(other uuid.UUID) int64 {
+	s.messagesMu.Lock()
+	defer s.messagesMu.Unlock()
+	return s.messagesServed[other]
 }
 
 func newSession(id, playerID uuid.UUID, conn *gws.Conn, queueSize int, writeTimeout time.Duration,

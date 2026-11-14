@@ -1,6 +1,6 @@
 # Observabilidad y monitorización
 
-Logging estructurado, catálogo completo de las 17 métricas Prometheus con sus etiquetas exactas, semántica de `/health` y `/ready`, dashboards y reglas de alerta **propuestos**, y runbook de primer diagnóstico.
+Logging estructurado, catálogo completo de las 19 métricas Prometheus con sus etiquetas exactas, semántica de `/health` y `/ready`, dashboards y reglas de alerta **propuestos**, y runbook de primer diagnóstico.
 
 > **Qué existe y qué no.** Lo que está implementado y corriendo es: el logging estructurado (§1), las 17
 > métricas de §2 expuestas en `EO_METRICS_ADDR/metrics`, y los endpoints `/health` y `/ready` de §3. Los
@@ -97,7 +97,7 @@ juego de métricas limpio sin colisionar entre sí. En ese registro también est
 (`go_*`) y de proceso (`process_*`), que se obtienen gratis y conviene tener a mano en un incidente de
 memoria.
 
-**Son 17 métricas propias, y estas son exactamente sus etiquetas.** Ni más ni menos: si una consulta agrupa
+**Son 19 métricas propias, y estas son exactamente sus etiquetas.** Ni más ni menos: si una consulta agrupa
 por una etiqueta que no está aquí, devuelve una sola serie y engaña. Regla que gobierna toda etiqueta:
 **cardinalidad acotada**. Jamás `player_id`, `unit_id`, `session_id` ni coordenadas como etiqueta: un
 `player_id` en una etiqueta convierte cada jugador nuevo en una serie temporal nueva y hace estallar la base
@@ -145,7 +145,14 @@ de métricas.
 | `eo_redis_latency_seconds` | Histogram | **ninguna** | **Registrada pero nunca observada.** El instrumento existe en `internal/observability/metrics.go` y aparece en `/metrics` con contadores a cero; ninguna ruta de código llama a `Observe`. Instrumentar `internal/persistence/redis` está **pendiente**. Hasta entonces la serie es plana, y una alerta sobre ella no dispararía nunca. Buckets ya declarados: `0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5`. |
 | `eo_persistence_jobs_dropped_total` | Counter | `job`, `reason` | Escrituras durables que la cola de persistencia **descartó** ([ADR-022](../decisions/ADR-022-durable-write-retry-and-loop-inbox.md)). `reason` es un catálogo cerrado de dos valores: **`queue_full`** (la partición del trabajo estaba llena al encolar; se descarta en el acto, en la goroutine del loop) y **`attempts_exhausted`** (el worker agotó los 3 intentos). `job` es el nombre del trabajo acotado al catálogo `simulation.JobNames` —`movement.start`, `movement.cancel`, `movement.complete`, `city.presence`, `units.flush`, `garrison.enter`, `garrison.leave`, `treaty.expire` y, desde E1, `task.write`, `stocks.flush`, `city.build`, `city.train`, `building.complete` y `production.complete` ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md))— más **`unknown`** para un nombre fuera de él; las 30 series existen a cero desde el arranque. Se cuenta **antes** de ejecutar la compensación del trabajo, así que dice cuántas veces la cola perdió una escritura, no cuántas se perdieron para siempre: todos los trabajos salvo `treaty.expire` tienen hoy compensación que los vuelve a encolar. **Cualquier valor > 0 es un incidente** (§5.8): `queue_full` significa que PostgreSQL no sigue el ritmo del mundo; `attempts_exhausted`, que lleva más de medio segundo sin aceptar una escritura. |
 
-### 2.6 Métricas que **no** existen
+### 2.6 Mensajes entre jugadores (2)
+
+| Métrica | Tipo | Etiquetas | Para qué sirve |
+|---|---|---|---|
+| `eo_messages_sent_total` | Counter | **ninguna** | Mensajes entre jugadores guardados ([SPEC-MESSAGES](../specs/messages.md)). Un reintento con el mismo `requestId` no cuenta. Ni el texto ni los jugadores van en etiquetas (`RN-MSG-007`). |
+| `eo_messages_rejected_total` | Counter | `reason` | Mensajes no guardados, por motivo: **`invalid`** (texto vacío, largo o con caracteres de control), **`target`** (jugador inexistente o uno mismo), **`blocked`** (un bloqueo en cualquier sentido), **`rate`** (un límite de ritmo de `RN-MSG-005`) e **`internal`** (la base no respondió). Catálogo cerrado; las cinco series existen a cero desde el arranque. `internal` sostenido es PostgreSQL lento para la conexión; `rate` sostenido de pocos jugadores, alguien mandando lo mismo a muchos. |
+
+### 2.7 Métricas que **no** existen
 
 No las busques ni las inventes:
 

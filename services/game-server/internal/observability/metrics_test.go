@@ -42,3 +42,14 @@ func TestUnNombreDeTrabajoFueraDelCatalogoCuentaComoUnknown(t *testing.T) {
 	assert.Equal(t, JobUnknown, PersistenceJobLabel("inventado"))
 	assert.Equal(t, JobUnknown, PersistenceJobLabel(""))
 }
+
+// SPEC-MESSAGES §6: las series de rechazo de mensajes existen a cero desde el
+// arranque, una por motivo del catálogo cerrado.
+func TestLasSeriesDeRechazoDeMensajesExistenACero(t *testing.T) {
+	m := NewMetrics()
+	assert.Equal(t, len(MessageRejectReasons()), testutil.CollectAndCount(m.MessagesRejected))
+	for _, reason := range MessageRejectReasons() {
+		assert.Zero(t, testutil.ToFloat64(m.MessagesRejected.WithLabelValues(reason)), reason)
+	}
+	assert.Zero(t, testutil.ToFloat64(m.MessagesSent))
+}

@@ -140,9 +140,13 @@ export function setTabHidden(state: NoticeState, hidden: boolean): NoticeState {
   return state.hidden || state.hiddenKeys.length > 0 ? { ...state, hidden: false, hiddenKeys: [] } : state;
 }
 
-/** El título de la pestaña: con avisos llegados mientras estaba oculta, «(2) Empires Online». */
-export function documentTitle(base: string, state: NoticeState): string {
-  return state.hiddenKeys.length > 0 ? `(${state.hiddenKeys.length}) ${base}` : base;
+/**
+ * El título de la pestaña: con avisos llegados mientras estaba oculta, «(2) Empires
+ * Online». `messages` suma los mensajes recibidos en ese tiempo (SPEC-MESSAGES Q7).
+ */
+export function documentTitle(base: string, state: NoticeState, messages = 0): string {
+  const n = state.hiddenKeys.length + messages;
+  return n > 0 ? `(${n}) ${base}` : base;
 }
 
 /** El grupo como la entrada del registro que contaría lo mismo: el aviso se lee igual. */

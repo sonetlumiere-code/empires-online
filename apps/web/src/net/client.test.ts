@@ -230,6 +230,31 @@ describe('comandos', () => {
     }
   });
 
+  it('los mensajes sólo nombran al otro jugador, nunca al remitente (SPEC-MESSAGES RN-MSG-001)', async () => {
+    const { client, socket } = await ready();
+    const otro = '22222222-2222-4222-8222-222222222222';
+    client.sendMessage(otro, '¿60 de vino por 200 de piedra?');
+    client.listMessages();
+    client.fetchMessages(otro);
+    client.fetchMessages(otro, 9);
+    client.markMessagesRead(otro, 9);
+    client.blockPlayer(otro, true);
+
+    const enviados = socket.parsedSent();
+    expect(enviados.map((m) => m!.type)).toEqual([
+      'message.send', 'message.list', 'message.fetch', 'message.fetch', 'message.read', 'message.block',
+    ]);
+    expect(enviados[0]!.payload).toEqual({ toPlayerId: otro, body: '¿60 de vino por 200 de piedra?' });
+    expect(enviados[1]!.payload).toEqual({});
+    expect(enviados[2]!.payload).toEqual({ otherPlayerId: otro });
+    expect(enviados[3]!.payload).toEqual({ otherPlayerId: otro, beforeId: 9 });
+    expect(enviados[4]!.payload).toEqual({ otherPlayerId: otro, upToId: 9 });
+    expect(enviados[5]!.payload).toEqual({ playerId: otro, blocked: true });
+    for (const m of enviados) {
+      expect(v1.parseClientMessage(m).ok, String(m!.type)).toBe(true);
+    }
+  });
+
   it('cada comando lleva un requestId distinto', async () => {
     const { client, socket } = await ready();
     client.moveUnit(1, { x: 1, y: 1 });
