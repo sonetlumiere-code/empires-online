@@ -311,6 +311,43 @@ cálculo del tope y no en una comprobación posterior.
 
 ---
 
+<a id="inv-persist-007"></a>
+## INV-PERSIST-007 — Lo leído de una conversación nunca esconde un mensaje
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, BOUNDARY, TEST |
+| Milestone | E16 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** todavía (E16) |
+
+**Enunciado.** Cuando `message_reads.read_up_to_id` de un jugador en una conversación pasa a valer `C`, todo mensaje
+de esa conversación con `id <= C` estaba confirmado en la base y se le había servido a la sesión que marcó, por
+página o por `message.new`. Lo leído nunca retrocede.
+
+**Razón.** Los `id` los asigna PostgreSQL al insertar, y dos envíos de la misma conversación (los dos jugadores, o
+dos pestañas del mismo) pueden correr a la vez. Si uno con `id` menor confirmara después que otro con `id` mayor ya
+leído, el contador lo daría por leído sin que nadie lo hubiera visto: el mismo caso que
+[INV-PERSIST-006](#inv-persist-006) en el registro.
+
+**Cómo se garantiza.**
+
+- `DB` — los envíos de una pareja toman un candado de transacción por pareja antes de insertar, así que sus `id` se
+  confirman en orden ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §3). La escritura de lo
+  leído es `GREATEST(read_up_to_id, …)`.
+- `BOUNDARY` — la sesión guarda, por conversación, el mayor `id` que se le sirvió; `message.read` no puede pasar de
+  él, y sin nada servido de esa conversación no marca nada.
+
+**Cómo se verifica.** Previstos: un test de integración con dos envíos simultáneos de la misma pareja que comprueba
+que confirman en orden de `id`; uno que marca hasta un `id` y comprueba que no retrocede con una marca menor; un e2e en
+el que `message.read` por encima de lo servido se queda en el tope.
+
+**Violación en runtime.** Indetectable después: un mensaje dado por leído sin verse no deja rastro. Por eso la
+garantía está en el orden de las escrituras y en el tope, no en una comprobación posterior.
+
+---
+
 ## Qué es autoritativo, qué se persiste y qué se reconstruye
 
 Resumen consolidado que responde a las cuatro preguntas obligatorias del canon §12 para el MVP:
@@ -332,6 +369,8 @@ Resumen consolidado que responde a las cuatro preguntas obligatorias del canon �
 | Terreno | PostgreSQL (`world_chunks`) | Generado y persistido una vez | Sí, desde `EO_WORLD_SEED` |
 | Unidad: `chunk_x`, `chunk_y` | Derivadas de `(x, y)` | Se escriben con la posición, en la misma sentencia | Sí, con `World.ChunkOf` |
 | Idempotencia de comandos | Redis (`idem:{playerId}:{requestId}`) | Sólo Redis, 300 s ([ADR-014](../decisions/ADR-014-command-idempotency.md)) | No |
+| Mensajes entre jugadores, lo leído y los bloqueos | PostgreSQL | Write-through desde la conexión ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md)) | No; la bandeja y los no leídos sí, al leer |
+| Límites de ritmo de los mensajes | RAM del `Server` | No | No: empiezan de cero al reiniciar |
 | Unidad: `status` | RAM + PostgreSQL | Write-through en el inicio y el cierre de cada movimiento; dirty-flag + flush para el resto (por ejemplo `HIDDEN`) | Sí al arrancar: `MOVING` sin movimiento se reconcilia a `IDLE` |
 
 ## Trazabilidad
@@ -344,3 +383,4 @@ Resumen consolidado que responde a las cuatro preguntas obligatorias del canon �
 | INV-PERSIST-004 | `internal/persistence/postgres`, `internal/domain/movement` | [INV-MOVE-006](movement.md#inv-move-006) |
 | INV-PERSIST-005 | `migrations/`, `internal/persistence/postgres` | [../database/schema.md](../database/schema.md), [../decisions/ADR-012-database-migrations.md](../decisions/ADR-012-database-migrations.md) |
 | INV-PERSIST-006 | `internal/websocket`, `internal/persistence/postgres` | [INV-SEC-009](security.md#inv-sec-009), [../decisions/ADR-028-event-log-from-world-events.md](../decisions/ADR-028-event-log-from-world-events.md) |
+| INV-PERSIST-007 | `internal/websocket`, `internal/persistence/postgres` | [INV-PERSIST-006](#inv-persist-006), [INV-SEC-010](security.md#inv-sec-010), [../decisions/ADR-038-player-messages-session-subsystem.md](../decisions/ADR-038-player-messages-session-subsystem.md) |

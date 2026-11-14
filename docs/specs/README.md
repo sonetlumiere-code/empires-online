@@ -64,7 +64,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Civilizaciones | [civilizations.md](civilizations.md) | E13 Civilizaciones | Implemented | La civilización se elige al registrarse y no cambia; sus rasgos, en enteros por mil, cambian la velocidad de las unidades, la de obras y entrenamiento, la vida de las casas, el botín y el tiempo de recolección |
 | Bienes de civilización | [civilization-goods.md](civilization-goods.md) | E14 Bienes | Implemented | Un bien por civilización (vino, seda, especias, pieles) que sólo elabora su taller con `city.craft`; la Edad de Hierro pide 60 bienes ajenos, así que para progresar hay que comerciar |
 | Caravanas | [caravans.md](caravans.md) | E15 Caravanas | Implemented | Cada trato aceptado sale en dos caravanas, una por sentido, que recorren el mapa hasta la otra ciudad; un guerrero que mata una caravana la captura con su carga y se la lleva a su ciudad |
-| Mensajes | [messages.md](messages.md) | E16 Mensajes | Draft | Mensajes de texto entre dos jugadores, guardados y entregados en vivo o al volver, con bandeja, lo leído por conversación, bloqueo y límites contra el spam; fuera del tick |
+| Mensajes | [messages.md](messages.md) | E16 Mensajes | Accepted | Mensajes de texto entre dos jugadores, guardados y entregados en vivo o al volver, con bandeja, lo leído por conversación, bloqueo y límites contra el spam; fuera del tick |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

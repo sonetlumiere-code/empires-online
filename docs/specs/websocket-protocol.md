@@ -111,7 +111,7 @@ Token bucket por conexión: capacidad `EO_WS_RATE_LIMIT_BURST` (40), recarga `EO
 2. El servidor emite `system.error` con `code: "RATE_LIMITED"` (sin `requestId`: el frame aún no se había parseado).
 3. El servidor **cierra inmediatamente con `4429`**. No hay ronda de gracia.
 
-**No existe ningún sub-límite específico para `session.view`.** Todos los mensajes cliente→servidor comparten el mismo bucket global. Un límite dedicado por tipo de mensaje es `TBD (fuera de MVP)` y, de introducirse, exigiría una variable `EO_` propia en la configuración.
+**No existe ningún sub-límite específico para `session.view`.** Todos los mensajes cliente→servidor comparten el mismo bucket global. Un límite dedicado por tipo de mensaje es `TBD (fuera de MVP)` y, de introducirse, exigiría una variable `EO_` propia en la configuración. **Precisión (2026-11-14, [messages.md](messages.md) `RN-MSG-005` y Q6, [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §5):** desde E16, `message.send` tiene además dos límites propios por jugador, sumando sus sesiones: `EO_MESSAGE_RATE_PER_MINUTE` envíos por minuto y `EO_MESSAGE_NEW_RECIPIENTS_PER_HOUR` conversaciones nuevas por hora. No sustituyen al bucket global: se aplican después, a los frames que ya pasaron por él. Superarlos responde `system.error { RATE_LIMITED }` **con el `requestId` y sin cerrar la conexión**; el bucket global sigue cerrando con `4429`, y el cierre es lo que distingue los dos casos.
 
 ## 5. Envelopes
 

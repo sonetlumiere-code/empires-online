@@ -6,13 +6,13 @@ conectado y le esperan si no lo está.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-MESSAGES` |
-| Estado | Draft (2026-11-14). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-14). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E16 Mensajes (decimosexto slice después de M7) |
 | Canon | §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores) |
 | Depende de | [player.md](player.md), [city.md](city.md), [diplomacy.md](diplomacy.md), [trade.md](trade.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) (la identidad fuera del Game Server), [ADR-021](../decisions/ADR-021-game-server-perimeter.md) (el perímetro del Game Server), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (los mensajes de sesión que atiende la conexión), [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md) (los avisos en vivo). Un ADR nuevo (`ADR-038`, los mensajes como subsistema de sesión fuera de la simulación, escritos por la conexión y entregados tras el `COMMIT`) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md) (la identidad fuera del Game Server), [ADR-021](../decisions/ADR-021-game-server-perimeter.md) (el perímetro del Game Server), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (los mensajes de sesión que atiende la conexión), [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md) (los avisos en vivo). [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) (los mensajes como subsistema de sesión fuera de la simulación, guardados antes de entregarse y serializados por pareja): ver §7. |
 | Reemplaza a | Responde en parte a la pregunta `Q-16` del [backlog](../roadmap/backlog.md) («¿qué comunicación entre jugadores existirá y con qué moderación?»): los mensajes directos, sí; canales, clanes y moderación con moderadores, no. Precisa `OUT-09` de [mvp-scope.md](../product/mvp-scope.md): el chat avanzado sigue fuera. En [websocket-protocol.md](websocket-protocol.md) §4.2, que no hay ningún sub-límite por tipo de mensaje (Q6). |
-| Invariantes | Cita [INV-SEC-002](../invariants/security.md#inv-sec-002), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-005](../invariants/security.md#inv-sec-005), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-PERSIST-003](../invariants/persistence.md#inv-persist-003) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); propone tres nuevos, dos de la familia `INV-SEC` y uno de `INV-PERSIST`, que se registrarán al aceptar (§8) |
+| Invariantes | Cita [INV-SEC-002](../invariants/security.md#inv-sec-002), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-005](../invariants/security.md#inv-sec-005), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-PERSIST-003](../invariants/persistence.md#inv-persist-003) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); asigna [INV-SEC-010](../invariants/security.md#inv-sec-010), [INV-SEC-011](../invariants/security.md#inv-sec-011) e [INV-PERSIST-007](../invariants/persistence.md#inv-persist-007) (§8) |
 
 ## 1. Objetivo
 
@@ -93,7 +93,9 @@ del `COMMIT`, el mensaje no se pierde, porque la bandeja se lee de la base al co
   `EO_MESSAGE_PAGE_SIZE` mensajes (50) y el `beforeId` de la página siguiente.
 - `message.read { otherPlayerId, upToId }` marca leída la conversación hasta `upToId`, con el mismo tope que el
   cursor del registro (`RN-LOG-004`): nunca más allá del último mensaje que esa sesión sirvió de esa conversación,
-  por página o por `message.new`. No responde nada.
+  por página o por `message.new`. No responde nada. A diferencia del registro, no hace falta un margen de asentado:
+  los envíos de una pareja se serializan y sus `id` se confirman en orden
+  ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §3).
 
 El cliente pide la bandeja al conectar y al volver a la pestaña tras un rato fuera, como la página del registro
 (`RN-LOG-007`). Ninguna lectura frena el tick: si la base no responde, `INTERNAL_ERROR` y la partida sigue.
@@ -187,7 +189,7 @@ Métricas: `eo_messages_sent_total` y `eo_messages_rejected_total{reason}` (con 
 | Dirty-flag | Nada |
 | Reconstruible / no persistido | La bandeja, los no leídos y las páginas, que se derivan al leer |
 
-**Por qué hace falta un ADR (`ADR-038`).** Tres decisiones estructurales:
+**Por qué hace falta un ADR ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md)).** Tres decisiones estructurales, más el candado por pareja que sostiene lo leído y el bloqueo (ADR-038 §3):
 
 1. **Los mensajes son un subsistema de sesión, fuera de la simulación.** Los atiende la conexión, como el registro de
    E7, y el loop no los ve (`RN-MSG-009`). Pasarlos por la cola de comandos y el tick no aporta nada (no tocan el
@@ -199,7 +201,7 @@ Métricas: `eo_messages_sent_total` y `eo_messages_rejected_total{reason}` (con 
    (`OUT-17`). Con varios procesos haría falta repartirla (por ejemplo, con publicación en Redis); el ADR lo deja
    escrito como el punto que cambiará, sin hacerlo ahora.
 
-Alternativas descartadas que el ADR dejará escritas: **un servicio de chat aparte** (otro proceso, otro despliegue y
+Alternativas descartadas que el ADR deja escritas, entre otras: **un servicio de chat aparte** (otro proceso, otro despliegue y
 otra autenticación para mensajes de dos personas); **atenderlos en Next.js**, que guarda la identidad pero no tiene el
 WebSocket y no podría empujar nada; **Redis como almacén** de la bandeja, que contradice
 [INV-PERSIST-003](../invariants/persistence.md#inv-persist-003) (ningún dato durable sólo en Redis); **mensajes en
@@ -222,13 +224,17 @@ ser `000019`.
 [INV-SEC-007](../invariants/security.md#inv-sec-007) (un `requestId` repetido no guarda otro mensaje) e
 [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005) (la migración `000018`).
 
-**Propone** tres invariantes nuevos, que se registrarán con su número al aceptar:
+**Asigna** tres invariantes nuevos, registrados en [../invariants/security.md](../invariants/security.md) y
+[../invariants/persistence.md](../invariants/persistence.md):
 
-- `INV-SEC`: una sesión sólo recibe mensajes de conversaciones en las que su jugador es remitente o destinatario.
-- `INV-SEC`: nunca existe un mensaje guardado de A a B creado mientras uno de los dos tenía bloqueado al otro.
-- `INV-PERSIST`: lo leído de una conversación nunca retrocede ni pasa por encima de un mensaje que no se le había
-  servido a esa sesión (el mismo caso que [INV-PERSIST-006](../invariants/persistence.md#inv-persist-006): dos envíos
-  que confirman en orden inverso al de sus `id`).
+- [INV-SEC-010](../invariants/security.md#inv-sec-010) — una sesión sólo recibe mensajes de conversaciones en las que
+  su jugador es remitente o destinatario, y todo mensaje lleva como remitente al jugador de la sesión que lo envió.
+- [INV-SEC-011](../invariants/security.md#inv-sec-011) — ningún mensaje entre dos jugadores se confirma mientras uno
+  de los dos tiene bloqueado al otro.
+- [INV-PERSIST-007](../invariants/persistence.md#inv-persist-007) — lo leído de una conversación nunca retrocede ni
+  pasa por encima de un mensaje que no se le había servido a esa sesión (el mismo caso que
+  [INV-PERSIST-006](../invariants/persistence.md#inv-persist-006): dos envíos que confirman en orden inverso al de sus
+  `id`).
 
 ## 9. Tests esperados
 
@@ -240,12 +246,12 @@ ser `000019`.
 | simulation | Ninguno nuevo: el loop no cambia. Un test comprueba que los cinco comandos son de sesión y no llegan a la simulación |
 | cliente | La bandeja, la conversación con paginación, el contador, «Escribir» desde la barra de diplomacia, el aviso y la línea de «Mientras no estabas», el texto pintado como texto (un `<b>` llega como `<b>`); `scripts/smoke.mjs --mensajes` (smoke_runner escribe a smoke_victim conectado y lo recibe en vivo; smoke_victim desconectado lo ve al entrar; smoke_victim bloquea a smoke_runner y el envío se rechaza; desbloquea) |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-14)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿A quién se puede escribir? | **A cualquier jugador cuya ciudad conozcas, sin tratado.** Se escribe desde donde aparece su ciudad: el mapa, los tratados, los tratos, el registro, los avisos y las caravanas. Hablar es justo lo que hace falta *antes* de un pacto, y el que te saquea es a quien más le quieres escribir. Alternativas: **sólo con un tratado** (no podrías negociar el primero); **cualquiera por nombre**, con un buscador o un directorio de jugadores, que facilita el spam masivo y no hace falta mientras el mundo se descubre caminando. |
 | Q2 | ¿Cómo se nombra al otro jugador? | **Por el nombre de su ciudad**, como en el registro y la diplomacia. El nombre de usuario es la mitad de la credencial de entrada: mostrarlo regalaría a cualquiera la mitad de un login. Si un día los jugadores tienen un nombre público aparte, se usará ése. |

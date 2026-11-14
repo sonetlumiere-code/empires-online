@@ -1978,3 +1978,38 @@ jerárquico.
    contó la captura en rojo y las llegadas. Dos fallos del humo, no del juego: leía el registro antes de que la entrega
    optimista se confirmara (ahora espera la entrada hasta 5 s, y la spec documenta esa ventana) y mandaba
    `targetId` en lugar de `targetUnitId`.
+
+## E16 — Mensajes
+
+**Estado: EN CURSO (2026-11-14)**, en la rama `claude/slice-mensajes`. Contrato:
+[SPEC-MESSAGES](../specs/messages.md), aceptada el 2026-11-14 con sus nueve decisiones de producto, y
+[ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md).
+
+**Objetivo.** Que los jugadores puedan negociar la diplomacia y el comercio hablando: la comunicación que pedía
+`Q-16` para que la interdependencia del pilar 4 sea jugable.
+
+**Alcance.** Mensajes de texto plano de hasta 500 caracteres entre dos jugadores, sin tratado previo, con el otro
+nombrado por su ciudad; guardados antes de entregarse y entregados en vivo a todas las sesiones de los dos, o en la
+bandeja al volver; la bandeja, el historial de 30 días paginado y lo leído por conversación; bloquear en los dos
+sentidos; 10 mensajes por minuto y 10 conversaciones nuevas por hora, con `RATE_LIMITED` sin cierre; cinco comandos
+de sesión y `message.new`, `message.inbox` y `message.page`, fuera del tick; `INV-SEC-010`, `INV-SEC-011` e
+`INV-PERSIST-007`; migración `000018`; el cliente y `scripts/smoke.mjs --mensajes`. **No entra** (spec §2): canales,
+grupos, clanes, denuncias, moderadores y filtros, editar o borrar, adjuntos y formato, un directorio de jugadores, el
+«visto», el borrado de los mensajes viejos y la entrega entre varios procesos.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-038, `INV-SEC-010`, `INV-SEC-011` e `INV-PERSIST-007`, la precisión de
+   [websocket-protocol.md](../specs/websocket-protocol.md) §4.2, la de `OUT-09` en
+   [mvp-scope.md](../product/mvp-scope.md) y `Q-16` en parte respondida en el backlog.
+2. **PENDIENTE** — Protocolo: los cinco comandos (29 cliente → servidor) y los tres tipos (27 servidor → cliente), cada
+   uno con su e2e; contract tests en los dos lados.
+3. **PENDIENTE** — Dominio: `internal/domain/message` (validación del texto, la vista desde cada lado, los límites de
+   ritmo).
+4. **PENDIENTE** — Migración `000018` y persistencia: `player_messages`, `message_reads` y `player_blocks`, el envío
+   con el candado por pareja, la unicidad del `requestId`, la bandeja y lo leído.
+5. **PENDIENTE** — Conexión: los comandos como mensajes de sesión, la entrega tras el `COMMIT`, el tope de lo leído
+   por conversación y las métricas.
+6. **PENDIENTE** — Cliente: el botón «Mensajes» con su contador, la bandeja, la conversación, «Escribir» desde la
+   barra de diplomacia y las demás listas, el aviso, la línea de «Mientras no estabas» y el bloqueo.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --mensajes`.
