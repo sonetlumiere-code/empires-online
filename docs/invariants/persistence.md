@@ -320,7 +320,7 @@ cálculo del tope y no en una comprobación posterior.
 | Aplicación | DB, BOUNDARY, TEST |
 | Milestone | E16 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E16) |
+| Cobertura | **Cubierto** por `Test_INV_PERSIST_007_LosIdDeUnaConversacionSeConfirmanEnOrden` y `TestUnMensajeSeVeDesdeLosDosLadosYLoLeidoSoloAvanza` (integration) y `TestUnMensajeLlegaATodasLasSesionesDeLosDos` y `TestElDesconectadoVeElNoLeidoAlEntrar` (e2e, `internal/websocket`) |
 
 **Enunciado.** Cuando `message_reads.read_up_to_id` de un jugador en una conversación pasa a valer `C`, todo mensaje
 de esa conversación con `id <= C` estaba confirmado en la base y se le había servido a la sesión que marcó, por
@@ -339,9 +339,18 @@ leído, el contador lo daría por leído sin que nadie lo hubiera visto: el mism
 - `BOUNDARY` — la sesión guarda, por conversación, el mayor `id` que se le sirvió; `message.read` no puede pasar de
   él, y sin nada servido de esa conversación no marca nada.
 
-**Cómo se verifica.** Previstos: un test de integración con dos envíos simultáneos de la misma pareja que comprueba
-que confirman en orden de `id`; uno que marca hasta un `id` y comprueba que no retrocede con una marca menor; un e2e en
-el que `message.read` por encima de lo servido se queda en el tope.
+**Cómo se verifica.**
+
+- `Test_INV_PERSIST_007_LosIdDeUnaConversacionSeConfirmanEnOrden` (integration) — con un mensaje sin confirmar que
+  tiene el candado de la pareja, otro envío de la misma conversación espera y no se sirve nada; otra pareja no espera;
+  al confirmar, los dos salen en orden de `id`. Verificado por mutación: sin el candado en el envío, el segundo
+  confirma antes y el test falla.
+- `TestUnMensajeSeVeDesdeLosDosLadosYLoLeidoSoloAvanza` (integration) — una marca menor no hace retroceder lo leído.
+- `TestUnMensajeLlegaATodasLasSesionesDeLosDos` (e2e) — `message.read` por encima de lo recibido se queda en el último
+  `id` servido, y una conversación sin nada recibido no se marca. Verificado por mutación: con el tope cambiado por el
+  máximo, este test y el siguiente fallan.
+- `TestElDesconectadoVeElNoLeidoAlEntrar` (e2e) — la bandeja no sirve mensajes: sin abrir la conversación, marcar no
+  hace nada.
 
 **Violación en runtime.** Indetectable después: un mensaje dado por leído sin verse no deja rastro. Por eso la
 garantía está en el orden de las escrituras y en el tope, no en una comprobación posterior.

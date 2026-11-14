@@ -694,6 +694,38 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Registro y avisos.** Las entradas `CARAVAN_ARRIVED`, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`
   cuentan la carga; las tres últimas se resaltan como pérdidas y llegan también como avisos en vivo, con su carga.
 
+### 4.13 Mensajes: la bandeja, la conversación y «Escribir» (SPEC-MESSAGES)
+
+> **Estado (2026-11-14): implementado y con tests de lo puro** (`src/state/messages.ts`, `src/state/world.ts`,
+> `src/state/notices.ts`, `src/net/client.ts`).
+
+- **El store** guarda `messages`: la bandeja (`message.inbox`), la conversación abierta (`message.page`, sólo las
+  pedidas, con `expectMessagePage`), el aviso del último mensaje recibido con su conversación cerrada y la línea de
+  «Mientras no estabas». `message.new` sube su conversación al principio de la bandeja, entra en la conversación
+  abierta si es la suya (sin repetir) y, si es ajeno y la conversación está cerrada, suma un no leído y da el aviso
+  (`applyNewMessage`). Un `system.error` cuyo `requestId` es el de un envío (`expectMessageSend`) va al cuadro de texto
+  de su conversación (`sendError`), no al pie del HUD.
+- **El botón «Mensajes»** de la cabecera lleva el total de no leídos (`unreadTotal`) y abre el panel, que pide la
+  bandeja. La bandeja lista cada conversación con la ciudad del otro, el último mensaje («Tú: …» si es propio), los no
+  leídos y la hora, y debajo los bloqueados con «Desbloquear». La conversación pinta los mensajes como texto (con sus
+  saltos de línea, nunca como HTML), «Ver anteriores» si hay página anterior, «Bloquear» o «Desbloquear», y un cuadro
+  de texto con el contador de caracteres (`bodyLength`, en puntos de código como el servidor) y «Enviar», que se
+  deshabilita con su motivo (`sendBlockReason`); Intro envía y Mayús+Intro salta de línea.
+- **Lo leído.** Con la conversación abierta y la pestaña visible, cada vez que cambia su último mensaje el cliente
+  manda `message.read` hasta él (`readTarget`) y pone a cero sus no leídos en la bandeja local; el servidor acota a lo
+  que recibió esa sesión.
+- **«Escribir»** abre el panel en la conversación con ese jugador (`openConversation`, que pide su primera página):
+  en la barra de una ciudad ajena (junto a «Proponer…» y «Ofrecer trato»), en cada tratado y cada oferta de comercio,
+  en cada entrada del registro, en cada aviso en vivo y en «Caravanas en camino» (con el otro jugador de la caravana,
+  `caravanCounterpart`).
+- **El aviso.** Un mensaje que llega con su conversación cerrada sale en la franja de avisos como «Villa Norte te ha
+  escrito» con «Leer», durante `MESSAGE_NOTICE_MS` (8 s); con la pestaña oculta suma al contador del título
+  (`documentTitle` recibe los mensajes además de los avisos).
+- **«Mientras no estabas»** se abre también con mensajes sin leer en la primera bandeja de la conexión, con la línea
+  «Tienes N mensajes sin leer de …» y «Leer» (`whileAwayText`); «Entendido» la quita junto con lo visto del registro.
+- **Al conectar y al volver a la pestaña** tras un rato fuera, el cliente pide la bandeja, como la página del
+  registro (`RN-LOG-007`).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

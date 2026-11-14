@@ -43,6 +43,7 @@ Dentro del scope de v1:
 - Los bienes de civilización ([civilization-goods.md](civilization-goods.md)): `city.craft` (§7.19), `craft` en `CityView` y en `city.update` (`{ good, amount, completesAtMs }` o `null`), `WINE`, `SILK`, `SPICES` y `FURS` en `Stocks` y en las líneas de un trato, y `WORKSHOP` en `BuildingType`; todo aditivo (`R-VER-2`, `R-VER-3`).
 - Las caravanas ([caravans.md](caravans.md)): la unidad `CARAVAN` en `UnitType` (no en `city.train`), `caravan.update` (§8.24) y `caravans` en el snapshot, los tipos `CARAVAN_ARRIVED`, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST` en el registro (los tres últimos también en `event_log.notice`) y `cargo` en los dos; sin mensajes cliente → servidor nuevos: se ataca con `unit.attack`. Todo aditivo (`R-VER-2`, `R-VER-3`).
 - La conquista ([territory-conquest.md](territory-conquest.md)): `unit.claim` (§7.18), `claim` en `TerritoryView` con `contested` como «hay una reclamación activa», el estado `CLAIMING`, los tipos `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN` en el registro y en `event_log.notice`, y `territoryId`/`territoryName` en las dos; todo aditivo (`R-VER-2`).
+- Los mensajes entre jugadores ([messages.md](messages.md)): `message.send`, `message.list`, `message.fetch`, `message.read` y `message.block` (§7.20), que atiende la conexión sin pasar por la simulación, y `message.new` (§8.25), `message.inbox` (§8.26) y `message.page` (§8.27); todo aditivo (`R-VER-3`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -233,7 +234,7 @@ El cliente de `apps/web` reconecta con backoff exponencial y jitter —0,5 s, 1 
 
 ## 7. Mensajes cliente → servidor
 
-Los veinticuatro tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch` y `event_log.seen`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), los tres `trade.*`, con [SPEC-TRADE](trade.md), `unit.claim`, con [SPEC-TERRITORY-CONQUEST](territory-conquest.md), y `city.craft`, con [SPEC-CIVILIZATION-GOODS](civilization-goods.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
+Los veintinueve tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch`, `event_log.seen`, `message.send`, `message.list`, `message.fetch`, `message.read` y `message.block`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), los tres `trade.*`, con [SPEC-TRADE](trade.md), `unit.claim`, con [SPEC-TERRITORY-CONQUEST](territory-conquest.md), `city.craft`, con [SPEC-CIVILIZATION-GOODS](civilization-goods.md), y los cinco `message.*`, con [SPEC-MESSAGES](messages.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
 
 ### 7.1 `session.hello`
 
@@ -601,9 +602,34 @@ payload: z.object({ cityId: EntityId }).strict()
 
 `city.build` admite desde E14 `type: "WORKSHOP"` (el taller, `RN-GOODS-003`): pide la Edad de Bronce y que la ciudad no tenga otro en pie (`INVALID_TARGET`), y cuesta 100 de madera y 50 de piedra (`INSUFFICIENT_RESOURCES`). `city.advance` desde la Edad de Bronce pasa a la de Hierro y cobra además 60 bienes de otras civilizaciones (`INSUFFICIENT_RESOURCES` si faltan); desde Hierro responde `NOT_IMPLEMENTED`.
 
+### 7.20 `message.send`, `message.list`, `message.fetch`, `message.read` y `message.block`
+
+- **Dirección:** cliente → servidor. **Propósito:** escribir a otro jugador, leer la bandeja y una conversación, dar por leída una conversación y bloquear o desbloquear a un jugador. Spec: [messages.md](messages.md); decisión: [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md).
+
+```ts
+// message.send: el texto lo recorta y lo cuenta en caracteres el servidor (RN-MSG-003)
+payload: z.object({ toPlayerId: Uuid, body: z.string().min(1).max(2 * MESSAGE_MAX_CHARS) }).strict()
+// message.list
+payload: z.object({}).strict()
+// message.fetch: la página más reciente, o la de los mensajes con id menor que beforeId
+payload: z.object({ otherPlayerId: Uuid, beforeId: EntityId.optional() }).strict()
+// message.read
+payload: z.object({ otherPlayerId: Uuid, upToId: EntityId }).strict()
+// message.block
+payload: z.object({ playerId: Uuid, blocked: z.boolean() }).strict()
+```
+
+```json
+{ "v": 1, "type": "message.send", "requestId": "5b2c1d0e-3f4a-4b5c-8d6e-7f8091a2b3c4", "payload": { "toPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "body": "¿60 de vino por 200 de piedra?" } }
+```
+
+**No pasan por la simulación.** Los atiende la goroutine de lectura de la sesión, como los `event_log.*`: no están en `CommandTypes`, son mensajes de sesión en la clasificación de [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) y no crean trabajos de la cola (`RN-MSG-009`). Ningún campo nombra al remitente ni a quien lee: es el jugador de la sesión (`RN-MSG-001`, `INV-SEC-010`); los comandos sólo nombran al otro. El esquema acota el texto en unidades UTF-16, el doble de `MESSAGE_MAX_CHARS` (500), para que quepan 500 caracteres de dos unidades; el servidor lo recorta, convierte `\r\n` en `\n`, exige de 1 a 500 caracteres y rechaza los caracteres de control salvo el salto de línea, y también los de dirección del texto (`INVALID_MESSAGE`).
+
+**Efectos.** `message.send` comprueba el destinatario (inexistente o uno mismo: `INVALID_TARGET`), los bloqueos en los dos sentidos (`INVALID_TARGET`, con el motivo) y los dos límites de ritmo del jugador (`RATE_LIMITED` con el `requestId` y **sin cerrar la conexión**, §4.2), guarda el mensaje y, tras el `COMMIT`, manda `message.new` (§8.25) a todas las sesiones de los dos jugadores; la que lo envió, con su `requestId`. `message.list` responde `message.inbox` (§8.26); `message.fetch`, `message.page` (§8.27), y la sesión apunta el último id servido de esa conversación. `message.read` no responde si va bien: deja lo leído en `upToId` como mucho, nunca más allá de lo que esa sesión recibió de la conversación y nunca hacia atrás (`RN-MSG-008`, `INV-PERSIST-007`); sin nada recibido, no hace nada. `message.block` responde con `message.inbox`. Si PostgreSQL no responde en 3 s, `INTERNAL_ERROR` y la sesión sigue.
+
 ## 8. Mensajes servidor → cliente
 
-Los veinticuatro tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los veintisiete tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -1216,6 +1242,52 @@ payload: z.object({ caravan: CaravanView })
 
 La caravana es además una unidad `CARAVAN` del mapa, que viaja en `entity.spawn`, `entity.update` y `entity.despawn` a todo su chunk **sin la carga** (`RN-CARAVAN-009`). `toCityId` distinto de `originalToCityId` dice que la capturaron; una captura cambia el dueño de la unidad, y el chunk la recibe otra vez entera (`entity.despawn { REMOVED }` y `entity.spawn`), porque `entity.update` no lleva el dueño. Un estado distinto de `IN_TRANSIT` dice que la caravana terminó (y su unidad sale con `entity.despawn { REMOVED }`); el cliente la saca de su lista. Las que siguen en camino viajan en `world.snapshot.caravans`, que la reemplaza.
 
+### 8.25 `message.new`
+
+- **Propósito:** un mensaje entre dos jugadores recién guardado ([messages.md](messages.md) §6). A todas las sesiones de los dos jugadores de este proceso, por el Hub; la sesión que lo envió lo recibe con su `requestId`, que es su confirmación, y las demás sin él. Un reintento con el mismo `requestId` recibe el mensaje que ya existía, sólo en esa sesión. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ message: MessageView })
+// MessageView: { id, fromPlayerId, toPlayerId, otherPlayerId,
+//                otherCityId: EntityId | null, otherCityName: string | null,
+//                body, sentAtMs }
+```
+
+«El otro» es siempre el jugador que no es el de la sesión, nombrado por su ciudad (`RN-MSG-010`).
+
+```json
+{ "v": 1, "type": "message.new", "seq": 710, "ts": 1788955800000, "requestId": "5b2c1d0e-3f4a-4b5c-8d6e-7f8091a2b3c4", "payload": { "message": { "id": 31, "fromPlayerId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301", "toPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "body": "¿60 de vino por 200 de piedra?", "sentAtMs": 1788955800000 } } }
+```
+
+### 8.26 `message.inbox`
+
+- **Propósito:** la bandeja, en respuesta a `message.list` o a `message.block` y sólo para la sesión que la pidió, con su `requestId`. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ conversations: z.array(ConversationView), blocked: z.array(BlockedPlayerView) })
+// ConversationView: { otherPlayerId, otherCityId, otherCityName, lastBody (≤ 80 caracteres),
+//                     lastFromMe, lastAtMs, unread, blockedByMe }
+// BlockedPlayerView: { playerId, cityId, cityName }
+```
+
+Las conversaciones con algún mensaje de los últimos `EO_MESSAGE_MAX_DAYS` días, de la más reciente a la más antigua, 200 como mucho; `unread` cuenta los del otro con id mayor que lo leído.
+
+### 8.27 `message.page`
+
+- **Propósito:** una página de una conversación, en respuesta a `message.fetch` y sólo para la sesión que la pidió, con su `requestId`. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({
+  otherPlayerId: Uuid, otherCityId: EntityId | null, otherCityName: string | null,
+  messages: z.array(MessageView),          // de más antiguo a más reciente
+  readUpToId: number,                      // lo leído por quien mira al servirla
+  nextBeforeId: EntityId | null,           // el beforeId de la página anterior
+  blockedByMe: boolean,
+})
+```
+
+Hasta `EO_MESSAGE_PAGE_SIZE` mensajes (50) de los últimos `EO_MESSAGE_MAX_DAYS` días. `blockedByMe` dice si quien mira tiene bloqueado al otro; si el otro le bloqueó a él, sólo lo sabe al escribirle (Q5).
+
 ## 9. Códigos de error
 
 El catálogo es de **24 códigos** y es cerrado. Vive en `errors.ts` (`ErrorCode`) y en `codes.go` (`AllErrorCodes`); un contract test en Go (`TestCatalogoDeErroresCoincideConElExportado`) compara ambos contra `error-codes.json` y rompe la CI si divergen.
@@ -1257,8 +1329,8 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 
 | Regla | Detalle |
 |---|---|
-| I-1 | Los esquemas exigen `requestId` con formato UUID en los veinticuatro comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond` y `trade.cancel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
-| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond` y `treaty.cancel`). `city.craft` guarda también su `requestId` en la fila de `city_crafts`. `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping`, `session.view` y los dos `event_log.*` no reservan clave: los primeros no crean efectos durables, `event_log.fetch` sólo lee y `event_log.seen` es monótono. |
+| I-1 | Los esquemas exigen `requestId` con formato UUID en los veintinueve comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond` y `trade.cancel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
+| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond` y `treaty.cancel`). `city.craft` guarda también su `requestId` en la fila de `city_crafts`. `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping`, `session.view` y los dos `event_log.*` no reservan clave: los primeros no crean efectos durables, `event_log.fetch` sólo lee y `event_log.seen` es monótono. Los `message.*` tampoco: `message.send` guarda su `requestId` en la fila del mensaje, con `UNIQUE (sender_player_id, request_id)`, y el reintento recibe el mensaje original aunque Redis no responda o el ritmo esté agotado; su `requestId` se valida como UUID en Go (`INVALID_MESSAGE`); `message.list` y `message.fetch` sólo leen, `message.read` es monótono y `message.block` es idempotente ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §4). |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
 | I-5 | Un `requestId` repetido dentro de la ventana **no re-ejecuta** el comando. Si el original ya tuvo respuesta directa —`unit.move.accepted`, `unit.move.rejected` o un `system.error` con ese `requestId`—, el duplicado **recibe esa misma respuesta** otra vez, con el mismo payload: es lo que necesita el cliente que reintenta tras perder la conexión justo cuando el servidor contestaba. La respuesta se guarda en la clave `idem:{playerId}:{requestId}` en sustitución del marcador `"pending"`, sin bloquear el game loop, y conserva el TTL de 300 s. Un duplicado que llega mientras el original sigue en curso, o de un comando que no tiene respuesta directa (un `unit.cancel_move` que sale bien sólo produce el `unit.movement.cancelled` del chunk), no recibe nada. |

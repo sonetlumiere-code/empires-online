@@ -48,7 +48,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Safe Zones | [safe-zones.md](safe-zones.md) | M5 Offline protection & Safe Zones | Implemented | Geometría de `safe_zones`, pertenencia de tiles y estado `HIDDEN` |
 | Territory | [territory.md](territory.md) | M6 Territories | Implemented | `territories` y `territory_control`, resolución tile → territorio |
 | Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Implemented | `garrisons`, entrada y salida, tratados con `allows_garrison` |
-| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 24 mensajes cliente→servidor y los 24 servidor→cliente, límites e idempotencia |
+| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 29 mensajes cliente→servidor y los 27 servidor→cliente, límites e idempotencia |
 | Economía: madera | [economy-wood.md](economy-wood.md) | E1 Madera | Implemented | `city_stocks`, tarea de recolección `GATHER_WOOD` y estado `WORKING`, casa en la zona urbana, entrenamiento de aldeanos; primer slice después de M7 |
 | Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Implemented | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil; tope de la protección offline |
 | Combate: respuesta automática | [combat-response.md](combat-response.md) | E3 Defensa | Implemented | Un `WARRIOR` parado responde a los golpes sobre él o sobre sus unidades cercanas, con correa y vuelta al puesto; protección simétrica del atacante |

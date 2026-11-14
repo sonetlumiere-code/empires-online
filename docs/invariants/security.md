@@ -478,7 +478,7 @@ consulta y el jugador sale de la sesión.
 | Aplicación | BOUNDARY, DB, TEST |
 | Milestone | E16 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E16) |
+| Cobertura | **Cubierto** por `Test_INV_SEC_010_UnTerceroNoVeLaConversacionDeOtros` (integration), `TestUnMensajeLlegaATodasLasSesionesDeLosDos` y `TestLosMensajesRechazanLoInvalido` (e2e, `internal/websocket`) y `TestLosComandosDeMensajesSonLosDelEsquema` (contract) |
 
 **Enunciado.** Todo mensaje que llega a una sesión en `message.new`, `message.page` o `message.inbox` es una fila de
 `player_messages` cuyo `sender_player_id` o `recipient_player_id` es el jugador de esa sesión; y todo mensaje guardado
@@ -497,9 +497,14 @@ a la vista y cualquiera podría suplantar a cualquiera.
   bandeja, por `player_low` o `player_high` igual a él.
 - `BOUNDARY` — `message.new` se entrega con `Hub.SendToPlayer` sólo al remitente y al destinatario de la fila.
 
-**Cómo se verifica.** Previstos: un test de integración con tres jugadores en el que el tercero no recibe nada de la
-conversación de los otros dos por ninguna consulta; un e2e en el que un tercero conectado no recibe el `message.new`
-de los otros dos; un unit de la vista con «el otro» desde cada lado.
+**Cómo se verifica.**
+
+- `Test_INV_SEC_010_UnTerceroNoVeLaConversacionDeOtros` (integration) — la bandeja de un tercero está vacía y su
+  conversación con cada uno de los otros dos no trae ningún mensaje de la de ellos.
+- `TestUnMensajeLlegaATodasLasSesionesDeLosDos` (e2e) — un tercero conectado no recibe el `message.new` de los otros
+  dos, y cada lado ve como «el otro» al otro.
+- `TestLosMensajesRechazanLoInvalido` (e2e) — un `fromPlayerId` en `message.send` es `INVALID_MESSAGE`.
+- `TestLosComandosDeMensajesSonLosDelEsquema` (contract) — ningún comando declara al remitente ni a quien lee.
 
 **Violación en runtime.** Indetectable después: un mensaje leído por quien no debía no deja rastro. Por eso la garantía
 está en cómo se construye cada consulta, no en una comprobación posterior.
@@ -515,7 +520,7 @@ está en cómo se construye cada consulta, no en una comprobación posterior.
 | Aplicación | DB, BOUNDARY, TEST |
 | Milestone | E16 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E16) |
+| Cobertura | **Cubierto** por `Test_INV_SEC_011_NingunMensajeCruzaUnBloqueo` y `TestUnEnvioQueEsperaAlCandadoVeElBloqueo` (integration) y `TestElBloqueoCortaLosMensajesEnLosDosSentidos` (e2e, `internal/websocket`) |
 
 **Enunciado.** No existe una fila de `player_messages` entre dos jugadores cuya transacción confirmó mientras uno de
 los dos tenía bloqueado al otro en `player_blocks`.
@@ -529,9 +534,15 @@ comprueba `player_blocks` en los dos sentidos con el candado tomado y antes de i
 ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §3). `BOUNDARY` — un envío bloqueado responde
 `INVALID_TARGET` y no escribe nada.
 
-**Cómo se verifica.** Previstos: un test de integración que bloquea en cada sentido y comprueba que el envío no deja
-fila; otro que lanza a la vez un bloqueo y un envío de la misma pareja y comprueba que el mensaje, si existe, es
-anterior al bloqueo; el e2e del bloqueo en los dos sentidos.
+**Cómo se verifica.**
+
+- `Test_INV_SEC_011_NingunMensajeCruzaUnBloqueo` (integration) — con el bloqueo en un sentido, ni el bloqueado ni
+  quien bloquea pueden escribir, y no queda fila; al desbloquear, sí.
+- `TestUnEnvioQueEsperaAlCandadoVeElBloqueo` (integration) — con el candado de la pareja tomado por una transacción
+  que inserta el bloqueo, un envío espera y, al confirmar el bloqueo, se rechaza sin fila. Verificado por mutación: sin
+  el candado en el envío, el envío no espera y el test falla.
+- `TestElBloqueoCortaLosMensajesEnLosDosSentidos` (e2e) — `INVALID_TARGET` con el motivo de cada lado y la métrica
+  `blocked`.
 
 **Violación en runtime.** Un mensaje que cruzara el bloqueo se vería en la bandeja de quien bloqueó; se puede buscar
 después cruzando `sent_at` con `player_blocks.created_at`.

@@ -246,6 +246,27 @@ ser `000019`.
 | simulation | Ninguno nuevo: el loop no cambia. Un test comprueba que los cinco comandos son de sesión y no llegan a la simulación |
 | cliente | La bandeja, la conversación con paginación, el contador, «Escribir» desde la barra de diplomacia, el aviso y la línea de «Mientras no estabas», el texto pintado como texto (un `<b>` llega como `<b>`); `scripts/smoke.mjs --mensajes` (smoke_runner escribe a smoke_victim conectado y lo recibe en vivo; smoke_victim desconectado lo ve al entrar; smoke_victim bloquea a smoke_runner y el envío se rechaza; desbloquea) |
 
+**Precisiones (2026-11-14), al implementar.** Ninguna cambia una decisión de §10; las que difieren del texto de
+[ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) se anotan aquí, porque un ADR aceptado no se edita.
+
+- **El límite del texto en el esquema.** ADR-038 §8 dice que el esquema acota el texto «en bytes». Zod cuenta unidades
+  UTF-16, no bytes: el esquema admite de 1 a `2 × MESSAGE_MAX_CHARS` (1 000) unidades, para que quepan 500 caracteres
+  de dos unidades, y el dominio (`message.NormalizeBody`) cuenta puntos de código. Un test de contrato ata los dos
+  números. Además de los caracteres de control, el dominio rechaza los de dirección del texto (U+202A–U+202E,
+  U+2066–U+2069 y similares: un texto que se lee distinto de lo que dice) y convierte `\r\n` en `\n`.
+- **Un reintento no choca con el ritmo.** Si el remitente agotó su límite por minuto, `message.send` mira antes si ese
+  `requestId` ya tiene mensaje (`MessageRepo.Existing`) y, si lo tiene, responde con él: la idempotencia de
+  [INV-SEC-007](../invariants/security.md#inv-sec-007) gana al límite, que sólo frena lo nuevo.
+- **Lo que llevan las respuestas.** `message.page` lleva además la ciudad del otro y `blockedByMe` (si quien mira lo
+  tiene bloqueado; que el otro le bloqueó a él sólo lo sabe al escribirle, Q5). La bandeja trae como mucho las 200
+  conversaciones más recientes, y una conversación sin ningún mensaje de los últimos 30 días no sale en ella.
+- **«Mientras no estabas».** La ventana se abre también cuando sólo hay mensajes sin leer: la línea sale de la
+  primera bandeja de la conexión y se borra con «Entendido», con «Leer» o al abrir la bandeja.
+- **Los e2e.** Como en el registro, los e2e del Game Server corren con un almacén en memoria: prueban la conexión
+  (quién recibe qué, el tope de lo leído, los límites, los errores y que el texto no sale en los logs). El candado
+  por pareja, la idempotencia y lo leído contra PostgreSQL son de la integración, y el recorrido entero contra el
+  servidor vivo es `scripts/smoke.mjs --mensajes`.
+
 ## 10. Decisiones de producto (2026-11-14)
 
 Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,

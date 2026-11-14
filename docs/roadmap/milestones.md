@@ -2002,14 +2002,14 @@ grupos, clanes, denuncias, moderadores y filtros, editar o borrar, adjuntos y fo
 1. **HECHO** — Aceptación: spec, ADR-038, `INV-SEC-010`, `INV-SEC-011` e `INV-PERSIST-007`, la precisión de
    [websocket-protocol.md](../specs/websocket-protocol.md) §4.2, la de `OUT-09` en
    [mvp-scope.md](../product/mvp-scope.md) y `Q-16` en parte respondida en el backlog.
-2. **PENDIENTE** — Protocolo: los cinco comandos (29 cliente → servidor) y los tres tipos (27 servidor → cliente), cada
+2. **HECHO** — Protocolo: los cinco comandos (29 cliente → servidor) y los tres tipos (27 servidor → cliente), cada
    uno con su e2e; contract tests en los dos lados.
-3. **PENDIENTE** — Dominio: `internal/domain/message` (validación del texto, la vista desde cada lado, los límites de
-   ritmo).
-4. **PENDIENTE** — Migración `000018` y persistencia: `player_messages`, `message_reads` y `player_blocks`, el envío
-   con el candado por pareja, la unicidad del `requestId`, la bandeja y lo leído.
-5. **PENDIENTE** — Conexión: los comandos como mensajes de sesión, la entrega tras el `COMMIT`, el tope de lo leído
-   por conversación y las métricas.
-6. **PENDIENTE** — Cliente: el botón «Mensajes» con su contador, la bandeja, la conversación, «Escribir» desde la
+3. **HECHO** — Dominio: `internal/domain/message` (validación del texto, la pareja canónica, la vista previa y los
+   límites de ritmo).
+4. **HECHO** — Migración `000018` y persistencia: `player_messages`, `message_reads` y `player_blocks`, el envío
+   con el candado por pareja (verificado por mutación), la unicidad del `requestId`, la bandeja y lo leído.
+5. **HECHO** — Conexión: los comandos como mensajes de sesión, la entrega tras el `COMMIT`, el tope de lo leído
+   por conversación, el reintento que no choca con el ritmo y las métricas.
+6. **HECHO** — Cliente: el botón «Mensajes» con su contador, la bandeja, la conversación, «Escribir» desde la
    barra de diplomacia y las demás listas, el aviso, la línea de «Mientras no estabas» y el bloqueo.
 7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --mensajes`.
