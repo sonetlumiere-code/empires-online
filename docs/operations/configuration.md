@@ -139,6 +139,10 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_EVENT_LOG_MAX_DAYS` | int | `7` | 1–90 | No | No | Hasta cuántos días atrás lee el registro de un jugador; lo más viejo sigue en `world_events` como auditoría (`RN-LOG-003`). |
 | `EO_EVENT_LOG_PAGE_SIZE` | int | `50` | 1–200 | No | No | Entradas, ya agrupadas, de una página del registro (`RN-LOG-003`). |
 | `EO_EVENT_LOG_GROUP_GAP_MINUTES` | int | `10` | 1–1440 | No | No | Hueco máximo entre dos sucesos del mismo tipo y con el mismo jugador para que formen una entrada (SPEC-EVENT-LOG §4.2). |
+| `EO_MESSAGE_MAX_DAYS` | int | `30` | 1–365 | No | No | Hasta cuántos días atrás se muestran los mensajes entre jugadores; la base los conserva (SPEC-MESSAGES Q4). |
+| `EO_MESSAGE_PAGE_SIZE` | int | `50` | 1–200 | No | No | Mensajes de una página de una conversación (SPEC-MESSAGES §4.3). |
+| `EO_MESSAGE_RATE_PER_MINUTE` | int | `10` | 1–600 | No | No | Mensajes que un jugador puede enviar por minuto, sumando sus sesiones; por encima, `RATE_LIMITED` sin cerrar la conexión (`RN-MSG-005`). |
+| `EO_MESSAGE_NEW_RECIPIENTS_PER_HOUR` | int | `10` | 1–1000 | No | No | Conversaciones nuevas que un jugador puede abrir por hora (`RN-MSG-005`). |
 | `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` | duration-s | `300` | 0–86400 | No | No | Tiempo en `OFFLINE_PENDING` antes de transicionar a `PROTECTED`. Constante **de gameplay**: define la ventana en la que una ciudad recién abandonada sigue siendo atacable. Ver [../specs/presence.md](../specs/presence.md). |
 
 ### 3.6 Persistencia

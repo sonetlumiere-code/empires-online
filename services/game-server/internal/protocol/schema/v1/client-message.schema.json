@@ -942,6 +942,186 @@
             "payload"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "message.send"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "toPlayerId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+                },
+                "body": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                }
+              },
+              "required": [
+                "toPlayerId",
+                "body"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "message.list"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "message.fetch"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "otherPlayerId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+                },
+                "beforeId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                }
+              },
+              "required": [
+                "otherPlayerId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "message.read"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "otherPlayerId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+                },
+                "upToId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                }
+              },
+              "required": [
+                "otherPlayerId",
+                "upToId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "message.block"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "playerId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+                },
+                "blocked": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "playerId",
+                "blocked"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
         }
       ]
     }

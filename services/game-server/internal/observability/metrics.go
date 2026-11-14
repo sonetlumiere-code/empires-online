@@ -43,6 +43,12 @@ type Metrics struct {
 	// incidente: una escritura descartada es una escritura perdida salvo que
 	// su compensación la vuelva a encolar.
 	PersistenceJobsDropped *prometheus.CounterVec
+
+	// MessagesSent cuenta los mensajes entre jugadores guardados, y
+	// MessagesRejected los que no, por motivo (SPEC-MESSAGES §6). Sin el texto
+	// ni los jugadores en las etiquetas (RN-MSG-007).
+	MessagesSent     prometheus.Counter
+	MessagesRejected *prometheus.CounterVec
 }
 
 // NewMetrics construye y registra todos los instrumentos.
@@ -130,6 +136,14 @@ func NewMetrics() *Metrics {
 			Name: "eo_persistence_jobs_dropped_total",
 			Help: "Escrituras durables descartadas por la cola de persistencia, por trabajo y motivo: queue_full o attempts_exhausted.",
 		}, []string{"job", "reason"}),
+		MessagesSent: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "eo_messages_sent_total",
+			Help: "Mensajes entre jugadores guardados (SPEC-MESSAGES).",
+		}),
+		MessagesRejected: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "eo_messages_rejected_total",
+			Help: "Mensajes entre jugadores no guardados, por motivo: invalid, target, blocked, rate o internal.",
+		}, []string{"reason"}),
 	}
 
 	reg.MustRegister(
@@ -138,6 +152,7 @@ func NewMetrics() *Metrics {
 		m.WSMessages, m.ProtocolErrors, m.WSConnectionsRejected, m.CommandsDropped,
 		m.PathfindingRequests, m.PathfindingDuration,
 		m.DatabaseLatency, m.RedisLatency, m.PersistenceJobsDropped,
+		m.MessagesSent, m.MessagesRejected,
 	)
 	// Las series de rechazo y de descarte existen a cero desde el arranque: una
 	// alerta sobre `rate()` de una serie que aún no existe no dispara nunca.
@@ -148,6 +163,9 @@ func NewMetrics() *Metrics {
 		for _, reason := range []string{DropQueueFull, DropAttemptsExhausted} {
 			m.PersistenceJobsDropped.WithLabelValues(job, reason)
 		}
+	}
+	for _, reason := range MessageRejectReasons() {
+		m.MessagesRejected.WithLabelValues(reason)
 	}
 	for _, t := range simulation.CommandTypes() {
 		m.CommandsDropped.WithLabelValues(t)
@@ -207,4 +225,18 @@ const (
 	// JobUnknown es la etiqueta `job` de un trabajo cuyo nombre no está en
 	// simulation.JobNames.
 	JobUnknown = "unknown"
+
+	// Motivos de eo_messages_rejected_total{reason} (SPEC-MESSAGES §6).
+	// Catálogo cerrado: el texto no es válido, el otro jugador no existe o es
+	// uno mismo, hay un bloqueo, se pasó un límite de ritmo, o falló la base.
+	MessageRejectInvalid  = "invalid"
+	MessageRejectTarget   = "target"
+	MessageRejectBlocked  = "blocked"
+	MessageRejectRate     = "rate"
+	MessageRejectInternal = "internal"
 )
+
+// MessageRejectReasons es el catálogo de motivos de eo_messages_rejected_total.
+func MessageRejectReasons() []string {
+	return []string{MessageRejectInvalid, MessageRejectTarget, MessageRejectBlocked, MessageRejectRate, MessageRejectInternal}
+}

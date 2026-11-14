@@ -85,6 +85,14 @@ type Config struct {
 	EventLogMaxAge   time.Duration
 	EventLogPageSize int
 	EventLogGroupGap time.Duration
+	// MessageMaxAge es hasta cuándo atrás se muestran los mensajes,
+	// MessagePageSize cuántos trae una página de una conversación, y
+	// MessageRatePerMinute y MessageNewRecipientsPerHour los dos límites de
+	// ritmo de cada jugador (SPEC-MESSAGES §10, Q4 y Q6).
+	MessageMaxAge               time.Duration
+	MessagePageSize             int
+	MessageRatePerMinute        int
+	MessageNewRecipientsPerHour int
 
 	PersistenceFlushIntervalTicks int
 
@@ -210,6 +218,11 @@ func Load() (Config, error) {
 		EventLogMaxAge:         time.Duration(v.intRange("EO_EVENT_LOG_MAX_DAYS", 7, 1, 90)) * 24 * time.Hour,
 		EventLogPageSize:       v.intRange("EO_EVENT_LOG_PAGE_SIZE", 50, 1, 200),
 		EventLogGroupGap:       time.Duration(v.intRange("EO_EVENT_LOG_GROUP_GAP_MINUTES", 10, 1, 24*60)) * time.Minute,
+
+		MessageMaxAge:               time.Duration(v.intRange("EO_MESSAGE_MAX_DAYS", 30, 1, 365)) * 24 * time.Hour,
+		MessagePageSize:             v.intRange("EO_MESSAGE_PAGE_SIZE", 50, 1, 200),
+		MessageRatePerMinute:        v.intRange("EO_MESSAGE_RATE_PER_MINUTE", 10, 1, 600),
+		MessageNewRecipientsPerHour: v.intRange("EO_MESSAGE_NEW_RECIPIENTS_PER_HOUR", 10, 1, 1000),
 
 		PersistenceFlushIntervalTicks: v.intRange("EO_PERSISTENCE_FLUSH_INTERVAL_TICKS", 50, 1, 100000),
 

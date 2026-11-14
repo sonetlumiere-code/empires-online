@@ -74,6 +74,13 @@ var sessionMessages = map[string]bool{
 	protocol.TypeSessionView:   true,
 	protocol.TypeEventLogFetch: true,
 	protocol.TypeEventLogSeen:  true,
+	// Los mensajes entre jugadores tampoco tocan el mundo: los guarda y los lee
+	// la conexión (SPEC-MESSAGES RN-MSG-009, ADR-038 §1).
+	protocol.TypeMessageSend:  true,
+	protocol.TypeMessageList:  true,
+	protocol.TypeMessageFetch: true,
+	protocol.TypeMessageRead:  true,
+	protocol.TypeMessageBlock: true,
 }
 
 // ActionPolicyOf devuelve la clasificación de un mensaje que actúa sobre el

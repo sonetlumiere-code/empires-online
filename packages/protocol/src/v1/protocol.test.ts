@@ -857,3 +857,71 @@ describe('caravanas (SPEC-CARAVANS)', () => {
     expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: llegada }).ok, 'Q11: la llegada no se avisa').toBe(false);
   });
 });
+
+describe('mensajes (SPEC-MESSAGES)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const cmd = (type: string, payload: unknown) => parseClientMessage({ v: 1, type, requestId: uuid, payload });
+  const message = {
+    id: 9, fromPlayerId: uuid, toPlayerId: otro, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte',
+    body: '¿60 de vino por 200 de piedra?', sentAtMs: 1_757_376_000_000,
+  };
+
+  it('message.send lleva el destinatario y el texto, y nada que elija al remitente (RN-MSG-001)', () => {
+    expect(cmd('message.send', { toPlayerId: otro, body: 'hola' }).ok).toBe(true);
+    expect(cmd('message.send', { toPlayerId: otro, body: '𝔸'.repeat(500) }).ok, '500 caracteres fuera del plano básico caben').toBe(true);
+    for (const payload of [
+      { toPlayerId: otro, body: '' },
+      { toPlayerId: otro, body: 'x'.repeat(1001) },
+      { toPlayerId: 'no-es-uuid', body: 'hola' },
+      { body: 'hola' },
+      { toPlayerId: otro, body: 'hola', fromPlayerId: uuid },
+    ]) {
+      expect(cmd('message.send', payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('message.list no lleva nada, y message.fetch, message.read y message.block nombran sólo al otro', () => {
+    expect(cmd('message.list', {}).ok).toBe(true);
+    expect(cmd('message.list', { playerId: otro })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('message.fetch', { otherPlayerId: otro }).ok).toBe(true);
+    expect(cmd('message.fetch', { otherPlayerId: otro, beforeId: 9 }).ok).toBe(true);
+    expect(cmd('message.fetch', { otherPlayerId: otro, beforeId: 0 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('message.fetch', {})).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('message.read', { otherPlayerId: otro, upToId: 9 }).ok).toBe(true);
+    expect(cmd('message.read', { otherPlayerId: otro, upToId: 0 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('message.block', { playerId: otro, blocked: true }).ok).toBe(true);
+    expect(cmd('message.block', { playerId: otro, blocked: false }).ok).toBe(true);
+    expect(cmd('message.block', { playerId: otro })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
+  it('message.new lleva el mensaje visto desde la sesión', () => {
+    expect(parseServerMessage({ ...env, type: 'message.new', requestId: uuid, payload: { message } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'message.new', payload: { message: { ...message, otherCityId: null, otherCityName: null } } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'message.new', payload: { message: { ...message, body: '' } } }).ok).toBe(false);
+    const { otherPlayerId: _, ...sinOtro } = message;
+    expect(parseServerMessage({ ...env, type: 'message.new', payload: { message: sinOtro } }).ok).toBe(false);
+  });
+
+  it('message.inbox lleva las conversaciones y los bloqueados', () => {
+    const conversation = {
+      otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', lastBody: 'hola', lastFromMe: false,
+      lastAtMs: 1, unread: 2, blockedByMe: false,
+    };
+    const blocked = { playerId: otro, cityId: null, cityName: null };
+    expect(parseServerMessage({ ...env, type: 'message.inbox', payload: { conversations: [conversation], blocked: [blocked] } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'message.inbox', payload: { conversations: [], blocked: [] } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'message.inbox', payload: { conversations: [{ ...conversation, unread: -1 }], blocked: [] } }).ok).toBe(false);
+  });
+
+  it('message.page lleva los mensajes, lo leído y la página siguiente', () => {
+    const page = {
+      otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', messages: [message], readUpToId: 0,
+      nextBeforeId: null, blockedByMe: false,
+    };
+    expect(parseServerMessage({ ...env, type: 'message.page', payload: page }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'message.page', payload: { ...page, messages: [], nextBeforeId: 3 } }).ok).toBe(true);
+    const { blockedByMe: _, ...sinBloqueo } = page;
+    expect(parseServerMessage({ ...env, type: 'message.page', payload: sinBloqueo }).ok).toBe(false);
+  });
+});
