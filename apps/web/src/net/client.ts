@@ -407,6 +407,34 @@ export class GameClient {
     return this.send('event_log.seen', { upToId });
   }
 
+  // Mensajes entre jugadores (SPEC-MESSAGES). El remitente y quien lee son
+  // siempre el jugador de la sesión: los comandos sólo nombran al otro.
+
+  /** Escribe a otro jugador. El servidor recorta el texto y decide si se puede. */
+  sendMessage(toPlayerId: string, body: string): string {
+    return this.send('message.send', { toPlayerId, body });
+  }
+
+  /** Pide la bandeja: las conversaciones y los bloqueados. */
+  listMessages(): string {
+    return this.send('message.list', {});
+  }
+
+  /** Pide una página de la conversación con otro jugador: la más reciente, o la anterior a `beforeId`. */
+  fetchMessages(otherPlayerId: string, beforeId?: number): string {
+    return this.send('message.fetch', beforeId === undefined ? { otherPlayerId } : { otherPlayerId, beforeId });
+  }
+
+  /** Da por leída la conversación hasta `upToId`. El servidor acota a lo recibido. */
+  markMessagesRead(otherPlayerId: string, upToId: number): string {
+    return this.send('message.read', { otherPlayerId, upToId });
+  }
+
+  /** Bloquea o desbloquea los mensajes con otro jugador. */
+  blockPlayer(playerId: string, blocked: boolean): string {
+    return this.send('message.block', { playerId, blocked });
+  }
+
   /** Recentra el área de interés (la cámara). */
   setView(center: { x: number; y: number }): string {
     return this.send('session.view', { center: { x: center.x, y: center.y } });

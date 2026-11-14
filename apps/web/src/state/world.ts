@@ -19,6 +19,19 @@ import { applyTradeUpdate, type TradeOfferView } from './trade';
 import { applyCaravanUpdate, type CaravanView } from './caravans';
 import { applyEventLogPage, EMPTY_EVENT_LOG, markSeenLocally, type EventLogState } from './eventLog';
 import { applyNotice, EMPTY_NOTICES, markLogOpened, setTabHidden, type NoticeState } from './notices';
+import {
+  applyInbox,
+  applyNewMessage,
+  applyPage,
+  applySendError,
+  closeConversation,
+  dismissWhileAway,
+  EMPTY_MESSAGES,
+  markConversationRead,
+  openConversation,
+  setMessagesTabHidden,
+  type MessagesState,
+} from './messages';
 import type { v1 } from '@empires-online/protocol';
 import type { ActiveMovement } from './interpolation';
 
@@ -221,6 +234,8 @@ export interface WorldState {
    * entran en su lista. Sólo los lee el HUD.
    */
   notices: NoticeState;
+  /** Los mensajes entre jugadores (SPEC-MESSAGES): la bandeja y la conversación abierta. Sólo los lee el HUD. */
+  messages: MessagesState;
   changes: WorldChanges;
 
   selectedUnitId: number | null;
@@ -241,6 +256,19 @@ export interface WorldState {
   markNoticesOpened: () => void;
   /** La pestaña se ocultó o volvió: el contador del título (SPEC-LIVE-NOTICES Q7). */
   setTabHidden: (hidden: boolean) => void;
+  /**
+   * Anota un envío (SPEC-MESSAGES): su rechazo va al cuadro de texto de su
+   * conversación, no al pie del HUD.
+   */
+  expectMessageSend: (requestId: string, otherPlayerId: string) => void;
+  /** Anota que se pidió una página de una conversación: `null` la primera. */
+  expectMessagePage: (requestId: string, otherPlayerId: string, beforeId: number | null) => void;
+  openConversation: (otherPlayerId: string, otherCityId: number | null, otherCityName: string | null) => void;
+  closeConversation: () => void;
+  /** Pone a cero los no leídos de una conversación en la bandeja local. */
+  markConversationRead: (otherPlayerId: string) => void;
+  /** «Entendido» o abrir la bandeja: la línea de mensajes de «Mientras no estabas» no vuelve. */
+  dismissMessagesWhileAway: () => void;
   reset: () => void;
 }
 
@@ -319,6 +347,9 @@ export const useWorldStore = create<WorldState>((set, get) => {
   // Páginas del registro pedidas y aún sin respuesta: requestId → beforeId (null
   // para la primera). No es estado observable.
   const eventLogRequests = new Map<string, number | null>();
+  // Envíos y páginas de mensajes pedidos y aún sin respuesta (SPEC-MESSAGES).
+  const messageSends = new Map<string, string>();
+  const messagePageRequests = new Map<string, { otherPlayerId: string; beforeId: number | null }>();
   const terrain = new Map<string, ChunkTerrain>();
   const forests = new Map<string, ForestView>();
   const hills = new Map<string, HillView>();
@@ -355,6 +386,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     caravans: [],
     eventLog: EMPTY_EVENT_LOG,
     notices: EMPTY_NOTICES,
+    messages: EMPTY_MESSAGES,
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
     lastError: null,
@@ -630,13 +662,40 @@ export const useWorldStore = create<WorldState>((set, get) => {
           set({ notices: applyNotice(get().notices, message.payload) });
           break;
 
+        case 'message.new': {
+          if (message.requestId !== undefined) messageSends.delete(message.requestId);
+          set({ messages: applyNewMessage(get().messages, message.payload.message, get().playerId) });
+          break;
+        }
+
+        case 'message.inbox':
+          set({ messages: applyInbox(get().messages, message.payload) });
+          break;
+
+        case 'message.page': {
+          const id = message.requestId;
+          const req = id !== undefined ? messagePageRequests.get(id) : undefined;
+          if (id === undefined || req === undefined) break;
+          messagePageRequests.delete(id);
+          set({ messages: applyPage(get().messages, message.payload, req.beforeId) });
+          break;
+        }
+
         case 'unit.move.rejected':
           set({ lastError: { code: message.payload.code, message: message.payload.message } });
           break;
 
-        case 'system.error':
+        case 'system.error': {
+          // El rechazo de un envío va a su conversación (SPEC-MESSAGES §4.6).
+          const other = message.requestId !== undefined ? messageSends.get(message.requestId) : undefined;
+          if (other !== undefined) {
+            messageSends.delete(message.requestId!);
+            set({ messages: applySendError(get().messages, other, message.payload.code, message.payload.message) });
+            break;
+          }
           set({ lastError: { code: message.payload.code, message: message.payload.message } });
           break;
+        }
 
         default:
           // session.pong y unit.move.accepted no alteran el estado observable
@@ -669,7 +728,31 @@ export const useWorldStore = create<WorldState>((set, get) => {
     },
 
     setTabHidden: (hidden) => {
-      set({ notices: setTabHidden(get().notices, hidden) });
+      set({ notices: setTabHidden(get().notices, hidden), messages: setMessagesTabHidden(get().messages, hidden) });
+    },
+
+    expectMessageSend: (requestId, otherPlayerId) => {
+      messageSends.set(requestId, otherPlayerId);
+    },
+
+    expectMessagePage: (requestId, otherPlayerId, beforeId) => {
+      messagePageRequests.set(requestId, { otherPlayerId, beforeId });
+    },
+
+    openConversation: (otherPlayerId, otherCityId, otherCityName) => {
+      set({ messages: openConversation(get().messages, otherPlayerId, otherCityId, otherCityName) });
+    },
+
+    closeConversation: () => {
+      set({ messages: closeConversation(get().messages) });
+    },
+
+    markConversationRead: (otherPlayerId) => {
+      set({ messages: markConversationRead(get().messages, otherPlayerId) });
+    },
+
+    dismissMessagesWhileAway: () => {
+      set({ messages: dismissWhileAway(get().messages) });
     },
 
     reset: () => {
@@ -692,9 +775,12 @@ export const useWorldStore = create<WorldState>((set, get) => {
         caravans: [],
         eventLog: EMPTY_EVENT_LOG,
         notices: EMPTY_NOTICES,
+        messages: EMPTY_MESSAGES,
         changes: changed({ all: true }),
       });
       eventLogRequests.clear();
+      messageSends.clear();
+      messagePageRequests.clear();
     },
   };
 });

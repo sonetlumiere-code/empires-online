@@ -488,3 +488,42 @@ describe('avisos en vivo (SPEC-LIVE-NOTICES)', () => {
     expect(useWorldStore.getState().notices.groups).toEqual([]);
   });
 });
+
+describe('mensajes (SPEC-MESSAGES)', () => {
+  const view = (id: number, from: string) => ({
+    id, fromPlayerId: from, toPlayerId: from === PLAYER ? OTHER : PLAYER, otherPlayerId: OTHER,
+    otherCityId: 20, otherCityName: 'Villa Norte', body: `mensaje ${id}`, sentAtMs: id * 1000,
+  });
+  const withRequest = (m: v1.ServerMessage, requestId?: string) => ({ ...m, requestId }) as v1.ServerMessage;
+
+  it('el rechazo de un envío va a su conversación, no al pie del HUD; los demás errores, al pie', () => {
+    const store = useWorldStore.getState();
+    store.openConversation(OTHER, 20, 'Villa Norte');
+    store.expectMessageSend('66666666-6666-4666-8666-666666666666', OTHER);
+    store.applyServerMessage(withRequest(server('system.error', 1, { code: 'INVALID_TARGET', message: 'ese jugador no acepta tus mensajes' }), '66666666-6666-4666-8666-666666666666'));
+    expect(useWorldStore.getState().messages.sendError).toMatchObject({ otherPlayerId: OTHER, code: 'INVALID_TARGET' });
+    expect(useWorldStore.getState().lastError).toBeNull();
+    store.applyServerMessage(withRequest(server('system.error', 2, { code: 'INVALID_TARGET', message: 'otra cosa' }), '77777777-7777-4777-8777-777777777777'));
+    expect(useWorldStore.getState().lastError).toMatchObject({ message: 'otra cosa' });
+  });
+
+  it('los mensajes nuevos llenan la bandeja y la conversación abierta; sólo se aplican las páginas pedidas', () => {
+    const store = useWorldStore.getState();
+    store.applyServerMessage(server('message.new', 1, { message: view(1, OTHER) }));
+    expect(useWorldStore.getState().messages.conversations[0]).toMatchObject({ otherPlayerId: OTHER, unread: 1 });
+
+    store.openConversation(OTHER, 20, 'Villa Norte');
+    const page = { otherPlayerId: OTHER, otherCityId: 20, otherCityName: 'Villa Norte', messages: [view(1, OTHER)], readUpToId: 0, nextBeforeId: null, blockedByMe: false };
+    store.applyServerMessage(withRequest(server('message.page', 2, page), '88888888-8888-4888-8888-888888888888'));
+    expect(useWorldStore.getState().messages.open!.loaded).toBe(false);
+    store.expectMessagePage('99999999-9999-4999-8999-999999999999', OTHER, null);
+    store.applyServerMessage(withRequest(server('message.page', 3, page), '99999999-9999-4999-8999-999999999999'));
+    expect(useWorldStore.getState().messages.open!.loaded).toBe(true);
+    store.applyServerMessage(server('message.new', 4, { message: view(2, PLAYER) }));
+    expect(useWorldStore.getState().messages.open!.messages.map((m) => m.id)).toEqual([1, 2]);
+    store.markConversationRead(OTHER);
+    expect(useWorldStore.getState().messages.conversations[0]!.unread).toBe(0);
+    store.reset();
+    expect(useWorldStore.getState().messages.conversations).toEqual([]);
+  });
+});
