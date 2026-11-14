@@ -711,6 +711,9 @@ y grueso, y una que carga madera, un tronco a la espalda.
   saltos de línea, nunca como HTML), «Ver anteriores» si hay página anterior, «Bloquear» o «Desbloquear», y un cuadro
   de texto con el contador de caracteres (`bodyLength`, en puntos de código como el servidor) y «Enviar», que se
   deshabilita con su motivo (`sendBlockReason`); Intro envía y Mayús+Intro salta de línea.
+- **Cerrar el panel** cierra también la conversación (`closeConversation`): lo que llegue después cuenta como no leído
+  y avisa. **Precisión (2026-11-14):** la primera versión sólo ocultaba el panel, y la prueba en vivo vio que un
+  mensaje llegado así no sumaba al contador.
 - **Lo leído.** Con la conversación abierta y la pestaña visible, cada vez que cambia su último mensaje el cliente
   manda `message.read` hasta él (`readTarget`) y pone a cero sus no leídos en la bandeja local; el servidor acota a lo
   que recibió esa sesión.

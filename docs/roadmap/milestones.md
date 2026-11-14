@@ -2012,4 +2012,13 @@ grupos, clanes, denuncias, moderadores y filtros, editar o borrar, adjuntos y fo
    por conversación, el reintento que no choca con el ritmo y las métricas.
 6. **HECHO** — Cliente: el botón «Mensajes» con su contador, la bandeja, la conversación, «Escribir» desde la
    barra de diplomacia y las demás listas, el aviso, la línea de «Mientras no estabas» y el bloqueo.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --mensajes`.
+7. **HECHO** — Humo y prueba en vivo (2026-11-14): `scripts/smoke.mjs --mensajes` pasó entero contra el servidor con
+   la migración `000018` recién aplicada (23 comprobaciones: la entrega en vivo con smoke_runner nombrado por su
+   ciudad, el no leído que espera con smoke_victim desconectada y desaparece al leer, el bloqueo en los dos sentidos y
+   la vuelta al desbloquear). En el navegador integrado, como smoke_victim: «Mientras no estabas» con la línea de
+   mensajes y «Leer», la bandeja y la conversación, el contador a cero al leer, una respuesta con `<b>` pintada como
+   texto, «Bloquear» y «Desbloquear», «Escribir» desde el tratado y desde el registro, y el aviso «… te ha escrito» con
+   «Mensajes (2)». Los logs del servidor no llevan el texto. Un fallo del cliente, corregido: «Cerrar» dejaba la
+   conversación abierta en el store y lo que llegaba después no contaba como no leído ni avisaba. Sin comprobar en el
+   navegador: «Escribir» desde la barra de una ciudad ajena tras un clic en el mapa (es el mismo `writeTo` que el del
+   tratado) y el contador del título con la pestaña oculta (cubierto por los tests de `notices` y `messages`).
