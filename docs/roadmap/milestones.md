@@ -1981,7 +1981,7 @@ jerárquico.
 
 ## E16 — Mensajes
 
-**Estado: EN CURSO (2026-11-14)**, en la rama `claude/slice-mensajes`. Contrato:
+**Estado: HECHO (2026-11-14)**, fusionado en `main` (`04eed8a`) con la CI en verde el mismo día. Contrato:
 [SPEC-MESSAGES](../specs/messages.md), aceptada el 2026-11-14 con sus nueve decisiones de producto, y
 [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md).
 

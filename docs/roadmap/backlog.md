@@ -48,6 +48,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E13 Civilizaciones | **Completado** (2026-11-05). En `main` desde la fusión `e3e9db1`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E13; contrato en [SPEC-CIVILIZATION](../specs/civilizations.md) y [ADR-035](../decisions/ADR-035-civilization-traits.md). |
 | E14 Bienes | **Completado** (2026-11-10). En `main` desde la fusión `da11ac2`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E14; contrato en [SPEC-CIVILIZATION-GOODS](../specs/civilization-goods.md) y [ADR-036](../decisions/ADR-036-civilization-goods.md). |
 | E15 Caravanas | **Completado** (2026-11-13). En `main` desde la fusión `38faac9`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E15; contrato en [SPEC-CARAVANS](../specs/caravans.md) y [ADR-037](../decisions/ADR-037-caravans-as-units.md). |
+| E16 Mensajes | **Completado** (2026-11-14). En `main` desde la fusión `04eed8a`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E16; contrato en [SPEC-MESSAGES](../specs/messages.md) y [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

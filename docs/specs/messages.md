@@ -6,7 +6,7 @@ conectado y le esperan si no lo está.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-MESSAGES` |
-| Estado | Accepted (2026-11-14). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-14). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `04eed8a`, con la CI en verde. |
 | Milestone | E16 Mensajes (decimosexto slice después de M7) |
 | Canon | §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores) |
 | Depende de | [player.md](player.md), [city.md](city.md), [diplomacy.md](diplomacy.md), [trade.md](trade.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
