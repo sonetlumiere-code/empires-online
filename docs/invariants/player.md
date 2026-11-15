@@ -69,7 +69,7 @@ Nótese la relación con [INV-SEC-004](security.md#inv-sec-004): aquel invariant
 | Aplicación | DB, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST en escritura (constraint) |
-| Cobertura | **Parcial** desde el 2026-11-15 (la precisión de E17 no tiene test todavía). Hasta entonces, cubierto por `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon`, `TestLosDosEjesSonOrtogonales`, `TestLaFundacionEscribeLaCivilizacionElegida` y `TestUnaFundacionSinCivilizacionDelCatalogoSeRechazaSinEscribir` (integration, `internal/persistence/postgres`), `TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque` (`internal/game/loadcheck`) y, en `apps/web`, los de la civilización de `authService.test.ts` y `store.integration.test.ts` |
+| Cobertura | **Cubierto** por `TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque` (`internal/game/loadcheck`, desde E17: una ciudad sin una facción del catálogo aborta el arranque), `TestLaEntradaYSuVencimientoConLasRupturas` (integration: la ciudad se carga con su facción y su entrada), `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon`, `TestLosDosEjesSonOrtogonales`, `TestLaFundacionEscribeLaCivilizacionElegida` y `TestUnaFundacionSinCivilizacionDelCatalogoSeRechazaSinEscribir` (integration, `internal/persistence/postgres`), `TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque` (`internal/game/loadcheck`) y, en `apps/web`, los de la civilización de `authService.test.ts` y `store.integration.test.ts` |
 
 **Enunciado.** Toda fila de `players` tiene `civilization_id` no nulo referenciando una fila existente de `civilizations`, y `faction_id` no nulo referenciando una fila existente de `factions`; ninguna de las dos columnas admite valores múltiples ni nulos.
 
@@ -523,7 +523,7 @@ multiplicación por su cuenta en un sistema sería un bono que diverge de su gol
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E17 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: se registra con SPEC-FACTIONS antes de escribir su código (§8 del catálogo) |
+| Cobertura | **Cubierto** por `TestElTriggerSoloDejaEntrarEnUnBandoDesdeNeutral` y `TestLaEntradaYSuVencimientoConLasRupturas` (integration, `internal/persistence/postgres`), `TestRechazosDeUnirseAUnBando` (`internal/game/simulation`), `TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque` (`internal/game/loadcheck`) y `TestSoloSeEntraEnUnBandoDesdeNeutral` (`internal/domain/player`) |
 
 **Enunciado.** Todo `UPDATE` de `players.faction_id` que cambia su valor lo hace de `NEUTRAL` a `ORDER` o a `CHAOS`;
 y una entrada pendiente (`faction_join_id` no nulo) sólo existe sobre un jugador `NEUTRAL` y hacia `ORDER` o `CHAOS`.
@@ -542,9 +542,14 @@ agredir el jugador y con quién puede firmar sin que nadie lo hubiera decidido.
   sólo cambia la fila si sigue así (ADR-039 §3 y §4). La validación de carga rechaza una entrada pendiente sobre un
   jugador que no es `NEUTRAL`.
 
-**Cómo se verifica.** Previsto: un test de integración que intenta `ORDER`→`CHAOS`, `CHAOS`→`NEUTRAL`,
-`ORDER`→`NEUTRAL` y una entrada pendiente sobre un jugador de un bando y espera el rechazo del trigger, y comprueba que
-`NEUTRAL`→`ORDER` y `NEUTRAL`→`CHAOS` se admiten; en la simulación, los rechazos de `faction.join`.
+**Cómo se verifica.** `TestElTriggerSoloDejaEntrarEnUnBandoDesdeNeutral` (integration) — **existe y pasa**: intenta
+una entrada con una sola columna, una entrada hacia `NEUTRAL`, cambiar y retirar una entrada pendiente, contar en otro
+bando que el de la entrada, `ORDER`→`CHAOS`, `ORDER`→`NEUTRAL`, `CHAOS`→`ORDER` y una entrada sobre un jugador de un
+bando, y espera el rechazo (`23514`, con el ID o el nombre del `CHECK`); comprueba que `NEUTRAL`→`ORDER` con su
+entrada y `NEUTRAL`→`CHAOS` se admiten. Verificado por mutación: con el trigger desactivado, falla.
+`TestLaEntradaYSuVencimientoConLasRupturas` comprueba que `RequestJoin` sólo apunta sobre un `NEUTRAL` sin entrada;
+en la simulación, `TestRechazosDeUnirseAUnBando` cubre cada rechazo de `faction.join`, y la validación de carga
+rechaza una entrada imposible (`TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque`).
 
 **Violación en runtime.** El trigger la hace imposible en la base. La RAM sólo la cambia el vencimiento de una entrada
 confirmada.

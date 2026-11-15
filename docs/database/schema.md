@@ -79,6 +79,8 @@ erDiagram
         integer faction_id FK
         timestamptz last_seen_at
         bigint event_log_seen_id
+        integer faction_join_id FK
+        timestamptz faction_join_at
     }
     civilizations {
         integer id PK
@@ -353,11 +355,21 @@ CREATE TABLE players (
     faction_id        integer     NOT NULL REFERENCES factions (id),
     last_seen_at      timestamptz,
     event_log_seen_id bigint      NOT NULL DEFAULT 0 CHECK (event_log_seen_id >= 0),  -- 000010
+    faction_join_id   integer     REFERENCES factions (id),                          -- 000019
+    faction_join_at   timestamptz,                                                   -- 000019
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
 
-    CONSTRAINT players_username_format CHECK (username ~ '^[A-Za-z0-9_-]{3,24}$')
+    CONSTRAINT players_username_format CHECK (username ~ '^[A-Za-z0-9_-]{3,24}$'),
+    CONSTRAINT players_faction_join_pair
+        CHECK ((faction_join_id IS NULL) = (faction_join_at IS NULL))               -- 000019
 );
+
+-- 000019 (INV-PLAYER-013): la facción sólo cambia de NEUTRAL a ORDER o CHAOS, y
+-- una entrada pendiente sólo existe sobre un NEUTRAL, no cambia ni se retira.
+CREATE TRIGGER players_faction_transition
+    BEFORE INSERT OR UPDATE OF faction_id, faction_join_id, faction_join_at ON players
+    FOR EACH ROW EXECUTE FUNCTION players_faction_transition();
 
 CREATE TRIGGER players_set_updated_at
     BEFORE UPDATE ON players
@@ -369,7 +381,8 @@ CREATE TRIGGER players_set_updated_at
 | `id` | `uuid` PK | Identificador público del jugador. Es el claim `sub` del game ticket JWT y el campo `player_id` de los logs estructurados. UUID y no `bigint` porque se expone al cliente y no debe ser enumerable. **Sin `DEFAULT`**: lo elige `apps/web` al crear la cuenta (es también `accounts.id` del almacén de identidad, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)) y llega en la fundación, de modo que la aplicación conoce el id antes del `COMMIT` y puede crear ciudad y unidades en la misma transacción |
 | `username` | `text` UNIQUE | Nombre visible del jugador y semilla de su emplazamiento; el nombre de acceso vive en `accounts.username`, con la misma regla. El `CHECK` admite mayúsculas, minúsculas, dígitos, `_` y `-`, de 3 a 24 caracteres: `^[A-Za-z0-9_-]{3,24}$` |
 | `civilization_id` | `integer` FK | Civilización elegida por el jugador al registrarse. Sin `ON DELETE`: el `NO ACTION` por defecto impide borrar un catálogo referenciado. Desde `000015` no cambia después del alta: el trigger `players_civilization_immutable` rechaza un `UPDATE` que la cambie ([INV-PLAYER-011](../invariants/player.md#inv-player-011)). La carga la lee con cada ciudad (`city.City.Civilization`, el código) |
-| `faction_id` | `integer` FK | Facción global. Ortogonal a la civilización: cualquier combinación es válida |
+| `faction_id` | `integer` FK | Facción global. Ortogonal a la civilización: cualquier combinación es válida. Todo jugador nace `NEUTRAL`; desde `000019` sólo cambia de `NEUTRAL` a `ORDER` o `CHAOS`, una vez, al contar su entrada ([SPEC-FACTIONS](../specs/factions.md), [INV-PLAYER-013](../invariants/player.md#inv-player-013)). La carga la lee con cada ciudad (`city.City.Faction`, el código) |
+| `faction_join_id`, `faction_join_at` | `integer` FK, `timestamptz` | Desde `000019`: la entrada pendiente en un bando y el instante en que cuenta, las dos o ninguna (`players_faction_join_pair`). Las escribe `FactionRepo.RequestJoin`; `FactionRepo.CompleteJoin` las borra en la misma transacción que escribe `faction_id` y rompe los pactos y alianzas con el bando contrario ([ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) §4). La carga las lee con cada ciudad (`city.City.FactionJoin`) |
 | `last_seen_at` | `timestamptz` | Última actividad observada. `PlayerRepo.TouchLastSeen` existe pero **ninguna ruta la llama**: hoy la columna queda `NULL` |
 | `event_log_seen_id` | `bigint` | Desde `000010` ([SPEC-EVENT-LOG](../specs/event-log.md)): el último `world_events.id` que el jugador dio por visto en su registro. Sólo avanza (`GREATEST`) y nunca más allá del tope marcable de la página que lo permitió ([INV-PERSIST-006](../invariants/persistence.md#inv-persist-006)); `0` es «nada visto» |
 

@@ -224,7 +224,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
 | INV-PLAYER-001 | Un jugador sólo puede comandar unidades que le pertenecen | CRITICO | DB, BOUNDARY, DOMAIN, TEST | ✓ | `TestNoSePuedeComandarUnaUnidadAjena`, `TestRechazosDeMovimiento` |
-| INV-PLAYER-002 | Todo jugador tiene exactamente una civilization, la que eligió en el registro, y exactamente una faction | ALTO | DB, TEST | ~ | `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosDosEjesSonOrtogonales`, `TestLaFundacionEscribeLaCivilizacionElegida`, `TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque`; en `apps/web`, `authService.test.ts` y `store.integration.test.ts` |
+| INV-PLAYER-002 | Todo jugador tiene exactamente una civilization, la que eligió en el registro, y exactamente una faction | ALTO | DB, TEST | ✓ | `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosDosEjesSonOrtogonales`, `TestLaFundacionEscribeLaCivilizacionElegida`, `TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque`, `TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque`; en `apps/web`, `authService.test.ts` y `store.integration.test.ts` |
 | INV-PLAYER-003 | Un jugador recién creado tiene exactamente una ciudad y exactamente 3 `VILLAGER` | ALTO | DOMAIN, TEST | ✓ | `TestBootstrapCreaMundoCompletoDelJugador`, `TestBootstrapFallidoNoDejaNadaAMedias`, `TestUnAltaConOtroNumeroDeAldeanosSeRechazaSinEscribir` |
 | INV-PLAYER-004 | La identidad del jugador de una sesión proviene del ticket verificado | CRITICO | TYPE, BOUNDARY, TEST | ✓ | `TestTicketValidoSeVerifica` |
 | INV-PLAYER-005 | `players.id` es `uuid` y único; ningún otro mecanismo identifica a un jugador | ALTO | DB, TYPE, TEST | ✓ | `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas` |
@@ -235,7 +235,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-PLAYER-010 | Una cuenta pendiente sólo se borra si el mundo confirma que su jugador no existe | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaConsultaDistingueUnJugadorFundadoDeUnoQueNoExiste`, `TestLaConsultaExigeUnTokenInternoDeSuSub`; en `apps/web`, `pending.test.ts`, `authService.test.ts` y `store.integration.test.ts` |
 | INV-PLAYER-011 | La civilización de un jugador no cambia después del alta | ALTO | DB, TEST | ✓ | `TestLaCivilizacionDeUnJugadorNoCambia` |
 | INV-PLAYER-012 | Todo rasgo de civilización es un entero positivo por mil y se aplica sólo con aritmética entera | ALTO | DOMAIN, TEST | ✓ | `TestLasFormulasDeLosRasgosDanLosValoresDeLaSpec`, `TestUnRasgoInvalidoEnElCatalogoAbortaElArranque`, `TestUnCatalogoConUnRasgoInvalidoNoSeCarga`, los golden de `civilization_test.go` |
-| INV-PLAYER-013 | La facción de un jugador sólo cambia de `NEUTRAL` a `ORDER` o a `CHAOS`, y como mucho una vez | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E17) |
+| INV-PLAYER-013 | La facción de un jugador sólo cambia de `NEUTRAL` a `ORDER` o a `CHAOS`, y como mucho una vez | ALTO | DB, DOMAIN, TEST | ✓ | `TestElTriggerSoloDejaEntrarEnUnBandoDesdeNeutral`, `TestRechazosDeUnirseAUnBando`, `TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque` |
 
 ### CITY — [city.md](city.md)
 
@@ -366,7 +366,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-GARR-009 | Entrar y salir de la guarnición no cambian `units.city_id`: la población se queda en la ciudad de origen | ALTO | DOMAIN, TEST | ✓ | `TestGuarnecerYSalirNoCambianLaCiudadDeOrigenNiElDueno`, `TestGuarnecerEnLaCiudadPropiaEnDosFases` |
 | INV-DIPLO-001 | Una oferta sólo la acepta o la rechaza el jugador que no la propuso | CRITICO | DOMAIN, TEST | ✓ | `TestSoloRespondeQuienNoPropusoYSoloRetiraQuienPropuso`, `TestRechazosDeLaDiplomacia` |
 | INV-DIPLO-002 | Entre dos jugadores, como mucho un tratado vigente y una oferta pendiente | ALTO | DB, DOMAIN, TEST | ✓ | `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration), `TestRechazosDeLaDiplomacia`, `TestUnaAlianzaSustituyeAlPactoVigente`, `TestLaEscaleraDeTratados` |
-| INV-DIPLO-003 | Entre la Orden y el Caos nunca nace un pacto ni una alianza, y el que quede vigente está en preaviso | ALTO | DOMAIN, TEST | ○ | Sin test todavía (E17) |
+| INV-DIPLO-003 | Entre la Orden y el Caos nunca nace un pacto ni una alianza, y el que quede vigente está en preaviso | ALTO | DOMAIN, TEST | ✓ | `TestLaTablaDeLosBandos`, `TestUnaPazEntreBandosContrariosNoSeAcepta`, `TestAlEntrarSeRompenLosPactosConElBandoContrario`, `TestUnFalloEnElVencimientoNoDejaNadaAMedias` |
 
 ### ECONOMY — [economy.md](economy.md)
 
@@ -393,7 +393,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-COMBAT-003 | Un combate o un saqueo nunca crea madera | ALTO | DOMAIN, TEST | ✓ | `TestElBotinPasaAlAsesinoYSeDeposita`, `TestElVolcadoEscribeVidaYBotinYNoResucita`, `TestElSaqueoGoldenCuatroGolpesYDeposito`, `TestLaCargaPendienteNoSeVuelcaNiSeHereda`, `TestUnGolpeDeSaqueoQueFallaNoDejaNadaAMedias` |
 | INV-COMBAT-004 | Ningún saqueo deja el almacén de una ciudad por debajo del suelo | ALTO | DOMAIN, TEST | ✓ | `TestElSaqueoRespetaElSuelo`, `TestDosSaqueadoresSeRepartenLoQueQuedaPorEncimaDelSuelo` |
 | INV-COMBAT-005 | Ningún golpe de saqueo o de asedio cae con el dueño del atacante ausente | ALTO | DOMAIN, TEST | ✓ | `TestElSaqueoTerminaConElDuenoAusente`, `TestElAsedioTerminaConElDuenoAusente` |
-| INV-COMBAT-006 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre dos jugadores de la Orden | CRITICO | DOMAIN, TEST | ○ | Sin test todavía (E17) |
+| INV-COMBAT-006 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre dos jugadores de la Orden | CRITICO | DOMAIN, TEST | ✓ | `TestLaTablaDeLosBandos`, `TestDosDeLaOrdenDejanDePelearAlEntrarElSegundo`, `TestLaOrdenNoSaqueaNiConquistaALosSuyos`, `TestUnirseALaOrdenPorLaRed` |
 
 ### TRADE — [trade.md](trade.md)
 
@@ -445,9 +445,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 128 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 1 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 3 | Test inexistente, o fila sin reconciliar con la suite |
+| ✓ Cubierto | 132 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 0 | Hay test real para parte del enunciado |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **134** | |
 
@@ -455,7 +455,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-PLAYER-013`, `INV-COMBAT-006` e `INV-DIPLO-003` se registraron el 2026-11-15 con SPEC-FACTIONS y [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md), antes de escribir su código, como manda §8, y nacen sin cobertura; el mismo día se precisó `INV-PLAYER-002` (la facción puede cambiar una vez, de `NEUTRAL` a un bando), que queda parcial hasta tener sus tests.
+`INV-PLAYER-013`, `INV-COMBAT-006` e `INV-DIPLO-003` se registraron el 2026-11-15 con SPEC-FACTIONS y [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día; el mismo día se precisó `INV-PLAYER-002` (la facción puede cambiar una vez, de `NEUTRAL` a un bando, y la carga exige una del catálogo), que volvió a ✓ con sus tests. Ninguna fila queda sin cobertura ni parcial.
 
 `INV-SEC-010`, `INV-SEC-011` e `INV-PERSIST-007` se registraron el 2026-11-14 con SPEC-MESSAGES y [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación el mismo día. Ninguna fila queda sin cobertura ni parcial.
 

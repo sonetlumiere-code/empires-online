@@ -159,6 +159,11 @@ Dominio: `RN-FAC`.
 - El cliente copia del servidor el 20 % para el texto, como ya copia los costes de Bronce y Hierro
   (`src/state/economy.ts`); el daño real lo dicen los `hp` que llegan.
 
+**Precisión (2026-11-15, implementación).** «Atacar» no es un botón de la barra: es el clic sobre una unidad ajena con
+un guerrero propio seleccionado. Entre dos de la Orden ese clic no manda `unit.attack` y pone en el pie el motivo que
+daría el servidor. En el protocolo, `faction` es obligatorio en `CityView` (toda ciudad tiene una) y `ownerFaction`
+viaja siempre en `TerritoryView`, `null` sin jugador por dueño, como `ownerId`.
+
 ## 5. Errores
 
 Sólo códigos que ya existen en el catálogo (canon §16).

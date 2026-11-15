@@ -430,7 +430,7 @@ simulación, `TestRechazosDeLaDiplomacia` (una segunda oferta) y `TestUnaAlianza
 | Aplicación | DOMAIN, TEST |
 | Milestone | E17 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: se registra con SPEC-FACTIONS antes de escribir su código (§8 del catálogo) |
+| Cobertura | **Cubierto** por `TestLaTablaDeLosBandos`, `TestUnaPazEntreBandosContrariosNoSeAcepta`, `TestAlEntrarSeRompenLosPactosConElBandoContrario`, `TestLaEntradaEsperaAUnaOrdenDeTratadoEnVuelo` y `TestUnaEntradaVencidaConElServidorParadoCuentaEnElPrimerTick` (`internal/game/simulation`), y `TestLaEntradaYSuVencimientoConLasRupturas`, `TestElVencimientoEsTolerante` y `TestUnFalloEnElVencimientoNoDejaNadaAMedias` (integration, `internal/persistence/postgres`) |
 
 **Enunciado.** Ningún `NON_AGGRESSION` ni `ALLIANCE` pasa a `ACTIVE` entre un jugador de `ORDER` y uno de `CHAOS`; y
 todo `NON_AGGRESSION` o `ALLIANCE` `ACTIVE` entre un jugador de `ORDER` y uno de `CHAOS` tiene `break_effective_at`.
@@ -443,9 +443,14 @@ entre los dos bandos (`RN-FAC-005`); el vencimiento de la entrada en un bando es
 pacto o alianza con el bando contrario en una sola transacción (ADR-039 §4), así que la base no pasa nunca por un
 estado con la facción escrita y un pacto sin preaviso.
 
-**Cómo se verifica.** Previsto: en la simulación, las propuestas y aceptaciones rechazadas; una alianza
-`ORDER`–`NEUTRAL` que pasa a preaviso cuando el `NEUTRAL` entra en `CHAOS`; en integración, la transacción del
-vencimiento que deja la facción y la ruptura juntas, y un fallo inyectado que no deja ninguna de las dos.
+**Cómo se verifica.** **Existen y pasan**: en la simulación, `TestLaTablaDeLosBandos` (las propuestas de pacto y
+alianza entre la Orden y el Caos se rechazan; el comercio, no), `TestUnaPazEntreBandosContrariosNoSeAcepta` (una oferta
+hecha cuando uno era `NEUTRAL` no se acepta; sí se rechaza), `TestAlEntrarSeRompenLosPactosConElBandoContrario` (la
+alianza con el Caos empieza su preaviso al entrar en la Orden; la de un neutral, el comercio y la que ya se rompía, no),
+`TestLaEntradaEsperaAUnaOrdenDeTratadoEnVuelo` y la recuperación; en integración,
+`TestLaEntradaYSuVencimientoConLasRupturas` (la facción, la entrada y la ruptura en una transacción, con su autor),
+`TestElVencimientoEsTolerante` y `TestUnFalloEnElVencimientoNoDejaNadaAMedias` (un fallo inyectado en el último
+`INSERT` no deja ni la facción ni la ruptura).
 
 **Violación en runtime.** Una aceptación entre los dos bandos se rechaza con `INVALID_TARGET` y no se escribe nada.
 

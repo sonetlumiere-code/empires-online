@@ -2047,12 +2047,12 @@ de facción, reputación, canales por bando y bonos que no sean el daño en tier
    `INV-PLAYER-002`, las de [player.md](../specs/player.md) (`RN-PLAYER-013` y su no-scope),
    [civilizations.md](../specs/civilizations.md) (Q10), [diplomacy.md](../specs/diplomacy.md) (`RN-DIPLO-001`) y
    [combat-raid.md](../specs/combat-raid.md) (`RN-COMBAT-006`), y `Q-03` respondida en el backlog.
-2. **PENDIENTE** — Protocolo: `faction.join` (30 cliente → servidor), `faction` y `factionJoin` en `CityView` y
+2. **HECHO** — Protocolo: `faction.join` (30 cliente → servidor), `faction` y `factionJoin` en `CityView` y
    `ownerFaction` en `TerritoryView`; contract tests en los dos lados.
-3. **PENDIENTE** — Dominio y simulación: la facción en la ciudad, `AtPeace` con la Orden, los tratados entre bandos,
+3. **HECHO** — Dominio y simulación: la facción en la ciudad, `AtPeace` con la Orden, los tratados entre bandos,
    la entrada en dos fases y su vencimiento, el daño en tierra afín.
-4. **PENDIENTE** — Migración `000019` y persistencia: las columnas de la entrada, el trigger de transición, la carga,
+4. **HECHO** — Migración `000019` y persistencia: las columnas de la entrada, el trigger de transición, la carga,
    la orden y el vencimiento con las rupturas en una transacción.
-5. **PENDIENTE** — Cliente: el bando en el HUD y en el panel ajeno, «Elegir bando», la cuenta atrás, la barra sin las
+5. **HECHO** — Cliente: el bando en el HUD y en el panel ajeno, «Elegir bando», la cuenta atrás, la barra sin las
    órdenes que el bando impide, el texto del territorio afín y los rechazos con su motivo.
 6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --faccion` con cuentas de humo propias.
