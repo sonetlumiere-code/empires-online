@@ -2055,4 +2055,17 @@ de facción, reputación, canales por bando y bonos que no sean el daño en tier
    la orden y el vencimiento con las rupturas en una transacción.
 5. **HECHO** — Cliente: el bando en el HUD y en el panel ajeno, «Elegir bando», la cuenta atrás, la barra sin las
    órdenes que el bando impide, el texto del territorio afín y los rechazos con su motivo.
-6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --faccion` con cuentas de humo propias.
+6. **HECHO** — Humo y prueba en vivo (2026-11-15): el servidor aplicó la migración `000019` al arrancar y la validación
+   de carga aceptó el mundo de desarrollo (todos `NEUTRAL`). `scripts/smoke.mjs --faccion`, con el servidor arrancado
+   con `EO_FACTION_JOIN_SECONDS=20`, pasó entero (28 comprobaciones: smoke_orden y smoke_caos, cuentas nuevas, piden
+   entrar en la Orden y en el Caos, la entrada vuelve con su `requestId` y cuenta a los 20 s, una segunda se rechaza, un
+   pacto y una alianza entre ellas se rechazan con «la Orden y el Caos no firman la paz» y un trato de comercio se
+   propone y se retira); una segunda pasada, con las cuentas ya en su bando, pasó también (26). La base guarda las dos
+   facciones sin entrada pendiente, `world_events` tiene dos `FactionJoinOrdered` y dos `FactionJoined`, y
+   `eo_faction_joins_total` vale 1 en cada bando. smoke_runner y smoke_victim siguen `NEUTRAL`. En el navegador
+   integrado: como smoke_orden, la cabecera dice «… — Edad de Piedra — Orden» sin «Elegir bando»; como smoke_victim,
+   «… — Neutral» con «Elegir bando», y la ventana muestra los dos bandos con lo que da y cuesta cada uno y «Unirme a la
+   Orden para siempre»; «Cancelar» la cierra sin mandar nada. Sin comprobar en el navegador: la cuenta atrás de una
+   entrada pendiente, la barra de una ciudad ajena con su bando (las ciudades de los dos bandos quedaron a 124 tiles),
+   el clic de ataque entre dos de la Orden y la línea de tierra afín del territorio; los cubren los tests de
+   `factions.test.ts`, el e2e y la simulación.
