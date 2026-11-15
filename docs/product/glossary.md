@@ -275,7 +275,11 @@ Alineación en el conflicto global del mundo: `ORDER`, `CHAOS` o `NEUTRAL`, alma
 Es un eje **ortogonal e independiente** de la *Civilization*. No confundir ambos conceptos: la
 civilización dice *qué puedes producir*, la facción dice *con quién estás alineado*.
 
-Ver: [vision.md](vision.md), [../specs/player.md](../specs/player.md).
+Desde E17 tiene efectos: todo jugador nace `NEUTRAL` y puede unirse una vez a `ORDER` o `CHAOS`, con un preaviso; dos
+jugadores de la Orden no se agreden (*la paz de la Orden*), la Orden y el Caos no firman pacto ni alianza, y en la
+*tierra afín* —la propia y, en un bando, la de cualquiera del bando— las unidades reciben menos daño.
+
+Ver: [vision.md](vision.md), [../specs/player.md](../specs/player.md), [../specs/factions.md](../specs/factions.md).
 
 ---
 

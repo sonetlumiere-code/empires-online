@@ -377,19 +377,51 @@ func TestDosDeLaOrdenDejanDePelearAlEntrarElSegundo(t *testing.T) {
 	assert.Equal(t, "los dos sois de la Orden", msg)
 }
 
-// RN-FAC-003: el saqueo y la conquista contra otro de la Orden se rechazan con
-// el motivo del bando, no con el de un tratado.
+// RN-FAC-003: el saqueo, el asedio y la conquista contra otro de la Orden se
+// rechazan con el motivo del bando, no con el de un tratado.
 func TestLaOrdenNoSaqueaNiConquistaALosSuyos(t *testing.T) {
+	ultimoMotivo := func(h *harness) string {
+		errs := h.rec.byType(protocol.TypeSystemError)
+		require.NotEmpty(h.t, errs)
+		return errs[len(errs)-1].Payload.(protocol.SystemErrorPayload).Message
+	}
 	h, _ := conFacciones(t)
 	enemigo, vecina := conEnemigo(h)
 	enBando(h, h.playerID, player.FactionOrder)
 	enBando(h, enemigo, player.FactionOrder)
 	g := ponerUnidad(h, guerreroID, h.playerID, h.cityID, unit.TypeWarrior, world.Tile{X: 18, Y: 40}, 60)
 
-	h.send(simulation.PillageCity{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: g.ID, CityID: vecina.ID})
-	require.Equal(t, []string{protocol.CodeInvalidTarget}, h.codigos())
-	assert.Equal(t, "los dos sois de la Orden", h.rec.byType(protocol.TypeSystemError)[0].Payload.(protocol.SystemErrorPayload).Message)
+	t.Run("saqueo", func(t *testing.T) {
+		h.rec.reset()
+		h.send(simulation.PillageCity{PlayerID: h.playerID, RequestID: uuid.NewString(), UnitID: g.ID, CityID: vecina.ID})
+		require.Equal(t, []string{protocol.CodeInvalidTarget}, h.codigos())
+		assert.Equal(t, msgOrden, ultimoMotivo(h))
+	})
+	t.Run("asedio", func(t *testing.T) {
+		h.rec.reset()
+		conCasa(h, vecina, 500, world.Tile{X: 20, Y: 39}, true)
+		h.derribar(g.ID, 500)
+		require.Equal(t, []string{protocol.CodeInvalidTarget}, h.codigos())
+		assert.Equal(t, msgOrden, ultimoMotivo(h))
+	})
+	t.Run("conquista", func(t *testing.T) {
+		h.rec.reset()
+		// Un territorio del enemigo sin su capital, con el guerrero dentro.
+		set, solapes, err := territory.BuildSet([]territory.Territory{
+			{ID: 3, Name: "Llano", MinX: 0, MinY: 30, MaxX: 18, MaxY: 50},
+		}, 64, 64, 32)
+		require.NoError(t, err)
+		require.Empty(t, solapes)
+		id := enemigo.String()
+		h.state.SetTerritories(set, []territory.Control{{TerritoryID: 3, OwnerType: territory.OwnerPlayer, OwnerID: &id, Version: 1}})
+		h.reclamar(g.ID)
+		require.Equal(t, []string{protocol.CodeInvalidTarget}, h.codigos())
+		assert.Equal(t, msgOrden, ultimoMotivo(h))
+	})
 }
+
+// msgOrden es el motivo de los rechazos por la paz de la Orden.
+const msgOrden = "los dos sois de la Orden"
 
 // conTierra pone el territorio 2 (20..50, 20..40) en manos de un jugador.
 func conTierra(t *testing.T, h *harness, dueno uuid.UUID) {

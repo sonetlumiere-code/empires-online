@@ -47,8 +47,13 @@ transacción, un jugador jugable con ciudad y unidades.
   desde E13 la civilización la elige el jugador en el registro y no cambia nunca, y cinco rasgos se aplican en el
   juego (§6.2); el punto anterior sobre los traits deja de valer para ellos. La facción sigue siendo un parámetro de
   arranque.
+  **Precisión (2026-11-15, [factions.md](factions.md), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)):**
+  la facción sigue sin elegirse en el alta (todos nacen `NEUTRAL`); desde E17 se elige en partida, una vez.
 - Estados de moderación de cuenta (suspensión, baneo, borrado), renombrado, cambio de civilización o de
   facción, múltiples ciudades por jugador, clanes, ranking: `TBD (fuera de MVP)`.
+  **Precisión (2026-11-15, [factions.md](factions.md)):** desde E17 la facción cambia una vez, de `NEUTRAL` a `ORDER`
+  o `CHAOS` ([INV-PLAYER-013](../invariants/player.md#inv-player-013)); cambiar de un bando a otro o volver a `NEUTRAL`
+  sigue fuera.
 - Mecánica de facciones (bonos, guerra ORDER/CHAOS, reputación): `Fuera de MVP`. En MVP la facción es un
   atributo persistido y visible, sin efecto sobre las reglas.
   **Precisión (2026-11-15, [factions.md](factions.md), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)):**
@@ -140,6 +145,8 @@ Lo que el cuerpo del alta **no** lleva, y por qué:
   Exponerlos en el formulario es `Fuera de MVP`; el modelo de datos ya soporta cualquier combinación
   (`RN-PLAYER-005`). **Precisión (2026-11-05, [civilizations.md](civilizations.md) §4.1):** desde E13 el cuerpo lleva
   `civilizationCode`, el que el jugador eligió en el registro y su cuenta guarda; `factionCode` sigue sin viajar.
+  **Precisión (2026-11-15, [factions.md](factions.md) Q1):** `factionCode` no viajará: la facción no se elige en el
+  alta, sino en partida con `faction.join`.
 - **`requestId`.** El alta HTTP **no es idempotente por clave de petición**: ver `RN-PLAYER-006`.
 
 Errores del alta (Next.js), con su código HTTP: `INVALID_MESSAGE` (400: cuerpo que no es JSON, sin
@@ -300,6 +307,8 @@ Consecuencias de diseño que se derivan de la tabla:
 no las expone: todos los jugadores nacen `ROMAN` / `NEUTRAL` porque la civilización y la facción son
 parámetros de arranque del proceso. La ortogonalidad es una propiedad del esquema verificable hoy con un
 `INSERT` por cada par; abrir la elección al jugador es un cambio de formulario, no de modelo.
+**Precisión (2026-11-15):** desde E13 la civilización la elige el jugador en el registro, y desde E17 la facción se
+elige en partida, una vez, desde `NEUTRAL` ([factions.md](factions.md)); el alta sigue fundando a todos `NEUTRAL`.
 
 ### 6.2 Catálogo de traits data-driven
 

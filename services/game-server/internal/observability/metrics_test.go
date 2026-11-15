@@ -53,3 +53,14 @@ func TestLasSeriesDeRechazoDeMensajesExistenACero(t *testing.T) {
 	}
 	assert.Zero(t, testutil.ToFloat64(m.MessagesSent))
 }
+
+// SPEC-FACTIONS §6: las series de eo_faction_joins_total existen a cero desde
+// el arranque, una por bando al que se puede entrar.
+func TestLasSeriesDeEntradasEnUnBandoExistenACero(t *testing.T) {
+	m := NewMetrics()
+	assert.Equal(t, []string{"ORDER", "CHAOS"}, FactionJoinLabels())
+	assert.Equal(t, len(FactionJoinLabels()), testutil.CollectAndCount(m.FactionJoins))
+	for _, f := range FactionJoinLabels() {
+		assert.Zero(t, testutil.ToFloat64(m.FactionJoins.WithLabelValues(f)), f)
+	}
+}
