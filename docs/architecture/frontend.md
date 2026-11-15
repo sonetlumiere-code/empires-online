@@ -652,7 +652,7 @@ y grueso, y una que carga madera, un tronco a la espalda.
   un test de integración del Game Server ata a la tabla `civilizations`. El cliente no aplica ningún rasgo: los
   plazos de obras, entrenamientos y movimientos y la vida de las casas (`maxHp`) llegan resueltos (ADR-035 §7).
 - **El HUD.** La cabecera dice «ciudad — civilización — era», con el resumen de rasgos (`traitSummary`) en el
-  `title` de la civilización.
+  `title` de la civilización; desde E17 añade el bando (§4.14).
 - **La ciudad ajena.** La barra de diplomacia que abre un clic en una ciudad ajena (§4.5) dice su nombre, su
   civilización y su era, con los rasgos en el `title`: la civilización es pública (RN-CIV-009).
 

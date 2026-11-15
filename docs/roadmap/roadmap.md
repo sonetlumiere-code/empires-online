@@ -185,6 +185,9 @@ puntual y pasa a ser continuo, lo que dispara la revisión del A\* plano.
 civilización. El catálogo `factions` existe desde M2 sin efectos. Depende de Territories (M6) y de
 Combat, porque la facción se expresa sobre todo como reglas de agresión permitida, bonos en
 territorio afín y objetivos globales. Requiere decidir antes si la facción es mutable y a qué coste.
+**Precisión (2026-11-15, [SPEC-FACTIONS](../specs/factions.md), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)):** la primera parte está hecha en E17 ([milestones.md](milestones.md) §E17): la facción
+se elige una vez desde `NEUTRAL`, la Orden no se agrede a sí misma, la Orden y el Caos no firman la paz y la tierra del
+propio bando reduce el daño. Quedan los objetivos globales del bando (Q10 de la spec).
 
 **Combat.** La fase 4 del tick, `resolve simulation`, está reservada para esto desde M0 y en el MVP
 no hace nada. Depende de M4 (posición autoritativa y estados de unidad), de tipos de unidad más allá

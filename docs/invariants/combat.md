@@ -206,7 +206,8 @@ curso en el tick en que la paz aparece (`RN-COMBAT-008`, `RN-COMBAT-025`).
 celda (`AtPeace` en los dos sentidos); `TestDosDeLaOrdenDejanDePelearAlEntrarElSegundo` pone a un guerrero de la Orden
 a golpear a un aldeano de un `NEUTRAL` cuya entrada en la Orden cuenta a mitad del combate, y comprueba que el
 enfrentamiento termina en ese tick sin un golpe más y que la orden siguiente se rechaza «los dos sois de la Orden»;
-`TestLaOrdenNoSaqueaNiConquistaALosSuyos` rechaza el saqueo con el mismo motivo; y `TestUnirseALaOrdenPorLaRed` lo
+`TestLaOrdenNoSaqueaNiConquistaALosSuyos` rechaza con el mismo motivo el saqueo, el asedio de una casa y la reclamación de
+un territorio del otro; y `TestUnirseALaOrdenPorLaRed` lo
 hace de punta a punta por WebSocket. Verificado por mutación: sin la Orden en `AtPeace`, falla la tabla; sin ella
 además en la validación del ataque, falla el combate en curso. La captura de una caravana es un `unit.attack` y pasa
 por la misma validación.

@@ -266,7 +266,7 @@ CREATE TABLE civilizations (
 
 ### 6.2 `factions`
 
-**MVP: activa.** Facción global (`ORDER`, `CHAOS`, `NEUTRAL`). Sin efectos de gameplay en el MVP más allá de almacenarse y viajar en el snapshot.
+**MVP: activa.** Facción global (`ORDER`, `CHAOS`, `NEUTRAL`). Sin efectos de gameplay en el MVP más allá de almacenarse y viajar en el snapshot. **Precisión (2026-11-15, [SPEC-FACTIONS](../specs/factions.md), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)):** desde E17 la facción cuenta: todo jugador nace `NEUTRAL` y puede unirse una vez a `ORDER` o `CHAOS` (`players.faction_join_id`, `faction_join_at` y el trigger `players_faction_transition`, §7); dos de la Orden no se agreden, la Orden y el Caos no firman pacto ni alianza, y la tierra del propio bando reduce el daño. El catálogo no cambia.
 
 ```sql
 CREATE TABLE factions (
