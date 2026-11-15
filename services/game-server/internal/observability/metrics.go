@@ -49,6 +49,10 @@ type Metrics struct {
 	// ni los jugadores en las etiquetas (RN-MSG-007).
 	MessagesSent     prometheus.Counter
 	MessagesRejected *prometheus.CounterVec
+
+	// FactionJoins cuenta las entradas en un bando que contaron, por bando
+	// (SPEC-FACTIONS §6).
+	FactionJoins *prometheus.CounterVec
 }
 
 // NewMetrics construye y registra todos los instrumentos.
@@ -144,6 +148,10 @@ func NewMetrics() *Metrics {
 			Name: "eo_messages_rejected_total",
 			Help: "Mensajes entre jugadores no guardados, por motivo: invalid, target, blocked, rate o internal.",
 		}, []string{"reason"}),
+		FactionJoins: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "eo_faction_joins_total",
+			Help: "Entradas en un bando que contaron, por bando: ORDER o CHAOS (SPEC-FACTIONS).",
+		}, []string{"faction"}),
 	}
 
 	reg.MustRegister(
@@ -152,7 +160,7 @@ func NewMetrics() *Metrics {
 		m.WSMessages, m.ProtocolErrors, m.WSConnectionsRejected, m.CommandsDropped,
 		m.PathfindingRequests, m.PathfindingDuration,
 		m.DatabaseLatency, m.RedisLatency, m.PersistenceJobsDropped,
-		m.MessagesSent, m.MessagesRejected,
+		m.MessagesSent, m.MessagesRejected, m.FactionJoins,
 	)
 	// Las series de rechazo y de descarte existen a cero desde el arranque: una
 	// alerta sobre `rate()` de una serie que aún no existe no dispara nunca.
@@ -169,6 +177,9 @@ func NewMetrics() *Metrics {
 	}
 	for _, t := range simulation.CommandTypes() {
 		m.CommandsDropped.WithLabelValues(t)
+	}
+	for _, f := range FactionJoinLabels() {
+		m.FactionJoins.WithLabelValues(f)
 	}
 	return m
 }
@@ -240,3 +251,7 @@ const (
 func MessageRejectReasons() []string {
 	return []string{MessageRejectInvalid, MessageRejectTarget, MessageRejectBlocked, MessageRejectRate, MessageRejectInternal}
 }
+
+// FactionJoinLabels es el catálogo cerrado de la etiqueta faction de
+// eo_faction_joins_total: los dos bandos a los que se puede entrar.
+func FactionJoinLabels() []string { return []string{"ORDER", "CHAOS"} }

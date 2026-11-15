@@ -97,6 +97,17 @@ import {
   type NoticeGroup,
 } from '../src/state/notices';
 import { claimBlockReason, claimLabel, territoryAt, territoryOwnerLabel } from '../src/state/conquest';
+import {
+  canJoinFaction,
+  FACTION_CHOICES,
+  factionLabel,
+  joinLabel,
+  orderPeace,
+  territoryFactionLine,
+  treatiesBrokenByJoining,
+  treatyForbidden,
+  type JoinableFaction,
+} from '../src/state/factions';
 import { caravanLabel } from '../src/state/caravans';
 import {
   MESSAGE_MAX_CHARS,
@@ -159,6 +170,8 @@ export default function Page() {
   // la que se hizo clic sin unidad seleccionada, para proponerle un tratado.
   const treaties = useWorldStore((s) => s.treaties);
   const [diplomacyTarget, setDiplomacyTarget] = useState<CityView | null>(null);
+  // Facciones (SPEC-FACTIONS): la ventana «Elegir bando» y el bando que se mira en ella.
+  const [factionPickerOpen, setFactionPickerOpen] = useState(false);
   // Comercio (SPEC-TRADE): las ofertas pendientes y el trato que se está armando.
   const tradeOffers = useWorldStore((s) => s.tradeOffers);
   const [draft, setDraft] = useState<TradeDraft>({ giveResource: 'WOOD', giveAmount: 100, wantResource: 'STONE', wantAmount: 50 });
@@ -190,6 +203,13 @@ export default function Page() {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
   }, [countdown]);
+  // La cuenta atrás de una entrada en un bando, propia o de la ciudad ajena que se mira.
+  const joinAtMs = hud.ownCity?.factionJoin?.atMs ?? diplomacyTarget?.factionJoin?.atMs;
+  useEffect(() => {
+    if (joinAtMs === undefined) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [joinAtMs]);
   const training = hud.ownCity?.production ?? null;
   // El avance de era también lleva cuenta atrás (SPEC-ECON-STONE).
   const advancing = hud.ownCity?.advance ?? null;
@@ -528,7 +548,18 @@ export default function Page() {
       const selected = selectedUnitId !== null ? state.units.get(selectedUnitId) : undefined;
       const click = decideUnitClick(unit, selected, playerId);
       if (click.kind === 'select') selectUnit(unitId);
-      else if (click.kind === 'attack' && selectedUnitId !== null) clientRef.current?.attackUnit(selectedUnitId, unitId);
+      else if (click.kind === 'attack' && selectedUnitId !== null) {
+        // RN-FAC-003: entre dos de la Orden no se ofrece el ataque; el servidor
+        // lo rechazaría igual.
+        const cities = [...state.cities.values()];
+        const mine = cities.find((c) => c.ownerPlayerId === playerId)?.faction;
+        const theirs = cities.find((c) => c.ownerPlayerId === unit.playerId)?.faction;
+        if (orderPeace(mine, theirs)) {
+          useWorldStore.setState({ lastError: { code: 'INVALID_TARGET', message: 'los dos sois de la Orden' } });
+          return;
+        }
+        clientRef.current?.attackUnit(selectedUnitId, unitId);
+      }
     },
     [playerId, selectUnit, selectedUnitId],
   );
@@ -698,8 +729,22 @@ export default function Page() {
           <>
             <span style={{ color: 'var(--muted)' }}>
               {ownCity.name} — <span title={traitSummary(ownCity.civilization)}>{civilizationLabel(ownCity.civilization)}</span>{' '}
-              — {eraLabel(ownCity.era)}
+              — {eraLabel(ownCity.era)} — <span title="Tu bando (SPEC-FACTIONS)">{factionLabel(ownCity.faction)}</span>
             </span>
+            {ownCity.factionJoin && (
+              <span style={{ color: 'var(--muted)' }} title="Hasta entonces sigues siendo Neutral a todos los efectos">
+                {joinLabel(ownCity.factionJoin, serverTimeMs(), true)}
+              </span>
+            )}
+            {canJoinFaction(ownCity) && (
+              <button
+                className="secondary"
+                onClick={() => setFactionPickerOpen(true)}
+                title="Únete a la Orden o al Caos. Es para siempre"
+              >
+                Elegir bando
+              </button>
+            )}
             <span
               style={{ color: overPopulationLimit(ownCity) ? 'var(--danger)' : 'var(--muted)' }}
               title={overPopulationLimit(ownCity) ? 'Perdiste casas: no puedes entrenar hasta volver bajo el límite' : undefined}
@@ -857,6 +902,9 @@ export default function Page() {
               {claimLabel(claimTerritory, playerId, serverTimeMs()) ??
                 `${claimTerritory.name}: ${territoryOwnerLabel(claimTerritory, playerId, useWorldStore.getState().cities.values())}`}
             </span>
+            {territoryFactionLine(claimTerritory, playerId, ownCity?.faction) && (
+              <span style={{ color: 'var(--muted)' }}>{territoryFactionLine(claimTerritory, playerId, ownCity?.faction)}</span>
+            )}
             <button
               className="secondary"
               onClick={() => clientRef.current?.claimTerritory(selectedUnit.id)}
@@ -890,9 +938,14 @@ export default function Page() {
           {diplomacyTarget && (
             <>
               <span title={traitSummary(diplomacyTarget.civilization)}>
-                {diplomacyTarget.name} ({civilizationLabel(diplomacyTarget.civilization)}, {eraLabel(diplomacyTarget.era)}):
+                {diplomacyTarget.name} ({civilizationLabel(diplomacyTarget.civilization)}, {eraLabel(diplomacyTarget.era)},{' '}
+                {factionLabel(diplomacyTarget.faction)}
+                {diplomacyTarget.factionJoin ? ` — ${joinLabel(diplomacyTarget.factionJoin, serverTimeMs(), false)}` : ''}):
               </span>
-              {proposableTypes(treaties, diplomacyTarget.ownerPlayerId).map((tipo) => (
+              {proposableTypes(treaties, diplomacyTarget.ownerPlayerId)
+                // RN-FAC-005: la Orden y el Caos no firman la paz; el comercio, sí.
+                .filter((tipo) => !treatyForbidden(tipo, ownCity?.faction, diplomacyTarget.faction))
+                .map((tipo) => (
                 <button
                   key={tipo}
                   className="secondary"
@@ -1090,6 +1143,18 @@ export default function Page() {
         </div>
       )}
 
+      {factionPickerOpen && ownCity && canJoinFaction(ownCity) && (
+        <FactionPicker
+          broken={(target) =>
+            treatiesBrokenByJoining(treaties, useWorldStore.getState().cities.values(), target).map(
+              (t) => t.otherCityName ?? 'otra ciudad',
+            )
+          }
+          onJoin={(target) => { clientRef.current?.joinFaction(target); setFactionPickerOpen(false); }}
+          onClose={() => setFactionPickerOpen(false)}
+        />
+      )}
+
       {logoutError && (
         <div style={{ ...styles.hud, color: 'var(--danger)' }}>{logoutError}</div>
       )}
@@ -1228,6 +1293,81 @@ function caravanCounterpart(
   if (c.ownerPlayerId !== playerId) return { playerId: c.ownerPlayerId, cityId: null, cityName: null };
   const to = cities.get(c.toCityId);
   return to && to.ownerPlayerId !== playerId ? { playerId: to.ownerPlayerId, cityId: to.id, cityName: to.name } : null;
+}
+
+/**
+ * La ventana «Elegir bando» (SPEC-FACTIONS §4.6): los dos bandos con lo que da y
+ * cuesta cada uno, los pactos y alianzas que se romperán, y una confirmación
+ * que dice que la decisión es para siempre.
+ */
+function FactionPicker({
+  broken,
+  onJoin,
+  onClose,
+}: {
+  broken: (target: JoinableFaction) => string[];
+  onJoin: (target: JoinableFaction) => void;
+  onClose: () => void;
+}) {
+  const [chosen, setChosen] = useState<JoinableFaction | null>(null);
+  const rotos = chosen ? broken(chosen) : [];
+  return (
+    <div style={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="faction-title">
+      <div style={{ ...styles.panel, width: 'min(560px, 92vw)', maxHeight: '80vh', overflowY: 'auto' }}>
+        <h2 id="faction-title" style={{ margin: '0 0 0.5rem', fontSize: '1.1rem' }}>
+          Elegir bando
+        </h2>
+        <p style={{ margin: '0 0 0.75rem', color: 'var(--muted)', fontSize: '0.85rem' }}>
+          Eres Neutral. Puedes unirte a la Orden o al Caos una sola vez, y es para siempre. La entrada cuenta dentro
+          de 15 minutos; hasta entonces sigues siendo Neutral, y todos ven que vas a entrar.
+        </p>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {FACTION_CHOICES.map((f) => (
+            <label
+              key={f.code}
+              style={{
+                flex: '1 1 220px',
+                border: `1px solid ${chosen === f.code ? 'var(--ok)' : 'var(--border)'}`,
+                borderRadius: 6,
+                padding: '0.6rem',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="faction"
+                value={f.code}
+                checked={chosen === f.code}
+                onChange={() => setChosen(f.code)}
+                style={{ marginRight: '0.4rem' }}
+              />
+              <strong>{f.name}</strong>
+              <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem', fontSize: '0.85rem' }}>
+                {f.lines.map((l) => (
+                  <li key={l.text} style={{ color: l.good ? 'var(--ok)' : 'var(--danger)' }}>
+                    {l.text}
+                  </li>
+                ))}
+              </ul>
+            </label>
+          ))}
+        </div>
+        {chosen && rotos.length > 0 && (
+          <p style={{ margin: '0.75rem 0 0', color: 'var(--danger)', fontSize: '0.85rem' }}>
+            Al entrar se romperán tus pactos y alianzas con {rotos.join(', ')}: empezará su preaviso de ruptura.
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+          <button disabled={chosen === null} onClick={() => chosen && onJoin(chosen)}>
+            {chosen ? `Unirme ${chosen === 'ORDER' ? 'a la Orden' : 'al Caos'} para siempre` : 'Elige un bando'}
+          </button>
+          <button className="secondary" onClick={onClose} autoFocus>
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**

@@ -205,6 +205,9 @@ func CommandTypes() []string {
 		CraftDeliverPersistFailed{}.commandType(),
 		CaravanDeliverPersistFailed{}.commandType(),
 		CaravanCapturePersistFailed{}.commandType(),
+		JoinFaction{}.commandType(),
+		FactionJoinResolved{}.commandType(),
+		FactionJoinCompletePersistFailed{}.commandType(),
 	}
 }
 
@@ -247,6 +250,7 @@ func JobNames() []string {
 		JobTerritoryClaim, JobTerritoryClaimEnd, JobTerritoryCapture,
 		JobCityCraft, JobCraftComplete,
 		JobCaravanDeliver, JobCaravanCapture,
+		JobFactionJoin, JobFactionJoined,
 	}
 }
 

@@ -11,7 +11,7 @@ import { useWorldStore, type CityStocks } from './world';
 
 const vacio: CityStocks = { WOOD: 0, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 };
 const ciudad = (over: { era?: string; stocks?: Partial<CityStocks>; craft?: { good: string; amount: number; completesAtMs: number } | null } = {}) => ({
-  id: 10, centerX: 5, centerY: 5, era: over.era ?? 'BRONZE_AGE', civilization: 'ROMAN',
+  id: 10, centerX: 5, centerY: 5, era: over.era ?? 'BRONZE_AGE', civilization: 'ROMAN', faction: 'NEUTRAL', factionJoin: null,
   production: null, advance: null, craft: over.craft ?? null,
   stocks: { ...vacio, WOOD: 1000, STONE: 500, ...over.stocks },
 });
@@ -67,7 +67,7 @@ describe('el store y los bienes', () => {
       buildings: [],
       cities: [{
         id: 10, ownerPlayerId: '11111111-1111-4111-8111-111111111111', name: 'Roma', centerX: 5, centerY: 5,
-        era: 'BRONZE_AGE', civilization: 'ROMAN', population: 3, populationLimit: 50, presenceState: 'ONLINE',
+        era: 'BRONZE_AGE', civilization: 'ROMAN', faction: 'NEUTRAL', factionJoin: null, population: 3, populationLimit: 50, presenceState: 'ONLINE',
         protectionUntilMs: null, stocks: { WOOD: 40, STONE: 15 }, production: null, advance: null,
       }],
     } as v1.WorldSnapshot['payload']);

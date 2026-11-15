@@ -108,13 +108,21 @@
  *      deja de estarlo; smoke_victim bloquea a smoke_runner y ninguno de los dos puede
  *      escribir al otro; al desbloquear, vuelve a llegar. No depende de las demás
  *      opciones y puede ir al final de cualquier pasada.
+ *  16. sólo con --faccion (SPEC-FACTIONS): dos cuentas propias, smoke_orden y
+ *      smoke_caos (nunca smoke_runner ni smoke_victim, que tienen que seguir NEUTRAL
+ *      para el saqueo, el asedio y la diplomacia), entran en la Orden y en el Caos;
+ *      la entrada vuelve con su requestId y cuenta al vencer el preaviso (arranca el
+ *      servidor con EO_FACTION_JOIN_SECONDS=20), una segunda se rechaza, un pacto
+ *      entre las dos se rechaza y un trato de comercio, no (se retira al momento).
+ *      En una pasada siguiente, con las cuentas ya en su bando, sólo comprueba los
+ *      rechazos. No depende de las demás opciones.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--mensajes] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--mensajes] [--faccion] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -150,6 +158,7 @@ const CIVILIZACION = args.includes('--civilizacion');
 const BIENES = args.includes('--bienes');
 const CARAVANA = args.includes('--caravana');
 const MENSAJES = args.includes('--mensajes');
+const FACCION = args.includes('--faccion');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -718,6 +727,10 @@ async function main() {
 
   if (MENSAJES) {
     await mensajes(segunda, cuenta.playerId, ciudad);
+  }
+
+  if (FACCION) {
+    await faccion();
   }
 
   segunda.sesion.cerrar();
@@ -2013,6 +2026,85 @@ async function mensajes(propio, playerId, ciudad) {
   await victima.sesion.esperarQue(['message.new'], (m) => m.payload.message.id === otraVez.payload.message.id, 10_000);
   ok('al desbloquear, los mensajes vuelven a llegar');
   victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Facciones (SPEC-FACTIONS), sólo con --faccion
+// ─────────────────────────────────────────────────────────────
+
+const ORDEN = process.env.EO_SMOKE_ORDER_USER || 'smoke_orden';
+const CAOS = process.env.EO_SMOKE_CHAOS_USER || 'smoke_caos';
+
+/**
+ * Lo que tiene que hacer el humo con una cuenta y el bando al que debe entrar:
+ * pedir la entrada, esperarla o nada (ya está dentro). Una cuenta del bando
+ * contrario o con otra entrada es un fallo: las cuentas del humo no cambian de bando.
+ */
+export function pasoDeFaccion(ciudad, bando) {
+  const actual = ciudad.faction ?? 'NEUTRAL';
+  if (actual === bando) return 'dentro';
+  if (actual !== 'NEUTRAL') return 'otro-bando';
+  if (!ciudad.factionJoin) return 'pedir';
+  return ciudad.factionJoin.faction === bando ? 'esperar' : 'otro-bando';
+}
+
+/** Entra (o comprueba que ya entró) en un bando; devuelve la sesión y el jugador. */
+async function entrarEnBando(usuario, bando) {
+  const { cuenta } = await abrirSesion(usuario);
+  const s = await conectar(cuenta.ticket);
+  const propia = s.snapshot.payload.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!propia) fallar(`el snapshot de ${usuario} no trae su ciudad`, s.snapshot.payload.cities.map((c) => c.id));
+  let paso = pasoDeFaccion(propia, bando);
+  if (paso === 'otro-bando') fallar(`${usuario} ya es de otro bando o se está uniendo a otro`, propia);
+  let atMs = propia.factionJoin?.atMs;
+  if (paso === 'pedir') {
+    const id = s.sesion.enviar('faction.join', { faction: bando });
+    const r = await s.sesion.esperarQue(['city.update', 'system.error'], (m) => m.requestId === id, 10_000);
+    if (r.type === 'system.error') fallar(`la entrada de ${usuario} en ${bando} fue rechazada`, r.payload);
+    if (!r.payload.factionJoin || r.payload.factionJoin.faction !== bando) fallar('la entrada no volvió en city.update', r.payload);
+    atMs = r.payload.factionJoin.atMs;
+    ok(`${usuario} pide entrar en ${bando}`, `cuenta en ${Math.round((atMs - Date.now()) / 1000)} s`);
+    paso = 'esperar';
+  }
+  if (paso === 'esperar') {
+    const espera = atMs - Date.now();
+    if (espera > 120_000) {
+      fallar(`el preaviso de ${usuario} dura ${Math.round(espera / 1000)} s`,
+        'Arranca el servidor con EO_FACTION_JOIN_SECONDS=20 delante para el humo de facciones.');
+    }
+    await s.sesion.esperarQue('city.update', (m) => m.payload.id === propia.id && m.payload.faction === bando,
+      Math.max(0, espera) + 15_000);
+    ok(`la entrada de ${usuario} en ${bando} cuenta al vencer el preaviso`);
+  } else {
+    ok(`${usuario} ya es de ${bando}`, 'de una pasada anterior');
+  }
+  const otra = s.sesion.enviar('faction.join', { faction: bando === 'ORDER' ? 'CHAOS' : 'ORDER' });
+  const r = await s.sesion.esperarQue(['city.update', 'system.error'], (m) => m.requestId === otra, 10_000);
+  if (r.type !== 'system.error' || r.payload.code !== 'INVALID_TARGET') fallar('una segunda entrada no se rechazó', r);
+  ok(`${usuario} no puede cambiar de bando`, `«${r.payload.message}»`);
+  return { ...s, playerId: cuenta.playerId };
+}
+
+async function faccion() {
+  const orden = await entrarEnBando(ORDEN, 'ORDER');
+  const caos = await entrarEnBando(CAOS, 'CHAOS');
+
+  // RN-FAC-005: pacto y alianza no; comercio sí.
+  for (const type of ['NON_AGGRESSION', 'ALLIANCE']) {
+    const id = orden.sesion.enviar('treaty.propose', { playerId: caos.playerId, type });
+    const r = await orden.sesion.esperarQue(['treaty.update', 'system.error'], (m) => m.requestId === id, 10_000);
+    if (r.type !== 'system.error' || r.payload.code !== 'INVALID_TARGET') fallar(`un ${type} entre la Orden y el Caos no se rechazó`, r);
+    ok(`la Orden y el Caos no firman ${type}`, `«${r.payload.message}»`);
+  }
+  const id = orden.sesion.enviar('treaty.propose', { playerId: caos.playerId, type: 'TRADE' });
+  const r = await orden.sesion.esperarQue(['treaty.update', 'system.error'], (m) => m.requestId === id, 10_000);
+  if (r.type === 'system.error') fallar('un trato de comercio entre la Orden y el Caos se rechazó', r.payload);
+  const retirar = orden.sesion.enviar('treaty.cancel', { treatyId: r.payload.treaty.id });
+  const w = await orden.sesion.esperarQue(['treaty.update', 'system.error'], (m) => m.requestId === retirar, 10_000);
+  if (w.type === 'system.error') fallar('no se pudo retirar la oferta de comercio', w.payload);
+  ok('el comercio entre la Orden y el Caos sí se propone', `oferta ${r.payload.treaty.id}, retirada`);
+  orden.sesion.cerrar();
+  caos.sesion.cerrar();
 }
 
 // Sólo se ejecuta el recorrido cuando el script se invoca directamente. Importarlo

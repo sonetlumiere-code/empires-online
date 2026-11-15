@@ -16,6 +16,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/diplomacy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/message"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -784,6 +785,28 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			SessionID: session.ID,
 			RequestID: msg.RequestID,
 			CityID:    p.CityID,
+		})
+
+	// Facciones (SPEC-FACTIONS): sólo el bando; el instante en que cuenta lo
+	// decide el servidor.
+	case protocol.TypeFactionJoin:
+		var p protocol.FactionJoinPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if p.Faction != player.FactionOrder && p.Faction != player.FactionChaos {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "faction inválida")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.JoinFaction{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			Faction:   p.Faction,
 		})
 
 	// Elaboración del taller (SPEC-CIVILIZATION-GOODS): sólo la ciudad; el

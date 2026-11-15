@@ -10,6 +10,7 @@ import { z } from 'zod';
 import {
   BuildingType,
   EntityId,
+  JoinableFactionCode,
   MESSAGE_MAX_CHARS,
   PROTOCOL_VERSION,
   ResourceAmount,
@@ -186,6 +187,20 @@ export const CityAdvance = z.object({
   requestId: Uuid,
   payload: z.object({
     cityId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
+ * Pide unirse a un bando desde `NEUTRAL`, una vez y para siempre
+ * (SPEC-FACTIONS §4.2). Sólo el bando: el instante en que cuenta lo decide el
+ * servidor. `NEUTRAL` no es un valor del comando.
+ */
+export const FactionJoin = z.object({
+  v: V,
+  type: z.literal('faction.join'),
+  requestId: Uuid,
+  payload: z.object({
+    faction: JoinableFactionCode,
   }).strict(),
 }).strict();
 
@@ -446,6 +461,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   UnitDemolish,
   UnitClaim,
   CityCraft,
+  FactionJoin,
   TreatyPropose,
   TreatyRespond,
   TreatyCancel,
@@ -474,6 +490,7 @@ export type CityBuild = z.infer<typeof CityBuild>;
 export type CityTrain = z.infer<typeof CityTrain>;
 export type CityAdvance = z.infer<typeof CityAdvance>;
 export type CityCraft = z.infer<typeof CityCraft>;
+export type FactionJoin = z.infer<typeof FactionJoin>;
 export type UnitAttack = z.infer<typeof UnitAttack>;
 export type UnitPillage = z.infer<typeof UnitPillage>;
 export type UnitDemolish = z.infer<typeof UnitDemolish>;
@@ -517,6 +534,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'event_log.seen',
   'unit.claim',
   'city.craft',
+  'faction.join',
   'message.send',
   'message.list',
   'message.fetch',

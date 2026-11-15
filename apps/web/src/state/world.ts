@@ -71,6 +71,8 @@ export interface TerritoryView {
   maxY: number;
   ownerType: string;
   ownerId: string | null;
+  /** Facción del jugador dueño, o `null` si no tiene un jugador por dueño (SPEC-FACTIONS §6). */
+  ownerFaction: string | null;
   /** `true` exactamente mientras hay una reclamación activa (SPEC-TERRITORY-CONQUEST §6). */
   contested: boolean;
   /** La reclamación activa: quién reclama y cuándo termina. Ausente si no la hay. */
@@ -89,6 +91,10 @@ export interface CityView {
   era: string;
   /** Civilización de su dueño, pública y fija (SPEC-CIVILIZATION RN-CIV-009). */
   civilization: string;
+  /** Facción de su dueño, pública (SPEC-FACTIONS RN-FAC-009). */
+  faction: string;
+  /** Entrada pendiente de su dueño en un bando, o `null`. Pública. */
+  factionJoin: { faction: string; atMs: number } | null;
   population: number;
   populationLimit: number;
   presenceState: string;
@@ -319,6 +325,7 @@ function cityFromView(c: v1.CityView): CityView {
     production: c.production ?? null,
     advance: c.advance ?? null,
     craft: c.craft ?? null,
+    factionJoin: c.factionJoin ?? null,
   };
 }
 
@@ -545,6 +552,8 @@ export const useWorldStore = create<WorldState>((set, get) => {
             era: p.era !== undefined ? p.era : existing.era,
             advance: p.advance !== undefined ? p.advance : existing.advance,
             craft: p.craft !== undefined ? p.craft : existing.craft,
+            faction: p.faction !== undefined ? p.faction : existing.faction,
+            factionJoin: p.factionJoin !== undefined ? p.factionJoin : existing.factionJoin,
             pillagedAtMs: p.pillagedAtMs !== undefined ? p.pillagedAtMs : existing.pillagedAtMs,
             besiegedAtMs: p.besiegedAtMs !== undefined ? p.besiegedAtMs : existing.besiegedAtMs,
           });

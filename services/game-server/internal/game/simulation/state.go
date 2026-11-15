@@ -116,6 +116,12 @@ type State struct {
 	eraCaps                   map[city.Era]int32
 	pendingAdvanceCompletions map[int64]AdvanceCompletion
 
+	// factionJoining son las entradas en un bando que esperan su transacción
+	// (ADR-039 §3), y pendingFactionCompletions los vencimientos cuya
+	// escritura se descartó (ADR-022).
+	factionJoining            map[uuid.UUID]city.FactionJoin
+	pendingFactionCompletions map[uuid.UUID]FactionJoinCompletion
+
 	// Combate (SPEC-COMBAT-RAID, ADR-024): enfrentamientos, tratados de paz y
 	// muertes por reescribir.
 	combat combatState
@@ -177,6 +183,8 @@ func NewState(w *world.World) *State {
 
 		eraCaps:                   make(map[city.Era]int32),
 		pendingAdvanceCompletions: make(map[int64]AdvanceCompletion),
+		factionJoining:            make(map[uuid.UUID]city.FactionJoin),
+		pendingFactionCompletions: make(map[uuid.UUID]FactionJoinCompletion),
 	}
 }
 

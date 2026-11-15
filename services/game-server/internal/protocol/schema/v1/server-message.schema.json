@@ -505,6 +505,42 @@
                           "NORSE"
                         ]
                       },
+                      "faction": {
+                        "type": "string",
+                        "enum": [
+                          "ORDER",
+                          "CHAOS",
+                          "NEUTRAL"
+                        ]
+                      },
+                      "factionJoin": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "faction": {
+                                "type": "string",
+                                "enum": [
+                                  "ORDER",
+                                  "CHAOS"
+                                ]
+                              },
+                              "atMs": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "faction",
+                              "atMs"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "population": {
                         "type": "integer",
                         "minimum": 0
@@ -653,6 +689,7 @@
                       "centerY",
                       "era",
                       "civilization",
+                      "faction",
                       "population",
                       "populationLimit",
                       "presenceState",
@@ -699,6 +736,16 @@
                         "type": [
                           "string",
                           "null"
+                        ]
+                      },
+                      "ownerFaction": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/faction"
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       },
                       "contested": {
@@ -758,6 +805,7 @@
                       "maxY",
                       "ownerType",
                       "ownerId",
+                      "ownerFaction",
                       "contested"
                     ],
                     "additionalProperties": false
@@ -1441,6 +1489,19 @@
                   "anyOf": [
                     {
                       "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/craft/anyOf/0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "faction": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/faction"
+                },
+                "factionJoin": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/factionJoin/anyOf/0"
                     },
                     {
                       "type": "null"

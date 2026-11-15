@@ -79,6 +79,11 @@ type Config struct {
 	// de territorio libre y con dueño (SPEC-TERRITORY-CONQUEST Q3).
 	TerritoryClaimFree time.Duration
 	TerritoryClaimHeld time.Duration
+	// FactionJoinDelay es el preaviso de una entrada en un bando, y
+	// FactionAffineDamagePerMille el daño que recibe una unidad en tierra afín,
+	// por mil (SPEC-FACTIONS Q3 y Q6).
+	FactionJoinDelay            time.Duration
+	FactionAffineDamagePerMille int32
 	// EventLogMaxAge es hasta cuándo atrás lee el registro, EventLogPageSize
 	// cuántas entradas trae una página y EventLogGroupGap el hueco máximo entre
 	// dos sucesos de una misma entrada (SPEC-EVENT-LOG §10).
@@ -202,22 +207,24 @@ func Load() (Config, error) {
 		CityOfflineProtectionCooldwn: v.seconds("EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS", 300, 0, 86400),
 		CityProtectionMax:            time.Duration(v.intRange("EO_CITY_PROTECTION_MAX_HOURS", 48, 0, 8760)) * time.Hour,
 
-		CombatRepathTicks:      v.intRange("EO_COMBAT_REPATH_TICKS", 5, 1, 1000),
-		CombatMaxChaseTiles:    int32(v.intRange("EO_COMBAT_MAX_CHASE_TILES", 32, 1, 1024)),
-		CombatGuardRadiusTiles: int32(v.intRange("EO_COMBAT_GUARD_RADIUS_TILES", 4, 1, 64)),
-		CombatLeashTiles:       int32(v.intRange("EO_COMBAT_LEASH_TILES", 8, 1, 1024)),
-		PillageWoodPerHit:      int32(v.intRange("EO_PILLAGE_WOOD_PER_HIT", 5, 1, 1000)),
-		PillageStockFloor:      int64(v.intRange("EO_PILLAGE_STOCK_FLOOR", 50, 1, 1_000_000)),
-		SiegeDamageReset:       time.Duration(v.intRange("EO_SIEGE_DAMAGE_RESET_SECONDS", 300, 1, 24*3600)) * time.Second,
-		TreatyOfferTTL:         time.Duration(v.intRange("EO_TREATY_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
-		TreatyBreakNotice:      time.Duration(v.intRange("EO_TREATY_BREAK_NOTICE_MINUTES", 15, 1, 24*60)) * time.Minute,
-		TreatyRetry:            time.Duration(v.intRange("EO_TREATY_RETRY_MINUTES", 10, 1, 24*60)) * time.Minute,
-		TradeOfferTTL:          time.Duration(v.intRange("EO_TRADE_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
-		TerritoryClaimFree:     time.Duration(v.intRange("EO_TERRITORY_CLAIM_FREE_SECONDS", 300, 1, 24*3600)) * time.Second,
-		TerritoryClaimHeld:     time.Duration(v.intRange("EO_TERRITORY_CLAIM_SECONDS", 600, 1, 24*3600)) * time.Second,
-		EventLogMaxAge:         time.Duration(v.intRange("EO_EVENT_LOG_MAX_DAYS", 7, 1, 90)) * 24 * time.Hour,
-		EventLogPageSize:       v.intRange("EO_EVENT_LOG_PAGE_SIZE", 50, 1, 200),
-		EventLogGroupGap:       time.Duration(v.intRange("EO_EVENT_LOG_GROUP_GAP_MINUTES", 10, 1, 24*60)) * time.Minute,
+		CombatRepathTicks:           v.intRange("EO_COMBAT_REPATH_TICKS", 5, 1, 1000),
+		CombatMaxChaseTiles:         int32(v.intRange("EO_COMBAT_MAX_CHASE_TILES", 32, 1, 1024)),
+		CombatGuardRadiusTiles:      int32(v.intRange("EO_COMBAT_GUARD_RADIUS_TILES", 4, 1, 64)),
+		CombatLeashTiles:            int32(v.intRange("EO_COMBAT_LEASH_TILES", 8, 1, 1024)),
+		PillageWoodPerHit:           int32(v.intRange("EO_PILLAGE_WOOD_PER_HIT", 5, 1, 1000)),
+		PillageStockFloor:           int64(v.intRange("EO_PILLAGE_STOCK_FLOOR", 50, 1, 1_000_000)),
+		SiegeDamageReset:            time.Duration(v.intRange("EO_SIEGE_DAMAGE_RESET_SECONDS", 300, 1, 24*3600)) * time.Second,
+		TreatyOfferTTL:              time.Duration(v.intRange("EO_TREATY_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
+		TreatyBreakNotice:           time.Duration(v.intRange("EO_TREATY_BREAK_NOTICE_MINUTES", 15, 1, 24*60)) * time.Minute,
+		TreatyRetry:                 time.Duration(v.intRange("EO_TREATY_RETRY_MINUTES", 10, 1, 24*60)) * time.Minute,
+		TradeOfferTTL:               time.Duration(v.intRange("EO_TRADE_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
+		TerritoryClaimFree:          time.Duration(v.intRange("EO_TERRITORY_CLAIM_FREE_SECONDS", 300, 1, 24*3600)) * time.Second,
+		TerritoryClaimHeld:          time.Duration(v.intRange("EO_TERRITORY_CLAIM_SECONDS", 600, 1, 24*3600)) * time.Second,
+		FactionJoinDelay:            time.Duration(v.intRange("EO_FACTION_JOIN_SECONDS", 900, 1, 24*3600)) * time.Second,
+		FactionAffineDamagePerMille: int32(v.intRange("EO_FACTION_AFFINE_DAMAGE_PERMILLE", 800, 1, 1000)),
+		EventLogMaxAge:              time.Duration(v.intRange("EO_EVENT_LOG_MAX_DAYS", 7, 1, 90)) * 24 * time.Hour,
+		EventLogPageSize:            v.intRange("EO_EVENT_LOG_PAGE_SIZE", 50, 1, 200),
+		EventLogGroupGap:            time.Duration(v.intRange("EO_EVENT_LOG_GROUP_GAP_MINUTES", 10, 1, 24*60)) * time.Minute,
 
 		MessageMaxAge:               time.Duration(v.intRange("EO_MESSAGE_MAX_DAYS", 30, 1, 365)) * 24 * time.Hour,
 		MessagePageSize:             v.intRange("EO_MESSAGE_PAGE_SIZE", 50, 1, 200),

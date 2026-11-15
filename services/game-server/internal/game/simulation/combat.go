@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -263,6 +264,9 @@ func (s *Simulation) attackBlocked(a, t *unit.Unit, posA, posT world.Tile, now t
 	if c, ok := s.state.CityOf(a.PlayerID); ok && c.ProtectedAt(now) {
 		return protocol.CodeCityProtected, "estás protegido: no puedes atacar"
 	}
+	if s.state.OrderPeace(a.PlayerID, t.PlayerID) {
+		return protocol.CodeInvalidTarget, msgOrderPeace
+	}
 	if s.state.AtPeace(a.PlayerID, t.PlayerID, now) {
 		return protocol.CodeInvalidTarget, "un tratado de paz impide atacar a ese jugador"
 	}
@@ -480,13 +484,23 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 		if h.target.HP <= 0 {
 			continue
 		}
+		// INV-COMBAT-006: attackBlocked ya terminó el enfrentamiento entre dos
+		// de la Orden; no hay ruta que llegue aquí.
+		if s.state.OrderPeace(h.attacker.PlayerID, h.target.PlayerID) {
+			s.deps.Log.Error("invariant_violation",
+				"inv_id", "INV-COMBAT-006", "severity", "CRITICO", "policy", "REJECT",
+				"entity", fmt.Sprintf("unit:%d", h.attacker.ID), "tick", s.state.Tick(),
+				"detail", "golpe entre dos jugadores de la Orden: se descarta")
+			continue
+		}
 		if !h.e.announced {
 			h.e.announced = true
 			s.submitAttack(h, nowMs)
 		}
 		alerts = append(alerts, alert{attacker: h.attacker, victim: h.target, at: s.authoritativePosition(h.target, nowMs),
 			victimOwner: h.target.PlayerID})
-		h.target.HP -= h.damage
+		// RN-FAC-008: menos daño en tierra afín al dueño de la víctima.
+		h.target.HP -= s.damageTaken(h.target, h.damage, nowMs)
 		if h.target.HP < 0 {
 			h.target.HP = 0
 		}

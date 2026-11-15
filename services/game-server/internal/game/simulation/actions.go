@@ -64,6 +64,9 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeTradePropose: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeTradeRespond: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeTradeCancel:  {Hostile: false, Territory: TerritoryFree},
+	// Unirse a un bando (SPEC-FACTIONS §4.2): no es hostil y no lo frena la
+	// protección propia ni la ajena.
+	protocol.TypeFactionJoin: {Hostile: false, Territory: TerritoryFree},
 }
 
 // sessionMessages son los mensajes que no actúan sobre el mundo. Los del

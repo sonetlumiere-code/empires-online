@@ -25,6 +25,7 @@ import {
   indexarTerreno,
   esReclamacionDe,
   pactoVigente,
+  pasoDeFaccion,
   rasgo,
   territorioLibreCerca,
   tiemposDePolilinea,
@@ -199,7 +200,7 @@ test('pactoVigente no toma un acuerdo comercial por un pacto: TRADE no da paz (S
 // SPEC-TERRITORY-CONQUEST: el humo --territorio elige el territorio libre más
 // cercano y un tile bien dentro de él.
 test('territorioLibreCerca elige el libre más cercano y un tile dentro de su borde', () => {
-  const t = (id, minX, minY, extra = {}) => ({ id, name: `T${id}`, minX, minY, maxX: minX + 63, maxY: minY + 63, ownerType: 'NONE', ownerId: null, contested: false, ...extra });
+  const t = (id, minX, minY, extra = {}) => ({ id, name: `T${id}`, minX, minY, maxX: minX + 63, maxY: minY + 63, ownerType: 'NONE', ownerId: null, ownerFaction: null, contested: false, ...extra });
   const territorios = [
     t(24, 448, 128, { ownerType: 'PLAYER', ownerId: 'x' }),
     t(32, 448, 192),
@@ -259,3 +260,12 @@ test('bienDe da el bien de cada civilización del catálogo (SPEC-CIVILIZATION-G
   assert.equal(bienDe(catalogo, 'AZTEC'), null);
 });
 
+
+test('pasoDeFaccion: pedir desde NEUTRAL, esperar la propia entrada, nada si ya está dentro (SPEC-FACTIONS)', () => {
+  assert.equal(pasoDeFaccion({ faction: 'NEUTRAL', factionJoin: null }, 'ORDER'), 'pedir');
+  assert.equal(pasoDeFaccion({ faction: 'NEUTRAL', factionJoin: { faction: 'ORDER', atMs: 1 } }, 'ORDER'), 'esperar');
+  assert.equal(pasoDeFaccion({ faction: 'ORDER', factionJoin: null }, 'ORDER'), 'dentro');
+  assert.equal(pasoDeFaccion({ faction: 'CHAOS', factionJoin: null }, 'ORDER'), 'otro-bando');
+  assert.equal(pasoDeFaccion({ faction: 'NEUTRAL', factionJoin: { faction: 'CHAOS', atMs: 1 } }, 'ORDER'), 'otro-bando');
+  assert.equal(pasoDeFaccion({}, 'CHAOS'), 'pedir', 'un servidor sin facción es NEUTRAL');
+});
