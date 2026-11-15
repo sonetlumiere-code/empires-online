@@ -137,6 +137,24 @@ export type EraCode = z.infer<typeof EraCode>;
 export const CivilizationCode = z.enum(['ROMAN', 'BYZANTINE', 'PERSIAN', 'NORSE']);
 export type CivilizationCode = z.infer<typeof CivilizationCode>;
 
+/**
+ * Facción (Global Faction) de un jugador: todos nacen `NEUTRAL` y pueden unirse
+ * una vez, en partida, a `ORDER` o a `CHAOS` (SPEC-FACTIONS RN-FAC-001).
+ */
+export const FactionCode = z.enum(['ORDER', 'CHAOS', 'NEUTRAL']);
+export type FactionCode = z.infer<typeof FactionCode>;
+
+/** Los bandos a los que se puede unir un `NEUTRAL` (`faction.join`). */
+export const JoinableFactionCode = z.enum(['ORDER', 'CHAOS']);
+export type JoinableFactionCode = z.infer<typeof JoinableFactionCode>;
+
+/** Entrada pendiente de un jugador en un bando, que cuenta en `atMs` (SPEC-FACTIONS §6). */
+export const FactionJoinView = z.object({
+  faction: JoinableFactionCode,
+  atMs: z.number().int().min(0),
+});
+export type FactionJoinView = z.infer<typeof FactionJoinView>;
+
 export const TerritoryOwnerType = z.enum(['NONE', 'PLAYER', 'CLAN', 'FACTION']);
 export type TerritoryOwnerType = z.infer<typeof TerritoryOwnerType>;
 
@@ -238,6 +256,10 @@ export const CityView = z.object({
   era: EraCode,
   /** Civilización de su dueño, pública para todo el que ve la ciudad (RN-CIV-009). No cambia: no va en `city.update`. */
   civilization: CivilizationCode,
+  /** Facción de su dueño, pública (SPEC-FACTIONS RN-FAC-009). */
+  faction: FactionCode,
+  /** Entrada pendiente de su dueño en un bando; `null` si no la tiene. Pública. */
+  factionJoin: FactionJoinView.nullable().optional(),
   population: z.number().int().min(0),
   populationLimit: z.number().int().min(0),
   presenceState: PresenceState,
@@ -273,6 +295,8 @@ export const TerritoryView = z.object({
   maxY: WorldCoordinate,
   ownerType: TerritoryOwnerType,
   ownerId: z.string().nullable(),
+  /** Facción del jugador dueño; `null` si no tiene un jugador por dueño (SPEC-FACTIONS §6). */
+  ownerFaction: FactionCode.nullable(),
   /** `true` exactamente mientras hay una reclamación activa (SPEC-TERRITORY-CONQUEST §6). */
   contested: z.boolean(),
   /** La reclamación activa, si la hay: quién reclama y cuándo termina. Aditivo en v1 (R-VER-2). */

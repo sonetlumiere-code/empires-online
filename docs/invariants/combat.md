@@ -176,3 +176,40 @@ también lo pone en rojo.
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse con el dueño ausente se descarta
 y se registra `invariant_violation` con `inv_id=INV-COMBAT-005`.
+
+---
+
+<a id="inv-combat-006"></a>
+## INV-COMBAT-006 — Ningún golpe, robo, derribo ni avance de estandarte se aplica entre dos jugadores de la Orden
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E17 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestLaTablaDeLosBandos`, `TestDosDeLaOrdenDejanDePelearAlEntrarElSegundo` y `TestLaOrdenNoSaqueaNiConquistaALosSuyos` (`internal/game/simulation`), y `TestUnirseALaOrdenPorLaRed` (e2e, `internal/websocket`) |
+
+**Enunciado.** En un tick en que los dos jugadores son de `ORDER` (con la facción efectiva, no la pendiente), no se
+aplica ningún golpe de una unidad de uno a una unidad del otro (también a una caravana), ningún golpe de saqueo ni de
+asedio de uno contra la ciudad del otro, y ningún estandarte de uno avanza sobre un territorio del otro.
+
+**Razón.** Es la regla que define a la Orden (SPEC-FACTIONS Q4). Un solo golpe que se cuele —un enfrentamiento que
+empezó antes de la entrada y no termina, una captura de caravana— rompería la promesa del bando, que es lo que el
+jugador eligió para siempre.
+
+**Cómo se garantiza.** `DOMAIN` — `State.AtPeace` responde que sí entre dos de `ORDER` (ADR-039 §2), y lo consultan la
+orden de las cuatro acciones hostiles y cada tick de combate, saqueo, asedio y conquista, que terminan lo que esté en
+curso en el tick en que la paz aparece (`RN-COMBAT-008`, `RN-COMBAT-025`).
+
+**Cómo se verifica.** **Existen y pasan**: `TestLaTablaDeLosBandos` recorre la tabla de §4.1 de la spec celda a
+celda (`AtPeace` en los dos sentidos); `TestDosDeLaOrdenDejanDePelearAlEntrarElSegundo` pone a un guerrero de la Orden
+a golpear a un aldeano de un `NEUTRAL` cuya entrada en la Orden cuenta a mitad del combate, y comprueba que el
+enfrentamiento termina en ese tick sin un golpe más y que la orden siguiente se rechaza «los dos sois de la Orden»;
+`TestLaOrdenNoSaqueaNiConquistaALosSuyos` rechaza el saqueo con el mismo motivo; y `TestUnirseALaOrdenPorLaRed` lo
+hace de punta a punta por WebSocket. Verificado por mutación: sin la Orden en `AtPeace`, falla la tabla; sin ella
+además en la validación del ataque, falla el combate en curso. La captura de una caravana es un `unit.attack` y pasa
+por la misma validación.
+
+**Violación en runtime.** Un golpe que llegara a evaluarse entre dos de la Orden se descarta y se registra
+`invariant_violation` con `inv_id=INV-COMBAT-006`.

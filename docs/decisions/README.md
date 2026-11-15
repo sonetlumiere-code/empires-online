@@ -94,7 +94,7 @@ No existen estados `Deprecado` ni `Obsoleto`: si algo deja de ser vigente, algun
 
 ## 5. Índice de ADR
 
-Treinta y ocho decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
+Treinta y nueve decisiones registradas. Las doce primeras son las del primer vertical slice, con fecha
 **2026-09-09**; ADR-013, ADR-014 y ADR-015 salieron de la reconciliación de `EO-118`, ADR-016 y ADR-017 de
 las reglas de juego que M6 y M7 tenían bloqueadas, y ADR-018 de sacar la identidad del Game Server para
 cerrar M3, todos con fecha **2026-10-20**; ADR-019, del 2026-10-21, de reconciliar ADR-010 con el handshake
@@ -117,8 +117,10 @@ los almacenes de dos ciudades en una transacción sin que la cola desordene sus 
 dueño y el límite de dos ciudades sin que la RAM y la base discrepen; ADR-035, del **2026-11-05**, de cómo los
 rasgos de cada civilización cambian el juego sin romper el determinismo; ADR-036, del **2026-11-06**, de cómo cada
 civilización elabora un bien que las demás necesitan para llegar a la Edad de Hierro; ADR-037, del **2026-11-13**,
-de cómo un trato viaja por el mapa en dos caravanas que se pueden capturar; y ADR-038, del **2026-11-14**, de cómo
-dos jugadores se escriben sin que la simulación lo vea y sin que lo leído esconda ningún mensaje.
+de cómo un trato viaja por el mapa en dos caravanas que se pueden capturar; ADR-038, del **2026-11-14**, de cómo
+dos jugadores se escriben sin que la simulación lo vea y sin que lo leído esconda ningún mensaje; y ADR-039, del
+**2026-11-15**, de cómo el bando de un jugador decide a quién puede agredir y con quién firmar, y cómo su tierra
+defiende a sus unidades.
 Todos los ficheros viven en este mismo directorio, `docs/decisions/`, y todos están en estado `Aceptado`;
 ADR-004, ADR-007, ADR-010, ADR-011 y ADR-012 llevan una nota de sustitución parcial (por ADR-014, ADR-031,
 ADR-019, ADR-013 y ADR-018).
@@ -163,6 +165,7 @@ ADR-019, ADR-013 y ADR-018).
 | [036](ADR-036-civilization-goods.md) | El bien de cada civilización es un recurso de catálogo, el taller lo elabora con un encargo con su fila, y la Edad de Hierro cobra bienes ajenos en el orden del catálogo | Aceptado | `WINE`, `SILK`, `SPICES` y `FURS` como recursos del almacén y del comercio, con `civilizations.good`; el taller (`WORKSHOP`) con costes en varios recursos, Bronce y uno por ciudad (índice único parcial); la elaboración como encargo en dos fases con su fila `city_crafts`, cuya entrega borra la fila y acredita el bien en una transacción; el paso de Bronce a Hierro con 60 bienes ajenos que `advance.Resolve` convierte en costes concretos en el orden del catálogo, saltándose el propio; migración `000016`. Descarta la unidad exclusiva, el recurso de terreno, el recurso único con origen, la producción pasiva, reutilizar `city_productions`, elegir qué se paga y el coste fijo de cada bien. |
 | [037](ADR-037-caravans-as-units.md) | La caravana es una unidad con su carga en una tabla aparte, el trato carga en lugar de acreditar, la entrega es optimista y la captura cambia el dueño | Aceptado | `CARAVAN` como tipo de unidad sin población ni órdenes, con la carga en `caravan_cargo` y su fila en `caravans` (migración `000017`); una búsqueda A\* por trato en el tick de la aceptación, con la vuelta como la misma ruta al revés; `TradeRepo.Accept` debita y crea las dos caravanas con sus movimientos en una transacción; la llegada es optimista con un trabajo de dos claves (`unit:<id>` y `city:<destino>`) que acredita como mucho una vez; la captura cambia `player_id`, `city_id` y la vida de la unidad y le da una ruta a la ciudad del captor, o la pierde sin ruta; la protección del dueño no cubre a la caravana; `caravan.update`, `caravans[]` y `CARAVAN_CAPTURED`. Descarta la entidad aparte, la caravana como adorno, el botín en el guerrero, la carga en columnas, dos búsquedas por trato, la ruta continua, la entrega en dos fases y un predicado hostil aparte. |
 | [038](ADR-038-player-messages-session-subsystem.md) | Los mensajes entre jugadores son un subsistema de sesión, se guardan antes de entregarse y se serializan por pareja | Aceptado | Cinco comandos de sesión que atiende la conexión, fuera del tick y de la cola; `player_messages`, `message_reads` y `player_blocks` (migración `000018`) con la pareja en orden canónico; un candado de transacción por pareja que confirma los `id` de una conversación en orden y hace exacto el bloqueo; `message.new` tras el `COMMIT`; la idempotencia por `UNIQUE (sender_player_id, request_id)` y no por Redis; límites de ritmo en la RAM del `Server` que responden `RATE_LIMITED` sin cerrar; la entrega en vivo, de un solo proceso. Descarta el tick, la entrega optimista, el cursor asentado, el leído por mensaje, un servicio aparte, Next.js, Redis como almacén y `world_events` |
+| [039](ADR-039-faction-peace-and-affinity.md) | La facción es una segunda fuente de paz, se une con preaviso y su tierra se calcula en cada golpe | Aceptado | La facción y la entrada pendiente en la ciudad, cargadas de `players`; `AtPeace` responde también por la Orden, y `ORDER` y `CHAOS` no firman pacto ni alianza; `faction.join` en dos fases, con un preaviso que cuenta en la fase 5 de forma optimista y espera si hay una orden de tratado en vuelo; un único trabajo escribe la facción y las rupturas con el bando contrario en una transacción tolerante; el daño a una unidad en tierra afín, en enteros por mil, calculado en cada golpe; el trigger de transición de `000019`. Descarta el pacto implícito por pareja, la facción como sesión, la entrada inmediata, rechazar la entrada con tratados, las rupturas por la orden de tratado, un barrido de reparación, la afinidad guardada, el bono de velocidad y los territorios de facción |
 
 Decisiones que el proyecto aplica pero que **no** tienen ADR propio, y de las que por tanto no debe
 citarse ninguno: el monorepo pnpm con módulo Go (canon §2), el determinismo mediante `Clock` y

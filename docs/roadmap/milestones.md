@@ -2022,3 +2022,50 @@ grupos, clanes, denuncias, moderadores y filtros, editar o borrar, adjuntos y fo
    conversación abierta en el store y lo que llegaba después no contaba como no leído ni avisaba. Sin comprobar en el
    navegador: «Escribir» desde la barra de una ciudad ajena tras un clic en el mapa (es el mismo `writeTo` que el del
    tratado) y el contador del título con la pestaña oculta (cubierto por los tests de `notices` y `messages`).
+
+## E17 — Facciones
+
+**Estado: EN CURSO (2026-11-15)**, en la rama `claude/slice-facciones`. Contrato:
+[SPEC-FACTIONS](../specs/factions.md), aceptada el 2026-11-15 con sus diez decisiones de producto, y
+[ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md).
+
+**Objetivo.** Que exista el segundo eje de la visión: el bando decide a quién se puede agredir y con quién firmar, y
+la tierra del propio bando protege a los suyos. Responde a `Q-03`.
+
+**Alcance.** Todos nacen `NEUTRAL` y pueden unirse una sola vez, en partida, a `ORDER` o a `CHAOS` con
+`faction.join`, con un preaviso de 15 minutos visible para todos; la paz de la Orden (dos de `ORDER` no se agreden);
+entre `ORDER` y `CHAOS`, comercio sí y pacto o alianza no, y los vigentes empiezan su preaviso al entrar; la tierra
+afín (la propia y, en un bando, la de todo el bando) reduce un 20 % el daño que reciben las unidades; la facción y la
+entrada pendiente en `CityView`, y el bando del dueño en `TerritoryView`; `INV-PLAYER-013`, `INV-COMBAT-006` e
+`INV-DIPLO-003`; migración `000019`; el cliente y `scripts/smoke.mjs --faccion`. **No entra** (spec §2): elegir el
+bando en el registro, cambiar de bando o volver a `NEUTRAL`, objetivos globales y recompensas por bando, territorios
+de facción, reputación, canales por bando y bonos que no sean el daño en tierra afín.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-039, `INV-PLAYER-013`, `INV-COMBAT-006` e `INV-DIPLO-003`, la precisión de
+   `INV-PLAYER-002`, las de [player.md](../specs/player.md) (`RN-PLAYER-013` y su no-scope),
+   [civilizations.md](../specs/civilizations.md) (Q10), [diplomacy.md](../specs/diplomacy.md) (`RN-DIPLO-001`) y
+   [combat-raid.md](../specs/combat-raid.md) (`RN-COMBAT-006`), y `Q-03` respondida en el backlog.
+2. **HECHO** — Protocolo: `faction.join` (30 cliente → servidor), `faction` y `factionJoin` en `CityView` y
+   `ownerFaction` en `TerritoryView`; contract tests en los dos lados.
+3. **HECHO** — Dominio y simulación: la facción en la ciudad, `AtPeace` con la Orden, los tratados entre bandos,
+   la entrada en dos fases y su vencimiento, el daño en tierra afín.
+4. **HECHO** — Migración `000019` y persistencia: las columnas de la entrada, el trigger de transición, la carga,
+   la orden y el vencimiento con las rupturas en una transacción.
+5. **HECHO** — Cliente: el bando en el HUD y en el panel ajeno, «Elegir bando», la cuenta atrás, la barra sin las
+   órdenes que el bando impide, el texto del territorio afín y los rechazos con su motivo.
+6. **HECHO** — Humo y prueba en vivo (2026-11-15): el servidor aplicó la migración `000019` al arrancar y la validación
+   de carga aceptó el mundo de desarrollo (todos `NEUTRAL`). `scripts/smoke.mjs --faccion`, con el servidor arrancado
+   con `EO_FACTION_JOIN_SECONDS=20`, pasó entero (28 comprobaciones: smoke_orden y smoke_caos, cuentas nuevas, piden
+   entrar en la Orden y en el Caos, la entrada vuelve con su `requestId` y cuenta a los 20 s, una segunda se rechaza, un
+   pacto y una alianza entre ellas se rechazan con «la Orden y el Caos no firman la paz» y un trato de comercio se
+   propone y se retira); una segunda pasada, con las cuentas ya en su bando, pasó también (26). La base guarda las dos
+   facciones sin entrada pendiente, `world_events` tiene dos `FactionJoinOrdered` y dos `FactionJoined`, y
+   `eo_faction_joins_total` vale 1 en cada bando. smoke_runner y smoke_victim siguen `NEUTRAL`. En el navegador
+   integrado: como smoke_orden, la cabecera dice «… — Edad de Piedra — Orden» sin «Elegir bando»; como smoke_victim,
+   «… — Neutral» con «Elegir bando», y la ventana muestra los dos bandos con lo que da y cuesta cada uno y «Unirme a la
+   Orden para siempre»; «Cancelar» la cierra sin mandar nada. Sin comprobar en el navegador: la cuenta atrás de una
+   entrada pendiente, la barra de una ciudad ajena con su bando (las ciudades de los dos bandos quedaron a 124 tiles),
+   el clic de ataque entre dos de la Orden y la línea de tierra afín del territorio; los cubren los tests de
+   `factions.test.ts`, el e2e y la simulación.

@@ -88,11 +88,24 @@ type City struct {
 	// (SPEC-CIVILIZATION). No es una columna de cities: la carga la lee de
 	// players, y no cambia nunca (INV-PLAYER-011). Vacía sólo en los tests que
 	// no la fijan, y entonces sus rasgos son neutros.
-	Civilization    string
+	Civilization string
+	// Faction es el código de la facción efectiva de su dueño, y FactionJoin su
+	// entrada confirmada en un bando, o nil (SPEC-FACTIONS, ADR-039 §1). Como
+	// la civilización, no son columnas de cities: la carga las lee de players.
+	// Faction vacía, sólo en los tests que no la fijan, es NEUTRAL.
+	Faction         string
+	FactionJoin     *FactionJoin
 	LastOnlineAt    *time.Time
 	LastOfflineAt   *time.Time
 	ProtectionUntil *time.Time
 	Version         int32
+}
+
+// FactionJoin es la entrada de un jugador NEUTRAL en un bando, que cuenta en
+// AtMs (SPEC-FACTIONS RN-FAC-002).
+type FactionJoin struct {
+	Faction string
+	AtMs    int64
 }
 
 // Center devuelve el tile central de la ciudad.

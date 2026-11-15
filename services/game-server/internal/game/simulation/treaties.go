@@ -191,8 +191,13 @@ func (s *State) noteRejection(t diplomacy.Treaty) {
 }
 
 // AtPeace indica si dos jugadores tienen un tratado vigente que impide atacar
-// (RN-COMBAT-006, RN-COMBAT-020), también durante un preaviso.
+// (RN-COMBAT-006, RN-COMBAT-020), también durante un preaviso, o si los dos son
+// de la Orden (RN-FAC-003, ADR-039 §2): es la única fuente de paz que leen el
+// combate, el saqueo, el asedio y la conquista.
 func (s *State) AtPeace(x, y uuid.UUID, now time.Time) bool {
+	if s.OrderPeace(x, y) {
+		return true
+	}
 	for _, t := range s.openOf(x, y) {
 		if t.GivesPeaceAt(now) {
 			return true
@@ -282,6 +287,11 @@ func (s *Simulation) handleProposeTreaty(cmd ProposeTreaty) {
 		s.treatyReject(cmd.PlayerID, cmd.RequestID, "ese jugador no existe")
 		return
 	}
+	// RN-FAC-005 e INV-DIPLO-003: la Orden y el Caos no firman la paz.
+	if s.state.opposedTreaty(cmd.PlayerID, cmd.Target, cmd.Type) {
+		s.treatyReject(cmd.PlayerID, cmd.RequestID, msgOpposedPeace)
+		return
+	}
 	k := pairKey(cmd.PlayerID, cmd.Target)
 	if _, ocupado := s.state.diplo.busy[k]; ocupado {
 		s.treatyReject(cmd.PlayerID, cmd.RequestID, "hay otra orden en curso con ese jugador")
@@ -329,6 +339,12 @@ func (s *Simulation) handleRespondTreaty(cmd RespondTreaty) {
 	}
 	if _, ocupado := s.state.diplo.busy[pairKey(t.PlayerA, t.PlayerB)]; ocupado {
 		s.treatyReject(cmd.PlayerID, cmd.RequestID, "hay otra orden en curso sobre ese tratado")
+		return
+	}
+	// RN-FAC-005 e INV-DIPLO-003: una oferta de paz entre la Orden y el Caos
+	// —hecha cuando uno era NEUTRAL— no se puede aceptar; sí rechazar.
+	if cmd.Accept && s.state.opposedTreaty(t.PlayerA, t.PlayerB, t.Type) {
+		s.treatyReject(cmd.PlayerID, cmd.RequestID, msgOpposedPeace)
 		return
 	}
 	next, event := diplomacy.StatusRejected, "TreatyRejected"

@@ -40,7 +40,8 @@ func sano(t *testing.T) (loadcheck.Input, *city.City, []*unit.Unit) {
 	t.Helper()
 	dueno := uuid.New()
 	ciudad := &city.City{ID: 1, OwnerPlayerID: dueno, CenterX: 20, CenterY: 20, Era: city.EraStone,
-		Population: 3, PopulationLimit: 20, PresenceState: city.PresenceOnline, Civilization: "NORSE"}
+		Population: 3, PopulationLimit: 20, PresenceState: city.PresenceOnline, Civilization: "NORSE",
+		Faction: player.FactionNeutral}
 	var aldeanos []*unit.Unit
 	for i := int64(1); i <= 3; i++ {
 		aldeanos = append(aldeanos, &unit.Unit{ID: i, PlayerID: dueno, CityID: &ciudad.ID, Type: unit.TypeVillager,
@@ -97,6 +98,33 @@ func TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque(t *testing.T) {
 		assert.Equal(t, []string{"INV-PLAYER-002/FAIL_FAST"}, invs(r), "civilización %q", codigo)
 		assert.True(t, r.Fatal())
 	}
+}
+
+// SPEC-FACTIONS (ADR-039 §1): una ciudad sin una facción del catálogo, o con una
+// entrada pendiente que no sale de NEUTRAL hacia ORDER o CHAOS, aborta el
+// arranque (INV-PLAYER-002, INV-PLAYER-013).
+func TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque(t *testing.T) {
+	for _, codigo := range []string{"", "GUILD"} {
+		in, ciudad, _ := sano(t)
+		ciudad.Faction = codigo
+		r := loadcheck.Check(in)
+		assert.Equal(t, []string{"INV-PLAYER-002/FAIL_FAST"}, invs(r), "facción %q", codigo)
+		assert.True(t, r.Fatal())
+	}
+	for _, caso := range []struct{ faction, join string }{
+		{player.FactionOrder, player.FactionChaos},
+		{player.FactionNeutral, player.FactionNeutral},
+	} {
+		in, ciudad, _ := sano(t)
+		ciudad.Faction = caso.faction
+		ciudad.FactionJoin = &city.FactionJoin{Faction: caso.join, AtMs: 1}
+		r := loadcheck.Check(in)
+		assert.Equal(t, []string{"INV-PLAYER-013/FAIL_FAST"}, invs(r), "%s → %s", caso.faction, caso.join)
+		assert.True(t, r.Fatal())
+	}
+	in, ciudad, _ := sano(t)
+	ciudad.FactionJoin = &city.FactionJoin{Faction: player.FactionOrder, AtMs: 1}
+	assert.Empty(t, invs(loadcheck.Check(in)), "una entrada de NEUTRAL a ORDER es válida")
 }
 
 // INV-PLAYER-012: un rasgo que no se puede aplicar aborta el arranque.

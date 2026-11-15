@@ -53,6 +53,8 @@ const (
 	TypeTradePropose = "trade.propose"
 	TypeTradeRespond = "trade.respond"
 	TypeTradeCancel  = "trade.cancel"
+	// Facciones (SPEC-FACTIONS).
+	TypeFactionJoin = "faction.join"
 	// Registro (SPEC-EVENT-LOG): los atiende la conexión, no la simulación.
 	TypeEventLogFetch = "event_log.fetch"
 	TypeEventLogSeen  = "event_log.seen"
@@ -120,6 +122,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeTradePropose:   true,
 	TypeTradeRespond:   true,
 	TypeTradeCancel:    true,
+	TypeFactionJoin:    true,
 	TypeEventLogFetch:  true,
 	TypeEventLogSeen:   true,
 	TypeMessageSend:    true,
@@ -278,6 +281,13 @@ type ProductionView struct {
 	CompletesAtMs int64  `json:"completesAtMs"`
 }
 
+// FactionJoinView es la entrada de un jugador en un bando, que cuenta en AtMs
+// (SPEC-FACTIONS §6).
+type FactionJoinView struct {
+	Faction string `json:"faction"`
+	AtMs    int64  `json:"atMs"`
+}
+
 // AdvanceView es el avance de era en curso de una ciudad: a qué era va y
 // cuándo llega (SPEC-ECON-STONE §6).
 type AdvanceView struct {
@@ -309,11 +319,16 @@ type CityView struct {
 	Era           string `json:"era"`
 	// Civilization es el código de la civilización de su dueño, pública para
 	// todo el que ve la ciudad (SPEC-CIVILIZATION RN-CIV-009).
-	Civilization      string `json:"civilization"`
-	Population        int32  `json:"population"`
-	PopulationLimit   int32  `json:"populationLimit"`
-	PresenceState     string `json:"presenceState"`
-	ProtectionUntilMs *int64 `json:"protectionUntilMs"`
+	Civilization string `json:"civilization"`
+	// Faction es el código de la facción de su dueño y FactionJoin su entrada
+	// pendiente en un bando, o null; públicas para todo el que ve la ciudad
+	// (SPEC-FACTIONS RN-FAC-009).
+	Faction           string           `json:"faction"`
+	FactionJoin       *FactionJoinView `json:"factionJoin"`
+	Population        int32            `json:"population"`
+	PopulationLimit   int32            `json:"populationLimit"`
+	PresenceState     string           `json:"presenceState"`
+	ProtectionUntilMs *int64           `json:"protectionUntilMs"`
 	// Stocks y Production viajan siempre: el stock de la ciudad y su
 	// entrenamiento en curso, o null.
 	Stocks     Stocks          `json:"stocks"`
@@ -335,6 +350,9 @@ type TerritoryView struct {
 	MaxY      int32   `json:"maxY"`
 	OwnerType string  `json:"ownerType"`
 	OwnerID   *string `json:"ownerId"`
+	// OwnerFaction es la facción del jugador dueño, o null si no tiene un
+	// jugador por dueño (SPEC-FACTIONS §6).
+	OwnerFaction *string `json:"ownerFaction"`
 	// Contested es true exactamente mientras hay una reclamación activa
 	// (SPEC-TERRITORY-CONQUEST §6, INV-TERR-006).
 	Contested bool `json:"contested"`
@@ -713,6 +731,12 @@ type CityCraftPayload struct {
 	CityID int64 `json:"cityId"`
 }
 
+// FactionJoinPayload pide unirse a un bando (SPEC-FACTIONS §4.2). Sólo nombra
+// el bando: el instante en que cuenta lo decide el servidor (INV-SEC-001).
+type FactionJoinPayload struct {
+	Faction string `json:"faction"`
+}
+
 // ─────────────────────────────────────────────────────────────
 // Payloads servidor → cliente
 // ─────────────────────────────────────────────────────────────
@@ -818,6 +842,11 @@ type CityUpdatePayload struct {
 	// Craft: nil si no cambia; apuntando a nil, la elaboración terminó o se
 	// perdió; apuntando a una vista, empieza (SPEC-CIVILIZATION-GOODS §6).
 	Craft **CraftView `json:"craft,omitempty"`
+	// Faction es la facción nueva al contar una entrada; FactionJoin: nil si no
+	// cambia, apuntando a nil si la entrada contó, apuntando a una vista si
+	// empieza (SPEC-FACTIONS §6).
+	Faction     *string           `json:"faction,omitempty"`
+	FactionJoin **FactionJoinView `json:"factionJoin,omitempty"`
 	// PillagedAtMs es el instante del último golpe de saqueo. Sólo lo recibe
 	// el dueño de la ciudad (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
 	PillagedAtMs *int64 `json:"pillagedAtMs,omitempty"`

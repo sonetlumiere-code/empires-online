@@ -69,7 +69,7 @@ Nótese la relación con [INV-SEC-004](security.md#inv-sec-004): aquel invariant
 | Aplicación | DB, TEST |
 | Milestone | M2 |
 | Política ante violación | FAIL_FAST en escritura (constraint) |
-| Cobertura | **Cubierto** por `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon`, `TestLosDosEjesSonOrtogonales`, `TestLaFundacionEscribeLaCivilizacionElegida` y `TestUnaFundacionSinCivilizacionDelCatalogoSeRechazaSinEscribir` (integration, `internal/persistence/postgres`), `TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque` (`internal/game/loadcheck`) y, en `apps/web`, los de la civilización de `authService.test.ts` y `store.integration.test.ts` |
+| Cobertura | **Cubierto** por `TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque` (`internal/game/loadcheck`, desde E17: una ciudad sin una facción del catálogo aborta el arranque), `TestLaEntradaYSuVencimientoConLasRupturas` (integration: la ciudad se carga con su facción y su entrada), `TestLasRestriccionesDeJugadoresRechazanFilasInvalidas`, `TestLosCatalogosDeCivilizacionYFaccionSonLosDelCanon`, `TestLosDosEjesSonOrtogonales`, `TestLaFundacionEscribeLaCivilizacionElegida` y `TestUnaFundacionSinCivilizacionDelCatalogoSeRechazaSinEscribir` (integration, `internal/persistence/postgres`), `TestUnaCiudadSinCivilizacionDelCatalogoAbortaElArranque` (`internal/game/loadcheck`) y, en `apps/web`, los de la civilización de `authService.test.ts` y `store.integration.test.ts` |
 
 **Enunciado.** Toda fila de `players` tiene `civilization_id` no nulo referenciando una fila existente de `civilizations`, y `faction_id` no nulo referenciando una fila existente de `factions`; ninguna de las dos columnas admite valores múltiples ni nulos.
 
@@ -101,6 +101,13 @@ su cuenta `PENDING` (migración 3 del almacén de identidad) y llega a la fundac
 de una fundación que no terminó funda con la de la cuenta, nunca con otra. Un código que no está en el catálogo se
 rechaza sin crear nada. La facción sigue fijada por el parámetro de arranque (`NEUTRAL`) hasta su spec. Que la
 civilización no cambie después del alta lo garantiza ahora [INV-PLAYER-011](#inv-player-011).
+
+**Precisión (2026-11-15, [SPEC-FACTIONS](../specs/factions.md) §4.2, [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) §1 y §6).**
+Hasta E17 la facción la fijaba el parámetro de arranque (`NEUTRAL`) y no cambiaba nunca. Desde E17 todo jugador sigue
+naciendo `NEUTRAL`, y puede unirse una vez a `ORDER` o a `CHAOS` en partida: `faction_id` sigue siendo exactamente
+una facción del catálogo en todo momento, y la entrada pendiente vive aparte (`faction_join_id`, `faction_join_at`,
+migración `000019`). Que sólo cambie de `NEUTRAL` a un bando, y una vez, lo garantiza [INV-PLAYER-013](#inv-player-013).
+La validación de carga exige además que toda ciudad lleve una facción del catálogo.
 
 ---
 
@@ -504,3 +511,45 @@ flotante puede diferir en el último bit entre plataformas y, tras redondear, en
 
 **Violación en runtime.** Un catálogo inválido impide arrancar: no hay un rasgo «a medias» que aplicar. Una
 multiplicación por su cuenta en un sistema sería un bono que diverge de su golden por rasgo.
+
+---
+
+<a id="inv-player-013"></a>
+## INV-PLAYER-013 — La facción de un jugador sólo cambia de `NEUTRAL` a `ORDER` o a `CHAOS`, y como mucho una vez
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E17 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestElTriggerSoloDejaEntrarEnUnBandoDesdeNeutral` y `TestLaEntradaYSuVencimientoConLasRupturas` (integration, `internal/persistence/postgres`), `TestRechazosDeUnirseAUnBando` (`internal/game/simulation`), `TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque` (`internal/game/loadcheck`) y `TestSoloSeEntraEnUnBandoDesdeNeutral` (`internal/domain/player`) |
+
+**Enunciado.** Todo `UPDATE` de `players.faction_id` que cambia su valor lo hace de `NEUTRAL` a `ORDER` o a `CHAOS`;
+y una entrada pendiente (`faction_join_id` no nulo) sólo existe sobre un jugador `NEUTRAL` y hacia `ORDER` o `CHAOS`.
+Como `NEUTRAL` no vuelve, la facción cambia como mucho una vez en la vida del jugador.
+
+**Razón.** El bando es para siempre (SPEC-FACTIONS Q2): si se pudiera cambiar, entrar en la Orden cuando eres débil y
+pasarte al Caos cuando eres fuerte vaciaría de sentido las dos cosas. Un cambio silencioso cambiaría a quién puede
+agredir el jugador y con quién puede firmar sin que nadie lo hubiera decidido.
+
+**Cómo se garantiza.**
+
+- `DB` — el trigger `players_faction_transition` (`BEFORE UPDATE OF faction_id, faction_join_id ON players`,
+  migración `000019`) rechaza con `23514` y este ID cualquier otra transición, comparando por código del catálogo; el
+  `CHECK` `players_faction_join_pair` exige que la entrada pendiente tenga sus dos columnas o ninguna.
+- `DOMAIN` — `faction.join` sólo se acepta de un jugador `NEUTRAL` sin entrada pendiente ni en vuelo, y su escritura
+  sólo cambia la fila si sigue así (ADR-039 §3 y §4). La validación de carga rechaza una entrada pendiente sobre un
+  jugador que no es `NEUTRAL`.
+
+**Cómo se verifica.** `TestElTriggerSoloDejaEntrarEnUnBandoDesdeNeutral` (integration) — **existe y pasa**: intenta
+una entrada con una sola columna, una entrada hacia `NEUTRAL`, cambiar y retirar una entrada pendiente, contar en otro
+bando que el de la entrada, `ORDER`→`CHAOS`, `ORDER`→`NEUTRAL`, `CHAOS`→`ORDER` y una entrada sobre un jugador de un
+bando, y espera el rechazo (`23514`, con el ID o el nombre del `CHECK`); comprueba que `NEUTRAL`→`ORDER` con su
+entrada y `NEUTRAL`→`CHAOS` se admiten. Verificado por mutación: con el trigger desactivado, falla.
+`TestLaEntradaYSuVencimientoConLasRupturas` comprueba que `RequestJoin` sólo apunta sobre un `NEUTRAL` sin entrada;
+en la simulación, `TestRechazosDeUnirseAUnBando` cubre cada rechazo de `faction.join`, y la validación de carga
+rechaza una entrada imposible (`TestUnaCiudadSinFaccionValidaOConUnaEntradaImposibleAbortaElArranque`).
+
+**Violación en runtime.** El trigger la hace imposible en la base. La RAM sólo la cambia el vencimiento de una entrada
+confirmada.

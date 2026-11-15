@@ -729,6 +729,27 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Al conectar y al volver a la pestaña** tras un rato fuera, el cliente pide la bandeja, como la página del
   registro (`RN-LOG-007`).
 
+### 4.14 Facciones: el bando, «Elegir bando» y la tierra afín (SPEC-FACTIONS)
+
+> **Estado (2026-11-15): implementado y con tests de lo puro** (`src/state/factions.ts`, `src/state/world.ts`,
+> `src/net/client.ts`).
+
+- **El store** guarda en cada ciudad `faction` y `factionJoin` (de `CityView` y de `city.update`), y en cada territorio
+  `ownerFaction`. El cliente no decide nada del bando: la paz, los tratados y el daño los aplica el servidor.
+- **El HUD.** La cabecera dice «ciudad — civilización — era — bando». Con una entrada pendiente, «Te unes a la Orden
+  en 12:30» (`joinLabel`, con su segundero); un `NEUTRAL` sin entrada tiene el botón «Elegir bando»
+  (`canJoinFaction`).
+- **«Elegir bando»** abre una ventana con los dos bandos y lo que da y cuesta cada uno (`FACTION_CHOICES`), los pactos y
+  alianzas que se romperán con el elegido (`treatiesBrokenByJoining`) y la confirmación «Unirme a … para siempre», que
+  manda `faction.join`.
+- **La barra de una ciudad ajena** dice su bando y su entrada pendiente, y no ofrece «Proponer pacto» ni «Proponer
+  alianza» cuando los bandos lo impiden (`treatyForbidden`).
+- **El clic de ataque.** Un clic sobre una unidad ajena con un guerrero propio seleccionado no manda `unit.attack` si
+  los dos son de la Orden (`orderPeace`): pone en el pie el mismo motivo que daría el servidor, «los dos sois de la
+  Orden».
+- **El territorio** del guerrero seleccionado dice el bando de su dueño y, si es tierra afín, el 20 % menos de daño
+  (`territoryFactionLine`); el porcentaje es una copia del catálogo del servidor (`AFFINE_DAMAGE_PERCENT`).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

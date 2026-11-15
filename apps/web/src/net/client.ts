@@ -323,6 +323,14 @@ export class GameClient {
     return this.send('city.craft', { cityId });
   }
 
+  /**
+   * Pide unirse a un bando desde NEUTRAL, una vez y para siempre
+   * (SPEC-FACTIONS §4.2). El instante en que cuenta lo decide el servidor.
+   */
+  joinFaction(faction: 'ORDER' | 'CHAOS'): string {
+    return this.send('faction.join', { faction });
+  }
+
   /** Encarga el entrenamiento de un aldeano. */
   trainVillager(cityId: number): string {
     return this.trainUnit(cityId, 'VILLAGER');

@@ -115,6 +115,14 @@ type Deps struct {
 	// Q3). Cero: los valores por defecto, 5 y 10 min.
 	TerritoryClaimFree time.Duration
 	TerritoryClaimHeld time.Duration
+	// Factions escribe la entrada en un bando y su vencimiento (ADR-039).
+	// Opcional: sin él, faction.join responde INTERNAL_ERROR.
+	Factions FactionStore
+	// FactionJoinDelay es el preaviso de una entrada en un bando, y
+	// FactionAffineDamagePerMille el daño que recibe una unidad en tierra afín,
+	// por mil (SPEC-FACTIONS Q3 y Q6). Cero: 15 min y 800.
+	FactionJoinDelay            time.Duration
+	FactionAffineDamagePerMille int32
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -282,6 +290,12 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleCaravanDeliverPersistFailed(c)
 	case CaravanCapturePersistFailed:
 		s.handleCaravanCapturePersistFailed(c)
+	case JoinFaction:
+		s.handleJoinFaction(c)
+	case FactionJoinResolved:
+		s.handleFactionJoinResolved(c)
+	case FactionJoinCompletePersistFailed:
+		s.handleFactionJoinCompletePersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -714,7 +728,11 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 		s.applyPresence(c, city.PresenceOfflinePending, now)
 	}
 
-	// 2. Caducidad de tratados. Se encola, no se ejecuta: el tick no hace I/O.
+	// 2. Las entradas en un bando que vencen (RN-FAC-002), antes de la
+	// caducidad de los tratados: los pactos que rompen empiezan su preaviso en
+	// este mismo tick. Y la caducidad de tratados. Se encola, no se ejecuta: el
+	// tick no hace I/O.
+	s.completeFactionJoins(now.UnixMilli())
 	s.sweepTreaties(now)
 
 	// 3. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
@@ -925,6 +943,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushCraftDeliveries()
 	s.flushCaravanWrites()
 	s.flushAdvanceCompletions()
+	s.flushFactionCompletions()
 	s.flushDestructions()
 	s.flushDeaths()
 	s.flushClaims()

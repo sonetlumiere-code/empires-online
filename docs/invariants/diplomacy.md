@@ -418,6 +418,42 @@ simulación, `TestRechazosDeLaDiplomacia` (una segunda oferta) y `TestUnaAlianza
 
 **Violación en runtime.** La transacción falla por el índice y la orden se rechaza con `INVALID_TARGET`.
 
+
+---
+
+<a id="inv-diplo-003"></a>
+## INV-DIPLO-003 — Entre la Orden y el Caos nunca nace un pacto ni una alianza, y el que quede vigente está en preaviso
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E17 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestLaTablaDeLosBandos`, `TestUnaPazEntreBandosContrariosNoSeAcepta`, `TestAlEntrarSeRompenLosPactosConElBandoContrario`, `TestLaEntradaEsperaAUnaOrdenDeTratadoEnVuelo` y `TestUnaEntradaVencidaConElServidorParadoCuentaEnElPrimerTick` (`internal/game/simulation`), y `TestLaEntradaYSuVencimientoConLasRupturas`, `TestElVencimientoEsTolerante` y `TestUnFalloEnElVencimientoNoDejaNadaAMedias` (integration, `internal/persistence/postgres`) |
+
+**Enunciado.** Ningún `NON_AGGRESSION` ni `ALLIANCE` pasa a `ACTIVE` entre un jugador de `ORDER` y uno de `CHAOS`; y
+todo `NON_AGGRESSION` o `ALLIANCE` `ACTIVE` entre un jugador de `ORDER` y uno de `CHAOS` tiene `break_effective_at`.
+
+**Razón.** La Orden y el Caos no firman la paz (SPEC-FACTIONS Q5). Un pacto vigente sin fecha de fin entre los dos
+bandos sería una paz permanente que el bando prohíbe, y nadie la rompería sola.
+
+**Cómo se garantiza.** `DOMAIN` — `treaty.propose` y `treaty.respond` con `accept` se rechazan con `INVALID_TARGET`
+entre los dos bandos (`RN-FAC-005`); el vencimiento de la entrada en un bando escribe la facción y la ruptura de cada
+pacto o alianza con el bando contrario en una sola transacción (ADR-039 §4), así que la base no pasa nunca por un
+estado con la facción escrita y un pacto sin preaviso.
+
+**Cómo se verifica.** **Existen y pasan**: en la simulación, `TestLaTablaDeLosBandos` (las propuestas de pacto y
+alianza entre la Orden y el Caos se rechazan; el comercio, no), `TestUnaPazEntreBandosContrariosNoSeAcepta` (una oferta
+hecha cuando uno era `NEUTRAL` no se acepta; sí se rechaza), `TestAlEntrarSeRompenLosPactosConElBandoContrario` (la
+alianza con el Caos empieza su preaviso al entrar en la Orden; la de un neutral, el comercio y la que ya se rompía, no),
+`TestLaEntradaEsperaAUnaOrdenDeTratadoEnVuelo` y la recuperación; en integración,
+`TestLaEntradaYSuVencimientoConLasRupturas` (la facción, la entrada y la ruptura en una transacción, con su autor),
+`TestElVencimientoEsTolerante` y `TestUnFalloEnElVencimientoNoDejaNadaAMedias` (un fallo inyectado en el último
+`INSERT` no deja ni la facción ni la ruptura).
+
+**Violación en runtime.** Una aceptación entre los dos bandos se rechaza con `INVALID_TARGET` y no se escribe nada.
+
 ---
 
 ## Trazabilidad
@@ -435,6 +471,7 @@ simulación, `TestRechazosDeLaDiplomacia` (una segunda oferta) y `TestUnaAlianza
 | INV-GARR-009 | `postgres.GarrisonRepo`, `internal/game/simulation` | [INV-CITY-009](city.md#inv-city-009) |
 | INV-DIPLO-001 | `internal/game/simulation` | [INV-SEC-001](security.md#inv-sec-001) |
 | INV-DIPLO-002 | `migrations/`, `internal/game/simulation` | [INV-COMBAT-002](combat.md#inv-combat-002) |
+| INV-DIPLO-003 | `internal/game/simulation`, `postgres.FactionRepo` | [INV-PLAYER-013](player.md#inv-player-013), [INV-COMBAT-006](combat.md#inv-combat-006) |
 
 ## Documentos relacionados
 

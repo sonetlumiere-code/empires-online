@@ -19,12 +19,19 @@ type CityRepo struct{ store *Store }
 // NewCityRepo crea el repositorio.
 func NewCityRepo(s *Store) *CityRepo { return &CityRepo{store: s} }
 
-// La última columna es el código de la civilización del dueño (SPEC-CIVILIZATION):
-// no vive en cities, pero toda ciudad que se lee la lleva.
+// Las últimas columnas son el código de la civilización del dueño
+// (SPEC-CIVILIZATION), el de su facción y su entrada pendiente en un bando
+// (SPEC-FACTIONS, ADR-039 §1): no viven en cities, pero toda ciudad que se lee
+// las lleva.
 const cityColumns = `id, owner_player_id, name, center_x, center_y, era, population,
 	population_limit, presence_state, last_online_at, last_offline_at, protection_until, version,
 	(SELECT cv.code FROM players p JOIN civilizations cv ON cv.id = p.civilization_id
-	  WHERE p.id = cities.owner_player_id) AS civilization`
+	  WHERE p.id = cities.owner_player_id) AS civilization,
+	(SELECT f.code FROM players p JOIN factions f ON f.id = p.faction_id
+	  WHERE p.id = cities.owner_player_id) AS faction,
+	(SELECT f.code FROM players p JOIN factions f ON f.id = p.faction_join_id
+	  WHERE p.id = cities.owner_player_id) AS faction_join,
+	(SELECT p.faction_join_at FROM players p WHERE p.id = cities.owner_player_id) AS faction_join_at`
 
 // GetByID recupera una ciudad.
 func (r *CityRepo) GetByID(ctx context.Context, id int64) (*city.City, error) {
@@ -233,9 +240,12 @@ func (r *CityRepo) ListEras(ctx context.Context) ([]city.EraDefinition, error) {
 func scanCity(row rowScanner) (*city.City, error) {
 	var c city.City
 	var era, presence string
+	var faction, joinFaction *string
+	var joinAt *time.Time
 	err := row.Scan(&c.ID, &c.OwnerPlayerID, &c.Name, &c.CenterX, &c.CenterY, &era,
 		&c.Population, &c.PopulationLimit, &presence,
-		&c.LastOnlineAt, &c.LastOfflineAt, &c.ProtectionUntil, &c.Version, &c.Civilization)
+		&c.LastOnlineAt, &c.LastOfflineAt, &c.ProtectionUntil, &c.Version, &c.Civilization,
+		&faction, &joinFaction, &joinAt)
 	if err != nil {
 		if err = normalize(err); err == ErrNotFound {
 			return nil, city.ErrNotFound
@@ -244,5 +254,11 @@ func scanCity(row rowScanner) (*city.City, error) {
 	}
 	c.Era = city.Era(era)
 	c.PresenceState = city.PresenceState(presence)
+	if faction != nil {
+		c.Faction = *faction
+	}
+	if joinFaction != nil && joinAt != nil {
+		c.FactionJoin = &city.FactionJoin{Faction: *joinFaction, AtMs: joinAt.UnixMilli()}
+	}
 	return &c, nil
 }

@@ -685,7 +685,7 @@ describe('conquista (SPEC-TERRITORY-CONQUEST)', () => {
   const otro = '00000000-0000-4000-8000-000000000002';
   const territory = {
     id: 12, name: 'Llanuras del Norte', minX: 128, minY: 64, maxX: 191, maxY: 127,
-    ownerType: 'PLAYER', ownerId: otro, contested: false,
+    ownerType: 'PLAYER', ownerId: otro, ownerFaction: 'NEUTRAL', contested: false,
   };
   const claim = { playerId: uuid, cityId: 7, cityName: 'Villa Norte', startedAtMs: 1_757_376_000_000, endsAtMs: 1_757_376_600_000 };
 
@@ -727,6 +727,7 @@ describe('civilizaciones (SPEC-CIVILIZATION)', () => {
     centerY: 12,
     era: 'STONE_AGE',
     civilization: 'NORSE',
+    faction: 'NEUTRAL',
     population: 3,
     populationLimit: 20,
     presenceState: 'ONLINE',
@@ -855,6 +856,54 @@ describe('caravanas (SPEC-CARAVANS)', () => {
     }
     const llegada = { kind: 'CARAVAN_ARRIVED', atMs: 1, otherPlayerId: otro, otherCityId: null, otherCityName: null };
     expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: llegada }).ok, 'Q11: la llegada no se avisa').toBe(false);
+  });
+});
+
+describe('facciones (SPEC-FACTIONS)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const cmd = (payload: unknown) => parseClientMessage({ v: 1, type: 'faction.join', requestId: uuid, payload });
+  const ciudad = {
+    id: 7, ownerPlayerId: uuid, name: 'Roma', centerX: 10, centerY: 12, era: 'STONE_AGE', civilization: 'ROMAN',
+    faction: 'NEUTRAL', population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
+  };
+  const territory = {
+    id: 12, name: 'Llanuras del Norte', minX: 128, minY: 64, maxX: 191, maxY: 127,
+    ownerType: 'PLAYER', ownerId: uuid, ownerFaction: 'NEUTRAL', contested: false,
+  };
+
+  it('faction.join sólo nombra ORDER o CHAOS: NEUTRAL no es un valor del comando (RN-FAC-001)', () => {
+    expect(cmd({ faction: 'ORDER' }).ok).toBe(true);
+    expect(cmd({ faction: 'CHAOS' }).ok).toBe(true);
+    for (const payload of [{ faction: 'NEUTRAL' }, { faction: 'order' }, {}, { faction: 'ORDER', atMs: 1 }, { faction: 'ORDER', playerId: uuid }]) {
+      expect(cmd(payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('CityView exige la facción y lleva la entrada pendiente, pública (RN-FAC-009)', () => {
+    expect(CityView.safeParse(ciudad).success).toBe(true);
+    const { faction: _, ...sin } = ciudad;
+    expect(CityView.safeParse(sin).success).toBe(false);
+    expect(CityView.safeParse({ ...ciudad, faction: 'GUILD' }).success).toBe(false);
+    expect(CityView.safeParse({ ...ciudad, factionJoin: null }).success).toBe(true);
+    expect(CityView.safeParse({ ...ciudad, factionJoin: { faction: 'CHAOS', atMs: 1_757_376_900_000 } }).success).toBe(true);
+    expect(CityView.safeParse({ ...ciudad, factionJoin: { faction: 'NEUTRAL', atMs: 1 } }).success).toBe(false);
+  });
+
+  it('city.update lleva la facción nueva y la entrada que se apunta o cuenta', () => {
+    const upd = (payload: unknown) => parseServerMessage({ ...env, type: 'city.update', payload });
+    expect(upd({ id: 7, factionJoin: { faction: 'ORDER', atMs: 1_757_376_900_000 } }).ok).toBe(true);
+    expect(upd({ id: 7, faction: 'ORDER', factionJoin: null }).ok).toBe(true);
+    expect(upd({ id: 7, faction: 'PIRATES' }).ok).toBe(false);
+  });
+
+  it('TerritoryView lleva el bando del dueño, o null sin jugador por dueño', () => {
+    const upd = (t: unknown) => parseServerMessage({ ...env, type: 'territory.update', payload: { territory: t } });
+    expect(upd(territory).ok).toBe(true);
+    const { ownerFaction: _, ...sin } = territory;
+    expect(upd(sin).ok, 'viaja siempre, null si no hay dueño').toBe(false);
+    expect(upd({ ...territory, ownerFaction: 'CHAOS' }).ok).toBe(true);
+    expect(upd({ ...territory, ownerType: 'NONE', ownerId: null, ownerFaction: null }).ok).toBe(true);
+    expect(upd({ ...territory, ownerFaction: 'GUILD' }).ok).toBe(false);
   });
 });
 

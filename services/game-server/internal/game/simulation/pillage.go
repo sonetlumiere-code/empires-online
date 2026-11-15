@@ -198,6 +198,9 @@ func (s *Simulation) cityAttackBlocked(a *unit.Unit, c *city.City, posA world.Ti
 	if own, ok := s.state.CityOf(a.PlayerID); ok && own.ProtectedAt(now) {
 		return protocol.CodeCityProtected, m.selfProtected
 	}
+	if s.state.OrderPeace(a.PlayerID, c.OwnerPlayerID) {
+		return protocol.CodeInvalidTarget, msgOrderPeace
+	}
 	if s.state.AtPeace(a.PlayerID, c.OwnerPlayerID, now) {
 		return protocol.CodeInvalidTarget, m.peace
 	}

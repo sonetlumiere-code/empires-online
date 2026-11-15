@@ -73,6 +73,11 @@ func (s *State) TerritoryView(t territory.Territory) protocol.TerritoryView {
 	if c, ok := s.control[t.ID]; ok {
 		v.OwnerType = string(c.OwnerType)
 		v.OwnerID = c.OwnerID
+		// SPEC-FACTIONS §6: el bando del jugador dueño, para la tierra afín.
+		if owner, ok := c.PlayerOwner(); ok {
+			f := s.FactionOf(owner)
+			v.OwnerFaction = &f
+		}
 	}
 	// contested es «hay una reclamación activa» (INV-TERR-006, ADR-034 §4): la
 	// RAM lo deriva de sus reclamaciones confirmadas, no de la columna.

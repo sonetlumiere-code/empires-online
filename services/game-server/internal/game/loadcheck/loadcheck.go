@@ -285,6 +285,17 @@ func (c *checker) civilizations() {
 			c.find("INV-PLAYER-002", "ALTO", PolicyFailFast, fmt.Sprintf("city:%d", ci.ID),
 				fmt.Sprintf("la ciudad lleva la civilización %q, que no está en el catálogo", ci.Civilization))
 		}
+		// SPEC-FACTIONS (ADR-039 §1): la facción del dueño es una del
+		// catálogo, y una entrada pendiente sólo existe sobre un NEUTRAL, hacia
+		// ORDER o CHAOS (INV-PLAYER-013). El trigger de 000019 ya lo impide.
+		if !player.KnownFaction(ci.Faction) {
+			c.find("INV-PLAYER-002", "ALTO", PolicyFailFast, fmt.Sprintf("city:%d", ci.ID),
+				fmt.Sprintf("la ciudad lleva la facción %q, que no está en el catálogo", ci.Faction))
+		}
+		if ci.FactionJoin != nil && !player.CanJoin(ci.Faction, ci.FactionJoin.Faction) {
+			c.find("INV-PLAYER-013", "ALTO", PolicyFailFast, fmt.Sprintf("city:%d", ci.ID),
+				fmt.Sprintf("entrada en %q de un jugador %q", ci.FactionJoin.Faction, ci.Faction))
+		}
 	}
 }
 

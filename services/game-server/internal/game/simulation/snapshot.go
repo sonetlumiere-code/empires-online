@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
@@ -126,6 +127,8 @@ func CityView(c *city.City) protocol.CityView {
 		CenterY:         c.CenterY,
 		Era:             string(c.Era),
 		Civilization:    c.Civilization,
+		Faction:         player.EffectiveFaction(c.Faction),
+		FactionJoin:     factionJoinView(c),
 		Population:      c.Population,
 		PopulationLimit: c.PopulationLimit,
 		PresenceState:   string(c.PresenceState),

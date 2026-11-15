@@ -8,6 +8,8 @@
 import { z } from 'zod';
 import {
   ActiveMovement,
+  FactionCode,
+  FactionJoinView,
   BuildingStatus,
   BuildingView,
   ChunkRef,
@@ -220,6 +222,10 @@ export const CityUpdate = z.object({
     advance: AdvanceView.nullable().optional(),
     /** Elaboración del taller: empieza (vista) o termina (`null`) (SPEC-CIVILIZATION-GOODS). */
     craft: CraftView.nullable().optional(),
+    /** Facción nueva del dueño al contar su entrada en un bando (SPEC-FACTIONS RN-FAC-002). */
+    faction: FactionCode.optional(),
+    /** Entrada en un bando: se apunta (vista) o cuenta (`null`) (SPEC-FACTIONS §6). */
+    factionJoin: FactionJoinView.nullable().optional(),
     /**
      * Instante del último golpe de saqueo sobre la ciudad. Sólo lo recibe su
      * dueño, para avisarle (SPEC-COMBAT-PILLAGE RN-COMBAT-028).

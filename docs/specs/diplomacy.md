@@ -79,7 +79,7 @@ Dominio: `RN-DIPLO`.
 
 | ID | Regla |
 |---|---|
-| `RN-DIPLO-001` | `treaty.propose { playerId, type }` exige otro jugador existente, un tipo de §4.1 y que entre los dos no haya ninguna relación vigente o pendiente, salvo un pacto vigente cuando se propone una alianza. |
+| `RN-DIPLO-001` | `treaty.propose { playerId, type }` exige otro jugador existente, un tipo de §4.1 y que entre los dos no haya ninguna relación vigente o pendiente, salvo un pacto vigente cuando se propone una alianza. **Precisión (2026-11-15, [factions.md](factions.md), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)):** tampoco se propone ni se acepta un `NON_AGGRESSION` ni una `ALLIANCE` entre un jugador de `ORDER` y uno de `CHAOS` (`RN-FAC-005`), y al entrar en un bando los vigentes con el contrario empiezan su preaviso (`RN-FAC-006`). |
 | `RN-DIPLO-002` | Sólo responde (`treaty.respond { treatyId, accept }`) el jugador que **no** propuso, y sólo a una oferta `PROPOSED`. Aceptar la pasa a `ACTIVE`; rechazar, a `REJECTED`. |
 | `RN-DIPLO-003` | `treaty.cancel { treatyId }` sobre una oferta la retira (`WITHDRAWN`), y sólo puede hacerlo quien la propuso. Sobre un tratado `ACTIVE`, cualquiera de los dos lo rompe: empieza el **preaviso**. |
 | `RN-DIPLO-004` | **Preaviso.** Durante `EO_TREATY_BREAK_NOTICE_MINUTES` (Q4) el tratado sigue `ACTIVE` con todos sus efectos: la paz se mantiene y las guarniciones siguen dentro. Al vencer, en la fase 5, pasa a `BROKEN`. Romper no se puede deshacer; volver a aliarse es firmar otro. |

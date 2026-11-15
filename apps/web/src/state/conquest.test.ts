@@ -8,12 +8,12 @@ const yo = '00000000-0000-4000-8000-000000000001';
 const otro = '00000000-0000-4000-8000-000000000002';
 
 function territorio(over: Partial<TerritoryView> = {}): TerritoryView {
-  return { id: 12, name: 'Llanuras', minX: 64, minY: 0, maxX: 127, maxY: 63, ownerType: 'NONE', ownerId: null, contested: false, ...over };
+  return { id: 12, name: 'Llanuras', minX: 64, minY: 0, maxX: 127, maxY: 63, ownerType: 'NONE', ownerId: null, ownerFaction: null, contested: false, ...over };
 }
 
 function ciudad(over: Partial<CityView> = {}): CityView {
   return {
-    id: 7, ownerPlayerId: otro, name: 'Villa Norte', centerX: 10, centerY: 10, era: 'STONE_AGE', civilization: 'ROMAN', population: 3,
+    id: 7, ownerPlayerId: otro, name: 'Villa Norte', centerX: 10, centerY: 10, era: 'STONE_AGE', civilization: 'ROMAN', faction: 'NEUTRAL', factionJoin: null, population: 3,
     populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null, stocks: { WOOD: 0, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 }, craft: null,
     production: null, advance: null, ...over,
   };

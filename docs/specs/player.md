@@ -51,6 +51,10 @@ transacción, un jugador jugable con ciudad y unidades.
   facción, múltiples ciudades por jugador, clanes, ranking: `TBD (fuera de MVP)`.
 - Mecánica de facciones (bonos, guerra ORDER/CHAOS, reputación): `Fuera de MVP`. En MVP la facción es un
   atributo persistido y visible, sin efecto sobre las reglas.
+  **Precisión (2026-11-15, [factions.md](factions.md), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)):**
+  desde E17 todo jugador nace `NEUTRAL` y puede unirse una vez, en partida, a `ORDER` o a `CHAOS`; dos de la Orden no
+  se agreden, la Orden y el Caos no firman pacto ni alianza, y la tierra del propio bando reduce el daño que reciben
+  las unidades. La reputación sigue fuera.
 
 ## 3. Actores
 
@@ -253,7 +257,7 @@ Dominio de reglas: `RN-PLAYER`.
 | `RN-PLAYER-010` | Si `session.hello` no llega en los primeros 5 s de la conexión, el servidor cierra con código `4408`. Ningún otro tipo de mensaje se procesa antes del handshake. |
 | `RN-PLAYER-011` | En MVP un jugador posee **exactamente una** ciudad. El área de interés inicial se centra en `cities.center_x` / `cities.center_y` de esa ciudad, con radio `EO_INTEREST_RADIUS_CHUNKS` (canon §13). Multi-ciudad es `Fuera de MVP`. |
 | `RN-PLAYER-012` | Los rasgos de civilización no se consultan con condicionales por código de civilización. Toda lectura pasa por `Civilization.Trait(key, def)` (§6.3). |
-| `RN-PLAYER-013` | La facción no restringe ninguna acción del MVP. Es un atributo persistido; su efecto sobre reglas es `Fuera de MVP`. |
+| `RN-PLAYER-013` | La facción no restringe ninguna acción del MVP. Es un atributo persistido; su efecto sobre reglas es `Fuera de MVP`. **Precisión (2026-11-15, [factions.md](factions.md), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)):** derogada por las reglas `RN-FAC` de E17: la facción decide a quién se puede agredir y con quién firmar, y reduce el daño en tierra afín. |
 | `RN-PLAYER-014` | El emplazamiento de la ciudad inicial se elige **antes** de abrir la transacción, con `founding.FindSite`: espiral determinista desde `hashSeed(username)`, entorno despejado de radio 3, separación mínima de 24 tiles con cualquier centro de ciudad existente, y 3 aldeanos a radio 2 sobre tiles transitables. Si no hay sitio, el alta responde `NO_SITE_AVAILABLE` (409) y **no** se coloca al jugador «donde sea». Dentro de la transacción, bajo un `pg_advisory_xact_lock` que serializa las altas, el centro elegido se vuelve a comprobar con `founding.FarEnough` contra los centros ya confirmados; si otra alta se adelantó, la búsqueda se repite hasta tres veces y, agotadas, el alta responde `SITE_CONTENDED` (503, `Retry-After: 1`) sin escribir nada (`INV-CITY-008`). |
 | `RN-PLAYER-015` | Una cuenta `PENDING` cuyo último intento de fundación tiene más de una hora se resuelve preguntando al game server: si su jugador existe, se activa; si responde `404 PLAYER_NOT_FOUND`, se borra sólo si en el instante del borrado sigue `PENDING` y abandonada; con cualquier otra respuesta, o sin ella, no se toca. Ningún proceso borra una cuenta `PENDING` sin esa respuesta, salvo el rechazo definitivo de su propia fundación (`INV-PLAYER-010`, [ADR-020](../decisions/ADR-020-stale-pending-accounts.md)). |
 | `RN-PLAYER-016` | El login de una cuenta `PENDING` renueva su intento de fundación **antes** de llamar al game server, y sólo lo llama si la cuenta seguía `PENDING`: una cuenta activada entretanto entra sin fundar, y una borrada responde `UNAUTHORIZED`. |

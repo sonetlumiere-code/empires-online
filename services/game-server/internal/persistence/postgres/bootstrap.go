@@ -214,6 +214,13 @@ func (b *Bootstrapper) create(ctx context.Context, req BootstrapRequest, def uni
 			Scan(&civilizacion); err != nil {
 			return fmt.Errorf("civilización %d del alta: %w", req.CivilizationID, normalize(err))
 		}
+		// Y el de su facción, que la RAM necesita para la paz de la Orden y la
+		// tierra afín (SPEC-FACTIONS, ADR-039 §1).
+		var faccion string
+		if err := tx.QueryRow(ctx, `SELECT code FROM factions WHERE id = $1`, req.FactionID).
+			Scan(&faccion); err != nil {
+			return fmt.Errorf("facción %d del alta: %w", req.FactionID, normalize(err))
+		}
 
 		populationCap, err := b.cities.PopulationCapOf(ctx, tx, req.Era)
 		if err != nil {
@@ -230,6 +237,7 @@ func (b *Bootstrapper) create(ctx context.Context, req BootstrapRequest, def uni
 			PopulationLimit: populationCap,
 			PresenceState:   city.PresenceOnline,
 			Civilization:    civilizacion,
+			Faction:         faccion,
 			LastOnlineAt:    &fundada,
 		}
 		if _, err := b.cities.Create(ctx, tx, c); err != nil {
