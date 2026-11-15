@@ -664,4 +664,5 @@ Se documenta para que nadie lo implemente por inercia ni lo asuma existente:
 - Sharding de los workers de persistencia por entidad.
 - Capacidad del canal de comandos y presupuesto de shutdown como variables `EO_*`.
 - Test de arquitectura automático que verifique el grafo de imports de §2.1.
-- Naval, marketplace, clanes y tecnologías.
+- Naval, marketplace, clanes y tecnologías. **Precisión (2026-11-15):** los clanes existen desde E18
+  ([clans.md](../specs/clans.md)); siguen fuera los territorios de clan, los rangos y las alianzas entre clanes.

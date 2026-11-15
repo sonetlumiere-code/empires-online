@@ -1513,5 +1513,6 @@ Los tipos y validadores vienen de `@empires-online/protocol`. Los reducers se ej
 - Sorting incremental por buckets, *instancing* y LOD de sprites.
 - Minimapa con datos del mundo completo (el cliente solo conoce su área de interés).
 - Render de combate, animaciones de ataque, efectos de asedio.
-- Chat, ranking, marketplace, clanes, rutas comerciales, naval.
+- Chat, ranking, marketplace, clanes, rutas comerciales, naval. **Precisión (2026-11-15):** los mensajes directos (E16)
+  y los clanes con su canal (E18, §4.15) ya existen; siguen fuera los canales globales, de región o de bando.
 - Modo espectador y repetición de partidas.

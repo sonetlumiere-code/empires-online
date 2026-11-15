@@ -58,7 +58,9 @@ hay captura ni pérdida de control lo reemplaza [territory-conquest.md](territor
   transporta (§12).
 - Estado `contested`: la columna existe y viaja en `TerritoryView`, pero es siempre `false`.
 - Ownership de clan (`owner_type = 'CLAN'`): los clanes están fuera de MVP (canon §21). El valor está
-  admitido por el `CHECK` y por el enum del protocolo, pero **ningún proceso lo escribe**.
+  admitido por el `CHECK` y por el enum del protocolo, pero **ningún proceso lo escribe**. **Precisión
+  (2026-11-15, [clans.md](clans.md) Q11):** los clanes existen desde E18, pero ningún territorio tiene un clan por
+  dueño: eso sigue fuera.
 - Influencia de facción (`owner_type = 'FACTION'`): existe la tabla `factions`, pero no hay mecánica
   de influencia. Mismo estatus que `CLAN`.
 - `resource_modifiers` aplicados: la columna existe con `DEFAULT '{}'`, pero no modifica nada porque
