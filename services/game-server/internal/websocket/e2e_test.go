@@ -279,6 +279,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		Trade:       &memoryTrade{nextID: 300},
 		Conquest:    &memoryConquest{},
 		Factions:    memoryFactions{},
+		Clans:       &memoryClans{},
 		// Plazos cortos: los e2e de la facción no esperan 15 minutos.
 		FactionJoinDelay: 2 * time.Second,
 		// Plazos cortos: los e2e de la conquista no esperan minutos.

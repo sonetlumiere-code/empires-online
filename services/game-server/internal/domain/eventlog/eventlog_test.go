@@ -187,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 25)
+	assert.Len(t, vistos, 27, "desde E18, la expulsión de un clan para cada lado")
 }
 
 // SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
@@ -360,6 +360,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 		eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindPillageDone, eventlog.KindHouseDestroyed,
 		eventlog.KindTerritoryClaimed, eventlog.KindTerritoryLost, eventlog.KindTerritoryTaken,
 		eventlog.KindCaravanCaptured, eventlog.KindCaravanIntercepted, eventlog.KindCaravanLost,
+		eventlog.KindClanExpelled,
 	}, eventlog.NoticeKinds())
 	for _, k := range eventlog.NoticeKinds() {
 		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
@@ -367,7 +368,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 	for _, tipo := range eventlog.EventTypes() {
 		switch tipo {
 		case "UnitKilled", "CityPillaged", "BuildingDestroyed", "TerritoryClaimStarted", "TerritoryControlChanged",
-			"CaravanCaptured", "CaravanIntercepted", "CaravanLost":
+			"CaravanCaptured", "CaravanIntercepted", "CaravanLost", "ClanMemberExpelled":
 			continue
 		}
 		for _, by := range []uuid.UUID{yo, otro, uuid.Nil} {
@@ -404,4 +405,24 @@ func TestLosSucesosDeUnTerritorioAvisanYNoSeAgrupan(t *testing.T) {
 	assert.Equal(t, "Llanura", e.TerritoryName)
 	assert.Empty(t, e.TreatyType)
 	assert.True(t, e.HasTile)
+}
+
+// SPEC-CLANS Q10 y RN-LOG-001: la expulsión le cuenta al expulsado que le
+// expulsaron y al líder que expulsó; a un tercero, nada. Sólo se avisa al
+// expulsado.
+func TestLaExpulsionDeUnClanEnElRegistro(t *testing.T) {
+	expulsado, lider, tercero := uuid.New(), uuid.New(), uuid.New()
+	e := eventlog.Event{Type: eventlog.EventClanMemberExpelled, PlayerID: expulsado, Counterpart: lider, AtMs: 5}
+	kind, other, ok := eventlog.Classify(expulsado, e)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindClanExpelled, kind)
+	assert.Equal(t, lider, other)
+	kind, other, ok = eventlog.Classify(lider, e)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindClanMemberExpelled, kind)
+	assert.Equal(t, expulsado, other)
+	_, _, ok = eventlog.Classify(tercero, e)
+	assert.False(t, ok)
+	assert.Equal(t, []eventlog.Notice{{To: expulsado, Kind: eventlog.KindClanExpelled, Other: lider}}, eventlog.Notices(e))
+	assert.Contains(t, eventlog.EventTypes(), eventlog.EventClanMemberExpelled)
 }

@@ -57,6 +57,9 @@ type Session struct {
 	// (message.new), así que va con su lock.
 	messagesMu     sync.Mutex
 	messagesServed map[uuid.UUID]int64
+	// clanServed es, por clan, el mayor id del canal que recibió esta sesión:
+	// el tope de clan.chat.read (RN-CLAN-009). Va con el mismo lock.
+	clanServed map[int64]int64
 }
 
 // noteMessageServed apunta que esta sesión recibió el mensaje id de su
@@ -78,6 +81,27 @@ func (s *Session) messageServedUpTo(other uuid.UUID) int64 {
 	s.messagesMu.Lock()
 	defer s.messagesMu.Unlock()
 	return s.messagesServed[other]
+}
+
+// noteClanServed apunta que esta sesión recibió el mensaje id del canal de un
+// clan.
+func (s *Session) noteClanServed(clanID, id int64) {
+	s.messagesMu.Lock()
+	defer s.messagesMu.Unlock()
+	if s.clanServed == nil {
+		s.clanServed = make(map[int64]int64)
+	}
+	if id > s.clanServed[clanID] {
+		s.clanServed[clanID] = id
+	}
+}
+
+// clanServedUpTo es el mayor id que esta sesión recibió del canal de un clan,
+// 0 si ninguno.
+func (s *Session) clanServedUpTo(clanID int64) int64 {
+	s.messagesMu.Lock()
+	defer s.messagesMu.Unlock()
+	return s.clanServed[clanID]
 }
 
 func newSession(id, playerID uuid.UUID, conn *gws.Conn, queueSize int, writeTimeout time.Duration,

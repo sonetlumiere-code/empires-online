@@ -9,6 +9,8 @@
 import { z } from 'zod';
 import {
   BuildingType,
+  ClanName,
+  ClanTag,
   EntityId,
   JoinableFactionCode,
   MESSAGE_MAX_CHARS,
@@ -443,6 +445,106 @@ export const MessageBlock = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * Funda un clan con su nombre y su sigla; quien funda es su líder (SPEC-CLANS §4.2).
+ * Qué caracteres admite el nombre y si está libre lo decide el servidor.
+ */
+export const ClanCreate = z.object({
+  v: V,
+  type: z.literal('clan.create'),
+  requestId: Uuid,
+  payload: z.object({
+    name: ClanName,
+    tag: ClanTag,
+  }).strict(),
+}).strict();
+
+/**
+ * El líder invita a un jugador a su clan (`invited: true`) o retira la invitación
+ * (`invited: false`) (SPEC-CLANS §4.2). El clan es el del jugador de la sesión.
+ */
+export const ClanInvite = z.object({
+  v: V,
+  type: z.literal('clan.invite'),
+  requestId: Uuid,
+  payload: z.object({
+    playerId: Uuid,
+    invited: z.boolean(),
+  }).strict(),
+}).strict();
+
+/** Acepta o rechaza una invitación viva a un clan (SPEC-CLANS §4.2). */
+export const ClanRespond = z.object({
+  v: V,
+  type: z.literal('clan.respond'),
+  requestId: Uuid,
+  payload: z.object({
+    clanId: EntityId,
+    accept: z.boolean(),
+  }).strict(),
+}).strict();
+
+/** Sale del clan propio (SPEC-CLANS §4.5). */
+export const ClanLeave = z.object({
+  v: V,
+  type: z.literal('clan.leave'),
+  requestId: Uuid,
+  payload: z.object({}).strict(),
+}).strict();
+
+/** El líder expulsa a un miembro de su clan (SPEC-CLANS §4.5). */
+export const ClanExpel = z.object({
+  v: V,
+  type: z.literal('clan.expel'),
+  requestId: Uuid,
+  payload: z.object({
+    playerId: Uuid,
+  }).strict(),
+}).strict();
+
+/** Pide la vista pública de un clan: su nombre, su sigla y sus miembros (RN-CLAN-008). */
+export const ClanLookup = z.object({
+  v: V,
+  type: z.literal('clan.lookup'),
+  requestId: Uuid,
+  payload: z.object({
+    clanId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
+ * Escribe en el canal del clan propio (SPEC-CLANS §4.6). El clan y el remitente son
+ * los del jugador de la sesión; el texto sigue las reglas de `message.send`.
+ */
+export const ClanChatSend = z.object({
+  v: V,
+  type: z.literal('clan.chat.send'),
+  requestId: Uuid,
+  payload: z.object({
+    body: z.string().min(1).max(2 * MESSAGE_MAX_CHARS),
+  }).strict(),
+}).strict();
+
+/** Pide una página del canal del clan propio: la más reciente o la anterior a `beforeId`. */
+export const ClanChatFetch = z.object({
+  v: V,
+  type: z.literal('clan.chat.fetch'),
+  requestId: Uuid,
+  payload: z.object({
+    beforeId: EntityId.optional(),
+  }).strict(),
+}).strict();
+
+/** Marca leído el canal del clan propio hasta `upToId`, sin pasar de lo recibido. */
+export const ClanChatRead = z.object({
+  v: V,
+  type: z.literal('clan.chat.read'),
+  requestId: Uuid,
+  payload: z.object({
+    upToId: EntityId,
+  }).strict(),
+}).strict();
+
 /** Unión discriminada de todos los mensajes cliente → servidor de la v1. */
 export const ClientMessage = z.discriminatedUnion('type', [
   SessionHello,
@@ -475,6 +577,15 @@ export const ClientMessage = z.discriminatedUnion('type', [
   MessageFetch,
   MessageRead,
   MessageBlock,
+  ClanCreate,
+  ClanInvite,
+  ClanRespond,
+  ClanLeave,
+  ClanExpel,
+  ClanLookup,
+  ClanChatSend,
+  ClanChatFetch,
+  ClanChatRead,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -508,6 +619,15 @@ export type MessageList = z.infer<typeof MessageList>;
 export type MessageFetch = z.infer<typeof MessageFetch>;
 export type MessageRead = z.infer<typeof MessageRead>;
 export type MessageBlock = z.infer<typeof MessageBlock>;
+export type ClanCreate = z.infer<typeof ClanCreate>;
+export type ClanInvite = z.infer<typeof ClanInvite>;
+export type ClanRespond = z.infer<typeof ClanRespond>;
+export type ClanLeave = z.infer<typeof ClanLeave>;
+export type ClanExpel = z.infer<typeof ClanExpel>;
+export type ClanLookup = z.infer<typeof ClanLookup>;
+export type ClanChatSend = z.infer<typeof ClanChatSend>;
+export type ClanChatFetch = z.infer<typeof ClanChatFetch>;
+export type ClanChatRead = z.infer<typeof ClanChatRead>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -540,6 +660,15 @@ export const CLIENT_MESSAGE_TYPES = [
   'message.fetch',
   'message.read',
   'message.block',
+  'clan.create',
+  'clan.invite',
+  'clan.respond',
+  'clan.leave',
+  'clan.expel',
+  'clan.lookup',
+  'clan.chat.send',
+  'clan.chat.fetch',
+  'clan.chat.read',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

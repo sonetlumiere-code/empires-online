@@ -12,6 +12,9 @@ type SnapshotResult struct {
 	Payload protocol.WorldSnapshotPayload
 	Chunks  []world.ChunkCoord
 	Found   bool
+	// Clan es el clan del jugador y sus invitaciones, sólo en el snapshot de
+	// la conexión (sin Center): la conexión lo manda tras él (SPEC-CLANS §6).
+	Clan *protocol.ClanUpdatePayload
 }
 
 // RequestSnapshot pide el estado del área de interés de una sesión.
@@ -61,6 +64,10 @@ func (s *Simulation) handleRequestSnapshot(cmd RequestSnapshot) {
 		Payload: s.BuildSnapshot(cmd.PlayerID, chunks, nowMs, cmd.IncludeTerrain),
 		Chunks:  chunks,
 		Found:   found,
+	}
+	if cmd.Center == nil {
+		clan := s.state.ClanUpdateFor(cmd.PlayerID, nowMs)
+		result.Clan = &clan
 	}
 
 	// Envío no bloqueante: si la conexión ya se fue, el snapshot se descarta.

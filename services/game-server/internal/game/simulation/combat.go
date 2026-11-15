@@ -267,6 +267,9 @@ func (s *Simulation) attackBlocked(a, t *unit.Unit, posA, posT world.Tile, now t
 	if s.state.OrderPeace(a.PlayerID, t.PlayerID) {
 		return protocol.CodeInvalidTarget, msgOrderPeace
 	}
+	if s.state.ClanPeace(a.PlayerID, t.PlayerID, now) {
+		return protocol.CodeInvalidTarget, msgClanPeace
+	}
 	if s.state.AtPeace(a.PlayerID, t.PlayerID, now) {
 		return protocol.CodeInvalidTarget, "un tratado de paz impide atacar a ese jugador"
 	}
@@ -491,6 +494,15 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 				"inv_id", "INV-COMBAT-006", "severity", "CRITICO", "policy", "REJECT",
 				"entity", fmt.Sprintf("unit:%d", h.attacker.ID), "tick", s.state.Tick(),
 				"detail", "golpe entre dos jugadores de la Orden: se descarta")
+			continue
+		}
+		// INV-CLAN-003: lo mismo entre compañeros de clan y durante la paz
+		// residual.
+		if s.state.ClanPeace(h.attacker.PlayerID, h.target.PlayerID, time.UnixMilli(nowMs)) {
+			s.deps.Log.Error("invariant_violation",
+				"inv_id", "INV-CLAN-003", "severity", "CRITICO", "policy", "REJECT",
+				"entity", fmt.Sprintf("unit:%d", h.attacker.ID), "tick", s.state.Tick(),
+				"detail", "golpe entre dos jugadores en paz de clan: se descarta")
 			continue
 		}
 		if !h.e.announced {

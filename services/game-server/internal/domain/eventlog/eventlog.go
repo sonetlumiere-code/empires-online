@@ -66,6 +66,9 @@ const (
 	KindCaravanCaptured    Kind = "CARAVAN_CAPTURED"
 	KindCaravanIntercepted Kind = "CARAVAN_INTERCEPTED"
 	KindCaravanLost        Kind = "CARAVAN_LOST"
+	// Clanes (SPEC-CLANS Q10): al expulsado y al líder que expulsó.
+	KindClanExpelled       Kind = "CLAN_EXPELLED"
+	KindClanMemberExpelled Kind = "CLAN_MEMBER_EXPELLED"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -78,6 +81,7 @@ func Kinds() []Kind {
 		KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired,
 		KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken,
 		KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost,
+		KindClanExpelled, KindClanMemberExpelled,
 	}
 }
 
@@ -93,6 +97,7 @@ func NoticeKinds() []Kind {
 		KindUnitLost, KindEnemyKilled, KindPillageDone, KindHouseDestroyed,
 		KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken,
 		KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost,
+		KindClanExpelled,
 	}
 }
 
@@ -130,6 +135,9 @@ const (
 	EventCaravanCaptured    = "CaravanCaptured"
 	EventCaravanIntercepted = "CaravanIntercepted"
 	EventCaravanLost        = "CaravanLost"
+	// Clanes (SPEC-CLANS §6): player_id es el expulsado y
+	// counterpart_player_id el líder que lo expulsó.
+	EventClanMemberExpelled = "ClanMemberExpelled"
 )
 
 // EventTypes son los event_type que pueden dar una entrada: la consulta sólo
@@ -142,6 +150,7 @@ func EventTypes() []string {
 		EventTradeProposed, EventTradeAccepted, EventTradeRejected, EventTradeWithdrawn, EventTradeExpired,
 		EventTerritoryClaimStarted, EventTerritoryControlChanged,
 		EventCaravanArrived, EventCaravanCaptured, EventCaravanIntercepted, EventCaravanLost,
+		EventClanMemberExpelled,
 	}
 }
 
@@ -263,6 +272,12 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindTerritoryLost, other, true
 		}
 		return KindTerritoryTaken, other, true
+	case EventClanMemberExpelled:
+		// Al expulsado, que le expulsaron; al líder, que expulsó (RN-LOG-001).
+		if e.PlayerID == viewer {
+			return KindClanExpelled, other, true
+		}
+		return KindClanMemberExpelled, other, true
 	}
 
 	// Una caravana: sólo a quien le pasa (player_id); al captor no se le cuenta

@@ -728,6 +728,7 @@ describe('civilizaciones (SPEC-CIVILIZATION)', () => {
     era: 'STONE_AGE',
     civilization: 'NORSE',
     faction: 'NEUTRAL',
+    clan: null,
     population: 3,
     populationLimit: 20,
     presenceState: 'ONLINE',
@@ -864,7 +865,7 @@ describe('facciones (SPEC-FACTIONS)', () => {
   const cmd = (payload: unknown) => parseClientMessage({ v: 1, type: 'faction.join', requestId: uuid, payload });
   const ciudad = {
     id: 7, ownerPlayerId: uuid, name: 'Roma', centerX: 10, centerY: 12, era: 'STONE_AGE', civilization: 'ROMAN',
-    faction: 'NEUTRAL', population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
+    faction: 'NEUTRAL', clan: null, population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
   };
   const territory = {
     id: 12, name: 'Llanuras del Norte', minX: 128, minY: 64, maxX: 191, maxY: 127,
@@ -972,5 +973,98 @@ describe('mensajes (SPEC-MESSAGES)', () => {
     expect(parseServerMessage({ ...env, type: 'message.page', payload: { ...page, messages: [], nextBeforeId: 3 } }).ok).toBe(true);
     const { blockedByMe: _, ...sinBloqueo } = page;
     expect(parseServerMessage({ ...env, type: 'message.page', payload: sinBloqueo }).ok).toBe(false);
+  });
+});
+
+describe('clanes (SPEC-CLANS)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const cmd = (type: string, payload: unknown) => parseClientMessage({ v: 1, type, requestId: uuid, payload });
+  const ciudad = {
+    id: 7, ownerPlayerId: uuid, name: 'Roma', centerX: 10, centerY: 12, era: 'STONE_AGE', civilization: 'ROMAN',
+    faction: 'NEUTRAL', clan: null, population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
+  };
+  const miembro = {
+    playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1_757_376_000_000,
+  };
+  const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [] };
+
+  it('clan.create lleva el nombre y la sigla, y la sigla es de 2 a 4 letras mayúsculas o dígitos', () => {
+    expect(cmd('clan.create', { name: 'Los Lobos', tag: 'LOB' }).ok).toBe(true);
+    expect(cmd('clan.create', { name: 'Ñandú-7', tag: 'N7' }).ok).toBe(true);
+    for (const payload of [
+      { name: 'Lo', tag: 'LOB' },
+      { name: 'x'.repeat(25), tag: 'LOB' },
+      { name: 'Los Lobos', tag: 'lob' },
+      { name: 'Los Lobos', tag: 'L' },
+      { name: 'Los Lobos', tag: 'LOBOS' },
+      { name: 'Los Lobos', tag: 'LO-B' },
+      { name: 'Los Lobos' },
+      { name: 'Los Lobos', tag: 'LOB', leaderId: uuid },
+    ]) {
+      expect(cmd('clan.create', payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('los demás comandos nombran sólo lo que les toca: nunca el clan propio ni el remitente', () => {
+    expect(cmd('clan.invite', { playerId: otro, invited: true }).ok).toBe(true);
+    expect(cmd('clan.invite', { playerId: otro, invited: false }).ok).toBe(true);
+    expect(cmd('clan.invite', { playerId: otro, invited: true, clanId: 3 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.respond', { clanId: 3, accept: true }).ok).toBe(true);
+    expect(cmd('clan.respond', { clanId: 0, accept: true })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.leave', {}).ok).toBe(true);
+    expect(cmd('clan.leave', { clanId: 3 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.expel', { playerId: otro }).ok).toBe(true);
+    expect(cmd('clan.expel', { playerId: 'no-es-uuid' })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.lookup', { clanId: 3 }).ok).toBe(true);
+    expect(cmd('clan.chat.send', { body: 'al norte' }).ok).toBe(true);
+    expect(cmd('clan.chat.send', { body: '' })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.chat.send', { body: 'hola', clanId: 3 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.chat.fetch', {}).ok).toBe(true);
+    expect(cmd('clan.chat.fetch', { beforeId: 9 }).ok).toBe(true);
+    expect(cmd('clan.chat.fetch', { beforeId: 0 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.chat.read', { upToId: 9 }).ok).toBe(true);
+    expect(cmd('clan.chat.read', {})).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
+  it('CityView exige el clan de su dueño, o null (RN-CLAN-008)', () => {
+    expect(CityView.safeParse(ciudad).success).toBe(true);
+    const { clan: _, ...sin } = ciudad;
+    expect(CityView.safeParse(sin).success, 'viaja siempre').toBe(false);
+    expect(CityView.safeParse({ ...ciudad, clan: { id: 3, tag: 'LOB' } }).success).toBe(true);
+    expect(CityView.safeParse({ ...ciudad, clan: { id: 3, tag: 'lob' } }).success).toBe(false);
+    const upd = (payload: unknown) => parseServerMessage({ ...env, type: 'city.update', payload });
+    expect(upd({ id: 7, clan: { id: 3, tag: 'LOB' } }).ok).toBe(true);
+    expect(upd({ id: 7, clan: null }).ok).toBe(true);
+  });
+
+  it('clan.update lleva el clan propio o null, y las invitaciones recibidas', () => {
+    const upd = (payload: unknown) => parseServerMessage({ ...env, type: 'clan.update', payload });
+    const invitacion = { clanId: 4, name: 'Los Osos', tag: 'OSO', expiresAtMs: 1_757_462_400_000 };
+    expect(upd({ clan, invitations: [] }).ok).toBe(true);
+    expect(upd({ clan: null, invitations: [invitacion] }).ok).toBe(true);
+    expect(upd({ clan: { ...clan, members: [] }, invitations: [] }).ok, 'un clan tiene al menos un miembro').toBe(false);
+    expect(upd({ clan: { ...clan, members: [{ ...miembro, role: 'OFFICER' }] }, invitations: [] }).ok).toBe(false);
+    const enviada = { playerId: otro, cityId: null, cityName: null, expiresAtMs: 1 };
+    expect(upd({ clan: { ...clan, sentInvitations: [enviada] }, invitations: [] }).ok).toBe(true);
+    expect(upd({ clan }).ok).toBe(false);
+  });
+
+  it('clan.info es la vista pública, y el canal lleva sus mensajes y su página', () => {
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro] } }).ok).toBe(true);
+    const mensaje = {
+      id: 5, clanId: 3, fromPlayerId: uuid, fromCityId: 7, fromCityName: 'Roma', body: 'al norte', sentAtMs: 1,
+    };
+    expect(parseServerMessage({ ...env, type: 'clan.chat.new', requestId: uuid, payload: { message: mensaje } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'clan.chat.new', payload: { message: { ...mensaje, body: '' } } }).ok).toBe(false);
+    const page = { clanId: 3, messages: [mensaje], readUpToId: 0, nextBeforeId: null };
+    expect(parseServerMessage({ ...env, type: 'clan.chat.page', payload: page }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'clan.chat.page', payload: { ...page, nextBeforeId: 0 } }).ok).toBe(false);
+  });
+
+  it('la expulsión es un tipo del registro, y se avisa sólo al expulsado', () => {
+    const notice = { kind: 'CLAN_EXPELLED', atMs: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte' };
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...notice, kind: 'CLAN_MEMBER_EXPELLED' } }).ok).toBe(false);
   });
 });

@@ -155,6 +155,70 @@ export const FactionJoinView = z.object({
 });
 export type FactionJoinView = z.infer<typeof FactionJoinView>;
 
+/** Longitud del nombre de un clan, en caracteres (SPEC-CLANS §4.1). */
+export const CLAN_NAME_MIN_CHARS = 3;
+export const CLAN_NAME_MAX_CHARS = 24;
+/**
+ * Nombre de un clan. El esquema acota la longitud; qué caracteres admite (letras,
+ * dígitos, espacios y guiones, sin espacios en los extremos ni dobles) lo decide el
+ * servidor (`INVALID_MESSAGE`).
+ */
+export const ClanName = z.string().min(CLAN_NAME_MIN_CHARS).max(CLAN_NAME_MAX_CHARS);
+/** Sigla de un clan: de 2 a 4 caracteres de `A`–`Z` y `0`–`9` (SPEC-CLANS §4.1). */
+export const ClanTag = z.string().regex(/^[A-Z0-9]{2,4}$/);
+
+/** El clan de una ciudad: su `id` y su sigla, públicos (SPEC-CLANS RN-CLAN-008). */
+export const CityClanView = z.object({
+  id: EntityId,
+  tag: ClanTag,
+});
+export type CityClanView = z.infer<typeof CityClanView>;
+
+/** Rango de un miembro de un clan (SPEC-CLANS Q4). */
+export const ClanRole = z.enum(['LEADER', 'MEMBER']);
+export type ClanRole = z.infer<typeof ClanRole>;
+
+/** Un miembro de un clan, nombrado por su ciudad (SPEC-CLANS §6). */
+export const ClanMemberView = z.object({
+  playerId: Uuid,
+  cityId: EntityId.nullable(),
+  cityName: z.string().min(1).max(64).nullable(),
+  faction: FactionCode,
+  role: ClanRole,
+  joinedAtMs: EpochMs,
+});
+export type ClanMemberView = z.infer<typeof ClanMemberView>;
+
+/** Una invitación que envió el clan, sólo para su líder. */
+export const ClanSentInvitationView = z.object({
+  playerId: Uuid,
+  cityId: EntityId.nullable(),
+  cityName: z.string().min(1).max(64).nullable(),
+  expiresAtMs: EpochMs,
+});
+export type ClanSentInvitationView = z.infer<typeof ClanSentInvitationView>;
+
+/** El propio clan, visto por uno de sus miembros (SPEC-CLANS §6). */
+export const ClanView = z.object({
+  id: EntityId,
+  name: ClanName,
+  tag: ClanTag,
+  leaderId: Uuid,
+  members: z.array(ClanMemberView).min(1),
+  /** Las invitaciones vivas que envió el clan; vacía salvo para el líder. */
+  sentInvitations: z.array(ClanSentInvitationView),
+});
+export type ClanView = z.infer<typeof ClanView>;
+
+/** Una invitación recibida y viva (SPEC-CLANS §4.2). */
+export const ClanInvitationView = z.object({
+  clanId: EntityId,
+  name: ClanName,
+  tag: ClanTag,
+  expiresAtMs: EpochMs,
+});
+export type ClanInvitationView = z.infer<typeof ClanInvitationView>;
+
 export const TerritoryOwnerType = z.enum(['NONE', 'PLAYER', 'CLAN', 'FACTION']);
 export type TerritoryOwnerType = z.infer<typeof TerritoryOwnerType>;
 
@@ -260,6 +324,8 @@ export const CityView = z.object({
   faction: FactionCode,
   /** Entrada pendiente de su dueño en un bando; `null` si no la tiene. Pública. */
   factionJoin: FactionJoinView.nullable().optional(),
+  /** Clan de su dueño (su `id` y su sigla), o `null`; público (SPEC-CLANS RN-CLAN-008). */
+  clan: CityClanView.nullable(),
   population: z.number().int().min(0),
   populationLimit: z.number().int().min(0),
   presenceState: PresenceState,
@@ -403,6 +469,9 @@ export const EventLogKind = z.enum([
   'CARAVAN_CAPTURED',
   'CARAVAN_INTERCEPTED',
   'CARAVAN_LOST',
+  // Clanes (SPEC-CLANS Q10): al expulsado, que le expulsaron; al líder, que expulsó.
+  'CLAN_EXPELLED',
+  'CLAN_MEMBER_EXPELLED',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -424,6 +493,8 @@ export const EventLogNoticeKind = EventLogKind.extract([
   'CARAVAN_CAPTURED',
   'CARAVAN_INTERCEPTED',
   'CARAVAN_LOST',
+  // SPEC-CLANS Q10: la expulsión se avisa al expulsado.
+  'CLAN_EXPELLED',
 ]);
 export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
 
@@ -569,3 +640,18 @@ export const BlockedPlayerView = z.object({
   cityName: z.string().min(1).max(64).nullable(),
 });
 export type BlockedPlayerView = z.infer<typeof BlockedPlayerView>;
+
+/**
+ * Un mensaje del canal de un clan (SPEC-CLANS §4.6). El remitente se nombra por su
+ * ciudad, como en los mensajes directos.
+ */
+export const ClanMessageView = z.object({
+  id: EntityId,
+  clanId: EntityId,
+  fromPlayerId: Uuid,
+  fromCityId: EntityId.nullable(),
+  fromCityName: z.string().min(1).max(64).nullable(),
+  body: MessageBody,
+  sentAtMs: EpochMs,
+});
+export type ClanMessageView = z.infer<typeof ClanMessageView>;

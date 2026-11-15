@@ -393,6 +393,9 @@ func (s *Simulation) claimBlocked(claimer uuid.UUID, t territory.Territory, now 
 	if s.state.OrderPeace(claimer, owner) {
 		return protocol.CodeInvalidTarget, msgOrderPeace
 	}
+	if s.state.ClanPeace(claimer, owner, now) {
+		return protocol.CodeInvalidTarget, msgClanPeace
+	}
 	if s.state.AtPeace(claimer, owner, now) {
 		return protocol.CodeInvalidTarget, "un tratado de paz impide reclamar ese territorio"
 	}

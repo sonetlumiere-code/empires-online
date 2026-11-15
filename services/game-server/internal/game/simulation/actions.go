@@ -67,6 +67,13 @@ var actionPolicies = map[string]ActionPolicy{
 	// Unirse a un bando (SPEC-FACTIONS §4.2): no es hostil y no lo frena la
 	// protección propia ni la ajena.
 	protocol.TypeFactionJoin: {Hostile: false, Territory: TerritoryFree},
+	// Los clanes (SPEC-CLANS §6): fundar, invitar, responder, salir y expulsar
+	// cambian la paz pero no agreden a nadie, y no los frena la protección.
+	protocol.TypeClanCreate:  {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanInvite:  {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanRespond: {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanLeave:   {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanExpel:   {Hostile: false, Territory: TerritoryFree},
 }
 
 // sessionMessages son los mensajes que no actúan sobre el mundo. Los del
@@ -84,6 +91,12 @@ var sessionMessages = map[string]bool{
 	protocol.TypeMessageFetch: true,
 	protocol.TypeMessageRead:  true,
 	protocol.TypeMessageBlock: true,
+	// El canal y la vista pública de un clan los atiende la conexión
+	// (SPEC-CLANS §4.6, ADR-040 §5).
+	protocol.TypeClanLookup:    true,
+	protocol.TypeClanChatSend:  true,
+	protocol.TypeClanChatFetch: true,
+	protocol.TypeClanChatRead:  true,
 }
 
 // ActionPolicyOf devuelve la clasificación de un mensaje que actúa sobre el

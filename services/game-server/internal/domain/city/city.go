@@ -93,8 +93,11 @@ type City struct {
 	// entrada confirmada en un bando, o nil (SPEC-FACTIONS, ADR-039 §1). Como
 	// la civilización, no son columnas de cities: la carga las lee de players.
 	// Faction vacía, sólo en los tests que no la fijan, es NEUTRAL.
-	Faction         string
-	FactionJoin     *FactionJoin
+	Faction     string
+	FactionJoin *FactionJoin
+	// Clan es el clan de su dueño, o nil (SPEC-CLANS, ADR-040 §1). Tampoco es
+	// una columna de cities: la carga lo deriva de clan_members.
+	Clan            *ClanTag
 	LastOnlineAt    *time.Time
 	LastOfflineAt   *time.Time
 	ProtectionUntil *time.Time
@@ -106,6 +109,13 @@ type City struct {
 type FactionJoin struct {
 	Faction string
 	AtMs    int64
+}
+
+// ClanTag es el clan del dueño de una ciudad: su id y su sigla, públicos
+// (SPEC-CLANS RN-CLAN-008).
+type ClanTag struct {
+	ID  int64
+	Tag string
 }
 
 // Center devuelve el tile central de la ciudad.

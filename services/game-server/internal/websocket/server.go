@@ -126,6 +126,9 @@ type Server struct {
 	// ritmo (SPEC-MESSAGES); opcionales, ver SetMessages.
 	messages       Messages
 	messageLimiter *message.Limiter
+	// clans es el canal y la vista pública de los clanes (SPEC-CLANS);
+	// opcional, ver SetClans.
+	clans Clans
 }
 
 // NewServer construye el servidor.
@@ -714,6 +717,97 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 	case protocol.TypeMessageBlock:
 		s.handleMessageBlock(ctx, session, msg, log)
 
+	// El canal y la vista pública de los clanes: los atiende la conexión, con la
+	// pertenencia comprobada en la base (SPEC-CLANS §4.6, ADR-040 §5).
+	case protocol.TypeClanLookup:
+		s.handleClanLookup(ctx, session, msg, log)
+
+	case protocol.TypeClanChatSend:
+		s.handleClanChatSend(ctx, session, msg, log)
+
+	case protocol.TypeClanChatFetch:
+		s.handleClanChatFetch(ctx, session, msg, log)
+
+	case protocol.TypeClanChatRead:
+		s.handleClanChatRead(ctx, session, msg, log)
+
+	// La pertenencia a un clan pasa por la simulación: decide la paz (ADR-040
+	// §1). Sólo la intención; el clan propio y el líder los decide el servidor.
+	case protocol.TypeClanCreate:
+		var p protocol.ClanCreatePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.CreateClan{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, Name: p.Name, Tag: p.Tag,
+		})
+
+	case protocol.TypeClanInvite:
+		var p protocol.ClanInvitePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		target, err := uuid.Parse(p.PlayerID)
+		if err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.InviteToClan{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, TargetID: target, Invited: p.Invited,
+		})
+
+	case protocol.TypeClanRespond:
+		var p protocol.ClanRespondPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.ClanID < 1 {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.RespondClan{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, ClanID: p.ClanID, Accept: p.Accept,
+		})
+
+	case protocol.TypeClanLeave:
+		var p protocol.ClanLeavePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.LeaveClan{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
+		})
+
+	case protocol.TypeClanExpel:
+		var p protocol.ClanExpelPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		target, err := uuid.Parse(p.PlayerID)
+		if err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.ExpelFromClan{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, TargetID: target,
+		})
+
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
 	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del
 	// servidor (INV-SEC-001); los rechazos llegan por system.error.
@@ -944,6 +1038,11 @@ func (s *Server) sendSnapshot(session *Session, center *world.Tile, requestID st
 		session.MarkTerrainSent(result.Chunks)
 
 		session.Send(protocol.TypeWorldSnapshot, requestID, result.Payload)
+		// El clan y las invitaciones, sólo en el snapshot de la conexión
+		// (SPEC-CLANS §6).
+		if result.Clan != nil {
+			session.Send(protocol.TypeClanUpdate, "", *result.Clan)
+		}
 		s.log.Debug("snapshot enviado",
 			observability.FieldSessionID, session.ID,
 			"chunks", len(result.Chunks), "entered", len(entered), "left", len(left),
