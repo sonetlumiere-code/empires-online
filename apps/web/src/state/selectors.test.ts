@@ -31,7 +31,7 @@ function cityView(over: Partial<v1.CityView> = {}): v1.CityView {
     name: 'Testópolis',
     centerX: 5,
     centerY: 5,
-    era: 'STONE_AGE', civilization: 'ROMAN', faction: 'NEUTRAL', factionJoin: null,
+    era: 'STONE_AGE', civilization: 'ROMAN', faction: 'NEUTRAL', factionJoin: null, clan: null,
     population: 3,
     populationLimit: 20,
     presenceState: 'ONLINE',

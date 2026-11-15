@@ -26,6 +26,7 @@ import {
   esReclamacionDe,
   pactoVigente,
   pasoDeFaccion,
+  pasoDeClan,
   rasgo,
   territorioLibreCerca,
   tiemposDePolilinea,
@@ -268,4 +269,13 @@ test('pasoDeFaccion: pedir desde NEUTRAL, esperar la propia entrada, nada si ya 
   assert.equal(pasoDeFaccion({ faction: 'CHAOS', factionJoin: null }, 'ORDER'), 'otro-bando');
   assert.equal(pasoDeFaccion({ faction: 'NEUTRAL', factionJoin: { faction: 'CHAOS', atMs: 1 } }, 'ORDER'), 'otro-bando');
   assert.equal(pasoDeFaccion({}, 'CHAOS'), 'pedir', 'un servidor sin facción es NEUTRAL');
+});
+
+test('pasoDeClan: fundar sin clan, nada si ya lo dirige, fallar en otro clan (SPEC-CLANS)', () => {
+  const yo = '00000000-0000-4000-8000-000000000001';
+  const clan = (leaderId, tag = 'HUM') => ({ clan: { id: 1, name: 'Humo', tag, leaderId, members: [], sentInvitations: [] }, invitations: [] });
+  assert.equal(pasoDeClan({ clan: null, invitations: [] }, yo), 'fundar');
+  assert.equal(pasoDeClan(clan(yo), yo), 'lider');
+  assert.equal(pasoDeClan(clan('otro'), yo), 'no-lider');
+  assert.equal(pasoDeClan(clan(yo, 'OTR'), yo), 'otro-clan');
 });

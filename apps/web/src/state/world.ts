@@ -32,6 +32,16 @@ import {
   setMessagesTabHidden,
   type MessagesState,
 } from './messages';
+import {
+  applyChatNew,
+  applyChatPage,
+  applyChatSendError,
+  applyClanInfo,
+  applyClanUpdate,
+  EMPTY_CLANS,
+  setChatReading,
+  type ClansState,
+} from './clans';
 import type { v1 } from '@empires-online/protocol';
 import type { ActiveMovement } from './interpolation';
 
@@ -95,6 +105,8 @@ export interface CityView {
   faction: string;
   /** Entrada pendiente de su dueño en un bando, o `null`. Pública. */
   factionJoin: { faction: string; atMs: number } | null;
+  /** Clan de su dueño (id y sigla), o `null`. Público (SPEC-CLANS RN-CLAN-008). */
+  clan: { id: number; tag: string } | null;
   population: number;
   populationLimit: number;
   presenceState: string;
@@ -242,6 +254,8 @@ export interface WorldState {
   notices: NoticeState;
   /** Los mensajes entre jugadores (SPEC-MESSAGES): la bandeja y la conversación abierta. Sólo los lee el HUD. */
   messages: MessagesState;
+  /** El clan propio, sus invitaciones y su canal (SPEC-CLANS). Sólo lo lee el HUD. */
+  clans: ClansState;
   changes: WorldChanges;
 
   selectedUnitId: number | null;
@@ -275,6 +289,14 @@ export interface WorldState {
   markConversationRead: (otherPlayerId: string) => void;
   /** «Entendido» o abrir la bandeja: la línea de mensajes de «Mientras no estabas» no vuelve. */
   dismissMessagesWhileAway: () => void;
+  /** Anota un envío al canal del clan: su rechazo va a su cuadro de texto. */
+  expectClanChatSend: (requestId: string) => void;
+  /** Anota que se pidió una página del canal: `null` la primera. */
+  expectClanChatPage: (requestId: string, beforeId: number | null) => void;
+  /** El canal del clan está (o deja de estar) a la vista. */
+  setClanChatReading: (reading: boolean) => void;
+  /** Olvida la vista pública pedida con «Ver clan». */
+  closeClanInfo: () => void;
   reset: () => void;
 }
 
@@ -326,6 +348,7 @@ function cityFromView(c: v1.CityView): CityView {
     advance: c.advance ?? null,
     craft: c.craft ?? null,
     factionJoin: c.factionJoin ?? null,
+    clan: c.clan ?? null,
   };
 }
 
@@ -357,6 +380,9 @@ export const useWorldStore = create<WorldState>((set, get) => {
   // Envíos y páginas de mensajes pedidos y aún sin respuesta (SPEC-MESSAGES).
   const messageSends = new Map<string, string>();
   const messagePageRequests = new Map<string, { otherPlayerId: string; beforeId: number | null }>();
+  // Envíos y páginas del canal del clan pedidos y aún sin respuesta (SPEC-CLANS).
+  const clanSends = new Set<string>();
+  const clanPageRequests = new Map<string, number | null>();
   const terrain = new Map<string, ChunkTerrain>();
   const forests = new Map<string, ForestView>();
   const hills = new Map<string, HillView>();
@@ -394,6 +420,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     eventLog: EMPTY_EVENT_LOG,
     notices: EMPTY_NOTICES,
     messages: EMPTY_MESSAGES,
+    clans: EMPTY_CLANS,
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
     lastError: null,
@@ -554,6 +581,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
             craft: p.craft !== undefined ? p.craft : existing.craft,
             faction: p.faction !== undefined ? p.faction : existing.faction,
             factionJoin: p.factionJoin !== undefined ? p.factionJoin : existing.factionJoin,
+            clan: p.clan !== undefined ? p.clan : existing.clan,
             pillagedAtMs: p.pillagedAtMs !== undefined ? p.pillagedAtMs : existing.pillagedAtMs,
             besiegedAtMs: p.besiegedAtMs !== undefined ? p.besiegedAtMs : existing.besiegedAtMs,
           });
@@ -690,11 +718,40 @@ export const useWorldStore = create<WorldState>((set, get) => {
           break;
         }
 
+        case 'clan.update':
+          set({ clans: applyClanUpdate(get().clans, message.payload) });
+          break;
+
+        case 'clan.info':
+          set({ clans: applyClanInfo(get().clans, message.payload) });
+          break;
+
+        case 'clan.chat.new':
+          if (message.requestId !== undefined) clanSends.delete(message.requestId);
+          set({ clans: applyChatNew(get().clans, message.payload.message, get().playerId) });
+          break;
+
+        case 'clan.chat.page': {
+          // Sólo las páginas pedidas: una respuesta tardía de otra pestaña no pisa nada.
+          const id = message.requestId;
+          if (id === undefined || !clanPageRequests.has(id)) break;
+          const before = clanPageRequests.get(id) ?? null;
+          clanPageRequests.delete(id);
+          set({ clans: applyChatPage(get().clans, message.payload, before) });
+          break;
+        }
+
         case 'unit.move.rejected':
           set({ lastError: { code: message.payload.code, message: message.payload.message } });
           break;
 
         case 'system.error': {
+          // El rechazo de un envío al canal va a su cuadro de texto (SPEC-CLANS §4.8).
+          if (message.requestId !== undefined && clanSends.has(message.requestId)) {
+            clanSends.delete(message.requestId);
+            set({ clans: applyChatSendError(get().clans, message.payload.code, message.payload.message) });
+            break;
+          }
           // El rechazo de un envío va a su conversación (SPEC-MESSAGES §4.6).
           const other = message.requestId !== undefined ? messageSends.get(message.requestId) : undefined;
           if (other !== undefined) {
@@ -764,6 +821,22 @@ export const useWorldStore = create<WorldState>((set, get) => {
       set({ messages: dismissWhileAway(get().messages) });
     },
 
+    expectClanChatSend: (requestId) => {
+      clanSends.add(requestId);
+    },
+
+    expectClanChatPage: (requestId, beforeId) => {
+      clanPageRequests.set(requestId, beforeId);
+    },
+
+    setClanChatReading: (reading) => {
+      set({ clans: setChatReading(get().clans, reading) });
+    },
+
+    closeClanInfo: () => {
+      set({ clans: { ...get().clans, info: null } });
+    },
+
     reset: () => {
       units.clear();
       cities.clear();
@@ -785,11 +858,14 @@ export const useWorldStore = create<WorldState>((set, get) => {
         eventLog: EMPTY_EVENT_LOG,
         notices: EMPTY_NOTICES,
         messages: EMPTY_MESSAGES,
+        clans: EMPTY_CLANS,
         changes: changed({ all: true }),
       });
       eventLogRequests.clear();
       messageSends.clear();
       messagePageRequests.clear();
+      clanSends.clear();
+      clanPageRequests.clear();
     },
   };
 });

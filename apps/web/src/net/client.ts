@@ -331,6 +331,51 @@ export class GameClient {
     return this.send('faction.join', { faction });
   }
 
+  /** Funda un clan; quien funda es su líder (SPEC-CLANS §4.2). */
+  createClan(name: string, tag: string): string {
+    return this.send('clan.create', { name, tag });
+  }
+
+  /** El líder invita a un jugador a su clan, o retira la invitación. */
+  inviteToClan(playerId: string, invited: boolean): string {
+    return this.send('clan.invite', { playerId, invited });
+  }
+
+  /** Acepta o rechaza una invitación a un clan. */
+  respondClan(clanId: number, accept: boolean): string {
+    return this.send('clan.respond', { clanId, accept });
+  }
+
+  /** Sale del clan propio. */
+  leaveClan(): string {
+    return this.send('clan.leave', {});
+  }
+
+  /** El líder expulsa a un miembro. */
+  expelFromClan(playerId: string): string {
+    return this.send('clan.expel', { playerId });
+  }
+
+  /** Pide la vista pública de un clan. */
+  lookupClan(clanId: number): string {
+    return this.send('clan.lookup', { clanId });
+  }
+
+  /** Escribe en el canal del clan propio. */
+  sendClanChat(body: string): string {
+    return this.send('clan.chat.send', { body });
+  }
+
+  /** Pide una página del canal: la más reciente o la anterior a `beforeId`. */
+  fetchClanChat(beforeId?: number): string {
+    return this.send('clan.chat.fetch', beforeId === undefined ? {} : { beforeId });
+  }
+
+  /** Marca leído el canal hasta `upToId` (el servidor no pasa de lo recibido). */
+  readClanChat(upToId: number): string {
+    return this.send('clan.chat.read', { upToId });
+  }
+
   /** Encarga el entrenamiento de un aldeano. */
   trainVillager(cityId: number): string {
     return this.trainUnit(cityId, 'VILLAGER');

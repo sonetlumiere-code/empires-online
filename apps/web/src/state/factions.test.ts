@@ -110,7 +110,7 @@ describe('el store y la facción', () => {
       buildings: [],
       cities: [{
         id: 10, ownerPlayerId: yo, name: 'Roma', centerX: 5, centerY: 5, era: 'STONE_AGE', civilization: 'ROMAN',
-        faction: 'NEUTRAL', population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
+        faction: 'NEUTRAL', clan: null, population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
       }],
     } as v1.WorldSnapshot['payload']);
   });

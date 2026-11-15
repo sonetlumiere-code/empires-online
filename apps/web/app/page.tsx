@@ -123,6 +123,19 @@ import {
   whileAwayText,
   type MessagesState,
 } from '../src/state/messages';
+import {
+  canInvite,
+  clanBadge,
+  isLeader,
+  lastChatId,
+  liveInvitations,
+  nameProblem,
+  roleLabel,
+  sameClan,
+  tagProblem,
+  withTag,
+  type ClansState,
+} from '../src/state/clans';
 import type { Point, Tile } from '../src/render/iso';
 
 const WS_URL = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL ?? 'ws://localhost:8080/ws';
@@ -172,6 +185,11 @@ export default function Page() {
   const [diplomacyTarget, setDiplomacyTarget] = useState<CityView | null>(null);
   // Facciones (SPEC-FACTIONS): la ventana «Elegir bando» y el bando que se mira en ella.
   const [factionPickerOpen, setFactionPickerOpen] = useState(false);
+  // Clanes (SPEC-CLANS): el panel, el borrador del canal y el de fundar.
+  const clans = useWorldStore((s) => s.clans);
+  const [clanOpen, setClanOpen] = useState(false);
+  const [clanDraft, setClanDraft] = useState('');
+  const [clanForm, setClanForm] = useState({ name: '', tag: '' });
   // Comercio (SPEC-TRADE): las ofertas pendientes y el trato que se está armando.
   const tradeOffers = useWorldStore((s) => s.tradeOffers);
   const [draft, setDraft] = useState<TradeDraft>({ giveResource: 'WOOD', giveAmount: 100, wantResource: 'STONE', wantAmount: 50 });
@@ -378,6 +396,38 @@ export default function Page() {
     return () => clearTimeout(id);
   }, [messages.incoming]);
 
+  // Clanes (SPEC-CLANS §4.8): al abrir el panel con clan, la página más reciente
+  // del canal; con el panel abierto, lo que llega se da por leído.
+  const requestClanChat = useCallback((beforeId: number | null) => {
+    const client = clientRef.current;
+    if (!client || client.getState() !== 'ready') return;
+    const requestId = client.fetchClanChat(beforeId ?? undefined);
+    useWorldStore.getState().expectClanChatPage(requestId, beforeId);
+  }, []);
+  const clanId = clans.clan?.id ?? null;
+  useEffect(() => {
+    // Con clan, el canal se pide al conectar: el contador del botón cuenta lo no leído.
+    if (connection === 'ready' && clanId !== null) requestClanChat(null);
+  }, [connection, clanId, requestClanChat]);
+  const toggleClan = useCallback(() => {
+    const next = !clanOpen;
+    if (next && useWorldStore.getState().clans.clan) requestClanChat(null);
+    useWorldStore.getState().setClanChatReading(next);
+    setClanOpen(next);
+  }, [clanOpen, requestClanChat]);
+  const lastClanId = clanOpen ? lastChatId(clans) : 0;
+  useEffect(() => {
+    if (lastClanId === 0 || document.visibilityState === 'hidden') return;
+    clientRef.current?.readClanChat(lastClanId);
+    useWorldStore.getState().setClanChatReading(true);
+  }, [lastClanId]);
+  const sendClanDraft = () => {
+    const client = clientRef.current;
+    if (!client || sendBlockReason(clanDraft) !== null) return;
+    useWorldStore.getState().expectClanChatSend(client.sendClanChat(clanDraft));
+    setClanDraft('');
+  };
+
   useEffect(() => {
     document.title = documentTitle(BASE_TITLE, notices, messages.hiddenIncoming);
   }, [notices, messages.hiddenIncoming]);
@@ -556,6 +606,13 @@ export default function Page() {
         const theirs = cities.find((c) => c.ownerPlayerId === unit.playerId)?.faction;
         if (orderPeace(mine, theirs)) {
           useWorldStore.setState({ lastError: { code: 'INVALID_TARGET', message: 'los dos sois de la Orden' } });
+          return;
+        }
+        // RN-CLAN-004: entre compañeros de clan, tampoco.
+        const myClan = cities.find((c) => c.ownerPlayerId === playerId)?.clan;
+        const theirClan = cities.find((c) => c.ownerPlayerId === unit.playerId)?.clan;
+        if (sameClan(myClan, theirClan)) {
+          useWorldStore.setState({ lastError: { code: 'INVALID_TARGET', message: 'sois del mismo clan' } });
           return;
         }
         clientRef.current?.attackUnit(selectedUnitId, unitId);
@@ -773,6 +830,15 @@ export default function Page() {
             >
               Mensajes{unreadTotal(messages) > 0 ? ` (${unreadTotal(messages)})` : ''}
             </button>
+            <button
+              className="secondary"
+              onClick={toggleClan}
+              aria-expanded={clanOpen}
+              title="Tu clan: sus miembros, su canal y tus invitaciones"
+            >
+              {clans.clan ? `Clan [${clans.clan.tag}]` : 'Clan'}
+              {clanBadge(clans, playerId, serverTimeMs()) > 0 ? ` (${clanBadge(clans, playerId, serverTimeMs())})` : ''}
+            </button>
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
             <span title="Piedra de la ciudad: se recoge en las colinas">Piedra {ownCity.stocks.STONE}</span>
             {/* Los bienes: el propio siempre, los ajenos si hay (SPEC-CIVILIZATION-GOODS §4.6). */}
@@ -938,7 +1004,7 @@ export default function Page() {
           {diplomacyTarget && (
             <>
               <span title={traitSummary(diplomacyTarget.civilization)}>
-                {diplomacyTarget.name} ({civilizationLabel(diplomacyTarget.civilization)}, {eraLabel(diplomacyTarget.era)},{' '}
+                {withTag(diplomacyTarget.name, diplomacyTarget.clan)} ({civilizationLabel(diplomacyTarget.civilization)}, {eraLabel(diplomacyTarget.era)},{' '}
                 {factionLabel(diplomacyTarget.faction)}
                 {diplomacyTarget.factionJoin ? ` — ${joinLabel(diplomacyTarget.factionJoin, serverTimeMs(), false)}` : ''}):
               </span>
@@ -1007,6 +1073,24 @@ export default function Page() {
               >
                 Escribir
               </button>
+              {diplomacyTarget.clan && (
+                <button
+                  className="secondary"
+                  title="Los miembros de su clan"
+                  onClick={() => { clientRef.current?.lookupClan(diplomacyTarget.clan!.id); setClanOpen(true); }}
+                >
+                  Ver clan
+                </button>
+              )}
+              {canInvite(clans, playerId, diplomacyTarget, serverTimeMs()) && (
+                <button
+                  className="secondary"
+                  title="Le llega una invitación a tu clan; si la acepta, estaréis en paz"
+                  onClick={() => clientRef.current?.inviteToClan(diplomacyTarget.ownerPlayerId, true)}
+                >
+                  Invitar al clan
+                </button>
+              )}
               <button className="secondary" onClick={() => setDiplomacyTarget(null)} title="Cerrar">×</button>
             </>
           )}
@@ -1084,6 +1168,27 @@ export default function Page() {
           onOlder={(before) => openConv && requestConversation(openConv.otherPlayerId, before)}
           onBlock={(other, blocked) => clientRef.current?.blockPlayer(other, blocked)}
           onClose={toggleMessages}
+        />
+      )}
+
+      {clanOpen && (
+        <ClanPanel
+          clans={clans}
+          playerId={playerId}
+          nowMs={serverTimeMs()}
+          form={clanForm}
+          onForm={setClanForm}
+          onCreate={() => clientRef.current?.createClan(clanForm.name, clanForm.tag)}
+          onRespond={(id, accept) => clientRef.current?.respondClan(id, accept)}
+          onWithdraw={(p) => clientRef.current?.inviteToClan(p, false)}
+          onExpel={(p) => clientRef.current?.expelFromClan(p)}
+          onLeave={() => clientRef.current?.leaveClan()}
+          draft={clanDraft}
+          onDraft={setClanDraft}
+          onSend={sendClanDraft}
+          onOlder={(before) => requestClanChat(before)}
+          onCloseInfo={() => useWorldStore.getState().closeClanInfo()}
+          onClose={toggleClan}
         />
       )}
 
@@ -1607,6 +1712,228 @@ function trackSession(sync: ViewSync, message: v1.ServerMessage): void {
       : { x: Math.floor((world?.width ?? 0) / 2), y: Math.floor((world?.height ?? 0) / 2) };
     sync.onInitialSnapshot(center);
   }
+}
+
+/**
+ * El panel del clan (SPEC-CLANS §4.8). Sin clan: fundar uno y las invitaciones
+ * recibidas. Con clan: los miembros, el canal y, para el líder, las
+ * invitaciones enviadas y «Expulsar». Encima, la vista pública pedida con «Ver
+ * clan». El texto del canal se pinta como texto.
+ */
+function ClanPanel({
+  clans,
+  playerId,
+  nowMs,
+  form,
+  onForm,
+  onCreate,
+  onRespond,
+  onWithdraw,
+  onExpel,
+  onLeave,
+  draft,
+  onDraft,
+  onSend,
+  onOlder,
+  onCloseInfo,
+  onClose,
+}: {
+  clans: ClansState;
+  playerId: string | null;
+  nowMs: number;
+  form: { name: string; tag: string };
+  onForm: (f: { name: string; tag: string }) => void;
+  onCreate: () => void;
+  onRespond: (clanId: number, accept: boolean) => void;
+  onWithdraw: (playerId: string) => void;
+  onExpel: (playerId: string) => void;
+  onLeave: () => void;
+  draft: string;
+  onDraft: (text: string) => void;
+  onSend: () => void;
+  onOlder: (beforeId: number) => void;
+  onCloseInfo: () => void;
+  onClose: () => void;
+}) {
+  const clan = clans.clan;
+  const leader = isLeader(clans, playerId);
+  const invitations = liveInvitations(clans, nowMs);
+  const formProblem = nameProblem(form.name) ?? tagProblem(form.tag);
+  const reason = sendBlockReason(draft);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  return (
+    <section style={styles.log} aria-label="Clan">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        <strong>{clan ? `${clan.name} [${clan.tag}]` : 'Clan'}</strong>
+        <button className="secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+
+      {clans.info && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '0.5rem', marginBottom: '0.6rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <strong>{clans.info.name} [{clans.info.tag}]</strong>
+            <button className="secondary" style={{ marginLeft: 'auto' }} onClick={onCloseInfo}>×</button>
+          </div>
+          <ul style={{ margin: '0.3rem 0 0', paddingLeft: '1.1rem' }} aria-label="Miembros de otro clan">
+            {clans.info.members.map((m) => (
+              <li key={m.playerId}>
+                {m.cityName ?? 'Un jugador sin ciudad'} — {factionLabel(m.faction)}
+                {m.role === 'LEADER' ? ' — Líder' : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!clans.loaded ? (
+        <p style={{ margin: 0, color: 'var(--muted)' }}>Cargando…</p>
+      ) : clan === null ? (
+        <>
+          {invitations.length > 0 && (
+            <ul style={{ listStyle: 'none', margin: '0 0 0.6rem', padding: 0, display: 'grid', gap: '0.35rem' }} aria-label="Invitaciones">
+              {invitations.map((i) => (
+                <li key={i.clanId} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <span>Te invitan a {i.name} [{i.tag}]</span>
+                  <button onClick={() => onRespond(i.clanId, true)} title="Entras en el clan y estás en paz con sus miembros">
+                    Aceptar
+                  </button>
+                  <button className="secondary" onClick={() => onRespond(i.clanId, false)}>Rechazar</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form
+            style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
+            onSubmit={(e) => { e.preventDefault(); if (formProblem === null) onCreate(); }}
+            aria-label="Fundar un clan"
+          >
+            <span>Fundar un clan:</span>
+            <input
+              value={form.name}
+              onChange={(e) => onForm({ ...form, name: e.target.value })}
+              placeholder="Nombre"
+              aria-label="Nombre del clan"
+              maxLength={24}
+            />
+            <input
+              value={form.tag}
+              onChange={(e) => onForm({ ...form, tag: e.target.value.toUpperCase() })}
+              placeholder="Sigla"
+              aria-label="Sigla del clan"
+              maxLength={4}
+              style={{ width: '5rem' }}
+            />
+            <button type="submit" disabled={formProblem !== null} title={formProblem ?? 'Serás su líder. El nombre y la sigla no cambian'}>
+              Fundar
+            </button>
+          </form>
+        </>
+      ) : (
+        <>
+          <ul style={{ margin: '0 0 0.5rem', paddingLeft: '1.1rem' }} aria-label="Miembros">
+            {clan.members.map((m) => (
+              <li key={m.playerId}>
+                {m.cityName ?? 'Un jugador sin ciudad'} — {factionLabel(m.faction)} — {roleLabel(m.role)}
+                {leader && m.playerId !== playerId && (
+                  <button className="secondary" style={{ marginLeft: '0.5rem' }} onClick={() => onExpel(m.playerId)}
+                    title="Sale del clan; seguís en paz unos minutos">
+                    Expulsar
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {leader && clan.sentInvitations.filter((i) => i.expiresAtMs > nowMs).length > 0 && (
+            <p style={{ margin: '0 0 0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ color: 'var(--muted)' }}>Invitados:</span>
+              {clan.sentInvitations.filter((i) => i.expiresAtMs > nowMs).map((i) => (
+                <span key={i.playerId} style={{ display: 'inline-flex', gap: '0.3rem', alignItems: 'center' }}>
+                  {i.cityName ?? 'un jugador'}
+                  <button className="secondary" onClick={() => onWithdraw(i.playerId)}>Retirar</button>
+                </span>
+              ))}
+            </p>
+          )}
+
+          {clans.chat?.nextBeforeId != null && (
+            <button className="secondary" style={{ marginBottom: '0.5rem' }} onClick={() => onOlder(clans.chat!.nextBeforeId!)}>
+              Ver anteriores
+            </button>
+          )}
+          {!clans.chat?.loaded ? (
+            <p style={{ margin: 0, color: 'var(--muted)' }}>Cargando el canal…</p>
+          ) : clans.chat.messages.length === 0 ? (
+            <p style={{ margin: 0, color: 'var(--muted)' }}>El canal está vacío: lo que escribas lo leen todos los miembros.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.35rem' }} aria-label="Canal del clan">
+              {clans.chat.messages.map((m) => {
+                const mine = m.fromPlayerId === playerId;
+                return (
+                  <li key={m.id} style={{ justifySelf: mine ? 'end' : 'start', maxWidth: '80%' }}>
+                    <div style={{ color: 'var(--muted)', fontSize: '0.7rem', textAlign: mine ? 'right' : 'left' }}>
+                      {mine ? 'Tú' : (m.fromCityName ?? 'Un jugador sin ciudad')} · {messageTime(m.sentAtMs, nowMs)}
+                    </div>
+                    <div
+                      style={{
+                        whiteSpace: 'pre-wrap',
+                        overflowWrap: 'anywhere',
+                        padding: '0.35rem 0.6rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        background: mine ? 'var(--border)' : 'transparent',
+                      }}
+                    >
+                      {m.body}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <form
+            style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', marginTop: '0.6rem' }}
+            onSubmit={(e) => { e.preventDefault(); onSend(); }}
+          >
+            <textarea
+              value={draft}
+              onChange={(e) => onDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
+              }}
+              rows={2}
+              style={{ flex: 1, resize: 'vertical' }}
+              aria-label="Mensaje al clan"
+              placeholder="Escribe al clan (Intro envía, Mayús+Intro salta de línea)"
+            />
+            <span style={{ color: bodyLength(draft) > MESSAGE_MAX_CHARS ? 'var(--danger)' : 'var(--muted)', fontSize: '0.75rem' }}>
+              {bodyLength(draft)}/{MESSAGE_MAX_CHARS}
+            </span>
+            <button type="submit" disabled={reason !== null} title={reason ?? 'Enviar al clan'}>
+              Enviar
+            </button>
+          </form>
+          {clans.sendError && (
+            <p style={{ color: 'var(--danger)', margin: '0.4rem 0 0' }} role="alert">
+              {sendErrorText(clans.sendError.code, clans.sendError.message)}
+            </p>
+          )}
+          <p style={{ margin: '0.6rem 0 0', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {confirmLeave ? (
+              <>
+                <span>Dejas el canal y la sigla ya; la paz con tus compañeros dura unos minutos más.</span>
+                <button onClick={() => { setConfirmLeave(false); onLeave(); }}>Salir del clan</button>
+                <button className="secondary" onClick={() => setConfirmLeave(false)}>Cancelar</button>
+              </>
+            ) : (
+              <button className="secondary" onClick={() => setConfirmLeave(true)}>Salir del clan</button>
+            )}
+          </p>
+        </>
+      )}
+    </section>
+  );
 }
 
 const styles = {
