@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las veinticinco specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las veintiséis specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -65,6 +65,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Bienes de civilización | [civilization-goods.md](civilization-goods.md) | E14 Bienes | Implemented | Un bien por civilización (vino, seda, especias, pieles) que sólo elabora su taller con `city.craft`; la Edad de Hierro pide 60 bienes ajenos, así que para progresar hay que comerciar |
 | Caravanas | [caravans.md](caravans.md) | E15 Caravanas | Implemented | Cada trato aceptado sale en dos caravanas, una por sentido, que recorren el mapa hasta la otra ciudad; un guerrero que mata una caravana la captura con su carga y se la lleva a su ciudad |
 | Mensajes | [messages.md](messages.md) | E16 Mensajes | Implemented | Mensajes de texto entre dos jugadores, guardados y entregados en vivo o al volver, con bandeja, lo leído por conversación, bloqueo y límites contra el spam; fuera del tick |
+| Facciones | [factions.md](factions.md) | E17 Facciones | Draft | Unirse a la Orden o al Caos desde `NEUTRAL`, una vez y con preaviso; la paz de la Orden, sin pacto ni alianza entre Orden y Caos, y menos daño recibido en la tierra del propio bando |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
@@ -81,7 +82,7 @@ Documentación relacionada que **no** es una spec funcional y por tanto no sigue
 ## 3. Plantilla obligatoria de spec
 
 La plantilla tiene tres partes: una **cabecera** fija, un **núcleo** fijo y un **cuerpo temático** libre.
-Lo que sigue describe lo que las veinticinco specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
+Lo que sigue describe lo que las veintiséis specs del §2 hacen realmente; no es un ideal al que ninguna se ajuste.
 
 ### 3.1 Cabecera
 
