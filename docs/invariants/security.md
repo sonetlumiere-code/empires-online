@@ -558,7 +558,7 @@ después cruzando `sent_at` con `player_blocks.created_at`.
 | Aplicación | BOUNDARY, DB, TEST |
 | Milestone | E18 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: se registra con SPEC-CLANS antes de escribir su código (§8 del catálogo) |
+| Cobertura | **Cubierto** por `TestElCanalDeUnClan` (verificado por mutación: sin el filtro de `first_message_id`, el test falla) y `TestUnaSalidaEsperaAlCandadoDelCanal` (verificado por mutación: sin el candado del clan en la salida, el test falla), integration en `internal/persistence/postgres`, y el e2e `TestUnClanPorLaRed` (`internal/websocket`) |
 
 **Enunciado.** Una sesión sólo recibe (por `clan.chat.new` o `clan.chat.page`) mensajes de `clan_messages` del clan
 en el que su jugador tiene una estancia abierta, y sólo los de `id` mayor que el `first_message_id` de esa estancia; y
@@ -575,9 +575,10 @@ de la sesión ([INV-SEC-004](#inv-sec-004)). `DB` — el envío y la lectura com
 `first_message_id`; la entrega en vivo va a los miembros abiertos que leyó la transacción del envío
 ([ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §5).
 
-**Cómo se verifica.** Previsto: en la integración, un no miembro que no escribe ni lee, un miembro que no lee lo
-anterior a su entrada, y una salida que espera al candado de un envío en curso y, tras ella, no admite otro; en el e2e,
-dos miembros conectados que reciben el mensaje y un tercero que no, y un expulsado que deja de recibir en el acto.
+**Cómo se verifica.** En la integración, un no miembro que no escribe ni lee, un miembro que no lee lo anterior a su
+entrada, un `requestId` repetido que no guarda otro mensaje, y una salida que espera al candado de un envío en curso y,
+tras ella, no admite otro; en el e2e, los dos miembros que reciben el mensaje (quien lo envió, con su `requestId`), un
+tercero sin clan que no puede escribir, y lo leído que no pasa de lo recibido.
 
 **Violación en runtime.** Una lectura que devolviera un mensaje fuera de la estancia de la sesión se descarta y se
 registra `invariant_violation` con `inv_id=INV-SEC-012`, sin el texto.

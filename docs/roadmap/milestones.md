@@ -2095,13 +2095,20 @@ renombrar, bando propio del clan, guerras y alianzas entre clanes, ranking y dir
    precisiones de [combat-raid.md](../specs/combat-raid.md) (`RN-COMBAT-006`), [factions.md](../specs/factions.md)
    (`RN-FAC-005`), [messages.md](../specs/messages.md) (§2), [mvp-scope.md](../product/mvp-scope.md) (`OUT-13`) y
    [schema.md](../database/schema.md) (§17.3), y `Q-16` en el backlog.
-2. **PENDIENTE** — Protocolo: nueve comandos (39 cliente → servidor) y cuatro tipos (31 servidor → cliente), `clan` en
+2. **HECHO** — Protocolo: nueve comandos (39 cliente → servidor) y cuatro tipos (31 servidor → cliente), `clan` en
    `CityView`; contract tests en los dos lados y un e2e por tipo nuevo.
-3. **PENDIENTE** — Dominio y simulación: el clan, `clanState`, los cinco comandos de la simulación en dos fases o
+3. **HECHO** — Dominio y simulación: el clan, `clanState`, los cinco comandos de la simulación en dos fases o
    optimistas, `AtPeace` con el clan y la paz residual, la regla de bandos también en `faction.join`, la expulsión en
    el registro y los avisos.
-4. **PENDIENTE** — Migración `000020` y persistencia: las cinco tablas, los índices, los dos triggers, la carga, los
+4. **HECHO** — Migración `000020` y persistencia: las cinco tablas, los índices, los dos triggers, la carga, los
    trabajos de pertenencia y el canal con su candado por clan.
-5. **PENDIENTE** — Cliente: el botón y el panel del clan, el canal, «Invitar al clan» y «Ver clan» en la barra de una
+5. **HECHO** — Cliente: el botón y el panel del clan, el canal, «Invitar al clan» y «Ver clan» en la barra de una
    ciudad ajena, la sigla en el mapa, el clic de ataque entre compañeros y los rechazos con su motivo.
 6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --clan` con cuentas de humo propias.
+
+**Verificación (2026-11-15).** Todo en serie y en verde: los scripts de documentación, determinismo y secretos, sus
+tests, `go build`, los dos `go vet`, `gofmt`, la suite de Go, las dos integraciones, el `typecheck`, los tests del
+protocolo y del cliente, la deriva del esquema, y `web:build` con los canarios y el escaneo del bundle. Cuatro guards
+verificados por mutación: la paz del clan en `AtPeace` (`INV-CLAN-003`), el trigger de bandos (`INV-CLAN-002`), y el
+candado de la salida y el filtro de `first_message_id` del canal (`INV-SEC-012`). La mutación del candado destapó que
+su test colgaba al fallar con la transacción abierta: ahora la suelta en un `t.Cleanup`.

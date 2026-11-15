@@ -48,7 +48,8 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `trade_routes` | Fuera de MVP: solo diseño | — |
 | `markets` | Fuera de MVP: solo diseño | — |
 | `trade_transactions` | Fuera de MVP: solo diseño | — |
-| `clans` | Fuera de MVP: solo diseño | — |
+| `clans`, `clan_members`, `clan_invites` | E18: **activas** | Los clanes, la historia de pertenencia (una fila por estancia) y las invitaciones. Las escribe la cola de la simulación ([ADR-040](../decisions/ADR-040-clans-membership-and-peace.md), §16.13). **Precisión (2026-11-15):** hasta E18 `clans` figuraba aquí como «solo diseño» |
+| `clan_messages`, `clan_message_reads` | E18: **activas** | El canal de cada clan y lo leído. Los escribe la conexión del Game Server en su propia transacción, con el candado del clan (ADR-040 §5, §16.13) |
 
 Las tablas de territorio, safe zones, tratados y guarniciones las creó `000001` antes de que existiera su mecánica, porque sus claves foráneas apuntan a tablas activas (`garrisons` → `units` y `cities`, `treaties` → `players`, `territory_control` → `territories`) y porque introducirlas más tarde habría obligado a un paso *expand* adicional sobre tablas ya grandes. Hoy todas tienen su lógica (M5–M7); la única tabla creada que sigue sin escritor es `sessions`.
 
@@ -1388,6 +1389,24 @@ CREATE INDEX player_blocks_blocked_idx ON player_blocks (blocked_player_id, play
 | `message_reads.read_up_to_id` | Hasta qué mensaje leyó `player_id` su conversación con `other_player_id`. Sólo avanza (`GREATEST`) y nunca pasa de lo que se sirvió a la sesión que marca (`INV-PERSIST-007`) |
 | `player_blocks` | `player_id` tiene bloqueado a `blocked_player_id`: no hay mensajes entre ellos en ningún sentido (`RN-MSG-004`) |
 
+### 16.13 Clanes (`000020`)
+
+[SPEC-CLANS](../specs/clans.md) §7, [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md). El DDL completo está en `services/game-server/migrations/000020_clans.up.sql`; aquí, lo que importa para leerlo:
+
+| Tabla / columna | Semántica |
+|---|---|
+| `clans.name`, `clans.tag` | Únicos entre los clanes vivos (`dissolved_at IS NULL`): el nombre sin distinguir mayúsculas (`clans_name_live_key` sobre `lower(name)`) y la sigla tal cual (`clans_tag_live_key`). Un `CHECK` acota el nombre (de 3 a 24 caracteres, sin espacios en los extremos ni dobles) y la sigla (`^[A-Z0-9]{2,4}$`); qué caracteres admite el nombre lo decide el dominio |
+| `clans.leader_player_id` | El líder actual, que es siempre un miembro abierto (`INV-CLAN-001`): lo garantiza la transacción que lo cambia y lo comprueba la validación de carga, no la base |
+| `clans.dissolved_at` | La salida del último miembro. El clan disuelto conserva su fila y su historia; su nombre y su sigla quedan libres |
+| `clan_members` | Una fila por estancia: `joined_at`, `left_at` y `left_reason` (`LEFT` o `EXPELLED`; las dos nulas mientras sigue). `clan_members_one_open` (único parcial sobre `player_id` con `left_at IS NULL`) es la mitad física de `INV-CLAN-001`. De las fechas sale la paz residual (ADR-040 §3) |
+| `clan_members.first_message_id` | El mayor `id` del canal en el instante de entrar, leído con el candado del clan: el miembro lee sólo los mensajes posteriores (`INV-SEC-012`) |
+| `clan_invites` | Una invitación viva por clan e invitado (PK de los dos), con su caducidad. Entrar en un clan borra todas las del jugador; disolverlo, todas las del clan |
+| `clan_messages` | Como `player_messages`: el texto ya validado (1–500 caracteres), `UNIQUE (sender_player_id, request_id)` para la idempotencia, y un índice `(clan_id, id DESC)` |
+| `clan_message_reads` | Lo leído del canal por cada miembro; sólo avanza (`GREATEST`) |
+| `clan_mixes_factions(clan_id)` y sus dos triggers | `INV-CLAN-002`: al abrir una estancia (`clan_members_faction_guard`) y al cambiar la facción o la entrada pendiente de un miembro (`players_clan_faction_guard`), la base rechaza con `23514` un clan con un miembro (o una entrada) de `ORDER` y otro de `CHAOS`. Los dos toman la fila del clan antes de mirar |
+
+La entrada, la salida y cada envío del canal toman el candado de transacción del clan (`pg_advisory_xact_lock(int4, int4)`, con el espacio «CLAN» y el `id`): los `id` del canal se confirman en orden y nadie escribe tras su salida.
+
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 
 Sin DDL definitivo y **sin migración**. Se documenta la forma prevista para verificar que encaja sin romper el esquema del MVP. Todas estas tablas son **aditivas**: no exigen modificar ninguna columna existente. Las únicas intrusiones previstas sobre tablas MVP son columnas nuevas y anulables, introducidas mediante el patrón *expand* descrito en [migrations.md](./migrations.md).
@@ -1420,7 +1439,7 @@ El punto clave de encaje: `caravans` y `trade_routes` **no** reinventan el movim
 
 Cuando `clans` llegue, `territory_control` no necesitará ninguna columna nueva: `owner_type = 'CLAN'` con el `owner_id` correspondiente ya está previsto en el `CHECK` del esquema actual. Ése era justamente el objetivo del dueño polimórfico.
 
-**Precisión (2026-11-15, [SPEC-CLANS](../specs/clans.md) §7, [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §6).** E18 sustituye este diseño por el de la migración `000020`: la sigla (`tag`) en lugar de `code`, el líder actual en lugar del fundador, sin `faction_id`, y `clan_members` con una fila por estancia (entrada, salida y motivo), de la que salen la paz residual y lo que cada miembro lee del canal; más `clan_invites`, `clan_messages` y `clan_message_reads`. El dueño `CLAN` del territorio sigue sin usarse. Las tablas se documentarán aquí con la implementación.
+**Precisión (2026-11-15, [SPEC-CLANS](../specs/clans.md) §7, [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §6).** E18 sustituye este diseño por el de la migración `000020`: la sigla (`tag`) en lugar de `code`, el líder actual en lugar del fundador, sin `faction_id`, y `clan_members` con una fila por estancia (entrada, salida y motivo), de la que salen la paz residual y lo que cada miembro lee del canal; más `clan_invites`, `clan_messages` y `clan_message_reads`. El dueño `CLAN` del territorio sigue sin usarse. Las tablas están en §16.13.
 
 ---
 
@@ -1447,6 +1466,8 @@ Respuesta explícita a las cuatro preguntas del canon §12 para el esquema del M
 | `world_events` | No | Sí, junto al hecho que lo origina | — | No |
 | `sessions` | Sí / Redis | **Todavía no se escribe** (§13) | — | — |
 | `player_messages`, `message_reads`, `player_blocks` | No: el loop no los ve | Sí, transacción **síncrona desde la conexión**, antes de entregar el mensaje (ADR-038) | — | No; la bandeja y los no leídos se derivan al leer |
+| `clans`, `clan_members`, `clan_invites` | Sí: la pertenencia, el líder, las invitaciones vivas y las salidas recientes (ADR-040 §1) | Sí, transacción **encolada**: fundar, invitar y entrar en dos fases; salir y expulsar, optimistas | — | La paz residual, sí: de las fechas de `clan_members` |
+| `clan_messages`, `clan_message_reads` | No: el loop no los ve | Sí, transacción **síncrona desde la conexión** con el candado del clan, antes de entregar (ADR-040 §5) | — | No |
 
 ---
 

@@ -322,7 +322,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-SEC-009 | El registro de un jugador sólo cuenta sucesos en los que es parte (`player_id` o `counterpart_player_id`), y sus avisos en vivo también | ALTO | BOUNDARY, DOMAIN, TEST | ✓ | `TestUnTerceroNoVeLosSucesosDeOtros`, `TestElRegistroCuentaCadaLadoYNadaAUnTercero`, `TestElRegistroSeSirveAlJugadorDeLaSesion`, `TestSinOtroJugadorNoHayAviso`, `TestUnAvisoLlegaConLaVistaEnOtraParteDelMapa` |
 | INV-SEC-010 | Una sesión sólo recibe mensajes de las conversaciones de su jugador, y todo mensaje lleva como remitente al jugador de la sesión que lo envió | CRITICO | BOUNDARY, DB, TEST | ✓ | `Test_INV_SEC_010_UnTerceroNoVeLaConversacionDeOtros` (integration), `TestUnMensajeLlegaATodasLasSesionesDeLosDos`, `TestLosComandosDeMensajesSonLosDelEsquema` |
 | INV-SEC-011 | Ningún mensaje entre dos jugadores se confirma mientras uno tiene bloqueado al otro | ALTO | DB, BOUNDARY, TEST | ✓ | `Test_INV_SEC_011_NingunMensajeCruzaUnBloqueo`, `TestUnEnvioQueEsperaAlCandadoVeElBloqueo` (integration), `TestElBloqueoCortaLosMensajesEnLosDosSentidos` |
-| INV-SEC-012 | Una sesión sólo recibe el canal del clan de su jugador, y sólo lo posterior a su entrada; todo mensaje del canal lleva como remitente al jugador de la sesión | CRITICO | BOUNDARY, DB, TEST | ○ | Sin test todavía (E18) |
+| INV-SEC-012 | Una sesión sólo recibe el canal del clan de su jugador, y sólo lo posterior a su entrada; todo mensaje del canal lleva como remitente al jugador de la sesión | CRITICO | BOUNDARY, DB, TEST | ✓ | `TestElCanalDeUnClan`, `TestUnaSalidaEsperaAlCandadoDelCanal` (integration), `TestUnClanPorLaRed` |
 
 ### TERRITORY — [territory.md](territory.md)
 
@@ -412,9 +412,9 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-CLAN-001 | Un jugador está en un clan como mucho, y todo clan vivo tiene un único líder que es miembro | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E18) |
-| INV-CLAN-002 | Ningún clan junta a la Orden y al Caos, contando las entradas pendientes | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E18) |
-| INV-CLAN-003 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre compañeros de clan, ni durante la paz residual | CRITICO | DOMAIN, TEST | ○ | Sin test todavía (E18) |
+| INV-CLAN-001 | Un jugador está en un clan como mucho, y todo clan vivo tiene un único líder que es miembro | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaEstanciaAbiertaPorJugador`, `TestLaPertenenciaAUnClanEnLaBase` (integration), `TestElLiderazgoYLaDisolucion` |
+| INV-CLAN-002 | Ningún clan junta a la Orden y al Caos, contando las entradas pendientes | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosTriggersNoJuntanALaOrdenYAlCaos` (integration), `TestUnClanNoJuntaALaOrdenYAlCaos` |
+| INV-CLAN-003 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre compañeros de clan, ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestDosDelMismoClanDejanDePelear`, `TestLaPazResidualTrasSalir`, `TestLosClanesVuelvenAlArrancar`, `TestUnClanPorLaRed` |
 
 ### Distribución
 
@@ -455,9 +455,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 132 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 136 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 4 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **138** | |
 
@@ -465,7 +465,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-CLAN-001`, `INV-CLAN-002`, `INV-CLAN-003` e `INV-SEC-012` se registraron el 2026-11-15 con SPEC-CLANS y [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md), antes de escribir su código, como manda §8, y nacen sin cobertura; con ellos llegó la familia `INV-CLAN` y su archivo, [clans.md](clans.md).
+`INV-CLAN-001`, `INV-CLAN-002`, `INV-CLAN-003` e `INV-SEC-012` se registraron el 2026-11-15 con SPEC-CLANS y [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día; con ellos llegó la familia `INV-CLAN` y su archivo, [clans.md](clans.md). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-PLAYER-013`, `INV-COMBAT-006` e `INV-DIPLO-003` se registraron el 2026-11-15 con SPEC-FACTIONS y [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día; el mismo día se precisó `INV-PLAYER-002` (la facción puede cambiar una vez, de `NEUTRAL` a un bando, y la carga exige una del catálogo), que volvió a ✓ con sus tests. Ninguna fila queda sin cobertura ni parcial.
 

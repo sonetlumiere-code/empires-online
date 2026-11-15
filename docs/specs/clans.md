@@ -309,6 +309,30 @@ nueva, y en [../invariants/security.md](../invariants/security.md):
 | contract / e2e | Los nueve comandos y los cuatro tipos contra el JSON Schema; `CityView` con `clan`; de punta a punta por WebSocket: fundar, invitar, aceptar (con `clan.update` a los dos), escribir en el canal con dos miembros conectados, expulsar (con su aviso) y un `unit.attack` entre compañeros rechazado con `INVALID_TARGET` |
 | cliente | El botón y el panel del clan con y sin clan, el canal con paginación y contador, «Invitar al clan» y «Ver clan» en la barra de una ciudad ajena, la sigla en el mapa, el clic de ataque que no sale entre compañeros; `scripts/smoke.mjs --clan` con **cuentas de humo propias** (nunca `smoke_runner` ni `smoke_victim`, que siguen sin clan para el saqueo, el asedio y la diplomacia): una funda, invita a otra, la otra acepta, escriben en el canal, la invitación de `smoke_caos` a un clan con `smoke_orden` se rechaza, y la expulsión se avisa; en una pasada siguiente, con el clan ya fundado, sólo comprueba lo que no cambia el estado |
 
+**Precisiones (2026-11-15), al implementar.** Ninguna cambia una decisión de §10; las que concretan un detalle de
+[ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) se anotan aquí, porque un ADR aceptado no se edita.
+
+- **`left_reason`.** Sólo `LEFT` y `EXPELLED`: el último que sale lo hace con `LEFT` y la disolución la marca
+  `clans.dissolved_at`. No hay evento `ClanDissolved`: es el `ClanLeft` del último, con `dissolved: true` en su
+  payload; la métrica sí la cuenta aparte (`dissolved`).
+- **El nombre en el esquema.** El JSON Schema acota la longitud (3–24) y la sigla con su patrón; qué caracteres admite
+  el nombre lo comprueba el dominio (`clan.ValidateName`), que responde `INVALID_MESSAGE`. El cliente aplica las mismas
+  reglas antes de enviar (`nameProblem`, `tagProblem`).
+- **Qué responde cada orden.** La respuesta es `clan.update` con el `requestId` a quien dio la orden; el `city.update`
+  con el `clan` de la ciudad sale sin él. El `clan.update` de la conexión sale tras el primer `world.snapshot`, no
+  tras un `session.view`. Una invitación que caduca no se avisa: el cliente la oculta por `expiresAtMs` y la fase 5 la
+  olvida.
+- **Retirar y rechazar son optimistas**, como salir: la RAM borra la invitación en el acto y un trabajo la borra de la
+  base. Si esa escritura se pierde del todo, la invitación vuelve tras un reinicio hasta caducar; no da paz ni acceso a
+  nada, porque la entrada vuelve a comprobarla en la base.
+- **La última salida espera a las entradas en vuelo.** Si el último miembro pide salir mientras una entrada al clan
+  espera su transacción (milisegundos), se rechaza con `INVALID_TARGET` («alguien está entrando en el clan; inténtalo
+  en un momento»): disolver primero dejaría esa entrada sobre un clan disuelto.
+- **Fundar borra las invitaciones recibidas** del fundador, como entrar.
+- **Los e2e** corren con almacenes en memoria, como los de los mensajes: prueban la conexión (quién recibe qué, el
+  orden de las respuestas, los rechazos y el aviso). La base, el candado del clan, los triggers y la idempotencia son
+  de la integración, y el recorrido entero contra el servidor vivo es `scripts/smoke.mjs --clan`.
+
 ## 10. Decisiones de producto (2026-11-15)
 
 Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,

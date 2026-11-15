@@ -45,6 +45,7 @@ Dentro del scope de v1:
 - La conquista ([territory-conquest.md](territory-conquest.md)): `unit.claim` (§7.18), `claim` en `TerritoryView` con `contested` como «hay una reclamación activa», el estado `CLAIMING`, los tipos `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN` en el registro y en `event_log.notice`, y `territoryId`/`territoryName` en las dos; todo aditivo (`R-VER-2`).
 - Los mensajes entre jugadores ([messages.md](messages.md)): `message.send`, `message.list`, `message.fetch`, `message.read` y `message.block` (§7.20), que atiende la conexión sin pasar por la simulación, y `message.new` (§8.25), `message.inbox` (§8.26) y `message.page` (§8.27); todo aditivo (`R-VER-3`).
 - Las facciones ([factions.md](factions.md)): `faction.join` (§7.21), `faction` (un `FactionCode`, obligatorio) y `factionJoin` (`{ faction, atMs }` o `null`) en `CityView` y en `city.update`, y `ownerFaction` en `TerritoryView` (un `FactionCode` o `null`, siempre presente); sin mensajes servidor → cliente nuevos (`R-VER-3`).
+- Los clanes ([clans.md](clans.md)): `clan.create`, `clan.invite`, `clan.respond`, `clan.leave` y `clan.expel`, que pasan por la simulación, y `clan.lookup`, `clan.chat.send`, `clan.chat.fetch` y `clan.chat.read`, que atiende la conexión (§7.22); `clan.update` (§8.28), `clan.info` (§8.29), `clan.chat.new` (§8.30) y `clan.chat.page` (§8.31); `clan` (`{ id, tag }` o `null`, obligatorio) en `CityView` y en `city.update`; los tipos `CLAN_EXPELLED` (también en `event_log.notice`) y `CLAN_MEMBER_EXPELLED` en el registro; todo aditivo (`R-VER-2`, `R-VER-3`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -142,7 +143,7 @@ type Inbound struct {
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. Distinto de una versión soportada → `UNSUPPORTED_VERSION`. |
 | `type` | `string` | Sí | Uno de los veinticuatro tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
-| `requestId` | `string` (UUID) | Sí en los veinticuatro tipos, según el esquema Zod. El servidor lo **exige** hoy en los veinte comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel` y `faction.join`), donde es la clave de idempotencia; en los de sesión y en los del registro lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
+| `requestId` | `string` (UUID) | Sí en los treinta y nueve tipos, según el esquema Zod. El servidor lo **exige** hoy en los veinticinco comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `faction.join`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave` y `clan.expel`), donde es la clave de idempotencia; en los de sesión y en los del registro lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
 | `payload` | `object` | Sí | Objeto específico del `type`, **estricto**: ninguna propiedad adicional. Nunca `null`. |
 
 El payload se deja sin decodificar (`json.RawMessage`) hasta después de validar versión, tipo y autorización: no se gasta trabajo en mensajes que van a rechazarse.
@@ -235,7 +236,7 @@ El cliente de `apps/web` reconecta con backoff exponencial y jitter —0,5 s, 1 
 
 ## 7. Mensajes cliente → servidor
 
-Los treinta tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch`, `event_log.seen`, `message.send`, `message.list`, `message.fetch`, `message.read`, `message.block` y `faction.join`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), los tres `trade.*`, con [SPEC-TRADE](trade.md), `unit.claim`, con [SPEC-TERRITORY-CONQUEST](territory-conquest.md), `city.craft`, con [SPEC-CIVILIZATION-GOODS](civilization-goods.md), los cinco `message.*`, con [SPEC-MESSAGES](messages.md), y `faction.join`, con [SPEC-FACTIONS](factions.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
+Los treinta y nueve tipos de v1: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch`, `event_log.seen`, `message.send`, `message.list`, `message.fetch`, `message.read`, `message.block`, `faction.join`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave`, `clan.expel`, `clan.lookup`, `clan.chat.send`, `clan.chat.fetch` y `clan.chat.read`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), los tres `trade.*`, con [SPEC-TRADE](trade.md), `unit.claim`, con [SPEC-TERRITORY-CONQUEST](territory-conquest.md), `city.craft`, con [SPEC-CIVILIZATION-GOODS](civilization-goods.md), los cinco `message.*`, con [SPEC-MESSAGES](messages.md), `faction.join`, con [SPEC-FACTIONS](factions.md), y los nueve `clan.*`, con [SPEC-CLANS](clans.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
 
 ### 7.1 `session.hello`
 
@@ -644,9 +645,44 @@ payload: z.object({ playerId: Uuid, blocked: z.boolean() }).strict()
 
 **Efectos, en dos fases.** El tick reserva la entrada, la cola la escribe (`faction_join_id`, `faction_join_at`) y al volver por el buzón se confirma: `city.update { factionJoin: { faction, atMs } }` al chunk de la ciudad y al dueño, que la recibe con su `requestId` esté donde esté su vista. `atMs` es el instante de la orden más `EO_FACTION_JOIN_SECONDS` (900). Al vencer, en la fase 5, `city.update { faction, factionJoin: null }` al chunk y al dueño, `territory.update` de cada territorio del jugador con su `ownerFaction` nuevo, y `treaty.update` a los dos firmantes de cada pacto o alianza con el bando contrario, que empieza su preaviso. Desde entonces `unit.attack`, `unit.pillage`, `unit.demolish` y `unit.claim` entre dos de la Orden responden `INVALID_TARGET` («los dos sois de la Orden»), y `treaty.propose` o `treaty.respond` con `accept` de un pacto o alianza entre la Orden y el Caos, `INVALID_TARGET` («la Orden y el Caos no firman la paz»).
 
+### 7.22 `clan.create`, `clan.invite`, `clan.respond`, `clan.leave`, `clan.expel`, `clan.lookup`, `clan.chat.send`, `clan.chat.fetch` y `clan.chat.read`
+
+- **Dirección:** cliente → servidor. **Propósito:** fundar un clan, invitar o retirar una invitación, aceptarla o rechazarla, salir, expulsar, ver la vista pública de un clan y usar el canal del clan propio. No son hostiles: no los frena la protección. Spec: [clans.md](clans.md); decisión: [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md).
+
+```ts
+// clan.create: qué caracteres admite el nombre lo decide el servidor
+payload: z.object({ name: z.string().min(3).max(24), tag: z.string().regex(/^[A-Z0-9]{2,4}$/) }).strict()
+// clan.invite: invited false retira la invitación
+payload: z.object({ playerId: Uuid, invited: z.boolean() }).strict()
+// clan.respond
+payload: z.object({ clanId: EntityId, accept: z.boolean() }).strict()
+// clan.leave
+payload: z.object({}).strict()
+// clan.expel
+payload: z.object({ playerId: Uuid }).strict()
+// clan.lookup
+payload: z.object({ clanId: EntityId }).strict()
+// clan.chat.send: el texto, como en message.send
+payload: z.object({ body: z.string().min(1).max(2 * MESSAGE_MAX_CHARS) }).strict()
+// clan.chat.fetch: la página más reciente, o la de los mensajes con id menor que beforeId
+payload: z.object({ beforeId: EntityId.optional() }).strict()
+// clan.chat.read
+payload: z.object({ upToId: EntityId }).strict()
+```
+
+```json
+{ "v": 1, "type": "clan.create", "requestId": "6e3f4a5b-7c8d-4e9f-a0b1-2c3d4e5f6a7b", "payload": { "name": "Los Lobos", "tag": "LOB" } }
+```
+
+Ningún comando nombra el clan propio, al líder ni al remitente: son los del jugador de la sesión (`INV-SEC-004`).
+
+**Los cinco primeros pasan por la simulación** (la pertenencia decide la paz, ADR-040 §1). Validaciones (`INVALID_MESSAGE` el formato; `INVALID_TARGET` lo demás, con el motivo): fundar, sin clan ni fundación o entrada en vuelo, con un nombre y una sigla libres entre los clanes vivos; invitar, sólo el líder, a un jugador existente, sin clan y sin invitación de este clan, sin pasar de `EO_CLAN_MAX_MEMBERS` contando las invitaciones vivas y las entradas en vuelo, y sin juntar a la Orden y al Caos contando las entradas pendientes; retirar, una invitación viva; responder, una invitación viva (`EO_CLAN_INVITE_HOURS`); aceptar, sin clan, con sitio y sin juntar los bandos; salir, estando en un clan; expulsar, sólo el líder y a otro miembro. Fundar, invitar y aceptar van en dos fases como `faction.join`: el tick reserva, la cola escribe (la clave del jugador al fundar, `clan:<id>` lo demás) y al volver por el buzón se confirma o se deshace con su código. Retirar, rechazar, salir y expulsar son optimistas. La respuesta a cada orden es `clan.update` (§8.28) con su `requestId` a quien la dio, y `clan.update` sin él a los demás afectados; entrar o salir difunde además la ciudad con su `clan` (§8.8). Expulsar manda a quien sale `event_log.notice { kind: "CLAN_EXPELLED" }` (§8.23). Desde la entrada, `unit.attack`, `unit.pillage`, `unit.demolish` y `unit.claim` entre dos miembros, y durante `EO_CLAN_PEACE_GRACE_SECONDS` entre quien salió y quienes eran sus compañeros, responden `INVALID_TARGET` («sois del mismo clan»); `faction.join` de un miembro hacia el bando contrario al de un compañero, `INVALID_TARGET` («tu clan tiene miembros de la Orden»). La última salida no se acepta mientras hay una entrada en vuelo al clan (`INVALID_TARGET`, «inténtalo en un momento»).
+
+**Los cuatro últimos no pasan por la simulación.** Los atiende la goroutine de lectura de la sesión, como los `message.*`, y comprueban la pertenencia en la base con el candado del clan (ADR-040 §5): sin clan, `INVALID_TARGET` («no estás en ningún clan»). `clan.chat.send` valida el texto como `message.send`, gasta del mismo límite por minuto (`RATE_LIMITED` sin cerrar la conexión), guarda y, tras el `COMMIT`, manda `clan.chat.new` (§8.30) a las sesiones de los miembros; la que lo envió, con su `requestId`; un `requestId` repetido recibe el mensaje que ya existía. `clan.chat.fetch` responde `clan.chat.page` (§8.31), sólo con lo escrito desde la entrada de quien lee. `clan.chat.read` no responde si va bien: deja lo leído en `upToId` como mucho, nunca más allá de lo que esa sesión recibió del canal y nunca hacia atrás. `clan.lookup` responde `clan.info` (§8.29) de un clan vivo, o `INVALID_TARGET` («ese clan no existe»). Si PostgreSQL no responde en 3 s, `INTERNAL_ERROR` y la sesión sigue.
+
 ## 8. Mensajes servidor → cliente
 
-Los veintisiete tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los treinta y un tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -784,7 +820,7 @@ interface ChunkTerrain {
       { "id": 48212, "playerId": "b61f3a82-3e44-4d90-921b-0caa774bc102", "cityId": 1204, "unitType": "VILLAGER", "x": 101, "y": 99, "hp": 40, "maxHp": 40, "status": "MOVING",
         "movement": { "movementId": 77301, "path": [ { "x": 100, "y": 99, "tMs": 0 }, { "x": 101, "y": 99, "tMs": 600 }, { "x": 102, "y": 99, "tMs": 1200 } ], "startTimeMs": 1788955198800, "arrivalTimeMs": 1788955200000, "target": { "x": 102, "y": 99 } } }
     ],
-    "cities": [ { "id": 1204, "ownerPlayerId": "b61f3a82-3e44-4d90-921b-0caa774bc102", "name": "Roma Nova", "centerX": 98, "centerY": 99, "era": "STONE_AGE", "civilization": "ROMAN", "faction": "NEUTRAL", "factionJoin": null, "population": 3, "populationLimit": 20, "presenceState": "ONLINE", "protectionUntilMs": null } ],
+    "cities": [ { "id": 1204, "ownerPlayerId": "b61f3a82-3e44-4d90-921b-0caa774bc102", "name": "Roma Nova", "centerX": 98, "centerY": 99, "era": "STONE_AGE", "civilization": "ROMAN", "faction": "NEUTRAL", "factionJoin": null, "clan": null, "population": 3, "populationLimit": 20, "presenceState": "ONLINE", "protectionUntilMs": null } ],
     "territories": []
   }
 }
@@ -890,6 +926,7 @@ payload: z.object({
   production: ProductionView.nullable().optional(),  // E1: null cuando termina
   era: EraCode.optional(),                           // E9: la era nueva al terminar un avance
   advance: AdvanceView.nullable().optional(),        // E9: { era, completesAtMs }; null al terminar
+  clan: CityClanView.nullable().optional(),          // E18: { id, tag } al entrar en un clan; null al salir
   pillagedAtMs: EpochMs.optional(),                  // E5: último golpe de saqueo, sólo al dueño
   besiegedAtMs: EpochMs.optional(),                  // E8: último golpe de asedio, sólo al dueño
 })
@@ -899,7 +936,7 @@ payload: z.object({
 { "v": 1, "type": "city.update", "seq": 63, "ts": 1788955500000, "payload": { "id": 1204, "presenceState": "PROTECTED" } }
 ```
 
-Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`); desde E5, en cada golpe de saqueo, `stocks` al chunk y `pillagedAtMs` sólo al dueño de la ciudad, por `SendToPlayer` ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-028`); desde E8, en cada golpe de asedio, `besiegedAtMs` sólo al dueño, y al caer una casa completa, `populationLimit` al chunk ([combat-siege.md](combat-siege.md) `RN-COMBAT-033` y `RN-COMBAT-038`); desde E9, al confirmarse un avance de era, `stocks` y `advance`, y al terminar, `era`, `populationLimit` y `advance: null` ([economy-stone.md](economy-stone.md) `RN-ECON-025` y `RN-ECON-027`). `CityView` lleva también `advance`, o `null`, y desde E13 `civilization`, que no cambia y por eso nunca va en `city.update` ([civilizations.md](civilizations.md) §6). Desde E17, `CityView` lleva `faction` y `factionJoin`, y `city.update` lleva `factionJoin` al confirmarse una entrada en un bando y `faction` con `factionJoin: null` al contar, al chunk y por `SendToPlayer` al dueño ([factions.md](factions.md) §6). Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
+Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`); desde E5, en cada golpe de saqueo, `stocks` al chunk y `pillagedAtMs` sólo al dueño de la ciudad, por `SendToPlayer` ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-028`); desde E8, en cada golpe de asedio, `besiegedAtMs` sólo al dueño, y al caer una casa completa, `populationLimit` al chunk ([combat-siege.md](combat-siege.md) `RN-COMBAT-033` y `RN-COMBAT-038`); desde E9, al confirmarse un avance de era, `stocks` y `advance`, y al terminar, `era`, `populationLimit` y `advance: null` ([economy-stone.md](economy-stone.md) `RN-ECON-025` y `RN-ECON-027`). `CityView` lleva también `advance`, o `null`, y desde E13 `civilization`, que no cambia y por eso nunca va en `city.update` ([civilizations.md](civilizations.md) §6). Desde E17, `CityView` lleva `faction` y `factionJoin`, y `city.update` lleva `factionJoin` al confirmarse una entrada en un bando y `faction` con `factionJoin: null` al contar, al chunk y por `SendToPlayer` al dueño ([factions.md](factions.md) §6). Desde E18, `CityView` lleva `clan` (`{ id, tag }` o `null`, siempre presente) y `city.update` lo lleva al entrar su dueño en un clan o al salir de él, al chunk y por `SendToPlayer` al dueño, sin `requestId` (la respuesta a la orden es `clan.update`) ([clans.md](clans.md) §6). Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
 
 El estado de presencia lo decide **exclusivamente el servidor** (transición a `PROTECTED` tras `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` = 300 s). El cliente lo observa; nunca lo propone.
 
@@ -1306,6 +1343,54 @@ payload: z.object({
 
 Hasta `EO_MESSAGE_PAGE_SIZE` mensajes (50) de los últimos `EO_MESSAGE_MAX_DAYS` días. `blockedByMe` dice si quien mira tiene bloqueado al otro; si el otro le bloqueó a él, sólo lo sabe al escribirle (Q5).
 
+### 8.28 `clan.update`
+
+- **Propósito:** el clan de un jugador y sus invitaciones recibidas ([clans.md](clans.md) §6). A todas sus sesiones cuando cambian, con el `requestId` a la que dio la orden, y a la sesión que conecta, justo después de su primer `world.snapshot` (no tras un `session.view`). Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ clan: ClanView.nullable(), invitations: z.array(ClanInvitationView) })
+// ClanView: { id, name, tag, leaderId, members: ClanMemberView[] (≥ 1),
+//             sentInvitations: ClanSentInvitationView[] (vacía salvo para el líder) }
+// ClanMemberView: { playerId, cityId, cityName, faction, role: LEADER | MEMBER, joinedAtMs }
+// ClanSentInvitationView: { playerId, cityId, cityName, expiresAtMs }
+// ClanInvitationView: { clanId, name, tag, expiresAtMs }
+```
+
+Los miembros, por antigüedad. `clan` es `null` sin clan; una invitación caducada deja de venir pero no se avisa: el cliente la oculta por `expiresAtMs`.
+
+### 8.29 `clan.info`
+
+- **Propósito:** la vista pública de un clan vivo, en respuesta a `clan.lookup` y sólo para la sesión que la pidió, con su `requestId` (`RN-CLAN-008`). Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ clanId: EntityId, name: ClanName, tag: ClanTag, members: z.array(ClanMemberView) })
+```
+
+### 8.30 `clan.chat.new`
+
+- **Propósito:** un mensaje del canal de un clan recién guardado. A todas las sesiones de los miembros abiertos al confirmar el envío, de este proceso; la que lo envió, con su `requestId`. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ message: ClanMessageView })
+// ClanMessageView: { id, clanId, fromPlayerId, fromCityId: EntityId | null,
+//                    fromCityName: string | null, body, sentAtMs }
+```
+
+### 8.31 `clan.chat.page`
+
+- **Propósito:** una página del canal del clan propio, en respuesta a `clan.chat.fetch` y sólo para la sesión que la pidió, con su `requestId`. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({
+  clanId: EntityId,
+  messages: z.array(ClanMessageView),      // de más antiguo a más reciente
+  readUpToId: number,                      // lo leído por quien mira al servirla
+  nextBeforeId: EntityId | null,           // el beforeId de la página anterior
+})
+```
+
+Hasta `EO_MESSAGE_PAGE_SIZE` mensajes de los últimos `EO_MESSAGE_MAX_DAYS` días, sólo los posteriores a la entrada de quien lee (`INV-SEC-012`).
+
 ## 9. Códigos de error
 
 El catálogo es de **24 códigos** y es cerrado. Vive en `errors.ts` (`ErrorCode`) y en `codes.go` (`AllErrorCodes`); un contract test en Go (`TestCatalogoDeErroresCoincideConElExportado`) compara ambos contra `error-codes.json` y rompe la CI si divergen.
@@ -1347,8 +1432,8 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 
 | Regla | Detalle |
 |---|---|
-| I-1 | Los esquemas exigen `requestId` con formato UUID en los treinta comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel` y `faction.join`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
-| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel` y `faction.join`). `city.craft` guarda también su `requestId` en la fila de `city_crafts`. `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping`, `session.view` y los dos `event_log.*` no reservan clave: los primeros no crean efectos durables, `event_log.fetch` sólo lee y `event_log.seen` es monótono. Los `message.*` tampoco: `message.send` guarda su `requestId` en la fila del mensaje, con `UNIQUE (sender_player_id, request_id)`, y el reintento recibe el mensaje original aunque Redis no responda o el ritmo esté agotado; su `requestId` se valida como UUID en Go (`INVALID_MESSAGE`); `message.list` y `message.fetch` sólo leen, `message.read` es monótono y `message.block` es idempotente ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §4). |
+| I-1 | Los esquemas exigen `requestId` con formato UUID en los treinta y nueve comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `faction.join`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave` y `clan.expel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
+| I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `faction.join` y los cinco `clan.*` de la simulación). `city.craft` guarda también su `requestId` en la fila de `city_crafts`. `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping`, `session.view` y los dos `event_log.*` no reservan clave: los primeros no crean efectos durables, `event_log.fetch` sólo lee y `event_log.seen` es monótono. Los `message.*` tampoco: `message.send` guarda su `requestId` en la fila del mensaje, con `UNIQUE (sender_player_id, request_id)`, y el reintento recibe el mensaje original aunque Redis no responda o el ritmo esté agotado; su `requestId` se valida como UUID en Go (`INVALID_MESSAGE`); `message.list` y `message.fetch` sólo leen, `message.read` es monótono y `message.block` es idempotente ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §4). `clan.chat.send` tampoco: guarda su `requestId` con `UNIQUE (sender_player_id, request_id)` como `message.send`; `clan.chat.fetch` y `clan.lookup` sólo leen y `clan.chat.read` es monótono. |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
 | I-5 | Un `requestId` repetido dentro de la ventana **no re-ejecuta** el comando. Si el original ya tuvo respuesta directa —`unit.move.accepted`, `unit.move.rejected` o un `system.error` con ese `requestId`—, el duplicado **recibe esa misma respuesta** otra vez, con el mismo payload: es lo que necesita el cliente que reintenta tras perder la conexión justo cuando el servidor contestaba. La respuesta se guarda en la clave `idem:{playerId}:{requestId}` en sustitución del marcador `"pending"`, sin bloquear el game loop, y conserva el TTL de 300 s. Un duplicado que llega mientras el original sigue en curso, o de un comando que no tiene respuesta directa (un `unit.cancel_move` que sale bien sólo produce el `unit.movement.cancelled` del chunk), no recibe nada. |

@@ -18,7 +18,7 @@ Diplomacia: [diplomacy.md](diplomacy.md). Seguridad del canal: [security.md](sec
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E18 |
 | Política ante violación | REJECT (escritura) · FAIL_FAST (arranque) |
-| Cobertura | **Sin cobertura**: se registra con SPEC-CLANS antes de escribir su código (§8 del catálogo) |
+| Cobertura | **Cubierto**: la DB por `TestUnaEstanciaAbiertaPorJugador` (índice único y validación de carga) y `TestLaPertenenciaAUnClanEnLaBase` (líder heredado y disolución en la transacción de salida), integration en `internal/persistence/postgres`; el dominio por `TestElLiderazgoYLaDisolucion` (`internal/game/simulation`) y `TestElLiderazgoPasaAlMasAntiguo` (`internal/domain/clan`) |
 
 **Enunciado.** Para todo jugador hay como mucho una fila de `clan_members` con `left_at IS NULL`; y para todo clan
 con `dissolved_at IS NULL`, `leader_player_id` es el jugador de una de sus filas abiertas, y el clan tiene al menos
@@ -34,9 +34,10 @@ vuelo; la salida del líder pasa el liderazgo al miembro más antiguo y la del �
 transacción que cierra la estancia ([ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §2). La validación
 de carga lo comprueba al arrancar.
 
-**Cómo se verifica.** Previsto: en la integración, el índice que rechaza una segunda estancia abierta y la
-transacción de salida que deja un líder abierto o el clan disuelto, con un fallo inyectado que no deja nada a medias;
-en la simulación, el paso del liderazgo con su desempate y la disolución del último.
+**Cómo se verifica.** En la integración, el índice que rechaza una segunda estancia abierta, la validación de carga
+que encuentra un clan con un líder que no es miembro, y la transacción de salida que deja el líder heredado o el clan
+disuelto, idempotente; en la simulación, el paso del liderazgo con su desempate, la disolución del último y que la
+última salida espera a una entrada en vuelo.
 
 **Violación en runtime.** La validación de carga que encuentre dos estancias abiertas de un jugador o un clan vivo
 sin líder abierto registra `invariant_violation` con `inv_id=INV-CLAN-001` y no arranca.
@@ -52,7 +53,7 @@ sin líder abierto registra `invariant_violation` con `inv_id=INV-CLAN-001` y no
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E18 |
 | Política ante violación | REJECT (escritura) · FAIL_FAST (arranque) |
-| Cobertura | **Sin cobertura**: se registra con SPEC-CLANS antes de escribir su código (§8 del catálogo) |
+| Cobertura | **Cubierto**: la DB por `TestLosTriggersNoJuntanALaOrdenYAlCaos` (integration, los dos triggers; verificado por mutación: con `clan_members_faction_guard` desactivado, el test falla); el dominio por `TestUnClanNoJuntaALaOrdenYAlCaos` en `internal/game/simulation` (invitar, aceptar con una entrada pendiente y `faction.join`) y en `internal/domain/clan` |
 
 **Enunciado.** Ningún clan vivo tiene a la vez, entre sus miembros abiertos, uno cuya facción o entrada pendiente en
 un bando sea `ORDER` y otro cuya facción o entrada pendiente sea `CHAOS`.
@@ -66,9 +67,10 @@ contando la facción efectiva, las entradas pendientes y las reservas en vuelo. 
 abrir una estancia y al apuntar una entrada o cambiar la facción en `players`, rechazan con `23514` y toman la fila
 del clan para que dos escrituras no se crucen ([ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §4).
 
-**Cómo se verifica.** Previsto: en la simulación, un rechazo por cada camino (invitar, aceptar, `faction.join`), con
-una entrada pendiente y con una reserva en vuelo; en la integración, cada trigger rechazando su escritura y dos
-transacciones concurrentes que no dejan el clan con los dos bandos.
+**Cómo se verifica.** En la simulación, un rechazo por cada camino (invitar, aceptar con una entrada pendiente y
+`faction.join` de un miembro); en la integración, cada trigger rechazando su escritura, y la entrada por el
+repositorio rechazada con su motivo. La carrera entre dos transacciones concurrentes la cubre el `FOR UPDATE` de la
+fila del clan en los dos triggers; no tiene un test propio.
 
 **Violación en runtime.** La validación de carga que encuentre un clan con los dos bandos registra
 `invariant_violation` con `inv_id=INV-CLAN-002` y no arranca.
@@ -84,7 +86,7 @@ transacciones concurrentes que no dejan el clan con los dos bandos.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E18 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: se registra con SPEC-CLANS antes de escribir su código (§8 del catálogo) |
+| Cobertura | **Cubierto** por `TestDosDelMismoClanDejanDePelear` (verificado por mutación: con `AtPeace` sin la paz del clan, el test falla), `TestLaPazResidualTrasSalir` y `TestLosClanesVuelvenAlArrancar` (`internal/game/simulation`), `TestLaPazResidual` (`internal/domain/clan`) y el e2e `TestUnClanPorLaRed` (`internal/websocket`) |
 
 **Enunciado.** En un tick en que dos jugadores son miembros abiertos del mismo clan, o en que uno salió de un clan
 hace menos de `EO_CLAN_PEACE_GRACE_SECONDS` y el otro era miembro de ese clan en el instante de la salida, no se
@@ -100,10 +102,11 @@ fechas de entrada y salida ([ADR-040](../decisions/ADR-040-clans-membership-and-
 orden de las cuatro acciones hostiles y cada tick de combate, saqueo, asedio y conquista, que terminan lo que esté en
 curso en el tick en que la paz aparece (`RN-COMBAT-008`, `RN-COMBAT-025`).
 
-**Cómo se verifica.** Previsto: en la simulación, dos jugadores que se enfrentaban, saqueaban, derribaban o plantaban
-estandarte y paran en el tick en que se confirma la entrada; un ex miembro que no puede atacar a un antiguo compañero
-hasta el tick en que vence su paz residual, y sí a quien entró después de su salida; en la recuperación, una paz
-residual que sobrevive a un reinicio.
+**Cómo se verifica.** En la simulación, un enfrentamiento que para en el tick en que se confirma la entrada, sin un
+golpe más, y el ataque rechazado con su motivo; un ex miembro que no puede atacar a un antiguo compañero hasta que
+vence su paz residual, al milisegundo, y con quien entró después de su salida no tiene paz; en la recuperación, una
+paz residual que vuelve con la carga y vence a su hora. El saqueo, el asedio y la conquista pasan por el mismo
+`AtPeace` y su predicado de motivo (`ClanPeace`), como en la paz de la Orden.
 
 **Violación en runtime.** Un golpe que llegara a evaluarse entre dos jugadores en paz de clan se descarta y se
 registra `invariant_violation` con `inv_id=INV-CLAN-003`.
