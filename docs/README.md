@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son treinta y nueve, del 001
-al 039, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta, del 001
+al 040, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -294,7 +294,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E17 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E18 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -350,6 +350,11 @@ Matices que conviene no maquillar:
   `000019` y [ADR-039](decisions/ADR-039-faction-peace-and-affinity.md). Todo jugador nace `NEUTRAL` y puede unirse
   una vez a la Orden o al Caos; dos de la Orden no se agreden, la Orden y el Caos no firman la paz, y la tierra del
   propio bando reduce el daño que reciben las unidades ([roadmap/milestones.md](roadmap/milestones.md) §E17).
+- **E18 Clanes está en `main`** desde `b228fdf`, con la CI en verde el 2026-11-15 y una prueba en vivo con el humo
+  `--clan` y el navegador ese mismo día; [SPEC-CLANS](specs/clans.md) está en `Implemented`, con la migración `000020`
+  y [ADR-040](decisions/ADR-040-clans-membership-and-peace.md). Los jugadores fundan clanes con nombre y sigla, entran
+  por invitación del líder y quedan en paz entre sí (con 15 minutos de paz residual al salir), sin juntar a la Orden y
+  al Caos, y con un canal propio ([roadmap/milestones.md](roadmap/milestones.md) §E18).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

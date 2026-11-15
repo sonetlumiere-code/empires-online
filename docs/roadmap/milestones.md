@@ -2072,7 +2072,7 @@ de facción, reputación, canales por bando y bonos que no sean el daño en tier
 
 ## E18 — Clanes
 
-**Estado: EN CURSO (2026-11-15)**, en la rama `claude/slice-clanes`. Contrato:
+**Estado: HECHO (2026-11-15)**, fusionado en `main` (`b228fdf`) con la CI en verde el mismo día. Contrato:
 [SPEC-CLANS](../specs/clans.md), aceptada el 2026-11-15 con sus doce decisiones de producto, y
 [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md).
 

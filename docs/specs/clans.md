@@ -6,7 +6,7 @@ invita y expulsa, paz entre sus miembros y un canal de mensajes propio.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLANS` |
-| Estado | Accepted (2026-11-15). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-15). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `b228fdf`, con la CI en verde. |
 | Milestone | E18 Clanes (decimoctavo slice después de M7) |
 | Canon | §1.5 (determinismo), §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores), §21 (fuera de MVP: clanes) |
 | Depende de | [player.md](player.md), [city.md](city.md), [diplomacy.md](diplomacy.md), [factions.md](factions.md), [messages.md](messages.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [territory-conquest.md](territory-conquest.md), [caravans.md](caravans.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |

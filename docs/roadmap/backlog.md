@@ -50,6 +50,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E15 Caravanas | **Completado** (2026-11-13). En `main` desde la fusión `38faac9`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E15; contrato en [SPEC-CARAVANS](../specs/caravans.md) y [ADR-037](../decisions/ADR-037-caravans-as-units.md). |
 | E16 Mensajes | **Completado** (2026-11-14). En `main` desde la fusión `04eed8a`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E16; contrato en [SPEC-MESSAGES](../specs/messages.md) y [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md). |
 | E17 Facciones | **Completado** (2026-11-15). En `main` desde la fusión `21b3dbe`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E17; contrato en [SPEC-FACTIONS](../specs/factions.md) y [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md). |
+| E18 Clanes | **Completado** (2026-11-15). En `main` desde la fusión `b228fdf`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E18; contrato en [SPEC-CLANS](../specs/clans.md) y [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se
