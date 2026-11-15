@@ -2104,7 +2104,7 @@ renombrar, bando propio del clan, guerras y alianzas entre clanes, ranking y dir
    trabajos de pertenencia y el canal con su candado por clan.
 5. **HECHO** — Cliente: el botón y el panel del clan, el canal, «Invitar al clan» y «Ver clan» en la barra de una
    ciudad ajena, la sigla en el mapa, el clic de ataque entre compañeros y los rechazos con su motivo.
-6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --clan` con cuentas de humo propias.
+6. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --clan` con cuentas de humo propias.
 
 **Verificación (2026-11-15).** Todo en serie y en verde: los scripts de documentación, determinismo y secretos, sus
 tests, `go build`, los dos `go vet`, `gofmt`, la suite de Go, las dos integraciones, el `typecheck`, los tests del
@@ -2112,3 +2112,18 @@ protocolo y del cliente, la deriva del esquema, y `web:build` con los canarios y
 verificados por mutación: la paz del clan en `AtPeace` (`INV-CLAN-003`), el trigger de bandos (`INV-CLAN-002`), y el
 candado de la salida y el filtro de `first_message_id` del canal (`INV-SEC-012`). La mutación del candado destapó que
 su test colgaba al fallar con la transacción abierta: ahora la suelta en un `t.Cleanup`.
+
+**Prueba en vivo (2026-11-15).** El servidor aplicó `000020` sobre la base de desarrollo (de la migración 19 a la 20).
+`scripts/smoke.mjs --web http://localhost:3001 --clan` pasó dos veces: la primera (31 comprobaciones) fundó el clan
+«Humo» [HUM] con `smoke_clan_a`, con la sigla en su ciudad; `smoke_clan_b` recibió la invitación en vivo, entró, y el
+mensaje del canal le llegó en vivo y en su página; `smoke_orden` entró en el clan, la invitación a `smoke_caos` se
+rechazó («un clan no junta a la Orden y al Caos») y `smoke_caos` vio los tres miembros por la vista pública; la
+expulsión de `smoke_clan_b` le llegó como aviso. La segunda (29) reconoció el clan de la pasada anterior y repitió
+invitar, entrar, la regla de bandos, la vista pública y la expulsión. En el navegador, como `smoke_clan_a`:
+«Mientras no estabas» con «Expulsaste a smoke_clan_bpolis de tu clan» (`CLAN_MEMBER_EXPELLED`), el botón «Clan
+[HUM]», la etiqueta «[HUM] smoke_clan_apolis» en el mapa, el panel con los miembros (bando y rango), «Expulsar» y el
+canal, y un envío desde el cuadro de texto que llega al canal con `<b>` pintado como texto. Sin comprobar en el
+navegador: «Ver clan» e «Invitar al clan» en la barra de una ciudad ajena, el clic de ataque entre compañeros y el
+contador del botón con mensajes sin leer (los cubren `clans.test.ts`, la proyección y el e2e). En la base de
+desarrollo quedan el clan [HUM] con `smoke_clan_a` (líder) y `smoke_orden`, tres mensajes en su canal y
+`smoke_clan_b` fuera, expulsado.
