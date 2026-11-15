@@ -240,6 +240,11 @@ function rawText(e: EventLogEntry): string {
       return `${who} capturó la caravana que te traía ${describeLines(e.cargo ?? [])}${where}`;
     case 'CARAVAN_LOST':
       return `${who} capturó tu caravana con ${describeLines(e.cargo ?? [])}${where}, y se perdió: no había camino hasta su ciudad`;
+    // Los clanes (SPEC-CLANS Q10): la expulsión, a cada lado.
+    case 'CLAN_EXPELLED':
+      return `${who} te expulsó de su clan: seguís en paz unos minutos`;
+    case 'CLAN_MEMBER_EXPELLED':
+      return `Expulsaste a ${who} de tu clan`;
     default:
       return `${who}: ${String(e.kind)}`;
   }
@@ -256,7 +261,8 @@ export function isLoss(e: EventLogEntry): boolean {
     e.kind === 'TERRITORY_LOST' ||
     e.kind === 'CARAVAN_CAPTURED' ||
     e.kind === 'CARAVAN_INTERCEPTED' ||
-    e.kind === 'CARAVAN_LOST'
+    e.kind === 'CARAVAN_LOST' ||
+    e.kind === 'CLAN_EXPELLED'
   );
 }
 

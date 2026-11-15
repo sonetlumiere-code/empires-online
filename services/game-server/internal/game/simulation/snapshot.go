@@ -129,6 +129,7 @@ func CityView(c *city.City) protocol.CityView {
 		Civilization:    c.Civilization,
 		Faction:         player.EffectiveFaction(c.Faction),
 		FactionJoin:     factionJoinView(c),
+		Clan:            cityClanView(c),
 		Population:      c.Population,
 		PopulationLimit: c.PopulationLimit,
 		PresenceState:   string(c.PresenceState),

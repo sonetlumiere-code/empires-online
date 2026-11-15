@@ -64,3 +64,15 @@ func TestLasSeriesDeEntradasEnUnBandoExistenACero(t *testing.T) {
 		assert.Zero(t, testutil.ToFloat64(m.FactionJoins.WithLabelValues(f)), f)
 	}
 }
+
+// SPEC-CLANS §6: las series de eo_clan_changes_total existen a cero desde el
+// arranque, una por tipo de cambio.
+func TestLasSeriesDeCambiosDeClanExistenACero(t *testing.T) {
+	m := NewMetrics()
+	assert.Equal(t, []string{"founded", "joined", "left", "expelled", "dissolved"}, ClanChangeKinds())
+	assert.Equal(t, len(ClanChangeKinds()), testutil.CollectAndCount(m.ClanChanges))
+	for _, k := range ClanChangeKinds() {
+		assert.Zero(t, testutil.ToFloat64(m.ClanChanges.WithLabelValues(k)), k)
+	}
+	assert.Zero(t, testutil.ToFloat64(m.ClanMessagesSent))
+}

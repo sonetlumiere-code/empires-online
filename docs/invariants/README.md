@@ -29,12 +29,12 @@ Corolario operativo: **un invariante nunca se comunica al jugador**. Si el servi
 INV-<AREA>-<NNN>
 ```
 
-- `<AREA>` ∈ `WORLD`, `PLAYER`, `CITY`, `UNIT`, `MOVE`, `PERSIST`, `SEC`, `TERR`, `SAFE`, `GARR`, `DIPLO`, `ECON`, `COMBAT`, `TRADE`.
+- `<AREA>` ∈ `WORLD`, `PLAYER`, `CITY`, `UNIT`, `MOVE`, `PERSIST`, `SEC`, `TERR`, `SAFE`, `GARR`, `DIPLO`, `ECON`, `COMBAT`, `TRADE`, `CLAN`.
 - `<NNN>` es un correlativo de tres dígitos con ceros a la izquierda, **asignado una sola vez y jamás reutilizado**.
 - Un invariante que deja de aplicar no se borra ni se renumera: se marca `DEROGADO` con la fecha y el ADR que lo deroga, y su número queda quemado.
 - Un invariante nuevo toma el siguiente número libre del área, aunque el catálogo quede desordenado temáticamente.
 
-Las siete primeras familias son las del canon §22. Las tres últimas —`TERR`, `SAFE`, `GARR`— se añadieron al aparecer las specs de territorio, safe zones y guarnición, que necesitaban propiedades que ninguna familia existente expresaba: la geometría de una región no es la del mundo, y el ocultamiento de una unidad no es su posición. Se registran en dos archivos nuevos, [territory.md](territory.md) (`TERR` y `SAFE`) y [diplomacy.md](diplomacy.md) (`GARR`), y quedan enlazadas desde este índice. La undécima, `ECON`, llegó con el primer slice de economía ([../specs/economy-wood.md](../specs/economy-wood.md)) y vive en [economy.md](economy.md): el stock de un recurso, la tarea de recolección y el límite de población que suben las casas no son propiedades de ninguna familia anterior. La duodécima, `COMBAT`, llegó con el slice de incursión ([../specs/combat-raid.md](../specs/combat-raid.md)) y vive en [combat.md](combat.md): la vida y la muerte de una unidad y el botín. `DIPLO` llegó con la diplomacia en caliente ([../specs/diplomacy.md](../specs/diplomacy.md)) y comparte archivo con `GARR`. La decimocuarta, `TRADE`, llegó con el slice de comercio ([../specs/trade.md](../specs/trade.md)) y vive en [trade.md](trade.md): lo que un trato mueve entre dos almacenes no es una propiedad del stock de una ciudad ni de un tratado.
+Las siete primeras familias son las del canon §22. Las tres últimas —`TERR`, `SAFE`, `GARR`— se añadieron al aparecer las specs de territorio, safe zones y guarnición, que necesitaban propiedades que ninguna familia existente expresaba: la geometría de una región no es la del mundo, y el ocultamiento de una unidad no es su posición. Se registran en dos archivos nuevos, [territory.md](territory.md) (`TERR` y `SAFE`) y [diplomacy.md](diplomacy.md) (`GARR`), y quedan enlazadas desde este índice. La undécima, `ECON`, llegó con el primer slice de economía ([../specs/economy-wood.md](../specs/economy-wood.md)) y vive en [economy.md](economy.md): el stock de un recurso, la tarea de recolección y el límite de población que suben las casas no son propiedades de ninguna familia anterior. La duodécima, `COMBAT`, llegó con el slice de incursión ([../specs/combat-raid.md](../specs/combat-raid.md)) y vive en [combat.md](combat.md): la vida y la muerte de una unidad y el botín. `DIPLO` llegó con la diplomacia en caliente ([../specs/diplomacy.md](../specs/diplomacy.md)) y comparte archivo con `GARR`. La decimocuarta, `TRADE`, llegó con el slice de comercio ([../specs/trade.md](../specs/trade.md)) y vive en [trade.md](trade.md): lo que un trato mueve entre dos almacenes no es una propiedad del stock de una ciudad ni de un tratado. La decimoquinta, `CLAN`, llegó con el slice de clanes ([../specs/clans.md](../specs/clans.md)) y vive en [clans.md](clans.md): quién pertenece a qué grupo, quién lo dirige y la paz entre sus miembros no son propiedades de un jugador solo ni de un tratado entre dos.
 
 > **Regla de resolución de colisiones.** Este catálogo es el **único registro** de invariantes del proyecto. Un ID estable designa un solo invariante, aquí y en cualquier documento que lo cite. Las specs de `docs/specs/` **citan IDs, no los redefinen** (§8): si una spec necesita una propiedad nueva, se añade aquí primero y se numera continuando la familia por encima del máximo ya asignado. Un ID reutilizado con otro significado es un defecto de documentación tan grave como un invariante roto, porque hace que dos equipos lean lo mismo y entiendan cosas distintas.
 
@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**134 invariantes** —132 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en catorce familias y doce archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**138 invariantes** —136 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en quince familias y trece archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -322,6 +322,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-SEC-009 | El registro de un jugador sólo cuenta sucesos en los que es parte (`player_id` o `counterpart_player_id`), y sus avisos en vivo también | ALTO | BOUNDARY, DOMAIN, TEST | ✓ | `TestUnTerceroNoVeLosSucesosDeOtros`, `TestElRegistroCuentaCadaLadoYNadaAUnTercero`, `TestElRegistroSeSirveAlJugadorDeLaSesion`, `TestSinOtroJugadorNoHayAviso`, `TestUnAvisoLlegaConLaVistaEnOtraParteDelMapa` |
 | INV-SEC-010 | Una sesión sólo recibe mensajes de las conversaciones de su jugador, y todo mensaje lleva como remitente al jugador de la sesión que lo envió | CRITICO | BOUNDARY, DB, TEST | ✓ | `Test_INV_SEC_010_UnTerceroNoVeLaConversacionDeOtros` (integration), `TestUnMensajeLlegaATodasLasSesionesDeLosDos`, `TestLosComandosDeMensajesSonLosDelEsquema` |
 | INV-SEC-011 | Ningún mensaje entre dos jugadores se confirma mientras uno tiene bloqueado al otro | ALTO | DB, BOUNDARY, TEST | ✓ | `Test_INV_SEC_011_NingunMensajeCruzaUnBloqueo`, `TestUnEnvioQueEsperaAlCandadoVeElBloqueo` (integration), `TestElBloqueoCortaLosMensajesEnLosDosSentidos` |
+| INV-SEC-012 | Una sesión sólo recibe el canal del clan de su jugador, y sólo lo posterior a su entrada; todo mensaje del canal lleva como remitente al jugador de la sesión | CRITICO | BOUNDARY, DB, TEST | ✓ | `TestElCanalDeUnClan`, `TestUnaSalidaEsperaAlCandadoDelCanal` (integration), `TestUnClanPorLaRed` |
 
 ### TERRITORY — [territory.md](territory.md)
 
@@ -407,16 +408,24 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-TRADE-006 | Una caravana se entrega como mucho una vez | CRITICO | DB, DOMAIN, TEST | ✓ | `Test_INV_TRADE_006_UnaCaravanaSeEntregaUnaSolaVez`, `TestUnaEntregaAdelantadaNoEscribeNada` (integration), `TestUnaEntregaDescartadaSeReintentaConVersionNueva`, `TestTrasUnReinicioLasCaravanasLleganASuHora` |
 | INV-TRADE-007 | Toda caravana nace de un trato aceptado, dos por trato | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez`, `TestLasRestriccionesDeLasCaravanas`, `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration), `TestGoldenCaravanasDelTratoALaLlegada` |
 
+### CLAN — [clans.md](clans.md)
+
+| ID | Invariante | Sev | Aplicación | Cob. | Test |
+|---|---|---|---|---|---|
+| INV-CLAN-001 | Un jugador está en un clan como mucho, y todo clan vivo tiene un único líder que es miembro | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaEstanciaAbiertaPorJugador`, `TestLaPertenenciaAUnClanEnLaBase` (integration), `TestElLiderazgoYLaDisolucion` |
+| INV-CLAN-002 | Ningún clan junta a la Orden y al Caos, contando las entradas pendientes | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosTriggersNoJuntanALaOrdenYAlCaos` (integration), `TestUnClanNoJuntaALaOrdenYAlCaos` |
+| INV-CLAN-003 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre compañeros de clan, ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestDosDelMismoClanDejanDePelear`, `TestLaPazResidualTrasSalir`, `TestLosClanesVuelvenAlArrancar`, `TestUnClanPorLaRed` |
+
 ### Distribución
 
 Por severidad:
 
 | Severidad | Cantidad |
 |---|---|
-| CRITICO | 50 |
-| ALTO | 71 |
+| CRITICO | 52 |
+| ALTO | 73 |
 | MEDIO | 11 |
-| **Total** | **132** |
+| **Total** | **136** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -430,7 +439,7 @@ Por familia:
 | `INV-UNIT` | 001–011 | 11 | [units.md](units.md) |
 | `INV-MOVE` | 001–014 | 14 | [movement.md](movement.md) |
 | `INV-PERSIST` | 001–007 | 7 | [persistence.md](persistence.md) |
-| `INV-SEC` | 001–011 | 11 | [security.md](security.md) |
+| `INV-SEC` | 001–012 | 12 | [security.md](security.md) |
 | `INV-TERR` | 001–011 | 11 | [territory.md](territory.md) |
 | `INV-SAFE` | 001–007 | 7 | [territory.md](territory.md) |
 | `INV-GARR` | 001–009 | 9 | [diplomacy.md](diplomacy.md) |
@@ -438,6 +447,7 @@ Por familia:
 | `INV-ECON` | 001–011 | 11 | [economy.md](economy.md) |
 | `INV-COMBAT` | 001–006 | 6 | [combat.md](combat.md) |
 | `INV-TRADE` | 001–007 | 7 | [trade.md](trade.md) |
+| `INV-CLAN` | 001–003 | 3 | [clans.md](clans.md) |
 
 Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Hay dos números quemados, `INV-GARR-003`, derogado por [ADR-017](../decisions/ADR-017-garrison-commands.md), e `INV-CITY-009`, derogado por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md): conservan su fila y su ficha con la marca `DEROGADO`, y no se reutilizan. `INV-GARR-008` estuvo reservado hasta el 2026-11-03 y desde entonces es vigente, con fila y ficha.
 
@@ -445,15 +455,17 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 132 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 136 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **134** | |
+| **Total** | **138** | |
 
-> **134 filas y 134 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **138 filas y 138 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
+
+`INV-CLAN-001`, `INV-CLAN-002`, `INV-CLAN-003` e `INV-SEC-012` se registraron el 2026-11-15 con SPEC-CLANS y [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día; con ellos llegó la familia `INV-CLAN` y su archivo, [clans.md](clans.md). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-PLAYER-013`, `INV-COMBAT-006` e `INV-DIPLO-003` se registraron el 2026-11-15 con SPEC-FACTIONS y [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día; el mismo día se precisó `INV-PLAYER-002` (la facción puede cambiar una vez, de `NEUTRAL` a un bando, y la carga exige una del catálogo), que volvió a ✓ con sus tests. Ninguna fila queda sin cobertura ni parcial.
 
@@ -492,6 +504,7 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 | [economy.md](economy.md) | `INV-ECON` | 8 |
 | [combat.md](combat.md) | `INV-COMBAT` | 5 |
 | [trade.md](trade.md) | `INV-TRADE` | 4 |
+| [clans.md](clans.md) | `INV-CLAN` | 3 |
 
 ## 10. Documentos relacionados
 

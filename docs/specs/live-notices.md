@@ -66,6 +66,9 @@ la que venía a ti), con la carga (`cargo`) y el tile. La llegada (`CARAVAN_ARRI
 cambia a la vista y la lista «Caravanas en camino» la quita. Al captor no le llega nada, como no le llega su propia
 orden.
 
+**Precisión (2026-11-15, [clans.md](clans.md) Q10).** Desde E18 se avisa también la expulsión de un clan, sólo al
+expulsado (`CLAN_EXPELLED`); al líder que expulsó no le llega aviso, sólo su entrada del registro.
+
 ### 4.2 Reglas
 
 Dominio: `RN-NOTICE`.

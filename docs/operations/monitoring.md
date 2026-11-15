@@ -1,6 +1,6 @@
 # Observabilidad y monitorización
 
-Logging estructurado, catálogo completo de las 19 métricas Prometheus con sus etiquetas exactas, semántica de `/health` y `/ready`, dashboards y reglas de alerta **propuestos**, y runbook de primer diagnóstico.
+Logging estructurado, catálogo completo de las 22 métricas Prometheus con sus etiquetas exactas, semántica de `/health` y `/ready`, dashboards y reglas de alerta **propuestos**, y runbook de primer diagnóstico.
 
 > **Qué existe y qué no.** Lo que está implementado y corriendo es: el logging estructurado (§1), las 17
 > métricas de §2 expuestas en `EO_METRICS_ADDR/metrics`, y los endpoints `/health` y `/ready` de §3. Los
@@ -97,7 +97,7 @@ juego de métricas limpio sin colisionar entre sí. En ese registro también est
 (`go_*`) y de proceso (`process_*`), que se obtienen gratis y conviene tener a mano en un incidente de
 memoria.
 
-**Son 19 métricas propias, y estas son exactamente sus etiquetas.** Ni más ni menos: si una consulta agrupa
+**Son 22 métricas propias, y estas son exactamente sus etiquetas.** Ni más ni menos: si una consulta agrupa
 por una etiqueta que no está aquí, devuelve una sola serie y engaña. Regla que gobierna toda etiqueta:
 **cardinalidad acotada**. Jamás `player_id`, `unit_id`, `session_id` ni coordenadas como etiqueta: un
 `player_id` en una etiqueta convierte cada jugador nuevo en una serie temporal nueva y hace estallar la base
@@ -152,6 +152,8 @@ de métricas.
 | `eo_messages_sent_total` | Counter | **ninguna** | Mensajes entre jugadores guardados ([SPEC-MESSAGES](../specs/messages.md)). Un reintento con el mismo `requestId` no cuenta. Ni el texto ni los jugadores van en etiquetas (`RN-MSG-007`). |
 | `eo_messages_rejected_total` | Counter | `reason` | Mensajes no guardados, por motivo: **`invalid`** (texto vacío, largo o con caracteres de control), **`target`** (jugador inexistente o uno mismo), **`blocked`** (un bloqueo en cualquier sentido), **`rate`** (un límite de ritmo de `RN-MSG-005`) e **`internal`** (la base no respondió). Catálogo cerrado; las cinco series existen a cero desde el arranque. `internal` sostenido es PostgreSQL lento para la conexión; `rate` sostenido de pocos jugadores, alguien mandando lo mismo a muchos. |
 | `eo_faction_joins_total` | Counter | `faction` | Entradas en un bando que contaron ([SPEC-FACTIONS](../specs/factions.md)), por bando: **`ORDER`** o **`CHAOS`**. Catálogo cerrado; las dos series existen a cero desde el arranque. Cuenta la escritura que aplicó el vencimiento, no su reintento. Es la primera señal de balance de los bandos: cuántos elige cada uno. |
+| `eo_clan_changes_total` | Counter | `kind` | Cambios de clan escritos ([SPEC-CLANS](../specs/clans.md)), por tipo: **`founded`**, **`joined`**, **`left`**, **`expelled`** o **`dissolved`** (una disolución cuenta también su `left`). Catálogo cerrado; las cinco series existen a cero desde el arranque. Cuenta la escritura que aplicó, no su reintento. Ni nombres ni jugadores en etiquetas. |
+| `eo_clan_messages_sent_total` | Counter | **ninguna** | Mensajes del canal de un clan guardados ([SPEC-CLANS](../specs/clans.md) §4.6). Un reintento con el mismo `requestId` no cuenta. Sin el texto, el clan ni los jugadores en etiquetas. |
 
 ### 2.7 Métricas que **no** existen
 

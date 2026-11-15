@@ -31,7 +31,7 @@ function cityView(over: Partial<v1.CityView> = {}): v1.CityView {
     name: 'Testópolis',
     centerX: 5,
     centerY: 5,
-    era: 'STONE_AGE', civilization: 'ROMAN', faction: 'NEUTRAL', factionJoin: null,
+    era: 'STONE_AGE', civilization: 'ROMAN', faction: 'NEUTRAL', factionJoin: null, clan: null,
     population: 3,
     populationLimit: 20,
     presenceState: 'ONLINE',
@@ -162,6 +162,8 @@ describe('projectChanges: un delta de X no toca Y', () => {
     state().applyServerMessage(server('city.update', 3, { id: 10, name: 'Nueva Testópolis' }));
     update = projectLast();
     expect(update.cities.map((c) => [c.id, c.name, c.presenceState])).toEqual([[10, 'Nueva Testópolis', 'PROTECTED']]);
+    state().applyServerMessage(server('city.update', 4, { id: 10, clan: { id: 3, tag: 'LOB' } }));
+    expect(projectLast().cities.map((c) => c.name), 'SPEC-CLANS: la sigla delante del nombre').toEqual(['[LOB] Nueva Testópolis']);
 
     state().applyServerMessage(
       server('territory.update', 4, { territory: territoryView({ ownerType: 'PLAYER', ownerId: OTHER }) }),

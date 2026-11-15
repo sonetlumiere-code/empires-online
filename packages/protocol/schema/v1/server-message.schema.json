@@ -541,6 +541,30 @@
                           }
                         ]
                       },
+                      "clan": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              "tag": {
+                                "type": "string",
+                                "pattern": "^[A-Z0-9]{2,4}$"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "tag"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "population": {
                         "type": "integer",
                         "minimum": 0
@@ -690,6 +714,7 @@
                       "era",
                       "civilization",
                       "faction",
+                      "clan",
                       "population",
                       "populationLimit",
                       "presenceState",
@@ -1508,6 +1533,16 @@
                     }
                   ]
                 },
+                "clan": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "pillagedAtMs": {
                   "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
                 },
@@ -2117,7 +2152,9 @@
                           "CARAVAN_ARRIVED",
                           "CARAVAN_CAPTURED",
                           "CARAVAN_INTERCEPTED",
-                          "CARAVAN_LOST"
+                          "CARAVAN_LOST",
+                          "CLAN_EXPELLED",
+                          "CLAN_MEMBER_EXPELLED"
                         ]
                       },
                       "firstAtMs": {
@@ -2325,7 +2362,8 @@
                     "TERRITORY_TAKEN",
                     "CARAVAN_CAPTURED",
                     "CARAVAN_INTERCEPTED",
-                    "CARAVAN_LOST"
+                    "CARAVAN_LOST",
+                    "CLAN_EXPELLED"
                   ]
                 },
                 "atMs": {
@@ -2758,6 +2796,417 @@
                 "readUpToId",
                 "nextBeforeId",
                 "blockedByMe"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "clan.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "clan": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 24
+                        },
+                        "tag": {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                        },
+                        "leaderId": {
+                          "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "playerId": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                              },
+                              "cityId": {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "cityName": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "faction": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/faction"
+                              },
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "LEADER",
+                                  "MEMBER"
+                                ]
+                              },
+                              "joinedAtMs": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                              }
+                            },
+                            "required": [
+                              "playerId",
+                              "cityId",
+                              "cityName",
+                              "faction",
+                              "role",
+                              "joinedAtMs"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1
+                        },
+                        "sentInvitations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "playerId": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                              },
+                              "cityId": {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "cityName": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "expiresAtMs": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                              }
+                            },
+                            "required": [
+                              "playerId",
+                              "cityId",
+                              "cityName",
+                              "expiresAtMs"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "tag",
+                        "leaderId",
+                        "members",
+                        "sentInvitations"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "invitations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "clanId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "name": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/name"
+                      },
+                      "tag": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                      },
+                      "expiresAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      }
+                    },
+                    "required": [
+                      "clanId",
+                      "name",
+                      "tag",
+                      "expiresAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "clan",
+                "invitations"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "clan.info"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "clanId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "name": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/name"
+                },
+                "tag": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                },
+                "members": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/members/items"
+                  }
+                }
+              },
+              "required": [
+                "clanId",
+                "name",
+                "tag",
+                "members"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "clan.chat.new"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    "clanId": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    "fromPlayerId": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                    },
+                    "fromCityId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fromCityName": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "body": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/24/properties/payload/properties/message/properties/body"
+                    },
+                    "sentAtMs": {
+                      "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "clanId",
+                    "fromPlayerId",
+                    "fromCityId",
+                    "fromCityName",
+                    "body",
+                    "sentAtMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "clan.chat.page"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "clanId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "messages": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ServerMessage/anyOf/29/properties/payload/properties/message"
+                  }
+                },
+                "readUpToId": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "nextBeforeId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "clanId",
+                "messages",
+                "readUpToId",
+                "nextBeforeId"
               ],
               "additionalProperties": false
             }

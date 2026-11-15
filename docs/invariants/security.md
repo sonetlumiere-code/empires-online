@@ -549,6 +549,42 @@ después cruzando `sent_at` con `player_blocks.created_at`.
 
 ---
 
+<a id="inv-sec-012"></a>
+## INV-SEC-012 — Una sesión sólo recibe el canal de su clan, desde que entró
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | BOUNDARY, DB, TEST |
+| Milestone | E18 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestElCanalDeUnClan` (verificado por mutación: sin el filtro de `first_message_id`, el test falla) y `TestUnaSalidaEsperaAlCandadoDelCanal` (verificado por mutación: sin el candado del clan en la salida, el test falla), integration en `internal/persistence/postgres`, y el e2e `TestUnClanPorLaRed` (`internal/websocket`) |
+
+**Enunciado.** Una sesión sólo recibe (por `clan.chat.new` o `clan.chat.page`) mensajes de `clan_messages` del clan
+en el que su jugador tiene una estancia abierta, y sólo los de `id` mayor que el `first_message_id` de esa estancia; y
+toda fila de `clan_messages` lleva como `sender_player_id` al jugador de la sesión que la envió, que tenía una estancia
+abierta en ese clan cuando su transacción confirmó.
+
+**Razón.** El canal es donde un clan coordina sus ataques y sus pactos ([SPEC-CLANS](../specs/clans.md) Q9). Que lo
+lea alguien de fuera, alguien recién expulsado o alguien que acaba de entrar y se lleva la historia anterior
+convertiría el clan en un colador; que alguien escriba en nombre de otro rompería la confianza en lo que se lee.
+
+**Cómo se garantiza.** `BOUNDARY` — los cuatro comandos de sesión no llevan remitente ni clan del remitente: los toma
+de la sesión ([INV-SEC-004](#inv-sec-004)). `DB` — el envío y la lectura comprueban la estancia abierta en
+`clan_members` con el candado de transacción del clan, el mismo que toman la entrada y la salida, y filtran por
+`first_message_id`; la entrega en vivo va a los miembros abiertos que leyó la transacción del envío
+([ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §5).
+
+**Cómo se verifica.** En la integración, un no miembro que no escribe ni lee, un miembro que no lee lo anterior a su
+entrada, un `requestId` repetido que no guarda otro mensaje, y una salida que espera al candado de un envío en curso y,
+tras ella, no admite otro; en el e2e, los dos miembros que reciben el mensaje (quien lo envió, con su `requestId`), un
+tercero sin clan que no puede escribir, y lo leído que no pasa de lo recibido.
+
+**Violación en runtime.** Una lectura que devolviera un mensaje fuera de la estancia de la sesión se descarta y se
+registra `invariant_violation` con `inv_id=INV-SEC-012`, sin el texto.
+
+---
+
 ## Modelo de amenazas del MVP
 
 Qué cubre este catálogo y qué queda explícitamente fuera.
@@ -563,6 +599,7 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | Duplicación de efectos por reintento | [INV-SEC-007](#inv-sec-007) |
 | Lectura de conversaciones ajenas o mensajes en nombre de otro | [INV-SEC-010](#inv-sec-010), [INV-SEC-004](#inv-sec-004) |
 | Acoso o spam por mensajes | [INV-SEC-011](#inv-sec-011) (bloqueo), [INV-SEC-005](#inv-sec-005) y los límites de ritmo de [SPEC-MESSAGES](../specs/messages.md) `RN-MSG-005` |
+| Lectura del canal de un clan ajeno, o del propio antes de entrar o después de salir | [INV-SEC-012](#inv-sec-012), [INV-SEC-004](#inv-sec-004) |
 | Agotamiento de recursos por mensajes | [INV-SEC-005](#inv-sec-005), [INV-SEC-002](#inv-sec-002) (timeout de handshake) |
 | Agotamiento de recursos por sockets abiertos | [INV-SEC-005](#inv-sec-005) (topes de conexiones y plazos del servidor HTTP, [ADR-021](../decisions/ADR-021-game-server-perimeter.md)) |
 | Fuga de credenciales | [INV-SEC-006](#inv-sec-006) |
@@ -585,3 +622,4 @@ Qué cubre este catálogo y qué queda explícitamente fuera.
 | INV-SEC-009 | `internal/websocket`, `internal/persistence/postgres`, `internal/domain/eventlog`, `internal/game/simulation` (los avisos) | [INV-SEC-002](#inv-sec-002), [INV-PERSIST-006](persistence.md#inv-persist-006) |
 | INV-SEC-010 | `internal/websocket`, `internal/persistence/postgres`, `internal/domain/message` | [INV-SEC-004](#inv-sec-004), [INV-PERSIST-007](persistence.md#inv-persist-007), [../decisions/ADR-038-player-messages-session-subsystem.md](../decisions/ADR-038-player-messages-session-subsystem.md) |
 | INV-SEC-011 | `internal/persistence/postgres`, `internal/websocket` | [INV-SEC-010](#inv-sec-010), [../decisions/ADR-038-player-messages-session-subsystem.md](../decisions/ADR-038-player-messages-session-subsystem.md) |
+| INV-SEC-012 | `internal/persistence/postgres`, `internal/websocket`, `internal/domain/clan` | [INV-SEC-010](#inv-sec-010), [INV-CLAN-001](clans.md#inv-clan-001), [../decisions/ADR-040-clans-membership-and-peace.md](../decisions/ADR-040-clans-membership-and-peace.md) |

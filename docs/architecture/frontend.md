@@ -750,6 +750,29 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **El territorio** del guerrero seleccionado dice el bando de su dueño y, si es tierra afín, el 20 % menos de daño
   (`territoryFactionLine`); el porcentaje es una copia del catálogo del servidor (`AFFINE_DAMAGE_PERCENT`).
 
+### 4.15 Clanes: el botón «Clan», su panel, el canal y la sigla (SPEC-CLANS)
+
+> **Estado (2026-11-15): implementado y con tests de lo puro** (`src/state/clans.ts`, `src/state/world.ts`,
+> `src/net/client.ts`, `src/render/projection.ts`).
+
+- **El store** guarda en cada ciudad su `clan` (`{ id, tag }` o `null`, de `CityView` y de `city.update`) y, en
+  `clans`, el clan propio y las invitaciones de cada `clan.update` (el primero llega tras el snapshot de la
+  conexión), el canal (sólo las páginas pedidas, como el registro), la vista pública de «Ver clan» y el rechazo del
+  último envío al canal, que va a su cuadro de texto y no al pie. Otro clan, o ninguno, tira el canal que hubiera.
+- **El botón «Clan»** de la cabecera dice la sigla del propio clan y cuenta las invitaciones vivas y los mensajes del
+  canal sin leer de otros (`clanBadge`); con clan, el canal se pide al conectar para ese contador. Abre el panel:
+  sin clan, las invitaciones con «Aceptar» y «Rechazar» y «Fundar un clan» (nombre y sigla, con las mismas reglas que
+  el servidor: `nameProblem`, `tagProblem`); con clan, los miembros (ciudad, bando y rango), el canal con «Ver
+  anteriores» y su cuadro de texto, «Salir del clan» con la advertencia de la paz residual y, para el líder, «Expulsar»
+  y las invitaciones enviadas con «Retirar». Con el panel abierto lo que llega queda leído (`clan.chat.read` con el
+  último id recibido).
+- **La barra de una ciudad ajena** dice su sigla delante del nombre, «Ver clan» (`clan.lookup`) si tiene clan e
+  «Invitar al clan» si quien mira es líder y la ciudad no tiene clan ni invitación viva (`canInvite`).
+- **El mapa**: la etiqueta de cada ciudad lleva la sigla delante del nombre («[LOB] Roma», `withTag` en la
+  proyección).
+- **El clic de ataque** no manda `unit.attack` contra un compañero de clan (`sameClan`) y pone en el pie «sois del
+  mismo clan». La paz residual no se ve en el cliente: la dice el servidor.
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).
@@ -1490,5 +1513,6 @@ Los tipos y validadores vienen de `@empires-online/protocol`. Los reducers se ej
 - Sorting incremental por buckets, *instancing* y LOD de sprites.
 - Minimapa con datos del mundo completo (el cliente solo conoce su área de interés).
 - Render de combate, animaciones de ataque, efectos de asedio.
-- Chat, ranking, marketplace, clanes, rutas comerciales, naval.
+- Chat, ranking, marketplace, clanes, rutas comerciales, naval. **Precisión (2026-11-15):** los mensajes directos (E16)
+  y los clanes con su canal (E18, §4.15) ya existen; siguen fuera los canales globales, de región o de bando.
 - Modo espectador y repetición de partidas.

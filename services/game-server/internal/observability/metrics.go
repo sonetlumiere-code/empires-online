@@ -53,6 +53,12 @@ type Metrics struct {
 	// FactionJoins cuenta las entradas en un bando que contaron, por bando
 	// (SPEC-FACTIONS §6).
 	FactionJoins *prometheus.CounterVec
+
+	// ClanChanges cuenta los cambios de clan escritos, por tipo, y
+	// ClanMessagesSent los mensajes de canal guardados (SPEC-CLANS §6). Sin
+	// nombres, texto ni jugadores en las etiquetas.
+	ClanChanges      *prometheus.CounterVec
+	ClanMessagesSent prometheus.Counter
 }
 
 // NewMetrics construye y registra todos los instrumentos.
@@ -152,6 +158,14 @@ func NewMetrics() *Metrics {
 			Name: "eo_faction_joins_total",
 			Help: "Entradas en un bando que contaron, por bando: ORDER o CHAOS (SPEC-FACTIONS).",
 		}, []string{"faction"}),
+		ClanChanges: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "eo_clan_changes_total",
+			Help: "Cambios de clan escritos, por tipo: founded, joined, left, expelled o dissolved (SPEC-CLANS).",
+		}, []string{"kind"}),
+		ClanMessagesSent: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "eo_clan_messages_sent_total",
+			Help: "Mensajes del canal de un clan guardados (SPEC-CLANS).",
+		}),
 	}
 
 	reg.MustRegister(
@@ -161,6 +175,7 @@ func NewMetrics() *Metrics {
 		m.PathfindingRequests, m.PathfindingDuration,
 		m.DatabaseLatency, m.RedisLatency, m.PersistenceJobsDropped,
 		m.MessagesSent, m.MessagesRejected, m.FactionJoins,
+		m.ClanChanges, m.ClanMessagesSent,
 	)
 	// Las series de rechazo y de descarte existen a cero desde el arranque: una
 	// alerta sobre `rate()` de una serie que aún no existe no dispara nunca.
@@ -180,6 +195,9 @@ func NewMetrics() *Metrics {
 	}
 	for _, f := range FactionJoinLabels() {
 		m.FactionJoins.WithLabelValues(f)
+	}
+	for _, k := range ClanChangeKinds() {
+		m.ClanChanges.WithLabelValues(k)
 	}
 	return m
 }
@@ -255,3 +273,18 @@ func MessageRejectReasons() []string {
 // FactionJoinLabels es el catálogo cerrado de la etiqueta faction de
 // eo_faction_joins_total: los dos bandos a los que se puede entrar.
 func FactionJoinLabels() []string { return []string{"ORDER", "CHAOS"} }
+
+// Tipos de eo_clan_changes_total (SPEC-CLANS §6).
+const (
+	ClanChangeFounded   = "founded"
+	ClanChangeJoined    = "joined"
+	ClanChangeLeft      = "left"
+	ClanChangeExpelled  = "expelled"
+	ClanChangeDissolved = "dissolved"
+)
+
+// ClanChangeKinds es el catálogo cerrado de la etiqueta kind de
+// eo_clan_changes_total.
+func ClanChangeKinds() []string {
+	return []string{ClanChangeFounded, ClanChangeJoined, ClanChangeLeft, ClanChangeExpelled, ClanChangeDissolved}
+}

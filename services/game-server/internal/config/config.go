@@ -84,6 +84,12 @@ type Config struct {
 	// por mil (SPEC-FACTIONS Q3 y Q6).
 	FactionJoinDelay            time.Duration
 	FactionAffineDamagePerMille int32
+	// ClanMaxMembers, ClanInviteTTL y ClanPeaceGrace son el tope de miembros de
+	// un clan, la vida de una invitación y la paz residual tras una salida
+	// (SPEC-CLANS Q5, Q3 y Q6).
+	ClanMaxMembers int
+	ClanInviteTTL  time.Duration
+	ClanPeaceGrace time.Duration
 	// EventLogMaxAge es hasta cuándo atrás lee el registro, EventLogPageSize
 	// cuántas entradas trae una página y EventLogGroupGap el hueco máximo entre
 	// dos sucesos de una misma entrada (SPEC-EVENT-LOG §10).
@@ -222,6 +228,9 @@ func Load() (Config, error) {
 		TerritoryClaimHeld:          time.Duration(v.intRange("EO_TERRITORY_CLAIM_SECONDS", 600, 1, 24*3600)) * time.Second,
 		FactionJoinDelay:            time.Duration(v.intRange("EO_FACTION_JOIN_SECONDS", 900, 1, 24*3600)) * time.Second,
 		FactionAffineDamagePerMille: int32(v.intRange("EO_FACTION_AFFINE_DAMAGE_PERMILLE", 800, 1, 1000)),
+		ClanMaxMembers:              v.intRange("EO_CLAN_MAX_MEMBERS", 20, 2, 500),
+		ClanInviteTTL:               time.Duration(v.intRange("EO_CLAN_INVITE_HOURS", 24, 1, 24*30)) * time.Hour,
+		ClanPeaceGrace:              time.Duration(v.intRange("EO_CLAN_PEACE_GRACE_SECONDS", 900, 1, 24*3600)) * time.Second,
 		EventLogMaxAge:              time.Duration(v.intRange("EO_EVENT_LOG_MAX_DAYS", 7, 1, 90)) * 24 * time.Hour,
 		EventLogPageSize:            v.intRange("EO_EVENT_LOG_PAGE_SIZE", 50, 1, 200),
 		EventLogGroupGap:            time.Duration(v.intRange("EO_EVENT_LOG_GROUP_GAP_MINUTES", 10, 1, 24*60)) * time.Minute,

@@ -32,6 +32,13 @@ import {
   MessageView,
   ConversationView,
   BlockedPlayerView,
+  CityClanView,
+  ClanInvitationView,
+  ClanMemberView,
+  ClanMessageView,
+  ClanName,
+  ClanTag,
+  ClanView,
   ResourceAmount,
   PresenceState,
   ProductionView,
@@ -226,6 +233,8 @@ export const CityUpdate = z.object({
     faction: FactionCode.optional(),
     /** Entrada en un bando: se apunta (vista) o cuenta (`null`) (SPEC-FACTIONS §6). */
     factionJoin: FactionJoinView.nullable().optional(),
+    /** Clan de su dueño: entra (vista) o sale (`null`) (SPEC-CLANS §6). */
+    clan: CityClanView.nullable().optional(),
     /**
      * Instante del último golpe de saqueo sobre la ciudad. Sólo lo recibe su
      * dueño, para avisarle (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
@@ -500,6 +509,58 @@ export const MessagePage = z.object({
   }),
 });
 
+/**
+ * El clan de un jugador y sus invitaciones recibidas (SPEC-CLANS §6): a todas sus
+ * sesiones cuando cambian, con el `requestId` a la que dio la orden, y al conectar.
+ * `clan` es `null` sin clan.
+ */
+export const ClanUpdate = z.object({
+  ...serverEnvelope,
+  type: z.literal('clan.update'),
+  payload: z.object({
+    clan: ClanView.nullable(),
+    invitations: z.array(ClanInvitationView),
+  }),
+});
+
+/** La vista pública de un clan, en respuesta a `clan.lookup` (RN-CLAN-008). */
+export const ClanInfo = z.object({
+  ...serverEnvelope,
+  type: z.literal('clan.info'),
+  payload: z.object({
+    clanId: EntityId,
+    name: ClanName,
+    tag: ClanTag,
+    members: z.array(ClanMemberView),
+  }),
+});
+
+/**
+ * Un mensaje nuevo del canal de un clan, tras guardarse: lo reciben las sesiones de sus
+ * miembros; la que lo envió, con su `requestId` (SPEC-CLANS §6).
+ */
+export const ClanChatNew = z.object({
+  ...serverEnvelope,
+  type: z.literal('clan.chat.new'),
+  payload: z.object({ message: ClanMessageView }),
+});
+
+/**
+ * Una página del canal del clan propio, de más antiguo a más reciente, sólo para la
+ * sesión que la pidió: `readUpToId` es lo leído por quien mira y `nextBeforeId` el
+ * `beforeId` de la página anterior, `null` si no hay más.
+ */
+export const ClanChatPage = z.object({
+  ...serverEnvelope,
+  type: z.literal('clan.chat.page'),
+  payload: z.object({
+    clanId: EntityId,
+    messages: z.array(ClanMessageView),
+    readUpToId: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    nextBeforeId: EntityId.nullable(),
+  }),
+});
+
 /** Unión discriminada de todos los mensajes servidor → cliente de la v1. */
 export const ServerMessage = z.discriminatedUnion('type', [
   SessionWelcome,
@@ -529,6 +590,10 @@ export const ServerMessage = z.discriminatedUnion('type', [
   MessageNew,
   MessageInbox,
   MessagePage,
+  ClanUpdate,
+  ClanInfo,
+  ClanChatNew,
+  ClanChatPage,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -559,6 +624,10 @@ export type CaravanUpdate = z.infer<typeof CaravanUpdate>;
 export type MessageNew = z.infer<typeof MessageNew>;
 export type MessageInbox = z.infer<typeof MessageInbox>;
 export type MessagePage = z.infer<typeof MessagePage>;
+export type ClanUpdate = z.infer<typeof ClanUpdate>;
+export type ClanInfo = z.infer<typeof ClanInfo>;
+export type ClanChatNew = z.infer<typeof ClanChatNew>;
+export type ClanChatPage = z.infer<typeof ClanChatPage>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -588,6 +657,10 @@ export const SERVER_MESSAGE_TYPES = [
   'message.new',
   'message.inbox',
   'message.page',
+  'clan.update',
+  'clan.info',
+  'clan.chat.new',
+  'clan.chat.page',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

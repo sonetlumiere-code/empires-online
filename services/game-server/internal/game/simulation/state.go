@@ -122,6 +122,10 @@ type State struct {
 	factionJoining            map[uuid.UUID]city.FactionJoin
 	pendingFactionCompletions map[uuid.UUID]FactionJoinCompletion
 
+	// clans son los clanes, su pertenencia, sus invitaciones y las salidas
+	// recientes (SPEC-CLANS, ADR-040).
+	clans clanState
+
 	// Combate (SPEC-COMBAT-RAID, ADR-024): enfrentamientos, tratados de paz y
 	// muertes por reescribir.
 	combat combatState
@@ -185,6 +189,7 @@ func NewState(w *world.World) *State {
 		pendingAdvanceCompletions: make(map[int64]AdvanceCompletion),
 		factionJoining:            make(map[uuid.UUID]city.FactionJoin),
 		pendingFactionCompletions: make(map[uuid.UUID]FactionJoinCompletion),
+		clans:                     newClanState(),
 	}
 }
 

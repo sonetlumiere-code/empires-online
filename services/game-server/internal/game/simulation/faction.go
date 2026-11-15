@@ -219,6 +219,11 @@ func (s *Simulation) handleJoinFaction(cmd JoinFaction) {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "ya te estás uniendo a un bando")
 		return
 	}
+	// RN-CLAN-006 e INV-CLAN-002: un clan no junta a la Orden y al Caos.
+	if blocked, why := s.state.clanBlocksFaction(cmd.PlayerID, cmd.Faction); blocked {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, why)
+		return
+	}
 
 	nowMs := s.deps.Clock.NowMs()
 	at := time.UnixMilli(nowMs).UTC().Add(s.factionJoinDelay())

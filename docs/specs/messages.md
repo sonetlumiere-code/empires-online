@@ -39,6 +39,10 @@ adjuntar a un mensaje una oferta de trato o de tratado (las ofertas siguen siend
 o notificaciones del sistema operativo; «visto» para el remitente (Q8); el borrado definitivo de los mensajes viejos,
 que va con la operación 24/7 (Q4); repartir la entrega entre varios procesos del Game Server (`OUT-17`).
 
+**Precisión (2026-11-15, [clans.md](clans.md)).** Los clanes y su canal entran con E18: el canal de un clan sigue las
+reglas del texto, del ritmo y de la entrega de esta spec (`RN-CLAN-009`). Los canales de región, de facción y globales
+siguen fuera.
+
 ## 3. Actores
 
 El jugador que escribe, el que recibe (conectado o no), cliente web, Game Server (la conexión de cada sesión valida,

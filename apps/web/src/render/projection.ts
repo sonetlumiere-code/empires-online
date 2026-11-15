@@ -29,6 +29,7 @@ import type {
   SceneUpdate,
   TerrainSource,
 } from './sceneData';
+import { withTag } from '../state/clans';
 
 /** Lo que la proyección lee del store. */
 export type ProjectableState = Pick<
@@ -81,7 +82,8 @@ function toSceneCity(c: CityView, ownId: string | null): SceneCity {
     id: c.id,
     centerX: c.centerX,
     centerY: c.centerY,
-    name: c.name,
+    // La sigla del clan va delante del nombre en la etiqueta (SPEC-CLANS §4.8).
+    name: withTag(c.name, c.clan),
     presenceState: c.presenceState,
     isOwn: c.ownerPlayerId === ownId,
   };

@@ -123,6 +123,15 @@ type Deps struct {
 	// por mil (SPEC-FACTIONS Q3 y Q6). Cero: 15 min y 800.
 	FactionJoinDelay            time.Duration
 	FactionAffineDamagePerMille int32
+	// Clans escribe los clanes (ADR-040). Opcional: sin él, los comandos de
+	// los clanes responden INTERNAL_ERROR.
+	Clans ClanStore
+	// ClanMaxMembers, ClanInviteTTL y ClanPeaceGrace son el tope de miembros, la
+	// vida de una invitación y la paz residual (SPEC-CLANS Q5, Q3 y Q6). Cero:
+	// 20, 24 h y 15 min.
+	ClanMaxMembers int
+	ClanInviteTTL  time.Duration
+	ClanPeaceGrace time.Duration
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -168,6 +177,9 @@ func New(state *State, deps Deps) *Simulation {
 	}
 	if deps.Persister == nil {
 		deps.Persister = NoopPersister{}
+	}
+	if deps.ClanPeaceGrace > 0 {
+		state.clans.grace = deps.ClanPeaceGrace
 	}
 	return &Simulation{
 		state:            state,
@@ -296,6 +308,24 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleFactionJoinResolved(c)
 	case FactionJoinCompletePersistFailed:
 		s.handleFactionJoinCompletePersistFailed(c)
+	case CreateClan:
+		s.handleCreateClan(c)
+	case ClanCreateResolved:
+		s.handleClanCreateResolved(c)
+	case InviteToClan:
+		s.handleInviteToClan(c)
+	case ClanInviteResolved:
+		s.handleClanInviteResolved(c)
+	case RespondClan:
+		s.handleRespondClan(c)
+	case ClanJoinResolved:
+		s.handleClanJoinResolved(c)
+	case LeaveClan:
+		s.handleLeaveClan(c)
+	case ExpelFromClan:
+		s.handleExpelFromClan(c)
+	case ClanLeavePersistFailed:
+		s.handleClanLeavePersistFailed(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -734,6 +764,9 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	// tick no hace I/O.
 	s.completeFactionJoins(now.UnixMilli())
 	s.sweepTreaties(now)
+	// Las salidas de clan cuya paz residual venció y las invitaciones
+	// caducadas: sólo se olvidan (SPEC-CLANS RN-CLAN-005).
+	s.sweepClans(now.UnixMilli())
 
 	// 3. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
 	s.state.EachCity(func(c *city.City) bool {
@@ -944,6 +977,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushCaravanWrites()
 	s.flushAdvanceCompletions()
 	s.flushFactionCompletions()
+	s.flushClanLeaves()
 	s.flushDestructions()
 	s.flushDeaths()
 	s.flushClaims()

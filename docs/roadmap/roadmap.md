@@ -204,6 +204,11 @@ movimientos, reutilizando el patrón de recuperación validado en M4.
 un clan es, estructuralmente, un conjunto de treaties permanentes con gestión de membresía y
 permisos. El trabajo duro no es el modelo de datos sino la autorización: qué puede hacer un miembro
 en nombre del clan sobre ciudades, territorios y garrisons ajenos.
+**Precisión (2026-11-15, [SPEC-CLANS](../specs/clans.md), [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md)):** la primera parte está hecha en E18 ([milestones.md](milestones.md) §E18): clanes con nombre, sigla y
+líder, por invitación, con paz entre sus miembros y su paz residual al salir, sin juntar a la Orden y al Caos, y con un
+canal propio. La paz del clan no es un conjunto de tratados sino una tercera fuente de `AtPeace`, y la autorización se
+quedó en el mínimo (un líder que invita y expulsa). Quedan los territorios de clan, los rangos y las alianzas entre
+clanes.
 
 **Large-scale warfare.** Guerra a gran escala con muchos jugadores y unidades concurrentes en la
 misma región. Depende de todo lo anterior y es la primera fase que puede exigir cambios

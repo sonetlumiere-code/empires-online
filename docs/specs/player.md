@@ -51,6 +51,8 @@ transacción, un jugador jugable con ciudad y unidades.
   la facción sigue sin elegirse en el alta (todos nacen `NEUTRAL`); desde E17 se elige en partida, una vez.
 - Estados de moderación de cuenta (suspensión, baneo, borrado), renombrado, cambio de civilización o de
   facción, múltiples ciudades por jugador, clanes, ranking: `TBD (fuera de MVP)`.
+  **Precisión (2026-11-15, [clans.md](clans.md)):** los clanes existen desde E18; un jugador está en uno como mucho
+  ([INV-CLAN-001](../invariants/clans.md#inv-clan-001)), y la pertenencia no es una columna de `players`.
   **Precisión (2026-11-15, [factions.md](factions.md)):** desde E17 la facción cambia una vez, de `NEUTRAL` a `ORDER`
   o `CHAOS` ([INV-PLAYER-013](../invariants/player.md#inv-player-013)); cambiar de un bando a otro o volver a `NEUTRAL`
   sigue fuera.

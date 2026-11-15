@@ -248,8 +248,8 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 }
 
 func TestCatalogoDeComandosEsCerrado(t *testing.T) {
-	// 30 desde E17: faction.join (SPEC-FACTIONS).
-	require.Len(t, protocol.ClientMessageTypes, 30)
+	// 39 desde E18: los nueve de los clanes (SPEC-CLANS).
+	require.Len(t, protocol.ClientMessageTypes, 39)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)

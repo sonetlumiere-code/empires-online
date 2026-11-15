@@ -208,6 +208,15 @@ func CommandTypes() []string {
 		JoinFaction{}.commandType(),
 		FactionJoinResolved{}.commandType(),
 		FactionJoinCompletePersistFailed{}.commandType(),
+		CreateClan{}.commandType(),
+		ClanCreateResolved{}.commandType(),
+		InviteToClan{}.commandType(),
+		ClanInviteResolved{}.commandType(),
+		RespondClan{}.commandType(),
+		ClanJoinResolved{}.commandType(),
+		LeaveClan{}.commandType(),
+		ExpelFromClan{}.commandType(),
+		ClanLeavePersistFailed{}.commandType(),
 	}
 }
 
@@ -251,6 +260,7 @@ func JobNames() []string {
 		JobCityCraft, JobCraftComplete,
 		JobCaravanDeliver, JobCaravanCapture,
 		JobFactionJoin, JobFactionJoined,
+		JobClanCreate, JobClanInvite, JobClanJoin, JobClanLeave,
 	}
 }
 

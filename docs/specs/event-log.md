@@ -76,6 +76,12 @@ Villa Norte con 100 de piedra»), la suya capturada (`CaravanCaptured`), la que 
 `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con lo que llevaba (`cargo`) y el tile. Como los tratos, no
 se agrupan; y la captura que hizo el propio jugador no entra (`RN-LOG-001`).
 
+**Precisión (2026-11-15, [clans.md](clans.md) Q10, [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md)).**
+Desde E18 entra la expulsión de un clan (`ClanMemberExpelled`, con el líder como `counterpart_player_id`): al
+expulsado, `CLAN_EXPELLED` («Villa Norte te expulsó de su clan»), y al líder, `CLAN_MEMBER_EXPELLED` («Expulsaste a
+Villa Norte de tu clan»). Fundar, entrar y salir por voluntad propia no entran (`ClanFounded`, `ClanJoined` y
+`ClanLeft` no son tipos del registro).
+
 Lo que hizo el propio jugador en la diplomacia (proponer, romper, retirar) no entra: ya lo sabe. `TreatyExpired` desde
 `ACTIVE` sólo lo escriben los tratados administrativos con `expires_at`: el pacto que una alianza sustituye se cierra
 sin evento propio, y lo cuenta el `TreatyAccepted` de la alianza.

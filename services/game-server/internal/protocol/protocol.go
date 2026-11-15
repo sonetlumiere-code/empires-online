@@ -65,6 +65,18 @@ const (
 	TypeMessageFetch = "message.fetch"
 	TypeMessageRead  = "message.read"
 	TypeMessageBlock = "message.block"
+	// Clanes (SPEC-CLANS): los cinco primeros cambian quién está en un clan y
+	// pasan por la simulación; los cuatro últimos los atiende la conexión
+	// (ADR-040 §1 y §5).
+	TypeClanCreate    = "clan.create"
+	TypeClanInvite    = "clan.invite"
+	TypeClanRespond   = "clan.respond"
+	TypeClanLeave     = "clan.leave"
+	TypeClanExpel     = "clan.expel"
+	TypeClanLookup    = "clan.lookup"
+	TypeClanChatSend  = "clan.chat.send"
+	TypeClanChatFetch = "clan.chat.fetch"
+	TypeClanChatRead  = "clan.chat.read"
 )
 
 // Mensajes servidor → cliente.
@@ -96,6 +108,10 @@ const (
 	TypeMessageNew            = "message.new"
 	TypeMessageInbox          = "message.inbox"
 	TypeMessagePage           = "message.page"
+	TypeClanUpdate            = "clan.update"
+	TypeClanInfo              = "clan.info"
+	TypeClanChatNew           = "clan.chat.new"
+	TypeClanChatPage          = "clan.chat.page"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -130,6 +146,15 @@ var ClientMessageTypes = map[string]bool{
 	TypeMessageFetch:   true,
 	TypeMessageRead:    true,
 	TypeMessageBlock:   true,
+	TypeClanCreate:     true,
+	TypeClanInvite:     true,
+	TypeClanRespond:    true,
+	TypeClanLeave:      true,
+	TypeClanExpel:      true,
+	TypeClanLookup:     true,
+	TypeClanChatSend:   true,
+	TypeClanChatFetch:  true,
+	TypeClanChatRead:   true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -323,12 +348,15 @@ type CityView struct {
 	// Faction es el código de la facción de su dueño y FactionJoin su entrada
 	// pendiente en un bando, o null; públicas para todo el que ve la ciudad
 	// (SPEC-FACTIONS RN-FAC-009).
-	Faction           string           `json:"faction"`
-	FactionJoin       *FactionJoinView `json:"factionJoin"`
-	Population        int32            `json:"population"`
-	PopulationLimit   int32            `json:"populationLimit"`
-	PresenceState     string           `json:"presenceState"`
-	ProtectionUntilMs *int64           `json:"protectionUntilMs"`
+	Faction     string           `json:"faction"`
+	FactionJoin *FactionJoinView `json:"factionJoin"`
+	// Clan es el clan de su dueño (su id y su sigla), o null; público
+	// (SPEC-CLANS RN-CLAN-008).
+	Clan              *CityClanView `json:"clan"`
+	Population        int32         `json:"population"`
+	PopulationLimit   int32         `json:"populationLimit"`
+	PresenceState     string        `json:"presenceState"`
+	ProtectionUntilMs *int64        `json:"protectionUntilMs"`
 	// Stocks y Production viajan siempre: el stock de la ciudad y su
 	// entrenamiento en curso, o null.
 	Stocks     Stocks          `json:"stocks"`
@@ -731,6 +759,139 @@ type CityCraftPayload struct {
 	CityID int64 `json:"cityId"`
 }
 
+// ─────────────────────────────────────────────────────────────
+// Clanes (SPEC-CLANS)
+// ─────────────────────────────────────────────────────────────
+
+// CityClanView es el clan de una ciudad: su id y su sigla.
+type CityClanView struct {
+	ID  int64  `json:"id"`
+	Tag string `json:"tag"`
+}
+
+// ClanCreatePayload funda un clan; quien funda es su líder (SPEC-CLANS §4.2).
+type ClanCreatePayload struct {
+	Name string `json:"name"`
+	Tag  string `json:"tag"`
+}
+
+// ClanInvitePayload invita a PlayerID al clan del líder, o retira la
+// invitación con Invited false.
+type ClanInvitePayload struct {
+	PlayerID string `json:"playerId"`
+	Invited  bool   `json:"invited"`
+}
+
+// ClanRespondPayload acepta o rechaza una invitación viva.
+type ClanRespondPayload struct {
+	ClanID int64 `json:"clanId"`
+	Accept bool  `json:"accept"`
+}
+
+// ClanLeavePayload sale del clan propio; no lleva nada.
+type ClanLeavePayload struct{}
+
+// ClanExpelPayload expulsa a PlayerID del clan del líder.
+type ClanExpelPayload struct {
+	PlayerID string `json:"playerId"`
+}
+
+// ClanLookupPayload pide la vista pública de un clan.
+type ClanLookupPayload struct {
+	ClanID int64 `json:"clanId"`
+}
+
+// ClanChatSendPayload escribe en el canal del clan propio.
+type ClanChatSendPayload struct {
+	Body string `json:"body"`
+}
+
+// ClanChatFetchPayload pide una página del canal: la más reciente o la de los
+// mensajes con id menor que BeforeID.
+type ClanChatFetchPayload struct {
+	BeforeID *int64 `json:"beforeId,omitempty"`
+}
+
+// ClanChatReadPayload marca leído el canal hasta UpToID.
+type ClanChatReadPayload struct {
+	UpToID int64 `json:"upToId"`
+}
+
+// ClanMemberView es un miembro de un clan, nombrado por su ciudad.
+type ClanMemberView struct {
+	PlayerID   string  `json:"playerId"`
+	CityID     *int64  `json:"cityId"`
+	CityName   *string `json:"cityName"`
+	Faction    string  `json:"faction"`
+	Role       string  `json:"role"`
+	JoinedAtMs int64   `json:"joinedAtMs"`
+}
+
+// ClanSentInvitationView es una invitación viva que envió el clan.
+type ClanSentInvitationView struct {
+	PlayerID    string  `json:"playerId"`
+	CityID      *int64  `json:"cityId"`
+	CityName    *string `json:"cityName"`
+	ExpiresAtMs int64   `json:"expiresAtMs"`
+}
+
+// ClanView es el propio clan, visto por uno de sus miembros.
+type ClanView struct {
+	ID              int64                    `json:"id"`
+	Name            string                   `json:"name"`
+	Tag             string                   `json:"tag"`
+	LeaderID        string                   `json:"leaderId"`
+	Members         []ClanMemberView         `json:"members"`
+	SentInvitations []ClanSentInvitationView `json:"sentInvitations"`
+}
+
+// ClanInvitationView es una invitación recibida y viva.
+type ClanInvitationView struct {
+	ClanID      int64  `json:"clanId"`
+	Name        string `json:"name"`
+	Tag         string `json:"tag"`
+	ExpiresAtMs int64  `json:"expiresAtMs"`
+}
+
+// ClanUpdatePayload es el clan de un jugador, o null, y sus invitaciones
+// recibidas.
+type ClanUpdatePayload struct {
+	Clan        *ClanView            `json:"clan"`
+	Invitations []ClanInvitationView `json:"invitations"`
+}
+
+// ClanInfoPayload es la vista pública de un clan.
+type ClanInfoPayload struct {
+	ClanID  int64            `json:"clanId"`
+	Name    string           `json:"name"`
+	Tag     string           `json:"tag"`
+	Members []ClanMemberView `json:"members"`
+}
+
+// ClanMessageView es un mensaje del canal de un clan.
+type ClanMessageView struct {
+	ID           int64   `json:"id"`
+	ClanID       int64   `json:"clanId"`
+	FromPlayerID string  `json:"fromPlayerId"`
+	FromCityID   *int64  `json:"fromCityId"`
+	FromCityName *string `json:"fromCityName"`
+	Body         string  `json:"body"`
+	SentAtMs     int64   `json:"sentAtMs"`
+}
+
+// ClanChatNewPayload lleva un mensaje recién guardado a los miembros.
+type ClanChatNewPayload struct {
+	Message ClanMessageView `json:"message"`
+}
+
+// ClanChatPagePayload es una página del canal, de más antiguo a más reciente.
+type ClanChatPagePayload struct {
+	ClanID       int64             `json:"clanId"`
+	Messages     []ClanMessageView `json:"messages"`
+	ReadUpToID   int64             `json:"readUpToId"`
+	NextBeforeID *int64            `json:"nextBeforeId"`
+}
+
 // FactionJoinPayload pide unirse a un bando (SPEC-FACTIONS §4.2). Sólo nombra
 // el bando: el instante en que cuenta lo decide el servidor (INV-SEC-001).
 type FactionJoinPayload struct {
@@ -847,6 +1008,9 @@ type CityUpdatePayload struct {
 	// empieza (SPEC-FACTIONS §6).
 	Faction     *string           `json:"faction,omitempty"`
 	FactionJoin **FactionJoinView `json:"factionJoin,omitempty"`
+	// Clan: nil si no cambia; apuntando a nil, el dueño sale de su clan;
+	// apuntando a una vista, entra (SPEC-CLANS §6).
+	Clan **CityClanView `json:"clan,omitempty"`
 	// PillagedAtMs es el instante del último golpe de saqueo. Sólo lo recibe
 	// el dueño de la ciudad (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
 	PillagedAtMs *int64 `json:"pillagedAtMs,omitempty"`

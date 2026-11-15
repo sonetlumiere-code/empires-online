@@ -313,6 +313,35 @@ func run() error {
 	}
 	state.SetTreaties(abiertos, rechazos)
 
+	// Los clanes (ADR-040 §1): los vivos, la pertenencia abierta, las salidas
+	// cuya paz residual no ha vencido y las invitaciones vivas. Un clan que no
+	// cumple INV-CLAN-001 o INV-CLAN-002 no deja arrancar: no se repara solo.
+	clanRepo := postgres.NewClanRepo(store, postgres.ClansConfig{MaxAge: cfg.MessageMaxAge, PageSize: cfg.MessagePageSize})
+	malosClanes, err := clanRepo.Violations(rootCtx)
+	if err != nil {
+		return fmt.Errorf("comprobar clanes: %w", err)
+	}
+	for _, v := range malosClanes {
+		log.Error("invariant_violation", "inv_id", v.InvID, "severity", "ALTO", "policy", "FAIL_FAST",
+			"entity", fmt.Sprintf("clan:%d", v.ClanID), "detail", v.Detail)
+	}
+	if len(malosClanes) > 0 {
+		return fmt.Errorf("%w: %d clanes violan sus invariantes", postgres.ErrLoadCheckFatal, len(malosClanes))
+	}
+	clanes, err := clanRepo.ListLive(rootCtx)
+	if err != nil {
+		return fmt.Errorf("cargar clanes: %w", err)
+	}
+	estancias, err := clanRepo.ListStays(rootCtx, sysClock.Now().Add(-cfg.ClanPeaceGrace))
+	if err != nil {
+		return fmt.Errorf("cargar la pertenencia a los clanes: %w", err)
+	}
+	invitaciones, err := clanRepo.ListInvites(rootCtx, sysClock.Now())
+	if err != nil {
+		return fmt.Errorf("cargar las invitaciones a clanes: %w", err)
+	}
+	state.SetClans(clanes, estancias, invitaciones, cfg.ClanPeaceGrace)
+
 	// Las ofertas de comercio pendientes (ADR-032 §1). Las que caducaron con el
 	// servidor parado, o cuyo tratado terminó, las cierra el primer barrido.
 	tradeRepo := postgres.NewTradeRepo(store, cfg.ChunkSize)
@@ -434,6 +463,10 @@ func run() error {
 		Factions:                    persistence.NewFactionStore(postgres.NewFactionRepo(store), metrics, log),
 		FactionJoinDelay:            cfg.FactionJoinDelay,
 		FactionAffineDamagePerMille: cfg.FactionAffineDamagePerMille,
+		Clans:                       persistence.NewClanStore(clanRepo, metrics, log),
+		ClanMaxMembers:              cfg.ClanMaxMembers,
+		ClanInviteTTL:               cfg.ClanInviteTTL,
+		ClanPeaceGrace:              cfg.ClanPeaceGrace,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje
@@ -486,6 +519,9 @@ func run() error {
 	wsServer.SetMessages(postgres.NewMessageRepo(store, postgres.MessagesConfig{
 		MaxAge: cfg.MessageMaxAge, PageSize: cfg.MessagePageSize,
 	}), message.NewLimiter(cfg.MessageRatePerMinute, cfg.MessageNewRecipientsPerHour))
+	// El canal de los clanes, igual: lo atiende la conexión y comprueba la
+	// pertenencia en la base (ADR-040 §5). Comparte el límite de ritmo.
+	wsServer.SetClans(clanRepo)
 
 	// Detrás del reverse proxy del despliegue de referencia, TODAS las
 	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el
