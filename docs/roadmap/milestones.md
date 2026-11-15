@@ -2069,3 +2069,39 @@ de facción, reputación, canales por bando y bonos que no sean el daño en tier
    entrada pendiente, la barra de una ciudad ajena con su bando (las ciudades de los dos bandos quedaron a 124 tiles),
    el clic de ataque entre dos de la Orden y la línea de tierra afín del territorio; los cubren los tests de
    `factions.test.ts`, el e2e y la simulación.
+
+## E18 — Clanes
+
+**Estado: EN CURSO (2026-11-15)**, en la rama `claude/slice-clanes`. Contrato:
+[SPEC-CLANS](../specs/clans.md), aceptada el 2026-11-15 con sus doce decisiones de producto, y
+[ADR-040](../decisions/ADR-040-clans-membership-and-peace.md).
+
+**Objetivo.** Que exista un nivel social entre el jugador solo y el bando: un grupo pequeño y elegido que se protege,
+se coordina y tiene un nombre que los demás reconocen en el mapa. Abre la fase Clans del roadmap y responde en parte a
+`Q-16` (los canales de clan).
+
+**Alcance.** Fundar un clan con nombre y sigla únicos; invitar, aceptar, rechazar, retirar, salir y expulsar; un líder
+y hasta 20 miembros, con el liderazgo que pasa al más antiguo y la disolución cuando sale el último; la paz del clan
+(dos miembros no se agreden) con 15 minutos de paz residual al salir o ser expulsado; ningún clan con la Orden y el
+Caos a la vez; la sigla en `CityView` y la lista pública de miembros; el canal del clan con las reglas de E16, leído
+desde la entrada; la expulsión en el registro y en los avisos; `INV-CLAN-001`, `INV-CLAN-002`, `INV-CLAN-003` e
+`INV-SEC-012`; migración `000020`; el cliente y `scripts/smoke.mjs --clan`. **No entra** (spec §2): territorios y
+tierra afín de clan, guarnición o comercio sin tratado, oficiales y traspaso explícito, solicitudes y clanes abiertos,
+renombrar, bando propio del clan, guerras y alianzas entre clanes, ranking y directorio de clanes.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-040, la familia `INV-CLAN` (`INV-CLAN-001` a `003`) e `INV-SEC-012`, las
+   precisiones de [combat-raid.md](../specs/combat-raid.md) (`RN-COMBAT-006`), [factions.md](../specs/factions.md)
+   (`RN-FAC-005`), [messages.md](../specs/messages.md) (§2), [mvp-scope.md](../product/mvp-scope.md) (`OUT-13`) y
+   [schema.md](../database/schema.md) (§17.3), y `Q-16` en el backlog.
+2. **PENDIENTE** — Protocolo: nueve comandos (39 cliente → servidor) y cuatro tipos (31 servidor → cliente), `clan` en
+   `CityView`; contract tests en los dos lados y un e2e por tipo nuevo.
+3. **PENDIENTE** — Dominio y simulación: el clan, `clanState`, los cinco comandos de la simulación en dos fases o
+   optimistas, `AtPeace` con el clan y la paz residual, la regla de bandos también en `faction.join`, la expulsión en
+   el registro y los avisos.
+4. **PENDIENTE** — Migración `000020` y persistencia: las cinco tablas, los índices, los dos triggers, la carga, los
+   trabajos de pertenencia y el canal con su candado por clan.
+5. **PENDIENTE** — Cliente: el botón y el panel del clan, el canal, «Invitar al clan» y «Ver clan» en la barra de una
+   ciudad ajena, la sigla en el mapa, el clic de ataque entre compañeros y los rechazos con su motivo.
+6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --clan` con cuentas de humo propias.

@@ -1420,6 +1420,8 @@ El punto clave de encaje: `caravans` y `trade_routes` **no** reinventan el movim
 
 Cuando `clans` llegue, `territory_control` no necesitará ninguna columna nueva: `owner_type = 'CLAN'` con el `owner_id` correspondiente ya está previsto en el `CHECK` del esquema actual. Ése era justamente el objetivo del dueño polimórfico.
 
+**Precisión (2026-11-15, [SPEC-CLANS](../specs/clans.md) §7, [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §6).** E18 sustituye este diseño por el de la migración `000020`: la sigla (`tag`) en lugar de `code`, el líder actual en lugar del fundador, sin `faction_id`, y `clan_members` con una fila por estancia (entrada, salida y motivo), de la que salen la paz residual y lo que cada miembro lee del canal; más `clan_invites`, `clan_messages` y `clan_message_reads`. El dueño `CLAN` del territorio sigue sin usarse. Las tablas se documentarán aquí con la implementación.
+
 ---
 
 ## 18. Resumen de autoridad y persistencia

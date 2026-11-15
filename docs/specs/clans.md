@@ -6,13 +6,13 @@ invita y expulsa, paz entre sus miembros y un canal de mensajes propio.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLANS` |
-| Estado | Draft (2026-11-15). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-15). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E18 Clanes (decimoctavo slice después de M7) |
 | Canon | §1.5 (determinismo), §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores), §21 (fuera de MVP: clanes) |
 | Depende de | [player.md](player.md), [city.md](city.md), [diplomacy.md](diplomacy.md), [factions.md](factions.md), [messages.md](messages.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [territory-conquest.md](territory-conquest.md), [caravans.md](caravans.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-027](../decisions/ADR-027-hot-treaties.md) (los tratados en caliente y su preaviso), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro desde `world_events`), [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) (los mensajes como subsistema de sesión), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la facción como segunda fuente de paz y la entrada en dos fases). Un ADR nuevo (`ADR-040`: la pertenencia a un clan como estado de la simulación y tercera fuente de paz, con su paz residual al salir, y el canal del clan como subsistema de sesión autorizado contra la base) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-027](../decisions/ADR-027-hot-treaties.md) (los tratados en caliente y su preaviso), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro desde `world_events`), [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) (los mensajes como subsistema de sesión), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la facción como segunda fuente de paz y la entrada en dos fases). [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (la pertenencia a un clan como estado de la simulación y tercera fuente de paz, con su paz residual derivada al salir, la regla de bandos en el tick y en la base, y el canal del clan como subsistema de sesión autorizado contra la base): ver §7. |
 | Reemplaza a | En [mvp-scope.md](../product/mvp-scope.md), `OUT-13` («Clanes»), en lo que entra en §2. En [messages.md](messages.md) §2, «clanes» y los canales de clan de su no-scope. En [../database/schema.md](../database/schema.md) §17.3, el diseño previsto de `clans` y `clan_members` (la sigla sustituye a `code`, el clan no tiene `faction_id` y la historia de pertenencia vive en `clan_members`: ver §7). Precisa `RN-COMBAT-006` de [combat-raid.md](combat-raid.md) (la paz entre dos jugadores sale también del clan) y `RN-FAC-005` de [factions.md](factions.md) (la Orden y el Caos tampoco comparten clan). Responde en parte a la pregunta `Q-16` del [backlog](../roadmap/backlog.md) (los canales de clan) y abre la fase Clans de [roadmap.md](../roadmap/roadmap.md) §5, sin territorios de clan. |
-| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-005](../invariants/security.md#inv-sec-005), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-SEC-010](../invariants/security.md#inv-sec-010), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-COMBAT-006](../invariants/combat.md#inv-combat-006), [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003), [INV-PLAYER-013](../invariants/player.md#inv-player-013), [INV-PERSIST-003](../invariants/persistence.md#inv-persist-003) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); propone cuatro nuevos, de una familia nueva `INV-CLAN` y de `INV-SEC`, que se registrarán al aceptar (§8) |
+| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-005](../invariants/security.md#inv-sec-005), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-SEC-010](../invariants/security.md#inv-sec-010), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-COMBAT-006](../invariants/combat.md#inv-combat-006), [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003), [INV-PLAYER-013](../invariants/player.md#inv-player-013), [INV-PERSIST-003](../invariants/persistence.md#inv-persist-003) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); asigna [INV-CLAN-001](../invariants/clans.md#inv-clan-001), [INV-CLAN-002](../invariants/clans.md#inv-clan-002), [INV-CLAN-003](../invariants/clans.md#inv-clan-003) e [INV-SEC-012](../invariants/security.md#inv-sec-012) (§8) |
 
 ## 1. Objetivo
 
@@ -229,7 +229,7 @@ canal usa las `EO_MESSAGE_*` de E16.
 | Dirty-flag | Nada |
 | Reconstruible / no persistido | Quién está en paz por su clan; las invitaciones caducadas, que se descartan al leerlas |
 
-**Por qué hace falta un ADR (`ADR-040`).** Tres decisiones estructurales:
+**Por qué hace falta un ADR ([ADR-040](../decisions/ADR-040-clans-membership-and-peace.md)).** Tres decisiones estructurales, más la regla de bandos en los dos sentidos (ADR-040 §4):
 
 1. **La pertenencia es estado de la simulación.** Decide la paz, y la paz se consulta dentro del tick en cada golpe:
    las órdenes que la cambian pasan por el tick, en dos fases como `faction.join`. Alternativa descartada: llevar los
@@ -242,8 +242,9 @@ canal usa las `EO_MESSAGE_*` de E16.
    salida guardada en la historia de pertenencia y de la de entrada del otro.
 3. **El canal es un subsistema de sesión autorizado contra la base.** Lo atiende la conexión, como los mensajes de
    [ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md), y en la transacción del envío comprueba la
-   pertenencia en `clan_members` (bloqueando la fila del miembro), no en la RAM de la simulación, que la conexión no
-   puede leer sin cruzar el escritor único. Quien acaba de salir no escribe ni un mensaje más.
+   pertenencia en `clan_members` con el candado del clan, el mismo que toman la entrada y la salida (ADR-040 §5), no
+   en la RAM de la simulación, que la conexión no puede leer sin cruzar el escritor único. Quien acaba de salir no
+   escribe ni un mensaje más.
 
 **Migración `000020`.** Cinco tablas nuevas, que se suman al `TRUNCATE` de `testenv_integration_test.go` y a la
 clasificación de [../database/schema.md](../database/schema.md) §1, y sustituyen el diseño previsto de §17.3:
@@ -251,16 +252,18 @@ clasificación de [../database/schema.md](../database/schema.md) §1, y sustituy
 - `clans` (`id` identidad, `name`, `tag`, `leader_player_id` con FK a `players`, `founded_at`, `dissolved_at`), con
   índices únicos sobre `lower(name)` y sobre `tag` sólo para los clanes vivos (`dissolved_at IS NULL`) y `CHECK` del
   formato.
-- `clan_members` (`clan_id`, `player_id`, `joined_at`, `left_at`, `left_reason` en `LEFT`, `EXPELLED` o `DISSOLVED`),
-  una fila por estancia: la historia de pertenencia que pedía §17.3 y de la que sale la paz residual. Un índice único
+- `clan_members` (`clan_id`, `player_id`, `joined_at`, `first_message_id` —el mayor `id` del canal al entrar, del
+  que sale «lo escrito desde que entró»—, `left_at`, `left_reason` en `LEFT`, `EXPELLED` o `DISSOLVED`), una fila por
+  estancia: la historia de pertenencia que pedía §17.3 y de la que sale la paz residual. Un índice único
   parcial impide dos estancias abiertas (`left_at IS NULL`) de un jugador, y un `CHECK` el par `left_at`/`left_reason`.
 - `clan_invites` (`clan_id`, `player_id`, `invited_by`, `created_at`, `expires_at`), con PK de los dos primeros.
 - `clan_messages` (`id` identidad, `clan_id`, `sender_player_id`, `body` con el `CHECK` de longitud de E16,
   `request_id` con `UNIQUE (sender_player_id, request_id)`, `sent_at`), con un índice `(clan_id, id DESC)`.
 - `clan_message_reads` (`player_id`, `clan_id`, `read_up_to_id`), con PK de los dos.
 
-Un trigger de `clan_members` rechaza una estancia abierta que deje el clan con un miembro de `ORDER` y uno de `CHAOS`
-(`RN-CLAN-006`), como red de seguridad bajo la comprobación del tick
+Un trigger en los dos sentidos —al abrir una estancia en `clan_members` y al apuntar una entrada o cambiar la facción en
+`players`— rechaza que un clan quede con un miembro (o una entrada) de `ORDER` y uno de `CHAOS` (`RN-CLAN-006`), como
+red de seguridad bajo la comprobación del tick (ADR-040 §4)
 ([INV-PERSIST-005](../invariants/persistence.md#inv-persist-005)). Que el líder sea un miembro abierto lo garantiza la
 transacción del trabajo que cambia el líder y lo comprueba un test, no la base. `territory_control` no cambia: el
 dueño `CLAN` sigue sin usarse (Q11). La siguiente migración libre pasará a ser `000021`.
@@ -279,18 +282,21 @@ incluida, siguen igual), [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-00
 [INV-PERSIST-003](../invariants/persistence.md#inv-persist-003) (nada del clan vive sólo en Redis) e
 [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005) (la migración `000020`).
 
-**Propone** cuatro invariantes nuevos, que se registrarán con su número al aceptar:
+**Asigna** cuatro invariantes nuevos, registrados en [../invariants/clans.md](../invariants/clans.md), una familia
+nueva, y en [../invariants/security.md](../invariants/security.md):
 
-- De una familia nueva `INV-CLAN`, en un archivo nuevo de [../invariants/](../invariants/README.md): un jugador tiene
-  como mucho una estancia abierta en un clan, y todo clan vivo tiene exactamente un líder, que es uno de sus miembros
-  abiertos (el índice parcial de `000020` y un test del cambio de líder).
-- De `INV-CLAN`: ningún clan tiene a la vez una estancia abierta de un jugador de `ORDER` y otra de uno de `CHAOS`,
-  contando las entradas pendientes en un bando (el trigger de `000020` y un test por cada camino: invitar, aceptar y
-  `faction.join`).
-- De `INV-CLAN`: ningún golpe, robo, derribo ni avance de estandarte se aplica en un tick entre dos jugadores del mismo
-  clan, ni entre un jugador y quien fue su compañero hasta hace menos de `EO_CLAN_PEACE_GRACE_SECONDS`.
-- De `INV-SEC`: una sesión sólo recibe mensajes del canal del clan del que su jugador es miembro abierto, y sólo los
-  enviados desde el comienzo de su estancia; todo mensaje del canal lleva como remitente al jugador de la sesión.
+- [INV-CLAN-001](../invariants/clans.md#inv-clan-001): un jugador tiene como mucho una estancia abierta en un clan, y
+  todo clan vivo tiene exactamente un líder, que es uno de sus miembros abiertos (el índice parcial de `000020` y un
+  test del cambio de líder).
+- [INV-CLAN-002](../invariants/clans.md#inv-clan-002): ningún clan tiene a la vez un miembro de `ORDER` y uno de
+  `CHAOS`, contando las entradas pendientes en un bando (los triggers de `000020` y un test por cada camino: invitar,
+  aceptar y `faction.join`).
+- [INV-CLAN-003](../invariants/clans.md#inv-clan-003): ningún golpe, robo, derribo ni avance de estandarte se aplica en
+  un tick entre dos jugadores del mismo clan, ni entre un jugador y quien fue su compañero hasta hace menos de
+  `EO_CLAN_PEACE_GRACE_SECONDS`.
+- [INV-SEC-012](../invariants/security.md#inv-sec-012): una sesión sólo recibe mensajes del canal del clan del que su
+  jugador es miembro abierto, y sólo los posteriores a su entrada; todo mensaje del canal lleva como remitente al
+  jugador de la sesión.
 
 ## 9. Tests esperados
 
@@ -303,12 +309,12 @@ incluida, siguen igual), [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-00
 | contract / e2e | Los nueve comandos y los cuatro tipos contra el JSON Schema; `CityView` con `clan`; de punta a punta por WebSocket: fundar, invitar, aceptar (con `clan.update` a los dos), escribir en el canal con dos miembros conectados, expulsar (con su aviso) y un `unit.attack` entre compañeros rechazado con `INVALID_TARGET` |
 | cliente | El botón y el panel del clan con y sin clan, el canal con paginación y contador, «Invitar al clan» y «Ver clan» en la barra de una ciudad ajena, la sigla en el mapa, el clic de ataque que no sale entre compañeros; `scripts/smoke.mjs --clan` con **cuentas de humo propias** (nunca `smoke_runner` ni `smoke_victim`, que siguen sin clan para el saqueo, el asedio y la diplomacia): una funda, invita a otra, la otra acepta, escriben en el canal, la invitación de `smoke_caos` a un clan con `smoke_orden` se rechaza, y la expulsión se avisa; en una pasada siguiente, con el clan ya fundado, sólo comprueba lo que no cambia el estado |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-15)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué da un clan en este slice? | **Paz entre sus miembros, un canal propio y una sigla que se ve en el mapa.** La paz es lo que hace que el clan cambie el juego y no sea sólo un chat: cinco jugadores en paz entre sí sin diez pactos. Se apoya en `AtPeace`, el punto que ya usan los tratados y la Orden, así que no abre una regla nueva en cada acción hostil. Alternativas: **sólo social** (canal y sigla; la paz, con tratados de dos en dos), más pequeño pero un clan que no protege; **paz y guarnición**, que adelanta Q12. |
 | Q2 | ¿Quién funda, cómo se llama y cuánto cuesta? | **Cualquier jugador sin clan, gratis**, con un nombre de 3 a 24 caracteres y una sigla de 2 a 4 (`A`–`Z`, `0`–`9`), únicos y para siempre. Sin jugadores no hay ocupación de nombres que frenar, y un coste añade balance sin datos. Que no cambien evita que un clan se haga pasar por otro de un día para otro. Alternativas: **con coste** (p. ej. 200 de madera) como freno a los clanes de un día; **renombrar** con un plazo de espera. |
