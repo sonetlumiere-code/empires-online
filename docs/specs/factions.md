@@ -7,7 +7,7 @@ bando defiende a sus unidades.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-FACTIONS` |
-| Estado | Accepted (2026-11-15). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-15). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `21b3dbe`, con la CI en verde. |
 | Milestone | E17 Facciones (decimoséptimo slice después de M7) |
 | Canon | §0 (civilización y facción como ejes), §1.5 (determinismo), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [player.md](player.md), [civilizations.md](civilizations.md), [diplomacy.md](diplomacy.md), [trade.md](trade.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [territory.md](territory.md), [territory-conquest.md](territory-conquest.md), [caravans.md](caravans.md), [event-log.md](event-log.md), [websocket-protocol.md](websocket-protocol.md) |

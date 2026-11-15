@@ -2025,7 +2025,7 @@ grupos, clanes, denuncias, moderadores y filtros, editar o borrar, adjuntos y fo
 
 ## E17 — Facciones
 
-**Estado: EN CURSO (2026-11-15)**, en la rama `claude/slice-facciones`. Contrato:
+**Estado: HECHO (2026-11-15)**, fusionado en `main` (`21b3dbe`) con la CI en verde el mismo día. Contrato:
 [SPEC-FACTIONS](../specs/factions.md), aceptada el 2026-11-15 con sus diez decisiones de producto, y
 [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md).
 
