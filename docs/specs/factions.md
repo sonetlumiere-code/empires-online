@@ -7,13 +7,13 @@ bando defiende a sus unidades.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-FACTIONS` |
-| Estado | Draft (2026-11-15). Propuesta: **prohibido implementar** hasta que las preguntas de §10 estén decididas y la spec pase a `Accepted`. |
+| Estado | Accepted (2026-11-15). Propuesta en `Draft` y aceptada ese mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E17 Facciones (decimoséptimo slice después de M7) |
 | Canon | §0 (civilización y facción como ejes), §1.5 (determinismo), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [player.md](player.md), [civilizations.md](civilizations.md), [diplomacy.md](diplomacy.md), [trade.md](trade.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [territory.md](territory.md), [territory-conquest.md](territory-conquest.md), [caravans.md](caravans.md), [event-log.md](event-log.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (qué es una acción hostil), [ADR-027](../decisions/ADR-027-hot-treaties.md) (los tratados en caliente y su preaviso), [ADR-034](../decisions/ADR-034-territory-claims.md) (la conquista de territorio), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos como enteros por mil aplicados en el punto de consumo). Un ADR nuevo (`ADR-039`, la facción como segunda fuente de paz junto a los tratados y la afinidad territorial calculada en cada golpe) acompañará a la aceptación: ver §7. |
+| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (qué es una acción hostil), [ADR-027](../decisions/ADR-027-hot-treaties.md) (los tratados en caliente y su preaviso), [ADR-034](../decisions/ADR-034-territory-claims.md) (la conquista de territorio), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos como enteros por mil aplicados en el punto de consumo). [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la facción como segunda fuente de paz, la entrada en dos fases con su preaviso y su vencimiento en una transacción, y la tierra afín calculada en cada golpe): ver §7. |
 | Reemplaza a | En [player.md](player.md): `RN-PLAYER-013` («la facción no restringe ninguna acción del MVP»), «Mecánica de facciones (bonos, guerra ORDER/CHAOS, reputación): `Fuera de MVP`» de su no-scope (§2) en lo que toca a las reglas de agresión y los bonos, y que la facción sea un parámetro de arranque (§4) en lo que toca a poder cambiarla en partida. En [civilizations.md](civilizations.md), la Q10 («la facción sigue `NEUTRAL` hasta la spec de facciones»). Precisa `RN-DIPLO-001` de [diplomacy.md](diplomacy.md) (un tipo más de oferta prohibida) y `RN-COMBAT-006` de [combat-raid.md](combat-raid.md) (la paz entre dos jugadores ya no sale sólo de un tratado). Responde a la pregunta `Q-03` del [backlog](../roadmap/backlog.md) («¿la Global Faction se puede cambiar, con qué coste y con qué consecuencias sobre treaties y territorios?»). |
-| Invariantes | Cita [INV-PLAYER-002](../invariants/player.md#inv-player-002) (lo precisa: la facción puede cambiar una vez), [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-MOVE-009](../invariants/movement.md#inv-move-009), [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-007](../invariants/security.md#inv-sec-007) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); propone tres nuevos, de las familias `INV-PLAYER`, `INV-COMBAT` e `INV-DIPLO`, que se registrarán al aceptar (§8) |
+| Invariantes | Cita [INV-PLAYER-002](../invariants/player.md#inv-player-002) (lo precisa: la facción puede cambiar una vez), [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-MOVE-009](../invariants/movement.md#inv-move-009), [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-007](../invariants/security.md#inv-sec-007) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); asigna [INV-PLAYER-013](../invariants/player.md#inv-player-013), [INV-COMBAT-006](../invariants/combat.md#inv-combat-006) e [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003) (§8) |
 
 ## 1. Objetivo
 
@@ -77,20 +77,25 @@ facción cambia lo que la simulación permite), **no hostil**. En orden:
 1. El esquema (`INVALID_MESSAGE` si el código no es `ORDER` ni `CHAOS`).
 2. El jugador es `NEUTRAL` y no tiene una entrada pendiente (`INVALID_TARGET`, con el motivo).
 3. Se apunta la **entrada pendiente** `{ faction, atMs }`, con `atMs` = ahora + `EO_FACTION_JOIN_SECONDS` (900 s,
-   Q3), y se persiste en la cola. La entrada no se puede retirar (Q2).
+   Q3). Va en dos fases, como el encargo de un avance de era: el tick la reserva —todavía no la ve nadie—, el trabajo
+   `faction.join` de la cola la escribe, y al volver por el buzón se confirma y su ciudad se difunde con `factionJoin`
+   (un rechazo de la base la borra y responde el código). La entrada no se puede retirar (Q2).
 
 Durante el preaviso **nada cambia**: el jugador sigue siendo `NEUTRAL` a todos los efectos, y todos ven la entrada
-pendiente en su ciudad (Q8). Al vencer, en la fase 5, en el mismo tick:
+pendiente en su ciudad (Q8). Al vencer, en la fase 5 —o en el tick siguiente si alguno de sus pares con un tratado que
+va a romper tiene una orden de tratado en vuelo ([ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) §4)—,
+en el mismo tick:
 
-- la facción del jugador pasa a ser la elegida, en la RAM y en un trabajo de la cola (con el mismo trabajo, la
-  entrada pendiente se borra);
+- la facción del jugador pasa a ser la elegida en la RAM, y un único trabajo de la cola (`faction.joined`) escribe en
+  una transacción la facción, el borrado de la entrada y las rupturas del punto siguiente;
 - todo `NON_AGGRESSION` o `ALLIANCE` vigente con un jugador del bando contrario que no esté ya en preaviso empieza su
   preaviso de ruptura (`RN-DIPLO-004`) como si lo hubiera roto quien se une, con su evento `TreatyBreakAnnounced` y
   su entrada en el registro del otro (Q5);
 - toda oferta pendiente de `NON_AGGRESSION` o `ALLIANCE` con el bando contrario se rechazará al responderla
   (`RN-FAC-005`); no se retira sola;
 - si se une a `ORDER`, los enfrentamientos, saqueos, derribos y estandartes entre él y otros jugadores de `ORDER`
-  terminan como cuando nace un tratado (`RN-COMBAT-008`, `RN-COMBAT-025` y la conquista).
+  terminan como cuando nace un tratado (`RN-COMBAT-008`, `RN-COMBAT-025` y la conquista);
+- su ciudad se difunde con `faction` y `factionJoin: null`, y cada territorio suyo con su `ownerFaction` nuevo.
 
 Un reinicio no pierde el preaviso: la entrada pendiente se carga con el mundo y, si venció mientras el servidor estaba
 parado, se aplica en el primer tick.
@@ -167,13 +172,16 @@ Sólo códigos que ya existen en el catálogo (canon §16).
 ## 6. Eventos y contratos de red
 
 **Cliente → servidor.** Un comando nuevo y estricto (R-VER-3), `faction.join { faction }`, de la simulación: entra en
-`CommandTypes` y en la clasificación de `actions.go` como **no hostil**; crea dos trabajos nuevos de la cola (la orden
-y su vencimiento), que entran en `simulation.JobNames`. El catálogo pasa de 29 a 30. El enum de la facción en Zod
+`CommandTypes` y en la clasificación de `actions.go` como **no hostil**; crea dos trabajos nuevos de la cola, `faction.join` (la orden) y `faction.joined` (su vencimiento), con la clave
+del jugador, que entran en `simulation.JobNames`. El catálogo pasa de 29 a 30. El enum de la facción en Zod
 (`FactionCode`, con los tres valores, para la vista) no abre `NEUTRAL` como valor del comando: el comando lleva su
 propio enum de dos valores.
 
 **Servidor → cliente.** Ningún tipo nuevo. `CityView` gana `faction` (un `FactionCode`) y `factionJoin` (`{ faction,
-atMs }` o `null`); llegan por la vista y los deltas de ciudad que ya existen, con su e2e.
+atMs }` o `null`); llegan por la vista y los deltas de ciudad que ya existen, con su e2e. `TerritoryView` gana
+`ownerFaction` (el `FactionCode` del dueño, o `null` si no tiene un jugador por dueño), para que el cliente diga el bando
+del dueño y si la tierra es afín; un territorio se vuelve a difundir con `territory.update` cuando su dueño entra en
+un bando.
 
 **Eventos de dominio** en `world_events`: `FactionJoinOrdered` (al dar la orden) y `FactionJoined` (al vencer), sin
 `counterpart_player_id` porque no implican a otro jugador. No van al registro ni a los avisos (Q9): son decisiones
@@ -195,7 +203,7 @@ tanto llegan al registro del otro firmante y a su aviso en vivo si ya lo tiene h
 | Dirty-flag | Nada |
 | Reconstruible / no persistido | Qué territorio es afín a quién, y quién está en paz por su bando |
 
-**Por qué hace falta un ADR (`ADR-039`).** Tres decisiones estructurales:
+**Por qué hace falta un ADR ([ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)).** Tres decisiones estructurales, más la transacción única del vencimiento (ADR-039 §4):
 
 1. **La facción es una segunda fuente de paz.** `AtPeace` deja de ser «hay un tratado» y pasa a ser «hay un tratado o
    los dos son de la Orden». Alternativa descartada: crear un pacto implícito por cada pareja de jugadores de `ORDER`,
@@ -210,8 +218,9 @@ tanto llegan al registro del otro firmante y a su aviso en vivo si ya lo tiene h
    que el de ruptura de [diplomacy.md](diplomacy.md) y sobrevive a un reinicio igual.
 
 **Migración `000019`.** `players` gana `faction_join_id integer NULL REFERENCES factions (id)` y
-`faction_join_at timestamptz NULL`, con un `CHECK` de que las dos son nulas o ninguna lo es, y un trigger que sólo
-admite cambiar `faction_id` desde `NEUTRAL` a `ORDER` o `CHAOS` ([INV-PERSIST-005](../invariants/persistence.md#inv-persist-005)).
+`faction_join_at timestamptz NULL`, con el `CHECK` `players_faction_join_pair` (las dos son nulas o ninguna lo es), y
+el trigger `players_faction_transition`, que sólo admite cambiar `faction_id` desde `NEUTRAL` a `ORDER` o `CHAOS` y
+una entrada pendiente sobre un `NEUTRAL` hacia un bando ([INV-PERSIST-005](../invariants/persistence.md#inv-persist-005)).
 No crea tablas: el `TRUNCATE` de `testenv_integration_test.go` no cambia. La siguiente migración libre pasará a ser
 `000020`.
 
@@ -226,13 +235,13 @@ facción la cambia el jugador de la sesión y la decide el servidor), [INV-SEC-0
 (un `requestId` repetido no crea otra entrada) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005) (la
 migración `000019`).
 
-**Propone** tres invariantes nuevos, que se registrarán con su número al aceptar:
+**Asigna** tres invariantes nuevos:
 
-- `INV-PLAYER`: la facción de un jugador sólo cambia de `NEUTRAL` a `ORDER` o a `CHAOS`, y como mucho una vez (el
+- [INV-PLAYER-013](../invariants/player.md#inv-player-013): la facción de un jugador sólo cambia de `NEUTRAL` a `ORDER` o a `CHAOS`, y como mucho una vez (el
   trigger de `000019` y un test que intenta las demás transiciones).
-- `INV-COMBAT`: ningún golpe, robo, derribo ni avance de estandarte se aplica entre dos jugadores que son de `ORDER` en
+- [INV-COMBAT-006](../invariants/combat.md#inv-combat-006): ningún golpe, robo, derribo ni avance de estandarte se aplica entre dos jugadores que son de `ORDER` en
   ese tick.
-- `INV-DIPLO`: nunca pasa a `ACTIVE` un `NON_AGGRESSION` ni una `ALLIANCE` entre un jugador de `ORDER` y uno de
+- [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003): nunca pasa a `ACTIVE` un `NON_AGGRESSION` ni una `ALLIANCE` entre un jugador de `ORDER` y uno de
   `CHAOS`, y todo el que esté vigente entre ellos está en preaviso.
 
 ## 9. Tests esperados
@@ -246,12 +255,12 @@ migración `000019`).
 | contract / e2e | `faction.join` contra el JSON Schema (y que `NEUTRAL` no pasa); `CityView` con `faction` y `factionJoin`; de punta a punta por WebSocket: la orden, la cuenta atrás en la vista ajena, el vencimiento y un `unit.attack` entre dos de `ORDER` rechazado con `INVALID_TARGET` |
 | cliente | El bando en el HUD y en el panel ajeno; «Elegir bando» con su confirmación; la cuenta atrás; los botones que la barra no ofrece; el texto del territorio afín; `scripts/smoke.mjs --faccion` con **cuentas de humo propias** (nunca `smoke_runner` ni `smoke_victim`, cuyas pasadas de saqueo, asedio y diplomacia necesitan que sigan `NEUTRAL`): una cuenta entra en `ORDER` y otra en `CHAOS` con `EO_FACTION_JOIN_SECONDS` corto, y una propuesta de pacto entre ellas se rechaza; en una pasada siguiente, con las cuentas ya en su bando, sólo comprueba el rechazo |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-15)
 
-Cada pregunta lleva la recomendación de diseño. Son decisiones de producto: hasta que se decidan, la spec sigue en
-`Draft`.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Cuándo se elige el bando? | **En partida, desde `NEUTRAL`.** Todos nacen `NEUTRAL` y eligen cuando conocen a sus vecinos: un bando sin saber quién está en cada uno es una apuesta a ciegas, al revés que la civilización, que dice cómo juegas tú. Sirve igual a las cuentas que ya existen (todas `NEUTRAL`) y no toca el registro ni el almacén de identidad (sin migración de identidad 4). Alternativa: **en el registro, como la civilización**, con un formulario más y una migración del almacén de identidad, y las cuentas viejas eligiendo igualmente en partida. |
 | Q2 | ¿Se puede cambiar de bando? | **No: `NEUTRAL` es la casilla de salida y `ORDER` o `CHAOS` son para siempre**, y la entrada no se retira durante el preaviso. Si se pudiera cambiar, entrar en la Orden cuando eres débil y pasarte al Caos cuando eres fuerte vaciaría de sentido las dos cosas. Alternativas: **cambiar con un plazo de espera** (p. ej. una vez cada 7 días, con ruptura de los tratados incompatibles), que deja abierta la traición como juego político; **volver a `NEUTRAL`**, que convierte el bando en un interruptor. |

@@ -222,7 +222,7 @@ no de ingeniería: cambiarlas es cambiar la spec.
 | Q7 | ¿Ven los demás la civilización de un jugador? | **Sí, en el panel de su ciudad**, como la era y el almacén. Es identidad, no un secreto, y saber que el vecino es nórdico (saquea más) es información para decidir con quién pactar. Ocultarla sería niebla de guerra, otra spec. |
 | Q8 | ¿Se mantienen los valores sembrados, con sus penalizaciones? | **Sí, como punto de partida** (sin datos de jugadores, como el resto del balance): el bizantino anda un 5 % más lento, el persa produce un 5 % más lento y el nórdico un 10 %; el romano no paga nada por su +10 % de producción y es la opción «sin sorpresas». Los números se ajustan con una migración cuando haya datos. |
 | Q9 | ¿Se enseñan los números en el registro? | **Sí, en porcentajes** («+10 % velocidad de movimiento»). Es una elección que no se puede deshacer: tiene que poder compararse. |
-| Q10 | ¿Se elige también la facción en el alta? | **No: sigue `NEUTRAL`** hasta la spec de facciones (`Q-03`), que decidirá si se puede cambiar y qué hace. Elegirla ahora sin ningún efecto sería una elección vacía que después habría que respetar. |
+| Q10 | ¿Se elige también la facción en el alta? | **No: sigue `NEUTRAL`** hasta la spec de facciones (`Q-03`), que decidirá si se puede cambiar y qué hace. Elegirla ahora sin ningún efecto sería una elección vacía que después habría que respetar. **Precisión (2026-11-15, [factions.md](factions.md) Q1, [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md)):** todos siguen naciendo `NEUTRAL`, y desde E17 se elige el bando en partida, una vez, y no en el alta. |
 
 ## 11. Documentos relacionados
 

@@ -176,3 +176,35 @@ también lo pone en rojo.
 
 **Violación en runtime.** No hay ruta conocida; un golpe que llegara a evaluarse con el dueño ausente se descarta
 y se registra `invariant_violation` con `inv_id=INV-COMBAT-005`.
+
+---
+
+<a id="inv-combat-006"></a>
+## INV-COMBAT-006 — Ningún golpe, robo, derribo ni avance de estandarte se aplica entre dos jugadores de la Orden
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E17 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: se registra con SPEC-FACTIONS antes de escribir su código (§8 del catálogo) |
+
+**Enunciado.** En un tick en que los dos jugadores son de `ORDER` (con la facción efectiva, no la pendiente), no se
+aplica ningún golpe de una unidad de uno a una unidad del otro (también a una caravana), ningún golpe de saqueo ni de
+asedio de uno contra la ciudad del otro, y ningún estandarte de uno avanza sobre un territorio del otro.
+
+**Razón.** Es la regla que define a la Orden (SPEC-FACTIONS Q4). Un solo golpe que se cuele —un enfrentamiento que
+empezó antes de la entrada y no termina, una captura de caravana— rompería la promesa del bando, que es lo que el
+jugador eligió para siempre.
+
+**Cómo se garantiza.** `DOMAIN` — `State.AtPeace` responde que sí entre dos de `ORDER` (ADR-039 §2), y lo consultan la
+orden de las cuatro acciones hostiles y cada tick de combate, saqueo, asedio y conquista, que terminan lo que esté en
+curso en el tick en que la paz aparece (`RN-COMBAT-008`, `RN-COMBAT-025`).
+
+**Cómo se verifica.** Previsto: en la simulación, la tabla de §4.1 de la spec celda a celda; dos de `ORDER` que se
+enfrentaban, saqueaban, derribaban o plantaban estandarte y paran en el tick en que el segundo entra, sin un golpe más;
+un `unit.attack` contra una caravana de otro de la Orden, rechazado.
+
+**Violación en runtime.** Un golpe que llegara a evaluarse entre dos de la Orden se descarta y se registra
+`invariant_violation` con `inv_id=INV-COMBAT-006`.
