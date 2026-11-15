@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las veintiséis specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las veintisiete specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -66,6 +66,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Caravanas | [caravans.md](caravans.md) | E15 Caravanas | Implemented | Cada trato aceptado sale en dos caravanas, una por sentido, que recorren el mapa hasta la otra ciudad; un guerrero que mata una caravana la captura con su carga y se la lleva a su ciudad |
 | Mensajes | [messages.md](messages.md) | E16 Mensajes | Implemented | Mensajes de texto entre dos jugadores, guardados y entregados en vivo o al volver, con bandeja, lo leído por conversación, bloqueo y límites contra el spam; fuera del tick |
 | Facciones | [factions.md](factions.md) | E17 Facciones | Implemented | Unirse a la Orden o al Caos desde `NEUTRAL`, una vez y con preaviso; la paz de la Orden, sin pacto ni alianza entre Orden y Caos, y menos daño recibido en la tierra del propio bando |
+| Clanes | [clans.md](clans.md) | E18 Clanes | Draft | Grupos de hasta 20 jugadores con nombre, sigla y líder, por invitación; paz entre miembros con 15 minutos de paz residual al salir, sin mezclar la Orden y el Caos, y un canal de mensajes del clan |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
