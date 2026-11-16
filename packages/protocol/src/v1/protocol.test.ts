@@ -1082,6 +1082,17 @@ describe('clanes (SPEC-CLANS)', () => {
     expect(cmd('clan.chat.read', {})).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
   });
 
+  it('clan.promote y clan.transfer nombran sólo al miembro (SPEC-CLAN-GOVERNANCE §6)', () => {
+    expect(cmd('clan.promote', { playerId: otro, officer: true }).ok).toBe(true);
+    expect(cmd('clan.promote', { playerId: otro, officer: false }).ok).toBe(true);
+    expect(cmd('clan.promote', { playerId: otro })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.promote', { playerId: otro, officer: 'sí' })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.promote', { playerId: otro, officer: true, clanId: 3 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.transfer', { playerId: otro }).ok).toBe(true);
+    expect(cmd('clan.transfer', { playerId: 'no-es-uuid' })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(cmd('clan.transfer', {})).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
   it('CityView exige el clan de su dueño, o null (RN-CLAN-008)', () => {
     expect(CityView.safeParse(ciudad).success).toBe(true);
     const { clan: _, ...sin } = ciudad;
@@ -1099,7 +1110,8 @@ describe('clanes (SPEC-CLANS)', () => {
     expect(upd({ clan, invitations: [] }).ok).toBe(true);
     expect(upd({ clan: null, invitations: [invitacion] }).ok).toBe(true);
     expect(upd({ clan: { ...clan, members: [] }, invitations: [] }).ok, 'un clan tiene al menos un miembro').toBe(false);
-    expect(upd({ clan: { ...clan, members: [{ ...miembro, role: 'OFFICER' }] }, invitations: [] }).ok).toBe(false);
+    expect(upd({ clan: { ...clan, members: [{ ...miembro, role: 'OFFICER' }] }, invitations: [] }).ok, 'SPEC-CLAN-GOVERNANCE').toBe(true);
+    expect(upd({ clan: { ...clan, members: [{ ...miembro, role: 'CAPTAIN' }] }, invitations: [] }).ok).toBe(false);
     const enviada = { playerId: otro, cityId: null, cityName: null, expiresAtMs: 1 };
     expect(upd({ clan: { ...clan, sentInvitations: [enviada] }, invitations: [] }).ok).toBe(true);
     expect(upd({ clan }).ok).toBe(false);
@@ -1121,5 +1133,14 @@ describe('clanes (SPEC-CLANS)', () => {
     const notice = { kind: 'CLAN_EXPELLED', atMs: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte' };
     expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
     expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...notice, kind: 'CLAN_MEMBER_EXPELLED' } }).ok).toBe(false);
+  });
+
+  it('el liderazgo recibido se avisa; el cedido o perdido sólo va al registro (SPEC-CLAN-GOVERNANCE Q8)', () => {
+    const notice = { kind: 'CLAN_LEADERSHIP_RECEIVED', atMs: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', clanTag: 'LOB' };
+    const aviso = (kind: string) => parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...notice, kind } }).ok;
+    expect(aviso('CLAN_LEADERSHIP_RECEIVED')).toBe(true);
+    expect(aviso('CLAN_LEADERSHIP_INHERITED')).toBe(true);
+    expect(aviso('CLAN_LEADERSHIP_GIVEN')).toBe(false);
+    expect(aviso('CLAN_LEADERSHIP_LOST')).toBe(false);
   });
 });

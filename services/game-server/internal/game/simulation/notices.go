@@ -36,6 +36,10 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 			// SPEC-CLAN-TERRITORIES §6: de tu clan, o para tu clan.
 			p.ClanTag = eventlog.ClanTagFor(n.To, e)
 		}
+		// El clan cuyo liderazgo cambió (SPEC-CLAN-GOVERNANCE §4.6).
+		if e.Type == eventlog.EventClanLeaderChanged {
+			p.ClanTag = eventlog.ClanTagFor(n.To, e)
+		}
 		// Una caravana, lo que llevaba (SPEC-CARAVANS §6).
 		for _, l := range e.Cargo {
 			p.Cargo = append(p.Cargo, protocol.ResourceAmount{Resource: l.Resource, Amount: l.Amount})

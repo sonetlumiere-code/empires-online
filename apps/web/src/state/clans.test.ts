@@ -4,14 +4,19 @@ import {
   applyChatNew,
   applyChatPage,
   applyClanUpdate,
+  canExpel,
   canInvite,
   clanBadge,
   EMPTY_CLANS,
   isLeader,
+  managesInvitations,
+  myRole,
   nameProblem,
+  roleLabel,
   sameClan,
   setChatReading,
   tagProblem,
+  transferWarning,
   unreadChat,
   withTag,
   type ClanMessageView,
@@ -23,7 +28,7 @@ const YO = '00000000-0000-4000-8000-000000000001';
 const BEA = '00000000-0000-4000-8000-000000000002';
 const CE = '00000000-0000-4000-8000-000000000003';
 
-const miembro = (playerId: string, role: 'LEADER' | 'MEMBER'): v1.ClanMemberView => ({
+const miembro = (playerId: string, role: v1.ClanRole): v1.ClanMemberView => ({
   playerId, cityId: 1, cityName: 'Roma', faction: 'NEUTRAL', role, joinedAtMs: 1,
 });
 const clan: ClanView = {
@@ -87,7 +92,7 @@ describe('clanes en el cliente (SPEC-CLANS §4.8)', () => {
     expect(canInvite(s, YO, { ownerPlayerId: CE, clan: null }, 1_000), 'ya invitado').toBe(false);
     expect(canInvite(s, YO, { ownerPlayerId: CE, clan: null }, 6_000), 'la invitación caducó').toBe(true);
     expect(canInvite(s, YO, { ownerPlayerId: CE, clan: { id: 8 } }, 6_000), 'ya tiene clan').toBe(false);
-    expect(canInvite(s, BEA, { ownerPlayerId: CE, clan: null }, 6_000), 'sólo el líder').toBe(false);
+    expect(canInvite(s, BEA, { ownerPlayerId: CE, clan: null }, 6_000), 'un raso no invita').toBe(false);
     expect(sameClan({ id: 3 }, { id: 3 })).toBe(true);
     expect(sameClan({ id: 3 }, null)).toBe(false);
     expect(withTag('Roma', { tag: 'LOB' })).toBe('[LOB] Roma');
@@ -140,5 +145,39 @@ describe('clanes en el store', () => {
     });
     expect(state().clans.sendError?.code).toBe('RATE_LIMITED');
     expect(state().lastError, 'no va al pie del HUD').toBeNull();
+  });
+});
+
+describe('el gobierno del clan (SPEC-CLAN-GOVERNANCE §4.2, §4.6)', () => {
+  const conOficial: ClanView = { ...clan, members: [miembro(YO, 'LEADER'), miembro(BEA, 'OFFICER'), miembro(CE, 'MEMBER')] };
+
+  it('el rango de quien mira y los botones que le tocan', () => {
+    const s = applyClanUpdate(EMPTY_CLANS, { clan: conOficial, invitations: [] });
+    expect(myRole(s, YO)).toBe('LEADER');
+    expect(myRole(s, BEA)).toBe('OFFICER');
+    expect(myRole(s, CE)).toBe('MEMBER');
+    expect(myRole(EMPTY_CLANS, YO)).toBeNull();
+    expect(managesInvitations('OFFICER')).toBe(true);
+    expect(managesInvitations('MEMBER')).toBe(false);
+    expect(canInvite(s, BEA, { ownerPlayerId: '00000000-0000-4000-8000-000000000009', clan: null }, 6_000), 'un oficial invita').toBe(true);
+    expect(roleLabel('OFFICER')).toBe('Oficial');
+    expect(roleLabel('LEADER')).toBe('Líder');
+    expect(roleLabel('MEMBER')).toBe('Miembro');
+  });
+
+  it('quién expulsa a quién: el líder a cualquiera, un oficial sólo a un raso', () => {
+    expect(canExpel('LEADER', 'OFFICER')).toBe(true);
+    expect(canExpel('LEADER', 'MEMBER')).toBe(true);
+    expect(canExpel('LEADER', 'LEADER')).toBe(false);
+    expect(canExpel('OFFICER', 'MEMBER')).toBe(true);
+    expect(canExpel('OFFICER', 'OFFICER')).toBe(false);
+    expect(canExpel('OFFICER', 'LEADER')).toBe(false);
+    expect(canExpel('MEMBER', 'MEMBER')).toBe(false);
+    expect(canExpel(null, 'MEMBER')).toBe(false);
+  });
+
+  it('la confirmación de ceder el liderazgo', () => {
+    expect(transferWarning('Bizancio', 'LOB')).toBe('Bizancio pasará a liderar [LOB] y tú quedarás como oficial');
+    expect(transferWarning(null, 'LOB')).toBe('Ese jugador pasará a liderar [LOB] y tú quedarás como oficial');
   });
 });

@@ -185,3 +185,17 @@ describe('entryText: los territorios de clan (SPEC-CLAN-TERRITORIES §6)', () =>
     expect(isLoss(entrada(2, 'TERRITORY_LOST', t))).toBe(true);
   });
 });
+
+describe('el liderazgo de un clan (SPEC-CLAN-GOVERNANCE Q8)', () => {
+  it('a quien lo recibe y a quien lo cede o lo pierde, con la sigla; perderlo se resalta', () => {
+    expect(entryText(entrada(1, 'CLAN_LEADERSHIP_RECEIVED', { clanTag: 'LOB' }))).toBe('Villa Norte te cedió el liderazgo de [LOB]');
+    expect(entryText(entrada(1, 'CLAN_LEADERSHIP_GIVEN', { clanTag: 'LOB' }))).toBe('Cediste el liderazgo de [LOB] a Villa Norte');
+    expect(entryText(entrada(1, 'CLAN_LEADERSHIP_INHERITED', { clanTag: 'LOB' })))
+      .toBe('Ahora lideras [LOB]: Villa Norte llevaba 7 días sin jugar');
+    expect(entryText(entrada(1, 'CLAN_LEADERSHIP_LOST', { clanTag: 'LOB' })))
+      .toBe('Perdiste el liderazgo de [LOB] por inactividad; ahora lo tiene Villa Norte');
+    expect(entryText(entrada(1, 'CLAN_LEADERSHIP_RECEIVED')), 'sin sigla').toBe('Villa Norte te cedió el liderazgo de tu clan');
+    expect(isLoss(entrada(1, 'CLAN_LEADERSHIP_LOST'))).toBe(true);
+    expect(isLoss(entrada(1, 'CLAN_LEADERSHIP_GIVEN'))).toBe(false);
+  });
+});

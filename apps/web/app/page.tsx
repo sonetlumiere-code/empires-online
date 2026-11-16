@@ -124,15 +124,19 @@ import {
   type MessagesState,
 } from '../src/state/messages';
 import {
+  canExpel,
   canInvite,
   clanBadge,
-  isLeader,
   lastChatId,
+  LEADER_INACTIVE_DAYS,
   liveInvitations,
+  managesInvitations,
+  myRole,
   nameProblem,
   roleLabel,
   sameClan,
   tagProblem,
+  transferWarning,
   withTag,
   type ClansState,
 } from '../src/state/clans';
@@ -1201,6 +1205,8 @@ export default function Page() {
           onRespond={(id, accept) => clientRef.current?.respondClan(id, accept)}
           onWithdraw={(p) => clientRef.current?.inviteToClan(p, false)}
           onExpel={(p) => clientRef.current?.expelFromClan(p)}
+          onPromote={(p, officer) => clientRef.current?.promoteInClan(p, officer)}
+          onTransfer={(p) => clientRef.current?.transferClan(p)}
           onLeave={() => clientRef.current?.leaveClan()}
           draft={clanDraft}
           onDraft={setClanDraft}
@@ -1735,10 +1741,11 @@ function trackSession(sync: ViewSync, message: v1.ServerMessage): void {
 }
 
 /**
- * El panel del clan (SPEC-CLANS §4.8). Sin clan: fundar uno y las invitaciones
- * recibidas. Con clan: los miembros, el canal y, para el líder, las
- * invitaciones enviadas y «Expulsar». Encima, la vista pública pedida con «Ver
- * clan». El texto del canal se pinta como texto.
+ * El panel del clan (SPEC-CLANS §4.8, SPEC-CLAN-GOVERNANCE §4.6). Sin clan:
+ * fundar uno y las invitaciones recibidas. Con clan: los miembros con su rango,
+ * el canal y, según el rango de quien mira, las invitaciones enviadas,
+ * «Expulsar», «Nombrar oficial» y «Ceder el liderazgo». Encima, la vista pública
+ * pedida con «Ver clan». El texto del canal se pinta como texto.
  */
 function ClanPanel({
   clans,
@@ -1750,6 +1757,8 @@ function ClanPanel({
   onRespond,
   onWithdraw,
   onExpel,
+  onPromote,
+  onTransfer,
   onLeave,
   draft,
   onDraft,
@@ -1768,6 +1777,8 @@ function ClanPanel({
   onRespond: (clanId: number, accept: boolean) => void;
   onWithdraw: (playerId: string) => void;
   onExpel: (playerId: string) => void;
+  onPromote: (playerId: string, officer: boolean) => void;
+  onTransfer: (playerId: string) => void;
   onLeave: () => void;
   draft: string;
   onDraft: (text: string) => void;
@@ -1779,11 +1790,14 @@ function ClanPanel({
   onClose: () => void;
 }) {
   const clan = clans.clan;
-  const leader = isLeader(clans, playerId);
+  const role = myRole(clans, playerId);
+  const leader = role === 'LEADER';
+  const manager = managesInvitations(role);
   const invitations = liveInvitations(clans, nowMs);
   const formProblem = nameProblem(form.name) ?? tagProblem(form.tag);
   const reason = sendBlockReason(draft);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmTransfer, setConfirmTransfer] = useState<string | null>(null);
   return (
     <section style={styles.log} aria-label="Clan">
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -1803,7 +1817,7 @@ function ClanPanel({
             {clans.info.members.map((m) => (
               <li key={m.playerId}>
                 {m.cityName ?? 'Un jugador sin ciudad'} — {factionLabel(m.faction)}
-                {m.role === 'LEADER' ? ' — Líder' : ''}
+                {m.role === 'MEMBER' ? '' : ` — ${roleLabel(m.role)}`}
               </li>
             ))}
           </ul>
@@ -1864,15 +1878,39 @@ function ClanPanel({
             {clan.members.map((m) => (
               <li key={m.playerId}>
                 {m.cityName ?? 'Un jugador sin ciudad'} — {factionLabel(m.faction)} — {roleLabel(m.role)}
-                {leader && m.playerId !== playerId && (
+                {m.playerId !== playerId && canExpel(role, m.role) && (
                   <button className="secondary" style={{ marginLeft: '0.5rem' }} onClick={() => onExpel(m.playerId)}
                     title="Sale del clan; seguís en paz unos minutos">
                     Expulsar
                   </button>
                 )}
+                {leader && m.playerId !== playerId && (
+                  <>
+                    <button className="secondary" style={{ marginLeft: '0.5rem' }}
+                      onClick={() => onPromote(m.playerId, m.role !== 'OFFICER')}
+                      title={m.role === 'OFFICER' ? 'Vuelve a ser miembro' : 'Podrá invitar y expulsar a los miembros'}>
+                      {m.role === 'OFFICER' ? 'Quitar oficial' : 'Nombrar oficial'}
+                    </button>
+                    {confirmTransfer === m.playerId ? (
+                      <span style={{ marginLeft: '0.5rem' }}>
+                        {transferWarning(m.cityName, clan.tag)}{' '}
+                        <button onClick={() => { setConfirmTransfer(null); onTransfer(m.playerId); }}>Confirmar</button>{' '}
+                        <button className="secondary" onClick={() => setConfirmTransfer(null)}>Cancelar</button>
+                      </span>
+                    ) : (
+                      <button className="secondary" style={{ marginLeft: '0.5rem' }} onClick={() => setConfirmTransfer(m.playerId)}>
+                        Ceder el liderazgo
+                      </button>
+                    )}
+                  </>
+                )}
               </li>
             ))}
           </ul>
+          <p style={{ margin: '0 0 0.5rem', color: 'var(--muted)', fontSize: '0.75rem' }}>
+            Si el líder pasa {LEADER_INACTIVE_DAYS} días sin jugar, el liderazgo pasa al oficial más antiguo que siga
+            jugando.
+          </p>
           <div style={{ margin: '0 0 0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}
             aria-label="Territorios del clan">
             <span style={{ color: 'var(--muted)' }}>Territorios del clan:</span>
@@ -1887,7 +1925,7 @@ function ClanPanel({
               ))
             )}
           </div>
-          {leader && clan.sentInvitations.filter((i) => i.expiresAtMs > nowMs).length > 0 && (
+          {manager && clan.sentInvitations.filter((i) => i.expiresAtMs > nowMs).length > 0 && (
             <p style={{ margin: '0 0 0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: 'var(--muted)' }}>Invitados:</span>
               {clan.sentInvitations.filter((i) => i.expiresAtMs > nowMs).map((i) => (

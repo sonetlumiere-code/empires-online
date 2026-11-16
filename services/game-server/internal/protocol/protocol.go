@@ -77,6 +77,10 @@ const (
 	TypeClanChatSend  = "clan.chat.send"
 	TypeClanChatFetch = "clan.chat.fetch"
 	TypeClanChatRead  = "clan.chat.read"
+	// Gobierno del clan (SPEC-CLAN-GOVERNANCE §6): pasan por la simulación,
+	// como los rangos y el líder que cambian.
+	TypeClanPromote  = "clan.promote"
+	TypeClanTransfer = "clan.transfer"
 )
 
 // Mensajes servidor → cliente.
@@ -155,6 +159,8 @@ var ClientMessageTypes = map[string]bool{
 	TypeClanChatSend:   true,
 	TypeClanChatFetch:  true,
 	TypeClanChatRead:   true,
+	TypeClanPromote:    true,
+	TypeClanTransfer:   true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -815,6 +821,19 @@ type ClanLeavePayload struct{}
 
 // ClanExpelPayload expulsa a PlayerID del clan del líder.
 type ClanExpelPayload struct {
+	PlayerID string `json:"playerId"`
+}
+
+// ClanPromotePayload nombra oficial a un miembro o le quita el rango
+// (SPEC-CLAN-GOVERNANCE §4.3).
+type ClanPromotePayload struct {
+	PlayerID string `json:"playerId"`
+	Officer  bool   `json:"officer"`
+}
+
+// ClanTransferPayload cede el liderazgo a otro miembro (SPEC-CLAN-GOVERNANCE
+// §4.3).
+type ClanTransferPayload struct {
 	PlayerID string `json:"playerId"`
 }
 

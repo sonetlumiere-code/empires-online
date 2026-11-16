@@ -187,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 27, "desde E18, la expulsión de un clan para cada lado")
+	assert.Len(t, vistos, 31, "desde E20, el liderazgo de un clan recibido, cedido, heredado y perdido")
 }
 
 // SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
@@ -361,6 +361,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 		eventlog.KindTerritoryClaimed, eventlog.KindTerritoryLost, eventlog.KindTerritoryTaken,
 		eventlog.KindCaravanCaptured, eventlog.KindCaravanIntercepted, eventlog.KindCaravanLost,
 		eventlog.KindClanExpelled,
+		eventlog.KindClanLeadershipReceived, eventlog.KindClanLeadershipInherited,
 	}, eventlog.NoticeKinds())
 	for _, k := range eventlog.NoticeKinds() {
 		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
@@ -368,7 +369,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 	for _, tipo := range eventlog.EventTypes() {
 		switch tipo {
 		case "UnitKilled", "CityPillaged", "BuildingDestroyed", "TerritoryClaimStarted", "TerritoryControlChanged",
-			"CaravanCaptured", "CaravanIntercepted", "CaravanLost", "ClanMemberExpelled":
+			"CaravanCaptured", "CaravanIntercepted", "CaravanLost", "ClanMemberExpelled", "ClanLeaderChanged":
 			continue
 		}
 		for _, by := range []uuid.UUID{yo, otro, uuid.Nil} {
@@ -425,6 +426,43 @@ func TestLaExpulsionDeUnClanEnElRegistro(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, []eventlog.Notice{{To: expulsado, Kind: eventlog.KindClanExpelled, Other: lider}}, eventlog.Notices(e))
 	assert.Contains(t, eventlog.EventTypes(), eventlog.EventClanMemberExpelled)
+}
+
+// SPEC-CLAN-GOVERNANCE Q8: un cambio de líder le cuenta al nuevo que lo
+// recibió (por traspaso) o lo heredó (por ausencia), y al anterior que lo cedió
+// o lo perdió, con la sigla del clan; sólo se avisa al nuevo, y a un tercero no
+// le cuenta nada.
+func TestElCambioDeLiderEnElRegistro(t *testing.T) {
+	casos := []struct {
+		motivo          string
+		nuevo, anterior eventlog.Kind
+	}{
+		{eventlog.LeaderReasonTransfer, eventlog.KindClanLeadershipReceived, eventlog.KindClanLeadershipGiven},
+		{eventlog.LeaderReasonInactive, eventlog.KindClanLeadershipInherited, eventlog.KindClanLeadershipLost},
+	}
+	for _, c := range casos {
+		e := eventlog.Event{Type: eventlog.EventClanLeaderChanged, PlayerID: yo, Counterpart: otro,
+			Reason: c.motivo, OwnerClanTag: "LOB", ForClanTag: "LOB", AtMs: t0}
+		k, quien, ok := eventlog.Classify(yo, e)
+		require.True(t, ok)
+		assert.Equal(t, c.nuevo, k, c.motivo)
+		assert.Equal(t, otro, quien)
+		k, quien, ok = eventlog.Classify(otro, e)
+		require.True(t, ok)
+		assert.Equal(t, c.anterior, k, c.motivo)
+		assert.Equal(t, yo, quien)
+		_, _, ok = eventlog.Classify(tercero, e)
+		assert.False(t, ok)
+		assert.Equal(t, []eventlog.Notice{{To: yo, Kind: c.nuevo, Other: otro}}, eventlog.Notices(e), "sólo al nuevo líder")
+
+		for _, lector := range []uuid.UUID{yo, otro} {
+			b := eventlog.NewBuilder(lector, 0, 10*time.Minute, 50)
+			b.Add(e)
+			require.Len(t, b.Entries(), 1)
+			assert.Equal(t, "LOB", b.Entries()[0].ClanTag, "con la sigla del clan")
+		}
+	}
+	assert.Contains(t, eventlog.EventTypes(), eventlog.EventClanLeaderChanged)
 }
 
 // SPEC-CLAN-TERRITORIES §6 y ADR-041 §5: las filas de un clan como parte son de

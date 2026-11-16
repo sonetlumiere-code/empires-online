@@ -55,6 +55,14 @@ type ClanStore interface {
 	// tolerante (ADR-040 §2). Una disolución libera en la misma transacción
 	// los territorios del clan y los devuelve (ADR-041 §4).
 	Leave(ctx context.Context, l ClanLeave) ([]territory.Control, error)
+	// SetRank nombra o quita un oficial, si quien lo ordena sigue siendo el
+	// líder (SPEC-CLAN-GOVERNANCE §4.3, INV-CLAN-005). Un reintento no escribe
+	// dos veces.
+	SetRank(ctx context.Context, o ClanRankOrder) error
+	// ChangeLeader pasa el liderazgo de From a To, si From sigue siendo el
+	// líder y To un miembro abierto; From queda como oficial
+	// (SPEC-CLAN-GOVERNANCE §4.3, §4.4).
+	ChangeLeader(ctx context.Context, o ClanLeaderOrder) error
 }
 
 // ClanCreateOrder es una fundación ya validada por el tick.
@@ -108,6 +116,9 @@ type ClanLeave struct {
 	Dissolve  bool
 	Tick      uint64
 	AtMs      int64
+	// TargetOfficer: quien sale era oficial. Sólo lo usa la RAM para deshacer
+	// una expulsión que la base rechaza (INV-CLAN-005).
+	TargetOfficer bool
 }
 
 // Comandos de los clanes (protocolo v1).
@@ -234,6 +245,9 @@ type clanRecord struct {
 	LeaderID uuid.UUID
 	// Members es el instante de entrada de cada miembro confirmado.
 	Members map[uuid.UUID]int64
+	// Officers son los miembros con rango de oficial (SPEC-CLAN-GOVERNANCE).
+	// El líder nunca está aquí.
+	Officers map[uuid.UUID]bool
 	// dissolving: la última salida de un clan con territorios espera su
 	// transacción (ADR-041 §4); el clan rechaza entradas mientras tanto.
 	dissolving bool
@@ -268,6 +282,10 @@ type clanState struct {
 
 	// pendingLeaves son las salidas cuya escritura se descartó (ADR-022).
 	pendingLeaves map[string]ClanLeave
+
+	// nextLeaderSweepMs es cuándo toca el siguiente barrido de los líderes
+	// ausentes (RN-CLANGOV-005); cero tras arrancar: el primer tick barre.
+	nextLeaderSweepMs int64
 }
 
 func newClanState() clanState {
@@ -295,6 +313,7 @@ func (s *State) SetClans(clans []clan.Clan, stays []clan.Stay, invites []clan.In
 	for _, c := range clans {
 		s.clans.clans[c.ID] = &clanRecord{
 			ID: c.ID, Name: c.Name, Tag: c.Tag, LeaderID: c.LeaderID, Members: make(map[uuid.UUID]int64),
+			Officers: make(map[uuid.UUID]bool),
 		}
 	}
 	for _, st := range stays {
@@ -307,6 +326,9 @@ func (s *State) SetClans(clans []clan.Clan, stays []clan.Stay, invites []clan.In
 			continue
 		}
 		rec.Members[st.PlayerID] = st.JoinedAtMs
+		if st.Officer && st.PlayerID != rec.LeaderID {
+			rec.Officers[st.PlayerID] = true
+		}
 		s.clans.memberOf[st.PlayerID] = st.ClanID
 		if c, ok := s.CityOf(st.PlayerID); ok {
 			c.Clan = &city.ClanTag{ID: rec.ID, Tag: rec.Tag}
@@ -381,7 +403,7 @@ func (s *State) ClanPeace(x, y uuid.UUID, now time.Time) bool {
 func (r *clanRecord) members() []clan.Member {
 	ms := make([]clan.Member, 0, len(r.Members))
 	for id, at := range r.Members {
-		ms = append(ms, clan.Member{PlayerID: id, JoinedAtMs: at})
+		ms = append(ms, clan.Member{PlayerID: id, JoinedAtMs: at, Officer: r.Officers[id]})
 	}
 	clan.SortMembers(ms)
 	return ms
@@ -511,7 +533,8 @@ func (s *State) cityRef(playerID uuid.UUID) (*int64, *string) {
 }
 
 // clanView es el clan visto por uno de sus miembros; las invitaciones enviadas,
-// sólo para el líder.
+// sólo para el líder y los oficiales, que pueden retirarlas
+// (SPEC-CLAN-GOVERNANCE §4.2).
 func (s *State) clanView(clanID int64, viewer uuid.UUID, nowMs int64) *protocol.ClanView {
 	rec, ok := s.clans.clans[clanID]
 	if !ok {
@@ -523,17 +546,14 @@ func (s *State) clanView(clanID int64, viewer uuid.UUID, nowMs int64) *protocol.
 		Territories: s.clanTerritoryViews(rec.ID),
 	}
 	for _, m := range rec.members() {
-		role := clan.RoleMember
-		if m.PlayerID == rec.LeaderID {
-			role = clan.RoleLeader
-		}
+		role := rec.roleOf(m.PlayerID)
 		cid, cname := s.cityRef(m.PlayerID)
 		v.Members = append(v.Members, protocol.ClanMemberView{
 			PlayerID: m.PlayerID.String(), CityID: cid, CityName: cname,
 			Faction: s.FactionOf(m.PlayerID), Role: role, JoinedAtMs: m.JoinedAtMs,
 		})
 	}
-	if viewer == rec.LeaderID {
+	if clan.CanInvite(rec.roleOf(viewer)) {
 		keys := make([]inviteKey, 0)
 		for k := range s.clans.invites {
 			if _, viva := s.liveInvite(k, nowMs); viva && k.ClanID == clanID {
@@ -694,7 +714,7 @@ func (s *Simulation) handleClanCreateResolved(cmd ClanCreateResolved) {
 	}
 	rec := &clanRecord{
 		ID: cmd.ClanID, Name: o.Name, Tag: o.Tag, LeaderID: o.PlayerID,
-		Members: map[uuid.UUID]int64{o.PlayerID: o.AtMs},
+		Members: map[uuid.UUID]int64{o.PlayerID: o.AtMs}, Officers: make(map[uuid.UUID]bool),
 	}
 	s.state.clans.clans[rec.ID] = rec
 	s.state.clans.memberOf[o.PlayerID] = rec.ID
@@ -706,46 +726,34 @@ func (s *Simulation) handleClanCreateResolved(cmd ClanCreateResolved) {
 
 // dropInvitesOf borra de la RAM las invitaciones recibidas por un jugador que
 // acaba de entrar en un clan (la base las borra en la misma transacción), y
-// devuelve los líderes que tienen que ver su lista sin ellas.
+// devuelve los líderes y oficiales que tienen que ver su lista sin ellas.
 func (s *Simulation) dropInvitesOf(playerID uuid.UUID) []uuid.UUID {
-	var leaders []uuid.UUID
+	var managers []uuid.UUID
 	for k := range s.state.clans.invites {
 		if k.PlayerID != playerID {
 			continue
 		}
 		delete(s.state.clans.invites, k)
 		if rec, ok := s.state.clans.clans[k.ClanID]; ok {
-			leaders = append(leaders, rec.LeaderID)
+			managers = append(managers, rec.managers()...)
 		}
 	}
-	return leaders
+	return managers
 }
 
 // ─────────────────────────────────────────────────────────────
 // clan.invite (dos fases; la retirada, optimista)
 // ─────────────────────────────────────────────────────────────
 
-// leaderClan es el clan del que un jugador es líder.
-func (s *State) leaderClan(playerID uuid.UUID) (*clanRecord, bool) {
-	id, ok := s.clans.memberOf[playerID]
-	if !ok {
-		return nil, false
-	}
-	rec := s.clans.clans[id]
-	if rec == nil || rec.LeaderID != playerID {
-		return nil, false
-	}
-	return rec, true
-}
-
 func (s *Simulation) handleInviteToClan(cmd InviteToClan) {
 	if s.deps.Clans == nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInternalError, "los clanes no están disponibles")
 		return
 	}
-	rec, ok := s.state.leaderClan(cmd.PlayerID)
-	if !ok {
-		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "sólo el líder de un clan invita")
+	// RN-CLANGOV-002: el líder o un oficial.
+	rec, role, ok := s.state.clanRole(cmd.PlayerID)
+	if !ok || !clan.CanInvite(role) {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msgOnlyManagersInvite)
 		return
 	}
 	if rec.dissolving {
@@ -770,7 +778,7 @@ func (s *Simulation) handleInviteToClan(cmd InviteToClan) {
 			ClanID: rec.ID, PlayerID: cmd.TargetID, InvitedBy: inv.InvitedBy, Remove: true,
 			At: time.UnixMilli(nowMs).UTC(), Tick: s.state.Tick(), AtMs: nowMs,
 		})
-		s.sendClanUpdates([]uuid.UUID{cmd.PlayerID, cmd.TargetID}, cmd.PlayerID, cmd.RequestID)
+		s.sendClanUpdates(append(rec.managers(), cmd.PlayerID, cmd.TargetID), cmd.PlayerID, cmd.RequestID)
 		return
 	}
 
@@ -844,8 +852,8 @@ func (s *Simulation) handleClanInviteResolved(cmd ClanInviteResolved) {
 		return
 	}
 	s.state.clans.invites[k] = clanInvite{InvitedBy: o.InvitedBy, ExpiresAtMs: o.ExpiresAt.UnixMilli()}
-	leader, _ := s.state.ClanLeader(o.ClanID)
-	s.sendClanUpdates([]uuid.UUID{o.InvitedBy, leader, o.PlayerID}, o.InvitedBy, cmd.RequestID)
+	rec := s.state.clans.clans[o.ClanID]
+	s.sendClanUpdates(append(rec.managers(), o.InvitedBy, o.PlayerID), o.InvitedBy, cmd.RequestID)
 }
 
 // submitInviteRemoval borra una invitación de la base. Es optimista: la RAM ya
@@ -892,7 +900,7 @@ func (s *Simulation) handleRespondClan(cmd RespondClan) {
 			ClanID: cmd.ClanID, PlayerID: cmd.PlayerID, InvitedBy: inv.InvitedBy, Remove: true, Declined: true,
 			At: time.UnixMilli(nowMs).UTC(), Tick: s.state.Tick(), AtMs: nowMs,
 		})
-		s.sendClanUpdates([]uuid.UUID{cmd.PlayerID, rec.LeaderID}, cmd.PlayerID, cmd.RequestID)
+		s.sendClanUpdates(append(rec.managers(), cmd.PlayerID), cmd.PlayerID, cmd.RequestID)
 		return
 	}
 
@@ -983,9 +991,10 @@ func (s *Simulation) handleLeaveClan(cmd LeaveClan) {
 }
 
 func (s *Simulation) handleExpelFromClan(cmd ExpelFromClan) {
-	rec, ok := s.state.leaderClan(cmd.PlayerID)
-	if !ok {
-		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "sólo el líder de un clan expulsa")
+	// RN-CLANGOV-002: el líder a cualquiera; un oficial, sólo a un raso.
+	rec, role, ok := s.state.clanRole(cmd.PlayerID)
+	if !ok || !clan.CanInvite(role) {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msgOnlyManagersExpel)
 		return
 	}
 	if cmd.TargetID == cmd.PlayerID {
@@ -994,6 +1003,14 @@ func (s *Simulation) handleExpelFromClan(cmd ExpelFromClan) {
 	}
 	if _, miembro := rec.Members[cmd.TargetID]; !miembro {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "ese jugador no es de tu clan")
+		return
+	}
+	switch target := rec.roleOf(cmd.TargetID); {
+	case target == clan.RoleLeader:
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "al líder no lo expulsa nadie")
+		return
+	case !clan.CanExpel(role, target):
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "un oficial no puede expulsar a otro oficial")
 		return
 	}
 	s.leaveClan(rec.ID, cmd.TargetID, clan.ReasonExpelled, cmd.PlayerID, cmd.PlayerID, cmd.RequestID)
@@ -1042,7 +1059,9 @@ func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason stri
 	dissolve := len(remaining) == 0
 
 	joinedAt := rec.Members[playerID]
+	wasOfficer := rec.Officers[playerID]
 	delete(rec.Members, playerID)
+	delete(rec.Officers, playerID)
 	delete(s.state.clans.memberOf, playerID)
 	s.state.clans.departed = append(s.state.clans.departed, clan.Stay{
 		ClanID: clanID, PlayerID: playerID, JoinedAtMs: joinedAt, LeftAtMs: nowMs,
@@ -1050,8 +1069,10 @@ func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason stri
 
 	newLeader := uuid.Nil
 	if !dissolve && rec.LeaderID == playerID {
+		// RN-CLANGOV-004: el oficial más antiguo, si no el miembro más antiguo.
 		newLeader, _ = clan.NextLeader(remaining)
 		rec.LeaderID = newLeader
+		delete(rec.Officers, newLeader)
 	}
 	var invitees []uuid.UUID
 	if dissolve {
@@ -1068,6 +1089,7 @@ func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason stri
 		ClanID: clanID, PlayerID: playerID, Reason: reason, By: by,
 		At:        time.UnixMilli(nowMs).UTC(),
 		NewLeader: newLeader, Dissolve: dissolve, Tick: s.state.Tick(), AtMs: nowMs,
+		TargetOfficer: wasOfficer,
 	}
 	s.setCityClan(playerID, nil)
 	players := append([]uuid.UUID{playerID}, invitees...)
@@ -1099,6 +1121,12 @@ func (s *Simulation) submitClanLeave(l ClanLeave) {
 			if err == nil && len(released) > 0 {
 				// ADR-041 §4: una captura confirmó en la misma cola justo antes.
 				s.reinject(ClanTerritoriesReleased{Controls: released})
+			}
+			if errors.Is(err, ErrClanConflict) {
+				// INV-CLAN-005: la base no admite la expulsión con el rango de
+				// quien la dio; la RAM la deshace.
+				s.reinject(ClanExpelRejected{Leave: l, Message: err.Error()})
+				return nil
 			}
 			return err
 		},

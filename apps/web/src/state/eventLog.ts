@@ -10,6 +10,7 @@ import type { v1 } from '@empires-online/protocol';
 
 import { unitTypeLabel } from './economy';
 import { describeLines } from './trade';
+import { LEADER_INACTIVE_DAYS } from './clans';
 
 export type EventLogEntry = v1.EventLogEntry;
 export type EventLogPage = v1.EventLogPage['payload'];
@@ -253,6 +254,15 @@ function rawText(e: EventLogEntry): string {
       return `${who} te expulsó de su clan: seguís en paz unos minutos`;
     case 'CLAN_MEMBER_EXPELLED':
       return `Expulsaste a ${who} de tu clan`;
+    // El gobierno del clan (SPEC-CLAN-GOVERNANCE Q8): el liderazgo, a cada lado.
+    case 'CLAN_LEADERSHIP_RECEIVED':
+      return `${who} te cedió el liderazgo de ${clanName(e.clanTag)}`;
+    case 'CLAN_LEADERSHIP_GIVEN':
+      return `Cediste el liderazgo de ${clanName(e.clanTag)} a ${who}`;
+    case 'CLAN_LEADERSHIP_INHERITED':
+      return `Ahora lideras ${clanName(e.clanTag)}: ${who} llevaba ${LEADER_INACTIVE_DAYS} días sin jugar`;
+    case 'CLAN_LEADERSHIP_LOST':
+      return `Perdiste el liderazgo de ${clanName(e.clanTag)} por inactividad; ahora lo tiene ${who}`;
     default:
       return `${who}: ${String(e.kind)}`;
   }
@@ -270,8 +280,14 @@ export function isLoss(e: EventLogEntry): boolean {
     e.kind === 'CARAVAN_CAPTURED' ||
     e.kind === 'CARAVAN_INTERCEPTED' ||
     e.kind === 'CARAVAN_LOST' ||
-    e.kind === 'CLAN_EXPELLED'
+    e.kind === 'CLAN_EXPELLED' ||
+    e.kind === 'CLAN_LEADERSHIP_LOST'
   );
+}
+
+/** «[LOB]», o «tu clan» si la entrada no trae la sigla. */
+function clanName(tag: string | undefined): string {
+  return tag ? `[${tag}]` : 'tu clan';
 }
 
 function capitalize(s: string): string {

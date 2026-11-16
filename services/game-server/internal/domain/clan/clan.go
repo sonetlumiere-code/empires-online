@@ -31,13 +31,40 @@ const (
 	DefaultInviteTTL = 24 * time.Hour
 	// DefaultPeaceGrace es la paz residual tras una salida (Q6).
 	DefaultPeaceGrace = 15 * time.Minute
+	// DefaultLeaderInactive es lo que tiene que llevar el líder sin conectarse
+	// para que el liderazgo pase a quien sigue jugando (SPEC-CLAN-GOVERNANCE
+	// Q6).
+	DefaultLeaderInactive = 7 * 24 * time.Hour
 )
 
-// Rangos de un miembro (Q4).
+// Rangos de un miembro (Q4; SPEC-CLAN-GOVERNANCE Q1). La base guarda el de
+// oficial y el de miembro en clan_members.rank; el líder es el de
+// clans.leader_player_id.
 const (
-	RoleLeader = "LEADER"
-	RoleMember = "MEMBER"
+	RoleLeader  = "LEADER"
+	RoleOfficer = "OFFICER"
+	RoleMember  = "MEMBER"
 )
+
+// CanInvite dice si un rango invita y retira invitaciones (RN-CLANGOV-002).
+func CanInvite(role string) bool { return role == RoleLeader || role == RoleOfficer }
+
+// CanExpel dice si un rango expulsa a otro (RN-CLANGOV-002): el líder, a
+// cualquiera menos a sí mismo; un oficial, sólo a un miembro raso. Al líder no
+// lo expulsa nadie.
+func CanExpel(by, target string) bool {
+	switch by {
+	case RoleLeader:
+		return target != RoleLeader
+	case RoleOfficer:
+		return target == RoleMember
+	}
+	return false
+}
+
+// CanGovern dice si un rango nombra o quita oficiales y cede el liderazgo
+// (RN-CLANGOV-003): sólo el líder.
+func CanGovern(role string) bool { return role == RoleLeader }
 
 // Motivos de una salida, como los guarda clan_members.left_reason.
 const (
@@ -92,22 +119,50 @@ func ValidateTag(tag string) error {
 // (RN-CLAN-002). La base usa lower(name); esto es lo mismo para la RAM.
 func NameKey(name string) string { return strings.ToLower(name) }
 
-// Member es un miembro de un clan y el instante en que entró.
+// Member es un miembro de un clan, el instante en que entró y si es oficial.
 type Member struct {
 	PlayerID   uuid.UUID
 	JoinedAtMs int64
+	Officer    bool
 }
 
-// NextLeader es quien hereda el liderazgo al salir el líder (RN-CLAN-007): el
-// miembro más antiguo y, a igualdad, el de menor id de jugador. ok es falso si
-// no queda nadie: el clan se disuelve.
+// NextLeader es quien hereda el liderazgo al salir el líder (RN-CLAN-007,
+// RN-CLANGOV-004): el oficial más antiguo y, si no hay oficiales, el miembro
+// más antiguo; a igualdad de entrada, el de menor id de jugador. La antigüedad
+// es la de entrada en el clan, no la del nombramiento. ok es falso si no queda
+// nadie: el clan se disuelve.
 func NextLeader(remaining []Member) (uuid.UUID, bool) {
-	if len(remaining) == 0 {
-		return uuid.Nil, false
+	return firstOf(remaining, func(Member) bool { return true })
+}
+
+// Successor es quien recibe el liderazgo de un líder ausente
+// (RN-CLANGOV-005): el oficial activo más antiguo y, si no hay ninguno, el
+// miembro activo más antiguo. active dice quién sigue jugando. ok es falso si
+// nadie está activo: el liderazgo no cambia.
+func Successor(others []Member, active func(uuid.UUID) bool) (uuid.UUID, bool) {
+	return firstOf(others, func(m Member) bool { return active(m.PlayerID) })
+}
+
+// firstOf es el primer oficial que cumple ok, por antigüedad, o si no hay
+// ninguno el primer miembro que lo cumple.
+func firstOf(ms []Member, ok func(Member) bool) (uuid.UUID, bool) {
+	sorted := append([]Member(nil), ms...)
+	SortMembers(sorted)
+	for _, officers := range []bool{true, false} {
+		for _, m := range sorted {
+			if m.Officer == officers && ok(m) {
+				return m.PlayerID, true
+			}
+		}
 	}
-	ms := append([]Member(nil), remaining...)
-	SortMembers(ms)
-	return ms[0].PlayerID, true
+	return uuid.Nil, false
+}
+
+// Absent dice si el líder está ausente (RN-CLANGOV-005): su ciudad no está
+// ONLINE y su marca de desconexión tiene threshold o más. Sin marca
+// (lastOfflineAtMs 0) no está ausente: la carga la fecha (INV-CITY-011).
+func Absent(online bool, lastOfflineAtMs, nowMs int64, threshold time.Duration) bool {
+	return !online && lastOfflineAtMs > 0 && nowMs-lastOfflineAtMs >= threshold.Milliseconds()
 }
 
 // SortMembers ordena los miembros por antigüedad y, a igualdad, por id de
@@ -179,6 +234,9 @@ type Stay struct {
 	PlayerID   uuid.UUID
 	JoinedAtMs int64
 	LeftAtMs   int64
+	// Officer: la estancia (abierta) tiene rango de oficial
+	// (SPEC-CLAN-GOVERNANCE).
+	Officer bool
 }
 
 // Open dice si la estancia sigue abierta.

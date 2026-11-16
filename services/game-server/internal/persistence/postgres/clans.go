@@ -91,7 +91,7 @@ func (r *ClanRepo) ListLive(ctx context.Context) ([]clan.Clan, error) {
 // después de since, de las que sale la paz residual (ADR-040 §3).
 func (r *ClanRepo) ListStays(ctx context.Context, since time.Time) ([]clan.Stay, error) {
 	rows, err := r.store.pool.Query(ctx,
-		`SELECT m.clan_id, m.player_id, m.joined_at, m.left_at
+		`SELECT m.clan_id, m.player_id, m.joined_at, m.left_at, m.rank
 		   FROM clan_members m JOIN clans c ON c.id = m.clan_id
 		  WHERE (m.left_at IS NULL AND c.dissolved_at IS NULL) OR m.left_at > $1
 		  ORDER BY m.id`, since)
@@ -105,11 +105,12 @@ func (r *ClanRepo) ListStays(ctx context.Context, since time.Time) ([]clan.Stay,
 			st     clan.Stay
 			joined time.Time
 			left   *time.Time
+			rank   string
 		)
-		if err := rows.Scan(&st.ClanID, &st.PlayerID, &joined, &left); err != nil {
+		if err := rows.Scan(&st.ClanID, &st.PlayerID, &joined, &left, &rank); err != nil {
 			return nil, fmt.Errorf("leer una estancia: %w", normalize(err))
 		}
-		st.JoinedAtMs = joined.UnixMilli()
+		st.JoinedAtMs, st.Officer = joined.UnixMilli(), rank == clan.RoleOfficer
 		if left != nil {
 			st.LeftAtMs = left.UnixMilli()
 		}
@@ -264,8 +265,9 @@ type ClanInvite struct {
 }
 
 // Invite escribe una invitación, sólo si el clan sigue vivo, quien invita es
-// su líder y el invitado no está en ningún clan; o la borra (tolerante). Un
-// reintento no la duplica.
+// su líder o un oficial abierto, con el candado del clan (INV-CLAN-005), y el
+// invitado no está en ningún clan; o la borra (tolerante). Un reintento no la
+// duplica.
 func (r *ClanRepo) Invite(ctx context.Context, o ClanInvite) error {
 	if o.Remove {
 		_, err := r.store.pool.Exec(ctx, `DELETE FROM clan_invites WHERE clan_id = $1 AND player_id = $2`, o.ClanID, o.PlayerID)
@@ -275,15 +277,17 @@ func (r *ClanRepo) Invite(ctx context.Context, o ClanInvite) error {
 		return nil
 	}
 	return r.store.InTx(ctx, func(tx pgx.Tx) error {
+		if err := lockClan(ctx, tx, o.ClanID); err != nil {
+			return err
+		}
+		role, err := clanRoleOf(ctx, tx, o.ClanID, o.InvitedBy)
+		if err != nil {
+			return err
+		}
+		if !clan.CanInvite(role) {
+			return ClanRejected{Reason: "sólo el líder o un oficial invita"}
+		}
 		var ok bool
-		if err := tx.QueryRow(ctx,
-			`SELECT EXISTS (SELECT 1 FROM clans WHERE id = $1 AND dissolved_at IS NULL AND leader_player_id = $2)`,
-			o.ClanID, o.InvitedBy).Scan(&ok); err != nil {
-			return fmt.Errorf("comprobar el clan: %w", normalize(err))
-		}
-		if !ok {
-			return ClanRejected{Reason: "sólo el líder de un clan invita"}
-		}
 		if err := tx.QueryRow(ctx,
 			`SELECT EXISTS (SELECT 1 FROM clan_members WHERE player_id = $1 AND left_at IS NULL)`,
 			o.PlayerID).Scan(&ok); err != nil {
@@ -292,7 +296,7 @@ func (r *ClanRepo) Invite(ctx context.Context, o ClanInvite) error {
 		if ok {
 			return ClanRejected{Reason: "ese jugador ya está en un clan"}
 		}
-		_, err := tx.Exec(ctx,
+		_, err = tx.Exec(ctx,
 			`INSERT INTO clan_invites (clan_id, player_id, invited_by, created_at, expires_at)
 			 VALUES ($1, $2, $3, $4, $5)
 			 ON CONFLICT (clan_id, player_id) DO UPDATE
@@ -417,6 +421,23 @@ func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, []territory.Co
 		if err := lockClan(ctx, tx, l.ClanID); err != nil {
 			return err
 		}
+		if l.Reason == clan.ReasonExpelled {
+			// INV-CLAN-005: quien expulsa tiene, aquí y ahora, el rango que lo
+			// permite. Una estancia ya cerrada es un reintento: no se mira.
+			target, err := clanRoleOf(ctx, tx, l.ClanID, l.PlayerID)
+			if err != nil {
+				return err
+			}
+			if target != "" {
+				by, err := clanRoleOf(ctx, tx, l.ClanID, l.By)
+				if err != nil {
+					return err
+				}
+				if !clan.CanExpel(by, target) {
+					return ClanRejected{Reason: "quien expulsa no tiene el rango para hacerlo"}
+				}
+			}
+		}
 		tag, err := tx.Exec(ctx,
 			`UPDATE clan_members SET left_at = $3, left_reason = $4
 			  WHERE clan_id = $1 AND player_id = $2 AND left_at IS NULL`,
@@ -429,6 +450,12 @@ func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, []territory.Co
 		}
 		applied = true
 		if l.NewLeader != uuid.Nil {
+			// RN-CLANGOV-004: el que hereda deja de ser oficial antes de liderar.
+			if _, err := tx.Exec(ctx,
+				`UPDATE clan_members SET rank = 'MEMBER' WHERE clan_id = $1 AND player_id = $2 AND left_at IS NULL`,
+				l.ClanID, l.NewLeader); err != nil {
+				return fmt.Errorf("quitar el rango al líder nuevo: %w", normalize(err))
+			}
 			if _, err := tx.Exec(ctx, `UPDATE clans SET leader_player_id = $2 WHERE id = $1`, l.ClanID, l.NewLeader); err != nil {
 				return fmt.Errorf("cambiar el líder: %w", normalize(err))
 			}
@@ -448,6 +475,9 @@ func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, []territory.Co
 		ev := worldEvent{
 			EventType: "ClanLeft", Tick: l.Tick, PlayerID: &l.PlayerID,
 			Payload: map[string]any{"clanId": l.ClanID, "dissolved": l.Dissolve, "atMs": l.AtMs},
+		}
+		if l.NewLeader != uuid.Nil {
+			ev.Payload["newLeaderId"] = l.NewLeader.String()
 		}
 		if l.Reason == clan.ReasonExpelled {
 			ev.EventType = "ClanMemberExpelled"
@@ -759,7 +789,7 @@ func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoP
 		return info, fmt.Errorf("leer el clan %d: %w", clanID, normalize(err))
 	}
 	rows, err := r.store.pool.Query(ctx,
-		`SELECT m.player_id, m.joined_at, f.code, c.id, c.name
+		`SELECT m.player_id, m.joined_at, m.rank, f.code, c.id, c.name
 		   FROM clan_members m
 		   JOIN players p ON p.id = m.player_id
 		   JOIN factions f ON f.id = p.faction_id
@@ -776,10 +806,10 @@ func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoP
 			id     uuid.UUID
 			joined time.Time
 		)
-		if err := rows.Scan(&id, &joined, &v.Faction, &v.CityID, &v.CityName); err != nil {
+		if err := rows.Scan(&id, &joined, &v.Role, &v.Faction, &v.CityID, &v.CityName); err != nil {
 			return info, fmt.Errorf("leer un miembro: %w", normalize(err))
 		}
-		v.PlayerID, v.JoinedAtMs, v.Role = id.String(), joined.UnixMilli(), clan.RoleMember
+		v.PlayerID, v.JoinedAtMs = id.String(), joined.UnixMilli()
 		if id == leader {
 			v.Role = clan.RoleLeader
 		}

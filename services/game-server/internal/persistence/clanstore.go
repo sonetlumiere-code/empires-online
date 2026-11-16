@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/observability"
@@ -92,4 +93,37 @@ func (s *ClanStore) Leave(ctx context.Context, l simulation.ClanLeave) ([]territ
 		s.count(observability.ClanChangeDissolved)
 	}
 	return released, nil
+}
+
+// SetRank nombra o quita un oficial (SPEC-CLAN-GOVERNANCE §4.3).
+func (s *ClanStore) SetRank(ctx context.Context, o simulation.ClanRankOrder) error {
+	err := s.clans.SetRank(ctx, postgres.ClanRank{
+		ClanID: o.ClanID, PlayerID: o.PlayerID, By: o.By, Officer: o.Officer, At: o.At, Tick: o.Tick, AtMs: o.AtMs,
+	})
+	if err != nil {
+		return rejection(err)
+	}
+	if o.Officer {
+		s.count(observability.ClanChangePromoted)
+	} else {
+		s.count(observability.ClanChangeDemoted)
+	}
+	return nil
+}
+
+// ChangeLeader pasa el liderazgo (SPEC-CLAN-GOVERNANCE §4.3, §4.4).
+func (s *ClanStore) ChangeLeader(ctx context.Context, o simulation.ClanLeaderOrder) error {
+	err := s.clans.ChangeLeader(ctx, postgres.ClanLeaderChange{
+		ClanID: o.ClanID, Tag: o.Tag, From: o.From, To: o.To, Reason: o.Reason, By: o.By,
+		At: o.At, Tick: o.Tick, AtMs: o.AtMs,
+	})
+	if err != nil {
+		return rejection(err)
+	}
+	if o.Reason == eventlog.LeaderReasonInactive {
+		s.count(observability.ClanChangeSucceeded)
+	} else {
+		s.count(observability.ClanChangeTransferred)
+	}
+	return nil
 }

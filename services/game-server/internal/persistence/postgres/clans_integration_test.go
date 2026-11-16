@@ -82,7 +82,7 @@ func TestLaPertenenciaAUnClanEnLaBase(t *testing.T) {
 	require.NoError(t, repo.Invite(ctx, inv))
 	require.NoError(t, repo.Invite(ctx, inv), "un reintento no la duplica")
 	rechazoDeClan(t, repo.Invite(ctx, postgres.ClanInvite{ClanID: id, PlayerID: c, InvitedBy: b, At: clanEn, ExpiresAt: clanEn.Add(time.Hour)}),
-		"sólo el líder de un clan invita")
+		"sólo el líder o un oficial invita")
 	vivas, err := repo.ListInvites(ctx, clanEn)
 	require.NoError(t, err)
 	require.Len(t, vivas, 1)

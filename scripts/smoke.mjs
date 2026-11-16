@@ -123,7 +123,11 @@
  *      trae; con smoke_orden dentro (si --faccion ya la metió en la Orden), invitar a
  *      smoke_caos se rechaza; smoke_orden ve el clan por su vista pública; y al final
  *      smoke_clan_b es expulsado, con su aviso, para que la pasada siguiente vuelva a
- *      empezar. No depende de las demás opciones; la parte de los bandos, de --faccion.
+ *      empezar. Con smoke_orden dentro (SPEC-CLAN-GOVERNANCE), smoke_clan_a la nombra
+ *      oficial, ella invita y expulsa a smoke_clan_b, smoke_clan_a le cede el liderazgo
+ *      y ella se lo devuelve (cada uno con su aviso), y al final vuelve a miembro raso.
+ *      No depende de las demás opciones; la parte de los bandos y del gobierno, de
+ *      --faccion.
  *  18. sólo con --territorio-clan (SPEC-CLAN-TERRITORIES): el clan [HUM] de --clan y
  *      smoke_norse (NEUTRAL y sin clan) se disputan por turnos el territorio libre más
  *      cercano a la ciudad de smoke_clan_a: si está libre, smoke_clan_a lo reclama para
@@ -2199,6 +2203,49 @@ async function clanes() {
       fallar(`${CLAN_A} está en otro clan o no lo dirige`, a.clan);
   }
 
+  // La regla de bandos (RN-CLAN-006), si --faccion ya metió a las cuentas en su bando.
+  const orden = await entrarConClan(ORDEN);
+  const caos = await entrarConClan(CAOS);
+  const bandoDe = (s) => s.snapshot.payload.cities.find((c) => c.ownerPlayerId === s.playerId)?.faction;
+  let ordenDentro = orden.clan.clan?.id === clan.id;
+  if (bandoDe(orden) === 'ORDER' && bandoDe(caos) === 'CHAOS') {
+    if (!ordenDentro) {
+      if (orden.clan.clan) fallar(`${ORDEN} está en otro clan`, orden.clan);
+      if (!orden.clan.invitations.some((i) => i.clanId === clan.id)) {
+        const r = await ordenDeClan(a.sesion, 'clan.invite', { playerId: orden.playerId, invited: true });
+        if (r.type === 'system.error') fallar(`la invitación a ${ORDEN} fue rechazada`, r.payload);
+        await orden.sesion.esperarQue('clan.update', (m) => m.payload.invitations.some((i) => i.clanId === clan.id), 10_000);
+      }
+      const r = await ordenDeClan(orden.sesion, 'clan.respond', { clanId: clan.id, accept: true });
+      if (r.type === 'system.error') fallar(`${ORDEN} no pudo entrar en el clan`, r.payload);
+      ok(`${ORDEN} entra en el clan`);
+      ordenDentro = true;
+    }
+    const r = await ordenDeClan(a.sesion, 'clan.invite', { playerId: caos.playerId, invited: true });
+    if (r.type !== 'system.error' || r.payload.code !== 'INVALID_TARGET') fallar('invitar al Caos a un clan con la Orden no se rechazó', r);
+    ok('un clan no junta a la Orden y al Caos', `«${r.payload.message}»`);
+  } else {
+    ok('la regla de bandos no se comprueba', `pasa antes --faccion para meter a ${ORDEN} y ${CAOS} en su bando`);
+  }
+
+  // El gobierno del clan (SPEC-CLAN-GOVERNANCE): smoke_orden, oficial, invita y
+  // expulsa a smoke_clan_b; sin smoke_orden dentro, lo hace el líder.
+  let gestor = a;
+  if (ordenDentro && rolEnClan(a.clan, orden.playerId) === 'OFFICER') {
+    ok(`${ORDEN} ya es oficial`, 'de una pasada que no terminó');
+    gestor = orden;
+  } else if (ordenDentro) {
+    const nombrado = await ordenDeClan(a.sesion, 'clan.promote', { playerId: orden.playerId, officer: true });
+    if (nombrado.type === 'system.error') fallar(`${CLAN_A} no pudo nombrar oficial a ${ORDEN}`, nombrado.payload);
+    if (rolEnClan(nombrado.payload, orden.playerId) !== 'OFFICER') fallar('el nombramiento no vuelve con el rango', nombrado.payload);
+    await orden.sesion.esperarQue('clan.update', (m) => rolEnClan(m.payload, orden.playerId) === 'OFFICER', 10_000);
+    ok(`${CLAN_A} nombra oficial a ${ORDEN}`, 'los dos lo ven en su clan');
+    gestor = orden;
+  } else {
+    ok('el oficial no se comprueba', `${ORDEN} no está en el clan: pasa antes --faccion`);
+  }
+  const quienGestiona = gestor === a ? CLAN_A : ORDEN;
+
   // smoke_clan_b fuera (la pasada anterior lo expulsó), invitado y dentro.
   if (b.clan.clan) {
     const r = await ordenDeClan(b.sesion, 'clan.leave', {});
@@ -2206,10 +2253,10 @@ async function clanes() {
     ok(`${CLAN_B} sale del clan que le quedó de una pasada anterior`);
   }
   if (!b.clan.invitations.some((i) => i.clanId === clan.id)) {
-    const r = await ordenDeClan(a.sesion, 'clan.invite', { playerId: b.playerId, invited: true });
+    const r = await ordenDeClan(gestor.sesion, 'clan.invite', { playerId: b.playerId, invited: true });
     if (r.type === 'system.error') fallar(`la invitación a ${CLAN_B} fue rechazada`, r.payload);
     await b.sesion.esperarQue('clan.update', (m) => m.payload.invitations.some((i) => i.clanId === clan.id), 10_000);
-    ok(`${CLAN_A} invita a ${CLAN_B}`, 'la invitación le llega en vivo');
+    ok(`${quienGestiona} invita a ${CLAN_B}`, 'la invitación le llega en vivo');
   }
   const dentro = await ordenDeClan(b.sesion, 'clan.respond', { clanId: clan.id, accept: true });
   if (dentro.type === 'system.error') fallar(`${CLAN_B} no pudo aceptar la invitación`, dentro.payload);
@@ -2228,41 +2275,49 @@ async function clanes() {
   }
   ok('la página del canal lo trae', `${pagina.payload.messages.length} mensajes`);
 
-  // La regla de bandos (RN-CLAN-006), si --faccion ya metió a las cuentas en su bando.
-  const orden = await entrarConClan(ORDEN);
-  const caos = await entrarConClan(CAOS);
-  const bandoDe = (s) => s.snapshot.payload.cities.find((c) => c.ownerPlayerId === s.playerId)?.faction;
-  if (bandoDe(orden) === 'ORDER' && bandoDe(caos) === 'CHAOS') {
-    if (orden.clan.clan?.id !== clan.id) {
-      if (orden.clan.clan) fallar(`${ORDEN} está en otro clan`, orden.clan);
-      if (!orden.clan.invitations.some((i) => i.clanId === clan.id)) {
-        const r = await ordenDeClan(a.sesion, 'clan.invite', { playerId: orden.playerId, invited: true });
-        if (r.type === 'system.error') fallar(`la invitación a ${ORDEN} fue rechazada`, r.payload);
-        await orden.sesion.esperarQue('clan.update', (m) => m.payload.invitations.some((i) => i.clanId === clan.id), 10_000);
-      }
-      const r = await ordenDeClan(orden.sesion, 'clan.respond', { clanId: clan.id, accept: true });
-      if (r.type === 'system.error') fallar(`${ORDEN} no pudo entrar en el clan`, r.payload);
-      ok(`${ORDEN} entra en el clan`);
-    }
-    const r = await ordenDeClan(a.sesion, 'clan.invite', { playerId: caos.playerId, invited: true });
-    if (r.type !== 'system.error' || r.payload.code !== 'INVALID_TARGET') fallar('invitar al Caos a un clan con la Orden no se rechazó', r);
-    ok('un clan no junta a la Orden y al Caos', `«${r.payload.message}»`);
-  } else {
-    ok('la regla de bandos no se comprueba', `pasa antes --faccion para meter a ${ORDEN} y ${CAOS} en su bando`);
-  }
-
   // La vista pública, para cualquiera.
   const info = await ordenDeClan(caos.sesion, 'clan.lookup', { clanId: clan.id }, ['clan.info']);
   if (info.type === 'system.error' || info.payload.tag !== CLAN_SIGLA) fallar('la vista pública del clan no llegó', info.payload);
   ok('cualquiera ve los miembros del clan', `${info.payload.members.length} miembros`);
 
+  // El traspaso de ida y vuelta: --territorio-clan sigue encontrando a
+  // smoke_clan_a de líder.
+  if (ordenDentro) {
+    const ida = await ordenDeClan(a.sesion, 'clan.transfer', { playerId: orden.playerId });
+    if (ida.type === 'system.error') fallar(`${CLAN_A} no pudo ceder el liderazgo`, ida.payload);
+    if (ida.payload.clan?.leaderId !== orden.playerId || rolEnClan(ida.payload, a.playerId) !== 'OFFICER') {
+      fallar('el traspaso no deja al nuevo líder y al anterior de oficial', ida.payload);
+    }
+    const recibe = await orden.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_LEADERSHIP_RECEIVED', 10_000);
+    if (recibe.payload.clanTag !== CLAN_SIGLA) fallar('el aviso del liderazgo no trae la sigla', recibe.payload);
+    ok(`${CLAN_A} cede el liderazgo a ${ORDEN}`, `aviso con [${recibe.payload.clanTag}]`);
+    const vuelta = await ordenDeClan(orden.sesion, 'clan.transfer', { playerId: a.playerId });
+    if (vuelta.type === 'system.error') fallar(`${ORDEN} no pudo devolver el liderazgo`, vuelta.payload);
+    if (vuelta.payload.clan?.leaderId !== a.playerId) fallar('el liderazgo no volvió', vuelta.payload);
+    await a.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_LEADERSHIP_RECEIVED', 10_000);
+    ok(`${ORDEN} se lo devuelve`, `${CLAN_A} vuelve a liderar [${CLAN_SIGLA}]`);
+  }
+
   // La expulsión, con su aviso; deja a smoke_clan_b fuera para la pasada siguiente.
-  const fuera = await ordenDeClan(a.sesion, 'clan.expel', { playerId: b.playerId });
-  if (fuera.type === 'system.error') fallar(`no se pudo expulsar a ${CLAN_B}`, fuera.payload);
+  const fuera = await ordenDeClan(gestor.sesion, 'clan.expel', { playerId: b.playerId });
+  if (fuera.type === 'system.error') fallar(`${quienGestiona} no pudo expulsar a ${CLAN_B}`, fuera.payload);
   const aviso = await b.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_EXPELLED', 10_000);
   ok(`${CLAN_B} recibe el aviso de su expulsión`, `de ${aviso.payload.otherCityName}`);
 
+  // smoke_orden vuelve a ser miembro raso: la pasada siguiente lo nombra otra vez.
+  if (ordenDentro) {
+    const quitado = await ordenDeClan(a.sesion, 'clan.promote', { playerId: orden.playerId, officer: false });
+    if (quitado.type === 'system.error') fallar(`${CLAN_A} no pudo quitar el rango a ${ORDEN}`, quitado.payload);
+    if (rolEnClan(quitado.payload, orden.playerId) !== 'MEMBER') fallar('quitar el rango no vuelve con el clan', quitado.payload);
+    ok(`${CLAN_A} le quita el rango de oficial a ${ORDEN}`);
+  }
+
   for (const s of [a, b, orden, caos]) s.sesion.cerrar();
+}
+
+/** El rango de un jugador en el clan de un clan.update, o null (SPEC-CLAN-GOVERNANCE). */
+export function rolEnClan(update, playerId) {
+  return update?.clan?.members?.find((m) => m.playerId === playerId)?.role ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────

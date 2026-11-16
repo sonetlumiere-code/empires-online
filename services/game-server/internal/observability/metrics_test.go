@@ -69,7 +69,8 @@ func TestLasSeriesDeEntradasEnUnBandoExistenACero(t *testing.T) {
 // arranque, una por tipo de cambio.
 func TestLasSeriesDeCambiosDeClanExistenACero(t *testing.T) {
 	m := NewMetrics()
-	assert.Equal(t, []string{"founded", "joined", "left", "expelled", "dissolved"}, ClanChangeKinds())
+	assert.Equal(t, []string{"founded", "joined", "left", "expelled", "dissolved",
+		"promoted", "demoted", "transferred", "succeeded"}, ClanChangeKinds())
 	assert.Equal(t, len(ClanChangeKinds()), testutil.CollectAndCount(m.ClanChanges))
 	for _, k := range ClanChangeKinds() {
 		assert.Zero(t, testutil.ToFloat64(m.ClanChanges.WithLabelValues(k)), k)
