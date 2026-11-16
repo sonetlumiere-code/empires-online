@@ -89,6 +89,15 @@ nuevo, `CLAN_LEADERSHIP_RECEIVED` («Villa Norte te cedió el liderazgo de [LOB]
 nuevo, `CLAN_LEADERSHIP_INHERITED`, y al ausente, `CLAN_LEADERSHIP_LOST`, que lo encuentra en «Mientras no estabas».
 Las cuatro entradas llevan `clanTag`. Nombrar o quitar un oficial no entra (`ClanRankChanged` no es tipo del registro).
 
+**Precisión (2026-11-16, [clan-alliances.md](clan-alliances.md) Q9, [ADR-042](../decisions/ADR-042-clan-alliances.md) §6).**
+Desde E21 entran las alianzas entre clanes, con la sigla del otro clan en `clanTag`. Al líder del clan que recibe una
+oferta, `CLAN_ALLIANCE_OFFERED` («Villa Norte propone una alianza entre [OSO] y tu clan»); al que propuso, la
+aceptación (`CLAN_ALLIANCE_ACCEPTED`) y el rechazo (`CLAN_ALLIANCE_REJECTED`). El preaviso de ruptura
+(`CLAN_ALLIANCE_BREAK_ANNOUNCED`, con `breaksAtMs`) es una fila por miembro abierto de los dos clanes, de un solo lado
+(`only`), con quien lo provocó como `counterpart_player_id`: al líder que rompió, o a quien con su entrada en un bando o
+en el clan juntó a la Orden y al Caos, no se le cuenta. Retirar, la ruptura vencida y la caducidad no entran. Cada
+suceso de una alianza es su propia entrada. El catálogo pasa de 31 a 35 tipos.
+
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) §6, [ADR-041](../decisions/ADR-041-clan-territories.md) §5).**
 Desde E19, con un clan dueño, `TerritoryClaimStarted` y `TerritoryControlChanged` se escriben una fila por miembro
 abierto del clan, con `only: "player"` en el payload: cada fila le cuenta el suceso sólo a su miembro, con la sigla del

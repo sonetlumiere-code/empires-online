@@ -205,7 +205,7 @@ líder que ya no cede.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E21 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E21): `TestLasOrdenesDeUnaAlianza` (simulation) y `TestLaAlianzaEnLaBase` (integration), previstos |
+| Cobertura | **Cubierto** por `TestLasOrdenesDeUnaAlianza` y `TestLasAlianzasTrasUnReinicio` (`internal/game/simulation`), y `TestLaAlianzaEnLaBase` y `TestLasRestriccionesDeLasAlianzas` (integration, `internal/persistence/postgres`). Verificado por mutación: sin el tope en el tick, falla la simulación; sin la comprobación del líder en la transacción, falla `TestLaAlianzaEnLaBase`; con `clan_alliances_faction_guard` desactivado, falla `TestLasRestriccionesDeLasAlianzas` |
 
 **Enunciado.** Entre dos clanes vivos hay como mucho una alianza `ACTIVE` y una oferta `PROPOSED`, y nunca las dos a
 la vez. Ningún clan tiene más de `EO_CLAN_MAX_ALLIES` alianzas `ACTIVE`. Ninguna alianza se propone ni pasa a `ACTIVE`
@@ -243,7 +243,7 @@ encuentra mal formada se cierra en la RAM y se registra.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E21 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E21): `TestGoldenAlianzaDeClanes` y `TestLaPazResidualConLosAliados` (simulation), previstos |
+| Cobertura | **Cubierto** por `TestGoldenAlianzaDeClanes`, `TestLaPazResidualConLosAliados`, `TestUnaReclamacionContraUnAliadoSeRechaza`, `TestLaDisolucionExpiraLasAlianzas` y `TestLasAlianzasTrasUnReinicio` (`internal/game/simulation`), `TestLaPazResidualConLosAliadosEnElDominio` (`internal/domain/clan`) y el e2e `TestUnaAlianzaDeClanesPorLaRed` (`internal/websocket`). Verificado por mutación: sin la alianza activa en `AllyPeace`, fallan el golden, la reclamación y la recarga; sin la paz residual con los aliados, fallan la simulación y el dominio |
 
 **Enunciado.** En un tick en que dos jugadores son miembros abiertos de dos clanes con una alianza `ACTIVE` (también
 durante su preaviso), o en que uno salió de un clan hace menos de `EO_CLAN_PEACE_GRACE_SECONDS` y el otro era, en el

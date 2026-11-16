@@ -667,4 +667,7 @@ Se documenta para que nadie lo implemente por inercia ni lo asuma existente:
 - Naval, marketplace, clanes y tecnologías. **Precisión (2026-11-15):** los clanes existen desde E18
   ([clans.md](../specs/clans.md)); siguen fuera los territorios de clan, los rangos y las alianzas entre clanes.
   **Precisión (2026-11-16):** los territorios de clan existen desde E19 ([clan-territories.md](../specs/clan-territories.md));
-  siguen fuera los rangos y las alianzas entre clanes.
+  siguen fuera los rangos y las alianzas entre clanes. **Precisión (2026-11-16):** los rangos existen desde E20
+  ([clan-governance.md](../specs/clan-governance.md)) y las alianzas entre clanes desde E21
+  ([clan-alliances.md](../specs/clan-alliances.md), [ADR-042](../decisions/ADR-042-clan-alliances.md)); siguen fuera las
+  guerras declaradas entre clanes.

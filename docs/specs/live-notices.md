@@ -74,6 +74,12 @@ liderazgo de un clan: `CLAN_LEADERSHIP_RECEIVED` por traspaso y `CLAN_LEADERSHIP
 con `clanTag`. A quien lo cede o lo pierde no le llega aviso, sólo su entrada del registro. `EventLogNoticeKind` pasa
 a 29 tipos.
 
+**Precisión (2026-11-16, [clan-alliances.md](clan-alliances.md) Q9).** Desde E21 se avisan también la oferta de una
+alianza entre clanes, al líder del clan que la recibe (`CLAN_ALLIANCE_OFFERED`); su aceptación, al líder que la propuso
+(`CLAN_ALLIANCE_ACCEPTED`); y su preaviso de ruptura, a cada miembro de los dos clanes salvo a quien lo provocó
+(`CLAN_ALLIANCE_BREAK_ANNOUNCED`). Los tres llevan la sigla del otro clan en `clanTag`. El rechazo no se avisa.
+`EventLogNoticeKind` pasa a 32 tipos.
+
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) Q7).** Desde E19, la reclamación y la pérdida de un
 territorio de clan se avisan a cada miembro abierto del clan, con `clanTag`; ganarlo, una sola vez a quien lo gana.
 

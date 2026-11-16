@@ -50,6 +50,7 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `trade_transactions` | Fuera de MVP: solo diseño | — |
 | `clans`, `clan_members`, `clan_invites` | E18: **activas** | Los clanes, la historia de pertenencia (una fila por estancia) y las invitaciones. Las escribe la cola de la simulación ([ADR-040](../decisions/ADR-040-clans-membership-and-peace.md), §16.13). **Precisión (2026-11-15):** hasta E18 `clans` figuraba aquí como «solo diseño» |
 | `clan_messages`, `clan_message_reads` | E18: **activas** | El canal de cada clan y lo leído. Los escribe la conexión del Game Server en su propia transacción, con el candado del clan (ADR-040 §5, §16.13) |
+| `clan_alliances` | E21: **activa** | Las alianzas entre clanes y sus ofertas, una fila por alianza con el par en orden canónico ([SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md), [ADR-042](../decisions/ADR-042-clan-alliances.md)). Las escribe la cola de la simulación con los candados de los dos clanes; la mezcla de bandos y la disolución, la transacción que las provoca. |
 
 Las tablas de territorio, safe zones, tratados y guarniciones las creó `000001` antes de que existiera su mecánica, porque sus claves foráneas apuntan a tablas activas (`garrisons` → `units` y `cities`, `treaties` → `players`, `territory_control` → `territories`) y porque introducirlas más tarde habría obligado a un paso *expand* adicional sobre tablas ya grandes. Hoy todas tienen su lógica (M5–M7); la única tabla creada que sigue sin escritor es `sessions`.
 
@@ -1423,6 +1424,7 @@ CREATE INDEX player_blocks_blocked_idx ON player_blocks (blocked_player_id, play
 | `clan_messages` | Como `player_messages`: el texto ya validado (1–500 caracteres), `UNIQUE (sender_player_id, request_id)` para la idempotencia, y un índice `(clan_id, id DESC)` |
 | `clan_message_reads` | Lo leído del canal por cada miembro; sólo avanza (`GREATEST`) |
 | `clan_mixes_factions(clan_id)` y sus dos triggers | `INV-CLAN-002`: al abrir una estancia (`clan_members_faction_guard`) y al cambiar la facción o la entrada pendiente de un miembro (`players_clan_faction_guard`), la base rechaza con `23514` un clan con un miembro (o una entrada) de `ORDER` y otro de `CHAOS`. Los dos toman la fila del clan antes de mirar |
+| `clan_alliances` | Desde `000023` ([SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md)): `clan_a < clan_b` (`clan_alliances_canonical_pair`), `proposed_by_clan` uno de los dos, `status` con los seis estados de un tratado, `break_effective_at` y `break_reason` (`CANCEL` o `FACTIONS`) juntos, `accepted_at` en las que estuvieron activas y `closed_at` en las cerradas; `UNIQUE (proposed_by_player, request_id)` para el reintento de una oferta. Dos índices únicos parciales por par (`ACTIVE` y `PROPOSED`, `INV-CLAN-006`). Dos triggers (`clan_alliances_dissolved_guard`, `clan_alliances_faction_guard`, `23514`) rechazan abrir o aceptar una alianza con un clan disuelto o que junte a la Orden y al Caos (`clan_pair_mixes_factions`); la mezcla posterior abre el preaviso en la transacción que la crea. |
 
 La entrada, la salida y cada envío del canal toman el candado de transacción del clan (`pg_advisory_xact_lock(int4, int4)`, con el espacio «CLAN» y el `id`): los `id` del canal se confirman en orden y nadie escribe tras su salida.
 
@@ -1489,6 +1491,7 @@ Respuesta explícita a las cuatro preguntas del canon §12 para el esquema del M
 | `player_messages`, `message_reads`, `player_blocks` | No: el loop no los ve | Sí, transacción **síncrona desde la conexión**, antes de entregar el mensaje (ADR-038) | — | No; la bandeja y los no leídos se derivan al leer |
 | `clans`, `clan_members`, `clan_invites` | Sí: la pertenencia, el líder, las invitaciones vivas y las salidas recientes (ADR-040 §1) | Sí, transacción **encolada**: fundar, invitar y entrar en dos fases; salir y expulsar, optimistas | — | La paz residual, sí: de las fechas de `clan_members` |
 | `clan_messages`, `clan_message_reads` | No: el loop no los ve | Sí, transacción **síncrona desde la conexión** con el candado del clan, antes de entregar (ADR-040 §5) | — | No |
+| `clan_alliances` | Sí: las abiertas, las cerradas dentro de la paz residual y los rechazos recientes (ADR-042 §1) | Sí, transacción **en dos fases** desde la cola con los candados de los dos clanes; los vencimientos, optimistas | — | No |
 
 ---
 

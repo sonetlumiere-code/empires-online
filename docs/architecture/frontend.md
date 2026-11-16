@@ -802,6 +802,28 @@ y grueso, y una que carga madera, un tronco a la espalda.
   guerreros ganaron Y para tu clan [TAG], a X» (`entryText`; los avisos agrupados copian `clanTag`). Desde E20, el
   liderazgo recibido, cedido, heredado o perdido, también con `clanTag`; perderlo se resalta (`isLoss`).
 
+### 4.17 Alianzas entre clanes (SPEC-CLAN-ALLIANCES)
+
+> **Estado (2026-11-16): implementado y con tests de lo puro** (`src/state/clans.ts`, `src/state/eventLog.ts`,
+> `src/net/client.ts`, `app/page.tsx`).
+
+- **Qué llega.** `ClanView.alliances` (`{ id, clanId, name, tag, status, proposedByUs, breaksAtMs }`, del otro clan; las
+  ofertas sólo para el líder y los oficiales) y `clan.info.alliances` (las activas). No hay mensajes nuevos: cada cambio
+  de una alianza llega como `clan.update` a los miembros de los dos clanes.
+- **El panel del clan** tiene la sección «Alianzas»: «[TAG] tiene N de 2» (`MAX_CLAN_ALLIES`, copia del valor por
+  defecto del servidor), cada alianza activa con su cuenta atrás si está en preaviso (`allianceCountdown`) y, para el
+  líder, «Romper» con su confirmación en línea (`breakAllianceWarning`, `GameClient.cancelClanAlliance`); las ofertas
+  recibidas y enviadas (`allianceOffers`) las ven el líder y los oficiales, y sólo el líder tiene «Aceptar»,
+  «Rechazar» (`GameClient.respondClanAlliance`) y «Retirar».
+- **La vista pública** de «Ver clan» lista sus aliados y, para el líder, «Proponer alianza»
+  (`GameClient.proposeClanAlliance`), deshabilitado con su motivo (`allianceProblem`: no es el líder, es el propio
+  clan, ya están aliados o hay una oferta, o el tope está lleno). Los bandos y el plazo tras un rechazo los dice el
+  servidor.
+- **La barra de una ciudad ajena** de un clan aliado dice «Aliado de [TAG]» (`isAlly`), y el clic de ataque contra ella
+  no sale y pone en el pie «vuestros clanes están aliados». La paz residual con un aliado no se ve en el cliente.
+- **Avisos y registro.** La oferta, la aceptación, el rechazo y el preaviso, con la sigla del otro clan; el preaviso se
+  resalta (`isLoss`) y, sin `breaksAtMs` (el aviso en vivo no lo trae), dice «en 15 minutos» (`ALLIANCE_BREAK_MINUTES`).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

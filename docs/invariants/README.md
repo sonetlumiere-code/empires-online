@@ -418,8 +418,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CLAN-003 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre compañeros de clan, ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestDosDelMismoClanDejanDePelear`, `TestLaPazResidualTrasSalir`, `TestLosClanesVuelvenAlArrancar`, `TestUnClanPorLaRed` |
 | INV-CLAN-004 | Una reclamación para un clan sólo se completa mientras quien la sostiene es miembro de ese clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestQueRompeUnaReclamacionConUnClan`, `TestUnaReclamacionParaElClanTrasUnReinicio`, `TestLaCapturaParaUnClanExigeSerDeEl` (integration) |
 | INV-CLAN-005 | Sólo el rango que lo permite cambia la pertenencia ajena, los rangos o el liderazgo de un clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosPermisosPorRango`, `TestLoQueLaBaseNoEscribeSeDeshace`, `TestElRangoSeCompruebaEnLaBase` (integration), `TestElCambioDeLiderEnLaBase` (integration) |
-| INV-CLAN-006 | Una alianza entre clanes es única por par, respeta el tope de cada clan y nunca nace entre la Orden y el Caos | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E21) |
-| INV-CLAN-007 | Ningún golpe, robo, derribo, avance de estandarte ni reclamación se aplica entre miembros de dos clanes aliados, ni durante el preaviso ni durante la paz residual | CRITICO | DOMAIN, TEST | ○ | Sin test todavía (E21) |
+| INV-CLAN-006 | Una alianza entre clanes es única por par, respeta el tope de cada clan y nunca nace entre la Orden y el Caos | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasOrdenesDeUnaAlianza`, `TestLasAlianzasTrasUnReinicio`, `TestLaAlianzaEnLaBase` (integration), `TestLasRestriccionesDeLasAlianzas` (integration) |
+| INV-CLAN-007 | Ningún golpe, robo, derribo, avance de estandarte ni reclamación se aplica entre miembros de dos clanes aliados, ni durante el preaviso ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestGoldenAlianzaDeClanes`, `TestLaPazResidualConLosAliados`, `TestUnaReclamacionContraUnAliadoSeRechaza`, `TestUnaAlianzaDeClanesPorLaRed` |
 
 ### Distribución
 
@@ -460,9 +460,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 139 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 141 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **143** | |
 
@@ -470,7 +470,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-CLAN-006` e `INV-CLAN-007` se registraron el 2026-11-16 con SPEC-CLAN-ALLIANCES y [ADR-042](../decisions/ADR-042-clan-alliances.md), antes de escribir su código, como manda §8, y nacen sin cobertura.
+`INV-CLAN-006` e `INV-CLAN-007` se registraron el 2026-11-16 con SPEC-CLAN-ALLIANCES y [ADR-042](../decisions/ADR-042-clan-alliances.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. Ninguna fila queda sin cobertura ni parcial.
 
 `INV-CLAN-005` se registró el 2026-11-16 con SPEC-CLAN-GOVERNANCE, sin ADR nuevo, antes de escribir su código, como manda §8, y pasó a ✓ con su implementación ese mismo día; el mismo día se precisó `INV-CLAN-001` (el líder cambia también por traspaso y por ausencia). Ninguna fila queda sin cobertura ni parcial.
 

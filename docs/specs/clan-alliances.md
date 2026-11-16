@@ -336,6 +336,26 @@ no deje insistir antes de tiempo.
 | contract / e2e | Los tres comandos contra el JSON Schema. `alliances` en `clan.update` y en `clan.info`. Los avisos nuevos. Por WebSocket: dos líderes firman una alianza, un miembro del aliado ve rechazado su ataque y los oficiales ven la oferta; un raso, no |
 | cliente | La sección «Alianzas» con su cuenta atrás. Los botones según el rango. «Proponer alianza» en la vista pública con su motivo. «Aliado de [TAG]» en la barra de una ciudad ajena. Los textos del registro y de los avisos. `scripts/smoke.mjs --alianza-clan`: `smoke_clan_b` funda un segundo clan, `smoke_clan_a` (líder de `[HUM]`) le propone la alianza y `smoke_clan_b` la acepta; se comprueba la paz con un ataque rechazado; `smoke_clan_a` la rompe con un preaviso corto (por variable de entorno). Al final `smoke_clan_b` sale de su clan, que se disuelve, para que `--clan` lo siga encontrando sin clan |
 
+**Precisiones (2026-11-16), al implementar.** Ninguna cambia una decisión de §10.
+
+- **Quién responde, también en la base.** La transacción de una orden comprueba además que acepta o rechaza el líder
+  del clan que no propuso, y que retira el del clan que propuso («ese clan no puede hacer eso con la oferta»), como
+  `INV-DIPLO-001` en los tratados.
+- **La mezcla de bandos al entrar en un clan la decide la base.** La transacción de la entrada (`JoinBreaking`) abre el
+  preaviso de cada alianza activa del clan cuyo par queda mezclado (`clan_pair_mixes_factions`) y devuelve las alianzas
+  rotas, que la RAM aplica al confirmar la entrada. Así no se escapa una alianza aceptada mientras la entrada iba en
+  vuelo. La de la entrada en un bando la decide la RAM, como con los tratados (ADR-039 §3), y la base la escribe de
+  forma tolerante.
+- **La validación de carga** está en la simulación (`State.SetClanAlliances`), no en `internal/game/loadcheck`: lo que
+  viola `INV-CLAN-006` no se instala y se registra como `invariant_violation`.
+- **La expiración por disolución** escribe `ClanAllianceExpired` con el líder que propuso como `player_id` y no cuenta en
+  `alliance_expired`, que sólo cuenta las ofertas que caducan.
+- **El registro** pasa de 31 a 35 tipos de entrada.
+- **El aviso del preaviso** no lleva `breaksAtMs`, que `event_log.notice` no tiene: el cliente dice «en 15 minutos», y
+  la entrada del registro, la hora.
+- **El humo** no necesita un preaviso corto: tras romper, la disolución de [ECO] expira la alianza sin esperar a que
+  venza.
+
 ## 10. Decisiones de producto (2026-11-16)
 
 Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,

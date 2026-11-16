@@ -2292,13 +2292,13 @@ o tierra afín compartidos, alianzas de más de dos clanes, un mapa político y 
 1. **HECHO** — Aceptación: spec, [ADR-042](../decisions/ADR-042-clan-alliances.md), `INV-CLAN-006` e
    `INV-CLAN-007`, y las precisiones de `RN-CLAN-005` y `RN-CLAN-008` ([clans.md](../specs/clans.md)) y de
    `RN-FAC-005` ([factions.md](../specs/factions.md)).
-2. **PENDIENTE** — Protocolo: los tres comandos, `alliances` en `ClanView` y en `clan.info`, y los avisos nuevos;
+2. **HECHO** — Protocolo: los tres comandos, `alliances` en `ClanView` y en `clan.info`, y los avisos nuevos;
    contract tests en los dos lados y su e2e.
-3. **PENDIENTE** — Dominio y simulación: la alianza en `clanState`, las órdenes en dos fases, `AllyPeace` en
+3. **HECHO** — Dominio y simulación: la alianza en `clanState`, las órdenes en dos fases, `AllyPeace` en
    `AtPeace` con la paz residual, los vencimientos, la mezcla de bandos al entrar en un bando o en un clan y la
    expiración al disolver.
-4. **PENDIENTE** — Migración `000023` y persistencia: `clan_alliances`, los triggers, la carga y cada orden con los dos
+4. **HECHO** — Migración `000023` y persistencia: `clan_alliances`, los triggers, la carga y cada orden con los dos
    candados.
-5. **PENDIENTE** — Cliente: la sección «Alianzas» del panel, «Proponer alianza» en la vista pública, «Aliado de [TAG]»
+5. **HECHO** — Cliente: la sección «Alianzas» del panel, «Proponer alianza» en la vista pública, «Aliado de [TAG]»
    en la barra de una ciudad ajena y los textos del registro y de los avisos.
 6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --alianza-clan`.
