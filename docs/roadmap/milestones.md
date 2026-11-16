@@ -2301,4 +2301,25 @@ o tierra afín compartidos, alianzas de más de dos clanes, un mapa político y 
    candados.
 5. **HECHO** — Cliente: la sección «Alianzas» del panel, «Proponer alianza» en la vista pública, «Aliado de [TAG]»
    en la barra de una ciudad ajena y los textos del registro y de los avisos.
-6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --alianza-clan`.
+6. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --alianza-clan`.
+
+### Prueba en vivo (2026-11-16)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 22 a la 23 al arrancar:
+
+- `node scripts/smoke.mjs --web http://localhost:3001 --clan --alianza-clan`: `--clan` entero, y la alianza hasta el
+  ataque, que se rechazó con «sois del mismo clan»: la paz residual de la expulsión de smoke_clan_b, que `--clan` acaba
+  de hacer, va antes que la de la alianza. El humo lo distingue desde entonces.
+- Con el servidor rearrancado con `EO_CLAN_PEACE_GRACE_SECONDS=5`, la alianza que había quedado activa volvió con la
+  carga, y `--alianza-clan` pasó entero (29 comprobaciones): smoke_clan_b sale de su [ECO], que se disuelve y expira la
+  alianza; funda otro; la oferta y la aceptación con sus avisos y la sigla; la vista pública; el ataque rechazado con
+  «vuestros clanes están aliados»; la ruptura con su aviso; la disolución que la expira; y la entrada del registro.
+- En el navegador, como smoke_clan_a: «Mientras no estabas» con «smoke_clan_bpolis propone una alianza entre [ECO] y tu
+  clan» y las aceptaciones; la sección «Alianzas» del panel con la oferta recibida, «Aceptar» que la deja en «[HUM]
+  tiene 1 de 2 · Aliados de Eco [ECO]», «Romper» con su confirmación («Dentro de 15 minutos, los miembros de [ECO]
+  podrán atacar a los tuyos») y la cuenta atrás «La alianza con [ECO] termina en 15 min»; y, al disolverse [ECO], el
+  panel volvió en vivo a «0 de 2».
+- **Sin comprobar en el navegador:** «Proponer alianza» desde «Ver clan» (pide hacer clic en la ciudad de otro clan en el
+  mapa), «Aliado de [TAG]» en la barra de una ciudad ajena y el clic de ataque contra ella (los cubren
+  `clans.test.ts` y el humo). En la base de desarrollo [HUM] queda sin alianzas, smoke_clan_b sin clan y smoke_orden de
+  miembro raso.

@@ -28,6 +28,7 @@ import {
   pasoDeFaccion,
   pasoDeClan,
   alianzaCon,
+  motivoDelAtaqueEntreAliados,
   rolEnClan,
   pasoDelTerritorioDeClan,
   rasgo,
@@ -325,4 +326,12 @@ test('rolEnClan: el rango de un jugador en el clan de un clan.update (SPEC-CLAN-
   assert.equal(rolEnClan(update, 'b'), 'OFFICER');
   assert.equal(rolEnClan(update, 'c'), null);
   assert.equal(rolEnClan({ clan: null, invitations: [] }, 'a'), null);
+});
+
+test('motivoDelAtaqueEntreAliados: el de la alianza, o el del clan si cuenta antes la paz residual', () => {
+  assert.equal(motivoDelAtaqueEntreAliados({ code: 'INVALID_TARGET', message: 'vuestros clanes están aliados' }), 'vuestros clanes están aliados');
+  assert.match(motivoDelAtaqueEntreAliados({ code: 'INVALID_TARGET', message: 'sois del mismo clan' }), /paz residual/);
+  assert.equal(motivoDelAtaqueEntreAliados({ code: 'INVALID_TARGET', message: 'un tratado de paz impide atacar a ese jugador' }), null);
+  assert.equal(motivoDelAtaqueEntreAliados({ code: 'UNIT_NOT_FOUND', message: 'la unidad objetivo no existe' }), null);
+  assert.equal(motivoDelAtaqueEntreAliados(undefined), null);
 });

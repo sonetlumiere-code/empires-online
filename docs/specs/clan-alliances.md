@@ -354,7 +354,10 @@ no deje insistir antes de tiempo.
 - **El aviso del preaviso** no lleva `breaksAtMs`, que `event_log.notice` no tiene: el cliente dice «en 15 minutos», y
   la entrada del registro, la hora.
 - **El humo** no necesita un preaviso corto: tras romper, la disolución de [ECO] expira la alianza sin esperar a que
-  venza.
+  venza. Justo después de `--clan`, que acaba de expulsar a smoke_clan_b de [HUM], su ataque se rechaza por la paz
+  residual de esa expulsión («sois del mismo clan»), que se comprueba antes que la de la alianza; el humo lo distingue, y
+  con el servidor arrancado con `EO_CLAN_PEACE_GRACE_SECONDS=5` el motivo es el de la alianza. Las dos son paz: el
+  orden de los motivos (ADR-042 §2) es el esperado.
 
 ## 10. Decisiones de producto (2026-11-16)
 
