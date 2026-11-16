@@ -187,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 31, "desde E20, el liderazgo de un clan recibido, cedido, heredado y perdido")
+	assert.Len(t, vistos, 35, "desde E21, la oferta, la aceptación, el rechazo y el preaviso de una alianza de clanes")
 }
 
 // SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
@@ -362,6 +362,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 		eventlog.KindCaravanCaptured, eventlog.KindCaravanIntercepted, eventlog.KindCaravanLost,
 		eventlog.KindClanExpelled,
 		eventlog.KindClanLeadershipReceived, eventlog.KindClanLeadershipInherited,
+		eventlog.KindClanAllianceOffered, eventlog.KindClanAllianceAccepted, eventlog.KindClanAllianceBreakAnnounced,
 	}, eventlog.NoticeKinds())
 	for _, k := range eventlog.NoticeKinds() {
 		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
@@ -369,7 +370,8 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 	for _, tipo := range eventlog.EventTypes() {
 		switch tipo {
 		case "UnitKilled", "CityPillaged", "BuildingDestroyed", "TerritoryClaimStarted", "TerritoryControlChanged",
-			"CaravanCaptured", "CaravanIntercepted", "CaravanLost", "ClanMemberExpelled", "ClanLeaderChanged":
+			"CaravanCaptured", "CaravanIntercepted", "CaravanLost", "ClanMemberExpelled", "ClanLeaderChanged",
+			"ClanAllianceProposed", "ClanAllianceAccepted", "ClanAllianceBreakAnnounced":
 			continue
 		}
 		for _, by := range []uuid.UUID{yo, otro, uuid.Nil} {
@@ -503,4 +505,53 @@ func TestLasFilasDeUnClanSonDeUnSoloLado(t *testing.T) {
 	b := eventlog.NewBuilder(yo, 0, 10*time.Minute, 50)
 	b.Add(sinClan)
 	assert.Empty(t, b.Entries()[0].ClanTag)
+}
+
+// SPEC-CLAN-ALLIANCES Q9: la oferta la recibe el líder del otro clan; la
+// aceptación y el rechazo, el que propuso; a quien dio la orden no se le cuenta
+// nada. El preaviso es una fila por miembro y sólo se cuenta a ese miembro, con
+// la sigla del otro clan y el fin del preaviso. Se avisan la oferta, la
+// aceptación y el preaviso; el rechazo, no. Cada uno es su propia entrada.
+func TestLasAlianzasDeClanEnElRegistroYEnLosAvisos(t *testing.T) {
+	oferta := eventlog.Event{ID: 1, Type: eventlog.EventClanAllianceProposed, PlayerID: yo, Counterpart: otro,
+		OwnerClanTag: "OSO", ForClanTag: "LOB"}
+	k, other, ok := eventlog.Classify(otro, oferta)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindClanAllianceOffered, k)
+	assert.Equal(t, yo, other)
+	_, _, ok = eventlog.Classify(yo, oferta)
+	assert.False(t, ok, "a quien propone, nada")
+	assert.Equal(t, []eventlog.Notice{{To: otro, Kind: eventlog.KindClanAllianceOffered, Other: yo}}, eventlog.Notices(oferta))
+
+	aceptada := eventlog.Event{ID: 2, Type: eventlog.EventClanAllianceAccepted, PlayerID: otro, Counterpart: yo, ForClanTag: "OSO"}
+	assert.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindClanAllianceAccepted, Other: otro}}, eventlog.Notices(aceptada))
+	rechazada := eventlog.Event{ID: 3, Type: eventlog.EventClanAllianceRejected, PlayerID: otro, Counterpart: yo, ForClanTag: "OSO"}
+	k, _, ok = eventlog.Classify(yo, rechazada)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindClanAllianceRejected, k)
+	assert.Empty(t, eventlog.Notices(rechazada), "el rechazo no se avisa")
+
+	preaviso := eventlog.Event{ID: 4, Type: eventlog.EventClanAllianceBreakAnnounced, PlayerID: yo, Counterpart: otro,
+		OwnerClanTag: "OSO", BreaksAtMs: 900_000, Only: eventlog.OnlyPlayer}
+	assert.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindClanAllianceBreakAnnounced, Other: otro}}, eventlog.Notices(preaviso))
+	_, _, ok = eventlog.Classify(otro, preaviso)
+	assert.False(t, ok, "la fila de un miembro no se cuenta a quien lo provocó")
+
+	for _, tipo := range []string{eventlog.EventClanAllianceWithdrawn, eventlog.EventClanAllianceBroken, eventlog.EventClanAllianceExpired} {
+		_, _, ok := eventlog.Classify(otro, eventlog.Event{Type: tipo, PlayerID: yo, Counterpart: otro})
+		assert.False(t, ok, "%s no va al registro", tipo)
+	}
+
+	b := eventlog.NewBuilder(yo, 0, 10*time.Minute, 50)
+	segundo := preaviso
+	segundo.ID = 5
+	for _, e := range []eventlog.Event{segundo, preaviso, aceptada, rechazada} {
+		require.True(t, b.Add(e))
+	}
+	entradas := b.Entries()
+	require.Len(t, entradas, 4, "cada suceso de una alianza es su propia entrada")
+	assert.Equal(t, eventlog.KindClanAllianceBreakAnnounced, entradas[0].Kind)
+	assert.Equal(t, "OSO", entradas[0].ClanTag)
+	assert.Equal(t, int64(900_000), entradas[0].BreaksAtMs)
+	assert.Equal(t, "OSO", entradas[2].ClanTag, "la aceptación, con la sigla del clan que aceptó")
 }

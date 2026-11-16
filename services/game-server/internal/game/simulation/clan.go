@@ -49,8 +49,10 @@ type ClanStore interface {
 	// Invite escribe o borra una invitación.
 	Invite(ctx context.Context, o ClanInviteOrder) error
 	// Join abre la estancia del invitado, si el clan, la invitación, el tope y
-	// los bandos lo permiten todavía.
-	Join(ctx context.Context, o ClanJoinOrder) error
+	// los bandos lo permiten todavía, y abre en la misma transacción el
+	// preaviso de las alianzas del clan que la entrada mezcla con la Orden y el
+	// Caos; las devuelve (ADR-042 §4).
+	Join(ctx context.Context, o ClanJoinOrder) ([]AllianceBreak, error)
 	// Leave cierra una estancia con el líder nuevo o la disolución, de forma
 	// tolerante (ADR-040 §2). Una disolución libera en la misma transacción
 	// los territorios del clan y los devuelve (ADR-041 §4).
@@ -63,6 +65,12 @@ type ClanStore interface {
 	// líder y To un miembro abierto; From queda como oficial
 	// (SPEC-CLAN-GOVERNANCE §4.3, §4.4).
 	ChangeLeader(ctx context.Context, o ClanLeaderOrder) error
+	// ApplyAlliance escribe una orden o un vencimiento de una alianza entre
+	// clanes con los candados de los dos clanes, y devuelve el id de una oferta
+	// nueva (SPEC-CLAN-ALLIANCES, ADR-042 §3). Una orden que la base no admite es
+	// un ClanRejection; un vencimiento (Tolerant) sobre una fila que ya cambió
+	// no escribe nada y no es un error.
+	ApplyAlliance(ctx context.Context, w AllianceWrite) (int64, error)
 }
 
 // ClanCreateOrder es una fundación ya validada por el tick.
@@ -96,9 +104,12 @@ type ClanJoinOrder struct {
 	ClanID     int64
 	PlayerID   uuid.UUID
 	MaxMembers int
-	At         time.Time
-	Tick       uint64
-	AtMs       int64
+	// BreakNotice es el preaviso que abre una alianza que la entrada mezcla
+	// (RN-CLANALLY-005).
+	BreakNotice time.Duration
+	At          time.Time
+	Tick        uint64
+	AtMs        int64
 }
 
 // ClanLeave es una salida o una expulsión ya aplicada en la RAM.
@@ -203,6 +214,8 @@ type ClanJoinResolved struct {
 	RequestID string
 	Code      string
 	Message   string
+	// Breaks son las alianzas a las que la transacción abrió el preaviso.
+	Breaks []AllianceBreak
 }
 
 func (ClanJoinResolved) commandType() string { return "clan.join_resolved" }
@@ -544,6 +557,7 @@ func (s *State) clanView(clanID int64, viewer uuid.UUID, nowMs int64) *protocol.
 		ID: rec.ID, Name: rec.Name, Tag: rec.Tag, LeaderID: rec.LeaderID.String(),
 		Members: []protocol.ClanMemberView{}, SentInvitations: []protocol.ClanSentInvitationView{},
 		Territories: s.clanTerritoryViews(rec.ID),
+		Alliances:   s.allianceViews(rec, viewer),
 	}
 	for _, m := range rec.members() {
 		role := rec.roleOf(m.PlayerID)
@@ -924,7 +938,7 @@ func (s *Simulation) handleRespondClan(cmd RespondClan) {
 
 	s.state.clans.joining[cmd.PlayerID] = rec.ID
 	order := ClanJoinOrder{
-		ClanID: rec.ID, PlayerID: cmd.PlayerID, MaxMembers: s.clanMaxMembers(),
+		ClanID: rec.ID, PlayerID: cmd.PlayerID, MaxMembers: s.clanMaxMembers(), BreakNotice: s.breakNotice(),
 		At: time.UnixMilli(nowMs).UTC(), Tick: s.state.Tick(), AtMs: nowMs,
 	}
 	store := s.deps.Clans
@@ -933,9 +947,9 @@ func (s *Simulation) handleRespondClan(cmd RespondClan) {
 		Name: JobClanJoin,
 		Key:  ClanKey(rec.ID),
 		Run: func(ctx context.Context) error {
-			err := store.Join(ctx, order)
+			breaks, err := store.Join(ctx, order)
 			if err == nil {
-				s.reinject(ClanJoinResolved{Order: order, RequestID: requestID})
+				s.reinject(ClanJoinResolved{Order: order, RequestID: requestID, Breaks: breaks})
 				return nil
 			}
 			if errors.Is(err, ErrClanConflict) {
@@ -974,6 +988,9 @@ func (s *Simulation) handleClanJoinResolved(cmd ClanJoinResolved) {
 	notify := s.dropInvitesOf(o.PlayerID)
 	s.setCityClan(o.PlayerID, &city.ClanTag{ID: rec.ID, Tag: rec.Tag})
 	s.sendClanUpdates(append(append(notify, s.state.ClanMembers(rec.ID)...), o.PlayerID), o.PlayerID, cmd.RequestID)
+	// ADR-042 §4: las alianzas que la entrada mezcla con la Orden y el Caos ya
+	// tienen su preaviso en la base.
+	s.applyJoinBreaks(cmd.Breaks, o.PlayerID, s.deps.Clock.NowMs())
 	s.deps.Log.Info("jugador unido a un clan", "clan_id", rec.ID, "player_id", o.PlayerID.String())
 }
 
@@ -1077,6 +1094,8 @@ func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason stri
 	var invitees []uuid.UUID
 	if dissolve {
 		delete(s.state.clans.clans, clanID)
+		// RN-CLANALLY-008: sus ofertas y alianzas expiran con él.
+		s.expireAlliancesOf(clanID, nowMs)
 		for k := range s.state.clans.invites {
 			if k.ClanID == clanID {
 				invitees = append(invitees, k.PlayerID)

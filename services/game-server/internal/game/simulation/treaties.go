@@ -193,11 +193,12 @@ func (s *State) noteRejection(t diplomacy.Treaty) {
 // AtPeace indica si dos jugadores tienen un tratado vigente que impide atacar
 // (RN-COMBAT-006, RN-COMBAT-020), también durante un preaviso, si los dos son
 // de la Orden (RN-FAC-003, ADR-039 §2) o si están en paz por su clan, también
-// la residual de una salida reciente (RN-CLAN-004, RN-CLAN-005, ADR-040 §3): es
-// la única fuente de paz que leen el combate, el saqueo, el asedio y la
-// conquista.
+// la residual de una salida reciente (RN-CLAN-004, RN-CLAN-005, ADR-040 §3), o
+// por una alianza entre sus clanes, también la residual (RN-CLANALLY-003,
+// RN-CLANALLY-006, ADR-042 §2): es la única fuente de paz que leen el combate,
+// el saqueo, el asedio y la conquista.
 func (s *State) AtPeace(x, y uuid.UUID, now time.Time) bool {
-	if s.OrderPeace(x, y) || s.ClanPeace(x, y, now) {
+	if s.OrderPeace(x, y) || s.ClanPeace(x, y, now) || s.AllyPeace(x, y, now) {
 		return true
 	}
 	for _, t := range s.openOf(x, y) {

@@ -37,7 +37,7 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 			p.ClanTag = eventlog.ClanTagFor(n.To, e)
 		}
 		// El clan cuyo liderazgo cambió (SPEC-CLAN-GOVERNANCE §4.6).
-		if e.Type == eventlog.EventClanLeaderChanged {
+		if e.Type == eventlog.EventClanLeaderChanged || isAllianceEvent(e.Type) {
 			p.ClanTag = eventlog.ClanTagFor(n.To, e)
 		}
 		// Una caravana, lo que llevaba (SPEC-CARAVANS §6).
@@ -46,4 +46,14 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 		}
 		s.deps.Broadcaster.SendToPlayer(n.To, protocol.TypeEventLogNotice, "", p)
 	}
+}
+
+// isAllianceEvent dice si el evento es de una alianza entre clanes: su aviso
+// lleva la sigla del otro clan (SPEC-CLAN-ALLIANCES §4.6).
+func isAllianceEvent(t string) bool {
+	switch t {
+	case eventlog.EventClanAllianceProposed, eventlog.EventClanAllianceAccepted, eventlog.EventClanAllianceBreakAnnounced:
+		return true
+	}
+	return false
 }

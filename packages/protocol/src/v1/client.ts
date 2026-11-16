@@ -538,6 +538,40 @@ export const ClanTransfer = z.object({
   }).strict(),
 }).strict();
 
+/** El líder propone una alianza a otro clan (SPEC-CLAN-ALLIANCES §4.3). */
+export const ClanAlliancePropose = z.object({
+  v: V,
+  type: z.literal('clan.alliance.propose'),
+  requestId: Uuid,
+  payload: z.object({
+    clanId: EntityId,
+  }).strict(),
+}).strict();
+
+/** El líder del clan que no propuso acepta o rechaza una oferta de alianza. */
+export const ClanAllianceRespond = z.object({
+  v: V,
+  type: z.literal('clan.alliance.respond'),
+  requestId: Uuid,
+  payload: z.object({
+    allianceId: EntityId,
+    accept: z.boolean(),
+  }).strict(),
+}).strict();
+
+/**
+ * El líder retira la oferta de su clan o rompe una alianza, que sigue en paz durante su
+ * preaviso (SPEC-CLAN-ALLIANCES §4.3).
+ */
+export const ClanAllianceCancel = z.object({
+  v: V,
+  type: z.literal('clan.alliance.cancel'),
+  requestId: Uuid,
+  payload: z.object({
+    allianceId: EntityId,
+  }).strict(),
+}).strict();
+
 /** Pide la vista pública de un clan: su nombre, su sigla y sus miembros (RN-CLAN-008). */
 export const ClanLookup = z.object({
   v: V,
@@ -624,6 +658,9 @@ export const ClientMessage = z.discriminatedUnion('type', [
   ClanChatRead,
   ClanPromote,
   ClanTransfer,
+  ClanAlliancePropose,
+  ClanAllianceRespond,
+  ClanAllianceCancel,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -668,6 +705,9 @@ export type ClanChatFetch = z.infer<typeof ClanChatFetch>;
 export type ClanChatRead = z.infer<typeof ClanChatRead>;
 export type ClanPromote = z.infer<typeof ClanPromote>;
 export type ClanTransfer = z.infer<typeof ClanTransfer>;
+export type ClanAlliancePropose = z.infer<typeof ClanAlliancePropose>;
+export type ClanAllianceRespond = z.infer<typeof ClanAllianceRespond>;
+export type ClanAllianceCancel = z.infer<typeof ClanAllianceCancel>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -711,6 +751,9 @@ export const CLIENT_MESSAGE_TYPES = [
   'clan.chat.read',
   'clan.promote',
   'clan.transfer',
+  'clan.alliance.propose',
+  'clan.alliance.respond',
+  'clan.alliance.cancel',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

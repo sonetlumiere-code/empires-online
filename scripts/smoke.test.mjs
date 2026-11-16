@@ -27,6 +27,8 @@ import {
   pactoVigente,
   pasoDeFaccion,
   pasoDeClan,
+  alianzaCon,
+  motivoDelAtaqueEntreAliados,
   rolEnClan,
   pasoDelTerritorioDeClan,
   rasgo,
@@ -283,6 +285,16 @@ test('pasoDeClan: fundar sin clan, nada si ya lo dirige, fallar en otro clan (SP
   assert.equal(pasoDeClan(clan(yo, 'OTR'), yo), 'otro-clan');
 });
 
+// SPEC-CLAN-ALLIANCES: el humo --alianza-clan busca la alianza por la sigla del otro clan.
+test('alianzaCon encuentra la alianza o la oferta con un clan, o null', () => {
+  const alianza = { id: 9, clanId: 2, name: 'Eco', tag: 'ECO', status: 'ACTIVE', proposedByUs: true, breaksAtMs: null };
+  const upd = { clan: { id: 1, tag: 'HUM', alliances: [alianza] }, invitations: [] };
+  assert.deepEqual(alianzaCon(upd, 'ECO'), alianza);
+  assert.equal(alianzaCon(upd, 'OTR'), null);
+  assert.equal(alianzaCon({ clan: null, invitations: [] }, 'ECO'), null);
+  assert.equal(alianzaCon({ clan: { id: 1, tag: 'HUM' } }, 'ECO'), null, 'un servidor anterior sin alliances');
+});
+
 // SPEC-CLAN-TERRITORIES: el humo --territorio-clan disputa siempre el mismo
 // territorio entre [HUM] y smoke_norse, y sabe qué toca según su dueño.
 test('territorioDelHumo elige el más cercano libre, de [HUM] o del rival sin ser su capital', () => {
@@ -314,4 +326,12 @@ test('rolEnClan: el rango de un jugador en el clan de un clan.update (SPEC-CLAN-
   assert.equal(rolEnClan(update, 'b'), 'OFFICER');
   assert.equal(rolEnClan(update, 'c'), null);
   assert.equal(rolEnClan({ clan: null, invitations: [] }, 'a'), null);
+});
+
+test('motivoDelAtaqueEntreAliados: el de la alianza, o el del clan si cuenta antes la paz residual', () => {
+  assert.equal(motivoDelAtaqueEntreAliados({ code: 'INVALID_TARGET', message: 'vuestros clanes están aliados' }), 'vuestros clanes están aliados');
+  assert.match(motivoDelAtaqueEntreAliados({ code: 'INVALID_TARGET', message: 'sois del mismo clan' }), /paz residual/);
+  assert.equal(motivoDelAtaqueEntreAliados({ code: 'INVALID_TARGET', message: 'un tratado de paz impide atacar a ese jugador' }), null);
+  assert.equal(motivoDelAtaqueEntreAliados({ code: 'UNIT_NOT_FOUND', message: 'la unidad objetivo no existe' }), null);
+  assert.equal(motivoDelAtaqueEntreAliados(undefined), null);
 });

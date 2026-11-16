@@ -351,6 +351,19 @@ func run() error {
 	}
 	state.SetClans(clanes, estancias, invitaciones, cfg.ClanPeaceGrace)
 
+	// Las alianzas entre clanes (ADR-042 §1): las abiertas, las que estuvieron
+	// activas y se cerraron dentro de la paz residual, y los rechazos que aún
+	// cuentan para insistir. Una que no cumple INV-CLAN-006 no se instala.
+	alianzas, cerradas, rechazadas, err := clanRepo.ListAlliances(rootCtx,
+		sysClock.Now().Add(-cfg.ClanPeaceGrace), sysClock.Now().Add(-cfg.TreatyRetry))
+	if err != nil {
+		return fmt.Errorf("cargar las alianzas entre clanes: %w", err)
+	}
+	for _, v := range state.SetClanAlliances(alianzas, cerradas, rechazadas) {
+		log.Error("invariant_violation", "inv_id", "INV-CLAN-006", "severity", "ALTO", "policy", "REJECT",
+			"entity", fmt.Sprintf("clan_alliance:%d", v.AllianceID), "detail", v.Detail)
+	}
+
 	// Las ofertas de comercio pendientes (ADR-032 §1). Las que caducaron con el
 	// servidor parado, o cuyo tratado terminó, las cierra el primer barrido.
 	tradeRepo := postgres.NewTradeRepo(store, cfg.ChunkSize)
@@ -477,6 +490,7 @@ func run() error {
 		ClanInviteTTL:               cfg.ClanInviteTTL,
 		ClanPeaceGrace:              cfg.ClanPeaceGrace,
 		ClanLeaderInactive:          cfg.ClanLeaderInactive,
+		ClanMaxAllies:               cfg.ClanMaxAllies,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

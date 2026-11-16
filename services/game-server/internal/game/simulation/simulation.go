@@ -136,6 +136,9 @@ type Deps struct {
 	// conectarse para que el liderazgo pase a quien sigue jugando
 	// (SPEC-CLAN-GOVERNANCE Q6). Cero: el valor por defecto.
 	ClanLeaderInactive time.Duration
+	// ClanMaxAllies es el tope de alianzas activas de un clan
+	// (SPEC-CLAN-ALLIANCES Q4). Cero: 2.
+	ClanMaxAllies int
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -342,6 +345,16 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleClanRankFailed(c)
 	case ClanLeaderFailed:
 		s.handleClanLeaderFailed(c)
+	case ProposeClanAlliance:
+		s.handleProposeClanAlliance(c)
+	case RespondClanAlliance:
+		s.handleRespondClanAlliance(c)
+	case CancelClanAlliance:
+		s.handleCancelClanAlliance(c)
+	case ClanAllianceResolved:
+		s.handleClanAllianceResolved(c)
+	case ClanAllianceEndPersistFailed:
+		s.handleClanAllianceEndPersistFailed(c)
 	case ClanExpelRejected:
 		s.handleClanExpelRejected(c)
 	default:
@@ -788,6 +801,8 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	// Los líderes de clan ausentes, una vez por minuto (RN-CLANGOV-005). Va
 	// después de la fase 1, con la presencia de este tick.
 	s.sweepClanLeaders(now.UnixMilli())
+	// Las ofertas de alianza caducadas y los preavisos vencidos (ADR-042 §3).
+	s.sweepClanAlliances(now.UnixMilli())
 
 	// 3. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
 	s.state.EachCity(func(c *city.City) bool {

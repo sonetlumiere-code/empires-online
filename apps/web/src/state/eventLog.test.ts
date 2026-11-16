@@ -197,5 +197,15 @@ describe('el liderazgo de un clan (SPEC-CLAN-GOVERNANCE Q8)', () => {
     expect(entryText(entrada(1, 'CLAN_LEADERSHIP_RECEIVED')), 'sin sigla').toBe('Villa Norte te cedió el liderazgo de tu clan');
     expect(isLoss(entrada(1, 'CLAN_LEADERSHIP_LOST'))).toBe(true);
     expect(isLoss(entrada(1, 'CLAN_LEADERSHIP_GIVEN'))).toBe(false);
+    // SPEC-CLAN-ALLIANCES Q9: con la sigla del otro clan.
+    expect(entryText(entrada(1, 'CLAN_ALLIANCE_OFFERED', { clanTag: 'OSO' }))).toBe('Villa Norte propone una alianza entre [OSO] y tu clan');
+    expect(entryText(entrada(1, 'CLAN_ALLIANCE_ACCEPTED', { clanTag: 'OSO' }))).toBe('Villa Norte aceptó la alianza entre [OSO] y tu clan');
+    expect(entryText(entrada(1, 'CLAN_ALLIANCE_REJECTED', { clanTag: 'OSO' }))).toBe('Villa Norte rechazó la alianza entre [OSO] y tu clan');
+    expect(entryText(entrada(1, 'CLAN_ALLIANCE_BREAK_ANNOUNCED', { clanTag: 'OSO' })))
+      .toBe('La alianza de tu clan con [OSO] termina en 15 minutos: después, sus miembros podrán atacar a los tuyos');
+    expect(entryText(entrada(1, 'CLAN_ALLIANCE_BREAK_ANNOUNCED', { clanTag: 'OSO', breaksAtMs: Date.UTC(2026, 10, 16, 15, 30) })))
+      .toMatch(/^La alianza de tu clan con \[OSO\] termina a las \d{2}:\d{2}: después/);
+    expect(isLoss(entrada(1, 'CLAN_ALLIANCE_BREAK_ANNOUNCED'))).toBe(true);
+    expect(isLoss(entrada(1, 'CLAN_ALLIANCE_OFFERED'))).toBe(false);
   });
 });

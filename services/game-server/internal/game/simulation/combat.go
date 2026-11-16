@@ -270,6 +270,9 @@ func (s *Simulation) attackBlocked(a, t *unit.Unit, posA, posT world.Tile, now t
 	if s.state.ClanPeace(a.PlayerID, t.PlayerID, now) {
 		return protocol.CodeInvalidTarget, msgClanPeace
 	}
+	if s.state.AllyPeace(a.PlayerID, t.PlayerID, now) {
+		return protocol.CodeInvalidTarget, msgAllyPeace
+	}
 	if s.state.AtPeace(a.PlayerID, t.PlayerID, now) {
 		return protocol.CodeInvalidTarget, "un tratado de paz impide atacar a ese jugador"
 	}

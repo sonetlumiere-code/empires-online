@@ -143,7 +143,7 @@ func truncateAll(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	_, err := pool.Exec(ctx, `
 		TRUNCATE TABLE
 			world_events, garrisons, treaties, player_messages, message_reads, player_blocks,
-			clan_message_reads, clan_messages, clan_invites, clan_members, clans, caravan_cargo, caravans, trade_offer_lines, trade_offers, territory_claims, safe_zones,
+			clan_alliances, clan_message_reads, clan_messages, clan_invites, clan_members, clans, caravan_cargo, caravans, trade_offer_lines, trade_offers, territory_claims, safe_zones,
 			unit_tasks, city_productions, city_era_advances, city_crafts, buildings, city_stocks, forest_wood, hill_stone,
 			territory_control, territories, sessions,
 			unit_movements, units, cities, world_chunks, world_state, players

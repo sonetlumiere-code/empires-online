@@ -847,6 +847,47 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, TargetID: target,
 		})
 
+	// Las alianzas entre clanes (SPEC-CLAN-ALLIANCES §6): el clan de quien
+	// ordena y su rango los decide la simulación (INV-SEC-004).
+	case protocol.TypeClanAlliancePropose:
+		var p protocol.ClanAlliancePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.ClanID < 1 {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.ProposeClanAlliance{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, ClanID: p.ClanID,
+		})
+
+	case protocol.TypeClanAllianceRespond:
+		var p protocol.ClanAllianceRespondPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.AllianceID < 1 {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.RespondClanAlliance{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, AllianceID: p.AllianceID, Accept: p.Accept,
+		})
+
+	case protocol.TypeClanAllianceCancel:
+		var p protocol.ClanAllianceCancelPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.AllianceID < 1 {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.CancelClanAlliance{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, AllianceID: p.AllianceID,
+		})
+
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
 	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del
 	// servidor (INV-SEC-001); los rechazos llegan por system.error.

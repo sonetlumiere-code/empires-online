@@ -76,6 +76,13 @@ const (
 	KindClanLeadershipGiven     Kind = "CLAN_LEADERSHIP_GIVEN"
 	KindClanLeadershipInherited Kind = "CLAN_LEADERSHIP_INHERITED"
 	KindClanLeadershipLost      Kind = "CLAN_LEADERSHIP_LOST"
+	// Alianzas entre clanes (SPEC-CLAN-ALLIANCES Q9): la oferta que recibe el
+	// líder de un clan, la aceptación y el rechazo que recibe el que propuso, y
+	// el preaviso de ruptura, que recibe cada miembro de los dos clanes.
+	KindClanAllianceOffered        Kind = "CLAN_ALLIANCE_OFFERED"
+	KindClanAllianceAccepted       Kind = "CLAN_ALLIANCE_ACCEPTED"
+	KindClanAllianceRejected       Kind = "CLAN_ALLIANCE_REJECTED"
+	KindClanAllianceBreakAnnounced Kind = "CLAN_ALLIANCE_BREAK_ANNOUNCED"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -90,6 +97,7 @@ func Kinds() []Kind {
 		KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost,
 		KindClanExpelled, KindClanMemberExpelled,
 		KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost,
+		KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceRejected, KindClanAllianceBreakAnnounced,
 	}
 }
 
@@ -107,6 +115,7 @@ func NoticeKinds() []Kind {
 		KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost,
 		KindClanExpelled,
 		KindClanLeadershipReceived, KindClanLeadershipInherited,
+		KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceBreakAnnounced,
 	}
 }
 
@@ -151,6 +160,19 @@ const (
 	// y counterpart_player_id el anterior; Reason dice si fue un traspaso o la
 	// ausencia del anterior.
 	EventClanLeaderChanged = "ClanLeaderChanged"
+	// Alianzas entre clanes (SPEC-CLAN-ALLIANCES §6, ADR-042 §6): player_id es
+	// el líder que dio la orden y counterpart_player_id el líder del otro clan;
+	// el preaviso, una fila por miembro de los dos clanes (Only = OnlyPlayer),
+	// con counterpart_player_id quien lo provocó. ownerClanTag es la sigla del
+	// otro clan para player_id, y forClanTag la del clan de player_id para el
+	// otro. Retirada, ruptura y caducidad no van al registro.
+	EventClanAllianceProposed       = "ClanAllianceProposed"
+	EventClanAllianceAccepted       = "ClanAllianceAccepted"
+	EventClanAllianceRejected       = "ClanAllianceRejected"
+	EventClanAllianceWithdrawn      = "ClanAllianceWithdrawn"
+	EventClanAllianceBreakAnnounced = "ClanAllianceBreakAnnounced"
+	EventClanAllianceBroken         = "ClanAllianceBroken"
+	EventClanAllianceExpired        = "ClanAllianceExpired"
 )
 
 // Motivos de un ClanLeaderChanged (SPEC-CLAN-GOVERNANCE §6).
@@ -170,6 +192,7 @@ func EventTypes() []string {
 		EventTerritoryClaimStarted, EventTerritoryControlChanged,
 		EventCaravanArrived, EventCaravanCaptured, EventCaravanIntercepted, EventCaravanLost,
 		EventClanMemberExpelled, EventClanLeaderChanged,
+		EventClanAllianceProposed, EventClanAllianceAccepted, EventClanAllianceRejected, EventClanAllianceBreakAnnounced,
 	}
 }
 
@@ -346,6 +369,26 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 		default:
 			return KindClanLeadershipGiven, other, true
 		}
+	case EventClanAllianceProposed, EventClanAllianceAccepted, EventClanAllianceRejected:
+		// Al líder del otro clan: a quien la dio no se le cuenta lo que ordenó
+		// él (SPEC-CLAN-ALLIANCES Q9).
+		if e.Counterpart != viewer {
+			return "", uuid.Nil, false
+		}
+		switch e.Type {
+		case EventClanAllianceProposed:
+			return KindClanAllianceOffered, other, true
+		case EventClanAllianceAccepted:
+			return KindClanAllianceAccepted, other, true
+		default:
+			return KindClanAllianceRejected, other, true
+		}
+	case EventClanAllianceBreakAnnounced:
+		// Una fila por miembro (Only = OnlyPlayer): a ese miembro.
+		if e.PlayerID == viewer {
+			return KindClanAllianceBreakAnnounced, other, true
+		}
+		return "", uuid.Nil, false
 	}
 
 	// Una caravana: sólo a quien le pasa (player_id); al captor no se le cuenta
@@ -560,8 +603,8 @@ func (b *Builder) Add(e Event) bool {
 	if isTreaty(kind) {
 		k.treatyType = e.TreatyType
 	}
-	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) {
-		k.offerID = e.ID // cada trato, cada suceso de un territorio y cada caravana, su entrada
+	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) || isAlliance(kind) {
+		k.offerID = e.ID // cada trato, cada suceso de un territorio, cada caravana y cada alianza, su entrada
 	}
 	if i, abierto := b.open[k]; abierto && e.AtMs >= b.entries[i].FirstAtMs-b.gapMs {
 		g := &b.entries[i]
@@ -598,6 +641,12 @@ func (b *Builder) Add(e Event) bool {
 	case KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost:
 		// La sigla del clan cuyo liderazgo cambió (SPEC-CLAN-GOVERNANCE §4.6).
 		entry.ClanTag = ClanTagFor(b.viewer, e)
+	case KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceRejected:
+		// La sigla del otro clan (SPEC-CLAN-ALLIANCES §4.6).
+		entry.ClanTag = ClanTagFor(b.viewer, e)
+	case KindClanAllianceBreakAnnounced:
+		entry.ClanTag = ClanTagFor(b.viewer, e)
+		entry.BreaksAtMs = e.BreaksAtMs
 	case KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost:
 		entry.Cargo = e.Cargo
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
@@ -641,6 +690,15 @@ func isTreaty(k Kind) bool {
 func isTerritory(k Kind) bool {
 	switch k {
 	case KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken:
+		return true
+	}
+	return false
+}
+
+// isAlliance dice si el tipo es de una alianza entre clanes.
+func isAlliance(k Kind) bool {
+	switch k {
+	case KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceRejected, KindClanAllianceBreakAnnounced:
 		return true
 	}
 	return false

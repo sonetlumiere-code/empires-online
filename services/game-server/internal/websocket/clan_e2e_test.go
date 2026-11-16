@@ -27,8 +27,9 @@ import (
 
 // memoryClans hace de base de la pertenencia: acepta toda escritura.
 type memoryClans struct {
-	mu     sync.Mutex
-	nextID int64
+	mu             sync.Mutex
+	nextID         int64
+	nextAllianceID int64
 }
 
 func (m *memoryClans) Create(context.Context, simulation.ClanCreateOrder) (int64, error) {
@@ -38,12 +39,23 @@ func (m *memoryClans) Create(context.Context, simulation.ClanCreateOrder) (int64
 	return m.nextID, nil
 }
 func (*memoryClans) Invite(context.Context, simulation.ClanInviteOrder) error { return nil }
-func (*memoryClans) Join(context.Context, simulation.ClanJoinOrder) error     { return nil }
+func (*memoryClans) Join(context.Context, simulation.ClanJoinOrder) ([]simulation.AllianceBreak, error) {
+	return nil, nil
+}
 func (*memoryClans) Leave(context.Context, simulation.ClanLeave) ([]territory.Control, error) {
 	return nil, nil
 }
 func (*memoryClans) SetRank(context.Context, simulation.ClanRankOrder) error        { return nil }
 func (*memoryClans) ChangeLeader(context.Context, simulation.ClanLeaderOrder) error { return nil }
+func (m *memoryClans) ApplyAlliance(_ context.Context, w simulation.AllianceWrite) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w.Insert {
+		m.nextAllianceID++
+		return m.nextAllianceID, nil
+	}
+	return w.Alliance.ID, nil
+}
 
 // canalFalso hace de canal: su propia pertenencia (la fija el test, nunca lee la
 // RAM de la simulación desde la conexión) y sus mensajes.
@@ -136,7 +148,7 @@ func (c *canalFalso) Lookup(_ context.Context, clanID int64) (protocol.ClanInfoP
 	}
 	info := protocol.ClanInfoPayload{
 		ClanID: clanID, Name: "Los Lobos", Tag: "LOB", Members: []protocol.ClanMemberView{},
-		Territories: []protocol.ClanTerritoryView{},
+		Territories: []protocol.ClanTerritoryView{}, Alliances: []protocol.ClanPublicAllianceView{},
 	}
 	for i, p := range ms {
 		role := clan.RoleMember
@@ -350,6 +362,125 @@ func TestElGobiernoDelClanPorLaRed(t *testing.T) {
 	assert.Equal(t, "CLAN_LEADERSHIP_RECEIVED", aviso.Kind)
 	assert.Equal(t, "LOB", aviso.ClanTag)
 	assert.Equal(t, env.playerID.String(), aviso.OtherPlayerID)
+}
+
+// alianzasEnElJSON son las alianzas de clan.alliances tal como van por la red:
+// falla si la lista no es un array.
+func alianzasEnElJSON(t *testing.T, raw json.RawMessage) []map[string]any {
+	t.Helper()
+	var m struct {
+		Clan map[string]json.RawMessage `json:"clan"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &m))
+	require.NotNil(t, m.Clan)
+	crudo, ok := m.Clan["alliances"]
+	require.True(t, ok, "sin alliances")
+	require.NotEqual(t, "null", string(crudo))
+	var out []map[string]any
+	require.NoError(t, json.Unmarshal(crudo, &out))
+	return out
+}
+
+// SPEC-CLAN-ALLIANCES §9 «e2e»: el líder de [LOB] propone una alianza al de
+// [OSO], que la ve en su clan con el aviso; el oficial de [LOB] ve la oferta y
+// el raso no; el líder de [OSO] acepta, al que propuso le llega el aviso, todos
+// ven la alianza activa, y el ataque de un miembro de [OSO] contra uno de [LOB]
+// se rechaza con su motivo.
+func TestUnaAlianzaDeClanesPorLaRed(t *testing.T) {
+	env := newE2E(t)
+	bea, ce, dani := uuid.New(), uuid.New(), uuid.New()
+	for i, p := range []uuid.UUID{bea, ce, dani} {
+		env.state.AddCity(&city.City{ID: int64(2 + i), OwnerPlayerID: p, Name: []string{"Bizancio", "Persépolis", "Tebas"}[i],
+			CenterX: int32(70 + 30*i), CenterY: 70, Era: city.EraStone, PopulationLimit: 20,
+			PresenceState: city.PresenceOnline, Civilization: "ROMAN"})
+	}
+	ciudadBea := int64(2)
+	env.state.AddUnit(&unit.Unit{ID: 900, PlayerID: bea, CityID: &ciudadBea, Type: unit.TypeWarrior,
+		X: 43, Y: 40, HP: 60, MaxHP: 60, Status: unit.StatusIdle})
+	env.ws.SetClans(&canalFalso{clanDe: map[uuid.UUID]int64{}, leidos: map[uuid.UUID]int64{}, ciudades: map[uuid.UUID]string{}})
+
+	yo, _ := conectar(t, env, env.playerID)
+	yo.await(protocol.TypeClanUpdate, 3*time.Second)
+	b, _ := conectar(t, env, bea)
+	b.await(protocol.TypeClanUpdate, 3*time.Second)
+	c, _ := conectar(t, env, ce)
+	c.await(protocol.TypeClanUpdate, 3*time.Second)
+	d, _ := conectar(t, env, dani)
+	d.await(protocol.TypeClanUpdate, 3*time.Second)
+
+	fundar := func(quien *conn, name, tag string) int64 {
+		quien.send(protocol.TypeClanCreate, map[string]any{"name": name, "tag": tag})
+		env.pump()
+		f, _ := quien.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+		return clanUpdate(t, f.Payload).Clan.ID
+	}
+	lob := fundar(yo, "Los Lobos", "LOB")
+	oso := fundar(b, "Los Osos", "OSO")
+	for _, p := range []struct {
+		id uuid.UUID
+		c  *conn
+	}{{ce, c}, {dani, d}} {
+		yo.send(protocol.TypeClanInvite, map[string]any{"playerId": p.id.String(), "invited": true})
+		env.pump()
+		p.c.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return len(clanUpdate(t, raw).Invitations) == 1 }, 3*time.Second)
+		p.c.send(protocol.TypeClanRespond, map[string]any{"clanId": lob, "accept": true})
+		env.pump()
+		p.c.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+	}
+	yo.send(protocol.TypeClanPromote, map[string]any{"playerId": dani.String(), "officer": true})
+	env.pump()
+	daniOficial := func(raw json.RawMessage) bool {
+		for _, m := range clanUpdate(t, raw).Clan.Members {
+			if m.PlayerID == dani.String() {
+				return m.Role == clan.RoleOfficer
+			}
+		}
+		return false
+	}
+	d.awaitWhere(protocol.TypeClanUpdate, daniOficial, 3*time.Second)
+	c.awaitWhere(protocol.TypeClanUpdate, daniOficial, 3*time.Second) // lo anterior ya no cuenta
+
+	// La oferta.
+	conAlianzas := func(n int, status string) func(json.RawMessage) bool {
+		return func(raw json.RawMessage) bool {
+			p := clanUpdate(t, raw)
+			return p.Clan != nil && len(p.Clan.Alliances) == n && (n == 0 || p.Clan.Alliances[0].Status == status)
+		}
+	}
+	req := yo.send(protocol.TypeClanAlliancePropose, map[string]any{"clanId": oso})
+	env.pump()
+	propia, _ := yo.awaitWhere(protocol.TypeClanUpdate, conAlianzas(1, "PROPOSED"), 3*time.Second)
+	assert.Equal(t, req, propia.RequestID)
+	assert.True(t, clanUpdate(t, propia.Payload).Clan.Alliances[0].ProposedByUs)
+	recibida, _ := b.awaitWhere(protocol.TypeClanUpdate, conAlianzas(1, "PROPOSED"), 3*time.Second)
+	oferta := clanUpdate(t, recibida.Payload).Clan.Alliances[0]
+	assert.Equal(t, lob, oferta.ClanID)
+	assert.False(t, oferta.ProposedByUs)
+	aviso := decode[protocol.EventLogNoticePayload](t, b.await(protocol.TypeEventLogNotice, 3*time.Second).Payload)
+	assert.Equal(t, "CLAN_ALLIANCE_OFFERED", aviso.Kind)
+	assert.Equal(t, "LOB", aviso.ClanTag)
+	assert.Equal(t, env.playerID.String(), aviso.OtherPlayerID)
+	d.awaitWhere(protocol.TypeClanUpdate, conAlianzas(1, "PROPOSED"), 3*time.Second)
+	delRaso, _ := c.awaitWhere(protocol.TypeClanUpdate, func(json.RawMessage) bool { return true }, 3*time.Second)
+	assert.Empty(t, alianzasEnElJSON(t, delRaso.Payload), "un raso no ve las ofertas")
+
+	// La aceptación.
+	b.send(protocol.TypeClanAllianceRespond, map[string]any{"allianceId": oferta.ID, "accept": true})
+	env.pump()
+	yo.awaitWhere(protocol.TypeClanUpdate, conAlianzas(1, "ACTIVE"), 3*time.Second)
+	aviso = decode[protocol.EventLogNoticePayload](t, yo.await(protocol.TypeEventLogNotice, 3*time.Second).Payload)
+	assert.Equal(t, "CLAN_ALLIANCE_ACCEPTED", aviso.Kind)
+	assert.Equal(t, "OSO", aviso.ClanTag)
+	activa, _ := c.awaitWhere(protocol.TypeClanUpdate, conAlianzas(1, "ACTIVE"), 3*time.Second)
+	assert.Equal(t, "OSO", alianzasEnElJSON(t, activa.Payload)[0]["tag"])
+	assert.Nil(t, alianzasEnElJSON(t, activa.Payload)[0]["breaksAtMs"], "sin preaviso, null")
+
+	// La paz entre los dos clanes.
+	r := b.send(protocol.TypeUnitAttack, map[string]any{"unitId": 900, "targetUnitId": env.unitIDs[0]})
+	env.pump()
+	errp := errorDe(t, b, r)
+	assert.Equal(t, protocol.CodeInvalidTarget, errp.Code)
+	assert.Equal(t, "vuestros clanes están aliados", errp.Message)
 }
 
 // enviadasEnElJSON son los invitados de clan.sentInvitations tal como van por

@@ -63,16 +63,22 @@ func (s *ClanStore) Invite(ctx context.Context, o simulation.ClanInviteOrder) er
 	}))
 }
 
-// Join abre la estancia del invitado.
-func (s *ClanStore) Join(ctx context.Context, o simulation.ClanJoinOrder) error {
-	err := s.clans.Join(ctx, postgres.ClanJoin{
-		ClanID: o.ClanID, PlayerID: o.PlayerID, MaxMembers: o.MaxMembers, At: o.At, Tick: o.Tick, AtMs: o.AtMs,
+// Join abre la estancia del invitado y los preavisos de las alianzas que su
+// entrada mezcla con la Orden y el Caos (ADR-042 §4).
+func (s *ClanStore) Join(ctx context.Context, o simulation.ClanJoinOrder) ([]simulation.AllianceBreak, error) {
+	breaks, err := s.clans.JoinBreaking(ctx, postgres.ClanJoin{
+		ClanID: o.ClanID, PlayerID: o.PlayerID, MaxMembers: o.MaxMembers, BreakNotice: o.BreakNotice,
+		At: o.At, Tick: o.Tick, AtMs: o.AtMs,
 	})
 	if err != nil {
-		return rejection(err)
+		return nil, rejection(err)
 	}
 	s.count(observability.ClanChangeJoined)
-	return nil
+	out := make([]simulation.AllianceBreak, 0, len(breaks))
+	for _, b := range breaks {
+		out = append(out, simulation.AllianceBreak{AllianceID: b.AllianceID, BreakEffectiveAtMs: b.BreakEffectiveAt.UnixMilli()})
+	}
+	return out, nil
 }
 
 // Leave cierra la estancia. Es tolerante: un reintento no escribe dos veces.
@@ -126,4 +132,39 @@ func (s *ClanStore) ChangeLeader(ctx context.Context, o simulation.ClanLeaderOrd
 		s.count(observability.ClanChangeTransferred)
 	}
 	return nil
+}
+
+// ApplyAlliance escribe una orden o un vencimiento de una alianza entre clanes
+// (SPEC-CLAN-ALLIANCES, ADR-042 §3).
+func (s *ClanStore) ApplyAlliance(ctx context.Context, w simulation.AllianceWrite) (int64, error) {
+	id, err := s.clans.ApplyAlliance(ctx, allianceWrite(w))
+	if err != nil {
+		return 0, rejection(err)
+	}
+	switch {
+	case w.Insert:
+		s.count(observability.ClanChangeAllianceProposed)
+	case w.Event == eventlog.EventClanAllianceAccepted:
+		s.count(observability.ClanChangeAllianceAccepted)
+	case w.Event == eventlog.EventClanAllianceBroken:
+		s.count(observability.ClanChangeAllianceBroken)
+	case w.Event == eventlog.EventClanAllianceExpired:
+		s.count(observability.ClanChangeAllianceExpired)
+	}
+	return id, nil
+}
+
+func allianceWrite(w simulation.AllianceWrite) postgres.AllianceWrite {
+	return postgres.AllianceWrite{
+		Insert: w.Insert, Alliance: w.Alliance, From: w.From, Event: w.Event, By: w.By, ByClan: w.ByClan,
+		MaxAllies: w.MaxAllies, Tolerant: w.Tolerant, Tick: w.Tick, AtMs: w.AtMs,
+	}
+}
+
+func allianceWrites(ws []simulation.AllianceWrite) []postgres.AllianceWrite {
+	out := make([]postgres.AllianceWrite, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, allianceWrite(w))
+	}
+	return out
 }

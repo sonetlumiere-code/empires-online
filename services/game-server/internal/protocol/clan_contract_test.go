@@ -157,3 +157,40 @@ func objetoDe(t *testing.T, root map[string]any, node map[string]any) map[string
 	t.Fatalf("la unión no tiene una variante objeto")
 	return nil
 }
+
+// SPEC-CLAN-ALLIANCES §6: las alianzas en clan.update y en clan.info tienen
+// exactamente los campos del esquema, todos obligatorios (también breaksAtMs,
+// que va null sin preaviso), y sólo dos estados; los tres comandos llevan sólo
+// el id del clan o de la alianza, y la respuesta.
+func TestLasAlianzasDeClanSonLasDelEsquema(t *testing.T) {
+	fin := int64(900)
+	alianza := protocol.ClanAllianceView{ID: 9, ClanID: 4, Name: "Los Osos", Tag: "OSO", Status: "ACTIVE", ProposedByUs: true, BreaksAtMs: &fin}
+	vista := protocol.ClanView{ID: 3, Name: "Los Lobos", Tag: "LOB", LeaderID: "a", Alliances: []protocol.ClanAllianceView{alianza}}
+
+	root, update := serverVariant(t, protocol.TypeClanUpdate)
+	c := dig(t, root, update, "properties", "payload", "properties", "clan").(map[string]any)
+	al := dig(t, root, objetoDe(t, root, c), "properties", "alliances", "items").(map[string]any)
+	require.Equal(t, clavesDe(dig(t, root, objetoDe(t, root, al), "properties").(map[string]any)), clavesDe(serializado(t, alianza)))
+	require.Equal(t, requeridas(t, objetoDe(t, root, al)), clavesDe(serializado(t, protocol.ClanAllianceView{})))
+	estado := dig(t, root, objetoDe(t, root, al), "properties", "status").(map[string]any)
+	assert.ElementsMatch(t, []any{"PROPOSED", "ACTIVE"}, estado["enum"])
+	require.Contains(t, serializado(t, vista), "alliances")
+	assert.Nil(t, serializado(t, protocol.ClanAllianceView{})["breaksAtMs"], "sin preaviso, null")
+
+	root, info := serverVariant(t, protocol.TypeClanInfo)
+	pub := dig(t, root, info, "properties", "payload", "properties", "alliances", "items").(map[string]any)
+	publica := protocol.ClanPublicAllianceView{ClanID: 4, Name: "Los Osos", Tag: "OSO", BreaksAtMs: &fin}
+	require.Equal(t, clavesDe(dig(t, root, objetoDe(t, root, pub), "properties").(map[string]any)), clavesDe(serializado(t, publica)))
+	require.Equal(t, requeridas(t, objetoDe(t, root, pub)), clavesDe(serializado(t, protocol.ClanPublicAllianceView{})))
+
+	for tipo, carga := range map[string]any{
+		protocol.TypeClanAlliancePropose: protocol.ClanAlliancePayload{ClanID: 4},
+		protocol.TypeClanAllianceRespond: protocol.ClanAllianceRespondPayload{AllianceID: 9, Accept: true},
+		protocol.TypeClanAllianceCancel:  protocol.ClanAllianceCancelPayload{AllianceID: 9},
+	} {
+		root, cmd := clientVariant(t, tipo)
+		p := dig(t, root, cmd, "properties", "payload").(map[string]any)
+		require.Equal(t, clavesDe(dig(t, root, p, "properties").(map[string]any)), clavesDe(serializado(t, carga)), tipo)
+		require.Equal(t, requeridas(t, p), clavesDe(serializado(t, carga)), tipo)
+	}
+}

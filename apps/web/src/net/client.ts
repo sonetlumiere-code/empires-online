@@ -366,6 +366,21 @@ export class GameClient {
     return this.send('clan.transfer', { playerId });
   }
 
+  /** El líder propone una alianza a otro clan (SPEC-CLAN-ALLIANCES §4.3). */
+  proposeClanAlliance(clanId: number): string {
+    return this.send('clan.alliance.propose', { clanId });
+  }
+
+  /** El líder acepta o rechaza una oferta de alianza. */
+  respondClanAlliance(allianceId: number, accept: boolean): string {
+    return this.send('clan.alliance.respond', { allianceId, accept });
+  }
+
+  /** El líder retira la oferta de su clan o rompe una alianza (con preaviso). */
+  cancelClanAlliance(allianceId: number): string {
+    return this.send('clan.alliance.cancel', { allianceId });
+  }
+
   /** Pide la vista pública de un clan. */
   lookupClan(clanId: number): string {
     return this.send('clan.lookup', { clanId });

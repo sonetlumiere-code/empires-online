@@ -136,13 +136,23 @@
  *      servidor con los plazos cortos de --territorio y, la primera vez, con 60 de
  *      madera en las dos ciudades (EO_DEVSEED_STOCK_FOR=smoke_clan_a,smoke_norse) para
  *      entrenar sus guerreros. Va antes de --clan en la pasada.
+ *  19. sólo con --alianza-clan (SPEC-CLAN-ALLIANCES): smoke_clan_b (sin clan tras
+ *      --clan; si le quedó uno, sale) funda «Eco» [ECO]; smoke_clan_a, líder de [HUM],
+ *      le propone una alianza, smoke_clan_b la recibe con su aviso y la acepta, y a
+ *      smoke_clan_a le llega el aviso; la vista pública de [HUM] la lleva; el guerrero
+ *      de smoke_clan_a no puede atacar a un aldeano de smoke_clan_b (justo después de
+ *      --clan cuenta antes la paz residual de su expulsión; con el servidor arrancado
+ *      con EO_CLAN_PEACE_GRACE_SECONDS=5 se ve la de la alianza); smoke_clan_a la
+ *      rompe y smoke_clan_b recibe el aviso del preaviso; y smoke_clan_b sale de [ECO],
+ *      que se disuelve y expira la alianza, para que --clan lo vuelva a encontrar sin
+ *      clan. Necesita el clan de --clan y va después de él.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -180,6 +190,7 @@ const CARAVANA = args.includes('--caravana');
 const MENSAJES = args.includes('--mensajes');
 const FACCION = args.includes('--faccion');
 const CLAN = args.includes('--clan');
+const ALIANZA_CLAN = args.includes('--alianza-clan');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -760,6 +771,10 @@ async function main() {
 
   if (CLAN) {
     await clanes();
+  }
+
+  if (ALIANZA_CLAN) {
+    await alianzaDeClan();
   }
 
   segunda.sesion.cerrar();
@@ -2318,6 +2333,107 @@ async function clanes() {
 /** El rango de un jugador en el clan de un clan.update, o null (SPEC-CLAN-GOVERNANCE). */
 export function rolEnClan(update, playerId) {
   return update?.clan?.members?.find((m) => m.playerId === playerId)?.role ?? null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Alianzas entre clanes (SPEC-CLAN-ALLIANCES), sólo con --alianza-clan
+// ─────────────────────────────────────────────────────────────
+
+const ALIADO_NOMBRE = 'Eco';
+const ALIADO_SIGLA = 'ECO';
+
+/**
+ * El texto del rechazo de un ataque entre aliados, o null si no es uno de los que valen:
+ * el de la alianza o, si la paz residual de una expulsión reciente cuenta antes, el del
+ * clan (RN-CLAN-005).
+ */
+export function motivoDelAtaqueEntreAliados(error) {
+  if (error?.code !== 'INVALID_TARGET') return null;
+  if (error.message === 'vuestros clanes están aliados') return error.message;
+  if (error.message === 'sois del mismo clan') return 'aún cuenta la paz residual de la expulsión de --clan';
+  return null;
+}
+
+/** La alianza (o la oferta) de un clan.update con el clan de sigla `tag`, o null. */
+export function alianzaCon(update, tag) {
+  return update?.clan?.alliances?.find((a) => a.tag === tag) ?? null;
+}
+
+async function alianzaDeClan() {
+  const a = await entrarConClan(CLAN_A);
+  const b = await entrarConClan(CLAN_B);
+  if (pasoDeClan(a.clan, a.playerId) !== 'lider') fallar(`${CLAN_A} no dirige [${CLAN_SIGLA}]: pasa antes --clan`, a.clan);
+  const hum = a.clan.clan;
+
+  // smoke_clan_b sin clan; si le quedó uno ([ECO] de una pasada a medias), sale y lo disuelve.
+  if (b.clan.clan) {
+    const r = await ordenDeClan(b.sesion, 'clan.leave', {});
+    if (r.type === 'system.error') fallar(`${CLAN_B} no pudo salir de su clan`, r.payload);
+    ok(`${CLAN_B} sale del clan que le quedó de una pasada anterior`);
+  }
+  const f = await ordenDeClan(b.sesion, 'clan.create', { name: ALIADO_NOMBRE, tag: ALIADO_SIGLA });
+  if (f.type === 'system.error') fallar(`${CLAN_B} no pudo fundar [${ALIADO_SIGLA}]`, f.payload);
+  const eco = f.payload.clan;
+  ok(`${CLAN_B} funda «${ALIADO_NOMBRE}» [${ALIADO_SIGLA}]`, `clan ${eco.id}`);
+
+  // La oferta, con su aviso al otro líder.
+  const p = await ordenDeClan(a.sesion, 'clan.alliance.propose', { clanId: eco.id });
+  if (p.type === 'system.error') fallar(`${CLAN_A} no pudo proponer la alianza`, p.payload);
+  const oferta = alianzaCon(p.payload, ALIADO_SIGLA);
+  if (oferta?.status !== 'PROPOSED' || !oferta.proposedByUs) fallar('la oferta no vuelve en el clan de quien la propone', p.payload);
+  ok(`${CLAN_A} propone una alianza a [${ALIADO_SIGLA}]`, `alianza ${oferta.id}`);
+  const avisoOferta = await b.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_ALLIANCE_OFFERED', 10_000);
+  if (avisoOferta.payload.clanTag !== CLAN_SIGLA) fallar('el aviso de la oferta no trae la sigla', avisoOferta.payload);
+  ok(`${CLAN_B} recibe el aviso de la oferta`, `de [${avisoOferta.payload.clanTag}]`);
+
+  // La aceptación, con su aviso al que propuso.
+  const acepta = await ordenDeClan(b.sesion, 'clan.alliance.respond', { allianceId: oferta.id, accept: true });
+  if (acepta.type === 'system.error') fallar(`${CLAN_B} no pudo aceptar la alianza`, acepta.payload);
+  if (alianzaCon(acepta.payload, CLAN_SIGLA)?.status !== 'ACTIVE') fallar('la aceptación no deja la alianza activa', acepta.payload);
+  ok(`${CLAN_B} la acepta`, `[${ALIADO_SIGLA}] y [${CLAN_SIGLA}] están aliados`);
+  const avisoAcepta = await a.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_ALLIANCE_ACCEPTED', 10_000);
+  if (avisoAcepta.payload.clanTag !== ALIADO_SIGLA) fallar('el aviso de la aceptación no trae la sigla', avisoAcepta.payload);
+  ok(`${CLAN_A} recibe el aviso de la aceptación`, `de [${avisoAcepta.payload.clanTag}]`);
+
+  // La vista pública lleva la alianza.
+  const info = await ordenDeClan(b.sesion, 'clan.lookup', { clanId: hum.id }, ['clan.info']);
+  if (info.type === 'system.error' || !info.payload.alliances?.some((x) => x.tag === ALIADO_SIGLA)) {
+    fallar(`la vista pública de [${CLAN_SIGLA}] no lleva la alianza`, info.payload);
+  }
+  ok(`la vista pública de [${CLAN_SIGLA}] lleva su alianza`, info.payload.alliances.map((x) => `[${x.tag}]`).join(', '));
+
+  // La paz: el guerrero de smoke_clan_a no ataca a un aldeano de smoke_clan_b.
+  const guerrero = a.snapshot.payload.units.find((u) => u.playerId === a.playerId && u.unitType === 'WARRIOR');
+  const aldeano = b.snapshot.payload.units.find((u) => u.playerId === b.playerId && u.unitType === 'VILLAGER');
+  if (!guerrero || !aldeano) fallar('no hay guerrero de smoke_clan_a o aldeano de smoke_clan_b para probar la paz');
+  // Si --clan acaba de expulsar a smoke_clan_b de [HUM], su paz residual cuenta antes que
+  // la de la alianza y el motivo es el del clan; con EO_CLAN_PEACE_GRACE_SECONDS corto ya
+  // venció y el motivo es el de la alianza.
+  const ataque = await ordenDeClan(a.sesion, 'unit.attack', { unitId: guerrero.id, targetUnitId: aldeano.id }, []);
+  const motivo = motivoDelAtaqueEntreAliados(ataque.payload);
+  if (motivo === null) fallar('el ataque entre aliados no se rechaza con su motivo', ataque.payload);
+  ok('entre aliados no hay ataque', motivo);
+
+  // La ruptura: el preaviso, con su aviso a los miembros del otro clan.
+  const rompe = await ordenDeClan(a.sesion, 'clan.alliance.cancel', { allianceId: oferta.id });
+  if (rompe.type === 'system.error') fallar(`${CLAN_A} no pudo romper la alianza`, rompe.payload);
+  if (alianzaCon(rompe.payload, ALIADO_SIGLA)?.breaksAtMs == null) fallar('la ruptura no abre el preaviso', rompe.payload);
+  const avisoRuptura = await b.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_ALLIANCE_BREAK_ANNOUNCED', 10_000);
+  if (avisoRuptura.payload.clanTag !== CLAN_SIGLA) fallar('el aviso del preaviso no trae la sigla', avisoRuptura.payload);
+  ok(`${CLAN_A} la rompe`, `${CLAN_B} recibe el aviso del preaviso con [${avisoRuptura.payload.clanTag}]`);
+
+  // La disolución de [ECO] expira la alianza; [HUM] lo ve.
+  const sale = await ordenDeClan(b.sesion, 'clan.leave', {});
+  if (sale.type === 'system.error') fallar(`${CLAN_B} no pudo salir de [${ALIADO_SIGLA}]`, sale.payload);
+  await a.sesion.esperarQue('clan.update', (m) => m.payload.clan && !alianzaCon(m.payload, ALIADO_SIGLA), 10_000);
+  ok(`${CLAN_B} sale de [${ALIADO_SIGLA}], que se disuelve`, `la alianza expira y [${CLAN_SIGLA}] la ve desaparecer`);
+
+  // El registro del que propuso cuenta la aceptación (se escribe tras el COMMIT).
+  const { entrada } = await entradaDelRegistro(a.sesion, (e) => e.kind === 'CLAN_ALLIANCE_ACCEPTED' && e.clanTag === ALIADO_SIGLA);
+  if (!entrada) fallar('el registro de quien propuso no cuenta la aceptación');
+  ok('el registro de quien propuso cuenta la aceptación', `entrada ${entrada.id}, «${entrada.otherCityName}»`);
+
+  for (const s of [a, b]) s.sesion.cerrar();
 }
 
 // ─────────────────────────────────────────────────────────────

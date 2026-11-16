@@ -213,7 +213,11 @@ clan llegan con E19 ([milestones.md](milestones.md) §E19): un miembro reclama p
 para sus miembros, se disputa contra todos ellos y queda libre al disolverse el clan. Quedan los rangos y las alianzas
 entre clanes. **Precisión (2026-11-16, [SPEC-CLAN-GOVERNANCE](../specs/clan-governance.md)):** los rangos llegan con
 E20 ([milestones.md](milestones.md) §E20): oficiales que invitan y expulsan a los rasos, el traspaso del liderazgo y su
-sucesión cuando el líder lleva 7 días sin jugar. Quedan las alianzas y las guerras entre clanes.
+sucesión cuando el líder lleva 7 días sin jugar. Quedan las alianzas y las guerras entre clanes. **Precisión
+(2026-11-16, [SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md), [ADR-042](../decisions/ADR-042-clan-alliances.md)):** las
+alianzas llegan con E21 ([milestones.md](milestones.md) §E21): los líderes de dos clanes firman una alianza que pone en
+paz a todos sus miembros, con el preaviso de un tratado, como mucho dos por clan y sin juntar a la Orden y al Caos.
+Quedan las guerras declaradas entre clanes.
 
 **Large-scale warfare.** Guerra a gran escala con muchos jugadores y unidades concurrentes en la
 misma región. Depende de todo lo anterior y es la primera fase que puede exigir cambios

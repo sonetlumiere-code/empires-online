@@ -38,8 +38,11 @@ type FactionJoinCompletion struct {
 	// At es el instante de la entrada que vence.
 	At     time.Time
 	Breaks []TreatyWrite
-	Tick   uint64
-	AtMs   int64
+	// AllianceBreaks son las alianzas del clan del jugador a las que la entrada
+	// abre el preaviso (ADR-042 §4), de forma tolerante.
+	AllianceBreaks []AllianceWrite
+	Tick           uint64
+	AtMs           int64
 }
 
 // RequestJoin apunta la entrada pendiente con su evento FactionJoinOrdered,
@@ -121,6 +124,11 @@ func (r *FactionRepo) CompleteJoin(ctx context.Context, c FactionJoinCompletion)
 				continue // otra escritura lo cerró o lo rompió antes
 			}
 			if err := appendEvent(ctx, tx, treatyEvent(w, t)); err != nil {
+				return err
+			}
+		}
+		for _, w := range c.AllianceBreaks {
+			if err := breakAllianceTolerant(ctx, tx, w); err != nil {
 				return err
 			}
 		}

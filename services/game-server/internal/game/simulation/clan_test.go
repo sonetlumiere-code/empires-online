@@ -47,6 +47,27 @@ type fakeClans struct {
 	leaders   []simulation.ClanLeaderOrder
 	rankErr   error
 	leaderErr error
+	// alliances son las escrituras de alianzas (SPEC-CLAN-ALLIANCES), con el
+	// id que se da a cada oferta nueva; allianceErr, su fallo. joinBreaks es
+	// lo que devuelve la entrada siguiente como preavisos abiertos por la base.
+	alliances      []simulation.AllianceWrite
+	nextAllianceID int64
+	allianceErr    error
+	joinBreaks     []simulation.AllianceBreak
+}
+
+func (f *fakeClans) ApplyAlliance(_ context.Context, w simulation.AllianceWrite) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.allianceErr != nil {
+		return 0, f.allianceErr
+	}
+	f.alliances = append(f.alliances, w)
+	if w.Insert {
+		f.nextAllianceID++
+		return f.nextAllianceID, nil
+	}
+	return w.Alliance.ID, nil
 }
 
 func (f *fakeClans) SetRank(_ context.Context, o simulation.ClanRankOrder) error {
@@ -87,14 +108,16 @@ func (f *fakeClans) Invite(_ context.Context, o simulation.ClanInviteOrder) erro
 	return nil
 }
 
-func (f *fakeClans) Join(_ context.Context, o simulation.ClanJoinOrder) error {
+func (f *fakeClans) Join(_ context.Context, o simulation.ClanJoinOrder) ([]simulation.AllianceBreak, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.joinErr != nil {
-		return f.joinErr
+		return nil, f.joinErr
 	}
 	f.joins = append(f.joins, o)
-	return nil
+	breaks := f.joinBreaks
+	f.joinBreaks = nil
+	return breaks, nil
 }
 
 func (f *fakeClans) Leave(_ context.Context, l simulation.ClanLeave) ([]territory.Control, error) {

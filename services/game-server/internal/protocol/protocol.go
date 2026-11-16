@@ -81,6 +81,11 @@ const (
 	// como los rangos y el líder que cambian.
 	TypeClanPromote  = "clan.promote"
 	TypeClanTransfer = "clan.transfer"
+	// Alianzas entre clanes (SPEC-CLAN-ALLIANCES §6): pasan por la simulación,
+	// como los tratados.
+	TypeClanAlliancePropose = "clan.alliance.propose"
+	TypeClanAllianceRespond = "clan.alliance.respond"
+	TypeClanAllianceCancel  = "clan.alliance.cancel"
 )
 
 // Mensajes servidor → cliente.
@@ -161,6 +166,10 @@ var ClientMessageTypes = map[string]bool{
 	TypeClanChatRead:   true,
 	TypeClanPromote:    true,
 	TypeClanTransfer:   true,
+
+	TypeClanAlliancePropose: true,
+	TypeClanAllianceRespond: true,
+	TypeClanAllianceCancel:  true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -837,6 +846,23 @@ type ClanTransferPayload struct {
 	PlayerID string `json:"playerId"`
 }
 
+// ClanAlliancePayload propone una alianza al clan ClanID
+// (SPEC-CLAN-ALLIANCES §4.3).
+type ClanAlliancePayload struct {
+	ClanID int64 `json:"clanId"`
+}
+
+// ClanAllianceRespondPayload acepta o rechaza una oferta de alianza.
+type ClanAllianceRespondPayload struct {
+	AllianceID int64 `json:"allianceId"`
+	Accept     bool  `json:"accept"`
+}
+
+// ClanAllianceCancelPayload retira una oferta o rompe una alianza.
+type ClanAllianceCancelPayload struct {
+	AllianceID int64 `json:"allianceId"`
+}
+
 // ClanLookupPayload pide la vista pública de un clan.
 type ClanLookupPayload struct {
 	ClanID int64 `json:"clanId"`
@@ -887,6 +913,32 @@ type ClanView struct {
 	// Territories son los territorios del clan, por id
 	// (SPEC-CLAN-TERRITORIES Q11).
 	Territories []ClanTerritoryView `json:"territories"`
+	// Alliances son las alianzas activas del clan y, para el líder y los
+	// oficiales, también sus ofertas, por id (SPEC-CLAN-ALLIANCES §6).
+	Alliances []ClanAllianceView `json:"alliances"`
+}
+
+// ClanAllianceView es una alianza (o una oferta) del propio clan con otro.
+type ClanAllianceView struct {
+	ID int64 `json:"id"`
+	// ClanID, Name y Tag son los del otro clan.
+	ClanID int64  `json:"clanId"`
+	Name   string `json:"name"`
+	Tag    string `json:"tag"`
+	// Status es PROPOSED o ACTIVE.
+	Status string `json:"status"`
+	// ProposedByUs: la propuso el clan de quien mira.
+	ProposedByUs bool `json:"proposedByUs"`
+	// BreaksAtMs es el fin del preaviso de ruptura, o null.
+	BreaksAtMs *int64 `json:"breaksAtMs"`
+}
+
+// ClanPublicAllianceView es una alianza activa de un clan en su vista pública.
+type ClanPublicAllianceView struct {
+	ClanID     int64  `json:"clanId"`
+	Name       string `json:"name"`
+	Tag        string `json:"tag"`
+	BreaksAtMs *int64 `json:"breaksAtMs"`
 }
 
 // ClanTerritoryView es un territorio de un clan, con su tile central para
@@ -921,6 +973,9 @@ type ClanInfoPayload struct {
 	Members []ClanMemberView `json:"members"`
 	// Territories son los territorios del clan, por id.
 	Territories []ClanTerritoryView `json:"territories"`
+	// Alliances son sus alianzas activas, por id de clan
+	// (SPEC-CLAN-ALLIANCES Q8).
+	Alliances []ClanPublicAllianceView `json:"alliances"`
 }
 
 // ClanMessageView es un mensaje del canal de un clan.

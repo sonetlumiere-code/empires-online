@@ -2191,7 +2191,11 @@
                           "CLAN_LEADERSHIP_RECEIVED",
                           "CLAN_LEADERSHIP_GIVEN",
                           "CLAN_LEADERSHIP_INHERITED",
-                          "CLAN_LEADERSHIP_LOST"
+                          "CLAN_LEADERSHIP_LOST",
+                          "CLAN_ALLIANCE_OFFERED",
+                          "CLAN_ALLIANCE_ACCEPTED",
+                          "CLAN_ALLIANCE_REJECTED",
+                          "CLAN_ALLIANCE_BREAK_ANNOUNCED"
                         ]
                       },
                       "firstAtMs": {
@@ -2405,7 +2409,10 @@
                     "CARAVAN_LOST",
                     "CLAN_EXPELLED",
                     "CLAN_LEADERSHIP_RECEIVED",
-                    "CLAN_LEADERSHIP_INHERITED"
+                    "CLAN_LEADERSHIP_INHERITED",
+                    "CLAN_ALLIANCE_OFFERED",
+                    "CLAN_ALLIANCE_ACCEPTED",
+                    "CLAN_ALLIANCE_BREAK_ANNOUNCED"
                   ]
                 },
                 "atMs": {
@@ -3021,6 +3028,56 @@
                             ],
                             "additionalProperties": false
                           }
+                        },
+                        "alliances": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              "clanId": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              "name": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/territories/items/properties/ownerClan/anyOf/0/properties/name"
+                              },
+                              "tag": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "PROPOSED",
+                                  "ACTIVE"
+                                ]
+                              },
+                              "proposedByUs": {
+                                "type": "boolean"
+                              },
+                              "breaksAtMs": {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "clanId",
+                              "name",
+                              "tag",
+                              "status",
+                              "proposedByUs",
+                              "breaksAtMs"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
@@ -3030,7 +3087,8 @@
                         "leaderId",
                         "members",
                         "sentInvitations",
-                        "territories"
+                        "territories",
+                        "alliances"
                       ],
                       "additionalProperties": false
                     },
@@ -3125,6 +3183,40 @@
                   "items": {
                     "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/territories/items"
                   }
+                },
+                "alliances": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "clanId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "name": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/territories/items/properties/ownerClan/anyOf/0/properties/name"
+                      },
+                      "tag": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                      },
+                      "breaksAtMs": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "clanId",
+                      "name",
+                      "tag",
+                      "breaksAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -3132,7 +3224,8 @@
                 "name",
                 "tag",
                 "members",
-                "territories"
+                "territories",
+                "alliances"
               ],
               "additionalProperties": false
             }

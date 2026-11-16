@@ -35,6 +35,7 @@ import {
   CityClanView,
   ClanInvitationView,
   ClanMemberView,
+  ClanPublicAllianceView,
   ClanTerritoryView,
   ClanMessageView,
   ClanName,
@@ -537,6 +538,8 @@ export const ClanInfo = z.object({
     members: z.array(ClanMemberView),
     /** Los territorios del clan, por `id` (SPEC-CLAN-TERRITORIES Q11). */
     territories: z.array(ClanTerritoryView),
+    /** Sus alianzas activas, por `id` de clan (SPEC-CLAN-ALLIANCES Q8). */
+    alliances: z.array(ClanPublicAllianceView),
   }),
 });
 

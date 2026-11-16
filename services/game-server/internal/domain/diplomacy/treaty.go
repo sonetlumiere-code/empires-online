@@ -274,7 +274,14 @@ func (t Treaty) HasExpired(now time.Time) bool {
 
 // CanTransitionTo indica si el salto de estado está permitido.
 func (t Treaty) CanTransitionTo(next Status) bool {
-	return transicionesPermitidas[t.Status][next]
+	return AllowedTransition(t.Status, next)
+}
+
+// AllowedTransition dice si el salto de from a next está permitido. Lo usan
+// también las alianzas entre clanes, que tienen los mismos estados
+// (SPEC-CLAN-ALLIANCES §4.1).
+func AllowedTransition(from, next Status) bool {
+	return transicionesPermitidas[from][next]
 }
 
 // TransitionTo aplica el cambio de estado y sella la marca temporal que le
