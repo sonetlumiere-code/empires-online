@@ -1,19 +1,19 @@
 # Gobierno del clan: oficiales, traspaso del liderazgo y el líder que deja de jugar
 
-Propuesta para que un clan no dependa de una sola persona. Habría oficiales que invitan y expulsan, el líder podría
-ceder el liderazgo y, si el líder deja de jugar, el clan dejaría de quedarse congelado: el liderazgo pasaría solo a
-quien sigue jugando.
+Para que un clan no dependa de una sola persona: oficiales que invitan y expulsan, un líder que puede ceder el
+liderazgo y, si el líder deja de jugar, un clan que no se queda congelado, porque el liderazgo pasa solo a quien sigue
+jugando.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLAN-GOVERNANCE` |
-| Estado | Draft (2026-11-16). Pendiente de las decisiones de producto de §10; prohibido implementar contra ella hasta su aceptación. |
+| Estado | Accepted (2026-11-16). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E20 Gobierno del clan (vigésimo slice después de M7) |
 | Canon | §1.5 (determinismo), §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores) |
 | Depende de | [clans.md](clans.md), [clan-territories.md](clan-territories.md), [presence.md](presence.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (la pertenencia a un clan como estado de la simulación, con la clave del clan en la cola y su candado en la base) y [ADR-041](../decisions/ADR-041-clan-territories.md) (la última salida de un clan con territorios en dos fases). No propone ADR nuevo (§7). |
+| Decisiones | [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (la pertenencia a un clan como estado de la simulación, con la clave del clan en la cola y su candado en la base) y [ADR-041](../decisions/ADR-041-clan-territories.md) (la última salida de un clan con territorios en dos fases). Sin ADR nuevo (§7). |
 | Reemplaza a | En [clans.md](clans.md), la Q4 («un líder y miembros; sólo el líder invita y expulsa») y, de su no-scope (§2), «oficiales u otros rangos, traspaso explícito del liderazgo». Precisa `RN-CLAN-001` (los rangos), `RN-CLAN-007` (quién invita y expulsa, y a quién pasa el liderazgo) y `RN-CLAN-008` (el rango es público, como la lista de miembros). Cierra la observación abierta de E18 «un líder que deja de jugar no pierde el liderazgo». |
-| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-CITY-011](../invariants/city.md#inv-city-011), [INV-CLAN-001](../invariants/clans.md#inv-clan-001), [INV-CLAN-002](../invariants/clans.md#inv-clan-002) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); propone uno nuevo de la familia `INV-CLAN` (§8) |
+| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-CITY-011](../invariants/city.md#inv-city-011), [INV-CLAN-001](../invariants/clans.md#inv-clan-001), [INV-CLAN-002](../invariants/clans.md#inv-clan-002) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); asigna [INV-CLAN-005](../invariants/clans.md#inv-clan-005) (§8) |
 
 ## 1. Objetivo
 
@@ -212,8 +212,8 @@ acortarla, como los plazos de la conquista.
 del clan en la cola y la base los vuelve a comprobar con el candado del clan, como hoy el líder. Que sean optimistas,
 como la salida, sale de la misma regla: no cambian la paz ni la tierra afín, así que no hace falta una segunda fase
 para confirmarlos. La sucesión por ausencia es un barrido del tick sobre la presencia que la RAM ya tiene, igual que el
-paso a `PROTECTED` ([presence.md](presence.md)). Si al revisar se ve una decisión estructural que esta lectura no
-recoge, la aceptación la convertiría en el ADR-042.
+paso a `PROTECTED` ([presence.md](presence.md)). Se aceptó así, sin ADR; si la implementación encuentra una decisión
+estructural que esta lectura no recoge, irá al ADR-042.
 
 **El fallo de escritura.** Nombrar o quitar un oficial que no llega a la base tras sus reintentos se trata como la
 salida de E18: se guarda para el siguiente volcado, porque es una escritura tolerante. Un traspaso o una sucesión que
@@ -246,7 +246,8 @@ conoce no podría invitar, porque la transacción de la invitación comprueba el
 - [INV-CLAN-002](../invariants/clans.md#inv-clan-002): un oficial que invita respeta la regla de bandos como el líder.
 - [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005): la migración `000022`.
 
-**Propone** un invariante nuevo de la familia `INV-CLAN`: ningún cambio de pertenencia ajena, de rango o de liderazgo
+**Asigna** [INV-CLAN-005](../invariants/clans.md#inv-clan-005), registrado en
+[../invariants/clans.md](../invariants/clans.md): ningún cambio de pertenencia ajena, de rango o de liderazgo
 se escribe si quien lo ordenó no tenía, en la transacción y con el candado del clan, el rango que lo permite
 (`RN-CLANGOV-006`). Se garantiza en la base y lo comprueba un test de integración por cada orden.
 
@@ -261,12 +262,12 @@ se escribe si quien lo ordenó no tenía, en la transacción y con el candado de
 | contract / e2e | `clan.promote` y `clan.transfer` contra el JSON Schema; `ClanRole` con `OFFICER` en `clan.update` y `clan.info`; el aviso `ClanLeaderChanged`. Por WebSocket: el líder nombra un oficial, el oficial invita (con `clan.update` a los implicados) y el líder cede el liderazgo |
 | cliente | El rango en la lista; los botones según el rango de quien mira; «Ceder el liderazgo» con su confirmación; «Invitar al clan» para un oficial en la barra de una ciudad ajena; los textos del aviso y del registro. `scripts/smoke.mjs --clan` ampliado: `smoke_clan_a`, líder de `[HUM]`, nombra oficial a `smoke_orden`, que invita a `smoke_clan_b`; `smoke_clan_a` cede el liderazgo a `smoke_orden` y `smoke_orden` se lo devuelve en la misma pasada, para que `--territorio-clan` siga encontrando a `smoke_clan_a` como líder. La sucesión por ausencia no se prueba en vivo (pediría tener desconectado al líder durante el plazo): la cubren el golden y la recuperación |
 
-## 10. Decisiones de producto (pendientes)
+## 10. Decisiones de producto (2026-11-16)
 
-Preguntas abiertas. Cada una lleva la recomendación (en negrita) y sus alternativas. Son decisiones de producto, no de
-ingeniería: la spec no se acepta hasta tenerlas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué rangos hay? | **Tres: líder, oficial y miembro.** Es lo mínimo que reparte el trabajo y da un sucesor natural, sin abrir un sistema de permisos. Alternativas: **sólo traspaso**, sin oficiales (más pequeño, pero el líder sigue haciendo todo solo); **rangos configurables** por el clan, que piden una pantalla de permisos y no tienen sentido sin jugadores. |
 | Q2 | ¿Qué puede hacer un oficial? | **Invitar, retirar invitaciones (también las de otros) y expulsar a miembros rasos; no a otros oficiales, no nombrar oficiales y no ceder el liderazgo.** Un oficial resuelve el día a día sin que dos oficiales puedan echarse entre sí. Alternativas: **sólo invitar** (expulsar queda para el líder, más seguro contra un oficial resentido, pero el clan sigue sin poder echar a nadie si el líder falta); **también nombrar oficiales**, que diluye el control del líder. |

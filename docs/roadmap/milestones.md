@@ -2194,3 +2194,36 @@ panel del clan con «Territorios del clan: Región 6-4» e «Ir», que lleva la 
 panel estaba oculto y sin `requestAnimationFrame`): el color azul o violeta del territorio en el mapa y «Reclamar para
 el clan [HUM]» con un guerrero seleccionado (los cubren la proyección y `conquest.test.ts`). En la base de desarrollo
 la Región 6-4 queda de [HUM]; la pasada siguiente de `--territorio-clan` es la de `smoke_norse`.
+
+## E20 — Gobierno del clan
+
+**Estado: EN CURSO (2026-11-16)**, en la rama `claude/slice-gobierno-clan`. Contrato:
+[SPEC-CLAN-GOVERNANCE](../specs/clan-governance.md), aceptada el 2026-11-16 con sus diez decisiones de producto, sin
+ADR nuevo.
+
+**Objetivo.** Que un clan no dependa de una sola persona: oficiales que comparten el trabajo del líder, un traspaso
+voluntario del liderazgo y una sucesión automática cuando el líder deja de jugar, para que un clan con territorios
+(E19) no se quede congelado. Cierra la observación de E18 sobre el líder inactivo.
+
+**Alcance.** Tres rangos (líder, oficial y miembro); los oficiales invitan, retiran invitaciones y expulsan a rasos;
+`clan.promote` y `clan.transfer` (de 39 a 41 comandos); la herencia del oficial más antiguo al salir el líder; la
+sucesión al oficial o miembro activo más antiguo cuando el líder lleva `EO_CLAN_LEADER_INACTIVE_SECONDS` (7 días) sin
+conectarse, y el ausente queda como oficial; `ClanRole` con `OFFICER`; `ClanLeaderChanged` en el registro y en los
+avisos (28 tipos); `INV-CLAN-005`; migración `000022` (`clan_members.rank` y su trigger); el cliente y
+`scripts/smoke.mjs --clan` ampliado. **No entra** (spec §2): permisos configurables, votaciones, disolver con una
+orden, expulsar inactivos, moderar el canal, restringir por rango la reclamación para el clan, alianzas y guerras entre
+clanes.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, `INV-CLAN-005`, y las precisiones de `INV-CLAN-001` y de
+   [clans.md](../specs/clans.md) (Q4 y `RN-CLAN-007`).
+2. **PENDIENTE** — Protocolo: `clan.promote` y `clan.transfer`, `OFFICER` en `ClanRole` y el aviso
+   `ClanLeaderChanged`; contract tests en los dos lados y su e2e.
+3. **PENDIENTE** — Dominio y simulación: los rangos en `clanRecord`, los permisos por rango, el traspaso optimista
+   con su deshacer, la herencia del oficial y el barrido de la ausencia del líder.
+4. **PENDIENTE** — Migración `000022` y persistencia: `rank`, el trigger, la carga y la comprobación del rango en cada
+   transacción con el candado del clan.
+5. **PENDIENTE** — Cliente: el rango en la lista, los botones según el rango, «Ceder el liderazgo» con su
+   confirmación, «Invitar al clan» para un oficial y los textos del aviso y del registro.
+6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --clan` con el oficial y el traspaso de ida y vuelta.
