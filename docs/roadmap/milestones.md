@@ -2127,3 +2127,42 @@ navegador: «Ver clan» e «Invitar al clan» en la barra de una ciudad ajena, e
 contador del botón con mensajes sin leer (los cubren `clans.test.ts`, la proyección y el e2e). En la base de
 desarrollo quedan el clan [HUM] con `smoke_clan_a` (líder) y `smoke_orden`, tres mensajes en su canal y
 `smoke_clan_b` fuera, expulsado.
+
+## E19 — Territorios de clan
+
+**Estado: EN CURSO (2026-11-16)**, en la rama `claude/slice-territorio-clan`. Contrato:
+[SPEC-CLAN-TERRITORIES](../specs/clan-territories.md), aceptada el 2026-11-16 con sus once decisiones de producto, y
+[ADR-041](../decisions/ADR-041-clan-territories.md).
+
+**Objetivo.** Que un clan tenga algo que defender juntos sobre el mapa: un miembro conquista un territorio para el
+clan, el clan entero lo aprovecha como tierra afín y lo defiende. Activa el dueño `CLAN` que el esquema preveía desde
+M6 y responde a la Q11 de [SPEC-CLANS](../specs/clans.md).
+
+**Alcance.** `unit.claim` con `forClan`, con los plazos y la disputa de E12; el territorio del clan como tierra afín
+para sus miembros abiertos, sin población; la hostilidad contra todos los miembros (la paz con cualquiera la impide, la
+protección sólo si lo están todos); la defensa automática de los guerreros de cualquier miembro; los avisos y el
+registro de cada miembro; el territorio que se queda en el clan al salir y queda libre al disolverse; la sigla del clan
+dueño en el mapa y la lista de territorios en la vista del clan; `INV-TERR-012` e `INV-CLAN-004`; migración `000021`;
+el cliente y `scripts/smoke.mjs --territorio-clan`. **No entra** (spec §2): ceder territorios entre un jugador y su
+clan, soltarlos, un tope por clan, la tierra afín de compañero o de bando por el clan, bonos de población o de
+recursos, almacén o edificios del clan, rangos, guerras y alianzas entre clanes, dueños `FACTION`.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, ADR-041, `INV-TERR-012` e `INV-CLAN-004`, y las precisiones de
+   [territory.md](../specs/territory.md) (§2, §6 y los estados), [territory-conquest.md](../specs/territory-conquest.md)
+   (§2 y `RN-CONQ-002`, `003`, `005`, `006`, `009` y `010`), [factions.md](../specs/factions.md) (`RN-FAC-007`),
+   [clans.md](../specs/clans.md) (Q11), [mvp-scope.md](../product/mvp-scope.md) (`OUT-13`) y
+   [schema.md](../database/schema.md) (§17.3).
+2. **PENDIENTE** — Protocolo: `forClan` en `unit.claim`, `ownerClan` en `TerritoryView`, `clan` en
+   `TerritoryClaimView`, `territories[]` en las vistas del clan y `clanTag` en los avisos y el registro (sigue en 39
+   cliente → servidor y 31 servidor → cliente); contract tests en los dos lados.
+3. **PENDIENTE** — Dominio y simulación: el dueño de clan en el control y en `clanState`, la reclamación para el clan
+   y su ruptura al dejar el clan, la hostilidad contra todos los miembros, la defensa de cualquier miembro, la captura
+   con la clave del clan, la última salida con territorios en dos fases, la afinidad con el clan y los avisos a cada
+   miembro.
+4. **PENDIENTE** — Migración `000021` y persistencia: `territory_claims.clan_id`, los dos triggers, la carga y su
+   reparación, la captura y la disolución con sus eventos por miembro.
+5. **PENDIENTE** — Cliente: «Reclamar para el clan», el panel del territorio y la etiqueta del mapa con la sigla, la
+   línea de tierra afín, «Territorios del clan» con «Ir» y los textos de los avisos y del registro.
+6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --territorio-clan` con cuentas de humo propias.

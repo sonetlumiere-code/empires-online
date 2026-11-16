@@ -6,6 +6,8 @@ miembros.
 Formato y severidades: [README.md](README.md). Jugadores: [player.md](player.md). Combate: [combat.md](combat.md).
 Diplomacia: [diplomacy.md](diplomacy.md). Seguridad del canal: [security.md](security.md). Spec:
 [../specs/clans.md](../specs/clans.md). Decisión: [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md).
+Territorios de clan: [../specs/clan-territories.md](../specs/clan-territories.md) y
+[ADR-041](../decisions/ADR-041-clan-territories.md).
 
 ---
 
@@ -113,6 +115,43 @@ registra `invariant_violation` con `inv_id=INV-CLAN-003`.
 
 ---
 
+<a id="inv-clan-004"></a>
+## INV-CLAN-004 — Una reclamación para un clan sólo se completa mientras quien la sostiene es miembro de ese clan
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E19 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura**: registrado con [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) y [ADR-041](../decisions/ADR-041-clan-territories.md) antes de escribir su código (E19) |
+
+**Enunciado.** Una reclamación hecha para un clan avanza sólo en los ticks en que el dueño del guerrero que la
+sostiene es miembro abierto de ese clan; en el tick en que deja de serlo termina sin captura. Ninguna captura escribe
+como dueño un clan del que quien reclamó no tiene, en esa transacción, una estancia abierta.
+
+**Razón.** Reclamar para el clan es actuar en su nombre ([SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) Q1 y
+Q2), y ese derecho es de los miembros. Sin esta regla, quien sale o es expulsado podría dejar un estandarte que
+seguiría ganando tierra para un clan que ya no es el suyo, o completar la captura de un clan disuelto.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — el predicado de la fase 5 de una reclamación para el clan exige la pertenencia abierta de su dueño en la
+  RAM, y una salida, una expulsión o una disolución la rompen en ese tick
+  ([ADR-041](../decisions/ADR-041-clan-territories.md) §1).
+- `DB` — la transacción de la captura lee la estancia abierta con el candado del clan y, sin ella, no escribe nada y
+  vuelve como conflicto (ADR-041 §3).
+
+**Cómo se verifica.** En la simulación, una reclamación para el clan que termina sin captura en el tick en que su
+dueño sale, en el que lo expulsan y en el de la disolución; en la integración, una captura para un clan con la
+estancia de quien reclamó cerrada no escribe nada; en la recuperación, una reclamación cuyo dueño salió del clan con
+el servidor parado no se completa.
+
+**Violación en runtime.** Rechazo: la reclamación termina sin cambio de dueño, o la captura no se escribe y la
+reclamación termina como en un conflicto.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -120,3 +159,4 @@ registra `invariant_violation` con `inv_id=INV-CLAN-003`.
 | INV-CLAN-001 | `internal/persistence/postgres`, `internal/game/simulation`, `internal/game/loadcheck` | [INV-PERSIST-005](persistence.md#inv-persist-005) |
 | INV-CLAN-002 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-DIPLO-003](diplomacy.md#inv-diplo-003), [INV-PLAYER-013](player.md#inv-player-013) |
 | INV-CLAN-003 | `internal/game/simulation` | [INV-COMBAT-006](combat.md#inv-combat-006), [INV-COMBAT-002](combat.md#inv-combat-002) |
+| INV-CLAN-004 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-TERR-010](territory.md#inv-terr-010), [INV-TERR-012](territory.md#inv-terr-012) |

@@ -1441,6 +1441,8 @@ Cuando `clans` llegue, `territory_control` no necesitará ninguna columna nueva:
 
 **Precisión (2026-11-15, [SPEC-CLANS](../specs/clans.md) §7, [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §6).** E18 sustituye este diseño por el de la migración `000020`: la sigla (`tag`) en lugar de `code`, el líder actual en lugar del fundador, sin `faction_id`, y `clan_members` con una fila por estancia (entrada, salida y motivo), de la que salen la paz residual y lo que cada miembro lee del canal; más `clan_invites`, `clan_messages` y `clan_message_reads`. El dueño `CLAN` del territorio sigue sin usarse. Las tablas están en §16.13.
 
+**Precisión (2026-11-16, [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) §7, [ADR-041](../decisions/ADR-041-clan-territories.md) §6).** E19 usa el dueño `CLAN`: `owner_id` es el `id` del clan en texto, sin columna nueva en `territory_control`, como se previó. La migración `000021` añade `territory_claims.clan_id` (la reclamación para un clan) y dos triggers que impiden un dueño `CLAN` inexistente o disuelto y la disolución de un clan con territorios ([INV-TERR-012](../invariants/territory.md#inv-terr-012)). Se documentarán aquí con la implementación.
+
 ---
 
 ## 18. Resumen de autoridad y persistencia

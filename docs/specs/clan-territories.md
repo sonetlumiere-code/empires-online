@@ -7,13 +7,13 @@ todos.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLAN-TERRITORIES` |
-| Estado | Draft (2026-11-15). Pendiente de las decisiones de producto de §10; prohibido implementar contra ella hasta su aceptación. |
+| Estado | Accepted (2026-11-16). Propuesta en `Draft` el 2026-11-15 y aceptada el 2026-11-16, con la recomendación de cada pregunta de §10. |
 | Milestone | E19 Territorios de clan (decimonoveno slice después de M7) |
 | Canon | §4 y §10 (territorios), §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores), §21 (fuera de MVP: clanes) |
 | Depende de | [territory.md](territory.md), [territory-conquest.md](territory-conquest.md), [clans.md](clans.md), [factions.md](factions.md), [diplomacy.md](diplomacy.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [presence.md](presence.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-034](../decisions/ADR-034-territory-claims.md) (la reclamación como encargo durable y la captura en dos fases con dos claves), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la tierra afín calculada en cada golpe), [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (la pertenencia a un clan como estado de la simulación, la clave del clan en la cola y la paz del clan). Propone el ADR-041 (§7). |
+| Decisiones | [ADR-034](../decisions/ADR-034-territory-claims.md) (la reclamación como encargo durable y la captura en dos fases con dos claves), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la tierra afín calculada en cada golpe), [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (la pertenencia a un clan como estado de la simulación, la clave del clan en la cola y la paz del clan). [ADR-041](../decisions/ADR-041-clan-territories.md) (el dueño de clan en la RAM y en la reclamación, la hostilidad contra todos los miembros, cada lado de la captura con la clave de su dueño, la última salida de un clan con territorios en dos fases, los eventos por miembro y los triggers de `000021`): ver §7. |
 | Reemplaza a | En [clans.md](clans.md), la Q11 («territorio del clan o tierra afín del clan: no en este slice») y, de su no-scope (§2), los territorios cuyo dueño es un clan. En [territory.md](territory.md), que `owner_type = 'CLAN'` no tenga productor (§2 y §6). En [territory-conquest.md](territory-conquest.md) §2, «dueños `CLAN`» de su no-scope. Precisa `RN-CONQ-002`, `RN-CONQ-003`, `RN-CONQ-005`, `RN-CONQ-006` y `RN-CONQ-010` (qué se reclama, contra quién es hostil, qué lo rompe, quién defiende y a quién se avisa cuando el dueño es un clan) y `RN-FAC-007` de [factions.md](factions.md) (qué es tierra afín). Responde a la parte de territorios de la fase Clans de [roadmap.md](../roadmap/roadmap.md) §5. |
-| Invariantes | Cita [INV-TERR-004](../invariants/territory.md#inv-terr-004), [INV-TERR-007](../invariants/territory.md#inv-terr-007), [INV-TERR-009](../invariants/territory.md#inv-terr-009), [INV-TERR-010](../invariants/territory.md#inv-terr-010), [INV-TERR-011](../invariants/territory.md#inv-terr-011), [INV-CLAN-001](../invariants/clans.md#inv-clan-001), [INV-CLAN-003](../invariants/clans.md#inv-clan-003), [INV-CITY-006](../invariants/city.md#inv-city-006), [INV-ECON-004](../invariants/economy.md#inv-econ-004), [INV-SEC-009](../invariants/security.md#inv-sec-009) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); precisa [INV-TERR-005](../invariants/territory.md#inv-terr-005); propone dos nuevos, uno de la familia `INV-TERR` y otro de la familia `INV-CLAN` (§8) |
+| Invariantes | Cita [INV-TERR-004](../invariants/territory.md#inv-terr-004), [INV-TERR-007](../invariants/territory.md#inv-terr-007), [INV-TERR-009](../invariants/territory.md#inv-terr-009), [INV-TERR-010](../invariants/territory.md#inv-terr-010), [INV-TERR-011](../invariants/territory.md#inv-terr-011), [INV-CLAN-001](../invariants/clans.md#inv-clan-001), [INV-CLAN-003](../invariants/clans.md#inv-clan-003), [INV-CITY-006](../invariants/city.md#inv-city-006), [INV-ECON-004](../invariants/economy.md#inv-econ-004), [INV-SEC-009](../invariants/security.md#inv-sec-009), [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005) e [INV-TERR-005](../invariants/territory.md#inv-terr-005); asigna [INV-TERR-012](../invariants/territory.md#inv-terr-012) e [INV-CLAN-004](../invariants/clans.md#inv-clan-004) (§8) |
 
 ## 1. Objetivo
 
@@ -213,7 +213,7 @@ E3 y el daño en tierra afín de E17.
 | Dirty-flag | Nada nuevo |
 | Reconstruible / no persistido | Qué territorio es afín a quién; la lista de territorios de un clan |
 
-**Por qué hace falta un ADR (ADR-041, por escribir al aceptar).** Cuatro decisiones estructurales:
+**Por qué hace falta un ADR ([ADR-041](../decisions/ADR-041-clan-territories.md)).** Cuatro decisiones estructurales, más la afinidad con el clan (ADR-041 §7):
 
 1. **La captura con un clan como parte usa la clave del clan.** La captura de E12 es un trabajo de dos claves con las
    dos ciudades ([ADR-034](../decisions/ADR-034-territory-claims.md) §3). Con un clan de por medio, la clave de ese
@@ -258,15 +258,18 @@ miembros), [INV-ECON-004](../invariants/economy.md#inv-econ-004) (un territorio 
 nadie), [INV-SEC-009](../invariants/security.md#inv-sec-009) (los avisos y el registro llegan sólo a los implicados:
 los miembros del clan dueño y el que reclama) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005).
 
-**Precisa** [INV-TERR-005](../invariants/territory.md#inv-terr-005): además de un dueño `PLAYER` que existe, un dueño
-`CLAN` es un clan vivo.
+**Cita** también [INV-TERR-005](../invariants/territory.md#inv-terr-005), el equivalente para un dueño `PLAYER`, cuya
+reparación en la carga copia el invariante nuevo.
 
-**Propone** dos invariantes nuevos, que se numerarán al aceptar:
+**Asigna** dos invariantes nuevos, registrados en [../invariants/territory.md](../invariants/territory.md) y en
+[../invariants/clans.md](../invariants/clans.md):
 
-- De la familia `INV-TERR`: ningún clan disuelto posee un territorio, y todo `owner_id` de tipo `CLAN` es el de un clan
-  vivo (los triggers de `000021` y un test de la disolución con territorios).
-- De la familia `INV-CLAN`: una reclamación para un clan sólo avanza mientras quien la sostiene es miembro abierto de
-  ese clan; en el tick en que deja de serlo, termina sin captura.
+- [INV-TERR-012](../invariants/territory.md#inv-terr-012): todo `owner_id` de tipo `CLAN` es el de un clan vivo, y
+  ningún clan disuelto posee un territorio (los triggers de `000021`, la validación de carga y un test de la
+  disolución con territorios).
+- [INV-CLAN-004](../invariants/clans.md#inv-clan-004): una reclamación para un clan sólo avanza mientras quien la
+  sostiene es miembro abierto de ese clan; en el tick en que deja de serlo termina sin captura, y la captura comprueba
+  la estancia abierta en su transacción.
 
 ## 9. Tests esperados
 
@@ -279,11 +282,12 @@ los miembros del clan dueño y el que reclama) e [INV-PERSIST-005](../invariants
 | contract / e2e | `unit.claim` con `forClan`, `TerritoryView.ownerClan`, `TerritoryClaimView.clan`, `territories[]` en la vista del clan y `clanTag` en los avisos contra el JSON Schema; por WebSocket, dos miembros conectados que reciben el aviso de una reclamación sobre la tierra de su clan |
 | cliente | «Reclamar para el clan» con su motivo deshabilitado; el panel del territorio y la etiqueta del mapa con la sigla; la línea de tierra afín; «Territorios del clan» con «Ir»; los textos de los avisos y del registro; `scripts/smoke.mjs --territorio-clan` con **cuentas de humo propias** (nunca `smoke_runner` ni `smoke_victim`) y los plazos cortos de E12: el líder de `[HUM]` reclama para su clan un territorio libre junto a su ciudad y, en pasadas siguientes, `smoke_caos` (sin paz posible con la Orden de `smoke_orden`) se lo quita y `[HUM]` lo recupera, alternando |
 
-## 10. Preguntas de producto (Draft)
+## 10. Decisiones de producto (2026-11-16)
 
-Cada pregunta lleva mi recomendación. Son decisiones de producto: hasta que se decidan, la spec no se acepta.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Cómo gana un clan un territorio? | **Un miembro lo reclama para el clan con su guerrero**: la misma orden de E12 con `forClan`, los mismos plazos (5 min libre, 10 con dueño) y la misma disputa. No hay una segunda manera de conquistar que aprender ni que equilibrar. Alternativas: **el clan lo funda** con una orden propia del líder sobre un territorio libre (un camino nuevo sin guerreros); **ceder** territorios propios al clan (Q4). |
 | Q2 | ¿Quién puede reclamar para el clan? | **Cualquier miembro.** Reclamar exige un guerrero plantado diez minutos en el sitio; si sólo pudiera el líder, el clan dependería de que el líder esté conectado y tenga guerreros allí. No hay rangos (Q4 de E18). Alternativa: **sólo el líder**, que evita que un miembro comprometa al clan en una disputa que el resto no quiere, pero que con un líder ausente deja al clan sin tierra. |

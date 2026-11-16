@@ -442,6 +442,46 @@ cambio de dueño.
 
 ---
 
+<a id="inv-terr-012"></a>
+## INV-TERR-012 — Un territorio de clan es de un clan vivo
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E19 |
+| Política ante violación | REJECT en la base; REPAIR (liberar el territorio) en la carga |
+| Cobertura | **Sin cobertura**: registrado con [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) y [ADR-041](../decisions/ADR-041-clan-territories.md) antes de escribir su código (E19) |
+
+**Enunciado.** Si `owner_type = 'CLAN'`, `owner_id` es el `id` de un clan con `dissolved_at IS NULL`. Ningún clan
+disuelto posee un territorio.
+
+**Razón.** El dueño polimórfico no tiene clave foránea ([INV-TERR-005](#inv-terr-005)). Un territorio a nombre de un
+clan que ya no existe sería intocable para nadie y afín para nadie: un hueco en el mapa político que no se puede
+recuperar jugando. La disolución deja libres los territorios (SPEC-CLAN-TERRITORIES Q8), y este invariante es lo que
+impide que un fallo a medias o una captura tardía lo deshaga.
+
+**Cómo se garantiza.**
+
+- `DB` — el trigger `territory_control_clan_owner_guard` de `000021` rechaza un dueño `CLAN` que no sea un clan vivo,
+  y `clans_dissolve_territory_guard` rechaza disolver un clan que aún posee un territorio; los dos toman la fila del
+  clan con `FOR UPDATE` ([ADR-041](../decisions/ADR-041-clan-territories.md) §6).
+- `DOMAIN` — la última salida de un clan con territorios libera todos sus territorios y lo disuelve en la misma
+  transacción, y la captura para un clan va con la clave del clan, ordenada con su disolución (ADR-041 §3 y §4).
+- `DOMAIN` — la validación de carga (`internal/game/loadcheck`) resuelve cada dueño `CLAN` contra los clanes vivos y
+  libera el que no lo es, como hace con un dueño `PLAYER` inexistente.
+
+**Cómo se verifica.** En la integración, el trigger rechaza un dueño `CLAN` inexistente o disuelto y la disolución de
+un clan con territorios; la última salida libera los territorios y disuelve en una transacción; una captura para un
+clan que se disolvió antes vuelve como conflicto. En la carga, un dueño `CLAN` disuelto se libera con su
+`InvariantRepaired`.
+
+**Violación en runtime.** En la base, la escritura se rechaza con `23514` y el ID del invariante. En la carga, log
+`invariant_violation` con `inv_id=INV-TERR-012`, `entity=territory:<id>`, y el territorio se libera (`owner_type =
+'NONE'`), con `version + 1`, como en [INV-TERR-005](#inv-terr-005).
+
+---
+
 <a id="inv-safe-001"></a>
 ## INV-SAFE-001 — Dos Safe Zones no comparten ningún tile
 
@@ -696,6 +736,7 @@ Enumerar las dos entradas en el enunciado no es pedantería: dice exactamente qu
 | INV-TERR-009 | `internal/websocket`, `internal/game/simulation` | [INV-WORLD-006](world.md#inv-world-006) |
 | INV-TERR-010 | `migrations/`, `internal/game/simulation` | [INV-TERR-006](#inv-terr-006) |
 | INV-TERR-011 | `internal/domain/territory`, `internal/persistence/postgres` | [INV-CITY-006](city.md#inv-city-006) |
+| INV-TERR-012 | `migrations/`, `internal/game/simulation`, `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-TERR-005](#inv-terr-005), [INV-CLAN-001](clans.md#inv-clan-001) |
 | INV-SAFE-001 | `internal/domain/safezone`, `cmd/server` | [INV-TERR-002](#inv-terr-002) |
 | INV-SAFE-002 | `internal/domain/safezone`, `internal/game/simulation` | [INV-WORLD-003](world.md#inv-world-003) |
 | INV-SAFE-003 | `internal/domain/safezone`, `internal/game/simulation` | [INV-UNIT-008](units.md#inv-unit-008), [INV-UNIT-005](units.md#inv-unit-005) |
