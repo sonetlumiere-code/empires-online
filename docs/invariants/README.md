@@ -413,11 +413,11 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-CLAN-001 | Un jugador está en un clan como mucho, y todo clan vivo tiene un único líder que es miembro | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaEstanciaAbiertaPorJugador`, `TestLaPertenenciaAUnClanEnLaBase` (integration), `TestElLiderazgoYLaDisolucion` |
+| INV-CLAN-001 | Un jugador está en un clan como mucho, y todo clan vivo tiene un único líder que es miembro | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaEstanciaAbiertaPorJugador`, `TestLaPertenenciaAUnClanEnLaBase` (integration), `TestElLiderazgoYLaDisolucion`, `TestAlSalirElLiderHeredaElOficialMasAntiguo`, `TestElCambioDeLiderEnLaBase` (integration) |
 | INV-CLAN-002 | Ningún clan junta a la Orden y al Caos, contando las entradas pendientes | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosTriggersNoJuntanALaOrdenYAlCaos` (integration), `TestUnClanNoJuntaALaOrdenYAlCaos` |
 | INV-CLAN-003 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre compañeros de clan, ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestDosDelMismoClanDejanDePelear`, `TestLaPazResidualTrasSalir`, `TestLosClanesVuelvenAlArrancar`, `TestUnClanPorLaRed` |
 | INV-CLAN-004 | Una reclamación para un clan sólo se completa mientras quien la sostiene es miembro de ese clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestQueRompeUnaReclamacionConUnClan`, `TestUnaReclamacionParaElClanTrasUnReinicio`, `TestLaCapturaParaUnClanExigeSerDeEl` (integration) |
-| INV-CLAN-005 | Sólo el rango que lo permite cambia la pertenencia ajena, los rangos o el liderazgo de un clan | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E20) |
+| INV-CLAN-005 | Sólo el rango que lo permite cambia la pertenencia ajena, los rangos o el liderazgo de un clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosPermisosPorRango`, `TestLoQueLaBaseNoEscribeSeDeshace`, `TestElRangoSeCompruebaEnLaBase` (integration), `TestElCambioDeLiderEnLaBase` (integration) |
 
 ### Distribución
 
@@ -458,9 +458,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 138 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 139 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 1 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **141** | |
 
@@ -468,7 +468,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-CLAN-005` se registró el 2026-11-16 con SPEC-CLAN-GOVERNANCE, sin ADR nuevo, antes de escribir su código, como manda §8, y nace sin cobertura; el mismo día se precisó `INV-CLAN-001` (el líder cambia también por traspaso y por ausencia).
+`INV-CLAN-005` se registró el 2026-11-16 con SPEC-CLAN-GOVERNANCE, sin ADR nuevo, antes de escribir su código, como manda §8, y pasó a ✓ con su implementación ese mismo día; el mismo día se precisó `INV-CLAN-001` (el líder cambia también por traspaso y por ausencia). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-TERR-012` e `INV-CLAN-004` se registraron el 2026-11-16 con SPEC-CLAN-TERRITORIES y [ADR-041](../decisions/ADR-041-clan-territories.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. Ninguna fila queda sin cobertura ni parcial.
 

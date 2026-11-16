@@ -262,6 +262,33 @@ se escribe si quien lo ordenó no tenía, en la transacción y con el candado de
 | contract / e2e | `clan.promote` y `clan.transfer` contra el JSON Schema; `ClanRole` con `OFFICER` en `clan.update` y `clan.info`; el aviso `ClanLeaderChanged`. Por WebSocket: el líder nombra un oficial, el oficial invita (con `clan.update` a los implicados) y el líder cede el liderazgo |
 | cliente | El rango en la lista; los botones según el rango de quien mira; «Ceder el liderazgo» con su confirmación; «Invitar al clan» para un oficial en la barra de una ciudad ajena; los textos del aviso y del registro. `scripts/smoke.mjs --clan` ampliado: `smoke_clan_a`, líder de `[HUM]`, nombra oficial a `smoke_orden`, que invita a `smoke_clan_b`; `smoke_clan_a` cede el liderazgo a `smoke_orden` y `smoke_orden` se lo devuelve en la misma pasada, para que `--territorio-clan` siga encontrando a `smoke_clan_a` como líder. La sucesión por ausencia no se prueba en vivo (pediría tener desconectado al líder durante el plazo): la cubren el golden y la recuperación |
 
+**Precisiones (2026-11-16), al implementar.** Ninguna cambia una decisión de §10.
+
+- **Cuatro tipos en el registro, dos avisos.** `ClanLeaderChanged` da cuatro tipos de entrada:
+  - `CLAN_LEADERSHIP_RECEIVED` y `CLAN_LEADERSHIP_GIVEN`, por traspaso;
+  - `CLAN_LEADERSHIP_INHERITED` y `CLAN_LEADERSHIP_LOST`, por ausencia.
+
+  Se avisan en vivo los dos de quien recibe el liderazgo. Por eso `EventLogNoticeKind` pasa de 27 a **29** tipos, no a
+  28 como decía §6, y el catálogo de tipos de entrada pasa de 27 a 31. El payload lleva `reason` y la sigla en
+  `ownerClanTag` y `forClanTag`, para que cada lado la lea igual que en E19.
+- **Nombrar o quitar un oficial que no se escribe se deshace.** No se guarda para el volcado como decía §7: si la base
+  no lo admite o no responde, la RAM vuelve al rango anterior y quien lo ordenó recibe `INVALID_TARGET` o
+  `INTERNAL_ERROR`, igual que con un traspaso. Así hay un solo camino para los dos.
+- **Una expulsión que la base no admite se deshace.** La transacción de la salida comprueba el rango de quien expulsa
+  (`INV-CLAN-005`). Si no lo admite, la simulación devuelve al expulsado al clan con su entrada y su rango, borra su
+  paz residual y registra `invariant_violation` con `inv_id=INV-CLAN-005`, porque sólo ocurre si una escritura de
+  rango anterior se perdió.
+- **Invitar toma el candado del clan.** La transacción de una invitación toma ahora el candado del clan, como los
+  cambios de rango, para leer el rango de quien invita bajo él.
+- **El barrido de la ausencia** va en la fase 2 del tick, junto a los de los clanes, y el primero tras arrancar se hace
+  en el primer tick. Un candidato es activo si tiene ciudad y no está ausente con la misma regla que el líder.
+- **La sigla en el registro.** Al convertir una entrada para la red, la sigla sólo se copiaba en las entradas de un
+  territorio. Ahora se copia siempre. Lo destapó la integración de esta spec: sin el cambio, el cambio de líder llegaba
+  sin `clanTag`.
+- **El humo.** smoke_orden, ya oficial, invita y además expulsa a smoke_clan_b. Al final de la pasada vuelve a miembro
+  raso, para que la siguiente pasada la nombre otra vez. Sin smoke_orden en el clan (sin `--faccion` previo), invita y
+  expulsa el líder y el traspaso no se prueba.
+
 ## 10. Decisiones de producto (2026-11-16)
 
 Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,

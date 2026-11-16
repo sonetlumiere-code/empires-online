@@ -2218,12 +2218,12 @@ clanes.
 
 1. **HECHO** — Aceptación: spec, `INV-CLAN-005`, y las precisiones de `INV-CLAN-001` y de
    [clans.md](../specs/clans.md) (Q4 y `RN-CLAN-007`).
-2. **PENDIENTE** — Protocolo: `clan.promote` y `clan.transfer`, `OFFICER` en `ClanRole` y el aviso
+2. **HECHO** — Protocolo: `clan.promote` y `clan.transfer`, `OFFICER` en `ClanRole` y el aviso
    `ClanLeaderChanged`; contract tests en los dos lados y su e2e.
-3. **PENDIENTE** — Dominio y simulación: los rangos en `clanRecord`, los permisos por rango, el traspaso optimista
+3. **HECHO** — Dominio y simulación: los rangos en `clanRecord`, los permisos por rango, el traspaso optimista
    con su deshacer, la herencia del oficial y el barrido de la ausencia del líder.
-4. **PENDIENTE** — Migración `000022` y persistencia: `rank`, el trigger, la carga y la comprobación del rango en cada
+4. **HECHO** — Migración `000022` y persistencia: `rank`, el trigger, la carga y la comprobación del rango en cada
    transacción con el candado del clan.
-5. **PENDIENTE** — Cliente: el rango en la lista, los botones según el rango, «Ceder el liderazgo» con su
+5. **HECHO** — Cliente: el rango en la lista, los botones según el rango, «Ceder el liderazgo» con su
    confirmación, «Invitar al clan» para un oficial y los textos del aviso y del registro.
 6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --clan` con el oficial y el traspaso de ida y vuelta.

@@ -82,6 +82,13 @@ expulsado, `CLAN_EXPELLED` («Villa Norte te expulsó de su clan»), y al líder
 Villa Norte de tu clan»). Fundar, entrar y salir por voluntad propia no entran (`ClanFounded`, `ClanJoined` y
 `ClanLeft` no son tipos del registro).
 
+**Precisión (2026-11-16, [clan-governance.md](clan-governance.md) Q8).** Desde E20 entra el cambio de líder de un clan
+(`ClanLeaderChanged`, con el nuevo líder como `player_id` y el anterior como `counterpart_player_id`). Por traspaso: al
+nuevo, `CLAN_LEADERSHIP_RECEIVED` («Villa Norte te cedió el liderazgo de [LOB]»), y al anterior,
+`CLAN_LEADERSHIP_GIVEN` («Cediste el liderazgo de [LOB] a Villa Norte»). Porque el líder llevaba días sin jugar: al
+nuevo, `CLAN_LEADERSHIP_INHERITED`, y al ausente, `CLAN_LEADERSHIP_LOST`, que lo encuentra en «Mientras no estabas».
+Las cuatro entradas llevan `clanTag`. Nombrar o quitar un oficial no entra (`ClanRankChanged` no es tipo del registro).
+
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) §6, [ADR-041](../decisions/ADR-041-clan-territories.md) §5).**
 Desde E19, con un clan dueño, `TerritoryClaimStarted` y `TerritoryControlChanged` se escriben una fila por miembro
 abierto del clan, con `only: "player"` en el payload: cada fila le cuenta el suceso sólo a su miembro, con la sigla del

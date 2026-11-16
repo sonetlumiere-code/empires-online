@@ -764,10 +764,15 @@ y grueso, y una que carga madera, un tronco a la espalda.
   sin clan, las invitaciones con «Aceptar» y «Rechazar» y «Fundar un clan» (nombre y sigla, con las mismas reglas que
   el servidor: `nameProblem`, `tagProblem`); con clan, los miembros (ciudad, bando y rango), el canal con «Ver
   anteriores» y su cuadro de texto, «Salir del clan» con la advertencia de la paz residual y, para el líder, «Expulsar»
-  y las invitaciones enviadas con «Retirar». Con el panel abierto lo que llega queda leído (`clan.chat.read` con el
+  y las invitaciones enviadas con «Retirar». **Desde E20** (SPEC-CLAN-GOVERNANCE): cada miembro con «Líder», «Oficial»
+  o «Miembro» (`roleLabel`); los botones según el rango de quien mira (`myRole`): «Expulsar» donde `canExpel` lo
+  permite, las invitaciones enviadas para el líder y los oficiales (`managesInvitations`) y, sólo para el líder,
+  «Nombrar oficial» o «Quitar oficial» (`GameClient.promoteInClan`) y «Ceder el liderazgo» con su confirmación en línea
+  (`transferWarning`, `GameClient.transferClan`). Una línea explica la sucesión por ausencia (`LEADER_INACTIVE_DAYS`,
+  copia del valor por defecto del servidor). Con el panel abierto lo que llega queda leído (`clan.chat.read` con el
   último id recibido).
 - **La barra de una ciudad ajena** dice su sigla delante del nombre, «Ver clan» (`clan.lookup`) si tiene clan e
-  «Invitar al clan» si quien mira es líder y la ciudad no tiene clan ni invitación viva (`canInvite`).
+  «Invitar al clan» si quien mira es líder u oficial y la ciudad no tiene clan ni invitación viva (`canInvite`).
 - **El mapa**: la etiqueta de cada ciudad lleva la sigla delante del nombre («[LOB] Roma», `withTag` en la
   proyección).
 - **El clic de ataque** no manda `unit.attack` contra un compañero de clan (`sameClan`) y pone en el pie «sois del
@@ -794,7 +799,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **El panel del clan** lista «Territorios del clan» con «Ir» (lleva la cámara a su tile central, esté cargado o
   no), y «Ver clan» añade los territorios del clan ajeno.
 - **Avisos y registro.** Con `clanTag`: «X reclamó Y, de tu clan [TAG]», «X le quitó a tu clan [TAG] Y» y «Tus
-  guerreros ganaron Y para tu clan [TAG], a X» (`entryText`; los avisos agrupados copian `clanTag`).
+  guerreros ganaron Y para tu clan [TAG], a X» (`entryText`; los avisos agrupados copian `clanTag`). Desde E20, el
+  liderazgo recibido, cedido, heredado o perdido, también con `clanTag`; perderlo se resalta (`isLoss`).
 
 ## 5. Posición autoritativa frente a posición de render
 

@@ -21,7 +21,7 @@ Territorios de clan: [../specs/clan-territories.md](../specs/clan-territories.md
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E18 |
 | Política ante violación | REJECT (escritura) · FAIL_FAST (arranque) |
-| Cobertura | **Cubierto**: la DB por `TestUnaEstanciaAbiertaPorJugador` (índice único y validación de carga) y `TestLaPertenenciaAUnClanEnLaBase` (líder heredado y disolución en la transacción de salida), integration en `internal/persistence/postgres`; el dominio por `TestElLiderazgoYLaDisolucion` (`internal/game/simulation`) y `TestElLiderazgoPasaAlMasAntiguo` (`internal/domain/clan`) |
+| Cobertura | **Cubierto**: la DB por `TestUnaEstanciaAbiertaPorJugador` (índice único y validación de carga) y `TestLaPertenenciaAUnClanEnLaBase` (líder heredado y disolución en la transacción de salida), integration en `internal/persistence/postgres`; el dominio por `TestElLiderazgoYLaDisolucion` (`internal/game/simulation`) y `TestElLiderazgoPasaAlMasAntiguo` (`internal/domain/clan`); desde E20, el traspaso y la sucesión por `TestElCambioDeLiderEnLaBase` (integration), `TestCederElLiderazgo`, `TestGoldenLiderAusente` y `TestAlSalirElLiderHeredaElOficialMasAntiguo` (`internal/game/simulation`) |
 
 **Enunciado.** Para todo jugador hay como mucho una fila de `clan_members` con `left_at IS NULL`; y para todo clan
 con `dissolved_at IS NULL`, `leader_player_id` es el jugador de una de sus filas abiertas, y el clan tiene al menos
@@ -167,7 +167,7 @@ reclamación termina como en un conflicto.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E20 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía (E20): `TestLosPermisosPorRango` (simulation) y `TestElRangoSeCompruebaEnLaBase` (integration), previstos |
+| Cobertura | **Cubierto** por `TestLosPermisosPorRango` y `TestLoQueLaBaseNoEscribeSeDeshace` (`internal/game/simulation`), `TestLosPermisosDeCadaRango` (`internal/domain/clan`), y `TestElRangoSeCompruebaEnLaBase` y `TestElCambioDeLiderEnLaBase` (integration). Verificado por mutación: sin la comprobación del rango en la transacción de invitar, de expulsar, de nombrar o de ceder, falla la integración; con un oficial que expulsa a otro oficial, falla la simulación; sin deshacer una expulsión o un traspaso que la base no admite, falla la simulación; con cualquiera de los dos triggers de `000022` desactivado, falla la integración |
 
 **Enunciado.** Ninguna invitación, retirada de invitación, expulsión, cambio de rango ni traspaso del liderazgo se
 escribe si quien lo ordenó no tenía, en la transacción y con el candado del clan, el rango que lo permite: invitar,
