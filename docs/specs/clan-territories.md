@@ -7,7 +7,7 @@ todos.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLAN-TERRITORIES` |
-| Estado | Accepted (2026-11-16). Propuesta en `Draft` el 2026-11-15 y aceptada el 2026-11-16, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-16). Propuesta en `Draft` el 2026-11-15 y aceptada el 2026-11-16, con la recomendación de cada pregunta de §10; en `main` desde la fusión `f21911a`, con la CI en verde. |
 | Milestone | E19 Territorios de clan (decimonoveno slice después de M7) |
 | Canon | §4 y §10 (territorios), §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores), §21 (fuera de MVP: clanes) |
 | Depende de | [territory.md](territory.md), [territory-conquest.md](territory-conquest.md), [clans.md](clans.md), [factions.md](factions.md), [diplomacy.md](diplomacy.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [presence.md](presence.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |

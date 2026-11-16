@@ -2130,7 +2130,7 @@ desarrollo quedan el clan [HUM] con `smoke_clan_a` (líder) y `smoke_orden`, tre
 
 ## E19 — Territorios de clan
 
-**Estado: EN CURSO (2026-11-16)**, en la rama `claude/slice-territorio-clan`. Contrato:
+**Estado: HECHO (2026-11-16)**, fusionado en `main` (`f21911a`) con la CI en verde el mismo día. Contrato:
 [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md), aceptada el 2026-11-16 con sus once decisiones de producto, y
 [ADR-041](../decisions/ADR-041-clan-territories.md).
 
