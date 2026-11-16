@@ -124,7 +124,7 @@ registra `invariant_violation` con `inv_id=INV-CLAN-003`.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E19 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura**: registrado con [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) y [ADR-041](../decisions/ADR-041-clan-territories.md) antes de escribir su código (E19) |
+| Cobertura | **Cubierto** por `TestQueRompeUnaReclamacionConUnClan` y `TestUnaReclamacionParaElClanTrasUnReinicio` (`internal/game/simulation`; verificado por mutación: sin la comprobación de la pertenencia en el barrido, los dos fallan) y `TestLaCapturaParaUnClanExigeSerDeEl` (integration; verificado por mutación: sin la comprobación de la estancia en la transacción, falla) |
 
 **Enunciado.** Una reclamación hecha para un clan avanza sólo en los ticks en que el dueño del guerrero que la
 sostiene es miembro abierto de ese clan; en el tick en que deja de serlo termina sin captura. Ninguna captura escribe

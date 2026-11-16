@@ -2154,15 +2154,17 @@ recursos, almacén o edificios del clan, rangos, guerras y alianzas entre clanes
    (§2 y `RN-CONQ-002`, `003`, `005`, `006`, `009` y `010`), [factions.md](../specs/factions.md) (`RN-FAC-007`),
    [clans.md](../specs/clans.md) (Q11), [mvp-scope.md](../product/mvp-scope.md) (`OUT-13`) y
    [schema.md](../database/schema.md) (§17.3).
-2. **PENDIENTE** — Protocolo: `forClan` en `unit.claim`, `ownerClan` en `TerritoryView`, `clan` en
-   `TerritoryClaimView`, `territories[]` en las vistas del clan y `clanTag` en los avisos y el registro (sigue en 39
-   cliente → servidor y 31 servidor → cliente); contract tests en los dos lados.
-3. **PENDIENTE** — Dominio y simulación: el dueño de clan en el control y en `clanState`, la reclamación para el clan
+2. **HECHO** — Protocolo: `forClan` en `unit.claim`, `ownerClan` en `TerritoryView`, `clan` en
+   `TerritoryClaimView`, `territories[]` (con el tile central) en las vistas del clan y `clanTag` en los avisos y el
+   registro (sigue en 39 cliente → servidor y 31 servidor → cliente); contract tests en los dos lados y el e2e
+   `TestUnTerritorioDeClanPorLaRed`.
+3. **HECHO** — Dominio y simulación: el dueño de clan en el control y en `clanState`, la reclamación para el clan
    y su ruptura al dejar el clan, la hostilidad contra todos los miembros, la defensa de cualquier miembro, la captura
    con la clave del clan, la última salida con territorios en dos fases, la afinidad con el clan y los avisos a cada
    miembro.
-4. **PENDIENTE** — Migración `000021` y persistencia: `territory_claims.clan_id`, los dos triggers, la carga y su
+4. **HECHO** — Migración `000021` y persistencia: `territory_claims.clan_id`, los dos triggers, la carga y su
    reparación, la captura y la disolución con sus eventos por miembro.
-5. **PENDIENTE** — Cliente: «Reclamar para el clan», el panel del territorio y la etiqueta del mapa con la sigla, la
-   línea de tierra afín, «Territorios del clan» con «Ir» y los textos de los avisos y del registro.
+5. **HECHO** — Cliente: «Reclamar para el clan», la línea del territorio con su clan dueño, el mapa en azul (clan
+   propio) o violeta (otro clan), la línea de tierra afín, «Territorios del clan» con «Ir» y los textos de los avisos y
+   del registro.
 6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --territorio-clan` con cuentas de humo propias.

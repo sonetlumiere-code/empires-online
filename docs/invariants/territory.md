@@ -451,7 +451,7 @@ cambio de dueño.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E19 |
 | Política ante violación | REJECT en la base; REPAIR (liberar el territorio) en la carga |
-| Cobertura | **Sin cobertura**: registrado con [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) y [ADR-041](../decisions/ADR-041-clan-territories.md) antes de escribir su código (E19) |
+| Cobertura | **Cubierto** por `TestLaBaseNoDejaTerritoriosAClanesMuertos` (integration; verificado por mutación: con cualquiera de los dos triggers desactivado, el test falla), `TestLosTerritoriosDeClanesMuertosSeLiberan` (`internal/game/loadcheck`) y `TestLaDisolucionDeUnClanConTerritorios` (`internal/game/simulation`) |
 
 **Enunciado.** Si `owner_type = 'CLAN'`, `owner_id` es el `id` de un clan con `dissolved_at IS NULL`. Ningún clan
 disuelto posee un territorio.

@@ -773,6 +773,29 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **El clic de ataque** no manda `unit.attack` contra un compañero de clan (`sameClan`) y pone en el pie «sois del
   mismo clan». La paz residual no se ve en el cliente: la dice el servidor.
 
+### 4.16 Territorios de clan (SPEC-CLAN-TERRITORIES)
+
+> **Estado (2026-11-16): implementado y con tests de lo puro** (`src/state/conquest.ts`, `src/state/factions.ts`,
+> `src/state/eventLog.ts`, `src/render/projection.ts`).
+
+- **Qué llega.** `TerritoryView.ownerClan` (`{ id, name, tag }` o `null`) y, en una reclamación para un clan,
+  `claim.clan`; `ClanView.territories` y `clan.info.territories` (`{ id, name, x, y }`, con el tile central); `clanTag`
+  en los avisos y en las entradas de la conquista.
+- **El HUD.** Con un guerrero propio seleccionado y el jugador en un clan, junto a «Reclamar territorio» sale
+  «Reclamar para el clan [TAG]» (`GameClient.claimTerritory(unitId, true)`), deshabilitado con su motivo
+  (`claimBlockReason` con `forClan`: sin clan, o el territorio ya es del clan o del propio jugador). La línea del
+  territorio dice «de tu clan [TAG]» o «del clan Nombre [TAG]» (`territoryOwnerLabel`), la reclamación «para [TAG]» y
+  «¡… reclama X, de tu clan!» (`claimLabel`), y la tierra afín incluye la del propio clan (`isAffine`,
+  `territoryFactionLine`, que para un territorio de clan sólo dice si es afín: un clan no tiene bando). La paz con los
+  miembros de otro clan y su protección las decide el servidor.
+- **El overlay.** No hay etiquetas de territorio en el mapa: el territorio del propio clan se pinta azul y el de otro
+  clan violeta (`territoryStyle`, con `isOwnClan` en la firma de la forma). Entrar o salir de un clan vuelve a proyectar
+  los territorios de clan cargados (el `clan.update` que cambia de clan los marca como cambiados).
+- **El panel del clan** lista «Territorios del clan» con «Ir» (lleva la cámara a su tile central, esté cargado o
+  no), y «Ver clan» añade los territorios del clan ajeno.
+- **Avisos y registro.** Con `clanTag`: «X reclamó Y, de tu clan [TAG]», «X le quitó a tu clan [TAG] Y» y «Tus
+  guerreros ganaron Y para tu clan [TAG], a X» (`entryText`; los avisos agrupados copian `clanTag`).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

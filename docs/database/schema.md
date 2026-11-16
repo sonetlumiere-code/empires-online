@@ -1255,6 +1255,24 @@ cierra la fila, comprueba la capital ([INV-TERR-011](../invariants/territory.md#
 `territory_control` con su versión y mueve el `population_limit` de las dos ciudades en una transacción.
 `territory_control.contested` es «hay una fila `ACTIVE`» ([INV-TERR-006](../invariants/territory.md#inv-terr-006)).
 
+**Territorios de clan (`000021`, [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md), [ADR-041](../decisions/ADR-041-clan-territories.md)).**
+
+```sql
+ALTER TABLE territory_claims ADD COLUMN clan_id bigint NULL REFERENCES clans (id);
+-- territory_control_clan_owner_guard: BEFORE INSERT OR UPDATE OF owner_type, owner_id ON territory_control
+-- clans_dissolve_territory_guard:     BEFORE UPDATE OF dissolved_at ON clans
+```
+
+`clan_id` es el clan para el que se reclama (nulo: para el jugador). Un territorio de clan tiene
+`owner_type = 'CLAN'` y su `owner_id` es el `id` del clan en decimal, sin columna nueva en `territory_control`. Como el
+dueño polimórfico no tiene clave foránea, dos triggers sostienen [INV-TERR-012](../invariants/territory.md#inv-terr-012):
+`territory_control_clan_owner_guard` rechaza con `23514` un dueño `CLAN` cuyo `owner_id` no es el `id` de un clan sin
+`dissolved_at` (toma su fila con `FOR UPDATE`), y `clans_dissolve_territory_guard` rechaza fijar `dissolved_at` mientras
+quede algún territorio a nombre del clan. La salida del último miembro libera antes sus territorios en su misma
+transacción (`owner_type = 'NONE'`, `version + 1`). La captura para un clan comprueba con el candado del clan que quien
+reclamó tiene una estancia abierta en él ([INV-CLAN-004](../invariants/clans.md#inv-clan-004)). El `.down.sql` libera
+los territorios de clan antes de quitar los triggers y la columna.
+
 ---
 
 ### 16.10 Bienes de civilización (`000016`)
@@ -1441,7 +1459,7 @@ Cuando `clans` llegue, `territory_control` no necesitará ninguna columna nueva:
 
 **Precisión (2026-11-15, [SPEC-CLANS](../specs/clans.md) §7, [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) §6).** E18 sustituye este diseño por el de la migración `000020`: la sigla (`tag`) en lugar de `code`, el líder actual en lugar del fundador, sin `faction_id`, y `clan_members` con una fila por estancia (entrada, salida y motivo), de la que salen la paz residual y lo que cada miembro lee del canal; más `clan_invites`, `clan_messages` y `clan_message_reads`. El dueño `CLAN` del territorio sigue sin usarse. Las tablas están en §16.13.
 
-**Precisión (2026-11-16, [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) §7, [ADR-041](../decisions/ADR-041-clan-territories.md) §6).** E19 usa el dueño `CLAN`: `owner_id` es el `id` del clan en texto, sin columna nueva en `territory_control`, como se previó. La migración `000021` añade `territory_claims.clan_id` (la reclamación para un clan) y dos triggers que impiden un dueño `CLAN` inexistente o disuelto y la disolución de un clan con territorios ([INV-TERR-012](../invariants/territory.md#inv-terr-012)). Se documentarán aquí con la implementación.
+**Precisión (2026-11-16, [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) §7, [ADR-041](../decisions/ADR-041-clan-territories.md) §6).** E19 usa el dueño `CLAN`: `owner_id` es el `id` del clan en texto, sin columna nueva en `territory_control`, como se previó. La migración `000021` añade `territory_claims.clan_id` (la reclamación para un clan) y dos triggers que impiden un dueño `CLAN` inexistente o disuelto y la disolución de un clan con territorios ([INV-TERR-012](../invariants/territory.md#inv-terr-012)). Están en §16.9.
 
 ---
 

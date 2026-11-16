@@ -389,6 +389,11 @@ Mensaje servidor→cliente `territory.update`. Envelope canónico
 | `ownerId` | `string \| null` | `null` cuando `ownerType` es `"NONE"`. |
 | `contested` | `boolean` | Siempre `false` en MVP. |
 
+**Precisión (2026-11-16).** La vista creció con los slices: `claim` y `contested` como «hay una reclamación activa»
+(E12), `ownerFaction` (E17) y `ownerClan`, el clan dueño de un territorio de clan, y `claim.clan` (E19,
+[clan-territories.md](clan-territories.md)). La forma vigente está en [websocket-protocol.md](websocket-protocol.md)
+§8.9.
+
 `TerritoryView` **no transporta** `controlPoints`, `capturedAt`, `type` ni `resourceModifiers`:
 ampliarlo cuando exista la mecánica es un cambio aditivo del protocolo (campos opcionales nuevos), y
 los mensajes servidor→cliente no son estrictos precisamente para permitirlo.

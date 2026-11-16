@@ -282,6 +282,32 @@ reparación en la carga copia el invariante nuevo.
 | contract / e2e | `unit.claim` con `forClan`, `TerritoryView.ownerClan`, `TerritoryClaimView.clan`, `territories[]` en la vista del clan y `clanTag` en los avisos contra el JSON Schema; por WebSocket, dos miembros conectados que reciben el aviso de una reclamación sobre la tierra de su clan |
 | cliente | «Reclamar para el clan» con su motivo deshabilitado; el panel del territorio y la etiqueta del mapa con la sigla; la línea de tierra afín; «Territorios del clan» con «Ir»; los textos de los avisos y del registro; `scripts/smoke.mjs --territorio-clan` con **cuentas de humo propias** (nunca `smoke_runner` ni `smoke_victim`) y los plazos cortos de E12: el líder de `[HUM]` reclama para su clan un territorio libre junto a su ciudad y, en pasadas siguientes, `smoke_caos` (sin paz posible con la Orden de `smoke_orden`) se lo quita y `[HUM]` lo recupera, alternando |
 
+**Precisiones (2026-11-16), al implementar.** Ninguna cambia una decisión de §10; las que concretan un detalle de
+[ADR-041](../decisions/ADR-041-clan-territories.md) se anotan aquí, porque un ADR aceptado no se edita.
+
+- **El tile central en la vista del clan.** `ClanTerritoryView` es `{ id, name, x, y }`: `x`, `y` es el tile central
+  del territorio, para que «Ir» lleve la cámara aunque el territorio no esté en el área cargada del cliente.
+- **Ganar uno libre no avisa.** Como en E12, ganar para el clan un territorio libre no avisa ni entra en el registro de
+  nadie (no hay otro jugador); `RN-CLANTERR-006` («ganarlo, al que reclamó») vale cuando tenía otro dueño.
+- **Las filas del registro.** El payload lleva `ownerClanTag` (la sigla del clan dueño, para el lado de `player_id`),
+  `forClanTag` (la del clan para el que se ganó, para el otro lado) y `only` (`player` o `counterpart`). La fila del que
+  gana a un clan lleva como `player_id` al miembro más antiguo de ese clan, que es quien su entrada nombra.
+- **La afinidad y la lista de territorios.** La tierra afín del clan la decide la simulación (`State.territoryAffine`,
+  que envuelve a `player.Affine` para los dueños jugadores), no una firma nueva de `player.Affine` (ADR-041 §7). Los
+  territorios de un clan se derivan del control de la RAM en cada consulta, sin un índice aparte (ADR-041 §1): son como
+  mucho los 64 territorios del mundo.
+- **La disolución optimista también libera.** Si la RAM no conoce territorios del clan pero la base sí (una captura
+  para el clan confirmó justo antes en la misma cola), la salida optimista de E18 los libera en su transacción y la RAM
+  los aplica al volver (`ClanTerritoriesReleased`), con su `territory.update`.
+- **Mientras el clan se disuelve** (la última salida con territorios, en vuelo), invitar, aceptar y reclamar para él se
+  rechazan con `INVALID_TARGET` («el clan se está disolviendo», «tu clan se está disolviendo»). Si la escritura falla del
+  todo, quien salía recibe `INTERNAL_ERROR` («no se pudo salir del clan») y el clan sigue como estaba.
+- **El fin por dejar el clan** se escribe con `end_reason = 'CLAN'`.
+- **El mapa no tiene etiquetas de territorio.** El territorio del propio clan se pinta azul y el de otro clan violeta;
+  la sigla sale en la línea del territorio del HUD («de tu clan [TAG]», «del clan Nombre [TAG]»).
+- **El humo.** El rival de `--territorio-clan` es `smoke_norse` (NEUTRAL, sin clan y con la ciudad a 85 tiles de la de
+  `smoke_clan_a`), no `smoke_caos`, cuya ciudad está a más de 300 tiles.
+
 ## 10. Decisiones de producto (2026-11-16)
 
 Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,

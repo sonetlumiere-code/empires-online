@@ -339,7 +339,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-TERR-009 | Todo cambio de control emite `territory.update` a la huella de chunks | ALTO | BOUNDARY, TEST | ✓ | `TestUnCambioDeControlSeAplicaYSeEmiteUnaVezALaHuella`, `TestBroadcastChunksEntregaUnaSolaVezAQuienEstaSuscritoAVarios` |
 | INV-TERR-010 | Un territorio tiene como mucho una reclamación activa | ALTO | DB, DOMAIN, TEST | ✓ | `TestRechazosDeLaReclamacion`, `TestUnaReclamacionLibreYSuCapturaSeEscribenUnaVez` |
 | INV-TERR-011 | La capital de un jugador (el territorio con el centro de su ciudad) no cambia de dueño | ALTO | DB, DOMAIN, TEST | ✓ | `TestQueTerritorioSePuedeReclamar`, `TestRechazosDeLaReclamacion`, `TestUnaCapturaAjenaMueveLosDosLimitesYSeRegistra` |
-| INV-TERR-012 | Un territorio de clan es de un clan vivo: ningún clan disuelto posee un territorio | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E19) |
+| INV-TERR-012 | Un territorio de clan es de un clan vivo: ningún clan disuelto posee un territorio | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaBaseNoDejaTerritoriosAClanesMuertos` (integration), `TestLosTerritoriosDeClanesMuertosSeLiberan`, `TestLaDisolucionDeUnClanConTerritorios` |
 
 ### SAFE ZONES — [territory.md](territory.md)
 
@@ -416,7 +416,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CLAN-001 | Un jugador está en un clan como mucho, y todo clan vivo tiene un único líder que es miembro | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaEstanciaAbiertaPorJugador`, `TestLaPertenenciaAUnClanEnLaBase` (integration), `TestElLiderazgoYLaDisolucion` |
 | INV-CLAN-002 | Ningún clan junta a la Orden y al Caos, contando las entradas pendientes | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosTriggersNoJuntanALaOrdenYAlCaos` (integration), `TestUnClanNoJuntaALaOrdenYAlCaos` |
 | INV-CLAN-003 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre compañeros de clan, ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestDosDelMismoClanDejanDePelear`, `TestLaPazResidualTrasSalir`, `TestLosClanesVuelvenAlArrancar`, `TestUnClanPorLaRed` |
-| INV-CLAN-004 | Una reclamación para un clan sólo se completa mientras quien la sostiene es miembro de ese clan | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E19) |
+| INV-CLAN-004 | Una reclamación para un clan sólo se completa mientras quien la sostiene es miembro de ese clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestQueRompeUnaReclamacionConUnClan`, `TestUnaReclamacionParaElClanTrasUnReinicio`, `TestLaCapturaParaUnClanExigeSerDeEl` (integration) |
 
 ### Distribución
 
@@ -457,9 +457,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 136 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 138 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **140** | |
 
@@ -467,7 +467,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-TERR-012` e `INV-CLAN-004` se registraron el 2026-11-16 con SPEC-CLAN-TERRITORIES y [ADR-041](../decisions/ADR-041-clan-territories.md), antes de escribir su código, como manda §8, y nacen sin cobertura.
+`INV-TERR-012` e `INV-CLAN-004` se registraron el 2026-11-16 con SPEC-CLAN-TERRITORIES y [ADR-041](../decisions/ADR-041-clan-territories.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. Ninguna fila queda sin cobertura ni parcial.
 
 `INV-CLAN-001`, `INV-CLAN-002`, `INV-CLAN-003` e `INV-SEC-012` se registraron el 2026-11-15 con SPEC-CLANS y [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día; con ellos llegó la familia `INV-CLAN` y su archivo, [clans.md](clans.md). Ninguna fila queda sin cobertura ni parcial.
 
