@@ -2270,7 +2270,7 @@ La integración destapó que la sigla de una entrada del registro sólo se copia
 
 ## E21 — Alianzas entre clanes
 
-**Estado: EN CURSO (2026-11-16)**, en la rama `claude/slice-alianzas-clan`. Contrato:
+**Estado: HECHO (2026-11-16)**, fusionado en `main` (`57690c9`) con la CI en verde el mismo día. Contrato:
 [SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md), aceptada el 2026-11-16 con sus once decisiones de producto, y
 [ADR-042](../decisions/ADR-042-clan-alliances.md).
 

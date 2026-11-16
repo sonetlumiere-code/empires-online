@@ -6,7 +6,7 @@ miembros de los dos, la rompen con preaviso y cualquiera puede ver quién está 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLAN-ALLIANCES` |
-| Estado | Accepted (2026-11-16). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-16). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `57690c9`, con la CI en verde. |
 | Milestone | E21 Alianzas entre clanes (vigesimoprimer slice después de M7) |
 | Canon | §1.5 (determinismo), §11 (diplomacia), §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores) |
 | Depende de | [clans.md](clans.md), [clan-governance.md](clan-governance.md), [clan-territories.md](clan-territories.md), [diplomacy.md](diplomacy.md), [factions.md](factions.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
