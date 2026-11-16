@@ -125,6 +125,8 @@ type State struct {
 	// clans son los clanes, su pertenencia, sus invitaciones y las salidas
 	// recientes (SPEC-CLANS, ADR-040).
 	clans clanState
+	// allies son las alianzas entre clanes (SPEC-CLAN-ALLIANCES, ADR-042 §1).
+	allies allianceState
 
 	// Combate (SPEC-COMBAT-RAID, ADR-024): enfrentamientos, tratados de paz y
 	// muertes por reescribir.
@@ -190,6 +192,7 @@ func NewState(w *world.World) *State {
 		factionJoining:            make(map[uuid.UUID]city.FactionJoin),
 		pendingFactionCompletions: make(map[uuid.UUID]FactionJoinCompletion),
 		clans:                     newClanState(),
+		allies:                    newAllianceState(),
 	}
 }
 

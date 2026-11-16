@@ -94,6 +94,9 @@ type Config struct {
 	// conectarse para que el liderazgo pase a quien sigue jugando
 	// (SPEC-CLAN-GOVERNANCE Q6).
 	ClanLeaderInactive time.Duration
+	// ClanMaxAllies es el tope de alianzas activas de un clan
+	// (SPEC-CLAN-ALLIANCES Q4).
+	ClanMaxAllies int
 	// EventLogMaxAge es hasta cuándo atrás lee el registro, EventLogPageSize
 	// cuántas entradas trae una página y EventLogGroupGap el hueco máximo entre
 	// dos sucesos de una misma entrada (SPEC-EVENT-LOG §10).
@@ -236,6 +239,7 @@ func Load() (Config, error) {
 		ClanInviteTTL:               time.Duration(v.intRange("EO_CLAN_INVITE_HOURS", 24, 1, 24*30)) * time.Hour,
 		ClanPeaceGrace:              time.Duration(v.intRange("EO_CLAN_PEACE_GRACE_SECONDS", 900, 1, 24*3600)) * time.Second,
 		ClanLeaderInactive:          time.Duration(v.intRange("EO_CLAN_LEADER_INACTIVE_SECONDS", 604800, 60, 365*24*3600)) * time.Second,
+		ClanMaxAllies:               v.intRange("EO_CLAN_MAX_ALLIES", 2, 1, 20),
 		EventLogMaxAge:              time.Duration(v.intRange("EO_EVENT_LOG_MAX_DAYS", 7, 1, 90)) * 24 * time.Hour,
 		EventLogPageSize:            v.intRange("EO_EVENT_LOG_PAGE_SIZE", 50, 1, 200),
 		EventLogGroupGap:            time.Duration(v.intRange("EO_EVENT_LOG_GROUP_GAP_MINUTES", 10, 1, 24*60)) * time.Minute,

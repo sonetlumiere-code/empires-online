@@ -50,6 +50,7 @@ func (s *FactionStore) CompleteJoin(ctx context.Context, c simulation.FactionJoi
 	}
 	applied, err := s.factions.CompleteJoin(ctx, postgres.FactionJoinCompletion{
 		PlayerID: c.PlayerID, Faction: c.Faction, At: c.At, Breaks: breaks, Tick: c.Tick, AtMs: c.AtMs,
+		AllianceBreaks: allianceWrites(c.AllianceBreaks),
 	})
 	if errors.Is(err, postgres.ErrConflict) {
 		s.log.Error("invariant_violation", "inv_id", "INV-PLAYER-013", "severity", "ALTO", "policy", "REJECT",

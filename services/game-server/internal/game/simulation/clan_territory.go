@@ -158,6 +158,11 @@ func (s *Simulation) clanClaimBlocked(claimer uuid.UUID, clanID int64, now time.
 		}
 	}
 	for _, m := range members {
+		if s.state.AllyPeace(claimer, m, now) {
+			return protocol.CodeInvalidTarget, msgAllyPeace
+		}
+	}
+	for _, m := range members {
 		if s.state.AtPeace(claimer, m, now) {
 			return protocol.CodeInvalidTarget, msgClanTreatyPeace
 		}

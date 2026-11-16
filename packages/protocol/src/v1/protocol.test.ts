@@ -752,13 +752,37 @@ describe('territorios de clan (SPEC-CLAN-TERRITORIES)', () => {
 
   it('las vistas del clan llevan sus territorios', () => {
     const miembro = { playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1 };
-    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }] };
+    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }], alliances: [] };
     expect(parseServerMessage({ ...env, type: 'clan.update', payload: { clan, invitations: [] } }).ok).toBe(true);
     const { territories: _, ...sin } = clan;
     expect(parseServerMessage({ ...env, type: 'clan.update', payload: { clan: sin, invitations: [] } }).ok).toBe(false);
-    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }] };
+    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }], alliances: [] };
     expect(parseServerMessage({ ...env, type: 'clan.info', payload: info }).ok).toBe(true);
     expect(parseServerMessage({ ...env, type: 'clan.info', payload: { ...info, territories: [{ id: 12, name: 'x' }] } }).ok, 'sin su tile central').toBe(false);
+  });
+
+  it('las alianzas entre clanes: tres comandos y las alianzas en las vistas (SPEC-CLAN-ALLIANCES §6)', () => {
+    const cmd = (type: string, payload: unknown) => parseClientMessage({ v: 1, type, requestId: uuid, payload });
+    expect(cmd('clan.alliance.propose', { clanId: 4 }).ok).toBe(true);
+    expect(cmd('clan.alliance.propose', { clanId: 0 }).ok, 'un id válido').toBe(false);
+    expect(cmd('clan.alliance.propose', { clanId: 4, leader: uuid }).ok, 'estricto').toBe(false);
+    expect(cmd('clan.alliance.respond', { allianceId: 9, accept: true }).ok).toBe(true);
+    expect(cmd('clan.alliance.respond', { allianceId: 9 }).ok, 'sin accept').toBe(false);
+    expect(cmd('clan.alliance.cancel', { allianceId: 9 }).ok).toBe(true);
+    expect(cmd('clan.alliance.cancel', {}).ok).toBe(false);
+
+    const miembro = { playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1 };
+    const alianza = { id: 9, clanId: 4, name: 'Los Osos', tag: 'OSO', status: 'ACTIVE', proposedByUs: true, breaksAtMs: null };
+    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [], alliances: [alianza] };
+    const upd = (c: unknown) => parseServerMessage({ ...env, type: 'clan.update', payload: { clan: c, invitations: [] } });
+    expect(upd(clan).ok).toBe(true);
+    expect(upd({ ...clan, alliances: [{ ...alianza, status: 'PROPOSED', breaksAtMs: 5_000 }] }).ok).toBe(true);
+    expect(upd({ ...clan, alliances: [{ ...alianza, status: 'BROKEN' }] }).ok, 'sólo PROPOSED o ACTIVE').toBe(false);
+    const { alliances: _, ...sin } = clan;
+    expect(upd(sin).ok, 'alliances es obligatoria').toBe(false);
+    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [], alliances: [{ clanId: 4, name: 'Los Osos', tag: 'OSO', breaksAtMs: null }] };
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: info }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { ...info, alliances: [{ clanId: 4 }] } }).ok).toBe(false);
   });
 
   it('el registro y los avisos de la conquista llevan la sigla del clan, opcional', () => {
@@ -1118,7 +1142,7 @@ describe('clanes (SPEC-CLANS)', () => {
   });
 
   it('clan.info es la vista pública, y el canal lleva sus mensajes y su página', () => {
-    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [] } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [], alliances: [] } }).ok).toBe(true);
     const mensaje = {
       id: 5, clanId: 3, fromPlayerId: uuid, fromCityId: 7, fromCityName: 'Roma', body: 'al norte', sentAtMs: 1,
     };

@@ -218,6 +218,35 @@ export const ClanSentInvitationView = z.object({
 });
 export type ClanSentInvitationView = z.infer<typeof ClanSentInvitationView>;
 
+/** Estado de una alianza entre clanes en las vistas: una oferta o una alianza activa. */
+export const ClanAllianceStatus = z.enum(['PROPOSED', 'ACTIVE']);
+export type ClanAllianceStatus = z.infer<typeof ClanAllianceStatus>;
+
+/**
+ * Una alianza (o una oferta) del propio clan con otro (SPEC-CLAN-ALLIANCES §6): las activas
+ * para todos los miembros y las ofertas sólo para el líder y los oficiales. `clanId`,
+ * `name` y `tag` son los del otro clan; `breaksAtMs`, el fin del preaviso de ruptura.
+ */
+export const ClanAllianceView = z.object({
+  id: EntityId,
+  clanId: EntityId,
+  name: ClanName,
+  tag: ClanTag,
+  status: ClanAllianceStatus,
+  proposedByUs: z.boolean(),
+  breaksAtMs: EpochMs.nullable(),
+});
+export type ClanAllianceView = z.infer<typeof ClanAllianceView>;
+
+/** Una alianza activa de un clan en su vista pública (SPEC-CLAN-ALLIANCES Q8). */
+export const ClanPublicAllianceView = z.object({
+  clanId: EntityId,
+  name: ClanName,
+  tag: ClanTag,
+  breaksAtMs: EpochMs.nullable(),
+});
+export type ClanPublicAllianceView = z.infer<typeof ClanPublicAllianceView>;
+
 /** El propio clan, visto por uno de sus miembros (SPEC-CLANS §6). */
 export const ClanView = z.object({
   id: EntityId,
@@ -229,6 +258,11 @@ export const ClanView = z.object({
   sentInvitations: z.array(ClanSentInvitationView),
   /** Los territorios del clan, por `id` (SPEC-CLAN-TERRITORIES Q11). */
   territories: z.array(ClanTerritoryView),
+  /**
+   * Las alianzas activas del clan y, para el líder y los oficiales, también sus ofertas,
+   * por `id` (SPEC-CLAN-ALLIANCES §6).
+   */
+  alliances: z.array(ClanAllianceView),
 });
 export type ClanView = z.infer<typeof ClanView>;
 
@@ -504,6 +538,12 @@ export const EventLogKind = z.enum([
   'CLAN_LEADERSHIP_GIVEN',
   'CLAN_LEADERSHIP_INHERITED',
   'CLAN_LEADERSHIP_LOST',
+  // Alianzas entre clanes (SPEC-CLAN-ALLIANCES Q9): la oferta al líder que la recibe, la
+  // aceptación y el rechazo al que propuso, y el preaviso de ruptura a cada miembro.
+  'CLAN_ALLIANCE_OFFERED',
+  'CLAN_ALLIANCE_ACCEPTED',
+  'CLAN_ALLIANCE_REJECTED',
+  'CLAN_ALLIANCE_BREAK_ANNOUNCED',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -530,6 +570,10 @@ export const EventLogNoticeKind = EventLogKind.extract([
   // SPEC-CLAN-GOVERNANCE Q8: el liderazgo se avisa a quien lo recibe.
   'CLAN_LEADERSHIP_RECEIVED',
   'CLAN_LEADERSHIP_INHERITED',
+  // SPEC-CLAN-ALLIANCES Q9: la oferta, la aceptación y el preaviso de ruptura.
+  'CLAN_ALLIANCE_OFFERED',
+  'CLAN_ALLIANCE_ACCEPTED',
+  'CLAN_ALLIANCE_BREAK_ANNOUNCED',
 ]);
 export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
 

@@ -204,6 +204,9 @@ func (s *Simulation) cityAttackBlocked(a *unit.Unit, c *city.City, posA world.Ti
 	if s.state.ClanPeace(a.PlayerID, c.OwnerPlayerID, now) {
 		return protocol.CodeInvalidTarget, msgClanPeace
 	}
+	if s.state.AllyPeace(a.PlayerID, c.OwnerPlayerID, now) {
+		return protocol.CodeInvalidTarget, msgAllyPeace
+	}
 	if s.state.AtPeace(a.PlayerID, c.OwnerPlayerID, now) {
 		return protocol.CodeInvalidTarget, m.peace
 	}

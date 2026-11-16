@@ -78,6 +78,11 @@ var actionPolicies = map[string]ActionPolicy{
 	// cambiar la paz.
 	protocol.TypeClanPromote:  {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeClanTransfer: {Hostile: false, Territory: TerritoryFree},
+	// Las alianzas entre clanes (SPEC-CLAN-ALLIANCES §4.3): cambian la paz pero
+	// no agreden a nadie, y no las frena la protección.
+	protocol.TypeClanAlliancePropose: {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanAllianceRespond: {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanAllianceCancel:  {Hostile: false, Territory: TerritoryFree},
 }
 
 // sessionMessages son los mensajes que no actúan sobre el mundo. Los del

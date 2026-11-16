@@ -287,6 +287,13 @@ const (
 	ClanChangeDemoted     = "demoted"
 	ClanChangeTransferred = "transferred"
 	ClanChangeSucceeded   = "succeeded"
+	// SPEC-CLAN-ALLIANCES §6: ofertas de alianza, alianzas aceptadas, rotas al
+	// vencer su preaviso y expiradas (ofertas que caducan y alianzas de un clan
+	// que se disuelve).
+	ClanChangeAllianceProposed = "alliance_proposed"
+	ClanChangeAllianceAccepted = "alliance_accepted"
+	ClanChangeAllianceBroken   = "alliance_broken"
+	ClanChangeAllianceExpired  = "alliance_expired"
 )
 
 // ClanChangeKinds es el catálogo cerrado de la etiqueta kind de
@@ -295,5 +302,6 @@ func ClanChangeKinds() []string {
 	return []string{
 		ClanChangeFounded, ClanChangeJoined, ClanChangeLeft, ClanChangeExpelled, ClanChangeDissolved,
 		ClanChangePromoted, ClanChangeDemoted, ClanChangeTransferred, ClanChangeSucceeded,
+		ClanChangeAllianceProposed, ClanChangeAllianceAccepted, ClanChangeAllianceBroken, ClanChangeAllianceExpired,
 	}
 }

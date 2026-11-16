@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/diplomacy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
@@ -62,8 +63,11 @@ type FactionJoinCompletion struct {
 	// At es el instante de la entrada que vence.
 	At     time.Time
 	Breaks []TreatyWrite
-	Tick   uint64
-	AtMs   int64
+	// AllianceBreaks son las alianzas del clan del jugador a las que la
+	// entrada abre el preaviso (ADR-042 §4).
+	AllianceBreaks []AllianceWrite
+	Tick           uint64
+	AtMs           int64
 }
 
 // JoinFaction pide unirse a un bando (protocolo v1, faction.join).
@@ -308,6 +312,15 @@ func (s *Simulation) completeFactionJoins(nowMs int64) {
 		if !ok {
 			return true // una orden de tratado en vuelo: el tick siguiente
 		}
+		// RN-CLANALLY-005: las alianzas de su clan con un clan del bando
+		// contrario empiezan su preaviso; espera si alguna tiene una orden en
+		// vuelo, como los tratados.
+		var aliadas []*clan.Alliance
+		if clanID, enClan := s.state.clans.memberOf[c.OwnerPlayerID]; enClan {
+			if aliadas, ok = s.state.alliancesMixedBy(clanID, clan.Stance{Faction: join.Faction}); !ok {
+				return true
+			}
+		}
 
 		now := s.treatyNow()
 		fin := now.Add(s.breakNotice())
@@ -324,6 +337,11 @@ func (s *Simulation) completeFactionJoins(nowMs int64) {
 			})
 		}
 
+		allianceWrites := make([]AllianceWrite, 0, len(aliadas))
+		for _, a := range aliadas {
+			allianceWrites = append(allianceWrites, s.openAllianceNotice(a, c.OwnerPlayerID, fin.UnixMilli(), nowMs))
+		}
+
 		c.Faction = join.Faction
 		c.FactionJoin = nil
 		faction := c.Faction
@@ -334,7 +352,7 @@ func (s *Simulation) completeFactionJoins(nowMs int64) {
 
 		s.submitFactionJoined(FactionJoinCompletion{
 			PlayerID: c.OwnerPlayerID, Faction: join.Faction, At: time.UnixMilli(join.AtMs).UTC(),
-			Breaks: writes, Tick: s.state.Tick(), AtMs: nowMs,
+			Breaks: writes, AllianceBreaks: allianceWrites, Tick: s.state.Tick(), AtMs: nowMs,
 		})
 		return true
 	})

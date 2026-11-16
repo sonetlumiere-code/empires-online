@@ -315,9 +315,12 @@ type ClanJoin struct {
 	ClanID     int64
 	PlayerID   uuid.UUID
 	MaxMembers int
-	At         time.Time
-	Tick       uint64
-	AtMs       int64
+	// BreakNotice es el preaviso que abre una alianza que la entrada mezcla con
+	// la Orden y el Caos (ADR-042 §4); cero: no abre ninguno.
+	BreakNotice time.Duration
+	At          time.Time
+	Tick        uint64
+	AtMs        int64
 }
 
 // Join abre la estancia del invitado con su first_message_id, borra sus
@@ -326,7 +329,17 @@ type ClanJoin struct {
 // viva en el instante de la orden, el tope y la regla de bandos (el trigger,
 // INV-CLAN-002). Un reintento encuentra la estancia ya abierta.
 func (r *ClanRepo) Join(ctx context.Context, o ClanJoin) error {
-	return r.store.InTx(ctx, func(tx pgx.Tx) error {
+	_, err := r.JoinBreaking(ctx, o)
+	return err
+}
+
+// JoinBreaking es Join, y además abre en la misma transacción el preaviso de
+// cada alianza del clan que la entrada mezcla con la Orden y el Caos, y las
+// devuelve (ADR-042 §4). Un reintento no abre ninguno: la estancia ya estaba.
+func (r *ClanRepo) JoinBreaking(ctx context.Context, o ClanJoin) ([]AllianceBreak, error) {
+	var breaks []AllianceBreak
+	err := r.store.InTx(ctx, func(tx pgx.Tx) error {
+		breaks = nil
 		if err := lockClan(ctx, tx, o.ClanID); err != nil {
 			return err
 		}
@@ -385,11 +398,24 @@ func (r *ClanRepo) Join(ctx context.Context, o ClanJoin) error {
 		if _, err := tx.Exec(ctx, `DELETE FROM clan_invites WHERE player_id = $1`, o.PlayerID); err != nil {
 			return fmt.Errorf("borrar las invitaciones: %w", normalize(err))
 		}
-		return appendEvent(ctx, tx, worldEvent{
+		if err := appendEvent(ctx, tx, worldEvent{
 			EventType: "ClanJoined", Tick: o.Tick, PlayerID: &o.PlayerID,
 			Payload: map[string]any{"clanId": o.ClanID, "atMs": o.AtMs},
-		})
+		}); err != nil {
+			return err
+		}
+		if o.BreakNotice > 0 {
+			var err error
+			if breaks, err = breakMixedAlliances(ctx, tx, o); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return breaks, nil
 }
 
 // ClanLeave es una salida o una expulsión ya aplicada en la RAM.
@@ -470,6 +496,10 @@ func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, []territory.Co
 			}
 			if _, err := tx.Exec(ctx, `DELETE FROM clan_invites WHERE clan_id = $1`, l.ClanID); err != nil {
 				return fmt.Errorf("borrar las invitaciones del clan: %w", normalize(err))
+			}
+			// RN-CLANALLY-008: sus ofertas y alianzas expiran con él.
+			if err := expireClanAlliances(ctx, tx, l); err != nil {
+				return err
 			}
 		}
 		ev := worldEvent{
@@ -777,7 +807,8 @@ func (r *ClanRepo) ChatMarkRead(ctx context.Context, me uuid.UUID, upTo func(cla
 // Lookup es la vista pública de un clan vivo (RN-CLAN-008): su nombre, su sigla
 // y sus miembros abiertos con su ciudad, su bando y su rango.
 func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoPayload, error) {
-	info := protocol.ClanInfoPayload{ClanID: clanID, Members: []protocol.ClanMemberView{}, Territories: []protocol.ClanTerritoryView{}}
+	info := protocol.ClanInfoPayload{ClanID: clanID, Members: []protocol.ClanMemberView{},
+		Territories: []protocol.ClanTerritoryView{}, Alliances: []protocol.ClanPublicAllianceView{}}
 	var leader uuid.UUID
 	err := r.store.pool.QueryRow(ctx,
 		`SELECT name, tag, leader_player_id FROM clans WHERE id = $1 AND dissolved_at IS NULL`, clanID).
@@ -824,5 +855,11 @@ func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoP
 		return info, err
 	}
 	info.Territories = ts
+	// RN-CLANALLY-007: sus alianzas activas son públicas.
+	as, err := publicAlliances(ctx, r.store.pool, clanID)
+	if err != nil {
+		return info, err
+	}
+	info.Alliances = as
 	return info, nil
 }

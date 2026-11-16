@@ -36,6 +36,7 @@ const clan: ClanView = {
   members: [miembro(YO, 'LEADER'), miembro(BEA, 'MEMBER')],
   sentInvitations: [{ playerId: CE, cityId: 9, cityName: 'Persépolis', expiresAtMs: 5_000 }],
   territories: [],
+  alliances: [],
 };
 const mensaje = (id: number, from: string, clanId = 3): ClanMessageView => ({
   id, clanId, fromPlayerId: from, fromCityId: 1, fromCityName: 'Roma', body: `m${id}`, sentAtMs: id,

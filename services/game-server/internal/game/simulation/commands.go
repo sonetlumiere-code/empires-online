@@ -222,6 +222,11 @@ func CommandTypes() []string {
 		ClanRankFailed{}.commandType(),
 		ClanLeaderFailed{}.commandType(),
 		ClanExpelRejected{}.commandType(),
+		ProposeClanAlliance{}.commandType(),
+		RespondClanAlliance{}.commandType(),
+		CancelClanAlliance{}.commandType(),
+		ClanAllianceResolved{}.commandType(),
+		ClanAllianceEndPersistFailed{}.commandType(),
 	}
 }
 
@@ -267,6 +272,7 @@ func JobNames() []string {
 		JobFactionJoin, JobFactionJoined,
 		JobClanCreate, JobClanInvite, JobClanJoin, JobClanLeave,
 		JobClanRank, JobClanLeader,
+		JobClanAlliance, JobClanAllianceEnd,
 	}
 }
 
