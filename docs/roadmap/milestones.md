@@ -2197,7 +2197,7 @@ la Región 6-4 queda de [HUM]; la pasada siguiente de `--territorio-clan` es la 
 
 ## E20 — Gobierno del clan
 
-**Estado: EN CURSO (2026-11-16)**, en la rama `claude/slice-gobierno-clan`, implementado, verificado y probado en vivo; falta la fusión. Contrato:
+**Estado: HECHO (2026-11-16)**, fusionado en `main` (`983035e`) con la CI en verde el mismo día. Contrato:
 [SPEC-CLAN-GOVERNANCE](../specs/clan-governance.md), aceptada el 2026-11-16 con sus diez decisiones de producto, sin
 ADR nuevo.
 

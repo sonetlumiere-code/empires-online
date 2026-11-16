@@ -68,7 +68,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Facciones | [factions.md](factions.md) | E17 Facciones | Implemented | Unirse a la Orden o al Caos desde `NEUTRAL`, una vez y con preaviso; la paz de la Orden, sin pacto ni alianza entre Orden y Caos, y menos daño recibido en la tierra del propio bando |
 | Clanes | [clans.md](clans.md) | E18 Clanes | Implemented | Grupos de hasta 20 jugadores con nombre, sigla y líder, por invitación; paz entre miembros con 15 minutos de paz residual al salir, sin mezclar la Orden y el Caos, y un canal de mensajes del clan |
 | Territorios de clan | [clan-territories.md](clan-territories.md) | E19 Territorios de clan | Implemented | Un miembro reclama un territorio para su clan con un guerrero; la tierra del clan es afín para todos sus miembros, la defienden todos y se pierde contra quien no esté en paz con ninguno; al disolverse el clan queda libre |
-| Gobierno del clan | [clan-governance.md](clan-governance.md) | E20 Gobierno del clan | Accepted | Oficiales que invitan y expulsan a los miembros rasos, el traspaso del liderazgo y la sucesión automática cuando el líder lleva 7 días sin jugar |
+| Gobierno del clan | [clan-governance.md](clan-governance.md) | E20 Gobierno del clan | Implemented | Oficiales que invitan y expulsan a los miembros rasos, el traspaso del liderazgo y la sucesión automática cuando el líder lleva 7 días sin jugar |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

@@ -7,7 +7,7 @@ jugando.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLAN-GOVERNANCE` |
-| Estado | Accepted (2026-11-16). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-16). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `983035e`, con la CI en verde. |
 | Milestone | E20 Gobierno del clan (vigésimo slice después de M7) |
 | Canon | §1.5 (determinismo), §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores) |
 | Depende de | [clans.md](clans.md), [clan-territories.md](clan-territories.md), [presence.md](presence.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
