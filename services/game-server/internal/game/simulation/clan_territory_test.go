@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/diplomacy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
@@ -475,4 +476,191 @@ func TestUnaReclamacionParaElClanTrasUnReinicio(t *testing.T) {
 		assert.False(t, ok)
 		assert.Contains(t, h.conquest.endReasons(), simulation.ClaimEndClan)
 	})
+}
+
+// ADR-041 §4 (precisión «la disolución optimista también libera»): la RAM no
+// conoce territorios del clan y la salida es optimista, pero la base sí tenía
+// uno (una captura para el clan confirmó justo antes en la misma cola) y lo
+// libera en su transacción. La RAM lo aplica al volver, con su territory.update.
+func TestLaSalidaOptimistaAplicaLoQueLaBaseLibera(t *testing.T) {
+	h, fc := conClanes(t, nil)
+	vecino := conVecinos(h, 1)[0]
+	conCuatroTerritorios(h, map[int64]uuid.UUID{1: h.playerID, 2: vecino})
+	clanID := h.clanConMiembros()
+	require.Empty(t, h.state.ClanTerritoryIDs(clanID), "la RAM no sabe que el clan ganó el 2")
+	fc.released = []territory.Control{{TerritoryID: 2, OwnerType: territory.OwnerNone, Version: 3}}
+
+	h.rec.reset()
+	h.send(simulation.LeaveClan{PlayerID: h.playerID, RequestID: uuid.NewString()})
+	require.Empty(t, h.codigos())
+	_, sigue := h.state.ClanOf(h.playerID)
+	assert.False(t, sigue, "sin territorios en la RAM, la salida es optimista")
+	assert.True(t, fc.lastLeave(t).Dissolve)
+	assert.Equal(t, vecino.String(), dueñoDe(h.vistaDe(2)), "lo liberado vuelve por el loop, no en el acto")
+
+	h.tick()
+	c, ok := h.state.TerritoryControl(2)
+	require.True(t, ok)
+	assert.Equal(t, territory.OwnerNone, c.OwnerType)
+	assert.Equal(t, int32(3), c.Version)
+	liberado := false
+	for _, m := range h.rec.byType(protocol.TypeTerritoryUpdate) {
+		if p := m.Payload.(protocol.TerritoryUpdatePayload); p.Territory.ID == 2 && p.Territory.OwnerType == "NONE" {
+			liberado = true
+		}
+	}
+	assert.True(t, liberado, "el área recibe el territorio libre")
+}
+
+// applyReleased no pisa un control que la RAM ya tiene con una versión igual o
+// más nueva que la liberada (otra escritura llegó antes por el loop); una más
+// nueva, sí.
+func TestLoLiberadoNoPisaUnControlMasNuevo(t *testing.T) {
+	casos := []struct {
+		nombre  string
+		version int32
+		aplica  bool
+	}{
+		{"versión igual", 5, false},
+		{"versión vieja", 4, false},
+		{"versión nueva", 6, true},
+	}
+	for _, caso := range casos {
+		t.Run(caso.nombre, func(t *testing.T) {
+			h, fc := conClanes(t, nil)
+			vecino := conVecinos(h, 1)[0]
+			conCuatroTerritorios(h, map[int64]uuid.UUID{1: h.playerID})
+			id, at := vecino.String(), h.clk.Now()
+			h.state.ApplyTerritoryControl(territory.Control{
+				TerritoryID: 2, OwnerType: territory.OwnerPlayer, OwnerID: &id, CapturedAt: &at, Version: 5,
+			})
+			h.clanConMiembros()
+			fc.released = []territory.Control{{TerritoryID: 2, OwnerType: territory.OwnerNone, Version: caso.version}}
+
+			h.rec.reset()
+			h.send(simulation.LeaveClan{PlayerID: h.playerID, RequestID: uuid.NewString()})
+			h.tick()
+			c, ok := h.state.TerritoryControl(2)
+			require.True(t, ok)
+			if caso.aplica {
+				assert.Equal(t, territory.OwnerNone, c.OwnerType)
+				assert.Equal(t, caso.version, c.Version)
+				assert.NotEmpty(t, h.rec.byType(protocol.TypeTerritoryUpdate))
+				return
+			}
+			assert.Equal(t, territory.OwnerPlayer, c.OwnerType, "se queda el control que la RAM ya tenía")
+			assert.Equal(t, int32(5), c.Version)
+			assert.Empty(t, h.rec.byType(protocol.TypeTerritoryUpdate), "nada que difundir")
+		})
+	}
+}
+
+// ADR-041 §3 y ADR-032 §3: la captura se encola con la clave de su nuevo dueño
+// —city:<id> para sí, clan:<id> para el clan— y, si tenía otro, con la del
+// anterior como Key2, para que la cola la ordene respecto a los trabajos de
+// los dos lados (la salida de un clan, el trato de una ciudad).
+func TestLasClavesDeLaCaptura(t *testing.T) {
+	type dueno int
+	const (
+		libre dueno = iota
+		deCiudad
+		deClan
+	)
+	casos := []struct {
+		nombre  string
+		dueno   dueno
+		forClan bool
+		key     func(propio, ajeno int64) string
+		key2    func(propio, ajeno int64) string
+	}{
+		{"libre, para sí", libre, false, ciudadPropia, sinClave},
+		{"libre, para el clan", libre, true, clanPropio, sinClave},
+		{"de una ciudad, para sí", deCiudad, false, ciudadPropia, ciudadAjena},
+		{"de una ciudad, para el clan", deCiudad, true, clanPropio, ciudadAjena},
+		{"de un clan, para sí", deClan, false, ciudadPropia, clanAjeno},
+		{"de un clan, para otro clan", deClan, true, clanPropio, clanAjeno},
+	}
+	for _, caso := range casos {
+		t.Run(caso.nombre, func(t *testing.T) {
+			h, _ := conClanes(t, nil)
+			vecino := conVecinos(h, 1)[0]
+			conCuatroTerritorios(h, map[int64]uuid.UUID{1: h.playerID})
+			var propio, ajeno int64
+			if caso.forClan {
+				propio = h.clanConMiembros()
+			}
+			switch caso.dueno {
+			case deCiudad:
+				id, at := vecino.String(), h.clk.Now()
+				h.state.ApplyTerritoryControl(territory.Control{
+					TerritoryID: 2, OwnerType: territory.OwnerPlayer, OwnerID: &id, CapturedAt: &at, Version: 1,
+				})
+				ajeno = 2 // la ciudad del vecino
+			case deClan:
+				h.fundarClan(vecino, "Los Osos", "OSO")
+				var ok bool
+				ajeno, ok = h.state.ClanOf(vecino)
+				require.True(t, ok)
+				territorioDelClan(h, 2, ajeno)
+			}
+			if caso.forClan && caso.dueno == deClan {
+				require.Less(t, propio, ajeno, "el clan que gana es el de id menor: la clave no sale del orden de los ids")
+			}
+			ponerUnidad(h, guerreroID, h.playerID, h.cityID, unit.TypeWarrior, world.Tile{X: 40, Y: 10}, 60)
+			now := h.clk.NowMs()
+			h.state.SetClaims([]territory.Claim{{ID: 9, TerritoryID: 2, UnitID: guerreroID, PlayerID: h.playerID,
+				CityID: h.cityID, ClanID: propio, X: 40, Y: 10, StartedAtMs: now - 600_000, CompletesAtMs: now, RequestID: "r"}})
+
+			h.tick()
+			require.Len(t, h.conquest.captures, 1, "la reclamación vencida se captura")
+			propioK := h.cityID
+			if caso.forClan {
+				propioK = propio
+			}
+			assert.Equal(t, []clavesDeTrabajo{{
+				Name: simulation.JobTerritoryCapture, Key: caso.key(propioK, ajeno), Key2: caso.key2(propioK, ajeno),
+			}}, h.persister.clavesDe(simulation.JobTerritoryCapture))
+		})
+	}
+}
+
+func ciudadPropia(propio, _ int64) string { return simulation.CityKey(propio) }
+func clanPropio(propio, _ int64) string   { return simulation.ClanKey(propio) }
+func ciudadAjena(_, ajeno int64) string   { return simulation.CityKey(ajeno) }
+func clanAjeno(_, ajeno int64) string     { return simulation.ClanKey(ajeno) }
+func sinClave(_, _ int64) string          { return "" }
+
+// SPEC-CLAN-TERRITORIES §9, recuperación: un territorio de clan cargado con el
+// mundo —el control antes que los clanes, como en cmd/server— sale con su clan
+// dueño en la vista y es tierra afín para sus miembros desde el primer golpe,
+// sin que nada lo haya ganado en este proceso.
+func TestUnTerritorioDeClanTrasUnReinicio(t *testing.T) {
+	h, _ := conClanes(t, nil)
+	vecinos := conVecinos(h, 2)
+	a, b := vecinos[0], vecinos[1]
+	set, overlaps, err := territory.BuildSet(cuatroTerritorios, 64, 64, 32)
+	require.NoError(t, err)
+	require.Empty(t, overlaps)
+	dueno, at := territory.ClanOwnerID(7), h.clk.Now()
+	var controles []territory.Control
+	for _, tr := range cuatroTerritorios {
+		c := territory.Control{TerritoryID: tr.ID, OwnerType: territory.OwnerNone}
+		if tr.ID == 2 {
+			c = territory.Control{TerritoryID: 2, OwnerType: territory.OwnerClan, OwnerID: &dueno, CapturedAt: &at, Version: 4}
+		}
+		controles = append(controles, c)
+	}
+	h.state.SetTerritories(set, controles)
+	h.state.SetClans([]clan.Clan{{ID: 7, Name: "Los Osos", Tag: "OSO", LeaderID: a}},
+		[]clan.Stay{{ClanID: 7, PlayerID: a, JoinedAtMs: 1}, {ClanID: 7, PlayerID: b, JoinedAtMs: 2}}, nil, 0)
+
+	v := h.vistaDe(2)
+	assert.Equal(t, string(territory.OwnerClan), v.OwnerType)
+	require.NotNil(t, v.OwnerClan)
+	assert.Equal(t, protocol.TerritoryOwnerClanView{ID: 7, Name: "Los Osos", Tag: "OSO"}, *v.OwnerClan)
+	assert.Equal(t, []int64{2}, h.state.ClanTerritoryIDs(7))
+
+	ponerUnidad(h, guerreroID, h.playerID, h.cityID, unit.TypeWarrior, world.Tile{X: 44, Y: 15}, 60)
+	victima := ponerUnidad(h, enemigoID, b, 3, unit.TypeVillager, world.Tile{X: 45, Y: 15}, 40)
+	assert.Equal(t, int32(6), primerGolpe(t, h, victima), "−20 % en la tierra de su clan")
 }

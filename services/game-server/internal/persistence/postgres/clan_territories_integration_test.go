@@ -216,3 +216,171 @@ func TestLaCapturaParaUnClanExigeSerDeEl(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, activas, 1, "la reclamación sigue activa: la cierra la simulación como conflicto")
 }
+
+// ADR-041 §3 y §5: la captura de un clan a otro clan. La transacción toma los dos
+// candados de clan en orden de id —el del clan que pierde, menor, antes que el
+// del que gana—, aunque el que gana sea su primera clave; escribe una fila por
+// miembro abierto del clan que lo pierde con las dos siglas y una sola para quien
+// lo gana, a nombre del miembro más antiguo; y no da bono a nadie.
+func TestLaCapturaDeUnClanAOtroClan(t *testing.T) {
+	store, ctx := newTestStore(t)
+	c := nuevaConquista(t, ctx, store)
+	clanes, lobos := clanDeLaConquista(t, ctx, store, c, false)
+	_, _, _, _, bootstrapper := newRepos(store)
+	segundo, err := bootstrapper.Create(ctx, bootstrapRequest("segundo", world.Tile{X: 20, Y: 50}))
+	require.NoError(t, err)
+	require.NoError(t, clanes.Invite(ctx, postgres.ClanInvite{ClanID: lobos, PlayerID: segundo.Player.ID,
+		InvitedBy: c.duena.Player.ID, At: clanEn, ExpiresAt: clanEn.Add(24 * time.Hour)}))
+	require.NoError(t, clanes.Join(ctx, postgres.ClanJoin{ClanID: lobos, PlayerID: segundo.Player.ID, MaxMembers: 20, At: clanEn.Add(time.Minute)}))
+	ctrl := ganarParaElClan(t, ctx, store, c, lobos)
+	osos, err := clanes.Create(ctx, postgres.ClanCreate{PlayerID: c.rival.Player.ID, Name: "Los Osos", Tag: "OSO",
+		At: clanEn.Add(time.Hour), AtMs: clanEn.Add(time.Hour).UnixMilli()})
+	require.NoError(t, err)
+	require.Greater(t, osos, lobos, "el clan que gana tiene el id mayor: su candado va el segundo")
+	limiteDuena, _ := limiteYPoblacion(t, ctx, store, c.duena.City.ID)
+	limiteRival, _ := limiteYPoblacion(t, ctx, store, c.rival.City.ID)
+
+	inicio := c.reclamacion(c.rival, c.libre, nil, "req-osos")
+	inicio.Claim.ClanID, inicio.OwnerClanID, inicio.OwnerClanTag, inicio.Tick = osos, lobos, "LOB", 10
+	id, err := c.repo.StartClaim(ctx, inicio)
+	require.NoError(t, err)
+	assert.Len(t, eventosDeConquista(t, ctx, store, territory.EventClaimStarted), 2, "una fila por miembro de [LOB]")
+
+	// Otro tiene el candado del clan que gana: la captura tiene que esperar en
+	// él con el del clan que pierde ya tomado.
+	tx, err := store.Pool().Begin(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	var bloqueador int32
+	require.NoError(t, tx.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&bloqueador))
+	_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2::int4)`, int32(0x434C414E), int32(osos))
+	require.NoError(t, err)
+
+	type resultado struct {
+		ctrl territory.Control
+		err  error
+	}
+	hecho := make(chan resultado, 1)
+	go func() {
+		got, err := c.repo.CaptureTerritory(ctx, postgres.Capture{
+			ClaimID: id, TerritoryID: c.libre.ID, TerritoryName: "Este", NewOwner: c.rival.Player.ID,
+			NewCityID: c.rival.City.ID, NewClanID: osos, ForClanTag: "OSO", PrevClanID: lobos, PrevClanTag: "LOB",
+			ExpectedVersion: ctrl.Version, CapturedAt: c.instanteDeHoy, Tick: 12, AtMs: 1_000_000, X: 40, Y: 10,
+		})
+		hecho <- resultado{got, err}
+	}()
+	type candado struct {
+		clan    int64
+		granted bool
+	}
+	candadosDeClan := func() map[int32][]candado {
+		rows, err := store.Pool().Query(ctx,
+			`SELECT pid, objid::bigint, granted FROM pg_locks
+			  WHERE locktype = 'advisory' AND classid = $1 AND objsubid = 2 AND pid <> $2`,
+			int64(0x434C414E), bloqueador)
+		require.NoError(t, err)
+		defer rows.Close()
+		out := map[int32][]candado{}
+		for rows.Next() {
+			var pid int32
+			var k candado
+			require.NoError(t, rows.Scan(&pid, &k.clan, &k.granted))
+			out[pid] = append(out[pid], k)
+		}
+		return out
+	}
+	var deLaCaptura []candado
+	require.Eventually(t, func() bool {
+		for _, ks := range candadosDeClan() {
+			for _, k := range ks {
+				if k.clan == osos && !k.granted {
+					deLaCaptura = ks
+					return true
+				}
+			}
+		}
+		return false
+	}, 10*time.Second, 20*time.Millisecond, "la captura tiene que esperar en el candado del clan que gana")
+	assert.ElementsMatch(t, []candado{{lobos, true}, {osos, false}}, deLaCaptura,
+		"espera en el de [OSO] con el de [LOB], de id menor, ya tomado")
+	select {
+	case r := <-hecho:
+		t.Fatalf("la captura no esperó al candado: %+v", r)
+	default:
+	}
+	require.NoError(t, tx.Rollback(ctx))
+
+	var r resultado
+	select {
+	case r = <-hecho:
+	case <-time.After(10 * time.Second):
+		t.Fatal("la captura no terminó al soltar el candado")
+	}
+	require.NoError(t, r.err)
+	assert.Equal(t, territory.OwnerClan, r.ctrl.OwnerType)
+	got, ok := r.ctrl.ClanOwner()
+	require.True(t, ok)
+	assert.Equal(t, osos, got)
+	assert.Equal(t, ctrl.Version+1, r.ctrl.Version)
+	l, _ := limiteYPoblacion(t, ctx, store, c.duena.City.ID)
+	assert.Equal(t, limiteDuena, l, "Q3: nada que quitar")
+	l, _ = limiteYPoblacion(t, ctx, store, c.rival.City.ID)
+	assert.Equal(t, limiteRival, l, "Q3: nada que sumar")
+	info, err := clanes.Lookup(ctx, lobos)
+	require.NoError(t, err)
+	assert.Empty(t, info.Territories)
+	info, err = clanes.Lookup(ctx, osos)
+	require.NoError(t, err)
+	require.Len(t, info.Territories, 1)
+	assert.Equal(t, c.libre.ID, info.Territories[0].ID)
+
+	type fila struct {
+		player, other            uuid.UUID
+		only, ownerClan, forClan string
+	}
+	rows, err := store.Pool().Query(ctx,
+		`SELECT player_id, counterpart_player_id, coalesce(payload->>'only', ''),
+		        coalesce(payload->>'ownerClanTag', ''), coalesce(payload->>'forClanTag', '')
+		   FROM world_events WHERE event_type = $1 AND counterpart_player_id IS NOT NULL ORDER BY id`,
+		territory.EventControlChanged)
+	require.NoError(t, err)
+	var filas []fila
+	for rows.Next() {
+		var f fila
+		require.NoError(t, rows.Scan(&f.player, &f.other, &f.only, &f.ownerClan, &f.forClan))
+		filas = append(filas, f)
+	}
+	rows.Close()
+	require.NoError(t, rows.Err())
+	rival := c.rival.Player.ID
+	assert.Equal(t, []fila{
+		{c.duena.Player.ID, rival, "player", "LOB", "OSO"},
+		{segundo.Player.ID, rival, "player", "LOB", "OSO"},
+		{c.duena.Player.ID, rival, "counterpart", "", "OSO"},
+	}, filas, "una por miembro de [LOB] y una para quien lo gana, a nombre del más antiguo")
+
+	paginaDe := func(quien uuid.UUID) []protocol.EventLogEntry {
+		page, _, err := registro(store, 50).Page(ctx, quien, 0)
+		require.NoError(t, err)
+		return page.Entries
+	}
+	for _, miembro := range []uuid.UUID{c.duena.Player.ID, segundo.Player.ID} {
+		perdido := 0
+		for _, e := range paginaDe(miembro) {
+			if e.Kind == "TERRITORY_LOST" {
+				perdido++
+				assert.Equal(t, "LOB", e.ClanTag)
+			}
+		}
+		assert.Equal(t, 1, perdido, "cada miembro de [LOB] lo pierde una vez")
+	}
+	var ganado []protocol.EventLogEntry
+	for _, e := range paginaDe(rival) {
+		if e.Kind == "TERRITORY_TAKEN" {
+			ganado = append(ganado, e)
+		}
+	}
+	require.Len(t, ganado, 1, "lo gana una sola vez, aunque [LOB] tuviera dos miembros")
+	assert.Equal(t, "OSO", ganado[0].ClanTag, "lo ganó para su clan")
+	assert.Equal(t, c.duena.Player.ID.String(), ganado[0].OtherPlayerID, "el miembro más antiguo de [LOB]")
+}
