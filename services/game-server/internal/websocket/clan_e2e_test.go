@@ -351,3 +351,99 @@ func TestElGobiernoDelClanPorLaRed(t *testing.T) {
 	assert.Equal(t, "LOB", aviso.ClanTag)
 	assert.Equal(t, env.playerID.String(), aviso.OtherPlayerID)
 }
+
+// enviadasEnElJSON son los invitados de clan.sentInvitations tal como van por
+// la red: falla si la lista no es un array (null, o sin la clave).
+func enviadasEnElJSON(t *testing.T, raw json.RawMessage) []string {
+	t.Helper()
+	var m struct {
+		Clan map[string]json.RawMessage `json:"clan"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &m))
+	require.NotNil(t, m.Clan)
+	var lista []map[string]any
+	crudo, ok := m.Clan["sentInvitations"]
+	require.True(t, ok, "sin sentInvitations")
+	require.NotEqual(t, "null", string(crudo))
+	require.NoError(t, json.Unmarshal(crudo, &lista))
+	out := []string{}
+	for _, inv := range lista {
+		out = append(out, inv["playerId"].(string))
+	}
+	return out
+}
+
+// SPEC-CLAN-GOVERNANCE §4.2 y §9 «e2e», desde el punto de vista de cada rango:
+// un oficial invita a dos jugadores; cuando uno entra, el clan entero recibe su
+// vista, y el oficial ve la invitación que sigue viva mientras un raso (y quien
+// acaba de entrar) recibe sentInvitations como lista vacía.
+func TestLasInvitacionesEnviadasPorRangoPorLaRed(t *testing.T) {
+	env := newE2E(t)
+	bea, ce, dani, eva := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for i, p := range []uuid.UUID{bea, ce, dani, eva} {
+		env.state.AddCity(&city.City{ID: int64(2 + i), OwnerPlayerID: p, Name: []string{"Bizancio", "Persépolis", "Tebas", "Éfeso"}[i],
+			CenterX: int32(70 + 30*i), CenterY: 70, Era: city.EraStone, PopulationLimit: 20,
+			PresenceState: city.PresenceOnline, Civilization: "ROMAN"})
+	}
+	env.ws.SetClans(&canalFalso{clanDe: map[uuid.UUID]int64{}, leidos: map[uuid.UUID]int64{}, ciudades: map[uuid.UUID]string{}})
+
+	yo, _ := conectar(t, env, env.playerID)
+	yo.await(protocol.TypeClanUpdate, 3*time.Second)
+	b, _ := conectar(t, env, bea)
+	b.await(protocol.TypeClanUpdate, 3*time.Second)
+	c, _ := conectar(t, env, ce)
+	c.await(protocol.TypeClanUpdate, 3*time.Second)
+	e, _ := conectar(t, env, eva)
+	e.await(protocol.TypeClanUpdate, 3*time.Second)
+
+	yo.send(protocol.TypeClanCreate, map[string]any{"name": "Los Lobos", "tag": "LOB"})
+	env.pump()
+	fundado, _ := yo.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+	clanID := clanUpdate(t, fundado.Payload).Clan.ID
+	invitar := func(quien *conn, p uuid.UUID) {
+		quien.send(protocol.TypeClanInvite, map[string]any{"playerId": p.String(), "invited": true})
+		env.pump()
+	}
+	entrar := func(quien *conn) json.RawMessage {
+		quien.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return len(clanUpdate(t, raw).Invitations) == 1 }, 3*time.Second)
+		quien.send(protocol.TypeClanRespond, map[string]any{"clanId": clanID, "accept": true})
+		env.pump()
+		dentro, _ := quien.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+		return dentro.Payload
+	}
+	invitar(yo, bea)
+	entrar(b)
+	invitar(yo, ce)
+	entrar(c)
+
+	yo.send(protocol.TypeClanPromote, map[string]any{"playerId": bea.String(), "officer": true})
+	env.pump()
+	b.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		if p.Clan == nil {
+			return false
+		}
+		for _, m := range p.Clan.Members {
+			if m.PlayerID == bea.String() {
+				return m.Role == clan.RoleOfficer
+			}
+		}
+		return false
+	}, 3*time.Second)
+
+	// El oficial invita a dani y a eva; eva entra y el clan entero recibe su vista.
+	invitar(b, dani)
+	invitar(b, eva)
+	vistaDeEva := entrar(e)
+	assert.Empty(t, enviadasEnElJSON(t, vistaDeEva), "ni quien acaba de entrar")
+	deCuatro := func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		return p.Clan != nil && len(p.Clan.Members) == 4
+	}
+	vistaDelOficial, _ := b.awaitWhere(protocol.TypeClanUpdate, deCuatro, 3*time.Second)
+	assert.Equal(t, []string{dani.String()}, enviadasEnElJSON(t, vistaDelOficial.Payload), "el oficial ve la que sigue viva")
+	vistaDelLider, _ := yo.awaitWhere(protocol.TypeClanUpdate, deCuatro, 3*time.Second)
+	assert.Equal(t, []string{dani.String()}, enviadasEnElJSON(t, vistaDelLider.Payload))
+	vistaDelRaso, _ := c.awaitWhere(protocol.TypeClanUpdate, deCuatro, 3*time.Second)
+	assert.Empty(t, enviadasEnElJSON(t, vistaDelRaso.Payload), "un raso no ve las enviadas")
+}

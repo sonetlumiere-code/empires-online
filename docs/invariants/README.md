@@ -413,11 +413,11 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-CLAN-001 | Un jugador está en un clan como mucho, y todo clan vivo tiene un único líder que es miembro | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaEstanciaAbiertaPorJugador`, `TestLaPertenenciaAUnClanEnLaBase` (integration), `TestElLiderazgoYLaDisolucion`, `TestAlSalirElLiderHeredaElOficialMasAntiguo`, `TestElCambioDeLiderEnLaBase` (integration) |
+| INV-CLAN-001 | Un jugador está en un clan como mucho, y todo clan vivo tiene un único líder que es miembro | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaEstanciaAbiertaPorJugador`, `TestLaPertenenciaAUnClanEnLaBase` (integration), `TestElLiderazgoYLaDisolucion`, `TestAlSalirElLiderHeredaElOficialMasAntiguo`, `TestElBarridoDeLaAusenciaUnaVezPorMinuto`, `TestElCambioDeLiderEnLaBase` (integration) |
 | INV-CLAN-002 | Ningún clan junta a la Orden y al Caos, contando las entradas pendientes | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosTriggersNoJuntanALaOrdenYAlCaos` (integration), `TestUnClanNoJuntaALaOrdenYAlCaos` |
 | INV-CLAN-003 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre compañeros de clan, ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestDosDelMismoClanDejanDePelear`, `TestLaPazResidualTrasSalir`, `TestLosClanesVuelvenAlArrancar`, `TestUnClanPorLaRed` |
 | INV-CLAN-004 | Una reclamación para un clan sólo se completa mientras quien la sostiene es miembro de ese clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestQueRompeUnaReclamacionConUnClan`, `TestUnaReclamacionParaElClanTrasUnReinicio`, `TestLaCapturaParaUnClanExigeSerDeEl` (integration) |
-| INV-CLAN-005 | Sólo el rango que lo permite cambia la pertenencia ajena, los rangos o el liderazgo de un clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosPermisosPorRango`, `TestLoQueLaBaseNoEscribeSeDeshace`, `TestElRangoSeCompruebaEnLaBase` (integration), `TestElCambioDeLiderEnLaBase` (integration) |
+| INV-CLAN-005 | Sólo el rango que lo permite cambia la pertenencia ajena, los rangos o el liderazgo de un clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosPermisosPorRango`, `TestLoQueLaBaseNoEscribeSeDeshace`, `TestElRangoSeCompruebaEnLaBase` (integration), `TestElCambioDeLiderEnLaBase` (integration), `TestElRangoDeUnaEstanciaSoloEsMiembroUOficial` (integration) |
 
 ### Distribución
 

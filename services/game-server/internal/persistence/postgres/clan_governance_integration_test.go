@@ -209,3 +209,31 @@ func TestElCambioDeLiderEnLaBase(t *testing.T) {
 		`SELECT payload->>'newLeaderId' FROM world_events WHERE event_type = 'ClanLeft' ORDER BY id DESC LIMIT 1`).Scan(&nuevo))
 	assert.Equal(t, a.String(), nuevo)
 }
+
+// §9, integración de la migración 000022: el CHECK clan_members_rank_valid sólo
+// admite MEMBER u OFFICER. El líder se guarda en clans.leader_player_id, no
+// como rango: ni «LEADER» ni otra grafía entran, tampoco en la estancia del
+// líder (donde el trigger no lo frena porque no es OFFICER), y nada cambia.
+func TestElRangoDeUnaEstanciaSoloEsMiembroUOficial(t *testing.T) {
+	store, ctx := newTestStore(t)
+	repo := postgres.NewClanRepo(store, postgres.ClansConfig{})
+	ps := conversadoresDeClan(t, store, ctx, 3)
+	lider, raso, fuera := ps[0], ps[1], ps[2]
+	id := clanDeCuatro(t, ctx, repo, ps[:2])
+
+	for _, p := range []uuid.UUID{lider, raso} {
+		for _, rango := range []string{"LEADER", "officer", ""} {
+			_, err := store.Pool().Exec(ctx,
+				`UPDATE clan_members SET rank = $3 WHERE clan_id = $1 AND player_id = $2 AND left_at IS NULL`, id, p, rango)
+			assert.Equal(t, "clan_members_rank_valid", constraintDe(t, err), "rango %q", rango)
+		}
+	}
+	rangos, l := rangosEnLaBase(t, ctx, store, id)
+	assert.Equal(t, lider, l)
+	assert.Equal(t, map[uuid.UUID]string{lider: "MEMBER", raso: "MEMBER"}, rangos, "nada cambió")
+
+	// Una estancia nueva tampoco nace con otro rango.
+	_, err := store.Pool().Exec(ctx,
+		`INSERT INTO clan_members (clan_id, player_id, joined_at, rank) VALUES ($1, $2, now(), 'LEADER')`, id, fuera)
+	assert.Equal(t, "clan_members_rank_valid", constraintDe(t, err))
+}

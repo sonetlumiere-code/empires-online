@@ -456,3 +456,120 @@ func TestUnClanQueSeDisuelveNoCambiaDeRangos(t *testing.T) {
 	assert.Equal(t, []string{protocol.CodeInvalidTarget}, h.codigos())
 	assert.Equal(t, "el clan se está disolviendo", h.ultimoMotivo())
 }
+
+// §9 y la cola: nombrar o quitar un oficial, ceder el liderazgo y la sucesión
+// por ausencia se escriben con la clave del clan (clan:<id>) y sin segunda
+// clave, para ir en orden con las demás escrituras del mismo clan.
+func TestLasClavesDelGobiernoEnLaCola(t *testing.T) {
+	soloDelClan := func(nombre string, id int64, n int) []clavesDeTrabajo {
+		out := make([]clavesDeTrabajo, n)
+		for i := range out {
+			out[i] = clavesDeTrabajo{Name: nombre, Key: simulation.ClanKey(id)}
+		}
+		return out
+	}
+	t.Run("nombrar, quitar y ceder", func(t *testing.T) {
+		h, _ := conClanes(t, nil)
+		vs := conVecinos(h, 1)
+		clanID := h.clanConMiembros(vs[0])
+		h.nombrar(h.playerID, vs[0], true)
+		h.nombrar(h.playerID, vs[0], false)
+		h.ceder(h.playerID, vs[0])
+		require.Empty(t, h.codigos())
+		assert.Equal(t, soloDelClan(simulation.JobClanRank, clanID, 2), h.persister.clavesDe(simulation.JobClanRank))
+		assert.Equal(t, soloDelClan(simulation.JobClanLeader, clanID, 1), h.persister.clavesDe(simulation.JobClanLeader))
+	})
+	t.Run("la sucesión por ausencia", func(t *testing.T) {
+		h, _ := conClanes(t, func(d *simulation.Deps) { d.ClanLeaderInactive = time.Hour })
+		vs := conVecinos(h, 1)
+		clanID := h.clanConMiembros(vs[0])
+		ausente(h, h.playerID, h.clk.Now())
+		h.clk.Advance(time.Hour)
+		h.loop.Step(h.clk.NowMs())
+		lider, _ := h.state.ClanLeader(clanID)
+		require.Equal(t, vs[0], lider)
+		assert.Equal(t, soloDelClan(simulation.JobClanLeader, clanID, 1), h.persister.clavesDe(simulation.JobClanLeader))
+	})
+}
+
+// invitacionesQueVe son los invitados del último clan.update que recibió p.
+func invitacionesQueVe(h *harness, p uuid.UUID) []string {
+	h.t.Helper()
+	ups := h.clanUpdatesPara(p)
+	require.NotEmpty(h.t, ups)
+	v := ups[len(ups)-1].Clan
+	require.NotNil(h.t, v)
+	require.NotNil(h.t, v.SentInvitations, "la lista va vacía, no null")
+	out := []string{}
+	for _, inv := range v.SentInvitations {
+		out = append(out, inv.PlayerID)
+	}
+	return out
+}
+
+// §4.2: las invitaciones enviadas sólo las ven el líder y los oficiales. Una
+// invitación de un oficial no le llega a un raso; cuando el clan entero recibe
+// su vista (alguien entra), el líder y el oficial ven la que sigue viva y los
+// rasos una lista vacía; un oficial al que le quitan el rango deja de verlas.
+func TestLasInvitacionesEnviadasSegunElRango(t *testing.T) {
+	h, _ := conClanes(t, nil)
+	vs := conVecinos(h, 4)
+	oficial, raso, dani, eva := vs[0], vs[1], vs[2], vs[3]
+	clanID := h.clanConMiembros(oficial, raso)
+	h.nombrar(h.playerID, oficial, true)
+
+	h.rec.reset()
+	h.invitarAlClan(oficial, dani)
+	h.invitarAlClan(oficial, eva)
+	require.Empty(t, h.codigos())
+	assert.Empty(t, h.clanUpdatesPara(raso), "a un raso no le llega una invitación enviada")
+	assert.ElementsMatch(t, []string{dani.String(), eva.String()}, invitacionesQueVe(h, oficial))
+
+	h.rec.reset()
+	h.aceptarClan(eva, clanID)
+	require.Empty(t, h.codigos())
+	assert.Equal(t, []string{dani.String()}, invitacionesQueVe(h, h.playerID))
+	assert.Equal(t, []string{dani.String()}, invitacionesQueVe(h, oficial))
+	assert.Empty(t, invitacionesQueVe(h, raso), "un raso no ve las enviadas")
+	assert.Empty(t, invitacionesQueVe(h, eva), "ni quien acaba de entrar")
+
+	h.rec.reset()
+	h.nombrar(h.playerID, oficial, false)
+	require.Empty(t, h.codigos())
+	assert.Empty(t, invitacionesQueVe(h, oficial), "un ex oficial deja de verlas")
+	assert.Equal(t, []string{dani.String()}, invitacionesQueVe(h, h.playerID))
+}
+
+// RN-CLANGOV-005: el barrido de la ausencia va una vez por minuto. Tras una
+// sucesión, el nuevo líder también ausente no la pierde en los ticks
+// siguientes del mismo minuto (ni se encola otro cambio); en el barrido del
+// minuto siguiente, sí.
+func TestElBarridoDeLaAusenciaUnaVezPorMinuto(t *testing.T) {
+	h, fc := conClanes(t, func(d *simulation.Deps) { d.ClanLeaderInactive = time.Hour })
+	vs := conVecinos(h, 2)
+	heredero, raso := vs[0], vs[1]
+	clanID := h.clanConMiembros(heredero, raso)
+	h.nombrar(h.playerID, heredero, true)
+	t0 := h.clk.Now()
+	ausente(h, h.playerID, t0)
+
+	h.clk.Advance(time.Hour)
+	h.loop.Step(h.clk.NowMs())
+	lider, _ := h.state.ClanLeader(clanID)
+	require.Equal(t, heredero, lider)
+	ausente(h, heredero, t0) // el heredero también lleva una hora fuera
+
+	for range 5 {
+		h.tick()
+	}
+	lider, _ = h.state.ClanLeader(clanID)
+	assert.Equal(t, heredero, lider, "dentro del mismo minuto, nada")
+	assert.Len(t, fc.leaders, 1)
+	assert.Len(t, h.persister.clavesDe(simulation.JobClanLeader), 1, "un solo cambio encolado")
+
+	h.clk.SetMs(t0.Add(time.Hour + time.Minute).UnixMilli())
+	h.loop.Step(h.clk.NowMs())
+	lider, _ = h.state.ClanLeader(clanID)
+	assert.Equal(t, raso, lider, "en el barrido siguiente")
+	assert.Len(t, fc.leaders, 2)
+}
