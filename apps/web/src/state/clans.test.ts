@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { v1 } from '@empires-online/protocol';
 import {
+  activeAlliances,
+  allianceCountdown,
+  allianceOffers,
+  allianceProblem,
+  breakAllianceWarning,
+  isAlly,
+  MAX_CLAN_ALLIES,
   applyChatNew,
   applyChatPage,
   applyClanUpdate,
@@ -180,5 +187,41 @@ describe('el gobierno del clan (SPEC-CLAN-GOVERNANCE §4.2, §4.6)', () => {
   it('la confirmación de ceder el liderazgo', () => {
     expect(transferWarning('Bizancio', 'LOB')).toBe('Bizancio pasará a liderar [LOB] y tú quedarás como oficial');
     expect(transferWarning(null, 'LOB')).toBe('Ese jugador pasará a liderar [LOB] y tú quedarás como oficial');
+  });
+});
+
+describe('las alianzas entre clanes (SPEC-CLAN-ALLIANCES §4.6)', () => {
+  const alianza = (id: number, clanId: number, tag: string, status: 'ACTIVE' | 'PROPOSED', proposedByUs = true,
+    breaksAtMs: number | null = null): v1.ClanAllianceView => ({ id, clanId, name: `Los ${tag}`, tag, status, proposedByUs, breaksAtMs });
+  const con = (alliances: v1.ClanAllianceView[]) => applyClanUpdate(EMPTY_CLANS, { clan: { ...clan, alliances }, invitations: [] });
+
+  it('las activas, las ofertas recibidas y enviadas, y si una ciudad es de un aliado', () => {
+    const s = con([alianza(1, 4, 'OSO', 'ACTIVE'), alianza(2, 5, 'CIE', 'PROPOSED', false), alianza(3, 6, 'ALC', 'PROPOSED')]);
+    expect(activeAlliances(s).map((a) => a.tag)).toEqual(['OSO']);
+    expect(allianceOffers(s).received.map((a) => a.tag)).toEqual(['CIE']);
+    expect(allianceOffers(s).sent.map((a) => a.tag)).toEqual(['ALC']);
+    expect(isAlly(s, { id: 4 })).toBe(true);
+    expect(isAlly(s, { id: 5 }), 'una oferta no es una alianza').toBe(false);
+    expect(isAlly(s, null)).toBe(false);
+  });
+
+  it('quién puede proponer, y a quién', () => {
+    const s = con([alianza(1, 4, 'OSO', 'ACTIVE'), alianza(2, 5, 'CIE', 'PROPOSED')]);
+    expect(allianceProblem(s, YO, 7)).toBeNull();
+    expect(allianceProblem(s, BEA, 7)).toBe('Sólo el líder firma las alianzas del clan');
+    expect(allianceProblem(s, YO, 3)).toBe('Es tu propio clan');
+    expect(allianceProblem(s, YO, 4)).toBe('Vuestros clanes ya están aliados');
+    expect(allianceProblem(s, YO, 5)).toBe('Ya hay una oferta pendiente con ese clan');
+    const lleno = con([alianza(1, 4, 'OSO', 'ACTIVE'), alianza(2, 5, 'CIE', 'ACTIVE')]);
+    expect(MAX_CLAN_ALLIES).toBe(2);
+    expect(allianceProblem(lleno, YO, 7)).toBe('Tu clan ya tiene 2 alianzas');
+    expect(allianceProblem(EMPTY_CLANS, YO, 7)).toBe('Sólo el líder firma las alianzas del clan');
+  });
+
+  it('la cuenta atrás del preaviso y la confirmación de romper', () => {
+    expect(allianceCountdown(alianza(1, 4, 'OSO', 'ACTIVE'), 0)).toBeNull();
+    expect(allianceCountdown(alianza(1, 4, 'OSO', 'ACTIVE', true, 12 * 60_000), 30_000)).toBe('La alianza con [OSO] termina en 12 min');
+    expect(allianceCountdown(alianza(1, 4, 'OSO', 'ACTIVE', true, 1_000), 5_000)).toBe('La alianza con [OSO] termina en 0 min');
+    expect(breakAllianceWarning('OSO')).toBe('Dentro de 15 minutos, los miembros de [OSO] podrán atacar a los tuyos');
   });
 });

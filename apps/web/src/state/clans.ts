@@ -236,3 +236,58 @@ export function nameProblem(name: string): string | null {
 export function tagProblem(tag: string): string | null {
   return /^[A-Z0-9]{2,4}$/.test(tag) ? null : 'La sigla tiene de 2 a 4 letras mayúsculas o dígitos';
 }
+
+export type ClanAllianceView = v1.ClanAllianceView;
+
+/**
+ * El tope de alianzas activas de un clan (SPEC-CLAN-ALLIANCES Q4). Copia del valor
+ * por defecto del servidor (EO_CLAN_MAX_ALLIES), sólo para el texto del panel y
+ * para no ofrecer un botón que el servidor rechazaría.
+ */
+export const MAX_CLAN_ALLIES = 2;
+
+/** El preaviso de ruptura de una alianza, en minutos (el de los tratados, Q5). */
+export const ALLIANCE_BREAK_MINUTES = 15;
+
+/** Las alianzas activas del propio clan, también las que están en preaviso. */
+export function activeAlliances(state: ClansState): ClanAllianceView[] {
+  return state.clan?.alliances.filter((a) => a.status === 'ACTIVE') ?? [];
+}
+
+/** Las ofertas del propio clan: las recibidas y las enviadas (sólo las ve quien gobierna). */
+export function allianceOffers(state: ClansState): { received: ClanAllianceView[]; sent: ClanAllianceView[] } {
+  const offers = state.clan?.alliances.filter((a) => a.status === 'PROPOSED') ?? [];
+  return { received: offers.filter((a) => !a.proposedByUs), sent: offers.filter((a) => a.proposedByUs) };
+}
+
+/** Si el clan de una ciudad es un aliado del propio (la barra dice «Aliado de [TAG]»). */
+export function isAlly(state: ClansState, clan: { id: number } | null | undefined): boolean {
+  return clan != null && activeAlliances(state).some((a) => a.clanId === clan.id);
+}
+
+/**
+ * Por qué el jugador no puede proponer una alianza al clan de la vista pública, o
+ * `null` si puede (RN-CLANALLY-002, Q4). Los bandos y el plazo tras un rechazo los
+ * dice el servidor.
+ */
+export function allianceProblem(state: ClansState, me: string | null, otherClanId: number): string | null {
+  if (state.clan === null || myRole(state, me) !== 'LEADER') return 'Sólo el líder firma las alianzas del clan';
+  if (otherClanId === state.clan.id) return 'Es tu propio clan';
+  const actual = state.clan.alliances.find((a) => a.clanId === otherClanId);
+  if (actual?.status === 'ACTIVE') return 'Vuestros clanes ya están aliados';
+  if (actual?.status === 'PROPOSED') return 'Ya hay una oferta pendiente con ese clan';
+  if (activeAlliances(state).length >= MAX_CLAN_ALLIES) return `Tu clan ya tiene ${MAX_CLAN_ALLIES} alianzas`;
+  return null;
+}
+
+/** «La alianza con [OSO] termina en 12 min», o `null` sin preaviso. */
+export function allianceCountdown(a: ClanAllianceView, nowMs: number): string | null {
+  if (a.breaksAtMs === null) return null;
+  const min = Math.max(0, Math.ceil((a.breaksAtMs - nowMs) / 60_000));
+  return `La alianza con [${a.tag}] termina en ${min} min`;
+}
+
+/** El texto de la confirmación de «Romper la alianza» (SPEC-CLAN-ALLIANCES §4.6). */
+export function breakAllianceWarning(tag: string): string {
+  return `Dentro de ${ALLIANCE_BREAK_MINUTES} minutos, los miembros de [${tag}] podrán atacar a los tuyos`;
+}

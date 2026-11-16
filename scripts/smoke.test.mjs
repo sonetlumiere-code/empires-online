@@ -27,6 +27,7 @@ import {
   pactoVigente,
   pasoDeFaccion,
   pasoDeClan,
+  alianzaCon,
   rolEnClan,
   pasoDelTerritorioDeClan,
   rasgo,
@@ -281,6 +282,16 @@ test('pasoDeClan: fundar sin clan, nada si ya lo dirige, fallar en otro clan (SP
   assert.equal(pasoDeClan(clan(yo), yo), 'lider');
   assert.equal(pasoDeClan(clan('otro'), yo), 'no-lider');
   assert.equal(pasoDeClan(clan(yo, 'OTR'), yo), 'otro-clan');
+});
+
+// SPEC-CLAN-ALLIANCES: el humo --alianza-clan busca la alianza por la sigla del otro clan.
+test('alianzaCon encuentra la alianza o la oferta con un clan, o null', () => {
+  const alianza = { id: 9, clanId: 2, name: 'Eco', tag: 'ECO', status: 'ACTIVE', proposedByUs: true, breaksAtMs: null };
+  const upd = { clan: { id: 1, tag: 'HUM', alliances: [alianza] }, invitations: [] };
+  assert.deepEqual(alianzaCon(upd, 'ECO'), alianza);
+  assert.equal(alianzaCon(upd, 'OTR'), null);
+  assert.equal(alianzaCon({ clan: null, invitations: [] }, 'ECO'), null);
+  assert.equal(alianzaCon({ clan: { id: 1, tag: 'HUM' } }, 'ECO'), null, 'un servidor anterior sin alliances');
 });
 
 // SPEC-CLAN-TERRITORIES: el humo --territorio-clan disputa siempre el mismo

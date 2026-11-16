@@ -1066,7 +1066,7 @@ describe('clanes (SPEC-CLANS)', () => {
   const miembro = {
     playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1_757_376_000_000,
   };
-  const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [] };
+  const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [], alliances: [] };
 
   it('clan.create lleva el nombre y la sigla, y la sigla es de 2 a 4 letras mayúsculas o dígitos', () => {
     expect(cmd('clan.create', { name: 'Los Lobos', tag: 'LOB' }).ok).toBe(true);

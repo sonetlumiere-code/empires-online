@@ -10,7 +10,7 @@ import type { v1 } from '@empires-online/protocol';
 
 import { unitTypeLabel } from './economy';
 import { describeLines } from './trade';
-import { LEADER_INACTIVE_DAYS } from './clans';
+import { ALLIANCE_BREAK_MINUTES, LEADER_INACTIVE_DAYS } from './clans';
 
 export type EventLogEntry = v1.EventLogEntry;
 export type EventLogPage = v1.EventLogPage['payload'];
@@ -263,6 +263,17 @@ function rawText(e: EventLogEntry): string {
       return `Ahora lideras ${clanName(e.clanTag)}: ${who} llevaba ${LEADER_INACTIVE_DAYS} días sin jugar`;
     case 'CLAN_LEADERSHIP_LOST':
       return `Perdiste el liderazgo de ${clanName(e.clanTag)} por inactividad; ahora lo tiene ${who}`;
+    // Las alianzas entre clanes (SPEC-CLAN-ALLIANCES Q9): clanTag es el otro clan.
+    case 'CLAN_ALLIANCE_OFFERED':
+      return `${who} propone una alianza entre ${clanName(e.clanTag)} y tu clan`;
+    case 'CLAN_ALLIANCE_ACCEPTED':
+      return `${who} aceptó la alianza entre ${clanName(e.clanTag)} y tu clan`;
+    case 'CLAN_ALLIANCE_REJECTED':
+      return `${who} rechazó la alianza entre ${clanName(e.clanTag)} y tu clan`;
+    case 'CLAN_ALLIANCE_BREAK_ANNOUNCED':
+      return `La alianza de tu clan con ${clanName(e.clanTag)} termina ${
+        e.breaksAtMs !== undefined ? `a las ${clockTime(e.breaksAtMs)}` : `en ${ALLIANCE_BREAK_MINUTES} minutos`
+      }: después, sus miembros podrán atacar a los tuyos`;
     default:
       return `${who}: ${String(e.kind)}`;
   }
@@ -281,7 +292,8 @@ export function isLoss(e: EventLogEntry): boolean {
     e.kind === 'CARAVAN_INTERCEPTED' ||
     e.kind === 'CARAVAN_LOST' ||
     e.kind === 'CLAN_EXPELLED' ||
-    e.kind === 'CLAN_LEADERSHIP_LOST'
+    e.kind === 'CLAN_LEADERSHIP_LOST' ||
+    e.kind === 'CLAN_ALLIANCE_BREAK_ANNOUNCED'
   );
 }
 

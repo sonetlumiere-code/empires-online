@@ -124,6 +124,13 @@ import {
   type MessagesState,
 } from '../src/state/messages';
 import {
+  activeAlliances,
+  allianceCountdown,
+  allianceOffers,
+  allianceProblem,
+  breakAllianceWarning,
+  isAlly,
+  MAX_CLAN_ALLIES,
   canExpel,
   canInvite,
   clanBadge,
@@ -620,6 +627,11 @@ export default function Page() {
           useWorldStore.setState({ lastError: { code: 'INVALID_TARGET', message: 'sois del mismo clan' } });
           return;
         }
+        // RN-CLANALLY-003: entre clanes aliados, tampoco (la paz residual la dice el servidor).
+        if (isAlly(useWorldStore.getState().clans, theirClan)) {
+          useWorldStore.setState({ lastError: { code: 'INVALID_TARGET', message: 'vuestros clanes están aliados' } });
+          return;
+        }
         clientRef.current?.attackUnit(selectedUnitId, unitId);
       }
     },
@@ -1029,7 +1041,8 @@ export default function Page() {
               <span title={traitSummary(diplomacyTarget.civilization)}>
                 {withTag(diplomacyTarget.name, diplomacyTarget.clan)} ({civilizationLabel(diplomacyTarget.civilization)}, {eraLabel(diplomacyTarget.era)},{' '}
                 {factionLabel(diplomacyTarget.faction)}
-                {diplomacyTarget.factionJoin ? ` — ${joinLabel(diplomacyTarget.factionJoin, serverTimeMs(), false)}` : ''}):
+                {diplomacyTarget.factionJoin ? ` — ${joinLabel(diplomacyTarget.factionJoin, serverTimeMs(), false)}` : ''}
+                {isAlly(clans, diplomacyTarget.clan) ? ` — Aliado de [${clans.clan?.tag}]` : ''}):
               </span>
               {proposableTypes(treaties, diplomacyTarget.ownerPlayerId)
                 // RN-FAC-005: la Orden y el Caos no firman la paz; el comercio, sí.
@@ -1213,6 +1226,9 @@ export default function Page() {
           onSend={sendClanDraft}
           onOlder={(before) => requestClanChat(before)}
           onCloseInfo={() => useWorldStore.getState().closeClanInfo()}
+          onProposeAlliance={(id) => clientRef.current?.proposeClanAlliance(id)}
+          onRespondAlliance={(id, accept) => clientRef.current?.respondClanAlliance(id, accept)}
+          onCancelAlliance={(id) => clientRef.current?.cancelClanAlliance(id)}
           onGoTerritory={goTo}
           onClose={toggleClan}
         />
@@ -1744,8 +1760,10 @@ function trackSession(sync: ViewSync, message: v1.ServerMessage): void {
  * El panel del clan (SPEC-CLANS §4.8, SPEC-CLAN-GOVERNANCE §4.6). Sin clan:
  * fundar uno y las invitaciones recibidas. Con clan: los miembros con su rango,
  * el canal y, según el rango de quien mira, las invitaciones enviadas,
- * «Expulsar», «Nombrar oficial» y «Ceder el liderazgo». Encima, la vista pública
- * pedida con «Ver clan». El texto del canal se pinta como texto.
+ * «Expulsar», «Nombrar oficial» y «Ceder el liderazgo», y sus alianzas
+ * (SPEC-CLAN-ALLIANCES §4.6): las activas con su preaviso y, para el líder y los
+ * oficiales, las ofertas. Encima, la vista pública pedida con «Ver clan», con
+ * sus aliados y «Proponer alianza». El texto del canal se pinta como texto.
  */
 function ClanPanel({
   clans,
@@ -1765,6 +1783,9 @@ function ClanPanel({
   onSend,
   onOlder,
   onCloseInfo,
+  onProposeAlliance,
+  onRespondAlliance,
+  onCancelAlliance,
   onGoTerritory,
   onClose,
 }: {
@@ -1785,6 +1806,10 @@ function ClanPanel({
   onSend: () => void;
   onOlder: (beforeId: number) => void;
   onCloseInfo: () => void;
+  /** Las órdenes de las alianzas entre clanes (SPEC-CLAN-ALLIANCES §4.3). */
+  onProposeAlliance: (clanId: number) => void;
+  onRespondAlliance: (allianceId: number, accept: boolean) => void;
+  onCancelAlliance: (allianceId: number) => void;
   /** Lleva la cámara al tile central de un territorio del clan (SPEC-CLAN-TERRITORIES §4.8). */
   onGoTerritory: (tile: { x: number; y: number }) => void;
   onClose: () => void;
@@ -1798,6 +1823,10 @@ function ClanPanel({
   const reason = sendBlockReason(draft);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmTransfer, setConfirmTransfer] = useState<string | null>(null);
+  const [confirmBreak, setConfirmBreak] = useState<number | null>(null);
+  const allies = activeAlliances(clans);
+  const offers = allianceOffers(clans);
+  const proposeProblem = clans.info ? allianceProblem(clans, playerId, clans.info.clanId) : null;
   return (
     <section style={styles.log} aria-label="Clan">
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -1825,6 +1854,21 @@ function ClanPanel({
             <p style={{ margin: '0.3rem 0 0', color: 'var(--muted)' }}>
               Territorios: {clans.info.territories.map((t) => t.name).join(', ')}
             </p>
+          )}
+          {clans.info.alliances.length > 0 && (
+            <p style={{ margin: '0.3rem 0 0', color: 'var(--muted)' }}>
+              Aliados: {clans.info.alliances.map((a) => `[${a.tag}]${a.breaksAtMs !== null ? ' (en preaviso)' : ''}`).join(', ')}
+            </p>
+          )}
+          {clan !== null && clans.info.clanId !== clan.id && (leader || proposeProblem === null) && (
+            <button
+              style={{ marginTop: '0.4rem' }}
+              disabled={proposeProblem !== null}
+              title={proposeProblem ?? 'Si su líder la acepta, los miembros de los dos clanes estaréis en paz'}
+              onClick={() => onProposeAlliance(clans.info!.clanId)}
+            >
+              Proponer alianza
+            </button>
           )}
         </div>
       )}
@@ -1924,6 +1968,44 @@ function ClanPanel({
                 </span>
               ))
             )}
+          </div>
+          <div style={{ margin: '0 0 0.5rem', display: 'grid', gap: '0.3rem' }} aria-label="Alianzas">
+            <span style={{ color: 'var(--muted)' }}>
+              Alianzas: [{clan.tag}] tiene {allies.length} de {MAX_CLAN_ALLIES}
+              {allies.length === 0 ? '; «Proponer alianza» desde «Ver clan» de otro clan' : ''}
+            </span>
+            {allies.map((a) => (
+              <span key={a.id} style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                Aliados de {a.name} [{a.tag}]
+                {allianceCountdown(a, nowMs) && <span style={{ color: 'var(--danger, #c0392b)' }}>— {allianceCountdown(a, nowMs)}</span>}
+                {leader && a.breaksAtMs === null && (confirmBreak === a.id ? (
+                  <span>
+                    {breakAllianceWarning(a.tag)}{' '}
+                    <button onClick={() => { setConfirmBreak(null); onCancelAlliance(a.id); }}>Confirmar</button>{' '}
+                    <button className="secondary" onClick={() => setConfirmBreak(null)}>Cancelar</button>
+                  </span>
+                ) : (
+                  <button className="secondary" onClick={() => setConfirmBreak(a.id)}>Romper</button>
+                ))}
+              </span>
+            ))}
+            {manager && offers.received.map((a) => (
+              <span key={a.id} style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }}>
+                {a.name} [{a.tag}] propone una alianza
+                {leader && (
+                  <>
+                    <button onClick={() => onRespondAlliance(a.id, true)} title="Los miembros de los dos clanes estaréis en paz">Aceptar</button>
+                    <button className="secondary" onClick={() => onRespondAlliance(a.id, false)}>Rechazar</button>
+                  </>
+                )}
+              </span>
+            ))}
+            {manager && offers.sent.map((a) => (
+              <span key={a.id} style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }}>
+                Ofreciste una alianza a {a.name} [{a.tag}]
+                {leader && <button className="secondary" onClick={() => onCancelAlliance(a.id)}>Retirar</button>}
+              </span>
+            ))}
           </div>
           {manager && clan.sentInvitations.filter((i) => i.expiresAtMs > nowMs).length > 0 && (
             <p style={{ margin: '0 0 0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
