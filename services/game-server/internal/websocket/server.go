@@ -584,6 +584,7 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			SessionID: session.ID,
 			RequestID: msg.RequestID,
 			UnitID:    p.UnitID,
+			ForClan:   p.ForClan != nil && *p.ForClan,
 		})
 
 	// Diplomacia (SPEC-DIPLOMACY). El cliente dice a quién y qué tipo, o sobre

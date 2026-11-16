@@ -14,6 +14,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/message"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
@@ -38,7 +39,9 @@ func (m *memoryClans) Create(context.Context, simulation.ClanCreateOrder) (int64
 }
 func (*memoryClans) Invite(context.Context, simulation.ClanInviteOrder) error { return nil }
 func (*memoryClans) Join(context.Context, simulation.ClanJoinOrder) error     { return nil }
-func (*memoryClans) Leave(context.Context, simulation.ClanLeave) error        { return nil }
+func (*memoryClans) Leave(context.Context, simulation.ClanLeave) ([]territory.Control, error) {
+	return nil, nil
+}
 
 // canalFalso hace de canal: su propia pertenencia (la fija el test, nunca lee la
 // RAM de la simulación desde la conexión) y sus mensajes.
@@ -129,7 +132,10 @@ func (c *canalFalso) Lookup(_ context.Context, clanID int64) (protocol.ClanInfoP
 	if len(ms) == 0 {
 		return protocol.ClanInfoPayload{}, clan.ErrUnknownClan
 	}
-	info := protocol.ClanInfoPayload{ClanID: clanID, Name: "Los Lobos", Tag: "LOB", Members: []protocol.ClanMemberView{}}
+	info := protocol.ClanInfoPayload{
+		ClanID: clanID, Name: "Los Lobos", Tag: "LOB", Members: []protocol.ClanMemberView{},
+		Territories: []protocol.ClanTerritoryView{},
+	}
 	for i, p := range ms {
 		role := clan.RoleMember
 		if i == 0 {

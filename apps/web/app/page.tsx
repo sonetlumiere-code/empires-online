@@ -320,6 +320,7 @@ export default function Page() {
   const goTo = useCallback((tile: { x: number; y: number }) => {
     setFocus((f) => ({ ...tile, nonce: (f?.nonce ?? 0) + 1 }));
   }, []);
+
   useEffect(() => {
     const now = clientRef.current?.serverTimeMs() ?? Date.now();
     const expiry = nextNoticeExpiry(notices, now);
@@ -763,17 +764,22 @@ export default function Page() {
   const ownBuildings = ownCity ? buildingsOf(useWorldStore.getState().buildings, ownCity.id) : [];
   const ownGood = ownCity ? goodOf(ownCity.civilization) : null;
 
-  // Por qué no se puede reclamar con el guerrero seleccionado (SPEC-TERRITORY-CONQUEST §5).
-  const claimReason = claimTerritory
-    ? claimBlockReason({
+  // Por qué no se puede reclamar con el guerrero seleccionado (SPEC-TERRITORY-CONQUEST §5),
+  // para sí o para el clan propio (SPEC-CLAN-TERRITORIES §5).
+  const myClanId = clans.clan?.id ?? null;
+  const claimCheck = claimTerritory
+    ? {
         unit: selectedUnit,
         playerId,
         territory: claimTerritory,
         cities: useWorldStore.getState().cities.values(),
         treaties,
         nowMs: serverTimeMs(),
-      })
+        myClanId,
+      }
     : null;
+  const claimReason = claimCheck ? claimBlockReason(claimCheck) : null;
+  const clanClaimReason = claimCheck && clans.clan ? claimBlockReason({ ...claimCheck, cities: useWorldStore.getState().cities.values(), forClan: true }) : null;
 
   return (
     <main style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -965,11 +971,11 @@ export default function Page() {
         {claimTerritory && selectedUnit && (
           <>
             <span style={{ color: claimTerritory.claim ? 'var(--danger)' : 'var(--muted)' }}>
-              {claimLabel(claimTerritory, playerId, serverTimeMs()) ??
-                `${claimTerritory.name}: ${territoryOwnerLabel(claimTerritory, playerId, useWorldStore.getState().cities.values())}`}
+              {claimLabel(claimTerritory, playerId, serverTimeMs(), myClanId) ??
+                `${claimTerritory.name}: ${territoryOwnerLabel(claimTerritory, playerId, useWorldStore.getState().cities.values(), myClanId)}`}
             </span>
-            {territoryFactionLine(claimTerritory, playerId, ownCity?.faction) && (
-              <span style={{ color: 'var(--muted)' }}>{territoryFactionLine(claimTerritory, playerId, ownCity?.faction)}</span>
+            {territoryFactionLine(claimTerritory, playerId, ownCity?.faction, myClanId) && (
+              <span style={{ color: 'var(--muted)' }}>{territoryFactionLine(claimTerritory, playerId, ownCity?.faction, myClanId)}</span>
             )}
             <button
               className="secondary"
@@ -982,6 +988,19 @@ export default function Page() {
             >
               Reclamar territorio
             </button>
+            {clans.clan && (
+              <button
+                className="secondary"
+                onClick={() => clientRef.current?.claimTerritory(selectedUnit.id, true)}
+                disabled={clanClaimReason !== null}
+                title={
+                  clanClaimReason ??
+                  'El guerrero planta el estandarte de tu clan: si aguanta, el territorio es del clan y tierra afín para todos sus miembros (sin población para nadie)'
+                }
+              >
+                Reclamar para el clan [{clans.clan.tag}]
+              </button>
+            )}
           </>
         )}
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
@@ -1188,6 +1207,7 @@ export default function Page() {
           onSend={sendClanDraft}
           onOlder={(before) => requestClanChat(before)}
           onCloseInfo={() => useWorldStore.getState().closeClanInfo()}
+          onGoTerritory={goTo}
           onClose={toggleClan}
         />
       )}
@@ -1736,6 +1756,7 @@ function ClanPanel({
   onSend,
   onOlder,
   onCloseInfo,
+  onGoTerritory,
   onClose,
 }: {
   clans: ClansState;
@@ -1753,6 +1774,8 @@ function ClanPanel({
   onSend: () => void;
   onOlder: (beforeId: number) => void;
   onCloseInfo: () => void;
+  /** Lleva la cámara al tile central de un territorio del clan (SPEC-CLAN-TERRITORIES §4.8). */
+  onGoTerritory: (tile: { x: number; y: number }) => void;
   onClose: () => void;
 }) {
   const clan = clans.clan;
@@ -1784,6 +1807,11 @@ function ClanPanel({
               </li>
             ))}
           </ul>
+          {clans.info.territories.length > 0 && (
+            <p style={{ margin: '0.3rem 0 0', color: 'var(--muted)' }}>
+              Territorios: {clans.info.territories.map((t) => t.name).join(', ')}
+            </p>
+          )}
         </div>
       )}
 
@@ -1845,6 +1873,20 @@ function ClanPanel({
               </li>
             ))}
           </ul>
+          <div style={{ margin: '0 0 0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}
+            aria-label="Territorios del clan">
+            <span style={{ color: 'var(--muted)' }}>Territorios del clan:</span>
+            {clan.territories.length === 0 ? (
+              <span style={{ color: 'var(--muted)' }}>ninguno todavía; «Reclamar para el clan» con un guerrero</span>
+            ) : (
+              clan.territories.map((t) => (
+                <span key={t.id} style={{ display: 'inline-flex', gap: '0.3rem', alignItems: 'center' }}>
+                  {t.name}
+                  <button className="secondary" onClick={() => onGoTerritory({ x: t.x, y: t.y })} title="Lleva la cámara al territorio">Ir</button>
+                </span>
+              ))
+            )}
+          </div>
           {leader && clan.sentInvitations.filter((i) => i.expiresAtMs > nowMs).length > 0 && (
             <p style={{ margin: '0 0 0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: 'var(--muted)' }}>Invitados:</span>

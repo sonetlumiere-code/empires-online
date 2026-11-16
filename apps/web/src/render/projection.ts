@@ -44,6 +44,7 @@ export type ProjectableState = Pick<
   | 'forests'
   | 'hills'
   | 'selectedUnitId'
+  | 'clans'
 >;
 
 function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number | null): SceneUnit {
@@ -89,7 +90,7 @@ function toSceneCity(c: CityView, ownId: string | null): SceneCity {
   };
 }
 
-function toSceneTerritory(t: TerritoryView, ownId: string | null): SceneTerritory {
+function toSceneTerritory(t: TerritoryView, ownId: string | null, ownClanId: number | null): SceneTerritory {
   return {
     id: t.id,
     minX: t.minX,
@@ -98,6 +99,8 @@ function toSceneTerritory(t: TerritoryView, ownId: string | null): SceneTerritor
     maxY: t.maxY,
     ownerType: t.ownerType,
     isOwn: t.ownerType === 'PLAYER' && t.ownerId === ownId,
+    // SPEC-CLAN-TERRITORIES §4.8: el del propio clan, distinto de uno ajeno.
+    isOwnClan: t.ownerType === 'CLAN' && ownClanId !== null && t.ownerClan?.id === ownClanId,
     contested: t.contested,
   };
 }
@@ -138,7 +141,7 @@ export function projectAll(state: ProjectableState): SceneUpdate | null {
   const cities: SceneCity[] = [];
   for (const c of state.cities.values()) cities.push(toSceneCity(c, ownId));
   const territories: SceneTerritory[] = [];
-  for (const t of state.territories.values()) territories.push(toSceneTerritory(t, ownId));
+  for (const t of state.territories.values()) territories.push(toSceneTerritory(t, ownId, state.clans.clan?.id ?? null));
   const buildings: SceneBuilding[] = [];
   for (const b of state.buildings.values()) buildings.push(toSceneBuilding(b, state));
 
@@ -187,7 +190,7 @@ export function projectChanges(state: ProjectableState, changes: WorldChanges): 
   const removedTerritories: number[] = [];
   for (const id of changes.territories) {
     const t = state.territories.get(id);
-    if (t) territories.push(toSceneTerritory(t, ownId));
+    if (t) territories.push(toSceneTerritory(t, ownId, state.clans.clan?.id ?? null));
     else removedTerritories.push(id);
   }
 

@@ -82,6 +82,14 @@ expulsado, `CLAN_EXPELLED` («Villa Norte te expulsó de su clan»), y al líder
 Villa Norte de tu clan»). Fundar, entrar y salir por voluntad propia no entran (`ClanFounded`, `ClanJoined` y
 `ClanLeft` no son tipos del registro).
 
+**Precisión (2026-11-16, [clan-territories.md](clan-territories.md) §6, [ADR-041](../decisions/ADR-041-clan-territories.md) §5).**
+Desde E19, con un clan dueño, `TerritoryClaimStarted` y `TerritoryControlChanged` se escriben una fila por miembro
+abierto del clan, con `only: "player"` en el payload: cada fila le cuenta el suceso sólo a su miembro, con la sigla del
+clan (`clanTag`), y nada a quien reclama; quien lo gana recibe su `TERRITORY_TAKEN` de una fila aparte con
+`only: "counterpart"` (su `player_id` es el miembro más antiguo del clan que lo pierde). Lo ganado para un clan lleva la
+sigla de ese clan. La liberación de los territorios al disolverse un clan escribe un `TerritoryControlChanged` sin
+`counterpart_player_id`, que no entra en el registro de nadie.
+
 Lo que hizo el propio jugador en la diplomacia (proponer, romper, retirar) no entra: ya lo sabe. `TreatyExpired` desde
 `ACTIVE` sólo lo escriben los tratados administrativos con `expires_at`: el pacto que una alianza sustituye se cierra
 sin evento propio, y lo cuenta el `TreatyAccepted` de la alianza.

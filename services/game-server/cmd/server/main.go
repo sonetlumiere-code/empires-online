@@ -208,6 +208,18 @@ func run() error {
 		return fmt.Errorf("cargar reclamaciones de territorio: %w", err)
 	}
 
+	// Los clanes vivos, para que la validación de carga resuelva los dueños CLAN
+	// (INV-TERR-012); la RAM los carga después con su pertenencia.
+	clanRepo := postgres.NewClanRepo(store, postgres.ClansConfig{MaxAge: cfg.MessageMaxAge, PageSize: cfg.MessagePageSize})
+	clanesVivos, err := clanRepo.ListLive(rootCtx)
+	if err != nil {
+		return fmt.Errorf("cargar clanes: %w", err)
+	}
+	idsDeClanes := make(map[int64]struct{}, len(clanesVivos))
+	for _, c := range clanesVivos {
+		idsDeClanes[c.ID] = struct{}{}
+	}
+
 	// Validación de carga (EO-119): lo que el esquema no garantiza se comprueba
 	// sobre lo recién leído, antes de construir la RAM. Un fatal aborta sin
 	// escribir nada; lo reparable se corrige en una transacción auditada.
@@ -220,6 +232,7 @@ func run() error {
 		Controls:      controls,
 		Territories:   territories.All(),
 		ActiveClaims:  reclamaciones,
+		Clans:         idsDeClanes,
 		Tasks:         economia.Tasks,
 		Buildings:     economia.Buildings,
 		Productions:   economia.Productions,
@@ -316,7 +329,6 @@ func run() error {
 	// Los clanes (ADR-040 §1): los vivos, la pertenencia abierta, las salidas
 	// cuya paz residual no ha vencido y las invitaciones vivas. Un clan que no
 	// cumple INV-CLAN-001 o INV-CLAN-002 no deja arrancar: no se repara solo.
-	clanRepo := postgres.NewClanRepo(store, postgres.ClansConfig{MaxAge: cfg.MessageMaxAge, PageSize: cfg.MessagePageSize})
 	malosClanes, err := clanRepo.Violations(rootCtx)
 	if err != nil {
 		return fmt.Errorf("comprobar clanes: %w", err)
@@ -328,10 +340,7 @@ func run() error {
 	if len(malosClanes) > 0 {
 		return fmt.Errorf("%w: %d clanes violan sus invariantes", postgres.ErrLoadCheckFatal, len(malosClanes))
 	}
-	clanes, err := clanRepo.ListLive(rootCtx)
-	if err != nil {
-		return fmt.Errorf("cargar clanes: %w", err)
-	}
+	clanes := clanesVivos
 	estancias, err := clanRepo.ListStays(rootCtx, sysClock.Now().Add(-cfg.ClanPeaceGrace))
 	if err != nil {
 		return fmt.Errorf("cargar la pertenencia a los clanes: %w", err)

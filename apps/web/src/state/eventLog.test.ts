@@ -175,3 +175,13 @@ describe('entryText: la conquista (SPEC-TERRITORY-CONQUEST §6)', () => {
     expect(isLoss(entrada(3, 'TERRITORY_TAKEN', t))).toBe(false);
   });
 });
+
+describe('entryText: los territorios de clan (SPEC-CLAN-TERRITORIES §6)', () => {
+  it('dice «de tu clan» al reclamarlo o perderlo, y «para tu clan» al ganarlo', () => {
+    const t = { territoryId: 12, territoryName: 'Llanuras', clanTag: 'LOB' };
+    expect(entryText(entrada(1, 'TERRITORY_CLAIMED', t))).toBe('Villa Norte reclamó Llanuras, de tu clan [LOB]');
+    expect(entryText(entrada(2, 'TERRITORY_LOST', t))).toBe('Villa Norte le quitó a tu clan [LOB] Llanuras');
+    expect(entryText(entrada(3, 'TERRITORY_TAKEN', t))).toBe('Tus guerreros ganaron Llanuras para tu clan [LOB], a Villa Norte');
+    expect(isLoss(entrada(2, 'TERRITORY_LOST', t))).toBe(true);
+  });
+});

@@ -60,7 +60,9 @@ hay captura ni pérdida de control lo reemplaza [territory-conquest.md](territor
 - Ownership de clan (`owner_type = 'CLAN'`): los clanes están fuera de MVP (canon §21). El valor está
   admitido por el `CHECK` y por el enum del protocolo, pero **ningún proceso lo escribe**. **Precisión
   (2026-11-15, [clans.md](clans.md) Q11):** los clanes existen desde E18, pero ningún territorio tiene un clan por
-  dueño: eso sigue fuera.
+  dueño: eso sigue fuera. **Precisión (2026-11-16, [clan-territories.md](clan-territories.md), [ADR-041](../decisions/ADR-041-clan-territories.md)):** desde E19 un miembro reclama un
+  territorio para su clan y el dueño `CLAN` tiene productor: la captura de una reclamación para el clan; la disolución
+  del clan lo devuelve a `NONE`.
 - Influencia de facción (`owner_type = 'FACTION'`): existe la tabla `factions`, pero no hay mecánica
   de influencia. Mismo estatus que `CLAN`.
 - `resource_modifiers` aplicados: la columna existe con `DEFAULT '{}'`, pero no modifica nada porque
@@ -165,6 +167,9 @@ multiplica el código de lectura.
 El `CHECK` admite `'CLAN'` y `'FACTION'` desde el primer día, pero **ninguna mecánica los escribe en
 MVP** (§2, Fuera de MVP): están admitidos, no soportados. Admitirlos ahora es más barato que ampliar
 después el `CHECK` con un `ALTER TABLE`, y no compromete nada porque el escritor es único.
+**Precisión (2026-11-16, [clan-territories.md](clan-territories.md), [ADR-041](../decisions/ADR-041-clan-territories.md)):** `CLAN` tiene escritor desde E19, y como no hay clave foránea,
+dos triggers de `000021` garantizan que el `owner_id` de un dueño `CLAN` es un clan vivo
+([INV-TERR-012](../invariants/territory.md#inv-terr-012)).
 
 ### 6.2 Por qué geometría y control están separados
 
@@ -300,6 +305,10 @@ simulado. El estado es el par (`owner_type`, `contested`).
       CLAN y FACTION: admitidos por el CHECK, sin ningún productor.
 ```
 
+**Precisión (2026-11-16, [clan-territories.md](clan-territories.md)):** desde E12 hay reclamaciones entre dueños ([territory-conquest.md](territory-conquest.md)
+§4.4), y desde E19 un territorio pasa a `CLAN` por una reclamación para el clan, de `CLAN` a `PLAYER` o a otro `CLAN`
+por una reclamación ajena, y de `CLAN` a `NONE` al disolverse el clan ([clan-territories.md](clan-territories.md) §4.7). `FACTION` sigue sin productor.
+
 ## 8. Errores
 
 El catálogo estable de códigos (canon §16, `packages/protocol/src/v1/errors.ts`) **no define ningún
@@ -379,6 +388,11 @@ Mensaje servidor→cliente `territory.update`. Envelope canónico
 | `ownerType` | `"NONE" \| "PLAYER" \| "CLAN" \| "FACTION"` | Mayúsculas, idénticas a los valores del `CHECK`. |
 | `ownerId` | `string \| null` | `null` cuando `ownerType` es `"NONE"`. |
 | `contested` | `boolean` | Siempre `false` en MVP. |
+
+**Precisión (2026-11-16).** La vista creció con los slices: `claim` y `contested` como «hay una reclamación activa»
+(E12), `ownerFaction` (E17) y `ownerClan`, el clan dueño de un territorio de clan, y `claim.clan` (E19,
+[clan-territories.md](clan-territories.md)). La forma vigente está en [websocket-protocol.md](websocket-protocol.md)
+§8.9.
 
 `TerritoryView` **no transporta** `controlPoints`, `capturedAt`, `type` ni `resourceModifiers`:
 ampliarlo cuando exista la mecánica es un cambio aditivo del protocolo (campos opcionales nuevos), y

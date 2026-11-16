@@ -46,6 +46,7 @@ Dentro del scope de v1:
 - Los mensajes entre jugadores ([messages.md](messages.md)): `message.send`, `message.list`, `message.fetch`, `message.read` y `message.block` (§7.20), que atiende la conexión sin pasar por la simulación, y `message.new` (§8.25), `message.inbox` (§8.26) y `message.page` (§8.27); todo aditivo (`R-VER-3`).
 - Las facciones ([factions.md](factions.md)): `faction.join` (§7.21), `faction` (un `FactionCode`, obligatorio) y `factionJoin` (`{ faction, atMs }` o `null`) en `CityView` y en `city.update`, y `ownerFaction` en `TerritoryView` (un `FactionCode` o `null`, siempre presente); sin mensajes servidor → cliente nuevos (`R-VER-3`).
 - Los clanes ([clans.md](clans.md)): `clan.create`, `clan.invite`, `clan.respond`, `clan.leave` y `clan.expel`, que pasan por la simulación, y `clan.lookup`, `clan.chat.send`, `clan.chat.fetch` y `clan.chat.read`, que atiende la conexión (§7.22); `clan.update` (§8.28), `clan.info` (§8.29), `clan.chat.new` (§8.30) y `clan.chat.page` (§8.31); `clan` (`{ id, tag }` o `null`, obligatorio) en `CityView` y en `city.update`; los tipos `CLAN_EXPELLED` (también en `event_log.notice`) y `CLAN_MEMBER_EXPELLED` en el registro; todo aditivo (`R-VER-2`, `R-VER-3`).
+- Los territorios de clan ([clan-territories.md](clan-territories.md)): `forClan` en `unit.claim` (§7.18), opcional; `ownerClan` (`{ id, name, tag }` o `null`, siempre presente) y `claim.clan` (`{ id, tag }`, opcional) en `TerritoryView` (§8.9); `territories[]` (`{ id, name, x, y }`) en `ClanView` (§8.28) y en `clan.info` (§8.29); `clanTag` en las entradas y los avisos de la conquista (§8.19, §8.23); sin tipos nuevos (`R-VER-2`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -575,7 +576,7 @@ payload: z.object({ offerId: EntityId }).strict()
 - **Dirección:** cliente → servidor. **Propósito:** un guerrero propio reclama el territorio del tile en que está: se planta y, si aguanta el plazo, el territorio pasa a su dueño. Es hostil contra el dueño del territorio, si lo tiene ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). Spec: [territory-conquest.md](territory-conquest.md); persistencia: [ADR-034](../decisions/ADR-034-territory-claims.md).
 
 ```ts
-payload: z.object({ unitId: EntityId }).strict()
+payload: z.object({ unitId: EntityId, forClan: z.boolean().optional() }).strict()   // forClan desde E19
 ```
 
 ```json
@@ -585,6 +586,8 @@ payload: z.object({ unitId: EntityId }).strict()
 **Validaciones, en este orden** (`RN-CONQ-001` a `003`): la unidad existe (`UNIT_NOT_FOUND`) · ownership (`UNIT_NOT_OWNED`) · viva y no guarnecida (`UNIT_DEAD`, `UNIT_GARRISONED`) · no está entrando en una ciudad y es un guerrero (`UNIT_NOT_MOVABLE`) · su tile pertenece a un territorio y no está en una Safe Zone ni en una zona urbana (`INVALID_TARGET`) · el territorio no tiene otra reclamación activa (`INVALID_TARGET`) · no es del jugador ni la capital de su dueño (`INVALID_TARGET`) · quien reclama no está protegido y, si el territorio tiene dueño, éste tampoco (`CITY_PROTECTED`) · no hay tratado de paz con el dueño (`INVALID_TARGET`). Ni el territorio ni el plazo los manda el cliente. Rechazos como **`system.error`**.
 
 **Efectos, en dos fases.** El tick aparta el territorio y el guerrero, que se planta donde está (se para si se movía); la transacción escribe la reclamación. Con la confirmación, `entity.update { status: "CLAIMING" }` al chunk del guerrero y `territory.update` con `contested: true` y su `claim` a la huella del territorio; si tiene dueño, `event_log.notice { kind: "TERRITORY_CLAIMED" }` al dueño. Se rompe, sin captura, si el guerrero muere, recibe otra orden (`unit.move`, `unit.cancel_move`, …) o la reclamación queda bloqueada: `entity.update { status: "IDLE" }` y `territory.update` sin `claim`. Al vencer el plazo (`EO_TERRITORY_CLAIM_FREE_SECONDS`, `EO_TERRITORY_CLAIM_SECONDS`) y confirmarse la captura: `territory.update` con el dueño nuevo, `city.update { populationLimit }` a las dos ciudades y, si había dueño, `TERRITORY_LOST` y `TERRITORY_TAKEN`.
+
+**Con un clan de por medio** (desde E19, [clan-territories.md](clan-territories.md), [ADR-041](../decisions/ADR-041-clan-territories.md)). Con `forClan: true` se reclama para el clan del jugador: sin clan, o con el clan disolviéndose, `INVALID_TARGET` («no estás en ningún clan», «tu clan se está disolviendo»); el territorio no puede ser del jugador ni de su clan (`INVALID_TARGET`); la reclamación lleva `claim.clan` y, capturada, deja el territorio con `ownerType: "CLAN"` y su `ownerClan`, sin `city.update { populationLimit }` para el que reclamó, y `clan.update` a cada miembro con la lista nueva. Se rompe además en el tick en que quien reclama deja de ser miembro de ese clan. Reclamar un territorio de un clan es hostil contra todos sus miembros: lo impide la paz con cualquiera de ellos (`INVALID_TARGET`, con el motivo de la primera: «los dos sois de la Orden», «sois del mismo clan» o «un tratado de paz con un miembro de ese clan impide reclamarlo») y la protección sólo si lo están todos (`CITY_PROTECTED`, «todos los miembros del clan dueño están protegidos»); el del propio clan, `INVALID_TARGET` («ese territorio ya es de tu clan»). `TERRITORY_CLAIMED` y `TERRITORY_LOST` van a cada miembro abierto, con `clanTag`; `TERRITORY_TAKEN`, una vez al que lo gana.
 
 ### 7.19 `city.craft`
 
@@ -954,19 +957,21 @@ interface TerritoryView {
   ownerType: 'NONE' | 'PLAYER' | 'CLAN' | 'FACTION';
   ownerId: string | null;      // consistente con ownerType: NONE ⟺ null
   ownerFaction: 'ORDER' | 'CHAOS' | 'NEUTRAL' | null;  // desde E17: el bando del jugador dueño; null sin jugador por dueño
+  ownerClan: { id: number; name: string; tag: string } | null;  // desde E19: el clan dueño; null sin clan por dueño
   contested: boolean;          // desde E12: true exactamente mientras hay una reclamación activa
   claim?: {                    // la reclamación activa (SPEC-TERRITORY-CONQUEST §6); aditivo
     playerId: string; cityId: number | null; cityName: string | null;
     startedAtMs: number; endsAtMs: number;
+    clan?: { id: number; tag: string };  // desde E19: el clan para el que se reclama
   };
 }
 ```
 
 ```json
-{ "v": 1, "type": "territory.update", "seq": 64, "ts": 1788955500100, "payload": { "territory": { "id": 310, "name": "Latium", "minX": 96, "minY": 96, "maxX": 127, "maxY": 127, "ownerType": "NONE", "ownerId": null, "ownerFaction": null, "contested": false } } }
+{ "v": 1, "type": "territory.update", "seq": 64, "ts": 1788955500100, "payload": { "territory": { "id": 310, "name": "Latium", "minX": 96, "minY": 96, "maxX": 127, "maxY": 127, "ownerType": "NONE", "ownerId": null, "ownerFaction": null, "ownerClan": null, "contested": false } } }
 ```
 
-El payload envuelve el estado completo bajo la clave `territory`; no es un delta parcial. `ownerType = 'NONE'` ⟺ `ownerId = null` es la misma consistencia que impone el CHECK de `territory_control` en la base de datos. Hoy lo emite la fundación de un jugador, que reclama el territorio de su ciudad (`IntroducePlayer`), a los suscriptores de los chunks que el territorio solapa; desde E12, cada cambio de una reclamación o de su dueño, y desde E17, la entrada de su dueño en un bando.
+El payload envuelve el estado completo bajo la clave `territory`; no es un delta parcial. `ownerType = 'NONE'` ⟺ `ownerId = null` es la misma consistencia que impone el CHECK de `territory_control` en la base de datos. Hoy lo emite la fundación de un jugador, que reclama el territorio de su ciudad (`IntroducePlayer`), a los suscriptores de los chunks que el territorio solapa; desde E12, cada cambio de una reclamación o de su dueño, y desde E17, la entrada de su dueño en un bando. Desde E19, `ownerType: "CLAN"` tiene escritor: una reclamación para un clan; `ownerId` es entonces el `id` del clan en decimal y `ownerFaction`, `null`. La disolución de un clan deja libres sus territorios y los difunde con su `territory.update`.
 
 ### 8.10 `unit.move.accepted`
 
@@ -1275,7 +1280,7 @@ payload: z.object({
 { "v": 1, "type": "event_log.notice", "seq": 520, "ts": 1788955600000, "payload": { "kind": "UNIT_LOST", "atMs": 1788955600000, "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "unitType": "VILLAGER", "x": 312, "y": 140 } }
 ```
 
-Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6). Desde E15, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con `cargo` (lo que llevaba la caravana) y `x`/`y` ([caravans.md](caravans.md) §6); la llegada (`CARAVAN_ARRIVED`) va sólo al registro.
+Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6). Desde E15, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con `cargo` (lo que llevaba la caravana) y `x`/`y` ([caravans.md](caravans.md) §6); la llegada (`CARAVAN_ARRIVED`) va sólo al registro. Desde E19, los tres de la conquista llevan `clanTag` cuando hay un clan de por medio: el del clan dueño en `TERRITORY_CLAIMED` y `TERRITORY_LOST`, y el del clan para el que se ganó en `TERRITORY_TAKEN` ([clan-territories.md](clan-territories.md) §6). La entrada del registro (§8.19) lleva el mismo campo.
 
 **No es una entrada del registro** (`RN-NOTICE-004`, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)): no tiene `id` ni recuento, no mueve el cursor de lo visto y el cliente no lo mete en la lista, que sigue saliendo de `event_log.page` (§8.19). `kind` es un subconjunto de los tipos de entrada: lo que hoy no llega a quien mira otra parte del mapa. Lo que la víctima de un saqueo o de un asedio ya recibe (`pillagedAtMs`, `besiegedAtMs` en `city.update`) no se repite. Un golpe de saqueo es un aviso; el cliente los agrupa. El servidor lo manda en todos los tipos con `x`/`y`, también en `HOUSE_DESTROYED` (el tile de la casa). Efímero: no se guarda ni se reenvía al reconectar.
 
@@ -1350,20 +1355,23 @@ Hasta `EO_MESSAGE_PAGE_SIZE` mensajes (50) de los últimos `EO_MESSAGE_MAX_DAYS`
 ```ts
 payload: z.object({ clan: ClanView.nullable(), invitations: z.array(ClanInvitationView) })
 // ClanView: { id, name, tag, leaderId, members: ClanMemberView[] (≥ 1),
-//             sentInvitations: ClanSentInvitationView[] (vacía salvo para el líder) }
+//             sentInvitations: ClanSentInvitationView[] (vacía salvo para el líder),
+//             territories: ClanTerritoryView[] }          // desde E19
+// ClanTerritoryView: { id, name, x, y }   // x, y: su tile central, para llevar la cámara
 // ClanMemberView: { playerId, cityId, cityName, faction, role: LEADER | MEMBER, joinedAtMs }
 // ClanSentInvitationView: { playerId, cityId, cityName, expiresAtMs }
 // ClanInvitationView: { clanId, name, tag, expiresAtMs }
 ```
 
-Los miembros, por antigüedad. `clan` es `null` sin clan; una invitación caducada deja de venir pero no se avisa: el cliente la oculta por `expiresAtMs`.
+Los miembros, por antigüedad; los territorios, por `id`, y desde E19 un cambio en ellos vuelve a mandar `clan.update` a cada miembro. `clan` es `null` sin clan; una invitación caducada deja de venir pero no se avisa: el cliente la oculta por `expiresAtMs`.
 
 ### 8.29 `clan.info`
 
 - **Propósito:** la vista pública de un clan vivo, en respuesta a `clan.lookup` y sólo para la sesión que la pidió, con su `requestId` (`RN-CLAN-008`). Aditivo en v1 (`R-VER-3`).
 
 ```ts
-payload: z.object({ clanId: EntityId, name: ClanName, tag: ClanTag, members: z.array(ClanMemberView) })
+payload: z.object({ clanId: EntityId, name: ClanName, tag: ClanTag, members: z.array(ClanMemberView),
+                   territories: z.array(ClanTerritoryView) })   // territories desde E19
 ```
 
 ### 8.30 `clan.chat.new`

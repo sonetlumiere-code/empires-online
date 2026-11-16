@@ -33,6 +33,8 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 		if e.TerritoryID != 0 {
 			id := e.TerritoryID
 			p.TerritoryID, p.TerritoryName = &id, e.TerritoryName
+			// SPEC-CLAN-TERRITORIES §6: de tu clan, o para tu clan.
+			p.ClanTag = eventlog.ClanTagFor(n.To, e)
 		}
 		// Una caravana, lo que llevaba (SPEC-CARAVANS §6).
 		for _, l := range e.Cargo {

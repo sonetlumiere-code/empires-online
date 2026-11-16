@@ -64,10 +64,13 @@ func (f *fakeConquest) CaptureTerritory(_ context.Context, c simulation.Capture)
 		return territory.Control{}, f.captureErr
 	}
 	f.captures = append(f.captures, c)
-	owner := c.NewOwner.String()
+	owner, tipo := c.NewOwner.String(), territory.OwnerPlayer
+	if c.NewClanID != 0 {
+		owner, tipo = territory.ClanOwnerID(c.NewClanID), territory.OwnerClan
+	}
 	at := c.CapturedAt
 	return territory.Control{
-		TerritoryID: c.TerritoryID, OwnerType: territory.OwnerPlayer, OwnerID: &owner, CapturedAt: &at,
+		TerritoryID: c.TerritoryID, OwnerType: tipo, OwnerID: &owner, CapturedAt: &at,
 		Version: c.ExpectedVersion + 1,
 	}, nil
 }

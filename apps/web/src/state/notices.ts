@@ -38,9 +38,10 @@ export interface NoticeGroup {
   /** El tile del último aviso, para «Ir». */
   readonly x?: number;
   readonly y?: number;
-  /** En la conquista, el territorio. */
+  /** En la conquista, el territorio y, con un clan de por medio, su sigla (SPEC-CLAN-TERRITORIES §6). */
   readonly territoryId?: number;
   readonly territoryName?: string;
+  readonly clanTag?: string;
   /** En las caravanas, lo que llevaba la última (SPEC-CARAVANS §6). */
   readonly cargo?: Notice['cargo'];
   /** El primero y el último, en la simulación. */
@@ -98,6 +99,7 @@ export function applyNotice(state: NoticeState, n: Notice): NoticeState {
         unitType: n.unitType,
         territoryId: n.territoryId,
         territoryName: n.territoryName,
+        clanTag: n.clanTag,
         cargo: n.cargo,
         count: 1,
         amount: n.amount,
@@ -166,6 +168,7 @@ function asEntry(g: NoticeGroup): EventLogEntry {
     y: g.y,
     territoryId: g.territoryId,
     territoryName: g.territoryName,
+    clanTag: g.clanTag,
     cargo: g.cargo,
   };
 }

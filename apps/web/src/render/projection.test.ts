@@ -51,6 +51,7 @@ function territoryView(over: Partial<v1.TerritoryView> = {}): v1.TerritoryView {
     ownerType: 'NONE',
     ownerId: null,
     ownerFaction: null,
+    ownerClan: null,
     contested: false,
     ...over,
   } as v1.TerritoryView;
@@ -171,6 +172,20 @@ describe('projectChanges: un delta de X no toca Y', () => {
     update = projectLast();
     expect(update.territories.map((t) => [t.id, t.ownerType, t.isOwn])).toEqual([[30, 'PLAYER', false]]);
     expect(update.cities).toEqual([]);
+  });
+
+  it('un territorio de clan es propio si es del clan del jugador, y entrar en él lo vuelve a proyectar (SPEC-CLAN-TERRITORIES §4.8)', () => {
+    const deClan = { ownerType: 'CLAN' as const, ownerId: '3', ownerClan: { id: 3, name: 'Los Lobos', tag: 'LOB' } };
+    state().applyServerMessage(server('territory.update', 2, { territory: territoryView(deClan) }));
+    expect(projectLast().territories.map((t) => [t.id, t.isOwn, t.isOwnClan])).toEqual([[30, false, false]]);
+
+    const miembro = { playerId: PLAYER, cityId: 10, cityName: 'Testópolis', faction: 'NEUTRAL', role: 'LEADER', joinedAtMs: 1 };
+    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: PLAYER, members: [miembro], sentInvitations: [], territories: [] };
+    state().applyServerMessage(server('clan.update', 3, { clan, invitations: [] }));
+    expect(projectLast().territories.map((t) => [t.id, t.isOwnClan]), 'al entrar, su tierra pasa a propia').toEqual([[30, true]]);
+    const antes = state().changes;
+    state().applyServerMessage(server('clan.update', 4, { clan, invitations: [] }));
+    expect(state().changes, 'el mismo clan no vuelve a proyectar nada').toBe(antes);
   });
 
   it('un cambio completo del store se proyecta completo aunque se pida por cambios', () => {

@@ -35,7 +35,7 @@ cliente, el botón «Reclamar territorio», la cuenta atrás y el territorio en 
 acciones por territorio, como recolectar o construir sólo en el propio ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)
 sigue: todo es `LIBRE`); perder un territorio por abandono o por el paso del tiempo (Q10); liberar un territorio sin
 reclamarlo; tope de territorios por jugador (Q9); reclamar con aldeanos; `control_points` como progreso (sigue en 0);
-dueños `CLAN` o `FACTION`; los tipos de territorio y `resource_modifiers`; fronteras que no sean la rejilla.
+dueños `CLAN` o `FACTION` (**precisión (2026-11-16):** `CLAN` entra con E19, [clan-territories.md](clan-territories.md)); los tipos de territorio y `resource_modifiers`; fronteras que no sean la rejilla.
 
 ## 3. Actores
 
@@ -84,6 +84,15 @@ Dominio: `RN-CONQ`.
 | `RN-CONQ-008` | **La capital es intocable** (Q4). El territorio que contiene el centro de la ciudad de su dueño nunca cambia de manos ([INV-TERR-011](../invariants/territory.md#inv-terr-011)). Como en el MVP las ciudades no se destruyen ni se mueven, lo es para siempre. |
 | `RN-CONQ-009` | **Sin abandono** (Q10). Un territorio sólo cambia de manos por una reclamación completada o, como hasta ahora, por la fundación sobre uno libre. No decae, no caduca y no se pierde por no conectarse: estando `PROTECTED`, nadie puede reclamarle nada. |
 | `RN-CONQ-010` | **Avisos y registro** (Q8). Una reclamación sobre un territorio con dueño se lo cuenta al dueño al empezar (`TERRITORY_CLAIMED`) y, si se completa, al dueño (`TERRITORY_LOST`) y al conquistador (`TERRITORY_TAKEN`): en vivo, con `event_log.notice`, y en el registro. Reclamar un territorio libre no avisa ni entra en el registro: no hay otro jugador, y es lo que el propio jugador ordenó ([event-log.md](event-log.md) §4.1). |
+
+**Precisión (2026-11-16, [clan-territories.md](clan-territories.md), [ADR-041](../decisions/ADR-041-clan-territories.md)).** Con un clan de por medio (E19):
+`unit.claim` gana `forClan` para reclamar en nombre del propio clan, y entonces el territorio no puede ser ya del clan
+ni del propio jugador (`RN-CONQ-002`); reclamar un territorio de un clan es hostil contra todos sus miembros: lo
+impide la paz con cualquiera de ellos y la protección sólo si lo están todos, en la orden y en cada tick
+(`RN-CONQ-003`, `RN-CONQ-005`); una reclamación para el clan se rompe además cuando su dueño deja el clan; responden
+los guerreros parados de cualquier miembro (`RN-CONQ-006`); se avisa y se registra a cada miembro (`RN-CONQ-010`); y un
+territorio del clan queda libre al disolverse el clan, la única vía de cambio de manos que no es una reclamación
+(`RN-CONQ-009`). Ver `RN-CLANTERR-001` a `009`.
 
 ### 4.4 Estados
 

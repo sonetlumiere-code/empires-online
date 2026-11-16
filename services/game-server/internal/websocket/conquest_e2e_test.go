@@ -38,8 +38,11 @@ func (m *memoryConquest) StartClaim(context.Context, simulation.ClaimStart) (int
 func (m *memoryConquest) EndClaim(context.Context, simulation.ClaimEnd) error { return nil }
 
 func (m *memoryConquest) CaptureTerritory(_ context.Context, c simulation.Capture) (territory.Control, error) {
-	owner, at := c.NewOwner.String(), c.CapturedAt
-	return territory.Control{TerritoryID: c.TerritoryID, OwnerType: territory.OwnerPlayer, OwnerID: &owner,
+	owner, tipo, at := c.NewOwner.String(), territory.OwnerPlayer, c.CapturedAt
+	if c.NewClanID != 0 {
+		owner, tipo = territory.ClanOwnerID(c.NewClanID), territory.OwnerClan
+	}
+	return territory.Control{TerritoryID: c.TerritoryID, OwnerType: tipo, OwnerID: &owner,
 		CapturedAt: &at, Version: c.ExpectedVersion + 1}, nil
 }
 
@@ -133,4 +136,89 @@ func TestUnaConquistaAvisaAlDuenoConLaVistaEnSuCiudad(t *testing.T) {
 	c, _ := env.state.TerritoryControl(16)
 	require.NotNil(t, c.OwnerID)
 	assert.Equal(t, ajeno.String(), *c.OwnerID)
+}
+
+// Un territorio de clan de extremo a extremo (SPEC-CLAN-TERRITORIES §9): un
+// miembro lo reclama para su clan con forClan y, al vencer el plazo, el
+// territorio viaja con su clan dueño y los dos miembros reciben su lista de
+// territorios. Cuando un tercero lo reclama, los dos miembros reciben el aviso
+// con la sigla, mire cada uno donde mire (RN-CLANTERR-006, INV-SEC-009).
+func TestUnTerritorioDeClanPorLaRed(t *testing.T) {
+	env := newE2EDeLado(t, 256, nil, nil)
+	bea, ajeno := uuid.New(), uuid.New()
+	rejillaDe256(t, env, map[int64]uuid.UUID{1: env.playerID})
+	env.state.AddCity(&city.City{Civilization: "ROMAN", ID: 2, OwnerPlayerID: bea, Name: "Bizancio", CenterX: 150, CenterY: 40,
+		Era: city.EraStone, Population: 1, PopulationLimit: 20, PresenceState: city.PresenceOnline})
+	env.state.AddCity(&city.City{Civilization: "NORSE", ID: 3, OwnerPlayerID: ajeno, Name: "Ajenópolis", CenterX: 150, CenterY: 150,
+		Era: city.EraStone, Population: 1, PopulationLimit: 20, PresenceState: city.PresenceOnline})
+	const guerreroBea, guerreroAjeno int64 = 600, 601
+	env.state.AddUnit(&unit.Unit{ID: guerreroBea, PlayerID: bea, CityID: &[]int64{2}[0], Type: unit.TypeWarrior,
+		X: 200, Y: 200, HP: 60, MaxHP: 60, Status: unit.StatusIdle})
+	env.state.AddUnit(&unit.Unit{ID: guerreroAjeno, PlayerID: ajeno, CityID: &[]int64{3}[0], Type: unit.TypeWarrior,
+		X: 240, Y: 240, HP: 60, MaxHP: 60, Status: unit.StatusIdle})
+
+	yo, _ := conectar(t, env, env.playerID)
+	yo.await(protocol.TypeClanUpdate, 3*time.Second)
+	b, _ := conectar(t, env, bea)
+	b.await(protocol.TypeClanUpdate, 3*time.Second)
+	recentrar(t, b, env, 200, 200)
+	c, _ := conectar(t, env, ajeno)
+	c.await(protocol.TypeClanUpdate, 3*time.Second)
+	recentrar(t, c, env, 240, 240)
+
+	// El clan: yo lo fundo y bea entra.
+	yo.send(protocol.TypeClanCreate, map[string]any{"name": "Los Lobos", "tag": "LOB"})
+	env.pump()
+	fundado, _ := yo.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+	clanID := clanUpdate(t, fundado.Payload).Clan.ID
+	assert.Empty(t, clanUpdate(t, fundado.Payload).Clan.Territories)
+	yo.send(protocol.TypeClanInvite, map[string]any{"playerId": bea.String(), "invited": true})
+	env.pump()
+	b.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return len(clanUpdate(t, raw).Invitations) == 1 }, 3*time.Second)
+	b.send(protocol.TypeClanRespond, map[string]any{"clanId": clanID, "accept": true})
+	env.pump()
+	b.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+	yo.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		return p.Clan != nil && len(p.Clan.Members) == 2
+	}, 3*time.Second)
+
+	// Bea reclama el 16 para el clan.
+	b.send(protocol.TypeUnitClaim, map[string]any{"unitId": guerreroBea, "forClan": true})
+	env.pump()
+	disputa, _ := b.awaitWhere(protocol.TypeTerritoryUpdate, func(raw json.RawMessage) bool {
+		v := decode[protocol.TerritoryUpdatePayload](t, raw).Territory
+		return v.ID == 16 && v.Claim != nil
+	}, 3*time.Second)
+	claim := decode[protocol.TerritoryUpdatePayload](t, disputa.Payload).Territory.Claim
+	require.NotNil(t, claim.Clan)
+	assert.Equal(t, "LOB", claim.Clan.Tag)
+
+	env.tick(25)
+	ganado, _ := b.awaitWhere(protocol.TypeTerritoryUpdate, func(raw json.RawMessage) bool {
+		v := decode[protocol.TerritoryUpdatePayload](t, raw).Territory
+		return v.ID == 16 && v.OwnerType == "CLAN"
+	}, 3*time.Second)
+	vista := decode[protocol.TerritoryUpdatePayload](t, ganado.Payload).Territory
+	require.NotNil(t, vista.OwnerClan)
+	assert.Equal(t, protocol.TerritoryOwnerClanView{ID: clanID, Name: "Los Lobos", Tag: "LOB"}, *vista.OwnerClan)
+	conTerritorio := func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		return p.Clan != nil && len(p.Clan.Territories) == 1 && p.Clan.Territories[0].ID == 16
+	}
+	yo.awaitWhere(protocol.TypeClanUpdate, conTerritorio, 3*time.Second)
+	b.awaitWhere(protocol.TypeClanUpdate, conTerritorio, 3*time.Second)
+
+	// Un tercero lo reclama: los dos miembros reciben el aviso con la sigla.
+	c.send(protocol.TypeUnitClaim, map[string]any{"unitId": guerreroAjeno})
+	env.pump()
+	esReclamado := func(raw json.RawMessage) bool {
+		return decode[protocol.EventLogNoticePayload](t, raw).Kind == "TERRITORY_CLAIMED"
+	}
+	for _, miembro := range []*conn{yo, b} {
+		aviso, _ := miembro.awaitWhere(protocol.TypeEventLogNotice, esReclamado, 3*time.Second)
+		p := decode[protocol.EventLogNoticePayload](t, aviso.Payload)
+		assert.Equal(t, "LOB", p.ClanTag)
+		assert.Equal(t, ajeno.String(), p.OtherPlayerID)
+	}
 }

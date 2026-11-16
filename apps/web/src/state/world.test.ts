@@ -325,6 +325,7 @@ describe('señal de cambios: un delta cuesta lo que cambia', () => {
           ownerType: 'PLAYER',
           ownerId: PLAYER,
           ownerFaction: 'NEUTRAL',
+          ownerClan: null,
           contested: false,
         },
       }),

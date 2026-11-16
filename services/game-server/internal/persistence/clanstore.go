@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/observability"
 	"github.com/empires-online/empires-online/services/game-server/internal/persistence/postgres"
@@ -74,13 +75,13 @@ func (s *ClanStore) Join(ctx context.Context, o simulation.ClanJoinOrder) error 
 }
 
 // Leave cierra la estancia. Es tolerante: un reintento no escribe dos veces.
-func (s *ClanStore) Leave(ctx context.Context, l simulation.ClanLeave) error {
-	applied, err := s.clans.Leave(ctx, postgres.ClanLeave{
+func (s *ClanStore) Leave(ctx context.Context, l simulation.ClanLeave) ([]territory.Control, error) {
+	applied, released, err := s.clans.Leave(ctx, postgres.ClanLeave{
 		ClanID: l.ClanID, PlayerID: l.PlayerID, Reason: l.Reason, By: l.By, At: l.At,
 		NewLeader: l.NewLeader, Dissolve: l.Dissolve, Tick: l.Tick, AtMs: l.AtMs,
 	})
 	if err != nil || !applied {
-		return err
+		return nil, err
 	}
 	if l.Reason == clan.ReasonExpelled {
 		s.count(observability.ClanChangeExpelled)
@@ -90,5 +91,5 @@ func (s *ClanStore) Leave(ctx context.Context, l simulation.ClanLeave) error {
 	if l.Dissolve {
 		s.count(observability.ClanChangeDissolved)
 	}
-	return nil
+	return released, nil
 }

@@ -124,13 +124,21 @@
  *      smoke_caos se rechaza; smoke_orden ve el clan por su vista pública; y al final
  *      smoke_clan_b es expulsado, con su aviso, para que la pasada siguiente vuelva a
  *      empezar. No depende de las demás opciones; la parte de los bandos, de --faccion.
+ *  18. sólo con --territorio-clan (SPEC-CLAN-TERRITORIES): el clan [HUM] de --clan y
+ *      smoke_norse (NEUTRAL y sin clan) se disputan por turnos el territorio libre más
+ *      cercano a la ciudad de smoke_clan_a: si está libre, smoke_clan_a lo reclama para
+ *      el clan; si es del clan, smoke_norse se lo quita y el miembro conectado recibe
+ *      los avisos con la sigla; si es de smoke_norse, el clan lo recupera. Arranca el
+ *      servidor con los plazos cortos de --territorio y, la primera vez, con 60 de
+ *      madera en las dos ciudades (EO_DEVSEED_STOCK_FOR=smoke_clan_a,smoke_norse) para
+ *      entrenar sus guerreros. Va antes de --clan en la pasada.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--mensajes] [--faccion] [--clan] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -740,6 +748,10 @@ async function main() {
 
   if (FACCION) {
     await faccion();
+  }
+
+  if (TERRITORIO_CLAN) {
+    await territorioDeClan();
   }
 
   if (CLAN) {
@@ -1482,9 +1494,17 @@ function sinAvisos(sesion, quien, kinds) {
  * el de menor id.
  */
 export function territorioLibreCerca(territorios, desde, margen = 6) {
+  return territorioCerca(territorios, desde, (t) => t.ownerType === 'NONE', margen);
+}
+
+/**
+ * Como territorioLibreCerca, con el criterio de qué territorio vale en `admite`. Un
+ * territorio con una reclamación en curso no vale nunca.
+ */
+export function territorioCerca(territorios, desde, admite, margen = 6) {
   let mejor = null;
   for (const t of territorios) {
-    if (t.ownerType !== 'NONE' || t.claim) continue;
+    if (!admite(t) || t.claim) continue;
     if (t.maxX - t.minX < 2 * margen || t.maxY - t.minY < 2 * margen) continue;
     const destino = {
       x: Math.min(Math.max(desde.x, t.minX + margen), t.maxX - margen),
@@ -2128,6 +2148,7 @@ const CLAN_A = process.env.EO_SMOKE_CLAN_LEADER || 'smoke_clan_a';
 const CLAN_B = process.env.EO_SMOKE_CLAN_MEMBER || 'smoke_clan_b';
 const CLAN_NOMBRE = 'Humo';
 const CLAN_SIGLA = 'HUM';
+const TERRITORIO_CLAN = args.includes('--territorio-clan');
 
 /**
  * Qué tiene que hacer el humo con el líder según su clan.update de la conexión:
@@ -2242,6 +2263,156 @@ async function clanes() {
   ok(`${CLAN_B} recibe el aviso de su expulsión`, `de ${aviso.payload.otherCityName}`);
 
   for (const s of [a, b, orden, caos]) s.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Territorios de clan (SPEC-CLAN-TERRITORIES), sólo con --territorio-clan
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * El territorio que se disputan [HUM] y smoke_norse: el más cercano a `desde` (la
+ * ciudad de smoke_clan_a) que está libre, es de [HUM] o es de smoke_norse sin ser
+ * su capital. Como la disputa sólo lo pasa de uno a otro de ellos, cada pasada
+ * encuentra el mismo.
+ */
+export function territorioDelHumo(territorios, desde, rivalId, capitalRival) {
+  return territorioCerca(territorios, desde, (t) => {
+    if (t.ownerType === 'NONE') return true;
+    if (t.ownerType === 'CLAN') return t.ownerClan?.tag === CLAN_SIGLA;
+    if (t.ownerType !== 'PLAYER' || t.ownerId !== rivalId) return false;
+    return !(capitalRival.x >= t.minX && capitalRival.x <= t.maxX && capitalRival.y >= t.minY && capitalRival.y <= t.maxY);
+  });
+}
+
+/** Qué le toca hacer a esta pasada con el territorio, según su dueño. */
+export function pasoDelTerritorioDeClan(t, rivalId) {
+  if (t.ownerType === 'NONE') return 'clan-lo-gana';
+  if (t.ownerType === 'CLAN') return 'rival-se-lo-quita';
+  if (t.ownerType === 'PLAYER' && t.ownerId === rivalId) return 'clan-lo-recupera';
+  return 'otro';
+}
+
+/**
+ * Un guerrero del jugador, en el mapa: cerca de `donde` o en su ciudad; si no tiene,
+ * lo entrena (60 de madera: la semilla con EO_DEVSEED_STOCK_FOR los da).
+ */
+async function guerreroDe(s, ciudad, donde) {
+  for (const centro of [donde, { x: ciudad.centerX, y: ciudad.centerY }]) {
+    s.sesion.enviar('session.view', { center: centro });
+    const vista = (await s.sesion.esperar('world.snapshot')).payload;
+    const g = vista.units.find((u) => u.playerId === s.playerId && u.unitType === 'WARRIOR' && u.status !== 'GARRISONED');
+    if (g) return g;
+  }
+  const g = await entrenar(s.sesion, ciudad, s.playerId, 'WARRIOR');
+  ok(`entrena un guerrero en ${ciudad.name}`, `unidad ${g.id}`);
+  return g;
+}
+
+/** Lleva el guerrero al territorio, lo planta y reclama; devuelve la reclamación. */
+async function plantarEstandarte(s, guerrero, t, destino, paraElClan) {
+  const llegada = await acercar(s.sesion, guerrero, destino, 1);
+  const { unidad } = await posicionDe(s.sesion, guerrero.id, llegada);
+  if (!unidad || unidad.x < t.minX || unidad.x > t.maxX || unidad.y < t.minY || unidad.y > t.maxY) {
+    fallar('el guerrero no llegó al territorio', { guerrero: unidad, territorio: t });
+  }
+  s.sesion.enviar('unit.claim', paraElClan ? { unitId: unidad.id, forClan: true } : { unitId: unidad.id });
+  const m = await s.sesion.esperarQue(['territory.update', 'system.error'],
+    (m) => m.type === 'system.error' || esReclamacionDe(m, t.id, s.playerId), 15_000);
+  if (m.type === 'system.error') fallar('el servidor rechazó la reclamación', m.payload);
+  return { claim: m.payload.territory.claim, unidad };
+}
+
+/** Devuelve el guerrero a su ciudad, para que no defienda solo el territorio en la pasada siguiente. */
+async function volverACasa(s, unidad, ciudad) {
+  await acercar(s.sesion, unidad, { x: ciudad.centerX + 3, y: ciudad.centerY + 3 }, 2);
+}
+
+/**
+ * El clan [HUM] de smoke_clan_a y smoke_norse se disputan por turnos el territorio
+ * de territorioDelHumo (arranca el servidor con los plazos cortos de --territorio):
+ * libre, [HUM] lo gana para el clan con forClan; de [HUM], smoke_norse se lo quita y
+ * cada miembro conectado recibe el aviso con la sigla; de smoke_norse, [HUM] lo
+ * recupera. Comprueba también que reclamar para un clan sin clan se rechaza y que la
+ * vista pública del clan lista sus territorios. Necesita el clan de --clan.
+ */
+async function territorioDeClan() {
+  const a = await entrarConClan(CLAN_A);
+  if (pasoDeClan(a.clan, a.playerId) !== 'lider') fallar(`${CLAN_A} no dirige [${CLAN_SIGLA}]`, 'Pasa antes --clan.');
+  const clan = a.clan.clan;
+  const rival = await entrarConClan(NORDICA);
+  if (rival.clan.clan) fallar(`${NORDICA} está en un clan`, rival.clan.clan);
+  const ciudadA = a.snapshot.payload.cities.find((c) => c.ownerPlayerId === a.playerId);
+  const ciudadR = rival.snapshot.payload.cities.find((c) => c.ownerPlayerId === rival.playerId);
+  if (!ciudadA || !ciudadR) fallar('sin ciudad en el snapshot', { ciudadA, ciudadR });
+
+  // El territorio, visto entre las dos ciudades.
+  a.sesion.enviar('session.view', { center: { x: Math.round((ciudadA.centerX + ciudadR.centerX) / 2), y: Math.round((ciudadA.centerY + ciudadR.centerY) / 2) } });
+  const vista = (await a.sesion.esperar('world.snapshot')).payload;
+  const elegido = territorioDelHumo(vista.territories, { x: ciudadA.centerX, y: ciudadA.centerY }, rival.playerId,
+    { x: ciudadR.centerX, y: ciudadR.centerY });
+  if (!elegido) fallar('no hay territorio que disputar cerca de la ciudad del clan', vista.territories);
+  const t = elegido.territorio;
+  const paso = pasoDelTerritorioDeClan(t, rival.playerId);
+  ok('territorio que se disputan', `${t.name} (${t.id}), ${paso}`);
+
+  const esDelClan = (m) => m.payload.territory.id === t.id && m.payload.territory.ownerType === 'CLAN' &&
+    m.payload.territory.ownerClan?.tag === CLAN_SIGLA && !m.payload.territory.contested;
+
+  switch (paso) {
+    case 'clan-lo-gana':
+    case 'clan-lo-recupera': {
+      const g = await guerreroDe(a, ciudadA, elegido.destino);
+      const { claim, unidad } = await plantarEstandarte(a, g, t, elegido.destino, true);
+      if (claim.clan?.tag !== CLAN_SIGLA) fallar('la reclamación no dice para qué clan', claim);
+      ok(`${CLAN_A} reclama para [${CLAN_SIGLA}]`, `vence en ${Math.round((claim.endsAtMs - Date.now()) / 1000)} s`);
+      await a.sesion.esperarQue('territory.update', esDelClan, Math.max(0, claim.endsAtMs - Date.now()) + 30_000);
+      ok(`${t.name} es del clan`, `ownerClan [${CLAN_SIGLA}]`);
+      await a.sesion.esperarQue('clan.update', (m) => m.payload.clan?.territories.some((x) => x.id === t.id), 10_000);
+      ok('el clan lo lista entre sus territorios');
+      if (paso === 'clan-lo-recupera') {
+        const perdido = await avisoEnVivo(rival.sesion, 'TERRITORY_LOST', a.playerId, 15_000);
+        if (perdido.payload.clanTag) fallar('el aviso de quien lo pierde para sí no lleva sigla', perdido.payload);
+        ok(`${NORDICA} recibe el aviso de la pérdida`, perdido.payload.territoryName);
+        const ganado = await avisoEnVivo(a.sesion, 'TERRITORY_TAKEN', rival.playerId, 15_000);
+        if (ganado.payload.clanTag !== CLAN_SIGLA) fallar('el aviso de lo ganado para el clan no lleva su sigla', ganado.payload);
+        ok(`${CLAN_A} lo gana para su clan`, `TERRITORY_TAKEN [${ganado.payload.clanTag}]`);
+      }
+      await volverACasa(a, unidad, ciudadA);
+      break;
+    }
+    case 'rival-se-lo-quita': {
+      const g = await guerreroDe(rival, ciudadR, elegido.destino);
+      // Sin clan no se reclama para un clan (SPEC-CLAN-TERRITORIES §5).
+      const r = await ordenDeClan(rival.sesion, 'unit.claim', { unitId: g.id, forClan: true }, []);
+      if (r.type !== 'system.error' || r.payload.code !== 'INVALID_TARGET') fallar('reclamar para un clan sin clan no se rechazó', r);
+      ok('reclamar para el clan sin clan se rechaza', `«${r.payload.message}»`);
+      a.sesion.enviar('session.view', { center: { x: ciudadA.centerX, y: ciudadA.centerY } });
+      await a.sesion.esperar('world.snapshot');
+      const { claim, unidad } = await plantarEstandarte(rival, g, t, elegido.destino, false);
+      ok(`${NORDICA} reclama la tierra de [${CLAN_SIGLA}]`, `vence en ${Math.round((claim.endsAtMs - Date.now()) / 1000)} s`);
+      const reclamado = await avisoEnVivo(a.sesion, 'TERRITORY_CLAIMED', rival.playerId, 15_000);
+      if (reclamado.payload.clanTag !== CLAN_SIGLA) fallar('el aviso al miembro no lleva la sigla', reclamado.payload);
+      ok('el miembro recibe el aviso, con la vista en su ciudad', `TERRITORY_CLAIMED [${reclamado.payload.clanTag}]`);
+      const perdido = await avisoEnVivo(a.sesion, 'TERRITORY_LOST', rival.playerId, Math.max(0, claim.endsAtMs - Date.now()) + 30_000);
+      if (perdido.payload.clanTag !== CLAN_SIGLA) fallar('el aviso de la pérdida no lleva la sigla', perdido.payload);
+      ok('y el de la pérdida', `TERRITORY_LOST [${perdido.payload.clanTag}]`);
+      await avisoEnVivo(rival.sesion, 'TERRITORY_TAKEN', a.playerId, 15_000);
+      ok(`${NORDICA} lo gana`, 'TERRITORY_TAKEN, una vez');
+      await a.sesion.esperarQue('clan.update', (m) => m.payload.clan && !m.payload.clan.territories.some((x) => x.id === t.id), 10_000);
+      ok('el clan ya no lo lista');
+      await volverACasa(rival, unidad, ciudadR);
+      break;
+    }
+    default:
+      fallar('el territorio que se disputan tiene otro dueño', t);
+  }
+
+  // La vista pública lista los territorios del clan.
+  const info = await ordenDeClan(rival.sesion, 'clan.lookup', { clanId: clan.id }, ['clan.info']);
+  if (info.type === 'system.error' || !Array.isArray(info.payload.territories)) fallar('la vista pública no trae los territorios', info.payload);
+  ok('la vista pública lista sus territorios', `${info.payload.territories.length}`);
+  a.sesion.cerrar();
+  rival.sesion.cerrar();
 }
 
 // Sólo se ejecuta el recorrido cuando el script se invoca directamente. Importarlo

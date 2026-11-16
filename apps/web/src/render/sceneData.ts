@@ -60,6 +60,8 @@ export interface SceneTerritory {
   /** Tal cual lo envió el servidor. El cliente NO deduce ownership. */
   readonly ownerType: string;
   readonly isOwn: boolean;
+  /** Es del clan del jugador (SPEC-CLAN-TERRITORIES §4.8). */
+  readonly isOwnClan: boolean;
   /** En disputa: hay una reclamación activa (SPEC-TERRITORY-CONQUEST). */
   readonly contested: boolean;
 }

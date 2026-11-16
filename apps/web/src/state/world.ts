@@ -83,10 +83,22 @@ export interface TerritoryView {
   ownerId: string | null;
   /** Facción del jugador dueño, o `null` si no tiene un jugador por dueño (SPEC-FACTIONS §6). */
   ownerFaction: string | null;
+  /** El clan dueño cuando `ownerType` es `CLAN`; `null` en otro caso (SPEC-CLAN-TERRITORIES §6). */
+  ownerClan: { id: number; name: string; tag: string } | null;
   /** `true` exactamente mientras hay una reclamación activa (SPEC-TERRITORY-CONQUEST §6). */
   contested: boolean;
-  /** La reclamación activa: quién reclama y cuándo termina. Ausente si no la hay. */
-  claim?: { playerId: string; cityId: number | null; cityName: string | null; startedAtMs: number; endsAtMs: number };
+  /**
+   * La reclamación activa: quién reclama, cuándo termina y, si es para un clan, para cuál
+   * (SPEC-CLAN-TERRITORIES §6). Ausente si no la hay.
+   */
+  claim?: {
+    playerId: string;
+    cityId: number | null;
+    cityName: string | null;
+    startedAtMs: number;
+    endsAtMs: number;
+    clan?: { id: number; tag: string };
+  };
 }
 
 /** El almacén de una ciudad: madera, piedra y los cuatro bienes de civilización. */
@@ -718,9 +730,21 @@ export const useWorldStore = create<WorldState>((set, get) => {
           break;
         }
 
-        case 'clan.update':
-          set({ clans: applyClanUpdate(get().clans, message.payload) });
+        case 'clan.update': {
+          const antes = get().clans.clan?.id ?? null;
+          const clans = applyClanUpdate(get().clans, message.payload);
+          const despues = clans.clan?.id ?? null;
+          if (antes === despues) {
+            set({ clans });
+            break;
+          }
+          // Entrar o salir de un clan cambia qué territorios de clan son propios en
+          // el mapa (SPEC-CLAN-TERRITORIES §4.8): se vuelven a proyectar.
+          const deClan = new Set<number>();
+          for (const t of territories.values()) if (t.ownerType === 'CLAN') deClan.add(t.id);
+          set(deClan.size > 0 ? { clans, changes: changed({ territories: deClan }) } : { clans });
           break;
+        }
 
         case 'clan.info':
           set({ clans: applyClanInfo(get().clans, message.payload) });

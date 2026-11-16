@@ -208,7 +208,10 @@ en nombre del clan sobre ciudades, territorios y garrisons ajenos.
 líder, por invitación, con paz entre sus miembros y su paz residual al salir, sin juntar a la Orden y al Caos, y con un
 canal propio. La paz del clan no es un conjunto de tratados sino una tercera fuente de `AtPeace`, y la autorización se
 quedó en el mínimo (un líder que invita y expulsa). Quedan los territorios de clan, los rangos y las alianzas entre
-clanes.
+clanes. **Precisión (2026-11-16, [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md), [ADR-041](../decisions/ADR-041-clan-territories.md)):** los territorios de
+clan llegan con E19 ([milestones.md](milestones.md) §E19): un miembro reclama para el clan, la tierra del clan es afín
+para sus miembros, se disputa contra todos ellos y queda libre al disolverse el clan. Quedan los rangos y las alianzas
+entre clanes.
 
 **Large-scale warfare.** Guerra a gran escala con muchos jugadores y unidades concurrentes en la
 misma región. Depende de todo lo anterior y es la primera fase que puede exigir cambios

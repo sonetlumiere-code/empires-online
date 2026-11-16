@@ -192,8 +192,34 @@ type Event struct {
 	// TerritoryID y TerritoryName, en la conquista.
 	TerritoryID   int64
 	TerritoryName string
+	// OwnerClanTag y ForClanTag, en la conquista con un clan de por medio
+	// (SPEC-CLAN-TERRITORIES §6, ADR-041 §5): la sigla del clan dueño, para el
+	// lado de player_id, y la del clan para el que se ganó, para el de
+	// counterpart_player_id.
+	OwnerClanTag string
+	ForClanTag   string
+	// Only limita la fila a uno de sus dos lados: OnlyPlayer u OnlyCounterpart.
+	// Las filas por miembro de un clan cuentan su suceso sólo a ese miembro, y
+	// la del que reclamó, sólo a él (ADR-041 §5). Vacío: a los dos.
+	Only string
 	// Cargo, en las caravanas: lo que llevaba.
 	Cargo []Line
+}
+
+// Valores de Event.Only.
+const (
+	OnlyPlayer      = "player"
+	OnlyCounterpart = "counterpart"
+)
+
+// ClanTagFor es la sigla del clan que la fila nombra para viewer: la del clan
+// dueño para el lado de player_id y la del clan para el que se ganó para el
+// otro (SPEC-CLAN-TERRITORIES §6).
+func ClanTagFor(viewer uuid.UUID, e Event) string {
+	if viewer == e.PlayerID {
+		return e.OwnerClanTag
+	}
+	return e.ForClanTag
 }
 
 // Entry es una entrada del registro: uno o varios sucesos del mismo tipo con el
@@ -225,6 +251,8 @@ type Entry struct {
 	// TerritoryID y TerritoryName, en la conquista.
 	TerritoryID   int64
 	TerritoryName string
+	// ClanTag, en la conquista con un clan de por medio (ClanTagFor).
+	ClanTag string
 	// Cargo, en las caravanas: lo que llevaba.
 	Cargo []Line
 }
@@ -235,6 +263,10 @@ type Entry struct {
 // para saberlo.
 func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 	if viewer == uuid.Nil || (e.PlayerID != viewer && e.Counterpart != viewer) {
+		return "", uuid.Nil, false
+	}
+	// Una fila de un solo lado (ADR-041 §5) no le cuenta nada al otro.
+	if (e.Only == OnlyPlayer && viewer != e.PlayerID) || (e.Only == OnlyCounterpart && viewer != e.Counterpart) {
 		return "", uuid.Nil, false
 	}
 	other = e.Counterpart
@@ -525,6 +557,7 @@ func (b *Builder) Add(e Event) bool {
 		entry.BreaksAtMs = e.BreaksAtMs
 	case KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken:
 		entry.TerritoryID, entry.TerritoryName = e.TerritoryID, e.TerritoryName
+		entry.ClanTag = ClanTagFor(b.viewer, e)
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost:
 		entry.Cargo = e.Cargo

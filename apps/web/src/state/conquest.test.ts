@@ -8,7 +8,7 @@ const yo = '00000000-0000-4000-8000-000000000001';
 const otro = '00000000-0000-4000-8000-000000000002';
 
 function territorio(over: Partial<TerritoryView> = {}): TerritoryView {
-  return { id: 12, name: 'Llanuras', minX: 64, minY: 0, maxX: 127, maxY: 63, ownerType: 'NONE', ownerId: null, ownerFaction: null, contested: false, ...over };
+  return { id: 12, name: 'Llanuras', minX: 64, minY: 0, maxX: 127, maxY: 63, ownerType: 'NONE', ownerId: null, ownerFaction: null, ownerClan: null, contested: false, ...over };
 }
 
 function ciudad(over: Partial<CityView> = {}): CityView {
@@ -97,5 +97,35 @@ describe('la reclamación en curso', () => {
     expect(claimLabel(territorio({ contested: true, claim: { ...claim, cityName: null } }), yo, 0)).toBe('otro jugador reclama Llanuras: falta 10:00');
     expect(anyClaim([territorio(), territorio({ claim })])).toBe(true);
     expect(anyClaim([territorio()])).toBe(false);
+  });
+});
+
+describe('los territorios de clan (SPEC-CLAN-TERRITORIES)', () => {
+  const deClan = (id: number) => ({ ownerType: 'CLAN', ownerId: String(id), ownerClan: { id, name: 'Los Lobos', tag: 'LOB' } });
+
+  it('dice de qué clan es, y si es del propio', () => {
+    expect(territoryOwnerLabel(territorio(deClan(3)), yo, [], 3)).toBe('de tu clan [LOB]');
+    expect(territoryOwnerLabel(territorio(deClan(3)), yo, [], 4)).toBe('del clan Los Lobos [LOB]');
+    expect(territoryOwnerLabel(territorio(deClan(3)), yo, [])).toBe('del clan Los Lobos [LOB]');
+  });
+
+  it('«Reclamar para el clan» pide un clan, y el del propio clan no se reclama (§5)', () => {
+    expect(claimBlockReason(check({ forClan: true, myClanId: null }))).toBe('No estás en ningún clan');
+    expect(claimBlockReason(check({ forClan: true, myClanId: 3 }))).toBeNull();
+    expect(claimBlockReason(check({ territory: territorio(deClan(3)), myClanId: 3 }))).toBe('Este territorio ya es de tu clan');
+    expect(claimBlockReason(check({ territory: territorio(deClan(3)), myClanId: 3, forClan: true }))).toBe('Este territorio ya es de tu clan');
+    expect(claimBlockReason(check({ territory: territorio(deClan(3)), myClanId: 4 })), 'el de otro clan: lo decide el servidor').toBeNull();
+    expect(claimBlockReason(check({ territory: territorio({ ownerType: 'PLAYER', ownerId: yo }), myClanId: 3, forClan: true }))).toBe(
+      'Este territorio ya es tuyo',
+    );
+  });
+
+  it('la reclamación dice para qué clan y avisa si es la tierra del propio', () => {
+    const claim = { playerId: otro, cityId: 7, cityName: 'Villa Norte', startedAtMs: 0, endsAtMs: 60_000 };
+    expect(claimLabel(territorio({ claim: { ...claim, playerId: yo, clan: { id: 3, tag: 'LOB' } } }), yo, 0, 3)).toBe(
+      'Reclamas Llanuras para [LOB]: falta 1:00',
+    );
+    expect(claimLabel(territorio({ ...deClan(3), claim }), yo, 0, 3)).toBe('¡Villa Norte reclama Llanuras, de tu clan! Falta 1:00');
+    expect(claimLabel(territorio({ ...deClan(3), claim }), yo, 0, 4)).toBe('Villa Norte reclama Llanuras: falta 1:00');
   });
 });

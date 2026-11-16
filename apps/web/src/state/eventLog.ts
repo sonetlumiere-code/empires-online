@@ -225,12 +225,20 @@ function rawText(e: EventLogEntry): string {
         ? `Tu oferta de comercio a ${who} caducó`
         : `La oferta de comercio de ${who} caducó`;
     // La conquista (SPEC-TERRITORY-CONQUEST §6), con el territorio por su nombre.
+    // Con un clan de por medio (SPEC-CLAN-TERRITORIES §6), clanTag es el clan dueño en
+    // las dos primeras y el clan para el que se ganó en la tercera.
     case 'TERRITORY_CLAIMED':
-      return `${who} reclamó tu territorio ${e.territoryName ?? ''}`.trimEnd();
+      return e.clanTag
+        ? `${who} reclamó ${e.territoryName ?? 'un territorio'}, de tu clan [${e.clanTag}]`
+        : `${who} reclamó tu territorio ${e.territoryName ?? ''}`.trimEnd();
     case 'TERRITORY_LOST':
-      return `${who} te quitó el territorio ${e.territoryName ?? ''}`.trimEnd();
+      return e.clanTag
+        ? `${who} le quitó a tu clan [${e.clanTag}] ${e.territoryName ?? 'un territorio'}`
+        : `${who} te quitó el territorio ${e.territoryName ?? ''}`.trimEnd();
     case 'TERRITORY_TAKEN':
-      return `Tus guerreros conquistaron ${e.territoryName ?? 'un territorio'} a ${who}`;
+      return e.clanTag
+        ? `Tus guerreros ganaron ${e.territoryName ?? 'un territorio'} para tu clan [${e.clanTag}], a ${who}`
+        : `Tus guerreros conquistaron ${e.territoryName ?? 'un territorio'} a ${who}`;
     // Las caravanas (SPEC-CARAVANS §6), cada una con lo que llevaba.
     case 'CARAVAN_ARRIVED':
       return `Llegó la caravana de ${who} con ${describeLines(e.cargo ?? [])}`;

@@ -426,3 +426,43 @@ func TestLaExpulsionDeUnClanEnElRegistro(t *testing.T) {
 	assert.Equal(t, []eventlog.Notice{{To: expulsado, Kind: eventlog.KindClanExpelled, Other: lider}}, eventlog.Notices(e))
 	assert.Contains(t, eventlog.EventTypes(), eventlog.EventClanMemberExpelled)
 }
+
+// SPEC-CLAN-TERRITORIES §6 y ADR-041 §5: las filas de un clan como parte son de
+// un solo lado. La de cada miembro le cuenta que reclaman o pierden la tierra de
+// su clan, con la sigla del clan dueño, y no le cuenta nada al que reclama; la
+// del que lo ganó, sólo a él, con la sigla del clan para el que lo ganó.
+func TestLasFilasDeUnClanSonDeUnSoloLado(t *testing.T) {
+	miembro := eventlog.Event{Type: "TerritoryControlChanged", PlayerID: yo, Counterpart: otro, TerritoryID: 12,
+		TerritoryName: "Llanura", OwnerClanTag: "LOB", ForClanTag: "OSO", Only: eventlog.OnlyPlayer}
+	assert.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindTerritoryLost, Other: otro}}, eventlog.Notices(miembro))
+	_, _, ok := eventlog.Classify(otro, miembro)
+	assert.False(t, ok, "el que reclama no cuenta la fila de cada miembro")
+	assert.Equal(t, "LOB", eventlog.ClanTagFor(yo, miembro))
+
+	ganador := miembro
+	ganador.Only = eventlog.OnlyCounterpart
+	assert.Equal(t, []eventlog.Notice{{To: otro, Kind: eventlog.KindTerritoryTaken, Other: yo}}, eventlog.Notices(ganador))
+	_, _, ok = eventlog.Classify(yo, ganador)
+	assert.False(t, ok)
+	assert.Equal(t, "OSO", eventlog.ClanTagFor(otro, ganador))
+
+	empieza := eventlog.Event{Type: "TerritoryClaimStarted", PlayerID: yo, Counterpart: otro, TerritoryID: 12,
+		OwnerClanTag: "LOB", Only: eventlog.OnlyPlayer}
+	assert.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindTerritoryClaimed, Other: otro}}, eventlog.Notices(empieza))
+
+	for viewer, tag := range map[uuid.UUID]string{yo: "LOB", otro: "OSO"} {
+		b := eventlog.NewBuilder(viewer, 0, 10*time.Minute, 50)
+		fila := miembro
+		if viewer == otro {
+			fila = ganador
+		}
+		fila.ID, fila.AtMs = 1, t0
+		b.Add(fila)
+		require.Len(t, b.Entries(), 1)
+		assert.Equal(t, tag, b.Entries()[0].ClanTag)
+	}
+	sinClan := eventlog.Event{ID: 2, Type: "TerritoryControlChanged", PlayerID: yo, Counterpart: otro, AtMs: t0, TerritoryID: 12}
+	b := eventlog.NewBuilder(yo, 0, 10*time.Minute, 50)
+	b.Add(sinClan)
+	assert.Empty(t, b.Entries()[0].ClanTag)
+}

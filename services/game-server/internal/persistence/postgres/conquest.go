@@ -27,6 +27,10 @@ type ClaimStart struct {
 	Claim         territory.Claim
 	TerritoryName string
 	Tick          uint64
+	// OwnerClanID y OwnerClanTag: el clan dueño al empezar, si lo es
+	// (ADR-041 §5).
+	OwnerClanID  int64
+	OwnerClanTag string
 }
 
 // ClaimEnd es el fin sin captura de una reclamación.
@@ -47,6 +51,10 @@ type Capture struct {
 	PrevOwner       uuid.UUID
 	PrevCityID      int64
 	PrevBonus       int32
+	NewClanID       int64
+	ForClanTag      string
+	PrevClanID      int64
+	PrevClanTag     string
 	ExpectedVersion int32
 	CapturedAt      time.Time
 	Tick            uint64
@@ -65,12 +73,12 @@ func (r *ConquestRepo) StartClaim(ctx context.Context, s ClaimStart) (int64, err
 		err := tx.QueryRow(ctx,
 			`INSERT INTO territory_claims
 			   (territory_id, unit_id, player_id, city_id, owner_player_id, x, y,
-			    started_at_ms, completes_at_ms, status, request_id)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ACTIVE', $10)
+			    started_at_ms, completes_at_ms, status, request_id, clan_id)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ACTIVE', $10, $11)
 			 ON CONFLICT (player_id, request_id) DO NOTHING
 			 RETURNING id`,
 			c.TerritoryID, c.UnitID, c.PlayerID, c.CityID, c.OwnerPlayerID, c.X, c.Y,
-			c.StartedAtMs, c.CompletesAtMs, c.RequestID).Scan(&id)
+			c.StartedAtMs, c.CompletesAtMs, c.RequestID, nullClan(c.ClanID)).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Ya estaba escrita: un reintento de la cola.
 			return tx.QueryRow(ctx,
@@ -87,20 +95,52 @@ func (r *ConquestRepo) StartClaim(ctx context.Context, s ClaimStart) (int64, err
 			`UPDATE territory_control SET contested = true WHERE territory_id = $1`, c.TerritoryID); err != nil {
 			return fmt.Errorf("marcar en disputa el territorio %d: %w", c.TerritoryID, normalize(err))
 		}
+		payload := func() map[string]any {
+			return map[string]any{
+				"claimId": id, "territoryId": c.TerritoryID, "territoryName": s.TerritoryName,
+				"unitId": c.UnitID, "x": c.X, "y": c.Y, "atMs": c.StartedAtMs, "endsAtMs": c.CompletesAtMs,
+			}
+		}
+		if s.OwnerClanID != 0 {
+			// ADR-041 §5: una fila por miembro abierto del clan dueño, leídos con
+			// el candado del clan.
+			if err := lockClan(ctx, tx, s.OwnerClanID); err != nil {
+				return err
+			}
+			members, err := openMembers(ctx, tx, s.OwnerClanID)
+			if err != nil {
+				return err
+			}
+			for _, m := range members {
+				p := payload()
+				p["ownerClanId"], p["ownerClanTag"], p["only"] = s.OwnerClanID, s.OwnerClanTag, "player"
+				if err := appendEvent(ctx, tx, worldEvent{
+					EventType: territory.EventClaimStarted, Tick: s.Tick, PlayerID: &m,
+					CounterpartID: counterpart(c.PlayerID), Payload: p,
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 		if c.OwnerPlayerID == nil {
 			return nil
 		}
 		owner := *c.OwnerPlayerID
 		return appendEvent(ctx, tx, worldEvent{
 			EventType: territory.EventClaimStarted, Tick: s.Tick, PlayerID: &owner,
-			CounterpartID: counterpart(c.PlayerID),
-			Payload: map[string]any{
-				"claimId": id, "territoryId": c.TerritoryID, "territoryName": s.TerritoryName,
-				"unitId": c.UnitID, "x": c.X, "y": c.Y, "atMs": c.StartedAtMs, "endsAtMs": c.CompletesAtMs,
-			},
+			CounterpartID: counterpart(c.PlayerID), Payload: payload(),
 		})
 	})
 	return id, err
+}
+
+// nullClan es el clan_id de una reclamación: NULL si es para el jugador.
+func nullClan(id int64) *int64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
 }
 
 // EndClaim cierra una reclamación sin captura y quita la disputa. Idempotente:
@@ -170,21 +210,54 @@ func (r *ConquestRepo) CaptureTerritory(ctx context.Context, c Capture) (territo
 			}
 		}
 
+		// 2b. ADR-041 §3: los candados de los clanes de por medio, por id, y
+		// la estancia abierta de quien reclamó para el suyo (INV-CLAN-004).
+		for _, id := range ascendingClans(c.NewClanID, c.PrevClanID) {
+			if err := lockClan(ctx, tx, id); err != nil {
+				return err
+			}
+		}
+		if c.NewClanID != 0 {
+			var miembro bool
+			if err := tx.QueryRow(ctx,
+				`SELECT EXISTS (
+				   SELECT 1 FROM clan_members m JOIN clans cl ON cl.id = m.clan_id
+				    WHERE m.clan_id = $1 AND m.player_id = $2 AND m.left_at IS NULL AND cl.dissolved_at IS NULL)`,
+				c.NewClanID, c.NewOwner).Scan(&miembro); err != nil {
+				return fmt.Errorf("comprobar la estancia de quien reclamó: %w", normalize(err))
+			}
+			if !miembro {
+				return fmt.Errorf("%w: quien reclamó ya no es del clan %d (INV-CLAN-004)", ErrConflict, c.NewClanID)
+			}
+		}
+
 		// 3. El dueño, con la versión y el dueño que conocía la RAM.
 		var prev *string
-		if c.PrevOwner != uuid.Nil {
+		switch {
+		case c.PrevOwner != uuid.Nil:
 			p := c.PrevOwner.String()
 			prev = &p
+		case c.PrevClanID != 0:
+			p := territory.ClanOwnerID(c.PrevClanID)
+			prev = &p
+		}
+		ownerType, ownerID := territory.OwnerPlayer, c.NewOwner.String()
+		if c.NewClanID != 0 {
+			ownerType, ownerID = territory.OwnerClan, territory.ClanOwnerID(c.NewClanID)
 		}
 		row := tx.QueryRow(ctx,
 			`UPDATE territory_control
-			    SET owner_type = 'PLAYER', owner_id = $2, captured_at = $3, contested = false, version = version + 1
+			    SET owner_type = $6, owner_id = $2, captured_at = $3, contested = false, version = version + 1
 			  WHERE territory_id = $1 AND version = $4 AND owner_id IS NOT DISTINCT FROM $5
 			RETURNING territory_id, owner_type, owner_id, control_points, contested, captured_at, version`,
-			c.TerritoryID, c.NewOwner.String(), c.CapturedAt, c.ExpectedVersion, prev)
+			c.TerritoryID, ownerID, c.CapturedAt, c.ExpectedVersion, prev, string(ownerType))
 		out, err = scanControl(row)
 		if errors.Is(err, ErrNotFound) {
 			return fmt.Errorf("%w: el control del territorio %d cambió (versión %d)", ErrConflict, c.TerritoryID, c.ExpectedVersion)
+		}
+		if IsCheckViolation(err) {
+			// INV-TERR-012: el clan se disolvió antes en la misma cola.
+			return fmt.Errorf("%w: %v", ErrConflict, err)
 		}
 		if err != nil {
 			return err
@@ -206,25 +279,72 @@ func (r *ConquestRepo) CaptureTerritory(ctx context.Context, c Capture) (territo
 		}
 
 		// 5. El evento: el anterior dueño y el nuevo, como la víctima y el autor
-		// de un saqueo; sin anterior, el nuevo y nadie (ADR-034 §3).
-		player, other := c.NewOwner, uuid.Nil
-		if c.PrevOwner != uuid.Nil {
-			player, other = c.PrevOwner, c.NewOwner
+		// de un saqueo; sin anterior, el nuevo y nadie (ADR-034 §3). Con un clan
+		// que lo pierde, una fila por miembro abierto y una para quien lo ganó
+		// (ADR-041 §5).
+		payload := func() map[string]any {
+			p := map[string]any{
+				"territoryId": c.TerritoryID, "territoryName": c.TerritoryName,
+				"ownerType": string(ownerType), "ownerId": ownerID, "version": out.Version,
+				"claimId": c.ClaimID, "x": c.X, "y": c.Y, "atMs": c.AtMs,
+			}
+			if prev != nil {
+				p["previousOwnerId"] = *prev
+			}
+			if c.ForClanTag != "" {
+				p["forClanTag"] = c.ForClanTag
+			}
+			return p
 		}
-		payload := map[string]any{
-			"territoryId": c.TerritoryID, "territoryName": c.TerritoryName,
-			"ownerType": string(territory.OwnerPlayer), "ownerId": c.NewOwner.String(), "version": out.Version,
-			"claimId": c.ClaimID, "x": c.X, "y": c.Y, "atMs": c.AtMs,
+		event := func(player, other uuid.UUID, p map[string]any) error {
+			return appendEvent(ctx, tx, worldEvent{
+				EventType: territory.EventControlChanged, Tick: c.Tick, PlayerID: &player,
+				CounterpartID: counterpart(other), Payload: p,
+			})
 		}
-		if c.PrevOwner != uuid.Nil {
-			payload["previousOwnerId"] = c.PrevOwner.String()
+		switch {
+		case c.PrevOwner != uuid.Nil:
+			return event(c.PrevOwner, c.NewOwner, payload())
+		case c.PrevClanID != 0:
+			members, err := openMembers(ctx, tx, c.PrevClanID)
+			if err != nil {
+				return err
+			}
+			for _, m := range members {
+				p := payload()
+				p["ownerClanTag"], p["only"] = c.PrevClanTag, "player"
+				if err := event(m, c.NewOwner, p); err != nil {
+					return err
+				}
+			}
+			if len(members) > 0 {
+				p := payload()
+				p["only"] = "counterpart"
+				return event(members[0], c.NewOwner, p)
+			}
+			return nil
+		default:
+			return event(c.NewOwner, uuid.Nil, payload())
 		}
-		return appendEvent(ctx, tx, worldEvent{
-			EventType: territory.EventControlChanged, Tick: c.Tick, PlayerID: &player,
-			CounterpartID: counterpart(other), Payload: payload,
-		})
 	})
 	return out, err
+}
+
+// ascendingClans son los clanes distintos de cero, de menor a mayor: el orden en
+// que una transacción toma sus candados para no cruzarse con otra.
+func ascendingClans(a, b int64) []int64 {
+	switch {
+	case a == 0 && b == 0:
+		return nil
+	case a == 0 || a == b:
+		return []int64{b}
+	case b == 0:
+		return []int64{a}
+	case a < b:
+		return []int64{a, b}
+	default:
+		return []int64{b, a}
+	}
 }
 
 // ListActiveClaims devuelve las reclamaciones activas, por territorio, para la
@@ -232,7 +352,7 @@ func (r *ConquestRepo) CaptureTerritory(ctx context.Context, c Capture) (territo
 func (r *ConquestRepo) ListActiveClaims(ctx context.Context) ([]territory.Claim, error) {
 	rows, err := r.store.pool.Query(ctx,
 		`SELECT id, territory_id, unit_id, player_id, city_id, owner_player_id, x, y,
-		        started_at_ms, completes_at_ms, request_id
+		        started_at_ms, completes_at_ms, request_id, COALESCE(clan_id, 0)
 		   FROM territory_claims WHERE status = 'ACTIVE' ORDER BY territory_id`)
 	if err != nil {
 		return nil, fmt.Errorf("leer las reclamaciones activas: %w", normalize(err))
@@ -242,7 +362,7 @@ func (r *ConquestRepo) ListActiveClaims(ctx context.Context) ([]territory.Claim,
 	for rows.Next() {
 		var c territory.Claim
 		if err := rows.Scan(&c.ID, &c.TerritoryID, &c.UnitID, &c.PlayerID, &c.CityID, &c.OwnerPlayerID,
-			&c.X, &c.Y, &c.StartedAtMs, &c.CompletesAtMs, &c.RequestID); err != nil {
+			&c.X, &c.Y, &c.StartedAtMs, &c.CompletesAtMs, &c.RequestID, &c.ClanID); err != nil {
 			return nil, fmt.Errorf("leer una reclamación: %w", normalize(err))
 		}
 		out = append(out, c)

@@ -46,12 +46,20 @@ func cargar(t *testing.T, ctx context.Context, store *postgres.Store, tick uint6
 	require.NoError(t, err)
 	eras, err := cities.ListEras(ctx)
 	require.NoError(t, err)
+	// Los clanes vivos, como en cmd/server (INV-TERR-012).
+	clanes, err := postgres.NewClanRepo(store, postgres.ClansConfig{}).ListLive(ctx)
+	require.NoError(t, err)
+	vivos := make(map[int64]struct{}, len(clanes))
+	for _, c := range clanes {
+		vivos[c.ID] = struct{}{}
+	}
 	return postgres.NewLoadCheckRepo(store).CheckAndRepair(ctx, loadcheck.Input{
 		World:    mundoDeCarga(t),
 		EraCaps:  postgres.EraCaps(eras),
 		Cities:   ciudades,
 		Units:    vivas,
 		Controls: controles,
+		Clans:    vivos,
 		Now:      instanteDeCarga,
 	}, tick)
 }
@@ -113,8 +121,12 @@ func TestLaCargaReparaYAuditaLoQueElEsquemaNoGarantiza(t *testing.T) {
 	// INV-TERR-005 e INV-TERR-007.
 	exec(`UPDATE territory_control SET owner_type = 'PLAYER', owner_id = $1, captured_at = $2
 	      WHERE territory_id = 1`, uuid.NewString(), instanteDeAlta)
-	exec(`UPDATE territory_control SET owner_type = 'CLAN', owner_id = 'clan-1', captured_at = NULL
-	      WHERE territory_id = 2`)
+	// Desde 000021 un dueño CLAN tiene que ser un clan vivo (INV-TERR-012).
+	clanID, err := postgres.NewClanRepo(store, postgres.ClansConfig{}).Create(ctx,
+		postgres.ClanCreate{PlayerID: alta.Player.ID, Name: "Reparables", Tag: "REP", At: instanteDeAlta})
+	require.NoError(t, err)
+	exec(`UPDATE territory_control SET owner_type = 'CLAN', owner_id = $1, captured_at = NULL
+	      WHERE territory_id = 2`, strconv.FormatInt(clanID, 10))
 
 	res, err := cargar(t, ctx, store, 77)
 	require.NoError(t, err)

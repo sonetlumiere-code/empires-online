@@ -438,9 +438,12 @@ export class GameClient {
   }
 
   /** Ordena a un guerrero derribar una casa ajena (SPEC-COMBAT-SIEGE). */
-  /** Un guerrero reclama el territorio en que está (SPEC-TERRITORY-CONQUEST). */
-  claimTerritory(unitId: number): string {
-    return this.send('unit.claim', { unitId });
+  /**
+   * Un guerrero reclama el territorio en que está (SPEC-TERRITORY-CONQUEST), para su
+   * dueño o, con `forClan`, para el clan de su dueño (SPEC-CLAN-TERRITORIES §4.2).
+   */
+  claimTerritory(unitId: number, forClan = false): string {
+    return this.send('unit.claim', forClan ? { unitId, forClan: true } : { unitId });
   }
 
   demolishBuilding(unitId: number, buildingId: number): string {

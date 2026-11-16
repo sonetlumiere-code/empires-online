@@ -107,10 +107,10 @@ func TestLaPertenenciaAUnClanEnLaBase(t *testing.T) {
 	// El líder sale: hereda b.
 	salida := clanEn.Add(time.Hour)
 	l := postgres.ClanLeave{ClanID: id, PlayerID: a, Reason: clan.ReasonLeft, At: salida, NewLeader: b}
-	aplicada, err := repo.Leave(ctx, l)
+	aplicada, _, err := repo.Leave(ctx, l)
 	require.NoError(t, err)
 	assert.True(t, aplicada)
-	aplicada, err = repo.Leave(ctx, l)
+	aplicada, _, err = repo.Leave(ctx, l)
 	require.NoError(t, err)
 	assert.False(t, aplicada, "un reintento no escribe dos veces")
 	clanes, _ = repo.ListLive(ctx)
@@ -123,7 +123,7 @@ func TestLaPertenenciaAUnClanEnLaBase(t *testing.T) {
 
 	// b invita a c y sale el último: el clan se disuelve con sus invitaciones.
 	require.NoError(t, repo.Invite(ctx, postgres.ClanInvite{ClanID: id, PlayerID: c, InvitedBy: b, At: salida, ExpiresAt: salida.Add(time.Hour)}))
-	_, err = repo.Leave(ctx, postgres.ClanLeave{ClanID: id, PlayerID: b, Reason: clan.ReasonLeft, At: salida.Add(time.Minute), Dissolve: true})
+	_, _, err = repo.Leave(ctx, postgres.ClanLeave{ClanID: id, PlayerID: b, Reason: clan.ReasonLeft, At: salida.Add(time.Minute), Dissolve: true})
 	require.NoError(t, err)
 	clanes, _ = repo.ListLive(ctx)
 	assert.Empty(t, clanes)
@@ -283,7 +283,7 @@ func TestUnaSalidaEsperaAlCandadoDelCanal(t *testing.T) {
 
 	hecho := make(chan error, 1)
 	go func() {
-		_, err := repo.Leave(context.Background(), postgres.ClanLeave{
+		_, _, err := repo.Leave(context.Background(), postgres.ClanLeave{
 			ClanID: id, PlayerID: b, Reason: clan.ReasonExpelled, By: a, At: clanEn.Add(time.Minute),
 		})
 		hecho <- err

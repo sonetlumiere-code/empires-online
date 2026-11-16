@@ -14,6 +14,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -37,6 +38,9 @@ type fakeClans struct {
 	createErr error
 	joinErr   error
 	leaveErr  error
+	// released son los controles que devuelve una disolución, como la base al
+	// liberar los territorios del clan (ADR-041 §4).
+	released []territory.Control
 }
 
 func (f *fakeClans) Create(_ context.Context, o simulation.ClanCreateOrder) (int64, error) {
@@ -67,14 +71,17 @@ func (f *fakeClans) Join(_ context.Context, o simulation.ClanJoinOrder) error {
 	return nil
 }
 
-func (f *fakeClans) Leave(_ context.Context, l simulation.ClanLeave) error {
+func (f *fakeClans) Leave(_ context.Context, l simulation.ClanLeave) ([]territory.Control, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.leaveErr != nil {
-		return f.leaveErr
+		return nil, f.leaveErr
 	}
 	f.leaves = append(f.leaves, l)
-	return nil
+	if !l.Dissolve {
+		return nil, nil
+	}
+	return f.released, nil
 }
 
 func (f *fakeClans) lastLeave(t *testing.T) simulation.ClanLeave {

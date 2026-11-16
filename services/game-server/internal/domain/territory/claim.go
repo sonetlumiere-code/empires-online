@@ -2,6 +2,7 @@ package territory
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/google/uuid"
 
@@ -28,9 +29,12 @@ var (
 	// ErrCapital: el territorio contiene el centro de la ciudad de su dueño
 	// (RN-CONQ-008, INV-TERR-011).
 	ErrCapital = errors.New("es la capital de su dueño: no se puede reclamar")
-	// ErrNotClaimable: el dueño no es un jugador (CLAN, FACTION), que el MVP no
-	// escribe nunca.
+	// ErrNotClaimable: el dueño no es un jugador ni un clan (FACTION), que nada
+	// escribe.
 	ErrNotClaimable = errors.New("ese territorio no se puede reclamar")
+	// ErrClanTerritory: el territorio ya es del clan de quien lo reclama
+	// (SPEC-CLAN-TERRITORIES RN-CLANTERR-001).
+	ErrClanTerritory = errors.New("ese territorio ya es de tu clan")
 )
 
 // ClaimStatus es el estado de una fila de territory_claims.
@@ -50,8 +54,12 @@ type Claim struct {
 	UnitID      int64
 	PlayerID    uuid.UUID
 	CityID      int64
-	// OwnerPlayerID es el dueño del territorio al empezar; nil si era libre.
+	// OwnerPlayerID es el dueño del territorio al empezar, si era un jugador;
+	// nil si era libre o de un clan.
 	OwnerPlayerID *uuid.UUID
+	// ClanID es el clan para el que se reclama; 0 si es para el propio jugador
+	// (SPEC-CLAN-TERRITORIES §4.2, ADR-041 §1).
+	ClanID        int64
 	X, Y          int32
 	StartedAtMs   int64
 	CompletesAtMs int64
@@ -76,6 +84,22 @@ func (c Control) PlayerOwner() (uuid.UUID, bool) {
 	return id, true
 }
 
+// ClanOwner devuelve el clan dueño del control, si lo es (ADR-041 §1): el
+// owner_id de un dueño CLAN es el id del clan en decimal.
+func (c Control) ClanOwner() (int64, bool) {
+	if c.OwnerType != OwnerClan || c.OwnerID == nil {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(*c.OwnerID, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+// ClanOwnerID es el owner_id de un dueño CLAN.
+func ClanOwnerID(clanID int64) string { return strconv.FormatInt(clanID, 10) }
+
 // IsCapital indica si el territorio contiene el centro de alguna de las
 // ciudades de su dueño (RN-CONQ-008). En el MVP cada jugador tiene una.
 func IsCapital(t Territory, ownerCityCenters []world.Tile) bool {
@@ -88,13 +112,25 @@ func IsCapital(t Territory, ownerCityCenters []world.Tile) bool {
 }
 
 // CheckClaimable es la parte de RN-CONQ-002 que sólo depende del territorio:
-// no es ya de quien reclama y no es la capital de su dueño. Lo demás —el tile,
-// la reclamación activa, la paz y la protección— lo comprueba la simulación.
-func CheckClaimable(t Territory, c Control, claimer uuid.UUID, ownerCityCenters []world.Tile) error {
+// no es ya de quien reclama ni de su clan, y no es la capital de su dueño. Lo
+// demás —el tile, la reclamación activa, la paz y la protección— lo comprueba la
+// simulación. claimerClan es el clan de quien reclama, o 0
+// (SPEC-CLAN-TERRITORIES RN-CLANTERR-001).
+func CheckClaimable(t Territory, c Control, claimer uuid.UUID, claimerClan int64, ownerCityCenters []world.Tile) error {
 	switch c.OwnerType {
 	case OwnerNone, "":
 		return nil
 	case OwnerPlayer:
+	case OwnerClan:
+		owner, ok := c.ClanOwner()
+		if !ok {
+			return ErrNotClaimable
+		}
+		if claimerClan != 0 && owner == claimerClan {
+			return ErrClanTerritory
+		}
+		// Un clan no tiene ciudad: su territorio no es la capital de nadie.
+		return nil
 	default:
 		return ErrNotClaimable
 	}

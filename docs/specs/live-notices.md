@@ -69,6 +69,9 @@ orden.
 **Precisión (2026-11-15, [clans.md](clans.md) Q10).** Desde E18 se avisa también la expulsión de un clan, sólo al
 expulsado (`CLAN_EXPELLED`); al líder que expulsó no le llega aviso, sólo su entrada del registro.
 
+**Precisión (2026-11-16, [clan-territories.md](clan-territories.md) Q7).** Desde E19, la reclamación y la pérdida de un
+territorio de clan se avisan a cada miembro abierto del clan, con `clanTag`; ganarlo, una sola vez a quien lo gana.
+
 ### 4.2 Reglas
 
 Dominio: `RN-NOTICE`.
