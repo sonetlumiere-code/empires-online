@@ -29,8 +29,21 @@ function contains(t: TerritoryView, x: number, y: number): boolean {
   return x >= t.minX && x <= t.maxX && y >= t.minY && y <= t.maxY;
 }
 
-/** De quién es, para el HUD: «libre», «tuyo» o la ciudad de su dueño. */
-export function territoryOwnerLabel(t: TerritoryView, playerId: string | null, cities: Iterable<CityView>): string {
+/**
+ * De quién es, para el HUD: «libre», «tuyo», la ciudad de su dueño o, si es de un clan,
+ * «de tu clan» o el clan con su sigla (SPEC-CLAN-TERRITORIES §4.8).
+ */
+export function territoryOwnerLabel(
+  t: TerritoryView,
+  playerId: string | null,
+  cities: Iterable<CityView>,
+  myClanId: number | null = null,
+): string {
+  if (t.ownerType === 'CLAN') {
+    if (!t.ownerClan) return 'de un clan';
+    if (t.ownerClan.id === myClanId) return `de tu clan [${t.ownerClan.tag}]`;
+    return `del clan ${t.ownerClan.name} [${t.ownerClan.tag}]`;
+  }
   if (t.ownerType !== 'PLAYER' || t.ownerId === null) return 'libre';
   if (t.ownerId === playerId) return 'tuyo';
   return `de ${cityOf(cities, t.ownerId)?.name ?? 'otro jugador'}`;
@@ -43,6 +56,10 @@ export interface ClaimCheck {
   cities: Iterable<CityView>;
   treaties: readonly TreatyView[];
   nowMs: number;
+  /** El clan propio, o `null` (SPEC-CLAN-TERRITORIES). */
+  myClanId?: number | null;
+  /** Si se reclama para el clan propio (`forClan`). */
+  forClan?: boolean;
 }
 
 /**
@@ -56,8 +73,14 @@ export function claimBlockReason(c: ClaimCheck): string | null {
   if (unit.unitType !== 'WARRIOR') return 'Sólo un guerrero reclama territorios';
   if (unit.status === 'GARRISONED' || unit.status === 'DEAD') return 'El guerrero tiene que estar en el mapa';
   if (unit.status === 'CLAIMING') return 'Ya está reclamando este territorio';
+  if (c.forClan && (c.myClanId ?? null) === null) return 'No estás en ningún clan';
   if (!t) return 'Aquí no hay ningún territorio';
   if (t.claim) return 'Ya hay una reclamación en este territorio';
+  // SPEC-CLAN-TERRITORIES §5: el del propio clan no se reclama. La paz con los
+  // miembros de otro clan y su protección las decide el servidor.
+  if (t.ownerType === 'CLAN' && t.ownerClan && t.ownerClan.id === (c.myClanId ?? null)) {
+    return 'Este territorio ya es de tu clan';
+  }
   if (t.ownerType === 'PLAYER' && t.ownerId !== null) {
     const owner = t.ownerId;
     if (owner === playerId) return 'Este territorio ya es tuyo';
@@ -84,14 +107,18 @@ function isProtected(c: CityView, nowMs: number): boolean {
 }
 
 /** La reclamación en curso de un territorio, para el HUD; `null` si no la hay. */
-export function claimLabel(t: TerritoryView, playerId: string | null, nowMs: number): string | null {
+export function claimLabel(t: TerritoryView, playerId: string | null, nowMs: number, myClanId: number | null = null): string | null {
   const claim = t.claim;
   if (!claim) return null;
   const left = formatCountdown(claim.endsAtMs - nowMs);
-  if (claim.playerId === playerId) return `Reclamas ${t.name}: falta ${left}`;
+  const forClan = claim.clan ? ` para [${claim.clan.tag}]` : '';
+  if (claim.playerId === playerId) return `Reclamas ${t.name}${forClan}: falta ${left}`;
   const who = claim.cityName ?? 'otro jugador';
-  if (t.ownerId === playerId) return `¡${who} reclama tu territorio ${t.name}! Falta ${left}`;
-  return `${who} reclama ${t.name}: falta ${left}`;
+  if (t.ownerType === 'PLAYER' && t.ownerId === playerId) return `¡${who} reclama tu territorio ${t.name}! Falta ${left}`;
+  if (t.ownerType === 'CLAN' && t.ownerClan && t.ownerClan.id === myClanId) {
+    return `¡${who} reclama ${t.name}, de tu clan! Falta ${left}`;
+  }
+  return `${who} reclama ${t.name}${forClan}: falta ${left}`;
 }
 
 /** Si algún territorio cargado está en disputa: el HUD necesita refrescar su cuenta atrás. */

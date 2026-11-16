@@ -381,6 +381,9 @@ type TerritoryView struct {
 	// OwnerFaction es la facción del jugador dueño, o null si no tiene un
 	// jugador por dueño (SPEC-FACTIONS §6).
 	OwnerFaction *string `json:"ownerFaction"`
+	// OwnerClan es el clan dueño cuando OwnerType es CLAN, o null
+	// (SPEC-CLAN-TERRITORIES §6).
+	OwnerClan *TerritoryOwnerClanView `json:"ownerClan"`
 	// Contested es true exactamente mientras hay una reclamación activa
 	// (SPEC-TERRITORY-CONQUEST §6, INV-TERR-006).
 	Contested bool `json:"contested"`
@@ -395,6 +398,17 @@ type TerritoryClaimView struct {
 	CityName    *string `json:"cityName"`
 	StartedAtMs int64   `json:"startedAtMs"`
 	EndsAtMs    int64   `json:"endsAtMs"`
+	// Clan es el clan para el que se reclama, si es para un clan
+	// (SPEC-CLAN-TERRITORIES §6).
+	Clan *CityClanView `json:"clan,omitempty"`
+}
+
+// TerritoryOwnerClanView es el clan dueño de un territorio: público
+// (SPEC-CLAN-TERRITORIES Q11).
+type TerritoryOwnerClanView struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Tag  string `json:"tag"`
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -472,6 +486,8 @@ type UnitDemolishPayload struct {
 // servidor (SPEC-TERRITORY-CONQUEST §6).
 type UnitClaimPayload struct {
 	UnitID int64 `json:"unitId"`
+	// ForClan reclama en nombre del propio clan (SPEC-CLAN-TERRITORIES §4.2).
+	ForClan *bool `json:"forClan,omitempty"`
 }
 
 // TreatyProposePayload propone un tratado a otro jugador (SPEC-DIPLOMACY).
@@ -613,6 +629,10 @@ type EventLogEntry struct {
 	// TerritoryID y TerritoryName, en la conquista (SPEC-TERRITORY-CONQUEST §6).
 	TerritoryID   *int64 `json:"territoryId,omitempty"`
 	TerritoryName string `json:"territoryName,omitempty"`
+	// ClanTag, en la conquista con un clan de por medio: el clan dueño en
+	// TERRITORY_CLAIMED y TERRITORY_LOST, y el clan para el que se ganó en
+	// TERRITORY_TAKEN (SPEC-CLAN-TERRITORIES §6).
+	ClanTag string `json:"clanTag,omitempty"`
 	// Cargo, en las caravanas: lo que llevaba (SPEC-CARAVANS §6).
 	Cargo []ResourceAmount `json:"cargo,omitempty"`
 }
@@ -634,6 +654,8 @@ type EventLogNoticePayload struct {
 	// TerritoryID y TerritoryName, en la conquista (SPEC-TERRITORY-CONQUEST §6).
 	TerritoryID   *int64 `json:"territoryId,omitempty"`
 	TerritoryName string `json:"territoryName,omitempty"`
+	// ClanTag, como en EventLogEntry (SPEC-CLAN-TERRITORIES §6).
+	ClanTag string `json:"clanTag,omitempty"`
 	// Cargo, en las caravanas: lo que llevaba (SPEC-CARAVANS §6).
 	Cargo []ResourceAmount `json:"cargo,omitempty"`
 }
@@ -843,6 +865,18 @@ type ClanView struct {
 	LeaderID        string                   `json:"leaderId"`
 	Members         []ClanMemberView         `json:"members"`
 	SentInvitations []ClanSentInvitationView `json:"sentInvitations"`
+	// Territories son los territorios del clan, por id
+	// (SPEC-CLAN-TERRITORIES Q11).
+	Territories []ClanTerritoryView `json:"territories"`
+}
+
+// ClanTerritoryView es un territorio de un clan, con su tile central para
+// llevar la cámara.
+type ClanTerritoryView struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	X    int32  `json:"x"`
+	Y    int32  `json:"y"`
 }
 
 // ClanInvitationView es una invitación recibida y viva.
@@ -866,6 +900,8 @@ type ClanInfoPayload struct {
 	Name    string           `json:"name"`
 	Tag     string           `json:"tag"`
 	Members []ClanMemberView `json:"members"`
+	// Territories son los territorios del clan, por id.
+	Territories []ClanTerritoryView `json:"territories"`
 }
 
 // ClanMessageView es un mensaje del canal de un clan.

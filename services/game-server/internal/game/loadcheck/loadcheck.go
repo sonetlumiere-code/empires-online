@@ -65,6 +65,10 @@ type Input struct {
 	// activas, para reparar contested (INV-TERR-006). SPEC-TERRITORY-CONQUEST.
 	Territories  []territory.Territory
 	ActiveClaims []territory.Claim
+	// Clans es el conjunto de los clanes vivos, para los dueños CLAN
+	// (INV-TERR-012, SPEC-CLAN-TERRITORIES); nil no comprueba nada, para los
+	// tests que no lo usan.
+	Clans map[int64]struct{}
 	// Economía (SPEC-ECON-WOOD): las tareas, los edificios y las producciones
 	// leídos de la base.
 	Tasks       []task.Task
@@ -482,6 +486,21 @@ func (c *checker) controls() {
 			ct.OwnerType, ct.OwnerID, ct.CapturedAt = territory.OwnerNone, nil, nil
 			touched = true
 		}
+		// INV-TERR-012: un dueño CLAN que no es un clan vivo se libera, como un
+		// dueño PLAYER inexistente. Los triggers de 000021 lo impiden; esto es
+		// la defensa contra un borrado manual o una migración.
+		if ct.OwnerType == territory.OwnerClan && c.in.Clans != nil {
+			if id, ok := ct.ClanOwner(); !ok || !c.clanAlive(id) {
+				owner := "nulo"
+				if ct.OwnerID != nil {
+					owner = *ct.OwnerID
+				}
+				c.find("INV-TERR-012", "ALTO", PolicyRepair, entity,
+					fmt.Sprintf("dueño CLAN %s que no es un clan vivo: el territorio se libera", owner))
+				ct.OwnerType, ct.OwnerID, ct.CapturedAt = territory.OwnerNone, nil, nil
+				touched = true
+			}
+		}
 		// INV-TERR-007: con dueño hay fecha de captura. Se fecha ahora: hace la
 		// posesión más reciente de lo que fue, nunca más antigua.
 		if ct.OwnerType != territory.OwnerNone && ct.CapturedAt == nil {
@@ -496,6 +515,11 @@ func (c *checker) controls() {
 			c.res.ControlRepairs = append(c.res.ControlRepairs, ct.TerritoryID)
 		}
 	}
+}
+
+func (c *checker) clanAlive(id int64) bool {
+	_, ok := c.in.Clans[id]
+	return ok
 }
 
 func (c *checker) playerExists(id *string) bool {

@@ -27,7 +27,9 @@ import {
   pactoVigente,
   pasoDeFaccion,
   pasoDeClan,
+  pasoDelTerritorioDeClan,
   rasgo,
+  territorioDelHumo,
   territorioLibreCerca,
   tiemposDePolilinea,
 } from './smoke.mjs';
@@ -278,4 +280,29 @@ test('pasoDeClan: fundar sin clan, nada si ya lo dirige, fallar en otro clan (SP
   assert.equal(pasoDeClan(clan(yo), yo), 'lider');
   assert.equal(pasoDeClan(clan('otro'), yo), 'no-lider');
   assert.equal(pasoDeClan(clan(yo, 'OTR'), yo), 'otro-clan');
+});
+
+// SPEC-CLAN-TERRITORIES: el humo --territorio-clan disputa siempre el mismo
+// territorio entre [HUM] y smoke_norse, y sabe qué toca según su dueño.
+test('territorioDelHumo elige el más cercano libre, de [HUM] o del rival sin ser su capital', () => {
+  const t = (id, minX, minY, extra = {}) => ({ id, name: `T${id}`, minX, minY, maxX: minX + 63, maxY: minY + 63, ownerType: 'NONE', ownerId: null, ownerFaction: null, ownerClan: null, contested: false, ...extra });
+  const rival = 'norse';
+  const capital = { x: 508, y: 283 };
+  const ciudadClan = { x: 503, y: 198 };
+  const deHum = { ownerType: 'CLAN', ownerId: '1', ownerClan: { id: 1, name: 'Humo', tag: 'HUM' } };
+  const casos = [
+    [[t(39, 384, 256), t(16, 448, 64)], 39, 'libre'],
+    [[t(39, 384, 256, deHum), t(16, 448, 64)], 39, 'de [HUM]'],
+    [[t(39, 384, 256, { ownerType: 'PLAYER', ownerId: rival }), t(16, 448, 64)], 39, 'del rival'],
+    [[t(39, 384, 256, { ownerType: 'CLAN', ownerId: '2', ownerClan: { id: 2, name: 'Otro', tag: 'OTR' } }), t(16, 448, 64)], 16, 'de otro clan no'],
+    [[t(40, 448, 256, { ownerType: 'PLAYER', ownerId: rival }), t(16, 448, 64)], 16, 'la capital del rival no'],
+    [[t(39, 384, 256, { claim: { playerId: 'x' } }), t(16, 448, 64)], 16, 'en disputa no'],
+  ];
+  for (const [territorios, id, que] of casos) {
+    assert.equal(territorioDelHumo(territorios, ciudadClan, rival, capital).territorio.id, id, que);
+  }
+  assert.equal(pasoDelTerritorioDeClan(t(39, 0, 0), rival), 'clan-lo-gana');
+  assert.equal(pasoDelTerritorioDeClan(t(39, 0, 0, deHum), rival), 'rival-se-lo-quita');
+  assert.equal(pasoDelTerritorioDeClan(t(39, 0, 0, { ownerType: 'PLAYER', ownerId: rival }), rival), 'clan-lo-recupera');
+  assert.equal(pasoDelTerritorioDeClan(t(39, 0, 0, { ownerType: 'PLAYER', ownerId: 'otro' }), rival), 'otro');
 });

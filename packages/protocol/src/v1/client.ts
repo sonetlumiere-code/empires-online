@@ -280,6 +280,11 @@ export const UnitClaim = z.object({
   requestId: Uuid,
   payload: z.object({
     unitId: EntityId,
+    /**
+     * Reclamar en nombre del propio clan (SPEC-CLAN-TERRITORIES §4.2): el territorio
+     * pasa al clan. Opcional: aditivo en v1 (R-VER-2); sin él, para el propio jugador.
+     */
+    forClan: z.boolean().optional(),
   }).strict(),
 }).strict();
 

@@ -541,7 +541,7 @@ export class IsoScene {
    * de ninguna otra cosa (ADR-002).
    */
   private upsertTerritory(t: SceneTerritory): void {
-    const signature = `${t.ownerType}:${t.isOwn}:${t.contested}:${t.minX},${t.minY},${t.maxX},${t.maxY}`;
+    const signature = `${t.ownerType}:${t.isOwn}:${t.isOwnClan}:${t.contested}:${t.minX},${t.minY},${t.maxX},${t.maxY}`;
     const cached = this.territoryShapes.get(t.id);
     if (cached && cached.signature === signature) return;
     if (cached) this.removeTerritory(t.id);
@@ -750,5 +750,9 @@ function territoryStyle(t: SceneTerritory): { color: number; alpha: number; widt
   if (t.contested) return { color: 0xe0a030, alpha: 0.18, width: 4 };
   if (t.ownerType === 'NONE') return { color: 0x8a8a8a, alpha: 0.05, width: 2 };
   if (t.isOwn) return { color: 0x4ec27a, alpha: 0.13, width: 2 };
+  // Un territorio de clan (SPEC-CLAN-TERRITORIES §4.8): azul el del propio clan,
+  // violeta el de otro.
+  if (t.isOwnClan) return { color: 0x4e9ac2, alpha: 0.13, width: 2 };
+  if (t.ownerType === 'CLAN') return { color: 0x9a5ec2, alpha: 0.13, width: 2 };
   return { color: 0xc2544e, alpha: 0.13, width: 2 };
 }

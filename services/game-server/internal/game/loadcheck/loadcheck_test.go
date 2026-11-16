@@ -282,6 +282,35 @@ func TestLosControlesSeReparan(t *testing.T) {
 	assert.Equal(t, territory.OwnerPlayer, in.Controls[0].OwnerType, "la entrada no se toca")
 }
 
+// INV-TERR-012: con el catálogo de clanes vivos, un dueño CLAN que no es uno de
+// ellos —disuelto, inexistente o con un owner_id que no es un id— se libera; el
+// de un clan vivo se queda.
+func TestLosTerritoriosDeClanesMuertosSeLiberan(t *testing.T) {
+	in, _, _ := sano(t)
+	in.Clans = map[int64]struct{}{7: {}}
+	at := instante
+	deClan := func(tid int64, owner string) territory.Control {
+		return territory.Control{TerritoryID: tid, OwnerType: territory.OwnerClan, OwnerID: &owner, CapturedAt: &at, Version: 2}
+	}
+	in.Controls = append(in.Controls, deClan(3, "7"), deClan(4, "9"), deClan(5, "x"))
+
+	r := loadcheck.Check(in)
+
+	assert.Equal(t, []string{"INV-TERR-012/REPAIR", "INV-TERR-012/REPAIR"}, invs(r))
+	porID := map[int64]territory.Control{}
+	for _, c := range r.Controls {
+		porID[c.TerritoryID] = c
+	}
+	assert.Equal(t, territory.OwnerClan, porID[3].OwnerType, "el de un clan vivo se queda")
+	for _, id := range []int64{4, 5} {
+		assert.Equal(t, territory.OwnerNone, porID[id].OwnerType)
+		assert.Nil(t, porID[id].OwnerID)
+		assert.NoError(t, porID[id].Validate())
+		assert.EqualValues(t, 3, porID[id].Version)
+	}
+	assert.Equal(t, []int64{4, 5}, r.ControlRepairs)
+}
+
 func TestLaMismaEntradaDaLosMismosHallazgos(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		in, ciudad, aldeanos := sano(t)

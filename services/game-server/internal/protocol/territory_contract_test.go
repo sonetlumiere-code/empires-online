@@ -54,7 +54,11 @@ func TestTerritoryUpdateSerializaExactamenteLaVistaDelContrato(t *testing.T) {
 
 	dueño := "11111111-1111-4111-8111-111111111111"
 	ciudad, nombre := int64(7), "Villa Norte"
-	reclamacion := &protocol.TerritoryClaimView{PlayerID: dueño, CityID: &ciudad, CityName: &nombre, StartedAtMs: 1, EndsAtMs: 2}
+	reclamacion := &protocol.TerritoryClaimView{
+		PlayerID: dueño, CityID: &ciudad, CityName: &nombre, StartedAtMs: 1, EndsAtMs: 2,
+		Clan: &protocol.CityClanView{ID: 3, Tag: "LOB"},
+	}
+	clanID := "3"
 	casos := map[string]protocol.TerritoryView{
 		// RN-TERR-011: sin dueño, ownerId viaja como null explícito, no se omite.
 		"sin dueño": {ID: 1, Name: "Llanura", MinX: 0, MinY: 0, MaxX: 31, MaxY: 31, OwnerType: "NONE"},
@@ -62,6 +66,9 @@ func TestTerritoryUpdateSerializaExactamenteLaVistaDelContrato(t *testing.T) {
 			OwnerType: "PLAYER", OwnerID: &dueño},
 		"en disputa": {ID: 3, Name: "Vega", MinX: 64, MinY: 0, MaxX: 95, MaxY: 31,
 			OwnerType: "NONE", Contested: true, Claim: reclamacion},
+		// SPEC-CLAN-TERRITORIES §6: ownerClan viaja siempre, null o el clan.
+		"de un clan": {ID: 4, Name: "Pinar", MinX: 96, MinY: 0, MaxX: 127, MaxY: 31,
+			OwnerType: "CLAN", OwnerID: &clanID, OwnerClan: &protocol.TerritoryOwnerClanView{ID: 3, Name: "Los Lobos", Tag: "LOB"}},
 	}
 	for nombre, v := range casos {
 		t.Run(nombre, func(t *testing.T) {
@@ -83,6 +90,8 @@ func TestTerritoryUpdateSerializaExactamenteLaVistaDelContrato(t *testing.T) {
 				"ni una clave de más ni una de menos: el esquema es additionalProperties: false")
 			_, presente := emitido.Territory["ownerId"]
 			assert.True(t, presente, "ownerId es obligatorio aunque sea null")
+			_, presente = emitido.Territory["ownerClan"]
+			assert.True(t, presente, "ownerClan es obligatorio aunque sea null")
 		})
 	}
 }

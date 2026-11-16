@@ -174,6 +174,26 @@ export const CityClanView = z.object({
 });
 export type CityClanView = z.infer<typeof CityClanView>;
 
+/** El clan dueño de un territorio: su `id`, nombre y sigla, públicos (SPEC-CLAN-TERRITORIES Q11). */
+export const TerritoryOwnerClanView = z.object({
+  id: EntityId,
+  name: ClanName,
+  tag: ClanTag,
+});
+export type TerritoryOwnerClanView = z.infer<typeof TerritoryOwnerClanView>;
+
+/**
+ * Un territorio de un clan, en las vistas del clan (SPEC-CLAN-TERRITORIES §6), con su tile
+ * central para llevar la cámara aunque no esté en el área cargada.
+ */
+export const ClanTerritoryView = z.object({
+  id: EntityId,
+  name: z.string().min(1).max(64),
+  x: WorldCoordinate,
+  y: WorldCoordinate,
+});
+export type ClanTerritoryView = z.infer<typeof ClanTerritoryView>;
+
 /** Rango de un miembro de un clan (SPEC-CLANS Q4). */
 export const ClanRole = z.enum(['LEADER', 'MEMBER']);
 export type ClanRole = z.infer<typeof ClanRole>;
@@ -207,6 +227,8 @@ export const ClanView = z.object({
   members: z.array(ClanMemberView).min(1),
   /** Las invitaciones vivas que envió el clan; vacía salvo para el líder. */
   sentInvitations: z.array(ClanSentInvitationView),
+  /** Los territorios del clan, por `id` (SPEC-CLAN-TERRITORIES Q11). */
+  territories: z.array(ClanTerritoryView),
 });
 export type ClanView = z.infer<typeof ClanView>;
 
@@ -349,6 +371,8 @@ export const TerritoryClaimView = z.object({
   cityName: z.string().min(1).max(64).nullable(),
   startedAtMs: EpochMs,
   endsAtMs: EpochMs,
+  /** El clan para el que se reclama, si es para un clan (SPEC-CLAN-TERRITORIES §6). Aditivo en v1. */
+  clan: CityClanView.optional(),
 });
 export type TerritoryClaimView = z.infer<typeof TerritoryClaimView>;
 
@@ -363,6 +387,8 @@ export const TerritoryView = z.object({
   ownerId: z.string().nullable(),
   /** Facción del jugador dueño; `null` si no tiene un jugador por dueño (SPEC-FACTIONS §6). */
   ownerFaction: FactionCode.nullable(),
+  /** El clan dueño cuando `ownerType` es `CLAN`; `null` en otro caso (SPEC-CLAN-TERRITORIES §6). */
+  ownerClan: TerritoryOwnerClanView.nullable(),
   /** `true` exactamente mientras hay una reclamación activa (SPEC-TERRITORY-CONQUEST §6). */
   contested: z.boolean(),
   /** La reclamación activa, si la hay: quién reclama y cuándo termina. Aditivo en v1 (R-VER-2). */
@@ -536,6 +562,12 @@ export const EventLogEntry = z.object({
   /** En la conquista (SPEC-TERRITORY-CONQUEST §6): el territorio. Opcionales: aditivos en v1. */
   territoryId: EntityId.optional(),
   territoryName: z.string().min(1).max(64).optional(),
+  /**
+   * En la conquista con un clan de por medio (SPEC-CLAN-TERRITORIES §6): en
+   * `TERRITORY_CLAIMED` y `TERRITORY_LOST`, el clan de quien recibe la entrada, dueño del
+   * territorio; en `TERRITORY_TAKEN`, el clan para el que lo ganó. Aditivo en v1.
+   */
+  clanTag: ClanTag.optional(),
   /** En las caravanas (SPEC-CARAVANS §6): lo que llevaba. Opcional: aditivo en v1. */
   cargo: z.array(ResourceAmount).optional(),
 });

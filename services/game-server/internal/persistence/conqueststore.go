@@ -22,7 +22,10 @@ func NewConquestStore(r *postgres.ConquestRepo) *ConquestStore { return &Conques
 
 // StartClaim escribe el comienzo de una reclamación.
 func (s *ConquestStore) StartClaim(ctx context.Context, c simulation.ClaimStart) (int64, error) {
-	id, err := s.repo.StartClaim(ctx, postgres.ClaimStart{Claim: c.Claim, TerritoryName: c.TerritoryName, Tick: c.Tick})
+	id, err := s.repo.StartClaim(ctx, postgres.ClaimStart{
+		Claim: c.Claim, TerritoryName: c.TerritoryName, Tick: c.Tick,
+		OwnerClanID: c.OwnerClanID, OwnerClanTag: c.OwnerClanTag,
+	})
 	return id, claimConflict(err)
 }
 
@@ -37,6 +40,7 @@ func (s *ConquestStore) CaptureTerritory(ctx context.Context, c simulation.Captu
 		ClaimID: c.ClaimID, TerritoryID: c.TerritoryID, TerritoryName: c.TerritoryName,
 		NewOwner: c.NewOwner, NewCityID: c.NewCityID, NewBonus: c.NewBonus,
 		PrevOwner: c.PrevOwner, PrevCityID: c.PrevCityID, PrevBonus: c.PrevBonus,
+		NewClanID: c.NewClanID, ForClanTag: c.ForClanTag, PrevClanID: c.PrevClanID, PrevClanTag: c.PrevClanTag,
 		ExpectedVersion: c.ExpectedVersion, CapturedAt: c.CapturedAt, Tick: c.Tick, AtMs: c.AtMs, X: c.X, Y: c.Y,
 	})
 	return ctrl, claimConflict(err)

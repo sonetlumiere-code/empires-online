@@ -78,6 +78,8 @@ func (s *State) TerritoryView(t territory.Territory) protocol.TerritoryView {
 			f := s.FactionOf(owner)
 			v.OwnerFaction = &f
 		}
+		// SPEC-CLAN-TERRITORIES §6: el clan dueño, con su nombre y su sigla.
+		v.OwnerClan = s.ownerClanView(c)
 	}
 	// contested es «hay una reclamación activa» (INV-TERR-006, ADR-034 §4): la
 	// RAM lo deriva de sus reclamaciones confirmadas, no de la columna.

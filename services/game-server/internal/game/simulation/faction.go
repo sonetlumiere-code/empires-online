@@ -164,11 +164,8 @@ func (s *Simulation) damageTaken(target *unit.Unit, damage int32, nowMs int64) i
 	if !ok {
 		return damage
 	}
-	owner, ok := control.PlayerOwner()
-	if !ok {
-		return damage
-	}
-	if !player.Affine(owner == target.PlayerID, s.state.FactionOf(target.PlayerID), s.state.FactionOf(owner)) {
+	// RN-FAC-007, con la tierra del propio clan desde E19 (RN-CLANTERR-003).
+	if !s.state.territoryAffine(control, target.PlayerID) {
 		return damage
 	}
 	return player.AffineDamage(damage, s.affineDamagePerMille())

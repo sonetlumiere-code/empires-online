@@ -13,6 +13,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
 
@@ -51,8 +52,9 @@ type ClanStore interface {
 	// los bandos lo permiten todavía.
 	Join(ctx context.Context, o ClanJoinOrder) error
 	// Leave cierra una estancia con el líder nuevo o la disolución, de forma
-	// tolerante (ADR-040 §2).
-	Leave(ctx context.Context, l ClanLeave) error
+	// tolerante (ADR-040 §2). Una disolución libera en la misma transacción
+	// los territorios del clan y los devuelve (ADR-041 §4).
+	Leave(ctx context.Context, l ClanLeave) ([]territory.Control, error)
 }
 
 // ClanCreateOrder es una fundación ya validada por el tick.
@@ -232,6 +234,9 @@ type clanRecord struct {
 	LeaderID uuid.UUID
 	// Members es el instante de entrada de cada miembro confirmado.
 	Members map[uuid.UUID]int64
+	// dissolving: la última salida de un clan con territorios espera su
+	// transacción (ADR-041 §4); el clan rechaza entradas mientras tanto.
+	dissolving bool
 }
 
 type inviteKey struct {
@@ -515,6 +520,7 @@ func (s *State) clanView(clanID int64, viewer uuid.UUID, nowMs int64) *protocol.
 	v := &protocol.ClanView{
 		ID: rec.ID, Name: rec.Name, Tag: rec.Tag, LeaderID: rec.LeaderID.String(),
 		Members: []protocol.ClanMemberView{}, SentInvitations: []protocol.ClanSentInvitationView{},
+		Territories: s.clanTerritoryViews(rec.ID),
 	}
 	for _, m := range rec.members() {
 		role := clan.RoleMember
@@ -742,6 +748,10 @@ func (s *Simulation) handleInviteToClan(cmd InviteToClan) {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "sólo el líder de un clan invita")
 		return
 	}
+	if rec.dissolving {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "el clan se está disolviendo")
+		return
+	}
 	if cmd.TargetID == cmd.PlayerID {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "no puedes invitarte a ti mismo")
 		return
@@ -890,6 +900,10 @@ func (s *Simulation) handleRespondClan(cmd RespondClan) {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, why)
 		return
 	}
+	if rec.dissolving {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "el clan se está disolviendo")
+		return
+	}
 	if s.state.clanOccupancy(rec.ID, nowMs, false) >= s.clanMaxMembers() {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "el clan está lleno")
 		return
@@ -990,14 +1004,11 @@ func (s *Simulation) handleExpelFromClan(cmd ExpelFromClan) {
 // compañeros dura EO_CLAN_PEACE_GRACE_SECONDS más (ADR-040 §3).
 func (s *Simulation) leaveClan(clanID int64, playerID uuid.UUID, reason string, by, actor uuid.UUID, requestID string) {
 	rec := s.state.clans.clans[clanID]
-	nowMs := s.deps.Clock.NowMs()
-	remaining := make([]clan.Member, 0, len(rec.Members))
-	for _, m := range rec.members() {
-		if m.PlayerID != playerID {
-			remaining = append(remaining, m)
-		}
+	if rec.dissolving {
+		s.economyError(actor, requestID, protocol.CodeInvalidTarget, "el clan se está disolviendo")
+		return
 	}
-	dissolve := len(remaining) == 0
+	dissolve := len(rec.Members) <= 1
 	if dissolve {
 		// Una entrada en vuelo encontraría el clan disuelto en la base: el
 		// último no sale hasta que se resuelva (milisegundos).
@@ -1008,7 +1019,27 @@ func (s *Simulation) leaveClan(clanID int64, playerID uuid.UUID, reason string, 
 				return
 			}
 		}
+		// ADR-041 §4: con territorios, la disolución va en dos fases.
+		if len(s.state.clanTerritories(clanID)) > 0 {
+			s.startDissolution(rec, playerID, reason, by, actor, requestID)
+			return
+		}
 	}
+	s.submitClanLeave(s.applyLeave(rec, playerID, reason, by, actor, requestID, s.deps.Clock.NowMs()))
+}
+
+// applyLeave cierra en la RAM la estancia de playerID en el instante nowMs: el
+// líder nuevo o la disolución, la ciudad, los clan.update y el aviso de una
+// expulsión. Devuelve la salida que hay que escribir.
+func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason string, by, actor uuid.UUID, requestID string, nowMs int64) ClanLeave {
+	clanID := rec.ID
+	remaining := make([]clan.Member, 0, len(rec.Members))
+	for _, m := range rec.members() {
+		if m.PlayerID != playerID {
+			remaining = append(remaining, m)
+		}
+	}
+	dissolve := len(remaining) == 0
 
 	joinedAt := rec.Members[playerID]
 	delete(rec.Members, playerID)
@@ -1052,7 +1083,7 @@ func (s *Simulation) leaveClan(clanID int64, playerID uuid.UUID, reason string, 
 	}
 	s.deps.Log.Info("salida de un clan", "clan_id", clanID, "player_id", playerID.String(),
 		"reason", reason, "dissolved", dissolve)
-	s.submitClanLeave(leave)
+	return leave
 }
 
 func (s *Simulation) submitClanLeave(l ClanLeave) {
@@ -1063,7 +1094,14 @@ func (s *Simulation) submitClanLeave(l ClanLeave) {
 	s.deps.Persister.Submit(Job{
 		Name: JobClanLeave,
 		Key:  ClanKey(l.ClanID),
-		Run:  func(ctx context.Context) error { return store.Leave(ctx, l) },
+		Run: func(ctx context.Context) error {
+			released, err := store.Leave(ctx, l)
+			if err == nil && len(released) > 0 {
+				// ADR-041 §4: una captura confirmó en la misma cola justo antes.
+				s.reinject(ClanTerritoriesReleased{Controls: released})
+			}
+			return err
+		},
 		OnPermanentFailure: func(err error) {
 			s.deps.Log.Error("no se pudo escribir la salida de un clan; se reintentará en el siguiente volcado",
 				"err", err, "clan_id", l.ClanID, "player_id", l.PlayerID.String())

@@ -74,6 +74,11 @@ type ClaimStart struct {
 	Claim         territory.Claim
 	TerritoryName string
 	Tick          uint64
+	// OwnerClanID y OwnerClanTag son el clan dueño del territorio al empezar,
+	// si es de un clan: la base escribe el comienzo a cada miembro abierto
+	// (ADR-041 §5).
+	OwnerClanID  int64
+	OwnerClanTag string
 }
 
 // ClaimEnd es el fin sin captura de una reclamación.
@@ -99,7 +104,15 @@ type Capture struct {
 	PrevOwner  uuid.UUID
 	PrevCityID int64
 	// PrevBonus es lo que baja el límite de la ciudad del anterior dueño.
-	PrevBonus       int32
+	PrevBonus int32
+	// NewClanID es el clan para el que se reclamó (0: para NewOwner), y
+	// ForClanTag su sigla; PrevClanID, PrevClanTag y PrevClanMembers, el clan
+	// que lo pierde y sus miembros abiertos por antigüedad (ADR-041 §3 y §5).
+	NewClanID       int64
+	ForClanTag      string
+	PrevClanID      int64
+	PrevClanTag     string
+	PrevClanMembers []uuid.UUID
 	ExpectedVersion int32
 	CapturedAt      time.Time
 	Tick            uint64
@@ -113,6 +126,8 @@ type ClaimTerritory struct {
 	SessionID uuid.UUID
 	RequestID string
 	UnitID    int64
+	// ForClan reclama para el clan del jugador (SPEC-CLAN-TERRITORIES §4.2).
+	ForClan bool
 }
 
 func (ClaimTerritory) commandType() string { return protocol.TypeUnitClaim }
@@ -155,6 +170,9 @@ type claimState struct {
 	// capturing: su captura espera la transacción; nada la rompe ya.
 	capturing bool
 	capture   Capture
+	// ownerClan es el clan dueño al empezar, para los avisos y la defensa de
+	// la confirmación (ADR-041 §5).
+	ownerClan int64
 }
 
 type conquestState struct {
@@ -213,6 +231,9 @@ func (s *State) claimView(territoryID int64) *protocol.TerritoryClaimView {
 	}
 	v := &protocol.TerritoryClaimView{
 		PlayerID: cs.PlayerID.String(), StartedAtMs: cs.StartedAtMs, EndsAtMs: cs.CompletesAtMs,
+	}
+	if tag := s.clanTag(cs.ClanID); cs.ClanID != 0 && tag != "" {
+		v.Clan = &protocol.CityClanView{ID: cs.ClanID, Tag: tag}
 	}
 	if c, ok := s.cities[cs.CityID]; ok && c.Name != "" {
 		id, name := c.ID, c.Name
@@ -279,6 +300,20 @@ func (s *Simulation) handleClaimTerritory(cmd ClaimTerritory) {
 		reject(protocol.CodeInvalidTarget, "no tienes ciudad")
 		return
 	}
+	// RN-CLANTERR-001: para el clan, sólo un miembro de un clan vivo.
+	var forClan int64
+	if cmd.ForClan {
+		id, member := s.state.ClanOf(cmd.PlayerID)
+		if !member {
+			reject(protocol.CodeInvalidTarget, msgNoClan)
+			return
+		}
+		if s.state.clanDissolving(id) {
+			reject(protocol.CodeInvalidTarget, msgClanDissolving)
+			return
+		}
+		forClan = id
+	}
 
 	pos := s.authoritativePosition(u, nowMs)
 	t, ok := s.state.TerritoryAt(pos.X, pos.Y)
@@ -312,17 +347,21 @@ func (s *Simulation) handleClaimTerritory(cmd ClaimTerritory) {
 
 	control, _ := s.state.TerritoryControl(t.ID)
 	owner, owned := control.PlayerOwner()
+	ownerClan, clanOwned := control.ClanOwner()
 	c := territory.Claim{
-		TerritoryID: t.ID, UnitID: u.ID, PlayerID: cmd.PlayerID, CityID: own.ID, X: pos.X, Y: pos.Y,
-		StartedAtMs: nowMs, CompletesAtMs: nowMs + s.claimDuration(owned).Milliseconds(), RequestID: cmd.RequestID,
+		TerritoryID: t.ID, UnitID: u.ID, PlayerID: cmd.PlayerID, CityID: own.ID, X: pos.X, Y: pos.Y, ClanID: forClan,
+		StartedAtMs: nowMs, CompletesAtMs: nowMs + s.claimDuration(owned || clanOwned).Milliseconds(), RequestID: cmd.RequestID,
 	}
 	if owned {
 		c.OwnerPlayerID = &owner
 	}
-	s.state.conquest.claims[t.ID] = &claimState{Claim: c, pending: true}
+	s.state.conquest.claims[t.ID] = &claimState{Claim: c, pending: true, ownerClan: ownerClan}
 	s.state.conquest.byUnit[u.ID] = t.ID
 
 	start := ClaimStart{Claim: c, TerritoryName: t.Name, Tick: s.state.Tick()}
+	if clanOwned {
+		start.OwnerClanID, start.OwnerClanTag = ownerClan, s.state.clanTag(ownerClan)
+	}
 	resolved := ClaimResolved{TerritoryID: t.ID, PlayerID: cmd.PlayerID, RequestID: cmd.RequestID}
 	store := s.deps.Conquest
 	s.deps.Persister.Submit(Job{
@@ -378,7 +417,8 @@ func (s *Simulation) claimBlocked(claimer uuid.UUID, t territory.Territory, now 
 			centers = append(centers, c.Center())
 		}
 	}
-	if err := territory.CheckClaimable(t, control, claimer, centers); err != nil {
+	claimerClan, _ := s.state.ClanOf(claimer)
+	if err := territory.CheckClaimable(t, control, claimer, claimerClan, centers); err != nil {
 		return protocol.CodeInvalidTarget, err.Error()
 	}
 	// La protección es simétrica (RN-COMBAT-018), y quien reclama no puede
@@ -386,6 +426,10 @@ func (s *Simulation) claimBlocked(claimer uuid.UUID, t territory.Territory, now 
 	// invulnerable (ADR-034 §7).
 	if c, ok := s.state.CityOf(claimer); ok && c.ProtectedAt(now) {
 		return protocol.CodeCityProtected, "estás protegido: no puedes reclamar territorios"
+	}
+	// ADR-041 §2: un territorio de un clan, contra todos sus miembros.
+	if clanID, ok := control.ClanOwner(); ok {
+		return s.clanClaimBlocked(claimer, clanID, now)
 	}
 	if !owned {
 		return "", ""
@@ -435,6 +479,16 @@ func (s *Simulation) handleClaimResolved(cmd ClaimResolved) {
 	// Ahora existe para los demás (ADR-034 §1).
 	s.broadcastStatus(u)
 	s.broadcastTerritory(cs.TerritoryID)
+	if cs.ownerClan != 0 {
+		// RN-CLANTERR-006 y RN-CLANTERR-005: el aviso a cada miembro y la
+		// defensa de los guerreros de todos.
+		t, _ := s.state.territories.ByID(cs.TerritoryID)
+		s.noticeClanClaimStarted(cs.ownerClan, cs, t)
+		for _, g := range s.clanGuardsNear(cs.ownerClan, cs) {
+			s.respond(g, u, nowMs)
+		}
+		return
+	}
 	if cs.OwnerPlayerID == nil {
 		return
 	}
@@ -559,6 +613,12 @@ func (s *Simulation) claimBroken(cs *claimState, now time.Time) string {
 	if !ok || !u.IsAlive() || u.Status != unit.StatusClaiming || u.Tile() != cs.Tile() {
 		return ClaimEndUnit
 	}
+	// RN-CLANTERR-008 e INV-CLAN-004: para el clan, sólo mientras se es de él.
+	if cs.ClanID != 0 {
+		if id, member := s.state.ClanOf(cs.PlayerID); !member || id != cs.ClanID || s.state.clanDissolving(id) {
+			return ClaimEndClan
+		}
+	}
 	t, ok := s.state.territories.ByID(cs.TerritoryID)
 	if !ok {
 		return ClaimEndTarget
@@ -571,7 +631,7 @@ func (s *Simulation) claimBroken(cs *claimState, now time.Time) string {
 		// La paz también es INVALID_TARGET; el motivo exacto no cambia nada
 		// para el jugador, pero se distingue en el log y en la fila.
 		control, _ := s.state.TerritoryControl(t.ID)
-		if owner, owned := control.PlayerOwner(); owned && s.state.AtPeace(cs.PlayerID, owner, now) {
+		if s.state.atPeaceWithOwner(cs.PlayerID, control, now) {
 			return ClaimEndBlocked
 		}
 		return ClaimEndTarget
@@ -595,12 +655,19 @@ func (s *Simulation) startCapture(cs *claimState, now time.Time) {
 		ExpectedVersion: control.Version, CapturedAt: now, Tick: s.state.Tick(), AtMs: now.UnixMilli(),
 		X: cs.X, Y: cs.Y,
 	}
+	if cs.ClanID != 0 {
+		// Para el clan: sin bono para nadie (SPEC-CLAN-TERRITORIES Q3).
+		c.NewClanID, c.ForClanTag, c.NewBonus = cs.ClanID, s.state.clanTag(cs.ClanID), 0
+	}
 	if prev, owned := control.PlayerOwner(); owned {
 		c.PrevOwner = prev
 		if pc, ok := s.state.CityOf(prev); ok {
 			c.PrevCityID = pc.ID
 			c.PrevBonus = territory.CaptureBonus(t, pc.Center())
 		}
+	} else if prevClan, ok := control.ClanOwner(); ok {
+		c.PrevClanID, c.PrevClanTag = prevClan, s.state.clanTag(prevClan)
+		c.PrevClanMembers = s.state.ClanMembers(prevClan)
 	}
 	cs.capturing = true
 	cs.capture = c
@@ -612,9 +679,14 @@ func (s *Simulation) submitCapture(c Capture) {
 		return
 	}
 	store := s.deps.Conquest
+	// ADR-041 §3: cada lado con la clave de su dueño.
+	key := CityKey(c.NewCityID)
+	if c.NewClanID != 0 {
+		key = ClanKey(c.NewClanID)
+	}
 	job := Job{
 		Name: JobTerritoryCapture,
-		Key:  CityKey(c.NewCityID),
+		Key:  key,
 		Run: func(ctx context.Context) error {
 			ctrl, err := store.CaptureTerritory(ctx, c)
 			if err == nil {
@@ -633,7 +705,10 @@ func (s *Simulation) submitCapture(c Capture) {
 			s.reinject(CaptureResolved{TerritoryID: c.TerritoryID, Failed: true})
 		},
 	}
-	if c.PrevCityID != 0 && c.PrevCityID != c.NewCityID {
+	switch {
+	case c.PrevClanID != 0 && c.PrevClanID != c.NewClanID:
+		job.Key2 = ClanKey(c.PrevClanID)
+	case c.PrevCityID != 0 && (c.NewClanID != 0 || c.PrevCityID != c.NewCityID):
 		job.Key2 = CityKey(c.PrevCityID)
 	}
 	s.deps.Persister.Submit(job)
@@ -678,15 +753,13 @@ func (s *Simulation) handleCaptureResolved(cmd CaptureResolved) {
 	}
 	// INV-TERR-009: el control nuevo y su territory.update, en una función.
 	s.applyTerritoryControl(cmd.Control)
-	s.deps.Log.Info("territorio conquistado", "territory_id", c.TerritoryID, "player_id", c.NewOwner)
-	if c.PrevOwner == uuid.Nil {
-		return
-	}
-	// RN-CONQ-010: al anterior dueño y al conquistador, estén donde estén.
-	s.sendNotices(eventlog.Event{
-		Type: territory.EventControlChanged, PlayerID: c.PrevOwner, Counterpart: c.NewOwner, AtMs: c.AtMs,
-		X: c.X, Y: c.Y, HasTile: true, TerritoryID: c.TerritoryID, TerritoryName: c.TerritoryName,
-	})
+	s.deps.Log.Info("territorio conquistado", "territory_id", c.TerritoryID, "player_id", c.NewOwner,
+		"clan_id", c.NewClanID)
+	// SPEC-CLAN-TERRITORIES Q11: la lista de territorios de los clanes.
+	s.sendClanTerritoryUpdates(c.NewClanID, c.PrevClanID)
+	// RN-CONQ-010 y RN-CLANTERR-006: al anterior dueño, o a cada miembro del
+	// clan que lo pierde, y al conquistador, estén donde estén.
+	s.noticeCapture(c)
 }
 
 // flushClaims reencola, en orden, los fines y las capturas que la cola

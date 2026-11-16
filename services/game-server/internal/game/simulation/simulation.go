@@ -326,6 +326,10 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleExpelFromClan(c)
 	case ClanLeavePersistFailed:
 		s.handleClanLeavePersistFailed(c)
+	case ClanDissolved:
+		s.handleClanDissolved(c)
+	case ClanTerritoriesReleased:
+		s.handleClanTerritoriesReleased(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}

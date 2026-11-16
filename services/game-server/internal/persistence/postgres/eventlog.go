@@ -195,6 +195,10 @@ type eventPayload struct {
 	// La conquista (SPEC-TERRITORY-CONQUEST §6).
 	TerritoryID   int64  `json:"territoryId"`
 	TerritoryName string `json:"territoryName"`
+	// Los territorios de clan (SPEC-CLAN-TERRITORIES §6, ADR-041 §5).
+	OwnerClanTag string `json:"ownerClanTag"`
+	ForClanTag   string `json:"forClanTag"`
+	Only         string `json:"only"`
 	// Las caravanas (SPEC-CARAVANS §6): lo que llevaba.
 	Cargo []payloadLine `json:"cargo"`
 }
@@ -249,6 +253,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	}
 	e.OfferID, e.Give, e.Want = p.OfferID, toLines(p.Give), toLines(p.Want)
 	e.TerritoryID, e.TerritoryName = p.TerritoryID, p.TerritoryName
+	e.OwnerClanTag, e.ForClanTag, e.Only = p.OwnerClanTag, p.ForClanTag, p.Only
 	e.Cargo = toLines(p.Cargo)
 	return nil
 }
@@ -346,6 +351,7 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	if e.TerritoryID != 0 {
 		id := e.TerritoryID
 		v.TerritoryID, v.TerritoryName = &id, e.TerritoryName
+		v.ClanTag = e.ClanTag
 	}
 	if len(e.Cargo) > 0 {
 		v.Cargo = fromLines(e.Cargo)

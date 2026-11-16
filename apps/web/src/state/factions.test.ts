@@ -127,3 +127,14 @@ describe('el store y la facción', () => {
     expect(state().cities.get(10)!.factionJoin).toBeNull();
   });
 });
+
+describe('la tierra del clan (SPEC-CLAN-TERRITORIES RN-CLANTERR-003)', () => {
+  const deClan = { ownerType: 'CLAN', ownerId: '3', ownerFaction: null, ownerClan: { id: 3, name: 'Los Lobos', tag: 'LOB' } };
+  it('es afín sólo a los miembros de su clan, sea cual sea su bando', () => {
+    expect(isAffine(deClan, yo, 'ORDER', 3)).toBe(true);
+    expect(isAffine(deClan, yo, 'ORDER', 4)).toBe(false);
+    expect(isAffine(deClan, yo, 'ORDER')).toBe(false);
+    expect(territoryFactionLine(deClan, yo, 'NEUTRAL', 3)).toBe('Tierra afín: tus unidades reciben un 20 % menos de daño');
+    expect(territoryFactionLine(deClan, yo, 'NEUTRAL', 4), 'un clan no tiene bando que mostrar').toBeNull();
+  });
+});

@@ -97,19 +97,34 @@ export function treatyForbidden(type: string, a: string | undefined, b: string |
   return (type === 'NON_AGGRESSION' || type === 'ALLIANCE') && opposed(a, b);
 }
 
+/** Lo que hace falta de un territorio para su línea de bando y de tierra afín. */
+type AffineTerritory = Pick<TerritoryView, 'ownerType' | 'ownerId' | 'ownerFaction'> & {
+  ownerClan?: TerritoryView['ownerClan'];
+};
+
 /**
- * Si un territorio es afín al jugador (RN-FAC-007): es suyo o, si el jugador es
- * de un bando, de alguien de su bando.
+ * Si un territorio es afín al jugador (RN-FAC-007): es suyo, de alguien de su bando
+ * si el jugador es de uno, o de su clan (RN-CLANTERR-003).
  */
-export function isAffine(t: Pick<TerritoryView, 'ownerType' | 'ownerId' | 'ownerFaction'>, me: string | null, myFaction: string | undefined): boolean {
+export function isAffine(t: AffineTerritory, me: string | null, myFaction: string | undefined, myClanId: number | null = null): boolean {
+  if (t.ownerType === 'CLAN') return !!t.ownerClan && myClanId !== null && t.ownerClan.id === myClanId;
   if (t.ownerType !== 'PLAYER' || t.ownerId === null) return false;
   if (t.ownerId === me) return true;
   const mine = myFaction ?? 'NEUTRAL';
   return mine !== 'NEUTRAL' && t.ownerFaction === mine;
 }
 
-/** La línea del territorio sobre su bando y la tierra afín (§4.6), o null sin jugador por dueño. */
-export function territoryFactionLine(t: Pick<TerritoryView, 'ownerType' | 'ownerId' | 'ownerFaction'>, me: string | null, myFaction: string | undefined): string | null {
+/**
+ * La línea del territorio sobre su bando y la tierra afín (§4.6), o null sin jugador ni
+ * clan por dueño. Un territorio de clan no tiene bando: sólo dice si es tierra afín
+ * (SPEC-CLAN-TERRITORIES §4.8).
+ */
+export function territoryFactionLine(t: AffineTerritory, me: string | null, myFaction: string | undefined, myClanId: number | null = null): string | null {
+  if (t.ownerType === 'CLAN') {
+    return isAffine(t, me, myFaction, myClanId)
+      ? `Tierra afín: tus unidades reciben un ${AFFINE_DAMAGE_PERCENT} % menos de daño`
+      : null;
+  }
   if (t.ownerType !== 'PLAYER' || t.ownerId === null) return null;
   const bando = `Bando del dueño: ${factionLabel(t.ownerFaction)}`;
   return isAffine(t, me, myFaction)

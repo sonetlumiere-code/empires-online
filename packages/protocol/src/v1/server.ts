@@ -35,6 +35,7 @@ import {
   CityClanView,
   ClanInvitationView,
   ClanMemberView,
+  ClanTerritoryView,
   ClanMessageView,
   ClanName,
   ClanTag,
@@ -395,6 +396,8 @@ export const EventLogNotice = z.object({
     /** En la conquista: el territorio (SPEC-TERRITORY-CONQUEST §6). */
     territoryId: EntityId.optional(),
     territoryName: z.string().min(1).max(64).optional(),
+    /** En la conquista con un clan de por medio, como en la entrada del registro (SPEC-CLAN-TERRITORIES §6). */
+    clanTag: ClanTag.optional(),
     /** En las caravanas (SPEC-CARAVANS §6): lo que llevaba. */
     cargo: z.array(ResourceAmount).optional(),
   }),
@@ -532,6 +535,8 @@ export const ClanInfo = z.object({
     name: ClanName,
     tag: ClanTag,
     members: z.array(ClanMemberView),
+    /** Los territorios del clan, por `id` (SPEC-CLAN-TERRITORIES Q11). */
+    territories: z.array(ClanTerritoryView),
   }),
 });
 

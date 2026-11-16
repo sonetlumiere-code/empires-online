@@ -773,6 +773,35 @@
                           }
                         ]
                       },
+                      "ownerClan": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 3,
+                                "maxLength": 24
+                              },
+                              "tag": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "tag"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "contested": {
                         "type": "boolean"
                       },
@@ -809,6 +838,9 @@
                           },
                           "endsAtMs": {
                             "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          "clan": {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0"
                           }
                         },
                         "required": [
@@ -831,6 +863,7 @@
                       "ownerType",
                       "ownerId",
                       "ownerFaction",
+                      "ownerClan",
                       "contested"
                     ],
                     "additionalProperties": false
@@ -2234,6 +2267,9 @@
                         "minLength": 1,
                         "maxLength": 64
                       },
+                      "clanTag": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                      },
                       "cargo": {
                         "type": "array",
                         "items": {
@@ -2414,6 +2450,9 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 64
+                },
+                "clanTag": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
                 },
                 "cargo": {
                   "type": "array",
@@ -2840,9 +2879,7 @@
                           "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
                         },
                         "name": {
-                          "type": "string",
-                          "minLength": 3,
-                          "maxLength": 24
+                          "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/territories/items/properties/ownerClan/anyOf/0/properties/name"
                         },
                         "tag": {
                           "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
@@ -2948,6 +2985,35 @@
                             ],
                             "additionalProperties": false
                           }
+                        },
+                        "territories": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              "x": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                              },
+                              "y": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "x",
+                              "y"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
@@ -2956,7 +3022,8 @@
                         "tag",
                         "leaderId",
                         "members",
-                        "sentInvitations"
+                        "sentInvitations",
+                        "territories"
                       ],
                       "additionalProperties": false
                     },
@@ -2974,7 +3041,7 @@
                         "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
                       },
                       "name": {
-                        "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/name"
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/territories/items/properties/ownerClan/anyOf/0/properties/name"
                       },
                       "tag": {
                         "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
@@ -3035,7 +3102,7 @@
                   "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
                 },
                 "name": {
-                  "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/name"
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/territories/items/properties/ownerClan/anyOf/0/properties/name"
                 },
                 "tag": {
                   "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
@@ -3045,13 +3112,20 @@
                   "items": {
                     "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/members/items"
                   }
+                },
+                "territories": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/territories/items"
+                  }
                 }
               },
               "required": [
                 "clanId",
                 "name",
                 "tag",
-                "members"
+                "members",
+                "territories"
               ],
               "additionalProperties": false
             }

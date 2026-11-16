@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
 
@@ -405,9 +407,13 @@ type ClanLeave struct {
 // estancia ya está cerrada (un reintento), termina sin escribir. Devuelve si
 // escribió. Una salida que se reintenta no puede cerrar una estancia posterior:
 // mientras la base tiene la anterior abierta, la entrada siguiente se rechaza.
-func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, error) {
+// Una disolución libera antes los territorios del clan y los devuelve
+// (ADR-041 §4, INV-TERR-012).
+func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, []territory.Control, error) {
 	applied := false
+	var released []territory.Control
 	err := r.store.InTx(ctx, func(tx pgx.Tx) error {
+		released = nil
 		if err := lockClan(ctx, tx, l.ClanID); err != nil {
 			return err
 		}
@@ -428,6 +434,10 @@ func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, error) {
 			}
 		}
 		if l.Dissolve {
+			var err error
+			if released, err = releaseClanTerritories(ctx, tx, l); err != nil {
+				return err
+			}
 			if _, err := tx.Exec(ctx, `UPDATE clans SET dissolved_at = $2 WHERE id = $1 AND dissolved_at IS NULL`, l.ClanID, l.At); err != nil {
 				return fmt.Errorf("disolver el clan: %w", normalize(err))
 			}
@@ -445,7 +455,73 @@ func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, error) {
 		}
 		return appendEvent(ctx, tx, ev)
 	})
-	return applied, err
+	if err != nil {
+		released = nil
+	}
+	return applied, released, err
+}
+
+// releaseClanTerritories deja libres los territorios de un clan que se disuelve
+// y registra un TerritoryControlChanged por cada uno, sin counterpart: no lo hizo
+// nadie y no va al registro (SPEC-CLAN-TERRITORIES §6).
+func releaseClanTerritories(ctx context.Context, tx pgx.Tx, l ClanLeave) ([]territory.Control, error) {
+	rows, err := tx.Query(ctx,
+		`UPDATE territory_control
+		    SET owner_type = 'NONE', owner_id = NULL, captured_at = NULL, version = version + 1
+		  WHERE owner_type = 'CLAN' AND owner_id = $1
+		RETURNING territory_id, owner_type, owner_id, control_points, contested, captured_at, version`,
+		territory.ClanOwnerID(l.ClanID))
+	if err != nil {
+		return nil, fmt.Errorf("liberar los territorios del clan %d: %w", l.ClanID, normalize(err))
+	}
+	var out []territory.Control
+	for rows.Next() {
+		c, err := scanControl(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	rows.Close()
+	if err := normalize(rows.Err()); err != nil {
+		return nil, fmt.Errorf("liberar los territorios del clan %d: %w", l.ClanID, err)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].TerritoryID < out[j].TerritoryID })
+	for _, c := range out {
+		if err := appendEvent(ctx, tx, worldEvent{
+			EventType: territory.EventControlChanged, Tick: l.Tick, PlayerID: &l.PlayerID,
+			Payload: map[string]any{
+				"territoryId": c.TerritoryID, "ownerType": string(territory.OwnerNone), "version": c.Version,
+				"previousOwnerId": territory.ClanOwnerID(l.ClanID), "released": true, "atMs": l.AtMs,
+			},
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// clanTerritoryViews son los territorios de un clan, por id
+// (SPEC-CLAN-TERRITORIES Q11).
+func clanTerritoryViews(ctx context.Context, db DB, clanID int64) ([]protocol.ClanTerritoryView, error) {
+	rows, err := db.Query(ctx,
+		`SELECT t.id, t.name, (t.min_x + t.max_x) / 2, (t.min_y + t.max_y) / 2
+		   FROM territory_control tc JOIN territories t ON t.id = tc.territory_id
+		  WHERE tc.owner_type = 'CLAN' AND tc.owner_id = $1 ORDER BY t.id`, territory.ClanOwnerID(clanID))
+	if err != nil {
+		return nil, fmt.Errorf("leer los territorios del clan %d: %w", clanID, normalize(err))
+	}
+	defer rows.Close()
+	out := []protocol.ClanTerritoryView{}
+	for rows.Next() {
+		var v protocol.ClanTerritoryView
+		if err := rows.Scan(&v.ID, &v.Name, &v.X, &v.Y); err != nil {
+			return nil, fmt.Errorf("leer un territorio del clan: %w", normalize(err))
+		}
+		out = append(out, v)
+	}
+	return out, normalize(rows.Err())
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -671,7 +747,7 @@ func (r *ClanRepo) ChatMarkRead(ctx context.Context, me uuid.UUID, upTo func(cla
 // Lookup es la vista pública de un clan vivo (RN-CLAN-008): su nombre, su sigla
 // y sus miembros abiertos con su ciudad, su bando y su rango.
 func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoPayload, error) {
-	info := protocol.ClanInfoPayload{ClanID: clanID, Members: []protocol.ClanMemberView{}}
+	info := protocol.ClanInfoPayload{ClanID: clanID, Members: []protocol.ClanMemberView{}, Territories: []protocol.ClanTerritoryView{}}
 	var leader uuid.UUID
 	err := r.store.pool.QueryRow(ctx,
 		`SELECT name, tag, leader_player_id FROM clans WHERE id = $1 AND dissolved_at IS NULL`, clanID).
@@ -709,5 +785,14 @@ func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoP
 		}
 		info.Members = append(info.Members, v)
 	}
-	return info, normalize(rows.Err())
+	if err := normalize(rows.Err()); err != nil {
+		return info, err
+	}
+	rows.Close()
+	ts, err := clanTerritoryViews(ctx, r.store.pool, clanID)
+	if err != nil {
+		return info, err
+	}
+	info.Territories = ts
+	return info, nil
 }

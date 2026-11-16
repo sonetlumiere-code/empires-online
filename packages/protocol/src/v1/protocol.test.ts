@@ -685,7 +685,7 @@ describe('conquista (SPEC-TERRITORY-CONQUEST)', () => {
   const otro = '00000000-0000-4000-8000-000000000002';
   const territory = {
     id: 12, name: 'Llanuras del Norte', minX: 128, minY: 64, maxX: 191, maxY: 127,
-    ownerType: 'PLAYER', ownerId: otro, ownerFaction: 'NEUTRAL', contested: false,
+    ownerType: 'PLAYER', ownerId: otro, ownerFaction: 'NEUTRAL', ownerClan: null, contested: false,
   };
   const claim = { playerId: uuid, cityId: 7, cityName: 'Villa Norte', startedAtMs: 1_757_376_000_000, endsAtMs: 1_757_376_600_000 };
 
@@ -715,6 +715,61 @@ describe('conquista (SPEC-TERRITORY-CONQUEST)', () => {
       expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
       expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...notice, territoryId: 0 } }).ok).toBe(false);
     }
+  });
+});
+
+describe('territorios de clan (SPEC-CLAN-TERRITORIES)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '00000000-0000-4000-8000-000000000002';
+  const territory = {
+    id: 12, name: 'Llanuras del Norte', minX: 128, minY: 64, maxX: 191, maxY: 127,
+    ownerType: 'CLAN', ownerId: '3', ownerFaction: null, ownerClan: { id: 3, name: 'Los Lobos', tag: 'LOB' }, contested: false,
+  };
+  const upd = (t: unknown) => parseServerMessage({ ...env, type: 'territory.update', payload: { territory: t } });
+
+  it('unit.claim acepta forClan, booleano y opcional', () => {
+    const cmd = (payload: unknown) => parseClientMessage({ v: 1, type: 'unit.claim', requestId: uuid, payload });
+    expect(cmd({ unitId: 42, forClan: true }).ok).toBe(true);
+    expect(cmd({ unitId: 42, forClan: false }).ok).toBe(true);
+    for (const payload of [{ unitId: 42, forClan: 'yes' }, { unitId: 42, forClan: true, clanId: 3 }]) {
+      expect(cmd(payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('TerritoryView exige ownerClan: el clan dueño o null', () => {
+    expect(upd(territory).ok).toBe(true);
+    const { ownerClan: _, ...sin } = territory;
+    expect(upd(sin).ok, 'viaja siempre').toBe(false);
+    expect(upd({ ...territory, ownerClan: { id: 3, name: 'Los Lobos', tag: 'lob' } }).ok).toBe(false);
+    expect(upd({ ...territory, ownerType: 'NONE', ownerId: null, ownerClan: null }).ok).toBe(true);
+  });
+
+  it('la reclamación dice para qué clan, si es para uno', () => {
+    const claim = { playerId: otro, cityId: 7, cityName: 'Villa Norte', startedAtMs: 1, endsAtMs: 2, clan: { id: 4, tag: 'OSO' } };
+    expect(upd({ ...territory, contested: true, claim }).ok).toBe(true);
+    expect(upd({ ...territory, contested: true, claim: { ...claim, clan: { id: 4 } } }).ok).toBe(false);
+  });
+
+  it('las vistas del clan llevan sus territorios', () => {
+    const miembro = { playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1 };
+    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }] };
+    expect(parseServerMessage({ ...env, type: 'clan.update', payload: { clan, invitations: [] } }).ok).toBe(true);
+    const { territories: _, ...sin } = clan;
+    expect(parseServerMessage({ ...env, type: 'clan.update', payload: { clan: sin, invitations: [] } }).ok).toBe(false);
+    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }] };
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: info }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { ...info, territories: [{ id: 12, name: 'x' }] } }).ok, 'sin su tile central').toBe(false);
+  });
+
+  it('el registro y los avisos de la conquista llevan la sigla del clan, opcional', () => {
+    const entry = {
+      id: 41, kind: 'TERRITORY_LOST', firstAtMs: 1, lastAtMs: 2, count: 1, otherPlayerId: otro, otherCityId: 7,
+      otherCityName: 'Villa Norte', territoryId: 12, territoryName: 'Llanuras del Norte', clanTag: 'LOB',
+    };
+    expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [entry], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [{ ...entry, clanTag: 'lob' }], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(false);
+    const notice = { kind: 'TERRITORY_CLAIMED', atMs: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', territoryId: 12, territoryName: 'Llanuras del Norte', clanTag: 'LOB' };
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
   });
 });
 
@@ -869,7 +924,7 @@ describe('facciones (SPEC-FACTIONS)', () => {
   };
   const territory = {
     id: 12, name: 'Llanuras del Norte', minX: 128, minY: 64, maxX: 191, maxY: 127,
-    ownerType: 'PLAYER', ownerId: uuid, ownerFaction: 'NEUTRAL', contested: false,
+    ownerType: 'PLAYER', ownerId: uuid, ownerFaction: 'NEUTRAL', ownerClan: null, contested: false,
   };
 
   it('faction.join sólo nombra ORDER o CHAOS: NEUTRAL no es un valor del comando (RN-FAC-001)', () => {
@@ -987,7 +1042,7 @@ describe('clanes (SPEC-CLANS)', () => {
   const miembro = {
     playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1_757_376_000_000,
   };
-  const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [] };
+  const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [] };
 
   it('clan.create lleva el nombre y la sigla, y la sigla es de 2 a 4 letras mayúsculas o dígitos', () => {
     expect(cmd('clan.create', { name: 'Los Lobos', tag: 'LOB' }).ok).toBe(true);
@@ -1051,7 +1106,7 @@ describe('clanes (SPEC-CLANS)', () => {
   });
 
   it('clan.info es la vista pública, y el canal lleva sus mensajes y su página', () => {
-    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro] } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [] } }).ok).toBe(true);
     const mensaje = {
       id: 5, clanId: 3, fromPlayerId: uuid, fromCityId: 7, fromCityName: 'Roma', body: 'al norte', sentAtMs: 1,
     };
