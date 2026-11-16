@@ -2267,3 +2267,38 @@ La integración destapó que la sigla de una entrada del registro sólo se copia
     que se canceló.
 - **Sin probar en vivo.** La sucesión por ausencia pediría tener al líder desconectado durante el plazo; la cubren el
   golden y la recuperación.
+
+## E21 — Alianzas entre clanes
+
+**Estado: EN CURSO (2026-11-16)**, en la rama `claude/slice-alianzas-clan`. Contrato:
+[SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md), aceptada el 2026-11-16 con sus once decisiones de producto, y
+[ADR-042](../decisions/ADR-042-clan-alliances.md).
+
+**Objetivo.** Que dos clanes puedan ir juntos sin fundirse en uno: una alianza que firman sus líderes y que pone en paz
+a todos sus miembros, con el preaviso de un tratado para que no sirva para traicionar. Es la diplomacia de los grupos,
+sobre la misma `AtPeace` que los tratados, la Orden y el clan.
+
+**Alcance.** `clan.alliance.propose`, `clan.alliance.respond` y `clan.alliance.cancel` (de 41 a 44 comandos), sólo
+para el líder; el ciclo de vida y los plazos de un tratado; como mucho `EO_CLAN_MAX_ALLIES` (2) alianzas activas por
+clan; la paz entre los miembros de los dos clanes y la paz residual con los aliados al salir; la regla de bandos al
+firmar y el preaviso cuando la mezcla aparece después; la expiración al disolverse un clan; `alliances` en
+`clan.update` y en `clan.info`; los eventos `ClanAlliance*` en el registro y tres avisos nuevos (32 tipos);
+`INV-CLAN-006` e `INV-CLAN-007`; migración `000023` (`clan_alliances` y sus triggers); el cliente y
+`scripts/smoke.mjs --alianza-clan`. **No entra** (spec §2): guerras declaradas, guarnición, comercio, almacén, canal
+o tierra afín compartidos, alianzas de más de dos clanes, un mapa político y que los oficiales firmen.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-042](../decisions/ADR-042-clan-alliances.md), `INV-CLAN-006` e
+   `INV-CLAN-007`, y las precisiones de `RN-CLAN-005` y `RN-CLAN-008` ([clans.md](../specs/clans.md)) y de
+   `RN-FAC-005` ([factions.md](../specs/factions.md)).
+2. **PENDIENTE** — Protocolo: los tres comandos, `alliances` en `ClanView` y en `clan.info`, y los avisos nuevos;
+   contract tests en los dos lados y su e2e.
+3. **PENDIENTE** — Dominio y simulación: la alianza en `clanState`, las órdenes en dos fases, `AllyPeace` en
+   `AtPeace` con la paz residual, los vencimientos, la mezcla de bandos al entrar en un bando o en un clan y la
+   expiración al disolver.
+4. **PENDIENTE** — Migración `000023` y persistencia: `clan_alliances`, los triggers, la carga y cada orden con los dos
+   candados.
+5. **PENDIENTE** — Cliente: la sección «Alianzas» del panel, «Proponer alianza» en la vista pública, «Aliado de [TAG]»
+   en la barra de una ciudad ajena y los textos del registro y de los avisos.
+6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --alianza-clan`.

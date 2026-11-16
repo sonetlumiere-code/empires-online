@@ -1,14 +1,15 @@
 # Invariantes de Clanes (INV-CLAN-xxx)
 
-Propiedades de los clanes: quién pertenece a cuál, quién lo dirige, qué bandos caben en uno y la paz entre sus
-miembros.
+Propiedades de los clanes: quién pertenece a cuál, quién lo dirige, qué bandos caben en uno, la paz entre sus
+miembros y las alianzas entre clanes.
 
 Formato y severidades: [README.md](README.md). Jugadores: [player.md](player.md). Combate: [combat.md](combat.md).
 Diplomacia: [diplomacy.md](diplomacy.md). Seguridad del canal: [security.md](security.md). Spec:
 [../specs/clans.md](../specs/clans.md). Decisión: [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md).
 Territorios de clan: [../specs/clan-territories.md](../specs/clan-territories.md) y
 [ADR-041](../decisions/ADR-041-clan-territories.md). Gobierno del clan:
-[../specs/clan-governance.md](../specs/clan-governance.md).
+[../specs/clan-governance.md](../specs/clan-governance.md). Alianzas entre clanes:
+[../specs/clan-alliances.md](../specs/clan-alliances.md) y [ADR-042](../decisions/ADR-042-clan-alliances.md).
 
 ---
 
@@ -195,6 +196,83 @@ líder que ya no cede.
 
 ---
 
+<a id="inv-clan-006"></a>
+## INV-CLAN-006 — Una alianza entre clanes es única por par, respeta el tope de cada clan y nunca nace entre la Orden y el Caos
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E21 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** todavía (E21): `TestLasOrdenesDeUnaAlianza` (simulation) y `TestLaAlianzaEnLaBase` (integration), previstos |
+
+**Enunciado.** Entre dos clanes vivos hay como mucho una alianza `ACTIVE` y una oferta `PROPOSED`, y nunca las dos a
+la vez. Ningún clan tiene más de `EO_CLAN_MAX_ALLIES` alianzas `ACTIVE`. Ninguna alianza se propone ni pasa a `ACTIVE`
+si entre los miembros abiertos de los dos clanes, con sus entradas pendientes en un bando, hay uno de `ORDER` y uno de
+`CHAOS`. Sólo el líder de un clan propone, acepta, rechaza, retira o rompe en su nombre.
+
+**Razón.** Es lo que hace de la alianza una relación predecible ([SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md)
+Q1, Q3, Q4 y Q6). Dos alianzas activas entre el mismo par harían ambigua su ruptura, el tope evita que las alianzas
+formen un tercer bloque sin reglas de bando, y una alianza entre la Orden y el Caos daría la paz que `RN-FAC-005`
+prohíbe a todos sus miembros a la vez.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — el tick valida cada orden contra `clanState`: el líder, el estado del par, el tope (contando las
+  aceptaciones en vuelo) y la mezcla de bandos con las facciones efectivas y las entradas pendientes.
+- `DB` — la transacción de cada orden toma los candados de los dos clanes en orden de `id` y vuelve a comprobar el
+  líder, el estado, el tope y la mezcla; dos índices únicos parciales por par (`ACTIVE` y `PROPOSED`); el trigger
+  `clan_alliances_faction_guard` rechaza con `23514` una alianza que nace o se acepta con los dos bandos
+  ([ADR-042](../decisions/ADR-042-clan-alliances.md) §7).
+
+**Cómo se verifica.** En la simulación, cada fila de §5 de la spec para cada orden. En la integración, el índice por
+par, el tope con dos aceptaciones concurrentes, un ex líder que ya no firma y el trigger de bandos.
+
+**Violación en runtime.** Rechazo: la orden no escribe nada y vuelve como `INVALID_TARGET`. Una alianza que la carga
+encuentra mal formada se cierra en la RAM y se registra.
+
+---
+
+<a id="inv-clan-007"></a>
+## INV-CLAN-007 — Ningún golpe, robo, derribo, avance de estandarte ni reclamación se aplica entre miembros de dos clanes aliados, ni durante el preaviso ni durante la paz residual
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E21 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** todavía (E21): `TestGoldenAlianzaDeClanes` y `TestLaPazResidualConLosAliados` (simulation), previstos |
+
+**Enunciado.** En un tick en que dos jugadores son miembros abiertos de dos clanes con una alianza `ACTIVE` (también
+durante su preaviso), o en que uno salió de un clan hace menos de `EO_CLAN_PEACE_GRACE_SECONDS` y el otro era, en el
+instante de la salida, miembro de un clan con una alianza `ACTIVE` con aquél, no se aplica ningún golpe de una unidad
+de uno a una unidad del otro (también a una caravana), ningún golpe de saqueo ni de asedio de uno contra la ciudad del
+otro, ningún estandarte de uno avanza sobre un territorio del otro, y ninguna reclamación de uno avanza sobre un
+territorio del otro o de su clan.
+
+**Razón.** Es lo que da sentido a la alianza ([SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md) Q2) y lo que impide
+usar la ruptura o la salida del clan para atacar por sorpresa a un aliado (Q5, Q7). Es la paz del clan
+([INV-CLAN-003](#inv-clan-003)) extendida a un segundo clan.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — `AtPeace` responde también por `AllyPeace`, la alianza activa o la paz residual con un aliado, derivada
+  de las estancias y de las fechas de la alianza ([ADR-042](../decisions/ADR-042-clan-alliances.md) §2). Todas las
+  acciones hostiles y la respuesta automática ya consultan `AtPeace`. Cuando nace la alianza o alguien entra en un clan
+  aliado, lo que estaba en curso entre las dos partes termina en ese tick.
+
+**Cómo se verifica.** Golden de la alianza con los ticks exactos (un enfrentamiento que termina al volver la
+aceptación, un ataque que vuelve a aceptarse en el tick siguiente al vencimiento del preaviso), la paz residual con un
+aliado dentro y fuera del plazo y con quien entró después de la salida, y una reclamación contra un territorio del
+clan aliado.
+
+**Violación en runtime.** Rechazo: la acción no se acepta (`INVALID_TARGET`, «vuestros clanes están aliados») y lo que
+estaba en curso termina.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -204,3 +282,5 @@ líder que ya no cede.
 | INV-CLAN-003 | `internal/game/simulation` | [INV-COMBAT-006](combat.md#inv-combat-006), [INV-COMBAT-002](combat.md#inv-combat-002) |
 | INV-CLAN-004 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-TERR-010](territory.md#inv-terr-010), [INV-TERR-012](territory.md#inv-terr-012) |
 | INV-CLAN-005 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-CLAN-001](#inv-clan-001), [INV-SEC-004](security.md#inv-sec-004) |
+| INV-CLAN-006 | `internal/game/simulation`, `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-CLAN-002](#inv-clan-002), [INV-DIPLO-002](diplomacy.md#inv-diplo-002), [INV-DIPLO-003](diplomacy.md#inv-diplo-003) |
+| INV-CLAN-007 | `internal/game/simulation` | [INV-CLAN-003](#inv-clan-003), [INV-COMBAT-002](combat.md#inv-combat-002) |

@@ -1,18 +1,18 @@
 # Alianzas entre clanes: la paz entre dos clanes, firmada por sus líderes
 
-Propuesta para que dos clanes puedan aliarse sin juntarse en uno: sus líderes firman una alianza que pone en paz a
-todos los miembros de los dos, la rompen con preaviso y cualquiera puede ver quién está aliado con quién.
+Para que dos clanes puedan aliarse sin juntarse en uno: sus líderes firman una alianza que pone en paz a todos los
+miembros de los dos, la rompen con preaviso y cualquiera puede ver quién está aliado con quién.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLAN-ALLIANCES` |
-| Estado | Draft (2026-11-16). Pendiente de las decisiones de producto de §10; prohibido implementar contra ella hasta su aceptación. |
+| Estado | Accepted (2026-11-16). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E21 Alianzas entre clanes (vigesimoprimer slice después de M7) |
 | Canon | §1.5 (determinismo), §11 (diplomacia), §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores) |
 | Depende de | [clans.md](clans.md), [clan-governance.md](clan-governance.md), [clan-territories.md](clan-territories.md), [diplomacy.md](diplomacy.md), [factions.md](factions.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-027](../decisions/ADR-027-hot-treaties.md) (tratados en caliente: la RAM decide en dos fases, vencimientos optimistas), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (trabajos de dos claves), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la Orden como fuente de paz), [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (el clan como tercera fuente de paz, con paz residual derivada) y [ADR-041](../decisions/ADR-041-clan-territories.md) (los territorios de clan). Propone el **ADR-042** (§7): la alianza de clanes como cuarta fuente de paz, una relación entre clanes y no tratados entre jugadores. |
-| Reemplaza a | En [clans.md](clans.md) §2, «alianzas entre clanes» del no-scope; lo mismo en [clan-territories.md](clan-territories.md) §2 y en [clan-governance.md](clan-governance.md) §2. Precisaría `RN-CLAN-008` (las alianzas activas de un clan son públicas, Q8), `RN-FAC-005` (tampoco se alían clanes con miembros de la Orden y del Caos, Q6) y `RN-CLAN-005` (la paz residual también con los aliados, Q7). |
-| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003), [INV-CLAN-002](../invariants/clans.md#inv-clan-002), [INV-CLAN-003](../invariants/clans.md#inv-clan-003), [INV-CLAN-004](../invariants/clans.md#inv-clan-004), [INV-CLAN-005](../invariants/clans.md#inv-clan-005) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); propone dos nuevos de la familia `INV-CLAN` (§8) |
+| Decisiones | [ADR-027](../decisions/ADR-027-hot-treaties.md) (tratados en caliente: la RAM decide en dos fases, vencimientos optimistas), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (trabajos de dos claves), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la Orden como fuente de paz), [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (el clan como tercera fuente de paz, con paz residual derivada) y [ADR-041](../decisions/ADR-041-clan-territories.md) (los territorios de clan). [ADR-042](../decisions/ADR-042-clan-alliances.md) (la alianza de clanes como cuarta fuente de paz, una relación entre clanes y no tratados entre jugadores; §7). |
+| Reemplaza a | En [clans.md](clans.md) §2, «alianzas entre clanes» del no-scope; lo mismo en [clan-territories.md](clan-territories.md) §2 y en [clan-governance.md](clan-governance.md) §2. Precisa `RN-CLAN-008` (las alianzas activas de un clan son públicas, Q8), `RN-FAC-005` (tampoco se alían clanes con miembros de la Orden y del Caos, Q6) y `RN-CLAN-005` (la paz residual también con los aliados, Q7). |
+| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003), [INV-CLAN-002](../invariants/clans.md#inv-clan-002), [INV-CLAN-003](../invariants/clans.md#inv-clan-003), [INV-CLAN-004](../invariants/clans.md#inv-clan-004), [INV-CLAN-005](../invariants/clans.md#inv-clan-005) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); asigna [INV-CLAN-006](../invariants/clans.md#inv-clan-006) e [INV-CLAN-007](../invariants/clans.md#inv-clan-007) (§8) |
 
 ## 1. Objetivo
 
@@ -209,7 +209,7 @@ Sólo códigos que ya existen en el catálogo (canon §16).
 
 **Cliente → servidor.** Tres comandos nuevos y estrictos (R-VER-3), con la forma de los de E6. Van en `CommandTypes` y
 en `actions.go` como **no hostiles**, con su trabajo de la cola de dos claves (`clan:<a>`, `clan:<b>`), que entra en
-`simulation.JobNames`. El catálogo pasaría de 41 a 44 comandos.
+`simulation.JobNames`. El catálogo pasa de 41 a 44 comandos.
 
 - `clan.alliance.propose { clanId }`.
 - `clan.alliance.respond { allianceId, accept }`.
@@ -218,7 +218,7 @@ en `actions.go` como **no hostiles**, con su trabajo de la cola de dos claves (`
 **Servidor → cliente.** No hay tipos nuevos; el catálogo sigue en 31.
 
 - `ClanView` (en `clan.update`) gana `alliances`: una lista obligatoria con
-  `{ id, clanId, name, tag, status, proposedByUs, breaksAtMs }`. Llevaría las alianzas activas para todos los miembros
+  `{ id, clanId, name, tag, status, proposedByUs, breaksAtMs }`. Lleva las alianzas activas para todos los miembros
   y, además, las ofertas para el líder y los oficiales. Es un campo obligatorio nuevo: hay que tocar los fixtures del
   cliente y del protocolo, y estrenarlo junto en el cliente y el servidor, como los de E19.
 - `clan.info` gana `alliances`, con sólo las activas (`{ clanId, name, tag, breaksAtMs }`).
@@ -240,7 +240,7 @@ líder del otro clan en ese momento), `atMs` y las dos siglas:
 
   Es la primera entrada del registro que no va a dos jugadores sino a dos clanes. Se clasifica por la pertenencia en
   el instante del evento, que da `clan_members` (§7).
-- Avisos en vivo (`eventlog.NoticeKinds` y `EventLogNoticeKind` de Zod, que pasaría de 29 a 32): la oferta recibida,
+- Avisos en vivo (`eventlog.NoticeKinds` y `EventLogNoticeKind` de Zod, que pasa de 29 a 32): la oferta recibida,
   la aceptación y el preaviso.
 
 **Métricas.** `eo_clan_changes_total{kind}` gana `alliance_proposed`, `alliance_accepted`, `alliance_broken` y
@@ -260,9 +260,9 @@ líder del otro clan en ese momento), `atMs` y las dos siglas:
 | Dirty-flag | Nada |
 | Reconstruible / no persistido | Quién está en paz por una alianza; la paz residual con los aliados, que se deriva de las estancias de `clan_members` y de las fechas de la alianza |
 
-**Por qué hace falta un ADR (ADR-042).** Tres decisiones estructurales:
+**Por qué hace falta un ADR ([ADR-042](../decisions/ADR-042-clan-alliances.md)).** Tres decisiones estructurales:
 
-1. **La alianza es la cuarta fuente de paz, entre clanes y no entre jugadores.** `AtPeace` pasaría a ser «tratado, o
+1. **La alianza es la cuarta fuente de paz, entre clanes y no entre jugadores.** `AtPeace` pasa a ser «tratado, o
    los dos de la Orden, o mismo clan, o paz residual, o clanes aliados». Se descarta crear un pacto implícito por cada
    pareja de miembros, por la misma razón que ADR-040 descartó los pactos implícitos dentro de un clan: crecería con el
    producto de los dos clanes (hasta 400 filas) y cada entrada o salida tocaría veinte. La consulta queda en O(1): el
@@ -291,7 +291,7 @@ líder del otro clan en ese momento), `atMs` y las dos siglas:
 - Un trigger rechaza que nazca o se acepte una alianza que junte a la Orden y al Caos (23514), como red de seguridad
   bajo la comprobación del tick ([INV-PERSIST-005](../invariants/persistence.md#inv-persist-005)). La mezcla posterior
   no la rechaza: abre el preaviso (§4.4).
-- La siguiente migración libre pasaría a ser `000024`.
+- La siguiente migración libre pasará a ser `000024`.
 
 **Los rechazos recientes** (`RN-CLANALLY-004`) se cargan de la base con su fecha, como los de E6, para que un reinicio
 no deje insistir antes de tiempo.
@@ -314,13 +314,16 @@ no deje insistir antes de tiempo.
   líder.
 - [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005): la migración `000023`.
 
-**Propone** dos invariantes nuevos de la familia `INV-CLAN`:
+**Asigna** dos invariantes nuevos, registrados en [../invariants/clans.md](../invariants/clans.md):
 
-- **Una relación por par.** Entre dos clanes hay como mucho una alianza activa y una oferta pendiente, y un clan no
-  supera el tope de alianzas activas. Lo garantizan los índices únicos y la transacción con los dos candados.
-- **La paz de la alianza.** Ningún golpe, robo, derribo, avance de estandarte ni reclamación se aplica entre miembros
-  de dos clanes con una alianza activa, ni durante su preaviso, ni durante la paz residual de quien salió de uno de
-  ellos. Lo comprueban los tests de la simulación, como `INV-CLAN-003`.
+- [INV-CLAN-006](../invariants/clans.md#inv-clan-006), **una alianza bien formada.** Entre dos clanes hay como
+  mucho una alianza activa y una oferta pendiente, un clan no supera el tope de alianzas activas, y ninguna alianza
+  nace ni se acepta entre clanes que juntarían a la Orden y al Caos. Lo garantizan los índices únicos, el trigger de
+  bandos y la transacción con los dos candados.
+- [INV-CLAN-007](../invariants/clans.md#inv-clan-007), **la paz de la alianza.** Ningún golpe, robo, derribo,
+  avance de estandarte ni reclamación se aplica entre miembros de dos clanes con una alianza activa, ni durante su
+  preaviso, ni durante la paz residual de quien salió de uno de ellos. Lo comprueban los tests de la simulación, como
+  `INV-CLAN-003`.
 
 ## 9. Tests esperados
 
@@ -333,12 +336,12 @@ no deje insistir antes de tiempo.
 | contract / e2e | Los tres comandos contra el JSON Schema. `alliances` en `clan.update` y en `clan.info`. Los avisos nuevos. Por WebSocket: dos líderes firman una alianza, un miembro del aliado ve rechazado su ataque y los oficiales ven la oferta; un raso, no |
 | cliente | La sección «Alianzas» con su cuenta atrás. Los botones según el rango. «Proponer alianza» en la vista pública con su motivo. «Aliado de [TAG]» en la barra de una ciudad ajena. Los textos del registro y de los avisos. `scripts/smoke.mjs --alianza-clan`: `smoke_clan_b` funda un segundo clan, `smoke_clan_a` (líder de `[HUM]`) le propone la alianza y `smoke_clan_b` la acepta; se comprueba la paz con un ataque rechazado; `smoke_clan_a` la rompe con un preaviso corto (por variable de entorno). Al final `smoke_clan_b` sale de su clan, que se disuelve, para que `--clan` lo siga encontrando sin clan |
 
-## 10. Decisiones de producto (pendientes)
+## 10. Decisiones de producto (2026-11-16)
 
-Preguntas abiertas. Cada una lleva la recomendación (en negrita) y sus alternativas. Son decisiones de producto, no de
-ingeniería: la spec no se acepta hasta tenerlas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué relaciones puede haber entre dos clanes? | **Una sola: la alianza, con el ciclo de vida de un tratado (oferta, aceptación, ruptura con preaviso).** Es lo mínimo que hace que dos clanes jueguen juntos, y reutiliza reglas que los jugadores ya conocen de E6. Alternativas: **pacto de no agresión y alianza**, como entre jugadores, pero sin guarnición ni comercio entre clanes (Q2), los dos darían lo mismo; **una escalera** con algo más en la alianza (comercio sin tratado, guarnición), que adelanta Q2. |
 | Q2 | ¿Qué da la alianza? | **Sólo paz entre todos los miembros de los dos clanes.** Es lo que no se puede conseguir hoy sin cientos de pactos. Lo demás (guarnición, comercio) ya lo dan los tratados entre jugadores, que los aliados pueden firmar entre sí como hacen los compañeros de clan (Q12 de E18). Alternativas: **paz y tierra afín del aliado**, que mezcla el bono de E17 con la diplomacia sin datos; **paz y guarnición**, que pide decidir quién puede guarnecer dónde entre 40 jugadores. |
