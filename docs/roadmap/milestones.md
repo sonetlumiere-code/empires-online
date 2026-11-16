@@ -2197,7 +2197,7 @@ la Región 6-4 queda de [HUM]; la pasada siguiente de `--territorio-clan` es la 
 
 ## E20 — Gobierno del clan
 
-**Estado: EN CURSO (2026-11-16)**, en la rama `claude/slice-gobierno-clan`. Contrato:
+**Estado: EN CURSO (2026-11-16)**, en la rama `claude/slice-gobierno-clan`, implementado, verificado y probado en vivo; falta la fusión. Contrato:
 [SPEC-CLAN-GOVERNANCE](../specs/clan-governance.md), aceptada el 2026-11-16 con sus diez decisiones de producto, sin
 ADR nuevo.
 
@@ -2226,4 +2226,44 @@ clanes.
    transacción con el candado del clan.
 5. **HECHO** — Cliente: el rango en la lista, los botones según el rango, «Ceder el liderazgo» con su
    confirmación, «Invitar al clan» para un oficial y los textos del aviso y del registro.
-6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --clan` con el oficial y el traspaso de ida y vuelta.
+6. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --clan` con el oficial y el traspaso de ida y vuelta.
+
+**Verificación (2026-11-16).** Todo en serie y en verde:
+- los scripts de documentación, determinismo y secretos, y sus tests;
+- `go build`, los dos `go vet`, `gofmt` y la suite de Go;
+- las dos integraciones;
+- el `typecheck`, los tests del protocolo y del cliente, y la deriva del esquema;
+- `web:build` con los canarios y el escaneo del bundle.
+
+Verificado por mutación:
+- el rango en las transacciones de invitar, expulsar, nombrar y ceder (`INV-CLAN-005`);
+- el permiso del oficial;
+- el plazo exacto de la ausencia;
+- deshacer una expulsión y un traspaso que la base no admite;
+- los dos triggers de `000022`.
+
+La integración destapó que la sigla de una entrada del registro sólo se copiaba en las de un territorio; se corrigió
+(precisión de la spec).
+
+**Prueba en vivo (2026-11-16).**
+- **Migración.** El servidor aplicó `000022` sobre la base de desarrollo (de la migración 21 a la 22).
+- **Humo.** `scripts/smoke.mjs --web http://localhost:3001 --clan` pasó dos veces seguidas, con 33 comprobaciones
+  cada vez:
+  - `smoke_clan_a` nombra oficial a `smoke_orden`, y ella invita a `smoke_clan_b`, que entra;
+  - `smoke_clan_a` le cede el liderazgo, con el aviso `CLAN_LEADERSHIP_RECEIVED` y [HUM], y `smoke_orden` se lo
+    devuelve;
+  - `smoke_orden`, de oficial, expulsa a `smoke_clan_b`, que recibe el aviso de su expulsión;
+  - `smoke_orden` vuelve a miembro raso.
+- **Base.** El clan [HUM] queda como estaba: `smoke_clan_a` de líder y `smoke_orden` de miembro, los dos con
+  `rank = 'MEMBER'`. La primera pasada escribió dos `ClanLeaderChanged` (`TRANSFER`) y dos `ClanRankChanged`.
+- **Log.** Sin `invariant_violation`.
+- **Navegador**, como `smoke_clan_a`:
+  - «Mientras no estabas» con «smoke_ordenpolis te cedió el liderazgo de [HUM]» y «Cediste el liderazgo de [HUM] a
+    smoke_ordenpolis»;
+  - el panel del clan con «Líder» y «Miembro», «Expulsar», «Nombrar oficial» y «Ceder el liderazgo», y la línea de la
+    sucesión por ausencia;
+  - «Nombrar oficial» la pasa a «Oficial» con «Quitar oficial», y «Quitar oficial» la devuelve;
+  - «Ceder el liderazgo» pide la confirmación («smoke_ordenpolis pasará a liderar [HUM] y tú quedarás como oficial»),
+    que se canceló.
+- **Sin probar en vivo.** La sucesión por ausencia pediría tener al líder desconectado durante el plazo; la cubren el
+  golden y la recuperación.

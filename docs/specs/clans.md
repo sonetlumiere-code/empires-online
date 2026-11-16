@@ -116,6 +116,10 @@ El clan no tiene bando propio: su bando, si se quiere hablar de uno, es el de su
   (por fecha de entrada y, a igualdad, por el `id` del jugador). Si era el último, el clan se disuelve (Q4).
 - `clan.expel { playerId }`: sólo el líder, sobre otro miembro.
 
+**Precisión (2026-11-16, [clan-governance.md](clan-governance.md)).** Desde E20, invitar, retirar y expulsar a un
+miembro raso los dan también los oficiales; expulsar a un oficial, sólo el líder. Al salir el líder, hereda el oficial
+más antiguo antes que el miembro más antiguo, y un líder que lleva 7 días sin jugar pierde el liderazgo.
+
 Al salir o ser expulsado, el jugador deja de ser miembro **en el acto**: pierde el canal, la sigla y el panel, y puede
 entrar en otro clan. La paz, en cambio, no termina en el acto: durante `EO_CLAN_PEACE_GRACE_SECONDS` (900, Q6) sigue en
 paz con quienes eran sus compañeros en ese momento, igual que un tratado roto sigue en vigor durante su preaviso
