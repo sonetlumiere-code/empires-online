@@ -437,6 +437,34 @@ func TestElLimiteDePoblacionCuentaLosTerritoriosConquistados(t *testing.T) {
 	assert.Empty(t, loadcheck.Check(in).Findings, "el límite con el territorio ya es el correcto")
 }
 
+// INV-ECON-004 y SPEC-CLAN-TERRITORIES Q3: al recontar el límite en la carga, un
+// territorio de clan no suma población a nadie, aunque el dueño de la ciudad sea
+// de ese clan; el conquistado para sí, sí. Un límite que contara el del clan se
+// repara.
+func TestElLimiteDePoblacionNoCuentaLosTerritoriosDeClan(t *testing.T) {
+	in, ciudad, _ := sano(t)
+	in.Territories = []territory.Territory{
+		{ID: 7, MinX: 0, MinY: 0, MaxX: 31, MaxY: 31},    // la capital: contiene (20,20)
+		{ID: 8, MinX: 32, MinY: 0, MaxX: 63, MaxY: 31},   // libre
+		{ID: 9, MinX: 0, MinY: 32, MaxX: 31, MaxY: 63},   // conquistado para sí
+		{ID: 10, MinX: 32, MinY: 32, MaxX: 63, MaxY: 63}, // del clan 7
+	}
+	in.Clans = map[int64]struct{}{7: {}}
+	id, clan := ciudad.OwnerPlayerID.String(), territory.ClanOwnerID(7)
+	captura := instante.Add(-time.Minute)
+	in.Controls = append(in.Controls,
+		territory.Control{TerritoryID: 9, OwnerType: territory.OwnerPlayer, OwnerID: &id, CapturedAt: &captura, Version: 1},
+		territory.Control{TerritoryID: 10, OwnerType: territory.OwnerClan, OwnerID: &clan, CapturedAt: &captura, Version: 1})
+
+	ciudad.PopulationLimit = 25
+	assert.Empty(t, loadcheck.Check(in).Findings, "la era más cinco por el conquistado; el del clan no suma")
+
+	ciudad.PopulationLimit = 30
+	r := loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-ECON-004/REPAIR"}, invs(r))
+	assert.EqualValues(t, 25, ciudad.PopulationLimit, "un límite que contara el territorio del clan se repara")
+}
+
 // INV-TERR-006 (ADR-034 §4): contested es «hay una reclamación activa»; la carga
 // lo alinea en los dos sentidos.
 func TestContestedSeAlineaConLasReclamacionesActivas(t *testing.T) {

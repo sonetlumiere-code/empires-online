@@ -123,7 +123,10 @@ func (r *recorder) reset() {
 type syncPersister struct {
 	mu   sync.Mutex
 	jobs []string
-	errs []error
+	// claves son las claves de cada trabajo, en el orden en que se encolaron:
+	// el orden de la cola real depende de ellas (ADR-013 §2.2, ADR-032 §3).
+	claves []clavesDeTrabajo
+	errs   []error
 	// permanent: un trabajo que falla agota sus reintentos al instante y llama a
 	// su OnPermanentFailure, como haría la cola real al rendirse.
 	permanent bool
@@ -132,6 +135,7 @@ type syncPersister struct {
 func (p *syncPersister) Submit(job simulation.Job) {
 	p.mu.Lock()
 	p.jobs = append(p.jobs, job.Name)
+	p.claves = append(p.claves, clavesDeTrabajo{Name: job.Name, Key: job.Key, Key2: job.Key2})
 	p.mu.Unlock()
 	anotarTrabajo(job.Name)
 	if err := job.Run(context.Background()); err != nil {
@@ -151,6 +155,22 @@ func (p *syncPersister) names() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]string(nil), p.jobs...)
+}
+
+// clavesDeTrabajo son el nombre y las dos claves de un trabajo encolado.
+type clavesDeTrabajo struct{ Name, Key, Key2 string }
+
+// clavesDe son las claves de los trabajos con ese nombre, en orden.
+func (p *syncPersister) clavesDe(name string) []clavesDeTrabajo {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []clavesDeTrabajo
+	for _, c := range p.claves {
+		if c.Name == name {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // contarRutas envuelve el A* real y cuenta sus llamadas: un rechazo de ownership
