@@ -69,6 +69,13 @@ const (
 	// Clanes (SPEC-CLANS Q10): al expulsado y al líder que expulsó.
 	KindClanExpelled       Kind = "CLAN_EXPELLED"
 	KindClanMemberExpelled Kind = "CLAN_MEMBER_EXPELLED"
+	// Gobierno del clan (SPEC-CLAN-GOVERNANCE Q8): el liderazgo que se recibe
+	// por traspaso o porque el líder llevaba días sin jugar, y el que se cede o
+	// se pierde por esa ausencia.
+	KindClanLeadershipReceived  Kind = "CLAN_LEADERSHIP_RECEIVED"
+	KindClanLeadershipGiven     Kind = "CLAN_LEADERSHIP_GIVEN"
+	KindClanLeadershipInherited Kind = "CLAN_LEADERSHIP_INHERITED"
+	KindClanLeadershipLost      Kind = "CLAN_LEADERSHIP_LOST"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -82,6 +89,7 @@ func Kinds() []Kind {
 		KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken,
 		KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost,
 		KindClanExpelled, KindClanMemberExpelled,
+		KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost,
 	}
 }
 
@@ -98,6 +106,7 @@ func NoticeKinds() []Kind {
 		KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken,
 		KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost,
 		KindClanExpelled,
+		KindClanLeadershipReceived, KindClanLeadershipInherited,
 	}
 }
 
@@ -138,6 +147,16 @@ const (
 	// Clanes (SPEC-CLANS §6): player_id es el expulsado y
 	// counterpart_player_id el líder que lo expulsó.
 	EventClanMemberExpelled = "ClanMemberExpelled"
+	// Gobierno del clan (SPEC-CLAN-GOVERNANCE §6): player_id es el nuevo líder
+	// y counterpart_player_id el anterior; Reason dice si fue un traspaso o la
+	// ausencia del anterior.
+	EventClanLeaderChanged = "ClanLeaderChanged"
+)
+
+// Motivos de un ClanLeaderChanged (SPEC-CLAN-GOVERNANCE §6).
+const (
+	LeaderReasonTransfer = "TRANSFER"
+	LeaderReasonInactive = "INACTIVE"
 )
 
 // EventTypes son los event_type que pueden dar una entrada: la consulta sólo
@@ -150,7 +169,7 @@ func EventTypes() []string {
 		EventTradeProposed, EventTradeAccepted, EventTradeRejected, EventTradeWithdrawn, EventTradeExpired,
 		EventTerritoryClaimStarted, EventTerritoryControlChanged,
 		EventCaravanArrived, EventCaravanCaptured, EventCaravanIntercepted, EventCaravanLost,
-		EventClanMemberExpelled,
+		EventClanMemberExpelled, EventClanLeaderChanged,
 	}
 }
 
@@ -204,6 +223,9 @@ type Event struct {
 	Only string
 	// Cargo, en las caravanas: lo que llevaba.
 	Cargo []Line
+	// Reason, en un cambio de líder: LeaderReasonTransfer o
+	// LeaderReasonInactive.
+	Reason string
 }
 
 // Valores de Event.Only.
@@ -310,6 +332,20 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindClanExpelled, other, true
 		}
 		return KindClanMemberExpelled, other, true
+	case EventClanLeaderChanged:
+		// Al nuevo líder, que lo recibió; al anterior, que lo cedió o lo perdió
+		// (SPEC-CLAN-GOVERNANCE Q8).
+		inactive := e.Reason == LeaderReasonInactive
+		switch {
+		case e.PlayerID == viewer && inactive:
+			return KindClanLeadershipInherited, other, true
+		case e.PlayerID == viewer:
+			return KindClanLeadershipReceived, other, true
+		case inactive:
+			return KindClanLeadershipLost, other, true
+		default:
+			return KindClanLeadershipGiven, other, true
+		}
 	}
 
 	// Una caravana: sólo a quien le pasa (player_id); al captor no se le cuenta
@@ -559,6 +595,9 @@ func (b *Builder) Add(e Event) bool {
 		entry.TerritoryID, entry.TerritoryName = e.TerritoryID, e.TerritoryName
 		entry.ClanTag = ClanTagFor(b.viewer, e)
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
+	case KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost:
+		// La sigla del clan cuyo liderazgo cambió (SPEC-CLAN-GOVERNANCE §4.6).
+		entry.ClanTag = ClanTagFor(b.viewer, e)
 	case KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost:
 		entry.Cargo = e.Cargo
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile

@@ -151,19 +151,58 @@ export function isLeader(state: ClansState, me: string | null): boolean {
   return state.clan !== null && me !== null && state.clan.leaderId === me;
 }
 
+export type ClanRole = v1.ClanRole;
+
+/**
+ * Lo que tiene que llevar el líder sin jugar para que el liderazgo pase a quien
+ * sigue jugando (SPEC-CLAN-GOVERNANCE Q6). Copia del valor por defecto del
+ * servidor (EO_CLAN_LEADER_INACTIVE_SECONDS), sólo para el texto del panel.
+ */
+export const LEADER_INACTIVE_DAYS = 7;
+
+/** El rango del jugador en su clan, o `null` si no tiene (SPEC-CLAN-GOVERNANCE §4.1). */
+export function myRole(state: ClansState, me: string | null): ClanRole | null {
+  if (state.clan === null || me === null) return null;
+  return state.clan.members.find((m) => m.playerId === me)?.role ?? null;
+}
+
+/** Si el rango invita y retira invitaciones: el líder y los oficiales (RN-CLANGOV-002). */
+export function managesInvitations(role: ClanRole | null): boolean {
+  return role === 'LEADER' || role === 'OFFICER';
+}
+
+/**
+ * Si un rango puede expulsar a otro (RN-CLANGOV-002): el líder a cualquiera
+ * menos a sí mismo; un oficial, sólo a un miembro raso. Al líder no lo expulsa
+ * nadie. El servidor lo vuelve a comprobar.
+ */
+export function canExpel(by: ClanRole | null, target: ClanRole): boolean {
+  if (by === 'LEADER') return target !== 'LEADER';
+  if (by === 'OFFICER') return target === 'MEMBER';
+  return false;
+}
+
+/** El texto de la confirmación de «Ceder el liderazgo» (SPEC-CLAN-GOVERNANCE §4.6). */
+export function transferWarning(cityName: string | null, tag: string): string {
+  return `${cityName ?? 'Ese jugador'} pasará a liderar [${tag}] y tú quedarás como oficial`;
+}
+
 /** «[LOB] Roma»: el nombre de una ciudad con la sigla de su clan, si lo tiene. */
 export function withTag(name: string, clan: { tag: string } | null | undefined): string {
   return clan ? `[${clan.tag}] ${name}` : name;
 }
 
-/** «Líder» o «Miembro». */
+/** «Líder», «Oficial» o «Miembro». */
 export function roleLabel(role: string): string {
-  return role === 'LEADER' ? 'Líder' : 'Miembro';
+  if (role === 'LEADER') return 'Líder';
+  if (role === 'OFFICER') return 'Oficial';
+  return 'Miembro';
 }
 
 /**
- * Si el líder puede invitar al dueño de una ciudad: es otro jugador, no tiene
- * clan y no está ya invitado (el tope y los bandos los dice el servidor).
+ * Si el líder o un oficial puede invitar al dueño de una ciudad: es otro
+ * jugador, no tiene clan y no está ya invitado (el tope y los bandos los dice el
+ * servidor).
  */
 export function canInvite(
   state: ClansState,
@@ -171,7 +210,7 @@ export function canInvite(
   target: { ownerPlayerId: string; clan: { id: number } | null },
   nowMs: number,
 ): boolean {
-  if (!isLeader(state, me) || state.clan === null) return false;
+  if (!managesInvitations(myRole(state, me)) || state.clan === null) return false;
   if (target.ownerPlayerId === me || target.clan !== null) return false;
   return !state.clan.sentInvitations.some((i) => i.playerId === target.ownerPlayerId && i.expiresAtMs > nowMs);
 }

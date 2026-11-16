@@ -42,6 +42,8 @@ func (*memoryClans) Join(context.Context, simulation.ClanJoinOrder) error     { 
 func (*memoryClans) Leave(context.Context, simulation.ClanLeave) ([]territory.Control, error) {
 	return nil, nil
 }
+func (*memoryClans) SetRank(context.Context, simulation.ClanRankOrder) error        { return nil }
+func (*memoryClans) ChangeLeader(context.Context, simulation.ClanLeaderOrder) error { return nil }
 
 // canalFalso hace de canal: su propia pertenencia (la fija el test, nunca lee la
 // RAM de la simulación desde la conexión) y sus mensajes.
@@ -261,5 +263,91 @@ func TestUnClanPorLaRed(t *testing.T) {
 	b.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return claveNula(t, raw, "clan") }, 3*time.Second)
 	aviso := decode[protocol.EventLogNoticePayload](t, b.await(protocol.TypeEventLogNotice, 3*time.Second).Payload)
 	assert.Equal(t, "CLAN_EXPELLED", aviso.Kind)
+	assert.Equal(t, env.playerID.String(), aviso.OtherPlayerID)
+}
+
+// SPEC-CLAN-GOVERNANCE §9, e2e: el líder nombra oficial a un miembro, que lo ve
+// en su vista; el oficial invita a un tercero, al que le llega la invitación, y
+// el líder la ve entre las enviadas; el líder cede el liderazgo y el nuevo líder
+// recibe su clan y el aviso con la sigla. Un miembro raso no puede ceder.
+func TestElGobiernoDelClanPorLaRed(t *testing.T) {
+	env := newE2E(t)
+	bea, ce := uuid.New(), uuid.New()
+	for i, p := range []uuid.UUID{bea, ce} {
+		env.state.AddCity(&city.City{ID: int64(2 + i), OwnerPlayerID: p, Name: []string{"Bizancio", "Persépolis"}[i],
+			CenterX: int32(70 + 30*i), CenterY: 70, Era: city.EraStone, PopulationLimit: 20,
+			PresenceState: city.PresenceOnline, Civilization: "ROMAN"})
+	}
+	env.ws.SetClans(&canalFalso{clanDe: map[uuid.UUID]int64{}, leidos: map[uuid.UUID]int64{}, ciudades: map[uuid.UUID]string{}})
+
+	yo, _ := conectar(t, env, env.playerID)
+	yo.await(protocol.TypeClanUpdate, 3*time.Second)
+	b, _ := conectar(t, env, bea)
+	b.await(protocol.TypeClanUpdate, 3*time.Second)
+	c, _ := conectar(t, env, ce)
+	c.await(protocol.TypeClanUpdate, 3*time.Second)
+
+	yo.send(protocol.TypeClanCreate, map[string]any{"name": "Los Lobos", "tag": "LOB"})
+	env.pump()
+	fundado, _ := yo.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+	clanID := clanUpdate(t, fundado.Payload).Clan.ID
+	yo.send(protocol.TypeClanInvite, map[string]any{"playerId": bea.String(), "invited": true})
+	env.pump()
+	b.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return len(clanUpdate(t, raw).Invitations) == 1 }, 3*time.Second)
+	b.send(protocol.TypeClanRespond, map[string]any{"clanId": clanID, "accept": true})
+	env.pump()
+	b.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+
+	rolDe := func(p protocol.ClanUpdatePayload, who uuid.UUID) string {
+		for _, m := range p.Clan.Members {
+			if m.PlayerID == who.String() {
+				return m.Role
+			}
+		}
+		return ""
+	}
+
+	// Un raso no cede.
+	r := b.send(protocol.TypeClanTransfer, map[string]any{"playerId": env.playerID.String()})
+	env.pump()
+	errp := errorDe(t, b, r)
+	assert.Equal(t, protocol.CodeInvalidTarget, errp.Code)
+	assert.Equal(t, "sólo el líder nombra oficiales y cede el liderazgo", errp.Message)
+
+	// Nombrar oficial.
+	req := yo.send(protocol.TypeClanPromote, map[string]any{"playerId": bea.String(), "officer": true})
+	env.pump()
+	propio, _ := yo.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		return p.Clan != nil && rolDe(p, bea) == clan.RoleOfficer
+	}, 3*time.Second)
+	assert.Equal(t, req, propio.RequestID)
+	b.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		return p.Clan != nil && rolDe(p, bea) == clan.RoleOfficer
+	}, 3*time.Second)
+
+	// El oficial invita: le llega al invitado y el líder la ve.
+	b.send(protocol.TypeClanInvite, map[string]any{"playerId": ce.String(), "invited": true})
+	env.pump()
+	c.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return len(clanUpdate(t, raw).Invitations) == 1 }, 3*time.Second)
+	yo.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		return p.Clan != nil && len(p.Clan.SentInvitations) == 1
+	}, 3*time.Second)
+
+	// Ceder el liderazgo.
+	yo.send(protocol.TypeClanTransfer, map[string]any{"playerId": bea.String()})
+	env.pump()
+	nuevo, _ := b.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		return p.Clan != nil && p.Clan.LeaderID == bea.String()
+	}, 3*time.Second)
+	vista := clanUpdate(t, nuevo.Payload)
+	assert.Equal(t, clan.RoleLeader, rolDe(vista, bea))
+	assert.Equal(t, clan.RoleOfficer, rolDe(vista, env.playerID), "el anterior queda como oficial")
+	aviso := decode[protocol.EventLogNoticePayload](t, b.await(protocol.TypeEventLogNotice, 3*time.Second).Payload)
+	assert.Equal(t, "CLAN_LEADERSHIP_RECEIVED", aviso.Kind)
+	assert.Equal(t, "LOB", aviso.ClanTag)
 	assert.Equal(t, env.playerID.String(), aviso.OtherPlayerID)
 }

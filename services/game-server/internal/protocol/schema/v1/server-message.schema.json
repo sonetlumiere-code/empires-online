@@ -2187,7 +2187,11 @@
                           "CARAVAN_INTERCEPTED",
                           "CARAVAN_LOST",
                           "CLAN_EXPELLED",
-                          "CLAN_MEMBER_EXPELLED"
+                          "CLAN_MEMBER_EXPELLED",
+                          "CLAN_LEADERSHIP_RECEIVED",
+                          "CLAN_LEADERSHIP_GIVEN",
+                          "CLAN_LEADERSHIP_INHERITED",
+                          "CLAN_LEADERSHIP_LOST"
                         ]
                       },
                       "firstAtMs": {
@@ -2399,7 +2403,9 @@
                     "CARAVAN_CAPTURED",
                     "CARAVAN_INTERCEPTED",
                     "CARAVAN_LOST",
-                    "CLAN_EXPELLED"
+                    "CLAN_EXPELLED",
+                    "CLAN_LEADERSHIP_RECEIVED",
+                    "CLAN_LEADERSHIP_INHERITED"
                   ]
                 },
                 "atMs": {
@@ -2924,6 +2930,7 @@
                                 "type": "string",
                                 "enum": [
                                   "LEADER",
+                                  "OFFICER",
                                   "MEMBER"
                                 ]
                               },

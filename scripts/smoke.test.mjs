@@ -27,6 +27,7 @@ import {
   pactoVigente,
   pasoDeFaccion,
   pasoDeClan,
+  rolEnClan,
   pasoDelTerritorioDeClan,
   rasgo,
   territorioDelHumo,
@@ -305,4 +306,12 @@ test('territorioDelHumo elige el más cercano libre, de [HUM] o del rival sin se
   assert.equal(pasoDelTerritorioDeClan(t(39, 0, 0, deHum), rival), 'rival-se-lo-quita');
   assert.equal(pasoDelTerritorioDeClan(t(39, 0, 0, { ownerType: 'PLAYER', ownerId: rival }), rival), 'clan-lo-recupera');
   assert.equal(pasoDelTerritorioDeClan(t(39, 0, 0, { ownerType: 'PLAYER', ownerId: 'otro' }), rival), 'otro');
+});
+
+test('rolEnClan: el rango de un jugador en el clan de un clan.update (SPEC-CLAN-GOVERNANCE)', () => {
+  const update = { clan: { members: [{ playerId: 'a', role: 'LEADER' }, { playerId: 'b', role: 'OFFICER' }] }, invitations: [] };
+  assert.equal(rolEnClan(update, 'a'), 'LEADER');
+  assert.equal(rolEnClan(update, 'b'), 'OFFICER');
+  assert.equal(rolEnClan(update, 'c'), null);
+  assert.equal(rolEnClan({ clan: null, invitations: [] }, 'a'), null);
 });

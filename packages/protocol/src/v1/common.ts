@@ -194,8 +194,8 @@ export const ClanTerritoryView = z.object({
 });
 export type ClanTerritoryView = z.infer<typeof ClanTerritoryView>;
 
-/** Rango de un miembro de un clan (SPEC-CLANS Q4). */
-export const ClanRole = z.enum(['LEADER', 'MEMBER']);
+/** Rango de un miembro de un clan (SPEC-CLANS Q4, SPEC-CLAN-GOVERNANCE Q1). */
+export const ClanRole = z.enum(['LEADER', 'OFFICER', 'MEMBER']);
 export type ClanRole = z.infer<typeof ClanRole>;
 
 /** Un miembro de un clan, nombrado por su ciudad (SPEC-CLANS §6). */
@@ -209,7 +209,7 @@ export const ClanMemberView = z.object({
 });
 export type ClanMemberView = z.infer<typeof ClanMemberView>;
 
-/** Una invitación que envió el clan, sólo para su líder. */
+/** Una invitación que envió el clan, sólo para su líder y sus oficiales. */
 export const ClanSentInvitationView = z.object({
   playerId: Uuid,
   cityId: EntityId.nullable(),
@@ -498,6 +498,12 @@ export const EventLogKind = z.enum([
   // Clanes (SPEC-CLANS Q10): al expulsado, que le expulsaron; al líder, que expulsó.
   'CLAN_EXPELLED',
   'CLAN_MEMBER_EXPELLED',
+  // Gobierno del clan (SPEC-CLAN-GOVERNANCE Q8): a quien recibe el liderazgo, por
+  // traspaso o porque el líder llevaba días sin jugar, y a quien lo cede o lo pierde.
+  'CLAN_LEADERSHIP_RECEIVED',
+  'CLAN_LEADERSHIP_GIVEN',
+  'CLAN_LEADERSHIP_INHERITED',
+  'CLAN_LEADERSHIP_LOST',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -521,6 +527,9 @@ export const EventLogNoticeKind = EventLogKind.extract([
   'CARAVAN_LOST',
   // SPEC-CLANS Q10: la expulsión se avisa al expulsado.
   'CLAN_EXPELLED',
+  // SPEC-CLAN-GOVERNANCE Q8: el liderazgo se avisa a quien lo recibe.
+  'CLAN_LEADERSHIP_RECEIVED',
+  'CLAN_LEADERSHIP_INHERITED',
 ]);
 export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
 

@@ -476,6 +476,7 @@ func run() error {
 		ClanMaxMembers:              cfg.ClanMaxMembers,
 		ClanInviteTTL:               cfg.ClanInviteTTL,
 		ClanPeaceGrace:              cfg.ClanPeaceGrace,
+		ClanLeaderInactive:          cfg.ClanLeaderInactive,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

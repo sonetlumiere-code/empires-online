@@ -281,10 +281,19 @@ const (
 	ClanChangeLeft      = "left"
 	ClanChangeExpelled  = "expelled"
 	ClanChangeDissolved = "dissolved"
+	// SPEC-CLAN-GOVERNANCE §6: nombramientos, retiradas de oficial, traspasos
+	// y sucesiones de un líder ausente.
+	ClanChangePromoted    = "promoted"
+	ClanChangeDemoted     = "demoted"
+	ClanChangeTransferred = "transferred"
+	ClanChangeSucceeded   = "succeeded"
 )
 
 // ClanChangeKinds es el catálogo cerrado de la etiqueta kind de
 // eo_clan_changes_total.
 func ClanChangeKinds() []string {
-	return []string{ClanChangeFounded, ClanChangeJoined, ClanChangeLeft, ClanChangeExpelled, ClanChangeDissolved}
+	return []string{
+		ClanChangeFounded, ClanChangeJoined, ClanChangeLeft, ClanChangeExpelled, ClanChangeDissolved,
+		ClanChangePromoted, ClanChangeDemoted, ClanChangeTransferred, ClanChangeSucceeded,
+	}
 }

@@ -201,6 +201,8 @@ type eventPayload struct {
 	Only         string `json:"only"`
 	// Las caravanas (SPEC-CARAVANS §6): lo que llevaba.
 	Cargo []payloadLine `json:"cargo"`
+	// El cambio de líder de un clan (SPEC-CLAN-GOVERNANCE §6).
+	Reason string `json:"reason"`
 }
 
 // payloadLine es una línea de un trato en el payload.
@@ -255,6 +257,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	e.TerritoryID, e.TerritoryName = p.TerritoryID, p.TerritoryName
 	e.OwnerClanTag, e.ForClanTag, e.Only = p.OwnerClanTag, p.ForClanTag, p.Only
 	e.Cargo = toLines(p.Cargo)
+	e.Reason = p.Reason
 	return nil
 }
 
@@ -351,8 +354,10 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	if e.TerritoryID != 0 {
 		id := e.TerritoryID
 		v.TerritoryID, v.TerritoryName = &id, e.TerritoryName
-		v.ClanTag = e.ClanTag
 	}
+	// La sigla: de la conquista con un clan de por medio y del cambio de
+	// líder de un clan (SPEC-CLAN-GOVERNANCE §4.6).
+	v.ClanTag = e.ClanTag
 	if len(e.Cargo) > 0 {
 		v.Cargo = fromLines(e.Cargo)
 	}

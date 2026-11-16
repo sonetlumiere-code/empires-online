@@ -141,6 +141,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_CLAN_MAX_MEMBERS` | int | `20` | 2–500 | No | No | Tope de miembros de un clan; las invitaciones vivas y las entradas en vuelo cuentan al invitar (SPEC-CLANS Q5, `RN-CLAN-001`). |
 | `EO_CLAN_INVITE_HOURS` | int | `24` | 1–720 | No | No | Horas de vida de una invitación a un clan (SPEC-CLANS Q3, `RN-CLAN-003`). |
 | `EO_CLAN_PEACE_GRACE_SECONDS` | int | `900` | 1–86400 | No | No | Paz residual: segundos que quien sale o es expulsado de un clan sigue en paz con quienes eran sus compañeros (SPEC-CLANS Q6, `RN-CLAN-005`). |
+| `EO_CLAN_LEADER_INACTIVE_SECONDS` | int | `604800` | 60–31536000 | No | No | Segundos que la ciudad del líder de un clan tiene que llevar sin estar `ONLINE` para que el liderazgo pase al oficial (o miembro) activo más antiguo; 7 días (SPEC-CLAN-GOVERNANCE Q6, `RN-CLANGOV-005`). En segundos para que el humo y los tests puedan acortarlo. |
 | `EO_EVENT_LOG_MAX_DAYS` | int | `7` | 1–90 | No | No | Hasta cuántos días atrás lee el registro de un jugador; lo más viejo sigue en `world_events` como auditoría (`RN-LOG-003`). |
 | `EO_EVENT_LOG_PAGE_SIZE` | int | `50` | 1–200 | No | No | Entradas, ya agrupadas, de una página del registro (`RN-LOG-003`). |
 | `EO_EVENT_LOG_GROUP_GAP_MINUTES` | int | `10` | 1–1440 | No | No | Hueco máximo entre dos sucesos del mismo tipo y con el mismo jugador para que formen una entrada (SPEC-EVENT-LOG §4.2). |

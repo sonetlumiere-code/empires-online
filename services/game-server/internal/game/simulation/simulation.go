@@ -132,6 +132,10 @@ type Deps struct {
 	ClanMaxMembers int
 	ClanInviteTTL  time.Duration
 	ClanPeaceGrace time.Duration
+	// ClanLeaderInactive es lo que tiene que llevar el líder de un clan sin
+	// conectarse para que el liderazgo pase a quien sigue jugando
+	// (SPEC-CLAN-GOVERNANCE Q6). Cero: el valor por defecto.
+	ClanLeaderInactive time.Duration
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -330,6 +334,16 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleClanDissolved(c)
 	case ClanTerritoriesReleased:
 		s.handleClanTerritoriesReleased(c)
+	case PromoteInClan:
+		s.handlePromoteInClan(c)
+	case TransferClan:
+		s.handleTransferClan(c)
+	case ClanRankFailed:
+		s.handleClanRankFailed(c)
+	case ClanLeaderFailed:
+		s.handleClanLeaderFailed(c)
+	case ClanExpelRejected:
+		s.handleClanExpelRejected(c)
 	default:
 		s.deps.Log.Warn("comando desconocido descartado", "type", cmd.commandType())
 	}
@@ -771,6 +785,9 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	// Las salidas de clan cuya paz residual venció y las invitaciones
 	// caducadas: sólo se olvidan (SPEC-CLANS RN-CLAN-005).
 	s.sweepClans(now.UnixMilli())
+	// Los líderes de clan ausentes, una vez por minuto (RN-CLANGOV-005). Va
+	// después de la fase 1, con la presencia de este tick.
+	s.sweepClanLeaders(now.UnixMilli())
 
 	// 3. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
 	s.state.EachCity(func(c *city.City) bool {

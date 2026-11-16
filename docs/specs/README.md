@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las veintiocho specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las veintinueve specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -48,7 +48,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Safe Zones | [safe-zones.md](safe-zones.md) | M5 Offline protection & Safe Zones | Implemented | Geometría de `safe_zones`, pertenencia de tiles y estado `HIDDEN` |
 | Territory | [territory.md](territory.md) | M6 Territories | Implemented | `territories` y `territory_control`, resolución tile → territorio |
 | Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Implemented | `garrisons`, entrada y salida, tratados con `allows_garrison` |
-| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 39 mensajes cliente→servidor y los 31 servidor→cliente, límites e idempotencia |
+| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 41 mensajes cliente→servidor y los 31 servidor→cliente, límites e idempotencia |
 | Economía: madera | [economy-wood.md](economy-wood.md) | E1 Madera | Implemented | `city_stocks`, tarea de recolección `GATHER_WOOD` y estado `WORKING`, casa en la zona urbana, entrenamiento de aldeanos; primer slice después de M7 |
 | Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Implemented | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil; tope de la protección offline |
 | Combate: respuesta automática | [combat-response.md](combat-response.md) | E3 Defensa | Implemented | Un `WARRIOR` parado responde a los golpes sobre él o sobre sus unidades cercanas, con correa y vuelta al puesto; protección simétrica del atacante |
@@ -68,6 +68,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Facciones | [factions.md](factions.md) | E17 Facciones | Implemented | Unirse a la Orden o al Caos desde `NEUTRAL`, una vez y con preaviso; la paz de la Orden, sin pacto ni alianza entre Orden y Caos, y menos daño recibido en la tierra del propio bando |
 | Clanes | [clans.md](clans.md) | E18 Clanes | Implemented | Grupos de hasta 20 jugadores con nombre, sigla y líder, por invitación; paz entre miembros con 15 minutos de paz residual al salir, sin mezclar la Orden y el Caos, y un canal de mensajes del clan |
 | Territorios de clan | [clan-territories.md](clan-territories.md) | E19 Territorios de clan | Implemented | Un miembro reclama un territorio para su clan con un guerrero; la tierra del clan es afín para todos sus miembros, la defienden todos y se pierde contra quien no esté en paz con ninguno; al disolverse el clan queda libre |
+| Gobierno del clan | [clan-governance.md](clan-governance.md) | E20 Gobierno del clan | Accepted | Oficiales que invitan y expulsan a los miembros rasos, el traspaso del liderazgo y la sucesión automática cuando el líder lleva 7 días sin jugar |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

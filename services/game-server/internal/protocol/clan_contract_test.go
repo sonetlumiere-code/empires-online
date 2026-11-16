@@ -11,9 +11,9 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
 
-// Contrato de los clanes (SPEC-CLANS §6, §9 «contract»): los nueve comandos, los
-// cuatro mensajes del servidor y el clan en la vista de ciudad, contra el JSON
-// Schema exportado por packages/protocol.
+// Contrato de los clanes (SPEC-CLANS §6, §9 «contract»; SPEC-CLAN-GOVERNANCE §6):
+// los once comandos, los cuatro mensajes del servidor y el clan en la vista de
+// ciudad, contra el JSON Schema exportado por packages/protocol.
 
 // Cada comando lleva exactamente los campos del esquema, y ninguno nombra el clan
 // propio ni al remitente: son los del jugador de la sesión (INV-SEC-004).
@@ -33,6 +33,8 @@ func TestLosComandosDeClanesSonLosDelEsquema(t *testing.T) {
 		{protocol.TypeClanChatSend, protocol.ClanChatSendPayload{Body: "hola"}, []string{"body"}},
 		{protocol.TypeClanChatFetch, protocol.ClanChatFetchPayload{BeforeID: &antes}, nil},
 		{protocol.TypeClanChatRead, protocol.ClanChatReadPayload{UpToID: 1}, []string{"upToId"}},
+		{protocol.TypeClanPromote, protocol.ClanPromotePayload{PlayerID: "x", Officer: true}, []string{"officer", "playerId"}},
+		{protocol.TypeClanTransfer, protocol.ClanTransferPayload{PlayerID: "x"}, []string{"playerId"}},
 	}
 	for _, c := range casos {
 		t.Run(c.tipo, func(t *testing.T) {
@@ -100,6 +102,9 @@ func TestLosMensajesDeClanesDelServidorSonLosDelEsquema(t *testing.T) {
 	require.Equal(t, clavesDe(dig(t, root, p, "properties").(map[string]any)), clavesDe(serializado(t, publica)))
 	m := dig(t, root, p, "properties", "members", "items").(map[string]any)
 	require.Equal(t, requeridas(t, m), clavesDe(serializado(t, protocol.ClanMemberView{})))
+	// SPEC-CLAN-GOVERNANCE Q1: los tres rangos del dominio, y ninguno más.
+	rol := dig(t, root, objetoDe(t, root, m), "properties", "role").(map[string]any)
+	assert.ElementsMatch(t, []any{clan.RoleLeader, clan.RoleOfficer, clan.RoleMember}, rol["enum"])
 
 	mensaje := protocol.ClanMessageView{ID: 1, ClanID: 3, FromPlayerID: "a", FromCityID: &id, FromCityName: &nombre, Body: "al norte", SentAtMs: 1}
 	root, nuevo := serverVariant(t, protocol.TypeClanChatNew)

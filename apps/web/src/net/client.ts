@@ -336,7 +336,7 @@ export class GameClient {
     return this.send('clan.create', { name, tag });
   }
 
-  /** El líder invita a un jugador a su clan, o retira la invitación. */
+  /** El líder o un oficial invita a un jugador a su clan, o retira la invitación. */
   inviteToClan(playerId: string, invited: boolean): string {
     return this.send('clan.invite', { playerId, invited });
   }
@@ -351,9 +351,19 @@ export class GameClient {
     return this.send('clan.leave', {});
   }
 
-  /** El líder expulsa a un miembro. */
+  /** El líder o un oficial expulsa a un miembro (SPEC-CLAN-GOVERNANCE §4.2). */
   expelFromClan(playerId: string): string {
     return this.send('clan.expel', { playerId });
+  }
+
+  /** El líder nombra oficial a un miembro, o le quita el rango (SPEC-CLAN-GOVERNANCE §4.3). */
+  promoteInClan(playerId: string, officer: boolean): string {
+    return this.send('clan.promote', { playerId, officer });
+  }
+
+  /** El líder cede el liderazgo a otro miembro (SPEC-CLAN-GOVERNANCE §4.3). */
+  transferClan(playerId: string): string {
+    return this.send('clan.transfer', { playerId });
   }
 
   /** Pide la vista pública de un clan. */

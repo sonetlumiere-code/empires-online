@@ -211,7 +211,9 @@ quedó en el mínimo (un líder que invita y expulsa). Quedan los territorios de
 clanes. **Precisión (2026-11-16, [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md), [ADR-041](../decisions/ADR-041-clan-territories.md)):** los territorios de
 clan llegan con E19 ([milestones.md](milestones.md) §E19): un miembro reclama para el clan, la tierra del clan es afín
 para sus miembros, se disputa contra todos ellos y queda libre al disolverse el clan. Quedan los rangos y las alianzas
-entre clanes.
+entre clanes. **Precisión (2026-11-16, [SPEC-CLAN-GOVERNANCE](../specs/clan-governance.md)):** los rangos llegan con
+E20 ([milestones.md](milestones.md) §E20): oficiales que invitan y expulsan a los rasos, el traspaso del liderazgo y su
+sucesión cuando el líder lleva 7 días sin jugar. Quedan las alianzas y las guerras entre clanes.
 
 **Large-scale warfare.** Guerra a gran escala con muchos jugadores y unidades concurrentes en la
 misma región. Depende de todo lo anterior y es la primera fase que puede exigir cambios

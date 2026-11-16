@@ -74,6 +74,10 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeClanRespond: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeClanLeave:   {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeClanExpel:   {Hostile: false, Territory: TerritoryFree},
+	// El gobierno del clan (SPEC-CLAN-GOVERNANCE §6): rangos y liderazgo, sin
+	// cambiar la paz.
+	protocol.TypeClanPromote:  {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanTransfer: {Hostile: false, Territory: TerritoryFree},
 }
 
 // sessionMessages son los mensajes que no actúan sobre el mundo. Los del

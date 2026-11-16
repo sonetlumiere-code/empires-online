@@ -41,6 +41,32 @@ type fakeClans struct {
 	// released son los controles que devuelve una disolución, como la base al
 	// liberar los territorios del clan (ADR-041 §4).
 	released []territory.Control
+	// ranks y leaders son los nombramientos y los cambios de líder escritos
+	// (SPEC-CLAN-GOVERNANCE); rankErr y leaderErr, sus fallos.
+	ranks     []simulation.ClanRankOrder
+	leaders   []simulation.ClanLeaderOrder
+	rankErr   error
+	leaderErr error
+}
+
+func (f *fakeClans) SetRank(_ context.Context, o simulation.ClanRankOrder) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rankErr != nil {
+		return f.rankErr
+	}
+	f.ranks = append(f.ranks, o)
+	return nil
+}
+
+func (f *fakeClans) ChangeLeader(_ context.Context, o simulation.ClanLeaderOrder) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.leaderErr != nil {
+		return f.leaderErr
+	}
+	f.leaders = append(f.leaders, o)
+	return nil
 }
 
 func (f *fakeClans) Create(_ context.Context, o simulation.ClanCreateOrder) (int64, error) {
@@ -269,7 +295,7 @@ func TestInvitarYAceptar(t *testing.T) {
 	require.Len(t, fc.joins, 1)
 	assert.NotEmpty(t, h.clanUpdatesPara(h.playerID), "el líder ve al nuevo")
 	h.send(simulation.InviteToClan{PlayerID: b, RequestID: uuid.NewString(), TargetID: c, Invited: true})
-	assert.Equal(t, "sólo el líder de un clan invita", h.ultimoMotivo())
+	assert.Equal(t, "sólo el líder o un oficial invita", h.ultimoMotivo())
 
 	// Sin invitación no se entra; retirada, tampoco.
 	h.send(simulation.RespondClan{PlayerID: c, RequestID: uuid.NewString(), ClanID: id, Accept: true})
@@ -455,7 +481,7 @@ func TestExpulsarAvisaAlExpulsado(t *testing.T) {
 
 	h.rec.reset()
 	h.send(simulation.ExpelFromClan{PlayerID: b, RequestID: uuid.NewString(), TargetID: c})
-	assert.Equal(t, "sólo el líder de un clan expulsa", h.ultimoMotivo())
+	assert.Equal(t, "sólo el líder o un oficial expulsa", h.ultimoMotivo())
 	h.send(simulation.ExpelFromClan{PlayerID: h.playerID, RequestID: uuid.NewString(), TargetID: h.playerID})
 	assert.Equal(t, "para irte, sal del clan", h.ultimoMotivo())
 

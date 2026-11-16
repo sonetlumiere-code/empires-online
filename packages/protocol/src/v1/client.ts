@@ -465,8 +465,9 @@ export const ClanCreate = z.object({
 }).strict();
 
 /**
- * El líder invita a un jugador a su clan (`invited: true`) o retira la invitación
- * (`invited: false`) (SPEC-CLANS §4.2). El clan es el del jugador de la sesión.
+ * El líder o un oficial invita a un jugador a su clan (`invited: true`) o retira la
+ * invitación (`invited: false`) (SPEC-CLANS §4.2, SPEC-CLAN-GOVERNANCE §4.2). El clan es
+ * el del jugador de la sesión.
  */
 export const ClanInvite = z.object({
   v: V,
@@ -497,10 +498,40 @@ export const ClanLeave = z.object({
   payload: z.object({}).strict(),
 }).strict();
 
-/** El líder expulsa a un miembro de su clan (SPEC-CLANS §4.5). */
+/**
+ * El líder expulsa a un miembro de su clan; un oficial, sólo a un miembro raso
+ * (SPEC-CLANS §4.5, SPEC-CLAN-GOVERNANCE §4.2).
+ */
 export const ClanExpel = z.object({
   v: V,
   type: z.literal('clan.expel'),
+  requestId: Uuid,
+  payload: z.object({
+    playerId: Uuid,
+  }).strict(),
+}).strict();
+
+/**
+ * El líder nombra oficial a un miembro (`officer: true`) o le quita el rango
+ * (`officer: false`) (SPEC-CLAN-GOVERNANCE §4.3).
+ */
+export const ClanPromote = z.object({
+  v: V,
+  type: z.literal('clan.promote'),
+  requestId: Uuid,
+  payload: z.object({
+    playerId: Uuid,
+    officer: z.boolean(),
+  }).strict(),
+}).strict();
+
+/**
+ * El líder cede el liderazgo a otro miembro, en el acto; él queda como oficial
+ * (SPEC-CLAN-GOVERNANCE §4.3).
+ */
+export const ClanTransfer = z.object({
+  v: V,
+  type: z.literal('clan.transfer'),
   requestId: Uuid,
   payload: z.object({
     playerId: Uuid,
@@ -591,6 +622,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
   ClanChatSend,
   ClanChatFetch,
   ClanChatRead,
+  ClanPromote,
+  ClanTransfer,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -633,6 +666,8 @@ export type ClanLookup = z.infer<typeof ClanLookup>;
 export type ClanChatSend = z.infer<typeof ClanChatSend>;
 export type ClanChatFetch = z.infer<typeof ClanChatFetch>;
 export type ClanChatRead = z.infer<typeof ClanChatRead>;
+export type ClanPromote = z.infer<typeof ClanPromote>;
+export type ClanTransfer = z.infer<typeof ClanTransfer>;
 
 export const CLIENT_MESSAGE_TYPES = [
   'session.hello',
@@ -674,6 +709,8 @@ export const CLIENT_MESSAGE_TYPES = [
   'clan.chat.send',
   'clan.chat.fetch',
   'clan.chat.read',
+  'clan.promote',
+  'clan.transfer',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

@@ -809,6 +809,44 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, TargetID: target,
 		})
 
+	// El gobierno del clan (SPEC-CLAN-GOVERNANCE §6): el rango lo decide la
+	// simulación; el comando sólo nombra al miembro (INV-SEC-004).
+	case protocol.TypeClanPromote:
+		var p protocol.ClanPromotePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		target, err := uuid.Parse(p.PlayerID)
+		if err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.PromoteInClan{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, TargetID: target, Officer: p.Officer,
+		})
+
+	case protocol.TypeClanTransfer:
+		var p protocol.ClanTransferPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		target, err := uuid.Parse(p.PlayerID)
+		if err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.TransferClan{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, TargetID: target,
+		})
+
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
 	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del
 	// servidor (INV-SEC-001); los rechazos llegan por system.error.

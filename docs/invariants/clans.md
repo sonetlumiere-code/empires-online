@@ -7,7 +7,8 @@ Formato y severidades: [README.md](README.md). Jugadores: [player.md](player.md)
 Diplomacia: [diplomacy.md](diplomacy.md). Seguridad del canal: [security.md](security.md). Spec:
 [../specs/clans.md](../specs/clans.md). Decisión: [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md).
 Territorios de clan: [../specs/clan-territories.md](../specs/clan-territories.md) y
-[ADR-041](../decisions/ADR-041-clan-territories.md).
+[ADR-041](../decisions/ADR-041-clan-territories.md). Gobierno del clan:
+[../specs/clan-governance.md](../specs/clan-governance.md).
 
 ---
 
@@ -20,7 +21,7 @@ Territorios de clan: [../specs/clan-territories.md](../specs/clan-territories.md
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E18 |
 | Política ante violación | REJECT (escritura) · FAIL_FAST (arranque) |
-| Cobertura | **Cubierto**: la DB por `TestUnaEstanciaAbiertaPorJugador` (índice único y validación de carga) y `TestLaPertenenciaAUnClanEnLaBase` (líder heredado y disolución en la transacción de salida), integration en `internal/persistence/postgres`; el dominio por `TestElLiderazgoYLaDisolucion` (`internal/game/simulation`) y `TestElLiderazgoPasaAlMasAntiguo` (`internal/domain/clan`) |
+| Cobertura | **Cubierto**: la DB por `TestUnaEstanciaAbiertaPorJugador` (índice único y validación de carga) y `TestLaPertenenciaAUnClanEnLaBase` (líder heredado y disolución en la transacción de salida), integration en `internal/persistence/postgres`; el dominio por `TestElLiderazgoYLaDisolucion` (`internal/game/simulation`) y `TestElLiderazgoPasaAlMasAntiguo` (`internal/domain/clan`); desde E20, el traspaso y la sucesión por `TestElCambioDeLiderEnLaBase` (integration), `TestCederElLiderazgo`, `TestGoldenLiderAusente` y `TestAlSalirElLiderHeredaElOficialMasAntiguo` (`internal/game/simulation`) |
 
 **Enunciado.** Para todo jugador hay como mucho una fila de `clan_members` con `left_at IS NULL`; y para todo clan
 con `dissolved_at IS NULL`, `leader_player_id` es el jugador de una de sus filas abiertas, y el clan tiene al menos
@@ -43,6 +44,11 @@ disuelto, idempotente; en la simulación, el paso del liderazgo con su desempate
 
 **Violación en runtime.** La validación de carga que encuentre dos estancias abiertas de un jugador o un clan vivo
 sin líder abierto registra `invariant_violation` con `inv_id=INV-CLAN-001` y no arranca.
+
+**Precisión (2026-11-16, [SPEC-CLAN-GOVERNANCE](../specs/clan-governance.md)).** El enunciado no cambia. Con E20 el
+líder cambia también por `clan.transfer` y por la sucesión por ausencia, y la salida del líder pasa el liderazgo al
+oficial más antiguo antes que al miembro más antiguo (`RN-CLANGOV-004`). Cada uno de esos cambios deja
+`leader_player_id` en una estancia abierta en la misma transacción, con el candado del clan.
 
 ---
 
@@ -152,6 +158,43 @@ reclamación termina como en un conflicto.
 
 ---
 
+<a id="inv-clan-005"></a>
+## INV-CLAN-005 — Sólo el rango que lo permite cambia la pertenencia ajena, los rangos o el liderazgo de un clan
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E20 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestLosPermisosPorRango` y `TestLoQueLaBaseNoEscribeSeDeshace` (`internal/game/simulation`), `TestLosPermisosDeCadaRango` (`internal/domain/clan`), y `TestElRangoSeCompruebaEnLaBase` y `TestElCambioDeLiderEnLaBase` (integration). Verificado por mutación: sin la comprobación del rango en la transacción de invitar, de expulsar, de nombrar o de ceder, falla la integración; con un oficial que expulsa a otro oficial, falla la simulación; sin deshacer una expulsión o un traspaso que la base no admite, falla la simulación; con cualquiera de los dos triggers de `000022` desactivado, falla la integración |
+
+**Enunciado.** Ninguna invitación, retirada de invitación, expulsión, cambio de rango ni traspaso del liderazgo se
+escribe si quien lo ordenó no tenía, en la transacción y con el candado del clan, el rango que lo permite: invitar,
+retirar y expulsar a un miembro raso, el líder o un oficial abierto; expulsar a un oficial, nombrar o quitar oficiales
+y ceder el liderazgo, sólo el líder. La sucesión automática (al salir el líder o por su ausencia) no tiene autor y
+sigue `RN-CLANGOV-004` y `RN-CLANGOV-005`.
+
+**Razón.** Con varios rangos, lo que hoy protege `leader_player_id` pasa a depender del rango de la estancia, que
+cambia con órdenes optimistas ([SPEC-CLAN-GOVERNANCE](../specs/clan-governance.md) §4.3, §7). Sin comprobarlo en la
+base, un oficial al que el líder acaba de quitar el rango, o un líder que acaba de ceder, podría colar una expulsión o
+una invitación que el tick validó con el rango viejo.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — el tick valida cada orden contra el rango de la RAM (`RN-CLANGOV-002`, `RN-CLANGOV-003`).
+- `DB` — la transacción de cada orden lee el rango de quien la dio (`clans.leader_player_id` y `clan_members.rank` de
+  su estancia abierta) con el candado del clan, el mismo que toman los cambios de rango y de líder, y sin él no
+  escribe nada (`RN-CLANGOV-006`).
+
+**Cómo se verifica.** En la simulación, la tabla de permisos de §4.2 de la spec, orden a orden y rango a rango; en la
+integración, un oficial que invita y expulsa a un raso pero no a otro oficial, un ex oficial que ya no invita y un ex
+líder que ya no cede.
+
+**Violación en runtime.** Rechazo: la orden no escribe nada y vuelve como `INVALID_TARGET`.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -160,3 +203,4 @@ reclamación termina como en un conflicto.
 | INV-CLAN-002 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-DIPLO-003](diplomacy.md#inv-diplo-003), [INV-PLAYER-013](player.md#inv-player-013) |
 | INV-CLAN-003 | `internal/game/simulation` | [INV-COMBAT-006](combat.md#inv-combat-006), [INV-COMBAT-002](combat.md#inv-combat-002) |
 | INV-CLAN-004 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-TERR-010](territory.md#inv-terr-010), [INV-TERR-012](territory.md#inv-terr-012) |
+| INV-CLAN-005 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-CLAN-001](#inv-clan-001), [INV-SEC-004](security.md#inv-sec-004) |
