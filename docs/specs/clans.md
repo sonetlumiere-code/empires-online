@@ -266,7 +266,8 @@ Un trigger en los dos sentidos —al abrir una estancia en `clan_members` y al a
 red de seguridad bajo la comprobación del tick (ADR-040 §4)
 ([INV-PERSIST-005](../invariants/persistence.md#inv-persist-005)). Que el líder sea un miembro abierto lo garantiza la
 transacción del trabajo que cambia el líder y lo comprueba un test, no la base. `territory_control` no cambia: el
-dueño `CLAN` sigue sin usarse (Q11). La siguiente migración libre pasará a ser `000021`.
+dueño `CLAN` sigue sin usarse (Q11). La siguiente migración libre pasará a ser `000021`. **Precisión (2026-11-16):**
+E19 usa el dueño `CLAN` con la migración `000021` ([clan-territories.md](clan-territories.md) §7).
 
 ## 8. Invariantes
 

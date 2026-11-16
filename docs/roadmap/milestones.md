@@ -2167,4 +2167,30 @@ recursos, almacén o edificios del clan, rangos, guerras y alianzas entre clanes
 5. **HECHO** — Cliente: «Reclamar para el clan», la línea del territorio con su clan dueño, el mapa en azul (clan
    propio) o violeta (otro clan), la línea de tierra afín, «Territorios del clan» con «Ir» y los textos de los avisos y
    del registro.
-6. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --territorio-clan` con cuentas de humo propias.
+6. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --territorio-clan` con cuentas de humo propias.
+
+**Verificación (2026-11-16).** Todo en serie y en verde: los scripts de documentación, determinismo y secretos, sus
+tests, `go build`, los dos `go vet`, `gofmt`, la suite de Go, las dos integraciones, el `typecheck`, los tests del
+protocolo y del cliente, la deriva del esquema, y `web:build` con los canarios y el escaneo del bundle. Cinco guards
+verificados por mutación: la ruptura de la reclamación al dejar el clan y la estancia abierta en la captura
+(`INV-CLAN-004`), los dos triggers de `000021` (`INV-TERR-012`), la protección de todos los miembros
+(`RN-CLANTERR-004`) y las filas del registro de un solo lado (ADR-041 §5). Al aplicar los triggers, un test de la
+validación de carga que escribía a mano un dueño `CLAN` inexistente pasó a usar un clan real.
+
+**Prueba en vivo (2026-11-16).** El servidor aplicó `000021` sobre la base de desarrollo (de la migración 20 a la 21),
+con los plazos cortos de la conquista y, antes, 60 de madera para entrenar en las ciudades de `smoke_clan_a` y
+`smoke_norse` (`EO_DEVSEED_STOCK_FOR`). `scripts/smoke.mjs --web http://localhost:3001` pasó tres veces, una por paso de
+la disputa de la Región 6-4: con `--territorio-clan --clan` (37 comprobaciones), `smoke_clan_a` entrenó un guerrero,
+reclamó para [HUM] (`claim.clan`) y a los 30 s el territorio fue del clan, con su `ownerClan` y en la lista del clan y
+en su vista pública; con `--territorio-clan` (28), reclamar para un clan sin clan se rechazó («no estás en ningún
+clan»), `smoke_norse` se lo quitó en 60 s y `smoke_clan_a`, con la vista en su ciudad, recibió `TERRITORY_CLAIMED` y
+`TERRITORY_LOST` con [HUM], y `smoke_norse` un solo `TERRITORY_TAKEN`; y otra vez con `--territorio-clan` (26), [HUM]
+lo recuperó, `smoke_norse` recibió su `TERRITORY_LOST` sin sigla y `smoke_clan_a` su `TERRITORY_TAKEN` con [HUM]. En
+la base, una fila de evento por miembro abierto (`smoke_clan_a` y `smoke_orden`) con `only: player`, una sola para
+quien lo ganó y las tres reclamaciones `CAPTURED` (dos con `clan_id`). Sin `invariant_violation` en el log. En el
+navegador, como `smoke_clan_a`: «Mientras no estabas» con los tres textos nuevos («… reclamó Región 6-4, de tu clan
+[HUM]», «… le quitó a tu clan [HUM] Región 6-4», «Tus guerreros ganaron Región 6-4 para tu clan [HUM], a …») y el
+panel del clan con «Territorios del clan: Región 6-4» e «Ir», que lleva la cámara. Sin comprobar en el navegador (el
+panel estaba oculto y sin `requestAnimationFrame`): el color azul o violeta del territorio en el mapa y «Reclamar para
+el clan [HUM]» con un guerrero seleccionado (los cubren la proyección y `conquest.test.ts`). En la base de desarrollo
+la Región 6-4 queda de [HUM]; la pasada siguiente de `--territorio-clan` es la de `smoke_norse`.
