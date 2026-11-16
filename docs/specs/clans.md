@@ -200,7 +200,8 @@ Sólo códigos que ya existen en el catálogo (canon §16).
 
 - `clan.update { clan, invitations[] }`, a todas las sesiones de un jugador cuando cambia su clan o sus invitaciones
   (y con el `requestId` a la que dio la orden): `clan` es la vista del propio clan (`{ id, name, tag, leaderId,
-  members[], sentInvitations[] }`, con las invitaciones enviadas sólo para el líder) o `null`; `invitations[]`, las
+  members[], sentInvitations[] }`, con las invitaciones enviadas sólo para el líder —desde E20 también para los oficiales,
+  [clan-governance.md](clan-governance.md)—) o `null`; `invitations[]`, las
   recibidas vivas (`{ clanId, name, tag, expiresAtMs }`). Llega también al conectar, tras el snapshot.
 - `clan.info { clanId, name, tag, members[] }`, sólo a la sesión que hizo `clan.lookup`: la vista pública.
 - `clan.chat.new { message }`, a las sesiones de todos los miembros; la del remitente que lo envió, con su

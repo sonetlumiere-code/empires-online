@@ -1358,10 +1358,10 @@ Hasta `EO_MESSAGE_PAGE_SIZE` mensajes (50) de los últimos `EO_MESSAGE_MAX_DAYS`
 ```ts
 payload: z.object({ clan: ClanView.nullable(), invitations: z.array(ClanInvitationView) })
 // ClanView: { id, name, tag, leaderId, members: ClanMemberView[] (≥ 1),
-//             sentInvitations: ClanSentInvitationView[] (vacía salvo para el líder),
+//             sentInvitations: ClanSentInvitationView[] (vacía salvo para el líder y, desde E20, los oficiales),
 //             territories: ClanTerritoryView[] }          // desde E19
 // ClanTerritoryView: { id, name, x, y }   // x, y: su tile central, para llevar la cámara
-// ClanMemberView: { playerId, cityId, cityName, faction, role: LEADER | MEMBER, joinedAtMs }
+// ClanMemberView: { playerId, cityId, cityName, faction, role: LEADER | OFFICER | MEMBER, joinedAtMs }  // OFFICER desde E20
 // ClanSentInvitationView: { playerId, cityId, cityName, expiresAtMs }
 // ClanInvitationView: { clanId, name, tag, expiresAtMs }
 ```
