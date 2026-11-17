@@ -2365,5 +2365,21 @@ tierra afín, compartir la unidad con los aliados y un tope por ciudad.
    (`unit_catalog_contract_test.go`), e2e (`TestEntrenarUnLegionarioPorLaRed`) y Zod.
 6. **HECHO** — Cliente: el botón de la unidad propia, las siluetas, las capacidades y los textos (`units.test.ts` y los
    de economía, conquista, registro y proyección).
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --unidad-civilizacion` (sus funciones, con test en
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --unidad-civilizacion` (sus funciones, con test en
    `scripts/smoke.test.mjs`).
+
+### Prueba en vivo (2026-11-17)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 23 a la 24 al arrancar, con `pnpm run
+verify:full` en verde antes:
+
+- `node scripts/smoke.mjs --web http://localhost:3001 --unidad-civilizacion` pasó entero (21 comprobaciones):
+  smoke_runner (`ROMAN`, en Bronce) pide `CATAPHRACT` y se rechaza con «la unidad es de otra civilización»; sin vino,
+  su taller elabora 10; el legionario se encarga con 80 de madera, 40 de piedra y 10 de vino y el plazo romano
+  (31 818 ms), y nace con su tipo y 110 de vida.
+- En el navegador, como smoke_clan_a (`ROMAN`, en la Edad de Piedra): tras «Aldeano» y «Guerrero», el botón
+  «Legionario (80 de madera, 40 de piedra y 10 de vino)», deshabilitado con «El legionario pide la Edad de Bronce.».
+- **Sin comprobar en el navegador:** las siluetas de las cuatro unidades (con el panel oculto no hay
+  `requestAnimationFrame` y el mapa no se dibuja), «Legionario · Romanos» en el panel de selección y la línea de la
+  unidad propia en el registro de alta (pide cerrar la sesión del navegador). Los cubren `units.test.ts` y la
+  proyección; el dibujo, sólo el typecheck.
