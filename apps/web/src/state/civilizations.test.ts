@@ -30,7 +30,7 @@ describe('civilizaciones en el cliente (SPEC-CIVILIZATION)', () => {
     ]);
     expect(textos('NORSE')).toEqual([
       '+10 % velocidad de las unidades',
-      '+15 % botín por guerrero',
+      '+15 % botín por unidad de combate',
       '−10 % velocidad de obras y entrenamiento',
     ]);
   });

@@ -2359,10 +2359,11 @@ tierra afín, compartir la unidad con los aliados y un tope por ciudad.
    `TestLaBaseRechazaLaUnidadDeOtraCivilizacionOAntesDeBronce`; el trigger, verificado por mutación).
 4. **HECHO** — Simulación: la reserva y la devolución en varios recursos, la respuesta automática por `CanAttack` y los
    golden de cada perfil (`civilization_units_test.go`: legionario, berserker, arquero a tres tiles, catafracto,
-   tierra afín, asedio y saqueo, y una unidad de cada tipo que ataca, saquea y derriba) y la recuperación
+   tierra afín, asedio y saqueo, una unidad de cada tipo que ataca, saquea y derriba, el estandarte de un legionario y
+   la caravana que captura un berserker) y la recuperación
    (`TestReinicioDuranteElEntrenamientoDeUnLegionario`).
 5. **HECHO** — Protocolo: los cuatro tipos en Zod y en Go, `units.json`, `CivilizationInfo.unit`; contract tests
-   (`unit_catalog_contract_test.go`), e2e (`TestEntrenarUnLegionarioPorLaRed`) y Zod.
+   (`unit_catalog_contract_test.go`), e2e (`TestEntrenarUnLegionarioPorLaRed`, `TestUnArqueroAtacaPorLaRedDesdeTresTiles`) y Zod.
 6. **HECHO** — Cliente: el botón de la unidad propia, las siluetas, las capacidades y los textos (`units.test.ts` y los
    de economía, conquista, registro y proyección).
 7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --unidad-civilizacion` (sus funciones, con test en

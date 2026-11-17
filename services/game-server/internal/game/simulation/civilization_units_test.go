@@ -386,6 +386,46 @@ func TestTodaUnidadQueAtacaPuedeHacerLoQueHaceElGuerrero(t *testing.T) {
 	}
 }
 
+// RN-CIVUNIT-005 en la conquista (RN-CONQ-001): un legionario planta el
+// estandarte en un territorio libre como el guerrero.
+func TestUnLegionarioPlantaElEstandarte(t *testing.T) {
+	h := newHarness(t)
+	conCuatroTerritorios(h, map[int64]uuid.UUID{1: h.playerID})
+	l := ponerUnidad(h, guerreroID, h.playerID, h.cityID, unit.TypeLegionary, world.Tile{X: 40, Y: 10}, 110)
+
+	h.reclamar(guerreroID)
+	require.Empty(t, h.codigos())
+	h.tick()
+	_, confirmada, ok := h.state.ActiveClaim(2)
+	require.True(t, ok)
+	assert.True(t, confirmada)
+	assert.Equal(t, unit.StatusClaiming, l.Status)
+}
+
+// RN-CIVUNIT-005 en las caravanas (RN-CARAVAN-006): un berserker de un tercero
+// mata la caravana y la captura para su ciudad, con la carga entera.
+func TestUnBerserkerCapturaUnaCaravana(t *testing.T) {
+	h := newHarness(t)
+	tratoEnCamino(h)
+	tercero := conTercero(h)
+	m := h.movimientoDe(caravanaDeMadera)
+	junto := m.Path[6].Tile()
+	ponerUnidad(h, asaltanteID, tercero, 3, unit.TypeBerserker, world.Tile{X: junto.X + 1, Y: junto.Y}, 60)
+
+	h.send(simulation.AttackUnit{PlayerID: tercero, RequestID: uuid.NewString(), UnitID: asaltanteID,
+		TargetID: caravanaDeMadera})
+	require.Empty(t, h.codigos())
+	require.True(t, h.tickHasta(1000, func() bool {
+		c, ok := h.state.Caravan(caravanaDeMadera)
+		return ok && c.ToCity == 3
+	}), "el berserker alcanza la caravana y la captura")
+	u, ok := h.state.Unit(caravanaDeMadera)
+	require.True(t, ok)
+	assert.Equal(t, tercero, u.PlayerID)
+	c, _ := h.state.Caravan(caravanaDeMadera)
+	assert.Equal(t, economy.Costs{madera300()}, c.Cargo, "INV-TRADE-005: la carga no cambia")
+}
+
 func abs32(v int32) int32 {
 	if v < 0 {
 		return -v

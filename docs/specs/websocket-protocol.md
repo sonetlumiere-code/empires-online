@@ -802,10 +802,10 @@ interface UnitView {
   id: number;                 // = unitId
   playerId: string;           // uuid del propietario
   cityId: number | null;
-  unitType: 'VILLAGER';       // MVP
+  unitType: UnitType;         // VILLAGER, WARRIOR (E2), CARAVAN (E15) y las cuatro de civilización (E22)
   x: number; y: number;       // tiles, planos: no hay objeto position
   hp: number; maxHp: number;
-  status: 'IDLE' | 'MOVING' | 'GARRISONED' | 'HIDDEN' | 'WORKING' | 'DEAD';
+  status: 'IDLE' | 'MOVING' | 'GARRISONED' | 'HIDDEN' | 'WORKING' | 'ATTACKING' | 'CLAIMING' | 'DEAD';
   movement: ActiveMovement | null;
   garrisonCityId: number | null; // ciudad que la aloja si está GARRISONED; cityId es la de origen
   carrying?: number;          // madera que lleva encima; ausente si nada (E1)

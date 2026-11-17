@@ -56,3 +56,30 @@ func TestAtacarPorLaRedMataAlObjetivo(t *testing.T) {
 	_, vive := env.state.Unit(600)
 	require.False(t, vive)
 }
+
+// SPEC-CIVILIZATION-UNITS §9 «e2e»: una unidad de civilización ataca por la red
+// como el guerrero (RN-CIVUNIT-005). El arquero a caballo, a tres tiles del
+// aldeano, se planta sin moverse y lo mata a distancia.
+func TestUnArqueroAtacaPorLaRedDesdeTresTiles(t *testing.T) {
+	env := newE2E(t)
+	ajeno := uuid.New()
+	cityID := int64(1)
+	env.state.AddUnit(&unit.Unit{ID: 500, PlayerID: env.playerID, CityID: &cityID, Type: unit.TypeHorseArcher,
+		X: 60, Y: 40, HP: 60, MaxHP: 60, Status: unit.StatusIdle})
+	env.state.AddUnit(&unit.Unit{ID: 600, PlayerID: ajeno, Type: unit.TypeVillager,
+		X: 63, Y: 40, HP: 40, MaxHP: 40, Status: unit.StatusIdle})
+	dueno, _ := conectar(t, env, env.playerID)
+
+	dueno.send(protocol.TypeUnitAttack, map[string]any{"unitId": 500, "targetUnitId": 600})
+	env.pump()
+	_, _ = dueno.awaitWhere(protocol.TypeEntityUpdate, func(raw json.RawMessage) bool {
+		p := decode[unitUpdate](t, raw)
+		return p.ID == 500 && p.Status != nil && *p.Status == string(unit.StatusAttacking)
+	}, 3*time.Second)
+
+	env.tick(80)
+	muerte, _ := dueno.awaitWhere(protocol.TypeEntityDespawn, func(raw json.RawMessage) bool {
+		return decode[protocol.EntityDespawnPayload](t, raw).ID == 600
+	}, 3*time.Second)
+	assert.Equal(t, protocol.DespawnDead, decode[protocol.EntityDespawnPayload](t, muerte.Payload).Reason)
+}

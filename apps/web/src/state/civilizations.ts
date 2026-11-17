@@ -21,7 +21,7 @@ const TRAIT_LABEL: Readonly<Record<v1.CivilizationTraitKey, string>> = {
   'unit.move_speed': 'velocidad de las unidades',
   'production.speed': 'velocidad de obras y entrenamiento',
   'building.house_hp': 'vida de las casas',
-  'combat.loot_carry': 'botín por guerrero',
+  'combat.loot_carry': 'botín por unidad de combate', // desde E22, también las de civilización (RN-CIVUNIT-006)
   'economy.gather_speed': 'velocidad de recolección',
 };
 

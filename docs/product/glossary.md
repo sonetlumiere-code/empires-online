@@ -750,14 +750,17 @@ Ver: [../specs/garrison.md](../specs/garrison.md).
 Entidad móvil propiedad de un jugador, fila de la tabla `units`. Estados (`units.status`): `IDLE`,
 `MOVING`, `GARRISONED`, `HIDDEN`, `DEAD`.
 
-El único `unit_type` del MVP es `VILLAGER`. Cada tipo define su `baseMsPerTile`, usado en el cálculo de
-coste temporal del movimiento.
+El MVP nació con un único `unit_type`, `VILLAGER`; hoy el catálogo tiene siete: `VILLAGER`, `WARRIOR` (E2),
+`CARAVAN` (E15) y las cuatro **unidades de civilización** de E22 (`LEGIONARY`, `CATAPHRACT`, `HORSE_ARCHER`,
+`BERSERKER`), cada una exclusiva de una civilización ([../specs/civilization-units.md](../specs/civilization-units.md)).
+Cada tipo define su `baseMsPerTile`, usado en el cálculo de coste temporal del movimiento, y lo que puede hacer
+(entrenarse, recolectar, atacar) sale de sus capacidades en el catálogo, no de su tipo.
 
 Ver: [../specs/unit.md](../specs/unit.md), [../invariants/units.md](../invariants/units.md).
 
 ### Villager
 
-Único `unit_type` del MVP: aldeano. Valores canónicos: **hp 40**, **speed 600 ms/tile**
+El aldeano, la unidad que recolecta y el primer `unit_type` del MVP. Valores canónicos: **hp 40**, **speed 600 ms/tile**
 (`baseMsPerTile = 600`). Cada ciudad inicial arranca con **3 villagers**.
 
 Ver: [../specs/unit.md](../specs/unit.md).
