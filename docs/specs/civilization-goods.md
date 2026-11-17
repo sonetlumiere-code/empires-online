@@ -113,7 +113,7 @@ bloquea a nadie (Q4).
 | `RN-GOODS-003` | El taller pide la Edad de Bronce, un tile libre de la zona urbana y que la ciudad no tenga otro en pie. |
 | `RN-GOODS-004` | `city.craft` pide un taller completo y ninguna elaboración en curso; cobra al confirmarse y entrega al vencer el plazo. |
 | `RN-GOODS-005` | La elaboración no bloquea el entrenamiento ni el avance, ni ellos a ella. |
-| `RN-GOODS-006` | El avance de Bronce a Hierro cobra madera, piedra y 60 bienes ajenos, nunca el propio, en el orden del catálogo. |
+| `RN-GOODS-006` | El avance de Bronce a Hierro cobra madera, piedra y 60 bienes ajenos, nunca el propio, en el orden del catálogo. **Precisión (2026-11-17, [castle-age.md](castle-age.md), [ADR-044](../decisions/ADR-044-castle-shooting.md)):** el avance de Hierro a Castillos cobra igual 120 bienes ajenos, nunca el propio (`RN-CASTLE-001`). |
 | `RN-GOODS-007` | Derribar el taller pierde la elaboración en curso, sin devolver lo pagado. |
 | `RN-GOODS-008` | Los bienes se comercian como la madera y la piedra (E10) y se ven en el almacén como ellas; el saqueo no se los lleva. **Precisión (2026-11-13, [caravans.md](caravans.md) Q6):** quien captura una caravana se lleva su carga entera, también los bienes; el saqueo del almacén sigue sin llevárselos. |
 
@@ -142,6 +142,7 @@ Sin códigos nuevos (canon §16):
 | | Falta madera o piedra | `INSUFFICIENT_RESOURCES` |
 | `city.advance` desde Bronce | Falta madera, piedra o bienes ajenos | `INSUFFICIENT_RESOURCES` |
 | `city.advance` desde Hierro | No hay más eras | `NOT_IMPLEMENTED` |
+| | **Precisión (2026-11-17, [castle-age.md](castle-age.md)):** desde E23, desde Hierro se avanza a Castillos y `NOT_IMPLEMENTED` es desde `CASTLE_AGE` | |
 
 ## 6. Eventos y contratos de red
 
@@ -234,7 +235,7 @@ no de ingeniería: cambiarlas es cambiar la spec.
 | Q8 | ¿Sirven los bienes propios para algo? | **No, sólo para comerciar.** Si sirvieran para el propio avance, no harían falta los demás. **Precisión (2026-11-17, [civilization-units.md](civilization-units.md), [ADR-043](../decisions/ADR-043-civilization-units.md)):** con E22 el bien propio paga también la unidad de civilización (10 por unidad, Q5 de esa spec); sigue sin servir para el propio avance. |
 | Q9 | ¿Se saquean los bienes? | **No en este slice.** El saqueo sigue llevándose madera, como decidieron la Q8 de E9 y la de E10; robar bienes cambiaría el equilibrio del saqueo sin datos. **Precisión (2026-11-13, [caravans.md](caravans.md) Q6):** el saqueo sigue sin llevarse bienes, pero la captura de una caravana sí se los lleva: es el riesgo del camino. |
 | Q10 | ¿Se puede derribar el taller? | **Sí, con un asedio como una casa** (200 de vida), y se pierde la elaboración en curso. Es la forma de presionar a un vecino que acapara un bien; volver a construirlo cuesta lo mismo. |
-| Q11 | ¿Más eras en este slice? | **No: sólo de Bronce a Hierro.** `CASTLE_AGE` sigue sin coste y `city.advance` desde Hierro responde `NOT_IMPLEMENTED`, como Bronce hasta ahora. |
+| Q11 | ¿Más eras en este slice? | **No: sólo de Bronce a Hierro.** `CASTLE_AGE` sigue sin coste y `city.advance` desde Hierro responde `NOT_IMPLEMENTED`, como Bronce hasta ahora. **Precisión (2026-11-17, [castle-age.md](castle-age.md), [ADR-044](../decisions/ADR-044-castle-shooting.md)):** desde E23 hay avance de Hierro a la Edad de los Castillos, con 1 600 de madera, 800 de piedra y 120 bienes ajenos, y `NOT_IMPLEMENTED` se responde desde `CASTLE_AGE`. |
 | Q12 | ¿Aplican los rasgos de E13? | **Sí, `production.speed` al taller y a la elaboración**: son obra y producción. Así el romano elabora un 10 % más rápido y el nórdico un 10 % más lento. Ningún rasgo cambia cuántos bienes salen. |
 
 ## 11. Documentos relacionados

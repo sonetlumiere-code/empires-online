@@ -2387,3 +2387,37 @@ verify:full` en verde antes:
   la base de desarrollo), «Legionario · Romanos» en el panel de selección (sólo el dueño selecciona su unidad) y la
   línea de la unidad propia en el registro de alta (pide cerrar la sesión del navegador). Los textos los cubren
   `units.test.ts` y la proyección; esas tres siluetas, sólo el typecheck.
+
+## E23 — Edad de los Castillos
+
+**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-edad-castillos`. Contrato:
+[SPEC-CASTLE-AGE](../specs/castle-age.md), aceptada el 2026-11-17 con sus diez decisiones de producto, y
+[ADR-044](../decisions/ADR-044-castle-shooting.md).
+
+**Objetivo.** Cerrar la escalera de eras del canon con un avance que vuelve a pedir comercio, y darle a la última era
+algo que se note en el mapa: el castillo, la primera defensa de una ciudad que no depende de tener un ejército en casa.
+
+**Alcance.** `city.advance` de Hierro a Castillos por 1 600 de madera, 800 de piedra y 120 bienes ajenos en cualquier
+mezcla, 360 s, que sube el límite a 150; el castillo (`CASTLE`): uno por ciudad, en un hueco de la zona urbana, 500 de
+madera y 800 de piedra, 180 s con `production.speed`, 1 000 de vida, asediable; su disparo de 10 cada 2 s a 5 tiles
+contra quien ataca a su dueño, nunca en paz, sin despertar la respuesta automática; sus muertes en el registro y los
+avisos (`UNIT_LOST_TO_CASTLE`, `CASTLE_KILL`); `targetUnitId` en `BuildingView`; `INV-ECON-012` e `INV-COMBAT-007`;
+migración `000025`; el cliente (avance, botón, dibujo, disparo, textos) y `scripts/smoke.mjs --castillo`. **No entra**
+(spec §2): eras posteriores, mejoras o nuevas unidades, tecnologías, que el castillo dé población o defienda a otros,
+ayuda del clan para el avance y que el castillo haga afín su entorno.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-044](../decisions/ADR-044-castle-shooting.md), `INV-ECON-012` e
+   `INV-COMBAT-007`, la precisión de `INV-ECON-011` ([economy.md](../invariants/economy.md)) y las de `RN-ECON-024` y
+   Q6 ([economy-stone.md](../specs/economy-stone.md)), `RN-GOODS-006` y Q11
+   ([civilization-goods.md](../specs/civilization-goods.md)), el no-scope de
+   [civilization-units.md](../specs/civilization-units.md), `RN-COMBAT-029` ([combat-siege.md](../specs/combat-siege.md)),
+   `RN-COMBAT-014` ([combat-response.md](../specs/combat-response.md)) y `Q-12` del [backlog](backlog.md).
+2. **PENDIENTE** — Dominio: el paso Hierro → Castillos de `advance`, `CASTLE` en el catálogo de edificios con su
+   perfil de disparo.
+3. **PENDIENTE** — Migración `000025` y persistencia: `CASTLE`, el único parcial y la muerte con autor edificio.
+4. **PENDIENTE** — Simulación: `castleState`, el objetivo y los disparos en la fase 4, el golden «castillo».
+5. **PENDIENTE** — Protocolo y registro: `CASTLE`, `targetUnitId`, los dos tipos de entrada; contract tests y e2e.
+6. **PENDIENTE** — Cliente: el avance a Castillos, el botón y el dibujo del castillo, la línea del disparo y los textos.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --castillo`.

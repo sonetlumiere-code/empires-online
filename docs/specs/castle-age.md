@@ -7,13 +7,13 @@ desde la Edad de Hierro, con un coste que vuelve a pedir comercio, y desbloquee 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CASTLE-AGE` |
-| Estado | Draft (2026-11-17). Pendiente de las decisiones de producto de §10; prohibido implementar contra ella hasta su aceptación. |
+| Estado | Accepted (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E23 Edad de los Castillos (vigesimotercer slice después de M7) |
 | Canon | §0 (civilización como eje), §1.5 (determinismo), §10 (eras y población), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [economy-stone.md](economy-stone.md), [civilization-goods.md](civilization-goods.md), [civilization-units.md](civilization-units.md), [economy-wood.md](economy-wood.md), [city.md](city.md), [trade.md](trade.md), [caravans.md](caravans.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [civilizations.md](civilizations.md), [factions.md](factions.md), [clans.md](clans.md), [clan-territories.md](clan-territories.md), [clan-alliances.md](clan-alliances.md), [presence.md](presence.md), [safe-zones.md](safe-zones.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (encargos en dos fases y débito con su efecto), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (resolución simultánea en la fase 4), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (el asedio de un edificio), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (el avance de era como encargo con su fila), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos en el punto de consumo), [ADR-036](../decisions/ADR-036-civilization-goods.md) (los bienes ajenos en cualquier mezcla), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la tierra afín) y [ADR-043](../decisions/ADR-043-civilization-units.md) (el combate que pregunta por capacidades). Propone el **ADR-044** (§7): un edificio que golpea sin ser una unidad, dentro de la resolución simultánea, y a quién se atribuyen sus muertes. |
-| Reemplaza a | La Q11 de [civilization-goods.md](civilization-goods.md) y la Q6 de [economy-stone.md](economy-stone.md) («`CASTLE_AGE` sigue sin coste»); en [civilization-units.md](civilization-units.md) §2, «la Edad de los Castillos» del no-scope; y, en parte, la `Q-12` del [backlog](../roadmap/backlog.md) (cómo se llega a `CASTLE_AGE`). Precisaría `RN-ECON-024` (`NOT_IMPLEMENTED` pasa a responderse desde `CASTLE_AGE`), `RN-GOODS-006` (el avance a Castillos también cobra bienes ajenos), `RN-COMBAT-029` (el castillo es un objetivo de asedio más) y `RN-COMBAT-014` (un disparo del castillo no despierta la respuesta automática, §4.4). |
-| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-004](../invariants/economy.md#inv-econ-004), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-ECON-010](../invariants/economy.md#inv-econ-010), [INV-ECON-011](../invariants/economy.md#inv-econ-011), [INV-CITY-017](../invariants/city.md#inv-city-017), [INV-CITY-018](../invariants/city.md#inv-city-018), [INV-COMBAT-001](../invariants/combat.md#inv-combat-001), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-COMBAT-006](../invariants/combat.md#inv-combat-006) e [INV-PLAYER-012](../invariants/player.md#inv-player-012); propone uno nuevo de la familia `INV-ECON` y uno de la familia `INV-COMBAT` (§8) |
+| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (encargos en dos fases y débito con su efecto), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (resolución simultánea en la fase 4), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (el asedio de un edificio), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (el avance de era como encargo con su fila), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos en el punto de consumo), [ADR-036](../decisions/ADR-036-civilization-goods.md) (los bienes ajenos en cualquier mezcla), [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la tierra afín) y [ADR-043](../decisions/ADR-043-civilization-units.md) (el combate que pregunta por capacidades). [ADR-044](../decisions/ADR-044-castle-shooting.md) (§7): un edificio que golpea sin ser una unidad, dentro de la resolución simultánea, que elige su objetivo por el estado de ataque y firma sus muertes como edificio. |
+| Reemplaza a | La Q11 de [civilization-goods.md](civilization-goods.md) y la Q6 de [economy-stone.md](economy-stone.md) («`CASTLE_AGE` sigue sin coste»); en [civilization-units.md](civilization-units.md) §2, «la Edad de los Castillos» del no-scope; y, en parte, la `Q-12` del [backlog](../roadmap/backlog.md) (cómo se llega a `CASTLE_AGE`). Precisa `RN-ECON-024` (`NOT_IMPLEMENTED` pasa a responderse desde `CASTLE_AGE`), `RN-GOODS-006` (el avance a Castillos también cobra bienes ajenos), `RN-COMBAT-029` (el castillo es un objetivo de asedio más) y `RN-COMBAT-014` (un disparo del castillo no despierta la respuesta automática, §4.4). |
+| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-004](../invariants/economy.md#inv-econ-004), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-ECON-010](../invariants/economy.md#inv-econ-010), [INV-ECON-011](../invariants/economy.md#inv-econ-011), [INV-CITY-017](../invariants/city.md#inv-city-017), [INV-CITY-018](../invariants/city.md#inv-city-018), [INV-COMBAT-001](../invariants/combat.md#inv-combat-001), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-COMBAT-006](../invariants/combat.md#inv-combat-006) e [INV-PLAYER-012](../invariants/player.md#inv-player-012); asigna [INV-ECON-012](../invariants/economy.md#inv-econ-012) e [INV-COMBAT-007](../invariants/combat.md#inv-combat-007) (§8) |
 
 ## 1. Objetivo
 
@@ -209,9 +209,11 @@ El disparo no responde a ninguna orden, así que no tiene errores; lo que no pue
 **Eventos.** El avance reutiliza `EraAdvanceOrdered` y `EraAdvanced`, y el castillo los eventos de los edificios
 (encargo, fin de obra, derribo). Las muertes que causa el castillo son un `UnitKilled` con el castillo como autor y su
 dueño como contraparte (`counterpart_player_id` y `atMs`, [ADR-028](../decisions/ADR-028-event-log-from-world-events.md)),
-clasificadas en el registro y en los avisos de los dos lados; el ADR-044 decide si van como `UnitKilled` con un autor
-edificio o como un tipo propio, y con él `eventlog.EventTypes`, `Classify`, `eventlog.NoticeKinds` y los textos del
-cliente. Cada disparo que no mata no es un suceso, como los golpes de las unidades.
+con `killerBuildingId` y `killerBuildingType` en su payload ([ADR-044](../decisions/ADR-044-castle-shooting.md) §5).
+El registro y los avisos las cuentan con dos tipos de entrada propios, `UNIT_LOST_TO_CASTLE` para la víctima y
+`CASTLE_KILL` para el dueño del castillo, para no agruparlas con lo que hizo un ejército (§6 del ADR); `EventTypes` no
+cambia, y `Kinds`, `NoticeKinds` y sus enums de Zod ganan los dos. Cada disparo que no mata no es un suceso, como los
+golpes de las unidades.
 
 **WebSocket (protocolo v1).** `BuildingType` gana `CASTLE`: es un valor nuevo en un enum estricto (AGENTS.md §4.2),
 rompe a un cliente viejo y se estrena junto en cliente y servidor. `BuildingView` gana un campo opcional,
@@ -229,7 +231,7 @@ servidor→cliente.
 | Dirty-flag | La vida de las unidades golpeadas, como cualquier golpe de E2 |
 | Reconstruible / no persistido | El instante del próximo disparo (tras un reinicio, el castillo está listo); su objetivo, que sale del estado de ataque de las unidades; el daño del castillo, que un reinicio olvida como el de una casa (`RN-COMBAT-032`) |
 
-**Por qué hace falta un ADR (ADR-044).** El castillo es lo primero que golpea sin ser una unidad, y eso toca tres
+**Por qué hace falta un ADR ([ADR-044](../decisions/ADR-044-castle-shooting.md)).** El castillo es lo primero que golpea sin ser una unidad, y eso toca tres
 decisiones estructurales que conviene dejar escritas con sus alternativas:
 
 1. **El castillo es un atacante de la resolución simultánea, no una unidad.** Sus disparos se calculan con el estado
@@ -264,18 +266,18 @@ y elige el objetivo del castillo), [INV-ECON-002](../invariants/economy.md#inv-e
 debitan con su efecto), [INV-ECON-004](../invariants/economy.md#inv-econ-004) (el límite es el de la era más las casas;
 el castillo no suma), [INV-ECON-005](../invariants/economy.md#inv-econ-005) (el avance y la obra a medias terminan en
 su instante tras un reinicio), [INV-ECON-010](../invariants/economy.md#inv-econ-010) (el taller, que el castillo imita),
-[INV-ECON-011](../invariants/economy.md#inv-econ-011) (que en la aceptación se precisaría para cubrir también el
-avance a Castillos), [INV-CITY-017](../invariants/city.md#inv-city-017) (el avance no cuenta como población),
+[INV-ECON-011](../invariants/economy.md#inv-econ-011) (precisado el 2026-11-17 para cubrir también el avance a
+Castillos), [INV-CITY-017](../invariants/city.md#inv-city-017) (el avance no cuenta como población),
 [INV-CITY-018](../invariants/city.md#inv-city-018) (de Hierro a Castillos, nunca hacia atrás),
 [INV-COMBAT-001](../invariants/combat.md#inv-combat-001), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002) e
 [INV-COMBAT-006](../invariants/combat.md#inv-combat-006) (los disparos del castillo son golpes y respetan lo mismo) e
 [INV-PLAYER-012](../invariants/player.md#inv-player-012) (el rasgo de producción sobre la obra del castillo).
 
-**Propone** dos invariantes nuevos, que se registrarían sin cobertura en la aceptación:
+**Asigna** dos invariantes nuevos, registrados sin cobertura en [../invariants/](../invariants/):
 
-- Familia `INV-ECON`: una ciudad tiene como mucho un castillo en pie, y sólo una ciudad en la Edad de los Castillos lo
+- [INV-ECON-012](../invariants/economy.md#inv-econ-012) — una ciudad tiene como mucho un castillo en pie, y sólo una ciudad en la Edad de los Castillos lo
   tiene (dominio en el predicado de la obra, único parcial de `000025` en la base).
-- Familia `INV-COMBAT`: un castillo sólo golpea a una unidad viva, a su alcance, que estaba atacando, saqueando o
+- [INV-COMBAT-007](../invariants/combat.md#inv-combat-007) — un castillo sólo golpea a una unidad viva, a su alcance, que estaba atacando, saqueando o
   derribando algo de su dueño, y nunca a la de un jugador en paz con él (dominio en la elección del objetivo,
   comprobado en la simulación).
 
@@ -291,12 +293,12 @@ avance a Castillos), [INV-CITY-017](../invariants/city.md#inv-city-017) (el avan
 | cliente | El motivo del avance a Castillos (también los bienes que faltan) y «No hay más eras»; el botón del castillo con cada motivo; el dibujo del castillo y la línea del disparo con y sin objetivo; los textos del registro y de los avisos de los dos lados |
 | humo | `scripts/smoke.mjs --castillo`, con su función exportada y su test en `scripts/smoke.test.mjs` (Q9) |
 
-## 10. Decisiones de producto (pendientes)
+## 10. Decisiones de producto (2026-11-17)
 
-Preguntas abiertas. Cada una lleva la recomendación (en negrita) y sus alternativas. Son decisiones de producto, no de
-ingeniería: la spec no se acepta hasta tenerlas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una (en negrita), y las alternativas
+quedan escritas. Son decisiones de producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué cuesta el avance en bienes: propios, ajenos, cuántos? | **120 bienes ajenos en cualquier mezcla, sin el propio**: el doble que Hierro y con la misma regla. Mantiene la lógica de E14 (para progresar hay que comerciar) sin crear un bloqueo nuevo: con un solo socio de otra civilización se llega, y el código ya sabe resolverlo (`ForeignGoods`). 120 bienes son 24 elaboraciones del vendedor: hace falta un socio estable o varios. Alternativas: **ajenos de al menos dos civilizaciones distintas** (por ejemplo, 60 de cada una de dos), que obliga a tratar con más gente pero bloquea a todos en un mundo con sólo dos civilizaciones; **también bienes propios** (por ejemplo, 120 ajenos y 40 propios), que da al bien propio un tercer uso pero rompe la Q8 de E14 («el bien propio no sirve para el propio avance») y compite con la unidad de E22; **los mismos 60 que Hierro**, que abarata el último paso. |
 | Q2 | ¿Cuánta madera y piedra, y cuánto tarda? | **1 600 de madera, 800 de piedra y 360 s, sin entrenar mientras dura.** Es la escalera de los dos avances anteriores (cada paso, el doble de recursos y de plazo), fácil de explicar y de equilibrar después en el catálogo. Seis minutos sin entrenar son el riesgo de avanzar: una ciudad que avanza no repone su ejército. Alternativas: **240 s**, para que el último paso no sea el más largo de esperar; **sin bloquear el entrenamiento** en este avance, que rompe una regla común a los tres (`RN-ECON-026`). |

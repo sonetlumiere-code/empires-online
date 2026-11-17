@@ -214,3 +214,36 @@ por la misma validación.
 
 **Violación en runtime.** Un golpe que llegara a evaluarse entre dos de la Orden se descarta y se registra
 `invariant_violation` con `inv_id=INV-COMBAT-006`.
+
+---
+
+<a id="inv-combat-007"></a>
+## INV-COMBAT-007 — Un castillo sólo golpea a quien, a su alcance, ataca algo de su dueño, y nunca en paz
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E23 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** (registrado el 2026-11-17 con [SPEC-CASTLE-AGE](../specs/castle-age.md), antes de su código) |
+
+**Enunciado.** Todo golpe de un castillo que se aplica en un tick cae sobre una unidad viva, en el mapa, a distancia de
+Chebyshev no mayor que el alcance del castillo, que en ese tick está en `ATTACKING` contra una unidad del dueño del
+castillo, contra su ciudad (saqueo) o contra uno de sus edificios (asedio); y nunca sobre una unidad de un jugador en
+paz con el dueño del castillo, oculta, sobre una Safe Zone o de un jugador `PROTECTED`, ni con el dueño del castillo
+`PROTECTED`.
+
+**Razón.** El castillo es una defensa que reacciona a un ataque (SPEC-CASTLE-AGE Q5): si golpeara a quien pasa, a un
+aliado o a un compañero de clan, rompería la paz que el jugador eligió y haría de cada ciudad un peaje.
+
+**Cómo se garantiza.** `DOMAIN` — el objetivo sale de los enfrentamientos en `ATTACKING` cuyo blanco es del dueño y pasa
+`castleBlocked`, el predicado de hostilidad del castillo (las cuatro fuentes de paz, la protección de los dos lados, la
+visibilidad y las Safe Zones), que se vuelve a comprobar antes de aplicar cada golpe
+([ADR-044](../decisions/ADR-044-castle-shooting.md) §3 y §4).
+
+**Cómo se verifica.** Pendiente: el golden del castillo (quien ataca recibe; quien pasa sin atacar, quien ataca a otro
+jugador y quien está en paz, no) en `internal/game/simulation`, verificado por mutación.
+
+**Violación en runtime.** Un golpe de castillo que llegara a aplicarse sobre una unidad que no pasa el predicado se
+descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-007`.

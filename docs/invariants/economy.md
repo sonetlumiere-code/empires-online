@@ -484,7 +484,7 @@ dominio y su reserva se deshace.
 ---
 
 <a id="inv-econ-011"></a>
-## INV-ECON-011 — El avance a la Edad de Hierro nunca cobra el bien de la civilización de la ciudad
+## INV-ECON-011 — Ningún avance de era cobra el bien de la civilización de la ciudad
 
 | Campo | Valor |
 |---|---|
@@ -492,10 +492,10 @@ dominio y su reserva se deshace.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E14 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestResolveTomaBienesAjenosEnOrdenYNuncaElPropio`, `TestCanAdvanceAHierroResuelveLosBienes` (unit) y `TestElAvanceAHierroCobraBienesAjenosYNuncaElPropio` (simulation) |
+| Cobertura | **Parcial** desde el 2026-11-17: el avance a Hierro, por `TestResolveTomaBienesAjenosEnOrdenYNuncaElPropio`, `TestCanAdvanceAHierroResuelveLosBienes` (unit) y `TestElAvanceAHierroCobraBienesAjenosYNuncaElPropio` (simulation); falta el avance a Castillos (E23) |
 
 **Enunciado.** Los costes que cobra el avance de `BRONZE_AGE` a `IRON_AGE` son 800 de madera, 400 de piedra y 60 bienes
-que no son el `good` de la civilización del dueño de la ciudad, tomados en el orden del catálogo de civilizaciones.
+que no son el `good` de la civilización del dueño de la ciudad, tomados en el orden del catálogo de civilizaciones. **Precisión (2026-11-17, [SPEC-CASTLE-AGE](../specs/castle-age.md)):** desde E23 vale también para el avance de `IRON_AGE` a `CASTLE_AGE`, que cobra 1 600 de madera, 800 de piedra y 120 bienes ajenos con la misma regla: ningún avance de era cobra el bien propio.
 
 **Razón.** Es lo que hace necesario el comercio (SPEC-CIVILIZATION-GOODS Q8): si el bien propio contara, nadie
 necesitaría a nadie.
@@ -513,3 +513,36 @@ resolución no salta el bien propio, fallan los tres.
 
 **Violación en runtime.** No hay ruta conocida: la lista cobrada es la resuelta.
 
+---
+
+<a id="inv-econ-012"></a>
+## INV-ECON-012 — Una ciudad tiene como mucho un castillo en pie, y sólo si está en la Edad de los Castillos
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E23 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** (registrado el 2026-11-17 con [SPEC-CASTLE-AGE](../specs/castle-age.md), antes de su código) |
+
+**Enunciado.** Para cada ciudad, hay como mucho una fila de `buildings` con `type = 'CASTLE'` y `status <> 'DESTROYED'`,
+y sólo una ciudad con `era = 'CASTLE_AGE'` tiene alguna.
+
+**Razón.** Un castillo por ciudad evita amontonar defensas en la zona urbana, y pedir la Edad de los Castillos es lo que
+hace del castillo el desbloqueo de la última era (SPEC-CASTLE-AGE Q3, Q4). Como la era no retrocede
+([INV-CITY-018](city.md#inv-city-018)), un castillo encargado en Castillos nunca queda en una ciudad de una era anterior.
+
+**Cómo se garantiza.**
+
+- `DB` — el índice único parcial `buildings_one_castle_per_city` (migración `000025`), hermano del del taller.
+- `DOMAIN` — `building.CanBuild` exige `RequiresEra = CASTLE_AGE` y `UniquePerCity` antes de reservar la obra
+  ([ADR-044](../decisions/ADR-044-castle-shooting.md) §1), y el tick reserva el castillo al validar la orden, así que
+  un segundo encargo se rechaza con `INVALID_TARGET`.
+
+**Cómo se verifica.** Pendiente: el rechazo en el tick antes de Castillos y del segundo castillo (simulation), y el
+índice que rechaza un segundo castillo en pie y admite otro tras derribar el primero (integration), verificado por
+mutación.
+
+**Violación en runtime.** La base la hace imposible; en la RAM, la transacción del segundo falla con un rechazo de
+dominio y su reserva se deshace.
