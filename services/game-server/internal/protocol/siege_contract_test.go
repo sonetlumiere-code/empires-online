@@ -37,7 +37,8 @@ func TestLaVidaDeLosEdificiosYElAvisoEstanEnElEsquema(t *testing.T) {
 	root, spawn := serverVariant(t, protocol.TypeBuildingSpawn)
 	vista := dig(t, root, spawn, "properties", "payload", "properties", "building").(map[string]any)
 	declaradas := clavesDe(dig(t, root, vista, "properties").(map[string]any))
-	require.Equal(t, declaradas, clavesDe(serializado(t, protocol.BuildingView{HP: 150, MaxHP: 150})))
+	objetivo := int64(9)
+	require.Equal(t, declaradas, clavesDe(serializado(t, protocol.BuildingView{HP: 150, MaxHP: 150, TargetUnitID: &objetivo})))
 	assert.NotContains(t, requeridas(t, vista), "hp", "opcional: un cliente sin asedio no la necesita")
 
 	root, update := serverVariant(t, protocol.TypeBuildingUpdate)

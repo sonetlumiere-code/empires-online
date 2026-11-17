@@ -293,6 +293,25 @@ Castillos), [INV-CITY-017](../invariants/city.md#inv-city-017) (el avance no cue
 | cliente | El motivo del avance a Castillos (también los bienes que faltan) y «No hay más eras»; el botón del castillo con cada motivo; el dibujo del castillo y la línea del disparo con y sin objetivo; los textos del registro y de los avisos de los dos lados |
 | humo | `scripts/smoke.mjs --castillo`, con su función exportada y su test en `scripts/smoke.test.mjs` (Q9) |
 
+**Precisiones (2026-11-17, al implementarlo).**
+
+- **Los golden de §9.** El guerrero que asedia una casa recibe el primer disparo en el tick de su primer golpe de
+  asedio y muere con el sexto, 10 000 ms después, con la casa en 94 (`TestElCastilloGoldenMataAlGuerreroQueAsedia`).
+  Los seis guerreros derriban el castillo a los 39 000 ms exactos, con 126 golpes, tras perder tres a los 10, 22 y
+  34 s (`TestSeisGuerrerosDerribanElCastillo`): los «unos 40 s» de §4.3.
+- **El objetivo cambia en cuanto llega uno más cercano**, pero el siguiente disparo espera su intervalo: el castillo no
+  recarga al cambiar de objetivo (`TestElCastilloEligeAlMasCercanoYDesempataPorID`).
+- **Paz a mitad del ataque.** Un tratado que aparece mientras una unidad ataca termina el enfrentamiento en ese tick
+  (`RN-COMBAT-008`) antes de que el castillo elija, así que deja de ser objetivo sin pasar por `INV-COMBAT-007`, que
+  queda como defensa.
+- **El cliente** (§4.7). La línea del disparo se dibuja mientras el castillo apunta, no sólo en el instante de cada
+  golpe: el cliente sabe a quién apunta (`targetUnitId`), no cuándo dispara. El botón «Castillo» aparece desde la Edad
+  de Hierro; en Castillos el botón de avanzar desaparece en vez de decir «No hay más eras».
+- **La semilla** (Q9). `EO_DEVSEED_STOCK_FOR` deja como mínimo la madera y la piedra de todos los avances que le faltan
+  a la ciudad hasta Castillos más las del castillo, y los bienes ajenos de esos avances en el primer bien del catálogo
+  que no es el suyo (`devseed.StockFor`): una ciudad en Piedra recibe 3 300 de madera, 2 200 de piedra y 180 de ese
+  bien.
+
 ## 10. Decisiones de producto (2026-11-17)
 
 Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una (en negrita), y las alternativas

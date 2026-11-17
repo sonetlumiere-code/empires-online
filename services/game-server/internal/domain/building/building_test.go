@@ -122,7 +122,8 @@ func TestUnaCasaSoloSeCompletaUnaVez(t *testing.T) {
 
 func TestValidateRechazaFilasFueraDelCatalogo(t *testing.T) {
 	assert.NoError(t, (&Building{Type: TypeHouse, Status: StatusComplete}).Validate())
-	assert.Error(t, (&Building{Type: "CASTLE", Status: StatusComplete}).Validate())
+	assert.NoError(t, (&Building{Type: TypeCastle, Status: StatusComplete}).Validate(), "desde E23")
+	assert.Error(t, (&Building{Type: "TOWER", Status: StatusComplete}).Validate())
 	assert.Error(t, (&Building{Type: TypeHouse, Status: "RUINED"}).Validate())
 }
 
@@ -194,4 +195,56 @@ func TestElTallerPideBronceYEsUnico(t *testing.T) {
 	def, err := CanBuild(bronce, dueno, TypeWorkshop, hueco, nil, ninguno, recursos(100, 50))
 	require.NoError(t, err)
 	assert.Equal(t, TypeWorkshop, def.Type)
+}
+
+// SPEC-CASTLE-AGE Q4 y Q5: el castillo cuesta 500 de madera y 800 de piedra,
+// tarda 180 s, no da población, aguanta 1 000, pide Castillos, es único y es el
+// único edificio que golpea: 10 cada 2 s a 5 tiles.
+func TestElCastilloTieneLosValoresDelCatalogo(t *testing.T) {
+	def, err := Lookup(TypeCastle)
+	require.NoError(t, err)
+	assert.Equal(t, economy.Costs{
+		{Resource: economy.ResourceWood, Amount: 500},
+		{Resource: economy.ResourceStone, Amount: 800},
+	}, def.Costs)
+	assert.Equal(t, int64(180_000), def.BuildMs)
+	assert.Zero(t, def.PopulationBonus)
+	assert.Equal(t, int32(1_000), def.MaxHP)
+	assert.Equal(t, city.EraCastle, def.RequiresEra)
+	assert.True(t, def.UniquePerCity)
+	assert.True(t, def.CanShoot())
+	assert.Equal(t, int32(10), def.AttackDamage)
+	assert.Equal(t, int64(2_000), def.AttackIntervalMs)
+	assert.Equal(t, int32(5), def.AttackRange)
+	for _, t2 := range []Type{TypeHouse, TypeWorkshop} {
+		d, err := Lookup(t2)
+		require.NoError(t, err)
+		assert.False(t, d.CanShoot(), "%s no golpea", t2)
+	}
+}
+
+// RN-CASTLE-002 e INV-ECON-012: el castillo pide la Edad de los Castillos y no
+// admite otro en pie; después, el sitio y los dos recursos.
+func TestElCastilloPideCastillosYEsUnico(t *testing.T) {
+	hueco := world.Tile{X: 9, Y: 10}
+	ninguno := func(Type) bool { return false }
+	uno := func(t Type) bool { return t == TypeCastle }
+	en := func(e city.Era) *city.City {
+		c := ciudad()
+		c.Era = e
+		return c
+	}
+
+	for _, e := range []city.Era{city.EraStone, city.EraBronze, city.EraIron} {
+		_, err := CanBuild(en(e), dueno, TypeCastle, hueco, nil, ninguno, recursos(500, 800))
+		assert.ErrorIs(t, err, ErrInvalidSite, "en %s no hay castillo", e)
+	}
+	_, err := CanBuild(en(city.EraCastle), dueno, TypeCastle, hueco, nil, uno, recursos(500, 800))
+	assert.ErrorIs(t, err, ErrInvalidSite, "uno por ciudad")
+	_, err = CanBuild(en(city.EraCastle), dueno, TypeCastle, hueco, nil, ninguno, recursos(500, 799))
+	assert.ErrorIs(t, err, economy.ErrInsufficientResources)
+
+	def, err := CanBuild(en(city.EraCastle), dueno, TypeCastle, hueco, nil, ninguno, recursos(500, 800))
+	require.NoError(t, err)
+	assert.Equal(t, TypeCastle, def.Type)
 }

@@ -25,6 +25,10 @@ type Kill struct {
 	Lost           int32
 	VictimType     unit.Type
 	AtMs           int64
+	// KillerBuildingID y KillerBuildingType: el edificio que la causó, si fue
+	// un castillo (ADR-044 §5); KillerID es entonces 0.
+	KillerBuildingID   int64
+	KillerBuildingType string
 }
 
 // Kill escribe una muerte dentro de la transacción `db`: la víctima DEAD, sin
@@ -66,6 +70,11 @@ func (r *UnitRepo) Kill(ctx context.Context, db DB, k Kill) (bool, error) {
 		"unitId": k.VictimID, "killerId": k.KillerID, "killerPlayerId": k.KillerPlayer.String(),
 		"x": k.At.X, "y": k.At.Y, "loot": k.Loot, "lost": k.Lost,
 		"unitType": string(k.VictimType), "atMs": k.AtMs,
+	}
+	// El autor edificio: un castillo (SPEC-CASTLE-AGE §6, ADR-044 §5).
+	if k.KillerBuildingID != 0 {
+		payload["killerBuildingId"] = k.KillerBuildingID
+		payload["killerBuildingType"] = k.KillerBuildingType
 	}
 	victim := k.VictimPlayer
 	if err := appendEvent(ctx, db, worldEvent{

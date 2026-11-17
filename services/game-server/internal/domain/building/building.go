@@ -29,6 +29,9 @@ const (
 	// TypeWorkshop es el taller, que elabora el bien de la civilización de su
 	// dueño (SPEC-CIVILIZATION-GOODS §4.2).
 	TypeWorkshop Type = "WORKSHOP"
+	// TypeCastle es el castillo, que golpea a quien ataca a su dueño
+	// (SPEC-CASTLE-AGE §4.2, ADR-044).
+	TypeCastle Type = "CASTLE"
 )
 
 // Status es el estado de un edificio.
@@ -63,8 +66,21 @@ type Definition struct {
 	MaxHP int32
 	// RequiresEra es la era mínima de la ciudad; "" si no pide ninguna.
 	RequiresEra city.Era
-	// UniquePerCity: como mucho uno en pie por ciudad (INV-ECON-010).
+	// UniquePerCity: como mucho uno en pie por ciudad (INV-ECON-010,
+	// INV-ECON-012).
 	UniquePerCity bool
+	// AttackDamage, AttackIntervalMs y AttackRange son su perfil de disparo,
+	// si lo tiene (SPEC-CASTLE-AGE §4.3, ADR-044 §1): el daño de un golpe, el
+	// intervalo entre golpes y el alcance en Chebyshev desde su tile.
+	AttackDamage     int32
+	AttackIntervalMs int64
+	AttackRange      int32
+}
+
+// CanShoot indica si el tipo golpea a las unidades que atacan a su dueño
+// (RN-CASTLE-004).
+func (d Definition) CanShoot() bool {
+	return d.AttackDamage > 0 && d.AttackIntervalMs > 0 && d.AttackRange > 0
 }
 
 // catalog vive en código, como el de unidades (SPEC-ECON-WOOD §4.5). Los
@@ -88,6 +104,22 @@ var catalog = map[Type]Definition{
 		MaxHP:         200,
 		RequiresEra:   city.EraBronze,
 		UniquePerCity: true,
+	},
+	// SPEC-CASTLE-AGE Q4 y Q5: pide Castillos, es único, no da población,
+	// aguanta 1 000 y golpea 10 cada 2 s a 5 tiles.
+	TypeCastle: {
+		Type: TypeCastle,
+		Costs: economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 500},
+			{Resource: economy.ResourceStone, Amount: 800},
+		},
+		BuildMs:          180_000,
+		MaxHP:            1_000,
+		RequiresEra:      city.EraCastle,
+		UniquePerCity:    true,
+		AttackDamage:     10,
+		AttackIntervalMs: 2_000,
+		AttackRange:      5,
 	},
 }
 

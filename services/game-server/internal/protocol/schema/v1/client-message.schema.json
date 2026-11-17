@@ -336,7 +336,8 @@
                   "type": "string",
                   "enum": [
                     "HOUSE",
-                    "WORKSHOP"
+                    "WORKSHOP",
+                    "CASTLE"
                   ]
                 },
                 "x": {

@@ -6,7 +6,8 @@
 // `population_cap` de cada era NO están aquí: viven en la tabla `eras`
 // (RN-CITY-015); aquí sólo está qué cuesta pasar de una a otra.
 //
-// Spec: ../../../../../docs/specs/economy-stone.md §4.4.
+// Spec: ../../../../../docs/specs/economy-stone.md §4.4, civilization-goods.md
+// §4.4 y castle-age.md §4.1.
 package advance
 
 import (
@@ -33,8 +34,9 @@ type Step struct {
 }
 
 // catalog son los pasos disponibles. Parámetros de equilibrio
-// (SPEC-ECON-STONE Q5, SPEC-CIVILIZATION-GOODS Q5): se ajustan aquí sin tocar
-// la spec. Desde IRON_AGE no hay avance (Q11).
+// (SPEC-ECON-STONE Q5, SPEC-CIVILIZATION-GOODS Q5, SPEC-CASTLE-AGE Q1 y Q2): se
+// ajustan aquí sin tocar la spec. Desde CASTLE_AGE, la última era del
+// catálogo, no hay avance (SPEC-CASTLE-AGE Q10).
 var catalog = map[city.Era]Step{
 	city.EraStone: {
 		From: city.EraStone, To: city.EraBronze,
@@ -52,6 +54,15 @@ var catalog = map[city.Era]Step{
 		},
 		ForeignGoods: 60,
 		DurationMs:   180_000,
+	},
+	city.EraIron: {
+		From: city.EraIron, To: city.EraCastle,
+		Costs: economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 1_600},
+			{Resource: economy.ResourceStone, Amount: 800},
+		},
+		ForeignGoods: 120,
+		DurationMs:   360_000,
 	},
 }
 
@@ -72,8 +83,8 @@ var (
 	ErrCityNotFound = production.ErrCityNotFound
 	// ErrCityBusy: la ciudad entrena algo o ya está avanzando (RN-ECON-026).
 	ErrCityBusy = production.ErrCityBusy
-	// ErrUnavailable: no hay avance desde la era de la ciudad
-	// (NOT_IMPLEMENTED, RN-ECON-024).
+	// ErrUnavailable: no hay avance desde la era de la ciudad, que desde E23
+	// es sólo CASTLE_AGE (NOT_IMPLEMENTED, RN-ECON-024, RN-CASTLE-001).
 	ErrUnavailable = errors.New("no hay avance de era disponible desde esta era")
 	// ErrInvalid: una fila de avance que no es un paso del catálogo.
 	ErrInvalid = errors.New("avance de era inválido")

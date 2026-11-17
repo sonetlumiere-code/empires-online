@@ -169,6 +169,7 @@ func (s *State) buildingView(b building.Building) protocol.BuildingView {
 	v := BuildingView(b)
 	if cur, ok := s.buildings[b.ID]; ok {
 		v.HP, v.MaxHP = s.houseHP(cur)
+		v.TargetUnitID = s.castleTargetOf(b.ID)
 	} else if maxHP, ok := s.buildingMaxHP(b); ok {
 		v.HP, v.MaxHP = maxHP, maxHP
 	}
@@ -185,6 +186,8 @@ func (s *State) removeBuilding(b *building.Building) {
 	s.buildingIDs = removeSorted(s.buildingIDs, b.ID)
 	delete(s.siege.damage, b.ID)
 	delete(s.pendingCompletions, b.ID)
+	// RN-CASTLE-007: un castillo derribado deja de disparar en ese tick.
+	delete(s.castles.shots, b.ID)
 	s.siege.destroying[b.Tile()] = b.ID
 }
 

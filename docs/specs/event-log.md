@@ -98,6 +98,13 @@ aceptación (`CLAN_ALLIANCE_ACCEPTED`) y el rechazo (`CLAN_ALLIANCE_REJECTED`). 
 en el clan juntó a la Orden y al Caos, no se le cuenta. Retirar, la ruptura vencida y la caducidad no entran. Cada
 suceso de una alianza es su propia entrada. El catálogo pasa de 31 a 35 tipos.
 
+**Precisión (2026-11-17, [castle-age.md](castle-age.md) §6, [ADR-044](../decisions/ADR-044-castle-shooting.md) §6).**
+Desde E23, una muerte que causa un castillo (`UnitKilled` con `killerBuildingType: "CASTLE"` en el payload y el dueño
+del castillo como `counterpart_player_id`) da sus propios tipos: a la víctima, `UNIT_LOST_TO_CASTLE` («El castillo de
+Villa Norte mató a uno de tus guerreros»), y al dueño del castillo, `CASTLE_KILL` («Tu castillo mató a 3 guerreros de
+Villa Norte»), con `unitType` y el tile como las muertes de siempre. No se agrupan con las que causó un ejército del
+mismo jugador. `EventTypes` no cambia; el catálogo pasa de 35 a 37 tipos.
+
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) §6, [ADR-041](../decisions/ADR-041-clan-territories.md) §5).**
 Desde E19, con un clan dueño, `TerritoryClaimStarted` y `TerritoryControlChanged` se escriben una fila por miembro
 abierto del clan, con `only: "player"` en el payload: cada fila le cuenta el suceso sólo a su miembro, con la sigla del

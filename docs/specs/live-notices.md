@@ -83,6 +83,11 @@ alianza entre clanes, al líder del clan que la recibe (`CLAN_ALLIANCE_OFFERED`)
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) Q7).** Desde E19, la reclamación y la pérdida de un
 territorio de clan se avisan a cada miembro abierto del clan, con `clanTag`; ganarlo, una sola vez a quien lo gana.
 
+**Precisión (2026-11-17, [castle-age.md](castle-age.md) §6, [ADR-044](../decisions/ADR-044-castle-shooting.md) §6).**
+Desde E23 se avisan también, a los dos lados, las muertes que causa un castillo: `UNIT_LOST_TO_CASTLE` al dueño de la
+víctima y `CASTLE_KILL` al dueño del castillo, con `unitType` y el tile, en el tick de la muerte. Cada disparo que no
+mata no se avisa. `EventLogNoticeKind` gana los dos y pasa de 16 a 18 tipos (los de `eventlog.NoticeKinds`).
+
 ### 4.2 Reglas
 
 Dominio: `RN-NOTICE`.

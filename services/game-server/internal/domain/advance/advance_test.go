@@ -30,9 +30,10 @@ func almacen(cantidades map[economy.Resource]int64) func(economy.Resource) *econ
 var orden = economy.Goods()
 
 // SPEC-ECON-STONE Q5: de Piedra a Bronce, por 400 de madera y 200 de piedra en
-// 90 s; SPEC-CIVILIZATION-GOODS Q5 y Q11: de Bronce a Hierro, por 800, 400 y 60
-// bienes ajenos en 180 s; desde Hierro, nada.
-func TestLosPasosSonDePiedraABronceYDeBronceAHierro(t *testing.T) {
+// 90 s; SPEC-CIVILIZATION-GOODS Q5: de Bronce a Hierro, por 800, 400 y 60
+// bienes ajenos en 180 s; SPEC-CASTLE-AGE Q1, Q2 y Q10: de Hierro a Castillos,
+// por 1 600, 800 y 120 bienes ajenos en 360 s; desde Castillos, nada.
+func TestLosPasosDeEraSonLosTresDelCatalogo(t *testing.T) {
 	s, ok := advance.Next(city.EraStone)
 	require.True(t, ok)
 	assert.Equal(t, city.EraBronze, s.To)
@@ -53,10 +54,54 @@ func TestLosPasosSonDePiedraABronceYDeBronceAHierro(t *testing.T) {
 	assert.Equal(t, int64(60), h.ForeignGoods)
 	assert.Equal(t, int64(180_000), h.DurationMs)
 
-	for _, e := range []city.Era{city.EraIron, city.EraCastle} {
-		_, ok := advance.Next(e)
-		assert.False(t, ok, "desde %s no hay avance", e)
+	c, ok := advance.Next(city.EraIron)
+	require.True(t, ok)
+	assert.Equal(t, city.EraCastle, c.To)
+	assert.Equal(t, economy.Costs{
+		{Resource: economy.ResourceWood, Amount: 1_600},
+		{Resource: economy.ResourceStone, Amount: 800},
+	}, c.Costs)
+	assert.Equal(t, int64(120), c.ForeignGoods)
+	assert.Equal(t, int64(360_000), c.DurationMs)
+
+	_, ok = advance.Next(city.EraCastle)
+	assert.False(t, ok, "desde Castillos no hay avance")
+}
+
+// INV-ECON-011 y RN-CASTLE-001: el avance a Castillos pide 120 bienes ajenos en
+// cualquier mezcla y nunca cuenta el propio, aunque sobre.
+func TestCanAdvanceACastillosResuelveCientoVeinteBienesAjenos(t *testing.T) {
+	c := &city.City{ID: 7, OwnerPlayerID: dueno, Era: city.EraIron}
+	base := map[economy.Resource]int64{economy.ResourceWood: 1_600, economy.ResourceStone: 800}
+	con := func(extra map[economy.Resource]int64) func(economy.Resource) *economy.Stock {
+		m := map[economy.Resource]int64{}
+		for r, n := range base {
+			m[r] = n
+		}
+		for r, n := range extra {
+			m[r] = n
+		}
+		return almacen(m)
 	}
+
+	_, err := advance.CanAdvance(c, dueno, false, economy.ResourceFurs, orden,
+		con(map[economy.Resource]int64{economy.ResourceFurs: 500, economy.ResourceWine: 119}))
+	assert.ErrorIs(t, err, economy.ErrInsufficientResources, "119 ajenos no llegan y las pieles propias no cuentan")
+
+	s, err := advance.CanAdvance(c, dueno, false, economy.ResourceFurs, orden,
+		con(map[economy.Resource]int64{economy.ResourceFurs: 500, economy.ResourceWine: 30, economy.ResourceSilk: 40, economy.ResourceSpices: 90}))
+	require.NoError(t, err)
+	assert.Equal(t, city.EraCastle, s.To)
+	assert.Equal(t, economy.Costs{
+		{Resource: economy.ResourceWood, Amount: 1_600},
+		{Resource: economy.ResourceStone, Amount: 800},
+		{Resource: economy.ResourceWine, Amount: 30},
+		{Resource: economy.ResourceSilk, Amount: 40},
+		{Resource: economy.ResourceSpices, Amount: 50},
+	}, s.Costs, "en el orden del catálogo, sin pieles")
+	_, err = advance.CanAdvance(c, dueno, false, economy.ResourceFurs, orden,
+		almacen(map[economy.Resource]int64{economy.ResourceWood: 1_599, economy.ResourceStone: 800, economy.ResourceWine: 120}))
+	assert.ErrorIs(t, err, economy.ErrInsufficientResources)
 }
 
 // INV-ECON-011 y RN-GOODS-006: los 60 bienes ajenos se toman en el orden del
@@ -115,9 +160,9 @@ func TestRechazosDelAvance(t *testing.T) {
 	_, err = advance.CanAdvance(c, uuid.New(), false, economy.ResourceWine, orden, stocks(400, 200))
 	assert.ErrorIs(t, err, advance.ErrCityNotFound, "una ciudad ajena responde como una inexistente")
 
-	hierro := *c
-	hierro.Era = city.EraIron
-	_, err = advance.CanAdvance(&hierro, dueno, true, economy.ResourceWine, orden, stocks(0, 0))
+	castillos := *c
+	castillos.Era = city.EraCastle
+	_, err = advance.CanAdvance(&castillos, dueno, true, economy.ResourceWine, orden, stocks(0, 0))
 	assert.ErrorIs(t, err, advance.ErrUnavailable, "la era va antes que la plaza y el stock")
 
 	_, err = advance.CanAdvance(c, dueno, true, economy.ResourceWine, orden, stocks(400, 200))
@@ -139,7 +184,9 @@ func TestUnAvanceFueraDelCatalogoEsInvalido(t *testing.T) {
 	assert.ErrorIs(t, advance.Advance{From: city.EraBronze, To: city.EraStone}.Validate(), advance.ErrInvalid)
 	assert.ErrorIs(t, advance.Advance{From: city.EraStone, To: city.EraIron}.Validate(), advance.ErrInvalid)
 	require.NoError(t, advance.Advance{From: city.EraBronze, To: city.EraIron}.Validate())
-	assert.ErrorIs(t, advance.Advance{From: city.EraIron, To: city.EraCastle}.Validate(), advance.ErrInvalid)
+	require.NoError(t, advance.Advance{From: city.EraIron, To: city.EraCastle}.Validate())
+	assert.ErrorIs(t, advance.Advance{From: city.EraBronze, To: city.EraCastle}.Validate(), advance.ErrInvalid)
+	assert.ErrorIs(t, advance.Advance{From: city.EraCastle, To: city.EraIron}.Validate(), advance.ErrInvalid)
 }
 
 // Next devuelve una copia: quien la recibe no puede cambiar el catálogo.

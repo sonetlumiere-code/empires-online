@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
@@ -64,6 +65,10 @@ type Death struct {
 	// duplicarla (INV-COMBAT-003).
 	Loot int32
 	Lost int32
+	// KillerBuildingID y KillerBuildingType: el castillo que la causó, si fue
+	// él (ADR-044 §5); KillerID es entonces 0 y KillerPlayer su dueño.
+	KillerBuildingID   int64
+	KillerBuildingType building.Type
 }
 
 // CombatStore escribe las muertes y el primer golpe de cada enfrentamiento.
@@ -410,6 +415,7 @@ type alert struct {
 // ResolveCombat es la fase 4 del tick (ADR-024 §1).
 func (s *Simulation) ResolveCombat(nowMs int64) {
 	if len(s.state.combat.engagements) == 0 {
+		s.idleCastles()
 		return
 	}
 	now := time.UnixMilli(nowMs).UTC()
@@ -482,9 +488,13 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 		}
 	}
 
+	// 1b. Los golpes de los castillos, con los atacantes ya plantados en
+	// ATTACKING y antes de aplicar nada (ADR-044 §3).
+	castleHits := s.stepCastles(nowMs, now)
+
 	// 2. Aplicar todos a la vez. A igualdad, el golpe mortal es el del
 	// atacante de id menor: el orden de cálculo, que es estable.
-	killers := make(map[int64]*unit.Unit)
+	killers := make(map[int64]killer)
 	var alerts []alert
 	for _, h := range hits {
 		if h.target.HP <= 0 {
@@ -521,13 +531,17 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 		}
 		s.state.MarkDirty(h.target.ID)
 		if h.target.HP == 0 {
-			killers[h.target.ID] = h.attacker
+			killers[h.target.ID] = unitKiller(h.attacker)
 		}
 		hp := h.target.HP
 		cx, cy := s.state.World().ChunkOf(h.target.X, h.target.Y)
 		s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeEntityUpdate,
 			protocol.EntityUpdatePayload{ID: h.target.ID, HP: &hp})
 	}
+
+	// 2b. Los golpes de los castillos, detrás de los de las unidades y en
+	// orden de castillo (ADR-044 §4).
+	s.applyCastleHits(castleHits, killers, nowMs)
 
 	// 3. Las muertes, en orden de víctima.
 	victims := make([]int64, 0, len(killers))
@@ -537,9 +551,9 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 	sort.Slice(victims, func(i, j int) bool { return victims[i] < victims[j] })
 	for _, id := range victims {
 		if v, ok := s.state.Unit(id); ok {
-			if v.Type == unit.TypeCaravan {
+			if k := killers[id]; v.Type == unit.TypeCaravan && k.unit != nil {
 				// RN-CARAVAN-006: el golpe mortal la captura.
-				s.captureCaravan(v, killers[id], nowMs)
+				s.captureCaravan(v, k.unit, nowMs)
 				continue
 			}
 			s.kill(v, killers[id], nowMs)
@@ -628,8 +642,10 @@ func (s *Simulation) chase(a *unit.Unit, e *engagement, posA, posT world.Tile, d
 	s.beginMovement(a, posA, posT, path, nowMs, nil)
 }
 
-// kill aplica una muerte (RN-COMBAT-009) y el botín (RN-COMBAT-010).
-func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
+// kill aplica una muerte (RN-COMBAT-009) y el botín (RN-COMBAT-010). El autor
+// es una unidad o un castillo; un castillo no carga botín (RN-CASTLE-006).
+func (s *Simulation) kill(v *unit.Unit, k killer, nowMs int64) {
+	killer := k.unit
 	at := s.authoritativePosition(v, nowMs)
 	// Su movimiento y su tarea mueren con ella; la transacción los cierra.
 	s.state.ClearMovement(v.ID)
@@ -675,6 +691,9 @@ func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
 	if killer != nil {
 		d.KillerID, d.KillerPlayer = killer.ID, killer.PlayerID
 	}
+	if k.castle != nil {
+		d.KillerPlayer, d.KillerBuildingID, d.KillerBuildingType = k.owner, k.castle.ID, k.castle.Type
+	}
 
 	// La población de su ciudad (INV-CITY-017).
 	if c, ok := s.cityOfUnit(v); ok {
@@ -696,6 +715,7 @@ func (s *Simulation) kill(v, killer *unit.Unit, nowMs int64) {
 	s.sendNotices(eventlog.Event{
 		Type: eventlog.EventUnitKilled, PlayerID: d.VictimPlayer, Counterpart: d.KillerPlayer,
 		AtMs: nowMs, UnitType: string(d.VictimType), X: at.X, Y: at.Y, HasTile: true,
+		KillerBuildingType: string(d.KillerBuildingType),
 	})
 
 	// Quien atacaba a la víctima se queda sin objetivo.

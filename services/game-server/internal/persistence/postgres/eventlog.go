@@ -188,6 +188,8 @@ type eventPayload struct {
 	// counterpart_player_id, pero su payload ya nombraba al autor.
 	KillerPlayerID   string `json:"killerPlayerId"`
 	AttackerPlayerID string `json:"attackerPlayerId"`
+	// La muerte que causó un edificio (ADR-044 §5).
+	KillerBuildingType string `json:"killerBuildingType"`
 	// Los tratos (ADR-032 §7).
 	OfferID int64         `json:"offerId"`
 	Give    []payloadLine `json:"give"`
@@ -258,6 +260,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	e.OwnerClanTag, e.ForClanTag, e.Only = p.OwnerClanTag, p.ForClanTag, p.Only
 	e.Cargo = toLines(p.Cargo)
 	e.Reason = p.Reason
+	e.KillerBuildingType = p.KillerBuildingType
 	return nil
 }
 
@@ -320,7 +323,7 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 		v.OtherCityID, v.OtherCityName = &id, &name
 	}
 	switch e.Kind {
-	case eventlog.KindUnitLost, eventlog.KindEnemyKilled:
+	case eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindUnitLostToCastle, eventlog.KindCastleKill:
 		v.UnitType = e.UnitType
 	case eventlog.KindPillaged, eventlog.KindPillageDone:
 		amount := e.Amount
@@ -341,7 +344,8 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 		v.TradeGive, v.TradeGet = fromLines(e.TradeGive), fromLines(e.TradeGet)
 	}
 	switch e.Kind {
-	case eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindPillaged, eventlog.KindPillageDone,
+	case eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindUnitLostToCastle, eventlog.KindCastleKill,
+		eventlog.KindPillaged, eventlog.KindPillageDone,
 		eventlog.KindHouseLost, eventlog.KindHouseDestroyed,
 		eventlog.KindCaravanArrived, eventlog.KindCaravanCaptured, eventlog.KindCaravanIntercepted, eventlog.KindCaravanLost:
 	default:

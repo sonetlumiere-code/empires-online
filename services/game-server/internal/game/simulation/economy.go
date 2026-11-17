@@ -1071,7 +1071,7 @@ func economyErrorCode(err error) string {
 	case errors.Is(err, production.ErrCityBusy):
 		return protocol.CodeCityBusy
 	case errors.Is(err, advance.ErrUnavailable):
-		// RN-ECON-024: desde BRONZE_AGE no hay avance en este slice.
+		// RN-ECON-024 y RN-CASTLE-001: desde CASTLE_AGE, la última era, no hay avance.
 		return protocol.CodeNotImplemented
 	case errors.Is(err, city.ErrPopulationLimit):
 		return protocol.CodePopulationLimitReached

@@ -360,7 +360,7 @@ describe('comandos de economía (SPEC-ECON-WOOD)', () => {
       expect(result.ok).toBe(false);
     }
     const otro = parseClientMessage({
-      v: 1, type: 'city.build', requestId: uuid, payload: { ...base, type: 'CASTLE' },
+      v: 1, type: 'city.build', requestId: uuid, payload: { ...base, type: 'TOWER' },
     });
     expect(otro.ok).toBe(false);
   });
@@ -1201,5 +1201,42 @@ describe('unidades de civilización (SPEC-CIVILIZATION-UNITS)', () => {
       expect(u).toMatchObject({ exclusive: true, attacks: true, requiresEra: 'BRONZE_AGE', ownGoodCost: 10 });
     }
     expect(UNITS.filter((u) => u.exclusive).map((u) => u.code).sort()).toEqual([...exclusivas].sort());
+  });
+});
+
+describe('Edad de los Castillos (SPEC-CASTLE-AGE)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otroJugador = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const castillo = {
+    id: 60, cityId: 2, type: 'CASTLE', x: 21, y: 41, status: 'COMPLETE', completesAtMs: 1, hp: 1000, maxHp: 1000,
+  };
+
+  it('el castillo es un tipo de edificio que se encarga con city.build', () => {
+    const build = (type: string) =>
+      parseClientMessage({ v: 1, type: 'city.build', requestId: uuid, payload: { cityId: 7, type, x: 9, y: 9 } });
+    expect(build('CASTLE').ok).toBe(true);
+    expect(build('TOWER')).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
+  it('la vista del edificio admite el objetivo del castillo, opcional y anulable', () => {
+    const spawn = (building: unknown) => parseServerMessage({ ...env, type: 'building.spawn', payload: { building } }).ok;
+    expect(spawn(castillo)).toBe(true);
+    expect(spawn({ ...castillo, targetUnitId: 100 })).toBe(true);
+    expect(spawn({ ...castillo, targetUnitId: null })).toBe(true);
+    expect(spawn({ ...castillo, targetUnitId: 0 })).toBe(false);
+  });
+
+  it('building.update lleva el objetivo nuevo o null cuando deja de apuntar', () => {
+    const update = (payload: unknown) => parseServerMessage({ ...env, type: 'building.update', payload }).ok;
+    expect(update({ id: 60, status: 'COMPLETE', targetUnitId: 100 })).toBe(true);
+    expect(update({ id: 60, status: 'COMPLETE', targetUnitId: null })).toBe(true);
+    expect(update({ id: 60, status: 'COMPLETE', targetUnitId: 'cien' })).toBe(false);
+  });
+
+  it('las muertes del castillo son tipos del registro y se avisan a los dos lados', () => {
+    const notice = { atMs: 1, otherPlayerId: otroJugador, otherCityId: 2, otherCityName: 'Vecina', unitType: 'WARRIOR', x: 22, y: 41 };
+    for (const kind of ['UNIT_LOST_TO_CASTLE', 'CASTLE_KILL']) {
+      expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...notice, kind } }).ok).toBe(true);
+    }
   });
 });

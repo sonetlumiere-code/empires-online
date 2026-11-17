@@ -475,7 +475,7 @@ func (s *Simulation) captureCaravan(v, killer *unit.Unit, nowMs int64) {
 	if !ok || killer == nil {
 		// Una unidad CARAVAN sin caravana no debería existir: se trata como
 		// cualquier otra muerte.
-		s.kill(v, killer, nowMs)
+		s.kill(v, unitKiller(killer), nowMs)
 		return
 	}
 	at := s.authoritativePosition(v, nowMs)
