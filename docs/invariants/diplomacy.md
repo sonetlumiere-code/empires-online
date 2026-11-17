@@ -465,7 +465,7 @@ alianza con el Caos empieza su preaviso al entrar en la Orden; la de un neutral,
 | Aplicación | DOMAIN, TEST |
 | Milestone | E24 |
 | Política ante violación | REPAIR |
-| Cobertura | Sin cobertura todavía (E24) |
+| Cobertura | **Cubierto** por `TestGoldenGuerraDeClanes` y `TestElCompromisoAlcanzaATodos` (`internal/game/simulation`). Verificado por mutación: sin el rechazo de la propuesta entre los dos lados, falla el golden; sin el compromiso al volver la declaración, falla el golden; sin el compromiso al volver una entrada, falla `TestElCompromisoAlcanzaATodos` |
 
 **Enunciado.** Mientras dos clanes tienen una guerra abierta, o su declaración espera la base, el tick no acepta ningún
 `treaty.propose` ni `treaty.respond` con `accept` de un `NON_AGGRESSION` o una `ALLIANCE` entre un miembro de uno y un

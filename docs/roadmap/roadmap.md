@@ -220,7 +220,11 @@ sucesión cuando el líder lleva 7 días sin jugar. Quedan las alianzas y las gu
 (2026-11-16, [SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md), [ADR-042](../decisions/ADR-042-clan-alliances.md)):** las
 alianzas llegan con E21 ([milestones.md](milestones.md) §E21): los líderes de dos clanes firman una alianza que pone en
 paz a todos sus miembros, con el preaviso de un tratado, como mucho dos por clan y sin juntar a la Orden y al Caos.
-Quedan las guerras declaradas entre clanes.
+Quedan las guerras declaradas entre clanes. **Precisión (2026-11-17, [SPEC-CLAN-WARS](../specs/clan-wars.md),
+[ADR-045](../decisions/ADR-045-clan-wars.md)):** las guerras llegan con E24 ([milestones.md](milestones.md) §E24): el
+líder de un clan declara la guerra a otro, los pactos entre sus miembros terminan, un marcador público suma bajas,
+derribos y conquistas, y la guerra termina en paz, rendición o plazo con un resultado en el historial. La fase Clans
+queda cubierta.
 
 **Large-scale warfare.** Guerra a gran escala con muchos jugadores y unidades concurrentes en la
 misma región. Depende de todo lo anterior y es la primera fase que puede exigir cambios

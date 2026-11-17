@@ -282,7 +282,7 @@ estaba en curso termina.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E24 |
 | Política ante violación | REJECT |
-| Cobertura | Sin cobertura todavía (E24) |
+| Cobertura | **Cubierto** por `TestLasOrdenesDeUnaGuerra`, `TestGoldenGuerraDeClanes` y `TestLasGuerrasTrasUnReinicio` (`internal/game/simulation`), y `TestLaGuerraEnLaBase` y `TestLasRestriccionesDeLasGuerras` (integration, `internal/persistence/postgres`). Verificado por mutación: sin el tope en el tick, falla `TestLasOrdenesDeUnaGuerra`; sin la comprobación del líder en la transacción, falla `TestLaGuerraEnLaBase`; con `clan_wars_alliance_guard` desactivado, falla `TestLasRestriccionesDeLasGuerras` (y el trigger vuelve a `tgenabled = 'O'`) |
 
 **Enunciado.** Entre dos clanes vivos hay como mucho una guerra abierta (`DECLARED` o `ACTIVE`), en cualquier sentido,
 y nunca a la vez que una alianza `ACTIVE` entre ellos. Ningún clan tiene más de `EO_CLAN_MAX_WARS` guerras abiertas
@@ -320,7 +320,7 @@ encuentra mal formada se cierra en la RAM y se registra.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E24 |
 | Política ante violación | REPAIR |
-| Cobertura | Sin cobertura todavía (E24) |
+| Cobertura | **Cubierto** por `TestGoldenGuerraDeClanes`, `TestQuePuntuaEnUnaGuerra` y `TestLasGuerrasTrasUnReinicio` (`internal/game/simulation`), `TestElMarcadorYElResultado` (`internal/domain/clan`) y `TestElMarcadorEsLaSumaDeLosEventos` (integration, `internal/persistence/postgres`). Verificado por mutación: sin los puntos en la muerte, falla el golden; con la carga contando eventos en vez de sumar sus puntos, falla `TestElMarcadorEsLaSumaDeLosEventos` |
 
 **Enunciado.** Un punto sólo se suma al marcador de una guerra por una muerte, un derribo o una captura en que el
 autor y la víctima (o el clan dueño del territorio) son, en ese tick, miembros de los dos lados de esa guerra en

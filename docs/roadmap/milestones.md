@@ -2478,13 +2478,13 @@ aliados, coaliciones, guerras contra jugadores sin clan, objetivos de guerra, pu
 1. **HECHO** — Aceptación: spec, [ADR-045](../decisions/ADR-045-clan-wars.md), `INV-CLAN-008`, `INV-CLAN-009` e
    `INV-DIPLO-004`, y las precisiones de `RN-CLAN-008` ([clans.md](../specs/clans.md)), `RN-CLANALLY-001`
    ([clan-alliances.md](../specs/clan-alliances.md)) y `RN-DIPLO-001` ([diplomacy.md](../specs/diplomacy.md)).
-2. **PENDIENTE** — Dominio: la guerra, su máquina de estados, los puntos y el resultado (`internal/domain/clan`).
-3. **PENDIENTE** — Migración `000026` y persistencia: `clan_wars`, los triggers, el índice del marcador, cada orden
+2. **HECHO** — Dominio: la guerra, su máquina de estados, los puntos y el resultado (`internal/domain/clan`).
+3. **HECHO** — Migración `000026` y persistencia: `clan_wars`, los triggers, el índice del marcador, cada orden
    con los dos candados, el final en la disolución, la carga y la vista pública.
-4. **PENDIENTE** — Simulación: las guerras en `clanState`, las órdenes en dos fases, `enforceWarTreaties`, el marcador
+4. **HECHO** — Simulación: las guerras en `clanState`, las órdenes en dos fases, `enforceWarTreaties`, el marcador
    en los eventos, el comienzo y el plazo, el final por disolución y el golden «guerra de clanes».
-5. **PENDIENTE** — Protocolo y registro: los tres comandos, `wars` y `warRecord`, los tres tipos nuevos; contract
+5. **HECHO** — Protocolo y registro: los tres comandos, `wars` y `warRecord`, los tres tipos nuevos; contract
    tests (Go y Zod) y su e2e.
-6. **PENDIENTE** — Cliente: la sección «Guerras» del panel, «Declarar la guerra» en la vista pública, «En guerra con
+6. **HECHO** — Cliente: la sección «Guerras» del panel, «Declarar la guerra» en la vista pública, «En guerra con
    [TAG]» en la barra de una ciudad ajena y los textos del registro y de los avisos.
 7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --guerra-clan`.

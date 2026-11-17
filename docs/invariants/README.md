@@ -371,7 +371,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-DIPLO-001 | Una oferta sólo la acepta o la rechaza el jugador que no la propuso | CRITICO | DOMAIN, TEST | ✓ | `TestSoloRespondeQuienNoPropusoYSoloRetiraQuienPropuso`, `TestRechazosDeLaDiplomacia` |
 | INV-DIPLO-002 | Entre dos jugadores, como mucho un tratado vigente y una oferta pendiente | ALTO | DB, DOMAIN, TEST | ✓ | `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration), `TestRechazosDeLaDiplomacia`, `TestUnaAlianzaSustituyeAlPactoVigente`, `TestLaEscaleraDeTratados` |
 | INV-DIPLO-003 | Entre la Orden y el Caos nunca nace un pacto ni una alianza, y el que quede vigente está en preaviso | ALTO | DOMAIN, TEST | ✓ | `TestLaTablaDeLosBandos`, `TestUnaPazEntreBandosContrariosNoSeAcepta`, `TestAlEntrarSeRompenLosPactosConElBandoContrario`, `TestUnFalloEnElVencimientoNoDejaNadaAMedias` |
-| INV-DIPLO-004 | Entre dos clanes en guerra no nace un pacto ni una alianza entre sus miembros, y el que quede vigente está en preaviso | ALTO | DOMAIN, TEST | ○ | Sin test todavía (E24) |
+| INV-DIPLO-004 | Entre dos clanes en guerra no nace un pacto ni una alianza entre sus miembros, y el que quede vigente está en preaviso | ALTO | DOMAIN, TEST | ✓ | `TestGoldenGuerraDeClanes`, `TestElCompromisoAlcanzaATodos` |
 
 ### ECONOMY — [economy.md](economy.md)
 
@@ -425,8 +425,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CLAN-005 | Sólo el rango que lo permite cambia la pertenencia ajena, los rangos o el liderazgo de un clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosPermisosPorRango`, `TestLoQueLaBaseNoEscribeSeDeshace`, `TestElRangoSeCompruebaEnLaBase` (integration), `TestElCambioDeLiderEnLaBase` (integration), `TestElRangoDeUnaEstanciaSoloEsMiembroUOficial` (integration) |
 | INV-CLAN-006 | Una alianza entre clanes es única por par, respeta el tope de cada clan y nunca nace entre la Orden y el Caos | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasOrdenesDeUnaAlianza`, `TestLasAlianzasTrasUnReinicio`, `TestLaAlianzaEnLaBase` (integration), `TestLasRestriccionesDeLasAlianzas` (integration) |
 | INV-CLAN-007 | Ningún golpe, robo, derribo, avance de estandarte ni reclamación se aplica entre miembros de dos clanes aliados, ni durante el preaviso ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestGoldenAlianzaDeClanes`, `TestLaPazResidualConLosAliados`, `TestUnaReclamacionContraUnAliadoSeRechaza`, `TestUnaAlianzaDeClanesPorLaRed` |
-| INV-CLAN-008 | Una guerra entre clanes es única por par, nunca convive con una alianza entre ellos y respeta el tope de declaradas | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E24) |
-| INV-CLAN-009 | Cada punto del marcador de una guerra lo lleva un evento de un hecho entre sus dos lados, y al arrancar el marcador es la suma de esos eventos | ALTO | DOMAIN, TEST | ○ | Sin test todavía (E24) |
+| INV-CLAN-008 | Una guerra entre clanes es única por par, nunca convive con una alianza entre ellos y respeta el tope de declaradas | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasOrdenesDeUnaGuerra`, `TestLaGuerraEnLaBase` (integration), `TestLasRestriccionesDeLasGuerras` (integration) |
+| INV-CLAN-009 | Cada punto del marcador de una guerra lo lleva un evento de un hecho entre sus dos lados, y al arrancar el marcador es la suma de esos eventos | ALTO | DOMAIN, TEST | ✓ | `TestGoldenGuerraDeClanes`, `TestQuePuntuaEnUnaGuerra`, `TestElMarcadorEsLaSumaDeLosEventos` (integration) |
 
 ### Distribución
 
@@ -467,9 +467,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 145 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 148 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 3 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **150** | |
 
@@ -477,7 +477,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-CLAN-008`, `INV-CLAN-009` e `INV-DIPLO-004` se registraron el 2026-11-17 con SPEC-CLAN-WARS y [ADR-045](../decisions/ADR-045-clan-wars.md), antes de escribir su código, como manda §8, y nacen sin cobertura.
+`INV-CLAN-008`, `INV-CLAN-009` e `INV-DIPLO-004` se registraron el 2026-11-17 con SPEC-CLAN-WARS y [ADR-045](../decisions/ADR-045-clan-wars.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el trigger, con `DISABLE TRIGGER` en la base de tests). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-ECON-012` e `INV-COMBAT-007` se registraron el 2026-11-17 con SPEC-CASTLE-AGE y [ADR-044](../decisions/ADR-044-castle-shooting.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el índice, con `DROP INDEX` en la base de tests); el mismo día se precisó `INV-ECON-011` (ningún avance de era, tampoco el de Castillos, cobra el bien propio), que volvió a ✓ con sus tests. Ninguna fila queda sin cobertura ni parcial.
 

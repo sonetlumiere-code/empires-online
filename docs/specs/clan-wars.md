@@ -378,6 +378,23 @@ historial salen de las guerras `ENDED` de cada clan.
 | contract / e2e | Los tres comandos contra el JSON Schema. `wars` y `warRecord` en `clan.update` y en `clan.info`. Los tres tipos nuevos del registro y de los avisos. Por WebSocket: un líder declara, los miembros de los dos clanes reciben el aviso, un raso no puede rendirse y los oficiales ven la oferta de paz |
 | cliente | La sección «Guerras» con el marcador y sus cuentas atrás. Los botones según el rango. «Declarar la guerra» en la vista pública con su motivo. «En guerra con [TAG]» en la barra de una ciudad ajena. El historial. Los textos del registro y de los avisos. `scripts/smoke.mjs --guerra-clan`: `smoke_clan_b` funda un segundo clan, `smoke_clan_a` (líder de `[HUM]`) le declara la guerra con una preparación corta (por variable de entorno); se comprueba el marcador tras una muerte entre los dos; `smoke_clan_b` ofrece la paz y `smoke_clan_a` la acepta. Al final `smoke_clan_b` sale de su clan, que se disuelve, para que `--clan` lo siga encontrando sin clan, con la tregua corta para que una pasada siguiente pueda volver a declarar |
 
+**Precisiones de implementación (2026-11-17).**
+
+- **El comienzo y el plazo, en el barrido de cada segundo.** La guerra empieza en el primer barrido desde `startsAtMs`
+  y su plazo se cuenta desde `startsAtMs`, no desde el barrido; el final por plazo se fecha en `endsAtMs`. Los pactos
+  que rompe la declaración empiezan su preaviso en el tick en que vuelve la declaración, así que terminan, como mucho,
+  un barrido después de que empiece la guerra.
+- **Quién recibe qué.** La declaración y el final no se cuentan (ni fila ni aviso) a quien dio la orden; el final por
+  plazo no lo dio nadie y llega a todos; el de una disolución, sólo al otro clan, porque el que se disuelve ya no tiene
+  miembros. Rechazar la oferta del otro clan la retira (`ClanWarPeaceWithdrawn`, fuera del registro).
+- **Declarar con una alianza en vuelo.** Además de una alianza activa, la declaración se rechaza mientras una
+  aceptación u otra orden de alianza sobre el mismo par espera la base.
+- **Caravanas.** Una caravana que mata una unidad se captura (E15) y no pasa por la muerte que puntúa; la que mata un
+  castillo muere, pero tampoco puntúa (`RN-CLANWAR-007`).
+- **Historial.** Un clan que se disuelve no guarda historial; el vencedor por disolución, sí.
+- **La vista pública** (`clan.info`) suma el marcador de los eventos en la base: puede ir un instante por detrás del de
+  `clan.update` mientras la cola escribe (ADR-045 §4).
+
 ## 10. Decisiones de producto (2026-11-17)
 
 Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,

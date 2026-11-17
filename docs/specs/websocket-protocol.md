@@ -51,6 +51,7 @@ Dentro del scope de v1:
 - Las alianzas entre clanes ([clan-alliances.md](clan-alliances.md)): `clan.alliance.propose { clanId }`, `clan.alliance.respond { allianceId, accept }` y `clan.alliance.cancel { allianceId }`, que pasan por la simulación (§7.22); `alliances` (obligatorio) en `ClanView` (§8.28) y en `clan.info` (§8.29); los tipos `CLAN_ALLIANCE_OFFERED`, `CLAN_ALLIANCE_ACCEPTED` y `CLAN_ALLIANCE_BREAK_ANNOUNCED` (también en `event_log.notice`) y `CLAN_ALLIANCE_REJECTED` en el registro, con `clanTag`. El campo nuevo es obligatorio: el cliente y el servidor lo estrenan juntos.
 - Las unidades de civilización ([civilization-units.md](civilization-units.md)): `LEGIONARY`, `CATAPHRACT`, `HORSE_ARCHER` y `BERSERKER` en `UnitType` y en el `type` de `city.train` (§7.10); sin mensajes ni campos nuevos. Los valores son nuevos en un enum estricto: el cliente y el servidor los estrenan juntos. Las estadísticas no viajan: el catálogo de presentación `units.json` y `unit` en el de civilizaciones ([ADR-043](../decisions/ADR-043-civilization-units.md) §7).
 - La Edad de los Castillos ([castle-age.md](castle-age.md)): `city.advance` desde la Edad de Hierro (§7.16); `CASTLE` en `BuildingType` (también en `city.build`, §7.9); `targetUnitId` (`EntityId | null`, opcional) en `BuildingView` y en `building.update` (§8.16), el objetivo del castillo; los tipos `UNIT_LOST_TO_CASTLE` y `CASTLE_KILL` en el registro y en `event_log.notice` (§8.19, §8.23); sin mensajes nuevos. `CASTLE` y los dos tipos son valores nuevos en enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-044](../decisions/ADR-044-castle-shooting.md) §6 y §7).
+- Las guerras entre clanes ([clan-wars.md](clan-wars.md)): `clan.war.declare { clanId }`, `clan.war.peace { warId, offer }` y `clan.war.surrender { warId }`, que pasan por la simulación (§7.22); `wars` y `warRecord` (obligatorios) en `ClanView` (§8.28) y en `clan.info` (§8.29); los tipos `CLAN_WAR_DECLARED`, `CLAN_WAR_PEACE_OFFERED` y `CLAN_WAR_ENDED` en el registro y en `event_log.notice`, con `clanTag`, `startsAtMs` y, en el final, `warResult`, `warReason`, `ourScore` y `theirScore` (opcionales); `breakReason: "WAR"` en la ruptura de un pacto que abrió una guerra (§8.19, §8.23). Los campos de `ClanView` son obligatorios y los tipos, valores nuevos de un enum estricto: el cliente y el servidor los estrenan juntos ([ADR-045](../decisions/ADR-045-clan-wars.md)).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -654,7 +655,7 @@ payload: z.object({ playerId: Uuid, blocked: z.boolean() }).strict()
 
 **Efectos, en dos fases.** El tick reserva la entrada, la cola la escribe (`faction_join_id`, `faction_join_at`) y al volver por el buzón se confirma: `city.update { factionJoin: { faction, atMs } }` al chunk de la ciudad y al dueño, que la recibe con su `requestId` esté donde esté su vista. `atMs` es el instante de la orden más `EO_FACTION_JOIN_SECONDS` (900). Al vencer, en la fase 5, `city.update { faction, factionJoin: null }` al chunk y al dueño, `territory.update` de cada territorio del jugador con su `ownerFaction` nuevo, y `treaty.update` a los dos firmantes de cada pacto o alianza con el bando contrario, que empieza su preaviso. Desde entonces `unit.attack`, `unit.pillage`, `unit.demolish` y `unit.claim` entre dos de la Orden responden `INVALID_TARGET` («los dos sois de la Orden»), y `treaty.propose` o `treaty.respond` con `accept` de un pacto o alianza entre la Orden y el Caos, `INVALID_TARGET` («la Orden y el Caos no firman la paz»).
 
-### 7.22 `clan.create`, `clan.invite`, `clan.respond`, `clan.leave`, `clan.expel`, `clan.lookup`, `clan.chat.send`, `clan.chat.fetch`, `clan.chat.read`, `clan.promote`, `clan.transfer` y `clan.alliance.*`
+### 7.22 `clan.create`, `clan.invite`, `clan.respond`, `clan.leave`, `clan.expel`, `clan.lookup`, `clan.chat.send`, `clan.chat.fetch`, `clan.chat.read`, `clan.promote`, `clan.transfer`, `clan.alliance.*` y `clan.war.*`
 
 - **Dirección:** cliente → servidor. **Propósito:** fundar un clan, invitar o retirar una invitación, aceptarla o rechazarla, salir, expulsar, ver la vista pública de un clan y usar el canal del clan propio. No son hostiles: no los frena la protección. Spec: [clans.md](clans.md); decisión: [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md).
 
@@ -696,6 +697,8 @@ Ningún comando nombra el clan propio, al líder ni al remitente: son los del ju
 **Desde E20** ([clan-governance.md](clan-governance.md)): invitar, retirar y expulsar a un miembro raso los da el líder o un oficial; expulsar a un oficial, sólo el líder; al líder no lo expulsa nadie. `clan.promote { playerId, officer }` (nombrar o quitar oficial) y `clan.transfer { playerId }` (ceder el liderazgo; el anterior queda como oficial) los da sólo el líder, sobre otro miembro, y no en un clan que se está disolviendo. Los dos son optimistas, con la clave `clan:<id>`; la base vuelve a comprobar el rango de quien ordena con el candado del clan (`INV-CLAN-005`) y, si no lo admite o no responde, la simulación lo deshace y responde `INVALID_TARGET` o `INTERNAL_ERROR`. La respuesta es `clan.update` a todos los miembros, con el `requestId` a quien la dio; ceder manda además a quien lo recibe `event_log.notice { kind: "CLAN_LEADERSHIP_RECEIVED", clanTag }`, y la sucesión de un líder ausente, `CLAN_LEADERSHIP_INHERITED`.
 
 **Desde E21** ([clan-alliances.md](clan-alliances.md)): `clan.alliance.propose`, `clan.alliance.respond` y `clan.alliance.cancel` pasan por la simulación y sólo los da el líder de su clan. Van en dos fases, como los tratados: el tick valida y reserva el par de clanes, un trabajo con las claves de los dos clanes escribe con sus dos candados, y la respuesta llega como `clan.update` a los miembros de los dos clanes, con el `requestId` a quien dio la orden. `INVALID_TARGET`, con el motivo: sin ser el líder; con el propio clan, uno que no existe o uno que se disuelve; con una alianza o una oferta ya abierta entre los dos; con el tope (`EO_CLAN_MAX_ALLIES`) lleno en cualquiera de los dos; si juntaría a la Orden y al Caos; antes de `EO_TREATY_RETRY_MINUTES` tras un rechazo; respondiendo a la oferta propia o retirando la ajena; rompiendo una que ya está en preaviso; y lo que la base no admita. Romper deja la alianza `ACTIVE` durante `EO_TREATY_BREAK_NOTICE_MINUTES`; una oferta caduca a las `EO_TREATY_OFFER_HOURS`.
+
+**Desde E24** ([clan-wars.md](clan-wars.md)): `clan.war.declare { clanId }`, `clan.war.peace { warId, offer }` y `clan.war.surrender { warId }` pasan por la simulación y sólo los da el líder de su clan, en dos fases como las alianzas (las claves y los candados de los dos clanes). La respuesta es `clan.update` a los miembros de los dos clanes, con el `requestId` a quien dio la orden. Declarar abre la preparación (`EO_TREATY_BREAK_NOTICE_MINUTES`) y caduca la oferta de alianza entre los dos; `offer: true` ofrece la paz o, si el otro clan ya la ofreció, la acepta y la guerra termina en empate; `offer: false` retira la oferta propia o rechaza la ajena; rendirse da la victoria al otro. `INVALID_TARGET`, con el motivo: sin ser el líder; al propio clan, a uno que no existe o que se disuelve; con una guerra abierta o una alianza activa (también en preaviso) entre los dos; con el tope de declaradas (`EO_CLAN_MAX_WARS`) lleno; durante la tregua (`EO_CLAN_WAR_COOLDOWN_HOURS`); sobre una guerra ajena o terminada; una oferta repetida o una retirada sin oferta; con otra orden de guerra en curso sobre el par; y lo que la base no admita. Desde E24, también `treaty.propose`/`treaty.respond` de un `NON_AGGRESSION` o una `ALLIANCE` y `clan.alliance.propose`/`clan.alliance.respond` entre los dos lados de una guerra abierta se rechazan con «vuestros clanes están en guerra».
 
 **Los cuatro últimos no pasan por la simulación.** Los atiende la goroutine de lectura de la sesión, como los `message.*`, y comprueban la pertenencia en la base con el candado del clan (ADR-040 §5): sin clan, `INVALID_TARGET` («no estás en ningún clan»). `clan.chat.send` valida el texto como `message.send`, gasta del mismo límite por minuto (`RATE_LIMITED` sin cerrar la conexión), guarda y, tras el `COMMIT`, manda `clan.chat.new` (§8.30) a las sesiones de los miembros; la que lo envió, con su `requestId`; un `requestId` repetido recibe el mensaje que ya existía. `clan.chat.fetch` responde `clan.chat.page` (§8.31), sólo con lo escrito desde la entrada de quien lee. `clan.chat.read` no responde si va bien: deja lo leído en `upToId` como mucho, nunca más allá de lo que esa sesión recibió del canal y nunca hacia atrás. `clan.lookup` responde `clan.info` (§8.29) de un clan vivo, o `INVALID_TARGET` («ese clan no existe»). Si PostgreSQL no responde en 3 s, `INTERNAL_ERROR` y la sesión sigue.
 
@@ -1225,6 +1228,9 @@ payload: z.object({
 // kind: UNIT_LOST | ENEMY_KILLED | PILLAGED | PILLAGE_DONE | TREATY_OFFERED | TREATY_WITHDRAWN
 //     | TREATY_ACCEPTED | TREATY_REJECTED | TREATY_OFFER_EXPIRED | TREATY_BREAK_ANNOUNCED | TREATY_ENDED
 //     | … (los de E8 a E21) | UNIT_LOST_TO_CASTLE | CASTLE_KILL (E23, las muertes que causa un castillo)
+//     | CLAN_WAR_DECLARED | CLAN_WAR_PEACE_OFFERED | CLAN_WAR_ENDED (E24, las guerras entre clanes)
+// desde E24, opcionales: breakReason ("WAR", en TREATY_BREAK_ANNOUNCED), startsAtMs, warResult
+//   (WON | LOST | DRAWN), warReason (SURRENDER | PEACE | TIMEOUT | DISSOLVED), ourScore, theirScore
 ```
 
 ```json
@@ -1285,7 +1291,7 @@ payload: z.object({ offer: TradeOfferView })
 
 ```ts
 payload: z.object({
-  kind: EventLogNoticeKind,   // UNIT_LOST | ENEMY_KILLED | PILLAGE_DONE | HOUSE_DESTROYED | … | UNIT_LOST_TO_CASTLE | CASTLE_KILL (E23)
+  kind: EventLogNoticeKind,   // UNIT_LOST | ENEMY_KILLED | PILLAGE_DONE | HOUSE_DESTROYED | … | UNIT_LOST_TO_CASTLE | CASTLE_KILL (E23) | CLAN_WAR_* (E24)
   atMs: EpochMs,              // el instante del suceso en la simulación
   otherPlayerId: Uuid,
   otherCityId: EntityId.nullable(),
@@ -1301,7 +1307,7 @@ payload: z.object({
 { "v": 1, "type": "event_log.notice", "seq": 520, "ts": 1788955600000, "payload": { "kind": "UNIT_LOST", "atMs": 1788955600000, "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "unitType": "VILLAGER", "x": 312, "y": 140 } }
 ```
 
-Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6). Desde E15, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con `cargo` (lo que llevaba la caravana) y `x`/`y` ([caravans.md](caravans.md) §6); la llegada (`CARAVAN_ARRIVED`) va sólo al registro. Desde E19, los tres de la conquista llevan `clanTag` cuando hay un clan de por medio: el del clan dueño en `TERRITORY_CLAIMED` y `TERRITORY_LOST`, y el del clan para el que se ganó en `TERRITORY_TAKEN` ([clan-territories.md](clan-territories.md) §6). La entrada del registro (§8.19) lleva el mismo campo.
+Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6). Desde E15, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con `cargo` (lo que llevaba la caravana) y `x`/`y` ([caravans.md](caravans.md) §6); la llegada (`CARAVAN_ARRIVED`) va sólo al registro. Desde E19, los tres de la conquista llevan `clanTag` cuando hay un clan de por medio: el del clan dueño en `TERRITORY_CLAIMED` y `TERRITORY_LOST`, y el del clan para el que se ganó en `TERRITORY_TAKEN` ([clan-territories.md](clan-territories.md) §6). La entrada del registro (§8.19) lleva el mismo campo. Desde E24, los tres de la guerra entre clanes llevan `clanTag` (el otro clan) y `startsAtMs` o, en el final, `warResult`, `warReason`, `ourScore` y `theirScore`, como su entrada ([clan-wars.md](clan-wars.md) §6).
 
 **No es una entrada del registro** (`RN-NOTICE-004`, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)): no tiene `id` ni recuento, no mueve el cursor de lo visto y el cliente no lo mete en la lista, que sigue saliendo de `event_log.page` (§8.19). `kind` es un subconjunto de los tipos de entrada: lo que hoy no llega a quien mira otra parte del mapa. Lo que la víctima de un saqueo o de un asedio ya recibe (`pillagedAtMs`, `besiegedAtMs` en `city.update`) no se repite. Un golpe de saqueo es un aviso; el cliente los agrupa. El servidor lo manda en todos los tipos con `x`/`y`, también en `HOUSE_DESTROYED` (el tile de la casa). Efímero: no se guarda ni se reenvía al reconectar.
 
@@ -1378,16 +1384,21 @@ payload: z.object({ clan: ClanView.nullable(), invitations: z.array(ClanInvitati
 // ClanView: { id, name, tag, leaderId, members: ClanMemberView[] (≥ 1),
 //             sentInvitations: ClanSentInvitationView[] (vacía salvo para el líder y, desde E20, los oficiales),
 //             territories: ClanTerritoryView[],           // desde E19
-//             alliances: ClanAllianceView[] }             // desde E21
+//             alliances: ClanAllianceView[],              // desde E21
+//             wars: ClanWarView[], warRecord: ClanWarRecordView }  // desde E24
 // ClanTerritoryView: { id, name, x, y }   // x, y: su tile central, para llevar la cámara
 // ClanAllianceView: { id, clanId, name, tag, status: PROPOSED | ACTIVE, proposedByUs, breaksAtMs | null }
 //   clanId, name y tag son los del otro clan; las ofertas (PROPOSED), sólo para el líder y los oficiales
+// ClanWarView: { id, clanId, name, tag, declaredByUs, status: DECLARED | ACTIVE, startsAtMs, endsAtMs | null,
+//                ourScore, theirScore, peaceOfferedByUs, peaceOfferedByThem }
+//   clanId, name y tag son los del otro clan; las dos marcas de la paz, siempre false salvo al líder y los oficiales
+// ClanWarRecordView: { won, lost, drawn }
 // ClanMemberView: { playerId, cityId, cityName, faction, role: LEADER | OFFICER | MEMBER, joinedAtMs }  // OFFICER desde E20
 // ClanSentInvitationView: { playerId, cityId, cityName, expiresAtMs }
 // ClanInvitationView: { clanId, name, tag, expiresAtMs }
 ```
 
-Los miembros, por antigüedad; los territorios, por `id`, y desde E19 un cambio en ellos vuelve a mandar `clan.update` a cada miembro. Las alianzas, por `id`; desde E21 cada cambio de una alianza manda `clan.update` a los miembros de los dos clanes. `clan` es `null` sin clan; una invitación caducada deja de venir pero no se avisa: el cliente la oculta por `expiresAtMs`.
+Los miembros, por antigüedad; los territorios, por `id`, y desde E19 un cambio en ellos vuelve a mandar `clan.update` a cada miembro. Las alianzas, por `id`; desde E21 cada cambio de una alianza manda `clan.update` a los miembros de los dos clanes. Las guerras, por `id`; desde E24 cada cambio de una guerra (declaración, comienzo, oferta, final) manda `clan.update` a los miembros de los dos clanes, y el marcador que cambia, como mucho uno cada `EO_CLAN_WAR_SCORE_PUSH_SECONDS`. `clan` es `null` sin clan; una invitación caducada deja de venir pero no se avisa: el cliente la oculta por `expiresAtMs`.
 
 ### 8.29 `clan.info`
 
@@ -1396,8 +1407,11 @@ Los miembros, por antigüedad; los territorios, por `id`, y desde E19 un cambio 
 ```ts
 payload: z.object({ clanId: EntityId, name: ClanName, tag: ClanTag, members: z.array(ClanMemberView),
                    territories: z.array(ClanTerritoryView),     // territories desde E19
-                   alliances: z.array(ClanPublicAllianceView) }) // desde E21: sólo las activas, por id de clan
+                   alliances: z.array(ClanPublicAllianceView),   // desde E21: sólo las activas, por id de clan
+                   wars: z.array(ClanPublicWarView), warRecord: ClanWarRecordView }) // desde E24
 // ClanPublicAllianceView: { clanId, name, tag, breaksAtMs | null }
+// ClanPublicWarView: { clanId, name, tag, declaredByUs, status, startsAtMs, endsAtMs | null, ourScore, theirScore }
+//   el marcador, sumado de los eventos que puntúan (ADR-045 §4): puede ir un instante por detrás del de clan.update
 ```
 
 ### 8.30 `clan.chat.new`

@@ -39,7 +39,8 @@ activas son públicas (Q8). Van al registro y a los avisos de §4.6 (Q9). Entran
 cliente (sección «Alianzas» del panel del clan y «Proponer alianza» en la vista pública de otro clan) y un
 `scripts/smoke.mjs --alianza-clan`.
 
-**No entra** (`Fuera de MVP` de este slice): guerras declaradas entre clanes (Q10); guarnición, comercio, almacén o
+**No entra** (`Fuera de MVP` de este slice): guerras declaradas entre clanes (Q10; **Precisión (2026-11-17):** llegan
+con E24, [clan-wars.md](clan-wars.md)); guarnición, comercio, almacén o
 canal compartidos entre aliados (Q2, Q11); tierra afín del aliado; que los miembros de un clan aliado reclamen juntos
 un territorio; alianzas de más de dos clanes como una sola relación; pactos de no agresión de clan distintos de la
 alianza; un mapa político o un color de aliado en el mapa (la sigla y la vista pública bastan, Q8); reputación o
