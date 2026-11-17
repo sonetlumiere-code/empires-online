@@ -892,6 +892,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
   final (resultado, marcador y motivo), con la sigla del otro clan; la declaración y la derrota se resaltan (`isLoss`).
   La ruptura de un pacto que abrió una guerra lo dice (`breakReason: "WAR"`). Los avisos llevan los campos de la guerra
   hasta el texto (`notices.ts`).
+- **Los rechazos.** Desde E24, `readableError` muestra el motivo que manda el servidor con un `INVALID_TARGET` («No se
+  puede: …»): es lo único que dice la tregua, los bandos o el rango. Sin motivo, el texto general de siempre.
 
 ## 5. Posición autoritativa frente a posición de render
 

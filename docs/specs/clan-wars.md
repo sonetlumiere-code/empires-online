@@ -394,6 +394,10 @@ historial salen de las guerras `ENDED` de cada clan.
 - **Historial.** Un clan que se disuelve no guarda historial; el vencedor por disolución, sí.
 - **La vista pública** (`clan.info`) suma el marcador de los eventos en la base: puede ir un instante por detrás del de
   `clan.update` mientras la cola escribe (ADR-045 §4).
+- **El motivo de un rechazo llega al jugador.** La prueba en vivo destapó que el cliente traducía todo `INVALID_TARGET`
+  a un texto general de combate, así que «la tregua la dice el servidor» (§4.7) no se veía. Desde E24 el pie muestra el
+  motivo del servidor («No se puede: vuestros clanes terminaron una guerra hace poco…») y el texto general queda para
+  un rechazo sin motivo.
 
 ## 10. Decisiones de producto (2026-11-17)
 

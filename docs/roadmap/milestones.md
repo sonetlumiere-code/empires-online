@@ -2487,4 +2487,27 @@ aliados, coaliciones, guerras contra jugadores sin clan, objetivos de guerra, pu
    tests (Go y Zod) y su e2e.
 6. **HECHO** — Cliente: la sección «Guerras» del panel, «Declarar la guerra» en la vista pública, «En guerra con
    [TAG]» en la barra de una ciudad ajena y los textos del registro y de los avisos.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --guerra-clan`.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --guerra-clan`.
+
+### Prueba en vivo (2026-11-17)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 25 a la 26, arrancado con
+`EO_TREATY_BREAK_NOTICE_MINUTES=1` (la preparación en un minuto) y `EO_CLAN_WAR_SCORE_PUSH_SECONDS=2`:
+
+- **Humo** `--guerra-clan`, verde a la primera (31 comprobaciones): smoke_clan_b funda [RIV], smoke_clan_a le declara
+  la guerra con su aviso y la vista pública de [HUM] la lleva; la guerra empieza al minuto; un aldeano de smoke_clan_b
+  muere ante el guerrero de smoke_clan_a y el marcador queda en 1 – 0; smoke_clan_b ofrece la paz, smoke_clan_a la
+  acepta, los dos ven el empate (aviso y registro) y [RIV] se disuelve.
+- **En el navegador**, con la sesión de smoke_runner y el panel visible: fundar [PRU] desde el panel, con la sección
+  «Guerras» («Sin guerras terminadas»); la vista pública de [HUM] con su historial y «Declarar la guerra», con su
+  confirmación; tras declarar, «[PRU] 0 – 0 [HUM] — Empieza en 1 min», y al minuto «Termina en 3 d»; «En guerra con
+  [PRU]» en la barra de la ciudad de [HUM] y «En guerra con: [HUM] 0 – 0 [PRU]» en su vista pública; «Ofrecer la paz»,
+  «Has ofrecido la paz» y «Retirar la oferta»; «Rendirse» con su confirmación, y después «1 derrota» en [PRU] y
+  «1 victoria» en [HUM]. Al final smoke_runner salió de [PRU], que se disolvió.
+- **Un fallo, corregido.** Volver a declarar durante la tregua se rechazó, pero el pie decía el texto general de
+  `INVALID_TARGET` y no el motivo; `readableError` muestra ahora el motivo del servidor (test en `economy.test.ts`,
+  visto fallar antes del arreglo; precisión en la spec).
+- **Sin comprobar en el navegador:** el texto corregido del rechazo por tregua (lo cubre el test; no volví a llevar la
+  cámara a [HUM] tras la recarga), los avisos y las entradas del registro de la guerra del lado del jugador (los
+  comprobó el humo y los cubre `eventLog.test.ts`) y el marcador que sube en el panel. Siguen pendientes las
+  comprobaciones de §E22 y §E23.

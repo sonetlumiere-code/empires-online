@@ -137,6 +137,10 @@ describe('textos', () => {
     expect(readableError('TARGET_NOT_WALKABLE', 'agua')).toBe('TARGET_NOT_WALKABLE: agua');
     // SPEC-CARAVANS RN-CARAVAN-002: sin camino entre las dos ciudades no hay trato.
     expect(readableError('PATH_NOT_FOUND', 'sin ruta')).toMatch(/caravanas/);
+    // SPEC-CLAN-WARS §4.7: el motivo que da el servidor llega al jugador (la tregua sólo la sabe él).
+    expect(readableError('INVALID_TARGET', 'vuestros clanes terminaron una guerra hace poco: espera a que acabe la tregua'))
+      .toBe('No se puede: vuestros clanes terminaron una guerra hace poco: espera a que acabe la tregua.');
+    expect(readableError('INVALID_TARGET', '')).toMatch(/^Ahí no se puede/);
   });
 
   it('la cuenta atrás redondea hacia arriba y no baja de cero', () => {
