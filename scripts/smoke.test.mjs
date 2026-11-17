@@ -32,6 +32,8 @@ import {
   pasoDeFaccion,
   pasoDeClan,
   alianzaCon,
+  esperaDelComienzo,
+  guerraCon,
   motivoDelAtaqueEntreAliados,
   rolEnClan,
   pasoDelTerritorioDeClan,
@@ -299,6 +301,22 @@ test('alianzaCon encuentra la alianza o la oferta con un clan, o null', () => {
   assert.equal(alianzaCon(upd, 'OTR'), null);
   assert.equal(alianzaCon({ clan: null, invitations: [] }, 'ECO'), null);
   assert.equal(alianzaCon({ clan: { id: 1, tag: 'HUM' } }, 'ECO'), null, 'un servidor anterior sin alliances');
+});
+
+// SPEC-CLAN-WARS: el humo --guerra-clan busca la guerra por la sigla del otro clan y
+// espera su comienzo hasta la preparación y un margen para el barrido.
+test('guerraCon encuentra la guerra abierta con un clan, o null', () => {
+  const guerra = { id: 4, clanId: 2, name: 'Rivales', tag: 'RIV', declaredByUs: true, status: 'DECLARED', startsAtMs: 9, endsAtMs: null, ourScore: 0, theirScore: 0 };
+  const upd = { clan: { id: 1, tag: 'HUM', wars: [guerra] }, invitations: [] };
+  assert.deepEqual(guerraCon(upd, 'RIV'), guerra);
+  assert.equal(guerraCon(upd, 'OTR'), null);
+  assert.equal(guerraCon({ clan: null, invitations: [] }, 'RIV'), null);
+  assert.equal(guerraCon({ clan: { id: 1, tag: 'HUM' } }, 'RIV'), null, 'un servidor anterior sin wars');
+});
+
+test('esperaDelComienzo espera hasta el comienzo y 15 s de margen', () => {
+  assert.equal(esperaDelComienzo({ startsAtMs: 70_000 }, 10_000), 75_000);
+  assert.equal(esperaDelComienzo({ startsAtMs: 5_000 }, 10_000), 15_000, 'ya empezada: sólo el margen');
 });
 
 // SPEC-CLAN-TERRITORIES: el humo --territorio-clan disputa siempre el mismo
