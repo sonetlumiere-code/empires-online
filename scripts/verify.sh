@@ -70,12 +70,19 @@ integracion_web() {
   [ -n "$EO_TEST_IDENTITY_POSTGRES_URL" ] || { echo "falta EO_TEST_IDENTITY_POSTGRES_URL"; return 1; }
   (cd "$RAIZ/apps/web" && EO_INTEGRATION=1 pnpm exec vitest run src/server/store.integration.test.ts)
 }
-# Los canarios de .github/workflows/ci.yml: el build y el escaneo los ven en su entorno.
+# Los canarios del build del cliente, leídos de .github/workflows/ci.yml (la única
+# copia: el escaneo de secretos no admite otra): el build y el escaneo del bundle
+# los ven en su entorno.
 canarios() {
-  EO_AUTH_JWT_SECRET=canario-ci-jwt-no-debe-llegar-al-navegador-01 \
-  EO_IDENTITY_POSTGRES_URL=postgres://canario:canario-ci-identidad@canario.invalid:5432/empires_identity \
-  EO_POSTGRES_URL=postgres://canario:canario-ci-juego@canario.invalid:5432/empires \
-  EO_REDIS_URL=redis://:canario-ci-redis@canario.invalid:6379/0 "$@"
+  local asignaciones
+  asignaciones="$(python3 -c 'import re,sys
+vistos={}
+for l in open(sys.argv[1], encoding="utf-8"):
+    m=re.match(r"\s+(EO_[A-Z_]+):\s+(\S*canario\S*)\s*$", l)
+    if m: vistos.setdefault(m.group(1), m.group(2))
+print("\n".join(k+"="+v for k,v in vistos.items()))' "$RAIZ/.github/workflows/ci.yml")"
+  [ -n "$asignaciones" ] || { echo "no encuentro los canarios en ci.yml"; return 1; }
+  env $asignaciones "$@"
 }
 
 cd "$RAIZ"
