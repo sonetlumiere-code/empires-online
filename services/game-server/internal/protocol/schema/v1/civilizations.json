@@ -5,6 +5,7 @@
       "code": "ROMAN",
       "name": "Romanos",
       "good": "WINE",
+      "unit": "LEGIONARY",
       "traits": {
         "unit.move_speed": 1000,
         "production.speed": 1100
@@ -14,6 +15,7 @@
       "code": "BYZANTINE",
       "name": "Bizantinos",
       "good": "SILK",
+      "unit": "CATAPHRACT",
       "traits": {
         "unit.move_speed": 950,
         "production.speed": 1000,
@@ -24,6 +26,7 @@
       "code": "PERSIAN",
       "name": "Persas",
       "good": "SPICES",
+      "unit": "HORSE_ARCHER",
       "traits": {
         "unit.move_speed": 1050,
         "production.speed": 950,
@@ -34,6 +37,7 @@
       "code": "NORSE",
       "name": "Nórdicos",
       "good": "FURS",
+      "unit": "BERSERKER",
       "traits": {
         "unit.move_speed": 1100,
         "production.speed": 900,

@@ -2323,3 +2323,63 @@ Contra la base de desarrollo, que el servidor llevó de la migración 22 a la 23
   mapa), «Aliado de [TAG]» en la barra de una ciudad ajena y el clic de ataque contra ella (los cubren
   `clans.test.ts` y el humo). En la base de desarrollo [HUM] queda sin alianzas, smoke_clan_b sin clan y smoke_orden de
   miembro raso.
+
+## E22 — Unidades de civilización
+
+**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-unidades-civilizacion`. Contrato:
+[SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md), aceptada el 2026-11-17 con sus diez decisiones de producto,
+y [ADR-043](../decisions/ADR-043-civilization-units.md).
+
+**Objetivo.** Que cada civilización tenga una cara en el campo de batalla: una unidad propia que sólo ella entrena,
+pagada en parte con su bien, que lucha con las reglas de combate que ya existen.
+
+**Alcance.** Legionario (`ROMAN`), catafracto (`BYZANTINE`), arquero a caballo (`PERSIAN`) y berserker (`NORSE`) en el
+catálogo de unidades, con el perfil de la spec §4.2 y ligados por `civilizations.unit`; `city.train` con ellas desde la
+Edad de Bronce, por 80 de madera, 40 de piedra y 10 del bien propio, 35 s y 1 de población; el combate, la respuesta
+automática, el saqueo, el asedio, la conquista y la captura por capacidad y no por el tipo `WARRIOR`; `UnitType` y
+`TrainableUnitType` con los cuatro tipos y el catálogo de presentación `units.json`; `INV-UNIT-012` e `INV-UNIT-013`;
+migración `000024`; el cliente (botón, siluetas, textos) y `scripts/smoke.mjs --unidad-civilizacion`. **No entra**
+(spec §2): más de una unidad por civilización, sustituir al guerrero, mecánicas nuevas de combate, un bono propio en
+tierra afín, compartir la unidad con los aliados y un tope por ciudad.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-043](../decisions/ADR-043-civilization-units.md), `INV-UNIT-012` e
+   `INV-UNIT-013`, y las precisiones de `RN-ECON-010` ([economy-wood.md](../specs/economy-wood.md)), `RN-COMBAT-001`
+   ([combat-raid.md](../specs/combat-raid.md)), `RN-COMBAT-012` ([combat-response.md](../specs/combat-response.md)),
+   Q1 y Q8 de [civilization-goods.md](../specs/civilization-goods.md), Q6 de
+   [civilizations.md](../specs/civilizations.md) e `INV-COMBAT-003` ([combat.md](../invariants/combat.md)).
+2. **HECHO** — Dominio: los cuatro tipos exclusivos, `TrainCosts`, `OwnGoodCost`, `RequiresEra`, `Exclusive`,
+   `Civilization.Unit` con su validación (`INV-UNIT-013`, también en la carga) y `production.CanTrain` con
+   civilización y edad (`TestLaUnidadExclusivaPideSuCivilizacionSuEraYSuBien`,
+   `TestLasUnidadesDeCivilizacionTienenSuPerfil`, `TestElCatalogoTieneUnaUnidadExclusivaPorCivilizacion`).
+3. **HECHO** — Migración `000024` y persistencia: `civilizations.unit`, el trigger de `city_productions`, la carga y el
+   encargo con varios débitos (`TestCadaCivilizacionTieneSuUnidadEnLaBase`,
+   `TestElEncargoDeUnaExclusivaDebitaLosTresRecursosJuntos`,
+   `TestLaBaseRechazaLaUnidadDeOtraCivilizacionOAntesDeBronce`; el trigger, verificado por mutación).
+4. **HECHO** — Simulación: la reserva y la devolución en varios recursos, la respuesta automática por `CanAttack` y los
+   golden de cada perfil (`civilization_units_test.go`: legionario, berserker, arquero a tres tiles, catafracto,
+   tierra afín, asedio y saqueo, y una unidad de cada tipo que ataca, saquea y derriba) y la recuperación
+   (`TestReinicioDuranteElEntrenamientoDeUnLegionario`).
+5. **HECHO** — Protocolo: los cuatro tipos en Zod y en Go, `units.json`, `CivilizationInfo.unit`; contract tests
+   (`unit_catalog_contract_test.go`), e2e (`TestEntrenarUnLegionarioPorLaRed`) y Zod.
+6. **HECHO** — Cliente: el botón de la unidad propia, las siluetas, las capacidades y los textos (`units.test.ts` y los
+   de economía, conquista, registro y proyección).
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --unidad-civilizacion` (sus funciones, con test en
+   `scripts/smoke.test.mjs`).
+
+### Prueba en vivo (2026-11-17)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 23 a la 24 al arrancar, con `pnpm run
+verify:full` en verde antes:
+
+- `node scripts/smoke.mjs --web http://localhost:3001 --unidad-civilizacion` pasó entero (21 comprobaciones):
+  smoke_runner (`ROMAN`, en Bronce) pide `CATAPHRACT` y se rechaza con «la unidad es de otra civilización»; sin vino,
+  su taller elabora 10; el legionario se encarga con 80 de madera, 40 de piedra y 10 de vino y el plazo romano
+  (31 818 ms), y nace con su tipo y 110 de vida.
+- En el navegador, como smoke_clan_a (`ROMAN`, en la Edad de Piedra): tras «Aldeano» y «Guerrero», el botón
+  «Legionario (80 de madera, 40 de piedra y 10 de vino)», deshabilitado con «El legionario pide la Edad de Bronce.».
+- **Sin comprobar en el navegador:** las siluetas de las cuatro unidades (con el panel oculto no hay
+  `requestAnimationFrame` y el mapa no se dibuja), «Legionario · Romanos» en el panel de selección y la línea de la
+  unidad propia en el registro de alta (pide cerrar la sesión del navegador). Los cubren `units.test.ts` y la
+  proyección; el dibujo, sólo el typecheck.

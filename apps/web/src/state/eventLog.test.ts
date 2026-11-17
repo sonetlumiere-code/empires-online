@@ -77,6 +77,10 @@ describe('texto de cada entrada', () => {
     expect(entryText(entrada(1, 'UNIT_LOST', { count: 2, unitType: 'VILLAGER', x: 451, y: 179 })))
       .toBe('Villa Norte mató a 2 de tus aldeanos cerca de (451, 179)');
     expect(entryText(entrada(1, 'UNIT_LOST', { unitType: 'WARRIOR' }))).toBe('Villa Norte mató a uno de tus guerreros');
+    // SPEC-CIVILIZATION-UNITS §4.6: las muertes nombran la unidad, con su plural.
+    expect(entryText(entrada(1, 'UNIT_LOST', { unitType: 'HORSE_ARCHER', count: 2 })))
+      .toBe('Villa Norte mató a 2 de tus arqueros a caballo');
+    expect(entryText(entrada(1, 'UNIT_LOST', { unitType: 'CATAPHRACT' }))).toBe('Villa Norte mató a uno de tus catafractos');
     expect(entryText(entrada(1, 'ENEMY_KILLED', { unitType: 'WARRIOR' }))).toBe('Tus unidades mataron a un guerrero de Villa Norte');
     expect(entryText(entrada(1, 'PILLAGED', { count: 17, amount: 85 }))).toBe('Villa Norte te robó 85 de madera en 17 golpes');
     expect(entryText(entrada(1, 'PILLAGE_DONE', { amount: 40 }))).toBe('Tus guerreros robaron 40 de madera a Villa Norte');

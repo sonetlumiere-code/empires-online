@@ -249,7 +249,7 @@ func TestConUnEntrenamientoEnCursoNoSeAvanza(t *testing.T) {
 	e.llenar(t, ctx, 500, 200)
 	p := production.Production{CityID: e.ciudad(), UnitType: unit.TypeVillager, CompletesAtMs: 1_757_376_020_000}
 	require.NoError(t, e.economia.Train(ctx, "00000000-0000-4000-8000-0000000000c1", e.jugador.Player.ID, p, 1,
-		debito(e.ciudad(), -50, 2), 9))
+		[]postgres.StockDelta{debito(e.ciudad(), -50, 2)}, 9))
 	a := e.avance("00000000-0000-4000-8000-0000000000c2")
 	err := e.economia.Advance(ctx, a.RequestID, e.jugador.Player.ID, a, e.pago(3, 2), 9)
 	assert.ErrorIs(t, err, advance.ErrCityBusy)
@@ -266,7 +266,7 @@ func TestConUnAvanceEnCursoNoSeEntrena(t *testing.T) {
 	require.NoError(t, f.economia.Advance(ctx, b.RequestID, f.jugador.Player.ID, b, f.pago(2, 2), 9))
 	q := production.Production{CityID: f.ciudad(), UnitType: unit.TypeVillager, CompletesAtMs: 1_757_376_020_000}
 	err := f.economia.Train(ctx, "00000000-0000-4000-8000-0000000000c4", f.jugador.Player.ID, q, 1,
-		debito(f.ciudad(), -50, 3), 9)
+		[]postgres.StockDelta{debito(f.ciudad(), -50, 3)}, 9)
 	assert.ErrorIs(t, err, production.ErrCityBusy)
 	madera, _ := stockDe(t, ctx, store, f.ciudad(), economy.ResourceWood)
 	assert.Equal(t, int64(100), madera, "el entrenamiento rechazado no gastó")

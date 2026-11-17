@@ -120,6 +120,7 @@ func TestElCatalogoDeCivilizacionesEsElDePresentacion(t *testing.T) {
 		assert.Equal(t, exportado[i].Code, c.Code)
 		assert.Equal(t, exportado[i].Name, c.Name, c.Code)
 		assert.Equal(t, exportado[i].Good, string(c.Good), c.Code)
+		assert.Equal(t, exportado[i].Unit, string(c.Unit), c.Code)
 		assert.Equal(t, exportado[i].Traits, c.Traits, c.Code)
 	}
 }

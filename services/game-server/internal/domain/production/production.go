@@ -25,7 +25,21 @@ var (
 	ErrCityBusy = errors.New("la ciudad ya tiene una producción en curso")
 	// ErrNotTrainable: el tipo no se entrena en una ciudad.
 	ErrNotTrainable = errors.New("el tipo de unidad no se entrena")
+	// ErrNotYourCivilization: una unidad exclusiva que no es la de la
+	// civilización del dueño de la ciudad (INVALID_TARGET, RN-CIVUNIT-002).
+	ErrNotYourCivilization = errors.New("la unidad es de otra civilización")
+	// ErrEraRequired: la ciudad no ha llegado a la era que pide el tipo
+	// (INVALID_TARGET, RN-CIVUNIT-002).
+	ErrEraRequired = errors.New("la ciudad no ha llegado a la era que pide la unidad")
 )
+
+// Civilization es lo que el entrenamiento sabe de la civilización del dueño de
+// la ciudad: su unidad exclusiva y su bien (civilizations.unit y .good). El
+// dominio no pregunta por su código (RN-PLAYER-012).
+type Civilization struct {
+	Unit unit.Type
+	Good economy.Resource
+}
 
 // Production es el entrenamiento de una ciudad.
 type Production struct {
@@ -45,32 +59,50 @@ func (p *Production) InProgress() bool { return p.UnitID == 0 }
 // Due indica si su entrenamiento venció en `nowMs` y falta el nacimiento.
 func (p *Production) Due(nowMs int64) bool { return p.InProgress() && p.CompletesAtMs <= nowMs }
 
-// CanTrain aplica RN-ECON-010 en el orden de la spec: ciudad propia, tipo
-// entrenable, sin producción en curso, plaza de población y madera. Devuelve la
-// definición, que lleva el coste y el tiempo.
+// CanTrain aplica RN-ECON-010 y RN-CIVUNIT-002 en el orden de la spec
+// (SPEC-CIVILIZATION-UNITS §5): ciudad propia, tipo entrenable, la civilización
+// si es exclusivo, la era, sin producción en curso, plaza de población y
+// recursos. Devuelve la definición, que lleva el tiempo, y el coste completo con
+// el bien de la civilización (ADR-043 §3).
 //
-// `busy` dice si la ciudad tiene una producción en curso o encargada.
-func CanTrain(c *city.City, requester uuid.UUID, t unit.Type, busy bool, stock *economy.Stock) (unit.Definition, error) {
+// `busy` dice si la ciudad tiene una producción en curso o encargada o avanza
+// de era; `stock` devuelve el stock de un recurso, o nil si no lo tiene.
+func CanTrain(
+	c *city.City, requester uuid.UUID, t unit.Type, civ Civilization, busy bool, stock func(economy.Resource) *economy.Stock,
+) (unit.Definition, economy.Costs, error) {
 	if c == nil || c.OwnerPlayerID != requester {
-		return unit.Definition{}, ErrCityNotFound
+		return unit.Definition{}, nil, ErrCityNotFound
 	}
 	def, err := unit.Lookup(t)
 	if err != nil {
-		return unit.Definition{}, err
+		return unit.Definition{}, nil, err
 	}
 	if !def.CanTrain() {
-		return unit.Definition{}, fmt.Errorf("%w: %s", ErrNotTrainable, t)
+		return unit.Definition{}, nil, fmt.Errorf("%w: %s", ErrNotTrainable, t)
+	}
+	// INV-UNIT-012: una exclusiva, sólo la de la civilización del dueño.
+	if def.Exclusive && def.Type != civ.Unit {
+		return unit.Definition{}, nil, fmt.Errorf("%w: %s", ErrNotYourCivilization, t)
+	}
+	if def.RequiresEra != "" && !c.Era.AtLeast(def.RequiresEra) {
+		return unit.Definition{}, nil, fmt.Errorf("%w: %s pide %s", ErrEraRequired, t, def.RequiresEra)
 	}
 	if busy {
-		return unit.Definition{}, ErrCityBusy
+		return unit.Definition{}, nil, ErrCityBusy
 	}
 	// La plaza se reserva al ordenar (RN-ECON-010): por eso se pregunta aquí y
 	// no al nacer.
 	if !c.HasPopulationRoom(def.PopulationCost) {
-		return unit.Definition{}, city.ErrPopulationLimit
+		return unit.Definition{}, nil, city.ErrPopulationLimit
 	}
-	if stock == nil || !stock.CanAfford(def.TrainCost) {
-		return unit.Definition{}, economy.ErrInsufficientResources
+	costs := def.CostsWith(civ.Good)
+	if def.OwnGoodCost > 0 && !civ.Good.IsGood() {
+		// Sin bien conocido no hay con qué pagar: sólo pasa sin catálogo de
+		// civilizaciones, que la carga no permite en producción.
+		return unit.Definition{}, nil, economy.ErrInsufficientResources
 	}
-	return def, nil
+	if stock == nil || !costs.CanAfford(stock) {
+		return unit.Definition{}, nil, economy.ErrInsufficientResources
+	}
+	return def, costs, nil
 }

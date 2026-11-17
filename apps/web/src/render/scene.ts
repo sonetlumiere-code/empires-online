@@ -422,8 +422,7 @@ export class IsoScene {
       entry.unit.isOwn !== unit.isOwn ||
       entry.unit.working !== unit.working ||
       (entry.unit.carrying > 0) !== (unit.carrying > 0) ||
-      entry.unit.warrior !== unit.warrior ||
-      entry.unit.caravan !== unit.caravan ||
+      entry.unit.unitType !== unit.unitType ||
       entry.unit.attacking !== unit.attacking ||
       entry.unit.hpRatio !== unit.hpRatio
     ) {
@@ -654,14 +653,15 @@ function buildChunkGraphics(chunk: ChunkTerrain, chunkSize: number): Graphics {
 
 function paintUnitBody(
   body: Graphics,
-  unit: Pick<SceneUnit, 'isOwn' | 'working' | 'carrying' | 'warrior' | 'caravan' | 'attacking' | 'hpRatio'>,
+  unit: Pick<SceneUnit, 'isOwn' | 'working' | 'carrying' | 'unitType' | 'attacking' | 'hpRatio'>,
 ): void {
   const fill = unit.isOwn ? 0x4ea3ff : 0xff6b6b;
   const stroke = unit.attacking ? 0xffd23f : unit.working ? 0x7a4a1e : 0x0b1a2a;
   const width = unit.attacking || unit.working ? 3 : 1.5;
   const cy = -TILE_H / 3;
   body.clear();
-  if (unit.caravan) {
+  const mark = 0xf4e6c8; // el color de los distintivos de las unidades de civilización
+  if (unit.unitType === 'CARAVAN') {
     // La caravana es un carro: una caja con su carga encima y dos ruedas.
     body
       .rect(-10, cy - 5, 20, 10)
@@ -674,8 +674,33 @@ function paintUnitBody(
       .fill({ color: 0x2a1a0a })
       .circle(6, cy + 6, 3)
       .fill({ color: 0x2a1a0a });
-  } else if (unit.warrior) {
-    // El guerrero es un rombo: se distingue del aldeano de un vistazo.
+  } else if (unit.unitType === 'CATAPHRACT' || unit.unitType === 'HORSE_ARCHER') {
+    // Las dos montadas (SPEC-CIVILIZATION-UNITS Q7): el caballo, un cuerpo
+    // alargado con patas, y el jinete encima; el catafracto con su lanza, el
+    // arquero con su arco.
+    body
+      .rect(-10, cy - 1, 20, 7)
+      .fill({ color: fill })
+      .stroke({ color: stroke, width })
+      .rect(-9, cy + 6, 2, 4)
+      .fill({ color: stroke })
+      .rect(7, cy + 6, 2, 4)
+      .fill({ color: stroke })
+      .moveTo(0, cy - 12)
+      .lineTo(5, cy - 5)
+      .lineTo(0, cy + 1)
+      .lineTo(-5, cy - 5)
+      .closePath()
+      .fill({ color: fill })
+      .stroke({ color: stroke, width });
+    if (unit.unitType === 'CATAPHRACT') {
+      body.moveTo(-4, cy - 2).lineTo(15, cy - 13).stroke({ color: mark, width: 2 });
+    } else {
+      body.arc(6, cy - 6, 6, -Math.PI / 2, Math.PI / 2).stroke({ color: mark, width: 1.5 });
+    }
+  } else if (unit.unitType !== 'VILLAGER' && unit.unitType !== '') {
+    // El guerrero es un rombo: se distingue del aldeano de un vistazo. El
+    // legionario y el berserker lo son también, con su distintivo.
     body
       .moveTo(0, cy - 9)
       .lineTo(8, cy)
@@ -684,6 +709,22 @@ function paintUnitBody(
       .closePath()
       .fill({ color: fill })
       .stroke({ color: stroke, width });
+    if (unit.unitType === 'LEGIONARY') {
+      // Un escudo grande delante.
+      body.rect(-11, cy - 5, 7, 11).fill({ color: mark }).stroke({ color: stroke, width: 1 });
+    } else if (unit.unitType === 'BERSERKER') {
+      // Dos hachas cruzadas sobre la cabeza.
+      body
+        .moveTo(-7, cy - 13)
+        .lineTo(7, cy - 3)
+        .moveTo(7, cy - 13)
+        .lineTo(-7, cy - 3)
+        .stroke({ color: mark, width: 2 })
+        .circle(-7, cy - 13, 2.5)
+        .fill({ color: mark })
+        .circle(7, cy - 13, 2.5)
+        .fill({ color: mark });
+    }
   } else {
     body.circle(0, cy, 7).fill({ color: fill }).stroke({ color: stroke, width });
   }

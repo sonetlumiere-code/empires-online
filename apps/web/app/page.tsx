@@ -41,8 +41,18 @@ import {
   siegeAlertActive,
   SIEGE_ALERT_MS,
   trainBlockReason,
+  civilizationUnitBlockReason,
   unitTypeLabel,
 } from '../src/state/economy';
+import {
+  civilizationUnit,
+  civilizationUnitLine,
+  trainCostText,
+  unitAttacks,
+  unitInfoOf,
+  unitName,
+  unitTitle,
+} from '../src/state/units';
 import { ViewSync } from '../src/state/viewSync';
 import {
   CIVILIZATIONS,
@@ -217,7 +227,7 @@ export default function Page() {
   // Cada TerritoryView se sustituye al cambiar, así que la suscripción a él sólo
   // re-renderiza con sus propios cambios.
   const claimTerritory = useWorldStore((s) =>
-    selectedUnit && selectedUnit.unitType === 'WARRIOR' && selectedUnit.playerId === s.playerId
+    selectedUnit && unitAttacks(selectedUnit.unitType) && selectedUnit.playerId === s.playerId
       ? territoryAt(s.territories.values(), selectedUnit.x, selectedUnit.y)
       : undefined,
   );
@@ -702,6 +712,9 @@ export default function Page() {
                       {l.text}
                     </span>
                   ))}
+                  {civilizationUnitLine(c.code) && (
+                    <span style={{ display: 'block', color: 'var(--muted)' }}>{civilizationUnitLine(c.code)}</span>
+                  )}
                 </span>
               </label>
             ))}
@@ -940,6 +953,25 @@ export default function Page() {
             >
               Guerrero
             </button>
+            {(() => {
+              // SPEC-CIVILIZATION-UNITS §4.6: la unidad propia, y sólo ella.
+              const propia = civilizationUnit(ownCity.civilization);
+              if (!propia) return null;
+              const reason = civilizationUnitBlockReason(ownCity);
+              return (
+                <button
+                  className="secondary"
+                  onClick={() => clientRef.current?.trainUnit(ownCity.id, propia)}
+                  disabled={reason !== null}
+                  title={
+                    reason ??
+                    `Entrena un ${unitTypeLabel(propia)}, la unidad propia de tu civilización: ${trainCostText(propia, ownCity.civilization)}, unos ${Math.round((unitInfoOf(propia)?.trainMs ?? 0) / 1000)} s. Hace todo lo que hace un guerrero`
+                  }
+                >
+                  {unitName(propia)} ({trainCostText(propia, ownCity.civilization)})
+                </button>
+              );
+            })()}
             {ownCity.production && (
               <span style={{ color: 'var(--muted)' }}>
                 Entrenando {unitTypeLabel(ownCity.production.unitType)}:{' '}
@@ -1021,7 +1053,7 @@ export default function Page() {
         )}
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
           {selectedUnitId !== null
-            ? `${selectedUnit ? unitTypeLabel(selectedUnit.unitType) : 'Unidad'} ${selectedUnitId}${describeUnit(selectedUnit)} — ${helpFor(selectedUnit)}`
+            ? `${selectedUnit ? unitTitle(selectedUnit.unitType) : 'Unidad'} ${selectedUnitId}${describeUnit(selectedUnit)} — ${helpFor(selectedUnit)}`
             : `${ownUnitCount} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H vuelve a la ciudad`}
         </span>
         <button
@@ -1719,7 +1751,8 @@ function describeUnit(
 
 /** Qué se puede hacer con la unidad seleccionada. */
 function helpFor(u: { unitType: string } | undefined): string {
-  if (u?.unitType === 'WARRIOR') {
+  // RN-CIVUNIT-005: la unidad propia de una civilización hace lo mismo que el guerrero.
+  if (u && unitAttacks(u.unitType)) {
     return 'clic en una unidad enemiga para atacarla (a una caravana, para capturarla), en una ciudad enemiga para saquearla, en el mapa para moverla; con botín, llévala junto a tu ciudad; «Reclamar territorio» planta su estandarte donde está';
   }
   if (u?.unitType === 'CARAVAN') {

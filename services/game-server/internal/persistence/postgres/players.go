@@ -9,6 +9,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 )
 
 // PlayerRepo persiste jugadores y los catálogos de civilizaciones y facciones.
@@ -63,7 +64,7 @@ func (r *PlayerRepo) TouchLastSeen(ctx context.Context, id uuid.UUID) error {
 // ListCivilizations carga el catálogo completo de civilizaciones.
 func (r *PlayerRepo) ListCivilizations(ctx context.Context) ([]player.Civilization, error) {
 	rows, err := r.store.pool.Query(ctx,
-		`SELECT id, code, name, good, traits FROM civilizations ORDER BY id`)
+		`SELECT id, code, name, good, unit, traits FROM civilizations ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +74,8 @@ func (r *PlayerRepo) ListCivilizations(ctx context.Context) ([]player.Civilizati
 	for rows.Next() {
 		var c player.Civilization
 		var traits []byte
-		var good string
-		if err := rows.Scan(&c.ID, &c.Code, &c.Name, &good, &traits); err != nil {
+		var good, unitType string
+		if err := rows.Scan(&c.ID, &c.Code, &c.Name, &good, &unitType, &traits); err != nil {
 			return nil, err
 		}
 		// Enteros por mil (INV-PLAYER-012): un decimal no se puede leer como
@@ -86,13 +87,15 @@ func (r *PlayerRepo) ListCivilizations(ctx context.Context) ([]player.Civilizati
 			}
 		}
 		c.Good = economy.Resource(good)
+		c.Unit = unit.Type(unitType)
 		out = append(out, c)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// Rasgos y bienes: cada rasgo un entero positivo (INV-PLAYER-012) y un bien
-	// distinto por civilización (RN-GOODS-001).
+	// Rasgos, bienes y unidades: cada rasgo un entero positivo (INV-PLAYER-012),
+	// un bien distinto por civilización (RN-GOODS-001) y una unidad exclusiva
+	// distinta, sin tipos exclusivos huérfanos (INV-UNIT-013).
 	if err := player.ValidateCatalog(out); err != nil {
 		return nil, err
 	}

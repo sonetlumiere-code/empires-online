@@ -550,7 +550,8 @@ func TestEntrenarUnAldeanoReservaYNaceAlVencer(t *testing.T) {
 	assert.Equal(t, int64(10), h.madera())
 	assert.Equal(t, int32(4), h.ciudad().Population, "la plaza se reserva al ordenar")
 	require.Len(t, h.economy.trains, 1)
-	assert.Equal(t, int64(-50), h.economy.trains[0].Stock.Delta)
+	require.Len(t, h.economy.trains[0].Stocks, 1, "el aldeano sólo paga madera")
+	assert.Equal(t, int64(-50), h.economy.trains[0].Stocks[0].Delta)
 
 	h.tick()
 	updates := h.rec.byType(protocol.TypeCityUpdate)

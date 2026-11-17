@@ -100,7 +100,7 @@ pacto, tampoco) — **existe y pasa**. Verificado por mutación: sin la rama de 
 **Enunciado.** En toda muerte, lo que gana el atacante es como mucho lo que llevaba la víctima; y la madera que
 un `WARRIOR` deposita en su ciudad es exactamente la que llevaba, que pasa a cero. Desde E5: en todo golpe de
 saqueo, lo que gana el guerrero es exactamente lo que pierde el almacén de la víctima, y en disco el débito llega
-antes que la carga ([ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md)).
+antes que la carga ([ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md)). **Precisión (2026-11-17, [SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md)):** desde E22, «`WARRIOR`» y «guerrero» se leen aquí como toda unidad que ataca, también las cuatro de civilización (`RN-CIVUNIT-005`); el enunciado no cambia.
 
 **Razón.** El botín es una transferencia, no una fuente. Si matar creara madera, el combate sería una granja.
 

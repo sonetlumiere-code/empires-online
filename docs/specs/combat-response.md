@@ -65,7 +65,7 @@ marca `RN-COMBAT-011` como retirada y sustituida por `RN-COMBAT-012` a `RN-COMBA
 
 | ID | Regla |
 |---|---|
-| `RN-COMBAT-012` | Sólo responde un `WARRIOR` vivo, en el mapa y no guarnecido. Los aldeanos no responden ni huyen (Q1). |
+| `RN-COMBAT-012` | Sólo responde un `WARRIOR` vivo, en el mapa y no guarnecido. Los aldeanos no responden ni huyen (Q1). **Precisión (2026-11-17, [civilization-units.md](civilization-units.md), [ADR-043](../decisions/ADR-043-civilization-units.md)):** con E22 responde toda unidad que ataca (`CanAttack`), también las de civilización; la respuesta deja de preguntar por el tipo (`RN-CIVUNIT-005`). |
 | `RN-COMBAT-013` | **Disponible** es `IDLE` (parado, sin tarea, sin movimiento y sin enfrentamiento) o volviendo a su puesto tras una respuesta; en el segundo caso, si responde, conserva su puesto original. Una orden del jugador en curso nunca se sustituye por una respuesta (Q3). |
 | `RN-COMBAT-014` | El disparo es un golpe aplicado sobre el guerrero o sobre una unidad de su dueño a ≤ `EO_COMBAT_GUARD_RADIUS_TILES` (Q2). Ver o tener cerca a un enemigo que no golpea no dispara nada. Desde E5 también dispara un golpe de saqueo sobre su ciudad, medido desde el centro ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-027`). |
 | `RN-COMBAT-015` | **Orden y determinismo.** Las alertas se procesan después de aplicar todos los golpes del tick, en el orden de cálculo de los golpes (`id` del atacante); dentro de un golpe, primero la víctima y luego los guardias por `id`. Un guerrero responde a la primera alerta que le llega en el tick y no cambia de objetivo por alertas posteriores. Su primer golpe sigue la regla de contacto de `RN-COMBAT-007`. Sin azar. |

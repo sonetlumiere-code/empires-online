@@ -21,6 +21,7 @@ import { ClientMessage } from '../v1/client.js';
 import { ServerMessage } from '../v1/server.js';
 import { ERROR_CODES } from '../v1/errors.js';
 import { CIVILIZATIONS } from '../v1/civilizations.js';
+import { UNITS } from '../v1/units.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDir, '..', '..');
@@ -60,6 +61,12 @@ function buildArtifacts(): Artifact[] {
       // tabla `civilizations` en un test de integración.
       filename: 'civilizations.json',
       content: `${JSON.stringify({ version: 1, civilizations: CIVILIZATIONS }, null, 2)}\n`,
+    },
+    {
+      // Catálogo de presentación de las unidades (ADR-043 §7): un test del Game
+      // Server lo compara con el catálogo de Go campo a campo.
+      filename: 'units.json',
+      content: `${JSON.stringify({ version: 1, units: UNITS }, null, 2)}\n`,
     },
   ];
 }

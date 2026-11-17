@@ -200,7 +200,7 @@ func TestElTriggerDejaBajarElLimiteYNoSubirLaPoblacionPorEncima(t *testing.T) {
 
 	e.depositar(t, ctx, 100, 1)
 	p := production.Production{CityID: e.ciudad(), UnitType: unit.TypeVillager, CompletesAtMs: 1}
-	err = e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, debito(e.ciudad(), -50, 2), 1)
+	err = e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, []postgres.StockDelta{debito(e.ciudad(), -50, 2)}, 1)
 	require.True(t, errors.Is(err, city.ErrPopulationLimit), "%v", err)
 	amount, _ := stockEnBase(t, ctx, store, e.ciudad())
 	assert.Equal(t, int64(100), amount)

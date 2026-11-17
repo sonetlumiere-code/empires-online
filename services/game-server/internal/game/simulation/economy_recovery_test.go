@@ -383,3 +383,32 @@ func TestUnaProduccionTerminadaNoReservaNada(t *testing.T) {
 	_, _, ok := h.state.Production(1)
 	assert.False(t, ok)
 }
+
+// SPEC-CIVILIZATION-UNITS §9 «recovery»: un legionario a medias sobrevive al
+// reinicio y nace con su tipo y su vida en el instante absoluto que fijó el
+// encargo (31 818 ms de un romano), ni antes ni después (INV-ECON-005).
+func TestReinicioDuranteElEntrenamientoDeUnLegionario(t *testing.T) {
+	p := persistido{
+		poblacion: 2,
+		unidad:    aldeano(unit.StatusIdle, deposito),
+		economia: simulation.EconomyLoad{Productions: []production.Production{
+			{CityID: 1, UnitType: unit.TypeLegionary, CompletesAtMs: epoch + 31_818, RequestID: "r"},
+		}},
+	}
+	h, _ := arrancar(t, p, epoch+12_000)
+	_, confirmada, ok := h.state.Production(1)
+	require.True(t, ok)
+	assert.True(t, confirmada)
+
+	h.hasta(epoch + 31_800)
+	assert.Empty(t, h.economy.births)
+	h.hasta(epoch + 31_900)
+	require.Len(t, h.economy.births, 1)
+	assert.Equal(t, unit.TypeLegionary, h.economy.births[0].Type)
+	h.tick()
+	spawns := h.rec.byType(protocol.TypeEntitySpawn)
+	require.Len(t, spawns, 1)
+	nacido := spawns[0].Payload.(protocol.EntitySpawnPayload).Unit
+	assert.Equal(t, string(unit.TypeLegionary), nacido.UnitType)
+	assert.Equal(t, int32(110), nacido.MaxHP)
+}

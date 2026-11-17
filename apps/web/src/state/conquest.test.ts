@@ -60,7 +60,8 @@ describe('el botón «Reclamar territorio» (RN-CONQ-001 a 003)', () => {
       status: 'ACTIVE', proposedByMe: false, breaksAtMs: null,
     };
     const casos: [Partial<ClaimCheck>, string][] = [
-      [{ unit: guerrero({ unitType: 'VILLAGER' }) }, 'Sólo un guerrero reclama territorios'],
+      [{ unit: guerrero({ unitType: 'VILLAGER' }) }, 'Sólo un guerrero o tu unidad propia reclaman territorios'],
+      [{ unit: guerrero({ unitType: 'CARAVAN' }) }, 'Sólo un guerrero o tu unidad propia reclaman territorios'],
       [{ unit: guerrero({ playerId: otro }) }, 'Selecciona un guerrero tuyo'],
       [{ unit: guerrero({ status: 'CLAIMING' }) }, 'Ya está reclamando este territorio'],
       [{ territory: undefined }, 'Aquí no hay ningún territorio'],
@@ -73,6 +74,10 @@ describe('el botón «Reclamar territorio» (RN-CONQ-001 a 003)', () => {
       [{ unit: guerrero({ x: 11, y: 11 }), territory: territorio({ minX: 0 }) }, 'No se reclama dentro de una ciudad'],
     ];
     for (const [over, motivo] of casos) expect(claimBlockReason(check(over))).toBe(motivo);
+    // RN-CIVUNIT-005: las cuatro unidades de civilización reclaman como el guerrero.
+    for (const unitType of ['LEGIONARY', 'CATAPHRACT', 'HORSE_ARCHER', 'BERSERKER'] as const) {
+      expect(claimBlockReason(check({ unit: guerrero({ unitType }), territory: territorio(ajeno) }))).toBeNull();
+    }
   });
 
   it('el acuerdo comercial no da paz, y una protección vencida no protege', () => {

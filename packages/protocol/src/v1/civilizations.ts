@@ -9,7 +9,7 @@
  * que una migración de balance que no lo actualice rompa la CI en lugar de
  * mentir en el formulario.
  */
-import { CivilizationCode, GoodType } from './common.js';
+import { CivilizationCode, GoodType, TrainableUnitType } from './common.js';
 
 /** Rasgos que aplica el servidor. Enteros por mil: `1000` es «sin efecto» (RN-CIV-003). */
 export const CIVILIZATION_TRAIT_KEYS = [
@@ -26,29 +26,34 @@ export interface CivilizationInfo {
   readonly name: string;
   /** El bien que sólo elabora su taller (SPEC-CIVILIZATION-GOODS §4.1). */
   readonly good: GoodType;
+  /** Su unidad exclusiva, la única que sólo ella entrena (SPEC-CIVILIZATION-UNITS §4.1). */
+  readonly unit: TrainableUnitType;
   /** Sólo las claves que la civilización declara; una ausente vale 1000. */
   readonly traits: Readonly<Partial<Record<CivilizationTraitKey, number>>>;
 }
 
 /** En el orden de la tabla (por `id`). */
 export const CIVILIZATIONS: readonly CivilizationInfo[] = [
-  { code: 'ROMAN', name: 'Romanos', good: 'WINE', traits: { 'unit.move_speed': 1000, 'production.speed': 1100 } },
+  { code: 'ROMAN', name: 'Romanos', good: 'WINE', unit: 'LEGIONARY', traits: { 'unit.move_speed': 1000, 'production.speed': 1100 } },
   {
     code: 'BYZANTINE',
     name: 'Bizantinos',
     good: 'SILK',
+    unit: 'CATAPHRACT',
     traits: { 'unit.move_speed': 950, 'production.speed': 1000, 'building.house_hp': 1200 },
   },
   {
     code: 'PERSIAN',
     name: 'Persas',
     good: 'SPICES',
+    unit: 'HORSE_ARCHER',
     traits: { 'unit.move_speed': 1050, 'production.speed': 950, 'economy.gather_speed': 1100 },
   },
   {
     code: 'NORSE',
     name: 'Nórdicos',
     good: 'FURS',
+    unit: 'BERSERKER',
     traits: { 'unit.move_speed': 1100, 'production.speed': 900, 'combat.loot_carry': 1150 },
   },
 ];

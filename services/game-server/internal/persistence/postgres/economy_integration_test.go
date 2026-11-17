@@ -219,9 +219,9 @@ func TestEntrenarReservaLaPlazaYEsIdempotente(t *testing.T) {
 	e.depositar(t, ctx, 120, 1)
 	p := production.Production{CityID: e.ciudad(), UnitType: unit.TypeVillager, CompletesAtMs: 1_757_376_020_000}
 
-	require.NoError(t, e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, debito(e.ciudad(), -50, 2), 1))
-	require.NoError(t, e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, debito(e.ciudad(), -50, 2), 1))
-	err := e.economia.Train(ctx, "req-2", e.jugador.Player.ID, p, 1, debito(e.ciudad(), -50, 3), 1)
+	require.NoError(t, e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, []postgres.StockDelta{debito(e.ciudad(), -50, 2)}, 1))
+	require.NoError(t, e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, []postgres.StockDelta{debito(e.ciudad(), -50, 2)}, 1))
+	err := e.economia.Train(ctx, "req-2", e.jugador.Player.ID, p, 1, []postgres.StockDelta{debito(e.ciudad(), -50, 3)}, 1)
 	require.True(t, errors.Is(err, production.ErrCityBusy), "%v", err)
 
 	amount, _ := stockEnBase(t, ctx, store, e.ciudad())
@@ -243,7 +243,7 @@ func TestEntrenarSinPlazaSeRechazaSinDebitar(t *testing.T) {
 	_, err := store.Pool().Exec(ctx, `UPDATE cities SET population_limit = 3 WHERE id = $1`, e.ciudad())
 	require.NoError(t, err)
 	p := production.Production{CityID: e.ciudad(), UnitType: unit.TypeVillager, CompletesAtMs: 1}
-	err = e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, debito(e.ciudad(), -50, 2), 1)
+	err = e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, []postgres.StockDelta{debito(e.ciudad(), -50, 2)}, 1)
 	require.True(t, errors.Is(err, city.ErrPopulationLimit), "%v", err)
 	amount, _ := stockEnBase(t, ctx, store, e.ciudad())
 	assert.Equal(t, int64(100), amount)
@@ -257,7 +257,7 @@ func TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad(t *testing.T) {
 	e := nuevaEconomia(t, ctx, store)
 	e.depositar(t, ctx, 100, 1)
 	p := production.Production{CityID: e.ciudad(), UnitType: unit.TypeVillager, CompletesAtMs: 1}
-	require.NoError(t, e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, debito(e.ciudad(), -50, 2), 1))
+	require.NoError(t, e.economia.Train(ctx, "req-1", e.jugador.Player.ID, p, 1, []postgres.StockDelta{debito(e.ciudad(), -50, 2)}, 1))
 
 	at := world.Tile{X: 22, Y: 20}
 	id, err := e.economia.BirthUnit(ctx, e.ciudad(), e.jugador.Player.ID, unit.TypeVillager, at, 40, 3)
@@ -273,7 +273,7 @@ func TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad(t *testing.T) {
 	c, _ := postgres.NewCityRepo(store).GetByID(ctx, e.ciudad())
 	assert.EqualValues(t, 4, c.Population, "INV-CITY-017: la plaza pasó de la producción a la unidad")
 
-	require.NoError(t, e.economia.Train(ctx, "req-2", e.jugador.Player.ID, p, 1, debito(e.ciudad(), -50, 3), 4))
+	require.NoError(t, e.economia.Train(ctx, "req-2", e.jugador.Player.ID, p, 1, []postgres.StockDelta{debito(e.ciudad(), -50, 3)}, 4))
 	prods, _ := e.economia.ListProductions(ctx)
 	require.Len(t, prods, 1)
 	assert.Equal(t, "req-2", prods[0].RequestID)

@@ -51,7 +51,9 @@ type CivilizationInfo struct {
 	Code string `json:"code"`
 	Name string `json:"name"`
 	// Good es el bien que sólo elabora su taller (SPEC-CIVILIZATION-GOODS).
-	Good   string           `json:"good"`
+	Good string `json:"good"`
+	// Unit es su unidad exclusiva (SPEC-CIVILIZATION-UNITS §4.1).
+	Unit   string           `json:"unit"`
 	Traits map[string]int32 `json:"traits"`
 }
 
@@ -74,4 +76,51 @@ func ExportedCivilizations() ([]CivilizationInfo, error) {
 		return nil, fmt.Errorf("civilizations.json declara la versión %d y el servidor habla la %d", doc.Version, Version)
 	}
 	return doc.Civilizations, nil
+}
+
+// UnitCost es una línea del coste de entrenamiento de una unidad.
+type UnitCost struct {
+	Resource string `json:"resource"`
+	Amount   int64  `json:"amount"`
+}
+
+// UnitInfo es una entrada del catálogo de presentación de las unidades que
+// exporta el paquete TypeScript (ADR-043 §7).
+type UnitInfo struct {
+	Code             string     `json:"code"`
+	Name             string     `json:"name"`
+	Attacks          bool       `json:"attacks"`
+	Exclusive        bool       `json:"exclusive"`
+	TrainCosts       []UnitCost `json:"trainCosts"`
+	OwnGoodCost      int64      `json:"ownGoodCost"`
+	TrainMs          int64      `json:"trainMs"`
+	RequiresEra      *string    `json:"requiresEra"`
+	MaxHP            int32      `json:"maxHp"`
+	MsPerTile        int64      `json:"msPerTile"`
+	AttackDamage     int32      `json:"attackDamage"`
+	AttackIntervalMs int64      `json:"attackIntervalMs"`
+	AttackRange      int32      `json:"attackRange"`
+	LootCarry        int32      `json:"lootCarry"`
+	PopulationCost   int32      `json:"populationCost"`
+}
+
+// ExportedUnits lee el catálogo de presentación de las unidades. No es la
+// fuente de las estadísticas (lo es unit.catalog): un test lo compara con él
+// para que el cliente no enseñe un perfil o un coste que no son.
+func ExportedUnits() ([]UnitInfo, error) {
+	data, err := SchemaFile("units.json")
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Version int        `json:"version"`
+		Units   []UnitInfo `json:"units"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("units.json malformado: %w", err)
+	}
+	if doc.Version != Version {
+		return nil, fmt.Errorf("units.json declara la versión %d y el servidor habla la %d", doc.Version, Version)
+	}
+	return doc.Units, nil
 }

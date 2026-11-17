@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 )
 
@@ -93,8 +95,67 @@ func TestElAldeanoRecolectaYSeEntrenaConLosValoresDelCatalogo(t *testing.T) {
 	assert.True(t, def.CanTrain(), "RN-ECON-010: el aldeano se entrena")
 	assert.Equal(t, int64(10_000), def.GatherWorkMs)
 	assert.Equal(t, int32(10), def.GatherCarry)
-	assert.Equal(t, int64(50), def.TrainCost.Amount)
+	assert.Equal(t, economy.Costs{{Resource: economy.ResourceWood, Amount: 50}}, def.TrainCosts)
 	assert.Equal(t, int64(20_000), def.TrainMs)
 	assert.False(t, unit.Definition{}.CanGather())
 	assert.False(t, unit.Definition{}.CanTrain())
+}
+
+// SPEC-CIVILIZATION-UNITS §4.2 (Q3, Q5): los cuatro perfiles, su coste, su plazo
+// y su edad viven en el catálogo, y las cuatro atacan.
+func TestLasUnidadesDeCivilizacionTienenSuPerfil(t *testing.T) {
+	type perfil struct {
+		hp, damage, rango, loot int32
+		paso                    int64
+	}
+	for tipo, p := range map[unit.Type]perfil{
+		unit.TypeLegionary:   {hp: 110, damage: 8, rango: 1, loot: 20, paso: 600},
+		unit.TypeCataphract:  {hp: 80, damage: 10, rango: 1, loot: 20, paso: 450},
+		unit.TypeHorseArcher: {hp: 60, damage: 8, rango: 3, loot: 20, paso: 540},
+		unit.TypeBerserker:   {hp: 60, damage: 14, rango: 1, loot: 30, paso: 600},
+	} {
+		def, err := unit.Lookup(tipo)
+		require.NoError(t, err)
+		assert.True(t, def.Exclusive, "%s", tipo)
+		assert.True(t, def.CanAttack(), "%s ataca", tipo)
+		assert.True(t, def.CanTrain(), "%s se entrena", tipo)
+		assert.False(t, def.CanGather(), "%s no recolecta", tipo)
+		assert.Equal(t, p.hp, def.MaxHP, "%s", tipo)
+		assert.Equal(t, p.damage, def.AttackDamage, "%s", tipo)
+		assert.Equal(t, int64(1_500), def.AttackIntervalMs, "%s", tipo)
+		assert.Equal(t, p.rango, def.AttackRange, "%s", tipo)
+		assert.Equal(t, p.loot, def.LootCarry, "%s", tipo)
+		assert.Equal(t, p.paso, def.BaseMsPerTile, "%s", tipo)
+		assert.Equal(t, int32(1), def.PopulationCost, "%s", tipo)
+		assert.Equal(t, int64(35_000), def.TrainMs, "%s", tipo)
+		assert.Equal(t, int64(10), def.OwnGoodCost, "%s", tipo)
+		assert.Equal(t, city.EraBronze, def.RequiresEra, "%s", tipo)
+		assert.Equal(t, economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 80},
+			{Resource: economy.ResourceStone, Amount: 40},
+			{Resource: economy.ResourceSilk, Amount: 10},
+		}, def.CostsWith(economy.ResourceSilk), "%s paga el bien que le den", tipo)
+	}
+	for _, comun := range []unit.Type{unit.TypeVillager, unit.TypeWarrior, unit.TypeCaravan} {
+		def, err := unit.Lookup(comun)
+		require.NoError(t, err)
+		assert.False(t, def.Exclusive, "%s no es exclusiva", comun)
+		assert.Empty(t, def.RequiresEra, "%s no pide era", comun)
+		assert.Zero(t, def.OwnGoodCost, "%s no paga bien", comun)
+		assert.Equal(t, append(economy.Costs{}, def.TrainCosts...), def.CostsWith(economy.ResourceWine),
+			"%s: sin bien, el coste no cambia", comun)
+	}
+	assert.Len(t, unit.Types(), 7)
+}
+
+// CostsWith no toca el catálogo: dos llamadas con bienes distintos no se pisan.
+func TestCostsWithDevuelveUnaListaNueva(t *testing.T) {
+	def, err := unit.Lookup(unit.TypeLegionary)
+	require.NoError(t, err)
+	a := def.CostsWith(economy.ResourceWine)
+	b := def.CostsWith(economy.ResourceFurs)
+	a[0].Amount = 1
+	assert.Equal(t, economy.ResourceFurs, b[2].Resource)
+	again, _ := unit.Lookup(unit.TypeLegionary)
+	assert.Equal(t, int64(80), again.TrainCosts[0].Amount)
 }

@@ -119,8 +119,9 @@ type TrainOrder struct {
 	PlayerID       uuid.UUID
 	Production     production.Production
 	PopulationCost int32
-	Stock          StockDelta
-	Tick           uint64
+	// Stocks es un delta versionado por recurso del coste (ADR-043 §4).
+	Stocks []StockDelta
+	Tick   uint64
 }
 
 // BuildingCompletion es la finalización durable de un edificio.
@@ -281,11 +282,13 @@ func (e *cityEconomy) pendingDeposits() bool {
 // productionState es una producción con su situación en el ciclo de dos fases.
 type productionState struct {
 	production.Production
-	cost    economy.Cost
+	// costs es lo que se reservó al encargarla: uno o varios recursos, con el
+	// bien de la civilización si la unidad lo pide (ADR-043 §4).
+	costs   economy.Costs
 	popCost int32
-	// carried son los depósitos sin volcar del recurso del coste que viajaron
-	// con el encargo.
-	carried   int64
+	// carried son los depósitos sin volcar de cada recurso del coste que
+	// viajaron con el encargo.
+	carried   map[economy.Resource]int64
 	pending   bool // encargada, esperando su transacción
 	birthing  bool // su nacimiento espera la transacción
 	retryAtMs int64
@@ -341,12 +344,16 @@ func (s *State) SetEconomy(load EconomyLoad) {
 			// al siguiente encargo, que la sustituye (ADR-023 §3).
 			continue
 		}
-		cost := economy.Cost{}
+		var costs economy.Costs
 		popCost := int32(1)
 		if def, err := unit.Lookup(p.UnitType); err == nil {
-			cost, popCost = def.TrainCost, def.PopulationCost
+			good := economy.Resource("")
+			if c, ok := s.City(p.CityID); ok {
+				good = s.civilizationOf(c.OwnerPlayerID).Good
+			}
+			costs, popCost = def.CostsWith(good), def.PopulationCost
 		}
-		s.economyOf(p.CityID).production = &productionState{Production: p, cost: cost, popCost: popCost}
+		s.economyOf(p.CityID).production = &productionState{Production: p, costs: costs, popCost: popCost}
 	}
 	for _, t := range load.Tasks {
 		s.setTask(t)
@@ -750,24 +757,26 @@ func (s *Simulation) handleBuildResolved(cmd BuildResolved) {
 // city.train
 // ─────────────────────────────────────────────────────────────
 
-// handleTrainUnit valida en el tick y reserva madera y población; la
+// handleTrainUnit valida en el tick y reserva los recursos y la población; la
 // transacción de la cola debita, reserva y escribe la producción.
 func (s *Simulation) handleTrainUnit(cmd TrainUnit) {
 	c, _ := s.state.City(cmd.CityID)
-	var stock *economy.Stock
+	stock := func(economy.Resource) *economy.Stock { return nil }
 	busy := false
+	var civ production.Civilization
 	if c != nil {
 		eco := s.state.economyOf(c.ID)
-		r := economy.ResourceWood
-		if def, err := unit.Lookup(cmd.Type); err == nil {
-			r = def.TrainCost.Resource
-		}
+		stock = eco.stockOf
 		// RN-ECON-026: mientras avanza de era, la ciudad no entrena.
-		stock, busy = eco.stockOf(r), eco.production != nil || eco.advance != nil
+		busy = eco.production != nil || eco.advance != nil
+		// La unidad exclusiva y el bien salen de la civilización del dueño
+		// (RN-CIVUNIT-002, RN-CIVUNIT-003): nunca de lo que pida el cliente.
+		owner := s.state.civilizationOf(c.OwnerPlayerID)
+		civ = production.Civilization{Unit: owner.Unit, Good: owner.Good}
 	}
-	// RN-ECON-010 en el orden de la spec: ciudad, producción en curso,
-	// población y madera.
-	def, err := production.CanTrain(c, cmd.PlayerID, cmd.Type, busy, stock)
+	// RN-ECON-010 y RN-CIVUNIT-002 en el orden de la spec: ciudad, tipo,
+	// civilización, era, producción en curso, población y recursos.
+	def, costs, err := production.CanTrain(c, cmd.PlayerID, cmd.Type, civ, busy, stock)
 	if err != nil {
 		s.economyError(cmd.PlayerID, cmd.RequestID, economyErrorCode(err), err.Error())
 		return
@@ -779,14 +788,13 @@ func (s *Simulation) handleTrainUnit(cmd TrainUnit) {
 
 	nowMs := s.deps.Clock.NowMs()
 	eco := s.state.economyOf(c.ID)
-	rs := eco.of(def.TrainCost.Resource)
-	if err := rs.stock.Debit(def.TrainCost); err != nil {
-		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, err.Error())
+	// La reserva de cada recurso, con sus depósitos sin volcar, como en una
+	// obra (ADR-023 §1, ADR-043 §4).
+	carried, deltas, ok := s.reserve(c, eco, costs)
+	if !ok {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInsufficientResources, "recursos insuficientes")
 		return
 	}
-	carried := rs.unflushed
-	rs.unflushed = 0
-	s.state.markStockDirty(c.ID)
 	// RN-ECON-010: la plaza se reserva al ordenar.
 	c.Population += def.PopulationCost
 
@@ -794,13 +802,13 @@ func (s *Simulation) handleTrainUnit(cmd TrainUnit) {
 		CityID: c.ID, UnitType: def.Type, CompletesAtMs: nowMs + s.state.productionMs(cmd.PlayerID, def.TrainMs), RequestID: cmd.RequestID,
 	}
 	eco.production = &productionState{
-		Production: p, cost: def.TrainCost, popCost: def.PopulationCost, carried: carried, pending: true,
+		Production: p, costs: costs, popCost: def.PopulationCost, carried: carried, pending: true,
 	}
 
 	order := TrainOrder{
 		RequestID: cmd.RequestID, PlayerID: cmd.PlayerID, Production: p,
 		PopulationCost: def.PopulationCost, Tick: s.state.Tick(),
-		Stock: StockDelta{CityID: c.ID, Resource: def.TrainCost.Resource, Delta: carried - def.TrainCost.Amount, Version: rs.stock.Version},
+		Stocks: deltas,
 	}
 	resolved := TrainResolved{PlayerID: cmd.PlayerID, RequestID: cmd.RequestID, CityID: c.ID}
 	store := s.deps.Economy
@@ -844,9 +852,7 @@ func (s *Simulation) handleTrainResolved(cmd TrainResolved) {
 	}
 
 	if cmd.Code != "" {
-		rs := eco.of(p.cost.Resource)
-		_ = rs.stock.Credit(p.cost.Amount)
-		rs.unflushed += p.carried
+		s.refund(eco, p.costs, p.carried)
 		s.state.markStockDirty(c.ID)
 		c.Population -= p.popCost
 		eco.production = nil
@@ -1070,7 +1076,8 @@ func economyErrorCode(err error) string {
 	case errors.Is(err, city.ErrPopulationLimit):
 		return protocol.CodePopulationLimitReached
 	case errors.Is(err, building.ErrInvalidSite), errors.Is(err, building.ErrUnknownType), errors.Is(err, craft.ErrNoWorkshop),
-		errors.Is(err, unit.ErrUnknownType), errors.Is(err, production.ErrNotTrainable):
+		errors.Is(err, unit.ErrUnknownType), errors.Is(err, production.ErrNotTrainable),
+		errors.Is(err, production.ErrNotYourCivilization), errors.Is(err, production.ErrEraRequired):
 		return protocol.CodeInvalidTarget
 	default:
 		return protocol.CodeInternalError

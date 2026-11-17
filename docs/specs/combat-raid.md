@@ -66,7 +66,7 @@ Dominio: `RN-COMBAT`.
 
 | ID | Regla |
 |---|---|
-| `RN-COMBAT-001` | Sólo un `WARRIOR` propio, vivo y no guarnecido puede atacar. El objetivo es una unidad **de otro jugador**, viva y en el mapa. |
+| `RN-COMBAT-001` | Sólo un `WARRIOR` propio, vivo y no guarnecido puede atacar. El objetivo es una unidad **de otro jugador**, viva y en el mapa. **Precisión (2026-11-17, [civilization-units.md](civilization-units.md), [ADR-043](../decisions/ADR-043-civilization-units.md)):** con E22 ataca toda unidad que ataca (`CanAttack`): el guerrero y las cuatro unidades de civilización (`RN-CIVUNIT-005`). |
 | `RN-COMBAT-002` | `unit.attack` es **hostil** (ADR-016) y su territorio es `LIBRE`: el suelo no restringe, la protección sí. Pasa por el punto único de `INV-CITY-006`. |
 | `RN-COMBAT-003` | Si el dueño del objetivo tiene su ciudad `PROTECTED`, se rechaza con `CITY_PROTECTED` (Q1, Q2). `OFFLINE_PENDING` **no** protege: es la ventana de riesgo de la desconexión. **Precisión (2026-11-13, [caravans.md](caravans.md) `RN-CARAVAN-005` y Q7):** no vale para las caravanas: una caravana se puede atacar aunque la ciudad de su dueño esté `PROTECTED`. |
 | `RN-COMBAT-004` | Una unidad `HIDDEN` no existe para el atacante: se responde `UNIT_NOT_FOUND`, igual que si no existiera, para no filtrar su presencia (`INV-SAFE-004`). |
