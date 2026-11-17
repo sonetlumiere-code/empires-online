@@ -320,7 +320,7 @@ encuentra mal formada se cierra en la RAM y se registra.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E24 |
 | Política ante violación | REPAIR |
-| Cobertura | **Cubierto** por `TestGoldenGuerraDeClanes`, `TestQuePuntuaEnUnaGuerra` y `TestLasGuerrasTrasUnReinicio` (`internal/game/simulation`), `TestElMarcadorYElResultado` (`internal/domain/clan`) y `TestElMarcadorEsLaSumaDeLosEventos` (integration, `internal/persistence/postgres`). Verificado por mutación: sin los puntos en la muerte, falla el golden; con la carga contando eventos en vez de sumar sus puntos, falla `TestElMarcadorEsLaSumaDeLosEventos` |
+| Cobertura | **Cubierto** por `TestGoldenGuerraDeClanes`, `TestQuePuntuaEnUnaGuerra`, `TestUnaConquistaEnGuerraPuntuaAlConfirmarse`, `TestUnaCaravanaQueMataUnCastilloNoPuntua` y `TestLasGuerrasTrasUnReinicio` (`internal/game/simulation`), `TestElMarcadorYElResultado` (`internal/domain/clan`) y `TestElMarcadorEsLaSumaDeLosEventos`, `TestLaCapturaEscribeLaGuerraEnUnaFila`, `TestLaCapturaDeUnClanEscribeLaGuerraEnUnaSolaFila` y `TestElDerriboEscribeLaGuerraEnSuPayload` (integration, `internal/persistence/postgres`). Verificado por mutación: sin los puntos en la muerte, falla el golden; con la carga contando eventos en vez de sumar sus puntos, falla `TestElMarcadorEsLaSumaDeLosEventos`. El 2026-11-17, siete mutaciones más, cada una vista fallar: sumar los puntos de la captura al enviarla y no al confirmarla, o no sumarlos al confirmarla, o no puntuar contra el clan dueño, tumban `TestUnaConquistaEnGuerraPuntuaAlConfirmarse`; puntuar la caravana que mata un castillo tumba `TestUnaCaravanaQueMataUnCastilloNoPuntua`; quitar `war` del evento de una captura a un jugador, escribirlo en cada fila de miembro de un clan dueño o quitarlo del derribo tumban, cada una, su test de integración |
 
 **Enunciado.** Un punto sólo se suma al marcador de una guerra por una muerte, un derribo o una captura en que el
 autor y la víctima (o el clan dueño del territorio) son, en ese tick, miembros de los dos lados de esa guerra en
@@ -336,9 +336,12 @@ reinicio haría trampa a alguno de los dos clanes.
 evento, que va en la transacción del hecho; la carga los suma con un índice de expresión
 ([ADR-045](../decisions/ADR-045-clan-wars.md) §4).
 
-**Cómo se verifica.** En la simulación, cada hecho que puntúa y los que no (una caravana, un saqueo, un golpe que no
-mata, alguien que ya salió o que aún no entró, la guerra en preparación). En la recuperación, el marcador recalculado
-tras un reinicio coincide con el de antes de parar. En la integración, la suma desde `world_events`.
+**Cómo se verifica.** En la simulación, cada hecho que puntúa y los que no (una caravana, también la que mata un
+castillo, un saqueo, un golpe que no mata, alguien que ya salió o que aún no entró, la guerra en preparación), y una
+conquista que suma 10 al confirmarse la captura y no antes, sobre el territorio de un miembro y sobre el del otro
+clan, y nada si la base la rechaza. En la recuperación, el marcador recalculado tras un reinicio coincide con el de
+antes de parar. En la integración, la suma desde `world_events`, y `war` escrito por la captura en una sola fila de su
+evento (también con un clan dueño, que escribe una por miembro) y por el derribo en su payload.
 
 **Violación en runtime.** La carga toma la suma de los eventos como verdad: el marcador de la RAM se reemplaza.
 

@@ -390,7 +390,9 @@ historial salen de las guerras `ENDED` de cada clan.
 - **Declarar con una alianza en vuelo.** Además de una alianza activa, la declaración se rechaza mientras una
   aceptación u otra orden de alianza sobre el mismo par espera la base.
 - **Caravanas.** Una caravana que mata una unidad se captura (E15) y no pasa por la muerte que puntúa; la que mata un
-  castillo muere, pero tampoco puntúa (`RN-CLANWAR-007`).
+  castillo muere, pero tampoco puntúa (`RN-CLANWAR-007`). **Precisión (2026-11-17):** hoy un castillo no llega a
+  matar una caravana, porque sólo dispara a quien ataca a su dueño y una caravana no ataca; la regla queda por si eso
+  cambia, y su test aplica el golpe mortal del castillo directamente (`KillByCastle`, sólo en los tests).
 - **Historial.** Un clan que se disuelve no guarda historial; el vencedor por disolución, sí.
 - **La vista pública** (`clan.info`) suma el marcador de los eventos en la base: puede ir un instante por detrás del de
   `clan.update` mientras la cola escribe (ADR-045 §4).

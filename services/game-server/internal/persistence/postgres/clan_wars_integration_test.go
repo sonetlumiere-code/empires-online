@@ -349,3 +349,156 @@ func TestElMarcadorEsLaSumaDeLosEventos(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, vacio)
 }
+
+// filaConGuerra es una fila de world_events de un tipo: su jugador y el campo
+// war de su payload («null» si no lo lleva).
+type filaConGuerra struct {
+	player uuid.UUID
+	war    *clan.WarPoints
+}
+
+// guerraEnLosEventos son las filas de world_events del tipo, en orden, con el
+// campo war de su payload.
+func guerraEnLosEventos(t *testing.T, ctx context.Context, store *postgres.Store, tipo string) []filaConGuerra {
+	t.Helper()
+	rows, err := store.Pool().Query(ctx,
+		`SELECT player_id, (payload->'war'->>'warId')::bigint, (payload->'war'->>'clanId')::bigint,
+		        (payload->'war'->>'points')::bigint
+		   FROM world_events WHERE event_type = $1 ORDER BY id`, tipo)
+	require.NoError(t, err)
+	defer rows.Close()
+	var out []filaConGuerra
+	for rows.Next() {
+		var f filaConGuerra
+		var warID, clanID, points *int64
+		require.NoError(t, rows.Scan(&f.player, &warID, &clanID, &points))
+		if warID != nil {
+			require.NotNil(t, clanID)
+			require.NotNil(t, points)
+			f.war = &clan.WarPoints{WarID: *warID, ClanID: *clanID, Points: *points}
+		}
+		out = append(out, f)
+	}
+	require.NoError(t, rows.Err())
+	return out
+}
+
+// conGuerraEnSuPayload son las filas que llevan war.
+func conGuerraEnSuPayload(fs []filaConGuerra) []filaConGuerra {
+	var out []filaConGuerra
+	for _, f := range fs {
+		if f.war != nil {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// INV-CLAN-009 y ADR-045 §4: la captura que puntúa escribe war en una sola fila
+// de su evento, la del anterior dueño, y la carga suma esos 10 puntos.
+func TestLaCapturaEscribeLaGuerraEnUnaFila(t *testing.T) {
+	store, ctx := newTestStore(t)
+	c := nuevaConquista(t, ctx, store)
+	id, err := c.repo.StartClaim(ctx, c.reclamacion(c.duena, c.libre, nil, "req-1"))
+	require.NoError(t, err)
+	_, err = c.repo.CaptureTerritory(ctx, postgres.Capture{
+		ClaimID: id, TerritoryID: c.libre.ID, TerritoryName: "Este", NewOwner: c.duena.Player.ID,
+		NewCityID: c.duena.City.ID, NewBonus: 5, ExpectedVersion: controlEnBase(t, ctx, c.territorios, store, c.libre.ID).Version,
+		CapturedAt: c.instanteDeHoy, Tick: 9, AtMs: 301_000,
+	})
+	require.NoError(t, err)
+	antes := len(guerraEnLosEventos(t, ctx, store, "TerritoryControlChanged"))
+
+	duena := c.duena.Player.ID
+	id2, err := c.repo.StartClaim(ctx, c.reclamacion(c.rival, c.libre, &duena, "req-2"))
+	require.NoError(t, err)
+	puntos := &clan.WarPoints{WarID: 77, ClanID: 5, Points: clan.PointsTerritory}
+	_, err = c.repo.CaptureTerritory(ctx, postgres.Capture{
+		ClaimID: id2, TerritoryID: c.libre.ID, TerritoryName: "Este", NewOwner: c.rival.Player.ID,
+		NewCityID: c.rival.City.ID, NewBonus: 5, PrevOwner: duena, PrevCityID: c.duena.City.ID, PrevBonus: 5,
+		ExpectedVersion: controlEnBase(t, ctx, c.territorios, store, c.libre.ID).Version,
+		CapturedAt:      c.instanteDeHoy, Tick: 12, AtMs: 1_000_000, X: 40, Y: 10, War: puntos,
+	})
+	require.NoError(t, err)
+
+	filas := guerraEnLosEventos(t, ctx, store, "TerritoryControlChanged")
+	require.Len(t, filas, antes+1, "una fila: el anterior dueño y el nuevo")
+	conGuerra := conGuerraEnSuPayload(filas)
+	require.Len(t, conGuerra, 1)
+	assert.Equal(t, duena, conGuerra[0].player)
+	assert.Equal(t, puntos, conGuerra[0].war)
+
+	scores, err := postgres.WarScores(ctx, store.Pool(), []int64{77})
+	require.NoError(t, err)
+	assert.Equal(t, map[int64]map[int64]int64{77: {5: 10}}, scores)
+}
+
+// INV-CLAN-009 y ADR-041 §5: la captura de un territorio de clan escribe una
+// fila por miembro y otra para quien lo gana; war va sólo en esa última, así que
+// los 10 puntos se suman una vez por mucho que tenga el clan.
+func TestLaCapturaDeUnClanEscribeLaGuerraEnUnaSolaFila(t *testing.T) {
+	store, ctx := newTestStore(t)
+	c := nuevaConquista(t, ctx, store)
+	clanes, lobos := clanDeLaConquista(t, ctx, store, c, false)
+	_, _, _, _, bootstrapper := newRepos(store)
+	segundo, err := bootstrapper.Create(ctx, bootstrapRequest("segundoguerra", world.Tile{X: 20, Y: 50}))
+	require.NoError(t, err)
+	require.NoError(t, clanes.Invite(ctx, postgres.ClanInvite{ClanID: lobos, PlayerID: segundo.Player.ID,
+		InvitedBy: c.duena.Player.ID, At: clanEn, ExpiresAt: clanEn.Add(24 * time.Hour)}))
+	require.NoError(t, clanes.Join(ctx, postgres.ClanJoin{ClanID: lobos, PlayerID: segundo.Player.ID, MaxMembers: 20, At: clanEn.Add(time.Minute)}))
+	ctrl := ganarParaElClan(t, ctx, store, c, lobos)
+	antes := len(guerraEnLosEventos(t, ctx, store, "TerritoryControlChanged"))
+
+	inicio := c.reclamacion(c.rival, c.libre, nil, "req-rival")
+	inicio.OwnerClanID, inicio.OwnerClanTag, inicio.Tick = lobos, "LOB", 10
+	id, err := c.repo.StartClaim(ctx, inicio)
+	require.NoError(t, err)
+	puntos := &clan.WarPoints{WarID: 78, ClanID: 9, Points: clan.PointsTerritory}
+	_, err = c.repo.CaptureTerritory(ctx, postgres.Capture{
+		ClaimID: id, TerritoryID: c.libre.ID, TerritoryName: "Este", NewOwner: c.rival.Player.ID,
+		NewCityID: c.rival.City.ID, NewBonus: 5, PrevClanID: lobos, PrevClanTag: "LOB",
+		ExpectedVersion: ctrl.Version, CapturedAt: c.instanteDeHoy, Tick: 12, AtMs: 1_000_000, X: 40, Y: 10,
+		War: puntos,
+	})
+	require.NoError(t, err)
+
+	filas := guerraEnLosEventos(t, ctx, store, "TerritoryControlChanged")[antes:]
+	require.Len(t, filas, 3, "una por miembro de [LOB] y otra para quien lo gana")
+	conGuerra := conGuerraEnSuPayload(filas)
+	require.Len(t, conGuerra, 1, "war, en una sola fila")
+	assert.Equal(t, puntos, conGuerra[0].war)
+	assert.Equal(t, filas[2], conGuerra[0], "la fila de quien lo gana (only: counterpart)")
+
+	scores, err := postgres.WarScores(ctx, store.Pool(), []int64{78})
+	require.NoError(t, err)
+	assert.Equal(t, map[int64]map[int64]int64{78: {9: 10}}, scores)
+}
+
+// INV-CLAN-009 y ADR-045 §4: el derribo que puntúa escribe war en el payload de
+// su evento, y la carga suma esos 3 puntos; uno sin guerra no lleva el campo.
+func TestElDerriboEscribeLaGuerraEnSuPayload(t *testing.T) {
+	store, ctx := newTestStore(t)
+	a := nuevoAsedio(t, ctx, store)
+	sinGuerra := a.casaEn(t, ctx, true)
+	require.NoError(t, a.economia.DestroyBuilding(ctx, a.derribo(sinGuerra)))
+	// La segunda, con otra clave: casaEn repite «req-casa» y devolvería la primera.
+	a.depositar(t, ctx, 30, 3)
+	conPuntos, err := a.economia.Build(ctx, "req-casa-guerra", a.jugador.Player.ID, casa(a.ciudad(), 19, 19),
+		[]postgres.StockDelta{debito(a.ciudad(), -30, 4)}, 4)
+	require.NoError(t, err)
+	require.NotEqual(t, sinGuerra, conPuntos)
+	require.NoError(t, a.economia.CompleteBuilding(ctx, conPuntos, a.ciudad(), a.jugador.Player.ID, 5, 5))
+	d := a.derribo(conPuntos)
+	d.War = &clan.WarPoints{WarID: 79, ClanID: 4, Points: clan.PointsBuilding}
+	require.NoError(t, a.economia.DestroyBuilding(ctx, d))
+
+	filas := guerraEnLosEventos(t, ctx, store, postgres.EventBuildingDestroyed)
+	require.Len(t, filas, 2)
+	assert.Nil(t, filas[0].war, "un derribo fuera de una guerra no lleva war")
+	assert.Equal(t, d.War, filas[1].war)
+	assert.Equal(t, a.jugador.Player.ID, filas[1].player)
+
+	scores, err := postgres.WarScores(ctx, store.Pool(), []int64{79})
+	require.NoError(t, err)
+	assert.Equal(t, map[int64]map[int64]int64{79: {4: 3}}, scores)
+}
