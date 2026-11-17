@@ -7,7 +7,7 @@ desde la Edad de Hierro, con un coste que vuelve a pedir comercio, y desbloquee 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CASTLE-AGE` |
-| Estado | Accepted (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `0d818fe`, con la CI en verde. |
 | Milestone | E23 Edad de los Castillos (vigesimotercer slice después de M7) |
 | Canon | §0 (civilización como eje), §1.5 (determinismo), §10 (eras y población), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [economy-stone.md](economy-stone.md), [civilization-goods.md](civilization-goods.md), [civilization-units.md](civilization-units.md), [economy-wood.md](economy-wood.md), [city.md](city.md), [trade.md](trade.md), [caravans.md](caravans.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [civilizations.md](civilizations.md), [factions.md](factions.md), [clans.md](clans.md), [clan-territories.md](clan-territories.md), [clan-alliances.md](clan-alliances.md), [presence.md](presence.md), [safe-zones.md](safe-zones.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |

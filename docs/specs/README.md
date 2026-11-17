@@ -71,7 +71,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Gobierno del clan | [clan-governance.md](clan-governance.md) | E20 Gobierno del clan | Implemented | Oficiales que invitan y expulsan a los miembros rasos, el traspaso del liderazgo y la sucesión automática cuando el líder lleva 7 días sin jugar |
 | Alianzas entre clanes | [clan-alliances.md](clan-alliances.md) | E21 Alianzas entre clanes | Implemented | Los líderes de dos clanes firman una alianza que pone en paz a todos sus miembros, la rompen con el preaviso de un tratado y cualquiera ve quién está aliado con quién |
 | Unidades de civilización | [civilization-units.md](civilization-units.md) | E22 Unidades de civilización | Implemented | Una unidad propia por civilización (legionario, catafracto, arquero a caballo, berserker), que se suma al guerrero, se entrena desde la Edad de Bronce pagando parte con el bien propio y lucha con las reglas de combate que ya existen |
-| Edad de los Castillos | [castle-age.md](castle-age.md) | E23 Edad de los Castillos | Accepted | El avance de Hierro a la Edad de los Castillos, pagando madera, piedra y 120 bienes ajenos, y el castillo, un edificio de la zona urbana que dispara a las unidades que atacan a su dueño |
+| Edad de los Castillos | [castle-age.md](castle-age.md) | E23 Edad de los Castillos | Implemented | El avance de Hierro a la Edad de los Castillos, pagando madera, piedra y 120 bienes ajenos, y el castillo, un edificio de la zona urbana que dispara a las unidades que atacan a su dueño |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

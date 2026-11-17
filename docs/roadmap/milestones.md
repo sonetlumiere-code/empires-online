@@ -2390,7 +2390,7 @@ verify:full` en verde antes:
 
 ## E23 — Edad de los Castillos
 
-**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-edad-castillos`. Contrato:
+**Estado: HECHO (2026-11-17)**, fusionado en `main` (`0d818fe`) con la CI en verde el mismo día. Contrato:
 [SPEC-CASTLE-AGE](../specs/castle-age.md), aceptada el 2026-11-17 con sus diez decisiones de producto, y
 [ADR-044](../decisions/ADR-044-castle-shooting.md).
 
