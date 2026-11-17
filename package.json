@@ -39,6 +39,7 @@
     "server:vet:integration": "cd services/game-server && go vet -tags=integration ./...",
     "server:fmt": "cd services/game-server && gofmt -l -w .",
     "server:fmt:check": "cd services/game-server && gofmt -l .",
+    "verify:full": "bash scripts/verify.sh",
     "web:dev": "pnpm --filter @empires-online/web run dev",
     "web:build": "pnpm --filter @empires-online/web run build",
     "docs:check": "node scripts/check-docs.mjs",

@@ -51,3 +51,7 @@ Thumbs.db
 *.prof
 *.pprof
 *.log
+
+# --- Agentes: lo propio de cada máquina no se versiona (AGENTS.md sí) ---
+CLAUDE.local.md
+.claude/settings.local.json

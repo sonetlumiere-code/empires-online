@@ -265,6 +265,10 @@ Una unidad de trabajo está terminada solo si cumple **todos** estos puntos. No 
 
 Un pull request con cualquier check obligatorio en rojo no es válido, independientemente de la urgencia.
 
+La versión operativa de esta lista —qué tests pide cada cambio, qué docs toca cada uno, el flujo de un slice y la
+verificación (`pnpm run verify:full`)— está en [AGENTS.md](../AGENTS.md), que leen los agentes al empezar; un hook de
+commit (`scripts/hooks/pre-commit-dod.sh`) bloquea el código de producción que llega sin tests ni docs.
+
 ---
 
 ## 5. Estado actual del proyecto

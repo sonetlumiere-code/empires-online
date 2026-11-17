@@ -907,6 +907,13 @@ Vitest y los de los scripts de Node, comprueba el formato de Go, pasa `go vet` c
 `integration` y ejecuta `go test ./...`. **No ejecuta los tests de integración ni el detector de
 carreras**: eso es §9, y en la CI lo cubren los jobs `integration` y `game-server`.
 
+**`pnpm run verify:full`** (`scripts/verify.sh`, desde 2026-11-17) es la verificación que un slice tiene que pasar
+antes de darse por hecho ([AGENTS.md](../../AGENTS.md) §5): todo lo anterior **más** la integración de Go
+(`-tags=integration`, con PostgreSQL y Redis de tests en marcha) y la de la web, `protocol:test` y `protocol:check`, y
+el build de la web con los canarios de la CI seguido del escaneo del bundle. Corre en serie, espera antes de cada paso a
+que no haya otra suite en marcha, para en el primer fallo y se puede retomar con `pnpm run verify:full -- --desde
+<paso>`. Sin el detector de carreras, que sigue siendo de la CI.
+
 Si tocas `packages/protocol`, **regenera el JSON Schema antes de compilar Go**: los esquemas Zod son la
 fuente de verdad, el build exporta `packages/protocol/schema/v1/*.json` **y su espejo en
 `services/game-server/internal/protocol/schema/v1/`**, que el Game Server embebe con `go:embed`. Un espejo
