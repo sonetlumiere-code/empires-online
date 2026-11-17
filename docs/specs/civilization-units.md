@@ -40,7 +40,7 @@ coste y su motivo, y su nombre en el registro y en los avisos (Q7); un `scripts/
 mecánicas nuevas de combate —bonos contra un tipo, cargas, área, curación, formaciones, contraataques a distancia—
 (Q3); un bono propio en tierra afín (Q8); entrenar la unidad de otra civilización, por alianza o como mercenario
 (Q9); un tope por ciudad (Q10); edificios o tecnologías exclusivos; la Edad de los Castillos; mejorar o reconvertir
-unidades ya entrenadas; reequilibrar con datos de jugadores.
+unidades ya entrenadas; reequilibrar con datos de jugadores. **Precisión (2026-11-17, [castle-age.md](castle-age.md), [ADR-044](../decisions/ADR-044-castle-shooting.md)):** la Edad de los Castillos llega con E23, y no cambia las unidades de civilización (Q3 de esa spec).
 
 ## 3. Actores
 

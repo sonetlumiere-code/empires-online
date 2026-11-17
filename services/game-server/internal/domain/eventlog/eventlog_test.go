@@ -187,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 35, "desde E21, la oferta, la aceptación, el rechazo y el preaviso de una alianza de clanes")
+	assert.Len(t, vistos, 37, "desde E23, las dos muertes del castillo")
 }
 
 // SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
@@ -363,6 +363,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 		eventlog.KindClanExpelled,
 		eventlog.KindClanLeadershipReceived, eventlog.KindClanLeadershipInherited,
 		eventlog.KindClanAllianceOffered, eventlog.KindClanAllianceAccepted, eventlog.KindClanAllianceBreakAnnounced,
+		eventlog.KindUnitLostToCastle, eventlog.KindCastleKill,
 	}, eventlog.NoticeKinds())
 	for _, k := range eventlog.NoticeKinds() {
 		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
@@ -554,4 +555,39 @@ func TestLasAlianzasDeClanEnElRegistroYEnLosAvisos(t *testing.T) {
 	assert.Equal(t, "OSO", entradas[0].ClanTag)
 	assert.Equal(t, int64(900_000), entradas[0].BreaksAtMs)
 	assert.Equal(t, "OSO", entradas[2].ClanTag, "la aceptación, con la sigla del clan que aceptó")
+}
+
+// SPEC-CASTLE-AGE §6 y ADR-044 §6: una muerte que causó un castillo le cuenta a
+// la víctima UNIT_LOST_TO_CASTLE y al dueño del castillo CASTLE_KILL, los dos
+// avisados; no se agrupa con las muertes que causó un ejército del mismo
+// jugador.
+func TestLasMuertesDelCastilloTienenSusPropiosTipos(t *testing.T) {
+	e := eventlog.Event{ID: 9, Type: eventlog.EventUnitKilled, PlayerID: yo, Counterpart: otro, AtMs: 1_000,
+		UnitType: "WARRIOR", KillerBuildingType: eventlog.KillerCastle}
+	k, o, ok := eventlog.Classify(yo, e)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindUnitLostToCastle, k)
+	assert.Equal(t, otro, o)
+	k, o, ok = eventlog.Classify(otro, e)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindCastleKill, k)
+	assert.Equal(t, yo, o)
+
+	avisos := eventlog.Notices(e)
+	require.Len(t, avisos, 2)
+	assert.Equal(t, eventlog.KindUnitLostToCastle, avisos[0].Kind)
+	assert.Equal(t, eventlog.KindCastleKill, avisos[1].Kind)
+
+	b := eventlog.NewBuilder(yo, 0, time.Hour, 10)
+	require.True(t, b.Add(e))
+	require.True(t, b.Add(eventlog.Event{ID: 8, Type: eventlog.EventUnitKilled, PlayerID: yo, Counterpart: otro, AtMs: 900,
+		UnitType: "WARRIOR", KillerBuildingType: eventlog.KillerCastle}))
+	require.True(t, b.Add(eventlog.Event{ID: 7, Type: eventlog.EventUnitKilled, PlayerID: yo, Counterpart: otro, AtMs: 800,
+		UnitType: "WARRIOR"}))
+	entradas := b.Entries()
+	require.Len(t, entradas, 2, "lo del castillo y lo del ejército, aparte")
+	assert.Equal(t, eventlog.KindUnitLostToCastle, entradas[0].Kind)
+	assert.Equal(t, 2, entradas[0].Count)
+	assert.Equal(t, "WARRIOR", entradas[0].UnitType)
+	assert.Equal(t, eventlog.KindUnitLost, entradas[1].Kind)
 }

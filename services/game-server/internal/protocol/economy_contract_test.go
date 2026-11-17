@@ -45,7 +45,7 @@ func TestLosComandosDeEconomiaSonLosDelEsquema(t *testing.T) {
 func TestLosCatalogosDeLosComandosSonLosDelDominio(t *testing.T) {
 	root, build := clientVariant(t, protocol.TypeCityBuild)
 	tipos := enumOf(t, dig(t, root, build, "properties", "payload", "properties", "type"))
-	require.Equal(t, []string{string(building.TypeHouse), string(building.TypeWorkshop)}, tipos)
+	require.Equal(t, []string{string(building.TypeHouse), string(building.TypeWorkshop), string(building.TypeCastle)}, tipos)
 	for _, tipo := range tipos {
 		_, err := building.Lookup(building.Type(tipo))
 		assert.NoError(t, err, "%s", tipo)
@@ -65,10 +65,12 @@ func TestLosMensajesDeEdificioSonLosDelEsquema(t *testing.T) {
 	root, spawn := serverVariant(t, protocol.TypeBuildingSpawn)
 	vista := dig(t, root, spawn, "properties", "payload", "properties", "building").(map[string]any)
 	declaradas := clavesDe(dig(t, root, vista, "properties").(map[string]any))
+	objetivo := int64(9)
 	b := protocol.BuildingView{ID: 1, CityID: 2, Type: string(building.TypeHouse), X: 3, Y: 4,
-		Status: string(building.StatusUnderConstruction), CompletesAtMs: 5, HP: 150, MaxHP: 150}
+		Status: string(building.StatusUnderConstruction), CompletesAtMs: 5, HP: 150, MaxHP: 150, TargetUnitID: &objetivo}
 	require.Equal(t, declaradas, clavesDe(serializado(t, b)))
-	// La vida (SPEC-COMBAT-SIEGE) es opcional en el esquema; el resto, obligatorio.
+	// La vida (SPEC-COMBAT-SIEGE) y el objetivo del castillo (SPEC-CASTLE-AGE) son
+	// opcionales en el esquema; el resto, obligatorio.
 	require.Equal(t, []string{"cityId", "completesAtMs", "id", "status", "type", "x", "y"}, requeridas(t, vista))
 
 	estados := enumOf(t, dig(t, root, vista, "properties", "status"))
@@ -82,7 +84,8 @@ func TestLosMensajesDeEdificioSonLosDelEsquema(t *testing.T) {
 	payload := dig(t, root, update, "properties", "payload").(map[string]any)
 	hp := int32(142)
 	require.Equal(t, clavesDe(dig(t, root, payload, "properties").(map[string]any)),
-		clavesDe(serializado(t, protocol.BuildingUpdatePayload{ID: 1, Status: string(building.StatusComplete), HP: &hp})))
+		clavesDe(serializado(t, protocol.BuildingUpdatePayload{ID: 1, Status: string(building.StatusComplete), HP: &hp,
+			TargetUnitID: ptrTo(&objetivo)})))
 
 	// El snapshot trae la misma vista de edificio.
 	root, snapshot := serverVariant(t, protocol.TypeWorldSnapshot)

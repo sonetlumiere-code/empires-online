@@ -888,7 +888,8 @@
                         "type": "string",
                         "enum": [
                           "HOUSE",
-                          "WORKSHOP"
+                          "WORKSHOP",
+                          "CASTLE"
                         ]
                       },
                       "x": {
@@ -914,6 +915,16 @@
                       "maxHp": {
                         "type": "integer",
                         "minimum": 1
+                      },
+                      "targetUnitId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     },
                     "required": [
@@ -1964,6 +1975,16 @@
                 "hp": {
                   "type": "integer",
                   "minimum": 0
+                },
+                "targetUnitId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "required": [
@@ -2199,7 +2220,9 @@
                           "CLAN_ALLIANCE_OFFERED",
                           "CLAN_ALLIANCE_ACCEPTED",
                           "CLAN_ALLIANCE_REJECTED",
-                          "CLAN_ALLIANCE_BREAK_ANNOUNCED"
+                          "CLAN_ALLIANCE_BREAK_ANNOUNCED",
+                          "UNIT_LOST_TO_CASTLE",
+                          "CASTLE_KILL"
                         ]
                       },
                       "firstAtMs": {
@@ -2416,7 +2439,9 @@
                     "CLAN_LEADERSHIP_INHERITED",
                     "CLAN_ALLIANCE_OFFERED",
                     "CLAN_ALLIANCE_ACCEPTED",
-                    "CLAN_ALLIANCE_BREAK_ANNOUNCED"
+                    "CLAN_ALLIANCE_BREAK_ANNOUNCED",
+                    "UNIT_LOST_TO_CASTLE",
+                    "CASTLE_KILL"
                   ]
                 },
                 "atMs": {

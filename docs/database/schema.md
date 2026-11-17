@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), y las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), y la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -1072,6 +1072,12 @@ CREATE TABLE buildings (
 --   buildings_type_valid CHECK (type IN ('HOUSE', 'WORKSHOP'))
 --   CREATE UNIQUE INDEX buildings_one_workshop_per_city ON buildings (city_id)
 --       WHERE type = 'WORKSHOP' AND status <> 'DESTROYED';
+
+-- 000025 (SPEC-CASTLE-AGE, ADR-044 §8): el castillo, y como mucho uno en pie
+-- por ciudad (INV-ECON-012).
+--   buildings_type_valid CHECK (type IN ('HOUSE', 'WORKSHOP', 'CASTLE'))
+--   CREATE UNIQUE INDEX buildings_one_castle_per_city ON buildings (city_id)
+--       WHERE type = 'CASTLE' AND status <> 'DESTROYED';
 ```
 
 | Columna | Semántica |
@@ -1457,6 +1463,27 @@ CREATE TRIGGER city_productions_civilization_unit
 |---|---|
 | `civilizations.unit` | La unidad exclusiva de la civilización (`RN-CIVUNIT-001`), una por civilización y sin repetir (`INV-UNIT-013`). El entrenamiento la pregunta aquí, nunca por el código (`RN-PLAYER-012`) |
 | `city_productions_civilization_unit` | `INV-UNIT-012`: un `INSERT` de una unidad exclusiva que no es la de la civilización del dueño, o en una era anterior a `BRONZE_AGE` (por `eras.ordinal`), falla con `23514`. Las comunes pasan sin mirar |
+
+### 16.15 La Edad de los Castillos (`000025`)
+
+[SPEC-CASTLE-AGE](../specs/castle-age.md), [ADR-044](../decisions/ADR-044-castle-shooting.md). Sin tablas nuevas: el
+avance de Hierro a Castillos usa `city_era_advances` (§16.7), que admite cualquier par de eras del catálogo, y `eras`
+tiene `CASTLE_AGE` con su `population_cap` de 150 desde `000002`. Lo nuevo es el castillo.
+
+```sql
+ALTER TABLE buildings ADD CONSTRAINT buildings_type_valid CHECK (type IN ('HOUSE', 'WORKSHOP', 'CASTLE'));
+CREATE UNIQUE INDEX buildings_one_castle_per_city ON buildings (city_id)
+    WHERE type = 'CASTLE' AND status <> 'DESTROYED';
+```
+
+| Objeto | Semántica |
+|---|---|
+| `CASTLE` en `buildings_type_valid` | El castillo de la zona urbana (`RN-CASTLE-002`). Que sólo lo tenga una ciudad en `CASTLE_AGE` lo garantiza el dominio al encargarlo, y la era no retrocede (`INV-CITY-018`) |
+| `buildings_one_castle_per_city` | `INV-ECON-012`: como mucho un castillo en pie (en obra o completo) por ciudad; derribado, se puede construir otro. Hermano de `buildings_one_workshop_per_city` |
+
+El disparo del castillo no se persiste: el próximo disparo y el objetivo viven en la RAM y un reinicio los olvida
+([ADR-044](../decisions/ADR-044-castle-shooting.md) §2). Sus muertes se escriben como cualquier otra, en `units` y en
+`world_events` (`UnitKilled` con `killerBuildingId` y `killerBuildingType` en el payload).
 
 La migración de vuelta borra las producciones de tipos exclusivos y deja las unidades ya nacidas en `units`, que no
 tiene `CHECK` de tipo: un servidor anterior las excluye al cargar (`INV-UNIT-009`) y recalcula la población.

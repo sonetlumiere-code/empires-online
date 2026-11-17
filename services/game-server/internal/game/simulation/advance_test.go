@@ -146,9 +146,9 @@ func TestRechazosDelAvanceEnLaSimulacion(t *testing.T) {
 	b := newHarness(t)
 	b.darEras()
 	b.darRecursos(400, 200)
-	b.ciudad().Era = city.EraIron
+	b.ciudad().Era = city.EraCastle
 	b.avanzar()
-	assert.Equal(t, []string{protocol.CodeNotImplemented}, b.codigos(), "desde Hierro no hay avance (SPEC-CIVILIZATION-GOODS Q11)")
+	assert.Equal(t, []string{protocol.CodeNotImplemented}, b.codigos(), "desde Castillos no hay avance (SPEC-CASTLE-AGE Q10)")
 	assert.Empty(t, b.economy.advances)
 }
 

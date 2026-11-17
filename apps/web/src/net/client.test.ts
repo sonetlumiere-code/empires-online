@@ -169,6 +169,14 @@ describe('comandos', () => {
     expect(salir!.payload, 'el tile de salida lo elige el servidor').toEqual({ unitId: 42 });
   });
 
+  it('el castillo envía sólo la ciudad y el tile (SPEC-CASTLE-AGE)', async () => {
+    const { client, socket } = await ready();
+    client.buildCastle(7, { x: 9, y: 9 });
+    const [castillo] = socket.parsedSent();
+    expect(castillo!.type).toBe('city.build');
+    expect(castillo!.payload).toEqual({ cityId: 7, type: 'CASTLE', x: 9, y: 9 });
+  });
+
   it('el taller y la elaboración envían sólo la ciudad y el tile (SPEC-CIVILIZATION-GOODS)', async () => {
     const { client, socket } = await ready();
     client.buildWorkshop(7, { x: 11, y: 11 });

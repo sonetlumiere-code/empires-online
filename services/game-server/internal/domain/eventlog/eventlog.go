@@ -83,6 +83,11 @@ const (
 	KindClanAllianceAccepted       Kind = "CLAN_ALLIANCE_ACCEPTED"
 	KindClanAllianceRejected       Kind = "CLAN_ALLIANCE_REJECTED"
 	KindClanAllianceBreakAnnounced Kind = "CLAN_ALLIANCE_BREAK_ANNOUNCED"
+	// El castillo (SPEC-CASTLE-AGE §6, ADR-044 §6): una unidad propia que
+	// mató el castillo de otro, y una unidad ajena que mató el castillo propio.
+	// Son tipos aparte para no agruparse con lo que hizo un ejército.
+	KindUnitLostToCastle Kind = "UNIT_LOST_TO_CASTLE"
+	KindCastleKill       Kind = "CASTLE_KILL"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -98,6 +103,7 @@ func Kinds() []Kind {
 		KindClanExpelled, KindClanMemberExpelled,
 		KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost,
 		KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceRejected, KindClanAllianceBreakAnnounced,
+		KindUnitLostToCastle, KindCastleKill,
 	}
 }
 
@@ -116,6 +122,7 @@ func NoticeKinds() []Kind {
 		KindClanExpelled,
 		KindClanLeadershipReceived, KindClanLeadershipInherited,
 		KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceBreakAnnounced,
+		KindUnitLostToCastle, KindCastleKill,
 	}
 }
 
@@ -249,7 +256,14 @@ type Event struct {
 	// Reason, en un cambio de líder: LeaderReasonTransfer o
 	// LeaderReasonInactive.
 	Reason string
+	// KillerBuildingType, en una muerte: el tipo del edificio que la causó, o
+	// "" si fue una unidad (ADR-044 §5).
+	KillerBuildingType string
 }
+
+// KillerCastle es el valor de Event.KillerBuildingType de una muerte que causó
+// un castillo.
+const KillerCastle = "CASTLE"
 
 // Valores de Event.Only.
 const (
@@ -324,6 +338,13 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 
 	switch e.Type {
 	case EventUnitKilled:
+		// SPEC-CASTLE-AGE §6: lo que mató un castillo, con sus propios tipos.
+		if e.KillerBuildingType == KillerCastle {
+			if e.PlayerID == viewer {
+				return KindUnitLostToCastle, other, true
+			}
+			return KindCastleKill, other, true
+		}
 		if e.PlayerID == viewer {
 			return KindUnitLost, other, true
 		}
@@ -623,7 +644,7 @@ func (b *Builder) Add(e Event) bool {
 		ProposedByMe: mine,
 	}
 	switch kind {
-	case KindUnitLost, KindEnemyKilled:
+	case KindUnitLost, KindEnemyKilled, KindUnitLostToCastle, KindCastleKill:
 		entry.UnitType = e.UnitType
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindPillaged, KindPillageDone:

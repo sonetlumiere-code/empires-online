@@ -82,6 +82,11 @@ describe('texto de cada entrada', () => {
       .toBe('Villa Norte mató a 2 de tus arqueros a caballo');
     expect(entryText(entrada(1, 'UNIT_LOST', { unitType: 'CATAPHRACT' }))).toBe('Villa Norte mató a uno de tus catafractos');
     expect(entryText(entrada(1, 'ENEMY_KILLED', { unitType: 'WARRIOR' }))).toBe('Tus unidades mataron a un guerrero de Villa Norte');
+    // SPEC-CASTLE-AGE §4.7: lo que mata un castillo, a los dos lados.
+    expect(entryText(entrada(1, 'UNIT_LOST_TO_CASTLE', { unitType: 'BERSERKER', x: 22, y: 41 })))
+      .toBe('El castillo de Villa Norte mató a uno de tus berserkers cerca de (22, 41)');
+    expect(entryText(entrada(1, 'CASTLE_KILL', { unitType: 'WARRIOR', count: 3 })))
+      .toBe('Tu castillo mató a 3 guerreros de Villa Norte');
     expect(entryText(entrada(1, 'PILLAGED', { count: 17, amount: 85 }))).toBe('Villa Norte te robó 85 de madera en 17 golpes');
     expect(entryText(entrada(1, 'PILLAGE_DONE', { amount: 40 }))).toBe('Tus guerreros robaron 40 de madera a Villa Norte');
     expect(entryText(entrada(1, 'HOUSE_LOST', { count: 2 }))).toBe('Villa Norte derribó 2 de tus casas');

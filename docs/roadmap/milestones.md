@@ -2387,3 +2387,67 @@ verify:full` en verde antes:
   la base de desarrollo), «Legionario · Romanos» en el panel de selección (sólo el dueño selecciona su unidad) y la
   línea de la unidad propia en el registro de alta (pide cerrar la sesión del navegador). Los textos los cubren
   `units.test.ts` y la proyección; esas tres siluetas, sólo el typecheck.
+
+## E23 — Edad de los Castillos
+
+**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-edad-castillos`. Contrato:
+[SPEC-CASTLE-AGE](../specs/castle-age.md), aceptada el 2026-11-17 con sus diez decisiones de producto, y
+[ADR-044](../decisions/ADR-044-castle-shooting.md).
+
+**Objetivo.** Cerrar la escalera de eras del canon con un avance que vuelve a pedir comercio, y darle a la última era
+algo que se note en el mapa: el castillo, la primera defensa de una ciudad que no depende de tener un ejército en casa.
+
+**Alcance.** `city.advance` de Hierro a Castillos por 1 600 de madera, 800 de piedra y 120 bienes ajenos en cualquier
+mezcla, 360 s, que sube el límite a 150; el castillo (`CASTLE`): uno por ciudad, en un hueco de la zona urbana, 500 de
+madera y 800 de piedra, 180 s con `production.speed`, 1 000 de vida, asediable; su disparo de 10 cada 2 s a 5 tiles
+contra quien ataca a su dueño, nunca en paz, sin despertar la respuesta automática; sus muertes en el registro y los
+avisos (`UNIT_LOST_TO_CASTLE`, `CASTLE_KILL`); `targetUnitId` en `BuildingView`; `INV-ECON-012` e `INV-COMBAT-007`;
+migración `000025`; el cliente (avance, botón, dibujo, disparo, textos) y `scripts/smoke.mjs --castillo`. **No entra**
+(spec §2): eras posteriores, mejoras o nuevas unidades, tecnologías, que el castillo dé población o defienda a otros,
+ayuda del clan para el avance y que el castillo haga afín su entorno.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-044](../decisions/ADR-044-castle-shooting.md), `INV-ECON-012` e
+   `INV-COMBAT-007`, la precisión de `INV-ECON-011` ([economy.md](../invariants/economy.md)) y las de `RN-ECON-024` y
+   Q6 ([economy-stone.md](../specs/economy-stone.md)), `RN-GOODS-006` y Q11
+   ([civilization-goods.md](../specs/civilization-goods.md)), el no-scope de
+   [civilization-units.md](../specs/civilization-units.md), `RN-COMBAT-029` ([combat-siege.md](../specs/combat-siege.md)),
+   `RN-COMBAT-014` ([combat-response.md](../specs/combat-response.md)) y `Q-12` del [backlog](backlog.md).
+2. **HECHO** — Dominio: el paso Hierro → Castillos de `advance`, `CASTLE` en el catálogo de edificios con su
+   perfil de disparo (`CanShoot`), y los tipos `UNIT_LOST_TO_CASTLE` y `CASTLE_KILL` en `eventlog`.
+3. **HECHO** — Migración `000025` y persistencia: `CASTLE`, el único parcial y la muerte con autor edificio
+   (`killerBuildingId`, `killerBuildingType`). `000025` probada abajo y arriba en la base de tests.
+4. **HECHO** — Simulación: `castleState`, el objetivo y los disparos en la fase 4, el golden «castillo», seis
+   guerreros contra el castillo, las exclusiones y el reinicio; `INV-ECON-012` e `INV-COMBAT-007` verificados por
+   mutación.
+5. **HECHO** — Protocolo y registro: `CASTLE`, `targetUnitId`, los dos tipos de entrada; contract tests (Go y Zod)
+   y dos e2e por WebSocket.
+6. **HECHO** — Cliente: el avance a Castillos, el botón y el dibujo del castillo, la línea del disparo y los textos,
+   con tests de lo puro.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --castillo`.
+
+### Prueba en vivo (2026-11-17)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 24 a la 25, con el almacén sembrado
+(`EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed`):
+
+- **Primera pasada** de `--castillo`: smoke_runner, en Bronce, avanzó a Hierro (límite 110) y a Castillos (límite
+  160) con sus plazos; un avance más se rechazó con `NOT_IMPLEMENTED`; el castillo se encargó en (292, 18) con el plazo
+  romano (163 636 ms) y 1 000 de vida, y se terminó. El castillo apuntó al guerrero de smoke_victim y le disparó (60 →
+  50), pero lo remató un guerrero de smoke_runner que respondió al asedio de su ciudad (`RN-COMBAT-037`), así que el
+  aviso del castillo no llegó y la pasada falló. El castillo hizo lo que dice la spec; el humo pasó a apartar antes a
+  los guardias propios (`guardiasCerca`, con test).
+- **Segunda pasada**, verde (31 comprobaciones): siete guardias de smoke_runner se apartan, un guerrero nuevo de
+  smoke_victim asedia el castillo, recibe el primer disparo (60 → 50), el castillo apunta a él (`building.update` con
+  `targetUnitId`) y lo mata; smoke_victim recibe `UNIT_LOST_TO_CASTLE` y smoke_runner `CASTLE_KILL`.
+- **En el navegador**, con la sesión de smoke_runner y el panel visible: la ciudad en la Edad de los Castillos, sin
+  botón de avanzar, con «Castillo» deshabilitado y su motivo («La ciudad ya tiene un castillo.»); el castillo dibujado
+  junto al centro (muro con almenas, dos torres y puerta), con su barra de vida mientras lo asediaban; la línea del
+  castillo al sitiador mientras le disparaba; y el aviso y la entrada del registro «Tu castillo mató a un guerrero de
+  smoke_victimpolis».
+- **Sin comprobar en el navegador:** el botón «Edad de los Castillos (n/120 bienes)» de una ciudad en Hierro y
+  «Castillo» habilitado con su coste (smoke_runner ya estaba en Castillos y con castillo), el texto «El castillo de … mató
+  a uno de tus …» del lado de la víctima (lo comprobó el humo como aviso y lo cubre `eventLog.test.ts`), y el castillo
+  en obra (sólo el contorno). En la base de desarrollo smoke_runner queda en Castillos con su castillo, y sus guardias
+  junto a (277, 19).

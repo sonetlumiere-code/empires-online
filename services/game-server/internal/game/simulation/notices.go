@@ -19,7 +19,7 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 			p.OtherCityID, p.OtherCityName = &id, &name
 		}
 		switch n.Kind {
-		case eventlog.KindUnitLost, eventlog.KindEnemyKilled:
+		case eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindUnitLostToCastle, eventlog.KindCastleKill:
 			p.UnitType = e.UnitType
 		case eventlog.KindPillageDone:
 			amount := e.Amount

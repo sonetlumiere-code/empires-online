@@ -15,7 +15,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  apuntaA,
   bienDe,
+  castilloDe,
+  guardiasCerca,
+  pasosHastaCastillos,
   cookieDeSesion,
   elegirBosque,
   elegirColina,
@@ -357,4 +361,44 @@ test('elaboracionesQueFaltan cuenta las de 5 que hacen falta para llegar al cost
   assert.equal(elaboracionesQueFaltan(5, 10), 1);
   assert.equal(elaboracionesQueFaltan(4, 10), 2);
   assert.equal(elaboracionesQueFaltan(0, 10), 2);
+});
+
+// --castillo (SPEC-CASTLE-AGE): las eras que le faltan a la ciudad, su castillo y el
+// building.update que dice a quién apunta.
+test('pasosHastaCastillos da las eras que faltan, en orden', () => {
+  assert.deepEqual(pasosHastaCastillos('STONE_AGE'), ['BRONZE_AGE', 'IRON_AGE', 'CASTLE_AGE']);
+  assert.deepEqual(pasosHastaCastillos('IRON_AGE'), ['CASTLE_AGE']);
+  assert.deepEqual(pasosHastaCastillos('CASTLE_AGE'), []);
+  assert.deepEqual(pasosHastaCastillos('AZTEC_AGE'), []);
+});
+
+test('castilloDe encuentra el castillo de la ciudad, no el de otra ni un taller', () => {
+  const edificios = [
+    { id: 1, cityId: 7, type: 'WORKSHOP' },
+    { id: 2, cityId: 8, type: 'CASTLE' },
+    { id: 3, cityId: 7, type: 'CASTLE' },
+  ];
+  assert.equal(castilloDe(edificios, 7)?.id, 3);
+  assert.equal(castilloDe(edificios, 9), null);
+});
+
+test('apuntaA reconoce el objetivo del castillo, y no el null ni otro edificio', () => {
+  assert.equal(apuntaA({ id: 3, status: 'COMPLETE', targetUnitId: 70 }, 3, 70), true);
+  assert.equal(apuntaA({ id: 3, status: 'COMPLETE', targetUnitId: null }, 3, 70), false);
+  assert.equal(apuntaA({ id: 4, status: 'COMPLETE', targetUnitId: 70 }, 3, 70), false);
+  assert.equal(apuntaA({ id: 3, status: 'COMPLETE', hp: 990 }, 3, 70), false);
+});
+
+test('guardiasCerca da las unidades propias que atacan junto al centro, no aldeanos ni guarnecidas', () => {
+  const catalogo = [{ code: 'VILLAGER', attacks: false }, { code: 'WARRIOR', attacks: true }, { code: 'LEGIONARY', attacks: true }];
+  const yo = 'p1';
+  const unidades = [
+    { id: 1, playerId: yo, unitType: 'WARRIOR', x: 12, y: 10, status: 'IDLE' },
+    { id: 2, playerId: yo, unitType: 'VILLAGER', x: 10, y: 10, status: 'IDLE' },
+    { id: 3, playerId: yo, unitType: 'LEGIONARY', x: 30, y: 10, status: 'IDLE' },
+    { id: 4, playerId: 'p2', unitType: 'WARRIOR', x: 10, y: 11, status: 'IDLE' },
+    { id: 5, playerId: yo, unitType: 'LEGIONARY', x: 10, y: 10, status: 'GARRISONED' },
+    { id: 6, playerId: yo, unitType: 'LEGIONARY', x: 18, y: 2, status: 'ATTACKING' },
+  ];
+  assert.deepEqual(guardiasCerca(unidades, yo, { x: 10, y: 10 }, catalogo).map((u) => u.id), [1, 6]);
 });

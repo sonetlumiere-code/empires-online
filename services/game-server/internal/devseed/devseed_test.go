@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/devseed"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -148,4 +150,20 @@ func TestLosIdsDeDesarrolloSonDeterministas(t *testing.T) {
 	for _, nombre := range devseed.Players {
 		assert.Equal(t, esperados[nombre], devseed.PlayerID(nombre).String(), nombre)
 	}
+}
+
+// SPEC-CASTLE-AGE Q9: la semilla del almacén cubre los avances que faltan hasta
+// Castillos y el castillo, con los bienes ajenos en el primer bien que no es el
+// propio; en Castillos, sólo el castillo.
+func TestLaSemillaDelAlmacenCubreLoQueFaltaHastaElCastillo(t *testing.T) {
+	assert.Equal(t, map[economy.Resource]int64{
+		economy.ResourceWood: 400 + 800 + 1_600 + 500, economy.ResourceStone: 200 + 400 + 800 + 800,
+		economy.ResourceSilk: 60 + 120,
+	}, devseed.StockFor(city.EraStone, economy.ResourceWine))
+	assert.Equal(t, map[economy.Resource]int64{
+		economy.ResourceWood: 1_600 + 500, economy.ResourceStone: 800 + 800, economy.ResourceWine: 120,
+	}, devseed.StockFor(city.EraIron, economy.ResourceFurs))
+	assert.Equal(t, map[economy.Resource]int64{
+		economy.ResourceWood: 500, economy.ResourceStone: 800,
+	}, devseed.StockFor(city.EraCastle, economy.ResourceSilk))
 }

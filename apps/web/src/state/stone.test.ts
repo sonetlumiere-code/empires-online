@@ -72,7 +72,7 @@ describe('decisiones de la piedra y del avance', () => {
 
   it('el botón «Edad de Bronce» dice por qué no responde, en el orden de RN-ECON-024', () => {
     expect(advanceBlockReason(ciudad())).toBeNull();
-    expect(advanceBlockReason(ciudad({ era: 'IRON_AGE' }))).toMatch(/más eras/);
+    expect(advanceBlockReason(ciudad({ era: 'CASTLE_AGE' }))).toMatch(/más eras/);
     expect(advanceBlockReason({ ...ciudad(), advance: { era: 'BRONZE_AGE', completesAtMs: 1 } })).toMatch(/avanzando/);
     expect(advanceBlockReason({ ...ciudad(), production: { unitType: 'VILLAGER', completesAtMs: 1 } }))
       .toMatch(/entrenando/);

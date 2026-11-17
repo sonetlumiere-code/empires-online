@@ -50,6 +50,7 @@ Dentro del scope de v1:
 - Los territorios de clan ([clan-territories.md](clan-territories.md)): `forClan` en `unit.claim` (§7.18), opcional; `ownerClan` (`{ id, name, tag }` o `null`, siempre presente) y `claim.clan` (`{ id, tag }`, opcional) en `TerritoryView` (§8.9); `territories[]` (`{ id, name, x, y }`) en `ClanView` (§8.28) y en `clan.info` (§8.29); `clanTag` en las entradas y los avisos de la conquista (§8.19, §8.23); sin tipos nuevos (`R-VER-2`).
 - Las alianzas entre clanes ([clan-alliances.md](clan-alliances.md)): `clan.alliance.propose { clanId }`, `clan.alliance.respond { allianceId, accept }` y `clan.alliance.cancel { allianceId }`, que pasan por la simulación (§7.22); `alliances` (obligatorio) en `ClanView` (§8.28) y en `clan.info` (§8.29); los tipos `CLAN_ALLIANCE_OFFERED`, `CLAN_ALLIANCE_ACCEPTED` y `CLAN_ALLIANCE_BREAK_ANNOUNCED` (también en `event_log.notice`) y `CLAN_ALLIANCE_REJECTED` en el registro, con `clanTag`. El campo nuevo es obligatorio: el cliente y el servidor lo estrenan juntos.
 - Las unidades de civilización ([civilization-units.md](civilization-units.md)): `LEGIONARY`, `CATAPHRACT`, `HORSE_ARCHER` y `BERSERKER` en `UnitType` y en el `type` de `city.train` (§7.10); sin mensajes ni campos nuevos. Los valores son nuevos en un enum estricto: el cliente y el servidor los estrenan juntos. Las estadísticas no viajan: el catálogo de presentación `units.json` y `unit` en el de civilizaciones ([ADR-043](../decisions/ADR-043-civilization-units.md) §7).
+- La Edad de los Castillos ([castle-age.md](castle-age.md)): `city.advance` desde la Edad de Hierro (§7.16); `CASTLE` en `BuildingType` (también en `city.build`, §7.9); `targetUnitId` (`EntityId | null`, opcional) en `BuildingView` y en `building.update` (§8.16), el objetivo del castillo; los tipos `UNIT_LOST_TO_CASTLE` y `CASTLE_KILL` en el registro y en `event_log.notice` (§8.19, §8.23); sin mensajes nuevos. `CASTLE` y los dos tipos son valores nuevos en enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-044](../decisions/ADR-044-castle-shooting.md) §6 y §7).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -610,7 +611,7 @@ payload: z.object({ cityId: EntityId }).strict()
 
 **Efectos, en dos fases** ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). El tick reserva el coste; la transacción lo debita y escribe la elaboración. Con éxito, `city.update { stocks, craft: { good, amount, completesAtMs } }` al chunk de la ciudad. Al vencer el plazo (30 s con el rasgo `production.speed`), `city.update { stocks, craft: null }` con el bien sumado. Derribar el taller la pierde: `city.update { craft: null }` sin bien.
 
-`city.build` admite desde E14 `type: "WORKSHOP"` (el taller, `RN-GOODS-003`): pide la Edad de Bronce y que la ciudad no tenga otro en pie (`INVALID_TARGET`), y cuesta 100 de madera y 50 de piedra (`INSUFFICIENT_RESOURCES`). `city.advance` desde la Edad de Bronce pasa a la de Hierro y cobra además 60 bienes de otras civilizaciones (`INSUFFICIENT_RESOURCES` si faltan); desde Hierro responde `NOT_IMPLEMENTED`.
+`city.build` admite desde E14 `type: "WORKSHOP"` (el taller, `RN-GOODS-003`): pide la Edad de Bronce y que la ciudad no tenga otro en pie (`INVALID_TARGET`), y cuesta 100 de madera y 50 de piedra (`INSUFFICIENT_RESOURCES`). `city.advance` desde la Edad de Bronce pasa a la de Hierro y cobra además 60 bienes de otras civilizaciones (`INSUFFICIENT_RESOURCES` si faltan). Desde E23 ([castle-age.md](castle-age.md)), `city.build` admite también `type: "CASTLE"` (`RN-CASTLE-002`: la Edad de los Castillos y ninguno en pie, o `INVALID_TARGET`; 500 de madera y 800 de piedra, o `INSUFFICIENT_RESOURCES`), y `city.advance` desde Hierro pasa a la Edad de los Castillos cobrando 1 600 de madera, 800 de piedra y 120 bienes ajenos (`RN-CASTLE-001`); `NOT_IMPLEMENTED` se responde sólo desde Castillos.
 
 ### 7.20 `message.send`, `message.list`, `message.fetch`, `message.read` y `message.block`
 
@@ -1163,14 +1164,18 @@ Se emite cuando la transacción del encargo confirma el edificio, no en el tick 
 - **Propósito:** cambio de un edificio conocido: que se completa o, desde E8, su vida en un asedio, con el estado que ya tenía. Sin `requestId`.
 
 ```ts
-payload: z.object({ id: EntityId, status: BuildingStatus, hp: z.number().int().min(0).optional() })
+payload: z.object({
+  id: EntityId, status: BuildingStatus,
+  hp: z.number().int().min(0).optional(),
+  targetUnitId: EntityId.nullable().optional(),   // desde E23: el objetivo del castillo, o null
+})
 ```
 
 ```json
 { "v": 1, "type": "building.update", "seq": 140, "ts": 1788955225000, "payload": { "id": 501, "status": "COMPLETE" } }
 ```
 
-Lo acompaña un `city.update { populationLimit }` con el bono de la casa (`RN-ECON-009`). Cada golpe de asedio emite uno con `hp` al chunk de la casa, y también el olvido del daño, con la vida entera (`RN-COMBAT-032`).
+Lo acompaña un `city.update { populationLimit }` con el bono de la casa (`RN-ECON-009`). Cada golpe de asedio emite uno con `hp` al chunk de la casa, y también el olvido del daño, con la vida entera (`RN-COMBAT-032`). Desde E23, un castillo emite uno con `targetUnitId` cada vez que cambia de objetivo, y con `targetUnitId: null` cuando deja de apuntar ([castle-age.md](castle-age.md) §6); `BuildingView` lleva el objetivo actual, si lo hay.
 
 ### 8.17 `forest.update`
 
@@ -1219,6 +1224,7 @@ payload: z.object({
 //                  unitType?, amount?, treatyType?, proposedByMe?, x?, y?, breaksAtMs? }
 // kind: UNIT_LOST | ENEMY_KILLED | PILLAGED | PILLAGE_DONE | TREATY_OFFERED | TREATY_WITHDRAWN
 //     | TREATY_ACCEPTED | TREATY_REJECTED | TREATY_OFFER_EXPIRED | TREATY_BREAK_ANNOUNCED | TREATY_ENDED
+//     | … (los de E8 a E21) | UNIT_LOST_TO_CASTLE | CASTLE_KILL (E23, las muertes que causa un castillo)
 ```
 
 ```json
@@ -1279,7 +1285,7 @@ payload: z.object({ offer: TradeOfferView })
 
 ```ts
 payload: z.object({
-  kind: EventLogNoticeKind,   // UNIT_LOST | ENEMY_KILLED | PILLAGE_DONE | HOUSE_DESTROYED
+  kind: EventLogNoticeKind,   // UNIT_LOST | ENEMY_KILLED | PILLAGE_DONE | HOUSE_DESTROYED | … | UNIT_LOST_TO_CASTLE | CASTLE_KILL (E23)
   atMs: EpochMs,              // el instante del suceso en la simulación
   otherPlayerId: Uuid,
   otherCityId: EntityId.nullable(),
@@ -1586,6 +1592,8 @@ Los marcados **EN VERDE** ya existen y pasan. Los demás están diseñados y pen
 | e2e | La unidad de civilización (E22) | `city.train` de la propia en la Edad de Piedra y de la ajena → `INVALID_TARGET` con su `requestId`; la propia en Bronce → `city.update { production, stocks }` con los tres recursos debitados | **EN VERDE** (`TestEntrenarUnLegionarioPorLaRed`) |
 | contract | `UnitType` y `TrainableUnitType` son el catálogo de unidades de Go, y `units.json` coincide con él campo a campo (E22) | Mismo orden, mismos tipos entrenables, mismas estadísticas | **EN VERDE** (`TestLosTiposDeUnidadDelEsquemaSonLosDelCatalogo`, `TestElCatalogoDeUnidadesEsElDePresentacion`, `TestCadaCivilizacionDePresentacionTieneSuUnidad`) |
 | e2e | El combate | `unit.attack` → `unit.movement.started` → `entity.update { ATTACKING }` → `entity.update { hp }` → `entity.despawn { DEAD }`; un objetivo propio llega como `INVALID_TARGET` con su `requestId` | **EN VERDE** (`TestAtacarPorLaRedMataAlObjetivo`) |
+| e2e | La Edad de los Castillos (E23) | `city.build CASTLE` en Hierro → `INVALID_TARGET`; `city.advance` desde Hierro → `city.update { advance: CASTLE_AGE }` con los bienes ajenos debitados → `city.update { era, populationLimit: 150 }`; otra vez, `NOT_IMPLEMENTED`; `city.build CASTLE` → `building.spawn`; un castillo que dispara a un sitiador: `building.update { targetUnitId }`, `entity.update { hp }`, `event_log.notice` `UNIT_LOST_TO_CASTLE` y `CASTLE_KILL`, y `targetUnitId: null` | **EN VERDE** (`TestLaEdadDeLosCastillosPorLaRed`, `TestElCastilloDisparaPorLaRed`) |
+| contract | `CASTLE` en `BuildingType` y `targetUnitId` opcional y anulable (E23) | El enum es el catálogo de edificios de Go; la vista lo omite sin objetivo y `building.update` lo manda `null` al dejar de apuntar | **EN VERDE** (`TestElTipoDeEdificioIncluyeElCastillo`, `TestElObjetivoDelCastilloEsOpcionalYAnulable`) |
 | e2e | El asedio | `unit.demolish` sobre una casa propia → `INVALID_TARGET`; sobre la ajena, `unit.movement.started` → `building.update { hp }` al chunk y `city.update { besiegedAtMs }` sólo al dueño → `building.destroyed` → `city.update { populationLimit }`; el snapshot trae `hp` y `maxHp` | **EN VERDE** (`TestDerribarPorLaRedQuitaLaCasaYAvisaAlDueno`) |
 | e2e | `unit.move` con la cola del loop llena | `system.error INTERNAL_ERROR` con su `requestId`, y el reintento con el mismo `requestId` se ejecuta (I-10) | **EN VERDE** (`TestConLaColaLlenaElComandoRespondeYSePuedeReintentar`) |
 | e2e | Redis caído durante un `unit.move` | El comando se ejecuta igualmente y se registra `warn` | Pendiente |

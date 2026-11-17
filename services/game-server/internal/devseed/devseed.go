@@ -15,6 +15,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/advance"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
@@ -143,6 +147,43 @@ func ring8(c world.Tile, r int32) []world.Tile {
 	}
 	for x := c.X - r; x <= c.X+r; x++ {
 		out = append(out, world.Tile{X: x, Y: c.Y + r})
+	}
+	return out
+}
+
+// StockFor es lo que la semilla del almacén (EO_DEVSEED_STOCK_FOR) deja como
+// mínimo a una ciudad de la era `era` cuya civilización elabora `own`, para
+// probar a mano lo que le queda de progresión sin una sesión de recolección ni de
+// comercio (SPEC-ECON-STONE §9, SPEC-CASTLE-AGE Q9): la madera y la piedra de
+// todos los avances que le faltan hasta la última era y del castillo, y los
+// bienes ajenos de esos avances, todos del primer bien del catálogo que no es el
+// propio. Una ciudad en la última era recibe sólo lo del castillo.
+func StockFor(era city.Era, own economy.Resource) map[economy.Resource]int64 {
+	out := map[economy.Resource]int64{}
+	var foreign int64
+	for from := era; ; {
+		paso, ok := advance.Next(from)
+		if !ok {
+			break
+		}
+		for _, c := range paso.Costs {
+			out[c.Resource] += c.Amount
+		}
+		foreign += paso.ForeignGoods
+		from = paso.To
+	}
+	if def, err := building.Lookup(building.TypeCastle); err == nil {
+		for _, c := range def.Costs {
+			out[c.Resource] += c.Amount
+		}
+	}
+	if foreign > 0 {
+		for _, g := range economy.Goods() {
+			if g != own {
+				out[g] += foreign
+				break
+			}
+		}
 	}
 	return out
 }

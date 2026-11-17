@@ -42,16 +42,14 @@ describe('los bienes de civilización', () => {
     expect(craftBlockReason(ciudad(), completo)).toBeNull();
   });
 
-  it('desde Bronce se avanza a Hierro con 60 bienes ajenos; desde Hierro, nada (Q5, Q11)', () => {
+  it('desde Bronce se avanza a Hierro con 60 bienes ajenos (Q5)', () => {
     expect(nextEra('STONE_AGE')).toBe('BRONZE_AGE');
     expect(nextEra('BRONZE_AGE')).toBe('IRON_AGE');
-    expect(nextEra('IRON_AGE')).toBeNull();
     expect(advanceBlockReason(ciudad(), 60)).toBeNull();
     expect(advanceBlockReason(ciudad(), 59)).toBe('Faltan 1 bienes de otras civilizaciones: cómpralos con un trato.');
     expect(advanceBlockReason(ciudad({ stocks: { WOOD: 700 } }), 0)).toBe(
       'Faltan 100 de madera y 60 bienes de otras civilizaciones: cómpralos con un trato.',
     );
-    expect(advanceBlockReason(ciudad({ era: 'IRON_AGE' }), 60)).toMatch(/más eras/);
   });
 });
 

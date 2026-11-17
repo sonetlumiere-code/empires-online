@@ -23,6 +23,9 @@ import {
   CRAFT_AMOUNT,
   CRAFT_COST,
   IRON_AGE_COST,
+  CASTLE_AGE_COST,
+  CASTLE_COST,
+  castleBlockReason,
   nextEra,
   workshopBlockReason,
   WORKSHOP_COST,
@@ -789,6 +792,13 @@ export default function Page() {
     const tile = firstFreeHouseTile(ownCity, buildingsOf(state.buildings, ownCity.id));
     if (tile) clientRef.current?.buildWorkshop(ownCity.id, tile);
   };
+  // «Castillo»: como «Taller», en el primer hueco libre (SPEC-CASTLE-AGE §4.7).
+  const buildCastle = () => {
+    const state = useWorldStore.getState();
+    if (!ownCity) return;
+    const tile = firstFreeHouseTile(ownCity, buildingsOf(state.buildings, ownCity.id));
+    if (tile) clientRef.current?.buildCastle(ownCity.id, tile);
+  };
   // Los edificios de la ciudad propia, para los motivos del taller y de la elaboración.
   const ownBuildings = ownCity ? buildingsOf(useWorldStore.getState().buildings, ownCity.id) : [];
   const ownGood = ownCity ? goodOf(ownCity.civilization) : null;
@@ -915,6 +925,19 @@ export default function Page() {
             >
               Taller
             </button>
+            {(ownCity.era === 'IRON_AGE' || ownCity.era === 'CASTLE_AGE') && (
+              <button
+                className="secondary"
+                onClick={buildCastle}
+                disabled={castleBlockReason(ownCity, ownBuildings) !== null}
+                title={
+                  castleBlockReason(ownCity, ownBuildings) ??
+                  `Encarga el castillo: ${CASTLE_COST.WOOD} de madera y ${CASTLE_COST.STONE} de piedra, unos 180 s. Golpea a quien ataque tu ciudad o tus unidades a 5 casillas; no da población`
+                }
+              >
+                Castillo
+              </button>
+            )}
             {ownBuildings.some((b) => b.type === 'WORKSHOP') &&
               (ownCity.craft ? (
                 <span style={{ color: 'var(--muted)' }}>
@@ -985,7 +1008,10 @@ export default function Page() {
               const what =
                 next === 'BRONZE_AGE'
                   ? `Avanza a la Edad de Bronce: ${BRONZE_AGE_COST.WOOD} de madera y ${BRONZE_AGE_COST.STONE} de piedra, 90 s sin entrenar. El límite de población sube de 20 a 50`
-                  : `Avanza a la Edad de Hierro: ${IRON_AGE_COST.WOOD} de madera, ${IRON_AGE_COST.STONE} de piedra y ${IRON_AGE_COST.FOREIGN_GOODS} bienes de otras civilizaciones (se cobran en el orden vino, seda, especias, pieles; el tuyo nunca), 180 s sin entrenar. El límite sube de 50 a 100`;
+                  : next === 'IRON_AGE'
+                    ? `Avanza a la Edad de Hierro: ${IRON_AGE_COST.WOOD} de madera, ${IRON_AGE_COST.STONE} de piedra y ${IRON_AGE_COST.FOREIGN_GOODS} bienes de otras civilizaciones (se cobran en el orden vino, seda, especias, pieles; el tuyo nunca), 180 s sin entrenar. El límite sube de 50 a 100`
+                    : `Avanza a la Edad de los Castillos: ${CASTLE_AGE_COST.WOOD} de madera, ${CASTLE_AGE_COST.STONE} de piedra y ${CASTLE_AGE_COST.FOREIGN_GOODS} bienes de otras civilizaciones (el tuyo nunca), 360 s sin entrenar. El límite sube de 100 a 150 y podrás construir un castillo`;
+              const goodsNeeded = next === 'CASTLE_AGE' ? CASTLE_AGE_COST.FOREIGN_GOODS : IRON_AGE_COST.FOREIGN_GOODS;
               return (
                 <button
                   className="secondary"
@@ -994,7 +1020,7 @@ export default function Page() {
                   title={reason ?? what}
                 >
                   {eraLabel(next)}
-                  {next === 'IRON_AGE' && ` (${foreign}/${IRON_AGE_COST.FOREIGN_GOODS} bienes)`}
+                  {next !== 'BRONZE_AGE' && ` (${foreign}/${goodsNeeded} bienes)`}
                 </button>
               );
             })()}

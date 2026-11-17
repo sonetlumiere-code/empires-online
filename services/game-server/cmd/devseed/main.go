@@ -40,8 +40,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
 	"github.com/empires-online/empires-online/services/game-server/internal/devseed"
-	"github.com/empires-online/empires-online/services/game-server/internal/domain/advance"
-	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
@@ -229,11 +228,16 @@ func run() error {
 		fmt.Printf("  · ninguna CAVERN: no hay montañas a menos de %d tiles de estas ciudades\n", devseed.MaxRing)
 	}
 
-	// ── Almacén para probar el avance de era (SPEC-ECON-STONE) ──
+	// ── Almacén para probar los avances de era y el castillo (SPEC-ECON-STONE,
+	// SPEC-CASTLE-AGE Q9): lo que le falta a cada ciudad hasta Castillos ──
 	if lista := strings.TrimSpace(os.Getenv("EO_DEVSEED_STOCK_FOR")); lista != "" {
-		paso, ok := advance.Next(city.EraStone)
-		if !ok {
-			return errors.New("el catálogo de avances no tiene el paso de la Edad de Piedra")
+		civs, err := players.ListCivilizations(ctx)
+		if err != nil {
+			return fmt.Errorf("EO_DEVSEED_STOCK_FOR: el catálogo de civilizaciones: %w", err)
+		}
+		bienDe := map[string]economy.Resource{}
+		for _, cv := range civs {
+			bienDe[cv.Code] = cv.Good
 		}
 		fmt.Println()
 		for _, nombre := range strings.Split(lista, ",") {
@@ -246,18 +250,24 @@ func run() error {
 			if err != nil {
 				return fmt.Errorf("EO_DEVSEED_STOCK_FOR: la ciudad de %s: %w", nombre, err)
 			}
-			for _, coste := range paso.Costs {
+			minimo := devseed.StockFor(c.Era, bienDe[c.Civilization])
+			var partes []string
+			for _, r := range economy.Resources() {
+				n, ok := minimo[r]
+				if !ok {
+					continue
+				}
 				// Sólo sube: lo que ya tuviera de más se queda. La versión sube para
 				// que ninguna escritura vieja de la RAM pise esta (ADR-023 §1).
 				if _, err := store.Pool().Exec(ctx,
 					`UPDATE city_stocks SET amount = GREATEST(amount, $3), version = version + 1
 					  WHERE city_id = $1 AND resource = $2`,
-					c.ID, string(coste.Resource), coste.Amount); err != nil {
+					c.ID, string(r), n); err != nil {
 					return fmt.Errorf("subir el almacén de %s: %w", nombre, err)
 				}
+				partes = append(partes, fmt.Sprintf("%d de %s", n, r))
 			}
-			fmt.Printf("  + %s: almacén con al menos %d de madera y %d de piedra\n",
-				nombre, paso.Costs[0].Amount, paso.Costs[1].Amount)
+			fmt.Printf("  + %s (%s): almacén con al menos %s\n", nombre, c.Era, strings.Join(partes, ", "))
 		}
 	}
 

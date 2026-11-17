@@ -347,6 +347,9 @@ type BuildingView struct {
 	// HP y MaxHP son su vida frente a un asedio (SPEC-COMBAT-SIEGE §4.2).
 	HP    int32 `json:"hp"`
 	MaxHP int32 `json:"maxHp"`
+	// TargetUnitID es la unidad a la que apunta un castillo, si apunta a alguna
+	// (SPEC-CASTLE-AGE §6).
+	TargetUnitID *int64 `json:"targetUnitId,omitempty"`
 }
 
 // CityView es el estado observable de una ciudad.
@@ -1154,6 +1157,9 @@ type BuildingUpdatePayload struct {
 	Status string `json:"status"`
 	// HP es su vida tras un golpe de asedio, o al olvidarse el daño.
 	HP *int32 `json:"hp,omitempty"`
+	// TargetUnitID es el nuevo objetivo de un castillo, o null cuando deja de
+	// apuntar (SPEC-CASTLE-AGE §6). Ausente si no cambia.
+	TargetUnitID **int64 `json:"targetUnitId,omitempty"`
 }
 
 // BuildingDestroyedPayload anuncia un edificio derribado: el cliente lo quita

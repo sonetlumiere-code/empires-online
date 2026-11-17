@@ -140,7 +140,8 @@ export const Stocks = z.object({
 export type Stocks = z.infer<typeof Stocks>;
 
 /** El taller (`WORKSHOP`) llega con SPEC-CIVILIZATION-GOODS §4.2. */
-export const BuildingType = z.enum(['HOUSE', 'WORKSHOP']);
+/** `CASTLE` es el castillo de la Edad de los Castillos, que golpea a quien ataca a su dueño (SPEC-CASTLE-AGE §4.2). */
+export const BuildingType = z.enum(['HOUSE', 'WORKSHOP', 'CASTLE']);
 export type BuildingType = z.infer<typeof BuildingType>;
 
 export const BuildingStatus = z.enum(['UNDER_CONSTRUCTION', 'COMPLETE']);
@@ -386,6 +387,8 @@ export const BuildingView = z.object({
    */
   hp: z.number().int().min(0).optional(),
   maxHp: z.number().int().min(1).optional(),
+  /** La unidad a la que apunta un castillo, si apunta a alguna (SPEC-CASTLE-AGE §6). */
+  targetUnitId: EntityId.nullable().optional(),
 });
 export type BuildingView = z.infer<typeof BuildingView>;
 
@@ -567,6 +570,10 @@ export const EventLogKind = z.enum([
   'CLAN_ALLIANCE_ACCEPTED',
   'CLAN_ALLIANCE_REJECTED',
   'CLAN_ALLIANCE_BREAK_ANNOUNCED',
+  // El castillo (SPEC-CASTLE-AGE §6): una unidad de quien lee que mató el castillo de
+  // otro, y una unidad ajena que mató el castillo de quien lee.
+  'UNIT_LOST_TO_CASTLE',
+  'CASTLE_KILL',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -597,6 +604,9 @@ export const EventLogNoticeKind = EventLogKind.extract([
   'CLAN_ALLIANCE_OFFERED',
   'CLAN_ALLIANCE_ACCEPTED',
   'CLAN_ALLIANCE_BREAK_ANNOUNCED',
+  // SPEC-CASTLE-AGE §6: lo que mata un castillo, a los dos lados.
+  'UNIT_LOST_TO_CASTLE',
+  'CASTLE_KILL',
 ]);
 export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
 

@@ -848,6 +848,26 @@ y grueso, y una que carga madera, un tronco a la espalda.
   plural de cada una (`unitPlural`: «arqueros a caballo», «berserkers»). En el registro de alta, cada civilización
   añade «Unidad propia: legionario, aguanta casi el doble que un guerrero» (`civilizationUnitLine`).
 
+### 4.19 La Edad de los Castillos (SPEC-CASTLE-AGE)
+
+> **Estado (2026-11-17): implementado y con tests de lo puro** (`src/state/economy.ts`, `src/state/eventLog.ts`,
+> `src/state/world.ts`, `src/render/projection.ts`, `src/render/scene.ts`, `src/net/client.ts`, `app/page.tsx`).
+
+- **El avance.** `nextEra` lleva de Hierro a Castillos; el botón de avanzar en una ciudad de Hierro dice «Edad de los
+  Castillos (n/120 bienes)», su `title` el coste y que abre el castillo, y `advanceBlockReason` qué falta con
+  `CASTLE_AGE_COST`. En Castillos el botón desaparece, como desaparecería cualquier botón sin era siguiente.
+- **El castillo.** En las ciudades de Hierro y de Castillos, «Castillo» en el primer hueco libre, como «Taller»,
+  deshabilitado con su motivo (`castleBlockReason`: sin la Edad de los Castillos, ya hay uno, sin hueco, faltan
+  recursos). La orden es `GameClient.buildCastle`.
+- **En el mapa** (`paintCastleBody`). Sin imágenes: un muro de piedra con almenas, dos torres con un remate del color
+  de propio o ajeno y una puerta; en obras, el contorno. Con daño, su barra de vida, como una casa.
+- **El disparo.** El store guarda `targetUnitId` de la vista del edificio (`building.update` lo cambia; `null` lo
+  borra, ausente no lo toca), la proyección lo pasa a `SceneBuilding.targetUnitId`, y la escena dibuja en una capa
+  encima de todo (`shotLayer`) una línea del castillo a la posición interpolada de su objetivo mientras apunta. Sólo
+  recorre los castillos que apuntan (`aiming`): sin ellos, no cuesta nada por frame.
+- **Registro y avisos.** `UNIT_LOST_TO_CASTLE` («El castillo de Villa Norte mató a uno de tus guerreros», resaltada
+  como pérdida) y `CASTLE_KILL` («Tu castillo mató a 3 guerreros de Villa Norte»).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

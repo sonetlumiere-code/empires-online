@@ -134,6 +134,9 @@ type State struct {
 	// siege es el daño de las casas y sus destrucciones en curso
 	// (SPEC-COMBAT-SIEGE, ADR-029).
 	siege siegeState
+	// castles es el disparo de cada castillo completo (SPEC-CASTLE-AGE,
+	// ADR-044 §2).
+	castles castleState
 	// diplo son los tratados abiertos y su reserva (SPEC-DIPLOMACY).
 	diplo diplomacyState
 	// trade son las ofertas de comercio pendientes y los tratos reservados
@@ -179,6 +182,7 @@ func NewState(w *world.World) *State {
 		pendingBuilds:          make(map[world.Tile]pendingBuild),
 		combat:                 newCombatState(),
 		siege:                  newSiegeState(),
+		castles:                newCastleState(),
 		diplo:                  newDiplomacyState(),
 		trade:                  newTradeState(),
 		caravans:               newCaravanState(),

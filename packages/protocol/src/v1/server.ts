@@ -273,8 +273,9 @@ export const BuildingSpawn = z.object({
 });
 
 /**
- * Cambio de un edificio conocido: que se completa, o su vida en un asedio
- * (`hp`, SPEC-COMBAT-SIEGE), con su estado de siempre.
+ * Cambio de un edificio conocido: que se completa, su vida en un asedio
+ * (`hp`, SPEC-COMBAT-SIEGE) o el objetivo de un castillo (`targetUnitId`, `null`
+ * cuando deja de apuntar, SPEC-CASTLE-AGE §6), con su estado de siempre.
  */
 export const BuildingUpdate = z.object({
   ...serverEnvelope,
@@ -283,6 +284,7 @@ export const BuildingUpdate = z.object({
     id: EntityId,
     status: BuildingStatus,
     hp: z.number().int().min(0).optional(),
+    targetUnitId: EntityId.nullable().optional(),
   }),
 });
 
