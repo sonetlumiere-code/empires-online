@@ -2379,7 +2379,10 @@ verify:full` en verde antes:
   (31 818 ms), y nace con su tipo y 110 de vida.
 - En el navegador, como smoke_clan_a (`ROMAN`, en la Edad de Piedra): tras «Aldeano» y «Guerrero», el botón
   «Legionario (80 de madera, 40 de piedra y 10 de vino)», deshabilitado con «El legionario pide la Edad de Bronce.».
-- **Sin comprobar en el navegador:** las siluetas de las cuatro unidades (con el panel oculto no hay
-  `requestAnimationFrame` y el mapa no se dibuja), «Legionario · Romanos» en el panel de selección y la línea de la
-  unidad propia en el registro de alta (pide cerrar la sesión del navegador). Los cubren `units.test.ts` y la
-  proyección; el dibujo, sólo el typecheck.
+- Más tarde, con el panel visible y la página recargada (si carga con el panel oculto, el lienzo se queda en 300 × 150),
+  como smoke_clan_a con la cámara sobre smoke_runnerpolis: el legionario de smoke_runner se dibuja como un rombo ajeno
+  con el escudo claro delante, y se distingue del guerrero de al lado.
+- **Sin comprobar en el navegador:** las siluetas del catafracto, el arquero a caballo y el berserker (no hay ninguno en
+  la base de desarrollo), «Legionario · Romanos» en el panel de selección (sólo el dueño selecciona su unidad) y la
+  línea de la unidad propia en el registro de alta (pide cerrar la sesión del navegador). Los textos los cubren
+  `units.test.ts` y la proyección; esas tres siluetas, sólo el typecheck.
