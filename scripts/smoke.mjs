@@ -99,6 +99,17 @@
  *      (el de --bienes); entrena su unidad propia pagando 80 de madera, 40 de piedra y 10 del
  *      bien, con el plazo de su civilización, y la ve nacer con su tipo y su vida. Va después
  *      de --bienes. Necesita 80 de madera y 40 de piedra, más 30 y 15 por elaboración.
+ *  13f. sólo con --castillo (SPEC-CASTLE-AGE): la ciudad del humo avanza lo que le falte
+ *      hasta la Edad de los Castillos (Bronce 90 s, Hierro 180 s, Castillos 360 s; cada
+ *      avance es irreversible, como --avance, y desde Castillos se rechaza con
+ *      NOT_IMPLEMENTED), construye su castillo si no lo tiene (180 s con el rasgo de su
+ *      civilización) y un guerrero de smoke_victim lo asedia: el castillo apunta a él
+ *      (building.update con targetUnitId), le dispara y lo mata, y los dos reciben el
+ *      aviso (UNIT_LOST_TO_CASTLE y CASTLE_KILL). La primera pasada tarda unos doce
+ *      minutos; las siguientes, sólo el disparo. Necesita el almacén de los avances, los
+ *      bienes ajenos y el castillo (con el servidor parado,
+ *      EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed) y que no haya un
+ *      pacto entre los dos: va antes de --diplomacia.
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -158,7 +169,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -193,6 +204,7 @@ const REGISTRO = args.includes('--registro');
 const CIVILIZACION = args.includes('--civilizacion');
 const BIENES = args.includes('--bienes');
 const UNIDAD_CIVILIZACION = args.includes('--unidad-civilizacion');
+const CASTILLO = args.includes('--castillo');
 const CARAVANA = args.includes('--caravana');
 const MENSAJES = args.includes('--mensajes');
 const FACCION = args.includes('--faccion');
@@ -753,6 +765,10 @@ async function main() {
     await territorio(segunda, ciudad, cuenta.playerId);
   }
 
+  if (CASTILLO) {
+    await castillo(segunda, ciudad, cuenta.playerId);
+  }
+
   if (DIPLOMACIA) {
     await diplomacia(segunda, cuenta.playerId, snap2);
   }
@@ -1075,6 +1091,138 @@ async function unidadCivilizacion(propio, ciudad) {
     (m) => m.payload.unit.unitType === u.propia && m.payload.unit.cityId === c.id, plazo + 15_000);
   if (nace.payload.unit.maxHp !== u.ficha.maxHp) fallar(`${u.propia} nació sin su vida`, nace.payload.unit);
   ok('unidad propia nacida', `${u.propia} ${nace.payload.unit.id} con ${nace.payload.unit.maxHp} de vida`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Edad de los Castillos (SPEC-CASTLE-AGE), sólo con --castillo
+// ─────────────────────────────────────────────────────────────
+
+/** Las eras de la escalera del canon, en orden (SPEC-CASTLE-AGE §4.1). */
+const ERAS = ['STONE_AGE', 'BRONZE_AGE', 'IRON_AGE', 'CASTLE_AGE'];
+
+/** Lo que tarda el castillo sin rasgo (SPEC-CASTLE-AGE Q4). */
+const CASTILLO_MS = 180_000;
+
+/** Las eras a las que le falta avanzar a una ciudad hasta Castillos, en orden. */
+export function pasosHastaCastillos(era) {
+  const i = ERAS.indexOf(era);
+  return i < 0 ? [] : ERAS.slice(i + 1);
+}
+
+/** El castillo en pie de una ciudad, de una lista de edificios, o `null`. */
+export function castilloDe(edificios, cityId) {
+  return edificios.find((b) => b.cityId === cityId && b.type === 'CASTLE') ?? null;
+}
+
+/** Si un building.update dice que el castillo apunta a la unidad. */
+export function apuntaA(payload, castilloId, unitId) {
+  return payload.id === castilloId && payload.targetUnitId === unitId;
+}
+
+async function castillo(propio, ciudadInicial, playerId) {
+  const s = propio.sesion;
+  const cityId = ciudadInicial.id;
+  const mirar = async () => {
+    s.enviar('session.view', { center: { x: ciudadInicial.centerX, y: ciudadInicial.centerY } });
+    return (await s.esperar('world.snapshot')).payload;
+  };
+  let vista = await mirar();
+  let c = vista.cities.find((x) => x.id === cityId);
+  if (!c) fallar('la ciudad del humo no está en su snapshot', vista.cities.map((x) => x.id));
+
+  // Los avances que falten, uno tras otro (cada uno, con su plazo y sin entrenar).
+  if (c.advance) {
+    await s.esperarQue('city.update', (m) => m.payload.id === cityId && m.payload.era,
+      Math.max(0, c.advance.completesAtMs - Date.now()) + 15_000);
+    vista = await mirar();
+    c = vista.cities.find((x) => x.id === cityId);
+  }
+  for (const era of pasosHastaCastillos(c.era)) {
+    if (c.production) {
+      await s.esperarQue('city.update', (m) => m.payload.id === cityId && m.payload.production === null, 60_000);
+    }
+    s.enviar('city.advance', { cityId });
+    const inicio = await s.esperarQue(['city.update', 'system.error'],
+      (m) => m.type === 'system.error' || (m.payload.id === cityId && m.payload.advance), 15_000);
+    if (inicio.type === 'system.error') {
+      fallar(`el servidor rechazó el avance a ${era}`,
+        `${inicio.payload.code}: ${inicio.payload.message} (con el servidor parado: EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed)`);
+    }
+    const fin = inicio.payload.advance.completesAtMs;
+    ok(`avance a ${era} encargado`, `quedan ${Math.round((fin - Date.now()) / 1000)} s`);
+    const nueva = await s.esperarQue('city.update', (m) => m.payload.id === cityId && m.payload.era,
+      Math.max(0, fin - Date.now()) + 15_000);
+    if (nueva.payload.era !== era) fallar(`el avance terminó en ${nueva.payload.era} y no en ${era}`, nueva.payload);
+    ok(eraLabelDelHumo(era), `límite de población ${nueva.payload.populationLimit}`);
+    c = { ...c, era, advance: null };
+  }
+  s.enviar('city.advance', { cityId });
+  const otra = await s.esperarQue(['system.error', 'city.update'],
+    (m) => m.type === 'system.error' || (m.payload.id === cityId && m.payload.advance), 15_000);
+  if (otra.type !== 'system.error' || otra.payload.code !== 'NOT_IMPLEMENTED') {
+    fallar('desde Castillos se pudo avanzar otra vez', otra.payload);
+  }
+  ok('desde la Edad de los Castillos no hay más eras', 'NOT_IMPLEMENTED');
+
+  // El castillo: si no lo tiene, lo encarga en el primer hueco y espera la obra.
+  vista = await mirar();
+  let fuerte = castilloDe(vista.buildings, cityId);
+  if (!fuerte) {
+    const hueco = huecoParaCasa(c, vista.buildings.filter((b) => b.cityId === cityId));
+    if (!hueco) fallar('no queda hueco en la zona urbana para el castillo', vista.buildings);
+    s.enviar('city.build', { cityId, type: 'CASTLE', x: hueco.x, y: hueco.y });
+    const alta = await s.esperarQue(['building.spawn', 'system.error'],
+      (m) => m.type === 'system.error' || (m.payload.building.cityId === cityId && m.payload.building.type === 'CASTLE'), 15_000);
+    if (alta.type === 'system.error') {
+      fallar('el servidor rechazó el castillo', `${alta.payload.code}: ${alta.payload.message}`);
+    }
+    fuerte = alta.payload.building;
+    const plazo = escalarDuracion(CASTILLO_MS, rasgo(CATALOGO, c.civilization, 'production.speed'));
+    const queda = comprobarPlazo('el castillo', fuerte.completesAtMs, alta.ts, plazo);
+    ok('castillo encargado', `en (${fuerte.x}, ${fuerte.y}), ${plazo} ms (quedaban ${queda}), ${fuerte.maxHp} de vida`);
+  }
+  if (fuerte.status !== 'COMPLETE') {
+    await s.esperarQue('building.update', (m) => m.payload.id === fuerte.id && m.payload.status === 'COMPLETE',
+      Math.max(0, fuerte.completesAtMs - Date.now()) + 15_000);
+    ok('castillo terminado', `${fuerte.id}`);
+  }
+
+  // Un guerrero de la víctima lo asedia: el castillo apunta, dispara y lo mata.
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const ciudadV = victima.snapshot.payload.cities.find((x) => x.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', victima.snapshot.payload.cities);
+  let guerrero = victima.snapshot.payload.units.find((u) => u.playerId === cuenta.playerId && u.unitType === 'WARRIOR');
+  if (!guerrero) {
+    await maderaDeLaVictima(victima, cuenta.playerId, ciudadV, { x: c.centerX, y: c.centerY }, 60);
+    guerrero = await entrenar(victima.sesion, ciudadV, cuenta.playerId, 'WARRIOR');
+  }
+  ok('guerrero de la víctima', `unidad ${guerrero.id} en (${guerrero.x}, ${guerrero.y})`);
+  await acercar(victima.sesion, guerrero, { x: c.centerX, y: c.centerY + 6 }, 4);
+  victima.sesion.enviar('session.view', { center: { x: c.centerX, y: c.centerY } });
+  await victima.sesion.esperar('world.snapshot');
+  await mirar();
+
+  victima.sesion.enviar('unit.demolish', { unitId: guerrero.id, buildingId: fuerte.id });
+  const herido = await victima.sesion.esperarQue(['entity.update', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.id === guerrero.id && typeof m.payload.hp === 'number' && m.payload.hp < guerrero.maxHp),
+    60_000);
+  if (herido.type === 'system.error') {
+    fallar('el servidor rechazó el asedio del castillo', `${herido.payload.code}: ${herido.payload.message} (¿un pacto de --diplomacia?)`);
+  }
+  ok('el castillo le dispara', `vida ${guerrero.maxHp} -> ${herido.payload.hp}`);
+  const apunta = await s.esperarQue(['building.update'], (m) => apuntaA(m.payload, fuerte.id, guerrero.id), 10_000);
+  ok('el castillo apunta al sitiador', `building.update targetUnitId ${apunta.payload.targetUnitId}`);
+  const perdida = await avisoEnVivo(victima.sesion, 'UNIT_LOST_TO_CASTLE', playerId, 30_000);
+  ok('el sitiador muere con su aviso', `UNIT_LOST_TO_CASTLE ${perdida.payload.unitType} ante ${perdida.payload.otherCityName}`);
+  const muerte = await avisoEnVivo(s, 'CASTLE_KILL', cuenta.playerId, 10_000);
+  ok('el dueño del castillo recibe su aviso', `CASTLE_KILL ${muerte.payload.unitType} de ${muerte.payload.otherCityName}`);
+  victima.sesion.cerrar();
+}
+
+/** El nombre de una era en los mensajes del humo. */
+function eraLabelDelHumo(era) {
+  return { BRONZE_AGE: 'Edad de Bronce', IRON_AGE: 'Edad de Hierro', CASTLE_AGE: 'Edad de los Castillos' }[era] ?? era;
 }
 
 // ─────────────────────────────────────────────────────────────

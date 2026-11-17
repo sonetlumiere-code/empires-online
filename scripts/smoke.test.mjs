@@ -15,7 +15,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  apuntaA,
   bienDe,
+  castilloDe,
+  pasosHastaCastillos,
   cookieDeSesion,
   elegirBosque,
   elegirColina,
@@ -357,4 +360,30 @@ test('elaboracionesQueFaltan cuenta las de 5 que hacen falta para llegar al cost
   assert.equal(elaboracionesQueFaltan(5, 10), 1);
   assert.equal(elaboracionesQueFaltan(4, 10), 2);
   assert.equal(elaboracionesQueFaltan(0, 10), 2);
+});
+
+// --castillo (SPEC-CASTLE-AGE): las eras que le faltan a la ciudad, su castillo y el
+// building.update que dice a quién apunta.
+test('pasosHastaCastillos da las eras que faltan, en orden', () => {
+  assert.deepEqual(pasosHastaCastillos('STONE_AGE'), ['BRONZE_AGE', 'IRON_AGE', 'CASTLE_AGE']);
+  assert.deepEqual(pasosHastaCastillos('IRON_AGE'), ['CASTLE_AGE']);
+  assert.deepEqual(pasosHastaCastillos('CASTLE_AGE'), []);
+  assert.deepEqual(pasosHastaCastillos('AZTEC_AGE'), []);
+});
+
+test('castilloDe encuentra el castillo de la ciudad, no el de otra ni un taller', () => {
+  const edificios = [
+    { id: 1, cityId: 7, type: 'WORKSHOP' },
+    { id: 2, cityId: 8, type: 'CASTLE' },
+    { id: 3, cityId: 7, type: 'CASTLE' },
+  ];
+  assert.equal(castilloDe(edificios, 7)?.id, 3);
+  assert.equal(castilloDe(edificios, 9), null);
+});
+
+test('apuntaA reconoce el objetivo del castillo, y no el null ni otro edificio', () => {
+  assert.equal(apuntaA({ id: 3, status: 'COMPLETE', targetUnitId: 70 }, 3, 70), true);
+  assert.equal(apuntaA({ id: 3, status: 'COMPLETE', targetUnitId: null }, 3, 70), false);
+  assert.equal(apuntaA({ id: 4, status: 'COMPLETE', targetUnitId: 70 }, 3, 70), false);
+  assert.equal(apuntaA({ id: 3, status: 'COMPLETE', hp: 990 }, 3, 70), false);
 });
