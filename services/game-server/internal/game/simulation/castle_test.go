@@ -488,3 +488,69 @@ func TestReinicioConLaEdadDeLosCastillos(t *testing.T) {
 		assert.Equal(t, int32(50), g.HP, "el primer disparo, en el primer tick del ataque")
 	})
 }
+
+// SPEC-CASTLE-AGE §9: un saqueador junto a la muralla está al alcance del
+// castillo (a 3 de él), que le apunta y le quita 10 en su primer disparo.
+func TestElCastilloDisparaAlSaqueador(t *testing.T) {
+	h := newHarness(t)
+	_, ciudad, g := conSaqueo(h, 200, world.Tile{X: 20, Y: 30})
+	conCastillo(h, ciudad, castilloID, tileCastillo)
+
+	h.saquear(guerreroID, ciudad.ID)
+	require.Empty(t, h.codigos())
+	require.True(t, h.tickHasta(300, func() bool { return g.HP < 60 }))
+	assert.Equal(t, int32(50), g.HP)
+	objetivo, ok := h.state.CastleTarget(castilloID)
+	require.True(t, ok)
+	assert.Equal(t, guerreroID, objetivo)
+	cid, saquea := h.state.Pillaging(guerreroID)
+	require.True(t, saquea, "el disparo no termina el saqueo")
+	assert.Equal(t, ciudad.ID, cid)
+}
+
+// SPEC-CASTLE-AGE §4.3 y §9: el arquero a caballo, que asedia desde tres tiles de
+// la casa, sigue al alcance del castillo (ningún tile de su anillo está a más de
+// cinco de él) y recibe su disparo.
+func TestElCastilloAlcanzaAlArqueroQueAsediaDesdeTres(t *testing.T) {
+	h := newHarness(t)
+	h.conectar()
+	_, c := conEnemigo(h)
+	conCasa(h, c, casaID, tileCasa, true)
+	conCastillo(h, c, castilloID, tileCastillo)
+	a := ponerUnidad(h, guerreroID, h.playerID, h.cityID, unit.TypeHorseArcher, world.Tile{X: 20, Y: 30}, 60)
+
+	h.derribar(guerreroID, casaID)
+	require.Empty(t, h.codigos())
+	require.True(t, h.tickHasta(300, func() bool { return a.HP < 60 }))
+	assert.Equal(t, int32(50), a.HP)
+	pos := h.unitTile(guerreroID)
+	assert.Equal(t, int32(3), max(abs32(pos.X-tileCasa.X), abs32(pos.Y-tileCasa.Y)), "asedia desde tres tiles")
+	assert.LessOrEqual(t, max(abs32(pos.X-tileCastillo.X), abs32(pos.Y-tileCastillo.Y)), int32(5))
+}
+
+// INV-ECON-005 (SPEC-CASTLE-AGE §9, recovery): una obra de castillo a medias
+// termina tras un reinicio en su instante absoluto, sin dar población; y una que
+// venció durante la caída, en el primer tick.
+func TestReinicioConUnCastilloEnObra(t *testing.T) {
+	obra := building.Building{ID: castilloID, CityID: 1, Type: building.TypeCastle, X: 9, Y: 9,
+		Status: building.StatusUnderConstruction, CompletesAtMs: epoch + 180_000}
+	load := simulation.EconomyLoad{Buildings: []building.Building{obra}}
+
+	h, _ := arrancar(t, persistido{economia: load}, epoch+10_000)
+	limite := h.ciudad().PopulationLimit
+	h.hasta(epoch + 179_900)
+	b, _ := h.state.Building(castilloID)
+	assert.Equal(t, building.StatusUnderConstruction, b.Status)
+	h.hasta(epoch + 180_000)
+	b, _ = h.state.Building(castilloID)
+	assert.Equal(t, building.StatusComplete, b.Status)
+	assert.Equal(t, limite, h.ciudad().PopulationLimit, "el castillo no da población")
+	_, apunta := h.state.CastleTarget(castilloID)
+	assert.False(t, apunta, "completo, listo y sin objetivo")
+
+	h2, _ := arrancar(t, persistido{economia: load}, epoch+200_000)
+	h2.tick()
+	b, _ = h2.state.Building(castilloID)
+	assert.Equal(t, building.StatusComplete, b.Status)
+	require.Len(t, h2.economy.completions, 1)
+}

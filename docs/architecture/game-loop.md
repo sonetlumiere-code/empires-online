@@ -596,6 +596,9 @@ latencia al presupuesto.
 
 - **Precisión (2026-11-02).** La fase 4 ya no está vacía: resuelve el combate, con los golpes de un tick
   calculados sobre el estado de fin de la fase 3 y aplicados a la vez ([ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md)).
+  **Precisión (2026-11-17, [castle-age.md](../specs/castle-age.md)):** desde E23 también golpean los castillos: sus
+  disparos se calculan tras los enfrentamientos y antes de aplicar nada, y se aplican detrás de los golpes de las
+  unidades, en orden de castillo ([ADR-044](../decisions/ADR-044-castle-shooting.md) §3 y §4).
 - Paralelización de fases o del A* dentro del tick.
 - Métrica dedicada de ticks saltados por catch-up (hoy sólo log + `eo_game_tick_overruns_total`).
 - **Orden durable por unidad**: un único worker de persistencia, o particionado de la cola por

@@ -303,7 +303,12 @@ Castillos), [INV-CITY-017](../invariants/city.md#inv-city-017) (el avance no cue
   recarga al cambiar de objetivo (`TestElCastilloEligeAlMasCercanoYDesempataPorID`).
 - **Paz a mitad del ataque.** Un tratado que aparece mientras una unidad ataca termina el enfrentamiento en ese tick
   (`RN-COMBAT-008`) antes de que el castillo elija, así que deja de ser objetivo sin pasar por `INV-COMBAT-007`, que
-  queda como defensa.
+  queda como defensa. Lo mismo vale para el resto de `RN-CASTLE-005`: una unidad oculta, en una Safe Zone o de un
+  jugador `PROTECTED`, o con el dueño del castillo `PROTECTED`, ya no puede estar en `ATTACKING` contra él, así que
+  esas ramas de `castleBlocked` no tienen un camino que las alcance desde la simulación y no llevan test propio.
+- **Lo que §9 pedía además.** El saqueador junto a la muralla y el arquero a caballo que asedia desde tres tiles
+  reciben el disparo (`TestElCastilloDisparaAlSaqueador`, `TestElCastilloAlcanzaAlArqueroQueAsediaDesdeTres`), y una
+  obra de castillo a medias termina tras un reinicio en su instante (`TestReinicioConUnCastilloEnObra`).
 - **El cliente** (§4.7). La línea del disparo se dibuja mientras el castillo apunta, no sólo en el instante de cada
   golpe: el cliente sabe a quién apunta (`targetUnitId`), no cuándo dispara. El botón «Castillo» aparece desde la Edad
   de Hierro; en Castillos el botón de avanzar desaparece en vez de decir «No hay más eras».

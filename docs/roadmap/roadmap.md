@@ -162,6 +162,9 @@ coste en recursos) y del catálogo `eras` ya creado en M2, que define `populatio
 las tablas `technologies` y `civilization_technologies`, hoy fuera de MVP y sin migración. El riesgo
 principal es de modelado: los efectos de las tecnologías deben ser datos en base, nunca condicionales
 en el código del dominio.
+**Precisión (2026-11-17, [SPEC-CASTLE-AGE](../specs/castle-age.md)):** el avance de era está hecho para las cuatro eras
+del catálogo: Bronce en E9, Hierro en E14 y la Edad de los Castillos, que abre el castillo, en E23
+([milestones.md](milestones.md) §E23). El árbol tecnológico sigue fuera.
 
 **Civilizations.** Activa los bonos culturales por civilización (Roman, Byzantine, Persian, Norse…).
 El catálogo `civilizations` existe desde M2, pero en el MVP no aplica modificadores. Depende de

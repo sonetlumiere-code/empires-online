@@ -428,7 +428,7 @@ payload: z.object({ unitId: EntityId, target: Tile }).strict()
 - **Dirección:** cliente → servidor. **Propósito:** encargar un edificio en un tile de la zona urbana 3×3 de una ciudad propia, distinto del centro.
 
 ```ts
-payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y: WorldCoordinate }).strict()  // BuildingType = 'HOUSE'
+payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y: WorldCoordinate }).strict()  // BuildingType = 'HOUSE' | 'WORKSHOP' (E14) | 'CASTLE' (E23)
 ```
 
 **Validaciones, en este orden** (`RN-ECON-007`): la ciudad existe y es propia (`CITY_NOT_FOUND`, igual en los dos casos) · el tile está en el 3×3, no es el centro y no tiene edificio ni encargo (`INVALID_TARGET`) · el stock cubre el coste (`INSUFFICIENT_RESOURCES`). Rechazos como **`system.error`**.
