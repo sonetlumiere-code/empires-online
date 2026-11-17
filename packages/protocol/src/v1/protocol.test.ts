@@ -753,11 +753,11 @@ describe('territorios de clan (SPEC-CLAN-TERRITORIES)', () => {
 
   it('las vistas del clan llevan sus territorios', () => {
     const miembro = { playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1 };
-    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }], alliances: [] };
+    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }], alliances: [], wars: [], warRecord: { won: 0, lost: 0, drawn: 0 } };
     expect(parseServerMessage({ ...env, type: 'clan.update', payload: { clan, invitations: [] } }).ok).toBe(true);
     const { territories: _, ...sin } = clan;
     expect(parseServerMessage({ ...env, type: 'clan.update', payload: { clan: sin, invitations: [] } }).ok).toBe(false);
-    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }], alliances: [] };
+    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [{ id: 12, name: 'Llanuras del Norte', x: 159, y: 95 }], alliances: [], wars: [], warRecord: { won: 0, lost: 0, drawn: 0 } };
     expect(parseServerMessage({ ...env, type: 'clan.info', payload: info }).ok).toBe(true);
     expect(parseServerMessage({ ...env, type: 'clan.info', payload: { ...info, territories: [{ id: 12, name: 'x' }] } }).ok, 'sin su tile central').toBe(false);
   });
@@ -774,16 +774,58 @@ describe('territorios de clan (SPEC-CLAN-TERRITORIES)', () => {
 
     const miembro = { playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1 };
     const alianza = { id: 9, clanId: 4, name: 'Los Osos', tag: 'OSO', status: 'ACTIVE', proposedByUs: true, breaksAtMs: null };
-    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [], alliances: [alianza] };
+    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [], alliances: [alianza], wars: [], warRecord: { won: 0, lost: 0, drawn: 0 } };
     const upd = (c: unknown) => parseServerMessage({ ...env, type: 'clan.update', payload: { clan: c, invitations: [] } });
     expect(upd(clan).ok).toBe(true);
     expect(upd({ ...clan, alliances: [{ ...alianza, status: 'PROPOSED', breaksAtMs: 5_000 }] }).ok).toBe(true);
     expect(upd({ ...clan, alliances: [{ ...alianza, status: 'BROKEN' }] }).ok, 'sólo PROPOSED o ACTIVE').toBe(false);
     const { alliances: _, ...sin } = clan;
     expect(upd(sin).ok, 'alliances es obligatoria').toBe(false);
-    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [], alliances: [{ clanId: 4, name: 'Los Osos', tag: 'OSO', breaksAtMs: null }] };
+    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [], alliances: [{ clanId: 4, name: 'Los Osos', tag: 'OSO', breaksAtMs: null }], wars: [], warRecord: { won: 0, lost: 0, drawn: 0 } };
     expect(parseServerMessage({ ...env, type: 'clan.info', payload: info }).ok).toBe(true);
     expect(parseServerMessage({ ...env, type: 'clan.info', payload: { ...info, alliances: [{ clanId: 4 }] } }).ok).toBe(false);
+  });
+
+  it('las guerras entre clanes: los tres comandos, wars y warRecord obligatorios, y sus entradas (SPEC-CLAN-WARS §6)', () => {
+    const cmd = (type: string, payload: unknown) => parseClientMessage({ v: 1, type, requestId: uuid, payload });
+    expect(cmd('clan.war.declare', { clanId: 4 }).ok).toBe(true);
+    expect(cmd('clan.war.declare', { clanId: 0 }).ok, 'un id válido').toBe(false);
+    expect(cmd('clan.war.declare', { clanId: 4, starts: 1 }).ok, 'estricto').toBe(false);
+    expect(cmd('clan.war.peace', { warId: 9, offer: true }).ok).toBe(true);
+    expect(cmd('clan.war.peace', { warId: 9 }).ok, 'sin offer').toBe(false);
+    expect(cmd('clan.war.surrender', { warId: 9 }).ok).toBe(true);
+    expect(cmd('clan.war.surrender', {}).ok).toBe(false);
+
+    const miembro = { playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1 };
+    const guerra = {
+      id: 9, clanId: 4, name: 'Los Osos', tag: 'OSO', declaredByUs: true, status: 'DECLARED', startsAtMs: 900,
+      endsAtMs: null, ourScore: 0, theirScore: 0, peaceOfferedByUs: false, peaceOfferedByThem: false,
+    };
+    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [], alliances: [], wars: [guerra], warRecord: { won: 1, lost: 0, drawn: 2 } };
+    const upd = (c: unknown) => parseServerMessage({ ...env, type: 'clan.update', payload: { clan: c, invitations: [] } });
+    expect(upd(clan).ok).toBe(true);
+    expect(upd({ ...clan, wars: [{ ...guerra, status: 'ACTIVE', endsAtMs: 5_000, ourScore: 13 }] }).ok).toBe(true);
+    expect(upd({ ...clan, wars: [{ ...guerra, status: 'ENDED' }] }).ok, 'sólo DECLARED o ACTIVE').toBe(false);
+    expect(upd({ ...clan, wars: [{ ...guerra, ourScore: -1 }] }).ok, 'el marcador no es negativo').toBe(false);
+    const { wars: _w, ...sinGuerras } = clan;
+    expect(upd(sinGuerras).ok, 'wars es obligatoria').toBe(false);
+    const { warRecord: _r, ...sinHistorial } = clan;
+    expect(upd(sinHistorial).ok, 'warRecord es obligatorio').toBe(false);
+    const publica = { clanId: 4, name: 'Los Osos', tag: 'OSO', declaredByUs: false, status: 'ACTIVE', startsAtMs: 900, endsAtMs: 5_000, ourScore: 2, theirScore: 7 };
+    const info = { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [], alliances: [], wars: [publica], warRecord: { won: 0, lost: 0, drawn: 0 } };
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: info }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { ...info, wars: [{ clanId: 4 }] } }).ok).toBe(false);
+
+    const base = { firstAtMs: 1, lastAtMs: 1, count: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', clanTag: 'OSO' };
+    const page = (e: unknown) => parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [e], seenUpToId: 0, nextBeforeId: null } });
+    expect(page({ id: 41, kind: 'CLAN_WAR_DECLARED', startsAtMs: 900, ...base }).ok).toBe(true);
+    expect(page({ id: 42, kind: 'CLAN_WAR_PEACE_OFFERED', ...base }).ok).toBe(true);
+    expect(page({ id: 43, kind: 'CLAN_WAR_ENDED', warResult: 'WON', warReason: 'TIMEOUT', ourScore: 31, theirScore: 18, ...base }).ok).toBe(true);
+    expect(page({ id: 43, kind: 'CLAN_WAR_ENDED', warResult: 'MAYBE', ...base }).ok, 'un resultado del catálogo').toBe(false);
+    expect(page({ id: 44, kind: 'TREATY_BREAK_ANNOUNCED', treatyType: 'NON_AGGRESSION', breaksAtMs: 900, breakReason: 'WAR', ...base }).ok).toBe(true);
+    expect(page({ id: 44, kind: 'TREATY_BREAK_ANNOUNCED', breakReason: 'CANCEL', ...base }).ok, 'sólo WAR').toBe(false);
+    const notice = { kind: 'CLAN_WAR_ENDED', atMs: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', clanTag: 'OSO', warResult: 'DRAWN', warReason: 'PEACE', ourScore: 0, theirScore: 0 };
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
   });
 
   it('el registro y los avisos de la conquista llevan la sigla del clan, opcional', () => {
@@ -1067,7 +1109,7 @@ describe('clanes (SPEC-CLANS)', () => {
   const miembro = {
     playerId: uuid, cityId: 7, cityName: 'Roma', faction: 'ORDER', role: 'LEADER', joinedAtMs: 1_757_376_000_000,
   };
-  const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [], alliances: [] };
+  const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: uuid, members: [miembro], sentInvitations: [], territories: [], alliances: [], wars: [], warRecord: { won: 0, lost: 0, drawn: 0 } };
 
   it('clan.create lleva el nombre y la sigla, y la sigla es de 2 a 4 letras mayúsculas o dígitos', () => {
     expect(cmd('clan.create', { name: 'Los Lobos', tag: 'LOB' }).ok).toBe(true);
@@ -1143,7 +1185,7 @@ describe('clanes (SPEC-CLANS)', () => {
   });
 
   it('clan.info es la vista pública, y el canal lleva sus mensajes y su página', () => {
-    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [], alliances: [] } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'clan.info', payload: { clanId: 3, name: 'Los Lobos', tag: 'LOB', members: [miembro], territories: [], alliances: [], wars: [], warRecord: { won: 0, lost: 0, drawn: 0 } } }).ok).toBe(true);
     const mensaje = {
       id: 5, clanId: 3, fromPlayerId: uuid, fromCityId: 7, fromCityName: 'Roma', body: 'al norte', sentAtMs: 1,
     };

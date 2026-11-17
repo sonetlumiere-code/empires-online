@@ -187,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 37, "desde E23, las dos muertes del castillo")
+	assert.Len(t, vistos, 40, "desde E24, los tres de la guerra entre clanes")
 }
 
 // SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
@@ -364,6 +364,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 		eventlog.KindClanLeadershipReceived, eventlog.KindClanLeadershipInherited,
 		eventlog.KindClanAllianceOffered, eventlog.KindClanAllianceAccepted, eventlog.KindClanAllianceBreakAnnounced,
 		eventlog.KindUnitLostToCastle, eventlog.KindCastleKill,
+		eventlog.KindClanWarDeclared, eventlog.KindClanWarPeaceOffered, eventlog.KindClanWarEnded,
 	}, eventlog.NoticeKinds())
 	for _, k := range eventlog.NoticeKinds() {
 		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
@@ -372,7 +373,8 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 		switch tipo {
 		case "UnitKilled", "CityPillaged", "BuildingDestroyed", "TerritoryClaimStarted", "TerritoryControlChanged",
 			"CaravanCaptured", "CaravanIntercepted", "CaravanLost", "ClanMemberExpelled", "ClanLeaderChanged",
-			"ClanAllianceProposed", "ClanAllianceAccepted", "ClanAllianceBreakAnnounced":
+			"ClanAllianceProposed", "ClanAllianceAccepted", "ClanAllianceBreakAnnounced",
+			"ClanWarDeclared", "ClanWarPeaceOffered", "ClanWarEnded":
 			continue
 		}
 		for _, by := range []uuid.UUID{yo, otro, uuid.Nil} {
@@ -555,6 +557,57 @@ func TestLasAlianzasDeClanEnElRegistroYEnLosAvisos(t *testing.T) {
 	assert.Equal(t, "OSO", entradas[0].ClanTag)
 	assert.Equal(t, int64(900_000), entradas[0].BreaksAtMs)
 	assert.Equal(t, "OSO", entradas[2].ClanTag, "la aceptación, con la sigla del clan que aceptó")
+}
+
+// SPEC-CLAN-WARS Q11 y ADR-045 §6: la declaración y el final, una fila por
+// miembro, y la oferta de paz, una por mando del otro clan; cada una le cuenta su
+// suceso sólo a ese jugador, se avisa y es su propia entrada, con la sigla del
+// otro clan, cuándo empieza y, en el final, el resultado y el marcador.
+func TestLasGuerrasDeClanEnElRegistroYEnLosAvisos(t *testing.T) {
+	declarada := eventlog.Event{ID: 1, Type: eventlog.EventClanWarDeclared, PlayerID: yo, Counterpart: otro,
+		OwnerClanTag: "OSO", Only: eventlog.OnlyPlayer, StartsAtMs: 900_000, AtMs: 1}
+	k, other, ok := eventlog.Classify(yo, declarada)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindClanWarDeclared, k)
+	assert.Equal(t, otro, other)
+	_, _, ok = eventlog.Classify(otro, declarada)
+	assert.False(t, ok, "la fila de un miembro no se cuenta a quien declaró")
+	assert.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindClanWarDeclared, Other: otro}}, eventlog.Notices(declarada))
+
+	paz := eventlog.Event{ID: 2, Type: eventlog.EventClanWarPeaceOffered, PlayerID: yo, Counterpart: otro,
+		OwnerClanTag: "OSO", Only: eventlog.OnlyPlayer, AtMs: 2}
+	assert.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindClanWarPeaceOffered, Other: otro}}, eventlog.Notices(paz))
+
+	fin := eventlog.Event{ID: 3, Type: eventlog.EventClanWarEnded, PlayerID: yo, Counterpart: otro, OwnerClanTag: "OSO",
+		Only: eventlog.OnlyPlayer, Reason: "TIMEOUT", WarResult: "WON", OurScore: 31, TheirScore: 18, AtMs: 3}
+	assert.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindClanWarEnded, Other: otro}}, eventlog.Notices(fin))
+
+	for _, tipo := range []string{eventlog.EventClanWarStarted, eventlog.EventClanWarPeaceWithdrawn} {
+		_, _, ok := eventlog.Classify(yo, eventlog.Event{Type: tipo, PlayerID: yo, Counterpart: otro})
+		assert.False(t, ok, "%s no va al registro", tipo)
+	}
+
+	ruptura := eventlog.Event{ID: 4, Type: eventlog.EventTreatyBreakAnnounced, PlayerID: otro, Counterpart: yo, By: otro,
+		TreatyType: "NON_AGGRESSION", BreaksAtMs: 900_000, Reason: eventlog.BreakReasonWar, AtMs: 4}
+
+	b := eventlog.NewBuilder(yo, 0, 10*time.Minute, 50)
+	segunda := declarada
+	segunda.ID = 5
+	for _, e := range []eventlog.Event{segunda, ruptura, fin, paz, declarada} {
+		require.True(t, b.Add(e))
+	}
+	entradas := b.Entries()
+	require.Len(t, entradas, 5, "cada suceso de una guerra es su propia entrada")
+	assert.Equal(t, eventlog.KindClanWarDeclared, entradas[0].Kind)
+	assert.Equal(t, "OSO", entradas[0].ClanTag)
+	assert.Equal(t, int64(900_000), entradas[0].StartsAtMs)
+	assert.Equal(t, eventlog.KindTreatyBreakAnnounced, entradas[1].Kind)
+	assert.Equal(t, eventlog.BreakReasonWar, entradas[1].Reason, "la ruptura dice que la abrió la guerra")
+	assert.Equal(t, eventlog.KindClanWarEnded, entradas[2].Kind)
+	assert.Equal(t, "WON", entradas[2].WarResult)
+	assert.Equal(t, "TIMEOUT", entradas[2].Reason)
+	assert.Equal(t, int64(31), entradas[2].OurScore)
+	assert.Equal(t, int64(18), entradas[2].TheirScore)
 }
 
 // SPEC-CASTLE-AGE §6 y ADR-044 §6: una muerte que causó un castillo le cuenta a

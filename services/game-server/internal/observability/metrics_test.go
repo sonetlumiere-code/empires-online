@@ -71,7 +71,8 @@ func TestLasSeriesDeCambiosDeClanExistenACero(t *testing.T) {
 	m := NewMetrics()
 	assert.Equal(t, []string{"founded", "joined", "left", "expelled", "dissolved",
 		"promoted", "demoted", "transferred", "succeeded",
-		"alliance_proposed", "alliance_accepted", "alliance_broken", "alliance_expired"}, ClanChangeKinds())
+		"alliance_proposed", "alliance_accepted", "alliance_broken", "alliance_expired",
+		"war_declared", "war_ended"}, ClanChangeKinds())
 	assert.Equal(t, len(ClanChangeKinds()), testutil.CollectAndCount(m.ClanChanges))
 	for _, k := range ClanChangeKinds() {
 		assert.Zero(t, testutil.ToFloat64(m.ClanChanges.WithLabelValues(k)), k)

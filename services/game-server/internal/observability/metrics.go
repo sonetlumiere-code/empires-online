@@ -294,6 +294,9 @@ const (
 	ClanChangeAllianceAccepted = "alliance_accepted"
 	ClanChangeAllianceBroken   = "alliance_broken"
 	ClanChangeAllianceExpired  = "alliance_expired"
+	// SPEC-CLAN-WARS §6: guerras declaradas y terminadas, por cualquier motivo.
+	ClanChangeWarDeclared = "war_declared"
+	ClanChangeWarEnded    = "war_ended"
 )
 
 // ClanChangeKinds es el catálogo cerrado de la etiqueta kind de
@@ -303,5 +306,6 @@ func ClanChangeKinds() []string {
 		ClanChangeFounded, ClanChangeJoined, ClanChangeLeft, ClanChangeExpelled, ClanChangeDissolved,
 		ClanChangePromoted, ClanChangeDemoted, ClanChangeTransferred, ClanChangeSucceeded,
 		ClanChangeAllianceProposed, ClanChangeAllianceAccepted, ClanChangeAllianceBroken, ClanChangeAllianceExpired,
+		ClanChangeWarDeclared, ClanChangeWarEnded,
 	}
 }

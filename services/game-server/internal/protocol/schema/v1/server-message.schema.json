@@ -2222,7 +2222,10 @@
                           "CLAN_ALLIANCE_REJECTED",
                           "CLAN_ALLIANCE_BREAK_ANNOUNCED",
                           "UNIT_LOST_TO_CASTLE",
-                          "CASTLE_KILL"
+                          "CASTLE_KILL",
+                          "CLAN_WAR_DECLARED",
+                          "CLAN_WAR_PEACE_OFFERED",
+                          "CLAN_WAR_ENDED"
                         ]
                       },
                       "firstAtMs": {
@@ -2310,6 +2313,37 @@
                         "items": {
                           "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
                         }
+                      },
+                      "breakReason": {
+                        "type": "string",
+                        "const": "WAR"
+                      },
+                      "startsAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      },
+                      "warResult": {
+                        "type": "string",
+                        "enum": [
+                          "WON",
+                          "LOST",
+                          "DRAWN"
+                        ]
+                      },
+                      "warReason": {
+                        "type": "string",
+                        "enum": [
+                          "SURRENDER",
+                          "PEACE",
+                          "TIMEOUT",
+                          "DISSOLVED"
+                        ]
+                      },
+                      "ourScore": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "theirScore": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
                       }
                     },
                     "required": [
@@ -2441,7 +2475,10 @@
                     "CLAN_ALLIANCE_ACCEPTED",
                     "CLAN_ALLIANCE_BREAK_ANNOUNCED",
                     "UNIT_LOST_TO_CASTLE",
-                    "CASTLE_KILL"
+                    "CASTLE_KILL",
+                    "CLAN_WAR_DECLARED",
+                    "CLAN_WAR_PEACE_OFFERED",
+                    "CLAN_WAR_ENDED"
                   ]
                 },
                 "atMs": {
@@ -2501,6 +2538,21 @@
                   "items": {
                     "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
                   }
+                },
+                "startsAtMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                },
+                "warResult": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/warResult"
+                },
+                "warReason": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/warReason"
+                },
+                "ourScore": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                },
+                "theirScore": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
                 }
               },
               "required": [
@@ -3107,6 +3159,99 @@
                             ],
                             "additionalProperties": false
                           }
+                        },
+                        "wars": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              "clanId": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                              },
+                              "name": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/territories/items/properties/ownerClan/anyOf/0/properties/name"
+                              },
+                              "tag": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                              },
+                              "declaredByUs": {
+                                "type": "boolean"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "DECLARED",
+                                  "ACTIVE"
+                                ]
+                              },
+                              "startsAtMs": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                              },
+                              "endsAtMs": {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "ourScore": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                              },
+                              "theirScore": {
+                                "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                              },
+                              "peaceOfferedByUs": {
+                                "type": "boolean"
+                              },
+                              "peaceOfferedByThem": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "clanId",
+                              "name",
+                              "tag",
+                              "declaredByUs",
+                              "status",
+                              "startsAtMs",
+                              "endsAtMs",
+                              "ourScore",
+                              "theirScore",
+                              "peaceOfferedByUs",
+                              "peaceOfferedByThem"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "warRecord": {
+                          "type": "object",
+                          "properties": {
+                            "won": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "lost": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "drawn": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "won",
+                            "lost",
+                            "drawn"
+                          ],
+                          "additionalProperties": false
                         }
                       },
                       "required": [
@@ -3117,7 +3262,9 @@
                         "members",
                         "sentInvitations",
                         "territories",
-                        "alliances"
+                        "alliances",
+                        "wars",
+                        "warRecord"
                       ],
                       "additionalProperties": false
                     },
@@ -3246,6 +3393,63 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "wars": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "clanId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "name": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/territories/items/properties/ownerClan/anyOf/0/properties/name"
+                      },
+                      "tag": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/clan/anyOf/0/properties/tag"
+                      },
+                      "declaredByUs": {
+                        "type": "boolean"
+                      },
+                      "status": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/wars/items/properties/status"
+                      },
+                      "startsAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      },
+                      "endsAtMs": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ourScore": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                      },
+                      "theirScore": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                      }
+                    },
+                    "required": [
+                      "clanId",
+                      "name",
+                      "tag",
+                      "declaredByUs",
+                      "status",
+                      "startsAtMs",
+                      "endsAtMs",
+                      "ourScore",
+                      "theirScore"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "warRecord": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/warRecord"
                 }
               },
               "required": [
@@ -3254,7 +3458,9 @@
                 "tag",
                 "members",
                 "territories",
-                "alliances"
+                "alliances",
+                "wars",
+                "warRecord"
               ],
               "additionalProperties": false
             }

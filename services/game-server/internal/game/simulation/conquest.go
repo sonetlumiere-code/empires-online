@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
@@ -118,6 +119,10 @@ type Capture struct {
 	Tick            uint64
 	AtMs            int64
 	X, Y            int32
+	// War son los puntos que la captura suma a una guerra entre clanes, o nil:
+	// se deciden al encolarla y se suman al volver (SPEC-CLAN-WARS §4.4,
+	// ADR-045 §4).
+	War *clan.WarPoints
 }
 
 // ClaimTerritory es unit.claim: un guerrero reclama el territorio en que está.
@@ -672,6 +677,14 @@ func (s *Simulation) startCapture(cs *claimState, now time.Time) {
 		c.PrevClanID, c.PrevClanTag = prevClan, s.state.clanTag(prevClan)
 		c.PrevClanMembers = s.state.ClanMembers(prevClan)
 	}
+	// RN-CLANWAR-007: un territorio ganado a un miembro del otro clan, o al
+	// otro clan, puntúa.
+	switch {
+	case c.PrevOwner != uuid.Nil:
+		c.War = s.state.warPoints(c.NewOwner, c.PrevOwner, c.AtMs, clan.PointsTerritory)
+	case c.PrevClanID != 0:
+		c.War = s.state.warPointsVsClan(c.NewOwner, c.PrevClanID, c.AtMs, clan.PointsTerritory)
+	}
 	cs.capturing = true
 	cs.capture = c
 	s.submitCapture(c)
@@ -756,6 +769,8 @@ func (s *Simulation) handleCaptureResolved(cmd CaptureResolved) {
 	}
 	// INV-TERR-009: el control nuevo y su territory.update, en una función.
 	s.applyTerritoryControl(cmd.Control)
+	// ADR-045 §4: los puntos de la captura, cuando la base la confirmó.
+	s.state.addWarPoints(c.War)
 	s.deps.Log.Info("territorio conquistado", "territory_id", c.TerritoryID, "player_id", c.NewOwner,
 		"clan_id", c.NewClanID)
 	// SPEC-CLAN-TERRITORIES Q11: la lista de territorios de los clanes.

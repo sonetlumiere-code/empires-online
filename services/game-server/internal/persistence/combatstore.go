@@ -38,6 +38,7 @@ func (c *CombatStore) PersistDeath(ctx context.Context, d simulation.Death) erro
 			At: d.At, Tick: d.Tick, Loot: d.Loot, Lost: d.Lost,
 			VictimType: d.VictimType, AtMs: d.AtMs,
 			KillerBuildingID: d.KillerBuildingID, KillerBuildingType: string(d.KillerBuildingType),
+			War: d.War,
 		})
 		return err
 	})

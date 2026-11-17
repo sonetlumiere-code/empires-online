@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 )
 
@@ -60,6 +61,9 @@ type Capture struct {
 	Tick            uint64
 	AtMs            int64
 	X, Y            int32
+	// War son los puntos que la captura suma a una guerra entre clanes, o nil
+	// (ADR-045 §4). Van en una sola fila del evento.
+	War *clan.WarPoints
 }
 
 // StartClaim escribe la reclamación ACTIVE, marca el territorio en disputa y,
@@ -304,7 +308,11 @@ func (r *ConquestRepo) CaptureTerritory(ctx context.Context, c Capture) (territo
 		}
 		switch {
 		case c.PrevOwner != uuid.Nil:
-			return event(c.PrevOwner, c.NewOwner, payload())
+			p := payload()
+			if c.War != nil {
+				p["war"] = warPointsPayload(c.War)
+			}
+			return event(c.PrevOwner, c.NewOwner, p)
 		case c.PrevClanID != 0:
 			members, err := openMembers(ctx, tx, c.PrevClanID)
 			if err != nil {
@@ -320,6 +328,9 @@ func (r *ConquestRepo) CaptureTerritory(ctx context.Context, c Capture) (territo
 			if len(members) > 0 {
 				p := payload()
 				p["only"] = "counterpart"
+				if c.War != nil {
+					p["war"] = warPointsPayload(c.War)
+				}
 				return event(members[0], c.NewOwner, p)
 			}
 			return nil

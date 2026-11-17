@@ -37,8 +37,21 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 			p.ClanTag = eventlog.ClanTagFor(n.To, e)
 		}
 		// El clan cuyo liderazgo cambió (SPEC-CLAN-GOVERNANCE §4.6).
-		if e.Type == eventlog.EventClanLeaderChanged || isAllianceEvent(e.Type) {
+		if e.Type == eventlog.EventClanLeaderChanged || isAllianceEvent(e.Type) || isWarEvent(e.Type) {
 			p.ClanTag = eventlog.ClanTagFor(n.To, e)
+		}
+		// La guerra entre clanes (SPEC-CLAN-WARS §6): cuándo empieza, y en el
+		// final el resultado, el motivo y el marcador de quien lee.
+		switch n.Kind {
+		case eventlog.KindClanWarDeclared, eventlog.KindClanWarPeaceOffered:
+			if e.StartsAtMs > 0 {
+				at := e.StartsAtMs
+				p.StartsAtMs = &at
+			}
+		case eventlog.KindClanWarEnded:
+			ours, theirs := e.OurScore, e.TheirScore
+			p.OurScore, p.TheirScore = &ours, &theirs
+			p.WarResult, p.WarReason = e.WarResult, e.Reason
 		}
 		// Una caravana, lo que llevaba (SPEC-CARAVANS §6).
 		for _, l := range e.Cargo {
@@ -53,6 +66,16 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 func isAllianceEvent(t string) bool {
 	switch t {
 	case eventlog.EventClanAllianceProposed, eventlog.EventClanAllianceAccepted, eventlog.EventClanAllianceBreakAnnounced:
+		return true
+	}
+	return false
+}
+
+// isWarEvent dice si el evento es de una guerra entre clanes: su aviso lleva la
+// sigla del otro clan (SPEC-CLAN-WARS §4.7).
+func isWarEvent(t string) bool {
+	switch t {
+	case eventlog.EventClanWarDeclared, eventlog.EventClanWarPeaceOffered, eventlog.EventClanWarEnded:
 		return true
 	}
 	return false

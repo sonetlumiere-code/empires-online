@@ -62,6 +62,8 @@ func TestLaPaginaDelRegistroEsLaDelEsquema(t *testing.T) {
 		TradeGet:    []protocol.ResourceAmount{{Resource: "STONE", Amount: 1}},
 		TerritoryID: &id, TerritoryName: "Llanura", ClanTag: "LOB",
 		Cargo: []protocol.ResourceAmount{{Resource: "WINE", Amount: 5}},
+		// SPEC-CLAN-WARS §6.
+		BreakReason: "WAR", StartsAtMs: &n, WarResult: "WON", WarReason: "TIMEOUT", OurScore: &n, TheirScore: &n,
 	}
 	require.Equal(t, declaradas, clavesDe(serializado(t, completa)), "con todo, los campos del esquema")
 	minima := clavesDe(serializado(t, protocol.EventLogEntry{ID: 1, Kind: "PILLAGED", Count: 1, OtherPlayerID: "x"}))
@@ -97,6 +99,8 @@ func TestElAvisoEsElDelEsquema(t *testing.T) {
 		Kind: "PILLAGE_DONE", AtMs: 1, OtherPlayerID: "x", OtherCityID: &id, OtherCityName: &nombre,
 		UnitType: "VILLAGER", Amount: &n, X: &x, Y: &y, TerritoryID: &id, TerritoryName: "Llanura", ClanTag: "LOB",
 		Cargo: []protocol.ResourceAmount{{Resource: "WINE", Amount: 5}},
+		// SPEC-CLAN-WARS §6.
+		StartsAtMs: &n, WarResult: "LOST", WarReason: "SURRENDER", OurScore: &n, TheirScore: &n,
 	}
 	require.Equal(t, declaradas, clavesDe(serializado(t, completo)), "con todo, los campos del esquema")
 	minimo := clavesDe(serializado(t, protocol.EventLogNoticePayload{Kind: "UNIT_LOST", AtMs: 1, OtherPlayerID: "x"}))

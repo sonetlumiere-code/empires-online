@@ -6,7 +6,17 @@ import {
   allianceOffers,
   allianceProblem,
   breakAllianceWarning,
+  declareWarWarning,
   isAlly,
+  isAtWarWith,
+  MAX_CLAN_WARS,
+  openWars,
+  shortDuration,
+  surrenderWarning,
+  warCountdown,
+  warProblem,
+  warRecordText,
+  warScore,
   MAX_CLAN_ALLIES,
   applyChatNew,
   applyChatPage,
@@ -44,6 +54,8 @@ const clan: ClanView = {
   sentInvitations: [{ playerId: CE, cityId: 9, cityName: 'Persépolis', expiresAtMs: 5_000 }],
   territories: [],
   alliances: [],
+  wars: [],
+  warRecord: { won: 0, lost: 0, drawn: 0 },
 };
 const mensaje = (id: number, from: string, clanId = 3): ClanMessageView => ({
   id, clanId, fromPlayerId: from, fromCityId: 1, fromCityName: 'Roma', body: `m${id}`, sentAtMs: id,
@@ -223,5 +235,51 @@ describe('las alianzas entre clanes (SPEC-CLAN-ALLIANCES §4.6)', () => {
     expect(allianceCountdown(alianza(1, 4, 'OSO', 'ACTIVE', true, 12 * 60_000), 30_000)).toBe('La alianza con [OSO] termina en 12 min');
     expect(allianceCountdown(alianza(1, 4, 'OSO', 'ACTIVE', true, 1_000), 5_000)).toBe('La alianza con [OSO] termina en 0 min');
     expect(breakAllianceWarning('OSO')).toBe('Dentro de 15 minutos, los miembros de [OSO] podrán atacar a los tuyos');
+  });
+});
+
+describe('las guerras entre clanes (SPEC-CLAN-WARS §4.7)', () => {
+  const guerra = (id: number, clanId: number, tag: string, extra: Partial<v1.ClanWarView> = {}): v1.ClanWarView => ({
+    id, clanId, name: `Los ${tag}`, tag, declaredByUs: true, status: 'ACTIVE', startsAtMs: 0, endsAtMs: 3_600_000,
+    ourScore: 12, theirScore: 7, peaceOfferedByUs: false, peaceOfferedByThem: false, ...extra,
+  });
+  const con = (wars: v1.ClanWarView[], alliances: v1.ClanAllianceView[] = []) =>
+    applyClanUpdate(EMPTY_CLANS, { clan: { ...clan, wars, alliances }, invitations: [] });
+
+  it('las abiertas, si una ciudad es de un clan enemigo, el marcador y el historial', () => {
+    const s = con([guerra(1, 4, 'OSO')]);
+    expect(openWars(s).map((w) => w.tag)).toEqual(['OSO']);
+    expect(isAtWarWith(s, { id: 4 })).toBe(true);
+    expect(isAtWarWith(s, { id: 5 })).toBe(false);
+    expect(isAtWarWith(s, null)).toBe(false);
+    expect(warScore('LOB', guerra(1, 4, 'OSO'))).toBe('[LOB] 12 – 7 [OSO]');
+    expect(warRecordText({ won: 3, lost: 1, drawn: 2 })).toBe('3 victorias, 1 derrota, 2 empates');
+    expect(warRecordText({ won: 1, lost: 0, drawn: 0 })).toBe('1 victoria, 0 derrotas, 0 empates');
+    expect(warRecordText({ won: 0, lost: 0, drawn: 0 })).toBe('Sin guerras terminadas');
+  });
+
+  it('la cuenta atrás de la preparación y del plazo', () => {
+    expect(warCountdown(guerra(1, 4, 'OSO', { status: 'DECLARED', startsAtMs: 9 * 60_000, endsAtMs: null }), 0)).toBe('Empieza en 9 min');
+    expect(warCountdown(guerra(1, 4, 'OSO', { endsAtMs: (2 * 24 + 4) * 3_600_000 }), 0)).toBe('Termina en 2 d 4 h');
+    expect(shortDuration(3 * 3_600_000 + 10 * 60_000)).toBe('3 h 10 min');
+    expect(shortDuration(-5)).toBe('0 min');
+  });
+
+  it('quién puede declarar, y a quién', () => {
+    const aliado: v1.ClanAllianceView = { id: 9, clanId: 6, name: 'Los ALC', tag: 'ALC', status: 'ACTIVE', proposedByUs: true, breaksAtMs: null };
+    const s = con([guerra(1, 4, 'OSO', { declaredByUs: false })], [aliado]);
+    expect(warProblem(s, YO, 7)).toBeNull();
+    expect(warProblem(s, BEA, 7)).toBe('Sólo el líder decide las guerras del clan');
+    expect(warProblem(s, YO, 3)).toBe('Es tu propio clan');
+    expect(warProblem(s, YO, 4)).toBe('Ya hay una guerra abierta con ese clan');
+    expect(warProblem(s, YO, 6)).toBe('Vuestros clanes están aliados: rompe antes la alianza');
+    expect(MAX_CLAN_WARS).toBe(1);
+    expect(warProblem(con([guerra(1, 4, 'OSO')]), YO, 7)).toBe('Tu clan ya tiene una guerra declarada abierta');
+    expect(warProblem(EMPTY_CLANS, YO, 7)).toBe('Sólo el líder decide las guerras del clan');
+  });
+
+  it('las confirmaciones de declarar y de rendirse', () => {
+    expect(declareWarWarning('OSO')).toBe('Guerra a [OSO]: los pactos entre vuestros miembros terminarán en 15 minutos');
+    expect(surrenderWarning('OSO')).toBe('[OSO] ganará la guerra y no podréis declararle otra en 24 h');
   });
 });

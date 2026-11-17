@@ -86,6 +86,11 @@ const (
 	TypeClanAlliancePropose = "clan.alliance.propose"
 	TypeClanAllianceRespond = "clan.alliance.respond"
 	TypeClanAllianceCancel  = "clan.alliance.cancel"
+	// Guerras entre clanes (SPEC-CLAN-WARS §6): pasan por la simulación, como
+	// las alianzas.
+	TypeClanWarDeclare   = "clan.war.declare"
+	TypeClanWarPeace     = "clan.war.peace"
+	TypeClanWarSurrender = "clan.war.surrender"
 )
 
 // Mensajes servidor → cliente.
@@ -170,6 +175,10 @@ var ClientMessageTypes = map[string]bool{
 	TypeClanAlliancePropose: true,
 	TypeClanAllianceRespond: true,
 	TypeClanAllianceCancel:  true,
+
+	TypeClanWarDeclare:   true,
+	TypeClanWarPeace:     true,
+	TypeClanWarSurrender: true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -653,6 +662,17 @@ type EventLogEntry struct {
 	ClanTag string `json:"clanTag,omitempty"`
 	// Cargo, en las caravanas: lo que llevaba (SPEC-CARAVANS §6).
 	Cargo []ResourceAmount `json:"cargo,omitempty"`
+	// BreakReason, en una ruptura que abrió una guerra entre clanes: WAR
+	// (SPEC-CLAN-WARS §6).
+	BreakReason string `json:"breakReason,omitempty"`
+	// La guerra entre clanes (SPEC-CLAN-WARS §6): cuándo empieza, en la
+	// declaración y la oferta de paz; el resultado para quien lee, el motivo y
+	// el marcador desde su clan, en el final.
+	StartsAtMs *int64 `json:"startsAtMs,omitempty"`
+	WarResult  string `json:"warResult,omitempty"`
+	WarReason  string `json:"warReason,omitempty"`
+	OurScore   *int64 `json:"ourScore,omitempty"`
+	TheirScore *int64 `json:"theirScore,omitempty"`
 }
 
 // EventLogNoticePayload es un aviso en vivo (SPEC-LIVE-NOTICES §6): un suceso
@@ -676,6 +696,12 @@ type EventLogNoticePayload struct {
 	ClanTag string `json:"clanTag,omitempty"`
 	// Cargo, en las caravanas: lo que llevaba (SPEC-CARAVANS §6).
 	Cargo []ResourceAmount `json:"cargo,omitempty"`
+	// La guerra entre clanes, como en EventLogEntry (SPEC-CLAN-WARS §6).
+	StartsAtMs *int64 `json:"startsAtMs,omitempty"`
+	WarResult  string `json:"warResult,omitempty"`
+	WarReason  string `json:"warReason,omitempty"`
+	OurScore   *int64 `json:"ourScore,omitempty"`
+	TheirScore *int64 `json:"theirScore,omitempty"`
 }
 
 // EventLogPagePayload es una página del registro. NextBeforeID es nil en la
@@ -866,6 +892,24 @@ type ClanAllianceCancelPayload struct {
 	AllianceID int64 `json:"allianceId"`
 }
 
+// ClanWarDeclarePayload declara la guerra al clan ClanID (SPEC-CLAN-WARS
+// §4.3).
+type ClanWarDeclarePayload struct {
+	ClanID int64 `json:"clanId"`
+}
+
+// ClanWarPeacePayload ofrece la paz (o la acepta, si el otro clan ya la
+// ofreció) con Offer, o retira la propia o rechaza la ajena sin él.
+type ClanWarPeacePayload struct {
+	WarID int64 `json:"warId"`
+	Offer bool  `json:"offer"`
+}
+
+// ClanWarSurrenderPayload rinde al clan propio en una guerra.
+type ClanWarSurrenderPayload struct {
+	WarID int64 `json:"warId"`
+}
+
 // ClanLookupPayload pide la vista pública de un clan.
 type ClanLookupPayload struct {
 	ClanID int64 `json:"clanId"`
@@ -919,6 +963,52 @@ type ClanView struct {
 	// Alliances son las alianzas activas del clan y, para el líder y los
 	// oficiales, también sus ofertas, por id (SPEC-CLAN-ALLIANCES §6).
 	Alliances []ClanAllianceView `json:"alliances"`
+	// Wars son las guerras abiertas del clan, por id; WarRecord, su historial
+	// (SPEC-CLAN-WARS §6).
+	Wars      []ClanWarView     `json:"wars"`
+	WarRecord ClanWarRecordView `json:"warRecord"`
+}
+
+// ClanWarView es una guerra abierta del propio clan con otro.
+type ClanWarView struct {
+	ID int64 `json:"id"`
+	// ClanID, Name y Tag son los del otro clan.
+	ClanID int64  `json:"clanId"`
+	Name   string `json:"name"`
+	Tag    string `json:"tag"`
+	// DeclaredByUs: la declaró el clan de quien mira.
+	DeclaredByUs bool `json:"declaredByUs"`
+	// Status es DECLARED o ACTIVE.
+	Status     string `json:"status"`
+	StartsAtMs int64  `json:"startsAtMs"`
+	// EndsAtMs es el plazo, o null en la preparación.
+	EndsAtMs   *int64 `json:"endsAtMs"`
+	OurScore   int64  `json:"ourScore"`
+	TheirScore int64  `json:"theirScore"`
+	// Las ofertas de paz; siempre false salvo para el líder y los oficiales.
+	PeaceOfferedByUs   bool `json:"peaceOfferedByUs"`
+	PeaceOfferedByThem bool `json:"peaceOfferedByThem"`
+}
+
+// ClanPublicWarView es una guerra abierta de un clan en su vista pública, vista
+// desde ese clan.
+type ClanPublicWarView struct {
+	ClanID       int64  `json:"clanId"`
+	Name         string `json:"name"`
+	Tag          string `json:"tag"`
+	DeclaredByUs bool   `json:"declaredByUs"`
+	Status       string `json:"status"`
+	StartsAtMs   int64  `json:"startsAtMs"`
+	EndsAtMs     *int64 `json:"endsAtMs"`
+	OurScore     int64  `json:"ourScore"`
+	TheirScore   int64  `json:"theirScore"`
+}
+
+// ClanWarRecordView es el historial de guerras terminadas de un clan.
+type ClanWarRecordView struct {
+	Won   int `json:"won"`
+	Lost  int `json:"lost"`
+	Drawn int `json:"drawn"`
 }
 
 // ClanAllianceView es una alianza (o una oferta) del propio clan con otro.
@@ -979,6 +1069,10 @@ type ClanInfoPayload struct {
 	// Alliances son sus alianzas activas, por id de clan
 	// (SPEC-CLAN-ALLIANCES Q8).
 	Alliances []ClanPublicAllianceView `json:"alliances"`
+	// Wars son sus guerras abiertas, por id de clan, y WarRecord su historial
+	// (SPEC-CLAN-WARS Q10).
+	Wars      []ClanPublicWarView `json:"wars"`
+	WarRecord ClanWarRecordView   `json:"warRecord"`
 }
 
 // ClanMessageView es un mensaje del canal de un clan.

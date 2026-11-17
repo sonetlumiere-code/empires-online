@@ -180,7 +180,7 @@ describe('projectChanges: un delta de X no toca Y', () => {
     expect(projectLast().territories.map((t) => [t.id, t.isOwn, t.isOwnClan])).toEqual([[30, false, false]]);
 
     const miembro = { playerId: PLAYER, cityId: 10, cityName: 'Testópolis', faction: 'NEUTRAL', role: 'LEADER', joinedAtMs: 1 };
-    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: PLAYER, members: [miembro], sentInvitations: [], territories: [], alliances: [] };
+    const clan = { id: 3, name: 'Los Lobos', tag: 'LOB', leaderId: PLAYER, members: [miembro], sentInvitations: [], territories: [], alliances: [], wars: [], warRecord: { won: 0, lost: 0, drawn: 0 } };
     state().applyServerMessage(server('clan.update', 3, { clan, invitations: [] }));
     expect(projectLast().territories.map((t) => [t.id, t.isOwnClan]), 'al entrar, su tierra pasa a propia').toEqual([[30, true]]);
     const antes = state().changes;

@@ -427,8 +427,11 @@ type ClanLeave struct {
 	At        time.Time
 	NewLeader uuid.UUID
 	Dissolve  bool
-	Tick      uint64
-	AtMs      int64
+	// WarEnds son las guerras abiertas del clan que la disolución termina, con
+	// el marcador y el vencedor de la RAM (ADR-045 §5).
+	WarEnds []WarEnd
+	Tick    uint64
+	AtMs    int64
 }
 
 // Leave cierra la estancia y, en la misma transacción, cambia el líder o
@@ -499,6 +502,10 @@ func (r *ClanRepo) Leave(ctx context.Context, l ClanLeave) (bool, []territory.Co
 			}
 			// RN-CLANALLY-008: sus ofertas y alianzas expiran con él.
 			if err := expireClanAlliances(ctx, tx, l); err != nil {
+				return err
+			}
+			// RN-CLANWAR-008: sus guerras terminan con la victoria del otro.
+			if err := endClanWars(ctx, tx, l); err != nil {
 				return err
 			}
 		}
@@ -808,7 +815,8 @@ func (r *ClanRepo) ChatMarkRead(ctx context.Context, me uuid.UUID, upTo func(cla
 // y sus miembros abiertos con su ciudad, su bando y su rango.
 func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoPayload, error) {
 	info := protocol.ClanInfoPayload{ClanID: clanID, Members: []protocol.ClanMemberView{},
-		Territories: []protocol.ClanTerritoryView{}, Alliances: []protocol.ClanPublicAllianceView{}}
+		Territories: []protocol.ClanTerritoryView{}, Alliances: []protocol.ClanPublicAllianceView{},
+		Wars: []protocol.ClanPublicWarView{}}
 	var leader uuid.UUID
 	err := r.store.pool.QueryRow(ctx,
 		`SELECT name, tag, leader_player_id FROM clans WHERE id = $1 AND dissolved_at IS NULL`, clanID).
@@ -861,5 +869,11 @@ func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoP
 		return info, err
 	}
 	info.Alliances = as
+	// RN-CLANWAR-009: sus guerras abiertas y su historial son públicos.
+	ws, rec, err := publicWars(ctx, r.store.pool, clanID)
+	if err != nil {
+		return info, err
+	}
+	info.Wars, info.WarRecord = ws, rec
 	return info, nil
 }

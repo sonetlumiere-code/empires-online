@@ -143,6 +143,14 @@ import {
   allianceProblem,
   breakAllianceWarning,
   isAlly,
+  isAtWarWith,
+  openWars,
+  warScore,
+  warCountdown,
+  warRecordText,
+  warProblem,
+  declareWarWarning,
+  surrenderWarning,
   MAX_CLAN_ALLIES,
   canExpel,
   canInvite,
@@ -1100,7 +1108,8 @@ export default function Page() {
                 {withTag(diplomacyTarget.name, diplomacyTarget.clan)} ({civilizationLabel(diplomacyTarget.civilization)}, {eraLabel(diplomacyTarget.era)},{' '}
                 {factionLabel(diplomacyTarget.faction)}
                 {diplomacyTarget.factionJoin ? ` — ${joinLabel(diplomacyTarget.factionJoin, serverTimeMs(), false)}` : ''}
-                {isAlly(clans, diplomacyTarget.clan) ? ` — Aliado de [${clans.clan?.tag}]` : ''}):
+                {isAlly(clans, diplomacyTarget.clan) ? ` — Aliado de [${clans.clan?.tag}]` : ''}
+                {isAtWarWith(clans, diplomacyTarget.clan) ? ` — En guerra con [${clans.clan?.tag}]` : ''}):
               </span>
               {proposableTypes(treaties, diplomacyTarget.ownerPlayerId)
                 // RN-FAC-005: la Orden y el Caos no firman la paz; el comercio, sí.
@@ -1287,6 +1296,9 @@ export default function Page() {
           onProposeAlliance={(id) => clientRef.current?.proposeClanAlliance(id)}
           onRespondAlliance={(id, accept) => clientRef.current?.respondClanAlliance(id, accept)}
           onCancelAlliance={(id) => clientRef.current?.cancelClanAlliance(id)}
+          onDeclareWar={(id) => clientRef.current?.declareClanWar(id)}
+          onWarPeace={(id, offer) => clientRef.current?.clanWarPeace(id, offer)}
+          onSurrender={(id) => clientRef.current?.surrenderClanWar(id)}
           onGoTerritory={goTo}
           onClose={toggleClan}
         />
@@ -1845,6 +1857,9 @@ function ClanPanel({
   onProposeAlliance,
   onRespondAlliance,
   onCancelAlliance,
+  onDeclareWar,
+  onWarPeace,
+  onSurrender,
   onGoTerritory,
   onClose,
 }: {
@@ -1869,6 +1884,10 @@ function ClanPanel({
   onProposeAlliance: (clanId: number) => void;
   onRespondAlliance: (allianceId: number, accept: boolean) => void;
   onCancelAlliance: (allianceId: number) => void;
+  /** Las órdenes de las guerras entre clanes (SPEC-CLAN-WARS §4.3). */
+  onDeclareWar: (clanId: number) => void;
+  onWarPeace: (warId: number, offer: boolean) => void;
+  onSurrender: (warId: number) => void;
   /** Lleva la cámara al tile central de un territorio del clan (SPEC-CLAN-TERRITORIES §4.8). */
   onGoTerritory: (tile: { x: number; y: number }) => void;
   onClose: () => void;
@@ -1886,6 +1905,10 @@ function ClanPanel({
   const allies = activeAlliances(clans);
   const offers = allianceOffers(clans);
   const proposeProblem = clans.info ? allianceProblem(clans, playerId, clans.info.clanId) : null;
+  const wars = openWars(clans);
+  const declareProblem = clans.info ? warProblem(clans, playerId, clans.info.clanId) : null;
+  const [confirmDeclare, setConfirmDeclare] = useState(false);
+  const [confirmSurrender, setConfirmSurrender] = useState<number | null>(null);
   return (
     <section style={styles.log} aria-label="Clan">
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -1928,6 +1951,34 @@ function ClanPanel({
             >
               Proponer alianza
             </button>
+          )}
+          {clans.info.wars.length > 0 && (
+            <p style={{ margin: '0.3rem 0 0', color: 'var(--muted)' }}>
+              En guerra con:{' '}
+              {clans.info.wars
+                .map((w) => `${warScore(clans.info!.tag, w)}${w.status === 'DECLARED' ? ' (en preparación)' : ''}`)
+                .join(', ')}
+            </p>
+          )}
+          <p style={{ margin: '0.3rem 0 0', color: 'var(--muted)' }}>Guerras: {warRecordText(clans.info.warRecord)}</p>
+          {clan !== null && clans.info.clanId !== clan.id && (leader || declareProblem === null) && (
+            confirmDeclare ? (
+              <p style={{ margin: '0.4rem 0 0' }}>
+                {declareWarWarning(clans.info.tag)}{' '}
+                <button onClick={() => { setConfirmDeclare(false); onDeclareWar(clans.info!.clanId); }}>Confirmar</button>{' '}
+                <button className="secondary" onClick={() => setConfirmDeclare(false)}>Cancelar</button>
+              </p>
+            ) : (
+              <button
+                style={{ marginTop: '0.4rem', marginLeft: '0.4rem' }}
+                className="secondary"
+                disabled={declareProblem !== null}
+                title={declareProblem ?? 'Una guerra con marcador: los pactos entre vuestros miembros terminan'}
+                onClick={() => setConfirmDeclare(true)}
+              >
+                Declarar la guerra
+              </button>
+            )
           )}
         </div>
       )}
@@ -2063,6 +2114,45 @@ function ClanPanel({
               <span key={a.id} style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }}>
                 Ofreciste una alianza a {a.name} [{a.tag}]
                 {leader && <button className="secondary" onClick={() => onCancelAlliance(a.id)}>Retirar</button>}
+              </span>
+            ))}
+          </div>
+          <div style={{ margin: '0 0 0.5rem', display: 'grid', gap: '0.3rem' }} aria-label="Guerras">
+            <span style={{ color: 'var(--muted)' }}>
+              Guerras: {warRecordText(clan.warRecord)}
+              {wars.length === 0 ? '; «Declarar la guerra» desde «Ver clan» de otro clan' : ''}
+            </span>
+            {wars.map((w) => (
+              <span key={w.id} style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {w.declaredByUs ? 'Declarasteis la guerra a' : 'Os declaró la guerra'} {w.name} [{w.tag}]: {warScore(clan.tag, w)}
+                <span style={{ color: 'var(--danger, #c0392b)' }}>— {warCountdown(w, nowMs)}</span>
+                {manager && w.peaceOfferedByThem && <span>— [{w.tag}] ofrece la paz</span>}
+                {manager && w.peaceOfferedByUs && <span>— Has ofrecido la paz</span>}
+                {leader && (
+                  <>
+                    {w.peaceOfferedByThem ? (
+                      <>
+                        <button onClick={() => onWarPeace(w.id, true)} title="La guerra termina en empate">Aceptar la paz</button>
+                        <button className="secondary" onClick={() => onWarPeace(w.id, false)}>Rechazar</button>
+                      </>
+                    ) : w.peaceOfferedByUs ? (
+                      <button className="secondary" onClick={() => onWarPeace(w.id, false)}>Retirar la oferta</button>
+                    ) : (
+                      <button className="secondary" onClick={() => onWarPeace(w.id, true)} title="Si su líder la acepta, la guerra termina en empate">
+                        Ofrecer la paz
+                      </button>
+                    )}
+                    {confirmSurrender === w.id ? (
+                      <span>
+                        {surrenderWarning(w.tag)}{' '}
+                        <button onClick={() => { setConfirmSurrender(null); onSurrender(w.id); }}>Confirmar</button>{' '}
+                        <button className="secondary" onClick={() => setConfirmSurrender(null)}>Cancelar</button>
+                      </span>
+                    ) : (
+                      <button className="secondary" onClick={() => setConfirmSurrender(w.id)}>Rendirse</button>
+                    )}
+                  </>
+                )}
               </span>
             ))}
           </div>

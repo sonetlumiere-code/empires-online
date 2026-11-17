@@ -1659,6 +1659,112 @@
             "payload"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "clan.war.declare"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "clanId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                }
+              },
+              "required": [
+                "clanId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "clan.war.peace"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "warId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                },
+                "offer": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "warId",
+                "offer"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "clan.war.surrender"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "warId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                }
+              },
+              "required": [
+                "warId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
         }
       ]
     }

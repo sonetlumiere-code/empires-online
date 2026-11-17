@@ -291,3 +291,82 @@ export function allianceCountdown(a: ClanAllianceView, nowMs: number): string | 
 export function breakAllianceWarning(tag: string): string {
   return `Dentro de ${ALLIANCE_BREAK_MINUTES} minutos, los miembros de [${tag}] podrán atacar a los tuyos`;
 }
+
+export type ClanWarView = v1.ClanWarView;
+export type ClanPublicWarView = v1.ClanPublicWarView;
+export type ClanWarRecordView = v1.ClanWarRecordView;
+
+/**
+ * El tope de guerras abiertas que declara un clan (SPEC-CLAN-WARS Q7). Copia del valor
+ * por defecto del servidor (EO_CLAN_MAX_WARS), sólo para no ofrecer un botón que el
+ * servidor rechazaría; la tregua la dice el servidor.
+ */
+export const MAX_CLAN_WARS = 1;
+
+/** La preparación de una guerra, en minutos: el preaviso de los tratados (Q6). */
+export const WAR_PREPARATION_MINUTES = 15;
+
+/** La tregua tras una guerra, en horas (Q6). */
+export const WAR_COOLDOWN_HOURS = 24;
+
+/** Las guerras abiertas del propio clan. */
+export function openWars(state: ClansState): ClanWarView[] {
+  return state.clan?.wars ?? [];
+}
+
+/** Si el clan de una ciudad está en guerra con el propio (la barra dice «En guerra con [TAG]»). */
+export function isAtWarWith(state: ClansState, clan: { id: number } | null | undefined): boolean {
+  return clan != null && openWars(state).some((w) => w.clanId === clan.id);
+}
+
+/** «[LOB] 12 – 7 [OSO]»: el marcador desde el clan de quien lo dice. */
+export function warScore(ourTag: string, w: { tag: string; ourScore: number; theirScore: number }): string {
+  return `[${ourTag}] ${w.ourScore} – ${w.theirScore} [${w.tag}]`;
+}
+
+/** Una duración en días, horas o minutos: «2 d 4 h», «3 h 10 min», «9 min». */
+export function shortDuration(ms: number): string {
+  const min = Math.max(0, Math.ceil(ms / 60_000));
+  const d = Math.floor(min / 1440);
+  const h = Math.floor((min % 1440) / 60);
+  const m = min % 60;
+  if (d > 0) return h > 0 ? `${d} d ${h} h` : `${d} d`;
+  if (h > 0) return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  return `${m} min`;
+}
+
+/** «Empieza en 9 min» en la preparación, «Termina en 2 d 4 h» en guerra (SPEC-CLAN-WARS §4.7). */
+export function warCountdown(w: { status: string; startsAtMs: number; endsAtMs: number | null }, nowMs: number): string {
+  if (w.status === 'DECLARED') return `Empieza en ${shortDuration(w.startsAtMs - nowMs)}`;
+  return w.endsAtMs !== null ? `Termina en ${shortDuration(w.endsAtMs - nowMs)}` : 'En guerra';
+}
+
+/** «3 victorias, 1 derrota, 2 empates», o «Sin guerras terminadas». */
+export function warRecordText(r: ClanWarRecordView): string {
+  if (r.won + r.lost + r.drawn === 0) return 'Sin guerras terminadas';
+  const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+  return [plural(r.won, 'victoria', 'victorias'), plural(r.lost, 'derrota', 'derrotas'), plural(r.drawn, 'empate', 'empates')].join(', ');
+}
+
+/**
+ * Por qué el jugador no puede declarar la guerra al clan de la vista pública, o
+ * `null` si puede (RN-CLANWAR-001 a RN-CLANWAR-003). La tregua la dice el servidor.
+ */
+export function warProblem(state: ClansState, me: string | null, otherClanId: number): string | null {
+  if (state.clan === null || myRole(state, me) !== 'LEADER') return 'Sólo el líder decide las guerras del clan';
+  if (otherClanId === state.clan.id) return 'Es tu propio clan';
+  if (openWars(state).some((w) => w.clanId === otherClanId)) return 'Ya hay una guerra abierta con ese clan';
+  if (activeAlliances(state).some((a) => a.clanId === otherClanId)) return 'Vuestros clanes están aliados: rompe antes la alianza';
+  if (openWars(state).filter((w) => w.declaredByUs).length >= MAX_CLAN_WARS) return 'Tu clan ya tiene una guerra declarada abierta';
+  return null;
+}
+
+/** El texto de la confirmación de «Declarar la guerra» (SPEC-CLAN-WARS §4.7). */
+export function declareWarWarning(tag: string): string {
+  return `Guerra a [${tag}]: los pactos entre vuestros miembros terminarán en ${WAR_PREPARATION_MINUTES} minutos`;
+}
+
+/** El texto de la confirmación de «Rendirse». */
+export function surrenderWarning(tag: string): string {
+  return `[${tag}] ganará la guerra y no podréis declararle otra en ${WAR_COOLDOWN_HOURS} h`;
+}

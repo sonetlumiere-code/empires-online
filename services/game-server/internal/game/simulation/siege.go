@@ -10,6 +10,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -56,6 +57,9 @@ type BuildingDestruction struct {
 	Tick  uint64
 	// AtMs es el instante del golpe en la simulación (ADR-028 §3).
 	AtMs int64
+	// War son los puntos que el derribo suma a una guerra entre clanes, o nil
+	// (SPEC-CLAN-WARS §4.4, ADR-045 §4).
+	War *clan.WarPoints
 }
 
 // BuildingDestroyResolved lo devuelve la cola cuando la destrucción está
@@ -458,10 +462,14 @@ func (s *Simulation) destroyHouse(b *building.Building, c *city.City, attacker *
 		s.broadcastCity(c, protocol.CityUpdatePayload{PopulationLimit: &limit})
 	}
 
+	// RN-CLANWAR-007: un edificio enemigo destruido puntúa.
+	war := s.state.warPoints(attacker.PlayerID, c.OwnerPlayerID, nowMs, clan.PointsBuilding)
+	s.state.addWarPoints(war)
 	s.submitDestruction(BuildingDestruction{
 		BuildingID: b.ID, CityID: c.ID, VictimPlayer: c.OwnerPlayerID,
 		AttackerPlayer: attacker.PlayerID, AttackerID: attacker.ID,
 		Type: b.Type, At: b.Tile(), Bonus: def.PopulationBonus, Tick: s.state.Tick(), AtMs: nowMs,
+		War: war,
 	})
 }
 

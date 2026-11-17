@@ -36,6 +36,11 @@ import {
   ClanInvitationView,
   ClanMemberView,
   ClanPublicAllianceView,
+  ClanPublicWarView,
+  ClanWarRecordView,
+  ClanWarResult,
+  ClanWarEndReason,
+  ClanWarScore,
   ClanTerritoryView,
   ClanMessageView,
   ClanName,
@@ -403,6 +408,12 @@ export const EventLogNotice = z.object({
     clanTag: ClanTag.optional(),
     /** En las caravanas (SPEC-CARAVANS §6): lo que llevaba. */
     cargo: z.array(ResourceAmount).optional(),
+    /** En la guerra entre clanes, como en la entrada del registro (SPEC-CLAN-WARS §6). */
+    startsAtMs: EpochMs.optional(),
+    warResult: ClanWarResult.optional(),
+    warReason: ClanWarEndReason.optional(),
+    ourScore: ClanWarScore.optional(),
+    theirScore: ClanWarScore.optional(),
   }),
 });
 
@@ -542,6 +553,9 @@ export const ClanInfo = z.object({
     territories: z.array(ClanTerritoryView),
     /** Sus alianzas activas, por `id` de clan (SPEC-CLAN-ALLIANCES Q8). */
     alliances: z.array(ClanPublicAllianceView),
+    /** Sus guerras abiertas, por `id` de clan, y su historial (SPEC-CLAN-WARS Q10). */
+    wars: z.array(ClanPublicWarView),
+    warRecord: ClanWarRecordView,
   }),
 });
 

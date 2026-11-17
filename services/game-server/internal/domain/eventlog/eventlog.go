@@ -88,6 +88,12 @@ const (
 	// Son tipos aparte para no agruparse con lo que hizo un ejército.
 	KindUnitLostToCastle Kind = "UNIT_LOST_TO_CASTLE"
 	KindCastleKill       Kind = "CASTLE_KILL"
+	// Guerras entre clanes (SPEC-CLAN-WARS Q11): la declaración y el final, que
+	// recibe cada miembro de los dos clanes, y la oferta de paz, que reciben el
+	// líder y los oficiales del clan al que se ofrece.
+	KindClanWarDeclared     Kind = "CLAN_WAR_DECLARED"
+	KindClanWarPeaceOffered Kind = "CLAN_WAR_PEACE_OFFERED"
+	KindClanWarEnded        Kind = "CLAN_WAR_ENDED"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -104,6 +110,7 @@ func Kinds() []Kind {
 		KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost,
 		KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceRejected, KindClanAllianceBreakAnnounced,
 		KindUnitLostToCastle, KindCastleKill,
+		KindClanWarDeclared, KindClanWarPeaceOffered, KindClanWarEnded,
 	}
 }
 
@@ -123,6 +130,7 @@ func NoticeKinds() []Kind {
 		KindClanLeadershipReceived, KindClanLeadershipInherited,
 		KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceBreakAnnounced,
 		KindUnitLostToCastle, KindCastleKill,
+		KindClanWarDeclared, KindClanWarPeaceOffered, KindClanWarEnded,
 	}
 }
 
@@ -180,7 +188,22 @@ const (
 	EventClanAllianceBreakAnnounced = "ClanAllianceBreakAnnounced"
 	EventClanAllianceBroken         = "ClanAllianceBroken"
 	EventClanAllianceExpired        = "ClanAllianceExpired"
+	// Guerras entre clanes (SPEC-CLAN-WARS §6, ADR-045 §6): la declaración y el
+	// final, una fila por miembro de los dos clanes (Only = OnlyPlayer) con
+	// counterpart_player_id quien la dio (o el líder del otro clan); la oferta de
+	// paz, una fila por líder y oficial del clan que la recibe. ownerClanTag es
+	// la sigla del otro clan para player_id. El comienzo y la retirada de una
+	// oferta no van al registro.
+	EventClanWarDeclared       = "ClanWarDeclared"
+	EventClanWarStarted        = "ClanWarStarted"
+	EventClanWarPeaceOffered   = "ClanWarPeaceOffered"
+	EventClanWarPeaceWithdrawn = "ClanWarPeaceWithdrawn"
+	EventClanWarEnded          = "ClanWarEnded"
 )
+
+// BreakReasonWar es el motivo de un TreatyBreakAnnounced que abrió una guerra
+// entre los clanes de los dos firmantes (SPEC-CLAN-WARS §6).
+const BreakReasonWar = "WAR"
 
 // Motivos de un ClanLeaderChanged (SPEC-CLAN-GOVERNANCE §6).
 const (
@@ -200,6 +223,7 @@ func EventTypes() []string {
 		EventCaravanArrived, EventCaravanCaptured, EventCaravanIntercepted, EventCaravanLost,
 		EventClanMemberExpelled, EventClanLeaderChanged,
 		EventClanAllianceProposed, EventClanAllianceAccepted, EventClanAllianceRejected, EventClanAllianceBreakAnnounced,
+		EventClanWarDeclared, EventClanWarPeaceOffered, EventClanWarEnded,
 	}
 }
 
@@ -259,6 +283,13 @@ type Event struct {
 	// KillerBuildingType, en una muerte: el tipo del edificio que la causó, o
 	// "" si fue una unidad (ADR-044 §5).
 	KillerBuildingType string
+	// La guerra entre clanes (SPEC-CLAN-WARS §6): cuándo empieza, el resultado
+	// para player_id y el marcador visto desde su clan. Reason lleva además el
+	// motivo del final, y en un TreatyBreakAnnounced, BreakReasonWar.
+	StartsAtMs int64
+	WarResult  string
+	OurScore   int64
+	TheirScore int64
 }
 
 // KillerCastle es el valor de Event.KillerBuildingType de una muerte que causó
@@ -314,6 +345,14 @@ type Entry struct {
 	ClanTag string
 	// Cargo, en las caravanas: lo que llevaba.
 	Cargo []Line
+	// Reason, en una ruptura que abrió una guerra (BreakReasonWar) y en el
+	// final de una guerra (su motivo).
+	Reason string
+	// StartsAtMs, WarResult, OurScore y TheirScore, en la guerra entre clanes.
+	StartsAtMs int64
+	WarResult  string
+	OurScore   int64
+	TheirScore int64
 }
 
 // Classify dice qué entrada da e para viewer y quién es el otro jugador. ok es
@@ -410,6 +449,20 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindClanAllianceBreakAnnounced, other, true
 		}
 		return "", uuid.Nil, false
+	case EventClanWarDeclared, EventClanWarPeaceOffered, EventClanWarEnded:
+		// Una fila por miembro o por mando (Only = OnlyPlayer): a ese jugador
+		// (SPEC-CLAN-WARS Q11).
+		if e.PlayerID != viewer {
+			return "", uuid.Nil, false
+		}
+		switch e.Type {
+		case EventClanWarDeclared:
+			return KindClanWarDeclared, other, true
+		case EventClanWarPeaceOffered:
+			return KindClanWarPeaceOffered, other, true
+		default:
+			return KindClanWarEnded, other, true
+		}
 	}
 
 	// Una caravana: sólo a quien le pasa (player_id); al captor no se le cuenta
@@ -624,8 +677,8 @@ func (b *Builder) Add(e Event) bool {
 	if isTreaty(kind) {
 		k.treatyType = e.TreatyType
 	}
-	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) || isAlliance(kind) {
-		k.offerID = e.ID // cada trato, cada suceso de un territorio, cada caravana y cada alianza, su entrada
+	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) || isAlliance(kind) || isWar(kind) {
+		k.offerID = e.ID // cada trato, cada suceso de un territorio, cada caravana, cada alianza y cada guerra, su entrada
 	}
 	if i, abierto := b.open[k]; abierto && e.AtMs >= b.entries[i].FirstAtMs-b.gapMs {
 		g := &b.entries[i]
@@ -655,6 +708,17 @@ func (b *Builder) Add(e Event) bool {
 	case KindTreatyBreakAnnounced:
 		entry.TreatyType = e.TreatyType
 		entry.BreaksAtMs = e.BreaksAtMs
+		if e.Reason == BreakReasonWar {
+			entry.Reason = e.Reason
+		}
+	case KindClanWarDeclared, KindClanWarPeaceOffered:
+		// La sigla del otro clan y cuándo empieza (SPEC-CLAN-WARS §4.7).
+		entry.ClanTag = ClanTagFor(b.viewer, e)
+		entry.StartsAtMs = e.StartsAtMs
+	case KindClanWarEnded:
+		entry.ClanTag = ClanTagFor(b.viewer, e)
+		entry.Reason, entry.WarResult = e.Reason, e.WarResult
+		entry.OurScore, entry.TheirScore = e.OurScore, e.TheirScore
 	case KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken:
 		entry.TerritoryID, entry.TerritoryName = e.TerritoryID, e.TerritoryName
 		entry.ClanTag = ClanTagFor(b.viewer, e)
@@ -711,6 +775,15 @@ func isTreaty(k Kind) bool {
 func isTerritory(k Kind) bool {
 	switch k {
 	case KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken:
+		return true
+	}
+	return false
+}
+
+// isWar dice si el tipo es de una guerra entre clanes.
+func isWar(k Kind) bool {
+	switch k {
+	case KindClanWarDeclared, KindClanWarPeaceOffered, KindClanWarEnded:
 		return true
 	}
 	return false

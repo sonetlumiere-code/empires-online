@@ -217,4 +217,24 @@ describe('el liderazgo de un clan (SPEC-CLAN-GOVERNANCE Q8)', () => {
     expect(isLoss(entrada(1, 'CLAN_ALLIANCE_BREAK_ANNOUNCED'))).toBe(true);
     expect(isLoss(entrada(1, 'CLAN_ALLIANCE_OFFERED'))).toBe(false);
   });
+
+  it('las guerras entre clanes, con la sigla del otro clan y el marcador (SPEC-CLAN-WARS Q11)', () => {
+    expect(entryText(entrada(1, 'CLAN_WAR_DECLARED', { clanTag: 'OSO' })))
+      .toBe('Villa Norte declaró la guerra entre tu clan y [OSO]: empieza en 15 minutos');
+    expect(entryText(entrada(1, 'CLAN_WAR_DECLARED', { clanTag: 'OSO', startsAtMs: Date.UTC(2026, 10, 17, 15, 30) })))
+      .toMatch(/^Villa Norte declaró la guerra entre tu clan y \[OSO\]: empieza a las \d{2}:\d{2}$/);
+    expect(entryText(entrada(1, 'CLAN_WAR_PEACE_OFFERED', { clanTag: 'OSO' }))).toBe('Villa Norte ofrece la paz entre [OSO] y tu clan');
+    expect(entryText(entrada(1, 'CLAN_WAR_ENDED', { clanTag: 'OSO', warResult: 'WON', warReason: 'TIMEOUT', ourScore: 31, theirScore: 18 })))
+      .toBe('La guerra con [OSO] terminó: victoria por 31 – 18 (plazo)');
+    expect(entryText(entrada(1, 'CLAN_WAR_ENDED', { clanTag: 'OSO', warResult: 'DRAWN', warReason: 'PEACE', ourScore: 0, theirScore: 0 })))
+      .toBe('La guerra con [OSO] terminó: empate por 0 – 0 (paz pactada)');
+    expect(entryText(entrada(1, 'CLAN_WAR_ENDED', { clanTag: 'OSO', warResult: 'LOST', warReason: 'SURRENDER', ourScore: 2, theirScore: 9 })))
+      .toBe('La guerra con [OSO] terminó: derrota por 2 – 9 (rendición)');
+    expect(entryText(entrada(1, 'TREATY_BREAK_ANNOUNCED', { treatyType: 'NON_AGGRESSION', breakReason: 'WAR' })))
+      .toBe('La guerra entre vuestros clanes rompe el pacto de no agresión con Villa Norte: la paz termina');
+    expect(isLoss(entrada(1, 'CLAN_WAR_DECLARED'))).toBe(true);
+    expect(isLoss(entrada(1, 'CLAN_WAR_ENDED', { warResult: 'LOST' }))).toBe(true);
+    expect(isLoss(entrada(1, 'CLAN_WAR_ENDED', { warResult: 'WON' }))).toBe(false);
+    expect(isLoss(entrada(1, 'CLAN_WAR_PEACE_OFFERED'))).toBe(false);
+  });
 });

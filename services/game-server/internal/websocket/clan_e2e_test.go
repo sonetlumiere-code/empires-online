@@ -30,6 +30,17 @@ type memoryClans struct {
 	mu             sync.Mutex
 	nextID         int64
 	nextAllianceID int64
+	nextWarID      int64
+}
+
+func (m *memoryClans) ApplyWar(_ context.Context, w simulation.WarWrite) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w.Insert {
+		m.nextWarID++
+		return m.nextWarID, nil
+	}
+	return w.War.ID, nil
 }
 
 func (m *memoryClans) Create(context.Context, simulation.ClanCreateOrder) (int64, error) {
@@ -577,4 +588,133 @@ func TestLasInvitacionesEnviadasPorRangoPorLaRed(t *testing.T) {
 	assert.Equal(t, []string{dani.String()}, enviadasEnElJSON(t, vistaDelLider.Payload))
 	vistaDelRaso, _ := c.awaitWhere(protocol.TypeClanUpdate, deCuatro, 3*time.Second)
 	assert.Empty(t, enviadasEnElJSON(t, vistaDelRaso.Payload), "un raso no ve las enviadas")
+}
+
+// guerrasEnElJSON son las guerras del clan de un clan.update, leídas del JSON
+// crudo: una lista, nunca null, y warRecord siempre presente.
+func guerrasEnElJSON(t *testing.T, raw json.RawMessage) []map[string]any {
+	t.Helper()
+	var m struct {
+		Clan map[string]json.RawMessage `json:"clan"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &m))
+	require.NotNil(t, m.Clan)
+	_, historial := m.Clan["warRecord"]
+	require.True(t, historial, "sin warRecord")
+	crudo, ok := m.Clan["wars"]
+	require.True(t, ok, "sin wars")
+	require.NotEqual(t, "null", string(crudo))
+	var out []map[string]any
+	require.NoError(t, json.Unmarshal(crudo, &out))
+	return out
+}
+
+// SPEC-CLAN-WARS §9 «e2e»: el líder de [LOB] declara la guerra a [OSO]; los
+// miembros de los dos clanes reciben el aviso, salvo quien la declaró, y la
+// guerra en su clan, en preparación y sin plazo; un raso no puede rendirse; la
+// oferta de paz de [OSO] la ven el líder y el oficial de [LOB], no el raso, y
+// sólo el líder recibe su aviso.
+func TestUnaGuerraDeClanesPorLaRed(t *testing.T) {
+	env := newE2E(t)
+	bea, ce, dani := uuid.New(), uuid.New(), uuid.New()
+	for i, p := range []uuid.UUID{bea, ce, dani} {
+		env.state.AddCity(&city.City{ID: int64(2 + i), OwnerPlayerID: p, Name: []string{"Bizancio", "Persépolis", "Tebas"}[i],
+			CenterX: int32(70 + 30*i), CenterY: 70, Era: city.EraStone, PopulationLimit: 20,
+			PresenceState: city.PresenceOnline, Civilization: "ROMAN"})
+	}
+	env.ws.SetClans(&canalFalso{clanDe: map[uuid.UUID]int64{}, leidos: map[uuid.UUID]int64{}, ciudades: map[uuid.UUID]string{}})
+
+	yo, _ := conectar(t, env, env.playerID)
+	yo.await(protocol.TypeClanUpdate, 3*time.Second)
+	b, _ := conectar(t, env, bea)
+	b.await(protocol.TypeClanUpdate, 3*time.Second)
+	c, _ := conectar(t, env, ce)
+	c.await(protocol.TypeClanUpdate, 3*time.Second)
+	d, _ := conectar(t, env, dani)
+	d.await(protocol.TypeClanUpdate, 3*time.Second)
+
+	fundar := func(quien *conn, name, tag string) int64 {
+		quien.send(protocol.TypeClanCreate, map[string]any{"name": name, "tag": tag})
+		env.pump()
+		f, _ := quien.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+		return clanUpdate(t, f.Payload).Clan.ID
+	}
+	lob := fundar(yo, "Los Lobos", "LOB")
+	oso := fundar(b, "Los Osos", "OSO")
+	for _, p := range []struct {
+		id uuid.UUID
+		c  *conn
+	}{{ce, c}, {dani, d}} {
+		yo.send(protocol.TypeClanInvite, map[string]any{"playerId": p.id.String(), "invited": true})
+		env.pump()
+		p.c.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return len(clanUpdate(t, raw).Invitations) == 1 }, 3*time.Second)
+		p.c.send(protocol.TypeClanRespond, map[string]any{"clanId": lob, "accept": true})
+		env.pump()
+		p.c.awaitWhere(protocol.TypeClanUpdate, func(raw json.RawMessage) bool { return clanUpdate(t, raw).Clan != nil }, 3*time.Second)
+	}
+	yo.send(protocol.TypeClanPromote, map[string]any{"playerId": dani.String(), "officer": true})
+	env.pump()
+	daniOficial := func(raw json.RawMessage) bool {
+		for _, m := range clanUpdate(t, raw).Clan.Members {
+			if m.PlayerID == dani.String() {
+				return m.Role == clan.RoleOfficer
+			}
+		}
+		return false
+	}
+	d.awaitWhere(protocol.TypeClanUpdate, daniOficial, 3*time.Second)
+	c.awaitWhere(protocol.TypeClanUpdate, daniOficial, 3*time.Second)
+
+	conGuerras := func(n int) func(json.RawMessage) bool {
+		return func(raw json.RawMessage) bool {
+			p := clanUpdate(t, raw)
+			return p.Clan != nil && len(p.Clan.Wars) == n
+		}
+	}
+
+	// La declaración.
+	req := yo.send(protocol.TypeClanWarDeclare, map[string]any{"clanId": oso})
+	env.pump()
+	propia, _ := yo.awaitWhere(protocol.TypeClanUpdate, conGuerras(1), 3*time.Second)
+	assert.Equal(t, req, propia.RequestID)
+	g := clanUpdate(t, propia.Payload).Clan.Wars[0]
+	assert.True(t, g.DeclaredByUs)
+	assert.Equal(t, "DECLARED", g.Status)
+	assert.Equal(t, oso, g.ClanID)
+	recibida, _ := b.awaitWhere(protocol.TypeClanUpdate, conGuerras(1), 3*time.Second)
+	crudas := guerrasEnElJSON(t, recibida.Payload)
+	require.Len(t, crudas, 1)
+	assert.Equal(t, false, crudas[0]["declaredByUs"])
+	assert.Nil(t, crudas[0]["endsAtMs"], "sin plazo en la preparación, null")
+	assert.Equal(t, "LOB", crudas[0]["tag"])
+	for _, quien := range []*conn{b, c, d} {
+		aviso := decode[protocol.EventLogNoticePayload](t, quien.await(protocol.TypeEventLogNotice, 3*time.Second).Payload)
+		assert.Equal(t, "CLAN_WAR_DECLARED", aviso.Kind)
+		require.NotNil(t, aviso.StartsAtMs)
+		assert.Equal(t, g.StartsAtMs, *aviso.StartsAtMs)
+	}
+	// (el clan.update de c y d salió antes que su aviso: await lo ha saltado)
+
+	// Un raso no se rinde.
+	r := c.send(protocol.TypeClanWarSurrender, map[string]any{"warId": g.ID})
+	env.pump()
+	errp := errorDe(t, c, r)
+	assert.Equal(t, protocol.CodeInvalidTarget, errp.Code)
+	assert.Equal(t, "sólo el líder decide las guerras del clan", errp.Message)
+
+	// La oferta de paz de [OSO]: el líder y el oficial de [LOB] la ven; el raso, no.
+	b.send(protocol.TypeClanWarPeace, map[string]any{"warId": g.ID, "offer": true})
+	env.pump()
+	conOferta := func(raw json.RawMessage) bool {
+		p := clanUpdate(t, raw)
+		return p.Clan != nil && len(p.Clan.Wars) == 1 && p.Clan.Wars[0].PeaceOfferedByThem
+	}
+	yo.awaitWhere(protocol.TypeClanUpdate, conOferta, 3*time.Second)
+	d.awaitWhere(protocol.TypeClanUpdate, conOferta, 3*time.Second)
+	delRaso, _ := c.awaitWhere(protocol.TypeClanUpdate, func(json.RawMessage) bool { return true }, 3*time.Second)
+	assert.Equal(t, false, guerrasEnElJSON(t, delRaso.Payload)[0]["peaceOfferedByThem"], "un raso no ve las ofertas")
+	aviso := decode[protocol.EventLogNoticePayload](t, yo.await(protocol.TypeEventLogNotice, 3*time.Second).Payload)
+	assert.Equal(t, "CLAN_WAR_PEACE_OFFERED", aviso.Kind)
+	assert.Equal(t, "OSO", aviso.ClanTag)
+	assert.Equal(t, bea.String(), aviso.OtherPlayerID)
 }

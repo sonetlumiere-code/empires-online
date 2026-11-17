@@ -389,6 +389,24 @@ export class GameClient {
     return this.send('clan.alliance.cancel', { allianceId });
   }
 
+  /** El líder declara la guerra a otro clan (SPEC-CLAN-WARS §4.3). */
+  declareClanWar(clanId: number): string {
+    return this.send('clan.war.declare', { clanId });
+  }
+
+  /**
+   * El líder ofrece la paz (o la acepta, si el otro clan ya la ofreció) con `offer`, o
+   * retira la propia o rechaza la ajena sin él.
+   */
+  clanWarPeace(warId: number, offer: boolean): string {
+    return this.send('clan.war.peace', { warId, offer });
+  }
+
+  /** El líder rinde a su clan: gana el otro. */
+  surrenderClanWar(warId: number): string {
+    return this.send('clan.war.surrender', { warId });
+  }
+
   /** Pide la vista pública de un clan. */
   lookupClan(clanId: number): string {
     return this.send('clan.lookup', { clanId });

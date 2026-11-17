@@ -139,6 +139,14 @@ type Deps struct {
 	// ClanMaxAllies es el tope de alianzas activas de un clan
 	// (SPEC-CLAN-ALLIANCES Q4). Cero: 2.
 	ClanMaxAllies int
+	// ClanMaxWars, ClanWarDuration, ClanWarCooldown y ClanWarScorePush son el
+	// tope de guerras declaradas abiertas, lo que dura una guerra, la tregua y
+	// cada cuánto se difunde un marcador que cambia (SPEC-CLAN-WARS Q6, Q7).
+	// Cero: 1, 72 h, 24 h y 10 s.
+	ClanMaxWars      int
+	ClanWarDuration  time.Duration
+	ClanWarCooldown  time.Duration
+	ClanWarScorePush time.Duration
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -355,6 +363,16 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleClanAllianceResolved(c)
 	case ClanAllianceEndPersistFailed:
 		s.handleClanAllianceEndPersistFailed(c)
+	case DeclareClanWar:
+		s.handleDeclareClanWar(c)
+	case ClanWarPeace:
+		s.handleClanWarPeace(c)
+	case SurrenderClanWar:
+		s.handleSurrenderClanWar(c)
+	case ClanWarResolved:
+		s.handleClanWarResolved(c)
+	case ClanWarEndPersistFailed:
+		s.handleClanWarEndPersistFailed(c)
 	case ClanExpelRejected:
 		s.handleClanExpelRejected(c)
 	default:
@@ -803,6 +821,9 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	s.sweepClanLeaders(now.UnixMilli())
 	// Las ofertas de alianza caducadas y los preavisos vencidos (ADR-042 §3).
 	s.sweepClanAlliances(now.UnixMilli())
+	// El comienzo y el plazo de las guerras, el compromiso sobre los tratados y
+	// los marcadores que cambiaron (ADR-045 §2, §3).
+	s.sweepClanWars(now.UnixMilli())
 
 	// 3. Cooldown de seguridad vencido: OFFLINE_PENDING -> PROTECTED.
 	s.state.EachCity(func(c *city.City) bool {

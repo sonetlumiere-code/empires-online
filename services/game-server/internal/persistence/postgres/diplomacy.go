@@ -414,6 +414,9 @@ type TreatyWrite struct {
 	// transición en la simulación y quien dio la orden (uuid.Nil si ninguno).
 	AtMs int64
 	By   uuid.UUID
+	// Reason va al payload de una ruptura que no ordenó un firmante: WAR, si
+	// la abrió una guerra entre sus clanes (SPEC-CLAN-WARS §6).
+	Reason string
 }
 
 // ApplyTreaty escribe una orden o un vencimiento con su evento, en una
@@ -507,6 +510,9 @@ func treatyEvent(w TreatyWrite, t diplomacy.Treaty) worldEvent {
 	}
 	if w.By != uuid.Nil {
 		payload["byPlayerId"] = w.By.String()
+	}
+	if w.Reason != "" {
+		payload["reason"] = w.Reason
 	}
 	if w.Insert {
 		// Una oferta nueva nace PROPOSED: no viene de ningún estado.

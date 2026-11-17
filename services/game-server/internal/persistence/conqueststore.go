@@ -42,6 +42,7 @@ func (s *ConquestStore) CaptureTerritory(ctx context.Context, c simulation.Captu
 		PrevOwner: c.PrevOwner, PrevCityID: c.PrevCityID, PrevBonus: c.PrevBonus,
 		NewClanID: c.NewClanID, ForClanTag: c.ForClanTag, PrevClanID: c.PrevClanID, PrevClanTag: c.PrevClanTag,
 		ExpectedVersion: c.ExpectedVersion, CapturedAt: c.CapturedAt, Tick: c.Tick, AtMs: c.AtMs, X: c.X, Y: c.Y,
+		War: c.War,
 	})
 	return ctrl, claimConflict(err)
 }
