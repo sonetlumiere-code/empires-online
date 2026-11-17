@@ -2425,4 +2425,29 @@ ayuda del clan para el avance y que el castillo haga afín su entorno.
    y dos e2e por WebSocket.
 6. **HECHO** — Cliente: el avance a Castillos, el botón y el dibujo del castillo, la línea del disparo y los textos,
    con tests de lo puro.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --castillo`.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --castillo`.
+
+### Prueba en vivo (2026-11-17)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 24 a la 25, con el almacén sembrado
+(`EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed`):
+
+- **Primera pasada** de `--castillo`: smoke_runner, en Bronce, avanzó a Hierro (límite 110) y a Castillos (límite
+  160) con sus plazos; un avance más se rechazó con `NOT_IMPLEMENTED`; el castillo se encargó en (292, 18) con el plazo
+  romano (163 636 ms) y 1 000 de vida, y se terminó. El castillo apuntó al guerrero de smoke_victim y le disparó (60 →
+  50), pero lo remató un guerrero de smoke_runner que respondió al asedio de su ciudad (`RN-COMBAT-037`), así que el
+  aviso del castillo no llegó y la pasada falló. El castillo hizo lo que dice la spec; el humo pasó a apartar antes a
+  los guardias propios (`guardiasCerca`, con test).
+- **Segunda pasada**, verde (31 comprobaciones): siete guardias de smoke_runner se apartan, un guerrero nuevo de
+  smoke_victim asedia el castillo, recibe el primer disparo (60 → 50), el castillo apunta a él (`building.update` con
+  `targetUnitId`) y lo mata; smoke_victim recibe `UNIT_LOST_TO_CASTLE` y smoke_runner `CASTLE_KILL`.
+- **En el navegador**, con la sesión de smoke_runner y el panel visible: la ciudad en la Edad de los Castillos, sin
+  botón de avanzar, con «Castillo» deshabilitado y su motivo («La ciudad ya tiene un castillo.»); el castillo dibujado
+  junto al centro (muro con almenas, dos torres y puerta), con su barra de vida mientras lo asediaban; la línea del
+  castillo al sitiador mientras le disparaba; y el aviso y la entrada del registro «Tu castillo mató a un guerrero de
+  smoke_victimpolis».
+- **Sin comprobar en el navegador:** el botón «Edad de los Castillos (n/120 bienes)» de una ciudad en Hierro y
+  «Castillo» habilitado con su coste (smoke_runner ya estaba en Castillos y con castillo), el texto «El castillo de … mató
+  a uno de tus …» del lado de la víctima (lo comprobó el humo como aviso y lo cubre `eventLog.test.ts`), y el castillo
+  en obra (sólo el contorno). En la base de desarrollo smoke_runner queda en Castillos con su castillo, y sus guardias
+  junto a (277, 19).

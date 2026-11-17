@@ -103,7 +103,8 @@
  *      hasta la Edad de los Castillos (Bronce 90 s, Hierro 180 s, Castillos 360 s; cada
  *      avance es irreversible, como --avance, y desde Castillos se rechaza con
  *      NOT_IMPLEMENTED), construye su castillo si no lo tiene (180 s con el rasgo de su
- *      civilización) y un guerrero de smoke_victim lo asedia: el castillo apunta a él
+ *      civilización), aparta a sus guardias (responderían al asedio y rematarían al
+ *      sitiador) y un guerrero de smoke_victim lo asedia: el castillo apunta a él
  *      (building.update con targetUnitId), le dispara y lo mata, y los dos reciben el
  *      aviso (UNIT_LOST_TO_CASTLE y CASTLE_KILL). La primera pasada tarda unos doce
  *      minutos; las siguientes, sólo el disparo. Necesita el almacén de los avances, los
@@ -1114,6 +1115,17 @@ export function castilloDe(edificios, cityId) {
   return edificios.find((b) => b.cityId === cityId && b.type === 'CASTLE') ?? null;
 }
 
+/**
+ * Las unidades propias que atacan y están a `radio` o menos del centro de la ciudad:
+ * responderían a un asedio (RN-COMBAT-037) y rematarían al sitiador antes que el
+ * castillo. `unidades` es el catálogo de presentación (`attacks`).
+ */
+export function guardiasCerca(vistas, playerId, centro, unidades, radio = 8) {
+  const atacan = new Set(unidades.filter((u) => u.attacks).map((u) => u.code));
+  return vistas.filter((u) => u.playerId === playerId && atacan.has(u.unitType) && u.status !== 'GARRISONED' &&
+    Math.max(Math.abs(u.x - centro.x), Math.abs(u.y - centro.y)) <= radio);
+}
+
 /** Si un building.update dice que el castillo apunta a la unidad. */
 export function apuntaA(payload, castilloId, unitId) {
   return payload.id === castilloId && payload.targetUnitId === unitId;
@@ -1185,6 +1197,16 @@ async function castillo(propio, ciudadInicial, playerId) {
     await s.esperarQue('building.update', (m) => m.payload.id === fuerte.id && m.payload.status === 'COMPLETE',
       Math.max(0, fuerte.completesAtMs - Date.now()) + 15_000);
     ok('castillo terminado', `${fuerte.id}`);
+  }
+
+  // Los guardias propios se apartan: responderían al asedio y rematarían al
+  // sitiador antes que el castillo (RN-COMBAT-037). Van al lado contrario por el
+  // que llega la víctima.
+  vista = await mirar();
+  const lejos = { x: c.centerX + (c.centerX >= 20 ? -14 : 14), y: c.centerY };
+  for (const g of guardiasCerca(vista.units, playerId, { x: c.centerX, y: c.centerY }, UNIDADES)) {
+    await acercar(s, g, lejos, 3);
+    ok('un guardia propio se aparta', `${g.unitType} ${g.id} hacia (${lejos.x}, ${lejos.y})`);
   }
 
   // Un guerrero de la víctima lo asedia: el castillo apunta, dispara y lo mata.
