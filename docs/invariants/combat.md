@@ -226,7 +226,7 @@ por la misma validación.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E23 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** (registrado el 2026-11-17 con [SPEC-CASTLE-AGE](../specs/castle-age.md), antes de su código) |
+| Cobertura | **Cubierto** por `TestElCastilloSoloGolpeaAQuienAtacaASuDueno`, `TestElCastilloGoldenMataAlGuerreroQueAsedia` y `TestElCastilloEligeAlMasCercanoYDesempataPorID` (`internal/game/simulation`), y `TestElCastilloDisparaPorLaRed` (e2e) |
 
 **Enunciado.** Todo golpe de un castillo que se aplica en un tick cae sobre una unidad viva, en el mapa, a distancia de
 Chebyshev no mayor que el alcance del castillo, que en ese tick está en `ATTACKING` contra una unidad del dueño del
@@ -242,8 +242,13 @@ aliado o a un compañero de clan, rompería la paz que el jugador eligió y har�
 visibilidad y las Safe Zones), que se vuelve a comprobar antes de aplicar cada golpe
 ([ADR-044](../decisions/ADR-044-castle-shooting.md) §3 y §4).
 
-**Cómo se verifica.** Pendiente: el golden del castillo (quien ataca recibe; quien pasa sin atacar, quien ataca a otro
-jugador y quien está en paz, no) en `internal/game/simulation`, verificado por mutación.
+**Cómo se verifica.** `TestElCastilloGoldenMataAlGuerreroQueAsedia` y `TestElCastilloEligeAlMasCercanoYDesempataPorID`:
+quien asedia o ataca a una unidad del dueño a su alcance recibe, el más cercano primero. `TestElCastilloSoloGolpeaAQuienAtacaASuDueno`:
+quien pasa sin atacar, quien ataca a otro jugador, quien ataca fuera del alcance y quien queda en paz a mitad del ataque
+no reciben nada, ni un castillo en obra dispara. Verificado por mutación el 2026-11-17: sin la comprobación del dueño del
+blanco falla «ataca a otro jugador»; con el alcance ampliado en dos, «fuera de su alcance». La paz a mitad del ataque
+termina antes el enfrentamiento (`RN-COMBAT-008`), así que la comprobación de `castleBlocked` al aplicar queda como
+defensa.
 
 **Violación en runtime.** Un golpe de castillo que llegara a aplicarse sobre una unidad que no pasa el predicado se
 descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-007`.

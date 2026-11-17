@@ -136,7 +136,7 @@ func Test_INV_ECON_002_UnFalloAlInsertarElEdificioNoGastaMadera(t *testing.T) {
 	e.depositar(t, ctx, 40, 1)
 
 	rota := casa(e.ciudad(), 19, 19)
-	rota.Type = "CASTLE"
+	rota.Type = "TOWER" // fuera de buildings_type_valid (desde 000025, CASTLE es válido)
 	_, err := e.economia.Build(ctx, "req-1", e.jugador.Player.ID, rota, []postgres.StockDelta{debito(e.ciudad(), -30, 2)}, 1)
 	require.Error(t, err)
 	amount, version := stockEnBase(t, ctx, store, e.ciudad())

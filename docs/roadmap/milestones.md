@@ -2414,10 +2414,15 @@ ayuda del clan para el avance y que el castillo haga afín su entorno.
    ([civilization-goods.md](../specs/civilization-goods.md)), el no-scope de
    [civilization-units.md](../specs/civilization-units.md), `RN-COMBAT-029` ([combat-siege.md](../specs/combat-siege.md)),
    `RN-COMBAT-014` ([combat-response.md](../specs/combat-response.md)) y `Q-12` del [backlog](backlog.md).
-2. **PENDIENTE** — Dominio: el paso Hierro → Castillos de `advance`, `CASTLE` en el catálogo de edificios con su
-   perfil de disparo.
-3. **PENDIENTE** — Migración `000025` y persistencia: `CASTLE`, el único parcial y la muerte con autor edificio.
-4. **PENDIENTE** — Simulación: `castleState`, el objetivo y los disparos en la fase 4, el golden «castillo».
-5. **PENDIENTE** — Protocolo y registro: `CASTLE`, `targetUnitId`, los dos tipos de entrada; contract tests y e2e.
-6. **PENDIENTE** — Cliente: el avance a Castillos, el botón y el dibujo del castillo, la línea del disparo y los textos.
+2. **HECHO** — Dominio: el paso Hierro → Castillos de `advance`, `CASTLE` en el catálogo de edificios con su
+   perfil de disparo (`CanShoot`), y los tipos `UNIT_LOST_TO_CASTLE` y `CASTLE_KILL` en `eventlog`.
+3. **HECHO** — Migración `000025` y persistencia: `CASTLE`, el único parcial y la muerte con autor edificio
+   (`killerBuildingId`, `killerBuildingType`). `000025` probada abajo y arriba en la base de tests.
+4. **HECHO** — Simulación: `castleState`, el objetivo y los disparos en la fase 4, el golden «castillo», seis
+   guerreros contra el castillo, las exclusiones y el reinicio; `INV-ECON-012` e `INV-COMBAT-007` verificados por
+   mutación.
+5. **HECHO** — Protocolo y registro: `CASTLE`, `targetUnitId`, los dos tipos de entrada; contract tests (Go y Zod)
+   y dos e2e por WebSocket.
+6. **HECHO** — Cliente: el avance a Castillos, el botón y el dibujo del castillo, la línea del disparo y los textos,
+   con tests de lo puro.
 7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --castillo`.

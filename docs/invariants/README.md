@@ -386,8 +386,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-ECON-008 | Una carga nunca crea recurso | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnaCargaQueFallaNoDejaNadaAMedias`, `TestLaCargaDescuentaElBosqueUnaSolaVezAunqueSeReintente`, golden «tala», `TestLaCargaDePiedraDescuentaLaColinaUnaSolaVez`, golden «cantera» |
 | INV-ECON-009 | Un bien sólo nace en el taller de la civilización que lo produce | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnRomanoElaboraVino`, `TestUnNordicoElaboraPieles`, `TestLaEntregaAcreditaElBienUnaSolaVez`, `TestLosCheckDeLosBienes` |
 | INV-ECON-010 | Una ciudad tiene como mucho un taller en pie y una elaboración en curso | ALTO | DB, DOMAIN, TEST | ✓ | `Test_INV_ECON_010_UnTallerEnPiePorCiudad`, `TestLaElaboracionSeEncargaEnUnaTransaccion`, `TestElTallerPideBronceCuestaDosRecursosYEsUnico` |
-| INV-ECON-011 | Ningún avance de era (Hierro, Castillos) cobra el bien de la civilización de la ciudad | ALTO | DOMAIN, TEST | ~ | `TestResolveTomaBienesAjenosEnOrdenYNuncaElPropio`, `TestElAvanceAHierroCobraBienesAjenosYNuncaElPropio` |
-| INV-ECON-012 | Una ciudad tiene como mucho un castillo en pie, y sólo si está en la Edad de los Castillos | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E23) |
+| INV-ECON-011 | Ningún avance de era (Hierro, Castillos) cobra el bien de la civilización de la ciudad | ALTO | DOMAIN, TEST | ✓ | `TestResolveTomaBienesAjenosEnOrdenYNuncaElPropio`, `TestElAvanceAHierroCobraBienesAjenosYNuncaElPropio` |
+| INV-ECON-012 | Una ciudad tiene como mucho un castillo en pie, y sólo si está en la Edad de los Castillos | ALTO | DB, DOMAIN, TEST | ✓ | `Test_INV_ECON_012_UnCastilloEnPiePorCiudad`, `TestElCastilloPideCastillosYEsUnico`, `TestElCastilloPideCastillosCuestaDosRecursosYEsUnico` |
 
 ### COMBAT — [combat.md](combat.md)
 
@@ -399,7 +399,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-COMBAT-004 | Ningún saqueo deja el almacén de una ciudad por debajo del suelo | ALTO | DOMAIN, TEST | ✓ | `TestElSaqueoRespetaElSuelo`, `TestDosSaqueadoresSeRepartenLoQueQuedaPorEncimaDelSuelo` |
 | INV-COMBAT-005 | Ningún golpe de saqueo o de asedio cae con el dueño del atacante ausente | ALTO | DOMAIN, TEST | ✓ | `TestElSaqueoTerminaConElDuenoAusente`, `TestElAsedioTerminaConElDuenoAusente` |
 | INV-COMBAT-006 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre dos jugadores de la Orden | CRITICO | DOMAIN, TEST | ✓ | `TestLaTablaDeLosBandos`, `TestDosDeLaOrdenDejanDePelearAlEntrarElSegundo`, `TestLaOrdenNoSaqueaNiConquistaALosSuyos`, `TestUnirseALaOrdenPorLaRed` |
-| INV-COMBAT-007 | Un castillo sólo golpea a quien, a su alcance, ataca algo de su dueño, y nunca en paz | CRITICO | DOMAIN, TEST | ○ | Sin test todavía (E23) |
+| INV-COMBAT-007 | Un castillo sólo golpea a quien, a su alcance, ataca algo de su dueño, y nunca en paz | CRITICO | DOMAIN, TEST | ✓ | `TestElCastilloSoloGolpeaAQuienAtacaASuDueno`, `TestElCastilloGoldenMataAlGuerreroQueAsedia`, `TestElCastilloDisparaPorLaRed` |
 
 ### TRADE — [trade.md](trade.md)
 
@@ -464,9 +464,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 142 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 1 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
+| ✓ Cubierto | 145 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 0 | Hay test real para parte del enunciado |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **147** | |
 
@@ -474,7 +474,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-ECON-012` e `INV-COMBAT-007` se registraron el 2026-11-17 con SPEC-CASTLE-AGE y [ADR-044](../decisions/ADR-044-castle-shooting.md), antes de escribir su código, como manda §8, y nacen sin cobertura; el mismo día se precisó `INV-ECON-011` (ningún avance de era, tampoco el de Castillos, cobra el bien propio), que queda parcial hasta tener el test del avance a Castillos.
+`INV-ECON-012` e `INV-COMBAT-007` se registraron el 2026-11-17 con SPEC-CASTLE-AGE y [ADR-044](../decisions/ADR-044-castle-shooting.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el índice, con `DROP INDEX` en la base de tests); el mismo día se precisó `INV-ECON-011` (ningún avance de era, tampoco el de Castillos, cobra el bien propio), que volvió a ✓ con sus tests. Ninguna fila queda sin cobertura ni parcial.
 
 `INV-UNIT-012` e `INV-UNIT-013` se registraron el 2026-11-17 con SPEC-CIVILIZATION-UNITS y [ADR-043](../decisions/ADR-043-civilization-units.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el trigger, con `DISABLE TRIGGER` en la base de tests). Ninguna fila queda sin cobertura ni parcial.
 
