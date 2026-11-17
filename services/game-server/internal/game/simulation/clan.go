@@ -71,6 +71,12 @@ type ClanStore interface {
 	// un ClanRejection; un vencimiento (Tolerant) sobre una fila que ya cambió
 	// no escribe nada y no es un error.
 	ApplyAlliance(ctx context.Context, w AllianceWrite) (int64, error)
+	// ApplyWar escribe una orden o un vencimiento de una guerra entre clanes con
+	// los candados de los dos clanes, y devuelve el id de una declaración nueva
+	// (SPEC-CLAN-WARS, ADR-045 §2). Una orden que la base no admite es un
+	// ClanRejection; un vencimiento (Tolerant) sobre una fila que ya cambió no
+	// escribe nada y no es un error.
+	ApplyWar(ctx context.Context, w WarWrite) (int64, error)
 }
 
 // ClanCreateOrder es una fundación ya validada por el tick.
@@ -130,6 +136,9 @@ type ClanLeave struct {
 	// TargetOfficer: quien sale era oficial. Sólo lo usa la RAM para deshacer
 	// una expulsión que la base rechaza (INV-CLAN-005).
 	TargetOfficer bool
+	// WarEnds son las guerras abiertas del clan que la disolución termina, con
+	// el marcador y el vencedor de la RAM (ADR-045 §5).
+	WarEnds []clan.War
 }
 
 // Comandos de los clanes (protocolo v1).
@@ -558,6 +567,8 @@ func (s *State) clanView(clanID int64, viewer uuid.UUID, nowMs int64) *protocol.
 		Members: []protocol.ClanMemberView{}, SentInvitations: []protocol.ClanSentInvitationView{},
 		Territories: s.clanTerritoryViews(rec.ID),
 		Alliances:   s.allianceViews(rec, viewer),
+		Wars:        s.warViews(rec, viewer),
+		WarRecord:   s.warRecordView(rec.ID),
 	}
 	for _, m := range rec.members() {
 		role := rec.roleOf(m.PlayerID)
@@ -991,6 +1002,9 @@ func (s *Simulation) handleClanJoinResolved(cmd ClanJoinResolved) {
 	// ADR-042 §4: las alianzas que la entrada mezcla con la Orden y el Caos ya
 	// tienen su preaviso en la base.
 	s.applyJoinBreaks(cmd.Breaks, o.PlayerID, s.deps.Clock.NowMs())
+	// ADR-045 §3: quien entra en un clan en guerra entra en ella; sus pactos con
+	// el otro clan empiezan su preaviso en este tick.
+	s.enforceWarTreaties(s.deps.Clock.NowMs())
 	s.deps.Log.Info("jugador unido a un clan", "clan_id", rec.ID, "player_id", o.PlayerID.String())
 }
 
@@ -1059,13 +1073,18 @@ func (s *Simulation) leaveClan(clanID int64, playerID uuid.UUID, reason string, 
 			return
 		}
 	}
-	s.submitClanLeave(s.applyLeave(rec, playerID, reason, by, actor, requestID, s.deps.Clock.NowMs()))
+	nowMs := s.deps.Clock.NowMs()
+	var ends []clan.War
+	if dissolve {
+		ends = s.state.warEndsOf(clanID, nowMs)
+	}
+	s.submitClanLeave(s.applyLeave(rec, playerID, reason, by, actor, requestID, nowMs, ends))
 }
 
 // applyLeave cierra en la RAM la estancia de playerID en el instante nowMs: el
 // líder nuevo o la disolución, la ciudad, los clan.update y el aviso de una
 // expulsión. Devuelve la salida que hay que escribir.
-func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason string, by, actor uuid.UUID, requestID string, nowMs int64) ClanLeave {
+func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason string, by, actor uuid.UUID, requestID string, nowMs int64, warEnds []clan.War) ClanLeave {
 	clanID := rec.ID
 	remaining := make([]clan.Member, 0, len(rec.Members))
 	for _, m := range rec.members() {
@@ -1093,6 +1112,11 @@ func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason stri
 	}
 	var invitees []uuid.UUID
 	if dissolve {
+		// RN-CLANWAR-008: sus guerras terminan con la victoria del otro, antes de
+		// sacar el clan (el aviso al otro clan lleva su sigla); un clan disuelto
+		// no guarda historial.
+		s.applyWarEnds(clanID, warEnds, playerID)
+		delete(s.state.wars.records, clanID)
 		delete(s.state.clans.clans, clanID)
 		// RN-CLANALLY-008: sus ofertas y alianzas expiran con él.
 		s.expireAlliancesOf(clanID, nowMs)
@@ -1109,6 +1133,9 @@ func (s *Simulation) applyLeave(rec *clanRecord, playerID uuid.UUID, reason stri
 		At:        time.UnixMilli(nowMs).UTC(),
 		NewLeader: newLeader, Dissolve: dissolve, Tick: s.state.Tick(), AtMs: nowMs,
 		TargetOfficer: wasOfficer,
+	}
+	if dissolve {
+		leave.WarEnds = warEnds
 	}
 	s.setCityClan(playerID, nil)
 	players := append([]uuid.UUID{playerID}, invitees...)

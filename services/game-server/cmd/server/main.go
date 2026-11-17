@@ -363,6 +363,17 @@ func run() error {
 		log.Error("invariant_violation", "inv_id", "INV-CLAN-006", "severity", "ALTO", "policy", "REJECT",
 			"entity", fmt.Sprintf("clan_alliance:%d", v.AllianceID), "detail", v.Detail)
 	}
+	// Las guerras entre clanes (ADR-045 §1): las abiertas, con el marcador
+	// sumado de sus eventos (INV-CLAN-009); las terminadas dentro de la tregua; y
+	// el historial de cada clan. Una que no cumple INV-CLAN-008 no se instala.
+	guerras, recientes, historial, err := clanRepo.ListWars(rootCtx, sysClock.Now().Add(-cfg.ClanWarCooldown))
+	if err != nil {
+		return fmt.Errorf("cargar las guerras entre clanes: %w", err)
+	}
+	for _, v := range state.SetClanWars(guerras, recientes, historial) {
+		log.Error("invariant_violation", "inv_id", "INV-CLAN-008", "severity", "ALTO", "policy", "REJECT",
+			"entity", fmt.Sprintf("clan_war:%d", v.WarID), "detail", v.Detail)
+	}
 
 	// Las ofertas de comercio pendientes (ADR-032 §1). Las que caducaron con el
 	// servidor parado, o cuyo tratado terminó, las cierra el primer barrido.
@@ -491,6 +502,10 @@ func run() error {
 		ClanPeaceGrace:              cfg.ClanPeaceGrace,
 		ClanLeaderInactive:          cfg.ClanLeaderInactive,
 		ClanMaxAllies:               cfg.ClanMaxAllies,
+		ClanMaxWars:                 cfg.ClanMaxWars,
+		ClanWarDuration:             cfg.ClanWarDuration,
+		ClanWarCooldown:             cfg.ClanWarCooldown,
+		ClanWarScorePush:            cfg.ClanWarScorePush,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

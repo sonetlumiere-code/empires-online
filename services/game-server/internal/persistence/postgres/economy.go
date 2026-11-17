@@ -10,6 +10,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/deposit"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
@@ -675,6 +676,9 @@ type BuildingDestruction struct {
 	Tick  uint64
 	// AtMs es el instante del golpe en la simulación (ADR-028 §3).
 	AtMs int64
+	// War son los puntos que el derribo suma a una guerra entre clanes, o nil
+	// (ADR-045 §4).
+	War *clan.WarPoints
 }
 
 // DestroyBuilding derriba una casa en UNA transacción (ADR-029 §4): la marca
@@ -713,14 +717,18 @@ func (r *EconomyRepo) DestroyBuilding(ctx context.Context, d BuildingDestruction
 			}
 		}
 		victim := d.VictimPlayer
+		payload := map[string]any{
+			"buildingId": d.BuildingID, "cityId": d.CityID, "type": string(d.Type),
+			"x": d.At.X, "y": d.At.Y, "wasComplete": completa,
+			"attackerId": d.AttackerID, "attackerPlayerId": d.AttackerPlayer.String(), "atMs": d.AtMs,
+		}
+		if d.War != nil {
+			payload["war"] = warPointsPayload(d.War)
+		}
 		return appendEvent(ctx, tx, worldEvent{
 			EventType: EventBuildingDestroyed, Tick: d.Tick, PlayerID: &victim,
 			CounterpartID: counterpart(d.AttackerPlayer),
-			Payload: map[string]any{
-				"buildingId": d.BuildingID, "cityId": d.CityID, "type": string(d.Type),
-				"x": d.At.X, "y": d.At.Y, "wasComplete": completa,
-				"attackerId": d.AttackerID, "attackerPlayerId": d.AttackerPlayer.String(), "atMs": d.AtMs,
-			},
+			Payload:       payload,
 		})
 	})
 }

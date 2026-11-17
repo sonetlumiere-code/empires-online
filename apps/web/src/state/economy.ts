@@ -387,6 +387,9 @@ export function readableError(code: string, message: string): string {
     case 'POPULATION_LIMIT_REACHED':
       return 'No caben más habitantes: construye una casa para subir el límite de población.';
     case 'INVALID_TARGET':
+      // El servidor dice el motivo (los bandos, la paz, la tregua de una guerra…): llega
+      // tal cual (SPEC-CLAN-WARS §4.7). Sin motivo, el texto general.
+      if (message.trim() !== '') return `No se puede: ${message.trim().replace(/\.$/, '')}.`;
       return 'Ahí no se puede: no se ataca en una zona segura, a un aliado ni a una unidad propia; para recolectar, elige un bosque o una colina que no esté agotada.';
     default:
       return `${code}: ${message}`;

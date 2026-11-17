@@ -164,13 +164,24 @@
  *      rompe y smoke_clan_b recibe el aviso del preaviso; y smoke_clan_b sale de [ECO],
  *      que se disuelve y expira la alianza, para que --clan lo vuelva a encontrar sin
  *      clan. Necesita el clan de --clan y va después de él.
+ *  20. sólo con --guerra-clan (SPEC-CLAN-WARS): smoke_clan_b (sin clan; si le quedó uno,
+ *      sale) funda «Rivales» [RIV]; smoke_clan_a, líder de [HUM], le declara la guerra y
+ *      smoke_clan_b recibe el aviso; la vista pública de [HUM] la lleva; al terminar la
+ *      preparación (EO_TREATY_BREAK_NOTICE_MINUTES: arrancar el servidor con 1 para no
+ *      esperar 15) la guerra empieza; un aldeano de smoke_clan_b se acerca al guerrero de
+ *      smoke_clan_a, que lo mata, y el marcador de [HUM] sube a 1; smoke_clan_b ofrece la
+ *      paz, smoke_clan_a recibe el aviso y la acepta, y la guerra termina en empate con
+ *      su aviso y su entrada del registro; y smoke_clan_b sale de [RIV], que se disuelve
+ *      (un clan nuevo cada pasada, así que la tregua no estorba). Necesita el clan de
+ *      --clan y un guerrero de smoke_clan_a (el de --territorio-clan); va después de
+ *      --alianza-clan.
  *
  * El paso 6-8 es el que importa: demuestra que el mundo no depende de que
  * nadie esté mirando. Si el movimiento sólo avanzara mientras hay un
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--guerra-clan] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -211,6 +222,7 @@ const MENSAJES = args.includes('--mensajes');
 const FACCION = args.includes('--faccion');
 const CLAN = args.includes('--clan');
 const ALIANZA_CLAN = args.includes('--alianza-clan');
+const GUERRA_CLAN = args.includes('--guerra-clan');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -812,6 +824,10 @@ async function main() {
 
   if (ALIANZA_CLAN) {
     await alianzaDeClan();
+  }
+
+  if (GUERRA_CLAN) {
+    await guerraDeClan();
   }
 
   segunda.sesion.cerrar();
@@ -2721,6 +2737,110 @@ async function alianzaDeClan() {
   const { entrada } = await entradaDelRegistro(a.sesion, (e) => e.kind === 'CLAN_ALLIANCE_ACCEPTED' && e.clanTag === ALIADO_SIGLA);
   if (!entrada) fallar('el registro de quien propuso no cuenta la aceptación');
   ok('el registro de quien propuso cuenta la aceptación', `entrada ${entrada.id}, «${entrada.otherCityName}»`);
+
+  for (const s of [a, b]) s.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Guerras entre clanes (SPEC-CLAN-WARS), sólo con --guerra-clan
+// ─────────────────────────────────────────────────────────────
+
+const RIVAL_NOMBRE = 'Rivales';
+const RIVAL_SIGLA = 'RIV';
+
+/** La guerra abierta de un clan.update con el clan de sigla `tag`, o null. */
+export function guerraCon(update, tag) {
+  return update?.clan?.wars?.find((w) => w.tag === tag) ?? null;
+}
+
+/** Cuánto esperar a que empiece una guerra: hasta su comienzo y un margen para el barrido. */
+export function esperaDelComienzo(guerra, ahoraMs) {
+  return Math.max(0, guerra.startsAtMs - ahoraMs) + 15_000;
+}
+
+async function guerraDeClan() {
+  const a = await entrarConClan(CLAN_A);
+  const b = await entrarConClan(CLAN_B);
+  if (pasoDeClan(a.clan, a.playerId) !== 'lider') fallar(`${CLAN_A} no dirige [${CLAN_SIGLA}]: pasa antes --clan`, a.clan);
+  const hum = a.clan.clan;
+
+  // smoke_clan_b sin clan; si le quedó uno ([RIV] de una pasada a medias), sale y lo disuelve.
+  if (b.clan.clan) {
+    const r = await ordenDeClan(b.sesion, 'clan.leave', {});
+    if (r.type === 'system.error') fallar(`${CLAN_B} no pudo salir de su clan`, r.payload);
+    ok(`${CLAN_B} sale del clan que le quedó de una pasada anterior`);
+  }
+  const f = await ordenDeClan(b.sesion, 'clan.create', { name: RIVAL_NOMBRE, tag: RIVAL_SIGLA });
+  if (f.type === 'system.error') fallar(`${CLAN_B} no pudo fundar [${RIVAL_SIGLA}]`, f.payload);
+  const riv = f.payload.clan;
+  ok(`${CLAN_B} funda «${RIVAL_NOMBRE}» [${RIVAL_SIGLA}]`, `clan ${riv.id}`);
+
+  // La declaración, con su aviso a los miembros del otro clan.
+  const d = await ordenDeClan(a.sesion, 'clan.war.declare', { clanId: riv.id });
+  if (d.type === 'system.error') fallar(`${CLAN_A} no pudo declarar la guerra`, d.payload);
+  let guerra = guerraCon(d.payload, RIVAL_SIGLA);
+  if (guerra?.status !== 'DECLARED' || !guerra.declaredByUs || guerra.endsAtMs !== null) {
+    fallar('la declaración no vuelve en el clan de quien la declara, en preparación', d.payload);
+  }
+  ok(`${CLAN_A} declara la guerra a [${RIVAL_SIGLA}]`, `guerra ${guerra.id}, empieza en ${Math.round((guerra.startsAtMs - Date.now()) / 1000)} s`);
+  const aviso = await b.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_WAR_DECLARED', 10_000);
+  if (aviso.payload.clanTag !== CLAN_SIGLA || aviso.payload.startsAtMs !== guerra.startsAtMs) {
+    fallar('el aviso de la declaración no trae la sigla ni el comienzo', aviso.payload);
+  }
+  ok(`${CLAN_B} recibe el aviso de la declaración`, `de [${aviso.payload.clanTag}]`);
+
+  // La vista pública lleva la guerra.
+  const info = await ordenDeClan(b.sesion, 'clan.lookup', { clanId: hum.id }, ['clan.info']);
+  if (info.type === 'system.error' || !info.payload.wars?.some((w) => w.tag === RIVAL_SIGLA)) {
+    fallar(`la vista pública de [${CLAN_SIGLA}] no lleva la guerra`, info.payload);
+  }
+  ok(`la vista pública de [${CLAN_SIGLA}] lleva su guerra`, info.payload.wars.map((w) => `[${w.tag}] ${w.status}`).join(', '));
+
+  // El comienzo, al terminar la preparación.
+  const empieza = await a.sesion.esperarQue('clan.update', (m) => guerraCon(m.payload, RIVAL_SIGLA)?.status === 'ACTIVE',
+    esperaDelComienzo(guerra, Date.now()));
+  guerra = guerraCon(empieza.payload, RIVAL_SIGLA);
+  ok('la guerra empieza al terminar la preparación', `termina en ${Math.round((guerra.endsAtMs - Date.now()) / 60_000)} min`);
+
+  // Una muerte: un aldeano de smoke_clan_b se acerca al guerrero de smoke_clan_a, que lo mata.
+  const guerrero = a.snapshot.payload.units.find((u) => u.playerId === a.playerId && u.unitType === 'WARRIOR' && u.status !== 'GARRISONED');
+  const aldeano = b.snapshot.payload.units.find((u) => u.playerId === b.playerId && u.unitType === 'VILLAGER');
+  if (!guerrero || !aldeano) fallar('no hay guerrero de smoke_clan_a o aldeano de smoke_clan_b para la guerra');
+  const llegada = await acercar(b.sesion, aldeano, { x: guerrero.x + 3, y: guerrero.y }, 4);
+  ok(`un aldeano de ${CLAN_B} se acerca al guerrero de ${CLAN_A}`, `(${llegada.x}, ${llegada.y})`);
+  a.sesion.enviar('session.view', { center: { x: guerrero.x, y: guerrero.y } });
+  await a.sesion.esperar('world.snapshot');
+  a.sesion.enviar('unit.attack', { unitId: guerrero.id, targetUnitId: aldeano.id });
+  const muerte = await a.sesion.esperarQue(['entity.despawn', 'system.error'],
+    (m) => m.type === 'system.error' || (m.type === 'entity.despawn' && m.payload.id === aldeano.id), 60_000);
+  if (muerte.type === 'system.error') fallar('el servidor rechazó el ataque', muerte.payload);
+  const marcador = await a.sesion.esperarQue('clan.update', (m) => (guerraCon(m.payload, RIVAL_SIGLA)?.ourScore ?? 0) >= 1, 20_000);
+  const g = guerraCon(marcador.payload, RIVAL_SIGLA);
+  ok('la muerte suma al marcador', `[${CLAN_SIGLA}] ${g.ourScore} – ${g.theirScore} [${RIVAL_SIGLA}]`);
+
+  // La paz: la ofrece smoke_clan_b, la acepta smoke_clan_a; empate.
+  const ofrece = await ordenDeClan(b.sesion, 'clan.war.peace', { warId: guerra.id, offer: true });
+  if (ofrece.type === 'system.error') fallar(`${CLAN_B} no pudo ofrecer la paz`, ofrece.payload);
+  const avisoPaz = await a.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_WAR_PEACE_OFFERED', 10_000);
+  if (avisoPaz.payload.clanTag !== RIVAL_SIGLA) fallar('el aviso de la oferta de paz no trae la sigla', avisoPaz.payload);
+  ok(`${CLAN_B} ofrece la paz`, `${CLAN_A} recibe el aviso de [${avisoPaz.payload.clanTag}]`);
+  const acepta = await ordenDeClan(a.sesion, 'clan.war.peace', { warId: guerra.id, offer: true });
+  if (acepta.type === 'system.error') fallar(`${CLAN_A} no pudo aceptar la paz`, acepta.payload);
+  if (guerraCon(acepta.payload, RIVAL_SIGLA)) fallar('la paz aceptada no cierra la guerra', acepta.payload);
+  ok(`${CLAN_A} la acepta`, `historial de [${CLAN_SIGLA}]: ${JSON.stringify(acepta.payload.clan.warRecord)}`);
+  const fin = await b.sesion.esperarQue('event_log.notice', (m) => m.payload.kind === 'CLAN_WAR_ENDED', 10_000);
+  if (fin.payload.warResult !== 'DRAWN' || fin.payload.warReason !== 'PEACE') fallar('el final no es un empate por la paz', fin.payload);
+  ok(`${CLAN_B} recibe el aviso del final`, `empate por ${fin.payload.ourScore} – ${fin.payload.theirScore}`);
+
+  // El registro de smoke_clan_b cuenta el final (se escribe tras el COMMIT).
+  const { entrada } = await entradaDelRegistro(b.sesion, (e) => e.kind === 'CLAN_WAR_ENDED' && e.clanTag === CLAN_SIGLA);
+  if (!entrada) fallar(`el registro de ${CLAN_B} no cuenta el final de la guerra`);
+  ok(`el registro de ${CLAN_B} cuenta el final`, `entrada ${entrada.id}, ${entrada.warResult}`);
+
+  // smoke_clan_b sale de [RIV], que se disuelve.
+  const sale = await ordenDeClan(b.sesion, 'clan.leave', {});
+  if (sale.type === 'system.error') fallar(`${CLAN_B} no pudo salir de [${RIVAL_SIGLA}]`, sale.payload);
+  ok(`${CLAN_B} sale de [${RIVAL_SIGLA}], que se disuelve`);
 
   for (const s of [a, b]) s.sesion.cerrar();
 }

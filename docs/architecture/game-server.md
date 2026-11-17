@@ -672,4 +672,5 @@ Se documenta para que nadie lo implemente por inercia ni lo asuma existente:
   siguen fuera los rangos y las alianzas entre clanes. **Precisión (2026-11-16):** los rangos existen desde E20
   ([clan-governance.md](../specs/clan-governance.md)) y las alianzas entre clanes desde E21
   ([clan-alliances.md](../specs/clan-alliances.md), [ADR-042](../decisions/ADR-042-clan-alliances.md)); siguen fuera las
-  guerras declaradas entre clanes.
+  guerras declaradas entre clanes. **Precisión (2026-11-17):** las guerras entre clanes existen desde E24
+  ([clan-wars.md](../specs/clan-wars.md), [ADR-045](../decisions/ADR-045-clan-wars.md)).

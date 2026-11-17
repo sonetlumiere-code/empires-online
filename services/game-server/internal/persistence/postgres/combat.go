@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
@@ -29,6 +30,9 @@ type Kill struct {
 	// un castillo (ADR-044 §5); KillerID es entonces 0.
 	KillerBuildingID   int64
 	KillerBuildingType string
+	// War son los puntos que la muerte suma a una guerra entre clanes, o nil
+	// (ADR-045 §4).
+	War *clan.WarPoints
 }
 
 // Kill escribe una muerte dentro de la transacción `db`: la víctima DEAD, sin
@@ -75,6 +79,9 @@ func (r *UnitRepo) Kill(ctx context.Context, db DB, k Kill) (bool, error) {
 	if k.KillerBuildingID != 0 {
 		payload["killerBuildingId"] = k.KillerBuildingID
 		payload["killerBuildingType"] = k.KillerBuildingType
+	}
+	if k.War != nil {
+		payload["war"] = warPointsPayload(k.War)
 	}
 	victim := k.VictimPlayer
 	if err := appendEvent(ctx, db, worldEvent{

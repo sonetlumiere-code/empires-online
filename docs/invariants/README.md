@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**147 invariantes** —145 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en quince familias y trece archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**150 invariantes** —148 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en quince familias y trece archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -371,6 +371,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-DIPLO-001 | Una oferta sólo la acepta o la rechaza el jugador que no la propuso | CRITICO | DOMAIN, TEST | ✓ | `TestSoloRespondeQuienNoPropusoYSoloRetiraQuienPropuso`, `TestRechazosDeLaDiplomacia` |
 | INV-DIPLO-002 | Entre dos jugadores, como mucho un tratado vigente y una oferta pendiente | ALTO | DB, DOMAIN, TEST | ✓ | `Test_INV_DIPLO_002_UnVigenteYUnaOfertaComoMuchoPorPar` (integration), `TestRechazosDeLaDiplomacia`, `TestUnaAlianzaSustituyeAlPactoVigente`, `TestLaEscaleraDeTratados` |
 | INV-DIPLO-003 | Entre la Orden y el Caos nunca nace un pacto ni una alianza, y el que quede vigente está en preaviso | ALTO | DOMAIN, TEST | ✓ | `TestLaTablaDeLosBandos`, `TestUnaPazEntreBandosContrariosNoSeAcepta`, `TestAlEntrarSeRompenLosPactosConElBandoContrario`, `TestUnFalloEnElVencimientoNoDejaNadaAMedias` |
+| INV-DIPLO-004 | Entre dos clanes en guerra no nace un pacto ni una alianza entre sus miembros, y el que quede vigente está en preaviso | ALTO | DOMAIN, TEST | ✓ | `TestGoldenGuerraDeClanes`, `TestElCompromisoAlcanzaATodos` |
 
 ### ECONOMY — [economy.md](economy.md)
 
@@ -424,6 +425,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CLAN-005 | Sólo el rango que lo permite cambia la pertenencia ajena, los rangos o el liderazgo de un clan | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosPermisosPorRango`, `TestLoQueLaBaseNoEscribeSeDeshace`, `TestElRangoSeCompruebaEnLaBase` (integration), `TestElCambioDeLiderEnLaBase` (integration), `TestElRangoDeUnaEstanciaSoloEsMiembroUOficial` (integration) |
 | INV-CLAN-006 | Una alianza entre clanes es única por par, respeta el tope de cada clan y nunca nace entre la Orden y el Caos | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasOrdenesDeUnaAlianza`, `TestLasAlianzasTrasUnReinicio`, `TestLaAlianzaEnLaBase` (integration), `TestLasRestriccionesDeLasAlianzas` (integration) |
 | INV-CLAN-007 | Ningún golpe, robo, derribo, avance de estandarte ni reclamación se aplica entre miembros de dos clanes aliados, ni durante el preaviso ni durante la paz residual | CRITICO | DOMAIN, TEST | ✓ | `TestGoldenAlianzaDeClanes`, `TestLaPazResidualConLosAliados`, `TestUnaReclamacionContraUnAliadoSeRechaza`, `TestUnaAlianzaDeClanesPorLaRed` |
+| INV-CLAN-008 | Una guerra entre clanes es única por par, nunca convive con una alianza entre ellos y respeta el tope de declaradas | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasOrdenesDeUnaGuerra`, `TestLaGuerraEnLaBase` (integration), `TestLasRestriccionesDeLasGuerras` (integration) |
+| INV-CLAN-009 | Cada punto del marcador de una guerra lo lleva un evento de un hecho entre sus dos lados, y al arrancar el marcador es la suma de esos eventos | ALTO | DOMAIN, TEST | ✓ | `TestGoldenGuerraDeClanes`, `TestQuePuntuaEnUnaGuerra`, `TestElMarcadorEsLaSumaDeLosEventos` (integration) |
 
 ### Distribución
 
@@ -432,9 +435,9 @@ Por severidad:
 | Severidad | Cantidad |
 |---|---|
 | CRITICO | 54 |
-| ALTO | 80 |
+| ALTO | 83 |
 | MEDIO | 11 |
-| **Total** | **145** |
+| **Total** | **148** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -452,11 +455,11 @@ Por familia:
 | `INV-TERR` | 001–012 | 12 | [territory.md](territory.md) |
 | `INV-SAFE` | 001–007 | 7 | [territory.md](territory.md) |
 | `INV-GARR` | 001–009 | 9 | [diplomacy.md](diplomacy.md) |
-| `INV-DIPLO` | 001–003 | 3 | [diplomacy.md](diplomacy.md) |
+| `INV-DIPLO` | 001–004 | 4 | [diplomacy.md](diplomacy.md) |
 | `INV-ECON` | 001–012 | 12 | [economy.md](economy.md) |
 | `INV-COMBAT` | 001–007 | 7 | [combat.md](combat.md) |
 | `INV-TRADE` | 001–007 | 7 | [trade.md](trade.md) |
-| `INV-CLAN` | 001–007 | 7 | [clans.md](clans.md) |
+| `INV-CLAN` | 001–009 | 9 | [clans.md](clans.md) |
 
 Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Hay dos números quemados, `INV-GARR-003`, derogado por [ADR-017](../decisions/ADR-017-garrison-commands.md), e `INV-CITY-009`, derogado por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md): conservan su fila y su ficha con la marca `DEROGADO`, y no se reutilizan. `INV-GARR-008` estuvo reservado hasta el 2026-11-03 y desde entonces es vigente, con fila y ficha.
 
@@ -464,15 +467,17 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 145 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 148 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **147** | |
+| **Total** | **150** | |
 
-> **147 filas y 147 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **150 filas y 150 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
+
+`INV-CLAN-008`, `INV-CLAN-009` e `INV-DIPLO-004` se registraron el 2026-11-17 con SPEC-CLAN-WARS y [ADR-045](../decisions/ADR-045-clan-wars.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el trigger, con `DISABLE TRIGGER` en la base de tests). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-ECON-012` e `INV-COMBAT-007` se registraron el 2026-11-17 con SPEC-CASTLE-AGE y [ADR-044](../decisions/ADR-044-castle-shooting.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el índice, con `DROP INDEX` en la base de tests); el mismo día se precisó `INV-ECON-011` (ningún avance de era, tampoco el de Castillos, cobra el bien propio), que volvió a ✓ con sus tests. Ninguna fila queda sin cobertura ni parcial.
 
@@ -519,11 +524,11 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 | [persistence.md](persistence.md) | `INV-PERSIST` | 6 |
 | [security.md](security.md) | `INV-SEC` | 9 |
 | [territory.md](territory.md) | `INV-TERR`, `INV-SAFE` | 17 |
-| [diplomacy.md](diplomacy.md) | `INV-GARR`, `INV-DIPLO` | 11 |
+| [diplomacy.md](diplomacy.md) | `INV-GARR`, `INV-DIPLO` | 12 |
 | [economy.md](economy.md) | `INV-ECON` | 12 |
 | [combat.md](combat.md) | `INV-COMBAT` | 7 |
 | [trade.md](trade.md) | `INV-TRADE` | 4 |
-| [clans.md](clans.md) | `INV-CLAN` | 7 |
+| [clans.md](clans.md) | `INV-CLAN` | 9 |
 
 ## 10. Documentos relacionados
 

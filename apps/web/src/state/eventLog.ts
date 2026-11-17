@@ -11,7 +11,7 @@ import type { v1 } from '@empires-online/protocol';
 import { unitTypeLabel } from './economy';
 import { unitPlural } from './units';
 import { describeLines } from './trade';
-import { ALLIANCE_BREAK_MINUTES, LEADER_INACTIVE_DAYS } from './clans';
+import { ALLIANCE_BREAK_MINUTES, LEADER_INACTIVE_DAYS, WAR_PREPARATION_MINUTES } from './clans';
 
 export type EventLogEntry = v1.EventLogEntry;
 export type EventLogPage = v1.EventLogPage['payload'];
@@ -209,6 +209,12 @@ function rawText(e: EventLogEntry): string {
         ? `Tu oferta de ${tipo} a ${who} caducó sin respuesta`
         : `La oferta de ${tipo} de ${who} caducó`;
     case 'TREATY_BREAK_ANNOUNCED':
+      // SPEC-CLAN-WARS §6: la ruptura que abrió una guerra entre los clanes de los dos.
+      if (e.breakReason === 'WAR') {
+        return `La guerra entre vuestros clanes rompe ${elTipo} con ${who}: la paz termina${
+          e.breaksAtMs !== undefined ? ` a las ${clockTime(e.breaksAtMs)}` : ''
+        }`;
+      }
       // TRADE no da paz (SPEC-TRADE §4.1): lo que termina es el comercio.
       return `${who} rompió ${elTipo}: ${e.treatyType === 'TRADE' ? 'el comercio' : 'la paz'} termina${
         e.breaksAtMs !== undefined ? ` a las ${clockTime(e.breaksAtMs)}` : ''
@@ -280,6 +286,17 @@ function rawText(e: EventLogEntry): string {
       return `La alianza de tu clan con ${clanName(e.clanTag)} termina ${
         e.breaksAtMs !== undefined ? `a las ${clockTime(e.breaksAtMs)}` : `en ${ALLIANCE_BREAK_MINUTES} minutos`
       }: después, sus miembros podrán atacar a los tuyos`;
+    // Las guerras entre clanes (SPEC-CLAN-WARS Q11): clanTag es el otro clan.
+    case 'CLAN_WAR_DECLARED':
+      return `${who} declaró la guerra entre tu clan y ${clanName(e.clanTag)}: empieza ${
+        e.startsAtMs !== undefined ? `a las ${clockTime(e.startsAtMs)}` : `en ${WAR_PREPARATION_MINUTES} minutos`
+      }`;
+    case 'CLAN_WAR_PEACE_OFFERED':
+      return `${who} ofrece la paz entre ${clanName(e.clanTag)} y tu clan`;
+    case 'CLAN_WAR_ENDED':
+      return `La guerra con ${clanName(e.clanTag)} terminó: ${WAR_RESULT[e.warResult ?? ''] ?? 'fin'}${
+        e.ourScore !== undefined && e.theirScore !== undefined ? ` por ${e.ourScore} – ${e.theirScore}` : ''
+      }${e.warReason ? ` (${WAR_REASON[e.warReason]})` : ''}`;
     default:
       return `${who}: ${String(e.kind)}`;
   }
@@ -300,9 +317,22 @@ export function isLoss(e: EventLogEntry): boolean {
     e.kind === 'CARAVAN_LOST' ||
     e.kind === 'CLAN_EXPELLED' ||
     e.kind === 'CLAN_LEADERSHIP_LOST' ||
-    e.kind === 'CLAN_ALLIANCE_BREAK_ANNOUNCED'
+    e.kind === 'CLAN_ALLIANCE_BREAK_ANNOUNCED' ||
+    e.kind === 'CLAN_WAR_DECLARED' ||
+    (e.kind === 'CLAN_WAR_ENDED' && e.warResult === 'LOST')
   );
 }
+
+/** El resultado de una guerra para quien lee (SPEC-CLAN-WARS §4.5). */
+const WAR_RESULT: Record<string, string> = { WON: 'victoria', LOST: 'derrota', DRAWN: 'empate' };
+
+/** Por qué terminó una guerra. */
+const WAR_REASON: Record<string, string> = {
+  SURRENDER: 'rendición',
+  PEACE: 'paz pactada',
+  TIMEOUT: 'plazo',
+  DISSOLVED: 'disolución',
+};
 
 /** «[LOB]», o «tu clan» si la entrada no trae la sigla. */
 function clanName(tag: string | undefined): string {

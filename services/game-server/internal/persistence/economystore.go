@@ -123,7 +123,7 @@ func (e *EconomyStore) DestroyBuilding(ctx context.Context, d simulation.Buildin
 	err := e.repo.DestroyBuilding(ctx, postgres.BuildingDestruction{
 		BuildingID: d.BuildingID, CityID: d.CityID, VictimPlayer: d.VictimPlayer,
 		AttackerPlayer: d.AttackerPlayer, AttackerID: d.AttackerID, Type: d.Type,
-		At: d.At, Bonus: d.Bonus, Tick: d.Tick, AtMs: d.AtMs,
+		At: d.At, Bonus: d.Bonus, Tick: d.Tick, AtMs: d.AtMs, War: d.War,
 	})
 	if errors.Is(err, postgres.ErrNotFound) {
 		return nil

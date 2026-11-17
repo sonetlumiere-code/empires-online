@@ -62,6 +62,9 @@ type TreatyWrite struct {
 	// para el registro (ADR-028 §3).
 	AtMs int64
 	By   uuid.UUID
+	// Reason es el motivo de una ruptura que no ordenó un firmante:
+	// eventlog.BreakReasonWar si la abrió una guerra (SPEC-CLAN-WARS §6).
+	Reason string
 }
 
 // Comandos de los jugadores (protocolo v1).
@@ -295,6 +298,12 @@ func (s *Simulation) handleProposeTreaty(cmd ProposeTreaty) {
 		s.treatyReject(cmd.PlayerID, cmd.RequestID, msgOpposedPeace)
 		return
 	}
+	// RN-CLANWAR-004 e INV-DIPLO-004: nadie hace una paz por separado con el
+	// clan enemigo; el comercio, sí.
+	if peaceType(cmd.Type) && s.state.AtWar(cmd.PlayerID, cmd.Target) {
+		s.treatyReject(cmd.PlayerID, cmd.RequestID, msgAtWar)
+		return
+	}
 	k := pairKey(cmd.PlayerID, cmd.Target)
 	if _, ocupado := s.state.diplo.busy[k]; ocupado {
 		s.treatyReject(cmd.PlayerID, cmd.RequestID, "hay otra orden en curso con ese jugador")
@@ -348,6 +357,12 @@ func (s *Simulation) handleRespondTreaty(cmd RespondTreaty) {
 	// —hecha cuando uno era NEUTRAL— no se puede aceptar; sí rechazar.
 	if cmd.Accept && s.state.opposedTreaty(t.PlayerA, t.PlayerB, t.Type) {
 		s.treatyReject(cmd.PlayerID, cmd.RequestID, msgOpposedPeace)
+		return
+	}
+	// RN-CLANWAR-004 e INV-DIPLO-004: entre dos clanes en guerra no se acepta
+	// una paz; sí se rechaza.
+	if cmd.Accept && peaceType(t.Type) && s.state.AtWar(t.PlayerA, t.PlayerB) {
+		s.treatyReject(cmd.PlayerID, cmd.RequestID, msgAtWar)
 		return
 	}
 	next, event := diplomacy.StatusRejected, "TreatyRejected"
@@ -467,6 +482,17 @@ func (s *Simulation) handleTreatyResolved(cmd TreatyResolved) {
 		s.state.noteRejection(t)
 	}
 	s.broadcastTreaty(t, cmd.PlayerID, cmd.RequestID)
+	// ADR-045 §3: una aceptación que estaba en vuelo al declararse una guerra
+	// entre los clanes de los dos empieza su preaviso en este tick.
+	if t.Status == diplomacy.StatusActive && peaceType(t.Type) {
+		s.enforceWarTreaties(s.deps.Clock.NowMs())
+	}
+}
+
+// peaceType dice si el tratado da paz: lo que una guerra entre clanes rompe y
+// no deja firmar (RN-CLANWAR-004).
+func peaceType(t diplomacy.Type) bool {
+	return t == diplomacy.TypeNonAggression || t == diplomacy.TypeAlliance
 }
 
 // storeTreaty deja en la RAM un tratado abierto, o lo saca si terminó.

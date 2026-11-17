@@ -88,6 +88,12 @@ Desde E23 se avisan también, a los dos lados, las muertes que causa un castillo
 víctima y `CASTLE_KILL` al dueño del castillo, con `unitType` y el tile, en el tick de la muerte. Cada disparo que no
 mata no se avisa. `EventLogNoticeKind` gana los dos y pasa de 16 a 18 tipos (los de `eventlog.NoticeKinds`).
 
+**Precisión (2026-11-17, [clan-wars.md](clan-wars.md) Q11).** Desde E24 se avisan también la declaración y el final de
+una guerra entre clanes, a cada miembro de los dos clanes salvo a quien dio la orden (`CLAN_WAR_DECLARED`,
+`CLAN_WAR_ENDED`), y la oferta de paz, al líder del clan que la recibe (`CLAN_WAR_PEACE_OFFERED`). Los tres llevan la
+sigla del otro clan en `clanTag`, y el final, el resultado y el marcador de quien lo recibe. `EventLogNoticeKind` pasa de
+18 a 21 tipos.
+
 ### 4.2 Reglas
 
 Dominio: `RN-NOTICE`.

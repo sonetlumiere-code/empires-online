@@ -54,6 +54,25 @@ type fakeClans struct {
 	nextAllianceID int64
 	allianceErr    error
 	joinBreaks     []simulation.AllianceBreak
+	// wars son las escrituras de guerras (SPEC-CLAN-WARS), con el id que se da
+	// a cada declaración nueva; warErr, su fallo.
+	wars      []simulation.WarWrite
+	nextWarID int64
+	warErr    error
+}
+
+func (f *fakeClans) ApplyWar(_ context.Context, w simulation.WarWrite) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.warErr != nil {
+		return 0, f.warErr
+	}
+	f.wars = append(f.wars, w)
+	if w.Insert {
+		f.nextWarID++
+		return f.nextWarID, nil
+	}
+	return w.War.ID, nil
 }
 
 func (f *fakeClans) ApplyAlliance(_ context.Context, w simulation.AllianceWrite) (int64, error) {

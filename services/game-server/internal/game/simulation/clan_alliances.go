@@ -458,6 +458,11 @@ func (s *Simulation) handleProposeClanAlliance(cmd ProposeClanAlliance) {
 		reject(msgAllianceMixes)
 		return
 	}
+	// RN-CLANWAR-003: dos clanes en guerra no se alían.
+	if s.state.clansAtWar(rec.ID, other.ID) {
+		reject(msgAtWar)
+		return
+	}
 	nowMs := s.deps.Clock.NowMs()
 	if cuando, ok := s.state.allies.rejected[[2]int64{rec.ID, other.ID}]; ok && nowMs < cuando+s.treatyRetry().Milliseconds() {
 		reject("ese clan rechazó tu oferta hace poco: espera antes de insistir")
@@ -514,6 +519,10 @@ func (s *Simulation) handleRespondClanAlliance(cmd RespondClanAlliance) {
 		}
 		if s.state.pairMixes(al.ClanA, al.ClanB) {
 			reject(msgAllianceMixes)
+			return
+		}
+		if s.state.clansAtWar(al.ClanA, al.ClanB) {
+			reject(msgAtWar)
 			return
 		}
 	}

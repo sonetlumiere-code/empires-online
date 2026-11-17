@@ -85,7 +85,7 @@ func (s *ClanStore) Join(ctx context.Context, o simulation.ClanJoinOrder) ([]sim
 func (s *ClanStore) Leave(ctx context.Context, l simulation.ClanLeave) ([]territory.Control, error) {
 	applied, released, err := s.clans.Leave(ctx, postgres.ClanLeave{
 		ClanID: l.ClanID, PlayerID: l.PlayerID, Reason: l.Reason, By: l.By, At: l.At,
-		NewLeader: l.NewLeader, Dissolve: l.Dissolve, Tick: l.Tick, AtMs: l.AtMs,
+		NewLeader: l.NewLeader, Dissolve: l.Dissolve, WarEnds: warEnds(l.WarEnds), Tick: l.Tick, AtMs: l.AtMs,
 	})
 	if err != nil || !applied {
 		return nil, err
@@ -97,6 +97,9 @@ func (s *ClanStore) Leave(ctx context.Context, l simulation.ClanLeave) ([]territ
 	}
 	if l.Dissolve {
 		s.count(observability.ClanChangeDissolved)
+		for range l.WarEnds {
+			s.count(observability.ClanChangeWarEnded)
+		}
 	}
 	return released, nil
 }
@@ -165,6 +168,33 @@ func allianceWrites(ws []simulation.AllianceWrite) []postgres.AllianceWrite {
 	out := make([]postgres.AllianceWrite, 0, len(ws))
 	for _, w := range ws {
 		out = append(out, allianceWrite(w))
+	}
+	return out
+}
+
+// ApplyWar escribe una orden o un vencimiento de una guerra entre clanes
+// (SPEC-CLAN-WARS, ADR-045 §2).
+func (s *ClanStore) ApplyWar(ctx context.Context, w simulation.WarWrite) (int64, error) {
+	id, err := s.clans.ApplyWar(ctx, postgres.WarWrite{
+		Insert: w.Insert, War: w.War, From: w.From, Event: w.Event, By: w.By, ByClan: w.ByClan,
+		MaxWars: w.MaxWars, Cooldown: w.Cooldown, Tolerant: w.Tolerant, Tick: w.Tick, AtMs: w.AtMs,
+	})
+	if err != nil {
+		return 0, rejection(err)
+	}
+	switch {
+	case w.Insert:
+		s.count(observability.ClanChangeWarDeclared)
+	case w.Event == eventlog.EventClanWarEnded:
+		s.count(observability.ClanChangeWarEnded)
+	}
+	return id, nil
+}
+
+func warEnds(ws []clan.War) []postgres.WarEnd {
+	out := make([]postgres.WarEnd, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, postgres.WarEnd{War: w})
 	}
 	return out
 }

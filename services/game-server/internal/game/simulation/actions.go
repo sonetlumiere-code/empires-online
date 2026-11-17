@@ -83,6 +83,11 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeClanAlliancePropose: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeClanAllianceRespond: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeClanAllianceCancel:  {Hostile: false, Territory: TerritoryFree},
+	// Las guerras entre clanes (SPEC-CLAN-WARS §4.3): comprometen a los dos
+	// clanes pero no agreden a nadie, y no las frena la protección.
+	protocol.TypeClanWarDeclare:   {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanWarPeace:     {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeClanWarSurrender: {Hostile: false, Territory: TerritoryFree},
 }
 
 // sessionMessages son los mensajes que no actúan sobre el mundo. Los del

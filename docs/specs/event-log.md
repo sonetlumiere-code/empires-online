@@ -105,6 +105,18 @@ Villa Norte mató a uno de tus guerreros»), y al dueño del castillo, `CASTLE_K
 Villa Norte»), con `unitType` y el tile como las muertes de siempre. No se agrupan con las que causó un ejército del
 mismo jugador. `EventTypes` no cambia; el catálogo pasa de 35 a 37 tipos.
 
+**Precisión (2026-11-17, [clan-wars.md](clan-wars.md) Q11, [ADR-045](../decisions/ADR-045-clan-wars.md) §6).**
+Desde E24 entran las guerras entre clanes, con la sigla del otro clan en `clanTag`. La declaración
+(`CLAN_WAR_DECLARED`, con `startsAtMs`: «Villa Norte declaró la guerra entre tu clan y [OSO]: empieza a las 15:30») y el
+final (`CLAN_WAR_ENDED`, con `warResult`, `warReason`, `ourScore` y `theirScore`: «La guerra con [OSO] terminó:
+victoria por 31 – 18 (plazo)») son una fila por miembro abierto de los dos clanes, de un solo lado (`only`), salvo para
+quien dio la orden; el final por plazo no lo dio nadie y llega a todos, y el de una disolución, sólo al otro clan. La
+oferta de paz (`CLAN_WAR_PEACE_OFFERED`) es una fila por líder y oficial del clan que la recibe. El comienzo y la
+retirada o el rechazo de una oferta no entran. Cada suceso de una guerra es su propia entrada. Un
+`TREATY_BREAK_ANNOUNCED` que abrió una guerra lleva `breakReason: "WAR"` («La guerra entre vuestros clanes rompe el
+pacto de no agresión con Villa Norte: la paz termina a las 15:30»). `EventTypes` gana `ClanWarDeclared`,
+`ClanWarPeaceOffered` y `ClanWarEnded`; el catálogo pasa de 37 a 40 tipos.
+
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) §6, [ADR-041](../decisions/ADR-041-clan-territories.md) §5).**
 Desde E19, con un clan dueño, `TerritoryClaimStarted` y `TerritoryControlChanged` se escriben una fila por miembro
 abierto del clan, con `only: "player"` en el payload: cada fila le cuenta el suceso sólo a su miembro, con la sigla del

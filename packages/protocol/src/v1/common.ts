@@ -271,6 +271,64 @@ export const ClanPublicAllianceView = z.object({
 });
 export type ClanPublicAllianceView = z.infer<typeof ClanPublicAllianceView>;
 
+/** Estado de una guerra abierta en las vistas: en preparación o activa (SPEC-CLAN-WARS §4.1). */
+export const ClanWarStatus = z.enum(['DECLARED', 'ACTIVE']);
+export type ClanWarStatus = z.infer<typeof ClanWarStatus>;
+
+/** Un marcador de guerra: los puntos de un lado (SPEC-CLAN-WARS §4.4). */
+export const ClanWarScore = z.number().int().min(0);
+
+/**
+ * Una guerra abierta del propio clan con otro (SPEC-CLAN-WARS §6). `clanId`, `name` y `tag`
+ * son los del otro clan; `endsAtMs`, el plazo, `null` en la preparación. Las dos marcas de
+ * la oferta de paz llegan siempre en `false` salvo al líder y los oficiales.
+ */
+export const ClanWarView = z.object({
+  id: EntityId,
+  clanId: EntityId,
+  name: ClanName,
+  tag: ClanTag,
+  declaredByUs: z.boolean(),
+  status: ClanWarStatus,
+  startsAtMs: EpochMs,
+  endsAtMs: EpochMs.nullable(),
+  ourScore: ClanWarScore,
+  theirScore: ClanWarScore,
+  peaceOfferedByUs: z.boolean(),
+  peaceOfferedByThem: z.boolean(),
+});
+export type ClanWarView = z.infer<typeof ClanWarView>;
+
+/** Una guerra abierta de un clan en su vista pública, vista desde ese clan (SPEC-CLAN-WARS Q10). */
+export const ClanPublicWarView = z.object({
+  clanId: EntityId,
+  name: ClanName,
+  tag: ClanTag,
+  declaredByUs: z.boolean(),
+  status: ClanWarStatus,
+  startsAtMs: EpochMs,
+  endsAtMs: EpochMs.nullable(),
+  ourScore: ClanWarScore,
+  theirScore: ClanWarScore,
+});
+export type ClanPublicWarView = z.infer<typeof ClanPublicWarView>;
+
+/** El historial de guerras terminadas de un clan (SPEC-CLAN-WARS Q5). */
+export const ClanWarRecordView = z.object({
+  won: z.number().int().min(0),
+  lost: z.number().int().min(0),
+  drawn: z.number().int().min(0),
+});
+export type ClanWarRecordView = z.infer<typeof ClanWarRecordView>;
+
+/** Resultado de una guerra terminada para quien lee (SPEC-CLAN-WARS §4.5). */
+export const ClanWarResult = z.enum(['WON', 'LOST', 'DRAWN']);
+export type ClanWarResult = z.infer<typeof ClanWarResult>;
+
+/** Motivo del final de una guerra (SPEC-CLAN-WARS §4.5). */
+export const ClanWarEndReason = z.enum(['SURRENDER', 'PEACE', 'TIMEOUT', 'DISSOLVED']);
+export type ClanWarEndReason = z.infer<typeof ClanWarEndReason>;
+
 /** El propio clan, visto por uno de sus miembros (SPEC-CLANS §6). */
 export const ClanView = z.object({
   id: EntityId,
@@ -287,6 +345,9 @@ export const ClanView = z.object({
    * por `id` (SPEC-CLAN-ALLIANCES §6).
    */
   alliances: z.array(ClanAllianceView),
+  /** Las guerras abiertas del clan, por `id`, y su historial (SPEC-CLAN-WARS §6). */
+  wars: z.array(ClanWarView),
+  warRecord: ClanWarRecordView,
 });
 export type ClanView = z.infer<typeof ClanView>;
 
@@ -574,6 +635,11 @@ export const EventLogKind = z.enum([
   // otro, y una unidad ajena que mató el castillo de quien lee.
   'UNIT_LOST_TO_CASTLE',
   'CASTLE_KILL',
+  // Las guerras entre clanes (SPEC-CLAN-WARS Q11): la declaración y el final, a cada
+  // miembro de los dos clanes, y la oferta de paz, al líder y los oficiales del otro.
+  'CLAN_WAR_DECLARED',
+  'CLAN_WAR_PEACE_OFFERED',
+  'CLAN_WAR_ENDED',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -607,6 +673,10 @@ export const EventLogNoticeKind = EventLogKind.extract([
   // SPEC-CASTLE-AGE §6: lo que mata un castillo, a los dos lados.
   'UNIT_LOST_TO_CASTLE',
   'CASTLE_KILL',
+  // SPEC-CLAN-WARS Q11: la declaración, la oferta de paz y el final.
+  'CLAN_WAR_DECLARED',
+  'CLAN_WAR_PEACE_OFFERED',
+  'CLAN_WAR_ENDED',
 ]);
 export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
 
@@ -656,6 +726,15 @@ export const EventLogEntry = z.object({
   clanTag: ClanTag.optional(),
   /** En las caravanas (SPEC-CARAVANS §6): lo que llevaba. Opcional: aditivo en v1. */
   cargo: z.array(ResourceAmount).optional(),
+  /** En una ruptura que abrió una guerra entre clanes: `WAR` (SPEC-CLAN-WARS §6). */
+  breakReason: z.literal('WAR').optional(),
+  /** En la declaración y la oferta de paz: cuándo empieza la guerra (SPEC-CLAN-WARS §6). */
+  startsAtMs: EpochMs.optional(),
+  /** En el final de una guerra: el resultado para quien lee, el motivo y el marcador desde su clan. */
+  warResult: ClanWarResult.optional(),
+  warReason: ClanWarEndReason.optional(),
+  ourScore: ClanWarScore.optional(),
+  theirScore: ClanWarScore.optional(),
 });
 export type EventLogEntry = z.infer<typeof EventLogEntry>;
 

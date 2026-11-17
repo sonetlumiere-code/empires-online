@@ -868,6 +868,33 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Registro y avisos.** `UNIT_LOST_TO_CASTLE` («El castillo de Villa Norte mató a uno de tus guerreros», resaltada
   como pérdida) y `CASTLE_KILL` («Tu castillo mató a 3 guerreros de Villa Norte»).
 
+### 4.20 Guerras entre clanes (SPEC-CLAN-WARS)
+
+> **Estado (2026-11-17): implementado y con tests de lo puro** (`src/state/clans.ts`, `src/state/eventLog.ts`,
+> `src/state/notices.ts`, `src/net/client.ts`, `app/page.tsx`).
+
+- **Qué llega.** `ClanView.wars` (`{ id, clanId, name, tag, declaredByUs, status, startsAtMs, endsAtMs, ourScore,
+  theirScore, peaceOfferedByUs, peaceOfferedByThem }`, del otro clan; las dos marcas de la paz sólo para el líder y los
+  oficiales) y `ClanView.warRecord` (`{ won, lost, drawn }`); `clan.info.wars` (sin las ofertas) y `clan.info.warRecord`.
+  No hay mensajes nuevos: cada cambio de una guerra, y el marcador cada pocos segundos, llega como `clan.update`.
+- **El panel del clan** tiene la sección «Guerras»: el historial (`warRecordText`), y cada guerra abierta con quién la
+  declaró, el marcador («[LOB] 12 – 7 [OSO]», `warScore`) y su cuenta atrás («Empieza en 9 min», «Termina en 2 d 4 h»,
+  `warCountdown`). El líder y los oficiales ven las ofertas de paz; sólo el líder tiene «Ofrecer la paz», «Retirar la
+  oferta», «Aceptar la paz» y «Rechazar» (`GameClient.clanWarPeace`) y «Rendirse», con su confirmación en línea
+  (`surrenderWarning`, `GameClient.surrenderClanWar`).
+- **La vista pública** de «Ver clan» lista sus guerras abiertas con el marcador y su historial y, para el líder,
+  «Declarar la guerra» con su confirmación (`declareWarWarning`, `GameClient.declareClanWar`), deshabilitado con su
+  motivo (`warProblem`: no es el líder, es el propio clan, ya hay una guerra abierta, son aliados o el clan ya tiene su
+  guerra declarada, `MAX_CLAN_WARS`). La tregua la dice el servidor.
+- **La barra de una ciudad ajena** de un clan en guerra con el propio dice «En guerra con [TAG]» (`isAtWarWith`). La
+  guerra no cambia el clic de ataque: no da paz ni la quita.
+- **Avisos y registro.** La declaración (con la hora de comienzo, o «en 15 minutos» sin ella), la oferta de paz y el
+  final (resultado, marcador y motivo), con la sigla del otro clan; la declaración y la derrota se resaltan (`isLoss`).
+  La ruptura de un pacto que abrió una guerra lo dice (`breakReason: "WAR"`). Los avisos llevan los campos de la guerra
+  hasta el texto (`notices.ts`).
+- **Los rechazos.** Desde E24, `readableError` muestra el motivo que manda el servidor con un `INVALID_TARGET` («No se
+  puede: …»): es lo único que dice la tregua, los bandos o el rango. Sin motivo, el texto general de siempre.
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

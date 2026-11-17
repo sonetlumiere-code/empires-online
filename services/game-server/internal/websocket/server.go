@@ -888,6 +888,47 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, AllianceID: p.AllianceID,
 		})
 
+	// Guerras entre clanes (SPEC-CLAN-WARS §6): pasan por la simulación, como
+	// las alianzas.
+	case protocol.TypeClanWarDeclare:
+		var p protocol.ClanWarDeclarePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.ClanID < 1 {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.DeclareClanWar{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, ClanID: p.ClanID,
+		})
+
+	case protocol.TypeClanWarPeace:
+		var p protocol.ClanWarPeacePayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.WarID < 1 {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.ClanWarPeace{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, WarID: p.WarID, Offer: p.Offer,
+		})
+
+	case protocol.TypeClanWarSurrender:
+		var p protocol.ClanWarSurrenderPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.WarID < 1 {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.SurrenderClanWar{
+			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID, WarID: p.WarID,
+		})
+
 	// Economía (SPEC-ECON-WOOD). Los tres comandos llevan sólo la intención:
 	// el bosque, el tipo y el tile. Cantidades, costes y tiempos son del
 	// servidor (INV-SEC-001); los rechazos llegan por system.error.

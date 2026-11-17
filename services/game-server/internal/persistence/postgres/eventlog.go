@@ -203,8 +203,14 @@ type eventPayload struct {
 	Only         string `json:"only"`
 	// Las caravanas (SPEC-CARAVANS §6): lo que llevaba.
 	Cargo []payloadLine `json:"cargo"`
-	// El cambio de líder de un clan (SPEC-CLAN-GOVERNANCE §6).
+	// El cambio de líder de un clan (SPEC-CLAN-GOVERNANCE §6), el motivo de
+	// una ruptura por guerra y el del final de una guerra (SPEC-CLAN-WARS §6).
 	Reason string `json:"reason"`
+	// La guerra entre clanes (SPEC-CLAN-WARS §6).
+	StartsAtMs int64  `json:"startsAtMs"`
+	Result     string `json:"result"`
+	OurScore   int64  `json:"ourScore"`
+	TheirScore int64  `json:"theirScore"`
 }
 
 // payloadLine es una línea de un trato en el payload.
@@ -261,6 +267,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	e.Cargo = toLines(p.Cargo)
 	e.Reason = p.Reason
 	e.KillerBuildingType = p.KillerBuildingType
+	e.StartsAtMs, e.WarResult, e.OurScore, e.TheirScore = p.StartsAtMs, p.Result, p.OurScore, p.TheirScore
 	return nil
 }
 
@@ -336,6 +343,16 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 			at := e.BreaksAtMs
 			v.BreaksAtMs = &at
 		}
+		v.BreakReason = e.Reason
+	case eventlog.KindClanWarDeclared, eventlog.KindClanWarPeaceOffered:
+		if e.StartsAtMs > 0 {
+			at := e.StartsAtMs
+			v.StartsAtMs = &at
+		}
+	case eventlog.KindClanWarEnded:
+		ours, theirs := e.OurScore, e.TheirScore
+		v.OurScore, v.TheirScore = &ours, &theirs
+		v.WarResult, v.WarReason = e.WarResult, e.Reason
 	case eventlog.KindTradeOfferExpired:
 		mine := e.ProposedByMe
 		v.ProposedByMe = &mine

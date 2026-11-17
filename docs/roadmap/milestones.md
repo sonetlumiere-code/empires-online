@@ -2451,3 +2451,63 @@ Contra la base de desarrollo, que el servidor llevó de la migración 24 a la 25
   a uno de tus …» del lado de la víctima (lo comprobó el humo como aviso y lo cubre `eventLog.test.ts`), y el castillo
   en obra (sólo el contorno). En la base de desarrollo smoke_runner queda en Castillos con su castillo, y sus guardias
   junto a (277, 19).
+
+## E24 — Guerras entre clanes
+
+**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-guerras-clan`. Contrato:
+[SPEC-CLAN-WARS](../specs/clan-wars.md), aceptada el 2026-11-17 con sus once decisiones de producto, y
+[ADR-045](../decisions/ADR-045-clan-wars.md).
+
+**Objetivo.** Que el conflicto entre dos clanes tenga principio, compromiso y final: una guerra que declara un líder,
+que rompe los pactos entre los miembros de los dos clanes para que nadie haga una paz por separado, con un marcador
+público y un resultado que queda en la historia de los dos. Cierra la fase Clans del roadmap.
+
+**Alcance.** `clan.war.declare`, `clan.war.peace` y `clan.war.surrender` (de 44 a 47 comandos), sólo para el líder;
+15 minutos de preparación, 72 horas de guerra como mucho (`EO_CLAN_WAR_HOURS`) y 24 de tregua sin paz
+(`EO_CLAN_WAR_COOLDOWN_HOURS`); una guerra declarada abierta por clan (`EO_CLAN_MAX_WARS`); los pactos y alianzas entre
+los miembros de los dos clanes en preaviso y ninguno nuevo; el marcador (1 por baja, 3 por edificio destruido, 10 por
+territorio ganado) en el payload de los eventos que puntúan; el final por paz, rendición, plazo o disolución, con el
+historial; `wars` y `warRecord` en `clan.update` y en `clan.info`; los eventos `ClanWar*`, tres tipos nuevos en el
+registro y en los avisos; `INV-CLAN-008`, `INV-CLAN-009` e `INV-DIPLO-004`; migración `000026` (`clan_wars`, sus
+triggers y el índice del marcador); el cliente y `scripts/smoke.mjs --guerra-clan`. **No entra** (spec §2): bonos de
+guerra, tributo o premio material, levantar la paz de la Orden o la protección offline, llamada a las armas de los
+aliados, coaliciones, guerras contra jugadores sin clan, objetivos de guerra, puntos por saqueo o caravanas, rankings.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-045](../decisions/ADR-045-clan-wars.md), `INV-CLAN-008`, `INV-CLAN-009` e
+   `INV-DIPLO-004`, y las precisiones de `RN-CLAN-008` ([clans.md](../specs/clans.md)), `RN-CLANALLY-001`
+   ([clan-alliances.md](../specs/clan-alliances.md)) y `RN-DIPLO-001` ([diplomacy.md](../specs/diplomacy.md)).
+2. **HECHO** — Dominio: la guerra, su máquina de estados, los puntos y el resultado (`internal/domain/clan`).
+3. **HECHO** — Migración `000026` y persistencia: `clan_wars`, los triggers, el índice del marcador, cada orden
+   con los dos candados, el final en la disolución, la carga y la vista pública.
+4. **HECHO** — Simulación: las guerras en `clanState`, las órdenes en dos fases, `enforceWarTreaties`, el marcador
+   en los eventos, el comienzo y el plazo, el final por disolución y el golden «guerra de clanes».
+5. **HECHO** — Protocolo y registro: los tres comandos, `wars` y `warRecord`, los tres tipos nuevos; contract
+   tests (Go y Zod) y su e2e.
+6. **HECHO** — Cliente: la sección «Guerras» del panel, «Declarar la guerra» en la vista pública, «En guerra con
+   [TAG]» en la barra de una ciudad ajena y los textos del registro y de los avisos.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --guerra-clan`.
+
+### Prueba en vivo (2026-11-17)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 25 a la 26, arrancado con
+`EO_TREATY_BREAK_NOTICE_MINUTES=1` (la preparación en un minuto) y `EO_CLAN_WAR_SCORE_PUSH_SECONDS=2`:
+
+- **Humo** `--guerra-clan`, verde a la primera (31 comprobaciones): smoke_clan_b funda [RIV], smoke_clan_a le declara
+  la guerra con su aviso y la vista pública de [HUM] la lleva; la guerra empieza al minuto; un aldeano de smoke_clan_b
+  muere ante el guerrero de smoke_clan_a y el marcador queda en 1 – 0; smoke_clan_b ofrece la paz, smoke_clan_a la
+  acepta, los dos ven el empate (aviso y registro) y [RIV] se disuelve.
+- **En el navegador**, con la sesión de smoke_runner y el panel visible: fundar [PRU] desde el panel, con la sección
+  «Guerras» («Sin guerras terminadas»); la vista pública de [HUM] con su historial y «Declarar la guerra», con su
+  confirmación; tras declarar, «[PRU] 0 – 0 [HUM] — Empieza en 1 min», y al minuto «Termina en 3 d»; «En guerra con
+  [PRU]» en la barra de la ciudad de [HUM] y «En guerra con: [HUM] 0 – 0 [PRU]» en su vista pública; «Ofrecer la paz»,
+  «Has ofrecido la paz» y «Retirar la oferta»; «Rendirse» con su confirmación, y después «1 derrota» en [PRU] y
+  «1 victoria» en [HUM]. Al final smoke_runner salió de [PRU], que se disolvió.
+- **Un fallo, corregido.** Volver a declarar durante la tregua se rechazó, pero el pie decía el texto general de
+  `INVALID_TARGET` y no el motivo; `readableError` muestra ahora el motivo del servidor (test en `economy.test.ts`,
+  visto fallar antes del arreglo; precisión en la spec).
+- **Sin comprobar en el navegador:** el texto corregido del rechazo por tregua (lo cubre el test; no volví a llevar la
+  cámara a [HUM] tras la recarga), los avisos y las entradas del registro de la guerra del lado del jugador (los
+  comprobó el humo y los cubre `eventLog.test.ts`) y el marcador que sube en el panel. Siguen pendientes las
+  comprobaciones de §E22 y §E23.

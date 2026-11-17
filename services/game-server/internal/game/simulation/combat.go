@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
@@ -69,6 +70,9 @@ type Death struct {
 	// él (ADR-044 §5); KillerID es entonces 0 y KillerPlayer su dueño.
 	KillerBuildingID   int64
 	KillerBuildingType building.Type
+	// War son los puntos que la muerte suma a una guerra entre clanes, o nil
+	// (SPEC-CLAN-WARS §4.4, ADR-045 §4).
+	War *clan.WarPoints
 }
 
 // CombatStore escribe las muertes y el primer golpe de cada enfrentamiento.
@@ -693,6 +697,11 @@ func (s *Simulation) kill(v *unit.Unit, k killer, nowMs int64) {
 	}
 	if k.castle != nil {
 		d.KillerPlayer, d.KillerBuildingID, d.KillerBuildingType = k.owner, k.castle.ID, k.castle.Type
+	}
+	// RN-CLANWAR-007: una unidad enemiga muerta, salvo la caravana, puntúa.
+	if v.Type != unit.TypeCaravan {
+		d.War = s.state.warPoints(d.KillerPlayer, d.VictimPlayer, nowMs, clan.PointsKill)
+		s.state.addWarPoints(d.War)
 	}
 
 	// La población de su ciudad (INV-CITY-017).

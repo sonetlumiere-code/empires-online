@@ -44,6 +44,12 @@ export interface NoticeGroup {
   readonly clanTag?: string;
   /** En las caravanas, lo que llevaba la última (SPEC-CARAVANS §6). */
   readonly cargo?: Notice['cargo'];
+  /** En la guerra entre clanes (SPEC-CLAN-WARS §6): cuándo empieza y, en el final, el resultado. */
+  readonly startsAtMs?: number;
+  readonly warResult?: Notice['warResult'];
+  readonly warReason?: Notice['warReason'];
+  readonly ourScore?: number;
+  readonly theirScore?: number;
   /** El primero y el último, en la simulación. */
   readonly firstAtMs: number;
   readonly lastAtMs: number;
@@ -101,6 +107,11 @@ export function applyNotice(state: NoticeState, n: Notice): NoticeState {
         territoryName: n.territoryName,
         clanTag: n.clanTag,
         cargo: n.cargo,
+        startsAtMs: n.startsAtMs,
+        warResult: n.warResult,
+        warReason: n.warReason,
+        ourScore: n.ourScore,
+        theirScore: n.theirScore,
         count: 1,
         amount: n.amount,
         x: n.x,
@@ -170,6 +181,11 @@ function asEntry(g: NoticeGroup): EventLogEntry {
     territoryName: g.territoryName,
     clanTag: g.clanTag,
     cargo: g.cargo,
+    startsAtMs: g.startsAtMs,
+    warResult: g.warResult,
+    warReason: g.warReason,
+    ourScore: g.ourScore,
+    theirScore: g.theirScore,
   };
 }
 

@@ -194,3 +194,57 @@ func TestLasAlianzasDeClanSonLasDelEsquema(t *testing.T) {
 		require.Equal(t, requeridas(t, p), clavesDe(serializado(t, carga)), tipo)
 	}
 }
+
+// SPEC-CLAN-WARS §6: las guerras en ClanView y en clan.info, con las claves
+// exactas del esquema, los tres comandos y los campos de la guerra en las
+// entradas y los avisos del registro.
+func TestLasGuerrasDeClanSonLasDelEsquema(t *testing.T) {
+	fin := int64(900)
+	guerra := protocol.ClanWarView{ID: 9, ClanID: 4, Name: "Los Osos", Tag: "OSO", DeclaredByUs: true, Status: "ACTIVE",
+		StartsAtMs: 1, EndsAtMs: &fin, OurScore: 3, TheirScore: 1, PeaceOfferedByUs: true}
+	vista := protocol.ClanView{ID: 3, Name: "Los Lobos", Tag: "LOB", LeaderID: "a", Wars: []protocol.ClanWarView{guerra}}
+
+	root, update := serverVariant(t, protocol.TypeClanUpdate)
+	c := dig(t, root, update, "properties", "payload", "properties", "clan").(map[string]any)
+	g := dig(t, root, objetoDe(t, root, c), "properties", "wars", "items").(map[string]any)
+	require.Equal(t, clavesDe(dig(t, root, objetoDe(t, root, g), "properties").(map[string]any)), clavesDe(serializado(t, guerra)))
+	require.Equal(t, requeridas(t, objetoDe(t, root, g)), clavesDe(serializado(t, protocol.ClanWarView{})))
+	estado := dig(t, root, objetoDe(t, root, g), "properties", "status").(map[string]any)
+	assert.ElementsMatch(t, []any{"DECLARED", "ACTIVE"}, estado["enum"])
+	rec := dig(t, root, objetoDe(t, root, c), "properties", "warRecord").(map[string]any)
+	require.Equal(t, requeridas(t, objetoDe(t, root, rec)), clavesDe(serializado(t, protocol.ClanWarRecordView{})))
+	require.Contains(t, serializado(t, vista), "wars")
+	require.Contains(t, serializado(t, vista), "warRecord")
+	assert.Nil(t, serializado(t, protocol.ClanWarView{})["endsAtMs"], "sin plazo, null")
+
+	root, info := serverVariant(t, protocol.TypeClanInfo)
+	pub := dig(t, root, info, "properties", "payload", "properties", "wars", "items").(map[string]any)
+	publica := protocol.ClanPublicWarView{ClanID: 4, Name: "Los Osos", Tag: "OSO", Status: "DECLARED", EndsAtMs: &fin}
+	require.Equal(t, clavesDe(dig(t, root, objetoDe(t, root, pub), "properties").(map[string]any)), clavesDe(serializado(t, publica)))
+	require.Equal(t, requeridas(t, objetoDe(t, root, pub)), clavesDe(serializado(t, protocol.ClanPublicWarView{})))
+	require.Contains(t, serializado(t, protocol.ClanInfoPayload{}), "warRecord")
+
+	for tipo, carga := range map[string]any{
+		protocol.TypeClanWarDeclare:   protocol.ClanWarDeclarePayload{ClanID: 4},
+		protocol.TypeClanWarPeace:     protocol.ClanWarPeacePayload{WarID: 9, Offer: true},
+		protocol.TypeClanWarSurrender: protocol.ClanWarSurrenderPayload{WarID: 9},
+	} {
+		root, cmd := clientVariant(t, tipo)
+		p := dig(t, root, cmd, "properties", "payload").(map[string]any)
+		require.Equal(t, clavesDe(dig(t, root, p, "properties").(map[string]any)), clavesDe(serializado(t, carga)), tipo)
+		require.Equal(t, requeridas(t, p), clavesDe(serializado(t, carga)), tipo)
+	}
+
+	// Los campos opcionales de la guerra en la entrada y el aviso existen en el esquema.
+	root, page := serverVariant(t, protocol.TypeEventLogPage)
+	entrada := dig(t, root, page, "properties", "payload", "properties", "entries", "items").(map[string]any)
+	props := dig(t, root, objetoDe(t, root, entrada), "properties").(map[string]any)
+	for _, k := range []string{"breakReason", "startsAtMs", "warResult", "warReason", "ourScore", "theirScore"} {
+		assert.Contains(t, props, k)
+	}
+	root, notice := serverVariant(t, protocol.TypeEventLogNotice)
+	nprops := dig(t, root, notice, "properties", "payload", "properties").(map[string]any)
+	for _, k := range []string{"startsAtMs", "warResult", "warReason", "ourScore", "theirScore"} {
+		assert.Contains(t, nprops, k)
+	}
+}

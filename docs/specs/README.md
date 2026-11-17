@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las treinta y dos specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las treinta y tres specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -48,7 +48,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Safe Zones | [safe-zones.md](safe-zones.md) | M5 Offline protection & Safe Zones | Implemented | Geometría de `safe_zones`, pertenencia de tiles y estado `HIDDEN` |
 | Territory | [territory.md](territory.md) | M6 Territories | Implemented | `territories` y `territory_control`, resolución tile → territorio |
 | Garrison | [garrison.md](garrison.md) | M7 Diplomacy foundation | Implemented | `garrisons`, entrada y salida, tratados con `allows_garrison` |
-| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 44 mensajes cliente→servidor y los 31 servidor→cliente, límites e idempotencia |
+| WebSocket protocol v1 | [websocket-protocol.md](websocket-protocol.md) | M3 Realtime | Implemented | Envelopes, los 47 mensajes cliente→servidor y los 31 servidor→cliente, límites e idempotencia |
 | Economía: madera | [economy-wood.md](economy-wood.md) | E1 Madera | Implemented | `city_stocks`, tarea de recolección `GATHER_WOOD` y estado `WORKING`, casa en la zona urbana, entrenamiento de aldeanos; primer slice después de M7 |
 | Combate: incursión | [combat-raid.md](combat-raid.md) | E2 Incursión | Implemented | Unidad `WARRIOR`, orden `unit.attack`, resolución en la fase 4, HP, `DEAD` y botín; primera acción hostil; tope de la protección offline |
 | Combate: respuesta automática | [combat-response.md](combat-response.md) | E3 Defensa | Implemented | Un `WARRIOR` parado responde a los golpes sobre él o sobre sus unidades cercanas, con correa y vuelta al puesto; protección simétrica del atacante |
@@ -72,6 +72,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Alianzas entre clanes | [clan-alliances.md](clan-alliances.md) | E21 Alianzas entre clanes | Implemented | Los líderes de dos clanes firman una alianza que pone en paz a todos sus miembros, la rompen con el preaviso de un tratado y cualquiera ve quién está aliado con quién |
 | Unidades de civilización | [civilization-units.md](civilization-units.md) | E22 Unidades de civilización | Implemented | Una unidad propia por civilización (legionario, catafracto, arquero a caballo, berserker), que se suma al guerrero, se entrena desde la Edad de Bronce pagando parte con el bien propio y lucha con las reglas de combate que ya existen |
 | Edad de los Castillos | [castle-age.md](castle-age.md) | E23 Edad de los Castillos | Implemented | El avance de Hierro a la Edad de los Castillos, pagando madera, piedra y 120 bienes ajenos, y el castillo, un edificio de la zona urbana que dispara a las unidades que atacan a su dueño |
+| Guerras entre clanes | [clan-wars.md](clan-wars.md) | E24 Guerras entre clanes | Accepted | El líder de un clan declara la guerra a otro: los pactos entre sus miembros terminan, un marcador público suma bajas, derribos y conquistas, y la guerra acaba en paz, rendición o plazo con un resultado en el historial |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

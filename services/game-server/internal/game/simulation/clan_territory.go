@@ -278,6 +278,7 @@ func (s *Simulation) startDissolution(rec *clanRecord, playerID uuid.UUID, reaso
 	leave := ClanLeave{
 		ClanID: rec.ID, PlayerID: playerID, Reason: reason, By: by,
 		At: time.UnixMilli(nowMs).UTC(), Dissolve: true, Tick: s.state.Tick(), AtMs: nowMs,
+		WarEnds: s.state.warEndsOf(rec.ID, nowMs),
 	}
 	s.deps.Log.Info("disolución de un clan con territorios en vuelo", "clan_id", rec.ID,
 		"territories", len(s.state.clanTerritories(rec.ID)))
@@ -316,7 +317,7 @@ func (s *Simulation) handleClanDissolved(cmd ClanDissolved) {
 		return
 	}
 	l := cmd.Leave
-	s.applyLeave(rec, l.PlayerID, l.Reason, l.By, cmd.Actor, cmd.RequestID, l.AtMs)
+	s.applyLeave(rec, l.PlayerID, l.Reason, l.By, cmd.Actor, cmd.RequestID, l.AtMs, l.WarEnds)
 	s.applyReleased(cmd.Released)
 }
 
