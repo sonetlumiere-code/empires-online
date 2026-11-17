@@ -159,7 +159,7 @@ func (c *canalFalso) Lookup(_ context.Context, clanID int64) (protocol.ClanInfoP
 	}
 	info := protocol.ClanInfoPayload{
 		ClanID: clanID, Name: "Los Lobos", Tag: "LOB", Members: []protocol.ClanMemberView{},
-		Territories: []protocol.ClanTerritoryView{}, Alliances: []protocol.ClanPublicAllianceView{},
+		Territories: []protocol.ClanTerritoryView{}, Alliances: []protocol.ClanPublicAllianceView{}, Wars: []protocol.ClanPublicWarView{},
 	}
 	for i, p := range ms {
 		role := clan.RoleMember
