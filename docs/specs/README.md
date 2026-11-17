@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las treinta specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las treinta y una specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -70,6 +70,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Territorios de clan | [clan-territories.md](clan-territories.md) | E19 Territorios de clan | Implemented | Un miembro reclama un territorio para su clan con un guerrero; la tierra del clan es afín para todos sus miembros, la defienden todos y se pierde contra quien no esté en paz con ninguno; al disolverse el clan queda libre |
 | Gobierno del clan | [clan-governance.md](clan-governance.md) | E20 Gobierno del clan | Implemented | Oficiales que invitan y expulsan a los miembros rasos, el traspaso del liderazgo y la sucesión automática cuando el líder lleva 7 días sin jugar |
 | Alianzas entre clanes | [clan-alliances.md](clan-alliances.md) | E21 Alianzas entre clanes | Implemented | Los líderes de dos clanes firman una alianza que pone en paz a todos sus miembros, la rompen con el preaviso de un tratado y cualquiera ve quién está aliado con quién |
+| Unidades de civilización | [civilization-units.md](civilization-units.md) | E22 Unidades de civilización | Draft | Una unidad propia por civilización (legionario, catafracto, arquero a caballo, berserker), que se suma al guerrero, se entrena desde la Edad de Bronce pagando parte con el bien propio y lucha con las reglas de combate que ya existen |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
