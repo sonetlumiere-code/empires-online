@@ -54,6 +54,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E19 Territorios de clan | **Completado** (2026-11-16). En `main` desde la fusión `f21911a`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E19; contrato en [SPEC-CLAN-TERRITORIES](../specs/clan-territories.md) y [ADR-041](../decisions/ADR-041-clan-territories.md). |
 | E20 Gobierno del clan | **Completado** (2026-11-16). En `main` desde la fusión `983035e`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E20; contrato en [SPEC-CLAN-GOVERNANCE](../specs/clan-governance.md), sin ADR nuevo. |
 | E21 Alianzas entre clanes | **Completado** (2026-11-16). En `main` desde la fusión `57690c9`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E21; contrato en [SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md) y [ADR-042](../decisions/ADR-042-clan-alliances.md). |
+| E22 Unidades de civilización | **Completado** (2026-11-17). En `main` desde la fusión `6fde18f`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E22; contrato en [SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md) y [ADR-043](../decisions/ADR-043-civilization-units.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

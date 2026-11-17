@@ -2326,7 +2326,7 @@ Contra la base de desarrollo, que el servidor llevó de la migración 22 a la 23
 
 ## E22 — Unidades de civilización
 
-**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-unidades-civilizacion`. Contrato:
+**Estado: HECHO (2026-11-17)**, fusionado en `main` (`6fde18f`) con la CI en verde el mismo día. Contrato:
 [SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md), aceptada el 2026-11-17 con sus diez decisiones de producto,
 y [ADR-043](../decisions/ADR-043-civilization-units.md).
 

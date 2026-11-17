@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta y dos, del 001
-al 042, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta y tres, del 001
+al 043, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -298,7 +298,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E21 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E22 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -374,6 +374,12 @@ Matices que conviene no maquillar:
   en `Implemented`, con [ADR-042](decisions/ADR-042-clan-alliances.md) y la migración `000023`. Los líderes de dos clanes
   firman una alianza que pone en paz a todos sus miembros, con el preaviso de un tratado, como mucho dos por clan y sin
   juntar a la Orden y al Caos ([roadmap/milestones.md](roadmap/milestones.md) §E21).
+- **E22 Unidades de civilización está en `main`** desde `6fde18f`, con la CI en verde el 2026-11-17 y una prueba en
+  vivo con el humo `--unidad-civilizacion` y el navegador ese mismo día;
+  [SPEC-CIVILIZATION-UNITS](specs/civilization-units.md) está en `Implemented`, con
+  [ADR-043](decisions/ADR-043-civilization-units.md) y la migración `000024`. Cada civilización entrena desde la Edad de
+  Bronce una unidad propia (legionario, catafracto, arquero a caballo, berserker) que se suma al guerrero, paga parte
+  con su bien y lucha con las mismas reglas ([roadmap/milestones.md](roadmap/milestones.md) §E22).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

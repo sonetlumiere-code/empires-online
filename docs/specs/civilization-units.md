@@ -7,7 +7,7 @@ civilización.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CIVILIZATION-UNITS` |
-| Estado | Accepted (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `6fde18f`, con la CI en verde. |
 | Milestone | E22 Unidades de civilización (vigesimosegundo slice después de M7) |
 | Canon | §0 (civilización como eje), §1.5 (determinismo), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [unit.md](unit.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [territory-conquest.md](territory-conquest.md), [caravans.md](caravans.md), [civilizations.md](civilizations.md), [civilization-goods.md](civilization-goods.md), [factions.md](factions.md), [clan-territories.md](clan-territories.md), [clan-alliances.md](clan-alliances.md), [garrison.md](garrison.md), [event-log.md](event-log.md), [websocket-protocol.md](websocket-protocol.md) |
