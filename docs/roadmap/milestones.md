@@ -2387,6 +2387,8 @@ verify:full` en verde antes:
   la base de desarrollo), «Legionario · Romanos» en el panel de selección (sólo el dueño selecciona su unidad) y la
   línea de la unidad propia en el registro de alta (pide cerrar la sesión del navegador). Los textos los cubren
   `units.test.ts` y la proyección; esas tres siluetas, sólo el typecheck.
+- **Repaso (2026-11-17):** la línea de la unidad propia en el formulario de alta, comprobada; lo demás sigue sin
+  comprobar en el navegador ([§E24](#e24--guerras-entre-clanes), «Repaso de los tests»).
 
 ## E23 — Edad de los Castillos
 
@@ -2451,6 +2453,9 @@ Contra la base de desarrollo, que el servidor llevó de la migración 24 a la 25
   a uno de tus …» del lado de la víctima (lo comprobó el humo como aviso y lo cubre `eventLog.test.ts`), y el castillo
   en obra (sólo el contorno). En la base de desarrollo smoke_runner queda en Castillos con su castillo, y sus guardias
   junto a (277, 19).
+- **Repaso (2026-11-17):** comprobados el botón «Edad de los Castillos (120/120 bienes)» de una ciudad en Hierro,
+  «Castillo» habilitado con su coste y el texto del lado de la víctima; el castillo en obra sigue sin comprobar en el
+  navegador ([§E24](#e24--guerras-entre-clanes), «Repaso de los tests»).
 
 ## E24 — Guerras entre clanes
 
@@ -2511,3 +2516,30 @@ Contra la base de desarrollo, que el servidor llevó de la migración 25 a la 26
   cámara a [HUM] tras la recarga), los avisos y las entradas del registro de la guerra del lado del jugador (los
   comprobó el humo y los cubre `eventLog.test.ts`) y el marcador que sube en el panel. Siguen pendientes las
   comprobaciones de §E22 y §E23.
+
+### Repaso de los tests (2026-11-17, rama `claude/tests-guerras-clan`)
+
+- **Simulación.** `TestUnaConquistaEnGuerraPuntuaAlConfirmarse`: una conquista entre los dos lados suma 10 en el tick
+  en que vuelve la confirmación y no en el que la base la escribe, sobre el territorio de un miembro y sobre el del
+  clan enemigo, y nada si la base la rechaza. `TestUnaCaravanaQueMataUnCastilloNoPuntua`: la caravana muere sin
+  puntos y un aldeano muerto por el mismo castillo suma 1. En el juego un castillo no llega a disparar a una caravana
+  (sólo apunta a quien ataca a su dueño y la caravana no ataca), así que el golpe mortal se aplica con `KillByCastle`,
+  un gancho que sólo existe en los tests; precisión en la spec.
+- **Integración.** `CaptureTerritory` escribe `war` en una sola fila de su evento, también con un clan dueño (una fila
+  por miembro y `war` sólo en la de quien lo gana), y `DestroyBuilding` en su payload; `WarScores` suma esos puntos.
+- **INV-CLAN-009**, siete mutaciones nuevas, cada una vista fallar (ficha).
+- **En el navegador**, con el servidor arrancado con `EO_TREATY_BREAK_NOTICE_MINUTES=1` y el panel oculto (sólo se
+  leyó el texto de la página; sin `requestAnimationFrame` el mapa no se dibuja):
+  - el formulario de alta, al salir, con la línea «Unidad propia: …» de cada civilización (§E22);
+  - smoke_norse, sembrado con `EO_DEVSEED_STOCK_FOR=smoke_norse`, avanzó de Piedra a Castillos desde el HUD: en
+    Hierro, el botón «Edad de los Castillos (120/120 bienes)» y «Castillo» deshabilitado con «El castillo pide la
+    Edad de los Castillos.»; en Castillos, «Faltan 160 de madera y 80 de piedra.» y, sembrado otra vez, «Castillo»
+    habilitado con «Encarga el castillo: 500 de madera y 800 de piedra, unos 180 s…» (§E23). Por el camino construyó
+    su taller, elaboró 10 pieles y entrenó un berserker. **El castillo no se encargó**;
+  - tras `smoke.mjs --castillo` (verde, 24 comprobaciones), smoke_victim vio en «Mientras no estabas» «El castillo de
+    smoke_runnerpolis mató a uno de tus guerreros cerca de (293, 19)» (§E23).
+- **Sin comprobar en el navegador** (piden el mapa, y el panel estuvo oculto toda la sesión): el texto «No se puede:
+  …tregua» al volver a declarar durante la tregua; «Legionario · Romanos» en el panel de selección (§E22); las
+  siluetas del berserker (smoke_norse ya tiene uno junto a su ciudad, en (508, 283)), del catafracto y del arquero a
+  caballo (no hay jugadores bizantinos ni persas en la base de desarrollo); y el castillo en obra (smoke_norse está en
+  Castillos con el almacén justo para encargarlo).
