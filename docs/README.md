@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta y cuatro, del 001
-al 044, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta y cinco, del 001
+al 045, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -298,7 +298,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E23 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E24 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -385,6 +385,11 @@ Matices que conviene no maquillar:
   con [ADR-044](decisions/ADR-044-castle-shooting.md) y la migración `000025`. De Hierro se avanza a la Edad de los
   Castillos pagando 120 bienes ajenos, y el castillo de la zona urbana golpea a quien ataca a su dueño
   ([roadmap/milestones.md](roadmap/milestones.md) §E23).
+- **E24 Guerras entre clanes está en `main`** desde `66ad94b`, con la CI en verde el 2026-11-17 y una prueba en vivo con
+  el humo `--guerra-clan` y el navegador ese mismo día; [SPEC-CLAN-WARS](specs/clan-wars.md) está en `Implemented`,
+  con [ADR-045](decisions/ADR-045-clan-wars.md) y la migración `000026`. El líder de un clan declara la guerra a otro,
+  los pactos entre sus miembros terminan, un marcador público suma bajas, derribos y conquistas, y la guerra termina en
+  paz, rendición o plazo con un resultado en el historial ([roadmap/milestones.md](roadmap/milestones.md) §E24).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

@@ -2454,7 +2454,7 @@ Contra la base de desarrollo, que el servidor llevó de la migración 24 a la 25
 
 ## E24 — Guerras entre clanes
 
-**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-guerras-clan`. Contrato:
+**Estado: HECHO (2026-11-17)**, fusionado en `main` (`66ad94b`) con la CI en verde el mismo día. Contrato:
 [SPEC-CLAN-WARS](../specs/clan-wars.md), aceptada el 2026-11-17 con sus once decisiones de producto, y
 [ADR-045](../decisions/ADR-045-clan-wars.md).
 

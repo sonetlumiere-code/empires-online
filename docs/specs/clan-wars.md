@@ -7,7 +7,7 @@ rendición, una paz de mutuo acuerdo o el plazo, con un resultado que queda en l
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLAN-WARS` |
-| Estado | Accepted (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10; en `main` desde la fusión `66ad94b`, con la CI en verde. |
 | Milestone | E24 Guerras entre clanes (vigesimocuarto slice después de M7) |
 | Canon | §1.5 (determinismo), §11 (diplomacia), §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores) |
 | Depende de | [clans.md](clans.md), [clan-governance.md](clan-governance.md), [clan-territories.md](clan-territories.md), [clan-alliances.md](clan-alliances.md), [diplomacy.md](diplomacy.md), [factions.md](factions.md), [combat-raid.md](combat-raid.md), [combat-siege.md](combat-siege.md), [territory-conquest.md](territory-conquest.md), [castle-age.md](castle-age.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
