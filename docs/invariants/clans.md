@@ -273,6 +273,77 @@ estaba en curso termina.
 
 ---
 
+<a id="inv-clan-008"></a>
+## INV-CLAN-008 — Una guerra entre clanes es única por par, nunca convive con una alianza entre ellos y respeta el tope de declaradas
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E24 |
+| Política ante violación | REJECT |
+| Cobertura | Sin cobertura todavía (E24) |
+
+**Enunciado.** Entre dos clanes vivos hay como mucho una guerra abierta (`DECLARED` o `ACTIVE`), en cualquier sentido,
+y nunca a la vez que una alianza `ACTIVE` entre ellos. Ningún clan tiene más de `EO_CLAN_MAX_WARS` guerras abiertas
+declaradas por él. Ninguna guerra nace entre dos clanes que terminaron otra hace menos de
+`EO_CLAN_WAR_COOLDOWN_HOURS`. Sólo el líder de un clan declara, ofrece la paz, la retira o se rinde en su nombre.
+
+**Razón.** Es lo que hace de la guerra una relación predecible ([SPEC-CLAN-WARS](../specs/clan-wars.md) Q2, Q6, Q7 y
+Q9). Dos guerras abiertas entre el mismo par harían ambiguo su marcador y su final, una guerra con una alianza
+activa juntaría paz y compromiso contra el otro entre los mismos clanes, y sin tope un clan grande declararía a todos
+a la vez.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — el tick valida cada orden contra `clanState`: el líder, el estado del par, la alianza, el tope (contando
+  las declaraciones en vuelo) y la tregua.
+- `DB` — la transacción de cada orden toma los candados de los dos clanes en orden de `id` y vuelve a comprobar todo;
+  un índice único parcial sobre el par sin orden para las guerras abiertas; los triggers `clan_wars_alliance_guard` y
+  `clan_alliances_war_guard` rechazan con `23514` una guerra que nace con una alianza activa y una alianza que nace o
+  se acepta con una guerra abierta ([ADR-045](../decisions/ADR-045-clan-wars.md) §7).
+
+**Cómo se verifica.** En la simulación, cada fila de §5 de la spec para cada orden. En la integración, el índice por
+par, el tope con dos declaraciones, un ex líder que ya no declara, la tregua y los dos triggers.
+
+**Violación en runtime.** Rechazo: la orden no escribe nada y vuelve como `INVALID_TARGET`. Una guerra que la carga
+encuentra mal formada se cierra en la RAM y se registra.
+
+---
+
+<a id="inv-clan-009"></a>
+## INV-CLAN-009 — Cada punto del marcador de una guerra lo lleva un evento de un hecho entre sus dos lados, y al arrancar el marcador es la suma de esos eventos
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E24 |
+| Política ante violación | REPAIR |
+| Cobertura | Sin cobertura todavía (E24) |
+
+**Enunciado.** Un punto sólo se suma al marcador de una guerra por una muerte, un derribo o una captura en que el
+autor y la víctima (o el clan dueño del territorio) son, en ese tick, miembros de los dos lados de esa guerra en
+`ACTIVE`, con 1, 3 o 10 puntos según el hecho; y el evento de `world_events` de ese hecho lleva en su payload la
+guerra, el clan y los puntos. Al arrancar, el marcador de cada guerra abierta es exactamente la suma de los puntos de
+sus eventos por clan.
+
+**Razón.** El marcador decide el vencedor por plazo y es público ([SPEC-CLAN-WARS](../specs/clan-wars.md) Q3, Q4 y
+Q10). Un punto sin hecho, o un hecho sin punto, cambiaría quién gana; y un marcador que se pierde o cambia con un
+reinicio haría trampa a alguno de los dos clanes.
+
+**Cómo se garantiza.** `DOMAIN` — la simulación decide los puntos en el tick del hecho y los escribe en el payload del
+evento, que va en la transacción del hecho; la carga los suma con un índice de expresión
+([ADR-045](../decisions/ADR-045-clan-wars.md) §4).
+
+**Cómo se verifica.** En la simulación, cada hecho que puntúa y los que no (una caravana, un saqueo, un golpe que no
+mata, alguien que ya salió o que aún no entró, la guerra en preparación). En la recuperación, el marcador recalculado
+tras un reinicio coincide con el de antes de parar. En la integración, la suma desde `world_events`.
+
+**Violación en runtime.** La carga toma la suma de los eventos como verdad: el marcador de la RAM se reemplaza.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -284,3 +355,5 @@ estaba en curso termina.
 | INV-CLAN-005 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-CLAN-001](#inv-clan-001), [INV-SEC-004](security.md#inv-sec-004) |
 | INV-CLAN-006 | `internal/game/simulation`, `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-CLAN-002](#inv-clan-002), [INV-DIPLO-002](diplomacy.md#inv-diplo-002), [INV-DIPLO-003](diplomacy.md#inv-diplo-003) |
 | INV-CLAN-007 | `internal/game/simulation` | [INV-CLAN-003](#inv-clan-003), [INV-COMBAT-002](combat.md#inv-combat-002) |
+| INV-CLAN-008 | `internal/game/simulation`, `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-CLAN-006](#inv-clan-006), [INV-CLAN-005](#inv-clan-005) |
+| INV-CLAN-009 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-PERSIST-005](persistence.md#inv-persist-005) |

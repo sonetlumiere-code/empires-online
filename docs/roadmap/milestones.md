@@ -2451,3 +2451,40 @@ Contra la base de desarrollo, que el servidor llevó de la migración 24 a la 25
   a uno de tus …» del lado de la víctima (lo comprobó el humo como aviso y lo cubre `eventLog.test.ts`), y el castillo
   en obra (sólo el contorno). En la base de desarrollo smoke_runner queda en Castillos con su castillo, y sus guardias
   junto a (277, 19).
+
+## E24 — Guerras entre clanes
+
+**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-guerras-clan`. Contrato:
+[SPEC-CLAN-WARS](../specs/clan-wars.md), aceptada el 2026-11-17 con sus once decisiones de producto, y
+[ADR-045](../decisions/ADR-045-clan-wars.md).
+
+**Objetivo.** Que el conflicto entre dos clanes tenga principio, compromiso y final: una guerra que declara un líder,
+que rompe los pactos entre los miembros de los dos clanes para que nadie haga una paz por separado, con un marcador
+público y un resultado que queda en la historia de los dos. Cierra la fase Clans del roadmap.
+
+**Alcance.** `clan.war.declare`, `clan.war.peace` y `clan.war.surrender` (de 44 a 47 comandos), sólo para el líder;
+15 minutos de preparación, 72 horas de guerra como mucho (`EO_CLAN_WAR_HOURS`) y 24 de tregua sin paz
+(`EO_CLAN_WAR_COOLDOWN_HOURS`); una guerra declarada abierta por clan (`EO_CLAN_MAX_WARS`); los pactos y alianzas entre
+los miembros de los dos clanes en preaviso y ninguno nuevo; el marcador (1 por baja, 3 por edificio destruido, 10 por
+territorio ganado) en el payload de los eventos que puntúan; el final por paz, rendición, plazo o disolución, con el
+historial; `wars` y `warRecord` en `clan.update` y en `clan.info`; los eventos `ClanWar*`, tres tipos nuevos en el
+registro y en los avisos; `INV-CLAN-008`, `INV-CLAN-009` e `INV-DIPLO-004`; migración `000026` (`clan_wars`, sus
+triggers y el índice del marcador); el cliente y `scripts/smoke.mjs --guerra-clan`. **No entra** (spec §2): bonos de
+guerra, tributo o premio material, levantar la paz de la Orden o la protección offline, llamada a las armas de los
+aliados, coaliciones, guerras contra jugadores sin clan, objetivos de guerra, puntos por saqueo o caravanas, rankings.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-045](../decisions/ADR-045-clan-wars.md), `INV-CLAN-008`, `INV-CLAN-009` e
+   `INV-DIPLO-004`, y las precisiones de `RN-CLAN-008` ([clans.md](../specs/clans.md)), `RN-CLANALLY-001`
+   ([clan-alliances.md](../specs/clan-alliances.md)) y `RN-DIPLO-001` ([diplomacy.md](../specs/diplomacy.md)).
+2. **PENDIENTE** — Dominio: la guerra, su máquina de estados, los puntos y el resultado (`internal/domain/clan`).
+3. **PENDIENTE** — Migración `000026` y persistencia: `clan_wars`, los triggers, el índice del marcador, cada orden
+   con los dos candados, el final en la disolución, la carga y la vista pública.
+4. **PENDIENTE** — Simulación: las guerras en `clanState`, las órdenes en dos fases, `enforceWarTreaties`, el marcador
+   en los eventos, el comienzo y el plazo, el final por disolución y el golden «guerra de clanes».
+5. **PENDIENTE** — Protocolo y registro: los tres comandos, `wars` y `warRecord`, los tres tipos nuevos; contract
+   tests (Go y Zod) y su e2e.
+6. **PENDIENTE** — Cliente: la sección «Guerras» del panel, «Declarar la guerra» en la vista pública, «En guerra con
+   [TAG]» en la barra de una ciudad ajena y los textos del registro y de los avisos.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --guerra-clan`.

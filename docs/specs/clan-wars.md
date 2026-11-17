@@ -1,19 +1,19 @@
 # Guerras entre clanes: la guerra declarada, su marcador y cómo termina
 
-Propuesta para que un clan pueda declarar la guerra a otro: el líder la declara, los dos clanes quedan comprometidos
+Para que un clan pueda declarar la guerra a otro: el líder la declara, los dos clanes quedan comprometidos
 durante un plazo, cada baja, derribo y conquista entre ellos suma en un marcador público, y la guerra termina con una
 rendición, una paz de mutuo acuerdo o el plazo, con un resultado que queda en la historia de los dos clanes.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CLAN-WARS` |
-| Estado | Draft (2026-11-17). Pendiente de las decisiones de producto de §10; prohibido implementar contra ella hasta su aceptación. |
+| Estado | Accepted (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E24 Guerras entre clanes (vigesimocuarto slice después de M7) |
 | Canon | §1.5 (determinismo), §11 (diplomacia), §12 (persistencia), §13 (protocolo), §14 (seguridad), §16 (errores) |
 | Depende de | [clans.md](clans.md), [clan-governance.md](clan-governance.md), [clan-territories.md](clan-territories.md), [clan-alliances.md](clan-alliances.md), [diplomacy.md](diplomacy.md), [factions.md](factions.md), [combat-raid.md](combat-raid.md), [combat-siege.md](combat-siege.md), [territory-conquest.md](territory-conquest.md), [castle-age.md](castle-age.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-027](../decisions/ADR-027-hot-treaties.md) (tratados en caliente: dos fases y vencimientos optimistas), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro leído de `world_events`), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (trabajos de dos claves), [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (el clan como fuente de paz, con las estancias de `clan_members`) y [ADR-042](../decisions/ADR-042-clan-alliances.md) (la alianza entre clanes y sus dos candados). Propone el **ADR-045** (§7): la guerra como relación entre clanes que no toca `AtPeace`, y su marcador derivado de `world_events`. |
-| Reemplaza a | En [clan-alliances.md](clan-alliances.md) §2 y Q10, «guerras declaradas entre clanes» del no-scope; lo mismo en la fase Clans de [../roadmap/roadmap.md](../roadmap/roadmap.md) («Quedan las guerras declaradas entre clanes»). Precisaría `RN-CLAN-008` (las guerras abiertas de un clan y su historial son públicos, Q10), `RN-CLANALLY-001` (no hay oferta de alianza entre dos clanes en guerra, Q9) y `RN-DIPLO-001` (no se firma un pacto ni una alianza entre miembros de dos clanes en guerra, Q1). |
-| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002), [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003), [INV-CLAN-005](../invariants/clans.md#inv-clan-005), [INV-CLAN-006](../invariants/clans.md#inv-clan-006), [INV-CLAN-007](../invariants/clans.md#inv-clan-007) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); propone dos nuevos de la familia `INV-CLAN` y uno de la familia `INV-DIPLO` (§8) |
+| Decisiones | [ADR-027](../decisions/ADR-027-hot-treaties.md) (tratados en caliente: dos fases y vencimientos optimistas), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro leído de `world_events`), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (trabajos de dos claves), [ADR-040](../decisions/ADR-040-clans-membership-and-peace.md) (el clan como fuente de paz, con las estancias de `clan_members`) y [ADR-042](../decisions/ADR-042-clan-alliances.md) (la alianza entre clanes y sus dos candados). [ADR-045](../decisions/ADR-045-clan-wars.md) (la guerra como relación entre clanes que no toca `AtPeace`, el compromiso sobre los tratados y el marcador que viaja en los eventos que puntúan; §7). |
+| Reemplaza a | En [clan-alliances.md](clan-alliances.md) §2 y Q10, «guerras declaradas entre clanes» del no-scope; lo mismo en la fase Clans de [../roadmap/roadmap.md](../roadmap/roadmap.md) («Quedan las guerras declaradas entre clanes»). Precisa `RN-CLAN-008` (las guerras abiertas de un clan y su historial son públicos, Q10), `RN-CLANALLY-001` (no hay oferta de alianza entre dos clanes en guerra, Q9) y `RN-DIPLO-001` (no se firma un pacto ni una alianza entre miembros de dos clanes en guerra, Q1). |
+| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-004](../invariants/security.md#inv-sec-004), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-DIPLO-002](../invariants/diplomacy.md#inv-diplo-002), [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003), [INV-CLAN-005](../invariants/clans.md#inv-clan-005), [INV-CLAN-006](../invariants/clans.md#inv-clan-006), [INV-CLAN-007](../invariants/clans.md#inv-clan-007) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); asigna [INV-CLAN-008](../invariants/clans.md#inv-clan-008), [INV-CLAN-009](../invariants/clans.md#inv-clan-009) e [INV-DIPLO-004](../invariants/diplomacy.md#inv-diplo-004) (§8) |
 
 ## 1. Objetivo
 
@@ -101,11 +101,12 @@ La guerra **no es una fuente de paz ni la quita**: `State.AtPeace` no cambia (Q1
   declara (`RN-FAC-006` hace lo mismo con el bando contrario). Como la preparación dura lo mismo que el preaviso, los
   pactos terminan cuando la guerra empieza. Una alianza entre jugadores que termina saca las guarniciones (E6). El
   `TRADE` no se toca: comerciar con el enemigo no da paz.
-- **Prohíbe firmar otros.** Mientras la guerra está abierta no se propone ni se acepta un `NON_AGGRESSION` ni una
-  `ALLIANCE` entre miembros de los dos clanes (`INVALID_TARGET`, «vuestros clanes están en guerra»). Las ofertas
-  pendientes entre ellos pasan a `EXPIRED` al declararse.
+- **Prohíbe firmar otros.** Mientras la guerra está abierta, o su declaración espera la base, no se propone ni se acepta
+  un `NON_AGGRESSION` ni una `ALLIANCE` entre miembros de los dos clanes (`INVALID_TARGET`, «vuestros clanes están en
+  guerra»). Las ofertas pendientes entre ellos pasan a `EXPIRED` al declararse. Un tratado con una orden en vuelo se
+  mira en el barrido siguiente, de cada segundo, cuando la orden vuelve (ADR-045 §3).
 - **Quien entra en uno de los clanes** durante la guerra entra en ella: sus pactos con los miembros del otro clan
-  empiezan su preaviso cuando se confirma su entrada. **Quien sale** deja de estar en guerra en el acto; su paz
+  empiezan su preaviso en el tick en que vuelve su entrada. **Quien sale** deja de estar en guerra en el acto; su paz
   residual con sus excompañeros (E18) sigue como hoy.
 - **No toca** la paz de la Orden (dos miembros de `ORDER` siguen sin poder agredirse, aunque sus clanes estén en guerra,
   Q8), la paz del clan ni la residual, la protección offline, las Safe Zones ni ninguna regla de combate. Tampoco da
@@ -150,16 +151,17 @@ hace a un miembro del otro (o al otro clan, en un territorio de clan), con la pe
 | Hecho | Puntos para el clan del autor | Se lee de |
 |---|---|---|
 | Una unidad enemiga muerta, de cualquier tipo salvo la caravana, también por la respuesta automática o por el castillo | 1 | `UnitKilled` |
-| Un edificio enemigo destruido (casa, en obra o completa, o castillo) | 3 | `BuildingDestroyed` |
+| Un edificio enemigo destruido (cualquiera que se pueda derribar: casa, taller o castillo, en obra o completo) | 3 | `BuildingDestroyed` |
 | Un territorio ganado a un miembro del otro clan o al otro clan | 10 | `TerritoryControlChanged` |
 
 No suman el saqueo, las caravanas capturadas, los golpes que no matan ni nada entre miembros que no estaban en guerra en
 ese instante (quien salió del clan, quien todavía no había entrado). Los puntos son un catálogo del dominio, no
 variables de entorno: son reglas del juego, como los costes de las unidades.
 
-El marcador lo lleva la RAM, que lo suma en el tick en que emite el evento (en la conquista, cuando vuelve la
-transacción). Al arrancar se **recalcula** desde `world_events` y las estancias de `clan_members`, que son durables; al
-terminar la guerra se congela en su fila (§7, ADR-045).
+El marcador lo lleva la RAM, que decide los puntos en el tick del hecho y los suma (en la conquista, cuando vuelve la
+transacción). El evento que puntúa lleva la guerra, el clan y los puntos en su payload (`war`), escritos en la
+transacción del hecho. Al arrancar, el marcador de cada guerra abierta se **recalcula** sumando esos eventos, y la vista
+pública usa la misma suma; al terminar la guerra, la RAM lo congela en su fila (§7, ADR-045 §4).
 
 ### 4.5 Cómo termina y qué queda
 
@@ -187,7 +189,7 @@ Dominio: `RN-CLANWAR`.
 | `RN-CLANWAR-001` | Entre dos clanes vivos hay como mucho una guerra abierta (`DECLARED` o `ACTIVE`), en cualquier sentido. Un clan tiene como mucho `EO_CLAN_MAX_WARS` guerras abiertas declaradas por él; las recibidas no cuentan (Q7). |
 | `RN-CLANWAR-002` | Sólo el líder de un clan declara, ofrece la paz, la retira o la rechaza, y se rinde (Q2). |
 | `RN-CLANWAR-003` | No se declara la guerra entre dos clanes con una alianza `ACTIVE`, también en preaviso; con una guerra abierta no se propone ni se acepta una alianza entre los dos, y la oferta pendiente caduca al declararse (Q9). |
-| `RN-CLANWAR-004` | **Compromiso.** Al declararse, todo `NON_AGGRESSION` o `ALLIANCE` vigente entre miembros de los dos clanes que no esté en preaviso empieza el suyo, y sus ofertas pendientes caducan; mientras la guerra esté abierta no se propone ni se acepta otro. Quien entra en uno de los clanes entra en la guerra: sus pactos con el otro clan empiezan su preaviso al confirmarse la entrada (Q1). |
+| `RN-CLANWAR-004` | **Compromiso.** Al declararse, todo `NON_AGGRESSION` o `ALLIANCE` vigente entre miembros de los dos clanes que no esté en preaviso empieza el suyo, y sus ofertas pendientes caducan; mientras la guerra esté abierta no se propone ni se acepta otro. Quien entra en uno de los clanes entra en la guerra: sus pactos con el otro clan empiezan su preaviso al volver su entrada (Q1). |
 | `RN-CLANWAR-005` | **La guerra no cambia la paz.** `AtPeace` no la lee: no levanta la paz de la Orden, del clan, de una alianza ni la residual, ni la protección offline, ni las Safe Zones, y no da bonos (Q1, Q8). |
 | `RN-CLANWAR-006` | **Plazos.** La preparación dura `EO_TREATY_BREAK_NOTICE_MINUTES`; la guerra, como mucho `EO_CLAN_WAR_HOURS` desde que empieza; tras terminar, ninguno de los dos clanes declara al otro durante `EO_CLAN_WAR_COOLDOWN_HOURS` (Q6). |
 | `RN-CLANWAR-007` | **Marcador.** Sólo en `ACTIVE`, y sólo entre quienes son miembros de cada clan en el instante del hecho: 1 punto por unidad enemiga muerta (no caravanas), 3 por edificio destruido, 10 por territorio ganado (Q3). |
@@ -232,7 +234,7 @@ Sólo códigos que ya existen en el catálogo (canon §16).
 
 **Cliente → servidor.** Tres comandos nuevos y estrictos (R-VER-3), con la forma de los de E21. Van en `CommandTypes` y
 en `actions.go` como **no hostiles**, con su trabajo de la cola de dos claves (`clan:<a>`, `clan:<b>`), que entra en
-`simulation.JobNames`. El catálogo pasaría de 44 a 47 comandos.
+`simulation.JobNames`. El catálogo pasa de 44 a 47 comandos.
 
 - `clan.war.declare { clanId }`.
 - `clan.war.peace { warId, offer }`.
@@ -286,7 +288,7 @@ de los pactos que rompe.
 | Autoritativo en RAM | Las guerras abiertas de todo el mundo, con sus ofertas de paz, sus plazos y su marcador, y los finales recientes (para la tregua) y los recuentos del historial de cada clan, junto a los clanes (`clanRecord`), cargados con el mundo |
 | Write-through | Cada transición en su trabajo de la cola, con las dos claves de clan y su `world_events` en la misma transacción; el final, con el marcador congelado. El final por disolución, en la transacción de la disolución de E19 |
 | Dirty-flag | Nada |
-| Reconstruible / no persistido | El marcador de una guerra abierta, que se recalcula al arrancar desde `world_events` y `clan_members` |
+| Reconstruible / no persistido | El marcador de una guerra abierta, que se recalcula al arrancar sumando los puntos que llevan sus eventos de `world_events` |
 
 **Por qué hace falta un ADR (ADR-045).** Tres decisiones estructurales:
 
@@ -296,34 +298,40 @@ de los pactos que rompe.
    el bando contrario (`RN-FAC-006`), y las propuestas se rechazan con una comprobación más. Se descarta una «guerra que
    levanta la paz» (que dejaría a dos miembros de la Orden pegarse) porque rompería [INV-DIPLO-003](../invariants/diplomacy.md#inv-diplo-003)
    en su espíritu y convertiría `AtPeace` en una consulta con prioridades.
-2. **El marcador se deriva de `world_events`.** Sus tres hechos ya se escriben como eventos durables con
-   `player_id`, `counterpart_player_id` y `atMs` (ADR-028), y la pertenencia en cada instante sale de las estancias de
-   `clan_members` (ADR-040). La RAM lo suma en el tick; al arrancar se recalcula con una consulta por guerra abierta; al
-   terminar se congela en la fila. Se descartan un contador con dirty-flag, que tras una caída podría no cuadrar con el
-   registro, y un write-through por punto, que metería una escritura en cada muerte.
+2. **El marcador viaja en los eventos que puntúan.** Sus tres hechos ya se escriben como eventos durables en la
+   transacción del hecho (ADR-028). La RAM decide los puntos en el tick y los añade al evento (`war`); al arrancar se
+   recalcula sumándolos, con un índice de expresión; al terminar se congela en la fila. Se descartan un contador con
+   dirty-flag, que tras una caída podría no cuadrar con los hechos escritos, un write-through por punto, que metería una
+   escritura en cada muerte, y derivar la pertenencia de las estancias de `clan_members`, que no coincidiría con la RAM
+   en la ventana de una entrada en dos fases.
 3. **Dos candados de clan en cada orden**, como las alianzas (ADR-042 §2): la transacción toma el de los dos clanes en
-   orden de `id` y comprueba el líder, el tope, la alianza y la tregua. La ruptura de los pactos entre miembros va en la
-   misma transacción que la declaración, con los tratados afectados leídos bajo los candados.
+   orden de `id` y comprueba el líder, el tope, la alianza y la tregua. La ruptura de los pactos entre miembros no va en
+   esa transacción: la aplica la RAM con escrituras tolerantes en la clave de cada tratado, al volver la declaración, al
+   volver una entrada o una aceptación y en un barrido de cada segundo, porque una aceptación en vuelo con la clave de
+   su par de jugadores podría escribirse después de la guerra (ADR-045 §3).
 
 **Migración `000026`.**
 
 - Una tabla nueva, `clan_wars`, con estas columnas:
   - `id` (identidad);
   - `attacker_clan` y `defender_clan`, con FK a `clans` (`CHECK (attacker_clan <> defender_clan)`);
-  - `declared_by_player`;
+  - `declared_by_player` y `request_id`, únicos juntos;
   - `status`, con el `CHECK` de los tres estados;
-  - `request_id`;
   - `declared_at`, `starts_at` y `ends_at` (el plazo);
   - `peace_offered_by_attacker` y `peace_offered_by_defender`;
   - `ended_at`, `end_reason` (con su `CHECK`), `winner_clan` (FK, `NULL` en empate), `attacker_score` y
     `defender_score`, con un `CHECK` que exige los cuatro primeros sólo en `ENDED`.
 
-  Un índice único parcial sobre el par sin orden (`LEAST`, `GREATEST`) para las guerras abiertas. Se suma al `TRUNCATE`
-  de `testenv_integration_test.go` y a la clasificación de [../database/schema.md](../database/schema.md) §1.
-- Un trigger rechaza que nazca una guerra entre dos clanes con una alianza `ACTIVE` (23514), y otro que nazca o se
-  acepte una alianza entre dos clanes con una guerra abierta, como red de seguridad bajo la comprobación del tick
-  ([INV-PERSIST-005](../invariants/persistence.md#inv-persist-005)).
-- La siguiente migración libre pasaría a ser `000027`.
+  Un índice único parcial sobre el par sin orden (`LEAST`, `GREATEST`) para las guerras abiertas, e índices por clan.
+  Se suma al `TRUNCATE` de `testenv_integration_test.go` y a la clasificación de
+  [../database/schema.md](../database/schema.md) §1.
+- Un índice de expresión parcial sobre `world_events` por la guerra del campo `war` del payload, para la suma del
+  marcador.
+- Tres triggers, como red de seguridad bajo la comprobación del tick
+  ([INV-PERSIST-005](../invariants/persistence.md#inv-persist-005)), que rechazan con 23514: que nazca una guerra entre
+  dos clanes con una alianza `ACTIVE`; que nazca o se acepte una alianza entre dos clanes con una guerra abierta; y que
+  nazca una guerra con un clan disuelto.
+- La siguiente migración libre pasa a ser `000027`.
 
 **Los finales recientes** se cargan con su fecha, para que un reinicio no acorte la tregua, y los recuentos del
 historial salen de las guerras `ENDED` de cada clan.
@@ -344,16 +352,20 @@ historial salen de las guerras `ENDED` de cada clan.
   entre clanes, que no convive con una guerra entre los mismos.
 - [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005): la migración `000026`.
 
-**Propone** dos invariantes nuevos de la familia `INV-CLAN` y uno de la familia `INV-DIPLO`:
+**Asigna** tres invariantes nuevos, registrados en [../invariants/clans.md](../invariants/clans.md) y
+[../invariants/diplomacy.md](../invariants/diplomacy.md):
 
-- **Una guerra abierta por par, nunca con alianza.** Entre dos clanes hay como mucho una guerra abierta, nunca a la vez
-  que una alianza activa entre ellos, y un clan no supera el tope de guerras declaradas abiertas. Lo garantizan el
-  índice único, los triggers y la transacción con los dos candados.
-- **El marcador es el de `world_events`.** El marcador de una guerra (el de la RAM mientras está abierta y el congelado
-  al terminar) es exactamente la suma de §4.4 sobre los eventos entre miembros de los dos clanes durante `ACTIVE`; tras
-  un reinicio, el recalculado coincide con el que llevaba la RAM.
-- **Sin paz por separado** (`INV-DIPLO`). Mientras dos clanes están en guerra abierta no nace ningún `NON_AGGRESSION`
-  ni `ALLIANCE` entre miembros de los dos, y desde la declaración ninguno de los vigentes sigue sin preaviso.
+- [INV-CLAN-008](../invariants/clans.md#inv-clan-008), **una guerra bien formada.** Entre dos clanes hay como mucho una
+  guerra abierta, nunca a la vez que una alianza activa entre ellos, ningún clan supera el tope de guerras declaradas
+  abiertas, y sólo el líder declara, ofrece la paz o se rinde. Lo garantizan el índice único, los triggers y la
+  transacción con los dos candados.
+- [INV-CLAN-009](../invariants/clans.md#inv-clan-009), **el marcador es el de los eventos.** Cada punto del marcador
+  lo lleva un evento de `world_events` de un hecho entre miembros de los dos lados con la guerra `ACTIVE`, con los
+  puntos de §4.4; al arrancar, el marcador de cada guerra abierta es exactamente la suma de esos eventos.
+- [INV-DIPLO-004](../invariants/diplomacy.md#inv-diplo-004), **sin paz por separado.** Mientras dos clanes están en
+  guerra abierta, el tick no acepta ningún `NON_AGGRESSION` ni `ALLIANCE` entre miembros de los dos, y todo
+  `NON_AGGRESSION` o `ALLIANCE` vigente entre ellos está en preaviso desde la pasada de `enforceWarTreaties` siguiente
+  a la declaración, a la entrada o a su aceptación.
 
 ## 9. Tests esperados
 
@@ -366,12 +378,12 @@ historial salen de las guerras `ENDED` de cada clan.
 | contract / e2e | Los tres comandos contra el JSON Schema. `wars` y `warRecord` en `clan.update` y en `clan.info`. Los tres tipos nuevos del registro y de los avisos. Por WebSocket: un líder declara, los miembros de los dos clanes reciben el aviso, un raso no puede rendirse y los oficiales ven la oferta de paz |
 | cliente | La sección «Guerras» con el marcador y sus cuentas atrás. Los botones según el rango. «Declarar la guerra» en la vista pública con su motivo. «En guerra con [TAG]» en la barra de una ciudad ajena. El historial. Los textos del registro y de los avisos. `scripts/smoke.mjs --guerra-clan`: `smoke_clan_b` funda un segundo clan, `smoke_clan_a` (líder de `[HUM]`) le declara la guerra con una preparación corta (por variable de entorno); se comprueba el marcador tras una muerte entre los dos; `smoke_clan_b` ofrece la paz y `smoke_clan_a` la acepta. Al final `smoke_clan_b` sale de su clan, que se disuelve, para que `--clan` lo siga encontrando sin clan, con la tregua corta para que una pasada siguiente pueda volver a declarar |
 
-## 10. Decisiones de producto (pendientes)
+## 10. Decisiones de producto (2026-11-17)
 
-Preguntas abiertas. Cada una lleva la recomendación (en negrita) y sus alternativas. Son decisiones de producto, no de
-ingeniería: la spec no se acepta hasta tenerlas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una. Son decisiones de producto,
+no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué es una guerra y qué cambia? | **Una relación entre dos clanes, declarada por uno sin que el otro acepte, que compromete a los dos: rompe los pactos y alianzas entre sus miembros (con el preaviso de E6, que coincide con la preparación) y prohíbe firmar otros mientras dure, y lleva un marcador. No da bonos ni quita ninguna otra paz.** Es lo que hoy falta: que un clan se comprometa entero contra otro sin que cada miembro tenga una paz por separado, y saber quién gana. Alternativas: **una guerra declarativa**, con marcador y resultado pero sin tocar los pactos (más suave, pero entonces el clan no se compromete a nada); **una guerra con bono** (más daño, más botín o conquista más rápida contra el enemigo), que es balance sin datos. |
 | Q2 | ¿Quién declara, ofrece la paz y se rinde? | **Sólo el líder. Los oficiales ven las ofertas de paz, pero no deciden.** Igual que la alianza (Q3 de E21): la declaración rompe los pactos de todos y la rendición entrega una derrota a todos. Alternativas: **el líder y los oficiales**, más ágil, pero un oficial podría declarar una guerra que el líder no quiere; **los oficiales ofrecen la paz y sólo el líder declara y se rinde**. |

@@ -456,6 +456,40 @@ alianza con el Caos empieza su preaviso al entrar en la Orden; la de un neutral,
 
 ---
 
+<a id="inv-diplo-004"></a>
+## INV-DIPLO-004 — Entre dos clanes en guerra no nace un pacto ni una alianza entre sus miembros, y el que quede vigente está en preaviso
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E24 |
+| Política ante violación | REPAIR |
+| Cobertura | Sin cobertura todavía (E24) |
+
+**Enunciado.** Mientras dos clanes tienen una guerra abierta, o su declaración espera la base, el tick no acepta ningún
+`treaty.propose` ni `treaty.respond` con `accept` de un `NON_AGGRESSION` o una `ALLIANCE` entre un miembro de uno y un
+miembro del otro; y todo `NON_AGGRESSION` o `ALLIANCE` `ACTIVE` entre ellos tiene `break_effective_at` desde la pasada
+de `enforceWarTreaties` siguiente a la declaración, a la entrada del miembro o a la aceptación del tratado.
+
+**Razón.** La guerra compromete a todo el clan: nadie hace una paz por separado ([SPEC-CLAN-WARS](../specs/clan-wars.md)
+Q1). Un pacto vigente sin fecha de fin entre dos miembros de clanes en guerra sería una paz que la guerra prohíbe, y
+nadie la rompería sola.
+
+**Cómo se garantiza.** `DOMAIN` — el tick rechaza las propuestas y aceptaciones entre los dos lados (`INVALID_TARGET`,
+«vuestros clanes están en guerra»); `enforceWarTreaties` abre el preaviso de los vigentes y expira las ofertas, con
+escrituras tolerantes en la clave de cada tratado, al volver la declaración, una entrada o una aceptación, y en un
+barrido de cada segundo ([ADR-045](../decisions/ADR-045-clan-wars.md) §3).
+
+**Cómo se verifica.** En la simulación, los pactos que ya existían, el de quien entra en un clan en guerra y una
+aceptación en vuelo al declarar, cada uno en preaviso en el tick esperado; una propuesta y una aceptación entre los dos
+lados, rechazadas; el comercio, que sigue.
+
+**Violación en runtime.** Una propuesta o aceptación se rechaza con `INVALID_TARGET`; un pacto vigente sin preaviso
+recibe el suyo en la pasada siguiente.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -472,6 +506,7 @@ alianza con el Caos empieza su preaviso al entrar en la Orden; la de un neutral,
 | INV-DIPLO-001 | `internal/game/simulation` | [INV-SEC-001](security.md#inv-sec-001) |
 | INV-DIPLO-002 | `migrations/`, `internal/game/simulation` | [INV-COMBAT-002](combat.md#inv-combat-002) |
 | INV-DIPLO-003 | `internal/game/simulation`, `postgres.FactionRepo` | [INV-PLAYER-013](player.md#inv-player-013), [INV-COMBAT-006](combat.md#inv-combat-006) |
+| INV-DIPLO-004 | `internal/game/simulation` | [INV-DIPLO-003](#inv-diplo-003), [INV-CLAN-008](clans.md#inv-clan-008) |
 
 ## Documentos relacionados
 
