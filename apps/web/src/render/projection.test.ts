@@ -258,6 +258,17 @@ describe('economía en la escena (SPEC-ECON-WOOD)', () => {
     expect(update.removedBuildings).toEqual([40]);
   });
 
+  it('el objetivo de un castillo llega a la escena y se borra con null (SPEC-CASTLE-AGE §4.7)', () => {
+    state().applySnapshot(snapshot({ buildings: [casa({ type: 'CASTLE', status: 'COMPLETE', hp: 1000, maxHp: 1000 })] }));
+    expect(projectLast().buildings.map((b) => b.targetUnitId)).toEqual([null]);
+    state().applyServerMessage(server('building.update', 3, { id: 40, status: 'COMPLETE', targetUnitId: 77 }));
+    expect(projectLast().buildings.map((b) => [b.type, b.targetUnitId])).toEqual([['CASTLE', 77]]);
+    state().applyServerMessage(server('building.update', 4, { id: 40, status: 'COMPLETE', hp: 990 }));
+    expect(projectLast().buildings.map((b) => b.targetUnitId), 'sin targetUnitId, no cambia').toEqual([77]);
+    state().applyServerMessage(server('building.update', 5, { id: 40, status: 'COMPLETE', targetUnitId: null }));
+    expect(projectLast().buildings.map((b) => b.targetUnitId)).toEqual([null]);
+  });
+
   it('una casa de un servidor sin asedio, sin vida, se pinta entera', () => {
     state().applySnapshot(snapshot({ buildings: [casa()] }));
     expect(projectLast().buildings.map((b) => b.hpRatio)).toEqual([1]);

@@ -316,6 +316,14 @@ export class GameClient {
   }
 
   /**
+   * Encarga el castillo en un tile de la zona urbana de una ciudad propia
+   * (SPEC-CASTLE-AGE §4.2).
+   */
+  buildCastle(cityId: number, tile: { x: number; y: number }): string {
+    return this.send('city.build', { cityId, type: 'CASTLE', x: tile.x, y: tile.y });
+  }
+
+  /**
    * Encarga al taller una elaboración (SPEC-CIVILIZATION-GOODS §4.3). Sólo la
    * ciudad: el bien, la cantidad, el coste y el tiempo los decide el servidor.
    */

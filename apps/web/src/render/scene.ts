@@ -122,11 +122,15 @@ export class IsoScene {
   private readonly hillLayer = new Graphics();
   private readonly territoryLayer = new Container();
   private readonly entityLayer = new Container();
+  /** La línea de cada castillo hacia su objetivo, encima de todo (SPEC-CASTLE-AGE §4.7). */
+  private readonly shotLayer = new Graphics();
   /** Un `Graphics` por chunk de terreno a la vista (con un chunk de holgura al retirarlos). */
   private readonly chunks = new Map<number, ChunkEntry>();
   private readonly units = new Map<number, UnitEntry>();
   private readonly cities = new Map<number, CityEntry>();
   private readonly buildings = new Map<number, BuildingEntry>();
+  /** Los castillos que apuntan a alguien: los únicos que dibujan su línea. */
+  private readonly aiming = new Set<number>();
   // La clave incluye el dueño: cambiar de dueño obliga a redibujar, y comparar
   // la firma es más barato que reconstruir el gráfico.
   private readonly territoryShapes = new Map<number, { signature: string; graphic: Graphics }>();
@@ -176,6 +180,7 @@ export class IsoScene {
     // unidades ni ciudades, que es lo que el jugador necesita poder pulsar.
     this.root.addChild(this.territoryLayer);
     this.root.addChild(this.entityLayer);
+    this.root.addChild(this.shotLayer);
     app.stage.addChild(this.root);
 
     app.stage.eventMode = 'static';
@@ -208,6 +213,7 @@ export class IsoScene {
     this.units.clear();
     this.cities.clear();
     this.territoryShapes.clear();
+    this.aiming.clear();
     this.active.clear();
     this.terrain = null;
     this.terrainDirty = false;
@@ -285,6 +291,7 @@ export class IsoScene {
     }
 
     this.stepUnits();
+    this.drawShots();
 
     // Orden de dibujado isométrico: lo que está más "al fondo" (menor x+y) se
     // pinta antes. Sin esto, una unidad delante de un edificio se dibujaría
@@ -319,6 +326,31 @@ export class IsoScene {
       this.setDepth(entry.sprite, depthOf(pos.x, pos.y) + 0.5); // por delante del terreno y de la ciudad
       // Quieta y sin desfase que corregir: hasta el próximo delta no hay nada que hacer.
       if (unit.movement === null && pos.x === unit.x && pos.y === unit.y) this.active.delete(id);
+    }
+  }
+
+  /**
+   * La línea de cada castillo completo hacia la unidad a la que apunta, con la
+   * posición interpolada de la unidad (SPEC-CASTLE-AGE §4.7). Sin castillos que
+   * apunten, no cuesta nada por frame.
+   */
+  private drawShots(): void {
+    this.shotLayer.clear();
+    for (const id of this.aiming) {
+      const entry = this.buildings.get(id);
+      const target = entry?.building.targetUnitId;
+      if (!entry || target === null || target === undefined) {
+        this.aiming.delete(id);
+        continue;
+      }
+      const unit = this.units.get(target);
+      if (!unit || !unit.sprite.visible) continue;
+      const from = entry.sprite.position;
+      const to = unit.sprite.position;
+      this.shotLayer
+        .moveTo(from.x, from.y - TILE_H * 1.1)
+        .lineTo(to.x, to.y - TILE_H * 0.4)
+        .stroke({ color: entry.building.isOwn ? 0xf2e2a0 : 0xe05a3a, width: 1.5, alpha: 0.85 });
     }
   }
 
@@ -505,6 +537,7 @@ export class IsoScene {
       paintBuildingBody(entry.body, building);
     }
     entry.building = building;
+    if (building.targetUnitId !== null) this.aiming.add(building.id);
     const iso = worldToIso(building.x, building.y);
     entry.sprite.position.set(iso.x, iso.y);
     entry.sprite.visible = this.isVisible(iso.x, iso.y);
@@ -517,6 +550,7 @@ export class IsoScene {
     this.entityLayer.removeChild(entry.sprite);
     entry.sprite.destroy({ children: true });
     this.buildings.delete(id);
+    this.aiming.delete(id);
   }
 
   private removeCity(id: number): void {
@@ -740,7 +774,11 @@ function paintUnitBody(
   }
 }
 
-function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'status' | 'isOwn' | 'hpRatio'>): void {
+function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'type' | 'status' | 'isOwn' | 'hpRatio'>): void {
+  if (building.type === 'CASTLE') {
+    paintCastleBody(body, building);
+    return;
+  }
   const color = building.isOwn ? 0xd8b36a : 0x9c7a55;
   const w = TILE_W * 0.45;
   const h = TILE_H * 0.7;
@@ -764,6 +802,47 @@ function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'status
     // Una casa asediada lleva su barra de vida, como una unidad herida (SPEC-COMBAT-SIEGE).
     const bw = 18;
     const top = -h - TILE_H * 0.45 - 6;
+    body.rect(-bw / 2, top, bw, 3).fill({ color: 0x222222 });
+    body
+      .rect(-bw / 2, top, bw * building.hpRatio, 3)
+      .fill({ color: building.hpRatio > 0.5 ? 0x5bd15b : building.hpRatio > 0.25 ? 0xf0c040 : 0xe04848 });
+  }
+}
+
+/**
+ * El castillo (SPEC-CASTLE-AGE §4.7): un cuerpo de piedra con almenas y dos
+ * torres más altas, del color de propio o ajeno; en obras, sólo el contorno.
+ */
+function paintCastleBody(body: Graphics, building: Pick<SceneBuilding, 'status' | 'isOwn' | 'hpRatio'>): void {
+  const stone = building.isOwn ? 0xb8b0a0 : 0x8a8478;
+  const trim = building.isOwn ? 0xd8b36a : 0x9c7a55;
+  const w = TILE_W * 0.6;
+  const h = TILE_H * 0.8;
+  const tw = w * 0.28;
+  const th = h * 1.45;
+  body.clear();
+  if (building.status !== 'COMPLETE') {
+    body.rect(-w / 2, -h, w, h).stroke({ color: stone, width: 1.5, alpha: 0.9 });
+    body.rect(-w / 2 - tw / 2, -th, tw, th).stroke({ color: stone, width: 1.5, alpha: 0.9 });
+    body.rect(w / 2 - tw / 2, -th, tw, th).stroke({ color: stone, width: 1.5, alpha: 0.9 });
+  } else {
+    body.rect(-w / 2, -h, w, h).fill({ color: stone }).stroke({ color: 0x000000, width: 1, alpha: 0.4 });
+    // Las almenas del muro.
+    const merlon = w / 7;
+    for (let i = 0; i < 7; i += 2) {
+      body.rect(-w / 2 + i * merlon, -h - 3, merlon, 3).fill({ color: stone }).stroke({ color: 0x000000, width: 1, alpha: 0.3 });
+    }
+    // Las dos torres, con su remate y una franja del color del dueño.
+    for (const x of [-w / 2 - tw / 2, w / 2 - tw / 2]) {
+      body.rect(x, -th, tw, th).fill({ color: stone }).stroke({ color: 0x000000, width: 1, alpha: 0.4 });
+      body.rect(x - 1, -th - 3, tw + 2, 3).fill({ color: trim }).stroke({ color: 0x000000, width: 1, alpha: 0.4 });
+    }
+    // La puerta.
+    body.rect(-3, -6, 6, 6).fill({ color: 0x3b2a1a });
+  }
+  if (building.hpRatio < 1) {
+    const bw = 22;
+    const top = -th - 9;
     body.rect(-bw / 2, top, bw, 3).fill({ color: 0x222222 });
     body
       .rect(-bw / 2, top, bw * building.hpRatio, 3)

@@ -183,6 +183,11 @@ function rawText(e: EventLogEntry): string {
       return `${who} mató ${ofYours(e.count, e.unitType)}${where}`;
     case 'ENEMY_KILLED':
       return `Tus unidades mataron ${some(e.count, e.unitType)} de ${who}`;
+    // SPEC-CASTLE-AGE §4.7: lo que mata un castillo, a los dos lados.
+    case 'UNIT_LOST_TO_CASTLE':
+      return `El castillo de ${who} mató ${ofYours(e.count, e.unitType)}${where}`;
+    case 'CASTLE_KILL':
+      return `Tu castillo mató ${some(e.count, e.unitType)} de ${who}`;
     case 'PILLAGED':
       return `${who} te robó ${wood} de madera${e.count > 1 ? ` en ${e.count} golpes` : ''}`;
     case 'PILLAGE_DONE':
@@ -284,6 +289,7 @@ function rawText(e: EventLogEntry): string {
 export function isLoss(e: EventLogEntry): boolean {
   return (
     e.kind === 'UNIT_LOST' ||
+    e.kind === 'UNIT_LOST_TO_CASTLE' ||
     e.kind === 'PILLAGED' ||
     e.kind === 'HOUSE_LOST' ||
     e.kind === 'TREATY_BREAK_ANNOUNCED' ||

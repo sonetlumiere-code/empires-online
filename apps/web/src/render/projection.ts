@@ -74,6 +74,7 @@ function toSceneBuilding(b: BuildingView, state: ProjectableState): SceneBuildin
     status: b.status,
     isOwn: city !== undefined && city.ownerPlayerId === state.playerId,
     hpRatio: b.hp !== undefined && b.maxHp !== undefined && b.maxHp > 0 ? Math.max(0, Math.min(1, b.hp / b.maxHp)) : 1,
+    targetUnitId: b.targetUnitId ?? null,
   };
 }
 

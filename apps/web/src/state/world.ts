@@ -158,6 +158,8 @@ export interface BuildingView {
   /** Vida frente a un asedio y su máximo (SPEC-COMBAT-SIEGE); un servidor sin asedio no la manda. */
   hp?: number;
   maxHp?: number;
+  /** La unidad a la que apunta un castillo, o `null` (SPEC-CASTLE-AGE §6); un servidor anterior no la manda. */
+  targetUnitId?: number | null;
 }
 
 /**
@@ -614,7 +616,14 @@ export const useWorldStore = create<WorldState>((set, get) => {
           const p = message.payload;
           const existing = buildings.get(p.id);
           if (!existing) break;
-          buildings.set(p.id, { ...existing, status: p.status, hp: p.hp !== undefined ? p.hp : existing.hp });
+          buildings.set(p.id, {
+            ...existing,
+            status: p.status,
+            hp: p.hp !== undefined ? p.hp : existing.hp,
+            // SPEC-CASTLE-AGE §6: el objetivo del castillo; null deja de apuntar,
+            // ausente no cambia.
+            targetUnitId: p.targetUnitId !== undefined ? p.targetUnitId : existing.targetUnitId,
+          });
           set({ changes: changed({ buildings: new Set([p.id]) }) });
           break;
         }

@@ -42,6 +42,8 @@ export interface SceneBuilding {
   readonly isOwn: boolean;
   /** Vida que le queda frente a un asedio, de 0 a 1: por debajo de 1 lleva su barra. */
   readonly hpRatio: number;
+  /** La unidad a la que apunta un castillo, o `null` (SPEC-CASTLE-AGE §4.7). */
+  readonly targetUnitId: number | null;
 }
 
 export interface SceneCity {
