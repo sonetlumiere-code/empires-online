@@ -56,12 +56,35 @@ export type TimedPath = z.infer<typeof TimedPath>;
 export const UnitStatus = z.enum(['IDLE', 'MOVING', 'GARRISONED', 'HIDDEN', 'WORKING', 'ATTACKING', 'DEAD', 'CLAIMING']);
 export type UnitStatus = z.infer<typeof UnitStatus>;
 
-/** `CARAVAN` lleva la mercancía de un trato (SPEC-CARAVANS §4.1): no se entrena ni admite órdenes. */
-export const UnitType = z.enum(['VILLAGER', 'WARRIOR', 'CARAVAN']);
+/**
+ * `CARAVAN` lleva la mercancía de un trato (SPEC-CARAVANS §4.1): no se entrena ni admite órdenes.
+ * `LEGIONARY`, `CATAPHRACT`, `HORSE_ARCHER` y `BERSERKER` son las unidades exclusivas de cada
+ * civilización (SPEC-CIVILIZATION-UNITS §4.1): sólo las entrena la suya.
+ */
+export const UnitType = z.enum([
+  'VILLAGER',
+  'WARRIOR',
+  'CARAVAN',
+  'LEGIONARY',
+  'CATAPHRACT',
+  'HORSE_ARCHER',
+  'BERSERKER',
+]);
 export type UnitType = z.infer<typeof UnitType>;
 
-/** Los tipos que se entrenan en una ciudad (`city.train`): la caravana no (RN-CARAVAN-001). */
-export const TrainableUnitType = UnitType.extract(['VILLAGER', 'WARRIOR']);
+/**
+ * Los tipos que se entrenan en una ciudad (`city.train`): la caravana no (RN-CARAVAN-001). Una
+ * unidad exclusiva sólo la acepta la ciudad de su civilización, desde la Edad de Bronce
+ * (RN-CIVUNIT-002): eso lo decide el servidor, no el esquema.
+ */
+export const TrainableUnitType = UnitType.extract([
+  'VILLAGER',
+  'WARRIOR',
+  'LEGIONARY',
+  'CATAPHRACT',
+  'HORSE_ARCHER',
+  'BERSERKER',
+]);
 export type TrainableUnitType = z.infer<typeof TrainableUnitType>;
 
 export const PresenceState = z.enum(['ONLINE', 'OFFLINE_PENDING', 'PROTECTED']);

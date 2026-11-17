@@ -35,6 +35,8 @@ import {
   territorioDelHumo,
   territorioLibreCerca,
   tiemposDePolilinea,
+  elaboracionesQueFaltan,
+  unidadesDelHumo,
 } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
@@ -334,4 +336,25 @@ test('motivoDelAtaqueEntreAliados: el de la alianza, o el del clan si cuenta ant
   assert.equal(motivoDelAtaqueEntreAliados({ code: 'INVALID_TARGET', message: 'un tratado de paz impide atacar a ese jugador' }), null);
   assert.equal(motivoDelAtaqueEntreAliados({ code: 'UNIT_NOT_FOUND', message: 'la unidad objetivo no existe' }), null);
   assert.equal(motivoDelAtaqueEntreAliados(undefined), null);
+});
+
+test('unidadesDelHumo da la unidad propia, una ajena y la ficha de la propia (SPEC-CIVILIZATION-UNITS)', () => {
+  const catalogo = [
+    { code: 'ROMAN', unit: 'LEGIONARY' },
+    { code: 'NORSE', unit: 'BERSERKER' },
+  ];
+  const unidades = [{ code: 'LEGIONARY', maxHp: 110 }, { code: 'BERSERKER', maxHp: 60 }];
+  assert.deepEqual(unidadesDelHumo(catalogo, unidades, 'ROMAN'),
+    { propia: 'LEGIONARY', ajena: 'BERSERKER', ficha: { code: 'LEGIONARY', maxHp: 110 } });
+  assert.equal(unidadesDelHumo(catalogo, unidades, 'NORSE').ajena, 'LEGIONARY');
+  assert.equal(unidadesDelHumo(catalogo, unidades, 'ATLANTE'), null);
+  assert.equal(unidadesDelHumo(catalogo, [], 'ROMAN'), null, 'sin ficha no hay con qué comprobar');
+});
+
+test('elaboracionesQueFaltan cuenta las de 5 que hacen falta para llegar al coste', () => {
+  assert.equal(elaboracionesQueFaltan(10, 10), 0);
+  assert.equal(elaboracionesQueFaltan(12, 10), 0);
+  assert.equal(elaboracionesQueFaltan(5, 10), 1);
+  assert.equal(elaboracionesQueFaltan(4, 10), 2);
+  assert.equal(elaboracionesQueFaltan(0, 10), 2);
 });

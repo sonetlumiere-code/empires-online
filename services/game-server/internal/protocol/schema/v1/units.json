@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "units": [
+    {
+      "code": "VILLAGER",
+      "name": "Aldeano",
+      "attacks": false,
+      "exclusive": false,
+      "trainCosts": [
+        {
+          "resource": "WOOD",
+          "amount": 50
+        }
+      ],
+      "ownGoodCost": 0,
+      "trainMs": 20000,
+      "requiresEra": null,
+      "maxHp": 40,
+      "msPerTile": 600,
+      "attackDamage": 0,
+      "attackIntervalMs": 0,
+      "attackRange": 0,
+      "lootCarry": 0,
+      "populationCost": 1
+    },
+    {
+      "code": "WARRIOR",
+      "name": "Guerrero",
+      "attacks": true,
+      "exclusive": false,
+      "trainCosts": [
+        {
+          "resource": "WOOD",
+          "amount": 60
+        }
+      ],
+      "ownGoodCost": 0,
+      "trainMs": 25000,
+      "requiresEra": null,
+      "maxHp": 60,
+      "msPerTile": 600,
+      "attackDamage": 8,
+      "attackIntervalMs": 1500,
+      "attackRange": 1,
+      "lootCarry": 20,
+      "populationCost": 1
+    },
+    {
+      "code": "CARAVAN",
+      "name": "Caravana",
+      "attacks": false,
+      "exclusive": false,
+      "trainCosts": [],
+      "ownGoodCost": 0,
+      "trainMs": 0,
+      "requiresEra": null,
+      "maxHp": 80,
+      "msPerTile": 1200,
+      "attackDamage": 0,
+      "attackIntervalMs": 0,
+      "attackRange": 0,
+      "lootCarry": 0,
+      "populationCost": 0
+    },
+    {
+      "attacks": true,
+      "exclusive": true,
+      "trainCosts": [
+        {
+          "resource": "WOOD",
+          "amount": 80
+        },
+        {
+          "resource": "STONE",
+          "amount": 40
+        }
+      ],
+      "ownGoodCost": 10,
+      "trainMs": 35000,
+      "requiresEra": "BRONZE_AGE",
+      "attackIntervalMs": 1500,
+      "populationCost": 1,
+      "code": "LEGIONARY",
+      "name": "Legionario",
+      "maxHp": 110,
+      "msPerTile": 600,
+      "attackDamage": 8,
+      "attackRange": 1,
+      "lootCarry": 20
+    },
+    {
+      "attacks": true,
+      "exclusive": true,
+      "trainCosts": [
+        {
+          "resource": "WOOD",
+          "amount": 80
+        },
+        {
+          "resource": "STONE",
+          "amount": 40
+        }
+      ],
+      "ownGoodCost": 10,
+      "trainMs": 35000,
+      "requiresEra": "BRONZE_AGE",
+      "attackIntervalMs": 1500,
+      "populationCost": 1,
+      "code": "CATAPHRACT",
+      "name": "Catafracto",
+      "maxHp": 80,
+      "msPerTile": 450,
+      "attackDamage": 10,
+      "attackRange": 1,
+      "lootCarry": 20
+    },
+    {
+      "attacks": true,
+      "exclusive": true,
+      "trainCosts": [
+        {
+          "resource": "WOOD",
+          "amount": 80
+        },
+        {
+          "resource": "STONE",
+          "amount": 40
+        }
+      ],
+      "ownGoodCost": 10,
+      "trainMs": 35000,
+      "requiresEra": "BRONZE_AGE",
+      "attackIntervalMs": 1500,
+      "populationCost": 1,
+      "code": "HORSE_ARCHER",
+      "name": "Arquero a caballo",
+      "maxHp": 60,
+      "msPerTile": 540,
+      "attackDamage": 8,
+      "attackRange": 3,
+      "lootCarry": 20
+    },
+    {
+      "attacks": true,
+      "exclusive": true,
+      "trainCosts": [
+        {
+          "resource": "WOOD",
+          "amount": 80
+        },
+        {
+          "resource": "STONE",
+          "amount": 40
+        }
+      ],
+      "ownGoodCost": 10,
+      "trainMs": 35000,
+      "requiresEra": "BRONZE_AGE",
+      "attackIntervalMs": 1500,
+      "populationCost": 1,
+      "code": "BERSERKER",
+      "name": "Berserker",
+      "maxHp": 60,
+      "msPerTile": 600,
+      "attackDamage": 14,
+      "attackRange": 1,
+      "lootCarry": 30
+    }
+  ]
+}

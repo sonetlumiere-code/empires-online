@@ -8,6 +8,8 @@
  * Ver ../../../../docs/architecture/frontend.md §4.4
  */
 import type { BuildingView, CityView, UnitView } from './world';
+import { goodOf, goodLabel } from './civilizations';
+import { civilizationUnit, listJoin, resourceLabel, unitAttacks, unitInfoOf, unitLabel } from './units';
 
 /** El byte de terreno de un bosque (`world.TerrainType`, internal/game/world/tile.go). */
 export const TERRAIN_FOREST = 1;
@@ -52,7 +54,7 @@ export function decideTileOrder(
   if (unit.unitType === 'CARAVAN') return { kind: 'none' };
   const city = cityAt(tile);
   if (city) {
-    if (unit.unitType === 'WARRIOR' && city.ownerPlayerId !== playerId) {
+    if (unitAttacks(unit.unitType) && city.ownerPlayerId !== playerId) {
       const house = buildingAt(tile);
       if (house && house.cityId === city.id) return { kind: 'demolish', buildingId: house.id };
       return { kind: 'pillage', cityId: city.id };
@@ -118,6 +120,40 @@ export function trainBlockReason(
   }
   if (city.population >= city.populationLimit) return 'Población al tope: construye una casa para subir el límite.';
   return null;
+}
+
+const ERA_ORDER = ['STONE_AGE', 'BRONZE_AGE', 'IRON_AGE', 'CASTLE_AGE'];
+
+/**
+ * Por qué no se puede entrenar ahora la unidad propia de la civilización, o
+ * `null` si se puede intentar (SPEC-CIVILIZATION-UNITS RN-CIVUNIT-002 y 003): la
+ * era, lo de siempre (producción, avance, población) y cada recurso que falta,
+ * también el bien propio. Lo decide el servidor (INVALID_TARGET,
+ * INSUFFICIENT_RESOURCES).
+ */
+export function civilizationUnitBlockReason(
+  city: Pick<CityView, 'era' | 'civilization' | 'stocks' | 'population' | 'populationLimit' | 'production' | 'advance'>,
+): string | null {
+  const type = civilizationUnit(city.civilization);
+  const u = type ? unitInfoOf(type) : undefined;
+  if (!type || !u) return 'Tu civilización no tiene unidad propia.';
+  if (u.requiresEra && ERA_ORDER.indexOf(city.era) < ERA_ORDER.indexOf(u.requiresEra)) {
+    return `El ${unitLabel(type)} pide la ${eraLabel(u.requiresEra)}.`;
+  }
+  const common = trainBlockReason(city);
+  if (common) return common;
+  const stocks = city.stocks as unknown as Readonly<Record<string, number>>;
+  const faltan: string[] = [];
+  for (const c of u.trainCosts) {
+    const have = stocks[c.resource] ?? 0;
+    if (have < c.amount) faltan.push(`${c.amount - have} de ${resourceLabel(c.resource)}`);
+  }
+  const good = goodOf(city.civilization);
+  if (u.ownGoodCost > 0 && good) {
+    const have = stocks[good] ?? 0;
+    if (have < u.ownGoodCost) faltan.push(`${u.ownGoodCost - have} de ${goodLabel(good)}`);
+  }
+  return faltan.length === 0 ? null : `Faltan ${listJoin(faltan)}.`;
 }
 
 /**
@@ -250,22 +286,13 @@ export function decideUnitClick(
   ownPlayerId: string | null,
 ): UnitClick {
   if (clicked.playerId === ownPlayerId) return { kind: 'select' };
-  if (selected && selected.playerId === ownPlayerId && selected.unitType === 'WARRIOR') return { kind: 'attack' };
+  if (selected && selected.playerId === ownPlayerId && unitAttacks(selected.unitType)) return { kind: 'attack' };
   return { kind: 'none' };
 }
 
-/** El nombre de un tipo de unidad en el HUD. */
+/** El nombre de un tipo de unidad en el HUD (SPEC-CIVILIZATION-UNITS §4.6). */
 export function unitTypeLabel(type: string): string {
-  switch (type) {
-    case 'VILLAGER':
-      return 'aldeano';
-    case 'WARRIOR':
-      return 'guerrero';
-    case 'CARAVAN':
-      return 'caravana';
-    default:
-      return type.toLowerCase();
-  }
+  return unitLabel(type);
 }
 
 /**

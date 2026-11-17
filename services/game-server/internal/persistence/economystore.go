@@ -79,7 +79,7 @@ func (e *EconomyStore) Build(ctx context.Context, o simulation.BuildOrder) (int6
 
 // Train debita, reserva y encarga el entrenamiento (RN-ECON-010).
 func (e *EconomyStore) Train(ctx context.Context, o simulation.TrainOrder) error {
-	return stale(e.repo.Train(ctx, o.RequestID, o.PlayerID, o.Production, o.PopulationCost, toDelta(o.Stock), o.Tick))
+	return stale(e.repo.Train(ctx, o.RequestID, o.PlayerID, o.Production, o.PopulationCost, toDeltas(o.Stocks), o.Tick))
 }
 
 // Advance debita todo el coste y encarga el avance de era (RN-ECON-025).

@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 )
 
 // Player es la identidad durable de un jugador.
@@ -43,7 +44,10 @@ type Civilization struct {
 	Name string
 	// Good es el bien que sólo elabora el taller de esta civilización
 	// (SPEC-CIVILIZATION-GOODS RN-GOODS-001, ADR-036 §2).
-	Good   economy.Resource
+	Good economy.Resource
+	// Unit es su unidad exclusiva, la única que sólo ella entrena
+	// (SPEC-CIVILIZATION-UNITS §4.1, civilizations.unit).
+	Unit   unit.Type
 	Traits map[string]int32
 }
 
@@ -87,8 +91,15 @@ func (c Civilization) Trait(key string) int32 {
 // ErrInvalidGood marca un catálogo cuyos bienes no son uno por civilización.
 var ErrInvalidGood = errors.New("bien de civilización inválido")
 
+// ErrInvalidUnit marca un catálogo cuyas unidades exclusivas no son una por
+// civilización (INV-UNIT-013).
+var ErrInvalidUnit = errors.New("unidad de civilización inválida")
+
 // ValidateCatalog comprueba cada civilización con Validate y, además, que cada
-// una tenga un bien de civilización y que ninguno se repita (RN-GOODS-001).
+// una tenga un bien de civilización y que ninguno se repita (RN-GOODS-001), y
+// que cada una tenga una unidad exclusiva y entrenable del catálogo de
+// unidades, que no comparte, sin que ningún tipo exclusivo quede sin
+// civilización (INV-UNIT-013, ADR-043 §2).
 func ValidateCatalog(cs []Civilization) error {
 	seen := make(map[economy.Resource]string, len(cs))
 	for _, c := range cs {
@@ -102,6 +113,31 @@ func ValidateCatalog(cs []Civilization) error {
 			return fmt.Errorf("%w: %s y %s producen %s", ErrInvalidGood, other, c.Code, c.Good)
 		}
 		seen[c.Good] = c.Code
+	}
+	return validateUnits(cs)
+}
+
+// validateUnits es la mitad de ValidateCatalog que mira las unidades
+// exclusivas (INV-UNIT-013): va después de los bienes para que un catálogo con
+// los dos problemas diga primero el más antiguo.
+func validateUnits(cs []Civilization) error {
+	units := make(map[unit.Type]string, len(cs))
+	for _, c := range cs {
+		def, err := unit.Lookup(c.Unit)
+		if err != nil || !def.Exclusive || !def.CanTrain() {
+			return fmt.Errorf("%w: %s tiene %q, que no es una unidad exclusiva entrenable", ErrInvalidUnit, c.Code, c.Unit)
+		}
+		if other, dup := units[c.Unit]; dup {
+			return fmt.Errorf("%w: %s y %s comparten %s", ErrInvalidUnit, other, c.Code, c.Unit)
+		}
+		units[c.Unit] = c.Code
+	}
+	for _, t := range unit.Types() {
+		if def, err := unit.Lookup(t); err == nil && def.Exclusive {
+			if _, ok := units[t]; !ok {
+				return fmt.Errorf("%w: %s es exclusiva y ninguna civilización la tiene", ErrInvalidUnit, t)
+			}
+		}
 	}
 	return nil
 }

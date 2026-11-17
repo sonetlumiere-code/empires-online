@@ -406,8 +406,11 @@ export class GameClient {
     return this.trainUnit(cityId, 'VILLAGER');
   }
 
-  /** Encarga el entrenamiento de una unidad del catálogo (SPEC-COMBAT-RAID: también `WARRIOR`). */
-  trainUnit(cityId: number, type: 'VILLAGER' | 'WARRIOR'): string {
+  /**
+   * Encarga el entrenamiento de una unidad del catálogo (SPEC-COMBAT-RAID: también `WARRIOR`;
+   * SPEC-CIVILIZATION-UNITS: la unidad propia de la civilización).
+   */
+  trainUnit(cityId: number, type: v1.TrainableUnitType): string {
     return this.send('city.train', { cityId, type });
   }
 

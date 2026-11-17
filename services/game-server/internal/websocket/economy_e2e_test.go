@@ -251,3 +251,47 @@ func TestElaborarVinoPorLaRed(t *testing.T) {
 	}, 3*time.Second)
 	assert.Equal(t, int64(5), decode[protocol.CityUpdatePayload](t, fin.Payload).Stocks.Wine)
 }
+
+// SPEC-CIVILIZATION-UNITS §9 «e2e»: city.train por la red con la unidad propia
+// (un romano en Bronce, con madera, piedra y vino) llega como city.update con la
+// producción y los tres recursos debitados; la de otra civilización, y la
+// propia en la Edad de Piedra, como INVALID_TARGET con el requestId.
+func TestEntrenarUnLegionarioPorLaRed(t *testing.T) {
+	env := newE2E(t)
+	env.state.SetCivilizations([]player.Civilization{
+		{ID: 1, Code: "ROMAN", Good: economy.ResourceWine, Unit: unit.TypeLegionary},
+		{ID: 4, Code: "NORSE", Good: economy.ResourceFurs, Unit: unit.TypeBerserker},
+	})
+	c, ok := env.state.City(1)
+	require.True(t, ok)
+	env.state.SetEconomy(simulation.EconomyLoad{Stocks: []simulation.StockRow{
+		{CityID: 1, Stock: economy.Stock{Resource: economy.ResourceWood, Amount: 100}},
+		{CityID: 1, Stock: economy.Stock{Resource: economy.ResourceStone, Amount: 50}},
+		{CityID: 1, Stock: economy.Stock{Resource: economy.ResourceWine, Amount: 12}},
+	}})
+	dueno, _ := conectar(t, env, env.playerID)
+
+	rechazo := func(tipo string) string {
+		t.Helper()
+		req := dueno.send(protocol.TypeCityTrain, map[string]any{"cityId": 1, "type": tipo})
+		env.pump()
+		errEnv, _ := dueno.awaitWhere(protocol.TypeSystemError, func(json.RawMessage) bool { return true }, 3*time.Second)
+		assert.Equal(t, req, errEnv.RequestID)
+		return decode[protocol.SystemErrorPayload](t, errEnv.Payload).Code
+	}
+	assert.Equal(t, protocol.CodeInvalidTarget, rechazo("LEGIONARY"), "en la Edad de Piedra")
+	c.Era = city.EraBronze
+	assert.Equal(t, protocol.CodeInvalidTarget, rechazo("BERSERKER"), "la unidad de otra civilización")
+
+	dueno.send(protocol.TypeCityTrain, map[string]any{"cityId": 1, "type": "LEGIONARY"})
+	env.pump()
+	encargo, _ := dueno.awaitWhere(protocol.TypeCityUpdate, func(raw json.RawMessage) bool {
+		p := decode[protocol.CityUpdatePayload](t, raw)
+		return p.Production != nil && *p.Production != nil
+	}, 3*time.Second)
+	p := decode[protocol.CityUpdatePayload](t, encargo.Payload)
+	assert.Equal(t, "LEGIONARY", (*p.Production).UnitType)
+	assert.Equal(t, int64(20), p.Stocks.Wood)
+	assert.Equal(t, int64(10), p.Stocks.Stone)
+	assert.Equal(t, int64(2), p.Stocks.Wine)
+}

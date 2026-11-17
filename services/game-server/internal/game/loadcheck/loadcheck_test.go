@@ -53,7 +53,11 @@ func sano(t *testing.T) (loadcheck.Input, *city.City, []*unit.Unit) {
 		World:   mundo(t),
 		EraCaps: map[city.Era]int32{city.EraStone: 20},
 		Civilizations: []player.Civilization{
-			{ID: 4, Code: "NORSE", Good: economy.ResourceFurs, Traits: map[string]int32{player.TraitMoveSpeed: 1100, player.TraitLootCarry: 1150}},
+			{ID: 4, Code: "NORSE", Good: economy.ResourceFurs, Unit: unit.TypeBerserker,
+				Traits: map[string]int32{player.TraitMoveSpeed: 1100, player.TraitLootCarry: 1150}},
+			{ID: 1, Code: "ROMAN", Good: economy.ResourceWine, Unit: unit.TypeLegionary},
+			{ID: 2, Code: "BYZANTINE", Good: economy.ResourceSilk, Unit: unit.TypeCataphract},
+			{ID: 3, Code: "PERSIAN", Good: economy.ResourceSpices, Unit: unit.TypeHorseArcher},
 		},
 		Players:   map[uuid.UUID]struct{}{dueno: {}},
 		Cities:    []*city.City{ciudad},
@@ -145,9 +149,25 @@ func TestUnCatalogoSinUnBienDistintoPorCivilizacionAbortaElArranque(t *testing.T
 	assert.Equal(t, []string{"INV-ECON-009/FAIL_FAST"}, invs(r))
 
 	in, _, _ = sano(t)
-	in.Civilizations = append(in.Civilizations, player.Civilization{ID: 1, Code: "ROMAN", Good: economy.ResourceFurs})
+	in.Civilizations[1].Good = economy.ResourceFurs
 	r = loadcheck.Check(in)
 	assert.Equal(t, []string{"INV-ECON-009/FAIL_FAST"}, invs(r))
+	assert.True(t, r.Fatal())
+}
+
+// INV-UNIT-013 (ADR-043 §2): una civilización sin su unidad exclusiva, o dos que
+// la comparten, abortan el arranque.
+func TestUnCatalogoSinUnaUnidadPorCivilizacionAbortaElArranque(t *testing.T) {
+	in, _, _ := sano(t)
+	in.Civilizations[0].Unit = ""
+	r := loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-UNIT-013/FAIL_FAST"}, invs(r))
+	assert.True(t, r.Fatal())
+
+	in, _, _ = sano(t)
+	in.Civilizations[1].Unit = unit.TypeBerserker
+	r = loadcheck.Check(in)
+	assert.Equal(t, []string{"INV-UNIT-013/FAIL_FAST"}, invs(r))
 	assert.True(t, r.Fatal())
 }
 

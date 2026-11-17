@@ -279,8 +279,13 @@ func (c *checker) civilizations() {
 	}
 	// RN-GOODS-001: un bien distinto por civilización; sin él, un taller no
 	// sabría qué elaborar (INV-ECON-009).
-	if err := player.ValidateCatalog(c.in.Civilizations); err != nil && errors.Is(err, player.ErrInvalidGood) {
+	// INV-UNIT-013: una unidad exclusiva por civilización, que no comparte, y
+	// ningún tipo exclusivo sin civilización (ADR-043 §2).
+	switch err := player.ValidateCatalog(c.in.Civilizations); {
+	case errors.Is(err, player.ErrInvalidGood):
 		c.find("INV-ECON-009", "ALTO", PolicyFailFast, "civilizations", err.Error())
+	case errors.Is(err, player.ErrInvalidUnit):
+		c.find("INV-UNIT-013", "ALTO", PolicyFailFast, "civilizations", err.Error())
 	}
 	cities := append([]*city.City(nil), c.in.Cities...)
 	sort.Slice(cities, func(i, j int) bool { return cities[i].ID < cities[j].ID })

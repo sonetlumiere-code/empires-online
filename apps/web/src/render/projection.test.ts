@@ -228,7 +228,7 @@ describe('economía en la escena (SPEC-ECON-WOOD)', () => {
     // SPEC-COMBAT-RAID: el estado ATTACKING y la vida que queda llegan a la escena.
     state().applyServerMessage(server('entity.update', 6, { id: 1, status: 'ATTACKING', hp: 10 }));
     const herida = projectLast().units[0]!;
-    expect([herida.attacking, herida.warrior]).toEqual([true, false]);
+    expect([herida.attacking, herida.unitType]).toEqual([true, 'VILLAGER']);
     expect(herida.hpRatio).toBeCloseTo(10 / 40);
   });
 
@@ -241,7 +241,7 @@ describe('economía en la escena (SPEC-ECON-WOOD)', () => {
     };
     state().applySnapshot(snapshot({ units: [caravana], caravans: [vista] }));
     const u = projectLast().units.find((x) => x.id === 77)!;
-    expect([u.caravan, u.warrior, u.isOwn]).toEqual([true, false, false]);
+    expect([u.unitType, u.isOwn]).toEqual(['CARAVAN', false]);
     expect(state().caravans.map((c) => c.unitId)).toEqual([77]);
     state().applyServerMessage(server('caravan.update', 9, { caravan: { ...vista, status: 'DELIVERED', arrivesAtMs: null } }));
     expect(state().caravans).toEqual([]);

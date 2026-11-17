@@ -559,11 +559,14 @@ func (r *EconomyRepo) Build(
 }
 
 // Train debita el coste, reserva la plaza de población y encarga el
-// entrenamiento en UNA transacción (RN-ECON-010). Idempotente por el
-// request_id de la fila de la producción.
+// entrenamiento en UNA transacción (RN-ECON-010). El coste puede ser de varios
+// recursos (ADR-043 §4): un delta versionado por recurso; si alguno no se
+// aplica, no se aplica ninguno. Idempotente por el request_id de la fila de la
+// producción. El trigger de 000024 rechaza una unidad exclusiva ajena o antes
+// de la Edad de Bronce (INV-UNIT-012), que vuelve como ErrNotTrainable.
 func (r *EconomyRepo) Train(
 	ctx context.Context, requestID string, playerID uuid.UUID, p production.Production,
-	popCost int32, d StockDelta, tick uint64,
+	popCost int32, deltas []StockDelta, tick uint64,
 ) error {
 	return r.store.InTx(ctx, func(tx pgx.Tx) error {
 		var previa string
@@ -593,12 +596,14 @@ func (r *EconomyRepo) Train(
 			return production.ErrCityBusy
 		}
 
-		aplicado, err := applyStock(ctx, tx, d)
-		if err != nil {
-			return err
-		}
-		if !aplicado {
-			return ErrStaleStock
+		for _, d := range deltas {
+			aplicado, err := applyStock(ctx, tx, d)
+			if err != nil {
+				return err
+			}
+			if !aplicado {
+				return ErrStaleStock
+			}
 		}
 		// RN-ECON-010: la plaza se reserva en la misma transacción. El CHECK
 		// cities_population_within_limit es la última barrera.
@@ -613,6 +618,10 @@ func (r *EconomyRepo) Train(
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO city_productions (city_id, unit_type, completes_at_ms, request_id) VALUES ($1, $2, $3, $4)`,
 			p.CityID, string(p.UnitType), p.CompletesAtMs, requestID); err != nil {
+			if IsCheckViolation(err) {
+				// INV-UNIT-012: el trigger de 000024, o el CHECK del tipo.
+				return fmt.Errorf("%w: %s en la ciudad %d", production.ErrNotTrainable, p.UnitType, p.CityID)
+			}
 			return fmt.Errorf("insertar la producción: %w", normalize(err))
 		}
 		return appendEvent(ctx, tx, worldEvent{

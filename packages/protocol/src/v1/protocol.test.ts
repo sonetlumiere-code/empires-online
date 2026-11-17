@@ -18,8 +18,9 @@ import { ClientMessage, CLIENT_MESSAGE_TYPES } from './client.js';
 import { ServerMessage, SERVER_MESSAGE_TYPES } from './server.js';
 import { ERROR_CODES } from './errors.js';
 import { parseClientMessage, parseServerMessage, TRANSPORT_LIMITS } from './index.js';
-import { CityView, CivilizationCode, GoodType } from './common.js';
+import { CityView, CivilizationCode, GoodType, TrainableUnitType, UnitType } from './common.js';
 import { CIVILIZATIONS, CIVILIZATION_TRAIT_KEYS } from './civilizations.js';
+import { UNITS, unitInfo } from './units.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaDir = resolve(here, '..', '..', 'schema', 'v1');
@@ -1166,5 +1167,39 @@ describe('clanes (SPEC-CLANS)', () => {
     expect(aviso('CLAN_LEADERSHIP_INHERITED')).toBe(true);
     expect(aviso('CLAN_LEADERSHIP_GIVEN')).toBe(false);
     expect(aviso('CLAN_LEADERSHIP_LOST')).toBe(false);
+  });
+});
+
+describe('unidades de civilización (SPEC-CIVILIZATION-UNITS)', () => {
+  const exclusivas = ['LEGIONARY', 'CATAPHRACT', 'HORSE_ARCHER', 'BERSERKER'] as const;
+
+  it('las cuatro son tipos de unidad y se entrenan con city.train', () => {
+    const train = (type: string) =>
+      parseClientMessage({ v: 1, type: 'city.train', requestId: uuid, payload: { cityId: 7, type } });
+    for (const tipo of exclusivas) {
+      expect(UnitType.options).toContain(tipo);
+      expect(TrainableUnitType.options).toContain(tipo);
+      expect(train(tipo).ok).toBe(true);
+    }
+    expect(train('KNIGHT')).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
+  it('todo tipo de unidad tiene su ficha de presentación, en el orden del enum', () => {
+    expect(UNITS.map((u) => u.code)).toEqual(UnitType.options);
+    for (const tipo of UnitType.options) expect(unitInfo(tipo).name.length).toBeGreaterThan(0);
+    for (const u of UNITS) {
+      expect(u.trainMs > 0).toBe(TrainableUnitType.options.includes(u.code as TrainableUnitType));
+    }
+  });
+
+  it('cada civilización tiene una unidad exclusiva distinta, que ataca y pide Bronce y el bien propio', () => {
+    const unidades = CIVILIZATIONS.map((c) => c.unit);
+    expect(new Set(unidades).size).toBe(CIVILIZATIONS.length);
+    expect([...unidades].sort()).toEqual([...exclusivas].sort());
+    for (const tipo of unidades) {
+      const u = unitInfo(tipo);
+      expect(u).toMatchObject({ exclusive: true, attacks: true, requiresEra: 'BRONZE_AGE', ownGoodCost: 10 });
+    }
+    expect(UNITS.filter((u) => u.exclusive).map((u) => u.code).sort()).toEqual([...exclusivas].sort());
   });
 });

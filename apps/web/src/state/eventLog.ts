@@ -9,6 +9,7 @@
 import type { v1 } from '@empires-online/protocol';
 
 import { unitTypeLabel } from './economy';
+import { unitPlural } from './units';
 import { describeLines } from './trade';
 import { ALLIANCE_BREAK_MINUTES, LEADER_INACTIVE_DAYS } from './clans';
 
@@ -130,14 +131,14 @@ function plural(word: string): string {
 
 /** «a uno de tus aldeanos» / «a 3 de tus guerreros». */
 function ofYours(count: number, unitType: string | undefined): string {
-  const units = plural(unitTypeLabel(unitType ?? 'unidad'));
+  const units = unitType ? unitPlural(unitType) : plural('unidad');
   return count === 1 ? `a uno de tus ${units}` : `a ${count} de tus ${units}`;
 }
 
 /** «a un guerrero» / «a 3 guerreros». */
 function some(count: number, unitType: string | undefined): string {
   const unit = unitTypeLabel(unitType ?? 'unidad');
-  return count === 1 ? `a un ${unit}` : `a ${count} ${plural(unit)}`;
+  return count === 1 ? `a un ${unit}` : `a ${count} ${unitType ? unitPlural(unitType) : plural(unit)}`;
 }
 
 /** HH:MM en la hora local del jugador. */

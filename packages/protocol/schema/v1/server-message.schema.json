@@ -321,7 +321,11 @@
                         "enum": [
                           "VILLAGER",
                           "WARRIOR",
-                          "CARAVAN"
+                          "CARAVAN",
+                          "LEGIONARY",
+                          "CATAPHRACT",
+                          "HORSE_ARCHER",
+                          "BERSERKER"
                         ]
                       },
                       "x": {

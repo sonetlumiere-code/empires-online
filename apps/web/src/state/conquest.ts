@@ -10,6 +10,7 @@
  */
 import { formatCountdown, type TreatyView } from './diplomacy';
 import type { CityView, TerritoryView, UnitView } from './world';
+import { unitAttacks } from './units';
 
 /** El territorio que contiene el tile, si hay alguno cargado (RN-TERR-001: límites inclusivos). */
 export function territoryAt(territories: Iterable<TerritoryView>, x: number, y: number): TerritoryView | undefined {
@@ -70,8 +71,9 @@ export interface ClaimCheck {
 export function claimBlockReason(c: ClaimCheck): string | null {
   const { unit, playerId, territory: t } = c;
   if (!unit || unit.playerId !== playerId) return 'Selecciona un guerrero tuyo';
-  if (unit.unitType !== 'WARRIOR') return 'Sólo un guerrero reclama territorios';
-  if (unit.status === 'GARRISONED' || unit.status === 'DEAD') return 'El guerrero tiene que estar en el mapa';
+  // RN-CIVUNIT-005: reclama toda unidad que ataca, también las de civilización.
+  if (!unitAttacks(unit.unitType)) return 'Sólo un guerrero o tu unidad propia reclaman territorios';
+  if (unit.status === 'GARRISONED' || unit.status === 'DEAD') return 'La unidad tiene que estar en el mapa';
   if (unit.status === 'CLAIMING') return 'Ya está reclamando este territorio';
   if (c.forClan && (c.myClanId ?? null) === null) return 'No estás en ningún clan';
   if (!t) return 'Aquí no hay ningún territorio';

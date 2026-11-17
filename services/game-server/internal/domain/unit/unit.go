@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 )
@@ -60,6 +61,19 @@ const (
 	// (SPEC-CARAVANS §4.1). No se entrena ni obedece órdenes: la crea un trato
 	// aceptado y camina sola.
 	TypeCaravan Type = "CARAVAN"
+
+	// Unidades exclusivas de civilización (SPEC-CIVILIZATION-UNITS §4.1): cada
+	// una la entrena sólo la civilización que la tiene en civilizations.unit.
+	// El catálogo no dice de quién es cada una (RN-PLAYER-012, ADR-043 §2).
+
+	// TypeLegionary aguanta: conquista y defiende.
+	TypeLegionary Type = "LEGIONARY"
+	// TypeCataphract es rápido: alcanza y persigue.
+	TypeCataphract Type = "CATAPHRACT"
+	// TypeHorseArcher golpea a distancia.
+	TypeHorseArcher Type = "HORSE_ARCHER"
+	// TypeBerserker pega fuerte: saquea y derriba.
+	TypeBerserker Type = "BERSERKER"
 )
 
 // Definition son las estadísticas inmutables de un tipo de unidad.
@@ -72,10 +86,21 @@ type Definition struct {
 	// PopulationCost es cuánta población consume del límite de la ciudad.
 	PopulationCost int32
 
-	// TrainCost y TrainMs son lo que cuesta y tarda entrenarla en una ciudad
-	// (RN-ECON-010). Un coste cero significa que no se entrena.
-	TrainCost economy.Cost
-	TrainMs   int64
+	// TrainCosts y TrainMs son lo que cuesta y tarda entrenarla en una ciudad
+	// (RN-ECON-010). Sin coste no se entrena. El coste puede ser de varios
+	// recursos, que se debitan juntos (RN-CIVUNIT-003, ADR-043 §1).
+	TrainCosts economy.Costs
+	TrainMs    int64
+	// OwnGoodCost es cuánto del bien de la civilización del dueño cuesta
+	// además de TrainCosts. El bien lo pone el catálogo de civilizaciones al
+	// ordenar (CostsWith), nunca este catálogo: así no puede ser uno ajeno.
+	OwnGoodCost int64
+	// RequiresEra es la era mínima de la ciudad para entrenarla; "" si no pide
+	// ninguna (RN-CIVUNIT-002).
+	RequiresEra city.Era
+	// Exclusive: es la unidad de una civilización y sólo la entrena ella
+	// (INV-UNIT-012). Cuál es de quién lo dice civilizations.unit.
+	Exclusive bool
 	// GatherWorkMs es lo que trabaja sobre un recurso antes de cargar, y
 	// GatherCarry lo que carga al terminar (RN-ECON-003). Cero: no recolecta.
 	GatherWorkMs int64
@@ -94,7 +119,29 @@ type Definition struct {
 }
 
 // CanTrain indica si el tipo se entrena en una ciudad.
-func (d Definition) CanTrain() bool { return d.TrainMs > 0 && d.TrainCost.Amount > 0 }
+func (d Definition) CanTrain() bool {
+	if d.TrainMs <= 0 {
+		return false
+	}
+	for _, c := range d.TrainCosts {
+		if c.Amount > 0 {
+			return true
+		}
+	}
+	return d.OwnGoodCost > 0
+}
+
+// CostsWith es el coste completo de entrenarla para una ciudad cuya
+// civilización elabora `good`: TrainCosts y, si OwnGoodCost > 0, el bien
+// (ADR-043 §1). Devuelve una lista nueva: el catálogo no se toca.
+func (d Definition) CostsWith(good economy.Resource) economy.Costs {
+	out := make(economy.Costs, 0, len(d.TrainCosts)+1)
+	out = append(out, d.TrainCosts...)
+	if d.OwnGoodCost > 0 {
+		out = append(out, economy.Cost{Resource: good, Amount: d.OwnGoodCost})
+	}
+	return out
+}
 
 // CanGather indica si el tipo recolecta (RN-ECON-001).
 func (d Definition) CanGather() bool { return d.GatherWorkMs > 0 && d.GatherCarry > 0 }
@@ -104,30 +151,58 @@ func (d Definition) CanAttack() bool {
 	return d.AttackDamage > 0 && d.AttackIntervalMs > 0 && d.AttackRange > 0
 }
 
-// catalog es la tabla de definiciones. En el MVP vive en código porque sólo hay
-// una unidad; cuando haya decenas se moverá a la base de datos sin cambiar la
-// interfaz de consulta.
+// catalog es la tabla de definiciones. Vive en código; cuando haya decenas de
+// tipos se moverá a la base de datos sin cambiar la interfaz de consulta. El
+// catálogo de presentación de packages/protocol (units.json) lo copia, y un
+// test los compara campo a campo (ADR-043 §7).
 var catalog = map[Type]Definition{
 	// Coste y tiempos de SPEC-ECON-WOOD §4.5: parámetros de equilibrio, no de
 	// diseño. Se ajustan aquí sin tocar la spec mientras sigan siendo catálogo.
 	TypeVillager: {
 		Type: TypeVillager, MaxHP: 40, BaseMsPerTile: 600, PopulationCost: 1,
-		TrainCost: economy.Cost{Resource: economy.ResourceWood, Amount: 50}, TrainMs: 20_000,
+		TrainCosts: economy.Costs{{Resource: economy.ResourceWood, Amount: 50}}, TrainMs: 20_000,
 		GatherWorkMs: 10_000, GatherCarry: 10,
 	},
 	// SPEC-COMBAT-RAID §4.1: mata a un aldeano en cinco golpes (~7 s) y a otro
 	// guerrero en ocho (~12 s). Parámetros de equilibrio, como los de arriba.
 	TypeWarrior: {
 		Type: TypeWarrior, MaxHP: 60, BaseMsPerTile: 600, PopulationCost: 1,
-		TrainCost: economy.Cost{Resource: economy.ResourceWood, Amount: 60}, TrainMs: 25_000,
+		TrainCosts: economy.Costs{{Resource: economy.ResourceWood, Amount: 60}}, TrainMs: 25_000,
 		AttackDamage: 8, AttackIntervalMs: 1_500, AttackRange: 1, LootCarry: 20,
 	},
+	// SPEC-CIVILIZATION-UNITS §4.2 (Q3): cada una gana el duelo contra un
+	// guerrero sin llegar a valer dos, y destaca en una cosa. Las cuatro cuestan
+	// 80 de madera, 40 de piedra y 10 del bien propio, tardan 35 s y piden la
+	// Edad de Bronce (Q4, Q5). Parámetros de equilibrio.
+	TypeLegionary:   exclusive(TypeLegionary, 110, 600, 8, 1, 20),
+	TypeCataphract:  exclusive(TypeCataphract, 80, 450, 10, 1, 20),
+	TypeHorseArcher: exclusive(TypeHorseArcher, 60, 540, 8, 3, 20),
+	TypeBerserker:   exclusive(TypeBerserker, 60, 600, 14, 1, 30),
 	// SPEC-CARAVANS §4.1 (Q4): un guerrero solo la captura en diez golpes (15 s)
 	// y, al doble de su velocidad, la alcanza siempre. No ocupa población.
 	TypeCaravan: {
 		Type: TypeCaravan, MaxHP: 80, BaseMsPerTile: 1_200, PopulationCost: 0,
 		Autonomous: true,
 	},
+}
+
+// exclusive es una unidad de civilización con el coste, el plazo y la edad
+// comunes a las cuatro (SPEC-CIVILIZATION-UNITS Q4, Q5).
+func exclusive(t Type, hp int32, msPerTile int64, damage, attackRange, loot int32) Definition {
+	return Definition{
+		Type: t, MaxHP: hp, BaseMsPerTile: msPerTile, PopulationCost: 1,
+		TrainCosts: economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 80},
+			{Resource: economy.ResourceStone, Amount: 40},
+		},
+		TrainMs: 35_000, OwnGoodCost: 10, RequiresEra: city.EraBronze, Exclusive: true,
+		AttackDamage: damage, AttackIntervalMs: 1_500, AttackRange: attackRange, LootCarry: loot,
+	}
+}
+
+// Types devuelve los tipos del catálogo en orden estable (el de su código).
+func Types() []Type {
+	return []Type{TypeVillager, TypeWarrior, TypeCaravan, TypeLegionary, TypeCataphract, TypeHorseArcher, TypeBerserker}
 }
 
 // ErrUnknownType indica un tipo de unidad ausente del catálogo.

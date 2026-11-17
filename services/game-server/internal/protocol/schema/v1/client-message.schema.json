@@ -386,7 +386,11 @@
                   "type": "string",
                   "enum": [
                     "VILLAGER",
-                    "WARRIOR"
+                    "WARRIOR",
+                    "LEGIONARY",
+                    "CATAPHRACT",
+                    "HORSE_ARCHER",
+                    "BERSERKER"
                   ]
                 }
               },

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 )
 
 // INV-PLAYER-006, mitad del borde: la regla es ^[A-Za-z0-9_-]{3,24}$. La misma
@@ -90,15 +91,51 @@ func TestUnCatalogoConUnRasgoInvalidoSeRechaza(t *testing.T) {
 	}
 }
 
+// catalogoCompleto son las cuatro civilizaciones de 000016 y 000024, con su
+// bien y su unidad.
+func catalogoCompleto() []Civilization {
+	return []Civilization{
+		{Code: "ROMAN", Good: economy.ResourceWine, Unit: unit.TypeLegionary},
+		{Code: "BYZANTINE", Good: economy.ResourceSilk, Unit: unit.TypeCataphract},
+		{Code: "PERSIAN", Good: economy.ResourceSpices, Unit: unit.TypeHorseArcher},
+		{Code: "NORSE", Good: economy.ResourceFurs, Unit: unit.TypeBerserker},
+	}
+}
+
 // RN-GOODS-001: cada civilización tiene un bien de civilización, y ninguno se
 // repite.
 func TestElCatalogoTieneUnBienDistintoPorCivilizacion(t *testing.T) {
-	bien := func(code string, g economy.Resource) Civilization { return Civilization{Code: code, Good: g} }
-	assert.NoError(t, ValidateCatalog([]Civilization{bien("ROMAN", economy.ResourceWine), bien("NORSE", economy.ResourceFurs)}))
-	assert.ErrorIs(t, ValidateCatalog([]Civilization{bien("ROMAN", economy.ResourceWood)}), ErrInvalidGood)
-	assert.ErrorIs(t, ValidateCatalog([]Civilization{bien("ROMAN", "")}), ErrInvalidGood)
-	assert.ErrorIs(t, ValidateCatalog([]Civilization{bien("ROMAN", economy.ResourceWine), bien("PERSIAN", economy.ResourceWine)}), ErrInvalidGood)
-	conRasgoMalo := bien("NORSE", economy.ResourceFurs)
-	conRasgoMalo.Traits = map[string]int32{TraitMoveSpeed: 0}
-	assert.ErrorIs(t, ValidateCatalog([]Civilization{conRasgoMalo}), ErrInvalidTrait)
+	assert.NoError(t, ValidateCatalog(catalogoCompleto()))
+	for nombre, romper := range map[string]func([]Civilization){
+		"un recurso que no es bien": func(cs []Civilization) { cs[0].Good = economy.ResourceWood },
+		"sin bien":                  func(cs []Civilization) { cs[0].Good = "" },
+		"bien repetido":             func(cs []Civilization) { cs[2].Good = economy.ResourceWine },
+	} {
+		cs := catalogoCompleto()
+		romper(cs)
+		assert.ErrorIs(t, ValidateCatalog(cs), ErrInvalidGood, nombre)
+	}
+	cs := catalogoCompleto()
+	cs[3].Traits = map[string]int32{TraitMoveSpeed: 0}
+	assert.ErrorIs(t, ValidateCatalog(cs), ErrInvalidTrait)
+	// Un bien y una unidad mal a la vez: primero el bien.
+	cs = catalogoCompleto()
+	cs[0].Good, cs[0].Unit = "", ""
+	assert.ErrorIs(t, ValidateCatalog(cs), ErrInvalidGood)
+}
+
+// INV-UNIT-013: cada civilización tiene una unidad exclusiva y entrenable del
+// catálogo, ninguna se repite y ningún tipo exclusivo queda sin civilización.
+func TestElCatalogoTieneUnaUnidadExclusivaPorCivilizacion(t *testing.T) {
+	for nombre, romper := range map[string]func([]Civilization) []Civilization{
+		"sin unidad":             func(cs []Civilization) []Civilization { cs[0].Unit = ""; return cs },
+		"un tipo desconocido":    func(cs []Civilization) []Civilization { cs[0].Unit = "KNIGHT"; return cs },
+		"una unidad común":       func(cs []Civilization) []Civilization { cs[0].Unit = unit.TypeWarrior; return cs },
+		"la caravana":            func(cs []Civilization) []Civilization { cs[0].Unit = unit.TypeCaravan; return cs },
+		"una unidad repetida":    func(cs []Civilization) []Civilization { cs[1].Unit = unit.TypeLegionary; return cs },
+		"una exclusiva huérfana": func(cs []Civilization) []Civilization { return cs[:3] },
+	} {
+		err := ValidateCatalog(romper(catalogoCompleto()))
+		assert.ErrorIs(t, err, ErrInvalidUnit, nombre)
+	}
 }

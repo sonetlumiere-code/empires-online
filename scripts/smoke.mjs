@@ -93,6 +93,12 @@
  *      aviso CARAVAN_CAPTURED y la caravana llega a la ciudad de smoke_runner. Va después de
  *      --bienes. Desde E15, --comercio y --bienes esperan además a que llegue la caravana de
  *      su trato (unos minutos entre las dos ciudades del humo).
+ *  13e. sólo con --unidad-civilizacion (SPEC-CIVILIZATION-UNITS): la ciudad del humo pide la
+ *      unidad de otra civilización y se rechaza (INVALID_TARGET); en la Edad de Piedra, la
+ *      propia también. En Bronce, si le faltan los 10 de su bien, los elabora en su taller
+ *      (el de --bienes); entrena su unidad propia pagando 80 de madera, 40 de piedra y 10 del
+ *      bien, con el plazo de su civilización, y la ve nacer con su tipo y su vida. Va después
+ *      de --bienes. Necesita 80 de madera y 40 de piedra, más 30 y 15 por elaboración.
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -152,7 +158,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -186,6 +192,7 @@ const TERRITORIO = args.includes('--territorio');
 const REGISTRO = args.includes('--registro');
 const CIVILIZACION = args.includes('--civilizacion');
 const BIENES = args.includes('--bienes');
+const UNIDAD_CIVILIZACION = args.includes('--unidad-civilizacion');
 const CARAVANA = args.includes('--caravana');
 const MENSAJES = args.includes('--mensajes');
 const FACCION = args.includes('--faccion');
@@ -210,6 +217,15 @@ const COSTE_TERRENO = new Map([[0, 10], [1, 16], [2, 18], [5, 6]]);
 const CATALOGO = JSON.parse(
   readFileSync(new URL('../packages/protocol/schema/v1/civilizations.json', import.meta.url), 'utf8'),
 ).civilizations;
+
+/**
+ * El catálogo de presentación de las unidades (SPEC-CIVILIZATION-UNITS §6), el que
+ * un test del Game Server ata al catálogo de Go: costes, plazos y vida sin copiar
+ * ningún número.
+ */
+const UNIDADES = JSON.parse(
+  readFileSync(new URL('../packages/protocol/schema/v1/units.json', import.meta.url), 'utf8'),
+).units;
 
 /** El rasgo por mil de una civilización; 1000 si no lo declara (RN-CIV-003). */
 export function rasgo(catalogo, codigo, clave) {
@@ -749,6 +765,10 @@ async function main() {
     await bienes(segunda, ciudad);
   }
 
+  if (UNIDAD_CIVILIZACION) {
+    await unidadCivilizacion(segunda, ciudad);
+  }
+
   if (CARAVANA) {
     await caravana(segunda, ciudad, cuenta.playerId);
   }
@@ -956,6 +976,105 @@ async function bienes(propio, ciudad) {
   ok('trato con bienes aceptado', `5 de ${bien} en camino hacia ${ciudadV.name}, llegan en ${segundosHasta(deBienes.arrivesAtMs)} s`);
   await llegada(victima.sesion, deBienes, ciudadV.id, bien, tenia + 5);
   victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Unidades de civilización (SPEC-CIVILIZATION-UNITS), sólo con --unidad-civilizacion
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * La unidad propia de una civilización y una ajena (la de la primera otra del
+ * catálogo), con la ficha de presentación de la propia; `null` si la
+ * civilización no está en el catálogo.
+ */
+export function unidadesDelHumo(catalogo, unidades, codigo) {
+  const propia = catalogo.find((c) => c.code === codigo)?.unit;
+  const ajena = catalogo.find((c) => c.code !== codigo)?.unit;
+  const ficha = unidades.find((u) => u.code === propia);
+  if (!propia || !ajena || !ficha) return null;
+  return { propia, ajena, ficha };
+}
+
+/** Las elaboraciones de 5 que faltan para tener `necesita` del bien con `tiene`. */
+export function elaboracionesQueFaltan(tiene, necesita, porElaboracion = 5) {
+  return tiene >= necesita ? 0 : Math.ceil((necesita - tiene) / porElaboracion);
+}
+
+async function unidadCivilizacion(propio, ciudad) {
+  propio.sesion.enviar('session.view', { center: { x: ciudad.centerX, y: ciudad.centerY } });
+  const vista = (await propio.sesion.esperar('world.snapshot')).payload;
+  const c = vista.cities.find((x) => x.id === ciudad.id) ?? ciudad;
+  const u = unidadesDelHumo(CATALOGO, UNIDADES, c.civilization);
+  if (!u) fallar('la civilización de la ciudad del humo no tiene unidad en el catálogo', c.civilization);
+  const entrenar = async (tipo) => {
+    const id = propio.sesion.enviar('city.train', { cityId: c.id, type: tipo });
+    return propio.sesion.esperarQue(['system.error', 'city.update'],
+      (m) => (m.type === 'system.error' && m.requestId === id) ||
+        (m.type === 'city.update' && m.payload.id === c.id && m.payload.production?.unitType === tipo), 15_000);
+  };
+
+  // La de otra civilización, nunca (INV-UNIT-012).
+  const ajena = await entrenar(u.ajena);
+  if (ajena.type !== 'system.error' || ajena.payload.code !== 'INVALID_TARGET') {
+    fallar(`${c.civilization} pudo encargar ${u.ajena}`, ajena.payload);
+  }
+  ok('la unidad de otra civilización se rechaza', `${c.civilization} pide ${u.ajena}: ${ajena.payload.message}`);
+
+  if (c.era === 'STONE_AGE') {
+    const antes = await entrenar(u.propia);
+    if (antes.type !== 'system.error' || antes.payload.code !== 'INVALID_TARGET') {
+      fallar(`${u.propia} se encargó en la Edad de Piedra`, antes.payload);
+    }
+    ok('la unidad propia, antes de Bronce, se rechaza', `${u.propia}: ${antes.payload.message} (el resto pide --avance)`);
+    return;
+  }
+
+  // El bien: 10 de los suyos; si faltan, los elabora el taller (--bienes).
+  const bien = bienDe(CATALOGO, c.civilization);
+  let stocks = { ...c.stocks };
+  const faltan = elaboracionesQueFaltan(stocks[bien] ?? 0, u.ficha.ownGoodCost);
+  if (faltan > 0) {
+    const taller = vista.buildings.find((b) => b.cityId === c.id && b.type === 'WORKSHOP' && b.status === 'COMPLETE');
+    if (!taller) fallar(`faltan ${u.ficha.ownGoodCost - (stocks[bien] ?? 0)} de ${bien} y no hay taller`, 'pasa antes --bienes');
+    if (c.craft) {
+      await propio.sesion.esperarQue('city.update', (m) => m.payload.id === c.id && m.payload.craft === null, 60_000);
+    }
+    for (let i = 0; i < faltan; i++) {
+      propio.sesion.enviar('city.craft', { cityId: c.id });
+      const fin = await propio.sesion.esperarQue(['city.update', 'system.error'],
+        (m) => m.type === 'system.error' || (m.payload.id === c.id && m.payload.craft === null && m.payload.stocks), 60_000);
+      if (fin.type === 'system.error') fallar('no se pudo elaborar el bien para la unidad', fin.payload);
+      stocks = { ...stocks, ...fin.payload.stocks };
+    }
+    ok('bien elaborado para la unidad', `${bien}: ${stocks[bien]}`);
+  }
+  for (const coste of u.ficha.trainCosts) {
+    if ((stocks[coste.resource] ?? 0) < coste.amount) {
+      fallar(`la ciudad del humo no tiene ${coste.amount} de ${coste.resource} para su unidad`,
+        'con el servidor parado: EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed');
+    }
+  }
+  if (c.production) {
+    await propio.sesion.esperarQue('city.update', (m) => m.payload.id === c.id && m.payload.production === null, 60_000);
+  }
+
+  // La propia: tres recursos, el plazo de su civilización y su tipo al nacer.
+  const encargo = await entrenar(u.propia);
+  if (encargo.type === 'system.error') fallar(`no se pudo entrenar ${u.propia}`, encargo.payload);
+  const p = encargo.payload;
+  for (const coste of [...u.ficha.trainCosts, { resource: bien, amount: u.ficha.ownGoodCost }]) {
+    const esperado = (stocks[coste.resource] ?? 0) - coste.amount;
+    if (p.stocks?.[coste.resource] !== esperado) {
+      fallar(`el encargo no debitó ${coste.amount} de ${coste.resource}`, { antes: stocks, despues: p.stocks });
+    }
+  }
+  const plazo = escalarDuracion(u.ficha.trainMs, rasgo(CATALOGO, c.civilization, 'production.speed'));
+  const queda = comprobarPlazo(`el ${u.propia}`, p.production.completesAtMs, encargo.ts, plazo);
+  ok('unidad propia encargada', `${u.propia}: ${u.ficha.trainCosts.map((x) => `${x.amount} ${x.resource}`).join(', ')} y ${u.ficha.ownGoodCost} ${bien}; ${plazo} ms (quedaban ${queda})`);
+  const nace = await propio.sesion.esperarQue('entity.spawn',
+    (m) => m.payload.unit.unitType === u.propia && m.payload.unit.cityId === c.id, plazo + 15_000);
+  if (nace.payload.unit.maxHp !== u.ficha.maxHp) fallar(`${u.propia} nació sin su vida`, nace.payload.unit);
+  ok('unidad propia nacida', `${u.propia} ${nace.payload.unit.id} con ${nace.payload.unit.maxHp} de vida`);
 }
 
 // ─────────────────────────────────────────────────────────────

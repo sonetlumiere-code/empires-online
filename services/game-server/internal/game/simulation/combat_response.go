@@ -97,7 +97,12 @@ func (s *Simulation) guardsNear(playerID uuid.UUID, at world.Tile) []*unit.Unit 
 	for cy := cy0; cy <= cy1; cy++ {
 		for cx := cx0; cx <= cx1; cx++ {
 			for _, u := range s.state.UnitsInChunk(cx, cy) {
-				if u.PlayerID != playerID || u.Type != unit.TypeWarrior || !u.IsAlive() {
+				if u.PlayerID != playerID || !u.IsAlive() {
+					continue
+				}
+				// RN-COMBAT-012 con RN-CIVUNIT-005: responde toda unidad que
+				// ataca, no sólo el guerrero (ADR-043 §6).
+				if def, err := unit.Lookup(u.Type); err != nil || !def.CanAttack() {
 					continue
 				}
 				if chebyshevTiles(s.authoritativePosition(u, nowMs), at) <= r {
