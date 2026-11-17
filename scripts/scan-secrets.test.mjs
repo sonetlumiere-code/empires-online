@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { RULES, SECRET_ENV, isPlaceholder, loadAllowlist, mask, scanBundle, scanLine } from './scan-secrets.mjs';
+import { RULES, SECRET_ENV, isPlaceholder, loadAllowlist, mask, scanBundle, scanFiles, scanLine } from './scan-secrets.mjs';
 
 const j = (...p) => p.join('');
 const SAMPLES = {
@@ -127,6 +127,23 @@ test('sin el valor en el entorno no hay canario que buscar, y se dice', () => {
   const dir = mkdtempSync(join(tmpdir(), 'eo-bundle-'));
   try {
     assert.deepEqual(scanBundle(dir, {}).canaries, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--files escanea sólo esos ficheros, con la lista de permitidos, y salta los que no existen', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'eo-scan-files-'));
+  try {
+    const malo = join(dir, 'verify.sh');
+    const bueno = join(dir, 'nota.md');
+    writeFileSync(malo, `export ${SAMPLES['secret-assignment']}\n`);
+    writeFileSync(bueno, 'nada que ver aquí\n');
+    const hallazgos = scanFiles([malo, bueno, join(dir, 'no-existe.txt')], []);
+    assert.equal(hallazgos.length, 1);
+    assert.equal(hallazgos[0].rule, 'secret-assignment');
+    assert.match(hallazgos[0].where, /verify\.sh:1$/);
+    assert.equal(scanFiles([malo], [{ value: 'q8Zr2Lx0Vt7Kp4Nw', reason: 'prueba' }]).length, 0, 'permitido por valor');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

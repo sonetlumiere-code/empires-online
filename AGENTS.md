@@ -125,7 +125,8 @@ sin que pase entero. Tras cambiar Zod, `pnpm run protocol:build` antes.
 
 `.claude/settings.json` engancha `scripts/hooks/pre-commit-dod.sh` antes de cada `git commit` que lance un agente:
 
-- comprueba `check-docs` y `gofmt -l` de los ficheros Go del commit;
+- comprueba `check-docs`, el escaneo de secretos de los ficheros del commit (`scan-secrets.mjs --files`) y
+  `gofmt -l` de sus ficheros Go;
 - **bloquea** un commit que cambia código de producción (`services/`, `apps/`, `packages/`) sin tocar ningún test ni
   ningún fichero de `docs/`.
 

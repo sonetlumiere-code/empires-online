@@ -4,6 +4,7 @@
 # stdin; si el comando no es un commit, sale en el acto. Bloquea (exit 2, con el
 # motivo en stderr) si:
 #   - scripts/check-docs.mjs falla;
+#   - el escaneo de secretos encuentra algo en los ficheros del commit;
 #   - algún .go del commit no pasa gofmt;
 #   - el commit cambia código de producción sin tocar ni un test ni docs/
 #     (salvo con EO_SKIP_DOD=1 en el comando, justificado en el mensaje).
@@ -62,6 +63,16 @@ motivos=()
 if command -v node >/dev/null 2>&1; then
   if ! salida="$(node scripts/check-docs.mjs 2>&1)"; then
     motivos+=("check-docs falla:"$'\n'"$(printf '%s' "$salida" | tail -15)")
+  fi
+fi
+
+# Los secretos de lo que entra (INV-SEC-006): lo mismo que la CI con --tree,
+# pero antes del commit y sobre ficheros aún sin versionar.
+if command -v node >/dev/null 2>&1; then
+  lista=()
+  while IFS= read -r f; do [ -n "$f" ] && lista+=("$f"); done <<<"$ficheros"
+  if [ ${#lista[@]} -gt 0 ] && ! salida="$(node scripts/scan-secrets.mjs --files "${lista[@]}" 2>&1)"; then
+    motivos+=("el escaneo de secretos encuentra algo (scripts/scan-secrets.mjs):"$'\n'"$(printf '%s' "$salida" | tail -12)")
   fi
 fi
 

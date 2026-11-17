@@ -6,6 +6,7 @@
  *   node scripts/scan-secrets.mjs --tree               ficheros versionados hoy
  *   node scripts/scan-secrets.mjs --history            cada línea añadida en la historia
  *   node scripts/scan-secrets.mjs --bundle <dir>       bundle del cliente (.next/static)
+ *   node scripts/scan-secrets.mjs --files <ruta>...    sólo esos ficheros (el hook de commit)
  *
  * Sin dependencias, a propósito: sólo Node y git. Lo que no se puede fijar por
  * versión no entra en la cadena que decide si un secreto se ha escapado.
@@ -27,7 +28,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, extname, join, relative, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -124,10 +125,19 @@ const BINARY = /\.(?:png|jpe?g|gif|webp|ico|woff2?|ttf|otf|pdf|zip|gz|tgz|wasm|l
 const SKIP_PATHS = ['pnpm-lock.yaml', 'services/game-server/go.sum'];
 
 export function scanTree(allowlist) {
+  return scanFiles(git(['ls-files', '-z']).split('\0').filter(Boolean), allowlist);
+}
+
+/**
+ * Escanea los ficheros dados, con rutas relativas a la raíz del repositorio, con
+ * las mismas reglas y la misma lista de permitidos que el árbol: lo usa el hook
+ * de commit con los ficheros que entran en él, versionados o no todavía.
+ */
+export function scanFiles(paths, allowlist) {
   const findings = [];
-  for (const path of git(['ls-files', '-z']).split('\0').filter(Boolean)) {
+  for (const path of paths) {
     if (BINARY.test(path) || SKIP_PATHS.includes(path)) continue;
-    const full = join(repoRoot, path);
+    const full = isAbsolute(path) ? path : join(repoRoot, path);
     if (!existsSync(full) || statSync(full).size > 2 * 1024 * 1024) continue;
     readFileSync(full, 'utf8')
       .split(/\r?\n/)
@@ -204,6 +214,11 @@ function main(argv) {
   console.log('\nEscaneo de secretos (INV-SEC-006)\n');
   if (argv.includes('--tree')) failed |= report('árbol de trabajo versionado', scanTree(allowlist));
   if (argv.includes('--history')) failed |= report('historia completa (líneas añadidas)', scanHistory(allowlist));
+  const fi = argv.indexOf('--files');
+  if (fi >= 0) {
+    const paths = argv.slice(fi + 1).filter((a) => !a.startsWith('--'));
+    failed |= report('ficheros del commit', scanFiles(paths, allowlist));
+  }
   const b = argv.indexOf('--bundle');
   if (b >= 0) {
     const dir = resolve(argv[b + 1] ?? '');
@@ -214,8 +229,8 @@ function main(argv) {
     }
     failed |= report(`bundle del cliente (${relative(repoRoot, dir)}; canarios: ${canaries.join(', ') || 'ninguno'})`, findings);
   }
-  if (!argv.some((a) => ['--tree', '--history', '--bundle'].includes(a))) {
-    console.log('Uso: node scripts/scan-secrets.mjs [--tree] [--history] [--bundle <dir> [--require-canaries]]');
+  if (!argv.some((a) => ['--tree', '--history', '--bundle', '--files'].includes(a))) {
+    console.log('Uso: node scripts/scan-secrets.mjs [--tree] [--history] [--bundle <dir> [--require-canaries]] [--files <ruta>...]');
     return 2;
   }
   console.log('');
