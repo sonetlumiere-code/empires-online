@@ -275,8 +275,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-UNIT-009 | Todo `unit_type` persistido resuelve en el catálogo de `unit.Lookup` | ALTO | DOMAIN, TEST | ✓ | `TestLookupSoloConoceElCatalogo`, `TestLasUnidadesSeExcluyenSeReparanOAbortan` |
 | INV-UNIT-010 | `player_id` y `unit_type` son inmutables tras la creación en MVP | MEDIO | DOMAIN, TEST | ✓ | `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
 | INV-UNIT-011 | `chunk_x` y `chunk_y` son siempre el chunk de `(x, y)` | ALTO | DOMAIN, TEST | ✓ | `TestFlushPositionsEscribeElLoteYMantieneElChunk`, `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
-| INV-UNIT-012 | Una ciudad sólo produce la unidad exclusiva de la civilización de su dueño, y desde la Edad de Bronce | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E22) |
-| INV-UNIT-013 | Cada civilización tiene exactamente una unidad exclusiva, entrenable, que no comparte con ninguna otra | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E22) |
+| INV-UNIT-012 | Una ciudad sólo produce la unidad exclusiva de la civilización de su dueño, y desde la Edad de Bronce | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaUnidadExclusivaPideSuCivilizacionSuEraYSuBien`, `TestRechazosDeLaUnidadExclusiva`, `TestEntrenarUnLegionarioPorLaRed`, `TestLaBaseRechazaLaUnidadDeOtraCivilizacionOAntesDeBronce` (integration) |
+| INV-UNIT-013 | Cada civilización tiene exactamente una unidad exclusiva, entrenable, que no comparte con ninguna otra | ALTO | DB, DOMAIN, TEST | ✓ | `TestElCatalogoTieneUnaUnidadExclusivaPorCivilizacion`, `TestUnCatalogoSinUnaUnidadPorCivilizacionAbortaElArranque`, `TestCadaCivilizacionTieneSuUnidadEnLaBase` (integration) |
 
 ### MOVEMENT — [movement.md](movement.md)
 
@@ -462,9 +462,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 141 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 143 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **145** | |
 
@@ -472,7 +472,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-UNIT-012` e `INV-UNIT-013` se registraron el 2026-11-17 con SPEC-CIVILIZATION-UNITS y [ADR-043](../decisions/ADR-043-civilization-units.md), antes de escribir su código, como manda §8, y nacen sin cobertura.
+`INV-UNIT-012` e `INV-UNIT-013` se registraron el 2026-11-17 con SPEC-CIVILIZATION-UNITS y [ADR-043](../decisions/ADR-043-civilization-units.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el trigger, con `DISABLE TRIGGER` en la base de tests). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-CLAN-006` e `INV-CLAN-007` se registraron el 2026-11-16 con SPEC-CLAN-ALLIANCES y [ADR-042](../decisions/ADR-042-clan-alliances.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. Ninguna fila queda sin cobertura ni parcial.
 

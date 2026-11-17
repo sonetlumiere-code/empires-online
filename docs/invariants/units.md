@@ -18,7 +18,7 @@ Formato y severidades: [README.md](README.md). Estados y tipos de unidad: canon 
 | `HIDDEN` | Sí | Sí | Sólo para su dueño ([INV-SAFE-004](territory.md#inv-safe-004)) |
 | `DEAD` | No | **No** | No (no se carga) |
 
-El único `unit_type` del MVP es `VILLAGER`. Sus estadísticas viven en el **catálogo** `internal/domain/unit`, no repartidas por el código: `{MaxHP: 40, BaseMsPerTile: 600, PopulationCost: 1}`, consultables por `unit.Lookup(Type) (Definition, error)`. `TOWN_CENTER` es un *building*, no una unidad, y no aparece en `units`.
+El MVP nació con un solo `unit_type`, `VILLAGER`; desde E22 el catálogo tiene siete (`VILLAGER`, `WARRIOR`, `CARAVAN` y las cuatro unidades de civilización de [SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md)). Sus estadísticas viven en el **catálogo** `internal/domain/unit`, no repartidas por el código (las del aldeano: `{MaxHP: 40, BaseMsPerTile: 600, PopulationCost: 1}`), consultables por `unit.Lookup(Type) (Definition, error)`. `TOWN_CENTER` es un *building*, no una unidad, y no aparece en `units`.
 
 > **Nota sobre nombres de constraint.** Las constraints reales de `units` en `000001_initial_schema.up.sql` son: `units_status_valid` (`CHECK (status IN ('IDLE','MOVING','GARRISONED','HIDDEN','DEAD'))`), `units_hp_within_max` (`CHECK (hp <= max_hp)`), los `CHECK` de columna `hp >= 0` y `max_hp > 0`, y las claves foráneas **en línea** de `player_id` (`ON DELETE CASCADE`) y `city_id` (`ON DELETE SET NULL`). No existen `ck_units_position_bounds`, `ck_units_hp_range` ni `units.version`: este documento cita los mecanismos reales.
 
@@ -438,7 +438,7 @@ Declararlo como invariante y no dejarlo implícito tiene un propósito concreto:
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E22 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** todavía: se registra con SPEC-CIVILIZATION-UNITS y [ADR-043](../decisions/ADR-043-civilization-units.md), antes de escribir su código (E22) |
+| Cobertura | **Cubierto** por `TestLaUnidadExclusivaPideSuCivilizacionSuEraYSuBien` (`internal/domain/production`), `TestRechazosDeLaUnidadExclusiva` y `TestUnRomanoEntrenaUnLegionario` (`internal/game/simulation`), `TestEntrenarUnLegionarioPorLaRed` (e2e, `internal/websocket`) y `TestLaBaseRechazaLaUnidadDeOtraCivilizacionOAntesDeBronce` (integration) |
 
 **Enunciado.** Toda fila de `city_productions` cuyo `unit_type` es la unidad exclusiva de alguna civilización
 (`civilizations.unit`) es la de la civilización del dueño de su ciudad, y la ciudad estaba al menos en `BRONZE_AGE`
@@ -457,9 +457,18 @@ pasarían las unidades, que producto decidió que no se comparten.
 - La civilización no cambia ([INV-PLAYER-011](player.md#inv-player-011)) y la era no retrocede
   ([INV-CITY-018](city.md#inv-city-018)): lo que se cumplió al encargar sigue cumpliéndose al nacer.
 
-**Cómo se verifica.** Pendiente (E22): los rechazos de `CanTrain` (unit), el `city.train` por WebSocket con la unidad
-ajena y en la Edad de Piedra (e2e) y el trigger contra un `INSERT` directo (integration), verificado por mutación con
-`ALTER TABLE … DISABLE TRIGGER`.
+**Cómo se verifica.**
+
+- `TestLaUnidadExclusivaPideSuCivilizacionSuEraYSuBien` (unit) — la civilización antes que todo lo demás, la era antes
+  que la producción en curso, y cada recurso por separado; las pieles no pagan a un romano. Verificado por mutación:
+  una comprobación de civilización que nunca se cumple (`&& def.MaxHP < 0`) lo hace fallar, y también a
+  `TestRechazosDeLaUnidadExclusiva`.
+- `TestRechazosDeLaUnidadExclusiva` (simulation) y `TestEntrenarUnLegionarioPorLaRed` (e2e) — `INVALID_TARGET` para la
+  ajena y para la propia en la Edad de Piedra, sin tocar el almacén ni la población.
+- `TestLaBaseRechazaLaUnidadDeOtraCivilizacionOAntesDeBronce` (integration) — `Train` con la ajena y antes de Bronce
+  vuelve `ErrNotTrainable` sin debitar, y un `INSERT` directo falla con `23514`. Verificado por mutación el
+  2026-11-17: con `ALTER TABLE city_productions DISABLE TRIGGER city_productions_civilization_unit` en la base de
+  tests el test cae; al reactivarlo, `tgenabled` vuelve a `'O'`.
 
 **Violación en runtime.** El encargo se rechaza; la RAM devuelve la reserva como con cualquier rechazo de la base.
 
@@ -474,7 +483,7 @@ ajena y en la Edad de Piedra (e2e) y el trigger contra un `INSERT` directo (inte
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E22 |
 | Política ante violación | FAIL_FAST (el Game Server no arranca) |
-| Cobertura | **Sin cobertura** todavía: se registra con SPEC-CIVILIZATION-UNITS y [ADR-043](../decisions/ADR-043-civilization-units.md), antes de escribir su código (E22) |
+| Cobertura | **Cubierto** por `TestElCatalogoTieneUnaUnidadExclusivaPorCivilizacion` (`internal/domain/player`), `TestUnCatalogoSinUnaUnidadPorCivilizacionAbortaElArranque` (`internal/game/loadcheck`) y `TestCadaCivilizacionTieneSuUnidadEnLaBase` (integration) |
 
 **Enunciado.** `civilizations.unit` es, para cada civilización, un tipo del catálogo de `unit.Lookup` marcado como
 exclusivo y entrenable; dos civilizaciones no tienen la misma, y todo tipo exclusivo del catálogo es la unidad de
@@ -490,8 +499,16 @@ civilización sin su unidad o a una unidad que nadie entrena.
 - `DOMAIN` — `player.ValidateCatalog` exige al cargar que cada unidad sea exclusiva y entrenable en el catálogo de Go y
   que ningún tipo exclusivo quede sin civilización; si no, el Game Server no arranca.
 
-**Cómo se verifica.** Pendiente (E22): la validación del catálogo con cada caso inválido (unit), y las restricciones
-de la columna y la coincidencia con el catálogo de presentación (integration).
+**Cómo se verifica.**
+
+- `TestElCatalogoTieneUnaUnidadExclusivaPorCivilizacion` (unit) — sin unidad, un tipo desconocido, una común, la
+  caravana, una repetida y una exclusiva huérfana se rechazan con `ErrInvalidUnit`. Verificado por mutación: con la
+  comprobación de repetidas y la de huérfanas anuladas (`&& c.Code == ""`, `&& t == ""`) caen sus dos casos y
+  `TestUnCatalogoSinUnaUnidadPorCivilizacionAbortaElArranque`.
+- `TestUnCatalogoSinUnaUnidadPorCivilizacionAbortaElArranque` (loadcheck) — `INV-UNIT-013/FAIL_FAST`.
+- `TestCadaCivilizacionTieneSuUnidadEnLaBase` (integration) — la carga lee las cuatro, y `NULL`, un código desconocido,
+  uno común o uno repetido se rechazan en la base; `TestElCatalogoDeCivilizacionesEsElDePresentacion`, que
+  `civilizations.unit` es la de `civilizations.json`.
 
 **Violación en runtime.** No puede ocurrir con el proceso en marcha: el catálogo es inmutable mientras vive.
 

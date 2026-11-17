@@ -290,6 +290,26 @@ sus datos).
 | cliente | El botón de la unidad propia con su coste y cada motivo; que no aparece la ajena; la proyección y la barra de órdenes usan la capacidad y no el tipo; los textos de registro y avisos con los cuatro nombres; el texto del registro de alta |
 | humo | `scripts/smoke.mjs --unidad-civilizacion`, con su función exportada y su test en `scripts/smoke.test.mjs`: una cuenta en Bronce con bien propio (semilla `EO_DEVSEED_STOCK_FOR`) entrena su unidad, la ve nacer con su tipo y su vida, y ve rechazada la de otra civilización |
 
+**Precisiones (2026-11-17, al implementarlo).**
+
+- **Los golden de §9.** El duelo del legionario se comprueba como lo ve el juego: el guerrero que lo ataca lo despierta,
+  el legionario responde, mata al guerrero en ocho golpes y termina con 46 de vida tras recibir ocho
+  (`TestElLegionarioAguantaYGanaElDuelo`); los 14 golpes que aguantaría son la cuenta de su vida, no un golden. Con
+  el berserker, el primer golpe cae en el tick de la orden, porque ya está en contacto: 46, 32, 18, 4 y 0. El
+  arquero no busca un tile a tres de su objetivo: persigue hacia él, como el guerrero, y se para en cuanto queda a
+  tres (`chase` y `startAttacking` ya preguntaban por `AttackRange`); asedia desde un tile a tres de la casa y saquea
+  desde el anillo de la muralla.
+- **La producción cargada al arrancar** resuelve su coste con el bien de la civilización de su ciudad, para que la
+  devolución de un rechazo sea exacta; una confirmada no se devuelve nunca.
+- **El protocolo.** `CivilizationInfo.unit` es un `TrainableUnitType`, no un `UnitType`: así el cliente lo pasa a
+  `city.train` sin convertirlo.
+- **El cliente** (§4.6). El botón dice «Legionario (80 de madera, 40 de piedra y 10 de vino)»; el panel de selección,
+  «Legionario · Romanos» (el nombre del catálogo de civilizaciones es plural); el registro, «Unidad propia:
+  legionario, aguanta casi el doble que un guerrero». Reclamar con una unidad que no ataca dice «Sólo un guerrero o tu
+  unidad propia reclaman territorios».
+- **La migración de vuelta** borra las producciones de tipos exclusivos y deja las unidades ya nacidas, que un
+  servidor anterior excluye al cargar (`INV-UNIT-009`).
+
 ## 10. Decisiones de producto (2026-11-17)
 
 Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una (en negrita), y las alternativas

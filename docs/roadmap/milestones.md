@@ -2349,13 +2349,21 @@ tierra afín, compartir la unidad con los aliados y un tope por ciudad.
    ([combat-raid.md](../specs/combat-raid.md)), `RN-COMBAT-012` ([combat-response.md](../specs/combat-response.md)),
    Q1 y Q8 de [civilization-goods.md](../specs/civilization-goods.md), Q6 de
    [civilizations.md](../specs/civilizations.md) e `INV-COMBAT-003` ([combat.md](../invariants/combat.md)).
-2. **PENDIENTE** — Dominio: los cuatro tipos exclusivos, `TrainCosts`, `OwnGoodCost`, `RequiresEra`,
-   `Civilization.Unit` y `production.CanTrain` con civilización y edad.
-3. **PENDIENTE** — Migración `000024` y persistencia: `civilizations.unit`, el trigger de `city_productions`, la carga
-   y el encargo con varios débitos.
-4. **PENDIENTE** — Simulación: la reserva en varios recursos, la respuesta automática por capacidad y los golden de
-   cada perfil.
-5. **PENDIENTE** — Protocolo: los cuatro tipos en Zod y en Go, `units.json`, `CivilizationInfo.unit`; contract tests y
-   e2e.
-6. **PENDIENTE** — Cliente: el botón de la unidad propia, las siluetas, las capacidades y los textos.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --unidad-civilizacion`.
+2. **HECHO** — Dominio: los cuatro tipos exclusivos, `TrainCosts`, `OwnGoodCost`, `RequiresEra`, `Exclusive`,
+   `Civilization.Unit` con su validación (`INV-UNIT-013`, también en la carga) y `production.CanTrain` con
+   civilización y edad (`TestLaUnidadExclusivaPideSuCivilizacionSuEraYSuBien`,
+   `TestLasUnidadesDeCivilizacionTienenSuPerfil`, `TestElCatalogoTieneUnaUnidadExclusivaPorCivilizacion`).
+3. **HECHO** — Migración `000024` y persistencia: `civilizations.unit`, el trigger de `city_productions`, la carga y el
+   encargo con varios débitos (`TestCadaCivilizacionTieneSuUnidadEnLaBase`,
+   `TestElEncargoDeUnaExclusivaDebitaLosTresRecursosJuntos`,
+   `TestLaBaseRechazaLaUnidadDeOtraCivilizacionOAntesDeBronce`; el trigger, verificado por mutación).
+4. **HECHO** — Simulación: la reserva y la devolución en varios recursos, la respuesta automática por `CanAttack` y los
+   golden de cada perfil (`civilization_units_test.go`: legionario, berserker, arquero a tres tiles, catafracto,
+   tierra afín, asedio y saqueo, y una unidad de cada tipo que ataca, saquea y derriba) y la recuperación
+   (`TestReinicioDuranteElEntrenamientoDeUnLegionario`).
+5. **HECHO** — Protocolo: los cuatro tipos en Zod y en Go, `units.json`, `CivilizationInfo.unit`; contract tests
+   (`unit_catalog_contract_test.go`), e2e (`TestEntrenarUnLegionarioPorLaRed`) y Zod.
+6. **HECHO** — Cliente: el botón de la unidad propia, las siluetas, las capacidades y los textos (`units.test.ts` y los
+   de economía, conquista, registro y proyección).
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --unidad-civilizacion` (sus funciones, con test en
+   `scripts/smoke.test.mjs`).

@@ -493,7 +493,7 @@ Las decisiones del cliente son intenciones, puras y probadas en `src/state/econo
 
 | Decisión | Criterio | Por qué |
 |---|---|---|
-| Clic en el mapa con una unidad propia seleccionada | Sobre una casa de una ciudad **ajena** con un `WARRIOR` → `unit.demolish` (desde E8, [combat-siege.md](../specs/combat-siege.md) Q10); en el resto del 3 × 3 de una ciudad ajena con un `WARRIOR` → `unit.pillage` (desde E5, [combat-pillage.md](../specs/combat-pillage.md)); dentro del 3 × 3 de cualquier otra ciudad → `unit.garrison`; si no, sobre un tile `FOREST` (byte 1 del terreno ya cargado) o, desde E9, `HILL` (byte 2) con un `VILLAGER` → `unit.gather`, y el servidor decide por el terreno si es madera o piedra; en cualquier otro caso → `unit.move` (`decideTileOrder`). Con una `CARAVAN` seleccionada, ninguna orden (`none`, desde E15: la caravana no admite órdenes, [caravans.md](../specs/caravans.md) `RN-CARAVAN-003`). | Es la orden contextual de la referencia: el destino decide la orden. La zona urbana va primero porque es muralla: no hay bosque que recolectar ahí. Un aldeano que ya recolecta y recibe un clic en otro bosque cambia de bosque (RN-ECON-006); en hierba deja de recolectar (RN-ECON-003). |
+| Clic en el mapa con una unidad propia seleccionada | Sobre una casa de una ciudad **ajena** con un `WARRIOR` → `unit.demolish` (desde E8, [combat-siege.md](../specs/combat-siege.md) Q10); en el resto del 3 × 3 de una ciudad ajena con un `WARRIOR` → `unit.pillage` (desde E5, [combat-pillage.md](../specs/combat-pillage.md)); dentro del 3 × 3 de cualquier otra ciudad → `unit.garrison`; si no, sobre un tile `FOREST` (byte 1 del terreno ya cargado) o, desde E9, `HILL` (byte 2) con un `VILLAGER` → `unit.gather`, y el servidor decide por el terreno si es madera o piedra; en cualquier otro caso → `unit.move` (`decideTileOrder`). Con una `CARAVAN` seleccionada, ninguna orden (`none`, desde E15: la caravana no admite órdenes, [caravans.md](../specs/caravans.md) `RN-CARAVAN-003`). Desde E22, «con un `WARRIOR`» es «con una unidad que ataca» (`unitAttacks`, del catálogo de presentación): el guerrero y las cuatro de civilización ([civilization-units.md](../specs/civilization-units.md) `RN-CIVUNIT-005`). | Es la orden contextual de la referencia: el destino decide la orden. La zona urbana va primero porque es muralla: no hay bosque que recolectar ahí. Un aldeano que ya recolecta y recibe un clic en otro bosque cambia de bosque (RN-ECON-006); en hierba deja de recolectar (RN-ECON-003). |
 | Botón «Casa» | Pide construir en el **primer hueco libre** del 3 × 3 en orden `(y, x)` según los edificios que el store conoce (`firstFreeHouseTile`), sin pedir clic. Sin huecos, no envía nada. | Un clic en la zona urbana ya significa «guarnecerse»: pedir un segundo modo de clic sobre los mismos tiles añadiría un estado de interfaz para elegir entre ocho huecos equivalentes en este slice. Si otro encargo ocupa el tile entre tanto, el servidor responde `INVALID_TARGET`. |
 | Botón «Aldeano» | `city.train { VILLAGER }`; deshabilitado mientras `production` no es `null`. | El servidor respondería `CITY_BUSY`; deshabilitarlo ahorra el viaje, no decide nada. |
 | Costes | **No** se muestran ni se comprueban en el cliente, salvo dos excepciones: el `title` del botón «Guerrero» dice su coste, y desde E9 el botón «Edad de Bronce» dice el suyo y se desactiva con lo que falta (`BRONZE_AGE_COST`, `advanceBlockReason`), porque la spec pide explicarlo (SPEC-ECON-STONE §6). | Viven en los catálogos del servidor (spec §4.5) y cambian sin tocar el cliente; el servidor responde `INSUFFICIENT_RESOURCES`. **Precisión (2026-11-04).** `BRONZE_AGE_COST` es una copia del catálogo de `internal/domain/advance`: si el servidor lo cambiara sin tocar el cliente, el botón podría desactivarse con recursos suficientes. Que el servidor mande el coste en el protocolo está pendiente. |
@@ -823,6 +823,30 @@ y grueso, y una que carga madera, un tronco a la espalda.
   no sale y pone en el pie «vuestros clanes están aliados». La paz residual con un aliado no se ve en el cliente.
 - **Avisos y registro.** La oferta, la aceptación, el rechazo y el preaviso, con la sigla del otro clan; el preaviso se
   resalta (`isLoss`) y, sin `breaksAtMs` (el aviso en vivo no lo trae), dice «en 15 minutos» (`ALLIANCE_BREAK_MINUTES`).
+
+### 4.18 Unidades de civilización (SPEC-CIVILIZATION-UNITS)
+
+> **Estado (2026-11-17): implementado y con tests de lo puro** (`src/state/units.ts`, `src/state/economy.ts`,
+> `src/state/conquest.ts`, `src/state/eventLog.ts`, `src/render/scene.ts`, `app/page.tsx`).
+
+- **Qué llega.** Ningún mensaje nuevo: los cuatro tipos (`LEGIONARY`, `CATAPHRACT`, `HORSE_ARCHER`, `BERSERKER`) en
+  `UnitView.unitType`, en la producción y en las muertes del registro y de los avisos. Lo demás sale del catálogo de
+  presentación de `@empires-online/protocol`: `v1.UNITS` (nombre, si ataca, costes, bien propio, plazo, era y perfil)
+  y `CivilizationInfo.unit` ([ADR-043](../decisions/ADR-043-civilization-units.md) §7).
+- **Capacidad, no tipo.** `unitAttacks(type)` sustituye a «es un `WARRIOR`» en `decideTileOrder` (saquear, derribar),
+  `decideUnitClick` (atacar), `claimBlockReason` (reclamar: «Sólo un guerrero o tu unidad propia reclaman
+  territorios») y la ayuda de la unidad seleccionada (`helpFor`). La escena recibe el tipo (`SceneUnit.unitType`, en
+  lugar de los booleanos `warrior` y `caravan`).
+- **Entrenar.** Tras «Aldeano» y «Guerrero», un tercer botón con la unidad propia y su coste («Legionario (80 de
+  madera, 40 de piedra y 10 de vino)», `civilizationUnit`, `trainCostText`), deshabilitado con su motivo
+  (`civilizationUnitBlockReason`: la era, lo de `trainBlockReason` y cada recurso que falta, también el bien propio;
+  los ajenos no cuentan). Sólo aparece la propia.
+- **Siluetas** (`paintUnitBody`). Sin imágenes: el legionario es el rombo del guerrero con un escudo delante; el
+  berserker, el rombo con dos hachas cruzadas; el catafracto y el arquero, un caballo con su jinete, con lanza o con
+  arco. El color de propio y ajeno, la barra de vida, la carga y el borde de ataque son los de siempre.
+- **Textos.** El panel de selección dice «Legionario · Romanos» (`unitTitle`); el registro y los avisos usan el
+  plural de cada una (`unitPlural`: «arqueros a caballo», «berserkers»). En el registro de alta, cada civilización
+  añade «Unidad propia: legionario, aguanta casi el doble que un guerrero» (`civilizationUnitLine`).
 
 ## 5. Posición autoritativa frente a posición de render
 

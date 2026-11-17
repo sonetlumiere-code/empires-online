@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), y los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), y las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -342,6 +342,8 @@ Los multiplicadores de `000002` no los consumió nunca ningún sistema. **Desde 
 | `BYZANTINE` | `{"unit.move_speed": 950, "production.speed": 1000, "building.house_hp": 1200}` |
 | `PERSIAN` | `{"unit.move_speed": 1050, "production.speed": 950, "economy.gather_speed": 1100}` |
 | `NORSE` | `{"unit.move_speed": 1100, "production.speed": 900, "combat.loot_carry": 1150}` |
+
+**Desde `000024`** ([SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md), [ADR-043](../decisions/ADR-043-civilization-units.md)) cada civilización tiene además su **unidad exclusiva** en `civilizations.unit` (`text NOT NULL`, `civilizations_unit_unique`, `civilizations_unit_valid` con los cuatro códigos): `ROMAN` → `LEGIONARY`, `BYZANTINE` → `CATAPHRACT`, `PERSIAN` → `HORSE_ARCHER`, `NORSE` → `BERSERKER`. Como `civilizations.good` (`000016`), es lo que el entrenamiento pregunta, nunca el código; las estadísticas de cada unidad viven en el catálogo de Go (`unit.Lookup`), y la carga exige que cada una sea exclusiva y entrenable en él (`INV-UNIT-013`).
 
 ---
 
@@ -1092,9 +1094,17 @@ CREATE TABLE city_productions (
     request_id      text        NOT NULL,
     unit_id         bigint      REFERENCES units (id) ON DELETE CASCADE,
     created_at      timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT city_productions_unit_type_valid CHECK (unit_type IN ('VILLAGER', 'WARRIOR'))  -- WARRIOR desde 000007
+    CONSTRAINT city_productions_unit_type_valid CHECK (unit_type IN (
+        'VILLAGER', 'WARRIOR',                                       -- WARRIOR desde 000007
+        'LEGIONARY', 'CATAPHRACT', 'HORSE_ARCHER', 'BERSERKER'))     -- desde 000024
 );
 ```
+
+**Desde `000024`**, el trigger `city_productions_civilization_unit` (`BEFORE INSERT`) rechaza con `23514` una unidad
+exclusiva que no sea `civilizations.unit` de la civilización del dueño de la ciudad, o pedida en una era con `ordinal`
+menor que el de `BRONZE_AGE` (`INV-UNIT-012`); las comunes no las mira. `EconomyRepo.Train` lo devuelve como
+`INVALID_TARGET`. El débito de una unidad exclusiva es de tres recursos (madera, piedra y el bien propio), un delta
+versionado por recurso en la misma transacción ([ADR-043](../decisions/ADR-043-civilization-units.md) §4).
 
 Una fila por ciudad. `unit_id` es `NULL` mientras el entrenamiento está en curso y el id del aldeano desde la
 transacción que lo inserta: es lo que hace idempotente el nacimiento y lo que distingue la población reservada
@@ -1427,6 +1437,29 @@ CREATE INDEX player_blocks_blocked_idx ON player_blocks (blocked_player_id, play
 | `clan_alliances` | Desde `000023` ([SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md)): `clan_a < clan_b` (`clan_alliances_canonical_pair`), `proposed_by_clan` uno de los dos, `status` con los seis estados de un tratado, `break_effective_at` y `break_reason` (`CANCEL` o `FACTIONS`) juntos, `accepted_at` en las que estuvieron activas y `closed_at` en las cerradas; `UNIQUE (proposed_by_player, request_id)` para el reintento de una oferta. Dos índices únicos parciales por par (`ACTIVE` y `PROPOSED`, `INV-CLAN-006`). Dos triggers (`clan_alliances_dissolved_guard`, `clan_alliances_faction_guard`, `23514`) rechazan abrir o aceptar una alianza con un clan disuelto o que junte a la Orden y al Caos (`clan_pair_mixes_factions`); la mezcla posterior abre el preaviso en la transacción que la crea. |
 
 La entrada, la salida y cada envío del canal toman el candado de transacción del clan (`pg_advisory_xact_lock(int4, int4)`, con el espacio «CLAN» y el `id`): los `id` del canal se confirman en orden y nadie escribe tras su salida.
+
+### 16.14 Unidades de civilización (`000024`)
+
+[SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md), [ADR-043](../decisions/ADR-043-civilization-units.md). Sin
+tablas nuevas: una columna del catálogo, el `CHECK` de tipos de `city_productions` y un trigger.
+
+```sql
+ALTER TABLE civilizations ADD COLUMN unit text;   -- rellenada con las cuatro, después NOT NULL
+ALTER TABLE civilizations ADD CONSTRAINT civilizations_unit_unique UNIQUE (unit);
+ALTER TABLE civilizations ADD CONSTRAINT civilizations_unit_valid
+    CHECK (unit IN ('LEGIONARY', 'CATAPHRACT', 'HORSE_ARCHER', 'BERSERKER'));
+CREATE TRIGGER city_productions_civilization_unit
+    BEFORE INSERT ON city_productions
+    FOR EACH ROW EXECUTE FUNCTION city_productions_civilization_unit();
+```
+
+| Objeto | Semántica |
+|---|---|
+| `civilizations.unit` | La unidad exclusiva de la civilización (`RN-CIVUNIT-001`), una por civilización y sin repetir (`INV-UNIT-013`). El entrenamiento la pregunta aquí, nunca por el código (`RN-PLAYER-012`) |
+| `city_productions_civilization_unit` | `INV-UNIT-012`: un `INSERT` de una unidad exclusiva que no es la de la civilización del dueño, o en una era anterior a `BRONZE_AGE` (por `eras.ordinal`), falla con `23514`. Las comunes pasan sin mirar |
+
+La migración de vuelta borra las producciones de tipos exclusivos y deja las unidades ya nacidas en `units`, que no
+tiene `CHECK` de tipo: un servidor anterior las excluye al cargar (`INV-UNIT-009`) y recalcula la población.
 
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 

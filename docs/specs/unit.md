@@ -134,6 +134,16 @@ No hay campo `garrisonable`: en MVP `VILLAGER` es el único tipo y la guarnició
 por tratado, no por una bandera del catálogo. Tampoco hay `version` de catálogo: la única versión que se
 verifica es la del protocolo.
 
+**Precisión (2026-11-17, [civilization-units.md](civilization-units.md), [ADR-043](../decisions/ADR-043-civilization-units.md)).**
+El catálogo tiene hoy siete tipos: `VILLAGER`, `WARRIOR` (E2), `CARAVAN` (E15) y las cuatro unidades exclusivas de
+civilización de E22 (`LEGIONARY`, `CATAPHRACT`, `HORSE_ARCHER`, `BERSERKER`), en el orden de `unit.Types()`. La
+`Definition` real lleva además el coste y el plazo de entrenamiento (`TrainCosts`, en varios recursos, y `TrainMs`),
+el bien propio que cuesta (`OwnGoodCost`, que el entrenamiento resuelve con `civilizations.good`), la era mínima
+(`RequiresEra`), si es exclusiva (`Exclusive`), la recolección (`GatherWorkMs`, `GatherCarry`), el combate
+(`AttackDamage`, `AttackIntervalMs`, `AttackRange`, `LootCarry`) y `Autonomous`. Qué hace una unidad lo deciden sus
+capacidades (`CanTrain`, `CanGather`, `CanAttack`), nunca su tipo (`RN-CIVUNIT-005`), y el catálogo de presentación
+`units.json` de `packages/protocol` lo copia, atado por un test.
+
 ### 5.1 Por qué las estadísticas viven en un catálogo y no dispersas por el código
 
 1. **Punto único de verdad.** `MaxHP = 40` y `BaseMsPerTile = 600` aparecen exactamente una vez. El canon
@@ -150,7 +160,9 @@ verifica es la del protocolo.
 **Estado real en MVP:** el catálogo vive en código Go, no en datos externos, porque solo hay un tipo de
 unidad. Mover el catálogo a un fichero embebido con `go:embed` o a una tabla `unit_types` de PostgreSQL
 está **fuera de MVP** (el canon §11 no incluye esa tabla); cuando llegue, la migración es puramente
-aditiva y solo cambia la implementación de `Lookup`, sin afectar al dominio ni al protocolo.
+aditiva y solo cambia la implementación de `Lookup`, sin afectar al dominio ni al protocolo. **Precisión (2026-11-17):** con siete tipos
+desde E22 sigue en código; lo que vive en la base es qué unidad es de qué civilización (`civilizations.unit`,
+[ADR-043](../decisions/ADR-043-civilization-units.md) §2), y el cliente tiene su copia de presentación (`units.json`).
 
 ## 6. Máquina de estados
 
