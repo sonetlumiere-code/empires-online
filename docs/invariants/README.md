@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**143 invariantes** —141 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en quince familias y trece archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**145 invariantes** —143 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en quince familias y trece archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -275,6 +275,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-UNIT-009 | Todo `unit_type` persistido resuelve en el catálogo de `unit.Lookup` | ALTO | DOMAIN, TEST | ✓ | `TestLookupSoloConoceElCatalogo`, `TestLasUnidadesSeExcluyenSeReparanOAbortan` |
 | INV-UNIT-010 | `player_id` y `unit_type` son inmutables tras la creación en MVP | MEDIO | DOMAIN, TEST | ✓ | `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
 | INV-UNIT-011 | `chunk_x` y `chunk_y` son siempre el chunk de `(x, y)` | ALTO | DOMAIN, TEST | ✓ | `TestFlushPositionsEscribeElLoteYMantieneElChunk`, `TestNingunaEscrituraCambiaElDuenoNiElTipoYTodasMantienenElChunk` |
+| INV-UNIT-012 | Una ciudad sólo produce la unidad exclusiva de la civilización de su dueño, y desde la Edad de Bronce | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E22) |
+| INV-UNIT-013 | Cada civilización tiene exactamente una unidad exclusiva, entrenable, que no comparte con ninguna otra | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E22) |
 
 ### MOVEMENT — [movement.md](movement.md)
 
@@ -428,9 +430,9 @@ Por severidad:
 | Severidad | Cantidad |
 |---|---|
 | CRITICO | 53 |
-| ALTO | 77 |
+| ALTO | 79 |
 | MEDIO | 11 |
-| **Total** | **141** |
+| **Total** | **143** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -441,7 +443,7 @@ Por familia:
 | `INV-WORLD` | 001–006 | 6 | [world.md](world.md) |
 | `INV-PLAYER` | 001–013 | 13 | [player.md](player.md) |
 | `INV-CITY` | 001–018 | 18 | [city.md](city.md) |
-| `INV-UNIT` | 001–011 | 11 | [units.md](units.md) |
+| `INV-UNIT` | 001–013 | 13 | [units.md](units.md) |
 | `INV-MOVE` | 001–014 | 14 | [movement.md](movement.md) |
 | `INV-PERSIST` | 001–007 | 7 | [persistence.md](persistence.md) |
 | `INV-SEC` | 001–012 | 12 | [security.md](security.md) |
@@ -462,13 +464,15 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 |---|---|---|
 | ✓ Cubierto | 141 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **143** | |
+| **Total** | **145** | |
 
-> **143 filas y 143 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **145 filas y 145 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
+
+`INV-UNIT-012` e `INV-UNIT-013` se registraron el 2026-11-17 con SPEC-CIVILIZATION-UNITS y [ADR-043](../decisions/ADR-043-civilization-units.md), antes de escribir su código, como manda §8, y nacen sin cobertura.
 
 `INV-CLAN-006` e `INV-CLAN-007` se registraron el 2026-11-16 con SPEC-CLAN-ALLIANCES y [ADR-042](../decisions/ADR-042-clan-alliances.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día. Ninguna fila queda sin cobertura ni parcial.
 
@@ -506,7 +510,7 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 | [world.md](world.md) | `INV-WORLD` | 6 |
 | [player.md](player.md) | `INV-PLAYER` | 10 |
 | [city.md](city.md) | `INV-CITY` | 18 |
-| [units.md](units.md) | `INV-UNIT` | 11 |
+| [units.md](units.md) | `INV-UNIT` | 13 |
 | [movement.md](movement.md) | `INV-MOVE` | 14 |
 | [persistence.md](persistence.md) | `INV-PERSIST` | 6 |
 | [security.md](security.md) | `INV-SEC` | 9 |

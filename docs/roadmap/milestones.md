@@ -2323,3 +2323,39 @@ Contra la base de desarrollo, que el servidor llevó de la migración 22 a la 23
   mapa), «Aliado de [TAG]» en la barra de una ciudad ajena y el clic de ataque contra ella (los cubren
   `clans.test.ts` y el humo). En la base de desarrollo [HUM] queda sin alianzas, smoke_clan_b sin clan y smoke_orden de
   miembro raso.
+
+## E22 — Unidades de civilización
+
+**Estado: EN CURSO (2026-11-17)**, en la rama `claude/slice-unidades-civilizacion`. Contrato:
+[SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md), aceptada el 2026-11-17 con sus diez decisiones de producto,
+y [ADR-043](../decisions/ADR-043-civilization-units.md).
+
+**Objetivo.** Que cada civilización tenga una cara en el campo de batalla: una unidad propia que sólo ella entrena,
+pagada en parte con su bien, que lucha con las reglas de combate que ya existen.
+
+**Alcance.** Legionario (`ROMAN`), catafracto (`BYZANTINE`), arquero a caballo (`PERSIAN`) y berserker (`NORSE`) en el
+catálogo de unidades, con el perfil de la spec §4.2 y ligados por `civilizations.unit`; `city.train` con ellas desde la
+Edad de Bronce, por 80 de madera, 40 de piedra y 10 del bien propio, 35 s y 1 de población; el combate, la respuesta
+automática, el saqueo, el asedio, la conquista y la captura por capacidad y no por el tipo `WARRIOR`; `UnitType` y
+`TrainableUnitType` con los cuatro tipos y el catálogo de presentación `units.json`; `INV-UNIT-012` e `INV-UNIT-013`;
+migración `000024`; el cliente (botón, siluetas, textos) y `scripts/smoke.mjs --unidad-civilizacion`. **No entra**
+(spec §2): más de una unidad por civilización, sustituir al guerrero, mecánicas nuevas de combate, un bono propio en
+tierra afín, compartir la unidad con los aliados y un tope por ciudad.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-043](../decisions/ADR-043-civilization-units.md), `INV-UNIT-012` e
+   `INV-UNIT-013`, y las precisiones de `RN-ECON-010` ([economy-wood.md](../specs/economy-wood.md)), `RN-COMBAT-001`
+   ([combat-raid.md](../specs/combat-raid.md)), `RN-COMBAT-012` ([combat-response.md](../specs/combat-response.md)),
+   Q1 y Q8 de [civilization-goods.md](../specs/civilization-goods.md), Q6 de
+   [civilizations.md](../specs/civilizations.md) e `INV-COMBAT-003` ([combat.md](../invariants/combat.md)).
+2. **PENDIENTE** — Dominio: los cuatro tipos exclusivos, `TrainCosts`, `OwnGoodCost`, `RequiresEra`,
+   `Civilization.Unit` y `production.CanTrain` con civilización y edad.
+3. **PENDIENTE** — Migración `000024` y persistencia: `civilizations.unit`, el trigger de `city_productions`, la carga
+   y el encargo con varios débitos.
+4. **PENDIENTE** — Simulación: la reserva en varios recursos, la respuesta automática por capacidad y los golden de
+   cada perfil.
+5. **PENDIENTE** — Protocolo: los cuatro tipos en Zod y en Go, `units.json`, `CivilizationInfo.unit`; contract tests y
+   e2e.
+6. **PENDIENTE** — Cliente: el botón de la unidad propia, las siluetas, las capacidades y los textos.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --unidad-civilizacion`.

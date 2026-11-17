@@ -7,13 +7,13 @@ civilización.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CIVILIZATION-UNITS` |
-| Estado | Draft (2026-11-17). Pendiente de las decisiones de producto de §10; prohibido implementar contra ella hasta su aceptación. |
+| Estado | Accepted (2026-11-17). Propuesta en `Draft` y aceptada el mismo día, con la recomendación de cada pregunta de §10. |
 | Milestone | E22 Unidades de civilización (vigesimosegundo slice después de M7) |
 | Canon | §0 (civilización como eje), §1.5 (determinismo), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [unit.md](unit.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md), [territory-conquest.md](territory-conquest.md), [caravans.md](caravans.md), [civilizations.md](civilizations.md), [civilization-goods.md](civilization-goods.md), [factions.md](factions.md), [clan-territories.md](clan-territories.md), [clan-alliances.md](clan-alliances.md), [garrison.md](garrison.md), [event-log.md](event-log.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (los encargos en dos fases y el débito con su efecto), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (la resolución simultánea), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos en enteros por mil, aplicados al dar la orden), [ADR-036](../decisions/ADR-036-civilization-goods.md) (el bien de cada civilización, dato del catálogo `civilizations`) y [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la tierra afín, calculada en cada golpe). Propone el **ADR-043** (§7): la unidad de civilización como tipo del catálogo ligado por `civilizations.unit`, con requisito de edad y coste en varios recursos, y el combate que pregunta por capacidades y no por el tipo `WARRIOR`. |
-| Reemplaza a | En [civilizations.md](civilizations.md) §2, «capacidades exclusivas por civilización —una unidad…» del no-scope; en [civilization-goods.md](civilization-goods.md) §2, «unidades… exclusivos además del bien (Q1)». Precisaría `RN-ECON-010` (el entrenamiento con requisito de edad y de civilización, y coste en varios recursos), Q8 de [civilization-goods.md](civilization-goods.md) (el bien propio gana un segundo uso, Q5), `RN-COMBAT-001` y `RN-COMBAT-012` (atacar y responder lo hace toda unidad que ataca, no sólo `WARRIOR`) y, con ellas, las reglas de saqueo, asedio, conquista y captura que nombran al guerrero (§4.5). |
-| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-CITY-017](../invariants/city.md#inv-city-017), [INV-COMBAT-001](../invariants/combat.md#inv-combat-001), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-PLAYER-002](../invariants/player.md#inv-player-002), [INV-PLAYER-012](../invariants/player.md#inv-player-012) e [INV-MOVE-009](../invariants/movement.md#inv-move-009); propone dos nuevos de la familia `INV-UNIT` (§8) |
+| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (los encargos en dos fases y el débito con su efecto), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (la resolución simultánea), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos en enteros por mil, aplicados al dar la orden), [ADR-036](../decisions/ADR-036-civilization-goods.md) (el bien de cada civilización, dato del catálogo `civilizations`) y [ADR-039](../decisions/ADR-039-faction-peace-and-affinity.md) (la tierra afín, calculada en cada golpe). [ADR-043](../decisions/ADR-043-civilization-units.md) (§7): la unidad de civilización como tipo del catálogo ligado por `civilizations.unit`, con requisito de edad y coste en varios recursos, y el combate que pregunta por capacidades y no por el tipo `WARRIOR`. |
+| Reemplaza a | En [civilizations.md](civilizations.md) §2, «capacidades exclusivas por civilización —una unidad…» del no-scope; en [civilization-goods.md](civilization-goods.md) §2, «unidades… exclusivos además del bien (Q1)». Precisa `RN-ECON-010` (el entrenamiento con requisito de edad y de civilización, y coste en varios recursos), Q8 de [civilization-goods.md](civilization-goods.md) (el bien propio gana un segundo uso, Q5), `RN-COMBAT-001` y `RN-COMBAT-012` (atacar y responder lo hace toda unidad que ataca, no sólo `WARRIOR`) y, con ellas, las reglas de saqueo, asedio, conquista y captura que nombran al guerrero (§4.5). |
+| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-CITY-017](../invariants/city.md#inv-city-017), [INV-COMBAT-001](../invariants/combat.md#inv-combat-001), [INV-COMBAT-002](../invariants/combat.md#inv-combat-002), [INV-PLAYER-002](../invariants/player.md#inv-player-002), [INV-PLAYER-012](../invariants/player.md#inv-player-012) e [INV-MOVE-009](../invariants/movement.md#inv-move-009); asigna [INV-UNIT-012](../invariants/units.md#inv-unit-012) e [INV-UNIT-013](../invariants/units.md#inv-unit-013) (§8) |
 
 ## 1. Objetivo
 
@@ -228,7 +228,7 @@ y con `civilizations.unit` para que no se desvíen en silencio (§9).
 | Dirty-flag | Nada nuevo |
 | Reconstruible / no persistido | Las estadísticas efectivas (paso con el rasgo, carga de botín, vida máxima del tipo); qué civilización entrena qué unidad, que sale del catálogo |
 
-**Por qué hace falta un ADR (ADR-043).** Hay tres decisiones estructurales que conviene dejar escritas con sus
+**Por qué hace falta un ADR ([ADR-043](../decisions/ADR-043-civilization-units.md)).** Hay tres decisiones estructurales que conviene dejar escritas con sus
 alternativas:
 
 1. **La unidad es un tipo del catálogo ligado por `civilizations.unit`.** Descartadas: una columna `civilization` en
@@ -271,12 +271,11 @@ el mismo instante tras un reinicio), [INV-CITY-017](../invariants/city.md#inv-ci
 [INV-MOVE-009](../invariants/movement.md#inv-move-009) (la polilínea con otro paso base sigue siendo función pura de
 sus datos).
 
-**Propone** dos invariantes nuevos de la familia `INV-UNIT`, que se registrarían en
-[../invariants/units.md](../invariants/units.md) al aceptarse:
+**Asigna** dos invariantes nuevos de la familia `INV-UNIT`, registrados en [../invariants/units.md](../invariants/units.md):
 
-- Una ciudad sólo produce la unidad exclusiva de la civilización de su dueño, y sólo desde la Edad de Bronce (dominio
+- [INV-UNIT-012](../invariants/units.md#inv-unit-012) — una ciudad sólo produce la unidad exclusiva de la civilización de su dueño, y sólo desde la Edad de Bronce (dominio
   en `production.CanTrain`, trigger de `000024` en la base).
-- Cada civilización tiene exactamente una unidad exclusiva, distinta de las demás, entrenable y presente en el
+- [INV-UNIT-013](../invariants/units.md#inv-unit-013) — cada civilización tiene exactamente una unidad exclusiva, distinta de las demás, entrenable y presente en el
   catálogo de unidades (`NOT NULL` y `UNIQUE` de `civilizations.unit`, validación de carga).
 
 ## 9. Tests esperados
@@ -291,12 +290,12 @@ sus datos).
 | cliente | El botón de la unidad propia con su coste y cada motivo; que no aparece la ajena; la proyección y la barra de órdenes usan la capacidad y no el tipo; los textos de registro y avisos con los cuatro nombres; el texto del registro de alta |
 | humo | `scripts/smoke.mjs --unidad-civilizacion`, con su función exportada y su test en `scripts/smoke.test.mjs`: una cuenta en Bronce con bien propio (semilla `EO_DEVSEED_STOCK_FOR`) entrena su unidad, la ve nacer con su tipo y su vida, y ve rechazada la de otra civilización |
 
-## 10. Decisiones de producto (pendientes)
+## 10. Decisiones de producto (2026-11-17)
 
-Preguntas abiertas. Cada una lleva la recomendación (en negrita) y sus alternativas. Son decisiones de producto, no de
-ingeniería: la spec no se acepta hasta tenerlas.
+Preguntas que la propuesta dejó abiertas; producto aceptó la recomendación de cada una (en negrita), y las alternativas
+quedan escritas. Son decisiones de producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Cuántas unidades exclusivas por civilización? | **Una.** Basta para que cada civilización tenga una cara en el campo de batalla, y cuatro perfiles ya son cuatro balances sin datos de jugadores. Una segunda unidad por civilización (por ejemplo una de defensa y otra de ataque) duplica el balance y el dibujo y conviene decidirla con datos de cómo se usa la primera. Alternativas: **dos** (una de Bronce y otra de Hierro), que da algo nuevo que desbloquear al llegar a Hierro, pero ocho perfiles a la vez; **ninguna por ahora**, y que la identidad militar siga saliendo de los rasgos. |
 | Q2 | ¿Sustituye a una común o se suma? | **Se suma: el aldeano y el guerrero siguen siendo de todos.** El guerrero es lo que se entrena en la Edad de Piedra, antes de poder pagar la unidad propia, y lo que el humo y las pasadas de combate dan por hecho. Sustituirlo haría que una civilización perdiera la opción barata y uniforme, y que cuatro flujos (conquista, saqueo, asedio, respuesta) dependieran de la civilización. Alternativa: **sustituye al guerrero desde la Edad de Bronce** (el guerrero deja de entrenarse y la unidad propia es la única de combate), más «de civilización» pero obliga a pagar el bien en cada soldado y deja sin ejército barato al que no elabora. |

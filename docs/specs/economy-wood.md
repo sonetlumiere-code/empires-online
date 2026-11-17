@@ -125,7 +125,7 @@ finalización es optimista en la RAM y su escritura lleva compensación.
 
 | Regla | Enunciado |
 |---|---|
-| `RN-ECON-010` | `city.train { cityId, type: VILLAGER }` exige ciudad propia, sin producción en curso (`CITY_BUSY`), `population + 1 <= population_limit` (`POPULATION_LIMIT_REACHED`) y `amount >= cost` (`INSUFFICIENT_RESOURCES`). La población se **reserva al ordenar**: `population += 1` en la misma transacción que el débito y la inserción. |
+| `RN-ECON-010` | `city.train { cityId, type: VILLAGER }` exige ciudad propia, sin producción en curso (`CITY_BUSY`), `population + 1 <= population_limit` (`POPULATION_LIMIT_REACHED`) y `amount >= cost` (`INSUFFICIENT_RESOURCES`). La población se **reserva al ordenar**: `population += 1` en la misma transacción que el débito y la inserción. **Precisión (2026-11-17, [civilization-units.md](civilization-units.md), [ADR-043](../decisions/ADR-043-civilization-units.md)):** con E22, `type` admite también la unidad exclusiva de la civilización del dueño, sólo desde la Edad de Bronce (`INVALID_TARGET` la ajena o antes de tiempo, `RN-CIVUNIT-002`), y su coste es de varios recursos —madera, piedra y el bien propio— debitados juntos con su efecto (`RN-CIVUNIT-003`). |
 | `RN-ECON-011` | Al vencer `completes_at_ms`, nace un `VILLAGER` `IDLE` en el primer tile libre a `spawnRadius` del centro, como los tres iniciales, con `entity.spawn` al chunk; si no hay tile libre, espera al siguiente tick (misma espera que la salida de guarnición, RN-GARR-014). |
 | `RN-ECON-012` | Cancelar una producción no está en el slice: una vez ordenada, termina. |
 

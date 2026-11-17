@@ -429,6 +429,75 @@ Declararlo como invariante y no dejarlo implícito tiene un propósito concreto:
 
 ---
 
+<a id="inv-unit-012"></a>
+## INV-UNIT-012 — Una ciudad sólo produce la unidad exclusiva de su civilización, y desde la Edad de Bronce
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E22 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** todavía: se registra con SPEC-CIVILIZATION-UNITS y [ADR-043](../decisions/ADR-043-civilization-units.md), antes de escribir su código (E22) |
+
+**Enunciado.** Toda fila de `city_productions` cuyo `unit_type` es la unidad exclusiva de alguna civilización
+(`civilizations.unit`) es la de la civilización del dueño de su ciudad, y la ciudad estaba al menos en `BRONZE_AGE`
+al encargarla. Ninguna unidad exclusiva nace en una ciudad de otra civilización.
+
+**Razón.** La unidad exclusiva es la identidad militar de una civilización ([SPEC-CIVILIZATION-UNITS](../specs/civilization-units.md)
+Q1, Q9): si una ciudad pudiera entrenar la de otra, la elección del alta dejaría de importar y los aliados se
+pasarían las unidades, que producto decidió que no se comparten.
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — `production.CanTrain` rechaza con `INVALID_TARGET` un tipo exclusivo que no es `Civilization.Unit` de la
+  civilización del dueño, y uno pedido antes de `RequiresEra` (`RN-CIVUNIT-002`).
+- `DB` — el trigger `city_productions_civilization_unit` de `000024` repite las dos comprobaciones en el `INSERT`
+  con `check_violation`, que `EconomyRepo.Train` traduce a `INVALID_TARGET`.
+- La civilización no cambia ([INV-PLAYER-011](player.md#inv-player-011)) y la era no retrocede
+  ([INV-CITY-018](city.md#inv-city-018)): lo que se cumplió al encargar sigue cumpliéndose al nacer.
+
+**Cómo se verifica.** Pendiente (E22): los rechazos de `CanTrain` (unit), el `city.train` por WebSocket con la unidad
+ajena y en la Edad de Piedra (e2e) y el trigger contra un `INSERT` directo (integration), verificado por mutación con
+`ALTER TABLE … DISABLE TRIGGER`.
+
+**Violación en runtime.** El encargo se rechaza; la RAM devuelve la reserva como con cualquier rechazo de la base.
+
+---
+
+<a id="inv-unit-013"></a>
+## INV-UNIT-013 — Cada civilización tiene exactamente una unidad exclusiva, y no la comparte
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E22 |
+| Política ante violación | FAIL_FAST (el Game Server no arranca) |
+| Cobertura | **Sin cobertura** todavía: se registra con SPEC-CIVILIZATION-UNITS y [ADR-043](../decisions/ADR-043-civilization-units.md), antes de escribir su código (E22) |
+
+**Enunciado.** `civilizations.unit` es, para cada civilización, un tipo del catálogo de `unit.Lookup` marcado como
+exclusivo y entrenable; dos civilizaciones no tienen la misma, y todo tipo exclusivo del catálogo es la unidad de
+exactamente una civilización.
+
+**Razón.** El entrenamiento pregunta «¿es este tipo la unidad de la civilización del dueño?» (`RN-PLAYER-012`): con una
+civilización sin unidad, con dos que comparten una o con un tipo exclusivo huérfano, la respuesta dejaría a una
+civilización sin su unidad o a una unidad que nadie entrena.
+
+**Cómo se garantiza.**
+
+- `DB` — `civilizations.unit` es `NOT NULL`, `UNIQUE` y con `CHECK` de los cuatro códigos (`000024`).
+- `DOMAIN` — `player.ValidateCatalog` exige al cargar que cada unidad sea exclusiva y entrenable en el catálogo de Go y
+  que ningún tipo exclusivo quede sin civilización; si no, el Game Server no arranca.
+
+**Cómo se verifica.** Pendiente (E22): la validación del catálogo con cada caso inválido (unit), y las restricciones
+de la columna y la coincidencia con el catálogo de presentación (integration).
+
+**Violación en runtime.** No puede ocurrir con el proceso en marcha: el catálogo es inmutable mientras vive.
+
+---
+
+
 ## Relación con los invariantes de movimiento
 
 ```
@@ -460,3 +529,5 @@ Los invariantes de unidad son consecuencia de los de movimiento durante el trán
 | INV-UNIT-009 | `internal/domain/unit` | [../specs/unit.md](../specs/unit.md) |
 | INV-UNIT-010 | `internal/domain/unit` | [INV-UNIT-006](#inv-unit-006) |
 | INV-UNIT-011 | `internal/persistence/postgres`, `internal/game/world` | [INV-WORLD-006](world.md#inv-world-006) |
+| INV-UNIT-012 | `internal/domain/production`, `internal/persistence/postgres` (trigger de `000024`) | [INV-PLAYER-011](player.md#inv-player-011), [INV-CITY-018](city.md#inv-city-018) |
+| INV-UNIT-013 | `internal/domain/player`, `internal/domain/unit` | [INV-PLAYER-012](player.md#inv-player-012), [INV-UNIT-009](#inv-unit-009) |
