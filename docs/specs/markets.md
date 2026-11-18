@@ -8,13 +8,13 @@ en dos caravanas, como un trato.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-MARKETS` |
-| Estado | Draft (2026-11-18). Pendiente de las decisiones de producto de §10; prohibido implementar contra ella hasta su aceptación. |
+| Estado | Accepted (2026-11-18). Propuesta en `Draft` y aceptada ese mismo día con la recomendación de cada pregunta de §10. |
 | Milestone | E26 Mercados (vigesimosexto slice después de M7) |
 | Canon | §9 (unidades), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [trade.md](trade.md), [caravans.md](caravans.md), [civilization-goods.md](civilization-goods.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [combat-siege.md](combat-siege.md), [combat-pillage.md](combat-pillage.md), [civilizations.md](civilizations.md), [factions.md](factions.md), [clan-wars.md](clan-wars.md), [event-log.md](event-log.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola ordenada por clave), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (deltas de stock y órdenes en dos fases), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro sale de `world_events`), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (la oferta y el trabajo de dos claves), [ADR-036](../decisions/ADR-036-civilization-goods.md) (el taller como modelo de edificio), [ADR-037](../decisions/ADR-037-caravans-as-units.md) (la caravana que carga en lugar de acreditar). Pediría un ADR nuevo (el 047) para la custodia fuera del almacén, la compra como trabajo de dos claves que no toca la ciudad del vendedor, la comisión como único sumidero del comercio y el tablón leído de la base (§7). |
-| Reemplaza a | En [mvp-scope.md](../product/mvp-scope.md), lo que queda de `OUT-08` («Marketplace»): los mercados; las rutas permanentes siguen fuera. Abre la fase Trade de [roadmap.md](../roadmap/roadmap.md) en su parte de mercados. Sustituye las tablas de diseño `markets` y `trade_transactions` de [schema.md](../database/schema.md) §17.2 por otras (§7). Precisaría, en [caravans.md](caravans.md), `RN-CARAVAN-001` (también una compra en el mercado crea caravanas) y, en [trade.md](trade.md) §2, el «mercados públicos» de su no-scope. |
-| Invariantes | Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-TRADE-005](../invariants/trade.md#inv-trade-005), [INV-TRADE-006](../invariants/trade.md#inv-trade-006), [INV-UNIT-005](../invariants/units.md#inv-unit-005) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); precisaría [INV-TRADE-001](../invariants/trade.md#inv-trade-001) e [INV-TRADE-007](../invariants/trade.md#inv-trade-007); propone tres invariantes nuevos de la familia `INV-TRADE` (§8) |
+| Decisiones | [ADR-013](../decisions/ADR-013-persistence-pipeline.md) (cola ordenada por clave), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (deltas de stock y órdenes en dos fases), [ADR-028](../decisions/ADR-028-event-log-from-world-events.md) (el registro sale de `world_events`), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md) (la oferta y el trabajo de dos claves), [ADR-036](../decisions/ADR-036-civilization-goods.md) (el taller como modelo de edificio), [ADR-037](../decisions/ADR-037-caravans-as-units.md) (la caravana que carga en lugar de acreditar). [ADR-047](../decisions/ADR-047-markets.md) (§7): la custodia fuera del almacén, la compra como trabajo de dos claves que no toca la ciudad del vendedor, el cierre optimista, la comisión como único sumidero del comercio y el tablón leído de la base; migración `000028`. |
+| Reemplaza a | En [mvp-scope.md](../product/mvp-scope.md), lo que queda de `OUT-08` («Marketplace»): los mercados; las rutas permanentes siguen fuera. Abre la fase Trade de [roadmap.md](../roadmap/roadmap.md) en su parte de mercados. Sustituye las tablas de diseño `markets` y `trade_transactions` de [schema.md](../database/schema.md) §17.2 por otras (§7). Precisa, en [caravans.md](caravans.md), `RN-CARAVAN-001` (también una compra en el mercado crea caravanas) y, en [trade.md](trade.md) §2, el «mercados públicos» de su no-scope. |
+| Invariantes | Cita [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-TRADE-005](../invariants/trade.md#inv-trade-005), [INV-TRADE-006](../invariants/trade.md#inv-trade-006), [INV-UNIT-005](../invariants/units.md#inv-unit-005) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); precisa [INV-TRADE-001](../invariants/trade.md#inv-trade-001) e [INV-TRADE-007](../invariants/trade.md#inv-trade-007); asigna [INV-TRADE-008](../invariants/trade.md#inv-trade-008), [INV-TRADE-009](../invariants/trade.md#inv-trade-009) e [INV-TRADE-010](../invariants/trade.md#inv-trade-010) (§8) |
 
 ## 1. Objetivo
 
@@ -225,8 +225,9 @@ tipos:
 **Servidor → cliente:**
 
 - `market.listing { offers[] }`, la respuesta a `market.list`: hasta 100 ofertas `OPEN` de **otros** jugadores, las
-  más recientes primero. Cada una: `{ id, playerId, cityId, cityName, civilization, depot: { x, y }, give, want,
-  lotsLeft, lotsTotal, expiresAtMs }`. La distancia la calcula el cliente con el depósito propio.
+  más recientes primero. Cada una: `{ id, playerId, cityId, cityName, civilization, cityX, cityY, give, want,
+  lotsLeft, lotsTotal, expiresAtMs }`. La distancia la calcula el cliente con la posición de su ciudad: el depósito
+  no está en la base, difiere en un par de tiles y la ruta del tick decide ([ADR-047](../decisions/ADR-047-markets.md) §6).
 - `market.update { offer }`, tipo nuevo, a las sesiones del **vendedor** en cada cambio de una oferta suya (publicada,
   lotes vendidos, retirada, caducada), y a quien dio la orden con su `requestId` (también al comprador). La vista
   propia añade `lotsSold` y `status` a la de `market.listing`.
@@ -277,15 +278,15 @@ retirada propia no entran. Las llegadas y capturas de las caravanas entran como 
   §17.2, que imaginaban un mercado por ciudad y recurso con su precio. Las dos tablas nuevas se suman al `TRUNCATE` de
   los tests de integración; un recurso nuevo tocará también sus `CHECK`. Una variable nueva, `EO_MARKET_OFFER_HOURS`.
 
-**ADR-047 (propuesto).** Cuatro decisiones estructurales:
+**[ADR-047](../decisions/ADR-047-markets.md).** Cuatro decisiones estructurales:
 
 1. **La custodia es un débito con su efecto**, la oferta ([INV-ECON-002](../invariants/economy.md#inv-econ-002)), y
    vive en `market_offers`, fuera de `city_stocks`. Devolverla es un crédito con el delta versionado de siempre, por la
    clave de la ciudad del vendedor.
-2. **La compra es un trabajo de dos claves**, `city:<comprador>` y `market_offer:<id>`
+2. **La compra es un trabajo de dos claves**, `city:<comprador>` y `market:<id>`
    ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)). No toca el almacén del vendedor (lo que vende
-   ya salió de él al publicar), así que no espera a la partición de su ciudad; la retirada y la caducidad van por
-   `city:<vendedor>` y `market_offer:<id>`, y el orden de la clave de la oferta impide que una compra y una retirada
+   ya salió de él al publicar), así que no espera a la partición de su ciudad; la retirada y la caducidad, optimistas, van por
+   `city:<vendedor>` y `market:<id>`, y el orden de la clave de la oferta impide que una compra y una retirada
    se crucen.
 3. **La comisión es el único sumidero del comercio.** [INV-TRADE-001](../invariants/trade.md#inv-trade-001) dice hoy
    que un trato nunca crea ni destruye recursos salvo la caravana capturada sin ruta; con el mercado, lo que desaparece
@@ -311,20 +312,21 @@ un mercado neutral, que duplica los viajes y necesita lugares de mercado en el m
   [INV-UNIT-005](../invariants/units.md#inv-unit-005): las caravanas de una compra son las de siempre.
 - [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005): la migración `000028`.
 
-**Precisaría:**
+**Precisa:**
 
 - [INV-TRADE-001](../invariants/trade.md#inv-trade-001): el comercio nunca crea recursos, y sólo destruye la comisión
   del mercado y la carga de una caravana capturada sin ruta.
 - [INV-TRADE-007](../invariants/trade.md#inv-trade-007): toda caravana nace de un trato aceptado o de una compra en el
   mercado, y cada uno tiene exactamente dos.
 
-**Propone** tres invariantes nuevos de la familia `INV-TRADE`:
+**Asigna** tres invariantes nuevos de la familia `INV-TRADE`, registrados en [../invariants/trade.md](../invariants/trade.md):
 
-- **La custodia cuadra.** Lo que guarda una oferta es exactamente sus lotes restantes por lo que da cada lote; sale
+- [INV-TRADE-008](../invariants/trade.md#inv-trade-008) — **La custodia cuadra.** Lo que guarda una oferta es exactamente sus lotes restantes por lo que da cada lote; sale
   sólo en las caravanas de una compra o de vuelta al almacén del vendedor al retirarla o caducar, y nunca dos veces.
-- **Ninguna oferta vende más de lo que publicó.** Los lotes de sus compras más los que le quedan (o los que devolvió
+- [INV-TRADE-009](../invariants/trade.md#inv-trade-009) — **Ninguna oferta vende más de lo que publicó.** Los lotes de sus compras más los que le quedan (o los que devolvió
   al cerrarse) suman siempre los publicados, y una compra nunca toma más lotes de los que quedan. Lo garantizan la simulación al reservar y los `CHECK` de la base.
-- **Nadie se compra a sí mismo.** Toda compra la hizo un jugador distinto del que publicó la oferta.
+- [INV-TRADE-010](../invariants/trade.md#inv-trade-010) — **Nadie se compra a sí mismo.** Toda compra la hizo un jugador distinto del
+  que publicó la oferta. Lo garantizan la simulación al validar y un trigger de la base.
 
 ## 9. Tests esperados
 
@@ -337,12 +339,12 @@ un mercado neutral, que duplica los viajes y necesita lugares de mercado en el m
 | contract / e2e | Los cuatro comandos, `market.listing`, `market.update`, `marketOffers[]`, `MARKET` y los dos `EventLogKind` contra el JSON Schema; por WebSocket, dos jugadores: uno publica, el otro lee el tablón y compra, los dos reciben su `market.update` y sus caravanas, en el mismo commit que `market.update` |
 | cliente | El panel con sus tres pestañas, el total con la comisión, cada motivo deshabilitado y la distancia; `scripts/smoke.mjs --mercado`: smoke_runner y smoke_victim, en Bronce y con mercado (si no lo tienen, lo construyen), uno publica y el otro compra un lote; los almacenes y las caravanas, y el registro del vendedor |
 
-## 10. Decisiones de producto (pendientes)
+## 10. Decisiones de producto (2026-11-18)
 
-Preguntas abiertas. Cada una lleva la recomendación (en negrita) y sus alternativas. Son decisiones de producto, no
-de ingeniería: la spec no se acepta hasta tenerlas.
+Producto aceptó el 2026-11-18 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
+alternativas que se descartaron. Son decisiones de producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué es un mercado? | **Un tablón público de ofertas entre jugadores, sin contraparte del sistema y con compra a mano.** El mercado no fabrica nada: todo lo que se vende lo puso otro jugador, así que el pilar 4 sigue en pie. Alternativas: **un mercado del sistema** que compra y vende con precios que suben y bajan con el volumen; es la opción más fluida y no depende de que haya jugadores, pero vender bienes desde el sistema rompe la exclusividad de las civilizaciones (cualquiera compraría seda), y limitado a madera y piedra apenas aporta. **Un libro de órdenes con cruce automático** (órdenes de compra y de venta que el servidor empareja): es un mercado de verdad, pero necesita una moneda común (Q2) y mucha más gente de la que hay. |
 | Q2 | ¿Con qué se paga? | **Trueque: un recurso por otro, uno en cada lado.** Cualquier recurso de los seis por cualquier otro, y el precio sale de la proporción («20 de piedra por 30 de madera»). Alternativas: **la madera como moneda**, con todos los precios en madera: más fácil de comparar, pero cambiar piedra por seda pide dos operaciones y dos caravanas. **Varios recursos por lado**, como los tratos: más flexible, pero el tablón no se puede ordenar por precio. **Una moneda nueva (oro)**: pide decidir de dónde sale y tocar todos los `CHECK` de recursos; sería su propio slice. |

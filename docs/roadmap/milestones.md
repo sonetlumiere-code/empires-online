@@ -2615,3 +2615,35 @@ con `EO_TECHNOLOGY_RESEARCH_SECONDS=20` y el almacén de smoke_runner sembrado (
   e2e y el snapshot de la simulación), el motivo del avance de era mientras se investiga (smoke_runner ya está en la
   última era; lo cubre `technologies.test.ts`) y los efectos en el juego salvo la vida de la casa (los cubren los tests
   de simulación).
+
+## E26 — Mercados
+
+**Estado: EN CURSO (2026-11-18)**, en la rama `claude/slice-mercados`. Contrato: [SPEC-MARKETS](../specs/markets.md),
+aceptada el 2026-11-18 con sus trece decisiones de producto, y [ADR-047](../decisions/ADR-047-markets.md).
+
+**Objetivo.** Que se pueda comprar y vender a cualquiera sin un trato entre dos: un tablón público de ofertas en lotes,
+con lo ofrecido en custodia y una comisión, que cualquiera con mercado compra sin tratado. Cierra lo que quedaba de
+`OUT-08` y abre la parte de mercados de la fase Trade del roadmap.
+
+**Alcance.** El edificio `MARKET` (Bronce, uno por ciudad, derribable); `market.post`, `market.buy`, `market.cancel` y
+la consulta `market.list` (de 48 a 52 mensajes); ofertas de un recurso por otro, de 1 a 100 lotes, 3 abiertas por
+jugador durante `EO_MARKET_OFFER_HOURS`; la custodia al publicar; la comisión de `⌈cantidad / 10⌉` por lote y por
+parte; dos caravanas por compra; `market.listing`, `market.update` y `marketOffers[]`; `MARKET_SOLD` y
+`MARKET_EXPIRED` en el registro; `INV-TRADE-008` a `INV-TRADE-010` y las precisiones de `INV-TRADE-001` e
+`INV-TRADE-007`; migración `000028`; el panel «Mercado» y `scripts/smoke.mjs --mercado`. **No entra** (spec §2): un
+mercado del sistema, una moneda, el cruce automático, órdenes de compra, varios recursos por lado, precios de
+referencia, ofertas dirigidas, el tablón que se refresca solo y avisos en vivo de las ventas.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-047](../decisions/ADR-047-markets.md), `INV-TRADE-008` a `INV-TRADE-010`, las
+   precisiones de `INV-TRADE-001`, `INV-TRADE-007` y `RN-CARAVAN-001` ([caravans.md](../specs/caravans.md)).
+2. **PENDIENTE** — Protocolo: los cuatro comandos, `market.listing`, `market.update`, `marketOffers[]`, `MARKET` y los
+   dos tipos de entrada del registro; contract tests (Go y Zod).
+3. **PENDIENTE** — Dominio, migración `000028` y persistencia: la oferta, la comisión, el edificio, la publicación, la
+   compra con sus caravanas, el cierre, la carga y la lectura del tablón.
+4. **PENDIENTE** — Simulación: las tres órdenes, la reserva de lotes, el cierre optimista y la caducidad; el golden
+   «mercado».
+5. **PENDIENTE** — WebSocket: `market.list` desde la conexión y el e2e de dos jugadores.
+6. **PENDIENTE** — Cliente: el botón «Mercado» y el panel con sus tres pestañas.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --mercado`.
