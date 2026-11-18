@@ -452,6 +452,45 @@
             },
             "type": {
               "type": "string",
+              "const": "city.research"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "cityId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                },
+                "technology": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]{0,47}$"
+                }
+              },
+              "required": [
+                "cityId",
+                "technology"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
               "const": "unit.attack"
             },
             "requestId": {
@@ -833,7 +872,7 @@
                   "maxItems": 6
                 },
                 "want": {
-                  "$ref": "#/definitions/ClientMessage/anyOf/20/properties/payload/properties/give"
+                  "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give"
                 }
               },
               "required": [

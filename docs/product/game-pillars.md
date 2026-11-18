@@ -207,7 +207,10 @@ Los sistemas de economía, tecnología, mercados, rutas comerciales y caravanas
 (`technologies`, `civilization_technologies`, `trade_routes`, `caravans`, `markets`,
 `trade_transactions`) están **fuera de MVP**: existen como diseño, sin migración. Lo que sí está dentro
 desde el día uno es la **estructura** —civilización y facción como ejes separados— porque introducirla
-después obligaría a reescribir la identidad de todos los jugadores existentes.
+después obligaría a reescribir la identidad de todos los jugadores existentes. **Precisión (2026-11-18):** desde
+entonces existen la economía, el comercio, las caravanas, las unidades exclusivas y, desde E25, el árbol tecnológico
+con una tecnología exclusiva por civilización, de modo que ningún jugador completa el árbol
+([technologies.md](../specs/technologies.md)); siguen fuera los mercados y las rutas permanentes.
 
 **Anti-pilar rechazado.** *"Cada jugador puede desbloquear todo el árbol si invierte suficiente tiempo."*
 Es el diseño que convierte el comercio en un atajo opcional y termina eliminando la razón para negociar.

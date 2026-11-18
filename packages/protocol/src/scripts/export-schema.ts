@@ -22,6 +22,7 @@ import { ServerMessage } from '../v1/server.js';
 import { ERROR_CODES } from '../v1/errors.js';
 import { CIVILIZATIONS } from '../v1/civilizations.js';
 import { UNITS } from '../v1/units.js';
+import { TECHNOLOGIES } from '../v1/technologies.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDir, '..', '..');
@@ -67,6 +68,12 @@ function buildArtifacts(): Artifact[] {
       // Server lo compara con el catálogo de Go campo a campo.
       filename: 'units.json',
       content: `${JSON.stringify({ version: 1, units: UNITS }, null, 2)}\n`,
+    },
+    {
+      // Catálogo de presentación de las tecnologías (ADR-046 §1): el Game Server
+      // lo compara con la tabla `technologies` en un test de integración.
+      filename: 'technologies.json',
+      content: `${JSON.stringify({ version: 1, technologies: TECHNOLOGIES }, null, 2)}\n`,
     },
   ];
 }

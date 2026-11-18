@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "technologies": [
+    {
+      "code": "STONE_TOOLS",
+      "name": "Herramientas de piedra",
+      "era": "STONE_AGE",
+      "civilization": null,
+      "costs": {
+        "WOOD": 150,
+        "STONE": 50
+      },
+      "foreignGoods": 0,
+      "ownGood": 0,
+      "durationMs": 60000,
+      "requires": [],
+      "effects": {
+        "economy.gather_speed": 1100
+      }
+    },
+    {
+      "code": "BASKETRY",
+      "name": "Cestería",
+      "era": "STONE_AGE",
+      "civilization": null,
+      "costs": {
+        "WOOD": 120,
+        "STONE": 30
+      },
+      "foreignGoods": 0,
+      "ownGood": 0,
+      "durationMs": 60000,
+      "requires": [],
+      "effects": {
+        "economy.gather_carry": 1200
+      }
+    },
+    {
+      "code": "BRONZE_WEAPONS",
+      "name": "Armas de bronce",
+      "era": "BRONZE_AGE",
+      "civilization": null,
+      "costs": {
+        "WOOD": 250,
+        "STONE": 150
+      },
+      "foreignGoods": 0,
+      "ownGood": 0,
+      "durationMs": 120000,
+      "requires": [],
+      "effects": {
+        "combat.attack_damage": 1100
+      }
+    },
+    {
+      "code": "MASONRY",
+      "name": "Albañilería",
+      "era": "BRONZE_AGE",
+      "civilization": null,
+      "costs": {
+        "WOOD": 200,
+        "STONE": 200
+      },
+      "foreignGoods": 0,
+      "ownGood": 0,
+      "durationMs": 120000,
+      "requires": [],
+      "effects": {
+        "building.house_hp": 1200
+      }
+    },
+    {
+      "code": "WHEEL",
+      "name": "La rueda",
+      "era": "IRON_AGE",
+      "civilization": null,
+      "costs": {
+        "WOOD": 300,
+        "STONE": 200
+      },
+      "foreignGoods": 30,
+      "ownGood": 0,
+      "durationMs": 180000,
+      "requires": [],
+      "effects": {
+        "unit.move_speed": 1050
+      }
+    },
+    {
+      "code": "GUILDS",
+      "name": "Gremios",
+      "era": "IRON_AGE",
+      "civilization": null,
+      "costs": {
+        "WOOD": 300,
+        "STONE": 300
+      },
+      "foreignGoods": 30,
+      "ownGood": 0,
+      "durationMs": 180000,
+      "requires": [],
+      "effects": {
+        "production.speed": 1100
+      }
+    },
+    {
+      "code": "IRON_WEAPONS",
+      "name": "Armas de hierro",
+      "era": "CASTLE_AGE",
+      "civilization": null,
+      "costs": {
+        "WOOD": 400,
+        "STONE": 300
+      },
+      "foreignGoods": 60,
+      "ownGood": 0,
+      "durationMs": 300000,
+      "requires": [
+        "BRONZE_WEAPONS"
+      ],
+      "effects": {
+        "combat.attack_damage": 1100
+      }
+    },
+    {
+      "code": "ARCHITECTURE",
+      "name": "Arquitectura",
+      "era": "CASTLE_AGE",
+      "civilization": null,
+      "costs": {
+        "WOOD": 400,
+        "STONE": 400
+      },
+      "foreignGoods": 60,
+      "ownGood": 0,
+      "durationMs": 300000,
+      "requires": [
+        "GUILDS"
+      ],
+      "effects": {
+        "production.speed": 1100
+      }
+    },
+    {
+      "code": "ROMAN_ROADS",
+      "name": "Calzadas",
+      "era": "IRON_AGE",
+      "civilization": "ROMAN",
+      "costs": {
+        "WOOD": 200,
+        "STONE": 200
+      },
+      "foreignGoods": 0,
+      "ownGood": 40,
+      "durationMs": 180000,
+      "requires": [],
+      "effects": {
+        "unit.move_speed": 1100
+      }
+    },
+    {
+      "code": "THEODOSIAN_WALLS",
+      "name": "Muros de Teodosio",
+      "era": "IRON_AGE",
+      "civilization": "BYZANTINE",
+      "costs": {
+        "WOOD": 200,
+        "STONE": 200
+      },
+      "foreignGoods": 0,
+      "ownGood": 40,
+      "durationMs": 180000,
+      "requires": [],
+      "effects": {
+        "building.house_hp": 1200
+      }
+    },
+    {
+      "code": "CARAVANSERAI",
+      "name": "Caravasares",
+      "era": "IRON_AGE",
+      "civilization": "PERSIAN",
+      "costs": {
+        "WOOD": 200,
+        "STONE": 200
+      },
+      "foreignGoods": 0,
+      "ownGood": 40,
+      "durationMs": 180000,
+      "requires": [],
+      "effects": {
+        "economy.gather_carry": 1200
+      }
+    },
+    {
+      "code": "RAIDING",
+      "name": "Incursiones",
+      "era": "IRON_AGE",
+      "civilization": "NORSE",
+      "costs": {
+        "WOOD": 200,
+        "STONE": 200
+      },
+      "foreignGoods": 0,
+      "ownGood": 40,
+      "durationMs": 180000,
+      "requires": [],
+      "effects": {
+        "combat.loot_carry": 1200
+      }
+    }
+  ]
+}

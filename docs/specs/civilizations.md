@@ -106,7 +106,7 @@ unidades. Una clave ausente vale `1000`.
 | `RN-CIV-001` | La civilización se elige en el alta entre las del catálogo. Es obligatoria y no tiene valor por defecto; un código desconocido se rechaza (§5). |
 | `RN-CIV-002` | La civilización de un jugador no cambia después del alta. |
 | `RN-CIV-003` | Todo rasgo es un entero positivo por mil; `1000` es «sin efecto» y una clave ausente vale `1000`. La carga rechaza un catálogo con un rasgo que no lo sea. |
-| `RN-CIV-004` | Un rasgo de velocidad divide la duración y uno de cantidad multiplica el valor, en aritmética entera con redondeo al más cercano y un mínimo de 1 (§4.3). |
+| `RN-CIV-004` | Un rasgo de velocidad divide la duración y uno de cantidad multiplica el valor, en aritmética entera con redondeo al más cercano y un mínimo de 1 (§4.3). **Precisión (2026-11-18, [technologies.md](technologies.md) §4.4, [ADR-046](../decisions/ADR-046-technologies.md)):** el valor que se aplica es el rasgo compuesto con el efecto de cada tecnología del jugador que lleva la clave, en orden de código y con la fórmula de cantidad en cada paso; hay dos claves más, `combat.attack_damage` y `economy.gather_carry`, que ninguna civilización declara. |
 | `RN-CIV-005` | El rasgo se aplica al dar la orden y su resultado queda fijado en el plazo; lo que está en curso no cambia. |
 | `RN-CIV-006` | La vida máxima de una casa es la de su tipo por el rasgo de la civilización del dueño de su ciudad. |
 | `RN-CIV-007` | La carga de botín de un guerrero es la de su tipo por el rasgo de la civilización de su dueño. |

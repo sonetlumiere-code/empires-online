@@ -273,12 +273,14 @@ export function nextEra(era: string): string | null {
  * tiene.
  */
 export function advanceBlockReason(
-  city: Pick<CityView, 'era' | 'production' | 'advance' | 'stocks'>,
+  city: Pick<CityView, 'era' | 'production' | 'advance' | 'stocks'> & Partial<Pick<CityView, 'research'>>,
   foreign = 0,
 ): string | null {
   const next = nextEra(city.era);
   if (next === null) return 'No hay más eras por ahora.';
   if (city.advance !== null) return 'La ciudad ya está avanzando de era.';
+  // SPEC-TECHNOLOGIES RN-TECH-003: un avance y una investigación no conviven.
+  if (city.research) return 'La ciudad está investigando: espera a que termine.';
   if (city.production !== null) return 'La ciudad está entrenando una unidad: espera a que termine.';
   if (next === 'BRONZE_AGE') {
     const falta = missing(city.stocks, BRONZE_AGE_COST);

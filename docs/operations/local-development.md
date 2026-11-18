@@ -1145,6 +1145,9 @@ Marcado explícitamente para que nadie lo busque:
 - **ESLint**: no hay. `pnpm run lint` sólo ejecuta el lint de determinismo de Go.
 - **Combate, tecnologías, comercio, clanes, chat, ranking**: todavía no existen. De la economía sólo existe
   la madera ([economy-wood.md](../specs/economy-wood.md)): un recurso, la casa y el entrenamiento de aldeanos.
+  **Precisión (2026-11-18):** desde entonces existen el combate, la piedra y los bienes, el comercio y las caravanas,
+  los clanes con su canal, los mensajes y, desde E25, las tecnologías ([technologies.md](../specs/technologies.md));
+  el estado de cada slice está en [../README.md](../README.md) §5. Sigue sin existir el ranking.
 - **Tests de carga (k6)**: fuera de MVP.
 - **Hot reload de configuración o de código Go**: cambiar una variable `EO_` o el código exige reiniciar
   el proceso.

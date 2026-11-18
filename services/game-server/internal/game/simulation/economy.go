@@ -15,6 +15,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/production"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/task"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/technology"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
@@ -71,6 +72,8 @@ type EconomyStore interface {
 	AdvanceStore
 	// La elaboración del taller (ADR-036 §4).
 	CraftStore
+	// La investigación (ADR-046 §3).
+	ResearchStore
 }
 
 // StockDelta es una escritura del stock: sumar Delta (negativo en un encargo)
@@ -246,6 +249,8 @@ type cityEconomy struct {
 	advance *advanceState
 	// craft es la elaboración del taller; nil si no tiene (craft.go).
 	craft *craftState
+	// research es la investigación en curso; nil si no tiene (technologies.go).
+	research *researchState
 }
 
 func newCityEconomy() *cityEconomy {
@@ -318,6 +323,9 @@ type EconomyLoad struct {
 	Advances []advance.Advance
 	// Crafts son las filas de city_crafts: elaboraciones en curso (ADR-036 §4).
 	Crafts []craft.Craft
+	// Research son las filas de city_research: investigaciones confirmadas y
+	// en curso (ADR-046 §3).
+	Research []technology.Research
 }
 
 // StockRow es una fila de city_stocks.
@@ -366,6 +374,9 @@ func (s *State) SetEconomy(load EconomyLoad) {
 			continue
 		}
 		s.setCraft(c)
+	}
+	for _, r := range load.Research {
+		s.setResearch(r)
 	}
 }
 
@@ -1077,7 +1088,9 @@ func economyErrorCode(err error) string {
 		return protocol.CodePopulationLimitReached
 	case errors.Is(err, building.ErrInvalidSite), errors.Is(err, building.ErrUnknownType), errors.Is(err, craft.ErrNoWorkshop),
 		errors.Is(err, unit.ErrUnknownType), errors.Is(err, production.ErrNotTrainable),
-		errors.Is(err, production.ErrNotYourCivilization), errors.Is(err, production.ErrEraRequired):
+		errors.Is(err, production.ErrNotYourCivilization), errors.Is(err, production.ErrEraRequired),
+		errors.Is(err, technology.ErrUnavailable), errors.Is(err, technology.ErrOwned),
+		errors.Is(err, technology.ErrEraRequired), errors.Is(err, technology.ErrRequirement):
 		return protocol.CodeInvalidTarget
 	default:
 		return protocol.CodeInternalError

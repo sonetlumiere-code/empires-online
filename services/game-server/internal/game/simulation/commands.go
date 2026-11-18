@@ -232,6 +232,9 @@ func CommandTypes() []string {
 		SurrenderClanWar{}.commandType(),
 		ClanWarResolved{}.commandType(),
 		ClanWarEndPersistFailed{}.commandType(),
+		ResearchTechnology{}.commandType(),
+		ResearchResolved{}.commandType(),
+		ResearchCompletePersistFailed{}.commandType(),
 	}
 }
 
@@ -257,6 +260,9 @@ const (
 	// Avance de era (ADR-030).
 	JobCityAdvance     = "city.advance"
 	JobAdvanceComplete = "advance.complete"
+	// Investigación (ADR-046).
+	JobCityResearch     = "city.research"
+	JobResearchComplete = "research.complete"
 )
 
 // JobNames es el catálogo cerrado de nombres de trabajo, en orden estable.
@@ -279,6 +285,7 @@ func JobNames() []string {
 		JobClanRank, JobClanLeader,
 		JobClanAlliance, JobClanAllianceEnd,
 		JobClanWar, JobClanWarEnd,
+		JobCityResearch, JobResearchComplete,
 	}
 }
 

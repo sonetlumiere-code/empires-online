@@ -78,6 +78,42 @@ func ExportedCivilizations() ([]CivilizationInfo, error) {
 	return doc.Civilizations, nil
 }
 
+// TechnologyInfo es una entrada del catálogo de presentación de las
+// tecnologías que exporta el paquete TypeScript (ADR-046 §1).
+type TechnologyInfo struct {
+	Code         string           `json:"code"`
+	Name         string           `json:"name"`
+	Era          string           `json:"era"`
+	Civilization *string          `json:"civilization"`
+	Costs        map[string]int64 `json:"costs"`
+	ForeignGoods int64            `json:"foreignGoods"`
+	OwnGood      int64            `json:"ownGood"`
+	DurationMs   int64            `json:"durationMs"`
+	Requires     []string         `json:"requires"`
+	Effects      map[string]int32 `json:"effects"`
+}
+
+// ExportedTechnologies lee el catálogo de presentación de las tecnologías. No
+// es la fuente (lo es la tabla technologies): un test de integración lo
+// compara con ella para que el panel no mienta.
+func ExportedTechnologies() ([]TechnologyInfo, error) {
+	data, err := SchemaFile("technologies.json")
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Version      int              `json:"version"`
+		Technologies []TechnologyInfo `json:"technologies"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("technologies.json malformado: %w", err)
+	}
+	if doc.Version != Version {
+		return nil, fmt.Errorf("technologies.json declara la versión %d y el servidor habla la %d", doc.Version, Version)
+	}
+	return doc.Technologies, nil
+}
+
 // UnitCost es una línea del coste de entrenamiento de una unidad.
 type UnitCost struct {
 	Resource string `json:"resource"`

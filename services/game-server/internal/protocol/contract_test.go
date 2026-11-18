@@ -252,7 +252,7 @@ func TestCatalogoDeComandosEsCerrado(t *testing.T) {
 	// clan.promote y clan.transfer (SPEC-CLAN-GOVERNANCE); 44 desde E21, con
 	// los tres de las alianzas (SPEC-CLAN-ALLIANCES); 47 desde E24, con los tres
 	// de las guerras (SPEC-CLAN-WARS).
-	require.Len(t, protocol.ClientMessageTypes, 47)
+	require.Len(t, protocol.ClientMessageTypes, 48)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)

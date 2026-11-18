@@ -111,6 +111,16 @@
  *      bienes ajenos y el castillo (con el servidor parado,
  *      EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed) y que no haya un
  *      pacto entre los dos: va antes de --diplomacia.
+ *  13g. sólo con --tecnologia (SPEC-TECHNOLOGIES): la ciudad del humo ve en su propia vista
+ *      sus tecnologías; una tecnología que no existe se rechaza (INVALID_TARGET); elige
+ *      la primera a su alcance que pueda pagar (Albañilería si puede: su efecto se ve
+ *      en la vida de una casa), la encarga y recibe la investigación con su plazo (el
+ *      del catálogo con su production.speed, o EO_TECHNOLOGY_RESEARCH_SECONDS si se
+ *      exporta igual que al servidor para no esperar); otra a la vez es CITY_BUSY; al
+ *      vencer recibe la tecnología, y con Albañilería sus casas aguantan un 20 % más
+ *      (encarga una si no tiene). Cuando ya tiene todas las que puede pagar, lo dice y
+ *      sigue. Necesita madera y piedra (con el servidor parado,
+ *      EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed).
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -181,7 +191,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--guerra-clan] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--tecnologia] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--guerra-clan] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -217,6 +227,7 @@ const CIVILIZACION = args.includes('--civilizacion');
 const BIENES = args.includes('--bienes');
 const UNIDAD_CIVILIZACION = args.includes('--unidad-civilizacion');
 const CASTILLO = args.includes('--castillo');
+const TECNOLOGIA = args.includes('--tecnologia');
 const CARAVANA = args.includes('--caravana');
 const MENSAJES = args.includes('--mensajes');
 const FACCION = args.includes('--faccion');
@@ -251,6 +262,14 @@ const CATALOGO = JSON.parse(
 const UNIDADES = JSON.parse(
   readFileSync(new URL('../packages/protocol/schema/v1/units.json', import.meta.url), 'utf8'),
 ).units;
+
+/**
+ * El catálogo de presentación de las tecnologías (SPEC-TECHNOLOGIES §6), el que un
+ * test de integración ata a la tabla: costes, plazos y efectos sin copiar números.
+ */
+const TECNOLOGIAS = JSON.parse(
+  readFileSync(new URL('../packages/protocol/schema/v1/technologies.json', import.meta.url), 'utf8'),
+).technologies;
 
 /** El rasgo por mil de una civilización; 1000 si no lo declara (RN-CIV-003). */
 export function rasgo(catalogo, codigo, clave) {
@@ -798,6 +817,10 @@ async function main() {
     await unidadCivilizacion(segunda, ciudad);
   }
 
+  if (TECNOLOGIA) {
+    await tecnologia(segunda, ciudad);
+  }
+
   if (CARAVANA) {
     await caravana(segunda, ciudad, cuenta.playerId);
   }
@@ -1261,6 +1284,138 @@ async function castillo(propio, ciudadInicial, playerId) {
 /** El nombre de una era en los mensajes del humo. */
 function eraLabelDelHumo(era) {
   return { BRONZE_AGE: 'Edad de Bronce', IRON_AGE: 'Edad de Hierro', CASTLE_AGE: 'Edad de los Castillos' }[era] ?? era;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Árbol tecnológico (SPEC-TECHNOLOGIES), sólo con --tecnologia
+// ─────────────────────────────────────────────────────────────
+
+/** La vida de una casa sin rasgo (SPEC-COMBAT-SIEGE §4.2). */
+const VIDA_DE_CASA = 150;
+
+/** technology.Compose: la fórmula de cantidad de los rasgos, mínimo 1. */
+export function componer(r, e) {
+  return Math.max(1, Math.floor((r * e + 500) / 1000));
+}
+
+/** player.ScaleAmount: multiplica por el rasgo, redondeando al más cercano, mínimo 1. */
+export function escalarCantidad(base, porMil) {
+  return Math.max(1, Math.floor((base * porMil + 500) / 1000));
+}
+
+/**
+ * El rasgo efectivo de un jugador: el de su civilización compuesto con el efecto de
+ * cada tecnología que tiene, en orden de código (SPEC-TECHNOLOGIES §4.4).
+ */
+export function rasgoCompuesto(catalogo, tecnologias, civilizacion, tenidas, clave) {
+  let r = rasgo(catalogo, civilizacion, clave);
+  for (const code of [...tenidas].sort()) {
+    const e = tecnologias.find((t) => t.code === code)?.effects[clave];
+    if (e !== undefined) r = componer(r, e);
+  }
+  return r;
+}
+
+/**
+ * La tecnología que investiga el humo: una a su alcance (su civilización, su era, sin
+ * tenerla y con sus requisitos) que el almacén pueda pagar; Albañilería si lo es, por
+ * su efecto fácil de ver; si no, la primera del catálogo. `null` si no hay ninguna.
+ */
+export function tecnologiaDelHumo(tecnologias, catalogo, ciudad) {
+  const tenidas = ciudad.technologies ?? [];
+  const propio = bienDe(catalogo, ciudad.civilization);
+  const ajenos = Object.entries(ciudad.stocks ?? {})
+    .filter(([r]) => !['WOOD', 'STONE', propio].includes(r))
+    .reduce((n, [, v]) => n + v, 0);
+  const candidatas = tecnologias.filter((t) =>
+    (t.civilization === null || t.civilization === ciudad.civilization) &&
+    ERAS.indexOf(ciudad.era) >= ERAS.indexOf(t.era) &&
+    !tenidas.includes(t.code) &&
+    t.requires.every((r) => tenidas.includes(r)) &&
+    (t.costs.WOOD ?? 0) <= (ciudad.stocks?.WOOD ?? 0) &&
+    (t.costs.STONE ?? 0) <= (ciudad.stocks?.STONE ?? 0) &&
+    t.ownGood <= (propio ? ciudad.stocks?.[propio] ?? 0 : 0) &&
+    t.foreignGoods <= ajenos);
+  return candidatas.find((t) => t.code === 'MASONRY') ?? candidatas[0] ?? null;
+}
+
+/**
+ * El plazo de una investigación: el del catálogo con production.speed compuesto, o el
+ * de EO_TECHNOLOGY_RESEARCH_SECONDS si es positivo (ADR-046 §3).
+ */
+export function plazoDeInvestigacion(tec, catalogo, tecnologias, civilizacion, tenidas, segundos = 0) {
+  if (segundos > 0) return segundos * 1000;
+  return escalarDuracion(tec.durationMs, rasgoCompuesto(catalogo, tecnologias, civilizacion, tenidas, 'production.speed'));
+}
+
+async function tecnologia(propio, ciudadInicial) {
+  const s = propio.sesion;
+  const cityId = ciudadInicial.id;
+  s.enviar('session.view', { center: { x: ciudadInicial.centerX, y: ciudadInicial.centerY } });
+  const vista = (await s.esperar('world.snapshot')).payload;
+  const c = vista.cities.find((x) => x.id === cityId);
+  if (!c) fallar('la ciudad del humo no está en su snapshot', vista.cities.map((x) => x.id));
+  if (!Array.isArray(c.technologies)) fallar('la vista propia no lleva las tecnologías (RN-TECH-008)', c);
+  ok('la vista propia lleva sus tecnologías', c.technologies.length > 0 ? c.technologies.join(', ') : 'ninguna');
+  if (c.research) {
+    await s.esperarQue('city.update', (m) => m.payload.id === cityId && m.payload.technologies,
+      Math.max(0, c.research.completesAtMs - Date.now()) + 15_000);
+    fallar('la ciudad tenía una investigación a medias: ya terminó; repite la pasada');
+  }
+
+  s.enviar('city.research', { cityId, technology: 'POLVORA' });
+  const rechazo = await s.esperar('system.error');
+  if (rechazo.payload.code !== 'INVALID_TARGET') fallar('una tecnología que no existe no se rechazó', rechazo.payload);
+  ok('una tecnología que no existe se rechaza', `${rechazo.payload.code}: ${rechazo.payload.message}`);
+
+  const tec = tecnologiaDelHumo(TECNOLOGIAS, CATALOGO, c);
+  if (!tec) {
+    ok('no queda ninguna tecnología que pueda pagar', `tiene ${c.technologies.join(', ') || 'ninguna'}; nada más que probar`);
+    return;
+  }
+  const segundos = Number(process.env.EO_TECHNOLOGY_RESEARCH_SECONDS ?? 0);
+  s.enviar('city.research', { cityId, technology: tec.code });
+  const inicio = await s.esperarQue(['city.update', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.id === cityId && m.payload.research), 15_000);
+  if (inicio.type === 'system.error') {
+    fallar(`el servidor rechazó ${tec.name}`, `${inicio.payload.code}: ${inicio.payload.message}`);
+  }
+  const plazo = plazoDeInvestigacion(tec, CATALOGO, TECNOLOGIAS, c.civilization, c.technologies, segundos);
+  const queda = comprobarPlazo(tec.name, inicio.payload.research.completesAtMs, inicio.ts, plazo);
+  ok(`${tec.name} encargada`, `${plazo} ms (quedaban ${queda})${segundos > 0 ? ', con EO_TECHNOLOGY_RESEARCH_SECONDS' : ''}`);
+
+  s.enviar('city.research', { cityId, technology: tec.code });
+  const ocupada = await s.esperar('system.error');
+  if (ocupada.payload.code !== 'CITY_BUSY') fallar('una segunda investigación a la vez no se rechazó', ocupada.payload);
+  ok('otra investigación a la vez se rechaza', 'CITY_BUSY');
+
+  const fin = await s.esperarQue('city.update', (m) => m.payload.id === cityId && m.payload.technologies,
+    Math.max(0, inicio.payload.research.completesAtMs - Date.now()) + 15_000);
+  if (!fin.payload.technologies.includes(tec.code) || fin.payload.research !== null) {
+    fallar(`al vencer ${tec.name} no llegó como tecnología`, fin.payload);
+  }
+  ok(`${tec.name} investigada`, `tecnologías: ${fin.payload.technologies.join(', ')}`);
+
+  if (tec.code !== 'MASONRY') {
+    ok('su efecto no se comprueba en el humo', 'sólo el de Albañilería; lo cubren los tests de simulación');
+    return;
+  }
+  const esperada = escalarCantidad(VIDA_DE_CASA,
+    rasgoCompuesto(CATALOGO, TECNOLOGIAS, c.civilization, fin.payload.technologies, 'building.house_hp'));
+  s.enviar('session.view', { center: { x: ciudadInicial.centerX, y: ciudadInicial.centerY } });
+  const despues = (await s.esperar('world.snapshot')).payload;
+  let casa = despues.buildings.find((b) => b.cityId === cityId && b.type === 'HOUSE');
+  if (!casa) {
+    const hueco = huecoParaCasa(c, despues.buildings.filter((b) => b.cityId === cityId));
+    if (!hueco) fallar('no queda hueco para la casa que mostraría el efecto', despues.buildings);
+    s.enviar('city.build', { cityId, type: 'HOUSE', x: hueco.x, y: hueco.y });
+    const alta = await s.esperarQue(['building.spawn', 'system.error'],
+      (m) => m.type === 'system.error' || (m.payload.building.cityId === cityId && m.payload.building.type === 'HOUSE'), 15_000);
+    if (alta.type === 'system.error') fallar('el servidor rechazó la casa', `${alta.payload.code}: ${alta.payload.message}`);
+    casa = alta.payload.building;
+  }
+  if (casa.maxHp !== esperada) fallar(`con Albañilería, una casa no aguanta ${esperada}`, casa);
+  ok('con Albañilería, sus casas aguantan más', `${VIDA_DE_CASA} -> ${casa.maxHp}`);
 }
 
 // ─────────────────────────────────────────────────────────────

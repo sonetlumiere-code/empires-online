@@ -21,6 +21,7 @@ import { parseClientMessage, parseServerMessage, TRANSPORT_LIMITS } from './inde
 import { CityView, CivilizationCode, GoodType, TrainableUnitType, UnitType } from './common.js';
 import { CIVILIZATIONS, CIVILIZATION_TRAIT_KEYS } from './civilizations.js';
 import { UNITS, unitInfo } from './units.js';
+import { TECHNOLOGIES, TECHNOLOGY_EFFECT_KEYS } from './technologies.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaDir = resolve(here, '..', '..', 'schema', 'v1');
@@ -1279,6 +1280,55 @@ describe('Edad de los Castillos (SPEC-CASTLE-AGE)', () => {
     const notice = { atMs: 1, otherPlayerId: otroJugador, otherCityId: 2, otherCityName: 'Vecina', unitType: 'WARRIOR', x: 22, y: 41 };
     for (const kind of ['UNIT_LOST_TO_CASTLE', 'CASTLE_KILL']) {
       expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...notice, kind } }).ok).toBe(true);
+    }
+  });
+});
+
+describe('árbol tecnológico (SPEC-TECHNOLOGIES)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+
+  it('acepta city.research con la ciudad y la tecnología; el resto lo decide el servidor', () => {
+    const research = (payload: unknown) => parseClientMessage({ v: 1, type: 'city.research', requestId: uuid, payload });
+    expect(research({ cityId: 7, technology: 'WHEEL' }).ok).toBe(true);
+    expect(research({ cityId: 7, technology: 'UNA_NUEVA_DE_OTRA_MIGRACION' }).ok).toBe(true);
+    expect(research({ cityId: 7 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(research({ cityId: 7, technology: 'wheel' })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(research({ cityId: 7, technology: 'WHEEL', durationMs: 1 })).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(CLIENT_MESSAGE_TYPES).toContain('city.research');
+  });
+
+  it('city.update lleva la investigación (o null) y las tecnologías, opcionales', () => {
+    const update = (extra: Record<string, unknown>) =>
+      parseServerMessage({ ...env, type: 'city.update', payload: { id: 1, ...extra } }).ok;
+    expect(update({ research: { technology: 'WHEEL', completesAtMs: 9 } })).toBe(true);
+    expect(update({ research: null, technologies: ['WHEEL'] })).toBe(true);
+    expect(update({})).toBe(true);
+    expect(update({ research: { technology: 'WHEEL' } })).toBe(false);
+    expect(update({ technologies: 'WHEEL' })).toBe(false);
+  });
+
+  it('la vista de la ciudad admite los dos campos y una ajena vive sin ellos', () => {
+    const ciudad = {
+      id: 1, ownerPlayerId: uuid, name: 'Roma', centerX: 10, centerY: 10, era: 'IRON_AGE', civilization: 'ROMAN',
+      faction: 'NEUTRAL', clan: null, population: 3, populationLimit: 100, presenceState: 'ONLINE', protectionUntilMs: null,
+    };
+    expect(CityView.safeParse(ciudad).success).toBe(true);
+    expect(CityView.safeParse({ ...ciudad, research: null, technologies: [] }).success).toBe(true);
+    expect(CityView.safeParse({ ...ciudad, research: { technology: 'GUILDS', completesAtMs: 5 }, technologies: ['WHEEL'] }).success).toBe(true);
+  });
+
+  it('el catálogo de presentación: doce, una exclusiva por civilización, efectos con claves del servidor', () => {
+    expect(TECHNOLOGIES).toHaveLength(12);
+    const exclusivas = TECHNOLOGIES.filter((t) => t.civilization !== null);
+    expect(new Set(exclusivas.map((t) => t.civilization))).toEqual(new Set(CIVILIZATIONS.map((c) => c.code)));
+    for (const t of TECHNOLOGIES) {
+      for (const [k, v] of Object.entries(t.effects)) {
+        expect(TECHNOLOGY_EFFECT_KEYS as readonly string[]).toContain(k);
+        expect(v).toBeGreaterThan(0);
+      }
+      for (const r of t.requires) {
+        expect(TECHNOLOGIES.map((x) => x.code)).toContain(r);
+      }
     }
   });
 });

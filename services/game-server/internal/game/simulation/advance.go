@@ -148,7 +148,9 @@ func (s *Simulation) handleAdvanceEra(cmd AdvanceEra) {
 	stock := func(economy.Resource) *economy.Stock { return nil }
 	if c != nil {
 		eco := s.state.economyOf(c.ID)
-		busy = eco.production != nil || eco.advance != nil
+		// RN-ECON-026: ni con un entrenamiento ni, desde E25, con una
+		// investigación en curso (RN-TECH-003).
+		busy = eco.production != nil || eco.advance != nil || eco.research != nil
 		stock = eco.stockOf
 	}
 	// SPEC-CIVILIZATION-GOODS RN-GOODS-006: los bienes ajenos se resuelven con

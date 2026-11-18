@@ -147,6 +147,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_CLAN_WAR_HOURS` | int | `72` | 1–720 | No | No | Horas que dura como mucho una guerra desde que empieza; al cumplirse gana el clan con más puntos (SPEC-CLAN-WARS Q4, Q6, `RN-CLANWAR-006`). |
 | `EO_CLAN_WAR_COOLDOWN_HOURS` | int | `24` | 0–720 | No | No | Tregua tras una guerra: horas durante las que ninguno de los dos clanes declara la guerra al otro; no da paz (SPEC-CLAN-WARS Q6). |
 | `EO_CLAN_WAR_SCORE_PUSH_SECONDS` | int | `10` | 1–3600 | No | No | Cada cuántos segundos, como mucho, se difunde en `clan.update` un marcador de guerra que cambió (SPEC-CLAN-WARS §6). |
+| `EO_TECHNOLOGY_RESEARCH_SECONDS` | int | `0` | 0–3600 | No | No | Si es positivo, toda investigación dura esos segundos en vez del plazo del catálogo; `0` usa el del catálogo con `production.speed`. Sólo para el humo en desarrollo (SPEC-TECHNOLOGIES §9, [ADR-046](../decisions/ADR-046-technologies.md) §3). |
 | `EO_EVENT_LOG_MAX_DAYS` | int | `7` | 1–90 | No | No | Hasta cuántos días atrás lee el registro de un jugador; lo más viejo sigue en `world_events` como auditoría (`RN-LOG-003`). |
 | `EO_EVENT_LOG_PAGE_SIZE` | int | `50` | 1–200 | No | No | Entradas, ya agrupadas, de una página del registro (`RN-LOG-003`). |
 | `EO_EVENT_LOG_GROUP_GAP_MINUTES` | int | `10` | 1–1440 | No | No | Hueco máximo entre dos sucesos del mismo tipo y con el mismo jugador para que formen una entrada (SPEC-EVENT-LOG §4.2). |

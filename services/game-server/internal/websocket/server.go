@@ -1002,6 +1002,25 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			CityID:    p.CityID,
 		})
 
+	// Investigación (SPEC-TECHNOLOGIES): la ciudad y la tecnología; el coste, el
+	// plazo y si está a su alcance los decide la simulación (INV-SEC-001).
+	case protocol.TypeCityResearch:
+		var p protocol.CityResearchPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.ResearchTechnology{
+			PlayerID:   session.PlayerID,
+			SessionID:  session.ID,
+			RequestID:  msg.RequestID,
+			CityID:     p.CityID,
+			Technology: p.Technology,
+		})
+
 	// Facciones (SPEC-FACTIONS): sólo el bando; el instante en que cuenta lo
 	// decide el servidor.
 	case protocol.TypeFactionJoin:

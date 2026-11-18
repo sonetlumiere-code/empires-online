@@ -63,7 +63,12 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 			payload.Units = append(payload.Units, s.UnitView(u, nowMs))
 		}
 		for _, c := range s.state.CitiesInChunk(ch.CX, ch.CY) {
-			payload.Cities = append(payload.Cities, s.state.cityViewOf(c))
+			v := s.state.cityViewOf(c)
+			if c.OwnerPlayerID == viewer {
+				// RN-TECH-008: la investigación y las tecnologías, sólo al dueño.
+				v = s.state.withOwnerFields(v, c)
+			}
+			payload.Cities = append(payload.Cities, v)
 		}
 		for _, b := range s.state.buildingsInChunk(ch.CX, ch.CY) {
 			payload.Buildings = append(payload.Buildings, s.state.buildingView(b))

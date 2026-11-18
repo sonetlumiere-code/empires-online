@@ -147,6 +147,9 @@ type Deps struct {
 	ClanWarDuration  time.Duration
 	ClanWarCooldown  time.Duration
 	ClanWarScorePush time.Duration
+	// ResearchOverride, si es positivo, sustituye el plazo de toda
+	// investigación (EO_TECHNOLOGY_RESEARCH_SECONDS, sólo para el humo).
+	ResearchOverride time.Duration
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -253,6 +256,12 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleAdvanceResolved(c)
 	case AdvanceCompletePersistFailed:
 		s.handleAdvanceCompletePersistFailed(c)
+	case ResearchTechnology:
+		s.handleResearchTechnology(c)
+	case ResearchResolved:
+		s.handleResearchResolved(c)
+	case ResearchCompletePersistFailed:
+		s.handleResearchCompletePersistFailed(c)
 	case TrainResolved:
 		s.handleTrainResolved(c)
 	case BirthResolved:
@@ -849,6 +858,8 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	s.completeProductions(nowMs)
 	// Los avances de era que vencen (RN-ECON-027).
 	s.completeAdvances(nowMs)
+	// Las investigaciones que vencen (RN-TECH-005).
+	s.completeResearch(nowMs)
 	// Las elaboraciones del taller que vencen (RN-GOODS-004).
 	s.completeCrafts(nowMs)
 	// Las caravanas que llegaron a su destino (RN-CARAVAN-004), después del
@@ -1033,6 +1044,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushCraftDeliveries()
 	s.flushCaravanWrites()
 	s.flushAdvanceCompletions()
+	s.flushResearchCompletions()
 	s.flushFactionCompletions()
 	s.flushClanLeaves()
 	s.flushDestructions()

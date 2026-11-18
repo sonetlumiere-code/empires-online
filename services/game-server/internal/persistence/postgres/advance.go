@@ -72,6 +72,16 @@ func (r *EconomyRepo) Advance(
 		if entrenando {
 			return advance.ErrCityBusy
 		}
+		// RN-ECON-026 y SPEC-TECHNOLOGIES RN-TECH-003: con una investigación en
+		// curso, tampoco.
+		var investigando bool
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM city_research WHERE city_id = $1)`, a.CityID).Scan(&investigando); err != nil {
+			return fmt.Errorf("leer la investigación de la ciudad %d: %w", a.CityID, normalize(err))
+		}
+		if investigando {
+			return advance.ErrCityBusy
+		}
 
 		for _, d := range deltas {
 			aplicado, err := applyStock(ctx, tx, d)

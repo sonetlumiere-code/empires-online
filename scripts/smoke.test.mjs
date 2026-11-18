@@ -43,6 +43,11 @@ import {
   tiemposDePolilinea,
   elaboracionesQueFaltan,
   unidadesDelHumo,
+  componer,
+  escalarCantidad,
+  rasgoCompuesto,
+  tecnologiaDelHumo,
+  plazoDeInvestigacion,
 } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
@@ -419,4 +424,54 @@ test('guardiasCerca da las unidades propias que atacan junto al centro, no aldea
     { id: 6, playerId: yo, unitType: 'LEGIONARY', x: 18, y: 2, status: 'ATTACKING' },
   ];
   assert.deepEqual(guardiasCerca(unidades, yo, { x: 10, y: 10 }, catalogo).map((u) => u.id), [1, 6]);
+});
+
+// --tecnologia (SPEC-TECHNOLOGIES): la composición, la elección y el plazo.
+const CIVS = [
+  { code: 'ROMAN', good: 'WINE', traits: { 'production.speed': 1100 } },
+  { code: 'NORSE', good: 'FURS', traits: { 'production.speed': 900 } },
+];
+const TECS = [
+  { code: 'STONE_TOOLS', era: 'STONE_AGE', civilization: null, costs: { WOOD: 150, STONE: 50 }, foreignGoods: 0, ownGood: 0, durationMs: 60_000, requires: [], effects: { 'economy.gather_speed': 1100 } },
+  { code: 'MASONRY', era: 'BRONZE_AGE', civilization: null, costs: { WOOD: 200, STONE: 200 }, foreignGoods: 0, ownGood: 0, durationMs: 120_000, requires: [], effects: { 'building.house_hp': 1200 } },
+  { code: 'GUILDS', era: 'IRON_AGE', civilization: null, costs: { WOOD: 300, STONE: 300 }, foreignGoods: 30, ownGood: 0, durationMs: 180_000, requires: [], effects: { 'production.speed': 1100 } },
+  { code: 'ARCHITECTURE', era: 'CASTLE_AGE', civilization: null, costs: { WOOD: 400, STONE: 400 }, foreignGoods: 60, ownGood: 0, durationMs: 300_000, requires: ['GUILDS'], effects: { 'production.speed': 1100 } },
+  { code: 'ROMAN_ROADS', era: 'IRON_AGE', civilization: 'ROMAN', costs: { WOOD: 200, STONE: 200 }, foreignGoods: 0, ownGood: 40, durationMs: 180_000, requires: [], effects: { 'unit.move_speed': 1100 } },
+  { code: 'RAIDING', era: 'IRON_AGE', civilization: 'NORSE', costs: { WOOD: 200, STONE: 200 }, foreignGoods: 0, ownGood: 40, durationMs: 180_000, requires: [], effects: { 'combat.loot_carry': 1200 } },
+];
+
+test('componer y escalarCantidad son las fórmulas del servidor', () => {
+  assert.equal(componer(1100, 1050), 1155);
+  assert.equal(componer(1100, 1100), 1210);
+  assert.equal(componer(1, 1), 1);
+  assert.equal(escalarCantidad(150, 1200), 180);
+  assert.equal(escalarCantidad(8, 1100), 9);
+});
+
+test('rasgoCompuesto parte del de la civilización y compone en orden de código', () => {
+  assert.equal(rasgoCompuesto(CIVS, TECS, 'ROMAN', [], 'production.speed'), 1100);
+  assert.equal(rasgoCompuesto(CIVS, TECS, 'ROMAN', ['GUILDS'], 'production.speed'), 1210);
+  assert.equal(rasgoCompuesto(CIVS, TECS, 'ROMAN', ['GUILDS', 'ARCHITECTURE'], 'production.speed'), 1331);
+  assert.equal(rasgoCompuesto(CIVS, TECS, 'NORSE', ['MASONRY'], 'building.house_hp'), 1200);
+});
+
+test('tecnologiaDelHumo elige una a su alcance y que pueda pagar, Albañilería primero', () => {
+  const ciudad = (over) => ({ era: 'CASTLE_AGE', civilization: 'ROMAN', technologies: [], stocks: { WOOD: 5000, STONE: 5000, WINE: 0, SILK: 0 }, ...over });
+  assert.equal(tecnologiaDelHumo(TECS, CIVS, ciudad())?.code, 'MASONRY');
+  assert.equal(tecnologiaDelHumo(TECS, CIVS, ciudad({ technologies: ['MASONRY'] }))?.code, 'STONE_TOOLS');
+  assert.equal(tecnologiaDelHumo(TECS, CIVS, ciudad({ technologies: ['MASONRY', 'STONE_TOOLS'] })), null,
+    'sin bienes ajenos ni vino no paga ninguna otra');
+  assert.equal(tecnologiaDelHumo(TECS, CIVS, ciudad({ technologies: ['MASONRY', 'STONE_TOOLS'], stocks: { WOOD: 5000, STONE: 5000, WINE: 40, SILK: 0 } }))?.code,
+    'ROMAN_ROADS', 'su exclusiva con su vino; la nórdica nunca');
+  assert.equal(tecnologiaDelHumo(TECS, CIVS, ciudad({ technologies: ['MASONRY', 'STONE_TOOLS', 'ROMAN_ROADS'], stocks: { WOOD: 5000, STONE: 5000, WINE: 500, SILK: 30 } }))?.code,
+    'GUILDS', 'el vino propio no cuenta como ajeno; la seda sí, y Arquitectura pide Gremios');
+  assert.equal(tecnologiaDelHumo(TECS, CIVS, ciudad({ era: 'STONE_AGE' }))?.code, 'STONE_TOOLS', 'Albañilería pide Bronce');
+  assert.equal(tecnologiaDelHumo(TECS, CIVS, ciudad({ stocks: { WOOD: 100, STONE: 100 } })), null);
+});
+
+test('plazoDeInvestigacion: el del catálogo con el rasgo compuesto, o el de la variable', () => {
+  assert.equal(plazoDeInvestigacion(TECS[0], CIVS, TECS, 'ROMAN', []), 54_545);
+  assert.equal(plazoDeInvestigacion(TECS[3], CIVS, TECS, 'ROMAN', ['GUILDS']), 247_934);
+  assert.equal(plazoDeInvestigacion(TECS[0], CIVS, TECS, 'NORSE', []), 66_667);
+  assert.equal(plazoDeInvestigacion(TECS[0], CIVS, TECS, 'ROMAN', [], 20), 20_000);
 });

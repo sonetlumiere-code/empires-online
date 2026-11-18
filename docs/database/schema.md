@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15), y las guerras entre clanes, `000026_clan_wars.up.sql` (`clan_wars`, sus triggers y el índice `world_events_war`, §16.13). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15), las guerras entre clanes, `000026_clan_wars.up.sql` (`clan_wars`, sus triggers y el índice `world_events_war`, §16.13), y el árbol tecnológico, `000027_technologies.up.sql` (`technologies`, `city_research`, `player_technologies` y sus tres triggers, §16.16). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -32,7 +32,7 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `trade_offers`, `trade_offer_lines` | E10: **activas** | Las ofertas de comercio y sus líneas. La RAM decide; cada transición va con su evento y el trato aceptado mueve los dos almacenes en la misma transacción ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)) |
 | `territory_claims` | E12: **activa** | Las reclamaciones de territorio de los guerreros y su ciclo de vida. La RAM decide; la base la recupera tras un reinicio, y la captura cambia el control y el límite de dos ciudades en una transacción ([ADR-034](../decisions/ADR-034-territory-claims.md)) |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` y `HillDepleted` al agotarse un tile de bosque o de colina, `EraAdvanceOrdered` y `EraAdvanced` en el avance de era, los cinco `Trade*` en el comercio, e `InvariantRepaired` en la validación de carga del arranque. **Precisión (2026-11-17, [ADR-045](../decisions/ADR-045-clan-wars.md) §4):** desde E24, un `UnitKilled`, un `BuildingDestroyed` o un `TerritoryControlChanged` entre los dos lados de una guerra activa lleva en su payload `war: { warId, clanId, points }`, del que sale el marcador |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` y `HillDepleted` al agotarse un tile de bosque o de colina, `EraAdvanceOrdered` y `EraAdvanced` en el avance de era, `ResearchOrdered` y `TechnologyResearched` en la investigación (desde E25, de un solo jugador), los cinco `Trade*` en el comercio, e `InvariantRepaired` en la validación de carga del arranque. **Precisión (2026-11-17, [ADR-045](../decisions/ADR-045-clan-wars.md) §4):** desde E24, un `UnitKilled`, un `BuildingDestroyed` o un `TerritoryControlChanged` entre los dos lados de una guerra activa lleva en su payload `war: { warId, clanId, points }`, del que sale el marcador |
 | `city_stocks` | E1: **activa** | Una fila por ciudad y recurso (`WOOD` y, desde `000012`, `STONE`), creada en la fundación (y para las ciudades existentes, por `000006` y `000012`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
 | `unit_tasks` | E1: **activa** | Write-through en cada transición de la tarea de recolección, con su tramo de movimiento y `units.status` en la misma transacción |
 | `buildings` | E1: **activa** | Encargo de `city.build` (con su débito) y finalización en la fase 5 |
@@ -43,8 +43,8 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `city_crafts` | E14: **activa** | Elaboraciones del taller en curso: una fila por ciudad, borrada en la transacción que entrega el bien ([ADR-036](../decisions/ADR-036-civilization-goods.md) §4) |
 | `caravans`, `caravan_cargo` | E15: **activas** | Las caravanas de un trato aceptado y su carga, creadas en la transacción de la aceptación y cerradas en la de su entrega o su pérdida ([ADR-037](../decisions/ADR-037-caravans-as-units.md), §16.11). **Precisión (2026-11-14):** hasta E16 esta tabla las seguía dando como «solo diseño» |
 | `player_messages`, `message_reads`, `player_blocks` | E16: **activas** | Los mensajes entre jugadores, lo leído y los bloqueos. Los escribe la conexión del Game Server en su propia transacción, nunca la simulación ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md), §16.12) |
-| `technologies` | Fuera de MVP: solo diseño | — |
-| `civilization_technologies` | Fuera de MVP: solo diseño | — |
+| `technologies` | E25: **activa** (catálogo) | Sembrada por `000027` con las doce tecnologías de [SPEC-TECHNOLOGIES](../specs/technologies.md); el Game Server la valida al arrancar ([ADR-046](../decisions/ADR-046-technologies.md) §1). Un cambio de balance es una migración de catálogo |
+| `city_research`, `player_technologies` | E25: **activas** | La investigación en curso de cada ciudad (una fila como mucho, borrada en la transacción que da la tecnología) y las tecnologías de cada jugador, para siempre ([ADR-046](../decisions/ADR-046-technologies.md) §3 y §4) |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
 | `markets` | Fuera de MVP: solo diseño | — |
 | `trade_transactions` | Fuera de MVP: solo diseño | — |
@@ -1490,6 +1490,68 @@ El disparo del castillo no se persiste: el próximo disparo y el objetivo viven 
 La migración de vuelta borra las producciones de tipos exclusivos y deja las unidades ya nacidas en `units`, que no
 tiene `CHECK` de tipo: un servidor anterior las excluye al cargar (`INV-UNIT-009`) y recalcula la población.
 
+### 16.16 El árbol tecnológico (`000027`)
+
+[SPEC-TECHNOLOGIES](../specs/technologies.md), [ADR-046](../decisions/ADR-046-technologies.md). El catálogo, la
+investigación en curso y las tecnologías de cada jugador. La tabla puente `civilization_technologies` del diseño de §17
+no se creó: la exclusiva de una civilización es una columna.
+
+```sql
+CREATE TABLE technologies (
+    id              integer     PRIMARY KEY,
+    code            text        NOT NULL UNIQUE,
+    name            text        NOT NULL,
+    era             text        NOT NULL REFERENCES eras (code),
+    civilization_id integer     NULL REFERENCES civilizations (id),
+    costs           jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    foreign_goods   integer     NOT NULL DEFAULT 0,
+    own_good        integer     NOT NULL DEFAULT 0,
+    duration_ms     integer     NOT NULL,
+    requires        jsonb       NOT NULL DEFAULT '[]'::jsonb,
+    effects         jsonb       NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT technologies_duration CHECK (duration_ms > 0),
+    CONSTRAINT technologies_goods_amounts CHECK (foreign_goods >= 0 AND own_good >= 0),
+    -- SPEC-TECHNOLOGIES Q5: una exclusiva cobra su bien propio y ningún ajeno;
+    -- una común, ningún bien propio.
+    CONSTRAINT technologies_exclusive_goods CHECK (
+        (civilization_id IS NULL AND own_good = 0)
+        OR (civilization_id IS NOT NULL AND own_good > 0 AND foreign_goods = 0)
+    ),
+    CONSTRAINT technologies_json_shapes CHECK (
+        jsonb_typeof(costs) = 'object' AND jsonb_typeof(requires) = 'array' AND jsonb_typeof(effects) = 'object'
+    )
+);
+
+CREATE TABLE city_research (
+    city_id         bigint      PRIMARY KEY REFERENCES cities (id) ON DELETE CASCADE,
+    technology_id   integer     NOT NULL REFERENCES technologies (id),
+    completes_at_ms bigint      NOT NULL,
+    request_id      text        NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE player_technologies (
+    player_id     uuid        NOT NULL REFERENCES players (id) ON DELETE CASCADE,
+    technology_id integer     NOT NULL REFERENCES technologies (id),
+    researched_at timestamptz NOT NULL,
+    PRIMARY KEY (player_id, technology_id)
+);
+```
+
+| Objeto | Semántica |
+|---|---|
+| `technologies` | El catálogo: la era que pide, la civilización de una exclusiva, los costes fijos (`{"WOOD": n, "STONE": n}`), los bienes ajenos o el propio, el plazo base, los requisitos (códigos) y los efectos (`{"clave": por mil}`). Sembrada con las doce de la spec |
+| `city_research.city_id` | `INV-TECH-001`: como mucho una investigación por ciudad. La escribe la transacción del encargo con su débito; la borra la del fin |
+| `player_technologies` | Las tecnologías de cada jugador. La escribe la transacción del fin, idempotente (`ON CONFLICT DO NOTHING`), con `TechnologyResearched` en `world_events` |
+| `city_research_guard` (trigger) | `INV-TECH-001`: rechaza con `23514` una investigación en una ciudad que avanza de era, de una era posterior a la de la ciudad, exclusiva de otra civilización, ya tenida o sin sus requisitos |
+| `city_era_advances_research_guard` (trigger) | `RN-ECON-026` e `INV-TECH-001`: rechaza un avance de era en una ciudad que investiga |
+| `player_technologies_civ_guard` (trigger) | `INV-TECH-001`: rechaza una exclusiva para un jugador de otra civilización |
+
+Los eventos `ResearchOrdered` y `TechnologyResearched` son de un solo jugador y sin `counterpart`: no van al registro
+ni a los avisos (SPEC-TECHNOLOGIES Q13). La migración de vuelta borra las tres tablas, con lo investigado y lo pagado.
+
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 
 Sin DDL definitivo y **sin migración**. Se documenta la forma prevista para verificar que encaja sin romper el esquema del MVP. Todas estas tablas son **aditivas**: no exigen modificar ninguna columna existente. Las únicas intrusiones previstas sobre tablas MVP son columnas nuevas y anulables, introducidas mediante el patrón *expand* descrito en [migrations.md](./migrations.md).
@@ -1502,6 +1564,8 @@ Sin DDL definitivo y **sin migración**. Se documenta la forma prevista para ver
 | `civilization_technologies` | `id`, `civilization_id` → `civilizations`, `technology_id` → `technologies`, `is_unique` boolean, `modifier` jsonb, UNIQUE `(civilization_id, technology_id)` | Tabla puente pura. Materializa el bono cultural sin añadir columnas a `civilizations`, que ya lleva su `traits jsonb` para los rasgos simples |
 
 La investigación **por jugador** requerirá una tercera tabla (`player_technologies` o `city_technologies`, decisión **TBD (fuera de MVP)**). Los efectos sobre gameplay se resolverán en RAM al cargar el jugador, no con joins por tick.
+
+**Precisión (2026-11-18):** este diseño lo realizó `000027` con otra forma (§16.16, [ADR-046](../decisions/ADR-046-technologies.md)): `technologies` con la era por código, la civilización de una exclusiva como columna y los costes, requisitos y efectos en `jsonb`; sin `civilization_technologies`; `city_research` y `player_technologies` (por jugador). Los efectos se componen en la RAM.
 
 ### 17.2 Economía y comercio
 
