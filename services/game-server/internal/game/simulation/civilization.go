@@ -12,9 +12,11 @@ import (
 //
 // La civilización de un jugador es la de su ciudad (city.City.Civilization, que
 // la carga lee de players y la fundación trae con IntroducePlayer), y sus rasgos
-// salen del catálogo cargado al arrancar. Los cinco puntos de consumo piden el
-// rasgo aquí y lo aplican con player.ScaleDuration o player.ScaleAmount al dar
-// la orden (RN-CIV-005); ningún valor efectivo se guarda.
+// salen del catálogo cargado al arrancar. Los siete puntos de consumo piden el
+// rasgo con State.trait, que lo compone con las tecnologías del jugador
+// (technologies.go, ADR-046 §2), y lo aplican con player.ScaleDuration o
+// player.ScaleAmount al dar la orden (RN-CIV-005); ningún valor efectivo se
+// guarda en una fila.
 //
 // Un jugador sin ciudad, o una ciudad con un código fuera del catálogo, tiene
 // rasgos neutros. En producción no ocurre: la validación de carga exige que toda
@@ -43,11 +45,6 @@ func (s *State) civilizationOf(playerID uuid.UUID) player.Civilization {
 	return s.civilizations[c.Civilization]
 }
 
-// trait es el rasgo por mil de un jugador.
-func (s *State) trait(playerID uuid.UUID, key string) int32 {
-	return s.civilizationOf(playerID).Trait(key)
-}
-
 // msPerTile es lo que tarda un paso de terreno base para una unidad, con la
 // velocidad de la civilización de su dueño (unit.move_speed).
 func (s *State) msPerTile(u *unit.Unit, def unit.Definition) int64 {
@@ -70,6 +67,20 @@ func (s *State) gatherWorkMs(u *unit.Unit, def unit.Definition) int64 {
 // botín (combat.loot_carry), medido al tomar cada golpe (RN-CIV-007).
 func (s *State) lootCarry(u *unit.Unit, def unit.Definition) int32 {
 	return player.ScaleAmount(def.LootCarry, s.trait(u.PlayerID, player.TraitLootCarry))
+}
+
+// attackDamage es lo que quita un golpe de una unidad que ataca, contra una
+// unidad o contra un edificio (combat.attack_damage), medido al calcular el
+// golpe (SPEC-TECHNOLOGIES §4.3). El disparo del castillo no lo lee.
+func (s *State) attackDamage(u *unit.Unit, def unit.Definition) int32 {
+	return player.ScaleAmount(def.AttackDamage, s.trait(u.PlayerID, player.TraitAttackDamage))
+}
+
+// gatherCarry es lo que carga un aldeano en un viaje de recolección
+// (economy.gather_carry), medido al terminar el trabajo en el tile, cuando toma
+// su carga (SPEC-TECHNOLOGIES §4.3).
+func (s *State) gatherCarry(u *unit.Unit, def unit.Definition) int32 {
+	return player.ScaleAmount(def.GatherCarry, s.trait(u.PlayerID, player.TraitGatherCarry))
 }
 
 // houseMaxHP es la vida entera de una casa de una ciudad: la de su tipo por el

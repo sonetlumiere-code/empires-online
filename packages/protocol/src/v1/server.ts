@@ -21,6 +21,8 @@ import {
   EventLogNoticeKind,
   AdvanceView,
   CraftView,
+  ResearchView,
+  TechnologyCode,
   EraCode,
   ForestView,
   HillView,
@@ -236,6 +238,10 @@ export const CityUpdate = z.object({
     advance: AdvanceView.nullable().optional(),
     /** Elaboración del taller: empieza (vista) o termina (`null`) (SPEC-CIVILIZATION-GOODS). */
     craft: CraftView.nullable().optional(),
+    /** Investigación: empieza (vista) o termina (`null`). Sólo la recibe el dueño (SPEC-TECHNOLOGIES §6). */
+    research: ResearchView.nullable().optional(),
+    /** Tecnologías del dueño tras terminar una investigación. Sólo las recibe el dueño (SPEC-TECHNOLOGIES §6). */
+    technologies: z.array(TechnologyCode).optional(),
     /** Facción nueva del dueño al contar su entrada en un bando (SPEC-FACTIONS RN-FAC-002). */
     faction: FactionCode.optional(),
     /** Entrada en un bando: se apunta (vista) o cuenta (`null`) (SPEC-FACTIONS §6). */

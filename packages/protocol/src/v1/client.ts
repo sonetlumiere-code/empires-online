@@ -17,6 +17,7 @@ import {
   PROTOCOL_VERSION,
   ResourceAmount,
   ResourceType,
+  TechnologyCode,
   Tile,
   TreatyType,
   TrainableUnitType,
@@ -189,6 +190,21 @@ export const CityAdvance = z.object({
   requestId: Uuid,
   payload: z.object({
     cityId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
+ * Encarga una investigación en una ciudad propia (SPEC-TECHNOLOGIES §4.2). Sólo
+ * la ciudad y la tecnología: el coste, el plazo y si está a su alcance los decide
+ * el servidor.
+ */
+export const CityResearch = z.object({
+  v: V,
+  type: z.literal('city.research'),
+  requestId: Uuid,
+  payload: z.object({
+    cityId: EntityId,
+    technology: TechnologyCode,
   }).strict(),
 }).strict();
 
@@ -662,6 +678,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   CityBuild,
   CityTrain,
   CityAdvance,
+  CityResearch,
   UnitAttack,
   UnitPillage,
   UnitDemolish,
@@ -712,6 +729,7 @@ export type UnitGather = z.infer<typeof UnitGather>;
 export type CityBuild = z.infer<typeof CityBuild>;
 export type CityTrain = z.infer<typeof CityTrain>;
 export type CityAdvance = z.infer<typeof CityAdvance>;
+export type CityResearch = z.infer<typeof CityResearch>;
 export type CityCraft = z.infer<typeof CityCraft>;
 export type FactionJoin = z.infer<typeof FactionJoin>;
 export type UnitAttack = z.infer<typeof UnitAttack>;
@@ -797,6 +815,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'clan.war.declare',
   'clan.war.peace',
   'clan.war.surrender',
+  'city.research',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

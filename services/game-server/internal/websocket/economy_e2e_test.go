@@ -69,6 +69,17 @@ func (m *memoryEconomy) CompleteAdvance(context.Context, simulation.AdvanceCompl
 	return nil
 }
 
+func (m *memoryEconomy) Research(context.Context, simulation.ResearchOrder) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.encargos++
+	return nil
+}
+
+func (m *memoryEconomy) CompleteResearch(context.Context, simulation.ResearchCompletion) error {
+	return nil
+}
+
 func (m *memoryEconomy) Craft(context.Context, simulation.CraftOrder) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

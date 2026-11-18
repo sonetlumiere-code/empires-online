@@ -42,6 +42,8 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeCityAdvance: {Hostile: false, Territory: TerritoryFree},
 	// Elaborar en el taller propio tampoco toca a nadie (SPEC-CIVILIZATION-GOODS §6).
 	protocol.TypeCityCraft: {Hostile: false, Territory: TerritoryFree},
+	// Investigar en la ciudad propia, tampoco (SPEC-TECHNOLOGIES §6).
+	protocol.TypeCityResearch: {Hostile: false, Territory: TerritoryFree},
 	// La primera acción hostil (RN-COMBAT-002): la frena la protección del
 	// dueño del objetivo, no el suelo. Su punto único es attackBlocked.
 	protocol.TypeUnitAttack: {Hostile: true, Territory: TerritoryFree},

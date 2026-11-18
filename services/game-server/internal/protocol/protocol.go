@@ -37,6 +37,8 @@ const (
 	TypeCityAdvance = "city.advance"
 	// Elaboración del taller (SPEC-CIVILIZATION-GOODS).
 	TypeCityCraft = "city.craft"
+	// Investigación (SPEC-TECHNOLOGIES).
+	TypeCityResearch = "city.research"
 	// Combate (SPEC-COMBAT-RAID).
 	TypeUnitAttack = "unit.attack"
 	// Saqueo (SPEC-COMBAT-PILLAGE).
@@ -142,6 +144,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeCityTrain:      true,
 	TypeCityAdvance:    true,
 	TypeCityCraft:      true,
+	TypeCityResearch:   true,
 	TypeUnitAttack:     true,
 	TypeUnitPillage:    true,
 	TypeUnitDemolish:   true,
@@ -344,6 +347,13 @@ type AdvanceView struct {
 	CompletesAtMs int64  `json:"completesAtMs"`
 }
 
+// ResearchView es la investigación en curso de una ciudad: qué tecnología y
+// cuándo termina (SPEC-TECHNOLOGIES §6).
+type ResearchView struct {
+	Technology    string `json:"technology"`
+	CompletesAtMs int64  `json:"completesAtMs"`
+}
+
 // BuildingView es el estado observable de un edificio.
 type BuildingView struct {
 	ID            int64  `json:"id"`
@@ -393,6 +403,11 @@ type CityView struct {
 	// Craft es la elaboración en curso del taller, o null
 	// (SPEC-CIVILIZATION-GOODS §6).
 	Craft *CraftView `json:"craft"`
+	// Research y Technologies sólo viajan en la vista del dueño: la
+	// investigación en curso (apuntando a nil, ninguna) y las tecnologías del
+	// jugador; nil, no viajan (SPEC-TECHNOLOGIES RN-TECH-008).
+	Research     **ResearchView `json:"research,omitempty"`
+	Technologies *[]string      `json:"technologies,omitempty"`
 }
 
 // TerritoryView es el estado observable de un territorio.
@@ -818,6 +833,14 @@ type CityAdvancePayload struct {
 	CityID int64 `json:"cityId"`
 }
 
+// CityResearchPayload encarga una investigación en una ciudad. Sólo nombra la
+// ciudad y la tecnología: el coste, el plazo y si está a su alcance son del
+// servidor (SPEC-TECHNOLOGIES RN-TECH-002, INV-SEC-001).
+type CityResearchPayload struct {
+	CityID     int64  `json:"cityId"`
+	Technology string `json:"technology"`
+}
+
 // CityCraftPayload encarga al taller de una ciudad una elaboración. Sólo
 // nombra la ciudad: el bien, la cantidad, el coste y el tiempo son del
 // servidor (SPEC-CIVILIZATION-GOODS RN-GOODS-004, INV-SEC-001).
@@ -1210,6 +1233,12 @@ type CityUpdatePayload struct {
 	// Craft: nil si no cambia; apuntando a nil, la elaboración terminó o se
 	// perdió; apuntando a una vista, empieza (SPEC-CIVILIZATION-GOODS §6).
 	Craft **CraftView `json:"craft,omitempty"`
+	// Research y Technologies: sólo los recibe el dueño (SPEC-TECHNOLOGIES §6).
+	// Research: nil si no cambia; apuntando a nil, la investigación terminó o se
+	// deshizo; apuntando a una vista, empieza. Technologies: las del jugador
+	// tras terminar una.
+	Research     **ResearchView `json:"research,omitempty"`
+	Technologies *[]string      `json:"technologies,omitempty"`
 	// Faction es la facción nueva al contar una entrada; FactionJoin: nil si no
 	// cambia, apuntando a nil si la entrada contó, apuntando a una vista si
 	// empieza (SPEC-FACTIONS §6).

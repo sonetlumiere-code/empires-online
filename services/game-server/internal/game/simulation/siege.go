@@ -380,7 +380,7 @@ func (s *Simulation) stepSiege(a *unit.Unit, e *engagement, nowMs int64, now tim
 		return siegeHit{}, false
 	}
 	e.nextHitAtMs += def.AttackIntervalMs
-	return siegeHit{attacker: a, house: b, city: c, damage: def.AttackDamage}, true
+	return siegeHit{attacker: a, house: b, city: c, damage: s.state.attackDamage(a, def)}, true
 }
 
 // applySiege aplica un golpe de asedio contra la vida que dejaron los anteriores

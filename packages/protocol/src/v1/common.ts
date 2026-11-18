@@ -432,6 +432,21 @@ export const AdvanceView = z.object({
 });
 export type AdvanceView = z.infer<typeof AdvanceView>;
 
+/**
+ * Código de una tecnología del catálogo (SPEC-TECHNOLOGIES §4.1). No es un enum
+ * estricto: el catálogo vive en la base y el servidor valida el código
+ * (ADR-046 §5); el cliente lo traduce con `technologies.json`.
+ */
+export const TechnologyCode = z.string().regex(/^[A-Z][A-Z0-9_]{0,47}$/);
+export type TechnologyCode = z.infer<typeof TechnologyCode>;
+
+/** Investigación en curso de una ciudad: qué tecnología y cuándo termina (SPEC-TECHNOLOGIES §6). */
+export const ResearchView = z.object({
+  technology: TechnologyCode,
+  completesAtMs: EpochMs,
+});
+export type ResearchView = z.infer<typeof ResearchView>;
+
 /** Estado observable de un edificio. */
 export const BuildingView = z.object({
   id: EntityId,
@@ -481,6 +496,13 @@ export const CityView = z.object({
   advance: AdvanceView.nullable().optional(),
   /** Elaboración en curso del taller; `null` si no elabora (SPEC-CIVILIZATION-GOODS). */
   craft: CraftView.nullable().optional(),
+  /**
+   * Investigación en curso; `null` si no investiga. Sólo en la vista de su dueño:
+   * en una ciudad ajena no viaja (SPEC-TECHNOLOGIES RN-TECH-008).
+   */
+  research: ResearchView.nullable().optional(),
+  /** Tecnologías de su dueño, en orden de código. Sólo en la vista de su dueño (RN-TECH-008). */
+  technologies: z.array(TechnologyCode).optional(),
 });
 export type CityView = z.infer<typeof CityView>;
 

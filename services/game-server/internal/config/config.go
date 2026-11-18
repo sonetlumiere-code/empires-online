@@ -105,6 +105,10 @@ type Config struct {
 	ClanWarDuration  time.Duration
 	ClanWarCooldown  time.Duration
 	ClanWarScorePush time.Duration
+	// TechnologyResearch, si es positivo, sustituye el plazo de toda
+	// investigación; 0 usa el del catálogo. Sólo para el humo en desarrollo
+	// (SPEC-TECHNOLOGIES §9, ADR-046 §3).
+	TechnologyResearch time.Duration
 	// EventLogMaxAge es hasta cuándo atrás lee el registro, EventLogPageSize
 	// cuántas entradas trae una página y EventLogGroupGap el hueco máximo entre
 	// dos sucesos de una misma entrada (SPEC-EVENT-LOG §10).
@@ -252,6 +256,7 @@ func Load() (Config, error) {
 		ClanWarDuration:             time.Duration(v.intRange("EO_CLAN_WAR_HOURS", 72, 1, 24*30)) * time.Hour,
 		ClanWarCooldown:             time.Duration(v.intRange("EO_CLAN_WAR_COOLDOWN_HOURS", 24, 0, 24*30)) * time.Hour,
 		ClanWarScorePush:            time.Duration(v.intRange("EO_CLAN_WAR_SCORE_PUSH_SECONDS", 10, 1, 3600)) * time.Second,
+		TechnologyResearch:          time.Duration(v.intRange("EO_TECHNOLOGY_RESEARCH_SECONDS", 0, 0, 3600)) * time.Second,
 		EventLogMaxAge:              time.Duration(v.intRange("EO_EVENT_LOG_MAX_DAYS", 7, 1, 90)) * 24 * time.Hour,
 		EventLogPageSize:            v.intRange("EO_EVENT_LOG_PAGE_SIZE", 50, 1, 200),
 		EventLogGroupGap:            time.Duration(v.intRange("EO_EVENT_LOG_GROUP_GAP_MINUTES", 10, 1, 24*60)) * time.Minute,

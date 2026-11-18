@@ -115,6 +115,9 @@ type State struct {
 	// cola descartó (ADR-030 §5).
 	eraCaps                   map[city.Era]int32
 	pendingAdvanceCompletions map[int64]AdvanceCompletion
+	// tech es el árbol tecnológico: el catálogo, las tecnologías de cada
+	// jugador y sus rasgos compuestos (technologies.go, ADR-046).
+	tech techState
 
 	// factionJoining son las entradas en un bando que esperan su transacción
 	// (ADR-039 §3), y pendingFactionCompletions los vencimientos cuya
@@ -195,6 +198,7 @@ func NewState(w *world.World) *State {
 
 		eraCaps:                   make(map[city.Era]int32),
 		pendingAdvanceCompletions: make(map[int64]AdvanceCompletion),
+		tech:                      newTechState(),
 		factionJoining:            make(map[uuid.UUID]city.FactionJoin),
 		pendingFactionCompletions: make(map[uuid.UUID]FactionJoinCompletion),
 		clans:                     newClanState(),

@@ -22,6 +22,8 @@ type fakeEconomy struct {
 	advanceEnds []simulation.AdvanceCompletion
 	crafts      []simulation.CraftOrder
 	deliveries  []simulation.CraftDelivery
+	research    []simulation.ResearchOrder
+	researched  []simulation.ResearchCompletion
 
 	buildErr error
 	trainErr error
@@ -29,6 +31,10 @@ type fakeEconomy struct {
 	// advanceErr hace fallar el encargo del avance; advanceEndErr, su fin.
 	advanceErr    error
 	advanceEndErr error
+	// researchErr hace fallar el encargo de una investigación; researchEndErr,
+	// su fin (ADR-046 §3).
+	researchErr    error
+	researchEndErr error
 	// craftErr hace fallar el encargo de una elaboración; deliverErr, su
 	// entrega (ADR-036 §4).
 	craftErr   error
@@ -142,6 +148,26 @@ func (f *fakeEconomy) CompleteAdvance(_ context.Context, c simulation.AdvanceCom
 		return f.advanceEndErr
 	}
 	f.advanceEnds = append(f.advanceEnds, c)
+	return nil
+}
+
+func (f *fakeEconomy) Research(_ context.Context, o simulation.ResearchOrder) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.researchErr != nil {
+		return f.researchErr
+	}
+	f.research = append(f.research, o)
+	return nil
+}
+
+func (f *fakeEconomy) CompleteResearch(_ context.Context, c simulation.ResearchCompletion) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.researchEndErr != nil {
+		return f.researchEndErr
+	}
+	f.researched = append(f.researched, c)
 	return nil
 }
 

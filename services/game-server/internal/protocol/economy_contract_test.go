@@ -1,6 +1,7 @@
 package protocol_test
 
 import (
+	"encoding/json"
 	"sort"
 	"testing"
 
@@ -99,7 +100,22 @@ func TestLaCiudadLlevaSuStockYSuProduccion(t *testing.T) {
 	root, snapshot := serverVariant(t, protocol.TypeWorldSnapshot)
 	ciudad := dig(t, root, snapshot, "properties", "payload", "properties", "cities", "items").(map[string]any)
 	declaradas := clavesDe(dig(t, root, ciudad, "properties").(map[string]any))
-	require.Equal(t, declaradas, clavesDe(serializado(t, protocol.CityView{ID: 1})))
+	// La vista del dueño lleva todas las claves del esquema; la ajena, todas menos
+	// la investigación y las tecnologías, que sólo ve el dueño (SPEC-TECHNOLOGIES
+	// RN-TECH-008).
+	var sinInvestigacion *protocol.ResearchView
+	sinTecnologias := []string{}
+	require.Equal(t, declaradas, clavesDe(serializado(t, protocol.CityView{ID: 1, Research: &sinInvestigacion, Technologies: &sinTecnologias})))
+	ajena := clavesDe(serializado(t, protocol.CityView{ID: 1}))
+	assert.NotContains(t, ajena, "research")
+	assert.NotContains(t, ajena, "technologies")
+	assert.Len(t, ajena, len(declaradas)-2)
+	assert.NotContains(t, requeridas(t, ciudad), "research", "opcional: no viaja en una ciudad ajena")
+	assert.NotContains(t, requeridas(t, ciudad), "technologies")
+	vacia, err := json.Marshal(protocol.CityView{ID: 1, Research: &sinInvestigacion, Technologies: &sinTecnologias})
+	require.NoError(t, err)
+	assert.Contains(t, string(vacia), `"research":null`, "sin investigación, null en la vista del dueño")
+	assert.Contains(t, string(vacia), `"technologies":[]`, "sin tecnologías, una lista vacía")
 
 	stocks := dig(t, root, ciudad, "properties", "stocks").(map[string]any)
 	recursos := clavesDe(dig(t, root, stocks, "properties").(map[string]any))

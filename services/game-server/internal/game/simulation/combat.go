@@ -487,7 +487,7 @@ func (s *Simulation) ResolveCombat(nowMs int64) {
 		}
 		s.startAttacking(a, e, nowMs)
 		if nowMs >= e.nextHitAtMs {
-			hits = append(hits, hit{attacker: a, target: t, damage: def.AttackDamage, e: e})
+			hits = append(hits, hit{attacker: a, target: t, damage: s.state.attackDamage(a, def), e: e})
 			e.nextHitAtMs += def.AttackIntervalMs
 		}
 	}

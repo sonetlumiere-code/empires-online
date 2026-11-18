@@ -346,7 +346,7 @@ func (s *Simulation) leaveResource(u *unit.Unit, t task.Task) {
 	leftAtMs := t.PhaseUntilMs
 	// RN-ECON-013, RN-ECON-021: carga lo que quede, hasta su capacidad. Un tile
 	// que otra unidad vació mientras trabajaba no da nada (RN-ECON-015).
-	carry := s.takeDeposit(u, t, def.GatherCarry, leftAtMs)
+	carry := s.takeDeposit(u, t, s.state.gatherCarry(u, def), leftAtMs)
 	if carry == 0 {
 		s.leaveDepleted(u, t, leftAtMs, nil, false)
 		return

@@ -258,6 +258,18 @@ func run() error {
 	// Los rasgos de cada civilización, que la simulación aplica al dar cada
 	// orden (ADR-035 §3 y §4).
 	state.SetCivilizations(civilizaciones)
+	// El árbol tecnológico (SPEC-TECHNOLOGIES, ADR-046): el catálogo validado
+	// (uno inválido impide arrancar, INV-TECH-002), las tecnologías de cada
+	// jugador y las investigaciones en curso que cumplen INV-TECH-001.
+	catalogo, tecnologias, err := loadTechnologies(rootCtx, economyRepo, civilizaciones)
+	if err != nil {
+		return err
+	}
+	if economia.Research, err = checkResearch(rootCtx, economyRepo, economia.Research, cities, economia.Advances,
+		catalogo, tecnologias, log); err != nil {
+		return err
+	}
+	state.SetTechnologies(catalogo, tecnologias)
 	state.SetEconomy(economia)
 	// La madera del bosque (SPEC-ECON-FOREST). Las filas vencidas son tiles
 	// llenos: no entran, y se borran como limpieza.
@@ -506,6 +518,7 @@ func run() error {
 		ClanWarDuration:             cfg.ClanWarDuration,
 		ClanWarCooldown:             cfg.ClanWarCooldown,
 		ClanWarScorePush:            cfg.ClanWarScorePush,
+		ResearchOverride:            cfg.TechnologyResearch,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje

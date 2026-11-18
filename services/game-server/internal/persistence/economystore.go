@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/persistence/postgres"
@@ -94,6 +95,17 @@ func (e *EconomyStore) Advance(ctx context.Context, o simulation.AdvanceOrder) e
 // CompleteAdvance termina el avance de era (RN-ECON-027).
 func (e *EconomyStore) CompleteAdvance(ctx context.Context, c simulation.AdvanceCompletion) error {
 	return e.repo.CompleteAdvance(ctx, c.CityID, c.PlayerID, c.From, c.To, c.Tick)
+}
+
+// Research debita todo el coste y encarga la investigación (RN-TECH-004).
+func (e *EconomyStore) Research(ctx context.Context, o simulation.ResearchOrder) error {
+	return stale(e.repo.Research(ctx, o.RequestID, o.PlayerID, o.Research, toDeltas(o.Stocks), o.Tick))
+}
+
+// CompleteResearch da la tecnología al jugador y borra la investigación
+// (RN-TECH-005).
+func (e *EconomyStore) CompleteResearch(ctx context.Context, c simulation.ResearchCompletion) error {
+	return e.repo.CompleteResearch(ctx, c.CityID, c.PlayerID, c.Technology, time.UnixMilli(c.AtMs), c.Tick)
 }
 
 // Craft debita y encarga la elaboración del taller (RN-GOODS-004).

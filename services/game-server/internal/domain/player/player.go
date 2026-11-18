@@ -65,6 +65,13 @@ const (
 	// TraitGatherSpeed divide lo que tarda el trabajo en el tile de cada viaje
 	// de recolección.
 	TraitGatherSpeed = "economy.gather_speed"
+	// TraitAttackDamage multiplica el daño de cada golpe de una unidad que
+	// ataca. Ninguna civilización la declara: la llevan las tecnologías
+	// (SPEC-TECHNOLOGIES §4.3, ADR-046 §2).
+	TraitAttackDamage = "combat.attack_damage"
+	// TraitGatherCarry multiplica lo que carga un aldeano en cada viaje de
+	// recolección. Como la anterior, sólo la llevan las tecnologías.
+	TraitGatherCarry = "economy.gather_carry"
 )
 
 // TraitNeutral es el valor de un rasgo sin efecto, y el de una clave ausente.
@@ -72,7 +79,7 @@ const TraitNeutral int32 = 1000
 
 // TraitKeys devuelve las claves conocidas, en orden estable.
 func TraitKeys() []string {
-	return []string{TraitMoveSpeed, TraitProductionSpeed, TraitHouseHP, TraitLootCarry, TraitGatherSpeed}
+	return []string{TraitMoveSpeed, TraitProductionSpeed, TraitHouseHP, TraitLootCarry, TraitGatherSpeed, TraitAttackDamage, TraitGatherCarry}
 }
 
 // ErrInvalidTrait marca un catálogo con un rasgo que no se puede aplicar.
@@ -146,7 +153,7 @@ func validateUnits(cs []Civilization) error {
 // positivo (INV-PLAYER-012). Que sea entero lo garantiza el tipo: un `1.1` en el
 // jsonb no se puede leer como int32.
 func (c Civilization) Validate() error {
-	known := make(map[string]bool, 5)
+	known := make(map[string]bool, len(TraitKeys()))
 	for _, k := range TraitKeys() {
 		known[k] = true
 	}
