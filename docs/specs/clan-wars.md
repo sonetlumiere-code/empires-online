@@ -400,6 +400,13 @@ historial salen de las guerras `ENDED` de cada clan.
   a un texto general de combate, así que «la tregua la dice el servidor» (§4.7) no se veía. Desde E24 el pie muestra el
   motivo del servidor («No se puede: vuestros clanes terminaron una guerra hace poco…») y el texto general queda para
   un rechazo sin motivo.
+- **Precisión (2026-11-18): una guerra que termina en su preparación toma su final como plazo.** §4.1 deja terminar
+  una guerra `DECLARED` por paz, rendición o disolución, pero el `CHECK clan_wars_ends_at` de `000026` exige `ends_at`
+  en toda guerra que no esté en preparación, y una que no llegó a empezar no tenía plazo: la base rechazaba esos
+  finales y el jugador veía `INTERNAL_ERROR` (lo destapó la prueba en vivo del repaso de E24). Ahora `War.End` pone
+  `endsAt = endedAt` a una guerra que termina en preparación, y la transacción de la disolución escribe
+  `ends_at = coalesce(ends_at, ended_at)`; sin migración nueva. Lo cubren `TestUnaGuerraTerminaEnSuPreparacion`
+  (integration), visto fallar sin el arreglo y con cada una de sus dos mitades quitadas, y `TestElCicloDeUnaGuerra`.
 
 ## 10. Decisiones de producto (2026-11-17)
 

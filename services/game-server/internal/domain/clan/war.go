@@ -180,13 +180,18 @@ func (w War) Start(atMs int64, duration time.Duration) (War, error) {
 }
 
 // End cierra una guerra abierta en atMs con su motivo y su vencedor (cero en
-// empate). El marcador queda como está: es el congelado.
+// empate). El marcador queda como está: es el congelado. Una guerra que termina
+// en su preparación no tenía plazo: toma su final como plazo, que la base exige
+// en toda guerra que no esté en preparación (CHECK clan_wars_ends_at).
 func (w War) End(reason string, winner int64, atMs int64) (War, error) {
 	if !w.Open() {
 		return w, fmt.Errorf("%w: %s → %s", ErrWarTransition, w.Status, WarEnded)
 	}
 	if winner != 0 && !w.Has(winner) {
 		return w, fmt.Errorf("%w: el vencedor %d no es parte", ErrWarTransition, winner)
+	}
+	if w.Status == WarDeclared {
+		w.EndsAtMs = atMs
 	}
 	w.Status = WarEnded
 	w.EndReason, w.Winner, w.EndedAtMs = reason, winner, atMs

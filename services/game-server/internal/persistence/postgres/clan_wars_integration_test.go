@@ -502,3 +502,62 @@ func TestElDerriboEscribeLaGuerraEnSuPayload(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[int64]map[int64]int64{79: {4: 3}}, scores)
 }
+
+// SPEC-CLAN-WARS §4.1 (DECLARED → ENDED) y CHECK clan_wars_ends_at: una guerra
+// que termina en su preparación (por rendición, por paz o por la disolución de un
+// clan) se escribe ENDED con su final como plazo. La prueba en vivo del
+// 2026-11-18 destapó que la base la rechazaba: el CHECK pide ends_at en toda
+// guerra que no esté en preparación, y una que no empezó no tenía plazo.
+func TestUnaGuerraTerminaEnSuPreparacion(t *testing.T) {
+	store, ctx := newTestStore(t)
+	repo := postgres.NewClanRepo(store, postgres.ClansConfig{})
+	ps := conversadoresDeClan(t, store, ctx, 4)
+	lob := clanDeCuatro(t, ctx, repo, ps[:2])
+	oso := clanOsos(t, ctx, repo, ps[2])
+	cie, err := repo.Create(ctx, postgres.ClanCreate{PlayerID: ps[3], Name: "Los Ciervos", Tag: "CIE", At: clanEn, AtMs: clanEn.UnixMilli()})
+	require.NoError(t, err)
+	at := clanEn.Add(time.Hour)
+	plazoDe := func(id int64) (endsAt, endedAt time.Time) {
+		t.Helper()
+		require.NoError(t, store.Pool().QueryRow(ctx,
+			`SELECT ends_at, ended_at FROM clan_wars WHERE id = $1`, id).Scan(&endsAt, &endedAt))
+		return endsAt, endedAt
+	}
+
+	// La rendición de quien declaró, antes de que empiece.
+	w := declarar(lob, oso, ps[0], "p1", at)
+	id, err := repo.ApplyWar(ctx, w)
+	require.NoError(t, err)
+	g := w.War
+	g.ID = id
+	rinde := at.Add(20 * time.Second)
+	fin, err := g.End(clan.WarEndSurrender, oso, rinde.UnixMilli())
+	require.NoError(t, err)
+	_, err = repo.ApplyWar(ctx, postgres.WarWrite{War: fin, From: clan.WarDeclared, Event: eventlog.EventClanWarEnded,
+		By: ps[0], ByClan: lob, Tick: 2, AtMs: fin.EndedAtMs})
+	require.NoError(t, err, "rendirse en la preparación")
+	status, _, _, reason, winner, _, _ := estadoDeGuerra(t, ctx, store, id)
+	assert.Equal(t, [2]string{"ENDED", "SURRENDER"}, [2]string{status, reason})
+	assert.Equal(t, oso, winner)
+	endsAt, endedAt := plazoDe(id)
+	assert.True(t, endsAt.Equal(endedAt), "su final es su plazo: %v y %v", endsAt, endedAt)
+
+	// La disolución del otro clan, antes de que empiece.
+	w2 := declarar(lob, cie, ps[0], "p2", at)
+	w2.Cooldown = 0
+	id2, err := repo.ApplyWar(ctx, w2)
+	require.NoError(t, err)
+	g2 := w2.War
+	g2.ID = id2
+	disuelve := at.Add(30 * time.Second)
+	fin2, err := g2.End(clan.WarEndDissolved, lob, disuelve.UnixMilli())
+	require.NoError(t, err)
+	_, _, err = repo.Leave(ctx, postgres.ClanLeave{ClanID: cie, PlayerID: ps[3], Reason: clan.ReasonLeft, At: disuelve,
+		Dissolve: true, WarEnds: []postgres.WarEnd{{War: fin2}}, Tick: 3, AtMs: disuelve.UnixMilli()})
+	require.NoError(t, err, "disolverse en la preparación")
+	status, _, _, reason, winner, _, _ = estadoDeGuerra(t, ctx, store, id2)
+	assert.Equal(t, [2]string{"ENDED", "DISSOLVED"}, [2]string{status, reason})
+	assert.Equal(t, lob, winner)
+	endsAt, endedAt = plazoDe(id2)
+	assert.True(t, endsAt.Equal(endedAt), "su final es su plazo: %v y %v", endsAt, endedAt)
+}

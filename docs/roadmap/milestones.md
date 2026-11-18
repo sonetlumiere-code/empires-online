@@ -2545,6 +2545,17 @@ Contra la base de desarrollo, que el servidor llevó de la migración 25 a la 26
   «Berserker · Nórdicos» (§E22); el legionario de smoke_runner, seleccionado, «Legionario · Romanos» (§E22). Para
   seleccionarlo hubo que apartar a los seis guerreros que compartían su tile (el clic elige la primera unidad del
   tile): las guardias de smoke_runner quedan repartidas en los tiles de al lado de (277, 19).
-- **Sin comprobar en el navegador:** el texto «No se puede: …tregua» al volver a declarar durante la tregua (el panel
-  se volvió a ocultar mientras la cámara iba hacia [HUM]); las siluetas del catafracto y del arquero a caballo (no hay
-  jugadores bizantinos ni persas en la base de desarrollo).
+- **La tregua** (2026-11-18): smoke_runner fundó [PRU] desde el panel, abrió «Ver clan» de [HUM] desde su ciudad y le
+  declaró la guerra («[PRU] 0 – 0 [HUM] — Empieza en 1 min»). Al volver a declarar tras rendirse, el pie dijo «No se
+  puede: vuestros clanes terminaron una guerra hace poco: espera a que acabe la tregua.». Después smoke_runner salió
+  de [PRU], que se disolvió.
+- **Un fallo, corregido.** Rendirse **durante la preparación** devolvió `INTERNAL_ERROR: no se pudo aplicar la orden de
+  guerra`: la base rechazaba el final por el `CHECK clan_wars_ends_at` (una guerra que no empezó no tenía plazo). Lo
+  mismo pasaba con la paz y con la disolución de un clan en preparación. `War.End` da ahora a esa guerra su final como
+  plazo y la disolución escribe `ends_at = coalesce(ends_at, ended_at)`, sin migración;
+  `TestUnaGuerraTerminaEnSuPreparacion` (integration) lo reproduce, visto fallar sin el arreglo y con cada mitad
+  quitada; precisión en la spec. La rendición de la prueba se hizo ya con la guerra activa, tras reiniciar el servidor
+  con el arreglo.
+- **Sin comprobar en el navegador:** las siluetas del catafracto y del arquero a caballo (no hay jugadores bizantinos
+  ni persas en la base de desarrollo). La confirmación de «Declarar la guerra» dice «terminarán en 15 minutos» aunque
+  el servidor corra con `EO_TREATY_BREAK_NOTICE_MINUTES=1`: el texto del cliente es el valor por defecto.
