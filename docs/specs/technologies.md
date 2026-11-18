@@ -8,13 +8,13 @@ que nadie completa el árbol entero.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TECHNOLOGIES` |
-| Estado | Draft (2026-11-17). Pendiente de las decisiones de producto de §10; prohibido implementar contra ella hasta su aceptación. |
+| Estado | Accepted (2026-11-18). Propuesta en `Draft` el 2026-11-17 y aceptada el 2026-11-18 con la recomendación de cada pregunta de §10. |
 | Milestone | E25 Árbol tecnológico (vigesimoquinto slice después de M7) |
 | Canon | §0 (civilización como eje), §1.5 (determinismo), §10 (eras), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [civilization-goods.md](civilization-goods.md), [civilizations.md](civilizations.md), [civilization-units.md](civilization-units.md), [castle-age.md](castle-age.md), [combat-raid.md](combat-raid.md), [combat-siege.md](combat-siege.md), [combat-pillage.md](combat-pillage.md), [city.md](city.md), [player.md](player.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (encargos en dos fases y débito con su efecto), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (el avance de era como encargo con su fila), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos por mil en el punto de consumo), [ADR-036](../decisions/ADR-036-civilization-goods.md) (los bienes ajenos en cualquier mezcla) y [ADR-043](../decisions/ADR-043-civilization-units.md) (el combate que pregunta por capacidades). Pediría un ADR nuevo (el 046) para componer los efectos de las tecnologías con los rasgos de civilización y para el catálogo en base (§7). |
-| Reemplaza a | En [mvp-scope.md](../product/mvp-scope.md), `OUT-03` («Árbol tecnológico completo»), y la fase Technology de [roadmap.md](../roadmap/roadmap.md); cerraría la `Q-12` del [backlog](../roadmap/backlog.md) (la investigación no hace avanzar de era, Q12). Precisaría `RN-ECON-026` (un avance de era y una investigación no conviven, Q8) y, en [civilizations.md](civilizations.md), `RN-CIV-004` (un rasgo y las tecnologías se componen, §4.4). |
-| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-ECON-011](../invariants/economy.md#inv-econ-011), [INV-CITY-018](../invariants/city.md#inv-city-018), [INV-PLAYER-011](../invariants/player.md#inv-player-011), [INV-PLAYER-012](../invariants/player.md#inv-player-012), [INV-MOVE-009](../invariants/movement.md#inv-move-009) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); propone dos invariantes nuevos (§8) |
+| Decisiones | [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md) (encargos en dos fases y débito con su efecto), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) (el avance de era como encargo con su fila), [ADR-035](../decisions/ADR-035-civilization-traits.md) (los rasgos por mil en el punto de consumo), [ADR-036](../decisions/ADR-036-civilization-goods.md) (los bienes ajenos en cualquier mezcla) y [ADR-043](../decisions/ADR-043-civilization-units.md) (el combate que pregunta por capacidades). [ADR-046](../decisions/ADR-046-technologies.md) (§7): el catálogo en base con sus efectos como rasgos por mil, la composición con el rasgo de la civilización en un único punto y la investigación como encargo con su fila. |
+| Reemplaza a | En [mvp-scope.md](../product/mvp-scope.md), `OUT-03` («Árbol tecnológico completo»), y la fase Technology de [roadmap.md](../roadmap/roadmap.md); cierra la `Q-12` del [backlog](../roadmap/backlog.md) (la investigación no hace avanzar de era, Q12). Precisa `RN-ECON-026` (un avance de era y una investigación no conviven, Q8) y, en [civilizations.md](civilizations.md), `RN-CIV-004` (un rasgo y las tecnologías se componen, §4.4). |
+| Invariantes | Cita [INV-SEC-001](../invariants/security.md#inv-sec-001), [INV-SEC-007](../invariants/security.md#inv-sec-007), [INV-ECON-001](../invariants/economy.md#inv-econ-001), [INV-ECON-002](../invariants/economy.md#inv-econ-002), [INV-ECON-005](../invariants/economy.md#inv-econ-005), [INV-ECON-011](../invariants/economy.md#inv-econ-011), [INV-CITY-018](../invariants/city.md#inv-city-018), [INV-PLAYER-011](../invariants/player.md#inv-player-011), [INV-PLAYER-012](../invariants/player.md#inv-player-012), [INV-MOVE-009](../invariants/movement.md#inv-move-009) e [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005); asigna [INV-TECH-001](../invariants/technology.md#inv-tech-001) e [INV-TECH-002](../invariants/technology.md#inv-tech-002) (§8) |
 
 ## 1. Objetivo
 
@@ -110,8 +110,8 @@ el plazo de una obra o un entrenamiento, el trabajo en el tile, la vida de la ca
 - `combat.attack_damage` (cantidad): el daño de cada golpe de una unidad que ataca, medido al calcular el golpe con
   las tecnologías de su dueño. Vale también para el golpe de asedio a un edificio, que es el mismo golpe; no toca el
   disparo del castillo (Q4).
-- `economy.gather_carry` (cantidad): lo que carga un aldeano al terminar cada viaje de recolección, medido al empezar
-  el trabajo en el tile.
+- `economy.gather_carry` (cantidad): lo que carga un aldeano en cada viaje de recolección, medido al terminar el
+  trabajo en el tile, cuando toma su carga.
 
 Como con los rasgos, el efecto se aplica **al dar la orden** y lo que está en curso no cambia: la ruta de una unidad
 que ya andaba sigue igual, la obra encargada antes de `GUILDS` termina a su hora, y la siguiente orden ya va más
@@ -178,13 +178,14 @@ Ningún código nuevo.
 
 ## 6. Eventos y contratos de red
 
-- **Cliente → servidor:** `city.research { cityId, technology }` (un comando nuevo, el 40.º tipo de v1).
+- **Cliente → servidor:** `city.research { cityId, technology }` (un comando nuevo, el 48.º tipo de v1).
 - **Servidor → cliente:** en la vista **propia** de la ciudad (`CityView` del dueño y su `city.update`), dos campos
   opcionales: `research` (`{ technology, completesAtMs }` o `null`) y `technologies` (la lista de códigos que tiene el
   jugador). No viajan en la vista ajena (`RN-TECH-008`).
 - **Catálogo de presentación:** los nombres, efectos, costes y plazos llegan al cliente como un catálogo estático
-  (`technologies.json`), como `units.json` ([ADR-043](../decisions/ADR-043-civilization-units.md) §7); el servidor
-  sólo manda códigos. Un test compara el catálogo del cliente con el de la base.
+  (`technologies.json` en `packages/protocol`), como `civilizations.json`; el servidor sólo manda códigos. Un test de
+  integración del Game Server compara ese catálogo con la tabla, para que una migración de balance que no lo
+  actualice rompa la CI.
 - **Eventos:** `TechnologyResearched` en `world_events` al vencer, con el jugador, la ciudad y el código, fuera del
   registro y de los avisos (Q13).
 
@@ -200,17 +201,17 @@ Migración `000027`:
   lugar de las dos tablas de diseño de [schema.md](../database/schema.md) (`technologies` y
   `civilization_technologies`): la exclusividad es una columna, no una tabla puente (§7 del ADR).
 - `city_research`: la investigación en curso, una fila por ciudad como mucho (clave primaria `city_id`), con la
-  tecnología, `started_at_ms`, `completes_at_ms` y el `request_id` de la orden.
-- `player_technologies`: `(player_id, technology_id)` única, con `researched_at_ms`.
+  tecnología, `completes_at_ms` y el `request_id` de la orden.
+- `player_technologies`: `(player_id, technology_id)` única, con `researched_at`.
 - `CHECK` y triggers: la exclusiva sólo para un jugador de su civilización, una investigación que no conviva con un
   avance de era en la misma ciudad.
 
 La carga lee el catálogo, las tecnologías de cada jugador y las investigaciones en curso; el valor compuesto de cada
 clave se calcula en la RAM al cargar y al terminar cada investigación, nunca con joins por tick.
 
-**ADR-046 (propuesto).** El catálogo de tecnologías en base, con sus efectos como rasgos por mil; la composición en
-orden de código con la fórmula de cantidad; los dos puntos de consumo nuevos; la investigación como encargo con su
-fila, que reutiliza el de ADR-030.
+**[ADR-046](../decisions/ADR-046-technologies.md).** El catálogo de tecnologías en base, con sus efectos como rasgos
+por mil; la composición en orden de código con la fórmula de cantidad; los dos puntos de consumo nuevos; la
+investigación como encargo con su fila, que reutiliza el de ADR-030.
 
 ## 8. Invariantes
 
@@ -230,12 +231,12 @@ fila, que reutiliza el de ADR-030.
   los efectos son enteros por mil con aritmética entera y la posición sigue siendo función pura de la polilínea.
 - [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005): la migración `000027`.
 
-**Propone** dos invariantes nuevos de una familia nueva, `INV-TECH`:
+**Asigna** dos invariantes de una familia nueva, `INV-TECH`, en [technology.md](../invariants/technology.md):
 
-- **Una investigación por ciudad, nunca con un avance.** Una ciudad tiene como mucho una investigación en curso, nunca
+- [INV-TECH-001](../invariants/technology.md#inv-tech-001) — **Una investigación por ciudad, nunca con un avance.** Una ciudad tiene como mucho una investigación en curso, nunca
   a la vez que un avance de era, y sólo de una tecnología de su era, con sus requisitos y de su civilización si es
   exclusiva. Lo garantizan la simulación al ordenar y la base (la clave primaria, los `CHECK` y un trigger).
-- **Los efectos son datos y se componen en un único punto.** Todo valor afectado por una tecnología sale del rasgo de
+- [INV-TECH-002](../invariants/technology.md#inv-tech-002) — **Los efectos son datos y se componen en un único punto.** Todo valor afectado por una tecnología sale del rasgo de
   la civilización compuesto con los efectos de las tecnologías del jugador en orden de código, con aritmética entera,
   en el punto de consumo de su clave; ningún sistema pregunta por un código de tecnología.
 
@@ -250,12 +251,12 @@ fila, que reutiliza el de ADR-030.
 | contract / e2e | `city.research` contra el JSON Schema; `research` y `technologies` sólo en la vista propia. Por WebSocket: investigar, recibir la cuenta atrás y la tecnología al vencer; otro jugador no ve ninguno de los dos campos |
 | cliente | El panel con cada motivo, la cuenta atrás y la marca de las que tiene; el catálogo de presentación igual al de la base; `scripts/smoke.mjs --tecnologia`: `smoke_runner` investiga una tecnología de su era con un plazo corto (por variable de entorno) y comprueba que la siguiente orden lleva su efecto |
 
-## 10. Decisiones de producto (pendientes)
+## 10. Decisiones de producto (2026-11-18)
 
-Preguntas abiertas. Cada una lleva la recomendación (en negrita) y sus alternativas. Son decisiones de producto, no
-de ingeniería: la spec no se acepta hasta tenerlas.
+Producto aceptó el 2026-11-18 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
+alternativas que se descartaron.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿De quién es una tecnología? | **Del jugador.** Cada jugador tiene una ciudad, así que en la práctica es lo mismo que de la ciudad, pero si algún día hay varias ciudades por jugador una mejora de «golpear más fuerte» se entiende del jugador. Alternativa: **de la ciudad**, que obligaría a investigar otra vez en cada ciudad nueva. |
 | Q2 | ¿Dónde se investiga? | **En la ciudad, sin edificio nuevo.** Es una orden más del panel de la ciudad, como el avance de era. Alternativa: **un edificio propio** (una academia que hay que construir y que se puede derribar), que da al asedio un blanco más y retrasa la primera investigación, pero suma otro edificio, otra silueta y otra regla de asedio a un slice que ya es grande. |

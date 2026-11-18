@@ -2559,3 +2559,39 @@ Contra la base de desarrollo, que el servidor llevó de la migración 25 a la 26
 - **Sin comprobar en el navegador:** las siluetas del catafracto y del arquero a caballo (no hay jugadores bizantinos
   ni persas en la base de desarrollo). La confirmación de «Declarar la guerra» dice «terminarán en 15 minutos» aunque
   el servidor corra con `EO_TREATY_BREAK_NOTICE_MINUTES=1`: el texto del cliente es el valor por defecto.
+
+## E25 — Árbol tecnológico
+
+**Estado: EN CURSO (2026-11-18)**, en la rama `claude/slice-tecnologias`. Contrato:
+[SPEC-TECHNOLOGIES](../specs/technologies.md), aceptada el 2026-11-18 con sus quince decisiones de producto, y
+[ADR-046](../decisions/ADR-046-technologies.md).
+
+**Objetivo.** Que lo que una ciudad acumula entre dos avances de era tenga en qué gastarse: mejoras permanentes del
+jugador que se investigan con recursos y tiempo, con una exclusiva por civilización para que nadie complete el árbol.
+Abre la fase Technology del roadmap.
+
+**Alcance.** `city.research` (de 47 a 48 comandos); doce tecnologías en la tabla `technologies` (ocho comunes, dos por
+era, y una exclusiva por civilización desde Hierro); una investigación por ciudad, nunca durante un avance de era, que
+no impide entrenar, construir ni elaborar; el coste en madera, piedra y, en Hierro y Castillos, bienes ajenos (la
+exclusiva, su bien propio); las tecnologías del jugador, privadas y permanentes; sus efectos compuestos con el rasgo de
+la civilización en las cinco claves de E13 y dos nuevas (`combat.attack_damage`, `economy.gather_carry`); `research` y
+`technologies` en la vista propia de la ciudad; `technologies.json`; `INV-TECH-001` e `INV-TECH-002`; migración
+`000027`; `EO_TECHNOLOGY_RESEARCH_SECONDS`; el panel «Tecnologías» y `scripts/smoke.mjs --tecnologia`. **No entra**
+(spec §2): tecnologías que abran unidades, edificios o eras, cancelar una investigación, más de una a la vez, perderlas,
+compartirlas o venderlas, ramas excluyentes, un registro o un aviso por investigación, verlas en una ciudad ajena.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-046](../decisions/ADR-046-technologies.md), la familia `INV-TECH` con
+   `INV-TECH-001` e `INV-TECH-002`, las precisiones de `RN-ECON-026` ([economy-stone.md](../specs/economy-stone.md)) y
+   `RN-CIV-004` ([civilizations.md](../specs/civilizations.md)), y la `Q-12` del [backlog](backlog.md) cerrada.
+2. **PENDIENTE** — Dominio: el catálogo, su validación, la composición y la orden (`internal/domain/technology`) y las
+   dos claves nuevas de rasgo.
+3. **PENDIENTE** — Migración `000027` y persistencia: las tres tablas sembradas, los tres triggers, el encargo, el fin,
+   la carga y la validación de carga.
+4. **PENDIENTE** — Simulación: las tecnologías por jugador, `State.trait` compuesto, `city.research` en dos fases, el
+   fin optimista, los dos puntos de consumo nuevos y el golden «investigación».
+5. **PENDIENTE** — Protocolo: `city.research`, `research` y `technologies`, `technologies.json`; contract tests (Go y
+   Zod) y su e2e.
+6. **PENDIENTE** — Cliente: el panel «Tecnologías» con sus motivos y su cuenta atrás.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --tecnologia`.

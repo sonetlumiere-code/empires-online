@@ -29,12 +29,12 @@ Corolario operativo: **un invariante nunca se comunica al jugador**. Si el servi
 INV-<AREA>-<NNN>
 ```
 
-- `<AREA>` ∈ `WORLD`, `PLAYER`, `CITY`, `UNIT`, `MOVE`, `PERSIST`, `SEC`, `TERR`, `SAFE`, `GARR`, `DIPLO`, `ECON`, `COMBAT`, `TRADE`, `CLAN`.
+- `<AREA>` ∈ `WORLD`, `PLAYER`, `CITY`, `UNIT`, `MOVE`, `PERSIST`, `SEC`, `TERR`, `SAFE`, `GARR`, `DIPLO`, `ECON`, `COMBAT`, `TRADE`, `CLAN`, `TECH`.
 - `<NNN>` es un correlativo de tres dígitos con ceros a la izquierda, **asignado una sola vez y jamás reutilizado**.
 - Un invariante que deja de aplicar no se borra ni se renumera: se marca `DEROGADO` con la fecha y el ADR que lo deroga, y su número queda quemado.
 - Un invariante nuevo toma el siguiente número libre del área, aunque el catálogo quede desordenado temáticamente.
 
-Las siete primeras familias son las del canon §22. Las tres últimas —`TERR`, `SAFE`, `GARR`— se añadieron al aparecer las specs de territorio, safe zones y guarnición, que necesitaban propiedades que ninguna familia existente expresaba: la geometría de una región no es la del mundo, y el ocultamiento de una unidad no es su posición. Se registran en dos archivos nuevos, [territory.md](territory.md) (`TERR` y `SAFE`) y [diplomacy.md](diplomacy.md) (`GARR`), y quedan enlazadas desde este índice. La undécima, `ECON`, llegó con el primer slice de economía ([../specs/economy-wood.md](../specs/economy-wood.md)) y vive en [economy.md](economy.md): el stock de un recurso, la tarea de recolección y el límite de población que suben las casas no son propiedades de ninguna familia anterior. La duodécima, `COMBAT`, llegó con el slice de incursión ([../specs/combat-raid.md](../specs/combat-raid.md)) y vive en [combat.md](combat.md): la vida y la muerte de una unidad y el botín. `DIPLO` llegó con la diplomacia en caliente ([../specs/diplomacy.md](../specs/diplomacy.md)) y comparte archivo con `GARR`. La decimocuarta, `TRADE`, llegó con el slice de comercio ([../specs/trade.md](../specs/trade.md)) y vive en [trade.md](trade.md): lo que un trato mueve entre dos almacenes no es una propiedad del stock de una ciudad ni de un tratado. La decimoquinta, `CLAN`, llegó con el slice de clanes ([../specs/clans.md](../specs/clans.md)) y vive en [clans.md](clans.md): quién pertenece a qué grupo, quién lo dirige y la paz entre sus miembros no son propiedades de un jugador solo ni de un tratado entre dos.
+Las siete primeras familias son las del canon §22. Las tres últimas —`TERR`, `SAFE`, `GARR`— se añadieron al aparecer las specs de territorio, safe zones y guarnición, que necesitaban propiedades que ninguna familia existente expresaba: la geometría de una región no es la del mundo, y el ocultamiento de una unidad no es su posición. Se registran en dos archivos nuevos, [territory.md](territory.md) (`TERR` y `SAFE`) y [diplomacy.md](diplomacy.md) (`GARR`), y quedan enlazadas desde este índice. La undécima, `ECON`, llegó con el primer slice de economía ([../specs/economy-wood.md](../specs/economy-wood.md)) y vive en [economy.md](economy.md): el stock de un recurso, la tarea de recolección y el límite de población que suben las casas no son propiedades de ninguna familia anterior. La duodécima, `COMBAT`, llegó con el slice de incursión ([../specs/combat-raid.md](../specs/combat-raid.md)) y vive en [combat.md](combat.md): la vida y la muerte de una unidad y el botín. `DIPLO` llegó con la diplomacia en caliente ([../specs/diplomacy.md](../specs/diplomacy.md)) y comparte archivo con `GARR`. La decimocuarta, `TRADE`, llegó con el slice de comercio ([../specs/trade.md](../specs/trade.md)) y vive en [trade.md](trade.md): lo que un trato mueve entre dos almacenes no es una propiedad del stock de una ciudad ni de un tratado. La decimoquinta, `CLAN`, llegó con el slice de clanes ([../specs/clans.md](../specs/clans.md)) y vive en [clans.md](clans.md): quién pertenece a qué grupo, quién lo dirige y la paz entre sus miembros no son propiedades de un jugador solo ni de un tratado entre dos. La decimosexta, `TECH`, llegó con el árbol tecnológico ([../specs/technologies.md](../specs/technologies.md)) y vive en [technology.md](technology.md): qué puede investigar una ciudad y cómo se componen los efectos de las tecnologías no son propiedades del stock ni de la civilización.
 
 > **Regla de resolución de colisiones.** Este catálogo es el **único registro** de invariantes del proyecto. Un ID estable designa un solo invariante, aquí y en cualquier documento que lo cite. Las specs de `docs/specs/` **citan IDs, no los redefinen** (§8): si una spec necesita una propiedad nueva, se añade aquí primero y se numera continuando la familia por encima del máximo ya asignado. Un ID reutilizado con otro significado es un defecto de documentación tan grave como un invariante roto, porque hace que dos equipos lean lo mismo y entiendan cosas distintas.
 
@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**150 invariantes** —148 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en quince familias y trece archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**152 invariantes** —150 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en dieciséis familias y catorce archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -428,6 +428,13 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CLAN-008 | Una guerra entre clanes es única por par, nunca convive con una alianza entre ellos y respeta el tope de declaradas | ALTO | DB, DOMAIN, TEST | ✓ | `TestLasOrdenesDeUnaGuerra`, `TestLaGuerraEnLaBase` (integration), `TestLasRestriccionesDeLasGuerras` (integration) |
 | INV-CLAN-009 | Cada punto del marcador de una guerra lo lleva un evento de un hecho entre sus dos lados, y al arrancar el marcador es la suma de esos eventos | ALTO | DOMAIN, TEST | ✓ | `TestGoldenGuerraDeClanes`, `TestQuePuntuaEnUnaGuerra`, `TestUnaConquistaEnGuerraPuntuaAlConfirmarse`, `TestUnaCaravanaQueMataUnCastilloNoPuntua`, `TestElMarcadorEsLaSumaDeLosEventos`, `TestLaCapturaEscribeLaGuerraEnUnaFila`, `TestLaCapturaDeUnClanEscribeLaGuerraEnUnaSolaFila`, `TestElDerriboEscribeLaGuerraEnSuPayload` (integration) |
 
+### TECH — [technology.md](technology.md)
+
+| ID | Invariante | Sev | Aplicación | Cob. | Test |
+|---|---|---|---|---|---|
+| INV-TECH-001 | Una ciudad investiga como mucho una tecnología, nunca durante un avance de era, y sólo una a su alcance | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E25) |
+| INV-TECH-002 | Todo efecto de una tecnología es un dato del catálogo que se compone con la civilización en un único punto | ALTO | DOMAIN, TEST | ○ | Sin test todavía (E25) |
+
 ### Distribución
 
 Por severidad:
@@ -435,9 +442,9 @@ Por severidad:
 | Severidad | Cantidad |
 |---|---|
 | CRITICO | 54 |
-| ALTO | 83 |
+| ALTO | 85 |
 | MEDIO | 11 |
-| **Total** | **148** |
+| **Total** | **150** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -460,6 +467,7 @@ Por familia:
 | `INV-COMBAT` | 001–007 | 7 | [combat.md](combat.md) |
 | `INV-TRADE` | 001–007 | 7 | [trade.md](trade.md) |
 | `INV-CLAN` | 001–009 | 9 | [clans.md](clans.md) |
+| `INV-TECH` | 001–002 | 2 | [technology.md](technology.md) |
 
 Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia es el máximo más uno. Hay dos números quemados, `INV-GARR-003`, derogado por [ADR-017](../decisions/ADR-017-garrison-commands.md), e `INV-CITY-009`, derogado por [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md): conservan su fila y su ficha con la marca `DEROGADO`, y no se reutilizan. `INV-GARR-008` estuvo reservado hasta el 2026-11-03 y desde entonces es vigente, con fila y ficha.
 
@@ -469,13 +477,15 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 |---|---|---|
 | ✓ Cubierto | 148 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **150** | |
+| **Total** | **152** | |
 
-> **150 filas y 150 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **152 filas y 152 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
+
+`INV-TECH-001` e `INV-TECH-002` se registraron el 2026-11-18 con SPEC-TECHNOLOGIES y [ADR-046](../decisions/ADR-046-technologies.md), antes de escribir su código, como manda §8, y nacen sin cobertura; con ellos llega la familia `INV-TECH` y su archivo, [technology.md](technology.md).
 
 `INV-CLAN-008`, `INV-CLAN-009` e `INV-DIPLO-004` se registraron el 2026-11-17 con SPEC-CLAN-WARS y [ADR-045](../decisions/ADR-045-clan-wars.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el trigger, con `DISABLE TRIGGER` en la base de tests). Ninguna fila queda sin cobertura ni parcial.
 
@@ -529,6 +539,7 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 | [combat.md](combat.md) | `INV-COMBAT` | 7 |
 | [trade.md](trade.md) | `INV-TRADE` | 4 |
 | [clans.md](clans.md) | `INV-CLAN` | 9 |
+| [technology.md](technology.md) | `INV-TECH` | 2 |
 
 ## 10. Documentos relacionados
 
