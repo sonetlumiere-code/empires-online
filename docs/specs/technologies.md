@@ -251,6 +251,25 @@ investigación como encargo con su fila, que reutiliza el de ADR-030.
 | contract / e2e | `city.research` contra el JSON Schema; `research` y `technologies` sólo en la vista propia. Por WebSocket: investigar, recibir la cuenta atrás y la tecnología al vencer; otro jugador no ve ninguno de los dos campos |
 | cliente | El panel con cada motivo, la cuenta atrás y la marca de las que tiene; el catálogo de presentación igual al de la base; `scripts/smoke.mjs --tecnologia`: `smoke_runner` investiga una tecnología de su era con un plazo corto (por variable de entorno) y comprueba que la siguiente orden lleva su efecto |
 
+**Precisiones de implementación (2026-11-18).**
+
+- **Lo que sólo ve el dueño viaja por su canal.** `research` y `technologies` van en la vista de la ciudad sólo en el
+  snapshot de su dueño, y sus cambios por `SendToPlayer`; el stock que la investigación debita va al chunk como siempre.
+  [ADR-046](../decisions/ADR-046-technologies.md) §5 dice «como `stocks` y `production`», pero esos dos viajan a todo el
+  chunk: la comparación es inexacta, no el mecanismo.
+- **Una ciudad ajena es `CITY_NOT_FOUND`**, como en el avance de era y el entrenamiento (§5 decía `INVALID_TARGET`
+  sin motivo).
+- **Dos eventos, no uno.** El encargo escribe `ResearchOrdered` y el fin `TechnologyResearched`, los dos de un solo
+  jugador y sin `counterpart`, así que ninguno va al registro ni a los avisos (Q13).
+- **El código de una tecnología** viaja validado por patrón (`^[A-Z][A-Z0-9_]{0,47}$`), no como enum.
+- **El rasgo compuesto se calcula al consultarlo** y se guarda por jugador hasta que cambian sus tecnologías; un
+  jugador sin tecnologías usa directamente el de su civilización (ADR-046 §2).
+- **La carga** descarta una investigación que no cumple INV-TECH-001 (la ciudad no existe o avanza, la tecnología no
+  está en el catálogo, es de otra civilización o de otra era, ya la tiene o le falta un requisito) y la borra de la
+  base con su `invariant_violation`.
+- **El humo** (`--tecnologia`) elige Albañilería si puede pagarla, porque su efecto se ve en la vida de una casa; con
+  otra tecnología sólo comprueba el encargo, el plazo y el fin, y deja el efecto a los tests de simulación.
+
 ## 10. Decisiones de producto (2026-11-18)
 
 Producto aceptó el 2026-11-18 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las

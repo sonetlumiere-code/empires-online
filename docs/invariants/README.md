@@ -432,8 +432,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-TECH-001 | Una ciudad investiga como mucho una tecnología, nunca durante un avance de era, y sólo una a su alcance | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E25) |
-| INV-TECH-002 | Todo efecto de una tecnología es un dato del catálogo que se compone con la civilización en un único punto | ALTO | DOMAIN, TEST | ○ | Sin test todavía (E25) |
+| INV-TECH-001 | Una ciudad investiga como mucho una tecnología, nunca durante un avance de era, y sólo una a su alcance | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosRechazosDeInvestigar`, `TestLaInvestigacionYElAvanceNoConviven`, `TestLaOrdenDeInvestigar`, `TestLaCargaDescartaLasInvestigacionesMalFormadas`, `TestLaInvestigacionEnLaBase` (integration), `TestLosTriggersDeLaInvestigacion` (integration) |
+| INV-TECH-002 | Todo efecto de una tecnología es un dato del catálogo que se compone con la civilización en un único punto | ALTO | DOMAIN, TEST | ✓ | `TestLaComposicionDeLosEfectos`, `TestLaValidacionDelCatalogo`, `TestGoldenInvestigacion`, los ocho de cada punto de consumo, `TestLasInvestigacionesTrasUnReinicio`, `TestElCatalogoDeTecnologiasEnLaBase` (integration) |
 
 ### Distribución
 
@@ -475,9 +475,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 148 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 150 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **152** | |
 
@@ -485,7 +485,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-TECH-001` e `INV-TECH-002` se registraron el 2026-11-18 con SPEC-TECHNOLOGIES y [ADR-046](../decisions/ADR-046-technologies.md), antes de escribir su código, como manda §8, y nacen sin cobertura; con ellos llega la familia `INV-TECH` y su archivo, [technology.md](technology.md).
+`INV-TECH-001` e `INV-TECH-002` se registraron el 2026-11-18 con SPEC-TECHNOLOGIES y [ADR-046](../decisions/ADR-046-technologies.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (los triggers, con `DISABLE TRIGGER` en la base de tests); con ellos llegó la familia `INV-TECH` y su archivo, [technology.md](technology.md). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-CLAN-008`, `INV-CLAN-009` e `INV-DIPLO-004` se registraron el 2026-11-17 con SPEC-CLAN-WARS y [ADR-045](../decisions/ADR-045-clan-wars.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el trigger, con `DISABLE TRIGGER` en la base de tests). Ninguna fila queda sin cobertura ni parcial.
 

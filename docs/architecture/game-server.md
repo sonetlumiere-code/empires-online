@@ -673,4 +673,5 @@ Se documenta para que nadie lo implemente por inercia ni lo asuma existente:
   ([clan-governance.md](../specs/clan-governance.md)) y las alianzas entre clanes desde E21
   ([clan-alliances.md](../specs/clan-alliances.md), [ADR-042](../decisions/ADR-042-clan-alliances.md)); siguen fuera las
   guerras declaradas entre clanes. **Precisión (2026-11-17):** las guerras entre clanes existen desde E24
-  ([clan-wars.md](../specs/clan-wars.md), [ADR-045](../decisions/ADR-045-clan-wars.md)).
+  ([clan-wars.md](../specs/clan-wars.md), [ADR-045](../decisions/ADR-045-clan-wars.md)). **Precisión (2026-11-18):** las
+  tecnologías existen desde E25 ([technologies.md](../specs/technologies.md), [ADR-046](../decisions/ADR-046-technologies.md)).

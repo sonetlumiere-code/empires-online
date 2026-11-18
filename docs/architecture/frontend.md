@@ -895,6 +895,29 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Los rechazos.** Desde E24, `readableError` muestra el motivo que manda el servidor con un `INVALID_TARGET` («No se
   puede: …»): es lo único que dice la tregua, los bandos o el rango. Sin motivo, el texto general de siempre.
 
+### 4.21 El árbol tecnológico (SPEC-TECHNOLOGIES)
+
+> **Estado (2026-11-18): implementado y con tests de lo puro** (`src/state/technologies.ts`, `src/state/world.ts`,
+> `src/state/economy.ts`, `src/net/client.ts`, `app/page.tsx`).
+
+- **Qué llega.** La vista de la ciudad propia trae `research` (`{ technology, completesAtMs }` o `null`) y
+  `technologies` (códigos); una ajena no los trae, y el store los deja en `null` y `[]`. `city.update` los cambia sólo
+  para el dueño (`research` al confirmarse, `research: null` con `technologies` al terminar); ausentes no tocan nada.
+- **El catálogo** es el de presentación de `@empires-online/protocol` (`TECHNOLOGIES`, de `technologies.json`): el
+  cliente no copia ningún número. `technologiesFor` da las ocho comunes y la exclusiva de la civilización, por era;
+  `effectText` («+10 % de daño en cada golpe») y `costText` («300 de madera, 200 de piedra y 30 bienes de otras
+  civilizaciones») las explican, y `researchSeconds` calcula el plazo con `production.speed` compuesto como el
+  servidor (`productionSpeed`).
+- **El panel «Tecnologías»**, que abre su botón del HUD («Tecnologías (n)»): por era, cada tecnología con su efecto,
+  su coste y su plazo; «✓ La tienes», «Investigando: n s» o «Investigar» (`GameClient.researchTechnology`),
+  deshabilitado con su motivo (`researchBlockReason`: otra civilización, ya la tiene, la era, el requisito, otra
+  investigación, un avance en curso, lo que falta del almacén). El rechazo del servidor llega con su motivo, como
+  cualquier `INVALID_TARGET` (§4.20).
+- **En el HUD**, «Investigando Gremios: n s» junto a la cuenta atrás del avance de era, y el avance dice «La ciudad
+  está investigando» mientras dura (`advanceBlockReason`).
+- **Los efectos** no tienen interfaz propia: se ven en los números que ya se ven (el plazo de una obra, la vida de una
+  casa, la carga de un aldeano).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

@@ -165,6 +165,9 @@ en el código del dominio.
 **Precisión (2026-11-17, [SPEC-CASTLE-AGE](../specs/castle-age.md)):** el avance de era está hecho para las cuatro eras
 del catálogo: Bronce en E9, Hierro en E14 y la Edad de los Castillos, que abre el castillo, en E23
 ([milestones.md](milestones.md) §E23). El árbol tecnológico sigue fuera.
+**Precisión (2026-11-18, [SPEC-TECHNOLOGIES](../specs/technologies.md)):** el árbol tecnológico llega en E25: doce
+tecnologías en la tabla `technologies` con sus efectos como rasgos por mil, compuestos con los de la civilización
+([ADR-046](../decisions/ADR-046-technologies.md)); la investigación no hace avanzar de era.
 
 **Civilizations.** Activa los bonos culturales por civilización (Roman, Byzantine, Persian, Norse…).
 El catálogo `civilizations` existe desde M2, pero en el MVP no aplica modificadores. Depende de

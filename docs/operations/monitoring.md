@@ -163,7 +163,9 @@ No las busques ni las inventes:
   `eo_database_latency_seconds` por `operation`/`table`, `eo_redis_latency_seconds` por `operation`. Añadir
   cualquiera de ellos es un cambio de código, no una consulta distinta.
 - **Sistemas fuera de MVP**: combate, economía, tecnologías, comercio o clanes. No hay métricas porque no hay
-  sistemas.
+  sistemas. **Precisión (2026-11-18):** esos sistemas existen ya, también las tecnologías desde E25, y no tienen series
+  propias: sus escrituras durables cuentan en las series de la cola por el nombre de su trabajo (`city.research`,
+  `research.complete`) y sus comandos en las de comandos.
 
 ---
 

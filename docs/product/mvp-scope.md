@@ -56,7 +56,7 @@ lugar de completar una capa entera. Ver [glossary.md](glossary.md) → *Vertical
 |---|---|---|
 | OUT-01 | **Combate completo** | La fase 4 del tick (`resolve simulation`) está reservada pero vacía. El combate multiplica los invariantes a verificar sin aportar nada al riesgo que el slice quiere despejar. |
 | OUT-02 | **Economía completa** | Recolección, almacenes, costes y producción exigen un modelo de recursos que aún no está especificado; añadirlo ahora acoplaría el movimiento a un sistema inmaduro. |
-| OUT-03 | **Árbol tecnológico completo** | Las tablas `technologies` y `civilization_technologies` son solo diseño, sin migración. La progresión tecnológica no aporta señal sobre la persistencia. |
+| OUT-03 | **Árbol tecnológico completo** | Las tablas `technologies` y `civilization_technologies` son solo diseño, sin migración. La progresión tecnológica no aporta señal sobre la persistencia. **Precisión (2026-11-18):** el árbol tecnológico existe desde E25 ([../specs/technologies.md](../specs/technologies.md)): doce tecnologías en `technologies` (`000027`), sin `civilization_technologies`; siguen fuera las tecnologías que abren unidades, edificios o eras. |
 | OUT-04 | **Cientos de unidades** | Un único `unit_type` (`VILLAGER`) ejercita el pipeline entero. Más tipos son variación de datos, no de arquitectura, y encarecen cada test. |
 | OUT-05 | **Crafting** | Depende de la economía (OUT-02). Sin recursos no hay nada que fabricar. |
 | OUT-06 | **Quests** | Contenido dirigido; irrelevante para validar el mundo persistente y costoso en herramientas de autoría. |

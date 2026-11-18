@@ -18,7 +18,7 @@ civilización: [player.md](player.md). Spec: [../specs/technologies.md](../specs
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E25 |
 | Política ante violación | REJECT (escritura) · REPAIR (arranque) |
-| Cobertura | **Sin cobertura** todavía (E25) |
+| Cobertura | **Cubierto** por `TestLosRechazosDeInvestigar`, `TestLaInvestigacionYElAvanceNoConviven`, `TestGoldenInvestigacion` y `TestLaBaseRechazaLaInvestigacion` (`internal/game/simulation`), `TestLaOrdenDeInvestigar` (`internal/domain/technology`), `TestLaCargaDescartaLasInvestigacionesMalFormadas` (`cmd/server`), y `TestLaInvestigacionEnLaBase`, `TestLosTriggersDeLaInvestigacion` y `TestUnTriggerRechazaElEncargoSinDebitar` (integration, `internal/persistence/postgres`). Verificado por mutación el 2026-11-18, cada una vista fallar: investigar sin mirar el avance y avanzar sin mirar la investigación tumban `TestLaInvestigacionYElAvanceNoConviven`; la orden sin la era o sin los requisitos, `TestLosRechazosDeInvestigar`; la carga sin la era, `TestLaCargaDescartaLasInvestigacionesMalFormadas`; y cada trigger desactivado con `DISABLE TRIGGER` en la base de tests (y vuelto a `tgenabled = 'O'`), su rama de `TestLosTriggersDeLaInvestigacion` |
 
 **Enunciado.** Una ciudad tiene como mucho una fila de `city_research`, y nunca a la vez que una de
 `city_era_advances`. La tecnología de esa fila es de la era de la ciudad o de una anterior, común o exclusiva de la
@@ -52,7 +52,7 @@ encuentra mal formada se descarta en la RAM y se registra.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E25 |
 | Política ante violación | FAIL_FAST (catálogo) |
-| Cobertura | **Sin cobertura** todavía (E25) |
+| Cobertura | **Cubierto** por `TestLaComposicionDeLosEfectos` y `TestLaValidacionDelCatalogo` (`internal/domain/technology`), `TestGoldenInvestigacion`, `TestLaRuedaAcortaLaPolilinea`, `TestGremiosAcortaLaObra`, `TestLasHerramientasDePiedraAcortanElTrabajo`, `TestLaCesteriaCargaDoce`, `TestLaAlbanileriaDaCasasDe180`, `TestLasIncursionesCarganVeinticuatro`, `TestLasArmasDeBronceGolpeanNueve` y `TestLasInvestigacionesTrasUnReinicio` (`internal/game/simulation`), y `TestElCatalogoDeTecnologiasEnLaBase` (integration). Verificado por mutación el 2026-11-18, cada una vista fallar: `State.trait` sin las tecnologías tumba el golden y los ocho tests de los puntos de consumo; el catálogo que admite una clave desconocida, `TestLaValidacionDelCatalogo`; sumar los efectos en vez de componerlos, `TestLaComposicionDeLosEfectos` |
 
 **Enunciado.** Todo efecto del catálogo `technologies` es una clave del catálogo de rasgos con un entero positivo por
 mil. Todo valor que una tecnología cambia sale de `State.trait`: el rasgo de la civilización del jugador compuesto

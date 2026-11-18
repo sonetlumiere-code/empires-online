@@ -2585,13 +2585,13 @@ compartirlas o venderlas, ramas excluyentes, un registro o un aviso por investig
 1. **HECHO** — Aceptación: spec, [ADR-046](../decisions/ADR-046-technologies.md), la familia `INV-TECH` con
    `INV-TECH-001` e `INV-TECH-002`, las precisiones de `RN-ECON-026` ([economy-stone.md](../specs/economy-stone.md)) y
    `RN-CIV-004` ([civilizations.md](../specs/civilizations.md)), y la `Q-12` del [backlog](backlog.md) cerrada.
-2. **PENDIENTE** — Dominio: el catálogo, su validación, la composición y la orden (`internal/domain/technology`) y las
+2. **HECHO** — Dominio: el catálogo, su validación, la composición y la orden (`internal/domain/technology`) y las
    dos claves nuevas de rasgo.
-3. **PENDIENTE** — Migración `000027` y persistencia: las tres tablas sembradas, los tres triggers, el encargo, el fin,
+3. **HECHO** — Migración `000027` y persistencia: las tres tablas sembradas, los tres triggers, el encargo, el fin,
    la carga y la validación de carga.
-4. **PENDIENTE** — Simulación: las tecnologías por jugador, `State.trait` compuesto, `city.research` en dos fases, el
+4. **HECHO** — Simulación: las tecnologías por jugador, `State.trait` compuesto, `city.research` en dos fases, el
    fin optimista, los dos puntos de consumo nuevos y el golden «investigación».
-5. **PENDIENTE** — Protocolo: `city.research`, `research` y `technologies`, `technologies.json`; contract tests (Go y
+5. **HECHO** — Protocolo: `city.research`, `research` y `technologies`, `technologies.json`; contract tests (Go y
    Zod) y su e2e.
-6. **PENDIENTE** — Cliente: el panel «Tecnologías» con sus motivos y su cuenta atrás.
+6. **HECHO** — Cliente: el panel «Tecnologías» con sus motivos y su cuenta atrás.
 7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --tecnologia`.

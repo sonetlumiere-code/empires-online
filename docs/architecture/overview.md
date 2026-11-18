@@ -398,7 +398,7 @@ Cada decisión estructural vive en su propio ADR con contexto, alternativas desc
 
 ## 8. Alcance: lo que este diseño NO incluye
 
-**Fuera de MVP**, y por tanto no diseñado como si existiera: combate completo, economía completa, árbol tecnológico completo, cientos de tipos de unidad, crafting, quests, NPCs complejos, marketplace, chat avanzado, ranking, IA avanzada, unidades navales (`WATER` está bloqueado) y clanes. La fase 4 del tick (`resolve simulation`) queda reservada para combate pero vacía en el MVP. Las tablas `technologies`, `civilization_technologies`, `trade_routes`, `caravans`, `markets`, `trade_transactions` y `clans` existen solo como diseño, sin migración.
+**Fuera de MVP**, y por tanto no diseñado como si existiera: combate completo, economía completa, árbol tecnológico completo, cientos de tipos de unidad, crafting, quests, NPCs complejos, marketplace, chat avanzado, ranking, IA avanzada, unidades navales (`WATER` está bloqueado) y clanes. La fase 4 del tick (`resolve simulation`) queda reservada para combate pero vacía en el MVP. Las tablas `technologies`, `civilization_technologies`, `trade_routes`, `caravans`, `markets`, `trade_transactions` y `clans` existen solo como diseño, sin migración. **Precisión (2026-11-18):** desde entonces existen `caravans` (E15), `clans` (E18) y, desde E25, `technologies` con `city_research` y `player_technologies`, sin `civilization_technologies` ([technologies.md](../specs/technologies.md), [ADR-046](../decisions/ADR-046-technologies.md)).
 
 Secuencia de entrega en [../roadmap/milestones.md](../roadmap/milestones.md): M0 Foundation · M1 World · M2 Player & City · M3 Realtime · M4 Movement · M5 Offline protection & Safe Zones · M6 Territories · M7 Diplomacy foundation.
 
