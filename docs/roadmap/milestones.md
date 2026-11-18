@@ -2594,4 +2594,24 @@ compartirlas o venderlas, ramas excluyentes, un registro o un aviso por investig
 5. **HECHO** — Protocolo: `city.research`, `research` y `technologies`, `technologies.json`; contract tests (Go y
    Zod) y su e2e.
 6. **HECHO** — Cliente: el panel «Tecnologías» con sus motivos y su cuenta atrás.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --tecnologia`.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --tecnologia`.
+
+### Prueba en vivo (2026-11-18)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 26 a la 27 y cuyo catálogo validó al arrancar,
+con `EO_TECHNOLOGY_RESEARCH_SECONDS=20` y el almacén de smoke_runner sembrado (`EO_DEVSEED_STOCK_FOR=smoke_runner`):
+
+- **Humo** `--tecnologia`, verde a la primera (23 comprobaciones): la vista propia de smoke_runner llevaba sus
+  tecnologías (ninguna); `POLVORA` se rechazó con «esa tecnología no está a tu alcance»; Albañilería se encargó con su
+  plazo de 20 s, una segunda a la vez fue `CITY_BUSY`, llegó como tecnología al vencer y una casa de smoke_runner pasó
+  de 150 a 180 de vida.
+- **En el navegador**, con la sesión de smoke_runner: «Tecnologías (1)» en el HUD; el panel con las nueve de un romano
+  por era (las ocho comunes y Calzadas · propia), cada una con su efecto, su coste y su plazo con el rasgo romano
+  («unos 55 s»), Albañilería con «✓ La tienes» y los motivos («Faltan 30 bienes de otras civilizaciones.», «Faltan 40
+  de vino.», «Pide Armas de bronce.», «Pide Gremios.»). «Investigar» en Herramientas de piedra: «Investigando: 20 s» en
+  el panel y «Investigando Herramientas de piedra: 20 s» en el HUD, las demás con «Ya se investiga Herramientas de
+  piedra.»; al vencer, «✓ La tienes» y «Tecnologías (2)».
+- **Sin comprobar en el navegador:** que una ciudad ajena no enseñe nada (no hay interfaz para mirarla; lo cubren el
+  e2e y el snapshot de la simulación), el motivo del avance de era mientras se investiga (smoke_runner ya está en la
+  última era; lo cubre `technologies.test.ts`) y los efectos en el juego salvo la vida de la casa (los cubren los tests
+  de simulación).
