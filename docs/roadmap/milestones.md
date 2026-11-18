@@ -2387,7 +2387,8 @@ verify:full` en verde antes:
   la base de desarrollo), «Legionario · Romanos» en el panel de selección (sólo el dueño selecciona su unidad) y la
   línea de la unidad propia en el registro de alta (pide cerrar la sesión del navegador). Los textos los cubren
   `units.test.ts` y la proyección; esas tres siluetas, sólo el typecheck.
-- **Repaso (2026-11-17):** la línea de la unidad propia en el formulario de alta, comprobada; lo demás sigue sin
+- **Repaso (2026-11-17 y 18):** comprobados la línea de la unidad propia en el formulario de alta, «Legionario ·
+  Romanos» en el panel de selección y la silueta del berserker; las del catafracto y el arquero a caballo siguen sin
   comprobar en el navegador ([§E24](#e24--guerras-entre-clanes), «Repaso de los tests»).
 
 ## E23 — Edad de los Castillos
@@ -2454,8 +2455,8 @@ Contra la base de desarrollo, que el servidor llevó de la migración 24 a la 25
   en obra (sólo el contorno). En la base de desarrollo smoke_runner queda en Castillos con su castillo, y sus guardias
   junto a (277, 19).
 - **Repaso (2026-11-17):** comprobados el botón «Edad de los Castillos (120/120 bienes)» de una ciudad en Hierro,
-  «Castillo» habilitado con su coste y el texto del lado de la víctima; el castillo en obra sigue sin comprobar en el
-  navegador ([§E24](#e24--guerras-entre-clanes), «Repaso de los tests»).
+  «Castillo» habilitado con su coste, el texto del lado de la víctima y el castillo en obra
+  ([§E24](#e24--guerras-entre-clanes), «Repaso de los tests»).
 
 ## E24 — Guerras entre clanes
 
@@ -2535,11 +2536,15 @@ Contra la base de desarrollo, que el servidor llevó de la migración 25 a la 26
     Hierro, el botón «Edad de los Castillos (120/120 bienes)» y «Castillo» deshabilitado con «El castillo pide la
     Edad de los Castillos.»; en Castillos, «Faltan 160 de madera y 80 de piedra.» y, sembrado otra vez, «Castillo»
     habilitado con «Encarga el castillo: 500 de madera y 800 de piedra, unos 180 s…» (§E23). Por el camino construyó
-    su taller, elaboró 10 pieles y entrenó un berserker. **El castillo no se encargó**;
+    su taller, elaboró 10 pieles y entrenó un berserker;
   - tras `smoke.mjs --castillo` (verde, 24 comprobaciones), smoke_victim vio en «Mientras no estabas» «El castillo de
     smoke_runnerpolis mató a uno de tus guerreros cerca de (293, 19)» (§E23).
-- **Sin comprobar en el navegador** (piden el mapa, y el panel estuvo oculto toda la sesión): el texto «No se puede:
-  …tregua» al volver a declarar durante la tregua; «Legionario · Romanos» en el panel de selección (§E22); las
-  siluetas del berserker (smoke_norse ya tiene uno junto a su ciudad, en (508, 283)), del catafracto y del arquero a
-  caballo (no hay jugadores bizantinos ni persas en la base de desarrollo); y el castillo en obra (smoke_norse está en
-  Castillos con el almacén justo para encargarlo).
+- **Con el panel visible** (2026-11-18): smoke_norse encargó su castillo y se dibujó en obra, sólo el contorno gris
+  con sus dos torres, junto al centro de smoke_norsepolis, frente al castillo completo y relleno de smoke_runnerpolis
+  (§E23); su berserker se dibuja como un rombo propio con las dos hachas cruzadas y, seleccionado, el panel dice
+  «Berserker · Nórdicos» (§E22); el legionario de smoke_runner, seleccionado, «Legionario · Romanos» (§E22). Para
+  seleccionarlo hubo que apartar a los seis guerreros que compartían su tile (el clic elige la primera unidad del
+  tile): las guardias de smoke_runner quedan repartidas en los tiles de al lado de (277, 19).
+- **Sin comprobar en el navegador:** el texto «No se puede: …tregua» al volver a declarar durante la tregua (el panel
+  se volvió a ocultar mientras la cámara iba hacia [HUM]); las siluetas del catafracto y del arquero a caballo (no hay
+  jugadores bizantinos ni persas en la base de desarrollo).
