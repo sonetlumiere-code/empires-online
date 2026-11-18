@@ -2562,7 +2562,7 @@ Contra la base de desarrollo, que el servidor llevó de la migración 25 a la 26
 
 ## E25 — Árbol tecnológico
 
-**Estado: EN CURSO (2026-11-18)**, en la rama `claude/slice-tecnologias`. Contrato:
+**Estado: HECHO (2026-11-18)**, fusionado en `main` (`ab7bcb0`) con la CI en verde el mismo día. Contrato:
 [SPEC-TECHNOLOGIES](../specs/technologies.md), aceptada el 2026-11-18 con sus quince decisiones de producto, y
 [ADR-046](../decisions/ADR-046-technologies.md).
 

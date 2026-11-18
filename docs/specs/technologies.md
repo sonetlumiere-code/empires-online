@@ -8,7 +8,7 @@ que nadie completa el árbol entero.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TECHNOLOGIES` |
-| Estado | Accepted (2026-11-18). Propuesta en `Draft` el 2026-11-17 y aceptada el 2026-11-18 con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-18). Propuesta en `Draft` el 2026-11-17 y aceptada el 2026-11-18 con la recomendación de cada pregunta de §10; en `main` desde la fusión `ab7bcb0`, con la CI en verde. |
 | Milestone | E25 Árbol tecnológico (vigesimoquinto slice después de M7) |
 | Canon | §0 (civilización como eje), §1.5 (determinismo), §10 (eras), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [civilization-goods.md](civilization-goods.md), [civilizations.md](civilizations.md), [civilization-units.md](civilization-units.md), [castle-age.md](castle-age.md), [combat-raid.md](combat-raid.md), [combat-siege.md](combat-siege.md), [combat-pillage.md](combat-pillage.md), [city.md](city.md), [player.md](player.md), [websocket-protocol.md](websocket-protocol.md) |
