@@ -551,7 +551,7 @@ payload: z.object({ cityId: EntityId }).strict()
 { "v": 1, "type": "city.advance", "requestId": "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "payload": { "cityId": 1204 } }
 ```
 
-**Validaciones, en este orden** (`RN-ECON-024`): la ciudad existe y es propia (`CITY_NOT_FOUND`) · hay avance desde su era (`NOT_IMPLEMENTED` desde `BRONZE_AGE`) · no entrena ni avanza ya (`CITY_BUSY`) · el stock cubre **cada** recurso del coste, hoy 400 de madera y 200 de piedra (`INSUFFICIENT_RESOURCES`). Ni la era, ni el coste, ni el tiempo los manda el cliente. Rechazos como **`system.error`**.
+**Validaciones, en este orden** (`RN-ECON-024`): la ciudad existe y es propia (`CITY_NOT_FOUND`) · hay avance desde su era (`NOT_IMPLEMENTED` desde `BRONZE_AGE`) · no entrena, no avanza ya ni, desde E25, investiga (`CITY_BUSY`) · el stock cubre **cada** recurso del coste, hoy 400 de madera y 200 de piedra (`INSUFFICIENT_RESOURCES`). Ni la era, ni el coste, ni el tiempo los manda el cliente. Rechazos como **`system.error`**.
 
 **Efectos, en dos fases.** El tick reserva los dos recursos; la transacción los debita todos o ninguno y escribe el avance (`RN-ECON-025`). Con éxito, `city.update { stocks, advance: { era, completesAtMs } }`. Mientras dura, `city.train` responde `CITY_BUSY` (`RN-ECON-026`). Al vencer, `city.update { era, populationLimit, advance: null }`: el límite sube en la diferencia de los `population_cap` de las dos eras (`RN-ECON-027`).
 
@@ -1486,10 +1486,10 @@ El formato es siempre `{ code, message, details? }` dentro de `system.error`, o 
 | `CITY_PROTECTED` | 409 | No | Reservado: operación bloqueada por `presence_state = PROTECTED` |
 | `TREATY_REQUIRED` | 409 | No | `unit.garrison` en una ciudad ajena sin `treaty` `ACTIVE` con `allows_garrison`; lo decide la transacción (§7.6) |
 | `POPULATION_LIMIT_REACHED` | 409 | No | `city.train` con `population + 1 > population_limit` |
-| `INSUFFICIENT_RESOURCES` | 409 | No | El stock de la ciudad no cubre el coste de `city.build` o `city.train` (E1) |
-| `CITY_BUSY` | 409 | No | `city.train` con una producción en curso (E1) |
+| `INSUFFICIENT_RESOURCES` | 409 | No | El stock de la ciudad no cubre el coste de `city.build` o `city.train` (E1), de `city.advance` (E9), de una oferta de `trade.propose` (E10), de `city.craft` (E14) o de `city.research` (E25) |
+| `CITY_BUSY` | 409 | No | `city.train` con una producción en curso (E1) o durante un avance de era (E9); `city.advance` con un entrenamiento, un avance o, desde E25, una investigación en curso; `city.craft` con una elaboración en curso (E14); `city.research` con otra investigación o un avance en curso (E25) |
 | `INTERNAL_ERROR` | 500 / WS `4500` | Solo si es irrecuperable | Cola de comandos saturada, el game loop no responde en 2 s, tipo de unidad no catalogado, polilínea no construible. El `message` nunca expone detalles internos ni credenciales |
-| `NOT_IMPLEMENTED` | 501 | No | Reservado: ruta de código para funcionalidad fuera de MVP |
+| `NOT_IMPLEMENTED` | 501 | No | `city.advance` desde la última era del catálogo, `CASTLE_AGE` desde E23 (`RN-ECON-024`) |
 
 Los códigos marcados **Reservado** están definidos y estables en v1, pero ninguna ruta del servidor los emite todavía: sus comandos naturales (asedio, revocación de sesión, la primera acción hostil) están fuera de MVP. `CITY_PROTECTED` no lo emite la guarnición, que no es una acción hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)).
 

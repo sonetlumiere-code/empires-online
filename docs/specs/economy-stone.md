@@ -170,7 +170,7 @@ Sólo códigos existentes del catálogo (canon §16).
 | `PATH_TOO_LONG` | El tile de trabajo está a más de `EO_PATHFINDING_MAX_DISTANCE` del depósito (`RN-ECON-020`), o la ruta hasta él es demasiado larga, como en `unit.move` |
 | `PATH_NOT_FOUND`, `TARGET_OUT_OF_BOUNDS` | Como en `unit.move`, para el tramo a la colina |
 | `CITY_NOT_FOUND` | `city.advance` sobre una ciudad inexistente o ajena (misma respuesta: no revela existencia) |
-| `CITY_BUSY` | `city.advance` con un entrenamiento o un avance en curso; `city.train` durante un avance (`RN-ECON-026`) |
+| `CITY_BUSY` | `city.advance` con un entrenamiento o un avance en curso; `city.train` durante un avance (`RN-ECON-026`). **Precisión (2026-11-18, [technologies.md](technologies.md)):** también `city.advance` con una investigación en curso y `city.research` durante un avance |
 | `INSUFFICIENT_RESOURCES` | Falta madera o piedra para el avance (`RN-ECON-024`) |
 | `NOT_IMPLEMENTED` | `city.advance` desde `BRONZE_AGE` |
 

@@ -461,3 +461,29 @@ func TestUnFinDeInvestigacionDescartadoSeReencola(t *testing.T) {
 	require.Len(t, h.economy.researched, 1)
 	assert.Equal(t, "STONE_TOOLS", h.economy.researched[0].Technology)
 }
+
+// RN-TECH-003 y RN-TECH-004: la exclusiva romana (Calzadas) cobra 40 de vino, el
+// bien propio, además de la madera y la piedra; y mientras se investiga, el taller
+// elabora.
+func TestLaExclusivaCobraElBienPropioYNoImpideElaborar(t *testing.T) {
+	h := newHarness(t)
+	conCivilizacion(h, "ROMAN")
+	conTecnologias(h, nil)
+	h.ciudad().Era = city.EraIron
+	h.almacenDe(h.cityID, map[economy.Resource]int64{
+		economy.ResourceWood: 500, economy.ResourceStone: 500, economy.ResourceWine: 40,
+	})
+	h.conTaller(h.cityID, 70, tileTaller)
+
+	h.investigar("ROMAN_ROADS")
+	require.Empty(t, h.codigos())
+	assert.Equal(t, int64(300), h.stockDe(economy.ResourceWood))
+	assert.Equal(t, int64(300), h.stockDe(economy.ResourceStone))
+	assert.Equal(t, int64(0), h.stockDe(economy.ResourceWine), "el bien propio, sólo en la exclusiva")
+	require.Len(t, h.economy.research, 1)
+	assert.Len(t, h.economy.research[0].Stocks, 3)
+	h.tick()
+
+	h.elaborar()
+	assert.Empty(t, h.codigos(), "investigar no impide elaborar")
+}
