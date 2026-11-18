@@ -390,7 +390,9 @@ historial salen de las guerras `ENDED` de cada clan.
 - **Declarar con una alianza en vuelo.** Además de una alianza activa, la declaración se rechaza mientras una
   aceptación u otra orden de alianza sobre el mismo par espera la base.
 - **Caravanas.** Una caravana que mata una unidad se captura (E15) y no pasa por la muerte que puntúa; la que mata un
-  castillo muere, pero tampoco puntúa (`RN-CLANWAR-007`).
+  castillo muere, pero tampoco puntúa (`RN-CLANWAR-007`). **Precisión (2026-11-17):** hoy un castillo no llega a
+  matar una caravana, porque sólo dispara a quien ataca a su dueño y una caravana no ataca; la regla queda por si eso
+  cambia, y su test aplica el golpe mortal del castillo directamente (`KillByCastle`, sólo en los tests).
 - **Historial.** Un clan que se disuelve no guarda historial; el vencedor por disolución, sí.
 - **La vista pública** (`clan.info`) suma el marcador de los eventos en la base: puede ir un instante por detrás del de
   `clan.update` mientras la cola escribe (ADR-045 §4).
@@ -398,6 +400,13 @@ historial salen de las guerras `ENDED` de cada clan.
   a un texto general de combate, así que «la tregua la dice el servidor» (§4.7) no se veía. Desde E24 el pie muestra el
   motivo del servidor («No se puede: vuestros clanes terminaron una guerra hace poco…») y el texto general queda para
   un rechazo sin motivo.
+- **Precisión (2026-11-18): una guerra que termina en su preparación toma su final como plazo.** §4.1 deja terminar
+  una guerra `DECLARED` por paz, rendición o disolución, pero el `CHECK clan_wars_ends_at` de `000026` exige `ends_at`
+  en toda guerra que no esté en preparación, y una que no llegó a empezar no tenía plazo: la base rechazaba esos
+  finales y el jugador veía `INTERNAL_ERROR` (lo destapó la prueba en vivo del repaso de E24). Ahora `War.End` pone
+  `endsAt = endedAt` a una guerra que termina en preparación, y la transacción de la disolución escribe
+  `ends_at = coalesce(ends_at, ended_at)`; sin migración nueva. Lo cubren `TestUnaGuerraTerminaEnSuPreparacion`
+  (integration), visto fallar sin el arreglo y con cada una de sus dos mitades quitadas, y `TestElCicloDeUnaGuerra`.
 
 ## 10. Decisiones de producto (2026-11-17)
 

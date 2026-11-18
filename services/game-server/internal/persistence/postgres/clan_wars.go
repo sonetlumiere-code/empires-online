@@ -365,7 +365,7 @@ func endClanWars(ctx context.Context, tx pgx.Tx, l ClanLeave) error {
 		g := e.War
 		tag, err := tx.Exec(ctx,
 			`UPDATE clan_wars
-			    SET status = 'ENDED', ended_at = $2, end_reason = $3, winner_clan = $4,
+			    SET status = 'ENDED', ended_at = $2, ends_at = coalesce(ends_at, $2), end_reason = $3, winner_clan = $4,
 			        attacker_score = $5, defender_score = $6,
 			        peace_offered_by_attacker = false, peace_offered_by_defender = false
 			  WHERE id = $1 AND status IN ('DECLARED', 'ACTIVE')`,

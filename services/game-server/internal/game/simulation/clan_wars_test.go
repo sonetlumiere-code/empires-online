@@ -580,3 +580,123 @@ func TestLasGuerrasTrasUnReinicio(t *testing.T) {
 	require.Len(t, malas, 1)
 	assert.Equal(t, "abierta entre dos clanes aliados", malas[0].Detail)
 }
+
+// RN-CLANWAR-007, INV-CLAN-009 y ADR-045 §4: una conquista entre los dos lados
+// de una guerra activa suma 10 cuando vuelve la transacción, no antes. Cuando la
+// base escribe la captura (el tick en que vence) el marcador sigue en 0 y la
+// captura lleva sus puntos para el payload del evento; en el tick siguiente,
+// con la confirmación, el territorio cambia de dueño y el marcador sube a 10. Lo
+// mismo con un territorio de un miembro del otro clan y con uno del otro clan.
+// Si la base la rechaza, no suma nada.
+func TestUnaConquistaEnGuerraPuntuaAlConfirmarse(t *testing.T) {
+	casos := []struct {
+		nombre   string
+		preparar func(h *harness, vs []uuid.UUID, oso int64)
+		prev     func(c simulation.Capture, vs []uuid.UUID, oso int64) bool
+	}{
+		{
+			nombre: "el territorio de un miembro",
+			preparar: func(h *harness, vs []uuid.UUID, _ int64) {
+				conCuatroTerritorios(h, map[int64]uuid.UUID{1: h.playerID, 2: vs[1]})
+			},
+			prev: func(c simulation.Capture, vs []uuid.UUID, _ int64) bool { return c.PrevOwner == vs[1] },
+		},
+		{
+			nombre: "el territorio del clan enemigo",
+			preparar: func(h *harness, _ []uuid.UUID, oso int64) {
+				conCuatroTerritorios(h, map[int64]uuid.UUID{1: h.playerID})
+				territorioDelClan(h, 2, oso)
+			},
+			prev: func(c simulation.Capture, _ []uuid.UUID, oso int64) bool {
+				return c.PrevClanID == oso && c.PrevOwner == uuid.Nil
+			},
+		},
+	}
+	for _, caso := range casos {
+		t.Run(caso.nombre, func(t *testing.T) {
+			h, _, vs, lob, oso := conGuerra(t, nil)
+			g := h.enGuerra(lob, oso)
+			caso.preparar(h, vs, oso)
+			ponerUnidad(h, guerreroID, h.playerID, h.cityID, unit.TypeWarrior, world.Tile{X: 40, Y: 10}, 60)
+
+			h.reclamar(guerreroID)
+			require.Empty(t, h.codigos())
+			h.tick()
+			_, confirmada, _ := h.state.ActiveClaim(2)
+			require.True(t, confirmada)
+
+			// El tick en que vence: la base escribe la captura, la RAM no suma.
+			require.True(t, h.tickHasta(6100, func() bool { return len(h.conquest.captures) == 1 }))
+			c := h.conquest.captures[0]
+			require.True(t, caso.prev(c, vs, oso), "la captura dice a quién se le gana")
+			assert.Equal(t, &clan.WarPoints{WarID: g.ID, ClanID: lob, Points: clan.PointsTerritory}, c.War,
+				"los puntos viajan en la captura para el payload del evento")
+			g, _ = h.state.ClanWar(g.ID)
+			assert.Zero(t, g.ScoreOf(lob), "hasta que vuelve la transacción no suma")
+			assert.NotEqual(t, h.playerID.String(), dueñoDe(h.vistaDe(2)))
+
+			// El tick siguiente: la confirmación aplica el control y los puntos.
+			h.tick()
+			assert.Equal(t, h.playerID.String(), dueñoDe(h.vistaDe(2)))
+			g, _ = h.state.ClanWar(g.ID)
+			assert.Equal(t, int64(clan.PointsTerritory), g.ScoreOf(lob))
+			assert.Zero(t, g.ScoreOf(oso))
+		})
+	}
+
+	t.Run("la base la rechaza", func(t *testing.T) {
+		h, _, vs, lob, oso := conGuerra(t, nil)
+		g := h.enGuerra(lob, oso)
+		conCuatroTerritorios(h, map[int64]uuid.UUID{1: h.playerID, 2: vs[1]})
+		ponerUnidad(h, guerreroID, h.playerID, h.cityID, unit.TypeWarrior, world.Tile{X: 40, Y: 10}, 60)
+		h.reclamar(guerreroID)
+		require.Empty(t, h.codigos())
+		h.tick()
+		h.conquest.captureErr = simulation.ErrClaimConflict
+		require.True(t, h.tickHasta(6100, func() bool { _, _, sigue := h.state.ActiveClaim(2); return !sigue }))
+		h.tick()
+		assert.Equal(t, vs[1].String(), dueñoDe(h.vistaDe(2)))
+		g, _ = h.state.ClanWar(g.ID)
+		assert.Zero(t, g.ScoreOf(lob), "una captura que la base no escribe no puntúa")
+	})
+}
+
+// RN-CLANWAR-007 e INV-CLAN-009: una caravana enemiga que mata un castillo no
+// puntúa (spec §9, «Caravanas»). En el juego, un castillo no llega a dispararle:
+// sólo apunta a quien ataca a su dueño y una caravana no ataca; la rama de la
+// muerte se prueba con el golpe mortal del castillo aplicado directamente.
+// La caravana muere (no se captura) sin puntos; un aldeano enemigo muerto por el
+// mismo castillo suma 1.
+func TestUnaCaravanaQueMataUnCastilloNoPuntua(t *testing.T) {
+	h, _, vs, lob, oso := conGuerra(t, nil)
+	osoMiembro := vs[1]
+	g := h.enGuerra(lob, oso)
+	conCastillo(h, h.ciudad(), castilloID, world.Tile{X: 11, Y: 9})
+	c3, _ := h.state.City(3)
+	c3.Population = 5
+
+	carro := ponerUnidad(h, enemigoID, osoMiembro, 3, unit.TypeCaravan, world.Tile{X: 13, Y: 11}, 80)
+	h.advance(3 * time.Second)
+	_, apunta := h.state.CastleTarget(castilloID)
+	assert.False(t, apunta, "el castillo no dispara a una caravana que no le ataca")
+	assert.Equal(t, int32(80), carro.HP)
+
+	muertes := len(h.combat.deaths)
+	require.True(t, h.sim.KillByCastle(carro.ID, castilloID))
+	_, viva := h.state.Unit(carro.ID)
+	assert.False(t, viva)
+	require.Len(t, h.combat.deaths, muertes+1, "muere, no se captura")
+	d := h.combat.deaths[muertes]
+	assert.Equal(t, carro.ID, d.VictimID)
+	assert.Equal(t, castilloID, d.KillerBuildingID)
+	assert.Nil(t, d.War, "la caravana no puntúa")
+	g, _ = h.state.ClanWar(g.ID)
+	assert.Zero(t, g.ScoreOf(lob))
+
+	aldeano := ponerUnidad(h, enemigoID+1, osoMiembro, 3, unit.TypeVillager, world.Tile{X: 13, Y: 12}, 8)
+	require.True(t, h.sim.KillByCastle(aldeano.ID, castilloID))
+	d = h.combat.deaths[len(h.combat.deaths)-1]
+	assert.Equal(t, &clan.WarPoints{WarID: g.ID, ClanID: lob, Points: clan.PointsKill}, d.War)
+	g, _ = h.state.ClanWar(g.ID)
+	assert.Equal(t, int64(clan.PointsKill), g.ScoreOf(lob))
+}

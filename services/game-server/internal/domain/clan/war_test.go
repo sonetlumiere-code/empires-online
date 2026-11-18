@@ -39,9 +39,14 @@ func TestElCicloDeUnaGuerra(t *testing.T) {
 	_, err = activa.End(clan.WarEndSurrender, 99, 5000)
 	assert.ErrorIs(t, err, clan.ErrWarTransition, "el vencedor es una de las partes")
 
-	// También se termina en preparación (la paz y la rendición valen ahí).
-	_, err = w.End(clan.WarEndPeace, 0, 500)
+	assert.Equal(t, activa.EndsAtMs, fin.EndsAtMs, "una guerra activa conserva su plazo")
+
+	// También se termina en preparación (la paz y la rendición valen ahí), y su
+	// final pasa a ser su plazo: la base lo exige fuera de la preparación.
+	enPreparacion, err := w.End(clan.WarEndPeace, 0, 500)
 	require.NoError(t, err)
+	assert.Equal(t, int64(500), enPreparacion.EndsAtMs)
+	assert.Equal(t, int64(500), enPreparacion.EndedAtMs)
 }
 
 // RN-CLANWAR-007 y RN-CLANWAR-008: el marcador por lado, el vencedor por plazo
