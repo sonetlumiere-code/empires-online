@@ -58,6 +58,14 @@ import {
 } from '../src/state/units';
 import { ViewSync } from '../src/state/viewSync';
 import {
+  costText,
+  effectText,
+  researchBlockReason,
+  researchSeconds,
+  technologiesFor,
+  technologyName,
+} from '../src/state/technologies';
+import {
   CIVILIZATIONS,
   civilizationLabel,
   foreignGoods,
@@ -220,6 +228,8 @@ export default function Page() {
   // Clanes (SPEC-CLANS): el panel, el borrador del canal y el de fundar.
   const clans = useWorldStore((s) => s.clans);
   const [clanOpen, setClanOpen] = useState(false);
+  // El panel «Tecnologías» (SPEC-TECHNOLOGIES §4.7).
+  const [techOpen, setTechOpen] = useState(false);
   const [clanDraft, setClanDraft] = useState('');
   const [clanForm, setClanForm] = useState({ name: '', tag: '' });
   // Comercio (SPEC-TRADE): las ofertas pendientes y el trato que se está armando.
@@ -892,6 +902,14 @@ export default function Page() {
               {clans.clan ? `Clan [${clans.clan.tag}]` : 'Clan'}
               {clanBadge(clans, playerId, serverTimeMs()) > 0 ? ` (${clanBadge(clans, playerId, serverTimeMs())})` : ''}
             </button>
+            <button
+              className="secondary"
+              onClick={() => setTechOpen(!techOpen)}
+              aria-expanded={techOpen}
+              title="Mejoras para siempre que se investigan en la ciudad, una a la vez"
+            >
+              Tecnologías{ownCity.technologies.length > 0 ? ` (${ownCity.technologies.length})` : ''}
+            </button>
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
             <span title="Piedra de la ciudad: se recoge en las colinas">Piedra {ownCity.stocks.STONE}</span>
             {/* Los bienes: el propio siempre, los ajenos si hay (SPEC-CIVILIZATION-GOODS §4.6). */}
@@ -1036,6 +1054,12 @@ export default function Page() {
               <span style={{ color: 'var(--muted)' }}>
                 Avanzando a la {eraLabel(ownCity.advance.era)}:{' '}
                 {secondsUntil(ownCity.advance.completesAtMs, serverTimeMs())} s
+              </span>
+            )}
+            {ownCity.research && (
+              <span style={{ color: 'var(--muted)' }}>
+                Investigando {technologyName(ownCity.research.technology)}:{' '}
+                {secondsUntil(ownCity.research.completesAtMs, serverTimeMs())} s
               </span>
             )}
           </>
@@ -1304,6 +1328,15 @@ export default function Page() {
         />
       )}
 
+      {techOpen && ownCity && (
+        <TechnologyPanel
+          city={ownCity}
+          nowMs={serverTimeMs()}
+          onResearch={(code) => clientRef.current?.researchTechnology(ownCity.id, code)}
+          onClose={() => setTechOpen(false)}
+        />
+      )}
+
       {logOpen && (
         <section style={styles.log} aria-label="Registro">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -1463,6 +1496,77 @@ function NoticeStrip({
 }
 
 /** Las entradas del registro, con cuánto hace; las pérdidas, resaltadas. */
+/**
+ * El panel «Tecnologías» (SPEC-TECHNOLOGIES §4.7): las que la ciudad puede llegar a
+ * tener, por era, con su efecto, su coste y su plazo; las que tiene, marcadas; la
+ * que se investiga, con su cuenta atrás; las demás, con «Investigar» o con su
+ * motivo.
+ */
+function TechnologyPanel({
+  city,
+  nowMs,
+  onResearch,
+  onClose,
+}: {
+  city: CityView;
+  nowMs: number;
+  onResearch: (code: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <section style={styles.log} aria-label="Tecnologías">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        <strong>Tecnologías</strong>
+        <span style={{ color: 'var(--muted)' }}>Para siempre; una a la vez y nunca mientras la ciudad avanza de edad</span>
+        <button className="secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+      {technologiesFor(city.civilization).map((grupo) => (
+        <div key={grupo.era} style={{ marginBottom: '0.5rem' }}>
+          <div style={{ color: 'var(--muted)', margin: '0.25rem 0' }}>{eraLabel(grupo.era)}</div>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.3rem' }}>
+            {grupo.technologies.map((t) => {
+              const tiene = city.technologies.includes(t.code);
+              const enCurso = city.research?.technology === t.code;
+              const motivo = tiene || enCurso ? null : researchBlockReason(city, t);
+              return (
+                <li key={t.code} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <span style={{ minWidth: '11rem' }}>
+                    <strong>{t.name}</strong>
+                    {t.civilization !== null && <span style={{ color: 'var(--muted)' }}> · propia</span>}
+                  </span>
+                  <span>{effectText(t)}</span>
+                  <span style={{ color: 'var(--muted)' }}>
+                    {costText(t, city.civilization)}, unos {researchSeconds(t, city.civilization, city.technologies)} s
+                  </span>
+                  {tiene && <span style={{ color: 'var(--ok, #5bd15b)' }}>✓ La tienes</span>}
+                  {enCurso && city.research && (
+                    <span style={{ color: 'var(--muted)' }}>Investigando: {secondsUntil(city.research.completesAtMs, nowMs)} s</span>
+                  )}
+                  {!tiene && !enCurso && (
+                    <>
+                      <button
+                        className="secondary"
+                        disabled={motivo !== null}
+                        title={motivo ?? `Investiga ${t.name}: ${costText(t, city.civilization)}`}
+                        onClick={() => onResearch(t.code)}
+                      >
+                        Investigar
+                      </button>
+                      {motivo && <span style={{ color: 'var(--muted)' }}>{motivo}</span>}
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function EventLogList({
   entries,
   isNew,

@@ -135,6 +135,13 @@ export interface CityView {
   /** Elaboración en curso del taller, o `null` (SPEC-CIVILIZATION-GOODS). */
   craft: { good: string; amount: number; completesAtMs: number } | null;
   /**
+   * Investigación en curso, o `null`. Sólo la conoce el dueño: en una ciudad
+   * ajena es siempre `null` (SPEC-TECHNOLOGIES RN-TECH-008).
+   */
+  research: { technology: string; completesAtMs: number } | null;
+  /** Tecnologías de su dueño, en orden de código; vacía en una ciudad ajena (RN-TECH-008). */
+  technologies: readonly string[];
+  /**
    * Instante del último golpe de saqueo, si lo hubo en esta sesión. Sólo lo
    * recibe el dueño (SPEC-COMBAT-PILLAGE RN-COMBAT-028).
    */
@@ -361,6 +368,8 @@ function cityFromView(c: v1.CityView): CityView {
     production: c.production ?? null,
     advance: c.advance ?? null,
     craft: c.craft ?? null,
+    research: c.research ?? null,
+    technologies: c.technologies ?? [],
     factionJoin: c.factionJoin ?? null,
     clan: c.clan ?? null,
   };
@@ -593,6 +602,9 @@ export const useWorldStore = create<WorldState>((set, get) => {
             era: p.era !== undefined ? p.era : existing.era,
             advance: p.advance !== undefined ? p.advance : existing.advance,
             craft: p.craft !== undefined ? p.craft : existing.craft,
+            // SPEC-TECHNOLOGIES §6: sólo llegan al dueño.
+            research: p.research !== undefined ? p.research : existing.research,
+            technologies: p.technologies !== undefined ? p.technologies : existing.technologies,
             faction: p.faction !== undefined ? p.faction : existing.faction,
             factionJoin: p.factionJoin !== undefined ? p.factionJoin : existing.factionJoin,
             clan: p.clan !== undefined ? p.clan : existing.clan,

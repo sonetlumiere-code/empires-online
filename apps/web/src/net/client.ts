@@ -448,6 +448,12 @@ export class GameClient {
     return this.send('city.advance', { cityId });
   }
 
+  // Investigación (SPEC-TECHNOLOGIES): la ciudad y la tecnología; el coste, el
+  // plazo y si está a su alcance los decide el servidor.
+  researchTechnology(cityId: number, technology: string): string {
+    return this.send('city.research', { cityId, technology });
+  }
+
   // Combate (SPEC-COMBAT-RAID). Sólo quién y a quién: la persecución, el daño y
   // el botín los decide el servidor.
 
