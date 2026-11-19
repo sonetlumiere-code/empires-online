@@ -324,6 +324,14 @@ export class GameClient {
   }
 
   /**
+   * Encarga el mercado en un tile de la zona urbana de una ciudad propia
+   * (SPEC-MARKETS §4.1).
+   */
+  buildMarket(cityId: number, tile: { x: number; y: number }): string {
+    return this.send('city.build', { cityId, type: 'MARKET', x: tile.x, y: tile.y });
+  }
+
+  /**
    * Encarga al taller una elaboración (SPEC-CIVILIZATION-GOODS §4.3). Sólo la
    * ciudad: el bien, la cantidad, el coste y el tiempo los decide el servidor.
    */
@@ -480,6 +488,29 @@ export class GameClient {
   /** Retira la oferta de comercio propia. */
   cancelTrade(offerId: number): string {
     return this.send('trade.cancel', { offerId });
+  }
+
+  // Mercado (SPEC-MARKETS): qué da y pide cada lote y cuántos lotes, o sobre qué
+  // oferta; la comisión, si alcanza y la ruta los decide el servidor.
+
+  /** Publica una oferta en el mercado. */
+  postMarketOffer(give: v1.ResourceAmount, want: v1.ResourceAmount, lots: number): string {
+    return this.send('market.post', { give, want, lots });
+  }
+
+  /** Compra lotes de una oferta ajena del mercado. */
+  buyMarketOffer(offerId: number, lots: number): string {
+    return this.send('market.buy', { offerId, lots });
+  }
+
+  /** Retira la oferta propia del mercado. */
+  cancelMarketOffer(offerId: number): string {
+    return this.send('market.cancel', { offerId });
+  }
+
+  /** Pide el tablón del mercado, con un filtro opcional. */
+  listMarket(filter: { receive?: v1.ResourceType; pay?: v1.ResourceType } = {}): string {
+    return this.send('market.list', filter);
   }
 
   /** Acepta o rechaza una oferta recibida. */

@@ -17,6 +17,7 @@ import { create } from 'zustand';
 import { applyTreatyUpdate, type TreatyView } from './diplomacy';
 import { applyTradeUpdate, type TradeOfferView } from './trade';
 import { applyCaravanUpdate, type CaravanView } from './caravans';
+import { applyMarketListing, applyMarketUpdate, EMPTY_MARKET, type MarketState } from './market';
 import { applyEventLogPage, EMPTY_EVENT_LOG, markSeenLocally, type EventLogState } from './eventLog';
 import { applyNotice, EMPTY_NOTICES, markLogOpened, setTabHidden, type NoticeState } from './notices';
 import {
@@ -266,6 +267,8 @@ export interface WorldState {
    * Sólo las lee el HUD: en el mapa son unidades `CARAVAN` como cualquier otra.
    */
   caravans: readonly CaravanView[];
+  /** El mercado (SPEC-MARKETS): las ofertas propias y el último tablón. Sólo lo lee el HUD. */
+  market: MarketState;
   /** El registro (SPEC-EVENT-LOG): lo que el servidor contó que pasó. Sólo lo lee el HUD. */
   eventLog: EventLogState;
   /**
@@ -440,6 +443,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
     treaties: [],
     tradeOffers: [],
     caravans: [],
+    market: EMPTY_MARKET,
     eventLog: EMPTY_EVENT_LOG,
     notices: EMPTY_NOTICES,
     messages: EMPTY_MESSAGES,
@@ -516,6 +520,8 @@ export const useWorldStore = create<WorldState>((set, get) => {
         tradeOffers: [...(payload.tradeOffers ?? [])].sort((a, b) => a.id - b.id),
         // Y la de caravanas (SPEC-CARAVANS §6).
         caravans: [...(payload.caravans ?? [])].sort((a, b) => a.unitId - b.unitId),
+        // Y las ofertas propias del mercado (SPEC-MARKETS §6); el tablón se pide aparte.
+        market: { ...get().market, own: [...(payload.marketOffers ?? [])].sort((a, b) => a.id - b.id) },
       });
     },
 
@@ -659,6 +665,14 @@ export const useWorldStore = create<WorldState>((set, get) => {
 
         case 'caravan.update':
           set({ caravans: applyCaravanUpdate(get().caravans, message.payload.caravan) });
+          break;
+
+        case 'market.update':
+          set({ market: applyMarketUpdate(get().market, message.payload.offer, get().playerId) });
+          break;
+
+        case 'market.listing':
+          set({ market: applyMarketListing(get().market, message.payload.offers) });
           break;
 
         case 'forest.update': {
@@ -900,6 +914,7 @@ export const useWorldStore = create<WorldState>((set, get) => {
         treaties: [],
         tradeOffers: [],
         caravans: [],
+        market: EMPTY_MARKET,
         eventLog: EMPTY_EVENT_LOG,
         notices: EMPTY_NOTICES,
         messages: EMPTY_MESSAGES,

@@ -15,7 +15,7 @@ import { GameClient, type ConnectionState } from '../src/net/client';
 import { login, logout, register, resumeSession, ticketProvider, AuthError } from '../src/net/auth';
 import type { v1 } from '@empires-online/protocol';
 
-import { terrainAt, useWorldStore, type CityView } from '../src/state/world';
+import { terrainAt, useWorldStore, type BuildingView, type CityView } from '../src/state/world';
 import { createHudSelector } from '../src/state/selectors';
 import {
   advanceBlockReason,
@@ -58,6 +58,22 @@ import {
 } from '../src/state/units';
 import { ViewSync } from '../src/state/viewSync';
 import {
+  buyBlockReason,
+  buyCost,
+  lotLabel,
+  MARKET_COST,
+  MARKET_MAX_LOTS,
+  marketBuildBlockReason,
+  marketMissingReason,
+  offerDistance,
+  ownOfferLabel,
+  postBlockReason,
+  postCost,
+  type MarketDraft,
+  type MarketOfferView,
+  type MarketState,
+} from '../src/state/market';
+import {
   costText,
   effectText,
   researchBlockReason,
@@ -86,6 +102,7 @@ import {
 import {
   canTradeWith,
   draftLines,
+  formatHours,
   offerBlockReason,
   resourceName,
   TRADE_RESOURCES,
@@ -230,6 +247,9 @@ export default function Page() {
   const [clanOpen, setClanOpen] = useState(false);
   // El panel «Tecnologías» (SPEC-TECHNOLOGIES §4.7).
   const [techOpen, setTechOpen] = useState(false);
+  // El panel «Mercado» (SPEC-MARKETS §4.8): sus ofertas y el último tablón.
+  const market = useWorldStore((s) => s.market);
+  const [marketOpen, setMarketOpen] = useState(false);
   const [clanDraft, setClanDraft] = useState('');
   const [clanForm, setClanForm] = useState({ name: '', tag: '' });
   // Comercio (SPEC-TRADE): las ofertas pendientes y el trato que se está armando.
@@ -810,6 +830,13 @@ export default function Page() {
     const tile = firstFreeHouseTile(ownCity, buildingsOf(state.buildings, ownCity.id));
     if (tile) clientRef.current?.buildWorkshop(ownCity.id, tile);
   };
+  // «Mercado»: como «Taller», en el primer hueco libre (SPEC-MARKETS §4.8).
+  const buildMarket = () => {
+    const state = useWorldStore.getState();
+    if (!ownCity) return;
+    const tile = firstFreeHouseTile(ownCity, buildingsOf(state.buildings, ownCity.id));
+    if (tile) clientRef.current?.buildMarket(ownCity.id, tile);
+  };
   // «Castillo»: como «Taller», en el primer hueco libre (SPEC-CASTLE-AGE §4.7).
   const buildCastle = () => {
     const state = useWorldStore.getState();
@@ -910,6 +937,20 @@ export default function Page() {
             >
               Tecnologías{ownCity.technologies.length > 0 ? ` (${ownCity.technologies.length})` : ''}
             </button>
+            {ownCity.era !== 'STONE_AGE' && (
+              <button
+                className="secondary"
+                onClick={() => {
+                  // El tablón se pide al abrir el panel (SPEC-MARKETS §4.8).
+                  if (!marketOpen) clientRef.current?.listMarket();
+                  setMarketOpen(!marketOpen);
+                }}
+                aria-expanded={marketOpen}
+                title="Compra y vende a cualquiera sin un tratado: ofertas públicas en lotes, con comisión"
+              >
+                Mercado{market.own.length > 0 ? ` (${market.own.length})` : ''}
+              </button>
+            )}
             <span title="Madera de la ciudad">Madera {ownCity.stocks.WOOD}</span>
             <span title="Piedra de la ciudad: se recoge en las colinas">Piedra {ownCity.stocks.STONE}</span>
             {/* Los bienes: el propio siempre, los ajenos si hay (SPEC-CIVILIZATION-GOODS §4.6). */}
@@ -951,6 +992,19 @@ export default function Page() {
             >
               Taller
             </button>
+            {ownCity.era !== 'STONE_AGE' && !ownBuildings.some((b) => b.type === 'MARKET') && (
+              <button
+                className="secondary"
+                onClick={buildMarket}
+                disabled={marketBuildBlockReason(ownCity, ownBuildings) !== null}
+                title={
+                  marketBuildBlockReason(ownCity, ownBuildings) ??
+                  `Encarga el mercado: ${MARKET_COST.WOOD} de madera y ${MARKET_COST.STONE} de piedra, unos 60 s. Deja publicar y comprar en el tablón público`
+                }
+              >
+                Construir mercado
+              </button>
+            )}
             {(ownCity.era === 'IRON_AGE' || ownCity.era === 'CASTLE_AGE') && (
               <button
                 className="secondary"
@@ -1337,6 +1391,26 @@ export default function Page() {
         />
       )}
 
+      {marketOpen && ownCity && (
+        <MarketPanel
+          city={ownCity}
+          cityBuildings={ownBuildings}
+          market={market}
+          nowMs={serverTimeMs()}
+          onRefresh={() => clientRef.current?.listMarket()}
+          onPost={(d) =>
+            clientRef.current?.postMarketOffer(
+              { resource: d.giveResource, amount: d.giveAmount },
+              { resource: d.wantResource, amount: d.wantAmount },
+              d.lots,
+            )
+          }
+          onBuy={(id, lots) => clientRef.current?.buyMarketOffer(id, lots)}
+          onCancel={(id) => clientRef.current?.cancelMarketOffer(id)}
+          onClose={() => setMarketOpen(false)}
+        />
+      )}
+
       {logOpen && (
         <section style={styles.log} aria-label="Registro">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -1567,6 +1641,167 @@ function TechnologyPanel({
   );
 }
 
+/**
+ * El panel «Mercado» (SPEC-MARKETS §4.8): el tablón con las ofertas de los demás,
+ * el formulario de venta y las ofertas propias. Todo lo decide el servidor; los
+ * motivos sólo evitan mandar lo que se rechazaría seguro.
+ */
+function MarketPanel({
+  city,
+  cityBuildings,
+  market,
+  nowMs,
+  onRefresh,
+  onPost,
+  onBuy,
+  onCancel,
+  onClose,
+}: {
+  city: CityView;
+  cityBuildings: readonly BuildingView[];
+  market: MarketState;
+  nowMs: number;
+  onRefresh: () => void;
+  onPost: (d: MarketDraft) => void;
+  onBuy: (offerId: number, lots: number) => void;
+  onCancel: (offerId: number) => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<'buy' | 'sell' | 'own'>('buy');
+  const [lotsFor, setLotsFor] = useState<Record<number, number>>({});
+  const [draft, setDraft] = useState<MarketDraft>({ giveResource: 'STONE', giveAmount: 20, wantResource: 'WOOD', wantAmount: 30, lots: 3 });
+  const sinMercado = marketMissingReason(cityBuildings);
+  const venta = postCost(draft.giveAmount, draft.lots);
+  const motivoVenta = postBlockReason(draft, city.stocks, cityBuildings, market.own.length);
+  const numero = (v: string) => (v === '' ? 0 : Math.trunc(Number(v)));
+  return (
+    <section style={styles.log} aria-label="Mercado">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+        <strong>Mercado</strong>
+        {(['buy', 'sell', 'own'] as const).map((t) => (
+          <button key={t} className={tab === t ? undefined : 'secondary'} onClick={() => setTab(t)} aria-pressed={tab === t}>
+            {t === 'buy' ? 'Comprar' : t === 'sell' ? 'Vender' : `Mis ofertas (${market.own.length})`}
+          </button>
+        ))}
+        {sinMercado && <span style={{ color: 'var(--muted)' }}>{sinMercado}: no puedes publicar ni comprar</span>}
+        <button className="secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+
+      {tab === 'buy' && (
+        <div>
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginBottom: '0.4rem' }}>
+            <span style={{ color: 'var(--muted)' }}>Las ofertas abiertas de otros jugadores. Cada lote paga además una comisión de la décima parte.</span>
+            <button className="secondary" style={{ marginLeft: 'auto' }} onClick={onRefresh}>
+              Actualizar
+            </button>
+          </div>
+          {market.board === null ? (
+            <p style={{ color: 'var(--muted)' }}>Cargando el tablón…</p>
+          ) : market.board.length === 0 ? (
+            <p style={{ color: 'var(--muted)' }}>No hay ofertas en el mercado.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.35rem' }}>
+              {market.board.map((o: MarketOfferView) => {
+                const lots = Math.min(lotsFor[o.id] ?? 1, Math.max(o.lotsLeft, 1));
+                const coste = buyCost(o, lots);
+                const motivo = buyBlockReason(o, lots, city, cityBuildings);
+                const d = offerDistance(city, o);
+                return (
+                  <li key={o.id} style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ minWidth: '9rem' }}>
+                      <strong>{o.cityName ?? 'otro jugador'}</strong>
+                      <span style={{ color: 'var(--muted)' }}>
+                        {o.civilization ? ` · ${o.civilization.toLowerCase()}` : ''}
+                        {d !== null ? ` · ${d} casillas` : ''}
+                      </span>
+                    </span>
+                    <span>{lotLabel(o)}</span>
+                    <span style={{ color: 'var(--muted)' }}>
+                      quedan {o.lotsLeft} · caduca en {formatHours(o.expiresAtMs - nowMs)}
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={o.lotsLeft}
+                      value={lots}
+                      aria-label="Lotes"
+                      style={{ width: '4rem' }}
+                      onChange={(e) => setLotsFor({ ...lotsFor, [o.id]: numero(e.target.value) })}
+                    />
+                    <button
+                      className="secondary"
+                      disabled={motivo !== null}
+                      title={motivo ?? `Pagas ${coste.pay} de ${resourceName(o.want.resource)} más ${coste.commission} de comisión; recibes ${coste.receive} de ${resourceName(o.give.resource)} en una caravana`}
+                      onClick={() => onBuy(o.id, lots)}
+                    >
+                      Comprar ({coste.total} de {resourceName(o.want.resource)})
+                    </button>
+                    {motivo && <span style={{ color: 'var(--muted)' }}>{motivo}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {tab === 'sell' && (
+        <div style={{ display: 'grid', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>Cada lote da</span>
+            <input type="number" min={1} value={draft.giveAmount} aria-label="Cantidad que da cada lote" style={{ width: '5rem' }}
+              onChange={(e) => setDraft({ ...draft, giveAmount: numero(e.target.value) })} />
+            <select value={draft.giveResource} aria-label="Recurso que das"
+              onChange={(e) => setDraft({ ...draft, giveResource: e.target.value as MarketDraft['giveResource'] })}>
+              {TRADE_RESOURCES.map((r) => <option key={r} value={r}>{resourceName(r)}</option>)}
+            </select>
+            <span>y pide</span>
+            <input type="number" min={1} value={draft.wantAmount} aria-label="Cantidad que pide cada lote" style={{ width: '5rem' }}
+              onChange={(e) => setDraft({ ...draft, wantAmount: numero(e.target.value) })} />
+            <select value={draft.wantResource} aria-label="Recurso que pides"
+              onChange={(e) => setDraft({ ...draft, wantResource: e.target.value as MarketDraft['wantResource'] })}>
+              {TRADE_RESOURCES.map((r) => <option key={r} value={r}>{resourceName(r)}</option>)}
+            </select>
+            <span>·</span>
+            <input type="number" min={1} max={MARKET_MAX_LOTS} value={draft.lots} aria-label="Lotes" style={{ width: '4rem' }}
+              onChange={(e) => setDraft({ ...draft, lots: numero(e.target.value) })} />
+            <span>lotes</span>
+          </div>
+          <span style={{ color: 'var(--muted)' }}>
+            Salen de tu almacén {venta.custody} de {resourceName(draft.giveResource)} en custodia y {venta.commission} de comisión, que no vuelve aunque la retires o caduque (24 h).
+          </span>
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+            <button disabled={motivoVenta !== null} title={motivoVenta ?? 'Publica la oferta en el tablón'} onClick={() => onPost(draft)}>
+              Publicar
+            </button>
+            {motivoVenta && <span style={{ color: 'var(--muted)' }}>{motivoVenta}</span>}
+          </div>
+        </div>
+      )}
+
+      {tab === 'own' && (
+        market.own.length === 0 ? (
+          <p style={{ color: 'var(--muted)' }}>No tienes ofertas abiertas.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.35rem' }}>
+            {market.own.map((o) => (
+              <li key={o.id} style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>{ownOfferLabel(o)}</span>
+                <span style={{ color: 'var(--muted)' }}>caduca en {formatHours(o.expiresAtMs - nowMs)}</span>
+                <button className="secondary" title="Vuelve a tu almacén lo que queda en custodia; la comisión, no" onClick={() => onCancel(o.id)}>
+                  Retirar
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </section>
+  );
+}
+
 function EventLogList({
   entries,
   isNew,
@@ -1586,11 +1821,12 @@ function EventLogList({
             {entryText(e)}
           </span>
           <span style={{ color: 'var(--muted)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{timeAgo(e.lastAtMs, nowMs)}</span>
-          {onWrite && (
+          {/* MARKET_EXPIRED no tiene otro jugador a quien escribir (SPEC-MARKETS §6). */}
+          {onWrite && e.otherPlayerId !== null && (
             <button
               className="secondary"
               style={{ fontSize: '0.72rem', padding: '0.1rem 0.4rem' }}
-              onClick={() => onWrite(e.otherPlayerId, e.otherCityId, e.otherCityName)}
+              onClick={() => onWrite(e.otherPlayerId!, e.otherCityId, e.otherCityName)}
             >
               Escribir
             </button>

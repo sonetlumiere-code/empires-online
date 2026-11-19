@@ -297,6 +297,14 @@ function rawText(e: EventLogEntry): string {
       return `La guerra con ${clanName(e.clanTag)} terminó: ${WAR_RESULT[e.warResult ?? ''] ?? 'fin'}${
         e.ourScore !== undefined && e.theirScore !== undefined ? ` por ${e.ourScore} – ${e.theirScore}` : ''
       }${e.warReason ? ` (${WAR_REASON[e.warReason]})` : ''}`;
+    // El mercado (SPEC-MARKETS Q11): al vendedor, la venta (lo que salió de la
+    // custodia y lo que viene en la caravana) y la caducidad, sin otro jugador.
+    case 'MARKET_SOLD':
+      return `${who} compró ${lotes(e.lots)} de tu oferta en el mercado: le mandas ${describeLines(e.tradeGive ?? [])} y te manda ${describeLines(e.tradeGet ?? [])}`;
+    case 'MARKET_EXPIRED':
+      return `Tu oferta del mercado caducó: ${
+        e.lots !== undefined ? `${lotes(e.lots)} sin vender, ` : ''
+      }vuelven ${describeLines(e.tradeGet ?? [])} a tu almacén`;
     default:
       return `${who}: ${String(e.kind)}`;
   }
@@ -333,6 +341,12 @@ const WAR_REASON: Record<string, string> = {
   TIMEOUT: 'plazo',
   DISSOLVED: 'disolución',
 };
+
+/** «1 lote», «3 lotes». */
+function lotes(n: number | undefined): string {
+  if (n === undefined) return 'lotes';
+  return n === 1 ? '1 lote' : `${n} lotes`;
+}
 
 /** «[LOB]», o «tu clan» si la entrada no trae la sigla. */
 function clanName(tag: string | undefined): string {
