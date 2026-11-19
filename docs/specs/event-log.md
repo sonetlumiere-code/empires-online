@@ -117,6 +117,16 @@ retirada o el rechazo de una oferta no entran. Cada suceso de una guerra es su p
 pacto de no agresión con Villa Norte: la paz termina a las 15:30»). `EventTypes` gana `ClanWarDeclared`,
 `ClanWarPeaceOffered` y `ClanWarEnded`; el catálogo pasa de 37 a 40 tipos.
 
+**Precisión (2026-11-18, [markets.md](markets.md) Q11, [ADR-047](../decisions/ADR-047-markets.md)).**
+Desde E26 entra el mercado, sólo para el vendedor y sin aviso en vivo. La venta (`MARKET_SOLD`, de `MarketPurchase`, con
+el comprador como `counterpart_player_id`) lleva `lots`, lo que salió de la custodia en `tradeGive` y lo que viene en la
+caravana del comprador en `tradeGet` («Villa Norte compró 2 lotes de tu oferta en el mercado: le mandas 40 de piedra y te
+manda 60 de madera»); al comprador no se le cuenta su compra. La caducidad (`MARKET_EXPIRED`, de `MarketOfferExpired`) es
+la **única entrada sin otro jugador**: `otherPlayerId`, `otherCityId` y `otherCityName` van a `null`, y lleva los lotes
+devueltos en `lots` y lo que volvió al almacén en `tradeGet` («Tu oferta del mercado caducó: 1 lote sin vender, vuelven
+20 de piedra a tu almacén»). La publicación y la retirada no entran: las ordenó el propio jugador. Cada suceso es su
+propia entrada. `EventTypes` gana `MarketPurchase` y `MarketOfferExpired`; el catálogo pasa de 40 a 42 tipos.
+
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) §6, [ADR-041](../decisions/ADR-041-clan-territories.md) §5).**
 Desde E19, con un clan dueño, `TerritoryClaimStarted` y `TerritoryControlChanged` se escriben una fila por miembro
 abierto del clan, con `only: "player"` en el payload: cada fila le cuenta el suceso sólo a su miembro, con la sigla del

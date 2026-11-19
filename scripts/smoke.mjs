@@ -121,6 +121,18 @@
  *      (encarga una si no tiene). Cuando ya tiene todas las que puede pagar, lo dice y
  *      sigue. Necesita madera y piedra (con el servidor parado,
  *      EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed).
+ *  13h. sólo con --mercado (SPEC-MARKETS): smoke_runner y smoke_victim, los dos en la Edad de
+ *      Bronce o después, tienen su mercado (si no, lo construyen: 150 de madera, 100 de piedra
+ *      y 60 s con el rasgo de su civilización); las ofertas abiertas de smoke_runner de una
+ *      pasada anterior se retiran; dar y pedir lo mismo se rechaza (INVALID_TARGET);
+ *      smoke_runner publica 2 lotes de 10 de madera por 2 de piedra y su almacén pierde 22
+ *      (20 en custodia y 2 de comisión); smoke_victim lee el tablón (market.listing), no se
+ *      la puede comprar el vendedor (INVALID_TARGET) y compra un lote pagando 3 de piedra
+ *      (2 y 1 de comisión); los dos reciben market.update, y la caravana de madera llega a
+ *      smoke_victim; smoke_runner retira el lote que queda y le vuelven 10 de madera, sin la
+ *      comisión; su registro cuenta la venta (MARKET_SOLD). La caravana tarda minutos.
+ *      Necesita madera y piedra en las dos ciudades (con el servidor parado,
+ *      EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed).
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -191,7 +203,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--tecnologia] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--guerra-clan] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--tecnologia] [--mercado] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--guerra-clan] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -228,6 +240,7 @@ const BIENES = args.includes('--bienes');
 const UNIDAD_CIVILIZACION = args.includes('--unidad-civilizacion');
 const CASTILLO = args.includes('--castillo');
 const TECNOLOGIA = args.includes('--tecnologia');
+const MERCADO = args.includes('--mercado');
 const CARAVANA = args.includes('--caravana');
 const MENSAJES = args.includes('--mensajes');
 const FACCION = args.includes('--faccion');
@@ -819,6 +832,10 @@ async function main() {
 
   if (TECNOLOGIA) {
     await tecnologia(segunda, ciudad);
+  }
+
+  if (MERCADO) {
+    await mercado(segunda, ciudad);
   }
 
   if (CARAVANA) {
@@ -1416,6 +1433,142 @@ async function tecnologia(propio, ciudadInicial) {
   }
   if (casa.maxHp !== esperada) fallar(`con Albañilería, una casa no aguanta ${esperada}`, casa);
   ok('con Albañilería, sus casas aguantan más', `${VIDA_DE_CASA} -> ${casa.maxHp}`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Mercado (SPEC-MARKETS), sólo con --mercado
+// ─────────────────────────────────────────────────────────────
+
+/** Lo que cuesta y tarda el mercado (SPEC-MARKETS Q3). */
+const COSTE_DEL_MERCADO = { WOOD: 150, STONE: 100 };
+const PLAZO_DEL_MERCADO = 60_000;
+
+/** La comisión de un lote que da `cantidad`: la décima parte, hacia arriba (RN-MARKET-006). */
+export function comisionDelMercado(cantidad) {
+  return cantidad > 0 ? Math.ceil(cantidad / 10) : 0;
+}
+
+/** Lo que sale del almacén al publicar `lotes` lotes que dan `cantidad`: custodia y comisión. */
+export function costeDePublicar(cantidad, lotes) {
+  return lotes * (cantidad + comisionDelMercado(cantidad));
+}
+
+/** El mercado en pie de una ciudad, o `undefined`. */
+export function mercadoDe(edificios, cityId) {
+  return edificios.find((b) => b.cityId === cityId && b.type === 'MARKET');
+}
+
+/**
+ * El mercado de una ciudad, completo: el que haya, o uno nuevo con el plazo de su
+ * civilización. Devuelve los edificios de la ciudad tras construirlo.
+ */
+async function asegurarMercado(sesion, ciudad, edificios, quien) {
+  let m = mercadoDe(edificios, ciudad.id);
+  if (!m) {
+    const stocks = ciudad.stocks ?? {};
+    if ((stocks.WOOD ?? 0) < COSTE_DEL_MERCADO.WOOD || (stocks.STONE ?? 0) < COSTE_DEL_MERCADO.STONE) {
+      fallar(`${quien} no tiene para el mercado (150 de madera y 100 de piedra)`,
+        'con el servidor parado: EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed');
+    }
+    const hueco = huecoParaCasa(ciudad, edificios.filter((b) => b.cityId === ciudad.id));
+    if (!hueco) fallar(`no queda hueco para el mercado de ${quien}`, edificios);
+    sesion.enviar('city.build', { cityId: ciudad.id, type: 'MARKET', x: hueco.x, y: hueco.y });
+    const spawn = await sesion.esperarQue(['building.spawn', 'system.error'],
+      (m2) => m2.type === 'system.error' || (m2.payload.building.cityId === ciudad.id && m2.payload.building.type === 'MARKET'), 15_000);
+    if (spawn.type === 'system.error') fallar(`no se pudo encargar el mercado de ${quien}`, spawn.payload);
+    const plazo = escalarDuracion(PLAZO_DEL_MERCADO, rasgo(CATALOGO, ciudad.civilization, 'production.speed'));
+    const queda = comprobarPlazo('el mercado', spawn.payload.building.completesAtMs, spawn.ts, plazo);
+    ok(`mercado de ${quien} encargado`, `${ciudad.civilization}: ${plazo} ms (quedaban ${queda})`);
+    m = spawn.payload.building;
+  }
+  if (m.status !== 'COMPLETE') {
+    await sesion.esperarQue('building.update', (u) => u.payload.id === m.id && u.payload.status === 'COMPLETE',
+      Math.max(0, m.completesAtMs - Date.now()) + 15_000);
+  }
+  ok(`mercado de ${quien} completo`, `(${m.x}, ${m.y})`);
+}
+
+async function ofertaDelMercado(sesion, cond, ms = 10_000) {
+  return (await sesion.esperarQue('market.update', (m) => cond(m.payload.offer), ms)).payload.offer;
+}
+
+async function mercado(propio, ciudadInicial) {
+  const s = propio.sesion;
+  s.enviar('session.view', { center: { x: ciudadInicial.centerX, y: ciudadInicial.centerY } });
+  const vista = (await s.esperar('world.snapshot')).payload;
+  const c = vista.cities.find((x) => x.id === ciudadInicial.id) ?? ciudadInicial;
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const v = victima.snapshot.payload;
+  const cv = v.cities.find((x) => x.ownerPlayerId === cuenta.playerId);
+  if (!cv) fallar('la víctima no tiene ciudad en su snapshot', v.cities);
+  for (const [quien, ciudad] of [[USUARIO, c], [VICTIMA, cv]]) {
+    if (ciudad.era === 'STONE_AGE') {
+      fallar(`${quien} sigue en la Edad de Piedra y el mercado pide Bronce`, 'llévala a Bronce (--avance para smoke_runner)');
+    }
+  }
+  await asegurarMercado(s, c, vista.buildings, USUARIO);
+  await asegurarMercado(victima.sesion, cv, v.buildings, VICTIMA);
+
+  // Las ofertas abiertas de una pasada anterior: las retira su dueño (Q10: 3 como mucho).
+  for (const vieja of propio.snapshot.payload.marketOffers ?? []) {
+    s.enviar('market.cancel', { offerId: vieja.id });
+    await ofertaDelMercado(s, (o) => o.id === vieja.id && o.status !== 'OPEN');
+    ok('oferta de una pasada anterior retirada', `oferta ${vieja.id}`);
+  }
+
+  // RN-MARKET-002: dar y pedir lo mismo se rechaza.
+  const id0 = s.enviar('market.post', { give: { resource: 'WOOD', amount: 1 }, want: { resource: 'WOOD', amount: 1 }, lots: 1 });
+  const r0 = await s.esperarQue('system.error', (m) => m.requestId === id0);
+  if (r0.payload.code !== 'INVALID_TARGET') fallar('dar y pedir lo mismo no se rechazó', r0.payload);
+  ok('dar y pedir lo mismo se rechaza', `INVALID_TARGET: ${r0.payload.message}`);
+
+  // La publicación: 2 lotes de 10 de madera por 2 de piedra; salen 22 de madera.
+  s.enviar('session.view', { center: { x: c.centerX, y: c.centerY } });
+  const antes = (await s.esperar('world.snapshot')).payload.cities.find((x) => x.id === c.id);
+  const maderaAntes = antes.stocks.WOOD;
+  const coste = costeDePublicar(10, 2);
+  if (maderaAntes < coste) fallar(`${USUARIO} tiene ${maderaAntes} de madera y publicar cuesta ${coste}`, 'EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed');
+  s.enviar('market.post', { give: { resource: 'WOOD', amount: 10 }, want: { resource: 'STONE', amount: 2 }, lots: 2 });
+  const publicada = await ofertaDelMercado(s, (o) => o.status === 'OPEN' && o.lotsTotal === 2 && o.give.amount === 10);
+  await s.esperarQue('city.update', (m) => m.payload.id === c.id && m.payload.stocks && m.payload.stocks.WOOD === maderaAntes - coste);
+  ok('oferta publicada con su custodia', `${publicada.id}: madera ${maderaAntes} -> ${maderaAntes - coste} (20 en custodia y 2 de comisión)`);
+
+  // El tablón de la víctima la lleva; el vendedor no se la puede comprar.
+  const idL = victima.sesion.enviar('market.list', { receive: 'WOOD' });
+  const tablon = await victima.sesion.esperarQue('market.listing', (m) => m.requestId === idL);
+  if (!tablon.payload.offers.some((o) => o.id === publicada.id)) fallar('el tablón de la víctima no lleva la oferta', tablon.payload);
+  ok('el tablón la lleva', `${tablon.payload.offers.length} ofertas de madera`);
+  const idP = s.enviar('market.buy', { offerId: publicada.id, lots: 1 });
+  const rP = await s.esperarQue('system.error', (m) => m.requestId === idP);
+  if (rP.payload.code !== 'INVALID_TARGET') fallar('el vendedor pudo comprarse su oferta', rP.payload);
+  ok('nadie se compra a sí mismo', 'INVALID_TARGET (INV-TRADE-010)');
+
+  // La compra de un lote: la víctima paga 3 de piedra y recibe la caravana de madera.
+  const piedraV = cv.stocks?.STONE ?? 0;
+  const maderaV = cv.stocks?.WOOD ?? 0;
+  if (piedraV < 3) fallar(`${VICTIMA} tiene ${piedraV} de piedra y el lote cuesta 3`, 'EO_DEVSEED_STOCK_FOR=smoke_victim pnpm run dev:seed');
+  victima.sesion.enviar('market.buy', { offerId: publicada.id, lots: 1 });
+  const comprada = await ofertaDelMercado(victima.sesion, (o) => o.id === publicada.id && o.lotsLeft === 1, 15_000);
+  await ofertaDelMercado(s, (o) => o.id === publicada.id && o.lotsSold === 1, 15_000);
+  await victima.sesion.esperarQue('city.update', (m) => m.payload.id === cv.id && m.payload.stocks && m.payload.stocks.STONE === piedraV - 3);
+  ok('lote comprado', `${cv.name}: piedra ${piedraV} -> ${piedraV - 3} (2 y 1 de comisión); quedan ${comprada.lotsLeft}`);
+  const deMadera = await caravanaDe(victima.sesion, (k) => k.senderPlayerId === c.ownerPlayerId && k.toCityId === cv.id);
+  ok('caravana del mercado en camino', `${deMadera.unitId}: 10 de madera hacia ${cv.name}, llega en ${segundosHasta(deMadera.arrivesAtMs)} s`);
+
+  // La retirada del lote que queda: vuelven 10 de madera; la comisión, no.
+  s.enviar('session.view', { center: { x: c.centerX, y: c.centerY } });
+  const ahora = (await s.esperar('world.snapshot')).payload.cities.find((x) => x.id === c.id);
+  s.enviar('market.cancel', { offerId: publicada.id });
+  await ofertaDelMercado(s, (o) => o.id === publicada.id && o.status === 'WITHDRAWN');
+  await s.esperarQue('city.update', (m) => m.payload.id === c.id && m.payload.stocks && m.payload.stocks.WOOD === ahora.stocks.WOOD + 10);
+  ok('oferta retirada', `vuelven 10 de madera; la comisión, no`);
+
+  await llegada(victima.sesion, deMadera, cv.id, 'WOOD', maderaV + 10);
+  const { entrada, pagina } = await entradaDelRegistro(s, (e) => e.kind === 'MARKET_SOLD' && e.otherPlayerId === cuenta.playerId);
+  if (!entrada || entrada.lots !== 1) fallar('el registro del vendedor no cuenta la venta', pagina.entries.slice(0, 5));
+  ok('el registro cuenta la venta', `MARKET_SOLD: 1 lote a ${cv.name}`);
+  victima.sesion.cerrar();
 }
 
 // ─────────────────────────────────────────────────────────────

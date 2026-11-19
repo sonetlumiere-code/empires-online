@@ -339,6 +339,25 @@ un mercado neutral, que duplica los viajes y necesita lugares de mercado en el m
 | contract / e2e | Los cuatro comandos, `market.listing`, `market.update`, `marketOffers[]`, `MARKET` y los dos `EventLogKind` contra el JSON Schema; por WebSocket, dos jugadores: uno publica, el otro lee el tablón y compra, los dos reciben su `market.update` y sus caravanas, en el mismo commit que `market.update` |
 | cliente | El panel con sus tres pestañas, el total con la comisión, cada motivo deshabilitado y la distancia; `scripts/smoke.mjs --mercado`: smoke_runner y smoke_victim, en Bronce y con mercado (si no lo tienen, lo construyen), uno publica y el otro compra un lote; los almacenes y las caravanas, y el registro del vendedor |
 
+**Precisiones de implementación (2026-11-18).**
+
+- **Una sola vista de oferta.** `market.listing` lleva la misma `MarketOfferView` que `market.update`, con `lotsSold` y
+  `status` también en el tablón (§6 los daba sólo a la vista propia): los dos son públicos y una sola forma simplifica el
+  cliente. La ciudad lleva `cityX` y `cityY`, su posición, no la de su depósito ([ADR-047](../decisions/ADR-047-markets.md) §6).
+- **`otherPlayerId` admite `null`** en `EventLogEntry`, sólo en `MARKET_EXPIRED`, con `otherCityId` y `otherCityName`
+  también a `null`: era un campo obligatorio de texto y la caducidad no tiene otro jugador. `EventLogEntry` gana `lots`.
+- **La clave de la oferta** en la cola es `market:<id>` (`simulation.MarketKey`).
+- **La caducidad** se mira en el barrido de los tratados, una vez por segundo, justo después del de los tratos; una oferta
+  con compras sin confirmar espera al barrido siguiente.
+- **Una orden repetida en vuelo** (el mismo `requestId` antes de que vuelva su transacción) se descarta en el tick sin
+  respuesta: la idempotencia de la conexión ya la había frenado, y la base, por `(player_id, request_id)`, no la
+  escribiría dos veces.
+- **La carga** deja fuera, con su `invariant_violation`, una oferta abierta cuyos lotes no cuadran con sus compras
+  (`MarketRepo.Violations`, `INV-TRADE-009`) o que no pasa la validación del dominio; la comprobación de las caravanas en
+  camino mira también las de una compra (su unidad y su carga contra la compra).
+- **El humo** (`--mercado`) usa 2 lotes de 10 de madera por 2 de piedra: smoke_runner publica (22 de madera), smoke_victim
+  compra un lote (3 de piedra), llega la caravana de madera y smoke_runner retira el lote que queda (vuelven 10).
+
 ## 10. Decisiones de producto (2026-11-18)
 
 Producto aceptó el 2026-11-18 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las

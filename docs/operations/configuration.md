@@ -134,6 +134,7 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_TREATY_BREAK_NOTICE_MINUTES` | int | `15` | 1–1440 | No | No | Preaviso de una ruptura: el tratado sigue `ACTIVE`, con la paz y las guarniciones, hasta que vence (`RN-DIPLO-004`). |
 | `EO_TREATY_RETRY_MINUTES` | int | `10` | 1–1440 | No | No | Tras un rechazo, cuánto espera quien propuso para volver a proponer al mismo jugador (`RN-DIPLO-008`). |
 | `EO_TRADE_OFFER_HOURS` | int | `24` | 1–720 | No | No | Vida de una oferta de comercio sin respuesta; al vencer pasa a `EXPIRED` (SPEC-TRADE Q5, `RN-TRADE-006`). |
+| `EO_MARKET_OFFER_HOURS` | int | `24` | 1–720 | No | No | Vida de una oferta del mercado; al vencer pasa a `EXPIRED` y lo que queda en custodia vuelve al almacén del vendedor, sin la comisión (SPEC-MARKETS Q10, `RN-MARKET-008`). |
 | `EO_TERRITORY_CLAIM_FREE_SECONDS` | int | `300` | 1–86400 | No | No | Segundos que un guerrero tiene que aguantar para conquistar un territorio libre (SPEC-TERRITORY-CONQUEST Q3, `RN-CONQ-007`). |
 | `EO_TERRITORY_CLAIM_SECONDS` | int | `600` | 1–86400 | No | No | Lo mismo para un territorio con dueño: da tiempo a que el dueño reciba el aviso y lo defienda (SPEC-TERRITORY-CONQUEST Q3). |
 | `EO_FACTION_JOIN_SECONDS` | int | `900` | 1–86400 | No | No | Preaviso de una entrada en un bando: hasta entonces el jugador sigue `NEUTRAL` a todos los efectos (SPEC-FACTIONS Q3, `RN-FAC-002`). |

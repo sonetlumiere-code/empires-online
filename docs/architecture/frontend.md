@@ -918,6 +918,34 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Los efectos** no tienen interfaz propia: se ven en los números que ya se ven (el plazo de una obra, la vida de una
   casa, la carga de un aldeano).
 
+### 4.22 El mercado (SPEC-MARKETS)
+
+> **Estado (2026-11-18): implementado y con tests de lo puro** (`src/state/market.ts`, `src/state/world.ts`,
+> `src/state/eventLog.ts`, `src/net/client.ts`, `src/render/scene.ts`, `app/page.tsx`).
+
+- **Qué llega.** `world.snapshot` trae en `marketOffers` las ofertas abiertas propias, que sustituyen la lista del
+  store (`market.own`). `market.update` añade o sustituye una propia mientras está `OPEN` y la quita al cerrarse; una
+  ajena (el comprador la recibe tras comprar) actualiza su fila del tablón o la quita si se agotó (`applyMarketUpdate`).
+  `market.listing` sustituye el tablón (`market.board`, `null` hasta que se pide).
+- **El edificio.** «Construir mercado» desde la Edad de Bronce, mientras la ciudad no tenga uno, en el primer hueco de
+  la zona urbana como el taller (`GameClient.buildMarket`), deshabilitado con su motivo (`marketBuildBlockReason`). En
+  el mapa, un puesto con mostrador y toldo a rayas del color de propio o ajeno (`paintMarketBody`).
+- **El panel «Mercado»**, que abre su botón del HUD desde Bronce («Mercado (n)», con las ofertas propias) y pide el
+  tablón al abrirse (`GameClient.listMarket`), con tres pestañas:
+  - **Comprar**: las ofertas de los demás con su ciudad, su civilización, su distancia en Chebyshev desde la ciudad
+    propia (`offerDistance`, con la posición de la ciudad, no del depósito), lo que da y pide cada lote, los lotes que
+    quedan y la caducidad; un campo de lotes y «Comprar (n de madera)» con el total y la comisión (`buyCost`),
+    deshabilitado con su motivo (`buyBlockReason`: sin mercado, es tuya, quedan menos lotes, fuera de alcance a más de
+    256, falta lo que se paga). «Actualizar» vuelve a pedir el tablón: no se refresca solo.
+  - **Vender**: qué da y pide cada lote, cuántos lotes, y lo que sale del almacén en custodia y en comisión
+    (`postCost`); «Publicar» (`GameClient.postMarketOffer`) deshabilitado con su motivo (`postBlockReason`: sin mercado,
+    3 abiertas, lo mismo en los dos lados, enteros fuera de rango, la cota por lado, falta lo que se da).
+  - **Mis ofertas**: las abiertas, con los vendidos y los que quedan (`ownOfferLabel`), la caducidad y «Retirar»
+    (`GameClient.cancelMarketOffer`).
+- **El registro** cuenta las ventas y las caducidades (`MARKET_SOLD`, `MARKET_EXPIRED`). La caducidad no tiene otro
+  jugador: su entrada llega con `otherPlayerId: null` y no ofrece «Escribir».
+- **Lo comprado y lo vendido** viaja en caravanas: aparece en «Caravanas en camino», como un trato (§4.12).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

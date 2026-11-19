@@ -406,16 +406,16 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 
 | ID | Invariante | Sev | Aplicación | Cob. | Test |
 |---|---|---|---|---|---|
-| INV-TRADE-001 | Un trato nunca crea ni destruye recursos | CRITICO | DB, DOMAIN, TEST | ~ | Sin test de la comisión del mercado (E26); `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada`, `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez`, `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes`, `TestGoldenCaravanasDelTratoALaLlegada` |
+| INV-TRADE-001 | Un trato nunca crea ni destruye recursos | CRITICO | DB, DOMAIN, TEST | ✓ | `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada`, `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez`, `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes`, `TestGoldenCaravanasDelTratoALaLlegada`, `TestElEjemploDeLaSpec`, `TestGoldenMercadoPublicarComprarLlegarYCaducar` |
 | INV-TRADE-002 | Toda oferta aceptada se aceptó con un tratado vigente entre los dos | ALTO | DOMAIN, TEST | ✓ | `TestAceptarSinTratadoSeRechaza`, `TestElFinDelPreavisoCierraLasOfertas`, `TestQueTratadoDejaComerciar` |
 | INV-TRADE-003 | Entre dos jugadores, como mucho una oferta pendiente | ALTO | DB, DOMAIN, TEST | ✓ | `Test_INV_TRADE_003_UnaOfertaPendientePorPar` (integration), `TestRechazosDelComercio` |
 | INV-TRADE-004 | Una oferta sólo la acepta o la rechaza su destinatario, y sólo la retira quien la hizo | CRITICO | DOMAIN, TEST | ✓ | `TestSoloRespondeElDestinatarioYSoloRetiraQuienOfrece`, `TestRechazosDelComercio` |
 | INV-TRADE-005 | La carga de una caravana no cambia en el camino | CRITICO | DB, DOMAIN, TEST | ✓ | `TestUnaCapturaCambiaElDuenoYNoLaCarga`, `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration), `TestUnTerceroCapturaLaCaravanaYSeLaLleva` |
 | INV-TRADE-006 | Una caravana se entrega como mucho una vez | CRITICO | DB, DOMAIN, TEST | ✓ | `Test_INV_TRADE_006_UnaCaravanaSeEntregaUnaSolaVez`, `TestUnaEntregaAdelantadaNoEscribeNada` (integration), `TestUnaEntregaDescartadaSeReintentaConVersionNueva`, `TestTrasUnReinicioLasCaravanasLleganASuHora` |
-| INV-TRADE-007 | Toda caravana nace de un trato aceptado, dos por trato | ALTO | DB, DOMAIN, TEST | ~ | Sin test de las caravanas de una compra (E26); `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez`, `TestLasRestriccionesDeLasCaravanas`, `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration), `TestGoldenCaravanasDelTratoALaLlegada` |
-| INV-TRADE-008 | La custodia de una oferta del mercado cuadra | CRITICO | DB, DOMAIN, TEST | ○ | Sin test todavía (E26) |
-| INV-TRADE-009 | Ninguna oferta del mercado vende más lotes de los que publicó | CRITICO | DB, DOMAIN, TEST | ○ | Sin test todavía (E26) |
-| INV-TRADE-010 | Nadie se compra a sí mismo en el mercado | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E26) |
+| INV-TRADE-007 | Toda caravana nace de un trato aceptado, dos por trato | ALTO | DB, DOMAIN, TEST | ✓ | `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez`, `TestLasRestriccionesDeLasCaravanas`, `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration), `TestGoldenCaravanasDelTratoALaLlegada`, `TestUnaCompraDescuentaLosLotesYCreaSusCaravanasUnaVez` (integration) |
+| INV-TRADE-008 | La custodia de una oferta del mercado cuadra | CRITICO | DB, DOMAIN, TEST | ✓ | `TestGoldenMercadoPublicarComprarLlegarYCaducar`, `TestUnCierreDescartadoSeReintentaConVersionNueva`, `Test_INV_TRADE_008_UnaCompraConElDeltaSuperadoNoMueveNada`, `TestCerrarUnaOfertaDevuelveUnaVez` (integration) |
+| INV-TRADE-009 | Ninguna oferta del mercado vende más lotes de los que publicó | CRITICO | DB, DOMAIN, TEST | ✓ | `TestDosComprasEnElMismoTick`, `TestUnaCompraDescuentaLosLotesYCreaSusCaravanasUnaVez` (integration) |
+| INV-TRADE-010 | Nadie se compra a sí mismo en el mercado | ALTO | DB, DOMAIN, TEST | ✓ | `TestQuienCompraYCuantosLotes`, `TestRechazosDelMercado`, `TestLasRestriccionesDelMercado` (integration) |
 
 ### CLAN — [clans.md](clans.md)
 
@@ -478,9 +478,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 148 | Tienen al menos un test que existe y pasa hoy |
-| ~ Parcial | 2 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 3 | Test inexistente, o fila sin reconciliar con la suite |
+| ✓ Cubierto | 153 | Tienen al menos un test que existe y pasa hoy |
+| ~ Parcial | 0 | Hay test real para parte del enunciado |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **155** | |
 
@@ -488,7 +488,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-TRADE-008`, `INV-TRADE-009` e `INV-TRADE-010` se registraron el 2026-11-18 con SPEC-MARKETS y [ADR-047](../decisions/ADR-047-markets.md), antes de escribir su código, como manda §8, y nacen sin cobertura; el mismo día se precisaron `INV-TRADE-001` (la comisión del mercado es, con la caravana capturada sin ruta, lo único que el comercio destruye) e `INV-TRADE-007` (una caravana nace de un trato o de una compra en el mercado), que quedan parciales hasta que existan los tests del mercado.
+`INV-TRADE-008`, `INV-TRADE-009` e `INV-TRADE-010` se registraron el 2026-11-18 con SPEC-MARKETS y [ADR-047](../decisions/ADR-047-markets.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (seis mutaciones de código y el trigger, con `DISABLE TRIGGER` en la base de tests); el mismo día se precisaron `INV-TRADE-001` (la comisión del mercado es, con la caravana capturada sin ruta, lo único que el comercio destruye) e `INV-TRADE-007` (una caravana nace de un trato o de una compra en el mercado), que volvieron a ✓ con sus tests. Ninguna fila queda sin cobertura ni parcial.
 
 `INV-TECH-001` e `INV-TECH-002` se registraron el 2026-11-18 con SPEC-TECHNOLOGIES y [ADR-046](../decisions/ADR-046-technologies.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (los triggers, con `DISABLE TRIGGER` en la base de tests); con ellos llegó la familia `INV-TECH` y su archivo, [technology.md](technology.md). Ninguna fila queda sin cobertura ni parcial.
 

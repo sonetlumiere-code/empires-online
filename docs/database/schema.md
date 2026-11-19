@@ -45,9 +45,10 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `player_messages`, `message_reads`, `player_blocks` | E16: **activas** | Los mensajes entre jugadores, lo leído y los bloqueos. Los escribe la conexión del Game Server en su propia transacción, nunca la simulación ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md), §16.12) |
 | `technologies` | E25: **activa** (catálogo) | Sembrada por `000027` con las doce tecnologías de [SPEC-TECHNOLOGIES](../specs/technologies.md); el Game Server la valida al arrancar ([ADR-046](../decisions/ADR-046-technologies.md) §1). Un cambio de balance es una migración de catálogo |
 | `city_research`, `player_technologies` | E25: **activas** | La investigación en curso de cada ciudad (una fila como mucho, borrada en la transacción que da la tecnología) y las tecnologías de cada jugador, para siempre ([ADR-046](../decisions/ADR-046-technologies.md) §3 y §4) |
+| `market_offers`, `market_purchases` | E26: **activas** | Las ofertas públicas del mercado con su custodia (`lots_left × give_per_lot`) y las compras, cada una con sus dos caravanas ([ADR-047](../decisions/ADR-047-markets.md), §16.17) |
 | `trade_routes` | Fuera de MVP: solo diseño | — |
-| `markets` | Fuera de MVP: solo diseño | — |
-| `trade_transactions` | Fuera de MVP: solo diseño | — |
+| `markets` | No se crea: la sustituyen `market_offers` y `market_purchases` (E26, §16.17) | — |
+| `trade_transactions` | No se crea: la sustituye `market_purchases` (E26, §16.17) | — |
 | `clans`, `clan_members`, `clan_invites` | E18: **activas** | Los clanes, la historia de pertenencia (una fila por estancia) y las invitaciones. Las escribe la cola de la simulación ([ADR-040](../decisions/ADR-040-clans-membership-and-peace.md), §16.13). **Precisión (2026-11-15):** hasta E18 `clans` figuraba aquí como «solo diseño» |
 | `clan_messages`, `clan_message_reads` | E18: **activas** | El canal de cada clan y lo leído. Los escribe la conexión del Game Server en su propia transacción, con el candado del clan (ADR-040 §5, §16.13) |
 | `clan_alliances` | E21: **activa** | Las alianzas entre clanes y sus ofertas, una fila por alianza con el par en orden canónico ([SPEC-CLAN-ALLIANCES](../specs/clan-alliances.md), [ADR-042](../decisions/ADR-042-clan-alliances.md)). Las escribe la cola de la simulación con los candados de los dos clanes; la mezcla de bandos y la disolución, la transacción que las provoca. |
@@ -1551,6 +1552,70 @@ CREATE TABLE player_technologies (
 
 Los eventos `ResearchOrdered` y `TechnologyResearched` son de un solo jugador y sin `counterpart`: no van al registro
 ni a los avisos (SPEC-TECHNOLOGIES Q13). La migración de vuelta borra las tres tablas, con lo investigado y lo pagado.
+
+### 16.17 El mercado (`000028`)
+
+[SPEC-MARKETS](../specs/markets.md), [ADR-047](../decisions/ADR-047-markets.md). El edificio `MARKET`, las ofertas con su
+custodia y las compras. Sustituye a `markets` y `trade_transactions` del diseño de §17.2, que imaginaban un mercado por
+ciudad y recurso con su precio.
+
+```sql
+ALTER TABLE buildings ADD CONSTRAINT buildings_type_valid CHECK (type IN ('HOUSE', 'WORKSHOP', 'CASTLE', 'MARKET'));
+CREATE UNIQUE INDEX buildings_one_market_per_city ON buildings (city_id)
+    WHERE type = 'MARKET' AND status <> 'DESTROYED';
+
+CREATE TABLE market_offers (
+    id                bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    player_id         uuid        NOT NULL REFERENCES players (id),
+    city_id           bigint      NOT NULL REFERENCES cities (id),
+    give_resource     text        NOT NULL,   -- el CHECK de city_stocks
+    give_per_lot      bigint      NOT NULL,
+    want_resource     text        NOT NULL,   -- el CHECK de city_stocks, distinto de give_resource
+    want_per_lot      bigint      NOT NULL,
+    lots_total        integer     NOT NULL,   -- 1 a 100
+    lots_left         integer     NOT NULL,   -- 0 a lots_total; > 0 si OPEN, 0 si SOLD_OUT
+    seller_commission bigint      NOT NULL,   -- lots_total × ⌈give_per_lot / 10⌉
+    status            text        NOT NULL,   -- OPEN | SOLD_OUT | WITHDRAWN | EXPIRED
+    request_id        text        NOT NULL,   -- UNIQUE (player_id, request_id)
+    created_at        timestamptz NOT NULL,
+    expires_at        timestamptz NOT NULL,
+    closed_at         timestamptz NULL        -- NULL sólo si OPEN
+);
+
+CREATE TABLE market_purchases (
+    id               bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    offer_id         bigint      NOT NULL REFERENCES market_offers (id),
+    buyer_player_id  uuid        NOT NULL REFERENCES players (id),
+    buyer_city_id    bigint      NOT NULL REFERENCES cities (id),
+    lots             integer     NOT NULL,   -- 1 a 100
+    paid_per_lot     bigint      NOT NULL,
+    buyer_commission bigint      NOT NULL,   -- lots × ⌈paid_per_lot / 10⌉
+    request_id       text        NOT NULL,   -- UNIQUE (buyer_player_id, request_id)
+    occurred_at      timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE caravans ALTER COLUMN offer_id DROP NOT NULL;
+ALTER TABLE caravans ADD COLUMN market_purchase_id bigint NULL REFERENCES market_purchases (id);
+ALTER TABLE caravans ADD CONSTRAINT caravans_one_source CHECK (num_nonnulls(offer_id, market_purchase_id) = 1);
+CREATE UNIQUE INDEX caravans_two_per_purchase ON caravans (market_purchase_id, from_city_id)
+    WHERE market_purchase_id IS NOT NULL;
+```
+
+| Objeto | Semántica |
+|---|---|
+| `MARKET` en `buildings_type_valid` y `buildings_one_market_per_city` | El mercado de la zona urbana, uno en pie por ciudad (`RN-MARKET-001`); derribado, se puede construir otro |
+| `market_offers` | Las ofertas públicas. La custodia no se guarda aparte: es `lots_left × give_per_lot` mientras está `OPEN`, y cero cerrada (`INV-TRADE-008`). Al retirarse o caducar, `lots_left` guarda los lotes devueltos. La escribe la transacción de la publicación con su débito; la compra descuenta los lotes condicionada a `status = 'OPEN' AND lots_left >= k` (`INV-TRADE-009`); el cierre, condicionado a `OPEN`, con el crédito de lo devuelto |
+| `market_offers_*` (`CHECK`) | Los recursos del catálogo y distintos, cantidades positivas, de 1 a 100 lotes, `lots_left` en rango, abierta con lotes y agotada sin ellos, la cota de 1 000 000 por lado, la comisión de `RN-MARKET-006` y `closed_at` sólo en una cerrada |
+| `market_offers_open_idx` | El tablón y la carga del arranque: las abiertas, las más recientes primero |
+| `market_purchases` | Cada compra, idempotente por `(buyer_player_id, request_id)`, con la comisión del comprador; sus dos caravanas apuntan a ella |
+| `market_purchases_not_own` (trigger) | `INV-TRADE-010`: rechaza con `23514` la compra del dueño de la oferta |
+| `caravans_one_source` y `caravans_two_per_purchase` | `INV-TRADE-007`: una caravana nace de un trato o de una compra, exactamente de uno, y una compra tiene como mucho una por ciudad de salida |
+
+Los eventos: `MarketOfferPosted` y `MarketOfferWithdrawn`, del vendedor y fuera del registro; `MarketPurchase`, con el
+vendedor como `player_id` y el comprador como `counterpart_player_id`, y `MarketOfferExpired`, sin `counterpart`, que sí
+van al registro del vendedor ([event-log.md](../specs/event-log.md)). La comisión queda en la oferta, en la compra y en
+el payload de sus eventos. La migración de vuelta borra las caravanas de las compras con su carga y su unidad, las dos
+tablas y los mercados construidos.
 
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 

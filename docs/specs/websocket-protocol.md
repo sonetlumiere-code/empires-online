@@ -53,11 +53,12 @@ Dentro del scope de v1:
 - La Edad de los Castillos ([castle-age.md](castle-age.md)): `city.advance` desde la Edad de Hierro (§7.16); `CASTLE` en `BuildingType` (también en `city.build`, §7.9); `targetUnitId` (`EntityId | null`, opcional) en `BuildingView` y en `building.update` (§8.16), el objetivo del castillo; los tipos `UNIT_LOST_TO_CASTLE` y `CASTLE_KILL` en el registro y en `event_log.notice` (§8.19, §8.23); sin mensajes nuevos. `CASTLE` y los dos tipos son valores nuevos en enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-044](../decisions/ADR-044-castle-shooting.md) §6 y §7).
 - Las guerras entre clanes ([clan-wars.md](clan-wars.md)): `clan.war.declare { clanId }`, `clan.war.peace { warId, offer }` y `clan.war.surrender { warId }`, que pasan por la simulación (§7.22); `wars` y `warRecord` (obligatorios) en `ClanView` (§8.28) y en `clan.info` (§8.29); los tipos `CLAN_WAR_DECLARED`, `CLAN_WAR_PEACE_OFFERED` y `CLAN_WAR_ENDED` en el registro y en `event_log.notice`, con `clanTag`, `startsAtMs` y, en el final, `warResult`, `warReason`, `ourScore` y `theirScore` (opcionales); `breakReason: "WAR"` en la ruptura de un pacto que abrió una guerra (§8.19, §8.23). Los campos de `ClanView` son obligatorios y los tipos, valores nuevos de un enum estricto: el cliente y el servidor los estrenan juntos ([ADR-045](../decisions/ADR-045-clan-wars.md)).
 - El árbol tecnológico ([technologies.md](technologies.md)): `city.research { cityId, technology }` (§7.23), el 48.º tipo; `research` (`{ technology, completesAtMs }` o `null`) y `technologies` (lista de códigos), opcionales y sólo en la vista y en el `city.update` del dueño (§8.8); el catálogo de presentación `technologies.json`. `technology` es un código validado por patrón, no un enum estricto: una tecnología nueva no rompe a un cliente viejo ([ADR-046](../decisions/ADR-046-technologies.md) §5). Todo aditivo (`R-VER-2`, `R-VER-3`).
+- Los mercados ([markets.md](markets.md)): `market.post { give, want, lots }`, `market.buy { offerId, lots }` y `market.cancel { offerId }`, que pasan por la simulación, y la consulta `market.list { receive?, pay? }`, que atiende la conexión (§7.24), del 49.º al 52.º tipo; `market.update` (§8.32) y `market.listing` (§8.33); `marketOffers[]`, opcional, en `world.snapshot` (§8.4); `MARKET` en `BuildingType` (también en `city.build`, §7.9); `MARKET_SOLD` y `MARKET_EXPIRED` en el registro, con `lots` (opcional), y `otherPlayerId` que pasa a admitir `null`, sólo en `MARKET_EXPIRED` (§8.19). `MARKET`, los dos tipos y el `null` son cambios en enums o campos estrictos: el cliente y el servidor los estrenan juntos ([ADR-047](../decisions/ADR-047-markets.md)).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
 
-No forman parte de v1 y **no deben documentarse ni implementarse como si existieran**: combate y resolución de daño, recursos distintos de la madera, edificios distintos de la casa, chat, mercados y caravanas, clanes, ranking, unidades navales, IA de NPC. La fase 4 del tick (`resolve simulation`) está reservada para combate y hoy es un no-op; ver [../architecture/game-loop.md](../architecture/game-loop.md).
+No forman parte de v1 y **no deben documentarse ni implementarse como si existieran**: combate y resolución de daño, recursos distintos de la madera, edificios distintos de la casa, chat, caravanas, clanes, ranking, unidades navales, IA de NPC. La fase 4 del tick (`resolve simulation`) está reservada para combate y hoy es un no-op; ver [../architecture/game-loop.md](../architecture/game-loop.md).
 
 Tampoco entran en v1:
 
@@ -150,7 +151,7 @@ type Inbound struct {
 |---|---|---|---|
 | `v` | `1` | Sí | Versión del protocolo. Distinto de una versión soportada → `UNSUPPORTED_VERSION`. |
 | `type` | `string` | Sí | Uno de los veinticuatro tipos cliente→servidor de v1 (catálogo cerrado `ClientMessageTypes`). Desconocido → `INVALID_MESSAGE`. |
-| `requestId` | `string` (UUID) | Sí en los cuarenta y ocho tipos, según el esquema Zod. El servidor lo **exige** hoy en los veinticinco comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `city.research`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `faction.join`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave` y `clan.expel`), donde es la clave de idempotencia; en los de sesión y en los del registro lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
+| `requestId` | `string` (UUID) | Sí en los cincuenta y dos tipos, según el esquema Zod. El servidor lo **exige** hoy en los comandos de juego (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `city.research`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `market.post`, `market.buy`, `market.cancel`, `faction.join`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave` y `clan.expel`), donde es la clave de idempotencia; en los de sesión y en los del registro lo usa sólo para correlacionar la respuesta (I-1) | Correlación y clave de idempotencia. Ver sección 10. |
 | `payload` | `object` | Sí | Objeto específico del `type`, **estricto**: ninguna propiedad adicional. Nunca `null`. |
 
 El payload se deja sin decodificar (`json.RawMessage`) hasta después de validar versión, tipo y autorización: no se gasta trabajo en mensajes que van a rechazarse.
@@ -243,7 +244,7 @@ El cliente de `apps/web` reconecta con backoff exponencial y jitter —0,5 s, 1 
 
 ## 7. Mensajes cliente → servidor
 
-Los cuarenta y ocho tipos de v1, en el orden de `CLIENT_MESSAGE_TYPES`: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch`, `event_log.seen`, `unit.claim`, `city.craft`, `faction.join`, `message.send`, `message.list`, `message.fetch`, `message.read`, `message.block`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave`, `clan.expel`, `clan.lookup`, `clan.chat.send`, `clan.chat.fetch`, `clan.chat.read`, `clan.promote`, `clan.transfer`, `clan.alliance.propose`, `clan.alliance.respond`, `clan.alliance.cancel`, `clan.war.declare`, `clan.war.peace`, `clan.war.surrender` y `city.research`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), los tres `trade.*`, con [SPEC-TRADE](trade.md), `unit.claim`, con [SPEC-TERRITORY-CONQUEST](territory-conquest.md), `city.craft`, con [SPEC-CIVILIZATION-GOODS](civilization-goods.md), los cinco `message.*`, con [SPEC-MESSAGES](messages.md), `faction.join`, con [SPEC-FACTIONS](factions.md), los nueve primeros `clan.*`, con [SPEC-CLANS](clans.md), `clan.promote` y `clan.transfer`, con [SPEC-CLAN-GOVERNANCE](clan-governance.md), los tres `clan.alliance.*`, con [SPEC-CLAN-ALLIANCES](clan-alliances.md), los tres `clan.war.*`, con [SPEC-CLAN-WARS](clan-wars.md), y `city.research`, con [SPEC-TECHNOLOGIES](technologies.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
+Los cincuenta y dos tipos de v1, en el orden de `CLIENT_MESSAGE_TYPES`: `session.hello`, `session.ping`, `session.view`, `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `unit.attack`, `unit.pillage`, `unit.demolish`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `event_log.fetch`, `event_log.seen`, `unit.claim`, `city.craft`, `faction.join`, `message.send`, `message.list`, `message.fetch`, `message.read`, `message.block`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave`, `clan.expel`, `clan.lookup`, `clan.chat.send`, `clan.chat.fetch`, `clan.chat.read`, `clan.promote`, `clan.transfer`, `clan.alliance.propose`, `clan.alliance.respond`, `clan.alliance.cancel`, `clan.war.declare`, `clan.war.peace`, `clan.war.surrender`, `city.research`, `market.post`, `market.buy`, `market.cancel` y `market.list`. `unit.garrison` y `unit.ungarrison` llegaron con [ADR-017](../decisions/ADR-017-garrison-commands.md); los tres de la economía, con [SPEC-ECON-WOOD](economy-wood.md), `unit.attack`, con [SPEC-COMBAT-RAID](combat-raid.md), `unit.pillage`, con [SPEC-COMBAT-PILLAGE](combat-pillage.md), `unit.demolish`, con [SPEC-COMBAT-SIEGE](combat-siege.md), los tres `treaty.*`, con [SPEC-DIPLOMACY](diplomacy.md), los dos `event_log.*`, con [SPEC-EVENT-LOG](event-log.md), `city.advance`, con [SPEC-ECON-STONE](economy-stone.md), los tres `trade.*`, con [SPEC-TRADE](trade.md), `unit.claim`, con [SPEC-TERRITORY-CONQUEST](territory-conquest.md), `city.craft`, con [SPEC-CIVILIZATION-GOODS](civilization-goods.md), los cinco `message.*`, con [SPEC-MESSAGES](messages.md), `faction.join`, con [SPEC-FACTIONS](factions.md), los nueve primeros `clan.*`, con [SPEC-CLANS](clans.md), `clan.promote` y `clan.transfer`, con [SPEC-CLAN-GOVERNANCE](clan-governance.md), los tres `clan.alliance.*`, con [SPEC-CLAN-ALLIANCES](clan-alliances.md), los tres `clan.war.*`, con [SPEC-CLAN-WARS](clan-wars.md), `city.research`, con [SPEC-TECHNOLOGIES](technologies.md), y los cuatro `market.*`, con [SPEC-MARKETS](markets.md). El catálogo es **cerrado** y su cierre está testeado (`TestCatalogoDeComandosEsCerrado`).
 
 ### 7.1 `session.hello`
 
@@ -430,7 +431,7 @@ payload: z.object({ unitId: EntityId, target: Tile }).strict()
 - **Dirección:** cliente → servidor. **Propósito:** encargar un edificio en un tile de la zona urbana 3×3 de una ciudad propia, distinto del centro.
 
 ```ts
-payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y: WorldCoordinate }).strict()  // BuildingType = 'HOUSE' | 'WORKSHOP' (E14) | 'CASTLE' (E23)
+payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y: WorldCoordinate }).strict()  // BuildingType = 'HOUSE' | 'WORKSHOP' (E14) | 'CASTLE' (E23) | 'MARKET' (E26)
 ```
 
 **Validaciones, en este orden** (`RN-ECON-007`): la ciudad existe y es propia (`CITY_NOT_FOUND`, igual en los dos casos) · el tile está en el 3×3, no es el centro y no tiene edificio ni encargo (`INVALID_TARGET`) · el stock cubre el coste (`INSUFFICIENT_RESOURCES`). Rechazos como **`system.error`**.
@@ -719,9 +720,32 @@ payload: z.object({ cityId: EntityId, technology: TechnologyCode }).strict()  //
 
 **Efectos, en dos fases** ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). El tick reserva el coste; la transacción lo debita y escribe la investigación. Con éxito, `city.update { stocks }` al chunk y `city.update { research: { technology, completesAtMs } }` sólo al dueño, por `SendToPlayer`. Al vencer el plazo (el del catálogo con `production.speed`), `city.update { research: null, technologies }` sólo al dueño. Mientras dura, `city.advance` responde `CITY_BUSY`, y una investigación no impide `city.train`, `city.build` ni `city.craft`.
 
+### 7.24 `market.post`, `market.buy`, `market.cancel` y `market.list`
+
+- **Dirección:** cliente → servidor. **Propósito:** publicar una oferta en el mercado, comprar lotes de una ajena, retirar la propia y leer el tablón. Ninguno es hostil. Spec: [markets.md](markets.md); persistencia: [ADR-047](../decisions/ADR-047-markets.md).
+
+```ts
+// market.post: lo que da y pide cada lote y cuántos lotes; la comisión y la caducidad, del servidor
+payload: z.object({ give: ResourceAmount.strict(), want: ResourceAmount.strict(), lots: z.number().int().min(1).max(100) }).strict()
+// market.buy
+payload: z.object({ offerId: EntityId, lots: z.number().int().min(1).max(100) }).strict()
+// market.cancel
+payload: z.object({ offerId: EntityId }).strict()
+// market.list: filtra por el recurso que se recibe (el que da la oferta) o el que se paga
+payload: z.object({ receive: ResourceType.optional(), pay: ResourceType.optional() }).strict()
+```
+
+```json
+{ "v": 1, "type": "market.post", "requestId": "8b1c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e", "payload": { "give": { "resource": "STONE", "amount": 20 }, "want": { "resource": "WOOD", "amount": 30 }, "lots": 3 } }
+```
+
+**Validaciones** (`RN-MARKET-002` a `RN-MARKET-007`): un total de más de 1 000 000 en un lado es `INVALID_MESSAGE`; sin mercado completo, el mismo recurso en los dos lados, 3 ofertas abiertas ya, la oferta propia en `market.buy`, la ajena en `market.cancel`, una oferta cerrada o sin tantos lotes sin reservar, o una retirada con una compra en curso, `INVALID_TARGET` con su motivo; sin almacén para lo ofrecido o lo pagado más la comisión, `INSUFFICIENT_RESOURCES`; sin ruta entre las dos ciudades, `PATH_NOT_FOUND` o `PATH_TOO_LONG`. Rechazos como **`system.error`**.
+
+**Efectos.** `market.post` y `market.buy` van en dos fases ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)): con éxito, `city.update { stocks }` al chunk y `market.update` (§8.32) al vendedor y, con el `requestId`, a quien dio la orden; la compra pone en camino dos caravanas (`caravan.update`, `entity.spawn`). `market.cancel` y la caducidad son optimistas: la custodia vuelve al almacén en el tick y llega `market.update` con `WITHDRAWN` o `EXPIRED`. `market.list` no pasa por la simulación: la conexión lee la base y responde `market.listing` (§8.33) sólo a quien lo pidió; no reclama el `requestId`, porque leer no tiene efecto.
+
 ## 8. Mensajes servidor → cliente
 
-Los treinta y un tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los treinta y tres tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -810,6 +834,7 @@ payload: z.object({
   territories: z.array(TerritoryView),
   buildings: z.array(BuildingView),  // E1, §8.15
   forests: z.array(ForestView).optional(),  // E4, §8.17
+  // marketOffers: z.array(MarketOfferView).optional(),  // E26, las ofertas OPEN de quien lo recibe (§8.32)
   hills: z.array(HillView).optional(),      // E9, §8.21
   treaties: z.array(TreatyView).optional(), // E6, §8.18: los del jugador que lo recibe
   tradeOffers: z.array(TradeOfferView).optional(), // E10, §8.22: las ofertas pendientes del jugador
@@ -1241,15 +1266,18 @@ payload: z.object({
   seenUpToId: z.number().int().min(0),   // el cursor de lo visto al servirla
   nextBeforeId: EntityId.nullable(),     // el beforeId de la siguiente; null si no hay más
 })
-// EventLogEntry: { id, kind, firstAtMs, lastAtMs, count, otherPlayerId,
+// EventLogEntry: { id, kind, firstAtMs, lastAtMs, count, otherPlayerId (null sólo en MARKET_EXPIRED, E26),
 //                  otherCityId: EntityId | null, otherCityName: string | null,
 //                  unitType?, amount?, treatyType?, proposedByMe?, x?, y?, breaksAtMs? }
 // kind: UNIT_LOST | ENEMY_KILLED | PILLAGED | PILLAGE_DONE | TREATY_OFFERED | TREATY_WITHDRAWN
 //     | TREATY_ACCEPTED | TREATY_REJECTED | TREATY_OFFER_EXPIRED | TREATY_BREAK_ANNOUNCED | TREATY_ENDED
 //     | … (los de E8 a E21) | UNIT_LOST_TO_CASTLE | CASTLE_KILL (E23, las muertes que causa un castillo)
 //     | CLAN_WAR_DECLARED | CLAN_WAR_PEACE_OFFERED | CLAN_WAR_ENDED (E24, las guerras entre clanes)
+//     | MARKET_SOLD | MARKET_EXPIRED (E26, al vendedor: la venta de lotes y la caducidad)
 // desde E24, opcionales: breakReason ("WAR", en TREATY_BREAK_ANNOUNCED), startsAtMs, warResult
 //   (WON | LOST | DRAWN), warReason (SURRENDER | PEACE | TIMEOUT | DISSOLVED), ourScore, theirScore
+// desde E26, opcional: lots (los vendidos en MARKET_SOLD o devueltos en MARKET_EXPIRED), con lo que
+//   salió y lo que entra en tradeGive y tradeGet
 ```
 
 ```json
@@ -1458,6 +1486,29 @@ payload: z.object({
 
 Hasta `EO_MESSAGE_PAGE_SIZE` mensajes de los últimos `EO_MESSAGE_MAX_DAYS` días, sólo los posteriores a la entrada de quien lee (`INV-SEC-012`).
 
+### 8.32 `market.update`
+
+- **Propósito:** cambió una oferta del mercado del jugador: publicada, lotes vendidos, retirada o caducada. La reciben las sesiones del vendedor y, con su `requestId`, quien dio la orden, también el comprador ([markets.md](markets.md) §6). Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ offer: MarketOfferView })
+// MarketOfferView: { id, playerId, cityId, cityName: string | null, civilization: CivilizationCode | null,
+//                    cityX: number | null, cityY: number | null, give: ResourceAmount, want: ResourceAmount,
+//                    lotsTotal, lotsLeft, lotsSold, status: OPEN | SOLD_OUT | WITHDRAWN | EXPIRED, expiresAtMs }
+```
+
+`give` y `want` son lo que da y pide **cada lote**. En una oferta retirada o caducada, `lotsLeft` son los lotes que volvieron al almacén. La ciudad lleva su posición, no la de su depósito ([ADR-047](../decisions/ADR-047-markets.md) §6).
+
+### 8.33 `market.listing`
+
+- **Propósito:** el tablón del mercado, en respuesta a `market.list` y sólo para la sesión que lo pidió, con su `requestId`: hasta 100 ofertas `OPEN` de **otros** jugadores, las más recientes primero. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ offers: z.array(MarketOfferView).max(100) })
+```
+
+Lo lee la conexión de la base, sin pasar por la simulación: puede ir unos milisegundos por detrás, y una compra de una oferta que ya no admite esos lotes se rechaza en el tick con su motivo.
+
 ## 9. Códigos de error
 
 El catálogo es de **24 códigos** y es cerrado. Vive en `errors.ts` (`ErrorCode`) y en `codes.go` (`AllErrorCodes`); un contract test en Go (`TestCatalogoDeErroresCoincideConElExportado`) compara ambos contra `error-codes.json` y rompe la CI si divergen.
@@ -1499,7 +1550,7 @@ La idempotencia se apoya **hoy exclusivamente en Redis**: `IdempotencyStore` res
 
 | Regla | Detalle |
 |---|---|
-| I-1 | Los esquemas exigen `requestId` con formato UUID en los cuarenta y ocho comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `city.research`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `faction.join`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave` y `clan.expel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
+| I-1 | Los esquemas exigen `requestId` con formato UUID en los cincuenta y dos comandos. El servidor lo **hace cumplir** hoy en `unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.advance`, `city.craft`, `city.research`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `trade.propose`, `trade.respond`, `trade.cancel`, `market.post`, `market.buy`, `market.cancel`, `faction.join`, `clan.create`, `clan.invite`, `clan.respond`, `clan.leave` y `clan.expel`: `requestId` vacío → `system.error INVALID_MESSAGE` y el comando no se ejecuta. La validación del **formato** UUID en Go es `TBD (fuera de MVP)`: hoy la garantiza el esquema estricto del cliente. |
 | I-2 | La deduplicación se aplica **sólo a los comandos durables** (`unit.move`, `unit.cancel_move`, `unit.garrison`, `unit.ungarrison`, `unit.gather`, `city.build`, `city.train`, `city.craft`, `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim`, `treaty.propose`, `treaty.respond`, `treaty.cancel`, `faction.join` y los cinco `clan.*` de la simulación). `city.craft` guarda también su `requestId` en la fila de `city_crafts`. `city.build` y `city.train` guardan además su `requestId` en la fila de su efecto, con `UNIQUE`, para que el reintento de la cola de persistencia no debite dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md), [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). `session.hello`, `session.ping`, `session.view` y los dos `event_log.*` no reservan clave: los primeros no crean efectos durables, `event_log.fetch` sólo lee y `event_log.seen` es monótono. Los `message.*` tampoco: `message.send` guarda su `requestId` en la fila del mensaje, con `UNIQUE (sender_player_id, request_id)`, y el reintento recibe el mensaje original aunque Redis no responda o el ritmo esté agotado; su `requestId` se valida como UUID en Go (`INVALID_MESSAGE`); `message.list` y `message.fetch` sólo leen, `message.read` es monótono y `message.block` es idempotente ([ADR-038](../decisions/ADR-038-player-messages-session-subsystem.md) §4). `clan.chat.send` tampoco: guarda su `requestId` con `UNIQUE (sender_player_id, request_id)` como `message.send`; `clan.chat.fetch` y `clan.lookup` sólo leen y `clan.chat.read` es monótono. |
 | I-3 | El alcance de la deduplicación es `(playerId, requestId)`. Dos jugadores distintos pueden usar el mismo `requestId` sin interferir. |
 | I-4 | El marcador `"pending"` reserva la clave **antes** de ejecutar. Si dos copias del mismo comando llegan a la vez, sólo una gana el `SETNX`. |
