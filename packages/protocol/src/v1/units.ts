@@ -42,6 +42,12 @@ export interface UnitInfo {
   readonly attackRange: number;
   readonly lootCarry: number;
   readonly populationCost: number;
+  /**
+   * El golpe contra edificios si es distinto del de combate (SPEC-SIEGE-ENGINES §4.2): el del
+   * ariete. Cero: derriba con su golpe de combate, si ataca.
+   */
+  readonly siegeDamage: number;
+  readonly siegeIntervalMs: number;
 }
 
 const EXCLUSIVE = {
@@ -56,6 +62,8 @@ const EXCLUSIVE = {
   requiresEra: 'BRONZE_AGE',
   attackIntervalMs: 1_500,
   populationCost: 1,
+  siegeDamage: 0,
+  siegeIntervalMs: 0,
 } as const;
 
 /** En el orden de `unit.Types()` del Game Server. */
@@ -76,6 +84,8 @@ export const UNITS: readonly UnitInfo[] = [
     attackRange: 0,
     lootCarry: 0,
     populationCost: 1,
+    siegeDamage: 0,
+    siegeIntervalMs: 0,
   },
   {
     code: 'WARRIOR',
@@ -93,6 +103,8 @@ export const UNITS: readonly UnitInfo[] = [
     attackRange: 1,
     lootCarry: 20,
     populationCost: 1,
+    siegeDamage: 0,
+    siegeIntervalMs: 0,
   },
   {
     code: 'CARAVAN',
@@ -110,6 +122,8 @@ export const UNITS: readonly UnitInfo[] = [
     attackRange: 0,
     lootCarry: 0,
     populationCost: 0,
+    siegeDamage: 0,
+    siegeIntervalMs: 0,
   },
   { ...EXCLUSIVE, code: 'LEGIONARY', name: 'Legionario', maxHp: 110, msPerTile: 600, attackDamage: 8, attackRange: 1, lootCarry: 20 },
   { ...EXCLUSIVE, code: 'CATAPHRACT', name: 'Catafracto', maxHp: 80, msPerTile: 450, attackDamage: 10, attackRange: 1, lootCarry: 20 },
@@ -124,6 +138,29 @@ export const UNITS: readonly UnitInfo[] = [
     lootCarry: 20,
   },
   { ...EXCLUSIVE, code: 'BERSERKER', name: 'Berserker', maxHp: 60, msPerTile: 600, attackDamage: 14, attackRange: 1, lootCarry: 30 },
+  // SPEC-SIEGE-ENGINES §4.2: sólo golpea edificios; es la única que daña una muralla en pie.
+  {
+    code: 'RAM',
+    name: 'Ariete',
+    attacks: false,
+    exclusive: false,
+    trainCosts: [
+      { resource: 'WOOD', amount: 150 },
+      { resource: 'STONE', amount: 75 },
+    ],
+    ownGoodCost: 0,
+    trainMs: 40_000,
+    requiresEra: 'IRON_AGE',
+    maxHp: 250,
+    msPerTile: 1_800,
+    attackDamage: 0,
+    attackIntervalMs: 0,
+    attackRange: 1,
+    lootCarry: 0,
+    populationCost: 2,
+    siegeDamage: 40,
+    siegeIntervalMs: 3_000,
+  },
 ];
 
 /** La ficha de presentación de un tipo. Todo `UnitType` tiene la suya (lo comprueba un test). */

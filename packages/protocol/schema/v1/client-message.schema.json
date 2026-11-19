@@ -338,7 +338,8 @@
                     "HOUSE",
                     "WORKSHOP",
                     "CASTLE",
-                    "MARKET"
+                    "MARKET",
+                    "WALL"
                   ]
                 },
                 "x": {
@@ -392,7 +393,8 @@
                     "LEGIONARY",
                     "CATAPHRACT",
                     "HORSE_ARCHER",
-                    "BERSERKER"
+                    "BERSERKER",
+                    "RAM"
                   ]
                 }
               },

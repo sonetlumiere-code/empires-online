@@ -190,6 +190,8 @@ type eventPayload struct {
 	AttackerPlayerID string `json:"attackerPlayerId"`
 	// La muerte que causó un edificio (ADR-044 §5).
 	KillerBuildingType string `json:"killerBuildingType"`
+	// El edificio de un derribo (BuildingDestroyed, SPEC-SIEGE-ENGINES §6).
+	Type string `json:"type"`
 	// Los tratos (ADR-032 §7).
 	OfferID int64         `json:"offerId"`
 	Give    []payloadLine `json:"give"`
@@ -269,6 +271,9 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	e.Cargo = toLines(p.Cargo)
 	e.Reason = p.Reason
 	e.KillerBuildingType = p.KillerBuildingType
+	if e.Type == eventlog.EventBuildingDestroyed {
+		e.BuildingType = p.Type
+	}
 	e.StartsAtMs, e.WarResult, e.OurScore, e.TheirScore = p.StartsAtMs, p.Result, p.OurScore, p.TheirScore
 	e.Lots = p.Lots
 	return nil
@@ -342,6 +347,8 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	case eventlog.KindPillaged, eventlog.KindPillageDone:
 		amount := e.Amount
 		v.Amount = &amount
+	case eventlog.KindHouseLost, eventlog.KindHouseDestroyed:
+		v.BuildingType = e.BuildingType
 	case eventlog.KindTreatyOfferExpired:
 		mine := e.ProposedByMe
 		v.ProposedByMe = &mine

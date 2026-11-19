@@ -141,6 +141,11 @@ func (s *Simulation) handleGarrisonUnit(cmd GarrisonUnit) {
 		s.garrisonError(cmd.PlayerID, cmd.RequestID, protocol.CodeUnitNotMovable, "la unidad ya está entrando en una ciudad")
 		return
 	}
+	// RN-SIEGE-003: el ariete no entra en guarnición (SPEC-SIEGE-ENGINES Q7).
+	if def, err := unit.Lookup(u.Type); err == nil && def.IsSiegeEngine() {
+		s.garrisonError(cmd.PlayerID, cmd.RequestID, protocol.CodeUnitNotMovable, "el ariete no entra en guarnición")
+		return
+	}
 
 	var c *city.City
 	if found, ok := s.state.City(cmd.CityID); ok {

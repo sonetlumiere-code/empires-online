@@ -59,7 +59,7 @@ func TestLaPaginaDelRegistroEsLaDelEsquema(t *testing.T) {
 	)
 	completa := protocol.EventLogEntry{
 		ID: 1, Kind: "PILLAGED", Count: 1, OtherPlayerID: &otro, OtherCityID: &id, OtherCityName: &nombre,
-		UnitType: "VILLAGER", Amount: &n, TreatyType: "ALLIANCE", ProposedByMe: &mia, X: &x, Y: &y, BreaksAtMs: &n,
+		UnitType: "VILLAGER", BuildingType: "WALL", Amount: &n, TreatyType: "ALLIANCE", ProposedByMe: &mia, X: &x, Y: &y, BreaksAtMs: &n,
 		TradeGive:   []protocol.ResourceAmount{{Resource: "WOOD", Amount: 1}},
 		TradeGet:    []protocol.ResourceAmount{{Resource: "STONE", Amount: 1}},
 		TerritoryID: &id, TerritoryName: "Llanura", ClanTag: "LOB",
@@ -101,7 +101,7 @@ func TestElAvisoEsElDelEsquema(t *testing.T) {
 	)
 	completo := protocol.EventLogNoticePayload{
 		Kind: "PILLAGE_DONE", AtMs: 1, OtherPlayerID: "x", OtherCityID: &id, OtherCityName: &nombre,
-		UnitType: "VILLAGER", Amount: &n, X: &x, Y: &y, TerritoryID: &id, TerritoryName: "Llanura", ClanTag: "LOB",
+		UnitType: "VILLAGER", BuildingType: "WALL", Amount: &n, X: &x, Y: &y, TerritoryID: &id, TerritoryName: "Llanura", ClanTag: "LOB",
 		Cargo: []protocol.ResourceAmount{{Resource: "WINE", Amount: 5}},
 		// SPEC-CLAN-WARS §6.
 		StartsAtMs: &n, WarResult: "LOST", WarReason: "SURRENDER", OurScore: &n, TheirScore: &n,

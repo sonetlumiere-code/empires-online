@@ -297,6 +297,9 @@ type Event struct {
 	// KillerBuildingType, en una muerte: el tipo del edificio que la causó, o
 	// "" si fue una unidad (ADR-044 §5).
 	KillerBuildingType string
+	// BuildingType, en un derribo: el tipo del edificio que cayó
+	// (SPEC-SIEGE-ENGINES §6).
+	BuildingType string
 	// La guerra entre clanes (SPEC-CLAN-WARS §6): cuándo empieza, el resultado
 	// para player_id y el marcador visto desde su clan. Reason lleva además el
 	// motivo del final, y en un TreatyBreakAnnounced, BreakReasonWar.
@@ -339,6 +342,8 @@ type Entry struct {
 	Other     uuid.UUID
 	// UnitType, en las muertes.
 	UnitType string
+	// BuildingType, en los derribos: qué edificio cayó (SPEC-SIEGE-ENGINES §6).
+	BuildingType string
 	// Amount, en los saqueos: la madera del grupo.
 	Amount int64
 	// TreatyType, en los tratados.
@@ -659,13 +664,14 @@ func isTrade(k Kind) bool {
 // Los tratos no se juntan nunca: cada uno es su propia entrada, porque lo que
 // importa de él son sus cantidades (ADR-032 §7).
 type groupKey struct {
-	kind       Kind
-	other      uuid.UUID
-	unitType   string
-	treatyType string
-	offerID    int64
-	mine       bool
-	unseen     bool
+	kind         Kind
+	other        uuid.UUID
+	unitType     string
+	buildingType string
+	treatyType   string
+	offerID      int64
+	mine         bool
+	unseen       bool
 }
 
 // Builder arma una página. Recibe las filas de la más nueva a la más vieja
@@ -704,7 +710,7 @@ func (b *Builder) Add(e Event) bool {
 	}
 	mine := (kind == KindTreatyOfferExpired || kind == KindTradeOfferExpired) && e.PlayerID == b.viewer
 	k := groupKey{
-		kind: kind, other: other, unitType: e.UnitType, mine: mine, unseen: e.ID > b.cursor,
+		kind: kind, other: other, unitType: e.UnitType, buildingType: e.BuildingType, mine: mine, unseen: e.ID > b.cursor,
 	}
 	if isTreaty(kind) {
 		k.treatyType = e.TreatyType
@@ -736,6 +742,7 @@ func (b *Builder) Add(e Event) bool {
 		entry.Amount = e.Amount
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindHouseLost, KindHouseDestroyed:
+		entry.BuildingType = e.BuildingType
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindTreatyBreakAnnounced:
 		entry.TreatyType = e.TreatyType

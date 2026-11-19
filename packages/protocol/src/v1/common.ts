@@ -60,6 +60,7 @@ export type UnitStatus = z.infer<typeof UnitStatus>;
  * `CARAVAN` lleva la mercancía de un trato (SPEC-CARAVANS §4.1): no se entrena ni admite órdenes.
  * `LEGIONARY`, `CATAPHRACT`, `HORSE_ARCHER` y `BERSERKER` son las unidades exclusivas de cada
  * civilización (SPEC-CIVILIZATION-UNITS §4.1): sólo las entrena la suya.
+ * `RAM` es el ariete, la máquina de asedio (SPEC-SIEGE-ENGINES §4.2): sólo golpea edificios.
  */
 export const UnitType = z.enum([
   'VILLAGER',
@@ -69,6 +70,7 @@ export const UnitType = z.enum([
   'CATAPHRACT',
   'HORSE_ARCHER',
   'BERSERKER',
+  'RAM',
 ]);
 export type UnitType = z.infer<typeof UnitType>;
 
@@ -84,6 +86,7 @@ export const TrainableUnitType = UnitType.extract([
   'CATAPHRACT',
   'HORSE_ARCHER',
   'BERSERKER',
+  'RAM',
 ]);
 export type TrainableUnitType = z.infer<typeof TrainableUnitType>;
 
@@ -142,7 +145,11 @@ export type Stocks = z.infer<typeof Stocks>;
 /** El taller (`WORKSHOP`) llega con SPEC-CIVILIZATION-GOODS §4.2. */
 /** `CASTLE` es el castillo de la Edad de los Castillos, que golpea a quien ataca a su dueño (SPEC-CASTLE-AGE §4.2). */
 /** `MARKET` es el mercado, que deja publicar y comprar en el tablón público (SPEC-MARKETS §4.1). */
-export const BuildingType = z.enum(['HOUSE', 'WORKSHOP', 'CASTLE', 'MARKET']);
+/**
+ * `WALL` es la muralla de piedra (SPEC-SIEGE-ENGINES §4.1): va en el tile del centro de la
+ * ciudad y, completa, sólo la daña un ariete y nadie daña los demás edificios.
+ */
+export const BuildingType = z.enum(['HOUSE', 'WORKSHOP', 'CASTLE', 'MARKET', 'WALL']);
 export type BuildingType = z.infer<typeof BuildingType>;
 
 export const BuildingStatus = z.enum(['UNDER_CONSTRUCTION', 'COMPLETE']);
@@ -729,6 +736,11 @@ export const EventLogEntry = z.object({
   otherCityName: z.string().min(1).max(64).nullable(),
   /** En las muertes: qué tipo de unidad murió. */
   unitType: UnitType.optional(),
+  /**
+   * En los derribos (`HOUSE_LOST`, `HOUSE_DESTROYED`): qué edificio cayó, para decir «tu
+   * muralla» y no «tus casas» (SPEC-SIEGE-ENGINES §6). Opcional: aditivo en v1 (R-VER-2).
+   */
+  buildingType: BuildingType.optional(),
   /** En los saqueos: la madera del grupo. */
   amount: z.number().int().min(0).optional(),
   /** En los tratados. */

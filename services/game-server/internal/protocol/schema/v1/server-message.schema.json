@@ -325,7 +325,8 @@
                           "LEGIONARY",
                           "CATAPHRACT",
                           "HORSE_ARCHER",
-                          "BERSERKER"
+                          "BERSERKER",
+                          "RAM"
                         ]
                       },
                       "x": {
@@ -920,7 +921,8 @@
                           "HOUSE",
                           "WORKSHOP",
                           "CASTLE",
-                          "MARKET"
+                          "MARKET",
+                          "WALL"
                         ]
                       },
                       "x": {
@@ -2431,6 +2433,9 @@
                       "unitType": {
                         "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/unitType"
                       },
+                      "buildingType": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/buildings/items/properties/type"
+                      },
                       "amount": {
                         "type": "integer",
                         "minimum": 0
@@ -2681,6 +2686,9 @@
                 },
                 "unitType": {
                   "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/unitType"
+                },
+                "buildingType": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/buildings/items/properties/type"
                 },
                 "amount": {
                   "type": "integer",

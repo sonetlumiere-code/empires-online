@@ -1399,3 +1399,38 @@ describe('mercados (SPEC-MARKETS)', () => {
     expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok, 'Q11: no se avisa').toBe(false);
   });
 });
+
+describe('arietes y murallas (SPEC-SIEGE-ENGINES)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '00000000-0000-4000-8000-000000000002';
+
+  it('WALL se construye con city.build y viaja como cualquier edificio', () => {
+    expect(parseClientMessage({ v: 1, type: 'city.build', requestId: uuid, payload: { cityId: 7, type: 'WALL', x: 10, y: 10 } }).ok).toBe(true);
+    const building = { id: 60, cityId: 7, type: 'WALL', x: 10, y: 10, status: 'COMPLETE', completesAtMs: 1, hp: 1_500, maxHp: 1_500 };
+    expect(parseServerMessage({ ...env, type: 'building.spawn', payload: { building } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'building.spawn', payload: { building: { ...building, type: 'GATE' } } }).ok).toBe(false);
+  });
+
+  it('RAM es un tipo de unidad que se entrena', () => {
+    expect(UnitType.options).toContain('RAM');
+    expect(TrainableUnitType.options).toContain('RAM');
+    expect(parseClientMessage({ v: 1, type: 'city.train', requestId: uuid, payload: { cityId: 7, type: 'RAM' } }).ok).toBe(true);
+    const ram = unitInfo('RAM');
+    expect(ram.attacks).toBe(false);
+    expect(ram.siegeDamage).toBe(40);
+    expect(ram.siegeIntervalMs).toBe(3_000);
+    expect(ram.requiresEra).toBe('IRON_AGE');
+    for (const u of UNITS) {
+      if (u.code !== 'RAM') expect(u.siegeDamage, u.code).toBe(0);
+    }
+  });
+
+  it('los derribos del registro y su aviso dicen qué edificio cayó', () => {
+    const entry = { id: 41, kind: 'HOUSE_LOST', firstAtMs: 1, lastAtMs: 2, count: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', buildingType: 'WALL', x: 10, y: 10 };
+    const page = (e: unknown) => parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [e], seenUpToId: 0, nextBeforeId: null } });
+    expect(page(entry).ok).toBe(true);
+    expect(page({ ...entry, buildingType: 'GATE' }).ok).toBe(false);
+    const notice = { kind: 'HOUSE_DESTROYED', atMs: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', buildingType: 'WALL', x: 10, y: 10 };
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
+  });
+});

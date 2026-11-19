@@ -352,7 +352,8 @@ func TestElArqueroSaqueaJuntoALaMuralla(t *testing.T) {
 }
 
 // RN-CIVUNIT-005 y ADR-043 §6: todo tipo que ataca puede atacar, saquear,
-// derribar y plantar el estandarte; ninguno que no ataca puede. Recorre el
+// derribar y plantar el estandarte; ninguno que no ataca puede, salvo el ariete,
+// que derriba (ADR-048 §3). Recorre el
 // catálogo entero para que la próxima unidad herede lo mismo.
 func TestTodaUnidadQueAtacaPuedeHacerLoQueHaceElGuerrero(t *testing.T) {
 	for _, tipo := range unit.Types() {
@@ -376,7 +377,8 @@ func TestTodaUnidadQueAtacaPuedeHacerLoQueHaceElGuerrero(t *testing.T) {
 				ponerUnidad(h, enemigoID, enemigo, 2, unit.TypeVillager, world.Tile{X: 25, Y: 20}, 40)
 				ponerUnidad(h, guerreroID, h.playerID, h.cityID, tipo, world.Tile{X: 20, Y: 20}, def.MaxHP)
 				orden(h, c)
-				if def.CanAttack() {
+				// ADR-048 §3: el ariete derriba sin atacar (SPEC-SIEGE-ENGINES).
+				if def.CanAttack() || (nombre == "derribar" && def.CanDemolish()) {
 					assert.Empty(t, h.codigos(), "%s %s", tipo, nombre)
 				} else {
 					assert.NotEmpty(t, h.codigos(), "%s no debe poder %s", tipo, nombre)

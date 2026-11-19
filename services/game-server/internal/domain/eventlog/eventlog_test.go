@@ -692,3 +692,29 @@ func TestElMercadoEnElRegistro(t *testing.T) {
 	assert.Equal(t, madera, e[1].TradeGet)
 	assert.Equal(t, int32(2), e[1].Lots)
 }
+
+// SPEC-SIEGE-ENGINES §6 y Q10: los derribos se agrupan por tipo de edificio, y la
+// entrada dice cuál cayó: «2 casas» y «tu muralla» son dos entradas, a la víctima
+// y al autor; el aviso al autor lleva el tipo.
+func TestLosDerribosSeAgrupanPorTipoDeEdificio(t *testing.T) {
+	derribo := func(id, at int64, tipo string) eventlog.Event {
+		return eventlog.Event{ID: id, Type: eventlog.EventBuildingDestroyed, PlayerID: yo, Counterpart: otro,
+			AtMs: at, X: 20, Y: 40, HasTile: true, BuildingType: tipo}
+	}
+	for _, viewer := range []uuid.UUID{yo, otro} {
+		b := eventlog.NewBuilder(viewer, 0, 10*time.Minute, 50)
+		require.True(t, b.Add(derribo(3, t0, "HOUSE")))
+		require.True(t, b.Add(derribo(2, t0-1_000, "WALL")))
+		require.True(t, b.Add(derribo(1, t0-2_000, "HOUSE")))
+		entradas := b.Entries()
+		require.Len(t, entradas, 2)
+		assert.Equal(t, "HOUSE", entradas[0].BuildingType)
+		assert.Equal(t, 2, entradas[0].Count)
+		assert.Equal(t, "WALL", entradas[1].BuildingType)
+		assert.Equal(t, 1, entradas[1].Count)
+	}
+	avisos := eventlog.Notices(derribo(9, t0, "WALL"))
+	require.Len(t, avisos, 1, "sólo el autor recibe el aviso del derribo")
+	assert.Equal(t, otro, avisos[0].To)
+	assert.Equal(t, eventlog.KindHouseDestroyed, avisos[0].Kind)
+}

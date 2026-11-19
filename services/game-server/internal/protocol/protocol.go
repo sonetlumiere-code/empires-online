@@ -730,12 +730,14 @@ type EventLogEntry struct {
 	OtherCityID   *int64  `json:"otherCityId"`
 	OtherCityName *string `json:"otherCityName"`
 	UnitType      string  `json:"unitType,omitempty"`
-	Amount        *int64  `json:"amount,omitempty"`
-	TreatyType    string  `json:"treatyType,omitempty"`
-	ProposedByMe  *bool   `json:"proposedByMe,omitempty"`
-	X             *int32  `json:"x,omitempty"`
-	Y             *int32  `json:"y,omitempty"`
-	BreaksAtMs    *int64  `json:"breaksAtMs,omitempty"`
+	// BuildingType, en los derribos: qué edificio cayó (SPEC-SIEGE-ENGINES §6).
+	BuildingType string `json:"buildingType,omitempty"`
+	Amount       *int64 `json:"amount,omitempty"`
+	TreatyType   string `json:"treatyType,omitempty"`
+	ProposedByMe *bool  `json:"proposedByMe,omitempty"`
+	X            *int32 `json:"x,omitempty"`
+	Y            *int32 `json:"y,omitempty"`
+	BreaksAtMs   *int64 `json:"breaksAtMs,omitempty"`
 	// TradeGive y TradeGet, en los tratos: lo que la oferta sacaba del almacén
 	// de quien lee y lo que metía en él (SPEC-TRADE §6).
 	TradeGive []ResourceAmount `json:"tradeGive,omitempty"`
@@ -776,9 +778,11 @@ type EventLogNoticePayload struct {
 	OtherCityID   *int64  `json:"otherCityId"`
 	OtherCityName *string `json:"otherCityName"`
 	UnitType      string  `json:"unitType,omitempty"`
-	Amount        *int64  `json:"amount,omitempty"`
-	X             *int32  `json:"x,omitempty"`
-	Y             *int32  `json:"y,omitempty"`
+	// BuildingType, en un derribo, como en EventLogEntry (SPEC-SIEGE-ENGINES §6).
+	BuildingType string `json:"buildingType,omitempty"`
+	Amount       *int64 `json:"amount,omitempty"`
+	X            *int32 `json:"x,omitempty"`
+	Y            *int32 `json:"y,omitempty"`
 	// TerritoryID y TerritoryName, en la conquista (SPEC-TERRITORY-CONQUEST §6).
 	TerritoryID   *int64 `json:"territoryId,omitempty"`
 	TerritoryName string `json:"territoryName,omitempty"`

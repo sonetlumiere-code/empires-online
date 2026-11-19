@@ -21,7 +21,9 @@
       "attackIntervalMs": 0,
       "attackRange": 0,
       "lootCarry": 0,
-      "populationCost": 1
+      "populationCost": 1,
+      "siegeDamage": 0,
+      "siegeIntervalMs": 0
     },
     {
       "code": "WARRIOR",
@@ -43,7 +45,9 @@
       "attackIntervalMs": 1500,
       "attackRange": 1,
       "lootCarry": 20,
-      "populationCost": 1
+      "populationCost": 1,
+      "siegeDamage": 0,
+      "siegeIntervalMs": 0
     },
     {
       "code": "CARAVAN",
@@ -60,7 +64,9 @@
       "attackIntervalMs": 0,
       "attackRange": 0,
       "lootCarry": 0,
-      "populationCost": 0
+      "populationCost": 0,
+      "siegeDamage": 0,
+      "siegeIntervalMs": 0
     },
     {
       "attacks": true,
@@ -80,6 +86,8 @@
       "requiresEra": "BRONZE_AGE",
       "attackIntervalMs": 1500,
       "populationCost": 1,
+      "siegeDamage": 0,
+      "siegeIntervalMs": 0,
       "code": "LEGIONARY",
       "name": "Legionario",
       "maxHp": 110,
@@ -106,6 +114,8 @@
       "requiresEra": "BRONZE_AGE",
       "attackIntervalMs": 1500,
       "populationCost": 1,
+      "siegeDamage": 0,
+      "siegeIntervalMs": 0,
       "code": "CATAPHRACT",
       "name": "Catafracto",
       "maxHp": 80,
@@ -132,6 +142,8 @@
       "requiresEra": "BRONZE_AGE",
       "attackIntervalMs": 1500,
       "populationCost": 1,
+      "siegeDamage": 0,
+      "siegeIntervalMs": 0,
       "code": "HORSE_ARCHER",
       "name": "Arquero a caballo",
       "maxHp": 60,
@@ -158,6 +170,8 @@
       "requiresEra": "BRONZE_AGE",
       "attackIntervalMs": 1500,
       "populationCost": 1,
+      "siegeDamage": 0,
+      "siegeIntervalMs": 0,
       "code": "BERSERKER",
       "name": "Berserker",
       "maxHp": 60,
@@ -165,6 +179,34 @@
       "attackDamage": 14,
       "attackRange": 1,
       "lootCarry": 30
+    },
+    {
+      "code": "RAM",
+      "name": "Ariete",
+      "attacks": false,
+      "exclusive": false,
+      "trainCosts": [
+        {
+          "resource": "WOOD",
+          "amount": 150
+        },
+        {
+          "resource": "STONE",
+          "amount": 75
+        }
+      ],
+      "ownGoodCost": 0,
+      "trainMs": 40000,
+      "requiresEra": "IRON_AGE",
+      "maxHp": 250,
+      "msPerTile": 1800,
+      "attackDamage": 0,
+      "attackIntervalMs": 0,
+      "attackRange": 1,
+      "lootCarry": 0,
+      "populationCost": 2,
+      "siegeDamage": 40,
+      "siegeIntervalMs": 3000
     }
   ]
 }
