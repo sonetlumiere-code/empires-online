@@ -9,7 +9,7 @@
  */
 import type { BuildingView, CityView, UnitView } from './world';
 import { goodOf, goodLabel } from './civilizations';
-import { civilizationUnit, listJoin, resourceLabel, unitAttacks, unitInfoOf, unitLabel } from './units';
+import { civilizationUnit, isSiegeEngine, listJoin, resourceLabel, unitAttacks, unitInfoOf, unitLabel } from './units';
 
 /** El byte de terreno de un bosque (`world.TerrainType`, internal/game/world/tile.go). */
 export const TERRAIN_FOREST = 1;
@@ -23,7 +23,9 @@ export type TileOrder =
   | { readonly kind: 'demolish'; readonly buildingId: number }
   | { readonly kind: 'gather' }
   | { readonly kind: 'move' }
-  | { readonly kind: 'none' };
+  | { readonly kind: 'none' }
+  /** La orden no se manda: el cliente ya sabe que no cabe y dice por qué (SPEC-SIEGE-ENGINES §4.5). */
+  | { readonly kind: 'blocked'; readonly reason: string };
 
 /**
  * Qué orden es un clic sobre un tile con una unidad propia seleccionada:
@@ -47,16 +49,34 @@ export function decideTileOrder(
   tile: { x: number; y: number },
   unit: Pick<UnitView, 'unitType'>,
   terrain: number | undefined,
-  cityAt: (tile: { x: number; y: number }) => Pick<CityView, 'id' | 'ownerPlayerId'> | undefined,
+  cityAt: (tile: { x: number; y: number }) => Pick<CityView, 'id' | 'ownerPlayerId'> & Partial<Pick<CityView, 'centerX' | 'centerY'>> | undefined,
   playerId: string | null,
-  buildingAt: (tile: { x: number; y: number }) => Pick<BuildingView, 'id' | 'cityId'> | undefined = () => undefined,
+  buildingAt: (tile: { x: number; y: number }) => (Pick<BuildingView, 'id' | 'cityId'> & Partial<Pick<BuildingView, 'type' | 'status'>>) | undefined = () => undefined,
 ): TileOrder {
   if (unit.unitType === 'CARAVAN') return { kind: 'none' };
   const city = cityAt(tile);
   if (city) {
-    if (unitAttacks(unit.unitType) && city.ownerPlayerId !== playerId) {
-      const house = buildingAt(tile);
-      if (house && house.cityId === city.id) return { kind: 'demolish', buildingId: house.id };
+    const ajena = city.ownerPlayerId !== playerId;
+    // SPEC-SIEGE-ENGINES §4.3: la muralla completa, en el centro, deja la ciudad amurallada.
+    const center = city.centerX !== undefined && city.centerY !== undefined ? buildingAt({ x: city.centerX, y: city.centerY }) : undefined;
+    const wall = center && center.cityId === city.id && center.type === 'WALL' ? center : undefined;
+    const walled = wall !== undefined && wall.status === 'COMPLETE';
+    const house = buildingAt(tile);
+    const target = house && house.cityId === city.id ? house : undefined;
+    if (isSiegeEngine(unit.unitType)) {
+      // El ariete sólo derriba: amurallada, la muralla, pulse donde pulse en su 3 × 3.
+      if (!ajena) return { kind: 'none' };
+      if (walled && wall) return { kind: 'demolish', buildingId: wall.id };
+      if (target) return { kind: 'demolish', buildingId: target.id };
+      if (wall) return { kind: 'demolish', buildingId: wall.id };
+      return { kind: 'blocked', reason: 'El ariete sólo derriba edificios: pulsa sobre uno.' };
+    }
+    if (unitAttacks(unit.unitType) && ajena) {
+      // El centro (con o sin muralla) sigue siendo saquear, como en E8.
+      if (target && target.type !== 'WALL') {
+        if (walled) return { kind: 'blocked', reason: 'La muralla está en pie: sólo un ariete la derriba.' };
+        return { kind: 'demolish', buildingId: target.id };
+      }
       return { kind: 'pillage', cityId: city.id };
     }
     return { kind: 'garrison', cityId: city.id };
@@ -180,6 +200,9 @@ export const CASTLE_AGE_COST = { WOOD: 1_600, STONE: 800, FOREIGN_GOODS: 120 } a
 /** Lo que cuesta el castillo (SPEC-CASTLE-AGE Q4). */
 export const CASTLE_COST = { WOOD: 500, STONE: 800 } as const;
 
+/** Lo que cuesta la muralla (SPEC-SIEGE-ENGINES Q9). */
+export const WALL_COST = { WOOD: 100, STONE: 200 } as const;
+
 /** Lo que cuesta el taller (SPEC-CIVILIZATION-GOODS Q6). */
 export const WORKSHOP_COST = { WOOD: 100, STONE: 50 } as const;
 
@@ -224,6 +247,43 @@ export function castleBlockReason(
   if (cityBuildings.some((b) => b.type === 'CASTLE')) return 'La ciudad ya tiene un castillo.';
   if (firstFreeHouseTile(city, cityBuildings) === null) return 'No queda hueco en la zona urbana.';
   return missing(city.stocks, CASTLE_COST);
+}
+
+/**
+ * Por qué no se puede encargar la muralla, o `null` si se puede intentar
+ * (RN-SIEGE-001): pide Bronce, una por ciudad, y 200 de piedra y 100 de madera.
+ * Va en el centro, que siempre está libre. Lo decide el servidor.
+ */
+export function wallBlockReason(
+  city: Pick<CityView, 'era' | 'stocks'>,
+  cityBuildings: readonly Pick<BuildingView, 'type'>[],
+): string | null {
+  if (city.era === 'STONE_AGE') return 'La muralla pide la Edad de Bronce.';
+  if (cityBuildings.some((b) => b.type === 'WALL')) return 'La ciudad ya tiene una muralla.';
+  return missing(city.stocks, WALL_COST);
+}
+
+/**
+ * Por qué no se puede entrenar un ariete, o `null` si se puede intentar
+ * (RN-SIEGE-003): pide Hierro, dos plazas y su coste, además de lo de cualquier
+ * unidad.
+ */
+export function ramBlockReason(
+  city: Pick<CityView, 'era' | 'stocks' | 'population' | 'populationLimit' | 'production' | 'advance'>,
+): string | null {
+  if (city.era === 'STONE_AGE' || city.era === 'BRONZE_AGE') return 'El ariete pide la Edad de Hierro.';
+  const busy = trainBlockReason(city);
+  if (busy) return busy;
+  const info = unitInfoOf('RAM');
+  if (info && city.population + info.populationCost > city.populationLimit) {
+    return 'El ariete ocupa dos plazas: construye una casa para subir el límite.';
+  }
+  const cost = { WOOD: 0, STONE: 0 };
+  for (const c of info?.trainCosts ?? []) {
+    if (c.resource === 'WOOD') cost.WOOD = c.amount;
+    if (c.resource === 'STONE') cost.STONE = c.amount;
+  }
+  return missing(city.stocks, cost);
 }
 
 /**

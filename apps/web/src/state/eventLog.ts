@@ -193,8 +193,11 @@ function rawText(e: EventLogEntry): string {
     case 'PILLAGE_DONE':
       return `Tus guerreros robaron ${wood} de madera a ${who}`;
     case 'HOUSE_LOST':
+      // SPEC-SIEGE-ENGINES §6: la muralla se nombra; el resto, como casas.
+      if (e.buildingType === 'WALL') return `${who} derribó tu muralla: tu ciudad está en brecha`;
       return `${who} derribó ${e.count === 1 ? 'una de tus casas' : `${e.count} de tus casas`}`;
     case 'HOUSE_DESTROYED':
+      if (e.buildingType === 'WALL') return `Tus arietes derribaron la muralla de ${who}`;
       return `Tus guerreros derribaron ${e.count === 1 ? 'una casa' : `${e.count} casas`} de ${who}`;
     case 'TREATY_OFFERED':
       return `${who} te ofreció ${tipo === 'alianza' ? 'una alianza' : `un ${tipo}`}`;

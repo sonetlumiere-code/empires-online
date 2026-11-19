@@ -708,6 +708,24 @@ function paintUnitBody(
       .fill({ color: 0x2a1a0a })
       .circle(6, cy + 6, 3)
       .fill({ color: 0x2a1a0a });
+  } else if (unit.unitType === 'RAM') {
+    // El ariete (SPEC-SIEGE-ENGINES §4.5): un tejadillo de madera sobre cuatro
+    // ruedas, con el tronco asomando por delante y su punta de hierro.
+    body
+      .rect(-10, cy - 2, 20, 8)
+      .fill({ color: 0x7a5230 })
+      .stroke({ color: stroke, width })
+      .moveTo(-12, cy - 2)
+      .lineTo(0, cy - 11)
+      .lineTo(12, cy - 2)
+      .closePath()
+      .fill({ color: fill })
+      .stroke({ color: stroke, width })
+      .rect(8, cy + 1, 8, 3)
+      .fill({ color: 0x8b5a2b })
+      .rect(15, cy, 3, 5)
+      .fill({ color: 0x555a60 });
+    for (const x of [-8, -3, 3, 8]) body.circle(x, cy + 7, 2).fill({ color: 0x2a1a0a });
   } else if (unit.unitType === 'CATAPHRACT' || unit.unitType === 'HORSE_ARCHER') {
     // Las dos montadas (SPEC-CIVILIZATION-UNITS Q7): el caballo, un cuerpo
     // alargado con patas, y el jinete encima; el catafracto con su lanza, el
@@ -781,6 +799,10 @@ function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'type' 
   }
   if (building.type === 'MARKET') {
     paintMarketBody(body, building);
+    return;
+  }
+  if (building.type === 'WALL') {
+    paintWallBody(body, building);
     return;
   }
   const color = building.isOwn ? 0xd8b36a : 0x9c7a55;
@@ -891,6 +913,63 @@ function paintMarketBody(body: Graphics, building: Pick<SceneBuilding, 'status' 
     body.rect(-bw / 2, top - 6, bw, 3).fill({ color: 0x222222 });
     body
       .rect(-bw / 2, top - 6, bw * building.hpRatio, 3)
+      .fill({ color: building.hpRatio > 0.5 ? 0x5bd15b : building.hpRatio > 0.25 ? 0xf0c040 : 0xe04848 });
+  }
+}
+
+/**
+ * La muralla (SPEC-SIEGE-ENGINES §4.5): su fila está en el centro, pero se pinta
+ * como un anillo de piedra con almenas alrededor del 3 × 3 entero, más claro el
+ * propio; agrietada según su vida y, en obras, sólo el trazo.
+ */
+function paintWallBody(body: Graphics, building: Pick<SceneBuilding, 'status' | 'isOwn' | 'hpRatio'>): void {
+  const stone = building.isOwn ? 0xc8c0b0 : 0x8a8478;
+  const hw = TILE_W * 1.5;
+  const hh = TILE_H * 1.5;
+  const lift = 6; // la altura del muro
+  const xs = [0, hw, 0, -hw];
+  const ys = [-hh, 0, hh, 0];
+  const corner = (i: number): [number, number] => [xs[i % 4] ?? 0, ys[i % 4] ?? 0];
+  body.clear();
+  if (building.status !== 'COMPLETE') {
+    body.poly([0, -hh, hw, 0, 0, hh, -hw, 0], true).stroke({ color: stone, width: 1.5, alpha: 0.8 });
+  } else {
+    // El muro: el anillo de abajo, el de arriba y la cara entre los dos.
+    for (let i = 0; i < 4; i++) {
+      const [x1, y1] = corner(i);
+      const [x2, y2] = corner(i + 1);
+      body
+        .poly([x1, y1, x2, y2, x2, y2 - lift, x1, y1 - lift], true)
+        .fill({ color: stone, alpha: 0.95 })
+        .stroke({ color: 0x000000, width: 1, alpha: 0.35 });
+      // Las almenas, tres por lado.
+      for (let k = 1; k <= 3; k++) {
+        const t = k / 4;
+        const mx = x1 + (x2 - x1) * t;
+        const my = y1 + (y2 - y1) * t - lift;
+        body.rect(mx - 2, my - 3, 4, 3).fill({ color: stone }).stroke({ color: 0x000000, width: 1, alpha: 0.3 });
+      }
+    }
+    // Las grietas: una por cada cuarto de vida perdido.
+    const cracks = Math.min(3, Math.floor((1 - building.hpRatio) * 4));
+    for (let i = 0; i < cracks; i++) {
+      const [x1, y1] = corner(i);
+      const [x2, y2] = corner(i + 1);
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      body
+        .moveTo(mx - 2, my - lift)
+        .lineTo(mx + 1, my - lift / 2)
+        .lineTo(mx - 1, my)
+        .stroke({ color: 0x2a2a2a, width: 1.2 });
+    }
+  }
+  if (building.hpRatio < 1) {
+    const bw = 28;
+    const top = -hh - lift - 8;
+    body.rect(-bw / 2, top, bw, 3).fill({ color: 0x222222 });
+    body
+      .rect(-bw / 2, top, bw * building.hpRatio, 3)
       .fill({ color: building.hpRatio > 0.5 ? 0x5bd15b : building.hpRatio > 0.25 ? 0xf0c040 : 0xe04848 });
   }
 }

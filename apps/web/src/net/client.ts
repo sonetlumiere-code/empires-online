@@ -324,6 +324,14 @@ export class GameClient {
   }
 
   /**
+   * Encarga la muralla de una ciudad propia, que va en su centro
+   * (SPEC-SIEGE-ENGINES §4.1).
+   */
+  buildWall(cityId: number, center: { x: number; y: number }): string {
+    return this.send('city.build', { cityId, type: 'WALL', x: center.x, y: center.y });
+  }
+
+  /**
    * Encarga el mercado en un tile de la zona urbana de una ciudad propia
    * (SPEC-MARKETS §4.1).
    */
