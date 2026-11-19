@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las treinta y cuatro specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las treinta y cinco specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -74,6 +74,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Edad de los Castillos | [castle-age.md](castle-age.md) | E23 Edad de los Castillos | Implemented | El avance de Hierro a la Edad de los Castillos, pagando madera, piedra y 120 bienes ajenos, y el castillo, un edificio de la zona urbana que dispara a las unidades que atacan a su dueño |
 | Guerras entre clanes | [clan-wars.md](clan-wars.md) | E24 Guerras entre clanes | Implemented | El líder de un clan declara la guerra a otro: los pactos entre sus miembros terminan, un marcador público suma bajas, derribos y conquistas, y la guerra acaba en paz, rendición o plazo con un resultado en el historial |
 | Árbol tecnológico | [technologies.md](technologies.md) | E25 Árbol tecnológico | Implemented | La investigación en la ciudad: doce tecnologías (ocho comunes, dos por era, y una exclusiva por civilización) que se pagan en recursos y tiempo y mejoran para siempre al jugador con efectos de catálogo que se componen con los rasgos de civilización |
+| Mercados | [markets.md](markets.md) | E26 Mercados | Accepted | El mercado, un edificio desde la Edad de Bronce: ofertas públicas en lotes de un recurso por otro, con lo ofrecido en custodia y una comisión, que cualquiera con mercado compra sin tratado; cada compra viaja en dos caravanas |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

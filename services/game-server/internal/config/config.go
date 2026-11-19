@@ -75,6 +75,8 @@ type Config struct {
 	// TradeOfferTTL es la vida de una oferta de comercio sin respuesta
 	// (SPEC-TRADE Q5).
 	TradeOfferTTL time.Duration
+	// MarketOfferTTL es la vida de una oferta del mercado (SPEC-MARKETS Q10).
+	MarketOfferTTL time.Duration
 	// TerritoryClaimFree y TerritoryClaimHeld son el plazo de una reclamación
 	// de territorio libre y con dueño (SPEC-TERRITORY-CONQUEST Q3).
 	TerritoryClaimFree time.Duration
@@ -243,6 +245,7 @@ func Load() (Config, error) {
 		TreatyBreakNotice:           time.Duration(v.intRange("EO_TREATY_BREAK_NOTICE_MINUTES", 15, 1, 24*60)) * time.Minute,
 		TreatyRetry:                 time.Duration(v.intRange("EO_TREATY_RETRY_MINUTES", 10, 1, 24*60)) * time.Minute,
 		TradeOfferTTL:               time.Duration(v.intRange("EO_TRADE_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
+		MarketOfferTTL:              time.Duration(v.intRange("EO_MARKET_OFFER_HOURS", 24, 1, 24*30)) * time.Hour,
 		TerritoryClaimFree:          time.Duration(v.intRange("EO_TERRITORY_CLAIM_FREE_SECONDS", 300, 1, 24*3600)) * time.Second,
 		TerritoryClaimHeld:          time.Duration(v.intRange("EO_TERRITORY_CLAIM_SECONDS", 600, 1, 24*3600)) * time.Second,
 		FactionJoinDelay:            time.Duration(v.intRange("EO_FACTION_JOIN_SECONDS", 900, 1, 24*3600)) * time.Second,

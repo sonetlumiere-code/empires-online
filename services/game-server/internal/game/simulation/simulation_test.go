@@ -276,6 +276,7 @@ type harness struct {
 	trade     *fakeTrade
 	conquest  *fakeConquest
 	caravans  *fakeCaravans
+	market    *fakeMarket
 }
 
 // newHarness monta un mundo determinista de 64x64 de hierba con un jugador,
@@ -323,6 +324,7 @@ func newHarnessConDeps(t *testing.T, pintar func(terrain []byte), ajustar func(*
 	comercio := &fakeTrade{nextID: 2000}
 	conquista := &fakeConquest{nextID: 3000}
 	caravanas := &fakeCaravans{}
+	mercado := &fakeMarket{nextID: 4000, nextPurchase: 5000}
 	commands := make(chan simulation.Command, 256)
 	// Las respuestas de la cola vuelven al loop por su buzón, como en cmd/server.
 	inbox := loop.NewInbox(256, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -339,6 +341,7 @@ func newHarnessConDeps(t *testing.T, pintar func(terrain []byte), ajustar func(*
 		Trade:              comercio,
 		Conquest:           conquista,
 		Caravans:           caravanas,
+		Market:             mercado,
 		Inbox:              inbox.Offer,
 		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ProtectionCooldown: 300 * time.Second,
@@ -366,6 +369,7 @@ func newHarnessConDeps(t *testing.T, pintar func(terrain []byte), ajustar func(*
 		trade:    comercio,
 		conquest: conquista,
 		caravans: caravanas,
+		market:   mercado,
 		playerID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
 		cityID:   1,
 	}

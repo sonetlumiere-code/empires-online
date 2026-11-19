@@ -19,7 +19,8 @@ func ptrTo[T any](p *T) **T { return &p }
 // BuildingType es el catálogo de edificios del dominio, con CASTLE, en city.build
 // y en la vista del edificio.
 func TestElTipoDeEdificioIncluyeElCastillo(t *testing.T) {
-	esperados := []string{string(building.TypeCastle), string(building.TypeHouse), string(building.TypeWorkshop)}
+	// Desde E26, también MARKET (SPEC-MARKETS §6).
+	esperados := []string{string(building.TypeCastle), string(building.TypeHouse), string(building.TypeMarket), string(building.TypeWorkshop)}
 	for _, tipo := range esperados {
 		_, err := building.Lookup(building.Type(tipo))
 		require.NoError(t, err, "%s está en el catálogo de Go", tipo)

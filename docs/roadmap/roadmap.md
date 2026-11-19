@@ -180,6 +180,10 @@ Economy —sin recursos no hay nada que comerciar— y de Diplomacy (M7), porque
 `TRADE` es la habilitación natural del intercambio. Introduce por primera vez transacciones
 multi-jugador con riesgo de condición de carrera, y por tanto necesita bloqueos en Redis y
 concurrencia optimista sobre las filas afectadas.
+**Precisión (2026-11-18, [markets.md](../specs/markets.md), [ADR-047](../decisions/ADR-047-markets.md)):** el trato directo entre dos llegó en E10
+([trade.md](../specs/trade.md)) y el mercado en E26 ([milestones.md](milestones.md) §E26): un tablón público de ofertas en
+lotes con custodia y comisión, comprado sin tratado y entregado en caravanas. Sin bloqueos en Redis: la RAM de un solo
+escritor decide y la base condiciona cada escritura (`market_offers`, `market_purchases`).
 
 **Caravans.** Rutas y caravanas (`trade_routes`, `caravans`) que transportan mercancía por el mundo
 y pueden ser interceptadas. Depende de Trade y de una generalización de M4: el modelo de polilínea

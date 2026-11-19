@@ -141,7 +141,8 @@ export type Stocks = z.infer<typeof Stocks>;
 
 /** El taller (`WORKSHOP`) llega con SPEC-CIVILIZATION-GOODS §4.2. */
 /** `CASTLE` es el castillo de la Edad de los Castillos, que golpea a quien ataca a su dueño (SPEC-CASTLE-AGE §4.2). */
-export const BuildingType = z.enum(['HOUSE', 'WORKSHOP', 'CASTLE']);
+/** `MARKET` es el mercado, que deja publicar y comprar en el tablón público (SPEC-MARKETS §4.1). */
+export const BuildingType = z.enum(['HOUSE', 'WORKSHOP', 'CASTLE', 'MARKET']);
 export type BuildingType = z.infer<typeof BuildingType>;
 
 export const BuildingStatus = z.enum(['UNDER_CONSTRUCTION', 'COMPLETE']);
@@ -662,6 +663,10 @@ export const EventLogKind = z.enum([
   'CLAN_WAR_DECLARED',
   'CLAN_WAR_PEACE_OFFERED',
   'CLAN_WAR_ENDED',
+  // El mercado (SPEC-MARKETS Q11): al vendedor, la venta de lotes de su oferta y su
+  // caducidad, con lo que volvió al almacén. Ninguno se avisa en vivo.
+  'MARKET_SOLD',
+  'MARKET_EXPIRED',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -714,7 +719,11 @@ export const EventLogEntry = z.object({
   firstAtMs: EpochMs,
   lastAtMs: EpochMs,
   count: z.number().int().min(1),
-  otherPlayerId: Uuid,
+  /**
+   * El otro jugador. `null` sólo en `MARKET_EXPIRED`, que no tiene otro: la oferta
+   * caducó sola (SPEC-MARKETS §6).
+   */
+  otherPlayerId: Uuid.nullable(),
   /** La ciudad del otro jugador, si la tiene. */
   otherCityId: EntityId.nullable(),
   otherCityName: z.string().min(1).max(64).nullable(),
@@ -748,6 +757,11 @@ export const EventLogEntry = z.object({
   clanTag: ClanTag.optional(),
   /** En las caravanas (SPEC-CARAVANS §6): lo que llevaba. Opcional: aditivo en v1. */
   cargo: z.array(ResourceAmount).optional(),
+  /**
+   * En el mercado (SPEC-MARKETS §6): los lotes vendidos en `MARKET_SOLD` o devueltos en
+   * `MARKET_EXPIRED`. Lo que salió y lo que entra van en `tradeGive` y `tradeGet`.
+   */
+  lots: z.number().int().min(1).max(100).optional(),
   /** En una ruptura que abrió una guerra entre clanes: `WAR` (SPEC-CLAN-WARS §6). */
   breakReason: z.literal('WAR').optional(),
   /** En la declaración y la oferta de paz: cuándo empieza la guerra (SPEC-CLAN-WARS §6). */
@@ -783,6 +797,37 @@ export const TradeOfferView = z.object({
   expiresAtMs: EpochMs,
 });
 export type TradeOfferView = z.infer<typeof TradeOfferView>;
+
+/** Máximo de lotes de una oferta del mercado (SPEC-MARKETS §4.2). */
+export const MARKET_MAX_LOTS = 100;
+
+/** Estado de una oferta del mercado (SPEC-MARKETS §4.2). */
+export const MarketOfferStatus = z.enum(['OPEN', 'SOLD_OUT', 'WITHDRAWN', 'EXPIRED']);
+export type MarketOfferStatus = z.infer<typeof MarketOfferStatus>;
+
+/**
+ * Una oferta del mercado (SPEC-MARKETS §6): lo que da y pide cada lote, los lotes que
+ * quedan y la ciudad que la publicó con su posición, para que el cliente calcule la
+ * distancia. `lotsSold` son los vendidos; en una oferta retirada o caducada, `lotsLeft`
+ * son los que volvieron al almacén.
+ */
+export const MarketOfferView = z.object({
+  id: EntityId,
+  playerId: Uuid,
+  cityId: EntityId,
+  cityName: z.string().min(1).max(64).nullable(),
+  civilization: CivilizationCode.nullable(),
+  cityX: WorldCoordinate.nullable(),
+  cityY: WorldCoordinate.nullable(),
+  give: ResourceAmount,
+  want: ResourceAmount,
+  lotsTotal: z.number().int().min(1).max(MARKET_MAX_LOTS),
+  lotsLeft: z.number().int().min(0).max(MARKET_MAX_LOTS),
+  lotsSold: z.number().int().min(0).max(MARKET_MAX_LOTS),
+  status: MarketOfferStatus,
+  expiresAtMs: EpochMs,
+});
+export type MarketOfferView = z.infer<typeof MarketOfferView>;
 
 /** Estado de una caravana (SPEC-CARAVANS §7). */
 export const CaravanStatus = z.enum(['IN_TRANSIT', 'DELIVERED', 'LOST']);

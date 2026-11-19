@@ -2615,3 +2615,55 @@ con `EO_TECHNOLOGY_RESEARCH_SECONDS=20` y el almacén de smoke_runner sembrado (
   e2e y el snapshot de la simulación), el motivo del avance de era mientras se investiga (smoke_runner ya está en la
   última era; lo cubre `technologies.test.ts`) y los efectos en el juego salvo la vida de la casa (los cubren los tests
   de simulación).
+
+## E26 — Mercados
+
+**Estado: EN CURSO (2026-11-18)**, en la rama `claude/slice-mercados`. Contrato: [SPEC-MARKETS](../specs/markets.md),
+aceptada el 2026-11-18 con sus trece decisiones de producto, y [ADR-047](../decisions/ADR-047-markets.md).
+
+**Objetivo.** Que se pueda comprar y vender a cualquiera sin un trato entre dos: un tablón público de ofertas en lotes,
+con lo ofrecido en custodia y una comisión, que cualquiera con mercado compra sin tratado. Cierra lo que quedaba de
+`OUT-08` y abre la parte de mercados de la fase Trade del roadmap.
+
+**Alcance.** El edificio `MARKET` (Bronce, uno por ciudad, derribable); `market.post`, `market.buy`, `market.cancel` y
+la consulta `market.list` (de 48 a 52 mensajes); ofertas de un recurso por otro, de 1 a 100 lotes, 3 abiertas por
+jugador durante `EO_MARKET_OFFER_HOURS`; la custodia al publicar; la comisión de `⌈cantidad / 10⌉` por lote y por
+parte; dos caravanas por compra; `market.listing`, `market.update` y `marketOffers[]`; `MARKET_SOLD` y
+`MARKET_EXPIRED` en el registro; `INV-TRADE-008` a `INV-TRADE-010` y las precisiones de `INV-TRADE-001` e
+`INV-TRADE-007`; migración `000028`; el panel «Mercado» y `scripts/smoke.mjs --mercado`. **No entra** (spec §2): un
+mercado del sistema, una moneda, el cruce automático, órdenes de compra, varios recursos por lado, precios de
+referencia, ofertas dirigidas, el tablón que se refresca solo y avisos en vivo de las ventas.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-047](../decisions/ADR-047-markets.md), `INV-TRADE-008` a `INV-TRADE-010`, las
+   precisiones de `INV-TRADE-001`, `INV-TRADE-007` y `RN-CARAVAN-001` ([caravans.md](../specs/caravans.md)).
+2. **HECHO** — Protocolo: los cuatro comandos, `market.listing`, `market.update`, `marketOffers[]`, `MARKET` y los
+   dos tipos de entrada del registro, con `otherPlayerId` anulable y `lots`; contract tests (Go y Zod).
+3. **HECHO** — Dominio, migración `000028` y persistencia: la oferta, la comisión, el edificio, la publicación, la
+   compra con sus caravanas, el cierre, la carga y la lectura del tablón.
+4. **HECHO** — Simulación: las tres órdenes, la reserva de lotes, el cierre optimista y la caducidad; el golden
+   «mercado».
+5. **HECHO** — WebSocket: `market.list` desde la conexión y el e2e de dos jugadores.
+6. **HECHO** — Cliente: «Construir mercado», su silueta, el botón «Mercado» y el panel con sus tres pestañas.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --mercado`.
+
+### Prueba en vivo (2026-11-18)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 27 a la 28 al arrancar, con la web en el 3001:
+
+- **Humo** `node scripts/smoke.mjs --web http://localhost:3001 --mercado`: 30 comprobaciones. La primera pasada
+  construyó los dos mercados (54 545 ms cada uno, con el rasgo romano) y encontró un fallo del propio humo, que leía el
+  almacén de smoke_victim de antes de pagar su mercado (corregido). La segunda retiró la oferta que la primera dejó
+  abierta, publicó (madera 578 → 556: 20 en custodia y 2 de comisión), smoke_victim leyó el tablón, el vendedor no pudo
+  comprarse su oferta (`INVALID_TARGET`), smoke_victim compró un lote (piedra 1897 → 1894), la caravana de madera llegó
+  96 ms después de lo anunciado, la retirada devolvió 10 de madera y el registro del vendedor contó la venta
+  (`MARKET_SOLD`). El servidor no registró ningún error ni `invariant_violation`.
+- **Navegador** (smoke_runner, con el panel oculto): «Mientras no estabas» cuenta las dos ventas del humo («smoke_victimpolis
+  compró 1 lote de tu oferta en el mercado: le mandas 10 de madera y te manda 2 de piedra»); el panel «Mercado» abre en
+  «Comprar» con el tablón vacío; «Vender» con el ejemplo de la spec dice «Salen de tu almacén 60 de piedra en custodia y 6
+  de comisión» y «Publicar» quita 66 de piedra (454 → 388); «Mis ofertas (1)» la lista («20 de piedra por 30 de madera ·
+  0 vendidos, quedan 3 de 3, caduca en 24 h») y «Retirar» devuelve 60 (388 → 448).
+- **Sin comprobar en el navegador:** la silueta del mercado en el mapa (con el panel oculto no se dibuja la escena),
+  comprar desde la pestaña «Comprar» (no había ofertas ajenas abiertas; lo cubren el humo, el e2e y `market.test.ts`) y
+  «Construir mercado» (smoke_runner ya tenía el suyo; lo cubren el humo y `market.test.ts`).

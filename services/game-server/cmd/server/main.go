@@ -395,6 +395,19 @@ func run() error {
 		return fmt.Errorf("cargar ofertas de comercio: %w", err)
 	}
 	state.SetTradeOffers(ofertas)
+	// Las ofertas abiertas del mercado (ADR-047). Las que caducaron con el
+	// servidor parado las cierra el primer barrido; las que no cuadran con sus
+	// compras (INV-TRADE-009) no se incorporan y quedan para revisarlas a mano.
+	marketRepo := postgres.NewMarketRepo(store, cfg.ChunkSize)
+	mercado, err := marketRepo.ListOpen(rootCtx)
+	if err != nil {
+		return fmt.Errorf("cargar ofertas del mercado: %w", err)
+	}
+	malasDelMercado, err := marketRepo.Violations(rootCtx)
+	if err != nil {
+		return fmt.Errorf("comprobar ofertas del mercado: %w", err)
+	}
+	state.SetMarketOffers(excludeMarketViolations(mercado, malasDelMercado, log))
 	// Las caravanas en camino (ADR-037 §8), después de Hydrate: sus unidades y
 	// sus movimientos ya están en la RAM. Las que llegaron con el servidor
 	// parado las entrega la fase 5 del primer tick.
@@ -478,6 +491,7 @@ func run() error {
 		Repos:       gameStore,
 		Treaties:    persistence.NewTreatyStore(treatyRepo),
 		Trade:       persistence.NewTradeStore(tradeRepo),
+		Market:      persistence.NewMarketStore(marketRepo),
 		Caravans:    persistence.NewCaravanStore(caravanRepo),
 		Garrisons:   postgres.NewGarrisonRepo(store, unitRepo, movementRepo, treatyRepo),
 		Economy:     economyStore,
@@ -502,6 +516,7 @@ func run() error {
 		TreatyBreakNotice:           cfg.TreatyBreakNotice,
 		TreatyRetry:                 cfg.TreatyRetry,
 		TradeOfferTTL:               cfg.TradeOfferTTL,
+		MarketOfferTTL:              cfg.MarketOfferTTL,
 		Conquest:                    persistence.NewConquestStore(conquestRepo),
 		TerritoryClaimFree:          cfg.TerritoryClaimFree,
 		TerritoryClaimHeld:          cfg.TerritoryClaimHeld,
@@ -574,6 +589,9 @@ func run() error {
 	// El canal de los clanes, igual: lo atiende la conexión y comprueba la
 	// pertenencia en la base (ADR-040 §5). Comparte el límite de ritmo.
 	wsServer.SetClans(clanRepo)
+	// El tablón del mercado, igual: lo lee la conexión de la base, y la compra se
+	// valida en el tick (ADR-047 §6).
+	wsServer.SetMarket(marketRepo)
 
 	// Detrás del reverse proxy del despliegue de referencia, TODAS las
 	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el

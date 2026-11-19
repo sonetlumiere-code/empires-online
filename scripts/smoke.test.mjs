@@ -18,6 +18,9 @@ import {
   apuntaA,
   bienDe,
   castilloDe,
+  comisionDelMercado,
+  costeDePublicar,
+  mercadoDe,
   guardiasCerca,
   pasosHastaCastillos,
   cookieDeSesion,
@@ -474,4 +477,25 @@ test('plazoDeInvestigacion: el del catálogo con el rasgo compuesto, o el de la 
   assert.equal(plazoDeInvestigacion(TECS[3], CIVS, TECS, 'ROMAN', ['GUILDS']), 247_934);
   assert.equal(plazoDeInvestigacion(TECS[0], CIVS, TECS, 'NORSE', []), 66_667);
   assert.equal(plazoDeInvestigacion(TECS[0], CIVS, TECS, 'ROMAN', [], 20), 20_000);
+});
+
+// SPEC-MARKETS (--mercado): la comisión, lo que cuesta publicar y el mercado de una ciudad.
+test('comisionDelMercado es la décima parte de cada lote, hacia arriba', () => {
+  assert.deepEqual([1, 9, 10, 11, 20, 30].map(comisionDelMercado), [1, 1, 1, 2, 2, 3]);
+  assert.equal(comisionDelMercado(0), 0);
+});
+
+test('costeDePublicar suma la custodia y la comisión de todos los lotes', () => {
+  assert.equal(costeDePublicar(10, 2), 22, 'el humo: 20 en custodia y 2 de comisión');
+  assert.equal(costeDePublicar(20, 3), 66, 'el ejemplo de la spec');
+});
+
+test('mercadoDe encuentra el mercado de la ciudad, no el de otra ni otro edificio', () => {
+  const edificios = [
+    { id: 1, cityId: 7, type: 'WORKSHOP' },
+    { id: 2, cityId: 8, type: 'MARKET' },
+    { id: 3, cityId: 7, type: 'MARKET' },
+  ];
+  assert.equal(mercadoDe(edificios, 7).id, 3);
+  assert.equal(mercadoDe(edificios, 9), undefined);
 });

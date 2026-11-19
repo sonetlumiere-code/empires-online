@@ -187,7 +187,7 @@ func (r *TradeRepo) Accept(ctx context.Context, a TradeAcceptance) ([]CaravanCre
 		departed := time.UnixMilli(a.AtMs).UTC()
 		ids := make([]int64, 0, len(a.Caravans))
 		for _, sp := range a.Caravans {
-			c, err := insertCaravan(ctx, tx, r.chunkSize, o.ID, departed, sp)
+			c, err := insertCaravan(ctx, tx, r.chunkSize, caravanSource{offerID: o.ID}, departed, sp)
 			if err != nil {
 				return err
 			}

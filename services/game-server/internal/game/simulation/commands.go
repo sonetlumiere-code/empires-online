@@ -235,6 +235,12 @@ func CommandTypes() []string {
 		ResearchTechnology{}.commandType(),
 		ResearchResolved{}.commandType(),
 		ResearchCompletePersistFailed{}.commandType(),
+		PostMarketOffer{}.commandType(),
+		BuyMarketOffer{}.commandType(),
+		CancelMarketOffer{}.commandType(),
+		MarketPostResolved{}.commandType(),
+		MarketBuyResolved{}.commandType(),
+		MarketClosePersistFailed{}.commandType(),
 	}
 }
 
@@ -286,6 +292,7 @@ func JobNames() []string {
 		JobClanAlliance, JobClanAllianceEnd,
 		JobClanWar, JobClanWarEnd,
 		JobCityResearch, JobResearchComplete,
+		JobMarketPost, JobMarketBuy, JobMarketClose,
 	}
 }
 

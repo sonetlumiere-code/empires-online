@@ -1332,3 +1332,70 @@ describe('árbol tecnológico (SPEC-TECHNOLOGIES)', () => {
     }
   });
 });
+
+describe('mercados (SPEC-MARKETS)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const msg = (type: string, payload: unknown) => parseClientMessage({ v: 1, type, requestId: uuid, payload });
+  const lote = (resource: string, amount: number) => ({ resource, amount });
+  const oferta = {
+    id: 9, playerId: otro, cityId: 7, cityName: 'Villa Norte', civilization: 'PERSIAN', cityX: 120, cityY: 88,
+    give: lote('STONE', 20), want: lote('WOOD', 30), lotsTotal: 3, lotsLeft: 3, lotsSold: 0, status: 'OPEN',
+    expiresAtMs: 1_757_376_000_000,
+  };
+
+  it('acepta market.post con un recurso por lado y de 1 a 100 lotes', () => {
+    expect(msg('market.post', { give: lote('STONE', 20), want: lote('WOOD', 30), lots: 3 }).ok).toBe(true);
+    expect(msg('market.post', { give: lote('SILK', 1), want: lote('WINE', 1_000_000), lots: 100 }).ok).toBe(true);
+    for (const payload of [
+      { give: lote('STONE', 20), want: lote('WOOD', 30), lots: 0 },
+      { give: lote('STONE', 20), want: lote('WOOD', 30), lots: 101 },
+      { give: lote('STONE', 20), want: lote('WOOD', 30) },
+      { give: lote('STONE', 0), want: lote('WOOD', 30), lots: 1 },
+      { give: lote('GOLD', 1), want: lote('WOOD', 30), lots: 1 },
+      { give: [lote('STONE', 1)], want: lote('WOOD', 30), lots: 1 },
+      { give: { ...lote('STONE', 1), price: 3 }, want: lote('WOOD', 30), lots: 1 },
+      { give: lote('STONE', 1), want: lote('WOOD', 30), lots: 1, commission: 0 },
+    ]) {
+      expect(msg('market.post', payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+  });
+
+  it('acepta market.buy, market.cancel y market.list con su filtro opcional', () => {
+    expect(msg('market.buy', { offerId: 9, lots: 2 }).ok).toBe(true);
+    expect(msg('market.buy', { offerId: 9 }).ok).toBe(false);
+    expect(msg('market.buy', { offerId: 9, lots: 0 }).ok).toBe(false);
+    expect(msg('market.cancel', { offerId: 9 }).ok).toBe(true);
+    expect(msg('market.list', {}).ok).toBe(true);
+    expect(msg('market.list', { receive: 'SILK', pay: 'WOOD' }).ok).toBe(true);
+    expect(msg('market.list', { receive: 'GOLD' }).ok).toBe(false);
+    for (const tipo of ['market.post', 'market.buy', 'market.cancel', 'market.list']) {
+      expect(CLIENT_MESSAGE_TYPES).toContain(tipo);
+    }
+  });
+
+  it('market.update y market.listing llevan la oferta con su ciudad, sus lotes y su estado', () => {
+    expect(parseServerMessage({ ...env, type: 'market.update', payload: { offer: oferta } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'market.update', payload: { offer: { ...oferta, status: 'SOLD' } } }).ok).toBe(false);
+    expect(parseServerMessage({ ...env, type: 'market.update', payload: { offer: { ...oferta, give: [lote('STONE', 20)] } } }).ok).toBe(false);
+    expect(parseServerMessage({ ...env, type: 'market.listing', payload: { offers: [oferta] } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'market.listing', payload: { offers: Array(101).fill(oferta) } }).ok).toBe(false);
+    const snapshot = { serverTimeMs: 1, tick: 1, chunks: [], terrain: [], units: [], cities: [], territories: [], buildings: [] };
+    expect(parseServerMessage({ ...env, type: 'world.snapshot', payload: { ...snapshot, marketOffers: [oferta] } }).ok).toBe(true);
+  });
+
+  it('MARKET es un tipo de edificio que se construye con city.build', () => {
+    expect(msg('city.build', { cityId: 7, type: 'MARKET', x: 10, y: 11 }).ok).toBe(true);
+  });
+
+  it('la venta y la caducidad son entradas del registro; la caducidad, sin otro jugador; ninguna se avisa', () => {
+    const page = (entry: Record<string, unknown>) =>
+      parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [entry], seenUpToId: 0, nextBeforeId: null } }).ok;
+    const base = { id: 41, firstAtMs: 1, lastAtMs: 1, count: 1, otherCityId: null, otherCityName: null };
+    expect(page({ ...base, kind: 'MARKET_SOLD', otherPlayerId: otro, lots: 2, tradeGive: [lote('STONE', 40)], tradeGet: [lote('WOOD', 60)] })).toBe(true);
+    expect(page({ ...base, kind: 'MARKET_EXPIRED', otherPlayerId: null, lots: 1, tradeGet: [lote('STONE', 20)] })).toBe(true);
+    expect(page({ ...base, kind: 'MARKET_SOLD', otherPlayerId: otro, lots: 0 })).toBe(false);
+    const notice = { kind: 'MARKET_SOLD', atMs: 1, otherPlayerId: otro, otherCityId: null, otherCityName: null };
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok, 'Q11: no se avisa').toBe(false);
+  });
+});

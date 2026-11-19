@@ -211,6 +211,8 @@ type eventPayload struct {
 	Result     string `json:"result"`
 	OurScore   int64  `json:"ourScore"`
 	TheirScore int64  `json:"theirScore"`
+	// Lots, en el mercado (SPEC-MARKETS §6).
+	Lots int32 `json:"lots"`
 }
 
 // payloadLine es una línea de un trato en el payload.
@@ -268,6 +270,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	e.Reason = p.Reason
 	e.KillerBuildingType = p.KillerBuildingType
 	e.StartsAtMs, e.WarResult, e.OurScore, e.TheirScore = p.StartsAtMs, p.Result, p.OurScore, p.TheirScore
+	e.Lots = p.Lots
 	return nil
 }
 
@@ -323,9 +326,13 @@ func fromLines(ls []eventlog.Line) []protocol.ResourceAmount {
 func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEntry {
 	v := protocol.EventLogEntry{
 		ID: e.ID, Kind: string(e.Kind), FirstAtMs: e.FirstAtMs, LastAtMs: e.LastAtMs, Count: e.Count,
-		OtherPlayerID: e.Other.String(),
 	}
-	if c, ok := cities[e.Other]; ok {
+	// MARKET_EXPIRED no tiene otro jugador (SPEC-MARKETS §6).
+	if e.Other != uuid.Nil {
+		other := e.Other.String()
+		v.OtherPlayerID = &other
+	}
+	if c, ok := cities[e.Other]; ok && e.Other != uuid.Nil {
 		id, name := c.id, c.name
 		v.OtherCityID, v.OtherCityName = &id, &name
 	}
@@ -381,6 +388,10 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	v.ClanTag = e.ClanTag
 	if len(e.Cargo) > 0 {
 		v.Cargo = fromLines(e.Cargo)
+	}
+	if e.Lots > 0 {
+		lots := e.Lots
+		v.Lots = &lots
 	}
 	return v
 }

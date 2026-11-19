@@ -104,6 +104,12 @@ type Deps struct {
 	// TradeOfferTTL es la vida de una oferta de comercio sin respuesta
 	// (SPEC-TRADE Q5). Cero: el valor por defecto, 24 h.
 	TradeOfferTTL time.Duration
+	// Market escribe el mercado (ADR-047). Opcional: sin él, las órdenes del
+	// mercado responden INTERNAL_ERROR y los cierres sólo cambian la RAM.
+	Market MarketStore
+	// MarketOfferTTL es la vida de una oferta del mercado (SPEC-MARKETS Q10).
+	// Cero: el valor por defecto, 24 h.
+	MarketOfferTTL time.Duration
 	// Caravans escribe las llegadas y las capturas de las caravanas (ADR-037).
 	// Opcional: sin él, sólo existen en la RAM.
 	Caravans CaravanStore
@@ -262,6 +268,18 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleResearchResolved(c)
 	case ResearchCompletePersistFailed:
 		s.handleResearchCompletePersistFailed(c)
+	case PostMarketOffer:
+		s.handlePostMarketOffer(c)
+	case BuyMarketOffer:
+		s.handleBuyMarketOffer(c)
+	case CancelMarketOffer:
+		s.handleCancelMarketOffer(c)
+	case MarketPostResolved:
+		s.handleMarketPostResolved(c)
+	case MarketBuyResolved:
+		s.handleMarketBuyResolved(c)
+	case MarketClosePersistFailed:
+		s.handleMarketClosePersistFailed(c)
 	case TrainResolved:
 		s.handleTrainResolved(c)
 	case BirthResolved:
@@ -1043,6 +1061,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushCompletions()
 	s.flushCraftDeliveries()
 	s.flushCaravanWrites()
+	s.flushMarketCloses()
 	s.flushAdvanceCompletions()
 	s.flushResearchCompletions()
 	s.flushFactionCompletions()

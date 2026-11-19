@@ -37,7 +37,8 @@ ofertas recibidas y enviadas; `scripts/smoke.mjs --comercio`.
 [roadmap.md](../roadmap/roadmap.md)); mercados públicos, ofertas abiertas a cualquiera y subastas (`markets`);
 precios de referencia o fijados por el sistema; contraofertas (se rechaza y se propone otra); tratos entre más de dos
 jugadores; impuestos o comisión; saquear piedra (Q8); que terceros vean los tratos (Q9); avisos en vivo del
-registro; recursos nuevos.
+registro; recursos nuevos. **Precisión (2026-11-18, [markets.md](markets.md)):** desde E26 existe el mercado, con
+ofertas abiertas a cualquiera y una comisión; el trato directo de este slice no cambia y sigue sin comisión.
 
 ## 3. Actores
 

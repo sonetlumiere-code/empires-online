@@ -779,6 +779,10 @@ function paintBuildingBody(body: Graphics, building: Pick<SceneBuilding, 'type' 
     paintCastleBody(body, building);
     return;
   }
+  if (building.type === 'MARKET') {
+    paintMarketBody(body, building);
+    return;
+  }
   const color = building.isOwn ? 0xd8b36a : 0x9c7a55;
   const w = TILE_W * 0.45;
   const h = TILE_H * 0.7;
@@ -846,6 +850,47 @@ function paintCastleBody(body: Graphics, building: Pick<SceneBuilding, 'status' 
     body.rect(-bw / 2, top, bw, 3).fill({ color: 0x222222 });
     body
       .rect(-bw / 2, top, bw * building.hpRatio, 3)
+      .fill({ color: building.hpRatio > 0.5 ? 0x5bd15b : building.hpRatio > 0.25 ? 0xf0c040 : 0xe04848 });
+  }
+}
+
+/**
+ * El mercado (SPEC-MARKETS §4.8): un puesto con mostrador y un toldo a rayas del
+ * color de propio o ajeno; en obras, sólo el contorno.
+ */
+function paintMarketBody(body: Graphics, building: Pick<SceneBuilding, 'status' | 'isOwn' | 'hpRatio'>): void {
+  const wood = building.isOwn ? 0xd8b36a : 0x9c7a55;
+  const stripe = building.isOwn ? 0x2f7d4f : 0x6e4a7a;
+  const w = TILE_W * 0.55;
+  const h = TILE_H * 0.45;
+  const awning = TILE_H * 0.35;
+  const top = -h - TILE_H * 0.35 - awning;
+  body.clear();
+  if (building.status !== 'COMPLETE') {
+    body.rect(-w / 2, -h, w, h).stroke({ color: wood, width: 1.5, alpha: 0.9 });
+    body.rect(-w / 2, top, w, awning).stroke({ color: wood, width: 1.5, alpha: 0.9 });
+  } else {
+    // El mostrador y los dos postes.
+    body.rect(-w / 2, -h, w, h).fill({ color: wood }).stroke({ color: 0x000000, width: 1, alpha: 0.4 });
+    body.rect(-w / 2, top + awning, 2, -top - awning - h).fill({ color: 0x6b4a2b });
+    body.rect(w / 2 - 2, top + awning, 2, -top - awning - h).fill({ color: 0x6b4a2b });
+    // El toldo, a rayas.
+    const stripes = 5;
+    for (let i = 0; i < stripes; i++) {
+      body
+        .rect(-w / 2 + (i * w) / stripes, top, w / stripes, awning)
+        .fill({ color: i % 2 === 0 ? stripe : 0xf2ead8 });
+    }
+    body.rect(-w / 2, top, w, awning).stroke({ color: 0x000000, width: 1, alpha: 0.4 });
+    // Unos sacos sobre el mostrador.
+    body.circle(-w / 5, -h - 2, 2.5).fill({ color: 0xc89b5a });
+    body.circle(w / 6, -h - 2, 2.5).fill({ color: 0x8aa04a });
+  }
+  if (building.hpRatio < 1) {
+    const bw = 18;
+    body.rect(-bw / 2, top - 6, bw, 3).fill({ color: 0x222222 });
+    body
+      .rect(-bw / 2, top - 6, bw * building.hpRatio, 3)
       .fill({ color: building.hpRatio > 0.5 ? 0x5bd15b : building.hpRatio > 0.25 ? 0xf0c040 : 0xe04848 });
   }
 }

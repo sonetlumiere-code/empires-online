@@ -578,6 +578,8 @@ func (s *Simulation) sweepTreaties(now time.Time) {
 	// RN-TRADE-006: las ofertas de comercio de un par que se quedó sin tratado
 	// caen en este mismo tick.
 	s.sweepTrades(now)
+	// RN-MARKET-008: las ofertas del mercado que caducan.
+	s.sweepMarket(now)
 }
 
 func (s *Simulation) submitTreatyEnd(w TreatyWrite) {

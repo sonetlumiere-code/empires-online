@@ -52,10 +52,35 @@ type CaravanCreated struct {
 	UnitID    int64
 }
 
-// insertCaravan crea una caravana en la transacción de su trato: su unidad
-// MOVING en el depósito de origen, su movimiento ACTIVE, su fila y su carga
-// (RN-CARAVAN-001, INV-UNIT-005, INV-TRADE-007).
-func insertCaravan(ctx context.Context, tx DB, chunkSize int32, offerID int64, departedAt time.Time, sp CaravanSpawn) (CaravanCreated, error) {
+// caravanSource es de dónde nace una caravana: un trato aceptado (offerID) o
+// una compra en el mercado (purchaseID), exactamente uno (INV-TRADE-007).
+type caravanSource struct {
+	offerID    int64
+	purchaseID int64
+}
+
+func (s caravanSource) args() (*int64, *int64) {
+	var offer, purchase *int64
+	if s.offerID != 0 {
+		offer = &s.offerID
+	}
+	if s.purchaseID != 0 {
+		purchase = &s.purchaseID
+	}
+	return offer, purchase
+}
+
+func (s caravanSource) String() string {
+	if s.purchaseID != 0 {
+		return fmt.Sprintf("de la compra %d", s.purchaseID)
+	}
+	return fmt.Sprintf("del trato %d", s.offerID)
+}
+
+// insertCaravan crea una caravana en la transacción de su trato o de su compra:
+// su unidad MOVING en el depósito de origen, su movimiento ACTIVE, su fila y su
+// carga (RN-CARAVAN-001, INV-UNIT-005, INV-TRADE-007).
+func insertCaravan(ctx context.Context, tx DB, chunkSize int32, src caravanSource, departedAt time.Time, sp CaravanSpawn) (CaravanCreated, error) {
 	if err := caravan.ValidateCargo(sp.Cargo); err != nil {
 		return CaravanCreated{}, err
 	}
@@ -74,13 +99,15 @@ func insertCaravan(ctx context.Context, tx DB, chunkSize int32, offerID int64, d
 	if _, _, err := (&MovementRepo{}).Start(ctx, tx, &m); err != nil {
 		return CaravanCreated{}, err
 	}
+	offer, purchase := src.args()
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO caravans (unit_id, offer_id, sender_player_id, from_city_id, to_city_id, original_to_city_id, departed_at)
-		 VALUES ($1, $2, $3, $4, $5, $5, $6)
+		`INSERT INTO caravans (unit_id, offer_id, market_purchase_id, sender_player_id, from_city_id, to_city_id,
+		                       original_to_city_id, departed_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $6, $7)
 		 RETURNING id`,
-		out.UnitID, offerID, sp.Sender, sp.FromCity, sp.ToCity, departedAt,
+		out.UnitID, offer, purchase, sp.Sender, sp.FromCity, sp.ToCity, departedAt,
 	).Scan(&out.CaravanID); err != nil {
-		return CaravanCreated{}, fmt.Errorf("insertar la caravana del trato %d: %w", offerID, normalize(err))
+		return CaravanCreated{}, fmt.Errorf("insertar la caravana %s: %w", src, normalize(err))
 	}
 	for _, c := range sp.Cargo {
 		if _, err := tx.Exec(ctx,
@@ -278,7 +305,8 @@ func caravanPayload(caravanID, cityID int64, cargo economy.Costs, at world.Tile,
 // lo que la simulación recupera al arrancar (ADR-037 §8).
 func (r *CaravanRepo) ListInTransit(ctx context.Context) ([]caravan.Caravan, error) {
 	rows, err := r.store.pool.Query(ctx,
-		`SELECT id, unit_id, offer_id, sender_player_id, from_city_id, to_city_id, original_to_city_id, departed_at
+		`SELECT id, unit_id, COALESCE(offer_id, 0), COALESCE(market_purchase_id, 0), sender_player_id, from_city_id,
+		        to_city_id, original_to_city_id, departed_at
 		   FROM caravans WHERE status = 'IN_TRANSIT' ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("leer las caravanas en camino: %w", normalize(err))
@@ -287,8 +315,8 @@ func (r *CaravanRepo) ListInTransit(ctx context.Context) ([]caravan.Caravan, err
 	index := make(map[int64]int)
 	for rows.Next() {
 		c := caravan.Caravan{Status: caravan.StatusInTransit}
-		if err := rows.Scan(&c.ID, &c.UnitID, &c.OfferID, &c.Sender, &c.FromCity, &c.ToCity, &c.OriginalToCity,
-			&c.DepartedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.UnitID, &c.OfferID, &c.PurchaseID, &c.Sender, &c.FromCity, &c.ToCity,
+			&c.OriginalToCity, &c.DepartedAt); err != nil {
 			rows.Close()
 			return nil, normalize(err)
 		}
@@ -339,13 +367,23 @@ type CaravanViolation struct {
 // Violations busca, al arrancar, las caravanas en camino que no se pueden
 // incorporar (ADR-037 §8): una oferta que no está ACCEPTED o una unidad que no
 // es una CARAVAN viva (INV-TRADE-007), y una carga distinta de las líneas de su
-// lado del trato (INV-TRADE-005). En orden de caravana.
+// lado del trato (INV-TRADE-005). Desde E26, las de una compra en el mercado:
+// una unidad que no es una CARAVAN viva y una carga distinta de su lado de la
+// compra (ADR-047 §2). En orden de caravana.
 func (r *CaravanRepo) Violations(ctx context.Context) ([]CaravanViolation, error) {
 	rows, err := r.store.pool.Query(ctx, `
 		WITH k AS (
 		    SELECT c.id, c.unit_id, c.offer_id, o.status AS offer_status,
 		           CASE WHEN c.from_city_id = o.proposer_city_id THEN 'GIVE' ELSE 'WANT' END AS side
 		      FROM caravans c JOIN trade_offers o ON o.id = c.offer_id
+		     WHERE c.status = 'IN_TRANSIT'
+		), m AS (
+		    SELECT c.id, c.unit_id,
+		           CASE WHEN c.from_city_id = o.city_id THEN o.give_resource ELSE o.want_resource END AS resource,
+		           CASE WHEN c.from_city_id = o.city_id THEN o.give_per_lot ELSE p.paid_per_lot END * p.lots AS amount
+		      FROM caravans c
+		      JOIN market_purchases p ON p.id = c.market_purchase_id
+		      JOIN market_offers o ON o.id = p.offer_id
 		     WHERE c.status = 'IN_TRANSIT'
 		)
 		SELECT k.id, 'INV-TRADE-007', 'su oferta está ' || k.offer_status
@@ -365,6 +403,16 @@ func (r *CaravanRepo) Violations(ctx context.Context) ([]CaravanViolation, error
 		       (SELECT resource, amount FROM trade_offer_lines WHERE offer_id = k.offer_id AND side = k.side
 		        EXCEPT
 		        SELECT resource, amount::bigint FROM caravan_cargo WHERE caravan_id = k.id))
+		UNION ALL
+		SELECT m.id, 'INV-TRADE-007', 'su unidad no es una CARAVAN viva'
+		  FROM m LEFT JOIN units u ON u.id = m.unit_id
+		 WHERE u.id IS NULL OR u.unit_type <> 'CARAVAN' OR u.status = 'DEAD'
+		UNION ALL
+		SELECT m.id, 'INV-TRADE-005', 'su carga no es la de su lado de la compra'
+		  FROM m
+		 WHERE (SELECT count(*) FROM caravan_cargo WHERE caravan_id = m.id) <> 1
+		    OR NOT EXISTS (SELECT 1 FROM caravan_cargo g
+		                    WHERE g.caravan_id = m.id AND g.resource = m.resource AND g.amount::bigint = m.amount)
 		ORDER BY 1, 2`)
 	if err != nil {
 		return nil, fmt.Errorf("comprobar las caravanas en camino: %w", normalize(err))

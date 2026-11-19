@@ -919,7 +919,8 @@
                         "enum": [
                           "HOUSE",
                           "WORKSHOP",
-                          "CASTLE"
+                          "CASTLE",
+                          "MARKET"
                         ]
                       },
                       "x": {
@@ -1300,6 +1301,115 @@
                       "cargo",
                       "status",
                       "arrivesAtMs"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "marketOffers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "playerId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                      },
+                      "cityId": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "cityName": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "civilization": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/civilization"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cityX": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cityY": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "give": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
+                      },
+                      "want": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
+                      },
+                      "lotsTotal": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100
+                      },
+                      "lotsLeft": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "lotsSold": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "OPEN",
+                          "SOLD_OUT",
+                          "WITHDRAWN",
+                          "EXPIRED"
+                        ]
+                      },
+                      "expiresAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "playerId",
+                      "cityId",
+                      "cityName",
+                      "civilization",
+                      "cityX",
+                      "cityY",
+                      "give",
+                      "want",
+                      "lotsTotal",
+                      "lotsLeft",
+                      "lotsSold",
+                      "status",
+                      "expiresAtMs"
                     ],
                     "additionalProperties": false
                   }
@@ -2271,7 +2381,9 @@
                           "CASTLE_KILL",
                           "CLAN_WAR_DECLARED",
                           "CLAN_WAR_PEACE_OFFERED",
-                          "CLAN_WAR_ENDED"
+                          "CLAN_WAR_ENDED",
+                          "MARKET_SOLD",
+                          "MARKET_EXPIRED"
                         ]
                       },
                       "firstAtMs": {
@@ -2285,7 +2397,14 @@
                         "minimum": 1
                       },
                       "otherPlayerId": {
-                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                        "anyOf": [
+                          {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       },
                       "otherCityId": {
                         "anyOf": [
@@ -2359,6 +2478,11 @@
                         "items": {
                           "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/tradeOffers/items/properties/give/items"
                         }
+                      },
+                      "lots": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100
                       },
                       "breakReason": {
                         "type": "string",
@@ -3662,6 +3786,92 @@
                 "messages",
                 "readUpToId",
                 "nextBeforeId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "market.update"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "offer": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/marketOffers/items"
+                }
+              },
+              "required": [
+                "offer"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "market.listing"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "offers": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/marketOffers/items"
+                  },
+                  "maxItems": 100
+                }
+              },
+              "required": [
+                "offers"
               ],
               "additionalProperties": false
             }

@@ -675,3 +675,4 @@ Se documenta para que nadie lo implemente por inercia ni lo asuma existente:
   guerras declaradas entre clanes. **Precisión (2026-11-17):** las guerras entre clanes existen desde E24
   ([clan-wars.md](../specs/clan-wars.md), [ADR-045](../decisions/ADR-045-clan-wars.md)). **Precisión (2026-11-18):** las
   tecnologías existen desde E25 ([technologies.md](../specs/technologies.md), [ADR-046](../decisions/ADR-046-technologies.md)).
+  **Precisión (2026-11-18):** el mercado existe desde E26 ([markets.md](../specs/markets.md), [ADR-047](../decisions/ADR-047-markets.md)).

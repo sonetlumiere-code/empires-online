@@ -13,6 +13,7 @@ import {
   ClanTag,
   EntityId,
   JoinableFactionCode,
+  MARKET_MAX_LOTS,
   MESSAGE_MAX_CHARS,
   PROTOCOL_VERSION,
   ResourceAmount,
@@ -377,6 +378,57 @@ export const TradeCancel = z.object({
 }).strict();
 
 /**
+ * Publica una oferta en el mercado (SPEC-MARKETS §4.2): lo que da y pide cada lote y
+ * cuántos lotes. El servidor decide si hay mercado, si alcanza el almacén y la comisión.
+ * Ver ../../../docs/specs/markets.md
+ */
+export const MarketPost = z.object({
+  v: V,
+  type: z.literal('market.post'),
+  requestId: Uuid,
+  payload: z.object({
+    give: ResourceAmount.strict(),
+    want: ResourceAmount.strict(),
+    lots: z.number().int().min(1).max(MARKET_MAX_LOTS),
+  }).strict(),
+}).strict();
+
+/** Compra lotes de una oferta ajena del mercado (SPEC-MARKETS §4.5). */
+export const MarketBuy = z.object({
+  v: V,
+  type: z.literal('market.buy'),
+  requestId: Uuid,
+  payload: z.object({
+    offerId: EntityId,
+    lots: z.number().int().min(1).max(MARKET_MAX_LOTS),
+  }).strict(),
+}).strict();
+
+/** Retira la oferta propia del mercado; vuelve lo que queda en custodia (RN-MARKET-007). */
+export const MarketCancel = z.object({
+  v: V,
+  type: z.literal('market.cancel'),
+  requestId: Uuid,
+  payload: z.object({
+    offerId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
+ * Pide el tablón del mercado (SPEC-MARKETS §6): las ofertas abiertas de otros
+ * jugadores, filtradas por el recurso que se quiere recibir o el que se quiere pagar.
+ */
+export const MarketList = z.object({
+  v: V,
+  type: z.literal('market.list'),
+  requestId: Uuid,
+  payload: z.object({
+    receive: ResourceType.optional(),
+    pay: ResourceType.optional(),
+  }).strict(),
+}).strict();
+
+/**
  * Pide una página del registro (SPEC-EVENT-LOG): la más reciente, o la de los
  * eventos anteriores a `beforeId`. El jugador es siempre el de la sesión
  * (INV-SEC-009). Ver ../../../docs/specs/event-log.md
@@ -691,6 +743,10 @@ export const ClientMessage = z.discriminatedUnion('type', [
   TradePropose,
   TradeRespond,
   TradeCancel,
+  MarketPost,
+  MarketBuy,
+  MarketCancel,
+  MarketList,
   EventLogFetch,
   EventLogSeen,
   MessageSend,
@@ -742,6 +798,10 @@ export type TreatyCancel = z.infer<typeof TreatyCancel>;
 export type TradePropose = z.infer<typeof TradePropose>;
 export type TradeRespond = z.infer<typeof TradeRespond>;
 export type TradeCancel = z.infer<typeof TradeCancel>;
+export type MarketPost = z.infer<typeof MarketPost>;
+export type MarketBuy = z.infer<typeof MarketBuy>;
+export type MarketCancel = z.infer<typeof MarketCancel>;
+export type MarketList = z.infer<typeof MarketList>;
 export type EventLogFetch = z.infer<typeof EventLogFetch>;
 export type EventLogSeen = z.infer<typeof EventLogSeen>;
 export type MessageSend = z.infer<typeof MessageSend>;
@@ -816,6 +876,10 @@ export const CLIENT_MESSAGE_TYPES = [
   'clan.war.peace',
   'clan.war.surrender',
   'city.research',
+  'market.post',
+  'market.buy',
+  'market.cancel',
+  'market.list',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

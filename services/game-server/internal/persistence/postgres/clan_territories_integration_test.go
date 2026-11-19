@@ -139,7 +139,8 @@ func TestUnTerritorioDeClanEnLaBase(t *testing.T) {
 	require.Len(t, delTercero, 1, "lo gana una sola vez, aunque el clan tuviera dos miembros")
 	assert.Equal(t, "TERRITORY_TAKEN", delTercero[0].Kind)
 	assert.Empty(t, delTercero[0].ClanTag, "lo ganó para sí")
-	assert.Equal(t, c.duena.Player.ID.String(), delTercero[0].OtherPlayerID, "el miembro más antiguo")
+	require.NotNil(t, delTercero[0].OtherPlayerID)
+	assert.Equal(t, c.duena.Player.ID.String(), *delTercero[0].OtherPlayerID, "el miembro más antiguo")
 }
 
 // INV-TERR-012: la base no admite un dueño CLAN que no sea un clan vivo, ni
@@ -382,5 +383,6 @@ func TestLaCapturaDeUnClanAOtroClan(t *testing.T) {
 	}
 	require.Len(t, ganado, 1, "lo gana una sola vez, aunque [LOB] tuviera dos miembros")
 	assert.Equal(t, "OSO", ganado[0].ClanTag, "lo ganó para su clan")
-	assert.Equal(t, c.duena.Player.ID.String(), ganado[0].OtherPlayerID, "el miembro más antiguo de [LOB]")
+	require.NotNil(t, ganado[0].OtherPlayerID)
+	assert.Equal(t, c.duena.Player.ID.String(), *ganado[0].OtherPlayerID, "el miembro más antiguo de [LOB]")
 }

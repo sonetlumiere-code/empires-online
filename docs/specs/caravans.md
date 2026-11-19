@@ -135,7 +135,7 @@ Dominio: `RN-CARAVAN`.
 
 | ID | Regla |
 |---|---|
-| `RN-CARAVAN-001` | Sólo un trato aceptado crea caravanas: exactamente dos, una por sentido, cada una con lo que da su parte, en el depósito de su ciudad y en la misma transacción que los débitos (§4.2). Ningún otro camino crea una caravana. |
+| `RN-CARAVAN-001` | Sólo un trato aceptado crea caravanas: exactamente dos, una por sentido, cada una con lo que da su parte, en el depósito de su ciudad y en la misma transacción que los débitos (§4.2). Ningún otro camino crea una caravana. **Precisión (2026-11-18, [markets.md](markets.md) §4.6, [ADR-047](../decisions/ADR-047-markets.md) §2):** desde E26 también una compra en el mercado crea exactamente dos caravanas, una con los lotes comprados, sacados de la custodia de la oferta, y otra con lo que paga el comprador sin su comisión, en la transacción de la compra. |
 | `RN-CARAVAN-002` | Proponer y aceptar un trato exigen una ruta entre los depósitos de las dos ciudades dentro de los límites del pathfinding; si no la hay, `PATH_NOT_FOUND` o `PATH_TOO_LONG`, y una aceptación rechazada deja la oferta pendiente. La ruta de la aceptación es la de las dos caravanas, una al revés de la otra. |
 | `RN-CARAVAN-003` | Una caravana no admite órdenes de nadie (`UNIT_NOT_MOVABLE`), no cuenta en la población de su ciudad, no ataca, no responde a los golpes, no se guarnece y no recolecta. |
 | `RN-CARAVAN-004` | **Llegada.** Al alcanzar el depósito de su ciudad de destino, la carga entra en ese almacén y la caravana desaparece, en el mismo tick; la entrega durable acredita como mucho una vez (§4.3). |

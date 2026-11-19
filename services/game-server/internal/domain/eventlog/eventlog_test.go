@@ -187,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 40, "desde E24, los tres de la guerra entre clanes")
+	assert.Len(t, vistos, 42, "desde E26, los dos del mercado")
 }
 
 // SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
@@ -643,4 +643,52 @@ func TestLasMuertesDelCastilloTienenSusPropiosTipos(t *testing.T) {
 	assert.Equal(t, 2, entradas[0].Count)
 	assert.Equal(t, "WARRIOR", entradas[0].UnitType)
 	assert.Equal(t, eventlog.KindUnitLost, entradas[1].Kind)
+}
+
+// SPEC-MARKETS Q11 y RN-LOG-001: la venta y la caducidad le cuentan algo sólo al
+// vendedor; la compra, nada a quien la hizo. La caducidad no tiene otro jugador.
+// Ninguna se avisa, y cada venta es su propia entrada con sus lotes.
+func TestElMercadoEnElRegistro(t *testing.T) {
+	piedra := []eventlog.Line{{Resource: "STONE", Amount: 40}}
+	madera := []eventlog.Line{{Resource: "WOOD", Amount: 60}}
+	venta := func(id, at int64) eventlog.Event {
+		return eventlog.Event{ID: id, Type: eventlog.EventMarketPurchase, PlayerID: yo, Counterpart: otro, AtMs: at,
+			OfferID: 5, Give: piedra, Want: madera, Lots: 2}
+	}
+	kind, other, ok := eventlog.Classify(yo, venta(1, t0))
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindMarketSold, kind)
+	assert.Equal(t, otro, other)
+	_, _, ok = eventlog.Classify(otro, venta(1, t0))
+	assert.False(t, ok, "al comprador no se le cuenta su compra")
+	_, _, ok = eventlog.Classify(tercero, venta(1, t0))
+	assert.False(t, ok)
+	assert.Empty(t, eventlog.Notices(venta(1, t0)), "no se avisa")
+
+	caducada := eventlog.Event{ID: 4, Type: eventlog.EventMarketOfferExpired, PlayerID: yo, AtMs: t0, OfferID: 5,
+		Give: []eventlog.Line{{Resource: "STONE", Amount: 20}}, Lots: 1}
+	kind, other, ok = eventlog.Classify(yo, caducada)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindMarketExpired, kind)
+	assert.Equal(t, uuid.Nil, other, "no hay otro jugador")
+	assert.Empty(t, eventlog.Notices(caducada))
+	for _, tipo := range []string{eventlog.EventMarketOfferPosted, eventlog.EventMarketOfferWithdrawn} {
+		_, _, ok = eventlog.Classify(yo, eventlog.Event{ID: 2, Type: tipo, PlayerID: yo, AtMs: t0})
+		assert.False(t, ok, "%s lo ordenó el propio jugador", tipo)
+		assert.NotContains(t, eventlog.EventTypes(), tipo)
+	}
+
+	b := eventlog.NewBuilder(yo, 0, time.Hour, 10)
+	require.True(t, b.Add(caducada))
+	require.True(t, b.Add(venta(3, t0-1)))
+	require.True(t, b.Add(venta(2, t0-2)))
+	e := b.Entries()
+	require.Len(t, e, 3, "cada venta es su propia entrada")
+	assert.Equal(t, eventlog.KindMarketExpired, e[0].Kind)
+	assert.Equal(t, []eventlog.Line{{Resource: "STONE", Amount: 20}}, e[0].TradeGet, "lo que volvió al almacén")
+	assert.Empty(t, e[0].TradeGive)
+	assert.Equal(t, int32(1), e[0].Lots)
+	assert.Equal(t, piedra, e[1].TradeGive)
+	assert.Equal(t, madera, e[1].TradeGet)
+	assert.Equal(t, int32(2), e[1].Lots)
 }

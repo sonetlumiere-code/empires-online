@@ -78,3 +78,13 @@ func TestLosEstadosDeUnaCaravana(t *testing.T) {
 	c.ToCity = 2
 	assert.False(t, c.Captured(), "recuperada por quien la esperaba, va adonde iba")
 }
+
+// SPEC-MARKETS §4.6 e INV-TRADE-007: una compra da dos caravanas, la del
+// vendedor primero, con lo comprado y con lo pagado sin la comisión.
+func TestUnaCompraDaDosCaravanasUnaPorSentido(t *testing.T) {
+	receive := economy.Cost{Resource: economy.ResourceStone, Amount: 40}
+	pay := economy.Cost{Resource: economy.ResourceWood, Amount: 60}
+	h := caravan.PurchaseHalves(quienOfrece, 1, quienAcepta, 2, receive, pay)
+	assert.Equal(t, caravan.Half{Sender: quienOfrece, FromCity: 1, ToCity: 2, Cargo: economy.Costs{receive}}, h[0])
+	assert.Equal(t, caravan.Half{Sender: quienAcepta, FromCity: 2, ToCity: 1, Cargo: economy.Costs{pay}}, h[1])
+}

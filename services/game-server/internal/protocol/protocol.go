@@ -55,6 +55,12 @@ const (
 	TypeTradePropose = "trade.propose"
 	TypeTradeRespond = "trade.respond"
 	TypeTradeCancel  = "trade.cancel"
+	// Mercado (SPEC-MARKETS): las tres órdenes pasan por la simulación; el
+	// tablón lo lee la conexión de la base (ADR-047 §6).
+	TypeMarketPost   = "market.post"
+	TypeMarketBuy    = "market.buy"
+	TypeMarketCancel = "market.cancel"
+	TypeMarketList   = "market.list"
 	// Facciones (SPEC-FACTIONS).
 	TypeFactionJoin = "faction.join"
 	// Registro (SPEC-EVENT-LOG): los atiende la conexión, no la simulación.
@@ -128,6 +134,8 @@ const (
 	TypeClanInfo              = "clan.info"
 	TypeClanChatNew           = "clan.chat.new"
 	TypeClanChatPage          = "clan.chat.page"
+	TypeMarketUpdate          = "market.update"
+	TypeMarketListing         = "market.listing"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -182,6 +190,11 @@ var ClientMessageTypes = map[string]bool{
 	TypeClanWarDeclare:   true,
 	TypeClanWarPeace:     true,
 	TypeClanWarSurrender: true,
+
+	TypeMarketPost:   true,
+	TypeMarketBuy:    true,
+	TypeMarketCancel: true,
+	TypeMarketList:   true,
 }
 
 // IsPreAuth indica los mensajes admitidos antes de completar el handshake.
@@ -611,6 +624,63 @@ type TradeUpdatePayload struct {
 	Offer TradeOfferView `json:"offer"`
 }
 
+// MarketPostPayload publica una oferta en el mercado (SPEC-MARKETS §6): lo que
+// da y pide cada lote y cuántos lotes.
+type MarketPostPayload struct {
+	Give ResourceAmount `json:"give"`
+	Want ResourceAmount `json:"want"`
+	Lots int32          `json:"lots"`
+}
+
+// MarketBuyPayload compra lotes de una oferta ajena.
+type MarketBuyPayload struct {
+	OfferID int64 `json:"offerId"`
+	Lots    int32 `json:"lots"`
+}
+
+// MarketCancelPayload retira la oferta propia.
+type MarketCancelPayload struct {
+	OfferID int64 `json:"offerId"`
+}
+
+// MarketListPayload pide el tablón, con un filtro opcional por el recurso que
+// se quiere recibir o el que se quiere pagar.
+type MarketListPayload struct {
+	Receive string `json:"receive,omitempty"`
+	Pay     string `json:"pay,omitempty"`
+}
+
+// MarketOfferView es una oferta del mercado (SPEC-MARKETS §6). La ciudad lleva
+// su posición, no la de su depósito (ADR-047 §6); en una oferta retirada o
+// caducada, LotsLeft son los lotes que volvieron al almacén.
+type MarketOfferView struct {
+	ID           int64          `json:"id"`
+	PlayerID     string         `json:"playerId"`
+	CityID       int64          `json:"cityId"`
+	CityName     *string        `json:"cityName"`
+	Civilization *string        `json:"civilization"`
+	CityX        *int32         `json:"cityX"`
+	CityY        *int32         `json:"cityY"`
+	Give         ResourceAmount `json:"give"`
+	Want         ResourceAmount `json:"want"`
+	LotsTotal    int32          `json:"lotsTotal"`
+	LotsLeft     int32          `json:"lotsLeft"`
+	LotsSold     int32          `json:"lotsSold"`
+	Status       string         `json:"status"`
+	ExpiresAtMs  int64          `json:"expiresAtMs"`
+}
+
+// MarketUpdatePayload lleva una oferta del mercado que cambió a su vendedor, y a
+// quien dio la orden.
+type MarketUpdatePayload struct {
+	Offer MarketOfferView `json:"offer"`
+}
+
+// MarketListingPayload es el tablón, en respuesta a market.list.
+type MarketListingPayload struct {
+	Offers []MarketOfferView `json:"offers"`
+}
+
 // CaravanView es una caravana vista por uno de sus implicados (SPEC-CARAVANS
 // §6): su dueño, quien la mandó, el destinatario original y el captor. ToCityID
 // es adonde va ahora y OriginalToCityID adonde iba al salir. ArrivesAtMs es nil
@@ -649,12 +719,14 @@ type EventLogSeenPayload struct {
 // EventLogEntry es una entrada del registro vista por quien la recibe
 // (SPEC-EVENT-LOG §6). Los campos opcionales sólo van en los tipos que los usan.
 type EventLogEntry struct {
-	ID            int64   `json:"id"`
-	Kind          string  `json:"kind"`
-	FirstAtMs     int64   `json:"firstAtMs"`
-	LastAtMs      int64   `json:"lastAtMs"`
-	Count         int     `json:"count"`
-	OtherPlayerID string  `json:"otherPlayerId"`
+	ID        int64  `json:"id"`
+	Kind      string `json:"kind"`
+	FirstAtMs int64  `json:"firstAtMs"`
+	LastAtMs  int64  `json:"lastAtMs"`
+	Count     int    `json:"count"`
+	// OtherPlayerID es nil sólo en MARKET_EXPIRED, que no tiene otro jugador
+	// (SPEC-MARKETS §6).
+	OtherPlayerID *string `json:"otherPlayerId"`
 	OtherCityID   *int64  `json:"otherCityId"`
 	OtherCityName *string `json:"otherCityName"`
 	UnitType      string  `json:"unitType,omitempty"`
@@ -677,6 +749,9 @@ type EventLogEntry struct {
 	ClanTag string `json:"clanTag,omitempty"`
 	// Cargo, en las caravanas: lo que llevaba (SPEC-CARAVANS §6).
 	Cargo []ResourceAmount `json:"cargo,omitempty"`
+	// Lots, en el mercado: los lotes vendidos en MARKET_SOLD o devueltos en
+	// MARKET_EXPIRED (SPEC-MARKETS §6).
+	Lots *int32 `json:"lots,omitempty"`
 	// BreakReason, en una ruptura que abrió una guerra entre clanes: WAR
 	// (SPEC-CLAN-WARS §6).
 	BreakReason string `json:"breakReason,omitempty"`
@@ -1183,6 +1258,9 @@ type WorldSnapshotPayload struct {
 	// recibe el snapshot, van a ella o son suyas (SPEC-CARAVANS §6). Se omite si
 	// no hay ninguna.
 	Caravans []CaravanView `json:"caravans,omitempty"`
+	// MarketOffers son las ofertas OPEN del mercado de quien recibe el
+	// snapshot (SPEC-MARKETS §6). Se omite si no tiene ninguna.
+	MarketOffers []MarketOfferView `json:"marketOffers,omitempty"`
 }
 
 type EntitySpawnPayload struct {

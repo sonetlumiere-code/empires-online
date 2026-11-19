@@ -1,13 +1,15 @@
 # Invariantes de Comercio (INV-TRADE-xxx)
 
 Propiedades del comercio entre dos ciudades: lo que un trato mueve, quién puede cerrar una oferta, cuántas puede
-haber entre dos jugadores y, desde E15, las caravanas que llevan lo que se movió.
+haber entre dos jugadores, desde E15 las caravanas que llevan lo que se movió y, desde E26, el mercado: la custodia de
+lo ofrecido, sus lotes y quién compra.
 
 Formato y severidades: [README.md](README.md). Stock: [economy.md](economy.md). Tratados:
 [diplomacy.md](diplomacy.md). Specs: [../specs/trade.md](../specs/trade.md), [../specs/caravans.md](../specs/caravans.md).
 Decisiones: [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md),
 [ADR-027](../decisions/ADR-027-hot-treaties.md), [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md),
-[ADR-037](../decisions/ADR-037-caravans-as-units.md).
+[ADR-037](../decisions/ADR-037-caravans-as-units.md), [ADR-047](../decisions/ADR-047-markets.md). Mercado:
+[../specs/markets.md](../specs/markets.md).
 
 ---
 
@@ -50,7 +52,7 @@ Decisiones: [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-or
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E10 |
 | Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
-| Cobertura | **Cubierto** por `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada`, `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez` y `TestUnaCapturaSinRutaPierdeLaCaravana` (integration), `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes`, `TestGoldenCaravanasDelTratoALaLlegada`, `TestCapturadaSinRutaSePierde` y `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y `TestLasPatasDeUnTratoConservanCadaRecurso` (`internal/domain/trade`) |
+| Cobertura | **Cubierto** (desde E26 también la comisión del mercado: `TestElEjemploDeLaSpec` en `internal/domain/market`, `TestGoldenMercadoPublicarComprarLlegarYCaducar` en simulation y `TestPublicarEnElMercadoEsIdempotente` en integration) por `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada`, `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez` y `TestUnaCapturaSinRutaPierdeLaCaravana` (integration), `TestGoldenComercioOfertaAceptacionYLosDosAlmacenes`, `TestGoldenCaravanasDelTratoALaLlegada`, `TestCapturadaSinRutaSePierde` y `TestUnTratoQueNoSeEscribeDevuelveLoReservado` (simulation) y `TestLasPatasDeUnTratoConservanCadaRecurso` (`internal/domain/trade`) |
 
 **Enunciado.** Para todo trato aceptado y para cada recurso, la cantidad que resta del almacén de una ciudad es
 exactamente la que suma al de la otra, y las dos escrituras se confirman en la misma transacción que pasa la oferta a
@@ -84,6 +86,18 @@ llegar ([INV-TRADE-005](#inv-trade-005), [INV-TRADE-006](#inv-trade-006)). Un tr
 que carga existan. **Desde el mismo día, cubierta:** `TestGoldenCaravanasDelTratoALaLlegada` (simulation) comprueba
 que lo debitado es lo que cargan las dos caravanas y lo que entra en cada almacén al llegar, y
 `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez` (integration), que la transacción crea las dos con su carga.
+
+**Precisión (2026-11-18, [SPEC-MARKETS](../specs/markets.md) §4.3, [ADR-047](../decisions/ADR-047-markets.md) §4).**
+Desde E26 el comercio tiene un segundo camino, el mercado, y un segundo sumidero, su comisión. El enunciado pasa a ser:
+el comercio nunca crea recursos; lo que sale de un almacén por un trato o por el mercado entra, en la misma transacción,
+en una caravana o en la custodia de una oferta, salvo la comisión del mercado, que desaparece y queda escrita en la
+oferta, en la compra y en sus eventos; lo que sale de la custodia entra en una caravana o vuelve al almacén del
+vendedor; y sólo la comisión y la pérdida de una caravana capturada sin ruta destruyen recursos. La ficha queda parcial
+hasta que los tests de la comisión existan. **Desde el mismo día, cubierta:** `TestElEjemploDeLaSpec` (domain) y el
+golden `TestGoldenMercadoPublicarComprarLlegarYCaducar` (simulation) comprueban que publicar el ejemplo de la spec
+debita 66 de piedra (60 en custodia y 6 de comisión), que comprar 2 lotes debita 66 de madera y que las caravanas llevan
+exactamente 40 de piedra y 60 de madera; `TestPublicarEnElMercadoEsIdempotente` (integration), que la base debita una
+sola vez la custodia con su comisión.
 
 ---
 
@@ -247,7 +261,7 @@ el `COMMIT` es la documentada en ADR-037 §4.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E15 |
 | Política ante violación | REJECT |
-| Cobertura | **Cubierto** por `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez`, `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada`, `TestLasRestriccionesDeLasCaravanas` y `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration), `TestGoldenCaravanasDelTratoALaLlegada` (simulation) y, en TypeScript, «city.train no admite CARAVAN» (`packages/protocol`) |
+| Cobertura | **Cubierto** (desde E26 también las caravanas de una compra: `TestUnaCompraDescuentaLosLotesYCreaSusCaravanasUnaVez` y `TestLasRestriccionesDelMercado` en integration, `TestUnaCompraDaDosCaravanasUnaPorSentido` en `internal/domain/caravan`) por `TestUnTratoDebitaLosDosAlmacenesYCreaSusCaravanasUnaVez`, `Test_INV_TRADE_001_UnTratoConFalloEnUnDeltaNoMueveNada`, `TestLasRestriccionesDeLasCaravanas` y `TestLasCaravanasQueNoCuadranSeSenalanAlArrancar` (integration), `TestGoldenCaravanasDelTratoALaLlegada` (simulation) y, en TypeScript, «city.train no admite CARAVAN» (`packages/protocol`) |
 
 **Enunciado.** Toda fila de `caravans` apunta a una oferta `ACCEPTED`, y toda oferta aceptada desde E15 tiene
 exactamente dos caravanas, una que sale de cada ciudad, creadas en la misma transacción que la acepta. Ninguna otra
@@ -268,6 +282,115 @@ rechaza `CARAVAN` en `city.train` — **existen y pasan**.
 **Violación en runtime.** La comprobación del arranque (`CaravanRepo.Violations`) señala una caravana cuya oferta no
 esté `ACCEPTED` o sin su unidad `CARAVAN` viva, con `inv_id=INV-TRADE-007`, y no la incorpora.
 
+**Precisión (2026-11-18, [SPEC-MARKETS](../specs/markets.md) §4.6, [ADR-047](../decisions/ADR-047-markets.md) §2).**
+Desde E26 una caravana nace de un trato aceptado **o de una compra en el mercado**, y cada uno tiene exactamente dos,
+creadas en su transacción. Toda fila de `caravans` apunta a exactamente uno de los dos (`offer_id` o
+`market_purchase_id`), y la comprobación del arranque mira el que tenga. La ficha queda parcial hasta que los tests de
+las caravanas de una compra existan. **Desde el mismo día, cubierta:**
+`TestUnaCompraDescuentaLosLotesYCreaSusCaravanasUnaVez` (integration) comprueba las dos caravanas de una compra, con
+`market_purchase_id` y sin `offer_id`, su carga y que la comprobación del arranque no señala nada;
+`TestLasRestriccionesDelMercado` (integration), que una caravana sin trato ni compra, o con los dos, no entra.
+
+---
+
+<a id="inv-trade-008"></a>
+## INV-TRADE-008 — La custodia de una oferta del mercado cuadra
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E26 |
+| Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
+| Cobertura | **Cubierto** por `TestElEjemploDeLaSpec` y `TestRetirarUnaOferta` (`internal/domain/market`), `TestGoldenMercadoPublicarComprarLlegarYCaducar`, `TestRetirarConUnaCompraEnCursoSeRechaza` y `TestUnCierreDescartadoSeReintentaConVersionNueva` (simulation), `Test_INV_TRADE_008_UnaCompraConElDeltaSuperadoNoMueveNada`, `TestCerrarUnaOfertaDevuelveUnaVez` y `TestPublicarEnElMercadoEsIdempotente` (integration) |
+
+**Enunciado.** Lo que guarda en custodia una oferta `OPEN` del mercado es exactamente `lots_left × give_per_lot` del
+recurso que da, y la de una oferta cerrada es cero. Lo que entra en la custodia sale del almacén del vendedor en la
+transacción que inserta la oferta, junto con su comisión; lo que sale de ella va, en la misma transacción que descuenta
+sus lotes, a la caravana del vendedor de una compra, o vuelve al almacén del vendedor en la transacción que cierra la
+oferta, una sola vez.
+
+**Razón.** La custodia está fuera de `city_stocks` y nadie más la ve: si se pudiera descuadrar, el mercado crearía o
+tragaría recursos sin que ningún otro invariante del stock lo notara.
+
+**Cómo se garantiza.** `DB` — la custodia no se guarda aparte (se deriva de `lots_left`), los `CHECK` de
+`market_offers` y el cierre condicionado a `status = 'OPEN'`, que no acredita dos veces. `DOMAIN` — la publicación, la
+compra y el cierre calculan sus deltas de la misma oferta (ADR-047 §1-§3).
+
+**Cómo se verifica.** `TestElEjemploDeLaSpec` (domain: la custodia del ejemplo, 60, y 20 tras vender 2 lotes; cero al
+cerrarse), el golden `TestGoldenMercadoPublicarComprarLlegarYCaducar` (simulation: la custodia sale del almacén con su
+comisión, va a la caravana del vendedor y el lote que queda vuelve al caducar), `TestUnCierreDescartadoSeReintentaConVersionNueva`
+(simulation: la RAM acredita una vez), `Test_INV_TRADE_008_UnaCompraConElDeltaSuperadoNoMueveNada` (integration: con el
+débito del comprador superado no se descuenta ningún lote ni se crea ninguna caravana) y `TestCerrarUnaOfertaDevuelveUnaVez`
+(integration: un cierre repetido no acredita dos veces) — **existen y pasan**. Verificado por mutación: publicar sin
+cobrar la comisión (`PostCost`), devolver al cerrar la custodia de los lotes publicados en vez de los que quedan
+(`Custody`) y cerrar sin la condición `status = 'OPEN'` (`MarketRepo.Close`) ponen en rojo sus tests.
+
+**Violación en runtime.** No hay estado intermedio que detectar: la transacción es la garantía.
+
+---
+
+<a id="inv-trade-009"></a>
+## INV-TRADE-009 — Ninguna oferta del mercado vende más lotes de los que publicó
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E26 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestQuienCompraYCuantosLotes` (`internal/domain/market`), `TestDosComprasEnElMismoTick` (simulation) y `TestUnaCompraDescuentaLosLotesYCreaSusCaravanasUnaVez` (integration) |
+
+**Enunciado.** Para toda oferta del mercado, la suma de los lotes de sus compras más `lots_left` es `lots_total`, con
+`0 <= lots_left <= lots_total <= 100`; una compra nunca toma más lotes de los que quedan, ni siquiera dos compras de la
+misma oferta en vuelo a la vez.
+
+**Razón.** Vender un lote dos veces sería sacar de la custodia lo que ya no está: recursos creados de la nada en la
+caravana del segundo comprador.
+
+**Cómo se garantiza.** `DB` — los `CHECK` de `market_offers` y la compra que descuenta los lotes condicionada a
+`lots_left >= k`. `DOMAIN` — la simulación aparta los lotes de cada compra al reservarla y sólo deja comprar los que
+quedan sin reservar (`RN-MARKET-009`).
+
+**Cómo se verifica.** `TestDosComprasEnElMismoTick` (simulation: dos compras de 2 lotes de una oferta de 3 en el mismo
+tick, la segunda rechazada; después la de 1 la agota y las compras suman 3), `TestQuienCompraYCuantosLotes` (domain) y
+`TestUnaCompraDescuentaLosLotesYCreaSusCaravanasUnaVez` (integration: con un lote abierto la base no vende dos, y una
+oferta agotada no admite más) — **existen y pasan**. Verificado por mutación: comprar sin descontar los lotes
+reservados por otra compra en vuelo (simulation) y descontar los lotes sin la condición `lots_left >= k`
+(`MarketRepo.Buy`) ponen en rojo sus tests.
+
+**Violación en runtime.** La carga señala una oferta cuyos lotes no cuadran con sus compras, con
+`inv_id=INV-TRADE-009`, y no la incorpora.
+
+---
+
+<a id="inv-trade-010"></a>
+## INV-TRADE-010 — Nadie se compra a sí mismo en el mercado
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E26 |
+| Política ante violación | REJECT |
+| Cobertura | **Cubierto** por `TestQuienCompraYCuantosLotes` (`internal/domain/market`), `TestRechazosDelMercado` (simulation) y `TestLasRestriccionesDelMercado` (integration) |
+
+**Enunciado.** Toda fila de `market_purchases` tiene un comprador distinto del jugador que publicó su oferta.
+
+**Razón.** Comprarse a uno mismo no mueve nada entre jugadores y sólo crea caravanas y comisiones sin sentido; como
+regla de la base, cierra además la puerta a que un error de la simulación las escriba.
+
+**Cómo se garantiza.** `DB` — un trigger sobre `market_purchases`. `DOMAIN` — `market.buy` sobre la oferta propia se
+rechaza con `INVALID_TARGET`.
+
+**Cómo se verifica.** `TestQuienCompraYCuantosLotes` (domain), `TestRechazosDelMercado` (simulation: comprar la propia
+es `INVALID_TARGET`) y `TestLasRestriccionesDelMercado` (integration: la base rechaza la compra del dueño de la oferta) —
+**existen y pasan**. Verificado por mutación: quitar la comprobación del dominio pone en rojo los dos primeros, y el
+trigger desactivado con `ALTER TABLE … DISABLE TRIGGER` en la base de tests pone en rojo el tercero (volvió a
+`tgenabled = 'O'`).
+
+**Violación en runtime.** El trigger rechaza la transacción entera.
+
 ---
 
 ## Trazabilidad
@@ -281,3 +404,6 @@ esté `ACCEPTED` o sin su unidad `CARAVAN` viva, con `inv_id=INV-TRADE-007`, y n
 | INV-TRADE-005 | `internal/domain/caravan`, `postgres.TradeRepo`, `internal/game/loadcheck` | [INV-TRADE-001](#inv-trade-001) |
 | INV-TRADE-006 | `postgres` (la entrega), `internal/game/simulation` | [INV-TRADE-001](#inv-trade-001), [INV-ECON-002](economy.md#inv-econ-002) |
 | INV-TRADE-007 | `postgres.TradeRepo`, `internal/domain/unit`, `internal/game/loadcheck` | [INV-TRADE-001](#inv-trade-001) |
+| INV-TRADE-008 | `postgres` (el mercado), `internal/game/simulation` | [INV-TRADE-001](#inv-trade-001), [INV-ECON-002](economy.md#inv-econ-002) |
+| INV-TRADE-009 | `migrations/`, `internal/game/simulation` | [INV-TRADE-008](#inv-trade-008) |
+| INV-TRADE-010 | `migrations/`, `internal/domain/market` | [INV-TRADE-004](#inv-trade-004) |

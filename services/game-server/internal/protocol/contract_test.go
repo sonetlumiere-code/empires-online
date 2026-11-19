@@ -251,8 +251,9 @@ func TestCatalogoDeComandosEsCerrado(t *testing.T) {
 	// 39 desde E18: los nueve de los clanes (SPEC-CLANS); 41 desde E20, con
 	// clan.promote y clan.transfer (SPEC-CLAN-GOVERNANCE); 44 desde E21, con
 	// los tres de las alianzas (SPEC-CLAN-ALLIANCES); 47 desde E24, con los tres
-	// de las guerras (SPEC-CLAN-WARS).
-	require.Len(t, protocol.ClientMessageTypes, 48)
+	// de las guerras (SPEC-CLAN-WARS); 48 desde E25, con city.research; 52
+	// desde E26, con los cuatro del mercado (SPEC-MARKETS).
+	require.Len(t, protocol.ClientMessageTypes, 52)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)
