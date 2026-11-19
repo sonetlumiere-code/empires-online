@@ -1688,4 +1688,5 @@ Los tipos y validadores vienen de `@empires-online/protocol`. Los reducers se ej
 - Render de combate, animaciones de ataque, efectos de asedio.
 - Chat, ranking, marketplace, clanes, rutas comerciales, naval. **Precisión (2026-11-15):** los mensajes directos (E16)
   y los clanes con su canal (E18, §4.15) ya existen; siguen fuera los canales globales, de región o de bando.
+  **Precisión (2026-11-18):** el mercado existe desde E26 (§4.22); siguen fuera las rutas comerciales permanentes.
 - Modo espectador y repetición de partidas.

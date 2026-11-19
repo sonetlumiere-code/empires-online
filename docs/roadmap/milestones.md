@@ -2646,4 +2646,24 @@ referencia, ofertas dirigidas, el tablón que se refresca solo y avisos en vivo 
    «mercado».
 5. **HECHO** — WebSocket: `market.list` desde la conexión y el e2e de dos jugadores.
 6. **HECHO** — Cliente: «Construir mercado», su silueta, el botón «Mercado» y el panel con sus tres pestañas.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --mercado`.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --mercado`.
+
+### Prueba en vivo (2026-11-18)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 27 a la 28 al arrancar, con la web en el 3001:
+
+- **Humo** `node scripts/smoke.mjs --web http://localhost:3001 --mercado`: 30 comprobaciones. La primera pasada
+  construyó los dos mercados (54 545 ms cada uno, con el rasgo romano) y encontró un fallo del propio humo, que leía el
+  almacén de smoke_victim de antes de pagar su mercado (corregido). La segunda retiró la oferta que la primera dejó
+  abierta, publicó (madera 578 → 556: 20 en custodia y 2 de comisión), smoke_victim leyó el tablón, el vendedor no pudo
+  comprarse su oferta (`INVALID_TARGET`), smoke_victim compró un lote (piedra 1897 → 1894), la caravana de madera llegó
+  96 ms después de lo anunciado, la retirada devolvió 10 de madera y el registro del vendedor contó la venta
+  (`MARKET_SOLD`). El servidor no registró ningún error ni `invariant_violation`.
+- **Navegador** (smoke_runner, con el panel oculto): «Mientras no estabas» cuenta las dos ventas del humo («smoke_victimpolis
+  compró 1 lote de tu oferta en el mercado: le mandas 10 de madera y te manda 2 de piedra»); el panel «Mercado» abre en
+  «Comprar» con el tablón vacío; «Vender» con el ejemplo de la spec dice «Salen de tu almacén 60 de piedra en custodia y 6
+  de comisión» y «Publicar» quita 66 de piedra (454 → 388); «Mis ofertas (1)» la lista («20 de piedra por 30 de madera ·
+  0 vendidos, quedan 3 de 3, caduca en 24 h») y «Retirar» devuelve 60 (388 → 448).
+- **Sin comprobar en el navegador:** la silueta del mercado en el mapa (con el panel oculto no se dibuja la escena),
+  comprar desde la pestaña «Comprar» (no había ofertas ajenas abiertas; lo cubren el humo, el e2e y `market.test.ts`) y
+  «Construir mercado» (smoke_runner ya tenía el suyo; lo cubren el humo y `market.test.ts`).

@@ -210,7 +210,7 @@ desde el día uno es la **estructura** —civilización y facción como ejes sep
 después obligaría a reescribir la identidad de todos los jugadores existentes. **Precisión (2026-11-18):** desde
 entonces existen la economía, el comercio, las caravanas, las unidades exclusivas y, desde E25, el árbol tecnológico
 con una tecnología exclusiva por civilización, de modo que ningún jugador completa el árbol
-([technologies.md](../specs/technologies.md)); siguen fuera los mercados y las rutas permanentes.
+([technologies.md](../specs/technologies.md)); siguen fuera los mercados y las rutas permanentes. **Precisión (2026-11-18, [markets.md](../specs/markets.md), [ADR-047](../decisions/ADR-047-markets.md)):** desde E26 existe el mercado, que no fabrica nada: todo lo que se vende lo puso otro jugador; siguen fuera las rutas permanentes.
 
 **Anti-pilar rechazado.** *"Cada jugador puede desbloquear todo el árbol si invierte suficiente tiempo."*
 Es el diseño que convierte el comercio en un atajo opcional y termina eliminando la razón para negociar.
