@@ -58,6 +58,19 @@
  *      building.destroyed y su límite de población baja en 5; smoke_runner, con la vista
  *      en su ciudad, recibe el aviso en vivo HOUSE_DESTROYED. Tarda minutos y derriba
  *      una casa de otra cuenta, así que no corre por defecto.
+ *  12d. sólo con --ariete (SPEC-SIEGE-ENGINES): smoke_victim, en Bronce o después, tiene su
+ *      muralla (si no, la levanta en el centro: 200 de piedra, 100 de madera y 120 s con el
+ *      rasgo de su civilización); smoke_runner, en Hierro o después, tiene un ariete (si no,
+ *      lo entrena: 150 de madera, 75 de piedra y dos plazas), lo lleva junto a la ciudad de
+ *      la víctima (a 1 800 ms por tile, unos minutos) y le ordena derribar una casa, que se
+ *      rechaza (INVALID_TARGET: primero, la muralla), y después la muralla: su vida baja de
+ *      1 500 y la víctima recibe besiegedAtMs. Un guerrero de smoke_runner junto a la víctima
+ *      (el de --asedio), si lo hay, tampoco puede derribar la casa. Con --ariete-completo, el
+ *      ariete sigue hasta abrirla (38 golpes, unos dos minutos): building.destroyed y el aviso
+ *      HOUSE_DESTROYED con buildingType WALL en la sesión de smoke_runner con la vista en
+ *      casa. Necesita madera y piedra en las dos ciudades (con el servidor parado,
+ *      EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed) y que no haya un
+ *      pacto entre los dos: va después de --asedio y antes de --diplomacia.
  *  12c. sólo con --territorio (SPEC-TERRITORY-CONQUEST): un guerrero de smoke_runner
  *      junto a la víctima (el que dejan --saqueo o --asedio) va al territorio libre más
  *      cercano y lo reclama: llega territory.update en disputa y, al vencer el plazo, el
@@ -203,7 +216,7 @@
  * WebSocket abierto, aquí es donde se vería.
  *
  * Uso:
- *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--tecnologia] [--mercado] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--guerra-clan] [--civilizacion] [--verbose]
+ *   node scripts/smoke.mjs [--url http://localhost:8080] [--web http://localhost:3000] [--tala] [--piedra] [--avance] [--incursion] [--saqueo] [--asedio] [--ariete] [--ariete-completo] [--territorio] [--diplomacia] [--comercio] [--bienes] [--unidad-civilizacion] [--castillo] [--tecnologia] [--mercado] [--caravana] [--registro] [--mensajes] [--faccion] [--territorio-clan] [--clan] [--alianza-clan] [--guerra-clan] [--civilizacion] [--verbose]
  *
  * `--url` es el Game Server (salud y WebSocket); `--web` es Next.js, que desde
  * ADR-018 da de alta, abre la sesión web y emite los tickets.
@@ -231,6 +244,8 @@ const PIEDRA = args.includes('--piedra');
 const AVANCE = args.includes('--avance');
 const SAQUEO = args.includes('--saqueo');
 const ASEDIO = args.includes('--asedio');
+const ARIETE_COMPLETO = args.includes('--ariete-completo');
+const ARIETE = args.includes('--ariete') || ARIETE_COMPLETO;
 const DIPLOMACIA = args.includes('--diplomacia');
 const COMERCIO = args.includes('--comercio');
 const TERRITORIO = args.includes('--territorio');
@@ -804,6 +819,10 @@ async function main() {
 
   if (ASEDIO) {
     await asedio(segunda, ciudad, cuenta.playerId, snap2);
+  }
+
+  if (ARIETE) {
+    await ariete(segunda, ciudad, cuenta.playerId, snap2);
   }
 
   if (TERRITORIO) {
@@ -2077,6 +2096,134 @@ async function asedio(atacante, ciudad, playerId, snap) {
   ok('aviso en vivo al atacante, con la vista en casa', `HOUSE_DESTROYED en (${derribo.payload.x}, ${derribo.payload.y})`);
   sinAvisos(victima.sesion, 'el asediado', ['HOUSE_DESTROYED']);
   enCasa.sesion.cerrar();
+  victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Arietes y murallas (SPEC-SIEGE-ENGINES), sólo con --ariete
+// ─────────────────────────────────────────────────────────────
+
+const COSTE_DE_LA_MURALLA = { WOOD: 100, STONE: 200 };
+const PLAZO_DE_LA_MURALLA = 120_000;
+const VIDA_DE_LA_MURALLA = 1_500;
+const COSTE_DEL_ARIETE = { WOOD: 150, STONE: 75 };
+
+/** La muralla en pie de una ciudad, o `undefined`. */
+export function murallaDe(edificios, cityId) {
+  return edificios.find((b) => b.cityId === cityId && b.type === 'WALL');
+}
+
+/** Cuántos golpes de `dano` abren una muralla con `vida` (SPEC-SIEGE-ENGINES §4.2). */
+export function golpesParaAbrir(vida, dano = 40) {
+  return vida > 0 ? Math.ceil(vida / dano) : 0;
+}
+
+/** Si alcanza para un coste en madera y piedra. */
+function alcanza(stocks, coste) {
+  return (stocks?.WOOD ?? 0) >= coste.WOOD && (stocks?.STONE ?? 0) >= coste.STONE;
+}
+
+async function ariete(atacante, ciudad, playerId, snap) {
+  const { cuenta } = await abrirSesion(VICTIMA);
+  const victima = await conectar(cuenta.ticket);
+  const vistaV = victima.snapshot.payload;
+  const ciudadV = vistaV.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar('la víctima no tiene ciudad en su snapshot', vistaV.cities);
+  if (ciudadV.era === 'STONE_AGE') fallar(`${VICTIMA} sigue en la Edad de Piedra y la muralla pide Bronce`, ciudadV.era);
+
+  // La muralla de la víctima: la que haya, o una nueva en el centro.
+  let muralla = murallaDe(vistaV.buildings, ciudadV.id);
+  if (!muralla) {
+    if (!alcanza(ciudadV.stocks, COSTE_DE_LA_MURALLA)) {
+      fallar(`${VICTIMA} no tiene para la muralla (200 de piedra y 100 de madera)`,
+        'con el servidor parado: EO_DEVSEED_STOCK_FOR=smoke_victim pnpm run dev:seed');
+    }
+    victima.sesion.enviar('city.build', { cityId: ciudadV.id, type: 'WALL', x: ciudadV.centerX, y: ciudadV.centerY });
+    const spawn = await victima.sesion.esperarQue(['building.spawn', 'system.error'],
+      (m) => m.type === 'system.error' || (m.payload.building.cityId === ciudadV.id && m.payload.building.type === 'WALL'), 15_000);
+    if (spawn.type === 'system.error') fallar('la víctima no pudo encargar la muralla', spawn.payload);
+    const plazo = escalarDuracion(PLAZO_DE_LA_MURALLA, rasgo(CATALOGO, ciudadV.civilization, 'production.speed'));
+    const queda = comprobarPlazo('la muralla', spawn.payload.building.completesAtMs, spawn.ts, plazo);
+    ok('la víctima levanta su muralla en el centro', `${ciudadV.civilization}: ${plazo} ms (quedaban ${queda})`);
+    muralla = spawn.payload.building;
+  }
+  if (muralla.status !== 'COMPLETE') {
+    await victima.sesion.esperarQue('building.update', (u) => u.payload.id === muralla.id && u.payload.status === 'COMPLETE',
+      Math.max(0, muralla.completesAtMs - Date.now()) + 15_000);
+    muralla = { ...muralla, status: 'COMPLETE', hp: VIDA_DE_LA_MURALLA, maxHp: VIDA_DE_LA_MURALLA };
+  }
+  ok('muralla completa', `id ${muralla.id} en (${muralla.x}, ${muralla.y}), vida ${muralla.hp ?? VIDA_DE_LA_MURALLA}`);
+  const casa = vistaV.buildings.find((b) => b.cityId === ciudadV.id && b.type !== 'WALL');
+
+  // El ariete: el que quedó junto a la víctima, el de casa, o uno nuevo.
+  atacante.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const cerca = (await atacante.sesion.esperar('world.snapshot')).payload;
+  let ram = cerca.units.find((u) => u.playerId === playerId && u.unitType === 'RAM')
+    ?? snap.units.find((u) => u.playerId === playerId && u.unitType === 'RAM');
+  if (!ram) {
+    atacante.sesion.enviar('session.view', { center: { x: ciudad.centerX, y: ciudad.centerY } });
+    const casaPropia = (await atacante.sesion.esperar('world.snapshot')).payload;
+    const propia = casaPropia.cities.find((c) => c.id === ciudad.id) ?? ciudad;
+    if (propia.era === 'STONE_AGE' || propia.era === 'BRONZE_AGE') {
+      fallar(`${USUARIO} está en ${propia.era} y el ariete pide Hierro`, 'llévala a Hierro (--castillo avanza las eras)');
+    }
+    if (!alcanza(propia.stocks, COSTE_DEL_ARIETE)) {
+      fallar(`${USUARIO} no tiene para el ariete (150 de madera y 75 de piedra)`,
+        'con el servidor parado: EO_DEVSEED_STOCK_FOR=smoke_runner pnpm run dev:seed');
+    }
+    ram = await entrenar(atacante.sesion, propia, playerId, 'RAM');
+    ok('ariete entrenado', `unidad ${ram.id}, ${ram.hp}/${ram.maxHp}`);
+  }
+  ok('ariete para el asedio', `unidad ${ram.id} en (${ram.x}, ${ram.y})`);
+
+  const junto = await acercar(atacante.sesion, ram, { x: ciudadV.centerX, y: ciudadV.centerY + 5 }, 4);
+  ok('el ariete llega junto a la ciudad', `(${junto.x}, ${junto.y})`);
+  atacante.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  const vista = (await atacante.sesion.esperar('world.snapshot')).payload;
+  const enCasa = ARIETE_COMPLETO ? await vistaEnCasa(ciudad, ciudadV) : null;
+
+  // RN-SIEGE-004: con la muralla en pie, ni el ariete ni el guerrero derriban la casa.
+  if (casa) {
+    const id1 = atacante.sesion.enviar('unit.demolish', { unitId: ram.id, buildingId: casa.id });
+    const r1 = await atacante.sesion.esperarQue('system.error', (m) => m.requestId === id1);
+    if (r1.payload.code !== 'INVALID_TARGET') fallar('el ariete pudo ir a por la casa con la muralla en pie', r1.payload);
+    ok('el ariete no derriba la casa', `INVALID_TARGET: ${r1.payload.message}`);
+    const guerrero = vista.units.find((u) => u.playerId === playerId && u.unitType === 'WARRIOR');
+    if (guerrero) {
+      const id2 = atacante.sesion.enviar('unit.demolish', { unitId: guerrero.id, buildingId: casa.id });
+      const r2 = await atacante.sesion.esperarQue('system.error', (m) => m.requestId === id2);
+      if (r2.payload.code !== 'INVALID_TARGET') fallar('el guerrero pudo derribar con la muralla en pie', r2.payload);
+      ok('el guerrero tampoco', `INVALID_TARGET: ${r2.payload.message}`);
+    } else {
+      ok('sin guerrero junto a la víctima', 'el rechazo del guerrero no se comprueba en esta pasada (--asedio deja uno)');
+    }
+  }
+
+  atacante.sesion.enviar('unit.demolish', { unitId: ram.id, buildingId: muralla.id });
+  const golpe = await atacante.sesion.esperarQue(['building.update', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.id === muralla.id && typeof m.payload.hp === 'number' && m.payload.hp < (muralla.hp ?? VIDA_DE_LA_MURALLA)),
+    60_000);
+  if (golpe.type === 'system.error') fallar('el servidor rechazó el derribo de la muralla', golpe.payload);
+  ok('golpe del ariete', `vida de la muralla ${golpe.payload.hp}/${VIDA_DE_LA_MURALLA}`);
+  const aviso = await victima.sesion.esperarQue('city.update',
+    (m) => m.payload.id === ciudadV.id && typeof m.payload.besiegedAtMs === 'number', 10_000);
+  ok('aviso al asediado', `besiegedAtMs ${aviso.payload.besiegedAtMs}`);
+
+  if (ARIETE_COMPLETO) {
+    const golpes = golpesParaAbrir(golpe.payload.hp);
+    await atacante.sesion.esperarQue(['building.destroyed', 'entity.despawn'],
+      (m) => (m.type === 'building.destroyed' && m.payload.id === muralla.id) || (m.type === 'entity.despawn' && m.payload.id === ram.id && m.payload.reason === 'DEAD'),
+      golpes * 3_000 + 30_000).then((m) => {
+      if (m.type === 'entity.despawn') fallar('los defensores mataron al ariete antes de abrir la muralla', m.payload);
+    });
+    ok('la muralla cae', `building.destroyed ${muralla.id}: la ciudad queda en brecha`);
+    const derribo = await avisoEnVivo(enCasa.sesion, 'HOUSE_DESTROYED', cuenta.playerId);
+    if (derribo.payload.buildingType !== 'WALL') fallar('el aviso del derribo no dice que fue la muralla', derribo.payload);
+    ok('aviso en vivo al atacante, con la vista en casa', `HOUSE_DESTROYED con buildingType WALL`);
+    enCasa.sesion.cerrar();
+  } else {
+    ok('la muralla sigue en pie', `abrirla tarda ${golpesParaAbrir(golpe.payload.hp)} golpes más con un ariete; --ariete-completo lo espera`);
+  }
   victima.sesion.cerrar();
 }
 
