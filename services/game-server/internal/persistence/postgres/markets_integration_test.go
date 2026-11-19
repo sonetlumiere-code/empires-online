@@ -224,6 +224,66 @@ func Test_INV_TRADE_008_UnaCompraConElDeltaSuperadoNoMueveNada(t *testing.T) {
 	assert.Equal(t, int32(3), actual.LotsLeft)
 }
 
+// Recuperación (SPEC-MARKETS §9 «recovery», RN-MARKET-005, INV-TRADE-008): una
+// compra que falla a mitad de su transacción —la segunda caravana no se puede
+// insertar, después de descontar los lotes, debitar al comprador, escribir la
+// compra y la primera caravana— no deja nada: lo que el arranque carga es la
+// oferta con sus lotes, el almacén sin débito y ninguna caravana. La misma compra
+// bien formada lo deja todo, y la carga cuadra.
+func TestUnaCompraQueFallaAMitadNoDejaNadaYLaCargaCuadra(t *testing.T) {
+	store, ctx := newTestStore(t)
+	e := nuevoEscenarioDeMercado(t, ctx, store)
+	e.llenar(t, ctx)
+	o := e.publicar(t, ctx, e.ejemplo(t, uuid.NewString()))
+	caravanas := postgres.NewCaravanRepo(store, 32)
+
+	rota := e.compra(t, o, 2, 2)
+	rota.Caravans[1].ToCity = 987654321 // la FK de caravans.to_city_id falla al final
+	_, _, err := e.mercado.Buy(ctx, rota)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "caravans_to_city_id_fkey", "falla en la última inserción, no antes")
+
+	abiertas, err := e.mercado.ListOpen(ctx)
+	require.NoError(t, err)
+	require.Len(t, abiertas, 1)
+	assert.Equal(t, int32(3), abiertas[0].LotsLeft, "los lotes no se descontaron")
+	madera, version := stockDe(t, ctx, store, e.anfitrion.City.ID, economy.ResourceWood)
+	assert.Equal(t, [2]int64{100, 1}, [2]int64{madera, version}, "el comprador no pagó")
+	assert.Zero(t, contar(t, ctx, store, `SELECT count(*) FROM market_purchases`))
+	assert.Zero(t, contar(t, ctx, store, `SELECT count(*) FROM caravans`))
+	assert.Zero(t, contar(t, ctx, store, `SELECT count(*) FROM units WHERE unit_type = 'CARAVAN'`))
+	assert.Zero(t, eventos(t, ctx, store, postgres.EventMarketPurchase))
+	enCamino, err := caravanas.ListInTransit(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, enCamino)
+
+	// La misma orden, ya bien formada (el reintento de la cola tras el
+	// reinicio), lo escribe todo una vez.
+	bien := rota
+	bien.Caravans = e.compra(t, o, 2, 2).Caravans
+	id, creadas, err := e.mercado.Buy(ctx, bien)
+	require.NoError(t, err)
+	require.Len(t, creadas, 2)
+	abiertas, err = e.mercado.ListOpen(ctx)
+	require.NoError(t, err)
+	require.Len(t, abiertas, 1)
+	assert.Equal(t, int32(1), abiertas[0].LotsLeft)
+	madera, _ = stockDe(t, ctx, store, e.anfitrion.City.ID, economy.ResourceWood)
+	assert.Equal(t, int64(34), madera)
+	enCamino, err = caravanas.ListInTransit(ctx)
+	require.NoError(t, err)
+	require.Len(t, enCamino, 2, "salieron las dos")
+	for _, c := range enCamino {
+		assert.Equal(t, id, c.PurchaseID)
+	}
+	malasCaravanas, err := caravanas.Violations(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, malasCaravanas)
+	malasOfertas, err := e.mercado.Violations(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, malasOfertas)
+}
+
 // RN-MARKET-007, RN-MARKET-008: cerrar devuelve lo que queda en custodia una sola
 // vez, con su evento; la caducidad va sin otro jugador.
 func TestCerrarUnaOfertaDevuelveUnaVez(t *testing.T) {

@@ -3,6 +3,8 @@ package simulation_test
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -12,9 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/caravan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/market"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
@@ -431,8 +436,8 @@ func TestElSnapshotLlevaLasOfertasPropias(t *testing.T) {
 	assert.Empty(t, ajeno.MarketOffers)
 }
 
-// Una oferta en vuelo cuenta para las 3 abiertas, y la carga sólo instala las
-// abiertas.
+// La carga sólo instala las abiertas. (Que una publicación en vuelo cuente para
+// las 3 abiertas lo prueba TestUnaPublicacionEnVueloCuentaParaElTope.)
 func TestLaCargaInstalaSoloLasAbiertas(t *testing.T) {
 	h := newHarness(t)
 	abierta := market.Offer{ID: 7, Seller: h.playerID, CityID: 1, Give: piedra(1), Want: madera(1), LotsTotal: 1,
@@ -444,4 +449,210 @@ func TestLaCargaInstalaSoloLasAbiertas(t *testing.T) {
 	assert.True(t, ok)
 	_, ok = h.state.MarketOffer(8)
 	assert.False(t, ok)
+}
+
+// Q10 y RN-MARKET-002: una publicación en vuelo —reservada en el tick, sin la
+// confirmación de su transacción— cuenta para las 3 abiertas. Cuatro en el mismo
+// tick: la cuarta se rechaza sin apartar nada, aunque ninguna esté aún en el
+// tablón.
+func TestUnaPublicacionEnVueloCuentaParaElTope(t *testing.T) {
+	h, _ := mercadoConCompradores(t, 1)
+	orden := func() simulation.Command {
+		return simulation.PostMarketOffer{PlayerID: h.playerID, RequestID: uuid.NewString(), Give: piedra(1), Want: madera(1), Lots: 1}
+	}
+
+	h.commands <- orden()
+	h.commands <- orden()
+	h.commands <- orden()
+	h.commands <- orden()
+	h.loop.Step(h.clk.NowMs())
+	_, enElTablon := h.state.MarketOffer(primeraOfertaDelMercado)
+	require.False(t, enElTablon, "en este tick las tres van en vuelo")
+	assert.Equal(t, []string{protocol.CodeInvalidTarget}, h.codigos(), "la cuarta, por las tres en vuelo")
+	_, s := h.recursos(1)
+	assert.Equal(t, int64(100-3*2), s, "sólo las tres primeras apartan su lote y su comisión")
+
+	h.tick() // las confirmaciones vuelven por el buzón
+	assert.Len(t, h.market.posts, 3)
+	assert.Len(t, h.sim.BuildSnapshot(h.playerID, nil, h.clk.NowMs(), false).MarketOffers, 3)
+}
+
+// ADR-047 §2 y §3: el cierre de una oferta —retirada o caducidad— va con las
+// claves de la oferta y de la ciudad del vendedor, para que no se cruce con una
+// compra de la misma oferta ni con otra escritura de ese almacén; la publicación,
+// sólo con la de su ciudad.
+func TestLasClavesDelCierreDelMercado(t *testing.T) {
+	h, _ := mercadoConCompradores(t, 1)
+	h.publicar(h.playerID, piedra(10), madera(10), 1)
+	h.publicar(h.playerID, piedra(10), madera(10), 1)
+	retirada, caducada := primeraOfertaDelMercado, primeraOfertaDelMercado+1
+
+	h.retirar(h.playerID, retirada)
+	h.advance(24*time.Hour + time.Second)
+	_, sigue := h.state.MarketOffer(caducada)
+	require.False(t, sigue)
+
+	cierre := func(id int64) clavesDeTrabajo {
+		return clavesDeTrabajo{Name: simulation.JobMarketClose, Key: simulation.MarketKey(id), Key2: simulation.CityKey(1)}
+	}
+	assert.Equal(t, []clavesDeTrabajo{cierre(retirada), cierre(caducada)}, h.persister.clavesDe(simulation.JobMarketClose))
+	publicacion := clavesDeTrabajo{Name: simulation.JobMarketPost, Key: simulation.CityKey(1)}
+	assert.Equal(t, []clavesDeTrabajo{publicacion, publicacion}, h.persister.clavesDe(simulation.JobMarketPost))
+	cierres := h.market.cierres()
+	require.Len(t, cierres, 2)
+	assert.Equal(t, market.StatusWithdrawn, cierres[0].Offer.Status)
+	assert.Equal(t, market.StatusExpired, cierres[1].Offer.Status)
+}
+
+// RN-MARKET-003 y SPEC-MARKETS §4.4: la custodia no está en el almacén, así que
+// el saqueo no la ve. El vendedor publica 3 lotes de 10 de madera (30 en custodia
+// y 3 de comisión: le quedan 67); un saqueo lo deja en el suelo, 50, y la oferta
+// conserva sus 3 lotes, que vuelven enteros al retirarla.
+func TestUnSaqueoNoTocaLaCustodia(t *testing.T) {
+	h := newHarness(t)
+	victima, ciudad, _ := conSaqueo(h, 100, world.Tile{X: 20, Y: 37})
+	ciudad.Era = city.EraBronze
+	h.mercadoEn(ciudad.ID)
+	h.publicar(victima, madera(10), piedra(1), 3)
+	require.Empty(t, h.codigos())
+	require.Equal(t, int64(67), h.state.Stock(ciudad.ID).Amount)
+
+	h.saquear(guerreroID, ciudad.ID)
+	require.Empty(t, h.codigos())
+	require.True(t, h.tickHasta(200, func() bool {
+		_, sigue := h.state.Pillaging(guerreroID)
+		return !sigue
+	}))
+	h.tick()
+	assert.Equal(t, int64(50), h.state.Stock(ciudad.ID).Amount, "el saqueo baja el almacén hasta el suelo")
+	robado := int32(0)
+	for _, p := range h.combat.pillages {
+		robado += p.Amount
+	}
+	assert.Equal(t, int32(17), robado, "sólo lo que había por encima del suelo, sin la custodia")
+	o, ok := h.state.MarketOffer(primeraOfertaDelMercado)
+	require.True(t, ok)
+	assert.Equal(t, int32(3), o.LotsLeft, "la oferta conserva sus lotes")
+
+	h.retirar(victima, primeraOfertaDelMercado)
+	require.Empty(t, h.codigos())
+	assert.Equal(t, int64(80), h.state.Stock(ciudad.ID).Amount, "vuelven los 30 de la custodia")
+}
+
+// Recuperación (SPEC-MARKETS §9 «recovery», RN-MARKET-008, INV-TRADE-008): tras
+// un reinicio, una oferta abierta caduca en su instante absoluto —el de la base,
+// no el del arranque— y devuelve su custodia una sola vez; la que caducó con el
+// servidor parado se cierra en el primer barrido.
+func TestTrasUnReinicioLaOfertaCaducaEnSuInstanteYDevuelveUnaVez(t *testing.T) {
+	h, _ := mercadoConCompradores(t, 1)
+	ahora := time.UnixMilli(h.clk.NowMs()).UTC()
+	h.almacen(1, 0, 34) // lo que dejó en la base la publicación del ejemplo
+	abierta := market.Offer{ID: 7, Seller: h.playerID, CityID: 1, Give: piedra(20), Want: madera(30),
+		LotsTotal: 3, LotsLeft: 3, SellerCommission: 6, Status: market.StatusOpen, RequestID: "a",
+		CreatedAt: ahora.Add(-24*time.Hour + 10*time.Second), ExpiresAt: ahora.Add(10 * time.Second)}
+	vencida := market.Offer{ID: 8, Seller: h.playerID, CityID: 1, Give: piedra(5), Want: madera(5),
+		LotsTotal: 2, LotsLeft: 1, SellerCommission: 2, Status: market.StatusOpen, RequestID: "b",
+		CreatedAt: ahora.Add(-25 * time.Hour), ExpiresAt: ahora.Add(-time.Hour)}
+	h.state.SetMarketOffers([]market.Offer{abierta, vencida})
+
+	h.hasta(ahora.UnixMilli() + 1_000)
+	_, sigue := h.state.MarketOffer(8)
+	assert.False(t, sigue, "la vencida durante la caída se cierra en el primer barrido")
+	_, s := h.recursos(1)
+	assert.Equal(t, int64(39), s, "34 + el lote que le quedaba")
+
+	h.hasta(abierta.ExpiresAt.UnixMilli() - 100)
+	_, sigue = h.state.MarketOffer(7)
+	assert.True(t, sigue, "antes de su instante sigue abierta")
+	h.hasta(abierta.ExpiresAt.UnixMilli() + 1_000)
+	_, sigue = h.state.MarketOffer(7)
+	assert.False(t, sigue, "caduca en el barrido de su instante")
+	_, s = h.recursos(1)
+	assert.Equal(t, int64(99), s, "vuelven los 60 de la custodia; las comisiones no")
+
+	h.advance(time.Minute)
+	_, s = h.recursos(1)
+	assert.Equal(t, int64(99), s, "una sola vez")
+	cierres := h.market.cierres()
+	require.Len(t, cierres, 2)
+	assert.Equal(t, [2]int64{8, 7}, [2]int64{cierres[0].Offer.ID, cierres[1].Offer.ID})
+	assert.Equal(t, piedra(60), cierres[1].Returned)
+	assert.Equal(t, int64(60), cierres[1].Stock.Delta)
+}
+
+// Recuperación (SPEC-MARKETS §9 «recovery», RN-MARKET-005, INV-TRADE-008): el
+// servidor cae con una compra reservada en la RAM y sin confirmar. La compra es
+// una transacción, así que la base guarda o nada o todo, y la carga parte de ahí
+// sin reservas fantasma: con nada, la oferta tiene sus lotes, el comprador su
+// madera y no hay caravanas; con todo, la oferta tiene los lotes de menos, el
+// comprador ha pagado y salen las dos caravanas, que llegan. En los dos casos la
+// oferta se puede volver a comprar o retirar en el acto.
+func TestTrasUnReinicioUnaCompraSinConfirmarNoQuedaAMedias(t *testing.T) {
+	// La primera vida: el ejemplo de §4.3, 2 de 3 lotes de 20 de piedra por 30
+	// de madera. Lo que escribió la compra es lo que la base tendría con «todo».
+	vida, compradores := mercadoConCompradores(t, 1)
+	vida.publicar(vida.playerID, piedra(20), madera(30), 3)
+	publicada, ok := vida.state.MarketOffer(primeraOfertaDelMercado)
+	require.True(t, ok)
+	vida.comprar(compradores[0], primeraOfertaDelMercado, 2)
+	require.Empty(t, vida.codigos())
+	vendida, ok := vida.state.MarketOffer(primeraOfertaDelMercado)
+	require.True(t, ok)
+	require.Len(t, vida.market.buys, 1)
+	escrita := vida.market.buys[0]
+	require.Len(t, escrita.Caravans, 2)
+
+	reiniciar := func(t *testing.T, oferta market.Offer, maderaComprador int64) (*harness, uuid.UUID) {
+		h, cs := mercadoConCompradores(t, 1)
+		h.hasta(vida.clk.NowMs())
+		h.almacen(1, 0, 34)
+		h.almacen(2, maderaComprador, 0)
+		h.state.SetMarketOffers([]market.Offer{oferta})
+		return h, cs[0]
+	}
+
+	t.Run("nada", func(t *testing.T) {
+		h, comprador := reiniciar(t, publicada, 100)
+		assert.Zero(t, h.state.CaravanCount())
+		h.comprar(comprador, primeraOfertaDelMercado, 3)
+		require.Empty(t, h.codigos(), "los 3 lotes siguen a la venta: ninguna reserva sobrevive")
+		w, _ := h.recursos(2)
+		assert.Equal(t, int64(100-90-9), w)
+		_, sigue := h.state.MarketOffer(primeraOfertaDelMercado)
+		assert.False(t, sigue, "agotada")
+	})
+
+	t.Run("todo", func(t *testing.T) {
+		h, _ := reiniciar(t, vendida, 34)
+		var unidades []*unit.Unit
+		var movimientos []*movement.Movement
+		var caravanas []caravan.Caravan
+		for i, sp := range escrita.Caravans {
+			id := primeraCaravana + int64(i)
+			from := sp.Half.FromCity
+			unidades = append(unidades, &unit.Unit{ID: id, PlayerID: sp.Half.Sender, CityID: &from, Type: unit.TypeCaravan,
+				X: sp.Origin.X, Y: sp.Origin.Y, HP: sp.MaxHP, MaxHP: sp.MaxHP, Status: unit.StatusMoving})
+			m := sp.Movement
+			m.ID, m.UnitID = 9000+int64(i), id
+			movimientos = append(movimientos, &m)
+			caravanas = append(caravanas, caravan.Caravan{ID: int64(i + 1), UnitID: id, PurchaseID: 5001,
+				Sender: sp.Half.Sender, FromCity: sp.Half.FromCity, ToCity: sp.Half.ToCity, OriginalToCity: sp.Half.ToCity,
+				Cargo: sp.Half.Cargo, Status: caravan.StatusInTransit})
+		}
+		simulation.Hydrate(h.state, unidades, nil, movimientos, h.clk.NowMs(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		h.state.SetCaravans(caravanas)
+		assert.Equal(t, 2, h.state.CaravanCount(), "salieron las dos")
+
+		h.retirar(h.playerID, primeraOfertaDelMercado)
+		require.Empty(t, h.codigos(), "sin una compra en curso fantasma, se retira")
+		_, s := h.recursos(1)
+		assert.Equal(t, int64(54), s, "vuelve el lote que quedaba, no los vendidos")
+
+		h.advance(2 * time.Minute)
+		assert.Zero(t, h.state.CaravanCount())
+		w, s := h.recursos(1)
+		assert.Equal(t, [2]int64{60, 54}, [2]int64{w, s}, "el vendedor recibe lo pagado")
+		w, s = h.recursos(2)
+		assert.Equal(t, [2]int64{34, 40}, [2]int64{w, s}, "el comprador, lo comprado, una vez")
+	})
 }

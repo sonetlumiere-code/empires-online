@@ -1372,6 +1372,18 @@ CREATE TABLE caravan_cargo (
 | `status` | `IN_TRANSIT`, `DELIVERED` (su carga entró en `to_city_id` una sola vez, `INV-TRADE-006`) o `LOST` (capturada sin ruta: la carga se perdió) |
 | `caravan_cargo` | Lo que lleva, una fila por recurso: exactamente las líneas de su lado del trato, que no cambian ni al capturarla (`INV-TRADE-005`). La comprobación del arranque (`CaravanRepo.Violations`) no incorpora una caravana que no cuadre |
 
+**Precisión (2026-11-19), E26.** La migración `000028` ([§16.17](#1617-el-mercado-000028)) cambia esta tabla: una
+caravana nace también de una compra en el mercado.
+
+- `offer_id` **admite nulos**: es `NULL` en las dos caravanas de una compra.
+- `market_purchase_id` (`bigint NULL`, FK a `market_purchases`) es la compra de la que nace; `NULL` en las de un trato.
+- `caravans_one_source` (`CHECK (num_nonnulls(offer_id, market_purchase_id) = 1)`): exactamente uno de los dos.
+  `caravans_two_per_offer` sigue igual (un único sobre `NULL` no choca), y `caravans_two_per_purchase`, único parcial
+  sobre `(market_purchase_id, from_city_id) WHERE market_purchase_id IS NOT NULL`, da la misma garantía a la compra
+  (`INV-TRADE-007`).
+- La carga de una caravana de compra son los lotes comprados (la del vendedor) o lo pagado sin la comisión (la del
+  comprador), y `CaravanRepo.Violations` la comprueba contra la compra.
+
 ### 16.12 Mensajes entre jugadores (`000018`)
 
 Los mensajes de texto entre dos jugadores, lo leído de cada conversación y los bloqueos
