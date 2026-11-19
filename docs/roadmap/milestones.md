@@ -2697,4 +2697,16 @@ puertas, que la muralla frene el saqueo, reparar un daño que no derribó y tecn
    del ariete y el fin del asedio que la regla deja de admitir; el golden «asedio».
 5. **HECHO** — WebSocket: el e2e del ariete que derriba la muralla.
 6. **HECHO** — Cliente: «Muralla» y «Ariete», sus siluetas, la vida de la muralla y los motivos del clic.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --ariete` (escrito; falta la prueba en vivo).
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --ariete` y `--ariete-completo`.
+
+**Prueba en vivo (2026-11-19).** Con `verify:full` en verde, la base de desarrollo pasó de la migración 28 a la 29 al
+arrancar el servidor, y `node scripts/smoke.mjs --web http://localhost:3001 --ariete-completo` superó sus 30
+comprobaciones: smoke_victim (Bronce, romana) levantó su muralla en el centro en 109 091 ms (120 s con su
+`production.speed`); smoke_runner (Castillos) entrenó un ariete y lo llevó a (451, 184), junto a la víctima; el ariete
+contra la casa y el guerrero de `--asedio` se rechazaron con `INVALID_TARGET` y su motivo; el primer golpe dejó la
+muralla en 1 460/1 500 con el aviso `besiegedAtMs` a la víctima; la muralla cayó con `building.destroyed`, y la sesión de
+smoke_runner con la vista en casa recibió `HOUSE_DESTROYED` con `buildingType: WALL`. En el navegador integrado, el
+HUD de smoke_runner enseña «Muralla» y «Ariete» con sus títulos, y «Mientras no estabas», «Tus arietes derribaron la
+muralla de smoke_victimpolis». **Sin comprobar en el navegador:** las siluetas de la muralla y del ariete (el panel
+estaba oculto y sin `requestAnimationFrame` el mapa no se dibuja), con las del mercado, el catafracto y el arquero a
+caballo.
