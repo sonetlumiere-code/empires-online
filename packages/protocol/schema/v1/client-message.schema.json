@@ -337,7 +337,8 @@
                   "enum": [
                     "HOUSE",
                     "WORKSHOP",
-                    "CASTLE"
+                    "CASTLE",
+                    "MARKET"
                   ]
                 },
                 "x": {
@@ -952,6 +953,184 @@
               "required": [
                 "offerId"
               ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "market.post"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "give": {
+                  "type": "object",
+                  "properties": {
+                    "resource": {
+                      "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/resource"
+                    },
+                    "amount": {
+                      "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/amount"
+                    }
+                  },
+                  "required": [
+                    "resource",
+                    "amount"
+                  ],
+                  "additionalProperties": false
+                },
+                "want": {
+                  "type": "object",
+                  "properties": {
+                    "resource": {
+                      "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/resource"
+                    },
+                    "amount": {
+                      "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/amount"
+                    }
+                  },
+                  "required": [
+                    "resource",
+                    "amount"
+                  ],
+                  "additionalProperties": false
+                },
+                "lots": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "give",
+                "want",
+                "lots"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "market.buy"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "offerId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                },
+                "lots": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "offerId",
+                "lots"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "market.cancel"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "offerId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                }
+              },
+              "required": [
+                "offerId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
+              "const": "market.list"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "receive": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/resource"
+                },
+                "pay": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/resource"
+                }
+              },
               "additionalProperties": false
             }
           },

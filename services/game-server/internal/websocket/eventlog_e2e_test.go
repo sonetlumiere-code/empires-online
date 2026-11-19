@@ -64,11 +64,12 @@ func sincronizar(c *conn) {
 
 func paginaDePrueba() protocol.EventLogPagePayload {
 	nombre, ciudad, amount, x, y := "Villa Norte", int64(7), int64(85), int32(451), int32(179)
+	otro := uuid.NewString()
 	next := int64(12)
 	return protocol.EventLogPagePayload{
 		Entries: []protocol.EventLogEntry{{
 			ID: 41, Kind: "PILLAGED", FirstAtMs: 1_800_000_000_000, LastAtMs: 1_800_000_060_000, Count: 17,
-			OtherPlayerID: uuid.NewString(), OtherCityID: &ciudad, OtherCityName: &nombre, Amount: &amount, X: &x, Y: &y,
+			OtherPlayerID: &otro, OtherCityID: &ciudad, OtherCityName: &nombre, Amount: &amount, X: &x, Y: &y,
 		}},
 		SeenUpToID: 3, NextBeforeID: &next,
 	}

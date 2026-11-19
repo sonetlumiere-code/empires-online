@@ -54,9 +54,11 @@ func TestLaPaginaDelRegistroEsLaDelEsquema(t *testing.T) {
 		x, y   = int32(1), int32(2)
 		nombre = "Villa Norte"
 		mia    = true
+		otro   = "x"
+		lotes  = int32(2)
 	)
 	completa := protocol.EventLogEntry{
-		ID: 1, Kind: "PILLAGED", Count: 1, OtherPlayerID: "x", OtherCityID: &id, OtherCityName: &nombre,
+		ID: 1, Kind: "PILLAGED", Count: 1, OtherPlayerID: &otro, OtherCityID: &id, OtherCityName: &nombre,
 		UnitType: "VILLAGER", Amount: &n, TreatyType: "ALLIANCE", ProposedByMe: &mia, X: &x, Y: &y, BreaksAtMs: &n,
 		TradeGive:   []protocol.ResourceAmount{{Resource: "WOOD", Amount: 1}},
 		TradeGet:    []protocol.ResourceAmount{{Resource: "STONE", Amount: 1}},
@@ -64,9 +66,11 @@ func TestLaPaginaDelRegistroEsLaDelEsquema(t *testing.T) {
 		Cargo: []protocol.ResourceAmount{{Resource: "WINE", Amount: 5}},
 		// SPEC-CLAN-WARS §6.
 		BreakReason: "WAR", StartsAtMs: &n, WarResult: "WON", WarReason: "TIMEOUT", OurScore: &n, TheirScore: &n,
+		// SPEC-MARKETS §6.
+		Lots: &lotes,
 	}
 	require.Equal(t, declaradas, clavesDe(serializado(t, completa)), "con todo, los campos del esquema")
-	minima := clavesDe(serializado(t, protocol.EventLogEntry{ID: 1, Kind: "PILLAGED", Count: 1, OtherPlayerID: "x"}))
+	minima := clavesDe(serializado(t, protocol.EventLogEntry{ID: 1, Kind: "PILLAGED", Count: 1, OtherPlayerID: &otro}))
 	require.Equal(t, requeridas(t, entrada), minima, "sin opcionales, sólo los obligatorios")
 
 	kinds := enumOf(t, dig(t, root, entrada, "properties", "kind"))

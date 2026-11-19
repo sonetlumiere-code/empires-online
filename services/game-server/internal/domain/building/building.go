@@ -32,6 +32,9 @@ const (
 	// TypeCastle es el castillo, que golpea a quien ataca a su dueño
 	// (SPEC-CASTLE-AGE §4.2, ADR-044).
 	TypeCastle Type = "CASTLE"
+	// TypeMarket es el mercado, que deja publicar y comprar en el tablón
+	// público (SPEC-MARKETS §4.1, ADR-047 §5).
+	TypeMarket Type = "MARKET"
 )
 
 // Status es el estado de un edificio.
@@ -120,6 +123,19 @@ var catalog = map[Type]Definition{
 		AttackDamage:     10,
 		AttackIntervalMs: 2_000,
 		AttackRange:      5,
+	},
+	// SPEC-MARKETS Q3: pide Bronce, es único, no da población y aguanta 200,
+	// como el taller.
+	TypeMarket: {
+		Type: TypeMarket,
+		Costs: economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 150},
+			{Resource: economy.ResourceStone, Amount: 100},
+		},
+		BuildMs:       60_000,
+		MaxHP:         200,
+		RequiresEra:   city.EraBronze,
+		UniquePerCity: true,
 	},
 }
 

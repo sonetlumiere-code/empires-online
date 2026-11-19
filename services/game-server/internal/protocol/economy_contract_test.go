@@ -46,7 +46,7 @@ func TestLosComandosDeEconomiaSonLosDelEsquema(t *testing.T) {
 func TestLosCatalogosDeLosComandosSonLosDelDominio(t *testing.T) {
 	root, build := clientVariant(t, protocol.TypeCityBuild)
 	tipos := enumOf(t, dig(t, root, build, "properties", "payload", "properties", "type"))
-	require.Equal(t, []string{string(building.TypeHouse), string(building.TypeWorkshop), string(building.TypeCastle)}, tipos)
+	require.Equal(t, []string{string(building.TypeHouse), string(building.TypeWorkshop), string(building.TypeCastle), string(building.TypeMarket)}, tipos)
 	for _, tipo := range tipos {
 		_, err := building.Lookup(building.Type(tipo))
 		assert.NoError(t, err, "%s", tipo)

@@ -94,6 +94,10 @@ const (
 	KindClanWarDeclared     Kind = "CLAN_WAR_DECLARED"
 	KindClanWarPeaceOffered Kind = "CLAN_WAR_PEACE_OFFERED"
 	KindClanWarEnded        Kind = "CLAN_WAR_ENDED"
+	// El mercado (SPEC-MARKETS Q11): al vendedor, la venta de lotes de su
+	// oferta y su caducidad. La caducidad no tiene otro jugador.
+	KindMarketSold    Kind = "MARKET_SOLD"
+	KindMarketExpired Kind = "MARKET_EXPIRED"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -111,6 +115,7 @@ func Kinds() []Kind {
 		KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceRejected, KindClanAllianceBreakAnnounced,
 		KindUnitLostToCastle, KindCastleKill,
 		KindClanWarDeclared, KindClanWarPeaceOffered, KindClanWarEnded,
+		KindMarketSold, KindMarketExpired,
 	}
 }
 
@@ -199,6 +204,14 @@ const (
 	EventClanWarPeaceOffered   = "ClanWarPeaceOffered"
 	EventClanWarPeaceWithdrawn = "ClanWarPeaceWithdrawn"
 	EventClanWarEnded          = "ClanWarEnded"
+	// El mercado (SPEC-MARKETS §6, ADR-047): en la compra, player_id es el
+	// vendedor y counterpart_player_id el comprador; la caducidad es sólo del
+	// vendedor, sin counterpart. La publicación y la retirada no van al
+	// registro: las ordenó el propio jugador.
+	EventMarketOfferPosted    = "MarketOfferPosted"
+	EventMarketPurchase       = "MarketPurchase"
+	EventMarketOfferWithdrawn = "MarketOfferWithdrawn"
+	EventMarketOfferExpired   = "MarketOfferExpired"
 )
 
 // BreakReasonWar es el motivo de un TreatyBreakAnnounced que abrió una guerra
@@ -224,6 +237,7 @@ func EventTypes() []string {
 		EventClanMemberExpelled, EventClanLeaderChanged,
 		EventClanAllianceProposed, EventClanAllianceAccepted, EventClanAllianceRejected, EventClanAllianceBreakAnnounced,
 		EventClanWarDeclared, EventClanWarPeaceOffered, EventClanWarEnded,
+		EventMarketPurchase, EventMarketOfferExpired,
 	}
 }
 
@@ -290,6 +304,8 @@ type Event struct {
 	WarResult  string
 	OurScore   int64
 	TheirScore int64
+	// Lots, en el mercado: los lotes vendidos o devueltos.
+	Lots int32
 }
 
 // KillerCastle es el valor de Event.KillerBuildingType de una muerte que causó
@@ -353,6 +369,8 @@ type Entry struct {
 	WarResult  string
 	OurScore   int64
 	TheirScore int64
+	// Lots, en el mercado: los lotes vendidos o devueltos.
+	Lots int32
 }
 
 // Classify dice qué entrada da e para viewer y quién es el otro jugador. ok es
@@ -365,6 +383,20 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 	}
 	// Una fila de un solo lado (ADR-041 §5) no le cuenta nada al otro.
 	if (e.Only == OnlyPlayer && viewer != e.PlayerID) || (e.Only == OnlyCounterpart && viewer != e.Counterpart) {
+		return "", uuid.Nil, false
+	}
+	// El mercado (SPEC-MARKETS Q11): sólo al vendedor. La caducidad es la única
+	// entrada sin otro jugador; la compra no se le cuenta a quien la hizo.
+	switch e.Type {
+	case EventMarketOfferExpired:
+		if e.PlayerID == viewer {
+			return KindMarketExpired, uuid.Nil, true
+		}
+		return "", uuid.Nil, false
+	case EventMarketPurchase:
+		if e.PlayerID == viewer && e.Counterpart != uuid.Nil && e.Counterpart != viewer {
+			return KindMarketSold, e.Counterpart, true
+		}
 		return "", uuid.Nil, false
 	}
 	other = e.Counterpart
@@ -677,7 +709,7 @@ func (b *Builder) Add(e Event) bool {
 	if isTreaty(kind) {
 		k.treatyType = e.TreatyType
 	}
-	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) || isAlliance(kind) || isWar(kind) {
+	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) || isAlliance(kind) || isWar(kind) || isMarket(kind) {
 		k.offerID = e.ID // cada trato, cada suceso de un territorio, cada caravana, cada alianza y cada guerra, su entrada
 	}
 	if i, abierto := b.open[k]; abierto && e.AtMs >= b.entries[i].FirstAtMs-b.gapMs {
@@ -735,6 +767,12 @@ func (b *Builder) Add(e Event) bool {
 	case KindCaravanArrived, KindCaravanCaptured, KindCaravanIntercepted, KindCaravanLost:
 		entry.Cargo = e.Cargo
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
+	case KindMarketSold:
+		// Lo que salió de la custodia y lo que viene en la caravana del comprador.
+		entry.TradeGive, entry.TradeGet, entry.Lots = e.Give, e.Want, e.Lots
+	case KindMarketExpired:
+		// Lo que volvió al almacén.
+		entry.TradeGet, entry.Lots = e.Give, e.Lots
 	case KindTradeOffered, KindTradeAccepted, KindTradeRejected, KindTradeWithdrawn, KindTradeOfferExpired:
 		// Desde quien lee: si propuso él, da Give y recibe Want; si no, al revés.
 		if e.PlayerID == b.viewer {
@@ -763,6 +801,8 @@ func (b *Builder) Entries() []Entry { return b.entries }
 // MinID es el menor id que entró en la página, 0 si no entró ninguno: el
 // beforeId de la siguiente.
 func (b *Builder) MinID() int64 { return b.minID }
+
+func isMarket(k Kind) bool { return k == KindMarketSold || k == KindMarketExpired }
 
 func isTreaty(k Kind) bool {
 	switch k {

@@ -236,11 +236,17 @@ func (s *Simulation) caravanPath(owner uuid.UUID, tiles []world.Tile) (movement.
 // propuso por la ruta y la de quien acepta por la misma al revés, con sus
 // movimientos ya numerados por el loop (RN-CARAVAN-001).
 func (s *Simulation) caravanSpawns(o trade.Offer, route []world.Tile, nowMs int64) ([]CaravanSpawn, error) {
+	return s.spawnsFor(caravan.Halves(o), route, nowMs)
+}
+
+// spawnsFor prepara las dos caravanas de un trato o de una compra en el
+// mercado: la primera mitad por la ruta y la segunda por la misma al revés
+// (RN-CARAVAN-001, SPEC-MARKETS §4.6).
+func (s *Simulation) spawnsFor(halves [2]caravan.Half, route []world.Tile, nowMs int64) ([]CaravanSpawn, error) {
 	def, err := unit.Lookup(unit.TypeCaravan)
 	if err != nil {
 		return nil, err
 	}
-	halves := caravan.Halves(o)
 	routes := [2][]world.Tile{route, caravan.Reverse(route)}
 	out := make([]CaravanSpawn, 0, 2)
 	for i, h := range halves {
@@ -255,10 +261,17 @@ func (s *Simulation) caravanSpawns(o trade.Offer, route []world.Tile, nowMs int6
 	return out, nil
 }
 
+// caravanOrigin es de dónde nacen unas caravanas: un trato o una compra en el
+// mercado (INV-TRADE-007).
+type caravanOrigin struct {
+	offerID    int64
+	purchaseID int64
+}
+
 // spawnCaravans pone en el mapa las caravanas de un trato que la base acaba de
 // confirmar, con los ids que les dio. Su movimiento empezó en el tick de la
 // aceptación: aparecen ya avanzadas lo que diga su polilínea.
-func (s *Simulation) spawnCaravans(spawns []CaravanSpawn, created []CaravanCreated, offerID int64) {
+func (s *Simulation) spawnCaravans(spawns []CaravanSpawn, created []CaravanCreated, origin caravanOrigin) {
 	nowMs := s.deps.Clock.NowMs()
 	for i, sp := range spawns {
 		if i >= len(created) || created[i].UnitID == 0 {
@@ -280,7 +293,8 @@ func (s *Simulation) spawnCaravans(spawns []CaravanSpawn, created []CaravanCreat
 		s.state.MoveUnitTo(u, pos)
 
 		e := &caravanEntry{Caravan: caravan.Caravan{
-			ID: created[i].CaravanID, UnitID: u.ID, OfferID: offerID, Sender: sp.Half.Sender,
+			ID: created[i].CaravanID, UnitID: u.ID, OfferID: origin.offerID, PurchaseID: origin.purchaseID,
+			Sender:   sp.Half.Sender,
 			FromCity: sp.Half.FromCity, ToCity: sp.Half.ToCity, OriginalToCity: sp.Half.ToCity,
 			Cargo: append(economy.Costs(nil), sp.Half.Cargo...), Status: caravan.StatusInTransit,
 			DepartedAt: time.UnixMilli(m.StartTimeMs).UTC(),

@@ -248,3 +248,43 @@ func TestElCastilloPideCastillosYEsUnico(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, TypeCastle, def.Type)
 }
+
+// SPEC-MARKETS Q3 y RN-MARKET-001: el mercado cuesta 150 de madera y 100 de
+// piedra, tarda 60 s, no da población, aguanta 200, pide Bronce, es único y no
+// golpea.
+func TestElMercadoTieneLosValoresDelCatalogo(t *testing.T) {
+	def, err := Lookup(TypeMarket)
+	require.NoError(t, err)
+	assert.Equal(t, economy.Costs{
+		{Resource: economy.ResourceWood, Amount: 150},
+		{Resource: economy.ResourceStone, Amount: 100},
+	}, def.Costs)
+	assert.Equal(t, int64(60_000), def.BuildMs)
+	assert.Zero(t, def.PopulationBonus)
+	assert.Equal(t, int32(200), def.MaxHP)
+	assert.Equal(t, city.EraBronze, def.RequiresEra)
+	assert.True(t, def.UniquePerCity)
+	assert.False(t, def.CanShoot())
+	assert.NoError(t, (&Building{Type: TypeMarket, Status: StatusComplete}).Validate())
+}
+
+// RN-MARKET-001: el mercado pide la Edad de Bronce y no admite otro en pie.
+func TestElMercadoPideBronceYEsUnico(t *testing.T) {
+	hueco := world.Tile{X: 9, Y: 10}
+	ninguno := func(Type) bool { return false }
+	uno := func(t Type) bool { return t == TypeMarket }
+	en := func(e city.Era) *city.City {
+		c := ciudad()
+		c.Era = e
+		return c
+	}
+	_, err := CanBuild(en(city.EraStone), dueno, TypeMarket, hueco, nil, ninguno, recursos(150, 100))
+	assert.ErrorIs(t, err, ErrInvalidSite, "en la Edad de Piedra no hay mercado")
+	_, err = CanBuild(en(city.EraBronze), dueno, TypeMarket, hueco, nil, uno, recursos(150, 100))
+	assert.ErrorIs(t, err, ErrInvalidSite, "uno por ciudad")
+	_, err = CanBuild(en(city.EraBronze), dueno, TypeMarket, hueco, nil, ninguno, recursos(150, 99))
+	assert.ErrorIs(t, err, economy.ErrInsufficientResources)
+	def, err := CanBuild(en(city.EraIron), dueno, TypeMarket, hueco, nil, ninguno, recursos(150, 100))
+	require.NoError(t, err)
+	assert.Equal(t, TypeMarket, def.Type)
+}

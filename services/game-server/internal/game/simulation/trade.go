@@ -514,7 +514,7 @@ func (s *Simulation) handleTradeAcceptResolved(cmd TradeAcceptResolved) {
 	delete(s.state.trade.open, r.offer.ID)
 	s.broadcastTrade(r.offer, cmd.PlayerID, cmd.RequestID)
 	s.broadcastTradeStocks(r.offer)
-	s.spawnCaravans(r.spawns, cmd.Caravans, r.offer.ID)
+	s.spawnCaravans(r.spawns, cmd.Caravans, caravanOrigin{offerID: r.offer.ID})
 }
 
 // broadcastTradeStocks difunde el almacén de las dos ciudades de un trato.

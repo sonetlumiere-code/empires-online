@@ -129,6 +129,8 @@ type Server struct {
 	// clans es el canal y la vista pública de los clanes (SPEC-CLANS);
 	// opcional, ver SetClans.
 	clans Clans
+	// market es el tablón del mercado (SPEC-MARKETS); opcional, ver SetMarket.
+	market Market
 }
 
 // NewServer construye el servidor.
@@ -691,6 +693,14 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
 			OfferID: p.OfferID,
 		})
+
+	// Mercado (SPEC-MARKETS): las tres órdenes pasan por la simulación; el
+	// tablón lo lee la conexión de la base (ADR-047 §6).
+	case protocol.TypeMarketPost, protocol.TypeMarketBuy, protocol.TypeMarketCancel:
+		s.handleMarketOrder(ctx, session, msg)
+
+	case protocol.TypeMarketList:
+		s.handleMarketList(ctx, session, msg, log)
 
 	// Registro (SPEC-EVENT-LOG, ADR-028 §1): lo atiende la conexión, como el
 	// ping; ni pasa por el loop ni reclama el requestId (leer no tiene efecto y

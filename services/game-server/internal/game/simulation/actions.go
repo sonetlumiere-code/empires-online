@@ -66,6 +66,11 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeTradePropose: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeTradeRespond: {Hostile: false, Territory: TerritoryFree},
 	protocol.TypeTradeCancel:  {Hostile: false, Territory: TerritoryFree},
+	// El mercado tampoco (RN-MARKET-010): se publica, se compra y se retira con
+	// el otro desconectado o protegido.
+	protocol.TypeMarketPost:   {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeMarketBuy:    {Hostile: false, Territory: TerritoryFree},
+	protocol.TypeMarketCancel: {Hostile: false, Territory: TerritoryFree},
 	// Unirse a un bando (SPEC-FACTIONS §4.2): no es hostil y no lo frena la
 	// protección propia ni la ajena.
 	protocol.TypeFactionJoin: {Hostile: false, Territory: TerritoryFree},
@@ -113,6 +118,9 @@ var sessionMessages = map[string]bool{
 	protocol.TypeClanChatSend:  true,
 	protocol.TypeClanChatFetch: true,
 	protocol.TypeClanChatRead:  true,
+	// El tablón del mercado lo lee la conexión de la base (SPEC-MARKETS §6,
+	// ADR-047 §6): leer no toca el mundo.
+	protocol.TypeMarketList: true,
 }
 
 // ActionPolicyOf devuelve la clasificación de un mensaje que actúa sobre el

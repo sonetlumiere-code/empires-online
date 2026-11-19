@@ -31,6 +31,7 @@ import {
   TreatyView,
   TradeOfferView,
   CaravanView,
+  MarketOfferView,
   MessageView,
   ConversationView,
   BlockedPlayerView,
@@ -172,6 +173,11 @@ export const WorldSnapshot = z.object({
      * (SPEC-CARAVANS §6). Opcional: aditivo en v1; reemplaza la lista del cliente.
      */
     caravans: z.array(CaravanView).optional(),
+    /**
+     * Ofertas OPEN del mercado del jugador que recibe el snapshot (SPEC-MARKETS §6).
+     * Opcional: aditivo en v1; reemplaza la lista del cliente.
+     */
+    marketOffers: z.array(MarketOfferView).optional(),
   }),
 });
 
@@ -355,6 +361,27 @@ export const TradeUpdate = z.object({
   ...serverEnvelope,
   type: z.literal('trade.update'),
   payload: z.object({ offer: TradeOfferView }),
+});
+
+/**
+ * Cambió una oferta del mercado del jugador: publicada, lotes vendidos, retirada o
+ * caducada. La reciben las sesiones del vendedor y, con su `requestId`, quien dio la
+ * orden, también el comprador (SPEC-MARKETS §6).
+ */
+export const MarketUpdate = z.object({
+  ...serverEnvelope,
+  type: z.literal('market.update'),
+  payload: z.object({ offer: MarketOfferView }),
+});
+
+/**
+ * El tablón del mercado, en respuesta a `market.list`: hasta 100 ofertas OPEN de otros
+ * jugadores, las más recientes primero (SPEC-MARKETS §6). Sólo para la sesión que lo pidió.
+ */
+export const MarketListing = z.object({
+  ...serverEnvelope,
+  type: z.literal('market.listing'),
+  payload: z.object({ offers: z.array(MarketOfferView).max(100) }),
 });
 
 /**
@@ -624,6 +651,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
   ClanInfo,
   ClanChatNew,
   ClanChatPage,
+  MarketUpdate,
+  MarketListing,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 
@@ -658,6 +687,8 @@ export type ClanUpdate = z.infer<typeof ClanUpdate>;
 export type ClanInfo = z.infer<typeof ClanInfo>;
 export type ClanChatNew = z.infer<typeof ClanChatNew>;
 export type ClanChatPage = z.infer<typeof ClanChatPage>;
+export type MarketUpdate = z.infer<typeof MarketUpdate>;
+export type MarketListing = z.infer<typeof MarketListing>;
 
 export const SERVER_MESSAGE_TYPES = [
   'session.welcome',
@@ -691,6 +722,8 @@ export const SERVER_MESSAGE_TYPES = [
   'clan.info',
   'clan.chat.new',
   'clan.chat.page',
+  'market.update',
+  'market.listing',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

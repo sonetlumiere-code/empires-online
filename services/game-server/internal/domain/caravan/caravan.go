@@ -54,8 +54,10 @@ type Caravan struct {
 	// ID es el de la fila de caravans.
 	ID     int64
 	UnitID int64
-	// OfferID es el trato del que nace (INV-TRADE-007).
-	OfferID int64
+	// OfferID es el trato del que nace, o PurchaseID la compra del mercado:
+	// exactamente uno de los dos (INV-TRADE-007, SPEC-MARKETS §4.6).
+	OfferID    int64
+	PurchaseID int64
 	// Sender es el jugador que la mandó: el que dio esta mitad del trato.
 	Sender uuid.UUID
 	// FromCity es la ciudad de la que salió; ToCity, adonde va ahora (la del
@@ -110,6 +112,17 @@ func Halves(o trade.Offer) [2]Half {
 	return [2]Half{
 		{Sender: o.Proposer, FromCity: o.ProposerCity, ToCity: o.TargetCity, Cargo: copyCosts(o.Give)},
 		{Sender: o.Target, FromCity: o.TargetCity, ToCity: o.ProposerCity, Cargo: copyCosts(o.Want)},
+	}
+}
+
+// PurchaseHalves son las dos caravanas de una compra en el mercado, la del
+// vendedor primero (SPEC-MARKETS §4.6): una lleva lo comprado, sacado de la
+// custodia, de la ciudad del vendedor a la del comprador; la otra, lo que paga
+// el comprador sin su comisión, en sentido contrario.
+func PurchaseHalves(seller uuid.UUID, sellerCity int64, buyer uuid.UUID, buyerCity int64, receive, pay economy.Cost) [2]Half {
+	return [2]Half{
+		{Sender: seller, FromCity: sellerCity, ToCity: buyerCity, Cargo: economy.Costs{receive}},
+		{Sender: buyer, FromCity: buyerCity, ToCity: sellerCity, Cargo: economy.Costs{pay}},
 	}
 }
 
