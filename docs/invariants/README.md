@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**155 invariantes** —153 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en dieciséis familias y catorce archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**157 invariantes** —155 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en dieciséis familias y catorce archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -401,6 +401,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-COMBAT-005 | Ningún golpe de saqueo o de asedio cae con el dueño del atacante ausente | ALTO | DOMAIN, TEST | ✓ | `TestElSaqueoTerminaConElDuenoAusente`, `TestElAsedioTerminaConElDuenoAusente` |
 | INV-COMBAT-006 | Ningún golpe, robo, derribo ni avance de estandarte se aplica entre dos jugadores de la Orden | CRITICO | DOMAIN, TEST | ✓ | `TestLaTablaDeLosBandos`, `TestDosDeLaOrdenDejanDePelearAlEntrarElSegundo`, `TestLaOrdenNoSaqueaNiConquistaALosSuyos`, `TestUnirseALaOrdenPorLaRed` |
 | INV-COMBAT-007 | Un castillo sólo golpea a quien, a su alcance, ataca algo de su dueño, y nunca en paz | CRITICO | DOMAIN, TEST | ✓ | `TestElCastilloSoloGolpeaAQuienAtacaASuDueno`, `TestElCastilloGoldenMataAlGuerreroQueAsedia`, `TestElCastilloDisparaPorLaRed` |
+| INV-COMBAT-008 | Con la muralla en pie, sólo el ariete daña la ciudad, y sólo a la muralla | CRITICO | DOMAIN, TEST | ○ | Sin test todavía (E27) |
+| INV-COMBAT-009 | Un ariete nunca hiere a una unidad ni roba | ALTO | DOMAIN, TEST | ○ | Sin test todavía (E27) |
 
 ### TRADE — [trade.md](trade.md)
 
@@ -444,10 +446,10 @@ Por severidad:
 
 | Severidad | Cantidad |
 |---|---|
-| CRITICO | 56 |
-| ALTO | 86 |
+| CRITICO | 57 |
+| ALTO | 87 |
 | MEDIO | 11 |
-| **Total** | **153** |
+| **Total** | **155** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -467,7 +469,7 @@ Por familia:
 | `INV-GARR` | 001–009 | 9 | [diplomacy.md](diplomacy.md) |
 | `INV-DIPLO` | 001–004 | 4 | [diplomacy.md](diplomacy.md) |
 | `INV-ECON` | 001–012 | 12 | [economy.md](economy.md) |
-| `INV-COMBAT` | 001–007 | 7 | [combat.md](combat.md) |
+| `INV-COMBAT` | 001–009 | 9 | [combat.md](combat.md) |
 | `INV-TRADE` | 001–010 | 10 | [trade.md](trade.md) |
 | `INV-CLAN` | 001–009 | 9 | [clans.md](clans.md) |
 | `INV-TECH` | 001–002 | 2 | [technology.md](technology.md) |
@@ -480,13 +482,15 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 |---|---|---|
 | ✓ Cubierto | 153 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **155** | |
+| **Total** | **157** | |
 
-> **155 filas y 155 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **157 filas y 157 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
+
+`INV-COMBAT-008` e `INV-COMBAT-009` se registraron el 2026-11-19 con SPEC-SIEGE-ENGINES y [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md), antes de escribir su código, como manda §8, y nacen sin cobertura.
 
 `INV-TRADE-008`, `INV-TRADE-009` e `INV-TRADE-010` se registraron el 2026-11-18 con SPEC-MARKETS y [ADR-047](../decisions/ADR-047-markets.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (seis mutaciones de código y el trigger, con `DISABLE TRIGGER` en la base de tests); el mismo día se precisaron `INV-TRADE-001` (la comisión del mercado es, con la caravana capturada sin ruta, lo único que el comercio destruye) e `INV-TRADE-007` (una caravana nace de un trato o de una compra en el mercado), que volvieron a ✓ con sus tests. Ninguna fila queda sin cobertura ni parcial.
 
@@ -541,7 +545,7 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 | [territory.md](territory.md) | `INV-TERR`, `INV-SAFE` | 17 |
 | [diplomacy.md](diplomacy.md) | `INV-GARR`, `INV-DIPLO` | 12 |
 | [economy.md](economy.md) | `INV-ECON` | 12 |
-| [combat.md](combat.md) | `INV-COMBAT` | 7 |
+| [combat.md](combat.md) | `INV-COMBAT` | 9 |
 | [trade.md](trade.md) | `INV-TRADE` | 10 |
 | [clans.md](clans.md) | `INV-CLAN` | 9 |
 | [technology.md](technology.md) | `INV-TECH` | 2 |

@@ -1,7 +1,7 @@
 # Invariantes de Combate (INV-COMBAT-xxx)
 
-Propiedades del combate: la vida de una unidad, la muerte, el botín, las reglas que impiden un golpe y, desde E5,
-el saqueo del almacén de una ciudad.
+Propiedades del combate: la vida de una unidad, la muerte, el botín, las reglas que impiden un golpe, desde E5 el
+saqueo del almacén de una ciudad y, desde E27, la muralla y el ariete.
 
 Formato y severidades: [README.md](README.md). Unidades: [units.md](units.md). Ciudades: [city.md](city.md).
 Economía: [economy.md](economy.md). Specs: [../specs/combat-raid.md](../specs/combat-raid.md) y
@@ -252,3 +252,64 @@ defensa.
 
 **Violación en runtime.** Un golpe de castillo que llegara a aplicarse sobre una unidad que no pasa el predicado se
 descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-007`.
+
+---
+
+<a id="inv-combat-008"></a>
+## INV-COMBAT-008 — Con la muralla en pie, sólo el ariete daña la ciudad, y sólo a la muralla
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E27 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** (E27): se registra en la aceptación de SPEC-SIEGE-ENGINES, antes de escribir su código |
+
+**Enunciado.** Mientras una ciudad tiene una muralla `COMPLETE` con vida, ningún golpe de asedio de una unidad que no
+sea un ariete resta vida a uno de sus edificios, y ningún golpe de un ariete resta vida a otro edificio de esa ciudad
+que su muralla. Con la ciudad en brecha (sin muralla, con la muralla en obra o derribada), la regla de E8 no cambia.
+
+**Razón.** La muralla es la inversión que compra protección (SPEC-SIEGE-ENGINES Q4): si un guerrero pudiera derribar una
+casa de una ciudad amurallada, o un ariete saltarse la muralla, la piedra pagada no compraría nada y el asedio no
+pediría máquina.
+
+**Cómo se garantiza.** `DOMAIN` — un solo predicado, `siege.CanDamage`, que llaman la orden `unit.demolish` y cada golpe
+de asedio de la fase 4 antes de aplicarlo; un asedio que el predicado deja de admitir (la muralla se completa a mitad)
+termina en ese tick ([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md) §2, `RN-SIEGE-004`, `RN-SIEGE-006`).
+
+**Cómo se verifica.** Previsto: la tabla de `siege.CanDamage` (unit), el golden «asedio» y la muralla que se completa a
+mitad de un derribo (simulation), con mutación del predicado en la orden y en el golpe por separado.
+
+**Violación en runtime.** Un golpe de asedio que llegara a aplicarse sin pasar el predicado se descarta y se registra
+`invariant_violation` con `inv_id=INV-COMBAT-008`.
+
+---
+
+<a id="inv-combat-009"></a>
+## INV-COMBAT-009 — Un ariete nunca hiere a una unidad ni roba
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E27 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** (E27): se registra en la aceptación de SPEC-SIEGE-ENGINES, antes de escribir su código |
+
+**Enunciado.** Un ariete nunca resta vida a una unidad, nunca carga botín de un saqueo ni de una muerte, y nunca
+captura una caravana ni un territorio. Sólo golpea edificios.
+
+**Razón.** El ariete es una máquina que sólo derriba (SPEC-SIEGE-ENGINES Q7); su única defensa es la escolta. Si pudiera
+herir o robar sería una unidad de combate más fuerte y más barata por punto de vida que el guerrero.
+
+**Cómo se garantiza.** `DOMAIN` — su catálogo tiene a cero el golpe de combate y el botín, así que `CanAttack()` es
+falso y `unit.attack`, `unit.pillage`, `unit.claim`, la respuesta automática y la elección de objetivos de un
+enfrentamiento lo excluyen sin un caso especial; `unit.demolish` pregunta `CanDemolish()`
+([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md) §3, `RN-SIEGE-003`).
+
+**Cómo se verifica.** Previsto: el ariete en el catálogo (unit) y sus rechazos en `unit.attack`, `unit.pillage`,
+`unit.claim`, `unit.gather` y `unit.garrison`, y la respuesta automática que no lo toma por defensor (simulation).
+
+**Violación en runtime.** Un golpe de combate de un ariete que llegara a resolverse se descarta y se registra
+`invariant_violation` con `inv_id=INV-COMBAT-009`.

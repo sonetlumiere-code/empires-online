@@ -35,6 +35,8 @@ E5; el aviso al dueño conectado; la entrada en el registro de E7; el clic sobre
 dueño, máquinas de asedio, reparar casas con aldeanos, otros edificios (sólo existe la casa), captura de
 territorio (`contested` sigue sin productor), ocultar las casas ajenas (niebla de guerra), tocar el balance de la
 respuesta de E3 y notificaciones fuera del juego.
+**Precisión (2026-11-19):** las máquinas de asedio (el ariete) y atacar la muralla entran con E27
+([siege-engines.md](siege-engines.md)); que la ciudad caiga sigue fuera.
 
 ## 3. Actores
 
@@ -74,7 +76,7 @@ Dominio: `RN-COMBAT`, a continuación de las de [combat-pillage.md](combat-pilla
 
 | ID | Regla |
 |---|---|
-| `RN-COMBAT-029` | Sólo derriba un `WARRIOR` propio, vivo y no guarnecido. El objetivo es una casa, completa o en obra, de una ciudad **de otro jugador**. La muralla y el Centro Urbano no son objetivos (Q2). **Precisión (2026-11-17, [castle-age.md](castle-age.md), [ADR-044](../decisions/ADR-044-castle-shooting.md)):** desde E23 el castillo es un objetivo más, como el taller desde E14, con 1 000 de vida y sin el rasgo de vida de las casas (`RN-CASTLE-007`); un castillo completo golpea a quien lo asedia a su alcance (`RN-CASTLE-004`). |
+| `RN-COMBAT-029` | Sólo derriba un `WARRIOR` propio, vivo y no guarnecido. El objetivo es una casa, completa o en obra, de una ciudad **de otro jugador**. La muralla y el Centro Urbano no son objetivos (Q2). **Precisión (2026-11-17, [castle-age.md](castle-age.md), [ADR-044](../decisions/ADR-044-castle-shooting.md)):** desde E23 el castillo es un objetivo más, como el taller desde E14, con 1 000 de vida y sin el rasgo de vida de las casas (`RN-CASTLE-007`); un castillo completo golpea a quien lo asedia a su alcance (`RN-CASTLE-004`). **Precisión (2026-11-19, [siege-engines.md](siege-engines.md), [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md)):** desde E27 también derriba el ariete (`RN-SIEGE-003`), y la muralla es un objetivo más; con la muralla completa en pie sólo el ariete golpea, y sólo a la muralla (`RN-SIEGE-004`). |
 | `RN-COMBAT-030` | `unit.demolish` es **hostil** (ADR-016) y pasa por el mismo predicado que `unit.pillage` (`RN-COMBAT-020`, [INV-COMBAT-002](../invariants/combat.md#inv-combat-002)): ciudad `PROTECTED`, `CITY_PROTECTED`; tratado `NON_AGGRESSION` o `ALLIANCE`, o guerrero sobre una Safe Zone, `INVALID_TARGET`. `OFFLINE_PENDING` no protege (Q6). |
 | `RN-COMBAT-031` | **El golpe de asedio** vence en la fase 4 como uno de E2 (`now >= next_hit_at_ms`, guerrero en alcance) y resta su daño a la vida de la casa. Se calcula con los demás golpes (`RN-COMBAT-007`) y se aplica después de los golpes a unidades y de los de saqueo, en orden de `id` del guerrero, cada uno sobre la vida que dejó el anterior. Sin azar. |
 | `RN-COMBAT-032` | **La vida de la casa** empieza en su `MaxHP` (Q3). El daño vive en la RAM: una casa que pasa `EO_SIEGE_DAMAGE_RESET_SECONDS` sin recibir golpes vuelve a estar entera, y un reinicio también la deja entera (Q4). No hay reparación. |

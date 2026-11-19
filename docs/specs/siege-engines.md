@@ -8,13 +8,13 @@ sigue sin caer.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-SIEGE-ENGINES` |
-| Estado | Draft (2026-11-19). Propuesta; las preguntas de producto de §10 esperan decisión. |
-| Milestone | E27 Arietes y murallas (vigesimoséptimo slice después de M7), si se acepta |
+| Estado | Accepted (2026-11-19). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
+| Milestone | E27 Arietes y murallas (vigesimoséptimo slice después de M7) |
 | Canon | §9 (protección), §10 (eras), §11 (catálogos), §12 (persistencia), §16 (errores), §21 (fuera de MVP: asedio) |
 | Depende de | [combat-siege.md](combat-siege.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [castle-age.md](castle-age.md), [civilization-units.md](civilization-units.md), [economy-stone.md](economy-stone.md), [technologies.md](technologies.md), [territory-conquest.md](territory-conquest.md), [city.md](city.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (acción hostil), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (fase 4), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (la escritura de la destrucción), [ADR-044](../decisions/ADR-044-castle-shooting.md) (el castillo dispara a quien derriba). Propone el ADR-048 (§7). |
+| Decisiones | [ADR-016](../decisions/ADR-016-foreign-territory-actions.md) (acción hostil), [ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md) (fase 4), [ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) (la escritura de la destrucción), [ADR-044](../decisions/ADR-044-castle-shooting.md) (el castillo dispara a quien derriba), [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md) (la muralla como edificio del centro y un solo predicado de asedio). |
 | Reemplaza a | En [combat-siege.md](combat-siege.md), `RN-COMBAT-029` en lo que toca a quién derriba (también el ariete) y a qué (también la muralla), y el «Fuera de MVP» de §2 en lo que toca a las máquinas de asedio y a atacar la muralla. En [city.md](city.md), el «Murallas con perímetro, interior y puertas son `TBD`» de `RN-CITY-009` sólo en lo que toca a que la muralla tenga vida; el 3 × 3 sigue entero `BLOCKED`. |
-| Invariantes | Cita los de combate y de economía que ya cubren el asedio; asigna dos nuevos de la familia `INV-COMBAT` (§8) |
+| Invariantes | Cita los de combate y de economía que ya cubren el asedio; asigna [INV-COMBAT-008](../invariants/combat.md#inv-combat-008) e [INV-COMBAT-009](../invariants/combat.md#inv-combat-009) (§8) |
 
 ## 1. Objetivo
 
@@ -58,7 +58,7 @@ entrenamiento), cola de persistencia, PostgreSQL.
 ### 4.1 La muralla
 
 Un edificio de la ciudad, con el ciclo de la casa, el taller y el castillo (obra, completo, derribado), pero **sin
-hueco** en la zona urbana: su fila va en el tile del centro, que ningún otro edificio ocupa (ADR-048 §1). Valores (Q3,
+hueco** en la zona urbana: su fila va en el tile del centro, que ningún otro edificio ocupa ([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md) §1). Valores (Q3,
 Q9):
 
 - Se construye con `city.build { type: "WALL", x, y }`, con `x, y` el centro de la ciudad; cualquier otro tile es
@@ -112,7 +112,7 @@ Una ciudad está **amurallada** mientras tiene una muralla completa con vida, y 
 El saqueo no cambia: se saquea por encima del suelo, con o sin muralla (Q4). La respuesta de E3 tampoco: un golpe a
 la muralla cuenta como un golpe en el centro de la ciudad (`RN-COMBAT-037`).
 
-El mismo predicado decide al dar la orden y en cada golpe (ADR-048 §2): si la muralla se completa a mitad de un
+El mismo predicado decide al dar la orden y en cada golpe ([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md) §2): si la muralla se completa a mitad de un
 derribo, el guerrero que derribaba una casa termina su asedio en ese tick y queda `IDLE`; si la muralla cae, nada
 cambia de por sí para los demás asedios, y cada uno se vuelve a ordenar.
 
@@ -207,8 +207,8 @@ una casa ([live-notices.md](live-notices.md)).
 - `units_type_valid` y `city_productions_unit_type_valid` suman `RAM`.
 - Sin tablas nuevas, sin variables `EO_` nuevas. La siguiente libre pasará a ser `000030`.
 
-**ADR-048 (propuesto): «La muralla como edificio del centro y un solo predicado de asedio».** Tres decisiones
-estructurales:
+**[ADR-048](../decisions/ADR-048-siege-engines-and-wall.md): la muralla como edificio del centro y un solo predicado de
+asedio.** Tres decisiones estructurales:
 
 1. **La muralla es una fila de `buildings` en el tile del centro.** Así hereda sin código nuevo el encargo en dos fases
    ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)), la obra con `production.speed`, la
@@ -219,8 +219,8 @@ estructurales:
    mitad de un derribo) no dependa de que alguien se acuerde de comprobarlo en dos sitios.
 3. **El ariete es una unidad con un golpe sólo contra edificios.** El catálogo de unidades gana el daño y el ritmo
    contra edificios (`SiegeDamage`, `SiegeIntervalMs`) separados de los de combate, y el ariete tiene a cero los de
-   combate: `CanAttack()` es falso y todas las rutas que eligen objetivos de unidades (respuesta, castillo, `unit.attack`)
-   lo excluyen sin un caso especial.
+   combate: `CanAttack()` es falso y todas las rutas que eligen objetivos de unidades (respuesta, `unit.attack`,
+   `unit.pillage`, `unit.claim`) lo excluyen sin un caso especial; `unit.demolish` pasa a preguntar `CanDemolish()`.
 
 Alternativas descartadas que el ADR dejaría escritas: **la muralla como columnas de `cities`** (`wall_hp`,
 `wall_status`), que duplica el ciclo de un edificio y su mensaje; **la muralla como `BLOCKED` con vida por tile**, que
@@ -239,16 +239,16 @@ como orden de la ciudad** (un «asalto» sin unidad), que quita al defensor el b
 - [INV-SEC-001](../invariants/security.md#inv-sec-001): el servidor decide la vida, el alcance y quién daña qué.
 - [INV-PERSIST-005](../invariants/persistence.md#inv-persist-005): la migración `000029`.
 
-**Asigna** dos invariantes nuevos de la familia `INV-COMBAT`, que se registrarían sin cobertura en la aceptación:
+**Asigna** dos invariantes nuevos de la familia `INV-COMBAT`, registrados sin cobertura en la aceptación:
 
-- **La muralla protege.** Mientras una ciudad está amurallada, ningún golpe de una unidad que no sea un ariete resta
+- [INV-COMBAT-008](../invariants/combat.md#inv-combat-008) — **La muralla protege.** Mientras una ciudad está amurallada, ningún golpe de una unidad que no sea un ariete resta
   vida a uno de sus edificios, y ningún golpe de ariete resta vida a otro edificio que su muralla. Lo garantizan el
   predicado único de ADR-048 §2, en la orden y en cada golpe.
-- **El ariete no hiere ni roba.** Un ariete nunca resta vida a una unidad, nunca carga botín y nunca captura una
+- [INV-COMBAT-009](../invariants/combat.md#inv-combat-009) — **El ariete no hiere ni roba.** Un ariete nunca resta vida a una unidad, nunca carga botín y nunca captura una
   caravana o un territorio. Lo garantizan su catálogo (sin daño de combate ni botín) y el predicado de cada orden.
 
-Y uno de base de la familia `INV-CITY`, si producto lo pide en la aceptación (la recomendación es no: lo cubre la regla
-`RN-SIEGE-001` con el único parcial y el trigger): **una muralla por ciudad, y en su centro**.
+«Una muralla por ciudad, y en su centro» no es un invariante propio: lo cubren `RN-SIEGE-001`, el único parcial y el
+trigger de `000029`, como el mercado de E26.
 
 ## 9. Tests esperados
 
@@ -261,12 +261,12 @@ Y uno de base de la familia `INV-CITY`, si producto lo pide en la aceptación (l
 | contract / e2e | `WALL` y `RAM` en los enums contra el JSON Schema y Zod; `buildingType` en el registro; por WebSocket, el ariete que derriba la muralla y los `building.update` y `building.destroyed` que reciben los dos jugadores |
 | cliente | «Muralla» y «Ariete» con sus motivos deshabilitados; el clic de derribar con el ariete y el motivo del guerrero; la entrada del registro con la muralla; `scripts/smoke.mjs --asedio`: smoke_victim levanta la muralla y smoke_runner, en Hierro, entrena un ariete, lo lleva y golpea la muralla hasta que su vida baja; se comprueba la vida y el aviso (abrirla entera tarda 114 s con un solo ariete; el humo se queda en el primer golpe salvo `--asedio-completo`) |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-19)
 
-Cada fila trae la recomendación (en negrita) y las alternativas. Son decisiones de producto: hasta que se decidan, la
-spec no se acepta ni se implementa.
+Producto aceptó el 2026-11-19 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
+alternativas que se descartaron. Son decisiones de producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Qué máquinas de asedio entran? | **Sólo el ariete: lento, frágil, que sólo golpea edificios desde el tile de al lado.** Es la máquina más simple de explicar y de equilibrar, y obliga a escoltarla. Alternativas: **también la catapulta**, que golpea a distancia (edificios y unidades): pide reglas de alcance y de daño en área que el combate aún no tiene; **una sola máquina genérica** con un rasgo por civilización, que mezcla este slice con el balance de las civilizaciones. |
 | Q2 | ¿Desde qué era y dónde se entrena el ariete? | **Desde la Edad de Hierro, en la ciudad, como cualquier unidad, sin edificio nuevo.** La muralla llega en Bronce: entre las dos eras el defensor tiene una ventaja, que es lo que la piedra le compra. Alternativas: **desde Bronce**, a la vez que la muralla, que deja a la muralla sin tiempo de ventaja; **en un taller de asedio** (un edificio nuevo), que da otro blanco pero otro hueco de la zona urbana, que ya está casi llena con casas, taller, castillo y mercado; **desde los Castillos**, demasiado tarde: casi nadie llegaría. |
