@@ -261,6 +261,33 @@ trigger de `000029`, como el mercado de E26.
 | contract / e2e | `WALL` y `RAM` en los enums contra el JSON Schema y Zod; `buildingType` en el registro; por WebSocket, el ariete que derriba la muralla y los `building.update` y `building.destroyed` que reciben los dos jugadores |
 | cliente | «Muralla» y «Ariete» con sus motivos deshabilitados; el clic de derribar con el ariete y el motivo del guerrero; la entrada del registro con la muralla; `scripts/smoke.mjs --asedio`: smoke_victim levanta la muralla y smoke_runner, en Hierro, entrena un ariete, lo lleva y golpea la muralla hasta que su vida baja; se comprueba la vida y el aviso (abrirla entera tarda 114 s con un solo ariete; el humo se queda en el primer golpe salvo `--asedio-completo`) |
 
+**Precisiones de implementación (2026-11-19).**
+
+- **La muralla se golpea desde el anillo de fuera.** Su fila está en el centro, pero el 3 × 3 entero es `BLOCKED` y un
+  alcance de 1 desde el centro no deja ningún tile transitable. El alcance de un golpe contra la muralla se mide contra
+  el 3 × 3 (`siegeExtent`): se golpea desde los tiles a distancia 2 del centro, los mismos desde los que se golpea
+  cualquier otro edificio de la ciudad, y el ariete lejano va al más cercano de ellos.
+- **El golpe del tick en que se completa la muralla aún cae.** Los golpes van en la fase 4 y la obra se completa en la
+  5: el derribo de una casa que coincide con ese tick recibe su golpe, y desde el siguiente la regla lo corta
+  (`RN-SIEGE-006`), como fija ADR-048 §2.
+- **Sin `units_type_valid`.** `units.unit_type` no tiene `CHECK` de tipo desde `000001` (lo valida la carga,
+  `INV-UNIT-009`), así que `000029` sólo suma `RAM` a `city_productions_unit_type_valid`; §7 y el ADR lo daban por
+  existente.
+- **El aviso del derribo de la muralla va al atacante.** Como el de una casa: `HOUSE_DESTROYED` con `buildingType: WALL`
+  al dueño del ariete; el asediado se entera por `besiegedAtMs`, que salta también con los golpes a la muralla, y por
+  su entrada `HOUSE_LOST` del registro. Un aviso en vivo al asediado habría sido un tipo nuevo en `EventLogNoticeKind`,
+  que Q10 descartó.
+- **`buildingType` va en todos los derribos**, no sólo en el de la muralla: es el tipo del edificio que cayó (`HOUSE`,
+  `WORKSHOP`, `CASTLE`, `MARKET` o `WALL`), y forma parte de la clave del grupo del registro y de los avisos.
+- **El ariete y la guarnición.** Las órdenes de combate lo rechazan por `CanAttack()` y la recolección por
+  `CanGather()`, sin código nuevo; la guarnición, con una comprobación propia (`IsSiegeEngine`), porque `CanEnter` no
+  mira el tipo. El golpe del ariete no lleva el rasgo de daño (Q11); el del guerrero, sí.
+- **El humo** es `--ariete` (y `--ariete-completo`, que espera a abrir la muralla), no `--asedio`, que ya es el derribo
+  de E8.
+- **«Muralla»** se ve desde la Edad de Bronce siempre, deshabilitada con «La ciudad ya tiene una muralla» si la hay, y
+  no pide elegir tile; con un guerrero, el clic sobre una casa de una ciudad amurallada no manda la orden y dice «La
+  muralla está en pie: sólo un ariete la derriba».
+
 ## 10. Decisiones de producto (2026-11-19)
 
 Producto aceptó el 2026-11-19 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las

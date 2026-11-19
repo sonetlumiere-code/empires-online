@@ -946,6 +946,27 @@ y grueso, y una que carga madera, un tronco a la espalda.
   jugador: su entrada llega con `otherPlayerId: null` y no ofrece «Escribir».
 - **Lo comprado y lo vendido** viaja en caravanas: aparece en «Caravanas en camino», como un trato (§4.12).
 
+### 4.23 Arietes y murallas (SPEC-SIEGE-ENGINES)
+
+> **Estado (2026-11-19): implementado y con tests de lo puro** (`src/state/economy.ts`, `src/state/units.ts`,
+> `src/state/eventLog.ts`, `src/state/notices.ts`, `src/net/client.ts`, `src/render/scene.ts`, `app/page.tsx`; los
+> tests en `src/state/siegeEngines.test.ts`).
+
+- **«Muralla»** desde la Edad de Bronce, en el centro de la ciudad (`GameClient.buildWall`), deshabilitada con su
+  motivo (`wallBlockReason`: «La muralla pide la Edad de Bronce», «La ciudad ya tiene una muralla», lo que falta de
+  `WALL_COST`). En el mapa, su fila está en el centro pero se pinta como un anillo de piedra con almenas alrededor del
+  3 × 3, agrietado según su vida y con su barra (`paintWallBody`).
+- **«Ariete»** desde la Edad de Hierro (`GameClient.trainUnit(…, 'RAM')`), deshabilitado con su motivo
+  (`ramBlockReason`: la era, lo de cualquier unidad, las dos plazas y su coste). En el mapa, un tejadillo de madera con
+  el tronco asomando y cuatro ruedas (`paintUnitBody`). `isSiegeEngine` es la pregunta del cliente por él.
+- **El clic** (`decideTileOrder`): con el ariete, sobre una ciudad ajena amurallada, la muralla pulse donde pulse en su
+  3 × 3; en brecha, el edificio del tile; sin edificio, `blocked` con su motivo; sobre la ciudad propia, nada (no entra
+  en guarnición). Con un guerrero, una casa de una ciudad amurallada es `blocked` («La muralla está en pie: sólo un
+  ariete la derriba») y no se manda; el centro sigue siendo saquear. Un `blocked` va a `lastError` sin tocar la red.
+- **El registro y los avisos** dicen «tu muralla» cuando `buildingType` es `WALL` (`entryText`), y el aviso de la
+  muralla tiene su propia clave de grupo (`noticeKey`). El aviso de asedio del HUD pasa a «¡Están asediando tu
+  ciudad!», porque también salta con los golpes a la muralla.
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).

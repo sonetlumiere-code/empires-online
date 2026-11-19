@@ -54,6 +54,7 @@ Dentro del scope de v1:
 - Las guerras entre clanes ([clan-wars.md](clan-wars.md)): `clan.war.declare { clanId }`, `clan.war.peace { warId, offer }` y `clan.war.surrender { warId }`, que pasan por la simulación (§7.22); `wars` y `warRecord` (obligatorios) en `ClanView` (§8.28) y en `clan.info` (§8.29); los tipos `CLAN_WAR_DECLARED`, `CLAN_WAR_PEACE_OFFERED` y `CLAN_WAR_ENDED` en el registro y en `event_log.notice`, con `clanTag`, `startsAtMs` y, en el final, `warResult`, `warReason`, `ourScore` y `theirScore` (opcionales); `breakReason: "WAR"` en la ruptura de un pacto que abrió una guerra (§8.19, §8.23). Los campos de `ClanView` son obligatorios y los tipos, valores nuevos de un enum estricto: el cliente y el servidor los estrenan juntos ([ADR-045](../decisions/ADR-045-clan-wars.md)).
 - El árbol tecnológico ([technologies.md](technologies.md)): `city.research { cityId, technology }` (§7.23), el 48.º tipo; `research` (`{ technology, completesAtMs }` o `null`) y `technologies` (lista de códigos), opcionales y sólo en la vista y en el `city.update` del dueño (§8.8); el catálogo de presentación `technologies.json`. `technology` es un código validado por patrón, no un enum estricto: una tecnología nueva no rompe a un cliente viejo ([ADR-046](../decisions/ADR-046-technologies.md) §5). Todo aditivo (`R-VER-2`, `R-VER-3`).
 - Los mercados ([markets.md](markets.md)): `market.post { give, want, lots }`, `market.buy { offerId, lots }` y `market.cancel { offerId }`, que pasan por la simulación, y la consulta `market.list { receive?, pay? }`, que atiende la conexión (§7.24), del 49.º al 52.º tipo; `market.update` (§8.32) y `market.listing` (§8.33); `marketOffers[]`, opcional, en `world.snapshot` (§8.4); `MARKET` en `BuildingType` (también en `city.build`, §7.9); `MARKET_SOLD` y `MARKET_EXPIRED` en el registro, con `lots` (opcional), y `otherPlayerId` que pasa a admitir `null`, sólo en `MARKET_EXPIRED` (§8.19). `MARKET`, los dos tipos y el `null` son cambios en enums o campos estrictos: el cliente y el servidor los estrenan juntos ([ADR-047](../decisions/ADR-047-markets.md)).
+- Los arietes y las murallas ([siege-engines.md](siege-engines.md)): `WALL` en `BuildingType` (también en `city.build`, §7.9, que sólo la admite en el centro de la ciudad) y `RAM` en `UnitType` y en el `type` de `city.train` (§7.10); `buildingType` (opcional) en las entradas `HOUSE_LOST` y `HOUSE_DESTROYED` del registro (§8.19) y en el aviso `HOUSE_DESTROYED` (§8.23); sin mensajes nuevos, el catálogo se queda en 52 tipos. `WALL` y `RAM` son valores nuevos de enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md)). El catálogo de presentación `units.json` gana `siegeDamage` y `siegeIntervalMs`.
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -431,8 +432,10 @@ payload: z.object({ unitId: EntityId, target: Tile }).strict()
 - **Dirección:** cliente → servidor. **Propósito:** encargar un edificio en un tile de la zona urbana 3×3 de una ciudad propia, distinto del centro.
 
 ```ts
-payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y: WorldCoordinate }).strict()  // BuildingType = 'HOUSE' | 'WORKSHOP' (E14) | 'CASTLE' (E23) | 'MARKET' (E26)
+payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y: WorldCoordinate }).strict()  // BuildingType = 'HOUSE' | 'WORKSHOP' (E14) | 'CASTLE' (E23) | 'MARKET' (E26) | 'WALL' (E27)
 ```
+
+**Precisión (2026-11-19), E27.** La muralla (`WALL`, [siege-engines.md](siege-engines.md) §4.1) es la excepción del tile: va **sólo** en el centro de la ciudad, que ningún otro edificio admite; en cualquier otro tile, `INVALID_TARGET`.
 
 **Validaciones, en este orden** (`RN-ECON-007`): la ciudad existe y es propia (`CITY_NOT_FOUND`, igual en los dos casos) · el tile está en el 3×3, no es el centro y no tiene edificio ni encargo (`INVALID_TARGET`) · el stock cubre el coste (`INSUFFICIENT_RESOURCES`). Rechazos como **`system.error`**.
 
@@ -444,8 +447,9 @@ payload: z.object({ cityId: EntityId, type: BuildingType, x: WorldCoordinate, y:
 
 ```ts
 payload: z.object({ cityId: EntityId, type: TrainableUnitType }).strict()
-// 'VILLAGER' | 'WARRIOR' | 'LEGIONARY' | 'CATAPHRACT' | 'HORSE_ARCHER' | 'BERSERKER':
-// la caravana no se entrena (E15); las cuatro últimas, sólo la civilización que la tiene (E22)
+// 'VILLAGER' | 'WARRIOR' | 'LEGIONARY' | 'CATAPHRACT' | 'HORSE_ARCHER' | 'BERSERKER' | 'RAM':
+// la caravana no se entrena (E15); las cuatro de civilización, sólo la que la tiene (E22);
+// el ariete, desde la Edad de Hierro, con dos plazas (E27)
 ```
 
 **Validaciones, en este orden** (`RN-ECON-010`, `RN-CIVUNIT-002`): la ciudad existe y es propia (`CITY_NOT_FOUND`) · una unidad exclusiva es la de la civilización del dueño (`INVALID_TARGET`) y la ciudad está en la Edad de Bronce o después (`INVALID_TARGET`) · no tiene producción en curso ni avanza de era (`CITY_BUSY`) · `population + 1 <= populationLimit` (`POPULATION_LIMIT_REACHED`) · el stock cubre el coste, que para una exclusiva es madera, piedra y 10 del bien propio (`INSUFFICIENT_RESOURCES`). Rechazos como **`system.error`**.
@@ -848,7 +852,7 @@ interface UnitView {
   id: number;                 // = unitId
   playerId: string;           // uuid del propietario
   cityId: number | null;
-  unitType: UnitType;         // VILLAGER, WARRIOR (E2), CARAVAN (E15) y las cuatro de civilización (E22)
+  unitType: UnitType;         // VILLAGER, WARRIOR (E2), CARAVAN (E15), las cuatro de civilización (E22) y RAM (E27)
   x: number; y: number;       // tiles, planos: no hay objeto position
   hp: number; maxHp: number;
   status: 'IDLE' | 'MOVING' | 'GARRISONED' | 'HIDDEN' | 'WORKING' | 'ATTACKING' | 'CLAIMING' | 'DEAD';
@@ -1268,7 +1272,8 @@ payload: z.object({
 })
 // EventLogEntry: { id, kind, firstAtMs, lastAtMs, count, otherPlayerId (null sólo en MARKET_EXPIRED, E26),
 //                  otherCityId: EntityId | null, otherCityName: string | null,
-//                  unitType?, amount?, treatyType?, proposedByMe?, x?, y?, breaksAtMs? }
+//                  unitType?, buildingType? (E27, en HOUSE_LOST y HOUSE_DESTROYED), amount?, treatyType?,
+//                  proposedByMe?, x?, y?, breaksAtMs? }
 // kind: UNIT_LOST | ENEMY_KILLED | PILLAGED | PILLAGE_DONE | TREATY_OFFERED | TREATY_WITHDRAWN
 //     | TREATY_ACCEPTED | TREATY_REJECTED | TREATY_OFFER_EXPIRED | TREATY_BREAK_ANNOUNCED | TREATY_ENDED
 //     | … (los de E8 a E21) | UNIT_LOST_TO_CASTLE | CASTLE_KILL (E23, las muertes que causa un castillo)
@@ -1344,6 +1349,7 @@ payload: z.object({
   otherCityId: EntityId.nullable(),
   otherCityName: z.string().min(1).max(64).nullable(),
   unitType: UnitType.optional(),               // en las muertes
+  buildingType: BuildingType.optional(),       // en el derribo: qué edificio cayó (E27)
   amount: z.number().int().min(0).optional(),  // en el saqueo: la madera de ese golpe
   x: WorldCoordinate.optional(),               // dónde ocurrió
   y: WorldCoordinate.optional(),

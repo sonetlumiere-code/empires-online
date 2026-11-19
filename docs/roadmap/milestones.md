@@ -2689,12 +2689,12 @@ puertas, que la muralla frene el saqueo, reparar un daño que no derribó y tecn
 1. **HECHO** — Aceptación: spec, [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md), `INV-COMBAT-008` e
    `INV-COMBAT-009`, las precisiones de `RN-COMBAT-029` ([combat-siege.md](../specs/combat-siege.md)) y de
    `RN-CITY-009` ([city.md](../specs/city.md)).
-2. **PENDIENTE** — Protocolo: `WALL` y `RAM` en `BuildingType` y `UnitType`, `buildingType` en `EventLogEntry`;
+2. **HECHO** — Protocolo: `WALL` y `RAM` en `BuildingType` y `UnitType`, `buildingType` en `EventLogEntry` y en el aviso;
    contract tests (Go y Zod).
-3. **PENDIENTE** — Dominio, migración `000029` y persistencia: la muralla y el ariete en sus catálogos, `CanDemolish`,
+3. **HECHO** — Dominio, migración `000029` y persistencia: la muralla y el ariete en sus catálogos, `CanDemolish`,
    `siege.CanDamage`, el único parcial y el trigger del centro.
-4. **PENDIENTE** — Simulación: la muralla como edificio del centro, el predicado en la orden y en cada golpe, el golpe
+4. **HECHO** — Simulación: la muralla como edificio del centro, el predicado en la orden y en cada golpe, el golpe
    del ariete y el fin del asedio que la regla deja de admitir; el golden «asedio».
-5. **PENDIENTE** — WebSocket: el e2e del ariete que derriba la muralla.
-6. **PENDIENTE** — Cliente: «Muralla» y «Ariete», sus siluetas, la vida de la muralla y los motivos del clic.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --asedio`.
+5. **HECHO** — WebSocket: el e2e del ariete que derriba la muralla.
+6. **HECHO** — Cliente: «Muralla» y «Ariete», sus siluetas, la vida de la muralla y los motivos del clic.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --ariete` (escrito; falta la prueba en vivo).

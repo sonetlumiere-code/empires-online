@@ -55,6 +55,11 @@ jugador se nombra por su ciudad, como en los tratados (`otherCityName`), y el lu
 | Saqueo hecho | `CityPillaged`, autor tú | «Tu guerrero robó 40 de madera a Villa Norte» |
 | Casa derribada (desde E8) | `BuildingDestroyed`, víctima tú | «Villa Norte derribó 2 de tus casas» |
 | Casa derribada por los tuyos (desde E8) | `BuildingDestroyed`, autor tú | «Tus guerreros derribaron 1 casa de Villa Norte» |
+| Muralla derribada (desde E27) | `BuildingDestroyed` con `type = WALL`, víctima tú o autor tú | «Villa Norte derribó tu muralla: tu ciudad está en brecha»; «Tus arietes derribaron la muralla de Villa Norte» |
+
+**Precisión (2026-11-19, [siege-engines.md](siege-engines.md) §6).** Las entradas `HOUSE_LOST` y `HOUSE_DESTROYED`
+llevan `buildingType` (opcional), el tipo del edificio que cayó, leído del payload de `BuildingDestroyed`, y forma parte
+de la clave del grupo: «2 casas» y «tu muralla» son dos entradas.
 | Oferta recibida o retirada | `TreatyProposed` y `TreatyWithdrawn` de la otra parte | «Villa Norte te ofrece un pacto de no agresión» |
 | Respuesta a tu oferta | `TreatyAccepted`, `TreatyRejected` | «Villa Norte aceptó tu alianza» |
 | Oferta caducada | `TreatyExpired` desde `PROPOSED` | «Tu oferta a Villa Norte caducó sin respuesta» |

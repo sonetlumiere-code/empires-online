@@ -264,7 +264,7 @@ descarta y se registra `invariant_violation` con `inv_id=INV-COMBAT-007`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E27 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** (E27): se registra en la aceptación de SPEC-SIEGE-ENGINES, antes de escribir su código |
+| Cobertura | **Cubierto** por `TestQuienDanaQue` (`internal/domain/siege`), `TestGoldenTresArietesAbrenLaMuralla`, `TestLaMurallaQueSeCompletaAMitadDetieneElDerribo` y `TestUnaMurallaEnObraSeDerribaComoUnaCasa` (`internal/game/simulation`), y `TestElArieteAbreLaMurallaPorLaRed` (e2e) |
 
 **Enunciado.** Mientras una ciudad tiene una muralla `COMPLETE` con vida, ningún golpe de asedio de una unidad que no
 sea un ariete resta vida a uno de sus edificios, y ningún golpe de un ariete resta vida a otro edificio de esa ciudad
@@ -278,8 +278,14 @@ pediría máquina.
 de asedio de la fase 4 antes de aplicarlo; un asedio que el predicado deja de admitir (la muralla se completa a mitad)
 termina en ese tick ([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md) §2, `RN-SIEGE-004`, `RN-SIEGE-006`).
 
-**Cómo se verifica.** Previsto: la tabla de `siege.CanDamage` (unit), el golden «asedio» y la muralla que se completa a
-mitad de un derribo (simulation), con mutación del predicado en la orden y en el golpe por separado.
+**Cómo se verifica.** `TestQuienDanaQue` recorre la tabla entera de §4.3 (cada tipo de unidad contra cada edificio,
+amurallada y en brecha); el golden `TestGoldenTresArietesAbrenLaMuralla`, que con la muralla en pie el guerrero y el
+ariete no van a por la casa y que tras el derribo el guerrero sí; `TestLaMurallaQueSeCompletaAMitadDetieneElDerribo`,
+que el derribo de una casa se corta al completarse la muralla; `TestElArieteAbreLaMurallaPorLaRed`, el rechazo por la
+red — **existen y pasan**. Verificado por mutación el 2026-11-19: `siege.Check` sin mirar la muralla tumba
+`TestQuienDanaQue`, el golden y el de la muralla que se completa; quitar el predicado de la orden tumba el golden; quitar
+el de la fase 4 (en `stepSiege` y en la defensa de `applySiege`, a la vez: cada uno cubre al otro) tumba el de la muralla
+que se completa.
 
 **Violación en runtime.** Un golpe de asedio que llegara a aplicarse sin pasar el predicado se descarta y se registra
 `invariant_violation` con `inv_id=INV-COMBAT-008`.
@@ -295,7 +301,7 @@ mitad de un derribo (simulation), con mutación del predicado en la orden y en e
 | Aplicación | DOMAIN, TEST |
 | Milestone | E27 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** (E27): se registra en la aceptación de SPEC-SIEGE-ENGINES, antes de escribir su código |
+| Cobertura | **Cubierto** por `TestElArieteSoloGolpeaEdificios` y `TestElGolpeDeAsedioDeQuienAtaca` (`internal/domain/unit`), `TestElArieteSoloDerriba` (`internal/game/simulation`) y `TestElCatalogoDeUnidadesEsElDePresentacion` (contract) |
 
 **Enunciado.** Un ariete nunca resta vida a una unidad, nunca carga botín de un saqueo ni de una muerte, y nunca
 captura una caravana ni un territorio. Sólo golpea edificios.
@@ -308,8 +314,11 @@ falso y `unit.attack`, `unit.pillage`, `unit.claim`, la respuesta automática y 
 enfrentamiento lo excluyen sin un caso especial; `unit.demolish` pregunta `CanDemolish()`
 ([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md) §3, `RN-SIEGE-003`).
 
-**Cómo se verifica.** Previsto: el ariete en el catálogo (unit) y sus rechazos en `unit.attack`, `unit.pillage`,
-`unit.claim`, `unit.gather` y `unit.garrison`, y la respuesta automática que no lo toma por defensor (simulation).
+**Cómo se verifica.** `TestElArieteSoloGolpeaEdificios` (sin golpe de combate ni botín, `CanAttack()` falso);
+`TestElArieteSoloDerriba` (los cinco rechazos con `UNIT_NOT_MOVABLE`, la víctima intacta, y el ariete del saqueado que
+no responde) — **existen y pasan**. Verificado por mutación el 2026-11-19: dar al ariete un golpe de combate tumba esos
+dos, el contract del catálogo de presentación y los de simulación que cuentan sus golpes; quitar el rechazo de la
+guarnición tumba `TestElArieteSoloDerriba`.
 
 **Violación en runtime.** Un golpe de combate de un ariete que llegara a resolverse se descarta y se registra
 `invariant_violation` con `inv_id=INV-COMBAT-009`.
