@@ -144,6 +144,12 @@ el bien propio que cuesta (`OwnGoodCost`, que el entrenamiento resuelve con `civ
 capacidades (`CanTrain`, `CanGather`, `CanAttack`), nunca su tipo (`RN-CIVUNIT-005`), y el catálogo de presentación
 `units.json` de `packages/protocol` lo copia, atado por un test.
 
+**Precisión (2026-11-19, [siege-engines.md](siege-engines.md), [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md)).**
+El catálogo tiene ocho tipos: los siete de arriba y el ariete (`RAM`, E27), el último de `unit.Types()`. La
+`Definition` gana el golpe contra edificios (`SiegeDamage`, `SiegeIntervalMs`), y dos capacidades más:
+`CanDemolish` (derriba: el ariete con su golpe de asedio y quien ataca con el de combate) e `IsSiegeEngine` (derriba
+sin atacar). El ariete tiene `CanAttack` falso, así que ninguna ruta que elige objetivos de unidades lo toma.
+
 ### 5.1 Por qué las estadísticas viven en un catálogo y no dispersas por el código
 
 1. **Punto único de verdad.** `MaxHP = 40` y `BaseMsPerTile = 600` aparecen exactamente una vez. El canon
