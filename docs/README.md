@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta y seis, del 001
-al 046, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta y siete, del 001
+al 047, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -298,7 +298,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E25 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E26 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -396,6 +396,11 @@ Matices que conviene no maquillar:
   tecnología a la vez, nunca durante un avance de era; doce tecnologías, ocho comunes y una exclusiva por civilización,
   mejoran para siempre al jugador con efectos que se componen con los rasgos de su civilización
   ([roadmap/milestones.md](roadmap/milestones.md) §E25).
+- **E26 Mercados está en `main`** desde `afbf0ee`, con la CI en verde el 2026-11-19 y una prueba en vivo con el humo
+  `--mercado` y el navegador el 2026-11-18; [SPEC-MARKETS](specs/markets.md) está en `Implemented`, con
+  [ADR-047](decisions/ADR-047-markets.md) y la migración `000028`. Una ciudad con mercado publica ofertas públicas en
+  lotes de un recurso por otro, con lo ofrecido en custodia y una comisión de la décima parte por lote, y cualquiera con
+  mercado las compra sin tratado; cada compra viaja en dos caravanas ([roadmap/milestones.md](roadmap/milestones.md) §E26).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

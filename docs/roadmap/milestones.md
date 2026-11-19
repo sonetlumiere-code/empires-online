@@ -2618,7 +2618,7 @@ con `EO_TECHNOLOGY_RESEARCH_SECONDS=20` y el almacén de smoke_runner sembrado (
 
 ## E26 — Mercados
 
-**Estado: EN CURSO (2026-11-18)**, en la rama `claude/slice-mercados`. Contrato: [SPEC-MARKETS](../specs/markets.md),
+**Estado: HECHO (2026-11-19)**, en `main` desde la fusión `afbf0ee`, con la CI en verde. Contrato: [SPEC-MARKETS](../specs/markets.md),
 aceptada el 2026-11-18 con sus trece decisiones de producto, y [ADR-047](../decisions/ADR-047-markets.md).
 
 **Objetivo.** Que se pueda comprar y vender a cualquiera sin un trato entre dos: un tablón público de ofertas en lotes,

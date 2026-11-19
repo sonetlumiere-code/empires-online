@@ -8,7 +8,7 @@ en dos caravanas, como un trato.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-MARKETS` |
-| Estado | Accepted (2026-11-18). Propuesta en `Draft` y aceptada ese mismo día con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-19). Propuesta en `Draft` y aceptada el 2026-11-18 con la recomendación de cada pregunta de §10; en `main` desde la fusión `afbf0ee`, con la CI en verde. |
 | Milestone | E26 Mercados (vigesimosexto slice después de M7) |
 | Canon | §9 (unidades), §11 (catálogos), §12 (persistencia), §13 (protocolo), §16 (errores) |
 | Depende de | [trade.md](trade.md), [caravans.md](caravans.md), [civilization-goods.md](civilization-goods.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [combat-siege.md](combat-siege.md), [combat-pillage.md](combat-pillage.md), [civilizations.md](civilizations.md), [factions.md](factions.md), [clan-wars.md](clan-wars.md), [event-log.md](event-log.md), [websocket-protocol.md](websocket-protocol.md) |
