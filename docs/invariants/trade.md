@@ -315,7 +315,7 @@ las caravanas de una compra existan. **Desde el mismo día, cubierta:**
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E26 |
 | Política ante violación | REJECT (la transacción revierte entera; la RAM se compensa) |
-| Cobertura | **Cubierto** por `TestElEjemploDeLaSpec` y `TestRetirarUnaOferta` (`internal/domain/market`), `TestGoldenMercadoPublicarComprarLlegarYCaducar`, `TestRetirarConUnaCompraEnCursoSeRechaza` y `TestUnCierreDescartadoSeReintentaConVersionNueva` (simulation), `Test_INV_TRADE_008_UnaCompraConElDeltaSuperadoNoMueveNada`, `TestCerrarUnaOfertaDevuelveUnaVez` y `TestPublicarEnElMercadoEsIdempotente` (integration) |
+| Cobertura | **Cubierto** por `TestElEjemploDeLaSpec` y `TestRetirarUnaOferta` (`internal/domain/market`), `TestGoldenMercadoPublicarComprarLlegarYCaducar`, `TestRetirarConUnaCompraEnCursoSeRechaza`, `TestUnCierreDescartadoSeReintentaConVersionNueva` y, desde el repaso de E26, `TestUnSaqueoNoTocaLaCustodia`, `TestTrasUnReinicioLaOfertaCaducaEnSuInstanteYDevuelveUnaVez` y `TestTrasUnReinicioUnaCompraSinConfirmarNoQuedaAMedias` (simulation), `Test_INV_TRADE_008_UnaCompraConElDeltaSuperadoNoMueveNada`, `TestCerrarUnaOfertaDevuelveUnaVez`, `TestPublicarEnElMercadoEsIdempotente` y `TestUnaCompraQueFallaAMitadNoDejaNadaYLaCargaCuadra` (integration) |
 
 **Enunciado.** Lo que guarda en custodia una oferta `OPEN` del mercado es exactamente `lots_left × give_per_lot` del
 recurso que da, y la de una oferta cerrada es cero. Lo que entra en la custodia sale del almacén del vendedor en la
@@ -335,7 +335,11 @@ cerrarse), el golden `TestGoldenMercadoPublicarComprarLlegarYCaducar` (simulatio
 comisión, va a la caravana del vendedor y el lote que queda vuelve al caducar), `TestUnCierreDescartadoSeReintentaConVersionNueva`
 (simulation: la RAM acredita una vez), `Test_INV_TRADE_008_UnaCompraConElDeltaSuperadoNoMueveNada` (integration: con el
 débito del comprador superado no se descuenta ningún lote ni se crea ninguna caravana) y `TestCerrarUnaOfertaDevuelveUnaVez`
-(integration: un cierre repetido no acredita dos veces) — **existen y pasan**. Verificado por mutación: publicar sin
+(integration: un cierre repetido no acredita dos veces) — **existen y pasan**. **Precisión (2026-11-19):** el repaso de
+E26 suma `TestUnSaqueoNoTocaLaCustodia` (simulation: el saqueo baja el almacén al suelo y la oferta conserva sus lotes),
+los dos de recuperación de la simulación (tras un reinicio, la oferta caduca en su instante absoluto y devuelve una vez;
+una compra sin confirmar deja o nada o todo, sin reservas fantasma) y `TestUnaCompraQueFallaAMitadNoDejaNadaYLaCargaCuadra`
+(integration: un fallo en la última inserción de la compra no deja lotes, débito, compra ni caravanas). Verificado por mutación: publicar sin
 cobrar la comisión (`PostCost`), devolver al cerrar la custodia de los lotes publicados en vez de los que quedan
 (`Custody`) y cerrar sin la condición `status = 'OPEN'` (`MarketRepo.Close`) ponen en rojo sus tests.
 
