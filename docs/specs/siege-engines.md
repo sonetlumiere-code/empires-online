@@ -8,7 +8,7 @@ sigue sin caer.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-SIEGE-ENGINES` |
-| Estado | Accepted (2026-11-19). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-19). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10; en `main` desde la fusión `9922439`, con la CI en verde. |
 | Milestone | E27 Arietes y murallas (vigesimoséptimo slice después de M7) |
 | Canon | §9 (protección), §10 (eras), §11 (catálogos), §12 (persistencia), §16 (errores), §21 (fuera de MVP: asedio) |
 | Depende de | [combat-siege.md](combat-siege.md), [combat-raid.md](combat-raid.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [castle-age.md](castle-age.md), [civilization-units.md](civilization-units.md), [economy-stone.md](economy-stone.md), [technologies.md](technologies.md), [territory-conquest.md](territory-conquest.md), [city.md](city.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |

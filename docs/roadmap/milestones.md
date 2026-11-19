@@ -2670,7 +2670,7 @@ Contra la base de desarrollo, que el servidor llevó de la migración 27 a la 28
 
 ## E27 — Arietes y murallas
 
-**Estado: EN CURSO (2026-11-19)**, en la rama `claude/slice-arietes`. Contrato: [SPEC-SIEGE-ENGINES](../specs/siege-engines.md),
+**Estado: HECHO (2026-11-19)**, en `main` desde la fusión `9922439`, con la CI en verde. Contrato: [SPEC-SIEGE-ENGINES](../specs/siege-engines.md),
 aceptada el 2026-11-19 con sus once decisiones de producto, y [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md).
 
 **Objetivo.** Que una ciudad pueda proteger sus edificios con una muralla de piedra, y que el atacante tenga con qué

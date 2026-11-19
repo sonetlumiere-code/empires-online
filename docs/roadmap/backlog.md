@@ -59,6 +59,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E24 Guerras entre clanes | **Completado** (2026-11-17). En `main` desde la fusión `66ad94b`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E24; contrato en [SPEC-CLAN-WARS](../specs/clan-wars.md) y [ADR-045](../decisions/ADR-045-clan-wars.md). |
 | E25 Árbol tecnológico | **Completado** (2026-11-18). En `main` desde la fusión `ab7bcb0`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E25; contrato en [SPEC-TECHNOLOGIES](../specs/technologies.md) y [ADR-046](../decisions/ADR-046-technologies.md). |
 | E26 Mercados | **Completado** (2026-11-19). En `main` desde la fusión `afbf0ee`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E26; contrato en [SPEC-MARKETS](../specs/markets.md) y [ADR-047](../decisions/ADR-047-markets.md). |
+| E27 Arietes y murallas | **Completado** (2026-11-19). En `main` desde la fusión `9922439`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E27; contrato en [SPEC-SIEGE-ENGINES](../specs/siege-engines.md) y [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se
