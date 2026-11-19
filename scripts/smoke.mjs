@@ -1545,8 +1545,11 @@ async function mercado(propio, ciudadInicial) {
   ok('nadie se compra a sí mismo', 'INVALID_TARGET (INV-TRADE-010)');
 
   // La compra de un lote: la víctima paga 3 de piedra y recibe la caravana de madera.
-  const piedraV = cv.stocks?.STONE ?? 0;
-  const maderaV = cv.stocks?.WOOD ?? 0;
+  // El almacén de la víctima, releído: construir su mercado lo cambió.
+  victima.sesion.enviar('session.view', { center: { x: cv.centerX, y: cv.centerY } });
+  const ahoraV = (await victima.sesion.esperar('world.snapshot')).payload.cities.find((x) => x.id === cv.id) ?? cv;
+  const piedraV = ahoraV.stocks?.STONE ?? 0;
+  const maderaV = ahoraV.stocks?.WOOD ?? 0;
   if (piedraV < 3) fallar(`${VICTIMA} tiene ${piedraV} de piedra y el lote cuesta 3`, 'EO_DEVSEED_STOCK_FOR=smoke_victim pnpm run dev:seed');
   victima.sesion.enviar('market.buy', { offerId: publicada.id, lots: 1 });
   const comprada = await ofertaDelMercado(victima.sesion, (o) => o.id === publicada.id && o.lotsLeft === 1, 15_000);
