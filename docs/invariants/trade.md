@@ -21,6 +21,10 @@ Decisiones: [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-or
 | Simulación | `internal/game/simulation/trade.go` | Las órdenes en dos fases contra la RAM; la reserva de los dos almacenes al aceptar; la caducidad en la fase 5. |
 | Cola | `internal/persistence/queue.go` | El trabajo de dos claves: el trato espera a las dos ciudades (ADR-032 §3). |
 | Persistencia | `postgres.TradeRepo` | Cada transición de una oferta con su evento; el trato aceptado, con los deltas de los dos almacenes, en una transacción. |
+| Reglas del mercado | `internal/domain/market` | La oferta en lotes, la comisión por lote redondeada hacia arriba y la custodia como `lots_left × give_per_lot` (E26). |
+| Simulación del mercado | `internal/game/simulation/market.go` | Publicar, comprar y retirar en dos fases contra la RAM; la reserva de los lotes y del almacén del comprador; la caducidad en el barrido de los tratados. |
+| Cola del mercado | `internal/persistence/queue.go` | `market.buy` espera a `city:<comprador>` y `market:<id>`; `market.close` (retirar o caducar), a `city:<vendedor>` y `market:<id>` (ADR-047 §2). |
+| Persistencia del mercado | `postgres.MarketRepo` | La publicación con su débito, la compra con sus lotes, el débito y las dos caravanas, y el cierre con su devolución, cada una en una transacción con su evento; el tablón que lee la conexión; `MarketRepo.Violations` en la carga. |
 
 ### Lo que la base de datos garantiza y lo que no
 
@@ -35,6 +39,15 @@ Decisiones: [ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-or
 | `caravans_status_valid`, `caravans_unit_while_in_transit` | `caravans` | Dominio cerrado de `status`; una caravana tiene unidad si y sólo si está `IN_TRANSIT` (E15, ADR-037 §8) |
 | `caravans_two_per_offer` | `caravans` | Único `(offer_id, from_city_id)`: como mucho una caravana por sentido de cada trato |
 | `caravan_cargo_pkey`, `caravan_cargo_amount_positive`, `caravan_cargo_resource_valid` | `caravan_cargo` | Un recurso una vez por caravana, `amount > 0` y el recurso del catálogo |
+| `caravans_one_source` | `caravans` | Una caravana nace de un trato (`offer_id`) o de una compra (`market_purchase_id`), exactamente de uno (E26) |
+| `caravans_two_per_purchase` | `caravans` | Índice **parcial** único `(market_purchase_id, from_city_id) WHERE market_purchase_id IS NOT NULL`: como mucho una caravana por sentido de cada compra |
+| `market_offers_status_valid`, `market_offers_give_resource_valid`, `market_offers_want_resource_valid`, `market_offers_distinct_resources`, `market_offers_amounts_positive` | `market_offers` | Dominio cerrado de `status`; los dos recursos del catálogo y distintos; cantidades por lote positivas |
+| `market_offers_lots_valid`, `market_offers_open_has_lots`, `market_offers_sold_out_empty` | `market_offers` | De 1 a 100 lotes, `0 <= lots_left <= lots_total`; una abierta tiene lotes y una agotada ninguno (`INV-TRADE-008`, `INV-TRADE-009`) |
+| `market_offers_totals_capped`, `market_offers_commission_valid`, `market_offers_closed_has_time`, `market_offers_expiry_after_creation` | `market_offers` | La cota de 1 000 000 por lado; la comisión del vendedor de `RN-MARKET-006`; `closed_at` sólo en una cerrada; caduca después de publicarse |
+| `market_offers_unique_request` | `market_offers` | Único `(player_id, request_id)`: una orden no publica dos ofertas |
+| `market_purchases_lots_valid`, `market_purchases_paid_positive`, `market_purchases_commission_valid` | `market_purchases` | De 1 a 100 lotes, un pago positivo y la comisión del comprador de `RN-MARKET-006` |
+| `market_purchases_unique_request` | `market_purchases` | Único `(buyer_player_id, request_id)`: una orden no compra dos veces |
+| `market_purchases_not_own` (trigger) | `market_purchases` | Rechaza con `23514` la compra del dueño de la oferta (`INV-TRADE-010`) |
 
 > **Lo que el esquema NO garantiza.** Que una oferta aceptada tuviera un tratado vigente cruza `trade_offers` y
 > `treaties`, y lo decide la RAM, que es la fuente de verdad de los tratados (ADR-027 §1); que lo que sale de una

@@ -165,7 +165,11 @@ No las busques ni las inventes:
 - **Sistemas fuera de MVP**: combate, economía, tecnologías, comercio o clanes. No hay métricas porque no hay
   sistemas. **Precisión (2026-11-18):** esos sistemas existen ya, también las tecnologías desde E25, y no tienen series
   propias: sus escrituras durables cuentan en las series de la cola por el nombre de su trabajo (`city.research`,
-  `research.complete`) y sus comandos en las de comandos.
+  `research.complete`) y sus comandos en las de comandos. **Precisión (2026-11-19):** el mercado de E26 tampoco tiene
+  series propias; sus trabajos son `market.post` (la publicación con su custodia), `market.buy` (la compra con sus dos
+  caravanas) y `market.close` (la retirada y la caducidad), en el catálogo `simulation.JobNames` y con sus series a
+  cero desde el arranque, y sus tres órdenes cuentan en `eo_commands_total` con `type="unknown"`, como todo lo que no es movimiento ni
+  conexión.
 
 ---
 
