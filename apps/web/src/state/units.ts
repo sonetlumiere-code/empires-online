@@ -20,6 +20,7 @@ const NAMES: Readonly<Record<string, readonly [string, string]>> = {
   CATAPHRACT: ['catafracto', 'catafractos'],
   HORSE_ARCHER: ['arquero a caballo', 'arqueros a caballo'],
   BERSERKER: ['berserker', 'berserkers'],
+  RAM: ['ariete', 'arietes'],
 };
 
 /** La identidad de cada unidad exclusiva en una línea (SPEC-CIVILIZATION-UNITS §4.2). */
@@ -59,6 +60,15 @@ export function unitName(type: string): string {
  */
 export function unitAttacks(type: string): boolean {
   return unitInfoOf(type)?.attacks ?? false;
+}
+
+/**
+ * Si el tipo es una máquina de asedio: derriba sin atacar (SPEC-SIEGE-ENGINES
+ * §4.2). Hoy, el ariete.
+ */
+export function isSiegeEngine(type: string): boolean {
+  const u = unitInfoOf(type);
+  return u !== undefined && !u.attacks && u.siegeDamage > 0;
 }
 
 /** La unidad exclusiva de una civilización, o `null` si no se conoce. */

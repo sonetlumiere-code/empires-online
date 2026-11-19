@@ -67,6 +67,9 @@ func TestElCatalogoDeUnidadesEsElDePresentacion(t *testing.T) {
 		assert.Equal(t, def.AttackRange, e.AttackRange, "%s attackRange", tp)
 		assert.Equal(t, def.LootCarry, e.LootCarry, "%s lootCarry", tp)
 		assert.Equal(t, def.PopulationCost, e.PopulationCost, "%s populationCost", tp)
+		// SPEC-SIEGE-ENGINES §4.2: el golpe contra edificios del ariete.
+		assert.Equal(t, def.SiegeDamage, e.SiegeDamage, "%s siegeDamage", tp)
+		assert.Equal(t, def.SiegeIntervalMs, e.SiegeIntervalMs, "%s siegeIntervalMs", tp)
 	}
 }
 

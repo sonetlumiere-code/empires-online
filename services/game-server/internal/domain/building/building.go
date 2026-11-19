@@ -35,6 +35,9 @@ const (
 	// TypeMarket es el mercado, que deja publicar y comprar en el tablón
 	// público (SPEC-MARKETS §4.1, ADR-047 §5).
 	TypeMarket Type = "MARKET"
+	// TypeWall es la muralla de piedra, que va en el tile del centro y protege
+	// los edificios de la ciudad (SPEC-SIEGE-ENGINES §4.1, ADR-048 §1).
+	TypeWall Type = "WALL"
 )
 
 // Status es el estado de un edificio.
@@ -72,6 +75,9 @@ type Definition struct {
 	// UniquePerCity: como mucho uno en pie por ciudad (INV-ECON-010,
 	// INV-ECON-012).
 	UniquePerCity bool
+	// AtCenter: va en el tile del centro de la ciudad, sin ocupar hueco
+	// (RN-SIEGE-001, ADR-048 §1).
+	AtCenter bool
 	// AttackDamage, AttackIntervalMs y AttackRange son su perfil de disparo,
 	// si lo tiene (SPEC-CASTLE-AGE §4.3, ADR-044 §1): el daño de un golpe, el
 	// intervalo entre golpes y el alcance en Chebyshev desde su tile.
@@ -137,7 +143,24 @@ var catalog = map[Type]Definition{
 		RequiresEra:   city.EraBronze,
 		UniquePerCity: true,
 	},
+	// SPEC-SIEGE-ENGINES Q3 y Q9: pide Bronce, es única, va en el centro, no da
+	// población y aguanta 1 500.
+	TypeWall: {
+		Type: TypeWall,
+		Costs: economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 100},
+			{Resource: economy.ResourceStone, Amount: 200},
+		},
+		BuildMs:       120_000,
+		MaxHP:         1_500,
+		RequiresEra:   city.EraBronze,
+		UniquePerCity: true,
+		AtCenter:      true,
+	},
 }
+
+// Types devuelve los tipos del catálogo en orden estable (el de su código).
+func Types() []Type { return []Type{TypeHouse, TypeWorkshop, TypeCastle, TypeMarket, TypeWall} }
 
 // Errores de dominio.
 var (
@@ -263,7 +286,11 @@ func CanBuild(
 	if def.UniquePerCity && standing != nil && standing(t) {
 		return Definition{}, fmt.Errorf("%w: la ciudad ya tiene %s", ErrInvalidSite, t)
 	}
-	if err := CanPlace(c, tile, occupied); err != nil {
+	if def.AtCenter {
+		if tile != c.Center() {
+			return Definition{}, fmt.Errorf("%w: %s va en el centro de la ciudad", ErrInvalidSite, t)
+		}
+	} else if err := CanPlace(c, tile, occupied); err != nil {
 		return Definition{}, err
 	}
 	if stock == nil || !def.Costs.CanAfford(stock) {

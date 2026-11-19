@@ -209,6 +209,11 @@ día, cosa que M0 ya garantiza.
 de asedio con coste) y de M6, porque un asedio es una disputa de ownership sobre un territorio.
 Introduce eventos de larga duración que deben sobrevivir a reinicios exactamente igual que los
 movimientos, reutilizando el patrón de recuperación validado en M4.
+**Precisión (2026-11-19, [SPEC-SIEGE-ENGINES](../specs/siege-engines.md), [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md)):**
+el derribo de las casas llegó en E8 ([combat-siege.md](../specs/combat-siege.md)) y la muralla de piedra con el ariete,
+la primera máquina de asedio, en E27 ([milestones.md](milestones.md) §E27): con la muralla en pie sólo el ariete daña
+la ciudad, y derribada queda en brecha. El daño de un asedio no sobrevive a un reinicio (vive en la RAM), y la ciudad
+no cae ni cambia de dueño: eso queda para un slice propio.
 
 **Clans.** Organizaciones persistentes de jugadores (tabla `clans`, fuera de MVP). Depende de M7:
 un clan es, estructuralmente, un conjunto de treaties permanentes con gestión de membresía y

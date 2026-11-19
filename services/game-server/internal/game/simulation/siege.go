@@ -12,6 +12,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/clan"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/siege"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
@@ -195,6 +196,54 @@ func (s *State) removeBuilding(b *building.Building) {
 	s.siege.destroying[b.Tile()] = b.ID
 }
 
+// Walled dice si una ciudad está amurallada: tiene una muralla completa, que
+// sólo puede estar en el tile de su centro (RN-SIEGE-001, RN-SIEGE-002). Una
+// muralla en la RAM tiene vida: derribada, sale de ella.
+func (s *State) Walled(cityID int64) bool {
+	c, ok := s.cities[cityID]
+	if !ok {
+		return false
+	}
+	id, ok := s.buildingAt[c.Center()]
+	if !ok {
+		return false
+	}
+	b, ok := s.buildings[id]
+	return ok && b.Type == building.TypeWall && b.IsComplete()
+}
+
+// siegeAllowed aplica el predicado único de ADR-048 §2 a un golpe de asedio
+// contra un edificio (RN-SIEGE-004, INV-COMBAT-008).
+func (s *Simulation) siegeAllowed(def unit.Definition, b *building.Building) error {
+	return siege.Check(def, b.Type, s.state.Walled(b.CityID))
+}
+
+// siegeExtent es cuánto se extiende un edificio más allá de su tile a efectos
+// de alcance: la muralla ocupa el 3 × 3 entero, aunque su fila esté en el
+// centro, y se golpea desde el anillo de fuera como cualquier otro edificio
+// (SPEC-SIEGE-ENGINES §9, precisión de 2026-11-19).
+func siegeExtent(b *building.Building) int32 {
+	if b.Type == building.TypeWall {
+		return 1
+	}
+	return 0
+}
+
+// inSiegeRange dice si una unidad en pos alcanza un edificio.
+func inSiegeRange(pos world.Tile, b *building.Building, def unit.Definition) bool {
+	return chebyshevTiles(pos, b.Tile()) <= def.AttackRange+siegeExtent(b)
+}
+
+// siegeHitOf es el golpe de una unidad contra un edificio: el del ariete tal
+// cual (SPEC-SIEGE-ENGINES Q11) y el de quien ataca con el rasgo de daño
+// (RN-CIV-006).
+func (s *State) siegeHitOf(a *unit.Unit, def unit.Definition) (damage int32, intervalMs int64) {
+	if def.IsSiegeEngine() {
+		return def.SiegeHit()
+	}
+	return s.attackDamage(a, def), def.AttackIntervalMs
+}
+
 // ─────────────────────────────────────────────────────────────
 // unit.demolish
 // ─────────────────────────────────────────────────────────────
@@ -225,8 +274,8 @@ func (s *Simulation) handleDemolishBuilding(cmd DemolishBuilding) {
 		return
 	}
 	def, err := unit.Lookup(a.Type)
-	if err != nil || !def.CanAttack() {
-		reject(protocol.CodeUnitNotMovable, "esta unidad no derriba casas")
+	if err != nil || !def.CanDemolish() {
+		reject(protocol.CodeUnitNotMovable, "esta unidad no derriba edificios")
 		return
 	}
 	// Una casa que no existe, ya derribada o todavía sin confirmar responde
@@ -246,13 +295,18 @@ func (s *Simulation) handleDemolishBuilding(cmd DemolishBuilding) {
 		reject(code, msg)
 		return
 	}
+	// RN-SIEGE-004: con la muralla en pie, sólo el ariete, y sólo a ella.
+	if err := s.siegeAllowed(def, b); err != nil {
+		reject(protocol.CodeInvalidTarget, err.Error())
+		return
+	}
 
 	// Sustituye cualquier orden anterior del guerrero (RN-COMBAT-036).
 	s.stopWorking(a)
 	s.endEngagement(a, false)
 	e := &engagement{attackerID: a.ID, buildingID: b.ID, lastRepathTick: s.state.Tick()}
 
-	if chebyshevTiles(posA, b.Tile()) <= def.AttackRange {
+	if inSiegeRange(posA, b, def) {
 		s.state.combat.engagements[a.ID] = e
 		s.startAttacking(a, e, nowMs)
 		return
@@ -285,8 +339,9 @@ var errNoHouseTile = errors.New("no hay ningún tile transitable junto a esa cas
 func (s *Simulation) approachHouse(a *unit.Unit, e *engagement, b *building.Building, posA world.Tile, def unit.Definition, nowMs int64) error {
 	w := s.state.World()
 	var candidates []world.Tile
-	for y := b.Y - def.AttackRange; y <= b.Y+def.AttackRange; y++ {
-		for x := b.X - def.AttackRange; x <= b.X+def.AttackRange; x++ {
+	r := def.AttackRange + siegeExtent(b)
+	for y := b.Y - r; y <= b.Y+r; y++ {
+		for x := b.X - r; x <= b.X+r; x++ {
 			if (x == b.X && y == b.Y) || !w.InBounds(x, y) || !w.IsWalkable(x, y) {
 				continue
 			}
@@ -350,12 +405,17 @@ func (s *Simulation) stepSiege(a *unit.Unit, e *engagement, nowMs int64, now tim
 		return siegeHit{}, false
 	}
 	def, err := unit.Lookup(a.Type)
-	if err != nil || !def.CanAttack() {
+	if err != nil || !def.CanDemolish() {
 		s.endEngagement(a, true)
 		return siegeHit{}, false
 	}
 	posA := s.authoritativePosition(a, nowMs)
 	if code, _ := s.siegeBlocked(a, c, posA, now); code != "" {
+		s.endEngagement(a, true)
+		return siegeHit{}, false
+	}
+	// RN-SIEGE-006: una muralla completada a mitad del asedio lo termina.
+	if s.siegeAllowed(def, b) != nil {
 		s.endEngagement(a, true)
 		return siegeHit{}, false
 	}
@@ -365,7 +425,7 @@ func (s *Simulation) stepSiege(a *unit.Unit, e *engagement, nowMs int64, now tim
 		s.endEngagement(a, true)
 		return siegeHit{}, false
 	}
-	if chebyshevTiles(posA, b.Tile()) > def.AttackRange {
+	if !inSiegeRange(posA, b, def) {
 		if _, moving := s.state.Movement(a.ID); moving {
 			return siegeHit{}, false // de camino a la casa
 		}
@@ -379,8 +439,9 @@ func (s *Simulation) stepSiege(a *unit.Unit, e *engagement, nowMs int64, now tim
 	if nowMs < e.nextHitAtMs {
 		return siegeHit{}, false
 	}
-	e.nextHitAtMs += def.AttackIntervalMs
-	return siegeHit{attacker: a, house: b, city: c, damage: s.state.attackDamage(a, def)}, true
+	damage, interval := s.state.siegeHitOf(a, def)
+	e.nextHitAtMs += interval
+	return siegeHit{attacker: a, house: b, city: c, damage: damage}, true
 }
 
 // applySiege aplica un golpe de asedio contra la vida que dejaron los anteriores
@@ -395,6 +456,13 @@ func (s *Simulation) applySiege(h siegeHit, nowMs int64) bool {
 	}
 	if cur, ok := s.state.buildings[b.ID]; !ok || cur != b {
 		// Otro golpe del mismo tick ya la derribó.
+		s.endEngagement(a, true)
+		return false
+	}
+	// INV-COMBAT-008: la defensa del predicado de stepSiege.
+	if def, err := unit.Lookup(a.Type); err != nil || s.siegeAllowed(def, b) != nil {
+		s.deps.Log.Error("invariant_violation", "inv_id", "INV-COMBAT-008", "severity", "CRITICO",
+			"policy", "REJECT", "entity", a.ID, "detail", "golpe de asedio que la muralla no admite")
 		s.endEngagement(a, true)
 		return false
 	}
@@ -455,7 +523,7 @@ func (s *Simulation) destroyHouse(b *building.Building, c *city.City, attacker *
 	tile := b.Tile()
 	s.sendNotices(eventlog.Event{
 		Type: eventlog.EventBuildingDestroyed, PlayerID: c.OwnerPlayerID, Counterpart: attacker.PlayerID,
-		AtMs: nowMs, X: tile.X, Y: tile.Y, HasTile: true,
+		AtMs: nowMs, X: tile.X, Y: tile.Y, HasTile: true, BuildingType: string(b.Type),
 	})
 	if wasComplete {
 		limit := c.PopulationLimit

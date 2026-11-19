@@ -21,6 +21,8 @@ import {
   comisionDelMercado,
   costeDePublicar,
   mercadoDe,
+  murallaDe,
+  golpesParaAbrir,
   guardiasCerca,
   pasosHastaCastillos,
   cookieDeSesion,
@@ -498,4 +500,24 @@ test('mercadoDe encuentra el mercado de la ciudad, no el de otra ni otro edifici
   ];
   assert.equal(mercadoDe(edificios, 7).id, 3);
   assert.equal(mercadoDe(edificios, 9), undefined);
+});
+
+// SPEC-SIEGE-ENGINES, para --ariete: la muralla de una ciudad y cuántos golpes de
+// ariete la abren.
+test('murallaDe encuentra la muralla de la ciudad, y sólo la suya', () => {
+  const edificios = [
+    { id: 1, cityId: 7, type: 'HOUSE' },
+    { id: 2, cityId: 8, type: 'WALL' },
+    { id: 3, cityId: 7, type: 'WALL' },
+  ];
+  assert.equal(murallaDe(edificios, 7)?.id, 3);
+  assert.equal(murallaDe(edificios, 9), undefined);
+});
+
+test('golpesParaAbrir: 38 golpes de 40 para 1 500, redondeando hacia arriba', () => {
+  assert.equal(golpesParaAbrir(1_500), 38);
+  assert.equal(golpesParaAbrir(1_460), 37);
+  assert.equal(golpesParaAbrir(40), 1);
+  assert.equal(golpesParaAbrir(0), 0);
+  assert.equal(golpesParaAbrir(100, 30), 4);
 });

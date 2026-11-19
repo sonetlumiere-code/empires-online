@@ -11,6 +11,7 @@ import {
   FactionCode,
   FactionJoinView,
   BuildingStatus,
+  BuildingType,
   BuildingView,
   ChunkRef,
   ChunkTerrain,
@@ -429,6 +430,8 @@ export const EventLogNotice = z.object({
     otherCityName: z.string().min(1).max(64).nullable(),
     /** En las muertes: qué tipo de unidad murió. */
     unitType: UnitType.optional(),
+    /** En un derribo: qué edificio cayó, como en la entrada del registro (SPEC-SIEGE-ENGINES §6). */
+    buildingType: BuildingType.optional(),
     /** En el saqueo: la madera de ese golpe. */
     amount: z.number().int().min(0).optional(),
     /** Dónde ocurrió. */

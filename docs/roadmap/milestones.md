@@ -2667,3 +2667,46 @@ Contra la base de desarrollo, que el servidor llevó de la migración 27 a la 28
 - **Sin comprobar en el navegador:** la silueta del mercado en el mapa (con el panel oculto no se dibuja la escena),
   comprar desde la pestaña «Comprar» (no había ofertas ajenas abiertas; lo cubren el humo, el e2e y `market.test.ts`) y
   «Construir mercado» (smoke_runner ya tenía el suyo; lo cubren el humo y `market.test.ts`).
+
+## E27 — Arietes y murallas
+
+**Estado: EN CURSO (2026-11-19)**, en la rama `claude/slice-arietes`. Contrato: [SPEC-SIEGE-ENGINES](../specs/siege-engines.md),
+aceptada el 2026-11-19 con sus once decisiones de producto, y [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md).
+
+**Objetivo.** Que una ciudad pueda proteger sus edificios con una muralla de piedra, y que el atacante tenga con qué
+abrirla: el ariete. Es el segundo paso de la fase Sieges del roadmap, después del derribo de E8, sin que la ciudad caiga.
+
+**Alcance.** El edificio `WALL` (Bronce, uno por ciudad, en el tile del centro, 1 500 de vida); la unidad `RAM` (Hierro,
+250 de vida, 40 cada 3 000 ms sólo contra edificios); la regla de quién daña qué: con la muralla completa en pie sólo el
+ariete daña la ciudad, y sólo a la muralla; derribada, la ciudad queda en brecha; el ariete en `unit.demolish` y
+rechazado en las demás órdenes; `WALL` y `RAM` en los enums estrictos y `buildingType` en el registro, sin mensajes
+nuevos; `INV-COMBAT-008` e `INV-COMBAT-009`; migración `000029`; «Muralla» y «Ariete» en el cliente con sus siluetas y
+`scripts/smoke.mjs --asedio`. **No entra** (spec §2): que la ciudad caiga, otras máquinas, murallas por niveles o con
+puertas, que la muralla frene el saqueo, reparar un daño que no derribó y tecnologías o rasgos para el asedio.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md), `INV-COMBAT-008` e
+   `INV-COMBAT-009`, las precisiones de `RN-COMBAT-029` ([combat-siege.md](../specs/combat-siege.md)) y de
+   `RN-CITY-009` ([city.md](../specs/city.md)).
+2. **HECHO** — Protocolo: `WALL` y `RAM` en `BuildingType` y `UnitType`, `buildingType` en `EventLogEntry` y en el aviso;
+   contract tests (Go y Zod).
+3. **HECHO** — Dominio, migración `000029` y persistencia: la muralla y el ariete en sus catálogos, `CanDemolish`,
+   `siege.CanDamage`, el único parcial y el trigger del centro.
+4. **HECHO** — Simulación: la muralla como edificio del centro, el predicado en la orden y en cada golpe, el golpe
+   del ariete y el fin del asedio que la regla deja de admitir; el golden «asedio».
+5. **HECHO** — WebSocket: el e2e del ariete que derriba la muralla.
+6. **HECHO** — Cliente: «Muralla» y «Ariete», sus siluetas, la vida de la muralla y los motivos del clic.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --ariete` y `--ariete-completo`.
+
+**Prueba en vivo (2026-11-19).** Con `verify:full` en verde, la base de desarrollo pasó de la migración 28 a la 29 al
+arrancar el servidor, y `node scripts/smoke.mjs --web http://localhost:3001 --ariete-completo` superó sus 30
+comprobaciones: smoke_victim (Bronce, romana) levantó su muralla en el centro en 109 091 ms (120 s con su
+`production.speed`); smoke_runner (Castillos) entrenó un ariete y lo llevó a (451, 184), junto a la víctima; el ariete
+contra la casa y el guerrero de `--asedio` se rechazaron con `INVALID_TARGET` y su motivo; el primer golpe dejó la
+muralla en 1 460/1 500 con el aviso `besiegedAtMs` a la víctima; la muralla cayó con `building.destroyed`, y la sesión de
+smoke_runner con la vista en casa recibió `HOUSE_DESTROYED` con `buildingType: WALL`. En el navegador integrado, el
+HUD de smoke_runner enseña «Muralla» y «Ariete» con sus títulos, y «Mientras no estabas», «Tus arietes derribaron la
+muralla de smoke_victimpolis». **Sin comprobar en el navegador:** las siluetas de la muralla y del ariete (el panel
+estaba oculto y sin `requestAnimationFrame` el mapa no se dibuja), con las del mercado, el catafracto y el arquero a
+caballo.

@@ -145,7 +145,7 @@ func TestLasUnidadesDeCivilizacionTienenSuPerfil(t *testing.T) {
 		assert.Equal(t, append(economy.Costs{}, def.TrainCosts...), def.CostsWith(economy.ResourceWine),
 			"%s: sin bien, el coste no cambia", comun)
 	}
-	assert.Len(t, unit.Types(), 7)
+	assert.Len(t, unit.Types(), 8, "los siete de E22 y el ariete de E27")
 }
 
 // CostsWith no toca el catálogo: dos llamadas con bienes distintos no se pisan.
@@ -158,4 +158,48 @@ func TestCostsWithDevuelveUnaListaNueva(t *testing.T) {
 	assert.Equal(t, economy.ResourceFurs, b[2].Resource)
 	again, _ := unit.Lookup(unit.TypeLegionary)
 	assert.Equal(t, int64(80), again.TrainCosts[0].Amount)
+}
+
+// RN-SIEGE-003 e INV-COMBAT-009: el ariete, con los valores de
+// SPEC-SIEGE-ENGINES §4.2. Derriba con su golpe de asedio, sin golpe de combate
+// ni botín; no es exclusivo de ninguna civilización.
+func TestElArieteSoloGolpeaEdificios(t *testing.T) {
+	def, err := unit.Lookup(unit.TypeRam)
+	require.NoError(t, err)
+	assert.Equal(t, int32(250), def.MaxHP)
+	assert.Equal(t, int64(1_800), def.BaseMsPerTile)
+	assert.Equal(t, int32(2), def.PopulationCost)
+	assert.Equal(t, economy.Costs{
+		{Resource: economy.ResourceWood, Amount: 150},
+		{Resource: economy.ResourceStone, Amount: 75},
+	}, def.TrainCosts)
+	assert.Equal(t, int64(40_000), def.TrainMs)
+	assert.Equal(t, city.EraIron, def.RequiresEra)
+	assert.False(t, def.Exclusive)
+	assert.True(t, def.CanTrain())
+	assert.False(t, def.CanAttack(), "sin golpe de combate")
+	assert.False(t, def.CanGather())
+	assert.Zero(t, def.LootCarry, "sin botín")
+	assert.True(t, def.CanDemolish())
+	assert.True(t, def.IsSiegeEngine())
+	dano, ritmo := def.SiegeHit()
+	assert.Equal(t, [2]int64{40, 3_000}, [2]int64{int64(dano), ritmo})
+	assert.Contains(t, unit.Types(), unit.TypeRam)
+}
+
+// ADR-048 §3: quien ataca derriba con su golpe de combate; nadie más es una
+// máquina de asedio.
+func TestElGolpeDeAsedioDeQuienAtaca(t *testing.T) {
+	for _, tp := range unit.Types() {
+		def, err := unit.Lookup(tp)
+		require.NoError(t, err)
+		if tp == unit.TypeRam {
+			continue
+		}
+		assert.False(t, def.IsSiegeEngine(), "%s", tp)
+		assert.Equal(t, def.CanAttack(), def.CanDemolish(), "%s derriba si ataca", tp)
+		dano, ritmo := def.SiegeHit()
+		assert.Equal(t, def.AttackDamage, dano, "%s", tp)
+		assert.Equal(t, def.AttackIntervalMs, ritmo, "%s", tp)
+	}
 }

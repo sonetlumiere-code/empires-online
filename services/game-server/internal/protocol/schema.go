@@ -138,6 +138,8 @@ type UnitInfo struct {
 	AttackRange      int32      `json:"attackRange"`
 	LootCarry        int32      `json:"lootCarry"`
 	PopulationCost   int32      `json:"populationCost"`
+	SiegeDamage      int32      `json:"siegeDamage"`
+	SiegeIntervalMs  int64      `json:"siegeIntervalMs"`
 }
 
 // ExportedUnits lee el catálogo de presentación de las unidades. No es la

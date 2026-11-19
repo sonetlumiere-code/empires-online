@@ -1080,11 +1080,15 @@ CREATE TABLE buildings (
 --   buildings_type_valid CHECK (type IN ('HOUSE', 'WORKSHOP', 'CASTLE'))
 --   CREATE UNIQUE INDEX buildings_one_castle_per_city ON buildings (city_id)
 --       WHERE type = 'CASTLE' AND status <> 'DESTROYED';
+
+-- 000028 (SPEC-MARKETS, §16.17): el mercado. 000029 (SPEC-SIEGE-ENGINES,
+-- §16.18): la muralla, una en pie por ciudad y sólo en el centro.
+--   buildings_type_valid CHECK (type IN ('HOUSE', 'WORKSHOP', 'CASTLE', 'MARKET', 'WALL'))
 ```
 
 | Columna | Semántica |
 |---|---|
-| `x`, `y` | Un tile de la zona urbana 3×3 que no es el centro (`RN-ECON-007`). Sin `CHECK` de geometría: la zona urbana se calcula desde `cities`, y eso es dominio. `buildings_unique_tile` impide dos edificios en pie en un tile |
+| `x`, `y` | Un tile de la zona urbana 3×3 que no es el centro (`RN-ECON-007`). Sin `CHECK` de geometría: la zona urbana se calcula desde `cities`, y eso es dominio. `buildings_unique_tile` impide dos edificios en pie en un tile. **Precisión (2026-11-19):** la muralla (`WALL`, `000029`) es la excepción: va en el centro, y lo garantiza el trigger `buildings_wall_at_center` (§16.18) |
 | `status` | `UNDER_CONSTRUCTION`, `COMPLETE` y, desde `000011`, `DESTROYED`: una casa derribada por un asedio conserva su fila, no se carga al arrancar y no cuenta para el límite ([ADR-029](../decisions/ADR-029-population-over-limit-and-house-destruction.md) §6) |
 | `completes_at_ms` | Instante absoluto en que termina la obra, fijado al ordenar; la fase 5 lo compara con el reloj del tick (`INV-ECON-005`) |
 | `request_id` | El `requestId` del `city.build` que lo encargó. Con `buildings_unique_request`, un reintento tras perder el `COMMIT` encuentra su fila y no debita dos veces ([ADR-014](../decisions/ADR-014-command-idempotency.md)) |
@@ -1628,6 +1632,33 @@ vendedor como `player_id` y el comprador como `counterpart_player_id`, y `Market
 van al registro del vendedor ([event-log.md](../specs/event-log.md)). La comisión queda en la oferta, en la compra y en
 el payload de sus eventos. La migración de vuelta borra las caravanas de las compras con su carga y su unidad, las dos
 tablas y los mercados construidos.
+
+### 16.18 El ariete y la muralla (`000029`)
+
+[SPEC-SIEGE-ENGINES](../specs/siege-engines.md), [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md). Sin tablas
+nuevas: la muralla es una fila de `buildings` en el tile del centro y el ariete, una de `units`.
+
+```sql
+ALTER TABLE buildings DROP CONSTRAINT buildings_type_valid;
+ALTER TABLE buildings ADD CONSTRAINT buildings_type_valid
+    CHECK (type IN ('HOUSE', 'WORKSHOP', 'CASTLE', 'MARKET', 'WALL'));
+CREATE UNIQUE INDEX buildings_one_wall_per_city ON buildings (city_id)
+    WHERE type = 'WALL' AND status <> 'DESTROYED';
+-- buildings_wall_at_center: BEFORE INSERT OR UPDATE OF type, x, y, city_id, rechaza
+-- con 23514 una muralla que no está en (cities.center_x, cities.center_y).
+ALTER TABLE city_productions DROP CONSTRAINT city_productions_unit_type_valid;
+ALTER TABLE city_productions ADD CONSTRAINT city_productions_unit_type_valid
+    CHECK (unit_type IN ('VILLAGER', 'WARRIOR', 'LEGIONARY', 'CATAPHRACT', 'HORSE_ARCHER', 'BERSERKER', 'RAM'));
+```
+
+| Objeto | Semántica |
+|---|---|
+| `WALL` en `buildings_type_valid` y `buildings_one_wall_per_city` | La muralla de piedra, una en pie por ciudad (`RN-SIEGE-001`); derribada, se puede levantar otra. Su daño vive en la RAM, como el de una casa; su derribo es un `BuildingDestroyed` con `type = WALL` en el payload, que no toca `population_limit` |
+| `buildings_wall_at_center` (trigger) | `RN-SIEGE-001`: la muralla, sólo en el centro de su ciudad. `EconomyRepo.Build` traduce su `23514` a `building.ErrInvalidSite` |
+| `RAM` en `city_productions_unit_type_valid` | El encargo del ariete. `units.unit_type` sigue sin `CHECK` de tipo: lo valida la carga contra el catálogo de Go (`INV-UNIT-009`) |
+
+La migración de vuelta borra las producciones y las unidades de arietes, las murallas, el trigger y el índice, y deja los
+`CHECK` de `000028`.
 
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 

@@ -55,6 +55,10 @@ entrada del registro, desde el punto de vista de quien lo recibe:
 | Tus guerreros roban madera | `PILLAGE_DONE` | Al dueño del saqueador | La carga (`entity.update`) va al chunk |
 | Tus guerreros derriban una casa | `HOUSE_DESTROYED` | Al dueño del atacante | `building.destroyed` va al chunk |
 
+**Precisión (2026-11-19, [siege-engines.md](siege-engines.md) §6).** El aviso `HOUSE_DESTROYED` lleva `buildingType`
+(opcional), como su entrada: el derribo de una muralla por un ariete se avisa al dueño del ariete con `WALL`. El
+asediado sigue enterándose por `besiegedAtMs`, también de los golpes a su muralla.
+
 Lo que ya tiene su aviso no se repite: el saqueo y el asedio sufridos llevan `pillagedAtMs` y `besiegedAtMs` al dueño
 de la ciudad esté donde esté, y los tratados y los tratos llegan por `treaty.update` y `trade.update` a la barra de
 diplomacia.

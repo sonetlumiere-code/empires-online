@@ -26,6 +26,9 @@ import {
   CASTLE_AGE_COST,
   CASTLE_COST,
   castleBlockReason,
+  ramBlockReason,
+  WALL_COST,
+  wallBlockReason,
   nextEra,
   workshopBlockReason,
   WORKSHOP_COST,
@@ -624,6 +627,11 @@ export default function Page() {
       const order = decideTileOrder(tile, unit, terrain, cityAt, state.playerId, (t) => buildingAt(state.buildings, t));
       // Una caravana no admite órdenes (RN-CARAVAN-003): no se manda nada.
       if (order.kind === 'none') return;
+      if (order.kind === 'blocked') {
+        // SPEC-SIEGE-ENGINES §4.5: el motivo, sin mandar la orden.
+        useWorldStore.setState({ lastError: { code: 'INVALID_TARGET', message: order.reason } });
+        return;
+      }
       if (order.kind === 'demolish') {
         // Un guerrero sobre una casa ajena: derribarla (SPEC-COMBAT-SIEGE Q10).
         client.demolishBuilding(selectedUnitId, order.buildingId);
@@ -844,6 +852,11 @@ export default function Page() {
     const tile = firstFreeHouseTile(ownCity, buildingsOf(state.buildings, ownCity.id));
     if (tile) clientRef.current?.buildCastle(ownCity.id, tile);
   };
+  // «Muralla»: en el centro de la ciudad, que siempre está libre (SPEC-SIEGE-ENGINES §4.5).
+  const buildWall = () => {
+    if (!ownCity) return;
+    clientRef.current?.buildWall(ownCity.id, { x: ownCity.centerX, y: ownCity.centerY });
+  };
   // Los edificios de la ciudad propia, para los motivos del taller y de la elaboración.
   const ownBuildings = ownCity ? buildingsOf(useWorldStore.getState().buildings, ownCity.id) : [];
   const ownGood = ownCity ? goodOf(ownCity.civilization) : null;
@@ -975,7 +988,7 @@ export default function Page() {
             )}
             {siegeAlertActive(ownCity, serverTimeMs()) && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }} role="alert">
-                ¡Están derribando tus casas!
+                ¡Están asediando tu ciudad!
               </span>
             )}
             <button className="secondary" onClick={buildHouse} title="Encarga una casa en el primer hueco libre junto al centro: +5 de población al terminar">
@@ -1016,6 +1029,19 @@ export default function Page() {
                 }
               >
                 Castillo
+              </button>
+            )}
+            {ownCity.era !== 'STONE_AGE' && (
+              <button
+                className="secondary"
+                onClick={buildWall}
+                disabled={wallBlockReason(ownCity, ownBuildings) !== null}
+                title={
+                  wallBlockReason(ownCity, ownBuildings) ??
+                  `Levanta la muralla: ${WALL_COST.STONE} de piedra y ${WALL_COST.WOOD} de madera, unos 120 s. Completa, sólo un ariete daña tu ciudad, y sólo a la muralla; el saqueo no cambia`
+                }
+              >
+                Muralla
               </button>
             )}
             {ownBuildings.some((b) => b.type === 'WORKSHOP') &&
@@ -1075,6 +1101,19 @@ export default function Page() {
                 </button>
               );
             })()}
+            {(ownCity.era === 'IRON_AGE' || ownCity.era === 'CASTLE_AGE') && (
+              <button
+                className="secondary"
+                onClick={() => clientRef.current?.trainUnit(ownCity.id, 'RAM')}
+                disabled={ramBlockReason(ownCity) !== null}
+                title={
+                  ramBlockReason(ownCity) ??
+                  `Entrena un ariete: ${trainCostText('RAM', ownCity.civilization)}, unos 40 s, dos plazas. Lento y frágil: sólo golpea edificios y es lo único que daña una muralla en pie`
+                }
+              >
+                Ariete
+              </button>
+            )}
             {ownCity.production && (
               <span style={{ color: 'var(--muted)' }}>
                 Entrenando {unitTypeLabel(ownCity.production.unitType)}:{' '}

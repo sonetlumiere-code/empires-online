@@ -74,6 +74,10 @@ const (
 	TypeHorseArcher Type = "HORSE_ARCHER"
 	// TypeBerserker pega fuerte: saquea y derriba.
 	TypeBerserker Type = "BERSERKER"
+
+	// TypeRam es el ariete, la máquina de asedio (SPEC-SIEGE-ENGINES §4.2): sólo
+	// golpea edificios, y es la única unidad que daña una muralla en pie.
+	TypeRam Type = "RAM"
 )
 
 // Definition son las estadísticas inmutables de un tipo de unidad.
@@ -114,6 +118,11 @@ type Definition struct {
 	AttackRange      int32
 	// LootCarry es cuánto botín puede cargar (RN-COMBAT-010).
 	LootCarry int32
+	// SiegeDamage y SiegeIntervalMs son su golpe contra edificios, si es
+	// distinto del de combate (SPEC-SIEGE-ENGINES §4.2, ADR-048 §3). Cero: el
+	// golpe de asedio es el de combate. El alcance es AttackRange.
+	SiegeDamage     int32
+	SiegeIntervalMs int64
 	// Autonomous: nadie le da órdenes, ni su dueño (RN-CARAVAN-003).
 	Autonomous bool
 }
@@ -151,6 +160,28 @@ func (d Definition) CanAttack() bool {
 	return d.AttackDamage > 0 && d.AttackIntervalMs > 0 && d.AttackRange > 0
 }
 
+// CanDemolish indica si el tipo derriba edificios (unit.demolish): el ariete
+// con su golpe de asedio y quien ataca con el de combate (ADR-048 §3).
+func (d Definition) CanDemolish() bool {
+	if d.AttackRange <= 0 {
+		return false
+	}
+	return (d.SiegeDamage > 0 && d.SiegeIntervalMs > 0) || d.CanAttack()
+}
+
+// IsSiegeEngine indica si es una máquina de asedio: derriba sin golpe de
+// combate (SPEC-SIEGE-ENGINES RN-SIEGE-003).
+func (d Definition) IsSiegeEngine() bool { return d.CanDemolish() && !d.CanAttack() }
+
+// SiegeHit es el golpe contra edificios: el de asedio si lo tiene, si no el de
+// combate.
+func (d Definition) SiegeHit() (damage int32, intervalMs int64) {
+	if d.SiegeDamage > 0 && d.SiegeIntervalMs > 0 {
+		return d.SiegeDamage, d.SiegeIntervalMs
+	}
+	return d.AttackDamage, d.AttackIntervalMs
+}
+
 // catalog es la tabla de definiciones. Vive en código; cuando haya decenas de
 // tipos se moverá a la base de datos sin cambiar la interfaz de consulta. El
 // catálogo de presentación de packages/protocol (units.json) lo copia, y un
@@ -178,6 +209,17 @@ var catalog = map[Type]Definition{
 	TypeCataphract:  exclusive(TypeCataphract, 80, 450, 10, 1, 20),
 	TypeHorseArcher: exclusive(TypeHorseArcher, 60, 540, 8, 3, 20),
 	TypeBerserker:   exclusive(TypeBerserker, 60, 600, 14, 1, 30),
+	// SPEC-SIEGE-ENGINES §4.2 (Q2, Q7, Q9): desde la Edad de Hierro, lento y
+	// frágil, sin golpe de combate ni botín; 40 cada 3 s contra edificios.
+	TypeRam: {
+		Type: TypeRam, MaxHP: 250, BaseMsPerTile: 1_800, PopulationCost: 2,
+		TrainCosts: economy.Costs{
+			{Resource: economy.ResourceWood, Amount: 150},
+			{Resource: economy.ResourceStone, Amount: 75},
+		},
+		TrainMs: 40_000, RequiresEra: city.EraIron,
+		AttackRange: 1, SiegeDamage: 40, SiegeIntervalMs: 3_000,
+	},
 	// SPEC-CARAVANS §4.1 (Q4): un guerrero solo la captura en diez golpes (15 s)
 	// y, al doble de su velocidad, la alcanza siempre. No ocupa población.
 	TypeCaravan: {
@@ -202,7 +244,7 @@ func exclusive(t Type, hp int32, msPerTile int64, damage, attackRange, loot int3
 
 // Types devuelve los tipos del catálogo en orden estable (el de su código).
 func Types() []Type {
-	return []Type{TypeVillager, TypeWarrior, TypeCaravan, TypeLegionary, TypeCataphract, TypeHorseArcher, TypeBerserker}
+	return []Type{TypeVillager, TypeWarrior, TypeCaravan, TypeLegionary, TypeCataphract, TypeHorseArcher, TypeBerserker, TypeRam}
 }
 
 // ErrUnknownType indica un tipo de unidad ausente del catálogo.

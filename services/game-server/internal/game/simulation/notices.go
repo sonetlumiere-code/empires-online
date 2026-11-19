@@ -24,6 +24,8 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 		case eventlog.KindPillageDone:
 			amount := e.Amount
 			p.Amount = &amount
+		case eventlog.KindHouseDestroyed:
+			p.BuildingType = e.BuildingType
 		}
 		if e.HasTile {
 			x, y := e.X, e.Y

@@ -543,6 +543,10 @@ func (r *EconomyRepo) Build(
 			if IsUniqueViolation(err) {
 				return fmt.Errorf("%w: (%d,%d) ya tiene un edificio, o la ciudad ya tiene %s", building.ErrInvalidSite, b.X, b.Y, b.Type)
 			}
+			// RN-SIEGE-001: el trigger buildings_wall_at_center (000029).
+			if IsCheckViolation(err) {
+				return fmt.Errorf("%w: %s en (%d,%d): %v", building.ErrInvalidSite, b.Type, b.X, b.Y, err)
+			}
 			return fmt.Errorf("insertar el edificio: %w", normalize(err))
 		}
 		return appendEvent(ctx, tx, worldEvent{

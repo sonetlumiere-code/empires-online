@@ -288,3 +288,56 @@ func TestElMercadoPideBronceYEsUnico(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, TypeMarket, def.Type)
 }
+
+// RN-SIEGE-001: la muralla, con los valores de SPEC-SIEGE-ENGINES §4.1.
+func TestLaMurallaTieneLosValoresDelCatalogo(t *testing.T) {
+	def, err := Lookup(TypeWall)
+	require.NoError(t, err)
+	assert.Equal(t, economy.Costs{
+		{Resource: economy.ResourceWood, Amount: 100},
+		{Resource: economy.ResourceStone, Amount: 200},
+	}, def.Costs)
+	assert.Equal(t, int64(120_000), def.BuildMs)
+	assert.Zero(t, def.PopulationBonus)
+	assert.Equal(t, int32(1_500), def.MaxHP)
+	assert.Equal(t, city.EraBronze, def.RequiresEra)
+	assert.True(t, def.UniquePerCity)
+	assert.True(t, def.AtCenter)
+	assert.False(t, def.CanShoot())
+	assert.NoError(t, (&Building{Type: TypeWall, Status: StatusComplete}).Validate())
+}
+
+// RN-SIEGE-001: la muralla pide Bronce, es única y sólo va en el centro, el
+// único tile de la zona urbana que ningún otro edificio admite.
+func TestLaMurallaVaEnElCentroPideBronceYEsUnica(t *testing.T) {
+	ninguno := func(Type) bool { return false }
+	una := func(t Type) bool { return t == TypeWall }
+	en := func(e city.Era) *city.City {
+		c := ciudad()
+		c.Era = e
+		return c
+	}
+	centro := en(city.EraBronze).Center()
+	_, err := CanBuild(en(city.EraStone), dueno, TypeWall, centro, nil, ninguno, recursos(100, 200))
+	assert.ErrorIs(t, err, ErrInvalidSite, "en la Edad de Piedra no hay muralla")
+	_, err = CanBuild(en(city.EraBronze), dueno, TypeWall, centro, nil, una, recursos(100, 200))
+	assert.ErrorIs(t, err, ErrInvalidSite, "una por ciudad")
+	_, err = CanBuild(en(city.EraBronze), dueno, TypeWall, world.Tile{X: centro.X + 1, Y: centro.Y}, nil, ninguno, recursos(100, 200))
+	assert.ErrorIs(t, err, ErrInvalidSite, "fuera del centro")
+	_, err = CanBuild(en(city.EraBronze), dueno, TypeWall, centro, nil, ninguno, recursos(100, 199))
+	assert.ErrorIs(t, err, economy.ErrInsufficientResources)
+	def, err := CanBuild(en(city.EraBronze), dueno, TypeWall, centro, nil, ninguno, recursos(100, 200))
+	require.NoError(t, err)
+	assert.Equal(t, TypeWall, def.Type)
+	_, err = CanBuild(en(city.EraBronze), dueno, TypeHouse, centro, nil, ninguno, recursos(100, 200))
+	assert.ErrorIs(t, err, ErrInvalidSite, "el centro sigue sin admitir otro edificio")
+}
+
+// El catálogo de tipos es el del esquema de la base y el de Zod, en orden.
+func TestLosTiposDeEdificioEnOrden(t *testing.T) {
+	assert.Equal(t, []Type{TypeHouse, TypeWorkshop, TypeCastle, TypeMarket, TypeWall}, Types())
+	for _, tp := range Types() {
+		_, err := Lookup(tp)
+		assert.NoError(t, err, "%s", tp)
+	}
+}

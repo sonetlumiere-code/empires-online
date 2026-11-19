@@ -31,6 +31,8 @@ export interface NoticeGroup {
   readonly otherCityId: number | null;
   readonly otherCityName: string | null;
   readonly unitType?: string;
+  /** En un derribo, qué edificio cayó (SPEC-SIEGE-ENGINES §6). */
+  readonly buildingType?: string;
   /** Cuántos avisos lleva el grupo. */
   readonly count: number;
   /** En el saqueo, la madera de todos sus golpes. */
@@ -72,8 +74,10 @@ export const EMPTY_NOTICES: NoticeState = { groups: [], sinceLogOpened: 0, hidde
  * La clave de agrupación, la del registro sin el lado del cursor (ADR-028 §4); los
  * avisos de territorio, además, por territorio (SPEC-TERRITORY-CONQUEST).
  */
-export function noticeKey(n: Pick<Notice, 'kind' | 'otherPlayerId' | 'unitType' | 'territoryId'>): string {
-  return `${n.kind}|${n.otherPlayerId}|${n.unitType ?? ''}|${n.territoryId ?? ''}`;
+export function noticeKey(n: Pick<Notice, 'kind' | 'otherPlayerId' | 'unitType' | 'territoryId'> & { buildingType?: string }): string {
+  const base = `${n.kind}|${n.otherPlayerId}|${n.unitType ?? ''}|${n.territoryId ?? ''}`;
+  // SPEC-SIEGE-ENGINES §6: los derribos, además, por tipo de edificio, como el registro.
+  return n.buildingType ? `${base}|${n.buildingType}` : base;
 }
 
 /**
@@ -103,6 +107,7 @@ export function applyNotice(state: NoticeState, n: Notice): NoticeState {
         otherCityId: n.otherCityId,
         otherCityName: n.otherCityName,
         unitType: n.unitType,
+        buildingType: n.buildingType,
         territoryId: n.territoryId,
         territoryName: n.territoryName,
         clanTag: n.clanTag,
@@ -174,6 +179,7 @@ function asEntry(g: NoticeGroup): EventLogEntry {
     otherCityId: g.otherCityId,
     otherCityName: g.otherCityName,
     unitType: g.unitType as EventLogEntry['unitType'],
+    buildingType: g.buildingType as EventLogEntry['buildingType'],
     amount: g.amount,
     x: g.x,
     y: g.y,
