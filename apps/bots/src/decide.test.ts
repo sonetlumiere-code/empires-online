@@ -292,11 +292,24 @@ describe('el saqueo', () => {
       { key: 'raid:recall:2', type: 'unit.move', unitId: 2, target: home },
     ]);
 
-    // Más allá de un tramo de marcha, vuelve por tramos, como la partida.
+    // Si el servidor rechaza la vuelta (sin ruta, o un destino que no se pisa),
+    // la siguiente va por tramos de la marcha, y cada rechazo desplaza el tramo.
     const far = view({ ...base, units: [unit({ id: 1, unitType: 'WARRIOR', x: 300, y: 100 })], botCities: [botCity()] });
-    expect(decide(far, saqueador, EMPTY_MEMORY, NOW, rng()).commands).toEqual([
-      { key: 'raid:recall:1', type: 'unit.move', unitId: 1, target: marchStep({ x: 300, y: 100 }, depositTile(far.city, far.terrainAt)) },
-    ]);
+    const farHome = depositTile(far.city, far.terrainAt);
+    const first = decide(far, saqueador, EMPTY_MEMORY, NOW, rng());
+    const recall = first.commands[0] as Command;
+    expect(recall).toEqual({ key: 'raid:recall:1', type: 'unit.move', unitId: 1, target: farHome });
+    let mem = onRejected(first.memory, recall, 'PATH_TOO_LONG', NOW, saqueador);
+    const second = decide(far, saqueador, mem, NOW + 2_000, rng());
+    expect(second.commands[0]).toMatchObject({ key: 'raid:recall:1', target: marchStep({ x: 300, y: 100 }, farHome, 0) });
+    mem = onRejected(second.memory, second.commands[0] as Command, 'TARGET_NOT_WALKABLE', NOW + 2_000, saqueador);
+    const third = decide(far, saqueador, mem, NOW + 4_000, rng());
+    expect(third.commands[0]).toMatchObject({ key: 'raid:recall:1', target: marchStep({ x: 300, y: 100 }, farHome, 1) });
+    expect(marchStep({ x: 300, y: 100 }, farHome, 1)).not.toEqual(marchStep({ x: 300, y: 100 }, farHome, 0));
+
+    // En casa, la cuenta de rechazos se olvida.
+    const back = view({ ...base, units: [unit({ id: 1, unitType: 'WARRIOR' })], botCities: [botCity()] });
+    expect(decide(back, saqueador, third.memory, NOW + 6_000, rng()).memory.recallTries).toEqual({});
   });
 
   it('con menos de tres, o en la espera tras una derrota, no sale', () => {

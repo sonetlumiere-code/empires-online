@@ -233,7 +233,8 @@ Lo que no se pueda ver en el navegador se anota en milestones como «Sin comprob
 - **La Edad de Hierro pide 60 bienes ajenos**, que sólo se consiguen comerciando, y los bots no comercian (Q3): un
   constructor se queda en Bronce. Es un dato de equilibrio, no un fallo del bot.
 - **Precisión (2026-11-20): los guerreros varados vuelven.** Sin partida en curso, un militar del saqueador parado
-  fuera del radio de casa vuelve con `unit.move` al tile de depósito, por tramos de 48 tiles si está más lejos. La
+  fuera del radio de casa vuelve con `unit.move` al tile de depósito; si el servidor rechaza la vuelta (sin ruta,
+  demasiado lejos o `TARGET_NOT_WALKABLE`), va por tramos de 48 tiles desplazados en espiral, como la marcha. La
   prueba en vivo del 2026-11-20 encontró los seis guerreros de una partida que cortó el fin de la ejecución anterior
   parados a 50 tiles de casa: con el máximo de guerreros cubierto y ninguno «en casa», el saqueador pasó 40 minutos
   sin entrenar ni salir. La misma pasada vio que la consola anunciaba la civilización del reparto por turno
