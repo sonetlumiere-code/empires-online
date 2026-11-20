@@ -373,3 +373,42 @@ describe('ayudantes', () => {
     expect(marchStep({ x: 0, y: 0 }, { x: 200, y: 0 }, 1)).toEqual({ x: 50, y: 0 });
   });
 });
+
+describe('el saqueo: plazos y tramos rechazados', () => {
+  const base = { city: city({ name: 'bot_saqueador_1polis', population: 4, populationLimit: 5, stocks: stocks(0) }) };
+  const raid = (over: Partial<Raid> = {}): Raid => ({
+    targetCityId: 20,
+    targetName: 'bot_constructor_2polis',
+    target: { x: 140, y: 100 },
+    warriors: [1, 2],
+    startedAtMs: NOW,
+    phase: 'march',
+    ordered: [],
+    waypoint: { x: 130, y: 100 },
+    waypointTries: 0,
+    lost: 0,
+    size: 2,
+    departed: true,
+    ...over,
+  });
+
+  it('vencido el plazo, todos vuelven a casa aunque no tuvieran orden en este tramo', () => {
+    const away = [1, 2].map((id) => unit({ id, unitType: 'WARRIOR', x: 125, y: 100 }));
+    const v = view({ ...base, units: away, terrainAt: terrain() });
+    const late = NOW + saqueador.raidTimeoutMs + 1;
+    const { commands } = decide(v, saqueador, { ...EMPTY_MEMORY, raid: raid() }, late, rng());
+    const home = depositTile(base.city, terrain());
+    expect(commands).toEqual([
+      { key: 'raid:home:1', type: 'unit.move', unitId: 1, target: home },
+      { key: 'raid:home:2', type: 'unit.move', unitId: 2, target: home },
+    ]);
+  });
+
+  it('un tramo que no se puede pisar se desplaza en espiral y no se enfría', () => {
+    const cmd: Command = { key: 'raid:march:1:130,100', type: 'unit.move', unitId: 1, target: { x: 130, y: 100 } };
+    const mem = onRejected({ ...EMPTY_MEMORY, raid: raid({ ordered: [1] }) }, cmd, 'TARGET_NOT_WALKABLE', NOW, saqueador);
+    expect(mem.raid).toMatchObject({ waypoint: null, ordered: [], waypointTries: 1 });
+    expect(mem.cooldowns[cmd.key]).toBeUndefined();
+    expect(fieldFocus({ ...EMPTY_MEMORY, raid: null })).toBeNull();
+  });
+});

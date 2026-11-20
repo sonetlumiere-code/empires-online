@@ -51,6 +51,7 @@ flowchart TB
 | Sistema | Rol | Propiedad |
 |---|---|---|
 | **Navegador web** | Ejecuta el cliente Next.js + PixiJS 8 de `apps/web`. Único lugar donde existen píxeles y la proyección isométrica. | Del jugador; entorno no confiable por definición. |
+| **Proceso de bots** | `apps/bots` ([SPEC-BOTS](../specs/bots.md)): otro cliente del protocolo, sin interfaz, que se da de alta y juega por las mismas rutas públicas y el mismo WebSocket que el navegador. Sólo en desarrollo y staging. | Del equipo; para el servidor, un jugador más, igual de no confiable. |
 | **Vercel** | Alojará `apps/web`: el cliente y sus rutas `/api/auth/*`, que dan de alta, mantienen la sesión web y emiten el **game ticket** ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Todavía no hay despliegue; en desarrollo lo sirve `next dev`. | Proveedor externo. |
 | **Proveedor de PostgreSQL gestionado** | Base de datos durable. Backups, alta disponibilidad y parcheo delegados. Aloja dos bases con dos roles que no se pueden abrir la una a la otra: la del juego (`empires`) y el almacén de identidad de `apps/web` (`empires_identity`, [ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). | Proveedor externo. |
 | **Proveedor de Redis gestionado** | Almacén en memoria para presencia, anti-replay de tickets e idempotencia. | Proveedor externo. |

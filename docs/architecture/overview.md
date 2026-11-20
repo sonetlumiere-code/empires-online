@@ -161,6 +161,7 @@ empires-online/
 │   ├── src/{net,state,render,components}   # las tres capas del cliente (frontend.md)
 │   ├── src/server/               # identidad, scrypt, firma del ticket; `server-only`
 │   └── identity/                 # migraciones del almacén de identidad (empires_identity)
+├── apps/bots/                    # bots sin interfaz por el WebSocket v1 (SPEC-BOTS, ADR-049): pnpm run bots
 ├── services/game-server/         # módulo Go — proceso independiente, autoritativo
 │   ├── go.mod                    # module github.com/empires-online/empires-online/services/game-server
 │   │                             # `go 1.25.11` es la versión MÍNIMA; el toolchain instalado es Go 1.27.0
@@ -200,6 +201,7 @@ No existen `internal/presence` ni `internal/events`: la presencia vive en `inter
 | Ruta | Propósito |
 |---|---|
 | `apps/web/` | Cliente web: renderiza el mundo isométrico con PixiJS 8 y consume `@empires-online/protocol` para tipar y validar los mensajes; es el **único** componente que conoce píxeles. Su servidor de Next.js lleva además la identidad: alta, login, sesión web, emisión del ticket y su propio almacén ([ADR-018](../decisions/ADR-018-identity-store-and-ticket-issuer.md)). Qué parte de su diseño existe: [frontend.md](./frontend.md). |
+| `apps/bots/` | Bots sin interfaz ([SPEC-BOTS](../specs/bots.md), [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md)): se dan de alta por las rutas públicas de `apps/web` y juegan por el WebSocket v1 con su `GameClient` y sus reductores de estado; deciden con un decisor puro con semilla y dejan un registro JSONL para medir el equilibrio. No tocan el servidor, la base ni el protocolo. |
 | `services/game-server/` | Módulo Go `github.com/empires-online/empires-online/services/game-server`. Proceso autoritativo de larga vida: loop, simulación, WebSocket, persistencia. |
 | `services/game-server/cmd/server/` | Punto de entrada ejecutable: lee configuración, aplica migraciones, abre pools, rehidrata el mundo, arranca loop, WS, métricas y apagado ordenado. Sin lógica de negocio. |
 | `internal/game/loop` | `Loop.Run` (driver con calendario absoluto) y `Loop.Step` (un tick, ocho fases). Nunca hace I/O bloqueante contra PostgreSQL. |

@@ -21,6 +21,8 @@ Este documento describe un diseño, no un resultado. **Ninguna cifra de aquí es
 
 ## 2. Qué mide este nivel, y qué no
 
+Los bots de [SPEC-BOTS](../specs/bots.md) no son este nivel: juegan a ritmo humano (un mensaje por segundo, veinte por proceso como mucho) para medir el **juego**, no el servidor. Un generador de carga podría reutilizar su cliente, pero sería otra herramienta con su propio diseño.
+
 La carga **no descubre errores de lógica**. Un servidor que calcula mal una polilínea la calcula igual de mal con 10 000 conexiones. Lo que este nivel mide es la degradación: en qué punto el sistema deja de cumplir sus propias promesas temporales.
 
 | Se mide aquí | No se mide aquí |
