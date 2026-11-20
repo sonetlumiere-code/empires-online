@@ -103,6 +103,7 @@ paso typecheck pnpm run typecheck
 paso protocol-test pnpm run protocol:test
 paso protocol-check pnpm run protocol:check
 paso web-test pnpm --filter @empires-online/web test
+paso bots-test pnpm --filter @empires-online/bots test
 paso web-build canarios pnpm run web:build
 paso scan-bundle canarios node scripts/scan-secrets.mjs --bundle apps/web/.next/static --require-canaries
 echo "VERIFICACIÓN: OK"

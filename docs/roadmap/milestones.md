@@ -2710,3 +2710,64 @@ HUD de smoke_runner enseña «Muralla» y «Ariete» con sus títulos, y «Mient
 muralla de smoke_victimpolis». **Sin comprobar en el navegador:** las siluetas de la muralla y del ariete (el panel
 estaba oculto y sin `requestAnimationFrame` el mapa no se dibuja), con las del mercado, el catafracto y el arquero a
 caballo.
+
+## E28 — Bots
+
+**Estado: EN CURSO (2026-11-19)**, en la rama `claude/slice-bots`. Contrato: [SPEC-BOTS](../specs/bots.md), aceptada el
+2026-11-19 con sus nueve decisiones de producto, y [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md).
+
+**Objetivo.** Empezar a medir la jugabilidad y ver el mundo vivo: jugadores sin interfaz que se dan de alta y juegan
+por el WebSocket v1 como un cliente, para poblar el mundo de desarrollo (y staging cuando exista) y dejar un registro
+con el que medir el equilibrio. Prepara el pase visual (unidades que se mueven, construyen y pelean) y el despliegue a
+staging (tráfico).
+
+**Alcance.** El paquete `apps/bots` (TypeScript, `tsx` y Vitest, sin dependencias nuevas) que reutiliza el `GameClient`
+y los reductores del cliente web; dos perfiles, constructor y saqueador, con un decisor puro con semilla; `pnpm run bots`
+con `--constructores`, `--saqueadores`, `--duracion`, `--semilla` y `--contra-humanos`; el alta escalonada por la web
+con `EO_BOT_PASSWORD`; el JSONL por ejecución y su resumen. **No entra** (spec §2): ningún cambio en el servidor, la base
+o el protocolo; diplomacia, comercio, mercados, clanes, facciones, mensajes, conquista y arietes en los bots; bots en
+producción y una marca de bot en el juego; pruebas de carga; acelerar el tiempo del mundo.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec y [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md); sin invariantes de
+   dominio nuevos ni precisiones de reglas vecinas (el servidor no cambia).
+2. **HECHO** — Paquete `apps/bots`: conexión (`GameClient` con el `WebSocket` de Node) y un espejo por conexión con
+   `createWorldStore()`, que sale del mismo `createWorldState` que `useWorldStore` (test en `world.test.ts`); el alta,
+   la entrada y los tickets con la cookie en memoria (`auth.ts`); `@empires-online/protocol` exporta también
+   `default` para que `tsx` lo cargue desde los `.ts` de `apps/web`.
+3. **HECHO** — El decisor puro y los perfiles (`decide.ts`, `profiles.ts`), con el saqueo por tramos, el depósito
+   del botín y el derribo al llegar al suelo; `decide.test.ts` cubre cada regla y `RN-BOT-002` a `RN-BOT-005`.
+4. **HECHO** — La ejecución (`main.ts`, `bot.ts`): opciones, altas escalonadas, exploración de colinas, la conexión
+   de campaña, parada limpia (`RN-BOT-007`, `bot.test.ts` con un servidor falso), el JSONL y el resumen (`RN-BOT-006`,
+   `log.test.ts`); `EO_BOT_*` en `.env.example` y en configuration.md §3.10; `pnpm run bots`; el paso `bots-test` de
+   `verify:full` y, con el visto bueno de producto, el paso «Tests de los bots» de la CI.
+5. **HECHO** — Docs: `docs/architecture/frontend.md` §4.24, `docs/operations/local-development.md` §3-bis.10 y §8,
+   `docs/README.md`, AGENTS.md y las precisiones de la spec (§4.8, §9).
+6. **HECHO** — Prueba en vivo (abajo), salvo la parte del navegador.
+
+### Prueba en vivo (2026-11-19)
+
+Contra el servidor y la web de desarrollo (migración 29), en la rama `claude/slice-bots`. `pnpm run verify:full` en
+verde con el paso nuevo `bots-test`.
+
+- **Pasada corta** (`--duracion 4m --semilla 1`): tres altas nuevas (`bot_constructor_1` a `_3`) y una entrada
+  (`bot_saqueador_1`); cada bot exploró y encontró su colina más cercana (63 a 192 tiles), recolectó y entrenó. A
+  mitad se paró el servidor para sembrar las cuentas con `dev:seed` y se rearrancó: los cuatro reconectaron solos. Al
+  vencer la duración, la parada cerró las conexiones y escribió el resumen. Sacó dos fallos, arreglados con su test:
+  el saqueador gastó 15 órdenes en colinas sin ruta (`PATH_TOO_LONG`) con los aldeanos parados, y el resumen contaba
+  como recolectado el salto de almacén del snapshot sembrado (2 269 de madera por hora en cuatro minutos).
+- **Pasada larga** (`--duracion 25m --semilla 7`), con los almacenes sembrados por `dev:seed` (que sube a los costes de
+  la era y más, con 180 bienes ajenos): los cuatro llegaron a Bronce a los 3 min 29 s–3 min 46 s y a Hierro a los
+  8 min 23 s–8 min 59 s; `bot_constructor_3` y el saqueador, a Castillos a los 17 min 7 s y 16 min. Los constructores
+  levantaron taller y muralla, elaboraron su bien (12 a 20 veces) e investigaron (4 a 7 tecnologías). El saqueador
+  salió tres veces contra `bot_constructor_2`: 590 de madera robada en 118 golpes de 5 (la víctima vio 64 avisos de saqueo, que agrupan golpes), 15 guerreros perdidos frente a 10
+  muertos del otro lado; la defensa automática de E3 con dos guardias deshizo la primera partida entera. **Ningún
+  comando rechazado** en 262. Sacó un tercer fallo, también con su test: `building.update` no trae la ciudad ni el
+  tipo, y el registro no apuntaba ninguna obra terminada (por eso esa pasada dice «construidos: —»).
+- **Para producto, como medida de partida** (no son resultados del slice, §4.5 de la spec): con la economía sembrada,
+  una partida de saqueo de 3 guerreros pierde contra 2 guardias parados, la observación de E3 que sigue abierta; y un
+  constructor sin comercio no pasa de Bronce si no le siembran bienes ajenos (Hierro pide 60).
+- **Sin comprobar en el navegador:** ver a los bots en el mapa. El panel del navegador integrado estuvo oculto (sin
+  `requestAnimationFrame` el mapa no se dibuja) y la cámara del HUD no tiene forma de saltar a coordenadas ajenas: la
+  sesión de smoke_runner estaba lejos de las ciudades de los bots.

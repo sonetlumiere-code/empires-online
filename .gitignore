@@ -55,3 +55,6 @@ Thumbs.db
 # --- Agentes: lo propio de cada máquina no se versiona (AGENTS.md sí) ---
 CLAUDE.local.md
 .claude/settings.local.json
+
+# --- Registros de los bots (SPEC-BOTS §4.5): medida local, no fuente ---
+bots/runs/

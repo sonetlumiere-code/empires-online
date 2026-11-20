@@ -45,6 +45,7 @@
     "docs:check": "node scripts/check-docs.mjs",
     "secrets:scan": "node scripts/scan-secrets.mjs --tree --history",
     "smoke": "node scripts/smoke.mjs",
+    "bots": "pnpm --filter @empires-online/bots run start",
     "scripts:test": "node --test \"scripts/*.test.mjs\"",
     "lint": "node scripts/lint-determinism.mjs && pnpm -r --if-present run lint",
     "typecheck": "pnpm run protocol:build && pnpm -r run typecheck",

@@ -14,6 +14,7 @@
  * Ver ../../../../docs/architecture/networking.md y frontend.md §4
  */
 import { create } from 'zustand';
+import { createStore, type StateCreator, type StoreApi } from 'zustand/vanilla';
 import { applyTreatyUpdate, type TreatyView } from './diplomacy';
 import { applyTradeUpdate, type TradeOfferView } from './trade';
 import { applyCaravanUpdate, type CaravanView } from './caravans';
@@ -393,7 +394,12 @@ const INITIAL_CHANGES: WorldChanges = {
   hills: true,
 };
 
-export const useWorldStore = create<WorldState>((set, get) => {
+/**
+ * El estado del mundo y sus reductores, sin atar a ningún store. El navegador lo
+ * monta una vez en `useWorldStore`; cada bot (SPEC-BOTS, ADR-049) monta el suyo con
+ * `createWorldStore`, porque varios jugadores en un proceso no pueden compartir uno.
+ */
+const createWorldState: StateCreator<WorldState> = (set, get) => {
   // Los mapas viven en esta clausura y se mutan en sitio: son los que el estado
   // expone como `ReadonlyMap`. Fuera del store nadie debe sustituirlos.
   const units = new Map<number, UnitView>();
@@ -928,7 +934,14 @@ export const useWorldStore = create<WorldState>((set, get) => {
       clanPageRequests.clear();
     },
   };
-});
+};
+
+export const useWorldStore = create<WorldState>(createWorldState);
+
+/** Un store del mundo propio y sin React: el de cada bot (SPEC-BOTS §4.2). */
+export function createWorldStore(): StoreApi<WorldState> {
+  return createStore<WorldState>()(createWorldState);
+}
 
 /** Terreno de un tile concreto, o `undefined` si su chunk no está cargado. */
 export function terrainAt(
