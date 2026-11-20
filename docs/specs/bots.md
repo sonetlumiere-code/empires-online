@@ -7,11 +7,11 @@ construyen, entrenan, avanzan de era y atacan, y dejan un registro de cada parti
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS` |
-| Estado | Draft (2026-11-19). Prohibido implementar contra ella hasta que producto decida las preguntas de §10. |
+| Estado | Accepted (2026-11-19). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
 | Milestone | E28 Bots (vigesimoctavo slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §9 (presencia y protección), §13 (límites del WebSocket), §18 (métricas), §19 (niveles de test) |
 | Depende de | [player.md](player.md), [websocket-protocol.md](websocket-protocol.md), [presence.md](presence.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [civilization-goods.md](civilization-goods.md), [castle-age.md](castle-age.md), [technologies.md](technologies.md), [combat-raid.md](combat-raid.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md) |
-| Decisiones | Propone el ADR-049 (§4.1): los bots son clientes externos del protocolo, no una IA dentro del tick. |
+| Decisiones | [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md) (los bots son clientes externos del protocolo, no una IA dentro del tick). |
 | Reemplaza a | — |
 | Invariantes | No asigna invariantes de dominio; cita los de la familia `INV-SEC` que un bot no puede saltarse (§8) |
 
@@ -79,8 +79,8 @@ las tres propiedades que importan para medir:
   jugador conectado.
 - **Se puede apuntar a cualquier despliegue**: el de desarrollo hoy, staging cuando exista.
 
-La alternativa descartada —jugadores no humanos dentro de la simulación, con su propio sistema en la fase 4— va al
-ADR-049 con sus motivos: rompería el pilar 2 en espíritu (estado que nadie pidió por el protocolo), metería
+La alternativa descartada —jugadores no humanos dentro de la simulación, con su propio sistema en la fase 4— está en
+[ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md) con sus motivos: rompería el pilar 2 en espíritu (estado que nadie pidió por el protocolo), metería
 decisiones no deterministas o una `RandomSource` más en el tick, y no mediría la experiencia de un cliente.
 
 ### 4.2 Qué tiene cada bot
@@ -145,6 +145,10 @@ pnpm run bots -- --web http://localhost:3001 --server ws://localhost:8080/ws \
 Las altas van escalonadas para no pisar el límite de alta por IP (`EO_AUTH_RATE_LIMIT_PER_MINUTE`, 10 por minuto con
 ráfaga 5): con más de cinco cuentas nuevas, el proceso espera entre altas lo que el límite pida y lo dice. Las entradas
 posteriores usan la cookie, que no gasta ese cupo.
+
+`EO_BOT_PASSWORD` y `EO_BOT_THINK_MS` las lee sólo el proceso de bots, como `EO_SMOKE_*` el humo: van en
+`.env.example` y en [configuration.md §3.10](../operations/configuration.md#310-variables-que-no-son-configuración-del-servidor),
+no en `internal/config`. Sin `EO_BOT_PASSWORD` el proceso se niega a arrancar; nunca hay una contraseña por defecto.
 
 ### 4.5 Lo que se mide
 
@@ -249,12 +253,12 @@ el mismo).
 `pnpm run verify:full` corre los tests del paquete nuevo con los demás del cliente (es parte de `pnpm -r run test` y
 del typecheck); la CI no se toca, porque ya recorre los paquetes del workspace.
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-19)
 
-Cada pregunta lleva la recomendación (en negrita) y las alternativas. Son de producto: el diseño de §4 sigue a la
-recomendación y cambia si la decisión es otra.
+Producto aceptó el 2026-11-19 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
+alternativas que se descartaron. Son decisiones de producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | Q1 | ¿Dónde pueden jugar los bots? | **En desarrollo y, cuando exista, en staging; nunca en producción en este slice.** Sirven para medir y para ver el mundo vivo, y en producción jugarían contra personas sin que lo sepan. Alternativas: **también en producción** como relleno de un mundo vacío, que pide antes la marca de Q2 y decidir si pueden atacar a personas; **sólo en desarrollo**, que deja staging sin tráfico. |
 | Q2 | ¿Se distinguen los bots en el juego? | **No en este slice: sólo por el nombre `bot_*`, sin cambios en el servidor ni en el protocolo.** Mientras sólo jueguen en desarrollo y staging, la convención basta, y el slice no toca ni la base ni Zod. Alternativas: **una columna `players.is_bot`** (migración `000030`) que el servidor fija en el alta por una vía propia y que el cliente pinta con una marca, necesaria si van a producción; **reservar el prefijo** `bot_` para que ninguna persona pueda registrarlo, un cambio en la web pequeño pero que es una regla de alta nueva. |

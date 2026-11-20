@@ -2710,3 +2710,34 @@ HUD de smoke_runner enseña «Muralla» y «Ariete» con sus títulos, y «Mient
 muralla de smoke_victimpolis». **Sin comprobar en el navegador:** las siluetas de la muralla y del ariete (el panel
 estaba oculto y sin `requestAnimationFrame` el mapa no se dibuja), con las del mercado, el catafracto y el arquero a
 caballo.
+
+## E28 — Bots
+
+**Estado: EN CURSO (2026-11-19)**, en la rama `claude/slice-bots`. Contrato: [SPEC-BOTS](../specs/bots.md), aceptada el
+2026-11-19 con sus nueve decisiones de producto, y [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md).
+
+**Objetivo.** Empezar a medir la jugabilidad y ver el mundo vivo: jugadores sin interfaz que se dan de alta y juegan
+por el WebSocket v1 como un cliente, para poblar el mundo de desarrollo (y staging cuando exista) y dejar un registro
+con el que medir el equilibrio. Prepara el pase visual (unidades que se mueven, construyen y pelean) y el despliegue a
+staging (tráfico).
+
+**Alcance.** El paquete `apps/bots` (TypeScript, `tsx` y Vitest, sin dependencias nuevas) que reutiliza el `GameClient`
+y los reductores del cliente web; dos perfiles, constructor y saqueador, con un decisor puro con semilla; `pnpm run bots`
+con `--constructores`, `--saqueadores`, `--duracion`, `--semilla` y `--contra-humanos`; el alta escalonada por la web
+con `EO_BOT_PASSWORD`; el JSONL por ejecución y su resumen. **No entra** (spec §2): ningún cambio en el servidor, la base
+o el protocolo; diplomacia, comercio, mercados, clanes, facciones, mensajes, conquista y arietes en los bots; bots en
+producción y una marca de bot en el juego; pruebas de carga; acelerar el tiempo del mundo.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec y [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md); sin invariantes de
+   dominio nuevos ni precisiones de reglas vecinas (el servidor no cambia).
+2. **PENDIENTE** — Paquete `apps/bots`: conexión y espejo del mundo con los módulos del cliente, separando lo puro de
+   React o zustand si hace falta, sin cambiar su comportamiento.
+3. **PENDIENTE** — El decisor y los perfiles (`RN-BOT-002` a `RN-BOT-005`), con sus tests.
+4. **PENDIENTE** — La ejecución: opciones, altas escalonadas, parada limpia (`RN-BOT-007`), el JSONL y el resumen
+   (`RN-BOT-006`); `EO_BOT_*` en `.env.example` y en configuration.md §3.10.
+5. **PENDIENTE** — Docs: `docs/architecture/frontend.md` (el segundo consumidor de `net` y `state`) y
+   `docs/operations/local-development.md` (cómo lanzar los bots).
+6. **PENDIENTE** — Prueba en vivo: los bots contra el servidor de desarrollo con plazos acortados, el resumen y, con
+   el panel del navegador visible, capturas de los bots recolectando, construyendo y saqueando.
