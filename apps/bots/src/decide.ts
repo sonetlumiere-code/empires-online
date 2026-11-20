@@ -140,6 +140,8 @@ export interface Memory {
   readonly targetCooldowns: Readonly<Record<number, number>>;
   /** Una colina no tuvo ruta: nadie va a la piedra hasta entonces. */
   readonly stoneBlockedUntilMs: number;
+  /** Guerrero varado → vueltas a casa rechazadas (cada una desplaza el tramo en espiral). */
+  readonly recallTries: Readonly<Record<number, number>>;
 }
 
 export const EMPTY_MEMORY: Memory = {
@@ -150,6 +152,7 @@ export const EMPTY_MEMORY: Memory = {
   raidWaitUntilMs: 0,
   targetCooldowns: {},
   stoneBlockedUntilMs: 0,
+  recallTries: {},
 };
 
 export interface Decision {
@@ -541,6 +544,23 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
   let raid = memory.raid;
 
   if (raid === null) {
+    // Sin partida, un militar parado fuera de casa está varado (una partida que
+    // cortó el fin de la ejecución anterior, o una respuesta de E3 sin ruta de
+    // vuelta): vuelve para poder formar la siguiente. Primero derecho a casa; si
+    // el servidor lo rechaza (sin ruta, demasiado lejos, destino que no se pisa),
+    // por tramos de la marcha desplazados en espiral, como la partida.
+    const tries: Record<number, number> = {};
+    for (const u of units.values()) {
+      if (!isMilitary(u) || u.status === 'DEAD' || atHome(view, u)) continue;
+      const n = memory.recallTries[u.id];
+      if (n !== undefined) tries[u.id] = n;
+      if (plan.full || u.status !== 'IDLE') continue;
+      const key = `raid:recall:${u.id}`;
+      if (!plan.free(key)) continue;
+      const t = n ?? 0;
+      plan.add({ key, type: 'unit.move', unitId: u.id, target: t === 0 ? home : marchStep(u, home, t - 1) });
+    }
+    memory = { ...memory, recallTries: tries };
     if (plan.full || nowMs < memory.raidWaitUntilMs) return memory;
     const party = [...units.values()].filter(
       (u) => isMilitary(u) && u.status === 'IDLE' && atHome(view, u) && u.carrying === 0,
@@ -715,6 +735,12 @@ export function onRejected(
     if (command.resource === 'STONE' && (code === 'PATH_TOO_LONG' || code === 'PATH_NOT_FOUND')) {
       mem = { ...mem, stoneBlockedUntilMs: nowMs + profile.targetCooldownMs };
     }
+  }
+
+  if (command.type === 'unit.move' && command.key.startsWith('raid:recall:')) {
+    const { [command.key]: _drop, ...cooldowns } = mem.cooldowns;
+    const n = mem.recallTries[command.unitId] ?? 0;
+    return { ...mem, cooldowns, recallTries: { ...mem.recallTries, [command.unitId]: n + 1 } };
   }
 
   const raid = mem.raid;

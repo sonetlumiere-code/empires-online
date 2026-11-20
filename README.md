@@ -30,6 +30,7 @@ Ver [`docs/architecture/overview.md`](docs/architecture/overview.md).
 ```
 empires-online/
 ├── apps/web/              Cliente: Next.js 15 + React 19 + PixiJS 8
+├── apps/bots/             Bots que juegan por el WebSocket como un cliente (pnpm run bots)
 ├── packages/protocol/     Contrato WebSocket (Zod) → JSON Schema para ambos lados
 ├── services/game-server/  Game Server autoritativo en Go: game loop, mundo, persistencia
 ├── infra/docker/          Dockerfile del Game Server

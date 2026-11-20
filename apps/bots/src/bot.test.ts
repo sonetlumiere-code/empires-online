@@ -21,7 +21,7 @@ class FakeServer implements WebSocketLike {
   onerror: ((ev: unknown) => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
 
-  constructor() {
+  constructor(readonly civilization = 'ROMAN') {
     setTimeout(() => this.onopen?.({}), 0);
   }
 
@@ -68,7 +68,7 @@ class FakeServer implements WebSocketLike {
           centerX: 100,
           centerY: 100,
           era: 'STONE_AGE',
-          civilization: 'ROMAN',
+          civilization: this.civilization,
           faction: 'NEUTRAL',
           factionJoin: null,
           clan: null,
@@ -98,7 +98,7 @@ function fakeWeb() {
   });
 }
 
-function newBot(lines: string[], sockets: FakeServer[], said: string[] = []): Bot {
+function newBot(lines: string[], sockets: FakeServer[], said: string[] = [], serverCivilization = 'ROMAN'): Bot {
   return new Bot({
     name: 'bot_constructor_1',
     profile: PROFILES.constructor,
@@ -113,13 +113,26 @@ function newBot(lines: string[], sockets: FakeServer[], said: string[] = []): Bo
     log: new RunLog((l) => lines.push(l), [PASSWORD]),
     say: (t) => said.push(t),
     socketFactory: () => {
-      const s = new FakeServer();
+      const s = new FakeServer(serverCivilization);
       sockets.push(s);
       return s;
     },
     session: new WebSession('http://w', 'bot_constructor_1', PASSWORD, 'ROMAN', fakeWeb()),
   });
 }
+
+describe('la entrada', () => {
+  it('dice la civilización de la ciudad, no la que el reparto daría a una cuenta nueva', async () => {
+    // Lo encontró la prueba en vivo del 2026-11-20: bot_saqueador_1, romano desde
+    // su alta, salía como «NORSE» porque el reparto por turno de esta ejecución
+    // le tocaba esa civilización.
+    const said: string[] = [];
+    const bot = newBot([], [], said, 'NORSE');
+    await bot.start();
+    bot.stop();
+    expect(said[0]).toBe('bot_constructor_1: entrada (constructor, NORSE)');
+  });
+});
 
 describe('lo recolectado', () => {
   it('cuenta lo que entra por city.update, no el salto que trae un snapshot', async () => {

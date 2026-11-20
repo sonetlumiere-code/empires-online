@@ -2771,3 +2771,43 @@ verde con el paso nuevo `bots-test`.
 - **Sin comprobar en el navegador:** ver a los bots en el mapa. El panel del navegador integrado estuvo oculto (sin
   `requestAnimationFrame` el mapa no se dibuja) y la cámara del HUD no tiene forma de saltar a coordenadas ajenas: la
   sesión de smoke_runner estaba lejos de las ciudades de los bots.
+
+### Repaso (2026-11-20, rama `claude/repaso-bots`)
+
+Docs que no conocían `apps/bots` (README raíz, overview, system-context, estrategia de tests, pruebas de carga), dos
+tests del saqueo y dos arreglos de los bots que sacó la prueba en vivo de este día, con su test visto fallar antes del
+cambio (precisiones en [SPEC-BOTS](../specs/bots.md) §4.8). `pnpm run verify:full` en verde sobre `08f2365`, antes de
+los dos arreglos.
+
+- **Pasada de 40 min** (`--semilla 11`, plazos reales, sin sembrar): ni un saqueo. Los seis guerreros vivos de
+  `bot_saqueador_1` seguían parados a unos 50 tiles de casa desde la pasada larga del 2026-11-19, cortada por su
+  duración; la partida sólo se forma con guerreros en casa y el máximo ya estaba cubierto, así que no entrenó ni
+  salió. **Arreglo:** sin partida, un militar parado fuera de casa vuelve; si el servidor rechaza la vuelta
+  (`TARGET_NOT_WALKABLE` en la pasada siguiente, por un tramo que caía en un tile que no se pisa), los tramos se
+  desplazan en espiral. De paso, la consola anunciaba la civilización del reparto por turno (`NORSE`) en vez de la de
+  la cuenta (`ROMAN`).
+- **Pasada de 45 min** (`--semilla 13`, con los dos arreglos): cuatro partidas contra `bot_constructor_2`, 1 175 de
+  madera robada en 235 golpes, 28 guerreros perdidos frente a 19 muertos del otro lado, que el constructor repuso
+  entrenando. **Ningún comando rechazado** en 161. Confirma, con la economía sin sembrar, la observación de E3: la
+  defensa automática gana aunque pierda guardias, porque el saqueador no devuelve los golpes (análisis en la propuesta
+  `SPEC-BOTS-TRADE`, en `Draft` en la rama `claude/slice-bots-comercio`).
+- **Constructores parados:** `bot_constructor_1` (Hierro) y `bot_constructor_3` (Castillos) no mandaron ni una orden
+  en 45 min: con las tecnologías hechas, el bien elaborado hasta su tope y sin bienes ajenos para el avance siguiente,
+  sólo recolectan. Es el hallazgo del comercio de la prueba en vivo de E28, ahora sin siembra de por medio.
+- **En el navegador** (sesión de smoke_runner, con la cámara llevada a cada ciudad arrastrando con el botón derecho;
+  el panel no llegó a verse como visible y sólo dibujaba un fotograma por captura, así que lo visto son instantáneas,
+  no animaciones): los aldeanos de `bot_saqueador_1` en sus viajes de recolección, en otra posición en cada captura;
+  un saqueo de 3 guerreros contra `bot_constructor_2` (pasada `--semilla 15`), con los rombos rojos de borde amarillo
+  (atacando) pegados a la muralla y, en la captura siguiente, alejándose con la marca de carga; la **muralla** de
+  `bot_constructor_2` (el contorno gris con postes) y su taller; el **ariete** de smoke_runner junto a
+  smoke_victimpolis (el tejadillo sobre ruedas con el tronco) y el **mercado** ajeno de smoke_victim (el toldo a rayas
+  moradas). El **mercado propio** de smoke_runner (rayas verdes) se ve a medias: queda en el tile contiguo al centro
+  urbano y el bloque del centro lo tapa casi entero, como a la casa y al taller; lo anoto para el pase visual.
+- **Sin comprobar en el navegador:** una obra en curso (los bots de este mundo ya lo tienen todo construido y uno
+  nuevo, `bot_constructor_4`, nórdico, dado de alta en esta pasada en (494,259), no levanta casa hasta llenar sus 20
+  de población) y las siluetas del **catafracto** y del **arquero a caballo**, que no saca ningún bot: los
+  constructores bizantino y persa sólo entrenan guerreros de guardia y el saqueador no elabora el bien que piden; hará
+  falta una cuenta bizantina y otra persa en Bronce con taller.
+- **El navegador integrado, para la próxima:** si la página se carga con el panel oculto, el lienzo se queda en
+  300×150 aunque luego se muestre; hay que recargarla. Con el panel oculto, el desplazamiento con teclado apenas
+  avanza (va por fotogramas); el arrastre con el botón derecho no depende de ellos.

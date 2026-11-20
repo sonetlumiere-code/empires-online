@@ -150,7 +150,6 @@ export class Bot {
   /** Entra (o se da de alta), conecta, explora las colinas y empieza a pensar. */
   async start(): Promise<void> {
     this.account = await this.session.open();
-    this.deps.say(`${this.name}: ${this.account.created ? 'alta' : 'entrada'} (${this.deps.profile.name}, ${this.deps.civilization})`);
 
     this.home = this.link();
     const snapshot = this.home.waitFor((m) => m.type === 'world.snapshot', 30_000);
@@ -159,6 +158,8 @@ export class Bot {
 
     const city = this.ownCity();
     if (!city) throw new Error(`${this.name}: el snapshot no trae su ciudad`);
+    // La civilización, de la ciudad: la del reparto sólo vale para un alta nueva.
+    this.deps.say(`${this.name}: ${this.account.created ? 'alta' : 'entrada'} (${this.deps.profile.name}, ${city.civilization})`);
     this.deps.directory.set({
       playerId: this.account.playerId,
       cityId: city.id,
