@@ -2794,8 +2794,20 @@ los dos arreglos.
 - **Constructores parados:** `bot_constructor_1` (Hierro) y `bot_constructor_3` (Castillos) no mandaron ni una orden
   en 45 min: con las tecnologías hechas, el bien elaborado hasta su tope y sin bienes ajenos para el avance siguiente,
   sólo recolectan. Es el hallazgo del comercio de la prueba en vivo de E28, ahora sin siembra de por medio.
-- **Sin comprobar en el navegador** (el panel del navegador integrado estuvo oculto toda la sesión y sin
-  `requestAnimationFrame` el mapa no se dibuja): ver a los bots recolectando, construyendo y saqueando, y las siluetas
-  pendientes de E22, E26 y E27 (mercado, catafracto, arquero a caballo, muralla y ariete). El catafracto y el arquero
-  a caballo, además, no los saca ningún bot: los constructores bizantino y persa sólo entrenan guerreros de guardia y
-  el saqueador no elabora el bien que piden; hará falta una cuenta bizantina y otra persa en Bronce con taller.
+- **En el navegador** (sesión de smoke_runner, con la cámara llevada a cada ciudad arrastrando con el botón derecho;
+  el panel no llegó a verse como visible y sólo dibujaba un fotograma por captura, así que lo visto son instantáneas,
+  no animaciones): los aldeanos de `bot_saqueador_1` en sus viajes de recolección, en otra posición en cada captura;
+  un saqueo de 3 guerreros contra `bot_constructor_2` (pasada `--semilla 15`), con los rombos rojos de borde amarillo
+  (atacando) pegados a la muralla y, en la captura siguiente, alejándose con la marca de carga; la **muralla** de
+  `bot_constructor_2` (el contorno gris con postes) y su taller; el **ariete** de smoke_runner junto a
+  smoke_victimpolis (el tejadillo sobre ruedas con el tronco) y el **mercado** ajeno de smoke_victim (el toldo a rayas
+  moradas). El **mercado propio** de smoke_runner (rayas verdes) se ve a medias: queda en el tile contiguo al centro
+  urbano y el bloque del centro lo tapa casi entero, como a la casa y al taller; lo anoto para el pase visual.
+- **Sin comprobar en el navegador:** una obra en curso (los bots de este mundo ya lo tienen todo construido y uno
+  nuevo, `bot_constructor_4`, nórdico, dado de alta en esta pasada en (494,259), no levanta casa hasta llenar sus 20
+  de población) y las siluetas del **catafracto** y del **arquero a caballo**, que no saca ningún bot: los
+  constructores bizantino y persa sólo entrenan guerreros de guardia y el saqueador no elabora el bien que piden; hará
+  falta una cuenta bizantina y otra persa en Bronce con taller.
+- **El navegador integrado, para la próxima:** si la página se carga con el panel oculto, el lienzo se queda en
+  300×150 aunque luego se muestre; hay que recargarla. Con el panel oculto, el desplazamiento con teclado apenas
+  avanza (va por fotogramas); el arrastre con el botón derecho no depende de ellos.
