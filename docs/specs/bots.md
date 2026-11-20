@@ -232,6 +232,15 @@ Lo que no se pueda ver en el navegador se anota en milestones como «Sin comprob
   con el usuario más `polis`. El directorio del proceso sólo da la ubicación de las ciudades de sus bots.
 - **La Edad de Hierro pide 60 bienes ajenos**, que sólo se consiguen comerciando, y los bots no comercian (Q3): un
   constructor se queda en Bronce. Es un dato de equilibrio, no un fallo del bot.
+- **Precisión (2026-11-20): los guerreros varados vuelven.** Sin partida en curso, un militar del saqueador parado
+  fuera del radio de casa vuelve con `unit.move` al tile de depósito, por tramos de 48 tiles si está más lejos. La
+  prueba en vivo del 2026-11-20 encontró los seis guerreros de una partida que cortó el fin de la ejecución anterior
+  parados a 50 tiles de casa: con el máximo de guerreros cubierto y ninguno «en casa», el saqueador pasó 40 minutos
+  sin entrenar ni salir. La misma pasada vio que la consola anunciaba la civilización del reparto por turno
+  (`NORSE`) en vez de la de la cuenta (`ROMAN`); ahora la toma de la ciudad del snapshot.
+- **Precisión (2026-11-20): el botín no vuelve solo.** La regla 3 del saqueador en §4.3 dice que el guerrero con el
+  botín «vuelve solo (regla de E5)», pero E5 decidió lo contrario ([combat-pillage.md](combat-pillage.md) Q6): con la
+  carga llena queda `IDLE` junto a la muralla. Es el bot quien lo devuelve, como dice el punto «El saqueo» de arriba.
 - **Opciones de más.** `EO_BOT_WEB` y `EO_BOT_SERVER` dan los valores por defecto de `--web` y `--server`; del `.env`
   de la raíz sólo se leen las `EO_BOT_*`; `EO_BOT_PASSWORD` pide al menos 12 caracteres.
 - **El empaquetado.** `tsx` carga los `.ts` de `apps/web` como CommonJS, y `@empires-online/protocol` sólo exportaba

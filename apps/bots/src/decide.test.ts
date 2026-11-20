@@ -277,6 +277,28 @@ describe('el saqueo', () => {
     expect(next.commands).toEqual([{ key: 'raid:pillage:3', type: 'unit.pillage', unitId: 3, cityId: 20 }]);
   });
 
+  it('sin partida, los guerreros parados lejos de casa vuelven (varados al parar el proceso)', () => {
+    // Lo encontró la prueba en vivo del 2026-11-20: los seis guerreros de una
+    // partida cortada por el fin de la ejecución anterior se quedaron a 50 tiles,
+    // fuera del radio de casa; con el máximo de guerreros ya cubierto, el
+    // saqueador ni entrenaba ni salía.
+    const stranded = [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', x: 150, y: 120 + id }));
+    const v = view({ ...base, units: stranded, botCities: [botCity()] });
+    const home = depositTile(v.city, v.terrainAt);
+    const { commands, memory } = decide(v, saqueador, EMPTY_MEMORY, NOW, rng());
+    expect(memory.raid).toBeNull();
+    expect(commands).toEqual([
+      { key: 'raid:recall:1', type: 'unit.move', unitId: 1, target: home },
+      { key: 'raid:recall:2', type: 'unit.move', unitId: 2, target: home },
+    ]);
+
+    // Más allá de un tramo de marcha, vuelve por tramos, como la partida.
+    const far = view({ ...base, units: [unit({ id: 1, unitType: 'WARRIOR', x: 300, y: 100 })], botCities: [botCity()] });
+    expect(decide(far, saqueador, EMPTY_MEMORY, NOW, rng()).commands).toEqual([
+      { key: 'raid:recall:1', type: 'unit.move', unitId: 1, target: marchStep({ x: 300, y: 100 }, depositTile(far.city, far.terrainAt)) },
+    ]);
+  });
+
   it('con menos de tres, o en la espera tras una derrota, no sale', () => {
     const two = view({ ...base, units: warriors.slice(0, 2), botCities: [botCity()] });
     expect(decide(two, saqueador, EMPTY_MEMORY, NOW, rng()).memory.raid).toBeNull();

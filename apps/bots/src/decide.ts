@@ -541,6 +541,16 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
   let raid = memory.raid;
 
   if (raid === null) {
+    // Sin partida, un militar parado fuera de casa está varado (una partida que
+    // cortó el fin de la ejecución anterior, o una respuesta de E3 sin ruta de
+    // vuelta): vuelve, por tramos si está lejos, para poder formar la siguiente.
+    for (const u of units.values()) {
+      if (plan.full) break;
+      if (!isMilitary(u) || u.status !== 'IDLE' || atHome(view, u)) continue;
+      const key = `raid:recall:${u.id}`;
+      if (!plan.free(key)) continue;
+      plan.add({ key, type: 'unit.move', unitId: u.id, target: chebyshev(u, home) > MARCH_STEP ? marchStep(u, home) : home });
+    }
     if (plan.full || nowMs < memory.raidWaitUntilMs) return memory;
     const party = [...units.values()].filter(
       (u) => isMilitary(u) && u.status === 'IDLE' && atHome(view, u) && u.carrying === 0,
