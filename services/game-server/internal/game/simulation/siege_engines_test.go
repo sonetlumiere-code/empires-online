@@ -1,6 +1,8 @@
 package simulation_test
 
 import (
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
@@ -353,4 +356,53 @@ func TestElDanoDeLaMurallaSeOlvida(t *testing.T) {
 	h.advance(5*time.Minute + time.Second)
 	hp, _ = vidaDe(h, murallaID)
 	assert.Equal(t, int32(1_500), hp)
+}
+
+// Recuperación (SPEC-SIEGE-ENGINES §9 «recovery», Q5, RN-COMBAT-032): el daño de la
+// muralla vive en la RAM, así que tras un reinicio está entera y la ciudad sigue
+// amurallada; un ariete que iba de camino sigue su polilínea, pero el asedio no se
+// persiste (ATTACKING no se escribe): al llegar queda IDLE y no golpea hasta que se
+// le vuelva a ordenar.
+func TestTrasUnReinicioLaMurallaEstaEnteraYElArieteNoSigueElAsedio(t *testing.T) {
+	vida := newHarness(t)
+	_, ciudad, _ := conAsedio(vida, world.Tile{X: 5, Y: 5})
+	conMuralla(vida, ciudad, true, 0)
+	ponerAriete(vida, arieteID, world.Tile{X: 20, Y: 38})
+	ponerAriete(vida, arieteID+1, world.Tile{X: 20, Y: 30})
+	vida.send(vida.derribarCon(arieteID, murallaID))
+	vida.send(vida.derribarCon(arieteID+1, murallaID))
+	require.Empty(t, vida.codigos())
+	hp, _ := vidaDe(vida, murallaID)
+	require.Equal(t, int32(1_460), hp, "dañada antes de la caída")
+	enCamino, ok := vida.state.Movement(arieteID + 1)
+	require.True(t, ok)
+	m := *enCamino
+
+	// El reinicio: lo que la base tiene. La muralla, completa y sin daño; los
+	// arietes, IDLE el parado y MOVING el que iba de camino, con su movimiento.
+	h := newHarness(t)
+	_, ciudad2, _ := conAsedio(h, world.Tile{X: 5, Y: 5})
+	conMuralla(h, ciudad2, true, 0)
+	ponerAriete(h, arieteID, world.Tile{X: 20, Y: 38})
+	uno := h.cityID
+	caminante := &unit.Unit{ID: arieteID + 1, PlayerID: h.playerID, CityID: &uno, Type: unit.TypeRam,
+		X: 20, Y: 30, HP: 250, MaxHP: 250, Status: unit.StatusMoving}
+	simulation.Hydrate(h.state, []*unit.Unit{caminante}, nil, []*movement.Movement{&m}, h.clk.NowMs(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h.tick()
+
+	hp, _ = vidaDe(h, murallaID)
+	assert.Equal(t, int32(1_500), hp, "un reinicio la deja entera")
+	assert.True(t, h.state.Walled(ciudad2.ID))
+	h.hasta(m.ArrivalTimeMs + 3_000)
+	llego, ok := h.state.Unit(arieteID + 1)
+	require.True(t, ok)
+	assert.Equal(t, m.Target, llego.Tile(), "sigue su polilínea hasta el anillo")
+	assert.Equal(t, unit.StatusIdle, llego.Status)
+	for _, id := range []int64{arieteID, arieteID + 1} {
+		_, asedia := h.state.Demolishing(id)
+		assert.False(t, asedia, "el ariete %d no retoma el asedio solo", id)
+	}
+	hp, _ = vidaDe(h, murallaID)
+	assert.Equal(t, int32(1_500), hp, "nadie la golpea sin una orden nueva")
 }
