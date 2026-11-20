@@ -615,7 +615,7 @@ cd D:\Desktop\dev\empires-online
 pnpm install
 ```
 
-`pnpm install` resuelve el workspace: `packages/protocol` y `apps/web`. En un clon nuevo, compila
+`pnpm install` resuelve el workspace: `packages/protocol`, `apps/web` y, desde E28, `apps/bots`. En un clon nuevo, compila
 después el protocolo: `apps/web` lo importa desde `packages/protocol/dist`, que no se versiona, y sin él
 `next dev` responde 500 con «Module not found: Can't resolve '@empires-online/protocol'»:
 
