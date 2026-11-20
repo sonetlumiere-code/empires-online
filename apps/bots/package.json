@@ -1,0 +1,21 @@
+{
+  "name": "@empires-online/bots",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bots de Empires Online: jugadores sin interfaz que se dan de alta por la web y juegan por el WebSocket v1 como un cliente más, para poblar el mundo y medir el equilibrio (SPEC-BOTS, ADR-049).",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@empires-online/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

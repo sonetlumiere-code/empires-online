@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { v1 } from '@empires-online/protocol';
 
-import { decodeTerrain, terrainAt, useWorldStore } from './world';
+import { createWorldStore, decodeTerrain, terrainAt, useWorldStore } from './world';
 
 const PLAYER = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -527,5 +527,20 @@ describe('mensajes (SPEC-MESSAGES)', () => {
     expect(useWorldStore.getState().messages.conversations[0]!.unread).toBe(0);
     store.reset();
     expect(useWorldStore.getState().messages.conversations).toEqual([]);
+  });
+});
+
+describe('createWorldStore (SPEC-BOTS §4.2)', () => {
+  it('cada store es independiente del del navegador y de los demás', () => {
+    const a = createWorldStore();
+    const b = createWorldStore();
+    a.getState().applySnapshot(snapshot({ units: [unitView({ id: 1 })] }));
+    b.getState().applySnapshot(snapshot({ units: [unitView({ id: 2 }), unitView({ id: 3 })] }));
+    expect([...a.getState().units.keys()]).toEqual([1]);
+    expect([...b.getState().units.keys()]).toEqual([2, 3]);
+    expect(useWorldStore.getState().units.size).toBe(0);
+    a.getState().applyServerMessage(server('entity.despawn', 2, { id: 1, reason: 'DEAD' }));
+    expect(a.getState().units.size).toBe(0);
+    expect(b.getState().units.size).toBe(2);
   });
 });

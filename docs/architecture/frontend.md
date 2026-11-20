@@ -967,6 +967,28 @@ y grueso, y una que carga madera, un tronco a la espalda.
   muralla tiene su propia clave de grupo (`noticeKey`). El aviso de asedio del HUD pasa a «¡Están asediando tu
   ciudad!», porque también salta con los golpes a la muralla.
 
+### 4.24 Un segundo consumidor: los bots (SPEC-BOTS)
+
+> **Estado (2026-11-19): implementado.** `apps/bots` ([SPEC-BOTS](../specs/bots.md),
+> [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md)) importa por ruta relativa `src/net/client.ts` y los
+> módulos puros de `src/state`; el test del store por bot está en `src/state/world.test.ts`.
+
+- **`createWorldStore()`** (`src/state/world.ts`) monta el mismo estado y los mismos reductores que `useWorldStore`
+  en un store de `zustand/vanilla`, sin React: cada bot tiene uno por conexión, porque varios jugadores en un proceso
+  no pueden compartir el del navegador. `useWorldStore` sigue siendo el de siempre: los dos salen del mismo
+  `createWorldState`.
+- **El `GameClient`** se usa tal cual, con el `WebSocket` de Node 22. El alta, la entrada y los tickets no pasan por
+  `src/net/auth.ts`, que depende de las cookies del navegador: el bot guarda la cookie `eo_session` en memoria
+  (`apps/bots/src/auth.ts`).
+- **Los motivos del HUD** (`trainBlockReason`, `advanceBlockReason`, `workshopBlockReason`, `wallBlockReason`,
+  `craftBlockReason`, `researchBlockReason`, `civilizationUnitBlockReason`, `firstFreeHouseTile`) son también los del
+  bot: lo que el HUD deshabilita, el bot no lo envía (`RN-BOT-002`).
+- **Consecuencia:** `src/net` y `src/state` tienen que seguir sin DOM ni React en lo que el bot importa. Un cambio que
+  lo rompa lo detectan el typecheck y los tests de `apps/bots`, que corren con los del workspace.
+- `tsx` carga los `.ts` de `apps/web` como CommonJS (el paquete no declara `"type": "module"`); por eso
+  `@empires-online/protocol` exporta también la condición `default`, que Node 22 resuelve haciendo `require` del
+  módulo ESM.
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).
