@@ -2713,7 +2713,7 @@ caballo.
 
 ## E28 — Bots
 
-**Estado: EN CURSO (2026-11-19)**, en la rama `claude/slice-bots`. Contrato: [SPEC-BOTS](../specs/bots.md), aceptada el
+**Estado: HECHO (2026-11-20)**, en `main` desde la fusión `ade9b58`, con la CI en verde. Contrato: [SPEC-BOTS](../specs/bots.md), aceptada el
 2026-11-19 con sus nueve decisiones de producto, y [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md).
 
 **Objetivo.** Empezar a medir la jugabilidad y ver el mundo vivo: jugadores sin interfaz que se dan de alta y juegan

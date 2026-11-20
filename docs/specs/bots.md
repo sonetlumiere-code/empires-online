@@ -7,7 +7,7 @@ construyen, entrenan, avanzan de era y atacan, y dejan un registro de cada parti
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS` |
-| Estado | Accepted (2026-11-19). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-20). Propuesta en `Draft` y aceptada el 2026-11-19 con la recomendación de cada pregunta de §10; en `main` desde la fusión `ade9b58`, con la CI en verde. |
 | Milestone | E28 Bots (vigesimoctavo slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §9 (presencia y protección), §13 (límites del WebSocket), §18 (métricas), §19 (niveles de test) |
 | Depende de | [player.md](player.md), [websocket-protocol.md](websocket-protocol.md), [presence.md](presence.md), [economy-wood.md](economy-wood.md), [economy-stone.md](economy-stone.md), [civilization-goods.md](civilization-goods.md), [castle-age.md](castle-age.md), [technologies.md](technologies.md), [combat-raid.md](combat-raid.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md) |

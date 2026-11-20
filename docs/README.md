@@ -134,8 +134,8 @@ Una violación de invariante es un bug de severidad máxima, no una discusión d
 ### 2.8 `decisions/` — Registro de decisiones (ADR)
 
 Un ADR es inmutable: no se edita, se supersede. Los títulos autorizados viven en el índice de la carpeta;
-si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta y ocho, del 001
-al 048, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
+si esta tabla y ese índice difieren, manda [decisions/README.md](decisions/README.md). Son cuarenta y nueve, del 001
+al 049, y el nombre de fichero es siempre `ADR-NNN-slug-en-ingles.md`. No hay ADR para el monorepo pnpm,
 para el determinismo con `Clock`/`RandomSource`, para el *interest management* por chunk ni para la
 elección de A\*: son decisiones del canon y de `architecture/`, no del registro.
 
@@ -299,7 +299,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E27 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E28 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -408,6 +408,11 @@ Matices que conviene no maquillar:
   Bronce una muralla de piedra que protege sus edificios: con ella en pie sólo el ariete, desde la Edad de Hierro, daña
   la ciudad, y sólo a la muralla; derribada, la ciudad queda en brecha. Las siluetas de la muralla y del ariete siguen
   sin comprobar en el navegador ([roadmap/milestones.md](roadmap/milestones.md) §E27).
+- **E28 Bots está en `main`** desde `ade9b58`, con la CI en verde y dos pasadas en vivo el 2026-11-19;
+  [SPEC-BOTS](specs/bots.md) está en `Implemented`, con [ADR-049](decisions/ADR-049-bots-as-protocol-clients.md) y sin
+  migración. `pnpm run bots` da de alta unas cuentas `bot_*` que juegan por el WebSocket como un cliente (economía,
+  eras, saqueo y asedio entre bots) y deja un registro JSONL con su resumen para medir el equilibrio. Verlos en el
+  mapa sigue sin comprobar en el navegador ([roadmap/milestones.md](roadmap/milestones.md) §E28).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en
