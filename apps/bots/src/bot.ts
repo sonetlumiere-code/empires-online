@@ -127,6 +127,8 @@ export class Bot {
   private readonly pending = new Map<string, { command: Command; sentAt: number }>();
   private readonly orderedAt = new Map<string, number>();
   private prevCity: CityView | null = null;
+  /** Estado conocido de cada edificio de la ciudad, para apuntar la obra que termina una vez. */
+  private readonly buildingStatus = new Map<number, string>();
   private startedAt = 0;
   private gathered: Stocks = { WOOD: 0, STONE: 0 };
 
@@ -481,18 +483,23 @@ export class Bot {
       case 'world.snapshot':
         // Un snapshot reemplaza la vista: su almacén es la nueva referencia, no recolección.
         this.prevCity = this.ownCity() ?? this.prevCity;
+        this.recordBuildings();
         break;
       case 'city.update':
         this.onCity(nowMs);
         break;
       case 'building.update':
       case 'building.spawn': {
-        const b = m.type === 'building.spawn' ? m.payload.building : m.payload;
+        // El delta sólo trae id y estado: la ciudad y el tipo se leen del espejo, ya aplicado.
+        const id = m.type === 'building.spawn' ? m.payload.building.id : m.payload.id;
+        const b = this.home?.store.getState().buildings.get(id);
         const city = this.ownCity();
-        if (city && 'status' in b && b.status === 'COMPLETE' && 'cityId' in b && b.cityId === city.id) {
-          const type = 'type' in b ? String(b.type) : 'BUILDING';
-          const since = this.orderedAt.get(`build:${type}`);
-          this.emit('built', { building: type, ...(since ? { ms: nowMs - since } : {}) });
+        if (!b || !city || b.cityId !== city.id) break;
+        const before = this.buildingStatus.get(id);
+        this.buildingStatus.set(id, b.status);
+        if (b.status === 'COMPLETE' && before !== 'COMPLETE') {
+          const since = this.orderedAt.get(`build:${b.type}`);
+          this.emit('built', { building: b.type, ...(since ? { ms: nowMs - since } : {}) });
         }
         break;
       }
@@ -506,6 +513,15 @@ export class Bot {
         break;
       default:
         break;
+    }
+  }
+
+  /** Lo que ya está en pie al conectar o reconectar no es una obra nueva. */
+  private recordBuildings(): void {
+    const city = this.ownCity();
+    if (!city || !this.home) return;
+    for (const b of this.home.store.getState().buildings.values()) {
+      if (b.cityId === city.id) this.buildingStatus.set(b.id, b.status);
     }
   }
 

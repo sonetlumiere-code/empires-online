@@ -97,7 +97,7 @@ describe('reglas 2 y 3: casas y aldeanos', () => {
   it('no encarga otra casa mientras una está en obra', () => {
     const v = view({
       city: city({ population: 10, populationLimit: 10, stocks: stocks(100) }),
-      buildings: [building({ id: 1, status: 'CONSTRUCTING' })],
+      buildings: [building({ id: 1, status: 'UNDER_CONSTRUCTION' })],
     });
     expect(types(decide(v, constructor, EMPTY_MEMORY, NOW, rng()).commands)).not.toContain('city.build');
   });

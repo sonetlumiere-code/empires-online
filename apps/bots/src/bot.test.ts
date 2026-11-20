@@ -141,6 +141,31 @@ describe('lo recolectado', () => {
   });
 });
 
+describe('lo construido', () => {
+  it('un edificio propio que se completa se apunta una vez, aunque el delta no traiga ciudad ni tipo', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets);
+    await bot.start();
+    const server = sockets[0] as FakeServer;
+    server.push('building.spawn', {
+      building: { id: 5, cityId: 10, type: 'WORKSHOP', x: 99, y: 99, status: 'UNDER_CONSTRUCTION', completesAtMs: NOW + 60_000 },
+    });
+    server.push('building.update', { id: 5, status: 'COMPLETE' });
+    // Un golpe de asedio después: sigue completo, no es otra obra.
+    server.push('building.update', { id: 5, status: 'COMPLETE', hp: 300 });
+    // Un edificio de otra ciudad que se completa no es nuestro.
+    server.push('building.spawn', {
+      building: { id: 6, cityId: 99, type: 'HOUSE', x: 10, y: 10, status: 'UNDER_CONSTRUCTION', completesAtMs: NOW + 1 },
+    });
+    server.push('building.update', { id: 6, status: 'COMPLETE' });
+    bot.stop();
+    const built = parseLog(lines.join('')).filter((e) => e.event === 'built');
+    expect(built).toHaveLength(1);
+    expect(built[0]).toMatchObject({ building: 'WORKSHOP' });
+  });
+});
+
 describe('RN-BOT-007: la parada limpia', () => {
   it('al parar cierra las conexiones y escribe stop; nada secreto en el registro', async () => {
     const lines: string[] = [];
