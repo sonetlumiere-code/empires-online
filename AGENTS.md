@@ -8,7 +8,8 @@ una máquina concreta (puertos, rutas, `PATH`) va en `CLAUDE.local.md`, que no s
 
 - MMO de estrategia persistente e isométrico. Game Server en Go (`services/game-server`, tick de 10 Hz, loop de un solo
   escritor), cliente Next.js 15 + PixiJS 8 (`apps/web`), protocolo en Zod (`packages/protocol`) exportado a JSON Schema
-  y embebido en Go, PostgreSQL 16 + Redis.
+  y embebido en Go, PostgreSQL 16 + Redis. Bots que juegan por el protocolo como un cliente (`apps/bots`, `pnpm run
+  bots`), con la red y el estado de `apps/web`.
 - **Spec-Driven:** spec (`docs/specs`) → invariantes con ID (`docs/invariants`) → ADR si hace falta (`docs/decisions`)
   → código → tests → docs → CI verde. La Definition of Done es [docs/README.md](docs/README.md) §4.1; §4 de este fichero
   la hace concreta.
@@ -71,6 +72,7 @@ documentarlo como «Precisión (fecha)» si cambia una spec, y commitear.
 | Mensaje del protocolo o campo nuevo | contract en Go (`internal/protocol`, claves exactas contra el esquema) y en Zod (`packages/protocol`), y un e2e por WebSocket (`internal/websocket`) |
 | Estado que sobrevive a un reinicio | recuperación (carga en la simulación y en la base) |
 | Lógica del cliente | Vitest en `apps/web/src/state` |
+| Lógica de los bots (decisor, registro, opciones) | Vitest en `apps/bots/src` |
 | Opción nueva del humo | su función exportada con test en `scripts/smoke.test.mjs` |
 | Código de error alcanzable | su test |
 
@@ -101,7 +103,7 @@ Convenciones de los tests que ya muerden:
 | Una métrica o una serie | `internal/observability` (series a cero desde el arranque) y `docs/operations/monitoring.md` §2 |
 | Un recurso, un edificio o un tipo de unidad | sus catálogos (`economy.Resources()`, `BuildingType`, `UnitType`), sus `CHECK` y Zod |
 | Una regla de paz o de permiso | `State.AtPeace` y el motivo de cada rechazo en combate, saqueo, conquista y reclamación |
-| El cliente | `docs/architecture/frontend.md` |
+| El cliente (también lo que importan los bots de `src/net` y `src/state`) | `docs/architecture/frontend.md` |
 | Un invariante | su ficha en `docs/invariants/<familia>.md`, la fila y los recuentos del README de invariantes |
 | Una spec | su estado en `docs/specs/README.md`; las precisiones, como «Precisión (fecha)» |
 
@@ -116,7 +118,7 @@ verifican por mutación (§4.1) y la ficha dice qué mutación se hizo y qué te
 
 `pnpm run verify:full` corre, en serie y esperando a que no haya suites ajenas, todo lo que la CI comprueba: docs, lint de
 determinismo, secretos, tests de los scripts, build/vet/gofmt/test de Go, la integración de Go y la de la web, el
-typecheck, los tests y el check del protocolo, los tests del cliente, el build de la web con los canarios de
+typecheck, los tests y el check del protocolo, los tests del cliente y los de los bots, el build de la web con los canarios de
 `.github/workflows/ci.yml` y el escaneo del bundle. Necesita PostgreSQL y Redis de tests en marcha (ver
 `CLAUDE.local.md` o [docs/operations/local-development.md](docs/operations/local-development.md)). Nada se da por hecho
 sin que pase entero. Tras cambiar Zod, `pnpm run protocol:build` antes.

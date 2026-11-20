@@ -511,6 +511,28 @@ sus 15 minutos de preaviso.
 
 ---
 
+### 3-bis.10 Poblar el mundo con bots
+
+Con el Game Server y la web en marcha (§3-bis.9), `pnpm run bots` da de alta (o entra con) unas cuentas `bot_*` y las
+pone a jugar por el WebSocket como un cliente más ([SPEC-BOTS](../specs/bots.md), [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md)):
+recolectan, construyen, entrenan, avanzan de era y, los saqueadores, saquean y asedian a otros bots. Necesita
+`EO_BOT_PASSWORD` en el `.env` (ver `.env.example`).
+
+```bash
+pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 --duracion 30m --semilla 42
+```
+
+- Las cuentas se numeran por perfil (`bot_constructor_1`, `bot_saqueador_1`…) y se reutilizan entre ejecuciones: una
+  segunda ejecución sigue las mismas partidas. Hasta 20 bots por proceso.
+- Sin `--contra-humanos`, un saqueador sólo elige como blanco ciudades de bots: se puede jugar con una cuenta propia
+  mientras corren.
+- Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
+  Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos y rechazos por código.
+- El mundo va a tiempo real: para ver eras y saqueos en una prueba corta, siembra madera y piedra en las cuentas de
+  bots con el servidor parado (`EO_DEVSEED_STOCK_FOR=bot_constructor_1,bot_saqueador_1 pnpm run dev:seed`).
+- Para verlos, entra con una cuenta propia en el navegador y lleva la vista a sus ciudades (el registro trae sus
+  centros en el suceso `start`).
+
 ## 4. Infraestructura local: `docker-compose.yml`
 
 Archivo en la raíz del repositorio. Define **exactamente dos servicios**: Postgres 16 y Redis 7. El Game
@@ -909,8 +931,8 @@ carreras**: eso es §9, y en la CI lo cubren los jobs `integration` y `game-serv
 
 **`pnpm run verify:full`** (`scripts/verify.sh`, desde 2026-11-17) es la verificación que un slice tiene que pasar
 antes de darse por hecho ([AGENTS.md](../../AGENTS.md) §5): todo lo anterior **más** la integración de Go
-(`-tags=integration`, con PostgreSQL y Redis de tests en marcha) y la de la web, `protocol:test` y `protocol:check`, y
-el build de la web con los canarios de la CI seguido del escaneo del bundle. Corre en serie, espera antes de cada paso a
+(`-tags=integration`, con PostgreSQL y Redis de tests en marcha) y la de la web, `protocol:test` y `protocol:check`, los
+tests de `apps/bots` (desde E28; la CI hace su typecheck, pero todavía no sus tests), y el build de la web con los canarios de la CI seguido del escaneo del bundle. Corre en serie, espera antes de cada paso a
 que no haya otra suite en marcha, para en el primer fallo y se puede retomar con `pnpm run verify:full -- --desde
 <paso>`. Sin el detector de carreras, que sigue siendo de la CI.
 
@@ -954,6 +976,7 @@ que no está aquí, no existe.
 | `server:fmt` / `server:fmt:check` | `gofmt -l -w .` / sólo lista |
 | `web:dev` / `web:build` | Cliente Next.js en desarrollo / build de producción |
 | `smoke` | Vertical slice completo contra el Game Server y la web en marcha (§3-bis.9) |
+| `bots` | Bots que juegan por el WebSocket contra el Game Server y la web en marcha, con un registro JSONL en `bots/runs/` y un resumen al terminar (§3-bis.10, [SPEC-BOTS](../specs/bots.md)) |
 | `docs:check` | Enlaces, anclas, mayúsculas de rutas, invariantes citados y ADR existentes |
 | `secrets:scan` | Escaneo de secretos del árbol versionado y de toda la historia (`INV-SEC-006`); el del bundle del cliente lo hace la CI tras construirlo con valores canario: a mano, `node scripts/scan-secrets.mjs --bundle apps/web/.next/static` |
 | `scripts:test` | Tests de los scripts de `scripts/`, con el runner de Node |

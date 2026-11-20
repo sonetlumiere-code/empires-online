@@ -199,6 +199,46 @@ Lo que no se pueda ver en el navegador se anota en milestones como «Sin comprob
 | `RN-BOT-006` | El proceso nunca imprime ni escribe en el registro la contraseña, la cookie ni un ticket. |
 | `RN-BOT-007` | Al parar (vencida `--duracion` o Ctrl-C), el proceso cierra todas las conexiones y escribe `stop` y el resumen antes de salir. |
 
+### 4.8 Precisiones de la implementación (2026-11-19)
+
+- **Dos conexiones por saqueador.** La de **casa** tiene la vista en la ciudad; la de **campaña** se abre con la primera
+  partida y mira al blanco o al tramo de marcha en curso, porque los guerreros que se alejan salen del área de interés
+  de la casa. Las órdenes salen siempre por la de casa: el servidor conoce las unidades estén donde estén. Un
+  constructor tiene sólo la de casa.
+- **La exploración.** Al arrancar, el bot mueve la vista en anillos de 96, 160 y 224 tiles alrededor de su ciudad
+  (como `scripts/smoke.mjs --piedra`) y se queda con las 24 colinas más cercanas del terreno visto; los bosques los
+  toma del terreno a 40 tiles de la ciudad. El decisor no corre mientras explora.
+- **La piedra sin ruta.** Las colinas de desarrollo quedan a 60-200 tiles de las ciudades, y algunas no tienen ruta
+  dentro del tope del A\* (`PATH_TOO_LONG`). Un rechazo así aparta la piedra entera durante el enfriamiento de blanco
+  (10 min): los aldeanos van a la madera en vez de probar colina tras colina. Lo encontró la primera pasada en vivo,
+  en la que un saqueador gastó nueve órdenes seguidas en colinas a 192 tiles.
+- **El saqueo.** La partida ordena `unit.pillage` directamente, y el servidor lleva a cada guerrero al anillo. Si
+  responde `PATH_TOO_LONG` o `PATH_NOT_FOUND`, la partida marcha en tramos de 48 tiles hasta quedar a 12 del blanco y
+  vuelve a ordenar el saqueo; un tramo que no se puede pisar se desplaza en espiral. El botín sólo se deposita en el
+  tile de depósito de la ciudad (`RN-ECON-004`), así que un guerrero cargado vuelve con `unit.move` a ese tile, el
+  primero transitable del anillo de nacimiento, en el orden de `city.SpawnTilesAround`. Si el saqueo acaba en el
+  suelo del almacén, el guerrero derriba una casa visible de la víctima; con la muralla en pie el servidor lo rechaza
+  (`INVALID_TARGET`) y vuelve a casa. Un blanco protegido, sin ruta o con tratado (`CITY_PROTECTED`,
+  `TREATY_REQUIRED`, `INVALID_TARGET` al saquear) se enfría y la partida vuelve. Las bajas se cuentan con
+  `entity.despawn` de motivo `DEAD` (o `entity.update` con `DEAD`), que dicen qué unidad murió; el aviso `UNIT_LOST`
+  no lo dice.
+- **Lo recolectado** del resumen es la suma de las subidas de madera y piedra que traen los `city.update` de la ciudad:
+  recolección, botín y devoluciones de encargos. Un `world.snapshot` reinicia la referencia sin contar, porque su
+  almacén puede venir de fuera de la partida (un `dev:seed` con el servidor parado, una reconexión); la primera pasada
+  en vivo lo contaba y daba 2 269 de madera por hora a un constructor de cuatro minutos.
+- **Lo construido.** `building.update` sólo trae `id` y `status`: el bot lee la ciudad y el tipo del espejo y apunta
+  `built` en la transición a `COMPLETE`, una vez; lo que ya está en pie al conectar no cuenta.
+- **Quién es un bot** (`RN-BOT-004`): una ciudad cuyo nombre empieza por `bot_`, porque el servidor nombra cada ciudad
+  con el usuario más `polis`. El directorio del proceso sólo da la ubicación de las ciudades de sus bots.
+- **La Edad de Hierro pide 60 bienes ajenos**, que sólo se consiguen comerciando, y los bots no comercian (Q3): un
+  constructor se queda en Bronce. Es un dato de equilibrio, no un fallo del bot.
+- **Opciones de más.** `EO_BOT_WEB` y `EO_BOT_SERVER` dan los valores por defecto de `--web` y `--server`; del `.env`
+  de la raíz sólo se leen las `EO_BOT_*`; `EO_BOT_PASSWORD` pide al menos 12 caracteres.
+- **El empaquetado.** `tsx` carga los `.ts` de `apps/web` como CommonJS, y `@empires-online/protocol` sólo exportaba
+  la condición `import`: el paquete exporta ahora también `default` (el mismo fichero ESM, que Node 22 carga con
+  `require`). El importador de `apps/bots` se añadió al lockfile con las versiones ya resueltas de los demás paquetes,
+  sin resolver nada en la red.
+
 ## 5. Errores
 
 No hay códigos nuevos. El bot recibe los del canon §16 como cualquier cliente y los trata así:
@@ -250,8 +290,12 @@ el mismo).
 | Integración / e2e | Ninguno nuevo en Go: el servidor no cambia. La prueba en vivo de §4.6 (servidor, web y bots) es la que demuestra el conjunto; su resumen se anota en milestones. |
 | Parada limpia | Con un servidor falso en proceso (`socketFactory` del `GameClient`): al pedir la parada se cierran las conexiones y se escribe `stop` (`RN-BOT-007`). |
 
-`pnpm run verify:full` corre los tests del paquete nuevo con los demás del cliente (es parte de `pnpm -r run test` y
-del typecheck); la CI no se toca, porque ya recorre los paquetes del workspace.
+`pnpm run verify:full` corre los tests del paquete nuevo con los demás del cliente.
+
+**Precisión (2026-11-19).** La CI recorre el workspace en el typecheck (`pnpm run typecheck` llega a `apps/bots` y, con
+él, a los módulos de `apps/web` que importa), pero sus tests los lanza paquete a paquete (`protocol` y `web`): los de
+`apps/bots` no corren en la CI. `scripts/verify.sh` los corre en su paso `bots-test`; añadir el mismo paso a la CI es un
+cambio de la CI y espera el visto bueno de producto (AGENTS.md §2).
 
 ## 10. Decisiones de producto (2026-11-19)
 

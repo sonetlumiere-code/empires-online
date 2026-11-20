@@ -2732,12 +2732,17 @@ producción y una marca de bot en el juego; pruebas de carga; acelerar el tiempo
 
 1. **HECHO** — Aceptación: spec y [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md); sin invariantes de
    dominio nuevos ni precisiones de reglas vecinas (el servidor no cambia).
-2. **PENDIENTE** — Paquete `apps/bots`: conexión y espejo del mundo con los módulos del cliente, separando lo puro de
-   React o zustand si hace falta, sin cambiar su comportamiento.
-3. **PENDIENTE** — El decisor y los perfiles (`RN-BOT-002` a `RN-BOT-005`), con sus tests.
-4. **PENDIENTE** — La ejecución: opciones, altas escalonadas, parada limpia (`RN-BOT-007`), el JSONL y el resumen
-   (`RN-BOT-006`); `EO_BOT_*` en `.env.example` y en configuration.md §3.10.
-5. **PENDIENTE** — Docs: `docs/architecture/frontend.md` (el segundo consumidor de `net` y `state`) y
-   `docs/operations/local-development.md` (cómo lanzar los bots).
+2. **HECHO** — Paquete `apps/bots`: conexión (`GameClient` con el `WebSocket` de Node) y un espejo por conexión con
+   `createWorldStore()`, que sale del mismo `createWorldState` que `useWorldStore` (test en `world.test.ts`); el alta,
+   la entrada y los tickets con la cookie en memoria (`auth.ts`); `@empires-online/protocol` exporta también
+   `default` para que `tsx` lo cargue desde los `.ts` de `apps/web`.
+3. **HECHO** — El decisor puro y los perfiles (`decide.ts`, `profiles.ts`), con el saqueo por tramos, el depósito
+   del botín y el derribo al llegar al suelo; `decide.test.ts` cubre cada regla y `RN-BOT-002` a `RN-BOT-005`.
+4. **HECHO** — La ejecución (`main.ts`, `bot.ts`): opciones, altas escalonadas, exploración de colinas, la conexión
+   de campaña, parada limpia (`RN-BOT-007`, `bot.test.ts` con un servidor falso), el JSONL y el resumen (`RN-BOT-006`,
+   `log.test.ts`); `EO_BOT_*` en `.env.example` y en configuration.md §3.10; `pnpm run bots`; el paso `bots-test` de
+   `verify:full`.
+5. **HECHO** — Docs: `docs/architecture/frontend.md` §4.24, `docs/operations/local-development.md` §3-bis.10 y §8,
+   `docs/README.md`, AGENTS.md y las precisiones de la spec (§4.8, §9).
 6. **PENDIENTE** — Prueba en vivo: los bots contra el servidor de desarrollo con plazos acortados, el resumen y, con
    el panel del navegador visible, capturas de los bots recolectando, construyendo y saqueando.
