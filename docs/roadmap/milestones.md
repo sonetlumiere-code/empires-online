@@ -2741,7 +2741,7 @@ producción y una marca de bot en el juego; pruebas de carga; acelerar el tiempo
 4. **HECHO** — La ejecución (`main.ts`, `bot.ts`): opciones, altas escalonadas, exploración de colinas, la conexión
    de campaña, parada limpia (`RN-BOT-007`, `bot.test.ts` con un servidor falso), el JSONL y el resumen (`RN-BOT-006`,
    `log.test.ts`); `EO_BOT_*` en `.env.example` y en configuration.md §3.10; `pnpm run bots`; el paso `bots-test` de
-   `verify:full`.
+   `verify:full` y, con el visto bueno de producto, el paso «Tests de los bots» de la CI.
 5. **HECHO** — Docs: `docs/architecture/frontend.md` §4.24, `docs/operations/local-development.md` §3-bis.10 y §8,
    `docs/README.md`, AGENTS.md y las precisiones de la spec (§4.8, §9).
 6. **HECHO** — Prueba en vivo (abajo), salvo la parte del navegador.

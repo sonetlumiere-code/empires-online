@@ -110,6 +110,11 @@ jobs:
       - name: Tests del cliente
         run: pnpm --filter @empires-online/web run test
 
+      # Los bots (SPEC-BOTS) importan la red y el estado del cliente: su suite
+      # (decisor, registro, opciones, parada limpia) va detrás de la del cliente.
+      - name: Tests de los bots
+        run: pnpm --filter @empires-online/bots run test
+
       - name: Verificar que el JSON Schema no ha derivado de Zod
         # Si esto falla, alguien cambió los esquemas Zod sin regenerar los
         # artefactos que consume el Game Server. El contrato se habría roto en

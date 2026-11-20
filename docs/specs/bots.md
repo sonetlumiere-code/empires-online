@@ -293,9 +293,9 @@ el mismo).
 `pnpm run verify:full` corre los tests del paquete nuevo con los demás del cliente.
 
 **Precisión (2026-11-19).** La CI recorre el workspace en el typecheck (`pnpm run typecheck` llega a `apps/bots` y, con
-él, a los módulos de `apps/web` que importa), pero sus tests los lanza paquete a paquete (`protocol` y `web`): los de
-`apps/bots` no corren en la CI. `scripts/verify.sh` los corre en su paso `bots-test`; añadir el mismo paso a la CI es un
-cambio de la CI y espera el visto bueno de producto (AGENTS.md §2).
+él, a los módulos de `apps/web` que importa), pero sus tests los lanza paquete a paquete. Con el visto bueno de producto
+del mismo día, el job de TypeScript suma el paso «Tests de los bots» (`pnpm --filter @empires-online/bots run test`),
+detrás de los del cliente; `scripts/verify.sh` los corre en su paso `bots-test`.
 
 ## 10. Decisiones de producto (2026-11-19)
 

@@ -932,7 +932,7 @@ carreras**: eso es §9, y en la CI lo cubren los jobs `integration` y `game-serv
 **`pnpm run verify:full`** (`scripts/verify.sh`, desde 2026-11-17) es la verificación que un slice tiene que pasar
 antes de darse por hecho ([AGENTS.md](../../AGENTS.md) §5): todo lo anterior **más** la integración de Go
 (`-tags=integration`, con PostgreSQL y Redis de tests en marcha) y la de la web, `protocol:test` y `protocol:check`, los
-tests de `apps/bots` (desde E28; la CI hace su typecheck, pero todavía no sus tests), y el build de la web con los canarios de la CI seguido del escaneo del bundle. Corre en serie, espera antes de cada paso a
+tests de `apps/bots` (desde E28), y el build de la web con los canarios de la CI seguido del escaneo del bundle. Corre en serie, espera antes de cada paso a
 que no haya otra suite en marcha, para en el primer fallo y se puede retomar con `pnpm run verify:full -- --desde
 <paso>`. Sin el detector de carreras, que sigue siendo de la CI.
 
