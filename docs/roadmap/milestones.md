@@ -2744,5 +2744,30 @@ producción y una marca de bot en el juego; pruebas de carga; acelerar el tiempo
    `verify:full`.
 5. **HECHO** — Docs: `docs/architecture/frontend.md` §4.24, `docs/operations/local-development.md` §3-bis.10 y §8,
    `docs/README.md`, AGENTS.md y las precisiones de la spec (§4.8, §9).
-6. **PENDIENTE** — Prueba en vivo: los bots contra el servidor de desarrollo con plazos acortados, el resumen y, con
-   el panel del navegador visible, capturas de los bots recolectando, construyendo y saqueando.
+6. **HECHO** — Prueba en vivo (abajo), salvo la parte del navegador.
+
+### Prueba en vivo (2026-11-19)
+
+Contra el servidor y la web de desarrollo (migración 29), en la rama `claude/slice-bots`. `pnpm run verify:full` en
+verde con el paso nuevo `bots-test`.
+
+- **Pasada corta** (`--duracion 4m --semilla 1`): tres altas nuevas (`bot_constructor_1` a `_3`) y una entrada
+  (`bot_saqueador_1`); cada bot exploró y encontró su colina más cercana (63 a 192 tiles), recolectó y entrenó. A
+  mitad se paró el servidor para sembrar las cuentas con `dev:seed` y se rearrancó: los cuatro reconectaron solos. Al
+  vencer la duración, la parada cerró las conexiones y escribió el resumen. Sacó dos fallos, arreglados con su test:
+  el saqueador gastó 15 órdenes en colinas sin ruta (`PATH_TOO_LONG`) con los aldeanos parados, y el resumen contaba
+  como recolectado el salto de almacén del snapshot sembrado (2 269 de madera por hora en cuatro minutos).
+- **Pasada larga** (`--duracion 25m --semilla 7`), con los almacenes sembrados por `dev:seed` (que sube a los costes de
+  la era y más, con 180 bienes ajenos): los cuatro llegaron a Bronce a los 3 min 29 s–3 min 46 s y a Hierro a los
+  8 min 23 s–8 min 59 s; `bot_constructor_3` y el saqueador, a Castillos a los 17 min 7 s y 16 min. Los constructores
+  levantaron taller y muralla, elaboraron su bien (12 a 20 veces) e investigaron (4 a 7 tecnologías). El saqueador
+  salió tres veces contra `bot_constructor_2`: 590 de madera robada en 118 golpes de 5 (la víctima vio 64 avisos de saqueo, que agrupan golpes), 15 guerreros perdidos frente a 10
+  muertos del otro lado; la defensa automática de E3 con dos guardias deshizo la primera partida entera. **Ningún
+  comando rechazado** en 262. Sacó un tercer fallo, también con su test: `building.update` no trae la ciudad ni el
+  tipo, y el registro no apuntaba ninguna obra terminada (por eso esa pasada dice «construidos: —»).
+- **Para producto, como medida de partida** (no son resultados del slice, §4.5 de la spec): con la economía sembrada,
+  una partida de saqueo de 3 guerreros pierde contra 2 guardias parados, la observación de E3 que sigue abierta; y un
+  constructor sin comercio no pasa de Bronce si no le siembran bienes ajenos (Hierro pide 60).
+- **Sin comprobar en el navegador:** ver a los bots en el mapa. El panel del navegador integrado estuvo oculto (sin
+  `requestAnimationFrame` el mapa no se dibuja) y la cámara del HUD no tiene forma de saltar a coordenadas ajenas: la
+  sesión de smoke_runner estaba lejos de las ciudades de los bots.
