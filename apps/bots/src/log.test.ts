@@ -84,3 +84,57 @@ describe('el resumen sale sólo del JSONL', () => {
     expect(text).toContain('saqueador: 1 bots · a Bronce 0/1');
   });
 });
+
+describe('el resumen del comercio y de las partidas (SPEC-BOTS-TRADE §4.7)', () => {
+  const H = 3_600_000;
+  const C = 'bot_constructor_1';
+  const S = 'bot_saqueador_1';
+  const jsonl = [
+    { t: 0, event: 'start', bot: C, profile: 'constructor', civilization: 'ROMAN', era: 'BRONZE_AGE' },
+    { t: 1, event: 'treaty', bot: C, with: 'bot_constructor_2polis', type: 'TRADE', status: 'proposed' },
+    { t: 2, event: 'treaty', bot: C, with: 'bot_constructor_2polis', type: 'TRADE', status: 'accepted' },
+    { t: 3, event: 'trade', bot: C, with: 'x', give: [{ resource: 'WINE', amount: 10 }], receive: [{ resource: 'SPICES', amount: 10 }], status: 'accepted' },
+    { t: 4, event: 'trade', bot: C, with: 'x', give: [{ resource: 'WOOD', amount: 40 }], receive: [{ resource: 'STONE', amount: 20 }], status: 'accepted' },
+    { t: 5, event: 'trade', bot: C, with: 'x', give: [{ resource: 'WINE', amount: 10 }], receive: [{ resource: 'SILK', amount: 10 }], status: 'rejected' },
+    { t: 6, event: 'market', bot: C, status: 'posted', give: { resource: 'WINE', amount: 10 }, receive: { resource: 'SILK', amount: 10 }, lots: 3, commission: 3 },
+    { t: 7, event: 'market', bot: C, status: 'bought', give: { resource: 'WINE', amount: 8 }, receive: { resource: 'FURS', amount: 10 }, lots: 2, commission: 2 },
+    { t: 8, event: 'caravan', bot: C, status: 'lost', cargo: [{ resource: 'FURS', amount: 10 }] },
+    { t: 9, event: 'caravan', bot: C, status: 'arrived', cargo: [{ resource: 'FURS', amount: 10 }] },
+    { t: 90 * 60_000, event: 'era', bot: C, era: 'IRON_AGE' },
+    { t: 2 * H, event: 'stop', bot: C, era: 'IRON_AGE', gathered: {} },
+    { t: 0, event: 'start', bot: S, profile: 'saqueador', civilization: 'NORSE', era: 'STONE_AGE' },
+    { t: 10, event: 'raid', bot: S, target: 'bot_constructor_1polis', size: 3 },
+    { t: 20, event: 'rally', bot: S, target: 'bot_constructor_1polis', warriors: 3, alive: 3, waitMs: 40_000 },
+    { t: 30, event: 'pillage_done', bot: S, amount: 5 },
+    { t: 31, event: 'killed', bot: S, unitType: 'WARRIOR' },
+    { t: 32, event: 'lost', bot: S, unitType: 'WARRIOR' },
+    { t: 40, event: 'raid_end', bot: S, target: 'bot_constructor_1polis', lost: 1, size: 3 },
+    { t: 50, event: 'raid', bot: S, target: 'bot_constructor_2polis', size: 3 },
+    { t: 60, event: 'lost', bot: S, unitType: 'WARRIOR' },
+    { t: H, event: 'stop', bot: S, era: 'STONE_AGE', gathered: {} },
+  ]
+    .map((l) => JSON.stringify(l))
+    .join('\n');
+
+  it('suma tratados, tratos, bienes ajenos por cada vía, comisión, caravanas perdidas y el balance de cada partida', () => {
+    const [c, s] = summarize(parseLog(jsonl));
+    expect(c).toMatchObject({
+      treaties: 1,
+      trades: 2,
+      goodsByTrade: 10,
+      goodsByMarket: 20,
+      commission: 5,
+      caravansLost: 1,
+      eras: { BRONZE_AGE: 0, IRON_AGE: 90 * 60_000 },
+    });
+    expect(s?.raidLog).toEqual([
+      { target: 'bot_constructor_1polis', gathered: 3, rallyWaitMs: 40_000, lost: 1, killed: 1, wood: 5 },
+      { target: 'bot_constructor_2polis', gathered: null, rallyWaitMs: null, lost: 1, killed: 0, wood: 0 },
+    ]);
+    const text = formatSummary([c, s].filter((r) => r !== undefined));
+    expect(text).toContain('comercio: tratados 1 · tratos 2 · bienes ajenos por trato 10 y por mercado 20 · comisión 5 · caravanas perdidas 1');
+    expect(text).toContain('partida contra bot_constructor_1polis: reunidos 3 en 0m40s · perdidos 1 · muertos 1 · madera 5');
+    expect(text).toContain('partida contra bot_constructor_2polis: sin reunirse · perdidos 1 · muertos 0 · madera 0');
+    expect(text).toContain('a Hierro 1/1 (media 1h30m)');
+  });
+});

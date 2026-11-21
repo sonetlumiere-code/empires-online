@@ -2,7 +2,8 @@
  * `pnpm run bots`: lanza N bots contra una web y un Game Server (SPEC-BOTS §4.4).
  *
  *   pnpm run bots -- --web http://localhost:3001 --server ws://localhost:8080/ws \
- *     --constructores 3 --saqueadores 1 --duracion 2h --semilla 42 [--contra-humanos]
+ *     --constructores 3 --saqueadores 1 --duracion 2h --semilla 42 [--contra-humanos] \
+ *     [--sin-comercio] [--con-humanos]
  *
  * La contraseña de las cuentas es `EO_BOT_PASSWORD`, del entorno o del `.env` de la
  * raíz (de él sólo se leen las variables `EO_BOT_*`, y nunca se imprimen).
@@ -77,7 +78,8 @@ async function main(): Promise<void> {
   say(
     `Bots contra ${opts.web} y ${opts.server}: ${opts.constructores} constructores y ${opts.saqueadores} saqueadores, ` +
       `semilla ${opts.semilla}${opts.duracionMs ? `, ${Math.round(opts.duracionMs / 60_000)} min` : ', hasta Ctrl-C'}` +
-      `${opts.contraHumanos ? ', también contra humanos' : ''}.`,
+      `${opts.contraHumanos ? ', también contra humanos' : ''}` +
+      `${opts.comercio ? (opts.conHumanos ? ', comerciando también con humanos' : '') : ', sin comercio'}.`,
   );
   say(`Registro: ${file}`);
 
@@ -118,6 +120,8 @@ async function main(): Promise<void> {
       thinkMs: opts.thinkMs,
       seed: seedFor(opts.semilla, r.name),
       contraHumanos: opts.contraHumanos,
+      comercio: opts.comercio,
+      conHumanos: opts.conHumanos,
       directory,
       log,
       say,

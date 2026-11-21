@@ -28,6 +28,40 @@ export interface BotSummary {
   readonly raids: number;
   readonly commands: number;
   readonly rejected: Readonly<Record<string, number>>;
+  // ── Comercio y partidas (SPEC-BOTS-TRADE §4.7) ──
+  readonly treaties: number;
+  readonly trades: number;
+  /** Bienes de otras civilizaciones recibidos por trato y por el mercado. */
+  readonly goodsByTrade: number;
+  readonly goodsByMarket: number;
+  /** Comisión pagada en el mercado, al publicar y al comprar. */
+  readonly commission: number;
+  readonly caravansLost: number;
+  /** El balance de cada partida, en orden. */
+  readonly raidLog: readonly RaidBalance[];
+}
+
+export interface RaidBalance {
+  readonly target: string;
+  /** Guerreros reunidos al dar la orden de saquear (`null` si no llegó a reunirse). */
+  readonly gathered: number | null;
+  readonly rallyWaitMs: number | null;
+  readonly lost: number;
+  readonly killed: number;
+  readonly wood: number;
+}
+
+type Line = { resource?: unknown; amount?: unknown };
+
+/** Lo que suman unas líneas de bienes (todo lo que no es madera ni piedra). */
+function goodsIn(lines: unknown, lots = 1): number {
+  const list = Array.isArray(lines) ? (lines as Line[]) : lines && typeof lines === 'object' ? [lines as Line] : [];
+  let n = 0;
+  for (const l of list) {
+    if (l.resource === 'WOOD' || l.resource === 'STONE' || typeof l.amount !== 'number') continue;
+    n += l.amount * lots;
+  }
+  return n;
 }
 
 function inc(r: Record<string, number>, k: string, n = 1): void {
@@ -65,6 +99,15 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
     let housesLost = 0;
     let raids = 0;
     let commands = 0;
+    let treaties = 0;
+    let trades = 0;
+    let goodsByTrade = 0;
+    let goodsByMarket = 0;
+    let commission = 0;
+    let caravansLost = 0;
+    const raidLog: RaidBalance[] = [];
+    let current: { target: string; gathered: number | null; rallyWaitMs: number | null; lost: number; killed: number; wood: number } | null =
+      null;
     for (const l of ls) {
       switch (l.event) {
         case 'era':
@@ -90,12 +133,15 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
         case 'lost':
           lost++;
+          if (current) current.lost++;
           break;
         case 'killed':
           killed++;
+          if (current) current.killed++;
           break;
         case 'pillage_done':
           pillageDone += typeof l.amount === 'number' ? l.amount : 0;
+          if (current) current.wood += typeof l.amount === 'number' ? l.amount : 0;
           break;
         case 'demolished':
           demolished++;
@@ -111,6 +157,34 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
         case 'raid':
           raids++;
+          if (current) raidLog.push(current);
+          current = { target: String(l.target), gathered: null, rallyWaitMs: null, lost: 0, killed: 0, wood: 0 };
+          break;
+        case 'rally':
+          if (current) {
+            current.gathered = typeof l.warriors === 'number' ? l.warriors : null;
+            current.rallyWaitMs = typeof l.waitMs === 'number' ? l.waitMs : null;
+          }
+          break;
+        case 'raid_end':
+          if (current) raidLog.push(current);
+          current = null;
+          break;
+        case 'treaty':
+          if (l.status === 'accepted') treaties++;
+          break;
+        case 'trade':
+          if (l.status === 'accepted') {
+            trades++;
+            goodsByTrade += goodsIn(l.receive);
+          }
+          break;
+        case 'market':
+          if (l.status === 'bought') goodsByMarket += goodsIn(l.receive, typeof l.lots === 'number' ? l.lots : 1);
+          if (l.status === 'posted' || l.status === 'bought') commission += typeof l.commission === 'number' ? l.commission : 0;
+          break;
+        case 'caravan':
+          if (l.status === 'lost' || l.status === 'captured') caravansLost++;
           break;
         case 'command':
           commands++;
@@ -122,6 +196,7 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
       }
     }
+    if (current) raidLog.push(current);
     const hours = playedMs / 3_600_000;
     const gatheredPerHour: Record<string, number> = {};
     for (const [r, n] of Object.entries(gathered)) gatheredPerHour[r] = hours > 0 ? Math.round(n / hours) : 0;
@@ -147,6 +222,13 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
       raids,
       commands,
       rejected,
+      treaties,
+      trades,
+      goodsByTrade,
+      goodsByMarket,
+      commission,
+      caravansLost,
+      raidLog,
     });
   }
   return out;
@@ -184,6 +266,14 @@ export function formatSummary(rows: readonly BotSummary[]): string {
       `  bajas propias ${r.lost} · enemigos muertos ${r.killed} · partidas ${r.raids} · saqueado ${r.pillageDone} de madera · derribos ${r.demolished}`,
     );
     out.push(`  sufrido: ${r.pillagedHits} golpes de saqueo, ${r.besiegedHits} de asedio, ${r.housesLost} edificios perdidos`);
+    out.push(
+      `  comercio: tratados ${r.treaties} · tratos ${r.trades} · bienes ajenos por trato ${r.goodsByTrade} y por mercado ${r.goodsByMarket} · ` +
+        `comisión ${r.commission} · caravanas perdidas ${r.caravansLost}`,
+    );
+    for (const p of r.raidLog) {
+      const rally = p.gathered === null ? 'sin reunirse' : `reunidos ${p.gathered} en ${formatDuration(p.rallyWaitMs ?? 0)}`;
+      out.push(`  partida contra ${p.target}: ${rally} · perdidos ${p.lost} · muertos ${p.killed} · madera ${p.wood}`);
+    }
     out.push(`  comandos ${r.commands} · rechazados: ${list(r.rejected)}`);
   }
   const profiles = [...new Set(rows.map((r) => r.profile))].sort();
@@ -193,9 +283,18 @@ export function formatSummary(rows: readonly BotSummary[]): string {
     const bronze = rs.map((r) => r.eras.BRONZE_AGE).filter((v): v is number => v !== undefined);
     const avgBronze = bronze.length > 0 ? formatDuration(bronze.reduce((a, b) => a + b, 0) / bronze.length) : '—';
     const sum = (f: (r: BotSummary) => number) => rs.reduce((a, r) => a + f(r), 0);
+    // El tiempo hasta cada era, desde el arranque del bot: sin siembra, es el camino entero.
+    const reach = (era: string) => {
+      const ms = rs.map((r) => r.eras[era]).filter((v): v is number => v !== undefined);
+      const avg = ms.length > 0 ? formatDuration(ms.reduce((a, b) => a + b, 0) / ms.length) : '—';
+      return `${ms.length}/${rs.length} (media ${avg})`;
+    };
     out.push(
-      `  ${p}: ${rs.length} bots · a Bronce ${bronze.length}/${rs.length} (media ${avgBronze}) · bajas ${sum((r) => r.lost)} · ` +
-        `saqueado ${sum((r) => r.pillageDone)} · derribos ${sum((r) => r.demolished)} · rechazos ${sum((r) => Object.values(r.rejected).reduce((a, b) => a + b, 0))}`,
+      `  ${p}: ${rs.length} bots · a Bronce ${bronze.length}/${rs.length} (media ${avgBronze}) · a Hierro ${reach('IRON_AGE')} · ` +
+        `a Castillos ${reach('CASTLE_AGE')} · bajas ${sum((r) => r.lost)} · ` +
+        `saqueado ${sum((r) => r.pillageDone)} · derribos ${sum((r) => r.demolished)} · ` +
+        `bienes ajenos ${sum((r) => r.goodsByTrade + r.goodsByMarket)} · comisión ${sum((r) => r.commission)} · ` +
+        `rechazos ${sum((r) => Object.values(r.rejected).reduce((a, b) => a + b, 0))}`,
     );
   }
   return out.join('\n');

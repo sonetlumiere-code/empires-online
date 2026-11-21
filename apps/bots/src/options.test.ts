@@ -17,6 +17,8 @@ describe('las opciones', () => {
       duracionMs: null,
       semilla: 1_000,
       contraHumanos: false,
+      comercio: true,
+      conHumanos: false,
       thinkMs: DEFAULT_THINK_MS,
       runsDir: '/repo/bots/runs',
     });
@@ -38,8 +40,20 @@ describe('las opciones', () => {
       '--semilla',
       '42',
       '--contra-humanos',
+      '--sin-comercio',
+      '--con-humanos',
     ]);
-    expect(o).toMatchObject({ web: 'http://x:3001', server: 'ws://y/ws', constructores: 2, saqueadores: 0, duracionMs: 1_800_000, semilla: 42, contraHumanos: true });
+    expect(o).toMatchObject({
+      web: 'http://x:3001',
+      server: 'ws://y/ws',
+      constructores: 2,
+      saqueadores: 0,
+      duracionMs: 1_800_000,
+      semilla: 42,
+      contraHumanos: true,
+      comercio: false,
+      conHumanos: true,
+    });
   });
 
   it('las duraciones', () => {

@@ -10,6 +10,7 @@ import type { v1 } from '@empires-online/protocol';
 import { GameClient, type WebSocketLike } from '../../web/src/net/client';
 import { createWorldStore, terrainAt, type BuildingView, type CityView, type UnitView } from '../../web/src/state/world';
 import { TERRAIN_HILL } from '../../web/src/state/economy';
+import { commission } from '../../web/src/state/market';
 import { WebSession, type Account } from './auth';
 import {
   EMPTY_MEMORY,
@@ -50,6 +51,10 @@ export interface BotDeps {
   readonly thinkMs: number;
   readonly seed: number;
   readonly contraHumanos: boolean;
+  /** `--sin-comercio` lo apaga (SPEC-BOTS-TRADE §4.8). */
+  readonly comercio?: boolean;
+  /** `--con-humanos` (RN-BOT-008). */
+  readonly conHumanos?: boolean;
   readonly directory: Directory;
   readonly log: RunLog;
   /** Para la consola: nunca recibe secretos. */
@@ -109,6 +114,11 @@ class Link {
 
 type Stocks = Record<string, number>;
 
+/** Una línea de recurso con el tipo del protocolo. */
+function line(l: { resource: string; amount: number }): v1.ResourceAmount {
+  return { resource: l.resource as v1.ResourceType, amount: l.amount };
+}
+
 export class Bot {
   readonly name: string;
   private readonly session: WebSession;
@@ -130,6 +140,10 @@ export class Bot {
   /** Estado conocido de cada edificio de la ciudad, para apuntar la obra que termina una vez. */
   private readonly buildingStatus = new Map<number, string>();
   private startedAt = 0;
+  /** Último estado apuntado de cada tratado, trato y caravana (para no repetirlo). */
+  private readonly seenStatus = new Map<string, string>();
+  /** Lotes vendidos de cada oferta propia del mercado. */
+  private readonly lotsSold = new Map<number, number>();
   private gathered: Stocks = { WOOD: 0, STONE: 0 };
 
   constructor(private readonly deps: BotDeps) {
@@ -166,6 +180,8 @@ export class Bot {
       name: city.name,
       centerX: city.centerX,
       centerY: city.centerY,
+      civilization: city.civilization,
+      profile: this.deps.profile.name,
     });
     this.startedAt = this.now();
     this.prevCity = city;
@@ -367,6 +383,9 @@ export class Bot {
       forestTiles: this.forestTiles,
       hills: this.hills,
       botCities: this.deps.directory.list(),
+      treaties: hs.treaties,
+      tradeOffers: hs.tradeOffers,
+      market: hs.market,
     };
   }
 
@@ -378,6 +397,8 @@ export class Bot {
     const hadRaid = this.memory.raid;
     const { commands, memory } = decide(view, this.deps.profile, this.memory, nowMs, this.rng, {
       contraHumanos: this.deps.contraHumanos,
+      comercio: this.deps.comercio !== false,
+      conHumanos: this.deps.conHumanos === true,
     });
     this.memory = memory;
     for (const cmd of commands) this.send(cmd, nowMs);
@@ -387,6 +408,15 @@ export class Bot {
       this.deps.say(`${this.name}: sale una partida de ${memory.raid.size} contra ${memory.raid.targetName}`);
     }
     if (hadRaid && !memory.raid) this.emit('raid_end', { target: hadRaid.targetName, lost: hadRaid.lost, size: hadRaid.size });
+    // La partida reunida (SPEC-BOTS-TRADE §4.7): pasa de la marcha a la orden de saquear.
+    if (hadRaid?.phase === 'march' && memory.raid?.phase === 'strike' && memory.raid.targetCityId === hadRaid.targetCityId) {
+      this.emit('rally', {
+        target: memory.raid.targetName,
+        warriors: memory.raid.gathered,
+        alive: memory.raid.warriors.length,
+        waitMs: memory.raid.rallyWaitMs,
+      });
+    }
     this.followRaid();
     for (const [id, p] of this.pending) if (nowMs - p.sentAt > 60_000) this.pending.delete(id);
   }
@@ -430,7 +460,9 @@ export class Bot {
             ? c.buildHouse(cmd.cityId, cmd.tile)
             : cmd.building === 'WORKSHOP'
               ? c.buildWorkshop(cmd.cityId, cmd.tile)
-              : c.buildWall(cmd.cityId, cmd.tile);
+              : cmd.building === 'MARKET'
+                ? c.buildMarket(cmd.cityId, cmd.tile)
+                : c.buildWall(cmd.cityId, cmd.tile);
         break;
       case 'city.train':
         requestId = c.trainUnit(cmd.cityId, cmd.unitType as v1.TrainableUnitType);
@@ -444,10 +476,50 @@ export class Bot {
       case 'city.research':
         requestId = c.researchTechnology(cmd.cityId, cmd.technology);
         break;
+      case 'treaty.propose':
+        requestId = c.proposeTreaty(cmd.playerId, cmd.treatyType);
+        break;
+      case 'treaty.respond':
+        requestId = c.respondTreaty(cmd.treatyId, cmd.accept);
+        break;
+      case 'trade.propose':
+        requestId = c.proposeTrade(cmd.playerId, [line(cmd.give)], [line(cmd.want)]);
+        break;
+      case 'trade.respond':
+        requestId = c.respondTrade(cmd.offerId, cmd.accept);
+        break;
+      case 'market.post':
+        requestId = c.postMarketOffer(line(cmd.give), line(cmd.want), cmd.lots);
+        break;
+      case 'market.buy':
+        requestId = c.buyMarketOffer(cmd.offerId, cmd.lots);
+        break;
+      case 'market.cancel':
+        requestId = c.cancelMarketOffer(cmd.offerId);
+        break;
+      case 'market.list':
+        requestId = c.listMarket({ receive: cmd.receive as v1.ResourceType });
+        break;
     }
     this.pending.set(requestId, { command: cmd, sentAt: nowMs });
     this.orderedAt.set(cmd.key, nowMs);
     this.emit('command', { type: cmd.type, key: cmd.key, requestId });
+    this.logCommerceSent(cmd);
+  }
+
+  /** Lo que el registro apunta al mandar una orden de comercio (SPEC-BOTS-TRADE §4.7). */
+  private logCommerceSent(cmd: Command): void {
+    const name = (playerId: string) => this.deps.directory.list().find((b) => b.playerId === playerId)?.name ?? playerId;
+    switch (cmd.type) {
+      case 'treaty.propose':
+        this.emit('treaty', { with: name(cmd.playerId), type: cmd.treatyType, status: 'proposed' });
+        break;
+      case 'trade.propose':
+        this.emit('trade', { with: name(cmd.playerId), give: [cmd.give], receive: [cmd.want], status: 'proposed' });
+        break;
+      default:
+        break;
+    }
   }
 
   // ─────────────────────────────────────────────────────────
@@ -469,7 +541,12 @@ export class Bot {
       }
       return;
     }
-    if (m.requestId) this.pending.delete(m.requestId);
+    if (m.requestId) {
+      const p = this.pending.get(m.requestId);
+      this.pending.delete(m.requestId);
+      if (p) this.onAccepted(p.command, m);
+    }
+    if (link === this.home) this.onCommerce(m);
 
     // Un guerrero de la partida que muere, lo vea la casa o la campaña.
     if (
@@ -512,6 +589,106 @@ export class Bot {
       case 'event_log.notice':
         this.onNotice(m.payload);
         break;
+      default:
+        break;
+    }
+  }
+
+  /** Una orden de mercado que el servidor aceptó: el registro la apunta con su comisión. */
+  private onAccepted(cmd: Command, m: v1.ServerMessage): void {
+    if (m.type !== 'market.update') return;
+    if (cmd.type === 'market.post') {
+      this.emit('market', {
+        status: 'posted',
+        give: cmd.give,
+        receive: cmd.want,
+        lots: cmd.lots,
+        commission: commission(cmd.give.amount) * cmd.lots,
+      });
+    } else if (cmd.type === 'market.buy') {
+      this.emit('market', {
+        status: 'bought',
+        give: cmd.give,
+        receive: cmd.receive,
+        lots: cmd.lots,
+        commission: commission(cmd.give.amount) * cmd.lots,
+      });
+    }
+  }
+
+  /**
+   * Tratados, tratos, ofertas del mercado y caravanas, tal como llegan
+   * (SPEC-BOTS-TRADE §4.7). Cada cambio de estado se apunta una vez.
+   */
+  private onCommerce(m: v1.ServerMessage): void {
+    const playerId = this.account?.playerId;
+    switch (m.type) {
+      case 'treaty.update': {
+        const t = m.payload.treaty;
+        const before = this.seenStatus.get(`treaty:${t.id}`);
+        this.seenStatus.set(`treaty:${t.id}`, t.status);
+        const status =
+          t.status === 'ACTIVE' && before !== 'ACTIVE'
+            ? 'accepted'
+            : t.status === 'REJECTED'
+              ? 'rejected'
+              : t.status === 'EXPIRED'
+                ? 'expired'
+                : null;
+        if (status && before !== t.status) {
+          this.emit('treaty', { with: t.otherCityName ?? t.otherPlayerId, type: t.type, status, proposedByMe: t.proposedByMe });
+        }
+        break;
+      }
+      case 'trade.update': {
+        const o = m.payload.offer;
+        const status = o.status === 'ACCEPTED' ? 'accepted' : o.status === 'REJECTED' ? 'rejected' : o.status === 'EXPIRED' ? 'expired' : null;
+        const key = `trade:${o.id}`;
+        if (status && this.seenStatus.get(key) !== o.status) {
+          this.seenStatus.set(key, o.status);
+          this.emit('trade', {
+            with: o.otherCityName ?? o.otherPlayerId,
+            give: o.give,
+            receive: o.get,
+            status,
+            proposedByMe: o.proposedByMe,
+          });
+        }
+        break;
+      }
+      case 'market.update': {
+        const o = m.payload.offer;
+        if (o.playerId !== playerId) break;
+        const sold = o.lotsSold - (this.lotsSold.get(o.id) ?? 0);
+        this.lotsSold.set(o.id, o.lotsSold);
+        if (sold > 0) {
+          this.emit('market', { status: 'sold', give: o.give, receive: o.want, lots: sold, commission: 0 });
+        }
+        if (o.status === 'EXPIRED' || o.status === 'WITHDRAWN') {
+          this.emit('market', {
+            status: o.status === 'EXPIRED' ? 'expired' : 'cancelled',
+            give: o.give,
+            receive: o.want,
+            lots: o.lotsLeft,
+            commission: 0,
+          });
+        }
+        break;
+      }
+      case 'caravan.update': {
+        const c = m.payload.caravan;
+        const city = this.ownCity();
+        const key = `caravan:${c.id}`;
+        let status: string | null = null;
+        if (c.status === 'DELIVERED' && city && c.toCityId === city.id) status = 'arrived';
+        else if (c.status === 'LOST') status = 'lost';
+        else if (c.ownerPlayerId !== c.senderPlayerId && c.senderPlayerId === playerId) status = 'captured';
+        if (status && this.seenStatus.get(key) !== status) {
+          this.seenStatus.set(key, status);
+          this.emit('caravan', { status, cargo: c.cargo, from: c.fromCityName ?? c.fromCityId, to: c.toCityName ?? c.toCityId });
+        }
+        break;
+      }
       default:
         break;
     }
