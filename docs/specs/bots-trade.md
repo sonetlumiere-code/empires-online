@@ -201,6 +201,18 @@ y el asedio. Lo que se espera, por cálculo con los números de hoy y a comproba
 Es decir: con el ajuste, la defensa gana a igualdad de fuerzas por golpear primero y por la tierra afín y el castillo
 cuando los hay; el atacante gana si trae más. Hoy el defensor gana siempre que tenga dos guardias.
 
+**Precisión (2026-11-21).** Los goldens de `raider_response_test.go` (los saqueadores ya en el anillo norte y los
+guardias parados detrás, todos de 60) dan los ticks exactos y corrigen dos casillas de la tabla:
+
+| Encuentro | Hoy (medido con la regla desactivada) | Con el ajuste |
+|---|---|---|
+| 3 contra 2 | Ganan los guardias con una baja: un saqueador que llena la carga (4 golpes) queda `IDLE` y entonces sí responde | Ganan los saqueadores con una baja: caen 201 a los 3 200 ms, 100 a los 6 100 y 202 a los 9 200 |
+| 2 contra 2 | Ganan los guardias sin bajas (uno a 28) | Ganan los guardias **con una baja**: caen 100 a los 4 600 ms, 201 a los 6 200 y 101 a los 13 800; el otro guardia queda a 20 |
+| 1 contra 1 | Gana el guardia, a 28: el saqueador sólo responde al llenar la carga | Gana el guardia por un golpe (a 4), a los 10 600 ms |
+
+La conclusión no cambia: hoy el saqueador sólo se defiende cuando deja de saquear, y con el ajuste la defensa gana a
+igualdad de fuerzas y pierde contra más.
+
 La medida en vivo (§4.8) repite la misma partida reunida con la misma semilla antes y después del ajuste.
 
 ### 4.7 Lo que se mide
