@@ -126,6 +126,11 @@ hasta pasado un enfriamiento.
 Los números de esta sección son el punto de partida (Q8): viven en un fichero de perfiles, no repartidos por el
 código, para poder ajustarlos sin tocar el decisor.
 
+**Precisión (2026-11-21, [bots-trade.md](bots-trade.md)):** con E29 el saqueador también levanta el taller y elabora
+su bien (hasta 40, guardando 30 para su unidad de civilización), porque sin él no tiene nada que comerciar; los dos
+perfiles comercian después de investigar y antes de los guardias del constructor; y la regla 2 del saqueador va
+primero a un punto de reunión (`RN-BOT-012`).
+
 **Ritmo.** Dos comandos cada dos segundos son 1 msg/s por bot de media, frente a los 20 msg/s del límite
 (`EO_WS_RATE_LIMIT_PER_SECOND`): el bot nunca toca el rate limiter. Un bot cuyo servidor cierra la conexión por
 cualquier motivo reconecta como el navegador.

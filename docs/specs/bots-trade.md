@@ -310,6 +310,42 @@ de [../invariants/trade.md](../invariants/trade.md), que los bots no pueden salt
 | Recovery | Reinicio con un saqueador respondiendo: queda `IDLE`, sin saqueo. |
 | Integración / e2e | Ninguno nuevo: ni mensajes ni base cambian. |
 
+### 9.1 Precisiones de la implementación (2026-11-21)
+
+Lo que la implementación concreta dentro de las reglas y las decisiones:
+
+- **Servidor.** La respuesta del saqueador se abre, como cualquier respuesta, al final de la fase 4 del tick en que le
+  llega el golpe: el golpe de saqueo que ya vencía en ese tick todavía cae. Los goldens y su medida de «hoy» están en
+  §4.6. El ariete no responde porque no ataca (`CanAttack` falso).
+- **El saqueador elabora su bien.** Para que Q1 tenga sentido, su perfil levanta el taller y elabora hasta 40 de su
+  bien, guardando 30 para tres unidades de civilización ([bots.md](bots.md) §4.3, precisión). No construye mercado
+  (Q4).
+- **Orden de las reglas.** El comercio va después de investigar y antes de los guardias del constructor: con dos
+  órdenes por despertar (`RN-BOT-003`), recolectar, construir e investigar van antes. `market.list` cuenta como una de
+  las dos.
+- **Quién es bot y de qué perfil.** Por la entrada del directorio del proceso (que ahora guarda civilización y
+  perfil) o, si no está, por el nombre de su ciudad (`bot_constructor_*`, `bot_saqueador_*`).
+- **Tratados.** El enfriamiento de 10 min (`treatyRetryMs`) empieza al proponer, no sólo tras un rechazo: el pacto
+  entre constructores llega como pronto 10 min después de proponer el acuerdo comercial. Una alianza de un bot se
+  rechaza; un pacto o una alianza de una persona se deja caducar, salvo para el saqueador, que los rechaza siempre
+  (`RN-BOT-011`).
+- **La tabla de precios** separa dos clases, bienes y madera o piedra, y un trato que las mezcla no se acepta (la
+  fila «bien ↔ madera o piedra» no se ofrece ni se acepta). Un bot da bienes ajenos sólo por encima de los que pide su
+  meta. Tras proponer un trato, no propone otro a la misma pareja en 2 min (`tradeRetryMs`).
+- **Mercado.** Se construye con 150 de madera y 100 de piedra **por encima** de la meta de la era, y el constructor
+  guarda su hueco al hacer casas, como el del taller. Compra si lo que paga por lote, sin la comisión, no pasa de lo
+  que recibe al precio de la tabla; publica como mucho 3 lotes de 10, y sólo sin un trato propio pendiente.
+- **La partida reunida.** El plazo de reunión corre desde que todos tienen la orden del último tramo, el del punto de
+  reunión; un guerrero está reunido a ≤ 2 tiles de ese tramo, que puede estar desplazado en espiral hasta 4 tiles del
+  punto. Vencido el plazo sin `raidMinParty` reunidos, la partida vuelve. Mientras falte alguno por recibir la orden
+  de saquear, la partida no da otras órdenes (tampoco la de volver: el espejo puede enseñar parado un despertar más a
+  quien ya la tiene). Un `PATH_*` al ordenar el saqueo, ya desde 16 tiles, enfría el blanco en vez de pasar a marchar.
+- **Tras responder.** El saqueador parado junto al blanco sin la carga llena vuelve a recibir `unit.pillage` si el
+  almacén de la víctima, que ve la conexión de campaña, sigue por encima del suelo (50); si no, asedia una casa como
+  en E28.
+- **La medida.** El resumen da el tiempo hasta cada era desde el arranque del bot: es «sin siembra» si la ejecución
+  empezó con cuentas nuevas o sin `dev:seed`, cosa que sabe quien la lanza.
+
 ## 10. Decisiones de producto (2026-11-21)
 
 Producto aceptó el 2026-11-21 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las

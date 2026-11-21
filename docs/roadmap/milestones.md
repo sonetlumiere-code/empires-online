@@ -2840,12 +2840,12 @@ equilibrio (los hallazgos van a otra spec, Q10).
    `RN-COMBAT-025`, `RN-COMBAT-027` y Q5 en [combat-pillage.md](../specs/combat-pillage.md) y de `RN-COMBAT-036`,
    `RN-COMBAT-037` y Q7 en [combat-siege.md](../specs/combat-siege.md); `RN-BOT-008` a `RN-BOT-012` con precisiones de
    §2, `RN-BOT-002` y `RN-BOT-004` en [bots.md](../specs/bots.md). Sin invariantes de dominio nuevos.
-2. **PENDIENTE** — Servidor: la disponibilidad del saqueador y del asediador y el fin de su saqueo o asedio al
+2. **HECHO** — Servidor: la disponibilidad del saqueador y del asediador y el fin de su saqueo o asedio al
    responder, con sus tests de simulación, el golden de los tres encuentros de spec §4.6 y la recuperación; los
    goldens de E3 y E5 que cambien, con el motivo.
-3. **PENDIENTE** — Bots: tratados, tratos y precios (`RN-BOT-008` a `RN-BOT-011`), con sus tests.
-4. **PENDIENTE** — Bots: el mercado del constructor y la partida que se reúne (`RN-BOT-012`), con sus tests.
-5. **PENDIENTE** — Registro, resumen y opciones (`--sin-comercio`, `--con-humanos`); docs (`docs/architecture/frontend.md`,
+3. **HECHO** — Bots: tratados, tratos y precios (`RN-BOT-008` a `RN-BOT-011`), con sus tests.
+4. **HECHO** — Bots: el mercado del constructor y la partida que se reúne (`RN-BOT-012`), con sus tests.
+5. **HECHO** — Registro, resumen y opciones (`--sin-comercio`, `--con-humanos`); docs (`docs/architecture/frontend.md`,
    `docs/operations/local-development.md`).
 6. **PENDIENTE** — Prueba en vivo (spec §4.8): pasada corta con plazos acortados; la misma partida reunida de 3
    saqueadores contra 2 guardias antes y después del cambio del servidor; la ejecución larga de 3 h sin sembrar con

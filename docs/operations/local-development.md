@@ -526,8 +526,15 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   segunda ejecución sigue las mismas partidas. Hasta 20 bots por proceso.
 - Sin `--contra-humanos`, un saqueador sólo elige como blanco ciudades de bots: se puede jugar con una cuenta propia
   mientras corren.
+- Desde E29 ([SPEC-BOTS-TRADE](../specs/bots-trade.md)) los bots firman tratados `TRADE` entre sí (y pacto entre
+  constructores), cierran tratos y el constructor usa el mercado. `--sin-comercio` lo apaga, para comparar con una
+  ejecución de E28. Con `--con-humanos` aceptan también los tratados `TRADE` y los tratos de una cuenta propia: para
+  probar el comercio con un bot desde el HUD (proponle un acuerdo comercial y luego un trato de bien por bien).
+- La partida del saqueador se reúne a 16 tiles del blanco antes de saquear; el resumen dice cuántos se reunieron y
+  cuánto esperaron, y el balance de cada partida.
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
-  Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos y rechazos por código.
+  Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos, comercio (tratados, tratos,
+  bienes ajenos por trato y por mercado, comisión, caravanas perdidas) y rechazos por código.
 - El mundo va a tiempo real: para ver eras y saqueos en una prueba corta, siembra madera y piedra en las cuentas de
   bots con el servidor parado (`EO_DEVSEED_STOCK_FOR=bot_constructor_1,bot_saqueador_1 pnpm run dev:seed`).
 - Para verlos, entra con una cuenta propia en el navegador y lleva la vista a sus ciudades (el registro trae sus
