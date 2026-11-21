@@ -136,5 +136,7 @@ describe('el resumen del comercio y de las partidas (SPEC-BOTS-TRADE §4.7)', ()
     expect(text).toContain('partida contra bot_constructor_1polis: reunidos 3 en 0m40s · perdidos 1 · muertos 1 · madera 5');
     expect(text).toContain('partida contra bot_constructor_2polis: sin reunirse · perdidos 1 · muertos 0 · madera 0');
     expect(text).toContain('a Hierro 1/1 (media 1h30m)');
+    // Arrancó en Bronce: eso no es llegar a Bronce (la prueba en vivo del 2026-11-21 lo contaba).
+    expect(text).toContain('constructor: 1 bots · a Bronce 0/1 (media —)');
   });
 });

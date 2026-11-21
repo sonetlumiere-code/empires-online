@@ -280,12 +280,13 @@ export function formatSummary(rows: readonly BotSummary[]): string {
   if (profiles.length > 0) out.push('', 'Por perfil');
   for (const p of profiles) {
     const rs = rows.filter((r) => r.profile === p);
-    const bronze = rs.map((r) => r.eras.BRONZE_AGE).filter((v): v is number => v !== undefined);
+    // La era en que arrancó un bot está en `eras` con 0: no es una llegada.
+    const bronze = rs.map((r) => r.eras.BRONZE_AGE).filter((v): v is number => v !== undefined && v > 0);
     const avgBronze = bronze.length > 0 ? formatDuration(bronze.reduce((a, b) => a + b, 0) / bronze.length) : '—';
     const sum = (f: (r: BotSummary) => number) => rs.reduce((a, r) => a + f(r), 0);
     // El tiempo hasta cada era, desde el arranque del bot: sin siembra, es el camino entero.
     const reach = (era: string) => {
-      const ms = rs.map((r) => r.eras[era]).filter((v): v is number => v !== undefined);
+      const ms = rs.map((r) => r.eras[era]).filter((v): v is number => v !== undefined && v > 0);
       const avg = ms.length > 0 ? formatDuration(ms.reduce((a, b) => a + b, 0) / ms.length) : '—';
       return `${ms.length}/${rs.length} (media ${avg})`;
     };
