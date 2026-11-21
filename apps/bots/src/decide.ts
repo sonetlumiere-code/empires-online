@@ -787,7 +787,32 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     return { ...memory, raid };
   }
 
-  // En marcha hacia el punto de reunión: cuando todos los que se ven están parados, el tramo siguiente.
+  // En marcha hacia el punto de reunión. Primero, la orden del tramo en curso a todos
+  // los que aún no la tienen, aunque los primeros ya caminen.
+  const orderLeg = (r: Raid): Raid => {
+    let next = r;
+    for (const id of alive) {
+      if (plan.full) break;
+      if (next.ordered.includes(id) || !next.waypoint) continue;
+      const key = `raid:march:${id}:${next.waypoint.x},${next.waypoint.y}`;
+      if (!plan.free(key)) continue;
+      plan.add({ key, type: 'unit.move', unitId: id, target: next.waypoint });
+      next = { ...next, ordered: [...next.ordered, id] };
+    }
+    if (
+      next.rallyAtMs === null &&
+      next.waypoint &&
+      chebyshev(next.waypoint, next.rally) <= 4 &&
+      next.ordered.length >= alive.length
+    ) {
+      next = { ...next, rallyAtMs: nowMs };
+    }
+    return next;
+  };
+  if (raid.waypoint !== null && raid.ordered.length < alive.length) {
+    return { ...memory, raid: orderLeg(raid) };
+  }
+  // Con todas las órdenes dadas, cuando todos los que se ven están parados, el tramo siguiente.
   if (visible.length === 0 || visible.some((u) => u.status === 'MOVING')) return { ...memory, raid };
   const party = {
     x: Math.round(visible.reduce((s, u) => s + u.x, 0) / visible.length),
@@ -811,26 +836,8 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     }
     return { ...memory, raid };
   }
-  if (raid.waypoint === null || allOrdered) {
-    raid = { ...raid, waypoint: marchStep(party, raid.rally, raid.waypointTries), ordered: [] };
-  }
-  for (const id of alive) {
-    if (plan.full) break;
-    if (raid.ordered.includes(id) || !raid.waypoint) continue;
-    const key = `raid:march:${id}:${raid.waypoint.x},${raid.waypoint.y}`;
-    if (!plan.free(key)) continue;
-    plan.add({ key, type: 'unit.move', unitId: id, target: raid.waypoint });
-    raid = { ...raid, ordered: [...raid.ordered, id] };
-  }
-  if (
-    raid.rallyAtMs === null &&
-    raid.waypoint &&
-    chebyshev(raid.waypoint, raid.rally) <= 4 &&
-    raid.ordered.length >= alive.length
-  ) {
-    raid = { ...raid, rallyAtMs: nowMs };
-  }
-  return { ...memory, raid };
+  raid = { ...raid, waypoint: marchStep(party, raid.rally, raid.waypointTries), ordered: [] };
+  return { ...memory, raid: orderLeg(raid) };
 }
 
 // ─────────────────────────────────────────────────────────────

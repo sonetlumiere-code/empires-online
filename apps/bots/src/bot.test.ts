@@ -194,6 +194,8 @@ describe('el registro del comercio (SPEC-BOTS-TRADE §4.7)', () => {
     server.push('treaty.update', treaty('PROPOSED'));
     server.push('treaty.update', treaty('ACTIVE'));
     server.push('treaty.update', treaty('ACTIVE'));
+    // El pacto lo sustituye: el acuerdo comercial pasa a EXPIRED (SPEC-TRADE §4.1).
+    server.push('treaty.update', treaty('EXPIRED'));
     const trade = (status: string) => ({
       offer: { id: 70, otherPlayerId: other, otherCityId: 20, otherCityName: 'bot_constructor_2polis',
         give: [{ resource: 'WINE', amount: 10 }], get: [{ resource: 'SPICES', amount: 10 }], status, proposedByMe: true,
@@ -221,13 +223,14 @@ describe('el registro del comercio (SPEC-BOTS-TRADE §4.7)', () => {
     const events = parseLog(lines.join('')).filter((e) => ['treaty', 'trade', 'market', 'caravan'].includes(e.event));
     expect(events.map((e) => [e.event, e.status])).toEqual([
       ['treaty', 'accepted'],
+      ['treaty', 'replaced'],
       ['trade', 'accepted'],
       ['market', 'sold'],
       ['market', 'expired'],
       ['caravan', 'arrived'],
     ]);
-    expect(events[2]).toMatchObject({ lots: 2 });
-    expect(events[4]).toMatchObject({ cargo: [{ resource: 'SPICES', amount: 10 }], from: 'bot_constructor_2polis' });
+    expect(events[3]).toMatchObject({ lots: 2 });
+    expect(events[5]).toMatchObject({ cargo: [{ resource: 'SPICES', amount: 10 }], from: 'bot_constructor_2polis' });
   });
 });
 

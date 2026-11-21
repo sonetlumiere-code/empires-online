@@ -287,8 +287,16 @@ describe('el saqueo', () => {
     });
     expect(fieldFocus(memory)).toEqual({ x: 124, y: 100 });
 
-    // El despertar siguiente manda al tercero; desde ahí corre el plazo de reunión.
-    const next = decide(v, saqueador, memory, NOW + 2_000, rng(), solo);
+    // El despertar siguiente manda al tercero aunque los dos primeros ya caminen (lo
+    // encontró la prueba en vivo del 2026-11-21: esperaba a que se pararan); desde
+    // ahí corre el plazo de reunión.
+    const walkingFirst = view({
+      ...base,
+      units: [unit({ id: 1, unitType: 'WARRIOR', status: 'MOVING' }), unit({ id: 2, unitType: 'WARRIOR', status: 'MOVING' }),
+        unit({ id: 3, unitType: 'WARRIOR' })],
+      botCities: [botCity()],
+    });
+    const next = decide(walkingFirst, saqueador, memory, NOW + 2_000, rng(), solo);
     expect(next.commands[0]).toEqual({ key: 'raid:march:3:124,100', type: 'unit.move', unitId: 3, target: { x: 124, y: 100 } });
     expect(next.memory.raid).toMatchObject({ ordered: [1, 2, 3], rallyAtMs: NOW + 2_000 });
 

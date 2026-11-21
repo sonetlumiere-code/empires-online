@@ -633,7 +633,10 @@ export class Bot {
             : t.status === 'REJECTED'
               ? 'rejected'
               : t.status === 'EXPIRED'
-                ? 'expired'
+                ? // Un tratado vigente sólo pasa a EXPIRED al sustituirlo el del escalón superior.
+                  before === 'ACTIVE'
+                  ? 'replaced'
+                  : 'expired'
                 : null;
         if (status && before !== t.status) {
           this.emit('treaty', { with: t.otherCityName ?? t.otherPlayerId, type: t.type, status, proposedByMe: t.proposedByMe });
