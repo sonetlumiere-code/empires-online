@@ -2664,7 +2664,8 @@ Contra la base de desarrollo, que el servidor llevó de la migración 27 a la 28
   «Comprar» con el tablón vacío; «Vender» con el ejemplo de la spec dice «Salen de tu almacén 60 de piedra en custodia y 6
   de comisión» y «Publicar» quita 66 de piedra (454 → 388); «Mis ofertas (1)» la lista («20 de piedra por 30 de madera ·
   0 vendidos, quedan 3 de 3, caduca en 24 h») y «Retirar» devuelve 60 (388 → 448).
-- **Sin comprobar en el navegador:** la silueta del mercado en el mapa (con el panel oculto no se dibuja la escena),
+- **Sin comprobar en el navegador:** la silueta del mercado en el mapa (con el panel oculto no se dibuja la escena;
+  vista el 2026-11-20 en el repaso de E28, donde el mercado propio queda casi tapado por el centro urbano),
   comprar desde la pestaña «Comprar» (no había ofertas ajenas abiertas; lo cubren el humo, el e2e y `market.test.ts`) y
   «Construir mercado» (smoke_runner ya tenía el suyo; lo cubren el humo y `market.test.ts`).
 
@@ -2709,7 +2710,8 @@ smoke_runner con la vista en casa recibió `HOUSE_DESTROYED` con `buildingType: 
 HUD de smoke_runner enseña «Muralla» y «Ariete» con sus títulos, y «Mientras no estabas», «Tus arietes derribaron la
 muralla de smoke_victimpolis». **Sin comprobar en el navegador:** las siluetas de la muralla y del ariete (el panel
 estaba oculto y sin `requestAnimationFrame` el mapa no se dibuja), con las del mercado, el catafracto y el arquero a
-caballo.
+caballo. Muralla, ariete y mercado se vieron el 2026-11-20 en el repaso de E28; el catafracto y el arquero a caballo
+siguen sin ver.
 
 ## E28 — Bots
 
@@ -2744,7 +2746,7 @@ producción y una marca de bot en el juego; pruebas de carga; acelerar el tiempo
    `verify:full` y, con el visto bueno de producto, el paso «Tests de los bots» de la CI.
 5. **HECHO** — Docs: `docs/architecture/frontend.md` §4.24, `docs/operations/local-development.md` §3-bis.10 y §8,
    `docs/README.md`, AGENTS.md y las precisiones de la spec (§4.8, §9).
-6. **HECHO** — Prueba en vivo (abajo), salvo la parte del navegador.
+6. **HECHO** — Prueba en vivo (abajo); la parte del navegador, en el repaso del 2026-11-20, salvo una obra en curso.
 
 ### Prueba en vivo (2026-11-19)
 

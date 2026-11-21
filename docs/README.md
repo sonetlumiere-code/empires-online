@@ -406,13 +406,15 @@ Matices que conviene no maquillar:
   `--ariete-completo` el 2026-11-19; [SPEC-SIEGE-ENGINES](specs/siege-engines.md) está en `Implemented`, con
   [ADR-048](decisions/ADR-048-siege-engines-and-wall.md) y la migración `000029`. Una ciudad levanta desde la Edad de
   Bronce una muralla de piedra que protege sus edificios: con ella en pie sólo el ariete, desde la Edad de Hierro, daña
-  la ciudad, y sólo a la muralla; derribada, la ciudad queda en brecha. Las siluetas de la muralla y del ariete siguen
-  sin comprobar en el navegador ([roadmap/milestones.md](roadmap/milestones.md) §E27).
+  la ciudad, y sólo a la muralla; derribada, la ciudad queda en brecha. Las siluetas de la muralla y del ariete se
+  vieron en el navegador el 2026-11-20, en el repaso de E28 ([roadmap/milestones.md](roadmap/milestones.md) §E28).
 - **E28 Bots está en `main`** desde `ade9b58`, con la CI en verde y dos pasadas en vivo el 2026-11-19;
   [SPEC-BOTS](specs/bots.md) está en `Implemented`, con [ADR-049](decisions/ADR-049-bots-as-protocol-clients.md) y sin
   migración. `pnpm run bots` da de alta unas cuentas `bot_*` que juegan por el WebSocket como un cliente (economía,
-  eras, saqueo y asedio entre bots) y deja un registro JSONL con su resumen para medir el equilibrio. Verlos en el
-  mapa sigue sin comprobar en el navegador ([roadmap/milestones.md](roadmap/milestones.md) §E28).
+  eras, saqueo y asedio entre bots) y deja un registro JSONL con su resumen para medir el equilibrio. El repaso
+  (fusión `b9cc961`, 2026-11-20) arregló los guerreros que el saqueador dejaba varados y los vio en el mapa
+  recolectando y saqueando; siguen sin comprobar en el navegador una obra en curso y las siluetas del catafracto y
+  del arquero a caballo ([roadmap/milestones.md](roadmap/milestones.md) §E28).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en
