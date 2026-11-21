@@ -1,19 +1,19 @@
 # Bots que comercian y la defensa del saqueo
 
-Propuesta para que los bots de E28 **firmen tratados, cierren tratos y usen el mercado**, de modo que una partida sin
+Slice para que los bots de E28 **firmen tratados, cierren tratos y usen el mercado**, de modo que una partida sin
 sembrar pueda llegar a Hierro y a los Castillos y se mida cuánto tarda, y para **corregir el equilibrio de la defensa
 automática de E3 frente al saqueo** con los datos de esas partidas.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-TRADE` |
-| Estado | Draft |
+| Estado | Accepted (2026-11-21). Propuesta en `Draft` el 2026-11-20 y aceptada el 2026-11-21 con la recomendación de cada pregunta de §10. |
 | Milestone | E29 Bots que comercian (vigesimonoveno slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §9 (presencia y protección), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [diplomacy.md](diplomacy.md), [trade.md](trade.md), [caravans.md](caravans.md), [markets.md](markets.md), [civilization-goods.md](civilization-goods.md), [castle-age.md](castle-age.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md) |
-| Decisiones | [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md) sigue valiendo para los bots. El ajuste de la defensa no pide ADR si se acepta Q7 tal como se recomienda (§4.6). |
+| Decisiones | [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md) sigue valiendo para los bots. Sin ADR nuevo: el ajuste de la defensa (Q7) cambia cuándo responde un guerrero, no la estructura de la fase 4 ([ADR-024](../decisions/ADR-024-combat-simultaneous-resolution.md)) ni el débito del saqueo ([ADR-026](../decisions/ADR-026-pillage-two-phase-stock-debit.md)); va como reglas nuevas de [combat-response.md](combat-response.md) y precisiones de sus vecinas (§4.6). |
 | Reemplaza a | — |
-| Invariantes | No asigna invariantes. Cita [INV-COMBAT-002](../invariants/combat.md#inv-combat-002) y la familia `INV-TRADE` (§8) |
+| Invariantes | No asigna invariantes de dominio. Las reglas nuevas son `RN-COMBAT-039` y `RN-COMBAT-040` ([combat-response.md](combat-response.md) §4.3) y `RN-BOT-008` a `RN-BOT-012` (§4.9). Cita [INV-COMBAT-002](../invariants/combat.md#inv-combat-002) y la familia `INV-TRADE` (§8) |
 
 ## 1. Objetivo
 
@@ -28,7 +28,7 @@ La prueba en vivo de E28 dejó dos hallazgos que impiden saber si el juego se ju
    el saqueador perdió 15 guerreros por 10 muertos del otro lado. Es la observación de balance que E3 dejó abierta
    ([combat-pillage.md](combat-pillage.md) Q5, [combat-siege.md](combat-siege.md) Q7).
 
-Esta spec propone resolver los dos con lo que ya hay: el primero sin tocar el servidor, enseñando a los bots el
+Esta spec resuelve los dos con lo que ya hay: el primero sin tocar el servidor, enseñando a los bots el
 comercio que el protocolo ya da; el segundo con un cambio pequeño de una regla del servidor, medido antes y después con
 las mismas partidas.
 
@@ -163,8 +163,10 @@ de Q7, la comparación es la misma partida reunida.
 
 ### 4.6 El ajuste de la defensa (servidor)
 
-Propuesta recomendada en Q7 y Q8. Dos reglas nuevas en [combat-response.md](combat-response.md), que se numerarán
-`RN-COMBAT-039` y `RN-COMBAT-040` en la aceptación:
+Decidido en Q7 y Q8. Dos reglas nuevas en [combat-response.md](combat-response.md) §4.3, `RN-COMBAT-039` y
+`RN-COMBAT-040`, con sus precisiones en `RN-COMBAT-013` y en las reglas del saqueo y del asedio que dicen cuándo
+terminan y quién defiende ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-025` y `RN-COMBAT-027`,
+[combat-siege.md](combat-siege.md) `RN-COMBAT-036` y `RN-COMBAT-037`):
 
 - **Un guerrero que saquea o asedia también está disponible para responder.** A efectos de la respuesta automática
   (`RN-COMBAT-013`), un guerrero con un saqueo (`unit.pillage`, [combat-pillage.md](combat-pillage.md)) o un asedio (`unit.demolish`, [combat-siege.md](combat-siege.md)) en
@@ -175,6 +177,17 @@ Propuesta recomendada en Q7 y Q8. Dos reglas nuevas en [combat-response.md](comb
   tile donde saqueaba y, al acabar el enfrentamiento, vuelve a él y queda `IDLE`, como cualquier respuesta. No reanuda
   el saqueo: lo vuelve a ordenar el jugador (coherente con [combat-pillage.md](combat-pillage.md) Q6, que no quiere
   una granja automática).
+
+Lo que concreta la aceptación, dentro de esas reglas:
+
+- **Desde la orden.** Cuenta el saqueo o el asedio abierto, también mientras el guerrero camina hacia el anillo o
+  hacia la casa: el enfrentamiento de saqueo o de asedio nace con la orden. Su puesto es entonces el tile en que
+  estaba al responder.
+- **Sólo quien ataca.** El ariete asedia pero no hiere a unidades (`CanAttack` falso, [INV-COMBAT-009](../invariants/combat.md#inv-combat-009)):
+  no responde, como ya dice `RN-COMBAT-012`, y sigue derribando.
+- **Lo demás no cambia.** El saqueador que vuelve a casa cargado camina con una orden de movimiento y sigue sin
+  responder; la madera que lleva sigue siendo su carga (`RN-COMBAT-026`); el daño de una casa asediada sigue su plazo
+  de `RN-COMBAT-032`.
 
 La decisión Q3 de E3 («una orden del jugador en curso nunca se sustituye por una respuesta») cambia sólo para el saqueo
 y el asedio. Lo que se espera, por cálculo con los números de hoy y a comprobar con un golden de simulación:
@@ -280,27 +293,28 @@ de [../invariants/trade.md](../invariants/trade.md), que los bots no pueden salt
 |---|---|
 | Unit (Vitest, `apps/bots`) | Tratados: propone `TRADE` a los bots sin relación, sube a `NON_AGGRESSION` entre constructores, el saqueador rechaza el pacto (`RN-BOT-011`), ignora a humanos sin `--con-humanos` (`RN-BOT-008`). Tratos: qué pide y qué ofrece según la meta, aceptación por la tabla (`RN-BOT-010`), nada deshabilitado (`RN-BOT-009`). Mercado: construir, publicar, comprar la más barata, retirar la vieja. Reunión (`RN-BOT-012`). |
 | Unit (Vitest) | El registro y el resumen con los sucesos nuevos; `--sin-comercio` y `--con-humanos` en las opciones. |
-| Unit (Go, `internal/game/simulation`) | `available()` con un saqueo y con un asedio en curso; la respuesta termina el saqueo y fija el puesto; un movimiento ordenado sigue sin sustituirse. |
+| Unit (Go, `internal/game/simulation`) | `available()` con un saqueo y con un asedio en curso, también mientras camina hacia la ciudad (`RN-COMBAT-039`); la respuesta termina el saqueo o el asedio y fija el puesto en el tile en que estaba (`RN-COMBAT-040`); un ariete que asedia no responde; un movimiento ordenado, también el del saqueador que vuelve cargado, sigue sin sustituirse. |
 | Simulation (golden) | Los tres encuentros de §4.6, con los ticks exactos y el resultado de la tabla; el compañero que saquea al lado responde; la vuelta al puesto sin reanudar el saqueo. Lo mismo para un asedio. Los goldens de E3 y E5 que cambien se actualizan en el mismo commit, diciendo por qué. |
 | Recovery | Reinicio con un saqueador respondiendo: queda `IDLE`, sin saqueo. |
 | Integración / e2e | Ninguno nuevo: ni mensajes ni base cambian. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-21)
 
-Cada pregunta trae la recomendación (en negrita) y las alternativas.
+Producto aceptó el 2026-11-21 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
+alternativas que se descartaron. Son decisiones de producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
-| Q1 | ¿Qué perfiles comercian? | **Los dos.** El saqueador también necesita bienes ajenos para pasar de Bronce y para su unidad de civilización; sin comercio, la comparación entre perfiles sigue torcida. Alternativa: **sólo el constructor**, más simple, pero el saqueador se queda en Bronce y la medida del saqueo se hace con unidades de una era menos. |
-| Q2 | ¿Qué tratados firman? | **`TRADE` entre todos los bots y `NON_AGGRESSION` entre constructores; el saqueador nunca firma pacto.** El tratado comercial no da paz, así que el saqueador puede comerciar con su víctima y saquearla (la escalera de [diplomacy.md](diplomacy.md) lo permite). Alternativas: **sólo `TRADE`**, que deja la escalera sin usar; **toda la escalera con alianzas y rupturas**, que mete la guarnición aliada y el preaviso y hace la medida difícil de leer. |
-| Q3 | ¿Comercian con personas? | **Sólo con `--con-humanos`, y nunca con hostilidad nueva.** Sin la opción, una oferta de una persona se deja caducar. Con ella, quien prueba desde el navegador puede firmar un tratado con un bot y cambiarle bienes. Alternativas: **siempre**, que deja a los bots como socios fijos en el mundo de desarrollo; **nunca**, que impide probar el comercio con un bot desde el HUD. |
-| Q4 | ¿Tratos directos, mercado o los dos? | **Los dos: el trato con quien tiene tratado y ruta, y el mercado del constructor para el resto.** Así se mide si la comisión del 10 % pesa. El saqueador no construye mercado y, como comprar también pide mercado propio ([markets.md](markets.md) `RN-MARKET-004`), sólo comercia por trato. Alternativas: **sólo tratos**, un decisor más pequeño, sin medir el mercado; **sólo mercado**, que deja los tratados sin uso. |
-| Q5 | ¿A qué precio? | **Bien por bien 1 a 1, y madera por piedra 2 a 1, en la tabla del fichero de perfiles (§4.4).** Los bienes valen lo mismo para el avance (cualquier mezcla, [civilization-goods.md](civilization-goods.md)), y la piedra es la que falta en las partidas de E28. Alternativas: **sólo bienes**, sin tocar madera y piedra; **un precio que se mueve con la oferta del tablón**, más interesante pero fuera del objetivo de medir. |
-| Q6 | ¿El saqueador captura caravanas? | **No en este slice.** Primero se mide el camino a Hierro sin interferencias; capturar caravanas mezcla dos efectos en la misma medida. Alternativa: **sí**, si pasa una a ≤ `STRIKE_RADIUS` de su partida, que mide el riesgo de las caravanas pero castiga a los constructores que el slice quiere ver avanzar. |
-| Q7 | ¿Cómo se corrige la defensa? | **Un guerrero que saquea o asedia responde a los golpes como uno disponible (§4.6).** Ataca la causa (el saqueador no se defiende) sin tocar números, y deja que la defensa gane a igualdad de fuerzas. Cambia la decisión Q3 de E3 sólo para el saqueo y el asedio. Alternativas: **sólo reunir la partida en los bots (§4.5) sin tocar el servidor**, que no basta: un saqueador sigue sin devolver golpes y 3 contra 2 pierde igual; **bajar el radio de guardia del saqueo** (de 4 a 2, una variable `EO_` nueva), que debilita a todo defensor, también al que juega en casa y está a la vista; **que el golpe de saqueo no despierte a los guardias** (revertir `RN-COMBAT-027`), que deja la ciudad sin defensa automática. |
-| Q8 | Tras responder, ¿el saqueador vuelve a saquear solo? | **No: vuelve al tile donde saqueaba y queda `IDLE`; el jugador vuelve a ordenar.** Coherente con [combat-pillage.md](combat-pillage.md) Q6 (nada de granja automática), y el bot lo hace en el despertar siguiente. Alternativa: **reanudar el saqueo solo** al volver al puesto, más cómodo para una persona pero que convierte la defensa en una pausa. |
-| Q9 | ¿Cómo se mide el camino a Hierro? | **Una ejecución larga de 4 bots nuevos sin sembrar, a velocidad real, de 3 h en segundo plano, y su resumen en milestones.** Con los costes de hoy (800 de madera, 400 de piedra y 60 bienes para Hierro) es lo mínimo para ver si alguien llega. Alternativas: **con plazos acortados por entorno**, más rápida pero no comparable con una partida real ([bots.md](bots.md) Q5); **6 h o más**, que mide Castillos pero ocupa la máquina medio día. |
-| Q10 | ¿Este slice puede cambiar números del equilibrio si las medidas lo piden? | **No: se anotan como hallazgos y van a otra spec.** Así esta spec cambia una regla y se mide su efecto, sin mezclarlo con otros cambios. Alternativa: **ajustar en el mismo slice** los costes de las eras o la comisión si la ejecución larga sale muy desviada, que acorta el ciclo pero deja sin saber qué cambio produjo qué. |
+| Q1 | ¿Qué perfiles comercian? | **Los dos.** El saqueador también necesita bienes ajenos para pasar de Bronce y para su unidad de civilización; sin comercio, la comparación entre perfiles sigue torcida. Descartada: **sólo el constructor**, más simple, pero el saqueador se queda en Bronce y la medida del saqueo se hace con unidades de una era menos. |
+| Q2 | ¿Qué tratados firman? | **`TRADE` entre todos los bots y `NON_AGGRESSION` entre constructores; el saqueador nunca firma pacto.** El tratado comercial no da paz, así que el saqueador puede comerciar con su víctima y saquearla (la escalera de [diplomacy.md](diplomacy.md) lo permite). Descartadas: **sólo `TRADE`**, que deja la escalera sin usar; **toda la escalera con alianzas y rupturas**, que mete la guarnición aliada y el preaviso y hace la medida difícil de leer. |
+| Q3 | ¿Comercian con personas? | **Sólo con `--con-humanos`, y nunca con hostilidad nueva.** Sin la opción, una oferta de una persona se deja caducar. Con ella, quien prueba desde el navegador puede firmar un tratado con un bot y cambiarle bienes. Descartadas: **siempre**, que deja a los bots como socios fijos en el mundo de desarrollo; **nunca**, que impide probar el comercio con un bot desde el HUD. |
+| Q4 | ¿Tratos directos, mercado o los dos? | **Los dos: el trato con quien tiene tratado y ruta, y el mercado del constructor para el resto.** Así se mide si la comisión del 10 % pesa. El saqueador no construye mercado y, como comprar también pide mercado propio ([markets.md](markets.md) `RN-MARKET-004`), sólo comercia por trato. Descartadas: **sólo tratos**, un decisor más pequeño, sin medir el mercado; **sólo mercado**, que deja los tratados sin uso. |
+| Q5 | ¿A qué precio? | **Bien por bien 1 a 1, y madera por piedra 2 a 1, en la tabla del fichero de perfiles (§4.4).** Los bienes valen lo mismo para el avance (cualquier mezcla, [civilization-goods.md](civilization-goods.md)), y la piedra es la que falta en las partidas de E28. Descartadas: **sólo bienes**, sin tocar madera y piedra; **un precio que se mueve con la oferta del tablón**, más interesante pero fuera del objetivo de medir. |
+| Q6 | ¿El saqueador captura caravanas? | **No en este slice.** Primero se mide el camino a Hierro sin interferencias; capturar caravanas mezcla dos efectos en la misma medida. Descartada: **sí**, si pasa una a ≤ `STRIKE_RADIUS` de su partida, que mide el riesgo de las caravanas pero castiga a los constructores que el slice quiere ver avanzar. |
+| Q7 | ¿Cómo se corrige la defensa? | **Un guerrero que saquea o asedia responde a los golpes como uno disponible (§4.6).** Ataca la causa (el saqueador no se defiende) sin tocar números, y deja que la defensa gane a igualdad de fuerzas. Cambia la decisión Q3 de E3 sólo para el saqueo y el asedio. Descartadas: **sólo reunir la partida en los bots (§4.5) sin tocar el servidor**, que no basta: un saqueador sigue sin devolver golpes y 3 contra 2 pierde igual; **bajar el radio de guardia del saqueo** (de 4 a 2, una variable `EO_` nueva), que debilita a todo defensor, también al que juega en casa y está a la vista; **que el golpe de saqueo no despierte a los guardias** (revertir `RN-COMBAT-027`), que deja la ciudad sin defensa automática. |
+| Q8 | Tras responder, ¿el saqueador vuelve a saquear solo? | **No: vuelve al tile donde saqueaba y queda `IDLE`; el jugador vuelve a ordenar.** Coherente con [combat-pillage.md](combat-pillage.md) Q6 (nada de granja automática), y el bot lo hace en el despertar siguiente. Descartada: **reanudar el saqueo solo** al volver al puesto, más cómodo para una persona pero que convierte la defensa en una pausa. |
+| Q9 | ¿Cómo se mide el camino a Hierro? | **Una ejecución larga de 4 bots nuevos sin sembrar, a velocidad real, de 3 h en segundo plano, y su resumen en milestones.** Con los costes de hoy (800 de madera, 400 de piedra y 60 bienes para Hierro) es lo mínimo para ver si alguien llega. Descartadas: **con plazos acortados por entorno**, más rápida pero no comparable con una partida real ([bots.md](bots.md) Q5); **6 h o más**, que mide Castillos pero ocupa la máquina medio día. |
+| Q10 | ¿Este slice puede cambiar números del equilibrio si las medidas lo piden? | **No: se anotan como hallazgos y van a otra spec.** Así esta spec cambia una regla y se mide su efecto, sin mezclarlo con otros cambios. Descartada: **ajustar en el mismo slice** los costes de las eras o la comisión si la ejecución larga sale muy desviada, que acorta el ciclo pero deja sin saber qué cambio produjo qué. |
 
 ## 11. Documentos relacionados
 

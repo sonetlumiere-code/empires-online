@@ -2813,3 +2813,41 @@ los dos arreglos.
 - **El navegador integrado, para la próxima:** si la página se carga con el panel oculto, el lienzo se queda en
   300×150 aunque luego se muestre; hay que recargarla. Con el panel oculto, el desplazamiento con teclado apenas
   avanza (va por fotogramas); el arrastre con el botón derecho no depende de ellos.
+
+## E29 — Bots que comercian
+
+**Estado: EN CURSO (2026-11-21)**, en la rama `claude/slice-bots-comercio`. Contrato:
+[SPEC-BOTS-TRADE](../specs/bots-trade.md), propuesta el 2026-11-20 y aceptada el 2026-11-21 con sus diez decisiones de
+producto. Sin ADR nuevo: el ajuste de la defensa cambia una regla de la respuesta automática, no la fase 4.
+
+**Objetivo.** Los dos hallazgos de E28: que una partida sin sembrar pueda pasar de Bronce, enseñando a los bots el
+comercio que el protocolo ya da, y medir cuánto tarda en llegar a Hierro; y que el saqueo deje de perder siempre contra
+dos guardias, porque el saqueador no devolvía los golpes.
+
+**Alcance.** En `apps/bots`: tratados `TRADE` entre todos los bots y `NON_AGGRESSION` entre constructores (el saqueador
+nunca firma pacto), tratos bien por bien con la tabla de precios del fichero de perfiles, el mercado del constructor
+(construir, publicar, comprar, retirar), la partida de saqueo que se reúne antes de atacar, `--sin-comercio` y
+`--con-humanos`, los sucesos nuevos del JSONL y del resumen (`RN-BOT-008` a `RN-BOT-012`). En el servidor: un guerrero
+que saquea o asedia responde a los golpes y, al terminar, vuelve al tile en que estaba sin reanudar (`RN-COMBAT-039`,
+`RN-COMBAT-040`). **No entra** (spec §2): mensajes, campos, tablas o migraciones nuevos; cambios en el cliente web;
+alianzas, clanes, facciones y conquista en los bots; captura de caravanas por el saqueador; tocar los números del
+equilibrio (los hallazgos van a otra spec, Q10).
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-COMBAT-039` y `RN-COMBAT-040` en
+   [combat-response.md](../specs/combat-response.md), con precisiones de `RN-COMBAT-013` y de su Q3, de
+   `RN-COMBAT-025`, `RN-COMBAT-027` y Q5 en [combat-pillage.md](../specs/combat-pillage.md) y de `RN-COMBAT-036`,
+   `RN-COMBAT-037` y Q7 en [combat-siege.md](../specs/combat-siege.md); `RN-BOT-008` a `RN-BOT-012` con precisiones de
+   §2, `RN-BOT-002` y `RN-BOT-004` en [bots.md](../specs/bots.md). Sin invariantes de dominio nuevos.
+2. **PENDIENTE** — Servidor: la disponibilidad del saqueador y del asediador y el fin de su saqueo o asedio al
+   responder, con sus tests de simulación, el golden de los tres encuentros de spec §4.6 y la recuperación; los
+   goldens de E3 y E5 que cambien, con el motivo.
+3. **PENDIENTE** — Bots: tratados, tratos y precios (`RN-BOT-008` a `RN-BOT-011`), con sus tests.
+4. **PENDIENTE** — Bots: el mercado del constructor y la partida que se reúne (`RN-BOT-012`), con sus tests.
+5. **PENDIENTE** — Registro, resumen y opciones (`--sin-comercio`, `--con-humanos`); docs (`docs/architecture/frontend.md`,
+   `docs/operations/local-development.md`).
+6. **PENDIENTE** — Prueba en vivo (spec §4.8): pasada corta con plazos acortados; la misma partida reunida de 3
+   saqueadores contra 2 guardias antes y después del cambio del servidor; la ejecución larga de 3 h sin sembrar con
+   4 bots nuevos (Q9), anotada aquí como medida; y, con el panel visible, una caravana entre bots y el tablón del
+   mercado con ofertas de bots.
