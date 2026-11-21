@@ -2847,7 +2847,40 @@ equilibrio (los hallazgos van a otra spec, Q10).
 4. **HECHO** — Bots: el mercado del constructor y la partida que se reúne (`RN-BOT-012`), con sus tests.
 5. **HECHO** — Registro, resumen y opciones (`--sin-comercio`, `--con-humanos`); docs (`docs/architecture/frontend.md`,
    `docs/operations/local-development.md`).
-6. **PENDIENTE** — Prueba en vivo (spec §4.8): pasada corta con plazos acortados; la misma partida reunida de 3
+6. **EN CURSO** — Prueba en vivo (spec §4.8): pasada corta con plazos acortados; la misma partida reunida de 3
    saqueadores contra 2 guardias antes y después del cambio del servidor; la ejecución larga de 3 h sin sembrar con
    4 bots nuevos (Q9), anotada aquí como medida; y, con el panel visible, una caravana entre bots y el tablón del
    mercado con ofertas de bots.
+
+### Prueba en vivo (2026-11-21)
+
+Servidor, web y bots en esta Mac, con las cuentas de desarrollo de siempre (`bot_constructor_1..4`,
+`bot_saqueador_1`): las tres primeras ciudades y el saqueador ya en Hierro o Castillos, con su bien elaborado y sin
+bienes ajenos; `bot_constructor_4`, nórdico, en Piedra. Registros en `bots/runs/` (sin versionar).
+
+- **Pasada corta** (20 min, `--semilla 21`, plazos reales y sin sembrar): todo lo que pide §4.8 en los primeros
+  cuatro minutos. TRADE entre todos y pacto entre los cuatro constructores (7 tratados aceptados por constructor),
+  entre 22 y 34 tratos cerrados por constructor, ninguna caravana perdida, tres mercados construidos, ofertas
+  publicadas y la primera compra entre bots (`bot_constructor_2` compra vino a `bot_constructor_1`). **Medida:**
+  `bot_constructor_1` pasó de Hierro a Castillos en **14 min** con 124 bienes ajenos por trato y 30 por mercado
+  (8 de comisión). El saqueador levantó su taller y elaboró vino (Q1); sus tratos fallaron al principio porque no
+  tenía vino por encima de su reserva.
+- **Encontrado y arreglado en la pasada** (con su test, visto caer sin el arreglo): la marcha daba la orden de un
+  tramo a un guerrero y esperaba a que se parara para dar la del siguiente (40 s entre órdenes); el registro
+  apuntaba como caducado el acuerdo comercial que sustituye el pacto (el servidor lo pasa a `EXPIRED`), ahora
+  «replaced»; el resumen contaba como llegada la era en que arrancaba cada bot.
+- **La partida reunida:** tres partidas contra `bot_constructor_4`, cada una reunida entera a 16 tiles en 40 s.
+- **Defensa antes y después** (15 min cada una, `--semilla 21`, la misma partida reunida de 4 contra el constructor
+  nórdico con sus guardias; el «antes», con el servidor de `main` compilado aparte): **antes**, el saqueador perdió 8
+  y mató 4 (605 de madera robada); **después**, perdió 8 y mató 15 (400 de madera). Con los mismos números, el
+  saqueador que devuelve los golpes cambia el balance de 1 a 2 en contra a casi 2 a 1 a favor, como predicen los
+  goldens de §4.6. El mundo de desarrollo es persistente, así que las dos pasadas no parten del mismo estado
+  (`bot_constructor_4` iba reponiendo guardias): es una medida, no una repetición exacta.
+- **En el navegador** (sesión de smoke_runner, panel oculto, una captura por fotograma): el tablón del mercado con
+  las ofertas de `bot_constructor_1` y `bot_constructor_2` («10 de seda por 10 de vino», con «Fuera de alcance» y
+  «Falta vino» donde tocaba), y, con la cámara entre `bot_constructor_2polis` y `bot_constructor_3polis`, las dos
+  ciudades con muralla y mercado y caravanas en camino (el carro de SPEC-CARAVANS).
+- **Pendiente:** la ejecución larga de 3 h sin sembrar con 4 bots nuevos (Q9). Las cuentas de desarrollo ya están
+  en Castillos y los bots reutilizan sus nombres (`bot_<perfil>_<n>`), así que hace falta decidir cómo dar cuentas
+  nuevas antes de lanzarla.
+
