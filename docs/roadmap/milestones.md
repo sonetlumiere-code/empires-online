@@ -2847,7 +2847,7 @@ equilibrio (los hallazgos van a otra spec, Q10).
 4. **HECHO** — Bots: el mercado del constructor y la partida que se reúne (`RN-BOT-012`), con sus tests.
 5. **HECHO** — Registro, resumen y opciones (`--sin-comercio`, `--con-humanos`); docs (`docs/architecture/frontend.md`,
    `docs/operations/local-development.md`).
-6. **EN CURSO** — Prueba en vivo (spec §4.8): pasada corta con plazos acortados; la misma partida reunida de 3
+6. **HECHO** — Prueba en vivo (spec §4.8): pasada corta con plazos acortados; la misma partida reunida de 3
    saqueadores contra 2 guardias antes y después del cambio del servidor; la ejecución larga de 3 h sin sembrar con
    4 bots nuevos (Q9), anotada aquí como medida; y, con el panel visible, una caravana entre bots y el tablón del
    mercado con ofertas de bots.
@@ -2880,7 +2880,21 @@ bienes ajenos; `bot_constructor_4`, nórdico, en Piedra. Registros en `bots/runs
   las ofertas de `bot_constructor_1` y `bot_constructor_2` («10 de seda por 10 de vino», con «Fuera de alcance» y
   «Falta vino» donde tocaba), y, con la cámara entre `bot_constructor_2polis` y `bot_constructor_3polis`, las dos
   ciudades con muralla y mercado y caravanas en camino (el carro de SPEC-CARAVANS).
-- **Pendiente:** la ejecución larga de 3 h sin sembrar con 4 bots nuevos (Q9). Las cuentas de desarrollo ya están
-  en Castillos y los bots reutilizan sus nombres (`bot_<perfil>_<n>`), así que hace falta decidir cómo dar cuentas
-  nuevas antes de lanzarla.
+- **Ejecución larga (Q9, 2026-11-22):** 3 h a velocidad real, sin sembrar, con 4 cuentas nuevas
+  (`--sufijo e29`, `--semilla 29`: `bot_constructor_1_e29` romano en 436,231, `_2_e29` bizantino en 221,496,
+  `_3_e29` persa en 213,427 y `bot_saqueador_1_e29` nórdico en 61,40). **Medida:** los tres constructores llegan a
+  Bronce (media 31 min, de 26 a 40); a Hierro llegan dos, `_3_e29` en **1 h 51 min** y `_2_e29` en **2 h 36 min**, con
+  250 bienes ajenos cada uno, todos por trato (25 tratos cada uno, ninguna caravana perdida); nadie llega a Castillos.
+  El saqueador llega a Bronce en 20 min y hace una sola partida (3 reunidos en 12 s, 1 baja, 2 muertos, 43 de madera).
+- **Hallazgos para otra spec (Q10):** `bot_constructor_1_e29` queda a más de 256 tiles de los otros dos (el alcance de
+  una caravana): sus tratos se rechazan con `PATH_TOO_LONG` (54 en 3 h, uno por pareja cada 10 min), construye el
+  mercado pero no compra nada y se queda en Bronce. Con el mapa de hoy, una ciudad aislada no puede pasar de Bronce.
+  Los constructores 2 y 3 no levantan mercado (piden 150 de madera y 100 de piedra por encima de la meta de Hierro)
+  y no lo necesitan: se cambian los bienes entre ellos.
+- **Encontrado y arreglado en la ejecución larga** (con su test, visto caer sin el arreglo): la partida del
+  saqueador, a 375 tiles de casa, pedía la vuelta en línea recta; el servidor la rechazaba (`PATH_TOO_LONG`) y la
+  partida no terminaba nunca (652 rechazos en dos horas, y por eso una sola partida). Ahora la vuelta de una partida
+  va, tras el primer rechazo, por tramos de 48 en espiral, como la de un guerrero varado. No se pudo comprobar en
+  vivo: la partida no sobrevive a un reinicio del proceso, y al arrancar los guerreros lejanos ya vuelven por la
+  regla de los varados.
 

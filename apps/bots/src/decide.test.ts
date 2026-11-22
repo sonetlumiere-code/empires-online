@@ -486,6 +486,23 @@ describe('el saqueo', () => {
     expect(memory.raidWaitUntilMs).toBe(NOW + 5_000 + saqueador.defeatWaitMs);
   });
 
+  it('la vuelta a casa de una partida lejana va por tramos si el servidor rechaza la recta', () => {
+    // Lo encontró la ejecución larga del 2026-11-22: una partida a 375 tiles de casa
+    // pedía la vuelta en línea recta, el servidor la rechazaba (PATH_TOO_LONG) y la
+    // partida no terminaba nunca (652 rechazos en dos horas).
+    const far = [unit({ id: 1, unitType: 'WARRIOR', x: 470, y: 100, carrying: 20 })];
+    const v = view({ ...base, units: far, terrainAt: terrain() });
+    const home = depositTile(base.city, terrain());
+    const mem = { ...EMPTY_MEMORY, raid: raid({ warriors: [1], ordered: [1], size: 1, target: { x: 472, y: 100 } }) };
+    const first = decide(v, saqueador, mem, NOW, rng(), solo);
+    const back = first.commands[0] as Command;
+    expect(back).toEqual({ key: 'raid:home:1', type: 'unit.move', unitId: 1, target: home });
+    const after = onRejected(first.memory, back, 'PATH_TOO_LONG', NOW, saqueador);
+    expect(after.cooldowns[back.key]).toBeUndefined();
+    const second = decide(v, saqueador, after, NOW + 2_000, rng(), solo);
+    expect(second.commands[0]).toEqual({ key: 'raid:home:1', type: 'unit.move', unitId: 1, target: marchStep({ x: 470, y: 100 }, home, 0) });
+  });
+
   it('un blanco protegido se enfría y la partida vuelve', () => {
     const pillage: Command = { key: 'raid:pillage:1', type: 'unit.pillage', unitId: 1, cityId: 20 };
     const mem = onRejected({ ...EMPTY_MEMORY, raid: raid() }, pillage, 'CITY_PROTECTED', NOW, saqueador);

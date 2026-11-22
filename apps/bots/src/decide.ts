@@ -766,7 +766,10 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
       }
     }
     if (nearTarget || full || timedOut || raid.phase === 'strike') {
-      plan.add({ key: `raid:home:${u.id}`, type: 'unit.move', unitId: u.id, target: home });
+      // Derecho a casa; si el servidor lo rechaza (una partida a cientos de tiles), por
+      // tramos desplazados en espiral, como la vuelta de un guerrero varado.
+      const t = memory.recallTries[u.id] ?? 0;
+      plan.add({ key: `raid:home:${u.id}`, type: 'unit.move', unitId: u.id, target: t === 0 ? home : marchStep(u, home, t - 1) });
     }
   }
 
@@ -931,7 +934,7 @@ export function onRejected(
     return { ...mem, cooldowns: { ...mem.cooldowns, [command.key]: nowMs + profile.targetCooldownMs } };
   }
 
-  if (command.type === 'unit.move' && command.key.startsWith('raid:recall:')) {
+  if (command.type === 'unit.move' && (command.key.startsWith('raid:recall:') || command.key.startsWith('raid:home:'))) {
     const { [command.key]: _drop, ...cooldowns } = mem.cooldowns;
     const n = mem.recallTries[command.unitId] ?? 0;
     return { ...mem, cooldowns, recallTries: { ...mem.recallTries, [command.unitId]: n + 1 } };

@@ -340,6 +340,8 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
   punto. Vencido el plazo sin `raidMinParty` reunidos, la partida vuelve. Mientras falte alguno por recibir la orden
   de saquear, la partida no da otras órdenes (tampoco la de volver: el espejo puede enseñar parado un despertar más a
   quien ya la tiene). Un `PATH_*` al ordenar el saqueo, ya desde 16 tiles, enfría el blanco en vez de pasar a marchar.
+- **La vuelta de una partida lejana.** Como la de un guerrero varado ([bots.md](bots.md) §4.8), va derecha a casa
+  y, si el servidor la rechaza, por tramos de 48 desplazados en espiral (lo encontró la ejecución larga).
 - **Tras responder.** El saqueador parado junto al blanco sin la carga llena vuelve a recibir `unit.pillage` si el
   almacén de la víctima, que ve la conexión de campaña, sigue por encima del suelo (50); si no, asedia una casa como
   en E28.
