@@ -343,6 +343,9 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
 - **Tras responder.** El saqueador parado junto al blanco sin la carga llena vuelve a recibir `unit.pillage` si el
   almacén de la víctima, que ve la conexión de campaña, sigue por encima del suelo (50); si no, asedia una casa como
   en E28.
+- **Cuentas nuevas.** Para la ejecución larga (Q9), `--sufijo <1 a 5 letras o cifras>` da cuentas
+  `bot_<perfil>_<n>_<sufijo>`, que siguen empezando por `bot_` (`RN-BOT-004`, `RN-BOT-008`) y caben en los 24
+  caracteres del nombre de usuario.
 - **La medida.** El resumen da el tiempo hasta cada era desde el arranque del bot: es «sin siembra» si la ejecución
   empezó con cuentas nuevas o sin `dev:seed`, cosa que sabe quien la lanza.
 

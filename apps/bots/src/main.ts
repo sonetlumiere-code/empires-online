@@ -3,7 +3,7 @@
  *
  *   pnpm run bots -- --web http://localhost:3001 --server ws://localhost:8080/ws \
  *     --constructores 3 --saqueadores 1 --duracion 2h --semilla 42 [--contra-humanos] \
- *     [--sin-comercio] [--con-humanos]
+ *     [--sin-comercio] [--con-humanos] [--sufijo a1]
  *
  * La contraseña de las cuentas es `EO_BOT_PASSWORD`, del entorno o del `.env` de la
  * raíz (de él sólo se leen las variables `EO_BOT_*`, y nunca se imprimen).
@@ -37,12 +37,21 @@ export function botEnvFromDotenv(text: string): Record<string, string> {
   return out;
 }
 
-/** Los bots de una ejecución: nombres numerados por perfil y una civilización por turno. */
-export function rosterFor(constructores: number, saqueadores: number): { name: string; profile: ProfileName; civilization: string }[] {
+/**
+ * Los bots de una ejecución: nombres numerados por perfil y una civilización por
+ * turno. Con `sufijo`, cuentas nuevas (`bot_constructor_1_<sufijo>`) para medir
+ * desde cero sin tocar las de siempre (SPEC-BOTS-TRADE §4.8, Q9).
+ */
+export function rosterFor(
+  constructores: number,
+  saqueadores: number,
+  sufijo: string | null = null,
+): { name: string; profile: ProfileName; civilization: string }[] {
   const civs = v1.CIVILIZATIONS.map((c) => c.code);
+  const tail = sufijo ? `_${sufijo}` : '';
   const out: { name: string; profile: ProfileName; civilization: string }[] = [];
-  for (let i = 1; i <= constructores; i++) out.push({ name: `bot_constructor_${i}`, profile: 'constructor', civilization: '' });
-  for (let i = 1; i <= saqueadores; i++) out.push({ name: `bot_saqueador_${i}`, profile: 'saqueador', civilization: '' });
+  for (let i = 1; i <= constructores; i++) out.push({ name: `bot_constructor_${i}${tail}`, profile: 'constructor', civilization: '' });
+  for (let i = 1; i <= saqueadores; i++) out.push({ name: `bot_saqueador_${i}${tail}`, profile: 'saqueador', civilization: '' });
   return out.map((b, i) => ({ ...b, civilization: civs[i % civs.length] as string }));
 }
 
@@ -103,7 +112,7 @@ async function main(): Promise<void> {
   if (opts.duracionMs) setTimeout(() => void stop('fin de la duración'), opts.duracionMs).unref();
 
   const throttle = new AuthThrottle();
-  for (const r of rosterFor(opts.constructores, opts.saqueadores)) {
+  for (const r of rosterFor(opts.constructores, opts.saqueadores, opts.sufijo)) {
     if (stopping) break;
     const wait = throttle.take();
     if (wait > 0) {

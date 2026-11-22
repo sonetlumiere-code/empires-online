@@ -19,6 +19,7 @@ describe('las opciones', () => {
       contraHumanos: false,
       comercio: true,
       conHumanos: false,
+      sufijo: null,
       thinkMs: DEFAULT_THINK_MS,
       runsDir: '/repo/bots/runs',
     });
@@ -91,6 +92,16 @@ describe('las opciones', () => {
       { name: 'bot_saqueador_1', profile: 'saqueador', civilization: 'NORSE' },
       { name: 'bot_saqueador_2', profile: 'saqueador', civilization: 'ROMAN' },
     ]);
+  });
+
+  it('--sufijo da cuentas nuevas, con nombres que la web admite', () => {
+    expect(parse(['--sufijo', 'a1']).sufijo).toBe('a1');
+    expect(() => parse(['--sufijo', 'A-1'])).toThrow(OptionsError);
+    expect(() => parse(['--sufijo', 'abcdef'])).toThrow(OptionsError);
+    const roster = rosterFor(20, 0, 'abcde');
+    expect(roster[0]?.name).toBe('bot_constructor_1_abcde');
+    expect(Math.max(...roster.map((r) => r.name.length))).toBeLessThanOrEqual(24);
+    expect(rosterFor(0, 1, 'a1')).toEqual([{ name: 'bot_saqueador_1_a1', profile: 'saqueador', civilization: 'ROMAN' }]);
   });
 });
 

@@ -530,6 +530,8 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   constructores), cierran tratos y el constructor usa el mercado. `--sin-comercio` lo apaga, para comparar con una
   ejecución de E28. Con `--con-humanos` aceptan también los tratados `TRADE` y los tratos de una cuenta propia: para
   probar el comercio con un bot desde el HUD (proponle un acuerdo comercial y luego un trato de bien por bien).
+- `--sufijo a1` da cuentas nuevas (`bot_constructor_1_a1`…) para medir una partida desde cero sin tocar las de
+  siempre; con otro sufijo, otras cuentas.
 - La partida del saqueador se reúne a 16 tiles del blanco antes de saquear; el resumen dice cuántos se reunieron y
   cuánto esperaron, y el balance de cada partida.
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
