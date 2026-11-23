@@ -98,6 +98,11 @@ una guerra entre clanes, a cada miembro de los dos clanes salvo a quien dio la o
 sigla del otro clan en `clanTag`, y el final, el resultado y el marcador de quien lo recibe. `EventLogNoticeKind` pasa de
 18 a 21 tipos.
 
+**Precisión (2026-11-23, [city-fall.md](city-fall.md) Q9).** Desde E31 se avisan el asalto de una ciudad a su dueño
+(`CITY_ASSAULTED`, con `fallsAtMs`, cuando vuelve la fila del asalto) y la caída a los dos (`CITY_LOST` al vencido, con
+el centro de su ciudad nueva en `x`/`y`; `CITY_TAKEN` al vencedor), como sus entradas del registro. El aviso del asalto
+es lo que da sentido a su plazo: el dueño se entera esté donde esté. `EventLogNoticeKind` pasa de 21 a 24 tipos.
+
 ### 4.2 Reglas
 
 Dominio: `RN-NOTICE`.

@@ -55,6 +55,7 @@ Dentro del scope de v1:
 - El árbol tecnológico ([technologies.md](technologies.md)): `city.research { cityId, technology }` (§7.23), el 48.º tipo; `research` (`{ technology, completesAtMs }` o `null`) y `technologies` (lista de códigos), opcionales y sólo en la vista y en el `city.update` del dueño (§8.8); el catálogo de presentación `technologies.json`. `technology` es un código validado por patrón, no un enum estricto: una tecnología nueva no rompe a un cliente viejo ([ADR-046](../decisions/ADR-046-technologies.md) §5). Todo aditivo (`R-VER-2`, `R-VER-3`).
 - Los mercados ([markets.md](markets.md)): `market.post { give, want, lots }`, `market.buy { offerId, lots }` y `market.cancel { offerId }`, que pasan por la simulación, y la consulta `market.list { receive?, pay? }`, que atiende la conexión (§7.24), del 49.º al 52.º tipo; `market.update` (§8.32) y `market.listing` (§8.33); `marketOffers[]`, opcional, en `world.snapshot` (§8.4); `MARKET` en `BuildingType` (también en `city.build`, §7.9); `MARKET_SOLD` y `MARKET_EXPIRED` en el registro, con `lots` (opcional), y `otherPlayerId` que pasa a admitir `null`, sólo en `MARKET_EXPIRED` (§8.19). `MARKET`, los dos tipos y el `null` son cambios en enums o campos estrictos: el cliente y el servidor los estrenan juntos ([ADR-047](../decisions/ADR-047-markets.md)).
 - Los arietes y las murallas ([siege-engines.md](siege-engines.md)): `WALL` en `BuildingType` (también en `city.build`, §7.9, que sólo la admite en el centro de la ciudad) y `RAM` en `UnitType` y en el `type` de `city.train` (§7.10); `buildingType` (opcional) en las entradas `HOUSE_LOST` y `HOUSE_DESTROYED` del registro (§8.19) y en el aviso `HOUSE_DESTROYED` (§8.23); sin mensajes nuevos, el catálogo se queda en 52 tipos. `WALL` y `RAM` son valores nuevos de enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md)). El catálogo de presentación `units.json` gana `siegeDamage` y `siegeIntervalMs`.
+- La caída de una ciudad ([city-fall.md](city-fall.md)): `unit.assault { unitId, cityId }` (§7.25), el 53.º tipo, hostil; `assault` (`{ playerId, unitId, startedAtMs, endsAtMs }`, opcional) y `fallImmuneUntilMs` (opcional) en `CityView`, y `assault` en `city.update` (la vista al confirmarse un asalto, `null` al romperse); `city.fallen { cityId, ownerPlayerId, byPlayerId, atMs }` (§8.34); `CITY_ASSAULTED`, `CITY_LOST` y `CITY_TAKEN` en `EventLogKind` y en `EventLogNoticeKind`, con `fallsAtMs` (opcional) en la entrada y el aviso. La unidad que asalta viaja con `status: CLAIMING`, sin valor nuevo. Los tres tipos del registro son valores nuevos de enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-050](../decisions/ADR-050-city-fall.md)).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -747,9 +748,25 @@ payload: z.object({ receive: ResourceType.optional(), pay: ResourceType.optional
 
 **Efectos.** `market.post` y `market.buy` van en dos fases ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)): con éxito, `city.update { stocks }` al chunk y `market.update` (§8.32) al vendedor y, con el `requestId`, a quien dio la orden; la compra pone en camino dos caravanas (`caravan.update`, `entity.spawn`). `market.cancel` y la caducidad son optimistas: la custodia vuelve al almacén en el tick y llega `market.update` con `WITHDRAWN` o `EXPIRED`. `market.list` no pasa por la simulación: la conexión lee la base y responde `market.listing` (§8.33) sólo a quien lo pidió; no reclama el `requestId`, porque leer no tiene efecto.
 
+### 7.25 `unit.assault`
+
+- **Dirección:** cliente → servidor. **Propósito:** una unidad que derriba (no el ariete) asalta una ciudad ajena en brecha: va al tile del anillo más cercano con ruta y planta el estandarte; si aguanta `EO_CITY_ASSAULT_SECONDS`, la ciudad cae. Hostil (ADR-016). Spec: [city-fall.md](city-fall.md); persistencia: [ADR-050](../decisions/ADR-050-city-fall.md).
+
+```ts
+payload: z.object({ unitId: EntityId, cityId: EntityId }).strict()
+```
+
+```json
+{ "v": 1, "type": "unit.assault", "requestId": "4d5e6f70-8192-4a3b-9c4d-5e6f708192a3", "payload": { "unitId": 4211, "cityId": 1204 } }
+```
+
+**Validaciones** (`RN-SIEGE-009`, `RN-SIEGE-010`, `RN-COMBAT-041`): los de cualquier orden a una unidad; un aldeano o un ariete, `UNIT_NOT_MOVABLE`; una ciudad que no existe o ya cayó, `CITY_NOT_FOUND`; la propia, amurallada, de la Edad de Piedra, inmune, con otro asalto o cayendo, la paz entre los dos o la unidad en una Safe Zone, `INVALID_TARGET` con su motivo; el asaltado o el asaltante protegidos, `CITY_PROTECTED`; sin ruta al anillo, `PATH_NOT_FOUND` o `PATH_TOO_LONG`. Rechazos como **`system.error`**.
+
+**Efectos.** Si la unidad no está en el anillo, se mueve como con `unit.move` y el asalto empieza al llegar. El asalto va en dos fases: con su fila escrita, `entity.update { status: CLAIMING }` y `city.update { assault }` al chunk, y el aviso `CITY_ASSAULTED` al asaltado. Lo rompen la muerte de la unidad, otra orden, la paz, el asaltante ausente o protegido y la muralla completa (`city.update { assault: null }`). Al vencer el plazo, la caída: `city.fallen` (§8.34), los avisos `CITY_LOST` y `CITY_TAKEN`, y la ciudad nueva del vencido por los caminos de un alta; las sesiones del vencido reciben un `world.snapshot` centrado en ella.
+
 ## 8. Mensajes servidor → cliente
 
-Los treinta y tres tipos de v1. Ninguno de estos payloads es estricto (S-7).
+Los treinta y cuatro tipos de v1. Ninguno de estos payloads es estricto (S-7).
 
 ### 8.1 `session.welcome`
 
@@ -999,6 +1016,7 @@ payload: z.object({
   clan: CityClanView.nullable().optional(),          // E18: { id, tag } al entrar en un clan; null al salir
   pillagedAtMs: EpochMs.optional(),                  // E5: último golpe de saqueo, sólo al dueño
   besiegedAtMs: EpochMs.optional(),                  // E8: último golpe de asedio, sólo al dueño
+  assault: CityAssaultView.nullable().optional(),    // E31: { playerId, unitId, startedAtMs, endsAtMs }; null al romperse
 })
 ```
 
@@ -1006,7 +1024,7 @@ payload: z.object({
 { "v": 1, "type": "city.update", "seq": 63, "ts": 1788955500000, "payload": { "id": 1204, "presenceState": "PROTECTED" } }
 ```
 
-Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`); desde E5, en cada golpe de saqueo, `stocks` al chunk y `pillagedAtMs` sólo al dueño de la ciudad, por `SendToPlayer` ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-028`); desde E8, en cada golpe de asedio, `besiegedAtMs` sólo al dueño, y al caer una casa completa, `populationLimit` al chunk ([combat-siege.md](combat-siege.md) `RN-COMBAT-033` y `RN-COMBAT-038`); desde E9, al confirmarse un avance de era, `stocks` y `advance`, y al terminar, `era`, `populationLimit` y `advance: null` ([economy-stone.md](economy-stone.md) `RN-ECON-025` y `RN-ECON-027`). `CityView` lleva también `advance`, o `null`, y desde E13 `civilization`, que no cambia y por eso nunca va en `city.update` ([civilizations.md](civilizations.md) §6). Desde E17, `CityView` lleva `faction` y `factionJoin`, y `city.update` lleva `factionJoin` al confirmarse una entrada en un bando y `faction` con `factionJoin: null` al contar, al chunk y por `SendToPlayer` al dueño ([factions.md](factions.md) §6). Desde E18, `CityView` lleva `clan` (`{ id, tag }` o `null`, siempre presente) y `city.update` lo lleva al entrar su dueño en un clan o al salir de él, al chunk y por `SendToPlayer` al dueño, sin `requestId` (la respuesta a la orden es `clan.update`) ([clans.md](clans.md) §6). Desde E25, `CityView` lleva `research` y `technologies` sólo en la ciudad de quien recibe el snapshot (en una ajena no viajan), y `city.update` los lleva sólo al dueño, por `SendToPlayer`: `research` al confirmarse una investigación y `research: null` con `technologies` al terminar ([technologies.md](technologies.md) §6, `RN-TECH-008`). Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
+Es un **delta**, no el estado completo de la ciudad: el estado completo sólo viaja en `world.snapshot.cities[]` como `CityView`, que además incluye `ownerPlayerId`, `centerX`, `centerY` y `era` —campos que `city.update` no puede modificar—. Hoy el servidor emite estas variantes: al incorporar un jugador (`id`, `name`, `population`, `populationLimit`); en cada transición de presencia (`id`, `presenceState`); y, desde E1, en cada depósito o resolución de un encargo (`stocks`, y `population` y `production` en un entrenamiento), al completarse una casa (`populationLimit`) y al nacer el aldeano (`production: null`); desde E5, en cada golpe de saqueo, `stocks` al chunk y `pillagedAtMs` sólo al dueño de la ciudad, por `SendToPlayer` ([combat-pillage.md](combat-pillage.md) `RN-COMBAT-028`); desde E8, en cada golpe de asedio, `besiegedAtMs` sólo al dueño, y al caer una casa completa, `populationLimit` al chunk ([combat-siege.md](combat-siege.md) `RN-COMBAT-033` y `RN-COMBAT-038`); desde E9, al confirmarse un avance de era, `stocks` y `advance`, y al terminar, `era`, `populationLimit` y `advance: null` ([economy-stone.md](economy-stone.md) `RN-ECON-025` y `RN-ECON-027`). `CityView` lleva también `advance`, o `null`, y desde E13 `civilization`, que no cambia y por eso nunca va en `city.update` ([civilizations.md](civilizations.md) §6). Desde E17, `CityView` lleva `faction` y `factionJoin`, y `city.update` lleva `factionJoin` al confirmarse una entrada en un bando y `faction` con `factionJoin: null` al contar, al chunk y por `SendToPlayer` al dueño ([factions.md](factions.md) §6). Desde E18, `CityView` lleva `clan` (`{ id, tag }` o `null`, siempre presente) y `city.update` lo lleva al entrar su dueño en un clan o al salir de él, al chunk y por `SendToPlayer` al dueño, sin `requestId` (la respuesta a la orden es `clan.update`) ([clans.md](clans.md) §6). Desde E25, `CityView` lleva `research` y `technologies` sólo en la ciudad de quien recibe el snapshot (en una ajena no viajan), y `city.update` los lleva sólo al dueño, por `SendToPlayer`: `research` al confirmarse una investigación y `research: null` con `technologies` al terminar ([technologies.md](technologies.md) §6, `RN-TECH-008`). Desde E31, `CityView` lleva `assault` mientras hay un asalto confirmado y `fallImmuneUntilMs` mientras dura la inmunidad de una ciudad recién fundada o refundada, los dos públicos; `city.update` lleva `assault` al chunk al confirmarse un asalto y `assault: null` al romperse ([city-fall.md](city-fall.md) §6). Un depósito es un `city.update` por viaje, unos tres por minuto y aldeano: no uno por tick.
 
 El estado de presencia lo decide **exclusivamente el servidor** (transición a `PROTECTED` tras `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS` = 300 s). El cliente lo observa; nunca lo propone.
 
@@ -1360,7 +1378,7 @@ payload: z.object({
 { "v": 1, "type": "event_log.notice", "seq": 520, "ts": 1788955600000, "payload": { "kind": "UNIT_LOST", "atMs": 1788955600000, "otherPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "otherCityId": 12, "otherCityName": "Vecinópolis", "unitType": "VILLAGER", "x": 312, "y": 140 } }
 ```
 
-Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6). Desde E15, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con `cargo` (lo que llevaba la caravana) y `x`/`y` ([caravans.md](caravans.md) §6); la llegada (`CARAVAN_ARRIVED`) va sólo al registro. Desde E19, los tres de la conquista llevan `clanTag` cuando hay un clan de por medio: el del clan dueño en `TERRITORY_CLAIMED` y `TERRITORY_LOST`, y el del clan para el que se ganó en `TERRITORY_TAKEN` ([clan-territories.md](clan-territories.md) §6). La entrada del registro (§8.19) lleva el mismo campo. Desde E24, los tres de la guerra entre clanes llevan `clanTag` (el otro clan) y `startsAtMs` o, en el final, `warResult`, `warReason`, `ourScore` y `theirScore`, como su entrada ([clan-wars.md](clan-wars.md) §6).
+Desde E12 (`R-VER-2`), `kind` admite también `TERRITORY_CLAIMED`, `TERRITORY_LOST` y `TERRITORY_TAKEN`, y el payload lleva `territoryId` y `territoryName` en ellos ([territory-conquest.md](territory-conquest.md) §6). Desde E15, `CARAVAN_CAPTURED`, `CARAVAN_INTERCEPTED` y `CARAVAN_LOST`, con `cargo` (lo que llevaba la caravana) y `x`/`y` ([caravans.md](caravans.md) §6); la llegada (`CARAVAN_ARRIVED`) va sólo al registro. Desde E19, los tres de la conquista llevan `clanTag` cuando hay un clan de por medio: el del clan dueño en `TERRITORY_CLAIMED` y `TERRITORY_LOST`, y el del clan para el que se ganó en `TERRITORY_TAKEN` ([clan-territories.md](clan-territories.md) §6). La entrada del registro (§8.19) lleva el mismo campo. Desde E24, los tres de la guerra entre clanes llevan `clanTag` (el otro clan) y `startsAtMs` o, en el final, `warResult`, `warReason`, `ourScore` y `theirScore`, como su entrada ([clan-wars.md](clan-wars.md) §6). Desde E31, `CITY_ASSAULTED` (al asaltado, con `fallsAtMs` y `x`/`y` del centro de su ciudad), `CITY_LOST` (al vencido, con `x`/`y` del centro de su ciudad nueva) y `CITY_TAKEN` (al vencedor, con `x`/`y` de la arrasada), como sus entradas ([city-fall.md](city-fall.md) §6).
 
 **No es una entrada del registro** (`RN-NOTICE-004`, [ADR-033](../decisions/ADR-033-live-notices-ephemeral.md)): no tiene `id` ni recuento, no mueve el cursor de lo visto y el cliente no lo mete en la lista, que sigue saliendo de `event_log.page` (§8.19). `kind` es un subconjunto de los tipos de entrada: lo que hoy no llega a quien mira otra parte del mapa. Lo que la víctima de un saqueo o de un asedio ya recibe (`pillagedAtMs`, `besiegedAtMs` en `city.update`) no se repite. Un golpe de saqueo es un aviso; el cliente los agrupa. El servidor lo manda en todos los tipos con `x`/`y`, también en `HOUSE_DESTROYED` (el tile de la casa). Efímero: no se guarda ni se reenvía al reconectar.
 
@@ -1514,6 +1532,20 @@ payload: z.object({ offers: z.array(MarketOfferView).max(100) })
 ```
 
 Lo lee la conexión de la base, sin pasar por la simulación: puede ir unos milisegundos por detrás, y una compra de una oferta que ya no admite esos lotes se rechaza en el tick con su motivo.
+
+### 8.34 `city.fallen`
+
+- **Propósito:** una ciudad cayó ([city-fall.md](city-fall.md) `RN-CITY-026`). El cliente la quita, con sus edificios, como `building.destroyed` quita un edificio. Al chunk de la ciudad y, por `SendToPlayer`, a su dueño, sin `requestId`. Aditivo en v1 (`R-VER-3`).
+
+```ts
+payload: z.object({ cityId: EntityId, ownerPlayerId: Uuid, byPlayerId: Uuid, atMs: EpochMs })
+```
+
+```json
+{ "v": 1, "type": "city.fallen", "seq": 812, "ts": 1788956400000, "payload": { "cityId": 1204, "ownerPlayerId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "byPlayerId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301", "atMs": 1788956400000 } }
+```
+
+La ciudad nueva de su dueño llega como cualquier ciudad que entra en la vista (`city.update` al incorporarse, como un alta, o el snapshot); al vencido, tras `city.fallen`, el servidor le manda un `world.snapshot` centrado en ella por el camino del handshake ([ADR-050](../decisions/ADR-050-city-fall.md) §5).
 
 ## 9. Códigos de error
 

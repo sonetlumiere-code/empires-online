@@ -343,6 +343,50 @@ no pisa ninguna en pie), [INV-CITY-019](../invariants/city.md#inv-city-019) (la 
 | cliente | «Asaltar» con sus motivos; la cuenta atrás; la ciudad que desaparece; el salto de la vista del vencido; los textos del registro y los avisos. `scripts/smoke.mjs --caida` con plazos cortos por entorno (`EO_CITY_ASSAULT_SECONDS`, `EO_CITY_FALL_IMMUNITY_HOURS=0`): `smoke_runner` asalta a `smoke_victim` sin muralla y se comprueba la ciudad nueva; va **la última** en una pasada, porque mueve la ciudad de la víctima |
 | mutación | Cada invariante nuevo con su mutación (el índice parcial quitado en la base de tests; la comprobación de brecha o de paz por tick quitada; el único de asaltos quitado) |
 
+### 9.1 Precisiones de la implementación (2026-11-23)
+
+- **`city_assaults` guarda los instantes en milisegundos** (`started_at_ms`, `ends_at_ms`, como `territory_claims`) y
+  lleva `from_city_id`, la ciudad del asaltante, que es la otra clave de la caída en la cola. Un trigger más,
+  `cities_fallen_is_final`, impide levantar una caída. `cities.created_at` sale desde E31 del reloj del juego al fundar:
+  de él se deriva la inmunidad, sin columna nueva (§7).
+- **La búsqueda del sitio** es `founding.FindRefoundSite`, que corre en el trabajo de la caída con la capa de madera
+  leída de la base, el alcance de E30 y la geometría de los territorios; si ningún sitio cumple la distancia, repite la
+  búsqueda del alta. La semilla de la espiral es la del nombre de la ciudad.
+- **Lo que resuelve la transacción y lo que resuelve la RAM.** La transacción arrasa (fallen_at, edificios, encargos
+  borrados, almacén a cero), libera la capital, funda la nueva con sus tres aldeanos, pasa las unidades vivas, caduca los
+  tratos pendientes (sin evento de caducidad: no entran en el registro), retira las ofertas del mercado y redirige las
+  caravanas. Dos cosas las aplica la RAM al volver, cada una con su escritura de siempre: la custodia de las ofertas
+  retiradas se acredita a la ciudad nueva como un depósito (volcado por dirty-flag) y las guarniciones salen por su
+  procedimiento normal (`garrison.leave`). Una caída del servidor justo después del `COMMIT` puede perder esa custodia,
+  como cualquier depósito sin volcar.
+- **La población de la ciudad nueva** se escribe como un recuento (`eo.population_recount`, ADR-029 §3): los tres
+  aldeanos nacen aunque los supervivientes la dejen por encima de su límite.
+- **El camino al anillo** elige el tile más cercano y, a igual distancia, el de menor `y` y después el de menor `x`, como
+  el saqueo: desde (30,40), la columna x = 22 empata a 8 y gana (22,38). Una orden nueva (cualquiera que pase por
+  `stopWorking`) aparta a la unidad del camino.
+- **Mientras la caída espera la base**, la ciudad rechaza construir, entrenar, avanzar de era, investigar y elaborar con
+  `INVALID_TARGET` («la ciudad está cayendo»). El mercado y la diplomacia no se bloquean: la transacción resuelve lo
+  suyo.
+- **La zona urbana de la caída** se desbloquea en el overlay; lo que en su día dejó de ser zona segura al fundarla no se
+  vuelve a incluir.
+- **El snapshot del vencido** lo manda `websocket.Server.Resnapshot`, que la simulación recibe con `SetResnapshot`: una
+  goroutine por sesión pide el snapshot por el canal de comandos, como el handshake. La cámara del cliente no se mueve
+  sola (el aviso `CITY_LOST` lleva el «Ir»).
+- **El cliente** no pinta el asalto en la escena: la cuenta atrás va en el HUD de quien tiene seleccionada una unidad
+  cerca de la ciudad y en la barra de la ciudad propia ([frontend.md](../architecture/frontend.md) §4.25).
+- **Tests.** Los de §9 son `TestQueCiudadSePuedeAsaltar` y `TestElPlazoDelAsaltoYLaDistanciaDeLaRefundacion`
+  (`internal/domain/cityfall`), `TestLaRefundacionNaceLejosDeLaCaidaYDelVencedor` y
+  `TestSinSitioLejosLaRefundacionNaceComoUnAlta` (`internal/game/founding`),
+  `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad`, `TestLosRechazosDelAsalto`, `TestLoQueRompeUnAsalto`,
+  `TestLaUnidadLejanaVaAlAnilloYAsaltaAlLlegar`, `TestUnAsaltoSobreviveAUnReinicio` y
+  `TestUnaCiudadCayendoNoAdmiteEncargos` (simulation), `TestElAsaltoSeEscribeUnaVezYUnoPorCiudad`,
+  `TestLaCaidaArrasaYRefundaEnUnaTransaccion`, `TestLaBaseNoDejaDosCiudadesEnPieNiLevantarUnaCaida` y
+  `TestUnaCaidaQueFallaNoDejaNadaAMedias` (integration), `TestElComandoDeAsaltoEsElDelEsquema`,
+  `TestLaCiudadCaidaEsLaDelEsquema` y `TestElAsaltoYLaInmunidadEstanEnElEsquema` (contract),
+  `TestUnaCiudadCaePorLaRed` (e2e), `TestLaCaidaDeUnaCiudadEnElRegistroYEnLosAvisos` (`internal/domain/eventlog`), los de
+  `src/state/cityFall.test.ts` (Vitest), los de la caída en `protocol.test.ts` (Zod) y los dos de `--caida` en
+  `scripts/smoke.test.mjs`. Las mutaciones están en las fichas de los tres invariantes.
+
 ## 10. Decisiones de producto (2026-11-23)
 
 Producto aceptó el 2026-11-23 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las

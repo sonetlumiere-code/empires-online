@@ -260,8 +260,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-017 | `population` es el recuento de unidades vivas más las producciones en curso | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaPoblacionCuentaLasProduccionesEnCurso`, `TestEntrenarReservaLaPlazaYEsIdempotente`, `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad`, `TestLaPoblacionNoCuentaLasCaravanas` |
 | INV-CITY-018 | La era de una ciudad nunca retrocede | ALTO | DB, DOMAIN, TEST | ✓ | `TestElFinDelAvanceSubeElLimiteUnaVez`, `TestUnAvanceDesdeOtraEraSeRechaza`, `TestLaEraNoRetrocede` |
 | INV-CITY-019 | Una ciudad nueva nace al alcance de una caravana de alguna vecina, si había vecinas y algún sitio lo permitía | ALTO | DOMAIN, TEST | ✓ | `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`, `TestElTopeDelPathfindingCortaElAlcance`, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes`, `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integration) |
-| INV-CITY-020 | Todo jugador tiene exactamente una ciudad en pie | CRITICO | DB, DOMAIN, TEST | ○ | Sin test todavía (E31) |
-| INV-CITY-021 | Una ciudad tiene como mucho un asalto activo | ALTO | DB, DOMAIN, TEST | ○ | Sin test todavía (E31) |
+| INV-CITY-020 | Todo jugador tiene exactamente una ciudad en pie | CRITICO | DB, DOMAIN, TEST | ✓ | `TestLaBaseNoDejaDosCiudadesEnPieNiLevantarUnaCaida`, `TestLaCaidaArrasaYRefundaEnUnaTransaccion`, `TestUnaCaidaQueFallaNoDejaNadaAMedias` (integration), `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad` |
+| INV-CITY-021 | Una ciudad tiene como mucho un asalto activo | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosRechazosDelAsalto`, `TestElAsaltoSeEscribeUnaVezYUnoPorCiudad` (integration) |
 
 ### UNIT — [units.md](units.md)
 
@@ -406,7 +406,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-COMBAT-007 | Un castillo sólo golpea a quien, a su alcance, ataca algo de su dueño, y nunca en paz | CRITICO | DOMAIN, TEST | ✓ | `TestElCastilloSoloGolpeaAQuienAtacaASuDueno`, `TestElCastilloGoldenMataAlGuerreroQueAsedia`, `TestElCastilloDisparaPorLaRed` |
 | INV-COMBAT-008 | Con la muralla en pie, sólo el ariete daña la ciudad, y sólo a la muralla | CRITICO | DOMAIN, TEST | ✓ | `TestQuienDanaQue`, `TestGoldenTresArietesAbrenLaMuralla`, `TestLaMurallaQueSeCompletaAMitadDetieneElDerribo`, `TestElArieteAbreLaMurallaPorLaRed` |
 | INV-COMBAT-009 | Un ariete nunca hiere a una unidad ni roba | ALTO | DOMAIN, TEST | ✓ | `TestElArieteSoloGolpeaEdificios`, `TestElArieteSoloDerriba`, `TestElCatalogoDeUnidadesEsElDePresentacion` |
-| INV-COMBAT-010 | Una ciudad sólo cae por un asalto válido hasta el final | CRITICO | DOMAIN, TEST | ○ | Sin test todavía (E31) |
+| INV-COMBAT-010 | Una ciudad sólo cae por un asalto válido hasta el final | CRITICO | DOMAIN, TEST | ✓ | `TestLoQueRompeUnAsalto`, `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad`, `TestUnAsaltoSobreviveAUnReinicio` |
 
 ### TRADE — [trade.md](trade.md)
 
@@ -484,9 +484,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 156 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 159 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 3 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **161** | |
 
@@ -494,7 +494,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-CITY-020`, `INV-CITY-021` e `INV-COMBAT-010` se registraron el 2026-11-23 con SPEC-CITY-FALL y [ADR-050](../decisions/ADR-050-city-fall.md), antes de escribir su código, como manda §8, y nacen sin cobertura; el mismo día se precisaron `INV-CITY-001` (una ciudad caída conserva su único dueño), `INV-PLAYER-003` (la refundación no es un alta) e `INV-TERR-011` (la capital es la de la ciudad en pie), que siguen en ✓.
+`INV-CITY-020`, `INV-CITY-021` e `INV-COMBAT-010` se registraron el 2026-11-23 con SPEC-CITY-FALL y [ADR-050](../decisions/ADR-050-city-fall.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (seis de código, los dos índices con `DROP INDEX` y el trigger con `DISABLE TRIGGER` en la base de tests); el mismo día se precisaron `INV-CITY-001` (una ciudad caída conserva su único dueño), `INV-PLAYER-003` (la refundación no es un alta) e `INV-TERR-011` (la capital es la de la ciudad en pie), que siguen en ✓. Ninguna fila queda sin cobertura ni parcial.
 
 `INV-CITY-019` se registró el 2026-11-22 con [SPEC-TRADE-REACH](../specs/trade-reach.md), sin ADR, antes de escribir su código, como manda §8, y pasó a ✓ con su implementación ese mismo día, verificado por mutación (cuatro mutaciones de código). Ninguna fila queda sin cobertura ni parcial.
 

@@ -334,7 +334,7 @@ guarnición tumba `TestElArieteSoloDerriba`.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E31 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** (E31): se registra en la aceptación de SPEC-CITY-FALL, antes de escribir su código |
+| Cobertura | **Cubierto** por `TestLoQueRompeUnAsalto`, `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad` y `TestUnAsaltoSobreviveAUnReinicio` (simulation) y `TestLaCaidaArrasaYRefundaEnUnaTransaccion` (integration) |
 
 **Enunciado.** Una ciudad sólo pasa a caída (`fallen_at`) por un asalto que venció su plazo
 (`EO_CITY_ASSAULT_SECONDS`) y que, en cada tick del plazo, sostuvo una unidad viva que derriba y no es un ariete, contra
@@ -350,9 +350,15 @@ prometen tiene que valer hasta el último tick.
 ciudad (`cityAttackBlocked`, `RN-COMBAT-041`) y la comprobación de brecha (`State.Walled`, `RN-SIEGE-011`); la
 transacción de la caída comprueba que el asalto sigue `ACTIVE` ([ADR-050](../decisions/ADR-050-city-fall.md) §3).
 
-**Cómo se verifica.** Previsto: el golden «caída» y cada causa de rotura (simulation), la protección del asaltado que no
-lo rompe y la del asaltante que sí, y la transacción que rechaza un asalto ya roto (integration); con mutación de la
-comprobación por tick del predicado y de la brecha por separado.
+**Cómo se verifica.** `TestLoQueRompeUnAsalto` (cada causa de rotura con su motivo —la unidad muere, otra orden, la paz
+de la Orden, la muralla que se completa, el asaltante protegido o ausente— y ninguna caída después; y la protección del
+asaltado, que no lo rompe), `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad` (el golden: cae en el tick exacto del plazo)
+y `TestUnAsaltoSobreviveAUnReinicio` (simulation), y `TestLaCaidaArrasaYRefundaEnUnaTransaccion` (integration: la caída de
+un asalto que ya no está activo es un conflicto) — **existen y pasan**. **Verificado por mutación** (2026-11-23,
+restaurado desde una copia y comprobado con `cmp`): sin la muralla por tick cae «la muralla se completa»; sin el
+predicado de agresión por tick, «la paz de la Orden» (el asaltante protegido lo sigue rompiendo por ausente); con la
+protección del asaltado contada en cada tick, «la protección del asaltado no lo rompe»; y sin la presencia del
+asaltante, «el asaltante se ausenta».
 
 **Violación en runtime.** Una caída que llegara a encolarse sin pasar la comprobación del tick se descarta y se
 registra `invariant_violation` con `inv_id=INV-COMBAT-010`.

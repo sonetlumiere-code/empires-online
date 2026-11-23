@@ -3002,13 +3002,13 @@ la caída, elegir dónde refundar y los bots que asaltan.
    «un jugador, una ciudad» ([city.md](../specs/city.md)), de `RN-CONQ-008` ([territory-conquest.md](../specs/territory-conquest.md)),
    del no-scope de [combat-siege.md](../specs/combat-siege.md) y [siege-engines.md](../specs/siege-engines.md) y de
    `RN-CLANWAR-007` ([clan-wars.md](../specs/clan-wars.md)).
-2. **PENDIENTE** — Protocolo: `unit.assault`, `city.fallen`, `CityView.assault` y `fallImmuneUntilMs`, los tres tipos
+2. **HECHO** — Protocolo: `unit.assault`, `city.fallen`, `CityView.assault` y `fallImmuneUntilMs`, los tres tipos
    del registro y de los avisos; contract tests (Go y Zod).
-3. **PENDIENTE** — Dominio, migración `000030` y persistencia: `fallen_at`, los índices parciales, `city_assaults`, la
+3. **HECHO** — Dominio, migración `000030` y persistencia: `fallen_at`, los índices parciales, `city_assaults`, la
    transacción de la caída y la refundación, y las consultas de «la ciudad del jugador» sin las caídas.
-4. **PENDIENTE** — Simulación: la orden, el plazo en la fase 5 con su predicado por tick, la caída en dos fases y su
+4. **HECHO** — Simulación: la orden, el plazo en la fase 5 con su predicado por tick, la caída en dos fases y su
    aplicación en la RAM, el snapshot nuevo del vencido y el marcador; el golden «caída».
-5. **PENDIENTE** — WebSocket: el e2e del asalto y la caída.
-6. **PENDIENTE** — Cliente: «Asaltar» con sus motivos, la cuenta atrás, la ciudad que desaparece, el salto del vencido y
+5. **HECHO** — WebSocket: el e2e del asalto y la caída.
+6. **HECHO** — Cliente: «Asaltar» con sus motivos, la cuenta atrás, la ciudad que desaparece, el salto del vencido y
    los textos del registro.
 7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --caida`.

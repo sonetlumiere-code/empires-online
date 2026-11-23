@@ -275,7 +275,7 @@ Distinción con diplomacia: el `garrison` de unidades ajenas requiere un `treati
 - `TestIsProtected` (unit, `internal/domain/city`) — **existe y pasa**: `IsProtected()` es verdadero exactamente en `PROTECTED`, y lo es con `ProtectionUntil == nil`, que es el caso del MVP.
 - `TestCatalogoDeErroresCoincideConElExportado` (contract, `internal/protocol`) — **existe y pasa**: `CITY_PROTECTED` está en el catálogo cerrado de 22 códigos y coincide con el exportado por `packages/protocol`.
 - `TestRechazosDelAtaque` (unit, `internal/game/simulation`), caso «dueño protegido» — **existe y pasa**: `unit.attack` contra una unidad de un jugador protegido devuelve `CITY_PROTECTED` sin enfrentamiento ni movimiento. `TestLaProteccionAMitadDePersecucionTerminaElEnfrentamiento` — **existe y pasa**: si la protección llega durante la persecución, no cae ningún golpe. `TestLaProteccionVencidaYElTratadoCaducadoNoFrenan` fija que una protección vencida ya no frena.
-- `TestTodaAccionDelCatalogoEstaClasificada` (unit, `internal/game/simulation`) — **existe y pasa**: todo mensaje del catálogo cerrado es de sesión o está clasificado, y no las dos cosas. `TestSoloAtaqueSaqueoAsedioYReclamarSonHostilesYNingunaSeRestringePorTerritorio` fija que las hostiles son `unit.attack`, `unit.pillage`, `unit.demolish` y `unit.claim`, y que ninguna se restringe por territorio. **Precisión (2026-11-23):** hasta E5 el test se llamaba `TestSoloElAtaqueEsHostilYNingunaSeRestringePorTerritorio` y la única hostil era `unit.attack`; el test cambió de nombre con el saqueo (E5) y el nombre creció con el asedio (E8) y la reclamación (E12).
+- `TestTodaAccionDelCatalogoEstaClasificada` (unit, `internal/game/simulation`) — **existe y pasa**: todo mensaje del catálogo cerrado es de sesión o está clasificado, y no las dos cosas. `TestSoloAtaqueSaqueoAsedioYReclamarSonHostilesYNingunaSeRestringePorTerritorio` fija que las hostiles son `unit.attack`, `unit.pillage`, `unit.demolish`, `unit.claim` y, desde E31, `unit.assault` ([city-fall.md](../specs/city-fall.md) §6), y que ninguna se restringe por territorio. **Precisión (2026-11-23):** hasta E5 el test se llamaba `TestSoloElAtaqueEsHostilYNingunaSeRestringePorTerritorio` y la única hostil era `unit.attack`; el test cambió de nombre con el saqueo (E5) y el nombre creció con el asedio (E8) y la reclamación (E12).
 
 **Violación en runtime.** No hay ruta conocida: el golpe sólo se calcula si `attackBlocked` no lo impide, en el mismo tick. Log `invariant_violation` con `inv_id=INV-CITY-006`, `city_id`, acción y `player_id` del actor. Política `REJECT` antes del efecto. Una violación consumada se trata como incidente: la protección es una garantía hacia el jugador, y su ruptura debe revisarse manualmente, no repararse en silencio.
 
@@ -736,7 +736,7 @@ invariante habla de las fundaciones posteriores.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E31 |
 | Política ante violación | FAIL_FAST (constraint) |
-| Cobertura | **Sin cobertura** (E31): se registra en la aceptación de SPEC-CITY-FALL, antes de escribir su código |
+| Cobertura | **Cubierto** por `TestLaBaseNoDejaDosCiudadesEnPieNiLevantarUnaCaida`, `TestLaCaidaArrasaYRefundaEnUnaTransaccion` y `TestUnaCaidaQueFallaNoDejaNadaAMedias` (integration) y `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad` (simulation) |
 
 **Enunciado.** Tras cada transacción confirmada, todo jugador tiene exactamente una fila de `cities` sin `fallen_at`, y
 la RAM de la simulación tiene esa misma ciudad como la suya (`State.CityOf`). Una ciudad caída nunca vuelve a estar en
@@ -755,10 +755,20 @@ una ciudad» deja de ser una nota del alcance del MVP y pasa a ser una propiedad
   ([ADR-050](../decisions/ADR-050-city-fall.md) §3): no hay instante con cero ciudades en pie. El alta sigue creando
   jugador y ciudad juntos ([INV-PLAYER-003](player.md#inv-player-003)).
 
-**Cómo se verifica.** Previsto: la integración de la transacción de la caída con fallo inyectado (ni ciudad arrasada sin
-refundación ni dos en pie) y el índice que rechaza una segunda ciudad en pie; la simulación de la caída, con `CityOf`
-devolviendo la ciudad nueva en el tick en que vuelve la transacción; con mutación del índice (`DROP INDEX` en la base
-de tests) y del orden de las escrituras de la caída.
+**Cómo se verifica.**
+
+- `TestLaBaseNoDejaDosCiudadesEnPieNiLevantarUnaCaida` (integration) — el índice rechaza una segunda ciudad en pie del
+  mismo dueño, y el trigger, levantar una caída.
+- `TestLaCaidaArrasaYRefundaEnUnaTransaccion` (integration) — tras la caída, `GetByOwner` devuelve la nueva y la caída
+  no vuelve a la RAM ni a los centros; repetirla es un conflicto que no escribe nada.
+- `TestUnaCaidaQueFallaNoDejaNadaAMedias` (integration) — sin sitio, o con el sitio pisado en cada intento, la ciudad
+  sigue en pie y su dueño con una sola.
+- `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad` (simulation) — en el tick en que vuelve la caída, `CityOf` es la
+  ciudad nueva y la caída ya no está en el mundo.
+- **Verificado por mutación** (2026-11-23): con `DROP INDEX cities_one_standing_per_owner` en la base de tests cae
+  `TestLaBaseNoDejaDosCiudadesEnPieNiLevantarUnaCaida`; con el trigger desactivado (`DISABLE TRIGGER`), el mismo; y sin
+  quitar la ciudad caída de la RAM (`RemoveCity` sobre otro id, restaurado desde una copia y comprobado con `cmp`), cae
+  `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad`. El índice se volvió a crear y el trigger volvió a `tgenabled = 'O'`.
 
 **Violación en runtime.** La validación de carga rechaza arrancar con un jugador sin ciudad en pie o con dos y registra
 `invariant_violation` con `inv_id=INV-CITY-020`.
@@ -774,7 +784,7 @@ de tests) y del orden de las escrituras de la caída.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E31 |
 | Política ante violación | REJECT |
-| Cobertura | **Sin cobertura** (E31): se registra en la aceptación de SPEC-CITY-FALL, antes de escribir su código |
+| Cobertura | **Cubierto** por `TestLosRechazosDelAsalto` (caso «con otro asalto», simulation) y `TestElAsaltoSeEscribeUnaVezYUnoPorCiudad` (integration) |
 
 **Enunciado.** En ningún instante hay dos filas `ACTIVE` de `city_assaults` sobre la misma ciudad, ni dos asaltos
 activos sobre ella en la RAM.
@@ -788,8 +798,12 @@ razón que [INV-TERR-010](territory.md#inv-terr-010) para las reclamaciones.
 - `DB` — el índice único parcial de un `ACTIVE` por ciudad en `city_assaults` (migración `000030`).
 - `DOMAIN` — `unit.assault` rechaza con `INVALID_TARGET` una ciudad con otro asalto activo o cayendo (`RN-SIEGE-010`).
 
-**Cómo se verifica.** Previsto: el rechazo del segundo asalto (simulation) y el índice que rechaza la segunda fila
-(integration), con mutación de la comprobación de la orden y del índice por separado.
+**Cómo se verifica.** `TestLosRechazosDelAsalto`, caso «con otro asalto» (simulation: el segundo asalto sobre la misma
+ciudad responde `INVALID_TARGET` y no escribe), y `TestElAsaltoSeEscribeUnaVezYUnoPorCiudad` (integration: el índice
+rechaza la segunda fila con `ErrConflict`, y un reintento de la misma petición devuelve la primera) — **existen y
+pasan**. **Verificado por mutación** (2026-11-23): sin la comprobación de la orden (restaurado desde una copia y
+comprobado con `cmp`) cae el caso de simulación; con `DROP INDEX city_assaults_one_active_per_city` en la base de tests,
+el de integración. El índice se volvió a crear.
 
 **Violación en runtime.** La validación de carga, ante dos asaltos activos sobre una ciudad, conserva el más antiguo,
 rompe el otro y registra `invariant_violation` con `inv_id=INV-CITY-021`.

@@ -997,6 +997,28 @@ y grueso, y una que carga madera, un tronco a la espalda.
   `@empires-online/protocol` exporta también la condición `default`, que Node 22 resuelve haciendo `require` del
   módulo ESM.
 
+### 4.25 La caída de una ciudad (SPEC-CITY-FALL)
+
+> **Estado (2026-11-23): implementado y con tests de lo puro** (`src/state/cityFall.ts`, `src/state/world.ts`,
+> `src/state/eventLog.ts`, `src/state/notices.ts`, `src/net/client.ts`, `app/page.tsx`; los tests en
+> `src/state/cityFall.test.ts`).
+
+- **«Asaltar»**: con una unidad propia seleccionada a 12 tiles o menos de una ciudad ajena (`assaultTargetNear`), el HUD
+  ofrece «Asaltar <ciudad>» (`GameClient.assaultCity`), deshabilitado con el motivo del servidor cuando lo sabe
+  (`assaultBlockReason`: sólo un guerrero o la unidad propia, la muralla en pie, la Edad de Piedra, «Ciudad recién
+  fundada: se podrá asaltar en 2 d 4 h», otro asalto, la protección, la paz de la Orden o un tratado). La paz del clan y
+  una zona segura las dice el servidor.
+- **La cuenta atrás** (`assaultLabel`): junto al botón, la del asalto sobre esa ciudad; en la barra de la ciudad propia,
+  «¡Están asaltando tu ciudad! Cae en 14:32», en rojo. `CityView.assault` llega en el snapshot y en `city.update`
+  (`null` lo cierra); `fallImmuneUntilMs`, sólo en el snapshot.
+- **La caída**: `city.fallen` quita la ciudad y sus edificios del store. Al vencido, el servidor le manda después un
+  `world.snapshot` con su ciudad nueva, que reemplaza el estado como cualquier snapshot; la cámara no se mueve sola: el
+  aviso `CITY_LOST` dice dónde refundó y su «Ir» lleva allí, como «H».
+- **El registro y los avisos**: `CITY_ASSAULTED` (con la hora a la que cae), `CITY_LOST` (dónde refundó) y `CITY_TAKEN`
+  (`entryText`); los dos primeros son pérdidas (`isLoss`).
+- **Sin pintar todavía**: el estandarte y la cuenta atrás sobre la ciudad en el mapa (la escena no dibuja el asalto; se ve
+  en el HUD de quien tiene seleccionada una unidad cerca, o en la barra de la ciudad propia).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).
