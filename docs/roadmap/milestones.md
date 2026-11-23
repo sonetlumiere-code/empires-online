@@ -2978,7 +2978,7 @@ el navegador.
 
 ## E31 — La caída de una ciudad
 
-**Estado: EN CURSO (2026-11-23)**, en la rama `claude/slice-caida-ciudad`. Contrato: [SPEC-CITY-FALL](../specs/city-fall.md),
+**Estado: HECHO (2026-11-23)**, en `main` desde la fusión `9b31ae2`, con la CI en verde. Contrato: [SPEC-CITY-FALL](../specs/city-fall.md),
 propuesta y aceptada el 2026-11-23 con sus diez decisiones de producto, y [ADR-050](../decisions/ADR-050-city-fall.md).
 
 **Objetivo.** Que la guerra tenga final: una ciudad en brecha puede caer. Es el último paso de la fase Sieges del

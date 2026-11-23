@@ -8,7 +8,7 @@ ciudad y nadie tiene dos.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CITY-FALL` |
-| Estado | Accepted (2026-11-23). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-23). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10; en `main` desde la fusión `9b31ae2`, con la CI en verde. |
 | Milestone | E31 La caída de una ciudad (trigésimo primer slice después de M7) |
 | Canon | §9 (protección), §10 (eras y población), §11 (tratados), §12 (persistencia), §13 (protocolo), §16 (errores), §21 (fuera de MVP: asedio y conquista de ciudades) |
 | Depende de | [combat-siege.md](combat-siege.md), [siege-engines.md](siege-engines.md), [territory-conquest.md](territory-conquest.md), [city.md](city.md), [player.md](player.md), [presence.md](presence.md), [diplomacy.md](diplomacy.md), [factions.md](factions.md), [clans.md](clans.md), [clan-wars.md](clan-wars.md), [garrison.md](garrison.md), [caravans.md](caravans.md), [trade.md](trade.md), [markets.md](markets.md), [technologies.md](technologies.md), [trade-reach.md](trade-reach.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [bots.md](bots.md) |
