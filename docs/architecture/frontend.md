@@ -991,6 +991,11 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Desde E30** ([SPEC-TRADE-REACH](../specs/trade-reach.md)) el decisor aparta para toda la ejecución la pareja y
   la oferta del mercado sin ruta de caravana (`RN-BOT-013`): es memoria del bot (`unreachablePlayers`,
   `unreachableOffers` en `apps/bots/src/decide.ts`), sin nada nuevo en `src/net` ni en `src/state`.
+- **Desde E32** ([SPEC-BOTS-ASSAULT](../specs/bots-assault.md)) el saqueador asalta: usa `ramBlockReason`
+  (`economy.ts`) para entrenar arietes y `assaultBlockReason` y `walled` (`cityFall.ts`) para elegir el blanco y
+  plantar el estandarte (`RN-BOT-014`), y envía `assaultCity` (`src/net/client.ts`). Lee `CityView.assault` y
+  `fallImmuneUntilMs`, y el `city.fallen` y el `world.snapshot` de la refundada que el store ya aplica: el bot vencido
+  cambia de ciudad sin reconectar (`RN-BOT-017`). Nada nuevo en `src/net` ni en `src/state`.
 - **Consecuencia:** `src/net` y `src/state` tienen que seguir sin DOM ni React en lo que el bot importa. Un cambio que
   lo rompa lo detectan el typecheck y los tests de `apps/bots`, que corren con los del workspace.
 - `tsx` carga los `.ts` de `apps/web` como CommonJS (el paquete no declara `"type": "module"`); por eso

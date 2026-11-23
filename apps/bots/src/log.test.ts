@@ -127,9 +127,11 @@ describe('el resumen del comercio y de las partidas (SPEC-BOTS-TRADE §4.7)', ()
       caravansLost: 1,
       eras: { BRONZE_AGE: 0, IRON_AGE: 90 * 60_000 },
     });
+    // Una partida de saqueo, sin lo del asalto (SPEC-BOTS-ASSAULT §4.7).
+    const PILLAGE = { kind: 'pillage', ramsLost: 0, outcome: null, msToFall: null };
     expect(s?.raidLog).toEqual([
-      { target: 'bot_constructor_1polis', gathered: 3, rallyWaitMs: 40_000, lost: 1, killed: 1, wood: 5 },
-      { target: 'bot_constructor_2polis', gathered: null, rallyWaitMs: null, lost: 1, killed: 0, wood: 0 },
+      { target: 'bot_constructor_1polis', gathered: 3, rallyWaitMs: 40_000, lost: 1, killed: 1, wood: 5, ...PILLAGE },
+      { target: 'bot_constructor_2polis', gathered: null, rallyWaitMs: null, lost: 1, killed: 0, wood: 0, ...PILLAGE },
     ]);
     const text = formatSummary([c, s].filter((r) => r !== undefined));
     expect(text).toContain('comercio: tratados 1 · tratos 2 · bienes ajenos por trato 10 y por mercado 20 · comisión 5 · caravanas perdidas 1');
@@ -138,5 +140,62 @@ describe('el resumen del comercio y de las partidas (SPEC-BOTS-TRADE §4.7)', ()
     expect(text).toContain('a Hierro 1/1 (media 1h30m)');
     // Arrancó en Bronce: eso no es llegar a Bronce (la prueba en vivo del 2026-11-21 lo contaba).
     expect(text).toContain('constructor: 1 bots · a Bronce 0/1 (media —)');
+  });
+});
+
+describe('el resumen del asalto (SPEC-BOTS-ASSAULT §4.7, Q9)', () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const S = 'bot_saqueador_1';
+  const C = 'bot_constructor_1';
+  const jsonl = [
+    { t: 0, event: 'start', bot: S, profile: 'saqueador', civilization: 'NORSE', era: 'IRON_AGE' },
+    { t: 10 * M, event: 'raid', bot: S, target: 'bot_constructor_1polis', size: 6, kind: 'assault', rams: 2 },
+    { t: 20 * M, event: 'assault', bot: S, status: 'rallied', target: 'bot_constructor_1polis', warriors: 6, rams: 2, waitMs: 60_000 },
+    { t: 22 * M, event: 'lost', bot: S, unitType: 'RAM' },
+    { t: 23 * M, event: 'assault', bot: S, status: 'breached', target: 'bot_constructor_1polis', rams: 1 },
+    { t: 24 * M, event: 'assault', bot: S, status: 'planted', target: 'bot_constructor_1polis', holder: 1 },
+    { t: 26 * M, event: 'lost', bot: S, unitType: 'WARRIOR' },
+    { t: 26 * M, event: 'assault', bot: S, status: 'broken', target: 'bot_constructor_1polis', cause: 'holder_died' },
+    { t: 27 * M, event: 'assault', bot: S, status: 'planted', target: 'bot_constructor_1polis', holder: 2 },
+    { t: 42 * M, event: 'assault', bot: S, status: 'fell', target: 'bot_constructor_1polis' },
+    { t: 50 * M, event: 'raid_end', bot: S, target: 'bot_constructor_1polis', lost: 2, size: 6 },
+    { t: 55 * M, event: 'raid', bot: S, target: 'bot_constructor_2polis', size: 6, kind: 'assault', rams: 2 },
+    { t: 70 * M, event: 'assault', bot: S, status: 'abandoned', target: 'bot_constructor_2polis', cause: 'no_rams' },
+    { t: 75 * M, event: 'raid_end', bot: S, target: 'bot_constructor_2polis', lost: 0, size: 6 },
+    { t: 2 * H, event: 'stop', bot: S, era: 'IRON_AGE', gathered: {} },
+    { t: 0, event: 'start', bot: C, profile: 'constructor', civilization: 'ROMAN', era: 'BRONZE_AGE' },
+    { t: 5 * M, event: 'stock', bot: C, era: 'BRONZE_AGE', population: 14, gathered: {} },
+    { t: 21 * M, event: 'wall', bot: C, status: 'breached' },
+    { t: 24 * M, event: 'assault', bot: C, status: 'suffered', by: 'bot_saqueador_1polis' },
+    { t: 42 * M, event: 'fell', bot: C, cityId: 10, newCityId: 11, by: 'bot_saqueador_1polis', era: 'BRONZE_AGE', population: 14 },
+    { t: 50 * M, event: 'stock', bot: C, era: 'BRONZE_AGE', population: 9, gathered: {} },
+    { t: 62 * M, event: 'built', bot: C, building: 'WALL' },
+    { t: 72 * M, event: 'stock', bot: C, era: 'BRONZE_AGE', population: 14, gathered: {} },
+    { t: 2 * H, event: 'stop', bot: C, era: 'BRONZE_AGE', gathered: {} },
+  ]
+    .map((l) => JSON.stringify(l))
+    .join('\n');
+
+  it('suma estandartes, ciudades tumbadas, causas y la recuperación del vencido', () => {
+    const [c, s] = summarize(parseLog(jsonl));
+    expect(s).toMatchObject({
+      assaultsPlanted: 2,
+      citiesTaken: 1,
+      assaultBreaks: { holder_died: 1 },
+      assaultAbandons: { no_rams: 1 },
+    });
+    expect(s?.raidLog).toEqual([
+      { target: 'bot_constructor_1polis', gathered: null, rallyWaitMs: null, lost: 2, killed: 0, wood: 0, kind: 'assault', ramsLost: 1, outcome: 'fell', msToFall: 32 * M },
+      { target: 'bot_constructor_2polis', gathered: null, rallyWaitMs: null, lost: 0, killed: 0, wood: 0, kind: 'assault', ramsLost: 0, outcome: 'no_rams', msToFall: null },
+    ]);
+    expect(c).toMatchObject({ assaultsSuffered: 1, wallsBreached: 1 });
+    expect(c?.falls).toEqual([{ by: 'bot_saqueador_1polis', era: 'BRONZE_AGE', wallMs: 20 * M, populationMs: 30 * M, nextEraMs: null }]);
+
+    const text = formatSummary([c, s].filter((r) => r !== undefined));
+    expect(text).toContain('asalto contra bot_constructor_1polis: sin reunirse · perdidos 2 (arietes 1) · muertos 0 · cae en 32m00s');
+    expect(text).toContain('asalto contra bot_constructor_2polis: sin reunirse · perdidos 0 (arietes 0) · muertos 0 · vuelve (no_rams)');
+    expect(text).toContain('cayó ante bot_saqueador_1polis en BRONZE_AGE: muralla 20m00s · población de antes 30m00s · era siguiente no');
+    expect(text).toContain('Caídas: 1 en 2h00m (0.50 por hora)');
   });
 });

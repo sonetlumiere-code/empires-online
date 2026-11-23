@@ -39,6 +39,28 @@ export interface BotSummary {
   readonly caravansLost: number;
   /** El balance de cada partida, en orden. */
   readonly raidLog: readonly RaidBalance[];
+  // ── El asalto (SPEC-BOTS-ASSAULT §4.7) ──
+  /** Estandartes plantados y ciudades tumbadas por este bot. */
+  readonly assaultsPlanted: number;
+  readonly citiesTaken: number;
+  /** Asaltos propios rotos, por causa, y partidas de asalto que volvieron sin la caída, por causa. */
+  readonly assaultBreaks: Readonly<Record<string, number>>;
+  readonly assaultAbandons: Readonly<Record<string, number>>;
+  /** Como defensor: asaltos sufridos y rechazados (terminaron sin caer). */
+  readonly assaultsSuffered: number;
+  readonly assaultsRepelled: number;
+  readonly wallsBreached: number;
+  /** Cada caída de su ciudad, con lo que tardó en recuperarse. */
+  readonly falls: readonly FallRecovery[];
+}
+
+export interface FallRecovery {
+  readonly by: string | null;
+  readonly era: string;
+  /** Ms desde la caída hasta volver a tener muralla, la población de antes y la era siguiente (`null`: no llegó). */
+  readonly wallMs: number | null;
+  readonly populationMs: number | null;
+  readonly nextEraMs: number | null;
 }
 
 export interface RaidBalance {
@@ -49,6 +71,13 @@ export interface RaidBalance {
   readonly lost: number;
   readonly killed: number;
   readonly wood: number;
+  /** De asalto o de saqueo; en la de asalto, los arietes perdidos y cómo acabó. */
+  readonly kind: string;
+  readonly ramsLost: number;
+  /** `fell` o la causa de la vuelta; `null` si no se supo. */
+  readonly outcome: string | null;
+  /** Ms desde la salida hasta la caída. */
+  readonly msToFall: number | null;
 }
 
 type Line = { resource?: unknown; amount?: unknown };
@@ -106,17 +135,46 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
     let commission = 0;
     let caravansLost = 0;
     const raidLog: RaidBalance[] = [];
-    let current: { target: string; gathered: number | null; rallyWaitMs: number | null; lost: number; killed: number; wood: number } | null =
-      null;
+    let current: {
+      target: string;
+      gathered: number | null;
+      rallyWaitMs: number | null;
+      lost: number;
+      killed: number;
+      wood: number;
+      kind: string;
+      ramsLost: number;
+      outcome: string | null;
+      msToFall: number | null;
+      startT: number;
+    } | null = null;
+    let assaultsPlanted = 0;
+    let citiesTaken = 0;
+    const assaultBreaks: Record<string, number> = {};
+    const assaultAbandons: Record<string, number> = {};
+    let assaultsSuffered = 0;
+    let assaultsRepelled = 0;
+    let wallsBreached = 0;
+    const falls: ({ -readonly [K in keyof FallRecovery]: FallRecovery[K] } & { t: number; population: number })[] = [];
+    const close = (c: NonNullable<typeof current>): RaidBalance => {
+      const { startT: _t, ...rest } = c;
+      return rest;
+    };
     for (const l of ls) {
       switch (l.event) {
         case 'era':
           eras[String(l.era)] = l.t - start.t;
           finalEra = String(l.era);
+          for (const f of falls) if (f.nextEraMs === null) f.nextEraMs = l.t - f.t;
           break;
         case 'stock':
         case 'stop':
           if (l.gathered && typeof l.gathered === 'object') gathered = { ...(l.gathered as Record<string, number>) };
+          for (const f of falls) {
+            if (f.populationMs === null && typeof l.population === 'number' && l.population >= f.population) {
+              f.populationMs = l.t - f.t;
+            }
+          }
           if (l.event === 'stop' && typeof l.era === 'string') finalEra = l.era;
           break;
         case 'trained':
@@ -124,6 +182,7 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
         case 'built':
           inc(built, String(l.building));
+          if (l.building === 'WALL') for (const f of falls) if (f.wallMs === null) f.wallMs = l.t - f.t;
           break;
         case 'researched':
           researched++;
@@ -133,7 +192,10 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
         case 'lost':
           lost++;
-          if (current) current.lost++;
+          if (current) {
+            current.lost++;
+            if (l.unitType === 'RAM') current.ramsLost++;
+          }
           break;
         case 'killed':
           killed++;
@@ -157,8 +219,20 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
         case 'raid':
           raids++;
-          if (current) raidLog.push(current);
-          current = { target: String(l.target), gathered: null, rallyWaitMs: null, lost: 0, killed: 0, wood: 0 };
+          if (current) raidLog.push(close(current));
+          current = {
+            target: String(l.target),
+            gathered: null,
+            rallyWaitMs: null,
+            lost: 0,
+            killed: 0,
+            wood: 0,
+            kind: typeof l.kind === 'string' ? l.kind : 'pillage',
+            ramsLost: 0,
+            outcome: null,
+            msToFall: null,
+            startT: l.t,
+          };
           break;
         case 'rally':
           if (current) {
@@ -167,8 +241,51 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           }
           break;
         case 'raid_end':
-          if (current) raidLog.push(current);
+          if (current) raidLog.push(close(current));
           current = null;
+          break;
+        case 'assault':
+          switch (l.status) {
+            case 'planted':
+              assaultsPlanted++;
+              break;
+            case 'broken':
+              inc(assaultBreaks, String(l.cause));
+              break;
+            case 'fell':
+              citiesTaken++;
+              if (current) {
+                current.outcome = 'fell';
+                current.msToFall = l.t - current.startT;
+              }
+              break;
+            case 'abandoned':
+              inc(assaultAbandons, String(l.cause));
+              if (current) current.outcome = String(l.cause);
+              break;
+            case 'suffered':
+              assaultsSuffered++;
+              break;
+            case 'repelled':
+              assaultsRepelled++;
+              break;
+            default:
+              break;
+          }
+          break;
+        case 'wall':
+          if (l.status === 'breached') wallsBreached++;
+          break;
+        case 'fell':
+          falls.push({
+            t: l.t,
+            by: typeof l.by === 'string' ? l.by : null,
+            era: String(l.era),
+            population: typeof l.population === 'number' ? l.population : 0,
+            wallMs: null,
+            populationMs: null,
+            nextEraMs: null,
+          });
           break;
         case 'treaty':
           if (l.status === 'accepted') treaties++;
@@ -196,7 +313,7 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
       }
     }
-    if (current) raidLog.push(current);
+    if (current) raidLog.push(close(current));
     const hours = playedMs / 3_600_000;
     const gatheredPerHour: Record<string, number> = {};
     for (const [r, n] of Object.entries(gathered)) gatheredPerHour[r] = hours > 0 ? Math.round(n / hours) : 0;
@@ -229,6 +346,14 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
       commission,
       caravansLost,
       raidLog,
+      assaultsPlanted,
+      citiesTaken,
+      assaultBreaks,
+      assaultAbandons,
+      assaultsSuffered,
+      assaultsRepelled,
+      wallsBreached,
+      falls: falls.map(({ t: _t, population: _p, ...f }) => f),
     });
   }
   return out;
@@ -272,7 +397,24 @@ export function formatSummary(rows: readonly BotSummary[]): string {
     );
     for (const p of r.raidLog) {
       const rally = p.gathered === null ? 'sin reunirse' : `reunidos ${p.gathered} en ${formatDuration(p.rallyWaitMs ?? 0)}`;
-      out.push(`  partida contra ${p.target}: ${rally} · perdidos ${p.lost} · muertos ${p.killed} · madera ${p.wood}`);
+      if (p.kind === 'assault') {
+        const end = p.outcome === 'fell' ? `cae en ${formatDuration(p.msToFall ?? 0)}` : `vuelve (${p.outcome ?? '—'})`;
+        out.push(`  asalto contra ${p.target}: ${rally} · perdidos ${p.lost} (arietes ${p.ramsLost}) · muertos ${p.killed} · ${end}`);
+      } else {
+        out.push(`  partida contra ${p.target}: ${rally} · perdidos ${p.lost} · muertos ${p.killed} · madera ${p.wood}`);
+      }
+    }
+    if (r.assaultsPlanted + r.citiesTaken + r.assaultsSuffered + r.wallsBreached + r.falls.length > 0) {
+      out.push(
+        `  asalto: estandartes ${r.assaultsPlanted} · ciudades tumbadas ${r.citiesTaken} · rotos: ${list(r.assaultBreaks)} · ` +
+          `vueltas: ${list(r.assaultAbandons)} · sufridos ${r.assaultsSuffered} (rechazados ${r.assaultsRepelled}) · murallas perdidas ${r.wallsBreached}`,
+      );
+    }
+    const ms = (v: number | null) => (v === null ? 'no' : formatDuration(v));
+    for (const f of r.falls) {
+      out.push(
+        `  cayó ante ${f.by ?? '—'} en ${f.era}: muralla ${ms(f.wallMs)} · población de antes ${ms(f.populationMs)} · era siguiente ${ms(f.nextEraMs)}`,
+      );
     }
     out.push(`  comandos ${r.commands} · rechazados: ${list(r.rejected)}`);
   }
@@ -297,6 +439,14 @@ export function formatSummary(rows: readonly BotSummary[]): string {
         `bienes ajenos ${sum((r) => r.goodsByTrade + r.goodsByMarket)} · comisión ${sum((r) => r.commission)} · ` +
         `rechazos ${sum((r) => Object.values(r.rejected).reduce((a, b) => a + b, 0))}`,
     );
+  }
+  // Las caídas por hora de ejecución, la medida de SPEC-BOTS-ASSAULT Q9.
+  const falls = rows.reduce((a, r) => a + r.falls.length, 0);
+  const taken = rows.reduce((a, r) => a + r.citiesTaken, 0);
+  if (falls + taken > 0) {
+    const hours = Math.max(...rows.map((r) => r.playedMs)) / 3_600_000;
+    const perHour = hours > 0 ? (Math.max(falls, taken) / hours).toFixed(2) : '—';
+    out.push('', `Caídas: ${Math.max(falls, taken)} en ${formatDuration(hours * 3_600_000)} (${perHour} por hora)`);
   }
   return out.join('\n');
 }

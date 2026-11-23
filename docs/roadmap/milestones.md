@@ -3085,10 +3085,11 @@ asalto, la inmunidad, el ariete o la muralla (los hallazgos van a otra spec, Q10
 1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-BOT-014` a `RN-BOT-017`, con precisiones de
    §2, `RN-BOT-002` y `RN-BOT-004` en [bots.md](../specs/bots.md) y de §2 y Q10 en
    [city-fall.md](../specs/city-fall.md). Sin invariantes de dominio nuevos.
-2. **PENDIENTE** — Bots: los arietes en `militaryRule`, el blanco asaltable y la partida de asalto con su reunión, la
-   brecha, el estandarte y lo de spec §4.4 (`RN-BOT-014` a `RN-BOT-016`), con sus tests.
-3. **PENDIENTE** — Bots: el vencido que sigue jugando y actualiza el directorio (`RN-BOT-017`), con sus tests.
-4. **PENDIENTE** — Registro y resumen con los sucesos nuevos; el perfil con sus campos nuevos; docs
+2. **HECHO** — Bots: los arietes en `militaryRule`, el blanco asaltable y la partida de asalto con su reunión, la
+   brecha, el estandarte y lo de spec §4.4 (`RN-BOT-014` a `RN-BOT-016`), con sus tests (`apps/bots/src/assault.test.ts`).
+3. **HECHO** — Bots: el vencido que sigue jugando y actualiza el directorio (`RN-BOT-017`), con sus tests
+   (`bot.test.ts`), y el fallo de la búsqueda de colinas tras la caída (spec §9.1).
+4. **HECHO** — Registro y resumen con los sucesos nuevos; el perfil con sus campos nuevos; docs
    (`docs/architecture/frontend.md`, `docs/operations/local-development.md`).
 5. **PENDIENTE** — Prueba en vivo (spec §4.7, Q5): pasada corta con `EO_CITY_ASSAULT_SECONDS=120`,
    `EO_CITY_FALL_IMMUNITY_HOURS=0` y cuentas sembradas a Hierro; la ejecución larga de 3 h a velocidad real con las

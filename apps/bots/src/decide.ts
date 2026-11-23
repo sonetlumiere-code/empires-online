@@ -17,6 +17,7 @@ import {
   TERRAIN_FOREST,
   advanceBlockReason,
   civilizationUnitBlockReason,
+  ramBlockReason,
   craftBlockReason,
   firstFreeHouseTile,
   trainBlockReason,
@@ -33,6 +34,7 @@ import {
 import { foreignGoods, goodOf } from '../../web/src/state/civilizations';
 import { technologiesFor, researchBlockReason } from '../../web/src/state/technologies';
 import { civilizationUnit, unitAttacks, unitInfoOf } from '../../web/src/state/units';
+import { assaultBlockReason, walled } from '../../web/src/state/cityFall';
 import {
   HOME_RADIUS,
   HOUSE_WOOD,
@@ -64,6 +66,14 @@ export interface BotCity {
   /** Su civilización: qué bien elabora (SPEC-BOTS-TRADE §4.2). */
   readonly civilization?: string;
   readonly profile?: ProfileName;
+  /**
+   * Lo que el bot dueño sabe de su ciudad al día, para elegir un blanco de asalto
+   * aunque no esté a la vista (SPEC-BOTS-ASSAULT §4.2): su era, el fin de su
+   * inmunidad y si tiene la muralla completa en pie.
+   */
+  readonly era?: string;
+  readonly fallImmuneUntilMs?: number;
+  readonly walled?: boolean;
 }
 
 /** Lo que el bot ve, ya filtrado y en orden estable (RN-BOT-005). */
@@ -109,6 +119,7 @@ export type Command =
   | { readonly key: string; readonly type: 'unit.move'; readonly unitId: number; readonly target: Tile }
   | { readonly key: string; readonly type: 'unit.pillage'; readonly unitId: number; readonly cityId: number }
   | { readonly key: string; readonly type: 'unit.demolish'; readonly unitId: number; readonly buildingId: number }
+  | { readonly key: string; readonly type: 'unit.assault'; readonly unitId: number; readonly cityId: number }
   | {
       readonly key: string;
       readonly type: 'city.build';
@@ -171,9 +182,26 @@ export type Command =
 
 /**
  * `march`: camino del punto de reunión, por tramos; `strike`: reunida, con la
- * orden de saquear (SPEC-BOTS-TRADE §4.5, RN-BOT-012).
+ * orden de saquear (SPEC-BOTS-TRADE §4.5, RN-BOT-012) o de asaltar
+ * (SPEC-BOTS-ASSAULT §4.3).
  */
 export type RaidPhase = 'strike' | 'march';
+
+/** Una partida saquea (E28) o asalta (SPEC-BOTS-ASSAULT, RN-BOT-015). */
+export type RaidKind = 'pillage' | 'assault';
+
+/**
+ * Dónde va un asalto ya reunido: `breach`, los arietes contra la muralla;
+ * `plant`, un guerrero va a plantar el estandarte; `hold`, el estandarte está
+ * plantado y la ciudad lleva el asalto (SPEC-BOTS-ASSAULT §4.3).
+ */
+export type AssaultStage = 'breach' | 'plant' | 'hold';
+
+/** Por qué se rompió un asalto plantado (SPEC-BOTS-ASSAULT §4.7). */
+export type AssaultBreak = 'holder_died' | 'wall_completed' | 'peace' | 'protected';
+
+/** Por qué vuelve una partida de asalto sin la caída (§4.4). */
+export type AssaultAbandon = 'timeout' | 'no_rams' | 'too_few' | 'blocked' | 'fell';
 
 /** Una partida de saqueo en curso. */
 export interface Raid {
@@ -200,7 +228,34 @@ export interface Raid {
   /** Guerreros reunidos al dar la orden de saquear, y lo que se esperó (para el registro). */
   readonly gathered: number;
   readonly rallyWaitMs: number;
+
+  // ── El asalto (SPEC-BOTS-ASSAULT §4.3, §4.4) ──
+  readonly kind: RaidKind;
+  /** Los arietes de la partida (también en `warriors`, que lleva a todos). */
+  readonly rams: readonly number[];
+  readonly stage: AssaultStage | null;
+  /** El que lleva o va a llevar el estandarte. */
+  readonly holder: number | null;
+  /** Estandartes plantados (cada `unit.assault` que llegó a dar asalto). */
+  readonly planted: number;
+  /** Asaltos rotos y la causa del último. */
+  readonly breaks: number;
+  readonly lastBreak: AssaultBreak | null;
+  /** La partida vuelve sin seguir: el motivo (o la caída). */
+  readonly abandon: AssaultAbandon | null;
 }
+
+/** Lo de una partida que sólo usa el asalto, a su valor de partida (también la de saqueo lo lleva). */
+export const RAID_ASSAULT_FIELDS = {
+  kind: 'pillage',
+  rams: [],
+  stage: null,
+  holder: null,
+  planted: 0,
+  breaks: 0,
+  lastBreak: null,
+  abandon: null,
+} as const satisfies Pick<Raid, 'kind' | 'rams' | 'stage' | 'holder' | 'planted' | 'breaks' | 'lastBreak' | 'abandon'>;
 
 export interface Memory {
   /** Clave de orden → hasta cuándo no se repite (RN-BOT-002). */
@@ -420,8 +475,30 @@ function atHome(view: View, u: Tile): boolean {
  * ve. Los que recogen piedra lejos no se ven, pero siguen contando.
  */
 export function villagerCount(view: View): number {
-  const military = ownUnits(view).filter(isMilitary).length;
-  return Math.max(0, view.city.population - military);
+  const own = ownUnits(view);
+  const military = own.filter(isMilitary).length;
+  // El ariete no es militar (no ataca) pero ocupa dos plazas (SPEC-BOTS-ASSAULT §4.1).
+  const rams = own.filter(isRam).length * RAM_POPULATION;
+  return Math.max(0, view.city.population - military - rams);
+}
+
+/** Si la unidad es un ariete. */
+export function isRam(u: Pick<UnitView, 'unitType'>): boolean {
+  return u.unitType === 'RAM';
+}
+
+/** Lo que va de campaña y vuelve a casa: militares y arietes. */
+function isFieldUnit(u: Pick<UnitView, 'unitType'>): boolean {
+  return isMilitary(u) || isRam(u);
+}
+
+const RAM_POPULATION = unitInfoOf('RAM')?.populationCost ?? 2;
+
+const ERA_ORDER = ['STONE_AGE', 'BRONZE_AGE', 'IRON_AGE', 'CASTLE_AGE'];
+
+/** Si la era es `era` o una posterior. */
+export function eraAtLeast(current: string, era: string): boolean {
+  return ERA_ORDER.indexOf(current) >= ERA_ORDER.indexOf(era);
 }
 
 function militaryCount(view: View): number {
@@ -562,7 +639,15 @@ function researchRule(profile: Profile, plan: Plan): void {
 function militaryRule(view: View, profile: Profile, plan: Plan): void {
   if (plan.full) return;
   const want = profile.raids ? profile.warriorsMax : profile.guards;
-  if (militaryCount(view) >= want) return;
+  if (militaryCount(view) >= want) {
+    // Con los militares completos, los arietes de la partida de asalto, desde Hierro
+    // (SPEC-BOTS-ASSAULT §4.1). Lo que el HUD deshabilitaría no se pide (RN-BOT-014).
+    const rams = ownUnits(view).filter(isRam).length;
+    if (profile.assaults && rams < profile.assaultRams && ramBlockReason(plan.city) === null) {
+      train(plan, 'RAM');
+    }
+    return;
+  }
   const own = civilizationUnit(plan.city.civilization);
   if (profile.raids && own && civilizationUnitBlockReason(plan.city) === null) {
     train(plan, own);
@@ -686,7 +771,7 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     // por tramos de la marcha desplazados en espiral, como la partida.
     const tries: Record<number, number> = {};
     for (const u of units.values()) {
-      if (!isMilitary(u) || u.status === 'DEAD' || atHome(view, u)) continue;
+      if (!isFieldUnit(u) || u.status === 'DEAD' || atHome(view, u)) continue;
       const n = memory.recallTries[u.id];
       if (n !== undefined) tries[u.id] = n;
       if (plan.full || u.status !== 'IDLE') continue;
@@ -697,11 +782,31 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     }
     memory = { ...memory, recallTries: tries };
     if (plan.full || nowMs < memory.raidWaitUntilMs) return memory;
-    const party = [...units.values()].filter(
-      (u) => isMilitary(u) && u.status === 'IDLE' && atHome(view, u) && u.carrying === 0,
-    );
-    if (party.length < profile.raidMinParty) return memory;
-    const target = chooseTarget(view, memory, nowMs, contraHumanos, rng);
+    const idleHome = [...units.values()].filter((u) => u.status === 'IDLE' && atHome(view, u) && u.carrying === 0);
+    const fighters = idleHome.filter(isMilitary);
+    const rams = idleHome.filter(isRam);
+    // RN-BOT-015: desde Hierro, con la partida completa y un blanco asaltable, sale la
+    // de asalto; si no, la de saqueo (SPEC-BOTS-ASSAULT Q2).
+    const assaultTarget =
+      profile.assaults &&
+      eraAtLeast(view.city.era, 'IRON_AGE') &&
+      fighters.length >= profile.assaultWarriors &&
+      rams.length >= profile.assaultRams
+        ? chooseAssaultTarget(view, memory, nowMs, contraHumanos, rng)
+        : null;
+    let kind: RaidKind = 'pillage';
+    let party = fighters;
+    let ramIds: number[] = [];
+    let target: Target | null;
+    if (assaultTarget) {
+      kind = 'assault';
+      party = [...fighters.slice(0, profile.assaultWarriors), ...rams.slice(0, profile.assaultRams)];
+      ramIds = rams.slice(0, profile.assaultRams).map((u) => u.id);
+      target = assaultTarget;
+    } else {
+      if (party.length < profile.raidMinParty) return memory;
+      target = chooseTarget(view, memory, nowMs, contraHumanos, rng);
+    }
     if (!target) return memory;
     // RN-BOT-012: primero al punto de reunión; la orden de saquear, cuando estén todos.
     raid = {
@@ -721,13 +826,20 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
       rallyAtMs: null,
       gathered: 0,
       rallyWaitMs: 0,
+      ...RAID_ASSAULT_FIELDS,
+      kind,
+      rams: ramIds,
     };
   }
 
   // Los que la memoria da por vivos; los muertos los quita el bot al recibir UNIT_LOST.
   const alive = raid.warriors.filter((id) => units.get(id)?.status !== 'DEAD');
   const visible = alive.map((id) => units.get(id)).filter((u): u is UnitView => u !== undefined);
-  const timedOut = nowMs - raid.startedAtMs > profile.raidTimeoutMs;
+  const assault = raid.kind === 'assault';
+  if (assault && raid.abandon === null && nowMs - raid.startedAtMs > profile.assaultTimeoutMs) {
+    raid = { ...raid, abandon: 'timeout' };
+  }
+  const timedOut = raid.abandon !== null || (!assault && nowMs - raid.startedAtMs > profile.raidTimeoutMs);
 
   if (!raid.departed && visible.some((u) => !atHome(view, u))) raid = { ...raid, departed: true };
 
@@ -748,10 +860,18 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
   // Los que vuelven: con botín, sin nada que hacer junto al blanco, o al vencer el plazo.
   // Mientras falte alguno por recibir la orden de saquear, ninguna otra (RN-BOT-012):
   // los que ya la tienen pueden seguir apareciendo parados un despertar más.
+  // Un asalto reunido sigue en su regla mientras no vuelva (SPEC-BOTS-ASSAULT §4.3).
+  if (assault && raid.phase === 'strike' && !timedOut) {
+    return { ...memory, raid: assaultStrike(view, profile, raid, plan, nowMs, units) };
+  }
+
   const striking = raid.phase === 'strike' && !timedOut && alive.some((id) => !raid?.ordered.includes(id));
   for (const u of striking ? [] : visible) {
     if (plan.full) break;
-    if (u.status !== 'IDLE' || (!raid.ordered.includes(u.id) && !timedOut)) continue;
+    // Al volver un asalto, también los que derriban o sostienen el estandarte: la orden
+    // de mover sustituye su tarea (SPEC-BOTS-ASSAULT §4.4).
+    const busy = u.status !== 'IDLE' && !(assault && timedOut && u.status !== 'MOVING');
+    if (busy || (!raid.ordered.includes(u.id) && !timedOut)) continue;
     const nearTarget = chebyshev(u, raid.target) <= 3;
     const full = u.carrying >= lootCarry(u.unitType);
     if (atHome(view, u)) continue;
@@ -840,18 +960,254 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     const gathered = visible.filter((u) => chebyshev(u, at) <= RALLY_RADIUS).length;
     const waited = raid.rallyAtMs === null ? 0 : nowMs - raid.rallyAtMs;
     const everyone = gathered === alive.length;
-    if (everyone || (waited > profile.rallyTimeoutMs && gathered >= profile.raidMinParty)) {
-      raid = { ...raid, phase: 'strike', ordered: [], waypoint: null, waypointTries: 0, gathered, rallyWaitMs: waited };
+    // El ariete camina al triple: la partida de asalto espera más (SPEC-BOTS-ASSAULT §4.3).
+    const rallyTimeout = assault ? profile.assaultRallyTimeoutMs : profile.rallyTimeoutMs;
+    const gatheredFighters = visible.filter((u) => isMilitary(u) && chebyshev(u, at) <= RALLY_RADIUS).length;
+    const enough = assault ? gatheredFighters >= profile.assaultMinWarriors : gathered >= profile.raidMinParty;
+    if (everyone || (waited > rallyTimeout && enough)) {
+      raid = {
+        ...raid,
+        phase: 'strike',
+        ordered: [],
+        waypoint: null,
+        waypointTries: 0,
+        gathered,
+        rallyWaitMs: waited,
+        stage: assault ? 'breach' : null,
+      };
       return raidRule(view, profile, { ...memory, raid }, plan, nowMs, contraHumanos, rng);
     }
-    if (waited > profile.rallyTimeoutMs) {
+    if (waited > rallyTimeout) {
       // No se reunieron bastantes: la partida vuelve.
-      return { ...memory, raid: { ...raid, startedAtMs: nowMs - profile.raidTimeoutMs - 1 } };
+      return { ...memory, raid: forceReturn(raid, nowMs, profile, 'too_few') };
     }
     return { ...memory, raid };
   }
   raid = { ...raid, waypoint: marchStep(party, raid.rally, raid.waypointTries), ordered: [] };
   return { ...memory, raid: orderLeg(raid) };
+}
+
+// ─────────────────────────────────────────────────────────────
+// El asalto (SPEC-BOTS-ASSAULT)
+// ─────────────────────────────────────────────────────────────
+
+/** El motivo de `assaultBlockReason` que sólo pide abrir la brecha (RN-BOT-014). */
+const WALL_REASON = 'La muralla está en pie';
+
+/** Los escoltas se quedan a esta distancia del centro, en el lado del punto de reunión. */
+const ESCORT_DISTANCE = 3;
+
+/** Si un motivo del HUD deja asaltar (ninguno) o sólo pide abrir antes la brecha. */
+function assaultableReason(reason: string | null): boolean {
+  return reason === null || reason.startsWith(WALL_REASON);
+}
+
+/** Si hay paz con ese jugador: pacto o alianza en vigor (RN-COMBAT-030). */
+function atPeaceWith(view: View, playerId: string): boolean {
+  return view.treaties.some(
+    (t) => t.otherPlayerId === playerId && t.status === 'ACTIVE' && (t.type === 'NON_AGGRESSION' || t.type === 'ALLIANCE'),
+  );
+}
+
+/**
+ * El blanco de una partida de asalto (SPEC-BOTS-ASSAULT §4.2): la ciudad
+ * asaltable más cercana, en brecha antes que amurallada a igual distancia. Las de
+ * los bots, con lo que su dueño apunta en el directorio (era, inmunidad, muralla)
+ * aunque no estén a la vista; si están a la vista, con `assaultBlockReason`, el
+ * motivo del HUD. Con `contraHumanos`, también las ciudades ajenas a la vista
+ * (RN-BOT-004). La paz de clan o una Safe Zone las dice el servidor al plantar.
+ */
+export function chooseAssaultTarget(
+  view: View,
+  memory: Memory,
+  nowMs: number,
+  contraHumanos: boolean,
+  rng: Rng,
+): Target | null {
+  const home = center(view);
+  const fighter = ownUnits(view).find(isMilitary);
+  const usable = (id: number) => (memory.targetCooldowns[id] ?? 0) <= nowMs;
+  const visible = new Map(view.foreignCities.map((c) => [c.id, c]));
+  const reasonFor = (c: CityView) =>
+    assaultBlockReason({
+      unit: fighter,
+      playerId: view.playerId,
+      city: c,
+      ownCity: view.city,
+      buildings: view.foreignBuildings,
+      treaties: view.treaties,
+      nowMs,
+    });
+  const candidates: (Target & { d: number; walled: number })[] = [];
+  const seen = new Set<number>();
+
+  for (const b of view.botCities) {
+    if (b.playerId === view.playerId || !isBotCity(b.name) || !usable(b.cityId)) continue;
+    seen.add(b.cityId);
+    if (atPeaceWith(view, b.playerId)) continue;
+    const live = visible.get(b.cityId);
+    let isWalled: boolean;
+    if (live) {
+      const reason = reasonFor(live);
+      if (!assaultableReason(reason)) continue;
+      isWalled = reason !== null;
+    } else {
+      if (!b.era || !eraAtLeast(b.era, 'BRONZE_AGE')) continue;
+      if (b.fallImmuneUntilMs !== undefined && b.fallImmuneUntilMs > nowMs) continue;
+      isWalled = b.walled !== false;
+    }
+    const c = { x: b.centerX, y: b.centerY };
+    candidates.push({ cityId: b.cityId, name: b.name, center: c, d: chebyshev(home, c), walled: isWalled ? 1 : 0 });
+  }
+  if (contraHumanos) {
+    for (const c of view.foreignCities) {
+      if (c.ownerPlayerId === view.playerId || seen.has(c.id) || !usable(c.id)) continue;
+      const reason = reasonFor(c);
+      if (!assaultableReason(reason)) continue;
+      const t = { x: c.centerX, y: c.centerY };
+      candidates.push({ cityId: c.id, name: c.name, center: t, d: chebyshev(home, t), walled: reason === null ? 0 : 1 });
+    }
+  }
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => a.d - b.d || a.walled - b.walled || a.cityId - b.cityId);
+  const first = candidates[0] as (typeof candidates)[number];
+  const best = candidates.filter((c) => c.d === first.d && c.walled === first.walled);
+  const pick = best[rng.int(best.length)] as (typeof candidates)[number];
+  return { cityId: pick.cityId, name: pick.name, center: pick.center };
+}
+
+/**
+ * La partida vuelve: la de asalto apunta por qué (SPEC-BOTS-ASSAULT §4.4); la de
+ * saqueo, como en E28, con el plazo vencido.
+ */
+function forceReturn(raid: Raid, nowMs: number, profile: Profile, reason: AssaultAbandon): Raid {
+  if (raid.kind === 'assault') return { ...raid, abandon: raid.abandon ?? reason };
+  return { ...raid, startedAtMs: nowMs - profile.raidTimeoutMs - 1 };
+}
+
+/**
+ * Un asalto reunido (SPEC-BOTS-ASSAULT §4.3, §4.4; RN-BOT-014, RN-BOT-016): los
+ * arietes contra la muralla completa, el estandarte con el militar más cercano
+ * cuando la ciudad está en brecha, la escolta parada junto al anillo, la muralla
+ * en obra derribada antes de completarse, y otro estandarte si el asalto se rompe.
+ * Lo que pasa lo dice el espejo (`CityView.assault`): el bot no lo adivina.
+ */
+function assaultStrike(
+  view: View,
+  profile: Profile,
+  raid: Raid,
+  plan: Plan,
+  nowMs: number,
+  units: ReadonlyMap<number, UnitView>,
+): Raid {
+  const fighterIds = raid.warriors.filter((id) => !raid.rams.includes(id));
+  const ramIds = raid.rams.filter((id) => raid.warriors.includes(id));
+  if (fighterIds.length < profile.assaultMinWarriors) return { ...raid, abandon: 'too_few' };
+
+  const victim = view.foreignCities.find((c) => c.id === raid.targetCityId);
+  // La conexión de campaña mira al blanco: hasta que lo vea, se espera.
+  if (!victim) return raid;
+
+  const isWalled = walled(victim, view.foreignBuildings);
+  const ours = victim.assault && victim.assault.playerId === view.playerId ? victim.assault : null;
+  let r = raid;
+
+  if (ours) {
+    if (r.stage !== 'hold') r = { ...r, stage: 'hold', holder: ours.unitId, planted: r.planted + 1 };
+  } else if (r.stage === 'hold') {
+    // Se rompió (RN-SIEGE-011): por qué, con lo que se ve.
+    const holder = r.holder === null ? undefined : units.get(r.holder);
+    const dead = r.holder === null || !r.warriors.includes(r.holder) || holder?.status === 'DEAD';
+    const lastBreak: AssaultBreak = dead
+      ? 'holder_died'
+      : isWalled
+        ? 'wall_completed'
+        : view.city.presenceState === 'PROTECTED'
+          ? 'protected'
+          : 'peace';
+    r = { ...r, stage: isWalled ? 'breach' : 'plant', holder: null, breaks: r.breaks + 1, lastBreak };
+    if (lastBreak === 'peace' || lastBreak === 'protected') return { ...r, abandon: 'blocked' };
+  }
+
+  const visibleIdle = (ids: readonly number[]) =>
+    ids.map((id) => units.get(id)).filter((u): u is UnitView => u !== undefined && u.status === 'IDLE');
+  const escortTile = rallyPoint(raid.target, raid.rally, ESCORT_DISTANCE, view.terrainAt);
+  const escort = (exclude: number | null) => {
+    for (const u of visibleIdle(fighterIds)) {
+      if (plan.full) return;
+      if (u.id === exclude || chebyshev(u, raid.target) <= ESCORT_DISTANCE + 1) continue;
+      plan.add({ key: `assault:escort:${u.id}`, type: 'unit.move', unitId: u.id, target: escortTile });
+    }
+  };
+
+  if (isWalled) {
+    // La brecha: sólo el ariete golpea la muralla completa (RN-SIEGE-004, RN-BOT-014).
+    if (ramIds.length === 0) return { ...r, abandon: 'no_rams' };
+    r = { ...r, stage: 'breach', holder: null };
+    const wall = view.foreignBuildings.find((b) => b.cityId === victim.id && b.type === 'WALL' && b.status === 'COMPLETE');
+    if (wall) {
+      for (const ram of visibleIdle(ramIds)) {
+        if (plan.full) break;
+        plan.add({ key: `assault:demolish:${ram.id}:${wall.id}`, type: 'unit.demolish', unitId: ram.id, buildingId: wall.id });
+      }
+    }
+    escort(null);
+    return r;
+  }
+
+  // En brecha. Una muralla en obra se derriba antes de que se complete (RN-BOT-016):
+  // con los arietes y, si no hay, con la escolta.
+  const rising = view.foreignBuildings.find(
+    (b) => b.cityId === victim.id && b.type === 'WALL' && b.status !== 'COMPLETE' && b.status !== 'DESTROYED',
+  );
+  if (rising) {
+    const breakers = ramIds.length > 0 ? visibleIdle(ramIds) : visibleIdle(fighterIds).filter((u) => u.id !== r.holder);
+    for (const u of breakers) {
+      if (plan.full) break;
+      plan.add({ key: `assault:demolish:${u.id}:${rising.id}`, type: 'unit.demolish', unitId: u.id, buildingId: rising.id });
+    }
+  }
+
+  if (ours) {
+    escort(ours.unitId);
+    return r;
+  }
+  // Otro jugador ya la asalta: no se puede (RN-SIEGE-010).
+  if (victim.assault) return { ...r, abandon: 'blocked' };
+
+  // El portaestandarte va de camino o ya lo sostiene y el delta aún no llegó.
+  if (r.stage === 'plant' && r.holder !== null && r.warriors.includes(r.holder)) {
+    const h = units.get(r.holder);
+    if (h && (h.status === 'MOVING' || h.status === 'CLAIMING')) {
+      escort(r.holder);
+      return r;
+    }
+  }
+
+  // El estandarte: el militar parado más cercano al centro (empate: menor id).
+  const candidates = visibleIdle(fighterIds).sort(
+    (a, b) => chebyshev(a, raid.target) - chebyshev(b, raid.target) || a.id - b.id,
+  );
+  for (const u of candidates) {
+    if (plan.full) break;
+    const reason = assaultBlockReason({
+      unit: u,
+      playerId: view.playerId,
+      city: victim,
+      ownCity: view.city,
+      buildings: view.foreignBuildings,
+      treaties: view.treaties,
+      nowMs,
+    });
+    // Lo que el HUD tendría deshabilitado no se envía (RN-BOT-014): la partida vuelve.
+    if (reason !== null) return { ...r, abandon: 'blocked' };
+    const key = `assault:plant:${u.id}`;
+    if (!plan.free(key)) continue;
+    plan.add({ key, type: 'unit.assault', unitId: u.id, cityId: victim.id });
+    escort(u.id);
+    return { ...r, stage: 'plant', holder: u.id };
+  }
+  return r;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -977,9 +1333,22 @@ export function onRejected(
       return {
         ...mem,
         targetCooldowns: { ...mem.targetCooldowns, [raid.targetCityId]: nowMs + profile.targetCooldownMs },
-        raid: { ...raid, startedAtMs: nowMs - profile.raidTimeoutMs - 1 },
+        raid: forceReturn(raid, nowMs, profile, 'blocked'),
       };
     }
+  }
+
+  if (command.type === 'unit.assault' || (command.type === 'unit.demolish' && command.key.startsWith('assault:'))) {
+    // El servidor no deja plantar el estandarte o golpear la muralla (inmune, en paz,
+    // protegida, sin ruta al anillo): el blanco se enfría y la partida vuelve (§5).
+    if (TARGET_CODES.has(code) || code === 'INVALID_TARGET' || code === 'CITY_NOT_FOUND') {
+      return {
+        ...mem,
+        targetCooldowns: { ...mem.targetCooldowns, [raid.targetCityId]: nowMs + profile.targetCooldownMs },
+        raid: forceReturn(raid, nowMs, profile, 'blocked'),
+      };
+    }
+    return mem;
   }
 
   if (command.type === 'unit.move' && command.key.startsWith('raid:march:')) {
@@ -1001,9 +1370,35 @@ export function onRaidLoss(memory: Memory, unitId: number): Memory {
       ...raid,
       warriors: raid.warriors.filter((id) => id !== unitId),
       ordered: raid.ordered.filter((id) => id !== unitId),
+      rams: raid.rams.filter((id) => id !== unitId),
       lost: raid.lost + 1,
     },
   };
+}
+
+/**
+ * La ciudad que asaltaba la partida cayó (`city.fallen`): vuelve a casa
+ * (SPEC-BOTS-ASSAULT §4.4). Un `city.fallen` repetido no cambia nada.
+ */
+export function onTargetFell(memory: Memory, cityId: number): Memory {
+  const raid = memory.raid;
+  if (raid === null || raid.kind !== 'assault' || raid.targetCityId !== cityId || raid.abandon === 'fell') return memory;
+  return { ...memory, raid: { ...raid, abandon: 'fell' } };
+}
+
+/**
+ * La ciudad propia cayó y el bot sigue en la refundada (RN-BOT-017): olvida lo de
+ * la ciudad (los rechazos de obras y encargos, los tiles de recolección, las
+ * ofertas del mercado, que se retiraron) y conserva lo del jugador (blancos,
+ * tratados, parejas sin ruta, la partida en curso, cuyas unidades pasan a la
+ * ciudad nueva).
+ */
+export function onOwnCityFell(memory: Memory): Memory {
+  const cooldowns: Record<string, number> = {};
+  for (const [k, v] of Object.entries(memory.cooldowns)) {
+    if (k.startsWith('raid:') || k.startsWith('assault:')) cooldowns[k] = v;
+  }
+  return { ...memory, cooldowns, badTiles: {}, stoneUnits: [], stoneBlockedUntilMs: 0, marketSeen: {} };
 }
 
 /** Dónde tiene que mirar la conexión de campaña, o `null` si no hay partida. */

@@ -11,6 +11,7 @@ import { GameClient, type WebSocketLike } from '../../web/src/net/client';
 import { createWorldStore, terrainAt, type BuildingView, type CityView, type UnitView } from '../../web/src/state/world';
 import { TERRAIN_HILL } from '../../web/src/state/economy';
 import { commission } from '../../web/src/state/market';
+import { walled } from '../../web/src/state/cityFall';
 import { WebSession, type Account } from './auth';
 import {
   EMPTY_MEMORY,
@@ -18,8 +19,11 @@ import {
   decide,
   fieldFocus,
   forestTilesAround,
+  onOwnCityFell,
   onRaidLoss,
   onRejected,
+  onTargetFell,
+  type Raid,
   type BotCity,
   type Command,
   type Memory,
@@ -139,6 +143,12 @@ export class Bot {
   private prevCity: CityView | null = null;
   /** Estado conocido de cada edificio de la ciudad, para apuntar la obra que termina una vez. */
   private readonly buildingStatus = new Map<number, string>();
+  /** El tipo de cada edificio de la ciudad: un `building.destroyed` sólo trae el id. */
+  private readonly buildingType = new Map<number, string>();
+  /** La muralla propia cayó en esta ejecución: la próxima completa es una reconstrucción. */
+  private wallBreached = false;
+  /** El `city.fallen` de la ciudad propia, hasta que llega el snapshot de la refundada. */
+  private pendingFall: { cityId: number; byPlayerId: string } | null = null;
   private startedAt = 0;
   /** Último estado apuntado de cada tratado, trato y caravana (para no repetirlo). */
   private readonly seenStatus = new Map<string, string>();
@@ -174,15 +184,7 @@ export class Bot {
     if (!city) throw new Error(`${this.name}: el snapshot no trae su ciudad`);
     // La civilización, de la ciudad: la del reparto sólo vale para un alta nueva.
     this.deps.say(`${this.name}: ${this.account.created ? 'alta' : 'entrada'} (${this.deps.profile.name}, ${city.civilization})`);
-    this.deps.directory.set({
-      playerId: this.account.playerId,
-      cityId: city.id,
-      name: city.name,
-      centerX: city.centerX,
-      centerY: city.centerY,
-      civilization: city.civilization,
-      profile: this.deps.profile.name,
-    });
+    this.publish(city);
     this.startedAt = this.now();
     this.prevCity = city;
     this.emit('start', {
@@ -262,6 +264,31 @@ export class Bot {
     if (!playerId || !this.home) return null;
     for (const c of this.home.store.getState().cities.values()) if (c.ownerPlayerId === playerId) return c;
     return null;
+  }
+
+  /**
+   * La entrada del directorio de su ciudad, al día: dónde está y, para el blanco de
+   * un asalto, su era, su inmunidad y su muralla (SPEC-BOTS-ASSAULT §4.2). Tras una
+   * caída, la de la refundada (RN-BOT-017).
+   */
+  private publish(city: CityView): void {
+    const playerId = this.account?.playerId;
+    if (!playerId) return;
+    const buildings = this.home ? [...this.home.store.getState().buildings.values()] : [];
+    this.deps.directory.set({
+      playerId,
+      cityId: city.id,
+      name: city.name,
+      centerX: city.centerX,
+      centerY: city.centerY,
+      civilization: city.civilization,
+      profile: this.deps.profile.name,
+      era: city.era,
+      ...(city.fallImmuneUntilMs !== undefined && city.fallImmuneUntilMs !== null
+        ? { fallImmuneUntilMs: city.fallImmuneUntilMs }
+        : {}),
+      walled: walled(city, buildings),
+    });
   }
 
   private ownUnits(): UnitView[] {
@@ -403,8 +430,15 @@ export class Bot {
     this.memory = memory;
     for (const cmd of commands) this.send(cmd, nowMs);
 
+    this.logAssault(hadRaid, memory.raid);
     if (!hadRaid && memory.raid) {
-      this.emit('raid', { target: memory.raid.targetName, cityId: memory.raid.targetCityId, size: memory.raid.size });
+      this.emit('raid', {
+        target: memory.raid.targetName,
+        cityId: memory.raid.targetCityId,
+        size: memory.raid.size,
+        kind: memory.raid.kind,
+        rams: memory.raid.rams.length,
+      });
       this.deps.say(`${this.name}: sale una partida de ${memory.raid.size} contra ${memory.raid.targetName}`);
     }
     if (hadRaid && !memory.raid) this.emit('raid_end', { target: hadRaid.targetName, lost: hadRaid.lost, size: hadRaid.size });
@@ -419,6 +453,33 @@ export class Bot {
     }
     this.followRaid();
     for (const [id, p] of this.pending) if (nowMs - p.sentAt > 60_000) this.pending.delete(id);
+  }
+
+  /**
+   * Lo que el registro apunta de una partida de asalto al pasar de un despertar al
+   * siguiente (SPEC-BOTS-ASSAULT §4.7): reunida, brecha abierta, estandarte
+   * plantado, asalto roto y vuelta, con su causa.
+   */
+  private logAssault(before: Raid | null, after: Raid | null): void {
+    const r = after ?? before;
+    if (!r || r.kind !== 'assault') return;
+    const target = r.targetName;
+    if (after && before && after.targetCityId === before.targetCityId) {
+      if (before.phase === 'march' && after.phase === 'strike') {
+        this.emit('assault', { status: 'rallied', target, warriors: after.gathered, rams: after.rams.length, waitMs: after.rallyWaitMs });
+      }
+      if (before.phase === 'strike' && before.stage === 'breach' && after.stage !== 'breach' && after.stage !== null) {
+        this.emit('assault', { status: 'breached', target, rams: after.rams.length });
+      }
+      if (after.planted > before.planted) this.emit('assault', { status: 'planted', target, holder: after.holder });
+      if (after.breaks > before.breaks) this.emit('assault', { status: 'broken', target, cause: after.lastBreak });
+      if (after.abandon !== null && before.abandon === null) {
+        this.emit(
+          'assault',
+          after.abandon === 'fell' ? { status: 'fell', target } : { status: 'abandoned', target, cause: after.abandon },
+        );
+      }
+    }
   }
 
   /** La conexión de campaña mira donde está la partida; se abre con la primera. */
@@ -453,6 +514,9 @@ export class Bot {
         break;
       case 'unit.demolish':
         requestId = c.demolishBuilding(cmd.unitId, cmd.buildingId);
+        break;
+      case 'unit.assault':
+        requestId = c.assaultCity(cmd.unitId, cmd.cityId);
         break;
       case 'city.build':
         requestId =
@@ -562,14 +626,28 @@ export class Bot {
     ) {
       this.memory = onRaidLoss(this.memory, m.payload.id);
     }
+    // Una ciudad que cae (SPEC-BOTS-ASSAULT §4.4, §4.6): la que asaltaba la partida, o la propia.
+    if (m.type === 'city.fallen') {
+      const before = this.memory.raid;
+      this.memory = onTargetFell(this.memory, m.payload.cityId);
+      this.logAssault(before, this.memory.raid);
+      if (m.payload.ownerPlayerId === this.account?.playerId && this.prevCity?.id === m.payload.cityId) {
+        this.pendingFall = { cityId: m.payload.cityId, byPlayerId: m.payload.byPlayerId };
+      }
+    }
     if (link !== this.home) return;
 
     switch (m.type) {
-      case 'world.snapshot':
+      case 'world.snapshot': {
         // Un snapshot reemplaza la vista: su almacén es la nueva referencia, no recolección.
-        this.prevCity = this.ownCity() ?? this.prevCity;
+        const city = this.ownCity();
+        const before = this.prevCity;
+        // Primero la ciudad nueva: lo que hace onRefounded (buscar colinas) trae más snapshots.
+        this.prevCity = city ?? before;
+        if (city && before && city.id !== before.id) this.onRefounded(before, city);
         this.recordBuildings();
         break;
+      }
       case 'city.update':
         this.onCity(nowMs);
         break;
@@ -582,15 +660,29 @@ export class Bot {
         if (!b || !city || b.cityId !== city.id) break;
         const before = this.buildingStatus.get(id);
         this.buildingStatus.set(id, b.status);
+        this.buildingType.set(id, b.type);
         if (b.status === 'COMPLETE' && before !== 'COMPLETE') {
           const since = this.orderedAt.get(`build:${b.type}`);
           this.emit('built', { building: b.type, ...(since ? { ms: nowMs - since } : {}) });
+          if (b.type === 'WALL' && this.wallBreached) {
+            this.wallBreached = false;
+            this.emit('wall', { status: 'rebuilt' });
+          }
+          if (b.type === 'WALL') this.publish(city);
         }
         break;
       }
       case 'building.destroyed': {
         const city = this.ownCity();
-        if (city && m.payload.cityId === city.id) this.emit('house_lost', { buildingId: m.payload.id });
+        if (city && m.payload.cityId === city.id) {
+          this.emit('house_lost', { buildingId: m.payload.id });
+          // La muralla propia cae: la ciudad queda en brecha (SPEC-BOTS-ASSAULT §4.7).
+          if (this.buildingType.get(m.payload.id) === 'WALL') {
+            this.wallBreached = true;
+            this.emit('wall', { status: 'breached' });
+            this.publish(city);
+          }
+        }
         break;
       }
       case 'event_log.notice':
@@ -709,8 +801,39 @@ export class Bot {
     const city = this.ownCity();
     if (!city || !this.home) return;
     for (const b of this.home.store.getState().buildings.values()) {
-      if (b.cityId === city.id) this.buildingStatus.set(b.id, b.status);
+      if (b.cityId !== city.id) continue;
+      this.buildingStatus.set(b.id, b.status);
+      this.buildingType.set(b.id, b.type);
     }
+  }
+
+  /**
+   * La ciudad propia cayó y llega el snapshot de la refundada (ADR-050 §5): el bot
+   * lo apunta, pone al día su entrada del directorio, olvida lo de la ciudad y
+   * sigue jugando desde la nueva (RN-BOT-017, SPEC-BOTS-ASSAULT §4.6).
+   */
+  private onRefounded(fallen: CityView, city: CityView): void {
+    const by = this.pendingFall?.byPlayerId ?? null;
+    const byName = by ? (this.deps.directory.list().find((b) => b.playerId === by)?.name ?? by) : null;
+    this.pendingFall = null;
+    this.emit('fell', {
+      cityId: fallen.id,
+      newCityId: city.id,
+      center: { x: city.centerX, y: city.centerY },
+      by: byName,
+      era: city.era,
+      population: fallen.population,
+    });
+    this.deps.say(`${this.name}: su ciudad cayó${byName ? ` ante ${byName}` : ''}; refundada en (${city.centerX}, ${city.centerY})`);
+    this.memory = onOwnCityFell(this.memory);
+    this.buildingStatus.clear();
+    this.buildingType.clear();
+    this.wallBreached = false;
+    this.forestTiles = [];
+    this.fieldView = null;
+    this.publish(city);
+    // Las colinas de la casa vieja no sirven: se vuelven a buscar alrededor de la nueva.
+    void this.scoutHills(city);
   }
 
   private onCity(nowMs: number): void {
@@ -719,6 +842,9 @@ export class Bot {
     if (!city) return;
     this.prevCity = city;
     if (!prev) return;
+    if (city.era !== prev.era || city.fallImmuneUntilMs !== prev.fallImmuneUntilMs) this.publish(city);
+    // El asalto sobre la ciudad propia termina sin caer (SPEC-BOTS-ASSAULT §4.7).
+    if (city.id === prev.id && prev.assault && !city.assault) this.emit('assault', { status: 'repelled' });
     if (city.era !== prev.era) {
       this.emit('era', { era: city.era, ms: nowMs - this.startedAt });
       this.deps.say(`${this.name}: llega a ${city.era}`);
@@ -751,6 +877,10 @@ export class Bot {
         break;
       case 'HOUSE_DESTROYED':
         this.emit('demolished', { buildingType: n.buildingType ?? 'HOUSE', of: other });
+        break;
+      case 'CITY_ASSAULTED':
+        // Lo ve el defensor (SPEC-BOTS-ASSAULT §4.7); la partida que asalta lo apunta en su lado.
+        this.emit('assault', { status: 'suffered', by: other });
         break;
       default:
         break;

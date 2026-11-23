@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_MEMORY,
+  RAID_ASSAULT_FIELDS,
   chooseTarget,
   decide,
   depositTile,
@@ -418,6 +419,7 @@ describe('el saqueo', () => {
     rallyAtMs: null,
     gathered: 0,
     rallyWaitMs: 0,
+    ...RAID_ASSAULT_FIELDS,
     ...over,
   });
 
@@ -545,6 +547,7 @@ describe('el saqueo: plazos y tramos rechazados', () => {
     rallyAtMs: null,
     gathered: 0,
     rallyWaitMs: 0,
+    ...RAID_ASSAULT_FIELDS,
     ...over,
   });
 

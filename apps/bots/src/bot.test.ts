@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { WebSocketLike } from '../../web/src/net/client';
 import { WebSession } from './auth';
 import { Bot, Directory } from './bot';
-import { EMPTY_MEMORY, decide, type Command, type Memory } from './decide';
+import { EMPTY_MEMORY, RAID_ASSAULT_FIELDS, decide, type Command, type Memory, type Raid } from './decide';
 import { botCity, city as fixtureCity, stocks as fixtureStocks, unit, view } from './fixtures.test-helpers';
 import { RunLog, parseLog } from './log';
 import { PROFILES, type Profile } from './profiles';
@@ -50,6 +50,9 @@ class FakeServer implements WebSocketLike {
   }
 
   wood = 0;
+  /** La ciudad propia del snapshot: tras una caída, la refundada. */
+  cityId = 10;
+  center = { x: 100, y: 100 };
 
   /** Empuja un mensaje del servidor, como si llegara por la red. */
   push(type: string, payload: unknown): void {
@@ -65,11 +68,11 @@ class FakeServer implements WebSocketLike {
       units: [],
       cities: [
         {
-          id: 10,
+          id: this.cityId,
           ownerPlayerId: PLAYER,
           name: 'bot_constructor_1polis',
-          centerX: 100,
-          centerY: 100,
+          centerX: this.center.x,
+          centerY: this.center.y,
           era: 'STONE_AGE',
           civilization: this.civilization,
           faction: 'NEUTRAL',
@@ -107,6 +110,7 @@ function newBot(
   said: string[] = [],
   serverCivilization = 'ROMAN',
   profile: Profile = PROFILES.constructor,
+  directory: Directory = new Directory(),
 ): Bot {
   return new Bot({
     name: 'bot_constructor_1',
@@ -118,7 +122,7 @@ function newBot(
     thinkMs: 60_000,
     seed: 1,
     contraHumanos: false,
-    directory: new Directory(),
+    directory,
     log: new RunLog((l) => lines.push(l), [PASSWORD]),
     say: (t) => said.push(t),
     socketFactory: () => {
@@ -376,6 +380,107 @@ describe('el registro de la reunión (SPEC-BOTS-TRADE §4.7)', () => {
     expect(commands.filter((k) => String(k).startsWith('raid:pillage:'))).toEqual(['raid:pillage:1', 'raid:pillage:2', 'raid:pillage:3']);
   });
 });
+
+describe('el asalto en el registro (SPEC-BOTS-ASSAULT §4.6, §4.7)', () => {
+  const ENEMY = '22222222-2222-4222-8222-222222222222';
+
+  it('RN-BOT-017: al caer apunta fell, pone al día el directorio y olvida lo de la ciudad', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const directory = new Directory();
+    directory.set(botCity({ playerId: ENEMY, cityId: 20, name: 'bot_saqueador_1polis' }));
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.constructor, directory);
+    await bot.start();
+    const inner = bot as unknown as Inner;
+    inner.memory = { ...EMPTY_MEMORY, cooldowns: { 'build:HOUSE': NOW + 1 }, badTiles: { '1,1': NOW + 1 } };
+    expect(directory.list().find((b) => b.playerId === PLAYER)).toMatchObject({ cityId: 10, era: 'STONE_AGE', walled: false });
+
+    const server = sockets[0] as FakeServer;
+    server.cityId = 11;
+    server.center = { x: 300, y: 300 };
+    // El vencido recibe city.fallen dos veces (al chunk y a su dueño) y luego el snapshot de la refundada.
+    server.push('city.fallen', { cityId: 10, ownerPlayerId: PLAYER, byPlayerId: ENEMY, atMs: NOW });
+    server.push('city.fallen', { cityId: 10, ownerPlayerId: PLAYER, byPlayerId: ENEMY, atMs: NOW });
+    server.snapshot();
+    await new Promise((r) => setTimeout(r, 0));
+    bot.stop();
+
+    const fell = parseLog(lines.join('')).filter((e) => e.event === 'fell');
+    expect(fell).toHaveLength(1);
+    expect(fell[0]).toMatchObject({ cityId: 10, newCityId: 11, center: { x: 300, y: 300 }, by: 'bot_saqueador_1polis', population: 3 });
+    expect(directory.list().find((b) => b.playerId === PLAYER)).toMatchObject({ cityId: 11, centerX: 300, centerY: 300 });
+    expect(inner.memory.cooldowns).toEqual({});
+    expect(inner.memory.badTiles).toEqual({});
+  });
+
+  it('apunta el estandarte plantado, el asalto roto y la caída una vez cada uno', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.saqueador);
+    await bot.start();
+    const inner = bot as unknown as Inner;
+    const saqueadorCity = fixtureCity({ name: 'bot_saqueador_1polis', era: 'IRON_AGE', population: 16, populationLimit: 40, stocks: fixtureStocks(0) });
+    const raid: Raid = {
+      targetCityId: 20,
+      targetName: 'bot_constructor_2polis',
+      target: { x: 140, y: 100 },
+      warriors: [1, 2, 3, 4],
+      startedAtMs: NOW,
+      phase: 'strike',
+      ordered: [],
+      waypoint: null,
+      waypointTries: 0,
+      lost: 0,
+      size: 4,
+      departed: true,
+      rally: { x: 124, y: 100 },
+      rallyAtMs: NOW,
+      gathered: 4,
+      rallyWaitMs: 0,
+      ...RAID_ASSAULT_FIELDS,
+      kind: 'assault',
+      stage: 'plant',
+      holder: 1,
+    };
+    inner.memory = { ...EMPTY_MEMORY, raid };
+    const fighters = (status: 'CLAIMING' | 'IDLE') => [
+      unit({ id: 1, unitType: 'WARRIOR', x: 138, y: 100, status }),
+      ...[2, 3, 4].map((id) => unit({ id, unitType: 'WARRIOR', x: 137, y: 100 })),
+    ];
+    const victim = (assault: boolean) =>
+      fixtureCity({
+        id: 20,
+        ownerPlayerId: ENEMY,
+        name: 'bot_constructor_2polis',
+        centerX: 140,
+        centerY: 100,
+        era: 'BRONZE_AGE',
+        ...(assault ? { assault: { playerId: PLAYER, unitId: 1, startedAtMs: NOW, endsAtMs: NOW + 900_000 } } : {}),
+      });
+
+    // Plantado: la ciudad lleva el asalto.
+    bot.buildView = () => view({ city: saqueadorCity, units: fighters('CLAIMING'), foreignCities: [victim(true)] });
+    inner.think();
+    inner.think();
+    // Roto: el portaestandarte muere y la ciudad ya no lleva el asalto; otro lo replanta.
+    server(sockets).push('entity.update', { id: 1, status: 'DEAD' });
+    bot.buildView = () => view({ city: saqueadorCity, units: fighters('IDLE').slice(1), foreignCities: [victim(false)] });
+    inner.think();
+    // La ciudad cae: city.fallen, aunque llegue dos veces.
+    server(sockets).push('city.fallen', { cityId: 20, ownerPlayerId: ENEMY, byPlayerId: PLAYER, atMs: NOW });
+    server(sockets).push('city.fallen', { cityId: 20, ownerPlayerId: ENEMY, byPlayerId: PLAYER, atMs: NOW });
+    bot.stop();
+
+    const assault = parseLog(lines.join('')).filter((e) => e.event === 'assault');
+    expect(assault.map((e) => e.status)).toEqual(['planted', 'broken', 'fell']);
+    expect(assault[1]).toMatchObject({ cause: 'holder_died', target: 'bot_constructor_2polis' });
+    expect(inner.memory.raid?.abandon).toBe('fell');
+  });
+});
+
+function server(sockets: FakeServer[]): FakeServer {
+  return sockets[0] as FakeServer;
+}
 
 describe('RN-BOT-007: la parada limpia', () => {
   it('al parar cierra las conexiones y escribe stop; nada secreto en el registro', async () => {

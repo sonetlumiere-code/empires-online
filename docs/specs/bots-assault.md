@@ -249,6 +249,38 @@ el servidor decide).
 | Go, simulación | Ninguno nuevo: las reglas del servidor no cambian. Si la implementación necesita confirmar que una muralla **en obra** se derriba con la ciudad en brecha y no rompe el asalto hasta completarse, se añade ese caso a los tests de E27 y E31. |
 | Integración / e2e | Ninguno nuevo. |
 
+### 9.1 Precisiones de la implementación (2026-11-23)
+
+Lo que la implementación concreta dentro de las reglas y las decisiones:
+
+- **La partida de asalto es la de saqueo con `kind: 'assault'`.** Comparte la reunión por tramos, el punto de reunión,
+  la vuelta a casa (también por tramos en espiral) y la conexión de campaña; los arietes van en `warriors` y en `rams`.
+  Al volver, la orden de mover sustituye la tarea de los que derriban o sostienen el estandarte.
+- **El blanco.** Cada bot publica en el directorio del proceso, al arrancar y cuando cambian, la era, el fin de la
+  inmunidad y si tiene la muralla completa de su ciudad. Una ciudad que no está a la vista se juzga con eso: sin era
+  conocida no se elige, y con la muralla desconocida se da por amurallada. Una a la vista, con `assaultBlockReason`.
+- **Los arietes** se entrenan cuando los militares ya están completos (`warriorsMax`, con la unidad de civilización
+  antes que el guerrero), con `ramBlockReason`. `villagerCount` resta dos plazas por ariete: el ariete no es militar
+  (no ataca) y antes contaba como aldeano.
+- **La reunión** de una partida de asalto da por suficiente tener reunidos `assaultMinWarriors` militares al vencer
+  su plazo.
+- **La escolta** va a 3 tiles del centro, en el lado del punto de reunión (`rallyPoint`), y sólo se mueven los
+  militares parados a más de 4. **El portaestandarte** es el militar parado más cercano al centro (empate: menor id);
+  mientras camina o sostiene (`MOVING`, `CLAIMING`) sin que haya llegado el asalto en `city.update`, no se planta otro.
+- **La causa de una rotura** es la que se ve: el portaestandarte muerto (`holder_died`), la ciudad amurallada
+  (`wall_completed`), la ciudad propia protegida (`protected`) o, si no, `peace`, que recoge también cualquier otra
+  causa que sólo sabe el servidor. Con `peace` o `protected`, otro jugador que ya asalta la ciudad, o un rechazo de
+  `unit.assault` o del derribo (`INVALID_TARGET`, `CITY_NOT_FOUND`, `CITY_PROTECTED`, sin ruta), la partida vuelve con
+  la causa `blocked` y el blanco se enfría.
+- **El defensor** apunta también `assault` con `suffered` (el aviso `CITY_ASSAULTED`) y `repelled` (el asalto de su
+  ciudad termina sin caer). `wall` no dice quién: el `building.destroyed` no lo trae.
+- **El vencido** apunta `fell` al llegar el snapshot de la refundada, con la ciudad caída, la nueva, el vencedor, la
+  era y la población de antes, y vuelve a buscar colinas alrededor de la nueva. **Fallo encontrado y arreglado** (con
+  su test en `bot.test.ts`, visto caer sin el arreglo): la búsqueda de colinas pide snapshots, y el bot, que aún no
+  había apuntado su ciudad nueva, creía en cada uno que había vuelto a caer, en bucle.
+- **El resumen** cuenta las caídas como el mayor de las sufridas y las causadas por los bots de la ejecución, por
+  hora de la ejecución más larga.
+
 ## 10. Decisiones de producto (2026-11-23)
 
 Producto aceptó el 2026-11-23 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
