@@ -280,6 +280,19 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
   había apuntado su ciudad nueva, creía en cada uno que había vuelto a caer, en bucle.
 - **El resumen** cuenta las caídas como el mayor de las sufridas y las causadas por los bots de la ejecución, por
   hora de la ejecución más larga.
+- **Encontrado en la pasada corta en vivo y arreglado** (cada uno con su test, visto caer sin el arreglo):
+  - Los arietes volvían a casa desde el punto de reunión: la vuelta de la partida da por llena la carga de quien ya
+    lleva su máximo de botín, y el ariete carga 0. Ahora sólo vuelve «lleno» quien puede cargar algo.
+  - Una partida que termina y otra que sale en el mismo despertar no apuntaban `raid_end` ni `raid` (venía de E28), y
+    la partida de asalto no salía en el resumen.
+  - `breached` se apuntaba también contra una ciudad sin muralla: ahora sólo si la partida la vio amurallada
+    (`sawWall`).
+  - Faltaba el enfriamiento de la Q8: con la inmunidad a 0, la refundada tiene otro id y el saqueador volvió a por
+    ella a los 7 min. Ahora el dueño de la ciudad tumbada no se vuelve a elegir durante el enfriamiento de blanco
+    (`victimCooldowns`).
+- **El tercero** (§4.7, parte 3) sólo ve la cuenta atrás de un asalto ajeno en el HUD si tiene seleccionada una
+  unidad suya a 12 tiles o menos (`assaultTargetNear`); si no, ve la ciudad desaparecer. Pintar el asalto en la escena
+  es otro slice.
 
 ## 10. Decisiones de producto (2026-11-23)
 

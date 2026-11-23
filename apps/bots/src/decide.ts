@@ -243,6 +243,8 @@ export interface Raid {
   readonly lastBreak: AssaultBreak | null;
   /** La partida vuelve sin seguir: el motivo (o la caída). */
   readonly abandon: AssaultAbandon | null;
+  /** La partida vio la ciudad amurallada: salir de la brecha es haberla abierto. */
+  readonly sawWall: boolean;
 }
 
 /** Lo de una partida que sólo usa el asalto, a su valor de partida (también la de saqueo lo lleva). */
@@ -255,7 +257,8 @@ export const RAID_ASSAULT_FIELDS = {
   breaks: 0,
   lastBreak: null,
   abandon: null,
-} as const satisfies Pick<Raid, 'kind' | 'rams' | 'stage' | 'holder' | 'planted' | 'breaks' | 'lastBreak' | 'abandon'>;
+  sawWall: false,
+} as const satisfies Pick<Raid, 'kind' | 'rams' | 'stage' | 'holder' | 'planted' | 'breaks' | 'lastBreak' | 'abandon' | 'sawWall'>;
 
 export interface Memory {
   /** Clave de orden → hasta cuándo no se repite (RN-BOT-002). */
@@ -291,6 +294,12 @@ export interface Memory {
   readonly unreachablePlayers: readonly string[];
   /** Ofertas del mercado cuya compra volvió sin ruta (RN-BOT-013). */
   readonly unreachableOffers: readonly number[];
+  /**
+   * Jugador cuya ciudad tumbó la partida → hasta cuándo no se le vuelve a asaltar
+   * (SPEC-BOTS-ASSAULT Q8): la refundada tiene otro id, así que el enfriamiento de
+   * blanco por ciudad no basta cuando la inmunidad está a 0.
+   */
+  readonly victimCooldowns: Readonly<Record<string, number>>;
 }
 
 export const EMPTY_MEMORY: Memory = {
@@ -309,6 +318,7 @@ export const EMPTY_MEMORY: Memory = {
   marketScanIndex: 0,
   unreachablePlayers: [],
   unreachableOffers: [],
+  victimCooldowns: {},
 };
 
 export interface Decision {
@@ -873,7 +883,10 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     const busy = u.status !== 'IDLE' && !(assault && timedOut && u.status !== 'MOVING');
     if (busy || (!raid.ordered.includes(u.id) && !timedOut)) continue;
     const nearTarget = chebyshev(u, raid.target) <= 3;
-    const full = u.carrying >= lootCarry(u.unitType);
+    // El ariete no lleva botín (carga 0): nunca está «lleno» (lo encontró la prueba en
+    // vivo de E32: los arietes volvían a casa desde el punto de reunión).
+    const cap = lootCarry(u.unitType);
+    const full = cap > 0 && u.carrying >= cap;
     if (atHome(view, u)) continue;
     if (nearTarget && !full && !timedOut && raid.phase === 'strike') {
       // Paró sin la carga llena. Si el almacén de la víctima sigue por encima del
@@ -1027,6 +1040,7 @@ export function chooseAssaultTarget(
   const home = center(view);
   const fighter = ownUnits(view).find(isMilitary);
   const usable = (id: number) => (memory.targetCooldowns[id] ?? 0) <= nowMs;
+  const resting = (playerId: string) => (memory.victimCooldowns[playerId] ?? 0) > nowMs;
   const visible = new Map(view.foreignCities.map((c) => [c.id, c]));
   const reasonFor = (c: CityView) =>
     assaultBlockReason({
@@ -1044,6 +1058,7 @@ export function chooseAssaultTarget(
   for (const b of view.botCities) {
     if (b.playerId === view.playerId || !isBotCity(b.name) || !usable(b.cityId)) continue;
     seen.add(b.cityId);
+    if (resting(b.playerId)) continue;
     if (atPeaceWith(view, b.playerId)) continue;
     const live = visible.get(b.cityId);
     let isWalled: boolean;
@@ -1061,7 +1076,7 @@ export function chooseAssaultTarget(
   }
   if (contraHumanos) {
     for (const c of view.foreignCities) {
-      if (c.ownerPlayerId === view.playerId || seen.has(c.id) || !usable(c.id)) continue;
+      if (c.ownerPlayerId === view.playerId || seen.has(c.id) || !usable(c.id) || resting(c.ownerPlayerId)) continue;
       const reason = reasonFor(c);
       if (!assaultableReason(reason)) continue;
       const t = { x: c.centerX, y: c.centerY };
@@ -1142,8 +1157,8 @@ function assaultStrike(
 
   if (isWalled) {
     // La brecha: sólo el ariete golpea la muralla completa (RN-SIEGE-004, RN-BOT-014).
-    if (ramIds.length === 0) return { ...r, abandon: 'no_rams' };
-    r = { ...r, stage: 'breach', holder: null };
+    if (ramIds.length === 0) return { ...r, abandon: 'no_rams', sawWall: true };
+    r = { ...r, stage: 'breach', holder: null, sawWall: true };
     const wall = view.foreignBuildings.find((b) => b.cityId === victim.id && b.type === 'WALL' && b.status === 'COMPLETE');
     if (wall) {
       for (const ram of visibleIdle(ramIds)) {
@@ -1378,12 +1393,17 @@ export function onRaidLoss(memory: Memory, unitId: number): Memory {
 
 /**
  * La ciudad que asaltaba la partida cayó (`city.fallen`): vuelve a casa
- * (SPEC-BOTS-ASSAULT §4.4). Un `city.fallen` repetido no cambia nada.
+ * (SPEC-BOTS-ASSAULT §4.4), y su dueño no se vuelve a elegir hasta que pase el
+ * enfriamiento de blanco (Q8). Un `city.fallen` repetido no cambia nada.
  */
-export function onTargetFell(memory: Memory, cityId: number): Memory {
+export function onTargetFell(memory: Memory, cityId: number, ownerPlayerId: string, nowMs: number, profile: Profile): Memory {
   const raid = memory.raid;
   if (raid === null || raid.kind !== 'assault' || raid.targetCityId !== cityId || raid.abandon === 'fell') return memory;
-  return { ...memory, raid: { ...raid, abandon: 'fell' } };
+  return {
+    ...memory,
+    raid: { ...raid, abandon: 'fell' },
+    victimCooldowns: { ...memory.victimCooldowns, [ownerPlayerId]: nowMs + profile.targetCooldownMs },
+  };
 }
 
 /**

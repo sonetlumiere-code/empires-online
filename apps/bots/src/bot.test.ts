@@ -478,6 +478,99 @@ describe('el asalto en el registro (SPEC-BOTS-ASSAULT §4.6, §4.7)', () => {
   });
 });
 
+describe('las partidas en el registro (lo encontró la prueba en vivo de E32)', () => {
+  it('una partida que termina y otra que sale en el mismo despertar apuntan raid_end y raid', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.saqueador);
+    await bot.start();
+    const inner = bot as unknown as Inner;
+    const base = { city: fixtureCity({ name: 'bot_saqueador_1polis', population: 4, populationLimit: 5, stocks: fixtureStocks(0) }) };
+    // La partida vuelve: todos en casa, parados y sin carga.
+    const home = [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', hp: 60, maxHp: 60 }));
+    const raid: Raid = {
+      targetCityId: 20,
+      targetName: 'bot_constructor_2polis',
+      target: { x: 140, y: 100 },
+      warriors: [1, 2, 3],
+      startedAtMs: NOW - 60_000,
+      phase: 'strike',
+      ordered: [1, 2, 3],
+      waypoint: null,
+      waypointTries: 0,
+      lost: 0,
+      size: 3,
+      departed: true,
+      rally: { x: 124, y: 100 },
+      rallyAtMs: NOW - 50_000,
+      gathered: 3,
+      rallyWaitMs: 0,
+      ...RAID_ASSAULT_FIELDS,
+    };
+    inner.memory = { ...EMPTY_MEMORY, raid };
+    bot.buildView = () => view({ ...base, units: home, botCities: [botCity()] });
+    inner.think();
+    bot.stop();
+    const events = parseLog(lines.join('')).filter((e) => e.event === 'raid' || e.event === 'raid_end').map((e) => e.event);
+    expect(events).toEqual(['raid_end', 'raid']);
+    expect(inner.memory.raid?.departed).toBe(false);
+  });
+
+  it('breached sólo si la partida vio la muralla', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.saqueador);
+    await bot.start();
+    const inner = bot as unknown as Inner;
+    const saqueadorCity = fixtureCity({ name: 'bot_saqueador_1polis', era: 'IRON_AGE', population: 16, populationLimit: 40, stocks: fixtureStocks(0) });
+    const raid: Raid = {
+      targetCityId: 20,
+      targetName: 'bot_constructor_2polis',
+      target: { x: 140, y: 100 },
+      warriors: [1, 2, 3, 4, 5, 6],
+      startedAtMs: NOW,
+      phase: 'strike',
+      ordered: [],
+      waypoint: null,
+      waypointTries: 0,
+      lost: 0,
+      size: 6,
+      departed: true,
+      rally: { x: 124, y: 100 },
+      rallyAtMs: NOW,
+      gathered: 6,
+      rallyWaitMs: 0,
+      ...RAID_ASSAULT_FIELDS,
+      kind: 'assault',
+      rams: [5, 6],
+      stage: 'breach',
+    };
+    const units = [
+      ...[1, 2, 3, 4].map((id) => unit({ id, unitType: 'WARRIOR', x: 137, y: 100 })),
+      unit({ id: 5, unitType: 'RAM', x: 138, y: 100 }),
+      unit({ id: 6, unitType: 'RAM', x: 138, y: 100 }),
+    ];
+    const victim = fixtureCity({ id: 20, ownerPlayerId: '22222222-2222-4222-8222-222222222222', name: 'bot_constructor_2polis', centerX: 140, centerY: 100, era: 'BRONZE_AGE' });
+    const wall = { id: 50, cityId: 20, type: 'WALL' as const, x: 140, y: 100, status: 'COMPLETE' as const, completesAtMs: 0 };
+
+    // Sin muralla: de la brecha al estandarte, sin breached.
+    inner.memory = { ...EMPTY_MEMORY, raid };
+    bot.buildView = () => view({ city: saqueadorCity, units, foreignCities: [victim] });
+    inner.think();
+    expect(parseLog(lines.join('')).filter((e) => e.event === 'assault' && e.status === 'breached')).toEqual([]);
+
+    // Con muralla, y después sin ella: breached una vez.
+    inner.memory = { ...EMPTY_MEMORY, raid };
+    bot.buildView = () => view({ city: saqueadorCity, units, foreignCities: [victim], foreignBuildings: [wall] });
+    inner.think();
+    bot.buildView = () => view({ city: saqueadorCity, units, foreignCities: [victim] });
+    inner.think();
+    inner.think();
+    bot.stop();
+    expect(parseLog(lines.join('')).filter((e) => e.event === 'assault' && e.status === 'breached')).toHaveLength(1);
+  });
+});
+
 function server(sockets: FakeServer[]): FakeServer {
   return sockets[0] as FakeServer;
 }

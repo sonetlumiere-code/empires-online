@@ -430,8 +430,18 @@ export class Bot {
     this.memory = memory;
     for (const cmd of commands) this.send(cmd, nowMs);
 
-    this.logAssault(hadRaid, memory.raid);
-    if (!hadRaid && memory.raid) {
+    // Una partida que termina y otra que sale en el mismo despertar: decide cierra la
+    // vieja y abre la nueva sin pasar por null (lo encontró la prueba en vivo de E32).
+    const replaced =
+      hadRaid !== null &&
+      memory.raid !== null &&
+      ((hadRaid.departed && !memory.raid.departed) || hadRaid.kind !== memory.raid.kind);
+    if (replaced) {
+      this.emit('raid_end', { target: hadRaid.targetName, lost: hadRaid.lost, size: hadRaid.size });
+    } else {
+      this.logAssault(hadRaid, memory.raid);
+    }
+    if ((!hadRaid || replaced) && memory.raid) {
       this.emit('raid', {
         target: memory.raid.targetName,
         cityId: memory.raid.targetCityId,
@@ -468,7 +478,8 @@ export class Bot {
       if (before.phase === 'march' && after.phase === 'strike') {
         this.emit('assault', { status: 'rallied', target, warriors: after.gathered, rams: after.rams.length, waitMs: after.rallyWaitMs });
       }
-      if (before.phase === 'strike' && before.stage === 'breach' && after.stage !== 'breach' && after.stage !== null) {
+      // Sólo si la partida la vio amurallada: una ciudad sin muralla no se abre.
+      if (before.phase === 'strike' && before.stage === 'breach' && after.stage !== 'breach' && after.stage !== null && after.sawWall) {
         this.emit('assault', { status: 'breached', target, rams: after.rams.length });
       }
       if (after.planted > before.planted) this.emit('assault', { status: 'planted', target, holder: after.holder });
@@ -629,7 +640,7 @@ export class Bot {
     // Una ciudad que cae (SPEC-BOTS-ASSAULT §4.4, §4.6): la que asaltaba la partida, o la propia.
     if (m.type === 'city.fallen') {
       const before = this.memory.raid;
-      this.memory = onTargetFell(this.memory, m.payload.cityId);
+      this.memory = onTargetFell(this.memory, m.payload.cityId, m.payload.ownerPlayerId, nowMs, this.deps.profile);
       this.logAssault(before, this.memory.raid);
       if (m.payload.ownerPlayerId === this.account?.playerId && this.prevCity?.id === m.payload.cityId) {
         this.pendingFall = { cityId: m.payload.cityId, byPlayerId: m.payload.byPlayerId };

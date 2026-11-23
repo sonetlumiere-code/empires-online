@@ -189,6 +189,16 @@ describe('la partida de asalto (RN-BOT-015)', () => {
     expect(decide(bronze, saqueador, EMPTY_MEMORY, NOW, rng(), solo).memory.raid).toMatchObject({ kind: 'pillage', warriors: [1, 2, 3, 4] });
   });
 
+  it('un ariete parado en el punto de reunión no vuelve a casa como si llevara botín', () => {
+    // Lo encontró la prueba en vivo: el ariete carga 0, y «carga llena» lo mandaba a casa.
+    const marching = assaultRaid({ phase: 'march', stage: null, waypoint: { x: 124, y: 100 }, ordered: [1, 2, 3, 4, 5, 6], rallyAtMs: NOW });
+    const atRally = [1, 2, 3].map((id) => warrior(id, { x: 124, y: 100 }));
+    const units = [...atRally, warrior(4, { x: 112, y: 100, status: 'MOVING' }), ram(5, { x: 124, y: 100 }), ram(6, { x: 124, y: 101 })];
+    const v = view({ city: ironCity(), units, foreignCities: [victim()], foreignBuildings: [WALL] });
+    const { commands } = decide(v, saqueador, withRaid(marching), NOW + 30_000, rng(), solo);
+    expect(commands.filter((c) => c.key.startsWith('raid:home:'))).toEqual([]);
+  });
+
   it('la reunión espera a los arietes hasta su plazo, más largo que el del saqueo', () => {
     const marching = assaultRaid({ phase: 'march', stage: null, waypoint: { x: 124, y: 100 }, ordered: [1, 2, 3, 4, 5, 6], rallyAtMs: NOW });
     const atRally = [1, 2, 3, 4].map((id) => warrior(id, { x: 124, y: 100 }));
@@ -338,10 +348,29 @@ describe('el asalto reunido (SPEC-BOTS-ASSAULT §4.3, §4.4)', () => {
 
 describe('la caída y los rechazos', () => {
   it('la ciudad asaltada cae: la partida vuelve, y un city.fallen repetido no cambia nada', () => {
-    const m = onTargetFell(withRaid(assaultRaid({ stage: 'hold' })), 20);
+    const m = onTargetFell(withRaid(assaultRaid({ stage: 'hold' })), 20, OTHER_BOT, NOW, saqueador);
     expect(m.raid?.abandon).toBe('fell');
-    expect(onTargetFell(m, 20)).toBe(m);
-    expect(onTargetFell(withRaid(assaultRaid()), 99).raid?.abandon).toBeNull();
+    expect(onTargetFell(m, 20, OTHER_BOT, NOW + 1, saqueador)).toBe(m);
+    expect(onTargetFell(withRaid(assaultRaid()), 99, OTHER_BOT, NOW, saqueador).raid?.abandon).toBeNull();
+  });
+
+  it('Q8: tras tumbarla, la refundada de esa víctima no se elige hasta que pasa el enfriamiento', () => {
+    // Lo encontró la prueba en vivo: con la inmunidad a 0, la refundada tiene otro id y
+    // el saqueador volvió a por ella a los 7 min.
+    const m = onTargetFell(withRaid(assaultRaid({ stage: 'hold' })), 20, OTHER_BOT, NOW, saqueador);
+    const refounded = botCity({ cityId: 34, centerX: 150, centerY: 120, era: 'BRONZE_AGE', walled: false });
+    const v = view({ city: ironCity(), units: [warrior(1)], botCities: [refounded] });
+    expect(chooseAssaultTarget(v, { ...m, raid: null }, NOW + 60_000, false, rng())).toBeNull();
+    expect(chooseAssaultTarget(v, { ...m, raid: null }, NOW + saqueador.targetCooldownMs + 1, false, rng())?.cityId).toBe(34);
+  });
+
+  it('la partida sabe si vio la muralla: sólo entonces salir de la brecha es haberla abierto', () => {
+    const atRally = [1, 2, 3, 4].map((id) => warrior(id, { x: 124, y: 100 }));
+    const units = [...atRally, ram(5, { x: 124, y: 100 }), ram(6, { x: 124, y: 100 })];
+    const walledView = view({ city: ironCity(), units, foreignCities: [victim()], foreignBuildings: [WALL] });
+    expect(decide(walledView, saqueador, withRaid(assaultRaid()), NOW, rng(), solo).memory.raid?.sawWall).toBe(true);
+    const open = view({ city: ironCity(), units, foreignCities: [victim()] });
+    expect(decide(open, saqueador, withRaid(assaultRaid()), NOW, rng(), solo).memory.raid?.sawWall).toBe(false);
   });
 
   it('RN-BOT-017: el bot que cae olvida lo de la ciudad y conserva lo del jugador', () => {
