@@ -126,6 +126,7 @@ func escenarioDeCaida(t *testing.T, ajustar func(*simulation.Deps)) (*harness, *
 	store.centers = func() []world.Tile { return []world.Tile{{X: 10, Y: 10}} }
 	enemigo, ciudad := conEnemigo(h)
 	ciudad.Era = city.EraBronze
+	ciudad.Civilization, ciudad.Faction = "NORSE", "CHAOS"
 	ponerUnidad(h, enemigoID, enemigo, ciudad.ID, unit.TypeVillager, world.Tile{X: 30, Y: 50}, 40)
 	ponerUnidad(h, sitiadorID, h.playerID, h.cityID, unit.TypeWarrior, world.Tile{X: 22, Y: 40}, 60)
 	h.conectar()
@@ -200,6 +201,8 @@ func TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad(t *testing.T) {
 	assert.Equal(t, int64(99), nueva.ID)
 	assert.Equal(t, "Vecina", nueva.Name)
 	assert.Equal(t, city.EraBronze, nueva.Era)
+	assert.Equal(t, ciudad.Civilization, nueva.Civilization, "la civilización y el bando son del jugador")
+	assert.Equal(t, ciudad.Faction, nueva.Faction)
 	assert.GreaterOrEqual(t, chebyshevDe(nueva.Center(), ciudad.Center()), int32(24), "lejos de la caída")
 	aldeano, _ := h.state.Unit(enemigoID)
 	require.NotNil(t, aldeano.CityID)

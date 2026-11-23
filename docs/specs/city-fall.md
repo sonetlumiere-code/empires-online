@@ -359,6 +359,11 @@ no pisa ninguna en pie), [INV-CITY-019](../invariants/city.md#inv-city-019) (la 
   retiradas se acredita a la ciudad nueva como un depósito (volcado por dirty-flag) y las guarniciones salen por su
   procedimiento normal (`garrison.leave`). Una caída del servidor justo después del `COMMIT` puede perder esa custodia,
   como cualquier depósito sin volcar.
+- **Fallo encontrado en la prueba en vivo (2026-11-23).** La ciudad nueva entraba en la RAM sin civilización ni bando
+  (la transacción no los lee: son del jugador), su `CityView` salía con `civilization: ""` y el cliente descartaba el
+  snapshot entero del vencido, que veía el mundo vacío. La RAM copia ahora de la caída la civilización, el bando, la
+  entrada pendiente en un bando y el clan. Lo reproducen `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad` (la nueva
+  conserva civilización y bando) y `TestUnaCiudadCaePorLaRed`, cuyo almacén en memoria ya no rellena la civilización.
 - **La población de la ciudad nueva** se escribe como un recuento (`eo.population_recount`, ADR-029 §3): los tres
   aldeanos nacen aunque los supervivientes la dejen por encima de su límite.
 - **El camino al anillo** elige el tile más cercano y, a igual distancia, el de menor `y` y después el de menor `x`, como

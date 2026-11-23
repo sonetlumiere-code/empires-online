@@ -44,8 +44,10 @@ func (m *memoryCityFall) FallCity(_ context.Context, f cityfall.Fall) (*cityfall
 		return nil, err
 	}
 	now := f.Now
+	// Como la transacción real, la ciudad nueva vuelve sin civilización ni bando:
+	// los pone la RAM, que los conoce del jugador (precisión de 2026-11-23).
 	c := &city.City{
-		Civilization: "NORSE", ID: 50, OwnerPlayerID: f.OwnerID, Name: f.Name, CenterX: site.Center.X,
+		ID: 50, OwnerPlayerID: f.OwnerID, Name: f.Name, CenterX: site.Center.X,
 		CenterY: site.Center.Y, Era: f.Era, PopulationLimit: 40, PresenceState: city.PresenceOnline,
 		LastOnlineAt: &now, FoundedAtMs: now.UnixMilli(),
 	}

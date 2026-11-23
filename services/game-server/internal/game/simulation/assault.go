@@ -807,6 +807,11 @@ func (s *Simulation) applyFall(as *assaultState, res *cityfall.FallResult, nowMs
 		}
 	}
 
+	// La civilización, el bando y el clan son del jugador, no de la ciudad: la
+	// transacción no los lee, y la RAM los copia de la caída (precisión de
+	// 2026-11-23). Sin ellos, el CityView de la nueva no cabe en el contrato.
+	newCity.Civilization, newCity.Faction = fallen.Civilization, fallen.Faction
+	newCity.FactionJoin, newCity.Clan = fallen.FactionJoin, fallen.Clan
 	// La ciudad nueva entra como un alta (RN-CITY-027).
 	s.handleIntroducePlayer(IntroducePlayer{
 		City: newCity, Units: res.Villagers,
