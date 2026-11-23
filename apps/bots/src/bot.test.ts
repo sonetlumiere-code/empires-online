@@ -289,6 +289,38 @@ describe('el registro del mercado (SPEC-BOTS-TRADE §4.7)', () => {
   });
 });
 
+describe('RN-BOT-013: la pareja sin ruta en el registro', () => {
+  it('apunta trade unreachable una vez por pareja, al primer rechazo sin ruta', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets);
+    await bot.start();
+    const server = sockets[0] as FakeServer;
+    const inner = bot as unknown as Inner;
+    const other = '22222222-2222-4222-8222-222222222222';
+    const propose = (): string => {
+      inner.send(
+        { key: `trade:propose:${other}`, type: 'trade.propose', playerId: other, give: { resource: 'WINE', amount: 10 },
+          want: { resource: 'SPICES', amount: 10 } },
+        NOW,
+      );
+      return (server.sent[server.sent.length - 1] as { requestId: string }).requestId;
+    };
+    const reject = (requestId: string, code: string) =>
+      server.deliver('system.error', { code, message: 'sin ruta' }, requestId);
+
+    reject(propose(), 'TREATY_REQUIRED');
+    reject(propose(), 'PATH_TOO_LONG');
+    reject(propose(), 'PATH_NOT_FOUND');
+    bot.stop();
+
+    const trades = parseLog(lines.join('')).filter((e) => e.event === 'trade');
+    expect(trades.map((e) => e.status)).toEqual(['proposed', 'proposed', 'unreachable', 'proposed']);
+    expect(trades[2]).toMatchObject({ with: other, status: 'unreachable', code: 'PATH_TOO_LONG' });
+    expect(inner.memory.unreachablePlayers).toEqual([other]);
+  });
+});
+
 describe('el registro de la reunión (SPEC-BOTS-TRADE §4.7)', () => {
   it('apunta rally una vez, al pasar la partida de la marcha a la orden de saquear', async () => {
     const lines: string[] = [];

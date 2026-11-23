@@ -988,6 +988,9 @@ y grueso, y una que carga madera, un tronco a la espalda.
   `treatyForbidden` (`factions.ts`), `canTradeWith`, `pendingWith` y `offerBlockReason` (`trade.ts`), y
   `marketBuildBlockReason`, `postBlockReason`, `buyBlockReason`, `postCost`, `buyCost` y `commission` (`market.ts`)
   (`RN-BOT-009`). Lee `treaties`, `tradeOffers` y `market` del store de su conexión de casa, sin reductores nuevos.
+- **Desde E30** ([SPEC-TRADE-REACH](../specs/trade-reach.md)) el decisor aparta para toda la ejecución la pareja y
+  la oferta del mercado sin ruta de caravana (`RN-BOT-013`): es memoria del bot (`unreachablePlayers`,
+  `unreachableOffers` en `apps/bots/src/decide.ts`), sin nada nuevo en `src/net` ni en `src/state`.
 - **Consecuencia:** `src/net` y `src/state` tienen que seguir sin DOM ni React en lo que el bot importa. Un cambio que
   lo rompa lo detectan el typecheck y los tests de `apps/bots`, que corren con los del workspace.
 - `tsx` carga los `.ts` de `apps/web` como CommonJS (el paquete no declara `"type": "module"`); por eso

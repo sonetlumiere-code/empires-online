@@ -230,7 +230,7 @@ function proposeTreaty(view: View, profile: Profile, memory: Memory, plan: Plann
 // Tratos (§4.2)
 // ─────────────────────────────────────────────────────────────
 
-function answerTrades(view: View, profile: Profile, plan: Planner, opts: CommerceOptions): void {
+function answerTrades(view: View, profile: Profile, memory: Memory, plan: Planner, opts: CommerceOptions): void {
   for (const o of view.tradeOffers) {
     if (plan.full) return;
     if (o.status !== 'PROPOSED' || o.proposedByMe) continue;
@@ -238,6 +238,8 @@ function answerTrades(view: View, profile: Profile, plan: Planner, opts: Commerc
     if (!plan.free(key)) continue;
     const other = partnerOf(view, o.otherPlayerId, o.otherCityName);
     if (!other.bot && !opts.conHumanos) continue;
+    // Sin ruta, aceptar volvería a fallar: la oferta se deja caducar (RN-BOT-013).
+    if (memory.unreachablePlayers.includes(o.otherPlayerId)) continue;
     const accept = acceptsTrade(o, plan.city, profile);
     const cost: Stocks = {};
     if (accept) for (const l of o.give) cost[l.resource] = (cost[l.resource] ?? 0) + l.amount;
@@ -271,7 +273,7 @@ function proposeTrade(view: View, profile: Profile, memory: Memory, plan: Planne
   const surplus = ownSurplus(city, profile);
   for (const b of view.botCities) {
     if (b.playerId === view.playerId || !isBotName(b.name)) continue;
-    if ((memory.tradeCooldowns[b.playerId] ?? 0) > nowMs) continue;
+    if ((memory.tradeCooldowns[b.playerId] ?? 0) > nowMs || memory.unreachablePlayers.includes(b.playerId)) continue;
     if (!canTradeWith(view.treaties, b.playerId) || pendingWith(view.tradeOffers, b.playerId)) continue;
     let draft: { giveResource: string; giveAmount: number; wantResource: string; wantAmount: number } | null = null;
     const theirs = b.civilization ? goodOf(b.civilization) : null;
@@ -332,12 +334,17 @@ function buildMarket(view: View, plan: Planner): void {
   plan.add({ key: 'build:MARKET', type: 'city.build', cityId: city.id, building: 'MARKET', tile }, { ...MARKET_COST });
 }
 
-/** La compra más barata del tablón que paga con su bien y recibe uno ajeno, al precio de la tabla. */
+/**
+ * La compra más barata del tablón que paga con su bien y recibe uno ajeno, al
+ * precio de la tabla. Las ofertas sin ruta (`unreachable`) no cuentan: si no,
+ * la mejor sin ruta taparía para siempre a las demás (RN-BOT-013).
+ */
 export function bestPurchase(
   board: readonly MarketOfferView[],
   view: Pick<View, 'buildings'>,
   city: CityView,
   profile: Profile,
+  unreachable: readonly number[] = [],
 ): { offer: MarketOfferView; lots: number } | null {
   const own = goodOf(city.civilization);
   const need = foreignNeed(city);
@@ -347,6 +354,7 @@ export function bestPurchase(
   let best: { offer: MarketOfferView; lots: number; ratio: number } | null = null;
   for (const o of board) {
     if (o.want.resource !== own || o.give.resource === own || !(GOODS as readonly string[]).includes(o.give.resource)) continue;
+    if (unreachable.includes(o.id)) continue;
     // El precio de la tabla: lo que paga por lote (sin comisión) no pasa de lo que recibe por su precio.
     if (o.want.amount > o.give.amount * profile.prices.goodPerGood) continue;
     const perLot = buyCost(o, 1).total;
@@ -378,7 +386,7 @@ function useMarket(view: View, profile: Profile, memory: Memory, plan: Planner, 
 
   // Comprar, con el último tablón pedido.
   if (!plan.full && view.market.board) {
-    const p = bestPurchase(view.market.board, view, city, profile);
+    const p = bestPurchase(view.market.board, view, city, profile, mem.unreachableOffers);
     if (p && own) {
       const key = `market:buy:${p.offer.id}`;
       if (plan.free(key)) {
@@ -445,7 +453,7 @@ export function commerceRule(
 ): Memory {
   if (!profile.trades) return memory;
   answerTreaties(view, profile, plan, opts);
-  answerTrades(view, profile, plan, opts);
+  answerTrades(view, profile, memory, plan, opts);
   let mem = proposeTreaty(view, profile, memory, plan, nowMs);
   mem = proposeTrade(view, profile, mem, plan, nowMs);
   if (profile.market) {
