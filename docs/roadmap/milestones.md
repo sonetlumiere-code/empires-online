@@ -2904,3 +2904,42 @@ bienes ajenos; `bot_constructor_4`, nórdico, en Piedra. Registros en `bots/runs
   vivo: la partida no sobrevive a un reinicio del proceso, y al arrancar los guerreros lejanos ya vuelven por la
   regla de los varados.
 
+
+## E30 — Al alcance del comercio
+
+**Estado: EN CURSO.** Contrato: [SPEC-TRADE-REACH](../specs/trade-reach.md), propuesta y aceptada el 2026-11-22 con
+sus siete decisiones de producto. Sin ADR: la fundación ya es una búsqueda determinista con reglas de
+[city.md](../specs/city.md) §6.1, y el tope de nodos de [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) no
+cambia (Q4).
+
+**Objetivo.** El hallazgo de la ejecución larga de E29: una ciudad que nace donde no le llega ninguna caravana no puede
+pasar de Bronce, porque los bienes ajenos sólo llegan comerciando. Que ninguna ciudad nueva nazca así, y que los bots
+dejen de insistir con socios a los que no llega ninguna ruta.
+
+**Alcance.** En el servidor: la fundación exige, si ya hay ciudades, una vecina a ≤ `EO_FOUNDING_MAX_NEIGHBOR_TILES`
+(96) con ruta de caravana entre los depósitos, y si ningún sitio la tiene funda como antes (`RN-CITY-024`,
+`RN-CITY-025`, [INV-CITY-019](../invariants/city.md#inv-city-019)). En `apps/bots`: la pareja o la oferta sin ruta se
+aparta hasta el final de la ejecución, con el registro `unreachable` (`RN-BOT-013`). **No entra** (spec §2): mover
+ciudades que ya existen, tocar los topes del pathfinding o la forma de las rutas, una fuente de bienes ajenos sin
+comercio, avisar en el HUD de si hay ruta, y mensajes, campos, tablas o migraciones nuevos.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones, sin ADR; `RN-CITY-024` y `RN-CITY-025` en
+   [city.md](../specs/city.md) §6.1, con precisiones de `RN-CITY-004`, `RN-CITY-005` y `RN-CITY-006`; `RN-BOT-013`
+   en [bots-trade.md](../specs/bots-trade.md) §4.9, con su precisión en [bots.md](../specs/bots.md) §4.7 y el estado
+   `unreachable` en §4.7 de bots-trade; la precisión de `RN-CARAVAN-002` en [caravans.md](../specs/caravans.md) (el
+   tope de nodos, ADR-031); [INV-CITY-019](../invariants/city.md#inv-city-019) registrado sin cobertura.
+2. Fundación: la condición de alcance en `founding.FindSite` y su llamada desde `internal/httpapi`, con
+   `EO_FOUNDING_MAX_NEIGHBOR_TILES` en `internal/config`, `.env.example` y
+   [configuration.md](../operations/configuration.md).
+3. Tests de la fundación: `internal/game/founding/site_test.go` (spec §9) y la integración del alta en
+   `internal/persistence/postgres/fundacion_integration_test.go`; la mutación de INV-CITY-019, y su ficha y su fila a
+   ✓.
+4. Bots: la pareja y la oferta sin ruta apartadas para toda la ejecución y el registro `unreachable` una vez por
+   pareja (`RN-BOT-013`), con sus tests.
+5. Docs de arquitectura que describen `FindSite`: [overview.md](../architecture/overview.md),
+   [game-server.md](../architecture/game-server.md) y [scalability.md](../architecture/scalability.md) §4.
+6. `pnpm run verify:full` entero.
+7. Prueba en vivo (spec §4.5): cuatro altas nuevas con `--sufijo` y al menos un trato entre ellas en 30 min; el caso
+   del borde sin `NO_SITE_AVAILABLE`; las cuentas `_e29` apuntando una vez cada pareja inalcanzable.

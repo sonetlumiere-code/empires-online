@@ -212,7 +212,8 @@ Lo que no se pueda ver en el navegador se anota en milestones como «Sin comprob
 
 **Precisión (2026-11-21):** las reglas siguen en [bots-trade.md](bots-trade.md) §4.9 con `RN-BOT-008` a `RN-BOT-012`
 (comercio con bots, los paneles de diplomacia, comercio y mercado bajo `RN-BOT-002`, la aceptación de tratos, el
-saqueador sin pacto y la partida que se reúne).
+saqueador sin pacto y la partida que se reúne). **Precisión (2026-11-22):** y con `RN-BOT-013` ([trade-reach.md](trade-reach.md),
+E30): la pareja o la oferta del mercado sin ruta se aparta hasta el final de la ejecución.
 
 | ID | Regla |
 |---|---|

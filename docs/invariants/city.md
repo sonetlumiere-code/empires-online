@@ -664,6 +664,54 @@ no se cuenta) y el golden `TestGoldenCaravanasDelTratoALaLlegada` (la población
 
 ---
 
+<a id="inv-city-019"></a>
+## INV-CITY-019 — Una ciudad nueva nace al alcance de una caravana de alguna vecina
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E30 |
+| Política ante violación | REJECT del candidato en la fundación (se prueba el siguiente de la espiral) |
+| Cobertura | **Sin cobertura**: registrado el 2026-11-22 con [SPEC-TRADE-REACH](../specs/trade-reach.md), antes de escribir su código. Tests previstos en `internal/game/founding` (site_test.go) y en `internal/persistence/postgres/fundacion_integration_test.go` (E30) |
+
+**Enunciado.** Toda ciudad fundada cuando ya había al menos otra en el mundo tiene, en el instante de fundarse, una
+ciudad vecina a una distancia de Chebyshev entre centros ≤ `EO_FOUNDING_MAX_NEIGHBOR_TILES` y una ruta entre los
+depósitos de las dos dentro de los topes del pathfinding (`EO_PATHFINDING_MAX_DISTANCE` y `EO_PATHFINDING_MAX_NODES`),
+salvo que ningún sitio del mundo que cumpla las demás reglas de emplazamiento la tuviera.
+
+**Razón.** Desde E14 nadie pasa de Bronce sin bienes de otras civilizaciones, y un bien ajeno sólo llega en una
+caravana, que pide una ruta entre depósitos (`RN-CARAVAN-002`). Una ciudad que nace sin ninguna vecina a la que llegue
+una caravana no puede avanzar de era por cómo cayó en el mapa, algo que el jugador no elige: la ejecución larga de E29
+lo encontró ([milestones.md](../roadmap/milestones.md) §E29). La fundación es el único momento en que se decide dónde
+está una ciudad, y después no se reubica ([INV-CITY-007](#inv-city-007)).
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — `founding.FindSite` comprueba la condición de alcance (`RN-CITY-024`) la última, para un candidato que
+  ya cumple las demás reglas, probando las vecinas a ≤ `EO_FOUNDING_MAX_NEIGHBOR_TILES` de la más cercana a la más
+  lejana (empate: menor id) con la misma búsqueda A\* que una caravana (`RN-CITY-025`). Si la espiral entera no da
+  ningún candidato así, repite la búsqueda sin la condición: la excepción del enunciado, que nunca hace fallar el alta
+  (`RN-CITY-006`).
+- Las altas simultáneas: una ciudad que nace mientras tanto sólo añade vecinas. Si la comprobación dentro de la
+  transacción del alta ([INV-CITY-008](#inv-city-008)) debe repetir también el alcance se decide en la
+  implementación y se anota como precisión en la spec.
+
+**Cómo se verifica (previsto, E30).**
+
+- Unit, `internal/game/founding`: un mundo con una ciudad, el sitio nuevo a ≤ 96 y con ruta; un lago entre la ciudad y
+  el primer candidato de la espiral hace saltar el candidato sin ruta; el orden de las vecinas y su empate; el mundo
+  vacío y la isla sin sitio al alcance fundan como antes, sin `ErrNoSite`; el determinismo (`RN-CITY-005`).
+- Integración, `internal/persistence/postgres/fundacion_integration_test.go`: el alta por el listener interno con dos
+  jugadores; el segundo nace al alcance del primero.
+- Mutación: con la condición de alcance desactivada, el test del sitio con vecina debe caer.
+
+**Violación en runtime.** No hay detección después de fundar: la propiedad es del instante del alta, y las ciudades
+y el terreno no se mueven. Una ciudad antigua, de antes de E30, puede no cumplirla y no es una violación: el
+invariante habla de las fundaciones posteriores.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -686,3 +734,4 @@ no se cuenta) y el golden `TestGoldenCaravanasDelTratoALaLlegada` (la población
 | INV-CITY-016 | `internal/game/simulation` | [INV-PERSIST-002](persistence.md#inv-persist-002) |
 | INV-CITY-017 | `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-CITY-002](#inv-city-002), [RN-ECON-010](../specs/economy-wood.md) |
 | INV-CITY-018 | `internal/domain/advance`, `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-003](#inv-city-003), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) |
+| INV-CITY-019 | `internal/game/founding`, `internal/httpapi` | [INV-CITY-007](#inv-city-007), [INV-CITY-008](#inv-city-008), [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) |

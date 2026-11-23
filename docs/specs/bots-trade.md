@@ -235,6 +235,9 @@ Sucesos nuevos en el JSONL de [bots.md](bots.md) §4.5:
   propuesta que caduca sin respuesta. `proposed` se apunta al enviar la propuesta; los demás, al llegar el
   `treaty.update` con el cambio, una vez cada uno.
 - `trade` tiene también `expired`, la propuesta que caduca sin respuesta.
+- **Precisión (2026-11-22, [trade-reach.md](trade-reach.md)):** desde E30, `trade` suma el estado `unreachable`: una
+  propuesta o una aceptación que volvió con `PATH_TOO_LONG` o `PATH_NOT_FOUND`, apuntado una vez por pareja, que
+  desde entonces queda apartada hasta el final de la ejecución (`RN-BOT-013`).
 - `market` apunta `posted` y `bought` cuando llega el `market.update` con el `requestId` de la orden aceptada, no al
   enviarla; la comisión es la de cada lote por los lotes. `cancelled` es la oferta retirada (`WITHDRAWN`).
 - `rally` lleva el blanco (`target`), los guerreros reunidos (`warriors`), los vivos de la partida (`alive`) y la espera
@@ -274,6 +277,7 @@ Continúan las de [bots.md](bots.md) §4.7.
 | `RN-BOT-010` | Un bot acepta un trato sólo si lo que recibe vale, según su tabla de precios, al menos lo que da, y si lo que da no le deja por debajo de su siguiente meta. |
 | `RN-BOT-011` | Un saqueador nunca propone ni acepta `NON_AGGRESSION` ni `ALLIANCE`. |
 | `RN-BOT-012` | Una partida de saqueo no ordena `unit.pillage` hasta estar reunida (o vencido `rallyTimeoutMs` con al menos `raidMinParty` guerreros), y entonces lo ordena a todos sin intercalar otras órdenes. |
+| `RN-BOT-013` | **Precisión (2026-11-22, [trade-reach.md](trade-reach.md), E30).** Un bot no vuelve a proponer ni a aceptar un trato, durante la misma ejecución, con un jugador con el que una propuesta o una aceptación volvió con `PATH_TOO_LONG` o `PATH_NOT_FOUND`, ni a comprar una oferta del mercado que volvió así. Las ciudades no se mueven y el terreno es inmutable: la ruta no va a aparecer. Sustituye, para esos códigos, el enfriamiento de blanco de §5. |
 
 ## 5. Errores
 
@@ -283,7 +287,7 @@ No hay códigos nuevos. Lo que el bot hace con los que ya existen, además de [b
 |---|---|---|
 | `TREATY_REQUIRED` | Trato sin tratado activo (RN-TRADE-001) | Enfriamiento de la pareja; vuelve a proponer el tratado si no hay relación. |
 | `INSUFFICIENT_RESOURCES` | Al aceptar un trato o comprar, alguien ya no tiene lo suyo | `rejected` y enfriamiento de esa oferta. |
-| `PATH_NOT_FOUND`, `PATH_TOO_LONG` | Sin ruta entre depósitos (RN-CARAVAN-002) | Aparta a la pareja o la oferta durante el enfriamiento de blanco. |
+| `PATH_NOT_FOUND`, `PATH_TOO_LONG` | Sin ruta entre depósitos (RN-CARAVAN-002) | Aparta a la pareja o la oferta durante el enfriamiento de blanco. **Precisión (2026-11-22):** desde E30, hasta el final de la ejecución (`RN-BOT-013`, [trade-reach.md](trade-reach.md)). |
 | `INVALID_TARGET` | Tratado ya existente, oferta ya cerrada, reproponer antes de 10 min | `rejected` y enfriamiento. |
 
 El ajuste de la defensa no tiene errores: la respuesta automática no es un comando.
