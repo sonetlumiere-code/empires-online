@@ -239,7 +239,7 @@ Al reconectar, `seq` **se reinicia** (es monótono por conexión, no por jugador
 
 `seq` es monótono creciente por conexión. Como el transporte es TCP/WSS ordenado, un hueco (`seq !== lastSeq + 1n`) no puede deberse a reordenamiento: significa pérdida real de un delta. Un cliente que sigue aplicando deltas sobre un estado con un hueco diverge silenciosamente, que es el peor fallo posible en un sistema autoritativo.
 
-Política MVP: **ante un hueco, resincronizar por reconexión**. El protocolo v1 no define un mensaje de resincronización; el único mecanismo que produce un `world.snapshot` es abrir una sesión. Por tanto el cliente cierra el socket con `1000`, limpia el store y ejecuta el flujo de reconexión inmediatamente (sin backoff en el primer intento, porque no es un fallo de red). El evento se cuenta y se registra: un hueco recurrente es un bug de servidor que debe verse.
+Política MVP: **ante un hueco, resincronizar por reconexión**. El protocolo v1 no define un mensaje de resincronización a petición del cliente: un `world.snapshot` llega al abrir la sesión, como respuesta a `session.view` y, desde E31, al vencido tras `city.fallen`, con su ciudad refundada. Ante un hueco, por tanto, el cliente cierra el socket con `1000`, limpia el store y ejecuta el flujo de reconexión inmediatamente (sin backoff en el primer intento, porque no es un fallo de red). El evento se cuenta y se registra: un hueco recurrente es un bug de servidor que debe verse.
 
 Se usa `bigint` para `seq`, no `number`: es `uint64` en el protocolo (`seq` monótono por conexión) y `Number.MAX_SAFE_INTEGER` no lo cubre.
 

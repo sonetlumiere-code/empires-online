@@ -256,9 +256,14 @@ Para todo lo anterior. Se confirman las transacciones de verdad y, al terminar, 
 
 ```sql
 TRUNCATE TABLE
-    unit_movements, units, garrisons, territory_control, territories,
-    safe_zones, treaties, world_events, cities, sessions,
-    players, world_chunks, world_state
+    world_events, garrisons, treaties, player_messages, message_reads, player_blocks,
+    clan_wars, clan_alliances, clan_message_reads, clan_messages, clan_invites, clan_members, clans,
+    caravan_cargo, caravans, market_purchases, market_offers, trade_offer_lines, trade_offers,
+    territory_claims, city_assaults, safe_zones,
+    player_technologies, city_research, unit_tasks, city_productions, city_era_advances, city_crafts,
+    buildings, city_stocks, forest_wood, hill_stone,
+    territory_control, territories, sessions,
+    unit_movements, units, cities, world_chunks, world_state, players
 RESTART IDENTITY CASCADE;
 ```
 

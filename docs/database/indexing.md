@@ -124,13 +124,9 @@ El `UPDATE ... WHERE unit_id = $1 AND status = 'ACTIVE'` que cancela el movimien
 `CityRepo.GetByOwner`. Se ejecuta cuando `POST /internal/players` recibe un jugador ya fundado —la respuesta idempotente devuelve su ciudad— y en `cmd/devseed`. El `world.snapshot` se centra en la ciudad propia desde RAM, sin consultarla.
 
 ```sql
-SELECT id, owner_player_id, name, center_x, center_y, era, population,
-       population_limit, presence_state, last_online_at, last_offline_at,
-       protection_until, version
+SELECT <cityColumns>
   FROM cities
- WHERE owner_player_id = $1
- ORDER BY id
- LIMIT 1;
+ WHERE owner_player_id = $1 AND fallen_at IS NULL;
 ```
 
 ```sql
@@ -140,9 +136,9 @@ CREATE INDEX cities_owner_idx ON cities (owner_player_id);
 | Aspecto | Valor |
 |---|---|
 | Tipo | B-tree simple |
-| Por qué no `UNIQUE` | En MVP un jugador tiene exactamente una ciudad, pero eso lo valida el dominio —la migración `000001` **no** crea ningún índice único sobre `owner_player_id`—, no una verdad permanente del producto: el multi-ciudad está previsto. Un `UNIQUE` habría que retirarlo, y retirar una restricción sobre una tabla viva es una migración de contracción evitable ([migrations.md](./migrations.md#3-cambios-compatibles-hacia-adelante-expand--migrate--contract)). El `ORDER BY id LIMIT 1` de la consulta es la consecuencia visible de esa decisión |
-| Por qué no parcial | `cities` es pequeña y no tiene filas "muertas" que excluir |
-| Cardinalidad | Con una ciudad por jugador, este índice es tan selectivo como una PK |
+| Por qué no `UNIQUE` | Un jugador tiene exactamente una ciudad **en pie**, pero puede tener además ciudades caídas, que se quedan como filas (E31). La unicidad sobre las ciudades en pie la da desde `000030` el índice único parcial `cities_one_standing_per_owner (owner_player_id) WHERE fallen_at IS NULL` (INV-CITY-020); éste, sin filtro, sirve para buscar las de un jugador en cualquier estado. Un `UNIQUE` total impediría además el multi-ciudad previsto ([migrations.md](./migrations.md#3-cambios-compatibles-hacia-adelante-expand--migrate--contract)) |
+| Por qué no parcial | Desde `000030` hay ciudades caídas, pero son pocas y `cities` sigue siendo pequeña: no compensa excluirlas |
+| Cardinalidad | Una ciudad en pie por jugador más las que le hayan caído: casi tan selectivo como una PK |
 
 ### 2.5 Ciudades en `OFFLINE_PENDING` cuyo cooldown venció — `cities_offline_pending_idx`
 
@@ -247,7 +243,8 @@ Inventario completo, con los nombres reales de las migraciones `000001` y `00000
 | `unit_movements_one_active_per_unit` | `unit_movements` | B-tree único parcial | `INV-MOVE-001`; además, acceso al movimiento activo de una unidad |
 | `cities_owner_idx` | `cities` | B-tree | §2.4 ciudad por owner |
 | `cities_offline_pending_idx` | `cities` | B-tree parcial | §2.5 cooldown de protección |
-| `cities_unique_center` | `cities` | B-tree único (constraint `UNIQUE`) | Un tile, una ciudad |
+| `cities_unique_center` | `cities` | B-tree único parcial (`WHERE fallen_at IS NULL`, desde `000030`) | Un tile, una ciudad en pie |
+| `cities_one_standing_per_owner` | `cities` | B-tree único parcial (`WHERE fallen_at IS NULL`) | `INV-CITY-020`: una ciudad en pie por jugador |
 | PK `(chunk_x, chunk_y)` | `world_chunks` | B-tree único compuesto | §2.7 lectura del terreno |
 | `sessions_player_idx` | `sessions` | B-tree compuesto | §2.9 historial de conexiones |
 | `treaties_one_active_per_pair` | `treaties` | B-tree único parcial | INV-DIPLO-002 (desde `000009`; sustituye a `treaties_one_active_per_pair_and_type`) |
