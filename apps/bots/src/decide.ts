@@ -9,6 +9,10 @@
  * deshabilita un botón (RN-BOT-002).
  */
 import type { BuildingView, CityView, ForestView, UnitView } from '../../web/src/state/world';
+import type { TreatyView } from '../../web/src/state/diplomacy';
+import type { TradeOfferView } from '../../web/src/state/trade';
+import type { MarketState } from '../../web/src/state/market';
+import { commerceRule } from './commerce';
 import {
   TERRAIN_FOREST,
   advanceBlockReason,
@@ -34,8 +38,10 @@ import {
   HOUSE_WOOD,
   MARCH_STEP,
   MAX_COMMANDS_PER_THINK,
-  STRIKE_RADIUS,
+  PILLAGE_FLOOR,
+  RALLY_RADIUS,
   type Profile,
+  type ProfileName,
 } from './profiles';
 import type { Rng } from './random';
 
@@ -55,6 +61,9 @@ export interface BotCity {
   readonly name: string;
   readonly centerX: number;
   readonly centerY: number;
+  /** Su civilización: qué bien elabora (SPEC-BOTS-TRADE §4.2). */
+  readonly civilization?: string;
+  readonly profile?: ProfileName;
 }
 
 /** Lo que el bot ve, ya filtrado y en orden estable (RN-BOT-005). */
@@ -79,7 +88,15 @@ export interface View {
   readonly hills: readonly Tile[];
   /** Las ciudades de los otros bots del proceso, en orden de playerId. */
   readonly botCities: readonly BotCity[];
+  /** Sus tratados abiertos (propuestos y vigentes), en orden de id. */
+  readonly treaties: readonly TreatyView[];
+  /** Sus ofertas de comercio pendientes, en orden de id. */
+  readonly tradeOffers: readonly TradeOfferView[];
+  /** Sus ofertas abiertas del mercado y el último tablón pedido. */
+  readonly market: MarketState;
 }
+
+type ResourceLine = { readonly resource: string; readonly amount: number };
 
 export type Command =
   | {
@@ -96,14 +113,66 @@ export type Command =
       readonly key: string;
       readonly type: 'city.build';
       readonly cityId: number;
-      readonly building: 'HOUSE' | 'WORKSHOP' | 'WALL';
+      readonly building: 'HOUSE' | 'WORKSHOP' | 'WALL' | 'MARKET';
       readonly tile: Tile;
     }
   | { readonly key: string; readonly type: 'city.train'; readonly cityId: number; readonly unitType: string }
   | { readonly key: string; readonly type: 'city.advance'; readonly cityId: number }
   | { readonly key: string; readonly type: 'city.craft'; readonly cityId: number }
-  | { readonly key: string; readonly type: 'city.research'; readonly cityId: number; readonly technology: string };
+  | { readonly key: string; readonly type: 'city.research'; readonly cityId: number; readonly technology: string }
+  | {
+      readonly key: string;
+      readonly type: 'treaty.propose';
+      readonly playerId: string;
+      readonly treatyType: 'TRADE' | 'NON_AGGRESSION';
+    }
+  | {
+      readonly key: string;
+      readonly type: 'treaty.respond';
+      readonly treatyId: number;
+      readonly accept: boolean;
+      readonly otherPlayerId: string;
+      readonly treatyType: string;
+    }
+  | {
+      readonly key: string;
+      readonly type: 'trade.propose';
+      readonly playerId: string;
+      readonly give: ResourceLine;
+      readonly want: ResourceLine;
+    }
+  | {
+      readonly key: string;
+      readonly type: 'trade.respond';
+      readonly offerId: number;
+      readonly accept: boolean;
+      readonly otherPlayerId: string;
+      readonly give: readonly ResourceLine[];
+      readonly receive: readonly ResourceLine[];
+    }
+  | {
+      readonly key: string;
+      readonly type: 'market.post';
+      readonly give: ResourceLine;
+      readonly want: ResourceLine;
+      readonly lots: number;
+    }
+  | {
+      readonly key: string;
+      readonly type: 'market.buy';
+      readonly offerId: number;
+      readonly lots: number;
+      /** Lo que paga y lo que recibe cada lote (para el registro). */
+      readonly give: ResourceLine;
+      readonly receive: ResourceLine;
+    }
+  | { readonly key: string; readonly type: 'market.cancel'; readonly offerId: number }
+  | { readonly key: string; readonly type: 'market.list'; readonly receive: string };
 
+/**
+ * `march`: camino del punto de reunión, por tramos; `strike`: reunida, con la
+ * orden de saquear (SPEC-BOTS-TRADE §4.5, RN-BOT-012).
+ */
 export type RaidPhase = 'strike' | 'march';
 
 /** Una partida de saqueo en curso. */
@@ -124,6 +193,13 @@ export interface Raid {
   readonly size: number;
   /** Algún guerrero llegó a salir de casa: desde entonces, volver a casa la termina. */
   readonly departed: boolean;
+  /** El punto de reunión, a `rallyDistance` del blanco en el lado de casa. */
+  readonly rally: Tile;
+  /** Cuándo todos tuvieron la orden de ir al punto de reunión (desde ahí corre `rallyTimeoutMs`). */
+  readonly rallyAtMs: number | null;
+  /** Guerreros reunidos al dar la orden de saquear, y lo que se esperó (para el registro). */
+  readonly gathered: number;
+  readonly rallyWaitMs: number;
 }
 
 export interface Memory {
@@ -142,6 +218,15 @@ export interface Memory {
   readonly stoneBlockedUntilMs: number;
   /** Guerrero varado → vueltas a casa rechazadas (cada una desplaza el tramo en espiral). */
   readonly recallTries: Readonly<Record<number, number>>;
+  /** Jugador → hasta cuándo no se le propone otro tratado (SPEC-BOTS-TRADE §4.1). */
+  readonly treatyCooldowns: Readonly<Record<string, number>>;
+  /** Jugador → hasta cuándo no se le propone otro trato (§4.2). */
+  readonly tradeCooldowns: Readonly<Record<string, number>>;
+  /** Oferta propia del mercado → cuándo se vio por primera vez (§4.3). */
+  readonly marketSeen: Readonly<Record<number, number>>;
+  /** La próxima consulta del tablón, y qué bien ajeno toca. */
+  readonly marketScanAtMs: number;
+  readonly marketScanIndex: number;
 }
 
 export const EMPTY_MEMORY: Memory = {
@@ -153,6 +238,11 @@ export const EMPTY_MEMORY: Memory = {
   targetCooldowns: {},
   stoneBlockedUntilMs: 0,
   recallTries: {},
+  treatyCooldowns: {},
+  tradeCooldowns: {},
+  marketSeen: {},
+  marketScanAtMs: 0,
+  marketScanIndex: 0,
 };
 
 export interface Decision {
@@ -267,8 +357,15 @@ class Plan {
     this.city = { ...city, stocks: { ...city.stocks } };
   }
 
+  private closed = false;
+
   get full(): boolean {
-    return this.commands.length >= MAX_COMMANDS_PER_THINK;
+    return this.closed || this.commands.length >= MAX_COMMANDS_PER_THINK;
+  }
+
+  /** Nada más en este despertar (la orden de saquear no se intercala, RN-BOT-012). */
+  close(): void {
+    this.closed = true;
   }
 
   /** Si la orden está libre: ni en enfriamiento ni elegida ya en este despertar. */
@@ -362,7 +459,9 @@ function houseRule(view: View, profile: Profile, plan: Plan): void {
   const tile = firstFreeHouseTile(city, standing);
   if (!tile) return;
   const freeSlots = 8 - standing.filter((b) => b.type !== 'WALL').length;
-  const reserve = profile.workshop && !standing.some((b) => b.type === 'WORKSHOP') ? 1 : 0;
+  const reserve =
+    (profile.workshop && !standing.some((b) => b.type === 'WORKSHOP') ? 1 : 0) +
+    (profile.market && !standing.some((b) => b.type === 'MARKET') ? 1 : 0);
   if (freeSlots <= reserve) return;
   plan.add({ key: 'build:HOUSE', type: 'city.build', cityId: city.id, building: 'HOUSE', tile }, { WOOD: HOUSE_WOOD });
 }
@@ -537,6 +636,31 @@ export function marchStep(from: Tile, to: Tile, tries = 0): Tile {
   return { x: Math.round(from.x + dx * k) + off.x * r, y: Math.round(from.y + dy * k) + off.y * r };
 }
 
+/**
+ * El punto de reunión de una partida (SPEC-BOTS-TRADE §4.5): a `distance` tiles
+ * del blanco, en la línea hacia casa; si ese tile no se pisa, el transitable más
+ * cercano del espiral. Un terreno que no se conoce se da por bueno: si no lo es,
+ * el servidor rechaza el tramo y se desplaza, como cualquier tramo.
+ */
+export function rallyPoint(target: Tile, home: Tile, distance: number, terrainAt: View['terrainAt']): Tile {
+  const dx = home.x - target.x;
+  const dy = home.y - target.y;
+  const d = Math.max(Math.abs(dx), Math.abs(dy));
+  const k = d === 0 ? 0 : Math.min(1, distance / d);
+  const base = { x: Math.round(target.x + dx * k), y: Math.round(target.y + dy * k) };
+  for (let r = 0; r <= 4; r++) {
+    for (let oy = -r; oy <= r; oy++) {
+      for (let ox = -r; ox <= r; ox++) {
+        if (Math.max(Math.abs(ox), Math.abs(oy)) !== r) continue;
+        const t = { x: base.x + ox, y: base.y + oy };
+        const terrain = terrainAt(t.x, t.y);
+        if (terrain === undefined || !UNWALKABLE.has(terrain)) return t;
+      }
+    }
+  }
+  return base;
+}
+
 function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowMs: number, contraHumanos: boolean, rng: Rng): Memory {
   if (!profile.raids) return memory;
   const units = new Map(ownUnits(view).map((u) => [u.id, u]));
@@ -568,19 +692,24 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     if (party.length < profile.raidMinParty) return memory;
     const target = chooseTarget(view, memory, nowMs, contraHumanos, rng);
     if (!target) return memory;
+    // RN-BOT-012: primero al punto de reunión; la orden de saquear, cuando estén todos.
     raid = {
       targetCityId: target.cityId,
       targetName: target.name,
       target: target.center,
       warriors: party.map((u) => u.id),
       startedAtMs: nowMs,
-      phase: 'strike',
+      phase: 'march',
       ordered: [],
       waypoint: null,
       waypointTries: 0,
       lost: 0,
       size: party.length,
       departed: false,
+      rally: rallyPoint(target.center, center(view), profile.rallyDistance, view.terrainAt),
+      rallyAtMs: null,
+      gathered: 0,
+      rallyWaitMs: 0,
     };
   }
 
@@ -606,12 +735,25 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
   }
 
   // Los que vuelven: con botín, sin nada que hacer junto al blanco, o al vencer el plazo.
-  for (const u of visible) {
+  // Mientras falte alguno por recibir la orden de saquear, ninguna otra (RN-BOT-012):
+  // los que ya la tienen pueden seguir apareciendo parados un despertar más.
+  const striking = raid.phase === 'strike' && !timedOut && alive.some((id) => !raid?.ordered.includes(id));
+  for (const u of striking ? [] : visible) {
     if (plan.full) break;
     if (u.status !== 'IDLE' || (!raid.ordered.includes(u.id) && !timedOut)) continue;
     const nearTarget = chebyshev(u, raid.target) <= 3;
     const full = u.carrying >= lootCarry(u.unitType);
     if (atHome(view, u)) continue;
+    if (nearTarget && !full && !timedOut && raid.phase === 'strike') {
+      // Paró sin la carga llena. Si el almacén de la víctima sigue por encima del
+      // suelo, fue una respuesta (RN-COMBAT-040: no reanuda sola): otra vez a saquear.
+      const victim = view.foreignCities.find((c) => c.id === raid?.targetCityId);
+      const pillageKey = `raid:pillage:${u.id}`;
+      if (victim && victim.stocks.WOOD > PILLAGE_FLOOR && plan.free(pillageKey)) {
+        plan.add({ key: pillageKey, type: 'unit.pillage', unitId: u.id, cityId: raid.targetCityId });
+        continue;
+      }
+    }
     if (nearTarget && !full && !timedOut) {
       // El saqueo terminó en el suelo del almacén: una casa de la víctima, si se ve.
       const house = view.foreignBuildings.find(
@@ -624,13 +766,18 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
       }
     }
     if (nearTarget || full || timedOut || raid.phase === 'strike') {
-      plan.add({ key: `raid:home:${u.id}`, type: 'unit.move', unitId: u.id, target: home });
+      // Derecho a casa; si el servidor lo rechaza (una partida a cientos de tiles), por
+      // tramos desplazados en espiral, como la vuelta de un guerrero varado.
+      const t = memory.recallTries[u.id] ?? 0;
+      plan.add({ key: `raid:home:${u.id}`, type: 'unit.move', unitId: u.id, target: t === 0 ? home : marchStep(u, home, t - 1) });
     }
   }
 
   if (timedOut) return { ...memory, raid };
 
   if (raid.phase === 'strike') {
+    // RN-BOT-012: la orden de saquear a todos, en despertares seguidos y sin
+    // intercalar otras órdenes mientras falte alguno.
     for (const id of alive) {
       if (plan.full) break;
       if (raid.ordered.includes(id)) continue;
@@ -639,30 +786,61 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
       plan.add({ key, type: 'unit.pillage', unitId: id, cityId: raid.targetCityId });
       raid = { ...raid, ordered: [...raid.ordered, id] };
     }
+    if (alive.some((id) => !raid?.ordered.includes(id))) plan.close();
     return { ...memory, raid };
   }
 
-  // En marcha: cuando todos los que se ven están parados, el tramo siguiente.
+  // En marcha hacia el punto de reunión. Primero, la orden del tramo en curso a todos
+  // los que aún no la tienen, aunque los primeros ya caminen.
+  const orderLeg = (r: Raid): Raid => {
+    let next = r;
+    for (const id of alive) {
+      if (plan.full) break;
+      if (next.ordered.includes(id) || !next.waypoint) continue;
+      const key = `raid:march:${id}:${next.waypoint.x},${next.waypoint.y}`;
+      if (!plan.free(key)) continue;
+      plan.add({ key, type: 'unit.move', unitId: id, target: next.waypoint });
+      next = { ...next, ordered: [...next.ordered, id] };
+    }
+    if (
+      next.rallyAtMs === null &&
+      next.waypoint &&
+      chebyshev(next.waypoint, next.rally) <= 4 &&
+      next.ordered.length >= alive.length
+    ) {
+      next = { ...next, rallyAtMs: nowMs };
+    }
+    return next;
+  };
+  if (raid.waypoint !== null && raid.ordered.length < alive.length) {
+    return { ...memory, raid: orderLeg(raid) };
+  }
+  // Con todas las órdenes dadas, cuando todos los que se ven están parados, el tramo siguiente.
   if (visible.length === 0 || visible.some((u) => u.status === 'MOVING')) return { ...memory, raid };
   const party = {
     x: Math.round(visible.reduce((s, u) => s + u.x, 0) / visible.length),
     y: Math.round(visible.reduce((s, u) => s + u.y, 0) / visible.length),
   };
-  if (chebyshev(party, raid.target) <= STRIKE_RADIUS) {
-    return { ...memory, raid: { ...raid, phase: 'strike', ordered: [], waypoint: null, waypointTries: 0 } };
+  const allOrdered = raid.ordered.length >= alive.length;
+  // El último tramo es el del punto de reunión (o uno desplazado en espiral a su lado).
+  const finalLeg = raid.waypoint !== null && chebyshev(raid.waypoint, raid.rally) <= 4;
+  if (finalLeg && allOrdered && raid.waypoint) {
+    const at = raid.waypoint;
+    const gathered = visible.filter((u) => chebyshev(u, at) <= RALLY_RADIUS).length;
+    const waited = raid.rallyAtMs === null ? 0 : nowMs - raid.rallyAtMs;
+    const everyone = gathered === alive.length;
+    if (everyone || (waited > profile.rallyTimeoutMs && gathered >= profile.raidMinParty)) {
+      raid = { ...raid, phase: 'strike', ordered: [], waypoint: null, waypointTries: 0, gathered, rallyWaitMs: waited };
+      return raidRule(view, profile, { ...memory, raid }, plan, nowMs, contraHumanos, rng);
+    }
+    if (waited > profile.rallyTimeoutMs) {
+      // No se reunieron bastantes: la partida vuelve.
+      return { ...memory, raid: { ...raid, startedAtMs: nowMs - profile.raidTimeoutMs - 1 } };
+    }
+    return { ...memory, raid };
   }
-  if (raid.waypoint === null || raid.ordered.length >= alive.length) {
-    raid = { ...raid, waypoint: marchStep(party, raid.target, raid.waypointTries), ordered: [] };
-  }
-  for (const id of alive) {
-    if (plan.full) break;
-    if (raid.ordered.includes(id) || !raid.waypoint) continue;
-    const key = `raid:march:${id}:${raid.waypoint.x},${raid.waypoint.y}`;
-    if (!plan.free(key)) continue;
-    plan.add({ key, type: 'unit.move', unitId: id, target: raid.waypoint });
-    raid = { ...raid, ordered: [...raid.ordered, id] };
-  }
-  return { ...memory, raid };
+  raid = { ...raid, waypoint: marchStep(party, raid.rally, raid.waypointTries), ordered: [] };
+  return { ...memory, raid: orderLeg(raid) };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -671,6 +849,10 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
 
 export interface DecideOptions {
   readonly contraHumanos: boolean;
+  /** `--sin-comercio` lo apaga: la ejecución de E28, para comparar (SPEC-BOTS-TRADE §4.8). */
+  readonly comercio?: boolean;
+  /** `--con-humanos` (RN-BOT-008). */
+  readonly conHumanos?: boolean;
 }
 
 /** Hasta dos comandos para este despertar, y la memoria nueva (RN-BOT-003, RN-BOT-005). */
@@ -694,6 +876,9 @@ export function decide(
   advanceRule(profile, plan);
   bronzeRule(view, profile, plan);
   researchRule(profile, plan);
+  if (opts.comercio !== false) {
+    mem = commerceRule(view, profile, mem, plan, nowMs, { conHumanos: opts.conHumanos === true });
+  }
   if (!profile.raids) militaryRule(view, profile, plan);
   if (profile.raids && mem.raid === null) mem = raidRule(view, profile, mem, plan, nowMs, opts.contraHumanos, rng);
 
@@ -737,7 +922,19 @@ export function onRejected(
     }
   }
 
-  if (command.type === 'unit.move' && command.key.startsWith('raid:recall:')) {
+  if (command.type === 'treaty.propose') {
+    return { ...mem, treatyCooldowns: { ...mem.treatyCooldowns, [command.playerId]: nowMs + profile.treatyRetryMs } };
+  }
+  if (command.type === 'trade.propose') {
+    // Sin ruta entre depósitos, la pareja se aparta como un blanco inalcanzable (§4.2, §5).
+    const wait = TARGET_CODES.has(code) ? profile.targetCooldownMs : profile.tradeRetryMs;
+    return { ...mem, tradeCooldowns: { ...mem.tradeCooldowns, [command.playerId]: nowMs + wait } };
+  }
+  if (command.type === 'market.buy' && TARGET_CODES.has(code)) {
+    return { ...mem, cooldowns: { ...mem.cooldowns, [command.key]: nowMs + profile.targetCooldownMs } };
+  }
+
+  if (command.type === 'unit.move' && (command.key.startsWith('raid:recall:') || command.key.startsWith('raid:home:'))) {
     const { [command.key]: _drop, ...cooldowns } = mem.cooldowns;
     const n = mem.recallTries[command.unitId] ?? 0;
     return { ...mem, cooldowns, recallTries: { ...mem.recallTries, [command.unitId]: n + 1 } };
@@ -747,11 +944,7 @@ export function onRejected(
   if (raid === null) return mem;
 
   if (command.type === 'unit.pillage' && command.key.startsWith('raid:')) {
-    if (code === 'PATH_TOO_LONG' || code === 'PATH_NOT_FOUND') {
-      // Demasiado lejos para una sola ruta: por tramos.
-      const { [command.key]: _drop, ...cooldowns } = mem.cooldowns;
-      return { ...mem, cooldowns, raid: { ...raid, phase: 'march', ordered: [], waypoint: null, waypointTries: 0 } };
-    }
+    // Desde el punto de reunión, a 16 tiles: sin ruta, el blanco no se alcanza.
     if (TARGET_CODES.has(code) || code === 'INVALID_TARGET') {
       return {
         ...mem,

@@ -118,11 +118,19 @@ func (s *Simulation) guardsNear(playerID uuid.UUID, at world.Tile) []*unit.Unit 
 // available dice si un guerrero puede responder y desde qué puesto
 // (RN-COMBAT-012, RN-COMBAT-013): parado y sin nada que hacer, o volviendo a
 // su puesto de una respuesta anterior, que conserva.
+//
+// Desde E29 también saqueando o asediando, desde la orden y también de camino
+// a la ciudad (RN-COMBAT-039): el puesto es el tile en que está, y la
+// respuesta, que sustituye a su enfrentamiento, termina el saqueo o el asedio
+// sin reanudarlo después (RN-COMBAT-040).
 func (s *Simulation) available(g *unit.Unit, nowMs int64) (world.Tile, bool) {
 	if s.state.IsEntering(g.ID) {
 		return world.Tile{}, false
 	}
-	if _, engaged := s.state.combat.engagements[g.ID]; engaged {
+	if e, engaged := s.state.combat.engagements[g.ID]; engaged {
+		if e.cityID != 0 || e.buildingID != 0 {
+			return s.authoritativePosition(g, nowMs), true
+		}
 		return world.Tile{}, false
 	}
 	if _, working := s.state.tasks[g.ID]; working {

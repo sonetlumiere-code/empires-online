@@ -16,6 +16,12 @@ export interface Options {
   readonly duracionMs: number | null;
   readonly semilla: number;
   readonly contraHumanos: boolean;
+  /** `--sin-comercio` lo pone a `false`: ni tratados, ni tratos, ni mercado (SPEC-BOTS-TRADE §4.8). */
+  readonly comercio: boolean;
+  /** `--con-humanos`: acepta tratados `TRADE` y tratos de quien no es bot (RN-BOT-008). */
+  readonly conHumanos: boolean;
+  /** `--sufijo`: cuentas nuevas `bot_<perfil>_<n>_<sufijo>`; `null`, las de siempre. */
+  readonly sufijo: string | null;
   /** Cada cuánto despierta un bot (`EO_BOT_THINK_MS`). */
   readonly thinkMs: number;
   /** Directorio de los JSONL (`bots/runs` en la raíz del repositorio). */
@@ -63,6 +69,9 @@ export function parseOptions(
   let duracionMs: number | null = null;
   let semilla = nowMs % 2_147_483_647;
   let contraHumanos = false;
+  let comercio = true;
+  let conHumanos = false;
+  let sufijo: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -100,6 +109,19 @@ export function parseOptions(
       case '--contra-humanos':
         contraHumanos = true;
         break;
+      case '--sin-comercio':
+        comercio = false;
+        break;
+      case '--con-humanos':
+        conHumanos = true;
+        break;
+      case '--sufijo': {
+        const v = value();
+        // El nombre de usuario admite [A-Za-z0-9_-] y hasta 24 caracteres: «bot_constructor_20_» ya son 19.
+        if (!/^[a-z0-9]{1,5}$/.test(v)) throw new OptionsError('--sufijo pide de 1 a 5 letras minúsculas o cifras');
+        sufijo = v;
+        break;
+      }
       default:
         throw new OptionsError(`opción desconocida: ${arg}`);
     }
@@ -123,6 +145,9 @@ export function parseOptions(
     duracionMs,
     semilla,
     contraHumanos,
+    comercio,
+    conHumanos,
+    sufijo,
     thinkMs,
     runsDir: `${repoRoot}/bots/runs`,
   };

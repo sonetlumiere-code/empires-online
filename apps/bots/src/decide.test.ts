@@ -9,6 +9,7 @@ import {
   marchStep,
   onRaidLoss,
   onRejected,
+  rallyPoint,
   villagerCount,
   type Command,
   type Memory,
@@ -36,6 +37,8 @@ const saqueador = PROFILES.saqueador;
 const rng = () => createRng(42);
 
 const types = (cs: readonly Command[]) => cs.map((c) => c.type);
+/** Las pruebas de la partida, sin el comercio de SPEC-BOTS-TRADE de por medio. */
+const solo = { contraHumanos: false, comercio: false } as const;
 
 describe('regla 1: los aldeanos parados, a recolectar', () => {
   it('manda a cada aldeano parado a un bosque cercano, repartidos', () => {
@@ -102,7 +105,7 @@ describe('reglas 2 y 3: casas y aldeanos', () => {
     expect(types(decide(v, constructor, EMPTY_MEMORY, NOW, rng()).commands)).not.toContain('city.build');
   });
 
-  it('el constructor deja libre el hueco del taller', () => {
+  it('el constructor deja libre el hueco del taller y el del mercado; el saqueador, sólo el del taller', () => {
     const seven = [
       [99, 99],
       [100, 99],
@@ -114,7 +117,11 @@ describe('reglas 2 y 3: casas y aldeanos', () => {
     ].map(([x, y], i) => building({ id: i + 1, x: x as number, y: y as number }));
     const v = view({ city: city({ population: 40, populationLimit: 40, stocks: stocks(100) }), buildings: seven });
     expect(types(decide(v, constructor, EMPTY_MEMORY, NOW, rng()).commands)).not.toContain('city.build');
-    expect(types(decide(v, saqueador, EMPTY_MEMORY, NOW, rng()).commands)).toContain('city.build');
+    // Desde E29 el saqueador también elabora su bien, así que guarda el hueco del taller.
+    expect(types(decide(v, saqueador, EMPTY_MEMORY, NOW, rng()).commands)).not.toContain('city.build');
+    const withWorkshop = { ...v, buildings: [...seven.slice(1), building({ id: 1, type: 'WORKSHOP', x: 99, y: 99 })] };
+    expect(types(decide(withWorkshop, saqueador, EMPTY_MEMORY, NOW, rng()).commands)).toContain('city.build');
+    expect(types(decide(withWorkshop, constructor, EMPTY_MEMORY, NOW, rng()).commands)).not.toContain('city.build');
   });
 
   it('entrena aldeanos hasta los de su era y lleva la cuenta del presupuesto', () => {
@@ -262,19 +269,94 @@ describe('el saqueo', () => {
   const warriors = [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', hp: 60, maxHp: 60 }));
   const base = { city: city({ name: 'bot_saqueador_1polis', population: 4, populationLimit: 5, stocks: stocks(0) }) };
 
-  it('con tres guerreros parados en casa sale una partida contra el bot más cercano', () => {
+  it('RN-BOT-012: con tres guerreros parados en casa sale una partida, primero al punto de reunión', () => {
     const v = view({ ...base, units: warriors, botCities: [botCity()] });
-    const { commands, memory } = decide(v, saqueador, EMPTY_MEMORY, NOW, rng());
+    const { commands, memory } = decide(v, saqueador, EMPTY_MEMORY, NOW, rng(), solo);
+    // A 16 tiles del blanco (140,100), en la línea hacia casa (100,100).
     expect(commands).toEqual([
+      { key: 'raid:march:1:124,100', type: 'unit.move', unitId: 1, target: { x: 124, y: 100 } },
+      { key: 'raid:march:2:124,100', type: 'unit.move', unitId: 2, target: { x: 124, y: 100 } },
+    ]);
+    expect(memory.raid).toMatchObject({
+      targetCityId: 20,
+      warriors: [1, 2, 3],
+      ordered: [1, 2],
+      phase: 'march',
+      rally: { x: 124, y: 100 },
+      rallyAtMs: null,
+    });
+    expect(fieldFocus(memory)).toEqual({ x: 124, y: 100 });
+
+    // El despertar siguiente manda al tercero aunque los dos primeros ya caminen (lo
+    // encontró la prueba en vivo del 2026-11-21: esperaba a que se pararan); desde
+    // ahí corre el plazo de reunión.
+    const walkingFirst = view({
+      ...base,
+      units: [unit({ id: 1, unitType: 'WARRIOR', status: 'MOVING' }), unit({ id: 2, unitType: 'WARRIOR', status: 'MOVING' }),
+        unit({ id: 3, unitType: 'WARRIOR' })],
+      botCities: [botCity()],
+    });
+    const next = decide(walkingFirst, saqueador, memory, NOW + 2_000, rng(), solo);
+    expect(next.commands[0]).toEqual({ key: 'raid:march:3:124,100', type: 'unit.move', unitId: 3, target: { x: 124, y: 100 } });
+    expect(next.memory.raid).toMatchObject({ ordered: [1, 2, 3], rallyAtMs: NOW + 2_000 });
+
+    // Mientras alguno camina, nadie saquea.
+    const walking = view({
+      ...base,
+      units: [unit({ id: 1, unitType: 'WARRIOR', x: 124, y: 100 }), unit({ id: 2, unitType: 'WARRIOR', x: 124, y: 101 }),
+        unit({ id: 3, unitType: 'WARRIOR', x: 115, y: 100, status: 'MOVING' })],
+    });
+    expect(decide(walking, saqueador, next.memory, NOW + 20_000, rng(), solo).commands.some((c) => c.type === 'unit.pillage')).toBe(false);
+
+    // Reunidos los tres: la orden de saquear a todos, sin intercalar nada.
+    const gathered = view({
+      ...base,
+      units: [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', x: 124, y: 99 + id })),
+      city: city({ name: 'bot_saqueador_1polis', population: 4, populationLimit: 5, stocks: stocks(500) }),
+    });
+    const strike = decide(gathered, saqueador, next.memory, NOW + 30_000, rng(), solo);
+    expect(strike.commands).toEqual([
       { key: 'raid:pillage:1', type: 'unit.pillage', unitId: 1, cityId: 20 },
       { key: 'raid:pillage:2', type: 'unit.pillage', unitId: 2, cityId: 20 },
     ]);
-    expect(memory.raid).toMatchObject({ targetCityId: 20, warriors: [1, 2, 3], ordered: [1, 2], phase: 'strike' });
-    expect(fieldFocus(memory)).toEqual({ x: 140, y: 100 });
+    expect(strike.memory.raid).toMatchObject({ phase: 'strike', gathered: 3, rallyWaitMs: 28_000 });
+    expect(fieldFocus(strike.memory)).toEqual({ x: 140, y: 100 });
+    // El despertar siguiente, el tercero.
+    const withVillager = view({ ...gathered, units: [...gathered.units, unit({ id: 9 })] });
+    const third = decide(withVillager, saqueador, strike.memory, NOW + 32_000, rng(), solo);
+    expect(third.commands[0]).toEqual({ key: 'raid:pillage:3', type: 'unit.pillage', unitId: 3, cityId: 20 });
+    // Si la orden del tercero está en enfriamiento, nada se intercala mientras tanto:
+    // ni el aldeano parado recibe la suya.
+    const cooling = { ...strike.memory, cooldowns: { 'raid:pillage:3': NOW + 40_000 } };
+    expect(decide(withVillager, saqueador, cooling, NOW + 32_000, rng(), solo).commands).toEqual([]);
+  });
 
-    // El despertar siguiente ordena al tercero.
-    const next = decide(v, saqueador, memory, NOW + 2_000, rng());
-    expect(next.commands).toEqual([{ key: 'raid:pillage:3', type: 'unit.pillage', unitId: 3, cityId: 20 }]);
+  it('RN-BOT-012: vencido el plazo de reunión, sale con los que haya si son bastantes; si no, vuelve', () => {
+    const four = [1, 2, 3, 4];
+    const mem = { ...EMPTY_MEMORY, raid: raid({ phase: 'march', warriors: four, size: 4, ordered: four, waypoint: { x: 124, y: 100 },
+      rallyAtMs: NOW }) };
+    const late = NOW + saqueador.rallyTimeoutMs + 1;
+    const three = view({
+      ...base,
+      units: [...[1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', x: 124, y: 100 })),
+        unit({ id: 4, unitType: 'WARRIOR', x: 110, y: 100 })],
+    });
+    expect(decide(three, saqueador, mem, NOW + 10_000, rng(), solo).memory.raid?.phase).toBe('march');
+    const out = decide(three, saqueador, mem, late, rng(), solo);
+    expect(out.memory.raid).toMatchObject({ phase: 'strike', gathered: 3 });
+    expect(types(out.commands)).toEqual(['unit.pillage', 'unit.pillage']);
+
+    const two = view({
+      ...base,
+      units: [...[1, 2].map((id) => unit({ id, unitType: 'WARRIOR', x: 124, y: 100 })),
+        ...[3, 4].map((id) => unit({ id, unitType: 'WARRIOR', x: 110, y: 100 }))],
+    });
+    const back = decide(two, saqueador, mem, late, rng(), solo);
+    expect(back.memory.raid?.phase).toBe('march');
+    expect(back.commands.some((c) => c.type === 'unit.pillage')).toBe(false);
+    // Al despertar siguiente, la partida vencida vuelve a casa.
+    const home = decide(two, saqueador, back.memory, late + 2_000, rng(), solo);
+    expect(home.commands.every((c) => c.key.startsWith('raid:home:'))).toBe(true);
   });
 
   it('sin partida, los guerreros parados lejos de casa vuelven (varados al parar el proceso)', () => {
@@ -285,7 +367,7 @@ describe('el saqueo', () => {
     const stranded = [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', x: 150, y: 120 + id }));
     const v = view({ ...base, units: stranded, botCities: [botCity()] });
     const home = depositTile(v.city, v.terrainAt);
-    const { commands, memory } = decide(v, saqueador, EMPTY_MEMORY, NOW, rng());
+    const { commands, memory } = decide(v, saqueador, EMPTY_MEMORY, NOW, rng(), solo);
     expect(memory.raid).toBeNull();
     expect(commands).toEqual([
       { key: 'raid:recall:1', type: 'unit.move', unitId: 1, target: home },
@@ -296,27 +378,27 @@ describe('el saqueo', () => {
     // la siguiente va por tramos de la marcha, y cada rechazo desplaza el tramo.
     const far = view({ ...base, units: [unit({ id: 1, unitType: 'WARRIOR', x: 300, y: 100 })], botCities: [botCity()] });
     const farHome = depositTile(far.city, far.terrainAt);
-    const first = decide(far, saqueador, EMPTY_MEMORY, NOW, rng());
+    const first = decide(far, saqueador, EMPTY_MEMORY, NOW, rng(), solo);
     const recall = first.commands[0] as Command;
     expect(recall).toEqual({ key: 'raid:recall:1', type: 'unit.move', unitId: 1, target: farHome });
     let mem = onRejected(first.memory, recall, 'PATH_TOO_LONG', NOW, saqueador);
-    const second = decide(far, saqueador, mem, NOW + 2_000, rng());
+    const second = decide(far, saqueador, mem, NOW + 2_000, rng(), solo);
     expect(second.commands[0]).toMatchObject({ key: 'raid:recall:1', target: marchStep({ x: 300, y: 100 }, farHome, 0) });
     mem = onRejected(second.memory, second.commands[0] as Command, 'TARGET_NOT_WALKABLE', NOW + 2_000, saqueador);
-    const third = decide(far, saqueador, mem, NOW + 4_000, rng());
+    const third = decide(far, saqueador, mem, NOW + 4_000, rng(), solo);
     expect(third.commands[0]).toMatchObject({ key: 'raid:recall:1', target: marchStep({ x: 300, y: 100 }, farHome, 1) });
     expect(marchStep({ x: 300, y: 100 }, farHome, 1)).not.toEqual(marchStep({ x: 300, y: 100 }, farHome, 0));
 
     // En casa, la cuenta de rechazos se olvida.
     const back = view({ ...base, units: [unit({ id: 1, unitType: 'WARRIOR' })], botCities: [botCity()] });
-    expect(decide(back, saqueador, third.memory, NOW + 6_000, rng()).memory.recallTries).toEqual({});
+    expect(decide(back, saqueador, third.memory, NOW + 6_000, rng(), solo).memory.recallTries).toEqual({});
   });
 
   it('con menos de tres, o en la espera tras una derrota, no sale', () => {
     const two = view({ ...base, units: warriors.slice(0, 2), botCities: [botCity()] });
-    expect(decide(two, saqueador, EMPTY_MEMORY, NOW, rng()).memory.raid).toBeNull();
+    expect(decide(two, saqueador, EMPTY_MEMORY, NOW, rng(), solo).memory.raid).toBeNull();
     const three = view({ ...base, units: warriors, botCities: [botCity()] });
-    expect(decide(three, saqueador, { ...EMPTY_MEMORY, raidWaitUntilMs: NOW + 1 }, NOW, rng()).memory.raid).toBeNull();
+    expect(decide(three, saqueador, { ...EMPTY_MEMORY, raidWaitUntilMs: NOW + 1 }, NOW, rng(), solo).memory.raid).toBeNull();
   });
 
   const raid = (over: Partial<Raid> = {}): Raid => ({
@@ -332,16 +414,18 @@ describe('el saqueo', () => {
     lost: 0,
     size: 3,
     departed: true,
+    rally: { x: 124, y: 100 },
+    rallyAtMs: null,
+    gathered: 0,
+    rallyWaitMs: 0,
     ...over,
   });
 
-  it('demasiado lejos para una ruta: marcha por tramos de 48 tiles', () => {
-    const pillage: Command = { key: 'raid:pillage:1', type: 'unit.pillage', unitId: 1, cityId: 20 };
-    const mem = onRejected({ ...EMPTY_MEMORY, raid: raid({ ordered: [1], departed: false }) }, pillage, 'PATH_TOO_LONG', NOW, saqueador);
-    expect(mem.raid?.phase).toBe('march');
+  it('un blanco lejano: marcha por tramos de 48 tiles hacia el punto de reunión', () => {
     const far = { x: 300, y: 100 };
     const v = view({ ...base, units: warriors, botCities: [botCity({ centerX: far.x })] });
-    const { commands, memory } = decide(v, saqueador, { ...mem, raid: { ...(mem.raid as Raid), target: far } }, NOW, rng());
+    const { commands, memory } = decide(v, saqueador, EMPTY_MEMORY, NOW, rng(), solo);
+    expect(memory.raid?.rally).toEqual({ x: 284, y: 100 });
     expect(memory.raid?.waypoint).toEqual({ x: 150, y: 100 });
     expect(commands).toEqual([
       { key: 'raid:march:1:150,100', type: 'unit.move', unitId: 1, target: { x: 150, y: 100 } },
@@ -350,11 +434,17 @@ describe('el saqueo', () => {
     expect(fieldFocus(memory)).toEqual({ x: 150, y: 100 });
   });
 
-  it('cerca del blanco, la marcha vuelve a la orden de saquear', () => {
-    const near = [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', x: 132, y: 100 }));
-    const v = view({ ...base, units: near });
-    const { memory } = decide(v, saqueador, { ...EMPTY_MEMORY, raid: raid({ phase: 'march', waypoint: { x: 132, y: 100 } }) }, NOW, rng());
-    expect(memory.raid).toMatchObject({ phase: 'strike', ordered: [] });
+  it('sin ruta desde el punto de reunión, el blanco se enfría y la partida vuelve', () => {
+    const pillage: Command = { key: 'raid:pillage:1', type: 'unit.pillage', unitId: 1, cityId: 20 };
+    const mem = onRejected({ ...EMPTY_MEMORY, raid: raid({ ordered: [1] }) }, pillage, 'PATH_TOO_LONG', NOW, saqueador);
+    expect(mem.targetCooldowns[20]).toBe(NOW + saqueador.targetCooldownMs);
+    expect(NOW - (mem.raid as Raid).startedAtMs).toBeGreaterThan(saqueador.raidTimeoutMs);
+  });
+
+  it('el punto de reunión evita el agua y la montaña', () => {
+    const water = (x: number, y: number) => (x === 124 && y === 100 ? 3 : 0);
+    expect(rallyPoint({ x: 140, y: 100 }, { x: 100, y: 100 }, 16, water)).toEqual({ x: 123, y: 99 });
+    expect(rallyPoint({ x: 140, y: 100 }, { x: 130, y: 100 }, 16, terrain())).toEqual({ x: 130, y: 100 });
   });
 
   it('con la carga llena, a casa; sin carga junto a la víctima, a derribar una casa', () => {
@@ -369,11 +459,21 @@ describe('el saqueo', () => {
       foreignBuildings: [building({ id: 77, cityId: 20, x: 139, y: 99 })],
       terrainAt: terrain(),
     });
-    const { commands } = decide(v, saqueador, { ...EMPTY_MEMORY, raid: raid() }, NOW, rng());
+    const { commands } = decide(v, saqueador, { ...EMPTY_MEMORY, raid: raid() }, NOW, rng(), solo);
     expect(commands).toEqual([
       { key: 'raid:home:1', type: 'unit.move', unitId: 1, target: depositTile(base.city, terrain()) },
       { key: 'raid:demolish:2', type: 'unit.demolish', unitId: 2, buildingId: 77 },
     ]);
+
+    // RN-COMBAT-040: tras responder, el saqueador queda parado sin la carga llena y
+    // no reanuda solo. Si el almacén de la víctima sigue por encima del suelo, el bot
+    // vuelve a ordenar el saqueo en el despertar siguiente.
+    const victim = city({ id: 20, ownerPlayerId: OTHER_BOT, name: 'bot_constructor_2polis', centerX: 140, stocks: stocks(300) });
+    const again = decide({ ...v, foreignCities: [victim] }, saqueador, { ...EMPTY_MEMORY, raid: raid() }, NOW, rng(), solo);
+    expect(again.commands[1]).toEqual({ key: 'raid:pillage:2', type: 'unit.pillage', unitId: 2, cityId: 20 });
+    const floor = { ...victim, stocks: stocks(50) };
+    const done = decide({ ...v, foreignCities: [floor] }, saqueador, { ...EMPTY_MEMORY, raid: raid() }, NOW, rng(), solo);
+    expect(done.commands[1]).toMatchObject({ type: 'unit.demolish', unitId: 2 });
   });
 
   it('termina cuando todos vuelven a casa; si murió más de la mitad, espera', () => {
@@ -381,9 +481,26 @@ describe('el saqueo', () => {
     const v = view({ ...base, units: home });
     const lost = onRaidLoss(onRaidLoss({ ...EMPTY_MEMORY, raid: raid() }, 2), 3);
     expect(lost.raid).toMatchObject({ warriors: [1], lost: 2 });
-    const { memory } = decide(v, saqueador, lost, NOW + 5_000, rng());
+    const { memory } = decide(v, saqueador, lost, NOW + 5_000, rng(), solo);
     expect(memory.raid).toBeNull();
     expect(memory.raidWaitUntilMs).toBe(NOW + 5_000 + saqueador.defeatWaitMs);
+  });
+
+  it('la vuelta a casa de una partida lejana va por tramos si el servidor rechaza la recta', () => {
+    // Lo encontró la ejecución larga del 2026-11-22: una partida a 375 tiles de casa
+    // pedía la vuelta en línea recta, el servidor la rechazaba (PATH_TOO_LONG) y la
+    // partida no terminaba nunca (652 rechazos en dos horas).
+    const far = [unit({ id: 1, unitType: 'WARRIOR', x: 470, y: 100, carrying: 20 })];
+    const v = view({ ...base, units: far, terrainAt: terrain() });
+    const home = depositTile(base.city, terrain());
+    const mem = { ...EMPTY_MEMORY, raid: raid({ warriors: [1], ordered: [1], size: 1, target: { x: 472, y: 100 } }) };
+    const first = decide(v, saqueador, mem, NOW, rng(), solo);
+    const back = first.commands[0] as Command;
+    expect(back).toEqual({ key: 'raid:home:1', type: 'unit.move', unitId: 1, target: home });
+    const after = onRejected(first.memory, back, 'PATH_TOO_LONG', NOW, saqueador);
+    expect(after.cooldowns[back.key]).toBeUndefined();
+    const second = decide(v, saqueador, after, NOW + 2_000, rng(), solo);
+    expect(second.commands[0]).toEqual({ key: 'raid:home:1', type: 'unit.move', unitId: 1, target: marchStep({ x: 470, y: 100 }, home, 0) });
   });
 
   it('un blanco protegido se enfría y la partida vuelve', () => {
@@ -391,7 +508,7 @@ describe('el saqueo', () => {
     const mem = onRejected({ ...EMPTY_MEMORY, raid: raid() }, pillage, 'CITY_PROTECTED', NOW, saqueador);
     expect(mem.targetCooldowns[20]).toBe(NOW + saqueador.targetCooldownMs);
     const away = [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', x: 120, y: 100 }));
-    const { commands } = decide(view({ ...base, units: away }), saqueador, mem, NOW, rng());
+    const { commands } = decide(view({ ...base, units: away }), saqueador, mem, NOW, rng(), solo);
     expect(commands.every((c) => c.type === 'unit.move' && c.key.startsWith('raid:home:'))).toBe(true);
   });
 });
@@ -424,6 +541,10 @@ describe('el saqueo: plazos y tramos rechazados', () => {
     lost: 0,
     size: 2,
     departed: true,
+    rally: { x: 124, y: 100 },
+    rallyAtMs: null,
+    gathered: 0,
+    rallyWaitMs: 0,
     ...over,
   });
 
@@ -431,7 +552,7 @@ describe('el saqueo: plazos y tramos rechazados', () => {
     const away = [1, 2].map((id) => unit({ id, unitType: 'WARRIOR', x: 125, y: 100 }));
     const v = view({ ...base, units: away, terrainAt: terrain() });
     const late = NOW + saqueador.raidTimeoutMs + 1;
-    const { commands } = decide(v, saqueador, { ...EMPTY_MEMORY, raid: raid() }, late, rng());
+    const { commands } = decide(v, saqueador, { ...EMPTY_MEMORY, raid: raid() }, late, rng(), solo);
     const home = depositTile(base.city, terrain());
     expect(commands).toEqual([
       { key: 'raid:home:1', type: 'unit.move', unitId: 1, target: home },

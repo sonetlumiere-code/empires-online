@@ -25,6 +25,11 @@ export type EventName =
   | 'house_lost'
   | 'raid'
   | 'raid_end'
+  | 'treaty'
+  | 'trade'
+  | 'market'
+  | 'caravan'
+  | 'rally'
   | 'error'
   | 'stop';
 

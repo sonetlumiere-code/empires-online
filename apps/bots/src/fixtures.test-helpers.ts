@@ -3,6 +3,7 @@
  * `*.test.ts` del paquete.
  */
 import type { BuildingView, CityView, ForestView, UnitView } from '../../web/src/state/world';
+import { EMPTY_MARKET } from '../../web/src/state/market';
 import type { BotCity, Tile, View } from './decide';
 
 export const ME = '11111111-1111-4111-8111-111111111111';
@@ -88,6 +89,9 @@ export function view(over: Partial<View> = {}): View {
     forestTiles: FORESTS,
     hills: [],
     botCities: [],
+    treaties: [],
+    tradeOffers: [],
+    market: EMPTY_MARKET,
     ...over,
   };
 }

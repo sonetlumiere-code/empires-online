@@ -38,6 +38,38 @@ export interface Profile {
   readonly rejectCooldownMs: number;
   /** Enfriamiento de un blanco protegido o inalcanzable. */
   readonly targetCooldownMs: number;
+
+  // ── Comercio (SPEC-BOTS-TRADE §4.1 a §4.4) ──
+  /** Si firma tratados `TRADE` y cierra tratos (Q1: los dos perfiles). */
+  readonly trades: boolean;
+  /** Si sube a `NON_AGGRESSION` con otros constructores; el saqueador nunca (RN-BOT-011). */
+  readonly pact: boolean;
+  /** Si construye el mercado y lo usa (Q4: sólo el constructor). */
+  readonly market: boolean;
+  /** Bien propio que guarda (la unidad de civilización lo pide). */
+  readonly ownGoodReserve: number;
+  /** Lote de un trato o de una oferta de bienes. */
+  readonly tradeLot: number;
+  /** Lote de piedra de un trato madera por piedra. */
+  readonly stoneLot: number;
+  /** La tabla de precios (Q5): cuántos de lo que pide por cada uno de lo que da. */
+  readonly prices: { readonly goodPerGood: number; readonly woodPerStone: number };
+  /** Lotes de una oferta del mercado. */
+  readonly marketLots: number;
+  /** Cada cuánto consulta el tablón. */
+  readonly marketScanMs: number;
+  /** Una oferta propia más vieja que esto se retira. */
+  readonly marketStaleMs: number;
+  /** No vuelve a proponer un tratado al mismo jugador antes de esto (`EO_TREATY_RETRY_MINUTES`). */
+  readonly treatyRetryMs: number;
+  /** No vuelve a proponer un trato al mismo jugador antes de esto. */
+  readonly tradeRetryMs: number;
+
+  // ── La partida reunida (SPEC-BOTS-TRADE §4.5) ──
+  /** Distancia del punto de reunión al blanco. */
+  readonly rallyDistance: number;
+  /** Plazo para reunirse, desde que todos tienen la orden del último tramo. */
+  readonly rallyTimeoutMs: number;
 }
 
 const COMMON = {
@@ -46,6 +78,17 @@ const COMMON = {
   rejectCooldownMs: 30_000,
   targetCooldownMs: 10 * 60_000,
   stoneShare: 1 / 3,
+  trades: true,
+  tradeLot: 10,
+  stoneLot: 20,
+  prices: { goodPerGood: 1, woodPerStone: 2 },
+  marketLots: 3,
+  marketScanMs: 60_000,
+  marketStaleMs: 30 * 60_000,
+  treatyRetryMs: 10 * 60_000,
+  tradeRetryMs: 2 * 60_000,
+  rallyDistance: 16,
+  rallyTimeoutMs: 3 * 60_000,
 } as const;
 
 export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
@@ -65,6 +108,9 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
     wallStoneReserve: 100,
     research: true,
     stoneTargetByEra: { STONE_AGE: 200, BRONZE_AGE: 400, IRON_AGE: 800, CASTLE_AGE: 800 },
+    pact: true,
+    market: true,
+    ownGoodReserve: 0,
   },
   saqueador: {
     ...COMMON,
@@ -75,13 +121,18 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
     raids: true,
     raidMinParty: 3,
     advance: true,
-    workshop: false,
-    craft: false,
-    craftCap: 0,
+    // Con E29 elabora su bien: sin él no tiene nada que cambiar por bienes ajenos (Q1).
+    workshop: true,
+    craft: true,
+    craftCap: 40,
     wall: false,
     wallStoneReserve: 0,
     research: false,
     stoneTargetByEra: { STONE_AGE: 200, BRONZE_AGE: 200, IRON_AGE: 200, CASTLE_AGE: 200 },
+    pact: false,
+    market: false,
+    // Tres unidades de civilización (10 de su bien cada una).
+    ownGoodReserve: 30,
   },
 };
 
@@ -91,7 +142,9 @@ export const HOUSE_WOOD = 30;
 export const MAX_COMMANDS_PER_THINK = 2;
 /** Una unidad a esta distancia de Chebyshev del centro está «en casa». */
 export const HOME_RADIUS = 6;
-/** Una partida a esta distancia del blanco ya no marcha por tramos: se le ordena saquear. */
-export const STRIKE_RADIUS = 12;
 /** Longitud de un tramo de marcha (por debajo de `EO_PATHFINDING_MAX_DISTANCE`). */
 export const MARCH_STEP = 48;
+/** El suelo del saqueo (`EO_PILLAGE_STOCK_FLOOR`, SPEC-COMBAT-PILLAGE Q3): por debajo, no se roba. */
+export const PILLAGE_FLOOR = 50;
+/** A esta distancia del punto de reunión, un guerrero está reunido (SPEC-BOTS-TRADE §4.5). */
+export const RALLY_RADIUS = 2;

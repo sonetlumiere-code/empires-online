@@ -179,6 +179,61 @@ describe('lo construido', () => {
   });
 });
 
+describe('el registro del comercio (SPEC-BOTS-TRADE §4.7)', () => {
+  it('apunta cada cambio de tratado, trato, oferta del mercado y caravana una sola vez', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets);
+    await bot.start();
+    const server = sockets[0] as FakeServer;
+    const other = '22222222-2222-4222-8222-222222222222';
+    const treaty = (status: string) => ({
+      treaty: { id: 7, otherPlayerId: other, otherCityId: 20, otherCityName: 'bot_constructor_2polis', type: 'TRADE', status,
+        proposedByMe: true, breaksAtMs: null },
+    });
+    server.push('treaty.update', treaty('PROPOSED'));
+    server.push('treaty.update', treaty('ACTIVE'));
+    server.push('treaty.update', treaty('ACTIVE'));
+    // El pacto lo sustituye: el acuerdo comercial pasa a EXPIRED (SPEC-TRADE §4.1).
+    server.push('treaty.update', treaty('EXPIRED'));
+    const trade = (status: string) => ({
+      offer: { id: 70, otherPlayerId: other, otherCityId: 20, otherCityName: 'bot_constructor_2polis',
+        give: [{ resource: 'WINE', amount: 10 }], get: [{ resource: 'SPICES', amount: 10 }], status, proposedByMe: true,
+        expiresAtMs: NOW + 1 },
+    });
+    server.push('trade.update', trade('ACCEPTED'));
+    server.push('trade.update', trade('ACCEPTED'));
+    const own = (lotsSold: number, status = 'OPEN') => ({
+      offer: { id: 90, playerId: PLAYER, cityId: 10, cityName: 'bot_constructor_1polis', civilization: 'ROMAN', cityX: 100,
+        cityY: 100, give: { resource: 'WINE', amount: 10 }, want: { resource: 'SILK', amount: 10 }, lotsTotal: 3,
+        lotsLeft: 3 - lotsSold, lotsSold, status, expiresAtMs: NOW + 1 },
+    });
+    server.push('market.update', own(0));
+    server.push('market.update', own(2));
+    server.push('market.update', own(2, 'EXPIRED'));
+    const caravan = (status: string) => ({
+      caravan: { id: 5, unitId: 50, ownerPlayerId: other, senderPlayerId: other, fromCityId: 20,
+        fromCityName: 'bot_constructor_2polis', toCityId: 10, toCityName: 'bot_constructor_1polis', originalToCityId: 10,
+        cargo: [{ resource: 'SPICES', amount: 10 }], status, arrivesAtMs: null },
+    });
+    server.push('caravan.update', caravan('IN_TRANSIT'));
+    server.push('caravan.update', caravan('DELIVERED'));
+    server.push('caravan.update', caravan('DELIVERED'));
+    bot.stop();
+    const events = parseLog(lines.join('')).filter((e) => ['treaty', 'trade', 'market', 'caravan'].includes(e.event));
+    expect(events.map((e) => [e.event, e.status])).toEqual([
+      ['treaty', 'accepted'],
+      ['treaty', 'replaced'],
+      ['trade', 'accepted'],
+      ['market', 'sold'],
+      ['market', 'expired'],
+      ['caravan', 'arrived'],
+    ]);
+    expect(events[3]).toMatchObject({ lots: 2 });
+    expect(events[5]).toMatchObject({ cargo: [{ resource: 'SPICES', amount: 10 }], from: 'bot_constructor_2polis' });
+  });
+});
+
 describe('RN-BOT-007: la parada limpia', () => {
   it('al parar cierra las conexiones y escribe stop; nada secreto en el registro', async () => {
     const lines: string[] = [];

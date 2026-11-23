@@ -983,6 +983,11 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Los motivos del HUD** (`trainBlockReason`, `advanceBlockReason`, `workshopBlockReason`, `wallBlockReason`,
   `craftBlockReason`, `researchBlockReason`, `civilizationUnitBlockReason`, `firstFreeHouseTile`) son también los del
   bot: lo que el HUD deshabilita, el bot no lo envía (`RN-BOT-002`).
+- **Desde E29** ([SPEC-BOTS-TRADE](../specs/bots-trade.md)) el comercio de los bots (`apps/bots/src/commerce.ts`)
+  usa también los de los paneles de diplomacia, comercio y mercado: `proposableTypes` (`diplomacy.ts`),
+  `treatyForbidden` (`factions.ts`), `canTradeWith`, `pendingWith` y `offerBlockReason` (`trade.ts`), y
+  `marketBuildBlockReason`, `postBlockReason`, `buyBlockReason`, `postCost`, `buyCost` y `commission` (`market.ts`)
+  (`RN-BOT-009`). Lee `treaties`, `tradeOffers` y `market` del store de su conexión de casa, sin reductores nuevos.
 - **Consecuencia:** `src/net` y `src/state` tienen que seguir sin DOM ni React en lo que el bot importa. Un cambio que
   lo rompa lo detectan el typecheck y los tests de `apps/bots`, que corren con los del workspace.
 - `tsx` carga los `.ts` de `apps/web` como CommonJS (el paquete no declara `"type": "module"`); por eso
