@@ -2889,6 +2889,12 @@ bienes ajenos; `bot_constructor_4`, nórdico, en Piedra. Registros en `bots/runs
 - **Hallazgos para otra spec (Q10):** `bot_constructor_1_e29` queda a más de 256 tiles de los otros dos (el alcance de
   una caravana): sus tratos se rechazan con `PATH_TOO_LONG` (54 en 3 h, uno por pareja cada 10 min), construye el
   mercado pero no compra nada y se queda en Bronce. Con el mapa de hoy, una ciudad aislada no puede pasar de Bronce.
+  **Precisión (2026-11-22):** no era sólo la distancia. `bot_constructor_3_e29` está a 223 tiles, por debajo de 256,
+  y sus rutas también volvían con `PATH_TOO_LONG`: el corte es el tope de 50 000 nodos del A* (ADR-031) con el
+  terreno de por medio. Y la ciudad tenía vecinas al alcance (las de los bots de E28, a 24-60 tiles), pero los bots
+  sólo comercian con los de su ejecución. En el mundo de desarrollo todas las ciudades tienen entre 6 y 20 a menos de
+  256 tiles; el riesgo es una cuenta que nazca lejos de todas, porque la fundación no mira a los vecinos. Lo recoge la
+  propuesta [SPEC-TRADE-REACH](../specs/trade-reach.md).
   Los constructores 2 y 3 no levantan mercado (piden 150 de madera y 100 de piedra por encima de la meta de Hierro)
   y no lo necesitan: se cambian los bienes entre ellos.
 - **Encontrado y arreglado en la ejecución larga** (con su test, visto caer sin el arreglo): la partida del

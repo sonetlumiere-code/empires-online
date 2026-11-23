@@ -419,9 +419,10 @@ Matices que conviene no maquillar:
   el 2026-11-22; [SPEC-BOTS-TRADE](specs/bots-trade.md) está en `Implemented`, sin ADR ni migración. Los bots firman
   tratados, cierran tratos y usan el mercado, y la partida de saqueo se reúne antes de atacar; en el servidor, un
   guerrero que saquea o asedia responde a los golpes (`RN-COMBAT-039`, `RN-COMBAT-040`). Medida: sin sembrar, dos
-  constructores llegan a Hierro en 1 h 51 min y 2 h 36 min con bienes comerciados; una ciudad a más de 256 tiles de
-  las demás no puede comerciar y se queda en Bronce, hallazgo para otra spec
-  ([roadmap/milestones.md](roadmap/milestones.md) §E29).
+  constructores llegan a Hierro en 1 h 51 min y 2 h 36 min con bienes comerciados; el tercero, sin ruta de caravana
+  hasta los otros bots de la ejecución, no comercia y se queda en Bronce. La propuesta para que ninguna ciudad nueva
+  nazca así es [SPEC-TRADE-REACH](specs/trade-reach.md), en `Draft` ([roadmap/milestones.md](roadmap/milestones.md)
+  §E29).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en
