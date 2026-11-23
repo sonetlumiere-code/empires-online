@@ -61,6 +61,8 @@ const (
 	PointsKill      = 1
 	PointsBuilding  = 3
 	PointsTerritory = 10
+	// PointsCity, desde E31: una ciudad caída (SPEC-CITY-FALL Q9).
+	PointsCity = 30
 )
 
 // ErrWarTransition: el salto de estado no está permitido.

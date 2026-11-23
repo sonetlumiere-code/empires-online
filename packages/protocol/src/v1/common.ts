@@ -476,6 +476,18 @@ export const BuildingView = z.object({
 });
 export type BuildingView = z.infer<typeof BuildingView>;
 
+/**
+ * Un asalto activo sobre una ciudad (SPEC-CITY-FALL §6): quién lo sostiene, con qué
+ * unidad, y cuándo empezó y cae la ciudad si nadie lo rompe.
+ */
+export const CityAssaultView = z.object({
+  playerId: Uuid,
+  unitId: EntityId,
+  startedAtMs: EpochMs,
+  endsAtMs: EpochMs,
+});
+export type CityAssaultView = z.infer<typeof CityAssaultView>;
+
 /** Estado observable de una ciudad. */
 export const CityView = z.object({
   id: EntityId,
@@ -511,6 +523,10 @@ export const CityView = z.object({
   research: ResearchView.nullable().optional(),
   /** Tecnologías de su dueño, en orden de código. Sólo en la vista de su dueño (RN-TECH-008). */
   technologies: z.array(TechnologyCode).optional(),
+  /** El asalto activo sobre la ciudad, si lo hay; público (SPEC-CITY-FALL §6). Aditivo en v1. */
+  assault: CityAssaultView.optional(),
+  /** Hasta cuándo no se la puede asaltar, si aún no venció su inmunidad (RN-CITY-029). Aditivo en v1. */
+  fallImmuneUntilMs: EpochMs.optional(),
 });
 export type CityView = z.infer<typeof CityView>;
 
@@ -674,6 +690,11 @@ export const EventLogKind = z.enum([
   // caducidad, con lo que volvió al almacén. Ninguno se avisa en vivo.
   'MARKET_SOLD',
   'MARKET_EXPIRED',
+  // La caída de una ciudad (SPEC-CITY-FALL Q9): asaltan la ciudad de quien lee, cae, o
+  // sus unidades toman y arrasan la de otro.
+  'CITY_ASSAULTED',
+  'CITY_LOST',
+  'CITY_TAKEN',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -711,6 +732,10 @@ export const EventLogNoticeKind = EventLogKind.extract([
   'CLAN_WAR_DECLARED',
   'CLAN_WAR_PEACE_OFFERED',
   'CLAN_WAR_ENDED',
+  // SPEC-CITY-FALL Q9: el asalto al asaltado, y la caída a los dos.
+  'CITY_ASSAULTED',
+  'CITY_LOST',
+  'CITY_TAKEN',
 ]);
 export type EventLogNoticeKind = z.infer<typeof EventLogNoticeKind>;
 
@@ -783,6 +808,12 @@ export const EventLogEntry = z.object({
   warReason: ClanWarEndReason.optional(),
   ourScore: ClanWarScore.optional(),
   theirScore: ClanWarScore.optional(),
+  /**
+   * En `CITY_ASSAULTED`: cuándo cae la ciudad si nadie rompe el asalto (SPEC-CITY-FALL §6).
+   * En `CITY_LOST`, `x` e `y` son el centro de la ciudad nueva; en `CITY_TAKEN`, el de la
+   * ciudad arrasada.
+   */
+  fallsAtMs: EpochMs.optional(),
 });
 export type EventLogEntry = z.infer<typeof EventLogEntry>;
 

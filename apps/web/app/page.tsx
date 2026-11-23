@@ -138,6 +138,7 @@ import {
   type NoticeGroup,
 } from '../src/state/notices';
 import { claimBlockReason, claimLabel, territoryAt, territoryOwnerLabel } from '../src/state/conquest';
+import { assaultBlockReason, assaultLabel, assaultTargetNear } from '../src/state/cityFall';
 import {
   canJoinFaction,
   FACTION_CHOICES,
@@ -281,6 +282,18 @@ export default function Page() {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
   }, [claimEndsAtMs]);
+  // La caída de una ciudad (SPEC-CITY-FALL): la ciudad ajena junto a la unidad
+  // seleccionada, a la que se ofrece «Asaltar», y la cuenta atrás de un asalto sobre
+  // ella o sobre la propia.
+  const assaultCity = useWorldStore((s) =>
+    selectedUnit && selectedUnit.playerId === s.playerId ? assaultTargetNear(s.cities.values(), selectedUnit, s.playerId) : undefined,
+  );
+  const assaultEndsAtMs = assaultCity?.assault?.endsAtMs ?? hud.ownCity?.assault?.endsAtMs;
+  useEffect(() => {
+    if (assaultEndsAtMs === undefined) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [assaultEndsAtMs]);
   useEffect(() => {
     if (!countdown) return;
     const id = setInterval(() => setTick((n) => n + 1), 1000);
@@ -876,6 +889,18 @@ export default function Page() {
       }
     : null;
   const claimReason = claimCheck ? claimBlockReason(claimCheck) : null;
+  // Por qué no se puede asaltar la ciudad ajena de al lado (SPEC-CITY-FALL §5).
+  const assaultReason = assaultCity
+    ? assaultBlockReason({
+        unit: selectedUnit,
+        playerId,
+        city: assaultCity,
+        ownCity: ownCity ?? undefined,
+        buildings: useWorldStore.getState().buildings.values(),
+        treaties,
+        nowMs: serverTimeMs(),
+      })
+    : null;
   const clanClaimReason = claimCheck && clans.clan ? claimBlockReason({ ...claimCheck, cities: useWorldStore.getState().cities.values(), forClan: true }) : null;
 
   return (
@@ -989,6 +1014,11 @@ export default function Page() {
             {siegeAlertActive(ownCity, serverTimeMs()) && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }} role="alert">
                 ¡Están asediando tu ciudad!
+              </span>
+            )}
+            {ownCity.assault && (
+              <span style={{ color: 'var(--danger)', fontWeight: 600 }} role="alert">
+                {assaultLabel(ownCity, playerId, serverTimeMs())}
               </span>
             )}
             <button className="secondary" onClick={buildHouse} title="Encarga una casa en el primer hueco libre junto al centro: +5 de población al terminar">
@@ -1200,6 +1230,24 @@ export default function Page() {
                 Reclamar para el clan [{clans.clan.tag}]
               </button>
             )}
+          </>
+        )}
+        {assaultCity && selectedUnit && (
+          <>
+            {assaultCity.assault && (
+              <span style={{ color: 'var(--danger)' }}>{assaultLabel(assaultCity, playerId, serverTimeMs())}</span>
+            )}
+            <button
+              className="secondary"
+              onClick={() => clientRef.current?.assaultCity(selectedUnit.id, assaultCity.id)}
+              disabled={assaultReason !== null}
+              title={
+                assaultReason ??
+                `La unidad va al anillo de ${assaultCity.name} y planta su estandarte: si aguanta 15 minutos, la ciudad cae y se arrasa`
+              }
+            >
+              Asaltar {assaultCity.name}
+            </button>
           </>
         )}
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>

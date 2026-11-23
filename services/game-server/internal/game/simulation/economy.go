@@ -554,6 +554,8 @@ func (s *State) cityViewOf(c *city.City) protocol.CityView {
 	v.Production = s.productionView(c.ID)
 	v.Advance = s.advanceView(c.ID)
 	v.Craft = s.craftView(c.ID)
+	// SPEC-CITY-FALL §6: el asalto activo y la inmunidad, públicos.
+	v.Assault = s.assaultView(c.ID)
 	return v
 }
 
@@ -661,6 +663,10 @@ func (s *Simulation) handleStocksFlushFailed(cmd StocksFlushFailed) {
 // debita y escribe el edificio (ADR-023 §2).
 func (s *Simulation) handleBuildBuilding(cmd BuildBuilding) {
 	c, _ := s.state.City(cmd.CityID)
+	if c != nil && c.OwnerPlayerID == cmd.PlayerID && s.state.CityFalling(c.ID) {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msgCityFalling)
+		return
+	}
 	stock := func(economy.Resource) *economy.Stock { return nil }
 	standing := func(building.Type) bool { return false }
 	if c != nil {
@@ -772,6 +778,10 @@ func (s *Simulation) handleBuildResolved(cmd BuildResolved) {
 // transacción de la cola debita, reserva y escribe la producción.
 func (s *Simulation) handleTrainUnit(cmd TrainUnit) {
 	c, _ := s.state.City(cmd.CityID)
+	if c != nil && c.OwnerPlayerID == cmd.PlayerID && s.state.CityFalling(c.ID) {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msgCityFalling)
+		return
+	}
 	stock := func(economy.Resource) *economy.Stock { return nil }
 	busy := false
 	var civ production.Civilization

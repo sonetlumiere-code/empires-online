@@ -1434,3 +1434,49 @@ describe('arietes y murallas (SPEC-SIEGE-ENGINES)', () => {
     expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
   });
 });
+
+describe('la caída de una ciudad (SPEC-CITY-FALL)', () => {
+  const env = { v: 1, seq: 1, ts: 1_757_376_000_000 };
+  const otro = '00000000-0000-4000-8000-000000000002';
+  const assault = { playerId: otro, unitId: 42, startedAtMs: 1_757_376_000_000, endsAtMs: 1_757_376_900_000 };
+  const city = {
+    id: 7, ownerPlayerId: uuid, name: 'Villa Norte', centerX: 150, centerY: 90, era: 'BRONZE_AGE', civilization: 'ROMAN',
+    faction: 'NEUTRAL', clan: null, population: 3, populationLimit: 20, presenceState: 'ONLINE', protectionUntilMs: null,
+  };
+
+  it('acepta unit.assault con la unidad y la ciudad, y nada más', () => {
+    const cmd = (payload: unknown) => parseClientMessage({ v: 1, type: 'unit.assault', requestId: uuid, payload });
+    expect(cmd({ unitId: 42, cityId: 7 }).ok).toBe(true);
+    for (const payload of [{ unitId: 42 }, { cityId: 7 }, { unitId: 0, cityId: 7 }, { unitId: 42, cityId: 7, x: 1 }]) {
+      expect(cmd(payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+    expect(CLIENT_MESSAGE_TYPES).toContain('unit.assault');
+  });
+
+  it('CityView lleva el asalto y la inmunidad, opcionales; city.update abre y cierra el asalto', () => {
+    expect(CityView.safeParse(city).success).toBe(true);
+    expect(CityView.safeParse({ ...city, assault, fallImmuneUntilMs: 1_757_635_200_000 }).success).toBe(true);
+    expect(CityView.safeParse({ ...city, assault: { ...assault, unitId: 0 } }).success).toBe(false);
+    expect(parseServerMessage({ ...env, type: 'city.update', payload: { id: 7, assault } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'city.update', payload: { id: 7, assault: null } }).ok).toBe(true);
+  });
+
+  it('city.fallen dice qué ciudad cayó, de quién y ante quién', () => {
+    const payload = { cityId: 7, ownerPlayerId: uuid, byPlayerId: otro, atMs: 1_757_376_900_000 };
+    expect(parseServerMessage({ ...env, type: 'city.fallen', payload }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'city.fallen', payload: { ...payload, byPlayerId: 'x' } }).ok).toBe(false);
+    expect(SERVER_MESSAGE_TYPES).toContain('city.fallen');
+  });
+
+  it('los tres tipos de la caída son entradas del registro y avisos', () => {
+    for (const kind of ['CITY_ASSAULTED', 'CITY_LOST', 'CITY_TAKEN']) {
+      const entry = {
+        id: 41, kind, firstAtMs: 1, lastAtMs: 2, count: 1, otherPlayerId: otro, otherCityId: 9, otherCityName: 'Puerto Sur',
+        x: 150, y: 90, fallsAtMs: 1_757_376_900_000,
+      };
+      expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [entry], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(true);
+      const notice = { kind, atMs: 1, otherPlayerId: otro, otherCityId: 9, otherCityName: 'Puerto Sur', x: 150, y: 90, fallsAtMs: 2 };
+      expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
+    }
+  });
+});

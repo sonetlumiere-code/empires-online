@@ -589,6 +589,25 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			ForClan:   p.ForClan != nil && *p.ForClan,
 		})
 
+	// La caída de una ciudad (SPEC-CITY-FALL). El cliente dice qué unidad y
+	// qué ciudad; el plazo y si se puede son del servidor.
+	case protocol.TypeUnitAssault:
+		var p protocol.UnitAssaultPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.AssaultCity{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+			CityID:    p.CityID,
+		})
+
 	// Diplomacia (SPEC-DIPLOMACY). El cliente dice a quién y qué tipo, o sobre
 	// qué tratado; el estado, la guarnición y los plazos son del servidor.
 	case protocol.TypeTreatyPropose:
@@ -1153,6 +1172,17 @@ func (s *Server) claimRequest(ctx context.Context, session *Session, requestID s
 		observability.FieldRequestID, requestID,
 		observability.FieldPlayerID, session.PlayerID)
 	return false
+}
+
+// Resnapshot vuelve a mandar el snapshot de su ciudad a cada sesión abierta de
+// un jugador, por el mismo camino que el del handshake (ADR-050 §5): tras la
+// caída de su ciudad, su vista ya no tiene ciudad. Lo llama la simulación desde
+// el loop: cada envío va en su goroutine, porque el snapshot vuelve a pasar por
+// el canal de comandos.
+func (s *Server) Resnapshot(playerID uuid.UUID) {
+	s.hub.forEachSessionOf(playerID, func(session *Session) {
+		go s.sendSnapshot(session, nil, "")
+	})
 }
 
 // sendSnapshot pide el estado del área de interés al game loop y lo envía.

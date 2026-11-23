@@ -214,6 +214,10 @@ el derribo de las casas llegó en E8 ([combat-siege.md](../specs/combat-siege.md
 la primera máquina de asedio, en E27 ([milestones.md](milestones.md) §E27): con la muralla en pie sólo el ariete daña
 la ciudad, y derribada queda en brecha. El daño de un asedio no sobrevive a un reinicio (vive en la RAM), y la ciudad
 no cae ni cambia de dueño: eso queda para un slice propio.
+**Precisión (2026-11-23, [SPEC-CITY-FALL](../specs/city-fall.md), [ADR-050](../decisions/ADR-050-city-fall.md)):** con
+E31 ([milestones.md](milestones.md) §E31) una ciudad en brecha se asalta y, si el asalto aguanta su plazo, cae: se arrasa
+(no cambia de dueño) y su dueño refunda en el acto, lejos, con su era y sus tecnologías. El asalto, como una reclamación,
+sobrevive a un reinicio con su plazo.
 
 **Clans.** Organizaciones persistentes de jugadores (tabla `clans`, fuera de MVP). Depende de M7:
 un clan es, estructuralmente, un conjunto de treaties permanentes con gestión de membresía y

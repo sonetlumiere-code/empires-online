@@ -102,6 +102,21 @@ type City struct {
 	LastOfflineAt   *time.Time
 	ProtectionUntil *time.Time
 	Version         int32
+	// FoundedAtMs es el instante de su fundación (cities.created_at), del que
+	// sale su inmunidad ante un asalto (SPEC-CITY-FALL RN-CITY-029). Una
+	// ciudad refundada es una fila nueva y estrena el suyo.
+	FoundedAtMs int64
+}
+
+// FallImmuneUntilMs es el instante en que vence la inmunidad de la ciudad ante
+// un asalto (RN-CITY-029): su fundación más immunity.
+func (c *City) FallImmuneUntilMs(immunity time.Duration) int64 {
+	return c.FoundedAtMs + immunity.Milliseconds()
+}
+
+// FallImmuneAt dice si la ciudad aún no se puede asaltar en nowMs.
+func (c *City) FallImmuneAt(nowMs int64, immunity time.Duration) bool {
+	return immunity > 0 && nowMs < c.FallImmuneUntilMs(immunity)
 }
 
 // FactionJoin es la entrada de un jugador NEUTRAL en un bando, que cuenta en

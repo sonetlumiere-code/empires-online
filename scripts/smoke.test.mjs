@@ -15,6 +15,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  ciudadRefundada,
+  motivoParaNoAsaltar,
   apuntaA,
   bienDe,
   castilloDe,
@@ -520,4 +522,23 @@ test('golpesParaAbrir: 38 golpes de 40 para 1 500, redondeando hacia arriba', ()
   assert.equal(golpesParaAbrir(40), 1);
   assert.equal(golpesParaAbrir(0), 0);
   assert.equal(golpesParaAbrir(100, 30), 4);
+});
+
+// SPEC-CITY-FALL, para --caida: si se puede asaltar la ciudad y cuál es la refundada.
+test('motivoParaNoAsaltar: Piedra, muralla completa, inmunidad y otro asalto; en brecha, nada', () => {
+  const ciudad = { id: 7, era: 'BRONZE_AGE' };
+  assert.equal(motivoParaNoAsaltar(ciudad, [], 1_000), null);
+  assert.match(motivoParaNoAsaltar({ ...ciudad, era: 'STONE_AGE' }, [], 1_000), /Piedra/);
+  assert.match(motivoParaNoAsaltar(ciudad, [{ cityId: 7, type: 'WALL', status: 'COMPLETE' }], 1_000), /muralla/);
+  assert.equal(motivoParaNoAsaltar(ciudad, [{ cityId: 7, type: 'WALL', status: 'UNDER_CONSTRUCTION' }], 1_000), null);
+  assert.equal(motivoParaNoAsaltar(ciudad, [{ cityId: 8, type: 'WALL', status: 'COMPLETE' }], 1_000), null);
+  assert.match(motivoParaNoAsaltar({ ...ciudad, fallImmuneUntilMs: 2_000 }, [], 1_000), /recién fundada/);
+  assert.equal(motivoParaNoAsaltar({ ...ciudad, fallImmuneUntilMs: 1_000 }, [], 1_000), null);
+  assert.match(motivoParaNoAsaltar({ ...ciudad, assault: { endsAtMs: 9 } }, [], 1_000), /asalto/);
+});
+
+test('ciudadRefundada: la del jugador con otro id que la caída', () => {
+  const snapshot = { cities: [{ id: 7, ownerPlayerId: 'a' }, { id: 9, ownerPlayerId: 'b' }, { id: 12, ownerPlayerId: 'a' }] };
+  assert.equal(ciudadRefundada(snapshot, 'a', 7)?.id, 12);
+  assert.equal(ciudadRefundada({ cities: [{ id: 7, ownerPlayerId: 'a' }] }, 'a', 7), undefined);
 });

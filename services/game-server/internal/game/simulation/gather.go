@@ -533,6 +533,9 @@ func (s *Simulation) dropTask(u *unit.Unit) bool {
 // tarea y la carga y queda IDLE en el bosque; la base lo sabe con un cierre sin
 // movimiento, que borra la tarea en su transacción.
 func (s *Simulation) stopWorking(u *unit.Unit) {
+	// Una orden nueva también la aparta del camino hacia un asalto
+	// (SPEC-CITY-FALL §4.1).
+	delete(s.state.cityFall.approaching, u.ID)
 	if u.Status != unit.StatusWorking {
 		return
 	}

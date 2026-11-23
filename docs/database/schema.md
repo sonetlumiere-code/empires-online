@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15), las guerras entre clanes, `000026_clan_wars.up.sql` (`clan_wars`, sus triggers y el índice `world_events_war`, §16.13), el árbol tecnológico, `000027_technologies.up.sql` (`technologies`, `city_research`, `player_technologies` y sus tres triggers, §16.16), los mercados, `000028_markets.up.sql` (`MARKET`, `market_offers`, `market_purchases` y `caravans.market_purchase_id`, §16.17), y el ariete y la muralla, `000029_siege_engines.up.sql` (`WALL`, su único parcial y su trigger, y `RAM` en `city_productions`, §16.18). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15), las guerras entre clanes, `000026_clan_wars.up.sql` (`clan_wars`, sus triggers y el índice `world_events_war`, §16.13), el árbol tecnológico, `000027_technologies.up.sql` (`technologies`, `city_research`, `player_technologies` y sus tres triggers, §16.16), los mercados, `000028_markets.up.sql` (`MARKET`, `market_offers`, `market_purchases` y `caravans.market_purchase_id`, §16.17), el ariete y la muralla, `000029_siege_engines.up.sql` (`WALL`, su único parcial y su trigger, y `RAM` en `city_productions`, §16.18), y la caída de una ciudad, `000030_city_fall.up.sql` (`cities.fallen_at`, los índices parciales de las ciudades en pie, su trigger y `city_assaults`, §16.19). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -31,8 +31,9 @@ La migración `000001` creó diecisiete tablas; `000004` eliminó una, `idempote
 | `treaties` | MVP: **activa** | Ciclo de vida en `internal/domain/diplomacy`; caducidad barrida desde la fase 5 del tick. Desde E10, `TRADE` es el primer escalón de la escalera ([../specs/trade.md](../specs/trade.md) §4.1) |
 | `trade_offers`, `trade_offer_lines` | E10: **activas** | Las ofertas de comercio y sus líneas. La RAM decide; cada transición va con su evento y el trato aceptado mueve los dos almacenes en la misma transacción ([ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md)) |
 | `territory_claims` | E12: **activa** | Las reclamaciones de territorio de los guerreros y su ciclo de vida. La RAM decide; la base la recupera tras un reinicio, y la captura cambia el control y el límite de dos ciudades en una transacción ([ADR-034](../decisions/ADR-034-territory-claims.md)) |
+| `city_assaults` | E31: **activa** | Los asaltos de ciudades y su ciclo de vida. La RAM decide; la base la recupera tras un reinicio, y la caída arrasa la ciudad y refunda a su dueño en una transacción ([ADR-050](../decisions/ADR-050-city-fall.md)) |
 | `garrisons` | MVP: **activa** | Sólo guarniciones ABIERTAS: al salir la fila se borra. La escriben `unit.garrison` y `unit.ungarrison` ([ADR-017](../decisions/ADR-017-garrison-commands.md)) |
-| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` y `HillDepleted` al agotarse un tile de bosque o de colina, `EraAdvanceOrdered` y `EraAdvanced` en el avance de era, `ResearchOrdered` y `TechnologyResearched` en la investigación (desde E25, de un solo jugador), los cinco `Trade*` en el comercio, e `InvariantRepaired` en la validación de carga del arranque. **Precisión (2026-11-17, [ADR-045](../decisions/ADR-045-clan-wars.md) §4):** desde E24, un `UnitKilled`, un `BuildingDestroyed` o un `TerritoryControlChanged` entre los dos lados de una guerra activa lleva en su payload `war: { warId, clanId, points }`, del que sale el marcador |
+| `world_events` | MVP: **activa** | Append-only. Hoy la escriben `PlayerBootstrapped` y `TerritoryControlChanged` en el alta, `UnitGarrisoned` y `UnitUngarrisoned` en la guarnición, los siete de tratado (desde E6), `BuildingOrdered`, `BuildingCompleted`, `TrainingOrdered` y `UnitTrained` en la economía, `UnitAttacked` (con `auto` en la respuesta automática), `UnitKilled` y `CityPillaged` en el combate y el saqueo, `ForestDepleted` y `HillDepleted` al agotarse un tile de bosque o de colina, `EraAdvanceOrdered` y `EraAdvanced` en el avance de era, `ResearchOrdered` y `TechnologyResearched` en la investigación (desde E25, de un solo jugador), los cinco `Trade*` en el comercio, e `InvariantRepaired` en la validación de carga del arranque. **Precisión (2026-11-17, [ADR-045](../decisions/ADR-045-clan-wars.md) §4):** desde E24, un `UnitKilled`, un `BuildingDestroyed` o un `TerritoryControlChanged` entre los dos lados de una guerra activa lleva en su payload `war: { warId, clanId, points }`, del que sale el marcador. **Precisión (2026-11-23, [ADR-050](../decisions/ADR-050-city-fall.md)):** desde E31, `CityAssaultStarted` y `CityFell`, éste con su `war` si la caída puntúa |
 | `city_stocks` | E1: **activa** | Una fila por ciudad y recurso (`WOOD` y, desde `000012`, `STONE`), creada en la fundación (y para las ciudades existentes, por `000006` y `000012`). Deltas versionados: el volcado suma depósitos y cada encargo resta en la transacción de su efecto ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)) |
 | `unit_tasks` | E1: **activa** | Write-through en cada transición de la tarea de recolección, con su tramo de movimiento y `units.status` en la misma transacción |
 | `buildings` | E1: **activa** | Encargo de `city.build` (con su débito) y finalización en la fase 5 |
@@ -1660,6 +1661,56 @@ ALTER TABLE city_productions ADD CONSTRAINT city_productions_unit_type_valid
 
 La migración de vuelta borra las producciones y las unidades de arietes, las murallas, el trigger y el índice, y deja los
 `CHECK` de `000028`.
+
+### 16.19 La caída de una ciudad (`000030`)
+
+[SPEC-CITY-FALL](../specs/city-fall.md), [ADR-050](../decisions/ADR-050-city-fall.md). Una ciudad caída no se borra
+ni cambia de dueño: se queda con `fallen_at`, porque cuatro tablas la referencian sin cascada.
+
+```sql
+ALTER TABLE cities ADD COLUMN fallen_at timestamptz NULL;
+ALTER TABLE cities DROP CONSTRAINT cities_unique_center;
+CREATE UNIQUE INDEX cities_unique_center ON cities (center_x, center_y) WHERE fallen_at IS NULL;
+CREATE UNIQUE INDEX cities_one_standing_per_owner ON cities (owner_player_id) WHERE fallen_at IS NULL;
+-- cities_fallen_is_final: BEFORE UPDATE OF fallen_at, rechaza con 23514 cambiar el
+-- fallen_at de una ciudad que ya cayó.
+
+CREATE TABLE city_assaults (
+    id             bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    city_id        bigint      NOT NULL REFERENCES cities (id),
+    unit_id        bigint      NOT NULL REFERENCES units (id),
+    player_id      uuid        NOT NULL REFERENCES players (id),
+    from_city_id   bigint      NOT NULL REFERENCES cities (id),
+    x              integer     NOT NULL,
+    y              integer     NOT NULL,
+    started_at_ms  bigint      NOT NULL,
+    ends_at_ms     bigint      NOT NULL,
+    status         text        NOT NULL,
+    end_reason     text        NULL,
+    request_id     text        NOT NULL,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    ended_at       timestamptz NULL,
+    CONSTRAINT city_assaults_status_valid CHECK (status IN ('ACTIVE', 'FELL', 'BROKEN')),
+    CONSTRAINT city_assaults_after_start CHECK (ends_at_ms > started_at_ms),
+    CONSTRAINT city_assaults_ended_has_time CHECK ((status = 'ACTIVE') = (ended_at IS NULL)),
+    CONSTRAINT city_assaults_not_own CHECK (from_city_id <> city_id)
+);
+CREATE UNIQUE INDEX city_assaults_one_active_per_city ON city_assaults (city_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX city_assaults_one_active_per_unit ON city_assaults (unit_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX city_assaults_unique_request ON city_assaults (player_id, request_id);
+```
+
+| Objeto | Semántica |
+|---|---|
+| `fallen_at` | La ciudad cayó (`RN-CITY-026`): no se carga en la RAM, no ocupa su 3 × 3 y ninguna consulta de «la ciudad del jugador» la devuelve (`GetByOwner`, `ListAll`, `ListCenters`, el `DISTINCT ON` de mensajes, registro y clanes, la carga del almacén). Sus edificios quedan `DESTROYED`, su almacén a cero y sus encargos borrados |
+| `cities_one_standing_per_owner` | [INV-CITY-020](../invariants/city.md#inv-city-020): una ciudad en pie por jugador. La transacción de la caída escribe `fallen_at` antes de fundar la nueva |
+| `cities_unique_center` (parcial) | Otra ciudad puede fundar donde estuvo una caída |
+| `cities_fallen_is_final` (trigger) | Una caída no vuelve a estar en pie |
+| `city_assaults` | Cada asalto con su ciclo: `ACTIVE`, y después `FELL` (cayó) o `BROKEN` (se rompió, con `end_reason`). `city_assaults_one_active_per_city` es [INV-CITY-021](../invariants/city.md#inv-city-021) |
+
+`created_at` de `cities` sale desde E31 del reloj del juego (el instante de la fundación): de él se deriva la inmunidad de
+una ciudad recién fundada o refundada (`RN-CITY-029`). La migración de vuelta borra los asaltos y las ciudades caídas
+con lo que cuelga de ellas, y deja el centro único de `000001`.
 
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 

@@ -107,6 +107,45 @@ func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int,
 	return Site{}, ErrNoSite
 }
 
+// FindRefoundSite busca el sitio de la ciudad nueva de un jugador cuya ciudad
+// cayó (SPEC-CITY-FALL RN-CITY-027, ADR-050 §3): las reglas de FindSite, con el
+// alcance de E30, y además a ≥ minDist de Chebyshev de cada tile de avoid (la
+// ciudad caída y la del vencedor). Si ningún sitio del mundo cumple la
+// distancia, se repite la búsqueda de FindSite sin ella: el vencido nunca se
+// queda sin ciudad. existing son las ciudades en pie, sin la caída.
+func FindRefoundSite(w *world.World, existing, avoid []world.Tile, minDist int32, seed uint64, villagers int,
+	hasWood HasWood, reach Reach) (Site, error) {
+	if villagers <= 0 {
+		return Site{}, fmt.Errorf("una ciudad nueva necesita al menos un aldeano")
+	}
+	far := func(t world.Tile) bool { return farFromAll(t, avoid, minDist) }
+	if minDist > 0 && len(avoid) > 0 {
+		extra := far
+		if reach.enabled() && len(existing) > 0 {
+			r := newReachCheck(w, existing, reach)
+			extra = func(t world.Tile) bool { return far(t) && r.ok(t) }
+		}
+		if site, ok := spiral(w, existing, seed, villagers, hasWood, extra); ok {
+			return site, nil
+		}
+		if reach.enabled() && len(existing) > 0 {
+			if site, ok := spiral(w, existing, seed, villagers, hasWood, far); ok {
+				return site, nil
+			}
+		}
+	}
+	return FindSite(w, existing, seed, villagers, hasWood, reach)
+}
+
+func farFromAll(t world.Tile, avoid []world.Tile, minDist int32) bool {
+	for _, a := range avoid {
+		if chebyshev(t, a) < minDist {
+			return false
+		}
+	}
+	return true
+}
+
 // spiral recorre el mundo en espiral cuadrada desde el punto de partida y
 // devuelve el primer candidato que cumple las reglas de siempre y, si lo hay,
 // el filtro extra, que se comprueba el último (RN-CITY-025). Determinista.

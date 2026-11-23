@@ -418,7 +418,10 @@ transacción cambia el dueño de `T`.
 
 **Razón.** Perder el suelo de casa sería empezar a perder la ciudad, y que una ciudad caiga es otra spec
 (SPEC-TERRITORY-CONQUEST Q4, [combat-siege.md](../specs/combat-siege.md) Q2). Como en el MVP las ciudades no se
-destruyen ni se mueven, la capital lo es para siempre.
+destruyen ni se mueven, la capital lo es para siempre. **Precisión (2026-11-23, [SPEC-CITY-FALL](../specs/city-fall.md),
+[ADR-050](../decisions/ADR-050-city-fall.md)).** Desde E31 una ciudad puede caer: el enunciado habla de las ciudades en
+pie (sin `fallen_at`). La caída deja el territorio capital sin dueño en su misma transacción, y ninguna reclamación
+cambia el dueño de una capital mientras su ciudad está en pie.
 
 **Cómo se garantiza.**
 

@@ -2975,3 +2975,60 @@ el navegador.
   (en la ejecución larga de E29, 54 en 3 h sólo para `_1_e29`). `_2_e29` y `_3_e29` siguen comerciando entre sí y
   `_3_e29` llega a Castillos en 13 min 21 s. `_1_e29` sigue sin socios en su ejecución y en Bronce: la regla no mueve
   ciudades que ya existen (Q3), y comerciar con otros bots a la vista quedó fuera (Q7).
+
+## E31 — La caída de una ciudad
+
+**Estado: EN CURSO (2026-11-23)**, en la rama `claude/slice-caida-ciudad`. Contrato: [SPEC-CITY-FALL](../specs/city-fall.md),
+propuesta y aceptada el 2026-11-23 con sus diez decisiones de producto, y [ADR-050](../decisions/ADR-050-city-fall.md).
+
+**Objetivo.** Que la guerra tenga final: una ciudad en brecha puede caer. Es el último paso de la fase Sieges del
+roadmap, después del derribo de E8 y de la muralla y el ariete de E27.
+
+**Alcance.** `unit.assault`: una unidad que derriba planta el estandarte en el anillo de una ciudad en brecha, de Bronce
+o posterior y fuera de su inmunidad de 72 h, y si aguanta 900 s la ciudad cae (`RN-SIEGE-009` a `RN-SIEGE-011`,
+`RN-COMBAT-041`). La caída la arrasa (`fallen_at`) y su dueño refunda en la misma transacción, a ≥ 64 tiles de la
+caída y del vencedor, con su era y sus tecnologías y sin edificios, almacén ni encargos; sus unidades pasan a la ciudad
+nueva y el territorio capital queda libre (`RN-CITY-026` a `RN-CITY-029`). `CITY_ASSAULTED`, `CITY_LOST` y `CITY_TAKEN`
+en el registro y los avisos; 30 puntos por ciudad en una guerra de clanes. `city.fallen`, `CityView.assault` y
+`fallImmuneUntilMs`; migración `000030`; tres variables `EO_`; [INV-CITY-020](../invariants/city.md#inv-city-020),
+[INV-CITY-021](../invariants/city.md#inv-city-021) e [INV-COMBAT-010](../invariants/combat.md#inv-combat-010);
+`scripts/smoke.mjs --caida`. **No entra** (spec §2): quedarse la ciudad como segunda ciudad, caer sin asalto, botín de
+la caída, elegir dónde refundar y los bots que asaltan.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-050](../decisions/ADR-050-city-fall.md), `INV-CITY-020`, `INV-CITY-021` e
+   `INV-COMBAT-010`, las precisiones de `INV-CITY-001`, `INV-PLAYER-003` e `INV-TERR-011`, de `RN-CITY-020` y la nota de
+   «un jugador, una ciudad» ([city.md](../specs/city.md)), de `RN-CONQ-008` ([territory-conquest.md](../specs/territory-conquest.md)),
+   del no-scope de [combat-siege.md](../specs/combat-siege.md) y [siege-engines.md](../specs/siege-engines.md) y de
+   `RN-CLANWAR-007` ([clan-wars.md](../specs/clan-wars.md)).
+2. **HECHO** — Protocolo: `unit.assault`, `city.fallen`, `CityView.assault` y `fallImmuneUntilMs`, los tres tipos
+   del registro y de los avisos; contract tests (Go y Zod).
+3. **HECHO** — Dominio, migración `000030` y persistencia: `fallen_at`, los índices parciales, `city_assaults`, la
+   transacción de la caída y la refundación, y las consultas de «la ciudad del jugador» sin las caídas.
+4. **HECHO** — Simulación: la orden, el plazo en la fase 5 con su predicado por tick, la caída en dos fases y su
+   aplicación en la RAM, el snapshot nuevo del vencido y el marcador; el golden «caída».
+5. **HECHO** — WebSocket: el e2e del asalto y la caída.
+6. **HECHO** — Cliente: «Asaltar» con sus motivos, la cuenta atrás, la ciudad que desaparece, el salto del vencido y
+   los textos del registro.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --caida`.
+
+### Prueba en vivo (2026-11-23)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 29 a la 30, con `EO_CITY_ASSAULT_SECONDS=20` y
+`EO_CITY_FALL_IMMUNITY_HOURS=0`, y la web en el 3001:
+
+- `node scripts/smoke.mjs --web http://localhost:3001 --caida`, en tres pasadas. La primera dio de alta a `smoke_caida`
+  y se paró pidiendo recursos para el avance (`EO_DEVSEED_STOCK_FOR=smoke_caida pnpm run dev:seed`, con el servidor
+  parado). La segunda: avance a Bronce (90 s), el guerrero de `smoke_runner` va a la ciudad, la asalta, el asaltado
+  recibe `CITY_ASSAULTED` con la hora de la caída, a los 20 s cae (`city.fallen` a los dos, `CITY_TAKEN` y `CITY_LOST`)
+  y `smoke_caida` recibe sin reconectar el snapshot de su ciudad refundada, con el mismo nombre y su Bronce, a 300
+  tiles. 28 comprobaciones.
+- **Fallo encontrado y arreglado.** En el navegador, `smoke_caida` veía el mundo vacío: la ciudad refundada entraba en
+  la RAM sin civilización y el cliente descartaba el snapshot entero ([city-fall.md](../specs/city-fall.md) §9.1).
+  Reproducido con un test de simulación y el e2e, arreglado, y repetida la pasada con el servidor nuevo y el navegador
+  conectado como `smoke_caida`: al caer, el cliente pasó solo a la ciudad refundada (población 9/50: seis supervivientes
+  y tres aldeanos nuevos), con el aviso «Tu ciudad cayó ante smoke_runnerpolis: la refundaste en (123, 180)» y su «Ir», y
+  el registro con el asalto y la caída. 25 comprobaciones.
+- **Sin comprobar en el navegador:** el botón «Asaltar» con sus motivos y la cuenta atrás del asalto en el HUD (el
+  asalto del humo dura 20 s y lo da el humo, no un clic); lo cubren `src/state/cityFall.test.ts` y el e2e.

@@ -52,6 +52,8 @@ export interface NoticeGroup {
   readonly warReason?: Notice['warReason'];
   readonly ourScore?: number;
   readonly theirScore?: number;
+  /** En el asalto de una ciudad, cuándo cae (SPEC-CITY-FALL §6). */
+  readonly fallsAtMs?: number;
   /** El primero y el último, en la simulación. */
   readonly firstAtMs: number;
   readonly lastAtMs: number;
@@ -117,6 +119,7 @@ export function applyNotice(state: NoticeState, n: Notice): NoticeState {
         warReason: n.warReason,
         ourScore: n.ourScore,
         theirScore: n.theirScore,
+        fallsAtMs: n.fallsAtMs,
         count: 1,
         amount: n.amount,
         x: n.x,
@@ -192,6 +195,7 @@ function asEntry(g: NoticeGroup): EventLogEntry {
     warReason: g.warReason,
     ourScore: g.ourScore,
     theirScore: g.theirScore,
+    fallsAtMs: g.fallsAtMs,
   };
 }
 

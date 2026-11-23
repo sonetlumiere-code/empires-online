@@ -744,7 +744,7 @@ func (r *ClanRepo) ChatPage(ctx context.Context, me uuid.UUID, beforeID int64) (
 	rows, err := r.store.pool.Query(ctx,
 		`SELECT m.id, m.sender_player_id, m.body, m.sent_at, c.id, c.name
 		   FROM clan_messages m
-		   LEFT JOIN LATERAL (SELECT id, name FROM cities WHERE owner_player_id = m.sender_player_id ORDER BY id LIMIT 1) c ON true
+		   LEFT JOIN LATERAL (SELECT id, name FROM cities WHERE owner_player_id = m.sender_player_id AND fallen_at IS NULL ORDER BY id LIMIT 1) c ON true
 		  WHERE m.clan_id = $1 AND m.id > $2 AND m.id < $3 AND m.sent_at > $4
 		  ORDER BY m.id DESC LIMIT $5`,
 		clanID, first, beforeID, since, r.cfg.PageSize+1)
@@ -832,7 +832,7 @@ func (r *ClanRepo) Lookup(ctx context.Context, clanID int64) (protocol.ClanInfoP
 		   FROM clan_members m
 		   JOIN players p ON p.id = m.player_id
 		   JOIN factions f ON f.id = p.faction_id
-		   LEFT JOIN LATERAL (SELECT id, name FROM cities WHERE owner_player_id = m.player_id ORDER BY id LIMIT 1) c ON true
+		   LEFT JOIN LATERAL (SELECT id, name FROM cities WHERE owner_player_id = m.player_id AND fallen_at IS NULL ORDER BY id LIMIT 1) c ON true
 		  WHERE m.clan_id = $1 AND m.left_at IS NULL
 		  ORDER BY m.joined_at, m.player_id`, clanID)
 	if err != nil {

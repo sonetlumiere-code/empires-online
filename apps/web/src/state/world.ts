@@ -153,6 +153,10 @@ export interface CityView {
    * sesión. Sólo lo recibe el dueño (SPEC-COMBAT-SIEGE RN-COMBAT-038).
    */
   besiegedAtMs?: number;
+  /** El asalto activo sobre la ciudad, si lo hay; público (SPEC-CITY-FALL §6). */
+  assault?: { playerId: string; unitId: number; startedAtMs: number; endsAtMs: number };
+  /** Hasta cuándo no se la puede asaltar, si aún no venció su inmunidad (RN-CITY-029). */
+  fallImmuneUntilMs?: number;
 }
 
 /** Edificio tal y como lo ve el cliente (SPEC-ECON-WOOD §4.3). */
@@ -376,6 +380,8 @@ function cityFromView(c: v1.CityView): CityView {
     technologies: c.technologies ?? [],
     factionJoin: c.factionJoin ?? null,
     clan: c.clan ?? null,
+    assault: c.assault ?? undefined,
+    fallImmuneUntilMs: c.fallImmuneUntilMs ?? undefined,
   };
 }
 
@@ -622,8 +628,27 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
             clan: p.clan !== undefined ? p.clan : existing.clan,
             pillagedAtMs: p.pillagedAtMs !== undefined ? p.pillagedAtMs : existing.pillagedAtMs,
             besiegedAtMs: p.besiegedAtMs !== undefined ? p.besiegedAtMs : existing.besiegedAtMs,
+            // SPEC-CITY-FALL §6: el asalto empieza (vista) o termina sin caída (null).
+            assault: p.assault === undefined ? existing.assault : (p.assault ?? undefined),
           });
           set({ changes: changed({ cities: new Set([p.id]) }) });
+          break;
+        }
+
+        case 'city.fallen': {
+          // Una ciudad caída deja de existir, con sus edificios (SPEC-CITY-FALL §6): la
+          // ciudad nueva de su dueño llega como cualquier ciudad que entra en la vista,
+          // y al vencido, en el snapshot que le sigue.
+          const p = message.payload;
+          if (!cities.delete(p.cityId)) break;
+          const gone = new Set<number>();
+          for (const [id, b] of buildings) {
+            if (b.cityId === p.cityId) {
+              buildings.delete(id);
+              gone.add(id);
+            }
+          }
+          set({ changes: changed({ cities: new Set([p.cityId]), buildings: gone }) });
           break;
         }
 

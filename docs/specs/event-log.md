@@ -132,6 +132,16 @@ devueltos en `lots` y lo que volvió al almacén en `tradeGet` («Tu oferta del 
 20 de piedra a tu almacén»). La publicación y la retirada no entran: las ordenó el propio jugador. Cada suceso es su
 propia entrada. `EventTypes` gana `MarketPurchase` y `MarketOfferExpired`; el catálogo pasa de 40 a 42 tipos.
 
+**Precisión (2026-11-23, [city-fall.md](city-fall.md) Q9, [ADR-050](../decisions/ADR-050-city-fall.md)).**
+Desde E31 entra la caída de una ciudad. El comienzo de un asalto (`CITY_ASSAULTED`, de `CityAssaultStarted`) se cuenta
+sólo al asaltado, con `fallsAtMs` y el centro de su ciudad en `x`/`y` («¡Villa Norte asalta tu ciudad! Cae a las 18:15
+si nadie mata al que sostiene el estandarte o levantas la muralla»); a quien asalta no se le cuenta lo que ordenó. La
+caída (`CityFell`) se cuenta a los dos: `CITY_LOST` al vencido, con el centro de su ciudad nueva en `x`/`y` («Tu ciudad
+cayó ante Villa Norte: la refundaste en (300, 400)»), y `CITY_TAKEN` al vencedor, con el de la arrasada. Un asalto roto
+no se escribe. Cada suceso es su propia entrada. `EventTypes` gana `CityAssaultStarted` y `CityFell`; el catálogo pasa
+de 42 a 45 tipos. El otro jugador se nombra por su ciudad en pie: la consulta de las ciudades del registro ignora las
+caídas.
+
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) §6, [ADR-041](../decisions/ADR-041-clan-territories.md) §5).**
 Desde E19, con un clan dueño, `TerritoryClaimStarted` y `TerritoryControlChanged` se escriben una fila por miembro
 abierto del clan, con `only: "player"` en el payload: cada fila le cuenta el suceso sólo a su miembro, con la sigla del

@@ -286,10 +286,14 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		// Plazos cortos: los e2e de la conquista no esperan minutos.
 		TerritoryClaimFree: 2 * time.Second,
 		TerritoryClaimHeld: 2 * time.Second,
-		Inbox:              inbox.Offer,
-		Log:                log,
-		ProtectionCooldown: 300 * time.Second,
-		DisconnectGrace:    30 * time.Second,
+		// Y los de la caída de una ciudad, tampoco.
+		CityFall:            &memoryCityFall{},
+		CityAssaultDuration: 2 * time.Second,
+		RefoundSite:         sitioFijoDeRefundacion,
+		Inbox:               inbox.Offer,
+		Log:                 log,
+		ProtectionCooldown:  300 * time.Second,
+		DisconnectGrace:     30 * time.Second,
 	})
 
 	playerID := uuid.New()
@@ -343,6 +347,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 	}
 	metrics := observability.NewMetrics()
 	wsServer := ws.NewServer(wsCfg, hub, authenticator, newMemoryPresence(), dedupe, commands, inbox.Offer, metrics, log)
+	sim.SetResnapshot(wsServer.Resnapshot)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", wsServer.Handler(context.Background()))

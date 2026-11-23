@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import {
   ActiveMovement,
+  CityAssaultView,
   FactionCode,
   FactionJoinView,
   BuildingStatus,
@@ -265,6 +266,24 @@ export const CityUpdate = z.object({
      * recibe su dueño, para avisarle (SPEC-COMBAT-SIEGE RN-COMBAT-038).
      */
     besiegedAtMs: EpochMs.optional(),
+    /** El asalto sobre la ciudad: empieza (vista) o termina sin caída (`null`) (SPEC-CITY-FALL §6). */
+    assault: CityAssaultView.nullable().optional(),
+  }),
+});
+
+/**
+ * Una ciudad cayó (SPEC-CITY-FALL §6): el cliente la quita, como `building.destroyed`
+ * quita un edificio. A todas las sesiones con la ciudad en su área; la ciudad nueva de
+ * su dueño llega como cualquier ciudad que entra en la vista.
+ */
+export const CityFallen = z.object({
+  ...serverEnvelope,
+  type: z.literal('city.fallen'),
+  payload: z.object({
+    cityId: EntityId,
+    ownerPlayerId: Uuid,
+    byPlayerId: Uuid,
+    atMs: EpochMs,
   }),
 });
 
@@ -450,6 +469,8 @@ export const EventLogNotice = z.object({
     warReason: ClanWarEndReason.optional(),
     ourScore: ClanWarScore.optional(),
     theirScore: ClanWarScore.optional(),
+    /** En el asalto de una ciudad: cuándo cae si nadie lo rompe, como en la entrada del registro (SPEC-CITY-FALL §6). */
+    fallsAtMs: EpochMs.optional(),
   }),
 });
 
@@ -631,6 +652,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   EntityUpdate,
   EntityDespawn,
   CityUpdate,
+  CityFallen,
   TerritoryUpdate,
   UnitMoveAccepted,
   UnitMoveRejected,
@@ -667,6 +689,7 @@ export type EntitySpawn = z.infer<typeof EntitySpawn>;
 export type EntityUpdate = z.infer<typeof EntityUpdate>;
 export type EntityDespawn = z.infer<typeof EntityDespawn>;
 export type CityUpdate = z.infer<typeof CityUpdate>;
+export type CityFallen = z.infer<typeof CityFallen>;
 export type TerritoryUpdate = z.infer<typeof TerritoryUpdate>;
 export type UnitMoveAccepted = z.infer<typeof UnitMoveAccepted>;
 export type UnitMoveRejected = z.infer<typeof UnitMoveRejected>;
@@ -727,6 +750,7 @@ export const SERVER_MESSAGE_TYPES = [
   'clan.chat.page',
   'market.update',
   'market.listing',
+  'city.fallen',
 ] as const;
 
 export type ServerMessageType = (typeof SERVER_MESSAGE_TYPES)[number];

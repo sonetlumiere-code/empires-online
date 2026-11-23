@@ -15,6 +15,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/persistence/postgres"
@@ -33,12 +34,17 @@ func codigoDe(t *testing.T, err error) string {
 // rechaza el motor con el nombre exacto de la restricción, y no deja rastro.
 func TestLasRestriccionesDeCiudadesRechazanFilasInvalidas(t *testing.T) {
 	store, ctx := newTestStore(t)
-	_, _, _, _, bootstrapper := newRepos(store)
+	players, _, _, _, bootstrapper := newRepos(store)
 	db := store.Pool()
 
 	alta, err := bootstrapper.Create(ctx, bootstrapRequest("fundadora", world.Tile{X: 20, Y: 20}))
 	require.NoError(t, err)
-	duena := alta.Player.ID
+	// Desde E31 cada jugador tiene como mucho una ciudad en pie (INV-CITY-020):
+	// las filas que prueban las demás restricciones son de un jugador sin ciudad,
+	// para que salte la que se busca y no la de una segunda ciudad.
+	sinCiudad := &player.Player{ID: uuid.New(), Username: "sinciudad", CivilizationID: 1, FactionID: 3}
+	require.NoError(t, players.Create(ctx, db, sinCiudad))
+	duena := sinCiudad.ID
 
 	insertar := func(owner any, x int32, era string, population, limit int32, presence string) error {
 		_, err := db.Exec(ctx,
@@ -78,6 +84,12 @@ func TestLasRestriccionesDeCiudadesRechazanFilasInvalidas(t *testing.T) {
 		`INSERT INTO cities (owner_player_id, name, center_x, center_y, era, population_limit)
 		 VALUES ($1, 'gemela', 20, 20, 'STONE_AGE', 20)`, duena)
 	assert.Equal(t, "cities_unique_center", constraintDe(t, err))
+
+	// INV-CITY-020: una ciudad en pie por jugador (SPEC-CITY-FALL, 000030).
+	_, err = db.Exec(ctx,
+		`INSERT INTO cities (owner_player_id, name, center_x, center_y, era, population_limit)
+		 VALUES ($1, 'segunda', 50, 50, 'STONE_AGE', 20)`, alta.Player.ID)
+	assert.Equal(t, "cities_one_standing_per_owner", constraintDe(t, err))
 
 	var ciudades int
 	require.NoError(t, db.QueryRow(ctx, `SELECT count(*) FROM cities`).Scan(&ciudades))

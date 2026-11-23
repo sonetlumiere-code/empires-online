@@ -64,6 +64,7 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 		}
 		for _, c := range s.state.CitiesInChunk(ch.CX, ch.CY) {
 			v := s.state.cityViewOf(c)
+			v.FallImmuneUntilMs = s.state.fallImmuneView(c, nowMs)
 			if c.OwnerPlayerID == viewer {
 				// RN-TECH-008: la investigación y las tecnologías, sólo al dueño.
 				v = s.state.withOwnerFields(v, c)

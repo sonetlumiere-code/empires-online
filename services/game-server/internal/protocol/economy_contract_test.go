@@ -111,11 +111,15 @@ func TestLaCiudadLlevaSuStockYSuProduccion(t *testing.T) {
 	// RN-TECH-008).
 	var sinInvestigacion *protocol.ResearchView
 	sinTecnologias := []string{}
-	require.Equal(t, declaradas, clavesDe(serializado(t, protocol.CityView{ID: 1, Research: &sinInvestigacion, Technologies: &sinTecnologias})))
+	// El asalto y la inmunidad sólo viajan cuando los hay (SPEC-CITY-FALL §6).
+	inmune := int64(1)
+	asalto := &protocol.CityAssaultView{PlayerID: "a", UnitID: 1, StartedAtMs: 1, EndsAtMs: 2}
+	require.Equal(t, declaradas, clavesDe(serializado(t, protocol.CityView{ID: 1, Research: &sinInvestigacion,
+		Technologies: &sinTecnologias, Assault: asalto, FallImmuneUntilMs: &inmune})))
 	ajena := clavesDe(serializado(t, protocol.CityView{ID: 1}))
 	assert.NotContains(t, ajena, "research")
 	assert.NotContains(t, ajena, "technologies")
-	assert.Len(t, ajena, len(declaradas)-2)
+	assert.Len(t, ajena, len(declaradas)-4)
 	assert.NotContains(t, requeridas(t, ciudad), "research", "opcional: no viaja en una ciudad ajena")
 	assert.NotContains(t, requeridas(t, ciudad), "technologies")
 	vacia, err := json.Marshal(protocol.CityView{ID: 1, Research: &sinInvestigacion, Technologies: &sinTecnologias})

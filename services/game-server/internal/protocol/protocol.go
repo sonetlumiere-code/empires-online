@@ -47,6 +47,8 @@ const (
 	TypeUnitDemolish = "unit.demolish"
 	// Conquista (SPEC-TERRITORY-CONQUEST).
 	TypeUnitClaim = "unit.claim"
+	// La caída de una ciudad (SPEC-CITY-FALL).
+	TypeUnitAssault = "unit.assault"
 	// Diplomacia (SPEC-DIPLOMACY).
 	TypeTreatyPropose = "treaty.propose"
 	TypeTreatyRespond = "treaty.respond"
@@ -136,6 +138,7 @@ const (
 	TypeClanChatPage          = "clan.chat.page"
 	TypeMarketUpdate          = "market.update"
 	TypeMarketListing         = "market.listing"
+	TypeCityFallen            = "city.fallen"
 )
 
 // ClientMessageTypes es el catálogo cerrado de comandos admitidos.
@@ -157,6 +160,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeUnitPillage:    true,
 	TypeUnitDemolish:   true,
 	TypeUnitClaim:      true,
+	TypeUnitAssault:    true,
 	TypeTreatyPropose:  true,
 	TypeTreatyRespond:  true,
 	TypeTreatyCancel:   true,
@@ -421,6 +425,21 @@ type CityView struct {
 	// jugador; nil, no viajan (SPEC-TECHNOLOGIES RN-TECH-008).
 	Research     **ResearchView `json:"research,omitempty"`
 	Technologies *[]string      `json:"technologies,omitempty"`
+	// Assault es el asalto activo sobre la ciudad, si lo hay; público
+	// (SPEC-CITY-FALL §6).
+	Assault *CityAssaultView `json:"assault,omitempty"`
+	// FallImmuneUntilMs es hasta cuándo no se la puede asaltar, mientras dure
+	// su inmunidad (RN-CITY-029).
+	FallImmuneUntilMs *int64 `json:"fallImmuneUntilMs,omitempty"`
+}
+
+// CityAssaultView es un asalto activo sobre una ciudad: quién lo sostiene, con
+// qué unidad, y cuándo empezó y cae la ciudad (SPEC-CITY-FALL §6).
+type CityAssaultView struct {
+	PlayerID    string `json:"playerId"`
+	UnitID      int64  `json:"unitId"`
+	StartedAtMs int64  `json:"startedAtMs"`
+	EndsAtMs    int64  `json:"endsAtMs"`
 }
 
 // TerritoryView es el estado observable de un territorio.
@@ -543,6 +562,13 @@ type UnitClaimPayload struct {
 	UnitID int64 `json:"unitId"`
 	// ForClan reclama en nombre del propio clan (SPEC-CLAN-TERRITORIES §4.2).
 	ForClan *bool `json:"forClan,omitempty"`
+}
+
+// UnitAssaultPayload ordena a una unidad propia que derriba asaltar una ciudad
+// en brecha (SPEC-CITY-FALL §6). El plazo y si se puede son del servidor.
+type UnitAssaultPayload struct {
+	UnitID int64 `json:"unitId"`
+	CityID int64 `json:"cityId"`
 }
 
 // TreatyProposePayload propone un tratado a otro jugador (SPEC-DIPLOMACY).
@@ -765,6 +791,9 @@ type EventLogEntry struct {
 	WarReason  string `json:"warReason,omitempty"`
 	OurScore   *int64 `json:"ourScore,omitempty"`
 	TheirScore *int64 `json:"theirScore,omitempty"`
+	// FallsAtMs, en el asalto de una ciudad: cuándo cae si nadie lo rompe
+	// (SPEC-CITY-FALL §6).
+	FallsAtMs *int64 `json:"fallsAtMs,omitempty"`
 }
 
 // EventLogNoticePayload es un aviso en vivo (SPEC-LIVE-NOTICES §6): un suceso
@@ -796,6 +825,9 @@ type EventLogNoticePayload struct {
 	WarReason  string `json:"warReason,omitempty"`
 	OurScore   *int64 `json:"ourScore,omitempty"`
 	TheirScore *int64 `json:"theirScore,omitempty"`
+	// FallsAtMs, en el asalto de una ciudad: cuándo cae si nadie lo rompe
+	// (SPEC-CITY-FALL §6).
+	FallsAtMs *int64 `json:"fallsAtMs,omitempty"`
 }
 
 // EventLogPagePayload es una página del registro. NextBeforeID es nil en la
@@ -1335,6 +1367,18 @@ type CityUpdatePayload struct {
 	// BesiegedAtMs es el instante del último golpe de asedio a una casa de la
 	// ciudad. Sólo lo recibe su dueño (SPEC-COMBAT-SIEGE RN-COMBAT-038).
 	BesiegedAtMs *int64 `json:"besiegedAtMs,omitempty"`
+	// Assault es el asalto sobre la ciudad: apuntando a una vista, empieza;
+	// apuntando a nil, termina sin caída (SPEC-CITY-FALL §6).
+	Assault **CityAssaultView `json:"assault,omitempty"`
+}
+
+// CityFallenPayload anuncia una ciudad caída: el cliente la quita
+// (SPEC-CITY-FALL §6).
+type CityFallenPayload struct {
+	CityID        int64  `json:"cityId"`
+	OwnerPlayerID string `json:"ownerPlayerId"`
+	ByPlayerID    string `json:"byPlayerId"`
+	AtMs          int64  `json:"atMs"`
 }
 
 // BuildingSpawnPayload anuncia un edificio.

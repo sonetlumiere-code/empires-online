@@ -178,6 +178,14 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 |---|---|---|---|---|---|---|
 | `EO_FOUNDING_MAX_NEIGHBOR_TILES` | int | `96` | 24–65536 | No | No | Si ya hay ciudades, una nueva nace a esta distancia de Chebyshev, como mucho, de alguna existente y con una ruta de caravana entre los dos depósitos dentro de `EO_PATHFINDING_MAX_NODES` y `EO_PATHFINDING_MAX_DISTANCE` ([SPEC-TRADE-REACH](../specs/trade-reach.md), `RN-CITY-024`); si ningún sitio del mundo lo cumple, funda sin la condición. No baja de 24, la separación mínima entre ciudades (`RN-CITY-004`). Por encima de `EO_PATHFINDING_MAX_DISTANCE` no sirve: más lejos no llega ninguna caravana. Lo lee el listener interno al fundar (y `cmd/devseed`), no el tick. |
 
+### 3.7.1 La caída de una ciudad
+
+| Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
+|---|---|---|---|---|---|---|
+| `EO_CITY_ASSAULT_SECONDS` | int | `900` | 1–86400 | No | No | Lo que una unidad tiene que sostener el estandarte en el anillo de una ciudad en brecha para que caiga ([SPEC-CITY-FALL](../specs/city-fall.md) Q1, `RN-SIEGE-011`). El humo lo acorta. |
+| `EO_CITY_FALL_IMMUNITY_HOURS` | int | `72` | 0–8760 | No | No | Horas desde su fundación, o su refundación, en las que una ciudad no se puede asaltar (`RN-CITY-029`, Q7); el saqueo y el derribo no cambian. `0` la quita: sólo para el humo. |
+| `EO_CITY_REFOUND_MIN_DISTANCE` | int | `64` | 0–65536 | No | No | Distancia de Chebyshev mínima de la ciudad refundada a la que cayó y a la del vencedor (`RN-CITY-027`, Q6); si ningún sitio la cumple, se funda como un alta. `0` la quita. |
+
 ### 3.8 WebSocket
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
