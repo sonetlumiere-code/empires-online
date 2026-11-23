@@ -3062,3 +3062,35 @@ muralla).
     justos el uno del otro, el mínimo de la Q6.
   - Con la cámara lejos de la ciudad propia, el HUD no muestra la fila de la ciudad (ni «Registro») hasta volver con
     H; es así desde antes de E31.
+
+## E32 — Bots que asaltan
+
+**Estado: EN CURSO (2026-11-23)**, en la rama `claude/slice-bots-asalto`. Contrato:
+[SPEC-BOTS-ASSAULT](../specs/bots-assault.md), propuesta y aceptada el 2026-11-23 con sus diez decisiones de producto.
+Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
+
+**Objetivo.** Medir la caída de E31 con bots: si un atacante con arietes llega a tumbar una ciudad defendida, si al
+defensor le basta con reconstruir la muralla, y cuánto tarda el vencido en recuperarse.
+
+**Alcance.** En `apps/bots`: el saqueador, desde Hierro, entrena arietes y forma una partida de asalto de 4 guerreros y
+2 arietes que se reúne, abre la muralla, planta el estandarte y escolta; replanta si muere el portaestandarte y derriba
+la muralla en obra; vuelve por las causas de spec §4.4 (`RN-BOT-014` a `RN-BOT-016`). El bot cuya ciudad cae actualiza
+el directorio y sigue jugando desde la refundada (`RN-BOT-017`). Sucesos `assault`, `fell` y `wall` en el JSONL y su
+resumen (caídas por hora, coste de cada caída, recuperación del vencido). **No entra** (spec §2): cambios en el
+servidor, el protocolo o el cliente web; que el constructor asalte o se defienda de otra forma; tocar los números del
+asalto, la inmunidad, el ariete o la muralla (los hallazgos van a otra spec, Q10).
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-BOT-014` a `RN-BOT-017`, con precisiones de
+   §2, `RN-BOT-002` y `RN-BOT-004` en [bots.md](../specs/bots.md) y de §2 y Q10 en
+   [city-fall.md](../specs/city-fall.md). Sin invariantes de dominio nuevos.
+2. **PENDIENTE** — Bots: los arietes en `militaryRule`, el blanco asaltable y la partida de asalto con su reunión, la
+   brecha, el estandarte y lo de spec §4.4 (`RN-BOT-014` a `RN-BOT-016`), con sus tests.
+3. **PENDIENTE** — Bots: el vencido que sigue jugando y actualiza el directorio (`RN-BOT-017`), con sus tests.
+4. **PENDIENTE** — Registro y resumen con los sucesos nuevos; el perfil con sus campos nuevos; docs
+   (`docs/architecture/frontend.md`, `docs/operations/local-development.md`).
+5. **PENDIENTE** — Prueba en vivo (spec §4.7, Q5): pasada corta con `EO_CITY_ASSAULT_SECONDS=120`,
+   `EO_CITY_FALL_IMMUNITY_HOURS=0` y cuentas sembradas a Hierro; la ejecución larga de 3 h a velocidad real con las
+   cuentas `_e29` (fuera de su inmunidad desde el 2026-11-25) y el saqueador sembrado a Hierro, anotada aquí como
+   medida; y, con el panel visible, un asalto entre bots visto desde una cuenta humana.

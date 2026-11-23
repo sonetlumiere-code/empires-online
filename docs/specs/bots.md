@@ -51,7 +51,8 @@ el pase visual (para ver las animaciones) y el despliegue a staging (para tener 
 - Diplomacia, comercio, mercados, clanes, facciones, mensajes, conquista de territorios y arietes: los bots de este
   slice no los usan (Q3). Entran en un slice posterior con datos de éste. **Precisión (2026-11-21,
   [bots-trade.md](bots-trade.md)):** E29 enseña a los bots los tratados `TRADE` y `NON_AGGRESSION`, los tratos y el
-  mercado; alianzas, clanes, facciones, mensajes, conquista y arietes siguen fuera.
+  mercado; alianzas, clanes, facciones, mensajes, conquista y arietes siguen fuera. **Precisión (2026-11-23,
+  [bots-assault.md](bots-assault.md)):** E32 enseña al saqueador los arietes y el asalto de una ciudad.
 - Bots en producción (Q1) y cualquier marca visible de «esto es un bot» en el juego (Q2).
 - Pruebas de carga: siguen aparcadas ([../testing/load-tests.md](../testing/load-tests.md)). Un bot no es un
   generador de carga: juega a ritmo humano (§4.3) y se mide el juego, no el servidor.
@@ -213,14 +214,16 @@ Lo que no se pueda ver en el navegador se anota en milestones como «Sin comprob
 **Precisión (2026-11-21):** las reglas siguen en [bots-trade.md](bots-trade.md) §4.9 con `RN-BOT-008` a `RN-BOT-012`
 (comercio con bots, los paneles de diplomacia, comercio y mercado bajo `RN-BOT-002`, la aceptación de tratos, el
 saqueador sin pacto y la partida que se reúne). **Precisión (2026-11-22):** y con `RN-BOT-013` ([trade-reach.md](trade-reach.md),
-E30): la pareja o la oferta del mercado sin ruta se aparta hasta el final de la ejecución.
+E30): la pareja o la oferta del mercado sin ruta se aparta hasta el final de la ejecución. **Precisión (2026-11-23):**
+y en [bots-assault.md](bots-assault.md) §4.8 con `RN-BOT-014` a `RN-BOT-017` (E32): el asalto bajo `RN-BOT-002`, una
+partida por bot, el estandarte que se replanta y el bot vencido que sigue jugando.
 
 | ID | Regla |
 |---|---|
 | `RN-BOT-001` | Un bot sólo habla con el juego por la web pública y el WebSocket v1, con las credenciales de su cuenta. Nunca usa el listener interno, la base, Redis ni `EO_AUTH_JWT_SECRET`. |
-| `RN-BOT-002` | Un bot nunca envía un comando que el HUD tendría deshabilitado con el mismo espejo; si el servidor lo rechaza igualmente, no lo repite antes de su enfriamiento. **Precisión (2026-11-21, [bots-trade.md](bots-trade.md)):** con E29 vale también para tratados, tratos y mercado (`RN-BOT-009`). |
+| `RN-BOT-002` | Un bot nunca envía un comando que el HUD tendría deshabilitado con el mismo espejo; si el servidor lo rechaza igualmente, no lo repite antes de su enfriamiento. **Precisión (2026-11-21, [bots-trade.md](bots-trade.md)):** con E29 vale también para tratados, tratos y mercado (`RN-BOT-009`). **Precisión (2026-11-23, [bots-assault.md](bots-assault.md)):** con E32, también para el asalto y el derribo de la muralla (`RN-BOT-014`). |
 | `RN-BOT-003` | Un bot envía como mucho dos comandos por despertar y despierta como mucho cada `EO_BOT_THINK_MS`. |
-| `RN-BOT-004` | Sin `--contra-humanos`, un bot nunca elige como blanco una unidad, una casa o una ciudad de un jugador que no sea bot (nombre fuera de `bot_*`). La defensa automática de E3 sigue actuando sola, porque es del servidor. **Precisión (2026-11-21, [bots-trade.md](bots-trade.md)):** desde E29 también responde así un saqueador o asediador bot (`RN-COMBAT-039`); el comercio con personas pide `--con-humanos` (`RN-BOT-008`), que no hace hostil a nadie. |
+| `RN-BOT-004` | Sin `--contra-humanos`, un bot nunca elige como blanco una unidad, una casa o una ciudad de un jugador que no sea bot (nombre fuera de `bot_*`). La defensa automática de E3 sigue actuando sola, porque es del servidor. **Precisión (2026-11-21, [bots-trade.md](bots-trade.md)):** desde E29 también responde así un saqueador o asediador bot (`RN-COMBAT-039`); el comercio con personas pide `--con-humanos` (`RN-BOT-008`), que no hace hostil a nadie. **Precisión (2026-11-23, [bots-assault.md](bots-assault.md)):** el asalto de E32 es un blanco más: sin la opción, sólo ciudades de bots (Q6). |
 | `RN-BOT-005` | Con la misma semilla y el mismo espejo, el decisor devuelve los mismos comandos. |
 | `RN-BOT-006` | El proceso nunca imprime ni escribe en el registro la contraseña, la cookie ni un ticket. |
 | `RN-BOT-007` | Al parar (vencida `--duracion` o Ctrl-C), el proceso cierra todas las conexiones y escribe `stop` y el resumen antes de salir. |

@@ -7,13 +7,13 @@ caen, cuánto cuesta tumbar una y cuánto tarda el vencido en recuperarse.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-ASSAULT` |
-| Estado | Draft (2026-11-23). Diez preguntas de producto en §10, cada una con su recomendación; no se acepta ni se implementa hasta la decisión. |
+| Estado | Accepted (2026-11-23). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
 | Milestone | E32 Bots que asaltan (trigésimo segundo slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §9 (presencia y protección), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [bots-trade.md](bots-trade.md), [trade-reach.md](trade-reach.md), [city-fall.md](city-fall.md), [siege-engines.md](siege-engines.md), [combat-siege.md](combat-siege.md), [combat-response.md](combat-response.md), [castle-age.md](castle-age.md) |
 | Decisiones | [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md) sigue valiendo. Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base. |
 | Reemplaza a | La Q10 de [city-fall.md](city-fall.md) («los bots no asaltan en este slice») y, en [bots.md](bots.md) Q3, el «arietes» de lo que los bots no juegan. |
-| Invariantes | No asigna invariantes. Las reglas nuevas son de la familia `RN-BOT`, desde la siguiente libre (§4.8). Cita [INV-COMBAT-009](../invariants/combat.md#inv-combat-009), [INV-CITY-020](../invariants/city.md#inv-city-020) e [INV-SEC-001](../invariants/security.md#inv-sec-001) (§8) |
+| Invariantes | No asigna invariantes. Las reglas nuevas son `RN-BOT-014` a `RN-BOT-017` (§4.8). Cita [INV-COMBAT-009](../invariants/combat.md#inv-combat-009), [INV-CITY-020](../invariants/city.md#inv-city-020) e [INV-SEC-001](../invariants/security.md#inv-sec-001) (§8) |
 
 ## 1. Objetivo
 
@@ -191,15 +191,14 @@ La prueba en vivo tiene tres partes (Q5):
 
 ### 4.8 Reglas y perfil
 
-Las reglas continúan las de [bots-trade.md](bots-trade.md) §4.9 y se numeran desde el siguiente `RN-BOT` libre al
-aceptar la spec:
+Continúan las de [bots-trade.md](bots-trade.md) §4.9.
 
-| Regla | Contenido |
+| ID | Regla |
 |---|---|
-| Asalto sólo con lo que ofrece el HUD | Un bot sólo asalta una ciudad cuyo `assaultBlockReason` es `null` (o, para abrir la brecha, el motivo de la muralla), y sólo derriba la muralla con arietes mientras está completa (extensión de `RN-BOT-002`). |
-| Una partida por bot | Un saqueador lleva como mucho una partida, de saqueo o de asalto; la de asalto no sale sin `assaultWarriors` guerreros y, contra una ciudad amurallada, al menos un ariete. |
-| El estandarte se replanta | Mientras la partida no vuelve, un asalto roto por la muerte del portaestandarte se vuelve a plantar con otro guerrero, y una muralla en obra de la ciudad asaltada se derriba antes de que se complete. |
-| El vencido sigue | Un bot cuya ciudad cae actualiza su entrada del directorio y sigue jugando desde la refundada con su perfil. |
+| `RN-BOT-014` | Un bot sólo asalta una ciudad cuyo `assaultBlockReason` es `null` (o, para abrir la brecha, el motivo de la muralla), y sólo derriba la muralla con arietes mientras está completa (extensión de `RN-BOT-002`). |
+| `RN-BOT-015` | Un saqueador lleva como mucho una partida, de saqueo o de asalto; la de asalto no sale sin `assaultWarriors` guerreros y, contra una ciudad amurallada, al menos un ariete. |
+| `RN-BOT-016` | Mientras la partida no vuelve, un asalto roto por la muerte del portaestandarte se vuelve a plantar con otro guerrero, y una muralla en obra de la ciudad asaltada se derriba antes de que se complete. |
+| `RN-BOT-017` | Un bot cuya ciudad cae actualiza su entrada del directorio y sigue jugando desde la refundada con su perfil. |
 
 Campos nuevos del perfil (datos, [bots.md](bots.md) Q8): `assaults` (sí en el saqueador, no en el constructor),
 `assaultWarriors` (4), `assaultRams` (2), `assaultMinWarriors` (2), `assaultRallyTimeoutMs` (10 min),
@@ -250,22 +249,23 @@ el servidor decide).
 | Go, simulación | Ninguno nuevo: las reglas del servidor no cambian. Si la implementación necesita confirmar que una muralla **en obra** se derriba con la ciudad en brecha y no rompe el asalto hasta completarse, se añade ese caso a los tests de E27 y E31. |
 | Integración / e2e | Ninguno nuevo. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-23)
 
-Recomendación en negrita en cada una. No se implementa nada hasta que se decidan.
+Producto aceptó el 2026-11-23 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
+alternativas que se descartaron. Son decisiones de producto, no de ingeniería: cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación y alternativas |
+| # | Pregunta | Decisión |
 |---|---|---|
-| Q1 | ¿Quién asalta? | **El saqueador, desde Hierro; el constructor no.** Es el perfil hostil, ya forma partidas y nunca firma pactos (`RN-BOT-011`); el constructor es la víctima que se mide. Alternativas: **un perfil nuevo, el asaltante**, que no saquea y sólo asalta (medidas más limpias, pero una cuenta más por ejecución y un tercer camino en el decisor); **también el constructor**, contra quien no tiene pacto (más caídas, pero mezcla quién defiende y quién ataca). |
-| Q2 | ¿Saqueo y asalto a la vez? | **No: una partida por bot; desde Hierro, si hay un blanco asaltable y la partida completa, sale la de asalto; si no, la de saqueo.** El saqueo sigue pagando arietes y guerreros. Alternativas: **sólo asalto desde Hierro** (deja al saqueador sin ingresos mientras junta la partida); **dos partidas a la vez** (más presión, y el doble de estado en el decisor). |
-| Q3 | ¿Cómo es la partida? | **4 guerreros y 2 arietes; el asalto vuelve con menos de 2 guerreros.** Dos arietes abren la muralla en ≈ 57 s y ocupan 4 de población; cuatro guerreros dan un portaestandarte y tres de escolta contra los 2 guardias del constructor. Alternativas: **3 y 1** (más barata, un ariete tarda 114 s y no aguanta un castillo); **6 y 3** (casi segura, pero el saqueador tardaría horas en juntarla). |
-| Q4 | ¿El defensor hace algo nuevo? | **No: guardias y muralla como hoy.** Lo que se mide es si la defensa de hoy basta; si el constructor no cae nunca o cae siempre, la medida lo dice sin ruido. Alternativas: **defensa activa** (los guardias salen a matar al portaestandarte, el constructor entrena guerreros al recibir `CITY_ASSAULTED`), que se parece más a una persona pero cambia dos cosas a la vez; **no reconstruir la muralla durante un asalto**, que regalaría caídas. |
-| Q5 | ¿Cómo se mide? | **Una pasada corta (asalto de 120 s, sin inmunidad, cuentas sembradas a Hierro) para ver el ciclo entero, y una ejecución larga de 3 h a velocidad real con cuentas cuya inmunidad ya venció.** La corta prueba las reglas; la larga da las caídas por hora con los números de verdad ([bots.md](bots.md) Q5). Las cuentas `_e29` y `_e30` salen de su inmunidad el 2026-11-25 y el 2026-11-26 (72 h desde su fundación). Como el saqueador `_e29` sigue en Bronce, para la larga **sólo el saqueador se siembra a Hierro** (`EO_DEVSEED_STOCK_FOR`): la medida es la del asalto, no la del camino a Hierro, que ya midió E29. Alternativas: **sólo la corta** (rápida, pero sin medida de equilibrio); **la larga con cuentas nuevas** (72 h de inmunidad: nadie caería en 3 h). |
-| Q6 | ¿Contra personas? | **Sólo con `--contra-humanos`, como el saqueo (`RN-BOT-004`).** En el mundo de desarrollo hay cuentas de humo que una ejecución no debe arrasar sin quererlo. Alternativa: **nunca**, ni con la opción (impide probar a defenderse de un bot desde el navegador). |
-| Q7 | ¿Qué hace el bot que cae? | **Sigue jugando desde la refundada con su perfil, y actualiza el directorio.** Es lo que da la medida de la recuperación y no deja una entrada vieja a la que los demás disparen. Alternativas: **se para y apunta `fell`** (más simple, sin medida de la recuperación); **cambia de perfil** (el constructor caído se vuelve saqueador), una venganza que no mide nada de lo que importa. |
-| Q8 | ¿Vuelve a por la misma víctima? | **Sí, cuando vuelva a ser asaltable; la inmunidad de 72 h ya lo impide antes.** Con la inmunidad a 0 de la pasada corta, el enfriamiento de blanco (10 min) evita el bucle. Alternativas: **nunca dos veces a la misma** durante la ejecución (más reparto, pero oculta si una víctima cae en bucle tras la inmunidad); **una por jugador y día**, una regla más en el decisor. |
-| Q9 | ¿Qué se apunta? | **Los tres sucesos de §4.7 y, en el resumen, caídas por hora, coste de cada caída (arietes y guerreros perdidos, tiempo) y la recuperación del vencido (tiempo hasta muralla, población y era).** Es lo que responde a las tres preguntas de §1. Alternativa: **sólo caídas**, más corto pero sin saber por qué no caen. |
-| Q10 | ¿Este slice puede cambiar números del asalto si las medidas lo piden? | **No: se anotan como hallazgos y van a otra spec**, como decidió la Q10 de [bots-trade.md](bots-trade.md). Así esta spec sólo enseña a los bots y se ve qué pasa con los números de hoy. Alternativa: **ajustar en el mismo slice** el plazo del asalto o el de la muralla si sale muy desviado, que acorta el ciclo pero mezcla causas. |
+| Q1 | ¿Quién asalta? | **El saqueador, desde Hierro; el constructor no.** Es el perfil hostil, ya forma partidas y nunca firma pactos (`RN-BOT-011`); el constructor es la víctima que se mide. Descartadas: **un perfil nuevo, el asaltante**, que no saquea y sólo asalta (medidas más limpias, pero una cuenta más por ejecución y un tercer camino en el decisor); **también el constructor**, contra quien no tiene pacto (más caídas, pero mezcla quién defiende y quién ataca). |
+| Q2 | ¿Saqueo y asalto a la vez? | **No: una partida por bot; desde Hierro, si hay un blanco asaltable y la partida completa, sale la de asalto; si no, la de saqueo.** El saqueo sigue pagando arietes y guerreros. Descartadas: **sólo asalto desde Hierro** (deja al saqueador sin ingresos mientras junta la partida); **dos partidas a la vez** (más presión, y el doble de estado en el decisor). |
+| Q3 | ¿Cómo es la partida? | **4 guerreros y 2 arietes; el asalto vuelve con menos de 2 guerreros.** Dos arietes abren la muralla en ≈ 57 s y ocupan 4 de población; cuatro guerreros dan un portaestandarte y tres de escolta contra los 2 guardias del constructor. Descartadas: **3 y 1** (más barata, un ariete tarda 114 s y no aguanta un castillo); **6 y 3** (casi segura, pero el saqueador tardaría horas en juntarla). |
+| Q4 | ¿El defensor hace algo nuevo? | **No: guardias y muralla como hoy.** Lo que se mide es si la defensa de hoy basta; si el constructor no cae nunca o cae siempre, la medida lo dice sin ruido. Descartadas: **defensa activa** (los guardias salen a matar al portaestandarte, el constructor entrena guerreros al recibir `CITY_ASSAULTED`), que se parece más a una persona pero cambia dos cosas a la vez; **no reconstruir la muralla durante un asalto**, que regalaría caídas. |
+| Q5 | ¿Cómo se mide? | **Una pasada corta (asalto de 120 s, sin inmunidad, cuentas sembradas a Hierro) para ver el ciclo entero, y una ejecución larga de 3 h a velocidad real con cuentas cuya inmunidad ya venció.** La corta prueba las reglas; la larga da las caídas por hora con los números de verdad ([bots.md](bots.md) Q5). Las cuentas `_e29` y `_e30` salen de su inmunidad el 2026-11-25 y el 2026-11-26 (72 h desde su fundación). Como el saqueador `_e29` sigue en Bronce, para la larga **sólo el saqueador se siembra a Hierro** (`EO_DEVSEED_STOCK_FOR`): la medida es la del asalto, no la del camino a Hierro, que ya midió E29. Descartadas: **sólo la corta** (rápida, pero sin medida de equilibrio); **la larga con cuentas nuevas** (72 h de inmunidad: nadie caería en 3 h). |
+| Q6 | ¿Contra personas? | **Sólo con `--contra-humanos`, como el saqueo (`RN-BOT-004`).** En el mundo de desarrollo hay cuentas de humo que una ejecución no debe arrasar sin quererlo. Descartada: **nunca**, ni con la opción (impide probar a defenderse de un bot desde el navegador). |
+| Q7 | ¿Qué hace el bot que cae? | **Sigue jugando desde la refundada con su perfil, y actualiza el directorio.** Es lo que da la medida de la recuperación y no deja una entrada vieja a la que los demás disparen. Descartadas: **se para y apunta `fell`** (más simple, sin medida de la recuperación); **cambia de perfil** (el constructor caído se vuelve saqueador), una venganza que no mide nada de lo que importa. |
+| Q8 | ¿Vuelve a por la misma víctima? | **Sí, cuando vuelva a ser asaltable; la inmunidad de 72 h ya lo impide antes.** Con la inmunidad a 0 de la pasada corta, el enfriamiento de blanco (10 min) evita el bucle. Descartadas: **nunca dos veces a la misma** durante la ejecución (más reparto, pero oculta si una víctima cae en bucle tras la inmunidad); **una por jugador y día**, una regla más en el decisor. |
+| Q9 | ¿Qué se apunta? | **Los tres sucesos de §4.7 y, en el resumen, caídas por hora, coste de cada caída (arietes y guerreros perdidos, tiempo) y la recuperación del vencido (tiempo hasta muralla, población y era).** Es lo que responde a las tres preguntas de §1. Descartada: **sólo caídas**, más corto pero sin saber por qué no caen. |
+| Q10 | ¿Este slice puede cambiar números del asalto si las medidas lo piden? | **No: se anotan como hallazgos y van a otra spec**, como decidió la Q10 de [bots-trade.md](bots-trade.md). Así esta spec sólo enseña a los bots y se ve qué pasa con los números de hoy. Descartada: **ajustar en el mismo slice** el plazo del asalto o el de la muralla si sale muy desviado, que acorta el ciclo pero mezcla causas. |
 
 ## 11. Documentos relacionados
 
