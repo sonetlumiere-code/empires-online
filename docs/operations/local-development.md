@@ -532,6 +532,11 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   probar el comercio con un bot desde el HUD (proponle un acuerdo comercial y luego un trato de bien por bien).
 - `--sufijo a1` da cuentas nuevas (`bot_constructor_1_a1`…) para medir una partida desde cero sin tocar las de
   siempre; con otro sufijo, otras cuentas.
+- Desde E30 ([SPEC-TRADE-REACH](../specs/trade-reach.md)) un bot sólo comercia con los bots de su misma ejecución y
+  aparta para el resto de la ejecución al que no tiene ruta de caravana hasta él: el registro lo apunta una vez
+  (`trade` con `status: "unreachable"`) y no le vuelve a proponer. Lanza juntos los bots que tienen que comerciar.
+  Las cuentas nuevas nacen al alcance de una caravana de alguna ciudad, pero no necesariamente de las de sus
+  compañeros de ejecución.
 - La partida del saqueador se reúne a 16 tiles del blanco antes de saquear; el resumen dice cuántos se reunieron y
   cuánto esperaron, y el balance de cada partida.
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con

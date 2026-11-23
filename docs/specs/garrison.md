@@ -464,7 +464,8 @@ la CI y en la máquina de desarrollo contra el cluster propio del puerto 5433
 - Sólo el dueño saca su unidad, y sólo si está guarnecida: `TestSoloSePuedeSacarUnaUnidadGuarnecidaPropia`.
 - Visibilidad en el snapshot (`INV-GARR-006`): `TestUnaUnidadGuarnecidaSoloLaVeSuDuenoEnElSnapshot`.
 - Las acciones están clasificadas y la guarnición no es hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)):
-  `TestTodaAccionDelCatalogoEstaClasificada`, `TestSoloElAtaqueEsHostilYNingunaSeRestringePorTerritorio`.
+  `TestTodaAccionDelCatalogoEstaClasificada`, `TestSoloAtaqueSaqueoAsedioYReclamarSonHostilesYNingunaSeRestringePorTerritorio`
+  (hasta E5, `TestSoloElAtaqueEsHostilYNingunaSeRestringePorTerritorio`).
 
 Cada guarda nueva de la simulación se verificó por mutación: quitarla hace fallar su test.
 
