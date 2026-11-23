@@ -3011,4 +3011,24 @@ la caída, elegir dónde refundar y los bots que asaltan.
 5. **HECHO** — WebSocket: el e2e del asalto y la caída.
 6. **HECHO** — Cliente: «Asaltar» con sus motivos, la cuenta atrás, la ciudad que desaparece, el salto del vencido y
    los textos del registro.
-7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --caida`.
+7. **HECHO** — Humo y prueba en vivo: `scripts/smoke.mjs --caida`.
+
+### Prueba en vivo (2026-11-23)
+
+Contra la base de desarrollo, que el servidor llevó de la migración 29 a la 30, con `EO_CITY_ASSAULT_SECONDS=20` y
+`EO_CITY_FALL_IMMUNITY_HOURS=0`, y la web en el 3001:
+
+- `node scripts/smoke.mjs --web http://localhost:3001 --caida`, en tres pasadas. La primera dio de alta a `smoke_caida`
+  y se paró pidiendo recursos para el avance (`EO_DEVSEED_STOCK_FOR=smoke_caida pnpm run dev:seed`, con el servidor
+  parado). La segunda: avance a Bronce (90 s), el guerrero de `smoke_runner` va a la ciudad, la asalta, el asaltado
+  recibe `CITY_ASSAULTED` con la hora de la caída, a los 20 s cae (`city.fallen` a los dos, `CITY_TAKEN` y `CITY_LOST`)
+  y `smoke_caida` recibe sin reconectar el snapshot de su ciudad refundada, con el mismo nombre y su Bronce, a 300
+  tiles. 28 comprobaciones.
+- **Fallo encontrado y arreglado.** En el navegador, `smoke_caida` veía el mundo vacío: la ciudad refundada entraba en
+  la RAM sin civilización y el cliente descartaba el snapshot entero ([city-fall.md](../specs/city-fall.md) §9.1).
+  Reproducido con un test de simulación y el e2e, arreglado, y repetida la pasada con el servidor nuevo y el navegador
+  conectado como `smoke_caida`: al caer, el cliente pasó solo a la ciudad refundada (población 9/50: seis supervivientes
+  y tres aldeanos nuevos), con el aviso «Tu ciudad cayó ante smoke_runnerpolis: la refundaste en (123, 180)» y su «Ir», y
+  el registro con el asalto y la caída. 25 comprobaciones.
+- **Sin comprobar en el navegador:** el botón «Asaltar» con sus motivos y la cuenta atrás del asalto en el HUD (el
+  asalto del humo dura 20 s y lo da el humo, no un clic); lo cubren `src/state/cityFall.test.ts` y el e2e.
