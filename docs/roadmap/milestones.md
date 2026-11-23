@@ -2907,7 +2907,7 @@ bienes ajenos; `bot_constructor_4`, nórdico, en Piedra. Registros en `bots/runs
 
 ## E30 — Al alcance del comercio
 
-**Estado: EN CURSO.** Contrato: [SPEC-TRADE-REACH](../specs/trade-reach.md), propuesta y aceptada el 2026-11-22 con
+**Estado: HECHO en la rama** `claude/slice-alcance-comercio` (2026-11-23), pendiente de fusionar. Contrato: [SPEC-TRADE-REACH](../specs/trade-reach.md), propuesta y aceptada el 2026-11-22 con
 sus siete decisiones de producto. Sin ADR: la fundación ya es una búsqueda determinista con reglas de
 [city.md](../specs/city.md) §6.1, y el tope de nodos de [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) no
 cambia (Q4).
@@ -2930,16 +2930,42 @@ comercio, avisar en el HUD de si hay ruta, y mensajes, campos, tablas o migracio
    en [bots-trade.md](../specs/bots-trade.md) §4.9, con su precisión en [bots.md](../specs/bots.md) §4.7 y el estado
    `unreachable` en §4.7 de bots-trade; la precisión de `RN-CARAVAN-002` en [caravans.md](../specs/caravans.md) (el
    tope de nodos, ADR-031); [INV-CITY-019](../invariants/city.md#inv-city-019) registrado sin cobertura.
-2. Fundación: la condición de alcance en `founding.FindSite` y su llamada desde `internal/httpapi`, con
+2. **HECHO** — Fundación: la condición de alcance en `founding.FindSite` (`founding.Reach`, con un filtro de
+   componentes conexas antes del A\*) y su llamada desde `internal/httpapi` y `cmd/devseed`, con
    `EO_FOUNDING_MAX_NEIGHBOR_TILES` en `internal/config`, `.env.example` y
    [configuration.md](../operations/configuration.md).
-3. Tests de la fundación: `internal/game/founding/site_test.go` (spec §9) y la integración del alta en
-   `internal/persistence/postgres/fundacion_integration_test.go`; la mutación de INV-CITY-019, y su ficha y su fila a
-   ✓.
-4. Bots: la pareja y la oferta sin ruta apartadas para toda la ejecución y el registro `unreachable` una vez por
-   pareja (`RN-BOT-013`), con sus tests.
-5. Docs de arquitectura que describen `FindSite`: [overview.md](../architecture/overview.md),
+3. **HECHO** — Tests de la fundación: siete en `internal/game/founding/site_test.go` (spec §9.1) y
+   `TestElSegundoJugadorNaceAlAlcanceDelPrimero` en `internal/persistence/postgres/fundacion_integration_test.go`;
+   cuatro mutaciones de INV-CITY-019, que pasa a ✓.
+4. **HECHO** — Bots: la pareja y la oferta sin ruta apartadas para toda la ejecución y el registro `unreachable`
+   una vez por pareja (`RN-BOT-013`), con sus tests; la oferta sin ruta ya no tapa a las demás en la compra.
+5. **HECHO** — Docs de arquitectura que describen `FindSite`: [overview.md](../architecture/overview.md),
    [game-server.md](../architecture/game-server.md) y [scalability.md](../architecture/scalability.md) §4.
-6. `pnpm run verify:full` entero.
-7. Prueba en vivo (spec §4.5): cuatro altas nuevas con `--sufijo` y al menos un trato entre ellas en 30 min; el caso
-   del borde sin `NO_SITE_AVAILABLE`; las cuentas `_e29` apuntando una vez cada pareja inalcanzable.
+6. **HECHO** — `pnpm run verify:full` entero, en verde (2026-11-22).
+7. **HECHO** — Prueba en vivo (spec §4.5): cuatro altas nuevas con `--sufijo` y al menos un trato entre ellas en 30
+   min; el caso del borde sin `NO_SITE_AVAILABLE`; las cuentas `_e29` apuntando una vez cada pareja inalcanzable.
+
+### Prueba en vivo (2026-11-23)
+
+Servidor y web de desarrollo en esta Mac, sin Redis (estado caliente en proceso), plazos reales y sin sembrar; dos
+ejecuciones de bots a la vez. Registros en `bots/runs/` (sin versionar). No tiene parte visual: nada que comprobar en
+el navegador.
+
+- **Altas nuevas** (`--sufijo e30`, `--semilla 30`, 30 min): `bot_constructor_1_e30` romano en 161,209,
+  `_2_e30` bizantino en 267,389, `_3_e30` persa en 104,85 y `bot_saqueador_1_e30` nórdico en 172,416, con su vecina
+  más cercana a 26, 39, 45 y 36 tiles. A los 10 min `_3_e30` y `_1_e30` cierran el primer trato (40 de madera por 20
+  de piedra), y el saqueador cierra cuatro con `_2_e30`. Tres parejas sin ruta entre ellas (`_3_e30` con el saqueador
+  y con `_2_e30`), apuntadas una vez cada una. **Medida:** dos constructores y el saqueador llegan a Bronce (13, 25 y
+  22 min); `_2_e30`, saqueado por el saqueador (750 de madera), se queda en Piedra.
+- **La regla en el mundo de desarrollo no cambió ningún sitio.** Reconstruidas las cuatro altas sobre el mismo mundo y
+  las mismas ciudades, con y sin la regla dan el mismo centro: el mundo ya es denso y toda ciudad tiene vecina a
+  menos de 96. `_1_e30` nació a 77 tiles de su punto de partida por la espiral de siempre (agua y bosque alrededor),
+  no por la regla. Que la regla actúa lo prueban el test de integración (sin ella, el segundo jugador nace a 98) y
+  los de `internal/game/founding`, sobre mundos vacíos, con lago y con el tope de nodos.
+- **El caso del borde** (una isla sin sitio al alcance) lo cubre `TestUnaIslaSinSitioAlAlcanceFundaComoAntes`, como
+  pide la spec («un mundo de tests»): el mundo de desarrollo no tiene una isla así.
+- **Las cuentas `_e29`** (`--sufijo e29`, `--semilla 29`, 20 min): diez parejas sin ruta, cada una apuntada una vez
+  como `unreachable` con `PATH_TOO_LONG` en el primer minuto, y exactamente un rechazo de `trade.propose` por pareja
+  (en la ejecución larga de E29, 54 en 3 h sólo para `_1_e29`). `_2_e29` y `_3_e29` siguen comerciando entre sí y
+  `_3_e29` llega a Castillos en 13 min 21 s. `_1_e29` sigue sin socios en su ejecución y en Bronce: la regla no mueve
+  ciudades que ya existen (Q3), y comerciar con otros bots a la vista quedó fuera (Q7).
