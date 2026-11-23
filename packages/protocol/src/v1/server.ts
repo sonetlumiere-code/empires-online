@@ -484,7 +484,9 @@ export const UnitMoveAccepted = z.object({
   type: z.literal('unit.move.accepted'),
   payload: z.object({
     unitId: EntityId,
-    movementId: EntityId,
+    // 0 es el valor reservado de «el destino ya era la posición actual»: la orden se
+    // acepta sin crear movimiento (websocket-protocol §7.4, §8).
+    movementId: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   }),
 });
 

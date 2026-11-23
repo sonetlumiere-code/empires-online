@@ -294,6 +294,10 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
     rechazado con `CITY_NOT_FOUND` no enfriaba el blanco. Lo destapó un asalto plantado al final de una ejecución, que
     siguió en el servidor y tumbó a los 0,8 min de la siguiente la ciudad que la partida nueva iba a saquear. Ahora
     vuelve, como con un blanco protegido.
+  - **Fuera de los bots:** el `unit.move.accepted` con `movementId: 0` (el destino ya era la posición actual,
+    [websocket-protocol.md](websocket-protocol.md) §7.4) no pasaba el esquema Zod, que pedía un id de 1 o más, y el
+    cliente lo rechazaba con `INVALID_MESSAGE`. Lo destapó el tramo de marcha que se manda a quien ya está en el punto de
+    reunión. Se corrige el esquema, que no decía lo mismo que la spec; el servidor no cambia.
 - **El tercero** (§4.7, parte 3) sólo ve la cuenta atrás de un asalto ajeno en el HUD si tiene seleccionada una
   unidad suya a 12 tiles o menos (`assaultTargetNear`); si no, ve la ciudad desaparecer. Pintar el asalto en la escena
   es otro slice.

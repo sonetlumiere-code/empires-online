@@ -1072,7 +1072,7 @@ payload: z.object({ unitId: EntityId, movementId: EntityId })
 
 Es deliberadamente mínimo: **no duplica la polilínea** ni repite tiempos. La geometría llega en `unit.movement.started`, que el solicitante también recibe por ser suscriptor del chunk de origen. Así el broadcast tiene una sola forma canónica y el ack no paga el coste de serializar la polilínea dos veces.
 
-`movementId: 0` es el valor reservado para el caso "el destino ya es la posición actual" (§7.4): la orden se acepta, pero no se creó ningún movimiento.
+`movementId: 0` es el valor reservado para el caso "el destino ya es la posición actual" (§7.4): la orden se acepta, pero no se creó ningún movimiento. **Precisión (2026-11-23, [bots-assault.md](bots-assault.md)):** el esquema Zod pedía un `EntityId` (1 o más) y el cliente rechazaba este acuse con `INVALID_MESSAGE`; ningún e2e lo emitía. Lo encontraron los bots de E32 en vivo. Ahora el esquema admite 0 en `unit.move.accepted` y lo cubren el test de Zod y `TestMoverAlTileActualSeAceptaConMovementIdCero`.
 
 Se envía con `SendToPlayer`, es decir **a todas las sesiones del jugador**, no sólo a la que emitió el comando: si el jugador tiene dos pestañas abiertas, ambas ven el acuse.
 
