@@ -50,6 +50,7 @@ func TestValoresPorDefectoDelCanon(t *testing.T) {
 	require.Equal(t, 50, cfg.PersistenceFlushIntervalTicks)
 	require.Equal(t, 50000, cfg.PathfindingMaxNodes, "ADR-031")
 	require.EqualValues(t, 256, cfg.PathfindingMaxDistance)
+	require.EqualValues(t, 96, cfg.FoundingMaxNeighborTiles, "SPEC-TRADE-REACH Q2")
 	require.EqualValues(t, 16384, cfg.WSMaxMessageBytes)
 	require.Equal(t, 20, cfg.WSRateLimitPerSec)
 	require.Equal(t, 40, cfg.WSRateLimitBurst)
@@ -237,6 +238,20 @@ func TestValorFueraDeRango(t *testing.T) {
 
 	_, err := config.Load()
 	require.ErrorContains(t, err, "fuera del rango permitido")
+}
+
+// EO_FOUNDING_MAX_NEIGHBOR_TILES no baja de la separación mínima entre
+// ciudades (24, RN-CITY-004): con menos, ningún sitio podría tener vecina.
+func TestLaVecindadDeLaFundacionNoBajaDeLaSeparacion(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("EO_FOUNDING_MAX_NEIGHBOR_TILES", "23")
+	_, err := config.Load()
+	require.ErrorContains(t, err, "EO_FOUNDING_MAX_NEIGHBOR_TILES")
+
+	t.Setenv("EO_FOUNDING_MAX_NEIGHBOR_TILES", "24")
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	require.EqualValues(t, 24, cfg.FoundingMaxNeighborTiles)
 }
 
 func TestValorNoNumerico(t *testing.T) {

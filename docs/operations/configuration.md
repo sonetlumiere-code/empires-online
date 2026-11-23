@@ -172,6 +172,12 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_PATHFINDING_MAX_NODES` | int | `50000` | 100–10000000 | No | No | Tope de nodos expandidos por búsqueda A\*: 20 000 hasta [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md), que lo subió para que las rutas a la colina quepan. Al excederse se rechaza con `PATH_TOO_LONG`. Es la defensa principal contra que un jugador consuma CPU del tick con destinos patológicos. |
 | `EO_PATHFINDING_MAX_DISTANCE` | int | `256` | 1–65536 | No | No | Distancia máxima admitida entre origen y destino, en tiles. Al excederse: `PATH_TOO_LONG`, **antes** de ejecutar la búsqueda. |
 
+### 3.7-bis Fundación
+
+| Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
+|---|---|---|---|---|---|---|
+| `EO_FOUNDING_MAX_NEIGHBOR_TILES` | int | `96` | 24–65536 | No | No | Si ya hay ciudades, una nueva nace a esta distancia de Chebyshev, como mucho, de alguna existente y con una ruta de caravana entre los dos depósitos dentro de `EO_PATHFINDING_MAX_NODES` y `EO_PATHFINDING_MAX_DISTANCE` ([SPEC-TRADE-REACH](../specs/trade-reach.md), `RN-CITY-024`); si ningún sitio del mundo lo cumple, funda sin la condición. No baja de 24, la separación mínima entre ciudades (`RN-CITY-004`). Por encima de `EO_PATHFINDING_MAX_DISTANCE` no sirve: más lejos no llega ninguna caravana. Lo lee el listener interno al fundar (y `cmd/devseed`), no el tick. |
+
 ### 3.8 WebSocket
 
 | Variable | Tipo | Default | Rango válido | Secreto | Hot | Efecto |
@@ -353,7 +359,7 @@ cambio de nivel de log en caliente queda como **TBD (fuera de MVP)**.
 
 | | Configuración de infraestructura | Constantes de gameplay |
 |---|---|---|
-| Ejemplos | `EO_POSTGRES_URL`, `EO_REDIS_URL`, `EO_HTTP_ADDR`, `EO_METRICS_ADDR`, `EO_LOG_LEVEL`, `EO_ENV`, `EO_WS_OUTBOUND_QUEUE_SIZE` | `EO_TICK_RATE_HZ`, `EO_WORLD_*`, `EO_CHUNK_SIZE`, `EO_INTEREST_RADIUS_CHUNKS`, `EO_PRESENCE_*`, `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`, `EO_PATHFINDING_*`, `EO_WS_MAX_MESSAGE_BYTES`, `EO_WS_RATE_LIMIT_*` |
+| Ejemplos | `EO_POSTGRES_URL`, `EO_REDIS_URL`, `EO_HTTP_ADDR`, `EO_METRICS_ADDR`, `EO_LOG_LEVEL`, `EO_ENV`, `EO_WS_OUTBOUND_QUEUE_SIZE` | `EO_TICK_RATE_HZ`, `EO_WORLD_*`, `EO_CHUNK_SIZE`, `EO_INTEREST_RADIUS_CHUNKS`, `EO_PRESENCE_*`, `EO_CITY_OFFLINE_PROTECTION_COOLDOWN_SECONDS`, `EO_PATHFINDING_*`, `EO_FOUNDING_MAX_NEIGHBOR_TILES`, `EO_WS_MAX_MESSAGE_BYTES`, `EO_WS_RATE_LIMIT_*` |
 | Difiere entre entornos | Sí, siempre | No: local, staging y producción deben compartir valores |
 | Cambiarla altera el comportamiento observable del juego | No | **Sí** |
 | Cambiarla invalida tests de simulación | No | **Sí** |

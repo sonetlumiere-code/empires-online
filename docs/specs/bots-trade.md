@@ -227,6 +227,22 @@ Sucesos nuevos en el JSONL de [bots.md](bots.md) §4.5:
 | `caravan` | bot, `arrived` / `captured` / `lost`, carga, de dónde |
 | `rally` | bot, partida, guerreros reunidos, ms de espera |
 
+**Precisión (2026-11-22).** Lo que apunta la implementación, comprobado en `apps/bots/src/bot.test.ts`:
+
+- `treaty` tiene también el estado `replaced`: un tratado vigente que pasa a `EXPIRED`, que entre bots sólo ocurre
+  porque lo sustituye el del escalón superior (el acuerdo comercial cuando se firma el pacto, [trade.md](trade.md)
+  §4.1; el plazo administrativo de [diplomacy.md](diplomacy.md) §4 se apuntaría igual). `expired` queda para la
+  propuesta que caduca sin respuesta. `proposed` se apunta al enviar la propuesta; los demás, al llegar el
+  `treaty.update` con el cambio, una vez cada uno.
+- `trade` tiene también `expired`, la propuesta que caduca sin respuesta.
+- **Precisión (2026-11-22, [trade-reach.md](trade-reach.md)):** desde E30, `trade` suma el estado `unreachable`: una
+  propuesta o una aceptación que volvió con `PATH_TOO_LONG` o `PATH_NOT_FOUND`, apuntado una vez por pareja, que
+  desde entonces queda apartada hasta el final de la ejecución (`RN-BOT-013`).
+- `market` apunta `posted` y `bought` cuando llega el `market.update` con el `requestId` de la orden aceptada, no al
+  enviarla; la comisión es la de cada lote por los lotes. `cancelled` es la oferta retirada (`WITHDRAWN`).
+- `rally` lleva el blanco (`target`), los guerreros reunidos (`warriors`), los vivos de la partida (`alive`) y la espera
+  (`waitMs`), y se apunta una vez, en el despertar en que la partida pasa de la marcha a la orden de saquear.
+
 El resumen suma por bot: tiempo hasta Hierro y Castillos **sin siembra** (si la ejecución empezó sin `dev:seed`),
 bienes ajenos obtenidos por trato y por mercado, comisión pagada, caravanas perdidas, y para el saqueador el balance
 de cada partida (guerreros perdidos y muertos, madera robada).
@@ -237,6 +253,7 @@ de cada partida (guerreros perdidos y muertos, madera robada).
 |---|---|---|
 | `--sin-comercio` | apagado | Desactiva tratados, tratos y mercado: la ejecución de E28, para comparar. |
 | `--con-humanos` | apagado | Los bots aceptan tratados `TRADE` y tratos de jugadores que no son bots, al precio de la tabla. No hace hostil a nadie (eso sigue siendo `--contra-humanos`). |
+| `--sufijo` | ninguno | **Precisión (2026-11-22):** cuentas nuevas `bot_<perfil>_<n>_<sufijo>`, con 1 a 5 letras minúsculas o cifras, para la ejecución larga sin sembrar (Q9, §9.1). |
 
 La prueba en vivo tiene cuatro partes:
 
@@ -260,6 +277,7 @@ Continúan las de [bots.md](bots.md) §4.7.
 | `RN-BOT-010` | Un bot acepta un trato sólo si lo que recibe vale, según su tabla de precios, al menos lo que da, y si lo que da no le deja por debajo de su siguiente meta. |
 | `RN-BOT-011` | Un saqueador nunca propone ni acepta `NON_AGGRESSION` ni `ALLIANCE`. |
 | `RN-BOT-012` | Una partida de saqueo no ordena `unit.pillage` hasta estar reunida (o vencido `rallyTimeoutMs` con al menos `raidMinParty` guerreros), y entonces lo ordena a todos sin intercalar otras órdenes. |
+| `RN-BOT-013` | **Precisión (2026-11-22, [trade-reach.md](trade-reach.md), E30).** Un bot no vuelve a proponer ni a aceptar un trato, durante la misma ejecución, con un jugador con el que una propuesta o una aceptación volvió con `PATH_TOO_LONG` o `PATH_NOT_FOUND`, ni a comprar una oferta del mercado que volvió así. Las ciudades no se mueven y el terreno es inmutable: la ruta no va a aparecer. Sustituye, para esos códigos, el enfriamiento de blanco de §5. |
 
 ## 5. Errores
 
@@ -269,7 +287,7 @@ No hay códigos nuevos. Lo que el bot hace con los que ya existen, además de [b
 |---|---|---|
 | `TREATY_REQUIRED` | Trato sin tratado activo (RN-TRADE-001) | Enfriamiento de la pareja; vuelve a proponer el tratado si no hay relación. |
 | `INSUFFICIENT_RESOURCES` | Al aceptar un trato o comprar, alguien ya no tiene lo suyo | `rejected` y enfriamiento de esa oferta. |
-| `PATH_NOT_FOUND`, `PATH_TOO_LONG` | Sin ruta entre depósitos (RN-CARAVAN-002) | Aparta a la pareja o la oferta durante el enfriamiento de blanco. |
+| `PATH_NOT_FOUND`, `PATH_TOO_LONG` | Sin ruta entre depósitos (RN-CARAVAN-002) | Aparta a la pareja o la oferta durante el enfriamiento de blanco. **Precisión (2026-11-22):** desde E30, hasta el final de la ejecución (`RN-BOT-013`, [trade-reach.md](trade-reach.md)). |
 | `INVALID_TARGET` | Tratado ya existente, oferta ya cerrada, reproponer antes de 10 min | `rejected` y enfriamiento. |
 
 El ajuste de la defensa no tiene errores: la respuesta automática no es un comando.
@@ -348,6 +366,14 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
 - **Cuentas nuevas.** Para la ejecución larga (Q9), `--sufijo <1 a 5 letras o cifras>` da cuentas
   `bot_<perfil>_<n>_<sufijo>`, que siguen empezando por `bot_` (`RN-BOT-004`, `RN-BOT-008`) y caben en los 24
   caracteres del nombre de usuario.
+- **Precisión (2026-11-22): el asedio, con sus ticks.** Lo que §9 pedía «lo mismo para un asedio» lo cubren
+  `TestElCompaneroQueAsediaAlLadoResponde` (el golpe del guardia a un asediador despierta también al compañero que
+  asedia la misma casa a dos tiles, y los dos responden con su puesto en el tile en que asediaban) y
+  `TestGoldenTresAsediadoresGananADosGuardias` (`raider_response_test.go`): 3 asediadores contra 2 guardias dan
+  exactamente los ticks del golden del saqueo —caen 201 a los 3 200 ms, 100 a los 6 100 y 202 a los 9 200—, porque el
+  combate es el mismo; la casa se queda en 126 (un golpe de cada uno) y no recibe más. Con el guerrero ya junto al
+  blanco, el primer golpe de saqueo o de asedio cae en el mismo tick de la orden y los guardias golpean en el
+  siguiente; el comentario del golden del saqueo decía un tick más y se corrigió.
 - **La medida.** El resumen da el tiempo hasta cada era desde el arranque del bot: es «sin siembra» si la ejecución
   empezó con cuentas nuevas o sin `dev:seed`, cosa que sabe quien la lanza.
 

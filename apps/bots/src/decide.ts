@@ -227,6 +227,15 @@ export interface Memory {
   /** La próxima consulta del tablón, y qué bien ajeno toca. */
   readonly marketScanAtMs: number;
   readonly marketScanIndex: number;
+  /**
+   * Jugadores sin ruta de caravana hasta su ciudad: una propuesta o una
+   * aceptación volvió con `PATH_TOO_LONG` o `PATH_NOT_FOUND`. Ni las ciudades ni
+   * el terreno se mueven, así que se apartan hasta el final de la ejecución
+   * (RN-BOT-013, SPEC-TRADE-REACH §4.3).
+   */
+  readonly unreachablePlayers: readonly string[];
+  /** Ofertas del mercado cuya compra volvió sin ruta (RN-BOT-013). */
+  readonly unreachableOffers: readonly number[];
 }
 
 export const EMPTY_MEMORY: Memory = {
@@ -243,6 +252,8 @@ export const EMPTY_MEMORY: Memory = {
   marketSeen: {},
   marketScanAtMs: 0,
   marketScanIndex: 0,
+  unreachablePlayers: [],
+  unreachableOffers: [],
 };
 
 export interface Decision {
@@ -892,6 +903,13 @@ export function decide(
 /** Los códigos con que un blanco no se puede alcanzar o atacar. */
 const TARGET_CODES = new Set(['CITY_PROTECTED', 'PATH_TOO_LONG', 'PATH_NOT_FOUND', 'TREATY_REQUIRED']);
 
+/** Los códigos de una ruta que no existe o no cabe en los topes del A* (RN-CARAVAN-002). */
+const NO_ROUTE_CODES = new Set(['PATH_TOO_LONG', 'PATH_NOT_FOUND']);
+
+function withItem<T>(list: readonly T[], item: T): readonly T[] {
+  return list.includes(item) ? list : [...list, item];
+}
+
 /**
  * Lo que la memoria aprende de un rechazo (RN-BOT-002): la orden se enfría, el
  * tile que no admitió la recolección se aparta y la partida cambia de fase o de
@@ -926,9 +944,19 @@ export function onRejected(
     return { ...mem, treatyCooldowns: { ...mem.treatyCooldowns, [command.playerId]: nowMs + profile.treatyRetryMs } };
   }
   if (command.type === 'trade.propose') {
-    // Sin ruta entre depósitos, la pareja se aparta como un blanco inalcanzable (§4.2, §5).
+    // Sin ruta entre depósitos, la pareja se aparta hasta el final (RN-BOT-013); un
+    // blanco protegido o sin tratado, como un blanco inalcanzable (§4.2, §5).
+    if (NO_ROUTE_CODES.has(code)) {
+      return { ...mem, unreachablePlayers: withItem(mem.unreachablePlayers, command.playerId) };
+    }
     const wait = TARGET_CODES.has(code) ? profile.targetCooldownMs : profile.tradeRetryMs;
     return { ...mem, tradeCooldowns: { ...mem.tradeCooldowns, [command.playerId]: nowMs + wait } };
+  }
+  if (command.type === 'trade.respond' && command.accept && NO_ROUTE_CODES.has(code)) {
+    return { ...mem, unreachablePlayers: withItem(mem.unreachablePlayers, command.otherPlayerId) };
+  }
+  if (command.type === 'market.buy' && NO_ROUTE_CODES.has(code)) {
+    return { ...mem, unreachableOffers: withItem(mem.unreachableOffers, command.offerId) };
   }
   if (command.type === 'market.buy' && TARGET_CODES.has(code)) {
     return { ...mem, cooldowns: { ...mem.cooldowns, [command.key]: nowMs + profile.targetCooldownMs } };

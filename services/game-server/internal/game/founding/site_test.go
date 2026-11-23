@@ -1,6 +1,7 @@
 package founding
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
+	"github.com/empires-online/empires-online/services/game-server/internal/pathfinding"
 )
 
 // mundoLiso devuelve un mundo de hierba salpicado de bosque —un tile FOREST en
@@ -119,7 +121,7 @@ func TestTodaCiudadNaceConUnBosqueCerca(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := uint64(0); i < 64; i++ {
-		s, err := FindSite(w, nil, i*4_099+17, 3, nil)
+		s, err := FindSite(w, nil, i*4_099+17, 3, nil, Reach{})
 		require.NoError(t, err, "semilla %d", i)
 		verificarSitio(t, w, s, 3)
 	}
@@ -129,7 +131,7 @@ func TestTodaCiudadNaceConUnBosqueCerca(t *testing.T) {
 // se funda donde no podría recolectar.
 func TestSinBosqueNoHaySitio(t *testing.T) {
 	w := mundoPintado(t, 64, 64, false, nil)
-	_, err := FindSite(w, nil, semillaEn(w, 32, 32), 3, nil)
+	_, err := FindSite(w, nil, semillaEn(w, 32, 32), 3, nil, Reach{})
 	assert.True(t, errors.Is(err, ErrNoSite), "se esperaba ErrNoSite, llegó %v", err)
 }
 
@@ -162,7 +164,7 @@ func TestUnBosqueAisladoPorAguaNoCuenta(t *testing.T) {
 	}
 	w := mundoPintado(t, 96, 96, false, pintar)
 
-	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3, nil)
+	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3, nil, Reach{})
 	require.NoError(t, err)
 	verificarSitio(t, w, s, 3)
 	var grupo []world.Tile
@@ -180,12 +182,12 @@ func TestNueveTilesDeBosqueNoBastan(t *testing.T) {
 	pintar := map[world.Tile]world.TerrainType{}
 	bosqueEn(pintar, 30, 30, 32, 32)
 	w := mundoPintado(t, 64, 64, false, pintar)
-	_, err := FindSite(w, nil, semillaEn(w, 32, 32), 3, nil)
+	_, err := FindSite(w, nil, semillaEn(w, 32, 32), 3, nil, Reach{})
 	assert.True(t, errors.Is(err, ErrNoSite), "se esperaba ErrNoSite, llegó %v", err)
 
 	bosqueEn(pintar, 33, 30, 33, 30)
 	w = mundoPintado(t, 64, 64, false, pintar)
-	_, err = FindSite(w, nil, semillaEn(w, 32, 32), 3, nil)
+	_, err = FindSite(w, nil, semillaEn(w, 32, 32), 3, nil, Reach{})
 	require.NoError(t, err, "con el décimo tile sí hay sitio")
 }
 
@@ -198,7 +200,7 @@ func TestUnBosqueTaladoNoCuentaParaFundar(t *testing.T) {
 	w := mundoPintado(t, 96, 96, false, pintar)
 	talado := func(tl world.Tile) bool { return !(tl.X >= 22 && tl.X <= 25 && tl.Y >= 20 && tl.Y <= 22) }
 
-	s, err := FindSite(w, nil, semillaEn(w, 20, 20), 3, talado)
+	s, err := FindSite(w, nil, semillaEn(w, 20, 20), 3, talado, Reach{})
 	require.NoError(t, err)
 	var otro []world.Tile
 	for y := int32(60); y <= 62; y++ {
@@ -209,7 +211,7 @@ func TestUnBosqueTaladoNoCuentaParaFundar(t *testing.T) {
 	assert.GreaterOrEqual(t, cuantosCerca(s.Center, otro), tilesDeLaSpec,
 		"la ciudad de %v nació junto al bosque talado", s.Center)
 
-	sinCapa, err := FindSite(w, nil, semillaEn(w, 20, 20), 3, nil)
+	sinCapa, err := FindSite(w, nil, semillaEn(w, 20, 20), 3, nil, Reach{})
 	require.NoError(t, err)
 	assert.Less(t, chebyshev(sinCapa.Center, world.Tile{X: 23, Y: 21}), chebyshev(s.Center, world.Tile{X: 23, Y: 21}),
 		"control: sin la capa, el bosque de al lado sí cuenta")
@@ -223,7 +225,7 @@ func TestElSitioCaeDentroDelMundoYSobreTerrenoTransitable(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, semilla := range []uint64{0, 1, 77, 4_096, 16_383, 1 << 40} {
-		s, err := FindSite(w, nil, semilla, 3, nil)
+		s, err := FindSite(w, nil, semilla, 3, nil, Reach{})
 		require.NoError(t, err, "semilla %d", semilla)
 		verificarSitio(t, w, s, 3)
 	}
@@ -240,7 +242,7 @@ func TestSinTerrenoTransitableNoHaySitio(t *testing.T) {
 	}
 	w := mundoLiso(t, 32, 32, agua)
 
-	_, err := FindSite(w, nil, 0, 3, nil)
+	_, err := FindSite(w, nil, 0, 3, nil, Reach{})
 	assert.True(t, errors.Is(err, ErrNoSite), "se esperaba ErrNoSite, llegó %v", err)
 }
 
@@ -249,7 +251,7 @@ func TestSinTerrenoTransitableNoHaySitio(t *testing.T) {
 func TestUnCandidatoJuntoAlBordeSeDescarta(t *testing.T) {
 	w := mundoLiso(t, 32, 32, nil)
 
-	s, err := FindSite(w, nil, semillaEn(w, 0, 0), 3, nil)
+	s, err := FindSite(w, nil, semillaEn(w, 0, 0), 3, nil, Reach{})
 	require.NoError(t, err)
 	verificarSitio(t, w, s, 3)
 	assert.GreaterOrEqual(t, s.Center.X, clearRadius)
@@ -264,7 +266,7 @@ func TestUnObstaculoEnElEntornoDescartaElCandidato(t *testing.T) {
 		{X: inicio.X + clearRadius, Y: inicio.Y}: world.Water,
 	})
 
-	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3, nil)
+	s, err := FindSite(w, nil, semillaEn(w, inicio.X, inicio.Y), 3, nil, Reach{})
 	require.NoError(t, err)
 	assert.NotEqual(t, inicio, s.Center)
 	verificarSitio(t, w, s, 3)
@@ -289,7 +291,7 @@ func TestVariasFundacionesGuardanLaDistanciaYNoSeSolapan(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		// Semillas cercanas a propósito: todas empiezan a buscar en la misma
 		// región, que es el caso en que la separación tiene que actuar.
-		s, err := FindSite(w, centros, semillaEn(w, 128, 128)+uint64(i), 3, nil)
+		s, err := FindSite(w, centros, semillaEn(w, 128, 128)+uint64(i), 3, nil, Reach{})
 		require.NoError(t, err, "fundación %d", i)
 		verificarSitio(t, w, s, 3)
 		w.SetBlocked(s.MinX, s.MinY, s.MaxX, s.MaxY, true)
@@ -316,16 +318,16 @@ func TestLaBusquedaEsDeterminista(t *testing.T) {
 	require.NoError(t, err)
 	existentes := []world.Tile{{X: 64, Y: 64}}
 
-	a, err := FindSite(w, existentes, 12345, 3, nil)
+	a, err := FindSite(w, existentes, 12345, 3, nil, Reach{})
 	require.NoError(t, err)
-	b, err := FindSite(w, existentes, 12345, 3, nil)
+	b, err := FindSite(w, existentes, 12345, 3, nil, Reach{})
 	require.NoError(t, err)
 	assert.Equal(t, a, b)
 }
 
 func TestSinAldeanosNoSeFunda(t *testing.T) {
 	w := mundoLiso(t, 32, 32, nil)
-	_, err := FindSite(w, nil, 0, 0, nil)
+	_, err := FindSite(w, nil, 0, 0, nil, Reach{})
 	assert.Error(t, err)
 }
 
@@ -340,4 +342,252 @@ func TestFarEnoughEsLaSeparacionDeLaSpec(t *testing.T) {
 		assert.True(t, FarEnough(centro, []world.Tile{lejos}), "a %v", lejos)
 	}
 	assert.True(t, FarEnough(centro, nil), "sin ciudades, cualquier sitio vale")
+}
+
+// ─────────────────────────────────────────────────────────────
+// El alcance de una caravana (SPEC-TRADE-REACH, RN-CITY-024,
+// RN-CITY-025, INV-CITY-019)
+// ─────────────────────────────────────────────────────────────
+
+// vecindadDeLaSpec es EO_FOUNDING_MAX_NEIGHBOR_TILES por defecto (Q2), escrito
+// como literal por la misma razón que separacionDeLaSpec.
+const vecindadDeLaSpec int32 = 96
+
+// alcanceDeLaSpec es la condición con los topes del canon: 96 tiles, y el A*
+// de 50 000 nodos y 256 tiles (ADR-031).
+func alcanceDeLaSpec() Reach {
+	return Reach{MaxNeighborTiles: vecindadDeLaSpec, Pathfinder: pathfinding.NewAStar(50_000, 256),
+		MaxNodes: 50_000, MaxDistance: 256}
+}
+
+// levantar bloquea la zona urbana de una ciudad existente, como la deja el alta.
+func levantar(w *world.World, c world.Tile) {
+	w.SetBlocked(c.X-1, c.Y-1, c.X+1, c.Y+1, true)
+}
+
+// columnaDe pinta de agua la columna x entera, salvo las filas de huecos.
+func columnaDe(pintar map[world.Tile]world.TerrainType, x, alto int32, huecos ...int32) {
+	for y := int32(0); y < alto; y++ {
+		abierta := false
+		for _, h := range huecos {
+			abierta = abierta || y == h
+		}
+		if !abierta {
+			pintar[world.Tile{X: x, Y: y}] = world.Water
+		}
+	}
+}
+
+// rutaEntre dice si la caravana de un sitio recién encontrado llega al
+// depósito de una ciudad, con la zona urbana del sitio ya levantada.
+func rutaEntre(t *testing.T, w *world.World, sitio, ciudad world.Tile, r Reach) bool {
+	t.Helper()
+	desde, ok := depositOf(w, sitio)
+	require.True(t, ok)
+	hasta, ok := depositOf(w, ciudad)
+	require.True(t, ok)
+	_, err := r.Pathfinder.FindPath(context.Background(), townGrid{World: w, center: sitio}, desde, hasta,
+		pathfinding.Options{MaxNodes: r.MaxNodes, MaxDistance: r.MaxDistance})
+	return err == nil
+}
+
+// RN-CITY-024 e INV-CITY-019: con una ciudad en el mundo, la espiral que antes
+// fundaba a 160 tiles de ella funda ahora a 96 o menos, con ruta de caravana.
+// Verificado por mutación (INV-CITY-019): sin la condición, el sitio cae a 160.
+func TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina(t *testing.T) {
+	w := mundoLiso(t, 256, 256, nil)
+	vecina := world.Tile{X: 40, Y: 40}
+	levantar(w, vecina)
+	existentes := []world.Tile{vecina}
+	semilla := semillaEn(w, 200, 200)
+
+	antes, err := FindSite(w, existentes, semilla, 3, nil, Reach{})
+	require.NoError(t, err)
+	require.Greater(t, chebyshev(antes.Center, vecina), vecindadDeLaSpec, "sin la regla, la ciudad nace lejos")
+
+	s, err := FindSite(w, existentes, semilla, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	verificarSitio(t, w, s, 3)
+	assert.LessOrEqual(t, chebyshev(s.Center, vecina), vecindadDeLaSpec)
+	assert.GreaterOrEqual(t, chebyshev(s.Center, vecina), separacionDeLaSpec, "RN-CITY-004 sigue")
+	assert.True(t, rutaEntre(t, w, s.Center, vecina, alcanceDeLaSpec()))
+}
+
+// RN-CITY-024: un lago de lado a lado separa la vecina del principio de la
+// espiral, a 70 tiles. Esos candidatos están dentro de los 96, pero sin ruta:
+// se saltan, y la ciudad nace en la orilla de la vecina.
+func TestUnCandidatoSinRutaSeSalta(t *testing.T) {
+	pintar := map[world.Tile]world.TerrainType{}
+	columnaDe(pintar, 100, 256)
+	w := mundoLiso(t, 256, 256, pintar)
+	vecina := world.Tile{X: 60, Y: 60}
+	levantar(w, vecina)
+	semilla := semillaEn(w, 130, 60)
+
+	antes, err := FindSite(w, []world.Tile{vecina}, semilla, 3, nil, Reach{})
+	require.NoError(t, err)
+	require.Greater(t, antes.Center.X, int32(100), "sin la regla, nace al otro lado del lago")
+
+	s, err := FindSite(w, []world.Tile{vecina}, semilla, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	verificarSitio(t, w, s, 3)
+	assert.Less(t, s.Center.X, int32(100), "nace en la orilla de la vecina")
+	assert.LessOrEqual(t, chebyshev(s.Center, vecina), vecindadDeLaSpec)
+	assert.True(t, rutaEntre(t, w, s.Center, vecina, alcanceDeLaSpec()))
+}
+
+// RN-CITY-024: la ruta es la de una caravana, con sus topes. Con un solo paso
+// por el lago, en la fila 130, la otra orilla está en la misma componente que la
+// vecina, pero la vuelta no cabe en 2 000 nodos: el tope corta el alcance y la
+// ciudad nace en la orilla de la vecina. Con el tope de siempre, el paso sí
+// cabe y vale la otra orilla.
+func TestElTopeDelPathfindingCortaElAlcance(t *testing.T) {
+	pintar := map[world.Tile]world.TerrainType{}
+	columnaDe(pintar, 100, 256, 130)
+	w := mundoLiso(t, 256, 256, pintar)
+	vecina := world.Tile{X: 60, Y: 60}
+	levantar(w, vecina)
+	semilla := semillaEn(w, 130, 60)
+
+	corto := alcanceDeLaSpec()
+	corto.Pathfinder, corto.MaxNodes = pathfinding.NewAStar(2_000, 256), 2_000
+	s, err := FindSite(w, []world.Tile{vecina}, semilla, 3, nil, corto)
+	require.NoError(t, err)
+	assert.Less(t, s.Center.X, int32(100), "sin ruta dentro del tope, la otra orilla no vale")
+
+	largo, err := FindSite(w, []world.Tile{vecina}, semilla, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	assert.Greater(t, largo.Center.X, int32(100), "con 50 000 nodos, la vuelta por el paso cabe")
+	assert.True(t, rutaEntre(t, w, largo.Center, vecina, alcanceDeLaSpec()))
+}
+
+// anotador es un pathfinder que apunta a qué depósito se le pidió ruta y
+// responde que no la hay salvo para el depósito indicado.
+type anotador struct {
+	pedidos []world.Tile
+	llega   *world.Tile
+}
+
+func (a *anotador) FindPath(_ context.Context, _ pathfinding.Grid, _, to world.Tile, _ pathfinding.Options) ([]world.Tile, error) {
+	a.pedidos = append(a.pedidos, to)
+	if a.llega != nil && *a.llega == to {
+		return []world.Tile{to}, nil
+	}
+	return nil, pathfinding.ErrPathTooLong
+}
+
+// RN-CITY-025: las vecinas a 96 o menos se prueban de la más cercana a la más
+// lejana y, a igual distancia, en el orden de existing (el de id); la que pasa
+// de 96 no se prueba, y la primera con ruta basta.
+func TestLasVecinasSePruebanDeLaMasCercanaYEmpatanPorId(t *testing.T) {
+	w := mundoLiso(t, 256, 256, nil)
+	candidato := world.Tile{X: 128, Y: 128}
+	existentes := []world.Tile{
+		{X: 128 + 60, Y: 128}, // 0: a 60
+		{X: 128, Y: 128 - 30}, // 1: a 30
+		{X: 128 + 97, Y: 128}, // 2: a 97, fuera de la vecindad
+		{X: 128 - 30, Y: 128}, // 3: a 30, empata con 1 y va después
+		{X: 128, Y: 128 + 96}, // 4: a 96 justos
+	}
+	for _, c := range existentes {
+		levantar(w, c)
+	}
+	deposito := func(i int) world.Tile {
+		d, ok := depositOf(w, existentes[i])
+		require.True(t, ok)
+		return d
+	}
+
+	pf := &anotador{}
+	r := alcanceDeLaSpec()
+	r.Pathfinder = pf
+	assert.False(t, newReachCheck(w, existentes, r).ok(candidato))
+	assert.Equal(t, []world.Tile{deposito(1), deposito(3), deposito(0), deposito(4)}, pf.pedidos)
+
+	llega := deposito(3)
+	pf = &anotador{llega: &llega}
+	r.Pathfinder = pf
+	assert.True(t, newReachCheck(w, existentes, r).ok(candidato))
+	assert.Equal(t, []world.Tile{deposito(1), deposito(3)}, pf.pedidos, "basta una")
+}
+
+// RN-CITY-024: sin ninguna ciudad, la condición no se aplica y la primera nace
+// como antes; tampoco se lanza ningún A*.
+func TestElMundoVacioFundaComoAntes(t *testing.T) {
+	w := mundoLiso(t, 128, 128, nil)
+	pf := &anotador{}
+	r := alcanceDeLaSpec()
+	r.Pathfinder = pf
+	antes, err := FindSite(w, nil, semillaEn(w, 64, 64), 3, nil, Reach{})
+	require.NoError(t, err)
+	s, err := FindSite(w, nil, semillaEn(w, 64, 64), 3, nil, r)
+	require.NoError(t, err)
+	assert.Equal(t, antes, s)
+	assert.Empty(t, pf.pedidos)
+}
+
+// RN-CITY-024, Q3 y RN-CITY-006: la única ciudad está en una isla sin sitio
+// para otra. Ningún candidato del mundo está a su alcance, así que la
+// búsqueda se repite sin la condición y funda donde antes, sin ErrNoSite.
+func TestUnaIslaSinSitioAlAlcanceFundaComoAntes(t *testing.T) {
+	pintar := map[world.Tile]world.TerrainType{}
+	// Isla de 13 × 13 en (34..46, 34..46), rodeada de agua de 4 tiles de ancho.
+	for y := int32(30); y <= 50; y++ {
+		for x := int32(30); x <= 50; x++ {
+			if x < 34 || x > 46 || y < 34 || y > 46 {
+				pintar[world.Tile{X: x, Y: y}] = world.Water
+			}
+		}
+	}
+	w := mundoLiso(t, 256, 256, pintar)
+	isla := world.Tile{X: 40, Y: 40}
+	levantar(w, isla)
+	semilla := semillaEn(w, 200, 200)
+
+	antes, err := FindSite(w, []world.Tile{isla}, semilla, 3, nil, Reach{})
+	require.NoError(t, err)
+	s, err := FindSite(w, []world.Tile{isla}, semilla, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err, "el alta nunca falla por la regla de alcance")
+	assert.Equal(t, antes, s)
+}
+
+// RN-CITY-005 con la regla: mismo mundo, mismas ciudades y misma semilla dan
+// el mismo sitio, sobre el terreno generado.
+func TestLaBusquedaConAlcanceEsDeterminista(t *testing.T) {
+	w, err := world.New(256, 256, 32, 7, world.Generate(256, 256, 7))
+	require.NoError(t, err)
+	primera, err := FindSite(w, nil, 4242, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	levantar(w, primera.Center)
+	existentes := []world.Tile{primera.Center}
+
+	a, err := FindSite(w, existentes, 99_991, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	b, err := FindSite(w, existentes, 99_991, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	assert.Equal(t, a, b)
+	assert.LessOrEqual(t, chebyshev(a.Center, primera.Center), vecindadDeLaSpec)
+	assert.True(t, rutaEntre(t, w, a.Center, primera.Center, alcanceDeLaSpec()))
+}
+
+// El filtro de componentes es exacto: dos tiles que sólo se tocan en diagonal,
+// con los dos flancos bloqueados, son de componentes distintas, y el A* (que
+// no ataja esquinas) tampoco encuentra ruta entre ellos.
+func TestLasComponentesSonLasDelPathfinder(t *testing.T) {
+	pintar := map[world.Tile]world.TerrainType{}
+	// Una pared de montaña en la diagonal x + y = 40, de un tile: sólo se cruza
+	// atajando una esquina, de (x, 39 − x) a (x + 1, 40 − x).
+	for x := int32(0); x <= 40; x++ {
+		pintar[world.Tile{X: x, Y: 40 - x}] = world.Mountain
+	}
+	w := mundoPintado(t, 64, 64, false, pintar)
+	labels := components(w)
+	a, b := world.Tile{X: 10, Y: 10}, world.Tile{X: 40, Y: 40}
+	la, lb := labels[int(a.Y)*64+int(a.X)], labels[int(b.Y)*64+int(b.X)]
+	require.NotZero(t, la)
+	require.NotZero(t, lb)
+	assert.NotEqual(t, la, lb)
+	_, err := pathfinding.NewAStar(50_000, 256).FindPath(context.Background(), w, a, b, pathfinding.Options{})
+	assert.ErrorIs(t, err, pathfinding.ErrPathNotFound)
+	assert.Equal(t, la, labels[int(39)*64+int(0)], "el mismo lado de la pared es una componente")
 }

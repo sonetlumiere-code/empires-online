@@ -141,6 +141,13 @@ Dos costes dominan y ninguno es lineal en "número de unidades":
 | `spawnRadius` | 2 | Los **3 `VILLAGER`** iniciales nacen a radio 2, justo fuera de la muralla |
 | `minCityDistance` | **24** | Separación mínima entre centros de ciudad, en tiles |
 
+Desde E30 ([SPEC-TRADE-REACH](../specs/trade-reach.md), `RN-CITY-024`) hay también una distancia **máxima**: si ya hay
+ciudades, la nueva nace a ≤ `EO_FOUNDING_MAX_NEIGHBOR_TILES` (96, una variable de entorno, no una constante) de alguna
+y con ruta de caravana entre los depósitos, y si ningún sitio lo cumple funda sin la condición. El mundo se llena así
+por crecimiento desde las primeras ciudades en lugar de por puntos al azar; el techo no cambia, porque la regla sólo
+elige *dónde* dentro del mismo empaquetado. El coste es de la fundación, no del tick: un etiquetado de componentes
+conexas del mundo y una o pocas búsquedas A\* por alta, como mucho 61 ms en 24 altas seguidas sobre el mundo canónico.
+
 La separación mínima de 24 tiles es la que fija el techo geográfico: un empaquetado ideal daría `(512/24)² ≈ 455` ciudades, y el terreno intransitable y la irregularidad del empaquetado real lo bajan.
 
 Eso sitúa la capacidad del mundo MVP en el orden de **300–450 ciudades**, es decir unos pocos cientos de jugadores registrados y del orden de **100–200 concurrentes** antes de que el mundo se sienta lleno.

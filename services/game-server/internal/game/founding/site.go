@@ -6,12 +6,15 @@
 package founding
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/deposit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
+	"github.com/empires-online/empires-online/services/game-server/internal/pathfinding"
 )
 
 // Site es un emplazamiento válido para una ciudad.
@@ -53,6 +56,28 @@ var ErrNoSite = errors.New("no se encontró un emplazamiento válido para la ciu
 // trata todo el bosque como lleno.
 type HasWood func(world.Tile) bool
 
+// Reach es la condición de alcance de la fundación (RN-CITY-024, RN-CITY-025,
+// INV-CITY-019): si ya hay ciudades, la nueva nace a ≤ MaxNeighborTiles de
+// Chebyshev de alguna y con una ruta entre los dos depósitos que el pathfinder
+// encuentra con los mismos topes que una caravana (RN-CARAVAN-002). El valor
+// cero (MaxNeighborTiles 0 o sin Pathfinder) la desactiva: es la búsqueda de
+// antes de E30.
+type Reach struct {
+	// MaxNeighborTiles es EO_FOUNDING_MAX_NEIGHBOR_TILES.
+	MaxNeighborTiles int32
+	// Pathfinder es el A* del servidor; MaxNodes y MaxDistance, sus topes
+	// (EO_PATHFINDING_MAX_NODES y EO_PATHFINDING_MAX_DISTANCE).
+	Pathfinder  pathfinding.Pathfinder
+	MaxNodes    int
+	MaxDistance int32
+}
+
+// DefaultMaxNeighborTiles es el valor por defecto de
+// EO_FOUNDING_MAX_NEIGHBOR_TILES (SPEC-TRADE-REACH Q2).
+const DefaultMaxNeighborTiles int32 = 96
+
+func (r Reach) enabled() bool { return r.MaxNeighborTiles > 0 && r.Pathfinder != nil }
+
 // FindSite busca un emplazamiento válido para una ciudad nueva.
 //
 // Requisitos de un emplazamiento: estar dentro del mundo, tener todo su entorno
@@ -61,16 +86,35 @@ type HasWood func(world.Tile) bool
 // en espiral, de modo que dos jugadores creados a la vez no compitan por el mismo
 // tile. hasWood es la capa de madera del bosque: sólo cuentan los tiles a los
 // que les queda (RN-ECON-017); nil, todos.
-func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int, hasWood HasWood) (Site, error) {
+//
+// existing va en orden de id de ciudad (es el desempate de RN-CITY-025). Con
+// reach activo y alguna ciudad en el mundo, la espiral exige además el alcance;
+// si el mundo entero no da ningún sitio así, se repite sin él: el alta nunca
+// falla por esa regla (RN-CITY-024, RN-CITY-006).
+func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int, hasWood HasWood, reach Reach) (Site, error) {
 	if villagers <= 0 {
 		return Site{}, fmt.Errorf("un jugador nuevo necesita al menos un aldeano")
 	}
+	if reach.enabled() && len(existing) > 0 {
+		r := newReachCheck(w, existing, reach)
+		if site, ok := spiral(w, existing, seed, villagers, hasWood, r.ok); ok {
+			return site, nil
+		}
+	}
+	if site, ok := spiral(w, existing, seed, villagers, hasWood, nil); ok {
+		return site, nil
+	}
+	return Site{}, ErrNoSite
+}
 
+// spiral recorre el mundo en espiral cuadrada desde el punto de partida y
+// devuelve el primer candidato que cumple las reglas de siempre y, si lo hay,
+// el filtro extra, que se comprueba el último (RN-CITY-025). Determinista.
+func spiral(w *world.World, existing []world.Tile, seed uint64, villagers int, hasWood HasWood,
+	extra func(world.Tile) bool) (Site, bool) {
 	startX := int32(seed % uint64(w.Width()))
 	startY := int32((seed / uint64(w.Width())) % uint64(w.Height()))
 
-	// Recorrido en espiral cuadrada desde el punto de partida. Determinista y
-	// sin asignaciones: recorre todo el mundo si hace falta.
 	maxRing := max32(w.Width(), w.Height())
 	for ring := int32(0); ring <= maxRing; ring++ {
 		for _, candidate := range ringTiles(startX, startY, ring) {
@@ -81,6 +125,9 @@ func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int,
 			if len(spawns) < villagers {
 				continue
 			}
+			if extra != nil && !extra(candidate) {
+				continue
+			}
 			return Site{
 				Center: candidate,
 				MinX:   candidate.X - townCenterRadius,
@@ -88,10 +135,137 @@ func FindSite(w *world.World, existing []world.Tile, seed uint64, villagers int,
 				MaxX:   candidate.X + townCenterRadius,
 				MaxY:   candidate.Y + townCenterRadius,
 				Spawns: spawns,
-			}, nil
+			}, true
 		}
 	}
-	return Site{}, ErrNoSite
+	return Site{}, false
+}
+
+// reachCheck comprueba la condición de alcance de un candidato. Etiqueta una
+// vez por búsqueda las componentes conexas del mundo en cuatro direcciones,
+// que son las del A*: sin atajar esquinas, toda diagonal tiene un camino
+// ortogonal de dos pasos, así que dos tiles se unen en ocho direcciones si y
+// sólo si se unen en cuatro. Una vecina de otra componente no tiene ruta y se
+// descarta sin lanzar el A*; las demás se prueban con él, que es quien aplica
+// los topes de la caravana.
+type reachCheck struct {
+	w        *world.World
+	existing []world.Tile
+	reach    Reach
+	// deposits es el depósito de cada ciudad existente (el primer tile libre de
+	// su anillo, como lo calcula la simulación); hasDeposit, si lo tiene.
+	deposits   []world.Tile
+	hasDeposit []bool
+	labels     []int32
+}
+
+func newReachCheck(w *world.World, existing []world.Tile, reach Reach) *reachCheck {
+	r := &reachCheck{w: w, existing: existing, reach: reach,
+		deposits: make([]world.Tile, len(existing)), hasDeposit: make([]bool, len(existing))}
+	for i, c := range existing {
+		r.deposits[i], r.hasDeposit[i] = depositOf(w, c)
+	}
+	r.labels = components(w)
+	return r
+}
+
+// ok dice si el candidato tiene una vecina a ≤ MaxNeighborTiles con ruta entre
+// los depósitos. Las vecinas, de la más cercana a la más lejana y, a igual
+// distancia, en el orden de existing (menor id primero); basta una.
+func (r *reachCheck) ok(candidate world.Tile) bool {
+	from, ok := depositOf(r.w, candidate)
+	if !ok {
+		return false
+	}
+	near := make([]int, 0, 8)
+	for i, c := range r.existing {
+		if chebyshev(candidate, c) <= r.reach.MaxNeighborTiles && r.hasDeposit[i] {
+			near = append(near, i)
+		}
+	}
+	sort.SliceStable(near, func(a, b int) bool {
+		return chebyshev(candidate, r.existing[near[a]]) < chebyshev(candidate, r.existing[near[b]])
+	})
+	grid := townGrid{World: r.w, center: candidate}
+	for _, i := range near {
+		to := r.deposits[i]
+		if r.label(from) == 0 || r.label(from) != r.label(to) {
+			continue
+		}
+		_, err := r.reach.Pathfinder.FindPath(context.Background(), grid, from, to, pathfinding.Options{
+			MaxNodes: r.reach.MaxNodes, MaxDistance: r.reach.MaxDistance,
+		})
+		if err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *reachCheck) label(t world.Tile) int32 {
+	return r.labels[int(t.Y)*int(r.w.Width())+int(t.X)]
+}
+
+// depositOf es el depósito de una ciudad con centro en c: el primer tile
+// transitable de su anillo de nacimiento, en el orden de city.SpawnTilesAround
+// (el de City.FirstSpawnTile, que usan la recolección y las caravanas).
+func depositOf(w *world.World, c world.Tile) (world.Tile, bool) {
+	for _, t := range city.SpawnTilesAround(c) {
+		if w.IsWalkable(t.X, t.Y) {
+			return t, true
+		}
+	}
+	return world.Tile{}, false
+}
+
+// townGrid es el mundo con la zona urbana del candidato ya bloqueada: la ruta
+// de la caravana no podrá cruzarla cuando la ciudad exista.
+type townGrid struct {
+	*world.World
+	center world.Tile
+}
+
+func (g townGrid) IsWalkable(x, y int32) bool {
+	if chebyshev(g.center, world.Tile{X: x, Y: y}) <= townCenterRadius {
+		return false
+	}
+	return g.World.IsWalkable(x, y)
+}
+
+// components etiqueta las componentes conexas en cuatro direcciones de los
+// tiles transitables (0 = no transitable), en orden fijo de filas.
+func components(w *world.World) []int32 {
+	width, height := w.Width(), w.Height()
+	labels := make([]int32, int(width)*int(height))
+	queue := make([]int32, 0, 1024)
+	next := int32(0)
+	for y := int32(0); y < height; y++ {
+		for x := int32(0); x < width; x++ {
+			i := y*width + x
+			if labels[i] != 0 || !w.IsWalkable(x, y) {
+				continue
+			}
+			next++
+			labels[i] = next
+			queue = append(queue[:0], i)
+			for k := 0; k < len(queue); k++ {
+				cx, cy := queue[k]%width, queue[k]/width
+				for _, d := range fourNeighbours {
+					nx, ny := cx+d[0], cy+d[1]
+					if nx < 0 || ny < 0 || nx >= width || ny >= height {
+						continue
+					}
+					j := ny*width + nx
+					if labels[j] != 0 || !w.IsWalkable(nx, ny) {
+						continue
+					}
+					labels[j] = next
+					queue = append(queue, j)
+				}
+			}
+		}
+	}
+	return labels
 }
 
 // isViable comprueba que un tile sirve como centro de ciudad.

@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"hash/fnv"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -27,9 +28,11 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
+	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
 	"github.com/empires-online/empires-online/services/game-server/internal/httpapi"
+	"github.com/empires-online/empires-online/services/game-server/internal/pathfinding"
 	"github.com/empires-online/empires-online/services/game-server/internal/persistence/memory"
 	"github.com/empires-online/empires-online/services/game-server/internal/persistence/postgres"
 )
@@ -446,4 +449,68 @@ func TestLosLogsDeLaFundacionNoContienenSecretos(t *testing.T) {
 	} {
 		assert.False(t, strings.Contains(todo, prohibido), "los logs contienen %s", nombre)
 	}
+}
+
+// semillaDeNombre es la semilla de la fundación para un nombre: FNV-1a de 64
+// bits, la misma que hashSeed en internal/httpapi.
+func semillaDeNombre(nombre string) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(nombre))
+	return h.Sum64()
+}
+
+// INV-CITY-019 y RN-CITY-024 por el listener interno: el segundo jugador nace a
+// 96 tiles o menos del primero y con ruta de caravana entre los depósitos,
+// aunque la búsqueda de antes lo habría fundado más lejos.
+func TestElSegundoJugadorNaceAlAlcanceDelPrimero(t *testing.T) {
+	store, ctx := newTestStore(t)
+	players, cities, _, _, _ := newRepos(store)
+	w := mundoDeFundacion(t, 256)
+	f := montarFundacion(t, store, w, city.EraStone, make(chan simulation.Command, 4))
+
+	centroDe := func(nombre string) world.Tile {
+		t.Helper()
+		id := uuid.New()
+		rec := f.fundar(t, f.interno, id, cuerpo(id, nombre))
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		p, err := players.GetByUsername(ctx, nombre)
+		require.NoError(t, err)
+		c, err := cities.GetByOwner(ctx, p.ID)
+		require.NoError(t, err)
+		centro := world.Tile{X: c.CenterX, Y: c.CenterY}
+		// Lo que hace IntroducePlayer en la simulación: la zona urbana bloqueada.
+		w.SetBlocked(centro.X-1, centro.Y-1, centro.X+1, centro.Y+1, true)
+		return centro
+	}
+	primero := centroDe("alcance_uno")
+
+	// Sin la regla, el segundo nacería lejos del primero: la regla es la que lo acerca.
+	antes, err := founding.FindSite(w, []world.Tile{primero}, semillaDeNombre("alcance_dos"),
+		player.InitialVillagers, nil, founding.Reach{})
+	require.NoError(t, err)
+	require.Greater(t, chebyshevDe(antes.Center, primero), int32(96))
+
+	segundo := centroDe("alcance_dos")
+	assert.LessOrEqual(t, chebyshevDe(segundo, primero), int32(96))
+	assert.GreaterOrEqual(t, chebyshevDe(segundo, primero), int32(24))
+
+	deposito := func(c world.Tile) world.Tile {
+		cc := city.City{CenterX: c.X, CenterY: c.Y}
+		d, ok := cc.FirstSpawnTile(w.IsWalkable)
+		require.True(t, ok)
+		return d
+	}
+	_, err = pathfinding.NewAStar(50_000, 256).FindPath(ctx, w, deposito(segundo), deposito(primero), pathfinding.Options{})
+	assert.NoError(t, err, "hay ruta de caravana entre los dos depósitos")
+}
+
+func chebyshevDe(a, b world.Tile) int32 {
+	dx, dy := a.X-b.X, a.Y-b.Y
+	if dx < 0 {
+		dx = -dx
+	}
+	if dy < 0 {
+		dy = -dy
+	}
+	return max(dx, dy)
 }

@@ -664,6 +664,67 @@ no se cuenta) y el golden `TestGoldenCaravanasDelTratoALaLlegada` (la población
 
 ---
 
+<a id="inv-city-019"></a>
+## INV-CITY-019 — Una ciudad nueva nace al alcance de una caravana de alguna vecina
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E30 |
+| Política ante violación | REJECT del candidato en la fundación (se prueba el siguiente de la espiral) |
+| Cobertura | **Cubierto** por `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`, `TestElTopeDelPathfindingCortaElAlcance`, `TestLasVecinasSePruebanDeLaMasCercanaYEmpatanPorId`, `TestElMundoVacioFundaComoAntes`, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes` y `TestLaBusquedaConAlcanceEsDeterminista` (unit, `internal/game/founding`) y `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integration) |
+
+**Enunciado.** Toda ciudad fundada cuando ya había al menos otra en el mundo tiene, en el instante de fundarse, una
+ciudad vecina a una distancia de Chebyshev entre centros ≤ `EO_FOUNDING_MAX_NEIGHBOR_TILES` y una ruta entre los
+depósitos de las dos dentro de los topes del pathfinding (`EO_PATHFINDING_MAX_DISTANCE` y `EO_PATHFINDING_MAX_NODES`),
+salvo que ningún sitio del mundo que cumpla las demás reglas de emplazamiento la tuviera.
+
+**Razón.** Desde E14 nadie pasa de Bronce sin bienes de otras civilizaciones, y un bien ajeno sólo llega en una
+caravana, que pide una ruta entre depósitos (`RN-CARAVAN-002`). Una ciudad que nace sin ninguna vecina a la que llegue
+una caravana no puede avanzar de era por cómo cayó en el mapa, algo que el jugador no elige: la ejecución larga de E29
+lo encontró ([milestones.md](../roadmap/milestones.md) §E29). La fundación es el único momento en que se decide dónde
+está una ciudad, y después no se reubica ([INV-CITY-007](#inv-city-007)).
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — `founding.FindSite` comprueba la condición de alcance (`RN-CITY-024`) la última, para un candidato que
+  ya cumple las demás reglas, probando las vecinas a ≤ `EO_FOUNDING_MAX_NEIGHBOR_TILES` de la más cercana a la más
+  lejana (empate: menor id) con la misma búsqueda A\* que una caravana (`RN-CITY-025`). Si la espiral entera no da
+  ningún candidato así, repite la búsqueda sin la condición: la excepción del enunciado, que nunca hace fallar el alta
+  (`RN-CITY-006`).
+- Las altas simultáneas: la comprobación dentro de la transacción del alta ([INV-CITY-008](#inv-city-008)) sigue
+  siendo sólo la separación. Una ciudad que nace mientras tanto sólo añade vecinas, y su 3 × 3 sólo cortaría una
+  ruta que pasara justo por él: no se repite el A\* bajo el cerrojo (precisión de la spec, §9.1).
+
+**Cómo se verifica.**
+
+- `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina` (unit) — la espiral que sin la regla funda a 160 tiles de la única
+  ciudad funda a 96 o menos, con ruta. Compara contra el 96 literal de esta ficha.
+- `TestUnCandidatoSinRutaSeSalta` (unit) — con un lago de lado a lado, los candidatos de la otra orilla a 70 tiles
+  se saltan y la ciudad nace en la orilla de la vecina.
+- `TestElTopeDelPathfindingCortaElAlcance` (unit) — con un paso por el lago, la otra orilla vale con 50 000 nodos y
+  no con 2 000: la ruta es la de la caravana, con sus topes.
+- `TestLasVecinasSePruebanDeLaMasCercanaYEmpatanPorId` (unit) — el orden de `RN-CITY-025`, la vecina a 97 sin probar
+  y la primera con ruta basta.
+- `TestElMundoVacioFundaComoAntes` y `TestUnaIslaSinSitioAlAlcanceFundaComoAntes` (unit) — la excepción: sin
+  vecinas, o sin ningún sitio al alcance, funda donde antes y sin `ErrNoSite`.
+- `TestLaBusquedaConAlcanceEsDeterminista` (unit) — `RN-CITY-005` con la regla, sobre terreno generado.
+- `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integration) — por el listener interno, el segundo jugador nace a
+  96 o menos del primero con ruta entre depósitos, cuando la búsqueda de antes lo habría fundado más lejos.
+- **Verificado por mutación** (2026-11-22, restaurado desde una copia y comprobado con `cmp`): con la condición
+  desactivada en `FindSite` caen `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`,
+  `TestElTopeDelPathfindingCortaElAlcance` y `TestLaBusquedaConAlcanceEsDeterminista`; aceptando cualquier vecina sin
+  el A\*, `TestElTopeDelPathfindingCortaElAlcance` y `TestLasVecinasSePruebanDeLaMasCercanaYEmpatanPorId`; sin la
+  búsqueda de reserva, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes`; y con la regla apagada en `internal/httpapi`,
+  `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (el segundo nace a 98).
+
+**Violación en runtime.** No hay detección después de fundar: la propiedad es del instante del alta, y las ciudades
+y el terreno no se mueven. Una ciudad antigua, de antes de E30, puede no cumplirla y no es una violación: el
+invariante habla de las fundaciones posteriores.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -686,3 +747,4 @@ no se cuenta) y el golden `TestGoldenCaravanasDelTratoALaLlegada` (la población
 | INV-CITY-016 | `internal/game/simulation` | [INV-PERSIST-002](persistence.md#inv-persist-002) |
 | INV-CITY-017 | `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-CITY-002](#inv-city-002), [RN-ECON-010](../specs/economy-wood.md) |
 | INV-CITY-018 | `internal/domain/advance`, `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-003](#inv-city-003), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) |
+| INV-CITY-019 | `internal/game/founding`, `internal/httpapi` | [INV-CITY-007](#inv-city-007), [INV-CITY-008](#inv-city-008), [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) |

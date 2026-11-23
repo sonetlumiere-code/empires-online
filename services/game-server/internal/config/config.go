@@ -137,6 +137,12 @@ type Config struct {
 	PathfindingMaxNodes    int
 	PathfindingMaxDistance int32
 
+	// FoundingMaxNeighborTiles: una ciudad nueva nace a esta distancia de
+	// Chebyshev, como mucho, de alguna existente y con ruta de caravana hasta
+	// ella (SPEC-TRADE-REACH, RN-CITY-024). El mínimo es la separación entre
+	// ciudades (24): con menos no cabría ningún sitio.
+	FoundingMaxNeighborTiles int32
+
 	WSMaxMessageBytes int64
 	WSRateLimitPerSec int
 	WSRateLimitBurst  int
@@ -278,6 +284,8 @@ func Load() (Config, error) {
 
 		PathfindingMaxNodes:    v.intRange("EO_PATHFINDING_MAX_NODES", 50000, 100, 10_000_000),
 		PathfindingMaxDistance: int32(v.intRange("EO_PATHFINDING_MAX_DISTANCE", 256, 1, 65536)),
+
+		FoundingMaxNeighborTiles: int32(v.intRange("EO_FOUNDING_MAX_NEIGHBOR_TILES", 96, 24, 65536)),
 
 		WSMaxMessageBytes:   int64(v.intRange("EO_WS_MAX_MESSAGE_BYTES", 16384, 256, 1<<22)),
 		WSRateLimitPerSec:   v.intRange("EO_WS_RATE_LIMIT_PER_SECOND", 20, 1, 10000),

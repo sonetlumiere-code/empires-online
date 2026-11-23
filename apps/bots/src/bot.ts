@@ -536,8 +536,15 @@ export class Bot {
       if (p) {
         this.pending.delete(m.requestId);
         const code = m.payload.code;
+        const before = this.memory.unreachablePlayers;
         this.memory = onRejected(this.memory, p.command, code, nowMs, this.deps.profile);
         this.emit('rejected', { type: p.command.type, key: p.command.key, code });
+        // Una pareja sin ruta se apunta una vez: desde ahora queda apartada (RN-BOT-013).
+        for (const playerId of this.memory.unreachablePlayers) {
+          if (before.includes(playerId)) continue;
+          const name = this.deps.directory.list().find((b) => b.playerId === playerId)?.name ?? playerId;
+          this.emit('trade', { with: name, status: 'unreachable', code });
+        }
       }
       return;
     }

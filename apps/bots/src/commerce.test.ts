@@ -276,17 +276,40 @@ describe('tratos (§4.2)', () => {
     expect(of(all.commands, 'trade.respond').map((c) => (c as { offerId: number }).offerId)).toEqual([70, 71]);
   });
 
-  it('sin ruta entre depósitos, la pareja se aparta diez minutos', () => {
+  it('RN-BOT-013: sin ruta entre depósitos, la pareja se aparta hasta el final de la ejecución', () => {
     const cmd: Command = {
-      key: 'trade:propose:x',
+      key: `trade:propose:${OTHER_BOT}`,
       type: 'trade.propose',
       playerId: OTHER_BOT,
       give: { resource: 'WINE', amount: 10 },
       want: { resource: 'SPICES', amount: 10 },
     };
-    expect(onRejected(EMPTY_MEMORY, cmd, 'PATH_TOO_LONG', NOW, constructor).tradeCooldowns[OTHER_BOT]).toBe(
-      NOW + constructor.targetCooldownMs,
-    );
+    for (const code of ['PATH_TOO_LONG', 'PATH_NOT_FOUND']) {
+      const mem = onRejected(EMPTY_MEMORY, cmd, code, NOW, constructor);
+      expect(mem.unreachablePlayers).toEqual([OTHER_BOT]);
+      // Un día después, con el tratado y todo lo demás a favor, no le vuelve a proponer.
+      const later = NOW + 24 * 3_600_000;
+      expect(of(decide(bronze({ treaties: [treaty()] }), constructor, mem, later, rng()).commands, 'trade.propose')).toEqual([]);
+      // Un segundo rechazo no la repite.
+      expect(onRejected(mem, cmd, code, later, constructor).unreachablePlayers).toEqual([OTHER_BOT]);
+    }
+    // Otro rechazo (sin tratado) sigue con el enfriamiento de blanco de §5.
+    const noTreaty = onRejected(EMPTY_MEMORY, cmd, 'TREATY_REQUIRED', NOW, constructor);
+    expect(noTreaty.unreachablePlayers).toEqual([]);
+    expect(noTreaty.tradeCooldowns[OTHER_BOT]).toBe(NOW + constructor.targetCooldownMs);
+  });
+
+  it('RN-BOT-013: una aceptación sin ruta aparta también a la pareja, y su oferta se deja caducar', () => {
+    const v = bronze({ tradeOffers: [offer()] });
+    const first = decide(v, constructor, EMPTY_MEMORY, NOW, rng());
+    const accept = of(first.commands, 'trade.respond')[0] as Command;
+    expect(accept).toMatchObject({ offerId: 70, accept: true });
+    const mem = onRejected(first.memory, accept, 'PATH_TOO_LONG', NOW, constructor);
+    expect(mem.unreachablePlayers).toEqual([OTHER_BOT]);
+    const later = NOW + 24 * 3_600_000;
+    expect(of(decide(bronze({ tradeOffers: [offer({ id: 72 })] }), constructor, mem, later, rng()).commands, 'trade.respond')).toEqual([]);
+    // Un rechazo que no es de ruta no aparta a nadie.
+    expect(onRejected(first.memory, accept, 'INSUFFICIENT_RESOURCES', NOW, constructor).unreachablePlayers).toEqual([]);
   });
 
   it('--sin-comercio: ni tratados ni tratos', () => {
@@ -335,6 +358,33 @@ describe('mercado (§4.3)', () => {
     expect(of(commands, 'market.buy')).toEqual([
       expect.objectContaining({ key: 'market:buy:93', offerId: 93, lots: 5 }),
     ]);
+  });
+
+  it('RN-BOT-013: un market.buy sin ruta aparta esa oferta hasta el final, y compra la siguiente', () => {
+    const board = [
+      lot({ id: 93, give: { resource: 'FURS', amount: 10 }, want: { resource: 'WINE', amount: 8 } }),
+      lot({ id: 94, give: { resource: 'SILK', amount: 10 }, want: { resource: 'WINE', amount: 9 } }),
+    ];
+    const v = withMarket({ market: { own: [], board } });
+    const scanned = { ...EMPTY_MEMORY, marketScanAtMs: NOW + 48 * 3_600_000 };
+    const first = decide(v, constructor, scanned, NOW, rng());
+    const buy = of(first.commands, 'market.buy')[0] as Command;
+    expect(buy).toMatchObject({ key: 'market:buy:93', offerId: 93 });
+
+    const mem = onRejected(first.memory, buy, 'PATH_TOO_LONG', NOW, constructor);
+    expect(mem.unreachableOffers).toEqual([93]);
+    // Ya en el despertar siguiente compra la otra, la más barata con ruta, y un día
+    // después la sin ruta sigue fuera.
+    for (const at of [NOW + constructor.rejectCooldownMs + 1, NOW + 24 * 3_600_000]) {
+      expect(of(decide(v, constructor, mem, at, rng()).commands, 'market.buy')).toEqual([
+        expect.objectContaining({ key: 'market:buy:94', offerId: 94 }),
+      ]);
+    }
+    expect(bestPurchase(board, v, v.city, constructor, [93])?.offer.id).toBe(94);
+    // Otro rechazo (la oferta se agotó) sólo pone el enfriamiento corto.
+    const sold = onRejected(first.memory, buy, 'INVALID_TARGET', NOW, constructor);
+    expect(sold.unreachableOffers).toEqual([]);
+    expect(sold.cooldowns['market:buy:93']).toBe(NOW + constructor.rejectCooldownMs);
   });
 
   it('publica lo que le sobra a cambio de un bien ajeno, sin pasar de tres ofertas', () => {

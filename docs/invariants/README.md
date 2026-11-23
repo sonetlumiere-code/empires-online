@@ -198,7 +198,7 @@ Regla de CI **propuesta** (no implementada) para el paso `lint`: un script recor
 
 ## 7. Tabla resumen
 
-**157 invariantes** —155 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en dieciséis familias y catorce archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
+**158 invariantes** —156 vigentes y 2 `DEROGADO`, `INV-GARR-003` e `INV-CITY-009`— repartidos en dieciséis familias y catorce archivos, con una ficha por fila. `Sev` = severidad; `Aplicación` usa los tokens de §4. La columna `Cob.` resume la fila `Cobertura` de cada ficha:
 
 | Marca | Significado |
 |---|---|
@@ -259,6 +259,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-016 | `simulation.Hydrate` no escribe `cities`: es idempotente para la presencia | MEDIO | TEST | ✓ | `TestRehidratarDosVecesNoEscribePresencia` |
 | INV-CITY-017 | `population` es el recuento de unidades vivas más las producciones en curso | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaPoblacionCuentaLasProduccionesEnCurso`, `TestEntrenarReservaLaPlazaYEsIdempotente`, `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad`, `TestLaPoblacionNoCuentaLasCaravanas` |
 | INV-CITY-018 | La era de una ciudad nunca retrocede | ALTO | DB, DOMAIN, TEST | ✓ | `TestElFinDelAvanceSubeElLimiteUnaVez`, `TestUnAvanceDesdeOtraEraSeRechaza`, `TestLaEraNoRetrocede` |
+| INV-CITY-019 | Una ciudad nueva nace al alcance de una caravana de alguna vecina, si había vecinas y algún sitio lo permitía | ALTO | DOMAIN, TEST | ✓ | `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`, `TestElTopeDelPathfindingCortaElAlcance`, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes`, `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integration) |
 
 ### UNIT — [units.md](units.md)
 
@@ -447,9 +448,9 @@ Por severidad:
 | Severidad | Cantidad |
 |---|---|
 | CRITICO | 57 |
-| ALTO | 87 |
+| ALTO | 88 |
 | MEDIO | 11 |
-| **Total** | **155** |
+| **Total** | **156** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -459,7 +460,7 @@ Por familia:
 |---|---|---|---|
 | `INV-WORLD` | 001–006 | 6 | [world.md](world.md) |
 | `INV-PLAYER` | 001–013 | 13 | [player.md](player.md) |
-| `INV-CITY` | 001–018 | 18 | [city.md](city.md) |
+| `INV-CITY` | 001–019 | 19 | [city.md](city.md) |
 | `INV-UNIT` | 001–013 | 13 | [units.md](units.md) |
 | `INV-MOVE` | 001–014 | 14 | [movement.md](movement.md) |
 | `INV-PERSIST` | 001–007 | 7 | [persistence.md](persistence.md) |
@@ -480,15 +481,17 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 155 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 156 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
 | ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **157** | |
+| **Total** | **158** | |
 
-> **157 filas y 157 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **158 filas y 158 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
+
+`INV-CITY-019` se registró el 2026-11-22 con [SPEC-TRADE-REACH](../specs/trade-reach.md), sin ADR, antes de escribir su código, como manda §8, y pasó a ✓ con su implementación ese mismo día, verificado por mutación (cuatro mutaciones de código). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-COMBAT-008` e `INV-COMBAT-009` se registraron el 2026-11-19 con SPEC-SIEGE-ENGINES y [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (cinco mutaciones de código). Ninguna fila queda sin cobertura ni parcial.
 
@@ -537,7 +540,7 @@ Las referencias cruzadas de este catálogo enlazan al archivo de la familia y a�
 |---|---|---|
 | [world.md](world.md) | `INV-WORLD` | 6 |
 | [player.md](player.md) | `INV-PLAYER` | 10 |
-| [city.md](city.md) | `INV-CITY` | 18 |
+| [city.md](city.md) | `INV-CITY` | 19 |
 | [units.md](units.md) | `INV-UNIT` | 13 |
 | [movement.md](movement.md) | `INV-MOVE` | 14 |
 | [persistence.md](persistence.md) | `INV-PERSIST` | 6 |

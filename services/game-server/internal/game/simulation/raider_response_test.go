@@ -72,7 +72,8 @@ func muertesDesde(h *harness, t0 int64) []muerteEn {
 func TestGoldenTresSaqueadoresGananADosGuardias(t *testing.T) {
 	h, t0 := encuentroDeSaqueo(t, 3, 2)
 
-	h.tick() // el primer golpe de saqueo, en el contacto, despierta a los guardias
+	// El primer golpe de saqueo, en el contacto, cae ya en el tick de la orden y
+	// despierta a los guardias.
 	objetivo, ok := h.state.Engaged(guardiaID)
 	require.True(t, ok)
 	assert.Equal(t, guerreroID, objetivo)
@@ -192,6 +193,97 @@ func TestElAsediadorRespondeYNoReanudaElAsedio(t *testing.T) {
 	assert.Equal(t, vida, despues, "la casa no recibe más golpes")
 	assert.Equal(t, unit.StatusIdle, g.Status)
 	assert.Equal(t, world.Tile{X: 20, Y: 38}, g.Tile())
+}
+
+// encuentroDeAsedio monta `asediadores` contra `guardias` como
+// encuentroDeSaqueo, pero con la casa de conAsedio en (20,39): los asediadores
+// del jugador (100, 101, 102), en (19,38), (20,38) y (21,38), ya junto a ella;
+// los guardias del vecino (201, 202), en (19,37) y (20,37). Ordena el asedio a
+// todos en el mismo tick y devuelve el harness y el instante de la orden.
+func encuentroDeAsedio(t *testing.T, asediadores, guardias int) (*harness, int64) {
+	t.Helper()
+	h := newHarness(t)
+	enemigo, ciudad, _ := conAsedio(h, world.Tile{X: 19, Y: 38})
+	for i := 1; i < asediadores; i++ {
+		ponerUnidad(h, guerreroID+int64(i), h.playerID, h.cityID, unit.TypeWarrior,
+			world.Tile{X: 19 + int32(i), Y: 38}, 60)
+	}
+	for i := 0; i < guardias; i++ {
+		ponerUnidad(h, guardiaID+int64(i), enemigo, ciudad.ID, unit.TypeWarrior,
+			world.Tile{X: 19 + int32(i), Y: 37}, 60)
+	}
+	for i := 0; i < asediadores; i++ {
+		h.commands <- simulation.DemolishBuilding{PlayerID: h.playerID, RequestID: uuid.NewString(),
+			UnitID: guerreroID + int64(i), BuildingID: casaID}
+	}
+	t0 := h.clk.NowMs()
+	h.loop.Step(t0)
+	return h, t0
+}
+
+// RN-COMBAT-039 con el radio de guardia (RN-COMBAT-014): el guardia responde al
+// primer golpe de asedio contra 100, y su golpe a 100 despierta también a 101,
+// que asedia la misma casa a dos tiles. Los dos dejan la casa y responden al
+// guardia, cada uno con su puesto en el tile en que asediaba (RN-COMBAT-040).
+func TestElCompaneroQueAsediaAlLadoResponde(t *testing.T) {
+	h, _ := encuentroDeAsedio(t, 2, 1)
+
+	// El tick de la orden: los dos ya están junto a la casa y dan su primer golpe,
+	// y el de 100 despierta al guardia. Nadie ha golpeado aún a los asediadores.
+	objetivo, ok := h.state.Engaged(guardiaID)
+	require.True(t, ok)
+	assert.Equal(t, guerreroID, objetivo)
+	for _, id := range []int64{guerreroID, guerreroID + 1} {
+		_, derriba := h.state.Demolishing(id)
+		require.True(t, derriba, "%d sigue asediando: nadie lo ha golpeado aún", id)
+	}
+
+	h.tick() // el guardia golpea a 100; responden 100 y su compañero
+	for i, puesto := range []world.Tile{{X: 19, Y: 38}, {X: 20, Y: 38}} {
+		id := guerreroID + int64(i)
+		_, derriba := h.state.Demolishing(id)
+		assert.False(t, derriba, "%d deja la casa al responder", id)
+		desde, auto := h.state.Responding(id)
+		require.True(t, auto, "%d responde (RN-COMBAT-039)", id)
+		assert.Equal(t, puesto, desde, "el puesto de %d es el tile en que asediaba", id)
+		objetivo, _ := h.state.Engaged(id)
+		assert.Equal(t, guardiaID, objetivo, "%d responde al guardia", id)
+	}
+}
+
+// Golden «asedio, 3 contra 2» (bots-trade.md §9): el primer golpe de asedio, en
+// el tick de la orden, despierta a los guardias; su golpe a 100, en el tick
+// siguiente, despierta a los tres asediadores, que dejan la casa tras ese único
+// golpe de cada uno (150 − 3 × 8 = 126) y responden al guardia que golpeó
+// primero. Los ticks son los del golden del saqueo, porque el combate es el
+// mismo: 201 cae a los 3 200 ms, 202 remata a 100 a los 6 100 y cae a los 9 200.
+// Los supervivientes vuelven a su puesto IDLE y la casa no recibe más golpes.
+func TestGoldenTresAsediadoresGananADosGuardias(t *testing.T) {
+	h, t0 := encuentroDeAsedio(t, 3, 2)
+	h.advance(20 * time.Second)
+	assert.Equal(t, []muerteEn{
+		{victima: guardiaID, asesino: guerreroID + 1, ms: 3_200},
+		{victima: guerreroID, asesino: guardia2ID, ms: 6_100},
+		{victima: guardia2ID, asesino: guerreroID + 1, ms: 9_200},
+	}, muertesDesde(h, t0))
+
+	vida, enPie := vidaDe(h, casaID)
+	require.True(t, enPie)
+	assert.Equal(t, int32(126), vida, "un golpe de asedio de cada uno, el del contacto")
+
+	for _, c := range []struct {
+		id   int64
+		hp   int32
+		tile world.Tile
+	}{{guerreroID + 1, 44, world.Tile{X: 20, Y: 38}}, {guerreroID + 2, 60, world.Tile{X: 21, Y: 38}}} {
+		u, vive := h.state.Unit(c.id)
+		require.True(t, vive)
+		assert.Equal(t, c.hp, u.HP)
+		assert.Equal(t, c.tile, u.Tile(), "vuelve a su puesto")
+		assert.Equal(t, unit.StatusIdle, u.Status)
+		_, derriba := h.state.Demolishing(c.id)
+		assert.False(t, derriba, "no reanuda el asedio solo")
+	}
 }
 
 // RN-COMBAT-039 y RN-COMBAT-012: el ariete asedia pero no ataca, así que no
