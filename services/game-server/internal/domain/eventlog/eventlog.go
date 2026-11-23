@@ -98,6 +98,11 @@ const (
 	// oferta y su caducidad. La caducidad no tiene otro jugador.
 	KindMarketSold    Kind = "MARKET_SOLD"
 	KindMarketExpired Kind = "MARKET_EXPIRED"
+	// La caída de una ciudad (SPEC-CITY-FALL Q9): al asaltado, que asaltan su
+	// ciudad; al vencido, que cayó; al vencedor, que la tomó y la arrasó.
+	KindCityAssaulted Kind = "CITY_ASSAULTED"
+	KindCityLost      Kind = "CITY_LOST"
+	KindCityTaken     Kind = "CITY_TAKEN"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -116,6 +121,7 @@ func Kinds() []Kind {
 		KindUnitLostToCastle, KindCastleKill,
 		KindClanWarDeclared, KindClanWarPeaceOffered, KindClanWarEnded,
 		KindMarketSold, KindMarketExpired,
+		KindCityAssaulted, KindCityLost, KindCityTaken,
 	}
 }
 
@@ -136,6 +142,7 @@ func NoticeKinds() []Kind {
 		KindClanAllianceOffered, KindClanAllianceAccepted, KindClanAllianceBreakAnnounced,
 		KindUnitLostToCastle, KindCastleKill,
 		KindClanWarDeclared, KindClanWarPeaceOffered, KindClanWarEnded,
+		KindCityAssaulted, KindCityLost, KindCityTaken,
 	}
 }
 
@@ -212,6 +219,12 @@ const (
 	EventMarketPurchase       = "MarketPurchase"
 	EventMarketOfferWithdrawn = "MarketOfferWithdrawn"
 	EventMarketOfferExpired   = "MarketOfferExpired"
+	// La caída de una ciudad (SPEC-CITY-FALL §6, ADR-050): player_id es el
+	// asaltado (el vencido en la caída) y counterpart_player_id quien asalta
+	// (el vencedor). El comienzo sólo se cuenta al asaltado; la caída, a los
+	// dos. Un asalto roto no se escribe.
+	EventCityAssaultStarted = "CityAssaultStarted"
+	EventCityFell           = "CityFell"
 )
 
 // BreakReasonWar es el motivo de un TreatyBreakAnnounced que abrió una guerra
@@ -238,6 +251,7 @@ func EventTypes() []string {
 		EventClanAllianceProposed, EventClanAllianceAccepted, EventClanAllianceRejected, EventClanAllianceBreakAnnounced,
 		EventClanWarDeclared, EventClanWarPeaceOffered, EventClanWarEnded,
 		EventMarketPurchase, EventMarketOfferExpired,
+		EventCityAssaultStarted, EventCityFell,
 	}
 }
 
@@ -309,6 +323,11 @@ type Event struct {
 	TheirScore int64
 	// Lots, en el mercado: los lotes vendidos o devueltos.
 	Lots int32
+	// FallsAtMs, en el comienzo de un asalto: cuándo cae la ciudad. NewX y
+	// NewY, en la caída: el centro de la ciudad nueva del vencido; X e Y son
+	// el de la arrasada (SPEC-CITY-FALL §6).
+	FallsAtMs  int64
+	NewX, NewY int32
 }
 
 // KillerCastle es el valor de Event.KillerBuildingType de una muerte que causó
@@ -376,6 +395,8 @@ type Entry struct {
 	TheirScore int64
 	// Lots, en el mercado: los lotes vendidos o devueltos.
 	Lots int32
+	// FallsAtMs, en el asalto de una ciudad (SPEC-CITY-FALL §6).
+	FallsAtMs int64
 }
 
 // Classify dice qué entrada da e para viewer y quién es el otro jugador. ok es
@@ -446,6 +467,17 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindTerritoryLost, other, true
 		}
 		return KindTerritoryTaken, other, true
+	case EventCityAssaultStarted:
+		// Al asaltado; a quien asalta no se le cuenta lo que ordenó él.
+		if e.PlayerID == viewer {
+			return KindCityAssaulted, other, true
+		}
+		return "", uuid.Nil, false
+	case EventCityFell:
+		if e.PlayerID == viewer {
+			return KindCityLost, other, true
+		}
+		return KindCityTaken, other, true
 	case EventClanMemberExpelled:
 		// Al expulsado, que le expulsaron; al líder, que expulsó (RN-LOG-001).
 		if e.PlayerID == viewer {
@@ -715,7 +747,7 @@ func (b *Builder) Add(e Event) bool {
 	if isTreaty(kind) {
 		k.treatyType = e.TreatyType
 	}
-	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) || isAlliance(kind) || isWar(kind) || isMarket(kind) {
+	if isTrade(kind) || isTerritory(kind) || isCaravan(kind) || isAlliance(kind) || isWar(kind) || isMarket(kind) || isCityFall(kind) {
 		k.offerID = e.ID // cada trato, cada suceso de un territorio, cada caravana, cada alianza y cada guerra, su entrada
 	}
 	if i, abierto := b.open[k]; abierto && e.AtMs >= b.entries[i].FirstAtMs-b.gapMs {
@@ -761,6 +793,14 @@ func (b *Builder) Add(e Event) bool {
 	case KindTerritoryClaimed, KindTerritoryLost, KindTerritoryTaken:
 		entry.TerritoryID, entry.TerritoryName = e.TerritoryID, e.TerritoryName
 		entry.ClanTag = ClanTagFor(b.viewer, e)
+		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
+	case KindCityAssaulted:
+		entry.FallsAtMs = e.FallsAtMs
+		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
+	case KindCityLost:
+		// Dónde refundó quien lee (SPEC-CITY-FALL §4.6).
+		entry.X, entry.Y, entry.HasTile = e.NewX, e.NewY, e.HasTile
+	case KindCityTaken:
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost:
 		// La sigla del clan cuyo liderazgo cambió (SPEC-CLAN-GOVERNANCE §4.6).
@@ -810,6 +850,11 @@ func (b *Builder) Entries() []Entry { return b.entries }
 func (b *Builder) MinID() int64 { return b.minID }
 
 func isMarket(k Kind) bool { return k == KindMarketSold || k == KindMarketExpired }
+
+// isCityFall: cada asalto y cada caída, su entrada.
+func isCityFall(k Kind) bool {
+	return k == KindCityAssaulted || k == KindCityLost || k == KindCityTaken
+}
 
 func isTreaty(k Kind) bool {
 	switch k {

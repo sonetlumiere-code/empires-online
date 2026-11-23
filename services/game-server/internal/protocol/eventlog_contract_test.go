@@ -65,7 +65,7 @@ func TestLaPaginaDelRegistroEsLaDelEsquema(t *testing.T) {
 		TerritoryID: &id, TerritoryName: "Llanura", ClanTag: "LOB",
 		Cargo: []protocol.ResourceAmount{{Resource: "WINE", Amount: 5}},
 		// SPEC-CLAN-WARS §6.
-		BreakReason: "WAR", StartsAtMs: &n, WarResult: "WON", WarReason: "TIMEOUT", OurScore: &n, TheirScore: &n,
+		BreakReason: "WAR", StartsAtMs: &n, WarResult: "WON", WarReason: "TIMEOUT", OurScore: &n, TheirScore: &n, FallsAtMs: &n,
 		// SPEC-MARKETS §6.
 		Lots: &lotes,
 	}
@@ -104,7 +104,7 @@ func TestElAvisoEsElDelEsquema(t *testing.T) {
 		UnitType: "VILLAGER", BuildingType: "WALL", Amount: &n, X: &x, Y: &y, TerritoryID: &id, TerritoryName: "Llanura", ClanTag: "LOB",
 		Cargo: []protocol.ResourceAmount{{Resource: "WINE", Amount: 5}},
 		// SPEC-CLAN-WARS §6.
-		StartsAtMs: &n, WarResult: "LOST", WarReason: "SURRENDER", OurScore: &n, TheirScore: &n,
+		StartsAtMs: &n, WarResult: "LOST", WarReason: "SURRENDER", OurScore: &n, TheirScore: &n, FallsAtMs: &n,
 	}
 	require.Equal(t, declaradas, clavesDe(serializado(t, completo)), "con todo, los campos del esquema")
 	minimo := clavesDe(serializado(t, protocol.EventLogNoticePayload{Kind: "UNIT_LOST", AtMs: 1, OtherPlayerID: "x"}))

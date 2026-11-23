@@ -29,7 +29,15 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 		}
 		if e.HasTile {
 			x, y := e.X, e.Y
+			// SPEC-CITY-FALL §4.6: al vencido, dónde refundó.
+			if n.Kind == eventlog.KindCityLost {
+				x, y = e.NewX, e.NewY
+			}
 			p.X, p.Y = &x, &y
+		}
+		if n.Kind == eventlog.KindCityAssaulted && e.FallsAtMs > 0 {
+			at := e.FallsAtMs
+			p.FallsAtMs = &at
 		}
 		// La conquista nombra el territorio (SPEC-TERRITORY-CONQUEST §6).
 		if e.TerritoryID != 0 {

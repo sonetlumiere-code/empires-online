@@ -738,6 +738,33 @@
                         "items": {
                           "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/research/anyOf/0/properties/technology"
                         }
+                      },
+                      "assault": {
+                        "type": "object",
+                        "properties": {
+                          "playerId": {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                          },
+                          "unitId": {
+                            "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                          },
+                          "startedAtMs": {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          },
+                          "endsAtMs": {
+                            "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                          }
+                        },
+                        "required": [
+                          "playerId",
+                          "unitId",
+                          "startedAtMs",
+                          "endsAtMs"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "fallImmuneUntilMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
                       }
                     },
                     "required": [
@@ -1754,10 +1781,73 @@
                 },
                 "besiegedAtMs": {
                   "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                },
+                "assault": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/assault"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "required": [
                 "id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "seq",
+            "ts",
+            "type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/v"
+            },
+            "seq": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/seq"
+            },
+            "ts": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+            },
+            "type": {
+              "type": "string",
+              "const": "city.fallen"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "cityId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                },
+                "ownerPlayerId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                },
+                "byPlayerId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/requestId"
+                },
+                "atMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                }
+              },
+              "required": [
+                "cityId",
+                "ownerPlayerId",
+                "byPlayerId",
+                "atMs"
               ],
               "additionalProperties": false
             }
@@ -2385,7 +2475,10 @@
                           "CLAN_WAR_PEACE_OFFERED",
                           "CLAN_WAR_ENDED",
                           "MARKET_SOLD",
-                          "MARKET_EXPIRED"
+                          "MARKET_EXPIRED",
+                          "CITY_ASSAULTED",
+                          "CITY_LOST",
+                          "CITY_TAKEN"
                         ]
                       },
                       "firstAtMs": {
@@ -2518,7 +2611,10 @@
                         "minimum": 0
                       },
                       "theirScore": {
-                        "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                        "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/ourScore"
+                      },
+                      "fallsAtMs": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
                       }
                     },
                     "required": [
@@ -2653,7 +2749,10 @@
                     "CASTLE_KILL",
                     "CLAN_WAR_DECLARED",
                     "CLAN_WAR_PEACE_OFFERED",
-                    "CLAN_WAR_ENDED"
+                    "CLAN_WAR_ENDED",
+                    "CITY_ASSAULTED",
+                    "CITY_LOST",
+                    "CITY_TAKEN"
                   ]
                 },
                 "atMs": {
@@ -2721,16 +2820,19 @@
                   "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
                 },
                 "warResult": {
-                  "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/warResult"
+                  "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/warResult"
                 },
                 "warReason": {
-                  "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/warReason"
+                  "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/warReason"
                 },
                 "ourScore": {
-                  "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                  "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/ourScore"
                 },
                 "theirScore": {
-                  "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                  "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/ourScore"
+                },
+                "fallsAtMs": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
                 }
               },
               "required": [
@@ -2942,7 +3044,7 @@
                         ]
                       },
                       "lastBody": {
-                        "$ref": "#/definitions/ServerMessage/anyOf/24/properties/payload/properties/message/properties/body"
+                        "$ref": "#/definitions/ServerMessage/anyOf/25/properties/payload/properties/message/properties/body"
                       },
                       "lastFromMe": {
                         "type": "boolean"
@@ -3077,7 +3179,7 @@
                 "messages": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/ServerMessage/anyOf/24/properties/payload/properties/message"
+                    "$ref": "#/definitions/ServerMessage/anyOf/25/properties/payload/properties/message"
                   }
                 },
                 "readUpToId": {
@@ -3379,10 +3481,10 @@
                                 ]
                               },
                               "ourScore": {
-                                "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                                "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/ourScore"
                               },
                               "theirScore": {
-                                "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                                "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/ourScore"
                               },
                               "peaceOfferedByUs": {
                                 "type": "boolean"
@@ -3529,13 +3631,13 @@
                 "members": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/members/items"
+                    "$ref": "#/definitions/ServerMessage/anyOf/28/properties/payload/properties/clan/anyOf/0/properties/members/items"
                   }
                 },
                 "territories": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/territories/items"
+                    "$ref": "#/definitions/ServerMessage/anyOf/28/properties/payload/properties/clan/anyOf/0/properties/territories/items"
                   }
                 },
                 "alliances": {
@@ -3590,7 +3692,7 @@
                         "type": "boolean"
                       },
                       "status": {
-                        "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/wars/items/properties/status"
+                        "$ref": "#/definitions/ServerMessage/anyOf/28/properties/payload/properties/clan/anyOf/0/properties/wars/items/properties/status"
                       },
                       "startsAtMs": {
                         "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
@@ -3606,10 +3708,10 @@
                         ]
                       },
                       "ourScore": {
-                        "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                        "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/ourScore"
                       },
                       "theirScore": {
-                        "$ref": "#/definitions/ServerMessage/anyOf/20/properties/payload/properties/entries/items/properties/ourScore"
+                        "$ref": "#/definitions/ServerMessage/anyOf/21/properties/payload/properties/entries/items/properties/ourScore"
                       }
                     },
                     "required": [
@@ -3627,7 +3729,7 @@
                   }
                 },
                 "warRecord": {
-                  "$ref": "#/definitions/ServerMessage/anyOf/27/properties/payload/properties/clan/anyOf/0/properties/warRecord"
+                  "$ref": "#/definitions/ServerMessage/anyOf/28/properties/payload/properties/clan/anyOf/0/properties/warRecord"
                 }
               },
               "required": [
@@ -3709,7 +3811,7 @@
                       ]
                     },
                     "body": {
-                      "$ref": "#/definitions/ServerMessage/anyOf/24/properties/payload/properties/message/properties/body"
+                      "$ref": "#/definitions/ServerMessage/anyOf/25/properties/payload/properties/message/properties/body"
                     },
                     "sentAtMs": {
                       "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
@@ -3770,7 +3872,7 @@
                 "messages": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/ServerMessage/anyOf/29/properties/payload/properties/message"
+                    "$ref": "#/definitions/ServerMessage/anyOf/30/properties/payload/properties/message"
                   }
                 },
                 "readUpToId": {

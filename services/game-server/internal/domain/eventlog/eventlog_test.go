@@ -187,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 42, "desde E26, los dos del mercado")
+	assert.Len(t, vistos, 45, "desde E31, los tres de la caída de una ciudad")
 }
 
 // SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
@@ -365,6 +365,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 		eventlog.KindClanAllianceOffered, eventlog.KindClanAllianceAccepted, eventlog.KindClanAllianceBreakAnnounced,
 		eventlog.KindUnitLostToCastle, eventlog.KindCastleKill,
 		eventlog.KindClanWarDeclared, eventlog.KindClanWarPeaceOffered, eventlog.KindClanWarEnded,
+		eventlog.KindCityAssaulted, eventlog.KindCityLost, eventlog.KindCityTaken,
 	}, eventlog.NoticeKinds())
 	for _, k := range eventlog.NoticeKinds() {
 		assert.True(t, kinds[k], "%s es un tipo de entrada", k)
@@ -374,7 +375,7 @@ func TestSoloSeAvisanLosTiposDeCombateYDeTerritorio(t *testing.T) {
 		case "UnitKilled", "CityPillaged", "BuildingDestroyed", "TerritoryClaimStarted", "TerritoryControlChanged",
 			"CaravanCaptured", "CaravanIntercepted", "CaravanLost", "ClanMemberExpelled", "ClanLeaderChanged",
 			"ClanAllianceProposed", "ClanAllianceAccepted", "ClanAllianceBreakAnnounced",
-			"ClanWarDeclared", "ClanWarPeaceOffered", "ClanWarEnded":
+			"ClanWarDeclared", "ClanWarPeaceOffered", "ClanWarEnded", "CityAssaultStarted", "CityFell":
 			continue
 		}
 		for _, by := range []uuid.UUID{yo, otro, uuid.Nil} {
@@ -717,4 +718,45 @@ func TestLosDerribosSeAgrupanPorTipoDeEdificio(t *testing.T) {
 	require.Len(t, avisos, 1, "sólo el autor recibe el aviso del derribo")
 	assert.Equal(t, otro, avisos[0].To)
 	assert.Equal(t, eventlog.KindHouseDestroyed, avisos[0].Kind)
+}
+
+// SPEC-CITY-FALL Q9: el asalto sólo al asaltado; la caída a los dos, y cada una
+// su entrada, con dónde refundó el vencido y dónde estaba la ciudad arrasada.
+func TestLaCaidaDeUnaCiudadEnElRegistroYEnLosAvisos(t *testing.T) {
+	asalto := eventlog.Event{ID: 1, Type: eventlog.EventCityAssaultStarted, PlayerID: yo, Counterpart: otro, AtMs: 100,
+		FallsAtMs: 900_100, X: 150, Y: 90, HasTile: true}
+	k, other, ok := eventlog.Classify(yo, asalto)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindCityAssaulted, k)
+	assert.Equal(t, otro, other)
+	_, _, ok = eventlog.Classify(otro, asalto)
+	assert.False(t, ok, "a quien asalta no se le cuenta lo que ordenó")
+	require.Equal(t, []eventlog.Notice{{To: yo, Kind: eventlog.KindCityAssaulted, Other: otro}}, eventlog.Notices(asalto))
+
+	caida := eventlog.Event{ID: 2, Type: eventlog.EventCityFell, PlayerID: yo, Counterpart: otro, AtMs: 900_100,
+		X: 150, Y: 90, NewX: 300, NewY: 400, HasTile: true}
+	k, _, _ = eventlog.Classify(yo, caida)
+	assert.Equal(t, eventlog.KindCityLost, k)
+	k, _, _ = eventlog.Classify(otro, caida)
+	assert.Equal(t, eventlog.KindCityTaken, k)
+	assert.Len(t, eventlog.Notices(caida), 2)
+	_, _, ok = eventlog.Classify(tercero, caida)
+	assert.False(t, ok, "un tercero no ve nada (INV-SEC-009)")
+
+	b := eventlog.NewBuilder(yo, 0, time.Hour, 10)
+	otraCaida := caida
+	otraCaida.ID = 3
+	for _, e := range []eventlog.Event{otraCaida, caida, asalto} {
+		require.True(t, b.Add(e))
+	}
+	entries := b.Entries()
+	require.Len(t, entries, 3, "cada asalto y cada caída, su entrada")
+	assert.Equal(t, eventlog.KindCityLost, entries[0].Kind)
+	assert.Equal(t, int32(300), entries[0].X, "al vencido, el centro de su ciudad nueva")
+	assert.Equal(t, int32(400), entries[0].Y)
+	assert.Equal(t, int64(900_100), entries[2].FallsAtMs)
+
+	tb := eventlog.NewBuilder(otro, 0, time.Hour, 10)
+	require.True(t, tb.Add(caida))
+	assert.Equal(t, int32(150), tb.Entries()[0].X, "al vencedor, la ciudad arrasada")
 }

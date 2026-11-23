@@ -215,6 +215,11 @@ type eventPayload struct {
 	TheirScore int64  `json:"theirScore"`
 	// Lots, en el mercado (SPEC-MARKETS §6).
 	Lots int32 `json:"lots"`
+	// La caída de una ciudad (SPEC-CITY-FALL §6): cuándo cae, en el comienzo
+	// del asalto; el centro de la ciudad nueva del vencido, en la caída.
+	FallsAtMs int64  `json:"fallsAtMs"`
+	NewX      *int32 `json:"newX"`
+	NewY      *int32 `json:"newY"`
 }
 
 // payloadLine es una línea de un trato en el payload.
@@ -276,6 +281,10 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	}
 	e.StartsAtMs, e.WarResult, e.OurScore, e.TheirScore = p.StartsAtMs, p.Result, p.OurScore, p.TheirScore
 	e.Lots = p.Lots
+	e.FallsAtMs = p.FallsAtMs
+	if p.NewX != nil && p.NewY != nil {
+		e.NewX, e.NewY = *p.NewX, *p.NewY
+	}
 	return nil
 }
 
@@ -301,7 +310,7 @@ func (r *EventLogRepo) citiesOf(ctx context.Context, entries []eventlog.Entry) (
 	}
 	rows, err := r.store.pool.Query(ctx,
 		`SELECT DISTINCT ON (owner_player_id) owner_player_id, id, name
-		   FROM cities WHERE owner_player_id = ANY($1)
+		   FROM cities WHERE owner_player_id = ANY($1) AND fallen_at IS NULL
 		  ORDER BY owner_player_id, id`, others)
 	if err != nil {
 		return nil, fmt.Errorf("leer las ciudades del registro: %w", normalize(err))
@@ -370,6 +379,11 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	case eventlog.KindTradeOfferExpired:
 		mine := e.ProposedByMe
 		v.ProposedByMe = &mine
+	case eventlog.KindCityAssaulted:
+		if e.FallsAtMs > 0 {
+			at := e.FallsAtMs
+			v.FallsAtMs = &at
+		}
 	}
 	if len(e.TradeGive) > 0 || len(e.TradeGet) > 0 {
 		v.TradeGive, v.TradeGet = fromLines(e.TradeGive), fromLines(e.TradeGet)
@@ -378,7 +392,8 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 	case eventlog.KindUnitLost, eventlog.KindEnemyKilled, eventlog.KindUnitLostToCastle, eventlog.KindCastleKill,
 		eventlog.KindPillaged, eventlog.KindPillageDone,
 		eventlog.KindHouseLost, eventlog.KindHouseDestroyed,
-		eventlog.KindCaravanArrived, eventlog.KindCaravanCaptured, eventlog.KindCaravanIntercepted, eventlog.KindCaravanLost:
+		eventlog.KindCaravanArrived, eventlog.KindCaravanCaptured, eventlog.KindCaravanIntercepted, eventlog.KindCaravanLost,
+		eventlog.KindCityAssaulted, eventlog.KindCityLost, eventlog.KindCityTaken:
 	default:
 		v.TreatyType = e.TreatyType
 	}

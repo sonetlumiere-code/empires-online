@@ -306,6 +306,22 @@ export const UnitClaim = z.object({
 }).strict();
 
 /**
+ * Una unidad que derriba (no el ariete) asalta una ciudad en brecha (SPEC-CITY-FALL
+ * §4.1): va al anillo de la ciudad, planta el estandarte y, si aguanta el plazo, la
+ * ciudad cae. Sólo qué unidad y qué ciudad: el plazo y si se puede los decide el
+ * servidor. Ver ../../../docs/specs/city-fall.md
+ */
+export const UnitAssault = z.object({
+  v: V,
+  type: z.literal('unit.assault'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+    cityId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
  * Propone un tratado a otro jugador (SPEC-DIPLOMACY). La guarnición la fija el
  * tipo y el servidor decide si se puede. Ver ../../../docs/specs/diplomacy.md
  */
@@ -735,6 +751,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   UnitPillage,
   UnitDemolish,
   UnitClaim,
+  UnitAssault,
   CityCraft,
   FactionJoin,
   TreatyPropose,
@@ -792,6 +809,7 @@ export type UnitAttack = z.infer<typeof UnitAttack>;
 export type UnitPillage = z.infer<typeof UnitPillage>;
 export type UnitDemolish = z.infer<typeof UnitDemolish>;
 export type UnitClaim = z.infer<typeof UnitClaim>;
+export type UnitAssault = z.infer<typeof UnitAssault>;
 export type TreatyPropose = z.infer<typeof TreatyPropose>;
 export type TreatyRespond = z.infer<typeof TreatyRespond>;
 export type TreatyCancel = z.infer<typeof TreatyCancel>;
@@ -880,6 +898,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'market.buy',
   'market.cancel',
   'market.list',
+  'unit.assault',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

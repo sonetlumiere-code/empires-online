@@ -237,7 +237,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 		protocol.TypeUnitMove, protocol.TypeUnitCancelMove,
 		protocol.TypeUnitGarrison, protocol.TypeUnitUngarrison,
 		protocol.TypeUnitGather, protocol.TypeCityBuild, protocol.TypeCityTrain, protocol.TypeUnitAttack, protocol.TypeUnitPillage,
-		protocol.TypeUnitDemolish, protocol.TypeUnitClaim,
+		protocol.TypeUnitDemolish, protocol.TypeUnitClaim, protocol.TypeUnitAssault,
 		protocol.TypeTreatyPropose, protocol.TypeTreatyRespond, protocol.TypeTreatyCancel,
 		protocol.TypeFactionJoin,
 		protocol.TypeSessionPing, protocol.TypeSessionView,
@@ -252,8 +252,9 @@ func TestCatalogoDeComandosEsCerrado(t *testing.T) {
 	// clan.promote y clan.transfer (SPEC-CLAN-GOVERNANCE); 44 desde E21, con
 	// los tres de las alianzas (SPEC-CLAN-ALLIANCES); 47 desde E24, con los tres
 	// de las guerras (SPEC-CLAN-WARS); 48 desde E25, con city.research; 52
-	// desde E26, con los cuatro del mercado (SPEC-MARKETS).
-	require.Len(t, protocol.ClientMessageTypes, 52)
+	// desde E26, con los cuatro del mercado (SPEC-MARKETS); 53 desde E31, con
+	// unit.assault (SPEC-CITY-FALL).
+	require.Len(t, protocol.ClientMessageTypes, 53)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)

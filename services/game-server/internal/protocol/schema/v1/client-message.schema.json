@@ -645,6 +645,44 @@
             },
             "type": {
               "type": "string",
+              "const": "unit.assault"
+            },
+            "requestId": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/requestId"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                },
+                "cityId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
+                }
+              },
+              "required": [
+                "unitId",
+                "cityId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "type",
+            "requestId",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "#/definitions/ClientMessage/anyOf/0/properties/v"
+            },
+            "type": {
+              "type": "string",
               "const": "city.craft"
             },
             "requestId": {
@@ -875,7 +913,7 @@
                   "maxItems": 6
                 },
                 "want": {
-                  "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give"
+                  "$ref": "#/definitions/ClientMessage/anyOf/22/properties/payload/properties/give"
                 }
               },
               "required": [
@@ -986,10 +1024,10 @@
                   "type": "object",
                   "properties": {
                     "resource": {
-                      "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/resource"
+                      "$ref": "#/definitions/ClientMessage/anyOf/22/properties/payload/properties/give/items/properties/resource"
                     },
                     "amount": {
-                      "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/amount"
+                      "$ref": "#/definitions/ClientMessage/anyOf/22/properties/payload/properties/give/items/properties/amount"
                     }
                   },
                   "required": [
@@ -1002,10 +1040,10 @@
                   "type": "object",
                   "properties": {
                     "resource": {
-                      "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/resource"
+                      "$ref": "#/definitions/ClientMessage/anyOf/22/properties/payload/properties/give/items/properties/resource"
                     },
                     "amount": {
-                      "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/amount"
+                      "$ref": "#/definitions/ClientMessage/anyOf/22/properties/payload/properties/give/items/properties/amount"
                     }
                   },
                   "required": [
@@ -1127,10 +1165,10 @@
               "type": "object",
               "properties": {
                 "receive": {
-                  "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/resource"
+                  "$ref": "#/definitions/ClientMessage/anyOf/22/properties/payload/properties/give/items/properties/resource"
                 },
                 "pay": {
-                  "$ref": "#/definitions/ClientMessage/anyOf/21/properties/payload/properties/give/items/properties/resource"
+                  "$ref": "#/definitions/ClientMessage/anyOf/22/properties/payload/properties/give/items/properties/resource"
                 }
               },
               "additionalProperties": false
