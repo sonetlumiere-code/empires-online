@@ -545,6 +545,11 @@ export class GameClient {
     return this.send('unit.claim', forClan ? { unitId, forClan: true } : { unitId });
   }
 
+  /** Una unidad que derriba asalta una ciudad ajena en brecha (SPEC-CITY-FALL §4.1). */
+  assaultCity(unitId: number, cityId: number): string {
+    return this.send('unit.assault', { unitId, cityId });
+  }
+
   demolishBuilding(unitId: number, buildingId: number): string {
     return this.send('unit.demolish', { unitId, buildingId });
   }

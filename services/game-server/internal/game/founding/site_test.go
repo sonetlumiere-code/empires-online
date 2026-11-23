@@ -591,3 +591,42 @@ func TestLasComponentesSonLasDelPathfinder(t *testing.T) {
 	assert.ErrorIs(t, err, pathfinding.ErrPathNotFound)
 	assert.Equal(t, la, labels[int(39)*64+int(0)], "el mismo lado de la pared es una componente")
 }
+
+// RN-CITY-027 (SPEC-CITY-FALL): la ciudad nueva del vencido nace a 64 tiles o
+// más de la caída y de la del vencedor, con el alcance de E30 si se puede; sin
+// la distancia, la espiral que arranca en la propia caída volvería a ella.
+func TestLaRefundacionNaceLejosDeLaCaidaYDelVencedor(t *testing.T) {
+	w := mundoLiso(t, 256, 256, nil)
+	caida, vencedor, tercera := world.Tile{X: 100, Y: 100}, world.Tile{X: 130, Y: 100}, world.Tile{X: 180, Y: 180}
+	levantar(w, vencedor)
+	levantar(w, tercera)
+	enPie := []world.Tile{vencedor, tercera}
+	semilla := semillaEn(w, caida.X, caida.Y)
+
+	sinRegla, err := FindSite(w, enPie, semilla, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	require.Less(t, chebyshev(sinRegla.Center, caida), int32(64), "sin la distancia, vuelve junto a la caída")
+
+	s, err := FindRefoundSite(w, enPie, []world.Tile{caida, vencedor}, 64, semilla, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	verificarSitio(t, w, s, 3)
+	assert.GreaterOrEqual(t, chebyshev(s.Center, caida), int32(64))
+	assert.GreaterOrEqual(t, chebyshev(s.Center, vencedor), int32(64))
+	cerca := chebyshev(s.Center, vencedor) <= vecindadDeLaSpec || chebyshev(s.Center, tercera) <= vecindadDeLaSpec
+	assert.True(t, cerca, "con el alcance de E30: nace a 96 o menos de una ciudad en pie")
+
+	otra, err := FindRefoundSite(w, enPie, []world.Tile{caida, vencedor}, 64, semilla, 3, nil, alcanceDeLaSpec())
+	require.NoError(t, err)
+	assert.Equal(t, s, otra, "determinista (RN-CITY-005)")
+}
+
+// RN-CITY-027: si ningún sitio del mundo cumple la distancia, se funda donde la
+// búsqueda de siempre: el vencido nunca se queda sin ciudad.
+func TestSinSitioLejosLaRefundacionNaceComoUnAlta(t *testing.T) {
+	w := mundoLiso(t, 64, 64, nil)
+	caida := world.Tile{X: 32, Y: 32}
+	s, err := FindRefoundSite(w, nil, []world.Tile{caida}, 64, semillaEn(w, 32, 32), 3, nil, Reach{})
+	require.NoError(t, err)
+	verificarSitio(t, w, s, 3)
+	assert.Less(t, chebyshev(s.Center, caida), int32(64), "en un mundo de 64 × 64 no hay sitio a 64")
+}

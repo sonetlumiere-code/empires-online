@@ -444,7 +444,7 @@ func citiesOfPlayers(ctx context.Context, db DB, players []uuid.UUID) (map[uuid.
 	}
 	rows, err := db.Query(ctx,
 		`SELECT DISTINCT ON (owner_player_id) owner_player_id, id, name
-		   FROM cities WHERE owner_player_id = ANY($1)
+		   FROM cities WHERE owner_player_id = ANY($1) AND fallen_at IS NULL
 		  ORDER BY owner_player_id, id`, players)
 	if err != nil {
 		return nil, fmt.Errorf("leer las ciudades de los jugadores: %w", normalize(err))

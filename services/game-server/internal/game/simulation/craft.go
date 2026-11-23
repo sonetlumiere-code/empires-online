@@ -141,6 +141,10 @@ func (s *State) hasCompleteWorkshop(cityID int64) bool {
 // cola lo debita y escribe la elaboración (RN-GOODS-004).
 func (s *Simulation) handleCraftGoods(cmd CraftGoods) {
 	c, _ := s.state.City(cmd.CityID)
+	if c != nil && c.OwnerPlayerID == cmd.PlayerID && s.state.CityFalling(c.ID) {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msgCityFalling)
+		return
+	}
 	busy, workshop := false, false
 	stock := func(economy.Resource) *economy.Stock { return nil }
 	if c != nil {

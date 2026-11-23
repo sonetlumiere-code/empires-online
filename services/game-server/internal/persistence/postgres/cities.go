@@ -31,23 +31,26 @@ const cityColumns = `id, owner_player_id, name, center_x, center_y, era, populat
 	  WHERE p.id = cities.owner_player_id) AS faction,
 	(SELECT f.code FROM players p JOIN factions f ON f.id = p.faction_join_id
 	  WHERE p.id = cities.owner_player_id) AS faction_join,
-	(SELECT p.faction_join_at FROM players p WHERE p.id = cities.owner_player_id) AS faction_join_at`
+	(SELECT p.faction_join_at FROM players p WHERE p.id = cities.owner_player_id) AS faction_join_at,
+	created_at`
 
 // GetByID recupera una ciudad.
 func (r *CityRepo) GetByID(ctx context.Context, id int64) (*city.City, error) {
 	return scanCity(r.store.pool.QueryRow(ctx, `SELECT `+cityColumns+` FROM cities WHERE id = $1`, id))
 }
 
-// GetByOwner recupera la ciudad de un jugador. En el MVP cada jugador tiene una.
+// GetByOwner recupera la ciudad en pie de un jugador: cada jugador tiene
+// exactamente una (INV-CITY-020, SPEC-CITY-FALL); las caídas no cuentan.
 func (r *CityRepo) GetByOwner(ctx context.Context, playerID uuid.UUID) (*city.City, error) {
 	return scanCity(r.store.pool.QueryRow(ctx,
-		`SELECT `+cityColumns+` FROM cities WHERE owner_player_id = $1 ORDER BY id LIMIT 1`, playerID))
+		`SELECT `+cityColumns+` FROM cities WHERE owner_player_id = $1 AND fallen_at IS NULL`, playerID))
 }
 
-// ListAll carga todas las ciudades. El mundo del MVP cabe holgadamente en memoria;
-// cuando deje de caber, esta consulta se sustituirá por una carga por región.
+// ListAll carga todas las ciudades en pie: una caída no vuelve a la RAM
+// (ADR-050 §1). El mundo del MVP cabe holgadamente en memoria; cuando deje de
+// caber, esta consulta se sustituirá por una carga por región.
 func (r *CityRepo) ListAll(ctx context.Context) ([]*city.City, error) {
-	rows, err := r.store.pool.Query(ctx, `SELECT `+cityColumns+` FROM cities ORDER BY id`)
+	rows, err := r.store.pool.Query(ctx, `SELECT `+cityColumns+` FROM cities WHERE fallen_at IS NULL ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -76,8 +79,8 @@ func (r *CityRepo) Create(ctx context.Context, db DB, c *city.City) (int64, erro
 	var id int64
 	err := db.QueryRow(ctx,
 		`INSERT INTO cities (owner_player_id, name, center_x, center_y, era,
-		                     population, population_limit, presence_state, last_online_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		                     population, population_limit, presence_state, last_online_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 		 RETURNING id`,
 		c.OwnerPlayerID, c.Name, c.CenterX, c.CenterY, string(c.Era),
 		c.Population, c.PopulationLimit, string(c.PresenceState), c.LastOnlineAt.UTC(),
@@ -86,6 +89,9 @@ func (r *CityRepo) Create(ctx context.Context, db DB, c *city.City) (int64, erro
 		return 0, fmt.Errorf("insertar ciudad: %w", normalize(err))
 	}
 	c.ID = id
+	// La fundación, con el reloj del juego y no con el de la base: de ella sale
+	// la inmunidad ante un asalto (RN-CITY-029).
+	c.FoundedAtMs = c.LastOnlineAt.UnixMilli()
 	return id, nil
 }
 
@@ -147,6 +153,7 @@ func (r *CityRepo) ListPendingProtection(ctx context.Context, cutoff time.Time) 
 	rows, err := r.store.pool.Query(ctx,
 		`SELECT id FROM cities
 		 WHERE presence_state = 'OFFLINE_PENDING' AND last_offline_at IS NOT NULL AND last_offline_at <= $1
+		   AND fallen_at IS NULL
 		 ORDER BY id`, cutoff)
 	if err != nil {
 		return nil, err
@@ -181,9 +188,10 @@ func (r *CityRepo) UpdatePopulation(ctx context.Context, db DB, cityID int64) (i
 	return population, nil
 }
 
-// ListCenters devuelve los centros de todas las ciudades, en orden de id.
+// ListCenters devuelve los centros de las ciudades en pie, en orden de id: el
+// sitio de una caída queda libre (SPEC-CITY-FALL §4.2).
 func (r *CityRepo) ListCenters(ctx context.Context, db DB) ([]world.Tile, error) {
-	rows, err := db.Query(ctx, `SELECT center_x, center_y FROM cities ORDER BY id`)
+	rows, err := db.Query(ctx, `SELECT center_x, center_y FROM cities WHERE fallen_at IS NULL ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("leer los centros de las ciudades: %w", err)
 	}
@@ -242,10 +250,11 @@ func scanCity(row rowScanner) (*city.City, error) {
 	var era, presence string
 	var faction, joinFaction *string
 	var joinAt *time.Time
+	var createdAt time.Time
 	err := row.Scan(&c.ID, &c.OwnerPlayerID, &c.Name, &c.CenterX, &c.CenterY, &era,
 		&c.Population, &c.PopulationLimit, &presence,
 		&c.LastOnlineAt, &c.LastOfflineAt, &c.ProtectionUntil, &c.Version, &c.Civilization,
-		&faction, &joinFaction, &joinAt)
+		&faction, &joinFaction, &joinAt, &createdAt)
 	if err != nil {
 		if err = normalize(err); err == ErrNotFound {
 			return nil, city.ErrNotFound
@@ -254,6 +263,7 @@ func scanCity(row rowScanner) (*city.City, error) {
 	}
 	c.Era = city.Era(era)
 	c.PresenceState = city.PresenceState(presence)
+	c.FoundedAtMs = createdAt.UnixMilli()
 	if faction != nil {
 		c.Faction = *faction
 	}

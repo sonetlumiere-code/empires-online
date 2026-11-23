@@ -143,6 +143,14 @@ type Config struct {
 	// ciudades (24): con menos no cabría ningún sitio.
 	FoundingMaxNeighborTiles int32
 
+	// La caída de una ciudad (SPEC-CITY-FALL): lo que dura un asalto, la
+	// inmunidad de una ciudad recién fundada o refundada (cero: ninguna, sólo
+	// para el humo) y la distancia mínima de la refundación a la ciudad caída y
+	// a la del vencedor.
+	CityAssault            time.Duration
+	CityFallImmunity       time.Duration
+	CityRefoundMinDistance int32
+
 	WSMaxMessageBytes int64
 	WSRateLimitPerSec int
 	WSRateLimitBurst  int
@@ -286,6 +294,10 @@ func Load() (Config, error) {
 		PathfindingMaxDistance: int32(v.intRange("EO_PATHFINDING_MAX_DISTANCE", 256, 1, 65536)),
 
 		FoundingMaxNeighborTiles: int32(v.intRange("EO_FOUNDING_MAX_NEIGHBOR_TILES", 96, 24, 65536)),
+
+		CityAssault:            time.Duration(v.intRange("EO_CITY_ASSAULT_SECONDS", 900, 1, 24*3600)) * time.Second,
+		CityFallImmunity:       time.Duration(v.intRange("EO_CITY_FALL_IMMUNITY_HOURS", 72, 0, 24*365)) * time.Hour,
+		CityRefoundMinDistance: int32(v.intRange("EO_CITY_REFOUND_MIN_DISTANCE", 64, 0, 65536)),
 
 		WSMaxMessageBytes:   int64(v.intRange("EO_WS_MAX_MESSAGE_BYTES", 16384, 256, 1<<22)),
 		WSRateLimitPerSec:   v.intRange("EO_WS_RATE_LIMIT_PER_SECOND", 20, 1, 10000),

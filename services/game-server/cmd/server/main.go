@@ -20,7 +20,9 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/auth"
 	"github.com/empires-online/empires-online/services/game-server/internal/clock"
 	"github.com/empires-online/empires-online/services/game-server/internal/config"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/cityfall"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/message"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
@@ -207,6 +209,14 @@ func run() error {
 	reclamaciones, err := conquestRepo.ListActiveClaims(rootCtx)
 	if err != nil {
 		return fmt.Errorf("cargar reclamaciones de territorio: %w", err)
+	}
+	// Los asaltos de ciudades activos (ADR-050 §2): vuelven con sus unidades;
+	// los que no pueden seguir, o vencieron con el servidor parado, los
+	// resuelve el primer barrido.
+	cityFallRepo := postgres.NewCityFallRepo(store, cityRepo, unitRepo, territoryRepo)
+	asaltos, err := cityFallRepo.ListActiveAssaults(rootCtx)
+	if err != nil {
+		return fmt.Errorf("cargar asaltos de ciudades: %w", err)
 	}
 
 	// Los clanes vivos, para que la validación de carga resuelva los dueños CLAN
@@ -444,6 +454,7 @@ func run() error {
 	// Las reclamaciones activas vuelven con sus guerreros; las que no pueden
 	// seguir, o vencieron con el servidor parado, las resuelve el primer barrido.
 	state.SetClaims(reclamaciones)
+	state.SetAssaults(asaltos)
 
 	gameStore := persistence.NewGameStore(store, unitRepo, cityRepo, movementRepo)
 	if len(recovery.FinishedMovements) > 0 {
@@ -535,6 +546,11 @@ func run() error {
 		ClanWarCooldown:             cfg.ClanWarCooldown,
 		ClanWarScorePush:            cfg.ClanWarScorePush,
 		ResearchOverride:            cfg.TechnologyResearch,
+		CityFall:                    persistence.NewCityFallStore(cityFallRepo),
+		CityAssaultDuration:         cfg.CityAssault,
+		CityFallImmunity:            cfg.CityFallImmunity,
+		CityRefoundMinDistance:      cfg.CityRefoundMinDistance,
+		RefoundSite:                 refoundSite(gameWorld, territories, economyRepo, sysClock, cfg),
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje
@@ -593,6 +609,8 @@ func run() error {
 	// El tablón del mercado, igual: lo lee la conexión de la base, y la compra se
 	// valida en el tick (ADR-047 §6).
 	wsServer.SetMarket(marketRepo)
+	// El vencido de una caída recibe su mundo nuevo sin reconectar (ADR-050 §5).
+	sim.SetResnapshot(wsServer.Resnapshot)
 
 	// Detrás del reverse proxy del despliegue de referencia, TODAS las
 	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el
@@ -934,4 +952,35 @@ func loadSafeZones(
 		"rows", len(zones), "indexed", idx.Len(),
 		"rejected", len(report.Rejected), "overlaps", len(report.Overlaps), "urban", len(report.Urban))
 	return idx, nil
+}
+
+// refoundSite es la búsqueda del sitio de la ciudad nueva de un vencido
+// (SPEC-CITY-FALL RN-CITY-027, ADR-050 §3): la de la fundación, con su capa de
+// madera y el alcance de E30, más la distancia mínima a la caída y al vencedor.
+// Corre en el trabajo de la cola, fuera del tick: lee la geometría de los
+// territorios, inmutable, y el mundo, cuya capa de ocupación tiene su cerrojo.
+func refoundSite(w *world.World, territories *territory.Set, forests *postgres.EconomyRepo,
+	clk clock.Clock, cfg config.Config) simulation.RefoundSiteFunc {
+	reach := founding.Reach{
+		MaxNeighborTiles: cfg.FoundingMaxNeighborTiles,
+		Pathfinder:       pathfinding.NewAStar(cfg.PathfindingMaxNodes, cfg.PathfindingMaxDistance),
+		MaxNodes:         cfg.PathfindingMaxNodes,
+		MaxDistance:      cfg.PathfindingMaxDistance,
+	}
+	return func(ctx context.Context, existing, avoid []world.Tile, minDist int32, seed uint64) (cityfall.Site, error) {
+		agotados, err := forests.DepletedForests(ctx, clk.NowMs())
+		if err != nil {
+			return cityfall.Site{}, fmt.Errorf("leer el bosque agotado: %w", err)
+		}
+		hasWood := func(t world.Tile) bool { _, no := agotados[t]; return !no }
+		s, err := founding.FindRefoundSite(w, existing, avoid, minDist, seed, player.InitialVillagers, hasWood, reach)
+		if err != nil {
+			return cityfall.Site{}, err
+		}
+		site := cityfall.Site{Center: s.Center, Spawns: s.Spawns}
+		if t, ok := territories.TerritoryAt(s.Center.X, s.Center.Y); ok {
+			site.TerritoryID = t.ID
+		}
+		return site, nil
+	}
 }

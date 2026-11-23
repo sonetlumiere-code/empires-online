@@ -144,6 +144,10 @@ func (s *State) advanceView(cityID int64) *protocol.AdvanceView {
 // la cola lo debita y escribe el avance (RN-ECON-024, RN-ECON-025).
 func (s *Simulation) handleAdvanceEra(cmd AdvanceEra) {
 	c, _ := s.state.City(cmd.CityID)
+	if c != nil && c.OwnerPlayerID == cmd.PlayerID && s.state.CityFalling(c.ID) {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msgCityFalling)
+		return
+	}
 	busy := false
 	stock := func(economy.Resource) *economy.Stock { return nil }
 	if c != nil {

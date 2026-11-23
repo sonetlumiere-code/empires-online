@@ -304,6 +304,18 @@ function rawText(e: EventLogEntry): string {
     // custodia y lo que viene en la caravana) y la caducidad, sin otro jugador.
     case 'MARKET_SOLD':
       return `${who} compró ${lotes(e.lots)} de tu oferta en el mercado: le mandas ${describeLines(e.tradeGive ?? [])} y te manda ${describeLines(e.tradeGet ?? [])}`;
+    // La caída de una ciudad (SPEC-CITY-FALL Q9): al asaltado, cuándo cae; al vencido,
+    // dónde refundó; al vencedor, la que arrasó.
+    case 'CITY_ASSAULTED':
+      return `¡${who} asalta tu ciudad! Cae ${
+        e.fallsAtMs !== undefined ? `a las ${clockTime(e.fallsAtMs)}` : 'en unos minutos'
+      } si nadie mata al que sostiene el estandarte o levantas la muralla`;
+    case 'CITY_LOST':
+      return `Tu ciudad cayó ante ${who}${
+        e.x !== undefined && e.y !== undefined ? `: la refundaste en (${e.x}, ${e.y})` : ''
+      }. Conservas tu era y tus tecnologías`;
+    case 'CITY_TAKEN':
+      return `Tus unidades tomaron y arrasaron la ciudad de ${who}${where}`;
     case 'MARKET_EXPIRED':
       return `Tu oferta del mercado caducó: ${
         e.lots !== undefined ? `${lotes(e.lots)} sin vender, ` : ''
@@ -323,6 +335,8 @@ export function isLoss(e: EventLogEntry): boolean {
     e.kind === 'TREATY_BREAK_ANNOUNCED' ||
     e.kind === 'TERRITORY_CLAIMED' ||
     e.kind === 'TERRITORY_LOST' ||
+    e.kind === 'CITY_ASSAULTED' ||
+    e.kind === 'CITY_LOST' ||
     e.kind === 'CARAVAN_CAPTURED' ||
     e.kind === 'CARAVAN_INTERCEPTED' ||
     e.kind === 'CARAVAN_LOST' ||

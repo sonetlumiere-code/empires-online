@@ -56,6 +56,8 @@ var actionPolicies = map[string]ActionPolicy{
 	// La conquista (RN-CONQ-003): hostil contra el dueño del territorio, si lo
 	// tiene; la protección se comprueba en claimBlocked.
 	protocol.TypeUnitClaim: {Hostile: true, Territory: TerritoryFree},
+	// SPEC-CITY-FALL §6: el asalto es hostil (ADR-016).
+	protocol.TypeUnitAssault: {Hostile: true, Territory: TerritoryFree},
 	// La diplomacia no es agresión (RN-DIPLO-010): se propone, se responde y se
 	// rompe aunque el otro esté protegido.
 	protocol.TypeTreatyPropose: {Hostile: false, Territory: TerritoryFree},

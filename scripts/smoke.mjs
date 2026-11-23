@@ -146,6 +146,17 @@
  *      comisión; su registro cuenta la venta (MARKET_SOLD). La caravana tarda minutos.
  *      Necesita madera y piedra en las dos ciudades (con el servidor parado,
  *      EO_DEVSEED_STOCK_FOR=smoke_runner,smoke_victim pnpm run dev:seed).
+ *  13i. sólo con --caida (SPEC-CITY-FALL): una cuenta propia, smoke_caida (nunca
+ *      smoke_victim, cuya ciudad se mueve), en la Edad de Bronce o después (la primera vez
+ *      avanza desde Piedra: con el servidor parado, EO_DEVSEED_STOCK_FOR=smoke_caida pnpm run
+ *      dev:seed le siembra lo del avance) y sin muralla, se conecta; un guerrero de
+ *      smoke_runner (el que haya, o uno nuevo) va hasta su ciudad y la asalta (unit.assault):
+ *      smoke_caida recibe el aviso CITY_ASSAULTED y los dos el asalto en city.update; al
+ *      vencer el plazo, la ciudad cae: los dos reciben city.fallen, smoke_caida el aviso
+ *      CITY_LOST y un snapshot con su ciudad refundada (con el mismo nombre, otro id, otra
+ *      era no) y smoke_runner CITY_TAKEN. Arranca el servidor con EO_CITY_ASSAULT_SECONDS=20
+ *      y EO_CITY_FALL_IMMUNITY_HOURS=0. La ciudad refundada se puede volver a asaltar en
+ *      la pasada siguiente. Va la última de las que mueven guerreros de smoke_runner.
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -262,6 +273,7 @@ const FACCION = args.includes('--faccion');
 const CLAN = args.includes('--clan');
 const ALIANZA_CLAN = args.includes('--alianza-clan');
 const GUERRA_CLAN = args.includes('--guerra-clan');
+const CAIDA = args.includes('--caida');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -859,6 +871,10 @@ async function main() {
 
   if (CARAVANA) {
     await caravana(segunda, ciudad, cuenta.playerId);
+  }
+
+  if (CAIDA) {
+    await caida(segunda, ciudad, cuenta.playerId, snap2);
   }
 
   if (REGISTRO) {
@@ -2261,6 +2277,93 @@ function avisoEnVivo(sesion, kind, otroId, ms = 10_000) {
 function sinAvisos(sesion, quien, kinds) {
   const avisos = sesion.recibidos.filter((m) => m.type === 'event_log.notice' && kinds.includes(m.payload.kind));
   if (avisos.length > 0) fallar(`${quien} recibió avisos en vivo que no le tocan`, avisos.map((m) => m.payload));
+}
+
+// ─────────────────────────────────────────────────────────────
+// La caída de una ciudad (SPEC-CITY-FALL), sólo con --caida
+// ─────────────────────────────────────────────────────────────
+
+const CAIDA_USUARIO = process.env.EO_SMOKE_FALL_USER || 'smoke_caida';
+
+/**
+ * Si se puede asaltar la ciudad con lo que el humo sabe de ella (RN-SIEGE-010): el motivo
+ * si no, o `null`. La paz y la protección las dice el servidor.
+ */
+export function motivoParaNoAsaltar(ciudad, edificios, ahoraMs) {
+  if (ciudad.era === 'STONE_AGE') return 'está en la Edad de Piedra';
+  if (edificios.some((b) => b.cityId === ciudad.id && b.type === 'WALL' && b.status === 'COMPLETE')) return 'tiene la muralla en pie';
+  if (typeof ciudad.fallImmuneUntilMs === 'number' && ciudad.fallImmuneUntilMs > ahoraMs) {
+    return 'es recién fundada (arranca el servidor con EO_CITY_FALL_IMMUNITY_HOURS=0)';
+  }
+  if (ciudad.assault) return 'ya tiene un asalto';
+  return null;
+}
+
+/** La ciudad refundada de un jugador en un snapshot: la suya en pie, con otro id que la caída. */
+export function ciudadRefundada(snapshot, playerId, caidaId) {
+  return snapshot.cities.find((c) => c.ownerPlayerId === playerId && c.id !== caidaId);
+}
+
+async function caida(atacante, ciudad, playerId, snap) {
+  const { cuenta } = await abrirSesion(CAIDA_USUARIO);
+  const victima = await conectar(cuenta.ticket);
+  let vistaV = victima.snapshot.payload;
+  let ciudadV = vistaV.cities.find((c) => c.ownerPlayerId === cuenta.playerId);
+  if (!ciudadV) fallar(`${CAIDA_USUARIO} no tiene ciudad en su snapshot`, vistaV.cities);
+  if (ciudadV.era === 'STONE_AGE') {
+    // La primera vez: el avance a Bronce, con lo que siembra dev:seed.
+    await avance(victima, ciudadV);
+    victima.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+    vistaV = (await victima.sesion.esperar('world.snapshot')).payload;
+    ciudadV = vistaV.cities.find((c) => c.id === ciudadV.id);
+  }
+  const motivo = motivoParaNoAsaltar(ciudadV, vistaV.buildings ?? [], Date.now());
+  if (motivo) fallar(`la ciudad de ${CAIDA_USUARIO} no se puede asaltar: ${motivo}`, ciudadV);
+  ok('ciudad que asaltar', `${ciudadV.name} (${ciudadV.id}) en (${ciudadV.centerX}, ${ciudadV.centerY}), ${ciudadV.era}`);
+
+  // El guerrero: el que quedó junto a la víctima de pasadas anteriores, el de casa, o uno nuevo.
+  atacante.sesion.enviar('session.view', { center: { x: ciudad.centerX, y: ciudad.centerY } });
+  const casa = (await atacante.sesion.esperar('world.snapshot')).payload;
+  let guerrero = casa.units.find((u) => u.playerId === playerId && u.unitType === 'WARRIOR')
+    ?? snap.units.find((u) => u.playerId === playerId && u.unitType === 'WARRIOR');
+  if (!guerrero) {
+    const madera = await juntarMadera(atacante.sesion, ciudad, playerId, snap, 60);
+    ok('madera para un guerrero', `${madera}`);
+    guerrero = await entrenar(atacante.sesion, ciudad, playerId, 'WARRIOR');
+  }
+  const junto = await acercar(atacante.sesion, guerrero, { x: ciudadV.centerX, y: ciudadV.centerY + 4 }, 4);
+  ok('el guerrero llega junto a la ciudad', `(${junto.x}, ${junto.y})`);
+  atacante.sesion.enviar('session.view', { center: { x: ciudadV.centerX, y: ciudadV.centerY } });
+  await atacante.sesion.esperar('world.snapshot');
+
+  atacante.sesion.enviar('unit.assault', { unitId: guerrero.id, cityId: ciudadV.id });
+  const abierto = await atacante.sesion.esperarQue(['city.update', 'system.error'],
+    (m) => m.type === 'system.error' || (m.payload.id === ciudadV.id && m.payload.assault), 60_000);
+  if (abierto.type === 'system.error') fallar('el servidor rechazó el asalto', abierto.payload);
+  const cae = abierto.payload.assault.endsAtMs;
+  ok('asalto plantado', `cae en ${Math.round((cae - abierto.payload.assault.startedAtMs) / 1000)} s`);
+  const aviso = await avisoEnVivo(victima.sesion, 'CITY_ASSAULTED', playerId);
+  if (aviso.payload.fallsAtMs !== cae) fallar('el aviso del asalto no dice cuándo cae', aviso.payload);
+  ok('aviso al asaltado', `CITY_ASSAULTED, cae a las ${new Date(cae).toISOString().slice(11, 19)}`);
+
+  const espera = Math.max(0, cae - Date.now()) + 15_000;
+  await atacante.sesion.esperarQue('city.fallen', (m) => m.payload.cityId === ciudadV.id, espera);
+  ok('la ciudad cae', `city.fallen ${ciudadV.id}`);
+  await avisoEnVivo(atacante.sesion, 'CITY_TAKEN', cuenta.playerId);
+  ok('aviso al vencedor', 'CITY_TAKEN');
+  await victima.sesion.esperarQue('city.fallen', (m) => m.payload.cityId === ciudadV.id, 10_000);
+  const perdida = await avisoEnVivo(victima.sesion, 'CITY_LOST', playerId);
+  const nuevo = await victima.sesion.esperarQue('world.snapshot',
+    (m) => ciudadRefundada(m.payload, cuenta.playerId, ciudadV.id) !== undefined, 10_000);
+  const refundada = ciudadRefundada(nuevo.payload, cuenta.playerId, ciudadV.id);
+  if (refundada.name !== ciudadV.name || refundada.era !== ciudadV.era) {
+    fallar('la ciudad refundada no lleva el nombre o la era de la caída', { antes: ciudadV, despues: refundada });
+  }
+  if (perdida.payload.x !== refundada.centerX || perdida.payload.y !== refundada.centerY) {
+    fallar('el aviso CITY_LOST no dice dónde refundó', { aviso: perdida.payload, ciudad: refundada });
+  }
+  ok('refundada sin reconectar', `${refundada.name} (${refundada.id}) en (${refundada.centerX}, ${refundada.centerY}), ${refundada.era}`);
+  victima.sesion.cerrar();
 }
 
 // ─────────────────────────────────────────────────────────────

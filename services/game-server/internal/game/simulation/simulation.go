@@ -156,6 +156,20 @@ type Deps struct {
 	// ResearchOverride, si es positivo, sustituye el plazo de toda
 	// investigación (EO_TECHNOLOGY_RESEARCH_SECONDS, sólo para el humo).
 	ResearchOverride time.Duration
+	// CityFall escribe los asaltos y las caídas (SPEC-CITY-FALL, ADR-050), y
+	// RefoundSite busca el sitio de la ciudad nueva del vencido fuera del tick.
+	CityFall    CityFallStore
+	RefoundSite RefoundSiteFunc
+	// CityAssaultDuration es EO_CITY_ASSAULT_SECONDS (cero: 15 min);
+	// CityFallImmunity, EO_CITY_FALL_IMMUNITY_HOURS (cero: sin inmunidad);
+	// CityRefoundMinDistance, EO_CITY_REFOUND_MIN_DISTANCE (cero: 64).
+	CityAssaultDuration    time.Duration
+	CityFallImmunity       time.Duration
+	CityRefoundMinDistance int32
+	// Resnapshot vuelve a mandar el snapshot a cada sesión de un jugador, por
+	// el camino del handshake (ADR-050 §5). Lo pone el transporte con
+	// SetResnapshot; nil en los tests que no lo necesitan.
+	Resnapshot func(playerID uuid.UUID)
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -205,6 +219,7 @@ func New(state *State, deps Deps) *Simulation {
 	if deps.ClanPeaceGrace > 0 {
 		state.clans.grace = deps.ClanPeaceGrace
 	}
+	state.cityFall.immunity = deps.CityFallImmunity
 	return &Simulation{
 		state:            state,
 		deps:             deps,
@@ -213,6 +228,11 @@ func New(state *State, deps Deps) *Simulation {
 		disconnectedAt:   make(map[uuid.UUID]time.Time),
 	}
 }
+
+// SetResnapshot instala cómo volver a mandar el snapshot a las sesiones de un
+// jugador (ADR-050 §5). Lo llama el arranque antes del primer tick: el
+// transporte se crea después que la simulación.
+func (s *Simulation) SetResnapshot(fn func(playerID uuid.UUID)) { s.deps.Resnapshot = fn }
 
 // State expone el mundo (lectura desde el hilo del loop, y tests).
 func (s *Simulation) State() *State { return s.state }
@@ -334,6 +354,14 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleClaimEndPersistFailed(c)
 	case CaptureResolved:
 		s.handleCaptureResolved(c)
+	case AssaultCity:
+		s.handleAssaultCity(c)
+	case AssaultResolved:
+		s.handleAssaultResolved(c)
+	case AssaultEndPersistFailed:
+		s.handleAssaultEndPersistFailed(c)
+	case FallResolved:
+		s.handleFallResolved(c)
 	case CraftGoods:
 		s.handleCraftGoods(c)
 	case CraftResolved:
@@ -888,6 +916,10 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	// RN-CONQ-007), después de la presencia: un dueño que acaba de quedar
 	// protegido ya la frena en este tick.
 	s.sweepClaims(now)
+	// Los asaltos que empiezan, se rompen o vencen (RN-SIEGE-011,
+	// RN-CITY-026), después de la presencia: un asaltante que acaba de
+	// ausentarse ya lo rompe en este tick.
+	s.sweepAssaults(now)
 	// El bosque y la colina que vuelven a crecer (RN-ECON-016, RN-ECON-021).
 	s.regrowDeposits(nowMs)
 
@@ -1069,6 +1101,7 @@ func (s *Simulation) FlushDirty() int {
 	s.flushDestructions()
 	s.flushDeaths()
 	s.flushClaims()
+	s.flushAssaults()
 
 	dirty := s.state.DrainDirty()
 	if len(dirty) == 0 {

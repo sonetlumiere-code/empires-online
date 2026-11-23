@@ -203,7 +203,7 @@ func (r *ConquestRepo) CaptureTerritory(ctx context.Context, c Capture) (territo
 			if err := tx.QueryRow(ctx,
 				`SELECT EXISTS (
 				   SELECT 1 FROM cities ci JOIN territories t ON t.id = $1
-				    WHERE ci.owner_player_id = $2
+				    WHERE ci.owner_player_id = $2 AND ci.fallen_at IS NULL
 				      AND ci.center_x BETWEEN t.min_x AND t.max_x
 				      AND ci.center_y BETWEEN t.min_y AND t.max_y)`,
 				c.TerritoryID, c.PrevOwner).Scan(&capital); err != nil {

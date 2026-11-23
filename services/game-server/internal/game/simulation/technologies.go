@@ -239,6 +239,10 @@ func (s *State) researchMs(playerID uuid.UUID, baseMs int64, override time.Durat
 // RN-TECH-004).
 func (s *Simulation) handleResearchTechnology(cmd ResearchTechnology) {
 	c, _ := s.state.City(cmd.CityID)
+	if c != nil && c.OwnerPlayerID == cmd.PlayerID && s.state.CityFalling(c.ID) {
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, msgCityFalling)
+		return
+	}
 	busy := false
 	stock := func(economy.Resource) *economy.Stock { return nil }
 	civ := player.Civilization{}

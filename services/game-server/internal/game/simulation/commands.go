@@ -200,6 +200,10 @@ func CommandTypes() []string {
 		ClaimResolved{}.commandType(),
 		ClaimEndPersistFailed{}.commandType(),
 		CaptureResolved{}.commandType(),
+		AssaultCity{}.commandType(),
+		AssaultResolved{}.commandType(),
+		AssaultEndPersistFailed{}.commandType(),
+		FallResolved{}.commandType(),
 		CraftGoods{}.commandType(),
 		CraftResolved{}.commandType(),
 		CraftDeliverPersistFailed{}.commandType(),
@@ -293,6 +297,7 @@ func JobNames() []string {
 		JobClanWar, JobClanWarEnd,
 		JobCityResearch, JobResearchComplete,
 		JobMarketPost, JobMarketBuy, JobMarketClose,
+		JobCityAssault, JobCityAssaultEnd, JobCityFall,
 	}
 }
 

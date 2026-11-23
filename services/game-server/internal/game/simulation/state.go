@@ -155,6 +155,9 @@ type State struct {
 	// conquest son las reclamaciones de territorio activas y sus escrituras
 	// por reintentar (SPEC-TERRITORY-CONQUEST, ADR-034).
 	conquest conquestState
+	// cityFall son los asaltos de ciudades y las caídas en vuelo
+	// (SPEC-CITY-FALL, ADR-050).
+	cityFall cityFallState
 
 	// El recurso de los tiles tocados: la madera del bosque (SPEC-ECON-FOREST,
 	// ADR-025) y la piedra de la colina (SPEC-ECON-STONE, ADR-030).
@@ -196,6 +199,7 @@ func NewState(w *world.World) *State {
 		market:                 newMarketState(),
 		caravans:               newCaravanState(),
 		conquest:               newConquestState(),
+		cityFall:               newCityFallState(),
 		deposits:               newDepositState(),
 		pendingCompletions:     make(map[int64]struct{}),
 		pendingCraftDeliveries: make(map[string]CraftDelivery),
@@ -459,6 +463,19 @@ func (s *State) EachMovement(fn func(*movement.Movement) bool) {
 func (s *State) AddCity(c *city.City) {
 	s.cities[c.ID] = c
 	s.cityByOwner[c.OwnerPlayerID] = c.ID
+}
+
+// RemoveCity quita del mundo una ciudad caída (ADR-050 §3). Su dueño deja de
+// tener ciudad hasta que entra la nueva, en el mismo comando.
+func (s *State) RemoveCity(id int64) {
+	c, ok := s.cities[id]
+	if !ok {
+		return
+	}
+	delete(s.cities, id)
+	if s.cityByOwner[c.OwnerPlayerID] == id {
+		delete(s.cityByOwner, c.OwnerPlayerID)
+	}
 }
 
 // City recupera una ciudad por identificador.

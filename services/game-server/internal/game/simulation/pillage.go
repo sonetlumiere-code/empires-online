@@ -188,10 +188,18 @@ var pillageMessages = cityAttackMessages{
 // cityAttackBlocked es el predicado de toda acción hostil contra una ciudad:
 // el saqueo y, desde E8, el asedio de sus casas (RN-COMBAT-030).
 func (s *Simulation) cityAttackBlocked(a *unit.Unit, c *city.City, posA world.Tile, now time.Time, m cityAttackMessages) (string, string) {
+	return s.cityAttackBlockedFor(a, c, posA, now, m, true)
+}
+
+// cityAttackBlockedFor es cityAttackBlocked con la protección de la ciudad
+// atacada opcional: el asalto sólo la mira al ordenar (SPEC-CITY-FALL Q7,
+// RN-COMBAT-041).
+func (s *Simulation) cityAttackBlockedFor(a *unit.Unit, c *city.City, posA world.Tile, now time.Time,
+	m cityAttackMessages, targetProtection bool) (string, string) {
 	if c.OwnerPlayerID == a.PlayerID {
 		return protocol.CodeInvalidTarget, m.own
 	}
-	if c.ProtectedAt(now) {
+	if targetProtection && c.ProtectedAt(now) {
 		return protocol.CodeCityProtected, "esa ciudad está protegida"
 	}
 	// RN-COMBAT-018: quien está protegido tampoco ataca una ciudad.

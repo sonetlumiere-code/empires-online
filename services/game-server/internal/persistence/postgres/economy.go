@@ -91,10 +91,13 @@ func CreateCityStocks(ctx context.Context, db DB, cityID int64) error {
 // Lecturas de arranque
 // ─────────────────────────────────────────────────────────────
 
-// ListStocks lee todas las filas de city_stocks en orden estable.
+// ListStocks lee las filas de city_stocks de las ciudades en pie, en orden
+// estable: el almacén de una caída ardió con ella (SPEC-CITY-FALL Q5).
 func (r *EconomyRepo) ListStocks(ctx context.Context) ([]StockRow, error) {
 	rows, err := r.store.pool.Query(ctx,
-		`SELECT city_id, resource, amount, version FROM city_stocks ORDER BY city_id, resource`)
+		`SELECT s.city_id, s.resource, s.amount, s.version FROM city_stocks s
+		   JOIN cities c ON c.id = s.city_id AND c.fallen_at IS NULL
+		  ORDER BY s.city_id, s.resource`)
 	if err != nil {
 		return nil, fmt.Errorf("leer stocks: %w", err)
 	}
