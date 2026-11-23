@@ -354,6 +354,18 @@ describe('la caída y los rechazos', () => {
     expect(onTargetFell(withRaid(assaultRaid()), 99, OTHER_BOT, NOW, saqueador).raid?.abandon).toBeNull();
   });
 
+  it('una partida de saqueo cuyo blanco cae vuelve a casa', () => {
+    // Lo encontró la prueba en vivo: un asalto de la ejecución anterior siguió en el
+    // servidor y tumbó la ciudad que iba a saquear la partida nueva.
+    const pillage = assaultRaid({ ...RAID_ASSAULT_FIELDS, warriors: [1, 2, 3], startedAtMs: NOW - 60_000 });
+    const m = onTargetFell(withRaid(pillage), 20, OTHER_BOT, NOW, saqueador);
+    expect(m.raid?.startedAtMs).toBeLessThan(NOW - saqueador.raidTimeoutMs);
+    const cmd: Command = { key: 'raid:pillage:1', type: 'unit.pillage', unitId: 1, cityId: 20 };
+    const rejected = onRejected(withRaid(pillage), cmd, 'CITY_NOT_FOUND', NOW, saqueador);
+    expect(rejected.targetCooldowns[20]).toBe(NOW + saqueador.targetCooldownMs);
+    expect(rejected.raid?.startedAtMs).toBeLessThan(NOW - saqueador.raidTimeoutMs);
+  });
+
   it('Q8: tras tumbarla, la refundada de esa víctima no se elige hasta que pasa el enfriamiento', () => {
     // Lo encontró la prueba en vivo: con la inmunidad a 0, la refundada tiene otro id y
     // el saqueador volvió a por ella a los 7 min.

@@ -290,6 +290,10 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
   - Faltaba el enfriamiento de la Q8: con la inmunidad a 0, la refundada tiene otro id y el saqueador volvió a por
     ella a los 7 min. Ahora el dueño de la ciudad tumbada no se vuelve a elegir durante el enfriamiento de blanco
     (`victimCooldowns`).
+  - Una partida de **saqueo** cuyo blanco cae no volvía: `onTargetFell` sólo miraba la de asalto, y un `unit.pillage`
+    rechazado con `CITY_NOT_FOUND` no enfriaba el blanco. Lo destapó un asalto plantado al final de una ejecución, que
+    siguió en el servidor y tumbó a los 0,8 min de la siguiente la ciudad que la partida nueva iba a saquear. Ahora
+    vuelve, como con un blanco protegido.
 - **El tercero** (§4.7, parte 3) sólo ve la cuenta atrás de un asalto ajeno en el HUD si tiene seleccionada una
   unidad suya a 12 tiles o menos (`assaultTargetNear`); si no, ve la ciudad desaparecer. Pintar el asalto en la escena
   es otro slice.

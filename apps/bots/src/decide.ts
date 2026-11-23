@@ -1343,8 +1343,9 @@ export function onRejected(
   if (raid === null) return mem;
 
   if (command.type === 'unit.pillage' && command.key.startsWith('raid:')) {
-    // Desde el punto de reunión, a 16 tiles: sin ruta, el blanco no se alcanza.
-    if (TARGET_CODES.has(code) || code === 'INVALID_TARGET') {
+    // Desde el punto de reunión, a 16 tiles: sin ruta, el blanco no se alcanza. Desde
+    // E31 la ciudad también puede haber caído (CITY_NOT_FOUND).
+    if (TARGET_CODES.has(code) || code === 'INVALID_TARGET' || code === 'CITY_NOT_FOUND') {
       return {
         ...mem,
         targetCooldowns: { ...mem.targetCooldowns, [raid.targetCityId]: nowMs + profile.targetCooldownMs },
@@ -1398,7 +1399,13 @@ export function onRaidLoss(memory: Memory, unitId: number): Memory {
  */
 export function onTargetFell(memory: Memory, cityId: number, ownerPlayerId: string, nowMs: number, profile: Profile): Memory {
   const raid = memory.raid;
-  if (raid === null || raid.kind !== 'assault' || raid.targetCityId !== cityId || raid.abandon === 'fell') return memory;
+  if (raid === null || raid.targetCityId !== cityId || raid.abandon === 'fell') return memory;
+  if (raid.kind === 'pillage') {
+    // Una partida de saqueo cuyo blanco cae (lo tumbó otro, o un asalto que siguió en el
+    // servidor) vuelve: la ciudad ya no existe (lo encontró la prueba en vivo de E32).
+    if (nowMs - raid.startedAtMs > profile.raidTimeoutMs) return memory;
+    return { ...memory, raid: forceReturn(raid, nowMs, profile, 'fell') };
+  }
   return {
     ...memory,
     raid: { ...raid, abandon: 'fell' },
