@@ -2816,7 +2816,7 @@ los dos arreglos.
 
 ## E29 — Bots que comercian
 
-**Estado: EN CURSO (2026-11-21)**, en la rama `claude/slice-bots-comercio`. Contrato:
+**Estado: HECHO (2026-11-22)**, en `main` desde la fusión `e781dee`, con la CI en verde. Contrato:
 [SPEC-BOTS-TRADE](../specs/bots-trade.md), propuesta el 2026-11-20 y aceptada el 2026-11-21 con sus diez decisiones de
 producto. Sin ADR nuevo: el ajuste de la defensa cambia una regla de la respuesta automática, no la fase 4.
 

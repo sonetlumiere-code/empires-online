@@ -7,7 +7,7 @@ automática de E3 frente al saqueo** con los datos de esas partidas.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-TRADE` |
-| Estado | Accepted (2026-11-21). Propuesta en `Draft` el 2026-11-20 y aceptada el 2026-11-21 con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-22). Propuesta en `Draft` el 2026-11-20 y aceptada el 2026-11-21 con la recomendación de cada pregunta de §10; en `main` desde la fusión `e781dee`, con la CI en verde. |
 | Milestone | E29 Bots que comercian (vigesimonoveno slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §9 (presencia y protección), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [diplomacy.md](diplomacy.md), [trade.md](trade.md), [caravans.md](caravans.md), [markets.md](markets.md), [civilization-goods.md](civilization-goods.md), [castle-age.md](castle-age.md), [combat-response.md](combat-response.md), [combat-pillage.md](combat-pillage.md), [combat-siege.md](combat-siege.md) |
