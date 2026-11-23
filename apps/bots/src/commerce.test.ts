@@ -337,6 +337,31 @@ describe('mercado (§4.3)', () => {
     ]);
   });
 
+  it('§5: un market.buy rechazado por PATH_TOO_LONG enfría esa oferta targetCooldownMs, no el enfriamiento corto', () => {
+    const board = [lot({ id: 93, give: { resource: 'FURS', amount: 10 }, want: { resource: 'WINE', amount: 8 } })];
+    const v = withMarket({ market: { own: [], board } });
+    const scanned = { ...EMPTY_MEMORY, marketScanAtMs: NOW + constructor.targetCooldownMs + 10_000 };
+    const first = decide(v, constructor, scanned, NOW, rng());
+    const buy = of(first.commands, 'market.buy')[0] as Command;
+    expect(buy).toMatchObject({ key: 'market:buy:93', offerId: 93 });
+
+    const mem = onRejected(first.memory, buy, 'PATH_TOO_LONG', NOW, constructor);
+    expect(constructor.targetCooldownMs).toBeGreaterThan(constructor.rejectCooldownMs);
+    expect(mem.cooldowns['market:buy:93']).toBe(NOW + constructor.targetCooldownMs);
+    // Pasado el enfriamiento corto, la oferta sin ruta sigue apartada…
+    const afterShort = NOW + constructor.rejectCooldownMs + 1;
+    expect(of(decide(v, constructor, mem, afterShort, rng()).commands, 'market.buy')).toEqual([]);
+    // …y vuelve a comprarse al vencer el de blanco.
+    const afterTarget = NOW + constructor.targetCooldownMs + 1;
+    expect(of(decide(v, constructor, mem, afterTarget, rng()).commands, 'market.buy')).toEqual([
+      expect.objectContaining({ key: 'market:buy:93' }),
+    ]);
+    // Otro rechazo (la oferta se agotó) sólo pone el enfriamiento corto.
+    expect(onRejected(first.memory, buy, 'INVALID_TARGET', NOW, constructor).cooldowns['market:buy:93']).toBe(
+      NOW + constructor.rejectCooldownMs,
+    );
+  });
+
   it('publica lo que le sobra a cambio de un bien ajeno, sin pasar de tres ofertas', () => {
     const { commands } = decide(withMarket({}, 40), constructor, { ...EMPTY_MEMORY, marketScanAtMs: NOW + 1 }, NOW, rng());
     // 40 de vino: lote de 10 más 1 de comisión → 3 lotes.

@@ -139,7 +139,8 @@ cualquier motivo reconecta como el navegador.
 
 ```
 pnpm run bots -- --web http://localhost:3001 --server ws://localhost:8080/ws \
-  --constructores 3 --saqueadores 1 --duracion 2h --semilla 42 [--contra-humanos]
+  --constructores 3 --saqueadores 1 --duracion 2h --semilla 42 [--contra-humanos] \
+  [--sin-comercio] [--con-humanos] [--sufijo e29]
 ```
 
 | Opción | Por defecto | Qué hace |
@@ -148,6 +149,12 @@ pnpm run bots -- --web http://localhost:3001 --server ws://localhost:8080/ws \
 | `--duracion` | sin límite | Para limpiamente al vencer: cierra las conexiones y escribe el resumen. Ctrl-C hace lo mismo. |
 | `--semilla` | la hora | Fija el aleatorio del decisor (desfases, desempates, elección de blanco). La partida no es reproducible al milisegundo —el servidor y la red no lo son—, pero dos ejecuciones con la misma semilla toman las mismas decisiones ante el mismo estado. |
 | `--contra-humanos` | apagado | Sólo con ella un saqueador puede elegir como blanco una ciudad que no sea de un bot (Q4). |
+| `--sin-comercio` | apagado | Desde E29: sin tratados, tratos ni mercado, la ejecución de E28 para comparar ([bots-trade.md](bots-trade.md) §4.8). |
+| `--con-humanos` | apagado | Desde E29: los bots aceptan tratados `TRADE` y tratos de jugadores que no son bots (`RN-BOT-008`). No hace hostil a nadie. |
+| `--sufijo` | ninguno | Desde E29: cuentas nuevas `bot_<perfil>_<n>_<sufijo>`, con 1 a 5 letras minúsculas o cifras, para medir desde cero sin tocar las de siempre ([bots-trade.md](bots-trade.md) §9.1). |
+
+**Precisión (2026-11-22):** las tres últimas filas son de [bots-trade.md](bots-trade.md) §4.8, que es su referencia; la
+tabla las repite para que la ejecución se lea entera en un sitio.
 
 Las altas van escalonadas para no pisar el límite de alta por IP (`EO_AUTH_RATE_LIMIT_PER_MINUTE`, 10 por minuto con
 ráfaga 5): con más de cinco cuentas nuevas, el proceso espera entre altas lo que el límite pida y lo dice. Las entradas
@@ -171,6 +178,13 @@ Cada ejecución escribe `bots/runs/<fecha>-<semilla>.jsonl` (el directorio va en
 | `trained`, `built`, `researched`, `crafted` | bot, qué, plazo real |
 | `lost`, `killed`, `pillaged`, `besieged` | bot, contra quién, cuánto (de los avisos de E11 y el registro de E7) |
 | `stop` | bot, era, almacén, unidades vivas, tiempo jugado |
+
+**Precisión (2026-11-22):** el registro tiene más sucesos que los de la tabla. Los de E28 que la implementación
+añadió: `raid` y `raid_end` (una partida que sale y que termina, con su blanco, su tamaño y sus bajas),
+`pillage_done` y `demolished` (el saqueo y el derribo hechos, de los avisos de E11), `house_lost` (una casa propia
+derribada) y `error` (un error del cliente que no es el rechazo de una orden). Los del comercio y la partida reunida
+de E29 —`treaty`, `trade`, `market`, `caravan` y `rally`— están en [bots-trade.md](bots-trade.md) §4.7, con sus
+estados.
 
 Al terminar, el proceso imprime un resumen por bot y por perfil: tiempo hasta cada era, recursos recolectados por
 hora, unidades entrenadas y perdidas, saqueos y derribos hechos y sufridos, y los comandos rechazados agrupados por

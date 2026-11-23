@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import type { WebSocketLike } from '../../web/src/net/client';
 import { WebSession } from './auth';
 import { Bot, Directory } from './bot';
+import { EMPTY_MEMORY, decide, type Command, type Memory } from './decide';
+import { botCity, city as fixtureCity, stocks as fixtureStocks, unit, view } from './fixtures.test-helpers';
 import { RunLog, parseLog } from './log';
-import { PROFILES } from './profiles';
+import { PROFILES, type Profile } from './profiles';
+import { createRng } from './random';
 
 const PLAYER = '11111111-1111-4111-8111-111111111111';
 const NOW = 1_757_376_000_000;
@@ -84,9 +87,9 @@ class FakeServer implements WebSocketLike {
     });
   }
 
-  deliver(type: string, payload: unknown): void {
+  deliver(type: string, payload: unknown, requestId?: string): void {
     this.seq += 1;
-    this.onmessage?.({ data: JSON.stringify({ v: 1, type, seq: this.seq, ts: NOW, payload }) });
+    this.onmessage?.({ data: JSON.stringify({ v: 1, type, seq: this.seq, ts: NOW, ...(requestId ? { requestId } : {}), payload }) });
   }
 }
 
@@ -98,10 +101,16 @@ function fakeWeb() {
   });
 }
 
-function newBot(lines: string[], sockets: FakeServer[], said: string[] = [], serverCivilization = 'ROMAN'): Bot {
+function newBot(
+  lines: string[],
+  sockets: FakeServer[],
+  said: string[] = [],
+  serverCivilization = 'ROMAN',
+  profile: Profile = PROFILES.constructor,
+): Bot {
   return new Bot({
     name: 'bot_constructor_1',
-    profile: PROFILES.constructor,
+    profile,
     civilization: 'ROMAN',
     web: 'http://w',
     server: 'ws://s/ws',
@@ -231,6 +240,108 @@ describe('el registro del comercio (SPEC-BOTS-TRADE §4.7)', () => {
     ]);
     expect(events[3]).toMatchObject({ lots: 2 });
     expect(events[5]).toMatchObject({ cargo: [{ resource: 'SPICES', amount: 10 }], from: 'bot_constructor_2polis' });
+  });
+});
+
+/** Lo privado del bot que estos tests tocan: su memoria, el despertar y el envío de una orden. */
+type Inner = { memory: Memory; think(): void; send(cmd: Command, nowMs: number): void };
+
+describe('el registro del mercado (SPEC-BOTS-TRADE §4.7)', () => {
+  it('apunta posted y bought al llegar el market.update de la orden aceptada, con su comisión', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets);
+    await bot.start();
+    const server = sockets[0] as FakeServer;
+    const inner = bot as unknown as Inner;
+    const lastRequestId = () => (server.sent[server.sent.length - 1] as { requestId: string }).requestId;
+    const offer = (id: number, playerId: string, lotsLeft: number) => ({
+      offer: { id, playerId, cityId: 10, cityName: 'bot_constructor_1polis', civilization: 'ROMAN', cityX: 100, cityY: 100,
+        give: { resource: 'WINE', amount: 10 }, want: { resource: 'SILK', amount: 10 }, lotsTotal: 3, lotsLeft, lotsSold: 3 - lotsLeft,
+        status: 'OPEN', expiresAtMs: NOW + 3_600_000 },
+    });
+
+    inner.send(
+      { key: 'market:post:SILK', type: 'market.post', give: { resource: 'WINE', amount: 10 }, want: { resource: 'SILK', amount: 10 }, lots: 3 },
+      NOW,
+    );
+    const postId = lastRequestId();
+    // Nada se apunta hasta que el servidor confirma con el requestId de la orden.
+    expect(parseLog(lines.join('')).filter((e) => e.event === 'market')).toEqual([]);
+    server.deliver('market.update', offer(90, PLAYER, 3), postId);
+
+    const seller = '22222222-2222-4222-8222-222222222222';
+    inner.send(
+      { key: 'market:buy:91', type: 'market.buy', offerId: 91, give: { resource: 'SILK', amount: 8 }, receive: { resource: 'FURS', amount: 10 }, lots: 2 },
+      NOW,
+    );
+    server.deliver('market.update', offer(91, seller, 1), lastRequestId());
+    // Repetir el mensaje con el mismo requestId no apunta otra compra: la orden ya no está pendiente.
+    server.deliver('market.update', offer(91, seller, 1), lastRequestId());
+    bot.stop();
+
+    const market = parseLog(lines.join('')).filter((e) => e.event === 'market');
+    expect(market).toHaveLength(2);
+    // La comisión es el 10 % de lo que se da por lote, redondeado hacia arriba, por lote.
+    expect(market[0]).toMatchObject({ status: 'posted', give: { resource: 'WINE', amount: 10 }, lots: 3, commission: 3 });
+    expect(market[1]).toMatchObject({ status: 'bought', give: { resource: 'SILK', amount: 8 }, receive: { resource: 'FURS', amount: 10 },
+      lots: 2, commission: 2 });
+  });
+});
+
+describe('el registro de la reunión (SPEC-BOTS-TRADE §4.7)', () => {
+  it('apunta rally una vez, al pasar la partida de la marcha a la orden de saquear', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.saqueador);
+    await bot.start();
+    const inner = bot as unknown as Inner;
+    const saqueador = PROFILES.saqueador;
+    const solo = { contraHumanos: false, comercio: false } as const;
+    const base = { city: fixtureCity({ name: 'bot_saqueador_1polis', population: 4, populationLimit: 5, stocks: fixtureStocks(0) }) };
+
+    // La partida sale y todos tienen la orden del punto de reunión (124,100), como en decide.test.ts,
+    // medio minuto antes de la hora del bot (la del servidor falso, NOW).
+    const out0 = NOW - 30_000;
+    const home = view({ ...base, units: [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', hp: 60, maxHp: 60 })), botCities: [botCity()] });
+    const out = decide(home, saqueador, EMPTY_MEMORY, out0, createRng(42), solo);
+    const walking = view({
+      ...base,
+      units: [unit({ id: 1, unitType: 'WARRIOR', status: 'MOVING' }), unit({ id: 2, unitType: 'WARRIOR', status: 'MOVING' }),
+        unit({ id: 3, unitType: 'WARRIOR' })],
+      botCities: [botCity()],
+    });
+    const march = decide(walking, saqueador, out.memory, out0 + 2_000, createRng(42), solo).memory;
+    expect(march.raid).toMatchObject({ phase: 'march', ordered: [1, 2, 3], rallyAtMs: out0 + 2_000 });
+
+    // Un despertar todavía en marcha (uno camina) no apunta nada.
+    inner.memory = march;
+    const moving = view({
+      ...base,
+      units: [unit({ id: 1, unitType: 'WARRIOR', x: 124, y: 100 }), unit({ id: 2, unitType: 'WARRIOR', x: 124, y: 101 }),
+        unit({ id: 3, unitType: 'WARRIOR', x: 115, y: 100, status: 'MOVING' })],
+    });
+    bot.buildView = () => moving;
+    inner.think();
+    expect(parseLog(lines.join('')).filter((e) => e.event === 'rally')).toEqual([]);
+
+    // Reunidos los tres: pasa a saquear y lo apunta.
+    const gathered = view({ ...base, units: [1, 2, 3].map((id) => unit({ id, unitType: 'WARRIOR', x: 124, y: 99 + id })) });
+    bot.buildView = () => gathered;
+    inner.think();
+    expect(inner.memory.raid?.phase).toBe('strike');
+    // El despertar siguiente, ya en saqueo, no lo repite.
+    inner.think();
+    bot.stop();
+
+    const rally = parseLog(lines.join('')).filter((e) => e.event === 'rally');
+    expect(rally).toHaveLength(1);
+    expect(rally[0]).toMatchObject({ bot: 'bot_constructor_1', target: 'bot_constructor_2polis', warriors: 3, alive: 3 });
+    // La espera corre desde que el último tuvo la orden del punto de reunión: 28 s y lo que tarde el test.
+    expect(rally[0]?.waitMs).toBeGreaterThanOrEqual(28_000);
+    expect(rally[0]?.waitMs).toBeLessThan(38_000);
+    const commands = parseLog(lines.join('')).filter((e) => e.event === 'command').map((e) => e.key);
+    expect(commands.filter((k) => String(k).startsWith('raid:pillage:'))).toEqual(['raid:pillage:1', 'raid:pillage:2', 'raid:pillage:3']);
   });
 });
 
