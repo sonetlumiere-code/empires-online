@@ -1,7 +1,7 @@
 # Invariantes de Combate (INV-COMBAT-xxx)
 
 Propiedades del combate: la vida de una unidad, la muerte, el botín, las reglas que impiden un golpe, desde E5 el
-saqueo del almacén de una ciudad y, desde E27, la muralla y el ariete.
+saqueo del almacén de una ciudad, desde E27 la muralla y el ariete y, desde E31, la caída de una ciudad.
 
 Formato y severidades: [README.md](README.md). Unidades: [units.md](units.md). Ciudades: [city.md](city.md).
 Economía: [economy.md](economy.md). Specs: [../specs/combat-raid.md](../specs/combat-raid.md) y
@@ -322,3 +322,37 @@ guarnición tumba `TestElArieteSoloDerriba`.
 
 **Violación en runtime.** Un golpe de combate de un ariete que llegara a resolverse se descarta y se registra
 `invariant_violation` con `inv_id=INV-COMBAT-009`.
+
+---
+
+<a id="inv-combat-010"></a>
+## INV-COMBAT-010 — Una ciudad sólo cae por un asalto válido hasta el final
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E31 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** (E31): se registra en la aceptación de SPEC-CITY-FALL, antes de escribir su código |
+
+**Enunciado.** Una ciudad sólo pasa a caída (`fallen_at`) por un asalto que venció su plazo
+(`EO_CITY_ASSAULT_SECONDS`) y que, en cada tick del plazo, sostuvo una unidad viva que derriba y no es un ariete, contra
+una ciudad de otro jugador en brecha, de la Edad de Bronce o posterior, fuera de su inmunidad, sin paz entre los dos y
+con el asaltante presente y sin proteger. La protección offline del asaltado sólo cuenta al empezar.
+
+**Razón.** La caída es lo más grave que le puede pasar a un jugador (SPEC-CITY-FALL Q2). Si un asalto pudiera vencer
+con la paz firmada a mitad, con la muralla ya levantada, con la unidad muerta o con el asaltante desconectado, se
+perdería una ciudad por una regla que el jugador cumplió: lo que la paz, la muralla, la inmunidad y la presencia
+prometen tiene que valer hasta el último tick.
+
+**Cómo se garantiza.** `DOMAIN` — el asalto vuelve a pasar en cada tick de la fase 5 el predicado de agresión de la
+ciudad (`cityAttackBlocked`, `RN-COMBAT-041`) y la comprobación de brecha (`State.Walled`, `RN-SIEGE-011`); la
+transacción de la caída comprueba que el asalto sigue `ACTIVE` ([ADR-050](../decisions/ADR-050-city-fall.md) §3).
+
+**Cómo se verifica.** Previsto: el golden «caída» y cada causa de rotura (simulation), la protección del asaltado que no
+lo rompe y la del asaltante que sí, y la transacción que rechaza un asalto ya roto (integration); con mutación de la
+comprobación por tick del predicado y de la brecha por separado.
+
+**Violación en runtime.** Una caída que llegara a encolarse sin pasar la comprobación del tick se descarta y se
+registra `invariant_violation` con `inv_id=INV-COMBAT-010`.

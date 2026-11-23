@@ -36,7 +36,7 @@ dueño, máquinas de asedio, reparar casas con aldeanos, otros edificios (sólo 
 territorio (`contested` sigue sin productor), ocultar las casas ajenas (niebla de guerra), tocar el balance de la
 respuesta de E3 y notificaciones fuera del juego.
 **Precisión (2026-11-19):** las máquinas de asedio (el ariete) y atacar la muralla entran con E27
-([siege-engines.md](siege-engines.md)); que la ciudad caiga sigue fuera.
+([siege-engines.md](siege-engines.md)); que la ciudad caiga sigue fuera. **Precisión (2026-11-23):** la caída entra con E31 ([city-fall.md](city-fall.md)): una ciudad en brecha se asalta y, si el asalto aguanta, se arrasa.
 
 ## 3. Actores
 

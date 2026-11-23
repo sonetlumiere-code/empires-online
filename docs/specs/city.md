@@ -190,7 +190,7 @@ y su byte en `world_chunks`. Ver [movement.md](movement.md) y
 | ID | Regla |
 |---|---|
 | `RN-CITY-019` | Una ciudad tiene **exactamente un** propietario: `owner_player_id uuid NOT NULL REFERENCES players (id) ON DELETE CASCADE`. No existe ciudad sin dueño, ni copropiedad, ni ownership compartido por clan (`Fuera de MVP`). |
-| `RN-CITY-020` | En MVP `owner_player_id` es **inmutable** tras la creación: no hay conquista, cesión ni abandono. Cuando existan, el cambio de ownership será write-through inmediato y transaccional (canon §12) y emitirá su propio evento. |
+| `RN-CITY-020` | En MVP `owner_player_id` es **inmutable** tras la creación: no hay conquista, cesión ni abandono. Cuando existan, el cambio de ownership será write-through inmediato y transaccional (canon §12) y emitirá su propio evento. **Precisión (2026-11-23, [city-fall.md](city-fall.md), [ADR-050](../decisions/ADR-050-city-fall.md)):** desde E31 una ciudad puede **caer**, pero no cambia de dueño: se arrasa (`cities.fallen_at`) y su dueño refunda otra en la misma transacción (`RN-CITY-026` a `RN-CITY-029`). El dueño sigue inmutable. |
 | `RN-CITY-021` | El ownership lo determina siempre el servidor. Ningún mensaje del cliente puede afirmar, sugerir ni modificar la propiedad de una ciudad (canon §1.1). |
 
 ## 7. Estados y transiciones
@@ -267,6 +267,8 @@ protección son `INV-CITY-011..016` y viven en [presence.md](presence.md).
 **Precisión (2026-11-22).** [INV-CITY-019](../invariants/city.md#inv-city-019) (una ciudad nueva nace al alcance de
 una caravana de alguna vecina, si había vecinas y algún sitio lo permitía) lo introduce [trade-reach.md](trade-reach.md)
 con `RN-CITY-024` y `RN-CITY-025`; esta spec lo cita.
+
+**Precisión (2026-11-23, [city-fall.md](city-fall.md), [ADR-050](../decisions/ADR-050-city-fall.md)):** desde E31 «un jugador, una ciudad en pie» lo garantiza la base con el índice único parcial `cities_one_standing_per_owner` (migración `000030`, [INV-CITY-020](../invariants/city.md#inv-city-020)); la nota de abajo describe el estado anterior y sigue valiendo para las ciudades caídas, que conservan su fila.
 
 Nota sobre «un jugador, una ciudad»: es una regla del MVP que se sostiene en el dominio
 (`State.cityByOwner` indexa una ciudad por owner y `CityRepo.GetByOwner` hace `ORDER BY id LIMIT 1`), **no** un

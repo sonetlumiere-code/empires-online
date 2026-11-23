@@ -2975,3 +2975,40 @@ el navegador.
   (en la ejecución larga de E29, 54 en 3 h sólo para `_1_e29`). `_2_e29` y `_3_e29` siguen comerciando entre sí y
   `_3_e29` llega a Castillos en 13 min 21 s. `_1_e29` sigue sin socios en su ejecución y en Bronce: la regla no mueve
   ciudades que ya existen (Q3), y comerciar con otros bots a la vista quedó fuera (Q7).
+
+## E31 — La caída de una ciudad
+
+**Estado: EN CURSO (2026-11-23)**, en la rama `claude/slice-caida-ciudad`. Contrato: [SPEC-CITY-FALL](../specs/city-fall.md),
+propuesta y aceptada el 2026-11-23 con sus diez decisiones de producto, y [ADR-050](../decisions/ADR-050-city-fall.md).
+
+**Objetivo.** Que la guerra tenga final: una ciudad en brecha puede caer. Es el último paso de la fase Sieges del
+roadmap, después del derribo de E8 y de la muralla y el ariete de E27.
+
+**Alcance.** `unit.assault`: una unidad que derriba planta el estandarte en el anillo de una ciudad en brecha, de Bronce
+o posterior y fuera de su inmunidad de 72 h, y si aguanta 900 s la ciudad cae (`RN-SIEGE-009` a `RN-SIEGE-011`,
+`RN-COMBAT-041`). La caída la arrasa (`fallen_at`) y su dueño refunda en la misma transacción, a ≥ 64 tiles de la
+caída y del vencedor, con su era y sus tecnologías y sin edificios, almacén ni encargos; sus unidades pasan a la ciudad
+nueva y el territorio capital queda libre (`RN-CITY-026` a `RN-CITY-029`). `CITY_ASSAULTED`, `CITY_LOST` y `CITY_TAKEN`
+en el registro y los avisos; 30 puntos por ciudad en una guerra de clanes. `city.fallen`, `CityView.assault` y
+`fallImmuneUntilMs`; migración `000030`; tres variables `EO_`; [INV-CITY-020](../invariants/city.md#inv-city-020),
+[INV-CITY-021](../invariants/city.md#inv-city-021) e [INV-COMBAT-010](../invariants/combat.md#inv-combat-010);
+`scripts/smoke.mjs --caida`. **No entra** (spec §2): quedarse la ciudad como segunda ciudad, caer sin asalto, botín de
+la caída, elegir dónde refundar y los bots que asaltan.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec, [ADR-050](../decisions/ADR-050-city-fall.md), `INV-CITY-020`, `INV-CITY-021` e
+   `INV-COMBAT-010`, las precisiones de `INV-CITY-001`, `INV-PLAYER-003` e `INV-TERR-011`, de `RN-CITY-020` y la nota de
+   «un jugador, una ciudad» ([city.md](../specs/city.md)), de `RN-CONQ-008` ([territory-conquest.md](../specs/territory-conquest.md)),
+   del no-scope de [combat-siege.md](../specs/combat-siege.md) y [siege-engines.md](../specs/siege-engines.md) y de
+   `RN-CLANWAR-007` ([clan-wars.md](../specs/clan-wars.md)).
+2. **PENDIENTE** — Protocolo: `unit.assault`, `city.fallen`, `CityView.assault` y `fallImmuneUntilMs`, los tres tipos
+   del registro y de los avisos; contract tests (Go y Zod).
+3. **PENDIENTE** — Dominio, migración `000030` y persistencia: `fallen_at`, los índices parciales, `city_assaults`, la
+   transacción de la caída y la refundación, y las consultas de «la ciudad del jugador» sin las caídas.
+4. **PENDIENTE** — Simulación: la orden, el plazo en la fase 5 con su predicado por tick, la caída en dos fases y su
+   aplicación en la RAM, el snapshot nuevo del vencido y el marcador; el golden «caída».
+5. **PENDIENTE** — WebSocket: el e2e del asalto y la caída.
+6. **PENDIENTE** — Cliente: «Asaltar» con sus motivos, la cuenta atrás, la ciudad que desaparece, el salto del vencido y
+   los textos del registro.
+7. **PENDIENTE** — Humo y prueba en vivo: `scripts/smoke.mjs --caida`.

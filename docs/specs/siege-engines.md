@@ -40,7 +40,7 @@ la migración `000029`; en el cliente, «Muralla» al construir, «Ariete» al e
 muralla; `scripts/smoke.mjs --asedio`.
 
 **No entra** (`Fuera de MVP` de este slice): que la ciudad caiga, cambie de dueño o se destruya (Q8; la capital sigue
-intocable, `RN-CONQ-008`); otras máquinas (catapulta, torre de asedio, trabuquete) y que una máquina dañe unidades
+intocable, `RN-CONQ-008`; **Precisión (2026-11-23, [city-fall.md](city-fall.md), [ADR-050](../decisions/ADR-050-city-fall.md)):** la caída entra con E31: una ciudad en brecha se asalta con `unit.assault` y, si aguanta, se arrasa, `RN-SIEGE-009` a `RN-SIEGE-011`); otras máquinas (catapulta, torre de asedio, trabuquete) y que una máquina dañe unidades
 (Q1, Q7); murallas por niveles o con puertas, interior o perímetro propio (`RN-CITY-009` sigue igual); que la muralla
 frene el saqueo (Q4); reparar con aldeanos o con piedra un daño que no derribó (Q5); que el ariete entre en guarnición,
 recolecte, saquee, reclame territorio o transporte unidades; tecnologías nuevas que afecten al asedio; cambios en el

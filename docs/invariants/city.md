@@ -54,6 +54,8 @@ Parámetros canónicos que gobiernan la máquina:
 
 **Razón.** El owner de la ciudad determina quién recibe `city.update`, sobre quién se calcula la presencia que dispara la protección, y contra quién se evalúan las reglas de territorio y diplomacia. Una ciudad sin owner es una ciudad cuya presencia no es computable: quedaría permanentemente en el estado en que estuviera, protegida o expuesta, sin nadie que pudiera cambiarla. Una ciudad con dos owners hace ambiguo el resultado de cualquier chequeo de protección: dos jugadores con presencia distinta darían dos respuestas incompatibles a «¿está protegida?».
 
+**Precisión (2026-11-23, [SPEC-CITY-FALL](../specs/city-fall.md), [ADR-050](../decisions/ADR-050-city-fall.md)).** Una ciudad caída (`fallen_at`) conserva su fila y su único dueño: la caída no transfiere la ciudad, la arrasa. Desde E31 tampoco hay transferencias.
+
 El caso «durante una transferencia» merece énfasis: los cambios de ownership son **write-through inmediato y transaccional** (canon §12), de modo que el owner anterior y el nuevo nunca coexisten ni se ausentan; la transición es atómica.
 
 **Cómo se garantiza.**
@@ -725,6 +727,75 @@ invariante habla de las fundaciones posteriores.
 
 ---
 
+<a id="inv-city-020"></a>
+## INV-CITY-020 — Todo jugador tiene exactamente una ciudad en pie
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E31 |
+| Política ante violación | FAIL_FAST (constraint) |
+| Cobertura | **Sin cobertura** (E31): se registra en la aceptación de SPEC-CITY-FALL, antes de escribir su código |
+
+**Enunciado.** Tras cada transacción confirmada, todo jugador tiene exactamente una fila de `cities` sin `fallen_at`, y
+la RAM de la simulación tiene esa misma ciudad como la suya (`State.CityOf`). Una ciudad caída nunca vuelve a estar en
+pie.
+
+**Razón.** La simulación deriva de la ciudad del jugador su civilización, su bando, la protección del atacante, su vista
+y el destino de una caravana capturada ([SPEC-CITY-FALL](../specs/city-fall.md) §1.1). Un jugador sin ciudad dejaría
+sin respuesta esas preguntas; uno con dos, con dos respuestas. Desde E31 una ciudad puede caer, así que «un jugador,
+una ciudad» deja de ser una nota del alcance del MVP y pasa a ser una propiedad que la caída tiene que respetar.
+
+**Cómo se garantiza.**
+
+- `DB` — el índice único parcial `cities_one_standing_per_owner` sobre `(owner_player_id) WHERE fallen_at IS NULL`
+  (migración `000030`) impide dos ciudades en pie del mismo dueño.
+- `DOMAIN` — la caída arrasa y refunda en **una** transacción y la RAM la aplica en un solo comando
+  ([ADR-050](../decisions/ADR-050-city-fall.md) §3): no hay instante con cero ciudades en pie. El alta sigue creando
+  jugador y ciudad juntos ([INV-PLAYER-003](player.md#inv-player-003)).
+
+**Cómo se verifica.** Previsto: la integración de la transacción de la caída con fallo inyectado (ni ciudad arrasada sin
+refundación ni dos en pie) y el índice que rechaza una segunda ciudad en pie; la simulación de la caída, con `CityOf`
+devolviendo la ciudad nueva en el tick en que vuelve la transacción; con mutación del índice (`DROP INDEX` en la base
+de tests) y del orden de las escrituras de la caída.
+
+**Violación en runtime.** La validación de carga rechaza arrancar con un jugador sin ciudad en pie o con dos y registra
+`invariant_violation` con `inv_id=INV-CITY-020`.
+
+---
+
+<a id="inv-city-021"></a>
+## INV-CITY-021 — Una ciudad tiene como mucho un asalto activo
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E31 |
+| Política ante violación | REJECT |
+| Cobertura | **Sin cobertura** (E31): se registra en la aceptación de SPEC-CITY-FALL, antes de escribir su código |
+
+**Enunciado.** En ningún instante hay dos filas `ACTIVE` de `city_assaults` sobre la misma ciudad, ni dos asaltos
+activos sobre ella en la RAM.
+
+**Razón.** El asalto es una cuenta atrás pública con un solo estandarte que defender (SPEC-CITY-FALL Q1). Dos asaltos a
+la vez sobre la misma ciudad darían dos plazos y dos caídas posibles, y el defensor no sabría a quién matar; es la misma
+razón que [INV-TERR-010](territory.md#inv-terr-010) para las reclamaciones.
+
+**Cómo se garantiza.**
+
+- `DB` — el índice único parcial de un `ACTIVE` por ciudad en `city_assaults` (migración `000030`).
+- `DOMAIN` — `unit.assault` rechaza con `INVALID_TARGET` una ciudad con otro asalto activo o cayendo (`RN-SIEGE-010`).
+
+**Cómo se verifica.** Previsto: el rechazo del segundo asalto (simulation) y el índice que rechaza la segunda fila
+(integration), con mutación de la comprobación de la orden y del índice por separado.
+
+**Violación en runtime.** La validación de carga, ante dos asaltos activos sobre una ciudad, conserva el más antiguo,
+rompe el otro y registra `invariant_violation` con `inv_id=INV-CITY-021`.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -748,3 +819,5 @@ invariante habla de las fundaciones posteriores.
 | INV-CITY-017 | `internal/persistence/postgres`, `internal/game/loadcheck` | [INV-CITY-002](#inv-city-002), [RN-ECON-010](../specs/economy-wood.md) |
 | INV-CITY-018 | `internal/domain/advance`, `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-003](#inv-city-003), [ADR-030](../decisions/ADR-030-stone-layer-and-era-advance.md) |
 | INV-CITY-019 | `internal/game/founding`, `internal/httpapi` | [INV-CITY-007](#inv-city-007), [INV-CITY-008](#inv-city-008), [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) |
+| INV-CITY-020 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-PLAYER-003](player.md#inv-player-003), [ADR-050](../decisions/ADR-050-city-fall.md) |
+| INV-CITY-021 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-TERR-010](territory.md#inv-terr-010), [ADR-050](../decisions/ADR-050-city-fall.md) |

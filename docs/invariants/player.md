@@ -124,6 +124,10 @@ La validación de carga exige además que toda ciudad lleve una facción del cat
 
 **Enunciado.** Al completarse la creación de un jugador existen, atómicamente y de forma indivisible: exactamente una fila en `cities` con `owner` igual a ese jugador (con su `TOWN_CENTER` y su zona urbana amurallada inicial), y exactamente tres filas en `units` con `unit_type = VILLAGER` pertenecientes a ese jugador.
 
+**Precisión (2026-11-23, [SPEC-CITY-FALL](../specs/city-fall.md)).** La refundación tras una caída crea una ciudad y
+tres aldeanos como el alta, pero no un jugador: el invariante sigue hablando del alta, y lo que la caída garantiza lo
+dice [INV-CITY-020](city.md#inv-city-020).
+
 **Razón.** El estado inicial es la única configuración que el jugador no eligió; si es incorrecto, el jugador empieza roto. Los dos modos de fallo son asimétricos y ambos graves:
 
 - **Creación parcial** (jugador sin ciudad, o con uno o dos aldeanos): el jugador no puede jugar, y al conectar el servidor no tiene dónde centrar la vista, porque `session.view` se inicializa en la ciudad del jugador (canon §13).
