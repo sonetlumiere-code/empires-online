@@ -62,6 +62,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E27 Arietes y murallas | **Completado** (2026-11-19). En `main` desde la fusión `9922439`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E27; contrato en [SPEC-SIEGE-ENGINES](../specs/siege-engines.md) y [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md). |
 | E28 Bots | **Completado** (2026-11-20). En `main` desde la fusión `ade9b58`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E28; contrato en [SPEC-BOTS](../specs/bots.md) y [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md). |
 | E29 Bots que comercian | **Completado** (2026-11-22). En `main` desde la fusión `e781dee`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E29; contrato en [SPEC-BOTS-TRADE](../specs/bots-trade.md). |
+| E30 Al alcance del comercio | **Completado** (2026-11-23). En `main` desde la fusión `ab34622`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E30; contrato en [SPEC-TRADE-REACH](../specs/trade-reach.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

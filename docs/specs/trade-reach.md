@@ -7,7 +7,7 @@ bots dejen de insistir con socios a los que no llega ninguna ruta. Sale de la ej
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TRADE-REACH` |
-| Estado | Accepted (2026-11-22). Propuesta en `Draft` el 2026-11-22 y aceptada el mismo día con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-23). Propuesta en `Draft` el 2026-11-22 y aceptada el mismo día con la recomendación de cada pregunta de §10; en `main` desde la fusión `ab34622`, con la CI en verde. |
 | Milestone | E30 Al alcance del comercio (trigésimo slice después de M7) |
 | Canon | §4 (vecindad de 8 direcciones), §5 (terreno), §19 (niveles de test) |
 | Depende de | [city.md](city.md) (la fundación), [caravans.md](caravans.md), [trade.md](trade.md), [markets.md](markets.md), [civilization-goods.md](civilization-goods.md), [movement.md](movement.md) (los topes del pathfinding), [bots-trade.md](bots-trade.md) |

@@ -2907,7 +2907,7 @@ bienes ajenos; `bot_constructor_4`, nórdico, en Piedra. Registros en `bots/runs
 
 ## E30 — Al alcance del comercio
 
-**Estado: HECHO en la rama** `claude/slice-alcance-comercio` (2026-11-23), pendiente de fusionar. Contrato: [SPEC-TRADE-REACH](../specs/trade-reach.md), propuesta y aceptada el 2026-11-22 con
+**Estado: HECHO (2026-11-23)**, en `main` desde la fusión `ab34622`, con la CI en verde. Contrato: [SPEC-TRADE-REACH](../specs/trade-reach.md), propuesta y aceptada el 2026-11-22 con
 sus siete decisiones de producto. Sin ADR: la fundación ya es una búsqueda determinista con reglas de
 [city.md](../specs/city.md) §6.1, y el tope de nodos de [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) no
 cambia (Q4).

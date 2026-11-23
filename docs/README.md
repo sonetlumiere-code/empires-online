@@ -299,7 +299,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E29 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E30 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -420,9 +420,14 @@ Matices que conviene no maquillar:
   tratados, cierran tratos y usan el mercado, y la partida de saqueo se reúne antes de atacar; en el servidor, un
   guerrero que saquea o asedia responde a los golpes (`RN-COMBAT-039`, `RN-COMBAT-040`). Medida: sin sembrar, dos
   constructores llegan a Hierro en 1 h 51 min y 2 h 36 min con bienes comerciados; el tercero, sin ruta de caravana
-  hasta los otros bots de la ejecución, no comercia y se queda en Bronce. Para que ninguna ciudad nueva nazca así,
-  [SPEC-TRADE-REACH](specs/trade-reach.md) está en `Accepted` desde el 2026-11-22 y E30 en curso, en la rama
-  `claude/slice-alcance-comercio` ([roadmap/milestones.md](roadmap/milestones.md) §E30).
+  hasta los otros bots de la ejecución, no comercia y se queda en Bronce ([roadmap/milestones.md](roadmap/milestones.md)
+  §E29).
+- **E30 Al alcance del comercio está en `main`** desde `ab34622`, con la CI en verde y la prueba en vivo del
+  2026-11-23; [SPEC-TRADE-REACH](specs/trade-reach.md) está en `Implemented`, sin ADR ni migración. Si ya hay
+  ciudades, una nueva nace a ≤ `EO_FOUNDING_MAX_NEIGHBOR_TILES` (96) de alguna y con ruta de caravana entre los
+  depósitos ([INV-CITY-019](invariants/city.md#inv-city-019)), y los bots apartan para toda la ejecución la pareja
+  sin ruta (`RN-BOT-013`). En el mundo de desarrollo, ya denso, la regla no cambia ningún sitio: actúa en un mundo que
+  empieza vacío ([roadmap/milestones.md](roadmap/milestones.md) §E30).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en
