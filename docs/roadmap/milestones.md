@@ -1076,7 +1076,9 @@ Todos existen y pasan salvo el marcado como pendiente.
   `contract_test.go`, que sólo comprueba que el nombre del tipo aparece en el esquema.
 - ✔ *unit*: todo mensaje cliente→servidor está clasificado como acción de mundo o de sesión, y ninguna
   acción del MVP es hostil ni se restringe por territorio (`TestTodaAccionDelCatalogoEstaClasificada`,
-  `TestSoloElAtaqueEsHostilYNingunaSeRestringePorTerritorio`).
+  `TestSoloElAtaqueEsHostilYNingunaSeRestringePorTerritorio`). **Precisión (2026-11-23):** el segundo se llama hoy
+  `TestSoloAtaqueSaqueoAsedioYReclamarSonHostilesYNingunaSeRestringePorTerritorio`, porque el saqueo, el asedio y la
+  reclamación se sumaron a las hostiles.
 
 ### Documentación actualizada al cerrar
 
@@ -1227,7 +1229,10 @@ nunca el cliente. `EJE-PERSIST` para treaties y garrisons.
 6. Un treaty con fecha de expiración pasada transiciona a `EXPIRED` dentro del segundo siguiente. Decía
    «dentro del tick siguiente»; el barrido se muestrea a una vez por segundo por la razón del entregable 8,
    y el criterio se ajusta a esa decisión (`TestLaCaducidadDeTratadosSeMuestreaYNoOcurreEnCadaTick`,
-   `TestLaCaducidadSeDetectaYTransicionaAExpired`).
+   `TestLaCaducidadSeDetectaYTransicionaAExpired`). **Precisión (2026-11-23):** el primero se retiró en E6
+   ([ADR-027](../decisions/ADR-027-hot-treaties.md)), cuando el barrido muestreado `treaty.expire` se sustituyó por
+   vencimientos optimistas en la fase 5; la caducidad la cubren hoy `TestUnaOfertaCaducaALas24Horas` y
+   `TestUnPreavisoVencidoDuranteLaCaidaSeAplicaAlArrancar`, y el segundo sigue en la integración.
 7. Tras reiniciar, treaties y garrisons conservan su estado exacto.
 
 ---
@@ -1752,7 +1757,8 @@ terceros, los sucesos de E9 y lo que ya llega por otra vía (saqueo y asedio suf
    `TestElAvisoEsElDelEsquema` y el bloque «avisos en vivo» de `protocol.test.ts`.
 3. **HECHO** — Dominio: `eventlog.Notices` y `eventlog.NoticeKinds`, que pasan el suceso por `Classify` para sus dos
    jugadores (`TestCadaSucesoAvisaASusDosLadosSegunElRegistro`, `TestSinOtroJugadorNoHayAviso`,
-   `TestSoloSeAvisanLosCuatroTiposDeCombate`).
+   `TestSoloSeAvisanLosCuatroTiposDeCombate`; **precisión (2026-11-23):** hoy
+   `TestSoloSeAvisanLosTiposDeCombateYDeTerritorio`, desde que E12 sumó los avisos de territorio).
 4. **HECHO** — Simulación: `notices.go` y el aviso en `kill`, `applyPillage` y `destroyHouse`, con la ciudad del otro
    jugador y el tile; cinco tests en `notices_test.go`: los dos lados de una muerte en el tick del despawn, un aviso
    por golpe de saqueo y ninguno al saqueado, la casa derribada, una muerte y una casa reencoladas que no vuelven a
