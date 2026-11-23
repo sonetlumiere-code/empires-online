@@ -65,9 +65,15 @@ func TestTiposDeMensajePresentesEnElEsquema(t *testing.T) {
 		protocol.TypeUnitMovementStarted, protocol.TypeUnitMovementCompleted,
 		protocol.TypeUnitMovementCancelled,
 		protocol.TypeBuildingSpawn, protocol.TypeBuildingUpdate, protocol.TypeBuildingDestroyed,
-		protocol.TypeForestUpdate, protocol.TypeTreatyUpdate, protocol.TypeEventLogPage,
-		protocol.TypeEventLogNotice, protocol.TypeCaravanUpdate,
+		protocol.TypeForestUpdate, protocol.TypeHillUpdate, protocol.TypeTreatyUpdate,
+		protocol.TypeEventLogPage, protocol.TypeTradeUpdate, protocol.TypeEventLogNotice,
+		protocol.TypeCaravanUpdate, protocol.TypeMessageNew, protocol.TypeMessageInbox,
+		protocol.TypeMessagePage, protocol.TypeClanUpdate, protocol.TypeClanInfo,
+		protocol.TypeClanChatNew, protocol.TypeClanChatPage, protocol.TypeMarketUpdate,
+		protocol.TypeMarketListing, protocol.TypeCityFallen,
 	}
+	// Los treinta y cuatro de SERVER_MESSAGE_TYPES (packages/protocol).
+	require.Len(t, serverTypes, 34)
 	for _, msgType := range serverTypes {
 		require.Contains(t, server, `"`+msgType+`"`,
 			"el tipo servidor→cliente %q no aparece en el esquema exportado", msgType)

@@ -3032,3 +3032,33 @@ Contra la base de desarrollo, que el servidor llevó de la migración 29 a la 30
   el registro con el asalto y la caída. 25 comprobaciones.
 - **Sin comprobar en el navegador:** el botón «Asaltar» con sus motivos y la cuenta atrás del asalto en el HUD (el
   asalto del humo dura 20 s y lo da el humo, no un clic); lo cubren `src/state/cityFall.test.ts` y el e2e.
+  **Comprobado en el repaso (2026-11-23)**, abajo.
+
+### Repaso en el navegador (2026-11-23)
+
+Servidor con `EO_CITY_ASSAULT_SECONDS=60` y `EO_CITY_FALL_IMMUNITY_HOURS=0`; la víctima, `smoke_caida` (Bronce, sin
+muralla).
+
+- **La víctima.** Con el navegador conectado como `smoke_caida`, `node scripts/smoke.mjs --web http://localhost:3001
+  --caida` (25 comprobaciones): al plantarse el asalto el HUD mostró en rojo «¡Están asaltando tu ciudad! Cae en 1:00» y
+  la cuenta bajó segundo a segundo; a la hora exacta de la caída la etiqueta desapareció y el HUD pasó, sin reconectar,
+  a la ciudad refundada (población 9/50 → 12/50).
+- **El atacante.** Con el navegador como `smoke_runner` y `smoke_caida` conectada por un script (para que su ciudad no
+  pasara a protegida): con el guerrero seleccionado a 68 tiles de la ciudad no se ofrece «Asaltar»; al ordenarle ir
+  hacia ella, el botón «Asaltar smoke_caidapolis» apareció **activo** al entrar en los 12 tiles, con su título. Un clic
+  plantó el asalto: el guerrero pasó a `CLAIMING` en el anillo, el HUD mostró «Asaltas smoke_caidapolis: cae en 1:00» y
+  el botón quedó desactivado con el motivo «Ya hay un asalto sobre esa ciudad». A los 60 s la ciudad cayó y la cuenta
+  atrás y el botón desaparecieron; el aviso `CITY_TAKEN` llegó y el registro abre con «Tus unidades tomaron y arrasaron
+  la ciudad de smoke_caidapolis cerca de (161, 116)».
+- **Sin comprobar en el navegador:** los demás motivos del botón (muralla en pie, Edad de Piedra, inmunidad, ciudad
+  protegida, propia protegida, paz de la Orden, tratado): siguen cubiertos sólo por `src/state/cityFall.test.ts`.
+- **Observaciones, sin arreglo en este repaso:**
+  - El título del botón dice «si aguanta 15 minutos»: es el plazo por defecto, fijo en el cliente; no refleja
+    `EO_CITY_ASSAULT_SECONDS` si el servidor lo cambia.
+  - A 1024 px de ancho, la etiqueta de la cuenta atrás del asaltado se parte en cinco líneas (~62 px de ancho).
+  - El vencido que tiene la ciudad en su vista recibe `city.fallen` dos veces (la difusión al chunk y el envío directo
+    al dueño, `simulation/assault.go`); el cliente lo ignora la segunda vez (`cities.delete` devuelve `false`).
+  - La refundación reutiliza solares arrasados: `smoke_caida` alterna entre (123, 180) y (161, 116), a 64 tiles
+    justos el uno del otro, el mínimo de la Q6.
+  - Con la cámara lejos de la ciudad propia, el HUD no muestra la fila de la ciudad (ni «Registro») hasta volver con
+    H; es así desde antes de E31.

@@ -110,8 +110,10 @@ es el sujeto de la protección offline mediante su `presence_state`.
 
 El emplazamiento lo elige `internal/game/founding` mediante una búsqueda determinista en espiral desde
 una semilla derivada del nombre de usuario, exigiendo un entorno despejado de radio 3 y una separación
-mínima de **24 tiles** entre centros de ciudad. `cities` lleva `UNIQUE (center_x, center_y)` y una columna
-`version` para concurrencia optimista.
+mínima de **24 tiles** entre centros de ciudad. `cities` lleva un centro único entre las ciudades en pie (`cities_unique_center`, un índice único parcial
+`WHERE fallen_at IS NULL` desde `000030`) y una columna `version` para concurrencia optimista. Desde E31 una
+ciudad en brecha puede caer ante un asalto: se arrasa (`fallen_at`) y su dueño refunda otra en la misma
+transacción ([../specs/city-fall.md](../specs/city-fall.md)).
 
 Ver: [../specs/city.md](../specs/city.md), [../invariants/city.md](../invariants/city.md).
 
@@ -504,8 +506,9 @@ Ver: [../specs/presence.md](../specs/presence.md).
 Estado de `cities.presence_state` en el que la ciudad está protegida por ausencia del jugador. Se alcanza
 desde `OFFLINE_PENDING` tras el *Protection Cooldown*, y se abandona al reconectar (`→ ONLINE`).
 
-Las acciones hostiles contra una ciudad en este estado se rechazarán con `CITY_PROTECTED`, código reservado:
-el MVP no tiene ninguna acción hostil ([ADR-016](../decisions/ADR-016-foreign-territory-actions.md)). La columna
+Las acciones hostiles contra una ciudad en este estado se rechazan con `CITY_PROTECTED`: el saqueo, el asedio
+de sus casas y, desde E31, el asalto (`unit.assault`). Cuando se escribió [ADR-016](../decisions/ADR-016-foreign-territory-actions.md)
+el MVP no tenía ninguna acción hostil y el código estaba reservado. La columna
 `protection_until` permanece **NULL** mientras el jugador siga offline —la protección es indefinida en el
 MVP— y se limpia al reconectar; el campo existe para poder acotarla en el futuro sin migrar el esquema.
 
@@ -668,7 +671,9 @@ Relación de dominio sobre un territorio, tabla **separada** `territory_control`
 la definición geométrica.
 
 Implementado en M6: se siembra al primer arranque, la fundación de una ciudad reclama su territorio y el
-delta de red asociado es `territory.update`. La conquista queda fuera de MVP.
+delta de red asociado es `territory.update`. La conquista de un territorio llegó con E12
+([../specs/territory-conquest.md](../specs/territory-conquest.md)); la de una ciudad no existe: una ciudad que cae se
+arrasa (E31, [../specs/city-fall.md](../specs/city-fall.md)).
 
 Ver: [../specs/territory.md](../specs/territory.md).
 

@@ -346,6 +346,19 @@ services/game-server/migrations/
 ├── 000015_civilization_traits.up.sql         / .down.sql
 ├── 000016_civilization_goods.up.sql          / .down.sql
 ├── 000017_caravans.up.sql                    / .down.sql
+├── 000018_player_messages.up.sql             / .down.sql
+├── 000019_factions.up.sql                    / .down.sql
+├── 000020_clans.up.sql                       / .down.sql
+├── 000021_clan_territories.up.sql            / .down.sql
+├── 000022_clan_governance.up.sql             / .down.sql
+├── 000023_clan_alliances.up.sql              / .down.sql
+├── 000024_civilization_units.up.sql          / .down.sql
+├── 000025_castle_age.up.sql                  / .down.sql
+├── 000026_clan_wars.up.sql                   / .down.sql
+├── 000027_technologies.up.sql                / .down.sql
+├── 000028_markets.up.sql                     / .down.sql
+├── 000029_siege_engines.up.sql               / .down.sql
+├── 000030_city_fall.up.sql                   / .down.sql
 ├── embed.go
 └── migrations_test.go      # TestLasMigracionesSonCorrelativasYCompletas
 ```
@@ -358,7 +371,7 @@ services/game-server/migrations/
 
 ## 6. Migraciones del MVP
 
-Son **diecisiete**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md).
+Son **treinta**, todas embebidas en el binario. Juntas materializan lo descrito en [schema.md](./schema.md). La tabla detalla las diecisiete primeras; de `000018` a `000030` (de los mensajes a la caída de una ciudad, [SPEC-CITY-FALL](../specs/city-fall.md)), lo que crea cada una lo cuentan la ficha de su tabla en [schema.md](./schema.md) y la spec de su slice.
 
 | # | Fichero | Contenido |
 |---|---|---|
