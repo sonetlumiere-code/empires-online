@@ -169,6 +169,37 @@ fundación, que no cambian.
 | Unit (Vitest, `apps/bots`) | La pareja sin ruta se aparta hasta el final; el registro `unreachable` una vez por pareja; una oferta del mercado sin ruta se aparta. |
 | Mutación | La condición de alcance desactivada hace caer el test del sitio con vecina ([INV-CITY-019](../invariants/city.md#inv-city-019)). |
 
+### 9.1 Precisiones de la implementación (2026-11-22)
+
+- **La condición es un parámetro de `FindSite`** (`founding.Reach`: el tope de vecindad, el pathfinder y sus topes).
+  Su valor cero la desactiva y es la búsqueda de antes; el listener interno la completa con los valores por defecto
+  si falta algo, así que en el alta nunca está apagada. `cmd/devseed` la usa también, con la configuración del
+  servidor. `EO_FOUNDING_MAX_NEIGHBOR_TILES` no baja de 24 (la separación mínima, `RN-CITY-004`).
+- **Filtro de componentes antes del A\*.** Una vez por búsqueda se etiquetan las componentes conexas del mundo en
+  cuatro direcciones, que son exactamente las del A\* (no ataja esquinas, así que toda diagonal tiene un camino
+  ortogonal de dos pasos). Una vecina de otra componente se descarta sin búsqueda: sin el filtro, un candidato junto
+  a una isla lanzaría un A\* condenado por vecina. Lo comprueba `TestLasComponentesSonLasDelPathfinder`.
+- **La ruta se busca con la zona urbana del candidato ya bloqueada**, como estará cuando la caravana salga; el
+  depósito de cada ciudad es el primer tile libre de su anillo (`City.FirstSpawnTile`), el mismo que usan la
+  recolección y las caravanas.
+- **Altas simultáneas.** La comprobación dentro de la transacción del alta sigue siendo sólo la separación
+  (`founding.FarEnough`, [INV-CITY-008](../invariants/city.md#inv-city-008)): una ciudad fundada mientras tanto sólo
+  añade vecinas, y su 3 × 3 sólo cortaría una ruta que pasara justo por él, con el resto del terreno igual. No se
+  repite el A\* bajo el cerrojo.
+- **Coste.** En el mundo canónico de 512 × 512, 24 altas seguidas con la regla cuestan entre 4 y 61 ms cada una,
+  fuera del tick, y ninguna nace a más de 96 de otra.
+- **Bots.** Una oferta de un jugador apartado no se acepta y se deja caducar (§4.3). Una oferta del mercado sin ruta
+  se excluye dentro de la elección de la compra (`bestPurchase`): en E29 la mejor oferta enfriada tapaba a las demás
+  y el bot no compraba ninguna mientras durara el enfriamiento; con un apartado permanente no compraría nunca. El
+  registro `trade` `unreachable` lleva el código.
+- **Tests.** Los de §9 son `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`,
+  `TestElTopeDelPathfindingCortaElAlcance`, `TestLasVecinasSePruebanDeLaMasCercanaYEmpatanPorId`,
+  `TestElMundoVacioFundaComoAntes`, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes` y
+  `TestLaBusquedaConAlcanceEsDeterminista` (`internal/game/founding/site_test.go`),
+  `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integración) y, en `apps/bots`, los tres `RN-BOT-013` de
+  `commerce.test.ts` y el del registro en `bot.test.ts`. Las mutaciones están en la ficha de
+  [INV-CITY-019](../invariants/city.md#inv-city-019).
+
 ## 10. Decisiones de producto (2026-11-22)
 
 Producto aceptó el 2026-11-22 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las

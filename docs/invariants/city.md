@@ -673,7 +673,7 @@ no se cuenta) y el golden `TestGoldenCaravanasDelTratoALaLlegada` (la población
 | Aplicación | DOMAIN, TEST |
 | Milestone | E30 |
 | Política ante violación | REJECT del candidato en la fundación (se prueba el siguiente de la espiral) |
-| Cobertura | **Sin cobertura**: registrado el 2026-11-22 con [SPEC-TRADE-REACH](../specs/trade-reach.md), antes de escribir su código. Tests previstos en `internal/game/founding` (site_test.go) y en `internal/persistence/postgres/fundacion_integration_test.go` (E30) |
+| Cobertura | **Cubierto** por `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`, `TestElTopeDelPathfindingCortaElAlcance`, `TestLasVecinasSePruebanDeLaMasCercanaYEmpatanPorId`, `TestElMundoVacioFundaComoAntes`, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes` y `TestLaBusquedaConAlcanceEsDeterminista` (unit, `internal/game/founding`) y `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integration) |
 
 **Enunciado.** Toda ciudad fundada cuando ya había al menos otra en el mundo tiene, en el instante de fundarse, una
 ciudad vecina a una distancia de Chebyshev entre centros ≤ `EO_FOUNDING_MAX_NEIGHBOR_TILES` y una ruta entre los
@@ -693,18 +693,31 @@ está una ciudad, y después no se reubica ([INV-CITY-007](#inv-city-007)).
   lejana (empate: menor id) con la misma búsqueda A\* que una caravana (`RN-CITY-025`). Si la espiral entera no da
   ningún candidato así, repite la búsqueda sin la condición: la excepción del enunciado, que nunca hace fallar el alta
   (`RN-CITY-006`).
-- Las altas simultáneas: una ciudad que nace mientras tanto sólo añade vecinas. Si la comprobación dentro de la
-  transacción del alta ([INV-CITY-008](#inv-city-008)) debe repetir también el alcance se decide en la
-  implementación y se anota como precisión en la spec.
+- Las altas simultáneas: la comprobación dentro de la transacción del alta ([INV-CITY-008](#inv-city-008)) sigue
+  siendo sólo la separación. Una ciudad que nace mientras tanto sólo añade vecinas, y su 3 × 3 sólo cortaría una
+  ruta que pasara justo por él: no se repite el A\* bajo el cerrojo (precisión de la spec, §9.1).
 
-**Cómo se verifica (previsto, E30).**
+**Cómo se verifica.**
 
-- Unit, `internal/game/founding`: un mundo con una ciudad, el sitio nuevo a ≤ 96 y con ruta; un lago entre la ciudad y
-  el primer candidato de la espiral hace saltar el candidato sin ruta; el orden de las vecinas y su empate; el mundo
-  vacío y la isla sin sitio al alcance fundan como antes, sin `ErrNoSite`; el determinismo (`RN-CITY-005`).
-- Integración, `internal/persistence/postgres/fundacion_integration_test.go`: el alta por el listener interno con dos
-  jugadores; el segundo nace al alcance del primero.
-- Mutación: con la condición de alcance desactivada, el test del sitio con vecina debe caer.
+- `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina` (unit) — la espiral que sin la regla funda a 160 tiles de la única
+  ciudad funda a 96 o menos, con ruta. Compara contra el 96 literal de esta ficha.
+- `TestUnCandidatoSinRutaSeSalta` (unit) — con un lago de lado a lado, los candidatos de la otra orilla a 70 tiles
+  se saltan y la ciudad nace en la orilla de la vecina.
+- `TestElTopeDelPathfindingCortaElAlcance` (unit) — con un paso por el lago, la otra orilla vale con 50 000 nodos y
+  no con 2 000: la ruta es la de la caravana, con sus topes.
+- `TestLasVecinasSePruebanDeLaMasCercanaYEmpatanPorId` (unit) — el orden de `RN-CITY-025`, la vecina a 97 sin probar
+  y la primera con ruta basta.
+- `TestElMundoVacioFundaComoAntes` y `TestUnaIslaSinSitioAlAlcanceFundaComoAntes` (unit) — la excepción: sin
+  vecinas, o sin ningún sitio al alcance, funda donde antes y sin `ErrNoSite`.
+- `TestLaBusquedaConAlcanceEsDeterminista` (unit) — `RN-CITY-005` con la regla, sobre terreno generado.
+- `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integration) — por el listener interno, el segundo jugador nace a
+  96 o menos del primero con ruta entre depósitos, cuando la búsqueda de antes lo habría fundado más lejos.
+- **Verificado por mutación** (2026-11-22, restaurado desde una copia y comprobado con `cmp`): con la condición
+  desactivada en `FindSite` caen `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`,
+  `TestElTopeDelPathfindingCortaElAlcance` y `TestLaBusquedaConAlcanceEsDeterminista`; aceptando cualquier vecina sin
+  el A\*, `TestElTopeDelPathfindingCortaElAlcance` y `TestLasVecinasSePruebanDeLaMasCercanaYEmpatanPorId`; sin la
+  búsqueda de reserva, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes`; y con la regla apagada en `internal/httpapi`,
+  `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (el segundo nace a 98).
 
 **Violación en runtime.** No hay detección después de fundar: la propiedad es del instante del alta, y las ciudades
 y el terreno no se mueven. Una ciudad antigua, de antes de E30, puede no cumplirla y no es una violación: el

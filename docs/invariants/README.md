@@ -259,7 +259,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-016 | `simulation.Hydrate` no escribe `cities`: es idempotente para la presencia | MEDIO | TEST | ✓ | `TestRehidratarDosVecesNoEscribePresencia` |
 | INV-CITY-017 | `population` es el recuento de unidades vivas más las producciones en curso | ALTO | DB, DOMAIN, TEST | ✓ | `TestLaPoblacionCuentaLasProduccionesEnCurso`, `TestEntrenarReservaLaPlazaYEsIdempotente`, `TestElNacimientoEsIdempotenteYLaPlazaPasaALaUnidad`, `TestLaPoblacionNoCuentaLasCaravanas` |
 | INV-CITY-018 | La era de una ciudad nunca retrocede | ALTO | DB, DOMAIN, TEST | ✓ | `TestElFinDelAvanceSubeElLimiteUnaVez`, `TestUnAvanceDesdeOtraEraSeRechaza`, `TestLaEraNoRetrocede` |
-| INV-CITY-019 | Una ciudad nueva nace al alcance de una caravana de alguna vecina, si había vecinas y algún sitio lo permitía | ALTO | DOMAIN, TEST | ○ | Sin test todavía (E30) |
+| INV-CITY-019 | Una ciudad nueva nace al alcance de una caravana de alguna vecina, si había vecinas y algún sitio lo permitía | ALTO | DOMAIN, TEST | ✓ | `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`, `TestElTopeDelPathfindingCortaElAlcance`, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes`, `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integration) |
 
 ### UNIT — [units.md](units.md)
 
@@ -481,9 +481,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 155 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 156 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 1 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **158** | |
 
@@ -491,7 +491,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-CITY-019` se registró el 2026-11-22 con [SPEC-TRADE-REACH](../specs/trade-reach.md), sin ADR, antes de escribir su código, como manda §8, y nace sin cobertura (E30).
+`INV-CITY-019` se registró el 2026-11-22 con [SPEC-TRADE-REACH](../specs/trade-reach.md), sin ADR, antes de escribir su código, como manda §8, y pasó a ✓ con su implementación ese mismo día, verificado por mutación (cuatro mutaciones de código). Ninguna fila queda sin cobertura ni parcial.
 
 `INV-COMBAT-008` e `INV-COMBAT-009` se registraron el 2026-11-19 con SPEC-SIEGE-ENGINES y [ADR-048](../decisions/ADR-048-siege-engines-and-wall.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (cinco mutaciones de código). Ninguna fila queda sin cobertura ni parcial.
 
