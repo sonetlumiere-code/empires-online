@@ -29,6 +29,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
+	"github.com/empires-online/empires-online/services/game-server/internal/pathfinding"
 	"github.com/empires-online/empires-online/services/game-server/internal/persistence/postgres"
 )
 
@@ -58,6 +59,7 @@ type FoundingAPI struct {
 	civilizations map[string]int32
 	faction       int32
 	forests       ForestReader
+	reach         founding.Reach
 }
 
 // ForestReader lee de la base los tiles de bosque agotados (SPEC-ECON-FOREST).
@@ -90,6 +92,10 @@ type Options struct {
 	// Forests da los tiles de bosque agotados; nil trata todo el bosque como
 	// lleno.
 	Forests ForestReader
+	// Reach es la condición de alcance de la fundación (SPEC-TRADE-REACH,
+	// RN-CITY-024). Lo que falte toma el valor por defecto: 96 tiles y el A*
+	// con los topes del canon. Nunca se desactiva.
+	Reach founding.Reach
 }
 
 // NewFoundingAuthenticator construye el autenticador de la fundación: sólo
@@ -127,7 +133,20 @@ func NewFoundingAPI(
 		tick:        opts.Tick,
 		clock:       opts.Clock,
 		forests:     opts.Forests,
+		reach:       withReachDefaults(opts.Reach),
 	}
+}
+
+// withReachDefaults completa la condición de alcance con los valores por
+// defecto (EO_FOUNDING_MAX_NEIGHBOR_TILES y el A* del canon).
+func withReachDefaults(r founding.Reach) founding.Reach {
+	if r.MaxNeighborTiles <= 0 {
+		r.MaxNeighborTiles = founding.DefaultMaxNeighborTiles
+	}
+	if r.Pathfinder == nil {
+		r.Pathfinder = pathfinding.NewAStar(r.MaxNodes, r.MaxDistance)
+	}
+	return r
 }
 
 type foundRequest struct {
@@ -226,7 +245,7 @@ func (a *FoundingAPI) Found() http.HandlerFunc {
 			// simultáneas podían fundar a menos de la distancia mínima
 			// (INV-CITY-008).
 			Place: func(existing []world.Tile) (postgres.Placement, error) {
-				s, err := founding.FindSite(a.world, existing, hashSeed(req.Username), player.InitialVillagers, hasWood)
+				s, err := founding.FindSite(a.world, existing, hashSeed(req.Username), player.InitialVillagers, hasWood, a.reach)
 				if err != nil {
 					return postgres.Placement{}, err
 				}

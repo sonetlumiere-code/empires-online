@@ -46,6 +46,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/world"
+	"github.com/empires-online/empires-online/services/game-server/internal/pathfinding"
 	"github.com/empires-online/empires-online/services/game-server/internal/persistence/postgres"
 )
 
@@ -151,7 +152,12 @@ func run() error {
 			return fmt.Errorf("buscar %s: %w", nombre, err)
 		}
 
-		site, err := founding.FindSite(w, centros, devseed.AnchorSeed, player.InitialVillagers, nil)
+		site, err := founding.FindSite(w, centros, devseed.AnchorSeed, player.InitialVillagers, nil, founding.Reach{
+			MaxNeighborTiles: cfg.FoundingMaxNeighborTiles,
+			Pathfinder:       pathfinding.NewAStar(cfg.PathfindingMaxNodes, cfg.PathfindingMaxDistance),
+			MaxNodes:         cfg.PathfindingMaxNodes,
+			MaxDistance:      cfg.PathfindingMaxDistance,
+		})
 		if err != nil {
 			return fmt.Errorf("no hay sitio para %s: %w", nombre, err)
 		}

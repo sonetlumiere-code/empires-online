@@ -30,7 +30,7 @@ func sembrar(t *testing.T, w *world.World) ([]world.Tile, []safezone.Zone) {
 	t.Helper()
 	var centros []world.Tile
 	for range devseed.Players {
-		site, err := founding.FindSite(w, centros, devseed.AnchorSeed, 3, nil)
+		site, err := founding.FindSite(w, centros, devseed.AnchorSeed, 3, nil, founding.Reach{})
 		require.NoError(t, err)
 		w.SetBlocked(site.MinX, site.MinY, site.MaxX, site.MaxY, true)
 		centros = append(centros, site.Center)

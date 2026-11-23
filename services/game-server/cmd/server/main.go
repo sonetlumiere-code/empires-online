@@ -23,6 +23,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/message"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/safezone"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/territory"
+	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loadcheck"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/loop"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
@@ -617,6 +618,14 @@ func run() error {
 			Tick:          gameLoop.Tick,
 			Clock:         sysClock,
 			Forests:       economyRepo,
+			// La misma búsqueda que la ruta de un trato (RN-CARAVAN-002), con
+			// sus topes (SPEC-TRADE-REACH, RN-CITY-024).
+			Reach: founding.Reach{
+				MaxNeighborTiles: cfg.FoundingMaxNeighborTiles,
+				Pathfinder:       pathfinding.NewAStar(cfg.PathfindingMaxNodes, cfg.PathfindingMaxDistance),
+				MaxNodes:         cfg.PathfindingMaxNodes,
+				MaxDistance:      cfg.PathfindingMaxDistance,
+			},
 		}, log)
 
 	// Superficie pública, la que publica el reverse proxy: el juego y la salud.
