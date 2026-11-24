@@ -316,6 +316,9 @@ function rawText(e: EventLogEntry): string {
       }. Conservas tu era y tus tecnologías`;
     case 'CITY_TAKEN':
       return `Tus unidades tomaron y arrasaron la ciudad de ${who}${where}`;
+    // La segunda ciudad (SPEC-MULTI-CITY Q11): sin otro jugador.
+    case 'CITY_FOUNDED':
+      return `Fundaste una ciudad nueva${where}`;
     case 'MARKET_EXPIRED':
       return `Tu oferta del mercado caducó: ${
         e.lots !== undefined ? `${lotes(e.lots)} sin vender, ` : ''

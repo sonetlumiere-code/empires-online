@@ -54,8 +54,10 @@ type State struct {
 	// activo por unidad, que es justamente INV-MOVE-001.
 	movements map[int64]*movement.Movement
 
-	cities      map[int64]*city.City
-	cityByOwner map[uuid.UUID]int64
+	cities map[int64]*city.City
+	// citiesByOwner son las ciudades en pie de cada jugador, por id: la primera es
+	// su capital (SPEC-MULTI-CITY RN-CITY-033, ADR-051 §1).
+	citiesByOwner map[uuid.UUID][]int64
 	// civilizations es el catálogo por código (SPEC-CIVILIZATION); nil en los
 	// tests que no lo instalan, y entonces los rasgos son neutros.
 	civilizations map[string]player.Civilization
@@ -158,6 +160,8 @@ type State struct {
 	// cityFall son los asaltos de ciudades y las caídas en vuelo
 	// (SPEC-CITY-FALL, ADR-050).
 	cityFall cityFallState
+	// foundings son las fundaciones en vuelo, una por jugador (SPEC-MULTI-CITY).
+	foundings map[uuid.UUID]*foundReservation
 
 	// El recurso de los tiles tocados: la madera del bosque (SPEC-ECON-FOREST,
 	// ADR-025) y la piedra de la colina (SPEC-ECON-STONE, ADR-030).
@@ -177,7 +181,8 @@ func NewState(w *world.World) *State {
 		presenceDirty:   make(map[int64]struct{}),
 		pendingFinishes: make(map[int64]MovementFinishPersistFailed),
 		cities:          make(map[int64]*city.City),
-		cityByOwner:     make(map[uuid.UUID]int64),
+		citiesByOwner:   make(map[uuid.UUID][]int64),
+		foundings:       make(map[uuid.UUID]*foundReservation),
 		unitsByChunk:    make(map[chunkKey]map[int64]struct{}),
 
 		concealCandidates: make(map[int64]struct{}),
@@ -459,23 +464,42 @@ func (s *State) EachMovement(fn func(*movement.Movement) bool) {
 // Ciudades
 // ─────────────────────────────────────────────────────────────
 
-// AddCity incorpora una ciudad al mundo.
+// AddCity incorpora una ciudad al mundo. Un jugador tiene una o dos en pie
+// (INV-CITY-020, INV-CITY-022); la de id menor es su capital.
 func (s *State) AddCity(c *city.City) {
 	s.cities[c.ID] = c
-	s.cityByOwner[c.OwnerPlayerID] = c.ID
+	ids := s.citiesByOwner[c.OwnerPlayerID]
+	for _, id := range ids {
+		if id == c.ID {
+			return
+		}
+	}
+	ids = append(ids, c.ID)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	s.citiesByOwner[c.OwnerPlayerID] = ids
 }
 
-// RemoveCity quita del mundo una ciudad caída (ADR-050 §3). Su dueño deja de
-// tener ciudad hasta que entra la nueva, en el mismo comando.
+// RemoveCity quita del mundo una ciudad caída (ADR-050 §3). Si su dueño tenía
+// otra, ésa es ya su capital (RN-CITY-035); si no, se queda sin ciudad hasta que
+// entra la refundada, en el mismo comando.
 func (s *State) RemoveCity(id int64) {
 	c, ok := s.cities[id]
 	if !ok {
 		return
 	}
 	delete(s.cities, id)
-	if s.cityByOwner[c.OwnerPlayerID] == id {
-		delete(s.cityByOwner, c.OwnerPlayerID)
+	ids := s.citiesByOwner[c.OwnerPlayerID]
+	kept := make([]int64, 0, len(ids))
+	for _, other := range ids {
+		if other != id {
+			kept = append(kept, other)
+		}
 	}
+	if len(kept) == 0 {
+		delete(s.citiesByOwner, c.OwnerPlayerID)
+		return
+	}
+	s.citiesByOwner[c.OwnerPlayerID] = kept
 }
 
 // City recupera una ciudad por identificador.
@@ -484,14 +508,46 @@ func (s *State) City(id int64) (*city.City, bool) {
 	return c, ok
 }
 
-// CityOf recupera la ciudad de un jugador.
+// CityOf recupera la capital de un jugador: su ciudad en pie de id menor
+// (SPEC-MULTI-CITY RN-CITY-033). Responde por el jugador donde la regla no
+// nombra una ciudad: su civilización, su bando, su protección, su comercio.
 func (s *State) CityOf(playerID uuid.UUID) (*city.City, bool) {
-	id, ok := s.cityByOwner[playerID]
-	if !ok {
+	ids := s.citiesByOwner[playerID]
+	if len(ids) == 0 {
 		return nil, false
 	}
-	c, ok := s.cities[id]
+	c, ok := s.cities[ids[0]]
 	return c, ok
+}
+
+// CitiesOf devuelve las ciudades en pie de un jugador, por id: la capital
+// primero (ADR-051 §1).
+func (s *State) CitiesOf(playerID uuid.UUID) []*city.City {
+	ids := s.citiesByOwner[playerID]
+	out := make([]*city.City, 0, len(ids))
+	for _, id := range ids {
+		if c, ok := s.cities[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// cityCenters son los centros de las ciudades en pie de un jugador, por id: las
+// capitales territoriales (RN-CONQ-008, SPEC-MULTI-CITY).
+func (s *State) cityCenters(playerID uuid.UUID) []world.Tile {
+	cs := s.CitiesOf(playerID)
+	out := make([]world.Tile, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.Center())
+	}
+	return out
+}
+
+// IsCapital dice si la ciudad es la capital de su dueño.
+func (s *State) IsCapital(c *city.City) bool {
+	ids := s.citiesByOwner[c.OwnerPlayerID]
+	return len(ids) > 0 && ids[0] == c.ID
 }
 
 // CitiesInChunk devuelve las ciudades cuyo centro cae en un chunk.

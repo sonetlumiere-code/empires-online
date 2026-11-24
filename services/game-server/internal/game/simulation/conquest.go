@@ -418,9 +418,8 @@ func (s *Simulation) claimBlocked(claimer uuid.UUID, t territory.Territory, now 
 	owner, owned := control.PlayerOwner()
 	var centers []world.Tile
 	if owned {
-		if c, ok := s.state.CityOf(owner); ok {
-			centers = append(centers, c.Center())
-		}
+		// Todas sus ciudades en pie son capitales territoriales (SPEC-MULTI-CITY).
+		centers = s.state.cityCenters(owner)
 	}
 	claimerClan, _ := s.state.ClanOf(claimer)
 	if err := territory.CheckClaimable(t, control, claimer, claimerClan, centers); err != nil {
@@ -659,7 +658,7 @@ func (s *Simulation) startCapture(cs *claimState, now time.Time) {
 	control, _ := s.state.TerritoryControl(t.ID)
 	c := Capture{
 		ClaimID: cs.ID, TerritoryID: t.ID, TerritoryName: t.Name,
-		NewOwner: cs.PlayerID, NewCityID: newCity.ID, NewBonus: territory.CaptureBonus(t, newCity.Center()),
+		NewOwner: cs.PlayerID, NewCityID: newCity.ID, NewBonus: territory.CaptureBonus(t, s.state.cityCenters(cs.PlayerID)),
 		ExpectedVersion: control.Version, CapturedAt: now, Tick: s.state.Tick(), AtMs: now.UnixMilli(),
 		X: cs.X, Y: cs.Y,
 	}
@@ -671,7 +670,7 @@ func (s *Simulation) startCapture(cs *claimState, now time.Time) {
 		c.PrevOwner = prev
 		if pc, ok := s.state.CityOf(prev); ok {
 			c.PrevCityID = pc.ID
-			c.PrevBonus = territory.CaptureBonus(t, pc.Center())
+			c.PrevBonus = territory.CaptureBonus(t, s.state.cityCenters(prev))
 		}
 	} else if prevClan, ok := control.ClanOwner(); ok {
 		c.PrevClanID, c.PrevClanTag = prevClan, s.state.clanTag(prevClan)

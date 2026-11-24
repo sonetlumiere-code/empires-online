@@ -199,9 +199,9 @@ Sin códigos nuevos (canon §16):
 ## 6. Eventos y contratos de red
 
 - **Cliente → servidor:** `unit.found_city { unitId }`.
-- **Servidor → cliente:** `unit.found_city.accepted { unitId, cityId }` cuando la transacción confirma, o `error` con
-  el código de §5. La ciudad nueva llega como cualquier ciudad que entra en la vista (`city.update` del alta y el
-  snapshot), y sus dos aldeanos con `entity.spawn`.
+- **Servidor → cliente:** sin mensaje nuevo (precisión de §9.1): al confirmar, un `world.snapshot` a las sesiones del
+  fundador; si no, `system.error` con el código de §5. La ciudad nueva llega como cualquier ciudad que entra en la vista
+  (`city.update` del alta), y sus dos aldeanos con `entity.spawn`.
 - **Evento de dominio:** `CityFounded` en `world_events` (`player_id` el fundador, sin `counterpart_player_id`,
   `atMs`, la ciudad nueva y la que pagó). Va al registro del jugador (`CITY_FOUNDED`); no se avisa en vivo: lo hizo él.
 
@@ -243,6 +243,28 @@ recogen al implementar.
 | Cliente (Vitest) | El motivo de «Fundar ciudad»; «H» que alterna; el HUD de la ciudad elegida. |
 | Bots (Vitest) | Con dos ciudades propias en la vista, el bot juega con la capital. |
 | Humo | `--multiciudad`: fundar, ver la ciudad nueva, el segundo intento rechazado. |
+
+### 9.1 Precisiones de la implementación (2026-11-24)
+
+- **Precisión (2026-11-24): sin mensaje de confirmación.** §6 nombraba `unit.found_city.accepted`; no hace falta. Al
+  confirmarse la fundación, las sesiones del fundador reciben un `world.snapshot` nuevo con sus dos ciudades, por el
+  mismo camino que el vencido de una caída ([ADR-050](../decisions/ADR-050-city-fall.md) §5); los rechazos llegan como
+  `system.error` con el `requestId`. El protocolo gana un solo tipo cliente→servidor y ninguno servidor→cliente.
+- **Precisión (2026-11-24): el sitio, en un territorio libre.** §4.1 decía «no en territorio de otro jugador ni de un
+  clan ajeno»; tampoco en uno propio: el centro de la ciudad hace de su territorio una capital territorial, que no
+  cuenta como conquistada, y fundar en uno conquistado le quitaría a la capital su bono a mitad de la transacción. El
+  territorio libre lo gana la fundación (`RN-TERR-007`).
+- **Precisión (2026-11-24): quién comprueba qué.** El tick comprueba la unidad, el tope, la era, el almacén y el sitio
+  con `founding.CheckSite` sin la capa de madera, el territorio y la Safe Zone, y reserva lo pagado; la cola vuelve a
+  comprobar el sitio con el bosque agotado (`FoundSite`), y la transacción, bajo el cerrojo de fundación, el tope, el
+  aldeano, la distancia y el territorio. El aldeano puede moverse mientras la orden va en vuelo: el centro es el tile
+  donde estaba al ordenar.
+- **Precisión (2026-11-24): la caída con dos ciudades** no busca sitio de refundación: `CityFallRepo.FallCity` mira
+  antes si queda otra en pie y, si al confirmar ya no lo está (cayó en el mismo instante), refunda como en E31. Si la
+  que cae es la capital, la que queda suma el bono de territorio (los conquistados que no contienen ninguna ciudad en
+  pie del jugador).
+- **Precisión (2026-11-24): la validación de carga** registra `invariant_violation` con `inv_id=INV-CITY-022` y no
+  arranca si un jugador tiene más de dos ciudades en pie, y sólo da el bono de territorio a la capital.
 
 ## 10. Decisiones de producto (2026-11-24)
 

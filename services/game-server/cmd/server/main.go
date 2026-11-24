@@ -551,6 +551,9 @@ func run() error {
 		CityFallImmunity:            cfg.CityFallImmunity,
 		CityRefoundMinDistance:      cfg.CityRefoundMinDistance,
 		RefoundSite:                 refoundSite(gameWorld, territories, economyRepo, sysClock, cfg),
+		FoundSite:                   foundSite(gameWorld, territories, economyRepo, sysClock),
+		CityFoundWood:               cfg.CityFoundWood,
+		CityFoundStone:              cfg.CityFoundStone,
 	})
 
 	// Antes del primer tick: el fin de las protecciones vigentes y el reanclaje
@@ -952,6 +955,30 @@ func loadSafeZones(
 		"rows", len(zones), "indexed", idx.Len(),
 		"rejected", len(report.Rejected), "overlaps", len(report.Overlaps), "urban", len(report.Urban))
 	return idx, nil
+}
+
+// foundSite comprueba el sitio de una segunda ciudad (SPEC-MULTI-CITY
+// RN-CITY-030): el tile del aldeano, con las reglas de fundación y la capa de
+// madera, sin el alcance de E30 (Q4). Corre en el trabajo de la cola, fuera del
+// tick, como refoundSite.
+func foundSite(w *world.World, territories *territory.Set, forests *postgres.EconomyRepo,
+	clk clock.Clock) simulation.FoundSiteFunc {
+	return func(ctx context.Context, center world.Tile, existing []world.Tile) (cityfall.Site, error) {
+		agotados, err := forests.DepletedForests(ctx, clk.NowMs())
+		if err != nil {
+			return cityfall.Site{}, fmt.Errorf("leer el bosque agotado: %w", err)
+		}
+		hasWood := func(t world.Tile) bool { _, no := agotados[t]; return !no }
+		s, err := founding.CheckSite(w, center, existing, cityfall.FoundVillagers, hasWood)
+		if err != nil {
+			return cityfall.Site{}, err
+		}
+		site := cityfall.Site{Center: s.Center, Spawns: s.Spawns}
+		if t, ok := territories.TerritoryAt(s.Center.X, s.Center.Y); ok {
+			site.TerritoryID = t.ID
+		}
+		return site, nil
+	}
 }
 
 // refoundSite es la búsqueda del sitio de la ciudad nueva de un vencido

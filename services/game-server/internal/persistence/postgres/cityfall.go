@@ -148,6 +148,16 @@ func (r *CityFallRepo) FallCity(ctx context.Context, f cityfall.Fall) (*cityfall
 	if err != nil {
 		return nil, err
 	}
+	// SPEC-MULTI-CITY RN-CITY-035: con otra ciudad en pie, la caída no refunda.
+	// Si esa otra cayó mientras tanto, la transacción lo ve y se refunda.
+	if kept, err := r.otherStanding(ctx, r.store.pool, f.OwnerID, f.CityID); err != nil {
+		return nil, err
+	} else if kept != 0 {
+		result, err := r.fall(ctx, f, cityfall.Site{}, def, kept)
+		if !errors.Is(err, errKeptGone) {
+			return result, err
+		}
+	}
 	for intento := 0; intento < maxPlacementAttempts; intento++ {
 		existing, err := r.standingCentersBut(ctx, r.store.pool, f.CityID)
 		if err != nil {
@@ -160,12 +170,30 @@ func (r *CityFallRepo) FallCity(ctx context.Context, f cityfall.Fall) (*cityfall
 		if len(site.Spawns) != player.InitialVillagers {
 			return nil, errAldeanos(len(site.Spawns))
 		}
-		result, err := r.fall(ctx, f, site, def)
+		result, err := r.fall(ctx, f, site, def, 0)
 		if !errors.Is(err, errPlacementStale) {
 			return result, err
 		}
 	}
 	return nil, ErrPlacementContended
+}
+
+// errKeptGone: la otra ciudad en pie del vencido cayó antes de confirmar.
+var errKeptGone = errors.New("la otra ciudad del vencido ya no está en pie")
+
+// otherStanding es la otra ciudad en pie de un jugador, la de id menor, o 0.
+func (r *CityFallRepo) otherStanding(ctx context.Context, db DB, owner uuid.UUID, except int64) (int64, error) {
+	var id int64
+	err := db.QueryRow(ctx,
+		`SELECT id FROM cities WHERE owner_player_id = $1 AND fallen_at IS NULL AND id <> $2 ORDER BY id LIMIT 1`,
+		owner, except).Scan(&id)
+	if errors.Is(normalize(err), ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("leer la otra ciudad del jugador: %w", normalize(err))
+	}
+	return id, nil
 }
 
 // standingCentersBut son los centros de las ciudades en pie salvo una, en
@@ -188,7 +216,11 @@ func (r *CityFallRepo) standingCentersBut(ctx context.Context, db DB, except int
 	return out, normalize(rows.Err())
 }
 
-func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.Site, def unit.Definition) (*cityfall.FallResult, error) {
+// fall es la transacción de la caída. Con kept distinto de 0, la otra ciudad en
+// pie del vencido recibe lo de la caída y no se refunda (RN-CITY-035); si ya no
+// está en pie, errKeptGone y no se escribe nada.
+func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.Site, def unit.Definition,
+	kept int64) (*cityfall.FallResult, error) {
 	res := &cityfall.FallResult{}
 	err := r.store.InTx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, foundingLockKey); err != nil {
@@ -225,7 +257,18 @@ func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.
 		if estado != "ACTIVE" {
 			return fmt.Errorf("%w: el asalto %d ya no está activo", ErrConflict, f.AssaultID)
 		}
-		if f.Verify != nil {
+		if kept != 0 {
+			var sigue bool
+			if err := tx.QueryRow(ctx,
+				`SELECT EXISTS (SELECT 1 FROM cities WHERE id = $1 AND owner_player_id = $2 AND fallen_at IS NULL)`,
+				kept, f.OwnerID).Scan(&sigue); err != nil {
+				return fmt.Errorf("leer la otra ciudad %d: %w", kept, normalize(err))
+			}
+			if !sigue {
+				return errKeptGone
+			}
+		}
+		if f.Verify != nil && kept == 0 {
 			existing, err := r.standingCentersBut(ctx, tx, f.CityID)
 			if err != nil {
 				return err
@@ -266,6 +309,13 @@ func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.
 			return err
 		}
 		res.Freed = freed
+
+		if kept != 0 {
+			if err := r.intoKept(ctx, tx, f, kept, res); err != nil {
+				return err
+			}
+			return r.afterFall(ctx, tx, f, kept, res)
+		}
 
 		// 4. La ciudad nueva: el nombre y la era de la caída, el almacén a cero y
 		// tres aldeanos, como un alta (RN-CITY-027).
@@ -343,43 +393,8 @@ func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.
 			return fmt.Errorf("recontar la ciudad %d: %w", c.ID, normalize(err))
 		}
 
-		// 7. Lo que colgaba de la caída (RN-CITY-028).
-		if res.ExpiredTrades, err = ids(ctx, tx,
-			`UPDATE trade_offers SET status = 'EXPIRED', closed_at = $2
-			  WHERE status = 'PROPOSED' AND (proposer_city_id = $1 OR target_city_id = $1)
-			 RETURNING id`, f.CityID, f.Now.UTC()); err != nil {
-			return fmt.Errorf("caducar los tratos de la ciudad %d: %w", f.CityID, err)
-		}
-		if res.WithdrawnMarket, err = ids(ctx, tx,
-			`UPDATE market_offers SET status = 'WITHDRAWN', closed_at = $2
-			  WHERE status = 'OPEN' AND city_id = $1
-			 RETURNING id`, f.CityID, f.Now.UTC()); err != nil {
-			return fmt.Errorf("retirar las ofertas de la ciudad %d: %w", f.CityID, err)
-		}
-		if res.RedirectedCaravans, err = ids(ctx, tx,
-			`UPDATE caravans SET to_city_id = $2
-			  WHERE status = 'IN_TRANSIT' AND to_city_id = $1
-			 RETURNING id`, f.CityID, c.ID); err != nil {
-			return fmt.Errorf("redirigir las caravanas de la ciudad %d: %w", f.CityID, err)
-		}
-
-		// 8. El evento, a los dos (SPEC-CITY-FALL §6).
-		payload := map[string]any{
-			"assaultId": f.AssaultID, "cityId": f.CityID, "newCityId": c.ID, "cityName": f.Name,
-			"x": f.Center.X, "y": f.Center.Y, "newX": c.CenterX, "newY": c.CenterY, "atMs": f.AtMs,
-		}
-		if f.War != nil {
-			payload["war"] = warPointsPayload(f.War)
-		}
-		vencido := f.OwnerID
-		if err := appendEvent(ctx, tx, worldEvent{
-			EventType: eventlog.EventCityFell, Tick: f.Tick, PlayerID: &vencido,
-			CounterpartID: counterpart(f.VictorID), Payload: payload,
-		}); err != nil {
-			return err
-		}
 		res.City = c
-		return nil
+		return r.afterFall(ctx, tx, f, c.ID, res)
 	})
 	if err != nil {
 		return nil, err
@@ -436,4 +451,86 @@ func sortInt64(v []int64) {
 			v[j], v[j-1] = v[j-1], v[j]
 		}
 	}
+}
+
+// afterFall resuelve lo que colgaba de la caída hacia target (la refundada o la
+// otra ciudad en pie) y escribe el evento (RN-CITY-028, RN-CITY-035).
+func (r *CityFallRepo) afterFall(ctx context.Context, tx pgx.Tx, f cityfall.Fall, target int64, res *cityfall.FallResult) error {
+	var err error
+	var nx, ny int32
+	if err := tx.QueryRow(ctx, `SELECT center_x, center_y FROM cities WHERE id = $1`, target).Scan(&nx, &ny); err != nil {
+		return fmt.Errorf("leer el centro de la ciudad %d: %w", target, normalize(err))
+	}
+	// 7. Lo que colgaba de la caída (RN-CITY-028).
+	if res.ExpiredTrades, err = ids(ctx, tx,
+		`UPDATE trade_offers SET status = 'EXPIRED', closed_at = $2
+		  WHERE status = 'PROPOSED' AND (proposer_city_id = $1 OR target_city_id = $1)
+		 RETURNING id`, f.CityID, f.Now.UTC()); err != nil {
+		return fmt.Errorf("caducar los tratos de la ciudad %d: %w", f.CityID, err)
+	}
+	if res.WithdrawnMarket, err = ids(ctx, tx,
+		`UPDATE market_offers SET status = 'WITHDRAWN', closed_at = $2
+		  WHERE status = 'OPEN' AND city_id = $1
+		 RETURNING id`, f.CityID, f.Now.UTC()); err != nil {
+		return fmt.Errorf("retirar las ofertas de la ciudad %d: %w", f.CityID, err)
+	}
+	if res.RedirectedCaravans, err = ids(ctx, tx,
+		`UPDATE caravans SET to_city_id = $2
+		  WHERE status = 'IN_TRANSIT' AND to_city_id = $1
+		 RETURNING id`, f.CityID, target); err != nil {
+		return fmt.Errorf("redirigir las caravanas de la ciudad %d: %w", f.CityID, err)
+	}
+
+	// 8. El evento, a los dos (SPEC-CITY-FALL §6).
+	payload := map[string]any{
+		"assaultId": f.AssaultID, "cityId": f.CityID, "newCityId": target, "cityName": f.Name,
+		"x": f.Center.X, "y": f.Center.Y, "newX": nx, "newY": ny, "atMs": f.AtMs,
+	}
+	if f.War != nil {
+		payload["war"] = warPointsPayload(f.War)
+	}
+	vencido := f.OwnerID
+	if err := appendEvent(ctx, tx, worldEvent{
+		EventType: eventlog.EventCityFell, Tick: f.Tick, PlayerID: &vencido,
+		CounterpartID: counterpart(f.VictorID), Payload: payload,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// intoKept pasa a la otra ciudad en pie del vencido sus unidades vivas y la
+// recuenta; si pasa a ser la capital, cobra el bono de territorio
+// (SPEC-MULTI-CITY RN-CITY-034, RN-CITY-035).
+func (r *CityFallRepo) intoKept(ctx context.Context, tx pgx.Tx, f cityfall.Fall, kept int64, res *cityfall.FallResult) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE units SET city_id = $2 WHERE city_id = $1 AND status <> 'DEAD'`, f.CityID, kept); err != nil {
+		return fmt.Errorf("pasar las unidades a la ciudad %d: %w", kept, normalize(err))
+	}
+	var bono int32
+	if f.CityID < kept {
+		// La caída era la capital: el bono pasa a la que queda, sin contar ninguna
+		// capital territorial (la de la caída ya está libre).
+		var conquistados int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM territory_control tc JOIN territories t ON t.id = tc.territory_id
+			  WHERE tc.owner_type = 'PLAYER' AND tc.owner_id = $1
+			    AND NOT EXISTS (SELECT 1 FROM cities c WHERE c.owner_player_id = $2 AND c.fallen_at IS NULL
+			                     AND c.center_x BETWEEN t.min_x AND t.max_x AND c.center_y BETWEEN t.min_y AND t.max_y)`,
+			f.OwnerID.String(), f.OwnerID).Scan(&conquistados); err != nil {
+			return fmt.Errorf("contar los territorios conquistados: %w", normalize(err))
+		}
+		bono = territory.ConqueredBonus(conquistados)
+	}
+	if err := tx.QueryRow(ctx,
+		`UPDATE cities c SET population_limit = population_limit + $2,
+		        population = (SELECT count(*) FROM units u
+		                       WHERE u.city_id = c.id AND u.status <> 'DEAD' AND u.unit_type <> 'CARAVAN'),
+		        version = version + 1
+		  WHERE c.id = $1 RETURNING population, population_limit`, kept, bono).
+		Scan(&res.KeptPopulation, &res.KeptPopulationLimit); err != nil {
+		return fmt.Errorf("recontar la ciudad %d: %w", kept, normalize(err))
+	}
+	res.KeptCityID = kept
+	return nil
 }

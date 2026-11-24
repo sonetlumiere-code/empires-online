@@ -630,3 +630,33 @@ func TestSinSitioLejosLaRefundacionNaceComoUnAlta(t *testing.T) {
 	verificarSitio(t, w, s, 3)
 	assert.Less(t, chebyshev(s.Center, caida), int32(64), "en un mundo de 64 × 64 no hay sitio a 64")
 }
+
+// SPEC-MULTI-CITY RN-CITY-030: el sitio de la segunda ciudad es el tile que eligió
+// el jugador, con las reglas de siempre y sin espiral: un tile que no las cumple
+// no se cambia por otro cercano.
+func TestElSitioElegidoPasaLasReglasDeFundacionOSeRechaza(t *testing.T) {
+	agua := map[world.Tile]world.TerrainType{{X: 41, Y: 40}: world.Water}
+	w := mundoLiso(t, 96, 96, agua)
+	capital := world.Tile{X: 10, Y: 10}
+
+	s, err := CheckSite(w, world.Tile{X: 60, Y: 60}, []world.Tile{capital}, 2, nil)
+	require.NoError(t, err)
+	assert.Equal(t, world.Tile{X: 60, Y: 60}, s.Center)
+	assert.Len(t, s.Spawns, 2)
+	verificarSitio(t, w, s, 2)
+
+	casos := map[string]world.Tile{
+		"demasiado cerca de otra ciudad": {X: capital.X + 20, Y: capital.Y},
+		"agua en el entorno":             {X: 40, Y: 40},
+		"junto al borde":                 {X: 0, Y: 50},
+		"fuera del mundo":                {X: 200, Y: 50},
+	}
+	for nombre, c := range casos {
+		_, err := CheckSite(w, c, []world.Tile{capital}, 2, nil)
+		assert.True(t, errors.Is(err, ErrNoSite), "%s: se esperaba ErrNoSite, llegó %v", nombre, err)
+	}
+
+	sinBosque := mundoPintado(t, 64, 64, false, nil)
+	_, err = CheckSite(sinBosque, world.Tile{X: 32, Y: 32}, nil, 2, nil)
+	assert.True(t, errors.Is(err, ErrNoSite), "sin bosque al alcance: %v", err)
+}

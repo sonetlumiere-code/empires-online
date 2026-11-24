@@ -55,6 +55,7 @@ import {
   rasgoCompuesto,
   tecnologiaDelHumo,
   plazoDeInvestigacion,
+  sitioParaFundar,
 } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
@@ -541,4 +542,28 @@ test('ciudadRefundada: la del jugador con otro id que la caída', () => {
   const snapshot = { cities: [{ id: 7, ownerPlayerId: 'a' }, { id: 9, ownerPlayerId: 'b' }, { id: 12, ownerPlayerId: 'a' }] };
   assert.equal(ciudadRefundada(snapshot, 'a', 7)?.id, 12);
   assert.equal(ciudadRefundada({ cities: [{ id: 7, ownerPlayerId: 'a' }] }, 'a', 7), undefined);
+});
+
+test('sitioParaFundar: transitable, lejos de los centros, con bosque y en territorio libre (SPEC-MULTI-CITY)', () => {
+  const terreno = new Map();
+  for (let y = 0; y < 80; y++) for (let x = 0; x < 80; x++) terreno.set(`${x},${y}`, GRASSLAND);
+  // Bosque al este de (40,40): 4 × 5 tiles.
+  for (let y = 38; y <= 42; y++) for (let x = 44; x <= 47; x++) terreno.set(`${x},${y}`, FOREST);
+  const libre = [{ minX: 0, minY: 0, maxX: 79, maxY: 79, ownerType: 'NONE' }];
+  const capital = { x: 10, y: 40 };
+  const s = sitioParaFundar(terreno, [capital], libre, capital);
+  assert.ok(s, 'hay sitio');
+  assert.ok(s.d >= 28, 'a 28 o más de la capital');
+  assert.ok(Math.max(Math.abs(s.x - 45), Math.abs(s.y - 40)) <= 8, 'con el bosque cerca');
+  assert.equal(sitioParaFundar(terreno, [capital], libre, capital)?.x, s.x, 'determinista');
+
+  // Un territorio con dueño no vale; sin bosque tampoco; agua en el entorno tampoco.
+  const ajeno = [{ minX: 0, minY: 0, maxX: 79, maxY: 79, ownerType: 'PLAYER' }];
+  assert.equal(sitioParaFundar(terreno, [capital], ajeno, capital), null);
+  const sinBosque = new Map([...terreno].map(([k, v]) => [k, v === FOREST ? GRASSLAND : v]));
+  assert.equal(sitioParaFundar(sinBosque, [capital], libre, capital), null);
+  const conAgua = new Map(terreno);
+  for (let y = 30; y <= 50; y++) for (let x = 30; x <= 43; x++) conAgua.set(`${x},${y}`, WATER);
+  const s2 = sitioParaFundar(conAgua, [capital], libre, capital);
+  assert.ok(!s2 || s2.x >= 47, 'nunca con agua en su 7 × 7');
 });

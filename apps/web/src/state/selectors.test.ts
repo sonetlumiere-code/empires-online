@@ -73,6 +73,18 @@ describe('computeHud', () => {
     expect(hud.ownCity?.name).toBe('Testópolis');
   });
 
+  it('con dos ciudades propias, el panel muestra la capital o la última a la que llevó «H» (SPEC-MULTI-CITY Q9)', () => {
+    state().applySnapshot(snapshot({ cities: [cityView({ id: 20, name: 'Testópolis II' }), cityView()] }));
+    let hud = computeHud(state());
+    expect(hud.ownCities.map((c) => c.id)).toEqual([10, 20]);
+    expect(hud.ownCity?.id).toBe(10);
+    state().setHomeCity(20);
+    hud = computeHud(state());
+    expect(hud.ownCity?.name).toBe('Testópolis II');
+    state().setHomeCity(99);
+    expect(computeHud(state()).ownCity?.id).toBe(10);
+  });
+
   it('sin ciudad propia en el área, ownCity es null', () => {
     state().applySnapshot(snapshot({ cities: [cityView({ id: 11, ownerPlayerId: OTHER })] }));
     expect(computeHud(state()).ownCity).toBeNull();

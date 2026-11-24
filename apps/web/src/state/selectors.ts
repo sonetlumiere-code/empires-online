@@ -10,6 +10,7 @@
  *
  * Ver ../../../../docs/architecture/frontend.md §7.6
  */
+import { ownCitiesOf, shownCity } from './multiCity';
 import type { CityView, UnitView, WorldState } from './world';
 
 export interface HudView {
@@ -17,11 +18,16 @@ export interface HudView {
   readonly ownUnitCount: number;
   /** Unidades propias guarnecidas, en el orden del store. */
   readonly garrisoned: readonly UnitView[];
-  /** La ciudad propia si está en el área; `null` si no. */
+  /**
+   * La ciudad propia que muestra el panel: la última a la que llevó «H» o, si no,
+   * la capital (SPEC-MULTI-CITY Q9); `null` si ninguna está en el área.
+   */
   readonly ownCity: CityView | null;
+  /** Las ciudades propias en el área, por id: la capital primero (RN-CITY-033). */
+  readonly ownCities: readonly CityView[];
 }
 
-export type HudState = Pick<WorldState, 'playerId' | 'units' | 'cities'>;
+export type HudState = Pick<WorldState, 'playerId' | 'units' | 'cities'> & Partial<Pick<WorldState, 'homeCityId'>>;
 
 /** Calcula la vista del HUD. Reserva un objeto; por eso se memoriza con `createHudSelector`. */
 export function computeHud(state: HudState): HudView {
@@ -34,15 +40,10 @@ export function computeHud(state: HudState): HudView {
     if (u.garrisonCityId !== null) garrisoned.push(u);
   }
 
-  let ownCity: CityView | null = null;
-  for (const c of state.cities.values()) {
-    if (c.ownerPlayerId === ownId) {
-      ownCity = c;
-      break;
-    }
-  }
+  const ownCities = ownCitiesOf(state.cities.values(), ownId);
+  const ownCity = shownCity(ownCities, state.homeCityId ?? null);
 
-  return { ownUnitCount, garrisoned, ownCity };
+  return { ownUnitCount, garrisoned, ownCity, ownCities };
 }
 
 /**
@@ -52,6 +53,10 @@ export function computeHud(state: HudState): HudView {
  */
 export function hudEquals(a: HudView, b: HudView): boolean {
   if (a.ownUnitCount !== b.ownUnitCount || a.ownCity !== b.ownCity) return false;
+  if (a.ownCities.length !== b.ownCities.length) return false;
+  for (let i = 0; i < a.ownCities.length; i++) {
+    if (a.ownCities[i] !== b.ownCities[i]) return false;
+  }
   if (a.garrisoned.length !== b.garrisoned.length) return false;
   for (let i = 0; i < a.garrisoned.length; i++) {
     if (a.garrisoned[i] !== b.garrisoned[i]) return false;

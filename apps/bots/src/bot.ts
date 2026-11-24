@@ -12,6 +12,7 @@ import { createWorldStore, terrainAt, type BuildingView, type CityView, type Uni
 import { TERRAIN_HILL } from '../../web/src/state/economy';
 import { commission } from '../../web/src/state/market';
 import { walled } from '../../web/src/state/cityFall';
+import { ownCitiesOf } from '../../web/src/state/multiCity';
 import { WebSession, type Account } from './auth';
 import {
   EMPTY_MEMORY,
@@ -119,6 +120,15 @@ class Link {
 type Stocks = Record<string, number>;
 
 /** Una línea de recurso con el tipo del protocolo. */
+/**
+ * La ciudad con la que juega el bot: su capital, la propia de id menor
+ * (SPEC-MULTI-CITY RN-CITY-033, Q10). Los bots no fundan, pero un jugador con dos
+ * ciudades a la vista no debe cambiar de ciudad según el orden del store.
+ */
+export function capitalOf(cities: Iterable<CityView>, playerId: string): CityView | null {
+  return ownCitiesOf(cities, playerId)[0] ?? null;
+}
+
 function line(l: { resource: string; amount: number }): v1.ResourceAmount {
   return { resource: l.resource as v1.ResourceType, amount: l.amount };
 }
@@ -262,8 +272,7 @@ export class Bot {
   private ownCity(): CityView | null {
     const playerId = this.account?.playerId;
     if (!playerId || !this.home) return null;
-    for (const c of this.home.store.getState().cities.values()) if (c.ownerPlayerId === playerId) return c;
-    return null;
+    return capitalOf(this.home.store.getState().cities.values(), playerId);
   }
 
   /**

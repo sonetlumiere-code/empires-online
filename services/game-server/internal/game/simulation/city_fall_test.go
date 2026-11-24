@@ -2,6 +2,7 @@ package simulation_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +39,39 @@ type fakeCityFall struct {
 	fallErr error
 	avoid   []world.Tile
 	minDist int32
+	// La fundación (SPEC-MULTI-CITY): lo que se le pidió, el error con que
+	// responde y, si keep no es 0, la caída no refunda y pasa a esa ciudad.
+	founds   []simulation.CityFoundWrite
+	foundErr error
+	keep     int64
+}
+
+func (f *fakeCityFall) FoundCity(_ context.Context, w simulation.CityFoundWrite) (*cityfall.FoundingResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.founds = append(f.founds, w)
+	if f.foundErr != nil {
+		return nil, f.foundErr
+	}
+	site, err := w.Founding.Place(f.centers())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", cityfall.ErrFoundRejected, err)
+	}
+	now := w.Founding.Now
+	c := &city.City{
+		ID: 77, OwnerPlayerID: w.Founding.OwnerID, Name: w.Founding.Name, CenterX: site.Center.X, CenterY: site.Center.Y,
+		Era: w.Founding.Era, Population: 3, PopulationLimit: 40, PresenceState: city.PresenceOnline, LastOnlineAt: &now,
+		FoundedAtMs: now.UnixMilli(), Slot: 2,
+	}
+	res := &cityfall.FoundingResult{City: c, FromPopulation: 2}
+	for i, sp := range site.Spawns {
+		id := c.ID
+		res.Villagers = append(res.Villagers, &unit.Unit{
+			ID: int64(950 + i), PlayerID: w.Founding.OwnerID, CityID: &id, Type: unit.TypeVillager,
+			X: sp.X, Y: sp.Y, HP: 40, MaxHP: 40, Status: unit.StatusIdle,
+		})
+	}
+	return res, nil
 }
 
 func (f *fakeCityFall) StartAssault(_ context.Context, a simulation.AssaultStart) (int64, error) {
@@ -62,6 +96,9 @@ func (f *fakeCityFall) FallCity(_ context.Context, fl cityfall.Fall) (*cityfall.
 		return nil, f.fallErr
 	}
 	f.falls = append(f.falls, fl)
+	if f.keep != 0 {
+		return &cityfall.FallResult{KeptCityID: f.keep, KeptPopulation: 4, KeptPopulationLimit: 25}, nil
+	}
 	site, err := fl.Place(f.centers())
 	if err != nil {
 		return nil, err

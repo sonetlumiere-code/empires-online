@@ -290,12 +290,19 @@ export interface WorldState {
   changes: WorldChanges;
 
   selectedUnitId: number | null;
+  /**
+   * La ciudad propia a la que llevó «H» por última vez, la que muestra el panel
+   * (SPEC-MULTI-CITY Q9); `null`, la capital. Estado de interfaz: la escena no lo lee.
+   */
+  homeCityId: number | null;
   lastError: { code: string; message: string } | null;
 
   applyWelcome: (payload: v1.SessionWelcome['payload']) => void;
   applySnapshot: (payload: v1.WorldSnapshot['payload']) => void;
   applyServerMessage: (message: v1.ServerMessage) => void;
   selectUnit: (unitId: number | null) => void;
+  /** Anota la ciudad propia que muestra el panel (tecla «H», SPEC-MULTI-CITY). */
+  setHomeCity: (cityId: number | null) => void;
   /**
    * Anota que se pidió una página del registro con ese requestId: `null` para la
    * primera, o el `beforeId` de una anterior. Sólo se aplican las páginas pedidas.
@@ -466,6 +473,7 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
     clans: EMPTY_CLANS,
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
+    homeCityId: null,
     lastError: null,
 
     // Cambiar de jugador cambia qué es «propio» en todas las entidades: se
@@ -875,6 +883,10 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
       set({ selectedUnitId: unitId, changes: changed({ units: ids }) });
     },
 
+    setHomeCity: (cityId) => {
+      if (get().homeCityId !== cityId) set({ homeCityId: cityId });
+    },
+
     expectEventLogPage: (requestId, beforeId) => {
       eventLogRequests.set(requestId, beforeId);
     },
@@ -945,6 +957,7 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
         world: null,
         tick: 0,
         selectedUnitId: null,
+        homeCityId: null,
         lastError: null,
         treaties: [],
         tradeOffers: [],

@@ -3206,8 +3206,13 @@ qué ciudad sale el comercio, trasladar la capital, que los bots funden.
 1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; ADR-051; `INV-CITY-022` e `INV-CITY-023`
    registrados sin cobertura; precisiones de `INV-CITY-020`, [city.md](../specs/city.md) §9 y
    [city-fall.md](../specs/city-fall.md) §4.2.
-2. **PENDIENTE** — Servidor: la migración `000031`, la capital en `State`, la presencia, el bono, la fundación y la
-   caída con dos, con sus tests.
-3. **PENDIENTE** — Protocolo: `unit.found_city` y su confirmación en Zod y en Go, con su e2e.
-4. **PENDIENTE** — Cliente y bots: «Fundar ciudad», «H» que alterna, la capital en los bots.
-5. **PENDIENTE** — Humo `--multiciudad`, docs y prueba en vivo.
+2. **HECHO** — Servidor: la migración `000031` (`cities.slot`, el índice por dueño y hueco), la capital en `State`
+   (`CityOf`, `CitiesOf`), la presencia de todas a la vez, el bono sólo en la capital (también en la validación de
+   carga), `unit.found_city` con su reserva y el trabajo `city.found` (`founding.CheckSite`, `CityFallRepo.FoundCity`),
+   y la caída con dos sin refundar, con sus tests (`multi_city_test.go`, `multi_city_integration_test.go`).
+3. **HECHO** — Protocolo: `unit.found_city` en Zod y en Go, `CITY_FOUNDED` en el registro, con su e2e
+   (`multi_city_e2e_test.go`). Sin mensaje de confirmación: un snapshot nuevo (spec §9.1).
+4. **HECHO** — Cliente y bots: «Fundar ciudad» con su motivo, «H» que alterna y el panel de la ciudad elegida
+   (`src/state/multiCity.ts`), y la capital en los bots (`capitalOf`).
+5. **EN CURSO** — Humo `--multiciudad` (con `sitioParaFundar` y su test), docs (protocolo, registro, base, cliente,
+   configuración) y prueba en vivo.

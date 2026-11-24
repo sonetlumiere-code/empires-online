@@ -187,7 +187,7 @@ func TestLosTiposDeEntradaSonUnCatalogoCerrado(t *testing.T) {
 		require.False(t, vistos[k], "repetido: %s", k)
 		vistos[k] = true
 	}
-	assert.Len(t, vistos, 45, "desde E31, los tres de la caída de una ciudad")
+	assert.Len(t, vistos, 46, "desde E31, los tres de la caída de una ciudad; desde E34, CITY_FOUNDED")
 }
 
 // SPEC-CARAVANS §6 y RN-LOG-001: cada suceso de una caravana le cuenta algo sólo
@@ -759,4 +759,26 @@ func TestLaCaidaDeUnaCiudadEnElRegistroYEnLosAvisos(t *testing.T) {
 	tb := eventlog.NewBuilder(otro, 0, time.Hour, 10)
 	require.True(t, tb.Add(caida))
 	assert.Equal(t, int32(150), tb.Entries()[0].X, "al vencedor, la ciudad arrasada")
+}
+
+// SPEC-MULTI-CITY Q11: la fundación sólo se le cuenta al fundador, sin otro
+// jugador, con el centro de la ciudad nueva, y no se avisa en vivo.
+func TestLaFundacionDeUnaCiudadEnElRegistro(t *testing.T) {
+	fundada := eventlog.Event{ID: 4, Type: eventlog.EventCityFounded, PlayerID: yo, AtMs: 100, X: 40, Y: 40, HasTile: true}
+	k, other, ok := eventlog.Classify(yo, fundada)
+	require.True(t, ok)
+	assert.Equal(t, eventlog.KindCityFounded, k)
+	assert.Equal(t, uuid.Nil, other)
+	_, _, ok = eventlog.Classify(otro, fundada)
+	assert.False(t, ok)
+	assert.Empty(t, eventlog.Notices(fundada))
+	assert.Contains(t, eventlog.EventTypes(), eventlog.EventCityFounded)
+
+	b := eventlog.NewBuilder(yo, 0, time.Hour, 10)
+	otra := fundada
+	otra.ID = 5
+	require.True(t, b.Add(otra))
+	require.True(t, b.Add(fundada))
+	require.Len(t, b.Entries(), 2, "cada fundación, su entrada")
+	assert.Equal(t, int32(40), b.Entries()[0].X)
 }

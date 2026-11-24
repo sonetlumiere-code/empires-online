@@ -322,6 +322,21 @@ export const UnitAssault = z.object({
 }).strict();
 
 /**
+ * Un aldeano propio y parado funda una segunda ciudad en su tile (SPEC-MULTI-CITY
+ * §4.1). Sólo qué aldeano: el sitio es su tile, y el coste y si se puede los
+ * decide el servidor. Al confirmarse, el fundador recibe un snapshot nuevo con sus
+ * dos ciudades. Ver ../../../docs/specs/multi-city.md
+ */
+export const UnitFoundCity = z.object({
+  v: V,
+  type: z.literal('unit.found_city'),
+  requestId: Uuid,
+  payload: z.object({
+    unitId: EntityId,
+  }).strict(),
+}).strict();
+
+/**
  * Propone un tratado a otro jugador (SPEC-DIPLOMACY). La guarnición la fija el
  * tipo y el servidor decide si se puede. Ver ../../../docs/specs/diplomacy.md
  */
@@ -752,6 +767,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   UnitDemolish,
   UnitClaim,
   UnitAssault,
+  UnitFoundCity,
   CityCraft,
   FactionJoin,
   TreatyPropose,
@@ -810,6 +826,7 @@ export type UnitPillage = z.infer<typeof UnitPillage>;
 export type UnitDemolish = z.infer<typeof UnitDemolish>;
 export type UnitClaim = z.infer<typeof UnitClaim>;
 export type UnitAssault = z.infer<typeof UnitAssault>;
+export type UnitFoundCity = z.infer<typeof UnitFoundCity>;
 export type TreatyPropose = z.infer<typeof TreatyPropose>;
 export type TreatyRespond = z.infer<typeof TreatyRespond>;
 export type TreatyCancel = z.infer<typeof TreatyCancel>;
@@ -899,6 +916,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'market.cancel',
   'market.list',
   'unit.assault',
+  'unit.found_city',
 ] as const;
 
 export type ClientMessageType = (typeof CLIENT_MESSAGE_TYPES)[number];

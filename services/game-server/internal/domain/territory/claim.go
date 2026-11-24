@@ -101,7 +101,7 @@ func (c Control) ClanOwner() (int64, bool) {
 func ClanOwnerID(clanID int64) string { return strconv.FormatInt(clanID, 10) }
 
 // IsCapital indica si el territorio contiene el centro de alguna de las
-// ciudades de su dueño (RN-CONQ-008). En el MVP cada jugador tiene una.
+// ciudades de su dueño (RN-CONQ-008): desde E34, una o dos (SPEC-MULTI-CITY).
 func IsCapital(t Territory, ownerCityCenters []world.Tile) bool {
 	for _, c := range ownerCityCenters {
 		if t.Contains(c.X, c.Y) {
@@ -152,9 +152,9 @@ func CheckClaimable(t Territory, c Control, claimer uuid.UUID, claimerClan int64
 func ConqueredBonus(n int) int32 { return PopulationBonus * int32(n) }
 
 // CountConquered cuenta los territorios de un jugador que no contienen el centro
-// de su ciudad: los conquistados. La capital no cuenta (SPEC-TERRITORY-CONQUEST
-// Q1).
-func CountConquered(ts []Territory, controls map[int64]Control, playerID uuid.UUID, cityCenter world.Tile) int {
+// de ninguna de sus ciudades en pie: los conquistados. Ninguna capital
+// territorial cuenta (SPEC-TERRITORY-CONQUEST Q1, SPEC-MULTI-CITY RN-CITY-034).
+func CountConquered(ts []Territory, controls map[int64]Control, playerID uuid.UUID, cityCenters []world.Tile) int {
 	n := 0
 	for _, t := range ts {
 		c, ok := controls[t.ID]
@@ -164,7 +164,7 @@ func CountConquered(ts []Territory, controls map[int64]Control, playerID uuid.UU
 		if owner, ok := c.PlayerOwner(); !ok || owner != playerID {
 			continue
 		}
-		if t.Contains(cityCenter.X, cityCenter.Y) {
+		if IsCapital(t, cityCenters) {
 			continue
 		}
 		n++
@@ -172,11 +172,12 @@ func CountConquered(ts []Territory, controls map[int64]Control, playerID uuid.UU
 	return n
 }
 
-// CaptureBonus es lo que la captura de t cambia el límite de una ciudad con el
-// centro en cityCenter: el bono si t no contiene ese centro, cero si es su
-// capital (ADR-034 §6).
-func CaptureBonus(t Territory, cityCenter world.Tile) int32 {
-	if t.Contains(cityCenter.X, cityCenter.Y) {
+// CaptureBonus es lo que la captura de t cambia el límite de la capital de un
+// jugador con sus ciudades en cityCenters: el bono si t no contiene ninguno de
+// esos centros, cero si es una de sus capitales territoriales (ADR-034 §6,
+// SPEC-MULTI-CITY RN-CITY-034: el bono sólo lo cobra la capital).
+func CaptureBonus(t Territory, cityCenters []world.Tile) int32 {
+	if IsCapital(t, cityCenters) {
 		return 0
 	}
 	return PopulationBonus

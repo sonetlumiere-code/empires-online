@@ -550,6 +550,11 @@ export class GameClient {
     return this.send('unit.assault', { unitId, cityId });
   }
 
+  /** Un aldeano propio funda una segunda ciudad en su tile (SPEC-MULTI-CITY). */
+  foundCity(unitId: number): string {
+    return this.send('unit.found_city', { unitId });
+  }
+
   demolishBuilding(unitId: number, buildingId: number): string {
     return this.send('unit.demolish', { unitId, buildingId });
   }

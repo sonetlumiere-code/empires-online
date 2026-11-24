@@ -49,6 +49,8 @@ const (
 	TypeUnitClaim = "unit.claim"
 	// La caída de una ciudad (SPEC-CITY-FALL).
 	TypeUnitAssault = "unit.assault"
+	// TypeUnitFoundCity funda una segunda ciudad con un aldeano (SPEC-MULTI-CITY).
+	TypeUnitFoundCity = "unit.found_city"
 	// Diplomacia (SPEC-DIPLOMACY).
 	TypeTreatyPropose = "treaty.propose"
 	TypeTreatyRespond = "treaty.respond"
@@ -161,6 +163,7 @@ var ClientMessageTypes = map[string]bool{
 	TypeUnitDemolish:   true,
 	TypeUnitClaim:      true,
 	TypeUnitAssault:    true,
+	TypeUnitFoundCity:  true,
 	TypeTreatyPropose:  true,
 	TypeTreatyRespond:  true,
 	TypeTreatyCancel:   true,
@@ -569,6 +572,13 @@ type UnitClaimPayload struct {
 type UnitAssaultPayload struct {
 	UnitID int64 `json:"unitId"`
 	CityID int64 `json:"cityId"`
+}
+
+// UnitFoundCityPayload ordena a un aldeano propio fundar una segunda ciudad en
+// su tile (SPEC-MULTI-CITY §6). El sitio, el coste y si se puede son del
+// servidor.
+type UnitFoundCityPayload struct {
+	UnitID int64 `json:"unitId"`
 }
 
 // TreatyProposePayload propone un tratado a otro jugador (SPEC-DIPLOMACY).

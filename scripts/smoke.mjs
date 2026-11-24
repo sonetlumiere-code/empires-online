@@ -157,6 +157,15 @@
  *      era no) y smoke_runner CITY_TAKEN. Arranca el servidor con EO_CITY_ASSAULT_SECONDS=20
  *      y EO_CITY_FALL_IMMUNITY_HOURS=0. La ciudad refundada se puede volver a asaltar en
  *      la pasada siguiente. Va la última de las que mueven guerreros de smoke_runner.
+ *  13j. sólo con --multiciudad (SPEC-MULTI-CITY): una cuenta propia, smoke_multi
+ *      (EO_SMOKE_MULTI_USER), en la Edad de Bronce o después (la primera vez avanza desde
+ *      Piedra) con 800 de madera y 400 de piedra (con el servidor parado,
+ *      EO_DEVSEED_STOCK_FOR=smoke_multi pnpm run dev:seed), lleva un aldeano a un sitio
+ *      libre a unos 30 tiles de su capital y funda (unit.found_city): recibe un snapshot con
+ *      sus dos ciudades, la nueva con el nombre de la capital y « II», en su era y en el
+ *      tile del aldeano; la capital paga, y una tercera se rechaza (INVALID_TARGET). En una
+ *      pasada siguiente la cuenta ya tiene dos y el humo sólo comprueba ese rechazo. No
+ *      depende de las demás opciones.
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
  *      nombra a smoke_runner (el saqueo, con --saqueo; la casa, con --asedio; la
  *      ruptura, con --diplomacia);
@@ -274,6 +283,7 @@ const CLAN = args.includes('--clan');
 const ALIANZA_CLAN = args.includes('--alianza-clan');
 const GUERRA_CLAN = args.includes('--guerra-clan');
 const CAIDA = args.includes('--caida');
+const MULTICIUDAD = args.includes('--multiciudad');
 const PROTOCOL_VERSION = 1;
 
 // Terreno: el byte que viaja en el snapshot es el valor de world.TerrainType.
@@ -875,6 +885,10 @@ async function main() {
 
   if (CAIDA) {
     await caida(segunda, ciudad, cuenta.playerId, snap2);
+  }
+
+  if (MULTICIUDAD) {
+    await multiciudad();
   }
 
   if (REGISTRO) {
@@ -2364,6 +2378,118 @@ async function caida(atacante, ciudad, playerId, snap) {
   }
   ok('refundada sin reconectar', `${refundada.name} (${refundada.id}) en (${refundada.centerX}, ${refundada.centerY}), ${refundada.era}`);
   victima.sesion.cerrar();
+}
+
+// ─────────────────────────────────────────────────────────────
+// La segunda ciudad (SPEC-MULTI-CITY), sólo con --multiciudad
+// ─────────────────────────────────────────────────────────────
+
+const MULTI_USUARIO = process.env.EO_SMOKE_MULTI_USER || 'smoke_multi';
+
+/**
+ * Un sitio donde fundar visto desde el humo (RN-CITY-030): el 7 × 7 alrededor
+ * transitable, a 24 o más de todo centro conocido, con 10 tiles de bosque a 8 o
+ * menos fuera de la zona urbana y en un territorio libre de los conocidos. El más
+ * cercano a `desde` a `minimo` tiles o más; a igual distancia, el de menor (y, x).
+ * Sólo lo aproxima: el bosque alcanzable y el agotado los mira el servidor.
+ */
+export function sitioParaFundar(terreno, centros, territorios, desde, minimo = 28, maximo = 56) {
+  const libre = (x, y) => {
+    const t = territorios.find((tt) => x >= tt.minX && x <= tt.maxX && y >= tt.minY && y <= tt.maxY);
+    return !t || (t.ownerType === 'NONE' && !t.claim);
+  };
+  const pisa = (x, y) => {
+    const tipo = terreno.get(`${x},${y}`);
+    return tipo !== undefined && !NO_TRANSITABLE.has(tipo);
+  };
+  let mejor = null;
+  for (let y = desde.y - maximo; y <= desde.y + maximo; y++) {
+    for (let x = desde.x - maximo; x <= desde.x + maximo; x++) {
+      const d = Math.max(Math.abs(x - desde.x), Math.abs(y - desde.y));
+      if (d < minimo || (mejor && d > mejor.d)) continue;
+      if (centros.some((c) => Math.max(Math.abs(c.x - x), Math.abs(c.y - y)) < 24)) continue;
+      if (!libre(x, y)) continue;
+      let despejado = true;
+      for (let dy = -3; dy <= 3 && despejado; dy++) for (let dx = -3; dx <= 3; dx++) if (!pisa(x + dx, y + dy)) { despejado = false; break; }
+      if (!despejado) continue;
+      let bosque = 0;
+      for (let dy = -8; dy <= 8; dy++) {
+        for (let dx = -8; dx <= 8; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) <= 1) continue;
+          if (terreno.get(`${x + dx},${y + dy}`) === FOREST) bosque++;
+        }
+      }
+      if (bosque < 10) continue;
+      if (!mejor || d < mejor.d || (d === mejor.d && (y < mejor.y || (y === mejor.y && x < mejor.x)))) mejor = { x, y, d };
+    }
+  }
+  return mejor;
+}
+
+async function multiciudad() {
+  const { cuenta } = await abrirSesion(MULTI_USUARIO);
+  const yo = await conectar(cuenta.ticket);
+  let vista = yo.snapshot.payload;
+  const propias = () => vista.cities.filter((c) => c.ownerPlayerId === cuenta.playerId).sort((a, b) => a.id - b.id);
+  let capital = propias()[0];
+  if (!capital) fallar(`${MULTI_USUARIO} no tiene ciudad en su snapshot`, vista.cities);
+  if (capital.era === 'STONE_AGE') {
+    await avance(yo, capital);
+    yo.sesion.enviar('session.view', { center: { x: capital.centerX, y: capital.centerY } });
+    vista = (await yo.sesion.esperar('world.snapshot')).payload;
+    capital = propias()[0];
+  }
+  const aldeanos = vista.units.filter((u) => u.playerId === cuenta.playerId && u.unitType === 'VILLAGER'
+    && u.cityId === capital.id && u.garrisonCityId === null);
+  if (aldeanos.length < 2) fallar(`${MULTI_USUARIO} necesita dos aldeanos de ${capital.name}`, aldeanos);
+
+  // Ya fundó en una pasada anterior: la tercera se rechaza.
+  const intentar = async (aldeano) => {
+    yo.sesion.enviar('unit.found_city', { unitId: aldeano.id });
+    return yo.sesion.esperarQue(['world.snapshot', 'system.error'], (m) => m.type === 'system.error'
+      || m.payload.cities.filter((c) => c.ownerPlayerId === cuenta.playerId).length >= 2, 60_000);
+  };
+  const stocks = capital.stocks ?? {};
+  if (propias().length < 2 && ((stocks.WOOD ?? 0) < 800 || (stocks.STONE ?? 0) < 400)) {
+    const r = await intentar(aldeanos[0]);
+    if (r.type === 'system.error' && r.payload.code === 'INVALID_TARGET' && /dos ciudades/.test(r.payload.message)) {
+      ok('ya tiene dos ciudades de una pasada anterior', 'la tercera se rechaza (INVALID_TARGET)');
+      yo.sesion.cerrar();
+      return;
+    }
+    fallar(`${capital.name} necesita 800 de madera y 400 de piedra (con el servidor parado, EO_DEVSEED_STOCK_FOR=${MULTI_USUARIO} pnpm run dev:seed)`, stocks);
+  }
+  ok('ciudad que funda', `${capital.name} (${capital.id}), ${capital.era}, ${stocks.WOOD} de madera y ${stocks.STONE} de piedra`);
+
+  const terreno = indexarTerreno(vista.chunks);
+  const centros = vista.cities.map((c) => ({ x: c.centerX, y: c.centerY }));
+  const sitio = sitioParaFundar(terreno, centros, vista.territories ?? [], { x: capital.centerX, y: capital.centerY });
+  if (!sitio) fallar('no hay un sitio para fundar a la vista de la capital', { centro: capital });
+  const fundador = aldeanos[0];
+  const llega = await acercar(yo.sesion, fundador, sitio, 0);
+  ok('el aldeano llega al sitio', `(${llega.x}, ${llega.y}), a ${sitio.d} tiles de la capital`);
+
+  const r = await intentar(fundador);
+  if (r.type === 'system.error') fallar('el servidor rechazó la fundación', r.payload);
+  vista = r.payload;
+  const nueva = propias().find((c) => c.id !== capital.id);
+  if (!nueva || nueva.name !== `${capital.name} II` || nueva.era !== capital.era) {
+    fallar('la ciudad nueva no lleva el nombre de la capital con « II» o su era', { capital, nueva });
+  }
+  if (nueva.centerX !== llega.x || nueva.centerY !== llega.y) fallar('la ciudad nueva no está en el tile del aldeano', { nueva, llega });
+  const capitalDespues = vista.cities.find((c) => c.id === capital.id);
+  if (capitalDespues && ((capitalDespues.stocks?.WOOD ?? 0) > (stocks.WOOD ?? 0) - 800)) {
+    fallar('la capital no pagó la fundación', { antes: stocks, despues: capitalDespues.stocks });
+  }
+  ok('segunda ciudad fundada', `${nueva.name} (${nueva.id}) en (${nueva.centerX}, ${nueva.centerY}), ${nueva.era}`);
+
+  const otro = vista.units.find((u) => u.playerId === cuenta.playerId && u.unitType === 'VILLAGER' && u.id !== fundador.id);
+  if (!otro) fallar('no queda otro aldeano para probar la tercera', vista.units.length);
+  yo.sesion.enviar('unit.found_city', { unitId: otro.id });
+  const tercera = await yo.sesion.esperar('system.error', 30_000);
+  if (tercera.payload.code !== 'INVALID_TARGET') fallar('una tercera ciudad no se rechaza con INVALID_TARGET', tercera.payload);
+  ok('la tercera se rechaza', `${tercera.payload.code}: ${tercera.payload.message}`);
+  yo.sesion.cerrar();
 }
 
 // ─────────────────────────────────────────────────────────────

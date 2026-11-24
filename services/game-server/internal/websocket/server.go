@@ -608,6 +608,24 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			CityID:    p.CityID,
 		})
 
+	// La segunda ciudad (SPEC-MULTI-CITY). El cliente dice qué aldeano; el sitio
+	// es su tile, y el coste y si se puede son del servidor.
+	case protocol.TypeUnitFoundCity:
+		var p protocol.UnitFoundCityPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.FoundCity{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+		})
+
 	// Diplomacia (SPEC-DIPLOMACY). El cliente dice a quién y qué tipo, o sobre
 	// qué tratado; el estado, la guarnición y los plazos son del servidor.
 	case protocol.TypeTreatyPropose:

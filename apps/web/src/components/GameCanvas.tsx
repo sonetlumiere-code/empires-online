@@ -18,6 +18,7 @@ import { IsoScene } from '../render/scene';
 import { projectAll, projectChanges } from '../render/projection';
 import { CameraController, panDirectionOf } from '../render/camera';
 import type { Point, Tile } from '../render/iso';
+import { nextHome, ownCitiesOf } from '../state/multiCity';
 import { useWorldStore, type WorldState } from '../state/world';
 
 export interface GameCanvasProps {
@@ -34,12 +35,10 @@ export interface GameCanvasProps {
   focus?: { x: number; y: number; nonce: number } | null;
 }
 
-/** La ciudad propia en el store, si la hay. */
+/** La capital en el store, si la hay: la ciudad propia de id menor (SPEC-MULTI-CITY RN-CITY-033). */
 function ownCityCenter(state: WorldState): Tile | null {
-  for (const c of state.cities.values()) {
-    if (c.ownerPlayerId === state.playerId) return { x: c.centerX, y: c.centerY };
-  }
-  return null;
+  const capital = ownCitiesOf(state.cities.values(), state.playerId)[0];
+  return capital ? { x: capital.centerX, y: capital.centerY } : null;
 }
 
 export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCenter, focus }: GameCanvasProps) {
@@ -183,7 +182,17 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCen
         e.preventDefault(); // las flechas no deben desplazar la página
         return;
       }
-      if (e.key === 'h' || e.key === 'H') camera.goHome();
+      if (e.key === 'h' || e.key === 'H') {
+        // «H» alterna entre las ciudades propias, la capital primero (SPEC-MULTI-CITY Q9).
+        const s = useWorldStore.getState();
+        const next = nextHome(ownCitiesOf(s.cities.values(), s.playerId), s.homeCityId);
+        if (next) {
+          camera.centerOn({ x: next.centerX, y: next.centerY });
+          s.setHomeCity(next.id);
+        } else {
+          camera.goHome();
+        }
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       const direction = panDirectionOf(e.key);

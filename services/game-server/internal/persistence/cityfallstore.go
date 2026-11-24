@@ -37,6 +37,19 @@ func (s *CityFallStore) FallCity(ctx context.Context, f cityfall.Fall) (*cityfal
 	return res, fallConflict(err)
 }
 
+// FoundCity escribe la fundación de una segunda ciudad (SPEC-MULTI-CITY).
+func (s *CityFallStore) FoundCity(ctx context.Context, w simulation.CityFoundWrite) (*cityfall.FoundingResult, error) {
+	stock := make([]postgres.StockDelta, 0, len(w.Stock))
+	for _, d := range w.Stock {
+		stock = append(stock, postgres.StockDelta{CityID: d.CityID, Resource: d.Resource, Delta: d.Delta, Version: d.Version})
+	}
+	res, err := s.repo.FoundCity(ctx, w.Founding, stock)
+	if errors.Is(err, postgres.ErrStaleStock) {
+		return nil, fmt.Errorf("%w: %v", simulation.ErrStaleStock, err)
+	}
+	return res, err
+}
+
 func fallConflict(err error) error {
 	if errors.Is(err, postgres.ErrConflict) {
 		return fmt.Errorf("%w: %v", simulation.ErrFallConflict, err)

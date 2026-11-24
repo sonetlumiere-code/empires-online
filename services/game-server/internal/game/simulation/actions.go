@@ -58,6 +58,9 @@ var actionPolicies = map[string]ActionPolicy{
 	protocol.TypeUnitClaim: {Hostile: true, Territory: TerritoryFree},
 	// SPEC-CITY-FALL §6: el asalto es hostil (ADR-016).
 	protocol.TypeUnitAssault: {Hostile: true, Territory: TerritoryFree},
+	// SPEC-MULTI-CITY §4.1: fundar no toca a nadie; el sitio tiene que estar en
+	// un territorio libre, y lo comprueba foundSiteBlocked.
+	protocol.TypeUnitFoundCity: {Hostile: false, Territory: TerritoryFree},
 	// La diplomacia no es agresión (RN-DIPLO-010): se propone, se responde y se
 	// rompe aunque el otro esté protegido.
 	protocol.TypeTreatyPropose: {Hostile: false, Territory: TerritoryFree},

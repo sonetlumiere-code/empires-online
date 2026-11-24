@@ -365,6 +365,8 @@ Notas:
   `time.Time` con el `Clock` inyectado (`city.ShouldEngageProtection`). Ver [presence.md](presence.md) §10.
 - `cities_owner_idx` **no es único**: la regla MVP «un jugador, una ciudad» se sostiene en el dominio, no en la
   base de datos, porque el multi-ciudad es una evolución prevista que no debe exigir una migración destructiva.
+  **Precisión (2026-11-24, [multi-city.md](multi-city.md)):** así fue: `000031` sólo añade `slot` y cambia el índice
+  parcial de las ciudades en pie a `(owner_player_id, slot)`, sin tocar las filas.
 - Los límites superiores de `center_x` y `center_y` no van en un `CHECK` con literal 512: el tamaño del mundo
   es configuración (`EO_WORLD_WIDTH` / `EO_WORLD_HEIGHT`) y hardcodearlo en el esquema lo duplicaría. La
   validación completa de `INV-CITY-007` (límites **y** transitabilidad) es responsabilidad del dominio

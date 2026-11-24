@@ -290,6 +290,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 		CityFall:            &memoryCityFall{},
 		CityAssaultDuration: 2 * time.Second,
 		RefoundSite:         sitioFijoDeRefundacion,
+		FoundSite:           sitioDeLaFundacion,
 		Inbox:               inbox.Offer,
 		Log:                 log,
 		ProtectionCooldown:  300 * time.Second,

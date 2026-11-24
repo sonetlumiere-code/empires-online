@@ -137,6 +137,33 @@ func FindRefoundSite(w *world.World, existing, avoid []world.Tile, minDist int32
 	return FindSite(w, existing, seed, villagers, hasWood, reach)
 }
 
+// CheckSite comprueba un centro que eligió el jugador para su segunda ciudad
+// (SPEC-MULTI-CITY RN-CITY-030): las reglas de fundación de siempre —el entorno
+// despejado y transitable, la distancia mínima a toda ciudad en pie y el
+// bosque al alcance (RN-CITY-001 a RN-CITY-006, RN-CITY-023)— en ese tile, sin
+// espiral y sin el alcance de vecinos de E30 (Q4). Devuelve el sitio con
+// villagers tiles de nacimiento, o ErrNoSite.
+func CheckSite(w *world.World, center world.Tile, existing []world.Tile, villagers int, hasWood HasWood) (Site, error) {
+	if villagers < 0 {
+		return Site{}, fmt.Errorf("los aldeanos nuevos no pueden ser negativos")
+	}
+	if !w.InBounds(center.X, center.Y) || !isViable(w, center, existing, hasWood) {
+		return Site{}, ErrNoSite
+	}
+	spawns := findSpawns(w, center, villagers)
+	if len(spawns) < villagers {
+		return Site{}, ErrNoSite
+	}
+	return Site{
+		Center: center,
+		MinX:   center.X - townCenterRadius,
+		MinY:   center.Y - townCenterRadius,
+		MaxX:   center.X + townCenterRadius,
+		MaxY:   center.Y + townCenterRadius,
+		Spawns: spawns,
+	}, nil
+}
+
 func farFromAll(t world.Tile, avoid []world.Tile, minDist int32) bool {
 	for _, a := range avoid {
 		if chebyshev(t, a) < minDist {

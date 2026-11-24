@@ -2480,7 +2480,8 @@
                           "MARKET_EXPIRED",
                           "CITY_ASSAULTED",
                           "CITY_LOST",
-                          "CITY_TAKEN"
+                          "CITY_TAKEN",
+                          "CITY_FOUNDED"
                         ]
                       },
                       "firstAtMs": {

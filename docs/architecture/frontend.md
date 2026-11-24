@@ -1032,6 +1032,24 @@ y grueso, y una que carga madera, un tronco a la espalda.
   `changes.fallenCities` y la proyección en `SceneUpdate.fallenCities`: la escena la desvanece en 1 s si está a la
   vista. El HUD no cambia: la cuenta atrás sigue en la barra de la ciudad propia y junto a «Asaltar».
 
+### 4.26 El multiciudad (SPEC-MULTI-CITY)
+
+> **Estado (2026-11-24): implementado.** [SPEC-MULTI-CITY](../specs/multi-city.md),
+> [ADR-051](../decisions/ADR-051-multi-city-capital.md).
+
+- `src/state/multiCity.ts`: `ownCitiesOf` (las ciudades propias por id, la capital primero), `nextHome` (adónde lleva
+  «H»: la capital y, pulsada otra vez, la siguiente), `shownCity` (la que muestra el panel) y `foundCityBlockReason`
+  (por qué el aldeano seleccionado no puede fundar: no es un aldeano, ya hay dos, guarnecido, no parado, su ciudad no
+  está a la vista, antes de Bronce o sin 800 de madera y 400 de piedra). El sitio lo decide el servidor.
+- El store gana `homeCityId` (la ciudad a la que llevó «H» por última vez; estado de interfaz, la escena no lo lee) y
+  `setHomeCity`. `computeHud` devuelve `ownCities` y, en `ownCity`, la de `homeCityId` o la capital: todo el HUD de la
+  ciudad (construir, entrenar, avanzar, investigar) cuelga de ella.
+- `GameCanvas`: la cámara arranca en la capital, y «H» alterna entre las ciudades propias.
+- `src/net/client.ts`: `foundCity(unitId)` manda `unit.found_city`; la confirmación llega como un `world.snapshot`
+  nuevo con las dos ciudades. `CITY_FOUNDED` tiene su texto en `entryText`.
+- Los bots (`apps/bots/src/bot.ts`) juegan con su capital (`capitalOf`, la propia de id menor), sea cual sea el orden
+  del store: no fundan (Q10).
+
 ## 5. Posición autoritativa frente a posición de render
 
 > **Estado: ajustada al código** (`src/state/interpolation.ts`, `src/render/reconciler.ts`, y sus tests).
