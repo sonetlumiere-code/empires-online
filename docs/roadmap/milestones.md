@@ -3138,6 +3138,11 @@ del nombre.
   el terreno conocido y sus rechazos empiezan de cero, y `militaryRule` cuenta también los militares y arietes de la
   partida en curso que no ve (spec §9.1). Los de una ejecución anterior siguen sin recuperarse: el protocolo no manda
   las unidades propias fuera del área de interés.
+- **Pasada 6** (`--semilla 36`, 19 min 58 s, con el repaso de la vista): el saqueador no tiene **ningún rechazo** (78
+  `TARGET_NOT_WALKABLE` en la pasada 5) y sólo entrena aldeanos: ni militares ni arietes de más. Una partida de saqueo
+  de 3 contra `_2_e30` (reunida en 28 s, 105 de madera) y la de asalto contra `_2_e30`, reunida en 1 min 22 s, que la
+  tumba a los 8 min 11 s de salir; la siguiente, contra `_1_e30`, no llega a reunirse antes del final. **1 caída en
+  20 min (3,01 por hora).**
 - **Sin comprobar en el navegador:** el asalto entre bots visto desde una cuenta humana (spec §4.7, parte 3): el panel
   del navegador integrado estuvo oculto en las cinco pasadas y, sin él, el mapa no se dibuja.
 
