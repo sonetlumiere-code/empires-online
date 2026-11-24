@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las cuarenta y una specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las cuarenta y dos specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -81,6 +81,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Al alcance del comercio | [trade-reach.md](trade-reach.md) | E30 Al alcance del comercio | Implemented | Una ciudad nueva nace a ≤ 96 tiles de otra y con ruta de caravana hasta ella, para que ninguna se quede sin poder comerciar ni pasar de Bronce; los bots apartan para toda la ejecución a la pareja sin ruta |
 | La caída de una ciudad | [city-fall.md](city-fall.md) | E31 La caída de una ciudad | Implemented | Una unidad asalta una ciudad en brecha y, si aguanta el plazo, la ciudad cae: se arrasa y su dueño refunda en el acto, lejos, con su era y sus tecnologías y sin lo que tenía; nadie se queda sin ciudad ni con dos. |
 | Bots que asaltan | [bots-assault.md](bots-assault.md) | E32 Bots que asaltan | Implemented | El saqueador, desde Hierro, entrena arietes, abre la muralla y asalta ciudades de otros bots, y el bot cuya ciudad cae sigue jugando desde la refundada, para medir cuántas ciudades caen, cuánto cuesta tumbarlas y cuánto tarda el vencido en recuperarse |
+| El asalto en el mapa | [assault-map.md](assault-map.md) | E33 El asalto en el mapa | Draft | La escena dibuja el asalto de una ciudad para todo el que la ve: el estandarte sobre quien lo sostiene, la cuenta atrás sobre la ciudad con un tono según quién mira, y la ciudad que se desvanece al caer; sin cambios en el servidor ni en el protocolo |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
