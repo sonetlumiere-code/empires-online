@@ -299,7 +299,7 @@ máquina de desarrollo es Go 1.27.0.
 
 Matices que conviene no maquillar:
 
-- **E1 a E32 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
+- **E1 a E33 están en `main`**; de E1 a E4 ([roadmap/milestones.md](roadmap/milestones.md)): madera, incursión, respuesta
   automática y agotamiento del bosque, cada uno con su suite en verde, la CI en verde y una prueba en vivo con el
   humo y el navegador. Sus cuatro specs están en `Implemented` desde el 2026-11-03, igual que las anteriores a E1
   que seguían en `Draft` ([specs/README.md](specs/README.md) §4, «Precisión (2026-11-03)»).
@@ -439,6 +439,11 @@ Matices que conviene no maquillar:
   desde Hierro, entrena arietes, abre la muralla y asalta ciudades de otros bots, y el vencido sigue jugando desde la
   refundada (`RN-BOT-014` a `RN-BOT-017`). Faltan la ejecución larga de 3 h a velocidad real y el asalto visto en el
   navegador ([roadmap/milestones.md](roadmap/milestones.md) §E32).
+- **E33 El asalto en el mapa está en `main`** desde `1bebacd`, con la CI en verde y la prueba en el navegador del
+  2026-11-24; [SPEC-ASSAULT-MAP](specs/assault-map.md) está en `Implemented`, sin ADR ni migración. La escena dibuja el
+  estandarte de quien asalta o reclama, el contorno y la cuenta atrás de la ciudad bajo asalto con un tono según quién
+  mira, y la ciudad que se desvanece al caer (`RN-SIEGE-012` a `RN-SIEGE-014`); sólo cliente
+  ([roadmap/milestones.md](roadmap/milestones.md) §E33).
 
 - **La identidad vive en `apps/web`** desde [ADR-018](decisions/ADR-018-identity-store-and-ticket-issuer.md): un
   almacén propio (base `empires_identity`), contraseñas con `scrypt`, una cookie de sesión y el ticket firmado en

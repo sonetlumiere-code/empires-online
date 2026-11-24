@@ -7,7 +7,7 @@ desaparecer.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-ASSAULT-MAP` |
-| Estado | Accepted (2026-11-24). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-24). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10; en `main` desde la fusión `1bebacd`, con la CI en verde. |
 | Milestone | E33 El asalto en el mapa (trigésimo tercer slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §13 (protocolo), §19 (niveles de test) |
 | Depende de | [city-fall.md](city-fall.md), [territory-conquest.md](territory-conquest.md), [siege-engines.md](siege-engines.md), [bots-assault.md](bots-assault.md), [websocket-protocol.md](websocket-protocol.md) |

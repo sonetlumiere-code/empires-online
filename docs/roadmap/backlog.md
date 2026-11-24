@@ -65,6 +65,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E30 Al alcance del comercio | **Completado** (2026-11-23). En `main` desde la fusión `ab34622`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E30; contrato en [SPEC-TRADE-REACH](../specs/trade-reach.md). |
 | E31 La caída de una ciudad | **Completado** (2026-11-23). En `main` desde la fusión `9b31ae2`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E31; contrato en [SPEC-CITY-FALL](../specs/city-fall.md) y [ADR-050](../decisions/ADR-050-city-fall.md). |
 | E32 Bots que asaltan | **Completado** (2026-11-24). En `main` desde la fusión `0465eba`, con la CI en verde; queda la ejecución larga de 3 h como medida. Detalle en [milestones.md](milestones.md) §E32; contrato en [SPEC-BOTS-ASSAULT](../specs/bots-assault.md). |
+| E33 El asalto en el mapa | **Completado** (2026-11-24). En `main` desde la fusión `1bebacd`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E33; contrato en [SPEC-ASSAULT-MAP](../specs/assault-map.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

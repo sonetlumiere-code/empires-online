@@ -3139,7 +3139,7 @@ del nombre.
 
 ## E33 — El asalto en el mapa
 
-**Estado: EN CURSO (2026-11-24)**, en la rama `claude/slice-asalto-mapa`, implementado y probado en vivo. Contrato:
+**Estado: HECHO (2026-11-24)**, en `main` desde la fusión `1bebacd`, con la CI en verde. Contrato:
 [SPEC-ASSAULT-MAP](../specs/assault-map.md), propuesta y aceptada el 2026-11-24 con sus ocho decisiones de producto.
 Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
 
