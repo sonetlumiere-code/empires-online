@@ -995,7 +995,9 @@ y grueso, y una que carga madera, un tronco a la espalda.
   (`economy.ts`) para entrenar arietes y `assaultBlockReason` y `walled` (`cityFall.ts`) para elegir el blanco y
   plantar el estandarte (`RN-BOT-014`), y envía `assaultCity` (`src/net/client.ts`). Lee `CityView.assault` y
   `fallImmuneUntilMs`, y el `city.fallen` y el `world.snapshot` de la refundada que el store ya aplica: el bot vencido
-  cambia de ciudad sin reconectar (`RN-BOT-017`). Nada nuevo en `src/net` ni en `src/state`.
+  cambia de ciudad sin reconectar (`RN-BOT-017`). La partida que sale de la vista de las dos conexiones desaparece
+  del store (`entity.despawn OUT_OF_INTEREST`): el decisor apunta dónde vio a cada uno y la conexión de campaña va a
+  mirar allí (`whereabouts`, `lookAt`). Nada nuevo en `src/net` ni en `src/state`.
 - **Consecuencia:** `src/net` y `src/state` tienen que seguir sin DOM ni React en lo que el bot importa. Un cambio que
   lo rompa lo detectan el typecheck y los tests de `apps/bots`, que corren con los del workspace.
 - `tsx` carga los `.ts` de `apps/web` como CommonJS (el paquete no declara `"type": "module"`); por eso

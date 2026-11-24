@@ -355,7 +355,9 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
   que recibe al precio de la tabla; publica como mucho 3 lotes de 10, y sólo sin un trato propio pendiente.
 - **La partida reunida.** El plazo de reunión corre desde que todos tienen la orden del último tramo, el del punto de
   reunión; un guerrero está reunido a ≤ 2 tiles de ese tramo, que puede estar desplazado en espiral hasta 4 tiles del
-  punto. Vencido el plazo sin `raidMinParty` reunidos, la partida vuelve. Mientras falte alguno por recibir la orden
+  punto. **Precisión (2026-11-24):** el desplazamiento del último tramo no tiene tope: es el del espiral con los
+  rechazos de la partida, y a más de 4 tiles se tomaba por un tramo intermedio que, con la partida ya en él, se
+  repetía sin fin ([bots-assault.md](bots-assault.md) §9.1). Vencido el plazo sin `raidMinParty` reunidos, la partida vuelve. Mientras falte alguno por recibir la orden
   de saquear, la partida no da otras órdenes (tampoco la de volver: el espejo puede enseñar parado un despertar más a
   quien ya la tiene). Un `PATH_*` al ordenar el saqueo, ya desde 16 tiles, enfría el blanco en vez de pasar a marchar.
 - **La vuelta de una partida lejana.** Como la de un guerrero varado ([bots.md](bots.md) §4.8), va derecha a casa

@@ -298,6 +298,25 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
     [websocket-protocol.md](websocket-protocol.md) §7.4) no pasaba el esquema Zod, que pedía un id de 1 o más, y el
     cliente lo rechazaba con `INVALID_MESSAGE`. Lo destapó el tramo de marcha que se manda a quien ya está en el punto de
     reunión. Se corrige el esquema, que no decía lo mismo que la spec; el servidor no cambia.
+  - **Precisión (2026-11-24): la marcha de una partida se repetía sin fin** (venía de E28/E29). En la tercera pasada
+    el punto de reunión no se pisaba y el espiral de los rechazos lo desplazó 9 tiles (26 intentos). El último tramo
+    sólo se reconocía a 4 tiles o menos del punto de reunión; con la partida ya parada en el desplazado, el tramo
+    siguiente salía igual, y el saqueador mandó el mismo `raid:march` a sus tres militares en cada despertar durante
+    17 min (753 órdenes). El servidor las aceptaba con `movementId: 0`, y el error de esquema de arriba sólo añadía
+    ruido: las posiciones del bot estaban al día, y con el esquema arreglado el bucle seguía. Ahora el último tramo es
+    también el punto de reunión desplazado con los intentos de la partida, por lejos que quede (`isRallyLeg`); con él
+    corre el plazo de reunión y, reunidos, sale la orden de saquear.
+  - **Precisión (2026-11-24): una vuelta que sale de la vista no terminaba.** En la cuarta pasada, la partida volvía
+    por tramos desde un blanco a 267 tiles; el primer tramo acabó en 106,247, fuera de la vista de casa y de la del
+    blanco (radio de 2 chunks), y el servidor dejó de mandar a los cinco (`entity.despawn OUT_OF_INTEREST`). Sin
+    verlos, el bot no les daba el tramo siguiente, y la partida, que termina cuando todos están en casa, siguió abierta
+    los 29 min que quedaban. Ahora la partida apunta dónde vio por última vez a cada uno, o adónde iba si caminaba
+    (`whereabouts`), y fuera de la marcha la conexión de campaña va a mirar allí si falta alguno (`lookAt`); mientras
+    los ve a todos, no se mueve.
+  - **Lo que no se arregla en el bot:** los militares que una ejecución anterior dejó fuera de la vista. El protocolo
+    no tiene un mensaje con las unidades propias fuera del área de interés, así que el proceso nuevo no sabe que
+    existen: cuentan en la población, no se recuperan y el saqueador entrena otros. En este mundo quedan así doce
+    militares y los dos arietes de las pasadas anteriores.
 - **El tercero** (§4.7, parte 3) sólo ve la cuenta atrás de un asalto ajeno en el HUD si tiene seleccionada una
   unidad suya a 12 tiles o menos (`assaultTargetNear`); si no, ve la ciudad desaparecer. Pintar el asalto en la escena
   es otro slice.

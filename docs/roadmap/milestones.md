@@ -3091,7 +3091,47 @@ asalto, la inmunidad, el ariete o la muralla (los hallazgos van a otra spec, Q10
    (`bot.test.ts`), y el fallo de la búsqueda de colinas tras la caída (spec §9.1).
 4. **HECHO** — Registro y resumen con los sucesos nuevos; el perfil con sus campos nuevos; docs
    (`docs/architecture/frontend.md`, `docs/operations/local-development.md`).
-5. **PENDIENTE** — Prueba en vivo (spec §4.7, Q5): pasada corta con `EO_CITY_ASSAULT_SECONDS=120`,
-   `EO_CITY_FALL_IMMUNITY_HOURS=0` y cuentas sembradas a Hierro; la ejecución larga de 3 h a velocidad real con las
-   cuentas `_e29` (fuera de su inmunidad desde el 2026-11-25) y el saqueador sembrado a Hierro, anotada aquí como
-   medida; y, con el panel visible, un asalto entre bots visto desde una cuenta humana.
+5. **EN PARTE** — Prueba en vivo (spec §4.7, Q5). **HECHA** la pasada corta con `EO_CITY_ASSAULT_SECONDS=120` y
+   `EO_CITY_FALL_IMMUNITY_HOURS=0` (cinco pasadas, abajo), con los dos fallos de la marcha y de la vuelta que
+   destapó (spec §9.1). **PENDIENTE** la ejecución larga de 3 h a velocidad real con las cuentas `_e29` (fuera de su
+   inmunidad desde el 2026-11-25) y el saqueador sembrado a Hierro, anotada aquí como medida.
+
+### Prueba en vivo (2026-11-23 y 2026-11-24)
+
+Servidor y web de desarrollo en esta Mac, con `EO_CITY_ASSAULT_SECONDS=120` y `EO_CITY_FALL_IMMUNITY_HOURS=0`, y
+`pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 --sufijo e30`. Las cuentas `_e30`,
+con el saqueador sembrado a Hierro (`EO_DEVSEED_STOCK_FOR`). Registros en `bots/runs/` (sin versionar), por la semilla
+del nombre.
+
+- **Pasada 1** (`--semilla 32`, 44 min 39 s): el saqueador pasa a Hierro a los 3 min 7 s y a Castillos a los 12 min
+  18 s, y entrena 2 arietes y 4 berserkers. Planta 5 estandartes; dos asaltos se rompen al morir el portaestandarte
+  (`holder_died`), y `_2_e30` cae dos veces (ciudades 26 y 34, refundada en la 35): **2,69 caídas por hora**. El
+  vencido sigue jugando desde la refundada. Destapó los cuatro primeros fallos de spec §9.1 (los arietes que volvían
+  desde el punto de reunión, `raid_end` y `raid` en el mismo despertar, `breached` sin muralla, el enfriamiento de la
+  víctima de la Q8).
+- **Pasada 2** (`--semilla 33`, 2 min 17 s): un asalto plantado al final de la pasada 1 siguió en el servidor y tumbó
+  a los 0,8 min la ciudad de `_1_e30` (25, refundada en la 36), la que la partida nueva iba a saquear: la partida de
+  saqueo cuyo blanco cae no volvía (spec §9.1).
+- **Pasada 3** (`--semilla 34`, 21 min 2 s): sin asalto. La partida de saqueo hacia `_2_e30` llegó a su punto de
+  reunión desplazado y, desde el minuto 3,8 hasta el final, repitió el mismo `raid:march` a sus tres militares: 753
+  órdenes, que el servidor aceptaba con `movementId: 0` y el cliente viejo rechazaba con `INVALID_MESSAGE` (spec
+  §9.1, la marcha y el esquema). `_2_e30` y `_3_e30` levantan su muralla.
+- **Pasada 4** (`--semilla 35`, 35 min 39 s, cortada): con el arreglo de la marcha, la partida de 5 llega al mismo
+  punto tras los mismos 26 rechazos, se reúne en 26 s y saquea 139 de madera. Al volver, el primer tramo acabó fuera
+  de la vista de las dos conexiones y la partida no terminó en los 29 min que quedaban (spec §9.1, la vuelta).
+- **Pasada 5** (`--semilla 35`, 37 min 28 s, cortada con la partida siguiente aún en marcha): dos partidas de saqueo
+  contra `_2_e30` (3 y 6 militares; vuelven todos salvo uno), con la vuelta por tramos fuera de la vista ya
+  resuelta. Entrena los 2 arietes en 45 s cada uno y a los 14,7 min sale **la partida de asalto** (4 militares y 2
+  arietes) contra `_2_e30`, amurallada: reunida en 1 min 18 s (minuto 24,5), la muralla abierta por los
+  arietes 69 s después (`wall breached` del defensor y `breached` del saqueador, que la había visto en pie), el
+  estandarte plantado en el acto (`suffered` del defensor) y **la caída a los 120 s** (minuto 27,7), 12 min 56 s
+  después de salir. `_2_e30` refunda en la 37, en 134,213, con 22 de población y en Bronce, y sigue recolectando y
+  comerciando. La partida vuelve entera (minuto 36,8), sin perder ningún ariete, y la siguiente sale contra `_1_e30`, a
+  321 tiles, y no contra la refundada de `_2_e30`, a 203: el enfriamiento de la víctima de la Q8. **1 caída en 37 min
+  (1,60 por hora).**
+- **Hallazgos para otra spec (Q10):** el punto de reunión hacia `_2_e30` no se pisa y la marcha gasta 26 rechazos
+  `TARGET_NOT_WALKABLE` cada vez (78 en la pasada 5): `rallyPoint` da por bueno el terreno que no conoce. Los
+  militares que una ejecución deja fuera de la vista no los recupera la siguiente (spec §9.1): quedan doce militares y
+  dos arietes así, y por eso la pasada 5 entrenó un tercer ariete.
+- **Sin comprobar en el navegador:** el asalto entre bots visto desde una cuenta humana (spec §4.7, parte 3): el panel
+  del navegador integrado estuvo oculto en las cinco pasadas y, sin él, el mapa no se dibuja.

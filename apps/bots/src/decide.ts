@@ -245,9 +245,21 @@ export interface Raid {
   readonly abandon: AssaultAbandon | null;
   /** La partida vio la ciudad amurallada: salir de la brecha es haberla abierto. */
   readonly sawWall: boolean;
+
+  // ── La vista (SPEC-BOTS-ASSAULT §9.1) ──
+  /**
+   * Dónde se vio por última vez a cada uno, o adónde iba si caminaba: el servidor deja
+   * de mandar la unidad que sale de la vista (`entity.despawn OUT_OF_INTEREST`).
+   */
+  readonly whereabouts: Readonly<Record<number, Tile>>;
+  /** Adónde mira la conexión de campaña fuera de la marcha; `null`, al blanco. */
+  readonly lookAt: Tile | null;
 }
 
-/** Lo de una partida que sólo usa el asalto, a su valor de partida (también la de saqueo lo lleva). */
+/**
+ * Lo de una partida a su valor de partida que no depende del blanco: lo que sólo usa el
+ * asalto (también la de saqueo lo lleva) y la vista.
+ */
 export const RAID_ASSAULT_FIELDS = {
   kind: 'pillage',
   rams: [],
@@ -258,7 +270,12 @@ export const RAID_ASSAULT_FIELDS = {
   lastBreak: null,
   abandon: null,
   sawWall: false,
-} as const satisfies Pick<Raid, 'kind' | 'rams' | 'stage' | 'holder' | 'planted' | 'breaks' | 'lastBreak' | 'abandon' | 'sawWall'>;
+  whereabouts: {},
+  lookAt: null,
+} as const satisfies Pick<
+  Raid,
+  'kind' | 'rams' | 'stage' | 'holder' | 'planted' | 'breaks' | 'lastBreak' | 'abandon' | 'sawWall' | 'whereabouts' | 'lookAt'
+>;
 
 export interface Memory {
   /** Clave de orden → hasta cuándo no se repite (RN-BOT-002). */
@@ -743,6 +760,44 @@ export function marchStep(from: Tile, to: Tile, tries = 0): Tile {
 }
 
 /**
+ * La vista de la partida: apunta dónde está (o adónde va) cada uno que se ve y, si
+ * falta alguno, la campaña va a mirar donde se le dejó. Mientras se ven todos, la
+ * vista no se mueve: si volviera al blanco, perdería a los que vuelven. Lo encontró
+ * la pasada corta de E32 (SPEC-BOTS-ASSAULT §9.1): un tramo de vuelta acabó fuera de
+ * la vista de casa y de la del blanco, y la partida no terminaba nunca.
+ */
+function watchParty(raid: Raid, alive: readonly number[], visible: readonly UnitView[]): Raid {
+  const whereabouts: Record<number, Tile> = {};
+  for (const id of alive) {
+    const known = raid.whereabouts[id];
+    if (known) whereabouts[id] = known;
+  }
+  for (const u of visible) {
+    const end = u.movement?.path[u.movement.path.length - 1] ?? u.movement?.target;
+    whereabouts[u.id] = end ? { x: end.x, y: end.y } : { x: u.x, y: u.y };
+  }
+  const seen = new Set(visible.map((u) => u.id));
+  const missing = alive.find((id) => !seen.has(id) && whereabouts[id] !== undefined);
+  // En la marcha, la campaña mira el tramo en curso (`fieldFocus`).
+  const lookAt = missing === undefined || raid.phase === 'march' ? raid.lookAt : (whereabouts[missing] as Tile);
+  return { ...raid, whereabouts, lookAt };
+}
+
+/**
+ * Si el tramo en curso es el último, el del punto de reunión: a su lado, o el punto
+ * de reunión desplazado en espiral por los rechazos, por lejos que haya quedado. Con
+ * sólo la distancia, un desplazamiento de más de 4 tiles era un tramo intermedio y,
+ * con la partida ya en él, el tramo siguiente era el mismo: el bot repetía sin fin
+ * una orden que el servidor aceptaba sin mover a nadie (SPEC-BOTS-ASSAULT §9.1).
+ */
+export function isRallyLeg(raid: Raid): boolean {
+  const w = raid.waypoint;
+  if (w === null) return false;
+  const shifted = marchStep(raid.rally, raid.rally, raid.waypointTries);
+  return chebyshev(w, raid.rally) <= 4 || (w.x === shifted.x && w.y === shifted.y);
+}
+
+/**
  * El punto de reunión de una partida (SPEC-BOTS-TRADE §4.5): a `distance` tiles
  * del blanco, en la línea hacia casa; si ese tile no se pisa, el transitable más
  * cercano del espiral. Un terreno que no se conoce se da por bueno: si no lo es,
@@ -845,6 +900,7 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
   // Los que la memoria da por vivos; los muertos los quita el bot al recibir UNIT_LOST.
   const alive = raid.warriors.filter((id) => units.get(id)?.status !== 'DEAD');
   const visible = alive.map((id) => units.get(id)).filter((u): u is UnitView => u !== undefined);
+  raid = watchParty(raid, alive, visible);
   const assault = raid.kind === 'assault';
   if (assault && raid.abandon === null && nowMs - raid.startedAtMs > profile.assaultTimeoutMs) {
     raid = { ...raid, abandon: 'timeout' };
@@ -948,8 +1004,7 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     }
     if (
       next.rallyAtMs === null &&
-      next.waypoint &&
-      chebyshev(next.waypoint, next.rally) <= 4 &&
+      isRallyLeg(next) &&
       next.ordered.length >= alive.length
     ) {
       next = { ...next, rallyAtMs: nowMs };
@@ -967,7 +1022,7 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
   };
   const allOrdered = raid.ordered.length >= alive.length;
   // El último tramo es el del punto de reunión (o uno desplazado en espiral a su lado).
-  const finalLeg = raid.waypoint !== null && chebyshev(raid.waypoint, raid.rally) <= 4;
+  const finalLeg = isRallyLeg(raid);
   if (finalLeg && allOrdered && raid.waypoint) {
     const at = raid.waypoint;
     const gathered = visible.filter((u) => chebyshev(u, at) <= RALLY_RADIUS).length;
@@ -1433,7 +1488,7 @@ export function fieldFocus(memory: Memory): Tile | null {
   const raid = memory.raid;
   if (raid === null) return null;
   if (raid.phase === 'march' && raid.waypoint) return raid.waypoint;
-  return raid.target;
+  return raid.lookAt ?? raid.target;
 }
 
 /** Las costas que el HUD mostraría, reexportadas para los tests. */

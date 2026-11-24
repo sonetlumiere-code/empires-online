@@ -546,7 +546,9 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   `EO_CITY_FALL_IMMUNITY_HOURS=0`, y el saqueador sembrado hasta Hierro con el servidor parado
   (`EO_DEVSEED_STOCK_FOR=bot_saqueador_1 pnpm run dev:seed` siembra lo del avance siguiente; el bot avanza solo, y se
   repite por cada era). El registro apunta `assault`, `fell` y
-  `wall`, y el resumen, las caídas por hora y la recuperación del vencido.
+  `wall`, y el resumen, las caídas por hora y la recuperación del vencido. Entre una ejecución y la siguiente: un
+  asalto plantado sigue en el servidor y puede tumbar la ciudad al empezar la siguiente, y los militares que una
+  partida cortada deja fuera de la vista de casa no los recupera el proceso nuevo, que no sabe que existen (spec §9.1).
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
   Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos, comercio (tratados, tratos,
   bienes ajenos por trato y por mercado, comisión, caravanas perdidas) y rechazos por código.
