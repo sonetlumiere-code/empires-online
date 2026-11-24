@@ -662,14 +662,30 @@ function researchRule(profile: Profile, plan: Plan): void {
   }
 }
 
+/**
+ * Los de la partida en curso que no se ven: el servidor deja de mandar la unidad que
+ * sale de la vista, pero la memoria la da por viva hasta su `UNIT_LOST`. Sin
+ * contarlos, con la partida lejos el saqueador entrenaba de más (lo encontró la
+ * pasada 5 de E32, SPEC-BOTS-ASSAULT §9.1).
+ */
+function unseenParty(view: View, memory: Memory): { fighters: number; rams: number } {
+  const raid = memory.raid;
+  if (raid === null) return { fighters: 0, rams: 0 };
+  const seen = new Set(view.units.filter((u) => u.playerId === view.playerId).map((u) => u.id));
+  const unseen = raid.warriors.filter((id) => !seen.has(id));
+  const rams = unseen.filter((id) => raid.rams.includes(id)).length;
+  return { fighters: unseen.length - rams, rams };
+}
+
 /** Regla 7 (constructor) y 1 del saqueador: las unidades militares hasta su número. */
-function militaryRule(view: View, profile: Profile, plan: Plan): void {
+function militaryRule(view: View, profile: Profile, memory: Memory, plan: Plan): void {
   if (plan.full) return;
   const want = profile.raids ? profile.warriorsMax : profile.guards;
-  if (militaryCount(view) >= want) {
+  const away = unseenParty(view, memory);
+  if (militaryCount(view) + away.fighters >= want) {
     // Con los militares completos, los arietes de la partida de asalto, desde Hierro
     // (SPEC-BOTS-ASSAULT §4.1). Lo que el HUD deshabilitaría no se pide (RN-BOT-014).
-    const rams = ownUnits(view).filter(isRam).length;
+    const rams = ownUnits(view).filter(isRam).length + away.rams;
     if (profile.assaults && rams < profile.assaultRams && ramBlockReason(plan.city) === null) {
       train(plan, 'RAM');
     }
@@ -822,6 +838,20 @@ export function rallyPoint(target: Tile, home: Tile, distance: number, terrainAt
   return base;
 }
 
+/**
+ * El punto de reunión se eligió con el terreno que se conocía al salir. Si al acercarse
+ * la vista descubre que no se pisa, se vuelve a elegir con lo que ya se conoce y los
+ * rechazos del tramo empiezan de cero: sin esto, la marcha hacia `_2_e30` gastaba 26
+ * rechazos `TARGET_NOT_WALKABLE` cada vez (pasada 5 de E32, SPEC-BOTS-ASSAULT §9.1).
+ */
+function reviseRally(raid: Raid, view: View, profile: Profile): Raid {
+  const terrain = view.terrainAt(raid.rally.x, raid.rally.y);
+  if (terrain === undefined || !UNWALKABLE.has(terrain)) return raid;
+  const rally = rallyPoint(raid.target, center(view), profile.rallyDistance, view.terrainAt);
+  if (rally.x === raid.rally.x && rally.y === raid.rally.y) return raid;
+  return { ...raid, rally, waypointTries: 0, rallyAtMs: null };
+}
+
 function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowMs: number, contraHumanos: boolean, rng: Rng): Memory {
   if (!profile.raids) return memory;
   const units = new Map(ownUnits(view).map((u) => [u.id, u]));
@@ -901,6 +931,7 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
   const alive = raid.warriors.filter((id) => units.get(id)?.status !== 'DEAD');
   const visible = alive.map((id) => units.get(id)).filter((u): u is UnitView => u !== undefined);
   raid = watchParty(raid, alive, visible);
+  if (raid.phase === 'march') raid = reviseRally(raid, view, profile);
   const assault = raid.kind === 'assault';
   if (assault && raid.abandon === null && nowMs - raid.startedAtMs > profile.assaultTimeoutMs) {
     raid = { ...raid, abandon: 'timeout' };
@@ -1309,14 +1340,14 @@ export function decide(
   mem = gatherRule(view, profile, mem, plan, nowMs);
   houseRule(view, profile, plan);
   villagerRule(view, profile, plan);
-  if (profile.raids) militaryRule(view, profile, plan);
+  if (profile.raids) militaryRule(view, profile, mem, plan);
   advanceRule(profile, plan);
   bronzeRule(view, profile, plan);
   researchRule(profile, plan);
   if (opts.comercio !== false) {
     mem = commerceRule(view, profile, mem, plan, nowMs, { conHumanos: opts.conHumanos === true });
   }
-  if (!profile.raids) militaryRule(view, profile, plan);
+  if (!profile.raids) militaryRule(view, profile, mem, plan);
   if (profile.raids && mem.raid === null) mem = raidRule(view, profile, mem, plan, nowMs, opts.contraHumanos, rng);
 
   return { commands: plan.commands, memory: mem };
