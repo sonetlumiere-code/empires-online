@@ -8,13 +8,13 @@ selector completo) queda para slices siguientes.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-MULTI-CITY` |
-| Estado | Draft |
+| Estado | Accepted (2026-11-24). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-24): las once preguntas de §10, con su recomendación. |
 | Milestone | E34 Multiciudad (trigésimo cuarto slice después de M7) |
 | Canon | §9 (protección), §10 (eras y población), §12 (persistencia), §13 (protocolo), §16 (errores), §21 (fuera de MVP) |
 | Depende de | [city.md](city.md), [city-fall.md](city-fall.md), [player.md](player.md), [presence.md](presence.md), [territory-conquest.md](territory-conquest.md), [trade-reach.md](trade-reach.md), [event-log.md](event-log.md), [bots.md](bots.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | Pide un ADR nuevo, el siguiente libre (§7): varias ciudades por jugador con una **capital** (la de id menor en pie) que responde por el jugador donde hoy se pregunta por «su ciudad», y el tope de ciudades en pie como índice único parcial de la base sobre un **hueco** (`slot`). Se apoya en ADR-050 (la caída en una transacción y «una ciudad en pie» como garantía de la base, que este slice afloja a «una o dos»). **Pide migración `000031`** (§7). |
+| Decisiones | [ADR-051](../decisions/ADR-051-multi-city-capital.md): varias ciudades por jugador con una **capital** (la de id menor en pie) que responde por el jugador donde hoy se pregunta por «su ciudad», y el tope de ciudades en pie como índice único parcial de la base sobre un **hueco** (`slot`). Se apoya en ADR-050 (la caída en una transacción y «una ciudad en pie» como garantía de la base, que este slice afloja a «una o dos»). **Pide migración `000031`** (§7). |
 | Reemplaza a | En [city-fall.md](city-fall.md), «nadie tiene dos» y la refundación de toda ciudad caída: con dos ciudades, la que cae se arrasa sin refundar (§4.5). En [city.md](city.md) §9, la nota de «un jugador, una ciudad». |
-| Invariantes | Precisa `INV-CITY-020` (de «exactamente una» a «al menos una»). Propone dos invariantes nuevos de la familia `INV-CITY` (§8): el tope de dos en pie y la caída sin refundación sólo con otra en pie. Reglas nuevas propuestas: `RN-CITY-030` a `RN-CITY-035` (§4.7). |
+| Invariantes | Precisa [INV-CITY-020](../invariants/city.md#inv-city-020) (de «exactamente una» a «al menos una»). Registra [INV-CITY-022](../invariants/city.md#inv-city-022) e [INV-CITY-023](../invariants/city.md#inv-city-023) (§8), sin cobertura hasta la implementación. Reglas nuevas: `RN-CITY-030` a `RN-CITY-035` (§4.7). |
 
 ## 1. Objetivo
 
@@ -226,12 +226,10 @@ recogen al implementar.
 
 - **`INV-CITY-020`** (precisión): de «exactamente una ciudad en pie» a «**al menos una**»; el tope y la caída, en los
   dos nuevos.
-- **Nuevo, familia `INV-CITY`:** un jugador tiene como mucho dos ciudades en pie (base: el índice sobre el hueco;
-  dominio: la validación y la transacción).
-- **Nuevo, familia `INV-CITY`:** una ciudad cae sin refundar sólo si su dueño tiene otra en pie en esa misma
-  transacción; la última siempre refunda.
-
-Se registran sin cobertura en la aceptación, con su número.
+- **[INV-CITY-022](../invariants/city.md#inv-city-022):** un jugador tiene como mucho dos ciudades en pie (base: el
+  índice sobre el hueco; dominio: la validación y la transacción).
+- **[INV-CITY-023](../invariants/city.md#inv-city-023):** una ciudad cae sin refundar sólo si su dueño tiene otra en pie
+  en esa misma transacción; la última siempre refunda.
 
 ## 9. Tests esperados
 
@@ -246,9 +244,12 @@ Se registran sin cobertura en la aceptación, con su número.
 | Bots (Vitest) | Con dos ciudades propias en la vista, el bot juega con la capital. |
 | Humo | `--multiciudad`: fundar, ver la ciudad nueva, el segundo intento rechazado. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-24)
 
-| # | Pregunta | Recomendación | Descartadas |
+Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-24): cada fila deja la decisión (la recomendación, en negrita) y las alternativas descartadas. Son decisiones de
+producto, no de ingeniería: cambiarlas es cambiar la spec, y la persona usuaria puede revisarlas al volver.
+
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿Cómo se consigue la segunda ciudad? | **Fundándola con un aldeano donde está** (`unit.found_city`). Es una vía sola, entera en manos del jugador, y reutiliza la fundación, la transacción y la RAM del alta y la refundación. | **Conquistándola** (quedarse la ciudad asaltada en vez de arrasarla: cambia el dueño inmutable de `RN-CITY-020` y lo de §4.3 de city-fall, otro slice); **las dos vías** (dobla el slice). |
 | Q2 | ¿Cuántas como máximo? | **Dos, fijo**, garantizado por la base con un hueco (`slot` 1 o 2). Es lo más pequeño que ya es multiciudad; subirlo es ampliar el `CHECK`. | **Una por era** (1 a 4: más juego, pero pide reglas de qué pasa al bajar de era, que no existe); **configurable** (la base no puede leer `EO_*`). |
@@ -263,6 +264,8 @@ Se registran sin cobertura en la aceptación, con su número.
 | Q11 | ¿Qué se registra y avisa? | **`CityFounded` en el registro del jugador; sin aviso en vivo** (lo hizo él). | **Avisar a los vecinos** (no hay contraparte; otro slice si hace falta). |
 
 ## 11. Documentos relacionados
+
+- [ADR-051](../decisions/ADR-051-multi-city-capital.md): la capital, el hueco y la caída que elige.
 
 - [city-fall.md](city-fall.md): la caída y la refundación que este slice afina.
 - [city.md](city.md): las reglas de fundación (§6) y la población.

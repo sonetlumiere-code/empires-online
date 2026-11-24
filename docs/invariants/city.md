@@ -773,6 +773,11 @@ una ciudad» deja de ser una nota del alcance del MVP y pasa a ser una propiedad
 **Violación en runtime.** La validación de carga rechaza arrancar con un jugador sin ciudad en pie o con dos y registra
 `invariant_violation` con `inv_id=INV-CITY-020`.
 
+**Precisión (2026-11-24, [SPEC-MULTI-CITY](../specs/multi-city.md), [ADR-051](../decisions/ADR-051-multi-city-capital.md)):**
+desde E34 el enunciado es «**al menos una** ciudad en pie», y `State.CityOf` devuelve la capital, la de id menor. El
+tope de dos es [INV-CITY-022](#inv-city-022), y la caída que no refunda, [INV-CITY-023](#inv-city-023); el índice
+`cities_one_standing_per_owner` pasa a ser por hueco (migración `000031`).
+
 ---
 
 <a id="inv-city-021"></a>
@@ -810,6 +815,69 @@ rompe el otro y registra `invariant_violation` con `inv_id=INV-CITY-021`.
 
 ---
 
+<a id="inv-city-022"></a>
+## INV-CITY-022 — Un jugador tiene como mucho dos ciudades en pie
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E34 |
+| Política ante violación | FAIL_FAST (constraint) |
+| Cobertura | **Sin cobertura** (registrado el 2026-11-24 con [SPEC-MULTI-CITY](../specs/multi-city.md), antes de escribir su código) |
+
+**Enunciado.** Tras cada transacción confirmada, ningún jugador tiene más de dos filas de `cities` sin `fallen_at`, y
+la RAM de la simulación tiene esas mismas (`State.CitiesOf`), con la de id menor como capital (`State.CityOf`).
+
+**Razón.** El tope de dos es una decisión de producto (SPEC-MULTI-CITY Q2), y la capital, la de id menor, responde por
+el jugador en el resto del juego ([ADR-051](../decisions/ADR-051-multi-city-capital.md) §1): una tercera ciudad no
+tendría reglas.
+
+**Cómo se garantiza.**
+
+- `DB` — `cities.slot` con `CHECK (slot IN (1, 2))` y el índice único parcial `cities_one_standing_per_owner` sobre
+  `(owner_player_id, slot) WHERE fallen_at IS NULL` (migración `000031`).
+- `DOMAIN` — `unit.found_city` rechaza con `INVALID_TARGET` a quien ya tiene dos o una fundación en vuelo
+  (`RN-CITY-031`), y la transacción lo vuelve a contar bajo el lock de fundación.
+
+**Cómo se verifica.** Pendiente de la implementación.
+
+**Violación en runtime.** La validación de carga rechaza arrancar con un jugador con más de dos ciudades en pie y
+registra `invariant_violation` con `inv_id=INV-CITY-022`.
+
+---
+
+<a id="inv-city-023"></a>
+## INV-CITY-023 — Una ciudad cae sin refundar sólo si su dueño tiene otra en pie
+
+| Campo | Valor |
+|---|---|
+| Severidad | CRITICO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E34 |
+| Política ante violación | FAIL_FAST |
+| Cobertura | **Sin cobertura** (registrado el 2026-11-24 con [SPEC-MULTI-CITY](../specs/multi-city.md), antes de escribir su código) |
+
+**Enunciado.** Una caída confirmada deja a su dueño con al menos una ciudad en pie: si tenía otra, la caída no refunda
+y lo de la caída pasa a la que queda; si no, refunda en la misma transacción ([INV-CITY-020](#inv-city-020)).
+
+**Razón.** Con dos ciudades, refundar siempre haría que perder una no costara nada; no refundar nunca dejaría a un
+jugador sin ciudad, lo que rompe su civilización y su bando (SPEC-CITY-FALL §1.1). La elección se hace donde se ve
+la verdad: en la transacción, bajo el lock de fundación ([ADR-051](../decisions/ADR-051-multi-city-capital.md) §3).
+
+**Cómo se garantiza.**
+
+- `DB` — `CityFallRepo` cuenta las ciudades en pie del vencido en la transacción de la caída y elige arrasar o
+  arrasar y refundar.
+- `DOMAIN` — la RAM aplica el resultado en un solo comando (`RN-CITY-035`).
+
+**Cómo se verifica.** Pendiente de la implementación.
+
+**Violación en runtime.** La validación de carga rechaza arrancar con un jugador sin ciudad en pie
+(`INV-CITY-020`).
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -835,3 +903,5 @@ rompe el otro y registra `invariant_violation` con `inv_id=INV-CITY-021`.
 | INV-CITY-019 | `internal/game/founding`, `internal/httpapi` | [INV-CITY-007](#inv-city-007), [INV-CITY-008](#inv-city-008), [ADR-031](../decisions/ADR-031-pathfinding-node-cap-50k.md) |
 | INV-CITY-020 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-PLAYER-003](player.md#inv-player-003), [ADR-050](../decisions/ADR-050-city-fall.md) |
 | INV-CITY-021 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-TERR-010](territory.md#inv-terr-010), [ADR-050](../decisions/ADR-050-city-fall.md) |
+| INV-CITY-022 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-020](#inv-city-020), [ADR-051](../decisions/ADR-051-multi-city-capital.md) |
+| INV-CITY-023 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-020](#inv-city-020), [ADR-050](../decisions/ADR-050-city-fall.md), [ADR-051](../decisions/ADR-051-multi-city-capital.md) |

@@ -270,6 +270,8 @@ con `RN-CITY-024` y `RN-CITY-025`; esta spec lo cita.
 
 **Precisión (2026-11-23, [city-fall.md](city-fall.md), [ADR-050](../decisions/ADR-050-city-fall.md)):** desde E31 «un jugador, una ciudad en pie» lo garantiza la base con el índice único parcial `cities_one_standing_per_owner` (migración `000030`, [INV-CITY-020](../invariants/city.md#inv-city-020)); la nota de abajo describe el estado anterior y sigue valiendo para las ciudades caídas, que conservan su fila.
 
+**Precisión (2026-11-24, [multi-city.md](multi-city.md), [ADR-051](../decisions/ADR-051-multi-city-capital.md)):** desde E34 un jugador tiene una o dos ciudades en pie: la segunda la funda un aldeano (`RN-CITY-030` a `RN-CITY-032`), y la base lo garantiza con el índice `cities_one_standing_per_owner` sobre `(owner_player_id, slot)` (migración `000031`, [INV-CITY-022](../invariants/city.md#inv-city-022)). La capital es la de id menor (`RN-CITY-033`).
+
 Nota sobre «un jugador, una ciudad»: es una regla del MVP que se sostiene en el dominio
 (`State.cityByOwner` indexa una ciudad por owner y `CityRepo.GetByOwner` hace `ORDER BY id LIMIT 1`), **no** un
 índice único: la migración 000001 crea `cities_owner_idx`, que no es único, precisamente porque el multi-ciudad

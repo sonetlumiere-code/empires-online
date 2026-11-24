@@ -3184,3 +3184,30 @@ integrado, con el panel visible, en la cuenta `smoke_caida`, y `node scripts/smo
 - **Sin comprobar en el navegador:** «Cayendo…» (la caída llegó dentro del mismo segundo en que la cuenta llegó a
   cero), el tono naranja de un tercero, el dorado del asaltante y el estandarte de una reclamación de territorio. Los
   cubren los tests de `cityFall.test.ts` y `projection.test.ts`.
+
+## E34 — Multiciudad
+
+**Estado: EN CURSO (2026-11-24)**, en la rama `claude/slice-multiciudad`. Contrato:
+[SPEC-MULTI-CITY](../specs/multi-city.md), propuesta y aceptada el 2026-11-24 con sus once decisiones (producto delegó en
+la recomendación del agente, sesión desatendida). [ADR-051](../decisions/ADR-051-multi-city-capital.md); migración
+`000031`.
+
+**Objetivo.** Que un jugador pueda tener una segunda ciudad: hoy crecer es sólo subir de era, y la caída lo devuelve
+todo a cero.
+
+**Alcance.** Fundar con un aldeano (`unit.found_city`) desde Bronce por 800/400, con un tope de dos en pie garantizado
+por la base; la capital (la de id menor) responde por el jugador; presencia de todas a la vez; el bono de territorio
+sólo en la capital; la caída de una de dos sin refundar; «Fundar ciudad» y «H» que alterna en el HUD; el humo
+`--multiciudad` (`RN-CITY-030` a `RN-CITY-035`). **No entra** (spec §2): conquistar ciudades, más de dos, elegir de
+qué ciudad sale el comercio, trasladar la capital, que los bots funden.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; ADR-051; `INV-CITY-022` e `INV-CITY-023`
+   registrados sin cobertura; precisiones de `INV-CITY-020`, [city.md](../specs/city.md) §9 y
+   [city-fall.md](../specs/city-fall.md) §4.2.
+2. **PENDIENTE** — Servidor: la migración `000031`, la capital en `State`, la presencia, el bono, la fundación y la
+   caída con dos, con sus tests.
+3. **PENDIENTE** — Protocolo: `unit.found_city` y su confirmación en Zod y en Go, con su e2e.
+4. **PENDIENTE** — Cliente y bots: «Fundar ciudad», «H» que alterna, la capital en los bots.
+5. **PENDIENTE** — Humo `--multiciudad`, docs y prueba en vivo.
