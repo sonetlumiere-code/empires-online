@@ -232,6 +232,8 @@ export interface WorldChanges {
   readonly cities: ReadonlySet<number>;
   readonly territories: ReadonlySet<number>;
   readonly buildings: ReadonlySet<number>;
+  /** De `cities`, las que cayeron (`city.fallen`): la escena las desvanece (SPEC-ASSAULT-MAP Q5). */
+  readonly fallenCities: ReadonlySet<number>;
   /** Llegaron chunks de terreno nuevos. */
   readonly terrain: boolean;
   /** Cambió la madera de algún tile de bosque. */
@@ -395,6 +397,7 @@ const INITIAL_CHANGES: WorldChanges = {
   cities: NO_IDS,
   territories: NO_IDS,
   buildings: NO_IDS,
+  fallenCities: NO_IDS,
   terrain: false,
   forests: true,
   hills: true,
@@ -433,6 +436,7 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
     cities: NO_IDS,
     territories: NO_IDS,
     buildings: NO_IDS,
+    fallenCities: NO_IDS,
     terrain: false,
     forests: false,
     hills: false,
@@ -648,7 +652,7 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
               gone.add(id);
             }
           }
-          set({ changes: changed({ cities: new Set([p.cityId]), buildings: gone }) });
+          set({ changes: changed({ cities: new Set([p.cityId]), fallenCities: new Set([p.cityId]), buildings: gone }) });
           break;
         }
 

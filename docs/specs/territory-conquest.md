@@ -146,6 +146,9 @@ Eventos de dominio en `world_events`, con `counterpart_player_id` y `atMs` ([ADR
 Cliente: con un guerrero seleccionado, el HUD dice en qué territorio está y de quién es, y ofrece «Reclamar
 territorio», deshabilitado con su motivo cuando no se puede (§5), como «Casa» y «Aldeano». Un territorio en disputa
 se dibuja distinto en el overlay y muestra su cuenta atrás; el del jugador, con quién lo reclama.
+**Precisión (2026-11-24, [assault-map.md](assault-map.md)):** desde E33 el guerrero que reclama lleva un estandarte en
+el mapa, como el que asalta una ciudad (`CLAIMING`): rojo si reclama un territorio del que mira, dorado si es suyo,
+naranja si no.
 
 ## 7. Persistencia
 

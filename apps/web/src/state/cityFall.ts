@@ -11,7 +11,7 @@
 import { formatCountdown, type TreatyView } from './diplomacy';
 import { orderPeace } from './factions';
 import { isSiegeEngine, unitAttacks } from './units';
-import type { BuildingView, CityView, UnitView } from './world';
+import type { BuildingView, CityView, TerritoryView, UnitView } from './world';
 
 /** A cuántos tiles del centro de una ciudad ajena se ofrece «Asaltar». */
 export const ASSAULT_OFFER_TILES = 12;
@@ -108,4 +108,56 @@ export function assaultLabel(city: CityView, playerId: string | null, nowMs: num
 export function anyAssault(cities: Iterable<CityView>): boolean {
   for (const c of cities) if (c.assault) return true;
   return false;
+}
+
+// ─────────────────────────────────────────────────────────────
+// El asalto en el mapa (SPEC-ASSAULT-MAP)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * El tono de una marca del asalto según quién mira (RN-SIEGE-014): `loss` para el que
+ * pierde (rojo), `own` para lo propio (dorado) y `other` para un tercero (naranja).
+ */
+export type MarkTone = 'loss' | 'own' | 'other';
+
+/** El tono de una ciudad bajo asalto para quien mira; `null` si no lo está (RN-SIEGE-012). */
+export function assaultTone(city: CityView, playerId: string | null): MarkTone | null {
+  const a = city.assault;
+  if (!a) return null;
+  if (city.ownerPlayerId === playerId) return 'loss';
+  if (a.playerId === playerId) return 'own';
+  return 'other';
+}
+
+function inside(t: TerritoryView, x: number, y: number): boolean {
+  return x >= t.minX && x <= t.maxX && y >= t.minY && y <= t.maxY;
+}
+
+/**
+ * El tono del estandarte de una unidad en `CLAIMING`, o `null` si no lo sostiene
+ * (RN-SIEGE-013). El del asalto es el de su ciudad; el de una reclamación de
+ * territorio, el de la unidad, salvo que reclame un territorio de quien mira: está
+ * dentro y la reclamación es de su dueño, porque `claim` no trae la unidad.
+ */
+export function standardTone(
+  unit: UnitView,
+  playerId: string | null,
+  cities: Iterable<CityView>,
+  territories: Iterable<TerritoryView>,
+): MarkTone | null {
+  if (unit.status !== 'CLAIMING') return null;
+  for (const c of cities) {
+    if (c.assault?.unitId === unit.id) return assaultTone(c, playerId);
+  }
+  if (unit.playerId === playerId) return 'own';
+  for (const t of territories) {
+    if (t.ownerType !== 'PLAYER' || t.ownerId !== playerId || t.claim?.playerId !== unit.playerId) continue;
+    if (inside(t, unit.x, unit.y)) return 'loss';
+  }
+  return 'other';
+}
+
+/** La línea bajo el nombre de una ciudad bajo asalto: «Cae en 14:32» o, a cero, «Cayendo…» (Q8). */
+export function assaultCountdownText(endsAtMs: number, nowMs: number): string {
+  return endsAtMs - nowMs <= 0 ? 'Cayendo…' : `Cae en ${formatCountdown(endsAtMs - nowMs)}`;
 }

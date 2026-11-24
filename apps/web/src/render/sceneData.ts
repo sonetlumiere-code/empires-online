@@ -6,6 +6,7 @@
  *
  * Ver ../../../../docs/architecture/frontend.md §7.3
  */
+import type { MarkTone } from '../state/cityFall';
 import type { ActiveMovement } from '../state/interpolation';
 import type { ChunkTerrain } from '../state/world';
 
@@ -30,6 +31,8 @@ export interface SceneUnit {
   readonly attacking: boolean;
   /** Vida que le queda, de 0 a 1: por debajo de 1 lleva su barra. */
   readonly hpRatio: number;
+  /** Sostiene un estandarte (`CLAIMING`), con el tono para quien mira; `null` si no (SPEC-ASSAULT-MAP §4.1). */
+  readonly standard: MarkTone | null;
 }
 
 export interface SceneBuilding {
@@ -53,6 +56,8 @@ export interface SceneCity {
   readonly name: string;
   readonly presenceState: string;
   readonly isOwn: boolean;
+  /** Bajo asalto: cuándo cae y el tono para quien mira; `null` si no (SPEC-ASSAULT-MAP §4.2). */
+  readonly assault: { readonly endsAtMs: number; readonly tone: MarkTone } | null;
 }
 
 export interface SceneTerritory {
@@ -90,6 +95,8 @@ export interface SceneUpdate {
   readonly removedUnits: readonly number[];
   readonly cities: readonly SceneCity[];
   readonly removedCities: readonly number[];
+  /** De `removedCities`, las que cayeron: se desvanecen en vez de desaparecer (SPEC-ASSAULT-MAP Q5). */
+  readonly fallenCities: readonly number[];
   readonly territories: readonly SceneTerritory[];
   readonly removedTerritories: readonly number[];
   readonly buildings: readonly SceneBuilding[];

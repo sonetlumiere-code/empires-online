@@ -29,6 +29,7 @@ import type {
   SceneUpdate,
   TerrainSource,
 } from './sceneData';
+import { assaultTone, standardTone } from '../state/cityFall';
 import { withTag } from '../state/clans';
 
 /** Lo que la proyección lee del store. */
@@ -47,7 +48,9 @@ export type ProjectableState = Pick<
   | 'clans'
 >;
 
-function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number | null): SceneUnit {
+function toSceneUnit(u: UnitView, state: ProjectableState): SceneUnit {
+  const ownId = state.playerId;
+  const selectedUnitId = state.selectedUnitId;
   return {
     id: u.id,
     x: u.x,
@@ -60,6 +63,7 @@ function toSceneUnit(u: UnitView, ownId: string | null, selectedUnitId: number |
     unitType: u.unitType,
     attacking: u.status === 'ATTACKING',
     hpRatio: u.maxHp > 0 ? Math.max(0, Math.min(1, u.hp / u.maxHp)) : 1,
+    standard: standardTone(u, ownId, state.cities.values(), state.territories.values()),
   };
 }
 
@@ -79,6 +83,7 @@ function toSceneBuilding(b: BuildingView, state: ProjectableState): SceneBuildin
 }
 
 function toSceneCity(c: CityView, ownId: string | null): SceneCity {
+  const tone = assaultTone(c, ownId);
   return {
     id: c.id,
     centerX: c.centerX,
@@ -87,6 +92,7 @@ function toSceneCity(c: CityView, ownId: string | null): SceneCity {
     name: withTag(c.name, c.clan),
     presenceState: c.presenceState,
     isOwn: c.ownerPlayerId === ownId,
+    assault: c.assault && tone ? { endsAtMs: c.assault.endsAtMs, tone } : null,
   };
 }
 
@@ -136,7 +142,7 @@ export function projectAll(state: ProjectableState): SceneUpdate | null {
 
   const units: SceneUnit[] = [];
   for (const u of state.units.values()) {
-    if (drawable(u)) units.push(toSceneUnit(u, ownId, state.selectedUnitId));
+    if (drawable(u)) units.push(toSceneUnit(u, state));
   }
   const cities: SceneCity[] = [];
   for (const c of state.cities.values()) cities.push(toSceneCity(c, ownId));
@@ -151,6 +157,7 @@ export function projectAll(state: ProjectableState): SceneUpdate | null {
     removedUnits: [],
     cities,
     removedCities: [],
+    fallenCities: [],
     territories,
     removedTerritories: [],
     buildings,
@@ -159,6 +166,24 @@ export function projectAll(state: ProjectableState): SceneUpdate | null {
     forests: sceneForests(state),
     hills: sceneHills(state),
   };
+}
+
+/**
+ * Las unidades que cambiaron y las que sostienen un estandarte cuyo tono puede haber
+ * cambiado con ellas (SPEC-ASSAULT-MAP §4.4): el portaestandarte de una ciudad tocada
+ * (el `city.update` con el asalto puede llegar después que su `entity.update`) y, si
+ * cambió algún territorio, toda unidad en `CLAIMING`, que son pocas.
+ */
+function unitsToProject(state: ProjectableState, changes: WorldChanges): Set<number> {
+  const ids = new Set(changes.units);
+  for (const id of changes.cities) {
+    const holder = state.cities.get(id)?.assault?.unitId;
+    if (holder !== undefined && state.units.has(holder)) ids.add(holder);
+  }
+  if (changes.territories.size > 0) {
+    for (const u of state.units.values()) if (u.status === 'CLAIMING') ids.add(u.id);
+  }
+  return ids;
 }
 
 /**
@@ -172,9 +197,9 @@ export function projectChanges(state: ProjectableState, changes: WorldChanges): 
 
   const units: SceneUnit[] = [];
   const removedUnits: number[] = [];
-  for (const id of changes.units) {
+  for (const id of unitsToProject(state, changes)) {
     const u = state.units.get(id);
-    if (u && drawable(u)) units.push(toSceneUnit(u, ownId, state.selectedUnitId));
+    if (u && drawable(u)) units.push(toSceneUnit(u, state));
     else removedUnits.push(id);
   }
 
@@ -208,6 +233,7 @@ export function projectChanges(state: ProjectableState, changes: WorldChanges): 
     removedUnits,
     cities,
     removedCities,
+    fallenCities: removedCities.filter((id) => changes.fallenCities.has(id)),
     territories,
     removedTerritories,
     buildings,

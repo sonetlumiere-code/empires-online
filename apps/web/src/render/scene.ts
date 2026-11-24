@@ -36,6 +36,7 @@ import type {
   SceneUpdate,
   TerrainSource,
 } from './sceneData';
+import { assaultCountdownText, type MarkTone } from '../state/cityFall';
 import type { ChunkTerrain } from '../state/world';
 
 export type {
@@ -88,6 +89,8 @@ export interface SceneCallbacks {
 interface UnitEntry {
   readonly sprite: Container;
   readonly body: Graphics;
+  /** El estandarte de quien lo sostiene (SPEC-ASSAULT-MAP §4.1); vacío si no. */
+  readonly standard: Graphics;
   unit: SceneUnit;
 }
 
@@ -95,8 +98,19 @@ interface CityEntry {
   readonly sprite: Container;
   readonly body: Graphics;
   readonly label: Text;
+  /** El contorno y la cuenta atrás de la ciudad bajo asalto (SPEC-ASSAULT-MAP §4.2). */
+  readonly outline: Graphics;
+  readonly countdown: Text;
+  /** El texto que enseña la cuenta atrás: sólo se reescribe cuando cambia. */
+  shown: string;
   city: SceneCity;
 }
+
+/** Los tonos de las marcas del asalto (SPEC-ASSAULT-MAP §4.3): el rojo de `--danger`, el dorado de lo propio, el naranja de la disputa. */
+const TONE_COLORS: Readonly<Record<MarkTone, number>> = { loss: 0xff6b6b, own: 0xffd23f, other: 0xe0a030 };
+
+/** Lo que tarda en desvanecerse una ciudad que cae a la vista (SPEC-ASSAULT-MAP Q5). */
+const FALL_FADE_MS = 1_000;
 
 interface BuildingEntry {
   readonly sprite: Container;
@@ -129,6 +143,10 @@ export class IsoScene {
   private readonly units = new Map<number, UnitEntry>();
   private readonly cities = new Map<number, CityEntry>();
   private readonly buildings = new Map<number, BuildingEntry>();
+  /** Las ciudades bajo asalto: sólo ellas refrescan su cuenta atrás por frame. */
+  private readonly assaulted = new Set<number>();
+  /** Las ciudades que cayeron a la vista y se están desvaneciendo. */
+  private readonly fading: { sprite: Container; elapsedMs: number }[] = [];
   /** Los castillos que apuntan a alguien: los únicos que dibujan su línea. */
   private readonly aiming = new Set<number>();
   // La clave incluye el dueño: cambiar de dueño obliga a redibujar, y comparar
@@ -212,6 +230,8 @@ export class IsoScene {
     this.chunks.clear();
     this.units.clear();
     this.cities.clear();
+    this.assaulted.clear();
+    this.fading.length = 0;
     this.territoryShapes.clear();
     this.aiming.clear();
     this.active.clear();
@@ -245,7 +265,8 @@ export class IsoScene {
       this.pruneAbsent(this.buildings, update.buildings, (id) => this.removeBuilding(id));
     } else {
       for (const id of update.removedUnits) this.removeUnit(id);
-      for (const id of update.removedCities) this.removeCity(id);
+      const fallen = new Set(update.fallenCities);
+      for (const id of update.removedCities) this.removeCity(id, fallen.has(id));
       for (const id of update.removedTerritories) this.removeTerritory(id);
       for (const id of update.removedBuildings) this.removeBuilding(id);
     }
@@ -292,6 +313,8 @@ export class IsoScene {
 
     this.stepUnits();
     this.drawShots();
+    this.stepAssaults();
+    this.stepFading(app.ticker.deltaMS);
 
     // Orden de dibujado isométrico: lo que está más "al fondo" (menor x+y) se
     // pinta antes. Sin esto, una unidad delante de un edificio se dibujaría
@@ -299,6 +322,40 @@ export class IsoScene {
     if (this.sortDirty) {
       this.entityLayer.children.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
       this.sortDirty = false;
+    }
+  }
+
+  /**
+   * La cuenta atrás de las ciudades bajo asalto, con la hora del servidor: sólo se
+   * reescribe el texto cuando cambia el segundo que enseña (SPEC-ASSAULT-MAP §4.5).
+   */
+  private stepAssaults(): void {
+    if (this.assaulted.size === 0) return;
+    const now = this.serverTimeMs();
+    for (const id of this.assaulted) {
+      const entry = this.cities.get(id);
+      const assault = entry?.city.assault;
+      if (!entry || !assault) continue;
+      const text = assaultCountdownText(assault.endsAtMs, now);
+      if (text !== entry.shown) {
+        entry.countdown.text = text;
+        entry.shown = text;
+      }
+    }
+  }
+
+  /** Las ciudades caídas a la vista se desvanecen en `FALL_FADE_MS` y se retiran. */
+  private stepFading(deltaMs: number): void {
+    for (let i = this.fading.length - 1; i >= 0; i--) {
+      const f = this.fading[i] as { sprite: Container; elapsedMs: number };
+      f.elapsedMs += deltaMs;
+      if (f.elapsedMs >= FALL_FADE_MS) {
+        this.entityLayer.removeChild(f.sprite);
+        f.sprite.destroy({ children: true });
+        this.fading.splice(i, 1);
+      } else {
+        f.sprite.alpha = 1 - f.elapsedMs / FALL_FADE_MS;
+      }
     }
   }
 
@@ -441,12 +498,15 @@ export class IsoScene {
       const body = new Graphics();
       paintUnitBody(body, unit);
       sprite.addChild(body);
+      const standard = new Graphics();
+      paintStandard(standard, unit.standard);
+      sprite.addChild(standard);
       // Aparece donde dice el servidor; el primer frame la lleva a la posición
       // interpolada por el reconciliador.
       const iso = worldToIso(unit.x, unit.y);
       sprite.position.set(iso.x, iso.y);
       sprite.visible = this.isVisible(iso.x, iso.y);
-      entry = { sprite, body, unit };
+      entry = { sprite, body, standard, unit };
       this.units.set(unit.id, entry);
       this.entityLayer.addChild(sprite);
       this.sortDirty = true;
@@ -460,6 +520,7 @@ export class IsoScene {
     ) {
       paintUnitBody(entry.body, unit);
     }
+    if (entry.unit.standard !== unit.standard) paintStandard(entry.standard, unit.standard);
     entry.unit = unit;
     entry.sprite.alpha = unit.isSelected ? 1 : 0.9;
     entry.sprite.scale.set(unit.isSelected ? 1.25 : 1);
@@ -493,7 +554,16 @@ export class IsoScene {
       label.position.set(0, -TILE_H * 1.6);
       sprite.addChild(label);
 
-      entry = { sprite, body, label, city };
+      const outline = new Graphics();
+      sprite.addChild(outline);
+      const countdown = new Text({ text: '', style: { fontSize: 11, fill: 0xffffff, fontFamily: 'monospace', fontWeight: 'bold' } });
+      countdown.anchor.set(0.5, 1);
+      countdown.position.set(0, -TILE_H * 1.6);
+      countdown.visible = false;
+      sprite.addChild(countdown);
+
+      entry = { sprite, body, label, outline, countdown, shown: '', city };
+      this.paintAssault(entry, city);
       this.cities.set(city.id, entry);
       this.entityLayer.addChild(sprite);
       this.sortDirty = true;
@@ -503,6 +573,9 @@ export class IsoScene {
       // redibujan. Comparar con lo último aplicado es más barato que rehacerlos.
       if (entry.city.name !== city.name) entry.label.text = city.name;
       if (entry.city.isOwn !== city.isOwn) paintCityBody(entry.body, city.isOwn);
+      if (entry.city.assault?.endsAtMs !== city.assault?.endsAtMs || entry.city.assault?.tone !== city.assault?.tone) {
+        this.paintAssault(entry, city);
+      }
     }
     entry.city = city;
 
@@ -553,12 +626,46 @@ export class IsoScene {
     this.aiming.delete(id);
   }
 
-  private removeCity(id: number): void {
+  /**
+   * La ciudad bajo asalto: contorno y cuenta atrás del tono de quien mira, con el nombre
+   * encima; sin asalto, como siempre (RN-SIEGE-012, RN-SIEGE-014).
+   */
+  private paintAssault(entry: CityEntry, city: SceneCity): void {
+    const a = city.assault;
+    entry.outline.clear();
+    if (!a) {
+      entry.countdown.visible = false;
+      entry.shown = '';
+      entry.label.position.set(0, -TILE_H * 1.6);
+      this.assaulted.delete(city.id);
+      return;
+    }
+    const color = TONE_COLORS[a.tone];
+    entry.outline
+      .rect(-TILE_W / 2 - 2, -TILE_H * 1.5 - 2, TILE_W + 4, TILE_H * 1.5 + 4)
+      .stroke({ color, width: 3 });
+    entry.countdown.style.fill = color;
+    entry.countdown.visible = true;
+    entry.shown = assaultCountdownText(a.endsAtMs, this.serverTimeMs());
+    entry.countdown.text = entry.shown;
+    // La cuenta atrás va justo encima del bloque y el nombre sube una línea.
+    entry.label.position.set(0, -TILE_H * 1.6 - 13);
+    this.assaulted.add(city.id);
+  }
+
+  /** Retira una ciudad; la que cayó a la vista se desvanece antes (SPEC-ASSAULT-MAP Q5). */
+  private removeCity(id: number, fell = false): void {
     const entry = this.cities.get(id);
     if (!entry) return;
+    this.cities.delete(id);
+    this.assaulted.delete(id);
+    if (fell && entry.sprite.visible) {
+      entry.countdown.visible = false;
+      this.fading.push({ sprite: entry.sprite, elapsedMs: 0 });
+      return;
+    }
     this.entityLayer.removeChild(entry.sprite);
     entry.sprite.destroy({ children: true });
-    this.cities.delete(id);
   }
 
   /**
@@ -972,6 +1079,21 @@ function paintWallBody(body: Graphics, building: Pick<SceneBuilding, 'status' | 
       .rect(-bw / 2, top, bw * building.hpRatio, 3)
       .fill({ color: building.hpRatio > 0.5 ? 0x5bd15b : building.hpRatio > 0.25 ? 0xf0c040 : 0xe04848 });
   }
+}
+
+/**
+ * El estandarte de quien lo sostiene (`CLAIMING`, RN-SIEGE-013): un mástil sobre la
+ * silueta con un banderín del tono de quien mira; nada si no lo sostiene.
+ */
+function paintStandard(g: Graphics, tone: MarkTone | null): void {
+  g.clear();
+  if (tone === null) return;
+  const x = TILE_W * 0.18;
+  const top = -TILE_H * 2.1;
+  g.moveTo(x, -TILE_H * 0.4).lineTo(x, top).stroke({ color: 0x3b2a18, width: 2 });
+  g.poly([x, top, x + TILE_W * 0.42, top + TILE_H * 0.3, x, top + TILE_H * 0.6])
+    .fill({ color: TONE_COLORS[tone] })
+    .stroke({ color: 0x000000, width: 1, alpha: 0.5 });
 }
 
 function paintCityBody(body: Graphics, isOwn: boolean): void {

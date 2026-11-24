@@ -319,7 +319,7 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
     militares y los dos arietes de las pasadas anteriores.
 - **El tercero** (§4.7, parte 3) sólo ve la cuenta atrás de un asalto ajeno en el HUD si tiene seleccionada una
   unidad suya a 12 tiles o menos (`assaultTargetNear`); si no, ve la ciudad desaparecer. Pintar el asalto en la escena
-  es otro slice.
+  es otro slice. **Precisión (2026-11-24):** ese slice es E33, [assault-map.md](assault-map.md).
 
 ## 10. Decisiones de producto (2026-11-23)
 

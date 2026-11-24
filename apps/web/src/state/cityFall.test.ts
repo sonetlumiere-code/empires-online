@@ -1,11 +1,22 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { v1 } from '@empires-online/protocol';
 
-import { anyAssault, assaultBlockReason, assaultLabel, assaultTargetNear, formatLongCountdown, walled, type AssaultCheck } from './cityFall';
+import {
+  anyAssault,
+  assaultBlockReason,
+  assaultCountdownText,
+  assaultLabel,
+  assaultTargetNear,
+  assaultTone,
+  formatLongCountdown,
+  standardTone,
+  walled,
+  type AssaultCheck,
+} from './cityFall';
 import type { TreatyView } from './diplomacy';
 import { entryText, isLoss, type EventLogEntry } from './eventLog';
 import { applyNotice, EMPTY_NOTICES, noticeText } from './notices';
-import { useWorldStore, type BuildingView, type CityView, type UnitView } from './world';
+import { useWorldStore, type BuildingView, type CityView, type TerritoryView, type UnitView } from './world';
 
 // SPEC-CITY-FALL en el cliente (§4.6): a qué ciudad se ofrece «Asaltar» y por qué
 // no, la cuenta atrás, la ciudad que cae y sus entradas en el registro y los avisos.
@@ -138,5 +149,51 @@ describe('el registro y los avisos (SPEC-CITY-FALL Q9)', () => {
     const g = st.groups[0]!;
     expect(g.fallsAtMs).toBe(Date.UTC(2026, 10, 23, 18, 15));
     expect(noticeText(g)).toMatch(/Cae a las/);
+  });
+});
+
+// SPEC-ASSAULT-MAP: el asalto en el mapa (RN-SIEGE-012 a RN-SIEGE-014).
+describe('el asalto en el mapa', () => {
+  const tercero = '00000000-0000-4000-8000-000000000003';
+  const asalto = { playerId: otro, unitId: 42, startedAtMs: 0, endsAtMs: 120_000 };
+
+  it('el tono de la ciudad: rojo para su dueño, dorado para quien asalta, naranja para un tercero', () => {
+    const mia = ciudad({ ownerPlayerId: yo, assault: asalto });
+    expect(assaultTone(mia, yo)).toBe('loss');
+    const suya = ciudad({ ownerPlayerId: tercero, assault: { ...asalto, playerId: yo } });
+    expect(assaultTone(suya, yo)).toBe('own');
+    expect(assaultTone(ciudad({ ownerPlayerId: tercero, assault: asalto }), yo)).toBe('other');
+    expect(assaultTone(ciudad(), yo)).toBeNull();
+  });
+
+  it('el estandarte del asalto lleva el tono de su ciudad; sin CLAIMING no hay estandarte', () => {
+    const portador = guerrero({ id: 42, playerId: otro, status: 'CLAIMING' });
+    const mia = ciudad({ ownerPlayerId: yo, assault: asalto });
+    expect(standardTone(portador, yo, [mia], [])).toBe('loss');
+    expect(standardTone(portador, tercero, [mia], [])).toBe('other');
+    expect(standardTone({ ...portador, status: 'IDLE' }, yo, [mia], [])).toBeNull();
+  });
+
+  it('el de una reclamación: dorado si es propio, rojo si reclama un territorio de quien mira, naranja si no', () => {
+    const reclama = guerrero({ id: 50, playerId: otro, status: 'CLAIMING', x: 5, y: 5 });
+    const territorio = (over: Partial<TerritoryView>): TerritoryView => ({
+      id: 30, name: 'Llanura', minX: 0, minY: 0, maxX: 15, maxY: 15, ownerType: 'PLAYER', ownerId: yo, ownerFaction: null,
+      ownerClan: null, contested: true, claim: { playerId: otro, cityId: 7, cityName: 'Villa Norte', startedAtMs: 0, endsAtMs: 1 }, ...over,
+    });
+    expect(standardTone({ ...reclama, playerId: yo }, yo, [], [])).toBe('own');
+    expect(standardTone(reclama, yo, [], [territorio({})])).toBe('loss');
+    // Fuera del territorio, o con la reclamación de otro, no es la suya.
+    expect(standardTone({ ...reclama, x: 30 }, yo, [], [territorio({})])).toBe('other');
+    expect(standardTone(reclama, yo, [], [territorio({ claim: { playerId: tercero, cityId: null, cityName: null, startedAtMs: 0, endsAtMs: 1 } })])).toBe(
+      'other',
+    );
+    expect(standardTone(reclama, yo, [], [territorio({ ownerId: tercero })])).toBe('other');
+  });
+
+  it('la cuenta atrás, y «Cayendo…» a cero sin que el servidor diga la caída', () => {
+    expect(assaultCountdownText(120_000, 0)).toBe('Cae en 2:00');
+    expect(assaultCountdownText(120_000, 119_500)).toBe('Cae en 0:01');
+    expect(assaultCountdownText(120_000, 120_000)).toBe('Cayendo…');
+    expect(assaultCountdownText(120_000, 125_000)).toBe('Cayendo…');
   });
 });
