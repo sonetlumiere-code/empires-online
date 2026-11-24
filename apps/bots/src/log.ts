@@ -30,6 +30,9 @@ export type EventName =
   | 'market'
   | 'caravan'
   | 'rally'
+  | 'assault'
+  | 'fell'
+  | 'wall'
   | 'error'
   | 'stop';
 

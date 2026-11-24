@@ -539,6 +539,16 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   compañeros de ejecución.
 - La partida del saqueador se reúne a 16 tiles del blanco antes de saquear; el resumen dice cuántos se reunieron y
   cuánto esperaron, y el balance de cada partida.
+- Desde E32 ([SPEC-BOTS-ASSAULT](../specs/bots-assault.md)) el saqueador, en Hierro, entrena 2 arietes y sale a
+  asaltar con 4 militares una ciudad de otro bot de su ejecución, de Bronce o posterior y fuera de su inmunidad de
+  72 h: abre la muralla con los arietes, planta el estandarte y escolta hasta la caída. El bot cuya ciudad cae sigue
+  jugando desde la refundada. Para verlo en una prueba corta: el servidor con `EO_CITY_ASSAULT_SECONDS=120` y
+  `EO_CITY_FALL_IMMUNITY_HOURS=0`, y el saqueador sembrado hasta Hierro con el servidor parado
+  (`EO_DEVSEED_STOCK_FOR=bot_saqueador_1 pnpm run dev:seed` siembra lo del avance siguiente; el bot avanza solo, y se
+  repite por cada era). El registro apunta `assault`, `fell` y
+  `wall`, y el resumen, las caídas por hora y la recuperación del vencido. Entre una ejecución y la siguiente: un
+  asalto plantado sigue en el servidor y puede tumbar la ciudad al empezar la siguiente, y los militares que una
+  partida cortada deja fuera de la vista de casa no los recupera el proceso nuevo, que no sabe que existen (spec §9.1).
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
   Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos, comercio (tratados, tratos,
   bienes ajenos por trato y por mercado, comisión, caravanas perdidas) y rechazos por código.

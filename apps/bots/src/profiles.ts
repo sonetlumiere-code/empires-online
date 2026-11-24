@@ -70,6 +70,20 @@ export interface Profile {
   readonly rallyDistance: number;
   /** Plazo para reunirse, desde que todos tienen la orden del último tramo. */
   readonly rallyTimeoutMs: number;
+
+  // ── El asalto (SPEC-BOTS-ASSAULT §4.1 a §4.4) ──
+  /** Si entrena arietes y sale a asaltar desde Hierro (Q1: sólo el saqueador). */
+  readonly assaults: boolean;
+  /** Militares que derriban (guerreros o unidades de civilización) de una partida de asalto (Q3). */
+  readonly assaultWarriors: number;
+  /** Arietes de una partida de asalto (Q3). */
+  readonly assaultRams: number;
+  /** Con menos militares vivos que esto, la partida de asalto vuelve (Q3). */
+  readonly assaultMinWarriors: number;
+  /** Plazo de reunión de la partida de asalto: el ariete camina al triple. */
+  readonly assaultRallyTimeoutMs: number;
+  /** Una partida de asalto que dura más que esto vuelve a casa. */
+  readonly assaultTimeoutMs: number;
 }
 
 const COMMON = {
@@ -89,6 +103,11 @@ const COMMON = {
   tradeRetryMs: 2 * 60_000,
   rallyDistance: 16,
   rallyTimeoutMs: 3 * 60_000,
+  assaultWarriors: 4,
+  assaultRams: 2,
+  assaultMinWarriors: 2,
+  assaultRallyTimeoutMs: 10 * 60_000,
+  assaultTimeoutMs: 45 * 60_000,
 } as const;
 
 export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
@@ -111,6 +130,7 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
     pact: true,
     market: true,
     ownGoodReserve: 0,
+    assaults: false,
   },
   saqueador: {
     ...COMMON,
@@ -128,11 +148,13 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
     wall: false,
     wallStoneReserve: 0,
     research: false,
-    stoneTargetByEra: { STONE_AGE: 200, BRONZE_AGE: 200, IRON_AGE: 200, CASTLE_AGE: 200 },
+    // En Hierro, 350: dos arietes (75 cada uno) y un margen (SPEC-BOTS-ASSAULT §4.8).
+    stoneTargetByEra: { STONE_AGE: 200, BRONZE_AGE: 200, IRON_AGE: 350, CASTLE_AGE: 350 },
     pact: false,
     market: false,
     // Tres unidades de civilización (10 de su bien cada una).
     ownGoodReserve: 30,
+    assaults: true,
   },
 };
 

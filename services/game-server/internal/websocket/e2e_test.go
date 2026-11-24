@@ -1082,3 +1082,30 @@ func TestLosLogsDelHandshakeNoContienenTicketsNiSecreto(t *testing.T) {
 	firma := bueno[strings.LastIndex(bueno, ".")+1:]
 	require.False(t, strings.Contains(todo, firma), "los logs contienen la firma del ticket")
 }
+
+// El destino es la posición actual: la orden se acepta sin crear movimiento y
+// `unit.move.accepted` lleva `movementId: 0`, el valor reservado (websocket-protocol
+// §7.4, §8). El esquema del contrato lo tiene que admitir: `await` valida cada
+// mensaje del servidor contra él. Lo encontraron los bots de E32 en vivo: el
+// cliente lo rechazaba con INVALID_MESSAGE porque el Zod pedía un id de 1 o más.
+func TestMoverAlTileActualSeAceptaConMovementIdCero(t *testing.T) {
+	env := newE2E(t)
+	ticket, err := env.issuer.Issue(env.playerID)
+	require.NoError(t, err)
+	c := env.dial()
+	c.send(protocol.TypeSessionHello, map[string]any{"ticket": ticket})
+	c.await(protocol.TypeSessionWelcome, 3*time.Second)
+	env.pump()
+	c.await(protocol.TypeWorldSnapshot, 3*time.Second)
+
+	unitID := env.unitIDs[0] // en (42,40)
+	c.send(protocol.TypeUnitMove, map[string]any{
+		"unitId": unitID,
+		"target": map[string]int{"x": 42, "y": 40},
+	})
+	env.pump()
+
+	accepted := decode[protocol.UnitMoveAcceptedPayload](t, c.await(protocol.TypeUnitMoveAccepted, 3*time.Second).Payload)
+	require.Equal(t, unitID, accepted.UnitID)
+	require.Zero(t, accepted.MovementID, "sin movimiento: el id reservado 0")
+}

@@ -533,6 +533,14 @@ describe('envelope servidor → cliente', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('unit.move.accepted admite movementId 0, el del destino que ya es la posición actual (§7.4)', () => {
+    const accepted = (movementId: number) =>
+      parseServerMessage({ v: 1, type: 'unit.move.accepted', seq: 1, ts: 1_757_376_000_000, requestId: uuid, payload: { unitId: 42, movementId } });
+    expect(accepted(0).ok).toBe(true);
+    expect(accepted(77301).ok).toBe(true);
+    expect(accepted(-1).ok).toBe(false);
+  });
+
   it('exige una polilínea no vacía', () => {
     const result = parseServerMessage({
       v: 1,
