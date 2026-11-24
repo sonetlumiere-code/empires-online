@@ -7,7 +7,7 @@ caen, cuánto cuesta tumbar una y cuánto tarda el vencido en recuperarse.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-ASSAULT` |
-| Estado | Accepted (2026-11-23). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
+| Estado | Implemented (2026-11-24). Propuesta en `Draft` y aceptada el 2026-11-23 con la recomendación de cada pregunta de §10; en `main` desde la fusión `0465eba`, con la CI en verde. Quedan por medir la ejecución larga y el navegador de §4.7. |
 | Milestone | E32 Bots que asaltan (trigésimo segundo slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §9 (presencia y protección), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [bots-trade.md](bots-trade.md), [trade-reach.md](trade-reach.md), [city-fall.md](city-fall.md), [siege-engines.md](siege-engines.md), [combat-siege.md](combat-siege.md), [combat-response.md](combat-response.md), [castle-age.md](castle-age.md) |

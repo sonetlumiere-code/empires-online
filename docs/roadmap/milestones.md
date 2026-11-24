@@ -3065,7 +3065,8 @@ muralla).
 
 ## E32 — Bots que asaltan
 
-**Estado: EN CURSO (2026-11-23)**, en la rama `claude/slice-bots-asalto`. Contrato:
+**Estado: HECHO (2026-11-24)**, en `main` desde la fusión `0465eba`, con la CI en verde; queda la ejecución larga del
+entregable 5 como medida. Contrato:
 [SPEC-BOTS-ASSAULT](../specs/bots-assault.md), propuesta y aceptada el 2026-11-23 con sus diez decisiones de producto.
 Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
 
