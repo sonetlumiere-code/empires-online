@@ -1023,8 +1023,14 @@ y grueso, y una que carga madera, un tronco a la espalda.
   aviso `CITY_LOST` dice dónde refundó y su «Ir» lleva allí, como «H».
 - **El registro y los avisos**: `CITY_ASSAULTED` (con la hora a la que cae), `CITY_LOST` (dónde refundó) y `CITY_TAKEN`
   (`entryText`); los dos primeros son pérdidas (`isLoss`).
-- **Sin pintar todavía**: el estandarte y la cuenta atrás sobre la ciudad en el mapa (la escena no dibuja el asalto; se ve
-  en el HUD de quien tiene seleccionada una unidad cerca, o en la barra de la ciudad propia).
+- **El asalto en el mapa** (desde E33, [SPEC-ASSAULT-MAP](../specs/assault-map.md)): la proyección lleva
+  `SceneCity.assault` (`endsAtMs` y el tono) y `SceneUnit.standard` (el tono del estandarte de quien está en
+  `CLAIMING`, sea un asalto o una reclamación de territorio), calculados con `assaultTone` y `standardTone`
+  (`cityFall.ts`). El tono depende de quién mira: `loss` (rojo) para el dueño de la ciudad o del territorio, `own`
+  (dorado) para lo propio, `other` (naranja) para un tercero. Un `city.update` con el asalto vuelve a proyectar a su
+  portaestandarte, y un `territory.update`, a toda unidad en `CLAIMING`. `city.fallen` marca la ciudad en
+  `changes.fallenCities` y la proyección en `SceneUpdate.fallenCities`: la escena la desvanece en 1 s si está a la
+  vista. El HUD no cambia: la cuenta atrás sigue en la barra de la ciudad propia y junto a «Asaltar».
 
 ## 5. Posición autoritativa frente a posición de render
 
@@ -1339,10 +1345,15 @@ ticker (hasta 60 fps; deltaMS acotado a 100 ms por Pixi)
        sprite.position = worldToIso(pos.x, pos.y)
        sprite.zIndex   = depthOf(pos.x, pos.y) + 0.5
        quieta y ya en su sitio → deja de ser activa hasta su próximo delta
-  5. ordenar entityLayer por zIndex, sólo si algún zIndex cambió o entró un sprite
+  5. disparos de los castillos
+  6. por cada ciudad BAJO ASALTO: assaultCountdownText(endsAtMs, serverTimeMs()); sólo si cambió
+       el texto («Cae en 1:45», «Cayendo…» a cero), se reescribe (SPEC-ASSAULT-MAP §4.5)
+  7. las ciudades que cayeron a la vista bajan su alfa durante 1 s y se retiran
+  8. ordenar entityLayer por zIndex, sólo si algún zIndex cambió o entró un sprite
 ```
 
-Una unidad quieta no cuesta nada por frame; las ciudades y los territorios sólo se tocan en `apply`. El reloj
+Una unidad quieta no cuesta nada por frame; las ciudades y los territorios sólo se tocan en `apply`, salvo la
+cuenta atrás de las que están bajo asalto. El reloj
 sí se evalúa en cada frame, a través de la función `serverTimeMs` que la escena recibe al construirse. Medido
 en `src/state/world.perf.test.ts` (informativo, 2 000 unidades): store + proyección + selector del HUD cuestan
 16–17 µs por `entity.update` (el store, 4; la mayor parte del resto es el selector del HUD, que recorre las

@@ -274,3 +274,59 @@ describe('economía en la escena (SPEC-ECON-WOOD)', () => {
     expect(projectLast().buildings.map((b) => b.hpRatio)).toEqual([1]);
   });
 });
+
+describe('el asalto en el mapa (SPEC-ASSAULT-MAP)', () => {
+  const asalto = { playerId: OTHER, unitId: 2, startedAtMs: 1_000, endsAtMs: 121_000 };
+
+  it('el snapshot lleva la ciudad bajo asalto con su tono y al portaestandarte con su estandarte', () => {
+    state().applySnapshot(
+      snapshot({
+        units: [unitView({ id: 1 }), unitView({ id: 2, playerId: OTHER, unitType: 'WARRIOR', status: 'CLAIMING' })],
+        cities: [cityView({ assault: asalto })],
+      }),
+    );
+    const update = projectAll(state())!;
+    expect(update.cities.map((c) => c.assault)).toEqual([{ endsAtMs: 121_000, tone: 'loss' }]);
+    expect(update.units.map((u) => [u.id, u.standard])).toEqual([
+      [1, null],
+      [2, 'loss'],
+    ]);
+  });
+
+  it('el city.update que trae el asalto vuelve a proyectar al portaestandarte; el que lo quita, la ciudad', () => {
+    state().applyServerMessage(server('entity.update', 2, { id: 2, status: 'CLAIMING' }));
+    // Antes del asalto, el estandarte de una unidad ajena es de un tercero.
+    expect(projectLast().units.map((u) => [u.id, u.standard])).toEqual([[2, 'other']]);
+
+    state().applyServerMessage(server('city.update', 3, { id: 10, assault: asalto }));
+    let update = projectLast();
+    expect(update.cities.map((c) => c.assault?.tone)).toEqual(['loss']);
+    expect(update.units.map((u) => [u.id, u.standard]), 'su tono pasa al de la ciudad').toEqual([[2, 'loss']]);
+
+    state().applyServerMessage(server('city.update', 4, { id: 10, assault: null }));
+    update = projectLast();
+    expect(update.cities.map((c) => c.assault)).toEqual([null]);
+  });
+
+  it('la ciudad que cae se retira marcada como caída; la que sale de la vista, no (Q5)', () => {
+    state().applyServerMessage(server('city.fallen', 2, { cityId: 10, ownerPlayerId: PLAYER, byPlayerId: OTHER, atMs: 1 }));
+    const update = projectLast();
+    expect(update.removedCities).toEqual([10]);
+    expect(update.fallenCities).toEqual([10]);
+
+    state().applySnapshot(snapshot({ cities: [cityView({ id: 11 })] }));
+    state().applySnapshot(snapshot({ cities: [] }));
+    expect(projectLast().fallenCities, 'un snapshot sin la ciudad no la da por caída').toEqual([]);
+  });
+
+  it('un territory.update vuelve a proyectar a quien sostiene un estandarte, y a nadie más', () => {
+    state().applyServerMessage(server('entity.update', 2, { id: 2, status: 'CLAIMING' }));
+    projectLast();
+    const claim = { playerId: OTHER, cityId: 20, cityName: 'Ajena', startedAtMs: 1, endsAtMs: 2 };
+    state().applyServerMessage(server('territory.update', 3, { territory: territoryView({ id: 31, ownerType: 'PLAYER', ownerId: PLAYER, contested: true, claim }) }));
+    const update = projectLast();
+    expect(update.territories.map((t) => t.id)).toEqual([31]);
+    expect(update.units.map((u) => [u.id, u.standard]), 'reclama un territorio del jugador').toEqual([[2, 'loss']]);
+  });
+});
+

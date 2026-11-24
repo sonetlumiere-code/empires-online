@@ -3139,7 +3139,7 @@ del nombre.
 
 ## E33 — El asalto en el mapa
 
-**Estado: EN CURSO (2026-11-24)**, en la rama `claude/slice-asalto-mapa`. Contrato:
+**Estado: EN CURSO (2026-11-24)**, en la rama `claude/slice-asalto-mapa`, implementado y probado en vivo. Contrato:
 [SPEC-ASSAULT-MAP](../specs/assault-map.md), propuesta y aceptada el 2026-11-24 con sus ocho decisiones de producto.
 Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
 
@@ -3155,7 +3155,23 @@ ruinas, el HUD, los bots y el humo.
 
 1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-SIEGE-012` a `RN-SIEGE-014`; precisiones
    en [city-fall.md](../specs/city-fall.md) y [bots-assault.md](../specs/bots-assault.md). Sin invariantes nuevos.
-2. **PENDIENTE** — Estado: `assaultTone` y `standardTone` en `src/state/cityFall.ts` y la proyección de
-   `SceneCity.assault` y `SceneUnit.standard`, con sus tests.
-3. **PENDIENTE** — Escena: el estandarte, el contorno, la cuenta atrás con «Cayendo…» y el desvanecido.
-4. **PENDIENTE** — Docs (`docs/architecture/frontend.md`) y prueba en vivo en el navegador con el panel visible.
+2. **HECHO** — Estado: `assaultTone`, `standardTone` y `assaultCountdownText` en `src/state/cityFall.ts`, la
+   proyección de `SceneCity.assault` y `SceneUnit.standard`, y `fallenCities` en `WorldChanges` y `SceneUpdate`, con
+   sus tests.
+3. **HECHO** — Escena: el estandarte, el contorno, la cuenta atrás con «Cayendo…» y el desvanecido de 1 s.
+4. **HECHO** — Docs (`docs/architecture/frontend.md` §4 y §7.3, spec §9.1) y prueba en vivo en el navegador.
+
+### Prueba en vivo (2026-11-24)
+
+Servidor y web de desarrollo con `EO_CITY_ASSAULT_SECONDS=120` y `EO_CITY_FALL_IMMUNITY_HOURS=0`; el navegador
+integrado, con el panel visible, en la cuenta `smoke_caida`, y `node scripts/smoke.mjs --web http://localhost:3001
+--caida` (25 comprobaciones superadas).
+
+- **El defensor** ve, en cuanto el guerrero de `smoke_runner` planta el estandarte, el banderín rojo sobre él, el
+  contorno rojo de su ciudad y «Cae en 1:59» en rojo, con el nombre una línea más arriba. La cuenta atrás baja segundo a
+  segundo (1:51, 1:01, 0:16).
+- **Al caer** (`city.fallen 33`), la ciudad se desvanece sin contorno ni cuenta atrás, el guerrero deja el estandarte y,
+  con el snapshot de la refundada (38, en 161,116), la cámara se queda donde estaba, con el aviso «Tu ciudad cayó…».
+- **Sin comprobar en el navegador:** «Cayendo…» (la caída llegó dentro del mismo segundo en que la cuenta llegó a
+  cero), el tono naranja de un tercero, el dorado del asaltante y el estandarte de una reclamación de territorio. Los
+  cubren los tests de `cityFall.test.ts` y `projection.test.ts`.

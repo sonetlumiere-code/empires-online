@@ -158,6 +158,25 @@ servidor ([city-fall.md](city-fall.md) §8); esta spec sólo los dibuja.
 
 PixiJS no carga en Node: lo que se pinta sólo se comprueba en el navegador; lo que se calcula, en Vitest.
 
+### 9.1 Precisiones de la implementación (2026-11-24)
+
+- **La cuenta atrás** va justo encima del bloque, donde estaba el nombre, y el nombre sube una línea mientras dura el
+  asalto: entre el nombre y el bloque no cabe otra. Sigue leyéndose «bajo el nombre».
+- **Los tonos** son el rojo de `--danger` (`0xff6b6b`), un dorado más vivo que el bloque de la ciudad propia
+  (`0xffd23f`, para que el contorno se distinga sobre ella) y el naranja del territorio en disputa (`0xe0a030`).
+- **El tono del estandarte de una reclamación** sólo es rojo para un territorio del jugador (`ownerType: PLAYER`); el
+  de su clan se ve naranja, como el de cualquier otro.
+- **Lo que vuelve a proyectarse**: un `city.update` de una ciudad bajo asalto vuelve a proyectar a su portaestandarte,
+  y cualquier `territory.update`, a toda unidad en `CLAIMING`: los mensajes del asalto y del estado de la unidad
+  pueden llegar en cualquier orden.
+- **La caída**: el store marca la ciudad en `WorldChanges.fallenCities` al aplicar `city.fallen`, y la proyección la
+  pasa en `SceneUpdate.fallenCities`. Sólo esas se desvanecen: una ciudad que sale de la vista con un snapshot, aunque
+  esté bajo asalto, se retira en el acto. El sprite que se desvanece sale del mapa de ciudades, así que el snapshot
+  que recibe el vencido justo después no lo toca.
+- **Tests**: `el asalto en el mapa` en `src/state/cityFall.test.ts` (los tonos, el estandarte de una reclamación y la
+  cuenta atrás con «Cayendo…») y en `src/render/projection.test.ts` (el snapshot, el `city.update` que trae y quita el
+  asalto, la ciudad caída frente a la que sale de la vista y el `territory.update`).
+
 ## 10. Decisiones de producto (2026-11-24)
 
 Producto aceptó el 2026-11-24 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
