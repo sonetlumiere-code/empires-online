@@ -313,6 +313,16 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
     los 29 min que quedaban. Ahora la partida apunta dónde vio por última vez a cada uno, o adónde iba si caminaba
     (`whereabouts`), y fuera de la marcha la conexión de campaña va a mirar allí si falta alguno (`lookAt`); mientras
     los ve a todos, no se mueve.
+  - **Precisión (2026-11-24): el punto de reunión que no se pisa se vuelve a elegir.** `rallyPoint` elige el punto de
+    reunión al salir y da por bueno el terreno que no conoce; hacia `_2_e30` caía en un tile que no se pisa, y la
+    marcha gastaba 26 rechazos `TARGET_NOT_WALKABLE` cada vez (78 en la quinta pasada) desplazándolo en espiral.
+    Ahora, en la marcha, si el terreno del punto de reunión pasa a conocerse y no se pisa, se vuelve a elegir con
+    `rallyPoint` sobre el terreno ya conocido, y los rechazos del tramo (`waypointTries`) y el plazo de reunión
+    empiezan de cero.
+  - **Precisión (2026-11-24): los de la partida que no se ven cuentan para entrenar.** Con la partida lejos, fuera de
+    la vista, `militaryRule` contaba sólo los militares y arietes que veía y el saqueador entrenaba de más. Ahora suma
+    los de la partida en curso que no ve (`warriors` y `rams` de la memoria, que los da por vivos hasta su
+    `UNIT_LOST`).
   - **Lo que no se arregla en el bot:** los militares que una ejecución anterior dejó fuera de la vista. El protocolo
     no tiene un mensaje con las unidades propias fuera del área de interés, así que el proceso nuevo no sabe que
     existen: cuentan en la población, no se recuperan y el saqueador entrena otros. En este mundo quedan así doce

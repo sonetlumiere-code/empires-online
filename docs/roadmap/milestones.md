@@ -3133,7 +3133,11 @@ del nombre.
 - **Hallazgos para otra spec (Q10):** el punto de reunión hacia `_2_e30` no se pisa y la marcha gasta 26 rechazos
   `TARGET_NOT_WALKABLE` cada vez (78 en la pasada 5): `rallyPoint` da por bueno el terreno que no conoce. Los
   militares que una ejecución deja fuera de la vista no los recupera la siguiente (spec §9.1): quedan doce militares y
-  dos arietes así, y por eso la pasada 5 entrenó un tercer ariete.
+  dos arietes así, y por eso la pasada 5 entrenó un tercer ariete. **Precisión (2026-11-24), repaso de la vista**
+  (rama `claude/repaso-bots-vista`): el punto de reunión que la vista descubre que no se pisa se vuelve a elegir con
+  el terreno conocido y sus rechazos empiezan de cero, y `militaryRule` cuenta también los militares y arietes de la
+  partida en curso que no ve (spec §9.1). Los de una ejecución anterior siguen sin recuperarse: el protocolo no manda
+  las unidades propias fuera del área de interés.
 - **Sin comprobar en el navegador:** el asalto entre bots visto desde una cuenta humana (spec §4.7, parte 3): el panel
   del navegador integrado estuvo oculto en las cinco pasadas y, sin él, el mapa no se dibuja.
 

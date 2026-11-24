@@ -123,6 +123,19 @@ describe('los arietes (SPEC-BOTS-ASSAULT §4.1)', () => {
     );
   });
 
+  it('los militares y arietes de la partida que no se ven también cuentan: no entrena de más', () => {
+    // La pasada 5 de E32 (2026-11-24): con la partida lejos, fuera de la vista, el
+    // saqueador contaba sólo los de casa y entrenó un tercer ariete.
+    const away = withRaid(assaultRaid({ phase: 'march', stage: null, waypoint: { x: 150, y: 100 }, ordered: [1, 2, 3, 4, 5, 6] }));
+    const v = view({ city: ironCity({ stocks: stocks(1000, 500) }), units: [warrior(7), warrior(8)] });
+    const trained = decide(v, saqueador, away, NOW, rng(), solo).commands.filter((c) => c.type === 'city.train');
+    expect(trained).toEqual([]);
+    // Sin la partida, los dos de casa no llegan: entrena.
+    expect(decide(v, saqueador, EMPTY_MEMORY, NOW, rng(), solo).commands).toContainEqual(
+      expect.objectContaining({ type: 'city.train' }),
+    );
+  });
+
   it('el constructor no entrena arietes (Q1)', () => {
     const v = view({ city: ironCity({ stocks: stocks(1000, 500) }), units: [warrior(1), warrior(2)] });
     expect(decide(v, PROFILES.constructor, EMPTY_MEMORY, NOW, rng(), solo).commands).not.toContainEqual(

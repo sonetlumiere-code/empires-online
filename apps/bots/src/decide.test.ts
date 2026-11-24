@@ -606,6 +606,24 @@ describe('el saqueo: plazos y tramos rechazados', () => {
     ]);
   });
 
+  it('el punto de reunión que la vista descubre que no se pisa se vuelve a elegir y los rechazos empiezan de cero', () => {
+    // La pasada 5 de E32 (2026-11-24): hacia `_2_e30` el punto de reunión caía en un
+    // tile que no se pisa y que no se conocía al salir; la marcha gastaba 26 rechazos
+    // TARGET_NOT_WALKABLE cada vez desplazándolo en espiral.
+    const water = (x: number, y: number) => (x === 124 && y === 100 ? 3 : 0);
+    const near = [1, 2].map((id) => unit({ id, unitType: 'WARRIOR', x: 110, y: 100 }));
+    const mem = { ...EMPTY_MEMORY, raid: raid({ waypoint: null, waypointTries: 5, rallyAtMs: NOW }) };
+    const { commands, memory } = decide(view({ ...base, units: near, terrainAt: water }), saqueador, mem, NOW, rng(), solo);
+    const rally = rallyPoint({ x: 140, y: 100 }, { x: 100, y: 100 }, 16, water);
+    expect(rally).toEqual({ x: 123, y: 99 });
+    expect(memory.raid).toMatchObject({ rally, waypointTries: 0, rallyAtMs: NOW, waypoint: rally });
+    expect(commands[0]).toEqual({ key: 'raid:march:1:123,99', type: 'unit.move', unitId: 1, target: rally });
+    // Con el terreno aún sin conocer, el punto de reunión no cambia.
+    const unknown = () => undefined;
+    const kept = decide(view({ ...base, units: near, terrainAt: unknown }), saqueador, mem, NOW, rng(), solo);
+    expect(kept.memory.raid).toMatchObject({ rally: { x: 124, y: 100 }, waypointTries: 5 });
+  });
+
   it('un tramo que no se puede pisar se desplaza en espiral y no se enfría', () => {
     const cmd: Command = { key: 'raid:march:1:130,100', type: 'unit.move', unitId: 1, target: { x: 130, y: 100 } };
     const mem = onRejected({ ...EMPTY_MEMORY, raid: raid({ ordered: [1] }) }, cmd, 'TARGET_NOT_WALKABLE', NOW, saqueador);
