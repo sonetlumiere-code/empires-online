@@ -380,6 +380,8 @@ no pisa ninguna en pie), [INV-CITY-019](../invariants/city.md#inv-city-019) (la 
   sola (el aviso `CITY_LOST` lleva el «Ir»).
 - **El cliente** no pinta el asalto en la escena: la cuenta atrás va en el HUD de quien tiene seleccionada una unidad
   cerca de la ciudad y en la barra de la ciudad propia ([frontend.md](../architecture/frontend.md) §4.25).
+  **Precisión (2026-11-24):** desde E33 ([assault-map.md](assault-map.md)) la escena dibuja el estandarte, la cuenta
+  atrás sobre la ciudad para todo el que la ve y su desvanecido al caer; el HUD no cambia.
 - **Tests.** Los de §9 son `TestQueCiudadSePuedeAsaltar` y `TestElPlazoDelAsaltoYLaDistanciaDeLaRefundacion`
   (`internal/domain/cityfall`), `TestLaRefundacionNaceLejosDeLaCaidaYDelVencedor` y
   `TestSinSitioLejosLaRefundacionNaceComoUnAlta` (`internal/game/founding`),

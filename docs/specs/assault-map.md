@@ -1,19 +1,19 @@
 # El asalto en el mapa
 
-Propuesta para que **la escena dibuje el asalto** de una ciudad: el estandarte sobre la unidad que lo sostiene y la
+Spec para que **la escena dibuje el asalto** de una ciudad: el estandarte sobre la unidad que lo sostiene y la
 cuenta atrás sobre la ciudad, para todo el que la tenga a la vista, en vez de que un tercero sólo vea la ciudad
 desaparecer.
 
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-ASSAULT-MAP` |
-| Estado | Draft |
+| Estado | Accepted (2026-11-24). Propuesta en `Draft` y aceptada el mismo día con la recomendación de cada pregunta de §10. |
 | Milestone | E33 El asalto en el mapa (trigésimo tercer slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §13 (protocolo), §19 (niveles de test) |
 | Depende de | [city-fall.md](city-fall.md), [territory-conquest.md](territory-conquest.md), [siege-engines.md](siege-engines.md), [bots-assault.md](bots-assault.md), [websocket-protocol.md](websocket-protocol.md) |
 | Decisiones | Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base; es presentación de un estado que el cliente ya recibe. |
 | Reemplaza a | En [city-fall.md](city-fall.md) §9.1, «el cliente no pinta el asalto en la escena», y en [bots-assault.md](bots-assault.md) §9.1, «pintar el asalto en la escena es otro slice». |
-| Invariantes | No asigna invariantes: el cliente no decide nada (§8). Las reglas nuevas se proponen como `RN-SIEGE-012` a `RN-SIEGE-014` (§4.6). |
+| Invariantes | No asigna invariantes: el cliente no decide nada (§8). Las reglas nuevas son `RN-SIEGE-012` a `RN-SIEGE-014` (§4.6). |
 
 ## 1. Objetivo
 
@@ -158,18 +158,21 @@ servidor ([city-fall.md](city-fall.md) §8); esta spec sólo los dibuja.
 
 PixiJS no carga en Node: lo que se pinta sólo se comprueba en el navegador; lo que se calcula, en Vitest.
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-24)
 
-| # | Pregunta | Recomendación | Descartadas |
-|---|---|---|---|
-| Q1 | ¿Qué se dibuja? | **El estandarte sobre el portaestandarte y, en la ciudad, el contorno y la cuenta atrás bajo el nombre.** Se lee de un vistazo y cuesta poco por frame. | **Sólo el estandarte** (no dice cuánto falta); **un arco de progreso alrededor de la ciudad** (más bonito, pero la isometría lo deforma y no dice los minutos). |
-| Q2 | ¿El estandarte también en la reclamación de territorio? | **Sí**: es el mismo estado (`CLAIMING`) y la misma idea; separarlos pediría distinguirlos sin datos nuevos. Su cuenta atrás sigue sólo en el HUD. | **Sólo en el asalto** (habría que decidir el estandarte por la ciudad cercana, adivinando). |
-| Q3 | ¿Quién ve la cuenta atrás en el mapa? | **Todo el que tiene la ciudad a la vista**: el servidor ya la hace pública, y que un tercero pueda acudir o aprovecharlo es juego. | **Sólo el defensor y el asaltante** (el tercero vería un estandarte sin plazo). |
-| Q4 | ¿Un tono por quién mira? | **Tres tonos (§4.3)**: rojo para el que pierde, dorado para lo propio, naranja para un tercero, los colores que el juego ya usa para eso. | **Un solo color para todos** (el defensor no distingue de un vistazo su ciudad de la de otro). |
-| Q5 | ¿Qué se ve al caer la ciudad? | **Se desvanece en 1 s** al llegar `city.fallen`, sólo si está en pantalla: dice que cayó, no que se fue la conexión. | **Desaparece en el acto** (como hoy); **ruinas en el sitio** (la ciudad caída no viaja en el snapshot: pide servidor, otro slice). |
-| Q6 | ¿Cambia el HUD del tercero (la condición de los 12 tiles)? | **No**: con el mapa basta para enterarse, y el botón «Asaltar» sigue ofreciéndose sólo con una unidad cerca. | **Enseñar en el HUD todo asalto a la vista** (repite lo que ya dice el mapa). |
-| Q7 | ¿Cambian los bots o el humo? | **No**: la prueba en vivo usa los bots de E32 (el saqueador asalta) y el humo `--caida`, tal como están. | **Una opción de humo nueva** (no hay nada nuevo en el protocolo que comprobar). |
-| Q8 | ¿Qué dice la cuenta atrás a cero sin la caída? | **«Cayendo…»** hasta el mensaje del servidor: el plazo venció, pero la caída la confirma el servidor (una rotura en el último tick la evita). | **Esconder la línea** (parece que el asalto se rompió); **quitar la ciudad** (adelanta lo que decide el servidor). |
+Producto aceptó el 2026-11-24 la recomendación de cada pregunta. Cada fila deja la decisión (en negrita) y las
+alternativas que se descartaron. Son decisiones de producto, no de ingeniería: cambiarlas es cambiar la spec.
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| Q1 | ¿Qué se dibuja? | **El estandarte sobre el portaestandarte y, en la ciudad, el contorno y la cuenta atrás bajo el nombre.** Se lee de un vistazo y cuesta poco por frame. Descartadas: **Sólo el estandarte** (no dice cuánto falta); **un arco de progreso alrededor de la ciudad** (más bonito, pero la isometría lo deforma y no dice los minutos). |
+| Q2 | ¿El estandarte también en la reclamación de territorio? | **Sí**: es el mismo estado (`CLAIMING`) y la misma idea; separarlos pediría distinguirlos sin datos nuevos. Su cuenta atrás sigue sólo en el HUD. Descartadas: **Sólo en el asalto** (habría que decidir el estandarte por la ciudad cercana, adivinando). |
+| Q3 | ¿Quién ve la cuenta atrás en el mapa? | **Todo el que tiene la ciudad a la vista**: el servidor ya la hace pública, y que un tercero pueda acudir o aprovecharlo es juego. Descartadas: **Sólo el defensor y el asaltante** (el tercero vería un estandarte sin plazo). |
+| Q4 | ¿Un tono por quién mira? | **Tres tonos (§4.3)**: rojo para el que pierde, dorado para lo propio, naranja para un tercero, los colores que el juego ya usa para eso. Descartadas: **Un solo color para todos** (el defensor no distingue de un vistazo su ciudad de la de otro). |
+| Q5 | ¿Qué se ve al caer la ciudad? | **Se desvanece en 1 s** al llegar `city.fallen`, sólo si está en pantalla: dice que cayó, no que se fue la conexión. Descartadas: **Desaparece en el acto** (como hoy); **ruinas en el sitio** (la ciudad caída no viaja en el snapshot: pide servidor, otro slice). |
+| Q6 | ¿Cambia el HUD del tercero (la condición de los 12 tiles)? | **No**: con el mapa basta para enterarse, y el botón «Asaltar» sigue ofreciéndose sólo con una unidad cerca. Descartadas: **Enseñar en el HUD todo asalto a la vista** (repite lo que ya dice el mapa). |
+| Q7 | ¿Cambian los bots o el humo? | **No**: la prueba en vivo usa los bots de E32 (el saqueador asalta) y el humo `--caida`, tal como están. Descartadas: **Una opción de humo nueva** (no hay nada nuevo en el protocolo que comprobar). |
+| Q8 | ¿Qué dice la cuenta atrás a cero sin la caída? | **«Cayendo…»** hasta el mensaje del servidor: el plazo venció, pero la caída la confirma el servidor (una rotura en el último tick la evita). Descartadas: **Esconder la línea** (parece que el asalto se rompió); **quitar la ciudad** (adelanta lo que decide el servidor). |
 
 ## 11. Documentos relacionados
 

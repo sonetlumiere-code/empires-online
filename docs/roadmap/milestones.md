@@ -3136,3 +3136,26 @@ del nombre.
   dos arietes así, y por eso la pasada 5 entrenó un tercer ariete.
 - **Sin comprobar en el navegador:** el asalto entre bots visto desde una cuenta humana (spec §4.7, parte 3): el panel
   del navegador integrado estuvo oculto en las cinco pasadas y, sin él, el mapa no se dibuja.
+
+## E33 — El asalto en el mapa
+
+**Estado: EN CURSO (2026-11-24)**, en la rama `claude/slice-asalto-mapa`. Contrato:
+[SPEC-ASSAULT-MAP](../specs/assault-map.md), propuesta y aceptada el 2026-11-24 con sus ocho decisiones de producto.
+Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
+
+**Objetivo.** Que el asalto de una ciudad se vea en el mapa: hoy un tercero sin una unidad cerca sólo ve la ciudad
+desaparecer.
+
+**Alcance.** En `apps/web`: el estandarte sobre toda unidad en `CLAIMING` (asalto y reclamación de territorio), la
+ciudad bajo asalto con su contorno y la cuenta atrás bajo el nombre para todo el que la ve, el tono según quién mira y
+el desvanecido al caer (`RN-SIEGE-012` a `RN-SIEGE-014`). **No entra** (spec §2): el servidor, el protocolo, la base, las
+ruinas, el HUD, los bots y el humo.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-SIEGE-012` a `RN-SIEGE-014`; precisiones
+   en [city-fall.md](../specs/city-fall.md) y [bots-assault.md](../specs/bots-assault.md). Sin invariantes nuevos.
+2. **PENDIENTE** — Estado: `assaultTone` y `standardTone` en `src/state/cityFall.ts` y la proyección de
+   `SceneCity.assault` y `SceneUnit.standard`, con sus tests.
+3. **PENDIENTE** — Escena: el estandarte, el contorno, la cuenta atrás con «Cayendo…» y el desvanecido.
+4. **PENDIENTE** — Docs (`docs/architecture/frontend.md`) y prueba en vivo en el navegador con el panel visible.
