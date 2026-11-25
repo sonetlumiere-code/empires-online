@@ -212,6 +212,7 @@ func TestElDecodificadorEsTanEstrictoComoElEsquema(t *testing.T) {
 		{protocol.TypeUnitCancelMove, `{"unitId":1}`, &protocol.UnitCancelMovePayload{}, ""},
 		{protocol.TypeUnitGarrison, `{"unitId":1,"cityId":2}`, &protocol.UnitGarrisonPayload{}, ""},
 		{protocol.TypeUnitUngarrison, `{"unitId":1}`, &protocol.UnitUngarrisonPayload{}, ""},
+		{protocol.TypeUnitFoundCity, `{"unitId":1}`, &protocol.UnitFoundCityPayload{}, ""},
 		{protocol.TypeUnitGather, `{"unitId":1,"target":{"x":1,"y":2}}`, &protocol.UnitGatherPayload{}, `{"unitId":1,"target":{"x":1,"y":2,"carrying":10}}`},
 		{protocol.TypeCityBuild, `{"cityId":1,"type":"HOUSE","x":1,"y":2}`, &protocol.CityBuildPayload{}, ""},
 		{protocol.TypeCityTrain, `{"cityId":1,"type":"VILLAGER"}`, &protocol.CityTrainPayload{}, ""},
@@ -243,7 +244,7 @@ func TestPreAuthSoloAdmiteElHandshake(t *testing.T) {
 		protocol.TypeUnitMove, protocol.TypeUnitCancelMove,
 		protocol.TypeUnitGarrison, protocol.TypeUnitUngarrison,
 		protocol.TypeUnitGather, protocol.TypeCityBuild, protocol.TypeCityTrain, protocol.TypeUnitAttack, protocol.TypeUnitPillage,
-		protocol.TypeUnitDemolish, protocol.TypeUnitClaim, protocol.TypeUnitAssault,
+		protocol.TypeUnitDemolish, protocol.TypeUnitClaim, protocol.TypeUnitAssault, protocol.TypeUnitFoundCity,
 		protocol.TypeTreatyPropose, protocol.TypeTreatyRespond, protocol.TypeTreatyCancel,
 		protocol.TypeFactionJoin,
 		protocol.TypeSessionPing, protocol.TypeSessionView,
@@ -259,8 +260,9 @@ func TestCatalogoDeComandosEsCerrado(t *testing.T) {
 	// los tres de las alianzas (SPEC-CLAN-ALLIANCES); 47 desde E24, con los tres
 	// de las guerras (SPEC-CLAN-WARS); 48 desde E25, con city.research; 52
 	// desde E26, con los cuatro del mercado (SPEC-MARKETS); 53 desde E31, con
-	// unit.assault (SPEC-CITY-FALL).
-	require.Len(t, protocol.ClientMessageTypes, 53)
+	// unit.assault (SPEC-CITY-FALL); 54 desde E34, con unit.found_city
+	// (SPEC-MULTI-CITY).
+	require.Len(t, protocol.ClientMessageTypes, 54)
 	for _, unknown := range []string{"unit.teleport", "admin.grant", "", "world.snapshot"} {
 		require.False(t, protocol.ClientMessageTypes[unknown],
 			"%q no debe aceptarse como comando del cliente", unknown)

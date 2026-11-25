@@ -132,6 +132,13 @@ devueltos en `lots` y lo que volvió al almacén en `tradeGet` («Tu oferta del 
 20 de piedra a tu almacén»). La publicación y la retirada no entran: las ordenó el propio jugador. Cada suceso es su
 propia entrada. `EventTypes` gana `MarketPurchase` y `MarketOfferExpired`; el catálogo pasa de 40 a 42 tipos.
 
+**Precisión (2026-11-24, [multi-city.md](multi-city.md) Q11, [ADR-051](../decisions/ADR-051-multi-city-capital.md)).**
+Desde E34 entra la fundación de una segunda ciudad: `CityFounded` se cuenta sólo al fundador, sin otro jugador
+(`otherPlayerId` nulo, como `MARKET_EXPIRED`), como `CITY_FOUNDED` con el centro de la ciudad nueva en `x`/`y` («Fundaste
+una ciudad nueva cerca de (40, 40)»). Cada fundación es su propia entrada y no se avisa en vivo. `EventTypes` gana
+`CityFounded`; el catálogo pasa de 45 a 46 tipos. Con dos ciudades, el otro jugador se sigue nombrando por la de id
+menor, su capital.
+
 **Precisión (2026-11-23, [city-fall.md](city-fall.md) Q9, [ADR-050](../decisions/ADR-050-city-fall.md)).**
 Desde E31 entra la caída de una ciudad. El comienzo de un asalto (`CITY_ASSAULTED`, de `CityAssaultStarted`) se cuenta
 sólo al asaltado, con `fallsAtMs` y el centro de su ciudad en `x`/`y` («¡Villa Norte asalta tu ciudad! Cae a las 18:15

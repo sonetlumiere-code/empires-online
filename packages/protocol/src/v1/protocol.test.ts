@@ -1461,6 +1461,15 @@ describe('la caída de una ciudad (SPEC-CITY-FALL)', () => {
     expect(CLIENT_MESSAGE_TYPES).toContain('unit.assault');
   });
 
+  it('acepta unit.found_city con el aldeano, y nada más (SPEC-MULTI-CITY)', () => {
+    const cmd = (payload: unknown) => parseClientMessage({ v: 1, type: 'unit.found_city', requestId: uuid, payload });
+    expect(cmd({ unitId: 42 }).ok).toBe(true);
+    for (const payload of [{}, { unitId: 0 }, { unitId: 42, x: 1 }, { unitId: 42, cityId: 7 }]) {
+      expect(cmd(payload)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    }
+    expect(CLIENT_MESSAGE_TYPES).toContain('unit.found_city');
+  });
+
   it('CityView lleva el asalto y la inmunidad, opcionales; city.update abre y cierra el asalto', () => {
     expect(CityView.safeParse(city).success).toBe(true);
     expect(CityView.safeParse({ ...city, assault, fallImmuneUntilMs: 1_757_635_200_000 }).success).toBe(true);
@@ -1474,6 +1483,13 @@ describe('la caída de una ciudad (SPEC-CITY-FALL)', () => {
     expect(parseServerMessage({ ...env, type: 'city.fallen', payload }).ok).toBe(true);
     expect(parseServerMessage({ ...env, type: 'city.fallen', payload: { ...payload, byPlayerId: 'x' } }).ok).toBe(false);
     expect(SERVER_MESSAGE_TYPES).toContain('city.fallen');
+  });
+
+  it('CITY_FOUNDED es una entrada del registro sin otro jugador, y no un aviso (SPEC-MULTI-CITY)', () => {
+    const entry = { id: 42, kind: 'CITY_FOUNDED', firstAtMs: 1, lastAtMs: 1, count: 1, otherPlayerId: null, otherCityId: null, otherCityName: null, x: 40, y: 40 };
+    expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [entry], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(true);
+    const notice = { kind: 'CITY_FOUNDED', atMs: 1, x: 40, y: 40 };
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(false);
   });
 
   it('los tres tipos de la caída son entradas del registro y avisos', () => {

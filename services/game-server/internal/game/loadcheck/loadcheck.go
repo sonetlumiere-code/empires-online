@@ -340,6 +340,30 @@ func (c *checker) cities() {
 		controles[ct.TerritoryID] = ct
 	}
 
+	// SPEC-MULTI-CITY: los centros de las ciudades en pie de cada jugador, y su
+	// capital (la de id menor, RN-CITY-033). El bono de los conquistados sólo lo
+	// cobra la capital (RN-CITY-034), y ninguna capital territorial cuenta.
+	centrosDe := make(map[uuid.UUID][]world.Tile)
+	capitalDe := make(map[uuid.UUID]int64)
+	for _, ci := range cities {
+		centrosDe[ci.OwnerPlayerID] = append(centrosDe[ci.OwnerPlayerID], ci.Center())
+		if _, ok := capitalDe[ci.OwnerPlayerID]; !ok {
+			capitalDe[ci.OwnerPlayerID] = ci.ID
+		}
+	}
+	duenos := make([]uuid.UUID, 0, len(centrosDe))
+	for o := range centrosDe {
+		duenos = append(duenos, o)
+	}
+	sort.Slice(duenos, func(i, j int) bool { return duenos[i].String() < duenos[j].String() })
+	for _, o := range duenos {
+		// INV-CITY-022: la base lo impide; si llegara, no hay reglas para una tercera.
+		if n := len(centrosDe[o]); n > city.MaxStandingPerOwner {
+			c.find("INV-CITY-022", "CRITICO", PolicyFailFast, fmt.Sprintf("player:%s", o),
+				fmt.Sprintf("%d ciudades en pie; el tope es %d", n, city.MaxStandingPerOwner))
+		}
+	}
+
 	for _, ci := range cities {
 		entity := fmt.Sprintf("city:%d", ci.ID)
 
@@ -360,8 +384,11 @@ func (c *checker) cities() {
 			c.touchCity(ci.ID)
 		}
 		limit, ok := c.in.EraCaps[ci.Era]
-		conquistados := territory.ConqueredBonus(
-			territory.CountConquered(c.in.Territories, controles, ci.OwnerPlayerID, ci.Center()))
+		var conquistados int32
+		if capitalDe[ci.OwnerPlayerID] == ci.ID {
+			conquistados = territory.ConqueredBonus(
+				territory.CountConquered(c.in.Territories, controles, ci.OwnerPlayerID, centrosDe[ci.OwnerPlayerID]))
+		}
 		bonus := building.PopulationBonus(edificios[ci.ID]) + conquistados
 		if ok {
 			// INV-ECON-004: la era más cinco por casa completa y cinco por

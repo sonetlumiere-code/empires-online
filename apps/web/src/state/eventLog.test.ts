@@ -73,6 +73,11 @@ describe('páginas del registro (SPEC-EVENT-LOG)', () => {
 });
 
 describe('texto de cada entrada', () => {
+  it('CITY_FOUNDED dice dónde se fundó la segunda ciudad (SPEC-MULTI-CITY)', () => {
+    expect(entryText(entrada(1, 'CITY_FOUNDED', { otherPlayerId: null, otherCityId: null, otherCityName: null, x: 40, y: 40 })))
+      .toBe('Fundaste una ciudad nueva cerca de (40, 40)');
+  });
+
   it('cuenta cada tipo desde el punto de vista del jugador', () => {
     expect(entryText(entrada(1, 'UNIT_LOST', { count: 2, unitType: 'VILLAGER', x: 451, y: 179 })))
       .toBe('Villa Norte mató a 2 de tus aldeanos cerca de (451, 179)');

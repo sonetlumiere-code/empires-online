@@ -60,6 +60,8 @@ type CityFallStore interface {
 	EndAssault(ctx context.Context, e AssaultEnd) error
 	// FallCity es la transacción de ADR-050 §3.
 	FallCity(ctx context.Context, f cityfall.Fall) (*cityfall.FallResult, error)
+	// FoundCity es la transacción de la fundación (SPEC-MULTI-CITY, ADR-051 §4).
+	FoundCity(ctx context.Context, w CityFoundWrite) (*cityfall.FoundingResult, error)
 }
 
 // RefoundSiteFunc busca el sitio de la ciudad nueva de un vencido fuera del
@@ -708,7 +710,7 @@ func (s *Simulation) handleFallResolved(cmd FallResolved) {
 		return
 	}
 	as.falling = false
-	if cmd.Conflict || cmd.Result == nil || cmd.Result.City == nil {
+	if cmd.Conflict || cmd.Result == nil || (cmd.Result.City == nil && cmd.Result.KeptCityID == 0) {
 		s.endAssault(as, cityfall.EndConflict, nowMs)
 		return
 	}
@@ -723,9 +725,19 @@ func (s *Simulation) applyFall(as *assaultState, res *cityfall.FallResult, nowMs
 	if !ok {
 		return
 	}
+	// SPEC-MULTI-CITY RN-CITY-035: con otra ciudad en pie, lo de la caída pasa a
+	// ella y no hay refundada.
+	newCity := res.City
+	if res.KeptCityID != 0 {
+		kept, ok := s.state.City(res.KeptCityID)
+		if !ok {
+			s.deps.Log.Error("la otra ciudad del vencido no está en la RAM", "city_id", res.KeptCityID)
+			return
+		}
+		newCity = kept
+	}
 	s.dropAssault(as)
 	w := s.state.World()
-	newCity := res.City
 
 	// La unidad que asaltaba vuelve a IDLE donde está.
 	if u, ok := s.state.Unit(as.UnitID); ok && u.Status == unit.StatusClaiming {
@@ -807,18 +819,26 @@ func (s *Simulation) applyFall(as *assaultState, res *cityfall.FallResult, nowMs
 		}
 	}
 
-	// La civilización, el bando y el clan son del jugador, no de la ciudad: la
-	// transacción no los lee, y la RAM los copia de la caída (precisión de
-	// 2026-11-23). Sin ellos, el CityView de la nueva no cabe en el contrato.
-	newCity.Civilization, newCity.Faction = fallen.Civilization, fallen.Faction
-	newCity.FactionJoin, newCity.Clan = fallen.FactionJoin, fallen.Clan
-	// La ciudad nueva entra como un alta (RN-CITY-027).
-	s.handleIntroducePlayer(IntroducePlayer{
-		City: newCity, Units: res.Villagers,
-		BlockedMinX: newCity.CenterX - 1, BlockedMinY: newCity.CenterY - 1,
-		BlockedMaxX: newCity.CenterX + 1, BlockedMaxY: newCity.CenterY + 1,
-		TerritoryControl: res.Claimed,
-	})
+	if res.KeptCityID != 0 {
+		// La que queda recibe la población y, si pasa a ser la capital, el bono
+		// de territorio (RN-CITY-034).
+		newCity.Population, newCity.PopulationLimit = res.KeptPopulation, res.KeptPopulationLimit
+		pop, limit := newCity.Population, newCity.PopulationLimit
+		s.broadcastCity(newCity, protocol.CityUpdatePayload{Population: &pop, PopulationLimit: &limit})
+	} else {
+		// La civilización, el bando y el clan son del jugador, no de la ciudad: la
+		// transacción no los lee, y la RAM los copia de la caída (precisión de
+		// 2026-11-23). Sin ellos, el CityView de la nueva no cabe en el contrato.
+		newCity.Civilization, newCity.Faction = fallen.Civilization, fallen.Faction
+		newCity.FactionJoin, newCity.Clan = fallen.FactionJoin, fallen.Clan
+		// La ciudad nueva entra como un alta (RN-CITY-027).
+		s.handleIntroducePlayer(IntroducePlayer{
+			City: newCity, Units: res.Villagers,
+			BlockedMinX: newCity.CenterX - 1, BlockedMinY: newCity.CenterY - 1,
+			BlockedMaxX: newCity.CenterX + 1, BlockedMaxY: newCity.CenterY + 1,
+			TerritoryControl: res.Claimed,
+		})
+	}
 	if res.Freed != nil {
 		s.applyTerritoryControl(*res.Freed)
 	}

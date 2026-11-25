@@ -168,6 +168,11 @@ La RAM, al volver: quita la ciudad caída (`cities`, `cityByOwner`, overlay, ín
 mismo camino que un alta (`AddCity`, el apartado de unidades de `RN-CITY-022`), reasigna las unidades y aplica §4.3.
 En ningún tick el jugador tiene cero ciudades ni dos.
 
+**Precisión (2026-11-24, [multi-city.md](multi-city.md), [ADR-051](../decisions/ADR-051-multi-city-capital.md)):** desde E34 un jugador puede tener dos ciudades en pie.
+Si cae una y queda la otra, se arrasa **sin refundar** y lo suyo pasa a la que queda (`RN-CITY-035`,
+[INV-CITY-023](../invariants/city.md#inv-city-023)); sólo la última refunda, y lo hace en el hueco de la caída. En
+ningún tick el jugador tiene cero ciudades ni tres.
+
 ### 4.3 Qué le pasa a lo que tenía (Q2, Q4)
 
 | Qué | De quién es | Qué pasa |

@@ -3184,3 +3184,55 @@ integrado, con el panel visible, en la cuenta `smoke_caida`, y `node scripts/smo
 - **Sin comprobar en el navegador:** «Cayendo…» (la caída llegó dentro del mismo segundo en que la cuenta llegó a
   cero), el tono naranja de un tercero, el dorado del asaltante y el estandarte de una reclamación de territorio. Los
   cubren los tests de `cityFall.test.ts` y `projection.test.ts`.
+
+## E34 — Multiciudad
+
+**Estado: EN CURSO (2026-11-24)**, en la rama `claude/slice-multiciudad`. Contrato:
+[SPEC-MULTI-CITY](../specs/multi-city.md), propuesta y aceptada el 2026-11-24 con sus once decisiones (producto delegó en
+la recomendación del agente, sesión desatendida). [ADR-051](../decisions/ADR-051-multi-city-capital.md); migración
+`000031`.
+
+**Objetivo.** Que un jugador pueda tener una segunda ciudad: hoy crecer es sólo subir de era, y la caída lo devuelve
+todo a cero.
+
+**Alcance.** Fundar con un aldeano (`unit.found_city`) desde Bronce por 800/400, con un tope de dos en pie garantizado
+por la base; la capital (la de id menor) responde por el jugador; presencia de todas a la vez; el bono de territorio
+sólo en la capital; la caída de una de dos sin refundar; «Fundar ciudad» y «H» que alterna en el HUD; el humo
+`--multiciudad` (`RN-CITY-030` a `RN-CITY-035`). **No entra** (spec §2): conquistar ciudades, más de dos, elegir de
+qué ciudad sale el comercio, trasladar la capital, que los bots funden.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; ADR-051; `INV-CITY-022` e `INV-CITY-023`
+   registrados sin cobertura; precisiones de `INV-CITY-020`, [city.md](../specs/city.md) §9 y
+   [city-fall.md](../specs/city-fall.md) §4.2.
+2. **HECHO** — Servidor: la migración `000031` (`cities.slot`, el índice por dueño y hueco), la capital en `State`
+   (`CityOf`, `CitiesOf`), la presencia de todas a la vez, el bono sólo en la capital (también en la validación de
+   carga), `unit.found_city` con su reserva y el trabajo `city.found` (`founding.CheckSite`, `CityFallRepo.FoundCity`),
+   y la caída con dos sin refundar, con sus tests (`multi_city_test.go`, `multi_city_integration_test.go`).
+3. **HECHO** — Protocolo: `unit.found_city` en Zod y en Go, `CITY_FOUNDED` en el registro, con su e2e
+   (`multi_city_e2e_test.go`). Sin mensaje de confirmación: un snapshot nuevo (spec §9.1).
+4. **HECHO** — Cliente y bots: «Fundar ciudad» con su motivo, «H» que alterna y el panel de la ciudad elegida
+   (`src/state/multiCity.ts`), y la capital en los bots (`capitalOf`).
+5. **HECHO** — Humo `--multiciudad` (con `sitioParaFundar` y su test), docs (protocolo, registro, base, cliente,
+   configuración) y prueba en vivo.
+
+### Prueba en vivo (2026-11-24)
+
+Servidor y web de desarrollo en esta Mac; el servidor aplicó la migración 30 → 31 al arrancar sobre el mundo de
+desarrollo (29 ciudades). `node scripts/smoke.mjs --web http://localhost:3001 --multiciudad`, con las cuentas
+sembradas con `EO_DEVSEED_STOCK_FOR`.
+
+- **`smoke_multi`** avanza a Bronce y funda su segunda ciudad, `smoke_multipolis II` (41), en (256, 383).
+- **`smoke_multi2`** (`EO_SMOKE_MULTI_USER`) avanza a Bronce, busca sitio moviendo la vista, lleva un aldeano a
+  (108, 375), a 81 tiles de su capital, y funda `smoke_multi2polis II` (43) en Bronce; la tercera se rechaza con
+  `INVALID_TARGET` («ya tienes dos ciudades»). En la pasada siguiente de `smoke_multi`, ya con dos, la sonda se rechaza
+  por el tope.
+- **Encontrado y arreglado en vivo** (spec §9.1): en el mundo denso el sitio libre más cercano quedó a 80 tiles de la
+  capital, y el snapshot de la fundación, centrado en la capital, no traía la ciudad nueva: ahora va centrado en ella
+  (`ResnapshotAt`), y el cliente recuerda los centros de sus ciudades (`ownCityHomes`) para que «H» llegue a la que no
+  está a la vista. El humo, además, busca el sitio alrededor de la capital y camina por tramos que aceptan
+  `movementId: 0`.
+- **Sin comprobar en el navegador:** «Fundar ciudad», «H» que alterna y el panel de la ciudad elegida: el panel del
+  navegador integrado estaba oculto y, sin él, el mapa no se dibuja. Los cubren los tests de `multiCity.test.ts` y
+  `selectors.test.ts`.

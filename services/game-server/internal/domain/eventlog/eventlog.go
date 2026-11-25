@@ -103,6 +103,9 @@ const (
 	KindCityAssaulted Kind = "CITY_ASSAULTED"
 	KindCityLost      Kind = "CITY_LOST"
 	KindCityTaken     Kind = "CITY_TAKEN"
+	// La segunda ciudad (SPEC-MULTI-CITY Q11): al fundador, sin otro jugador. No se
+	// avisa en vivo: lo hizo él.
+	KindCityFounded Kind = "CITY_FOUNDED"
 )
 
 // Kinds es el catálogo cerrado de tipos de entrada, en orden estable. El enum
@@ -122,6 +125,7 @@ func Kinds() []Kind {
 		KindClanWarDeclared, KindClanWarPeaceOffered, KindClanWarEnded,
 		KindMarketSold, KindMarketExpired,
 		KindCityAssaulted, KindCityLost, KindCityTaken,
+		KindCityFounded,
 	}
 }
 
@@ -225,6 +229,9 @@ const (
 	// dos. Un asalto roto no se escribe.
 	EventCityAssaultStarted = "CityAssaultStarted"
 	EventCityFell           = "CityFell"
+	// La fundación de una segunda ciudad (SPEC-MULTI-CITY §6, ADR-051): player_id
+	// es el fundador, sin otro jugador.
+	EventCityFounded = "CityFounded"
 )
 
 // BreakReasonWar es el motivo de un TreatyBreakAnnounced que abrió una guerra
@@ -252,6 +259,7 @@ func EventTypes() []string {
 		EventClanWarDeclared, EventClanWarPeaceOffered, EventClanWarEnded,
 		EventMarketPurchase, EventMarketOfferExpired,
 		EventCityAssaultStarted, EventCityFell,
+		EventCityFounded,
 	}
 }
 
@@ -419,6 +427,12 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindMarketExpired, uuid.Nil, true
 		}
 		return "", uuid.Nil, false
+	case EventCityFounded:
+		// Sólo al fundador, sin otro jugador (SPEC-MULTI-CITY Q11).
+		if e.PlayerID == viewer {
+			return KindCityFounded, uuid.Nil, true
+		}
+		return "", uuid.Nil, false
 	case EventMarketPurchase:
 		if e.PlayerID == viewer && e.Counterpart != uuid.Nil && e.Counterpart != viewer {
 			return KindMarketSold, e.Counterpart, true
@@ -478,6 +492,7 @@ func Classify(viewer uuid.UUID, e Event) (kind Kind, other uuid.UUID, ok bool) {
 			return KindCityLost, other, true
 		}
 		return KindCityTaken, other, true
+
 	case EventClanMemberExpelled:
 		// Al expulsado, que le expulsaron; al líder, que expulsó (RN-LOG-001).
 		if e.PlayerID == viewer {
@@ -800,7 +815,7 @@ func (b *Builder) Add(e Event) bool {
 	case KindCityLost:
 		// Dónde refundó quien lee (SPEC-CITY-FALL §4.6).
 		entry.X, entry.Y, entry.HasTile = e.NewX, e.NewY, e.HasTile
-	case KindCityTaken:
+	case KindCityTaken, KindCityFounded:
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost:
 		// La sigla del clan cuyo liderazgo cambió (SPEC-CLAN-GOVERNANCE §4.6).
@@ -853,7 +868,7 @@ func isMarket(k Kind) bool { return k == KindMarketSold || k == KindMarketExpire
 
 // isCityFall: cada asalto y cada caída, su entrada.
 func isCityFall(k Kind) bool {
-	return k == KindCityAssaulted || k == KindCityLost || k == KindCityTaken
+	return k == KindCityAssaulted || k == KindCityLost || k == KindCityTaken || k == KindCityFounded
 }
 
 func isTreaty(k Kind) bool {

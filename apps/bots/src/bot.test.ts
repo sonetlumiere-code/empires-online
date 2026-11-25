@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { WebSocketLike } from '../../web/src/net/client';
 import { WebSession } from './auth';
-import { Bot, Directory } from './bot';
+import { Bot, Directory, capitalOf } from './bot';
 import { EMPTY_MEMORY, RAID_ASSAULT_FIELDS, decide, type Command, type Memory, type Raid } from './decide';
 import { botCity, city as fixtureCity, stocks as fixtureStocks, unit, view } from './fixtures.test-helpers';
 import { RunLog, parseLog } from './log';
@@ -621,5 +621,16 @@ describe('RN-BOT-007: la parada limpia', () => {
     // Parar dos veces no escribe otro stop.
     bot.stop();
     expect(parseLog(lines.join('')).filter((e) => e.event === 'stop')).toHaveLength(1);
+  });
+});
+
+describe('con dos ciudades propias (SPEC-MULTI-CITY Q10)', () => {
+  it('el bot juega con su capital, la de id menor, sea cual sea el orden del store', () => {
+    const yo = '11111111-1111-4111-8111-111111111111';
+    const segunda = fixtureCity({ id: 30, ownerPlayerId: yo, name: 'bot_constructor_1polis II' });
+    const capital = fixtureCity({ id: 10, ownerPlayerId: yo });
+    const ajena = fixtureCity({ id: 5, ownerPlayerId: '22222222-2222-4222-8222-222222222222' });
+    expect(capitalOf([segunda, ajena, capital], yo)?.id).toBe(10);
+    expect(capitalOf([ajena], yo)).toBeNull();
   });
 });

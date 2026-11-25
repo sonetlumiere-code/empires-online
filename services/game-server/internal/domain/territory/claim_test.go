@@ -104,11 +104,17 @@ func TestElBonoCuentaLoConquistadoSinLaCapital(t *testing.T) {
 	centro := world.Tile{X: 30, Y: 30}
 	ts := []territory.Territory{capital, otro, ajeno, libre}
 
-	assert.Equal(t, 1, territory.CountConquered(ts, controls, reclamante, centro))
+	assert.Equal(t, 1, territory.CountConquered(ts, controls, reclamante, []world.Tile{centro}))
 	assert.Equal(t, int32(5), territory.ConqueredBonus(1))
 	assert.Equal(t, int32(0), territory.ConqueredBonus(0))
-	assert.Equal(t, int32(5), territory.CaptureBonus(otro, centro), "conquistar fuera de casa suma")
-	assert.Equal(t, int32(0), territory.CaptureBonus(capital, centro), "la propia capital no suma")
+	assert.Equal(t, int32(5), territory.CaptureBonus(otro, []world.Tile{centro}), "conquistar fuera de casa suma")
+	assert.Equal(t, int32(0), territory.CaptureBonus(capital, []world.Tile{centro}), "la propia capital no suma")
+
+	// SPEC-MULTI-CITY RN-CITY-034: con una segunda ciudad en el territorio 2, ése
+	// también es capital territorial y deja de contar como conquistado.
+	segunda := world.Tile{X: 90, Y: 30}
+	assert.Equal(t, 0, territory.CountConquered(ts, controls, reclamante, []world.Tile{centro, segunda}))
+	assert.Equal(t, int32(0), territory.CaptureBonus(otro, []world.Tile{centro, segunda}))
 }
 
 // ADR-034 §1: el plazo vence en su instante exacto.

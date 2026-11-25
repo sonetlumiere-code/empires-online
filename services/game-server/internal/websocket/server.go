@@ -608,6 +608,24 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 			CityID:    p.CityID,
 		})
 
+	// La segunda ciudad (SPEC-MULTI-CITY). El cliente dice qué aldeano; el sitio
+	// es su tile, y el coste y si se puede son del servidor.
+	case protocol.TypeUnitFoundCity:
+		var p protocol.UnitFoundCityPayload
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil {
+			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
+			return
+		}
+		if !s.claimRequest(ctx, session, msg.RequestID) {
+			return
+		}
+		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.FoundCity{
+			PlayerID:  session.PlayerID,
+			SessionID: session.ID,
+			RequestID: msg.RequestID,
+			UnitID:    p.UnitID,
+		})
+
 	// Diplomacia (SPEC-DIPLOMACY). El cliente dice a quién y qué tipo, o sobre
 	// qué tratado; el estado, la guarnición y los plazos son del servidor.
 	case protocol.TypeTreatyPropose:
@@ -1182,6 +1200,16 @@ func (s *Server) claimRequest(ctx context.Context, session *Session, requestID s
 func (s *Server) Resnapshot(playerID uuid.UUID) {
 	s.hub.forEachSessionOf(playerID, func(session *Session) {
 		go s.sendSnapshot(session, nil, "")
+	})
+}
+
+// ResnapshotAt es Resnapshot centrado en un tile: tras fundar una segunda ciudad,
+// la vista del fundador va a ella, que puede quedar lejos de la capital
+// (SPEC-MULTI-CITY §9.1).
+func (s *Server) ResnapshotAt(playerID uuid.UUID, center world.Tile) {
+	s.hub.forEachSessionOf(playerID, func(session *Session) {
+		c := center
+		go s.sendSnapshot(session, &c, "")
 	})
 }
 

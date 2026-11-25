@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15), las guerras entre clanes, `000026_clan_wars.up.sql` (`clan_wars`, sus triggers y el índice `world_events_war`, §16.13), el árbol tecnológico, `000027_technologies.up.sql` (`technologies`, `city_research`, `player_technologies` y sus tres triggers, §16.16), los mercados, `000028_markets.up.sql` (`MARKET`, `market_offers`, `market_purchases` y `caravans.market_purchase_id`, §16.17), el ariete y la muralla, `000029_siege_engines.up.sql` (`WALL`, su único parcial y su trigger, y `RAM` en `city_productions`, §16.18), y la caída de una ciudad, `000030_city_fall.up.sql` (`cities.fallen_at`, los índices parciales de las ciudades en pie, su trigger y `city_assaults`, §16.19). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15), las guerras entre clanes, `000026_clan_wars.up.sql` (`clan_wars`, sus triggers y el índice `world_events_war`, §16.13), el árbol tecnológico, `000027_technologies.up.sql` (`technologies`, `city_research`, `player_technologies` y sus tres triggers, §16.16), los mercados, `000028_markets.up.sql` (`MARKET`, `market_offers`, `market_purchases` y `caravans.market_purchase_id`, §16.17), el ariete y la muralla, `000029_siege_engines.up.sql` (`WALL`, su único parcial y su trigger, y `RAM` en `city_productions`, §16.18), la caída de una ciudad, `000030_city_fall.up.sql` (`cities.fallen_at`, los índices parciales de las ciudades en pie, su trigger y `city_assaults`, §16.19), y el multiciudad, `000031_multi_city.up.sql` (`cities.slot` y el índice por dueño y hueco, §16.20). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -475,7 +475,7 @@ OFFLINE_PENDING --connect--> ONLINE
 
 La máquina de estados **no** está materializada como `CHECK` de coherencia entre columnas: el `CHECK` del esquema cierra el dominio de `presence_state` y nada más. Quién decide la transición es la fase 5 del tick, en RAM, contra `city.CanTransition`; la base recibe el hecho consumado. La razón es deliberada: un `CHECK` que ligara `presence_state` a la nulidad de otras columnas obligaría a escribirlas todas en el mismo `UPDATE` y convertiría cualquier ampliación de la máquina de estados en una migración de la restricción.
 
-`cities_unique_center` impide dos ciudades en pie en el mismo tile (desde `000030`, un índice único parcial `WHERE fallen_at IS NULL`). Hasta E31 la regla "un jugador tiene exactamente una ciudad" se validaba sólo en el dominio, porque el multi-ciudad es una evolución prevista; desde `000030` la impone la base sobre las ciudades **en pie**, con el índice único parcial `cities_one_standing_per_owner` (INV-CITY-020, §16.19), y una ciudad caída se queda como fila. `cities_owner_idx` sigue siendo un índice normal, no único, y `CityRepo.GetByOwner` devuelve la ciudad en pie (`AND fallen_at IS NULL`).
+`cities_unique_center` impide dos ciudades en pie en el mismo tile (desde `000030`, un índice único parcial `WHERE fallen_at IS NULL`). Hasta E31 la regla "un jugador tiene exactamente una ciudad" se validaba sólo en el dominio, porque el multi-ciudad es una evolución prevista; desde `000030` la impone la base sobre las ciudades **en pie**, con el índice único parcial `cities_one_standing_per_owner` (INV-CITY-020, §16.19), y una ciudad caída se queda como fila. `cities_owner_idx` sigue siendo un índice normal, no único, y `CityRepo.GetByOwner` devuelve la ciudad en pie (`AND fallen_at IS NULL`). **Precisión (2026-11-24, [SPEC-MULTI-CITY](../specs/multi-city.md)):** desde `000031` el índice es por dueño y hueco: un jugador tiene una o dos ciudades en pie ([INV-CITY-022](../invariants/city.md#inv-city-022), §16.20), y `GetByOwner` devuelve la capital, la de id menor.
 
 La parte de `INV-CITY-001` que sí es estructural —"exactamente **un** owner"— la garantizan `owner_player_id uuid NOT NULL REFERENCES players (id) ON DELETE CASCADE` y el hecho de que la columna sea escalar. Aviso de deriva: la ficha de [`INV-CITY-001`](../invariants/city.md) nombra un `uq_cities_owner` y un `fk_cities_owner` que **no existen** con esos nombres en la migración `000001`; los nombres reales son la restricción de clave foránea implícita de la columna y `cities_owner_idx`, que no es único.
 
@@ -1711,6 +1711,29 @@ CREATE UNIQUE INDEX city_assaults_unique_request ON city_assaults (player_id, re
 `created_at` de `cities` sale desde E31 del reloj del juego (el instante de la fundación): de él se deriva la inmunidad de
 una ciudad recién fundada o refundada (`RN-CITY-029`). La migración de vuelta borra los asaltos y las ciudades caídas
 con lo que cuelga de ellas, y deja el centro único de `000001`.
+
+### 16.20 El multiciudad (`000031`)
+
+[SPEC-MULTI-CITY](../specs/multi-city.md), [ADR-051](../decisions/ADR-051-multi-city-capital.md): un jugador puede tener
+dos ciudades en pie, cada una en su hueco.
+
+```sql
+ALTER TABLE cities ADD COLUMN slot smallint NOT NULL DEFAULT 1;
+ALTER TABLE cities ADD CONSTRAINT cities_slot_valid CHECK (slot IN (1, 2));
+
+DROP INDEX cities_one_standing_per_owner;
+CREATE UNIQUE INDEX cities_one_standing_per_owner ON cities (owner_player_id, slot) WHERE fallen_at IS NULL;
+```
+
+| Objeto | Semántica |
+|---|---|
+| `slot` | El hueco de la ciudad entre las de su dueño (1 o 2). El alta y la refundación toman el 1; la fundación de una segunda (`CityFallRepo.FoundCity`), el libre |
+| `cities_one_standing_per_owner` (por hueco) | [INV-CITY-022](../invariants/city.md#inv-city-022): como mucho dos ciudades en pie por jugador; dos fundaciones a la vez no dan tres aunque se adelanten al cerrojo |
+| `cities_slot_valid` | No hay hueco 3: subir el tope es ampliar este `CHECK` |
+
+La capital no se guarda: es la ciudad en pie de id menor (`GetByOwner`, `ORDER BY id LIMIT 1`). La caída de una ciudad
+con otra en pie no refunda ([INV-CITY-023](../invariants/city.md#inv-city-023)). La migración de vuelta falla si algún
+jugador tiene dos ciudades en pie.
 
 ## 17. Modelo previsto — Fuera de MVP: solo diseño
 

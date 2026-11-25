@@ -136,7 +136,7 @@ CREATE INDEX cities_owner_idx ON cities (owner_player_id);
 | Aspecto | Valor |
 |---|---|
 | Tipo | B-tree simple |
-| Por qué no `UNIQUE` | Un jugador tiene exactamente una ciudad **en pie**, pero puede tener además ciudades caídas, que se quedan como filas (E31). La unicidad sobre las ciudades en pie la da desde `000030` el índice único parcial `cities_one_standing_per_owner (owner_player_id) WHERE fallen_at IS NULL` (INV-CITY-020); éste, sin filtro, sirve para buscar las de un jugador en cualquier estado. Un `UNIQUE` total impediría además el multi-ciudad previsto ([migrations.md](./migrations.md#3-cambios-compatibles-hacia-adelante-expand--migrate--contract)) |
+| Por qué no `UNIQUE` | Un jugador tiene exactamente una ciudad **en pie**, pero puede tener además ciudades caídas, que se quedan como filas (E31). La unicidad sobre las ciudades en pie la da desde `000030` el índice único parcial `cities_one_standing_per_owner (owner_player_id) WHERE fallen_at IS NULL` (INV-CITY-020); éste, sin filtro, sirve para buscar las de un jugador en cualquier estado. Un `UNIQUE` total impediría además el multi-ciudad previsto ([migrations.md](./migrations.md#3-cambios-compatibles-hacia-adelante-expand--migrate--contract)). **Precisión (2026-11-24, [SPEC-MULTI-CITY](../specs/multi-city.md)):** desde `000031` el índice parcial es por dueño y hueco, `(owner_player_id, slot)`: un jugador tiene una o dos ciudades en pie ([INV-CITY-022](../invariants/city.md#inv-city-022)) |
 | Por qué no parcial | Desde `000030` hay ciudades caídas, pero son pocas y `cities` sigue siendo pequeña: no compensa excluirlas |
 | Cardinalidad | Una ciudad en pie por jugador más las que le hayan caído: casi tan selectivo como una PK |
 

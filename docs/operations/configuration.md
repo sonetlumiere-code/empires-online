@@ -185,6 +185,8 @@ Todas las variables del canon §17, **más `EO_WS_OUTBOUND_QUEUE_SIZE`**, que a�
 | `EO_CITY_ASSAULT_SECONDS` | int | `900` | 1–86400 | No | No | Lo que una unidad tiene que sostener el estandarte en el anillo de una ciudad en brecha para que caiga ([SPEC-CITY-FALL](../specs/city-fall.md) Q1, `RN-SIEGE-011`). El humo lo acorta. |
 | `EO_CITY_FALL_IMMUNITY_HOURS` | int | `72` | 0–8760 | No | No | Horas desde su fundación, o su refundación, en las que una ciudad no se puede asaltar (`RN-CITY-029`, Q7); el saqueo y el derribo no cambian. `0` la quita: sólo para el humo. |
 | `EO_CITY_REFOUND_MIN_DISTANCE` | int | `64` | 0–65536 | No | No | Distancia de Chebyshev mínima de la ciudad refundada a la que cayó y a la del vencedor (`RN-CITY-027`, Q6); si ningún sitio la cumple, se funda como un alta. `0` la quita. |
+| `EO_CITY_FOUND_WOOD` | int | `800` | 1–1000000 | No | No | Madera que cuesta fundar una segunda ciudad, del almacén de la ciudad del aldeano ([SPEC-MULTI-CITY](../specs/multi-city.md) `RN-CITY-030`, Q3). |
+| `EO_CITY_FOUND_STONE` | int | `400` | 1–1000000 | No | No | Piedra que cuesta fundar una segunda ciudad (`RN-CITY-030`, Q3). |
 
 ### 3.8 WebSocket
 

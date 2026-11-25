@@ -73,6 +73,29 @@ describe('computeHud', () => {
     expect(hud.ownCity?.name).toBe('Testópolis');
   });
 
+  it('con dos ciudades propias, el panel muestra la capital o la última a la que llevó «H» (SPEC-MULTI-CITY Q9)', () => {
+    state().applySnapshot(snapshot({ cities: [cityView({ id: 20, name: 'Testópolis II' }), cityView()] }));
+    let hud = computeHud(state());
+    expect(hud.ownCities.map((c) => c.id)).toEqual([10, 20]);
+    expect(hud.ownCity?.id).toBe(10);
+    state().setHomeCity(20);
+    hud = computeHud(state());
+    expect(hud.ownCity?.name).toBe('Testópolis II');
+    state().setHomeCity(99);
+    expect(computeHud(state()).ownCity?.id).toBe(10);
+  });
+
+  it('recuerda dónde están las ciudades propias aunque salgan de la vista; su caída las olvida (SPEC-MULTI-CITY Q9)', () => {
+    state().applySnapshot(snapshot({ cities: [cityView({ id: 20, centerX: 90, centerY: 90 }), cityView()] }));
+    state().applySnapshot(snapshot({ cities: [cityView({ id: 11, ownerPlayerId: OTHER })] }));
+    expect([...state().ownCityHomes.keys()].sort()).toEqual([10, 20]);
+    expect(state().ownCityHomes.get(20)).toEqual({ x: 90, y: 90 });
+    state().applyServerMessage(server('city.fallen', 9, { cityId: 20, ownerPlayerId: PLAYER, byPlayerId: OTHER, atMs: 1 }));
+    expect([...state().ownCityHomes.keys()]).toEqual([10]);
+    state().reset();
+    expect(state().ownCityHomes.size).toBe(0);
+  });
+
   it('sin ciudad propia en el área, ownCity es null', () => {
     state().applySnapshot(snapshot({ cities: [cityView({ id: 11, ownerPlayerId: OTHER })] }));
     expect(computeHud(state()).ownCity).toBeNull();

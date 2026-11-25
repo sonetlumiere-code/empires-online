@@ -150,6 +150,10 @@ type Config struct {
 	CityAssault            time.Duration
 	CityFallImmunity       time.Duration
 	CityRefoundMinDistance int32
+	// CityFoundWood y CityFoundStone son lo que cuesta fundar una segunda ciudad,
+	// de la ciudad del aldeano (SPEC-MULTI-CITY Q3, RN-CITY-030).
+	CityFoundWood  int64
+	CityFoundStone int64
 
 	WSMaxMessageBytes int64
 	WSRateLimitPerSec int
@@ -298,6 +302,8 @@ func Load() (Config, error) {
 		CityAssault:            time.Duration(v.intRange("EO_CITY_ASSAULT_SECONDS", 900, 1, 24*3600)) * time.Second,
 		CityFallImmunity:       time.Duration(v.intRange("EO_CITY_FALL_IMMUNITY_HOURS", 72, 0, 24*365)) * time.Hour,
 		CityRefoundMinDistance: int32(v.intRange("EO_CITY_REFOUND_MIN_DISTANCE", 64, 0, 65536)),
+		CityFoundWood:          int64(v.intRange("EO_CITY_FOUND_WOOD", 800, 1, 1_000_000)),
+		CityFoundStone:         int64(v.intRange("EO_CITY_FOUND_STONE", 400, 1, 1_000_000)),
 
 		WSMaxMessageBytes:   int64(v.intRange("EO_WS_MAX_MESSAGE_BYTES", 16384, 256, 1<<22)),
 		WSRateLimitPerSec:   v.intRange("EO_WS_RATE_LIMIT_PER_SECOND", 20, 1, 10000),

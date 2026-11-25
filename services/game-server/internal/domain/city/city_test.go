@@ -162,3 +162,9 @@ func TestElAnilloDeNacimientoTieneOrdenFijo(t *testing.T) {
 	_, ok = c.FirstSpawnTile(func(x, y int32) bool { return false })
 	assert.False(t, ok, "sin tile libre no hay depósito ni nacimiento")
 }
+
+// RN-CITY-032: la ciudad fundada lleva el nombre de la capital con « II».
+func TestLaSegundaCiudadLlevaElNombreDeLaCapital(t *testing.T) {
+	assert.Equal(t, "bot_saqueador_1polis II", city.SecondCityName("bot_saqueador_1polis"))
+	assert.Equal(t, 2, city.MaxStandingPerOwner)
+}

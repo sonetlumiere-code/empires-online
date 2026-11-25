@@ -139,6 +139,7 @@ import {
 } from '../src/state/notices';
 import { claimBlockReason, claimLabel, territoryAt, territoryOwnerLabel } from '../src/state/conquest';
 import { assaultBlockReason, assaultLabel, assaultTargetNear } from '../src/state/cityFall';
+import { FOUND_COST, foundCityBlockReason } from '../src/state/multiCity';
 import {
   canJoinFaction,
   FACTION_CHOICES,
@@ -901,6 +902,8 @@ export default function Page() {
         nowMs: serverTimeMs(),
       })
     : null;
+  // Por qué el aldeano seleccionado no puede fundar (SPEC-MULTI-CITY §5).
+  const foundReason = foundCityBlockReason(selectedUnit, hud.ownCities);
   const clanClaimReason = claimCheck && clans.clan ? claimBlockReason({ ...claimCheck, cities: useWorldStore.getState().cities.values(), forClan: true }) : null;
 
   return (
@@ -1250,10 +1253,23 @@ export default function Page() {
             </button>
           </>
         )}
+        {selectedUnit && selectedUnit.playerId === playerId && selectedUnit.unitType === 'VILLAGER' && (
+          <button
+            className="secondary"
+            onClick={() => clientRef.current?.foundCity(selectedUnit.id)}
+            disabled={foundReason !== null}
+            title={
+              foundReason ??
+              `El aldeano funda una ciudad nueva aquí: ${FOUND_COST.WOOD} de madera y ${FOUND_COST.STONE} de piedra de su ciudad (SPEC-MULTI-CITY)`
+            }
+          >
+            Fundar ciudad
+          </button>
+        )}
         <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
           {selectedUnitId !== null
             ? `${selectedUnit ? unitTitle(selectedUnit.unitType) : 'Unidad'} ${selectedUnitId}${describeUnit(selectedUnit)} — ${helpFor(selectedUnit)}`
-            : `${ownUnitCount} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H vuelve a la ciudad`}
+            : `${ownUnitCount} unidades — clic en una para seleccionarla · flechas, WASD o arrastre con el botón derecho para mover la cámara · H va a tus ciudades`}
         </span>
         <button
           className="secondary"

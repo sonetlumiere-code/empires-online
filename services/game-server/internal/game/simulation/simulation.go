@@ -166,10 +166,19 @@ type Deps struct {
 	CityAssaultDuration    time.Duration
 	CityFallImmunity       time.Duration
 	CityRefoundMinDistance int32
+	// FoundSite comprueba fuera del tick el sitio de una segunda ciudad, y
+	// CityFoundWood y CityFoundStone son EO_CITY_FOUND_WOOD y
+	// EO_CITY_FOUND_STONE (cero: 800 y 400) (SPEC-MULTI-CITY Q3).
+	FoundSite      FoundSiteFunc
+	CityFoundWood  int64
+	CityFoundStone int64
 	// Resnapshot vuelve a mandar el snapshot a cada sesión de un jugador, por
 	// el camino del handshake (ADR-050 §5). Lo pone el transporte con
 	// SetResnapshot; nil en los tests que no lo necesitan.
 	Resnapshot func(playerID uuid.UUID)
+	// ResnapshotAt es Resnapshot centrado en un tile (la ciudad recién fundada,
+	// SPEC-MULTI-CITY); nil en los tests que no lo necesitan.
+	ResnapshotAt func(playerID uuid.UUID, center world.Tile)
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -233,6 +242,11 @@ func New(state *State, deps Deps) *Simulation {
 // jugador (ADR-050 §5). Lo llama el arranque antes del primer tick: el
 // transporte se crea después que la simulación.
 func (s *Simulation) SetResnapshot(fn func(playerID uuid.UUID)) { s.deps.Resnapshot = fn }
+
+// SetResnapshotAt pone el snapshot centrado en un tile (SPEC-MULTI-CITY).
+func (s *Simulation) SetResnapshotAt(fn func(playerID uuid.UUID, center world.Tile)) {
+	s.deps.ResnapshotAt = fn
+}
 
 // State expone el mundo (lectura desde el hilo del loop, y tests).
 func (s *Simulation) State() *State { return s.state }
@@ -356,6 +370,10 @@ func (s *Simulation) Apply(cmd Command) {
 		s.handleCaptureResolved(c)
 	case AssaultCity:
 		s.handleAssaultCity(c)
+	case FoundCity:
+		s.handleFoundCity(c)
+	case FoundResolved:
+		s.handleFoundResolved(c)
 	case AssaultResolved:
 		s.handleAssaultResolved(c)
 	case AssaultEndPersistFailed:
@@ -853,9 +871,8 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 			continue
 		}
 		delete(s.disconnectedAt, playerID)
-		if c, ok := s.state.CityOf(playerID); ok {
-			degradan = append(degradan, c)
-		}
+		// La presencia es del jugador: todas sus ciudades a la vez (RN-CITY-034).
+		degradan = append(degradan, s.state.CitiesOf(playerID)...)
 	}
 	sort.Slice(degradan, func(i, j int) bool { return degradan[i].ID < degradan[j].ID })
 	for _, c := range degradan {
@@ -929,12 +946,13 @@ func (s *Simulation) ProcessTimers(now time.Time) {
 	s.evaluateConcealment()
 }
 
+// setPresence cambia la presencia de todas las ciudades del jugador: la
+// presencia es suya, no de una ciudad (SPEC-MULTI-CITY RN-CITY-034).
 func (s *Simulation) setPresence(playerID uuid.UUID, state city.PresenceState) {
-	c, ok := s.state.CityOf(playerID)
-	if !ok {
-		return
+	now := s.deps.Clock.Now()
+	for _, c := range s.state.CitiesOf(playerID) {
+		s.applyPresence(c, state, now)
 	}
-	s.applyPresence(c, state, s.deps.Clock.Now())
 }
 
 func (s *Simulation) applyPresence(c *city.City, state city.PresenceState, now time.Time) {

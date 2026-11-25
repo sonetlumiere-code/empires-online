@@ -695,6 +695,9 @@ export const EventLogKind = z.enum([
   'CITY_ASSAULTED',
   'CITY_LOST',
   'CITY_TAKEN',
+  // La segunda ciudad (SPEC-MULTI-CITY Q11): quien lee fundó una, sin otro jugador. No se
+  // avisa en vivo.
+  'CITY_FOUNDED',
 ]);
 export type EventLogKind = z.infer<typeof EventLogKind>;
 
@@ -753,7 +756,8 @@ export const EventLogEntry = z.object({
   count: z.number().int().min(1),
   /**
    * El otro jugador. `null` sólo en `MARKET_EXPIRED`, que no tiene otro: la oferta
-   * caducó sola (SPEC-MARKETS §6).
+   * caducó sola (SPEC-MARKETS §6); y en `CITY_FOUNDED`, que lo hizo quien lee
+   * (SPEC-MULTI-CITY Q11).
    */
   otherPlayerId: Uuid.nullable(),
   /** La ciudad del otro jugador, si la tiene. */

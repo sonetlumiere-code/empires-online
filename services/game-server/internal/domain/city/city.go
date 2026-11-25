@@ -106,7 +106,20 @@ type City struct {
 	// sale su inmunidad ante un asalto (SPEC-CITY-FALL RN-CITY-029). Una
 	// ciudad refundada es una fila nueva y estrena el suyo.
 	FoundedAtMs int64
+	// Slot es su hueco entre las ciudades en pie de su dueño, 1 o 2
+	// (SPEC-MULTI-CITY, ADR-051 §2): la base no deja dos en pie en el mismo.
+	// Cero vale 1 al insertar.
+	Slot int16
 }
+
+// MaxStandingPerOwner es el tope de ciudades en pie por jugador
+// (SPEC-MULTI-CITY Q2, RN-CITY-031, INV-CITY-022): el mismo que el CHECK de
+// cities.slot.
+const MaxStandingPerOwner = 2
+
+// SecondCityName es el nombre de la ciudad que funda un jugador: el de su
+// capital seguido de « II» (RN-CITY-032).
+func SecondCityName(capital string) string { return capital + " II" }
 
 // FallImmuneUntilMs es el instante en que vence la inmunidad de la ciudad ante
 // un asalto (RN-CITY-029): su fundación más immunity.

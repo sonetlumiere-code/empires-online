@@ -179,4 +179,52 @@ type FallResult struct {
 	ExpiredTrades      []int64
 	WithdrawnMarket    []int64
 	RedirectedCaravans []int64
+	// KeptCityID es la otra ciudad en pie del vencido cuando la caída no refunda
+	// (SPEC-MULTI-CITY RN-CITY-035, INV-CITY-023): lo de la caída pasa a ella, y
+	// City y Villagers quedan vacíos. KeptPopulation y KeptPopulationLimit son su
+	// recuento tras recibirlo (el bono de territorio, si pasa a ser la capital).
+	KeptCityID          int64
+	KeptPopulation      int32
+	KeptPopulationLimit int32
 }
+
+// ─────────────────────────────────────────────────────────────
+// La fundación de una segunda ciudad (SPEC-MULTI-CITY, ADR-051 §4)
+// ─────────────────────────────────────────────────────────────
+
+// FoundVillagers son los aldeanos que nacen con la ciudad fundada, además del
+// fundador (RN-CITY-032).
+const FoundVillagers = 2
+
+// Founding es la fundación de una segunda ciudad por un aldeano.
+type Founding struct {
+	OwnerID    uuid.UUID
+	FromCityID int64
+	UnitID     int64
+	// Name y Era: el de la capital con « II» y la era de la ciudad que paga.
+	Name string
+	Era  city.Era
+	Tick uint64
+	Now  time.Time
+	AtMs int64
+	// Place comprueba el sitio elegido contra las ciudades en pie (fuera de la
+	// transacción, con la capa de madera) y Verify lo vuelve a comprobar bajo el
+	// cerrojo de fundación.
+	Place  PlaceFunc
+	Verify func(center world.Tile, existing []world.Tile) bool
+}
+
+// FoundingResult es lo que la transacción de la fundación escribió.
+type FoundingResult struct {
+	// City es la ciudad nueva y Villagers los dos aldeanos que nacieron con ella.
+	City      *city.City
+	Villagers []*unit.Unit
+	// FromPopulation es la población de la ciudad que pagó, sin el fundador.
+	FromPopulation int32
+	// Claimed es el control de su territorio, si lo ganó (RN-TERR-007).
+	Claimed *territory.Control
+}
+
+// ErrFoundRejected: la fundación ya no cabe al confirmarse (el tope, el sitio,
+// el territorio o el aldeano cambiaron mientras iba en vuelo).
+var ErrFoundRejected = errors.New("la fundación ya no es posible")
