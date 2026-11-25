@@ -920,6 +920,7 @@ func (s *Simulation) applyFall(as *assaultState, res *cityfall.FallResult, nowMs
 	s.sendNotices(eventlog.Event{
 		Type: eventlog.EventCityFell, PlayerID: fallen.OwnerPlayerID, Counterpart: f.VictorID, AtMs: f.AtMs,
 		X: fallen.CenterX, Y: fallen.CenterY, NewX: newCity.CenterX, NewY: newCity.CenterY, HasTile: true,
+		Taken: res.Taken != nil,
 	})
 	// ADR-050 §5: el vencido recibe su mundo nuevo sin reconectar.
 	if s.deps.Resnapshot != nil {

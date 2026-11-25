@@ -759,6 +759,19 @@ func TestLaCaidaDeUnaCiudadEnElRegistroYEnLosAvisos(t *testing.T) {
 	tb := eventlog.NewBuilder(otro, 0, time.Hour, 10)
 	require.True(t, tb.Add(caida))
 	assert.Equal(t, int32(150), tb.Entries()[0].X, "al vencedor, la ciudad arrasada")
+	assert.False(t, tb.Entries()[0].Taken, "arrasada, sin taken")
+
+	// SPEC-CITY-TAKEN-NOTICES §4.1: la caída que el vencedor se quedó lo dice a los dos.
+	tomada := caida
+	tomada.ID, tomada.Taken = 5, true
+	vb := eventlog.NewBuilder(otro, 0, time.Hour, 10)
+	require.True(t, vb.Add(tomada))
+	assert.Equal(t, eventlog.KindCityTaken, vb.Entries()[0].Kind)
+	assert.True(t, vb.Entries()[0].Taken)
+	pb := eventlog.NewBuilder(yo, 0, time.Hour, 10)
+	require.True(t, pb.Add(tomada))
+	assert.Equal(t, eventlog.KindCityLost, pb.Entries()[0].Kind)
+	assert.True(t, pb.Entries()[0].Taken)
 }
 
 // SPEC-MULTI-CITY Q11: la fundación sólo se le cuenta al fundador, sin otro

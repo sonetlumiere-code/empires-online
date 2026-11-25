@@ -39,6 +39,11 @@ func (s *Simulation) sendNotices(e eventlog.Event) {
 			at := e.FallsAtMs
 			p.FallsAtMs = &at
 		}
+		// SPEC-CITY-TAKEN-NOTICES §4.1: la caída que el vencedor se quedó.
+		if (n.Kind == eventlog.KindCityLost || n.Kind == eventlog.KindCityTaken) && e.Taken {
+			tomada := true
+			p.Taken = &tomada
+		}
 		// La conquista nombra el territorio (SPEC-TERRITORY-CONQUEST §6).
 		if e.TerritoryID != 0 {
 			id := e.TerritoryID

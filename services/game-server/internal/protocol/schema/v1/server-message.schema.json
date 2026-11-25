@@ -2621,6 +2621,10 @@
                       },
                       "fallsAtMs": {
                         "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                      },
+                      "taken": {
+                        "type": "boolean",
+                        "const": true
                       }
                     },
                     "required": [
@@ -2839,6 +2843,10 @@
                 },
                 "fallsAtMs": {
                   "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                },
+                "taken": {
+                  "type": "boolean",
+                  "const": true
                 }
               },
               "required": [

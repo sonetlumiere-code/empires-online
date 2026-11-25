@@ -5,6 +5,8 @@ package postgres_test
 import (
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -79,6 +81,24 @@ func TestLaCaidaConHuecoTomaLaCiudad(t *testing.T) {
 		`SELECT (payload->>'takenCityId')::bigint FROM world_events WHERE event_type = 'CityFell' AND (payload->>'cityId')::bigint = $1`,
 		cid).Scan(&tomadaEnEvento))
 	assert.Equal(t, tomada.ID, tomadaEnEvento)
+
+	// SPEC-CITY-TAKEN-NOTICES §4.1: las dos páginas del registro dicen que se tomó.
+	for _, quien := range []struct {
+		jugador uuid.UUID
+		kind    string
+	}{{c.vencedor.Player.ID, "CITY_TAKEN"}, {c.vencido.Player.ID, "CITY_LOST"}} {
+		page, _, err := registro(store, 50).Page(ctx, quien.jugador, 0)
+		require.NoError(t, err)
+		encontrada := false
+		for _, e := range page.Entries {
+			if e.Kind == quien.kind {
+				encontrada = true
+				require.NotNil(t, e.Taken, quien.kind)
+				assert.True(t, *e.Taken)
+			}
+		}
+		assert.True(t, encontrada, quien.kind)
+	}
 
 	// INV-CITY-024: una caída se toma como mucho una vez.
 	_, err = pool.Exec(ctx, `UPDATE cities SET taken_from_city_id = $2 WHERE id = $1`, c.vencedor.City.ID, cid)

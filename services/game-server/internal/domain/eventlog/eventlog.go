@@ -336,6 +336,8 @@ type Event struct {
 	// el de la arrasada (SPEC-CITY-FALL §6).
 	FallsAtMs  int64
 	NewX, NewY int32
+	// Taken, en la caída: el vencedor se quedó la ciudad (SPEC-CITY-TAKEN-NOTICES).
+	Taken bool
 }
 
 // KillerCastle es el valor de Event.KillerBuildingType de una muerte que causó
@@ -405,6 +407,9 @@ type Entry struct {
 	Lots int32
 	// FallsAtMs, en el asalto de una ciudad (SPEC-CITY-FALL §6).
 	FallsAtMs int64
+	// Taken, en CITY_LOST y CITY_TAKEN: el vencedor se quedó la ciudad
+	// (SPEC-CITY-TAKEN-NOTICES §4.1).
+	Taken bool
 }
 
 // Classify dice qué entrada da e para viewer y quién es el otro jugador. ok es
@@ -813,9 +818,13 @@ func (b *Builder) Add(e Event) bool {
 		entry.FallsAtMs = e.FallsAtMs
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindCityLost:
-		// Dónde refundó quien lee (SPEC-CITY-FALL §4.6).
+		// Dónde refundó quien lee (SPEC-CITY-FALL §4.6), y si se la quedaron.
 		entry.X, entry.Y, entry.HasTile = e.NewX, e.NewY, e.HasTile
-	case KindCityTaken, KindCityFounded:
+		entry.Taken = e.Taken
+	case KindCityTaken:
+		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
+		entry.Taken = e.Taken
+	case KindCityFounded:
 		entry.X, entry.Y, entry.HasTile = e.X, e.Y, e.HasTile
 	case KindClanLeadershipReceived, KindClanLeadershipGiven, KindClanLeadershipInherited, KindClanLeadershipLost:
 		// La sigla del clan cuyo liderazgo cambió (SPEC-CLAN-GOVERNANCE §4.6).

@@ -8,6 +8,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/simulation"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
 )
@@ -74,6 +75,13 @@ func TestUnaCiudadQueCaeConHuecoLaTomaElVencedor(t *testing.T) {
 		}
 	}
 	assert.True(t, heredado, "la casa heredada se anuncia con su ciudad nueva")
+	// SPEC-CITY-TAKEN-NOTICES §4.1: los avisos de los dos dicen que se tomó.
+	for _, kind := range []eventlog.Kind{eventlog.KindCityTaken, eventlog.KindCityLost} {
+		avisos := avisosDeTipo(h, kind)
+		require.Len(t, avisos, 1, kind)
+		require.NotNil(t, avisos[0].p.Taken, kind)
+		assert.True(t, *avisos[0].p.Taken)
+	}
 }
 
 // RN-CITY-036: con dos ciudades, el vencedor no pide la toma y la caída arrasa.
@@ -96,4 +104,7 @@ func TestSinHuecoLaCaidaArrasa(t *testing.T) {
 	assert.False(t, tomada)
 	p := h.rec.byType(protocol.TypeCityFallen)[0].Payload.(protocol.CityFallenPayload)
 	assert.Nil(t, p.TakenCityID)
+	for _, a := range avisosDeTipo(h, eventlog.KindCityTaken) {
+		assert.Nil(t, a.p.Taken, "arrasada, el aviso no dice taken")
+	}
 }

@@ -1059,6 +1059,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Precisión (2026-11-25), E38** ([SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md)): `proposeTrade`,
   `postMarketOffer` y `buyMarketOffer` (`src/net/client.ts`) admiten `cityId`; el HUD les pasa `commerceCityId`, la
   ciudad del panel si no es la capital.
+- **Precisión (2026-11-25), E39** ([SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md)): `entryText`
+  (`src/state/eventLog.ts`) escribe la toma con `taken` en `CITY_LOST` y `CITY_TAKEN`.
 - `GameCanvas`: la cámara arranca en la capital, y «H» alterna entre las ciudades recordadas (`homesOf`, por id).
 - `src/net/client.ts`: `foundCity(unitId)` manda `unit.found_city`; la confirmación llega como un `world.snapshot`
   nuevo centrado en la ciudad nueva. `CITY_FOUNDED` tiene su texto en `entryText`.

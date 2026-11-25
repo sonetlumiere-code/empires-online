@@ -22,6 +22,9 @@ minuto fuera ([event-log.md](event-log.md) `RN-LOG-007`). La muerte sólo se anu
 (`entity.despawn DEAD`), y quien mira su ciudad no está suscrito a la colina. Es el pilar de riesgo de Argentum: perder
 algo tiene que doler, y para doler hay que saberlo.
 
+**Precisión (2026-11-25):** desde E39 ([city-taken-notices.md](city-taken-notices.md)), los avisos `CITY_LOST` y
+`CITY_TAKEN` llevan `taken: true` cuando el vencedor se quedó la ciudad.
+
 ## 2. Scope
 
 **Entra.** Un mensaje servidor → cliente nuevo, `event_log.notice`, que el servidor manda al jugador en el tick en que

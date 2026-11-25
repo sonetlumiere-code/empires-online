@@ -311,10 +311,17 @@ function rawText(e: EventLogEntry): string {
         e.fallsAtMs !== undefined ? `a las ${clockTime(e.fallsAtMs)}` : 'en unos minutos'
       } si nadie mata al que sostiene el estandarte o levantas la muralla`;
     case 'CITY_LOST':
+      // SPEC-CITY-TAKEN-NOTICES §4.2: si el vencedor se la quedó, quién la tiene.
+      if (e.taken) {
+        return `${who} tomó tu ciudad: ahora es suya${
+          e.x !== undefined && e.y !== undefined ? `. Sigues en (${e.x}, ${e.y})` : ''
+        }. Conservas tu era y tus tecnologías`;
+      }
       return `Tu ciudad cayó ante ${who}${
         e.x !== undefined && e.y !== undefined ? `: la refundaste en (${e.x}, ${e.y})` : ''
       }. Conservas tu era y tus tecnologías`;
     case 'CITY_TAKEN':
+      if (e.taken) return `Tomaste la ciudad de ${who}${where}: ahora es tuya`;
       return `Tus unidades tomaron y arrasaron la ciudad de ${who}${where}`;
     // La segunda ciudad (SPEC-MULTI-CITY Q11): sin otro jugador.
     case 'CITY_FOUNDED':

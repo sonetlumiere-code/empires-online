@@ -164,7 +164,7 @@ Sin códigos nuevos: la toma no tiene orden propia; los rechazos del asalto son 
 
 ### 9.1 Precisiones de la implementación (2026-11-25)
 
-- **Precisión (2026-11-25): los textos de los avisos no cambian.** §4.4 pedía «Tomaste <nombre>: ahora es tuya» y
+- **Precisión (2026-11-25): los textos de los avisos no cambian** (los cambia E39, [city-taken-notices.md](city-taken-notices.md)). §4.4 pedía «Tomaste <nombre>: ahora es tuya» y
   «<vencedor> tomó <nombre>». El aviso no lleva hoy si se tomó, y añadirlo es un campo más en `EventLogNotice` y en la
   entrada del registro para un texto. Se queda para otro slice: `takenCityId` va en `CityFell` (y en `city.fallen`), y
   el vencedor ve su ciudad nueva en el snapshot.
