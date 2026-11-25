@@ -3236,3 +3236,27 @@ sembradas con `EO_DEVSEED_STOCK_FOR`.
 - **Sin comprobar en el navegador:** «Fundar ciudad», «H» que alterna y el panel de la ciudad elegida: el panel del
   navegador integrado estaba oculto y, sin él, el mapa no se dibuja. Los cubren los tests de `multiCity.test.ts` y
   `selectors.test.ts`.
+
+## E35 — Bots que fundan
+
+**Estado: EN CURSO (2026-11-25)**, en la rama `claude/slice-bots-fundan`. Contrato:
+[SPEC-BOTS-FOUND](../specs/bots-found.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó en
+la recomendación del agente, sesión desatendida). Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
+
+**Objetivo.** Medir la fundación de E34 con bots: cuándo funda un jugador, cuánto tarda la segunda ciudad en crecer y
+qué pasa si cae una de las dos.
+
+**Alcance.** En `apps/bots`: el constructor elige un sitio, lleva un aldeano y funda en cuanto su capital está en
+Bronce con 800/400, con lo que cuesta apartado; la segunda ciudad juega con su memoria y el perfil de colonia
+(aldeanos, casas, madera) y una conexión propia; la caída de una de dos (`RN-BOT-018` a `RN-BOT-021`). Sucesos
+`found` y `colony` y `fell` con `kept`, y su resumen. **No entra** (spec §2): el servidor, el protocolo, el cliente
+web, que el saqueador funde, que la segunda avance o comercie, que sea blanco de otros bots.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-BOT-018` a `RN-BOT-021`, con precisiones de
+   `RN-BOT-003` en [bots.md](../specs/bots.md) y de la Q10 en [multi-city.md](../specs/multi-city.md). Sin invariantes.
+2. **PENDIENTE** — Bots: el sitio, la fundación y la segunda ciudad con su perfil de colonia, con sus tests.
+3. **PENDIENTE** — Bots: la conexión colonia, la casa de vuelta en la capital y la caída de una de dos, con sus tests.
+4. **PENDIENTE** — Registro y resumen; docs (`docs/architecture/frontend.md`).
+5. **PENDIENTE** — Prueba en vivo de 30 a 45 min (spec Q9), medida aquí.

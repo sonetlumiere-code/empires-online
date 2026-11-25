@@ -7,7 +7,7 @@ cuánto tarda la segunda en crecer y qué pasa cuando cae una de las dos.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-FOUND` |
-| Estado | Draft (2026-11-25). Las preguntas de §10 esperan la decisión de producto. |
+| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las nueve preguntas de §10, con su recomendación. |
 | Milestone | E35 Bots que fundan (trigésimo quinto slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §10 (eras y población), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [bots-trade.md](bots-trade.md), [bots-assault.md](bots-assault.md), [multi-city.md](multi-city.md), [city-fall.md](city-fall.md) |
@@ -223,11 +223,13 @@ decide el sitio).
 | Unit (Vitest) | El bot: abre la conexión colonia al ver la segunda y devuelve la casa a la capital; la caída de la segunda y la de la capital con otra en pie (§4.6). El registro y el resumen con los sucesos nuevos; la misma semilla da los mismos comandos (`RN-BOT-005`). |
 | Go, simulación / integración / e2e | Ninguno nuevo: las reglas del servidor no cambian. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-25)
 
-Cada fila deja la recomendación del agente (en negrita) y las alternativas descartadas.
+Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): cada fila deja la decisión (la
+recomendación, en negrita) y las alternativas descartadas. Son decisiones de producto, no de ingeniería: cambiarlas es
+cambiar la spec, y la persona usuaria puede revisarlas al volver.
 
-| # | Pregunta | Recomendación | Descartadas |
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿Qué perfil funda? | **Sólo el constructor.** El saqueador gasta la piedra en arietes y su ciudad es la base de sus partidas; que funde es otra estrategia que medir. | **Los dos** (el saqueador con dos ciudades cambia lo medido en E32); **una opción de la línea de órdenes** (otra rama sin medida que la pida). |
 | Q2 | ¿Cuándo funda? | **En cuanto la capital está en Bronce y tiene los 800/400, antes de pasar a Hierro**, con la piedra objetivo de Bronce a 800 y lo que cuesta apartado mientras camina. Es el umbral del servidor y mide pronto. | **Desde Hierro** (retrasa la medida y la prueba en vivo); **cuando pueda pagar fundar y el avance a la vez** (1 600/800: en Bronce tarda horas). |
