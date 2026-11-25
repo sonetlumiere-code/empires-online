@@ -44,6 +44,10 @@ type fakeCityFall struct {
 	founds   []simulation.CityFoundWrite
 	foundErr error
 	keep     int64
+	// La toma (SPEC-CITY-TAKEN): con take y aldeanos para ella, el vencedor se
+	// queda la ciudad (la 120) con estos edificios.
+	take          bool
+	takeBuildings []int64
 }
 
 func (f *fakeCityFall) FoundCity(_ context.Context, w simulation.CityFoundWrite) (*cityfall.FoundingResult, error) {
@@ -96,8 +100,31 @@ func (f *fakeCityFall) FallCity(_ context.Context, fl cityfall.Fall) (*cityfall.
 		return nil, f.fallErr
 	}
 	f.falls = append(f.falls, fl)
+	var tomada *cityfall.FallResult
+	if f.take && len(fl.TakeSpawns) > 0 {
+		now := fl.Now
+		c := &city.City{
+			ID: 120, OwnerPlayerID: fl.VictorID, Name: fl.Name, CenterX: fl.Center.X, CenterY: fl.Center.Y,
+			Era: fl.Era, Population: 3, PopulationLimit: 45, PresenceState: city.PresenceOnline, LastOnlineAt: &now,
+			FoundedAtMs: now.UnixMilli(), Slot: 2,
+		}
+		tomada = &cityfall.FallResult{Taken: c, TakenBuildings: f.takeBuildings}
+		for i, sp := range fl.TakeSpawns {
+			id := c.ID
+			tomada.TakenVillagers = append(tomada.TakenVillagers, &unit.Unit{
+				ID: int64(960 + i), PlayerID: fl.VictorID, CityID: &id, Type: unit.TypeVillager,
+				X: sp.X, Y: sp.Y, HP: 40, MaxHP: 40, Status: unit.StatusIdle,
+			})
+		}
+	}
+	withTaken := func(r *cityfall.FallResult) *cityfall.FallResult {
+		if tomada != nil {
+			r.Taken, r.TakenVillagers, r.TakenBuildings = tomada.Taken, tomada.TakenVillagers, tomada.TakenBuildings
+		}
+		return r
+	}
 	if f.keep != 0 {
-		return &cityfall.FallResult{KeptCityID: f.keep, KeptPopulation: 4, KeptPopulationLimit: 25}, nil
+		return withTaken(&cityfall.FallResult{KeptCityID: f.keep, KeptPopulation: 4, KeptPopulationLimit: 25}), nil
 	}
 	site, err := fl.Place(f.centers())
 	if err != nil {
@@ -117,7 +144,7 @@ func (f *fakeCityFall) FallCity(_ context.Context, fl cityfall.Fall) (*cityfall.
 			X: sp.X, Y: sp.Y, HP: 40, MaxHP: 40, Status: unit.StatusIdle,
 		})
 	}
-	return res, nil
+	return withTaken(res), nil
 }
 
 func (f *fakeCityFall) endReasons() []string {

@@ -284,6 +284,8 @@ export const CityFallen = z.object({
     ownerPlayerId: Uuid,
     byPlayerId: Uuid,
     atMs: EpochMs,
+    /** La ciudad del vencedor que la tomó (SPEC-CITY-TAKEN §6); ausente si se arrasó. */
+    takenCityId: EntityId.optional(),
   }),
 });
 

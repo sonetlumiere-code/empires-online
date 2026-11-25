@@ -1483,6 +1483,9 @@ describe('la caída de una ciudad (SPEC-CITY-FALL)', () => {
     expect(parseServerMessage({ ...env, type: 'city.fallen', payload }).ok).toBe(true);
     expect(parseServerMessage({ ...env, type: 'city.fallen', payload: { ...payload, byPlayerId: 'x' } }).ok).toBe(false);
     expect(SERVER_MESSAGE_TYPES).toContain('city.fallen');
+    // SPEC-CITY-TAKEN §6: la ciudad que la tomó, opcional.
+    expect(parseServerMessage({ ...env, type: 'city.fallen', payload: { ...payload, takenCityId: 9 } }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'city.fallen', payload: { ...payload, takenCityId: 'x' } }).ok).toBe(false);
   });
 
   it('CITY_FOUNDED es una entrada del registro sin otro jugador, y no un aviso (SPEC-MULTI-CITY)', () => {

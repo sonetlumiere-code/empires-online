@@ -3289,3 +3289,44 @@ piedra). Registros en `bots/runs/` (sin versionar).
   inmunidad a 0, el saqueador encadena caídas de capitales recién heredadas.
 - **Sin comprobar en el navegador:** ver una segunda ciudad de un bot en el mapa; el panel del navegador integrado no se
   usó en esta sesión desatendida.
+
+## E36 — La ciudad tomada
+
+**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-ciudad-tomada`, con `verify:full` en verde;
+sin empujar (la spec pasa a `Implemented` con la CI). Contrato:
+[SPEC-CITY-TAKEN](../specs/city-taken.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó
+en la recomendación del agente, sesión desatendida). [ADR-052](../decisions/ADR-052-city-taken.md); migración `000032`.
+
+**Objetivo.** Que tumbar una ciudad pueda dar una: hoy la caída sólo destruye.
+
+**Alcance.** Si el vencedor tiene hueco, la caída toma la ciudad: una fila nueva suya en el mismo centro con los
+edificios completos, tres aldeanos y el almacén a cero; el vencido cae como siempre; `takenCityId` en `city.fallen`; el
+cliente y los bots; el humo `--toma` (`RN-CITY-036` a `RN-CITY-039`, `INV-CITY-024`). **No entra** (spec §2): elegir
+entre tomar y arrasar, más de dos ciudades, el almacén de la caída.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; ADR-052; `INV-CITY-024` registrado sin
+   cobertura; precisiones de [city-fall.md](../specs/city-fall.md) §4.3 y [multi-city.md](../specs/multi-city.md) §2.
+2. **HECHO** — Servidor: la migración `000032`, la transacción que toma (`CityFallRepo.FallCity`, `takeSlot`,
+   `takeCity`, `settleTaken`) y la RAM (`applyTaken`), con sus tests (`city_taken_integration_test.go`,
+   `city_taken_test.go`); `INV-CITY-024` ✓ verificado por mutación.
+3. **HECHO** — Protocolo: `takenCityId` en Zod y en Go (contrato), y el e2e de la caída que toma
+   (`city_fall_e2e_test.go`).
+4. **HECHO** — Cliente y bots sin código nuevo, con sus tests (`cityFall.test.ts`, `bot.test.ts`); `CityFell` con
+   `takenCityId`. El humo no gana opción: `--caida` comprueba la toma cuando `smoke_runner` tiene hueco (`ciudadTomada`,
+   con su test). Los textos de los avisos no cambian (spec §9.1).
+5. **HECHO** — Docs (protocolo, base, registro, cliente, spec §9.1), `verify:full` y prueba en vivo.
+
+### Prueba en vivo (2026-11-25)
+
+Servidor y web de desarrollo con `EO_CITY_ASSAULT_SECONDS=20` y `EO_CITY_FALL_IMMUNITY_HOURS=0`; el servidor aplicó la
+migración 31 → 32 al arrancar. `node scripts/smoke.mjs --web http://localhost:3001 --caida`: 26 comprobaciones.
+
+- `smoke_runner`, con una ciudad, planta el estandarte y a los 20 s `smoke_caidapolis` (38) cae: **`smoke_runner` se la
+  queda** como la 51, en el mismo centro (161, 116) y en Bronce, y la ve en el snapshot que le llega; `smoke_caida`
+  refunda la 52 en (141, 185) sin reconectar. La ciudad de `smoke_caida` no tenía edificios: la herencia de los
+  completos la prueban los tests de integración y de simulación.
+- **Sin comprobar en el navegador:** la tomada con sus edificios en el mapa; el panel del navegador no se usó en esta
+  sesión desatendida.
+

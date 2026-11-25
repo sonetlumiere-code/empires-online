@@ -4,7 +4,7 @@ Modelo de datos normativo de Empires Online sobre PostgreSQL: el *durable source
 
 Este documento es la referencia autoritativa del esquema. Las migraciones que lo materializan están descritas en [migrations.md](./migrations.md); los índices que sostienen las consultas calientes, en [indexing.md](./indexing.md). El reparto entre RAM, PostgreSQL y Redis se explica en [../architecture/persistence.md](../architecture/persistence.md).
 
-Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15), las guerras entre clanes, `000026_clan_wars.up.sql` (`clan_wars`, sus triggers y el índice `world_events_war`, §16.13), el árbol tecnológico, `000027_technologies.up.sql` (`technologies`, `city_research`, `player_technologies` y sus tres triggers, §16.16), los mercados, `000028_markets.up.sql` (`MARKET`, `market_offers`, `market_purchases` y `caravans.market_purchase_id`, §16.17), el ariete y la muralla, `000029_siege_engines.up.sql` (`WALL`, su único parcial y su trigger, y `RAM` en `city_productions`, §16.18), la caída de una ciudad, `000030_city_fall.up.sql` (`cities.fallen_at`, los índices parciales de las ciudades en pie, su trigger y `city_assaults`, §16.19), y el multiciudad, `000031_multi_city.up.sql` (`cities.slot` y el índice por dueño y hueco, §16.20). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
+Todo el DDL de este documento es **transcripción literal** de las migraciones aplicadas, `services/game-server/migrations/000001_initial_schema.up.sql`, `000002_seed_catalogs.up.sql` y, para la economía (§16), `000006_economy_wood.up.sql`; el combate añade `000007_combat_raid.up.sql` (columna `loot`, `units_loot_non_negative`, `units_dead_iff_zero_hp` y `WARRIOR` en `city_productions`). El agotamiento del bosque añade `000008_economy_forest.up.sql` (`forest_wood`, §16.5), la piedra y el avance de era, `000012_stone_and_era_advance.up.sql` (`STONE` y `GATHER_STONE` en sus `CHECK`, `hill_stone` y `city_era_advances`, §16.6 y §16.7), el comercio, `000013_trade.up.sql` (`trade_offers` y `trade_offer_lines`, §16.8), la conquista, `000014_territory_claims.up.sql` (`territory_claims`, §16.9), los bienes de civilización, `000016_civilization_goods.up.sql` (los bienes en `city_stocks` y en `trade_offer_lines`, `civilizations.good`, `WORKSHOP` y `city_crafts`, §16.10), las unidades de civilización, `000024_civilization_units.up.sql` (`civilizations.unit`, §6.1, y los tipos y el trigger de `city_productions`, §16.4), la Edad de los Castillos, `000025_castle_age.up.sql` (`CASTLE` y su único parcial en `buildings`, §16.3 y §16.15), las guerras entre clanes, `000026_clan_wars.up.sql` (`clan_wars`, sus triggers y el índice `world_events_war`, §16.13), el árbol tecnológico, `000027_technologies.up.sql` (`technologies`, `city_research`, `player_technologies` y sus tres triggers, §16.16), los mercados, `000028_markets.up.sql` (`MARKET`, `market_offers`, `market_purchases` y `caravans.market_purchase_id`, §16.17), el ariete y la muralla, `000029_siege_engines.up.sql` (`WALL`, su único parcial y su trigger, y `RAM` en `city_productions`, §16.18), la caída de una ciudad, `000030_city_fall.up.sql` (`cities.fallen_at`, los índices parciales de las ciudades en pie, su trigger y `city_assaults`, §16.19), el multiciudad, `000031_multi_city.up.sql` (`cities.slot` y el índice por dueño y hueco, §16.20), y la ciudad tomada, `000032_city_taken.up.sql` (`cities.taken_from_city_id` y su único parcial, §16.21). Si una consulta de este documento y el fichero de migración difieren, manda el fichero.
 
 ---
 
@@ -1815,3 +1815,24 @@ Respuesta explícita a las cuatro preguntas del canon §12 para el esquema del M
 - [../specs/movement.md](../specs/movement.md) — cálculo de la polilínea temporizada e `INV-MOVE-001`
 - [../specs/websocket-protocol.md](../specs/websocket-protocol.md) — envelopes, `requestId` e idempotencia
 - [../decisions/ADR-012-database-migrations.md](../decisions/ADR-012-database-migrations.md) — migraciones SQL embebidas
+
+### 16.21 La ciudad tomada (`000032`)
+
+[SPEC-CITY-TAKEN](../specs/city-taken.md), [ADR-052](../decisions/ADR-052-city-taken.md): la ciudad que el vencedor se
+queda es una fila nueva suya en el centro de la caída, que apunta a ella.
+
+```sql
+ALTER TABLE cities ADD COLUMN taken_from_city_id bigint NULL REFERENCES cities (id);
+ALTER TABLE cities ADD CONSTRAINT cities_taken_from_other CHECK (taken_from_city_id <> id);
+CREATE UNIQUE INDEX cities_taken_once ON cities (taken_from_city_id) WHERE taken_from_city_id IS NOT NULL;
+```
+
+| Objeto | Semántica |
+|---|---|
+| `taken_from_city_id` | La ciudad caída de la que viene la tomada; `NULL` en las fundadas, refundadas y del alta. La escribe sólo `CityFallRepo.FallCity` |
+| `cities_taken_once` | [INV-CITY-024](../invariants/city.md#inv-city-024): una caída se toma como mucho una vez |
+| `cities_taken_from_other` | Una ciudad no se toma a sí misma |
+
+Los edificios completos de la caída pasan a la tomada (`UPDATE buildings SET city_id`) en la misma transacción que la
+arrasa; el resto, `DESTROYED`. La migración de vuelta quita la columna y los dos objetos.
+

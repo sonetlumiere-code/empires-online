@@ -664,8 +664,8 @@ describe('la segunda ciudad del bot (SPEC-BOTS-FOUND §4.5, §4.6)', () => {
     s.sent.filter((m) => m.type === 'session.view').map((m) => (m as { payload: { center: unknown } }).payload.center);
 
   /** El bot con la fundación hecha: el snapshot de la fundación, centrado en la nueva (sin la capital). */
-  async function founded(lines: string[], sockets: FakeServer[], directory = new Directory()) {
-    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.constructor, directory);
+  async function founded(lines: string[], sockets: FakeServer[], directory = new Directory(), profile = PROFILES.constructor) {
+    const bot = newBot(lines, sockets, [], 'ROMAN', profile, directory);
     await bot.start();
     const home = sockets[0] as FakeServer;
     const before = views(home).length;
@@ -697,6 +697,16 @@ describe('la segunda ciudad del bot (SPEC-BOTS-FOUND §4.5, §4.6)', () => {
     expect(bot.buildColonyView()?.city.id).toBe(30);
     bot.stop();
     expect((sockets[1] as FakeServer).closed).not.toBeNull();
+  });
+
+  it('SPEC-CITY-TAKEN Q9: el saqueador que toma una ciudad la juega como su segunda', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot } = await founded(lines, sockets, new Directory(), PROFILES.saqueador);
+    expect(sockets).toHaveLength(2);
+    expect(bot.buildColonyView()?.city.id).toBe(30);
+    expect(bot.buildView()?.city.id).toBe(10);
+    bot.stop();
   });
 
   it('si cae la segunda, apunta fell con kept, cierra la conexión colonia y sigue con la capital', async () => {

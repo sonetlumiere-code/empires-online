@@ -126,6 +126,21 @@ describe('el mundo del cliente', () => {
     expect(useWorldStore.getState().buildings.has(60)).toBe(false);
     expect(useWorldStore.getState().buildings.has(61)).toBe(true);
   });
+
+  it('SPEC-CITY-TAKEN §6: los edificios heredados llegan con la tomada y city.fallen no se los lleva', () => {
+    const v = { ...ciudad(), stocks: undefined } as unknown as v1.CityView;
+    useWorldStore.getState().applySnapshot({
+      serverTimeMs: 0, tick: 1, chunks: [{ cx: 0, cy: 1 }], terrain: [], units: [], territories: [], cities: [v],
+      buildings: [muralla, { ...muralla, id: 62, type: 'HOUSE', x: v.centerX + 3 }],
+    } as unknown as v1.WorldSnapshot['payload']);
+    const s = useWorldStore.getState();
+    // El servidor manda la tomada y sus edificios con su ciudad nueva, y después city.fallen.
+    s.applyServerMessage(server('building.spawn', { building: { ...muralla, id: 62, type: 'HOUSE', x: v.centerX + 3, cityId: 21 } }));
+    s.applyServerMessage(server('city.fallen', { cityId: 7, ownerPlayerId: otro, byPlayerId: yo, atMs: 1, takenCityId: 21 }));
+    expect(useWorldStore.getState().cities.has(7)).toBe(false);
+    expect(useWorldStore.getState().buildings.has(60)).toBe(false);
+    expect(useWorldStore.getState().buildings.get(62)?.cityId).toBe(21);
+  });
 });
 
 describe('el registro y los avisos (SPEC-CITY-FALL Q9)', () => {

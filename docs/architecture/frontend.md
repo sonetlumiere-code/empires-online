@@ -1051,6 +1051,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
   ciudad (construir, entrenar, avanzar, investigar) cuelga de ella.
 - El store recuerda además `ownCityHomes`: el centro de cada ciudad propia vista, aunque salga del área de interés,
   hasta su `city.fallen` o un `reset` (precisión de la spec §9.1).
+- **Precisión (2026-11-25), E36** ([SPEC-CITY-TAKEN](../specs/city-taken.md)): `city.fallen` puede traer `takenCityId`;
+  el store no lo necesita, porque la tomada y sus edificios (con su `cityId` nuevo) llegan antes que `city.fallen`.
 - `GameCanvas`: la cámara arranca en la capital, y «H» alterna entre las ciudades recordadas (`homesOf`, por id).
 - `src/net/client.ts`: `foundCity(unitId)` manda `unit.found_city`; la confirmación llega como un `world.snapshot`
   nuevo centrado en la ciudad nueva. `CITY_FOUNDED` tiene su texto en `entryText`.
