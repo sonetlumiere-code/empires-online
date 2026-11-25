@@ -324,8 +324,8 @@ export const UnitAssault = z.object({
 /**
  * Un aldeano propio y parado funda una segunda ciudad en su tile (SPEC-MULTI-CITY
  * §4.1). Sólo qué aldeano: el sitio es su tile, y el coste y si se puede los
- * decide el servidor. Al confirmarse, el fundador recibe un snapshot nuevo con sus
- * dos ciudades. Ver ../../../docs/specs/multi-city.md
+ * decide el servidor. Al confirmarse, el fundador recibe un snapshot nuevo centrado en
+ * la ciudad nueva. Ver ../../../docs/specs/multi-city.md
  */
 export const UnitFoundCity = z.object({
   v: V,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foundCityBlockReason, nextHome, ownCitiesOf, shownCity } from './multiCity';
+import { foundCityBlockReason, homesOf, nextHome, ownCitiesOf, shownCity } from './multiCity';
 import type { CityView, UnitView } from './world';
 
 const YO = '11111111-1111-4111-8111-111111111111';
@@ -38,6 +38,12 @@ describe('las ciudades propias (SPEC-MULTI-CITY)', () => {
     expect(shownCity(own, 30)?.id).toBe(30);
     expect(shownCity(own, null)?.id).toBe(10);
     expect(shownCity([], null)).toBeNull();
+  });
+
+  it('«H» también lleva a las recordadas fuera de la vista', () => {
+    const homes = homesOf(new Map([[30, { x: 90, y: 90 }], [10, { x: 10, y: 10 }]]));
+    expect(homes.map((h) => h.id)).toEqual([10, 30]);
+    expect(nextHome(homes, 10)).toEqual({ id: 30, x: 90, y: 90 });
   });
 });
 

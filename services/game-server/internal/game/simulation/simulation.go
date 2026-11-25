@@ -176,6 +176,9 @@ type Deps struct {
 	// el camino del handshake (ADR-050 §5). Lo pone el transporte con
 	// SetResnapshot; nil en los tests que no lo necesitan.
 	Resnapshot func(playerID uuid.UUID)
+	// ResnapshotAt es Resnapshot centrado en un tile (la ciudad recién fundada,
+	// SPEC-MULTI-CITY); nil en los tests que no lo necesitan.
+	ResnapshotAt func(playerID uuid.UUID, center world.Tile)
 }
 
 // Simulation aplica comandos y hace avanzar el mundo.
@@ -239,6 +242,11 @@ func New(state *State, deps Deps) *Simulation {
 // jugador (ADR-050 §5). Lo llama el arranque antes del primer tick: el
 // transporte se crea después que la simulación.
 func (s *Simulation) SetResnapshot(fn func(playerID uuid.UUID)) { s.deps.Resnapshot = fn }
+
+// SetResnapshotAt pone el snapshot centrado en un tile (SPEC-MULTI-CITY).
+func (s *Simulation) SetResnapshotAt(fn func(playerID uuid.UUID, center world.Tile)) {
+	s.deps.ResnapshotAt = fn
+}
 
 // State expone el mundo (lectura desde el hilo del loop, y tests).
 func (s *Simulation) State() *State { return s.state }

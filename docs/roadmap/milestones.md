@@ -3214,5 +3214,25 @@ qué ciudad sale el comercio, trasladar la capital, que los bots funden.
    (`multi_city_e2e_test.go`). Sin mensaje de confirmación: un snapshot nuevo (spec §9.1).
 4. **HECHO** — Cliente y bots: «Fundar ciudad» con su motivo, «H» que alterna y el panel de la ciudad elegida
    (`src/state/multiCity.ts`), y la capital en los bots (`capitalOf`).
-5. **EN CURSO** — Humo `--multiciudad` (con `sitioParaFundar` y su test), docs (protocolo, registro, base, cliente,
+5. **HECHO** — Humo `--multiciudad` (con `sitioParaFundar` y su test), docs (protocolo, registro, base, cliente,
    configuración) y prueba en vivo.
+
+### Prueba en vivo (2026-11-24)
+
+Servidor y web de desarrollo en esta Mac; el servidor aplicó la migración 30 → 31 al arrancar sobre el mundo de
+desarrollo (29 ciudades). `node scripts/smoke.mjs --web http://localhost:3001 --multiciudad`, con las cuentas
+sembradas con `EO_DEVSEED_STOCK_FOR`.
+
+- **`smoke_multi`** avanza a Bronce y funda su segunda ciudad, `smoke_multipolis II` (41), en (256, 383).
+- **`smoke_multi2`** (`EO_SMOKE_MULTI_USER`) avanza a Bronce, busca sitio moviendo la vista, lleva un aldeano a
+  (108, 375), a 81 tiles de su capital, y funda `smoke_multi2polis II` (43) en Bronce; la tercera se rechaza con
+  `INVALID_TARGET` («ya tienes dos ciudades»). En la pasada siguiente de `smoke_multi`, ya con dos, la sonda se rechaza
+  por el tope.
+- **Encontrado y arreglado en vivo** (spec §9.1): en el mundo denso el sitio libre más cercano quedó a 80 tiles de la
+  capital, y el snapshot de la fundación, centrado en la capital, no traía la ciudad nueva: ahora va centrado en ella
+  (`ResnapshotAt`), y el cliente recuerda los centros de sus ciudades (`ownCityHomes`) para que «H» llegue a la que no
+  está a la vista. El humo, además, busca el sitio alrededor de la capital y camina por tramos que aceptan
+  `movementId: 0`.
+- **Sin comprobar en el navegador:** «Fundar ciudad», «H» que alterna y el panel de la ciudad elegida: el panel del
+  navegador integrado estaba oculto y, sin él, el mapa no se dibuja. Los cubren los tests de `multiCity.test.ts` y
+  `selectors.test.ts`.

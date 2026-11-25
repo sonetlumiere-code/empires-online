@@ -161,9 +161,10 @@
  *      (EO_SMOKE_MULTI_USER), en la Edad de Bronce o después (la primera vez avanza desde
  *      Piedra) con 800 de madera y 400 de piedra (con el servidor parado,
  *      EO_DEVSEED_STOCK_FOR=smoke_multi pnpm run dev:seed), lleva un aldeano a un sitio
- *      libre a unos 30 tiles de su capital y funda (unit.found_city): recibe un snapshot con
- *      sus dos ciudades, la nueva con el nombre de la capital y « II», en su era y en el
- *      tile del aldeano; la capital paga, y una tercera se rechaza (INVALID_TARGET). En una
+ *      libre a 28 o más tiles de su capital (lo busca moviendo la vista) y funda
+ *      (unit.found_city): recibe un snapshot centrado en la ciudad nueva, con el nombre de
+ *      la capital y « II», en su era y en el tile del aldeano; la capital paga, y una
+ *      tercera se rechaza (INVALID_TARGET). En una
  *      pasada siguiente la cuenta ya tiene dos y el humo sólo comprueba ese rechazo. No
  *      depende de las demás opciones.
  *  14. sólo con --registro (SPEC-EVENT-LOG): smoke_victim se conecta y su registro
@@ -2426,6 +2427,47 @@ export function sitioParaFundar(terreno, centros, territorios, desde, minimo = 2
   return mejor;
 }
 
+/**
+ * Lleva una unidad a un tile por tramos de 32 como mucho, con la vista siguiéndola. Un
+ * tramo aceptado con `movementId: 0` (ya estaba allí) cuenta como llegado; uno que no se
+ * pisa se desplaza en espiral. Devuelve dónde acaba.
+ */
+async function caminarHasta(sesion, unidad, destino) {
+  let pos = { x: unidad.x, y: unidad.y };
+  const giros = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+  for (let tramo = 0; tramo < 16; tramo++) {
+    const dx = destino.x - pos.x;
+    const dy = destino.y - pos.y;
+    const d = Math.max(Math.abs(dx), Math.abs(dy));
+    if (d === 0) return pos;
+    const k = d <= 32 ? 1 : 32 / d;
+    sesion.enviar('session.view', { center: pos });
+    await sesion.esperar('world.snapshot');
+    let hecho = false;
+    for (let intento = 0; intento < giros.length * 2 && !hecho; intento++) {
+      const [gx, gy] = giros[intento % giros.length];
+      const r = 1 + Math.floor(intento / giros.length);
+      const meta = { x: Math.round(pos.x + dx * k) + gx * r, y: Math.round(pos.y + dy * k) + gy * r };
+      sesion.enviar('unit.move', { unitId: unidad.id, target: meta });
+      const resp = await sesion.esperarQue(['unit.move.accepted', 'unit.move.rejected', 'system.error'],
+        (m) => m.type === 'system.error' || m.payload.unitId === unidad.id);
+      if (resp.type !== 'unit.move.accepted') continue;
+      if (resp.payload.movementId === 0) {
+        pos = meta;
+      } else {
+        const fin = await sesion.esperarQue(['unit.movement.completed', 'unit.movement.cancelled'],
+          (m) => m.payload.unitId === unidad.id && m.payload.movementId === resp.payload.movementId, 180_000);
+        if (fin.type !== 'unit.movement.completed') fallar('el paseo del aldeano se interrumpió', fin.payload);
+        pos = fin.payload.finalPosition;
+      }
+      hecho = true;
+      if (k === 1) return pos;
+    }
+    if (!hecho) fallar('el aldeano no encuentra tramo hacia el sitio', { pos, destino });
+  }
+  return pos;
+}
+
 async function multiciudad() {
   const { cuenta } = await abrirSesion(MULTI_USUARIO);
   const yo = await conectar(cuenta.ticket);
@@ -2446,30 +2488,61 @@ async function multiciudad() {
   // Ya fundó en una pasada anterior: la tercera se rechaza.
   const intentar = async (aldeano) => {
     yo.sesion.enviar('unit.found_city', { unitId: aldeano.id });
+    // El snapshot de la fundación va centrado en la ciudad nueva (spec §9.1).
     return yo.sesion.esperarQue(['world.snapshot', 'system.error'], (m) => m.type === 'system.error'
-      || m.payload.cities.filter((c) => c.ownerPlayerId === cuenta.playerId).length >= 2, 60_000);
+      || m.payload.cities.some((c) => c.ownerPlayerId === cuenta.playerId && c.id !== capital.id), 60_000);
   };
   const stocks = capital.stocks ?? {};
-  if (propias().length < 2 && ((stocks.WOOD ?? 0) < 800 || (stocks.STONE ?? 0) < 400)) {
-    const r = await intentar(aldeanos[0]);
-    if (r.type === 'system.error' && r.payload.code === 'INVALID_TARGET' && /dos ciudades/.test(r.payload.message)) {
-      ok('ya tiene dos ciudades de una pasada anterior', 'la tercera se rechaza (INVALID_TARGET)');
-      yo.sesion.cerrar();
-      return;
-    }
+  // La segunda puede quedar fuera de la vista: el servidor mira el tope antes que el sitio,
+  // así que una orden desde la capital dice si ya tiene dos (y si no, se rechaza por el
+  // sitio sin reservar nada).
+  const sonda = await intentar(aldeanos[0]);
+  if (sonda.type === 'system.error' && sonda.payload.code === 'INVALID_TARGET' && /dos ciudades/.test(sonda.payload.message)) {
+    ok('ya tiene dos ciudades de una pasada anterior', 'la tercera se rechaza (INVALID_TARGET)');
+    yo.sesion.cerrar();
+    return;
+  }
+  if ((stocks.WOOD ?? 0) < 800 || (stocks.STONE ?? 0) < 400) {
     fallar(`${capital.name} necesita 800 de madera y 400 de piedra (con el servidor parado, EO_DEVSEED_STOCK_FOR=${MULTI_USUARIO} pnpm run dev:seed)`, stocks);
   }
   ok('ciudad que funda', `${capital.name} (${capital.id}), ${capital.era}, ${stocks.WOOD} de madera y ${stocks.STONE} de piedra`);
 
-  const terreno = indexarTerreno(vista.chunks);
-  const centros = vista.cities.map((c) => ({ x: c.centerX, y: c.centerY }));
-  const sitio = sitioParaFundar(terreno, centros, vista.territories ?? [], { x: capital.centerX, y: capital.centerY });
-  if (!sitio) fallar('no hay un sitio para fundar a la vista de la capital', { centro: capital });
+  // El mundo de desarrollo es denso: se mira alrededor de la capital, moviendo la vista,
+  // y se junta lo visto (terreno, ciudades y territorios).
+  const terreno = new Map();
+  const centros = new Map();
+  const territorios = new Map();
+  const juntar = (v) => {
+    for (const [k, t] of indexarTerreno(v.terrain)) terreno.set(k, t);
+    for (const c of v.cities) centros.set(c.id, { x: c.centerX, y: c.centerY });
+    for (const t of v.territories ?? []) territorios.set(t.id, t);
+  };
+  juntar(vista);
+  const desde = { x: capital.centerX, y: capital.centerY };
+  let sitio = sitioParaFundar(terreno, [...centros.values()], [...territorios.values()], desde);
+  for (const [dx, dy] of [[48, 0], [-48, 0], [0, 48], [0, -48], [48, 48], [-48, 48], [48, -48], [-48, -48]]) {
+    if (sitio) break;
+    yo.sesion.enviar('session.view', { center: { x: desde.x + dx, y: desde.y + dy } });
+    juntar((await yo.sesion.esperar('world.snapshot')).payload);
+    sitio = sitioParaFundar(terreno, [...centros.values()], [...territorios.values()], desde, 28, 96);
+  }
+  if (!sitio) {
+    const libres = [...territorios.values()].filter((t) => t.ownerType === 'NONE').length;
+    fallar('no hay un sitio para fundar alrededor de la capital', { tiles: terreno.size, ciudades: centros.size, territorios: territorios.size, libres });
+  }
+  yo.sesion.enviar('session.view', { center: desde });
+  vista = (await yo.sesion.esperar('world.snapshot')).payload;
   const fundador = aldeanos[0];
-  const llega = await acercar(yo.sesion, fundador, sitio, 0);
+  ok('sitio elegido', `(${sitio.x}, ${sitio.y}) para el aldeano ${fundador.id}, en (${fundador.x}, ${fundador.y})`);
+  const llega = await caminarHasta(yo.sesion, fundador, sitio);
   ok('el aldeano llega al sitio', `(${llega.x}, ${llega.y}), a ${sitio.d} tiles de la capital`);
 
   const r = await intentar(fundador);
+  if (r.type === 'system.error' && r.payload.code === 'INVALID_TARGET' && /dos ciudades/.test(r.payload.message)) {
+    ok('ya tiene dos ciudades de una pasada anterior', 'la tercera se rechaza (INVALID_TARGET)');
+    yo.sesion.cerrar();
+    return;
+  }
   if (r.type === 'system.error') fallar('el servidor rechazó la fundación', r.payload);
   vista = r.payload;
   const nueva = propias().find((c) => c.id !== capital.id);

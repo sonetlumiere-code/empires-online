@@ -349,6 +349,7 @@ func newE2EDeLado(t *testing.T, lado int32, pintar func(terrain []byte), ajustar
 	metrics := observability.NewMetrics()
 	wsServer := ws.NewServer(wsCfg, hub, authenticator, newMemoryPresence(), dedupe, commands, inbox.Offer, metrics, log)
 	sim.SetResnapshot(wsServer.Resnapshot)
+	sim.SetResnapshotAt(wsServer.ResnapshotAt)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", wsServer.Handler(context.Background()))

@@ -79,7 +79,10 @@ func (h *harness) fundarCiudad(unitID int64) {
 // nueva nace con el nombre de la capital y « II», en su era, con el fundador y
 // dos aldeanos más; la capital sigue siendo la primera.
 func TestUnAldeanoFundaLaSegundaCiudad(t *testing.T) {
-	h, store := escenarioDeFundacion(t, nil)
+	var vistaEn []world.Tile
+	h, store := escenarioDeFundacion(t, func(d *simulation.Deps) {
+		d.ResnapshotAt = func(_ uuid.UUID, center world.Tile) { vistaEn = append(vistaEn, center) }
+	})
 
 	h.fundarCiudad(fundadorID)
 	require.Len(t, store.founds, 1, "la fundación se encola")
@@ -114,6 +117,7 @@ func TestUnAldeanoFundaLaSegundaCiudad(t *testing.T) {
 	}
 	assert.Equal(t, int32(2), h.ciudad().Population, "la que paga pierde al fundador")
 	assert.Zero(t, h.stockDe(economy.ResourceWood), "el cobro se queda")
+	assert.Equal(t, []world.Tile{sitioDeFundacion}, vistaEn, "el snapshot del fundador, centrado en la ciudad nueva (§9.1)")
 
 	// RN-CITY-031: una tercera no.
 	h.rec.reset()

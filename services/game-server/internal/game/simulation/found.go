@@ -281,8 +281,11 @@ func (s *Simulation) handleFoundResolved(cmd FoundResolved) {
 		pop := from.Population
 		s.broadcastCity(from, protocol.CityUpdatePayload{Population: &pop})
 	}
-	// Lo ve en el acto, sin reconectar (como el vencido, ADR-050 §5).
-	if s.deps.Resnapshot != nil {
+	// Lo ve en el acto, sin reconectar (como el vencido, ADR-050 §5), con la vista en
+	// la ciudad nueva: puede quedar lejos de la capital.
+	if s.deps.ResnapshotAt != nil {
+		s.deps.ResnapshotAt(cmd.PlayerID, nueva.Center())
+	} else if s.deps.Resnapshot != nil {
 		s.deps.Resnapshot(cmd.PlayerID)
 	}
 	s.deps.Log.Info("ciudad fundada", "city_id", nueva.ID, "owner", cmd.PlayerID, "from_city_id", r.fromCityID,

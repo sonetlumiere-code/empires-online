@@ -31,10 +31,15 @@ export function ownCitiesOf(cities: Iterable<CityView>, playerId: string | null)
  * Adónde lleva «H» (Q9): la primera vez, a la capital; después, a la siguiente
  * ciudad propia de aquella a la que se fue, y de la última otra vez a la capital.
  */
-export function nextHome(own: readonly CityView[], currentId: number | null): CityView | undefined {
+export function nextHome<T extends { id: number }>(own: readonly T[], currentId: number | null): T | undefined {
   if (own.length === 0) return undefined;
   const i = currentId === null ? -1 : own.findIndex((c) => c.id === currentId);
   return own[(i + 1) % own.length];
+}
+
+/** Las ciudades propias recordadas (`ownCityHomes`), por id: adónde lleva «H». */
+export function homesOf(homes: ReadonlyMap<number, { x: number; y: number }>): { id: number; x: number; y: number }[] {
+  return [...homes].map(([id, t]) => ({ id, x: t.x, y: t.y })).sort((a, b) => a.id - b.id);
 }
 
 /** La ciudad que muestra el panel: la última a la que llevó «H», o la capital. */

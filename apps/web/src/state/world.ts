@@ -295,6 +295,11 @@ export interface WorldState {
    * (SPEC-MULTI-CITY Q9); `null`, la capital. Estado de interfaz: la escena no lo lee.
    */
   homeCityId: number | null;
+  /**
+   * Los centros de las ciudades propias que se han visto, por id, aunque ya no estén en
+   * el área de interés (SPEC-MULTI-CITY Q9): adónde puede llevar «H». Se muta en sitio.
+   */
+  ownCityHomes: ReadonlyMap<number, { x: number; y: number }>;
   lastError: { code: string; message: string } | null;
 
   applyWelcome: (payload: v1.SessionWelcome['payload']) => void;
@@ -420,6 +425,9 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
   // expone como `ReadonlyMap`. Fuera del store nadie debe sustituirlos.
   const units = new Map<number, UnitView>();
   const cities = new Map<number, CityView>();
+  // Dónde están las ciudades propias, aunque salgan del área de interés: «H» lleva a
+  // ellas (SPEC-MULTI-CITY Q9). Sólo las olvida su caída o un cambio de jugador.
+  const ownCityHomes = new Map<number, { x: number; y: number }>();
   const territories = new Map<number, TerritoryView>();
   const buildings = new Map<number, BuildingView>();
   // Páginas del registro pedidas y aún sin respuesta: requestId → beforeId (null
@@ -474,6 +482,7 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
     changes: INITIAL_CHANGES,
     selectedUnitId: null,
     homeCityId: null,
+    ownCityHomes,
     lastError: null,
 
     // Cambiar de jugador cambia qué es «propio» en todas las entidades: se
@@ -506,6 +515,9 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
 
       cities.clear();
       for (const c of payload.cities) cities.set(c.id, cityFromView(c));
+      for (const c of payload.cities) {
+        if (c.ownerPlayerId === get().playerId) ownCityHomes.set(c.id, { x: c.centerX, y: c.centerY });
+      }
 
       buildings.clear();
       for (const b of payload.buildings ?? []) buildings.set(b.id, { ...b });
@@ -652,6 +664,7 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
           // ciudad nueva de su dueño llega como cualquier ciudad que entra en la vista,
           // y al vencido, en el snapshot que le sigue.
           const p = message.payload;
+          ownCityHomes.delete(p.cityId);
           if (!cities.delete(p.cityId)) break;
           const gone = new Set<number>();
           for (const [id, b] of buildings) {
@@ -946,6 +959,7 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
     reset: () => {
       units.clear();
       cities.clear();
+      ownCityHomes.clear();
       territories.clear();
       buildings.clear();
       terrain.clear();

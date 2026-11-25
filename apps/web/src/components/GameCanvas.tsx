@@ -18,7 +18,7 @@ import { IsoScene } from '../render/scene';
 import { projectAll, projectChanges } from '../render/projection';
 import { CameraController, panDirectionOf } from '../render/camera';
 import type { Point, Tile } from '../render/iso';
-import { nextHome, ownCitiesOf } from '../state/multiCity';
+import { homesOf, nextHome, ownCitiesOf } from '../state/multiCity';
 import { useWorldStore, type WorldState } from '../state/world';
 
 export interface GameCanvasProps {
@@ -185,9 +185,9 @@ export function GameCanvas({ serverTimeMs, onTileClick, onUnitClick, onCameraCen
       if (e.key === 'h' || e.key === 'H') {
         // «H» alterna entre las ciudades propias, la capital primero (SPEC-MULTI-CITY Q9).
         const s = useWorldStore.getState();
-        const next = nextHome(ownCitiesOf(s.cities.values(), s.playerId), s.homeCityId);
+        const next = nextHome(homesOf(s.ownCityHomes), s.homeCityId);
         if (next) {
-          camera.centerOn({ x: next.centerX, y: next.centerY });
+          camera.centerOn({ x: next.x, y: next.y });
           s.setHomeCity(next.id);
         } else {
           camera.goHome();

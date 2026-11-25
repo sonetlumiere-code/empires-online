@@ -247,9 +247,15 @@ recogen al implementar.
 ### 9.1 Precisiones de la implementación (2026-11-24)
 
 - **Precisión (2026-11-24): sin mensaje de confirmación.** §6 nombraba `unit.found_city.accepted`; no hace falta. Al
-  confirmarse la fundación, las sesiones del fundador reciben un `world.snapshot` nuevo con sus dos ciudades, por el
+  confirmarse la fundación, las sesiones del fundador reciben un `world.snapshot` nuevo (centrado en la nueva), por el
   mismo camino que el vencido de una caída ([ADR-050](../decisions/ADR-050-city-fall.md) §5); los rechazos llegan como
   `system.error` con el `requestId`. El protocolo gana un solo tipo cliente→servidor y ninguno servidor→cliente.
+- **Precisión (2026-11-24): el snapshot, centrado en la ciudad nueva.** Lo encontró la prueba en vivo: en el mundo de
+  desarrollo, denso, el sitio libre más cercano quedó a 80 tiles de la capital, y el snapshot de `Resnapshot`, centrado
+  en ella, no traía la ciudad nueva. El de la fundación va centrado en la nueva (`ResnapshotAt`). Y como el store
+  olvida las ciudades que salen del área de interés, el cliente recuerda los centros de las propias que ha visto
+  (`ownCityHomes`, hasta su caída): «H» lleva a cualquiera de ellas aunque no esté a la vista, y el panel muestra la
+  elegida en cuanto llega su snapshot.
 - **Precisión (2026-11-24): el sitio, en un territorio libre.** §4.1 decía «no en territorio de otro jugador ni de un
   clan ajeno»; tampoco en uno propio: el centro de la ciudad hace de su territorio una capital territorial, que no
   cuenta como conquistada, y fundar en uno conquistado le quitaría a la capital su bono a mitad de la transacción. El

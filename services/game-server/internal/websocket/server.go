@@ -1203,6 +1203,16 @@ func (s *Server) Resnapshot(playerID uuid.UUID) {
 	})
 }
 
+// ResnapshotAt es Resnapshot centrado en un tile: tras fundar una segunda ciudad,
+// la vista del fundador va a ella, que puede quedar lejos de la capital
+// (SPEC-MULTI-CITY §9.1).
+func (s *Server) ResnapshotAt(playerID uuid.UUID, center world.Tile) {
+	s.hub.forEachSessionOf(playerID, func(session *Session) {
+		c := center
+		go s.sendSnapshot(session, &c, "")
+	})
+}
+
 // sendSnapshot pide el estado del área de interés al game loop y lo envía.
 func (s *Server) sendSnapshot(session *Session, center *world.Tile, requestID string) {
 	reply := make(chan simulation.SnapshotResult, 1)

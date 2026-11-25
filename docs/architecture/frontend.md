@@ -1044,9 +1044,11 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - El store gana `homeCityId` (la ciudad a la que llevó «H» por última vez; estado de interfaz, la escena no lo lee) y
   `setHomeCity`. `computeHud` devuelve `ownCities` y, en `ownCity`, la de `homeCityId` o la capital: todo el HUD de la
   ciudad (construir, entrenar, avanzar, investigar) cuelga de ella.
-- `GameCanvas`: la cámara arranca en la capital, y «H» alterna entre las ciudades propias.
+- El store recuerda además `ownCityHomes`: el centro de cada ciudad propia vista, aunque salga del área de interés,
+  hasta su `city.fallen` o un `reset` (precisión de la spec §9.1).
+- `GameCanvas`: la cámara arranca en la capital, y «H» alterna entre las ciudades recordadas (`homesOf`, por id).
 - `src/net/client.ts`: `foundCity(unitId)` manda `unit.found_city`; la confirmación llega como un `world.snapshot`
-  nuevo con las dos ciudades. `CITY_FOUNDED` tiene su texto en `entryText`.
+  nuevo centrado en la ciudad nueva. `CITY_FOUNDED` tiene su texto en `entryText`.
 - Los bots (`apps/bots/src/bot.ts`) juegan con su capital (`capitalOf`, la propia de id menor), sea cual sea el orden
   del store: no fundan (Q10).
 

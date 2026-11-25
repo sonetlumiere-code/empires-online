@@ -614,6 +614,7 @@ func run() error {
 	wsServer.SetMarket(marketRepo)
 	// El vencido de una caída recibe su mundo nuevo sin reconectar (ADR-050 §5).
 	sim.SetResnapshot(wsServer.Resnapshot)
+	sim.SetResnapshotAt(wsServer.ResnapshotAt)
 
 	// Detrás del reverse proxy del despliegue de referencia, TODAS las
 	// conexiones llegan desde la IP del proxy: sin EO_TRUST_PROXY_HEADERS el
