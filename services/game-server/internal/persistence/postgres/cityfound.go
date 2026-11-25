@@ -73,12 +73,13 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 		// 1. El tope: una sola ciudad en pie, la que paga (RN-CITY-031).
 		var (
 			enPie       int
-			huecoLibre  int16 = 1
+			usados      []int16
+			eraCapital  city.Era
 			presencia   string
 			lastOffline *time.Time
 		)
 		rows, err := tx.Query(ctx,
-			`SELECT id, slot, presence_state, last_offline_at FROM cities
+			`SELECT id, slot, era, presence_state, last_offline_at FROM cities
 			  WHERE owner_player_id = $1 AND fallen_at IS NULL ORDER BY id FOR UPDATE`, f.OwnerID)
 		if err != nil {
 			return fmt.Errorf("leer las ciudades del jugador: %w", normalize(err))
@@ -88,17 +89,19 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 			var (
 				id   int64
 				slot int16
+				era  string
 				ps   string
 				lo   *time.Time
 			)
-			if err := rows.Scan(&id, &slot, &ps, &lo); err != nil {
+			if err := rows.Scan(&id, &slot, &era, &ps, &lo); err != nil {
 				rows.Close()
 				return fmt.Errorf("leer una ciudad del jugador: %w", normalize(err))
 			}
-			enPie++
-			if slot == 1 {
-				huecoLibre = 2
+			if enPie == 0 {
+				eraCapital = city.Era(era)
 			}
+			enPie++
+			usados = append(usados, slot)
 			if id == f.FromCityID {
 				pagaEnPie, presencia, lastOffline = true, ps, lo
 			}
@@ -110,8 +113,13 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 		if !pagaEnPie {
 			return rechazo("la ciudad %d ya no está en pie", f.FromCityID)
 		}
-		if enPie >= city.MaxStandingPerOwner {
-			return rechazo("ya tienes %d ciudades", enPie)
+		// SPEC-MORE-CITIES RN-CITY-040: el tope de la era de la capital.
+		if tope := city.MaxStandingFor(eraCapital); enPie >= tope {
+			return rechazo("ya tienes %d ciudades: el tope de tu capital es %d", enPie, tope)
+		}
+		huecoLibre := city.FreeSlot(usados)
+		if huecoLibre == 0 {
+			return rechazo("no queda hueco")
 		}
 
 		// 2. El aldeano sigue vivo, suyo y de la ciudad que paga.

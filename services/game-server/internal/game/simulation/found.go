@@ -3,6 +3,7 @@ package simulation
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 
@@ -133,9 +134,12 @@ func (s *Simulation) handleFoundCity(cmd FoundCity) {
 		reject(protocol.CodeInvalidTarget, "ya hay una fundación en vuelo")
 		return
 	}
-	if n := len(s.state.CitiesOf(cmd.PlayerID)); n >= city.MaxStandingPerOwner {
-		reject(protocol.CodeInvalidTarget, "ya tienes dos ciudades")
-		return
+	// SPEC-MORE-CITIES RN-CITY-040, RN-CITY-041: el tope es el de la era de la capital.
+	if capital, ok := s.state.CityOf(cmd.PlayerID); ok {
+		if n, tope := len(s.state.CitiesOf(cmd.PlayerID)), city.MaxStandingFor(capital.Era); n >= tope {
+			reject(protocol.CodeInvalidTarget, fmt.Sprintf("ya tienes %d ciudades: el tope de tu capital es %d", n, tope))
+			return
+		}
 	}
 	if !from.Era.AtLeast(city.EraBronze) {
 		reject(protocol.CodeInvalidTarget, "la ciudad del aldeano tiene que estar en la Edad de Bronce")
@@ -171,7 +175,7 @@ func (s *Simulation) handleFoundCity(cmd FoundCity) {
 	capital, _ := s.state.CityOf(cmd.PlayerID)
 	f := cityfall.Founding{
 		OwnerID: cmd.PlayerID, FromCityID: from.ID, UnitID: u.ID,
-		Name: city.SecondCityName(capital.Name), Era: from.Era,
+		Name: city.CityName(capital.Name, len(s.state.CitiesOf(cmd.PlayerID))+1), Era: from.Era,
 		Tick: s.state.Tick(), Now: now, AtMs: now.UnixMilli(),
 		Verify: founding.FarEnough,
 	}

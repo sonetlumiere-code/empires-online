@@ -2519,7 +2519,7 @@ async function multiciudad() {
   // así que una orden desde la capital dice si ya tiene dos (y si no, se rechaza por el
   // sitio sin reservar nada).
   const sonda = await intentar(aldeanos[0]);
-  if (sonda.type === 'system.error' && sonda.payload.code === 'INVALID_TARGET' && /dos ciudades/.test(sonda.payload.message)) {
+  if (sonda.type === 'system.error' && sonda.payload.code === 'INVALID_TARGET' && /dos ciudades|el tope de tu capital/.test(sonda.payload.message)) {
     ok('ya tiene dos ciudades de una pasada anterior', 'la tercera se rechaza (INVALID_TARGET)');
     yo.sesion.cerrar();
     return;
@@ -2560,7 +2560,7 @@ async function multiciudad() {
   ok('el aldeano llega al sitio', `(${llega.x}, ${llega.y}), a ${sitio.d} tiles de la capital`);
 
   const r = await intentar(fundador);
-  if (r.type === 'system.error' && r.payload.code === 'INVALID_TARGET' && /dos ciudades/.test(r.payload.message)) {
+  if (r.type === 'system.error' && r.payload.code === 'INVALID_TARGET' && /dos ciudades|el tope de tu capital/.test(r.payload.message)) {
     ok('ya tiene dos ciudades de una pasada anterior', 'la tercera se rechaza (INVALID_TARGET)');
     yo.sesion.cerrar();
     return;

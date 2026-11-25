@@ -108,6 +108,16 @@ Ninguno nuevo. El cliente deduce el tope de la era de su capital, que ya llega e
 | Bots (Vitest) | El constructor no funda una tercera. |
 | Humo | `--multiciudad`: el rechazo dice el tope de la era. |
 
+### 9.1 Precisiones de la implementación (2026-11-25)
+
+- **Precisión (2026-11-25): el nombre de la tercera y la cuarta.** La fundación nombra la ciudad nueva por su número:
+  « II», « III» o « IV» tras el nombre de la capital (`city.CityName`).
+- **Precisión (2026-11-25): una capital en Piedra.** Su tope es uno: no funda (ya lo impedía la era de la que paga) y
+  **no toma**: un jugador en Piedra que tumba una ciudad la arrasa. El HUD dice antes que la ciudad tiene que estar en
+  Bronce y después el tope.
+- **Precisión (2026-11-25): el mensaje del tope.** «ya tienes N ciudades: el tope de tu capital es N» en el servidor y
+  «Ya tienes N ciudades: el tope de tu capital es N» en el HUD; el humo `--multiciudad` acepta el de antes y el nuevo.
+
 ## 10. Decisiones de producto (2026-11-25)
 
 Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): cada fila deja la decisión (la

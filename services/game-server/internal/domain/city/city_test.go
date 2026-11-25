@@ -166,5 +166,20 @@ func TestElAnilloDeNacimientoTieneOrdenFijo(t *testing.T) {
 // RN-CITY-032: la ciudad fundada lleva el nombre de la capital con « II».
 func TestLaSegundaCiudadLlevaElNombreDeLaCapital(t *testing.T) {
 	assert.Equal(t, "bot_saqueador_1polis II", city.SecondCityName("bot_saqueador_1polis"))
-	assert.Equal(t, 2, city.MaxStandingPerOwner)
+	assert.Equal(t, "bot_saqueador_1polis III", city.CityName("bot_saqueador_1polis", 3))
+	assert.Equal(t, "bot_saqueador_1polis IV", city.CityName("bot_saqueador_1polis", 4))
+	assert.Equal(t, "bot_saqueador_1polis II", city.CityName("bot_saqueador_1polis", 2))
+}
+
+// SPEC-MORE-CITIES RN-CITY-040: el tope de cada era, el techo de cuatro y el menor hueco libre.
+func TestElTopeDeCiudadesPorEra(t *testing.T) {
+	assert.Equal(t, 4, city.MaxStandingPerOwner)
+	assert.Equal(t, 1, city.MaxStandingFor(city.EraStone))
+	assert.Equal(t, 2, city.MaxStandingFor(city.EraBronze))
+	assert.Equal(t, 3, city.MaxStandingFor(city.EraIron))
+	assert.Equal(t, 4, city.MaxStandingFor(city.EraCastle))
+	assert.Equal(t, int16(1), city.FreeSlot(nil))
+	assert.Equal(t, int16(2), city.FreeSlot([]int16{1, 3}))
+	assert.Equal(t, int16(3), city.FreeSlot([]int16{2, 1}))
+	assert.Equal(t, int16(0), city.FreeSlot([]int16{1, 2, 3, 4}))
 }

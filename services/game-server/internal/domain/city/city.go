@@ -112,10 +112,44 @@ type City struct {
 	Slot int16
 }
 
-// MaxStandingPerOwner es el tope de ciudades en pie por jugador
-// (SPEC-MULTI-CITY Q2, RN-CITY-031, INV-CITY-022): el mismo que el CHECK de
-// cities.slot.
-const MaxStandingPerOwner = 2
+// MaxStandingPerOwner es el techo de ciudades en pie por jugador
+// (SPEC-MORE-CITIES RN-CITY-040, INV-CITY-022): el mismo que el CHECK de
+// cities.slot. El tope de cada jugador es el de la era de su capital.
+const MaxStandingPerOwner = 4
+
+// MaxStandingFor es el tope de ciudades en pie de un jugador cuya capital está
+// en la era e (SPEC-MORE-CITIES RN-CITY-040): 1 en Piedra, 2 en Bronce, 3 en
+// Hierro y 4 en Castillos.
+func MaxStandingFor(e Era) int {
+	switch e {
+	case EraBronze:
+		return 2
+	case EraIron:
+		return 3
+	case EraCastle:
+		return 4
+	default:
+		return 1
+	}
+}
+
+// FreeSlot es el menor hueco entre 1 y MaxStandingPerOwner que no está en used,
+// o 0 si no queda ninguno.
+func FreeSlot(used []int16) int16 {
+	for s := int16(1); s <= MaxStandingPerOwner; s++ {
+		libre := true
+		for _, u := range used {
+			if u == s {
+				libre = false
+				break
+			}
+		}
+		if libre {
+			return s
+		}
+	}
+	return 0
+}
 
 // SecondCityName es el nombre de la ciudad que funda un jugador: el de su
 // capital seguido de « II» (RN-CITY-032).
@@ -125,6 +159,19 @@ func SecondCityName(capital string) string { return capital + " II" }
 // un asalto (RN-CITY-029): su fundación más immunity.
 func (c *City) FallImmuneUntilMs(immunity time.Duration) int64 {
 	return c.FoundedAtMs + immunity.Milliseconds()
+}
+
+// CityName es el nombre de la n-ésima ciudad que funda un jugador: el de su
+// capital con « II», « III» o « IV» (SPEC-MORE-CITIES, precisión de §9.1).
+func CityName(capital string, n int) string {
+	switch n {
+	case 3:
+		return capital + " III"
+	case 4:
+		return capital + " IV"
+	default:
+		return SecondCityName(capital)
+	}
 }
 
 // FallImmuneAt dice si la ciudad aún no se puede asaltar en nowMs.

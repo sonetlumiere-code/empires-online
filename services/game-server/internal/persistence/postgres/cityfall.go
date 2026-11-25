@@ -569,35 +569,42 @@ func (r *CityFallRepo) takeSlot(ctx context.Context, tx pgx.Tx, f cityfall.Fall)
 		return nil, nil
 	}
 	rows, err := tx.Query(ctx,
-		`SELECT slot, presence_state, last_offline_at FROM cities
+		`SELECT slot, era, presence_state, last_offline_at FROM cities
 		  WHERE owner_player_id = $1 AND fallen_at IS NULL ORDER BY id FOR UPDATE`, f.VictorID)
 	if err != nil {
 		return nil, fmt.Errorf("leer las ciudades del vencedor: %w", normalize(err))
 	}
 	defer rows.Close()
-	hole := &takeHole{slot: 1}
+	hole := &takeHole{}
 	enPie := 0
+	var (
+		usados     []int16
+		eraCapital city.Era
+	)
 	for rows.Next() {
 		var (
 			slot int16
+			era  string
 			ps   string
 			lo   *time.Time
 		)
-		if err := rows.Scan(&slot, &ps, &lo); err != nil {
+		if err := rows.Scan(&slot, &era, &ps, &lo); err != nil {
 			return nil, fmt.Errorf("leer una ciudad del vencedor: %w", normalize(err))
 		}
 		if enPie == 0 {
-			hole.presence, hole.lastOffline = ps, lo
+			hole.presence, hole.lastOffline, eraCapital = ps, lo, city.Era(era)
 		}
 		enPie++
-		if slot == 1 {
-			hole.slot = 2
-		}
+		usados = append(usados, slot)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, normalize(err)
 	}
-	if enPie == 0 || enPie >= city.MaxStandingPerOwner {
+	// SPEC-MORE-CITIES RN-CITY-040: el tope de la era de la capital del vencedor.
+	if enPie == 0 || enPie >= city.MaxStandingFor(eraCapital) {
+		return nil, nil
+	}
+	if hole.slot = city.FreeSlot(usados); hole.slot == 0 {
 		return nil, nil
 	}
 	return hole, nil

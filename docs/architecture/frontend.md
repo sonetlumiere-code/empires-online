@@ -1053,6 +1053,9 @@ y grueso, y una que carga madera, un tronco a la espalda.
   hasta su `city.fallen` o un `reset` (precisión de la spec §9.1).
 - **Precisión (2026-11-25), E36** ([SPEC-CITY-TAKEN](../specs/city-taken.md)): `city.fallen` puede traer `takenCityId`;
   el store no lo necesita, porque la tomada y sus edificios (con su `cityId` nuevo) llegan antes que `city.fallen`.
+- **Precisión (2026-11-25), E37** ([SPEC-MORE-CITIES](../specs/more-cities.md)): `maxOwnCities(era)` da el tope de la
+  era de la capital y `foundCityBlockReason` lo usa; `MAX_OWN_CITIES` es el techo, 4. Los bots siguen en dos (su propia
+  constante en `apps/bots/src/decide.ts`).
 - `GameCanvas`: la cámara arranca en la capital, y «H» alterna entre las ciudades recordadas (`homesOf`, por id).
 - `src/net/client.ts`: `foundCity(unitId)` manda `unit.found_city`; la confirmación llega como un `world.snapshot`
   nuevo centrado en la ciudad nueva. `CITY_FOUNDED` tiene su texto en `entryText`.

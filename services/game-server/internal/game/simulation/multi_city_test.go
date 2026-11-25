@@ -126,7 +126,7 @@ func TestUnAldeanoFundaLaSegundaCiudad(t *testing.T) {
 	code, _ := errorDe(t, h)
 	assert.Equal(t, protocol.CodeInvalidTarget, code)
 	errs := h.rec.byType(protocol.TypeSystemError)
-	assert.Contains(t, errs[0].Payload.(protocol.SystemErrorPayload).Message, "dos ciudades", "el motivo es el tope, no el sitio")
+	assert.Contains(t, errs[0].Payload.(protocol.SystemErrorPayload).Message, "el tope de tu capital es 2", "el motivo es el tope, no el sitio")
 	assert.Len(t, store.founds, 1)
 }
 
@@ -266,4 +266,18 @@ func TestUnaCiudadQueCaeConOtraEnPieNoRefunda(t *testing.T) {
 		_, ok := h.state.Unit(i)
 		assert.False(t, ok, "sin aldeanos de refundación")
 	}
+}
+
+// SPEC-MORE-CITIES RN-CITY-040: con la capital en Hierro, el tope es tres: con dos
+// ciudades en pie se funda la tercera, con su nombre « III».
+func TestEnHierroSeFundaLaTercera(t *testing.T) {
+	h, store := escenarioDeFundacion(t, nil)
+	h.ciudad().Era = city.EraIron
+	h.state.AddCity(&city.City{
+		ID: 8, OwnerPlayerID: h.playerID, Name: "Testópolis II", CenterX: 10, CenterY: 50, Era: city.EraBronze,
+		Population: 3, PopulationLimit: 20, PresenceState: city.PresenceOnline,
+	})
+	h.fundarCiudad(fundadorID)
+	require.Len(t, store.founds, 1, "la tercera cabe en Hierro")
+	assert.Equal(t, "Testópolis III", store.founds[0].Founding.Name)
 }
