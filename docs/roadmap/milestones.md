@@ -3187,7 +3187,7 @@ integrado, con el panel visible, en la cuenta `smoke_caida`, y `node scripts/smo
 
 ## E34 — Multiciudad
 
-**Estado: EN CURSO (2026-11-24)**, en la rama `claude/slice-multiciudad`. Contrato:
+**Estado: HECHO (2026-11-25)**, en `main` desde la fusión `0e5ea92`, con la CI en verde. Contrato:
 [SPEC-MULTI-CITY](../specs/multi-city.md), propuesta y aceptada el 2026-11-24 con sus once decisiones (producto delegó en
 la recomendación del agente, sesión desatendida). [ADR-051](../decisions/ADR-051-multi-city-capital.md); migración
 `000031`.

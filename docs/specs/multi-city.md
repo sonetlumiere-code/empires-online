@@ -8,7 +8,7 @@ selector completo) queda para slices siguientes.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-MULTI-CITY` |
-| Estado | Accepted (2026-11-24). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-24): las once preguntas de §10, con su recomendación. |
+| Estado | Implemented (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-24): las once preguntas de §10, con su recomendación; en `main` desde la fusión `0e5ea92`, con la CI en verde. |
 | Milestone | E34 Multiciudad (trigésimo cuarto slice después de M7) |
 | Canon | §9 (protección), §10 (eras y población), §12 (persistencia), §13 (protocolo), §16 (errores), §21 (fuera de MVP) |
 | Depende de | [city.md](city.md), [city-fall.md](city-fall.md), [player.md](player.md), [presence.md](presence.md), [territory-conquest.md](territory-conquest.md), [trade-reach.md](trade-reach.md), [event-log.md](event-log.md), [bots.md](bots.md), [websocket-protocol.md](websocket-protocol.md) |
