@@ -3358,8 +3358,9 @@ Servidor y web de desarrollo; el servidor aplicó la migración 32 → 33 al arr
 `node scripts/smoke.mjs --web http://localhost:3001 --multiciudad`: `smoke_multi`, con dos ciudades y la capital en
 Bronce, ve rechazada la tercera (`INVALID_TARGET`, «ya tienes 2 ciudades: el tope de tu capital es 2»).
 
-- **Sin comprobar en vivo:** fundar la tercera con la capital en Hierro (lo cubren `TestEnHierroSeFundaLaTercera` y
-  `TestEnHierroElVencedorTomaLaTercera`); el motivo nuevo de «Fundar ciudad» en el navegador.
+- **Sin comprobar en vivo:** fundar la tercera con la capital en Hierro (lo cubre `TestEnHierroSeFundaLaTercera`); el
+  motivo nuevo de «Fundar ciudad» en el navegador. **Precisión (2026-11-25):** tomar una tercera se vio en vivo en la
+  prueba de E39 (§E39).
 
 ## E38 — El comercio desde cualquier ciudad
 
@@ -3394,7 +3395,8 @@ registro de quien recibe no cuenta la caravana»: la caravana había llegado, pe
 
 ## E39 — Los avisos de la ciudad tomada
 
-**Estado: EN CURSO (2026-11-25)**, en la rama `claude/slice-avisos-toma`. Contrato:
+**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-avisos-toma`, con `verify:full` en verde;
+sin empujar (la spec pasa a `Implemented` con la CI). Contrato:
 [SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md), propuesta y aceptada el 2026-11-25 con sus cuatro decisiones
 (producto delegó en la recomendación del agente, sesión desatendida). Sin ADR ni migración. Es el slice que el agente
 recomendó en T6 de la sesión desatendida: lo que E36 dejó en su §9.1.
@@ -3404,6 +3406,19 @@ recomendó en T6 de la sesión desatendida: lo que E36 dejó en su §9.1.
 ### Entregables
 
 1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; precisión de [city-taken.md](../specs/city-taken.md) §9.1.
-2. **PENDIENTE** — `taken` en el dominio del registro, la base, la simulación, Go y Zod, con sus tests.
-3. **PENDIENTE** — Los textos del cliente; docs; `verify:full`; prueba en vivo.
+2. **HECHO** — `taken` en el dominio del registro (`Event`, `Entry`), la página (leído de `takenCityId`), el aviso de
+   `applyFall`, Go y Zod, con sus tests (`eventlog_test.go`, `city_taken_test.go`, `city_taken_integration_test.go`,
+   los de contrato).
+3. **HECHO** — Los textos de `entryText` (`cityFall.test.ts`); docs (registro, avisos, protocolo, cliente);
+   `verify:full` y prueba en vivo.
+
+### Prueba en vivo (2026-11-25)
+
+Servidor y web de desarrollo con `EO_CITY_ASSAULT_SECONDS=20` y `EO_CITY_FALL_IMMUNITY_HOURS=0`;
+`node scripts/smoke.mjs --web http://localhost:3001 --caida`: 26 comprobaciones. `smoke_runner`, ya con dos ciudades
+y la capital por encima de Bronce, toma `smoke_caidapolis` como **su tercera ciudad** (la 53, en (141, 185)): el tope
+por era de E37 visto en vivo por primera vez. El humo comprueba que llega `CITY_TAKEN`; que lleve `taken` lo cubren los
+tests de simulación, integración y contrato.
+
+- **Sin comprobar en el navegador:** los dos textos nuevos en el registro y en el aviso.
 
