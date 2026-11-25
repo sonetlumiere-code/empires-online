@@ -3392,3 +3392,18 @@ registro de quien recibe no cuenta la caravana»: la caravana había llegado, pe
 - **Sin comprobar en vivo:** una oferta o un trato desde la segunda ciudad (lo cubren los tests de simulación y el
   e2e); el HUD con la segunda ciudad en el panel, en el navegador.
 
+## E39 — Los avisos de la ciudad tomada
+
+**Estado: EN CURSO (2026-11-25)**, en la rama `claude/slice-avisos-toma`. Contrato:
+[SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md), propuesta y aceptada el 2026-11-25 con sus cuatro decisiones
+(producto delegó en la recomendación del agente, sesión desatendida). Sin ADR ni migración. Es el slice que el agente
+recomendó en T6 de la sesión desatendida: lo que E36 dejó en su §9.1.
+
+**Objetivo.** Que el registro y los avisos digan que una ciudad se tomó, a los dos lados.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; precisión de [city-taken.md](../specs/city-taken.md) §9.1.
+2. **PENDIENTE** — `taken` en el dominio del registro, la base, la simulación, Go y Zod, con sus tests.
+3. **PENDIENTE** — Los textos del cliente; docs; `verify:full`; prueba en vivo.
+

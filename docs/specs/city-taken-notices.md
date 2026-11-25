@@ -7,7 +7,7 @@ saber que X la tiene ahora. Es lo que [city-taken.md](city-taken.md) §9.1 dejó
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CITY-TAKEN-NOTICES` |
-| Estado | Draft (2026-11-25). Las preguntas de §10 esperan la decisión de producto. |
+| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las cuatro preguntas de §10, con su recomendación. |
 | Milestone | E39 Los avisos de la ciudad tomada (trigésimo noveno slice después de M7) |
 | Canon | §13 (protocolo), §14 (registro) |
 | Depende de | [city-taken.md](city-taken.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |
@@ -85,11 +85,13 @@ No asigna invariantes.
 | Contract | `taken` en Zod y en Go. |
 | Cliente (Vitest) | Los dos textos nuevos y los de siempre. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-25)
 
-Cada fila deja la recomendación del agente (en negrita) y las alternativas descartadas.
+Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): cada fila deja la decisión (la
+recomendación, en negrita) y las alternativas descartadas. Son decisiones de producto, no de ingeniería: cambiarlas es
+cambiar la spec, y la persona usuaria puede revisarlas al volver.
 
-| # | Pregunta | Recomendación | Descartadas |
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿Un tipo nuevo o un campo? | **Un campo `taken` en los tipos de siempre**: la caída es la misma; cambia el desenlace. | **`CITY_CAPTURED` y `CITY_SEIZED`** (dos valores nuevos de un enum estricto, y dos textos más en cada sitio). |
 | Q2 | ¿Booleano o la ciudad tomada? | **Booleano**: el texto no necesita el id; la tomada ya está en el mapa. | **`takenCityId`** (un id que el cliente no usa en el texto). |
