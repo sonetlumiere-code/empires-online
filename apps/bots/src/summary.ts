@@ -52,11 +52,33 @@ export interface BotSummary {
   readonly wallsBreached: number;
   /** Cada caída de su ciudad, con lo que tardó en recuperarse. */
   readonly falls: readonly FallRecovery[];
+  // ── La fundación (SPEC-BOTS-FOUND §4.7) ──
+  readonly foundsStarted: number;
+  /** Fundaciones que terminaron mal, por causa. */
+  readonly foundFailures: Readonly<Record<string, number>>;
+  /** Cada segunda ciudad fundada, con lo que tardó en crecer. */
+  readonly colonies: readonly ColonyGrowth[];
+}
+
+export interface ColonyGrowth {
+  readonly cityId: number | null;
+  /** Ms desde el `start` del bot hasta fundarla, y desde que llegó a Bronce (o desde el arranque si ya estaba). */
+  readonly foundedMs: number;
+  readonly fromBronzeMs: number;
+  /** Ms desde la fundación hasta su población objetivo y hasta su primera casa (`null`: no llegó). */
+  readonly grownMs: number | null;
+  readonly firstHouseMs: number | null;
+  /** Su población en la última línea `colony`, y si cayó. */
+  readonly finalPopulation: number | null;
+  readonly fell: boolean;
 }
 
 export interface FallRecovery {
   readonly by: string | null;
   readonly era: string;
+  /** Quedaba otra en pie (SPEC-BOTS-FOUND §4.6) y si la caída era la capital. */
+  readonly kept: boolean;
+  readonly capital: boolean;
   /** Ms desde la caída hasta volver a tener muralla, la población de antes y la era siguiente (`null`: no llegó). */
   readonly wallMs: number | null;
   readonly populationMs: number | null;
@@ -156,6 +178,10 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
     let assaultsRepelled = 0;
     let wallsBreached = 0;
     const falls: ({ -readonly [K in keyof FallRecovery]: FallRecovery[K] } & { t: number; population: number })[] = [];
+    let foundsStarted = 0;
+    const foundFailures: Record<string, number> = {};
+    const colonies: ({ -readonly [K in keyof ColonyGrowth]: ColonyGrowth[K] } & { t: number })[] = [];
+    const colonyOf = (id: unknown) => colonies.find((c) => c.cityId === id && !c.fell);
     const close = (c: NonNullable<typeof current>): RaidBalance => {
       const { startT: _t, ...rest } = c;
       return rest;
@@ -276,11 +302,46 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
         case 'wall':
           if (l.status === 'breached') wallsBreached++;
           break;
+        case 'found':
+          if (l.status === 'started') foundsStarted++;
+          if (l.status === 'no_site') inc(foundFailures, 'no_site');
+          if (l.status === 'failed') inc(foundFailures, String(l.cause));
+          if (l.status === 'founded') {
+            const bronze = eras.BRONZE_AGE ?? 0;
+            colonies.push({
+              t: l.t,
+              cityId: typeof l.cityId === 'number' ? l.cityId : null,
+              foundedMs: l.t - start.t,
+              fromBronzeMs: l.t - start.t - bronze,
+              grownMs: null,
+              firstHouseMs: null,
+              finalPopulation: null,
+              fell: false,
+            });
+          }
+          break;
+        case 'colony': {
+          const c = colonyOf(l.cityId);
+          if (!c) break;
+          if (typeof l.population === 'number') {
+            c.finalPopulation = l.population;
+            const target = typeof l.target === 'number' ? l.target : 8;
+            if (c.grownMs === null && l.population >= target) c.grownMs = l.t - c.t;
+          }
+          if (c.firstHouseMs === null && typeof l.houses === 'number' && l.houses > 0) c.firstHouseMs = l.t - c.t;
+          break;
+        }
         case 'fell':
+          if (l.kept === true && l.capital === false) {
+            const c = colonyOf(l.cityId);
+            if (c) c.fell = true;
+          }
           falls.push({
             t: l.t,
             by: typeof l.by === 'string' ? l.by : null,
             era: String(l.era),
+            kept: l.kept === true,
+            capital: l.capital !== false,
             population: typeof l.population === 'number' ? l.population : 0,
             wallMs: null,
             populationMs: null,
@@ -354,6 +415,9 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
       assaultsRepelled,
       wallsBreached,
       falls: falls.map(({ t: _t, population: _p, ...f }) => f),
+      foundsStarted,
+      foundFailures,
+      colonies: colonies.map(({ t: _t, ...c }) => c),
     });
   }
   return out;
@@ -412,8 +476,18 @@ export function formatSummary(rows: readonly BotSummary[]): string {
     }
     const ms = (v: number | null) => (v === null ? 'no' : formatDuration(v));
     for (const f of r.falls) {
+      const which = f.kept ? (f.capital ? ' (la capital, con otra en pie)' : ' (la segunda ciudad)') : '';
       out.push(
-        `  cayó ante ${f.by ?? '—'} en ${f.era}: muralla ${ms(f.wallMs)} · población de antes ${ms(f.populationMs)} · era siguiente ${ms(f.nextEraMs)}`,
+        `  cayó${which} ante ${f.by ?? '—'} en ${f.era}: muralla ${ms(f.wallMs)} · población de antes ${ms(f.populationMs)} · era siguiente ${ms(f.nextEraMs)}`,
+      );
+    }
+    if (r.foundsStarted > 0 || r.foundFailures.no_site) {
+      out.push(`  fundaciones: empezadas ${r.foundsStarted} · logradas ${r.colonies.length} · fallidas: ${list(r.foundFailures)}`);
+    }
+    for (const c of r.colonies) {
+      out.push(
+        `  segunda ciudad ${c.cityId ?? '—'}: fundada a los ${formatDuration(c.foundedMs)} (${formatDuration(c.fromBronzeMs)} desde Bronce) · ` +
+          `crecida ${ms(c.grownMs)} · primera casa ${ms(c.firstHouseMs)} · población final ${c.finalPopulation ?? '—'}${c.fell ? ' · cayó' : ''}`,
       );
     }
     out.push(`  comandos ${r.commands} · rechazados: ${list(r.rejected)}`);
@@ -439,6 +513,11 @@ export function formatSummary(rows: readonly BotSummary[]): string {
         `bienes ajenos ${sum((r) => r.goodsByTrade + r.goodsByMarket)} · comisión ${sum((r) => r.commission)} · ` +
         `rechazos ${sum((r) => Object.values(r.rejected).reduce((a, b) => a + b, 0))}`,
     );
+    const founded = rs.flatMap((r) => r.colonies);
+    if (rs.some((r) => r.foundsStarted > 0 || r.foundFailures.no_site)) {
+      const avg = founded.length > 0 ? formatDuration(founded.reduce((a, c) => a + c.foundedMs, 0) / founded.length) : '—';
+      out.push(`  ${p}: fundaciones ${founded.length} (media hasta fundar ${avg}) · segundas crecidas ${founded.filter((c) => c.grownMs !== null).length}`);
+    }
   }
   // Las caídas por hora de ejecución, la medida de SPEC-BOTS-ASSAULT Q9.
   const falls = rows.reduce((a, r) => a + r.falls.length, 0);

@@ -269,6 +269,8 @@ recogen al implementar.
   antes si queda otra en pie y, si al confirmar ya no lo está (cayó en el mismo instante), refunda como en E31. Si la
   que cae es la capital, la que queda suma el bono de territorio (los conquistados que no contienen ninguna ciudad en
   pie del jugador).
+- **Precisión (2026-11-25): los bots fundan.** La Q10 la reemplaza [bots-found.md](bots-found.md) (E35): el constructor
+  funda su segunda ciudad y la juega; el saqueador sigue sin fundar.
 - **Precisión (2026-11-24): la validación de carga** registra `invariant_violation` con `inv_id=INV-CITY-022` y no
   arranca si un jugador tiene más de dos ciudades en pie, y sólo da el bono de territorio a la capital.
 

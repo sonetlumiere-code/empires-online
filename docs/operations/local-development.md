@@ -549,6 +549,11 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   `wall`, y el resumen, las caídas por hora y la recuperación del vencido. Entre una ejecución y la siguiente: un
   asalto plantado sigue en el servidor y puede tumbar la ciudad al empezar la siguiente, y los militares que una
   partida cortada deja fuera de la vista de casa no los recupera el proceso nuevo, que no sabe que existen (spec §9.1).
+- Desde E35 ([SPEC-BOTS-FOUND](../specs/bots-found.md)) el constructor, en Bronce y con 800 de madera y 400 de
+  piedra, lleva un aldeano a un sitio libre a 28-56 tiles de su capital y funda su segunda ciudad, que juega con
+  aldeanos, casas y madera desde una conexión propia. El registro apunta `found` y, cada minuto, `colony`; el resumen,
+  cuándo fundó, cuánto tardó la segunda en llegar a 8 de población y su primera casa, y las caídas de una de dos
+  (`fell` con `kept`). Sembrar las cuentas en Piedra basta: `StockFor` deja lo de fundar de sobra.
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
   Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos, comercio (tratados, tratos,
   bienes ajenos por trato y por mercado, comisión, caravanas perdidas) y rechazos por código.

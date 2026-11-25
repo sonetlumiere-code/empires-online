@@ -3236,3 +3236,56 @@ sembradas con `EO_DEVSEED_STOCK_FOR`.
 - **Sin comprobar en el navegador:** «Fundar ciudad», «H» que alterna y el panel de la ciudad elegida: el panel del
   navegador integrado estaba oculto y, sin él, el mapa no se dibuja. Los cubren los tests de `multiCity.test.ts` y
   `selectors.test.ts`.
+
+## E35 — Bots que fundan
+
+**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-bots-fundan`, con `verify:full` en verde; sin
+empujar (la spec pasa a `Implemented` con la CI). Contrato:
+[SPEC-BOTS-FOUND](../specs/bots-found.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó en
+la recomendación del agente, sesión desatendida). Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
+
+**Objetivo.** Medir la fundación de E34 con bots: cuándo funda un jugador, cuánto tarda la segunda ciudad en crecer y
+qué pasa si cae una de las dos.
+
+**Alcance.** En `apps/bots`: el constructor elige un sitio, lleva un aldeano y funda en cuanto su capital está en
+Bronce con 800/400, con lo que cuesta apartado; la segunda ciudad juega con su memoria y el perfil de colonia
+(aldeanos, casas, madera) y una conexión propia; la caída de una de dos (`RN-BOT-018` a `RN-BOT-021`). Sucesos
+`found` y `colony` y `fell` con `kept`, y su resumen. **No entra** (spec §2): el servidor, el protocolo, el cliente
+web, que el saqueador funde, que la segunda avance o comercie, que sea blanco de otros bots.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-BOT-018` a `RN-BOT-021`, con precisiones de
+   `RN-BOT-003` en [bots.md](../specs/bots.md) y de la Q10 en [multi-city.md](../specs/multi-city.md). Sin invariantes.
+2. **HECHO** — Bots: el sitio, la fundación y la segunda ciudad con su perfil de colonia, con sus tests
+   (`apps/bots/src/found.test.ts`).
+3. **HECHO** — Bots: la conexión colonia, la casa de vuelta en la capital y la caída de una de dos, con sus tests
+   (`bot.test.ts`).
+4. **HECHO** — Registro y resumen (`found`, `colony`, `fell` con `kept`; `log.test.ts`); docs
+   (`docs/architecture/frontend.md`, `docs/operations/local-development.md`, spec §9.1).
+5. **HECHO** — Prueba en vivo (spec Q9), abajo.
+
+### Prueba en vivo (2026-11-25)
+
+Servidor y web de desarrollo en esta Mac, con `EO_CITY_ASSAULT_SECONDS=120` y `EO_CITY_FALL_IMMUNITY_HOURS=0`, y
+`pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 --sufijo e35`. Cuentas nuevas `_e35`,
+dadas de alta con una pasada de 1 min y sembradas en Piedra con `EO_DEVSEED_STOCK_FOR` (3 300 de madera y 2 200 de
+piedra). Registros en `bots/runs/` (sin versionar).
+
+- **Pasada 1** (`--semilla 35`, 12 min, cortada para el arreglo): los tres constructores llegan a Bronce a los
+  3 min 40 s–3 min 52 s. `_3_e35` sale a fundar en el mismo despertar a (112, 192), a 47 tiles, y **funda la ciudad 48
+  a los 62 s**; la segunda llega a 8 de población 2 min 7 s después. `_1_e35` y `_2_e35` **no encuentran sitio** a 56
+  tiles o menos y pasan a Hierro sin fundar (spec §9.1: el anillo pasa a 96).
+- **Pasada 2** (`--semilla 36`, 35 min, con el anillo de 96; las cuentas siguen desde la pasada 1, ya en Hierro):
+  `_2_e35` funda la 49 en (3, 316), a 60 tiles, en 60 s (8 de población en 2 min 59 s). `_1_e35` no funda: gastó la
+  piedra en Hierro y no vuelve a juntar 400 (la medida de Q2). `_3_e35` arranca con dos ciudades y juega las dos.
+  El saqueador, en Castillos a los 6 min 52 s, tumba con arietes **tres capitales con la otra ciudad en pie**: la de
+  `_2_e35` (minuto 4,1 de su partida), la de `_3_e35` (12 min 37 s) y, después, la 49 de `_2_e35`. En cada una el
+  vencido sigue desde la otra, que pasa a capital sin refundar (`fell` con `kept`), y pone al día el directorio. Tras
+  perder la primera capital, `_2_e35` **vuelve a fundar** (Q8): la 50 en (41, 353), a 38 tiles, en 14 s, a los 32 min.
+  **3 caídas en 35 min (5,14 por hora)**; ningún rechazo de `unit.found_city`.
+- **Hallazgos para otra spec:** la segunda ciudad no levanta casas en Bronce (límite 50, spec §9.1); un constructor en
+  Hierro rara vez vuelve a tener 400 de piedra para fundar (la investigación y la muralla se la llevan); con la
+  inmunidad a 0, el saqueador encadena caídas de capitales recién heredadas.
+- **Sin comprobar en el navegador:** ver una segunda ciudad de un bot en el mapa; el panel del navegador integrado no se
+  usó en esta sesión desatendida.

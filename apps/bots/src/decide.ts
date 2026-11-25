@@ -8,7 +8,7 @@
  * el bot sólo elige qué intención enviar, con los mismos motivos con que el HUD
  * deshabilita un botón (RN-BOT-002).
  */
-import type { BuildingView, CityView, ForestView, UnitView } from '../../web/src/state/world';
+import type { BuildingView, CityView, ForestView, TerritoryView, UnitView } from '../../web/src/state/world';
 import type { TreatyView } from '../../web/src/state/diplomacy';
 import type { TradeOfferView } from '../../web/src/state/trade';
 import type { MarketState } from '../../web/src/state/market';
@@ -35,6 +35,7 @@ import { foreignGoods, goodOf } from '../../web/src/state/civilizations';
 import { technologiesFor, researchBlockReason } from '../../web/src/state/technologies';
 import { civilizationUnit, unitAttacks, unitInfoOf } from '../../web/src/state/units';
 import { assaultBlockReason, walled } from '../../web/src/state/cityFall';
+import { FOUND_COST, MAX_OWN_CITIES } from '../../web/src/state/multiCity';
 import {
   HOME_RADIUS,
   HOUSE_WOOD,
@@ -104,6 +105,14 @@ export interface View {
   readonly tradeOffers: readonly TradeOfferView[];
   /** Sus ofertas abiertas del mercado y el último tablón pedido. */
   readonly market: MarketState;
+  /**
+   * Cuántas ciudades propias en pie conoce el bot y los centros de las demás
+   * (SPEC-BOTS-FOUND §4.5). Sin ellos, una.
+   */
+  readonly ownCityCount?: number;
+  readonly otherOwnCenters?: readonly Tile[];
+  /** Los territorios a la vista: el sitio de una fundación va en uno libre (§4.2). */
+  readonly territories?: readonly TerritoryView[];
 }
 
 type ResourceLine = { readonly resource: string; readonly amount: number };
@@ -120,6 +129,7 @@ export type Command =
   | { readonly key: string; readonly type: 'unit.pillage'; readonly unitId: number; readonly cityId: number }
   | { readonly key: string; readonly type: 'unit.demolish'; readonly unitId: number; readonly buildingId: number }
   | { readonly key: string; readonly type: 'unit.assault'; readonly unitId: number; readonly cityId: number }
+  | { readonly key: string; readonly type: 'unit.found_city'; readonly unitId: number }
   | {
       readonly key: string;
       readonly type: 'city.build';
@@ -317,6 +327,40 @@ export interface Memory {
    * blanco por ciudad no basta cuando la inmunidad está a 0.
    */
   readonly victimCooldowns: Readonly<Record<string, number>>;
+  /** La fundación en curso (SPEC-BOTS-FOUND §4.3), o `null`. */
+  readonly founding: Founding | null;
+  /** Cómo terminó la última fundación (para el registro). */
+  readonly foundResult: FoundResult | null;
+  /** Sitio (`x,y`) → hasta cuándo no se elige (RN-BOT-021). */
+  readonly foundSiteCooldowns: Readonly<Record<string, number>>;
+  /** Sin sitio a la vista: no se vuelve a buscar antes de esto. */
+  readonly foundSearchAtMs: number;
+}
+
+/** Una fundación en curso (SPEC-BOTS-FOUND §4.3). */
+export interface Founding {
+  readonly site: Tile;
+  readonly unitId: number;
+  /** Distancia del sitio a la capital (para el registro). */
+  readonly distance: number;
+  readonly startedAtMs: number;
+  /** Tramos rechazados o sin avance. */
+  readonly tries: number;
+  /** Dónde estaba el aldeano al recibir la última orden de caminar. */
+  readonly lastPos: Tile | null;
+  /** Cuándo se envió `unit.found_city`; `null` mientras camina. */
+  readonly orderedAtMs: number | null;
+}
+
+/** Por qué termina mal una fundación (§4.7). */
+export type FoundFailure = 'rejected' | 'unit_died' | 'stuck' | 'timeout' | 'city_fell';
+
+export interface FoundResult {
+  readonly status: 'founded' | 'failed';
+  readonly cause: FoundFailure | null;
+  readonly code: string | null;
+  readonly site: Tile;
+  readonly ms: number;
 }
 
 export const EMPTY_MEMORY: Memory = {
@@ -336,6 +380,10 @@ export const EMPTY_MEMORY: Memory = {
   unreachablePlayers: [],
   unreachableOffers: [],
   victimCooldowns: {},
+  founding: null,
+  foundResult: null,
+  foundSiteCooldowns: {},
+  foundSearchAtMs: 0,
 };
 
 export interface Decision {
@@ -471,6 +519,13 @@ class Plan {
     return Object.entries(cost).every(([r, n]) => (s[r] ?? 0) >= n);
   }
 
+  /** Aparta lo que cuesta algo sin mandar ninguna orden (RN-BOT-019). */
+  reserve(cost: Stocks): void {
+    const stocks = { ...(this.city.stocks as unknown as Stocks) };
+    for (const [r, n] of Object.entries(cost)) stocks[r] = (stocks[r] ?? 0) - n;
+    this.city = { ...this.city, stocks: stocks as unknown as CityView['stocks'] };
+  }
+
   add(cmd: Command, cost: Stocks = {}, cityPatch: Partial<CityView> = {}): void {
     if (this.full || !this.free(cmd.key)) return;
     const stocks = { ...(this.city.stocks as unknown as Stocks) };
@@ -534,8 +589,10 @@ function militaryCount(view: View): number {
 
 /** Regla 1: los aldeanos parados, a recolectar. */
 function gatherRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowMs: number): Memory {
+  // El aldeano que va a fundar no recolecta (RN-BOT-019).
+  const founder = memory.founding?.unitId;
   const idle = ownUnits(view).filter(
-    (u) => u.unitType === 'VILLAGER' && u.status === 'IDLE' && u.garrisonCityId === null,
+    (u) => u.unitType === 'VILLAGER' && u.status === 'IDLE' && u.garrisonCityId === null && u.id !== founder,
   );
   if (idle.length === 0) return memory;
 
@@ -1312,6 +1369,180 @@ function assaultStrike(
 }
 
 // ─────────────────────────────────────────────────────────────
+// La fundación (SPEC-BOTS-FOUND)
+// ─────────────────────────────────────────────────────────────
+
+/** Separación mínima entre centros (`RN-CITY-001`, `founding.minCityDistance`). */
+const MIN_CITY_DISTANCE = 24;
+/** El entorno despejado del centro (`founding.clearRadius`). */
+const CLEAR_RADIUS = 3;
+/** El bosque al alcance del centro (`RN-CITY-023`): tiles y radio. */
+const FOREST_RADIUS = 8;
+const FOREST_TILES = 10;
+/** Tramos de la caminata rechazados o sin avance con que la fundación termina (§4.3). */
+const FOUND_MAX_TRIES = 9;
+/** Sin respuesta a `unit.found_city` en este plazo, la fundación termina (§4.3). */
+const FOUND_ORDER_TIMEOUT_MS = 60_000;
+/** Sin sitio a la vista, no se vuelve a buscar antes de esto. */
+const FOUND_SEARCH_WAIT_MS = 5 * 60_000;
+
+/** Los centros de ciudad que el bot conoce: la suya, las otras propias, las de la vista y las del directorio. */
+function knownCenters(view: View): Tile[] {
+  const out: Tile[] = [center(view), ...(view.otherOwnCenters ?? [])];
+  for (const c of view.foreignCities) out.push({ x: c.centerX, y: c.centerY });
+  for (const b of view.botCities) out.push({ x: b.centerX, y: b.centerY });
+  return out;
+}
+
+/**
+ * Si un tile pasa, con lo que el espejo conoce, las reglas del sitio de una
+ * fundación (SPEC-BOTS-FOUND §4.2, `founding.CheckSite` y `foundSiteBlocked` del
+ * Game Server): el 7 × 7 conocido y transitable, a 24 o más de todo centro conocido,
+ * 10 tiles de bosque no agotado a 8 o menos fuera del 3 × 3, y un territorio libre
+ * sin reclamación. Lo que no ve lo dice el servidor.
+ */
+export function foundSiteOk(view: View, t: Tile, centers: readonly Tile[] = knownCenters(view)): boolean {
+  if (centers.some((c) => chebyshev(c, t) < MIN_CITY_DISTANCE)) return false;
+  const territory = (view.territories ?? []).find((tt) => t.x >= tt.minX && t.x <= tt.maxX && t.y >= tt.minY && t.y <= tt.maxY);
+  if (territory && (territory.ownerType !== 'NONE' || territory.claim !== undefined)) return false;
+  for (let dy = -CLEAR_RADIUS; dy <= CLEAR_RADIUS; dy++) {
+    for (let dx = -CLEAR_RADIUS; dx <= CLEAR_RADIUS; dx++) {
+      const terrain = view.terrainAt(t.x + dx, t.y + dy);
+      if (terrain === undefined || UNWALKABLE.has(terrain)) return false;
+    }
+  }
+  let forest = 0;
+  for (let dy = -FOREST_RADIUS; dy <= FOREST_RADIUS; dy++) {
+    for (let dx = -FOREST_RADIUS; dx <= FOREST_RADIUS; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) <= 1) continue;
+      const x = t.x + dx;
+      const y = t.y + dy;
+      if (view.terrainAt(x, y) !== TERRAIN_FOREST || view.forests.get(`${x},${y}`)?.remaining === 0) continue;
+      if (++forest >= FOREST_TILES) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * El sitio de una fundación (SPEC-BOTS-FOUND §4.2, Q3): el más cercano a la capital
+ * en el anillo de `foundMinDistance` a `foundMaxDistance` que pase `foundSiteOk` y
+ * no esté apartado; a igual distancia, el de `y` menor y luego el de `x` menor.
+ */
+export function chooseFoundSite(view: View, profile: Profile, memory: Memory, nowMs: number): Tile | null {
+  const home = center(view);
+  const centers = knownCenters(view);
+  for (let d = profile.foundMinDistance; d <= profile.foundMaxDistance; d++) {
+    for (let y = home.y - d; y <= home.y + d; y++) {
+      const edge = y === home.y - d || y === home.y + d;
+      for (let x = home.x - d; x <= home.x + d; x += edge ? 1 : 2 * d) {
+        const t = { x, y };
+        if ((memory.foundSiteCooldowns[tileKey(t)] ?? 0) > nowMs) continue;
+        if (foundSiteOk(view, t, centers)) return t;
+      }
+    }
+  }
+  return null;
+}
+
+/** Termina la fundación en curso, con su resultado; un fallo aparta el sitio (RN-BOT-021). */
+export function endFounding(
+  memory: Memory,
+  status: FoundResult['status'],
+  cause: FoundFailure | null,
+  nowMs: number,
+  profile: Profile,
+  code: string | null = null,
+): Memory {
+  const f = memory.founding;
+  if (f === null) return memory;
+  const foundResult: FoundResult = { status, cause, code, site: f.site, ms: nowMs - f.startedAtMs };
+  const foundSiteCooldowns =
+    status === 'failed'
+      ? { ...memory.foundSiteCooldowns, [tileKey(f.site)]: nowMs + profile.foundSiteCooldownMs }
+      : memory.foundSiteCooldowns;
+  return { ...memory, founding: null, foundResult, foundSiteCooldowns };
+}
+
+/** El aldeano de la capital que va a fundar: parado antes que ocupado, sin carga antes que con ella, el más cercano. */
+function chooseFounder(view: View, site: Tile): UnitView | null {
+  const candidates = ownUnits(view).filter(
+    (u) => u.unitType === 'VILLAGER' && u.garrisonCityId === null && (u.status === 'IDLE' || u.status === 'MOVING' || u.status === 'WORKING'),
+  );
+  candidates.sort(
+    (a, b) =>
+      (a.status === 'IDLE' ? 0 : 1) - (b.status === 'IDLE' ? 0 : 1) ||
+      a.carrying - b.carrying ||
+      chebyshev(a, site) - chebyshev(b, site) ||
+      a.id - b.id,
+  );
+  return candidates[0] ?? null;
+}
+
+/**
+ * La fundación (SPEC-BOTS-FOUND §4.1, §4.3; RN-BOT-018, RN-BOT-019): con una sola
+ * ciudad en Bronce o después y lo que cuesta en el almacén, elige sitio y aldeano;
+ * aparta lo que cuesta en cada despertar mientras dura; el aldeano camina por tramos
+ * y, parado en el sitio (o a su lado en un tile que también pasa), funda. Termina bien
+ * al ver dos ciudades propias, y mal por el plazo, los tramos o la muerte del aldeano.
+ */
+function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowMs: number): Memory {
+  if (!profile.founds) return memory;
+  const count = view.ownCityCount ?? 1;
+  let mem = memory;
+  let f = mem.founding;
+
+  if (f !== null && count >= MAX_OWN_CITIES) return endFounding(mem, 'founded', null, nowMs, profile);
+  if (f === null) {
+    if (count >= MAX_OWN_CITIES || plan.full || nowMs < mem.foundSearchAtMs) return mem;
+    if (!eraAtLeast(view.city.era, 'BRONZE_AGE') || !plan.affords({ ...FOUND_COST })) return mem;
+    if (view.city.advance !== null && view.city.advance !== undefined) return mem;
+    const site = chooseFoundSite(view, profile, mem, nowMs);
+    if (!site) return { ...mem, foundSearchAtMs: nowMs + FOUND_SEARCH_WAIT_MS };
+    const u = chooseFounder(view, site);
+    if (!u) return mem;
+    f = { site, unitId: u.id, distance: chebyshev(center(view), site), startedAtMs: nowMs, tries: 0, lastPos: null, orderedAtMs: null };
+    mem = { ...mem, founding: f };
+  }
+
+  // RN-BOT-019: lo que cuesta fundar no lo gasta ninguna otra regla.
+  plan.reserve({ ...FOUND_COST });
+  if (nowMs - f.startedAtMs > profile.foundWalkTimeoutMs) return endFounding(mem, 'failed', 'timeout', nowMs, profile);
+  const u = view.units.find((x) => x.id === f?.unitId);
+  if (u?.status === 'DEAD') return endFounding(mem, 'failed', 'unit_died', nowMs, profile);
+  if (f.orderedAtMs !== null) {
+    // La orden de fundar va en vuelo: el snapshot de la ciudad nueva o el rechazo.
+    return nowMs - f.orderedAtMs > FOUND_ORDER_TIMEOUT_MS ? endFounding(mem, 'failed', 'timeout', nowMs, profile) : mem;
+  }
+  // Fuera de la vista o caminando: se espera.
+  if (!u || plan.full || (f.lastPos !== null && u.status !== 'IDLE')) return mem;
+
+  const here = { x: u.x, y: u.y };
+  const arrived = u.status === 'IDLE' && (chebyshev(here, f.site) === 0 || (chebyshev(here, f.site) <= 2 && foundSiteOk(view, here)));
+  if (arrived) {
+    const key = `found:city:${u.id}`;
+    if (!plan.free(key)) return mem;
+    plan.add({ key, type: 'unit.found_city', unitId: u.id });
+    return { ...mem, founding: { ...f, orderedAtMs: nowMs } };
+  }
+  // Parado donde se le dio la última orden: el tramo no lo movió (ya estaba allí o no hay ruta).
+  let tries = f.tries;
+  if (f.lastPos !== null && u.status === 'IDLE' && f.lastPos.x === here.x && f.lastPos.y === here.y) tries++;
+  if (tries >= FOUND_MAX_TRIES) return endFounding({ ...mem, founding: { ...f, tries } }, 'failed', 'stuck', nowMs, profile);
+  const target = marchStep(here, f.site, tries);
+  const key = `found:move:${u.id}:${target.x},${target.y}`;
+  if (!plan.free(key)) return { ...mem, founding: { ...f, tries } };
+  plan.add({ key, type: 'unit.move', unitId: u.id, target });
+  return { ...mem, founding: { ...f, tries, lastPos: here } };
+}
+
+/** El aldeano de la fundación murió (`entity.update` o `entity.despawn` con `DEAD`). */
+export function onFounderLost(memory: Memory, unitId: number, nowMs: number, profile: Profile): Memory {
+  if (memory.founding?.unitId !== unitId) return memory;
+  return endFounding(memory, 'failed', 'unit_died', nowMs, profile);
+}
+
+// ─────────────────────────────────────────────────────────────
 // La función
 // ─────────────────────────────────────────────────────────────
 
@@ -1337,6 +1568,8 @@ export function decide(
 
   // La partida en curso va primero: sus órdenes tienen plazo (el saqueo acaba solo).
   if (profile.raids && mem.raid !== null) mem = raidRule(view, profile, mem, plan, nowMs, opts.contraHumanos, rng);
+  // La fundación, antes que el avance y la muralla: en Bronce funda primero (SPEC-BOTS-FOUND Q2).
+  mem = foundRule(view, profile, mem, plan, nowMs);
   mem = gatherRule(view, profile, mem, plan, nowMs);
   houseRule(view, profile, plan);
   villagerRule(view, profile, plan);
@@ -1395,6 +1628,23 @@ export function onRejected(
     if (command.resource === 'STONE' && (code === 'PATH_TOO_LONG' || code === 'PATH_NOT_FOUND')) {
       mem = { ...mem, stoneBlockedUntilMs: nowMs + profile.targetCooldownMs };
     }
+  }
+
+  if (command.type === 'unit.found_city') {
+    // UNIT_NOT_MOVABLE: el aldeano no estaba parado; vuelve a intentarlo sin apartar el sitio (§5).
+    if (code === 'UNIT_NOT_MOVABLE' || code === 'CITY_BUSY') {
+      return mem.founding ? { ...mem, founding: { ...mem.founding, orderedAtMs: null } } : mem;
+    }
+    return endFounding(mem, 'failed', code === 'UNIT_DEAD' || code === 'UNIT_NOT_FOUND' ? 'unit_died' : 'rejected', nowMs, profile, code);
+  }
+  if (command.type === 'unit.move' && command.key.startsWith('found:move:')) {
+    // El tramo no se pisa o no tiene ruta: el siguiente se desplaza en espiral (§4.3).
+    const { [command.key]: _drop, ...cooldowns } = mem.cooldowns;
+    const f = mem.founding;
+    if (f === null || f.unitId !== command.unitId) return { ...mem, cooldowns };
+    const tries = f.tries + 1;
+    const next = { ...mem, cooldowns, founding: { ...f, tries, lastPos: null } };
+    return tries >= FOUND_MAX_TRIES ? endFounding(next, 'failed', 'stuck', nowMs, profile, code) : next;
   }
 
   if (command.type === 'treaty.propose') {

@@ -216,7 +216,9 @@ Lo que no se pueda ver en el navegador se anota en milestones como «Sin comprob
 saqueador sin pacto y la partida que se reúne). **Precisión (2026-11-22):** y con `RN-BOT-013` ([trade-reach.md](trade-reach.md),
 E30): la pareja o la oferta del mercado sin ruta se aparta hasta el final de la ejecución. **Precisión (2026-11-23):**
 y en [bots-assault.md](bots-assault.md) §4.8 con `RN-BOT-014` a `RN-BOT-017` (E32): el asalto bajo `RN-BOT-002`, una
-partida por bot, el estandarte que se replanta y el bot vencido que sigue jugando.
+partida por bot, el estandarte que se replanta y el bot vencido que sigue jugando. **Precisión (2026-11-25):** y en
+[bots-found.md](bots-found.md) §4.8 con `RN-BOT-018` a `RN-BOT-021` (E35): el constructor que funda su segunda ciudad y
+la juega; `RN-BOT-003` cuenta los dos comandos **por ciudad** y despertar.
 
 | ID | Regla |
 |---|---|

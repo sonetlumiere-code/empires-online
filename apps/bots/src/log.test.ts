@@ -190,12 +190,48 @@ describe('el resumen del asalto (SPEC-BOTS-ASSAULT §4.7, Q9)', () => {
       { target: 'bot_constructor_2polis', gathered: null, rallyWaitMs: null, lost: 0, killed: 0, wood: 0, kind: 'assault', ramsLost: 0, outcome: 'no_rams', msToFall: null },
     ]);
     expect(c).toMatchObject({ assaultsSuffered: 1, wallsBreached: 1 });
-    expect(c?.falls).toEqual([{ by: 'bot_saqueador_1polis', era: 'BRONZE_AGE', wallMs: 20 * M, populationMs: 30 * M, nextEraMs: null }]);
+    expect(c?.falls).toEqual([
+      { by: 'bot_saqueador_1polis', era: 'BRONZE_AGE', kept: false, capital: true, wallMs: 20 * M, populationMs: 30 * M, nextEraMs: null },
+    ]);
 
     const text = formatSummary([c, s].filter((r) => r !== undefined));
     expect(text).toContain('asalto contra bot_constructor_1polis: sin reunirse · perdidos 2 (arietes 1) · muertos 0 · cae en 32m00s');
     expect(text).toContain('asalto contra bot_constructor_2polis: sin reunirse · perdidos 0 (arietes 0) · muertos 0 · vuelve (no_rams)');
     expect(text).toContain('cayó ante bot_saqueador_1polis en BRONZE_AGE: muralla 20m00s · población de antes 30m00s · era siguiente no');
     expect(text).toContain('Caídas: 1 en 2h00m (0.50 por hora)');
+  });
+});
+
+describe('el resumen de la fundación (SPEC-BOTS-FOUND §4.7)', () => {
+  const M = 60_000;
+  const C = 'bot_constructor_1';
+  const jsonl = [
+    { t: 0, event: 'start', bot: C, profile: 'constructor', civilization: 'ROMAN', era: 'STONE_AGE' },
+    { t: 4 * M, event: 'era', bot: C, era: 'BRONZE_AGE' },
+    { t: 5 * M, event: 'found', bot: C, status: 'started', unitId: 3, site: { x: 128, y: 90 }, distance: 28 },
+    { t: 6 * M, event: 'found', bot: C, status: 'failed', cause: 'rejected', code: 'INVALID_TARGET', site: { x: 128, y: 90 }, ms: M },
+    { t: 7 * M, event: 'found', bot: C, status: 'started', unitId: 3, site: { x: 128, y: 91 }, distance: 28 },
+    { t: 9 * M, event: 'found', bot: C, status: 'founded', cityId: 30, center: { x: 128, y: 91 }, ms: 2 * M },
+    { t: 10 * M, event: 'colony', bot: C, cityId: 30, population: 3, populationLimit: 10, wood: 0, houses: 0, target: 8 },
+    { t: 15 * M, event: 'colony', bot: C, cityId: 30, population: 6, populationLimit: 15, wood: 10, houses: 1, target: 8 },
+    { t: 21 * M, event: 'colony', bot: C, cityId: 30, population: 8, populationLimit: 15, wood: 40, houses: 1, target: 8 },
+    { t: 30 * M, event: 'fell', bot: C, cityId: 30, newCityId: 10, by: 'bot_saqueador_1polis', era: 'BRONZE_AGE', population: 8, kept: true, capital: false },
+    { t: 40 * M, event: 'stop', bot: C, era: 'BRONZE_AGE', gathered: {} },
+  ]
+    .map((l) => JSON.stringify(l))
+    .join('\n');
+
+  it('cuenta las fundaciones, cuándo, cuánto tardó la segunda en crecer y su caída', () => {
+    const [c] = summarize(parseLog(jsonl));
+    expect(c).toMatchObject({ foundsStarted: 2, foundFailures: { rejected: 1 } });
+    expect(c?.colonies).toEqual([
+      { cityId: 30, foundedMs: 9 * M, fromBronzeMs: 5 * M, grownMs: 12 * M, firstHouseMs: 6 * M, finalPopulation: 8, fell: true },
+    ]);
+    expect(c?.falls[0]).toMatchObject({ kept: true, capital: false });
+    const text = formatSummary(c ? [c] : []);
+    expect(text).toContain('fundaciones: empezadas 2 · logradas 1 · fallidas: rejected 1');
+    expect(text).toContain('segunda ciudad 30: fundada a los 9m00s (5m00s desde Bronce) · crecida 12m00s · primera casa 6m00s · población final 8 · cayó');
+    expect(text).toContain('cayó (la segunda ciudad) ante bot_saqueador_1polis');
+    expect(text).toContain('constructor: fundaciones 1 (media hasta fundar 9m00s) · segundas crecidas 1');
   });
 });
