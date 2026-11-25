@@ -57,6 +57,20 @@ func (m *memoryCityFall) FallCity(_ context.Context, f cityfall.Fall) (*cityfall
 		res.Villagers = append(res.Villagers, &unit.Unit{ID: int64(800 + i), PlayerID: f.OwnerID, CityID: &id,
 			Type: unit.TypeVillager, X: sp.X, Y: sp.Y, HP: 40, MaxHP: 40, Status: unit.StatusIdle})
 	}
+	// SPEC-CITY-TAKEN: con hueco, el vencedor la toma (la 51, en el mismo centro).
+	if len(f.TakeSpawns) > 0 {
+		t := &city.City{
+			ID: 51, OwnerPlayerID: f.VictorID, Name: f.Name, CenterX: f.Center.X, CenterY: f.Center.Y, Era: f.Era,
+			Population: 3, PopulationLimit: 40, PresenceState: city.PresenceOnline, LastOnlineAt: &now,
+			FoundedAtMs: now.UnixMilli(), Slot: 2,
+		}
+		res.Taken = t
+		for i, sp := range f.TakeSpawns {
+			id := t.ID
+			res.TakenVillagers = append(res.TakenVillagers, &unit.Unit{ID: int64(850 + i), PlayerID: f.VictorID, CityID: &id,
+				Type: unit.TypeVillager, X: sp.X, Y: sp.Y, HP: 40, MaxHP: 40, Status: unit.StatusIdle})
+		}
+	}
 	return res, nil
 }
 
@@ -69,7 +83,8 @@ func sitioFijoDeRefundacion(_ context.Context, _, _ []world.Tile, _ int32, _ uin
 // Un guerrero propio asalta la ciudad ajena en brecha: el vencido recibe el
 // aviso del asalto, ve la ciudad con su asalto en city.update y, al caer,
 // city.fallen, CITY_LOST y un snapshot nuevo con su ciudad refundada; el
-// vencedor recibe city.fallen y CITY_TAKEN (RN-CITY-026, ADR-050 §5).
+// vencedor recibe city.fallen con la ciudad que tomó y CITY_TAKEN (RN-CITY-026,
+// ADR-050 §5, SPEC-CITY-TAKEN §6).
 func TestUnaCiudadCaePorLaRed(t *testing.T) {
 	env := newE2EDeLado(t, 256, nil, nil)
 	ajeno := uuid.New()
@@ -102,6 +117,8 @@ func TestUnaCiudadCaePorLaRed(t *testing.T) {
 	env.tick(25)
 	caida, _ := vencedor.awaitWhere(protocol.TypeCityFallen, func(json.RawMessage) bool { return true }, 3*time.Second)
 	assert.Equal(t, int64(2), decode[protocol.CityFallenPayload](t, caida.Payload).CityID)
+	// SPEC-CITY-TAKEN §6: el vencedor, con una sola ciudad, la toma; el campo viaja crudo.
+	assert.Contains(t, string(caida.Payload), `"takenCityId":51`)
 	_, _ = vencedor.awaitWhere(protocol.TypeEventLogNotice, esAviso("CITY_TAKEN"), 3*time.Second)
 
 	_, _ = vencido.awaitWhere(protocol.TypeCityFallen, func(json.RawMessage) bool { return true }, 3*time.Second)
@@ -123,4 +140,7 @@ func TestUnaCiudadCaePorLaRed(t *testing.T) {
 	assert.Equal(t, int64(50), nueva.ID)
 	_, sigue := env.state.City(2)
 	assert.False(t, sigue)
+	tomada, ok := env.state.City(51)
+	require.True(t, ok, "la tomada está en el mundo")
+	assert.Equal(t, env.playerID, tomada.OwnerPlayerID)
 }

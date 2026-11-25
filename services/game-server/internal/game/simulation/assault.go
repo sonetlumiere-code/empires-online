@@ -15,6 +15,7 @@ import (
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/market"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/movement"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/player"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/trade"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/unit"
 	"github.com/empires-online/empires-online/services/game-server/internal/game/founding"
@@ -645,6 +646,11 @@ func (s *Simulation) startFall(as *assaultState, now time.Time) {
 		// RN-CLANWAR-007: una ciudad caída puntúa en una guerra entre los dos.
 		War: s.state.warPoints(as.PlayerID, c.OwnerPlayerID, now.UnixMilli(), clan.PointsCity),
 	}
+	// SPEC-CITY-TAKEN RN-CITY-036: con hueco, el vencedor se la queda; la
+	// transacción lo vuelve a contar bajo el cerrojo de fundación.
+	if len(s.state.CitiesOf(as.PlayerID)) < city.MaxStandingPerOwner {
+		f.TakeSpawns = founding.SpawnsAround(s.state.World(), c.Center(), player.InitialVillagers)
+	}
 	as.falling = true
 	as.fall = f
 	s.submitFall(f, victor.Center())
@@ -790,8 +796,17 @@ func (s *Simulation) applyFall(as *assaultState, res *cityfall.FallResult, nowMs
 
 	// Arrasar en la RAM: sus edificios, su economía y su muralla en la capa de
 	// ocupación.
+	heredados := map[int64]bool{}
+	for _, id := range res.TakenBuildings {
+		heredados[id] = true
+	}
 	for _, id := range append([]int64(nil), s.state.buildingIDs...) {
 		if b, ok := s.state.buildings[id]; ok && b.CityID == fallen.ID {
+			if heredados[id] && res.Taken != nil {
+				// ADR-052 §2: pasa a la tomada con su vida y su tile.
+				b.CityID = res.Taken.ID
+				continue
+			}
 			s.state.removeBuilding(b)
 			delete(s.state.siege.destroying, b.Tile())
 		}
@@ -842,6 +857,9 @@ func (s *Simulation) applyFall(as *assaultState, res *cityfall.FallResult, nowMs
 	if res.Freed != nil {
 		s.applyTerritoryControl(*res.Freed)
 	}
+	if res.Taken != nil {
+		s.applyTaken(f, res)
+	}
 
 	// Los tratos pendientes caducaron y las ofertas del mercado se retiraron en
 	// la transacción: la RAM los cierra sin volver a escribirlos.
@@ -889,12 +907,15 @@ func (s *Simulation) applyFall(as *assaultState, res *cityfall.FallResult, nowMs
 
 	// city.fallen al área de la ciudad caída, y los avisos a los dos.
 	cx, cy := w.ChunkOf(fallen.CenterX, fallen.CenterY)
-	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeCityFallen, protocol.CityFallenPayload{
+	caida := protocol.CityFallenPayload{
 		CityID: fallen.ID, OwnerPlayerID: fallen.OwnerPlayerID.String(), ByPlayerID: f.VictorID.String(), AtMs: f.AtMs,
-	})
-	s.deps.Broadcaster.SendToPlayer(fallen.OwnerPlayerID, protocol.TypeCityFallen, "", protocol.CityFallenPayload{
-		CityID: fallen.ID, OwnerPlayerID: fallen.OwnerPlayerID.String(), ByPlayerID: f.VictorID.String(), AtMs: f.AtMs,
-	})
+	}
+	if res.Taken != nil {
+		id := res.Taken.ID
+		caida.TakenCityID = &id
+	}
+	s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeCityFallen, caida)
+	s.deps.Broadcaster.SendToPlayer(fallen.OwnerPlayerID, protocol.TypeCityFallen, "", caida)
 	s.sendNotices(eventlog.Event{
 		Type: eventlog.EventCityFell, PlayerID: fallen.OwnerPlayerID, Counterpart: f.VictorID, AtMs: f.AtMs,
 		X: fallen.CenterX, Y: fallen.CenterY, NewX: newCity.CenterX, NewY: newCity.CenterY, HasTile: true,
@@ -902,6 +923,10 @@ func (s *Simulation) applyFall(as *assaultState, res *cityfall.FallResult, nowMs
 	// ADR-050 §5: el vencido recibe su mundo nuevo sin reconectar.
 	if s.deps.Resnapshot != nil {
 		s.deps.Resnapshot(fallen.OwnerPlayerID)
+	}
+	// El vencedor ve su ciudad tomada en el acto, como el fundador (SPEC-CITY-TAKEN §6).
+	if res.Taken != nil && s.deps.ResnapshotAt != nil {
+		s.deps.ResnapshotAt(f.VictorID, res.Taken.Center())
 	}
 	s.deps.Log.Info("ciudad caída", "city_id", fallen.ID, "owner", fallen.OwnerPlayerID, "victor", f.VictorID,
 		"new_city_id", newCity.ID, "new_x", newCity.CenterX, "new_y", newCity.CenterY)
@@ -937,4 +962,32 @@ func (s *Simulation) flushAssaults() {
 			}
 		}
 	}
+}
+
+// applyTaken incorpora la ciudad tomada al mundo por el camino del alta, con lo
+// del jugador copiado de la capital del vencedor, y anuncia sus edificios
+// heredados con su ciudad nueva (SPEC-CITY-TAKEN §4.2, §6; ADR-052).
+func (s *Simulation) applyTaken(f cityfall.Fall, res *cityfall.FallResult) {
+	tomada := res.Taken
+	if capital, ok := s.state.CityOf(f.VictorID); ok {
+		tomada.Civilization, tomada.Faction = capital.Civilization, capital.Faction
+		tomada.FactionJoin, tomada.Clan = capital.FactionJoin, capital.Clan
+	}
+	s.handleIntroducePlayer(IntroducePlayer{
+		City: tomada, Units: res.TakenVillagers,
+		BlockedMinX: tomada.CenterX - 1, BlockedMinY: tomada.CenterY - 1,
+		BlockedMaxX: tomada.CenterX + 1, BlockedMaxY: tomada.CenterY + 1,
+		TerritoryControl: res.TakenClaimed,
+	})
+	for _, id := range res.TakenBuildings {
+		b, ok := s.state.buildings[id]
+		if !ok {
+			continue
+		}
+		cx, cy := s.state.World().ChunkOf(b.X, b.Y)
+		s.deps.Broadcaster.BroadcastChunk(cx, cy, protocol.TypeBuildingSpawn,
+			protocol.BuildingSpawnPayload{Building: s.state.buildingView(*b)})
+	}
+	s.deps.Log.Info("ciudad tomada", "city_id", tomada.ID, "owner", f.VictorID, "from_city_id", f.CityID,
+		"buildings", len(res.TakenBuildings))
 }

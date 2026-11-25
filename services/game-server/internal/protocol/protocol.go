@@ -1389,6 +1389,9 @@ type CityFallenPayload struct {
 	OwnerPlayerID string `json:"ownerPlayerId"`
 	ByPlayerID    string `json:"byPlayerId"`
 	AtMs          int64  `json:"atMs"`
+	// TakenCityID es la ciudad del vencedor que la tomó (SPEC-CITY-TAKEN §6);
+	// ausente si se arrasó.
+	TakenCityID *int64 `json:"takenCityId,omitempty"`
 }
 
 // BuildingSpawnPayload anuncia un edificio.

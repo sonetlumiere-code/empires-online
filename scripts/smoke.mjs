@@ -154,7 +154,8 @@
  *      smoke_caida recibe el aviso CITY_ASSAULTED y los dos el asalto en city.update; al
  *      vencer el plazo, la ciudad cae: los dos reciben city.fallen, smoke_caida el aviso
  *      CITY_LOST y un snapshot con su ciudad refundada (con el mismo nombre, otro id, otra
- *      era no) y smoke_runner CITY_TAKEN. Arranca el servidor con EO_CITY_ASSAULT_SECONDS=20
+ *      era no) y smoke_runner CITY_TAKEN. Si smoke_runner tiene una sola ciudad, se la queda
+ *      (SPEC-CITY-TAKEN): city.fallen trae takenCityId y su snapshot, la tomada en el mismo centro. Arranca el servidor con EO_CITY_ASSAULT_SECONDS=20
  *      y EO_CITY_FALL_IMMUNITY_HOURS=0. La ciudad refundada se puede volver a asaltar en
  *      la pasada siguiente. Va la última de las que mueven guerreros de smoke_runner.
  *  13j. sólo con --multiciudad (SPEC-MULTI-CITY): una cuenta propia, smoke_multi
@@ -323,6 +324,17 @@ const TECNOLOGIAS = JSON.parse(
 ).technologies;
 
 /** El rasgo por mil de una civilización; 1000 si no lo declara (RN-CIV-003). */
+/**
+ * La ciudad tomada del snapshot del vencedor (SPEC-CITY-TAKEN): la de id
+ * `tomadaId`, suya, en el centro de la caída, con su nombre y su era.
+ */
+export function ciudadTomada(snapshot, vencedorId, tomadaId, caida) {
+  return (snapshot.cities ?? []).find(
+    (c) => c.id === tomadaId && c.ownerPlayerId === vencedorId && c.centerX === caida.centerX &&
+      c.centerY === caida.centerY && c.name === caida.name && c.era === caida.era,
+  );
+}
+
 export function rasgo(catalogo, codigo, clave) {
   const c = catalogo.find((x) => x.code === codigo);
   if (!c) throw new Error(`civilización desconocida: ${codigo}`);
@@ -2362,8 +2374,18 @@ async function caida(atacante, ciudad, playerId, snap) {
   ok('aviso al asaltado', `CITY_ASSAULTED, cae a las ${new Date(cae).toISOString().slice(11, 19)}`);
 
   const espera = Math.max(0, cae - Date.now()) + 15_000;
-  await atacante.sesion.esperarQue('city.fallen', (m) => m.payload.cityId === ciudadV.id, espera);
+  const cayo = await atacante.sesion.esperarQue('city.fallen', (m) => m.payload.cityId === ciudadV.id, espera);
   ok('la ciudad cae', `city.fallen ${ciudadV.id}`);
+  // SPEC-CITY-TAKEN: si smoke_runner tenía hueco, se la queda en el mismo centro.
+  const tomadaId = cayo.payload.takenCityId;
+  if (tomadaId !== undefined) {
+    const snapT = await atacante.sesion.esperarQue('world.snapshot',
+      (m) => ciudadTomada(m.payload, playerId, tomadaId, ciudadV) !== undefined, 10_000);
+    const t = ciudadTomada(snapT.payload, playerId, tomadaId, ciudadV);
+    ok('la ciudad se toma', `${t.name} (${t.id}) de smoke_runner en (${t.centerX}, ${t.centerY}), ${t.era}`);
+  } else {
+    ok('la ciudad se arrasa', 'smoke_runner no tenía hueco');
+  }
   await avisoEnVivo(atacante.sesion, 'CITY_TAKEN', cuenta.playerId);
   ok('aviso al vencedor', 'CITY_TAKEN');
   await victima.sesion.esperarQue('city.fallen', (m) => m.payload.cityId === ciudadV.id, 10_000);

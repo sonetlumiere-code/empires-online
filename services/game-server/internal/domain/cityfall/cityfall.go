@@ -159,6 +159,9 @@ type Fall struct {
 	// fundación, como en el alta.
 	Place  PlaceFunc
 	Verify func(center world.Tile, existing []world.Tile) bool
+	// TakeSpawns son los tiles de los tres aldeanos de la ciudad tomada, si el
+	// vencedor tiene hueco (SPEC-CITY-TAKEN RN-CITY-037); vacío, no se toma.
+	TakeSpawns []world.Tile
 }
 
 // FallResult es lo que la transacción de la caída escribió y la RAM tiene que
@@ -186,6 +189,14 @@ type FallResult struct {
 	KeptCityID          int64
 	KeptPopulation      int32
 	KeptPopulationLimit int32
+
+	// SPEC-CITY-TAKEN (ADR-052): la ciudad que tomó el vencedor, sus aldeanos,
+	// los edificios que heredó de la caída y el territorio que ganó; Taken nil si
+	// se arrasó.
+	Taken          *city.City
+	TakenVillagers []*unit.Unit
+	TakenBuildings []int64
+	TakenClaimed   *territory.Control
 }
 
 // ─────────────────────────────────────────────────────────────

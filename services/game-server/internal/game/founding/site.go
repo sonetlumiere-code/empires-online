@@ -407,6 +407,12 @@ func FarEnough(center world.Tile, existing []world.Tile) bool {
 	return true
 }
 
+// SpawnsAround son los n primeros tiles transitables del anillo de nacimiento
+// de un centro: los aldeanos de una ciudad tomada (SPEC-CITY-TAKEN RN-CITY-037).
+func SpawnsAround(w *world.World, center world.Tile, n int) []world.Tile {
+	return findSpawns(w, center, n)
+}
+
 // findSpawns elige tiles de nacimiento justo fuera del Centro Urbano.
 func findSpawns(w *world.World, center world.Tile, n int) []world.Tile {
 	out := make([]world.Tile, 0, n)

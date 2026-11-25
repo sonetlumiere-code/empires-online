@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/cityfall"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/eventlog"
@@ -268,6 +269,11 @@ func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.
 				return errKeptGone
 			}
 		}
+		// SPEC-CITY-TAKEN RN-CITY-036: con hueco, el vencedor se la queda.
+		take, err := r.takeSlot(ctx, tx, f)
+		if err != nil {
+			return err
+		}
 		if f.Verify != nil && kept == 0 {
 			existing, err := r.standingCentersBut(ctx, tx, f.CityID)
 			if err != nil {
@@ -284,6 +290,11 @@ func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.
 			`UPDATE cities SET fallen_at = $2, population = 0, version = version + 1 WHERE id = $1`,
 			f.CityID, f.Now.UTC()); err != nil {
 			return fmt.Errorf("arrasar la ciudad %d: %w", f.CityID, normalize(err))
+		}
+		if take != nil {
+			if err := r.takeCity(ctx, tx, f, take, res); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE buildings SET status = 'DESTROYED' WHERE city_id = $1 AND status <> 'DESTROYED'`, f.CityID); err != nil {
@@ -309,6 +320,11 @@ func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.
 			return err
 		}
 		res.Freed = freed
+		if take != nil {
+			if err := r.settleTaken(ctx, tx, f, res); err != nil {
+				return err
+			}
+		}
 
 		if kept != 0 {
 			if err := r.intoKept(ctx, tx, f, kept, res); err != nil {
@@ -489,6 +505,9 @@ func (r *CityFallRepo) afterFall(ctx context.Context, tx pgx.Tx, f cityfall.Fall
 	if f.War != nil {
 		payload["war"] = warPointsPayload(f.War)
 	}
+	if res.Taken != nil {
+		payload["takenCityId"] = res.Taken.ID
+	}
 	vencido := f.OwnerID
 	if err := appendEvent(ctx, tx, worldEvent{
 		EventType: eventlog.EventCityFell, Tick: f.Tick, PlayerID: &vencido,
@@ -532,5 +551,158 @@ func (r *CityFallRepo) intoKept(ctx context.Context, tx pgx.Tx, f cityfall.Fall,
 		return fmt.Errorf("recontar la ciudad %d: %w", kept, normalize(err))
 	}
 	res.KeptCityID = kept
+	return nil
+}
+
+// takeHole es el hueco libre del vencedor y su presencia, cuando puede tomar.
+type takeHole struct {
+	slot        int16
+	presence    string
+	lastOffline *time.Time
+}
+
+// takeSlot cuenta, bajo el cerrojo de fundación, las ciudades en pie del
+// vencedor (SPEC-CITY-TAKEN RN-CITY-036): con menos de dos y aldeanos para la
+// tomada, devuelve su hueco libre; si no, nil y la caída arrasa.
+func (r *CityFallRepo) takeSlot(ctx context.Context, tx pgx.Tx, f cityfall.Fall) (*takeHole, error) {
+	if len(f.TakeSpawns) == 0 || f.VictorID == uuid.Nil || f.VictorID == f.OwnerID {
+		return nil, nil
+	}
+	rows, err := tx.Query(ctx,
+		`SELECT slot, presence_state, last_offline_at FROM cities
+		  WHERE owner_player_id = $1 AND fallen_at IS NULL ORDER BY id FOR UPDATE`, f.VictorID)
+	if err != nil {
+		return nil, fmt.Errorf("leer las ciudades del vencedor: %w", normalize(err))
+	}
+	defer rows.Close()
+	hole := &takeHole{slot: 1}
+	enPie := 0
+	for rows.Next() {
+		var (
+			slot int16
+			ps   string
+			lo   *time.Time
+		)
+		if err := rows.Scan(&slot, &ps, &lo); err != nil {
+			return nil, fmt.Errorf("leer una ciudad del vencedor: %w", normalize(err))
+		}
+		if enPie == 0 {
+			hole.presence, hole.lastOffline = ps, lo
+		}
+		enPie++
+		if slot == 1 {
+			hole.slot = 2
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, normalize(err)
+	}
+	if enPie == 0 || enPie >= city.MaxStandingPerOwner {
+		return nil, nil
+	}
+	return hole, nil
+}
+
+// takeCity crea la ciudad tomada en el centro de la caída, ya arrasada, y le pasa
+// sus edificios completos (ADR-052 §1, §2; INV-CITY-024).
+func (r *CityFallRepo) takeCity(ctx context.Context, tx pgx.Tx, f cityfall.Fall, hole *takeHole, res *cityfall.FallResult) error {
+	populationCap, err := r.cities.PopulationCapOf(ctx, tx, f.Era)
+	if err != nil {
+		return err
+	}
+	tomada := f.Now
+	c := &city.City{
+		OwnerPlayerID: f.VictorID, Name: f.Name, CenterX: f.Center.X, CenterY: f.Center.Y, Era: f.Era,
+		PopulationLimit: populationCap, PresenceState: city.PresenceState(hole.presence), LastOnlineAt: &tomada,
+		Slot: hole.slot,
+	}
+	if _, err := r.cities.Create(ctx, tx, c); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE cities SET taken_from_city_id = $2, last_offline_at = $3 WHERE id = $1`,
+		c.ID, f.CityID, hole.lastOffline); err != nil {
+		return fmt.Errorf("apuntar de dónde viene la ciudad %d: %w", c.ID, normalize(err))
+	}
+	c.LastOfflineAt = hole.lastOffline
+	if err := CreateCityStocks(ctx, tx, c.ID); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx,
+		`UPDATE buildings SET city_id = $2 WHERE city_id = $1 AND status = 'COMPLETE' RETURNING id, type`, f.CityID, c.ID)
+	if err != nil {
+		return fmt.Errorf("pasar los edificios a la ciudad %d: %w", c.ID, normalize(err))
+	}
+	defer rows.Close()
+	var bono int32
+	for rows.Next() {
+		var (
+			id   int64
+			tipo string
+		)
+		if err := rows.Scan(&id, &tipo); err != nil {
+			return fmt.Errorf("leer un edificio heredado: %w", normalize(err))
+		}
+		res.TakenBuildings = append(res.TakenBuildings, id)
+		if def, err := building.Lookup(building.Type(tipo)); err == nil {
+			bono += def.PopulationBonus
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return normalize(err)
+	}
+	sortInt64(res.TakenBuildings)
+	c.PopulationLimit = populationCap + bono
+	res.Taken = c
+	return nil
+}
+
+// settleTaken da a la tomada sus tres aldeanos, el territorio de su centro si
+// quedó libre y su población y límite (RN-CITY-037, RN-TERR-007).
+func (r *CityFallRepo) settleTaken(ctx context.Context, tx pgx.Tx, f cityfall.Fall, res *cityfall.FallResult) error {
+	c := res.Taken
+	def, err := unit.Lookup(unit.TypeVillager)
+	if err != nil {
+		return err
+	}
+	for _, spawn := range f.TakeSpawns {
+		u := &unit.Unit{
+			PlayerID: f.VictorID, CityID: &c.ID, Type: unit.TypeVillager, X: spawn.X, Y: spawn.Y,
+			HP: def.MaxHP, MaxHP: def.MaxHP, Status: unit.StatusIdle,
+		}
+		if _, err := r.units.Create(ctx, tx, u); err != nil {
+			return err
+		}
+		res.TakenVillagers = append(res.TakenVillagers, u)
+	}
+	var territorio int64
+	err = tx.QueryRow(ctx,
+		`SELECT id FROM territories WHERE $1 BETWEEN min_x AND max_x AND $2 BETWEEN min_y AND max_y ORDER BY id LIMIT 1`,
+		c.CenterX, c.CenterY).Scan(&territorio)
+	if err != nil && !errors.Is(normalize(err), ErrNotFound) {
+		return fmt.Errorf("leer el territorio de la ciudad %d: %w", c.ID, normalize(err))
+	}
+	if territorio != 0 {
+		actual, err := r.territories.GetControl(ctx, tx, territorio)
+		if err != nil {
+			return fmt.Errorf("leer el control del territorio %d: %w", territorio, err)
+		}
+		if actual.OwnerType == territory.OwnerNone {
+			ctrl, err := r.territories.ClaimForPlayer(ctx, tx, territorio, f.VictorID, f.Now.UTC(), actual.Version)
+			if err != nil {
+				return err
+			}
+			res.TakenClaimed = &ctrl
+		}
+	}
+	if err := tx.QueryRow(ctx,
+		`UPDATE cities c SET population_limit = $2,
+		        population = (SELECT count(*) FROM units u
+		                       WHERE u.city_id = c.id AND u.status <> 'DEAD' AND u.unit_type <> 'CARAVAN'),
+		        version = version + 1
+		  WHERE c.id = $1 RETURNING population, version`, c.ID, c.PopulationLimit).
+		Scan(&c.Population, &c.Version); err != nil {
+		return fmt.Errorf("recontar la ciudad %d: %w", c.ID, normalize(err))
+	}
 	return nil
 }

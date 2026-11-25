@@ -23,15 +23,18 @@ func TestElComandoDeAsaltoEsElDelEsquema(t *testing.T) {
 }
 
 // city.fallen lleva la ciudad, su dueño, el vencedor y el instante, todos
-// obligatorios.
+// obligatorios, y, si se tomó, la ciudad que la tomó (SPEC-CITY-TAKEN §6), opcional.
 func TestLaCiudadCaidaEsLaDelEsquema(t *testing.T) {
 	root, variant := serverVariant(t, protocol.TypeCityFallen)
 	payload := dig(t, root, variant, "properties", "payload").(map[string]any)
 	declaradas := clavesDe(dig(t, root, payload, "properties").(map[string]any))
+	tomada := int64(9)
 	require.Equal(t, declaradas, clavesDe(serializado(t, protocol.CityFallenPayload{
-		CityID: 7, OwnerPlayerID: "a", ByPlayerID: "b", AtMs: 1,
+		CityID: 7, OwnerPlayerID: "a", ByPlayerID: "b", AtMs: 1, TakenCityID: &tomada,
 	})))
-	require.Equal(t, declaradas, requeridas(t, payload))
+	sinTomar := clavesDe(serializado(t, protocol.CityFallenPayload{CityID: 7, OwnerPlayerID: "a", ByPlayerID: "b", AtMs: 1}))
+	require.Equal(t, sinTomar, requeridas(t, payload), "takenCityId es la única opcional")
+	require.NotContains(t, sinTomar, "takenCityId", "arrasada, la clave no viaja")
 }
 
 // El asalto viaja en la vista de la ciudad (opcional, con todas sus claves) y en

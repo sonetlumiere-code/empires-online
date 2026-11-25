@@ -57,6 +57,7 @@ Dentro del scope de v1:
 - Los arietes y las murallas ([siege-engines.md](siege-engines.md)): `WALL` en `BuildingType` (también en `city.build`, §7.9, que sólo la admite en el centro de la ciudad) y `RAM` en `UnitType` y en el `type` de `city.train` (§7.10); `buildingType` (opcional) en las entradas `HOUSE_LOST` y `HOUSE_DESTROYED` del registro (§8.19) y en el aviso `HOUSE_DESTROYED` (§8.23); sin mensajes nuevos, el catálogo se queda en 52 tipos. `WALL` y `RAM` son valores nuevos de enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-048](../decisions/ADR-048-siege-engines-and-wall.md)). El catálogo de presentación `units.json` gana `siegeDamage` y `siegeIntervalMs`.
 - La caída de una ciudad ([city-fall.md](city-fall.md)): `unit.assault { unitId, cityId }` (§7.25), el 53.º tipo, hostil; `assault` (`{ playerId, unitId, startedAtMs, endsAtMs }`, opcional) y `fallImmuneUntilMs` (opcional) en `CityView`, y `assault` en `city.update` (la vista al confirmarse un asalto, `null` al romperse); `city.fallen { cityId, ownerPlayerId, byPlayerId, atMs }` (§8.34); `CITY_ASSAULTED`, `CITY_LOST` y `CITY_TAKEN` en `EventLogKind` y en `EventLogNoticeKind`, con `fallsAtMs` (opcional) en la entrada y el aviso. La unidad que asalta viaja con `status: CLAIMING`, sin valor nuevo. Los tres tipos del registro son valores nuevos de enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-050](../decisions/ADR-050-city-fall.md)).
 - El multiciudad ([multi-city.md](multi-city.md)): `unit.found_city { unitId }` (§7.26), el 54.º tipo, no hostil; sin mensaje servidor→cliente nuevo: al confirmarse, las sesiones del fundador reciben un `world.snapshot` centrado en la ciudad nueva. `CITY_FOUNDED` en `EventLogKind` (no en `EventLogNoticeKind`), sin otro jugador. `CityView` no cambia: la capital es la de id menor ([ADR-051](../decisions/ADR-051-multi-city-capital.md)). Es un valor nuevo de un enum estricto: el cliente y el servidor lo estrenan juntos.
+- La ciudad tomada ([city-taken.md](city-taken.md)): `takenCityId` (opcional) en `city.fallen` (§8.34), la ciudad del vencedor que la tomó; la tomada llega como cualquier ciudad que entra en la vista y sus edificios heredados como `building.spawn` con su `cityId` nuevo, y el vencedor recibe un `world.snapshot` centrado en ella. Aditivo: un cliente que no lo conoce sigue funcionando.
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -1555,7 +1556,8 @@ Lo lee la conexión de la base, sin pasar por la simulación: puede ir unos mili
 - **Propósito:** una ciudad cayó ([city-fall.md](city-fall.md) `RN-CITY-026`). El cliente la quita, con sus edificios, como `building.destroyed` quita un edificio. Al chunk de la ciudad y, por `SendToPlayer`, a su dueño, sin `requestId`. Aditivo en v1 (`R-VER-3`).
 
 ```ts
-payload: z.object({ cityId: EntityId, ownerPlayerId: Uuid, byPlayerId: Uuid, atMs: EpochMs })
+payload: z.object({ cityId: EntityId, ownerPlayerId: Uuid, byPlayerId: Uuid, atMs: EpochMs,
+  takenCityId: EntityId.optional() })
 ```
 
 ```json
@@ -1563,6 +1565,8 @@ payload: z.object({ cityId: EntityId, ownerPlayerId: Uuid, byPlayerId: Uuid, atM
 ```
 
 La ciudad nueva de su dueño llega como cualquier ciudad que entra en la vista (`city.update` al incorporarse, como un alta, o el snapshot); al vencido, tras `city.fallen`, el servidor le manda un `world.snapshot` centrado en ella por el camino del handshake ([ADR-050](../decisions/ADR-050-city-fall.md) §5).
+
+Desde E36 ([city-taken.md](city-taken.md), [ADR-052](../decisions/ADR-052-city-taken.md)), si el vencedor tenía hueco, `takenCityId` es su ciudad nueva en el mismo centro: llega antes de `city.fallen` como `city.update` de un alta, con sus edificios heredados en `building.spawn` (su `cityId` es ya el de la tomada, así que `city.fallen` no se los lleva), y el vencedor recibe un `world.snapshot` centrado en ella. Arrasada, la clave no viaja.
 
 ## 9. Códigos de error
 

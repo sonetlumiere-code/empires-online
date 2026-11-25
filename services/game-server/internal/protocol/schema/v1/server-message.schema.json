@@ -1841,6 +1841,9 @@
                 },
                 "atMs": {
                   "$ref": "#/definitions/ServerMessage/anyOf/0/properties/ts"
+                },
+                "takenCityId": {
+                  "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
                 }
               },
               "required": [

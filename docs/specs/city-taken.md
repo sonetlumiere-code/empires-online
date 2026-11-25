@@ -103,7 +103,8 @@ Nada cambia para él: si era la última, refunda (`RN-CITY-026` a `RN-CITY-028`)
 ### 4.4 Registro y avisos (Q7)
 
 - `CityFell` en `world_events` gana `takenCityId` cuando se toma. El aviso `CITY_TAKEN` del vencedor dice «Tomaste
-  <nombre>: ahora es tuya» y el `CITY_LOST` del vencido, «<vencedor> tomó <nombre>».
+  <nombre>: ahora es tuya» y el `CITY_LOST` del vencido, «<vencedor> tomó <nombre>» (precisión de §9.1: los textos no
+  cambian en este slice).
 - El marcador de una guerra de clanes suma la caída como hoy.
 
 ### 4.5 Los bots (Q9)
@@ -160,6 +161,21 @@ Sin códigos nuevos: la toma no tiene orden propia; los rechazos del asalto son 
 | Cliente (Vitest) | `city.fallen` con `takenCityId` y los `building.spawn` que siguen; el texto de los avisos. |
 | Bots (Vitest) | El saqueador que toma juega la tomada con el perfil de colonia. |
 | Humo | `--toma`: el asaltante con una ciudad tumba otra y se la queda con sus casas. |
+
+### 9.1 Precisiones de la implementación (2026-11-25)
+
+- **Precisión (2026-11-25): los textos de los avisos no cambian.** §4.4 pedía «Tomaste <nombre>: ahora es tuya» y
+  «<vencedor> tomó <nombre>». El aviso no lleva hoy si se tomó, y añadirlo es un campo más en `EventLogNotice` y en la
+  entrada del registro para un texto. Se queda para otro slice: `takenCityId` va en `CityFell` (y en `city.fallen`), y
+  el vencedor ve su ciudad nueva en el snapshot.
+- **Precisión (2026-11-25): quién cuenta el hueco.** El tick pide los tres aldeanos de la tomada
+  (`founding.SpawnsAround`) sólo si el vencedor tiene menos de dos ciudades en la RAM; la transacción lo vuelve a
+  contar bajo el cerrojo de fundación y, sin hueco, arrasa aunque se los pidieran.
+- **Precisión (2026-11-25): el orden de los mensajes.** La tomada entra (`city.update` del alta y `building.spawn` de
+  sus edificios) antes que `city.fallen`: el store del cliente ya tiene los edificios con su ciudad nueva cuando
+  `city.fallen` quita los de la caída, sin cambios en `apps/web`.
+- **Precisión (2026-11-25): el cliente y los bots, sin código nuevo.** El store aplica la toma con lo que ya sabía
+  (`cityFall.test.ts` lo prueba), y el saqueador que toma juega la tomada como la segunda ciudad de E35 (`bot.test.ts`).
 
 ## 10. Decisiones de producto (2026-11-25)
 

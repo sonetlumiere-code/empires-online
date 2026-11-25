@@ -147,7 +147,8 @@ caída (`CityFell`) se cuenta a los dos: `CITY_LOST` al vencido, con el centro d
 cayó ante Villa Norte: la refundaste en (300, 400)»), y `CITY_TAKEN` al vencedor, con el de la arrasada. Un asalto roto
 no se escribe. Cada suceso es su propia entrada. `EventTypes` gana `CityAssaultStarted` y `CityFell`; el catálogo pasa
 de 42 a 45 tipos. El otro jugador se nombra por su ciudad en pie: la consulta de las ciudades del registro ignora las
-caídas.
+caídas. **Precisión (2026-11-25):** desde E36 ([city-taken.md](city-taken.md)), el payload de `CityFell` lleva `takenCityId`
+cuando el vencedor se quedó la ciudad; los textos de `CITY_LOST` y `CITY_TAKEN` no cambian.
 
 **Precisión (2026-11-16, [clan-territories.md](clan-territories.md) §6, [ADR-041](../decisions/ADR-041-clan-territories.md) §5).**
 Desde E19, con un clan dueño, `TerritoryClaimStarted` y `TerritoryControlChanged` se escriben una fila por miembro

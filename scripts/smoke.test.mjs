@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 
 import {
   ciudadRefundada,
+  ciudadTomada,
   motivoParaNoAsaltar,
   apuntaA,
   bienDe,
@@ -567,3 +568,14 @@ test('sitioParaFundar: transitable, lejos de los centros, con bosque y en territ
   const s2 = sitioParaFundar(conAgua, [capital], libre, capital);
   assert.ok(!s2 || s2.x >= 47, 'nunca con agua en su 7 × 7');
 });
+
+test('ciudadTomada: la del vencedor con ese id, en el centro de la caída, con su nombre y su era', () => {
+  const caida = { id: 7, centerX: 40, centerY: 20, name: 'Villa', era: 'BRONZE_AGE' };
+  const buena = { id: 12, ownerPlayerId: 'v', centerX: 40, centerY: 20, name: 'Villa', era: 'BRONZE_AGE' };
+  assert.equal(ciudadTomada({ cities: [buena] }, 'v', 12, caida)?.id, 12);
+  assert.equal(ciudadTomada({ cities: [{ ...buena, ownerPlayerId: 'x' }] }, 'v', 12, caida), undefined);
+  assert.equal(ciudadTomada({ cities: [{ ...buena, centerX: 41 }] }, 'v', 12, caida), undefined);
+  assert.equal(ciudadTomada({ cities: [buena] }, 'v', 13, caida), undefined);
+  assert.equal(ciudadTomada({}, 'v', 12, caida), undefined);
+});
+
