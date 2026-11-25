@@ -32,6 +32,9 @@ autosuficiente) sigue intacto, porque el mercado no fabrica nada: todo lo que se
 ([caravans.md](caravans.md)). Y el tratado conserva su valor: comerciar con un socio sigue siendo gratis, y en el
 mercado se paga comisión.
 
+**Precisión (2026-11-25):** desde E38 ([trade-from-city.md](trade-from-city.md) `RN-TRADE-010`), `market.post` y
+`market.buy` pueden salir de otra ciudad propia con `cityId`, con el mercado de esa ciudad.
+
 ## 2. Scope
 
 **Entra.** El edificio **mercado** (Q3); la **oferta pública** en lotes, «doy tanto de un recurso por lote, pido

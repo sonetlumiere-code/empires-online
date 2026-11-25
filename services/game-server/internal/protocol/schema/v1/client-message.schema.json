@@ -948,6 +948,9 @@
                 },
                 "want": {
                   "$ref": "#/definitions/ClientMessage/anyOf/23/properties/payload/properties/give"
+                },
+                "cityId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
                 }
               },
               "required": [
@@ -1090,6 +1093,9 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 100
+                },
+                "cityId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
                 }
               },
               "required": [
@@ -1131,6 +1137,9 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 100
+                },
+                "cityId": {
+                  "$ref": "#/definitions/ClientMessage/anyOf/3/properties/payload/properties/unitId"
                 }
               },
               "required": [

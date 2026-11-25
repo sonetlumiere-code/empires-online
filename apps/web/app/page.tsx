@@ -139,7 +139,7 @@ import {
 } from '../src/state/notices';
 import { claimBlockReason, claimLabel, territoryAt, territoryOwnerLabel } from '../src/state/conquest';
 import { assaultBlockReason, assaultLabel, assaultTargetNear } from '../src/state/cityFall';
-import { FOUND_COST, foundCityBlockReason } from '../src/state/multiCity';
+import { FOUND_COST, commerceCityId, foundCityBlockReason } from '../src/state/multiCity';
 import {
   canJoinFaction,
   FACTION_CHOICES,
@@ -832,7 +832,7 @@ export default function Page() {
   };
   const offerTrade = (target: CityView) => {
     const { give, want } = draftLines(draft);
-    clientRef.current?.proposeTrade(target.ownerPlayerId, give, want);
+    clientRef.current?.proposeTrade(target.ownerPlayerId, give, want, commerceCityId(hud.ownCity, hud.ownCities));
     setDiplomacyTarget(null);
   };
 
@@ -1506,9 +1506,10 @@ export default function Page() {
               { resource: d.giveResource, amount: d.giveAmount },
               { resource: d.wantResource, amount: d.wantAmount },
               d.lots,
+              commerceCityId(hud.ownCity, hud.ownCities),
             )
           }
-          onBuy={(id, lots) => clientRef.current?.buyMarketOffer(id, lots)}
+          onBuy={(id, lots) => clientRef.current?.buyMarketOffer(id, lots, commerceCityId(hud.ownCity, hud.ownCities))}
           onCancel={(id) => clientRef.current?.cancelMarketOffer(id)}
           onClose={() => setMarketOpen(false)}
         />

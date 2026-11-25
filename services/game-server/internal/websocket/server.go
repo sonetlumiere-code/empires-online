@@ -691,7 +691,7 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 		}
 		give, okGive := tradeLines(p.Give)
 		want, okWant := tradeLines(p.Want)
-		if !okGive || !okWant {
+		if !okGive || !okWant || !validCityID(p.CityID) {
 			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "líneas de la oferta inválidas")
 			return
 		}
@@ -700,7 +700,7 @@ func (s *Server) handle(ctx context.Context, session *Session, msg protocol.Inbo
 		}
 		s.dispatchClaimed(ctx, session, msg.RequestID, simulation.ProposeTrade{
 			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
-			Target: target, Give: give, Want: want,
+			Target: target, Give: give, Want: want, CityID: cityIDOf(p.CityID),
 		})
 
 	case protocol.TypeTradeRespond:

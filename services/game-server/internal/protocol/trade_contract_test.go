@@ -18,18 +18,21 @@ import (
 // (INV-SEC-001).
 func TestLosComandosDeComercioSonLosDelEsquema(t *testing.T) {
 	linea := []protocol.ResourceAmount{{Resource: "WOOD", Amount: 1}}
-	casos := map[string]any{
-		protocol.TypeTradePropose: protocol.TradeProposePayload{PlayerID: "x", Give: linea, Want: linea},
-		protocol.TypeTradeRespond: protocol.TradeRespondPayload{OfferID: 1, Accept: true},
-		protocol.TypeTradeCancel:  protocol.TradeCancelPayload{OfferID: 1},
+	ciudad := int64(7)
+	// SPEC-TRADE-FROM-CITY §6: cityId, opcional, en la propuesta.
+	casos := map[string]struct{ entero, minimo any }{
+		protocol.TypeTradePropose: {protocol.TradeProposePayload{PlayerID: "x", Give: linea, Want: linea, CityID: &ciudad},
+			protocol.TradeProposePayload{PlayerID: "x", Give: linea, Want: linea}},
+		protocol.TypeTradeRespond: {protocol.TradeRespondPayload{OfferID: 1, Accept: true}, protocol.TradeRespondPayload{OfferID: 1, Accept: true}},
+		protocol.TypeTradeCancel:  {protocol.TradeCancelPayload{OfferID: 1}, protocol.TradeCancelPayload{OfferID: 1}},
 	}
-	for tipo, payload := range casos {
+	for tipo, c := range casos {
 		t.Run(tipo, func(t *testing.T) {
 			root, variant := clientVariant(t, tipo)
 			p := dig(t, root, variant, "properties", "payload").(map[string]any)
 			declaradas := clavesDe(dig(t, root, p, "properties").(map[string]any))
-			require.Equal(t, declaradas, clavesDe(serializado(t, payload)))
-			require.Equal(t, declaradas, requeridas(t, p), "ningún campo es opcional")
+			require.Equal(t, declaradas, clavesDe(serializado(t, c.entero)))
+			require.Equal(t, clavesDe(serializado(t, c.minimo)), requeridas(t, p), "sólo cityId es opcional")
 			require.True(t, protocol.ClientMessageTypes[tipo])
 		})
 	}

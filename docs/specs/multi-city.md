@@ -90,7 +90,9 @@ de territorio (sólo la capital), los centros de la capital territorial (todas) 
 - Quedarse una ciudad ajena al asaltarla, vasallos, tributos (otro slice). **Precisión (2026-11-25):** quedársela entra
   con E36, [city-taken.md](city-taken.md).
 - Más de dos ciudades, o un tope que dependa de la era (otro slice: el hueco de §7 ya lo admite).
-- Elegir de qué ciudad sale una caravana, un trato o una oferta del mercado: salen de la capital (Q7).
+- Elegir de qué ciudad sale una caravana, un trato o una oferta del mercado: salen de la capital (Q7). **Precisión
+  (2026-11-25):** desde E38 ([trade-from-city.md](trade-from-city.md)), `trade.propose`, `market.post` y `market.buy`
+  eligen ciudad con `cityId`.
 - Trasladar la capital, renombrar ciudades, abandonar una ciudad.
 - Que los bots funden (Q10).
 - Un selector de ciudades en el HUD más allá de «H» (Q9).

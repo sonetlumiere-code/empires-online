@@ -484,8 +484,9 @@ export class GameClient {
   }
 
   /** Ofrece un trato a otro jugador: «doy esto, pido aquello» (SPEC-TRADE). */
-  proposeTrade(playerId: string, give: v1.ResourceAmount[], want: v1.ResourceAmount[]): string {
-    return this.send('trade.propose', { playerId, give, want });
+  proposeTrade(playerId: string, give: v1.ResourceAmount[], want: v1.ResourceAmount[], cityId?: number): string {
+    // SPEC-TRADE-FROM-CITY: la ciudad de la que sale, si no es la capital.
+    return this.send('trade.propose', { playerId, give, want, ...(cityId !== undefined ? { cityId } : {}) });
   }
 
   /** Acepta o rechaza una oferta de comercio recibida. */
@@ -502,13 +503,13 @@ export class GameClient {
   // oferta; la comisión, si alcanza y la ruta los decide el servidor.
 
   /** Publica una oferta en el mercado. */
-  postMarketOffer(give: v1.ResourceAmount, want: v1.ResourceAmount, lots: number): string {
-    return this.send('market.post', { give, want, lots });
+  postMarketOffer(give: v1.ResourceAmount, want: v1.ResourceAmount, lots: number, cityId?: number): string {
+    return this.send('market.post', { give, want, lots, ...(cityId !== undefined ? { cityId } : {}) });
   }
 
   /** Compra lotes de una oferta ajena del mercado. */
-  buyMarketOffer(offerId: number, lots: number): string {
-    return this.send('market.buy', { offerId, lots });
+  buyMarketOffer(offerId: number, lots: number, cityId?: number): string {
+    return this.send('market.buy', { offerId, lots, ...(cityId !== undefined ? { cityId } : {}) });
   }
 
   /** Retira la oferta propia del mercado. */

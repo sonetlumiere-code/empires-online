@@ -11,6 +11,7 @@ import (
 
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/building"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/caravan"
+	"github.com/empires-online/empires-online/services/game-server/internal/domain/city"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/economy"
 	"github.com/empires-online/empires-online/services/game-server/internal/domain/market"
 	"github.com/empires-online/empires-online/services/game-server/internal/protocol"
@@ -103,6 +104,8 @@ type PostMarketOffer struct {
 	Give      economy.Cost
 	Want      economy.Cost
 	Lots      int32
+	// CityID es la ciudad propia que publica; 0, la capital (RN-TRADE-010).
+	CityID int64
 }
 
 func (PostMarketOffer) commandType() string { return protocol.TypeMarketPost }
@@ -114,6 +117,8 @@ type BuyMarketOffer struct {
 	RequestID string
 	OfferID   int64
 	Lots      int32
+	// CityID es la ciudad propia que paga y recibe; 0, la capital (RN-TRADE-010).
+	CityID int64
 }
 
 func (BuyMarketOffer) commandType() string { return protocol.TypeMarketBuy }
@@ -266,9 +271,9 @@ func (s *Simulation) handlePostMarketOffer(cmd PostMarketOffer) {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInternalError, "el mercado no está disponible")
 		return
 	}
-	c, ok := s.state.CityOf(cmd.PlayerID)
+	c, ok := s.commerceCity(cmd.PlayerID, cmd.CityID)
 	if !ok {
-		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeCityNotFound, "no tienes ciudad")
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeCityNotFound, "esa ciudad no es tuya o no está en pie")
 		return
 	}
 	if _, enVuelo := s.state.market.posts[orderKey(cmd.PlayerID, cmd.RequestID)]; enVuelo {
@@ -394,9 +399,9 @@ func (s *Simulation) handleBuyMarketOffer(cmd BuyMarketOffer) {
 		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "esa oferta ya no está en el mercado")
 		return
 	}
-	propia, ok := s.state.CityOf(cmd.PlayerID)
+	propia, ok := s.commerceCity(cmd.PlayerID, cmd.CityID)
 	if !ok {
-		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeCityNotFound, "no tienes ciudad")
+		s.economyError(cmd.PlayerID, cmd.RequestID, protocol.CodeCityNotFound, "esa ciudad no es tuya o no está en pie")
 		return
 	}
 	if !s.state.hasCompleteMarket(propia.ID) {
@@ -689,4 +694,18 @@ func (s *Simulation) marketOffersOf(viewer uuid.UUID) []protocol.MarketOfferView
 		out = append(out, s.marketView(*o))
 	}
 	return out
+}
+
+// commerceCity es la ciudad propia de la que sale una orden de comercio o de
+// mercado (SPEC-TRADE-FROM-CITY RN-TRADE-010): la de cityID si es del jugador y
+// está en pie, o la capital con 0.
+func (s *Simulation) commerceCity(player uuid.UUID, cityID int64) (*city.City, bool) {
+	if cityID == 0 {
+		return s.state.CityOf(player)
+	}
+	c, ok := s.state.City(cityID)
+	if !ok || c.OwnerPlayerID != player {
+		return nil, false
+	}
+	return c, true
 }

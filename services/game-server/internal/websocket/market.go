@@ -48,23 +48,23 @@ func (s *Server) handleMarketOrder(ctx context.Context, session *Session, msg pr
 		}
 		give, okGive := marketLot(p.Give)
 		want, okWant := marketLot(p.Want)
-		if !okGive || !okWant || !validLots(p.Lots) {
+		if !okGive || !okWant || !validLots(p.Lots) || !validCityID(p.CityID) {
 			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "lotes de la oferta inválidos")
 			return
 		}
 		cmd = simulation.PostMarketOffer{
 			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
-			Give: give, Want: want, Lots: p.Lots,
+			Give: give, Want: want, Lots: p.Lots, CityID: cityIDOf(p.CityID),
 		}
 	case protocol.TypeMarketBuy:
 		var p protocol.MarketBuyPayload
-		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.OfferID < 1 || !validLots(p.Lots) {
+		if err := protocol.DecodeStrict(msg.Payload, &p); err != nil || p.OfferID < 1 || !validLots(p.Lots) || !validCityID(p.CityID) {
 			session.SendError(msg.RequestID, protocol.CodeInvalidMessage, "payload inválido")
 			return
 		}
 		cmd = simulation.BuyMarketOffer{
 			PlayerID: session.PlayerID, SessionID: session.ID, RequestID: msg.RequestID,
-			OfferID: p.OfferID, Lots: p.Lots,
+			OfferID: p.OfferID, Lots: p.Lots, CityID: cityIDOf(p.CityID),
 		}
 	case protocol.TypeMarketCancel:
 		var p protocol.MarketCancelPayload
@@ -112,4 +112,16 @@ func (s *Server) handleMarketList(ctx context.Context, session *Session, msg pro
 		return
 	}
 	session.Send(protocol.TypeMarketListing, msg.RequestID, protocol.MarketListingPayload{Offers: offers})
+}
+
+// validCityID: la ciudad de una orden de comercio, si viene, es un id válido
+// (SPEC-TRADE-FROM-CITY §6).
+func validCityID(id *int64) bool { return id == nil || *id >= 1 }
+
+// cityIDOf es la ciudad de la orden, o 0 (la capital) si no viene.
+func cityIDOf(id *int64) int64 {
+	if id == nil {
+		return 0
+	}
+	return *id
 }
