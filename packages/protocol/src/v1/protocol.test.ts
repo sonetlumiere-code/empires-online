@@ -653,6 +653,9 @@ describe('comercio (SPEC-TRADE)', () => {
   it('acepta trade.propose con algo que dar y algo que pedir', () => {
     expect(propose({ playerId: otro, give: linea('WOOD', 300), want: linea('STONE', 100) }).ok).toBe(true);
     expect(propose({ playerId: otro, give: linea('STONE', 1), want: linea('WOOD', 1_000_000) }).ok).toBe(true);
+    // SPEC-TRADE-FROM-CITY §6: la ciudad de la que sale, opcional.
+    expect(propose({ playerId: otro, give: linea('WOOD', 3), want: linea('STONE', 1), cityId: 7 }).ok).toBe(true);
+    expect(propose({ playerId: otro, give: linea('WOOD', 3), want: linea('STONE', 1), cityId: 'x' }).ok).toBe(false);
   });
 
   it('rechaza regalos, cantidades fuera de la cota, recursos inventados y campos de más', () => {
@@ -1354,6 +1357,10 @@ describe('mercados (SPEC-MARKETS)', () => {
 
   it('acepta market.post con un recurso por lado y de 1 a 100 lotes', () => {
     expect(msg('market.post', { give: lote('STONE', 20), want: lote('WOOD', 30), lots: 3 }).ok).toBe(true);
+    // SPEC-TRADE-FROM-CITY §6: la ciudad de la que sale, opcional.
+    expect(msg('market.post', { give: lote('STONE', 20), want: lote('WOOD', 30), lots: 3, cityId: 7 }).ok).toBe(true);
+    expect(msg('market.post', { give: lote('STONE', 20), want: lote('WOOD', 30), lots: 3, cityId: 0 }).ok).toBe(false);
+    expect(msg('market.buy', { offerId: 9, lots: 1, cityId: 7 }).ok).toBe(true);
     expect(msg('market.post', { give: lote('SILK', 1), want: lote('WINE', 1_000_000), lots: 100 }).ok).toBe(true);
     for (const payload of [
       { give: lote('STONE', 20), want: lote('WOOD', 30), lots: 0 },

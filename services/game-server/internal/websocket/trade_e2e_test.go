@@ -89,6 +89,14 @@ func TestUnTratoDePuntaAPuntaConDosJugadores(t *testing.T) {
 	assert.Equal(t, req, errEnv.RequestID)
 	assert.Equal(t, protocol.CodeInvalidMessage, decode[protocol.SystemErrorPayload](t, errEnv.Payload).Code)
 
+	// SPEC-TRADE-FROM-CITY §6: cityId pasa el esquema y el servidor lo valida: la
+	// ciudad del vecino no es de dónde ofrecer.
+	req = dueno.send(protocol.TypeTradePropose, map[string]any{
+		"playerId": otro.String(), "give": linea("WOOD", 10), "want": linea("STONE", 1), "cityId": 2})
+	env.avanzandoMientras(func() { errEnv = dueno.await(protocol.TypeSystemError, 5*time.Second) })
+	assert.Equal(t, req, errEnv.RequestID)
+	assert.Equal(t, protocol.CodeCityNotFound, decode[protocol.SystemErrorPayload](t, errEnv.Payload).Code)
+
 	req = dueno.send(protocol.TypeTradePropose, map[string]any{
 		"playerId": otro.String(), "give": linea("WOOD", 301), "want": linea("STONE", 100)})
 	env.avanzandoMientras(func() { errEnv = dueno.await(protocol.TypeSystemError, 5*time.Second) })

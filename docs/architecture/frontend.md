@@ -1056,6 +1056,9 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Precisión (2026-11-25), E37** ([SPEC-MORE-CITIES](../specs/more-cities.md)): `maxOwnCities(era)` da el tope de la
   era de la capital y `foundCityBlockReason` lo usa; `MAX_OWN_CITIES` es el techo, 4. Los bots siguen en dos (su propia
   constante en `apps/bots/src/decide.ts`).
+- **Precisión (2026-11-25), E38** ([SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md)): `proposeTrade`,
+  `postMarketOffer` y `buyMarketOffer` (`src/net/client.ts`) admiten `cityId`; el HUD les pasa `commerceCityId`, la
+  ciudad del panel si no es la capital.
 - `GameCanvas`: la cámara arranca en la capital, y «H» alterna entre las ciudades recordadas (`homesOf`, por id).
 - `src/net/client.ts`: `foundCity(unitId)` manda `unit.found_city`; la confirmación llega como un `world.snapshot`
   nuevo centrado en la ciudad nueva. `CITY_FOUNDED` tiene su texto en `entryText`.

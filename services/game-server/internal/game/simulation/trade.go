@@ -100,6 +100,8 @@ type ProposeTrade struct {
 	Target    uuid.UUID
 	Give      economy.Costs
 	Want      economy.Costs
+	// CityID es la ciudad propia de la que sale; 0, la capital (RN-TRADE-010).
+	CityID int64
 }
 
 func (ProposeTrade) commandType() string { return protocol.TypeTradePropose }
@@ -262,9 +264,9 @@ func (s *Simulation) handleProposeTrade(cmd ProposeTrade) {
 		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeInvalidTarget, "no puedes comerciar contigo mismo")
 		return
 	}
-	propia, ok := s.state.CityOf(cmd.PlayerID)
+	propia, ok := s.commerceCity(cmd.PlayerID, cmd.CityID)
 	if !ok {
-		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeCityNotFound, "no tienes ciudad")
+		s.tradeReject(cmd.PlayerID, cmd.RequestID, protocol.CodeCityNotFound, "esa ciudad no es tuya o no está en pie")
 		return
 	}
 	ajena, ok := s.state.CityOf(cmd.Target)

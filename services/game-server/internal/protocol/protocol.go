@@ -628,6 +628,9 @@ type TradeProposePayload struct {
 	PlayerID string           `json:"playerId"`
 	Give     []ResourceAmount `json:"give"`
 	Want     []ResourceAmount `json:"want"`
+	// CityID es la ciudad propia de la que sale (SPEC-TRADE-FROM-CITY RN-TRADE-010);
+	// sin él, la capital.
+	CityID *int64 `json:"cityId,omitempty"`
 }
 
 // TradeRespondPayload acepta o rechaza una oferta recibida.
@@ -666,12 +669,16 @@ type MarketPostPayload struct {
 	Give ResourceAmount `json:"give"`
 	Want ResourceAmount `json:"want"`
 	Lots int32          `json:"lots"`
+	// CityID es la ciudad propia que publica (RN-TRADE-010); sin él, la capital.
+	CityID *int64 `json:"cityId,omitempty"`
 }
 
 // MarketBuyPayload compra lotes de una oferta ajena.
 type MarketBuyPayload struct {
 	OfferID int64 `json:"offerId"`
 	Lots    int32 `json:"lots"`
+	// CityID es la ciudad propia que paga y recibe (RN-TRADE-010); sin él, la capital.
+	CityID *int64 `json:"cityId,omitempty"`
 }
 
 // MarketCancelPayload retira la oferta propia.

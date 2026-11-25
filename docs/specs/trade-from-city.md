@@ -98,6 +98,16 @@ No asigna invariantes. Cita [INV-SEC-001](../invariants/security.md#inv-sec-001)
 | Cliente (Vitest) | Las órdenes salen de la ciudad del panel. |
 | Humo | `--multiciudad`: una oferta del mercado o un trato desde la segunda ciudad. |
 
+### 9.1 Precisiones de la implementación (2026-11-25)
+
+- **Precisión (2026-11-25): la ciudad del panel.** El HUD manda `cityId` cuando la ciudad del panel (la de «H») no es la
+  capital (`commerceCityId` en `apps/web/src/state/multiCity.ts`). El panel del mercado ya muestra la ciudad del panel;
+  el rótulo «desde <ciudad>» de §4.3 en el panel de comercio queda para otro slice: el que propone ya ve en el panel la
+  ciudad que tiene seleccionada.
+- **Precisión (2026-11-25): sin opción nueva del humo.** Comerciar desde la segunda pide un mercado en ella o un tratado
+  con alguien a su alcance: la prueba en vivo repite `--mercado` y `--comercio` desde la capital (sin `cityId`), y el
+  camino con `cityId` lo cubren los tests de simulación y el e2e de `trade.propose`.
+
 ## 10. Decisiones de producto (2026-11-25)
 
 Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): cada fila deja la decisión (la

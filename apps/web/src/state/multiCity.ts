@@ -72,3 +72,13 @@ export function foundCityBlockReason(unit: UnitView | undefined, own: readonly C
   }
   return null;
 }
+
+/**
+ * De qué ciudad sale una orden de comercio o de mercado (SPEC-TRADE-FROM-CITY Q7):
+ * la del panel si no es la capital; `undefined` (la capital) si lo es o no hay.
+ */
+export function commerceCityId(shown: CityView | null, own: readonly CityView[]): number | undefined {
+  if (!shown || own.length === 0 || shown.id === own[0]?.id) return undefined;
+  return own.some((c) => c.id === shown.id) ? shown.id : undefined;
+}
+

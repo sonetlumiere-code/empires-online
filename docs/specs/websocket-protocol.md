@@ -58,6 +58,7 @@ Dentro del scope de v1:
 - La caída de una ciudad ([city-fall.md](city-fall.md)): `unit.assault { unitId, cityId }` (§7.25), el 53.º tipo, hostil; `assault` (`{ playerId, unitId, startedAtMs, endsAtMs }`, opcional) y `fallImmuneUntilMs` (opcional) en `CityView`, y `assault` en `city.update` (la vista al confirmarse un asalto, `null` al romperse); `city.fallen { cityId, ownerPlayerId, byPlayerId, atMs }` (§8.34); `CITY_ASSAULTED`, `CITY_LOST` y `CITY_TAKEN` en `EventLogKind` y en `EventLogNoticeKind`, con `fallsAtMs` (opcional) en la entrada y el aviso. La unidad que asalta viaja con `status: CLAIMING`, sin valor nuevo. Los tres tipos del registro son valores nuevos de enums estrictos: el cliente y el servidor los estrenan juntos ([ADR-050](../decisions/ADR-050-city-fall.md)).
 - El multiciudad ([multi-city.md](multi-city.md)): `unit.found_city { unitId }` (§7.26), el 54.º tipo, no hostil; sin mensaje servidor→cliente nuevo: al confirmarse, las sesiones del fundador reciben un `world.snapshot` centrado en la ciudad nueva. `CITY_FOUNDED` en `EventLogKind` (no en `EventLogNoticeKind`), sin otro jugador. `CityView` no cambia: la capital es la de id menor ([ADR-051](../decisions/ADR-051-multi-city-capital.md)). Es un valor nuevo de un enum estricto: el cliente y el servidor lo estrenan juntos.
 - La ciudad tomada ([city-taken.md](city-taken.md)): `takenCityId` (opcional) en `city.fallen` (§8.34), la ciudad del vencedor que la tomó; la tomada llega como cualquier ciudad que entra en la vista y sus edificios heredados como `building.spawn` con su `cityId` nuevo, y el vencedor recibe un `world.snapshot` centrado en ella. Aditivo: un cliente que no lo conoce sigue funcionando.
+- El comercio desde cualquier ciudad ([trade-from-city.md](trade-from-city.md)): `cityId` (opcional) en `trade.propose` (§7.17), `market.post` y `market.buy` (§7.24), la ciudad propia de la que sale la orden; sin él, la capital. Aditivo: sin tipos nuevos.
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -565,6 +566,8 @@ payload: z.object({ cityId: EntityId }).strict()
 
 ### 7.17 `trade.propose`, `trade.respond` y `trade.cancel`
 
+**Precisión (2026-11-25), E38** ([trade-from-city.md](trade-from-city.md) `RN-TRADE-010`): `trade.propose` admite `cityId` (opcional), la ciudad propia de la que sale lo que da y a la que llega lo que pide; sin él, la capital. Una ciudad que no es del jugador o no está en pie es `CITY_NOT_FOUND`.
+
 - **Dirección:** cliente → servidor. **Propósito:** ofrecer un trato «doy esto, pido aquello» a otro jugador con un tratado vigente, aceptar o rechazar una oferta recibida, y retirar la propia. No son hostiles (`RN-TRADE-008`). Spec: [trade.md](trade.md); decisión: [ADR-032](../decisions/ADR-032-trade-offers-and-two-key-jobs.md).
 
 ```ts
@@ -728,6 +731,8 @@ payload: z.object({ cityId: EntityId, technology: TechnologyCode }).strict()  //
 **Efectos, en dos fases** ([ADR-023](../decisions/ADR-023-economy-stock-deltas-and-two-phase-orders.md)). El tick reserva el coste; la transacción lo debita y escribe la investigación. Con éxito, `city.update { stocks }` al chunk y `city.update { research: { technology, completesAtMs } }` sólo al dueño, por `SendToPlayer`. Al vencer el plazo (el del catálogo con `production.speed`), `city.update { research: null, technologies }` sólo al dueño. Mientras dura, `city.advance` responde `CITY_BUSY`, y una investigación no impide `city.train`, `city.build` ni `city.craft`.
 
 ### 7.24 `market.post`, `market.buy`, `market.cancel` y `market.list`
+
+**Precisión (2026-11-25), E38** ([trade-from-city.md](trade-from-city.md) `RN-TRADE-010`): `market.post` y `market.buy` admiten `cityId` (opcional), la ciudad propia que pone la custodia o paga, con su mercado y su ruta; sin él, la capital. Una ciudad que no es del jugador o no está en pie es `CITY_NOT_FOUND`.
 
 - **Dirección:** cliente → servidor. **Propósito:** publicar una oferta en el mercado, comprar lotes de una ajena, retirar la propia y leer el tablón. Ninguno es hostil. Spec: [markets.md](markets.md); persistencia: [ADR-047](../decisions/ADR-047-markets.md).
 

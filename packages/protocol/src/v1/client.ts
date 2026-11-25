@@ -384,6 +384,8 @@ export const TradePropose = z.object({
     playerId: Uuid,
     give: TradeLines,
     want: TradeLines,
+    /** La ciudad propia de la que sale (SPEC-TRADE-FROM-CITY RN-TRADE-010); sin él, la capital. */
+    cityId: EntityId.optional(),
   }).strict(),
 }).strict();
 
@@ -421,6 +423,8 @@ export const MarketPost = z.object({
     give: ResourceAmount.strict(),
     want: ResourceAmount.strict(),
     lots: z.number().int().min(1).max(MARKET_MAX_LOTS),
+    /** La ciudad propia que publica (RN-TRADE-010); sin él, la capital. */
+    cityId: EntityId.optional(),
   }).strict(),
 }).strict();
 
@@ -432,6 +436,8 @@ export const MarketBuy = z.object({
   payload: z.object({
     offerId: EntityId,
     lots: z.number().int().min(1).max(MARKET_MAX_LOTS),
+    /** La ciudad propia que paga y recibe (RN-TRADE-010); sin él, la capital. */
+    cityId: EntityId.optional(),
   }).strict(),
 }).strict();
 

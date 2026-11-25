@@ -24,6 +24,9 @@ pedírselo a quien lo tiene a cambio de algo que le falte. Es el pilar 4 de
 [game-pillars.md](../product/game-pillars.md) (interdependencia), con la geografía como el complemento que aceptó la
 Q2 de E9, y da al tratado `TRADE`, que está en el esquema desde M7, algo que hacer.
 
+**Precisión (2026-11-25):** desde E38 ([trade-from-city.md](trade-from-city.md) `RN-TRADE-010`), `trade.propose` puede salir
+de otra ciudad propia con `cityId`; el que acepta sigue en su capital.
+
 ## 2. Scope
 
 **Entra.** Proponer el tratado `TRADE` desde el cliente, con la escalera de tratados de §4.1; los comandos
