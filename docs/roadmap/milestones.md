@@ -3330,3 +3330,34 @@ migración 31 → 32 al arrancar. `node scripts/smoke.mjs --web http://localhost
 - **Sin comprobar en el navegador:** la tomada con sus edificios en el mapa; el panel del navegador no se usó en esta
   sesión desatendida.
 
+## E37 — Más ciudades
+
+**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-mas-ciudades`, con `verify:full` en verde;
+sin empujar (la spec pasa a `Implemented` con la CI). Contrato:
+[SPEC-MORE-CITIES](../specs/more-cities.md), propuesta y aceptada el 2026-11-25 con sus seis decisiones (producto delegó
+en la recomendación del agente, sesión desatendida). Sin ADR nuevo; migración `000033`.
+
+**Objetivo.** Que cada era abra un hueco: hoy el tope de dos ciudades no crece con Hierro ni Castillos.
+
+**Alcance.** El tope por era de la capital (1 a 4), el hueco 1 a 4 en la base, fundar y tomar con ese tope, el motivo
+del HUD, y los bots que no pasan de dos (`RN-CITY-040`, `RN-CITY-041`, precisión de `INV-CITY-022`). **No entra**
+(spec §2): un coste que crezca, un selector de ciudades, bots con más de una segunda ciudad.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; precisiones de `INV-CITY-022` y de `RN-CITY-031`.
+2. **HECHO** — Servidor y base: `city.MaxStandingFor`, `city.FreeSlot`, `city.CityName`, la migración `000033`, el tope
+   en el tick y en las transacciones de la fundación y la toma, con sus tests (`city_test.go`, `multi_city_test.go`,
+   `multi_city_integration_test.go`, `city_taken_integration_test.go`).
+3. **HECHO** — Cliente (`maxOwnCities`, el motivo del HUD), bots (siguen en dos), humo (`--multiciudad` acepta el
+   mensaje nuevo), docs (base, cliente, spec §9.1), `verify:full` y prueba en vivo.
+
+### Prueba en vivo (2026-11-25)
+
+Servidor y web de desarrollo; el servidor aplicó la migración 32 → 33 al arrancar.
+`node scripts/smoke.mjs --web http://localhost:3001 --multiciudad`: `smoke_multi`, con dos ciudades y la capital en
+Bronce, ve rechazada la tercera (`INVALID_TARGET`, «ya tienes 2 ciudades: el tope de tu capital es 2»).
+
+- **Sin comprobar en vivo:** fundar la tercera con la capital en Hierro (lo cubren `TestEnHierroSeFundaLaTercera` y
+  `TestEnHierroElVencedorTomaLaTercera`); el motivo nuevo de «Fundar ciudad» en el navegador.
+

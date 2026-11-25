@@ -26,9 +26,12 @@ import (
 var sitioSegunda = world.Tile{X: 10, Y: 50}
 
 // conAlmacen deja en el almacén de la ciudad madera y piedra, y devuelve las
-// versiones con que quedan.
+// versiones con que quedan. La deja además en Bronce: la que paga lo pide
+// (RN-CITY-030) y, capital, su era da el tope de dos (SPEC-MORE-CITIES RN-CITY-040).
 func conAlmacen(t *testing.T, ctx context.Context, store *postgres.Store, cityID int64, madera, piedra int64) (int64, int64) {
 	t.Helper()
+	_, err := store.Pool().Exec(ctx, `UPDATE cities SET era = 'BRONZE_AGE' WHERE id = $1`, cityID)
+	require.NoError(t, err)
 	var vm, vp int64
 	require.NoError(t, store.Pool().QueryRow(ctx,
 		`UPDATE city_stocks SET amount = $2, version = version + 1 WHERE city_id = $1 AND resource = 'WOOD' RETURNING version`,
@@ -62,7 +65,7 @@ func cobro(cityID, vm, vp int64) []postgres.StockDelta {
 
 // INV-CITY-022 en la base: dos ciudades en pie del mismo dueño caben en dos
 // huecos; la tercera, no.
-func TestLaBaseDejaDosCiudadesEnPieYNoTres(t *testing.T) {
+func TestLaBaseDejaUnaCiudadPorHuecoYCuatroHuecos(t *testing.T) {
 	store, ctx := newTestStore(t)
 	c := nuevaCaida(t, ctx, store)
 	db := store.Pool()
@@ -75,10 +78,17 @@ func TestLaBaseDejaDosCiudadesEnPieYNoTres(t *testing.T) {
 		`INSERT INTO cities (owner_player_id, name, center_x, center_y, era, population_limit, last_online_at, slot)
 		 VALUES ($1, 'tercera', 40, 40, 'STONE_AGE', 20, now(), 2)`, c.vencido.Player.ID)
 	assert.Equal(t, "cities_one_standing_per_owner", constraintDe(t, err), "el hueco 2 ya está en pie")
+	// SPEC-MORE-CITIES: los huecos 3 y 4 existen; el 5, no (INV-CITY-022).
+	for i, slot := range []int{3, 4} {
+		_, err = db.Exec(ctx,
+			`INSERT INTO cities (owner_player_id, name, center_x, center_y, era, population_limit, last_online_at, slot)
+			 VALUES ($1, 'otra', 40, $2, 'STONE_AGE', 20, now(), $3)`, c.vencido.Player.ID, 40+24*i, slot)
+		require.NoError(t, err, "el hueco %d está libre", slot)
+	}
 	_, err = db.Exec(ctx,
 		`INSERT INTO cities (owner_player_id, name, center_x, center_y, era, population_limit, last_online_at, slot)
-		 VALUES ($1, 'tercera', 40, 40, 'STONE_AGE', 20, now(), 3)`, c.vencido.Player.ID)
-	assert.Equal(t, "cities_slot_valid", constraintDe(t, err), "no hay hueco 3")
+		 VALUES ($1, 'quinta', 20, 40, 'STONE_AGE', 20, now(), 5)`, c.vencido.Player.ID)
+	assert.Equal(t, "cities_slot_valid", constraintDe(t, err), "no hay hueco 5")
 
 	capital, err := c.cities.GetByOwner(ctx, c.vencido.Player.ID)
 	require.NoError(t, err)

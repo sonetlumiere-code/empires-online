@@ -28,6 +28,9 @@ func TestLaCaidaConHuecoTomaLaCiudad(t *testing.T) {
 	                          VALUES ($1, 'HOUSE', 11, 9, 'UNDER_CONSTRUCTION', 999999, 'obra') RETURNING id`, cid).Scan(&obra))
 	_, err := pool.Exec(ctx, `UPDATE city_stocks SET amount = 80 WHERE city_id = $1 AND resource = 'WOOD'`, cid)
 	require.NoError(t, err)
+	// La capital del vencedor en Bronce: tope de dos (SPEC-MORE-CITIES RN-CITY-040).
+	_, err = pool.Exec(ctx, `UPDATE cities SET era = 'BRONZE_AGE' WHERE id = $1`, c.vencedor.City.ID)
+	require.NoError(t, err)
 
 	id, err := c.repo.StartAssault(ctx, c.asalto("r1"))
 	require.NoError(t, err)
@@ -102,4 +105,26 @@ func TestSinHuecoLaCaidaNoToma(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT count(*) FROM cities WHERE owner_player_id = $1 AND fallen_at IS NULL`, c.vencedor.Player.ID).Scan(&n))
 	assert.Equal(t, 2, n)
+}
+
+// SPEC-MORE-CITIES RN-CITY-040: con la capital del vencedor en Hierro, dos ciudades
+// en pie aún dejan hueco: la tomada es la tercera, en el hueco 3.
+func TestEnHierroElVencedorTomaLaTercera(t *testing.T) {
+	store, ctx := newTestStore(t)
+	c := nuevaCaida(t, ctx, store)
+	pool := store.Pool()
+	_, err := pool.Exec(ctx, `UPDATE cities SET era = 'IRON_AGE' WHERE id = $1`, c.vencedor.City.ID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO cities (owner_player_id, name, center_x, center_y, era, population, population_limit,
+	                           presence_state, slot) VALUES ($1, 'vencedor II', 50, 10, 'BRONZE_AGE', 0, 20, 'ONLINE', 2)`,
+		c.vencedor.Player.ID)
+	require.NoError(t, err)
+	id, err := c.repo.StartAssault(ctx, c.asalto("r1"))
+	require.NoError(t, err)
+	caida := c.caida(t, id, world.Tile{X: 10, Y: 50})
+	caida.TakeSpawns = []world.Tile{{X: 12, Y: 10}, {X: 8, Y: 10}, {X: 10, Y: 12}}
+	res, err := c.repo.FallCity(ctx, caida)
+	require.NoError(t, err)
+	require.NotNil(t, res.Taken, "en Hierro, el tope es tres")
+	assert.Equal(t, int16(3), res.Taken.Slot)
 }

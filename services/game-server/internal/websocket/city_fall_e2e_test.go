@@ -91,6 +91,10 @@ func TestUnaCiudadCaePorLaRed(t *testing.T) {
 	env.state.AddCity(&city.City{Civilization: "NORSE", ID: 2, OwnerPlayerID: ajeno, Name: "Ajenópolis",
 		CenterX: 60, CenterY: 40, Era: city.EraBronze, Population: 0, PopulationLimit: 20,
 		PresenceState: city.PresenceOnline})
+	// La capital del vencedor en Bronce: tope de dos, así que toma (SPEC-MORE-CITIES RN-CITY-040).
+	propia, ok := env.state.City(1)
+	require.True(t, ok)
+	propia.Era = city.EraBronze
 	const guerrero int64 = 600
 	env.state.AddUnit(&unit.Unit{ID: guerrero, PlayerID: env.playerID, CityID: &[]int64{1}[0], Type: unit.TypeWarrior,
 		X: 58, Y: 40, HP: 60, MaxHP: 60, Status: unit.StatusIdle})

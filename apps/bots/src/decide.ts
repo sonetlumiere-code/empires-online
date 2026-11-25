@@ -35,7 +35,10 @@ import { foreignGoods, goodOf } from '../../web/src/state/civilizations';
 import { technologiesFor, researchBlockReason } from '../../web/src/state/technologies';
 import { civilizationUnit, unitAttacks, unitInfoOf } from '../../web/src/state/units';
 import { assaultBlockReason, walled } from '../../web/src/state/cityFall';
-import { FOUND_COST, MAX_OWN_CITIES } from '../../web/src/state/multiCity';
+import { FOUND_COST } from '../../web/src/state/multiCity';
+
+/** Los bots no pasan de dos ciudades: la capital y una segunda (SPEC-MORE-CITIES Q5). */
+const MAX_OWN_CITIES = 2;
 import {
   HOME_RADIUS,
   HOUSE_WOOD,

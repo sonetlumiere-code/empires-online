@@ -18,6 +18,8 @@ import (
 // aldeanos, destruye la obra, y city.fallen dice qué ciudad la tomó.
 func TestUnaCiudadQueCaeConHuecoLaTomaElVencedor(t *testing.T) {
 	h, store, enemigo, ciudad := escenarioDeCaida(t, nil)
+	// La capital del vencedor en Bronce: tope de dos (SPEC-MORE-CITIES RN-CITY-040).
+	h.ciudad().Era = city.EraBronze
 	store.take = true
 	store.takeBuildings = []int64{501}
 	h.state.SetEconomy(simulation.EconomyLoad{Buildings: []building.Building{

@@ -824,7 +824,10 @@ rompe el otro y registra `invariant_violation` con `inv_id=INV-CITY-021`.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E34 |
 | Política ante violación | FAIL_FAST (constraint) |
-| Cobertura | **Cubierto** por `TestLaBaseDejaDosCiudadesEnPieYNoTres` y `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion` (integration) y `TestUnAldeanoFundaLaSegundaCiudad` (simulation) |
+| Cobertura | **Cubierto** por `TestLaBaseDejaUnaCiudadPorHuecoYCuatroHuecos` y `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion` (integration) y `TestUnAldeanoFundaLaSegundaCiudad` (simulation) |
+
+**Precisión (2026-11-25):** desde E37 ([more-cities.md](../specs/more-cities.md)), «dos» es el tope de la era de la
+capital al fundar o tomar (1 en Piedra, 2 en Bronce, 3 en Hierro, 4 en Castillos) y nunca más de cuatro en la base.
 
 **Enunciado.** Tras cada transacción confirmada, ningún jugador tiene más de dos filas de `cities` sin `fallen_at`, y
 la RAM de la simulación tiene esas mismas (`State.CitiesOf`), con la de id menor como capital (`State.CityOf`).
@@ -842,14 +845,14 @@ tendría reglas.
 
 **Cómo se verifica.**
 
-- `TestLaBaseDejaDosCiudadesEnPieYNoTres` (integration) — el hueco 2 cabe; un segundo hueco 2 en pie choca con
+- `TestLaBaseDejaUnaCiudadPorHuecoYCuatroHuecos` (integration) — el hueco 2 cabe; un segundo hueco 2 en pie choca con
   `cities_one_standing_per_owner` y un hueco 3, con `cities_slot_valid`.
 - `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion` (integration) — la fundación toma el hueco 2, y una tercera es
   `ErrFoundRejected` sin escribir nada.
 - `TestUnAldeanoFundaLaSegundaCiudad` (simulation) — con dos ciudades, otra orden se rechaza con `INVALID_TARGET` por
   el tope, y no se encola.
 - **Verificado por mutación** (2026-11-24): con `DROP INDEX cities_one_standing_per_owner` en la base de tests cae
-  `TestLaBaseDejaDosCiudadesEnPieYNoTres` (el índice se volvió a crear por dueño y hueco); con el tope del tick en `>`
+  `TestLaBaseDejaUnaCiudadPorHuecoYCuatroHuecos` (el índice se volvió a crear por dueño y hueco); con el tope del tick en `>`
   en vez de `>=` (restaurado desde una copia y comprobado con `cmp`), cae `TestUnAldeanoFundaLaSegundaCiudad`.
 
 **Violación en runtime.** La validación de carga rechaza arrancar con un jugador con más de dos ciudades en pie y

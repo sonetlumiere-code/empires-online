@@ -11,8 +11,13 @@
  */
 import type { CityView, UnitView } from './world';
 
-/** El tope de ciudades en pie por jugador (RN-CITY-031). */
-export const MAX_OWN_CITIES = 2;
+/** El techo de ciudades en pie por jugador (SPEC-MORE-CITIES RN-CITY-040). */
+export const MAX_OWN_CITIES = 4;
+
+/** El tope de ciudades en pie de un jugador cuya capital está en esa era (RN-CITY-040). */
+export function maxOwnCities(era: string): number {
+  return { BRONZE_AGE: 2, IRON_AGE: 3, CASTLE_AGE: 4 }[era] ?? 1;
+}
 
 /** Lo que cuesta fundar, de la ciudad del aldeano (Q3, `EO_CITY_FOUND_*` por defecto). */
 export const FOUND_COST = { WOOD: 800, STONE: 400 } as const;
@@ -54,12 +59,14 @@ export function shownCity(own: readonly CityView[], homeCityId: number | null): 
 export function foundCityBlockReason(unit: UnitView | undefined, own: readonly CityView[]): string | null {
   if (!unit) return 'Selecciona un aldeano';
   if (unit.unitType !== 'VILLAGER') return 'Sólo un aldeano funda una ciudad';
-  if (own.length >= MAX_OWN_CITIES) return 'Ya tienes dos ciudades';
   if (unit.garrisonCityId !== null) return 'El aldeano está guarnecido';
   if (unit.status !== 'IDLE') return 'El aldeano tiene que estar parado';
   const from = own.find((c) => c.id === unit.cityId);
   if (!from) return 'El aldeano no es de una ciudad tuya a la vista';
   if (ERA_ORDER.indexOf(from.era) < ERA_ORDER.indexOf('BRONZE_AGE')) return `${from.name} tiene que estar en la Edad de Bronce`;
+  // El tope es el de la era de la capital, la primera (SPEC-MORE-CITIES RN-CITY-040).
+  const tope = maxOwnCities(own[0]?.era ?? 'STONE_AGE');
+  if (own.length >= tope) return `Ya tienes ${own.length} ${own.length === 1 ? 'ciudad' : 'ciudades'}: el tope de tu capital es ${tope}`;
   if (from.stocks.WOOD < FOUND_COST.WOOD || from.stocks.STONE < FOUND_COST.STONE) {
     return `Fundar cuesta ${FOUND_COST.WOOD} de madera y ${FOUND_COST.STONE} de piedra de ${from.name}`;
   }

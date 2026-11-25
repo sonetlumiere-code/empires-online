@@ -69,6 +69,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E34 Multiciudad | **Completado** (2026-11-25). En `main` desde la fusión `0e5ea92`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E34; contrato en [SPEC-MULTI-CITY](../specs/multi-city.md) y [ADR-051](../decisions/ADR-051-multi-city-capital.md). |
 | E35 Bots que fundan | **Hecho en `main` local** (2026-11-25), sin empujar. Detalle en [milestones.md](milestones.md) §E35; contrato en [SPEC-BOTS-FOUND](../specs/bots-found.md). |
 | E36 La ciudad tomada | **Hecho en `main` local** (2026-11-25), sin empujar. Detalle en [milestones.md](milestones.md) §E36; contrato en [SPEC-CITY-TAKEN](../specs/city-taken.md) y [ADR-052](../decisions/ADR-052-city-taken.md). |
+| E37 Más ciudades | **Hecho en `main` local** (2026-11-25), sin empujar. Detalle en [milestones.md](milestones.md) §E37; contrato en [SPEC-MORE-CITIES](../specs/more-cities.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

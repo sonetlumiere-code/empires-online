@@ -648,7 +648,8 @@ func (s *Simulation) startFall(as *assaultState, now time.Time) {
 	}
 	// SPEC-CITY-TAKEN RN-CITY-036: con hueco, el vencedor se la queda; la
 	// transacción lo vuelve a contar bajo el cerrojo de fundación.
-	if len(s.state.CitiesOf(as.PlayerID)) < city.MaxStandingPerOwner {
+	// SPEC-MORE-CITIES RN-CITY-040: el hueco es el de la era de la capital del vencedor.
+	if len(s.state.CitiesOf(as.PlayerID)) < city.MaxStandingFor(victor.Era) {
 		f.TakeSpawns = founding.SpawnsAround(s.state.World(), c.Center(), player.InitialVillagers)
 	}
 	as.falling = true
