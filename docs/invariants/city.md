@@ -902,7 +902,7 @@ el de simulación.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E36 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Sin cobertura** (se registra con la aceptación de [SPEC-CITY-TAKEN](../specs/city-taken.md)) |
+| Cobertura | **Cubierto** por `TestLaCaidaConHuecoTomaLaCiudad` (integration) y `TestUnaCiudadQueCaeConHuecoLaTomaElVencedor` |
 
 **Enunciado.** Tras confirmarse una caída, todo edificio de la ciudad caída está `DESTROYED` o pasó, en la misma
 transacción, a la ciudad que la tomó (`taken_from_city_id`); y ninguna caída tiene dos ciudades que la tomaron.
@@ -916,7 +916,13 @@ ciudad que no existe. Dos tomadas de la misma caída duplicarían sus edificios 
   `taken_from_city_id`.
 - `DOMAIN` — la RAM aplica en un comando lo que devuelve la transacción.
 
-**Cómo se verifica.** Pendiente de la implementación: un test de integración de la caída que toma y uno de simulación.
+**Cómo se verifica.** `TestLaCaidaConHuecoTomaLaCiudad` (integration: la casa completa pasa a la tomada, la obra queda
+`DESTROYED`, ningún edificio de la caída en pie, y una segunda tomada de la misma caída la rechaza el índice) y
+`TestUnaCiudadQueCaeConHuecoLaTomaElVencedor` (simulation: la RAM deja la casa en la tomada y quita la obra) — **existen
+y pasan**. **Verificado por mutación** (2026-11-25): con la transacción sin destruir las obras al tomar (restaurado
+desde una copia y comprobado con `cmp`) cae el de integración por «la caída no conserva edificios en pie»; sin el
+índice `cities_taken_once` en la base de tests (vuelto a crear y comprobado en `pg_indexes`), el mismo test por la
+segunda tomada; con la RAM sin conservar los heredados, el de simulación.
 
 **Violación en runtime.** La transacción falla y la caída se reintenta como cualquier escritura de la cola.
 
