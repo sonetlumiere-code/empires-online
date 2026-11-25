@@ -121,6 +121,8 @@ func TestUnAldeanoFundaLaSegundaCiudad(t *testing.T) {
 	h.fundarCiudad(fundadorID + 1)
 	code, _ := errorDe(t, h)
 	assert.Equal(t, protocol.CodeInvalidTarget, code)
+	errs := h.rec.byType(protocol.TypeSystemError)
+	assert.Contains(t, errs[0].Payload.(protocol.SystemErrorPayload).Message, "dos ciudades", "el motivo es el tope, no el sitio")
 	assert.Len(t, store.founds, 1)
 }
 

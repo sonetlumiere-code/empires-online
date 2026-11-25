@@ -262,8 +262,8 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-019 | Una ciudad nueva nace al alcance de una caravana de alguna vecina, si había vecinas y algún sitio lo permitía | ALTO | DOMAIN, TEST | ✓ | `TestUnaCiudadNuevaNaceAlAlcanceDeSuVecina`, `TestUnCandidatoSinRutaSeSalta`, `TestElTopeDelPathfindingCortaElAlcance`, `TestUnaIslaSinSitioAlAlcanceFundaComoAntes`, `TestElSegundoJugadorNaceAlAlcanceDelPrimero` (integration) |
 | INV-CITY-020 | Todo jugador tiene exactamente una ciudad en pie | CRITICO | DB, DOMAIN, TEST | ✓ | `TestLaBaseNoDejaDosCiudadesEnPieNiLevantarUnaCaida`, `TestLaCaidaArrasaYRefundaEnUnaTransaccion`, `TestUnaCaidaQueFallaNoDejaNadaAMedias` (integration), `TestUnAsaltoQueAguantaElPlazoHaceCaerLaCiudad` |
 | INV-CITY-021 | Una ciudad tiene como mucho un asalto activo | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosRechazosDelAsalto`, `TestElAsaltoSeEscribeUnaVezYUnoPorCiudad` (integration) |
-| INV-CITY-022 | Un jugador tiene como mucho dos ciudades en pie | CRITICO | DB, DOMAIN, TEST | ○ | — |
-| INV-CITY-023 | Una ciudad cae sin refundar sólo si su dueño tiene otra en pie | CRITICO | DB, DOMAIN, TEST | ○ | — |
+| INV-CITY-022 | Un jugador tiene como mucho dos ciudades en pie | CRITICO | DB, DOMAIN, TEST | ✓ | `TestLaBaseDejaDosCiudadesEnPieYNoTres`, `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion` (integration), `TestUnAldeanoFundaLaSegundaCiudad` |
+| INV-CITY-023 | Una ciudad cae sin refundar sólo si su dueño tiene otra en pie | CRITICO | DB, DOMAIN, TEST | ✓ | `TestUnaCaidaConOtraEnPieNoRefunda` (integration), `TestUnaCiudadQueCaeConOtraEnPieNoRefunda` |
 
 ### UNIT — [units.md](units.md)
 
@@ -486,9 +486,9 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 
 | Marca | Nº | Lectura |
 |---|---|---|
-| ✓ Cubierto | 159 | Tienen al menos un test que existe y pasa hoy |
+| ✓ Cubierto | 161 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 2 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
 | **Total** | **163** | |
 
@@ -496,7 +496,7 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 
-`INV-CITY-022` e `INV-CITY-023` se registraron el 2026-11-24 con [SPEC-MULTI-CITY](../specs/multi-city.md) y [ADR-051](../decisions/ADR-051-multi-city-capital.md), antes de escribir su código, como manda §8: sin cobertura hasta la implementación.
+`INV-CITY-022` e `INV-CITY-023` se registraron el 2026-11-24 con [SPEC-MULTI-CITY](../specs/multi-city.md) y [ADR-051](../decisions/ADR-051-multi-city-capital.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (el índice por hueco, el tope del tick, la caída que mira si queda otra y la RAM que la aplica).
 
 `INV-CITY-020`, `INV-CITY-021` e `INV-COMBAT-010` se registraron el 2026-11-23 con SPEC-CITY-FALL y [ADR-050](../decisions/ADR-050-city-fall.md), antes de escribir su código, como manda §8, y pasaron a ✓ con su implementación ese mismo día, verificados por mutación (seis de código, los dos índices con `DROP INDEX` y el trigger con `DISABLE TRIGGER` en la base de tests); el mismo día se precisaron `INV-CITY-001` (una ciudad caída conserva su único dueño), `INV-PLAYER-003` (la refundación no es un alta) e `INV-TERR-011` (la capital es la de la ciudad en pie), que siguen en ✓. Ninguna fila queda sin cobertura ni parcial.
 

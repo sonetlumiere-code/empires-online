@@ -824,7 +824,7 @@ rompe el otro y registra `invariant_violation` con `inv_id=INV-CITY-021`.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E34 |
 | Política ante violación | FAIL_FAST (constraint) |
-| Cobertura | **Sin cobertura** (registrado el 2026-11-24 con [SPEC-MULTI-CITY](../specs/multi-city.md), antes de escribir su código) |
+| Cobertura | **Cubierto** por `TestLaBaseDejaDosCiudadesEnPieYNoTres` y `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion` (integration) y `TestUnAldeanoFundaLaSegundaCiudad` (simulation) |
 
 **Enunciado.** Tras cada transacción confirmada, ningún jugador tiene más de dos filas de `cities` sin `fallen_at`, y
 la RAM de la simulación tiene esas mismas (`State.CitiesOf`), con la de id menor como capital (`State.CityOf`).
@@ -840,7 +840,17 @@ tendría reglas.
 - `DOMAIN` — `unit.found_city` rechaza con `INVALID_TARGET` a quien ya tiene dos o una fundación en vuelo
   (`RN-CITY-031`), y la transacción lo vuelve a contar bajo el lock de fundación.
 
-**Cómo se verifica.** Pendiente de la implementación.
+**Cómo se verifica.**
+
+- `TestLaBaseDejaDosCiudadesEnPieYNoTres` (integration) — el hueco 2 cabe; un segundo hueco 2 en pie choca con
+  `cities_one_standing_per_owner` y un hueco 3, con `cities_slot_valid`.
+- `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion` (integration) — la fundación toma el hueco 2, y una tercera es
+  `ErrFoundRejected` sin escribir nada.
+- `TestUnAldeanoFundaLaSegundaCiudad` (simulation) — con dos ciudades, otra orden se rechaza con `INVALID_TARGET` por
+  el tope, y no se encola.
+- **Verificado por mutación** (2026-11-24): con `DROP INDEX cities_one_standing_per_owner` en la base de tests cae
+  `TestLaBaseDejaDosCiudadesEnPieYNoTres` (el índice se volvió a crear por dueño y hueco); con el tope del tick en `>`
+  en vez de `>=` (restaurado desde una copia y comprobado con `cmp`), cae `TestUnAldeanoFundaLaSegundaCiudad`.
 
 **Violación en runtime.** La validación de carga rechaza arrancar con un jugador con más de dos ciudades en pie y
 registra `invariant_violation` con `inv_id=INV-CITY-022`.
@@ -856,7 +866,7 @@ registra `invariant_violation` con `inv_id=INV-CITY-022`.
 | Aplicación | DB, DOMAIN, TEST |
 | Milestone | E34 |
 | Política ante violación | FAIL_FAST |
-| Cobertura | **Sin cobertura** (registrado el 2026-11-24 con [SPEC-MULTI-CITY](../specs/multi-city.md), antes de escribir su código) |
+| Cobertura | **Cubierto** por `TestUnaCaidaConOtraEnPieNoRefunda` (integration y simulation) |
 
 **Enunciado.** Una caída confirmada deja a su dueño con al menos una ciudad en pie: si tenía otra, la caída no refunda
 y lo de la caída pasa a la que queda; si no, refunda en la misma transacción ([INV-CITY-020](#inv-city-020)).
@@ -871,7 +881,12 @@ la verdad: en la transacción, bajo el lock de fundación ([ADR-051](../decision
   arrasar y refundar.
 - `DOMAIN` — la RAM aplica el resultado en un solo comando (`RN-CITY-035`).
 
-**Cómo se verifica.** Pendiente de la implementación.
+**Cómo se verifica.** `TestUnaCaidaConOtraEnPieNoRefunda` (integration: con otra ciudad en pie la caída no busca sitio,
+no refunda, pasa las unidades a la que queda, que es la capital, y cuando cae la última se refunda) y
+`TestUnaCiudadQueCaeConOtraEnPieNoRefunda` (simulation: la RAM quita la caída, no añade refundada y la que queda es la
+capital con lo suyo) — **existen y pasan**. **Verificado por mutación** (2026-11-24): con `FallCity` sin mirar si queda
+otra (restaurado desde una copia y comprobado con `cmp`) cae el de integración; con la RAM sin aplicar `KeptCityID`,
+el de simulación.
 
 **Violación en runtime.** La validación de carga rechaza arrancar con un jugador sin ciudad en pie
 (`INV-CITY-020`).
