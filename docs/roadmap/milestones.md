@@ -3385,6 +3385,12 @@ Servidor y web de desarrollo. `--comercio` (27 comprobaciones) y `--mercado` (29
 `cityId` sigue saliendo de la capital. Lanzadas juntas (`--mercado --comercio`), la de comercio falló una vez en «el
 registro de quien recibe no cuenta la caravana»: la caravana había llegado, pero la primera página del registro de
 `smoke_victim` aún no traía su `CARAVAN_ARRIVED`; sola pasó. Queda como intermitencia del humo para mirar aparte.
+**Precisión (2026-11-25), el arreglo del humo** (rama `claude/arreglo-humo-comercio`): la espera tomaba la primera
+`CARAVAN_ARRIVED` del mismo remitente, y en el registro de `smoke_victim` ya había otras (la de 10 de madera de
+`--mercado`, las de pasadas anteriores): con una de 10 por delante cortaba la espera y fallaba; con una vieja de 50,
+pasaba sin haber visto la nueva. Ahora exige una entrada posterior al trato y con los 50 de madera (`esLlegadaNueva` y
+`ultimoIdDelRegistro`, con sus tests en `scripts/smoke.test.mjs`; quitar la condición del `id` hace caer el test).
+`--mercado --comercio` juntas: 39 comprobaciones superadas.
 
 - **Sin comprobar en vivo:** una oferta o un trato desde la segunda ciudad (lo cubren los tests de simulación y el
   e2e); el HUD con la segunda ciudad en el panel, en el navegador.
