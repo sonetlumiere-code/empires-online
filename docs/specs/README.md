@@ -87,6 +87,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | La ciudad tomada | [city-taken.md](city-taken.md) | E36 La ciudad tomada | Accepted | El asalto que tumba una ciudad se la queda si el vencedor tiene hueco: una ciudad nueva del vencedor en el mismo centro, con los edificios completos de la caída, tres aldeanos y el almacén a cero; el vencido cae como siempre |
 | Más ciudades | [more-cities.md](more-cities.md) | E37 Más ciudades | Accepted | El tope de ciudades en pie depende de la era de la capital (1, 2, 3 y 4 de Piedra a Castillos); fundar y tomar con ese tope, el hueco de la base hasta 4, y quien cae por encima del tope conserva sus ciudades |
 | El comercio desde cualquier ciudad | [trade-from-city.md](trade-from-city.md) | E38 El comercio desde cualquier ciudad | Accepted | `cityId` opcional en `trade.propose`, `market.post` y `market.buy`: la ciudad propia de la que sale el comercio pone su almacén, su mercado y su ruta; sin él, la capital |
+| Los avisos de la ciudad tomada | [city-taken-notices.md](city-taken-notices.md) | E39 Los avisos de la ciudad tomada | Draft | `taken` en la entrada del registro y en el aviso de `CITY_LOST` y `CITY_TAKEN`, leído de `takenCityId`, con un texto para la toma en cada lado |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en
