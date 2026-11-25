@@ -7,7 +7,7 @@ alcance de caravana ([trade-reach.md](trade-reach.md)); sin decir nada, sigue si
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TRADE-FROM-CITY` |
-| Estado | Draft (2026-11-25). Las preguntas de §10 esperan la decisión de producto. |
+| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las siete preguntas de §10, con su recomendación. |
 | Milestone | E38 El comercio desde cualquier ciudad (trigésimo octavo slice después de M7) |
 | Canon | §11 (comercio), §13 (protocolo) |
 | Depende de | [trade.md](trade.md), [markets.md](markets.md), [caravans.md](caravans.md), [trade-reach.md](trade-reach.md), [multi-city.md](multi-city.md), [more-cities.md](more-cities.md), [websocket-protocol.md](websocket-protocol.md) |
@@ -98,11 +98,13 @@ No asigna invariantes. Cita [INV-SEC-001](../invariants/security.md#inv-sec-001)
 | Cliente (Vitest) | Las órdenes salen de la ciudad del panel. |
 | Humo | `--multiciudad`: una oferta del mercado o un trato desde la segunda ciudad. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-25)
 
-Cada fila deja la recomendación del agente (en negrita) y las alternativas descartadas.
+Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): cada fila deja la decisión (la
+recomendación, en negrita) y las alternativas descartadas. Son decisiones de producto, no de ingeniería: cambiarlas es
+cambiar la spec, y la persona usuaria puede revisarlas al volver.
 
-| # | Pregunta | Recomendación | Descartadas |
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿Qué órdenes eligen ciudad? | **`trade.propose`, `market.post` y `market.buy`.** Son las que ponen almacén y ruta del que ordena. | **También las caravanas sueltas** (no hay orden de caravana sin trato). |
 | Q2 | ¿Y el que acepta un trato? | **Desde su capital, como hoy**: la oferta ya guarda las dos ciudades al proponerse. | **Elegir al aceptar** (cambia una oferta ya escrita y su ruta). |

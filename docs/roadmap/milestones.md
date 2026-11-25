@@ -3361,3 +3361,21 @@ Bronce, ve rechazada la tercera (`INVALID_TARGET`, «ya tienes 2 ciudades: el to
 - **Sin comprobar en vivo:** fundar la tercera con la capital en Hierro (lo cubren `TestEnHierroSeFundaLaTercera` y
   `TestEnHierroElVencedorTomaLaTercera`); el motivo nuevo de «Fundar ciudad» en el navegador.
 
+## E38 — El comercio desde cualquier ciudad
+
+**Estado: EN CURSO (2026-11-25)**, en la rama `claude/slice-comercio-ciudades`. Contrato:
+[SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md), propuesta y aceptada el 2026-11-25 con sus siete decisiones
+(producto delegó en la recomendación del agente, sesión desatendida). Sin ADR ni migración.
+
+**Objetivo.** Que una segunda ciudad comercie con su almacén, su mercado y su ruta: hoy todo sale de la capital.
+
+**Alcance.** `cityId` opcional en `trade.propose`, `market.post` y `market.buy` (`RN-TRADE-010`), su validación y el HUD
+que manda la ciudad del panel. **No entra** (spec §2): la ciudad del que acepta, las caravanas capturadas, los bots.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; precisión de la Q7 de
+   [multi-city.md](../specs/multi-city.md).
+2. **PENDIENTE** — Protocolo y servidor: `cityId` en Zod y en Go, la ciudad elegida en las tres órdenes, con sus tests.
+3. **PENDIENTE** — Cliente y humo; docs; `verify:full`; prueba en vivo.
+
