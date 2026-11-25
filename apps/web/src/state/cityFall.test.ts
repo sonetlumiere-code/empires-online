@@ -155,6 +155,12 @@ describe('el registro y los avisos (SPEC-CITY-FALL Q9)', () => {
     const tomada = { ...base, kind: 'CITY_TAKEN', x: 20, y: 40 } as EventLogEntry;
     expect(entryText(tomada)).toBe('Tus unidades tomaron y arrasaron la ciudad de Puerto Sur cerca de (20, 40)');
     expect(isLoss(tomada)).toBe(false);
+    // SPEC-CITY-TAKEN-NOTICES §4.2: con taken, el desenlace de la toma a los dos lados.
+    expect(entryText({ ...tomada, taken: true } as EventLogEntry)).toBe('Tomaste la ciudad de Puerto Sur cerca de (20, 40): ahora es tuya');
+    expect(entryText({ ...perdida, taken: true } as EventLogEntry)).toBe(
+      'Puerto Sur tomó tu ciudad: ahora es suya. Sigues en (300, 400). Conservas tu era y tus tecnologías',
+    );
+    expect(isLoss({ ...perdida, taken: true } as EventLogEntry)).toBe(true);
   });
 
   it('el aviso del asalto lleva cuándo cae', () => {

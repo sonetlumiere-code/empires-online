@@ -811,6 +811,9 @@ type EventLogEntry struct {
 	// FallsAtMs, en el asalto de una ciudad: cuándo cae si nadie lo rompe
 	// (SPEC-CITY-FALL §6).
 	FallsAtMs *int64 `json:"fallsAtMs,omitempty"`
+	// Taken, en CITY_LOST y CITY_TAKEN: el vencedor se quedó la ciudad
+	// (SPEC-CITY-TAKEN-NOTICES §4.1); ausente si se arrasó.
+	Taken *bool `json:"taken,omitempty"`
 }
 
 // EventLogNoticePayload es un aviso en vivo (SPEC-LIVE-NOTICES §6): un suceso
@@ -845,6 +848,9 @@ type EventLogNoticePayload struct {
 	// FallsAtMs, en el asalto de una ciudad: cuándo cae si nadie lo rompe
 	// (SPEC-CITY-FALL §6).
 	FallsAtMs *int64 `json:"fallsAtMs,omitempty"`
+	// Taken, en CITY_LOST y CITY_TAKEN: el vencedor se quedó la ciudad
+	// (SPEC-CITY-TAKEN-NOTICES §4.1); ausente si se arrasó.
+	Taken *bool `json:"taken,omitempty"`
 }
 
 // EventLogPagePayload es una página del registro. NextBeforeID es nil en la

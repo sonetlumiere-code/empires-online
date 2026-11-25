@@ -59,6 +59,7 @@ Dentro del scope de v1:
 - El multiciudad ([multi-city.md](multi-city.md)): `unit.found_city { unitId }` (§7.26), el 54.º tipo, no hostil; sin mensaje servidor→cliente nuevo: al confirmarse, las sesiones del fundador reciben un `world.snapshot` centrado en la ciudad nueva. `CITY_FOUNDED` en `EventLogKind` (no en `EventLogNoticeKind`), sin otro jugador. `CityView` no cambia: la capital es la de id menor ([ADR-051](../decisions/ADR-051-multi-city-capital.md)). Es un valor nuevo de un enum estricto: el cliente y el servidor lo estrenan juntos.
 - La ciudad tomada ([city-taken.md](city-taken.md)): `takenCityId` (opcional) en `city.fallen` (§8.34), la ciudad del vencedor que la tomó; la tomada llega como cualquier ciudad que entra en la vista y sus edificios heredados como `building.spawn` con su `cityId` nuevo, y el vencedor recibe un `world.snapshot` centrado en ella. Aditivo: un cliente que no lo conoce sigue funcionando.
 - El comercio desde cualquier ciudad ([trade-from-city.md](trade-from-city.md)): `cityId` (opcional) en `trade.propose` (§7.17), `market.post` y `market.buy` (§7.24), la ciudad propia de la que sale la orden; sin él, la capital. Aditivo: sin tipos nuevos.
+- Los avisos de la ciudad tomada ([city-taken-notices.md](city-taken-notices.md)): `taken` (opcional, sólo `true`) en `EventLogEntry` y en `event_log.notice`, en `CITY_LOST` y `CITY_TAKEN` cuando el vencedor se quedó la ciudad. Aditivo.
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)

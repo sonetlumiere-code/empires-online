@@ -818,6 +818,8 @@ export const EventLogEntry = z.object({
    * ciudad arrasada.
    */
   fallsAtMs: EpochMs.optional(),
+  /** En CITY_LOST y CITY_TAKEN: el vencedor se quedó la ciudad (SPEC-CITY-TAKEN-NOTICES §4.1). */
+  taken: z.literal(true).optional(),
 });
 export type EventLogEntry = z.infer<typeof EventLogEntry>;
 

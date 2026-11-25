@@ -220,6 +220,8 @@ type eventPayload struct {
 	FallsAtMs int64  `json:"fallsAtMs"`
 	NewX      *int32 `json:"newX"`
 	NewY      *int32 `json:"newY"`
+	// TakenCityID, en la caída que tomó el vencedor (SPEC-CITY-TAKEN §6).
+	TakenCityID int64 `json:"takenCityId"`
 }
 
 // payloadLine es una línea de un trato en el payload.
@@ -282,6 +284,7 @@ func fillFromPayload(e *eventlog.Event, raw []byte, legacy bool) error {
 	e.StartsAtMs, e.WarResult, e.OurScore, e.TheirScore = p.StartsAtMs, p.Result, p.OurScore, p.TheirScore
 	e.Lots = p.Lots
 	e.FallsAtMs = p.FallsAtMs
+	e.Taken = p.TakenCityID > 0
 	if p.NewX != nil && p.NewY != nil {
 		e.NewX, e.NewY = *p.NewX, *p.NewY
 	}
@@ -383,6 +386,12 @@ func toView(e eventlog.Entry, cities map[uuid.UUID]cityRef) protocol.EventLogEnt
 		if e.FallsAtMs > 0 {
 			at := e.FallsAtMs
 			v.FallsAtMs = &at
+		}
+	case eventlog.KindCityLost, eventlog.KindCityTaken:
+		// SPEC-CITY-TAKEN-NOTICES §4.1: sólo si se la quedaron.
+		if e.Taken {
+			tomada := true
+			v.Taken = &tomada
 		}
 	}
 	if len(e.TradeGive) > 0 || len(e.TradeGet) > 0 {

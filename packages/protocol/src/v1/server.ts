@@ -473,6 +473,8 @@ export const EventLogNotice = z.object({
     theirScore: ClanWarScore.optional(),
     /** En el asalto de una ciudad: cuándo cae si nadie lo rompe, como en la entrada del registro (SPEC-CITY-FALL §6). */
     fallsAtMs: EpochMs.optional(),
+    /** En CITY_LOST y CITY_TAKEN: el vencedor se quedó la ciudad (SPEC-CITY-TAKEN-NOTICES §4.1). */
+    taken: z.literal(true).optional(),
   }),
 });
 

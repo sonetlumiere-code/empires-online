@@ -1512,5 +1512,11 @@ describe('la caída de una ciudad (SPEC-CITY-FALL)', () => {
       const notice = { kind, atMs: 1, otherPlayerId: otro, otherCityId: 9, otherCityName: 'Puerto Sur', x: 150, y: 90, fallsAtMs: 2 };
       expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: notice }).ok).toBe(true);
     }
+    // SPEC-CITY-TAKEN-NOTICES §6: taken, sólo true y opcional.
+    const tomada = { kind: 'CITY_TAKEN', atMs: 1, otherPlayerId: otro, otherCityId: 9, otherCityName: 'Puerto Sur', taken: true };
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: tomada }).ok).toBe(true);
+    expect(parseServerMessage({ ...env, type: 'event_log.notice', payload: { ...tomada, taken: false } }).ok).toBe(false);
+    const entrada = { id: 42, kind: 'CITY_LOST', firstAtMs: 1, lastAtMs: 2, count: 1, otherPlayerId: otro, otherCityId: 9, otherCityName: 'Puerto Sur', taken: true };
+    expect(parseServerMessage({ ...env, type: 'event_log.page', payload: { entries: [entrada], seenUpToId: 0, nextBeforeId: null } }).ok).toBe(true);
   });
 });
