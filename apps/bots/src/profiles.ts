@@ -122,7 +122,8 @@ const COMMON = {
   assaultRallyTimeoutMs: 10 * 60_000,
   assaultTimeoutMs: 45 * 60_000,
   foundMinDistance: 28,
-  foundMaxDistance: 56,
+  // 96: en el mundo denso de desarrollo no había sitio a 56 (pasada en vivo de E35, spec §9.1).
+  foundMaxDistance: 96,
   foundWalkTimeoutMs: 10 * 60_000,
   foundSiteCooldownMs: 30 * 60_000,
   colonyVillagers: 8,

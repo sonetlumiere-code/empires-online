@@ -304,6 +304,7 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
         case 'found':
           if (l.status === 'started') foundsStarted++;
+          if (l.status === 'no_site') inc(foundFailures, 'no_site');
           if (l.status === 'failed') inc(foundFailures, String(l.cause));
           if (l.status === 'founded') {
             const bronze = eras.BRONZE_AGE ?? 0;
@@ -480,7 +481,7 @@ export function formatSummary(rows: readonly BotSummary[]): string {
         `  cayó${which} ante ${f.by ?? '—'} en ${f.era}: muralla ${ms(f.wallMs)} · población de antes ${ms(f.populationMs)} · era siguiente ${ms(f.nextEraMs)}`,
       );
     }
-    if (r.foundsStarted > 0) {
+    if (r.foundsStarted > 0 || r.foundFailures.no_site) {
       out.push(`  fundaciones: empezadas ${r.foundsStarted} · logradas ${r.colonies.length} · fallidas: ${list(r.foundFailures)}`);
     }
     for (const c of r.colonies) {
@@ -513,7 +514,7 @@ export function formatSummary(rows: readonly BotSummary[]): string {
         `rechazos ${sum((r) => Object.values(r.rejected).reduce((a, b) => a + b, 0))}`,
     );
     const founded = rs.flatMap((r) => r.colonies);
-    if (rs.some((r) => r.foundsStarted > 0)) {
+    if (rs.some((r) => r.foundsStarted > 0 || r.foundFailures.no_site)) {
       const avg = founded.length > 0 ? formatDuration(founded.reduce((a, c) => a + c.foundedMs, 0) / founded.length) : '—';
       out.push(`  ${p}: fundaciones ${founded.length} (media hasta fundar ${avg}) · segundas crecidas ${founded.filter((c) => c.grownMs !== null).length}`);
     }

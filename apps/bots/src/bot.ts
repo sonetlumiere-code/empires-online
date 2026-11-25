@@ -548,6 +548,7 @@ export class Bot {
     const nowMs = this.now();
     const hadRaid = this.memory.raid;
     const hadFounding = this.memory.founding;
+    const hadSearchAt = this.memory.foundSearchAtMs;
     const { commands, memory } = decide(view, this.deps.profile, this.memory, nowMs, this.rng, {
       contraHumanos: this.deps.contraHumanos,
       comercio: this.deps.comercio !== false,
@@ -556,6 +557,8 @@ export class Bot {
     this.memory = memory;
     for (const cmd of commands) this.send(cmd, nowMs);
     this.logFounding(hadFounding, memory);
+    // Sin sitio a la vista: se apunta cada vez que la búsqueda se aplaza (SPEC-BOTS-FOUND §9.1).
+    if (memory.foundSearchAtMs > hadSearchAt) this.emit('found', { status: 'no_site' });
     this.thinkColony(nowMs);
 
     // Una partida que termina y otra que sale en el mismo despertar: decide cierra la

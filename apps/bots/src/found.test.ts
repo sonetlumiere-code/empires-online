@@ -111,6 +111,14 @@ describe('cuándo funda (SPEC-BOTS-FOUND §4.1, RN-BOT-018)', () => {
     none(foundView(), colonyProfile(constructor));
   });
 
+  it('busca hasta 96 tiles: el anillo de 28 a 96', () => {
+    expect([constructor.foundMinDistance, constructor.foundMaxDistance]).toEqual([28, 96]);
+    const far = new Set<string>();
+    for (let y = 96; y <= 99; y++) for (let x = 190; x <= 193; x++) far.add(`${x},${y}`);
+    const v = foundView({ terrainAt: (x, y) => (far.has(`${x},${y}`) ? 1 : 0) });
+    expect(chooseFoundSite(v, constructor, EMPTY_MEMORY, NOW)).toEqual({ x: 184, y: 91 });
+  });
+
   it('sin sitio a la vista no vuelve a buscar en cinco minutos', () => {
     const { memory } = run(foundView({ terrainAt: () => 0 }));
     expect(memory.founding).toBeNull();

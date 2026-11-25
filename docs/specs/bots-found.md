@@ -96,7 +96,7 @@ de pasar a Hierro (Q2). Para juntar la piedra de las dos cosas, su piedra objeti
 
 ### 4.2 El sitio (Q3)
 
-El sitio más cercano a la capital, a entre `foundMinDistance` (28) y `foundMaxDistance` (56) tiles de Chebyshev, que
+El sitio más cercano a la capital, a entre `foundMinDistance` (28) y `foundMaxDistance` (96, precisión de §9.1) tiles de Chebyshev, que
 pase lo que el espejo conoce de las reglas del servidor, como `sitioParaFundar` del humo:
 
 - el 7 × 7 alrededor del centro, conocido y transitable (ni agua ni montaña);
@@ -179,7 +179,7 @@ Continúan las de [bots-assault.md](bots-assault.md) §4.8.
 **Precisión de `RN-BOT-003`:** un bot envía como mucho dos comandos **por ciudad** y despertar.
 
 Campos nuevos del perfil (datos, [bots.md](bots.md) Q8): `founds` (sí en el constructor, no en el saqueador),
-`foundMinDistance` (28), `foundMaxDistance` (56), `foundWalkTimeoutMs` (10 min), `foundSiteCooldownMs` (30 min),
+`foundMinDistance` (28), `foundMaxDistance` (96, §9.1), `foundWalkTimeoutMs` (10 min), `foundSiteCooldownMs` (30 min),
 `colonyVillagers` (8), y la piedra objetivo del constructor en Bronce de 400 a 800.
 
 ## 5. Errores
@@ -222,6 +222,23 @@ decide el sitio).
 | Unit (Vitest, `apps/bots`) | El sitio: el más cercano en el anillo, descarta el terreno que no se pisa o no se conoce, los centros a menos de 24, el poco bosque y el territorio ajeno o reclamado, y los apartados. La fundación: no empieza con dos ciudades, antes de Bronce, sin lo que cuesta ni siendo saqueador; aparta lo que cuesta del plan (el avance de era no lo gasta); camina por tramos y funda parado en el sitio; termina con dos ciudades, con el rechazo, con la muerte del aldeano, a los 9 tramos y por el plazo. La segunda: juega con el perfil de colonia (aldeanos, casas, madera, nada más), su propio tope de dos comandos, y la capital no da órdenes a sus unidades. |
 | Unit (Vitest) | El bot: abre la conexión colonia al ver la segunda y devuelve la casa a la capital; la caída de la segunda y la de la capital con otra en pie (§4.6). El registro y el resumen con los sucesos nuevos; la misma semilla da los mismos comandos (`RN-BOT-005`). |
 | Go, simulación / integración / e2e | Ninguno nuevo: las reglas del servidor no cambian. |
+
+### 9.1 Precisiones de la implementación (2026-11-25)
+
+- **Precisión (2026-11-25): el anillo llega a 96 tiles.** §4.2 decía «entre 28 y 56». Lo encontró la prueba en vivo:
+  en el mundo denso de desarrollo, dos de los tres constructores no tenían ningún sitio a 56 o menos (el humo de E34
+  ya fue a 81) y pasaron a Hierro sin fundar. `foundMaxDistance` es 96; el sitio sigue siendo el más cercano, y lo que
+  queda fuera de la vista de la casa lo conoce el espejo por la exploración de las colinas. Cada búsqueda sin sitio se
+  apunta como `found` con `status: "no_site"` y el resumen la cuenta entre las fallidas.
+- **Precisión (2026-11-25): la casa de la segunda.** En Bronce el límite de la era es 50 y la segunda llega a sus 8
+  aldeanos sin casa: «primera casa» sale «no» en el resumen hasta que el perfil de colonia pida más aldeanos que el
+  límite. No es un fallo: la regla de la casa de siempre sólo construye con la población al tope.
+- **Precisión (2026-11-25): al arrancar con dos.** Un bot que arranca con dos ciudades juega la segunda si la ve la
+  casa o la exploración; si no la ve, la regla de fundación lo intentará y el servidor la rechazará por el tope
+  (`INVALID_TARGET`), y el sitio se aparta. En la prueba en vivo, las tres segundas estaban a la vista.
+- **Precisión (2026-11-25): la vuelta de la casa.** Si el snapshot que sigue a la vuelta tampoco trae la capital, la
+  casa no vuelve a pedirla hasta el siguiente snapshot que la traiga (`recentering`): un bucle de `session.view` no
+  tiene salida si la capital acaba de caer.
 
 ## 10. Decisiones de producto (2026-11-25)
 
