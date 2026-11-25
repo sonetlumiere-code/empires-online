@@ -87,7 +87,8 @@ de territorio (sólo la capital), los centros de la capital territorial (todas) 
 
 **No entra:**
 
-- Quedarse una ciudad ajena al asaltarla, vasallos, tributos (otro slice).
+- Quedarse una ciudad ajena al asaltarla, vasallos, tributos (otro slice). **Precisión (2026-11-25):** quedársela entra
+  con E36, [city-taken.md](city-taken.md).
 - Más de dos ciudades, o un tope que dependa de la era (otro slice: el hueco de §7 ya lo admite).
 - Elegir de qué ciudad sale una caravana, un trato o una oferta del mercado: salen de la capital (Q7).
 - Trasladar la capital, renombrar ciudades, abandonar una ciudad.

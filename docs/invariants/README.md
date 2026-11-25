@@ -264,6 +264,7 @@ La columna `Test` cita el test **real** cuando lo hay, y el nombre **previsto** 
 | INV-CITY-021 | Una ciudad tiene como mucho un asalto activo | ALTO | DB, DOMAIN, TEST | ✓ | `TestLosRechazosDelAsalto`, `TestElAsaltoSeEscribeUnaVezYUnoPorCiudad` (integration) |
 | INV-CITY-022 | Un jugador tiene como mucho dos ciudades en pie | CRITICO | DB, DOMAIN, TEST | ✓ | `TestLaBaseDejaDosCiudadesEnPieYNoTres`, `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion` (integration), `TestUnAldeanoFundaLaSegundaCiudad` |
 | INV-CITY-023 | Una ciudad cae sin refundar sólo si su dueño tiene otra en pie | CRITICO | DB, DOMAIN, TEST | ✓ | `TestUnaCaidaConOtraEnPieNoRefunda` (integration), `TestUnaCiudadQueCaeConOtraEnPieNoRefunda` |
+| INV-CITY-024 | Una ciudad caída no conserva edificios en pie, y se toma como mucho una vez | ALTO | DB, DOMAIN, TEST | ○ | Pendiente de [SPEC-CITY-TAKEN](../specs/city-taken.md) |
 
 ### UNIT — [units.md](units.md)
 
@@ -453,9 +454,9 @@ Por severidad:
 | Severidad | Cantidad |
 |---|---|
 | CRITICO | 61 |
-| ALTO | 89 |
+| ALTO | 90 |
 | MEDIO | 11 |
-| **Total** | **161** |
+| **Total** | **162** |
 
 La distribución cuenta los vigentes: los dos `DEROGADO` no tienen severidad que aplicar.
 
@@ -465,7 +466,7 @@ Por familia:
 |---|---|---|---|
 | `INV-WORLD` | 001–006 | 6 | [world.md](world.md) |
 | `INV-PLAYER` | 001–013 | 13 | [player.md](player.md) |
-| `INV-CITY` | 001–023 | 23 | [city.md](city.md) |
+| `INV-CITY` | 001–024 | 24 | [city.md](city.md) |
 | `INV-UNIT` | 001–013 | 13 | [units.md](units.md) |
 | `INV-MOVE` | 001–014 | 14 | [movement.md](movement.md) |
 | `INV-PERSIST` | 001–007 | 7 | [persistence.md](persistence.md) |
@@ -488,11 +489,11 @@ Los rangos son **contiguos y sin huecos**: el siguiente ID libre de cada familia
 |---|---|---|
 | ✓ Cubierto | 161 | Tienen al menos un test que existe y pasa hoy |
 | ~ Parcial | 0 | Hay test real para parte del enunciado |
-| ○ Sin cobertura | 0 | Test inexistente, o fila sin reconciliar con la suite |
+| ○ Sin cobertura | 1 | Test inexistente, o fila sin reconciliar con la suite |
 | `DEROGADO` | 2 | Ya no aplica; la fila se conserva para que el número no se reutilice |
-| **Total** | **163** | |
+| **Total** | **164** | |
 
-> **163 filas y 163 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
+> **164 filas y 164 fichas.** Hasta el 2026-11-03, [`INV-GARR-008`](diplomacy.md) tenía ficha pero no fila: era un
 > ID reservado para la gracia de expulsión, que no tenía dónde vivir en el esquema. [SPEC-DIPLOMACY](../specs/diplomacy.md)
 > Q6 le dio un enunciado verificable sin columna nueva y pasó a vigente.
 

@@ -7,13 +7,13 @@ edificios que seguían en pie. Es la otra vía de la Q1 de [multi-city.md](multi
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CITY-TAKEN` |
-| Estado | Draft (2026-11-25). Las preguntas de §10 esperan la decisión de producto. |
+| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las nueve preguntas de §10, con su recomendación. |
 | Milestone | E36 La ciudad tomada (trigésimo sexto slice después de M7) |
 | Canon | §9 (protección), §10 (eras y población), §12 (persistencia), §13 (protocolo), §21 (fuera de MVP: conquista de ciudades) |
 | Depende de | [city-fall.md](city-fall.md), [multi-city.md](multi-city.md), [city.md](city.md), [territory-conquest.md](territory-conquest.md), [castle-age.md](castle-age.md), [siege-engines.md](siege-engines.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [bots-assault.md](bots-assault.md), [bots-found.md](bots-found.md), [websocket-protocol.md](websocket-protocol.md) |
-| Decisiones | ADR-052 (propuesto): la ciudad tomada es una **fila nueva** del vencedor en el centro de la caída, que hereda los edificios completos; la caída sigue siendo la de [ADR-050](../decisions/ADR-050-city-fall.md) (la fila vieja con `fallen_at`) y el dueño de cada fila sigue inmutable (`RN-CITY-020`). **Pide migración `000032`** (§7). |
+| Decisiones | [ADR-052](../decisions/ADR-052-city-taken.md): la ciudad tomada es una **fila nueva** del vencedor en el centro de la caída, que hereda los edificios completos; la caída sigue siendo la de [ADR-050](../decisions/ADR-050-city-fall.md) (la fila vieja con `fallen_at`) y el dueño de cada fila sigue inmutable (`RN-CITY-020`). **Pide migración `000032`** (§7). |
 | Reemplaza a | En [city-fall.md](city-fall.md) §4.3, «los edificios se pierden» cuando el vencedor tiene hueco; en [multi-city.md](multi-city.md) §2, el «quedarse una ciudad ajena al asaltarla» de lo que no entra. |
-| Invariantes | Registra un invariante nuevo de la familia `CITY` (§8), sin cobertura hasta la implementación. Reglas nuevas: `RN-CITY-036` a `RN-CITY-039` (§4.6). Se apoya en [INV-CITY-022](../invariants/city.md#inv-city-022) (como mucho dos en pie) y en [INV-CITY-023](../invariants/city.md#inv-city-023) (la caída que no refunda). |
+| Invariantes | Registra [INV-CITY-024](../invariants/city.md#inv-city-024) (§8), sin cobertura hasta la implementación. Reglas nuevas: `RN-CITY-036` a `RN-CITY-039` (§4.6). Se apoya en [INV-CITY-022](../invariants/city.md#inv-city-022) (como mucho dos en pie) y en [INV-CITY-023](../invariants/city.md#inv-city-023) (la caída que no refunda). |
 
 ## 1. Objetivo
 
@@ -51,7 +51,7 @@ Rutas desde `services/game-server/`:
 - El vencido, como hoy (§4.3): refunda si era la última; si no, sigue con la otra.
 - Registro y avisos (§4.4); el protocolo (`city.fallen` con `takenCityId`, §6); el cliente (la tomada aparece con sus
   edificios); los bots (el saqueador que toma juega la tomada como la segunda de E35); el humo `--toma`.
-- La migración `000032` y ADR-052.
+- La migración `000032` y [ADR-052](../decisions/ADR-052-city-taken.md).
 
 **No entra.**
 
@@ -145,7 +145,7 @@ Sin códigos nuevos: la toma no tiene orden propia; los rechazos del asalto son 
 
 ## 8. Invariantes
 
-- **Un invariante nuevo de la familia `CITY`:** una ciudad caída no conserva edificios en pie: todos están `DESTROYED` o pasaron, en la misma
+- **[INV-CITY-024](../invariants/city.md#inv-city-024):** una ciudad caída no conserva edificios en pie: todos están `DESTROYED` o pasaron, en la misma
   transacción, a la ciudad que la tomó (`taken_from_city_id`), y una caída se toma como mucho una vez.
 
 ## 9. Tests esperados
@@ -161,11 +161,13 @@ Sin códigos nuevos: la toma no tiene orden propia; los rechazos del asalto son 
 | Bots (Vitest) | El saqueador que toma juega la tomada con el perfil de colonia. |
 | Humo | `--toma`: el asaltante con una ciudad tumba otra y se la queda con sus casas. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-25)
 
-Cada fila deja la recomendación del agente (en negrita) y las alternativas descartadas.
+Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): cada fila deja la decisión (la
+recomendación, en negrita) y las alternativas descartadas. Son decisiones de producto, no de ingeniería: cambiarlas es
+cambiar la spec, y la persona usuaria puede revisarlas al volver.
 
-| # | Pregunta | Recomendación | Descartadas |
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿Cuándo se toma y cuándo se arrasa? | **Se toma si el vencedor tiene hueco (menos de dos en pie); si no, se arrasa.** Sin orden nueva: lo decide la transacción. | **Elegir al plantar el estandarte** (otro campo en `unit.assault` y otra rama en el HUD); **arrasar siempre salvo orden expresa** (la toma casi no se vería). |
 | Q2 | ¿Qué es la tomada? | **Una ciudad nueva del vencedor en el mismo centro, que hereda los edificios completos**; la caída sigue en su fila con `fallen_at`. El dueño de cada fila no cambia. | **Cambiar el dueño de la fila** (rompe `RN-CITY-020` y la historia de ADR-050); **copiar los edificios con ids nuevos** (pierde su vida y su historia). |

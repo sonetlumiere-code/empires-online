@@ -3289,3 +3289,26 @@ piedra). Registros en `bots/runs/` (sin versionar).
   inmunidad a 0, el saqueador encadena caídas de capitales recién heredadas.
 - **Sin comprobar en el navegador:** ver una segunda ciudad de un bot en el mapa; el panel del navegador integrado no se
   usó en esta sesión desatendida.
+
+## E36 — La ciudad tomada
+
+**Estado: EN CURSO (2026-11-25)**, en la rama `claude/slice-ciudad-tomada`. Contrato:
+[SPEC-CITY-TAKEN](../specs/city-taken.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó
+en la recomendación del agente, sesión desatendida). [ADR-052](../decisions/ADR-052-city-taken.md); migración `000032`.
+
+**Objetivo.** Que tumbar una ciudad pueda dar una: hoy la caída sólo destruye.
+
+**Alcance.** Si el vencedor tiene hueco, la caída toma la ciudad: una fila nueva suya en el mismo centro con los
+edificios completos, tres aldeanos y el almacén a cero; el vencido cae como siempre; `takenCityId` en `city.fallen`; el
+cliente y los bots; el humo `--toma` (`RN-CITY-036` a `RN-CITY-039`, `INV-CITY-024`). **No entra** (spec §2): elegir
+entre tomar y arrasar, más de dos ciudades, el almacén de la caída.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; ADR-052; `INV-CITY-024` registrado sin
+   cobertura; precisiones de [city-fall.md](../specs/city-fall.md) §4.3 y [multi-city.md](../specs/multi-city.md) §2.
+2. **PENDIENTE** — Servidor: la migración `000032`, la transacción que toma y la RAM, con sus tests.
+3. **PENDIENTE** — Protocolo: `takenCityId` en Zod y en Go, con su e2e.
+4. **PENDIENTE** — Cliente, registro, bots y humo `--toma`.
+5. **PENDIENTE** — Docs, `verify:full`, mutaciones y prueba en vivo.
+

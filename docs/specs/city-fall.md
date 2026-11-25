@@ -194,6 +194,10 @@ ningún tick el jugador tiene cero ciudades ni tres.
 | Ofertas del mercado `OPEN` de la ciudad caída | | `WITHDRAWN`, y lo que quedaba en custodia va al almacén de la ciudad nueva: no estaba en la ciudad (Q4). |
 | Territorios conquistados | del jugador | Se conservan y su bono pasa a la ciudad nueva. El capital, libre (§4.2). Si la nueva nace en un territorio libre, lo gana como en un alta (`RN-TERR-007`). |
 
+**Precisión (2026-11-25):** desde E36 ([city-taken.md](city-taken.md)), si el vencedor tiene hueco la ciudad se
+**toma**: sus edificios completos pasan a una ciudad nueva del vencedor en el mismo centro; lo demás de esta tabla no
+cambia.
+
 ### 4.4 Límites
 
 | Límite | Regla |

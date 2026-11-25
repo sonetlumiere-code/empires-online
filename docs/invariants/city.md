@@ -893,6 +893,35 @@ el de simulación.
 
 ---
 
+<a id="inv-city-024"></a>
+## INV-CITY-024 — Una ciudad caída no conserva edificios en pie, y se toma como mucho una vez
+
+| Campo | Valor |
+|---|---|
+| Severidad | ALTO |
+| Aplicación | DB, DOMAIN, TEST |
+| Milestone | E36 |
+| Política ante violación | FAIL_FAST |
+| Cobertura | **Sin cobertura** (se registra con la aceptación de [SPEC-CITY-TAKEN](../specs/city-taken.md)) |
+
+**Enunciado.** Tras confirmarse una caída, todo edificio de la ciudad caída está `DESTROYED` o pasó, en la misma
+transacción, a la ciudad que la tomó (`taken_from_city_id`); y ninguna caída tiene dos ciudades que la tomaron.
+
+**Razón.** Un edificio en pie de una ciudad caída sería un fantasma: daría población, dispararía o comerciaría por una
+ciudad que no existe. Dos tomadas de la misma caída duplicarían sus edificios ([ADR-052](../decisions/ADR-052-city-taken.md)).
+
+**Cómo se garantiza.**
+
+- `DB` — la transacción de la caída mueve los completos y destruye el resto; el índice único parcial de
+  `taken_from_city_id`.
+- `DOMAIN` — la RAM aplica en un comando lo que devuelve la transacción.
+
+**Cómo se verifica.** Pendiente de la implementación: un test de integración de la caída que toma y uno de simulación.
+
+**Violación en runtime.** La transacción falla y la caída se reintenta como cualquier escritura de la cola.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -920,3 +949,4 @@ el de simulación.
 | INV-CITY-021 | `internal/game/simulation`, `internal/persistence/postgres` | [INV-TERR-010](territory.md#inv-terr-010), [ADR-050](../decisions/ADR-050-city-fall.md) |
 | INV-CITY-022 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-020](#inv-city-020), [ADR-051](../decisions/ADR-051-multi-city-capital.md) |
 | INV-CITY-023 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-020](#inv-city-020), [ADR-050](../decisions/ADR-050-city-fall.md), [ADR-051](../decisions/ADR-051-multi-city-capital.md) |
+| INV-CITY-024 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-023](#inv-city-023), [ADR-052](../decisions/ADR-052-city-taken.md) |
