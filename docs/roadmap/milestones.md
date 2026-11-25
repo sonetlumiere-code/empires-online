@@ -3363,7 +3363,8 @@ Bronce, ve rechazada la tercera (`INVALID_TARGET`, «ya tienes 2 ciudades: el to
 
 ## E38 — El comercio desde cualquier ciudad
 
-**Estado: EN CURSO (2026-11-25)**, en la rama `claude/slice-comercio-ciudades`. Contrato:
+**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-comercio-ciudades`, con `verify:full` en
+verde; sin empujar (la spec pasa a `Implemented` con la CI). Contrato:
 [SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md), propuesta y aceptada el 2026-11-25 con sus siete decisiones
 (producto delegó en la recomendación del agente, sesión desatendida). Sin ADR ni migración.
 
@@ -3376,6 +3377,18 @@ que manda la ciudad del panel. **No entra** (spec §2): la ciudad del que acepta
 
 1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; precisión de la Q7 de
    [multi-city.md](../specs/multi-city.md).
-2. **PENDIENTE** — Protocolo y servidor: `cityId` en Zod y en Go, la ciudad elegida en las tres órdenes, con sus tests.
-3. **PENDIENTE** — Cliente y humo; docs; `verify:full`; prueba en vivo.
+2. **HECHO** — Protocolo y servidor: `cityId` en Zod y en Go, `commerceCity` en las tres órdenes, con sus tests
+   (`trade_from_city_test.go`, los de contrato y el e2e de `trade.propose`).
+3. **HECHO** — Cliente (`commerceCityId`, `src/net/client.ts`), docs (protocolo §7.17 y §7.24, trade, markets,
+   cliente, spec §9.1), `verify:full` y prueba en vivo. Sin opción nueva del humo (spec §9.1).
+
+### Prueba en vivo (2026-11-25)
+
+Servidor y web de desarrollo. `--comercio` (27 comprobaciones) y `--mercado` (29), cada una sola: el camino sin
+`cityId` sigue saliendo de la capital. Lanzadas juntas (`--mercado --comercio`), la de comercio falló una vez en «el
+registro de quien recibe no cuenta la caravana»: la caravana había llegado, pero la primera página del registro de
+`smoke_victim` aún no traía su `CARAVAN_ARRIVED`; sola pasó. Queda como intermitencia del humo para mirar aparte.
+
+- **Sin comprobar en vivo:** una oferta o un trato desde la segunda ciudad (lo cubren los tests de simulación y el
+  e2e); el HUD con la segunda ciudad en el panel, en el navegador.
 
