@@ -16,6 +16,8 @@ import assert from 'node:assert/strict';
 
 import {
   ciudadRefundada,
+  esLlegadaNueva,
+  ultimoIdDelRegistro,
   ciudadTomada,
   motivoParaNoAsaltar,
   apuntaA,
@@ -579,3 +581,21 @@ test('ciudadTomada: la del vencedor con ese id, en el centro de la caída, con s
   assert.equal(ciudadTomada({}, 'v', 12, caida), undefined);
 });
 
+
+test('esLlegadaNueva: sólo la llegada del remitente posterior al trato y con esa carga', () => {
+  const nueva = { id: 41, kind: 'CARAVAN_ARRIVED', otherPlayerId: 'p', cargo: [{ resource: 'WOOD', amount: 50 }] };
+  assert.equal(esLlegadaNueva(nueva, 'p', 40, 'WOOD', 50), true);
+  // La de --mercado, más nueva que el trato si su fila aún no está: no corta la espera.
+  assert.equal(esLlegadaNueva({ ...nueva, cargo: [{ resource: 'WOOD', amount: 10 }] }, 'p', 40, 'WOOD', 50), false);
+  // La de una pasada anterior, con la misma carga: tampoco da por buena la nueva.
+  assert.equal(esLlegadaNueva({ ...nueva, id: 12 }, 'p', 40, 'WOOD', 50), false);
+  assert.equal(esLlegadaNueva({ ...nueva, id: 40 }, 'p', 40, 'WOOD', 50), false);
+  assert.equal(esLlegadaNueva({ ...nueva, otherPlayerId: 'q' }, 'p', 40, 'WOOD', 50), false);
+  assert.equal(esLlegadaNueva({ ...nueva, kind: 'CARAVAN_CAPTURED' }, 'p', 40, 'WOOD', 50), false);
+  assert.equal(esLlegadaNueva({ ...nueva, cargo: undefined }, 'p', 40, 'WOOD', 50), false);
+});
+
+test('ultimoIdDelRegistro: el id más alto de la página, o 0 si está vacía', () => {
+  assert.equal(ultimoIdDelRegistro({ entries: [{ id: 9 }, { id: 31 }, { id: 4 }] }), 31);
+  assert.equal(ultimoIdDelRegistro({ entries: [] }), 0);
+});

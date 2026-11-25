@@ -2884,6 +2884,10 @@ async function comercio(propio, ciudad) {
   }
   ok('oferta de comercio', `${propia.id}: 50 de madera por 10 de piedra; ${ciudadV.name} la ve como 10 de piedra por 50 de madera`);
 
+  // Lo que el registro de quien recibe ya tenía antes del trato: --mercado, o una pasada
+  // anterior, le dejan llegadas de caravana del mismo remitente que no son ésta.
+  const antesDelTrato = ultimoIdDelRegistro(await paginaDelRegistro(victima.sesion));
+
   // RN-CARAVAN-001: aceptar sólo debita; lo que da cada parte sale en su caravana.
   victima.sesion.enviar('trade.respond', { offerId: recibida.id, accept: true });
   await oferta(victima.sesion, (x) => x.id === recibida.id && x.status === 'ACCEPTED');
@@ -2911,8 +2915,8 @@ async function comercio(propio, ciudad) {
   }
   ok('el registro cuenta el trato', `TRADE_ACCEPTED: diste 50 de madera, recibiste 10 de piedra`);
   const { entrada: llego, pagina: paginaV } = await entradaDelRegistro(victima.sesion,
-    (e) => e.kind === 'CARAVAN_ARRIVED' && e.otherPlayerId === ciudad.ownerPlayerId);
-  if (!llego || llego.cargo?.[0]?.amount !== 50) fallar('el registro de quien recibe no cuenta la caravana', paginaV.entries.slice(0, 5));
+    (e) => esLlegadaNueva(e, ciudad.ownerPlayerId, antesDelTrato, 'WOOD', 50));
+  if (!llego) fallar('el registro de quien recibe no cuenta la caravana', paginaV.entries.slice(0, 5));
   ok('el registro cuenta la caravana', `CARAVAN_ARRIVED: 50 de madera de ${ciudad.name}`);
   victima.sesion.cerrar();
 }
@@ -3015,6 +3019,23 @@ async function paginaDelRegistro(sesion, beforeId) {
   const r = await sesion.esperarQue(['event_log.page', 'system.error'], (m) => m.requestId === id, 10_000);
   if (r.type === 'system.error') fallar('el servidor no sirvió el registro', r.payload);
   return r.payload;
+}
+
+/** El `id` más alto de una página del registro; 0 si está vacía. */
+export function ultimoIdDelRegistro(pagina) {
+  return pagina.entries.reduce((max, e) => Math.max(max, e.id), 0);
+}
+
+/**
+ * Si una entrada del registro es la llegada de una caravana de `remitente` posterior a
+ * `desdeId` y con `cantidad` de `recurso`. Las caravanas no se agrupan (SPEC-EVENT-LOG
+ * §4.2): cada llegada es su entrada, con su `id`. Sin `desdeId`, una llegada vieja del
+ * mismo remitente (la de --mercado, o la de una pasada anterior) cortaba la espera antes
+ * de que se escribiera la nueva.
+ */
+export function esLlegadaNueva(entrada, remitente, desdeId, recurso, cantidad) {
+  return entrada.kind === 'CARAVAN_ARRIVED' && entrada.otherPlayerId === remitente && entrada.id > desdeId
+    && (entrada.cargo ?? []).some((c) => c.resource === recurso && c.amount === cantidad);
 }
 
 /**
