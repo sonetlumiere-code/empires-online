@@ -3239,7 +3239,8 @@ sembradas con `EO_DEVSEED_STOCK_FOR`.
 
 ## E35 — Bots que fundan
 
-**Estado: EN CURSO (2026-11-25)**, en la rama `claude/slice-bots-fundan`. Contrato:
+**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-bots-fundan`, con `verify:full` en verde; sin
+empujar (la spec pasa a `Implemented` con la CI). Contrato:
 [SPEC-BOTS-FOUND](../specs/bots-found.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó en
 la recomendación del agente, sesión desatendida). Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
 
