@@ -826,6 +826,9 @@ rompe el otro y registra `invariant_violation` con `inv_id=INV-CITY-021`.
 | Política ante violación | FAIL_FAST (constraint) |
 | Cobertura | **Cubierto** por `TestLaBaseDejaDosCiudadesEnPieYNoTres` y `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion` (integration) y `TestUnAldeanoFundaLaSegundaCiudad` (simulation) |
 
+**Precisión (2026-11-25):** desde E37 ([more-cities.md](../specs/more-cities.md)), «dos» es el tope de la era de la
+capital al fundar o tomar (1 en Piedra, 2 en Bronce, 3 en Hierro, 4 en Castillos) y nunca más de cuatro en la base.
+
 **Enunciado.** Tras cada transacción confirmada, ningún jugador tiene más de dos filas de `cities` sin `fallen_at`, y
 la RAM de la simulación tiene esas mismas (`State.CitiesOf`), con la de id menor como capital (`State.CityOf`).
 

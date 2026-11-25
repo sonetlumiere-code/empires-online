@@ -3330,3 +3330,21 @@ migración 31 → 32 al arrancar. `node scripts/smoke.mjs --web http://localhost
 - **Sin comprobar en el navegador:** la tomada con sus edificios en el mapa; el panel del navegador no se usó en esta
   sesión desatendida.
 
+## E37 — Más ciudades
+
+**Estado: EN CURSO (2026-11-25)**, en la rama `claude/slice-mas-ciudades`. Contrato:
+[SPEC-MORE-CITIES](../specs/more-cities.md), propuesta y aceptada el 2026-11-25 con sus seis decisiones (producto delegó
+en la recomendación del agente, sesión desatendida). Sin ADR nuevo; migración `000033`.
+
+**Objetivo.** Que cada era abra un hueco: hoy el tope de dos ciudades no crece con Hierro ni Castillos.
+
+**Alcance.** El tope por era de la capital (1 a 4), el hueco 1 a 4 en la base, fundar y tomar con ese tope, el motivo
+del HUD, y los bots que no pasan de dos (`RN-CITY-040`, `RN-CITY-041`, precisión de `INV-CITY-022`). **No entra**
+(spec §2): un coste que crezca, un selector de ciudades, bots con más de una segunda ciudad.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; precisiones de `INV-CITY-022` y de `RN-CITY-031`.
+2. **PENDIENTE** — Servidor y base: el tope por era, la migración `000033` y el hueco menor libre, con sus tests.
+3. **PENDIENTE** — Cliente, bots y humo; docs; `verify:full`; prueba en vivo.
+

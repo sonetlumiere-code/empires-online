@@ -7,7 +7,7 @@ tope; la capital, la caída y «H» ya funcionan con cualquier número.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-MORE-CITIES` |
-| Estado | Draft (2026-11-25). Las preguntas de §10 esperan la decisión de producto. |
+| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las seis preguntas de §10, con su recomendación. |
 | Milestone | E37 Más ciudades (trigésimo séptimo slice después de M7) |
 | Canon | §10 (eras y población), §12 (persistencia) |
 | Depende de | [multi-city.md](multi-city.md), [city-taken.md](city-taken.md), [city-fall.md](city-fall.md), [bots-found.md](bots-found.md) |
@@ -108,11 +108,13 @@ Ninguno nuevo. El cliente deduce el tope de la era de su capital, que ya llega e
 | Bots (Vitest) | El constructor no funda una tercera. |
 | Humo | `--multiciudad`: el rechazo dice el tope de la era. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-25)
 
-Cada fila deja la recomendación del agente (en negrita) y las alternativas descartadas.
+Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): cada fila deja la decisión (la
+recomendación, en negrita) y las alternativas descartadas. Son decisiones de producto, no de ingeniería: cambiarlas es
+cambiar la spec, y la persona usuaria puede revisarlas al volver.
 
-| # | Pregunta | Recomendación | Descartadas |
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿De qué depende el tope? | **De la era: 1, 2, 3 y 4 de Piedra a Castillos.** Cada avance abre un hueco y se lee en el HUD sin otra regla. | **De los territorios conquistados** (otra cuenta que mantener); **fijo en tres** (Hierro y Castillos no dan nada). |
 | Q2 | ¿La era de qué ciudad? | **La de la capital**, que responde por el jugador. | **La más alta de sus ciudades** (una ciudad avanzada sube el tope de todas); **la de la que funda** (dos ciudades, dos topes). |
