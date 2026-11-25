@@ -7,7 +7,7 @@ cuánto tarda la segunda en crecer y qué pasa cuando cae una de las dos.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-FOUND` |
-| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las nueve preguntas de §10, con su recomendación. |
+| Estado | Implemented (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las nueve preguntas de §10, con su recomendación; en `main` desde la fusión `c915715`, con la CI en verde. |
 | Milestone | E35 Bots que fundan (trigésimo quinto slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §10 (eras y población), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [bots-trade.md](bots-trade.md), [bots-assault.md](bots-assault.md), [multi-city.md](multi-city.md), [city-fall.md](city-fall.md) |

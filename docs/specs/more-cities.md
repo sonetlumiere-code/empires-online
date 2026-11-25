@@ -7,7 +7,7 @@ tope; la capital, la caída y «H» ya funcionan con cualquier número.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-MORE-CITIES` |
-| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las seis preguntas de §10, con su recomendación. |
+| Estado | Implemented (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las seis preguntas de §10, con su recomendación; en `main` desde la fusión `0378885`, con la CI en verde. |
 | Milestone | E37 Más ciudades (trigésimo séptimo slice después de M7) |
 | Canon | §10 (eras y población), §12 (persistencia) |
 | Depende de | [multi-city.md](multi-city.md), [city-taken.md](city-taken.md), [city-fall.md](city-fall.md), [bots-found.md](bots-found.md) |

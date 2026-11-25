@@ -7,7 +7,7 @@ saber que X la tiene ahora. Es lo que [city-taken.md](city-taken.md) §9.1 dejó
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CITY-TAKEN-NOTICES` |
-| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las cuatro preguntas de §10, con su recomendación. |
+| Estado | Implemented (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las cuatro preguntas de §10, con su recomendación; en `main` desde la fusión `1a47f3e`, con la CI en verde. |
 | Milestone | E39 Los avisos de la ciudad tomada (trigésimo noveno slice después de M7) |
 | Canon | §13 (protocolo), §14 (registro) |
 | Depende de | [city-taken.md](city-taken.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [websocket-protocol.md](websocket-protocol.md) |

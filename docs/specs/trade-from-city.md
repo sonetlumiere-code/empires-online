@@ -7,7 +7,7 @@ alcance de caravana ([trade-reach.md](trade-reach.md)); sin decir nada, sigue si
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-TRADE-FROM-CITY` |
-| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las siete preguntas de §10, con su recomendación. |
+| Estado | Implemented (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las siete preguntas de §10, con su recomendación; en `main` desde la fusión `731656e`, con la CI en verde. |
 | Milestone | E38 El comercio desde cualquier ciudad (trigésimo octavo slice después de M7) |
 | Canon | §11 (comercio), §13 (protocolo) |
 | Depende de | [trade.md](trade.md), [markets.md](markets.md), [caravans.md](caravans.md), [trade-reach.md](trade-reach.md), [multi-city.md](multi-city.md), [more-cities.md](more-cities.md), [websocket-protocol.md](websocket-protocol.md) |

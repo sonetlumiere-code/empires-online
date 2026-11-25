@@ -67,11 +67,11 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E32 Bots que asaltan | **Completado** (2026-11-24). En `main` desde la fusión `0465eba`, con la CI en verde; queda la ejecución larga de 3 h como medida. Detalle en [milestones.md](milestones.md) §E32; contrato en [SPEC-BOTS-ASSAULT](../specs/bots-assault.md). |
 | E33 El asalto en el mapa | **Completado** (2026-11-24). En `main` desde la fusión `1bebacd`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E33; contrato en [SPEC-ASSAULT-MAP](../specs/assault-map.md). |
 | E34 Multiciudad | **Completado** (2026-11-25). En `main` desde la fusión `0e5ea92`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E34; contrato en [SPEC-MULTI-CITY](../specs/multi-city.md) y [ADR-051](../decisions/ADR-051-multi-city-capital.md). |
-| E35 Bots que fundan | **Hecho en `main` local** (2026-11-25), sin empujar. Detalle en [milestones.md](milestones.md) §E35; contrato en [SPEC-BOTS-FOUND](../specs/bots-found.md). |
-| E36 La ciudad tomada | **Hecho en `main` local** (2026-11-25), sin empujar. Detalle en [milestones.md](milestones.md) §E36; contrato en [SPEC-CITY-TAKEN](../specs/city-taken.md) y [ADR-052](../decisions/ADR-052-city-taken.md). |
-| E37 Más ciudades | **Hecho en `main` local** (2026-11-25), sin empujar. Detalle en [milestones.md](milestones.md) §E37; contrato en [SPEC-MORE-CITIES](../specs/more-cities.md). |
-| E38 El comercio desde cualquier ciudad | **Hecho en `main` local** (2026-11-25), sin empujar. Detalle en [milestones.md](milestones.md) §E38; contrato en [SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md). |
-| E39 Los avisos de la ciudad tomada | **Hecho en `main` local** (2026-11-25), sin empujar. Detalle en [milestones.md](milestones.md) §E39; contrato en [SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md). |
+| E35 Bots que fundan | **Completado** (2026-11-25). En `main` desde la fusión `c915715`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E35; contrato en [SPEC-BOTS-FOUND](../specs/bots-found.md). |
+| E36 La ciudad tomada | **Completado** (2026-11-25). En `main` desde la fusión `7171d45`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E36; contrato en [SPEC-CITY-TAKEN](../specs/city-taken.md) y [ADR-052](../decisions/ADR-052-city-taken.md). |
+| E37 Más ciudades | **Completado** (2026-11-25). En `main` desde la fusión `0378885`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E37; contrato en [SPEC-MORE-CITIES](../specs/more-cities.md). |
+| E38 El comercio desde cualquier ciudad | **Completado** (2026-11-25). En `main` desde la fusión `731656e`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E38; contrato en [SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md). |
+| E39 Los avisos de la ciudad tomada | **Completado** (2026-11-25). En `main` desde la fusión `1a47f3e`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E39; contrato en [SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

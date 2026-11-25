@@ -3239,9 +3239,8 @@ sembradas con `EO_DEVSEED_STOCK_FOR`.
 
 ## E35 — Bots que fundan
 
-**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-bots-fundan`, con `verify:full` en verde; sin
-empujar (la spec pasa a `Implemented` con la CI). Contrato:
-[SPEC-BOTS-FOUND](../specs/bots-found.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó en
+**Estado: HECHO (2026-11-25)**, en `main` desde la fusión `c915715` (rama `claude/slice-bots-fundan`), con la CI en verde.
+Contrato: [SPEC-BOTS-FOUND](../specs/bots-found.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó en
 la recomendación del agente, sesión desatendida). Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
 
 **Objetivo.** Medir la fundación de E34 con bots: cuándo funda un jugador, cuánto tarda la segunda ciudad en crecer y
@@ -3292,9 +3291,8 @@ piedra). Registros en `bots/runs/` (sin versionar).
 
 ## E36 — La ciudad tomada
 
-**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-ciudad-tomada`, con `verify:full` en verde;
-sin empujar (la spec pasa a `Implemented` con la CI). Contrato:
-[SPEC-CITY-TAKEN](../specs/city-taken.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó
+**Estado: HECHO (2026-11-25)**, en `main` desde la fusión `7171d45` (rama `claude/slice-ciudad-tomada`), con la CI en verde.
+Contrato: [SPEC-CITY-TAKEN](../specs/city-taken.md), propuesta y aceptada el 2026-11-25 con sus nueve decisiones (producto delegó
 en la recomendación del agente, sesión desatendida). [ADR-052](../decisions/ADR-052-city-taken.md); migración `000032`.
 
 **Objetivo.** Que tumbar una ciudad pueda dar una: hoy la caída sólo destruye.
@@ -3332,9 +3330,8 @@ migración 31 → 32 al arrancar. `node scripts/smoke.mjs --web http://localhost
 
 ## E37 — Más ciudades
 
-**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-mas-ciudades`, con `verify:full` en verde;
-sin empujar (la spec pasa a `Implemented` con la CI). Contrato:
-[SPEC-MORE-CITIES](../specs/more-cities.md), propuesta y aceptada el 2026-11-25 con sus seis decisiones (producto delegó
+**Estado: HECHO (2026-11-25)**, en `main` desde la fusión `0378885` (rama `claude/slice-mas-ciudades`), con la CI en verde.
+Contrato: [SPEC-MORE-CITIES](../specs/more-cities.md), propuesta y aceptada el 2026-11-25 con sus seis decisiones (producto delegó
 en la recomendación del agente, sesión desatendida). Sin ADR nuevo; migración `000033`.
 
 **Objetivo.** Que cada era abra un hueco: hoy el tope de dos ciudades no crece con Hierro ni Castillos.
@@ -3364,9 +3361,8 @@ Bronce, ve rechazada la tercera (`INVALID_TARGET`, «ya tienes 2 ciudades: el to
 
 ## E38 — El comercio desde cualquier ciudad
 
-**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-comercio-ciudades`, con `verify:full` en
-verde; sin empujar (la spec pasa a `Implemented` con la CI). Contrato:
-[SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md), propuesta y aceptada el 2026-11-25 con sus siete decisiones
+**Estado: HECHO (2026-11-25)**, en `main` desde la fusión `731656e` (rama `claude/slice-comercio-ciudades`), con la CI en verde.
+Contrato: [SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md), propuesta y aceptada el 2026-11-25 con sus siete decisiones
 (producto delegó en la recomendación del agente, sesión desatendida). Sin ADR ni migración.
 
 **Objetivo.** Que una segunda ciudad comercie con su almacén, su mercado y su ruta: hoy todo sale de la capital.
@@ -3395,9 +3391,8 @@ registro de quien recibe no cuenta la caravana»: la caravana había llegado, pe
 
 ## E39 — Los avisos de la ciudad tomada
 
-**Estado: HECHO en `main` local (2026-11-25)**, desde la rama `claude/slice-avisos-toma`, con `verify:full` en verde;
-sin empujar (la spec pasa a `Implemented` con la CI). Contrato:
-[SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md), propuesta y aceptada el 2026-11-25 con sus cuatro decisiones
+**Estado: HECHO (2026-11-25)**, en `main` desde la fusión `1a47f3e` (rama `claude/slice-avisos-toma`), con la CI en verde.
+Contrato: [SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md), propuesta y aceptada el 2026-11-25 con sus cuatro decisiones
 (producto delegó en la recomendación del agente, sesión desatendida). Sin ADR ni migración. Es el slice que el agente
 recomendó en T6 de la sesión desatendida: lo que E36 dejó en su §9.1.
 

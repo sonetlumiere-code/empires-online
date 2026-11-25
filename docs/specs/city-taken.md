@@ -7,7 +7,7 @@ edificios que seguían en pie. Es la otra vía de la Q1 de [multi-city.md](multi
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CITY-TAKEN` |
-| Estado | Accepted (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las nueve preguntas de §10, con su recomendación. |
+| Estado | Implemented (2026-11-25). Producto delegó en la recomendación del agente (sesión desatendida del 2026-11-25): las nueve preguntas de §10, con su recomendación; en `main` desde la fusión `7171d45`, con la CI en verde. |
 | Milestone | E36 La ciudad tomada (trigésimo sexto slice después de M7) |
 | Canon | §9 (protección), §10 (eras y población), §12 (persistencia), §13 (protocolo), §21 (fuera de MVP: conquista de ciudades) |
 | Depende de | [city-fall.md](city-fall.md), [multi-city.md](multi-city.md), [city.md](city.md), [territory-conquest.md](territory-conquest.md), [castle-age.md](castle-age.md), [siege-engines.md](siege-engines.md), [event-log.md](event-log.md), [live-notices.md](live-notices.md), [bots-assault.md](bots-assault.md), [bots-found.md](bots-found.md), [websocket-protocol.md](websocket-protocol.md) |
