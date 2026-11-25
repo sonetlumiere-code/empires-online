@@ -84,6 +84,19 @@ export interface Profile {
   readonly assaultRallyTimeoutMs: number;
   /** Una partida de asalto que dura más que esto vuelve a casa. */
   readonly assaultTimeoutMs: number;
+
+  // ── La fundación (SPEC-BOTS-FOUND §4.1 a §4.4) ──
+  /** Si funda su segunda ciudad (Q1: sólo el constructor). */
+  readonly founds: boolean;
+  /** El anillo del sitio, en tiles de Chebyshev desde la capital (Q3). */
+  readonly foundMinDistance: number;
+  readonly foundMaxDistance: number;
+  /** Una fundación que dura más que esto termina mal (§4.3). */
+  readonly foundWalkTimeoutMs: number;
+  /** Un sitio rechazado no se vuelve a elegir antes de esto (RN-BOT-021). */
+  readonly foundSiteCooldownMs: number;
+  /** Aldeanos de la segunda ciudad en cualquier era (Q4). */
+  readonly colonyVillagers: number;
 }
 
 const COMMON = {
@@ -108,6 +121,11 @@ const COMMON = {
   assaultMinWarriors: 2,
   assaultRallyTimeoutMs: 10 * 60_000,
   assaultTimeoutMs: 45 * 60_000,
+  foundMinDistance: 28,
+  foundMaxDistance: 56,
+  foundWalkTimeoutMs: 10 * 60_000,
+  foundSiteCooldownMs: 30 * 60_000,
+  colonyVillagers: 8,
 } as const;
 
 export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
@@ -126,11 +144,13 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
     wall: true,
     wallStoneReserve: 100,
     research: true,
-    stoneTargetByEra: { STONE_AGE: 200, BRONZE_AGE: 400, IRON_AGE: 800, CASTLE_AGE: 800 },
+    // En Bronce, 800: fundar (400) y pasar a Hierro (400) (SPEC-BOTS-FOUND §4.8).
+    stoneTargetByEra: { STONE_AGE: 200, BRONZE_AGE: 800, IRON_AGE: 800, CASTLE_AGE: 800 },
     pact: true,
     market: true,
     ownGoodReserve: 0,
     assaults: false,
+    founds: true,
   },
   saqueador: {
     ...COMMON,
@@ -155,8 +175,38 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
     // Tres unidades de civilización (10 de su bien cada una).
     ownGoodReserve: 30,
     assaults: true,
+    founds: false,
   },
 };
+
+/**
+ * El perfil con que juega la segunda ciudad (SPEC-BOTS-FOUND §4.4, Q4): el del bot
+ * sin partidas, asalto, avance, taller, elaboración, muralla, investigación,
+ * comercio, guardias ni fundación; `colonyVillagers` aldeanos en cualquier era y
+ * toda la recolección a la madera.
+ */
+export function colonyProfile(profile: Profile): Profile {
+  const eras = ['STONE_AGE', 'BRONZE_AGE', 'IRON_AGE', 'CASTLE_AGE'];
+  return {
+    ...profile,
+    villagersByEra: Object.fromEntries(eras.map((e) => [e, profile.colonyVillagers])),
+    guards: 0,
+    warriorsMax: 0,
+    raids: false,
+    raidMinParty: 0,
+    advance: false,
+    workshop: false,
+    craft: false,
+    wall: false,
+    research: false,
+    stoneTargetByEra: Object.fromEntries(eras.map((e) => [e, 0])),
+    trades: false,
+    pact: false,
+    market: false,
+    assaults: false,
+    founds: false,
+  };
+}
 
 /** Lo que cuesta una casa (SPEC-ECON-WOOD): madera, en el primer hueco de la zona urbana. */
 export const HOUSE_WOOD = 30;

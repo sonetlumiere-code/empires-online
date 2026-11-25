@@ -33,6 +33,8 @@ export type EventName =
   | 'assault'
   | 'fell'
   | 'wall'
+  | 'found'
+  | 'colony'
   | 'error'
   | 'stop';
 

@@ -8,7 +8,7 @@
  */
 import type { v1 } from '@empires-online/protocol';
 import { GameClient, type WebSocketLike } from '../../web/src/net/client';
-import { createWorldStore, terrainAt, type BuildingView, type CityView, type UnitView } from '../../web/src/state/world';
+import { createWorldStore, terrainAt, type BuildingView, type CityView, type ForestView, type UnitView } from '../../web/src/state/world';
 import { TERRAIN_HILL } from '../../web/src/state/economy';
 import { commission } from '../../web/src/state/market';
 import { walled } from '../../web/src/state/cityFall';
@@ -18,8 +18,10 @@ import {
   EMPTY_MEMORY,
   chebyshev,
   decide,
+  endFounding,
   fieldFocus,
   forestTilesAround,
+  onFounderLost,
   onOwnCityFell,
   onRaidLoss,
   onRejected,
@@ -27,12 +29,13 @@ import {
   type Raid,
   type BotCity,
   type Command,
+  type Founding,
   type Memory,
   type Tile,
   type View,
 } from './decide';
 import type { RunLog } from './log';
-import type { Profile } from './profiles';
+import { colonyProfile, type Profile } from './profiles';
 import { createRng, type Rng } from './random';
 
 /** Las ciudades de los bots del proceso, para elegir blanco aunque no estén a la vista. */
@@ -148,7 +151,23 @@ export class Bot {
   private stopped = false;
   private thinkTimer: ReturnType<typeof setTimeout> | null = null;
   private stockTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly pending = new Map<string, { command: Command; sentAt: number }>();
+  private readonly pending = new Map<string, { command: Command; sentAt: number; colony: boolean }>();
+  /**
+   * Los centros de las ciudades propias en pie que el bot ha visto, por id: la
+   * capital es la de id menor aunque el espejo de la casa no la traiga
+   * (SPEC-BOTS-FOUND §4.5, como `ownCityHomes` del cliente).
+   */
+  private readonly homes = new Map<number, Tile>();
+  /** La conexión que mira la segunda ciudad, su id y lo que juega (SPEC-BOTS-FOUND §4.4, §4.5). */
+  private colony: Link | null = null;
+  private colonyCityId: number | null = null;
+  private colonyLinkView: Tile | null = null;
+  private colonyMemory: Memory = EMPTY_MEMORY;
+  private colonyForestTiles: Tile[] = [];
+  /** La segunda ciudad tal como se vio por última vez: `city.fallen` la quita del espejo antes de apuntarla. */
+  private colonyLast: CityView | null = null;
+  /** La casa pidió volver a la capital y aún no llegó un snapshot que la traiga. */
+  private recentering = false;
   private readonly orderedAt = new Map<string, number>();
   private prevCity: CityView | null = null;
   /** Estado conocido de cada edificio de la ciudad, para apuntar la obra que termina una vez. */
@@ -233,6 +252,7 @@ export class Bot {
     }
     this.home?.client.disconnect();
     this.field?.client.disconnect();
+    this.colony?.client.disconnect();
   }
 
   // ─────────────────────────────────────────────────────────
@@ -272,7 +292,41 @@ export class Bot {
   private ownCity(): CityView | null {
     const playerId = this.account?.playerId;
     if (!playerId || !this.home) return null;
-    return capitalOf(this.home.store.getState().cities.values(), playerId);
+    const capitalId = this.capitalId();
+    if (capitalId === null) return capitalOf(this.home.store.getState().cities.values(), playerId);
+    return this.cityById(capitalId);
+  }
+
+  /** La ciudad `id` tal como la trae alguna de las conexiones, la casa primero. */
+  private cityById(id: number): CityView | null {
+    for (const link of [this.home, this.colony, this.field]) {
+      const c = link?.store.getState().cities.get(id);
+      if (c) return c;
+    }
+    return null;
+  }
+
+  /** La capital: la ciudad propia en pie de id menor que el bot conoce (RN-CITY-033). */
+  private capitalId(): number | null {
+    let min: number | null = null;
+    for (const id of this.homes.keys()) if (min === null || id < min) min = id;
+    return min;
+  }
+
+  /** La segunda ciudad propia en pie, si la hay. */
+  private secondCityId(): number | null {
+    const capital = this.capitalId();
+    for (const id of [...this.homes.keys()].sort((a, b) => a - b)) if (id !== capital) return id;
+    return null;
+  }
+
+  /** Apunta las ciudades propias que trae el espejo de una conexión (SPEC-BOTS-FOUND §4.5). */
+  private refreshHomes(link: Link): void {
+    const playerId = this.account?.playerId;
+    if (!playerId) return;
+    for (const c of ownCitiesOf(link.store.getState().cities.values(), playerId)) {
+      this.homes.set(c.id, { x: c.centerX, y: c.centerY });
+    }
   }
 
   /**
@@ -303,7 +357,7 @@ export class Bot {
   private ownUnits(): UnitView[] {
     const playerId = this.account?.playerId;
     const byId = new Map<number, UnitView>();
-    for (const link of [this.home, this.field]) {
+    for (const link of [this.home, this.field, this.colony]) {
       if (!link) continue;
       for (const u of link.store.getState().units.values()) if (u.playerId === playerId) byId.set(u.id, u);
     }
@@ -407,11 +461,13 @@ export class Bot {
       for (const b of s.buildings.values()) buildings.set(b.id, b);
     }
     const byId = <T extends { id: number }>(a: T, b: T) => a.id - b.id;
+    // La capital no da órdenes a las unidades de la segunda (RN-BOT-020).
+    const colonyId = this.secondCityId();
     return {
       playerId,
       city,
       buildings: [...buildings.values()].filter((b) => b.cityId === city.id).sort(byId),
-      units: this.ownUnits(),
+      units: this.ownUnits().filter((u) => colonyId === null || u.cityId !== colonyId),
       foreignCities: [...cities.values()].filter((c) => c.ownerPlayerId !== playerId).sort(byId),
       foreignBuildings: [...buildings.values()].filter((b) => b.cityId !== city.id).sort(byId),
       terrainAt: lookup,
@@ -422,6 +478,66 @@ export class Bot {
       treaties: hs.treaties,
       tradeOffers: hs.tradeOffers,
       market: hs.market,
+      ...this.ownCitiesFields(city.id),
+      territories: [...hs.territories.values()].sort(byId),
+    };
+  }
+
+  /** Cuántas ciudades propias conoce y los centros de las demás (SPEC-BOTS-FOUND §4.5). */
+  private ownCitiesFields(cityId: number): Pick<View, 'ownCityCount' | 'otherOwnCenters'> {
+    const others = [...this.homes].filter(([id]) => id !== cityId).sort(([a], [b]) => a - b).map(([, t]) => t);
+    return { ownCityCount: Math.max(1, this.homes.size), otherOwnCenters: others };
+  }
+
+  /**
+   * Lo que ve la segunda ciudad (SPEC-BOTS-FOUND §4.4): su ciudad, sus edificios, sus
+   * unidades y su bosque; sin colinas ni comercio (el perfil de colonia no los usa).
+   */
+  buildColonyView(): View | null {
+    const playerId = this.account?.playerId;
+    const id = this.secondCityId();
+    if (!playerId || id === null || !this.home) return null;
+    const city = this.cityById(id);
+    if (!city) return null;
+    this.colonyLast = city;
+    const stores = [this.home, this.colony].filter((l): l is Link => l !== null).map((l) => l.store.getState());
+    const chunkSize = stores[0]?.world?.chunkSize ?? 32;
+    const lookup = (x: number, y: number) => {
+      for (const st of stores) {
+        const t = terrainAt(st.terrain, chunkSize, x, y);
+        if (t !== undefined) return t;
+      }
+      return undefined;
+    };
+    if (this.colonyForestTiles.length === 0) {
+      this.colonyForestTiles = forestTilesAround({ x: city.centerX, y: city.centerY }, 40, lookup).slice(0, 48);
+    }
+    const cities = new Map<number, CityView>();
+    const buildings = new Map<number, BuildingView>();
+    const forests = new Map<string, ForestView>();
+    for (const st of stores) {
+      for (const c of st.cities.values()) cities.set(c.id, c);
+      for (const b of st.buildings.values()) buildings.set(b.id, b);
+      for (const [k, f] of st.forests) forests.set(k, f);
+    }
+    const byId = <T extends { id: number }>(a: T, b: T) => a.id - b.id;
+    const hs = this.home.store.getState();
+    return {
+      playerId,
+      city,
+      buildings: [...buildings.values()].filter((b) => b.cityId === id).sort(byId),
+      units: this.ownUnits().filter((u) => u.cityId === id),
+      foreignCities: [...cities.values()].filter((c) => c.ownerPlayerId !== playerId).sort(byId),
+      foreignBuildings: [...buildings.values()].filter((b) => b.cityId !== id).sort(byId),
+      terrainAt: lookup,
+      forests,
+      forestTiles: this.colonyForestTiles,
+      hills: [],
+      botCities: this.deps.directory.list(),
+      treaties: hs.treaties,
+      tradeOffers: hs.tradeOffers,
+      market: hs.market,
+      ...this.ownCitiesFields(id),
     };
   }
 
@@ -431,6 +547,7 @@ export class Bot {
     if (!view) return;
     const nowMs = this.now();
     const hadRaid = this.memory.raid;
+    const hadFounding = this.memory.founding;
     const { commands, memory } = decide(view, this.deps.profile, this.memory, nowMs, this.rng, {
       contraHumanos: this.deps.contraHumanos,
       comercio: this.deps.comercio !== false,
@@ -438,6 +555,8 @@ export class Bot {
     });
     this.memory = memory;
     for (const cmd of commands) this.send(cmd, nowMs);
+    this.logFounding(hadFounding, memory);
+    this.thinkColony(nowMs);
 
     // Una partida que termina y otra que sale en el mismo despertar: decide cierra la
     // vieja y abre la nueva sin pasar por null (lo encontró la prueba en vivo de E32).
@@ -518,7 +637,78 @@ export class Bot {
     this.fieldView = focus;
   }
 
-  private send(cmd: Command, nowMs: number): void {
+  /**
+   * La segunda ciudad juega con su memoria, el perfil de colonia y su propio tope
+   * de comandos (SPEC-BOTS-FOUND §4.4, RN-BOT-020), y su conexión mira hacia ella
+   * (§4.5).
+   */
+  private thinkColony(nowMs: number): void {
+    this.followColony();
+    const view = this.buildColonyView();
+    if (!view) return;
+    const { commands, memory } = decide(view, colonyProfile(this.deps.profile), this.colonyMemory, nowMs, this.rng, {
+      contraHumanos: false,
+      comercio: false,
+    });
+    this.colonyMemory = memory;
+    for (const cmd of commands) this.send(cmd, nowMs, true);
+  }
+
+  /** La conexión colonia se abre al conocer la segunda ciudad y mira su centro; se cierra si no la hay. */
+  private followColony(): void {
+    const id = this.secondCityId();
+    if (id === null) {
+      this.closeColony();
+      return;
+    }
+    if (this.colonyCityId !== id) {
+      this.closeColony();
+      this.colonyCityId = id;
+    }
+    if (!this.colony) {
+      this.colony = this.link();
+      void this.colony.client.connect();
+      this.colonyLinkView = null;
+      return;
+    }
+    const at = this.homes.get(id);
+    if (!at || !this.colony.ready) return;
+    if (this.colonyLinkView && this.colonyLinkView.x === at.x && this.colonyLinkView.y === at.y) return;
+    this.colony.client.setView(at);
+    this.colonyLinkView = at;
+  }
+
+  private closeColony(): void {
+    this.colony?.client.disconnect();
+    this.colony = null;
+    this.colonyCityId = null;
+    this.colonyLinkView = null;
+    this.colonyMemory = EMPTY_MEMORY;
+    this.colonyForestTiles = [];
+    this.colonyLast = null;
+  }
+
+  /** Lo que el registro apunta de una fundación al empezar y al terminar (SPEC-BOTS-FOUND §4.7). */
+  private logFounding(before: Founding | null, after: Memory): void {
+    const f = after.founding;
+    if (f && (before === null || before.startedAtMs !== f.startedAtMs)) {
+      this.emit('found', { status: 'started', unitId: f.unitId, site: f.site, distance: f.distance });
+      this.deps.say(`${this.name}: un aldeano sale a fundar en (${f.site.x}, ${f.site.y}), a ${f.distance} tiles`);
+    }
+    if (before && (f === null || f.startedAtMs !== before.startedAtMs) && after.foundResult) {
+      const r = after.foundResult;
+      if (r.status === 'founded') {
+        const id = this.secondCityId();
+        const at = id === null ? null : this.homes.get(id);
+        this.emit('found', { status: 'founded', cityId: id, center: at ?? r.site, ms: r.ms });
+        this.deps.say(`${this.name}: funda su segunda ciudad en (${(at ?? r.site).x}, ${(at ?? r.site).y})`);
+      } else {
+        this.emit('found', { status: 'failed', cause: r.cause, ...(r.code ? { code: r.code } : {}), site: r.site, ms: r.ms });
+      }
+    }
+  }
+
+  private send(cmd: Command, nowMs: number, colony = false): void {
     const c = this.home?.client;
     if (!c) return;
     let requestId: string;
@@ -537,6 +727,9 @@ export class Bot {
         break;
       case 'unit.assault':
         requestId = c.assaultCity(cmd.unitId, cmd.cityId);
+        break;
+      case 'unit.found_city':
+        requestId = c.foundCity(cmd.unitId);
         break;
       case 'city.build':
         requestId =
@@ -585,9 +778,11 @@ export class Bot {
         requestId = c.listMarket({ receive: cmd.receive as v1.ResourceType });
         break;
     }
-    this.pending.set(requestId, { command: cmd, sentAt: nowMs });
-    this.orderedAt.set(cmd.key, nowMs);
-    this.emit('command', { type: cmd.type, key: cmd.key, requestId });
+    this.pending.set(requestId, { command: cmd, sentAt: nowMs, colony });
+    // Las claves de la segunda ciudad llevan su prefijo: «build:HOUSE» es de cada ciudad.
+    const key = colony ? `colony:${cmd.key}` : cmd.key;
+    this.orderedAt.set(key, nowMs);
+    this.emit('command', { type: cmd.type, key, requestId });
     this.logCommerceSent(cmd);
   }
 
@@ -620,9 +815,16 @@ export class Bot {
       if (p) {
         this.pending.delete(m.requestId);
         const code = m.payload.code;
+        if (p.colony) {
+          this.colonyMemory = onRejected(this.colonyMemory, p.command, code, nowMs, colonyProfile(this.deps.profile));
+          this.emit('rejected', { type: p.command.type, key: `colony:${p.command.key}`, code });
+          return;
+        }
         const before = this.memory.unreachablePlayers;
+        const hadFounding = this.memory.founding;
         this.memory = onRejected(this.memory, p.command, code, nowMs, this.deps.profile);
         this.emit('rejected', { type: p.command.type, key: p.command.key, code });
+        this.logFounding(hadFounding, this.memory);
         // Una pareja sin ruta se apunta una vez: desde ahora queda apartada (RN-BOT-013).
         for (const playerId of this.memory.unreachablePlayers) {
           if (before.includes(playerId)) continue;
@@ -645,20 +847,45 @@ export class Bot {
       (m.type === 'entity.despawn' && m.payload.reason === 'DEAD')
     ) {
       this.memory = onRaidLoss(this.memory, m.payload.id);
+      const hadFounding = this.memory.founding;
+      this.memory = onFounderLost(this.memory, m.payload.id, nowMs, this.deps.profile);
+      this.logFounding(hadFounding, this.memory);
     }
     // Una ciudad que cae (SPEC-BOTS-ASSAULT §4.4, §4.6): la que asaltaba la partida, o la propia.
     if (m.type === 'city.fallen') {
       const before = this.memory.raid;
       this.memory = onTargetFell(this.memory, m.payload.cityId, m.payload.ownerPlayerId, nowMs, this.deps.profile);
       this.logAssault(before, this.memory.raid);
-      if (m.payload.ownerPlayerId === this.account?.playerId && this.prevCity?.id === m.payload.cityId) {
-        this.pendingFall = { cityId: m.payload.cityId, byPlayerId: m.payload.byPlayerId };
+      if (m.payload.ownerPlayerId === this.account?.playerId) {
+        if (this.prevCity?.id === m.payload.cityId) {
+          this.pendingFall = { cityId: m.payload.cityId, byPlayerId: m.payload.byPlayerId };
+        }
+        // Una de dos: la segunda cae y la capital sigue (SPEC-BOTS-FOUND §4.6).
+        if (this.homes.has(m.payload.cityId) && m.payload.cityId === this.secondCityId()) {
+          this.onColonyFell(m.payload.cityId, m.payload.byPlayerId);
+        }
+        this.homes.delete(m.payload.cityId);
       }
     }
+    if ((m.type === 'world.snapshot' || m.type === 'city.update') && link !== this.home) this.refreshHomes(link);
     if (link !== this.home) return;
 
     switch (m.type) {
       case 'world.snapshot': {
+        const known = this.homes.size;
+        this.refreshHomes(link);
+        // Una ciudad propia nueva (la fundación): la campaña vuelve a mirar su partida.
+        if (this.homes.size > known && known > 0) this.fieldView = null;
+        // El snapshot de la fundación llega centrado en la nueva (ResnapshotAt): la casa
+        // vuelve a la capital (SPEC-BOTS-FOUND §4.5).
+        const capitalId = this.capitalId();
+        const capitalAt = capitalId === null ? undefined : this.homes.get(capitalId);
+        // Una vez por vuelta: si el snapshot siguiente tampoco la trae, no se insiste.
+        if (capitalId !== null && link.store.getState().cities.has(capitalId)) this.recentering = false;
+        else if (!this.scouting && capitalAt && !this.recentering) {
+          this.recentering = true;
+          link.client.setView(capitalAt);
+        }
         // Un snapshot reemplaza la vista: su almacén es la nueva referencia, no recolección.
         const city = this.ownCity();
         const before = this.prevCity;
@@ -669,6 +896,7 @@ export class Bot {
         break;
       }
       case 'city.update':
+        this.refreshHomes(link);
         this.onCity(nowMs);
         break;
       case 'building.update':
@@ -836,6 +1064,8 @@ export class Bot {
     const by = this.pendingFall?.byPlayerId ?? null;
     const byName = by ? (this.deps.directory.list().find((b) => b.playerId === by)?.name ?? by) : null;
     this.pendingFall = null;
+    // Con otra en pie, la que queda pasa a capital sin refundar (SPEC-BOTS-FOUND §4.6).
+    const kept = this.colonyCityId === city.id;
     this.emit('fell', {
       cityId: fallen.id,
       newCityId: city.id,
@@ -843,8 +1073,18 @@ export class Bot {
       by: byName,
       era: city.era,
       population: fallen.population,
+      kept,
+      capital: true,
     });
-    this.deps.say(`${this.name}: su ciudad cayó${byName ? ` ante ${byName}` : ''}; refundada en (${city.centerX}, ${city.centerY})`);
+    this.deps.say(
+      kept
+        ? `${this.name}: su capital cayó${byName ? ` ante ${byName}` : ''}; sigue desde ${city.name}`
+        : `${this.name}: su ciudad cayó${byName ? ` ante ${byName}` : ''}; refundada en (${city.centerX}, ${city.centerY})`,
+    );
+    if (kept) this.closeColony();
+    const hadFounding = this.memory.founding;
+    this.memory = endFounding(this.memory, 'failed', 'city_fell', this.now(), this.deps.profile);
+    this.logFounding(hadFounding, this.memory);
     this.memory = onOwnCityFell(this.memory);
     this.buildingStatus.clear();
     this.buildingType.clear();
@@ -854,6 +1094,27 @@ export class Bot {
     this.publish(city);
     // Las colinas de la casa vieja no sirven: se vuelven a buscar alrededor de la nueva.
     void this.scoutHills(city);
+  }
+
+  /**
+   * Cae la segunda ciudad y la capital sigue (SPEC-BOTS-FOUND §4.6): se apunta, se
+   * cierra la conexión colonia y se olvida su memoria; la fundación vuelve cuando
+   * se pueda (Q8).
+   */
+  private onColonyFell(cityId: number, byPlayerId: string): void {
+    const fallen = this.cityById(cityId) ?? (this.colonyLast?.id === cityId ? this.colonyLast : null);
+    const byName = this.deps.directory.list().find((b) => b.playerId === byPlayerId)?.name ?? byPlayerId;
+    this.emit('fell', {
+      cityId,
+      newCityId: this.capitalId(),
+      by: byName,
+      era: fallen?.era ?? null,
+      population: fallen?.population ?? 0,
+      kept: true,
+      capital: false,
+    });
+    this.deps.say(`${this.name}: su segunda ciudad cayó ante ${byName}; sigue con la capital`);
+    this.closeColony();
   }
 
   private onCity(nowMs: number): void {
@@ -918,5 +1179,21 @@ export class Bot {
       populationLimit: city.populationLimit,
       raid: this.memory.raid ? this.memory.raid.targetName : null,
     });
+    const id = this.secondCityId();
+    const colony = id === null ? null : this.cityById(id);
+    if (colony) {
+      const houses = [this.home, this.colony]
+        .flatMap((l) => (l ? [...l.store.getState().buildings.values()] : []))
+        .filter((b, i, all) => b.cityId === colony.id && b.type === 'HOUSE' && b.status === 'COMPLETE' && all.findIndex((x) => x.id === b.id) === i).length;
+      this.emit('colony', {
+        cityId: colony.id,
+        era: colony.era,
+        population: colony.population,
+        populationLimit: colony.populationLimit,
+        wood: colony.stocks.WOOD,
+        houses,
+        target: this.deps.profile.colonyVillagers,
+      });
+    }
   }
 }
