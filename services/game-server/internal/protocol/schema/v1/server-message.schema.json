@@ -1442,6 +1442,34 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "ownCities": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/id"
+                      },
+                      "centerX": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "centerY": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/units/items/properties/x"
+                      },
+                      "era": {
+                        "$ref": "#/definitions/ServerMessage/anyOf/3/properties/payload/properties/cities/items/properties/era"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "centerX",
+                      "centerY",
+                      "era"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 4
                 }
               },
               "required": [

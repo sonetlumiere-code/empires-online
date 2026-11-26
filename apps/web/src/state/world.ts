@@ -106,6 +106,13 @@ export interface TerritoryView {
 /** El almacén de una ciudad: madera, piedra y los cuatro bienes de civilización. */
 export type CityStocks = { WOOD: number; STONE: number; WINE: number; SILK: number; SPICES: number; FURS: number };
 
+/** Una ciudad propia en pie, esté o no en el área de interés (SPEC-MULTI-CITY Q9). */
+export interface OwnCityHome {
+  x: number;
+  y: number;
+  era: string;
+}
+
 export interface CityView {
   id: number;
   ownerPlayerId: string;
@@ -296,10 +303,11 @@ export interface WorldState {
    */
   homeCityId: number | null;
   /**
-   * Los centros de las ciudades propias que se han visto, por id, aunque ya no estén en
-   * el área de interés (SPEC-MULTI-CITY Q9): adónde puede llevar «H». Se muta en sitio.
+   * Las ciudades propias en pie, por id, aunque no estén en el área de interés
+   * (SPEC-MULTI-CITY Q9): su centro, adónde puede llevar «H», y su era, para el tope de
+   * «Fundar ciudad». Las dice cada snapshot (`ownCities`) y se muta en sitio.
    */
-  ownCityHomes: ReadonlyMap<number, { x: number; y: number }>;
+  ownCityHomes: ReadonlyMap<number, OwnCityHome>;
   lastError: { code: string; message: string } | null;
 
   applyWelcome: (payload: v1.SessionWelcome['payload']) => void;
@@ -427,7 +435,7 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
   const cities = new Map<number, CityView>();
   // Dónde están las ciudades propias, aunque salgan del área de interés: «H» lleva a
   // ellas (SPEC-MULTI-CITY Q9). Sólo las olvida su caída o un cambio de jugador.
-  const ownCityHomes = new Map<number, { x: number; y: number }>();
+  const ownCityHomes = new Map<number, OwnCityHome>();
   const territories = new Map<number, TerritoryView>();
   const buildings = new Map<number, BuildingView>();
   // Páginas del registro pedidas y aún sin respuesta: requestId → beforeId (null
@@ -515,8 +523,14 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
 
       cities.clear();
       for (const c of payload.cities) cities.set(c.id, cityFromView(c));
+      // SPEC-MULTI-CITY Q9: el servidor dice todas las propias, también las de fuera del
+      // área; uno anterior no las manda, y se recuerdan las que se han visto.
+      if (payload.ownCities !== undefined) {
+        ownCityHomes.clear();
+        for (const c of payload.ownCities) ownCityHomes.set(c.id, { x: c.centerX, y: c.centerY, era: c.era });
+      }
       for (const c of payload.cities) {
-        if (c.ownerPlayerId === get().playerId) ownCityHomes.set(c.id, { x: c.centerX, y: c.centerY });
+        if (c.ownerPlayerId === get().playerId) ownCityHomes.set(c.id, { x: c.centerX, y: c.centerY, era: c.era });
       }
 
       buildings.clear();
@@ -655,6 +669,9 @@ const createWorldState: StateCreator<WorldState> = (set, get) => {
             // SPEC-CITY-FALL §6: el asalto empieza (vista) o termina sin caída (null).
             assault: p.assault === undefined ? existing.assault : (p.assault ?? undefined),
           });
+          // La era de una ciudad propia, para el tope de «Fundar ciudad» (RN-CITY-040).
+          const home = ownCityHomes.get(p.id);
+          if (home && p.era !== undefined) ownCityHomes.set(p.id, { ...home, era: p.era });
           set({ changes: changed({ cities: new Set([p.id]) }) });
           break;
         }

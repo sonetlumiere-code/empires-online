@@ -2382,9 +2382,9 @@ async function caida(atacante, ciudad, playerId, snap) {
     const snapT = await atacante.sesion.esperarQue('world.snapshot',
       (m) => ciudadTomada(m.payload, playerId, tomadaId, ciudadV) !== undefined, 10_000);
     const t = ciudadTomada(snapT.payload, playerId, tomadaId, ciudadV);
-    ok('la ciudad se toma', `${t.name} (${t.id}) de smoke_runner en (${t.centerX}, ${t.centerY}), ${t.era}`);
+    ok('la ciudad se toma', `${t.name} (${t.id}) de ${USUARIO} en (${t.centerX}, ${t.centerY}), ${t.era}`);
   } else {
-    ok('la ciudad se arrasa', 'smoke_runner no tenía hueco');
+    ok('la ciudad se arrasa', `${USUARIO} no tenía hueco`);
   }
   await avisoEnVivo(atacante.sesion, 'CITY_TAKEN', cuenta.playerId);
   ok('aviso al vencedor', 'CITY_TAKEN');

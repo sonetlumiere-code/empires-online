@@ -276,6 +276,19 @@ recogen al implementar.
   funda su segunda ciudad y la juega; el saqueador sigue sin fundar.
 - **Precisión (2026-11-24): la validación de carga** registra `invariant_violation` con `inv_id=INV-CITY-022` y no
   arranca si un jugador tiene más de dos ciudades en pie, y sólo da el bono de territorio a la capital.
+- **Precisión (2026-11-26): el snapshot dice las ciudades propias.** Lo encontró el pase en el navegador integrado
+  ([milestones](../roadmap/milestones.md) §E34): `ownCityHomes` sólo recordaba las ciudades que habían llegado en algún
+  snapshot, así que, al entrar, «H» no salía de la capital si las demás estaban lejos (`smoke_runner`, con cuatro, a
+  unos 130 tiles); el motivo de «Fundar ciudad» contaba sólo las ciudades a la vista y tomaba la era de la primera
+  (con la cámara en su segunda y la capital fuera, `smoke_multi` veía «Fundar cuesta…» en lugar de «Ya tienes 2
+  ciudades»); y la ciudad del comercio ([trade-from-city.md](trade-from-city.md) Q7) tomaba por capital la primera a la
+  vista, con lo que la orden salía de la capital aunque el panel mostrara otra. `world.snapshot` lleva ahora
+  `ownCities` (`{ id, centerX, centerY, era }`, opcional, la capital primero; [websocket-protocol.md](websocket-protocol.md)
+  §8.4), que reemplaza `ownCityHomes` en cada snapshot; `city.update` pone al día su era. El tope cuenta todas y usa la
+  era de la capital (la de su vista, si está cargada); la capital del comercio es la de id menor de todas. El panel
+  sigue mostrando la última a la que llevó «H» o, si no está a la vista, la primera propia que lo está. Y, en el
+  cliente, el centro de cualquier ciudad del dueño hace de su territorio una capital territorial
+  (`claimBlockReason`, `territoryOwnerLabel`), no sólo el de la primera que encuentra.
 
 ## 10. Decisiones de producto (2026-11-24)
 

@@ -3218,6 +3218,9 @@ integrado, con el panel visible, en la cuenta `smoke_caida`, y `node scripts/smo
 - **Sin comprobar en el navegador:** «Cayendo…» (la caída llegó dentro del mismo segundo en que la cuenta llegó a
   cero), el tono naranja de un tercero, el dorado del asaltante y el estandarte de una reclamación de territorio. Los
   cubren los tests de `cityFall.test.ts` y `projection.test.ts`.
+- **Visto en el navegador (2026-11-26)**, en el repaso de E33 a E39 (abajo): el dorado del asaltante, el naranja de
+  un tercero, el desvanecido y el estandarte dorado de una reclamación de territorio. «Cayendo…», sólo con el reloj del
+  cliente adelantado: en una caída de verdad sigue llegando la caída en menos de un segundo tras el cero.
 
 ## E34 — Multiciudad
 
@@ -3270,6 +3273,9 @@ sembradas con `EO_DEVSEED_STOCK_FOR`.
 - **Sin comprobar en el navegador:** «Fundar ciudad», «H» que alterna y el panel de la ciudad elegida: el panel del
   navegador integrado estaba oculto y, sin él, el mapa no se dibuja. Los cubren los tests de `multiCity.test.ts` y
   `selectors.test.ts`.
+- **Visto en el navegador (2026-11-26)**, en el repaso de E33 a E39 (abajo), con dos fallos arreglados: al entrar,
+  «H» no salía de la capital, y el motivo de «Fundar ciudad» sólo contaba las ciudades a la vista. Después del arreglo,
+  «H» alterna entre todas y el panel muestra la elegida, y el motivo dice el tope.
 
 ## E35 — Bots que fundan
 
@@ -3340,6 +3346,8 @@ piedra). Registros en `bots/runs/` (sin versionar).
     exploración. `_1_e29` sigue sin sitio (8 búsquedas `no_site`).
 - **Sin comprobar en el navegador:** ver una segunda ciudad de un bot en el mapa; el panel del navegador integrado no se
   usó en esta sesión desatendida.
+- **Visto en el navegador (2026-11-26)**, en el repaso de E33 a E39 (abajo): `bot_constructor_3_e29polis II` en el
+  mapa, junto a su capital amurallada.
 
 ## E36 — La ciudad tomada
 
@@ -3379,6 +3387,8 @@ migración 31 → 32 al arrancar. `node scripts/smoke.mjs --web http://localhost
   completos la prueban los tests de integración y de simulación.
 - **Sin comprobar en el navegador:** la tomada con sus edificios en el mapa; el panel del navegador no se usó en esta
   sesión desatendida.
+- **Visto en el navegador (2026-11-26)**, en el repaso de E33 a E39 (abajo): la 61, tomada con la casa, el mercado y
+  el taller de `smoke_caida`.
 
 ## E37 — Más ciudades
 
@@ -3410,6 +3420,9 @@ Bronce, ve rechazada la tercera (`INVALID_TARGET`, «ya tienes 2 ciudades: el to
 - **Sin comprobar en vivo:** fundar la tercera con la capital en Hierro (lo cubre `TestEnHierroSeFundaLaTercera`); el
   motivo nuevo de «Fundar ciudad» en el navegador. **Precisión (2026-11-25):** tomar una tercera se vio en vivo en la
   prueba de E39 (§E39).
+- **Visto en el navegador (2026-11-26)**, en el repaso de E33 a E39 (abajo): el motivo «Ya tienes 2 ciudades: el tope
+  de tu capital es 2», ya contando las ciudades de fuera de la vista. Fundar la tercera con la capital en Hierro sigue
+  sin verse en vivo.
 
 ## E38 — El comercio desde cualquier ciudad
 
@@ -3446,6 +3459,8 @@ pasaba sin haber visto la nueva. Ahora exige una entrada posterior al trato y co
 
 - **Sin comprobar en vivo:** una oferta o un trato desde la segunda ciudad (lo cubren los tests de simulación y el
   e2e); el HUD con la segunda ciudad en el panel, en el navegador.
+- **Visto en el navegador (2026-11-26)**, en el repaso de E33 a E39 (abajo): una oferta del tablón y un trato desde
+  una ciudad que no es la capital, con un fallo arreglado (con la capital fuera del área, la orden salía de ella).
 
 ## E39 — Los avisos de la ciudad tomada
 
@@ -3474,4 +3489,51 @@ por era de E37 visto en vivo por primera vez. El humo comprueba que llega `CITY_
 tests de simulación, integración y contrato.
 
 - **Sin comprobar en el navegador:** los dos textos nuevos en el registro y en el aviso.
+- **Visto en el navegador (2026-11-26)**, en el repaso de E33 a E39 (abajo): los dos textos, a los dos lados, en el
+  registro y en los avisos.
+
+## Repaso en el navegador de E33 a E39 (2026-11-26)
+
+Rama `claude/repaso-navegador-e33-e39`. El pase visual de lo que E33 a E39 dejaron «Sin comprobar en el navegador»:
+el navegador integrado con el panel visible, servidor y web de desarrollo con `EO_CITY_ASSAULT_SECONDS=20` y
+`EO_CITY_FALL_IMMUNITY_HOURS=0`, tres pasadas de `node scripts/smoke.mjs --web http://localhost:3001 --caida` (27
+comprobaciones cada una; la segunda con `EO_SMOKE_USER=smoke_victim`, que tenía hueco para tomar) y hasta tres
+pestañas a la vez con cuentas distintas.
+
+- **E33.** El asaltante (`smoke_runner` sobre la 54) ve el estandarte, el contorno y «Cae en 0:15» en dorado; un
+  tercero (`smoke_runner` mirando el asalto de `smoke_victim` a la 62), en naranja, con «Cae en 0:09»; al caer, la
+  ciudad se desvanece sin contorno ni cuenta atrás. El guerrero de `smoke_victim`, reclamando la Región 2-4 libre,
+  lleva el estandarte dorado y el territorio, el contorno de la disputa. «Cayendo…» (dorado, bajo el nombre) sólo se vio
+  con `Date.now` y `performance.now` de la página adelantados 30 s durante la tercera pasada; sin ellos, la caída llega
+  antes de que la cuenta llegue a cero en pantalla. **Sin comprobar en el navegador:** «Cayendo…» en una caída natural.
+- **E34 y E37.** **Encontrado y arreglado:** al entrar, «H» no salía de la capital (`ownCityHomes` sólo recordaba las
+  ciudades llegadas en algún snapshot, y las otras tres de `smoke_runner` estaban a unos 130 tiles), y con la cámara
+  en `smoke_multipolis II` y la capital fuera del área el motivo de «Fundar ciudad» era «Fundar cuesta 800 de madera y
+  400 de piedra de smoke_multipolis II» en lugar del tope. El snapshot trae ahora `ownCities`
+  ([multi-city.md](../specs/multi-city.md) §9.1). Después: nada más entrar, «H» lleva a `smoke_multipolis II` (a 80
+  tiles, sin haberla visto) y el panel la muestra; `smoke_runner` recorre 1 → 51 → 53 → 61; el motivo es «Ya tienes 2
+  ciudades: el tope de tu capital es 2».
+- **E35.** `bot_constructor_3_e29polis II` (la 59, en (40, 128)), la que fundó el bot en el repaso de la fundación, con
+  un aldeano, y su capital (la 58) con la muralla y el castillo.
+- **E36.** `smoke_caida` levanta casa, mercado y taller en la 54; tras el asalto, `smoke_runner` se la queda como la 61
+  en el mismo centro, en su dorado, con los tres edificios y tres aldeanos; su límite de población es 55 (la casa).
+- **E38.** **Encontrado y arreglado:** `commerceCityId` tomaba por capital la primera ciudad a la vista, así que con
+  la capital fuera la orden salía de ella aunque el panel mostrara otra ([trade-from-city.md](../specs/trade-from-city.md)
+  §9.1). Con el panel en la 61 (con 400 de madera y 200 de piedra puestos en la base con el servidor parado), el tablón
+  mide las distancias desde ella (369 casillas a `bot_constructor_1_e29polis`), publicar 3 lotes de 20 de piedra baja
+  su piedra a 134 y retirarlos la sube a 194, y el trato a `dev_nortepolis` queda con `proposer_city_id = 61`; a
+  `smoke_victim` se rechaza por «Demasiado lejos» (su capital está a 319 tiles de la 61).
+- **E39.** Del lado del vencido, en el registro y en «Mientras no estabas» de `smoke_caida`: «smoke_runnerpolis tomó
+  tu ciudad: ahora es suya. Sigues en (132, 121)…»; del vencedor, en los de `smoke_runner`: «Tomaste la ciudad de
+  smoke_caidapolis cerca de (141, 185): ahora es tuya» y, de una caída anterior a E36, «Tus unidades tomaron y
+  arrasaron…». En vivo, en la caída de la 62, que toma `smoke_victim`, los dos textos llegaron a sus pestañas, ocultas,
+  y se vieron en «Mientras no estabas» al traerlas al frente. **Sin comprobar en el navegador:** la franja de avisos
+  con la pestaña visible (usa el mismo texto, `noticeText` es `entryText`).
+- **También arreglado:** el cliente sólo miraba la primera ciudad del dueño para decir si un territorio es su capital
+  (`claimBlockReason`, `territoryOwnerLabel`), y el humo ponía «de smoke_runner» en la toma aunque el asaltante fuera
+  otro (`EO_SMOKE_USER`).
+- **Hallazgos para otra sesión:** una ciudad fundada desde una capital que ya se llama «X II» sale «X II II»
+  (`bot_constructor_2_e35polis II II`, `city.CityName`), y pide decidir el nombre; una caravana parada (la unidad
+  1000) avisa cada minuto de que no encuentra ruta (`50001 nodos expandidos`); el HUD no cabe en 856 px de ancho y
+  «Fundar ciudad» queda fuera, con desplazamiento horizontal.
 

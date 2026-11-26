@@ -71,7 +71,11 @@ func TestUnaSegundaCiudadSeFundaPorLaRed(t *testing.T) {
 	env.state.AddUnit(&unit.Unit{ID: aldeano, PlayerID: env.playerID, CityID: &[]int64{1}[0], Type: unit.TypeVillager,
 		X: 100, Y: 100, HP: 40, MaxHP: 40, Status: unit.StatusIdle})
 
-	c, _ := conectar(t, env, env.playerID)
+	c, inicial := conectar(t, env, env.playerID)
+	// SPEC-MULTI-CITY Q9 (precisión del 2026-11-26): el snapshot dice sus ciudades.
+	require.Len(t, inicial.OwnCities, 1)
+	assert.Equal(t, protocol.OwnCityView{ID: 1, CenterX: capital.CenterX, CenterY: capital.CenterY, Era: "BRONZE_AGE"},
+		inicial.OwnCities[0])
 
 	// Un payload con campos de más no pasa el esquema.
 	c.send(protocol.TypeUnitFoundCity, map[string]any{"unitId": aldeano, "x": 3})
@@ -98,5 +102,8 @@ func TestUnaSegundaCiudadSeFundaPorLaRed(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 2, propias, "el snapshot del fundador trae sus dos ciudades")
+	duenas := decode[protocol.WorldSnapshotPayload](t, snap.Payload).OwnCities
+	require.Len(t, duenas, 2, "y las dos en ownCities, la capital primero")
+	assert.Equal(t, []int64{1, 70}, []int64{duenas[0].ID, duenas[1].ID})
 	assert.Len(t, env.state.CitiesOf(env.playerID), 2)
 }

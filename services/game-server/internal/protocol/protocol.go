@@ -1320,6 +1320,20 @@ type WorldSnapshotPayload struct {
 	// MarketOffers son las ofertas OPEN del mercado de quien recibe el
 	// snapshot (SPEC-MARKETS §6). Se omite si no tiene ninguna.
 	MarketOffers []MarketOfferView `json:"marketOffers,omitempty"`
+	// OwnCities son las ciudades en pie de quien recibe el snapshot, estén o no
+	// en su área, por id: la capital primero (SPEC-MULTI-CITY Q9). Opcional en el
+	// esquema: se omite si no tiene ninguna.
+	OwnCities []OwnCityView `json:"ownCities,omitempty"`
+}
+
+// OwnCityView es una ciudad propia fuera o dentro del área de interés: lo que
+// el HUD necesita para «H» y para el tope de «Fundar ciudad» (SPEC-MULTI-CITY
+// Q9, RN-CITY-040).
+type OwnCityView struct {
+	ID      int64  `json:"id"`
+	CenterX int32  `json:"centerX"`
+	CenterY int32  `json:"centerY"`
+	Era     string `json:"era"`
 }
 
 type EntitySpawnPayload struct {

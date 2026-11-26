@@ -233,6 +233,9 @@ export default function Page() {
   const selectedUnitId = useWorldStore((s) => s.selectedUnitId);
   const playerId = useWorldStore((s) => s.playerId);
   const hud = useWorldStore(selectHud);
+  // Las ciudades propias de fuera del área (SPEC-MULTI-CITY Q9): el store muta el mapa
+  // en sitio y cada snapshot que lo cambia vuelve a pintar el HUD.
+  const ownCityHomes = useWorldStore((s) => s.ownCityHomes);
   const lastError = useWorldStore((s) => s.lastError);
   // La unidad seleccionada es un objeto inmutable que el store reemplaza al
   // cambiar: suscribirse a ella re-renderiza sólo con sus propios deltas.
@@ -832,7 +835,7 @@ export default function Page() {
   };
   const offerTrade = (target: CityView) => {
     const { give, want } = draftLines(draft);
-    clientRef.current?.proposeTrade(target.ownerPlayerId, give, want, commerceCityId(hud.ownCity, hud.ownCities));
+    clientRef.current?.proposeTrade(target.ownerPlayerId, give, want, commerceCityId(hud.ownCity, hud.ownCities, ownCityHomes));
     setDiplomacyTarget(null);
   };
 
@@ -903,7 +906,7 @@ export default function Page() {
       })
     : null;
   // Por qué el aldeano seleccionado no puede fundar (SPEC-MULTI-CITY §5).
-  const foundReason = foundCityBlockReason(selectedUnit, hud.ownCities);
+  const foundReason = foundCityBlockReason(selectedUnit, hud.ownCities, ownCityHomes);
   const clanClaimReason = claimCheck && clans.clan ? claimBlockReason({ ...claimCheck, cities: useWorldStore.getState().cities.values(), forClan: true }) : null;
 
   return (
@@ -1506,10 +1509,10 @@ export default function Page() {
               { resource: d.giveResource, amount: d.giveAmount },
               { resource: d.wantResource, amount: d.wantAmount },
               d.lots,
-              commerceCityId(hud.ownCity, hud.ownCities),
+              commerceCityId(hud.ownCity, hud.ownCities, ownCityHomes),
             )
           }
-          onBuy={(id, lots) => clientRef.current?.buyMarketOffer(id, lots, commerceCityId(hud.ownCity, hud.ownCities))}
+          onBuy={(id, lots) => clientRef.current?.buyMarketOffer(id, lots, commerceCityId(hud.ownCity, hud.ownCities, ownCityHomes))}
           onCancel={(id) => clientRef.current?.cancelMarketOffer(id)}
           onClose={() => setMarketOpen(false)}
         />

@@ -1053,7 +1053,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
   `setHomeCity`. `computeHud` devuelve `ownCities` y, en `ownCity`, la de `homeCityId` o la capital: todo el HUD de la
   ciudad (construir, entrenar, avanzar, investigar) cuelga de ella.
 - El store recuerda además `ownCityHomes`: el centro de cada ciudad propia vista, aunque salga del área de interés,
-  hasta su `city.fallen` o un `reset` (precisión de la spec §9.1).
+  hasta su `city.fallen` o un `reset` (precisión de la spec §9.1). **Precisión (2026-11-26):** desde el pase en el
+  navegador, las dice todas el snapshot (`ownCities`), también las que la sesión nunca ha visto.
 - **Precisión (2026-11-25), E36** ([SPEC-CITY-TAKEN](../specs/city-taken.md)): `city.fallen` puede traer `takenCityId`;
   el store no lo necesita, porque la tomada y sus edificios (con su `cityId` nuevo) llegan antes que `city.fallen`.
 - **Precisión (2026-11-25), E37** ([SPEC-MORE-CITIES](../specs/more-cities.md)): `maxOwnCities(era)` da el tope de la
@@ -1064,6 +1065,11 @@ y grueso, y una que carga madera, un tronco a la espalda.
   ciudad del panel si no es la capital.
 - **Precisión (2026-11-25), E39** ([SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md)): `entryText`
   (`src/state/eventLog.ts`) escribe la toma con `taken` en `CITY_LOST` y `CITY_TAKEN`.
+- **Precisión (2026-11-26), el pase en el navegador** ([SPEC-MULTI-CITY](../specs/multi-city.md) §9.1): cada
+  `world.snapshot` trae `ownCities`, y `applySnapshot` reemplaza con ellas `ownCityHomes`, que guarda ahora el centro y
+  la era (`OwnCityHome`); `city.update` pone al día la era. `capitalOf(own, homes)` (`multiCity.ts`) da la capital (la de
+  id menor de todas), su era y cuántas hay; `foundCityBlockReason` y `commerceCityId` la usan, y el HUD les pasa
+  `ownCityHomes`. En `conquest.ts`, `cityOf` prefiere la ciudad del dueño con el centro en el territorio.
 - `GameCanvas`: la cámara arranca en la capital, y «H» alterna entre las ciudades recordadas (`homesOf`, por id).
 - `src/net/client.ts`: `foundCity(unitId)` manda `unit.found_city`; la confirmación llega como un `world.snapshot`
   nuevo centrado en la ciudad nueva. `CITY_FOUNDED` tiene su texto en `entryText`.
