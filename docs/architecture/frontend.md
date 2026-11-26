@@ -1002,7 +1002,10 @@ y grueso, y una que carga madera, un tronco a la espalda.
   y `ownCitiesOf` (`multiCity.ts`), los territorios del store para el sitio, y envía `foundCity` (`src/net/client.ts`).
   La segunda ciudad tiene su propia conexión (un `GameClient` y un store más, con la vista en ella) y la casa vuelve a
   la capital tras el `world.snapshot` de la fundación, que llega centrado en la nueva. El bot recuerda los centros de
-  sus ciudades como `ownCityHomes`. Nada nuevo en `src/net` ni en `src/state`.
+  sus ciudades como `ownCityHomes`. Nada nuevo en `src/net` ni en `src/state`. Desde el repaso del 2026-11-26, el
+  aldeano que va a fundar lejos lo sigue la conexión de campaña (`fieldFocus` con `Founding.waypoint`), y el
+  directorio de los bots guarda el sitio de cada uno para que no vayan dos al mismo; los aldeanos propios parados lejos
+  que ve la exploración vuelven a casa por tramos (`strays`), también con la campaña.
 - **Consecuencia:** `src/net` y `src/state` tienen que seguir sin DOM ni React en lo que el bot importa. Un cambio que
   lo rompa lo detectan el typecheck y los tests de `apps/bots`, que corren con los del workspace.
 - `tsx` carga los `.ts` de `apps/web` como CommonJS (el paquete no declara `"type": "module"`); por eso

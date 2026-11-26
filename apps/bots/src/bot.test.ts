@@ -629,6 +629,44 @@ describe('RN-BOT-007: la parada limpia', () => {
   });
 });
 
+describe('la fundación fuera de la vista (SPEC-BOTS-FOUND §9.1)', () => {
+  it('el directorio guarda el sitio de cada bot y da a cada uno los de los demás', () => {
+    const d = new Directory();
+    d.claimSite('b', { x: 5, y: 6 });
+    d.claimSite('a', { x: 1, y: 2 });
+    expect(d.sitesBesides('a')).toEqual([{ x: 5, y: 6 }]);
+    expect(d.sitesBesides('c')).toEqual([{ x: 1, y: 2 }, { x: 5, y: 6 }]);
+    d.claimSite('b', null);
+    expect(d.sitesBesides('a')).toEqual([]);
+  });
+
+  it('con una fundación en curso, la conexión de campaña mira el tramo del aldeano y el sitio queda apartado', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const directory = new Directory();
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.constructor, directory);
+    await bot.start();
+    const inner = bot as unknown as Inner;
+    const site = { x: 190, y: 100 };
+    const leg = { x: 160, y: 100 };
+    inner.memory = {
+      ...inner.memory,
+      founding: { site, unitId: 999, distance: 90, startedAtMs: Date.now(), tries: 0, lastPos: { x: 104, y: 100 }, orderedAtMs: null, waypoint: leg },
+    };
+    inner.think();
+    expect(directory.sitesBesides('otro')).toEqual([site]);
+    // La campaña pide su ticket y abre: unos turnos del bucle; luego mira el tramo.
+    await new Promise((r) => setTimeout(r, 10));
+    inner.think();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sockets).toHaveLength(2);
+    const field = sockets[1] as FakeServer;
+    const centers = field.sent.filter((m) => m.type === 'session.view').map((m) => (m as { payload: { center: unknown } }).payload.center);
+    expect(centers).toEqual([leg]);
+    bot.stop();
+  });
+});
+
 describe('con dos ciudades propias (SPEC-MULTI-CITY Q10)', () => {
   it('el bot juega con su capital, la de id menor, sea cual sea el orden del store', () => {
     const yo = '11111111-1111-4111-8111-111111111111';

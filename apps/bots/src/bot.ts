@@ -16,6 +16,8 @@ import { ownCitiesOf } from '../../web/src/state/multiCity';
 import { WebSession, type Account } from './auth';
 import {
   EMPTY_MEMORY,
+  STRAY_HOME_RADIUS,
+  addStrays,
   chebyshev,
   decide,
   endFounding,
@@ -41,11 +43,21 @@ import { createRng, type Rng } from './random';
 /** Las ciudades de los bots del proceso, para elegir blanco aunque no estén a la vista. */
 export class Directory {
   private readonly cities = new Map<string, BotCity>();
+  private readonly sites = new Map<string, Tile>();
   set(c: BotCity): void {
     this.cities.set(c.playerId, c);
   }
   list(): BotCity[] {
     return [...this.cities.values()].sort((a, b) => a.playerId.localeCompare(b.playerId));
+  }
+  /** El sitio que va a fundar el bot `playerId`, o `null` si no funda (SPEC-BOTS-FOUND §9.1). */
+  claimSite(playerId: string, site: Tile | null): void {
+    if (site) this.sites.set(playerId, site);
+    else this.sites.delete(playerId);
+  }
+  /** Los sitios que van a fundar los demás bots, en orden de playerId. */
+  sitesBesides(playerId: string): Tile[] {
+    return [...this.sites].filter(([id]) => id !== playerId).sort(([a], [b]) => a.localeCompare(b)).map(([, t]) => t);
   }
 }
 
@@ -390,6 +402,7 @@ export class Bot {
           const snap = home.waitFor((m) => m.type === 'world.snapshot', 15_000);
           home.client.setView(at);
           await snap.catch(() => undefined);
+          this.noteStrays(c);
         }
         this.hills = this.knownHills(c);
       }
@@ -403,6 +416,30 @@ export class Bot {
     this.deps.say(
       `${this.name}: ${this.hills.length > 0 && first ? `colina más cercana a ${chebyshev(c, first)} tiles` : 'sin colinas a la vista'}`,
     );
+  }
+
+  /**
+   * Los aldeanos propios parados lejos de casa que trae la vista de la exploración: los
+   * que una ejecución anterior dejó fuera de la vista (SPEC-BOTS-FOUND §9.1). La vuelta
+   * los trae a casa.
+   */
+  private noteStrays(c: Tile): void {
+    const playerId = this.account?.playerId;
+    const home = this.home;
+    if (!playerId || !home) return;
+    const far = [...home.store.getState().units.values()].filter(
+      (u) =>
+        u.playerId === playerId &&
+        u.unitType === 'VILLAGER' &&
+        u.status === 'IDLE' &&
+        u.garrisonCityId === null &&
+        chebyshev(u, c) > STRAY_HOME_RADIUS,
+    );
+    if (far.length === 0) return;
+    const before = (this.memory.strays ?? []).length;
+    this.memory = addStrays(this.memory, far, this.now());
+    const added = (this.memory.strays ?? []).length - before;
+    if (added > 0) this.emit('stray', { status: 'seen', units: added, near: { x: far[0]?.x, y: far[0]?.y } });
   }
 
   /** Las colinas del terreno conocido, de la más cercana a la más lejana (hasta 24). */
@@ -475,6 +512,7 @@ export class Bot {
       forestTiles: this.forestTiles,
       hills: this.hills,
       botCities: this.deps.directory.list(),
+      claimedSites: this.deps.directory.sitesBesides(playerId),
       treaties: hs.treaties,
       tradeOffers: hs.tradeOffers,
       market: hs.market,
@@ -534,6 +572,7 @@ export class Bot {
       forestTiles: this.colonyForestTiles,
       hills: [],
       botCities: this.deps.directory.list(),
+      claimedSites: this.deps.directory.sitesBesides(playerId),
       treaties: hs.treaties,
       tradeOffers: hs.tradeOffers,
       market: hs.market,
@@ -556,6 +595,7 @@ export class Bot {
     });
     this.memory = memory;
     for (const cmd of commands) this.send(cmd, nowMs);
+    this.deps.directory.claimSite(view.playerId, memory.founding?.site ?? null);
     this.logFounding(hadFounding, memory);
     // Sin sitio a la vista: se apunta cada vez que la búsqueda se aplaza (SPEC-BOTS-FOUND §9.1).
     if (memory.foundSearchAtMs > hadSearchAt) this.emit('found', { status: 'no_site' });

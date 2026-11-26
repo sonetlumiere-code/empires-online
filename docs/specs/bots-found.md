@@ -39,7 +39,8 @@ Rutas desde `apps/bots/src/`:
   `apps/web/src/net/client.ts` y el motivo del HUD, `foundCityBlockReason`, en `apps/web/src/state/multiCity.ts`.
 - **El bot juega una ciudad.** `View.city` es una sola, la capital (`capitalOf`, E34), y `View.units` lleva todas las
   unidades propias a la vista: con dos ciudades, la capital daría órdenes a los aldeanos de la otra.
-- **La vista sigue a la capital.** La conexión «casa» mira la capital; la de «campaña», la partida. El snapshot de la
+- **La vista sigue a la capital.** La conexión «casa» mira la capital; la de «campaña», la partida (y, desde el repaso
+  del 2026-11-26, el aldeano que va a fundar, §9.1). El snapshot de la
   fundación llega centrado en la ciudad nueva (`ResnapshotAt`, [multi-city.md](multi-city.md) §9.1) a **todas** las
   sesiones del jugador, y el espejo olvida las ciudades que salen del área de interés (radio de 2 chunks): tras fundar,
   la casa podría quedarse sin la capital.
@@ -243,7 +244,20 @@ decide el sitio).
   §E32). Con el sitio a 86-94 tiles, el último tramo saca al aldeano de la vista de la capital y `foundRule` espera a
   verlo llegar: nunca sale `unit.found_city`, la fundación falla por el plazo (`timeout`) y el aldeano se queda parado
   en el sitio; en 3 h, 28 intentos y 28 aldeanos así, y ninguna fundación. Dos constructores eligieron además el mismo
-  sitio. Queda para otro slice (la vuelta fuera de la vista de E32, `whereabouts`/`lookAt`, es el precedente).
+  sitio. **Arreglo (2026-11-26, rama `claude/repaso-bots-fundar`):** el constructor también abre la conexión de
+  campaña, y `fieldFocus` mira, sin partida, el tramo en curso del aldeano (`Founding.waypoint`; el sitio hasta el
+  primero), como la partida de E32 mira el suyo: la campaña lo ve parar y llegar, y sale `unit.found_city`. El
+  directorio guarda el sitio que va a fundar cada bot (`Directory.claimSite`): para los demás cuenta como un centro
+  (`View.claimedSites` en `knownCenters`), así que dos bots del proceso no eligen sitios a menos de 24.
+- **Precisión (2026-11-26): los aldeanos fuera de la vista vuelven** (misma rama). La memoria lleva `strays`: el
+  aldeano de una fundación fallida con él vivo (plazo, tramos o rechazo; no el muerto ni el de la ciudad caída) y los
+  aldeanos propios parados a más de 32 tiles de casa que trae la exploración del arranque (lo que dejó fuera de la
+  vista una ejecución anterior; suceso `stray` con `status: "seen"`). Sin partida ni fundación, la campaña mira el
+  primero; la vuelta (`strayRule`, antes de la recolección) lo trae por tramos de 48 en espiral como la fundación, y a
+  32 tiles de casa o menos lo suelta para que lo recoja la recolección. Se le olvida trabajando, muerto, a los nueve
+  tramos rechazados o a los 20 min. Lo encontró la prueba en vivo del arreglo: `_2_e29` tenía sus 16 aldeanos varados en
+  el sitio de la ejecución larga y, sin ninguno a la vista, no recolectaba, no fundaba ni entrenaba (los varados
+  cuentan en la población).
 
 ## 10. Decisiones de producto (2026-11-25)
 
