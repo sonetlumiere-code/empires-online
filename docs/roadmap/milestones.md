@@ -3319,6 +3319,24 @@ piedra). Registros en `bots/runs/` (sin versionar).
 - **Hallazgos para otra spec:** la segunda ciudad no levanta casas en Bronce (límite 50, spec §9.1); un constructor en
   Hierro rara vez vuelve a tener 400 de piedra para fundar (la investigación y la muralla se la llevan); con la
   inmunidad a 0, el saqueador encadena caídas de capitales recién heredadas.
+- **Repaso de la fundación** (2026-11-26, rama `claude/repaso-bots-fundar`), por lo que midió la ejecución larga de E32
+  (§E32): ninguna fundación a más de la vista de la capital mandaba `unit.found_city`, y cada intento dejaba un
+  aldeano parado en el sitio (28 en 3 h). Ahora la conexión de campaña sigue al aldeano que funda, el directorio
+  aparta el sitio de cada bot y los aldeanos fuera de la vista vuelven a casa por tramos (spec §9.1). Dos pasadas de
+  40 min, con 3 constructores `_e29` y sin saqueador, a velocidad real:
+  - **Pasada 1** (`--semilla 40`, sólo con la campaña siguiendo al aldeano): `_3_e29` funda la 59 en (40, 128), a 28
+    tiles, en 16 min 55 s, y la juega (8 de población). `_2_e29` no da **ni una orden** en 40 min: sus 16 aldeanos
+    estaban varados en (127, 448) desde la ejecución larga, fuera de la vista; sin aldeanos a la vista no recolecta ni
+    funda, y como los varados cuentan en la población, tampoco entrena. De ahí la vuelta de los aldeanos (`strays`).
+  - **Pasada 2** (`--semilla 41`, con la vuelta): la exploración de `_2_e29` ve a sus 16 varados en el minuto 0
+    (`stray`, `seen`), y a los 0,2 min **funda la 60 en (127, 448), a 94 tiles**, en 2 s, con uno de ellos: la primera
+    fundación fuera de la vista. La 60 llega a 8 de población en 3 min y junta 3 814 de madera en 26 min. Los otros 15
+    vuelven por tramos (45 órdenes, 15 rechazos `TARGET_NOT_WALKABLE` desplazados en espiral) y al final de la pasada
+    sólo queda uno lejos de casa, de camino; `_2_e29` vuelve a entrenar y recolecta 9 121 de madera y 1 304 de piedra
+    por hora. Ningún sitio compartido.
+  - **Lo que no recupera:** los 12 varados de `_3_e29` (en 120, 445), de cuando su capital estaba en (213, 427): la
+    capital cayó en la ejecución larga y la refundada está en (68, 104), a unos 340 tiles, fuera del alcance de la
+    exploración. `_1_e29` sigue sin sitio (8 búsquedas `no_site`).
 - **Sin comprobar en el navegador:** ver una segunda ciudad de un bot en el mapa; el panel del navegador integrado no se
   usó en esta sesión desatendida.
 
