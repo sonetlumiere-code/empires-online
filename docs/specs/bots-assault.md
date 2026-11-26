@@ -7,7 +7,7 @@ caen, cuánto cuesta tumbar una y cuánto tarda el vencido en recuperarse.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-ASSAULT` |
-| Estado | Implemented (2026-11-24). Propuesta en `Draft` y aceptada el 2026-11-23 con la recomendación de cada pregunta de §10; en `main` desde la fusión `0465eba`, con la CI en verde. Quedan por medir la ejecución larga y el navegador de §4.7. |
+| Estado | Implemented (2026-11-24). Propuesta en `Draft` y aceptada el 2026-11-23 con la recomendación de cada pregunta de §10; en `main` desde la fusión `0465eba`, con la CI en verde. La ejecución larga, medida el 2026-11-25 (§9.1); queda el navegador de §4.7. |
 | Milestone | E32 Bots que asaltan (trigésimo segundo slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §9 (presencia y protección), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [bots-trade.md](bots-trade.md), [trade-reach.md](trade-reach.md), [city-fall.md](city-fall.md), [siege-engines.md](siege-engines.md), [combat-siege.md](combat-siege.md), [combat-response.md](combat-response.md), [castle-age.md](castle-age.md) |
@@ -330,6 +330,10 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
 - **El tercero** (§4.7, parte 3) sólo ve la cuenta atrás de un asalto ajeno en el HUD si tiene seleccionada una
   unidad suya a 12 tiles o menos (`assaultTargetNear`); si no, ve la ciudad desaparecer. Pintar el asalto en la escena
   es otro slice. **Precisión (2026-11-24):** ese slice es E33, [assault-map.md](assault-map.md).
+- **Precisión (2026-11-25): la ejecución larga** (§4.7, parte 2), en [milestones.md](../roadmap/milestones.md) §E32: 2 caídas
+  en 2 h 59 min (0,67 por hora) a velocidad real, 5 estandartes, 2 asaltos rotos (`too_few`, y `wall_completed` con
+  replante), 6 arietes y 4 perdidos; cada caída cuajada tarda unos 30 min desde la salida. Con E36, el saqueador se
+  queda las dos ciudades.
 
 ## 10. Decisiones de producto (2026-11-23)
 

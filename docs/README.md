@@ -437,8 +437,8 @@ Matices que conviene no maquillar:
 - **E32 Bots que asaltan está en `main`** desde `0465eba`, con la CI en verde y las pasadas cortas del 2026-11-23 y
   2026-11-24; [SPEC-BOTS-ASSAULT](specs/bots-assault.md) está en `Implemented`, sin ADR ni migración. El saqueador,
   desde Hierro, entrena arietes, abre la muralla y asalta ciudades de otros bots, y el vencido sigue jugando desde la
-  refundada (`RN-BOT-014` a `RN-BOT-017`). Faltan la ejecución larga de 3 h a velocidad real y el asalto visto en el
-  navegador ([roadmap/milestones.md](roadmap/milestones.md) §E32).
+  refundada (`RN-BOT-014` a `RN-BOT-017`). La ejecución larga de 3 h a velocidad real (2026-11-25) da 0,67 caídas por
+  hora; falta el asalto visto en el navegador ([roadmap/milestones.md](roadmap/milestones.md) §E32).
 - **E33 El asalto en el mapa está en `main`** desde `1bebacd`, con la CI en verde y la prueba en el navegador del
   2026-11-24; [SPEC-ASSAULT-MAP](specs/assault-map.md) está en `Implemented`, sin ADR ni migración. La escena dibuja el
   estandarte de quien asalta o reclama, el contorno y la cuenta atrás de la ciudad bajo asalto con un tono según quién

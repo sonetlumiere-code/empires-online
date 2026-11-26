@@ -3065,8 +3065,8 @@ muralla).
 
 ## E32 — Bots que asaltan
 
-**Estado: HECHO (2026-11-24)**, en `main` desde la fusión `0465eba`, con la CI en verde; queda la ejecución larga del
-entregable 5 como medida. Contrato:
+**Estado: HECHO (2026-11-24)**, en `main` desde la fusión `0465eba`, con la CI en verde; la ejecución larga del
+entregable 5, medida el 2026-11-25 (abajo). Contrato:
 [SPEC-BOTS-ASSAULT](../specs/bots-assault.md), propuesta y aceptada el 2026-11-23 con sus diez decisiones de producto.
 Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base.
 
@@ -3092,10 +3092,10 @@ asalto, la inmunidad, el ariete o la muralla (los hallazgos van a otra spec, Q10
    (`bot.test.ts`), y el fallo de la búsqueda de colinas tras la caída (spec §9.1).
 4. **HECHO** — Registro y resumen con los sucesos nuevos; el perfil con sus campos nuevos; docs
    (`docs/architecture/frontend.md`, `docs/operations/local-development.md`).
-5. **EN PARTE** — Prueba en vivo (spec §4.7, Q5). **HECHA** la pasada corta con `EO_CITY_ASSAULT_SECONDS=120` y
+5. **HECHO** — Prueba en vivo (spec §4.7, Q5). **HECHA** la pasada corta con `EO_CITY_ASSAULT_SECONDS=120` y
    `EO_CITY_FALL_IMMUNITY_HOURS=0` (cinco pasadas, abajo), con los dos fallos de la marcha y de la vuelta que
-   destapó (spec §9.1). **PENDIENTE** la ejecución larga de 3 h a velocidad real con las cuentas `_e29` (fuera de su
-   inmunidad desde el 2026-11-25) y el saqueador sembrado a Hierro, anotada aquí como medida.
+   destapó (spec §9.1), y **HECHA** la ejecución larga de 3 h a velocidad real con las cuentas `_e29` (abajo). Sigue
+   sin comprobar en el navegador.
 
 ### Prueba en vivo (2026-11-23 y 2026-11-24)
 
@@ -3143,6 +3143,39 @@ del nombre.
   de 3 contra `_2_e30` (reunida en 28 s, 105 de madera) y la de asalto contra `_2_e30`, reunida en 1 min 22 s, que la
   tumba a los 8 min 11 s de salir; la siguiente, contra `_1_e30`, no llega a reunirse antes del final. **1 caída en
   20 min (3,01 por hora).**
+- **Ejecución larga** (2026-11-25, `--semilla 29`, 2 h 59 min, `--constructores 3 --saqueadores 1 --sufijo e29`):
+  servidor a velocidad real (asalto de 900 s, inmunidad de 72 h, ya vencida), con `main` en `2c70468` y la Mac
+  despierta con `caffeinate`. Es la primera medida con E35 (los constructores fundan) y E36 (el saqueador toma la
+  ciudad si tiene hueco). El saqueador (nórdico) parte de Bronce con lo sembrado: Hierro a los 4 min 28 s, Castillos
+  a los 12 min 1 s.
+  - **Asaltos y caídas:** 5 estandartes en 5 partidas de asalto (6 militares y 2 arietes cada una) y **2 caídas en
+    2 h 59 min, 0,67 por hora**. Contra `_1_e29` (Bronce): sale a los 8,9 min, se reúne en 36 s, abre la muralla en
+    1,4 min, planta y **cae a los 900 s** (minuto 37,4), 28 min 31 s después de salir, sin perder a nadie. Contra
+    `_3_e29` (Castillos): el primer asalto se rompe al quedarse corto (`too_few`, 5 bajas, los 2 arietes); el segundo
+    **cae** a los 31 min 56 s de salir (minuto 121,2), sin bajas: 71 min y 2 partidas desde el primer intento. Contra
+    `_2_e29` (Castillos): el primero se rompe por la muralla rehecha (`wall_completed`), replanta y se queda corto
+    (`too_few`, 5 bajas, los 2 arietes); el último, sin reunirse al acabar.
+  - **Coste del atacante:** 6 arietes entrenados y 4 perdidos, 10 bajas propias, 62 enemigos muertos y 16 derribos;
+    los dos asaltos rotos cuestan cada uno 5 de los 8. Los que caen no le cuestan nada: con la muralla abierta y el
+    estandarte plantado, los guerreros del defensor mueren contra la partida (12 y 8 muertos).
+  - **El vencido:** las dos caídas eran la única ciudad (`kept: false`), así que refundan (la 56 de `_1_e29` en
+    501,235; la 58 de `_3_e29` en 68,104, a 64 tiles del saqueador). Recuperan la población de antes en 38 s y 54 s
+    (los aldeanos de la refundación) y siguen recolectando; ninguno vuelve a subir de era en lo que queda. `_1_e29`
+    levanta otra muralla a los 21 min 41 s de caer; `_3_e29`, ninguna.
+  - **La ciudad tomada (E36):** el saqueador se queda las dos: la 55 (la de `_1_e29`, slot 2, en Bronce) y la 57 (la
+    de `_3_e29`, slot 3, en Castillos). Con la capital en Castillos el tope es 4 (E37), así que el servidor le da una
+    tercera aunque el bot no funde más de dos (E37 Q5). Juega la 55 como colonia (de 3 a 8 aldeanos en 2 min, 12 886
+    de madera al final); la 57 se queda con sus 3 aldeanos: el bot sólo abre una conexión de colonia.
+  - **La fundación (E35): ninguna.** `_2_e29` (16 intentos) y `_3_e29` (12) eligen el mismo sitio, (127, 448), a 94 y
+    86 tiles, y todos fallan por el plazo de 10 min sin que salga un solo `unit.found_city`: el último tramo saca al
+    aldeano de la vista y la regla espera a verlo llegar (`foundRule`, «fuera de la vista o caminando: se espera»).
+    Cada intento deja un aldeano parado en el sitio: 28 al final (16 y 12). `_1_e29`, en Bronce, no encuentra sitio
+    (25 búsquedas `no_site`).
+  - **Hallazgos para otra spec:** la fundación más allá de la vista no funda nunca y desangra aldeanos (lo mismo que
+    E32 resolvió para las partidas con `whereabouts`/`lookAt`); dos constructores van al mismo sitio; la tercera ciudad
+    tomada no la juega nadie. El asalto, a velocidad real: con muralla rehecha y defensa en Castillos, uno de cada dos
+    asaltos se rompe; los que cuajan cuestan unos 30 min desde la salida. Registro en `bots/runs/` (sin versionar,
+    `2026-11-25T23-47-21-171Z-29.jsonl`).
 - **Sin comprobar en el navegador:** el asalto entre bots visto desde una cuenta humana (spec §4.7, parte 3): el panel
   del navegador integrado estuvo oculto en las cinco pasadas y, sin él, el mapa no se dibuja.
 

@@ -239,6 +239,11 @@ decide el sitio).
 - **Precisión (2026-11-25): la vuelta de la casa.** Si el snapshot que sigue a la vuelta tampoco trae la capital, la
   casa no vuelve a pedirla hasta el siguiente snapshot que la traiga (`recentering`): un bucle de `session.view` no
   tiene salida si la capital acaba de caer.
+- **Precisión (2026-11-25): la fundación fuera de la vista** (la ejecución larga de E32, [milestones.md](../roadmap/milestones.md)
+  §E32). Con el sitio a 86-94 tiles, el último tramo saca al aldeano de la vista de la capital y `foundRule` espera a
+  verlo llegar: nunca sale `unit.found_city`, la fundación falla por el plazo (`timeout`) y el aldeano se queda parado
+  en el sitio; en 3 h, 28 intentos y 28 aldeanos así, y ninguna fundación. Dos constructores eligieron además el mismo
+  sitio. Queda para otro slice (la vuelta fuera de la vista de E32, `whereabouts`/`lookAt`, es el precedente).
 
 ## 10. Decisiones de producto (2026-11-25)
 
