@@ -62,6 +62,8 @@ class FakeServer implements WebSocketLike {
   /** Otras ciudades del snapshot (la segunda propia), y si trae la capital. */
   others: Record<string, unknown>[] = [];
   withCapital = true;
+  /** Las unidades del snapshot (vacío por defecto). */
+  units: Record<string, unknown>[] = [];
 
   snapshot(): void {
     this.deliver('world.snapshot', {
@@ -69,7 +71,7 @@ class FakeServer implements WebSocketLike {
       tick: 1,
       chunks: [],
       terrain: [],
-      units: [],
+      units: this.units,
       cities: [
         ...this.others,
         {
@@ -638,6 +640,28 @@ describe('la fundación fuera de la vista (SPEC-BOTS-FOUND §9.1)', () => {
     expect(d.sitesBesides('c')).toEqual([{ x: 1, y: 2 }, { x: 5, y: 6 }]);
     d.claimSite('b', null);
     expect(d.sitesBesides('a')).toEqual([]);
+  });
+
+  it('la exploración apunta los aldeanos propios parados lejos de casa y la campaña va a por ellos', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets);
+    const villager = (id: number, x: number, y: number, status = 'IDLE') => ({
+      id, playerId: PLAYER, cityId: 10, unitType: 'VILLAGER', x, y, hp: 25, maxHp: 25, status, movement: null, garrisonCityId: null,
+    });
+    // El falso abre con su socket; las unidades, antes del primer snapshot.
+    const start = bot.start();
+    await new Promise((r) => setTimeout(r, 0));
+    (sockets[0] as FakeServer).units = [villager(7, 190, 100), villager(8, 190, 101, 'WORKING'), villager(9, 110, 100)];
+    await start;
+    const inner = bot as unknown as Inner;
+    // Sólo el parado lejos: ni el que trabaja ni el que está en casa.
+    expect(inner.memory.strays?.map((s) => s.unitId)).toEqual([7]);
+    expect(inner.memory.strays?.[0]?.at).toEqual({ x: 190, y: 100 });
+    const seen = parseLog(lines.join('')).filter((e) => e.event === 'stray');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ status: 'seen', units: 1, near: { x: 190, y: 100 } });
+    bot.stop();
   });
 
   it('con una fundación en curso, la conexión de campaña mira el tramo del aldeano y el sitio queda apartado', async () => {

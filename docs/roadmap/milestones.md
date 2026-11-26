@@ -3172,7 +3172,8 @@ del nombre.
     Cada intento deja un aldeano parado en el sitio: 28 al final (16 y 12). `_1_e29`, en Bronce, no encuentra sitio
     (25 búsquedas `no_site`).
   - **Hallazgos para otra spec:** la fundación más allá de la vista no funda nunca y desangra aldeanos (lo mismo que
-    E32 resolvió para las partidas con `whereabouts`/`lookAt`); dos constructores van al mismo sitio; la tercera ciudad
+    E32 resolvió para las partidas con `whereabouts`/`lookAt`); dos constructores van al mismo sitio (los dos,
+    arreglados en el repaso de la fundación del 2026-11-26, §E35); la tercera ciudad
     tomada no la juega nadie. El asalto, a velocidad real: con muralla rehecha y defensa en Castillos, uno de cada dos
     asaltos se rompe; los que cuajan cuestan unos 30 min desde la salida. Registro en `bots/runs/` (sin versionar,
     `2026-11-25T23-47-21-171Z-29.jsonl`).
