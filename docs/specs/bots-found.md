@@ -246,14 +246,18 @@ decide el sitio).
   en el sitio; en 3 h, 28 intentos y 28 aldeanos así, y ninguna fundación. Dos constructores eligieron además el mismo
   sitio. **Arreglo (2026-11-26, rama `claude/repaso-bots-fundar`):** el constructor también abre la conexión de
   campaña, y `fieldFocus` mira, sin partida, el tramo en curso del aldeano (`Founding.waypoint`; el sitio hasta el
-  primero), como la partida de E32 mira el suyo: la campaña lo ve parar y llegar, y sale `unit.found_city`. Si la
-  fundación falla con el aldeano vivo (plazo, tramos o rechazo), la campaña sigue mirando donde se le dejó
-  (`strayFounder`) hasta verlo con otra orden (las reglas de siempre lo ponen a trabajar) o 5 min; el aldeano muerto o
-  la ciudad caída no dejan a nadie que buscar. Y el directorio guarda el sitio que va a fundar cada bot
-  (`Directory.claimSite`): para los demás cuenta como un centro (`View.claimedSites` en `knownCenters`), así que dos
-  bots del proceso no eligen sitios a menos de 24. Los aldeanos varados por ejecuciones anteriores no se recuperan
-  salvo que la campaña vuelva a mirar donde están (el protocolo no manda las unidades propias fuera del área de
-  interés).
+  primero), como la partida de E32 mira el suyo: la campaña lo ve parar y llegar, y sale `unit.found_city`. El
+  directorio guarda el sitio que va a fundar cada bot (`Directory.claimSite`): para los demás cuenta como un centro
+  (`View.claimedSites` en `knownCenters`), así que dos bots del proceso no eligen sitios a menos de 24.
+- **Precisión (2026-11-26): los aldeanos fuera de la vista vuelven** (misma rama). La memoria lleva `strays`: el
+  aldeano de una fundación fallida con él vivo (plazo, tramos o rechazo; no el muerto ni el de la ciudad caída) y los
+  aldeanos propios parados a más de 32 tiles de casa que trae la exploración del arranque (lo que dejó fuera de la
+  vista una ejecución anterior; suceso `stray` con `status: "seen"`). Sin partida ni fundación, la campaña mira el
+  primero; la vuelta (`strayRule`, antes de la recolección) lo trae por tramos de 48 en espiral como la fundación, y a
+  32 tiles de casa o menos lo suelta para que lo recoja la recolección. Se le olvida trabajando, muerto, a los nueve
+  tramos rechazados o a los 20 min. Lo encontró la prueba en vivo del arreglo: `_2_e29` tenía sus 16 aldeanos varados en
+  el sitio de la ejecución larga y, sin ninguno a la vista, no recolectaba, no fundaba ni entrenaba (los varados
+  cuentan en la población).
 
 ## 10. Decisiones de producto (2026-11-25)
 

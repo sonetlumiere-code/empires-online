@@ -35,6 +35,7 @@ export type EventName =
   | 'wall'
   | 'found'
   | 'colony'
+  | 'stray'
   | 'error'
   | 'stop';
 

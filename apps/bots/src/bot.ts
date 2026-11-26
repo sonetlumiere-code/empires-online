@@ -16,6 +16,8 @@ import { ownCitiesOf } from '../../web/src/state/multiCity';
 import { WebSession, type Account } from './auth';
 import {
   EMPTY_MEMORY,
+  STRAY_HOME_RADIUS,
+  addStrays,
   chebyshev,
   decide,
   endFounding,
@@ -400,6 +402,7 @@ export class Bot {
           const snap = home.waitFor((m) => m.type === 'world.snapshot', 15_000);
           home.client.setView(at);
           await snap.catch(() => undefined);
+          this.noteStrays(c);
         }
         this.hills = this.knownHills(c);
       }
@@ -413,6 +416,30 @@ export class Bot {
     this.deps.say(
       `${this.name}: ${this.hills.length > 0 && first ? `colina más cercana a ${chebyshev(c, first)} tiles` : 'sin colinas a la vista'}`,
     );
+  }
+
+  /**
+   * Los aldeanos propios parados lejos de casa que trae la vista de la exploración: los
+   * que una ejecución anterior dejó fuera de la vista (SPEC-BOTS-FOUND §9.1). La vuelta
+   * los trae a casa.
+   */
+  private noteStrays(c: Tile): void {
+    const playerId = this.account?.playerId;
+    const home = this.home;
+    if (!playerId || !home) return;
+    const far = [...home.store.getState().units.values()].filter(
+      (u) =>
+        u.playerId === playerId &&
+        u.unitType === 'VILLAGER' &&
+        u.status === 'IDLE' &&
+        u.garrisonCityId === null &&
+        chebyshev(u, c) > STRAY_HOME_RADIUS,
+    );
+    if (far.length === 0) return;
+    const before = (this.memory.strays ?? []).length;
+    this.memory = addStrays(this.memory, far, this.now());
+    const added = (this.memory.strays ?? []).length - before;
+    if (added > 0) this.emit('stray', { status: 'seen', units: added, near: { x: far[0]?.x, y: far[0]?.y } });
   }
 
   /** Las colinas del terreno conocido, de la más cercana a la más lejana (hasta 24). */

@@ -343,8 +343,12 @@ export interface Memory {
   readonly foundSiteCooldowns: Readonly<Record<string, number>>;
   /** Sin sitio a la vista: no se vuelve a buscar antes de esto. */
   readonly foundSearchAtMs: number;
-  /** El aldeano de la última fundación fallida, mientras se le busca; o `null`. */
-  readonly strayFounder?: StrayFounder | null;
+  /**
+   * Aldeanos fuera de la vista que vuelven a casa (SPEC-BOTS-FOUND §9.1): el de una
+   * fundación fallida y los parados lejos que vio la exploración. La campaña mira el
+   * primero.
+   */
+  readonly strays?: readonly Stray[];
 }
 
 /** Una fundación en curso (SPEC-BOTS-FOUND §4.3). */
@@ -369,14 +373,17 @@ export interface Founding {
 }
 
 /**
- * El aldeano de una fundación fallida, fuera de la vista: la campaña mira donde se le
- * dejó hasta verlo con otra orden (las reglas de siempre le dan trabajo) o hasta
- * `untilMs` (SPEC-BOTS-FOUND §9.1).
+ * Un aldeano propio fuera de la vista (SPEC-BOTS-FOUND §9.1): el de una fundación
+ * fallida, o uno parado lejos que vio la exploración. La campaña mira `at` (donde se
+ * le dejó o adónde va su tramo) y la vuelta lo trae por tramos hasta cerca de casa,
+ * donde lo recoge la recolección; se le olvida al verlo trabajar, muerto, o en `untilMs`.
  */
-export interface StrayFounder {
+export interface Stray {
   readonly unitId: number;
   readonly at: Tile;
   readonly untilMs: number;
+  /** Tramos rechazados (el siguiente se desplaza en espiral). */
+  readonly tries: number;
 }
 
 /** Por qué termina mal una fundación (§4.7). */
@@ -411,7 +418,7 @@ export const EMPTY_MEMORY: Memory = {
   foundResult: null,
   foundSiteCooldowns: {},
   foundSearchAtMs: 0,
-  strayFounder: null,
+  strays: [],
 };
 
 export interface Decision {
@@ -619,8 +626,10 @@ function militaryCount(view: View): number {
 function gatherRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowMs: number): Memory {
   // El aldeano que va a fundar no recolecta (RN-BOT-019).
   const founder = memory.founding?.unitId;
+  // Ni los que vuelven de lejos (SPEC-BOTS-FOUND §9.1): los suelta la vuelta cerca de casa.
+  const away = new Set((memory.strays ?? []).map((s) => s.unitId));
   const idle = ownUnits(view).filter(
-    (u) => u.unitType === 'VILLAGER' && u.status === 'IDLE' && u.garrisonCityId === null && u.id !== founder,
+    (u) => u.unitType === 'VILLAGER' && u.status === 'IDLE' && u.garrisonCityId === null && u.id !== founder && !away.has(u.id),
   );
   if (idle.length === 0) return memory;
 
@@ -1413,8 +1422,12 @@ const FOUND_MAX_TRIES = 9;
 const FOUND_ORDER_TIMEOUT_MS = 60_000;
 /** Sin sitio a la vista, no se vuelve a buscar antes de esto. */
 const FOUND_SEARCH_WAIT_MS = 5 * 60_000;
-/** Cuánto se busca al aldeano de una fundación fallida (SPEC-BOTS-FOUND §9.1). */
-const STRAY_WATCH_MS = 5 * 60_000;
+/** Cuánto se busca y se trae de vuelta a un aldeano fuera de la vista (SPEC-BOTS-FOUND §9.1). */
+const STRAY_WATCH_MS = 20 * 60_000;
+/** A esta distancia de casa o menos, la vuelta lo suelta y lo recoge la recolección. */
+export const STRAY_HOME_RADIUS = 32;
+/** Cuántos aldeanos fuera de la vista se recuerdan a la vez. */
+const MAX_STRAYS = 32;
 
 /** Los centros de ciudad que el bot conoce: la suya, las otras propias, las de la vista y las del directorio. */
 function knownCenters(view: View): Tile[] {
@@ -1496,8 +1509,8 @@ export function endFounding(
   // El aldeano sigue vivo donde se le dejó: se le busca para que vuelva a trabajar.
   const lost = status === 'failed' && cause !== 'unit_died' && cause !== 'city_fell';
   const at = f.waypoint ?? f.lastPos;
-  const strayFounder = lost && at ? { unitId: f.unitId, at, untilMs: nowMs + STRAY_WATCH_MS } : (memory.strayFounder ?? null);
-  return { ...memory, founding: null, foundResult, foundSiteCooldowns, strayFounder };
+  const strays = lost && at ? addStrays({ ...memory, founding: null }, [{ id: f.unitId, x: at.x, y: at.y }], nowMs).strays : memory.strays;
+  return { ...memory, founding: null, foundResult, foundSiteCooldowns, strays };
 }
 
 /** El aldeano de la capital que va a fundar: parado antes que ocupado, sin carga antes que con ella, el más cercano. */
@@ -1525,7 +1538,7 @@ function chooseFounder(view: View, site: Tile): UnitView | null {
 function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowMs: number): Memory {
   if (!profile.founds) return memory;
   const count = view.ownCityCount ?? 1;
-  let mem = forgetStray(view, memory, nowMs);
+  let mem = memory;
   let f = mem.founding;
 
   if (f !== null && count >= MAX_OWN_CITIES) return endFounding(mem, 'founded', null, nowMs, profile);
@@ -1572,13 +1585,57 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
   return { ...mem, founding: { ...f, tries, lastPos: here, waypoint: target } };
 }
 
-/** Deja de buscar al aldeano perdido al verlo con otra orden, muerto, o pasado el plazo. */
-function forgetStray(view: View, memory: Memory, nowMs: number): Memory {
-  const s = memory.strayFounder ?? null;
-  if (s === null) return memory;
-  const u = view.units.find((x) => x.id === s.unitId);
-  const done = nowMs > s.untilMs || (u !== undefined && u.status !== 'IDLE');
-  return done ? { ...memory, strayFounder: null } : memory;
+/**
+ * Apunta aldeanos fuera de la vista para traerlos de vuelta (SPEC-BOTS-FOUND §9.1): sin
+ * repetir, sin el que va a fundar y hasta `MAX_STRAYS`.
+ */
+export function addStrays(memory: Memory, units: readonly { id: number; x: number; y: number }[], nowMs: number): Memory {
+  const known = new Set((memory.strays ?? []).map((s) => s.unitId));
+  const out = [...(memory.strays ?? [])];
+  for (const u of units) {
+    if (out.length >= MAX_STRAYS) break;
+    if (known.has(u.id) || u.id === memory.founding?.unitId) continue;
+    known.add(u.id);
+    out.push({ unitId: u.id, at: { x: u.x, y: u.y }, untilMs: nowMs + STRAY_WATCH_MS, tries: 0 });
+  }
+  return { ...memory, strays: out };
+}
+
+/**
+ * La vuelta de los aldeanos fuera de la vista (SPEC-BOTS-FOUND §9.1): visto parado lejos
+ * de casa, camina un tramo hacia ella (la campaña mira adónde va); cerca de casa, o con
+ * otra orden que no es la suya, o muerto, o pasado el plazo, se le olvida.
+ */
+function strayRule(view: View, memory: Memory, plan: Plan, nowMs: number): Memory {
+  const strays = memory.strays ?? [];
+  if (strays.length === 0) return memory;
+  const home = center(view);
+  const out: Stray[] = [];
+  for (const s of strays) {
+    const u = view.units.find((x) => x.id === s.unitId);
+    if (nowMs > s.untilMs || u?.status === 'DEAD') continue;
+    if (!u) {
+      out.push(s);
+      continue;
+    }
+    const here = { x: u.x, y: u.y };
+    if (chebyshev(here, home) <= STRAY_HOME_RADIUS) continue;
+    if (u.status === 'MOVING') {
+      const end = u.movement?.path[u.movement.path.length - 1] ?? u.movement?.target;
+      out.push(end ? { ...s, at: { x: end.x, y: end.y } } : s);
+      continue;
+    }
+    if (u.status !== 'IDLE') continue;
+    const target = marchStep(here, home, s.tries);
+    const key = `stray:move:${u.id}:${target.x},${target.y}`;
+    if (!plan.full && plan.free(key)) {
+      plan.add({ key, type: 'unit.move', unitId: u.id, target });
+      out.push({ ...s, at: target });
+    } else {
+      out.push({ ...s, at: here });
+    }
+  }
+  return { ...memory, strays: out };
 }
 
 /** El aldeano de la fundación murió (`entity.update` o `entity.despawn` con `DEAD`). */
@@ -1615,6 +1672,8 @@ export function decide(
   if (profile.raids && mem.raid !== null) mem = raidRule(view, profile, mem, plan, nowMs, opts.contraHumanos, rng);
   // La fundación, antes que el avance y la muralla: en Bronce funda primero (SPEC-BOTS-FOUND Q2).
   mem = foundRule(view, profile, mem, plan, nowMs);
+  // Los aldeanos fuera de la vista vuelven antes de recolectar: lejos, la recolección no tiene ruta.
+  mem = strayRule(view, mem, plan, nowMs);
   mem = gatherRule(view, profile, mem, plan, nowMs);
   houseRule(view, profile, plan);
   villagerRule(view, profile, plan);
@@ -1690,6 +1749,15 @@ export function onRejected(
     const tries = f.tries + 1;
     const next = { ...mem, cooldowns, founding: { ...f, tries, lastPos: null } };
     return tries >= FOUND_MAX_TRIES ? endFounding(next, 'failed', 'stuck', nowMs, profile, code) : next;
+  }
+
+  if (command.type === 'unit.move' && command.key.startsWith('stray:move:')) {
+    // Como el tramo de la fundación: el siguiente se desplaza en espiral; a los nueve, se le olvida.
+    const { [command.key]: _drop, ...cooldowns } = mem.cooldowns;
+    const strays = (mem.strays ?? [])
+      .map((s) => (s.unitId === command.unitId ? { ...s, tries: s.tries + 1 } : s))
+      .filter((s) => s.tries < FOUND_MAX_TRIES);
+    return { ...mem, cooldowns, strays };
   }
 
   if (command.type === 'treaty.propose') {
@@ -1822,7 +1890,7 @@ export function fieldFocus(memory: Memory): Tile | null {
   }
   const f = memory.founding;
   if (f) return f.waypoint ?? f.site;
-  return memory.strayFounder?.at ?? null;
+  return memory.strays?.[0]?.at ?? null;
 }
 
 /** Las costas que el HUD mostraría, reexportadas para los tests. */

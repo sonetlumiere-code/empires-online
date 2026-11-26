@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { CityView, TerritoryView } from '../../web/src/state/world';
 import {
   EMPTY_MEMORY,
+  addStrays,
   chooseFoundSite,
   decide,
   fieldFocus,
@@ -229,25 +230,46 @@ describe('la fundación fuera de la vista (SPEC-BOTS-FOUND §9.1, la ejecución 
     expect(fieldFocus(EMPTY_MEMORY)).toBeNull();
   });
 
-  it('el aldeano de una fundación fallida se sigue buscando donde se le dejó, y se olvida al verlo trabajar', () => {
-    const leg = { x: 120, y: 95 };
-    const late = run(foundView(), walking({ waypoint: leg }), NOW + constructor.foundWalkTimeoutMs + 1).memory;
+  it('el aldeano de una fundación fallida se apunta como fuera de la vista y la campaña lo mira', () => {
+    const leg = { x: 170, y: 100 };
+    // El aldeano no se ve (está lejos, fuera de la vista): queda apuntado.
+    const late = run(foundView({ units: [unit({ id: 2, status: 'WORKING' })] }), walking({ waypoint: leg }), NOW + constructor.foundWalkTimeoutMs + 1).memory;
     expect(late.foundResult).toMatchObject({ status: 'failed', cause: 'timeout' });
-    expect(late.strayFounder).toMatchObject({ unitId: 1, at: leg });
+    expect(late.strays).toEqual([{ unitId: 1, at: leg, untilMs: expect.any(Number), tries: 0 }]);
     expect(fieldFocus(late)).toEqual(leg);
-    // Visto parado, se le sigue mirando; con otra orden (trabaja), se le olvida.
-    const t1 = NOW + constructor.foundWalkTimeoutMs + 2;
-    const idle = run(foundView({ units: [unit({ id: 1, x: 120, y: 95 })] }), late, t1).memory;
-    expect(idle.strayFounder?.unitId).toBe(1);
-    const busy = run(foundView({ units: [unit({ id: 1, x: 120, y: 95, status: 'WORKING' })] }), late, t1).memory;
-    expect(busy.strayFounder).toBeNull();
-    // Sin verlo, se deja de buscar pasado el plazo.
-    const gone = run(foundView({ units: [] }), late, (late.strayFounder?.untilMs ?? 0) + 1).memory;
-    expect(gone.strayFounder).toBeNull();
+  });
+
+  it('la vuelta: visto parado lejos camina un tramo hacia casa, y la recolección no lo toca', () => {
+    const away = addStrays(EMPTY_MEMORY, [{ id: 1, x: 170, y: 100 }], NOW);
+    const v = foundView({ city: city(), forestTiles: [{ x: 104, y: 100 }], units: [unit({ id: 1, x: 170, y: 100 }), unit({ id: 3 })] });
+    const { commands, memory } = run(v, away);
+    expect(commands).toContainEqual({ key: 'stray:move:1:122,100', type: 'unit.move', unitId: 1, target: { x: 122, y: 100 } });
+    expect(commands.filter((c) => c.type === 'unit.gather').map((c) => (c as { unitId: number }).unitId)).toEqual([3]);
+    expect(memory.strays?.[0]?.at).toEqual({ x: 122, y: 100 });
+    expect(fieldFocus(memory)).toEqual({ x: 122, y: 100 });
+  });
+
+  it('se le olvida cerca de casa, trabajando, muerto o pasado el plazo; sin verlo, se le espera', () => {
+    const away = addStrays(EMPTY_MEMORY, [{ id: 1, x: 170, y: 100 }], NOW);
+    const at = (u: Partial<Parameters<typeof unit>[0]>) => run(foundView({ city: city(), units: [unit({ id: 1, ...u })] }), away).memory.strays;
+    expect(at({ x: 110, y: 100 })).toEqual([]);
+    expect(at({ x: 170, y: 100, status: 'WORKING' })).toEqual([]);
+    expect(at({ x: 170, y: 100, status: 'DEAD' })).toEqual([]);
+    expect(run(foundView({ city: city(), units: [] }), away).memory.strays).toHaveLength(1);
+    expect(run(foundView({ city: city(), units: [] }), away, NOW + 20 * 60_000 + 1).memory.strays).toEqual([]);
+  });
+
+  it('addStrays no repite ni apunta al que va a fundar; un tramo rechazado se desplaza en espiral', () => {
+    const once = addStrays(walking(), [{ id: 1, x: 170, y: 100 }, { id: 4, x: 170, y: 100 }, { id: 4, x: 171, y: 100 }], NOW);
+    expect(once.strays?.map((s) => s.unitId)).toEqual([4]);
+    const cmd: Command = { key: 'stray:move:4:114,100', type: 'unit.move', unitId: 4, target: { x: 114, y: 100 } };
+    const rejected = onRejected(once, cmd, 'TARGET_NOT_WALKABLE', NOW, constructor);
+    expect(rejected.strays?.[0]?.tries).toBe(1);
+    expect(rejected.cooldowns[cmd.key]).toBeUndefined();
   });
 
   it('el aldeano muerto o la ciudad caída no dejan a nadie que buscar', () => {
-    expect(onFounderLost(walking({ waypoint: SITE }), 1, NOW, constructor).strayFounder).toBeNull();
+    expect(onFounderLost(walking({ waypoint: SITE }), 1, NOW, constructor).strays).toEqual([]);
   });
 
   it('el sitio que va a fundar otro bot cuenta como un centro: no se eligen dos a menos de 24', () => {
