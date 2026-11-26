@@ -159,6 +159,7 @@ Sucesos nuevos o ampliados en el JSONL de [bots.md](bots.md) §4.5:
 |---|---|
 | `found` | `status`: `started` (aldeano, sitio, distancia a la capital), `founded` (ciudad nueva, su centro, ms desde `started`), `failed` (causa: `rejected` con el código, `unit_died`, `stuck`, `timeout`) |
 | `colony` | Cada minuto, con la segunda en pie: su id, población, límite, madera y casas completas |
+| `stray` | **Precisión (2026-11-26, §9.1):** `status: "seen"`, cuántos aldeanos propios parados lejos de casa trajo la exploración (`units`) y dónde está el primero (`near`) |
 | `fell` | Lo de E32 y `kept` (`true` si quedaba otra en pie) y `capital` (`true` si la caída era la capital) |
 
 El resumen suma por constructor: fundaciones empezadas, logradas y fallidas por causa; cuándo fundó la primera (ms
@@ -220,8 +221,8 @@ decide el sitio).
 
 | Nivel | Qué |
 |---|---|
-| Unit (Vitest, `apps/bots`) | El sitio: el más cercano en el anillo, descarta el terreno que no se pisa o no se conoce, los centros a menos de 24, el poco bosque y el territorio ajeno o reclamado, y los apartados. La fundación: no empieza con dos ciudades, antes de Bronce, sin lo que cuesta ni siendo saqueador; aparta lo que cuesta del plan (el avance de era no lo gasta); camina por tramos y funda parado en el sitio; termina con dos ciudades, con el rechazo, con la muerte del aldeano, a los 9 tramos y por el plazo. La segunda: juega con el perfil de colonia (aldeanos, casas, madera, nada más), su propio tope de dos comandos, y la capital no da órdenes a sus unidades. |
-| Unit (Vitest) | El bot: abre la conexión colonia al ver la segunda y devuelve la casa a la capital; la caída de la segunda y la de la capital con otra en pie (§4.6). El registro y el resumen con los sucesos nuevos; la misma semilla da los mismos comandos (`RN-BOT-005`). |
+| Unit (Vitest, `apps/bots`) | El sitio: el más cercano en el anillo, descarta el terreno que no se pisa o no se conoce, los centros a menos de 24, el poco bosque y el territorio ajeno o reclamado, y los apartados. La fundación: no empieza con dos ciudades, antes de Bronce, sin lo que cuesta ni siendo saqueador; aparta lo que cuesta del plan (el avance de era no lo gasta); camina por tramos y funda parado en el sitio; termina con dos ciudades, con el rechazo, con la muerte del aldeano, a los 9 tramos y por el plazo. La segunda: juega con el perfil de colonia (aldeanos, casas, madera, nada más), su propio tope de dos comandos, y la capital no da órdenes a sus unidades. **Desde el repaso del 2026-11-26 (§9.1, `found.test.ts`):** el foco de la campaña en el sitio y en cada tramo; el sitio de otro bot como centro; el aldeano de una fundación fallida apuntado fuera de la vista; la vuelta por tramos sin que la recolección lo toque, y cuándo se le olvida; `addStrays` sin repetir ni apuntar al que funda, y el tramo rechazado en espiral. |
+| Unit (Vitest) | El bot: abre la conexión colonia al ver la segunda y devuelve la casa a la capital; la caída de la segunda y la de la capital con otra en pie (§4.6). El registro y el resumen con los sucesos nuevos; la misma semilla da los mismos comandos (`RN-BOT-005`). **Desde el repaso del 2026-11-26 (`bot.test.ts`):** el directorio con los sitios de cada bot; la campaña que mira el tramo del aldeano; la exploración que apunta los aldeanos parados lejos y el suceso `stray`. |
 | Go, simulación / integración / e2e | Ninguno nuevo: las reglas del servidor no cambian. |
 
 ### 9.1 Precisiones de la implementación (2026-11-25)
