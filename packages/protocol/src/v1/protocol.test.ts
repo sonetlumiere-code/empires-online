@@ -1477,6 +1477,17 @@ describe('la caída de una ciudad (SPEC-CITY-FALL)', () => {
     expect(CLIENT_MESSAGE_TYPES).toContain('unit.found_city');
   });
 
+  it('el snapshot trae las ciudades propias con su centro y su era, opcionales (SPEC-MULTI-CITY Q9)', () => {
+    const snapshot = { serverTimeMs: 1, tick: 1, chunks: [], terrain: [], units: [], cities: [], territories: [], buildings: [] };
+    const snap = (extra: object) => parseServerMessage({ ...env, type: 'world.snapshot', payload: { ...snapshot, ...extra } });
+    const propia = { id: 7, centerX: 150, centerY: 90, era: 'BRONZE_AGE' };
+    expect(snap({}).ok).toBe(true);
+    expect(snap({ ownCities: [propia, { ...propia, id: 9, era: 'CASTLE_AGE' }] }).ok).toBe(true);
+    expect(snap({ ownCities: [{ id: 7, centerX: 150, centerY: 90 }] }).ok).toBe(false);
+    expect(snap({ ownCities: [{ ...propia, era: 'BRASS_AGE' }] }).ok).toBe(false);
+    expect(snap({ ownCities: Array.from({ length: 5 }, (_, i) => ({ ...propia, id: i + 1 })) }).ok).toBe(false);
+  });
+
   it('CityView lleva el asalto y la inmunidad, opcionales; city.update abre y cierra el asalto', () => {
     expect(CityView.safeParse(city).success).toBe(true);
     expect(CityView.safeParse({ ...city, assault, fallImmuneUntilMs: 1_757_635_200_000 }).success).toBe(true);

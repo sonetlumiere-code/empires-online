@@ -107,6 +107,12 @@ No asigna invariantes. Cita [INV-SEC-001](../invariants/security.md#inv-sec-001)
 - **Precisión (2026-11-25): sin opción nueva del humo.** Comerciar desde la segunda pide un mercado en ella o un tratado
   con alguien a su alcance: la prueba en vivo repite `--mercado` y `--comercio` desde la capital (sin `cityId`), y el
   camino con `cityId` lo cubren los tests de simulación y el e2e de `trade.propose`.
+- **Precisión (2026-11-26): la capital, la de id menor de todas.** `commerceCityId` tomaba por capital la primera
+  ciudad propia a la vista: con la capital fuera del área, el panel mostraba otra y la orden salía sin `cityId`, de la
+  capital. Ahora la capital es la de id menor entre las cargadas y las de `ownCities` del snapshot
+  ([multi-city.md](multi-city.md) §9.1). Visto en el navegador: `smoke_runner`, con el panel en su cuarta ciudad (la 61,
+  tomada con su mercado), publica en el tablón desde su almacén (la piedra baja de 200 a 134 y vuelve a 194 al retirar),
+  el tablón mide la distancia desde ella, y su trato con `dev_nortepolis` queda con `proposer_city_id = 61`.
 
 ## 10. Decisiones de producto (2026-11-25)
 

@@ -20,14 +20,23 @@ export function territoryAt(territories: Iterable<TerritoryView>, x: number, y: 
   return undefined;
 }
 
-/** La ciudad de un jugador entre las cargadas. */
-function cityOf(cities: Iterable<CityView>, playerId: string): CityView | undefined {
-  for (const c of cities) if (c.ownerPlayerId === playerId) return c;
-  return undefined;
-}
-
 function contains(t: TerritoryView, x: number, y: number): boolean {
   return x >= t.minX && x <= t.maxX && y >= t.minY && y <= t.maxY;
+}
+
+/**
+ * La ciudad de un jugador entre las cargadas: la que tiene su centro en el territorio,
+ * si alguna lo tiene, o la primera. Con varias ciudades (SPEC-MULTI-CITY), cada centro
+ * es una capital territorial (RN-CONQ-008), no sólo el de la primera.
+ */
+function cityOf(cities: Iterable<CityView>, playerId: string, t: TerritoryView): CityView | undefined {
+  let first: CityView | undefined;
+  for (const c of cities) {
+    if (c.ownerPlayerId !== playerId) continue;
+    if (contains(t, c.centerX, c.centerY)) return c;
+    first ??= c;
+  }
+  return first;
 }
 
 /**
@@ -47,7 +56,7 @@ export function territoryOwnerLabel(
   }
   if (t.ownerType !== 'PLAYER' || t.ownerId === null) return 'libre';
   if (t.ownerId === playerId) return 'tuyo';
-  return `de ${cityOf(cities, t.ownerId)?.name ?? 'otro jugador'}`;
+  return `de ${cityOf(cities, t.ownerId, t)?.name ?? 'otro jugador'}`;
 }
 
 export interface ClaimCheck {
@@ -86,7 +95,7 @@ export function claimBlockReason(c: ClaimCheck): string | null {
   if (t.ownerType === 'PLAYER' && t.ownerId !== null) {
     const owner = t.ownerId;
     if (owner === playerId) return 'Este territorio ya es tuyo';
-    const ownerCity = cityOf(c.cities, owner);
+    const ownerCity = cityOf(c.cities, owner, t);
     if (ownerCity && contains(t, ownerCity.centerX, ownerCity.centerY)) {
       return `Es la capital de ${ownerCity.name}: no se puede reclamar`;
     }

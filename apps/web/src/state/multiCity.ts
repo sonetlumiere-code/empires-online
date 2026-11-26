@@ -9,7 +9,7 @@
  * daría él.
  * Ver ../../../../docs/specs/multi-city.md
  */
-import type { CityView, UnitView } from './world';
+import type { CityView, OwnCityHome, UnitView } from './world';
 
 /** El techo de ciudades en pie por jugador (SPEC-MORE-CITIES RN-CITY-040). */
 export const MAX_OWN_CITIES = 4;
@@ -47,6 +47,22 @@ export function homesOf(homes: ReadonlyMap<number, { x: number; y: number }>): {
   return [...homes].map(([id, t]) => ({ id, x: t.x, y: t.y })).sort((a, b) => a.id - b.id);
 }
 
+/**
+ * La capital y cuántas ciudades propias hay en pie, con las de fuera del área
+ * (`ownCityHomes`, SPEC-MULTI-CITY Q9) y las cargadas: la capital es la de id menor
+ * (RN-CITY-033), y su era, la de su vista si está cargada.
+ */
+export function capitalOf(
+  own: readonly CityView[],
+  homes: ReadonlyMap<number, OwnCityHome> = new Map(),
+): { id: number; era: string; count: number } | null {
+  const ids = new Set<number>([...homes.keys(), ...own.map((c) => c.id)]);
+  if (ids.size === 0) return null;
+  const id = Math.min(...ids);
+  const era = own.find((c) => c.id === id)?.era ?? homes.get(id)?.era ?? 'STONE_AGE';
+  return { id, era, count: ids.size };
+}
+
 /** La ciudad que muestra el panel: la última a la que llevó «H», o la capital. */
 export function shownCity(own: readonly CityView[], homeCityId: number | null): CityView | null {
   return own.find((c) => c.id === homeCityId) ?? own[0] ?? null;
@@ -56,7 +72,11 @@ export function shownCity(own: readonly CityView[], homeCityId: number | null): 
  * Por qué el aldeano seleccionado no puede fundar, o `null` si el HUD puede
  * ofrecerlo (RN-CITY-030, RN-CITY-031). El sitio lo decide el servidor.
  */
-export function foundCityBlockReason(unit: UnitView | undefined, own: readonly CityView[]): string | null {
+export function foundCityBlockReason(
+  unit: UnitView | undefined,
+  own: readonly CityView[],
+  homes: ReadonlyMap<number, OwnCityHome> = new Map(),
+): string | null {
   if (!unit) return 'Selecciona un aldeano';
   if (unit.unitType !== 'VILLAGER') return 'Sólo un aldeano funda una ciudad';
   if (unit.garrisonCityId !== null) return 'El aldeano está guarnecido';
@@ -64,9 +84,12 @@ export function foundCityBlockReason(unit: UnitView | undefined, own: readonly C
   const from = own.find((c) => c.id === unit.cityId);
   if (!from) return 'El aldeano no es de una ciudad tuya a la vista';
   if (ERA_ORDER.indexOf(from.era) < ERA_ORDER.indexOf('BRONZE_AGE')) return `${from.name} tiene que estar en la Edad de Bronce`;
-  // El tope es el de la era de la capital, la primera (SPEC-MORE-CITIES RN-CITY-040).
-  const tope = maxOwnCities(own[0]?.era ?? 'STONE_AGE');
-  if (own.length >= tope) return `Ya tienes ${own.length} ${own.length === 1 ? 'ciudad' : 'ciudades'}: el tope de tu capital es ${tope}`;
+  // El tope es el de la era de la capital, la de id menor, y cuentan también las que
+  // no están a la vista (SPEC-MORE-CITIES RN-CITY-040, SPEC-MULTI-CITY Q9).
+  const capital = capitalOf(own, homes);
+  const count = capital?.count ?? own.length;
+  const tope = maxOwnCities(capital?.era ?? 'STONE_AGE');
+  if (count >= tope) return `Ya tienes ${count} ${count === 1 ? 'ciudad' : 'ciudades'}: el tope de tu capital es ${tope}`;
   if (from.stocks.WOOD < FOUND_COST.WOOD || from.stocks.STONE < FOUND_COST.STONE) {
     return `Fundar cuesta ${FOUND_COST.WOOD} de madera y ${FOUND_COST.STONE} de piedra de ${from.name}`;
   }
@@ -75,10 +98,16 @@ export function foundCityBlockReason(unit: UnitView | undefined, own: readonly C
 
 /**
  * De qué ciudad sale una orden de comercio o de mercado (SPEC-TRADE-FROM-CITY Q7):
- * la del panel si no es la capital; `undefined` (la capital) si lo es o no hay.
+ * la del panel si no es la capital; `undefined` (la capital) si lo es o no hay. La
+ * capital es la de id menor de todas, también de las que no están a la vista: con la
+ * capital fuera, el panel muestra otra, y es de ésa de la que sale.
  */
-export function commerceCityId(shown: CityView | null, own: readonly CityView[]): number | undefined {
-  if (!shown || own.length === 0 || shown.id === own[0]?.id) return undefined;
-  return own.some((c) => c.id === shown.id) ? shown.id : undefined;
+export function commerceCityId(
+  shown: CityView | null,
+  own: readonly CityView[],
+  homes: ReadonlyMap<number, OwnCityHome> = new Map(),
+): number | undefined {
+  if (!shown || !own.some((c) => c.id === shown.id)) return undefined;
+  return shown.id === capitalOf(own, homes)?.id ? undefined : shown.id;
 }
 

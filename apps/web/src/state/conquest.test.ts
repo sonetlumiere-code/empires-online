@@ -80,6 +80,16 @@ describe('el botón «Reclamar territorio» (RN-CONQ-001 a 003)', () => {
     }
   });
 
+  // Encontrado en el pase del navegador (2026-11-26): con dos ciudades del dueño a la
+  // vista, sólo se miraba la primera; el centro de la otra también es capital (RN-CONQ-008).
+  it('con dos ciudades del dueño, el centro de cualquiera hace del territorio una capital (SPEC-MULTI-CITY)', () => {
+    const cities = [ciudad(), ciudad({ id: 9, name: 'Villa Norte II', centerX: 100, centerY: 30 })];
+    expect(claimBlockReason(check({ territory: territorio(ajeno), cities }))).toBe(
+      'Es la capital de Villa Norte II: no se puede reclamar',
+    );
+    expect(territoryOwnerLabel(territorio(ajeno), yo, cities)).toBe('de Villa Norte II');
+  });
+
   it('el acuerdo comercial no da paz, y una protección vencida no protege', () => {
     const comercio: TreatyView = {
       id: 1, otherPlayerId: otro, otherCityId: 7, otherCityName: 'Villa Norte', type: 'TRADE',

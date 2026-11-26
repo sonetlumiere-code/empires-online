@@ -281,3 +281,22 @@ func TestEnHierroSeFundaLaTercera(t *testing.T) {
 	require.Len(t, store.founds, 1, "la tercera cabe en Hierro")
 	assert.Equal(t, "Testópolis III", store.founds[0].Founding.Name)
 }
+
+// SPEC-MULTI-CITY Q9, precisión del 2026-11-26: el snapshot trae las ciudades en
+// pie de quien lo recibe aunque no estén en su área (aquí, sin chunks), la
+// capital primero y con su era: «H» llega a todas y «Fundar ciudad» cuenta el
+// tope con todas. A otro jugador no se le cuentan.
+func TestElSnapshotTraeLasCiudadesPropiasFueraDelArea(t *testing.T) {
+	h, _ := escenarioDeFundacion(t, nil)
+	h.fundarCiudad(fundadorID)
+	h.tick()
+
+	snap := h.sim.BuildSnapshot(h.playerID, nil, h.clk.NowMs(), false)
+	assert.Empty(t, snap.Cities, "ninguna ciudad en el área")
+	assert.Equal(t, []protocol.OwnCityView{
+		{ID: h.cityID, CenterX: 10, CenterY: 10, Era: string(city.EraBronze)},
+		{ID: 77, CenterX: sitioDeFundacion.X, CenterY: sitioDeFundacion.Y, Era: string(city.EraBronze)},
+	}, snap.OwnCities)
+
+	assert.Empty(t, h.sim.BuildSnapshot(uuid.New(), nil, h.clk.NowMs(), false).OwnCities, "las de otro, nunca")
+}

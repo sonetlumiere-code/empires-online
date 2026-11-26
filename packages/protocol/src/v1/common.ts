@@ -488,6 +488,18 @@ export const CityAssaultView = z.object({
 });
 export type CityAssaultView = z.infer<typeof CityAssaultView>;
 
+/**
+ * Una ciudad propia, esté o no en el área de interés (SPEC-MULTI-CITY Q9): lo que
+ * el HUD necesita para «H» y para el tope de «Fundar ciudad» (RN-CITY-040).
+ */
+export const OwnCityView = z.object({
+  id: EntityId,
+  centerX: WorldCoordinate,
+  centerY: WorldCoordinate,
+  era: EraCode,
+});
+export type OwnCityView = z.infer<typeof OwnCityView>;
+
 /** Estado observable de una ciudad. */
 export const CityView = z.object({
   id: EntityId,

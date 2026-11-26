@@ -34,6 +34,7 @@ import {
   TradeOfferView,
   CaravanView,
   MarketOfferView,
+  OwnCityView,
   MessageView,
   ConversationView,
   BlockedPlayerView,
@@ -180,6 +181,11 @@ export const WorldSnapshot = z.object({
      * Opcional: aditivo en v1; reemplaza la lista del cliente.
      */
     marketOffers: z.array(MarketOfferView).optional(),
+    /**
+     * Las ciudades en pie del jugador que recibe el snapshot, estén o no en su área,
+     * por id: la capital primero (SPEC-MULTI-CITY Q9). Opcional: aditivo en v1.
+     */
+    ownCities: z.array(OwnCityView).max(4).optional(),
   }),
 });
 

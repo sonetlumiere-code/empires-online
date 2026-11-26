@@ -87,7 +87,21 @@ func (s *Simulation) BuildSnapshot(viewer uuid.UUID, chunks []world.ChunkCoord, 
 	payload.Caravans = s.caravansOf(viewer)
 	// SPEC-MARKETS: las ofertas abiertas de quien lo recibe (§6).
 	payload.MarketOffers = s.marketOffersOf(viewer)
+	// SPEC-MULTI-CITY Q9: sus ciudades en pie, aunque no estén en el área.
+	payload.OwnCities = s.ownCitiesOf(viewer)
 	return payload
+}
+
+// ownCitiesOf son las ciudades en pie de un jugador para su snapshot, por id:
+// la capital primero. «H» lleva a cualquiera de ellas y el tope de «Fundar
+// ciudad» cuenta todas, también las que están fuera del área de interés.
+func (s *Simulation) ownCitiesOf(viewer uuid.UUID) []protocol.OwnCityView {
+	cs := s.state.CitiesOf(viewer)
+	out := make([]protocol.OwnCityView, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, protocol.OwnCityView{ID: c.ID, CenterX: c.CenterX, CenterY: c.CenterY, Era: string(c.Era)})
+	}
+	return out
 }
 
 // UnitView proyecta una unidad al contrato de red, resolviendo su posición

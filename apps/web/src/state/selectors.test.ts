@@ -89,11 +89,38 @@ describe('computeHud', () => {
     state().applySnapshot(snapshot({ cities: [cityView({ id: 20, centerX: 90, centerY: 90 }), cityView()] }));
     state().applySnapshot(snapshot({ cities: [cityView({ id: 11, ownerPlayerId: OTHER })] }));
     expect([...state().ownCityHomes.keys()].sort()).toEqual([10, 20]);
-    expect(state().ownCityHomes.get(20)).toEqual({ x: 90, y: 90 });
+    expect(state().ownCityHomes.get(20)).toEqual({ x: 90, y: 90, era: 'STONE_AGE' });
     state().applyServerMessage(server('city.fallen', 9, { cityId: 20, ownerPlayerId: PLAYER, byPlayerId: OTHER, atMs: 1 }));
     expect([...state().ownCityHomes.keys()]).toEqual([10]);
     state().reset();
     expect(state().ownCityHomes.size).toBe(0);
+  });
+
+  // Encontrado en el navegador (2026-11-26): tras entrar, «H» no salía de la capital,
+  // porque las demás no habían llegado en ningún snapshot.
+  it('el snapshot dice todas las ciudades propias, también las de fuera del área, y manda sobre lo recordado', () => {
+    state().applySnapshot(snapshot({
+      cities: [cityView()],
+      ownCities: [
+        { id: 10, centerX: 10, centerY: 10, era: 'CASTLE_AGE' },
+        { id: 20, centerX: 200, centerY: 300, era: 'BRONZE_AGE' },
+      ],
+    }));
+    expect([...state().ownCityHomes.keys()].sort()).toEqual([10, 20]);
+    expect(state().ownCityHomes.get(20)).toEqual({ x: 200, y: 300, era: 'BRONZE_AGE' });
+    expect(state().ownCityHomes.get(10)?.era).toBe(cityView().era);
+    // Una que ya no está en pie deja de estar aunque nadie mandara su caída.
+    state().applySnapshot(snapshot({ cities: [], ownCities: [{ id: 10, centerX: 10, centerY: 10, era: 'IRON_AGE' }] }));
+    expect([...state().ownCityHomes.keys()]).toEqual([10]);
+    expect(state().ownCityHomes.get(10)?.era).toBe('IRON_AGE');
+    // Sin ownCities (un servidor anterior), se recuerda lo visto.
+    state().applySnapshot(snapshot({ cities: [cityView({ id: 20 })] }));
+    expect([...state().ownCityHomes.keys()].sort()).toEqual([10, 20]);
+  });
+
+  it('city.update pone al día la era de una ciudad propia recordada', () => {
+    state().applyServerMessage(server('city.update', 9, { id: 10, era: 'IRON_AGE' }));
+    expect(state().ownCityHomes.get(10)?.era).toBe('IRON_AGE');
   });
 
   it('sin ciudad propia en el área, ownCity es null', () => {

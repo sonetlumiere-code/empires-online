@@ -60,6 +60,7 @@ Dentro del scope de v1:
 - La ciudad tomada ([city-taken.md](city-taken.md)): `takenCityId` (opcional) en `city.fallen` (§8.34), la ciudad del vencedor que la tomó; la tomada llega como cualquier ciudad que entra en la vista y sus edificios heredados como `building.spawn` con su `cityId` nuevo, y el vencedor recibe un `world.snapshot` centrado en ella. Aditivo: un cliente que no lo conoce sigue funcionando.
 - El comercio desde cualquier ciudad ([trade-from-city.md](trade-from-city.md)): `cityId` (opcional) en `trade.propose` (§7.17), `market.post` y `market.buy` (§7.24), la ciudad propia de la que sale la orden; sin él, la capital. Aditivo: sin tipos nuevos.
 - Los avisos de la ciudad tomada ([city-taken-notices.md](city-taken-notices.md)): `taken` (opcional, sólo `true`) en `EventLogEntry` y en `event_log.notice`, en `CITY_LOST` y `CITY_TAKEN` cuando el vencedor se quedó la ciudad. Aditivo.
+- Las ciudades propias en el snapshot ([multi-city.md](multi-city.md) §9.1, precisión del 2026-11-26): `ownCities` (`{ id, centerX, centerY, era }[]`, opcional, hasta 4) en `world.snapshot` (§8.4), las ciudades en pie de quien lo recibe aunque no estén en su área, la capital primero: «H» y el tope de «Fundar ciudad» las cuentan todas. Aditivo (`R-VER-2`).
 - Errores estables, idempotencia por `requestId`, ordenamiento por `seq`.
 
 ### 2.1 No-scope (Fuera de MVP)
@@ -884,8 +885,13 @@ payload: z.object({
   treaties: z.array(TreatyView).optional(), // E6, §8.18: los del jugador que lo recibe
   tradeOffers: z.array(TradeOfferView).optional(), // E10, §8.22: las ofertas pendientes del jugador
   caravans: z.array(CaravanView).optional(), // E15, §8.24: las que el jugador ve con su carga
+  ownCities: z.array(OwnCityView).max(4).optional(), // multiciudad, 2026-11-26: las del jugador, en pie, aunque no estén en el área
 })
 ```
+
+`OwnCityView` es `{ id, centerX, centerY, era }`, todos obligatorios: lo que el HUD necesita para que «H» lleve a una
+ciudad propia que nunca ha estado en el área de la sesión y para contar el tope de «Fundar ciudad» con todas
+([multi-city.md](multi-city.md) §9.1). Va por id, la capital primero, y se omite si el jugador no tiene ninguna.
 
 ```ts
 // packages/protocol/src/v1/common.ts

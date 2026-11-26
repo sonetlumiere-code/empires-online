@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  capitalOf,
   commerceCityId,
   foundCityBlockReason,
   maxOwnCities,
@@ -9,7 +10,7 @@ import {
   ownCitiesOf,
   shownCity,
 } from './multiCity';
-import type { CityView, UnitView } from './world';
+import type { CityView, OwnCityHome, UnitView } from './world';
 
 const YO = '11111111-1111-4111-8111-111111111111';
 const OTRO = '22222222-2222-4222-8222-222222222222';
@@ -105,6 +106,35 @@ describe('«Fundar ciudad» (RN-CITY-030, RN-CITY-031)', () => {
     });
     expect(foundCityBlockReason(aldeano(), [pobre])).toBe('Fundar cuesta 800 de madera y 400 de piedra de Testópolis');
   });
+
+  // Encontrado en el navegador (2026-11-26): smoke_multi, con la cámara en su segunda
+  // ciudad y la capital fuera del área, veía «Fundar cuesta…» en lugar del tope.
+  it('cuenta el tope con las ciudades de fuera de la vista y la era de la capital (SPEC-MULTI-CITY Q9)', () => {
+    const segunda = ciudad({ id: 30, name: 'Testópolis II', stocks: { WOOD: 0, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 } });
+    const homes = new Map<number, OwnCityHome>([
+      [10, { x: 90, y: 90, era: 'BRONZE_AGE' }],
+      [30, { x: 10, y: 10, era: 'BRONZE_AGE' }],
+    ]);
+    expect(foundCityBlockReason(aldeano({ cityId: 30 }), [segunda], homes)).toBe(
+      'Ya tienes 2 ciudades: el tope de tu capital es 2',
+    );
+    // La capital en Hierro, fuera de la vista: la tercera cabe; y lo que cuenta es lo de la que funda.
+    homes.set(10, { x: 90, y: 90, era: 'IRON_AGE' });
+    expect(foundCityBlockReason(aldeano({ cityId: 30 }), [segunda], homes)).toBe(
+      'Fundar cuesta 800 de madera y 400 de piedra de Testópolis II',
+    );
+    // La era de una capital a la vista manda sobre la recordada.
+    expect(foundCityBlockReason(aldeano(), [ciudad({ era: 'IRON_AGE' })], new Map([[10, { x: 10, y: 10, era: 'BRONZE_AGE' }]]))).toBeNull();
+  });
+});
+
+describe('la capital con las ciudades de fuera de la vista (SPEC-MULTI-CITY Q9)', () => {
+  it('es la de id menor de todas, con su era y cuántas hay', () => {
+    const homes = new Map<number, OwnCityHome>([[10, { x: 90, y: 90, era: 'CASTLE_AGE' }]]);
+    expect(capitalOf([ciudad({ id: 30 })], homes)).toEqual({ id: 10, era: 'CASTLE_AGE', count: 2 });
+    expect(capitalOf([ciudad({ id: 30 })])).toEqual({ id: 30, era: 'BRONZE_AGE', count: 1 });
+    expect(capitalOf([])).toBeNull();
+  });
 });
 
 describe('de qué ciudad sale el comercio (SPEC-TRADE-FROM-CITY Q7)', () => {
@@ -115,5 +145,17 @@ describe('de qué ciudad sale el comercio (SPEC-TRADE-FROM-CITY Q7)', () => {
     expect(commerceCityId(capital, [capital, segunda])).toBeUndefined();
     expect(commerceCityId(null, [capital])).toBeUndefined();
     expect(commerceCityId(ciudad({ id: 99 }), [capital, segunda])).toBeUndefined();
+  });
+
+  // Encontrado en el navegador (2026-11-26): con la capital fuera del área, el panel
+  // muestra la segunda y la orden salía sin cityId, de la capital.
+  it('con la capital fuera de la vista, sale de la del panel', () => {
+    const segunda = ciudad({ id: 30 });
+    const homes = new Map<number, OwnCityHome>([
+      [10, { x: 90, y: 90, era: 'BRONZE_AGE' }],
+      [30, { x: 10, y: 10, era: 'BRONZE_AGE' }],
+    ]);
+    expect(commerceCityId(segunda, [segunda], homes)).toBe(30);
+    expect(commerceCityId(segunda, [segunda])).toBeUndefined();
   });
 });
