@@ -41,11 +41,21 @@ import { createRng, type Rng } from './random';
 /** Las ciudades de los bots del proceso, para elegir blanco aunque no estén a la vista. */
 export class Directory {
   private readonly cities = new Map<string, BotCity>();
+  private readonly sites = new Map<string, Tile>();
   set(c: BotCity): void {
     this.cities.set(c.playerId, c);
   }
   list(): BotCity[] {
     return [...this.cities.values()].sort((a, b) => a.playerId.localeCompare(b.playerId));
+  }
+  /** El sitio que va a fundar el bot `playerId`, o `null` si no funda (SPEC-BOTS-FOUND §9.1). */
+  claimSite(playerId: string, site: Tile | null): void {
+    if (site) this.sites.set(playerId, site);
+    else this.sites.delete(playerId);
+  }
+  /** Los sitios que van a fundar los demás bots, en orden de playerId. */
+  sitesBesides(playerId: string): Tile[] {
+    return [...this.sites].filter(([id]) => id !== playerId).sort(([a], [b]) => a.localeCompare(b)).map(([, t]) => t);
   }
 }
 
@@ -475,6 +485,7 @@ export class Bot {
       forestTiles: this.forestTiles,
       hills: this.hills,
       botCities: this.deps.directory.list(),
+      claimedSites: this.deps.directory.sitesBesides(playerId),
       treaties: hs.treaties,
       tradeOffers: hs.tradeOffers,
       market: hs.market,
@@ -534,6 +545,7 @@ export class Bot {
       forestTiles: this.colonyForestTiles,
       hills: [],
       botCities: this.deps.directory.list(),
+      claimedSites: this.deps.directory.sitesBesides(playerId),
       treaties: hs.treaties,
       tradeOffers: hs.tradeOffers,
       market: hs.market,
@@ -556,6 +568,7 @@ export class Bot {
     });
     this.memory = memory;
     for (const cmd of commands) this.send(cmd, nowMs);
+    this.deps.directory.claimSite(view.playerId, memory.founding?.site ?? null);
     this.logFounding(hadFounding, memory);
     // Sin sitio a la vista: se apunta cada vez que la búsqueda se aplaza (SPEC-BOTS-FOUND §9.1).
     if (memory.foundSearchAtMs > hadSearchAt) this.emit('found', { status: 'no_site' });

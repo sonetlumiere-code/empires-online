@@ -9,6 +9,7 @@ import {
   EMPTY_MEMORY,
   chooseFoundSite,
   decide,
+  fieldFocus,
   foundSiteOk,
   onFounderLost,
   onRejected,
@@ -207,6 +208,54 @@ describe('la fundación en curso (SPEC-BOTS-FOUND §4.3, RN-BOT-019)', () => {
     const v = foundView({ forestTiles: [{ x: 104, y: 100 }], units: [unit({ id: 1, x: 128, y: 90 }), unit({ id: 3 })] });
     const { commands } = run(v, walking({ orderedAtMs: NOW }));
     expect(commands.filter((c) => c.type === 'unit.gather').map((c) => (c as { unitId: number }).unitId)).toEqual([3]);
+  });
+});
+
+describe('la fundación fuera de la vista (SPEC-BOTS-FOUND §9.1, la ejecución larga de E32)', () => {
+  it('la campaña mira el sitio hasta el primer tramo y luego adónde va cada tramo', () => {
+    expect(fieldFocus(walking())).toEqual(SITE);
+    const leg = { x: 120, y: 95 };
+    expect(fieldFocus(walking({ waypoint: leg }))).toEqual(leg);
+    // El tramo que se manda es el que se mira.
+    const v = foundView({ units: [unit({ id: 1, x: 110, y: 100 })] });
+    const { commands, memory } = run(v, walking({ lastPos: { x: 102, y: 100 } }));
+    const move = commands.find((c) => c.type === 'unit.move') as { target: Tile } | undefined;
+    expect(move?.target).toEqual(SITE);
+    expect(memory.founding?.waypoint).toEqual(SITE);
+    expect(fieldFocus(memory)).toEqual(SITE);
+  });
+
+  it('la partida manda sobre la fundación; sin nada fuera de casa no hay foco', () => {
+    expect(fieldFocus(EMPTY_MEMORY)).toBeNull();
+  });
+
+  it('el aldeano de una fundación fallida se sigue buscando donde se le dejó, y se olvida al verlo trabajar', () => {
+    const leg = { x: 120, y: 95 };
+    const late = run(foundView(), walking({ waypoint: leg }), NOW + constructor.foundWalkTimeoutMs + 1).memory;
+    expect(late.foundResult).toMatchObject({ status: 'failed', cause: 'timeout' });
+    expect(late.strayFounder).toMatchObject({ unitId: 1, at: leg });
+    expect(fieldFocus(late)).toEqual(leg);
+    // Visto parado, se le sigue mirando; con otra orden (trabaja), se le olvida.
+    const t1 = NOW + constructor.foundWalkTimeoutMs + 2;
+    const idle = run(foundView({ units: [unit({ id: 1, x: 120, y: 95 })] }), late, t1).memory;
+    expect(idle.strayFounder?.unitId).toBe(1);
+    const busy = run(foundView({ units: [unit({ id: 1, x: 120, y: 95, status: 'WORKING' })] }), late, t1).memory;
+    expect(busy.strayFounder).toBeNull();
+    // Sin verlo, se deja de buscar pasado el plazo.
+    const gone = run(foundView({ units: [] }), late, (late.strayFounder?.untilMs ?? 0) + 1).memory;
+    expect(gone.strayFounder).toBeNull();
+  });
+
+  it('el aldeano muerto o la ciudad caída no dejan a nadie que buscar', () => {
+    expect(onFounderLost(walking({ waypoint: SITE }), 1, NOW, constructor).strayFounder).toBeNull();
+  });
+
+  it('el sitio que va a fundar otro bot cuenta como un centro: no se eligen dos a menos de 24', () => {
+    expect(foundSiteOk(foundView({ claimedSites: [{ x: 140, y: 90 }] }), SITE)).toBe(false);
+    // El único bosque del ayudante es el del sitio: con él apartado por otro bot, no queda ninguno.
+    expect(chooseFoundSite(foundView(), constructor, EMPTY_MEMORY, NOW)).toEqual(SITE);
+    expect(chooseFoundSite(foundView({ claimedSites: [SITE] }), constructor, EMPTY_MEMORY, NOW)).toBeNull();
+    expect(chooseFoundSite(foundView({ claimedSites: [{ x: 128, y: 160 }] }), constructor, EMPTY_MEMORY, NOW)).toEqual(SITE);
   });
 });
 

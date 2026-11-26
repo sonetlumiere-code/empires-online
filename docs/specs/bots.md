@@ -235,7 +235,8 @@ la juega; `RN-BOT-003` cuenta los dos comandos **por ciudad** y despertar.
 - **Dos conexiones por saqueador.** La de **casa** tiene la vista en la ciudad; la de **campaña** se abre con la primera
   partida y mira al blanco o al tramo de marcha en curso, porque los guerreros que se alejan salen del área de interés
   de la casa. Las órdenes salen siempre por la de casa: el servidor conoce las unidades estén donde estén. Un
-  constructor tiene sólo la de casa.
+  constructor tiene sólo la de casa. **Precisión (2026-11-26):** desde E35, el constructor que funda abre también la
+  de campaña para seguir al aldeano que va al sitio ([bots-found.md](bots-found.md) §9.1).
 - **La exploración.** Al arrancar, el bot mueve la vista en anillos de 96, 160 y 224 tiles alrededor de su ciudad
   (como `scripts/smoke.mjs --piedra`) y se queda con las 24 colinas más cercanas del terreno visto; los bosques los
   toma del terreno a 40 tiles de la ciudad. El decisor no corre mientras explora.

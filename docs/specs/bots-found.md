@@ -39,7 +39,8 @@ Rutas desde `apps/bots/src/`:
   `apps/web/src/net/client.ts` y el motivo del HUD, `foundCityBlockReason`, en `apps/web/src/state/multiCity.ts`.
 - **El bot juega una ciudad.** `View.city` es una sola, la capital (`capitalOf`, E34), y `View.units` lleva todas las
   unidades propias a la vista: con dos ciudades, la capital daría órdenes a los aldeanos de la otra.
-- **La vista sigue a la capital.** La conexión «casa» mira la capital; la de «campaña», la partida. El snapshot de la
+- **La vista sigue a la capital.** La conexión «casa» mira la capital; la de «campaña», la partida (y, desde el repaso
+  del 2026-11-26, el aldeano que va a fundar, §9.1). El snapshot de la
   fundación llega centrado en la ciudad nueva (`ResnapshotAt`, [multi-city.md](multi-city.md) §9.1) a **todas** las
   sesiones del jugador, y el espejo olvida las ciudades que salen del área de interés (radio de 2 chunks): tras fundar,
   la casa podría quedarse sin la capital.
@@ -243,7 +244,16 @@ decide el sitio).
   §E32). Con el sitio a 86-94 tiles, el último tramo saca al aldeano de la vista de la capital y `foundRule` espera a
   verlo llegar: nunca sale `unit.found_city`, la fundación falla por el plazo (`timeout`) y el aldeano se queda parado
   en el sitio; en 3 h, 28 intentos y 28 aldeanos así, y ninguna fundación. Dos constructores eligieron además el mismo
-  sitio. Queda para otro slice (la vuelta fuera de la vista de E32, `whereabouts`/`lookAt`, es el precedente).
+  sitio. **Arreglo (2026-11-26, rama `claude/repaso-bots-fundar`):** el constructor también abre la conexión de
+  campaña, y `fieldFocus` mira, sin partida, el tramo en curso del aldeano (`Founding.waypoint`; el sitio hasta el
+  primero), como la partida de E32 mira el suyo: la campaña lo ve parar y llegar, y sale `unit.found_city`. Si la
+  fundación falla con el aldeano vivo (plazo, tramos o rechazo), la campaña sigue mirando donde se le dejó
+  (`strayFounder`) hasta verlo con otra orden (las reglas de siempre lo ponen a trabajar) o 5 min; el aldeano muerto o
+  la ciudad caída no dejan a nadie que buscar. Y el directorio guarda el sitio que va a fundar cada bot
+  (`Directory.claimSite`): para los demás cuenta como un centro (`View.claimedSites` en `knownCenters`), así que dos
+  bots del proceso no eligen sitios a menos de 24. Los aldeanos varados por ejecuciones anteriores no se recuperan
+  salvo que la campaña vuelva a mirar donde están (el protocolo no manda las unidades propias fuera del área de
+  interés).
 
 ## 10. Decisiones de producto (2026-11-25)
 
