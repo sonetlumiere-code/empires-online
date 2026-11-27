@@ -570,6 +570,10 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   los 400 de piedra de fundar antes de rehacer la muralla o investigar (salvo que la última búsqueda no encontrara
   sitio), y el resumen junta en una línea con `×N` las partidas seguidas contra el mismo blanco que acaban igual (el
   asalto replantado).
+  **Precisión (2026-11-27, E42):** el sitio de la siguiente ciudad se busca en el anillo de 28 a 96 de cualquier
+  ciudad propia, no sólo de la capital ([SPEC-BOTS-FOUND-SITE](../specs/bots-found-site.md)); el aldeano sigue
+  saliendo de la capital, con 10 min de caminata por cada 96 tiles. `found` con `started` lleva `from` (la ciudad del
+  anillo) y el resumen cuenta las fundaciones «junto a una colonia».
 - Para una ejecución larga en macOS, `caffeinate -i -s pnpm run bots -- …` evita que el reposo la parta: con la Mac dormida, el servidor descarta los ticks perdidos y las medidas no valen.
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
   Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos, comercio (tratados, tratos,

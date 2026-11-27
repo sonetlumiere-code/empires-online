@@ -1014,6 +1014,10 @@ y grueso, y una que carga madera, un tronco a la espalda.
   conexiones por bot). El constructor funda hasta `maxOwnCities` de la era de su capital (`multiCity.ts`). Si tras la
   exploración falta población a la vista, la casa barre el mapa entero (`sweepCenters`, `missingPopulation`) y cada
   varado vuelve a su propia ciudad. Nada nuevo en `src/net` ni en `src/state`.
+- **Desde E42** ([SPEC-BOTS-FOUND-SITE](../specs/bots-found-site.md)) el decisor de la capital lee con `terrainAt`
+  (`world.ts`) el terreno, y los bosques, de los stores de todas las conexiones, las colonias incluidas: el sitio de
+  la siguiente ciudad se busca alrededor de cualquier ciudad propia (`chooseFoundSiteFrom`). Nada nuevo en `src/net`
+  ni en `src/state`.
 - **Consecuencia:** `src/net` y `src/state` tienen que seguir sin DOM ni React en lo que el bot importa. Un cambio que
   lo rompa lo detectan el typecheck y los tests de `apps/bots`, que corren con los del workspace.
 - `tsx` carga los `.ts` de `apps/web` como CommonJS (el paquete no declara `"type": "module"`); por eso

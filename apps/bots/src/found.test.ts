@@ -9,7 +9,9 @@ import {
   EMPTY_MEMORY,
   addStrays,
   chooseFoundSite,
+  chooseFoundSiteFrom,
   decide,
+  foundWalkMs,
   fieldFocus,
   foundSiteOk,
   onFounderLost,
@@ -312,5 +314,57 @@ describe('la segunda ciudad (SPEC-BOTS-FOUND §4.4, RN-BOT-020)', () => {
       buildings: [building({ id: 1, cityId: 30 })],
     });
     expect(decide(done, colony, EMPTY_MEMORY, NOW, rng(), solo).commands).toEqual([]);
+  });
+});
+
+describe('el sitio junto a cualquier ciudad propia (SPEC-BOTS-FOUND-SITE §4.1, §4.2; RN-BOT-026)', () => {
+  /** Un bosque de 4 × 4 a `dx` tiles al este de (`cx`, 100), como PATCH. */
+  const patchAt = (cx: number, dx: number) => {
+    const set = new Set<string>();
+    for (let y = 96; y <= 99; y++) for (let x = cx + dx; x <= cx + dx + 3; x++) set.add(`${x},${y}`);
+    return set;
+  };
+  const terrainWith = (...patches: Set<string>[]): View['terrainAt'] => (x, y) =>
+    patches.some((p) => p.has(`${x},${y}`)) ? 1 : 0;
+  const COLONY = { id: 11, x: 300, y: 100 };
+
+  it('sin sitio junto a la capital, elige el de la colonia y dice de qué anillo salió', () => {
+    // Como _2_e29: el anillo de la capital no tiene bosque; el de la colonia, sí.
+    const v = foundView({ terrainAt: terrainWith(patchAt(300, 28)), ownCityCount: 2, otherOwnCenters: [COLONY] });
+    expect(chooseFoundSiteFrom(v, constructor, EMPTY_MEMORY, NOW)).toEqual({ site: { x: 328, y: 90 }, from: 11 });
+    // Sin la colonia, como hasta E41: nada.
+    expect(chooseFoundSite({ ...v, otherOwnCenters: [] }, constructor, EMPTY_MEMORY, NOW)).toBeNull();
+  });
+
+  it('gana el más cercano a cualquier ciudad propia; a igual distancia, el de la capital', () => {
+    const near = foundView({ terrainAt: terrainWith(patchAt(100, 40), patchAt(300, 28)), ownCityCount: 2, otherOwnCenters: [COLONY] });
+    expect(chooseFoundSiteFrom(near, constructor, EMPTY_MEMORY, NOW)?.from).toBe(11);
+    const tie = foundView({ terrainAt: terrainWith(patchAt(100, 28), patchAt(300, 28)), ownCityCount: 2, otherOwnCenters: [COLONY] });
+    expect(chooseFoundSiteFrom(tie, constructor, EMPTY_MEMORY, NOW)).toEqual({ site: SITE, from: 10 });
+  });
+
+  it('un tile a menos de 28 de otra ciudad propia no cuenta en el anillo de la capital', () => {
+    // La colonia a 26 del primer sitio de la capital: el anillo se mide desde ella también.
+    const v = foundView({ terrainAt: grassAndPatch, ownCityCount: 2, otherOwnCenters: [{ id: 11, x: 128, y: 116 }] });
+    const got = chooseFoundSiteFrom(v, constructor, EMPTY_MEMORY, NOW);
+    expect(got?.site).not.toEqual(SITE);
+    if (got) expect(Math.min(Math.max(Math.abs(got.site.x - 100), Math.abs(got.site.y - 100)), Math.max(Math.abs(got.site.x - 128), Math.abs(got.site.y - 116)))).toBeGreaterThanOrEqual(28);
+  });
+
+  it('la fundación sale de la capital, con la distancia a ella y la ciudad del anillo', () => {
+    const v = foundView({ terrainAt: terrainWith(patchAt(300, 28)), ownCityCount: 2, otherOwnCenters: [COLONY], city: bronze({ era: 'IRON_AGE' }) });
+    const { commands, memory } = run(v);
+    expect(memory.founding).toMatchObject({ site: { x: 328, y: 90 }, from: 11, distance: 228, unitId: 1, cities: 2 });
+    expect(commands[0]).toMatchObject({ type: 'unit.move', unitId: 1 });
+  });
+
+  it('el plazo de la caminata: 10 min por cada 96 tiles hasta la capital, al menos 10', () => {
+    expect(foundWalkMs(constructor, 28)).toBe(10 * 60_000);
+    expect(foundWalkMs(constructor, 96)).toBe(10 * 60_000);
+    expect(foundWalkMs(constructor, 228)).toBe(30 * 60_000);
+    const far = walking({ distance: 228 });
+    // Parado lejos y fuera de la vista: se le espera más allá de los 10 min, hasta los 30.
+    expect(run(foundView({ units: [] }), far, NOW + 10 * 60_000 + 1).memory.founding).not.toBeNull();
+    expect(run(foundView({ units: [] }), far, NOW + 30 * 60_000 + 1).memory.foundResult).toMatchObject({ status: 'failed', cause: 'timeout' });
   });
 });

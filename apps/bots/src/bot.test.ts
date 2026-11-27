@@ -79,6 +79,8 @@ class FakeServer implements WebSocketLike {
   population = 3;
   /** Los territorios del snapshot (vacío por defecto). */
   territories: Record<string, unknown>[] = [];
+  /** El terreno del snapshot, por chunks (vacío por defecto). */
+  terrain: Record<string, unknown>[] = [];
 
   /** Si un tile entra en el área de interés de la vista actual. */
   private inView(x: number, y: number): boolean {
@@ -97,7 +99,7 @@ class FakeServer implements WebSocketLike {
       serverTimeMs: NOW,
       tick: 1,
       chunks: [],
-      terrain: [],
+      terrain: this.terrain,
       units: this.visible(),
       ...(this.ownCities ? { ownCities: this.ownCities } : {}),
       cities: [
@@ -961,6 +963,22 @@ describe('todas las ciudades del bot (SPEC-BOTS-ALL-CITIES §4.1, §4.3, §4.7)'
     colonyLink.snapshot();
     await tick();
     expect(bot.buildView()?.territories?.map((t) => t.id)).toEqual([58]);
+    bot.stop();
+  });
+
+  it('RN-BOT-026: el decisor ve el terreno de las colonias, y los centros propios llevan su id', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot } = await withCities(lines, sockets, [cityAt(30, 300, 300)]);
+    // El sitio junto a una colonia sólo lo conoce su conexión (SPEC-BOTS-FOUND-SITE §4.1).
+    const colonyLink = sockets[1] as FakeServer;
+    colonyLink.terrain = [{ cx: 9, cy: 9, size: 32, terrain: Buffer.alloc(32 * 32, 1).toString('base64') }];
+    colonyLink.snapshot();
+    await tick();
+    const v = bot.buildView();
+    expect(v?.terrainAt(300, 300)).toBe(1);
+    expect(v?.terrainAt(100, 100)).toBeUndefined();
+    expect(v?.otherOwnCenters).toEqual([{ id: 30, x: 300, y: 300 }]);
     bot.stop();
   });
 

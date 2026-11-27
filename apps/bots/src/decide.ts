@@ -115,7 +115,8 @@ export interface View {
    * (SPEC-BOTS-FOUND §4.5). Sin ellos, una.
    */
   readonly ownCityCount?: number;
-  readonly otherOwnCenters?: readonly Tile[];
+  /** Con su id cuando se sabe: el sitio de una fundación dice de qué anillo salió (SPEC-BOTS-FOUND-SITE §4.4). */
+  readonly otherOwnCenters?: readonly OwnCenter[];
   /** Los territorios a la vista: el sitio de una fundación va en uno libre (§4.2). */
   readonly territories?: readonly TerritoryView[];
 }
@@ -360,8 +361,16 @@ export interface Memory {
 }
 
 /** Una fundación en curso (SPEC-BOTS-FOUND §4.3). */
+/** El centro de otra ciudad propia, con su id (SPEC-BOTS-FOUND-SITE §4.1). */
+export type OwnCenter = Tile & { readonly id?: number };
+
 export interface Founding {
   readonly site: Tile;
+  /**
+   * La ciudad propia de cuyo anillo salió el sitio (SPEC-BOTS-FOUND-SITE §4.4): la
+   * capital o una colonia; `null` si no se sabe su id.
+   */
+  readonly from?: number | null;
   readonly unitId: number;
   /** Distancia del sitio a la capital (para el registro). */
   readonly distance: number;
@@ -1515,24 +1524,53 @@ export function foundSiteOk(view: View, t: Tile, centers: readonly Tile[] = know
 }
 
 /**
- * El sitio de una fundación (SPEC-BOTS-FOUND §4.2, Q3): el más cercano a la capital
- * en el anillo de `foundMinDistance` a `foundMaxDistance` que pase `foundSiteOk` y
- * no esté apartado; a igual distancia, el de `y` menor y luego el de `x` menor.
+ * El sitio de una fundación (SPEC-BOTS-FOUND §4.2, Q3; RN-BOT-026): el más cercano a
+ * cualquier ciudad propia en pie en su anillo de `foundMinDistance` a
+ * `foundMaxDistance`, que pase `foundSiteOk` y no esté apartado. A igual distancia, el
+ * de la capital, luego el de la colonia de id menor, y en cada anillo el de `y` menor y
+ * luego el de `x` menor. Un tile cuenta sólo en el anillo de su ciudad propia más
+ * cercana (SPEC-BOTS-FOUND-SITE §4.1).
  */
-export function chooseFoundSite(view: View, profile: Profile, memory: Memory, nowMs: number): Tile | null {
-  const home = center(view);
+export function chooseFoundSiteFrom(
+  view: View,
+  profile: Profile,
+  memory: Memory,
+  nowMs: number,
+): { site: Tile; from: number | null } | null {
+  const origins: { at: Tile; id: number | null }[] = [
+    { at: center(view), id: view.city.id },
+    ...(view.otherOwnCenters ?? []).map((c) => ({ at: { x: c.x, y: c.y }, id: c.id ?? null })),
+  ];
   const centers = knownCenters(view);
+  const nearest = (t: Tile) => Math.min(...origins.map((o) => chebyshev(o.at, t)));
   for (let d = profile.foundMinDistance; d <= profile.foundMaxDistance; d++) {
-    for (let y = home.y - d; y <= home.y + d; y++) {
-      const edge = y === home.y - d || y === home.y + d;
-      for (let x = home.x - d; x <= home.x + d; x += edge ? 1 : 2 * d) {
-        const t = { x, y };
-        if ((memory.foundSiteCooldowns[tileKey(t)] ?? 0) > nowMs) continue;
-        if (foundSiteOk(view, t, centers)) return t;
+    for (const o of origins) {
+      const home = o.at;
+      for (let y = home.y - d; y <= home.y + d; y++) {
+        const edge = y === home.y - d || y === home.y + d;
+        for (let x = home.x - d; x <= home.x + d; x += edge ? 1 : 2 * d) {
+          const t = { x, y };
+          if ((memory.foundSiteCooldowns[tileKey(t)] ?? 0) > nowMs) continue;
+          if (origins.length > 1 && nearest(t) < d) continue;
+          if (foundSiteOk(view, t, centers)) return { site: t, from: o.id };
+        }
       }
     }
   }
   return null;
+}
+
+/** El sitio de `chooseFoundSiteFrom`, sin la ciudad de su anillo. */
+export function chooseFoundSite(view: View, profile: Profile, memory: Memory, nowMs: number): Tile | null {
+  return chooseFoundSiteFrom(view, profile, memory, nowMs)?.site ?? null;
+}
+
+/**
+ * El plazo de la caminata (SPEC-BOTS-FOUND-SITE §4.2): `foundWalkTimeoutMs` por cada
+ * `foundMaxDistance` tiles de distancia del sitio a la capital, y al menos uno.
+ */
+export function foundWalkMs(profile: Pick<Profile, 'foundWalkTimeoutMs' | 'foundMaxDistance'>, distance: number): number {
+  return profile.foundWalkTimeoutMs * Math.max(1, Math.ceil(distance / profile.foundMaxDistance));
 }
 
 /** Termina la fundación en curso, con su resultado; un fallo aparta el sitio (RN-BOT-021). */
@@ -1610,13 +1648,15 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
     if (count >= maxOwnCities(view.city.era) || !eraAtLeast(view.city.era, 'BRONZE_AGE')) return mem;
     if (plan.full || nowMs < mem.foundSearchAtMs || !plan.affords({ ...FOUND_COST })) return reserveFoundStone(mem, plan);
     if (view.city.advance !== null && view.city.advance !== undefined) return reserveFoundStone(mem, plan);
-    const site = chooseFoundSite(view, profile, mem, nowMs);
-    if (!site) return { ...mem, foundSearchAtMs: nowMs + FOUND_SEARCH_WAIT_MS, foundNoSite: true };
+    const found = chooseFoundSiteFrom(view, profile, mem, nowMs);
+    if (!found) return { ...mem, foundSearchAtMs: nowMs + FOUND_SEARCH_WAIT_MS, foundNoSite: true };
+    const site = found.site;
     mem = { ...mem, foundNoSite: false };
     const u = chooseFounder(view, site);
     if (!u) return reserveFoundStone(mem, plan);
     f = {
       site,
+      from: found.from,
       unitId: u.id,
       distance: chebyshev(center(view), site),
       startedAtMs: nowMs,
@@ -1631,7 +1671,7 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
 
   // RN-BOT-019: lo que cuesta fundar no lo gasta ninguna otra regla.
   plan.reserve({ ...FOUND_COST });
-  if (nowMs - f.startedAtMs > profile.foundWalkTimeoutMs) return endFounding(mem, 'failed', 'timeout', nowMs, profile);
+  if (nowMs - f.startedAtMs > foundWalkMs(profile, f.distance)) return endFounding(mem, 'failed', 'timeout', nowMs, profile);
   const u = view.units.find((x) => x.id === f?.unitId);
   if (u?.status === 'DEAD') return endFounding(mem, 'failed', 'unit_died', nowMs, profile);
   if (f.orderedAtMs !== null) {

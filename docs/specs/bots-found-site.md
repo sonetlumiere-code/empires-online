@@ -129,6 +129,19 @@ decide.
 | Unit (Vitest, `log.test.ts`) | El resumen de las fundaciones por la ciudad del anillo. |
 | Go, simulación / integración / e2e | Ninguno nuevo: las reglas del servidor no cambian. |
 
+### 9.1 Precisiones de la implementación (2026-11-27)
+
+- **Precisión (2026-11-27): un tile, en el anillo de su ciudad más cercana.** §4.1 ordena por la distancia a la
+  ciudad propia más cercana: un tile a 28 de la capital pero a 26 de una colonia no está en ningún anillo (queda por
+  debajo de `foundMinDistance` de la colonia), así que no se elige. Lo cubre `found.test.ts`.
+- **Precisión (2026-11-27): `fromCapital`.** Además de `from` (el id), `found` con `started` lleva `fromCapital`
+  (`true` si el sitio salió del anillo de la capital): el resumen cuenta así las fundaciones «junto a una colonia» sin
+  tener que seguir qué id es la capital tras una caída.
+- **Precisión (2026-11-27): el plazo de la caminata** (§4.2) usa `foundMaxDistance` (96) como tramo:
+  `foundWalkTimeoutMs × max(1, ⌈distancia a la capital / 96⌉)` (`foundWalkMs`).
+- **Precisión (2026-11-27): los bosques.** Además del terreno, la vista de la capital lleva los bosques de todas las
+  conexiones, para que el sitio junto a una colonia no cuente un bosque agotado que sólo ve su conexión.
+
 ## 10. Decisiones de producto (2026-11-27)
 
 La persona usuaria aceptó las tres recomendaciones (2026-11-27): cada fila deja la decisión, en negrita, y las
