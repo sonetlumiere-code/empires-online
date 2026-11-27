@@ -218,7 +218,9 @@ E30): la pareja o la oferta del mercado sin ruta se aparta hasta el final de la 
 y en [bots-assault.md](bots-assault.md) §4.8 con `RN-BOT-014` a `RN-BOT-017` (E32): el asalto bajo `RN-BOT-002`, una
 partida por bot, el estandarte que se replanta y el bot vencido que sigue jugando. **Precisión (2026-11-25):** y en
 [bots-found.md](bots-found.md) §4.8 con `RN-BOT-018` a `RN-BOT-021` (E35): el constructor que funda su segunda ciudad y
-la juega; `RN-BOT-003` cuenta los dos comandos **por ciudad** y despertar.
+la juega; `RN-BOT-003` cuenta los dos comandos **por ciudad** y despertar. **Precisión (2026-11-27):** y en
+[bots-all-cities.md](bots-all-cities.md) §4.8 con `RN-BOT-022` a `RN-BOT-025` (E41): el bot juega todas sus ciudades,
+funda hasta el tope de su era, abre una conexión por colonia y trae los varados tras un barrido del mapa.
 
 | ID | Regla |
 |---|---|
@@ -236,7 +238,9 @@ la juega; `RN-BOT-003` cuenta los dos comandos **por ciudad** y despertar.
   partida y mira al blanco o al tramo de marcha en curso, porque los guerreros que se alejan salen del área de interés
   de la casa. Las órdenes salen siempre por la de casa: el servidor conoce las unidades estén donde estén. Un
   constructor tiene sólo la de casa. **Precisión (2026-11-26):** desde E35, el constructor que funda abre también la
-  de campaña para seguir al aldeano que va al sitio ([bots-found.md](bots-found.md) §9.1).
+  de campaña para seguir al aldeano que va al sitio ([bots-found.md](bots-found.md) §9.1). **Precisión (2026-11-27):**
+  desde E41, una conexión más por cada ciudad que no es la capital: hasta cinco por bot
+  ([bots-all-cities.md](bots-all-cities.md) §4.3).
 - **La exploración.** Al arrancar, el bot mueve la vista en anillos de 96, 160 y 224 tiles alrededor de su ciudad
   (como `scripts/smoke.mjs --piedra`) y se queda con las 24 colinas más cercanas del terreno visto; los bosques los
   toma del terreno a 40 tiles de la ciudad. El decisor no corre mientras explora.

@@ -235,7 +235,7 @@ describe('la fundación fuera de la vista (SPEC-BOTS-FOUND §9.1, la ejecución 
     // El aldeano no se ve (está lejos, fuera de la vista): queda apuntado.
     const late = run(foundView({ units: [unit({ id: 2, status: 'WORKING' })] }), walking({ waypoint: leg }), NOW + constructor.foundWalkTimeoutMs + 1).memory;
     expect(late.foundResult).toMatchObject({ status: 'failed', cause: 'timeout' });
-    expect(late.strays).toEqual([{ unitId: 1, at: leg, untilMs: expect.any(Number), tries: 0 }]);
+    expect(late.strays).toEqual([{ unitId: 1, at: leg, untilMs: expect.any(Number), tries: 0, seenAtMs: expect.any(Number) }]);
     expect(fieldFocus(late)).toEqual(leg);
   });
 

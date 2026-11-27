@@ -1006,6 +1006,12 @@ y grueso, y una que carga madera, un tronco a la espalda.
   aldeano que va a fundar lejos lo sigue la conexión de campaña (`fieldFocus` con `Founding.waypoint`), y el
   directorio de los bots guarda el sitio de cada uno para que no vayan dos al mismo; los aldeanos propios parados lejos
   que ve la exploración vuelven a casa por tramos (`strays`), también con la campaña.
+- **Desde E41** ([SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md)) el bot juega todas sus ciudades en pie: lee
+  `ownCityHomes` del store (el `ownCities` del snapshot, también las de fuera de la vista) y abre una conexión de
+  colonia, con su `GameClient` y su store, por cada ciudad que no es la capital (`Bot.colonies`, hasta cinco
+  conexiones por bot). El constructor funda hasta `maxOwnCities` de la era de su capital (`multiCity.ts`). Si tras la
+  exploración falta población a la vista, la casa barre el mapa entero (`sweepCenters`, `missingPopulation`) y cada
+  varado vuelve a su propia ciudad. Nada nuevo en `src/net` ni en `src/state`.
 - **Consecuencia:** `src/net` y `src/state` tienen que seguir sin DOM ni React en lo que el bot importa. Un cambio que
   lo rompa lo detectan el typecheck y los tests de `apps/bots`, que corren con los del workspace.
 - `tsx` carga los `.ts` de `apps/web` como CommonJS (el paquete no declara `"type": "module"`); por eso
@@ -1058,8 +1064,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Precisión (2026-11-25), E36** ([SPEC-CITY-TAKEN](../specs/city-taken.md)): `city.fallen` puede traer `takenCityId`;
   el store no lo necesita, porque la tomada y sus edificios (con su `cityId` nuevo) llegan antes que `city.fallen`.
 - **Precisión (2026-11-25), E37** ([SPEC-MORE-CITIES](../specs/more-cities.md)): `maxOwnCities(era)` da el tope de la
-  era de la capital y `foundCityBlockReason` lo usa; `MAX_OWN_CITIES` es el techo, 4. Los bots siguen en dos (su propia
-  constante en `apps/bots/src/decide.ts`).
+  era de la capital y `foundCityBlockReason` lo usa; `MAX_OWN_CITIES` es el techo, 4. Los bots siguieron en dos (su propia
+  constante en `apps/bots/src/decide.ts`) hasta E41, que usa `maxOwnCities` ([SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md)).
 - **Precisión (2026-11-25), E38** ([SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md)): `proposeTrade`,
   `postMarketOffer` y `buyMarketOffer` (`src/net/client.ts`) admiten `cityId`; el HUD les pasa `commerceCityId`, la
   ciudad del panel si no es la capital.
@@ -1075,7 +1081,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
   nuevo centrado en la ciudad nueva. `CITY_FOUNDED` tiene su texto en `entryText`.
 - Los bots (`apps/bots/src/bot.ts`) juegan con su capital (`capitalOf`, la propia de id menor), sea cual sea el orden
   del store. **Precisión (2026-11-25):** desde E35 el constructor funda y juega también la segunda ciudad
-  ([SPEC-BOTS-FOUND](../specs/bots-found.md), §4.24).
+  ([SPEC-BOTS-FOUND](../specs/bots-found.md), §4.24). **Precisión (2026-11-27):** desde E41, todas
+  ([SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md)), y sabe de las de fuera de la vista por `ownCityHomes`.
 
 ## 5. Posición autoritativa frente a posición de render
 

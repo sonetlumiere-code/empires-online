@@ -15,7 +15,7 @@ import { v1 } from '@empires-online/protocol';
 import { AuthThrottle } from './auth';
 import { Bot, Directory } from './bot';
 import { RunLog, parseLog } from './log';
-import { OptionsError, botPassword, parseOptions } from './options';
+import { OptionsError, botPassword, linkWarning, parseOptions } from './options';
 import { PROFILES, type ProfileName } from './profiles';
 import { seedFor } from './random';
 import { formatSummary, summarize } from './summary';
@@ -91,6 +91,8 @@ async function main(): Promise<void> {
       `${opts.comercio ? (opts.conHumanos ? ', comerciando también con humanos' : '') : ', sin comercio'}.`,
   );
   say(`Registro: ${file}`);
+  const warning = linkWarning(opts.constructores + opts.saqueadores);
+  if (warning) say(warning);
 
   const directory = new Directory();
   const bots: Bot[] = [];

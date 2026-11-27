@@ -225,13 +225,65 @@ describe('el resumen de la fundación (SPEC-BOTS-FOUND §4.7)', () => {
     const [c] = summarize(parseLog(jsonl));
     expect(c).toMatchObject({ foundsStarted: 2, foundFailures: { rejected: 1 } });
     expect(c?.colonies).toEqual([
-      { cityId: 30, foundedMs: 9 * M, fromBronzeMs: 5 * M, grownMs: 12 * M, firstHouseMs: 6 * M, finalPopulation: 8, fell: true },
+      // Sin ordinal en un registro de E35: la segunda. Madera de 0 a 40 en 11 min.
+      { cityId: 30, origin: 'founded', ordinal: 2, foundedMs: 9 * M, fromEraMs: 5 * M, grownMs: 12 * M, finalPopulation: 8, woodPerHour: 218, fell: true },
     ]);
     expect(c?.falls[0]).toMatchObject({ kept: true, capital: false });
     const text = formatSummary(c ? [c] : []);
     expect(text).toContain('fundaciones: empezadas 2 · logradas 1 · fallidas: rejected 1');
-    expect(text).toContain('segunda ciudad 30: fundada a los 9m00s (5m00s desde Bronce) · crecida 12m00s · primera casa 6m00s · población final 8 · cayó');
-    expect(text).toContain('cayó (la segunda ciudad) ante bot_saqueador_1polis');
-    expect(text).toContain('constructor: fundaciones 1 (media hasta fundar 9m00s) · segundas crecidas 1');
+    expect(text).toContain(
+      'colonia 30: la 2.ª, fundada a los 9m00s (5m00s desde la era que la permite) · crecida 12m00s · población final 8 · madera 218 por hora · cayó',
+    );
+    expect(text).toContain('cayó (una colonia) ante bot_saqueador_1polis');
+    expect(text).toContain('constructor: fundaciones 1 (media hasta fundar 9m00s) · colonias crecidas 1');
+  });
+});
+
+describe('el resumen de todas las ciudades (SPEC-BOTS-ALL-CITIES §4.7)', () => {
+  const M = 60_000;
+  const S = 'bot_saqueador_1';
+  const jsonl = [
+    { t: 0, event: 'start', bot: S, profile: 'saqueador', civilization: 'NORSE', era: 'IRON_AGE' },
+    { t: 1 * M, event: 'stray', bot: S, status: 'seen', units: 2, cityId: 10, near: { x: 400, y: 400 }, distance: 300, sweep: false },
+    { t: 2 * M, event: 'stray', bot: S, status: 'seen', units: 1, cityId: 40, near: { x: 480, y: 480 }, distance: 340, sweep: true },
+    { t: 2 * M, event: 'sweep', bot: S, missing: 4, views: 6, found: 3, left: 1 },
+    { t: 3 * M, event: 'cities', bot: S, standing: 2, played: 1, cap: 4 },
+    { t: 4 * M, event: 'cities', bot: S, standing: 3, played: 3, cap: 4 },
+    { t: 4 * M, event: 'colony', bot: S, cityId: 40, origin: 'taken', population: 3, villagers: 3, wood: 0, houses: 0, target: 8 },
+    { t: 7 * M, event: 'era', bot: S, era: 'CASTLE_AGE' },
+    { t: 10 * M, event: 'found', bot: S, status: 'founded', cityId: 50, center: { x: 9, y: 9 }, ms: M, ordinal: 4 },
+    { t: 16 * M, event: 'colony', bot: S, cityId: 40, origin: 'taken', population: 9, villagers: 8, wood: 600, houses: 0, target: 8 },
+    { t: 20 * M, event: 'stray', bot: S, status: 'home', unitId: 7, cityId: 10, ms: 19 * M },
+    { t: 21 * M, event: 'stray', bot: S, status: 'lost', unitId: 8, cityId: 10, ms: 20 * M, cause: 'stuck' },
+    { t: 22 * M, event: 'cities', bot: S, standing: 4, played: 4, cap: 4 },
+    { t: 60 * M, event: 'stop', bot: S, era: 'CASTLE_AGE', gathered: {} },
+  ]
+    .map((l) => JSON.stringify(l))
+    .join('\n');
+
+  it('cuenta las ciudades jugadas, cada colonia por su origen, el barrido y los varados', () => {
+    const [s] = summarize(parseLog(jsonl));
+    expect(s).toMatchObject({
+      citiesFinal: 4,
+      citiesMax: 4,
+      unplayedMinutes: 1,
+      sweep: { missing: 4, views: 6, found: 3 },
+      straysSeen: 3,
+      straysSwept: 1,
+      straysHome: 1,
+      straysLost: { stuck: 1 },
+    });
+    expect(s?.colonies).toEqual([
+      // La tomada: desde su primera línea; 8 aldeanos a los 12 min; 600 de madera en 12 min.
+      { cityId: 40, origin: 'taken', ordinal: null, foundedMs: 4 * M, fromEraMs: 4 * M, grownMs: 12 * M, finalPopulation: 9, woodPerHour: 3000, fell: false },
+      // La cuarta, desde Castillos (minuto 7).
+      { cityId: 50, origin: 'founded', ordinal: 4, foundedMs: 10 * M, fromEraMs: 3 * M, grownMs: null, finalPopulation: null, woodPerHour: null, fell: false },
+    ]);
+    const text = formatSummary(s ? [s] : []);
+    expect(text).toContain('colonia 40: tomada, vista a los 4m00s · crecida 12m00s · población final 9 · madera 3000 por hora');
+    expect(text).toContain('colonia 50: la 4.ª, fundada a los 10m00s (3m00s desde la era que la permite)');
+    expect(text).toContain('ciudades: al final 4 · máximo 4 · minutos con alguna sin jugar 1');
+    expect(text).toContain('varados: barrido de 6 vistas (faltaban 4, encontradas 3) · vistos 3 (por el barrido 1) · de vuelta 1 · perdidos: stuck 1');
+    expect(text).toContain('saqueador: ciudades al final 4.0 de media · madera por colonia 3000 por hora · minutos sin jugar 1');
   });
 });

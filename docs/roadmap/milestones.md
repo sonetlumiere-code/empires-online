@@ -3573,3 +3573,65 @@ http://localhost:3001 --multiciudad`, 26 comprobaciones. Avanza a Bronce, funda 
   `CityView`.
 - Las ciudades de antes de E40 conservan su nombre (Q5): `bot_constructor_2_e35polis II II` sigue en la base de
   desarrollo, y su próxima fundación saldría `bot_constructor_2_e35polis`.
+
+## E41 — Los bots juegan todas sus ciudades
+
+**Estado: HECHO en la rama (2026-11-27)** `claude/slice-bots-todas-ciudades`, sin fusionar ni empujar. Contrato:
+[SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md), propuesta y aceptada el 2026-11-27: la persona usuaria aceptó sus
+ocho decisiones con la recomendación del agente. Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base. Nace
+de la ejecución larga de E32 (§E32): la tercera ciudad del saqueador se quedó 3 h sin jugar, y los 12 aldeanos varados
+de `_3_e29` quedaron fuera del alcance de la exploración (§E35).
+
+**Objetivo.** Que un bot juegue cada ciudad propia en pie y medir cuánto rinde cada una de más, cuándo llega el
+constructor a la tercera y a la cuarta, y si vuelven los varados.
+
+**Alcance.** En `apps/bots`: la capital con su perfil y cada una de las demás como colonia, con su memoria y su conexión
+(`RN-BOT-022`, `RN-BOT-024`); el constructor funda hasta el tope de la era de su capital (`RN-BOT-023`); el barrido del
+mapa cuando faltan unidades y la vuelta de cada varado a su ciudad (`RN-BOT-025`); los sucesos `cities` y `sweep`, y
+`found`, `colony` y `stray` ampliados, con su resumen. **No entra** (spec §2): el servidor, el protocolo, el cliente
+web, que el saqueador funde, que las colonias avancen o comercien, que sean blanco de otros bots.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-BOT-022` a `RN-BOT-025`, con precisiones de
+   `RN-BOT-018` y `RN-BOT-020` en [bots-found.md](../specs/bots-found.md), de las conexiones y las reglas en
+   [bots.md](../specs/bots.md) y de la Q5 de [more-cities.md](../specs/more-cities.md). Sin invariantes.
+2. **HECHO** — Bots: todas las ciudades (`ownCityHomes`, `Bot.colonies` con una conexión, una memoria y una vista por
+   colonia) y la fundación hasta `maxOwnCities` (`Founding.cities`), con sus tests (`all-cities.test.ts`,
+   `bot.test.ts`).
+3. **HECHO** — Bots: el barrido (`missingPopulation`, `sweepCenters`) y la vuelta de cada varado a su ciudad, con el
+   plazo según la distancia, con sus tests.
+4. **HECHO** — Registro y resumen (`cities`, `sweep`, `colony` con `origin`, `found` con `ordinal`, `stray` con `home`
+   y `lost`; `log.test.ts`), el aviso de conexiones (`linkWarning`, `options.test.ts`); docs
+   (`docs/architecture/frontend.md`, `docs/operations/local-development.md`, spec §9.1); `verify:full` en verde.
+5. **HECHO** — Prueba en vivo (spec Q8), abajo, con los dos fallos que destapó (spec §9.1).
+
+### Prueba en vivo (2026-11-27)
+
+Servidor y web de desarrollo en esta Mac, a velocidad real (asalto de 900 s, inmunidad de 72 h), y
+`pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 --sufijo e29 --duracion 45m`, con
+las cuentas `_e29` tal como estaban: `_2_e29` y `_3_e29` con la capital en Castillos y dos ciudades (tope 4), el
+saqueador con tres (24, 55 y 57) y `_3_e29` con 16 aldeanos y 2 guerreros a más de 300 tiles de su capital. Sin
+sembrar nada (spec §9.1). Registros en `bots/runs/` (sin versionar).
+
+- **Pasada 1** (`--semilla 42`, 44 min): **ninguna ciudad sin jugar** en ningún minuto (`cities`): el saqueador
+  juega sus tres, también la 57, que en la ejecución larga de E32 se quedó 3 h con sus 3 aldeanos (de 3 a 8 en 3 min;
+  7 744 de madera por hora). El barrido de `_3_e29` encuentra en 6 vistas los 18 de población que faltaban (15
+  aldeanos a 226 tiles y 3 unidades a 313) y 14 vuelven a casa; nueve vueltas se pierden por los tramos
+  (`stuck`, 115 rechazos `TARGET_NOT_WALKABLE` desplazados en espiral). `_3_e29` **funda su tercera ciudad** (la 68,
+  en (3, 192), a 88 tiles) a los 90 s, que llega a 8 aldeanos en 2 min 31 s y junta 11 591 de madera por hora.
+  Destapó dos fallos (spec §9.1): el barrido del saqueador paró a las 2 vistas con 4 de población sin encontrar
+  (olvidaba la capital al mover la vista), y la tercera de `_2_e29` y la cuarta de `_3_e29` volvieron 30 veces con
+  `INVALID_TARGET`, «sólo se funda en un territorio libre», tile tras tile dentro del territorio de su propia colonia.
+- **Pasada 2** (`--semilla 43`, 45 min, con los dos arreglos): ningún `INVALID_TARGET`. El barrido del saqueador
+  encuentra sus 4 en 6 vistas (los 6 militares vuelven), y el de `_3_e29`, los 2 que quedaban. Las cuatro cuentas
+  juegan todas sus ciudades todo el rato (`minutos con alguna sin jugar 0`). No hay fundación: `_2_e29` ya no encuentra
+  sitio libre en su anillo (9 `no_site`, ahora que ve los territorios de su colonia) y `_3_e29` se quedó con 106 de
+  piedra (la muralla se la lleva; la medida de E35 en Hierro, ahora en Castillos).
+- **Madera por colonia:** de 3 642 a 11 591 por hora (media de 5 493 en los constructores y 7 084 en el saqueador en
+  la pasada 2), la que ya estaba y la recién fundada por igual.
+- **Hallazgos para otra spec:** con la capital en Castillos el constructor rara vez junta la piedra de la cuarta; el
+  anillo de 28 a 96 tiles se llena alrededor de dos ciudades cercanas (`_2_e29`); el resumen repite con los mismos
+  números las partidas de asalto que se replantan (`reunidos 6 en 2m02s` tres veces).
+- **Sin comprobar en el navegador:** la tercera ciudad de un bot en el mapa; el panel del navegador integrado no se usó
+  en esta prueba.
