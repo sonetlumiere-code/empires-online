@@ -7,13 +7,13 @@ no deje al bot en dos ciudades para siempre.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-FOUND-SITE` |
-| Estado | Draft (2026-11-27). Espera las decisiones de producto de §10; no se implementa hasta entonces. |
-| Milestone | Se abre en la aceptación (sería E42). |
+| Estado | Accepted (2026-11-27). La persona usuaria aceptó las tres recomendaciones de §10. |
+| Milestone | E42 El sitio de la siguiente ciudad (cuadragésimo segundo slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §19 (niveles de test) |
 | Depende de | [bots-found.md](bots-found.md), [bots-all-cities.md](bots-all-cities.md), [multi-city.md](multi-city.md), [more-cities.md](more-cities.md) |
 | Decisiones | [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md) sigue valiendo. Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base. |
-| Precisaría | La Q3 de [bots-found.md](bots-found.md) («el sitio libre más cercano a la capital») y su §4.2. |
-| Invariantes | No asigna invariantes. Si se acepta, una regla nueva, `RN-BOT-026` (§4.3). Cita [INV-SEC-001](../invariants/security.md#inv-sec-001) (§8). |
+| Precisa | La Q3 de [bots-found.md](bots-found.md) («el sitio libre más cercano a la capital») y su §4.2, y el plazo de la caminata (`foundWalkTimeoutMs`) de su §4.3. |
+| Invariantes | No asigna invariantes. Regla nueva: `RN-BOT-026` (§4.3). Cita [INV-SEC-001](../invariants/security.md#inv-sec-001) (§8). |
 
 ## 1. Objetivo
 
@@ -44,7 +44,7 @@ mirar el terreno ni el bosque, que el espejo sólo conoce donde mira alguna cone
 
 ## 2. Scope
 
-**Entra (según §10).**
+**Entra.**
 
 - En los bots (`apps/bots`), sin cambios en el servidor, el protocolo ni el cliente web: el sitio se busca en el
   anillo de 28 a 96 alrededor de **cada ciudad propia en pie**, con el terreno, el bosque y los territorios que traen
@@ -129,12 +129,47 @@ decide.
 | Unit (Vitest, `log.test.ts`) | El resumen de las fundaciones por la ciudad del anillo. |
 | Go, simulación / integración / e2e | Ninguno nuevo: las reglas del servidor no cambian. |
 
-## 10. Preguntas de producto (para decidir)
+### 9.1 Precisiones de la implementación (2026-11-27)
 
-Cada fila deja la recomendación del agente, en negrita, y las alternativas. No se acepta ni se implementa hasta que
-la persona usuaria decida.
+- **Precisión (2026-11-27): un tile, en el anillo de su ciudad más cercana.** §4.1 ordena por la distancia a la
+  ciudad propia más cercana: un tile a 28 de la capital pero a 26 de una colonia no está en ningún anillo (queda por
+  debajo de `foundMinDistance` de la colonia), así que no se elige. Lo cubre `found.test.ts`.
+- **Precisión (2026-11-27): `fromCapital`.** Además de `from` (el id), `found` con `started` lleva `fromCapital`
+  (`true` si el sitio salió del anillo de la capital): el resumen cuenta así las fundaciones «junto a una colonia» sin
+  tener que seguir qué id es la capital tras una caída.
+- **Precisión (2026-11-27): el plazo de la caminata** (§4.2) usa `foundMaxDistance` (96) como tramo:
+  `foundWalkTimeoutMs × max(1, ⌈distancia a la capital / 96⌉)` (`foundWalkMs`).
+- **Precisión (2026-11-27): los bosques.** Además del terreno, la vista de la capital lleva los bosques de todas las
+  conexiones, para que el sitio junto a una colonia no cuente un bosque agotado que sólo ve su conexión.
 
-| # | Pregunta | Recomendación | Alternativas |
+- **Precisión (2026-11-27): lo que el espejo olvida** (lo encontró la pasada 1 de la prueba en vivo). La cuarta de
+  `_2_e29` volvió cinco veces con `INVALID_TARGET`, tile a tile: (62, 383), (63, 383), (64, 383) en la Región 0-5 y
+  (210, 376), (210, 377) en la 3-5, las dos con dueño, y la segunda a 18 tiles de una ciudad ajena. El espejo conserva
+  el terreno de lo que vio (es inmutable) pero vacía los territorios y las ciudades en cada snapshot: un sitio lejano
+  con el terreno conocido pasaba por libre, y al llegar el aldeano exactamente al sitio no se volvía a mirar. Ahora el
+  bot recuerda los territorios que ha visto, tal como los vio por última vez (`Bot.seenTerritories`), y los centros de
+  las ciudades ajenas que ya no trae ninguna conexión (`View.rememberedCenters`, que salen al caer la ciudad); y,
+  parado en el sitio, si lo que ya ve dice que no sirve, no pide fundar: la fundación termina con la causa nueva
+  `site_lost` y el sitio se aparta (`RN-BOT-021`). Lo cubren `found.test.ts` y `bot.test.ts`, verificados por
+  mutación (sin la comprobación al llegar, o sin recordar los territorios, cae su test).
+
+- **Precisión (2026-11-27): la conexión de colonia vuelve a su centro** (misma pasada; un fallo de E41 que no se veía
+  hasta que un bot con dos colonias fundaba otra). Tras fundar la 69, `_3_e29` marcó 37 min con una ciudad sin jugar:
+  el snapshot de la fundación, centrado en la ciudad nueva (`ResnapshotAt`, [multi-city.md](multi-city.md) §9.1),
+  llega a todas las sesiones del jugador, y la conexión de la colonia 59 se quedó mirando la 69. La casa ya volvía a la
+  capital ([bots-found.md](bots-found.md) §4.5); ahora cada conexión de colonia cuyo snapshot no trae su ciudad vuelve
+  a pedir su centro, una vez hasta ver la suya otra vez (`Colony.recentering`). Lo cubre `bot.test.ts` (su servidor
+  falso da ahora a cada conexión las ciudades del jugador, `FakeServer.peer`), verificado por mutación.
+- **Precisión (2026-11-27): la colonia fundada, una vez en el resumen** (misma pasada). La primera línea `colony` de la
+  70 llegó dos segundos antes que su `found` con `founded`, y el resumen la contaba dos veces («logradas 2»). El
+  `founded` completa ahora la colonia que ya hubiera (`log.test.ts`, verificado por mutación).
+
+## 10. Decisiones de producto (2026-11-27)
+
+La persona usuaria aceptó las tres recomendaciones (2026-11-27): cada fila deja la decisión, en negrita, y las
+alternativas descartadas. Cambiarlas es cambiar la spec.
+
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿Dónde busca el sitio? | **En el anillo de 28 a 96 de cada ciudad propia en pie, el más cercano a cualquiera, con la capital primero a igual distancia y el terreno de todas las conexiones.** Es donde el bot ya ve el terreno, y con los números de §1 `_2_e29` pasa de 0 tiles posibles a casi 4 000. | **Ensanchar sólo el anillo de la capital** (p. ej. a 128 o 160: el espejo no conoce el terreno tan lejos y la caminata sale de la vista); **dejarlo como está** (una capital al borde del mapa o rodeada de territorios con dueño se queda en dos ciudades: es la medida de hoy). |
 | Q2 | ¿De dónde sale el aldeano y quién paga? | **De la capital, como hoy, y el plazo de la caminata crece con la distancia (10 min por cada 96 tiles).** La capital es la única que junta piedra. | **De la ciudad más cercana al sitio** (camina menos, pero paga su almacén, y una colonia no junta piedra: habría que darle piedra o enviársela, otra estrategia); **de la capital con el plazo de hoy** (un sitio a 150 tiles fallaría por `timeout`). |
@@ -142,7 +177,7 @@ la persona usuaria decida.
 
 ## 11. Documentos relacionados
 
-- [bots-found.md](bots-found.md): el sitio, la caminata y su Q3, que esta spec precisaría.
+- [bots-found.md](bots-found.md): el sitio, la caminata y su Q3, que esta spec precisa.
 - [bots-all-cities.md](bots-all-cities.md): las conexiones de colonia y la fundación hasta el tope.
 - [multi-city.md](multi-city.md): las reglas del servidor para el sitio y quién paga.
 - [../roadmap/milestones.md](../roadmap/milestones.md): la prueba en vivo de E41 y la del repaso de la piedra.

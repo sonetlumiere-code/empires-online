@@ -34,7 +34,7 @@ import {
 import { foreignGoods, goodOf } from '../../web/src/state/civilizations';
 import { technologiesFor, researchBlockReason } from '../../web/src/state/technologies';
 import { civilizationUnit, unitAttacks, unitInfoOf } from '../../web/src/state/units';
-import { assaultBlockReason, walled } from '../../web/src/state/cityFall';
+import { type AssaultCheck, assaultBlockReason, walled } from '../../web/src/state/cityFall';
 import { FOUND_COST, maxOwnCities } from '../../web/src/state/multiCity';
 import {
   HOME_RADIUS,
@@ -115,9 +115,19 @@ export interface View {
    * (SPEC-BOTS-FOUND §4.5). Sin ellos, una.
    */
   readonly ownCityCount?: number;
-  readonly otherOwnCenters?: readonly Tile[];
-  /** Los territorios a la vista: el sitio de una fundación va en uno libre (§4.2). */
+  /** Con su id cuando se sabe: el sitio de una fundación dice de qué anillo salió (SPEC-BOTS-FOUND-SITE §4.4). */
+  readonly otherOwnCenters?: readonly OwnCenter[];
+  /**
+   * Los territorios a la vista: el sitio de una fundación va en uno libre (§4.2). Desde
+   * E42, también los vistos antes, como se vieron por última vez: el espejo los olvida al
+   * mover la vista y conserva el terreno (SPEC-BOTS-FOUND-SITE §9.1).
+   */
   readonly territories?: readonly TerritoryView[];
+  /**
+   * Los centros de las ciudades ajenas que vio alguna conexión y ya no están a la vista
+   * (SPEC-BOTS-FOUND-SITE §9.1): cuentan para los 24 tiles del sitio.
+   */
+  readonly rememberedCenters?: readonly Tile[];
 }
 
 type ResourceLine = { readonly resource: string; readonly amount: number };
@@ -360,8 +370,16 @@ export interface Memory {
 }
 
 /** Una fundación en curso (SPEC-BOTS-FOUND §4.3). */
+/** El centro de otra ciudad propia, con su id (SPEC-BOTS-FOUND-SITE §4.1). */
+export type OwnCenter = Tile & { readonly id?: number };
+
 export interface Founding {
   readonly site: Tile;
+  /**
+   * La ciudad propia de cuyo anillo salió el sitio (SPEC-BOTS-FOUND-SITE §4.4): la
+   * capital o una colonia; `null` si no se sabe su id.
+   */
+  readonly from?: number | null;
   readonly unitId: number;
   /** Distancia del sitio a la capital (para el registro). */
   readonly distance: number;
@@ -410,7 +428,8 @@ export interface StrayResult {
 }
 
 /** Por qué termina mal una fundación (§4.7). */
-export type FoundFailure = 'rejected' | 'unit_died' | 'stuck' | 'timeout' | 'city_fell';
+/** `site_lost`: al llegar, lo que ya ve del sitio dice que no sirve (SPEC-BOTS-FOUND-SITE §9.1). */
+export type FoundFailure = 'rejected' | 'unit_died' | 'stuck' | 'timeout' | 'city_fell' | 'site_lost';
 
 export interface FoundResult {
   readonly status: 'founded' | 'failed';
@@ -1210,15 +1229,18 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
 // El asalto (SPEC-BOTS-ASSAULT)
 // ─────────────────────────────────────────────────────────────
 
-/** El motivo de `assaultBlockReason` que sólo pide abrir la brecha (RN-BOT-014). */
-const WALL_REASON = 'La muralla está en pie';
-
 /** Los escoltas se quedan a esta distancia del centro, en el lado del punto de reunión. */
 const ESCORT_DISTANCE = 3;
 
-/** Si un motivo del HUD deja asaltar (ninguno) o sólo pide abrir antes la brecha. */
-function assaultableReason(reason: string | null): boolean {
-  return reason === null || reason.startsWith(WALL_REASON);
+/**
+ * El motivo del HUD con la muralla ya abierta (RN-BOT-014): lo que seguiría impidiendo el
+ * asalto tras la brecha. El HUD da el motivo de la muralla antes que la inmunidad, la Edad de
+ * Piedra, otro asalto, la protección o la paz; el bot no abre la muralla de una ciudad que,
+ * abierta, tampoco podría asaltar.
+ */
+function reasonBeyondWall(check: AssaultCheck): string | null {
+  const buildings = [...check.buildings].filter((b) => !(b.cityId === check.city.id && b.type === 'WALL'));
+  return assaultBlockReason({ ...check, buildings });
 }
 
 /** Si hay paz con ese jugador: pacto o alianza en vigor (RN-COMBAT-030). */
@@ -1249,7 +1271,7 @@ export function chooseAssaultTarget(
   const resting = (playerId: string) => (memory.victimCooldowns[playerId] ?? 0) > nowMs;
   const visible = new Map(view.foreignCities.map((c) => [c.id, c]));
   const reasonFor = (c: CityView) =>
-    assaultBlockReason({
+    reasonBeyondWall({
       unit: fighter,
       playerId: view.playerId,
       city: c,
@@ -1269,9 +1291,8 @@ export function chooseAssaultTarget(
     const live = visible.get(b.cityId);
     let isWalled: boolean;
     if (live) {
-      const reason = reasonFor(live);
-      if (!assaultableReason(reason)) continue;
-      isWalled = reason !== null;
+      if (reasonFor(live) !== null) continue;
+      isWalled = walled(live, view.foreignBuildings);
     } else {
       if (!b.era || !eraAtLeast(b.era, 'BRONZE_AGE')) continue;
       if (b.fallImmuneUntilMs !== undefined && b.fallImmuneUntilMs > nowMs) continue;
@@ -1283,10 +1304,9 @@ export function chooseAssaultTarget(
   if (contraHumanos) {
     for (const c of view.foreignCities) {
       if (c.ownerPlayerId === view.playerId || seen.has(c.id) || !usable(c.id) || resting(c.ownerPlayerId)) continue;
-      const reason = reasonFor(c);
-      if (!assaultableReason(reason)) continue;
+      if (reasonFor(c) !== null) continue;
       const t = { x: c.centerX, y: c.centerY };
-      candidates.push({ cityId: c.id, name: c.name, center: t, d: chebyshev(home, t), walled: reason === null ? 0 : 1 });
+      candidates.push({ cityId: c.id, name: c.name, center: t, d: chebyshev(home, t), walled: walled(c, view.foreignBuildings) ? 1 : 0 });
     }
   }
   if (candidates.length === 0) return null;
@@ -1362,7 +1382,21 @@ function assaultStrike(
   };
 
   if (isWalled) {
-    // La brecha: sólo el ariete golpea la muralla completa (RN-SIEGE-004, RN-BOT-014).
+    // La brecha: sólo el ariete golpea la muralla completa (RN-SIEGE-004, RN-BOT-014), y
+    // sólo si, abierta, la ciudad se podría asaltar (inmune, protegida, en paz…: se vuelve).
+    const fighter = fighterIds.map((id) => units.get(id)).find((u) => u !== undefined && u.status !== 'DEAD');
+    const beyond = fighter
+      ? reasonBeyondWall({
+          unit: fighter,
+          playerId: view.playerId,
+          city: victim,
+          ownCity: view.city,
+          buildings: view.foreignBuildings,
+          treaties: view.treaties,
+          nowMs,
+        })
+      : null;
+    if (beyond !== null) return { ...r, abandon: 'blocked', sawWall: true };
     if (ramIds.length === 0) return { ...r, abandon: 'no_rams', sawWall: true };
     r = { ...r, stage: 'breach', holder: null, sawWall: true };
     const wall = view.foreignBuildings.find((b) => b.cityId === victim.id && b.type === 'WALL' && b.status === 'COMPLETE');
@@ -1466,6 +1500,7 @@ function knownCenters(view: View): Tile[] {
   for (const b of view.botCities) out.push({ x: b.centerX, y: b.centerY });
   // El sitio que va a fundar otro bot del proceso cuenta como un centro (SPEC-BOTS-FOUND §9.1).
   for (const s of view.claimedSites ?? []) out.push(s);
+  for (const c of view.rememberedCenters ?? []) out.push(c);
   return out;
 }
 
@@ -1500,24 +1535,53 @@ export function foundSiteOk(view: View, t: Tile, centers: readonly Tile[] = know
 }
 
 /**
- * El sitio de una fundación (SPEC-BOTS-FOUND §4.2, Q3): el más cercano a la capital
- * en el anillo de `foundMinDistance` a `foundMaxDistance` que pase `foundSiteOk` y
- * no esté apartado; a igual distancia, el de `y` menor y luego el de `x` menor.
+ * El sitio de una fundación (SPEC-BOTS-FOUND §4.2, Q3; RN-BOT-026): el más cercano a
+ * cualquier ciudad propia en pie en su anillo de `foundMinDistance` a
+ * `foundMaxDistance`, que pase `foundSiteOk` y no esté apartado. A igual distancia, el
+ * de la capital, luego el de la colonia de id menor, y en cada anillo el de `y` menor y
+ * luego el de `x` menor. Un tile cuenta sólo en el anillo de su ciudad propia más
+ * cercana (SPEC-BOTS-FOUND-SITE §4.1).
  */
-export function chooseFoundSite(view: View, profile: Profile, memory: Memory, nowMs: number): Tile | null {
-  const home = center(view);
+export function chooseFoundSiteFrom(
+  view: View,
+  profile: Profile,
+  memory: Memory,
+  nowMs: number,
+): { site: Tile; from: number | null } | null {
+  const origins: { at: Tile; id: number | null }[] = [
+    { at: center(view), id: view.city.id },
+    ...(view.otherOwnCenters ?? []).map((c) => ({ at: { x: c.x, y: c.y }, id: c.id ?? null })),
+  ];
   const centers = knownCenters(view);
+  const nearest = (t: Tile) => Math.min(...origins.map((o) => chebyshev(o.at, t)));
   for (let d = profile.foundMinDistance; d <= profile.foundMaxDistance; d++) {
-    for (let y = home.y - d; y <= home.y + d; y++) {
-      const edge = y === home.y - d || y === home.y + d;
-      for (let x = home.x - d; x <= home.x + d; x += edge ? 1 : 2 * d) {
-        const t = { x, y };
-        if ((memory.foundSiteCooldowns[tileKey(t)] ?? 0) > nowMs) continue;
-        if (foundSiteOk(view, t, centers)) return t;
+    for (const o of origins) {
+      const home = o.at;
+      for (let y = home.y - d; y <= home.y + d; y++) {
+        const edge = y === home.y - d || y === home.y + d;
+        for (let x = home.x - d; x <= home.x + d; x += edge ? 1 : 2 * d) {
+          const t = { x, y };
+          if ((memory.foundSiteCooldowns[tileKey(t)] ?? 0) > nowMs) continue;
+          if (origins.length > 1 && nearest(t) < d) continue;
+          if (foundSiteOk(view, t, centers)) return { site: t, from: o.id };
+        }
       }
     }
   }
   return null;
+}
+
+/** El sitio de `chooseFoundSiteFrom`, sin la ciudad de su anillo. */
+export function chooseFoundSite(view: View, profile: Profile, memory: Memory, nowMs: number): Tile | null {
+  return chooseFoundSiteFrom(view, profile, memory, nowMs)?.site ?? null;
+}
+
+/**
+ * El plazo de la caminata (SPEC-BOTS-FOUND-SITE §4.2): `foundWalkTimeoutMs` por cada
+ * `foundMaxDistance` tiles de distancia del sitio a la capital, y al menos uno.
+ */
+export function foundWalkMs(profile: Pick<Profile, 'foundWalkTimeoutMs' | 'foundMaxDistance'>, distance: number): number {
+  return profile.foundWalkTimeoutMs * Math.max(1, Math.ceil(distance / profile.foundMaxDistance));
 }
 
 /** Termina la fundación en curso, con su resultado; un fallo aparta el sitio (RN-BOT-021). */
@@ -1595,13 +1659,15 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
     if (count >= maxOwnCities(view.city.era) || !eraAtLeast(view.city.era, 'BRONZE_AGE')) return mem;
     if (plan.full || nowMs < mem.foundSearchAtMs || !plan.affords({ ...FOUND_COST })) return reserveFoundStone(mem, plan);
     if (view.city.advance !== null && view.city.advance !== undefined) return reserveFoundStone(mem, plan);
-    const site = chooseFoundSite(view, profile, mem, nowMs);
-    if (!site) return { ...mem, foundSearchAtMs: nowMs + FOUND_SEARCH_WAIT_MS, foundNoSite: true };
+    const found = chooseFoundSiteFrom(view, profile, mem, nowMs);
+    if (!found) return { ...mem, foundSearchAtMs: nowMs + FOUND_SEARCH_WAIT_MS, foundNoSite: true };
+    const site = found.site;
     mem = { ...mem, foundNoSite: false };
     const u = chooseFounder(view, site);
     if (!u) return reserveFoundStone(mem, plan);
     f = {
       site,
+      from: found.from,
       unitId: u.id,
       distance: chebyshev(center(view), site),
       startedAtMs: nowMs,
@@ -1616,7 +1682,7 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
 
   // RN-BOT-019: lo que cuesta fundar no lo gasta ninguna otra regla.
   plan.reserve({ ...FOUND_COST });
-  if (nowMs - f.startedAtMs > profile.foundWalkTimeoutMs) return endFounding(mem, 'failed', 'timeout', nowMs, profile);
+  if (nowMs - f.startedAtMs > foundWalkMs(profile, f.distance)) return endFounding(mem, 'failed', 'timeout', nowMs, profile);
   const u = view.units.find((x) => x.id === f?.unitId);
   if (u?.status === 'DEAD') return endFounding(mem, 'failed', 'unit_died', nowMs, profile);
   if (f.orderedAtMs !== null) {
@@ -1627,7 +1693,11 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
   if (!u || plan.full || (f.lastPos !== null && u.status !== 'IDLE')) return mem;
 
   const here = { x: u.x, y: u.y };
-  const arrived = u.status === 'IDLE' && (chebyshev(here, f.site) === 0 || (chebyshev(here, f.site) <= 2 && foundSiteOk(view, here)));
+  // En el sitio, la campaña ya ve su territorio y sus vecinas: si no sirve, ni se pide
+  // (antes se pedía igual y el servidor lo rechazaba, SPEC-BOTS-FOUND-SITE §9.1).
+  const away = chebyshev(here, f.site);
+  if (u.status === 'IDLE' && away === 0 && !foundSiteOk(view, here)) return endFounding(mem, 'failed', 'site_lost', nowMs, profile);
+  const arrived = u.status === 'IDLE' && away <= 2 && foundSiteOk(view, here);
   if (arrived) {
     const key = `found:city:${u.id}`;
     if (!plan.free(key)) return mem;

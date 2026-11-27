@@ -79,6 +79,29 @@ class FakeServer implements WebSocketLike {
   population = 3;
   /** Los territorios del snapshot (vacío por defecto). */
   territories: Record<string, unknown>[] = [];
+  /** El terreno del snapshot, por chunks (vacío por defecto). */
+  terrain: Record<string, unknown>[] = [];
+  /**
+   * Otra conexión del mismo jugador (la casa): sus ciudades, las de `others` y las de
+   * `ownCities`, son también las de ésta, como en el servidor de verdad.
+   */
+  peer: FakeServer | null = null;
+
+  private otherCities(): Record<string, unknown>[] {
+    const peer = this.peer;
+    if (!peer) return this.others;
+    const out = [...peer.others];
+    for (const c of peer.ownCities ?? []) {
+      if (c.id === peer.cityId || out.some((o) => o.id === c.id)) continue;
+      out.push({
+        id: c.id, ownerPlayerId: PLAYER, name: `bot_constructor_1polis ${String(c.id)}`, centerX: c.centerX, centerY: c.centerY,
+        era: c.era, civilization: this.civilization, faction: 'NEUTRAL', factionJoin: null, clan: null, population: 3,
+        populationLimit: 50, presenceState: 'ONLINE', protectionUntilMs: null,
+        stocks: { WOOD: 0, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 },
+      });
+    }
+    return out;
+  }
 
   /** Si un tile entra en el área de interés de la vista actual. */
   private inView(x: number, y: number): boolean {
@@ -97,11 +120,11 @@ class FakeServer implements WebSocketLike {
       serverTimeMs: NOW,
       tick: 1,
       chunks: [],
-      terrain: [],
+      terrain: this.terrain,
       units: this.visible(),
       ...(this.ownCities ? { ownCities: this.ownCities } : {}),
       cities: [
-        ...this.others,
+        ...this.otherCities(),
         {
           id: this.cityId,
           ownerPlayerId: PLAYER,
@@ -167,6 +190,8 @@ function newBot(
     say: (t) => said.push(t),
     socketFactory: () => {
       const s = new FakeServer(serverCivilization);
+      // Las conexiones que no son la casa ven las mismas ciudades que ella.
+      if (sockets.length > 0) s.peer = sockets[0] ?? null;
       setup(s);
       sockets.push(s);
       return s;
@@ -964,6 +989,90 @@ describe('todas las ciudades del bot (SPEC-BOTS-ALL-CITIES §4.1, §4.3, §4.7)'
     bot.stop();
   });
 
+  it('RN-BOT-026: el decisor ve el terreno de las colonias, y los centros propios llevan su id', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot } = await withCities(lines, sockets, [cityAt(30, 300, 300)]);
+    // El sitio junto a una colonia sólo lo conoce su conexión (SPEC-BOTS-FOUND-SITE §4.1).
+    const colonyLink = sockets[1] as FakeServer;
+    colonyLink.terrain = [{ cx: 9, cy: 9, size: 32, terrain: Buffer.alloc(32 * 32, 1).toString('base64') }];
+    colonyLink.snapshot();
+    await tick();
+    const v = bot.buildView();
+    expect(v?.terrainAt(300, 300)).toBe(1);
+    expect(v?.terrainAt(100, 100)).toBeUndefined();
+    expect(v?.otherOwnCenters).toEqual([{ id: 30, x: 300, y: 300 }]);
+    bot.stop();
+  });
+
+  it('la conexión de una colonia vuelve a su centro tras el snapshot de una fundación', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    // La prueba en vivo de E42: tras fundar la cuarta, el snapshot centrado en la nueva llegó
+    // también a las conexiones de colonia, y la de la 59 se quedó 37 min mirando la 69.
+    const all = [cityAt(30, 300, 300), cityAt(40, 200, 400)];
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.constructor, new Directory(), (s) => {
+      s.peer = null;
+      s.aoi = true;
+      s.others = all;
+      s.ownCities = [
+        { id: 10, centerX: 100, centerY: 100, era: 'BRONZE_AGE' },
+        { id: 30, centerX: 300, centerY: 300, era: 'BRONZE_AGE' },
+        { id: 40, centerX: 200, centerY: 400, era: 'BRONZE_AGE' },
+      ];
+    });
+    await bot.start();
+    await new Promise((r) => setTimeout(r, 10));
+    await tick();
+    const colony30 = sockets[1] as FakeServer;
+    expect(views(colony30)).toEqual([{ x: 300, y: 300 }]);
+    // El servidor la recentra en otra ciudad (ResnapshotAt): vuelve a pedir la suya.
+    colony30.viewCenter = { x: 200, y: 400 };
+    colony30.snapshot();
+    await tick();
+    expect(views(colony30)).toEqual([{ x: 300, y: 300 }, { x: 300, y: 300 }]);
+    // Si tampoco la trae (acaba de caer), no insiste.
+    colony30.others = [cityAt(40, 200, 400)];
+    colony30.viewCenter = { x: 200, y: 400 };
+    colony30.snapshot();
+    await tick();
+    colony30.snapshot();
+    await tick();
+    expect(views(colony30)).toHaveLength(3);
+    bot.stop();
+  });
+
+  it('recuerda los territorios y las ciudades ajenas que vio cuando el espejo los olvida', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot } = await withCities(lines, sockets, [cityAt(30, 300, 300)]);
+    // La prueba en vivo de E42: el terreno se queda en el espejo, los territorios y las
+    // ciudades no; un sitio lejano parecía libre y el servidor lo rechazaba.
+    const colonyLink = sockets[1] as FakeServer;
+    colonyLink.territories = [
+      { id: 61, name: 'Región 0-5', minX: 0, minY: 320, maxX: 63, maxY: 383, ownerType: 'PLAYER', ownerId: ENEMY,
+        ownerFaction: 'NEUTRAL', ownerClan: null, contested: false },
+    ];
+    colonyLink.peer = null;
+    colonyLink.others = [cityAt(30, 300, 300), cityAt(17, 228, 366, { ownerPlayerId: ENEMY, name: 'otra' })];
+    colonyLink.snapshot();
+    await tick();
+    expect(bot.buildView()?.rememberedCenters).toEqual([]);
+    // La vista se mueve: el snapshot nuevo ya no trae ni el territorio ni la ciudad.
+    colonyLink.territories = [];
+    colonyLink.others = [cityAt(30, 300, 300)];
+    colonyLink.snapshot();
+    await tick();
+    const v = bot.buildView();
+    expect(v?.territories?.map((t) => [t.id, t.ownerType])).toEqual([[61, 'PLAYER']]);
+    expect(v?.rememberedCenters).toEqual([{ x: 228, y: 366 }]);
+    // Si cae, deja de contar.
+    (sockets[0] as FakeServer).push('city.fallen', { cityId: 17, ownerPlayerId: ENEMY, byPlayerId: PLAYER, atMs: NOW });
+    await tick();
+    expect(bot.buildView()?.rememberedCenters).toEqual([]);
+    bot.stop();
+  });
+
   it('cae una de tres: se cierra su conexión y las demás siguen', async () => {
     const lines: string[] = [];
     const sockets: FakeServer[] = [];
@@ -1012,12 +1121,16 @@ describe('todas las ciudades del bot (SPEC-BOTS-ALL-CITIES §4.1, §4.3, §4.7)'
     home.snapshot();
     await new Promise((r) => setTimeout(r, 10));
     await tick();
+    // La conexión de la tomada deja de traer su ciudad: está en pie y no juega.
+    const taken = sockets[1] as FakeServer;
+    taken.peer = null;
+    taken.snapshot();
+    await tick();
     const inner = bot as unknown as AllInner;
     inner.logStock();
     bot.stop();
     const log = parseLog(lines.join(''));
     expect(log.find((e) => e.event === 'colony')).toMatchObject({ cityId: 41, origin: 'taken', villagers: 0, target: 8 });
-    // La conexión de la tomada no trae su ciudad (el falso no la tiene): está en pie y no juega.
     expect(log.find((e) => e.event === 'cities')).toMatchObject({ standing: 2, played: 1, cap: 1 });
   });
 });

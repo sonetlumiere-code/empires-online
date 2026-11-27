@@ -272,6 +272,32 @@ describe('el resumen de la fundación (SPEC-BOTS-FOUND §4.7)', () => {
     expect(text).toContain('cayó (una colonia) ante bot_saqueador_1polis');
     expect(text).toContain('constructor: fundaciones 1 (media hasta fundar 9m00s) · colonias crecidas 1');
   });
+
+  it('la primera línea de la colonia antes que su founded no la cuenta dos veces (la prueba en vivo de E42)', () => {
+    const log = jsonl
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .map((l) => (l.event === 'found' && l.status === 'founded' ? { ...l, t: 10 * M + 500, ordinal: 3 } : l))
+      .sort((a, b) => Number(a.t) - Number(b.t))
+      .map((l) => JSON.stringify(l))
+      .join('\n');
+    const [c] = summarize(parseLog(log));
+    expect(c?.colonies).toHaveLength(1);
+    expect(c?.colonies[0]).toMatchObject({ cityId: 30, origin: 'founded', ordinal: 3, foundedMs: 10 * M + 500 });
+    expect(formatSummary(c ? [c] : [])).toContain('fundaciones: empezadas 2 · logradas 1');
+  });
+
+  it('cuenta las que salieron del anillo de una colonia (SPEC-BOTS-FOUND-SITE §4.4)', () => {
+    const log = jsonl
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .map((l) => (l.status === 'started' ? { ...l, from: l.t === 5 * M ? 10 : 30, fromCapital: l.t === 5 * M } : l))
+      .map((l) => JSON.stringify(l))
+      .join('\n');
+    const [c] = summarize(parseLog(log));
+    expect(c).toMatchObject({ foundsStarted: 2, foundsFromColony: 1 });
+    expect(formatSummary(c ? [c] : [])).toContain('fundaciones: empezadas 2 (1 junto a una colonia) · logradas 1 · fallidas: rejected 1');
+  });
 });
 
 describe('el resumen de todas las ciudades (SPEC-BOTS-ALL-CITIES §4.7)', () => {

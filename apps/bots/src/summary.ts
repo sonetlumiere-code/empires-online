@@ -54,6 +54,8 @@ export interface BotSummary {
   readonly falls: readonly FallRecovery[];
   // ── La fundación (SPEC-BOTS-FOUND §4.7) ──
   readonly foundsStarted: number;
+  /** De ellas, las que salieron del anillo de una colonia (SPEC-BOTS-FOUND-SITE §4.4). */
+  readonly foundsFromColony: number;
   /** Fundaciones que terminaron mal, por causa. */
   readonly foundFailures: Readonly<Record<string, number>>;
   /** Cada colonia (fundada, tomada o que ya estaba al arrancar), con lo que tardó en crecer. */
@@ -204,6 +206,7 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
     let wallsBreached = 0;
     const falls: ({ -readonly [K in keyof FallRecovery]: FallRecovery[K] } & { t: number; population: number })[] = [];
     let foundsStarted = 0;
+    let foundsFromColony = 0;
     const foundFailures: Record<string, number> = {};
     const colonies: ({ -readonly [K in keyof ColonyGrowth]: ColonyGrowth[K] } & {
       t: number;
@@ -341,11 +344,19 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           break;
         case 'found':
           if (l.status === 'started') foundsStarted++;
+          if (l.status === 'started' && l.fromCapital === false) foundsFromColony++;
           if (l.status === 'no_site') inc(foundFailures, 'no_site');
           if (l.status === 'failed') inc(foundFailures, String(l.cause));
           if (l.status === 'founded') {
             const ordinal = typeof l.ordinal === 'number' ? l.ordinal : 2;
             const era = eras[ERA_FOR_ORDINAL[ordinal] ?? 'BRONZE_AGE'] ?? 0;
+            // La primera línea `colony` puede llegar antes que su `founded` (la prueba en vivo
+            // de E42 dio la 70 dos veces): es la misma colonia.
+            const early = colonyOf(l.cityId);
+            if (early) {
+              Object.assign(early, { origin: 'founded', ordinal, foundedMs: l.t - start.t, fromEraMs: l.t - start.t - era });
+              break;
+            }
             colonies.push({
               t: l.t,
               cityId: typeof l.cityId === 'number' ? l.cityId : null,
@@ -502,6 +513,7 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
       wallsBreached,
       falls: falls.map(({ t: _t, population: _p, ...f }) => f),
       foundsStarted,
+      foundsFromColony,
       foundFailures,
       colonies: colonies.map(({ t: _t, firstWood, lastWood, ...c }) => {
         const h = firstWood && lastWood ? (lastWood.t - firstWood.t) / 3_600_000 : 0;
@@ -621,7 +633,8 @@ export function formatSummary(rows: readonly BotSummary[]): string {
       );
     }
     if (r.foundsStarted > 0 || r.foundFailures.no_site) {
-      out.push(`  fundaciones: empezadas ${r.foundsStarted} · logradas ${r.colonies.filter((c) => c.origin === 'founded').length} · fallidas: ${list(r.foundFailures)}`);
+      const ring = r.foundsFromColony > 0 ? ` (${r.foundsFromColony} junto a una colonia)` : '';
+      out.push(`  fundaciones: empezadas ${r.foundsStarted}${ring} · logradas ${r.colonies.filter((c) => c.origin === 'founded').length} · fallidas: ${list(r.foundFailures)}`);
     }
     for (const c of r.colonies) {
       const how =

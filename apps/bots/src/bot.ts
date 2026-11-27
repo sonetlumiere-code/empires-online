@@ -157,6 +157,11 @@ interface Colony {
   last: CityView | null;
   /** De dónde salió (para el registro, §4.7). */
   readonly origin: 'founded' | 'taken' | 'start';
+  /**
+   * Ya pidió volver a su centro tras un snapshot que no traía su ciudad (el de una
+   * fundación, centrado en la nueva): no lo repite hasta ver la suya otra vez.
+   */
+  recentering?: boolean;
 }
 
 type Stocks = Record<string, number>;
@@ -201,6 +206,13 @@ export class Bot {
    * (SPEC-BOTS-FOUND §4.5, como `ownCityHomes` del cliente).
    */
   private readonly homes = new Map<number, Tile>();
+  /**
+   * Los territorios y los centros de ciudades ajenas que ha visto alguna conexión, como
+   * se vieron por última vez: el espejo los olvida al mover la vista y el terreno no, así
+   * que un sitio lejano parecía libre (la prueba en vivo de SPEC-BOTS-FOUND-SITE).
+   */
+  private readonly seenTerritories = new Map<number, TerritoryView>();
+  private readonly seenCities = new Map<number, Tile>();
   /**
    * Cada ciudad propia que no es la capital, por id: su conexión, su memoria y lo que
    * juega (SPEC-BOTS-FOUND §4.4, §4.5; SPEC-BOTS-ALL-CITIES §4.1, §4.3).
@@ -657,8 +669,16 @@ export class Bot {
     const fs = this.field?.store.getState() ?? null;
     const chunkSize = hs.world?.chunkSize ?? 32;
 
-    const lookup = (x: number, y: number) =>
-      terrainAt(hs.terrain, chunkSize, x, y) ?? (fs ? terrainAt(fs.terrain, chunkSize, x, y) : undefined);
+    // El terreno de todas las conexiones, la casa primero: el sitio de una fundación puede
+    // ir junto a una colonia, que sólo ve su conexión (SPEC-BOTS-FOUND-SITE §4.1).
+    const stores = this.links().map((l) => l.store.getState());
+    const lookup = (x: number, y: number) => {
+      for (const st of stores) {
+        const t = terrainAt(st.terrain, chunkSize, x, y);
+        if (t !== undefined) return t;
+      }
+      return undefined;
+    };
     if (this.forestTiles.length === 0) {
       this.forestTiles = forestTilesAround({ x: city.centerX, y: city.centerY }, 40, lookup).slice(0, 48);
     }
@@ -680,7 +700,7 @@ export class Bot {
       foreignCities: [...cities.values()].filter((c) => c.ownerPlayerId !== playerId).sort(byId),
       foreignBuildings: [...buildings.values()].filter((b) => b.cityId !== city.id).sort(byId),
       terrainAt: lookup,
-      forests: hs.forests,
+      forests: this.knownForests(stores),
       forestTiles: this.forestTiles,
       hills: this.hills,
       botCities: this.deps.directory.list(),
@@ -690,6 +710,7 @@ export class Bot {
       market: hs.market,
       ...this.ownCitiesFields(city.id),
       territories: this.knownTerritories(),
+      rememberedCenters: this.rememberedCenters(playerId),
     };
   }
 
@@ -700,16 +721,47 @@ export class Bot {
    * libre» en el territorio de la propia colonia).
    */
   private knownTerritories(): TerritoryView[] {
-    const byId = new Map<number, TerritoryView>();
+    const now = new Map<number, TerritoryView>();
     for (const link of this.links()) {
-      for (const t of link.store.getState().territories.values()) if (!byId.has(t.id)) byId.set(t.id, t);
+      for (const t of link.store.getState().territories.values()) if (!now.has(t.id)) now.set(t.id, t);
     }
-    return [...byId.values()].sort((a, b) => a.id - b.id);
+    // Lo que se ve ahora manda; lo demás, como se vio por última vez (SPEC-BOTS-FOUND-SITE §9.1).
+    for (const [id, t] of now) this.seenTerritories.set(id, t);
+    return [...this.seenTerritories.values()].sort((a, b) => a.id - b.id);
   }
 
-  /** Cuántas ciudades propias conoce y los centros de las demás (SPEC-BOTS-FOUND §4.5). */
+  /** Los centros de las ciudades ajenas vistas que ya no trae ninguna conexión (SPEC-BOTS-FOUND-SITE §9.1). */
+  private rememberedCenters(playerId: string): Tile[] {
+    const visible = new Set<number>();
+    for (const link of this.links()) {
+      for (const c of link.store.getState().cities.values()) {
+        if (c.ownerPlayerId === playerId) continue;
+        visible.add(c.id);
+        this.seenCities.set(c.id, { x: c.centerX, y: c.centerY });
+      }
+    }
+    return [...this.seenCities].filter(([id]) => !visible.has(id)).sort(([a], [b]) => a - b).map(([, t]) => t);
+  }
+
+  /**
+   * Los bosques que traen las conexiones, la casa primero (sólo hay más de un almacén con
+   * colonias): el sitio junto a una colonia mira si su bosque está agotado.
+   */
+  private knownForests(stores: readonly ReturnType<Link['store']['getState']>[]): ReadonlyMap<string, ForestView> {
+    const [first, ...rest] = stores;
+    if (!first) return new Map();
+    if (rest.length === 0) return first.forests;
+    const out = new Map(first.forests);
+    for (const st of rest) for (const [k, f] of st.forests) if (!out.has(k)) out.set(k, f);
+    return out;
+  }
+
+  /** Cuántas ciudades propias conoce y los centros de las demás, con su id (SPEC-BOTS-FOUND §4.5). */
   private ownCitiesFields(cityId: number): Pick<View, 'ownCityCount' | 'otherOwnCenters'> {
-    const others = [...this.homes].filter(([id]) => id !== cityId).sort(([a], [b]) => a - b).map(([, t]) => t);
+    const others = [...this.homes]
+      .filter(([id]) => id !== cityId)
+      .sort(([a], [b]) => a - b)
+      .map(([id, t]) => ({ id, x: t.x, y: t.y }));
     return { ownCityCount: Math.max(1, this.homes.size), otherOwnCenters: others };
   }
 
@@ -938,7 +990,17 @@ export class Bot {
     if (f && (before === null || before.startedAtMs !== f.startedAtMs)) {
       // La ciudad que funda (2, 3 o 4) y la era de la capital (SPEC-BOTS-ALL-CITIES §4.7).
       const ordinal = (f.cities ?? 1) + 1;
-      this.emit('found', { status: 'started', unitId: f.unitId, site: f.site, distance: f.distance, ordinal, era: this.ownCity()?.era ?? null });
+      // `from`: la ciudad de cuyo anillo salió el sitio (SPEC-BOTS-FOUND-SITE §4.4).
+      this.emit('found', {
+        status: 'started',
+        unitId: f.unitId,
+        site: f.site,
+        distance: f.distance,
+        ordinal,
+        era: this.ownCity()?.era ?? null,
+        from: f.from ?? null,
+        fromCapital: f.from === null || f.from === undefined || f.from === this.ownCity()?.id,
+      });
       this.deps.say(`${this.name}: un aldeano sale a fundar en (${f.site.x}, ${f.site.y}), a ${f.distance} tiles`);
     }
     if (before && (f === null || f.startedAtMs !== before.startedAtMs) && after.foundResult) {
@@ -1106,6 +1168,8 @@ export class Bot {
     }
     // Una ciudad que cae (SPEC-BOTS-ASSAULT §4.4, §4.6): la que asaltaba la partida, o la propia.
     if (m.type === 'city.fallen') {
+      // La caída ya no cuenta como vecina de un sitio.
+      this.seenCities.delete(m.payload.cityId);
       const before = this.memory.raid;
       this.memory = onTargetFell(this.memory, m.payload.cityId, m.payload.ownerPlayerId, nowMs, this.deps.profile);
       this.logAssault(before, this.memory.raid);
@@ -1127,9 +1191,19 @@ export class Bot {
       }
     }
     if ((m.type === 'world.snapshot' || m.type === 'city.update') && link !== this.home) this.refreshHomes(link);
-    // La conexión de una colonia mira su centro en cuanto llega su primer snapshot.
+    // La conexión de una colonia mira su centro en cuanto llega su primer snapshot. El de
+    // una fundación llega a todas las sesiones centrado en la ciudad nueva: la colonia
+    // vuelve a su centro, una vez, como la casa a la capital (SPEC-BOTS-FOUND-SITE §9.1).
     if (m.type === 'world.snapshot') {
-      for (const c of this.colonies.values()) if (c.link === link) this.followColony(c);
+      for (const c of this.colonies.values()) {
+        if (c.link !== link) continue;
+        if (link.store.getState().cities.has(c.cityId)) c.recentering = false;
+        else if (c.linkView !== null && !c.recentering) {
+          c.linkView = null;
+          c.recentering = true;
+        }
+        this.followColony(c);
+      }
     }
     if (link !== this.home) return;
 
