@@ -83,7 +83,7 @@ inmunidad y la era mínima del asalto no cambian ([city-fall.md](city-fall.md) �
 | Qué | Qué pasa |
 |---|---|
 | La fila | **Nueva**, del vencedor, en el mismo centro, en el hueco libre del vencedor; la caída se queda con `fallen_at` como en E31 (`RN-CITY-020` no cambia). `taken_from_city_id` apunta a la caída. |
-| Nombre y era | Los de la caída. |
+| Nombre y era | Los de la caída. **Precisión (2026-11-26, [city-names.md](city-names.md)):** si el vencedor ya tiene en pie otra con ese nombre, el primero libre de su serie (`RN-CITY-045`). |
 | Edificios completos (casas, taller, mercado, castillo) | **Pasan a la tomada** (cambian de ciudad, con su id y su vida). |
 | Edificios en obra y la muralla | En obra: se pierden (`DESTROYED`), como en E31. La muralla está caída (la ciudad estaba en brecha); si la reconstruía, estaba en obra. |
 | Almacén, encargos | Arden como en E31 (Q3): la tomada nace con el almacén a cero y sin encargos. |

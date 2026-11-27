@@ -128,7 +128,7 @@ Ninguno nuevo. `cityName` de los eventos de fundación, caída y toma lleva el n
   (`refoundSeed`, [city-fall.md](city-fall.md) §9), que el tick conoce antes de la transacción; sólo cambia el nombre
   con que nace la refundada.
 - **Sin migración** (Q6): no hay índice único sobre `(owner_player_id, name)`.
-- `city.CityName` y `city.SecondCityName` desaparecen o pasan a ser la función de la serie.
+- `city.CityName` y `city.SecondCityName` desaparecen y dejan paso a la función de la serie (§9.1).
 
 ## 8. Invariantes
 
@@ -144,6 +144,27 @@ Ninguno nuevo. `cityName` de los eventos de fundación, caída y toma lleva el n
 | Simulación | La fundación aplica a la RAM el nombre que devuelve la transacción. |
 | Integración | Fundar tras caer la capital da `<base>` y no «X II II»; tras caer la II da `<base> II`; tomar una ciudad con un nombre que el vencedor ya tiene da `… II`; refundar desde una «X III» da `<base>`. |
 | Humo | `--multiciudad`: la fundada lleva el primer nombre libre de la serie, no «<capital> II». |
+
+### 9.1 Precisiones de la implementación (2026-11-26)
+
+- **Precisión (2026-11-26): las funciones.** `city.BaseName(username)` es `username + "polis"`; `city.SeriesBase`
+  quita **todos** los numerales del final, así que una «X II II» de antes de E40 tiene por base «X»;
+  `city.FirstFreeName(base, enPie)` recorre la base, « II», « III» y « IV» y, con los cuatro ocupados (que el tope ya
+  impide), devuelve la base; `city.FoundedName` y `city.TakenName` son la fundación y la toma.
+- **Precisión (2026-11-26): el tick ya no propone nombre.** `cityfall.Founding` pierde su campo `Name`: lo elige
+  `FoundCity` con los nombres de la misma lectura de las ciudades en pie (`FOR UPDATE`, bajo el cerrojo de fundación)
+  y el `username` de `players`. `cityfall.Fall.Name` sigue siendo el nombre de la caída: el de la tomada si no se repite,
+  el `cityName` de los eventos de la caída y la semilla de la refundación.
+- **Precisión (2026-11-26): la serie de la tomada no mira la del vencedor.** Si el vencedor ya tiene una
+  `smoke_caidapolis`, la tomada es `smoke_caidapolis II` aunque sea la primera ciudad de la serie de otro jugador; al
+  fundar, en cambio, el vencedor sigue en la suya (`smoke_runnerpolis II`).
+- **Precisión (2026-11-26): el humo.** `--multiciudad` calcula el nombre esperado con `nombreDeLaFundada` (con su test
+  en `scripts/smoke.test.mjs`) a partir de las propias que ve antes de fundar.
+- **Tests escritos.** `TestLaFundadaLlevaElPrimerNombreLibreDeSuSerie`, `TestLaBaseDeUnNombreQuitaSusNumerales` y
+  `TestLaTomadaConservaSuNombreSalvoQueSeRepita` (unit); `TestUnAldeanoFundaLaSegundaCiudad` (simulación: la RAM toma
+  el nombre de la transacción); `TestLaFundacionTrasCaerLaCapitalRecuperaElNombreBase`,
+  `TestLaFundacionTrasCaerLaDelMedioTomaSuNombre`, `TestLaTomadaConUnNombreRepetidoTomaElSiguiente` y
+  `TestLaRefundadaLlevaElNombreBase` (integración, `city_names_integration_test.go`).
 
 ## 10. Decisiones de producto (2026-11-26)
 

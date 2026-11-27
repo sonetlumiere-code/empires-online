@@ -128,7 +128,9 @@ reserva vuelve y la orden se rechaza.
 
 ### 4.2 Con qué nace (Q5)
 
-- **Nombre:** el de la capital seguido de « II» (`bot_saqueador_1polis II`).
+- **Nombre:** el de la capital seguido de « II» (`bot_saqueador_1polis II`). **Precisión (2026-11-26, [city-names.md](city-names.md)):** desde
+  E40, el primer nombre libre de la serie del dueño (`RN-CITY-044`): `bot_saqueador_1polis II` si sólo tiene la capital,
+  pero `bot_saqueador_1polis` si la capital cayó y la que queda es la «II».
 - **Era:** la de la ciudad que la funda.
 - **Almacén** a cero; **edificios**, ninguno.
 - **Unidades:** el aldeano fundador pasa a la ciudad nueva (deja la población de la suya) y nacen dos aldeanos más en

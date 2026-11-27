@@ -940,7 +940,7 @@ segunda tomada; con la RAM sin conservar los heredados, el de simulación.
 | Aplicación | DOMAIN, TEST |
 | Milestone | E40 |
 | Política ante violación | Sin detección en runtime; la garantía es estructural y de test |
-| Cobertura | **Sin cobertura**: registrado con [SPEC-CITY-NAMES](../specs/city-names.md) el 2026-11-26, antes de su código. |
+| Cobertura | **Cubierto** por `TestLaFundadaLlevaElPrimerNombreLibreDeSuSerie`, `TestLaTomadaConservaSuNombreSalvoQueSeRepita`, `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion`, `TestLaFundacionTrasCaerLaCapitalRecuperaElNombreBase`, `TestLaFundacionTrasCaerLaDelMedioTomaSuNombre` y `TestLaTomadaConUnNombreRepetidoTomaElSiguiente` (integration) |
 
 **Enunciado.** Tras una fundación, una toma o una refundación, ninguna otra ciudad en pie del mismo dueño lleva el
 nombre de la ciudad nueva, y el nombre que elige el servidor termina como mucho en un numeral (« II», « III» o « IV»).
@@ -956,7 +956,15 @@ avisos). Antes de E40 salían «X II II» y tres `smoke_caidapolis` en el mismo 
 - Las transacciones de la fundación, la toma y la refundación leen esos nombres bajo el cerrojo de fundación con el que
   ya eligen el hueco. La base **no** lo garantiza con un índice (Q6): un nombre repetido no debe hacer fallar una caída.
 
-**Cómo se verifica.** Pendiente: los tests de §9 de la spec.
+**Cómo se verifica.** `TestLaFundadaLlevaElPrimerNombreLibreDeSuSerie` y `TestLaTomadaConservaSuNombreSalvoQueSeRepita`
+(unit: el primer libre con la capital caída, con la del medio caída y con una tomada en pie; la base de «X II II»),
+`TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion`, `TestLaFundacionTrasCaerLaCapitalRecuperaElNombreBase`,
+`TestLaFundacionTrasCaerLaDelMedioTomaSuNombre` y `TestLaTomadaConUnNombreRepetidoTomaElSiguiente` (integration: el
+nombre que guarda la base) — **existen y pasan**. **Verificado por mutación** (2026-11-26): con `FirstFreeName` sin
+mirar las ciudades en pie (restaurado desde una copia y comprobado con `cmp`) caen los dos unit; con la fundación y la
+toma leyendo sólo la mitad de los nombres en pie, caen `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion`
+(«vencidopolis» repetida) y `TestLaTomadaConUnNombreRepetidoTomaElSiguiente` (dos «vencidopolis» en el vencedor); con
+la refundación con el nombre de la caída, `TestLaRefundadaLlevaElNombreBase` (`RN-CITY-046`).
 
 **Violación en runtime.** Ninguna detección: un nombre repetido es cosmético y no bloquea nada.
 

@@ -45,7 +45,7 @@ func conAlmacen(t *testing.T, ctx context.Context, store *postgres.Store, cityID
 func (c caidaDePrueba) fundacion(t *testing.T) cityfall.Founding {
 	return cityfall.Founding{
 		OwnerID: c.vencido.Player.ID, FromCityID: c.vencido.City.ID, UnitID: c.vencido.Units[0].ID,
-		Name: city.SecondCityName(c.vencido.City.Name), Era: city.EraBronze, Tick: 11, Now: c.ahora,
+		Era: city.EraBronze, Tick: 11, Now: c.ahora,
 		AtMs: c.ahora.UnixMilli(),
 		Place: func(existing []world.Tile) (cityfall.Site, error) {
 			assert.Contains(t, existing, c.vencido.City.Center(), "las ciudades en pie, para la distancia")

@@ -3553,6 +3553,7 @@ dos iguales en pie.
 1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; [INV-CITY-025](../invariants/city.md#inv-city-025)
    registrado sin cobertura; precisiones de `RN-CITY-027`, `RN-CITY-032` y `RN-CITY-037` y de
    [more-cities.md](../specs/more-cities.md) §9.1.
-2. **PENDIENTE** — La serie y el primer nombre libre en `internal/domain/city`, elegidos en las transacciones de la
-   fundación, la toma y la refundación, con sus tests (unit, simulación, integración).
+2. **HECHO** — La serie y el primer nombre libre en `internal/domain/city` (`FoundedName`, `TakenName`,
+   `SeriesBase`), elegidos en las transacciones de la fundación, la toma y la refundación, con sus tests (unit,
+   simulación, integración); `INV-CITY-025` a ✓, verificado por mutación.
 3. **PENDIENTE** — El humo `--multiciudad`; docs; `verify:full`, mutaciones y prueba en vivo.

@@ -59,6 +59,7 @@ import {
   tecnologiaDelHumo,
   plazoDeInvestigacion,
   sitioParaFundar,
+  nombreDeLaFundada,
 } from './smoke.mjs';
 
 // Terrenos según internal/game/world/tile.go
@@ -598,4 +599,15 @@ test('esLlegadaNueva: sólo la llegada del remitente posterior al trato y con es
 test('ultimoIdDelRegistro: el id más alto de la página, o 0 si está vacía', () => {
   assert.equal(ultimoIdDelRegistro({ entries: [{ id: 9 }, { id: 31 }, { id: 4 }] }), 31);
   assert.equal(ultimoIdDelRegistro({ entries: [] }), 0);
+});
+
+test('nombreDeLaFundada: el primer nombre libre de la serie del usuario (SPEC-CITY-NAMES)', () => {
+  assert.equal(nombreDeLaFundada('smoke_multi', ['smoke_multipolis']), 'smoke_multipolis II');
+  assert.equal(nombreDeLaFundada('smoke_multi', ['smoke_multipolis II']), 'smoke_multipolis', 'cayó la capital: vuelve la base');
+  assert.equal(nombreDeLaFundada('smoke_multi', ['smoke_multipolis', 'smoke_multipolis III']), 'smoke_multipolis II');
+  assert.equal(nombreDeLaFundada('smoke_multi', ['smoke_caidapolis']), 'smoke_multipolis', 'una tomada no da su serie');
+  assert.equal(
+    nombreDeLaFundada('smoke_multi', ['smoke_multipolis', 'smoke_multipolis II', 'smoke_multipolis III']),
+    'smoke_multipolis IV',
+  );
 });

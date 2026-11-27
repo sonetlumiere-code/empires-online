@@ -76,13 +76,15 @@ func (h *harness) fundarCiudad(unitID int64) {
 }
 
 // RN-CITY-030 a RN-CITY-033: el aldeano funda en su tile, paga su ciudad, la
-// nueva nace con el nombre de la capital y « II», en su era, con el fundador y
-// dos aldeanos más; la capital sigue siendo la primera.
+// nueva nace en su era, con el fundador y dos aldeanos más, y con el nombre que
+// eligió la transacción (SPEC-CITY-NAMES RN-CITY-044); la capital sigue siendo
+// la primera.
 func TestUnAldeanoFundaLaSegundaCiudad(t *testing.T) {
 	var vistaEn []world.Tile
 	h, store := escenarioDeFundacion(t, func(d *simulation.Deps) {
 		d.ResnapshotAt = func(_ uuid.UUID, center world.Tile) { vistaEn = append(vistaEn, center) }
 	})
+	store.foundName = "Nuevópolis"
 
 	h.fundarCiudad(fundadorID)
 	require.Len(t, store.founds, 1, "la fundación se encola")
@@ -90,7 +92,6 @@ func TestUnAldeanoFundaLaSegundaCiudad(t *testing.T) {
 	assert.Equal(t, h.playerID, f.OwnerID)
 	assert.Equal(t, h.cityID, f.FromCityID)
 	assert.Equal(t, fundadorID, f.UnitID)
-	assert.Equal(t, "Testópolis II", f.Name)
 	assert.Equal(t, city.EraBronze, f.Era, "nace en la era de la ciudad que la funda")
 	assert.Zero(t, h.stockDe(economy.ResourceWood), "lo pagado queda reservado")
 	assert.Zero(t, h.stockDe(economy.ResourceStone))
@@ -103,6 +104,7 @@ func TestUnAldeanoFundaLaSegundaCiudad(t *testing.T) {
 	nueva := ciudades[1]
 	assert.Equal(t, int64(77), nueva.ID)
 	assert.Equal(t, sitioDeFundacion, nueva.Center())
+	assert.Equal(t, "Nuevópolis", nueva.Name, "la RAM toma el nombre de la transacción")
 	assert.Equal(t, "NORSE", nueva.Civilization, "lo del jugador se copia de la capital")
 	assert.Equal(t, "CHAOS", nueva.Faction)
 	assert.False(t, h.state.IsCapital(nueva))
@@ -269,7 +271,7 @@ func TestUnaCiudadQueCaeConOtraEnPieNoRefunda(t *testing.T) {
 }
 
 // SPEC-MORE-CITIES RN-CITY-040: con la capital en Hierro, el tope es tres: con dos
-// ciudades en pie se funda la tercera, con su nombre « III».
+// ciudades en pie se funda la tercera. Su nombre lo elige la transacción.
 func TestEnHierroSeFundaLaTercera(t *testing.T) {
 	h, store := escenarioDeFundacion(t, nil)
 	h.ciudad().Era = city.EraIron
@@ -279,7 +281,6 @@ func TestEnHierroSeFundaLaTercera(t *testing.T) {
 	})
 	h.fundarCiudad(fundadorID)
 	require.Len(t, store.founds, 1, "la tercera cabe en Hierro")
-	assert.Equal(t, "Testópolis III", store.founds[0].Founding.Name)
 }
 
 // SPEC-MULTI-CITY Q9, precisión del 2026-11-26: el snapshot trae las ciudades en

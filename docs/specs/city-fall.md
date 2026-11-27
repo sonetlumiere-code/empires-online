@@ -155,7 +155,8 @@ En **una** transacción (ADR-050):
    caravanas, ofertas, reclamaciones, eventos) sigue apuntando a ella.
 2. **Su territorio capital queda libre** (`territory_control` sin dueño), y con él deja de ser capital (Q4). Nadie lo
    gana en la caída: el vencedor, si lo quiere, lo reclama como cualquier territorio libre (300 s).
-3. **El vencido refunda.** Una ciudad nueva con el mismo nombre, en un sitio que da `founding.FindSite` con las reglas de
+3. **El vencido refunda.** Una ciudad nueva con el mismo nombre (**precisión (2026-11-26, [city-names.md](city-names.md)):** desde E40, con el
+   nombre base de su dueño, `RN-CITY-046`), en un sitio que da `founding.FindSite` con las reglas de
    siempre (`RN-CITY-001` a `RN-CITY-006`, `RN-CITY-023` a `RN-CITY-025`) más la distancia mínima de Q6, en la **era de
    la caída**, con el almacén a cero y tres aldeanos nuevos, como un alta (`RN-PLAYER-007`). Hereda `presence_state` y su
    inmunidad empieza (Q7).
