@@ -77,14 +77,19 @@ class FakeServer implements WebSocketLike {
   ownCities: Record<string, unknown>[] | null = null;
   /** La población de la capital del snapshot. */
   population = 3;
+  /** Los territorios del snapshot (vacío por defecto). */
+  territories: Record<string, unknown>[] = [];
 
-  private visible(): Record<string, unknown>[] {
-    if (!this.aoi) return this.units;
+  /** Si un tile entra en el área de interés de la vista actual. */
+  private inView(x: number, y: number): boolean {
+    if (!this.aoi) return true;
     const c = this.viewCenter ?? this.center;
     const chunk = (v: number) => Math.floor(v / 32);
-    return this.units.filter(
-      (u) => Math.abs(chunk(u.x as number) - chunk(c.x)) <= 2 && Math.abs(chunk(u.y as number) - chunk(c.y)) <= 2,
-    );
+    return Math.abs(chunk(x) - chunk(c.x)) <= 2 && Math.abs(chunk(y) - chunk(c.y)) <= 2;
+  }
+
+  private visible(): Record<string, unknown>[] {
+    return this.units.filter((u) => this.inView(u.x as number, u.y as number));
   }
 
   snapshot(): void {
@@ -114,8 +119,11 @@ class FakeServer implements WebSocketLike {
           protectionUntilMs: null,
           stocks: { WOOD: this.wood, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 },
         },
-      ].filter((c) => this.withCapital || c.id !== this.cityId),
-      territories: [],
+      ]
+        .filter((c) => this.withCapital || c.id !== this.cityId)
+        // Con `aoi`, también las ciudades: fuera del área, el espejo las olvida.
+        .filter((c) => this.inView(c.centerX as number, c.centerY as number)),
+      territories: this.territories,
       buildings: [],
     });
   }
@@ -937,6 +945,22 @@ describe('todas las ciudades del bot (SPEC-BOTS-ALL-CITIES §4.1, §4.3, §4.7)'
     expect(sockets).toHaveLength(2);
     expect(views(sockets[1] as FakeServer)).toEqual([{ x: 450, y: 450 }]);
     expect(bot.buildView()?.ownCityCount).toBe(2);
+    bot.stop();
+  });
+
+  it('el decisor ve los territorios de todas las conexiones, no sólo los de la casa', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot } = await withCities(lines, sockets, [cityAt(30, 300, 300)]);
+    // Lo encontró la prueba en vivo: el territorio de la colonia sólo lo trae su conexión.
+    const colonyLink = sockets[1] as FakeServer;
+    colonyLink.territories = [
+      { id: 58, name: 'Región 1-7', minX: 280, minY: 280, maxX: 343, maxY: 343, ownerType: 'PLAYER', ownerId: PLAYER,
+        ownerFaction: 'NEUTRAL', ownerClan: null, contested: false },
+    ];
+    colonyLink.snapshot();
+    await tick();
+    expect(bot.buildView()?.territories?.map((t) => t.id)).toEqual([58]);
     bot.stop();
   });
 

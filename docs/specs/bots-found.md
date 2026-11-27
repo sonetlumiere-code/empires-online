@@ -235,6 +235,8 @@ decide el sitio).
 - **Precisión (2026-11-25): la casa de la segunda.** En Bronce el límite de la era es 50 y la segunda llega a sus 8
   aldeanos sin casa: «primera casa» sale «no» en el resumen hasta que el perfil de colonia pida más aldeanos que el
   límite. No es un fallo: la regla de la casa de siempre sólo construye con la población al tope.
+  **Precisión (2026-11-27, [bots-all-cities.md](bots-all-cities.md) Q6):** desde E41 la primera casa sale de la
+  medida; el resumen da el tiempo hasta 8 aldeanos y la madera por hora de cada colonia.
 - **Precisión (2026-11-25): al arrancar con dos.** Un bot que arranca con dos ciudades juega la segunda si la ve la
   casa o la exploración; si no la ve, la regla de fundación lo intentará y el servidor la rechazará por el tope
   (`INVALID_TARGET`), y el sitio se aparta. En la prueba en vivo, las tres segundas estaban a la vista.

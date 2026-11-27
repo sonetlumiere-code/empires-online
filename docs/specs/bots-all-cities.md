@@ -245,6 +245,42 @@ protocolo y el servidor valida cada orden).
 | Unit (Vitest, `bot.test.ts`) | Con tres y cuatro ciudades: una conexión por colonia, abierta también para la que está fuera de la vista (`ownCities`), cerrada al caer; cada colonia con su memoria, su vista y sus dos comandos; la capital no ve las unidades de ninguna colonia; las claves de enfriamiento no se mezclan entre colonias. La caída de la capital con dos o tres más en pie. El barrido: empieza sólo si faltan unidades, va del cuadro más cercano al más lejano y para al no faltar ninguna. El aviso de las conexiones al arrancar. |
 | Unit (Vitest, `log.test.ts`) | Los sucesos nuevos y ampliados, y el resumen: minutos sin jugar, colonias por origen, fundaciones por ordinal, varados. La misma semilla da los mismos comandos (`RN-BOT-005`). |
 | Go, simulación / integración / e2e | Ninguno nuevo: las reglas del servidor no cambian. |
+| Unit (Vitest, `options.test.ts`) | **Precisión (2026-11-27):** el aviso de las conexiones (`linkWarning`): nada hasta seis bots, y con siete, las 35 conexiones y la variable del servidor. |
+
+Los tests están en `apps/bots/src/all-cities.test.ts` (el decisor), `bot.test.ts` (las colonias, las caídas y el
+barrido, con un servidor falso que sólo manda las unidades del área de interés), `log.test.ts` y `options.test.ts`.
+
+### 9.1 Precisiones de la implementación (2026-11-27)
+
+- **Precisión (2026-11-27): quién mira a los varados de una colonia.** §4.6 decía que la conexión de cada colonia
+  mira a su primer varado «cuando no queda nada que mirar en casa». Mover esa vista deja la colonia sin ver sus
+  unidades ni su almacén mientras tanto, así que la conexión de colonia mira siempre su centro y es la de **campaña**
+  la que va al primer varado de una colonia cuando la capital no tiene partida, fundación ni varado propio.
+- **Precisión (2026-11-27): `lost` con `busy`.** Además de `timeout`, `stuck` y `died`, un varado se olvida con la
+  causa `busy` si se le ve con otra orden (trabajando, en guarnición) o si una partida lo toma: ya no es un varado.
+- **Precisión (2026-11-27): qué falta.** La cuenta de §4.6 resta lo que ocupa cada unidad en la población (el ariete,
+  dos) y lo que está entrenando. Las unidades que se ven en la exploración o el barrido quedan contadas aunque salgan
+  luego de la vista (`Bot.seenUnits`). Una unidad cuya ciudad no se conoce cuenta para la capital.
+- **Precisión (2026-11-27): los militares varados del saqueador.** La vuelta los trae a 32 tiles de casa, y la llamada
+  a casa de la partida (`raid:recall`) no los ordena mientras son varados, para que no reciban dos órdenes.
+- **Precisión (2026-11-27): «juega».** En `cities`, una colonia juega si su conexión está lista y su espejo trae su
+  ciudad; la capital cuenta siempre. `stray` con `seen` lleva también la distancia a su ciudad (`distance`), y
+  `sweep`, lo que sigue faltando (`left`).
+- **Precisión (2026-11-27): la prueba en vivo sin sembrar** (Q8). En la base de desarrollo, `_2_e29` y `_3_e29` tienen
+  ya la capital en Castillos con dos ciudades (tope 4) y almacén de sobra, y el saqueador tiene sus tres (24, 55 y
+  57): no hace falta sembrar ningún constructor para que funde la tercera. `_3_e29` tiene 16 aldeanos y 2 guerreros a
+  más de 300 tiles de su capital; el saqueador, 12 militares fuera de casa, y `_1_e29`, 2 guerreros.
+- **Precisión (2026-11-27): el barrido no olvida la capital** (lo encontró la pasada 1 de la prueba en vivo). Al
+  mover la vista de la casa, la capital sale del área de interés y el espejo la olvida; la cuenta de lo que falta la
+  saltaba y el barrido del saqueador paró a las 2 vistas con 4 de población sin encontrar (el de `_3_e29` no lo notó:
+  su colonia, al lado, la ve). El barrido guarda las ciudades como se veían antes de moverse y cuenta con ellas. Lo
+  reproduce el test del barrido con un servidor falso que también olvida las ciudades fuera del área.
+- **Precisión (2026-11-27): los territorios de todas las conexiones** (misma pasada). Fundar la tercera junto a la
+  segunda falló una vez tras otra con `INVALID_TARGET` («sólo se funda en un territorio libre»): el sitio, a 24 tiles
+  de la colonia 60 de `_2_e29`, caía en su territorio (Región 1-7), que la vista de la capital no trae, y el decisor
+  sólo leía los territorios de la casa. Cada rechazo apartaba un tile y la siguiente fundación iba al de al lado. Ahora
+  la vista lleva los territorios de todas las conexiones (la de campaña sigue al fundador; la de la colonia ve el
+  suyo). Es un fallo de E35 que no se veía con dos ciudades lejos una de otra.
 
 ## 10. Decisiones de producto (2026-11-27)
 

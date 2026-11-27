@@ -8,7 +8,15 @@
  */
 import type { v1 } from '@empires-online/protocol';
 import { GameClient, type WebSocketLike } from '../../web/src/net/client';
-import { createWorldStore, terrainAt, type BuildingView, type CityView, type ForestView, type UnitView } from '../../web/src/state/world';
+import {
+  createWorldStore,
+  terrainAt,
+  type BuildingView,
+  type CityView,
+  type ForestView,
+  type TerritoryView,
+  type UnitView,
+} from '../../web/src/state/world';
 import { TERRAIN_HILL } from '../../web/src/state/economy';
 import { commission } from '../../web/src/state/market';
 import { walled } from '../../web/src/state/cityFall';
@@ -522,14 +530,18 @@ export class Bot {
     }
   }
 
-  /** Lo que falta de la población de cada ciudad propia, con lo visto y lo que está a la vista ahora (§4.6). */
-  private missingByCity(): Map<number, number> {
+  /**
+   * Lo que falta de la población de cada ciudad propia, con lo visto y lo que está a la
+   * vista ahora (§4.6). `known` da la ciudad que el espejo ya no trae: al mover la vista
+   * de la casa, la capital sale del área de interés (lo encontró la prueba en vivo).
+   */
+  private missingByCity(known: ReadonlyMap<number, CityView> = new Map()): Map<number, number> {
     const seen = new Map(this.seenUnits);
     for (const u of this.ownUnits()) seen.set(u.id, { cityId: u.cityId, unitType: u.unitType });
     const capitalId = this.capitalId();
     const out = new Map<number, number>();
     for (const id of this.homes.keys()) {
-      const city = this.cityById(id);
+      const city = this.cityById(id) ?? known.get(id);
       if (!city) continue;
       const units = [...seen.values()].filter((u) => (u.cityId ?? capitalId) === id);
       const missing = missingPopulation(city, units);
@@ -538,9 +550,9 @@ export class Bot {
     return out;
   }
 
-  private missingTotal(): number {
+  private missingTotal(known?: ReadonlyMap<number, CityView>): number {
     let n = 0;
-    for (const v of this.missingByCity().values()) n += v;
+    for (const v of this.missingByCity(known).values()) n += v;
     return n;
   }
 
@@ -569,7 +581,13 @@ export class Bot {
     const world = home?.store.getState().world;
     if (!home || !world || this.stopped) return;
     await this.awaitColonyViews(20_000);
-    const missing = this.missingTotal();
+    // Las ciudades tal como se ven antes de mover la vista: luego el espejo las olvida.
+    const known = new Map<number, CityView>();
+    for (const id of this.homes.keys()) {
+      const c = this.cityById(id);
+      if (c) known.set(id, c);
+    }
+    const missing = this.missingTotal(known);
     if (missing <= 0) return;
     const c = { x: city.centerX, y: city.centerY };
     this.scouting = true;
@@ -577,7 +595,7 @@ export class Bot {
     let views = 0;
     try {
       for (const at of sweepCenters({ width: world.width, height: world.height, chunkSize: world.chunkSize }, SWEEP_RADIUS_CHUNKS, c)) {
-        if (this.stopped || this.missingTotal() <= 0) break;
+        if (this.stopped || this.missingTotal(known) <= 0) break;
         const snap = home.waitFor((m) => m.type === 'world.snapshot', 15_000);
         home.client.setView(at);
         await snap.catch(() => undefined);
@@ -591,7 +609,7 @@ export class Bot {
       this.scouting = false;
       this.sweeping = false;
     }
-    const left = Math.max(0, this.missingTotal());
+    const left = Math.max(0, this.missingTotal(known));
     this.emit('sweep', { missing, views, found: missing - left, left });
     this.deps.say(`${this.name}: barrido de ${views} vistas; faltaban ${missing} de población, faltan ${left}`);
   }
@@ -671,8 +689,22 @@ export class Bot {
       tradeOffers: hs.tradeOffers,
       market: hs.market,
       ...this.ownCitiesFields(city.id),
-      territories: [...hs.territories.values()].sort(byId),
+      territories: this.knownTerritories(),
     };
+  }
+
+  /**
+   * Los territorios que traen todas las conexiones, la casa primero: el sitio de una
+   * fundación lejos de la capital lo ve la campaña o una colonia, no la casa (lo
+   * encontró la prueba en vivo de SPEC-BOTS-ALL-CITIES: «sólo se funda en un territorio
+   * libre» en el territorio de la propia colonia).
+   */
+  private knownTerritories(): TerritoryView[] {
+    const byId = new Map<number, TerritoryView>();
+    for (const link of this.links()) {
+      for (const t of link.store.getState().territories.values()) if (!byId.has(t.id)) byId.set(t.id, t);
+    }
+    return [...byId.values()].sort((a, b) => a.id - b.id);
   }
 
   /** Cuántas ciudades propias conoce y los centros de las demás (SPEC-BOTS-FOUND §4.5). */
