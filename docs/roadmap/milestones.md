@@ -3576,7 +3576,7 @@ http://localhost:3001 --multiciudad`, 26 comprobaciones. Avanza a Bronce, funda 
 
 ## E41 — Los bots juegan todas sus ciudades
 
-**Estado: HECHO en la rama (2026-11-27)** `claude/slice-bots-todas-ciudades`, sin fusionar ni empujar. Contrato:
+**Estado: HECHO (2026-11-27)**, en `main` desde la fusión `1f9ecd6` (rama `claude/slice-bots-todas-ciudades`), con la CI en verde. Contrato:
 [SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md), propuesta y aceptada el 2026-11-27: la persona usuaria aceptó sus
 ocho decisiones con la recomendación del agente. Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base. Nace
 de la ejecución larga de E32 (§E32): la tercera ciudad del saqueador se quedó 3 h sin jugar, y los 12 aldeanos varados

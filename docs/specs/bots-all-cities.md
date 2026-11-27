@@ -7,7 +7,7 @@ lejos de casa vuelvan aunque queden fuera de la exploración.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-ALL-CITIES` |
-| Estado | Accepted (2026-11-27). La persona usuaria aceptó las ocho recomendaciones de §10. |
+| Estado | Implemented (2026-11-27). La persona usuaria aceptó las ocho recomendaciones de §10; en `main` desde la fusión `1f9ecd6`, con la CI en verde. |
 | Milestone | E41 Los bots juegan todas sus ciudades (cuadragésimo primer slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §10 (eras y población), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [bots-found.md](bots-found.md), [bots-assault.md](bots-assault.md), [more-cities.md](more-cities.md), [city-taken.md](city-taken.md), [multi-city.md](multi-city.md) |
