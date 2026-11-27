@@ -566,6 +566,10 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   con un plazo de 20 min por cada 160 tiles. El registro apunta `cities` y `colony` (con `origin`) cada minuto,
   `sweep`, y `stray` con `seen`, `home` y `lost`; el resumen, los minutos con alguna ciudad sin jugar, cada colonia por
   su origen con su madera por hora, las fundaciones por ordinal y los varados.
+  **Precisión (2026-11-27, repaso de la piedra):** mientras le falte una ciudad hasta el tope, el constructor aparta
+  los 400 de piedra de fundar antes de rehacer la muralla o investigar (salvo que la última búsqueda no encontrara
+  sitio), y el resumen junta en una línea con `×N` las partidas seguidas contra el mismo blanco que acaban igual (el
+  asalto replantado).
 - Para una ejecución larga en macOS, `caffeinate -i -s pnpm run bots -- …` evita que el reposo la parta: con la Mac dormida, el servidor descarta los ticks perdidos y las medidas no valen.
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
   Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos, comercio (tratados, tratos,

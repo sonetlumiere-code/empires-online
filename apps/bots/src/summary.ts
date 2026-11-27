@@ -520,6 +520,40 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
   return out;
 }
 
+/**
+ * Las partidas seguidas de la misma clase contra el mismo blanco y con la misma vuelta,
+ * juntas: el saqueador replanta el asalto que abandona, y el resumen daba una línea
+ * igual por cada vez (la prueba en vivo de E41). Una caída nunca se agrupa.
+ */
+function groupRaids(raids: readonly RaidBalance[]): RaidBalance[][] {
+  const groups: RaidBalance[][] = [];
+  for (const p of raids) {
+    const last = groups[groups.length - 1];
+    const prev = last?.[0];
+    if (last && prev && prev.kind === p.kind && prev.target === p.target && prev.outcome === p.outcome && p.outcome !== 'fell') {
+      last.push(p);
+    } else {
+      groups.push([p]);
+    }
+  }
+  return groups;
+}
+
+/** Cuántos se reunieron y cuánto tardaron; con varias partidas, la media de las que se reunieron. */
+function rallyText(group: readonly RaidBalance[]): string {
+  const rallied = group.filter((p) => p.gathered !== null);
+  if (rallied.length === 0) return 'sin reunirse';
+  const counts = rallied.map((p) => p.gathered as number);
+  const min = Math.min(...counts);
+  const max = Math.max(...counts);
+  const wait = rallied.reduce((n, p) => n + (p.rallyWaitMs ?? 0), 0) / rallied.length;
+  const unrallied = group.length - rallied.length;
+  return (
+    `reunidos ${min === max ? min : `${min}-${max}`} en ${formatDuration(wait)}${rallied.length > 1 ? ' de media' : ''}` +
+    (unrallied > 0 ? ` (${unrallied} sin reunirse)` : '')
+  );
+}
+
 export function formatDuration(ms: number): string {
   const s = Math.round(ms / 1000);
   const h = Math.floor(s / 3600);
@@ -556,13 +590,21 @@ export function formatSummary(rows: readonly BotSummary[]): string {
       `  comercio: tratados ${r.treaties} · tratos ${r.trades} · bienes ajenos por trato ${r.goodsByTrade} y por mercado ${r.goodsByMarket} · ` +
         `comisión ${r.commission} · caravanas perdidas ${r.caravansLost}`,
     );
-    for (const p of r.raidLog) {
-      const rally = p.gathered === null ? 'sin reunirse' : `reunidos ${p.gathered} en ${formatDuration(p.rallyWaitMs ?? 0)}`;
+    for (const g of groupRaids(r.raidLog)) {
+      const p = g[0] as RaidBalance;
+      const times = g.length > 1 ? ` ×${g.length}` : '';
+      const sum = (f: (x: RaidBalance) => number) => g.reduce((n, x) => n + f(x), 0);
       if (p.kind === 'assault') {
         const end = p.outcome === 'fell' ? `cae en ${formatDuration(p.msToFall ?? 0)}` : `vuelve (${p.outcome ?? '—'})`;
-        out.push(`  asalto contra ${p.target}: ${rally} · perdidos ${p.lost} (arietes ${p.ramsLost}) · muertos ${p.killed} · ${end}`);
+        out.push(
+          `  asalto contra ${p.target}${times}: ${rallyText(g)} · perdidos ${sum((x) => x.lost)} (arietes ${sum((x) => x.ramsLost)}) · ` +
+            `muertos ${sum((x) => x.killed)} · ${end}`,
+        );
       } else {
-        out.push(`  partida contra ${p.target}: ${rally} · perdidos ${p.lost} · muertos ${p.killed} · madera ${p.wood}`);
+        out.push(
+          `  partida contra ${p.target}${times}: ${rallyText(g)} · perdidos ${sum((x) => x.lost)} · muertos ${sum((x) => x.killed)} · ` +
+            `madera ${sum((x) => x.wood)}`,
+        );
       }
     }
     if (r.assaultsPlanted + r.citiesTaken + r.assaultsSuffered + r.wallsBreached + r.falls.length > 0) {

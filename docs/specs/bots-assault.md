@@ -334,6 +334,12 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
   en 2 h 59 min (0,67 por hora) a velocidad real, 5 estandartes, 2 asaltos rotos (`too_few`, y `wall_completed` con
   replante), 6 arietes y 4 perdidos; cada caída cuajada tarda unos 30 min desde la salida. Con E36, el saqueador se
   queda las dos ciudades.
+- **Precisión (2026-11-27): las partidas replantadas, en una línea** (rama `claude/repaso-bots-piedra`). El resumen da
+  una línea por partida; el saqueador replanta el asalto que abandona contra el mismo blanco, y en la prueba en vivo de
+  E41 salían tres líneas casi iguales («reunidos 6 en 2m02s · … · vuelve (blocked)») que parecían repetidas. Eran tres
+  asaltos de verdad, cada uno con sus bajas. Las partidas seguidas de la misma clase, contra el mismo blanco y con la
+  misma vuelta van ahora en una línea con `×N`: los reunidos (o su rango), la media de lo que tardaron en reunirse, y
+  las bajas, los muertos y la madera sumados. Una caída nunca se agrupa, y `raidLog` sigue con una entrada por partida.
 
 ## 10. Decisiones de producto (2026-11-23)
 

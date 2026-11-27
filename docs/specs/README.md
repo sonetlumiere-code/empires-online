@@ -35,7 +35,7 @@ La spec es la primera casilla, no la última.
 
 ## 2. Índice de especificaciones
 
-Éstas son las cincuenta specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
+Éstas son las cincuenta y una specs que existen hoy en el directorio. No hay ninguna más: si un documento cita una
 spec que no aparece en esta tabla, la cita está rota.
 
 | Spec | Archivo | Milestone | Estado | Alcance |
@@ -90,6 +90,7 @@ spec que no aparece en esta tabla, la cita está rota.
 | Los avisos de la ciudad tomada | [city-taken-notices.md](city-taken-notices.md) | E39 Los avisos de la ciudad tomada | Implemented | `taken` en la entrada del registro y en el aviso de `CITY_LOST` y `CITY_TAKEN`, leído de `takenCityId`, con un texto para la toma en cada lado |
 | El nombre de las ciudades | [city-names.md](city-names.md) | E40 El nombre de las ciudades | Implemented | Cada ciudad fundada toma el primer nombre libre de la serie de su dueño (`<usuario>polis`, `II`, `III`, `IV`) en lugar del nombre de la capital con un numeral; la tomada conserva el suyo salvo que el vencedor ya tenga otra igual, y la refundada lleva el nombre base: sin «X II II» ni dos iguales en pie |
 | Los bots juegan todas sus ciudades | [bots-all-cities.md](bots-all-cities.md) | E41 Los bots juegan todas sus ciudades | Implemented | Cada bot juega todas sus ciudades en pie (la capital con su perfil, las demás como colonias con su memoria y su conexión), el constructor funda hasta el tope de la era de su capital y los varados fuera de la exploración vuelven a su ciudad tras un barrido del mapa, para medir cuánto rinde cada ciudad de más; sin cambios en el servidor |
+| El sitio de la siguiente ciudad | [bots-found-site.md](bots-found-site.md) | — (se abre en la aceptación) | Draft | El constructor busca el sitio de su siguiente ciudad en el anillo de 28 a 96 de cada ciudad propia en pie, no sólo de la capital, con el terreno de todas sus conexiones; el aldeano sigue saliendo de la capital; sin cambios en el servidor; según §10 |
 
 **No existe `world.md`.** El grid, los chunks y la generación determinista desde `EO_WORLD_SEED` están
 documentados hoy en [../invariants/world.md](../invariants/world.md) y en

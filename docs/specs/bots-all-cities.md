@@ -281,6 +281,20 @@ barrido, con un servidor falso que sólo manda las unidades del área de interé
   sólo leía los territorios de la casa. Cada rechazo apartaba un tile y la siguiente fundación iba al de al lado. Ahora
   la vista lleva los territorios de todas las conexiones (la de campaña sigue al fundador; la de la colonia ve el
   suyo). Es un fallo de E35 que no se veía con dos ciudades lejos una de otra.
+- **Precisión (2026-11-27): la piedra de la siguiente ciudad, apartada antes de empezar** (rama
+  `claude/repaso-bots-piedra`, lo que dejó la prueba en vivo). Con la capital en Castillos, `_3_e29` se quedó con 106
+  de piedra: rehízo la muralla tras cada asalto abandonado (200 cada vez, tres en 45 min) y la investigación se llevaba
+  el resto, así que nunca tenía los 400 cuando la fundación buscaba sitio. Lo apartado de `RN-BOT-019` sólo valía con
+  la fundación en curso, y para empezarla hace falta tenerlo. Ahora, mientras falte una ciudad hasta el tope (desde
+  Bronce, como la fundación), el plan aparta la piedra de fundar (400, o lo que haya) antes que ninguna otra regla: es
+  lo que decidió la Q2 (la piedra no se la llevan la investigación ni la muralla). Si la última búsqueda no encontró
+  sitio, no se aparta nada hasta que otra lo encuentre (`foundNoSite`): sin sitio no tiene sentido tener la piedra
+  parada. La piedra objetivo sigue en 800 y cuenta, como durante la fundación, lo que queda tras apartarla; la muralla
+  se rehace sólo con 300 de piedra por encima de los 400. Lo cubre `all-cities.test.ts`.
+- **Precisión (2026-11-27): el anillo, a otra spec.** En la pasada 2 ni `_2_e29` ni `_3_e29` encontraron sitio en el
+  anillo de 28 a 96 de su capital. En `_2_e29`, con la capital a 15 tiles del borde del mapa, ningún tile del anillo
+  cae en un territorio libre. Buscarlo también alrededor de las colonias cambia dónde funda (la Q3 de
+  [bots-found.md](bots-found.md)): es una decisión de producto, en Draft en [bots-found-site.md](bots-found-site.md).
 
 ## 10. Decisiones de producto (2026-11-27)
 

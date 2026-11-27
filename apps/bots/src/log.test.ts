@@ -200,6 +200,41 @@ describe('el resumen del asalto (SPEC-BOTS-ASSAULT §4.7, Q9)', () => {
     expect(text).toContain('cayó ante bot_saqueador_1polis en BRONZE_AGE: muralla 20m00s · población de antes 30m00s · era siguiente no');
     expect(text).toContain('Caídas: 1 en 2h00m (0.50 por hora)');
   });
+
+  // La prueba en vivo de E41: el saqueador replantó tres veces el asalto contra la misma
+  // capital, cada vez abandonado con `blocked`, y el resumen daba tres líneas iguales.
+  it('agrupa en una línea los asaltos replantados contra el mismo blanco con la misma vuelta', () => {
+    const T = 'bot_constructor_3polis';
+    const assault = (at: number, waitMs: number, lost: number, killed: number) => [
+      { t: at, event: 'raid', bot: S, target: T, size: 6, kind: 'assault', rams: 2 },
+      { t: at + 2 * M, event: 'assault', bot: S, status: 'rallied', target: T, warriors: 6, rams: 2, waitMs },
+      { t: at + 2 * M, event: 'rally', bot: S, target: T, warriors: 6, alive: 6, waitMs },
+      ...Array.from({ length: lost }, () => ({ t: at + 3 * M, event: 'lost', bot: S, unitType: 'RAM' })),
+      ...Array.from({ length: killed }, () => ({ t: at + 3 * M, event: 'killed', bot: S, unitType: 'WARRIOR' })),
+      { t: at + 4 * M, event: 'assault', bot: S, status: 'abandoned', target: T, cause: 'blocked' },
+      { t: at + 6 * M, event: 'raid_end', bot: S, target: T, lost, size: 6 },
+    ];
+    const log = [
+      { t: 0, event: 'start', bot: S, profile: 'saqueador', civilization: 'NORSE', era: 'CASTLE_AGE' },
+      ...assault(10 * M, 122_000, 0, 5),
+      ...assault(17 * M, 122_000, 1, 5),
+      ...assault(24 * M, 124_000, 0, 3),
+      ...assault(31 * M, 26_000, 1, 6).map((l) => ({ ...l, target: 'bot_constructor_2polis' })),
+      { t: H, event: 'stop', bot: S, era: 'CASTLE_AGE', gathered: {} },
+    ]
+      .map((l) => JSON.stringify(l))
+      .join('\n');
+    const [s] = summarize(parseLog(log));
+    // Los datos siguen siendo los de cada partida.
+    expect(s?.raidLog).toHaveLength(4);
+
+    const text = formatSummary(s ? [s] : []);
+    const lines = text.split('\n').filter((l) => l.includes('asalto contra'));
+    expect(lines).toEqual([
+      `  asalto contra ${T} ×3: reunidos 6 en 2m03s de media · perdidos 1 (arietes 1) · muertos 13 · vuelve (blocked)`,
+      '  asalto contra bot_constructor_2polis: reunidos 6 en 0m26s · perdidos 1 (arietes 1) · muertos 6 · vuelve (blocked)',
+    ]);
+  });
 });
 
 describe('el resumen de la fundación (SPEC-BOTS-FOUND §4.7)', () => {
