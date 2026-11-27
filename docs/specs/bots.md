@@ -221,6 +221,8 @@ partida por bot, el estandarte que se replanta y el bot vencido que sigue jugand
 la juega; `RN-BOT-003` cuenta los dos comandos **por ciudad** y despertar. **Precisión (2026-11-27):** y en
 [bots-all-cities.md](bots-all-cities.md) §4.8 con `RN-BOT-022` a `RN-BOT-025` (E41): el bot juega todas sus ciudades,
 funda hasta el tope de su era, abre una conexión por colonia y trae los varados tras un barrido del mapa.
+**Precisión (2026-11-27):** y en [bots-found-site.md](bots-found-site.md) §4.3 con `RN-BOT-026` (E42): el sitio de
+la siguiente ciudad, alrededor de cualquier ciudad propia.
 
 | ID | Regla |
 |---|---|

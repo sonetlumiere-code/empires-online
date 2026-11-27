@@ -97,7 +97,7 @@ de pasar a Hierro (Q2). Para juntar la piedra de las dos cosas, su piedra objeti
 
 ### 4.2 El sitio (Q3)
 
-El sitio más cercano a la capital, a entre `foundMinDistance` (28) y `foundMaxDistance` (96, precisión de §9.1) tiles de Chebyshev, que
+El sitio más cercano a la capital (**precisión (2026-11-27, [bots-found-site.md](bots-found-site.md) §4.1, E42):** a cualquier ciudad propia en pie), a entre `foundMinDistance` (28) y `foundMaxDistance` (96, precisión de §9.1) tiles de Chebyshev, que
 pase lo que el espejo conoce de las reglas del servidor, como `sitioParaFundar` del humo:
 
 - el 7 × 7 alrededor del centro, conocido y transitable (ni agua ni montaña);
@@ -120,7 +120,8 @@ vista, una ciudad fuera del área de interés, una Safe Zone, la ruta) lo dice e
 3. **Fundar.** Parado en el sitio (o en un tile a su lado que también lo pase, si la espiral lo dejó ahí),
    `unit.found_city` con el aldeano.
 4. **Terminar.** La fundación termina bien cuando el bot tiene dos ciudades propias; termina mal si el servidor la
-   rechaza, si el aldeano muere, si suma 9 tramos rechazados o si vence `foundWalkTimeoutMs` (10 min) desde que
+   rechaza, si el aldeano muere, si suma 9 tramos rechazados o si vence `foundWalkTimeoutMs` (10 min; **precisión (2026-11-27, E42):** por cada 96 tiles
+   de distancia del sitio a la capital, [bots-found-site.md](bots-found-site.md) §4.2) desde que
    empezó: el sitio se aparta y lo apartado vuelve al plan.
 
 ### 4.4 La segunda ciudad (Q4)
@@ -274,7 +275,7 @@ cambiar la spec, y la persona usuaria puede revisarlas al volver.
 |---|---|---|---|
 | Q1 | ¿Qué perfil funda? | **Sólo el constructor.** El saqueador gasta la piedra en arietes y su ciudad es la base de sus partidas; que funde es otra estrategia que medir. | **Los dos** (el saqueador con dos ciudades cambia lo medido en E32); **una opción de la línea de órdenes** (otra rama sin medida que la pida). |
 | Q2 | ¿Cuándo funda? | **En cuanto la capital está en Bronce y tiene los 800/400, antes de pasar a Hierro**, con la piedra objetivo de Bronce a 800 y lo que cuesta apartado mientras camina. Es el umbral del servidor y mide pronto. | **Desde Hierro** (retrasa la medida y la prueba en vivo); **cuando pueda pagar fundar y el avance a la vez** (1 600/800: en Bronce tarda horas). |
-| Q3 | ¿Dónde? | **El sitio libre más cercano a la capital entre 28 y 56 tiles**, con las reglas que el espejo conoce (como el humo); lo demás lo dice el servidor y el sitio rechazado se aparta. | **Lejos de las ciudades de otros bots** (más seguro, pero lejos de su bosque y de su vista); **junto a las colinas** (la segunda no recoge piedra, Q4). |
+| Q3 | ¿Dónde? | **El sitio libre más cercano a la capital entre 28 y 56 tiles**, con las reglas que el espejo conoce (como el humo); lo demás lo dice el servidor y el sitio rechazado se aparta. **Precisión (2026-11-27, [bots-found-site.md](bots-found-site.md), E42):** el anillo se mide desde cualquier ciudad propia en pie, no sólo la capital (`RN-BOT-026`). | **Lejos de las ciudades de otros bots** (más seguro, pero lejos de su bosque y de su vista); **junto a las colinas** (la segunda no recoge piedra, Q4). |
 | Q4 | ¿Cómo juega la segunda? | **Aldeanos (hasta 8), casas y madera, con su propia memoria y su tope de comandos**; nada de era, muralla, taller, comercio ni militares. Lo mínimo que crece y se mide. | **El perfil entero** (dos comercios, dos murallas: dobla el decisor y la prueba); **sólo aldeanos** (sin casas, se queda en el límite de población). |
 | Q5 | ¿Cómo ve la segunda? | **Una conexión más, con la vista en ella**, y la casa de vuelta en la capital. | **Una conexión que alterna la vista** (lo que no mira, lo olvida el espejo); **sólo sitios a la vista de la capital** (en un mundo denso no hay). |
 | Q6 | ¿La segunda es blanco de otros bots? | **No: el directorio sigue con la capital.** El saqueador asalta capitales como en E32; si cae una capital con otra en pie, ya se mide la caída de una de dos. | **Las dos en el directorio** (el saqueador iría a la nueva, sin muralla: mide otra cosa). |

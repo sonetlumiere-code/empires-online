@@ -7,13 +7,13 @@ no deje al bot en dos ciudades para siempre.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-FOUND-SITE` |
-| Estado | Draft (2026-11-27). Espera las decisiones de producto de §10; no se implementa hasta entonces. |
-| Milestone | Se abre en la aceptación (sería E42). |
+| Estado | Accepted (2026-11-27). La persona usuaria aceptó las tres recomendaciones de §10. |
+| Milestone | E42 El sitio de la siguiente ciudad (cuadragésimo segundo slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §19 (niveles de test) |
 | Depende de | [bots-found.md](bots-found.md), [bots-all-cities.md](bots-all-cities.md), [multi-city.md](multi-city.md), [more-cities.md](more-cities.md) |
 | Decisiones | [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md) sigue valiendo. Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base. |
-| Precisaría | La Q3 de [bots-found.md](bots-found.md) («el sitio libre más cercano a la capital») y su §4.2. |
-| Invariantes | No asigna invariantes. Si se acepta, una regla nueva, `RN-BOT-026` (§4.3). Cita [INV-SEC-001](../invariants/security.md#inv-sec-001) (§8). |
+| Precisa | La Q3 de [bots-found.md](bots-found.md) («el sitio libre más cercano a la capital») y su §4.2, y el plazo de la caminata (`foundWalkTimeoutMs`) de su §4.3. |
+| Invariantes | No asigna invariantes. Regla nueva: `RN-BOT-026` (§4.3). Cita [INV-SEC-001](../invariants/security.md#inv-sec-001) (§8). |
 
 ## 1. Objetivo
 
@@ -44,7 +44,7 @@ mirar el terreno ni el bosque, que el espejo sólo conoce donde mira alguna cone
 
 ## 2. Scope
 
-**Entra (según §10).**
+**Entra.**
 
 - En los bots (`apps/bots`), sin cambios en el servidor, el protocolo ni el cliente web: el sitio se busca en el
   anillo de 28 a 96 alrededor de **cada ciudad propia en pie**, con el terreno, el bosque y los territorios que traen
@@ -129,12 +129,12 @@ decide.
 | Unit (Vitest, `log.test.ts`) | El resumen de las fundaciones por la ciudad del anillo. |
 | Go, simulación / integración / e2e | Ninguno nuevo: las reglas del servidor no cambian. |
 
-## 10. Preguntas de producto (para decidir)
+## 10. Decisiones de producto (2026-11-27)
 
-Cada fila deja la recomendación del agente, en negrita, y las alternativas. No se acepta ni se implementa hasta que
-la persona usuaria decida.
+La persona usuaria aceptó las tres recomendaciones (2026-11-27): cada fila deja la decisión, en negrita, y las
+alternativas descartadas. Cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación | Alternativas |
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿Dónde busca el sitio? | **En el anillo de 28 a 96 de cada ciudad propia en pie, el más cercano a cualquiera, con la capital primero a igual distancia y el terreno de todas las conexiones.** Es donde el bot ya ve el terreno, y con los números de §1 `_2_e29` pasa de 0 tiles posibles a casi 4 000. | **Ensanchar sólo el anillo de la capital** (p. ej. a 128 o 160: el espejo no conoce el terreno tan lejos y la caminata sale de la vista); **dejarlo como está** (una capital al borde del mapa o rodeada de territorios con dueño se queda en dos ciudades: es la medida de hoy). |
 | Q2 | ¿De dónde sale el aldeano y quién paga? | **De la capital, como hoy, y el plazo de la caminata crece con la distancia (10 min por cada 96 tiles).** La capital es la única que junta piedra. | **De la ciudad más cercana al sitio** (camina menos, pero paga su almacén, y una colonia no junta piedra: habría que darle piedra o enviársela, otra estrategia); **de la capital con el plazo de hoy** (un sitio a 150 tiles fallaría por `timeout`). |
@@ -142,7 +142,7 @@ la persona usuaria decida.
 
 ## 11. Documentos relacionados
 
-- [bots-found.md](bots-found.md): el sitio, la caminata y su Q3, que esta spec precisaría.
+- [bots-found.md](bots-found.md): el sitio, la caminata y su Q3, que esta spec precisa.
 - [bots-all-cities.md](bots-all-cities.md): las conexiones de colonia y la fundación hasta el tope.
 - [multi-city.md](multi-city.md): las reglas del servidor para el sitio y quién paga.
 - [../roadmap/milestones.md](../roadmap/milestones.md): la prueba en vivo de E41 y la del repaso de la piedra.

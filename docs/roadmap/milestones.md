@@ -3669,3 +3669,29 @@ sin sembrar; registro `bots/runs/2026-11-27T17-13-58-641Z-44.jsonl`):
 - Todas las ciudades juegan todo el rato (`minutos con alguna sin jugar 0`); madera por colonia, 9 296 por hora de
   media en los constructores.
 - **Sin comprobar en el navegador:** nada visual cambia en este repaso.
+
+## E42 — El sitio de la siguiente ciudad
+
+**Estado: EN CURSO (2026-11-27)**, en la rama `claude/slice-bots-sitio`. Contrato:
+[SPEC-BOTS-FOUND-SITE](../specs/bots-found-site.md), propuesta el 2026-11-27 tras el repaso de la piedra (§E41) y
+aceptada el mismo día: la persona usuaria aceptó sus tres decisiones con la recomendación del agente. Sin ADR nuevo: no
+cambia el servidor, ni el protocolo, ni la base. Nace de la prueba en vivo del repaso de la piedra: los tres
+constructores `_e29` tienen la piedra de fundar, pero sus búsquedas dan `no_site` (el anillo de la capital de
+`_2_e29`, junto al borde del mapa, no tiene ningún tile en territorio libre).
+
+**Objetivo.** Que el constructor encuentre sitio para su siguiente ciudad alrededor de cualquiera de sus ciudades y
+medir si llega a fundar la tercera y la cuarta.
+
+**Alcance.** En `apps/bots`: el anillo de 28 a 96 desde cada ciudad propia en pie, con el terreno de todas las
+conexiones (`RN-BOT-026`); el plazo de la caminata según la distancia a la capital; `found` con `from` y su resumen.
+**No entra** (spec §2): el servidor, el protocolo, el cliente web, que una colonia funde o que el saqueador funde.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-BOT-026`, con precisiones de la Q3, §4.2 y
+   §4.3 de [bots-found.md](../specs/bots-found.md) y de las reglas en [bots.md](../specs/bots.md). Sin invariantes.
+2. **PENDIENTE** — Bots: el sitio alrededor de cada ciudad propia, el terreno de todas las conexiones y el plazo de la
+   caminata, con sus tests (`found.test.ts`, `bot.test.ts`).
+3. **PENDIENTE** — Registro y resumen (`found` con `from`; `log.test.ts`); docs (`docs/architecture/frontend.md`,
+   `docs/operations/local-development.md`, spec §9.1); `verify:full`.
+4. **PENDIENTE** — Prueba en vivo (spec Q3): 30 a 40 min a velocidad real con las cuentas `_e29`, sin sembrar.
