@@ -182,7 +182,7 @@ demás (la de id menor, como ya hacen los mensajes y el registro). `State.Cities
 |---|---|
 | `RN-CITY-030` | Un aldeano propio, `IDLE` y fuera de guarnición funda una ciudad en su tile con `unit.found_city` si su ciudad está en Bronce o posterior y tiene `EO_CITY_FOUND_WOOD` de madera y `EO_CITY_FOUND_STONE` de piedra, y el sitio pasa las reglas de fundación (`RN-CITY-001` a `RN-CITY-006`, `RN-CITY-023`) fuera de territorio ajeno y de Safe Zones (§4.1). |
 | `RN-CITY-031` | Un jugador tiene como mucho dos ciudades en pie. **Precisión (2026-11-25):** desde E37 ([more-cities.md](more-cities.md) `RN-CITY-040`), el tope es el de la era de su capital, de 1 a 4. |
-| `RN-CITY-032` | La ciudad fundada nace con el nombre de la capital y « II», en la era de la que la funda, con el almacén a cero, el aldeano fundador y dos aldeanos nuevos (§4.2). |
+| `RN-CITY-032` | La ciudad fundada nace con el nombre de la capital y « II», en la era de la que la funda, con el almacén a cero, el aldeano fundador y dos aldeanos nuevos (§4.2). **Precisión (2026-11-26, [city-names.md](city-names.md)):** el nombre es el primero libre de la serie del dueño (`RN-CITY-044`). |
 | `RN-CITY-033` | La capital es la ciudad en pie de id menor; responde por el jugador donde la regla no nombra una ciudad (§4.3). |
 | `RN-CITY-034` | La presencia y la protección offline son del jugador: todas sus ciudades cambian a la vez; el bono de territorios conquistados sólo lo cobra la capital (§4.4). |
 | `RN-CITY-035` | Una ciudad que cae con otra en pie del mismo dueño se arrasa sin refundar y lo suyo pasa a la que queda; la última refunda (§4.5). |

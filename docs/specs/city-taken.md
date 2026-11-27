@@ -117,7 +117,7 @@ casas, madera), por su conexión colonia. La partida vuelve a casa como hoy. Nad
 | ID | Regla |
 |---|---|
 | `RN-CITY-036` | Una ciudad que cae se toma si el vencedor tiene menos de dos ciudades en pie en la transacción de la caída; si no, se arrasa (§4.1). |
-| `RN-CITY-037` | La tomada es una ciudad nueva del vencedor en el centro de la caída, con su nombre y su era, sus edificios completos, tres aldeanos nuevos y el almacén a cero (§4.2). |
+| `RN-CITY-037` | La tomada es una ciudad nueva del vencedor en el centro de la caída, con su nombre y su era, sus edificios completos, tres aldeanos nuevos y el almacén a cero (§4.2). **Precisión (2026-11-26, [city-names.md](city-names.md)):** si el vencedor ya tiene en pie otra con ese nombre, el primero libre de su serie (`RN-CITY-045`). |
 | `RN-CITY-038` | La inmunidad de caída de la tomada corre desde la toma. |
 | `RN-CITY-039` | Para el vencido, tomar es caer: refunda o sigue con la otra como en E31 y E34. |
 

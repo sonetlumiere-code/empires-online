@@ -3537,3 +3537,22 @@ pestañas a la vez con cuentas distintas.
   1000) avisa cada minuto de que no encuentra ruta (`50001 nodos expandidos`); el HUD no cabe en 856 px de ancho y
   «Fundar ciudad» queda fuera, con desplazamiento horizontal.
 
+
+## E40 — El nombre de las ciudades
+
+**Estado: EN CURSO (2026-11-26)**, en la rama `claude/slice-nombre-ciudades`. Contrato:
+[SPEC-CITY-NAMES](../specs/city-names.md), propuesta y aceptada el 2026-11-26: la persona usuaria aceptó sus seis
+decisiones con la recomendación del agente. Sin ADR ni migración. Nace del hallazgo del repaso de E33 a E39 (arriba):
+`bot_constructor_2_e35polis II II`.
+
+**Objetivo.** Que cada ciudad nueva tome el primer nombre libre de la serie de su dueño, sin numerales encadenados ni
+dos iguales en pie.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; [INV-CITY-025](../invariants/city.md#inv-city-025)
+   registrado sin cobertura; precisiones de `RN-CITY-027`, `RN-CITY-032` y `RN-CITY-037` y de
+   [more-cities.md](../specs/more-cities.md) §9.1.
+2. **PENDIENTE** — La serie y el primer nombre libre en `internal/domain/city`, elegidos en las transacciones de la
+   fundación, la toma y la refundación, con sus tests (unit, simulación, integración).
+3. **PENDIENTE** — El humo `--multiciudad`; docs; `verify:full`, mutaciones y prueba en vivo.

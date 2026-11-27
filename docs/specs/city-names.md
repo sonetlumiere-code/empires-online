@@ -7,13 +7,13 @@ numeral al nombre que tenga hoy la capital.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CITY-NAMES` |
-| Estado | Draft (2026-11-26). Espera las decisiones de producto de §10; no se implementa hasta entonces. |
-| Milestone | Se abre en la aceptación. |
+| Estado | Accepted (2026-11-26). La persona usuaria aceptó las seis recomendaciones de §10. |
+| Milestone | E40 El nombre de las ciudades (cuadragésimo slice después de M7) |
 | Canon | §12 (persistencia) |
 | Depende de | [city.md](city.md), [multi-city.md](multi-city.md), [more-cities.md](more-cities.md), [city-fall.md](city-fall.md), [city-taken.md](city-taken.md) |
-| Decisiones | Sin ADR nuevo: el nombre no cambia ningún contrato ni ningún dueño de estado. Sin migración si se acepta la Q6 recomendada. |
-| Precisa | El nombre de `RN-CITY-032` ([multi-city.md](multi-city.md)) y la precisión de §9.1 de [more-cities.md](more-cities.md); según Q3 y Q4, el nombre de `RN-CITY-037` ([city-taken.md](city-taken.md)) y de `RN-CITY-027` ([city-fall.md](city-fall.md)). |
-| Invariantes | Uno nuevo de la familia CITY (§8). |
+| Decisiones | Sin ADR nuevo: el nombre no cambia ningún contrato ni ningún dueño de estado. Sin migración (Q6). |
+| Precisa | El nombre de `RN-CITY-032` ([multi-city.md](multi-city.md)) y la precisión de §9.1 de [more-cities.md](more-cities.md); el nombre de `RN-CITY-037` ([city-taken.md](city-taken.md)) y de `RN-CITY-027` ([city-fall.md](city-fall.md)). |
+| Invariantes | Nuevo: [INV-CITY-025](../invariants/city.md#inv-city-025) (§8). Reglas nuevas: `RN-CITY-043` a `RN-CITY-046` (§4.5). |
 
 ## 1. Objetivo
 
@@ -100,8 +100,6 @@ serie. Hoy lleva el nombre de la caída, que puede ser `Xpolis III` o el de una 
 
 ### 4.5 Reglas
 
-Las reglas nuevas toman los siguientes números libres de `RN-CITY` (hoy el último es `RN-CITY-042`).
-
 | ID | Regla |
 |---|---|
 | `RN-CITY-043` | La serie de nombres de un jugador es `<usuario>polis` y ese nombre con « II», « III» y « IV»; la de un nombre generado, la de su base sin numeral. |
@@ -134,7 +132,7 @@ Ninguno nuevo. `cityName` de los eventos de fundación, caída y toma lleva el n
 
 ## 8. Invariantes
 
-- **Uno nuevo de la familia CITY:** dos ciudades en pie de un mismo dueño no llevan el mismo nombre, y ningún nombre
+- **[INV-CITY-025](../invariants/city.md#inv-city-025):** dos ciudades en pie de un mismo dueño no llevan el mismo nombre, y ningún nombre
   generado lleva dos numerales. Lo garantizan la función de dominio y las tres transacciones (Q6); se verifica por
   mutación de la función y de la lectura de nombres en la transacción.
 
@@ -147,12 +145,12 @@ Ninguno nuevo. `cityName` de los eventos de fundación, caída y toma lleva el n
 | Integración | Fundar tras caer la capital da `<base>` y no «X II II»; tras caer la II da `<base> II`; tomar una ciudad con un nombre que el vencedor ya tiene da `… II`; refundar desde una «X III» da `<base>`. |
 | Humo | `--multiciudad`: la fundada lleva el primer nombre libre de la serie, no «<capital> II». |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-26)
 
-Cada fila lleva la recomendación del agente en negrita y las alternativas. Las decide la persona usuaria; hasta entonces
-esta spec no obliga a nadie.
+La persona usuaria aceptó las seis recomendaciones el 2026-11-26: cada fila deja la decisión, en negrita, y las
+alternativas descartadas. Cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación | Alternativas |
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿De qué nombre parte la ciudad que se funda? | **De la base del jugador, `<usuario>polis`.** No depende de qué ciudad sea hoy la capital ni de si es tomada, y no hay que interpretar nombres. | **Del nombre de la capital sin su numeral** (con una capital tomada, la serie es la de otro jugador); **del nombre de la capital tal cual** (lo de hoy: «X II II»). |
 | Q2 | ¿Qué numeral lleva? | **El primero libre entre las ciudades en pie, y la base sin numeral cuenta como el primero.** Al caer la capital, la siguiente fundación recupera su nombre. | **El primero libre empezando en II** (la base queda para la primera ciudad, aunque ya no exista: con tres en pie y la capital caída, `Xpolis` no vuelve); **el siguiente al más alto que se haya usado nunca** (V, VI…: no repite ni con las caídas, pero crece sin techo y pide recordar las caídas); **el recuento** (lo de hoy: repite). |
