@@ -21,7 +21,7 @@ import {
   type Tile,
   type View,
 } from './decide';
-import { city, stocks, unit, view } from './fixtures.test-helpers';
+import { building, city, stocks, unit, view } from './fixtures.test-helpers';
 import { PROFILES } from './profiles';
 import { createRng } from './random';
 
@@ -78,6 +78,43 @@ describe('RN-BOT-023: funda hasta el tope de la era de su capital', () => {
     const done = run(foundView('IRON_AGE', 3), ordered, NOW + 2_000).memory;
     expect(done.founding).toBeNull();
     expect(done.foundResult).toMatchObject({ status: 'founded', ms: 2_000 });
+  });
+});
+
+describe('la piedra de la siguiente ciudad (precisión de RN-BOT-019, repaso del 2026-11-27)', () => {
+  // La prueba en vivo de E41: con la capital en Castillos, la muralla rehecha tras cada
+  // asalto y la investigación se llevaban la piedra y el constructor no juntaba los 400.
+  const keys = (r: { commands: readonly Command[] }) => r.commands.map((c) => c.key);
+  const castle = (stone: number, wood = 5_000) =>
+    capital('CASTLE_AGE', { population: 16, populationLimit: 50, stocks: stocks(wood, stone) });
+  const withWorkshop = { buildings: [building({ id: 5, type: 'WORKSHOP' })] };
+
+  it('mientras falta una ciudad, la muralla y la elaboración sólo gastan lo que pasa de 400', () => {
+    // 350 de piedra: todo apartado, ni muralla (200 + 100) ni elaboración (15).
+    const short = run(foundView('CASTLE_AGE', 3, { city: castle(350), ...withWorkshop }));
+    expect(keys(short)).not.toContain('build:WALL');
+    expect(keys(short)).not.toContain('craft');
+    // 750 sin la madera de fundar: sobran 350, llega para la muralla.
+    const spare = run(foundView('CASTLE_AGE', 3, { city: castle(750, 700), ...withWorkshop }));
+    expect(keys(spare)).toContain('build:WALL');
+  });
+
+  it('con el tope lleno o sin sitio, no aparta nada', () => {
+    expect(keys(run(foundView('CASTLE_AGE', 4, { city: castle(350), ...withWorkshop })))).toContain('build:WALL');
+    const noSite: Memory = { ...EMPTY_MEMORY, foundNoSite: true };
+    expect(keys(run(foundView('CASTLE_AGE', 3, { city: castle(350), ...withWorkshop }), noSite))).toContain('build:WALL');
+  });
+
+  it('una búsqueda sin sitio deja de apartarla; la siguiente que lo encuentra vuelve a apartarla', () => {
+    // Sin bosque no hay sitio: se apunta y la piedra queda libre.
+    const bare = foundView('CASTLE_AGE', 3, { city: castle(400, 800), terrainAt: () => 0, ...withWorkshop });
+    const first = run(bare);
+    expect(first.memory).toMatchObject({ founding: null, foundNoSite: true, foundSearchAtMs: NOW + 5 * 60_000 });
+    expect(keys(first)).toContain('build:WALL');
+    // Pasados los cinco minutos, con bosque, el sitio aparece y la fundación empieza.
+    const later = run(foundView('CASTLE_AGE', 3, { city: castle(400, 800), ...withWorkshop }), first.memory, NOW + 5 * 60_000);
+    expect(later.memory).toMatchObject({ foundNoSite: false, founding: { site: SITE, cities: 3 } });
+    expect(keys(later)).not.toContain('build:WALL');
   });
 });
 

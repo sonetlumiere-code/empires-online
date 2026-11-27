@@ -341,6 +341,11 @@ export interface Memory {
   /** Sin sitio a la vista: no se vuelve a buscar antes de esto. */
   readonly foundSearchAtMs: number;
   /**
+   * La última búsqueda no encontró sitio: hasta que otra lo encuentre, la piedra de la
+   * fundación no se aparta (repaso del 2026-11-27, SPEC-BOTS-ALL-CITIES §9.1).
+   */
+  readonly foundNoSite: boolean;
+  /**
    * Aldeanos fuera de la vista que vuelven a casa (SPEC-BOTS-FOUND §9.1): el de una
    * fundación fallida y los parados lejos que vio la exploración. La campaña mira el
    * primero.
@@ -436,6 +441,7 @@ export const EMPTY_MEMORY: Memory = {
   foundResult: null,
   foundSiteCooldowns: {},
   foundSearchAtMs: 0,
+  foundNoSite: false,
   strays: [],
 };
 
@@ -1556,6 +1562,21 @@ function chooseFounder(view: View, site: Tile): UnitView | null {
 }
 
 /**
+ * La piedra de la siguiente ciudad, apartada mientras falta alguna y antes de que empiece
+ * la fundación (precisión de RN-BOT-019, repaso del 2026-11-27): ni el avance, ni la
+ * muralla, ni la investigación la gastan (SPEC-BOTS-ALL-CITIES Q2). Con la capital en
+ * Castillos, la muralla rehecha tras cada asalto y la investigación se la llevaban y el
+ * constructor no llegaba a los 400 de la cuarta. Si la última búsqueda no encontró sitio,
+ * no se aparta nada hasta que otra lo encuentre.
+ */
+function reserveFoundStone(memory: Memory, plan: Plan): Memory {
+  if (memory.foundNoSite) return memory;
+  const stone = Math.max(0, Math.min(FOUND_COST.STONE, plan.city.stocks.STONE));
+  if (stone > 0) plan.reserve({ STONE: stone });
+  return memory;
+}
+
+/**
  * La fundación (SPEC-BOTS-FOUND §4.1, §4.3; RN-BOT-018, RN-BOT-019): con una sola
  * ciudad en Bronce o después y lo que cuesta en el almacén, elige sitio y aldeano;
  * aparta lo que cuesta en cada despertar mientras dura; el aldeano camina por tramos
@@ -1571,13 +1592,14 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
   // La siguiente ciudad, hasta el tope de la era de la capital (RN-BOT-023).
   if (f !== null && count > (f.cities ?? 1)) return endFounding(mem, 'founded', null, nowMs, profile);
   if (f === null) {
-    if (count >= maxOwnCities(view.city.era) || plan.full || nowMs < mem.foundSearchAtMs) return mem;
-    if (!eraAtLeast(view.city.era, 'BRONZE_AGE') || !plan.affords({ ...FOUND_COST })) return mem;
-    if (view.city.advance !== null && view.city.advance !== undefined) return mem;
+    if (count >= maxOwnCities(view.city.era) || !eraAtLeast(view.city.era, 'BRONZE_AGE')) return mem;
+    if (plan.full || nowMs < mem.foundSearchAtMs || !plan.affords({ ...FOUND_COST })) return reserveFoundStone(mem, plan);
+    if (view.city.advance !== null && view.city.advance !== undefined) return reserveFoundStone(mem, plan);
     const site = chooseFoundSite(view, profile, mem, nowMs);
-    if (!site) return { ...mem, foundSearchAtMs: nowMs + FOUND_SEARCH_WAIT_MS };
+    if (!site) return { ...mem, foundSearchAtMs: nowMs + FOUND_SEARCH_WAIT_MS, foundNoSite: true };
+    mem = { ...mem, foundNoSite: false };
     const u = chooseFounder(view, site);
-    if (!u) return mem;
+    if (!u) return reserveFoundStone(mem, plan);
     f = {
       site,
       unitId: u.id,

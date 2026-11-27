@@ -183,6 +183,7 @@ describe('RN-BOT-002: no envía lo que el HUD tendría deshabilitado', () => {
 
 describe('reglas 4 a 7 del constructor', () => {
   const villagersDone = { population: 8, populationLimit: 15 };
+  const NO_SITE = { ...EMPTY_MEMORY, foundNoSite: true };
 
   it('avanza a Bronce con 400 de madera y 200 de piedra', () => {
     const v = view({ city: city({ ...villagersDone, stocks: stocks(400, 200) }) });
@@ -195,7 +196,8 @@ describe('reglas 4 a 7 del constructor', () => {
 
   it('en Bronce: taller primero, y muralla sólo si sobra piedra', () => {
     const v = view({ city: city({ ...villagersDone, era: 'BRONZE_AGE', population: 12, stocks: stocks(400, 340) }) });
-    const cs = decide(v, constructor, EMPTY_MEMORY, NOW, rng()).commands;
+    // Sin sitio para fundar: la piedra de la segunda no se aparta (eso, en found.test.ts).
+    const cs = decide(v, constructor, NO_SITE, NOW, rng()).commands;
     expect(cs[0]).toMatchObject({ type: 'city.build', building: 'WORKSHOP' });
     // Quedan 290 de piedra: no llega a 200 + 100 de reserva para la muralla.
     expect(cs.map((c) => (c.type === 'city.build' ? c.building : c.type))).not.toContain('WALL');
@@ -206,7 +208,7 @@ describe('reglas 4 a 7 del constructor', () => {
       city: city({ era: 'BRONZE_AGE', population: 12, populationLimit: 15, stocks: stocks(400, 400) }),
       buildings: [building({ id: 5, type: 'WORKSHOP' })],
     });
-    expect(decide(v, constructor, EMPTY_MEMORY, NOW, rng()).commands).toEqual([
+    expect(decide(v, constructor, NO_SITE, NOW, rng()).commands).toEqual([
       { key: 'craft', type: 'city.craft', cityId: 10 },
       { key: 'build:WALL', type: 'city.build', cityId: 10, building: 'WALL', tile: { x: 100, y: 100 } },
     ]);

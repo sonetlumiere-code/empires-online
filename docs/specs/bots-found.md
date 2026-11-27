@@ -174,7 +174,7 @@ Continúan las de [bots-assault.md](bots-assault.md) §4.8.
 | ID | Regla |
 |---|---|
 | `RN-BOT-018` | Un bot con `founds` y una sola ciudad en pie funda la segunda con un aldeano de su capital en cuanto `foundCityBlockReason` no la deshabilita salvo por el estado del aldeano, en el sitio de §4.2; el saqueador no funda. **Precisión (2026-11-27, [bots-all-cities.md](bots-all-cities.md), E41):** funda la **siguiente** mientras tenga menos ciudades en pie que el tope de la era de su capital, una fundación a la vez y siempre desde la capital (`RN-BOT-023`). |
-| `RN-BOT-019` | Mientras dura una fundación, lo que cuesta fundar no lo gasta ninguna otra regla y su aldeano no recibe otra orden que las de la fundación. |
+| `RN-BOT-019` | Mientras dura una fundación, lo que cuesta fundar no lo gasta ninguna otra regla y su aldeano no recibe otra orden que las de la fundación. **Precisión (2026-11-27, [bots-all-cities.md](bots-all-cities.md) §9.1):** antes de que empiece, mientras falte una ciudad hasta el tope de la era de la capital, la piedra de fundar (400, o lo que haya) queda también apartada del avance, la muralla, la investigación y el comercio, salvo que la última búsqueda no encontrara sitio (`foundNoSite`). |
 | `RN-BOT-020` | La segunda ciudad juega con su propia memoria y el perfil de colonia; la capital no da órdenes a sus unidades. **Precisión (2026-11-27, [bots-all-cities.md](bots-all-cities.md), E41):** vale para cada ciudad que no es la capital, cada una con su conexión, y ninguna da órdenes a las unidades de otra (`RN-BOT-022`, `RN-BOT-024`). |
 | `RN-BOT-021` | Un sitio que el servidor rechaza, o al que el aldeano no llega, no se vuelve a elegir hasta `foundSiteCooldownMs`. |
 
