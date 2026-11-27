@@ -3635,3 +3635,37 @@ sembrar nada (spec §9.1). Registros en `bots/runs/` (sin versionar).
   números las partidas de asalto que se replantan (`reunidos 6 en 2m02s` tres veces).
 - **Sin comprobar en el navegador:** la tercera ciudad de un bot en el mapa; el panel del navegador integrado no se usó
   en esta prueba.
+
+### Repaso de la piedra (2026-11-27)
+
+Rama `claude/repaso-bots-piedra`, con los tres hallazgos de arriba. Sólo bots; sin cambios en el servidor, el
+protocolo ni la base.
+
+1. **La piedra de la siguiente ciudad, apartada antes de fundar** (precisión de `RN-BOT-019`,
+   [bots-all-cities.md](../specs/bots-all-cities.md) §9.1). En la pasada 2, `_3_e29` rehízo tres veces la muralla
+   tras los asaltos abandonados y acabó con 106 de piedra: lo apartado sólo valía con la fundación en curso. Ahora,
+   mientras falta una ciudad hasta el tope y la última búsqueda no dijo `no_site`, los 400 de fundar quedan fuera del
+   alcance de la muralla, la investigación y el comercio (`all-cities.test.ts`).
+2. **El resumen junta las partidas replantadas** ([bots-assault.md](../specs/bots-assault.md) §9.1): las tres líneas
+   «reunidos 6 en 2m02s» eran tres asaltos de verdad contra la misma capital; ahora salen en una con `×3` y lo sumado
+   (`log.test.ts`).
+3. **El anillo lleno, a una spec en Draft:** [bots-found-site.md](../specs/bots-found-site.md). Buscar el sitio
+   también alrededor de las colonias cambia dónde funda el bot (la Q3 de E35), así que lo decide la persona usuaria.
+
+**Prueba en vivo** (`--constructores 3 --saqueadores 1 --sufijo e29 --duracion 40m --semilla 44`, velocidad real,
+sin sembrar; registro `bots/runs/2026-11-27T17-13-58-641Z-44.jsonl`):
+
+- **La piedra deja de faltar.** `_3_e29` (Castillos, tres ciudades, tope 4) arranca con 236 y llega a los 400 de
+  la cuarta a los **2 min 57 s**. Con la piedra apartada por debajo de su objetivo, los aldeanos que quedan parados
+  van a las colinas (18 órdenes de recolección, frente a 1 en la pasada 2). La piedra sube a 3 021 por hora y acaba
+  en 1 420. Rehízo la muralla cuatro veces (cuatro asaltos abandonados) con la piedra que sobraba, sin bajar de 790.
+- **Pero no funda la cuarta: no hay sitio.** Sus 8 búsquedas dan `no_site`, como las 8 de `_2_e29` (Castillos, dos
+  ciudades, 1 458 de piedra quieta) y las 8 de `_1_e29` (Bronce, una ciudad). Con las ciudades y los territorios de la
+  base, el anillo de 28 a 96 de la capital de `_2_e29` no tiene ningún tile en territorio libre (el más cercano está a
+  99), y el de su colonia 60 tiene unos 3 900 ([bots-found-site.md](../specs/bots-found-site.md) §1). Ninguna
+  fundación hasta que se decida esa spec.
+- **El resumen:** `partida contra bot_constructor_3_e29polis ×3` y `asalto contra bot_constructor_3_e29polis ×4:
+  reunidos 6 en 2m02s de media · perdidos 2 (arietes 2) · muertos 14 · vuelve (blocked)`, en lugar de siete líneas.
+- Todas las ciudades juegan todo el rato (`minutos con alguna sin jugar 0`); madera por colonia, 9 296 por hora de
+  media en los constructores.
+- **Sin comprobar en el navegador:** nada visual cambia en este repaso.
