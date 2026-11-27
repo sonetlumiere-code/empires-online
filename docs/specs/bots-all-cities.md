@@ -7,8 +7,8 @@ lejos de casa vuelvan aunque queden fuera de la exploración.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-ALL-CITIES` |
-| Estado | Draft (2026-11-27). Espera las decisiones de producto de §10; no se implementa hasta entonces. |
-| Milestone | Se abre en la aceptación (sería E41: el número E40 ya es [city-names.md](city-names.md)). |
+| Estado | Accepted (2026-11-27). La persona usuaria aceptó las ocho recomendaciones de §10. |
+| Milestone | E41 Los bots juegan todas sus ciudades (cuadragésimo primer slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §10 (eras y población), §19 (niveles de test) |
 | Depende de | [bots.md](bots.md), [bots-found.md](bots-found.md), [bots-assault.md](bots-assault.md), [more-cities.md](more-cities.md), [city-taken.md](city-taken.md), [multi-city.md](multi-city.md) |
 | Decisiones | [ADR-049](../decisions/ADR-049-bots-as-protocol-clients.md) sigue valiendo. Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base. |
@@ -246,12 +246,12 @@ protocolo y el servidor valida cada orden).
 | Unit (Vitest, `log.test.ts`) | Los sucesos nuevos y ampliados, y el resumen: minutos sin jugar, colonias por origen, fundaciones por ordinal, varados. La misma semilla da los mismos comandos (`RN-BOT-005`). |
 | Go, simulación / integración / e2e | Ninguno nuevo: las reglas del servidor no cambian. |
 
-## 10. Preguntas de producto
+## 10. Decisiones de producto (2026-11-27)
 
-Cada fila lleva la recomendación del agente en negrita y las alternativas. Las decide la persona usuaria; hasta entonces
-esta spec no obliga a nadie.
+La persona usuaria aceptó las ocho recomendaciones (2026-11-27): cada fila deja la decisión, en negrita, y las
+alternativas descartadas. Cambiarlas es cambiar la spec.
 
-| # | Pregunta | Recomendación | Alternativas |
+| # | Pregunta | Decisión | Descartadas |
 |---|---|---|---|
 | Q1 | ¿Cuántas ciudades juega un bot? | **Todas las propias en pie**, hasta las cuatro del servidor: la capital con su perfil y las demás como colonias. Es lo que juega una persona, y una ciudad parada sólo estropea la medida. | **Hasta un tope del bot** (p. ej. tres: menos conexiones, pero la cuarta se queda como la 57); **sólo la capital y la segunda, y las demás apuntadas** (lo de hoy, con la medida de las paradas). |
 | Q2 | ¿Funda el constructor más de una segunda ciudad? | **Sí, hasta el tope de la era de su capital, una a la vez y antes del avance de era.** Mide cuándo llega a la tercera y a la cuarta y cuánto le retrasa Castillos. | **Sólo la segunda, como hoy** (las demás sólo por toma: el constructor no toma, así que nunca pasa de dos); **hasta el tope, pero después del avance** (no retrasa Castillos; en Hierro la tercera llega tarde o nunca, porque la piedra se la llevan la investigación y la muralla, [milestones.md](../roadmap/milestones.md) §E35). |

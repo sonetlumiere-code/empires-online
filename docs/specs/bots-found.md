@@ -173,9 +173,9 @@ Continúan las de [bots-assault.md](bots-assault.md) §4.8.
 
 | ID | Regla |
 |---|---|
-| `RN-BOT-018` | Un bot con `founds` y una sola ciudad en pie funda la segunda con un aldeano de su capital en cuanto `foundCityBlockReason` no la deshabilita salvo por el estado del aldeano, en el sitio de §4.2; el saqueador no funda. |
+| `RN-BOT-018` | Un bot con `founds` y una sola ciudad en pie funda la segunda con un aldeano de su capital en cuanto `foundCityBlockReason` no la deshabilita salvo por el estado del aldeano, en el sitio de §4.2; el saqueador no funda. **Precisión (2026-11-27, [bots-all-cities.md](bots-all-cities.md), E41):** funda la **siguiente** mientras tenga menos ciudades en pie que el tope de la era de su capital, una fundación a la vez y siempre desde la capital (`RN-BOT-023`). |
 | `RN-BOT-019` | Mientras dura una fundación, lo que cuesta fundar no lo gasta ninguna otra regla y su aldeano no recibe otra orden que las de la fundación. |
-| `RN-BOT-020` | La segunda ciudad juega con su propia memoria y el perfil de colonia; la capital no da órdenes a sus unidades. |
+| `RN-BOT-020` | La segunda ciudad juega con su propia memoria y el perfil de colonia; la capital no da órdenes a sus unidades. **Precisión (2026-11-27, [bots-all-cities.md](bots-all-cities.md), E41):** vale para cada ciudad que no es la capital, cada una con su conexión, y ninguna da órdenes a las unidades de otra (`RN-BOT-022`, `RN-BOT-024`). |
 | `RN-BOT-021` | Un sitio que el servidor rechaza, o al que el aldeano no llega, no se vuelve a elegir hasta `foundSiteCooldownMs`. |
 
 **Precisión de `RN-BOT-003`:** un bot envía como mucho dos comandos **por ciudad** y despertar.
@@ -238,6 +238,8 @@ decide el sitio).
 - **Precisión (2026-11-25): al arrancar con dos.** Un bot que arranca con dos ciudades juega la segunda si la ve la
   casa o la exploración; si no la ve, la regla de fundación lo intentará y el servidor la rechazará por el tope
   (`INVALID_TARGET`), y el sitio se aparta. En la prueba en vivo, las tres segundas estaban a la vista.
+  **Precisión (2026-11-27, [bots-all-cities.md](bots-all-cities.md), E41):** el bot conoce todas sus ciudades por el `ownCities` del snapshot y abre su
+  conexión de colonia aunque estén fuera de la vista.
 - **Precisión (2026-11-25): la vuelta de la casa.** Si el snapshot que sigue a la vuelta tampoco trae la capital, la
   casa no vuelve a pedirla hasta el siguiente snapshot que la traiga (`recentering`): un bucle de `session.view` no
   tiene salida si la capital acaba de caer.

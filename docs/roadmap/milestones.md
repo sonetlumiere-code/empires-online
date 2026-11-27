@@ -3573,3 +3573,33 @@ http://localhost:3001 --multiciudad`, 26 comprobaciones. Avanza a Bronce, funda 
   `CityView`.
 - Las ciudades de antes de E40 conservan su nombre (Q5): `bot_constructor_2_e35polis II II` sigue en la base de
   desarrollo, y su próxima fundación saldría `bot_constructor_2_e35polis`.
+
+## E41 — Los bots juegan todas sus ciudades
+
+**Estado: EN CURSO (2026-11-27)**, en la rama `claude/slice-bots-todas-ciudades`. Contrato:
+[SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md), propuesta y aceptada el 2026-11-27: la persona usuaria aceptó sus
+ocho decisiones con la recomendación del agente. Sin ADR nuevo: no cambia el servidor, ni el protocolo, ni la base. Nace
+de la ejecución larga de E32 (§E32): la tercera ciudad del saqueador se quedó 3 h sin jugar, y los 12 aldeanos varados
+de `_3_e29` quedaron fuera del alcance de la exploración (§E35).
+
+**Objetivo.** Que un bot juegue cada ciudad propia en pie y medir cuánto rinde cada una de más, cuándo llega el
+constructor a la tercera y a la cuarta, y si vuelven los varados.
+
+**Alcance.** En `apps/bots`: la capital con su perfil y cada una de las demás como colonia, con su memoria y su conexión
+(`RN-BOT-022`, `RN-BOT-024`); el constructor funda hasta el tope de la era de su capital (`RN-BOT-023`); el barrido del
+mapa cuando faltan unidades y la vuelta de cada varado a su ciudad (`RN-BOT-025`); los sucesos `cities` y `sweep`, y
+`found`, `colony` y `stray` ampliados, con su resumen. **No entra** (spec §2): el servidor, el protocolo, el cliente
+web, que el saqueador funde, que las colonias avancen o comercien, que sean blanco de otros bots.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-BOT-022` a `RN-BOT-025`, con precisiones de
+   `RN-BOT-018` y `RN-BOT-020` en [bots-found.md](../specs/bots-found.md), de las conexiones y las reglas en
+   [bots.md](../specs/bots.md) y de la Q5 de [more-cities.md](../specs/more-cities.md). Sin invariantes.
+2. **PENDIENTE** — Bots: todas las ciudades (`ownCities`, una conexión y una memoria por colonia, la vista de cada una
+   con sólo sus unidades) y la fundación hasta el tope, con sus tests (`found.test.ts`, `bot.test.ts`).
+3. **PENDIENTE** — Bots: el barrido y la vuelta de cada varado a su ciudad, con sus tests.
+4. **PENDIENTE** — Registro y resumen (`log.test.ts`); docs (`docs/architecture/frontend.md`,
+   `docs/operations/local-development.md`, spec §9.1); `verify:full`.
+5. **PENDIENTE** — Prueba en vivo (spec Q8): 45 min a velocidad real con las cuentas `_e29` y un constructor sembrado a
+   Hierro.
