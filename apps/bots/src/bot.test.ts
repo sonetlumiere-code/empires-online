@@ -42,7 +42,10 @@ class FakeServer implements WebSocketLike {
       });
       this.snapshot();
     }
-    if (m.type === 'session.view') this.snapshot();
+    if (m.type === 'session.view') {
+      this.viewCenter = (m as unknown as { payload: { center: { x: number; y: number } } }).payload.center;
+      this.snapshot();
+    }
   }
 
   close(code?: number): void {
@@ -64,6 +67,25 @@ class FakeServer implements WebSocketLike {
   withCapital = true;
   /** Las unidades del snapshot (vacío por defecto). */
   units: Record<string, unknown>[] = [];
+  /**
+   * Con `aoi`, el snapshot sólo trae las unidades a 2 chunks o menos del chunk del centro
+   * de la vista, como el área de interés del servidor (SPEC-BOTS-ALL-CITIES §4.6).
+   */
+  aoi = false;
+  viewCenter: { x: number; y: number } | null = null;
+  /** El `ownCities` del snapshot, si lo hay. */
+  ownCities: Record<string, unknown>[] | null = null;
+  /** La población de la capital del snapshot. */
+  population = 3;
+
+  private visible(): Record<string, unknown>[] {
+    if (!this.aoi) return this.units;
+    const c = this.viewCenter ?? this.center;
+    const chunk = (v: number) => Math.floor(v / 32);
+    return this.units.filter(
+      (u) => Math.abs(chunk(u.x as number) - chunk(c.x)) <= 2 && Math.abs(chunk(u.y as number) - chunk(c.y)) <= 2,
+    );
+  }
 
   snapshot(): void {
     this.deliver('world.snapshot', {
@@ -71,7 +93,8 @@ class FakeServer implements WebSocketLike {
       tick: 1,
       chunks: [],
       terrain: [],
-      units: this.units,
+      units: this.visible(),
+      ...(this.ownCities ? { ownCities: this.ownCities } : {}),
       cities: [
         ...this.others,
         {
@@ -85,7 +108,7 @@ class FakeServer implements WebSocketLike {
           faction: 'NEUTRAL',
           factionJoin: null,
           clan: null,
-          population: 3,
+          population: this.population,
           populationLimit: 10,
           presenceState: 'ONLINE',
           protectionUntilMs: null,
@@ -118,6 +141,8 @@ function newBot(
   serverCivilization = 'ROMAN',
   profile: Profile = PROFILES.constructor,
   directory: Directory = new Directory(),
+  /** Prepara cada socket nuevo (todas las conexiones del bot, no sólo la casa). */
+  setup: (s: FakeServer) => void = () => {},
 ): Bot {
   return new Bot({
     name: 'bot_constructor_1',
@@ -134,6 +159,7 @@ function newBot(
     say: (t) => said.push(t),
     socketFactory: () => {
       const s = new FakeServer(serverCivilization);
+      setup(s);
       sockets.push(s);
       return s;
     },
@@ -602,6 +628,10 @@ describe('RN-BOT-007: la parada limpia', () => {
       say: (t) => said.push(t),
       socketFactory: () => {
         const s = new FakeServer();
+        // Sus tres aldeanos en casa: no falta nadie y no hay barrido (SPEC-BOTS-ALL-CITIES §4.6).
+        s.units = [1, 2, 3].map((id) => ({
+          id, playerId: PLAYER, cityId: 10, unitType: 'VILLAGER', x: 100 + id, y: 100, hp: 25, maxHp: 25, status: 'WORKING', movement: null, garrisonCityId: null,
+        }));
         sockets.push(s);
         return s;
       },
@@ -805,5 +835,223 @@ describe('la segunda ciudad del bot (SPEC-BOTS-FOUND §4.5, §4.6)', () => {
     expect(fell).toHaveLength(1);
     expect(fell[0]).toMatchObject({ cityId: 10, newCityId: 30, kept: true, capital: true });
     expect((sockets[1] as FakeServer).closed).not.toBeNull();
+  });
+});
+
+describe('todas las ciudades del bot (SPEC-BOTS-ALL-CITIES §4.1, §4.3, §4.7)', () => {
+  const ENEMY = '22222222-2222-4222-8222-222222222222';
+  const cityAt = (id: number, x: number, y: number, over: Record<string, unknown> = {}) => ({
+    id,
+    ownerPlayerId: PLAYER,
+    name: `bot_constructor_1polis ${id}`,
+    centerX: x,
+    centerY: y,
+    era: 'BRONZE_AGE',
+    civilization: 'ROMAN',
+    faction: 'NEUTRAL',
+    factionJoin: null,
+    clan: null,
+    population: 3,
+    populationLimit: 50,
+    presenceState: 'ONLINE',
+    protectionUntilMs: null,
+    stocks: { WOOD: 0, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 },
+    ...over,
+  });
+  const villager = (id: number, cityId: number, x: number, y: number, status = 'IDLE') => ({
+    id, playerId: PLAYER, cityId, unitType: 'VILLAGER', x, y, hp: 25, maxHp: 25, status, movement: null, garrisonCityId: null,
+  });
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const views = (s: FakeServer) =>
+    s.sent.filter((m) => m.type === 'session.view').map((m) => (m as { payload: { center: unknown } }).payload.center);
+  type AllInner = Inner & { colonies: Map<number, { memory: Memory }>; logStock(): void };
+
+  /** El bot con la capital (10) y las ciudades `cities`, ya con sus conexiones de colonia abiertas. */
+  async function withCities(lines: string[], sockets: FakeServer[], cities: Record<string, unknown>[], units: Record<string, unknown>[] = []) {
+    const bot = newBot(lines, sockets);
+    await bot.start();
+    const home = sockets[0] as FakeServer;
+    home.others = cities;
+    home.units = units;
+    home.snapshot();
+    await tick();
+    const inner = bot as unknown as AllInner;
+    inner.think();
+    // Las conexiones de colonia piden su ticket y abren: unos turnos del bucle.
+    await new Promise((r) => setTimeout(r, 10));
+    inner.think();
+    await tick();
+    return { bot, home, inner };
+  }
+
+  it('RN-BOT-024: una conexión por cada ciudad que no es la capital, mirando su centro', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot } = await withCities(lines, sockets, [cityAt(30, 300, 300), cityAt(40, 200, 400)]);
+    expect(sockets).toHaveLength(3);
+    expect(views(sockets[1] as FakeServer)).toEqual([{ x: 300, y: 300 }]);
+    expect(views(sockets[2] as FakeServer)).toEqual([{ x: 200, y: 400 }]);
+    expect(bot.buildView()?.ownCityCount).toBe(3);
+    expect(bot.buildColonyView(40)?.city.id).toBe(40);
+    bot.stop();
+    for (const s of sockets) expect(s.closed).not.toBeNull();
+  });
+
+  it('RN-BOT-022: la capital no ve las unidades de ninguna colonia, y cada colonia sólo las suyas', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const units = [villager(1, 10, 101, 100), villager(2, 30, 301, 300), villager(3, 40, 201, 400)];
+    const { bot } = await withCities(lines, sockets, [cityAt(30, 300, 300), cityAt(40, 200, 400)], units);
+    expect(bot.buildView()?.units.map((u) => u.id)).toEqual([1]);
+    expect(bot.buildColonyView(30)?.units.map((u) => u.id)).toEqual([2]);
+    expect(bot.buildColonyView(40)?.units.map((u) => u.id)).toEqual([3]);
+    bot.stop();
+  });
+
+  it('cada colonia decide con su memoria y su propio tope; las claves llevan su ciudad', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const rich = { stocks: { WOOD: 500, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 } };
+    const { bot } = await withCities(lines, sockets, [cityAt(30, 300, 300, rich), cityAt(40, 200, 400, rich)]);
+    bot.stop();
+    const keys = parseLog(lines.join(''))
+      .filter((e) => e.event === 'command')
+      .map((e) => String(e.key));
+    expect(keys).toContain('colony:30:train:VILLAGER');
+    expect(keys).toContain('colony:40:train:VILLAGER');
+  });
+
+  it('una ciudad propia fuera de la vista que trae ownCities también se juega', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets);
+    await bot.start();
+    const home = sockets[0] as FakeServer;
+    home.ownCities = [
+      { id: 10, centerX: 100, centerY: 100, era: 'BRONZE_AGE' },
+      { id: 50, centerX: 450, centerY: 450, era: 'BRONZE_AGE' },
+    ];
+    home.snapshot();
+    await new Promise((r) => setTimeout(r, 10));
+    await tick();
+    expect(sockets).toHaveLength(2);
+    expect(views(sockets[1] as FakeServer)).toEqual([{ x: 450, y: 450 }]);
+    expect(bot.buildView()?.ownCityCount).toBe(2);
+    bot.stop();
+  });
+
+  it('cae una de tres: se cierra su conexión y las demás siguen', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot, home } = await withCities(lines, sockets, [cityAt(30, 300, 300), cityAt(40, 200, 400)]);
+    home.push('city.fallen', { cityId: 40, ownerPlayerId: PLAYER, byPlayerId: ENEMY, atMs: NOW });
+    home.others = [cityAt(30, 300, 300)];
+    home.snapshot();
+    await tick();
+    expect((sockets[2] as FakeServer).closed).not.toBeNull();
+    expect((sockets[1] as FakeServer).closed).toBeNull();
+    expect(bot.buildColonyView(30)?.city.id).toBe(30);
+    expect(bot.buildColonyView(40)).toBeNull();
+    bot.stop();
+    const fell = parseLog(lines.join('')).filter((e) => e.event === 'fell');
+    expect(fell).toHaveLength(1);
+    expect(fell[0]).toMatchObject({ cityId: 40, newCityId: 10, kept: true, capital: false });
+  });
+
+  it('cae la capital con dos más: la de id menor pasa a capital y la otra sigue de colonia', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot, home } = await withCities(lines, sockets, [cityAt(30, 300, 300), cityAt(40, 200, 400)]);
+    home.push('city.fallen', { cityId: 10, ownerPlayerId: PLAYER, byPlayerId: ENEMY, atMs: NOW });
+    home.withCapital = false;
+    home.snapshot();
+    await tick();
+    expect(bot.buildView()?.city.id).toBe(30);
+    expect(bot.buildView()?.ownCityCount).toBe(2);
+    expect((sockets[1] as FakeServer).closed).not.toBeNull();
+    expect((sockets[2] as FakeServer).closed).toBeNull();
+    expect(bot.buildColonyView()?.city.id).toBe(40);
+    bot.stop();
+    const fell = parseLog(lines.join('')).filter((e) => e.event === 'fell');
+    expect(fell).toHaveLength(1);
+    expect(fell[0]).toMatchObject({ cityId: 10, newCityId: 30, kept: true, capital: true });
+  });
+
+  it('la ciudad que toma sale como tomada en su línea colony, y cities cuenta las que hay y las que juegan', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets);
+    await bot.start();
+    const home = sockets[0] as FakeServer;
+    home.push('city.fallen', { cityId: 40, ownerPlayerId: ENEMY, byPlayerId: PLAYER, takenCityId: 41, atMs: NOW });
+    home.others = [cityAt(41, 200, 400)];
+    home.snapshot();
+    await new Promise((r) => setTimeout(r, 10));
+    await tick();
+    const inner = bot as unknown as AllInner;
+    inner.logStock();
+    bot.stop();
+    const log = parseLog(lines.join(''));
+    expect(log.find((e) => e.event === 'colony')).toMatchObject({ cityId: 41, origin: 'taken', villagers: 0, target: 8 });
+    // La conexión de la tomada no trae su ciudad (el falso no la tiene): está en pie y no juega.
+    expect(log.find((e) => e.event === 'cities')).toMatchObject({ standing: 2, played: 1, cap: 1 });
+  });
+});
+
+describe('el barrido (SPEC-BOTS-ALL-CITIES §4.6, RN-BOT-025)', () => {
+  const villager = (id: number, cityId: number, x: number, y: number) => ({
+    id, playerId: PLAYER, cityId, unitType: 'VILLAGER', x, y, hp: 25, maxHp: 25, status: 'IDLE', movement: null, garrisonCityId: null,
+  });
+  type SweepInner = Inner & { colonies: Map<number, { memory: Memory }> };
+
+  it('si a la ciudad le faltan unidades tras la exploración, barre el mapa hasta encontrarlas', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    // El varado, en el chunk 15: fuera de los anillos de 96, 160 y 224 alrededor de (100, 100).
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.constructor, new Directory(), (s) => {
+      s.aoi = true;
+      s.units = [villager(1, 10, 101, 100), villager(2, 10, 102, 100), villager(3, 10, 480, 480)];
+    });
+    await bot.start();
+    const inner = bot as unknown as SweepInner;
+    expect(inner.memory.strays?.map((s) => s.unitId)).toEqual([3]);
+    const log = parseLog(lines.join(''));
+    expect(log.filter((e) => e.event === 'stray')).toEqual([
+      expect.objectContaining({ status: 'seen', units: 1, cityId: 10, sweep: true, distance: 380 }),
+    ]);
+    expect(log.find((e) => e.event === 'sweep')).toMatchObject({ missing: 1, found: 1, left: 0, views: 16 });
+    bot.stop();
+  });
+
+  it('sin nada que falte no barre', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.constructor, new Directory(), (s) => {
+      s.aoi = true;
+      s.units = [villager(1, 10, 101, 100), villager(2, 10, 102, 100), villager(3, 10, 103, 100)];
+    });
+    await bot.start();
+    bot.stop();
+    expect(parseLog(lines.join('')).some((e) => e.event === 'sweep')).toBe(false);
+  });
+
+  it('el varado de una colonia se apunta en la memoria de la colonia, no en la de la capital', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const colony = {
+      id: 30, ownerPlayerId: PLAYER, name: 'bot_constructor_1polis II', centerX: 300, centerY: 300, era: 'BRONZE_AGE',
+      civilization: 'ROMAN', faction: 'NEUTRAL', factionJoin: null, clan: null, population: 1, populationLimit: 50,
+      presenceState: 'ONLINE', protectionUntilMs: null, stocks: { WOOD: 0, STONE: 0, WINE: 0, SILK: 0, SPICES: 0, FURS: 0 },
+    };
+    const bot = newBot(lines, sockets, [], 'ROMAN', PROFILES.constructor, new Directory(), (s) => {
+      s.others = [colony];
+      s.units = [villager(1, 10, 101, 100), villager(2, 10, 102, 100), villager(3, 10, 103, 100), villager(4, 30, 360, 300)];
+    });
+    await bot.start();
+    const inner = bot as unknown as SweepInner;
+    expect(inner.memory.strays).toEqual([]);
+    expect(inner.colonies.get(30)?.memory.strays?.map((s) => s.unitId)).toEqual([4]);
+    expect(parseLog(lines.join('')).find((e) => e.event === 'stray')).toMatchObject({ cityId: 30, distance: 60 });
+    bot.stop();
   });
 });

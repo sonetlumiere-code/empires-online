@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { AuthThrottle, WebSession, sessionCookie } from './auth';
 import { botEnvFromDotenv, rosterFor } from './main';
-import { DEFAULT_THINK_MS, OptionsError, botPassword, parseDuration, parseOptions } from './options';
+import { DEFAULT_THINK_MS, OptionsError, botPassword, linkWarning, parseDuration, parseOptions } from './options';
 import { createRng, seedFor } from './random';
 
 const parse = (argv: string[], env: Record<string, string> = {}) => parseOptions(argv, env, 1_000, '/repo');
@@ -175,5 +175,15 @@ describe('la sesión web', () => {
     expect(sessionCookie('eo_session=abc; Path=/; HttpOnly')).toBe('eo_session=abc');
     expect(sessionCookie('otra=1')).toBeNull();
     expect(sessionCookie(null)).toBeNull();
+  });
+});
+
+describe('el aviso de las conexiones (SPEC-BOTS-ALL-CITIES §4.3, Q3)', () => {
+  it('avisa sólo si los bots pueden abrir más de 32 conexiones, cinco por bot, y nombra la variable', () => {
+    expect(linkWarning(4)).toBeNull();
+    expect(linkWarning(6)).toBeNull();
+    const text = linkWarning(7);
+    expect(text).toContain('35 conexiones');
+    expect(text).toContain('EO_WS_MAX_CONNECTIONS_PER_IP');
   });
 });

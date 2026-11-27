@@ -4,6 +4,7 @@
  * Funciones puras: leen `argv` y el entorno y devuelven las opciones o un error
  * legible. Nada de aquí abre conexiones ni lee ficheros.
  */
+import { MAX_LINKS_PER_BOT, SERVER_LINKS_PER_IP } from './profiles';
 
 export interface Options {
   /** Origen de la web (alta, login y tickets). */
@@ -163,4 +164,17 @@ export function botPassword(env: Readonly<Record<string, string | undefined>>): 
   }
   if (p.length < 12) throw new OptionsError('EO_BOT_PASSWORD tiene que tener al menos 12 caracteres');
   return p;
+}
+
+/**
+ * El aviso del arranque si los bots pueden abrir más conexiones que las que el servidor
+ * acepta por IP por defecto (SPEC-BOTS-ALL-CITIES §4.3, Q3), o `null`.
+ */
+export function linkWarning(bots: number): string | null {
+  const links = bots * MAX_LINKS_PER_BOT;
+  if (links <= SERVER_LINKS_PER_IP) return null;
+  return (
+    `Aviso: ${bots} bots pueden abrir hasta ${links} conexiones, más que las ${SERVER_LINKS_PER_IP} por IP del ` +
+    `servidor por defecto: sube EO_WS_MAX_CONNECTIONS_PER_IP en el servidor o algunas ciudades no jugarán mientras esperan.`
+  );
 }

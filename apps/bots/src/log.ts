@@ -36,6 +36,8 @@ export type EventName =
   | 'found'
   | 'colony'
   | 'stray'
+  | 'cities'
+  | 'sweep'
   | 'error'
   | 'stop';
 

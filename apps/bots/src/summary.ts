@@ -56,22 +56,47 @@ export interface BotSummary {
   readonly foundsStarted: number;
   /** Fundaciones que terminaron mal, por causa. */
   readonly foundFailures: Readonly<Record<string, number>>;
-  /** Cada segunda ciudad fundada, con lo que tardó en crecer. */
+  /** Cada colonia (fundada, tomada o que ya estaba al arrancar), con lo que tardó en crecer. */
   readonly colonies: readonly ColonyGrowth[];
+  // ── Todas las ciudades (SPEC-BOTS-ALL-CITIES §4.7) ──
+  /** Ciudades propias en pie en la última línea `cities` y el máximo. */
+  readonly citiesFinal: number;
+  readonly citiesMax: number;
+  /** Minutos (líneas `cities`) con alguna ciudad en pie sin jugar: el número que tiene que ser cero. */
+  readonly unplayedMinutes: number;
+  /** El barrido del arranque (`null`: no hizo falta). */
+  readonly sweep: { readonly missing: number; readonly views: number; readonly found: number } | null;
+  /** Varados vistos (y de ellos, los que trajo el barrido), de vuelta y perdidos por causa. */
+  readonly straysSeen: number;
+  readonly straysSwept: number;
+  readonly straysHome: number;
+  readonly straysLost: Readonly<Record<string, number>>;
 }
 
 export interface ColonyGrowth {
   readonly cityId: number | null;
-  /** Ms desde el `start` del bot hasta fundarla, y desde que llegó a Bronce (o desde el arranque si ya estaba). */
+  /** De dónde salió: `founded`, `taken` o `start` (ya estaba al arrancar). */
+  readonly origin: string;
+  /** La ciudad que fue al fundarla (2, 3 o 4); `null` si no se fundó en esta ejecución. */
+  readonly ordinal: number | null;
+  /**
+   * Ms desde el `start` del bot hasta fundarla (o verla por primera vez), y desde que la
+   * capital llegó a la era que la permite (Bronce para la segunda, Hierro para la
+   * tercera, Castillos para la cuarta; desde el arranque si ya estaba).
+   */
   readonly foundedMs: number;
-  readonly fromBronzeMs: number;
-  /** Ms desde la fundación hasta su población objetivo y hasta su primera casa (`null`: no llegó). */
+  readonly fromEraMs: number;
+  /** Ms desde la fundación (o la primera línea `colony`) hasta sus aldeanos objetivo (`null`: no llegó). */
   readonly grownMs: number | null;
-  readonly firstHouseMs: number | null;
   /** Su población en la última línea `colony`, y si cayó. */
   readonly finalPopulation: number | null;
+  /** Madera neta del almacén por hora, entre la primera y la última línea `colony`. */
+  readonly woodPerHour: number | null;
   readonly fell: boolean;
 }
+
+/** La era de la capital que permite fundar la ciudad número `ordinal` (RN-CITY-040). */
+const ERA_FOR_ORDINAL: Readonly<Record<number, string>> = { 2: 'BRONZE_AGE', 3: 'IRON_AGE', 4: 'CASTLE_AGE' };
 
 export interface FallRecovery {
   readonly by: string | null;
@@ -180,7 +205,19 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
     const falls: ({ -readonly [K in keyof FallRecovery]: FallRecovery[K] } & { t: number; population: number })[] = [];
     let foundsStarted = 0;
     const foundFailures: Record<string, number> = {};
-    const colonies: ({ -readonly [K in keyof ColonyGrowth]: ColonyGrowth[K] } & { t: number })[] = [];
+    const colonies: ({ -readonly [K in keyof ColonyGrowth]: ColonyGrowth[K] } & {
+      t: number;
+      firstWood: { t: number; wood: number } | null;
+      lastWood: { t: number; wood: number } | null;
+    })[] = [];
+    let citiesFinal = 1;
+    let citiesMax = 1;
+    let unplayedMinutes = 0;
+    let sweep: BotSummary['sweep'] = null;
+    let straysSeen = 0;
+    let straysSwept = 0;
+    let straysHome = 0;
+    const straysLost: Record<string, number> = {};
     const colonyOf = (id: unknown) => colonies.find((c) => c.cityId === id && !c.fell);
     const close = (c: NonNullable<typeof current>): RaidBalance => {
       const { startT: _t, ...rest } = c;
@@ -307,30 +344,79 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           if (l.status === 'no_site') inc(foundFailures, 'no_site');
           if (l.status === 'failed') inc(foundFailures, String(l.cause));
           if (l.status === 'founded') {
-            const bronze = eras.BRONZE_AGE ?? 0;
+            const ordinal = typeof l.ordinal === 'number' ? l.ordinal : 2;
+            const era = eras[ERA_FOR_ORDINAL[ordinal] ?? 'BRONZE_AGE'] ?? 0;
             colonies.push({
               t: l.t,
               cityId: typeof l.cityId === 'number' ? l.cityId : null,
+              origin: 'founded',
+              ordinal,
               foundedMs: l.t - start.t,
-              fromBronzeMs: l.t - start.t - bronze,
+              fromEraMs: l.t - start.t - era,
               grownMs: null,
-              firstHouseMs: null,
               finalPopulation: null,
+              woodPerHour: null,
               fell: false,
+              firstWood: null,
+              lastWood: null,
             });
           }
           break;
         case 'colony': {
-          const c = colonyOf(l.cityId);
-          if (!c) break;
-          if (typeof l.population === 'number') {
-            c.finalPopulation = l.population;
-            const target = typeof l.target === 'number' ? l.target : 8;
-            if (c.grownMs === null && l.population >= target) c.grownMs = l.t - c.t;
+          let c = colonyOf(l.cityId);
+          // Una tomada o la que ya estaba al arrancar: empieza en su primera línea.
+          if (!c && typeof l.cityId === 'number') {
+            c = {
+              t: l.t,
+              cityId: l.cityId,
+              origin: typeof l.origin === 'string' ? l.origin : 'start',
+              ordinal: null,
+              foundedMs: l.t - start.t,
+              fromEraMs: l.t - start.t,
+              grownMs: null,
+              finalPopulation: null,
+              woodPerHour: null,
+              fell: false,
+              firstWood: null,
+              lastWood: null,
+            };
+            colonies.push(c);
           }
-          if (c.firstHouseMs === null && typeof l.houses === 'number' && l.houses > 0) c.firstHouseMs = l.t - c.t;
+          if (!c) break;
+          if (typeof l.population === 'number') c.finalPopulation = l.population;
+          // Los aldeanos (desde E41) o, en un registro viejo, la población.
+          const grown = typeof l.villagers === 'number' ? l.villagers : l.population;
+          const target = typeof l.target === 'number' ? l.target : 8;
+          if (c.grownMs === null && typeof grown === 'number' && grown >= target) c.grownMs = l.t - c.t;
+          if (typeof l.wood === 'number') {
+            c.firstWood ??= { t: l.t, wood: l.wood };
+            c.lastWood = { t: l.t, wood: l.wood };
+          }
           break;
         }
+        case 'cities':
+          if (typeof l.standing === 'number') {
+            citiesFinal = l.standing;
+            citiesMax = Math.max(citiesMax, l.standing);
+            if (typeof l.played === 'number' && l.played < l.standing) unplayedMinutes++;
+          }
+          break;
+        case 'sweep':
+          sweep = {
+            missing: typeof l.missing === 'number' ? l.missing : 0,
+            views: typeof l.views === 'number' ? l.views : 0,
+            found: typeof l.found === 'number' ? l.found : 0,
+          };
+          break;
+        case 'stray':
+          if (l.status === 'seen') {
+            const n = typeof l.units === 'number' ? l.units : 1;
+            straysSeen += n;
+            if (l.sweep === true) straysSwept += n;
+          }
+          if (l.status === 'home') straysHome++;
+          if (l.status === 'lost') inc(straysLost, String(l.cause));
+          break;
         case 'fell':
           if (l.kept === true && l.capital === false) {
             const c = colonyOf(l.cityId);
@@ -417,7 +503,18 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
       falls: falls.map(({ t: _t, population: _p, ...f }) => f),
       foundsStarted,
       foundFailures,
-      colonies: colonies.map(({ t: _t, ...c }) => c),
+      colonies: colonies.map(({ t: _t, firstWood, lastWood, ...c }) => {
+        const h = firstWood && lastWood ? (lastWood.t - firstWood.t) / 3_600_000 : 0;
+        return { ...c, woodPerHour: firstWood && lastWood && h > 0 ? Math.round((lastWood.wood - firstWood.wood) / h) : null };
+      }),
+      citiesFinal,
+      citiesMax,
+      unplayedMinutes,
+      sweep,
+      straysSeen,
+      straysSwept,
+      straysHome,
+      straysLost,
     });
   }
   return out;
@@ -476,18 +573,31 @@ export function formatSummary(rows: readonly BotSummary[]): string {
     }
     const ms = (v: number | null) => (v === null ? 'no' : formatDuration(v));
     for (const f of r.falls) {
-      const which = f.kept ? (f.capital ? ' (la capital, con otra en pie)' : ' (la segunda ciudad)') : '';
+      const which = f.kept ? (f.capital ? ' (la capital, con otra en pie)' : ' (una colonia)') : '';
       out.push(
         `  cayó${which} ante ${f.by ?? '—'} en ${f.era}: muralla ${ms(f.wallMs)} · población de antes ${ms(f.populationMs)} · era siguiente ${ms(f.nextEraMs)}`,
       );
     }
     if (r.foundsStarted > 0 || r.foundFailures.no_site) {
-      out.push(`  fundaciones: empezadas ${r.foundsStarted} · logradas ${r.colonies.length} · fallidas: ${list(r.foundFailures)}`);
+      out.push(`  fundaciones: empezadas ${r.foundsStarted} · logradas ${r.colonies.filter((c) => c.origin === 'founded').length} · fallidas: ${list(r.foundFailures)}`);
     }
     for (const c of r.colonies) {
+      const how =
+        c.origin === 'founded'
+          ? `la ${c.ordinal ?? '—'}.ª, fundada a los ${formatDuration(c.foundedMs)} (${formatDuration(c.fromEraMs)} desde la era que la permite)`
+          : `${c.origin === 'taken' ? 'tomada' : 'ya estaba'}, vista a los ${formatDuration(c.foundedMs)}`;
       out.push(
-        `  segunda ciudad ${c.cityId ?? '—'}: fundada a los ${formatDuration(c.foundedMs)} (${formatDuration(c.fromBronzeMs)} desde Bronce) · ` +
-          `crecida ${ms(c.grownMs)} · primera casa ${ms(c.firstHouseMs)} · población final ${c.finalPopulation ?? '—'}${c.fell ? ' · cayó' : ''}`,
+        `  colonia ${c.cityId ?? '—'}: ${how} · crecida ${ms(c.grownMs)} · población final ${c.finalPopulation ?? '—'} · ` +
+          `madera ${c.woodPerHour ?? '—'} por hora${c.fell ? ' · cayó' : ''}`,
+      );
+    }
+    if (r.citiesMax > 1 || r.unplayedMinutes > 0) {
+      out.push(`  ciudades: al final ${r.citiesFinal} · máximo ${r.citiesMax} · minutos con alguna sin jugar ${r.unplayedMinutes}`);
+    }
+    if (r.sweep || r.straysSeen > 0) {
+      const sw = r.sweep ? `barrido de ${r.sweep.views} vistas (faltaban ${r.sweep.missing}, encontradas ${r.sweep.found}) · ` : '';
+      out.push(
+        `  varados: ${sw}vistos ${r.straysSeen} (por el barrido ${r.straysSwept}) · de vuelta ${r.straysHome} · perdidos: ${list(r.straysLost)}`,
       );
     }
     out.push(`  comandos ${r.commands} · rechazados: ${list(r.rejected)}`);
@@ -515,8 +625,17 @@ export function formatSummary(rows: readonly BotSummary[]): string {
     );
     const founded = rs.flatMap((r) => r.colonies);
     if (rs.some((r) => r.foundsStarted > 0 || r.foundFailures.no_site)) {
-      const avg = founded.length > 0 ? formatDuration(founded.reduce((a, c) => a + c.foundedMs, 0) / founded.length) : '—';
-      out.push(`  ${p}: fundaciones ${founded.length} (media hasta fundar ${avg}) · segundas crecidas ${founded.filter((c) => c.grownMs !== null).length}`);
+      const own = founded.filter((c) => c.origin === 'founded');
+      const avgFound = own.length > 0 ? formatDuration(own.reduce((a, c) => a + c.foundedMs, 0) / own.length) : '—';
+      out.push(`  ${p}: fundaciones ${own.length} (media hasta fundar ${avgFound}) · colonias crecidas ${founded.filter((c) => c.grownMs !== null).length}`);
+    }
+    if (rs.some((r) => r.citiesMax > 1)) {
+      const wood = founded.map((c) => c.woodPerHour).filter((v): v is number => v !== null);
+      const avgWood = wood.length > 0 ? Math.round(wood.reduce((a, b) => a + b, 0) / wood.length) : '—';
+      out.push(
+        `  ${p}: ciudades al final ${(sum((r) => r.citiesFinal) / rs.length).toFixed(1)} de media · madera por colonia ${avgWood} por hora · ` +
+          `minutos sin jugar ${sum((r) => r.unplayedMinutes)}`,
+      );
     }
   }
   // Las caídas por hora de ejecución, la medida de SPEC-BOTS-ASSAULT Q9.

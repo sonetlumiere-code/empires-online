@@ -552,11 +552,20 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
 - Desde E35 ([SPEC-BOTS-FOUND](../specs/bots-found.md)) el constructor, en Bronce y con 800 de madera y 400 de
   piedra, lleva un aldeano a un sitio libre a 28-96 tiles de su capital y funda su segunda ciudad, que juega con
   aldeanos, casas y madera desde una conexión propia. El registro apunta `found` y, cada minuto, `colony`; el resumen,
-  cuándo fundó, cuánto tardó la segunda en llegar a 8 de población y su primera casa, y las caídas de una de dos
+  cuándo fundó, cuánto tardó la segunda en llegar a 8 de población (la primera casa salió de la medida en E41), y las
+  caídas de una de dos
   (`fell` con `kept`). Sembrar las cuentas en Piedra basta: `StockFor` deja lo de fundar de sobra. Desde el repaso del
   2026-11-26, la conexión de campaña sigue al aldeano que va a fundar, y los aldeanos propios que la exploración del
   arranque ve parados lejos de casa (los que dejó una ejecución anterior) vuelven por tramos (suceso `stray`); los
   militares, no. Un aldeano más lejos que el alcance de la exploración (224 tiles) sigue sin recuperarse.
+  **Precisión (2026-11-27):** desde E41 ([SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md)) cada bot juega todas sus
+  ciudades en pie, con una conexión por colonia (hasta cinco por bot: con más de seis bots, el proceso avisa al
+  arrancar de que puede pasar de los 32 sockets por IP de `EO_WS_MAX_CONNECTIONS_PER_IP`), y el constructor funda
+  hasta el tope de la era de su capital. Si tras la exploración a una ciudad le falta población a la vista, la casa
+  barre el mapa entero (16 vistas en el de 512 × 512) y los aldeanos y militares parados lejos vuelven a su ciudad,
+  con un plazo de 20 min por cada 160 tiles. El registro apunta `cities` y `colony` (con `origin`) cada minuto,
+  `sweep`, y `stray` con `seen`, `home` y `lost`; el resumen, los minutos con alguna ciudad sin jugar, cada colonia por
+  su origen con su madera por hora, las fundaciones por ordinal y los varados.
 - Para una ejecución larga en macOS, `caffeinate -i -s pnpm run bots -- …` evita que el reposo la parta: con la Mac dormida, el servidor descarta los ticks perdidos y las medidas no valen.
 - Cada ejecución deja `bots/runs/<fecha>-<semilla>.jsonl` (sin versionar) y, al parar (por `--duracion` o con
   Ctrl-C), imprime el resumen: tiempo hasta cada era, recursos por hora, bajas, saqueos, comercio (tratados, tratos,

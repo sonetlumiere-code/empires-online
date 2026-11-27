@@ -97,6 +97,11 @@ export interface Profile {
   readonly foundSiteCooldownMs: number;
   /** Aldeanos de la segunda ciudad en cualquier era (Q4). */
   readonly colonyVillagers: number;
+
+  // ── Los varados (SPEC-BOTS-ALL-CITIES §4.6, Q5) ──
+  /** Plazo de la vuelta de un varado por cada `strayWatchTiles` de distancia a su ciudad (al menos uno). */
+  readonly strayWatchMs: number;
+  readonly strayWatchTiles: number;
 }
 
 const COMMON = {
@@ -127,6 +132,8 @@ const COMMON = {
   foundWalkTimeoutMs: 10 * 60_000,
   foundSiteCooldownMs: 30 * 60_000,
   colonyVillagers: 8,
+  strayWatchMs: 20 * 60_000,
+  strayWatchTiles: 160,
 } as const;
 
 export const PROFILES: Readonly<Record<ProfileName, Profile>> = {
@@ -211,7 +218,14 @@ export function colonyProfile(profile: Profile): Profile {
 
 /** Lo que cuesta una casa (SPEC-ECON-WOOD): madera, en el primer hueco de la zona urbana. */
 export const HOUSE_WOOD = 30;
-/** Tope de comandos por despertar (RN-BOT-003). */
+/**
+ * Conexiones de un bot, como mucho: casa, campaña y una por cada ciudad que no es la
+ * capital, hasta el tope de cuatro del servidor (SPEC-BOTS-ALL-CITIES §4.3, Q3).
+ */
+export const MAX_LINKS_PER_BOT = 5;
+/** `EO_WS_MAX_CONNECTIONS_PER_IP` por defecto: el proceso avisa si puede pasar de ahí. */
+export const SERVER_LINKS_PER_IP = 32;
+/** Tope de comandos por ciudad y despertar (RN-BOT-003, con la precisión de SPEC-BOTS-FOUND §4.8). */
 export const MAX_COMMANDS_PER_THINK = 2;
 /** Una unidad a esta distancia de Chebyshev del centro está «en casa». */
 export const HOME_RADIUS = 6;

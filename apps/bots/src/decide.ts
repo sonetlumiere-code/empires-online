@@ -35,10 +35,7 @@ import { foreignGoods, goodOf } from '../../web/src/state/civilizations';
 import { technologiesFor, researchBlockReason } from '../../web/src/state/technologies';
 import { civilizationUnit, unitAttacks, unitInfoOf } from '../../web/src/state/units';
 import { assaultBlockReason, walled } from '../../web/src/state/cityFall';
-import { FOUND_COST } from '../../web/src/state/multiCity';
-
-/** Los bots no pasan de dos ciudades: la capital y una segunda (SPEC-MORE-CITIES Q5). */
-const MAX_OWN_CITIES = 2;
+import { FOUND_COST, maxOwnCities } from '../../web/src/state/multiCity';
 import {
   HOME_RADIUS,
   HOUSE_WOOD,
@@ -349,6 +346,12 @@ export interface Memory {
    * primero.
    */
   readonly strays?: readonly Stray[];
+  /**
+   * Cómo terminó la vuelta de cada varado que se le olvidó en la última regla o el
+   * último rechazo (para el registro, SPEC-BOTS-ALL-CITIES §4.7). El bot lo vacía al
+   * apuntarlo.
+   */
+  readonly strayResults?: readonly StrayResult[];
 }
 
 /** Una fundación en curso (SPEC-BOTS-FOUND §4.3). */
@@ -370,6 +373,11 @@ export interface Founding {
    * larga de E32). `null` hasta el primer tramo.
    */
   readonly waypoint?: Tile | null;
+  /**
+   * Cuántas ciudades propias en pie había al empezar (SPEC-BOTS-ALL-CITIES §4.2): la
+   * fundación termina bien al ver una más. Sin él, una.
+   */
+  readonly cities?: number;
 }
 
 /**
@@ -384,6 +392,16 @@ export interface Stray {
   readonly untilMs: number;
   /** Tramos rechazados (el siguiente se desplaza en espiral). */
   readonly tries: number;
+  /** Cuándo se apuntó (para el registro: los ms hasta que vuelve). */
+  readonly seenAtMs?: number;
+}
+
+/** Cómo termina la vuelta de un varado (SPEC-BOTS-ALL-CITIES §4.7). */
+export interface StrayResult {
+  readonly unitId: number;
+  readonly status: 'home' | 'lost';
+  readonly cause: 'timeout' | 'stuck' | 'died' | 'busy' | null;
+  readonly ms: number;
 }
 
 /** Por qué termina mal una fundación (§4.7). */
@@ -959,8 +977,10 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
     // el servidor lo rechaza (sin ruta, demasiado lejos, destino que no se pisa),
     // por tramos de la marcha desplazados en espiral, como la partida.
     const tries: Record<number, number> = {};
+    // Los varados que trae la vuelta no se llaman también desde aquí (SPEC-BOTS-ALL-CITIES §4.6).
+    const strays = new Set((memory.strays ?? []).map((s) => s.unitId));
     for (const u of units.values()) {
-      if (!isFieldUnit(u) || u.status === 'DEAD' || atHome(view, u)) continue;
+      if (!isFieldUnit(u) || u.status === 'DEAD' || atHome(view, u) || strays.has(u.id)) continue;
       const n = memory.recallTries[u.id];
       if (n !== undefined) tries[u.id] = n;
       if (plan.full || u.status !== 'IDLE') continue;
@@ -1422,8 +1442,12 @@ const FOUND_MAX_TRIES = 9;
 const FOUND_ORDER_TIMEOUT_MS = 60_000;
 /** Sin sitio a la vista, no se vuelve a buscar antes de esto. */
 const FOUND_SEARCH_WAIT_MS = 5 * 60_000;
-/** Cuánto se busca y se trae de vuelta a un aldeano fuera de la vista (SPEC-BOTS-FOUND §9.1). */
-const STRAY_WATCH_MS = 20 * 60_000;
+/**
+ * Cuánto se busca y se trae de vuelta a un aldeano fuera de la vista (SPEC-BOTS-FOUND
+ * §9.1), por cada `STRAY_WATCH_TILES` de distancia a su ciudad (SPEC-BOTS-ALL-CITIES
+ * §4.6): los valores del perfil, para quien no lo pasa.
+ */
+const STRAY_WATCH = { strayWatchMs: 20 * 60_000, strayWatchTiles: 160 };
 /** A esta distancia de casa o menos, la vuelta lo suelta y lo recoge la recolección. */
 export const STRAY_HOME_RADIUS = 32;
 /** Cuántos aldeanos fuera de la vista se recuerdan a la vez. */
@@ -1509,7 +1533,10 @@ export function endFounding(
   // El aldeano sigue vivo donde se le dejó: se le busca para que vuelva a trabajar.
   const lost = status === 'failed' && cause !== 'unit_died' && cause !== 'city_fell';
   const at = f.waypoint ?? f.lastPos;
-  const strays = lost && at ? addStrays({ ...memory, founding: null }, [{ id: f.unitId, x: at.x, y: at.y }], nowMs).strays : memory.strays;
+  const strays =
+    lost && at
+      ? addStrays({ ...memory, founding: null }, [{ id: f.unitId, x: at.x, y: at.y, distance: f.distance }], nowMs, null, profile).strays
+      : memory.strays;
   return { ...memory, founding: null, foundResult, foundSiteCooldowns, strays };
 }
 
@@ -1541,16 +1568,27 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
   let mem = memory;
   let f = mem.founding;
 
-  if (f !== null && count >= MAX_OWN_CITIES) return endFounding(mem, 'founded', null, nowMs, profile);
+  // La siguiente ciudad, hasta el tope de la era de la capital (RN-BOT-023).
+  if (f !== null && count > (f.cities ?? 1)) return endFounding(mem, 'founded', null, nowMs, profile);
   if (f === null) {
-    if (count >= MAX_OWN_CITIES || plan.full || nowMs < mem.foundSearchAtMs) return mem;
+    if (count >= maxOwnCities(view.city.era) || plan.full || nowMs < mem.foundSearchAtMs) return mem;
     if (!eraAtLeast(view.city.era, 'BRONZE_AGE') || !plan.affords({ ...FOUND_COST })) return mem;
     if (view.city.advance !== null && view.city.advance !== undefined) return mem;
     const site = chooseFoundSite(view, profile, mem, nowMs);
     if (!site) return { ...mem, foundSearchAtMs: nowMs + FOUND_SEARCH_WAIT_MS };
     const u = chooseFounder(view, site);
     if (!u) return mem;
-    f = { site, unitId: u.id, distance: chebyshev(center(view), site), startedAtMs: nowMs, tries: 0, lastPos: null, orderedAtMs: null, waypoint: null };
+    f = {
+      site,
+      unitId: u.id,
+      distance: chebyshev(center(view), site),
+      startedAtMs: nowMs,
+      tries: 0,
+      lastPos: null,
+      orderedAtMs: null,
+      waypoint: null,
+      cities: count,
+    };
     mem = { ...mem, founding: f };
   }
 
@@ -1586,19 +1624,39 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
 }
 
 /**
- * Apunta aldeanos fuera de la vista para traerlos de vuelta (SPEC-BOTS-FOUND §9.1): sin
- * repetir, sin el que va a fundar y hasta `MAX_STRAYS`.
+ * Apunta unidades fuera de la vista para traerlas de vuelta (SPEC-BOTS-FOUND §9.1): sin
+ * repetir, sin el aldeano que va a fundar ni las de la partida, y hasta `MAX_STRAYS`. El
+ * plazo de la vuelta crece con la distancia a su ciudad (`home`, o la `distance` de
+ * cada una): `strayWatchMs` por cada `strayWatchTiles`, al menos uno
+ * (SPEC-BOTS-ALL-CITIES §4.6).
  */
-export function addStrays(memory: Memory, units: readonly { id: number; x: number; y: number }[], nowMs: number): Memory {
+export function addStrays(
+  memory: Memory,
+  units: readonly { id: number; x: number; y: number; distance?: number }[],
+  nowMs: number,
+  home: Tile | null = null,
+  watch: Pick<Profile, 'strayWatchMs' | 'strayWatchTiles'> = STRAY_WATCH,
+): Memory {
   const known = new Set((memory.strays ?? []).map((s) => s.unitId));
+  const party = new Set(memory.raid?.warriors ?? []);
   const out = [...(memory.strays ?? [])];
   for (const u of units) {
     if (out.length >= MAX_STRAYS) break;
-    if (known.has(u.id) || u.id === memory.founding?.unitId) continue;
+    if (known.has(u.id) || u.id === memory.founding?.unitId || party.has(u.id)) continue;
     known.add(u.id);
-    out.push({ unitId: u.id, at: { x: u.x, y: u.y }, untilMs: nowMs + STRAY_WATCH_MS, tries: 0 });
+    out.push({ unitId: u.id, at: { x: u.x, y: u.y }, untilMs: nowMs + strayWatchMs(u, home, watch), tries: 0, seenAtMs: nowMs });
   }
   return { ...memory, strays: out };
+}
+
+/** El plazo de la vuelta de una unidad a `distance` (o a `home`) de su ciudad. */
+export function strayWatchMs(
+  u: { x: number; y: number; distance?: number },
+  home: Tile | null,
+  watch: Pick<Profile, 'strayWatchMs' | 'strayWatchTiles'> = STRAY_WATCH,
+): number {
+  const d = u.distance ?? (home ? chebyshev(u, home) : 0);
+  return watch.strayWatchMs * Math.max(1, Math.ceil(d / watch.strayWatchTiles));
 }
 
 /**
@@ -1608,24 +1666,46 @@ export function addStrays(memory: Memory, units: readonly { id: number; x: numbe
  */
 function strayRule(view: View, memory: Memory, plan: Plan, nowMs: number): Memory {
   const strays = memory.strays ?? [];
-  if (strays.length === 0) return memory;
+  if (strays.length === 0) return (memory.strayResults ?? []).length === 0 ? memory : { ...memory, strayResults: [] };
   const home = center(view);
+  const party = new Set(memory.raid?.warriors ?? []);
   const out: Stray[] = [];
+  const results: StrayResult[] = [];
+  const done = (s: Stray, status: StrayResult['status'], cause: StrayResult['cause']) =>
+    results.push({ unitId: s.unitId, status, cause, ms: nowMs - (s.seenAtMs ?? nowMs) });
   for (const s of strays) {
     const u = view.units.find((x) => x.id === s.unitId);
-    if (nowMs > s.untilMs || u?.status === 'DEAD') continue;
+    if (u?.status === 'DEAD') {
+      done(s, 'lost', 'died');
+      continue;
+    }
+    if (nowMs > s.untilMs) {
+      done(s, 'lost', 'timeout');
+      continue;
+    }
+    // Una partida que la tomó: ya no es un varado.
+    if (party.has(s.unitId)) {
+      done(s, 'lost', 'busy');
+      continue;
+    }
     if (!u) {
       out.push(s);
       continue;
     }
     const here = { x: u.x, y: u.y };
-    if (chebyshev(here, home) <= STRAY_HOME_RADIUS) continue;
+    if (chebyshev(here, home) <= STRAY_HOME_RADIUS) {
+      done(s, 'home', null);
+      continue;
+    }
     if (u.status === 'MOVING') {
       const end = u.movement?.path[u.movement.path.length - 1] ?? u.movement?.target;
       out.push(end ? { ...s, at: { x: end.x, y: end.y } } : s);
       continue;
     }
-    if (u.status !== 'IDLE') continue;
+    if (u.status !== 'IDLE') {
+      done(s, 'lost', 'busy');
+      continue;
+    }
     const target = marchStep(here, home, s.tries);
     const key = `stray:move:${u.id}:${target.x},${target.y}`;
     if (!plan.full && plan.free(key)) {
@@ -1635,7 +1715,45 @@ function strayRule(view: View, memory: Memory, plan: Plan, nowMs: number): Memor
       out.push({ ...s, at: here });
     }
   }
-  return { ...memory, strays: out };
+  return { ...memory, strays: out, strayResults: results };
+}
+
+/** Lo que una unidad ocupa de la población de su ciudad (el ariete, dos). */
+export function populationCost(unitType: string): number {
+  return unitInfoOf(unitType)?.populationCost ?? 1;
+}
+
+/**
+ * Cuánta población de la ciudad no está a la vista (SPEC-BOTS-ALL-CITIES §4.6): la
+ * población, menos lo que ocupan las unidades vistas y la que está entrenando (la
+ * población se reserva al ordenar, RN-ECON-010). Más de cero: hay unidades fuera de
+ * la vista.
+ */
+export function missingPopulation(city: Pick<CityView, 'population' | 'production'>, seen: readonly { unitType: string }[]): number {
+  const visible = seen.reduce((n, u) => n + populationCost(u.unitType), 0);
+  const training = city.production ? populationCost(city.production.unitType) : 0;
+  return city.population - visible - training;
+}
+
+/**
+ * Los centros de vista que cubren el mapa entero con un área de interés de `radius`
+ * chunks alrededor del chunk del centro, del más cercano a `from` al más lejano (a
+ * igual distancia, `y` y luego `x` menores): el barrido de SPEC-BOTS-ALL-CITIES §4.6.
+ */
+export function sweepCenters(world: { width: number; height: number; chunkSize: number }, radius: number, from: Tile): Tile[] {
+  const axis = (tiles: number): number[] => {
+    const chunks = Math.ceil(tiles / world.chunkSize);
+    const out: number[] = [];
+    for (let c = radius; ; c += 2 * radius + 1) {
+      const at = Math.min(c, chunks - 1);
+      out.push(at * world.chunkSize + Math.floor(world.chunkSize / 2));
+      if (at + radius >= chunks - 1) break;
+    }
+    return out;
+  };
+  const out: Tile[] = [];
+  for (const y of axis(world.height)) for (const x of axis(world.width)) out.push({ x, y });
+  return out.sort((a, b) => chebyshev(a, from) - chebyshev(b, from) || a.y - b.y || a.x - b.x);
 }
 
 /** El aldeano de la fundación murió (`entity.update` o `entity.despawn` con `DEAD`). */
@@ -1754,10 +1872,11 @@ export function onRejected(
   if (command.type === 'unit.move' && command.key.startsWith('stray:move:')) {
     // Como el tramo de la fundación: el siguiente se desplaza en espiral; a los nueve, se le olvida.
     const { [command.key]: _drop, ...cooldowns } = mem.cooldowns;
-    const strays = (mem.strays ?? [])
-      .map((s) => (s.unitId === command.unitId ? { ...s, tries: s.tries + 1 } : s))
-      .filter((s) => s.tries < FOUND_MAX_TRIES);
-    return { ...mem, cooldowns, strays };
+    const bumped = (mem.strays ?? []).map((s) => (s.unitId === command.unitId ? { ...s, tries: s.tries + 1 } : s));
+    const strayResults: StrayResult[] = bumped
+      .filter((s) => s.tries >= FOUND_MAX_TRIES)
+      .map((s) => ({ unitId: s.unitId, status: 'lost', cause: 'stuck', ms: nowMs - (s.seenAtMs ?? nowMs) }));
+    return { ...mem, cooldowns, strays: bumped.filter((s) => s.tries < FOUND_MAX_TRIES), strayResults };
   }
 
   if (command.type === 'treaty.propose') {
