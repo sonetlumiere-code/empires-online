@@ -1064,8 +1064,8 @@ y grueso, y una que carga madera, un tronco a la espalda.
 - **Precisión (2026-11-25), E36** ([SPEC-CITY-TAKEN](../specs/city-taken.md)): `city.fallen` puede traer `takenCityId`;
   el store no lo necesita, porque la tomada y sus edificios (con su `cityId` nuevo) llegan antes que `city.fallen`.
 - **Precisión (2026-11-25), E37** ([SPEC-MORE-CITIES](../specs/more-cities.md)): `maxOwnCities(era)` da el tope de la
-  era de la capital y `foundCityBlockReason` lo usa; `MAX_OWN_CITIES` es el techo, 4. Los bots siguen en dos (su propia
-  constante en `apps/bots/src/decide.ts`).
+  era de la capital y `foundCityBlockReason` lo usa; `MAX_OWN_CITIES` es el techo, 4. Los bots siguieron en dos (su propia
+  constante en `apps/bots/src/decide.ts`) hasta E41, que usa `maxOwnCities` ([SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md)).
 - **Precisión (2026-11-25), E38** ([SPEC-TRADE-FROM-CITY](../specs/trade-from-city.md)): `proposeTrade`,
   `postMarketOffer` y `buyMarketOffer` (`src/net/client.ts`) admiten `cityId`; el HUD les pasa `commerceCityId`, la
   ciudad del panel si no es la capital.
