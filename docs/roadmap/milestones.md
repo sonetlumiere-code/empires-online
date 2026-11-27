@@ -3540,7 +3540,7 @@ pestañas a la vez con cuentas distintas.
 
 ## E40 — El nombre de las ciudades
 
-**Estado: HECHO EN LA RAMA (2026-11-26)**, `claude/slice-nombre-ciudades`, sin fusionar ni empujar. Contrato:
+**Estado: HECHO (2026-11-26)**, en `main` desde la fusión `5807630` (rama `claude/slice-nombre-ciudades`), con la CI en verde. Contrato:
 [SPEC-CITY-NAMES](../specs/city-names.md), propuesta y aceptada el 2026-11-26: la persona usuaria aceptó sus seis
 decisiones con la recomendación del agente. Sin ADR ni migración. Nace del hallazgo del repaso de E33 a E39 (arriba):
 `bot_constructor_2_e35polis II II`.

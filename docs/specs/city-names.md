@@ -7,7 +7,7 @@ numeral al nombre que tenga hoy la capital.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-CITY-NAMES` |
-| Estado | Accepted (2026-11-26). La persona usuaria aceptó las seis recomendaciones de §10. |
+| Estado | Implemented (2026-11-26). La persona usuaria aceptó las seis recomendaciones de §10; en `main` desde la fusión `5807630`, con la CI en verde. |
 | Milestone | E40 El nombre de las ciudades (cuadragésimo slice después de M7) |
 | Canon | §12 (persistencia) |
 | Depende de | [city.md](city.md), [multi-city.md](multi-city.md), [more-cities.md](more-cities.md), [city-fall.md](city-fall.md), [city-taken.md](city-taken.md) |
