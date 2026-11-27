@@ -74,12 +74,13 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 		var (
 			enPie       int
 			usados      []int16
+			nombres     []string
 			eraCapital  city.Era
 			presencia   string
 			lastOffline *time.Time
 		)
 		rows, err := tx.Query(ctx,
-			`SELECT id, slot, era, presence_state, last_offline_at FROM cities
+			`SELECT id, slot, era, presence_state, last_offline_at, name FROM cities
 			  WHERE owner_player_id = $1 AND fallen_at IS NULL ORDER BY id FOR UPDATE`, f.OwnerID)
 		if err != nil {
 			return fmt.Errorf("leer las ciudades del jugador: %w", normalize(err))
@@ -92,8 +93,9 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 				era  string
 				ps   string
 				lo   *time.Time
+				nom  string
 			)
-			if err := rows.Scan(&id, &slot, &era, &ps, &lo); err != nil {
+			if err := rows.Scan(&id, &slot, &era, &ps, &lo, &nom); err != nil {
 				rows.Close()
 				return fmt.Errorf("leer una ciudad del jugador: %w", normalize(err))
 			}
@@ -102,6 +104,7 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 			}
 			enPie++
 			usados = append(usados, slot)
+			nombres = append(nombres, nom)
 			if id == f.FromCityID {
 				pagaEnPie, presencia, lastOffline = true, ps, lo
 			}
@@ -121,6 +124,13 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 		if huecoLibre == 0 {
 			return rechazo("no queda hueco")
 		}
+		// SPEC-CITY-NAMES RN-CITY-044, INV-CITY-025: el primer nombre libre de su
+		// serie, con las ciudades en pie leídas bajo el mismo cerrojo.
+		nombre, err := baseUsername(ctx, tx, f.OwnerID)
+		if err != nil {
+			return err
+		}
+		nombre = city.FoundedName(nombre, nombres)
 
 		// 2. El aldeano sigue vivo, suyo y de la ciudad que paga.
 		var (
@@ -187,7 +197,7 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 		}
 		fundada := f.Now
 		c := &city.City{
-			OwnerPlayerID: f.OwnerID, Name: f.Name, CenterX: site.Center.X, CenterY: site.Center.Y, Era: f.Era,
+			OwnerPlayerID: f.OwnerID, Name: nombre, CenterX: site.Center.X, CenterY: site.Center.Y, Era: f.Era,
 			PopulationLimit: populationCap, PresenceState: city.PresenceState(presencia), LastOnlineAt: &fundada,
 			Slot: huecoLibre,
 		}
@@ -263,4 +273,14 @@ func (r *CityFallRepo) found(ctx context.Context, f cityfall.Founding, site city
 		return nil, err
 	}
 	return res, nil
+}
+
+// baseUsername lee el nombre de usuario del dueño, del que sale la serie de
+// nombres de sus ciudades (SPEC-CITY-NAMES RN-CITY-043).
+func baseUsername(ctx context.Context, tx pgx.Tx, owner uuid.UUID) (string, error) {
+	var username string
+	if err := tx.QueryRow(ctx, `SELECT username FROM players WHERE id = $1`, owner).Scan(&username); err != nil {
+		return "", fmt.Errorf("leer el nombre del jugador %s: %w", owner, normalize(err))
+	}
+	return username, nil
 }

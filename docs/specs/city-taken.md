@@ -83,7 +83,7 @@ inmunidad y la era mínima del asalto no cambian ([city-fall.md](city-fall.md) �
 | Qué | Qué pasa |
 |---|---|
 | La fila | **Nueva**, del vencedor, en el mismo centro, en el hueco libre del vencedor; la caída se queda con `fallen_at` como en E31 (`RN-CITY-020` no cambia). `taken_from_city_id` apunta a la caída. |
-| Nombre y era | Los de la caída. |
+| Nombre y era | Los de la caída. **Precisión (2026-11-26, [city-names.md](city-names.md)):** si el vencedor ya tiene en pie otra con ese nombre, el primero libre de su serie (`RN-CITY-045`). |
 | Edificios completos (casas, taller, mercado, castillo) | **Pasan a la tomada** (cambian de ciudad, con su id y su vida). |
 | Edificios en obra y la muralla | En obra: se pierden (`DESTROYED`), como en E31. La muralla está caída (la ciudad estaba en brecha); si la reconstruía, estaba en obra. |
 | Almacén, encargos | Arden como en E31 (Q3): la tomada nace con el almacén a cero y sin encargos. |
@@ -117,7 +117,7 @@ casas, madera), por su conexión colonia. La partida vuelve a casa como hoy. Nad
 | ID | Regla |
 |---|---|
 | `RN-CITY-036` | Una ciudad que cae se toma si el vencedor tiene menos de dos ciudades en pie en la transacción de la caída; si no, se arrasa (§4.1). |
-| `RN-CITY-037` | La tomada es una ciudad nueva del vencedor en el centro de la caída, con su nombre y su era, sus edificios completos, tres aldeanos nuevos y el almacén a cero (§4.2). |
+| `RN-CITY-037` | La tomada es una ciudad nueva del vencedor en el centro de la caída, con su nombre y su era, sus edificios completos, tres aldeanos nuevos y el almacén a cero (§4.2). **Precisión (2026-11-26, [city-names.md](city-names.md)):** si el vencedor ya tiene en pie otra con ese nombre, el primero libre de su serie (`RN-CITY-045`). |
 | `RN-CITY-038` | La inmunidad de caída de la tomada corre desde la toma. |
 | `RN-CITY-039` | Para el vencido, tomar es caer: refunda o sigue con la otra como en E31 y E34. |
 

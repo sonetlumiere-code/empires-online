@@ -71,7 +71,7 @@ comando `city.found` en el protocolo v1 (canon §13).
 | Input | Tipo | Origen |
 |---|---|---|
 | `ownerPlayerId` | `uuid` | Transacción de bootstrap (`internal/persistence/postgres/bootstrap.go`). |
-| `name` | `text` | Hoy se deriva del `username`: `username + "polis"` (`internal/httpapi/founding.go`). Que el jugador proponga el nombre es `Fuera de MVP`. Validación en `RN-CITY-011`. |
+| `name` | `text` | Hoy se deriva del `username`: `username + "polis"` (`internal/httpapi/founding.go`). **Precisión (2026-11-26, [city-names.md](city-names.md)):** es la base de la serie de las ciudades del jugador; cada ciudad nueva toma el primer nombre libre de esa serie (`RN-CITY-043` a `RN-CITY-046`). Que el jugador proponga el nombre es `Fuera de MVP`. Validación en `RN-CITY-011`. |
 | Semilla de emplazamiento | `hashSeed(username) uint64` | Elección determinista del sitio, que hace raro que dos altas simultáneas busquen en la misma región; cuando ocurre, la comprobación bajo cerrojo de `RN-PLAYER-014` lo resuelve. **No** deriva de `EO_WORLD_SEED`, que gobierna el terreno, no el emplazamiento. |
 
 ### 4.2 Del mundo

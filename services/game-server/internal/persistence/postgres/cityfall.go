@@ -333,15 +333,20 @@ func (r *CityFallRepo) fall(ctx context.Context, f cityfall.Fall, site cityfall.
 			return r.afterFall(ctx, tx, f, kept, res)
 		}
 
-		// 4. La ciudad nueva: el nombre y la era de la caída, el almacén a cero y
-		// tres aldeanos, como un alta (RN-CITY-027).
+		// 4. La ciudad nueva: la era de la caída, el almacén a cero y tres
+		// aldeanos, como un alta (RN-CITY-027), con el nombre base de su dueño,
+		// su única ciudad en pie (SPEC-CITY-NAMES RN-CITY-046).
 		populationCap, err := r.cities.PopulationCapOf(ctx, tx, f.Era)
+		if err != nil {
+			return err
+		}
+		username, err := baseUsername(ctx, tx, f.OwnerID)
 		if err != nil {
 			return err
 		}
 		fundada := f.Now
 		c := &city.City{
-			OwnerPlayerID: f.OwnerID, Name: f.Name, CenterX: site.Center.X, CenterY: site.Center.Y, Era: f.Era,
+			OwnerPlayerID: f.OwnerID, Name: city.BaseName(username), CenterX: site.Center.X, CenterY: site.Center.Y, Era: f.Era,
 			PopulationLimit: populationCap, PresenceState: city.PresenceState(presence), LastOnlineAt: &fundada,
 		}
 		if _, err := r.cities.Create(ctx, tx, c); err != nil {
@@ -559,6 +564,8 @@ type takeHole struct {
 	slot        int16
 	presence    string
 	lastOffline *time.Time
+	// name es el de la tomada (RN-CITY-045).
+	name string
 }
 
 // takeSlot cuenta, bajo el cerrojo de fundación, las ciudades en pie del
@@ -569,7 +576,7 @@ func (r *CityFallRepo) takeSlot(ctx context.Context, tx pgx.Tx, f cityfall.Fall)
 		return nil, nil
 	}
 	rows, err := tx.Query(ctx,
-		`SELECT slot, era, presence_state, last_offline_at FROM cities
+		`SELECT slot, era, presence_state, last_offline_at, name FROM cities
 		  WHERE owner_player_id = $1 AND fallen_at IS NULL ORDER BY id FOR UPDATE`, f.VictorID)
 	if err != nil {
 		return nil, fmt.Errorf("leer las ciudades del vencedor: %w", normalize(err))
@@ -579,6 +586,7 @@ func (r *CityFallRepo) takeSlot(ctx context.Context, tx pgx.Tx, f cityfall.Fall)
 	enPie := 0
 	var (
 		usados     []int16
+		nombres    []string
 		eraCapital city.Era
 	)
 	for rows.Next() {
@@ -587,8 +595,9 @@ func (r *CityFallRepo) takeSlot(ctx context.Context, tx pgx.Tx, f cityfall.Fall)
 			era  string
 			ps   string
 			lo   *time.Time
+			nom  string
 		)
-		if err := rows.Scan(&slot, &era, &ps, &lo); err != nil {
+		if err := rows.Scan(&slot, &era, &ps, &lo, &nom); err != nil {
 			return nil, fmt.Errorf("leer una ciudad del vencedor: %w", normalize(err))
 		}
 		if enPie == 0 {
@@ -596,6 +605,7 @@ func (r *CityFallRepo) takeSlot(ctx context.Context, tx pgx.Tx, f cityfall.Fall)
 		}
 		enPie++
 		usados = append(usados, slot)
+		nombres = append(nombres, nom)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, normalize(err)
@@ -607,6 +617,9 @@ func (r *CityFallRepo) takeSlot(ctx context.Context, tx pgx.Tx, f cityfall.Fall)
 	if hole.slot = city.FreeSlot(usados); hole.slot == 0 {
 		return nil, nil
 	}
+	// SPEC-CITY-NAMES RN-CITY-045, INV-CITY-025: el nombre de la caída, salvo
+	// que el vencedor ya tenga en pie otra que lo lleve.
+	hole.name = city.TakenName(f.Name, nombres)
 	return hole, nil
 }
 
@@ -619,7 +632,7 @@ func (r *CityFallRepo) takeCity(ctx context.Context, tx pgx.Tx, f cityfall.Fall,
 	}
 	tomada := f.Now
 	c := &city.City{
-		OwnerPlayerID: f.VictorID, Name: f.Name, CenterX: f.Center.X, CenterY: f.Center.Y, Era: f.Era,
+		OwnerPlayerID: f.VictorID, Name: hole.name, CenterX: f.Center.X, CenterY: f.Center.Y, Era: f.Era,
 		PopulationLimit: populationCap, PresenceState: city.PresenceState(hole.presence), LastOnlineAt: &tomada,
 		Slot: hole.slot,
 	}

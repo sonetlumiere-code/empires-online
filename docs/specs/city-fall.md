@@ -155,7 +155,8 @@ En **una** transacción (ADR-050):
    caravanas, ofertas, reclamaciones, eventos) sigue apuntando a ella.
 2. **Su territorio capital queda libre** (`territory_control` sin dueño), y con él deja de ser capital (Q4). Nadie lo
    gana en la caída: el vencedor, si lo quiere, lo reclama como cualquier territorio libre (300 s).
-3. **El vencido refunda.** Una ciudad nueva con el mismo nombre, en un sitio que da `founding.FindSite` con las reglas de
+3. **El vencido refunda.** Una ciudad nueva con el mismo nombre (**precisión (2026-11-26, [city-names.md](city-names.md)):** desde E40, con el
+   nombre base de su dueño, `RN-CITY-046`), en un sitio que da `founding.FindSite` con las reglas de
    siempre (`RN-CITY-001` a `RN-CITY-006`, `RN-CITY-023` a `RN-CITY-025`) más la distancia mínima de Q6, en la **era de
    la caída**, con el almacén a cero y tres aldeanos nuevos, como un alta (`RN-PLAYER-007`). Hereda `presence_state` y su
    inmunidad empieza (Q7).
@@ -220,7 +221,7 @@ refundación. Viven aquí; `RN-CITY-020` ([city.md](city.md) §6.4) y el §2 de 
 | `RN-COMBAT-041` | El asalto pasa por el predicado de `RN-COMBAT-030` al ordenar y en cada tick; la protección del asaltado sólo cuenta al ordenar. |
 | `RN-SIEGE-011` | La unidad está `CLAIMING` y la ciudad lleva su asalto; responden los guardias del dueño (`RN-COMBAT-037`). Lo rompen la muerte, otra orden, la paz, el asaltante ausente o protegido y la muralla completa. |
 | `RN-CITY-026` | Al vencer el plazo, la ciudad se arrasa y su dueño refunda en una transacción, como orden en dos fases (§4.2, [ADR-050](../decisions/ADR-050-city-fall.md)); su territorio capital queda libre. Mientras la caída está en vuelo, la ciudad no admite órdenes que la cambien. |
-| `RN-CITY-027` | La ciudad nueva lleva el nombre de la caída, nace en su era con el almacén a cero y tres aldeanos, a ≥ `EO_CITY_REFOUND_MIN_DISTANCE` de la ciudad caída y de la del vencedor, con las reglas de fundación de siempre. |
+| `RN-CITY-027` | La ciudad nueva lleva el nombre de la caída, nace en su era con el almacén a cero y tres aldeanos, a ≥ `EO_CITY_REFOUND_MIN_DISTANCE` de la ciudad caída y de la del vencedor, con las reglas de fundación de siempre. **Precisión (2026-11-26, [city-names.md](city-names.md)):** lleva el nombre base de su dueño, no el de la caída (`RN-CITY-046`); la semilla de la espiral sigue siendo el nombre de la caída. |
 | `RN-CITY-028` | **Lo que tenía** (§4.3): la era, las tecnologías y todo lo del jugador se conservan; edificios, almacén y encargos de la ciudad se pierden; las unidades vivas de fuera y las propias guarnecidas pasan a la ciudad nueva, las ajenas guarnecidas salen; las caravanas hacia la ciudad caída siguen hacia la nueva; sus tratos pendientes caducan y sus ofertas del mercado se retiran con la custodia a la ciudad nueva. |
 | `RN-CITY-029` | Ninguna ciudad se asalta durante `EO_CITY_FALL_IMMUNITY_HOURS` desde su fundación. |
 

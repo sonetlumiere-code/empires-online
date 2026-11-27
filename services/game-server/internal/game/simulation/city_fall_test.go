@@ -44,6 +44,9 @@ type fakeCityFall struct {
 	founds   []simulation.CityFoundWrite
 	foundErr error
 	keep     int64
+	// foundName es el nombre que elige la transacción (SPEC-CITY-NAMES
+	// RN-CITY-044); vacío, «Testópolis II».
+	foundName string
 	// La toma (SPEC-CITY-TAKEN): con take y aldeanos para ella, el vencedor se
 	// queda la ciudad (la 120) con estos edificios.
 	take          bool
@@ -62,8 +65,12 @@ func (f *fakeCityFall) FoundCity(_ context.Context, w simulation.CityFoundWrite)
 		return nil, fmt.Errorf("%w: %v", cityfall.ErrFoundRejected, err)
 	}
 	now := w.Founding.Now
+	nombre := f.foundName
+	if nombre == "" {
+		nombre = "Testópolis II"
+	}
 	c := &city.City{
-		ID: 77, OwnerPlayerID: w.Founding.OwnerID, Name: w.Founding.Name, CenterX: site.Center.X, CenterY: site.Center.Y,
+		ID: 77, OwnerPlayerID: w.Founding.OwnerID, Name: nombre, CenterX: site.Center.X, CenterY: site.Center.Y,
 		Era: w.Founding.Era, Population: 3, PopulationLimit: 40, PresenceState: city.PresenceOnline, LastOnlineAt: &now,
 		FoundedAtMs: now.UnixMilli(), Slot: 2,
 	}

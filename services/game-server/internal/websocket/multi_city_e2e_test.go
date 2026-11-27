@@ -32,7 +32,7 @@ func (m *memoryCityFall) FoundCity(_ context.Context, w simulation.CityFoundWrit
 	}
 	now := w.Founding.Now
 	c := &city.City{
-		ID: 70, OwnerPlayerID: w.Founding.OwnerID, Name: w.Founding.Name, CenterX: site.Center.X,
+		ID: 70, OwnerPlayerID: w.Founding.OwnerID, Name: "e2epolis II", CenterX: site.Center.X,
 		CenterY: site.Center.Y, Era: w.Founding.Era, Population: 3, PopulationLimit: 40,
 		PresenceState: city.PresenceOnline, LastOnlineAt: &now, FoundedAtMs: now.UnixMilli(), Slot: 2,
 	}

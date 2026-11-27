@@ -172,10 +172,8 @@ func (s *Simulation) handleFoundCity(cmd FoundCity) {
 	s.broadcastStocks(from)
 
 	now := s.deps.Clock.Now()
-	capital, _ := s.state.CityOf(cmd.PlayerID)
 	f := cityfall.Founding{
-		OwnerID: cmd.PlayerID, FromCityID: from.ID, UnitID: u.ID,
-		Name: city.CityName(capital.Name, len(s.state.CitiesOf(cmd.PlayerID))+1), Era: from.Era,
+		OwnerID: cmd.PlayerID, FromCityID: from.ID, UnitID: u.ID, Era: from.Era,
 		Tick: s.state.Tick(), Now: now, AtMs: now.UnixMilli(),
 		Verify: founding.FarEnough,
 	}

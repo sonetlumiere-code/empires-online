@@ -163,12 +163,56 @@ func TestElAnilloDeNacimientoTieneOrdenFijo(t *testing.T) {
 	assert.False(t, ok, "sin tile libre no hay depósito ni nacimiento")
 }
 
-// RN-CITY-032: la ciudad fundada lleva el nombre de la capital con « II».
-func TestLaSegundaCiudadLlevaElNombreDeLaCapital(t *testing.T) {
-	assert.Equal(t, "bot_saqueador_1polis II", city.SecondCityName("bot_saqueador_1polis"))
-	assert.Equal(t, "bot_saqueador_1polis III", city.CityName("bot_saqueador_1polis", 3))
-	assert.Equal(t, "bot_saqueador_1polis IV", city.CityName("bot_saqueador_1polis", 4))
-	assert.Equal(t, "bot_saqueador_1polis II", city.CityName("bot_saqueador_1polis", 2))
+// SPEC-CITY-NAMES RN-CITY-043 y RN-CITY-044, INV-CITY-025: la fundada lleva el
+// primer nombre libre de la serie de su dueño, también cuando cayó la capital,
+// cuando cayó la del medio o cuando la capital es una tomada (§4.2).
+func TestLaFundadaLlevaElPrimerNombreLibreDeSuSerie(t *testing.T) {
+	casos := []struct {
+		nombre string
+		enPie  []string
+		quiere string
+	}{
+		{"la segunda", []string{"Xpolis"}, "Xpolis II"},
+		{"cayó la capital", []string{"Xpolis II"}, "Xpolis"},
+		{"cayó la del medio", []string{"Xpolis", "Xpolis III"}, "Xpolis II"},
+		{"la capital es tomada", []string{"Ypolis"}, "Xpolis"},
+		{"la cuarta", []string{"Xpolis", "Xpolis II", "Xpolis III"}, "Xpolis IV"},
+		{"con una tomada en medio", []string{"Xpolis", "Ypolis", "Xpolis II"}, "Xpolis III"},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			assert.Equal(t, c.quiere, city.FoundedName("X", c.enPie))
+		})
+	}
+	assert.Equal(t, "Xpolis", city.FirstFreeName("Xpolis", []string{"Xpolis II", "Xpolis III", "Xpolis IV", "Ypolis"}),
+		"con la serie llena sólo queda la base: fundar ya lo ha impedido el tope")
+}
+
+// RN-CITY-043: la base de un nombre generado es el nombre sin sus numerales,
+// también los encadenados de antes de E40; un nombre sin numeral es su base.
+func TestLaBaseDeUnNombreQuitaSusNumerales(t *testing.T) {
+	assert.Equal(t, "Xpolis", city.SeriesBase("Xpolis"))
+	assert.Equal(t, "Xpolis", city.SeriesBase("Xpolis II"))
+	assert.Equal(t, "Xpolis", city.SeriesBase("Xpolis III"))
+	assert.Equal(t, "Xpolis", city.SeriesBase("Xpolis IV"))
+	assert.Equal(t, "bot_constructor_2_e35polis", city.SeriesBase("bot_constructor_2_e35polis II II"))
+	assert.Equal(t, "XIII", city.SeriesBase("XIII"), "sin espacio no es un numeral")
+	assert.Equal(t, " II", city.SeriesBase(" II"), "un numeral solo no se queda en nada")
+	assert.Equal(t, "Xpolis", city.BaseName("X"))
+}
+
+// RN-CITY-045, INV-CITY-025: la tomada conserva su nombre salvo que el vencedor
+// ya tenga en pie otra que lo lleve; entonces, el primero libre de su serie.
+func TestLaTomadaConservaSuNombreSalvoQueSeRepita(t *testing.T) {
+	assert.Equal(t, "smoke_caidapolis", city.TakenName("smoke_caidapolis", []string{"smoke_runnerpolis"}))
+	assert.Equal(t, "smoke_caidapolis II",
+		city.TakenName("smoke_caidapolis", []string{"smoke_runnerpolis", "smoke_caidapolis"}))
+	assert.Equal(t, "smoke_caidapolis III",
+		city.TakenName("smoke_caidapolis", []string{"smoke_runnerpolis", "smoke_caidapolis", "smoke_caidapolis II"}))
+	assert.Equal(t, "Ypolis", city.TakenName("Ypolis II", []string{"Xpolis", "Ypolis II"}),
+		"la serie de «Ypolis II» empieza en su base")
+	assert.Equal(t, "Ypolis III", city.TakenName("Ypolis III", []string{"Xpolis", "Ypolis"}),
+		"sin repetirse conserva el numeral que traía")
 }
 
 // SPEC-MORE-CITIES RN-CITY-040: el tope de cada era, el techo de cuatro y el menor hueco libre.

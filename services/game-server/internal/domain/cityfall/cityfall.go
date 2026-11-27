@@ -144,8 +144,10 @@ type Fall struct {
 	OwnerID      uuid.UUID
 	VictorID     uuid.UUID
 	VictorCityID int64
-	// Name y Era: la ciudad nueva lleva el nombre de la caída y nace en su era
-	// (RN-CITY-027).
+	// Name y Era son los de la caída: la refundada nace en su era con el nombre
+	// base de su dueño (RN-CITY-027, RN-CITY-046) y la tomada conserva Name
+	// salvo que el vencedor ya tenga otra que lo lleve (RN-CITY-045). Name es
+	// también la semilla de la espiral de la refundación.
 	Name   string
 	Era    city.Era
 	Center world.Tile
@@ -212,8 +214,8 @@ type Founding struct {
 	OwnerID    uuid.UUID
 	FromCityID int64
 	UnitID     int64
-	// Name y Era: el de la capital con « II» y la era de la ciudad que paga.
-	Name string
+	// Era es la de la ciudad que paga. El nombre lo elige la transacción con
+	// las ciudades en pie del dueño (SPEC-CITY-NAMES RN-CITY-044).
 	Era  city.Era
 	Tick uint64
 	Now  time.Time

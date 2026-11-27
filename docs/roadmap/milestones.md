@@ -3537,3 +3537,39 @@ pestañas a la vez con cuentas distintas.
   1000) avisa cada minuto de que no encuentra ruta (`50001 nodos expandidos`); el HUD no cabe en 856 px de ancho y
   «Fundar ciudad» queda fuera, con desplazamiento horizontal.
 
+
+## E40 — El nombre de las ciudades
+
+**Estado: HECHO EN LA RAMA (2026-11-26)**, `claude/slice-nombre-ciudades`, sin fusionar ni empujar. Contrato:
+[SPEC-CITY-NAMES](../specs/city-names.md), propuesta y aceptada el 2026-11-26: la persona usuaria aceptó sus seis
+decisiones con la recomendación del agente. Sin ADR ni migración. Nace del hallazgo del repaso de E33 a E39 (arriba):
+`bot_constructor_2_e35polis II II`.
+
+**Objetivo.** Que cada ciudad nueva tome el primer nombre libre de la serie de su dueño, sin numerales encadenados ni
+dos iguales en pie.
+
+### Entregables
+
+1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; [INV-CITY-025](../invariants/city.md#inv-city-025)
+   registrado sin cobertura; precisiones de `RN-CITY-027`, `RN-CITY-032` y `RN-CITY-037` y de
+   [more-cities.md](../specs/more-cities.md) §9.1.
+2. **HECHO** — La serie y el primer nombre libre en `internal/domain/city` (`FoundedName`, `TakenName`,
+   `SeriesBase`), elegidos en las transacciones de la fundación, la toma y la refundación, con sus tests (unit,
+   simulación, integración); `INV-CITY-025` a ✓, verificado por mutación.
+3. **HECHO** — El humo `--multiciudad` (`nombreDeLaFundada`, con su test); precisiones de las specs vecinas;
+   `verify:full` en verde, mutaciones y prueba en vivo.
+
+### Prueba en vivo (2026-11-26)
+
+Servidor y web de desarrollo; una cuenta nueva, `smoke_nombres`, con el almacén sembrado
+(`EO_DEVSEED_STOCK_FOR=smoke_nombres`): `EO_SMOKE_MULTI_USER=smoke_nombres node scripts/smoke.mjs --web
+http://localhost:3001 --multiciudad`, 26 comprobaciones. Avanza a Bronce, funda la 67 en (85, 61) como
+`smoke_nombrespolis II`, el primer nombre libre de su serie, y la tercera se rechaza por el tope.
+
+- **Sin comprobar en vivo:** fundar, tomar y refundar con un nombre ya ocupado (tras caer la capital o con un nombre
+  repetido en el vencedor). Pedía tumbar ciudades a propósito en la base de desarrollo; lo cubren los cuatro tests de
+  integración contra PostgreSQL de `city_names_integration_test.go`.
+- **Sin comprobar en el navegador:** el nombre en el panel y en «H». El cliente no lo interpreta: pinta el `name` de
+  `CityView`.
+- Las ciudades de antes de E40 conservan su nombre (Q5): `bot_constructor_2_e35polis II II` sigue en la base de
+  desarrollo, y su próxima fundación saldría `bot_constructor_2_e35polis`.

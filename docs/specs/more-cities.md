@@ -111,7 +111,9 @@ Ninguno nuevo. El cliente deduce el tope de la era de su capital, que ya llega e
 ### 9.1 Precisiones de la implementación (2026-11-25)
 
 - **Precisión (2026-11-25): el nombre de la tercera y la cuarta.** La fundación nombra la ciudad nueva por su número:
-  « II», « III» o « IV» tras el nombre de la capital (`city.CityName`).
+  « II», « III» o « IV» tras el nombre de la capital (`city.CityName`). **Precisión (2026-11-26, [city-names.md](city-names.md)):** el
+  numeral ya no es un recuento ni se añade al nombre de la capital: la fundada lleva el primer nombre libre de la serie
+  del dueño (`RN-CITY-044`).
 - **Precisión (2026-11-25): una capital en Piedra.** Su tope es uno: no funda (ya lo impedía la era de la que paga) y
   **no toma**: un jugador en Piedra que tumba una ciudad la arrasa. El HUD dice antes que la ciudad tiene que estar en
   Bronce y después el tope.

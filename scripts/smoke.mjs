@@ -163,8 +163,9 @@
  *      Piedra) con 800 de madera y 400 de piedra (con el servidor parado,
  *      EO_DEVSEED_STOCK_FOR=smoke_multi pnpm run dev:seed), lleva un aldeano a un sitio
  *      libre a 28 o más tiles de su capital (lo busca moviendo la vista) y funda
- *      (unit.found_city): recibe un snapshot centrado en la ciudad nueva, con el nombre de
- *      la capital y « II», en su era y en el tile del aldeano; la capital paga, y una
+ *      (unit.found_city): recibe un snapshot centrado en la ciudad nueva, con el primer
+ *      nombre libre de su serie (SPEC-CITY-NAMES: smoke_multipolis II si sólo tiene la
+ *      capital), en su era y en el tile del aldeano; la capital paga, y una
  *      tercera se rechaza (INVALID_TARGET). En una
  *      pasada siguiente la cuenta ya tiene dos y el humo sólo comprueba ese rechazo. No
  *      depende de las demás opciones.
@@ -2409,6 +2410,17 @@ async function caida(atacante, ciudad, playerId, snap) {
 
 const MULTI_USUARIO = process.env.EO_SMOKE_MULTI_USER || 'smoke_multi';
 
+// nombreDeLaFundada es el nombre de la ciudad que funda usuario con estas ciudades
+// en pie: el primero libre de su serie, `<usuario>polis` y ese nombre con « II»,
+// « III» o « IV» (SPEC-CITY-NAMES RN-CITY-043, RN-CITY-044; `city.FoundedName`).
+export function nombreDeLaFundada(usuario, enPie) {
+  const base = `${usuario}polis`;
+  for (const numeral of ['', ' II', ' III', ' IV']) {
+    if (!enPie.includes(base + numeral)) return base + numeral;
+  }
+  return base;
+}
+
 /**
  * Un sitio donde fundar visto desde el humo (RN-CITY-030): el 7 × 7 alrededor
  * transitable, a 24 o más de todo centro conocido, con 10 tiles de bosque a 8 o
@@ -2559,6 +2571,9 @@ async function multiciudad() {
   const llega = await caminarHasta(yo.sesion, fundador, sitio);
   ok('el aldeano llega al sitio', `(${llega.x}, ${llega.y}), a ${sitio.d} tiles de la capital`);
 
+  // SPEC-CITY-NAMES RN-CITY-044: el nombre que debe llevar, con las propias que
+  // se ven antes de fundar (la capital, con el humo de siempre).
+  const esperado = nombreDeLaFundada(MULTI_USUARIO, propias().map((c) => c.name));
   const r = await intentar(fundador);
   if (r.type === 'system.error' && r.payload.code === 'INVALID_TARGET' && /dos ciudades|el tope de tu capital/.test(r.payload.message)) {
     ok('ya tiene dos ciudades de una pasada anterior', 'la tercera se rechaza (INVALID_TARGET)');
@@ -2568,8 +2583,8 @@ async function multiciudad() {
   if (r.type === 'system.error') fallar('el servidor rechazó la fundación', r.payload);
   vista = r.payload;
   const nueva = propias().find((c) => c.id !== capital.id);
-  if (!nueva || nueva.name !== `${capital.name} II` || nueva.era !== capital.era) {
-    fallar('la ciudad nueva no lleva el nombre de la capital con « II» o su era', { capital, nueva });
+  if (!nueva || nueva.name !== esperado || nueva.era !== capital.era) {
+    fallar('la ciudad nueva no lleva el primer nombre libre de la serie o la era de la capital', { esperado, capital, nueva });
   }
   if (nueva.centerX !== llega.x || nueva.centerY !== llega.y) fallar('la ciudad nueva no está en el tile del aldeano', { nueva, llega });
   const capitalDespues = vista.cities.find((c) => c.id === capital.id);

@@ -7,6 +7,7 @@ package city
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -151,27 +152,76 @@ func FreeSlot(used []int16) int16 {
 	return 0
 }
 
-// SecondCityName es el nombre de la ciudad que funda un jugador: el de su
-// capital seguido de « II» (RN-CITY-032).
-func SecondCityName(capital string) string { return capital + " II" }
-
 // FallImmuneUntilMs es el instante en que vence la inmunidad de la ciudad ante
 // un asalto (RN-CITY-029): su fundación más immunity.
 func (c *City) FallImmuneUntilMs(immunity time.Duration) int64 {
 	return c.FoundedAtMs + immunity.Milliseconds()
 }
 
-// CityName es el nombre de la n-ésima ciudad que funda un jugador: el de su
-// capital con « II», « III» o « IV» (SPEC-MORE-CITIES, precisión de §9.1).
-func CityName(capital string, n int) string {
-	switch n {
-	case 3:
-		return capital + " III"
-	case 4:
-		return capital + " IV"
-	default:
-		return SecondCityName(capital)
+// numerals son los sufijos de la serie de un nombre, uno por hueco posible
+// (SPEC-CITY-NAMES RN-CITY-043): la base va sin numeral.
+var numerals = [MaxStandingPerOwner]string{"", " II", " III", " IV"}
+
+// BaseName es el nombre base de un jugador, el de su primera ciudad
+// (RN-CITY-043, RN-CITY-046).
+func BaseName(username string) string { return username + "polis" }
+
+// SeriesBase es la base de la serie de un nombre: el nombre sin los numerales
+// que el servidor le haya añadido al final (RN-CITY-043). Quita todos, así que
+// un nombre de antes de E40 como «X II II» da «X».
+func SeriesBase(name string) string {
+	for {
+		recortado := name
+		for _, n := range numerals[1:] {
+			if len(name) > len(n) && strings.HasSuffix(name, n) {
+				recortado = strings.TrimSuffix(name, n)
+				break
+			}
+		}
+		if recortado == name {
+			return name
+		}
+		name = recortado
 	}
+}
+
+// FirstFreeName es el primer nombre de la serie de base que no lleva ninguna de
+// las ciudades en pie de standing (SPEC-CITY-NAMES RN-CITY-044, INV-CITY-025).
+// Fundar y tomar piden estar por debajo del tope, así que siempre queda uno;
+// con los cuatro ocupados devuelve la base.
+func FirstFreeName(base string, standing []string) string {
+	for _, n := range numerals {
+		candidato := base + n
+		libre := true
+		for _, s := range standing {
+			if s == candidato {
+				libre = false
+				break
+			}
+		}
+		if libre {
+			return candidato
+		}
+	}
+	return base
+}
+
+// FoundedName es el nombre de la ciudad que funda el jugador username con las
+// ciudades en pie standing: el primero libre de su serie (RN-CITY-044).
+func FoundedName(username string, standing []string) string {
+	return FirstFreeName(BaseName(username), standing)
+}
+
+// TakenName es el nombre de la ciudad que se toma: el de la caída si el
+// vencedor no tiene en pie otra que lo lleve; si la tiene, el primero libre de
+// la serie de ese nombre (RN-CITY-045).
+func TakenName(fallen string, victorStanding []string) string {
+	for _, s := range victorStanding {
+		if s == fallen {
+			return FirstFreeName(SeriesBase(fallen), victorStanding)
+		}
+	}
+	return fallen
 }
 
 // FallImmuneAt dice si la ciudad aún no se puede asaltar en nowMs.

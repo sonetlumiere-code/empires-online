@@ -931,6 +931,45 @@ segunda tomada; con la RAM sin conservar los heredados, el de simulación.
 
 ---
 
+<a id="inv-city-025"></a>
+## INV-CITY-025 — Dos ciudades en pie de un dueño no se llaman igual, y ningún nombre generado lleva dos numerales
+
+| Campo | Valor |
+|---|---|
+| Severidad | MEDIO |
+| Aplicación | DOMAIN, TEST |
+| Milestone | E40 |
+| Política ante violación | Sin detección en runtime; la garantía es estructural y de test |
+| Cobertura | **Cubierto** por `TestLaFundadaLlevaElPrimerNombreLibreDeSuSerie`, `TestLaTomadaConservaSuNombreSalvoQueSeRepita`, `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion`, `TestLaFundacionTrasCaerLaCapitalRecuperaElNombreBase`, `TestLaFundacionTrasCaerLaDelMedioTomaSuNombre` y `TestLaTomadaConUnNombreRepetidoTomaElSiguiente` (integration) |
+
+**Enunciado.** Tras una fundación, una toma o una refundación, ninguna otra ciudad en pie del mismo dueño lleva el
+nombre de la ciudad nueva, y el nombre que elige el servidor termina como mucho en un numeral (« II», « III» o « IV»).
+
+**Razón.** El nombre es lo único que distingue en pantalla las ciudades de un jugador (el panel, «H», el registro, los
+avisos). Antes de E40 salían «X II II» y tres `smoke_caidapolis` en el mismo dueño
+([SPEC-CITY-NAMES](../specs/city-names.md) §1.1).
+
+**Cómo se garantiza.**
+
+- `DOMAIN` — una función pura de `internal/domain/city` elige el primer nombre libre de la serie contra los nombres de
+  las ciudades en pie del dueño (`RN-CITY-043` a `RN-CITY-046`).
+- Las transacciones de la fundación, la toma y la refundación leen esos nombres bajo el cerrojo de fundación con el que
+  ya eligen el hueco. La base **no** lo garantiza con un índice (Q6): un nombre repetido no debe hacer fallar una caída.
+
+**Cómo se verifica.** `TestLaFundadaLlevaElPrimerNombreLibreDeSuSerie` y `TestLaTomadaConservaSuNombreSalvoQueSeRepita`
+(unit: el primer libre con la capital caída, con la del medio caída y con una tomada en pie; la base de «X II II»),
+`TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion`, `TestLaFundacionTrasCaerLaCapitalRecuperaElNombreBase`,
+`TestLaFundacionTrasCaerLaDelMedioTomaSuNombre` y `TestLaTomadaConUnNombreRepetidoTomaElSiguiente` (integration: el
+nombre que guarda la base) — **existen y pasan**. **Verificado por mutación** (2026-11-26): con `FirstFreeName` sin
+mirar las ciudades en pie (restaurado desde una copia y comprobado con `cmp`) caen los dos unit; con la fundación y la
+toma leyendo sólo la mitad de los nombres en pie, caen `TestLaFundacionCreaLaSegundaCiudadEnUnaTransaccion`
+(«vencidopolis» repetida) y `TestLaTomadaConUnNombreRepetidoTomaElSiguiente` (dos «vencidopolis» en el vencedor); con
+la refundación con el nombre de la caída, `TestLaRefundadaLlevaElNombreBase` (`RN-CITY-046`).
+
+**Violación en runtime.** Ninguna detección: un nombre repetido es cosmético y no bloquea nada.
+
+---
+
 ## Trazabilidad
 
 | Invariante | Componente propietario | Relacionado con |
@@ -959,3 +998,4 @@ segunda tomada; con la RAM sin conservar los heredados, el de simulación.
 | INV-CITY-022 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-020](#inv-city-020), [ADR-051](../decisions/ADR-051-multi-city-capital.md) |
 | INV-CITY-023 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-020](#inv-city-020), [ADR-050](../decisions/ADR-050-city-fall.md), [ADR-051](../decisions/ADR-051-multi-city-capital.md) |
 | INV-CITY-024 | `internal/persistence/postgres`, `internal/game/simulation` | [INV-CITY-023](#inv-city-023), [ADR-052](../decisions/ADR-052-city-taken.md) |
+| INV-CITY-025 | `internal/domain/city`, `internal/persistence/postgres` | [INV-CITY-022](#inv-city-022), [INV-CITY-024](#inv-city-024) |
