@@ -142,6 +142,17 @@ decide.
 - **Precisión (2026-11-27): los bosques.** Además del terreno, la vista de la capital lleva los bosques de todas las
   conexiones, para que el sitio junto a una colonia no cuente un bosque agotado que sólo ve su conexión.
 
+- **Precisión (2026-11-27): lo que el espejo olvida** (lo encontró la pasada 1 de la prueba en vivo). La cuarta de
+  `_2_e29` volvió cinco veces con `INVALID_TARGET`, tile a tile: (62, 383), (63, 383), (64, 383) en la Región 0-5 y
+  (210, 376), (210, 377) en la 3-5, las dos con dueño, y la segunda a 18 tiles de una ciudad ajena. El espejo conserva
+  el terreno de lo que vio (es inmutable) pero vacía los territorios y las ciudades en cada snapshot: un sitio lejano
+  con el terreno conocido pasaba por libre, y al llegar el aldeano exactamente al sitio no se volvía a mirar. Ahora el
+  bot recuerda los territorios que ha visto, tal como los vio por última vez (`Bot.seenTerritories`), y los centros de
+  las ciudades ajenas que ya no trae ninguna conexión (`View.rememberedCenters`, que salen al caer la ciudad); y,
+  parado en el sitio, si lo que ya ve dice que no sirve, no pide fundar: la fundación termina con la causa nueva
+  `site_lost` y el sitio se aparta (`RN-BOT-021`). Lo cubren `found.test.ts` y `bot.test.ts`, verificados por
+  mutación (sin la comprobación al llegar, o sin recordar los territorios, cae su test).
+
 ## 10. Decisiones de producto (2026-11-27)
 
 La persona usuaria aceptó las tres recomendaciones (2026-11-27): cada fila deja la decisión, en negrita, y las

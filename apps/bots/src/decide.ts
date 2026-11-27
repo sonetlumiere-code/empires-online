@@ -117,8 +117,17 @@ export interface View {
   readonly ownCityCount?: number;
   /** Con su id cuando se sabe: el sitio de una fundación dice de qué anillo salió (SPEC-BOTS-FOUND-SITE §4.4). */
   readonly otherOwnCenters?: readonly OwnCenter[];
-  /** Los territorios a la vista: el sitio de una fundación va en uno libre (§4.2). */
+  /**
+   * Los territorios a la vista: el sitio de una fundación va en uno libre (§4.2). Desde
+   * E42, también los vistos antes, como se vieron por última vez: el espejo los olvida al
+   * mover la vista y conserva el terreno (SPEC-BOTS-FOUND-SITE §9.1).
+   */
   readonly territories?: readonly TerritoryView[];
+  /**
+   * Los centros de las ciudades ajenas que vio alguna conexión y ya no están a la vista
+   * (SPEC-BOTS-FOUND-SITE §9.1): cuentan para los 24 tiles del sitio.
+   */
+  readonly rememberedCenters?: readonly Tile[];
 }
 
 type ResourceLine = { readonly resource: string; readonly amount: number };
@@ -419,7 +428,8 @@ export interface StrayResult {
 }
 
 /** Por qué termina mal una fundación (§4.7). */
-export type FoundFailure = 'rejected' | 'unit_died' | 'stuck' | 'timeout' | 'city_fell';
+/** `site_lost`: al llegar, lo que ya ve del sitio dice que no sirve (SPEC-BOTS-FOUND-SITE §9.1). */
+export type FoundFailure = 'rejected' | 'unit_died' | 'stuck' | 'timeout' | 'city_fell' | 'site_lost';
 
 export interface FoundResult {
   readonly status: 'founded' | 'failed';
@@ -1490,6 +1500,7 @@ function knownCenters(view: View): Tile[] {
   for (const b of view.botCities) out.push({ x: b.centerX, y: b.centerY });
   // El sitio que va a fundar otro bot del proceso cuenta como un centro (SPEC-BOTS-FOUND §9.1).
   for (const s of view.claimedSites ?? []) out.push(s);
+  for (const c of view.rememberedCenters ?? []) out.push(c);
   return out;
 }
 
@@ -1682,7 +1693,11 @@ function foundRule(view: View, profile: Profile, memory: Memory, plan: Plan, now
   if (!u || plan.full || (f.lastPos !== null && u.status !== 'IDLE')) return mem;
 
   const here = { x: u.x, y: u.y };
-  const arrived = u.status === 'IDLE' && (chebyshev(here, f.site) === 0 || (chebyshev(here, f.site) <= 2 && foundSiteOk(view, here)));
+  // En el sitio, la campaña ya ve su territorio y sus vecinas: si no sirve, ni se pide
+  // (antes se pedía igual y el servidor lo rechazaba, SPEC-BOTS-FOUND-SITE §9.1).
+  const away = chebyshev(here, f.site);
+  if (u.status === 'IDLE' && away === 0 && !foundSiteOk(view, here)) return endFounding(mem, 'failed', 'site_lost', nowMs, profile);
+  const arrived = u.status === 'IDLE' && away <= 2 && foundSiteOk(view, here);
   if (arrived) {
     const key = `found:city:${u.id}`;
     if (!plan.free(key)) return mem;

@@ -368,3 +368,26 @@ describe('el sitio junto a cualquier ciudad propia (SPEC-BOTS-FOUND-SITE §4.1, 
     expect(run(foundView({ units: [] }), far, NOW + 30 * 60_000 + 1).memory.foundResult).toMatchObject({ status: 'failed', cause: 'timeout' });
   });
 });
+
+describe('lo que el espejo olvida al mover la vista (SPEC-BOTS-FOUND-SITE §9.1, la prueba en vivo de E42)', () => {
+  const owned: TerritoryView = {
+    id: 7, name: 'Región 0-5', minX: 120, minY: 80, maxX: 140, maxY: 100, ownerType: 'PLAYER', ownerId: OTHER_BOT,
+    ownerFaction: null, ownerClan: null, contested: false,
+  };
+
+  it('parado en el sitio que ya ve con dueño, no pide fundar: termina como site_lost', () => {
+    // _2_e29 pidió tres veces fundar en una región con dueño: el servidor lo rechazaba
+    // con INVALID_TARGET y la siguiente búsqueda elegía el tile de al lado.
+    const at = foundView({ units: [unit({ id: 1, x: 128, y: 90 })], territories: [owned] });
+    const { commands, memory } = run(at, walking({ lastPos: { x: 102, y: 100 } }));
+    expect(commands.map((c) => c.type)).not.toContain('unit.found_city');
+    expect(memory.founding).toBeNull();
+    expect(memory.foundResult).toMatchObject({ status: 'failed', cause: 'site_lost' });
+    expect(memory.foundSiteCooldowns['128,90']).toBe(NOW + constructor.foundSiteCooldownMs);
+  });
+
+  it('una ciudad ajena vista antes, ya fuera de la vista, sigue contando para los 24 tiles', () => {
+    expect(foundSiteOk(foundView({ rememberedCenters: [{ x: 140, y: 80 }] }), SITE)).toBe(false);
+    expect(foundSiteOk(foundView({ rememberedCenters: [{ x: 160, y: 80 }] }), SITE)).toBe(true);
+  });
+});

@@ -202,6 +202,13 @@ export class Bot {
    */
   private readonly homes = new Map<number, Tile>();
   /**
+   * Los territorios y los centros de ciudades ajenas que ha visto alguna conexión, como
+   * se vieron por última vez: el espejo los olvida al mover la vista y el terreno no, así
+   * que un sitio lejano parecía libre (la prueba en vivo de SPEC-BOTS-FOUND-SITE).
+   */
+  private readonly seenTerritories = new Map<number, TerritoryView>();
+  private readonly seenCities = new Map<number, Tile>();
+  /**
    * Cada ciudad propia que no es la capital, por id: su conexión, su memoria y lo que
    * juega (SPEC-BOTS-FOUND §4.4, §4.5; SPEC-BOTS-ALL-CITIES §4.1, §4.3).
    */
@@ -698,6 +705,7 @@ export class Bot {
       market: hs.market,
       ...this.ownCitiesFields(city.id),
       territories: this.knownTerritories(),
+      rememberedCenters: this.rememberedCenters(playerId),
     };
   }
 
@@ -708,11 +716,26 @@ export class Bot {
    * libre» en el territorio de la propia colonia).
    */
   private knownTerritories(): TerritoryView[] {
-    const byId = new Map<number, TerritoryView>();
+    const now = new Map<number, TerritoryView>();
     for (const link of this.links()) {
-      for (const t of link.store.getState().territories.values()) if (!byId.has(t.id)) byId.set(t.id, t);
+      for (const t of link.store.getState().territories.values()) if (!now.has(t.id)) now.set(t.id, t);
     }
-    return [...byId.values()].sort((a, b) => a.id - b.id);
+    // Lo que se ve ahora manda; lo demás, como se vio por última vez (SPEC-BOTS-FOUND-SITE §9.1).
+    for (const [id, t] of now) this.seenTerritories.set(id, t);
+    return [...this.seenTerritories.values()].sort((a, b) => a.id - b.id);
+  }
+
+  /** Los centros de las ciudades ajenas vistas que ya no trae ninguna conexión (SPEC-BOTS-FOUND-SITE §9.1). */
+  private rememberedCenters(playerId: string): Tile[] {
+    const visible = new Set<number>();
+    for (const link of this.links()) {
+      for (const c of link.store.getState().cities.values()) {
+        if (c.ownerPlayerId === playerId) continue;
+        visible.add(c.id);
+        this.seenCities.set(c.id, { x: c.centerX, y: c.centerY });
+      }
+    }
+    return [...this.seenCities].filter(([id]) => !visible.has(id)).sort(([a], [b]) => a - b).map(([, t]) => t);
   }
 
   /**
@@ -1140,6 +1163,8 @@ export class Bot {
     }
     // Una ciudad que cae (SPEC-BOTS-ASSAULT §4.4, §4.6): la que asaltaba la partida, o la propia.
     if (m.type === 'city.fallen') {
+      // La caída ya no cuenta como vecina de un sitio.
+      this.seenCities.delete(m.payload.cityId);
       const before = this.memory.raid;
       this.memory = onTargetFell(this.memory, m.payload.cityId, m.payload.ownerPlayerId, nowMs, this.deps.profile);
       this.logAssault(before, this.memory.raid);

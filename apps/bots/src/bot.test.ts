@@ -982,6 +982,36 @@ describe('todas las ciudades del bot (SPEC-BOTS-ALL-CITIES §4.1, §4.3, §4.7)'
     bot.stop();
   });
 
+  it('recuerda los territorios y las ciudades ajenas que vio cuando el espejo los olvida', async () => {
+    const lines: string[] = [];
+    const sockets: FakeServer[] = [];
+    const { bot } = await withCities(lines, sockets, [cityAt(30, 300, 300)]);
+    // La prueba en vivo de E42: el terreno se queda en el espejo, los territorios y las
+    // ciudades no; un sitio lejano parecía libre y el servidor lo rechazaba.
+    const colonyLink = sockets[1] as FakeServer;
+    colonyLink.territories = [
+      { id: 61, name: 'Región 0-5', minX: 0, minY: 320, maxX: 63, maxY: 383, ownerType: 'PLAYER', ownerId: ENEMY,
+        ownerFaction: 'NEUTRAL', ownerClan: null, contested: false },
+    ];
+    colonyLink.others = [cityAt(17, 228, 366, { ownerPlayerId: ENEMY, name: 'otra' })];
+    colonyLink.snapshot();
+    await tick();
+    expect(bot.buildView()?.rememberedCenters).toEqual([]);
+    // La vista se mueve: el snapshot nuevo ya no trae ni el territorio ni la ciudad.
+    colonyLink.territories = [];
+    colonyLink.others = [];
+    colonyLink.snapshot();
+    await tick();
+    const v = bot.buildView();
+    expect(v?.territories?.map((t) => [t.id, t.ownerType])).toEqual([[61, 'PLAYER']]);
+    expect(v?.rememberedCenters).toEqual([{ x: 228, y: 366 }]);
+    // Si cae, deja de contar.
+    (sockets[0] as FakeServer).push('city.fallen', { cityId: 17, ownerPlayerId: ENEMY, byPlayerId: PLAYER, atMs: NOW });
+    await tick();
+    expect(bot.buildView()?.rememberedCenters).toEqual([]);
+    bot.stop();
+  });
+
   it('cae una de tres: se cierra su conexión y las demás siguen', async () => {
     const lines: string[] = [];
     const sockets: FakeServer[] = [];
