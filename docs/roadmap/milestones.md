@@ -3649,7 +3649,7 @@ protocolo ni la base.
 2. **El resumen junta las partidas replantadas** ([bots-assault.md](../specs/bots-assault.md) §9.1): las tres líneas
    «reunidos 6 en 2m02s» eran tres asaltos de verdad contra la misma capital; ahora salen en una con `×3` y lo sumado
    (`log.test.ts`).
-3. **El anillo lleno, a una spec en Draft:** [bots-found-site.md](../specs/bots-found-site.md). Buscar el sitio
+3. **El anillo lleno, a una spec en Draft** (aceptada el mismo día: §E42): [bots-found-site.md](../specs/bots-found-site.md). Buscar el sitio
    también alrededor de las colonias cambia dónde funda el bot (la Q3 de E35), así que lo decide la persona usuaria.
 
 **Prueba en vivo** (`--constructores 3 --saqueadores 1 --sufijo e29 --duracion 40m --semilla 44`, velocidad real,
@@ -3672,7 +3672,8 @@ sin sembrar; registro `bots/runs/2026-11-27T17-13-58-641Z-44.jsonl`):
 
 ## E42 — El sitio de la siguiente ciudad
 
-**Estado: EN CURSO (2026-11-27)**, en la rama `claude/slice-bots-sitio`. Contrato:
+**Estado: HECHO en `main` local (2026-11-27)**, rama `claude/slice-bots-sitio` fusionada sin empujar; falta empujar y
+ver la CI en verde para pasar la spec a `Implemented`. Contrato:
 [SPEC-BOTS-FOUND-SITE](../specs/bots-found-site.md), propuesta el 2026-11-27 tras el repaso de la piedra (§E41) y
 aceptada el mismo día: la persona usuaria aceptó sus tres decisiones con la recomendación del agente. Sin ADR nuevo: no
 cambia el servidor, ni el protocolo, ni la base. Nace de la prueba en vivo del repaso de la piedra: los tres
@@ -3690,8 +3691,34 @@ conexiones (`RN-BOT-026`); el plazo de la caminata según la distancia a la capi
 
 1. **HECHO** — Aceptación: spec en `Accepted` con §10 como decisiones; `RN-BOT-026`, con precisiones de la Q3, §4.2 y
    §4.3 de [bots-found.md](../specs/bots-found.md) y de las reglas en [bots.md](../specs/bots.md). Sin invariantes.
-2. **PENDIENTE** — Bots: el sitio alrededor de cada ciudad propia, el terreno de todas las conexiones y el plazo de la
-   caminata, con sus tests (`found.test.ts`, `bot.test.ts`).
-3. **PENDIENTE** — Registro y resumen (`found` con `from`; `log.test.ts`); docs (`docs/architecture/frontend.md`,
-   `docs/operations/local-development.md`, spec §9.1); `verify:full`.
-4. **PENDIENTE** — Prueba en vivo (spec Q3): 30 a 40 min a velocidad real con las cuentas `_e29`, sin sembrar.
+2. **HECHO** — Bots: el sitio alrededor de cada ciudad propia (`chooseFoundSiteFrom`), el terreno y los bosques de
+   todas las conexiones y el plazo de la caminata (`foundWalkMs`), con sus tests (`found.test.ts`, `bot.test.ts`),
+   verificados por mutación.
+3. **HECHO** — Registro y resumen (`found` con `from` y `fromCapital`, «junto a una colonia»; `log.test.ts`); docs
+   (`docs/architecture/frontend.md`, `docs/operations/local-development.md`, spec §9.1); `verify:full`.
+4. **HECHO** — Prueba en vivo (spec Q3), abajo, con los tres fallos que destapó (spec §9.1).
+
+### Prueba en vivo (2026-11-27)
+
+Servidor y web de desarrollo en esta Mac, a velocidad real, y `pnpm run bots -- --web http://localhost:3001
+--constructores 3 --saqueadores 1 --sufijo e29`, con las cuentas `_e29` tal como las dejó el repaso de la piedra, sin
+sembrar: `_2_e29` en Castillos con dos ciudades (la capital junto al borde del mapa), `_3_e29` en Castillos con tres,
+`_1_e29` en Bronce con una. Registros en `bots/runs/` (sin versionar).
+
+- **Pasada 1** (`--semilla 45`, 40 min): **`_3_e29` funda su cuarta ciudad**, la 69, en (3, 256), junto a su colonia
+  68 y a 152 tiles de la capital: el aldeano llega en 2 min 26 s y la ciudad nace a los 2 min 33 s de arrancar;
+  llega a 8 aldeanos en 2 min 32 s y junta 13 520 de madera por hora. **`_2_e29` funda su tercera**, la 70, en
+  (63, 448), junto a su colonia 60 y a 158 tiles de la capital, a los 3 min 5 s (8 297 de madera por hora). Las dos
+  salen del anillo de una colonia (`from` 68 y 60): con el anillo de E41, ninguna tenía sitio. Destapó tres fallos
+  (spec §9.1): la cuarta de `_2_e29` volvió 9 veces con `INVALID_TARGET`, tile a tile, en dos regiones con dueño que el
+  espejo había olvidado; `_3_e29` marcó 37 min con una ciudad sin jugar (la conexión de la colonia 59 se quedó en el
+  snapshot de la fundación); y el resumen daba la colonia 70 dos veces.
+- **Pasada 2** (`--semilla 46`, 30 min, con los tres arreglos): ningún rechazo de fundación. La cuarta de `_2_e29` va
+  primero a (62, 383) y luego a (210, 376), como en la pasada 1, porque el proceso nuevo no recuerda nada, pero al
+  llegar ve las dos regiones con dueño y termina con `site_lost` sin pedir nada al servidor. Después, 5 búsquedas sin
+  sitio: con lo que ya sabe de los territorios no hay hueco a 96 de ninguna de sus tres ciudades. Las cuatro cuentas
+  juegan todas sus ciudades todo el rato (`minutos con alguna sin jugar 0`), las cuatro de `_3_e29` también.
+- **Madera por colonia:** 11 518 por hora de media en los constructores en la pasada 2 (9 964 en la 1).
+- **`_1_e29`** (Bronce, una ciudad, en (501, 235), junto al borde derecho) sigue sin sitio en las dos pasadas.
+- **Sin comprobar en el navegador:** la cuarta ciudad de `_3_e29` y la tercera de `_2_e29` en el mapa; el panel del
+  navegador integrado no se usó en esta prueba.

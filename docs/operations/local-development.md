@@ -550,7 +550,7 @@ pnpm run bots -- --web http://localhost:3001 --constructores 3 --saqueadores 1 -
   asalto plantado sigue en el servidor y puede tumbar la ciudad al empezar la siguiente, y los militares que una
   partida cortada deja fuera de la vista de casa no los recupera el proceso nuevo, que no sabe que existen (spec §9.1).
 - Desde E35 ([SPEC-BOTS-FOUND](../specs/bots-found.md)) el constructor, en Bronce y con 800 de madera y 400 de
-  piedra, lleva un aldeano a un sitio libre a 28-96 tiles de su capital y funda su segunda ciudad, que juega con
+  piedra, lleva un aldeano a un sitio libre a 28-96 tiles de su capital (desde E42, de cualquiera de sus ciudades) y funda su segunda ciudad, que juega con
   aldeanos, casas y madera desde una conexión propia. El registro apunta `found` y, cada minuto, `colony`; el resumen,
   cuándo fundó, cuánto tardó la segunda en llegar a 8 de población (la primera casa salió de la medida en E41), y las
   caídas de una de dos

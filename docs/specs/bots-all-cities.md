@@ -125,7 +125,8 @@ la primera: en lugar de «una ciudad en pie», **menos ciudades en pie que el to
 Bronce, 3 en Hierro, 4 en Castillos; `maxOwnCities` del cliente). Sigue habiendo **una fundación a la vez**, siempre
 desde la capital, con un aldeano de la capital, lo que cuesta apartado y la regla antes del avance de era.
 
-- El sitio es el de [bots-found.md](bots-found.md) §4.2: entre 28 y 96 tiles de la capital y a 24 o más de todo centro
+- El sitio es el de [bots-found.md](bots-found.md) §4.2: entre 28 y 96 tiles de la capital (**precisión (2026-11-27,
+  [bots-found-site.md](bots-found-site.md), E42):** de cualquier ciudad propia en pie) y a 24 o más de todo centro
   conocido, incluidos los de todas las ciudades propias.
 - La piedra objetivo del constructor en Hierro y Castillos sigue en 800: llega para fundar (400) y deja margen.
 - En Bronce no cambia nada: funda la segunda antes de pasar a Hierro, como hoy. En Hierro, con dos ciudades, la
@@ -294,7 +295,8 @@ barrido, con un servidor falso que sólo manda las unidades del área de interé
 - **Precisión (2026-11-27): el anillo, a otra spec.** En la pasada 2 ni `_2_e29` ni `_3_e29` encontraron sitio en el
   anillo de 28 a 96 de su capital. En `_2_e29`, con la capital a 15 tiles del borde del mapa, ningún tile del anillo
   cae en un territorio libre. Buscarlo también alrededor de las colonias cambia dónde funda (la Q3 de
-  [bots-found.md](bots-found.md)): es una decisión de producto, en Draft en [bots-found-site.md](bots-found-site.md).
+  [bots-found.md](bots-found.md)): es una decisión de producto, en [bots-found-site.md](bots-found-site.md) (E42, aceptada el mismo día con sus tres
+  recomendaciones).
 
 ## 10. Decisiones de producto (2026-11-27)
 
