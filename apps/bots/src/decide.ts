@@ -34,7 +34,7 @@ import {
 import { foreignGoods, goodOf } from '../../web/src/state/civilizations';
 import { technologiesFor, researchBlockReason } from '../../web/src/state/technologies';
 import { civilizationUnit, unitAttacks, unitInfoOf } from '../../web/src/state/units';
-import { assaultBlockReason, walled } from '../../web/src/state/cityFall';
+import { type AssaultCheck, assaultBlockReason, walled } from '../../web/src/state/cityFall';
 import { FOUND_COST, maxOwnCities } from '../../web/src/state/multiCity';
 import {
   HOME_RADIUS,
@@ -1210,15 +1210,18 @@ function raidRule(view: View, profile: Profile, memory: Memory, plan: Plan, nowM
 // El asalto (SPEC-BOTS-ASSAULT)
 // ─────────────────────────────────────────────────────────────
 
-/** El motivo de `assaultBlockReason` que sólo pide abrir la brecha (RN-BOT-014). */
-const WALL_REASON = 'La muralla está en pie';
-
 /** Los escoltas se quedan a esta distancia del centro, en el lado del punto de reunión. */
 const ESCORT_DISTANCE = 3;
 
-/** Si un motivo del HUD deja asaltar (ninguno) o sólo pide abrir antes la brecha. */
-function assaultableReason(reason: string | null): boolean {
-  return reason === null || reason.startsWith(WALL_REASON);
+/**
+ * El motivo del HUD con la muralla ya abierta (RN-BOT-014): lo que seguiría impidiendo el
+ * asalto tras la brecha. El HUD da el motivo de la muralla antes que la inmunidad, la Edad de
+ * Piedra, otro asalto, la protección o la paz; el bot no abre la muralla de una ciudad que,
+ * abierta, tampoco podría asaltar.
+ */
+function reasonBeyondWall(check: AssaultCheck): string | null {
+  const buildings = [...check.buildings].filter((b) => !(b.cityId === check.city.id && b.type === 'WALL'));
+  return assaultBlockReason({ ...check, buildings });
 }
 
 /** Si hay paz con ese jugador: pacto o alianza en vigor (RN-COMBAT-030). */
@@ -1249,7 +1252,7 @@ export function chooseAssaultTarget(
   const resting = (playerId: string) => (memory.victimCooldowns[playerId] ?? 0) > nowMs;
   const visible = new Map(view.foreignCities.map((c) => [c.id, c]));
   const reasonFor = (c: CityView) =>
-    assaultBlockReason({
+    reasonBeyondWall({
       unit: fighter,
       playerId: view.playerId,
       city: c,
@@ -1269,9 +1272,8 @@ export function chooseAssaultTarget(
     const live = visible.get(b.cityId);
     let isWalled: boolean;
     if (live) {
-      const reason = reasonFor(live);
-      if (!assaultableReason(reason)) continue;
-      isWalled = reason !== null;
+      if (reasonFor(live) !== null) continue;
+      isWalled = walled(live, view.foreignBuildings);
     } else {
       if (!b.era || !eraAtLeast(b.era, 'BRONZE_AGE')) continue;
       if (b.fallImmuneUntilMs !== undefined && b.fallImmuneUntilMs > nowMs) continue;
@@ -1283,10 +1285,9 @@ export function chooseAssaultTarget(
   if (contraHumanos) {
     for (const c of view.foreignCities) {
       if (c.ownerPlayerId === view.playerId || seen.has(c.id) || !usable(c.id) || resting(c.ownerPlayerId)) continue;
-      const reason = reasonFor(c);
-      if (!assaultableReason(reason)) continue;
+      if (reasonFor(c) !== null) continue;
       const t = { x: c.centerX, y: c.centerY };
-      candidates.push({ cityId: c.id, name: c.name, center: t, d: chebyshev(home, t), walled: reason === null ? 0 : 1 });
+      candidates.push({ cityId: c.id, name: c.name, center: t, d: chebyshev(home, t), walled: walled(c, view.foreignBuildings) ? 1 : 0 });
     }
   }
   if (candidates.length === 0) return null;
@@ -1362,7 +1363,21 @@ function assaultStrike(
   };
 
   if (isWalled) {
-    // La brecha: sólo el ariete golpea la muralla completa (RN-SIEGE-004, RN-BOT-014).
+    // La brecha: sólo el ariete golpea la muralla completa (RN-SIEGE-004, RN-BOT-014), y
+    // sólo si, abierta, la ciudad se podría asaltar (inmune, protegida, en paz…: se vuelve).
+    const fighter = fighterIds.map((id) => units.get(id)).find((u) => u !== undefined && u.status !== 'DEAD');
+    const beyond = fighter
+      ? reasonBeyondWall({
+          unit: fighter,
+          playerId: view.playerId,
+          city: victim,
+          ownCity: view.city,
+          buildings: view.foreignBuildings,
+          treaties: view.treaties,
+          nowMs,
+        })
+      : null;
+    if (beyond !== null) return { ...r, abandon: 'blocked', sawWall: true };
     if (ramIds.length === 0) return { ...r, abandon: 'no_rams', sawWall: true };
     r = { ...r, stage: 'breach', holder: null, sawWall: true };
     const wall = view.foreignBuildings.find((b) => b.cityId === victim.id && b.type === 'WALL' && b.status === 'COMPLETE');

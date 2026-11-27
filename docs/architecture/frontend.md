@@ -993,7 +993,9 @@ y grueso, y una que carga madera, un tronco a la espalda.
   `unreachableOffers` en `apps/bots/src/decide.ts`), sin nada nuevo en `src/net` ni en `src/state`.
 - **Desde E32** ([SPEC-BOTS-ASSAULT](../specs/bots-assault.md)) el saqueador asalta: usa `ramBlockReason`
   (`economy.ts`) para entrenar arietes y `assaultBlockReason` y `walled` (`cityFall.ts`) para elegir el blanco y
-  plantar el estandarte (`RN-BOT-014`), y envía `assaultCity` (`src/net/client.ts`). Lee `CityView.assault` y
+  plantar el estandarte (`RN-BOT-014`); como el motivo de la muralla va antes que la inmunidad y los demás,
+  lo pide con la muralla quitada de los edificios (`reasonBeyondWall`, precisión del 2026-11-27), y envía
+  `assaultCity` (`src/net/client.ts`). Lee `CityView.assault` y
   `fallImmuneUntilMs`, y el `city.fallen` y el `world.snapshot` de la refundada que el store ya aplica: el bot vencido
   cambia de ciudad sin reconectar (`RN-BOT-017`). La partida que sale de la vista de las dos conexiones desaparece
   del store (`entity.despawn OUT_OF_INTEREST`): el decisor apunta dónde vio a cada uno y la conexión de campaña va a

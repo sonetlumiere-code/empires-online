@@ -340,6 +340,14 @@ Lo que la implementación concreta dentro de las reglas y las decisiones:
   asaltos de verdad, cada uno con sus bajas. Las partidas seguidas de la misma clase, contra el mismo blanco y con la
   misma vuelta van ahora en una línea con `×N`: los reunidos (o su rango), la media de lo que tardaron en reunirse, y
   las bajas, los muertos y la madera sumados. Una caída nunca se agrupa, y `raidLog` sigue con una entrada por partida.
+- **Precisión (2026-11-27): la muralla no tapa la inmunidad** (`RN-BOT-014`, rama `claude/medida-asalto-larga`).
+  `assaultBlockReason` da el motivo de la muralla antes que la inmunidad, la Edad de Piedra, otro asalto, la protección
+  o la paz, y el bot tomaba ese motivo por «sólo falta la brecha». Contra una ciudad a la vista, amurallada e inmune,
+  el saqueador salía, abría la muralla con los arietes y volvía con `blocked` al ir a plantar: los 7 asaltos `blocked`
+  de la prueba de E41 y del repaso de la piedra (contra la 58, la refundada de `_3_e29`, inmune hasta el 2026-11-28),
+  con 3 arietes perdidos y 7 murallas abiertas para nada (el defensor las rehízo con su piedra). Ahora el motivo se pide con la muralla quitada de los
+  edificios (`reasonBeyondWall`): el blanco sólo se elige si, abierta, se podría asaltar, y la partida que llega a una
+  así vuelve con `blocked` sin derribar nada (`assault.test.ts`, visto caer sin el arreglo). El HUD no cambia.
 
 ## 10. Decisiones de producto (2026-11-23)
 

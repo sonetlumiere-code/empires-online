@@ -178,6 +178,17 @@ describe('el blanco del asalto (SPEC-BOTS-ASSAULT §4.2)', () => {
     expect(chooseAssaultTarget(w, EMPTY_MEMORY, NOW, false, rng())?.cityId).toBe(20);
   });
 
+  it('la muralla no tapa los otros motivos: una amurallada a la vista e inmune no se elige', () => {
+    // Lo midió la prueba en vivo del repaso de la piedra (2026-11-27): el HUD da el
+    // motivo de la muralla antes que el de la inmunidad, y el saqueador abría la brecha
+    // de una refundada inmune para volver con `blocked`, cuatro veces seguidas.
+    const immune = victim({ fallImmuneUntilMs: NOW + 3_600_000 });
+    const v = view({ ...base, botCities: [walledBot], foreignCities: [immune], foreignBuildings: [WALL] });
+    expect(chooseAssaultTarget(v, EMPTY_MEMORY, NOW, false, rng())).toBeNull();
+    const stone = view({ ...base, botCities: [walledBot], foreignCities: [victim({ era: 'STONE_AGE' })], foreignBuildings: [WALL] });
+    expect(chooseAssaultTarget(stone, EMPTY_MEMORY, NOW, false, rng())).toBeNull();
+  });
+
   it('sin --contra-humanos, sólo bots (RN-BOT-004, Q6)', () => {
     const human = victim({ id: 30, ownerPlayerId: '33333333-3333-4333-8333-333333333333', name: 'smoke_caidapolis' });
     expect(chooseAssaultTarget(view({ ...base, foreignCities: [human] }), EMPTY_MEMORY, NOW, false, rng())).toBeNull();
@@ -253,6 +264,14 @@ describe('el asalto reunido (SPEC-BOTS-ASSAULT §4.3, §4.4)', () => {
       { key: 'assault:escort:2', type: 'unit.move', unitId: 2, target: { x: 137, y: 100 } },
     ]);
     expectRamsOnlyMoveOrDemolish([...commands, ...next.commands]);
+  });
+
+  it('amurallada pero inmune: no se abre la brecha, la partida vuelve (RN-BOT-014)', () => {
+    const immune = victim({ fallImmuneUntilMs: NOW + 3_600_000 });
+    const v = view({ city: ironCity(), units: [...atRally, ...rams], foreignCities: [immune], foreignBuildings: [WALL] });
+    const { commands, memory } = decide(v, saqueador, withRaid(assaultRaid()), NOW, rng(), solo);
+    expect(commands.filter((c) => c.type === 'unit.demolish')).toEqual([]);
+    expect(memory.raid?.abandon).toBe('blocked');
   });
 
   it('en brecha: el militar parado más cercano planta el estandarte y la escolta se acerca', () => {
