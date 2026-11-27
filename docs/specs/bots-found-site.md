@@ -153,6 +153,17 @@ decide.
   `site_lost` y el sitio se aparta (`RN-BOT-021`). Lo cubren `found.test.ts` y `bot.test.ts`, verificados por
   mutación (sin la comprobación al llegar, o sin recordar los territorios, cae su test).
 
+- **Precisión (2026-11-27): la conexión de colonia vuelve a su centro** (misma pasada; un fallo de E41 que no se veía
+  hasta que un bot con dos colonias fundaba otra). Tras fundar la 69, `_3_e29` marcó 37 min con una ciudad sin jugar:
+  el snapshot de la fundación, centrado en la ciudad nueva (`ResnapshotAt`, [multi-city.md](multi-city.md) §9.1),
+  llega a todas las sesiones del jugador, y la conexión de la colonia 59 se quedó mirando la 69. La casa ya volvía a la
+  capital ([bots-found.md](bots-found.md) §4.5); ahora cada conexión de colonia cuyo snapshot no trae su ciudad vuelve
+  a pedir su centro, una vez hasta ver la suya otra vez (`Colony.recentering`). Lo cubre `bot.test.ts` (su servidor
+  falso da ahora a cada conexión las ciudades del jugador, `FakeServer.peer`), verificado por mutación.
+- **Precisión (2026-11-27): la colonia fundada, una vez en el resumen** (misma pasada). La primera línea `colony` de la
+  70 llegó dos segundos antes que su `found` con `founded`, y el resumen la contaba dos veces («logradas 2»). El
+  `founded` completa ahora la colonia que ya hubiera (`log.test.ts`, verificado por mutación).
+
 ## 10. Decisiones de producto (2026-11-27)
 
 La persona usuaria aceptó las tres recomendaciones (2026-11-27): cada fila deja la decisión, en negrita, y las

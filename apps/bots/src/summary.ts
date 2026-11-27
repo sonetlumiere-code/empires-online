@@ -350,6 +350,13 @@ export function summarize(lines: readonly LogLine[]): BotSummary[] {
           if (l.status === 'founded') {
             const ordinal = typeof l.ordinal === 'number' ? l.ordinal : 2;
             const era = eras[ERA_FOR_ORDINAL[ordinal] ?? 'BRONZE_AGE'] ?? 0;
+            // La primera línea `colony` puede llegar antes que su `founded` (la prueba en vivo
+            // de E42 dio la 70 dos veces): es la misma colonia.
+            const early = colonyOf(l.cityId);
+            if (early) {
+              Object.assign(early, { origin: 'founded', ordinal, foundedMs: l.t - start.t, fromEraMs: l.t - start.t - era });
+              break;
+            }
             colonies.push({
               t: l.t,
               cityId: typeof l.cityId === 'number' ? l.cityId : null,

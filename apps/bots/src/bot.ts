@@ -157,6 +157,11 @@ interface Colony {
   last: CityView | null;
   /** De dónde salió (para el registro, §4.7). */
   readonly origin: 'founded' | 'taken' | 'start';
+  /**
+   * Ya pidió volver a su centro tras un snapshot que no traía su ciudad (el de una
+   * fundación, centrado en la nueva): no lo repite hasta ver la suya otra vez.
+   */
+  recentering?: boolean;
 }
 
 type Stocks = Record<string, number>;
@@ -1186,9 +1191,19 @@ export class Bot {
       }
     }
     if ((m.type === 'world.snapshot' || m.type === 'city.update') && link !== this.home) this.refreshHomes(link);
-    // La conexión de una colonia mira su centro en cuanto llega su primer snapshot.
+    // La conexión de una colonia mira su centro en cuanto llega su primer snapshot. El de
+    // una fundación llega a todas las sesiones centrado en la ciudad nueva: la colonia
+    // vuelve a su centro, una vez, como la casa a la capital (SPEC-BOTS-FOUND-SITE §9.1).
     if (m.type === 'world.snapshot') {
-      for (const c of this.colonies.values()) if (c.link === link) this.followColony(c);
+      for (const c of this.colonies.values()) {
+        if (c.link !== link) continue;
+        if (link.store.getState().cities.has(c.cityId)) c.recentering = false;
+        else if (c.linkView !== null && !c.recentering) {
+          c.linkView = null;
+          c.recentering = true;
+        }
+        this.followColony(c);
+      }
     }
     if (link !== this.home) return;
 
