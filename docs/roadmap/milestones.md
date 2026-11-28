@@ -3672,8 +3672,7 @@ sin sembrar; registro `bots/runs/2026-11-27T17-13-58-641Z-44.jsonl`):
 
 ## E42 — El sitio de la siguiente ciudad
 
-**Estado: HECHO en `main` local (2026-11-27)**, rama `claude/slice-bots-sitio` fusionada sin empujar; falta empujar y
-ver la CI en verde para pasar la spec a `Implemented`. Contrato:
+**Estado: HECHO (2026-11-27)**, en `main` desde la fusión `5c5c3ff` (rama `claude/slice-bots-sitio`), con la CI en verde. Contrato:
 [SPEC-BOTS-FOUND-SITE](../specs/bots-found-site.md), propuesta el 2026-11-27 tras el repaso de la piedra (§E41) y
 aceptada el mismo día: la persona usuaria aceptó sus tres decisiones con la recomendación del agente. Sin ADR nuevo: no
 cambia el servidor, ni el protocolo, ni la base. Nace de la prueba en vivo del repaso de la piedra: los tres

@@ -74,6 +74,7 @@ siendo el registro de lo comprometido, pero conviene leerlo sabiendo qué queda 
 | E39 Los avisos de la ciudad tomada | **Completado** (2026-11-25). En `main` desde la fusión `1a47f3e`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E39; contrato en [SPEC-CITY-TAKEN-NOTICES](../specs/city-taken-notices.md). |
 | E40 El nombre de las ciudades | **Completado** (2026-11-26). En `main` desde la fusión `5807630`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E40; contrato en [SPEC-CITY-NAMES](../specs/city-names.md). |
 | E41 Los bots juegan todas sus ciudades | **Completado** (2026-11-27). En `main` desde la fusión `1f9ecd6`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E41; contrato en [SPEC-BOTS-ALL-CITIES](../specs/bots-all-cities.md). |
+| E42 El sitio de la siguiente ciudad | **Completado** (2026-11-27). En `main` desde la fusión `5c5c3ff`, con la CI en verde. Detalle en [milestones.md](milestones.md) §E42; contrato en [SPEC-BOTS-FOUND-SITE](../specs/bots-found-site.md). |
 | Transversales | `EO-110`, `EO-112`, `EO-113`, `EO-114`, `EO-117`, `EO-118`, `EO-119`, `EO-115`, `EO-120`, `EO-121` y `EO-122` hechos. Abiertos: `EO-111` y `EO-116`. |
 
 Y un recordatorio que atraviesa todo lo anterior: **la CI pasa entera y los tests de integración se

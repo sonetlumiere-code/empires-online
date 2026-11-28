@@ -7,7 +7,7 @@ no deje al bot en dos ciudades para siempre.
 | Campo | Valor |
 |---|---|
 | Spec ID | `SPEC-BOTS-FOUND-SITE` |
-| Estado | Accepted (2026-11-27). La persona usuaria aceptó las tres recomendaciones de §10. |
+| Estado | Implemented (2026-11-27). La persona usuaria aceptó las tres recomendaciones de §10; en `main` desde la fusión `5c5c3ff`, con la CI en verde. |
 | Milestone | E42 El sitio de la siguiente ciudad (cuadragésimo segundo slice después de M7) |
 | Canon | §1.3 (el servidor es la única verdad), §19 (niveles de test) |
 | Depende de | [bots-found.md](bots-found.md), [bots-all-cities.md](bots-all-cities.md), [multi-city.md](multi-city.md), [more-cities.md](more-cities.md) |
